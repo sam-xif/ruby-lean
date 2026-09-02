@@ -616,6 +616,24 @@ def falsyTy : Ty → Ty
   | .any => .any
   | .nilable ρ => joinT .nilT (falsyTy ρ)
   | .union σ τ => joinT (falsyTy σ) (falsyTy τ)
+  -- **The alias arm is not catch-all material**, and the semantic ratchet is what found it:
+  -- `Ty.sameAs y ρ` denotes exactly `ρ`'s values (`Denote/Den.lean`), so answering `.never`
+  -- here would claim the branch unreachable whenever `ρ` has a falsy value — `.sameAs y .nilT`
+  -- being the immediate counterexample. Refining *under* the alias is what the catch-all was
+  -- silently getting wrong, and it is what `truthyTy`/`nonNilTy` get right by accident, their
+  -- catch-all being the identity rather than `.never`.
+  | .sameAs y ρ => .sameAs y (falsyTy ρ)
+  -- **The nominal arms are not catch-all material either**, and this one is not about aliases
+  -- but about Ruby's class graph: `denM (.cls n)` is `isAName`, the machine's own ancestor
+  -- walk, and `nil`/`false` descend from `Object`, `BasicObject` and `Kernel` — so
+  -- `falsyTy (.cls "Object") = .never` claims a branch unreachable that a `nil` reaches. The
+  -- three names could be excluded by a list, but only at a machine where nothing has been
+  -- `include`d into `NilClass`, which is a heap fact this function cannot see; the identity is
+  -- sound at every machine and loses only the "this branch cannot run" reading at a *nominal*
+  -- condition. `.int`/`.float`/`.sym`/`.clsOf`/`.arrayOf`/`.hashOf`/the arrows keep `.never`,
+  -- because for those `denM` itself excludes `nil` and `false`.
+  | .cls n => .cls n
+  | .inst n I => .inst n I
   | _ => .never
 
 /-- The values of `τ` that are `nil`. Used for the then-branch of `if x.nil?`. Unlike
@@ -625,6 +643,12 @@ def isNilTy : Ty → Ty
   | .any => .any
   | .nilable _ => .nilT
   | .union σ τ => joinT (isNilTy σ) (isNilTy τ)
+  -- see `falsyTy`'s alias arm: the same `.never` catch-all, the same counterexample
+  | .sameAs y ρ => .sameAs y (isNilTy ρ)
+  -- and see `falsyTy`'s nominal arms: `isAName` at a class `nil` descends from is *true* of
+  -- `nil`, so `.never` would be a claim this cannot make
+  | .cls n => .cls n
+  | .inst n I => .inst n I
   | _ => .never
 
 /-- The values of `τ` that are not `nil`. Used for the else-branch of `if x.nil?`. Differs

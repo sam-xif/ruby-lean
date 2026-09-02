@@ -844,3 +844,78 @@ either. So the rule is true of every derivable judgment and false of the denotat
 own — the §F5 family — and discharging it needs either an exactness conjunct threaded through
 the judgment or a `Ty` that can say "a class object for *some* subclass of `n`", which is a
 language gap rather than a bug. Filed, with the probe kept as a negative control.
+
+## §F9 — `isAAnswer`'s *negative* answer read a static table, and `include` into a core class falsifies it
+
+**Confirmed reachable, and the first finding on this ladder that `validate` accepted before it
+was fixed.** Corpus `245-include-into-core-narrow-unsafe`:
+
+```ruby
+module M
+end
+class Integer
+  include M          # `5.is_a?(M)` is now true
+end
+x = 5
+if x.is_a?(M)
+  x + "s"            # certified, because the branch is typed `x : never`
+else
+  1
+end
+```
+
+CRuby raises `TypeError` (`String can't be coerced into Integer`). `validate` answered **true**.
+
+**The mechanism.** `isATy` refines the then-branch of `if x.is_a?(C)` by asking `isAAnswer`,
+and turns a `some false` — "no value of this type is a `C`" — into `Ty.never`, i.e. *this
+branch cannot run*. `never` makes everything downstream vacuous, so a wrong `some false` does
+not merely mistype the branch: it certifies **anything** in it. And `isAAnswer`'s builtin arm
+was
+
+```
+| τ => (builtinAncestors τ).map (fun ch => ch.contains cn)
+```
+
+— a **static table**. `builtinAncestors .int` is `["Integer", "Numeric", "Comparable"] ++
+rootAncestors`, so `is_a?(M)` at an `Integer` answered `some false` for every `M` outside it,
+which is an assumption that nothing has been mixed into `Integer`'s chain. Ruby lets a program
+falsify that in three lines.
+
+The `.inst` arm was careful about exactly this — `ancestors?`/`mixinAncestors?` refuse a chain
+whose mixins they cannot see, and `Judge.lean`'s own comment at `ancestorsUp` says omitting
+them "would make `isAAnswer` answer `is_a?(SomeIncludedModule)` with a *wrong* `some false`".
+The hole is that the *declared* chain was checked while `rootAncestors` was appended blindly,
+and the **builtin** chain was not checked at all: tier 10 gave `include` a rule, and the
+comment above `rootAncestors` ("whichever tier gives `include` a rule must revisit
+`isAAnswer`") was the prediction that this half of the revisit did not happen.
+
+**The fix.** `mixinFreeChain C ch` asks whether the context reopens any class *named in the
+chain* with an `include` or a `prepend`, and both arms of `isAAnswer` now answer
+
+* `some true` when the chain contains `cn` — unchanged, and still sound: a mixin only **adds**
+  ancestors, so a name already in the chain stays an ancestor;
+* `some false` only when the chain is mixin-free;
+* `none` — "this judgment cannot tell" — otherwise, which `isATy`/`notATy` already handle by
+  keeping the type unrefined in both branches.
+
+`isANilPart` needed the same treatment (`class NilClass; include M; end` makes `nil.is_a?(M)`
+true) and now takes the table; `notANilPart` did not, because its `.never` is on the side where
+`cn` *is* in the chain.
+
+**Precision cost, measured.** The refinement is retained wherever it was justified: the same
+program without the `include` still types (its then-branch really is unreachable), and all 177
+hand derivations plus the 145 negative controls are unaffected. `expect_validate` mismatches
+stayed at 35.
+
+**How it was found.** Not by search. `denM_isATy` — the fifth of the six type-level lemmas the
+twelfth stall point lists — is exactly the statement "the refined type still denotes the
+value", and it cannot be proved without `isAAnswer` conformance. Writing down what that
+conformance would have to say ("the static chain is the machine's chain") is what exposed the
+missing side condition; the program above was then written to fit the hole rather than the
+other way round. That is the same route §F6 and §F7 took, and the third time the *obligation's*
+statement — not a test — is what named the assumption.
+
+**What is still open.** `mixinFreeChain` reads the context, so a mixin installed by
+`Object#include` through `send`/`*_eval` is outside it — the `κ.closures` coarseness §F2, §F4,
+§F6 and §F7 all share, and unreachable for the same reason (those forms are `unsupported` in
+the model or have no rule).

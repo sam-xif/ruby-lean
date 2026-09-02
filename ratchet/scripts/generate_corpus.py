@@ -2154,6 +2154,17 @@ R("self-class-subclass-unsafe", 12,
   'class C\n  def whoami\n    self.class\n  end\n  def tag\n    1\n  end\nend\nclass D < C\n  def tag\n    "s"\n  end\nend\nD.new.whoami.new.tag + 1\n',
   expect_validate=False, false_reason="unsafe_program")
 
+R("include-into-core-narrow-unsafe", 12,
+  "**A candidate UNSAFE program.** `isAAnswer` answers `is_a?` from a **static** table "
+  "(`builtinAncestors`), so at `.int` it reports `some false` for any name outside "
+  "`[\"Integer\", \"Numeric\", \"Comparable\"] ++ rootAncestors` \u2014 and `isATy` turns "
+  "`some false` into `.never`, i.e. \"this branch cannot run\". Ruby lets a program falsify "
+  "that: `class Integer; include M; end` puts `M` in `Integer`\u2019s ancestors, the "
+  "then-branch *does* run, and with `x : never` there anything in it is certified. `x + \"s\"` "
+  "raises TypeError.",
+  'module M\nend\nclass Integer\n  include M\nend\nx = 5\nif x.is_a?(M)\n  x + "s"\nelse\n  1\nend\n',
+  expect_validate=False, false_reason="unsafe_program")
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):

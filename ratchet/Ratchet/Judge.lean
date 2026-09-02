@@ -1464,6 +1464,17 @@ def builtinAncestors : Ty → Option (List String)
   | .arrayOf _ => some (["Array", "Enumerable"] ++ rootAncestors)
   | _ => none
 
+/-- **Is every class in this chain free of mixins, as far as the context knows?**
+`found-issues.md` §F9's guard. A chain is a list of *names*, and `isAAnswer` answers `is_a?`
+negatively off it — so a name in it whose class the context reopens with an `include` or a
+`prepend` has an ancestor the chain does not mention, and the negative answer is wrong. This
+does not have to walk: it is the mixin lists of the chain's own members that matter, and
+`mixinAncestors?` has already refused any chain whose *modules* are themselves impure. -/
+def mixinFreeChain (C : CTable) (ch : List String) : Bool :=
+  ch.all (fun n => match clsGet? C n with
+    | none => true
+    | some c => c.includes.isEmpty && c.prepends.isEmpty)
+
 /-- `is_a?(cn)` on a value of type `τ`: `some true` when **every** value of `τ` answers
 `true`, `some false` when every value answers `false`, and `none` when this judgment cannot
 tell — which is the answer for `.any`, `.bool`, a `.cls` outside `builtinAncestors`, and a
@@ -1472,8 +1483,17 @@ declared class whose chain leaves the table.
 Not defined on `.union`/`.nilable`: those are not a single class, and treating them here
 would hide the fact that a union's answer is per-member. `isATy`/`notATy` decompose them. -/
 def isAAnswer (C : CTable) (cn : String) : Ty → Option Bool
-  | .inst n _ => (ancestors? C n).map (fun ch => (ch ++ rootAncestors).contains cn)
-  | τ => (builtinAncestors τ).map (fun ch => ch.contains cn)
+  | .inst n _ => (ancestors? C n).bind (fun ch =>
+      if (ch ++ rootAncestors).contains cn then some true
+      -- `ancestors?` checked the *declared* chain's mixins; `rootAncestors` is appended
+      -- blindly, so `class Object; include M; end` is the case this guard covers
+      else if mixinFreeChain C rootAncestors then some false else none)
+  | τ => (builtinAncestors τ).bind (fun ch =>
+      if ch.contains cn then some true
+      -- **§F9**: the builtin chain is a *static table*, and `class Integer; include M; end`
+      -- really does make `5.is_a?(M)` true. The positive answer survives (an `include` only
+      -- adds ancestors); the negative one has to become "unknown".
+      else if mixinFreeChain C ch then some false else none)
 
 /-- **`recv.is_a?(C)` really reaches `Object#is_a?`.**
 
@@ -2296,8 +2316,11 @@ refinement narrows nothing and the branch is typed at the same type it had. -/
 
 /-- What a `nil` member contributes to the then-branch: `nil.is_a?(cn)` is decided by
 `NilClass`'s chain, which `builtinAncestors .nilT` gives. -/
-def isANilPart (cn : String) : Ty :=
-  if ("NilClass" :: rootAncestors).contains cn then .nilT else .never
+def isANilPart (C : CTable) (cn : String) : Ty :=
+  if ("NilClass" :: rootAncestors).contains cn then .nilT
+  -- §F9 again, at `nil`: `class NilClass; include M; end` makes `nil.is_a?(M)` true, so the
+  -- `.never` is only available when the context leaves that chain alone
+  else if mixinFreeChain C ("NilClass" :: rootAncestors) then .never else .nilT
 
 /-- …and to the else-branch, which is its complement. -/
 def notANilPart (cn : String) : Ty :=
@@ -2306,7 +2329,7 @@ def notANilPart (cn : String) : Ty :=
 /-- The values of `τ` that **are** a `cn`. -/
 def isATy (C : CTable) (cn : String) : Ty → Ty
   | .union σ τ => joinT (isATy C cn σ) (isATy C cn τ)
-  | .nilable ρ => joinT (isANilPart cn) (isATy C cn ρ)
+  | .nilable ρ => joinT (isANilPart C cn) (isATy C cn ρ)
   | τ => match isAAnswer C cn τ with
     | some false => .never
     | _ => τ
