@@ -5367,6 +5367,30 @@ mismatches **35**, permanent negatives **23**. `Denote/Examples.lean`'s 33 `#gua
 `Denote/Rules/Nil.lean`, `Denote/Rules.lean`, `Denote/Sem/notes.md`, `AGENTS.md`. Axiom-clean;
 no `sorry`.
 
+### And the fifth wall, further: `Interp/Support.lean` too
+
+`../lean/RubyCore/Proof/KontFrame.lean` is at **105 theorems**, axiom-clean. Since clink 52 it
+gained: the four continuation-taking `Builtins` helpers (`binArg`, `numBin`, `numCmp`,
+`withIndex`) stated with the continuation's framing as a *hypothesis* rather than unfolded —
+unfolding them across `runNumerics`' ~90 arms diverges at any recursion limit; `runRegex`'s six
+`where` helpers; **five of the six dispatchers** (all but `runObjects`, which is at 13 goals,
+eight of them the `Kernel#print` fold's contradictory cross-cases); and **all of
+`Interp/Support.lean`**, `callClosure` — the first helper that pushes a *frame* — included.
+
+Two of the five tooling facts recorded in `Denote/Sem/notes.md` are worth repeating here
+because they are what actually moved the needle:
+
+* **`simp_all` must be a per-goal last resort, not a stage in the `<;>` chain.** Run eagerly it
+  re-folds goals that `rfl` would have closed. Demoting it closed `callClosure` and four
+  dispatchers that had looked blocked — one lesson, four dispatchers.
+* **A fold-framing lemma keyed on a lambda is invisible to `simp` and visible to `rw`**, and
+  `rw`'s *conditional* form is the trick: it unifies the step out of the goal and leaves the
+  framing hypothesis as a side goal, so a step and its per-declaration matcher constant never
+  have to be written out. That is what closed `scanAll`/`splitBy`/`subst`, whose folds nest.
+
+Also: a `macro_rules` tactic that mentions itself does not expand. The first higher-order
+closer was recursive and silently failed on every nested case.
+
 ### What is left, corrected again
 
 Fifty rules: `Judge`'s 47 and `JudgeSeq`'s 3. Every one of them has a **compound** hypothesis —

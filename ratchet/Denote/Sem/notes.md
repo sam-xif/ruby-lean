@@ -299,53 +299,54 @@ Worth recording as a working lesson rather than an accident: the target was writ
 `Prop`-shaped `def` with a name, which is why it could be *attacked* instead of assumed. A
 comment saying "this ought to be true" would still be there.
 
-### The `Builtins` layer, attempted and mostly proved *(clink 52, `../../lean/RubyCore/Proof/KontFrame.lean`)*
+### The `Builtins` **and `Interp/Support`** layers, proved *(clinks 52–53, `../../lean/RubyCore/Proof/KontFrame.lean`)*
 
 Item 1 below — "the **builtins** are the genuinely open question … that is where the 24k lines
 actually are" — was the reason this stall point looked unbounded. It is now measured, and the
-answer is that the layer is the *easy* one:
+answer is that these two layers are the *easy* ones:
 
-* **Nothing in `Builtins/` reads `kont`.** `grep -rn '\.kont\|kont :='` over the whole
-  directory finds **zero** occurrences, so the layer is framing-transparent by construction
-  and every lemma is bookkeeping.
-* **What is proved**: the 14 leaves (all `rfl`), the two fuel walks (`putsGo`, `flattenAll`),
-  the five `…Impl` helpers, the `$~` layer (`matchFrameId`/`setLastMatchValue`/
-  `setMatchGlobals`/`setLastMatch` — the one write that is *not* to the heap), `runRegex`'s
-  two match helpers, and the allocating-fold family (`allocFold_frame` polymorphically plus
-  four concrete instances). 51 theorems, axiom-clean, ~430 lines, builds in ~3 s.
-* **What the five dispatchers cost, counted exactly**: with all of the above in scope,
-  `runNumerics` **closes**; `runModules` leaves **1** goal (its delegation to `runRegex`),
-  `runCollections` **1**, `runStrings` **5**, `runObjects` **12**, `runRegex` **17** — and
-  every residual is either a machine-taking `where` helper (`runRegex.scanAll`/`splitBy`/
-  `splitOn`/`subst`) or one more bespoke allocating fold.
+* **Transparent by construction.** `grep -rn '\.kont\|kont :='` over the whole
+  `RubyCore/Builtins/` directory finds **zero** occurrences. Above it, `Interp/Support.lean`
+  touches `kont` in exactly one place — `withKont`, which conses — and that frames by `rfl`,
+  since `(k :: m.kont) ++ K` and `k :: (m.kont ++ K)` are the same list.
+* **What is proved** (105 theorems, axiom-clean): the `Builtins` leaves; both fuel walks; the
+  five `…Impl` helpers; the `$~` layer (the one write that is not to the heap); the four
+  continuation-taking helpers with the continuation's framing as a hypothesis; `runRegex`'s six
+  `where` helpers; **five of the six dispatchers** (`runRegex`, `runModules`,
+  `runCollections`, `runStrings`, `runNumerics`); and **all of `Interp/Support.lean`** —
+  `raiseErr`, `withCtl`/`withKont`, `setLocal`/`setGlobal`/`bindIvar`, `finishRegion`,
+  `enterHandler`, `appendKwHash`, `spread`/`spreadA`, `doReturn`, `reifyBlock`,
+  `coerceToProc`, `matchGlobal`, and `callClosure`, the first helper that pushes a *frame*.
+* **What is left, exactly**: `runObjects` at **13 goals** (eight of them the `Kernel#print`
+  fold's contradictory cross-cases) and `Builtins.run`, which delegates to it.
 
-Three tooling facts worth having in advance, because each cost an hour:
+Five tooling facts, each of which cost real time and none of which is in any manual:
 
 1. **`rw [f.eq_def]`, never `simp only [f]`.** The equation compiler refuses per-arm equations
    at interpreter scale ("failed to generate equational theorem for `runModules`").
 2. **`split` does not scale to deeply nested arms.** On `newImpl` (five nested `if`s) `split`'s
    own `simp` reports "maximum number of steps exceeded", and neither `maxSteps` nor
-   `simp.maxSteps` is a settable option — the workaround is to case-split the conditions by
-   hand, ~15 lines per such function.
-3. **`simp` matches syntactically, so the general fold lemma is not enough.** `allocFold_frame`
-   covers only the folds whose step really is a function of `(machine, element)`; the
-   `Option`-matching ones push their `nil` *inside* the match and need the induction written
-   again at that shape.
-4. **A fold lemma keyed on a lambda is invisible to `simp`.** `List.foldlM f (pushK K m) l`
-   with `f` a lambda is rewritten by `rw` and *not* by `simp`/`simp_all` — the discrimination
-   tree does not index under the lambda. So the contradictory cross-cases a `split` leaves
-   (the pushed fold answered `some`, the unpushed one `none`) do not close automatically even
-   with the lemma in the simp set, and the remaining work is per-arm rather than per-file.
-   This is the single biggest cost multiplier found, and it is a `simp` fact rather than an
-   interpreter fact.
+   `simp.maxSteps` is a settable option — hand case-splitting is ~15 lines per such function.
+3. **`simp_all` must be a per-goal last resort, not a stage in the chain.** Run eagerly it
+   *re-folds* goals that `rfl` would have closed; demoting it is what closed `callClosure` and
+   four dispatchers that had looked blocked. This one lesson was worth four dispatchers.
+4. **A lemma keyed on a lambda is invisible to `simp` and visible to `rw`.** The discrimination
+   tree does not index under a lambda, so a fold-framing lemma has to be applied by `rw` — as a
+   *conditional* rewrite, which is the trick: `rw` unifies the step out of the goal and leaves
+   the framing hypothesis as a side goal, so the step (and its per-declaration matcher
+   constant) never has to be written by hand — or by `exact`, where `isDefEq` unfolds matchers.
+5. **A `macro_rules` tactic that mentions itself does not expand.** The first higher-order
+   closer was written recursively and silently failed on every nested case; as a `repeat'`
+   fixpoint it handles nesting for free.
 
-**Three things the measurement does not settle**, and the next attempt should start from them
+**Three things the measurement does not settle****Three things the measurement does not settle**, and the next attempt should start from them
 rather than from the good news:
 
 1. ~~The **builtins** are the genuinely open question~~ — **settled, see above**: transparent,
-   fast, and the residual is a bounded list of folds. What is left of the fifth stall point is
-   the `Interp` layer, where the statements are *conditional* (item 2) and one `partial def`
-   sits on the path (item 3).
+   fast, and the residual is one dispatcher. `Interp/Support.lean` came with it. What is left
+   of the fifth stall point is `Interp/Kont.lean`, `Send.lean`, `Dispatch.lean`, `Reflect.lean`
+   and `evalExpr` — where the statements are *conditional* (item 2), `CatchFree` has to be
+   threaded through the `throw` arm, and one `partial def` sits on the path (item 3).
 2. `applyKont` and `unwind` have the two `[]` exceptions above, so their framing lemmas are
    **conditional** (on `m.kont ≠ []`), not unconditional. Only `evalExpr`'s is free of a side
    condition, which is also why the leaf rungs never needed any of this.
