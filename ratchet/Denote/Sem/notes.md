@@ -906,9 +906,19 @@ and the two ends are what is missing:
   is exactly what `corpus/241-reopen-integer-is-a-unsafe` probes (the checker rejects it, so
   the gap is not reachable, but the *obligation* still quantifies over machines that have it).
   So this wants a component in the shape of `CoreOk`: the boot bindings the rules dispatch on,
-  with a satisfiability witness at `bootMachine`. Note the witness is *finite* even though the
-  component is a ∀ over values — `lookup` reads the value only through `classOf`, and `Value`
-  has six constructors.
+  with a satisfiability witness at `bootMachine`.
+
+  **Two wrinkles found while sizing it, both of which constrain the shape.** First, the naive
+  "the lookup finds the boot builtin" is **false at a dangling reference**: `Heap.get` answers
+  `default`, whose `klass` is `0`, so `classOf` gives a class whose ancestry does not reach
+  `Object` and the lookup misses. So the existence half has to be conditioned — on
+  `Boot.objectId ∈ ancestors m.heap (classOf m.heap recv)`, or on the receiver's *type* via
+  `expectedClasses` — while the "whatever it finds is the boot builtin" half can stay
+  unconditional. Second, the *miss* branch is not free: `dispatchMiss` routes to a user
+  `method_missing`, which can return anything, so a rule that reasons from the dispatch also
+  needs §F4's `nameFree κ "method_missing"` premise or the equivalent. The tempting shortcut —
+  a component that asserts *the dispatch answers a boolean* — is not conformance but the rule's
+  own conclusion moved into `StateOk`, and must not be taken (`AGENTS.md` §Justification).
 * **The builtin needs its signature honoured**, which for `Judge.prim`/`callAsm` means one
   conformance fact **per `PrimSig` row** — the "list of named builtins" that
   `../../type-safety-by-reachability.md` §9.0/§10.3 already calls the remaining model-coverage
