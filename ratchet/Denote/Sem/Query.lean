@@ -56,6 +56,26 @@ theorem denM_clsOf_ref {m : Machine} {cn : String} {v : Value} (h : denM (.clsOf
         | _ => exact absurd hcn (by simp)
     | _ => exact absurd h (by simp)
 
+/-- **An `.inst`-typed value is an object of exactly the named class** — `isExactInst` read
+out as an existential, in the shape a dispatch wants. The `.clsOf` twin above (`denM_clsOf_ref`)
+gives the class *object*; this gives the class *of* an object, and `Judge.classOf` is the rule
+that turns one into the other. -/
+theorem denM_inst_exact {m : Machine} {n : String} {I : Ty} {v : Value}
+    (h : denM (.inst n I) m v) :
+    ∃ k, classNamed? m.heap n = some k ∧ realClassOf m.heap v = k := by
+  rw [denM] at h
+  obtain ⟨hex, _⟩ := h
+  -- `unfold`, not `rw`: `isExactInst`'s equation lemmas include the catch-all arm, and `rw`
+  -- picks it (`AGENTS.md`'s equation-compiler trap) — collapsing the hypothesis to `false`
+  unfold isExactInst at hex
+  -- `split` on the two-scrutinee match: the only arm that can be `true` is
+  -- "the name resolves and the value is a reference"
+  split at hex
+  · rename_i k o hcn _
+    simp only [Bool.and_eq_true, beq_iff_eq] at hex
+    exact ⟨k, hcn, hex.2⟩
+  · exact absurd hex (by simp)
+
 /-- `visError?` is `none` at a public method, whatever the site. -/
 theorem visError?_pub {m : Machine} {recv : Value} {site : SendSite} {md : MethodDef}
     {mname : String} (h : md.visibility = .pub) :
@@ -304,6 +324,110 @@ theorem invokeDispatch_caseEq_miss {m : Machine} {recv : Value} {site : SendSite
 #print axioms run_caseEq
 #print axioms invokeDispatch_caseEq
 #print axioms invokeDispatch_caseEq_miss
+
+/-! ## `x.class` — the rung the exact reading unlocked
+
+`Object#class` answers `realClassOf`, and `Ty.inst`'s denotation is now `isExactInst`, which
+*is* `realClassOf` (`found-issues.md` §F12). So the two ends meet definitionally and this is
+the shortest rung in the dispatch family — which is the point: under the old is-a reading the
+obligation was **false** (§F8), and the same one-line mismatch was what made every other
+dispatch rule unprovable. -/
+
+theorem invokeMaybeNew_clsq (m : Machine) (recv : Value) (o : ObjId) (c : ClassPayload)
+    (site : SendSite) (args : List Value) (blk : Option Value) (kw : List (Value × Value)) :
+    Interp.invoke.invokeMaybeNew m recv o c site "class" args blk kw
+      = Interp.invoke.invokeDispatch m recv site "class" args blk kw := by
+  rw [Interp.invoke.invokeMaybeNew.eq_def, if_neg (by simp)]
+
+theorem invoke_clsq (m : Machine) (recv : Value) (site : SendSite) (args : List Value)
+    (blk : Option Value) (kw : List (Value × Value)) :
+    Interp.invoke m recv site "class" args blk kw
+      = Interp.invoke.invokeDispatch m recv site "class" args blk kw := by
+  rw [Interp.invoke.eq_def]
+  cases recv with
+  | ref o =>
+    cases hp : (m.heap.get o).payload <;> simp only [hp] <;>
+      first
+        | rfl
+        | (split <;> simp_all [invokeMaybeNew_clsq])
+        | simp_all [invokeMaybeNew_clsq]
+  | _ => rfl
+
+theorem deferTwin?_clsq (h : Heap) (recv : Value) (args : List Value) :
+    Builtins.deferTwin? h "Object#class" recv args = none := by
+  simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
+    Builtins.toAryDefer?, Builtins.coerceTwin?]
+  rcases args with _ | ⟨a, rest⟩
+  · rfl
+  · cases rest <;> rfl
+
+/-- **`Object#class` is the class field, and it does not allocate** — so unlike `Module#to_s`
+this rung's post-machine is its pre-machine. The `unsupported` alternative is `Builtins.run`'s
+byte-string gate, as everywhere. -/
+theorem run_clsq (m : Machine) (recv : Value) :
+    Builtins.run "Object#class" recv [] m = .ok (.ref (realClassOf m.heap recv)) m ∨
+      ∃ r, Builtins.run "Object#class" recv [] m = .unsupported r := by
+  rw [Builtins.run.eq_def]
+  dsimp only
+  split
+  · exact Or.inr ⟨_, rfl⟩
+  split
+  · rename_i hz; exact absurd hz (by simp)
+  split
+  · rename_i hd
+    exact absurd hd (by simp [Builtins.dupBids, Builtins.cloneBids])
+  exact Or.inl rfl
+
+theorem invokeDispatch_clsq {m : Machine} {recv : Value} {site : SendSite}
+    {owner : ObjId} {md : MethodDef}
+    (hfound : Interp.methodOn m.heap (classOf m.heap recv) "class" = some (owner, md))
+    (hb : md.builtin = some "Object#class") (hu : md.undefined = false)
+    (hv : md.visibility = .pub) (hp : md.fromPrelude = false)
+    (hsh : Interp.crubyShadow m.heap
+      ((ancestors m.heap (classOf m.heap recv)).takeWhile (fun x => x != owner)) "class"
+      = none) :
+    Interp.invoke.invokeDispatch m recv site "class" [] none []
+        = .next (Interp.withCtl m (.value (.ref (realClassOf m.heap recv)))) ∨
+      ∃ r, Interp.invoke.invokeDispatch m recv site "class" [] none [] = .unsupported r := by
+  rw [Interp.invoke.invokeDispatch.eq_def, lookup_eq_methodOn, hfound]
+  simp only [hu, hp, if_false, Bool.false_eq_true, hsh, visError?_pub hv, hb, deferTwin?_clsq]
+  rcases run_clsq m recv with hr | ⟨r, hr⟩
+  · exact Or.inl (by simp [appendKwHash_nil, hr])
+  · exact Or.inr ⟨r, by simp [appendKwHash_nil, hr]⟩
+
+theorem dispatchMiss_clsq_no_value (m : Machine) (recv : Value) (site : SendSite)
+    (args : List Value)
+    (hmm : ∀ o md, Interp.methodOn m.heap (classOf m.heap recv) "method_missing"
+        = some (o, md) → md.builtin.isSome = true) :
+    (∃ r, Interp.dispatchMiss m recv site "class" args none = .unsupported r) ∨
+    (∃ cls msg, Interp.dispatchMiss m recv site "class" args none
+      = .next (Interp.raiseErr m cls msg)) := by
+  unfold Interp.dispatchMiss
+  simp only [Interp.tryIterator, Interp.tryMixin, Interp.tryReflect]
+  repeat' split
+  all_goals (try (simp only [Interp.missNoMethod]))
+  all_goals (try split)
+  all_goals first
+    | (right; exact ⟨_, _, rfl⟩)
+    | (left; exact ⟨_, rfl⟩)
+    | simp_all [Interp.missNoMethod]
+
+theorem invokeDispatch_clsq_miss {m : Machine} {recv : Value} {site : SendSite}
+    {args : List Value}
+    (hnone : Interp.methodOn m.heap (classOf m.heap recv) "class" = none)
+    (hmm : ∀ o md, Interp.methodOn m.heap (classOf m.heap recv) "method_missing"
+        = some (o, md) → md.builtin.isSome = true) :
+    (∃ r, Interp.invoke.invokeDispatch m recv site "class" args none [] = .unsupported r) ∨
+    (∃ cls msg, Interp.invoke.invokeDispatch m recv site "class" args none []
+      = .next (Interp.raiseErr m cls msg)) := by
+  rw [Interp.invoke.invokeDispatch.eq_def, lookup_eq_methodOn, hnone]
+  simp only [appendKwHash_nil]
+  exact dispatchMiss_clsq_no_value m recv site args hmm
+
+#print axioms invoke_clsq
+#print axioms run_clsq
+#print axioms invokeDispatch_clsq
+#print axioms invokeDispatch_clsq_miss
 
 #print axioms invokeDispatch_isA_miss
 #print axioms dispatchMiss_isA_no_value

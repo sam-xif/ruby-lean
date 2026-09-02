@@ -817,7 +817,7 @@ be a statement about the whole context rather than about `cn`.
 
 **What is still open.** The same `κ.closures` coarseness §F6 records, for the same reason.
 
-## §F8 (unconfirmed) — `Judge.classOf`'s conclusion is exact where its receiver premise is not
+## §F8 (**resolved by §F12** — the fix was in the denotation, not the rule) — `Judge.classOf`'s conclusion is exact where its receiver premise is not
 
 Not fixed, and possibly not a bug: recorded because it was found while sizing the rung and the
 argument is short. `Judge.classOf` types `x.class` as `.clsOf n` from a receiver premise of
@@ -1029,3 +1029,63 @@ holds. If a later rule dispatches user methods on a `.cls n`, it needs this prem
 the principled alternative, which is what a fifth finding of this shape should trigger, is to
 split `Ty.cls` into an is-a reading and an exact one, with `rescueBind?` producing the former
 and everything else the latter.
+
+## §F12 — the denotation's `Ty.inst` was *is-a* where the whole dispatch family needs **exact**
+
+Not a program that `validate` accepted, and not a rule that is wrong: a **definitional**
+finding, and the one that unblocks the largest part of the remaining ladder. It is what §F8 was
+a symptom of.
+
+**The gap.** `denM (.inst n I) m v` was `isAName m.heap v n` — is-a — so an instance of a
+declared subclass `D < C` satisfied `.inst "C"`. But every rule whose receiver premise is
+`.inst n` **dispatches** by typing the callee's body out of `n`'s own table
+(`Judge.callMethod`, `callDef`, `selfCall`, the block-carrying variants, `superCall`,
+`newInst`…), and `Judge.classOf` concludes the *exact* class object. Under an is-a reading all
+of those obligations are false, with the same one-line counterexample: a `D < C` that redefines
+the method.
+
+Sizing that is what produced §F8's entry, and the follow-up question is the finding: **is-a is
+not what the judgment means by `.inst`.** `Judge` produces an `.inst n` in exactly two ways —
+allocating an `n` (`newInst`/`newInstNoInit`) or a `self` whose class is `κ.frame.recvClass`,
+which `superCall`/`zsuperCall` thread *exactly* — and `joinT` of two `.inst`s is a union, not
+an upcast, so there is no subsumption anywhere. The denotation was strictly weaker than the
+judgment, and every dispatch rule was quietly relying on the difference.
+
+**The change.** `Denote/Val.lean` gained `isExactInst`, and `denM`'s `.inst` arm uses it:
+
+```
+isExactInst h v n = match classNamed? h name, v with
+  | some k, .ref o => o < h.objs.size && realClassOf h (.ref o) == k
+  | _, _ => false
+```
+
+Two details in it are load-bearing:
+
+* **`realClassOf`, not `classOf`.** They differ at an object with a singleton class: `classOf`
+  answers the eigenclass, because that is where dispatch starts, while `realClassOf` answers
+  the `klass` field — which is what `Object#class` reports and what "an instance of `n`" means.
+  `classOf` would make the reading false for any object that has ever had a `def obj.foo`.
+* **The range test.** `Heap.get` is total, so a dangling reference reads as `default`, whose
+  class is `0`. The is-a reading survives that (`0` is `BasicObject`, an ancestor of
+  everything, so `isAName` only grows); the exact reading does not, and `denM_ext`/`StateOk_ext`
+  would break for any machine holding an `.inst`-typed local. `Ext.isExactInst_mono` is the
+  transport, and it needs the test.
+
+**`Ty.cls` keeps the is-a reading**, and that asymmetry is the point rather than an oversight:
+`rescueBind?` needs it (§F11), and §F11's `primDispatchOk` is what guards the one family that
+dispatches on it. So the two nominal arms now say different things, deliberately — `.cls` is
+"responds like an `n`, possibly a subclass", `.inst` is "is an `n`".
+
+**What it cost and what it bought.** Cost: four sites (`denM`, `denB`'s mirror, `Grow.lean`'s
+monotonicity, one `Ext` lemma). All 41 rungs already on file, the 33 `Examples.lean` `#guard`s,
+the 177 hand derivations and the 145 negative controls were unaffected — the guards check real
+programs, where instances *are* exact, which is itself evidence for the reading. Bought:
+`Judge.classOf` (§F8) is now a rung — `Object#class` answers `realClassOf` and `isExactInst`
+*is* `realClassOf`, so the two ends meet definitionally — and the dispatch family's central
+obstacle is gone.
+
+**What is still open.** The narrowing rules (`Judge.if'`/`ifNoElse`) need one more thing this
+does not give: `denM_isATy` at a `.cls n` type, where the is-a reading survives and
+`isAAnswer`'s negative answer still assumes a subclass has not mixed in the tested module. That
+is §F9's guard extended from "the chain's own classes" to "the declared classes below `n`", and
+it is the next piece of narrowing soundness rather than a separate finding.

@@ -847,7 +847,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
             -- Tier 13f: `Object#class`, matched before dispatch. `mroGet?` cannot find a
             -- user-written `class` (Ruby has no way to write one -- `class` is a keyword), so
             -- unlike `is_a?` this needs no guard beyond the arity (`Judge.classOf`).
-            if m = "class" && argTys = [] then some (.clsOf n, Γ₂, I₂)
+            if m = "class" && argTys = [] && nameFree κ "class"
+               && nameFree κ "method_missing" then some (.clsOf n, Γ₂, I₂)
             else
             match mroGet? κ.classes n m with
             | some (dc, d) =>

@@ -63,6 +63,33 @@ def isAName (h : Heap) (v : Value) (name : String) : Bool :=
   | some k => isA h v k
   | none => false
 
+/-- **Is `v` a live object of *exactly* the class named `name`?** `Ty.inst`'s probe, and the
+difference from `isAName` is the whole of `found-issues.md` §F12.
+
+`isAName` is is-a, which is right for `Ty.cls` (`rescue StandardError => e` binds a subclass)
+and wrong for `Ty.inst`: every rule that *dispatches* on an `.inst n` receiver looks the method
+up in `n`'s own table, so a value of a subclass that redefined the method makes the rule's
+conclusion false. `Judge` produces an `.inst n` only by allocating exactly `n` or from a
+`self` whose class `κ.frame.recvClass` names exactly, so the exact reading is what the judgment
+actually means.
+
+**Liveness is part of it, and not incidentally.** `Heap.get` is total, so a dangling reference
+reads back as `default`, whose class is `0` — and after an allocation fills that id it has a
+real class. The is-a reading survives that (`0` is `BasicObject`, an ancestor of everything, so
+`isAName` only grows); the *exact* reading would not, and `denM_ext`/`StateOk_ext` would break
+for any machine holding an `.inst`-typed local. Requiring the id to be in range makes the
+reading `Ext`-monotone again, and it is true of anything the judgment produces.
+
+**`realClassOf`, not `classOf`.** They differ at an object with a *singleton* class: `classOf`
+answers the eigenclass, because that is where dispatch starts, while `realClassOf` answers the
+`klass` field, which is what Ruby's `Object#class` reports and what "an instance of `n`" means.
+Using `classOf` would make `denM (.inst n I)` false for any object that has ever had a
+`def obj.foo` — sound but useless, and it would not even match `Judge.classOf`'s conclusion. -/
+def isExactInst (h : Heap) (v : Value) (name : String) : Bool :=
+  match classNamed? h name, v with
+  | some k, .ref o => o < h.objs.size && realClassOf h (.ref o) == k
+  | _, _ => false
+
 /-- Is `v` *the class object* named `name` (not an instance of it)? `Ty.clsOf`'s probe.
 Compared by `ObjId` identity: there is exactly one class object per name at a heap. -/
 def isClassRefNamed (h : Heap) (v : Value) (name : String) : Bool :=

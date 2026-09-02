@@ -326,6 +326,26 @@ theorem Ext.isA_mono {m m₂ : Machine} (he : Ext m m₂) {v : Value} {k : ObjId
   | int _ | flt _ | sym _ | nil => simpa only [isA, classOf, he.ancestors] using h
   | bool b => cases b <;> simpa only [isA, classOf, he.ancestors] using h
 
+/-- **The exact-instance reading is `Ext`-monotone too**, and this is where the liveness
+conjunct in `isExactInst` earns its place: an `Ext` pins `classNamed?` and pins `Heap.get` at
+every id the old heap had, so an object that was exactly an `n` still is. Without the range
+test the lemma is false — a *dangling* reference reads as `default` (class `0`) before the
+allocation and as a real object after it. -/
+theorem Ext.isExactInst_mono {m m₂ : Machine} (he : Ext m m₂) {v : Value} {n : String}
+    (h : isExactInst m.heap v n = true) : isExactInst m₂.heap v n = true := by
+  unfold isExactInst at h ⊢
+  rw [he.classNamed?_eq] at *
+  cases hcn : classNamed? m.heap n with
+  | none => rw [hcn] at h; cases v <;> simp_all
+  | some k =>
+    rw [hcn] at h
+    cases v with
+    | ref o =>
+      simp only [Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at h ⊢
+      obtain ⟨hlt, hco⟩ := h
+      exact ⟨Nat.lt_of_lt_of_le hlt he.size, by rw [realClassOf, he.get o hlt]; exact hco⟩
+    | _ => simp_all
+
 theorem Ext.isAName_mono {m m₂ : Machine} (he : Ext m m₂) {v : Value} {n : String}
     (h : isAName m.heap v n = true) : isAName m₂.heap v n = true := by
   unfold isAName at h ⊢

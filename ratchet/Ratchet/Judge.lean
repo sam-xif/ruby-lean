@@ -4062,6 +4062,8 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       {n : String} {ivars : Ty} :
       Judge κ Γ I recv (.inst n ivars) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args [] Γ₂ I₂ →
+      (hcls : nameFree κ "class" = true := by rfl) →
+      (hmm : nameFree κ "method_missing" = true := by rfl) →
       Judge κ Γ I (.send (some recv) "class" args none) (.clsOf n) Γ₂ I₂
   /-- **`C.to_s` — `Module#to_s`, the class's name** (tier 13f). Total and never raises, so the
       only way it can be type-stuck is a `def self.to_s` on the class object, which the third

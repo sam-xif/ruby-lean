@@ -88,7 +88,7 @@ theorem denM_ext_aux {m m₂ : Machine} (he : Ext m m₂) : ∀ τ : Ty,
   | inst n I ihI =>
     refine ⟨fun v h => ?_, fun _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
-    refine ⟨he.isAName_mono h.1, ?_⟩
+    refine ⟨he.isExactInst_mono h.1, ?_⟩
     have hfun : ivarOf m₂.heap v = ivarOf m.heap v := funext (he.ivarOf_eq v)
     rw [hfun]
     exact ihI.2 _ _ h.2

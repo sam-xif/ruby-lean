@@ -1399,9 +1399,9 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                     injection h with h h'; injection h' with h' h''
                     subst h; subst h'; subst h''
                     simp only [Bool.and_eq_true, decide_eq_true_eq] at hcl
-                    obtain ⟨hmcl, hzero⟩ := hcl
+                    obtain ⟨⟨⟨hmcl, hzero⟩, hnf⟩, hnfmm⟩ := hcl
                     subst hmcl
-                    exact .classOf (chk_sound hrecv) (hzero ▸ chkAll_sound hargs)
+                    exact .classOf (chk_sound hrecv) (hzero ▸ chkAll_sound hargs) hnf hnfmm
                   · split at h
                     · rename_i hmeth
                       split at h

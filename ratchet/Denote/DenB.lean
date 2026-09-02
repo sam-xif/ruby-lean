@@ -50,7 +50,7 @@ def denB : Ty → Heap → Value → Bool
       match hshEntries? h v with
       | some es => es.all (fun p => denB k h p.1 && denB w h p.2)
       | none => false
-  | .inst n I, h, v => isAName h v n && denSpineBFrom [] I h (fun x => ivarOf h v x)
+  | .inst n I, h, v => isExactInst h v n && denSpineBFrom [] I h (fun x => ivarOf h v x)
   | .sameAs _ τ, h, v => denB τ h v
   | .ivar0, _, _ => false
   | .ivarCons .., _, _ => false
