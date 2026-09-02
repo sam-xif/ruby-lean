@@ -479,10 +479,10 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## Semantic ratchet status (`Denote/Sem/`): **41 of 83 `Judge` rules discharged**
+## Semantic ratchet status (`Denote/Sem/`): **42 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
-measures *reach*: how many corpus programs `validate` types (177 of 243). This measures
+measures *reach*: how many corpus programs `validate` types (177 of 247). This measures
 *justification*: how many of `Ratchet/Judge.lean`'s **rules** have been discharged as a proof
 obligation over the semantic denotation, proved from the real `stepFn`. A program can climb
 the first ladder with none of the second done — which is exactly the gap `Denote/notes.md` was
@@ -567,6 +567,34 @@ Discharged so far, all axiom-clean:
   is stronger than its receiver premise (`.inst n I`, an *is-a* test that a subclass instance
   passes), so it is false of the denotation read on its own — and probably true of every
   derivable judgment, `Judge` having no subsumption rule.
+* **`Judge.classOf`** (clink 56, `Denote/Rules/ClassOf.lean`) — `x.class`, and the rung that
+  was **false** until the denotation was fixed. `denM (.inst n I)` was `isAName` — *is-a* — so a
+  declared subclass's instance satisfied `.inst "C"` while the conclusion `.clsOf "C"` is the
+  exact class object (`found-issues.md` §F8). The fix is §F12 and it is a change to the
+  **denotation**: `.inst` now means `isExactInst`, "a live object whose `realClassOf` is the
+  class the name resolves to", which is what the judgment always meant (it produces an `.inst n`
+  only by allocating exactly `n` or from a `self` whose class `κ.frame.recvClass` names exactly,
+  and `joinT` of two `.inst`s is a union rather than an upcast). `Ty.cls` **keeps** the is-a
+  reading, because `rescueBind?` needs it — the two nominal arms now say different things
+  deliberately. It cost four sites and moved nothing else: all 41 rungs, the 33 `#guard`s, the
+  177 derivations and the 145 controls were unaffected. It also removes the central obstacle to
+  the whole dispatch family, every member of which types a callee's body out of the receiver
+  type's own table.
+* **Three reachable soundness bugs, found by sizing obligations** (clink 56) — the first
+  programs on this ladder that `validate` **accepted** and CRuby raises `TypeError` on. All
+  three came out of writing down what `isAAnswer`'s answers would have to assume:
+  **§F9** (`class Integer; include M; end` makes `5.is_a?(M)` true, while the answer came from
+  a static table — and `isATy` turns a negative answer into `Ty.never`, so a wrong one certifies
+  *anything* in the branch), **§F10** (`Foo = Integer`: narrowing read the constant's **name**,
+  and a constant is not its name), and **§F11** (`rescue StandardError => e` binds a *subclass*
+  instance — the one place the judgment uses subsumption — and `PrimSig`'s `excMessage` row
+  dispatched on the supertype). Fixed by `mixinFreeChain`, `narrowNameOk` and
+  `primDispatchOk` respectively, all precision-preserving on the corpus (mismatches stayed at
+  35). `Ratchet/Ty.lean`'s `falsyTy`/`isNilTy` were corrected in the same pass, in the same
+  direction: **a `.never` catch-all is a claim, not a default**.
+* **Narrowing's type-level half** (clink 56, `Denote/Sem/Narrow.lean`) — four of the twelfth
+  stall point's six lemmas (`truthyTy`, `falsyTy`, `isNilTy`, `nonNilTy`), axiom-clean. The
+  other two (`isATy`/`notATy`) are what produced the findings above and need one more guard.
 * **`JudgeRescues.cons`** (clink 48), the one `cons` rule in the family that the wall does not
   block: `JudgeRescues` threads no outgoing state, so its premise is about the same run its
   conclusion is. It is the first consumer of **`Denote/Join.lean`** — "a join is an upper

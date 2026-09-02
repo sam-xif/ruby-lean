@@ -5832,3 +5832,147 @@ inversion. The other open front is unchanged and is model coverage, not proof: `
 `Judge.callAsm` need `PrimSig`'s 222 rows to agree with `Builtins.run`, and each row needs both
 a dispatch fact (which class binds the name to which bid — receiver-dependent, so not a single
 `nameFree` row) and a result fact.
+
+## Clink 56 (2026-09-02) — three reachable soundness bugs, and the denotation's nominal arms split. **177 rungs / 247, 42 of 83 rules**
+
+One rung (`Judge.classOf`), four findings, and the findings are the content. Three of them are
+programs `validate` **accepted** and CRuby raises `TypeError` on — the first time this ladder
+has produced that, and all three came out of the same activity: writing down what an obligation
+would have to assume, then writing the program that breaks the assumption.
+
+### The route, because it is repeatable
+
+`Denote/Sem/notes.md`'s twelfth stall point lists six type-level lemmas as narrowing's cheap
+end: "the refined type still denotes the value". Four went through in an afternoon
+(`Denote/Sem/Narrow.lean` — `truthyTy`, `falsyTy`, `isNilTy`, `nonNilTy`, axiom-clean). The
+other two are `isATy`/`notATy`, and they cannot be stated without saying what makes
+`isAAnswer`'s answers *true of the heap*. Every finding below is a step in writing that
+sentence:
+
+* "the static chain is the machine's chain" → **§F9**: it is not, if a program `include`s a
+  module into a core class.
+* "…at the class the name resolves to" → **§F10**: the name need not resolve to that class;
+  `Foo = Integer` is a constant alias and narrowing read the *name*.
+* "…and the value's class is the one the type names" → **§F11** (`rescue` binds a subclass, and
+  `PrimSig` dispatches on the supertype) and **§F12** (the `.inst` arm should never have been
+  is-a at all).
+
+Two of the four lemmas also needed `Ratchet/Ty.lean` fixed before they were true, and both
+fixes are in the same direction: **a `.never` catch-all is a claim, not a default.**
+`falsyTy`/`isNilTy` answered `.never` — "this branch cannot run" — for the alias arm (an alias
+denotes its payload, so `.sameAs y .nilT` has a falsy value) and for the nominal arms (`nil` and
+`false` descend from `Object`, `Kernel`, `BasicObject`, so `falsyTy (.cls "Object") = .never`
+claims a branch unreachable that a `nil` reaches). They now refine under the alias and decline
+to refine nominally.
+
+### §F9 and §F10 — a wrong `some false`, and why it certifies *anything*
+
+`isATy` turns `isAAnswer`'s `some false` into `Ty.never`. `never` makes everything downstream
+vacuous, so a wrong negative answer does not mistype the branch — it certifies whatever is in
+it. That is what makes these two worse than an ordinary imprecision, and it is why both
+programs are three lines:
+
+```ruby
+module M; end
+class Integer; include M; end      # §F9: 5.is_a?(M) is now true
+Foo = Integer                      # §F10: 5.is_a?(Foo) is true, and "Foo" is in no chain
+```
+
+Fixes: `mixinFreeChain C ch` (a negative answer requires that the context reopens no class
+*named in the chain* with an `include`/`prepend`; the positive answer is unchanged, since a
+mixin only adds ancestors) and `narrowNameOk κ` (the `.isA` shapes require
+`constGet? κ cn = none`, the same condition `Judge.constCls` carries for constant *reads*).
+`narrowEnvs`/`narrowSpine` now take the whole `Ctx`, because the constant table is not in the
+class table.
+
+`Judge.lean`'s own comment above `rootAncestors` predicted §F9 exactly — "whichever tier gives
+`include` a rule must revisit `isAAnswer`" — and the revisit had covered the declared chain and
+not the builtin one. Worth remembering as a pattern: a comment that names a future obligation
+is a to-do the ratchet will eventually collect on.
+
+### §F11 — `rescue` is the one place the judgment uses subsumption
+
+```ruby
+class E < StandardError; def message; 5; end; end
+begin; raise E; rescue StandardError => e; e.message + "s"; end
+```
+
+`Ty.cls n` denotes is-a *by design*, and `rescueBind?` is why: Ruby binds whatever was raised.
+But every rule that **dispatches** on a nominal type looks the method up in `n`'s own table, and
+`PrimSig`'s `excMessage` row is where the target's own code makes the call. `Judge.prim` gained
+`primDispatchOk κ.classes σ m` — at a `.cls n` receiver, no declared class may descend from `n`
+and redefine `m`.
+
+The interesting part is the **exemption**. `valueClsNames` (`String`, `Hash`, `Regexp`,
+`MatchData` — the only four `.cls` names the judgment mentions) is unguarded, because
+`constLibTy?_sound`-style unconditionality has to be preserved: `constLitTy?_sound` types
+`"s".freeze` in *any* context, so a premise it cannot discharge would land on callers
+(`Ctx.afterStmt`'s class-body constants, `paramEnv`'s optional defaults) that have no class
+table to check. `constLitTy?_primDispatchOk` is the companion lemma that makes the exemption a
+proof rather than an assertion.
+
+### §F12 — and the definitional fix, which is the session's real result
+
+`denM (.inst n I)` was `isAName` — is-a. But every rule with an `.inst n` receiver premise types
+the callee's body out of **`n`'s own table**, and `Judge.classOf` concludes the *exact* class
+object, so under an is-a reading all of those obligations are false with one counterexample (a
+`D < C` that redefines the method). §F8 filed that as a curiosity about one rule; it is the
+central obstacle to the whole dispatch family.
+
+Is-a is not what the judgment means by `.inst`. `Judge` produces one only by allocating exactly
+`n` or from a `self` whose class is `κ.frame.recvClass` — which `superCall`/`zsuperCall` thread
+*exactly*, `defClass` being the field they change — and `joinT` of two `.inst`s is a union, not
+an upcast. So `isExactInst` is the reading, `Ty.cls` keeps is-a for `rescue`, and the asymmetry
+between the two nominal arms is now deliberate and documented.
+
+Two details in `isExactInst` are load-bearing and both were found by a failing proof:
+`realClassOf` rather than `classOf` (the latter answers the *eigenclass*, so any object with a
+`def obj.foo` would stop having its type), and a **liveness** test (`Heap.get` is total, so a
+dangling reference reads as class `0` — which the is-a reading survives, `0` being an ancestor
+of everything, and the exact reading would not; `Ext.isExactInst_mono` is false without it).
+
+It cost four sites — `denM`, `denB`'s mirror, `Grow.lean`'s monotonicity, one `Ext` lemma — and
+**nothing else moved**: 41 rungs, 33 `Examples.lean` `#guard`s, 177 hand derivations, 145
+negative controls all unaffected. The guards are the interesting witness there: they check real
+programs, where instances are exact.
+
+### The rung
+
+`Judge.classOf` (`Denote/Rules/ClassOf.lean`), 42/83. Short, because `Object#class` answers
+`realClassOf` and `isExactInst` *is* `realClassOf` composed with `classNamed?` — the two ends
+meet definitionally. Its two new `nameFree` premises are a different species from §F6's and
+worth the line: `class` is a Ruby keyword, so no *program* can override it, which is what the
+rule's docstring relied on — but `κ` is a data structure and the judgment quantifies over all
+of them, so the rule was asking the grammar to imply something about `Judge` that `Judge` does
+not enforce. Both discharge by `rfl` at every real context.
+
+`ClsQueryOk`/`QueryOk` grew two rows (`class`, and `to_s`/`===` in clink 55), each measured at
+the booted machine first. The measurement is now a habit worth naming: *ask both indexings*.
+`is_a?` and `class` are clean at all 105 class ids, so they belong in `QueryOk`; `===` and
+`to_s` fail at 43 and 63 of them but are clean at all 87 *class objects*, so they belong in
+`ClsQueryOk`.
+
+### State
+
+`lake build` clean; no `sorry`, no new axioms. Corpus **247/247** agreement, 0 disagreements;
+`expect_validate` mismatches **35** (unchanged through all four fixes — every one of them was
+precision-preserving on the corpus); `checkrungs` 177/177 + 145/145; denotation guards green;
+ladder **42/83**. No change under `lean/` in clinks 55–56, so the tier-0 difftest from clink 54
+still stands.
+
+### What is next, and one more finding to spend first
+
+Narrowing's remaining piece is `denM_isATy`/`denM_notATy`, and after §F12 the `.inst` case is
+fine — the `.cls n` case is what is left, needing §F9's guard extended from "the chain's own
+classes" to "the declared classes below `n`". That is a checker change of the same shape and
+the natural next step.
+
+The call family is unblocked at the `.inst` level and blocked at another: **`SemJudge` is too
+weak to be an interface for a rule whose premise is a *body*.** `Judge.callMethod`'s obligation
+takes `SemJudge κ' Γb d.body ρ …`, and for `d.body = return "s"` that holds **vacuously** — the
+run jumps, so `Evals` is never satisfied — while the machine really runs the body and the call
+really returns a String. The syntactic judgment is safe because `.ret`/`.brk`/`.nxt` have no
+rules at all (`bodyResult` handles the one lambda shape outside the judgment), so the fix is
+the `Plain` precedent one more time: a **jump-freeness** conjunct, which `Judge` implies
+structurally and `SemJudge` does not. Same species of finding as clink 54's `Plain`, and it has
+to land before any call rung.

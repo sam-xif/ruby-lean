@@ -875,6 +875,24 @@ What it needs, in the order the effort falls:
 * Six type-level lemmas — `truthyTy`, `falsyTy`, `isNilTy`, `nonNilTy`, `isATy`, `notATy` —
   each saying the refined type still denotes the value, *given* what the branch tells you
   about it. These are `denM` facts and need no run.
+
+  **Four are done** (clink 56, `Denote/Sem/Narrow.lean`, axiom-clean), and they cost two
+  corrections in `Ratchet/Ty.lean`, both in the same direction: *a `.never` catch-all is a
+  claim, not a default*. `falsyTy`/`isNilTy` answered `.never` — "this branch cannot run" — at
+  the **alias** arm (`.sameAs y ρ` denotes exactly `ρ`, so `.sameAs y .nilT` has a falsy value)
+  and at the **nominal** arms (`nil` and `false` descend from `Object`, `Kernel`,
+  `BasicObject`, so `falsyTy (.cls "Object") = .never` claims a branch unreachable that a `nil`
+  reaches). They refine under the alias and decline to refine nominally now.
+
+  **The other two are `isATy`/`notATy`, and sizing them produced four findings** — §F9, §F10,
+  §F11, §F12 in `found-issues.md`, three of them programs `validate` accepted. They are the
+  steps in writing the sentence "`isAAnswer`'s answers are true of the heap": the static chain
+  is not the machine's chain if a module was `include`d into a core class (§F9); the tested
+  *name* need not resolve to the class of that name (§F10); the value's class need not be the
+  class its type names, at `.cls` because `rescue` binds a subclass (§F11) and at `.inst`
+  because the arm was is-a when it should have been exact (§F12, fixed in the denotation).
+  After §F12 the `.inst` case of the lemma is straightforward; the `.cls n` case still needs
+  §F9's guard extended from "the chain's own classes" to "the declared classes below `n`".
 * **Three run inversions**, one per recognized condition shape: `.var k x` (no dispatch — the
   value *is* `m.getLocal x`, so this one is nearly free), `x.nil?`, and `x.is_a?(C)` / `C === x`
   (which is the same dispatch, sides swapped). The last two need the run of a concrete builtin
@@ -882,6 +900,34 @@ What it needs, in the order the effort falls:
   detour but a down payment.
 * The `&&` shape (`narrowCond?`'s first arm) is the desugarer's `seq`/`vasgn`/`if'` sandwich
   and is `thenOnly`; it reduces to the `.var` case once the sandwich is stepped through.
+
+## The fourteenth stall point — **`SemJudge` is too weak for a rule whose premise is a body**
+
+Found while sizing `Judge.callMethod` (clink 56), and it has to land before *any* call rung.
+
+`Obl.Judge.callMethod` takes `SemJudge κ' Γb d.body ρ Γb' Iout` and has to conclude something
+about the call's value. For `d.body = return "s"` that premise holds **vacuously**: the run of
+`.ret e` jumps, so `Evals` is never satisfied, so the implication is empty — while the machine
+really runs that body (`ClassesOk`: `md.body = toRuby d.body`) and the call really returns a
+String. So the obligation is *false*, at `ρ = .int`, for a body no rung would ever write.
+
+The syntactic judgment is safe, and the reason is worth stating precisely: `.ret`, `.brk` and
+`.nxt` have **no `Judge` rule at all**, so no derivable expression contains one — the single
+exception being `bodyResult`, which matches a lambda body that *is* `return e` and judges `e`,
+outside the judgment. `Judge` therefore implies jump-freeness **structurally**, exactly as it
+implied `Plain`-ness structurally (§the fifth stall point's `Plain`, clink 54), and `SemJudge`
+does not.
+
+So the fix is the same one: a **jump-freeness conjunct** on `SemJudge`, `SemJudgeAll` and
+friends, discharged per rung from the conclusion's shape plus the premises' own conjuncts. The
+cost is one edit per rung on file (42) and it is mechanical; the alternative — a `Returns`-style
+conjunct that says what the run does when it *does* jump — is strictly more work and buys
+nothing until a rule types a `return`.
+
+Two things worth checking when it lands: whether `Plain` should simply become recursive and
+absorb it (the conjuncts are the same species — "this syntax is not what it looks like"), and
+whether `closCall`'s `bodyResult` shape needs an exception (its judged expression is `e`, not
+the `.ret`, so probably not).
 
 ## The thirteenth stall point — **the dispatch chain**, and it is the biggest of the four
 
