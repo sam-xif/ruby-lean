@@ -454,4 +454,220 @@ theorem isaq_inv {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {k : Ratchet.VarKi
 #print axioms run_isA_outcome
 #print axioms isaq_inv
 
+
+/-! ## `C === x` — the shape whose *receiver* is the constant
+
+`narrowCond?` matches `C === x` too, because that is what `case x when C` desugars to, and it
+puts the tested name in the **receiver** position. That is why `narrowNameOk` now requires the
+name to *be* a class (`found-issues.md` §F16): with a non-class constant there,
+`===` dispatches somewhere else entirely — `String#===` is equality — and the refinement would
+answer the wrong question. -/
+
+/-- **A name the context knows as a class resolves to its class object.** Both halves of
+`narrowNameOk`'s class condition, discharged the way `Const.lean`'s two rungs discharge them:
+the table entry through `ClassesOk`, the builtin name through `CoreOk.coreNamed`. -/
+theorem classNamed_of_known {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cn : String}
+    (hok : StateOk κ Γ I m)
+    (hcls : (Ratchet.clsGet? κ.classes cn).isSome = true ∨ cn ∈ Ratchet.builtinClsNames)
+    {w : Value} (hres : constResolveAt m cn = some w) :
+    ∃ k, classNamed? m.heap cn = some k ∧ w = .ref k ∧
+      (m.heap.classPayload? k).isSome = true := by
+  have hl : constLookup m.heap cn = some w := by rw [← hok.constScope cn]; exact hres
+  rcases hcls with hcls | hcls
+  · -- a declared class
+    cases hcg : Ratchet.clsGet? κ.classes cn with
+    | none => rw [hcg] at hcls; exact absurd hcls (by simp)
+    | some c =>
+      obtain ⟨hmem, hname⟩ := clsGet?_name hcg
+      obtain ⟨k, hk, _⟩ := hok.classes c hmem
+      rw [hname] at hk
+      refine ⟨k, hk, ?_, ?_⟩
+      · rw [constLookup_of_classNamed hk] at hl
+        exact (Option.some.inj hl).symm
+      · -- `classNamed?` answers only through its own payload test
+        simp only [classNamed?] at hk
+        rw [hl] at hk
+        cases w with
+        | ref o =>
+          simp only at hk
+          split at hk
+          · rename_i hpo
+            have : o = k := by simpa using hk
+            rw [← this]; exact hpo
+          · exact absurd hk (by simp)
+        | _ => exact absurd hk (by simp)
+  · -- a builtin class name
+    -- the list and `coreClsNames` overlap by construction; membership transfers by `decide`
+    obtain ⟨o, rfl, hp⟩ := hok.core.coreNamed cn (by
+      simp only [Ratchet.builtinClsNames, List.mem_cons] at hcls
+      rcases hcls with h | h | h | h | h | h | h | h | h | h
+      all_goals first
+        | (rw [h]; simp [coreClsNames])
+        | (exact absurd h (by simp))) w hl
+    exact ⟨o, classNamed?_of_constLookup hl hp, rfl, hp⟩
+
+#print axioms classNamed_of_known
+
+
+/-- **The `C === x` skeleton**: receiver a constant, one variable argument. Mirror image of
+`send_const_arg_inv`. -/
+theorem send_const_recv_inv {m : Machine} {k : Ratchet.VarKind} {x : String} {mname : String}
+    {cn : String} {v : Value} {m' : Machine} (hk : k = .lvar ∨ k = .ivar)
+    (hev : Evals m (.send (some (.const cn)) mname [.var k x] none) v m') :
+    ∃ w, constResolveAt m cn = some w ∧
+      StepRunsTo (Interp.finishSend (reCtl m (.value (readVar k x m)) []) w
+        (match toRuby (.const cn) with | .self' => .selfRecv | _ => .explicit)
+        mname [readVar k x m] .none) v m' := by
+  obtain ⟨fuel, hrun⟩ := hev
+  rcases fuel with _ | f
+  · rw [run_zero] at hrun; exact absurd hrun (by simp)
+  · rw [run_succ, stepFn_send_push] at hrun
+    dsimp only at hrun
+    obtain ⟨nb, v₀, m₀, hin, hc₀, hk₀, hout⟩ :=
+      run_split _ (catchFree_recvK mname (toRubyList [.var k x]) .none _)
+        (jumpOpaque_recvK mname (toRubyList [.var k x]) .none _) f (evalFrom m (.const cn))
+        v m' hrun
+    obtain ⟨hres, hmeq⟩ := evals_const_inv ⟨nb, hin⟩
+    subst hmeq
+    refine ⟨v₀, hres, ?_⟩
+    obtain ⟨f₂, hf₂⟩ := hout
+    revert hf₂
+    rcases f₂ with _ | f₃
+    · intro hf₂; rw [run_zero] at hf₂; exact absurd hf₂ (by simp)
+    · intro hf₂
+      have hsr : StepRunsTo (Interp.stepFn
+          (deliver (reCtl m (.value v₀) []) v₀
+            [.recvK mname (toRubyList [.var k x]) .none
+              (match toRuby (.const cn) with | .self' => .selfRecv | _ => .explicit)])) v m' := by
+        refine stepRunsTo_of_run ?_ hf₂
+        exact RubyCore.Proof.applyKont_notDone
+          (deliver (reCtl m (.value v₀) []) v₀
+            [.recvK mname (toRubyList [.var k x]) .none
+              (match toRuby (.const cn) with | .self' => .selfRecv | _ => .explicit)])
+          v₀ (by simp [deliver])
+      rw [stepFn_recvK] at hsr
+      have hm₀ : ({ reCtl m (.value v₀) [] with ctl := .value v₀, kont := [] } : Machine)
+          = reCtl m (.value v₀) [] := rfl
+      rw [hm₀] at hsr
+      obtain ⟨vs, m₁, hallEv, hk₁, hfin⟩ :=
+        run_args _ mname v₀ .none [.var k x] [] (reCtl m (.value v₀) []) v m' rfl
+          (by intro e he; simp only [List.mem_singleton] at he; rw [he]; trivial) hsr
+      cases vs with
+      | nil => exact absurd hallEv (by simp [EvalsAll])
+      | cons w rest =>
+        cases rest with
+        | cons a as => exact absurd hallEv (by simp [EvalsAll])
+        | nil =>
+          obtain ⟨ma, hEv, hrest⟩ := hallEv
+          have hma : ma = m₁ := (hrest : m₁ = ma).symm
+          subst hma
+          obtain ⟨hveq, hmeq2⟩ := evals_pure (stepFn_readVar (reCtl m (.value v₀) []) k x hk) hEv
+          -- the read is unchanged by the receiver's step, and the machine collapses
+          have hrd : readVar k x (reCtl m (.value v₀) []) = readVar k x m := by
+            cases k <;> simp [readVar, reCtl, getLocal_reCtl, ivarOf]
+          rw [hrd] at hveq hmeq2
+          subst hveq
+          rw [hmeq2] at hfin
+          simpa using hfin
+
+#print axioms send_const_recv_inv
+
+
+/-- **`Module#===`'s three outcomes**, the mirror of `run_isA_outcome`: a live class *receiver*
+answers the ancestor test at the same machine, a non-class receiver gates, and the wrong arity
+is an `ArgumentError`. -/
+theorem runObjects_caseEq (m : Machine) (recv : Value) (args : List Value) :
+    Builtins.runObjects "Module#===" recv args m = Builtins.runModules "Module#===" recv args m :=
+  rfl
+
+theorem run_caseEq_outcome (m : Machine) (k : ObjId) (av : Value) :
+    ((m.heap.classPayload? k).isSome = true ∧
+       Builtins.run "Module#===" (.ref k) [av] m = .ok (.bool (isA m.heap av k)) m) ∨
+    (∃ r, Builtins.run "Module#===" (.ref k) [av] m = .unsupported r) := by
+  rw [Builtins.run.eq_def]
+  dsimp only
+  split
+  · exact Or.inr ⟨_, rfl⟩
+  split
+  · rename_i hz; exact absurd hz (by simp [Builtins.zeroArgBids])
+  split
+  · rename_i hd; exact absurd hd (by simp [Builtins.dupBids, Builtins.cloneBids])
+  rw [runObjects_caseEq, Builtins.runModules.eq_def]
+  simp only [Builtins.binArg]
+  cases hp : m.heap.classPayload? k with
+  | none =>
+    refine Or.inr ⟨"===", ?_⟩
+    simp
+  | some c => exact Or.inl ⟨rfl, by simp⟩
+
+/-- **The `C === x` inversion.** Same conclusion as `isaq_inv` — the ancestor test at the class
+the name resolves to — reached through `ClsQueryOk` rather than `QueryOk`, because the receiver
+is the *class object*. -/
+theorem caseeq_inv {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {k : Ratchet.VarKind} {x : String}
+    {cn : String} {v : Value} {m' : Machine} (hok : StateOk κ Γ I m)
+    (hce : Ratchet.nameFree κ "===" = true)
+    (hcls : (Ratchet.clsGet? κ.classes cn).isSome = true ∨ cn ∈ Ratchet.builtinClsNames)
+    (hk : k = .lvar ∨ k = .ivar)
+    (hev : Evals m (.send (some (.const cn)) "===" [.var k x] none) v m') :
+    ∃ j, classNamed? m.heap cn = some j ∧
+      v = .bool (isA m.heap (readVar k x m) j) ∧ readVar k x m' = readVar k x m ∧
+      m'.heap = m.heap := by
+  obtain ⟨w, hres, hsr⟩ := send_const_recv_inv hk hev
+  obtain ⟨j, hj, hweq, hjp⟩ := classNamed_of_known hok hcls hres
+  subst hweq
+  rw [show Interp.finishSend (reCtl m (.value (readVar k x m)) []) (.ref j) _ "===" _ .none
+        = Interp.invoke (reCtl m (.value (readVar k x m)) []) (.ref j) _ "===" _ none []
+        from rfl, invoke_caseEq] at hsr
+  obtain ⟨m₂, hstep, f, hf⟩ := hsr
+  rw [Interp.invoke.invokeDispatch.eq_def, lookup_eq_methodOn] at hstep
+  cases hlk : Interp.methodOn (reCtl m (.value (readVar k x m)) []).heap
+      (classOf (reCtl m (.value (readVar k x m)) []).heap (.ref j)) "===" with
+  | none =>
+    rw [hlk] at hstep
+    obtain ⟨_, hq2⟩ := hok.clsQuery "===" "Module#===" (by simp [clsQueryBuiltins]) hce j
+      (by simpa using hjp)
+    simp only [appendKwHash_nil] at hstep
+    rcases dispatchMiss_caseEq_no_value (reCtl m (.value (readVar k x m)) []) (.ref j) _
+      [readVar k x m] (hq2 hlk) with ⟨r, hd⟩ | ⟨cls, msg, hd⟩
+    · rw [hd] at hstep; exact absurd hstep (by simp)
+    · rw [hd] at hstep
+      injection hstep with hstep
+      rw [← hstep] at hf
+      exact absurd hf (jump_empty_never_value f _ v m'
+        ⟨_, raiseErr_ctl _ _ _⟩ (by rw [raiseErr_kont]))
+  | some p =>
+    obtain ⟨owner, md⟩ := p
+    obtain ⟨hq1, _⟩ := hok.clsQuery "===" "Module#===" (by simp [clsQueryBuiltins]) hce j
+      (by simpa using hjp)
+    obtain ⟨hb, hu, hv, hp, hsh⟩ := hq1 owner md hlk
+    rw [hlk] at hstep
+    simp only [hu, hp, if_false, Bool.false_eq_true, hsh, visError?_pub hv, hb,
+      deferTwin?_caseEq, appendKwHash_nil] at hstep
+    rcases run_caseEq_outcome (reCtl m (.value (readVar k x m)) []) j (readVar k x m) with
+      ⟨_, hr⟩ | ⟨r, hr⟩
+    · rw [hr] at hstep
+      injection hstep with hstep
+      rw [← hstep] at hf
+      revert hf
+      rcases f with _ | f₅
+      · intro hf; rw [run_zero] at hf; exact absurd hf (by simp)
+      · intro hf
+        rw [run_succ, show Interp.stepFn (Interp.withCtl
+              (reCtl m (Ctl.value (readVar k x m)) [])
+              (Ctl.value (Value.bool (isA (reCtl m (Ctl.value (readVar k x m)) []).heap
+                (readVar k x m) j))))
+            = .done (.bool (isA (reCtl m (Ctl.value (readVar k x m)) []).heap
+                (readVar k x m) j))
+              (Interp.withCtl (reCtl m (Ctl.value (readVar k x m)) [])
+                (Ctl.value (Value.bool (isA (reCtl m (Ctl.value (readVar k x m)) []).heap
+                  (readVar k x m) j)))) from stepFn_value_nil _ _] at hf
+        dsimp only at hf
+        cases hf
+        exact ⟨j, hj, rfl, by cases k <;> simp [readVar, Interp.withCtl, reCtl,
+          getLocal_reCtl, ivarOf], rfl⟩
+    · rw [hr] at hstep; exact absurd hstep (by simp)
+
+#print axioms run_caseEq_outcome
+#print axioms caseeq_inv
+
 end Ratchet.Denote

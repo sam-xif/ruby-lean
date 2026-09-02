@@ -197,6 +197,11 @@ inductive BuiltinCls : String → Prop
   | array : BuiltinCls "Array"
   | hash : BuiltinCls "Hash"
 
+/-- `BuiltinCls`'s names as a list, for the places that need to *decide* it. -/
+def builtinClsNames : List String :=
+  ["Integer", "Float", "String", "Symbol", "NilClass", "TrueClass", "FalseClass",
+   "Array", "Hash"]
+
 /-! ## Exception classes (tier 16b)
 
 `raise` and `rescue` both name a class, and both **raise `TypeError` when the name is not an
@@ -2647,7 +2652,19 @@ condition itself raises `NameError` and the branch never runs.
 
 `.truthy`/`.isNil` need no guard: neither mentions a class. -/
 def narrowNameOk (κ : Ctx) : NarrowKind → Bool
-  | .isA cn => (constGet? κ cn).isNone && coreConstFree κ
+  -- **The tested name has to *be* a class.** `narrowCond?` reads it out of the condition's
+  -- syntax, and the `C === x` shape puts it in the **receiver** position — where a non-class
+  -- constant dispatches `===` to something else entirely (`String#===` is equality, not an
+  -- ancestor test), so the refinement would be about the wrong question. `validate` cannot
+  -- build such a derivation today (the `.const` rules type only class names, and a *user*
+  -- constant is caught by the `constGet?` guard above), but the judgment quantifies over
+  -- contexts and the *semantic* premise for the condition carries no typing — so the fact has
+  -- to be stated. `nameFree κ "==="` is the companion: with the name unclaimed, `ClsQueryOk`
+  -- says what `===` at a class object resolves to.
+  | .isA cn =>
+    (constGet? κ cn).isNone && coreConstFree κ &&
+    ((clsGet? κ.classes cn).isSome || builtinClsNames.contains cn) &&
+    nameFree κ "===" && nameFree κ "is_a?" && nameFree κ "method_missing"
   -- **§F14**: `x.nil?` is a *dispatch*, and `nil?` is an ordinary method name. A program that
   -- redefines it moves the branch the refinement is attached to:
   -- `class NilClass; def nil?; false; end; end; x = nil; if x.nil? then 1 else x + 1 end`

@@ -1221,3 +1221,38 @@ derivations), and it leaves the **alias arm** — where the environment *did* ma
 Worth keeping as a pattern: `Ty.sameAs` is the one type constructor whose denotation is a claim
 about **two** values, so every function that builds a `Ty` has to be checked for whether it can
 manufacture one. `joinT` can.
+
+## §F16 — the `C === x` narrowing shape put the tested name in the **receiver**, where a non-class constant means something else
+
+Unconfirmed against `validate` and fixed anyway, for the reason §F13 records: the obligation
+cannot be discharged without it, and the fact it needs is one the judgment does not carry.
+
+`narrowCond?` recognises `C === x` — what `case x when C` desugars to — and refines `x` by
+`.isA cn`. That reading is only correct if `C` **is a class**: `Module#===` is the ancestor
+test, but `String#===` is *equality*, and `Integer#===` likewise. With a non-class constant in
+the receiver position the condition still returns a boolean, still looks truthy or falsy, and
+says nothing about ancestry — so the refinement answers a question the program never asked.
+
+**`validate` cannot build such a derivation today**, and it is worth recording why, because the
+protection is three separate accidents: the `.const` rules type only *class* names
+(`constCls`/`constBuiltin`/`constExc`, and `BuiltinCls` is exactly the nine classes
+`builtinAncestors` covers), a *user* constant is caught by §F10's `constGet? κ cn = none`
+guard, and `case t when "pypi"` puts a **literal** in the receiver, which `narrowCond?` does
+not match. None of the three is stated as a premise, and the *semantic* premise for the
+condition (`SemJudge κ Γ I c σ Γc Ic`) carries no typing at all — so at the level the
+obligation lives, the receiver could be anything.
+
+**The fix.** `narrowNameOk κ (.isA cn)` now also requires that `cn` names a class —
+`(clsGet? κ.classes cn).isSome || builtinClsNames.contains cn` — plus `nameFree κ "==="`,
+`nameFree κ "is_a?"` and `nameFree κ "method_missing"`, which are what make `ClsQueryOk`/
+`QueryOk` say where the dispatch goes. Corpus-neutral: mismatches 35, 177/177 hand derivations,
+145/145 controls.
+
+With it, `caseeq_inv` goes through: the constant resolves to its class object (`ClassesOk` for a
+declared class, `CoreOk.coreNamed` for a builtin name — the same two routes `Const.lean`'s
+rungs take), and `ClsQueryOk` says `===` there is `Module#===`.
+
+**The pattern, third instance.** §F14 was "a narrowing that recognises a *send* needs the sent
+name unclaimed". This is the other half: **it also needs the operands to be what the shape
+assumes.** The narrowing functions read syntax; every fact they rely on about what that syntax
+*means* has to be a premise, because the judgment they are premises of is semantic.
