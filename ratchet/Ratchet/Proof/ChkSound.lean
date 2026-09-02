@@ -621,10 +621,14 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
   · -- `vasgn ivar x e`: the same, but the effect lands on the spine.
     split at h
     · rename_i hrhs
-      injection h with h
-      injection h with h h'; injection h' with h' h''
-      subst h; subst h'; subst h''
-      exact .ivarAsgn (chk_sound hrhs)
+      split at h
+      · rename_i hst
+        simp only [Bool.and_eq_true] at hst
+        injection h with h
+        injection h with h h'; injection h' with h' h''
+        subst h; subst h'; subst h''
+        exact .ivarAsgn (chk_sound hrhs) hst.1 hst.2
+      · exact absurd h (by simp)
     · exact absurd h (by simp)
   · exact .seq (chkSeq_sound h)
   · -- `if' c t (some e)`: condition, then-branch and else-branch all typed, the two

@@ -2329,6 +2329,35 @@ def capIntact : Ty → Env → Env → Bool
     (envGet? Γout x == envGet? Γin x) && capIntact rest Γin Γout
   | _, _, _ => true
 
+/-- **Does this type record a claim about the instance variable `x`?** — `found-issues.md`
+§F17's guard. An `.inst n I` type carries a spine, and a spine entry for `x` is a claim about
+*some* object's `@x`; an assignment to `self`'s `@x` invalidates it whenever that object is
+`self`, which the type cannot tell. So the answer has to be conservative: a type mentioning `x`
+anywhere in a spine is refused.
+
+Recursive through every constructor that can *contain* an `.inst`, which is what makes it a
+real check rather than a shape test: `union`, `nilable`, `arrayOf`, `hashOf`, `sameAs` and the
+spines themselves all nest. Arrows and closures are refused outright — their denotation
+quantifies over runs and this judgment has no way to see through them. -/
+def ivarStaleFree (x : String) : Ty → Bool
+  | .inst _ I => (ivarGet? I x).isNone && ivarStaleFree x I
+  | .union σ τ => ivarStaleFree x σ && ivarStaleFree x τ
+  | .nilable ρ | .arrayOf ρ | .sameAs _ ρ => ivarStaleFree x ρ
+  | .hashOf κ' ν => ivarStaleFree x κ' && ivarStaleFree x ν
+  | .ivarCons n σ rest => n != x && ivarStaleFree x σ && ivarStaleFree x rest
+  -- **The arrow arms are fine, and the reason is `Later`.** An arrow's denotation is a claim
+  -- about *future* runs, quantified over `Later`-futures of the machine, so it survives any
+  -- change that relation admits — an ivar write included. A `clos` is not quantified: it reads
+  -- the captured frame and creation `self` at *this* machine, so its two type components have
+  -- to be checked.
+  | .arrow0 _ | .arrowCons _ _ => true
+  | .clos _ cap selfT => ivarStaleFree x cap && ivarStaleFree x selfT
+  | _ => true
+
+/-- The same over an environment: no binding records a claim about `@x`. -/
+def ivarStaleFreeEnv (x : String) (Γ : Env) : Bool :=
+  Γ.all (fun p => ivarStaleFree x p.2)
+
 /-- The expression whose type is a body's **result**.
 
 For almost every body that is the body itself. The one case that differs is a body which is
@@ -3893,9 +3922,22 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
   /-- Assigning an instance variable. Value is the right-hand side's, exactly as for a
       local; effect is on the spine rather than on `Γ`, and lands in `I'` — the spine the
       right-hand side left behind — for the same evaluation-order reason `vasgn` adds to
-      `Γ'`. -/
+      `Γ'`.
+
+      **The fourth premise is `found-issues.md` §F17, and it is `§F1`'s shape one piece of
+      state over.** The rule threads `Γ'` out **unchanged** — but a local can hold `self`
+      (`x = self`, typed at `κ.selfTy`), and that type is an `.inst` carrying an ivar spine of
+      its own, which this assignment then makes **stale**: `corpus/240` is
+      `x = self; @a = "s"; x.get + 1`, certified `Integer + Integer` for a run that does
+      `String + Integer`. `capStale`/`capStaleCtx` are the same guard for a closure's captured
+      *locals*; `ivarStaleFree` is it for an object's ivars, and it has to cover the
+      right-hand side's own type as well, because `@a = self` records a spine that the write
+      it is part of invalidates. -/
   | ivarAsgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {x : String} {e : Expr} {τ : Ty} :
-      Judge κ Γ I e τ Γ' I' → Judge κ Γ I (.vasgn .ivar x e) τ Γ' (ivarSet I' x τ)
+      Judge κ Γ I e τ Γ' I' →
+      (hst : ivarStaleFreeEnv x Γ' = true := by rfl) →
+      (hstτ : ivarStaleFree x τ = true := by rfl) →
+      Judge κ Γ I (.vasgn .ivar x e) τ Γ' (ivarSet I' x τ)
   /-- An explicit-receiver, block-less `send` whose receiver and arguments type, and
       whose resulting shape has a justified `PrimSig`.
 
