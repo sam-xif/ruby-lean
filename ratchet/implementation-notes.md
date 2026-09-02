@@ -5476,3 +5476,169 @@ is behind the fifth stall point, and the call rules are additionally behind the 
 nobody has written. The seventh is resolved; the sixth's item (2) reaches only the five
 statement rules. So the wall map is now: **one wall**, and it is the one whose `Builtins` half
 clink 52 proved.
+
+## Clink 54 (2026-09-02) — the fifth wall, taken. **178 rungs / 239, 34 of 83 rules**
+
+The continuation wall — `Denote/Sem/notes.md` §The fifth stall point, the thing that has
+gated "most compound rungs" since clink 48 and was refuted-then-repaired in clink 52 — is
+**proved**, in `RubyCore/Proof/`, where that section said it belonged. Two theorems:
+
+* **`RubyCore.Proof.stepFn_frame`** — the interpreter's frame rule, `KontFrameCatchFree`'s
+  statement, over the *whole* of `stepFn`. Axiom-clean, and so is every lemma under it.
+* **`Ratchet.Denote.run_split`** (`Denote/Sem/Decompose.lean`) — the run-level decomposition
+  `EvalsDecompose` was stating: a run under an appended continuation `K` splits at the state
+  that delivers the inner run's value to `K`.
+
+`Denote/Sem/Frame.lean` keeps both `def`s as the statements of record, now pointing at the
+proofs; nothing there was deleted, because what it records is *what the wall was*.
+
+### The chain, and its real shape
+
+The estimate in clink 50 was that the job is "a dependency chain of one-line lemmas over a
+bounded helper set" rather than a line count proportional to the interpreter. That was right
+about the shape and wrong about the price. What it took, file by file:
+
+| file | what it needed |
+|------|----------------|
+| `Builtins` (24k lines) | done in clink 53 — 121 theorems, mostly `frame_simp`/`frame_arms` |
+| `Interp/Support.lean` | done in clink 53 |
+| `Interp/Dispatch.lean` | `enterUserMethod` (135 lines, the largest function in the model), the iterators, `include`/`prepend` |
+| `Interp/Reflect.lean` | **`tryReflect` split into 16 named arms in the source** |
+| `Interp/Send.lean` | `invoke` by induction on `args` (its own `termination_by`), plus twelve more |
+| `Interp/Kont.lean` | `applyKont`/`unwind`, `cases k` over thirty continuation frames |
+| `Interp.lean` | `evalExpr` (43 arms) and `stepFn` |
+| `Proof/NotDone.lean` | the run **inversion**, which the estimate did not see at all |
+
+### Six things that generalised, and are worth reusing
+
+1. **`withCtl_mk`/`withKont_mk`/`mk_push`** — the shape problem's answer. A machine literal
+   whose `kont` field is syntactically `k ++ K` *is* `pushK K` of the same literal, and saying
+   so with the other eight fields as metavariables gives a **pattern** where `pushK K ?m` is
+   not. `mk_push` is safe as a named `rw` and a **timeout** as a `simp` lemma (it ping-pongs
+   against the framing set).
+2. **The `_mk_cons` idiom** — one derived lemma per callee reached under a freshly consed
+   continuation, each `rw [← List.cons_append]` from the general lemma.
+3. **Generalise the machine-free scrutinees first.** On `enterUserMethod` this is the
+   difference between a 40M-heartbeat timeout and forty seconds.
+4. **A machine-carrying scrutinee must become a machine-free decision plus a machine.** This
+   is the one lesson that changed the *source*, five times: `dmTarget?`/`dmTargetM`,
+   `removeOk`/`removeRun`, `visOk`/`visRun`, `withSpread` (a combinator with the
+   continuation's framing as a pointwise hypothesis), `classNewBlock`. `split` on a scrutinee
+   that carries a machine pairs an `.ok`/`some` arm of one side with the `.error`/`none` arm of
+   the other, and the resulting goals are contradictory only up to a conjunction it cannot use.
+5. **The reverse-rewrite closer.** The goals `split` leaves are `withCtl m' c = pushK K
+   (withCtl m c)` with `pushK K m = m'` in the context — which `simp_all` can only use left to
+   right. Rewriting the *goal* backwards with the wrapper's own framing lemma puts the
+   hypothesis's left-hand side into it. This is what took `invokeDispatch` from a wall of
+   residual goals to none.
+6. **Walk, close, and repeat.** `simp_all`+`subst_vars` *exposes* applications that were hidden
+   behind an equation, and only the walker can rewrite those. Three rounds.
+
+### The two facts the wall's own statement did not predict
+
+**`unwind`'s `retJ` arm steps at an empty continuation.** The first version of `stepFn_frame`
+assumed `stepFn m = .next m₂` was enough, on the reasoning that the excluded results are
+exactly the ones that read an empty continuation as "the program is over". That is false: a
+non-lambda block `return` whose home method has exited answers
+`.next (raiseErr … "unexpected return")` at `kont = []`, where under a pushed `K` it unwinds
+into `K`. So the side condition `Denote/Sem/notes.md` wrote down for `KontFrame` is needed
+after all — for the `jump` arm, and only there.
+
+**`.done` is constructed at one site, and that is a theorem.** `Proof/NotDone.lean`:
+`StepResult.done` appears once in the interpreter (`applyKont`'s empty-continuation arm) and
+`applyKont` is called from once place (`stepFn`), so
+
+    stepFn m = .done v m' → m.ctl = .value v ∧ m.kont = [] ∧ m' = m
+
+Without it the decomposition cannot be *stated* usefully — "the inner run stopped here" says
+nothing about where *here* is, and the outer run cannot be continued from the corresponding
+state. Forty-odd one-sided lemmas, and three tactic lessons: never put `isDone` in a simp set
+(it unfolds into its matcher and destroys the head every callee's lemma is keyed on), never
+`rfl` in the walker (it unfolds a WF-compiled function and burns the budget), and
+`isDone_of_optNotDone (by assumption) (by simp)` for the `try*` family's callers.
+
+### `JumpOpaque`, the third hypothesis
+
+`run_split` needs one thing neither `Frame.lean` statement mentions: `K` cannot turn an
+escaping jump into a returned value. `CatchFree` handles the `throw` counterexample
+`Frame.lean` records; `JumpOpaque` handles the rest of the family (a `rescue` in `K` catching
+what the sub-run raised, a `whileBodyK` swallowing a `break`). It holds by computation for the
+literals a `Judge` rule pushes, on top of one general fact — **a jump at an empty continuation
+never returns a value** — which is an induction rather than a computation, because `retJ` and
+`throwJ` both step to a `raiseErr` that is itself a jump at the same empty continuation.
+
+### The evalExpr measurement, because the strategy is the result
+
+Running the full walker over `evalExpr`'s 43 arms costs **20 minutes and still times out** at
+40M heartbeats. A **stage per named callee** — thirteen of them, no `split`, no `simp_all` —
+closes it in 1m46s, and the theorem **depends on no axioms at all**. That is
+`notes.md`'s own measurement holding up: the arms that do not delegate close on
+`frame_simp; rfl`, and the residue is one goal per helper function. The 40M budget that
+remains on it is for the **kernel**, not the tactic.
+
+### Decisions that were not forced
+
+* **The proofs live in `RubyCore/Proof/`, not `Denote/`.** `notes.md` argued for this and the
+  alternative it named — a *typed-stack invariant* (`KontOk`) that avoids needing the frame
+  rule at all — was reconsidered and rejected: the invariant technique proves preservation for
+  a fixed program, while the ladder's obligations quantify over *arbitrary* sub-runs, which is
+  what a frame rule is for. The two copies of `pushK`/`CatchFree` cost two `rfl`s
+  (`Decompose.lean`'s bridge) and are worth it — `Frame.lean`'s statements are dated evidence.
+* **`isDone` as a `Bool`, not a `Prop`.** The `∀ sr, o = some sr → …` form made every walker
+  goal need an `at h` variant of `split`; a decidable predicate on the goal side needed none.
+* **`destructureBind` de-`partial`ized rather than axiomatised.** (Clink 53's decision, priced
+  here: it broke one existing proof, `T5.dispatch_progress`, which needed a heartbeat raise
+  because unfolding `enterUserMethod` now walks fuel arithmetic.)
+
+### The soundness finding
+
+`found-issues.md` **§F5**: `Judge.vasgn` records the right-hand side's type verbatim, and if
+that type is an alias (`Ty.sameAs y σ`) the rule claims `x` and `y` now hold the same value —
+a claim about `y` that the premise does not carry, because `denM` gives `sameAs` no meaning as
+an *expression* type. Unreachable through `chk` (whose `var` arm strips aliases and says so in
+a comment), so there is no corpus counterexample to add; the fix is the invariant stated where
+it is used, as `Judge.vasgn`'s `halias` premise plus the matching conjunct in both of
+`Validate.lean`'s `vasgn .lvar` arms. Gate numbers unchanged.
+
+### Definitions changed, and why
+
+* `RubyCore/Interp/Reflect.lean` — `tryReflect`'s 390-line `match` became 16 named `def`s
+  (right for the source independently of the proof: each family is now separately readable and
+  separately provable, in seconds rather than a wall of 566 residual goals);
+  `hasCatcher`, `blockClosure?`, `dmTarget?`/`dmTargetM`, `removeOk`/`removeRun`,
+  `visOk`/`visRun` named for reason 4 above.
+* `RubyCore/Interp/Kont.lean` — `withSpread` (the four `*splat` arms) and `isPrivateConst`.
+* `RubyCore/Interp/Send.lean` — `classNewBlock`.
+* All verified behaviour-preserving: **tier-0 difftest 1304 ran, 992 agree, 0 disagree** and
+  **corpus agreement 239/239**, after each change.
+
+### State
+
+* `./scripts/run_ratchet.sh` — 178 rungs / 239, 35 `expect_validate` mismatches (unchanged),
+  corpus agreement 239/239.
+* `./scripts/run_check_rungs.sh` — 177/177 rungs confirmed, 145/145 negative controls.
+* `lake exe semladder` — **34 of 83 rules** (`Judge.vasgn` is the first compound rung).
+
+### And the rung it was for
+
+**`Judge.vasgn`** (`Denote/Rules/Vasgn.lean`) — the first compound rung, and it reads like the
+literals: peel the push (one `rfl`), `run_split`, apply the premise at the sub-run, invert the
+two-step tail, and transport across the write with the machinery `vasgnAlias` already had.
+That is the point of having paid for the wall.
+
+One mundane lesson worth recording because it will recur at every compound rung: after
+`run_two`'s `v = v₀` is substituted, **which of the two names survives is Lean's choice**, and
+a proof that spells one of them out breaks when it picks the other. The ending is a separate
+lemma (`vasgn_close`), parametric in the written value, and applies either way.
+
+### What is next, and what it costs
+
+`Judge.if'`/`ifNoElse` are next in constructor order and they are **not** behind the wall any
+more — they are behind something else: **narrowing soundness**. Their branch premises are at
+`narrowEnvs κ.classes c Γc` and `narrowSpine κ.classes c Ic`, so using them needs `StateOk` at
+the *narrowed* environment, which is a fact about `refineOne` and `narrowCond?` that nothing on
+file establishes: *if the run of `c` returned truthy, the tested local's value is in the
+refined type*. `Denote/Sem/State.lean` L52 predicted this ("what a proof of `Judge.narrowEnvs`'
+soundness will have to consume") and `EnvOk`'s identity conjunct was put there for it. It needs
+the run of a concrete builtin dispatch (`x.is_a?(C)`) inverted, which is the same thing the
+`callAsm` family will need, so it is not a detour.

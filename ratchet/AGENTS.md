@@ -479,7 +479,7 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## Semantic ratchet status (`Denote/Sem/`): **33 of 83 `Judge` rules discharged**
+## Semantic ratchet status (`Denote/Sem/`): **34 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (178 of 238). This measures
@@ -517,6 +517,14 @@ Discharged so far, all axiom-clean:
   **`JudgeSeq.last`** (clink 48) — the singleton sequence, which `evalExpr` runs by rewriting
   `ctl` and pushing **no** continuation, so it is one step away from its statement's own run
   and does *not* need the wall below.
+* **`Judge.vasgn`** (clink 54, `Denote/Rules/Vasgn.lean`) — the **first compound rung**, and
+  the one the fifth stall point was measured on. It is short, because everything hard is
+  elsewhere: `RubyCore.Proof.stepFn_frame` (the interpreter's frame rule, over the whole of
+  `stepFn`, axiom-clean) and `Denote/Sem/Decompose.lean`'s **`run_split`** (a run under an
+  appended continuation splits at the state that delivers the inner run's value to it). The
+  attempt also produced `found-issues.md` **§F5** — `Judge.vasgn` recorded the right-hand
+  side's type verbatim, and an *alias* type recorded that way claims something about a second
+  local that the premise does not carry.
 * **`JudgeRescues.cons`** (clink 48), the one `cons` rule in the family that the wall does not
   block: `JudgeRescues` threads no outgoing state, so its premise is about the same run its
   conclusion is. It is the first consumer of **`Denote/Join.lean`** — "a join is an upper
