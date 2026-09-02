@@ -43,22 +43,53 @@ def bootMachine : Machine :=
   | .ok m => m
   | .error _ => Machine.init .nil
 
-/-- `CoreOk` as a `Bool`, so the four clauses are one computation. -/
+/-- `CoreOk` as a `Bool`, so its clauses are one computation. Seven of them since clink 48:
+`Judge.regexpLit` added the `Regexp` row, exactly as `CoreOk`'s docstring said the `String`
+one would be joined. -/
 def coreOkB (h : Heap) : Bool :=
   (ancestors h Boot.basicObjectId == [Boot.basicObjectId]) &&
   (classNamed? h "String" == some Boot.stringId) &&
   (ancestors h Boot.stringId).contains Boot.stringId &&
-  (ancestors h Boot.stringId).contains Boot.basicObjectId
+  (ancestors h Boot.stringId).contains Boot.basicObjectId &&
+  (classNamed? h "Regexp" == some Boot.regexpId) &&
+  (ancestors h Boot.regexpId).contains Boot.regexpId &&
+  (ancestors h Boot.regexpId).contains Boot.basicObjectId
 
 theorem coreOkB_sound {h : Heap} (hb : coreOkB h = true) : CoreOk h := by
   simp only [coreOkB, Bool.and_eq_true, beq_iff_eq] at hb
-  exact ⟨hb.1.1.1, hb.1.1.2, hb.1.2, hb.2⟩
+  exact ⟨hb.1.1.1.1.1.1, hb.1.1.1.1.1.2, hb.1.1.1.1.2, hb.1.1.1.2, hb.1.1.2, hb.1.2, hb.2⟩
 
-/-- The three frame facts the starting machine has to have: it is not inside a method body, it
-was not called with a block, and it *has* a current frame (`StateOk.frameInRange`). -/
+/-- `self` has no instance variables — a `Bool`, because the toplevel `self` of the booted
+machine is a real heap object built by the prelude. -/
+def selfIvarsEmptyB (m : Machine) : Bool :=
+  match m.currentFrame.self with
+  | .ref o => (m.heap.get o).ivars.isEmpty
+  | _ => true
+
+/-- … and then every ivar read at `self` is `nil`, which is `SelfSpineOk`'s completeness clause
+at the empty spine. -/
+theorem selfIvarsEmpty_sound {m : Machine} (h : selfIvarsEmptyB m = true) (x : String) :
+    ivarOf m.heap m.currentFrame.self x = .nil := by
+  unfold selfIvarsEmptyB at h
+  unfold ivarOf
+  cases hs : m.currentFrame.self with
+  | ref o =>
+    rw [hs] at h
+    have : (m.heap.get o).ivars = [] := List.isEmpty_iff.mp h
+    simp [this]
+  | _ => rfl
+
+/-- The **four** frame facts the starting machine has to have: it is not inside a method body,
+it was not called with a block, it *has* a current frame (`StateOk.frameInRange`), and `self`
+carries no instance variables.
+
+The fourth is new (clink 48) and it is the boot-machine half of `SelfSpineOk`'s completeness
+clause: the empty spine `.ivar0` mentions nothing, so completeness at `ctx0` says every ivar
+of the toplevel `self` reads as `nil`. Measured rather than assumed, like the other three —
+the prelude runs before this machine exists and could have set an ivar on `main`. -/
 def frameOkB (m : Machine) : Bool :=
   (m.currentFrame.kind != .method) && m.currentFrame.blk.isNone &&
-  (m.stack.headD 0 < m.frames.size)
+  (m.stack.headD 0 < m.frames.size) && selfIvarsEmptyB m
 
 /-- **Everything about the booted machine that has to be computed rather than proved.**
 
@@ -89,14 +120,14 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
     { sat := Proof.saturatedB_sound hb.1.1
       core := coreOkB_sound hb.1.2
       env := by intro x τ hx; exact absurd hx (by simp [envGet?, Ratchet.ctx0])
-      selfSpine := by simp [SelfSpineOk, denSpine]
+      selfSpine := ⟨by simp [denSpine], fun x _ => selfIvarsEmpty_sound hb.2.2 x⟩
       classes := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0])
       defs := by intro d hd; exact absurd hd (by simp [Ratchet.ctx0])
       asms := by intro a ha; exact absurd ha (by simp [Ratchet.ctx0])
-      frameInRange := hb.2.2
-      frame := by simp only [FrameOk, Ratchet.ctx0]; exact hb.2.1.1
+      frameInRange := hb.2.1.2
+      frame := by simp only [FrameOk, Ratchet.ctx0]; exact hb.2.1.1.1
       closures := trivial
-      blockTy := by simp only [BlockTyOk, Ratchet.ctx0]; exact hb.2.1.2
+      blockTy := by simp only [BlockTyOk, Ratchet.ctx0]; exact hb.2.1.1.2
       selfTy := by simp [SelfTyOk, Ratchet.ctx0]
       consts := by intro p τ hp; exact absurd hp (by simp [envGet?, Ratchet.ctx0])
       privConsts := trivial }

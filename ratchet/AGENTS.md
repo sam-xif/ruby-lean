@@ -479,7 +479,7 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## Semantic ratchet status (`Denote/Sem/`): **17 of 83 `Judge` rules discharged**
+## Semantic ratchet status (`Denote/Sem/`): **24 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (178 of 235). This measures
@@ -489,18 +489,47 @@ the first ladder with none of the second done — which is exactly the gap `Deno
 written to describe, and this is the answer to it.
 
 Run it with **`scripts/run_denote.sh`** (or `lake exe semladder` for just the number).
-Discharged so far, all axiom-clean: the **seven literals** (`intLit`, `fltLit`, `strLit`,
-`symLit`, `truLit`, `flsLit`, `nilLit`), both **local reads** (`var`, `varAlias` — the first
-rungs that consume a `StateOk` component rather than only re-establishing one), `seq` (a
-delegation that is definitional: `SemJudgeSeq` *is* `SemJudge` at a `.seq`), and the **six
-companion base cases** — `JudgeAll`/`JudgeKw`/`JudgePairs`/`JudgeRescues`/`JudgeConsts`/
-`JudgeNested` at the empty list (`Denote/Rules/Nil.lean`; each is first in its *own* family's
-constructor order, four of the six are vacuous, and the file says so). They rest on two
-lemmas in `Denote/Rules/Core.lean`: `denM_ctl`/`StateOk_reCtl` (conformance and the
-denotation cannot see `ctl`/`kont` — the arrow arms survive because `applyIn`/`sendIn`
+Discharged so far, all axiom-clean:
+
+* **The nine leaf reads.** The seven literals (`intLit`, `fltLit`, `strLit`, `symLit`,
+  `truLit`, `flsLit`, `nilLit`) plus both local reads (`var`, `varAlias` — the first rungs
+  that *consume* a `StateOk` component rather than only re-establishing one).
+* **Two more one-step reads** (clink 48, `Denote/Rules/Read.lean`): **`selfExpr`**, which
+  spends `SelfTyOk` and nothing else, and **`ivarRead`**, which is why `SelfSpineOk` now says
+  the spine is **complete** (an ivar it does not mention reads as `nil`) — the invariant the
+  rule's own docstring named, and without which its `.nilT` default is false of the semantics.
+* **The second allocating literal**, `regexpLit` (clink 48, `Denote/Rules/Regexp.lean`):
+  `strLit`'s shape plus a *gated* arm — a pattern `Rx.parse` rejects steps to `.unsupported`,
+  which is not a `.value`, so the obligation's hypothesis is unsatisfiable and the case costs
+  nothing (`evals_of_unsupported`). It grew `CoreOk` by the `Regexp` row that structure's
+  docstring predicted.
+* **`seq`**, a delegation that is definitional (`SemJudgeSeq` *is* `SemJudge` at a `.seq`), and
+  **`JudgeSeq.last`** (clink 48) — the singleton sequence, which `evalExpr` runs by rewriting
+  `ctl` and pushing **no** continuation, so it is one step away from its statement's own run
+  and does *not* need the wall below.
+* **`JudgeRescues.cons`** (clink 48), the one `cons` rule in the family that the wall does not
+  block: `JudgeRescues` threads no outgoing state, so its premise is about the same run its
+  conclusion is. It is the first consumer of **`Denote/Join.lean`** — "a join is an upper
+  bound" (`denM_joinT_left`/`_right`), which `if'`, `ifNoElse`, `arrayLit`, `hashLit` and
+  `while'` will all need, and which carries the `LawfulBEq Ty` instance `Ratchet/Ty.lean`'s
+  `deriving` clause does not provide.
+* **The six companion base cases** — `JudgeAll`/`JudgeKw`/`JudgePairs`/`JudgeRescues`/
+  `JudgeConsts`/`JudgeNested` at the empty list (`Denote/Rules/Nil.lean`; each is first in its
+  *own* family's constructor order, four of the six are vacuous, and the file says so) — and
+  **both class-body `cons` rules** (`JudgeConsts.cons`, `JudgeNested.cons`, clink 48), which
+  are list bookkeeping plus `classMethods?`'s injectivity. Three of the seven companion
+  families (`JudgeRescues`, `JudgeConsts`, `JudgeNested`) are now **complete**.
+
+They rest on two lemmas in `Denote/Rules/Core.lean`: `denM_ctl`/`StateOk_reCtl` (conformance
+and the denotation cannot see `ctl`/`kont` — the arrow arms survive because `applyIn`/`sendIn`
 overwrite both, so the run a call denotes is the same run) and `evals_pure` (the two-step
 inversion). The working procedure for climbing a rung is
-[`Denote/Sem/notes.md`](Denote/Sem/notes.md).
+[`Denote/Sem/notes.md`](Denote/Sem/notes.md), which also records the **seven** stall points —
+the last two found in clink 48: a **declaration statement** makes the incoming `κ` stale, so
+`defStmt`/`casgn`/`classStmt`/`moduleStmt` have **false** obligations for a reason that is the
+judgment's shape rather than a bug in a rule (the checker is right on the reproducer); and an
+**argument list is not a snapshot**, so `SemJudgeAll`'s "every type at the final machine" is
+unprovable as stated and is one mutating `PrimSig` row away from being a soundness bug.
 
 **`strLit` — the allocation stall — is broken** (clink 45), and it cost a definitional change
 plus two new `StateOk` components. A string literal allocates, so it is the first rule whose

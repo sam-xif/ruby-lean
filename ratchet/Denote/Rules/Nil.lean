@@ -18,10 +18,14 @@ here touches the machine.
 What they are not is *padding*. `JudgeAll.nil` is the statement that evaluating no arguments
 leaves the machine alone and produces no values, and a `SemJudgeAll` that failed to say that
 would be the wrong definition — the base case is exactly where a list relation's shape is
-checked. `JudgeSeq` is the one family whose first constructor is **not** here, and the reason
-is the ladder's current wall: `JudgeSeq.last` carries a `Judge` premise about a statement
-that runs under a pushed `.seqK`, so it needs the continuation-decomposition lemma
-(`../Sem/notes.md` §The fifth stall point) exactly as `Judge.vasgn` does.
+checked. `JudgeSeq` is the one family whose first constructor is **not** here, because it has
+no empty case at all: its base is the *singleton* sequence, which is `Denote/Rules/Seq.lean`
+and a different argument (`evalExpr` pushes no continuation for a one-statement `seq`).
+
+This paragraph previously said `JudgeSeq.last` was behind the continuation wall
+(`../Sem/notes.md` §The fifth stall point). That was wrong, and wrong in the direction that
+costs a rung: the wall is real for `JudgeSeq.cons`, whose first statement runs under a pushed
+`.seqK`, and `evalExpr`'s `[e]` arm pushes nothing. Corrected in clink 48, which climbed it.
 -/
 
 set_option autoImplicit false

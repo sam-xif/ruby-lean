@@ -1,8 +1,14 @@
+import Denote.Join
 import Denote.Rules.Core
 import Denote.Rules.Alloc
 import Denote.Rules.Lit
 import Denote.Rules.Nil
 import Denote.Rules.Asgn
+import Denote.Rules.Read
+import Denote.Rules.Seq
+import Denote.Rules.Regexp
+import Denote.Rules.Cls
+import Denote.Rules.Rescue
 
 /-!
 # `Denote/Rules.lean` — every discharged rung, in one import

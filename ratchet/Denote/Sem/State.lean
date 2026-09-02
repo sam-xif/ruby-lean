@@ -135,9 +135,29 @@ def EnvOk (Γ : Env) (m : Machine) : Prop :=
     denM (stripAlias τ) m (m.getLocal x) ∧
     (∀ y ρ, τ = .sameAs y ρ → m.getLocal x = m.getLocal y)
 
-/-- `self`'s instance variables match the spine `I`. -/
+/-- `self`'s instance variables match the spine `I`, **and the spine is complete**: an ivar
+the spine does not mention reads as `nil`.
+
+The second conjunct was forced by `Judge.ivarRead` (clink 48), and it is the invariant that
+rule's own docstring already named — *"the default is sound only because the spine is complete
+— every ivar the object has ever been given a value for appears in it"*. `Judge.ivarRead`
+types `@x` as `(ivarGet? I x).getD .nilT`, so at a spine that is silent about `@x` it claims
+`@x : Nil`; the first conjunct alone is a **lower** bound (`Denote/Den.lean` says so of
+`denM`'s `inst` arm: "ivars the type does not mention are unconstrained"), so without this
+clause a conformant machine could hold `@x = 7` at `I = .ivar0` and the rule would be false of
+the semantics.
+
+Stated as "reads as `nil`" rather than "is absent from the object", because that is what the
+rule needs and it is the weaker of the two: CRuby's `@x = nil` and an unset `@x` are
+indistinguishable to a read, and `Judge.ivarAsgn` at a `nil` right-hand side would have to
+re-establish the stronger form without being able to remove the entry.
+
+Note the asymmetry with `EnvOk`, which needs no completeness clause: there is no rule that
+types an *unbound local* — `Judge.var` requires `envGet? Γ x = some τ` — while `ivarRead` is
+total in `x` on purpose, because in Ruby reading an unset ivar is legal and yields `nil`. -/
 def SelfSpineOk (I : Ty) (m : Machine) : Prop :=
-  denSpine I m (ivarOf m.heap m.currentFrame.self)
+  denSpine I m (ivarOf m.heap m.currentFrame.self) ∧
+  ∀ x, ivarGet? I x = none → ivarOf m.heap m.currentFrame.self x = .nil
 
 /-- A `Ty.clos` really names *this* Proc: the heap closure's parameters and body are the
 translation of the table entry `idx` points at.
@@ -305,6 +325,14 @@ structure CoreOk (h : Heap) : Prop where
   stringSelf : (ancestors h Boot.stringId).contains Boot.stringId = true
   /-- … and a `BasicObject`. -/
   stringBasic : (ancestors h Boot.stringId).contains Boot.basicObjectId = true
+  /-- The name `Regexp` resolves to the boot `Regexp` class (`Judge.regexpLit`, clink 48 —
+      the second allocating literal, and the first row this structure grew as its docstring
+      predicted it would). -/
+  regexpNamed : classNamed? h "Regexp" = some Boot.regexpId
+  /-- `Regexp` is a `Regexp` … -/
+  regexpSelf : (ancestors h Boot.regexpId).contains Boot.regexpId = true
+  /-- … and a `BasicObject`. -/
+  regexpBasic : (ancestors h Boot.regexpId).contains Boot.basicObjectId = true
 
 theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m₂.heap = h')
     (he : Ext m m₂) (hc : CoreOk h) : CoreOk h' where
@@ -312,6 +340,9 @@ theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m
   stringNamed := by subst hm; subst hm₂; rw [he.classNamed?_eq]; exact hc.stringNamed
   stringSelf := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.stringSelf
   stringBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.stringBasic
+  regexpNamed := by subst hm; subst hm₂; rw [he.classNamed?_eq]; exact hc.regexpNamed
+  regexpSelf := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.regexpSelf
+  regexpBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.regexpBasic
 
 /-- **Conformance**: one conjunct per `Ctx` field, plus the two threaded pieces `Γ` and `I`,
 plus the three machine facts above.
@@ -368,7 +399,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     have := h.selfSpine
     unfold SelfSpineOk at this ⊢
     rw [he.currentFrame_eq, funext (he.ivarOf_eq m.currentFrame.self)]
-    exact denSpine_ext he this
+    exact ⟨denSpine_ext he this.1, this.2⟩
   classes := by
     intro c hc
     obtain ⟨k, hk, hm⟩ := h.classes c hc
@@ -573,6 +604,26 @@ theorem denSpine_killClosOverSpine {I τ : Ty} {m : Machine} {x : String} {w : V
   | ivar0 => simpa [killClosOverSpine, denSpine] using h
   | _ => exact absurd h (by simp [denSpine])
 
+/-- **Widening a spine does not change which names it mentions.** `killClosOverSpine` maps
+entry types and leaves the keys alone, so `SelfSpineOk`'s completeness clause transports
+across it unchanged. -/
+theorem ivarGet?_killClosOverSpine_none : ∀ (I : Ty) {x : String} {τ : Ty} {y : String},
+    ivarGet? (killClosOverSpine I x τ) y = none → ivarGet? I y = none
+  | .ivarCons n σ rest, x, τ, y, h => by
+    simp only [killClosOverSpine, ivarGet?] at h ⊢
+    by_cases hn : n = y
+    · subst hn; simp at h
+    · have hb : (n == y) = false := by simpa using hn
+      rw [hb, if_neg (by simp)] at h ⊢
+      exact ivarGet?_killClosOverSpine_none rest h
+  | .ivar0, _, _, _, _ => rfl
+  | .int, _, _, _, _ | .float, _, _, _, _ | .bool, _, _, _, _ | .nilT, _, _, _, _
+  | .sym, _, _, _, _ | .any, _, _, _, _ | .never, _, _, _, _ | .cls _, _, _, _, _
+  | .clsOf _, _, _, _, _ | .nilable _, _, _, _, _ | .arrayOf _, _, _, _, _
+  | .hashOf _ _, _, _, _, _ | .union _ _, _, _, _, _ | .arrow0 _, _, _, _, _
+  | .arrowCons _ _, _, _, _, _ | .inst _ _, _, _, _, _ | .clos _ _ _, _, _, _, _
+  | .sameAs _ _, _, _, _, _ => rfl
+
 /-! ## Conformance survives a rebinding
 
 The other half, and the one with a side condition. `Judge.vasgn`/`vasgnAlias` rebind a local,
@@ -648,7 +699,8 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
         have h2 := h.selfSpine
         unfold SelfSpineOk at h2 ⊢
         rw [currentFrame_setLocal_self, setLocal_heap]
-        exact denSpine_killClosOverSpine hw h2
+        exact ⟨denSpine_killClosOverSpine hw h2.1,
+               fun y hy => h2.2 y (ivarGet?_killClosOverSpine_none _ hy)⟩
       classes := h.classes
       defs := h.defs
       asms := fun a ha m₃ he₃ => h.asms a ha m₃ ((setLocal_later m x w).trans he₃)

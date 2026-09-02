@@ -245,14 +245,122 @@ Three things follow, and they are the reason this is written down rather than at
   already reasons about the continuation stack (by a *typed-stack invariant*, `KontOk`, rather
   than by decomposition — which is the technique that avoids needing this lemma at all, and is
   worth weighing before writing it).
-* It blocks **every compound rung**, not just `vasgn`: `if'`, `arrayLit`, `hashLit`, all four
-  `JudgeSeq` rules, every call rule. The ladder's next number is gated on it.
+* It blocks **most compound rungs**, not just `vasgn`: `if'`, `arrayLit`, `hashLit`,
+  `JudgeSeq.cons`/`guard`/`nextGuard`, every call rule.
+  **Two exceptions, both found by attempting them (clink 48), and both for the same kind of
+  reason — the rule's premise is about a run nothing pushed a continuation for:**
+  - **`JudgeSeq.last`.** `evalExpr`'s `.seq` arm is `| [e] => .next (withCtl m (.eval e))` —
+    a *singleton* sequence pushes nothing, so the run of `.seq [e]` under an empty
+    continuation *is* the run of `e` under an empty continuation, one `stepFn` step later
+    (`../Rules/Seq.lean`). `JudgeSeq.cons`, whose first statement runs under `.seqK rest`, is
+    the case that is still blocked.
+  - **`JudgeRescues.cons`.** `JudgeRescues` threads no outgoing state, so its premise about
+    the head handler is about *the same run* the conclusion asks about
+    (`../Rules/Rescue.lean`). What it needs instead is the join, which is
+    `../Join.lean`.
 * The alternative — redefining `Evals` to quantify over continuations — is a **weakening of
   every obligation**, and must not be taken. `Evals` under an arbitrary `K` is strictly
   stronger as a predicate, and `Evals` sits on the *left* of `SemJudge`'s implication, so
   strengthening it weakens all 83 statements at once, silently, including the ten already
   climbed. The two forms are equivalent exactly when the decomposition lemma holds, which is
   the honest way to get there.
+
+## The sixth stall point — **the declaration statement, and the context that goes stale**
+
+Found by attempting `Judge.defStmt` (clink 48). **Its obligation is false**, and unlike §F1
+this is not a bug in the rule — it is the shape of the semantic judgment meeting the shape of
+`Judge`'s context threading.
+
+`SemJudge κ Γ I e τ Γ' I'` concludes `StateOk κ Γ' I' m'`: the machine after the run still
+conforms to **the incoming `κ`**. That is right for every expression whose effect is on values
+and bindings, and wrong for every statement whose effect is on the *declarations* `κ`
+describes:
+
+```ruby
+def foo; 1; end      # ①
+def foo; "s"; end    # ②  <- Judge.defStmt, at a κ whose defs table still says foo returns 1
+```
+
+At ② the incoming `κ.defs` holds `⟨"foo", [], int 1⟩` (①'s entry, put there by
+`JudgeSeq.cons`/`Ctx.afterStmt`), and a conformant machine really does have that method
+installed — `StateOk` is satisfiable. `RubyCore`'s `defineMethod` **replaces**
+(`h.setClassPayload … (name, md) :: methods.filter (·.1 != name)`), so at `m'` the installed
+body is `"s"`, and `DefsOk κ.defs m'` — which asks for ①'s body — is false. `Judge.casgn`,
+`Judge.cpathAsgn`, `Judge.classStmt` and `Judge.moduleStmt` are false for the same reason
+(`ConstsOk`/`ClassesOk` in place of `DefsOk`), and so is `Judge.seq` at any sequence
+containing one of them.
+
+**The checker is not wrong here, and that was checked rather than assumed.** `Ctx.afterStmt`
+conses the new entry and `defGet?` reads the *first* match, so the checker consults ②:
+
+```
+$ export-json <the program above, plus `foo`> | ratchet --stdin
+{"type":"String","validate":true}          # and CRuby prints s
+```
+
+Two separate defects are tangled here, and only the first is fixable inside `State.lean`.
+
+1. **`DefsOk`/`ClassesOk` quantify over the whole table** (`∀ d ∈ D`) while the checker only
+   ever consults `defGet?`/`clsGet?`, i.e. the first match. So a stale entry is *required* to
+   be installed, which makes `StateOk` unsatisfiable after any redefinition — every obligation
+   at every later statement goes vacuous rather than false. That is a live vacuity risk of
+   exactly the kind `../Sanity.lean` exists to police, and the fix is to state the components
+   over the lookup function.
+2. **`κ` is not threaded through the judgment.** Fixing (1) does not make `defStmt` provable:
+   the *live* entry for `foo` at ② is still ①'s. The conclusion would have to be about
+   `κ.afterStmt e τ` — which *is* expressible for `SemJudge` (every argument is in scope) and
+   **is not** for `SemJudgeSeq`, whose accumulated context is a fold over statement types the
+   signature does not carry. So the honest fix is a design decision about the semantic
+   judgment's shape, not a lemma, and it wants its own clink. Note the fold direction is
+   evidence the change is right rather than a workaround: `JudgeSeq.cons`'s obligation will
+   need the first statement's conclusion at `κ.afterStmt` to feed the second's hypothesis.
+
+Recorded here rather than in `../../found-issues.md`, which is for *wrong answers* — `validate`
+is right on the reproducer above.
+
+## The seventh stall point — **an argument list is not a snapshot**
+
+Found by inspecting `SemJudgeAll` while attempting `JudgeAll.cons` (clink 48). Not yet
+demonstrated false; the honest status is **unprovable as stated, for a reason that is one
+`PrimSig` row away from being a soundness bug.**
+
+`SemJudgeAll` concludes `DenAll τs m' vs` — *every* argument's type, checked at the machine
+the *whole list* left behind. That is the right machine for the consumer (`Judge.prim` and the
+call rules use the argument types at the moment of the call), and it means the `cons` rung
+must transport `denM τ m₁ v` — the first argument's type, established where its own run
+ended — across the evaluation of *every later argument*. There is no such transport:
+`denM_ext`/`denM_ext`'s `Ext` demands a heap that only grew, and evaluating an arbitrary Ruby
+expression can mutate objects.
+
+What stops this from being a live unsoundness today is a property of the **table**, not of the
+judgment: `PrimSig` has no row that can change a value's type in place. Grep finds no `[]=`,
+`push`, `concat`, `replace`, `clear`, `insert`, `unshift`, `store` or `map!` row at all; the
+only mutator is `arrayPush` (`<<`), whose signature `(.arrayOf τ) "<<" [τ] (.arrayOf τ)`
+requires the pushed element to have the array's own element type, and `freeze`, which changes
+nothing. So no *typeable* program can widen a container it has already typed — including the
+empty-array case, where `.arrayOf .never` means every push is rejected for want of a `never`
+argument.
+
+Two consequences worth stating in advance:
+
+* **A rung is not what will catch the regression.** The day an `Array#[]=` or `Hash#[]=` row is
+  added, `JudgeAll.cons`'s obligation becomes provably false and this stall becomes a
+  `found-issues.md` §F entry. Until then the ladder can only record the dependency.
+* **The fix is a definition, and there are two candidates.** Either `SemJudgeAll` states each
+  argument's type at *its own* post-machine (weaker, and then the consumer rules need the
+  transport instead — moving the problem to where the values are actually used), or `StateOk`
+  grows a non-interference component. Neither is free, and choosing wants the first call rung's
+  requirements in hand.
+
+**A second, unrelated defect in the same family, found by inspection at the same time:**
+`SemJudgePairs` reads a hash literal's pairs as `ps.map (·.1) ++ ps.map (·.2)` — **all keys,
+then all values** — while `JudgePairs.cons` threads key, then value, then the rest, which is
+Ruby's own order and the order `evalExpr`'s `.hash` arm performs. The two coincide at one pair
+and diverge at two, so `JudgePairs.cons`'s obligation is stated over an evaluation order the
+machine never performs. It is a *hypothesis*, so the effect is vacuity rather than falsity —
+and `Judge.hashLit`'s rung would then have nothing usable to consume. Fix is one line in
+`Judge.lean`'s `SemJudgePairs` (interleave the list); left for the clink that attempts the
+rule, so that the fix is checked by a rung rather than by eye.
 
 ## What is not on this ladder
 

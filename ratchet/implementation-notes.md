@@ -4382,3 +4382,152 @@ spine clause), `Ratchet/Judge.lean` (`capStaleCtx` + the premise), `Ratchet/Vali
 `Denote/Arrow.lean`, `Denote/Grow.lean`, `Denote/Rules/Core.lean` (`evals_four`),
 `Denote/Sem/State.lean` (`FrameInRange`, `EnvOk`, `AsmsOk`, `StateOk_setLocal`),
 `Denote/Sanity.lean`. Axiom-clean; no `sorry`; `Denote/Examples.lean`'s 31 `#guard`s green.
+
+## Clink 48 (2026-09-01) — seven more rungs, and two stall points that are about the *shape* of the judgment. **178 rungs / 235, 24 of 83 rules**
+
+Seven rungs, none of them behind the continuation wall, and two findings that are worth more
+than the rungs: `Judge.defStmt`'s obligation is **false**, and `SemJudgeAll`'s is **unprovable
+as stated** — both for reasons that are the semantic judgment's shape rather than a bug in any
+rule. `Ratchet/` was not touched, and the two numbers it owns did not move.
+
+### What was discharged
+
+* **`Judge.selfExpr`** (`Denote/Rules/Read.lean`) — one `stepFn` step, and the rung *is* the
+  `SelfTyOk` component: `κ.selfTy = some σ` is both the rule's premise and the component's
+  non-trivial case.
+* **`Judge.ivarRead`** (same file) — the one that cost a definition, below.
+* **`Judge.regexpLit`** (`Denote/Rules/Regexp.lean`) — `strLit`'s shape (allocate, then answer
+  `.ref` at the fresh id, via `ext_push` + `StateOk_ext`) with one new feature: the arm is
+  **partial**. A pattern `Rx.parse` rejects steps straight to `.unsupported`, which is not a
+  `.value`, so `Evals` is unsatisfiable there and the branch imposes nothing
+  (`evals_of_unsupported`). Worth having by name: it is the shape **every** gated construct in
+  the model takes on this ladder, and it is why a gate costs a rung nothing rather than
+  blocking it.
+* **`JudgeSeq.last`** (`Denote/Rules/Seq.lean`) — and this one is a **correction of a recorded
+  claim**. `Denote/Rules/Nil.lean` said `JudgeSeq.last` was behind the continuation wall. It is
+  not: `evalExpr`'s `.seq` arm is `| [e] => .next (withCtl m (.eval e))`, so a *singleton*
+  sequence pushes no continuation and its run under `kont := []` **is** its statement's run
+  under `kont := []`, one step later. The wall is real for `JudgeSeq.cons`, whose first
+  statement runs under `.seqK rest`. Measured, not argued: one `rfl` step lemma.
+* **`JudgeRescues.cons`** (`Denote/Rules/Rescue.lean`) — the only `cons` rule in the family the
+  wall does not block, for a signature reason: `JudgeRescues` threads **no outgoing state**
+  (its rule pins `Γ' = Γh ++ Γ` and `I' = I` as premises, because a handler's assignments must
+  not escape a clause that may not have run), so the premise about the head handler is about
+  *the same run* the conclusion asks about. Nothing to decompose, nothing to transport.
+* **`JudgeConsts.cons`** and **`JudgeNested.cons`** (`Denote/Rules/Cls.lean`) — list
+  bookkeeping plus `classMethods?`'s injectivity at the head. These are the two rungs the
+  one-level-deep `SemJudgeNested` was *designed* to make provable: the recursion is carried by
+  the constructor's own premise, so the `cons` case needs no induction principle over
+  nestings. The recorded risk in its docstring is unchanged — `Judge.classStmt` is what will
+  say whether one level is enough, and `classStmt` is blocked by the sixth stall point below.
+
+Three of the seven companion families (`JudgeRescues`, `JudgeConsts`, `JudgeNested`) are now
+complete.
+
+### Definitions changed, and why each is a correction
+
+**1. `SelfSpineOk` now says the spine is *complete*.** `Judge.ivarRead` types `@x` as
+`(ivarGet? I x).getD .nilT`, so at a spine silent about `@x` it claims `@x : Nil`. The old
+component was `denSpine I m (ivarOf …)` — a **lower** bound, and `Denote/Den.lean` says so of
+`denM`'s `inst` arm in as many words ("ivars the type does not mention are unconstrained") —
+so a conformant machine could hold `@x = 7` at `I = .ivar0` and the rule would be false of the
+semantics. The second conjunct (`ivarGet? I x = none → ivarOf … x = .nil`) is exactly the
+invariant `Judge.ivarRead`'s own docstring already named: *"the default is sound only because
+the spine is complete"*. Two decisions inside it that were **not** forced:
+
+* Stated as "reads as `nil`" rather than "is absent from the object". The weaker of the two,
+  and the one `Judge.ivarAsgn` can re-establish at a `nil` right-hand side (nothing removes an
+  ivar entry, and CRuby cannot tell an unset `@x` from `@x = nil` through a read).
+* **No matching clause on `EnvOk`.** The asymmetry is the rules': `Judge.var` requires
+  `envGet? Γ x = some τ`, so there is no rule typing an unbound local, while `ivarRead` is
+  total in `x` on purpose — in Ruby reading an unset ivar is legal and yields `nil`.
+
+Cost: `StateOk_ext`/`StateOk_setLocal` each gained a line (the second needs
+`ivarGet?_killClosOverSpine_none` — widening a spine does not change which names it mentions),
+and `Denote/Sanity.lean`'s boot `Bool` gained a fourth frame clause (`selfIvarsEmptyB`: the
+toplevel `self` carries no ivars). That clause is **measured, not assumed** — the prelude runs
+before that machine exists and could have set an ivar on `main`; the `#guard` says it did not.
+
+**2. `CoreOk` grew the `Regexp` row** (`regexpNamed`/`regexpSelf`/`regexpBasic`), which is the
+growth that structure's docstring predicted for every rule concluding a builtin class type.
+`coreOkB` measures all seven clauses at the booted heap.
+
+**3. `Denote/Join.lean` is new, and it carries `LawfulBEq Ty`.** Two theorems the ladder will
+spend repeatedly — `denM_joinT_left`/`denM_joinT_right`, "a join is an upper bound" — plus the
+union plumbing they need (`unionMems`/`dedupTys`/`unionOf` against `denM`, three small
+inductions). The reason it is a file rather than three lines in a rung: six rules consume
+`joinT` (`if'`, `ifNoElse`, `arrayLit`, `hashLit`, `beginRescue`, `while'`) and every one of
+them needs the same fact, which is about the *type language* and not about any rule.
+
+The `LawfulBEq Ty` instance is the part worth recording. `joinT`/`joinTy` are written with
+`==` guards, and reading a guard as an **equation** is what a proof about them needs —
+`Ratchet/Ty.lean` derives `BEq` **without** `LawfulBEq`, and `Ratchet/` may not be edited from
+this side of the isolation boundary. So it is proved here, once, by structural induction over
+the twenty constructors (mismatched pairs close by `Bool.noConfusion`, matching pairs by the
+defeq cast to the field-wise `&&`). It is not a claim about the checker; it is the missing half
+of a `deriving` clause, and it deletes the day `Ty` adds `deriving LawfulBEq`.
+
+### The sixth stall point: a declaration statement makes the incoming `κ` stale
+
+**`Judge.defStmt`'s obligation is false**, and it is not §F1 again — the rule is fine and the
+checker gives the right answer. `SemJudge` concludes `StateOk κ Γ' I' m'`: conformance with the
+**incoming** `κ`. For `def foo; 1; end; def foo; "s"; end`, the second statement's `κ.defs`
+still holds the first `foo` (put there by `JudgeSeq.cons`/`Ctx.afterStmt`), a conformant
+machine really has that method installed, and `RubyCore`'s `defineMethod` **replaces** — so
+`DefsOk κ.defs m'` asks for a body the heap no longer has. `casgn`, `cpathAsgn`, `classStmt`,
+`moduleStmt` and any `.seq` containing one are false for the same reason.
+
+Checked rather than assumed, both halves:
+
+```
+$ export-json <that program, then `foo`> | ratchet --stdin
+{"type":"String","validate":true}        # CRuby prints s — the checker reads defGet?, i.e. the newest entry
+```
+
+Two defects are tangled, and only the first is fixable inside `State.lean`: (1)
+`DefsOk`/`ClassesOk` quantify over the *whole* table while the checker only consults the first
+match, which makes `StateOk` unsatisfiable after any redefinition — a **vacuity** risk of the
+kind `Denote/Sanity.lean` exists to police; (2) `κ` is not threaded through the judgment, and
+fixing (1) does not help, because the live entry is still the stale one. The conclusion would
+have to be at `κ.afterStmt e τ` — expressible for `SemJudge`, **not** expressible for
+`SemJudgeSeq`, whose accumulated context is a fold over statement types its signature does not
+carry. That is a design decision about the semantic judgment, so it is written down and left
+for its own clink rather than half-done here; `Denote/Sem/notes.md` §The sixth stall point has
+the full statement, including why the fold direction is evidence the change is the right one.
+
+### The seventh: an argument list is not a snapshot
+
+Found by inspection while attempting `JudgeAll.cons`, and the honest status is **unprovable as
+stated, one `PrimSig` row away from being a soundness bug.** `SemJudgeAll` concludes
+`DenAll τs m' vs` — every argument's type at the machine the *whole list* left behind, which is
+the right machine for the consumer — so the `cons` rung must transport the first argument's
+type across the evaluation of every later argument. No such transport exists: `Ext` demands a
+heap that only grew, and an arbitrary Ruby expression can mutate.
+
+What makes it harmless **today** is the table, not the judgment: `PrimSig` has no row that can
+change a value's type in place. No `[]=`, `push`, `concat`, `replace`, `clear`, `insert`,
+`unshift`, `store` or `map!` row exists; the only mutator is `arrayPush` (`<<`), whose
+signature forces the pushed element to have the array's own element type — and at
+`.arrayOf .never` (the empty literal) every push is rejected for want of a `never` argument. So
+the dependency is recorded in both directions: the day an `Array#[]=` row is added, this stall
+becomes a `found-issues.md` §F entry, and a rung is not what will catch it.
+
+**A second defect in the same family, same inspection:** `SemJudgePairs` reads a hash literal's
+pairs as *all keys then all values*, while `JudgePairs.cons` — and `evalExpr`'s `.hash` arm —
+interleave. They coincide at one pair and diverge at two, so the `cons` obligation is stated
+over an evaluation order the machine never performs; being a hypothesis, the effect is vacuity
+rather than falsity, and `Judge.hashLit` would find nothing usable to consume. One-line fix,
+left for the clink that attempts the rule so that a rung checks it rather than an eye.
+
+### State
+
+**24 of 83 `Judge` rules discharged** (`selfExpr`, `ivarRead`, `regexpLit`, `JudgeSeq.last`,
+`JudgeRescues.cons`, `JudgeConsts.cons`, `JudgeNested.cons`), three companion families
+complete. Corpus agreement **235/235**, hand derivations **177/177**, negative controls
+**142/142** — unchanged, and `Ratchet/` was not edited at all. New: `Denote/Join.lean`,
+`Denote/Rules/Read.lean`, `Denote/Rules/Regexp.lean`, `Denote/Rules/Seq.lean`,
+`Denote/Rules/Cls.lean`, `Denote/Rules/Rescue.lean`. Modified: `Denote/Sem/State.lean`
+(`SelfSpineOk`, `CoreOk`, `ivarGet?_killClosOverSpine_none`), `Denote/Sanity.lean`
+(`selfIvarsEmptyB`, seven-clause `coreOkB`), `Denote/Rules.lean`, `Denote/Rules/Nil.lean` (the
+corrected claim), `Denote/Sem/notes.md` (stall points six and seven), `AGENTS.md`. Axiom-clean
+throughout; no `sorry`; `Denote/Examples.lean`'s 31 `#guard`s green.
