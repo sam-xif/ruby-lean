@@ -4010,12 +4010,20 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       `ctl-raise-custom` and the protocol `vulnerability.rb` compares with).
 
       Two argument shapes, because those are the two the target writes. `raise "msg"` (an
-      implicit `RuntimeError`) and `raise some_exception_instance` are not covered. -/
+      implicit `RuntimeError`) and `raise some_exception_instance` are not covered.
+
+      **The two `nameFree` premises are §F6's**, and here they guard something slightly
+      different from a wrong *type*: `raise` is an implicit-self send, so a `def raise` in the
+      program shadows `Kernel#raise` and the call **returns** — at which point `.never` is
+      false about a value that exists. Same for a receiver whose chain resolves `raise` nowhere
+      (a `BasicObject` subclass) and answers through `method_missing`. -/
   | raiseCls {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {args : List Expr}
       {argTys : List Ty} {n : String} :
       JudgeAll κ Γ I args argTys Γ' I' →
       (argTys = [.clsOf n] ∨ argTys = [.clsOf n, .cls "String"]) →
       excName? κ.classes n = true →
+      (hrs : nameFree κ "raise" = true := by rfl) →
+      (hmm : nameFree κ "method_missing" = true := by rfl) →
       Judge κ Γ I (.send none "raise" args none) .never Γ' I'
   /-- **`begin … rescue … end`** (tier 16b), and in this target it is not error handling:
       `Vulnerability` raises and rescues its own `Uncomparable` as the **comparison protocol**,

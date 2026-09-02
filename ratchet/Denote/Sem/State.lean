@@ -734,7 +734,7 @@ while a claim about classes is.
 
 The name table grows one entry per rung, exactly as `CoreOk`'s rows do. -/
 def queryBuiltins : List (String × String) :=
-  [("is_a?", "Object#is_a?"), ("class", "Object#class")]
+  [("is_a?", "Object#is_a?"), ("class", "Object#class"), ("raise", "Object#raise")]
 
 def QueryOk (κ : Ctx) (m : Machine) : Prop :=
   ∀ mname bid, (mname, bid) ∈ queryBuiltins → nameFree κ mname = true → ∀ k,

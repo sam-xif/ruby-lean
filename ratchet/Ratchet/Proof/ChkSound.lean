@@ -1017,8 +1017,12 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
           exact .callNever (chkAll_sound hargs) hnever
         · split at h
           · -- tier 16b: `raise C` / `raise C, "msg"`, which does not return (`Judge.raiseCls`)
+            -- The guard is now a conjunction (§F6's two `nameFree`s), so it is destructured
+            -- rather than substituted.
             rename_i hm
-            subst hm
+            simp only [Bool.and_eq_true, decide_eq_true_eq] at hm
+            obtain ⟨⟨hmname, hnfr⟩, hnfmm⟩ := hm
+            subst hmname
             split at h
             · rename_i n'
               split at h
@@ -1026,7 +1030,7 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                 injection h with h
                 injection h with h h'; injection h' with h' h''
                 subst h; subst h'; subst h''
-                exact .raiseCls (chkAll_sound hargs) (.inl rfl) hexc
+                exact .raiseCls (chkAll_sound hargs) (.inl rfl) hexc hnfr hnfmm
               · exact absurd h (by simp)
             · rename_i n'
               split at h
@@ -1034,7 +1038,7 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                 injection h with h
                 injection h with h h'; injection h' with h' h''
                 subst h; subst h'; subst h''
-                exact .raiseCls (chkAll_sound hargs) (.inr rfl) hexc
+                exact .raiseCls (chkAll_sound hargs) (.inr rfl) hexc hnfr hnfmm
               · exact absurd h (by simp)
             · exact absurd h (by simp)
           · split at h

@@ -551,7 +551,9 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
       -- Tier 16b: `raise C` / `raise C, "msg"` does not return, so its type is `.never`
       -- (`Judge.raiseCls`). Matched before the def table, which a method actually named `raise`
       -- would otherwise reach -- no rung has one.
-      else if m = "raise" then
+      -- The comment above ("no rung has one") was the argument; §F6's shape makes it a
+      -- premise instead, because `Judge` quantifies over contexts that do.
+      else if m = "raise" && nameFree κ "raise" && nameFree κ "method_missing" then
         match argTys with
         | [.clsOf n] => if excName? κ.classes n then some (.never, Γ', I') else none
         | [.clsOf n, .cls "String"] =>
