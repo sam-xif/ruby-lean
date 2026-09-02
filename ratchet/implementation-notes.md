@@ -4081,11 +4081,34 @@ continuations — is a **weakening of all 83 obligations at once**, silently, in
 already climbed, because `Evals` sits on the left of `SemJudge`'s implication; it is recorded
 in the notes as a thing not to do.
 
+**Decision 3: exhibit a model of `StateOk`, because two of its components are now claims
+about the heap.** Every obligation begins `∀ m, StateOk κ Γ I m → …`. While `StateOk` was
+eleven components read off `Ctx`, "is it satisfiable" was a theoretical question; adding
+`HeapSaturated` and `CoreOk` made it a real one, since a false heap fact would make all 83
+obligations vacuously true and the ladder would keep climbing while measuring nothing.
+`Denote/Sanity.lean`'s `stateOk_boot` is the witness: `StateOk ctx0 [] .ivar0` at the **real
+prelude-booted machine**, axiom-clean.
+
+It is stated **conditionally on one `Bool`** rather than `decide`d, and the reason is
+structural: the booted heap is the output of `Interp.run 200_000` over the whole prelude
+(`RubyCore/PreludeBoot.lean`), so kernel reduction of it is not on the table. `native_decide`
+would buy a theorem for the price of `Lean.ofReduceBool`, which this package does not spend.
+So `bootOkB` is a `#guard` — the same status `Denote/Examples.lean`'s 31 guards have, and the
+same trade `RubyCore/Proof/AncestorsGrow.lean` argues for `saturatedB` ("a hypothesis the
+harness can check beats an `axiom`, and beats a proof nobody has finished"). Verified against
+a decoy, as the ladder's `isDefEq` gate was: misspelling `"String"` in `coreOkB` fails the
+guard and the build.
+
+The witness is the *empty* context, and that is the honest claim: it does not exhibit a model
+of a non-empty `Γ`, `κ.classes` or `κ.asms`. It is nevertheless the interesting instance, being
+exactly the state a whole-program judgment starts in.
+
 ### State
 
 **177 rungs of 232**, unchanged (`Ratchet/` untouched; `run_ratchet.sh` and
 `run_check_rungs.sh` still read 177/232, 177/177 and 140/140), and **10 of 83 `Judge` rules
-discharged**. New: `Denote/Ext.lean`, `Denote/Grow.lean`, `Denote/Rules/Alloc.lean`. Modified:
+discharged**. New: `Denote/Ext.lean`, `Denote/Grow.lean`, `Denote/Rules/Alloc.lean`,
+`Denote/Sanity.lean`. Modified:
 `Denote/Den.lean`, `Denote/Arrow.lean`, `Denote/Sem/State.lean`, `Denote/Rules/Core.lean`,
 `Denote/Rules/Lit.lean`, `Denote/Rules.lean`. `Denote/Examples.lean`'s 31 `#guard`s green.
 Axiom-clean throughout — every new file ends in its own `#print axioms`, and each reports only

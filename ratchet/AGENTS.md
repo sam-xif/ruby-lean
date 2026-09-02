@@ -394,6 +394,15 @@ inside an array, an object, or a Proc. A denotation that recurses closes all thr
   sample refutes the arrow** and is the counterexample. Same move as
   `../bounded-effect-checking.md`'s bounded search and `../type-safety-by-reachability.md`'s
   witness direction, applied to arrows.
+- **`Denote/Sanity.lean`** — **the ladder is not vacuous.** Every obligation begins
+  `∀ m, StateOk κ Γ I m → …`, so an unsatisfiable `StateOk` would make all 83 vacuously true —
+  a live risk from the moment `strLit` added two components that are claims about the *heap*.
+  `stateOk_boot` exhibits the model: `StateOk ctx0 [] .ivar0` at the **real prelude-booted
+  machine**, axiom-clean. Conditional on one `Bool` (`bootOkB`) rather than `decide`d, because
+  the booted heap is the output of `Interp.run 200_000` over the whole prelude and kernel
+  reduction of that is not on the table; the `Bool` is a `#guard`, i.e. a build gate, and
+  `native_decide` was rejected for the axiom it costs. Verified against a decoy (a misspelt
+  class name fails the guard).
 - **`Denote/Examples.lean`** — **31 `#guard`s that run real programs under the real `stepFn`
   from the real prelude-booted heap** and ask the denotation about the value produced. The
   build is the gate: if the denotation and the semantics disagree, `lake build Denote` fails.
