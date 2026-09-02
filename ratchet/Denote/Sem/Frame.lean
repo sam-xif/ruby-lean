@@ -72,13 +72,24 @@ written for are *not* fixed by it:
 * **Not fixed:** the fifth stall point. That is the *other* frame rule — locality in the
   continuation tail (§3) — and it is a theorem about `stepFn`, not about `StateOk`.
 
-## 3. The interpreter's frame rule — stated, not proved
+## 3. The interpreter's frame rule — stated, not proved, and **refuted** *(clink 52)*
 
 The continuation tail is frame too, and by exactly the same argument: `StateOk` does not
-describe it, so a run must not depend on it. `KontFrame` states that, and it is the **single
-named target** the ~40 rungs behind the fifth stall point consume — one lemma, not one
-argument per rule. It is stated here rather than assumed anywhere: nothing in this package
-takes it as a hypothesis, and no rung is counted on it.
+describe it, so a run must not depend on it. `KontFrame` states that, and it was the **single
+named target** the ~40 rungs behind the fifth stall point were to consume.
+
+**It is false, and `not_KontFrame` is the counterexample** (clink 52, §3 below). `stepFn` is
+head-local in `kont` at every *writer* — thirteen sites, all pushes, which is what the
+measurement checked — and there is exactly one **reader**: `throw` scans the whole
+continuation for a matching `catch` tag. Both statements need `CatchFree K` as a hypothesis,
+and both get it for free at every use site the ladder has, since the konts a *rule* pushes are
+literals. `KontFrameCatchFree` is the corrected target; the decomposition needs the same
+hypothesis and needs it for a sharper reason (a sub-run can return under the empty
+continuation and *not* under `K` — see the Ruby program in §3).
+
+That this went unnoticed for a clink is the argument for writing the target down as a `def` in
+the first place: it was `Prop`-shaped and named, so it could be attacked. Nothing in this
+package takes either version as a hypothesis and no rung is counted on them.
 
 Its cost is measured in `Denote/Sem/notes.md` §The fifth stall point: a dependency chain of
 one-line lemmas over ~100 machine-taking functions in `RubyCore/Interp/` and
@@ -173,6 +184,103 @@ def KontFrame : Prop :=
     (m.kont ≠ [] ∨ ∃ e, m.ctl = .eval e) →
     Interp.stepFn (pushK K m) = frameR K (Interp.stepFn m)
 
+/-! ### … and it is **false as stated** *(clink 52)*
+
+`stepFn` is head-local in `kont` at every *writer* — thirteen sites, all `k :: m.kont`, which
+is what `Denote/Sem/notes.md` §The fifth stall point checked. There is one **reader** it
+missed, and one is enough: `throw` asks whether *any* frame of the continuation carries a
+matching `catch` tag (`RubyCore/Interp/Reflect.lean`, `m.kont.any fun k => match k with |
+.catchK t => t.identEq tag | _ => false`). So a `throw` with no matching `catchK` in `m.kont`
+raises `UncaughtThrowError` *at the throw site* — deliberately, so an enclosing `rescue` sees
+it — while the same state under a longer continuation jumps. The counterexample below is that,
+at the smallest machine that reaches the dispatch.
+
+**The repair, and it is a hypothesis rather than a redefinition.** Both statements want
+`CatchFree K`: the appended tail carries no `catchK`. That is available at every use site the
+ladder has — the konts a *rule* pushes are literals (`asgnK`, `argsK`, `seqK`, `arrK`, …), and
+a `catch` inside the sub-expression pushes its `catchK` **above** `K`, where both sides see it
+alike. So the corrected target is `KontFrameCatchFree` below, and it is the one the compound
+rungs should be written against.
+
+**`EvalsDecompose` is false for the same reason, and this is the sharper half**: it is *not*
+rescued by "the sub-run must return", because a sub-run can return under the empty continuation
+and not under `K`. In Ruby:
+
+```ruby
+catch(:t) do
+  x = begin
+        throw :t
+      rescue UncaughtThrowError
+        1
+      end
+  x + 1
+end
+```
+
+Under the empty continuation the `begin` block **returns 1** (the throw raises at the site and
+its own `rescue` catches it); under the enclosing `catch` the same `throw` is a jump that
+leaves the `begin` entirely. So the run under `K` does not pass through the state delivering
+the sub-run's value to `K`, which is exactly what the decomposition claims. Same repair. -/
+
+/-- The appended continuation tail carries no `catch` marker — the hypothesis both statements
+above are missing. Decidable, and true by inspection at every kont a `Judge` rule pushes. -/
+def CatchFree (K : List Kont) : Prop :=
+  ∀ k ∈ K, ∀ t : Value, k ≠ .catchK t
+
+/-- **The corrected interpreter frame rule**: `KontFrame` plus `CatchFree`. Stated, not
+proved, and nothing here assumes it — the same status its predecessor had, minus the
+counterexample. -/
+def KontFrameCatchFree : Prop :=
+  ∀ (m : Machine) (K : List Kont), CatchFree K →
+    (m.kont ≠ [] ∨ ∃ e, m.ctl = .eval e) →
+    Interp.stepFn (pushK K m) = frameR K (Interp.stepFn m)
+
+/-! ### The counterexample, computed
+
+The smallest machine that reaches the `throw` dispatch: a value in flight, one `argsK`
+delivering it to an implicit-self `throw`, and an **empty heap** (so `lookup` misses and
+`dispatchMiss` reaches `tryReflect`). Under the empty tail the step raises; under one
+`catchK` with the matching tag it jumps.
+
+Conditional on two `Bool`s rather than `decide`d, for the reason `Denote/Sanity.lean`'s
+`bootOkB` is: `Interp.invoke` is compiled by well-founded recursion, so it is not
+`rfl`-reducible, and `native_decide` would cost an axiom this package does not spend. The
+`#guard`s below are the build gate. -/
+def throwM : Machine :=
+  { ctl := .value (.sym "t"),
+    kont := [.argsK .nil .implicit "throw" [] [] .none],
+    stack := [], frames := #[], heap := ⟨#[]⟩ }
+
+def catchTail : List Kont := [.catchK (.sym "t")]
+
+/-- Which kind of outcome a step produced — enough to separate the two. -/
+def tagOf : StepResult → String
+  | .next m => match m.ctl with
+    | .jump (.raiseJ _) => "raise"
+    | .jump (.throwJ _ _) => "throw"
+    | _ => "other"
+  | .unsupported r => "unsupported: " ++ r
+  | .stuck r => "stuck: " ++ r
+  | .done _ _ => "done"
+  | .uncaught _ _ => "uncaught"
+
+/-- `frameR` rewrites `kont` and nothing else, so it cannot change the outcome's kind. -/
+theorem tagOf_frameR (K : List Kont) (r : StepResult) : tagOf (frameR K r) = tagOf r := by
+  cases r <;> rfl
+
+/-- **`KontFrame` is refutable.** -/
+theorem not_KontFrame
+    (hbare : tagOf (Interp.stepFn throwM) = "raise")
+    (hunder : tagOf (Interp.stepFn (pushK catchTail throwM)) = "throw") : ¬ KontFrame := by
+  intro h
+  have heq := h throwM catchTail (Or.inl (by simp [throwM]))
+  rw [heq, tagOf_frameR, hbare] at hunder
+  exact absurd hunder (by decide)
+
+-- **The gate.** The two computations the refutation is conditional on.
+#guard tagOf (Interp.stepFn throwM) == "raise"
+#guard tagOf (Interp.stepFn (pushK catchTail throwM)) == "throw"
+
 /-- **What the rungs will actually use**: the decomposition. A run of `e` under continuation
 `K` passes through the state that delivers `e`'s value to `K` — so a compound rule's premise,
 which is about the run of `e` under the *empty* continuation, is about a prefix of the run its
@@ -192,5 +300,6 @@ def EvalsDecompose : Prop :=
 
 #print axioms StateOk_frame
 #print axioms MethodsExact.lookup
+#print axioms not_KontFrame
 
 end Ratchet.Denote

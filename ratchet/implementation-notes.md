@@ -5157,12 +5157,79 @@ and `bootOkB` at eight clauses, both green. Modified: `Denote/Rules/Bare.lean` (
 `CheckRungs.lean`, `scripts/generate_corpus.py`, `corpus/239-*`, `found-issues.md`,
 `Denote/Sem/notes.md`, `AGENTS.md`. Axiom-clean; no `sorry`.
 
-### What is still in the way, unchanged by this clink
+### The fifth stall point's named target is **false**, and here is the machine
 
-The three walls are where clink 51 left them, and they are what caps the ladder rather than
-proof effort: the **fifth** stall point (`KontFrame`, every rule with a sub-expression), the
-**sixth** item (2) (`κ` is not threaded through `Judge`'s signature, so every statement rule
-and every *call* rule has an obligation that is false at the incoming `κ`), and the
-**seventh** (`SemJudgeAll`'s snapshot, so every rule with an argument list). Of the 53 rules
-remaining, the two attempted-and-reachable set is now empty: everything left sits behind one
-of those three.
+Also this clink, and it changes the next attempt's plan rather than this one's number.
+`KontFrame` (clink 51) says `stepFn` does not read below the head of `kont`. The measurement
+behind it checked the **writers** — "grep `kont :=` finds thirteen sites, all `k :: m.kont`" —
+which is the wrong half. There is one **reader**, and one is enough:
+
+```
+-- RubyCore/Interp/Reflect.lean, the "throw" arm
+let matched := fun (tag : Value) =>
+  m.kont.any fun k => match k with | .catchK t => t.identEq tag | _ => false
+```
+
+`not_KontFrame` (`Denote/Sem/Frame.lean`) exhibits it at the smallest machine that reaches the
+dispatch: a value in flight, one `argsK` delivering it to an implicit-self `throw`, and an
+**empty heap** so `lookup` misses and `dispatchMiss` reaches `tryReflect`. Under the empty tail
+the step raises `UncaughtThrowError` *at the throw site* (deliberate — an enclosing `rescue`
+must see it); under one `catchK` with the matching tag it jumps. Conditional on two `#guard`ed
+`Bool`s rather than `decide`d, because `Interp.invoke` is well-founded-recursive and therefore
+not `rfl`-reducible, and `native_decide` costs an axiom this package does not spend — the same
+trade `Denote/Sanity.lean`'s `bootOkB` makes, for the same reason.
+
+**`EvalsDecompose` is false too, and that half is sharper**, because it is *not* rescued by
+"the sub-run must return": a sub-run can return under the empty continuation and not under `K`.
+
+```ruby
+catch(:t) do
+  x = begin
+        throw :t
+      rescue UncaughtThrowError
+        1
+      end
+  x + 1
+end
+```
+
+**The repair costs the rungs nothing**: `CatchFree K` — the appended tail carries no `catchK` —
+which is true by inspection at every kont a `Judge` rule pushes (they are literals), while a
+`catch` *inside* the sub-expression pushes its marker **above** `K` where both sides see it
+alike. `KontFrameCatchFree` is the corrected target and is what the compound rungs should be
+written against.
+
+Worth keeping as a working lesson: the target was written down as a named `Prop`-shaped `def`
+rather than as a comment, which is the only reason it could be *attacked* instead of assumed.
+A clink that had proved 40 rungs against it would have proved them against a falsehood.
+
+### The eleventh stall point, and the map of what is left
+
+Two more things were derived rather than met, and both are recorded in `Denote/Sem/notes.md`
+because they are the next attempt's starting point:
+
+* **A `def` is not an allocation.** Asking whether the sixth stall point's item (2) could be
+  worked around inside `Denote/Sem/Judge.lean` (hand-editable) instead of in `Judge`'s
+  signature (not, this clink) gets halfway: `SemJudge` *can* conclude at `κ.afterStmt e τ`, and
+  `afterStmt` is definitionally the identity on every non-declaration expression, so no climbed
+  rung would move. What stops `defStmt` anyway is a *transport*: installing a method changes a
+  `classPayload?`, and both `Ext` and `Later` have a clause forbidding exactly that. Most
+  components survive by inspection; the two that do not are the two that quantify over **runs**
+  (`denM`'s arrow arms, `AsmsOk`) — and they honestly should not, since installing a method can
+  change what calling a value returns. So the fix is §F1's shape (a declaration invalidates
+  recorded claims about calls), not a coarser quantifier.
+* **The wall map.** All 53 remaining rules, sorted by which of the three walls they sit behind
+  (5th: a sub-expression under a pushed continuation; 6th(2): a run that declares; 7th:
+  `SemJudgeAll`'s snapshot). The ninth was the last wall a clink could take down by *adding
+  components*, which is what these two did. What is left needs a metatheorem about `stepFn` in
+  `RubyCore/Proof/`, or a change to `Judge`'s signature and all 177 derivations, or a
+  `SemJudgeAll` decision that wants the first call rung's requirements — which are behind the
+  6th.
+
+### What is still in the way, and why the number stops here
+
+Of the 53 rules remaining, the attempted-and-reachable set is now **empty**: every one sits
+behind the fifth, the sixth's item (2), or the seventh, and each of those is a clink-sized (or
+larger) design decision rather than a proof a rung can carry. The sixth's fix in particular is
+a change to `Ratchet/Judge.lean`'s *signature* — out of bounds under this clink's "do not
+modify `Ratchet/`" constraint, and a rewrite of every derivation on file even without it.

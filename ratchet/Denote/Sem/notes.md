@@ -250,6 +250,55 @@ the interpreter. `frameR K` is the wrapper the statement needs (`.next m ↦ .ne
 := m.kont ++ K}`, every other outcome unchanged), and it works because `(k :: m.kont) ++ K`
 and `k :: (m.kont ++ K)` are definitionally equal, so a pushing helper frames by `rfl`.
 
+### … and the lemma as stated is **FALSE** *(clink 52)*
+
+The measurement above checked the *writers* — "grep `kont :=` across `Interp*.lean` finds
+thirteen sites, all `k :: m.kont`" — and that is the wrong half of the question. `stepFn` has
+one **reader** of the continuation below the head, and one is enough:
+
+```
+-- RubyCore/Interp/Reflect.lean, the "throw" arm of tryReflect
+let matched := fun (tag : Value) =>
+  m.kont.any fun k => match k with | .catchK t => t.identEq tag | _ => false
+```
+
+`throw` with no matching `catchK` anywhere on the stack raises `UncaughtThrowError` **at the
+throw site** — deliberately, so an enclosing `rescue` sees it — and with one, it jumps. So a
+state whose own `kont` has no matching tag steps differently under a `K` that supplies one.
+`Denote/Sem/Frame.lean`'s **`not_KontFrame`** is that counterexample, at the smallest machine
+that reaches the dispatch (a value in flight, one `argsK` delivering it to an implicit-self
+`throw`, an empty heap so the walk misses and reaches `tryReflect`). Conditional on two
+`#guard`ed `Bool`s, because `Interp.invoke` is well-founded-recursive and therefore not
+`rfl`-reducible — the same trade `../Sanity.lean`'s `bootOkB` makes.
+
+**`EvalsDecompose` is false too, and that half is sharper.** It is not rescued by "the sub-run
+must return", because a sub-run can return under the empty continuation and *not* under `K`:
+
+```ruby
+catch(:t) do
+  x = begin
+        throw :t
+      rescue UncaughtThrowError
+        1
+      end
+  x + 1
+end
+```
+
+Under the empty continuation the `begin` **returns 1**; under the enclosing `catch` the same
+`throw` leaves it entirely. So the run under `K` need not pass through the state that delivers
+the sub-run's value to `K`, which is what the decomposition claims.
+
+**The repair is a hypothesis, not a redefinition**, and it costs the rungs nothing:
+`CatchFree K` — the appended tail carries no `catchK`. Every kont a `Judge` rule pushes is a
+literal (`asgnK`, `argsK`, `seqK`, `arrK`, `hashK`, …), and a `catch` *inside* the
+sub-expression pushes its `catchK` above `K` where both sides see it alike.
+`KontFrameCatchFree` is the corrected target. Write the compound rungs against that.
+
+Worth recording as a working lesson rather than an accident: the target was written down as a
+`Prop`-shaped `def` with a name, which is why it could be *attacked* instead of assumed. A
+comment saying "this ought to be true" would still be there.
+
 **Three things the measurement does not settle**, and the next attempt should start from them
 rather than from the good news:
 
@@ -579,6 +628,66 @@ rescued by a right second one), taking that file to **33**.
 fourth stall point used: the new reading is what the checker's own consumers mean, the old one
 was a strictly stronger demand that no rule and no `Judge` premise ever made, and the machines
 that separated them were real.
+
+## The eleventh stall point — **a `def` is not an allocation**, predicted rather than met
+
+Not reached by a rung; derived while asking whether the sixth stall point's item (2) could be
+worked around *inside* `Denote/Sem/Judge.lean` (which is hand-editable) instead of in
+`Judge`'s signature (which is not, under this clink's constraints). Recorded because the
+answer is interesting and it is the next attempt's problem.
+
+**The workaround does exist, halfway.** `SemJudge` could conclude `StateOk (κ.afterStmt e τ)
+Γ' I' m'` — every argument is in scope, and `afterStmt` is the identity on every
+non-declaration expression, *definitionally* (a structure update with unchanged fields), so
+the 30 climbed rungs would be unaffected. `SemJudgeSeq` still cannot express it, which is the
+half the sixth stall point already recorded.
+
+**What stops `Judge.defStmt` even with that in hand** is a transport, and it is the fourth
+stall point one level up. `evalExpr`'s `.def'` arm installs the method with
+`Heap.setClassPayload`, so the post-machine's `classPayload?` at `Object` **differs** — and
+both future relations demand it not:
+
+* `Ext.payload : ∀ k, m₂.heap.classPayload? k = m.heap.classPayload? k`, and `Later` has the
+  same clause. So `StateOk_ext` does not apply, and neither does anything built on it.
+* Component by component, most of `StateOk` survives a method installation by inspection
+  (`procClosure?`, `ivarOf`, `getLocal`, `constLookup`, `ancestors` — `defineMethod` touches
+  one class's `methods` list and nothing else). **Two do not**, and they are the two that
+  quantify over *runs*: `denM`'s arrow arms (through `EnvOk`) and `AsmsOk`.
+
+And the honest reading is that they *should* not: an arrow is a claim about what calling a
+value returns, and installing a method can change exactly that. `f = lambda { foo }` followed
+by a redefinition of `foo` is the shape — the same shape as `../../found-issues.md` §F1, with
+a `def` in place of an assignment. So the fix is not a coarser quantifier (which would be
+false); it is the §F1 fix's analogue: **a declaration invalidates recorded claims about calls**,
+which is a `killClosOver`-style widening keyed on declarations rather than on assignment.
+
+Two reasons this is filed as a prediction rather than a §F entry, both checked:
+
+* the checker does not **infer** an arrow anywhere (`Denote/Arrow.lean`: `ArrowStable` "is not
+  what the checker infers today"), so a `Γ` carrying one is a conformance shape rather than a
+  reachable judgment — the exposure is vacuity, not a wrong answer; and
+* `AsmsOk`'s rows are the checker's recursion device and are *discharged* by the same rule that
+  adds them, so a stale row is a conditional claim rather than a belief — which is what
+  `Judge`'s own docstring says to read a non-empty `κ.asms` as.
+
+## Where the remaining 53 rules actually sit
+
+Written at 30 of 83, because "53 remaining" is not 53 units of work and the shape of what is
+left is the useful fact. Every remaining rule is behind at least one of three walls, and none
+of the three is a proof that a rung can carry on its own:
+
+| Wall | What it is | Rules behind it |
+|---|---|---|
+| **5th** — `KontFrame` (now `KontFrameCatchFree`) | a sub-expression runs under a pushed continuation, so a rule's premise is about a *different run* than its conclusion | every rule with a sub-expression: `vasgn`, `ivarAsgn`, `if'`, `ifNoElse`, `begin'`, `while'`, `constPath`, `constPathCls`, `primNever`, `raiseCls`, and all of `JudgeSeq.cons`/`guard`/`nextGuard` |
+| **6th (2)** — `κ` not threaded through `Judge` | a run that *declares* invalidates the incoming `κ`, which the conclusion re-asserts | `defStmt`, `classStmt`, `moduleStmt`, `casgn`, `cpathAsgn`, and **every call rule** (a body runs statements): `callAsm`…`yieldExpr`, `vcallAsm`, `vcallDef` — plus the 11th above, for the ones that really do declare |
+| **7th** — `SemJudgeAll`'s snapshot | every argument's type is claimed at the machine the *whole list* left behind, with no transport | every rule with an argument list: `arrayLit`, `hashLit`, `prim`, `isAQuery`, `caseEqQuery`, `classOf`, `clsToS`, all the `call*`/`new*`/`iter*` rules, and `JudgeAll.cons`/`JudgeKw.cons`/`JudgePairs.cons` |
+
+The two rules that were behind the **9th** (conformance as an upper bound) are climbed, and
+that was the last wall a single clink could take down by adding components. What is left needs
+one of: a metatheorem about `stepFn` that belongs in `RubyCore/Proof/` (5th), a change to
+`Judge`'s signature and therefore to all 177 derivations (6th), or a design decision about
+`SemJudgeAll` that wants the first call rung's requirements in hand — which are behind the 6th
+(7th).
 
 ## What is not on this ladder
 

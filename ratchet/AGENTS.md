@@ -577,17 +577,26 @@ the receiver's chain because the heap-global form is false (the prelude defines 
 singleton method off every ordinary chain); and `SelfLive` closes the gap both need — nothing
 had said `self` is a real object, and `Heap.get` is total. `StateOk` is now **twenty**
 components and `Denote/Sanity.lean` still exhibits a model of all of them, so the upper bound
-cost no vacuity. The **interpreter's** frame rule (`KontFrame`/`EvalsDecompose`) is *stated,
-not proved*: it is the single named target the ~40 rules behind the fifth stall point consume,
-and nothing here assumes it.
+cost no vacuity. The **interpreter's** frame rule (`KontFrame`/`EvalsDecompose`) is *stated, not
+proved* — and in clink 52 it was **refuted**: `not_KontFrame` exhibits the machine, because
+`stepFn` has one reader of the continuation below the head (`throw` scans the whole stack for a
+matching `catch` tag) and the fifth stall point's measurement had checked only the *writers*.
+Both statements need `CatchFree K`, which every use site the ladder has supplies for free
+(the konts a rule pushes are literals); `KontFrameCatchFree` is the corrected target. The
+decomposition needs the same hypothesis for a sharper reason — a sub-run can return under the
+empty continuation and *not* under `K` (`catch(:t) { x = begin; throw :t; rescue
+UncaughtThrowError; 1; end; … }`). Nothing here assumes either version.
 
 They rest on two lemmas in `Denote/Rules/Core.lean`: `denM_ctl`/`StateOk_reCtl` (conformance
 and the denotation cannot see `ctl`/`kont` — the arrow arms survive because `applyIn`/`sendIn`
 overwrite both, so the run a call denotes is the same run) and `evals_pure` (the two-step
 inversion). The working procedure for climbing a rung is
-[`Denote/Sem/notes.md`](Denote/Sem/notes.md), which also records the **ten** stall points — the
-tenth (a spine read as every entry against consumers that read the first; **resolved** in
-clink 52, and it was a live vacuity rather than a hard rung) —
+[`Denote/Sem/notes.md`](Denote/Sem/notes.md), which also records the **eleven** stall points and
+a map of which of three walls each of the 53 remaining rules sits behind — the tenth (a spine
+read as every entry against consumers that read the first; **resolved** in clink 52, and it was
+a live vacuity rather than a hard rung), the eleventh (a `def` changes a `classPayload?`, so it
+is not an `Ext` *or* a `Later` — the two run-quantifying components do not transport across a
+declaration, and honestly should not) —
 the eighth (a table keyed by path against a rule keyed by name; **resolved** in clink 50 by
 restating `ConstsOk` over its lookup function) and the ninth (a rule with a *negative* premise
 about a table needs conformance to be an **upper** bound, and every component is a lower one —
