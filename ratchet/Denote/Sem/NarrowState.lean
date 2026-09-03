@@ -200,6 +200,78 @@ theorem EnvOk_refineOne_else {C : Ratchet.CTable} {Γ : Env} {x : String}
             rw [hc] at hna
             exact absurd hna (by simp [Ratchet.isAliasTy]))
 
+
+/-- **The then side**, and it is the same proof — a near-copy rather than one lemma
+parameterised over `refineOne`'s `thenSide`, which was tried first: the function's own body is
+`let refine := fun τ => if thenSide then …`, so a variable side leaves an `if` inside every
+goal, and `split` then picks *it* rather than the `isAliasTy` guard the proof is analysing.
+Two readable scripts beat one that has to disambiguate three `if`s. -/
+theorem EnvOk_refineOne_then {C : Ratchet.CTable} {Γ : Env} {x : String}
+    {nk : Ratchet.NarrowKind} {m : Machine} (h : EnvOk Γ m)
+    (hfact : ∀ τ, denM τ m (m.getLocal x) →
+      denM (Ratchet.refineThen C nk τ) m (m.getLocal x)) :
+    EnvOk (Ratchet.refineOne C nk true Γ x) m := by
+  have hlow := h.1
+  unfold Ratchet.refineOne
+  dsimp only
+  cases hgx : envGet? Γ x with
+  | none => exact h
+  | some τx =>
+    cases τx with
+    | sameAs y ρ =>
+      -- the alias arm: the alias keeps its target and refines its payload, and `y`'s own
+      -- binding is refined from itself
+      simp only [if_true]
+      have hxy : m.getLocal x = m.getLocal y := (hlow x (.sameAs y ρ) hgx).2 y ρ rfl
+      have hρ : denM ρ m (m.getLocal x) := (hlow x (.sameAs y ρ) hgx).1
+      have h1 : EnvOk (Ratchet.envSet Γ x (.sameAs y (Ratchet.refineThen C nk ρ))) m :=
+        EnvOk_envSet h (by
+          show denM (Ratchet.refineThen C nk ρ) m (m.getLocal x)
+          exact hfact ρ hρ) (fun y' ρ' he => by
+          injection he with he₁ _
+          rw [he₁] at hxy
+          exact hxy)
+      cases hgy : envGet? (Ratchet.envSet Γ x (.sameAs y (Ratchet.refineThen C nk ρ))) y with
+      | none => exact h1
+      | some σy =>
+        have hy := (h1.1 y σy hgy).1
+        rw [← hxy] at hy
+        simp only [if_true]
+        refine EnvOk_envSet h1 ?_ ?_
+        · -- `y`'s value *is* `x`'s, so the same fact applies; and §F15's guard again
+          rw [← hxy]
+          split
+          · exact hy
+          · rename_i hna
+            rw [stripAlias_of_not_alias (by simpa using hna)]
+            exact hfact (Ratchet.stripAlias σy) hy
+        · intro y' ρ' he
+          split at he
+          · rw [← hxy, ← (h1.1 y σy hgy).2 y' ρ' he, hxy]
+          · rename_i hna
+            exact absurd he (by
+              intro hc
+              rw [hc] at hna
+              exact absurd hna (by simp [Ratchet.isAliasTy]))
+    | _ =>
+      simp only [if_true]
+      refine EnvOk_envSet h ?_ ?_
+      · split
+        · exact (hlow x _ hgx).1
+        · rename_i hna
+          rw [stripAlias_of_not_alias (by simpa using hna)]
+          exact hfact _ (hlow x _ hgx).1
+      · intro y' ρ' he
+        split at he
+        · exact (hlow x _ hgx).2 y' ρ' he
+        · rename_i hna
+          exact absurd he (by
+            intro hc
+            rw [hc] at hna
+            exact absurd hna (by simp [Ratchet.isAliasTy]))
+
+#print axioms EnvOk_refineOne_then
+
 #print axioms EnvOk_refineOne_else
 
 

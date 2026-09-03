@@ -764,6 +764,108 @@ theorem narrow_else_fact {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Ratch
 
 #print axioms narrow_else_fact
 
+/-! ## …and the **then** side, for the four shapes that are `both`
+
+The mirror of `narrow_else_fact`, arm for arm, with `denM_truthyTy`/`denM_isNilTy`/`denM_isATy`
+where the else side had their twins. It carries the same `sides = .both` hypothesis, and here
+that hypothesis is doing something the else side's was not: it **excludes the `&&` sandwich**,
+which is the one shape whose then-side refinement is not yet justified.
+
+Why it is not: the sandwich is `t = x; if t then rhs else t`, and the then-branch is taken when
+the *whole* condition is truthy — which says `x` was truthy at the moment `t` was read, not at
+the machine the condition ends at. Closing that gap needs "evaluating `rhs` cannot rebind `x`",
+which is `found-issues.md` §F13, and §F13 is not fixable by tightening `noLocalAsgn`'s grammar
+(`Denote/Sem/notes.md`, sixteenth stall point). So the four `both` shapes land now and the
+sandwich waits for the closure premise — which is exactly the split clink 58 made on the else
+side for the opposite reason (there the sandwich refines nothing, so it never asked). -/
+
+theorem narrow_then_fact {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Ratchet.Expr}
+    {v : Value} {m' : Machine} {k : Ratchet.VarKind} {x : String} {nk : Ratchet.NarrowKind}
+    {sides : Ratchet.NarrowSides}
+    (hok : StateOk κ Γ I m) {Γ₂ : Env} {I₂ : Ty} (hok' : StateOk κ Γ₂ I₂ m')
+    (hev : Evals m c v m') (htruthy : v.truthy = true)
+    (hnc : Ratchet.narrowCond? c = some (k, x, nk, sides)) (hboth : sides = .both)
+    (hg : Ratchet.narrowNameOk κ nk = true) (hk : k = .lvar ∨ k = .ivar) :
+    ∀ τ, denM τ m' (readVar k x m') →
+      denM (Ratchet.refineThen κ.classes nk τ) m' (readVar k x m') := by
+  unfold Ratchet.narrowCond? at hnc
+  split at hnc
+  · -- the `&&` sandwich is `thenOnly`, and `hboth` says the caller is not asking for it
+    split at hnc
+    · simp only [Option.some.injEq, Prod.mk.injEq] at hnc
+      rw [hboth] at hnc
+      exact absurd hnc.2.2.2 (by simp)
+    · exact absurd hnc (by simp)
+  · -- `.var k x`: the condition *is* the read, so the value tested is the value refined
+    rename_i k' x'
+    simp only [Option.some.injEq, Prod.mk.injEq] at hnc
+    obtain ⟨hk', hx', hnk', _⟩ := hnc
+    subst hk'; subst hx'; subst hnk'
+    obtain ⟨hveq, hmeq⟩ := evals_pure (stepFn_readVar m k' x' hk) hev
+    intro τ hτ
+    rw [Ratchet.refineThen]
+    refine denM_truthyTy τ hτ ?_
+    rw [show readVar k' x' m' = v from by
+      rw [hmeq, hveq]; cases k' <;> simp [readVar, reCtl, getLocal_reCtl, ivarOf]]
+    exact htruthy
+  · -- `x.nil?`: truthy means the answer was `true`, which means the value *is* `nil`
+    rename_i k' x'
+    simp only [Option.some.injEq, Prod.mk.injEq] at hnc
+    obtain ⟨hk', hx', hnk', _⟩ := hnc
+    subst hk'; subst hx'; subst hnk'
+    simp only [Ratchet.narrowNameOk, Bool.and_eq_true] at hg
+    obtain ⟨hnf, _⟩ := hg
+    obtain ⟨hveq, hread⟩ := nilq_inv hok hnf hk hev
+    intro τ hτ
+    rw [Ratchet.refineThen]
+    refine denM_isNilTy τ hτ ?_
+    rw [hread]
+    cases hnv : isNilV (readVar k' x' m) with
+    | true => cases hh : readVar k' x' m <;> simp_all [isNilV]
+    | false => rw [hveq, hnv] at htruthy; exact absurd htruthy (by simp [Value.truthy])
+  · -- `x.is_a?(C)`
+    rename_i k' x' cn
+    simp only [Option.some.injEq, Prod.mk.injEq] at hnc
+    obtain ⟨hk', hx', hnk', _⟩ := hnc
+    subst hk'; subst hx'; subst hnk'
+    simp only [Ratchet.narrowNameOk, Bool.and_eq_true] at hg
+    obtain ⟨⟨⟨⟨⟨⟨hcg, hcf⟩, _⟩, _⟩, hisaf⟩, hmmf⟩, hmf⟩ := hg
+    obtain ⟨j, hj, hveq, hread, hheap⟩ := isaq_inv hok hisaf hk hev
+    intro τ hτ
+    rw [Ratchet.refineThen]
+    refine denM_isATy hok'.baseChains hok'.declCls hmf hcf hcg τ hτ
+      (by rw [hheap]; exact hj) ?_
+    rw [hread, hheap]
+    cases hia : isA m.heap (readVar k' x' m) j with
+    | true => rfl
+    | false => rw [hveq, hia] at htruthy; exact absurd htruthy (by simp [Value.truthy])
+  · -- `C === x`, the same dispatch with the sides swapped
+    rename_i cn k' x'
+    simp only [Option.some.injEq, Prod.mk.injEq] at hnc
+    obtain ⟨hk', hx', hnk', _⟩ := hnc
+    subst hk'; subst hx'; subst hnk'
+    simp only [Ratchet.narrowNameOk, Bool.and_eq_true] at hg
+    obtain ⟨⟨⟨⟨⟨⟨hcg, hcf⟩, hkn⟩, hce⟩, _⟩, _⟩, hmf⟩ := hg
+    obtain ⟨j, hj, hveq, hread, hheap⟩ :=
+      caseeq_inv hok hce (by
+        simp only [Bool.or_eq_true] at hkn
+        rcases hkn with h | h
+        · exact Or.inl h
+        · exact Or.inr (by simpa using h)) hk hev
+    intro τ hτ
+    rw [Ratchet.refineThen]
+    refine denM_isATy hok'.baseChains hok'.declCls hmf hcf hcg τ hτ
+      (by rw [hheap]; exact hj) ?_
+    rw [hread, hheap]
+    cases hia : isA m.heap (readVar k' x' m) j with
+    | true => rfl
+    | false => rw [hveq, hia] at htruthy; exact absurd htruthy (by simp [Value.truthy])
+  · exact absurd hnc (by simp)
+
+#print axioms narrow_then_fact
+
+
+
 
 /-! ## `StateOk` at the refined **else** environment
 
@@ -829,6 +931,68 @@ theorem stateOk_narrow_else {κ : Ctx} {Γ Γc : Env} {I Ic : Ty} {c : Ratchet.E
     | gvar => simpa using hok'
 
 #print axioms stateOk_narrow_else
+
+/-! ## `StateOk` at the refined **then** environment
+
+`stateOk_narrow_else`'s mirror, and it needs one hypothesis its twin did not: the then side of
+`narrowEnvs`/`narrowSpine` refines for **both** `NarrowSides`, so a `thenOnly` condition — the
+`&&` sandwich, the only producer of one — has to be excluded by the caller rather than by the
+function. That is the §F13 gap, sized: with the sandwich admitted this lemma is `Judge.if'`
+minus the run inversion; with it excluded, it is the four `both` shapes and complete. -/
+
+theorem stateOk_narrow_then {κ : Ctx} {Γ Γc : Env} {I Ic : Ty} {c : Ratchet.Expr} {σ : Ty}
+    {m : Machine} {v : Value} {m' : Machine}
+    (hc : SemJudge κ Γ I c σ Γc Ic) (hok : StateOk κ Γ I m)
+    (hev : Evals m c v m') (htruthy : v.truthy = true)
+    (hnto : ∀ k x nk, Ratchet.narrowCond? c ≠ some (k, x, nk, .thenOnly)) :
+    StateOk κ (Ratchet.narrowEnvs κ c Γc).1 (Ratchet.narrowSpine κ c Ic).1 m' := by
+  obtain ⟨_, _, hok'⟩ := hc.2 m hok v m' hev
+  simp only [Ratchet.narrowEnvs, Ratchet.narrowSpine]
+  cases hnc : Ratchet.narrowCond? c with
+  | none => simpa using hok'
+  | some q =>
+    obtain ⟨k, x, nk, sides⟩ := q
+    have hboth : sides = .both := by
+      cases sides with
+      | both => rfl
+      | thenOnly => exact absurd hnc (hnto k x nk)
+    subst hboth
+    cases k with
+    | lvar =>
+      simp only
+      by_cases hg : Ratchet.narrowNameOk κ nk = true
+      · rw [if_pos hg]
+        simp only
+        refine { hok' with env := ?_ }
+        exact EnvOk_refineOne_then hok'.env
+          (narrow_then_fact hok hok' hev htruthy hnc rfl hg (Or.inl rfl))
+      · rw [if_neg hg]; simpa using hok'
+    | ivar =>
+      simp only
+      by_cases hg : Ratchet.narrowNameOk κ nk = true
+      · rw [if_pos hg]
+        simp only
+        refine { hok' with selfSpine := ?_ }
+        refine SelfSpineOk_ivarSet hok'.selfSpine ?_ ?_
+        · refine narrow_then_fact hok hok' hev htruthy hnc rfl hg (Or.inr rfl)
+            ((Ratchet.ivarGet? Ic x).getD .nilT) ?_
+          cases hig : Ratchet.ivarGet? Ic x with
+          | some ρ =>
+            simp only [hig, Option.getD_some]
+            simpa [readVar] using
+              denSpineFrom_get Ic (by simp) hig hok'.selfSpine.1
+          | none =>
+            simp only [hig, Option.getD_none, denM, isNilV, readVar]
+            rw [hok'.selfSpine.2 x hig]
+        · intro y hy
+          exact hok'.selfSpine.2 y (ivarGet?_ivarSet_none Ic x _ y hy)
+      · rw [if_neg hg]; simpa using hok'
+    | cvar => simpa using hok'
+    | gvar => simpa using hok'
+
+#print axioms stateOk_narrow_then
+
+
 
 
 /-! ## `if c then next end; rest` — the rung
