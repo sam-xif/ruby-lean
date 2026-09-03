@@ -2089,6 +2089,28 @@ def extendConsts (S : Env) : Expr → Ty → Env
     addNestedConsts (addClassConsts S n (bodyConsts body)) nestFuel n (bodyNested body)
   | _, _ => S
 
+/-- **What a constant assignment owes the tables that already describe the name**
+(`found-issues.md` §F18).
+
+`Ctx.afterStmt` records a constant's type from a **top-level `casgn` statement**, and
+`extendConsts` matches only that shape — so an assignment *buried* inside a larger expression
+(`y = (X = "s")`) rebinds the constant at run time while `κ.consts` still carries the old type.
+`Judge.casgn` had no premise at all and its docstring called the invisibility "conservative, in
+the direction that costs a rung rather than soundness". It was not: `X = 1; y = (X = "s"); X + 1`
+was certified `Integer` against a `TypeError`, and `y = (String = 5); String.new` is the same
+hole through `constBuiltin` instead of `constEnv`.
+
+**Agreement, not absence** — the same shape §F17 settled on, and for the same reason: the
+first assignment of a name resolves nowhere yet, so absence is what the *common* case has, and
+a re-assignment at the type already recorded changes nothing anyone read. What is refused is a
+rebinding the tables would then be wrong about: a different type, a declared class, a builtin
+class, or an exception class. -/
+def constAsgnOk (κ : Ctx) (n : String) (τ : Ty) : Bool :=
+  match constGet? κ n with
+  | some σ => σ == τ
+  | none =>
+    (clsGet? κ.classes n).isNone && !builtinClsNames.contains n && !excName? κ.classes n
+
 /-- `κ` after performing statement `e`, which produced a value of type `τ`: both syntax
 tables grow, the constant table grows if `e` was a `casgn`, nothing else changes. Used only
 by `JudgeSeq.cons`, which is the only rule that knows about statement order.
@@ -4088,6 +4110,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       `clsGet? = none`. -/
   | casgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {n : String} {e : Expr} {τ : Ty} :
       Judge κ Γ I e τ Γ' I' →
+      (hca : constAsgnOk κ n τ = true := by rfl) →
       Judge κ Γ I (.casgn n e) τ Γ' I'
   /-- **A constant read.** The third `.const` rule, and the only one that reads a binding the
       program made rather than a class it declared. Disjoint from the other two by their new
@@ -4299,6 +4322,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
   | cpathAsgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {owner n : String} {e : Expr} {τ : Ty} :
       Judge κ Γ I (.const owner) (.clsOf owner) Γ I →
       Judge κ Γ I e τ Γ' I' →
+      (hca : constAsgnOk κ (constKeyIn owner n) τ = true := by rfl) →
       Judge κ Γ I (.cpathAsgn (some (.const owner)) n e) τ Γ' I'
 
 /-- **A `begin`'s rescue clauses** (tier 16b), each typed in the *entry* environment plus

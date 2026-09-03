@@ -639,6 +639,15 @@ Discharged so far, all axiom-clean:
   is equality; **§F15** — and the refinement must not *manufacture* a `Ty.sameAs`, which
   `joinT` can, recording an alias claim the environment never made. `narrowNameOk` is six
   conjuncts now, each one a program that used to be certified.
+* **`found-issues.md` §F18** (clink 59) — a *reachable* soundness bug found while sizing
+  `Judge.casgn`, which is the rule with **no premise at all**: `extendConsts` records a
+  constant's type from a **top-level `casgn` statement**, so an assignment buried inside a
+  larger expression rebinds the constant while `κ.consts` still carries the old type.
+  `X = 1; y = (X = "s"); X + 1` was certified `Integer` against a `TypeError`, and
+  `y = (String = 5); String.new` is the same hole through `constBuiltin`'s
+  `constGet? κ n = none` premise instead of `constEnv`'s lookup. Fixed by `constAsgnOk`, and
+  the shape is §F17's: **agreement, not absence** — the first assignment of a name resolves
+  nowhere yet, so absence is what the common case has. Corpus-neutral.
 * **`Judge.ivarAsgn`** (clink 59, `Denote/Rules/IvarAsgn.lean`) — `@x = e`, and the rung that
   brings **mutation** into the ladder. Every transport before it was `Ext` (allocation) or
   `setLocal` (a rebinding); a write to an object's `ivars` is neither, and `Ext` is *false* of

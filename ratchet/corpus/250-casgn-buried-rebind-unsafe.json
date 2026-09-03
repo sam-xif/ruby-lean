@@ -1,0 +1,49 @@
+{
+  "id": "casgn-buried-rebind-unsafe",
+  "tier": 13,
+  "description": "**A candidate UNSAFE program, and \u00a7F18\u2019s counterexample.** `Ctx.afterStmt` records a constant\u2019s type from a **top-level `casgn` statement**, and `extendConsts` matches only that shape \u2014 so a constant assignment *buried* inside a larger expression (here the right-hand side of a `y = \u2026`) rebinds the constant at run time while `\u03ba.consts` still carries the old type. `Judge.casgn` has **no premise** (its own docstring says so, and calls the invisibility \u2018conservative, in the direction that costs a rung rather than soundness\u2019), so `X` reads back as `Integer` and `X + 1` is certified against a `TypeError`.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "casgn",
+        "X",
+        [
+          "int",
+          1
+        ]
+      ],
+      [
+        "vasgn",
+        "local",
+        "y",
+        [
+          "casgn",
+          "X",
+          [
+            "str",
+            "s"
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "const",
+          "X"
+        ],
+        "+",
+        [
+          [
+            "int",
+            1
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "expect_validate": false,
+  "false_reason": "unsafe_program"
+}

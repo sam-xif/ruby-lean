@@ -2210,6 +2210,18 @@ R("nilq-narrow-redefined-unsafe", 12,
   'class NilClass\n  def nil?\n    false\n  end\nend\nx = nil\nif x.nil?\n  1\nelse\n  x + 1\nend\n',
   expect_validate=False, false_reason="unsafe_program")
 
+R("casgn-buried-rebind-unsafe", 13,
+  "**A candidate UNSAFE program, and \u00a7F18\u2019s counterexample.** `Ctx.afterStmt` records a "
+  "constant\u2019s type from a **top-level `casgn` statement**, and `extendConsts` matches only "
+  "that shape \u2014 so a constant assignment *buried* inside a larger expression (here the "
+  "right-hand side of a `y = \u2026`) rebinds the constant at run time while `\u03ba.consts` still "
+  "carries the old type. `Judge.casgn` has **no premise** (its own docstring says so, and calls "
+  "the invisibility \u2018conservative, in the direction that costs a rung rather than "
+  "soundness\u2019), so `X` reads back as `Integer` and `X + 1` is certified against a "
+  "`TypeError`.",
+  'X = 1\ny = (X = "s")\nX + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):

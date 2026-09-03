@@ -1315,3 +1315,54 @@ the same one `found-issues.md` §F1 turned on, one component over.
 Corpus-neutral: mismatches 35, 249/249 corpus agreement with 0 disagreements, 177/177 hand
 derivations, 145/145 controls. One negative-control probe (240) is newly rejected, which is
 what a tightening should do.
+
+## §F18 — a constant assignment *buried* in an expression rebinds what the tables describe
+
+**Reachable, and the checker accepted it.** `X = 1; y = (X = "s"); X + 1` was certified
+`Integer`; CRuby raises `TypeError` (`no implicit conversion of Integer into String`).
+Confirmed by the corpus: rung 250 read `validate=true (MISMATCH)` against
+`expect_validate=False`.
+
+The mechanism is a mismatch between two functions that are supposed to describe the same
+thing. `Ctx.afterStmt` records a constant's type through `extendConsts`, which matches a
+**top-level `casgn` statement**:
+
+```
+| .casgn n _, τ => envSet S (constKey n) τ
+```
+
+An assignment anywhere else — the right-hand side of a `y = …`, an argument, a branch — is not
+that shape, so `κ.consts` is not updated. `Judge.casgn` had **no premise at all**, and its own
+docstring called the invisibility conservative: "a `casgn` buried inside a larger expression
+types but is invisible to later reads — conservative, and in the direction that costs a rung
+rather than soundness." That reasoning is backwards. Invisibility is only conservative for a
+name the tables say *nothing* about; for a name they already describe, the write makes the
+description **wrong**, and every later read is certified against it.
+
+**Two doors, not one.** The witness above goes through `constEnv` (the read finds the stale
+`κ.consts` entry). The same hole goes through `constBuiltin`/`constCls`/`constExc`, whose
+premise is `constGet? κ n = none` — satisfied, because a buried `casgn` records nothing — so
+`y = (String = 5); String.new` types `String` as the class object while the machine has `5`.
+
+**The fix is agreement, not absence**, which is §F17's shape for §F17's reason: the *first*
+assignment of a name resolves nowhere yet, so absence is what the common case has, and a
+re-assignment at the type already recorded changes nothing anyone read. `constAsgnOk κ n τ`
+therefore admits exactly those two and refuses a rebinding the tables would be wrong about:
+
+```
+match constGet? κ n with
+| some σ => σ == τ
+| none => (clsGet? κ.classes n).isNone && !builtinClsNames.contains n && !excName? κ.classes n
+```
+
+`Judge.cpathAsgn` carries it too, at `constKeyIn owner n` — the key `extendConsts` uses for
+`M::X = 4`, so the guard and the table agree about which name moved.
+
+Corpus-neutral: 250/250 agreement with 0 disagreements, mismatches back to **35**, 177/177 hand
+derivations, 145/145 controls.
+
+**The pattern, and it is now three deep.** §F17 was "a write to `@x` invalidates every type
+that mentions `@x`". This is the same sentence with the constant table in place of the ivar
+spine — and the same wrong first instinct (absence) and the same right answer (agreement).
+Worth stating as a rule for the rules: **every table the context carries is a claim about the
+machine, so every rule that writes what a table describes owes that table a premise.**

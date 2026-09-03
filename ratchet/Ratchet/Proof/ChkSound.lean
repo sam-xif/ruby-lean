@@ -862,16 +862,28 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
     -- right-hand side. The binding is `chkSeq`'s, as it is for `casgn`.
     split at h
     · rename_i hbase
-      exact .cpathAsgn (chk_sound hbase) (chk_sound h)
+      split at h
+      · rename_i res hrhs
+        split at h
+        · rename_i hca
+          injection h with h
+          injection h with h h'; injection h' with h' h''
+          subst h; subst h'; subst h''
+          exact .cpathAsgn (chk_sound hbase) (chk_sound hrhs) hca
+        · exact absurd h (by simp)
+      · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `casgn n e` (tier 13): the right-hand side typed, and nothing else happened — the
     -- binding is `chkSeq`'s, via `Ctx.afterStmt` (see `Judge.casgn`).
     split at h
     · rename_i res hrhs
-      injection h with h
-      injection h with h h'; injection h' with h' h''
-      subst h; subst h'; subst h''
-      exact .casgn (chk_sound hrhs)
+      split at h
+      · rename_i hca
+        injection h with h
+        injection h with h h'; injection h' with h' h''
+        subst h; subst h'; subst h''
+        exact .casgn (chk_sound hrhs) hca
+      · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- `def' n ps body`: unconditional, and the body is not looked at (see `Judge.defStmt`).
     injection h with h

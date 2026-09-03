@@ -434,12 +434,17 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
   | f + 1, .cpathAsgn (some (.const owner)) n e =>
     -- The *write* side stays at the syntactic base, because `extendConsts` matches on it to
     -- know which key the binding lands on (`Judge.cpathAsgn`).
-    if chk f κ Γ I (.const owner) = some (Ty.clsOf owner, Γ, I) then chk f κ Γ I e else none
+    if chk f κ Γ I (.const owner) = some (Ty.clsOf owner, Γ, I) then
+      match chk f κ Γ I e with
+      | some (τ, Γ', I') =>
+        if constAsgnOk κ (constKeyIn owner n) τ then some (τ, Γ', I') else none
+      | none => none
+    else none
   | f + 1, .casgn n e =>
     -- Tier 13. The *binding* is not made here: `chkSeq` makes it, via `Ctx.afterStmt`, so a
     -- `casgn` that is not a statement of a sequence types and binds nothing (`Judge.casgn`).
     match chk f κ Γ I e with
-    | some (τ, Γ', I') => some (τ, Γ', I')
+    | some (τ, Γ', I') => if constAsgnOk κ n τ then some (τ, Γ', I') else none
     | none => none
   | _ + 1, .def' _ _ _ => some (.sym, Γ, I)
   | f + 1, .module' n body =>
