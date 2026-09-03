@@ -117,6 +117,16 @@ theorem reachesB_setLocal_target (m : Machine) (x : String) :
 `RubyCore/Proof/HeapFacts.lean` has this for `Object`; the `Frame` flavour is stated here and
 generically, since the only thing the proof uses of the element type is `Inhabited`. -/
 
+theorem getD_set!_self {α : Type} [Inhabited α] (a : Array α) (i : Nat) (o : α)
+    (h : i < a.size) : (a.set! i o).getD i default = o := by
+  simp [Array.getD, h]
+
+theorem getD_set!_oob {α : Type} [Inhabited α] (a : Array α) (i : Nat) (o : α)
+    (h : ¬ i < a.size) : (a.set! i o).getD i default = a.getD i default := by
+  have hsz : (a.set! i o).size = a.size := by simp [Array.set!]
+  simp only [Array.getD]
+  rw [dif_neg (hsz ▸ h), dif_neg h]
+
 theorem getD_set!_ne {α : Type} [Inhabited α] (a : Array α) (i j : Nat) (o : α) (h : j ≠ i) :
     (a.set! i o).getD j default = a.getD j default := by
   have hsz : (a.set! i o).size = a.size := by simp [Array.set!]
