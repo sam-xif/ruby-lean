@@ -315,4 +315,79 @@ theorem not_reachesFrame_of_sealed {b : FrameId} {m : Machine} (h : Sealed b m)
 #print axioms not_reachesFrame_of_sealed
 #print axioms reachesB_fuel_irrel
 
+/-! ## `Sealed`'s preservation, for the machine changes that need no premise
+
+Three of them, and they are the three the interpreter makes most often. The two that *do* need
+a premise — pushing a **block** frame and allocating a **closure** — are the closure premise the
+sixteenth stall point identifies, and they are not here.
+
+All three come out of one congruence, and the congruence is deliberately weak in the right
+place: it asks about `captured` and `size` rather than about the frames array, because
+`setLocal` changes a frame's `locals` and the seal does not read those.
+
+The enabling lemma for the *fourth* (a `frames.push`) is a third `ReachesB` congruence: a push
+changes the array at the pushed index, so "agree everywhere" fails there — and it does not
+matter, because with `CaptureDown` the walk from `fid` never reads an index above `fid`. -/
+
+theorem reachesB_congr_below {m m₂ : Machine} {b : FrameId} (hcd : CaptureDown m)
+    (hcap : ∀ f, (m₂.frames.getD f default).captured = (m.frames.getD f default).captured ∨
+      ¬ (f ≤ m.frames.size)) :
+    ∀ (fuel : Nat) (fid : FrameId), fid < m.frames.size →
+      ReachesB m₂ b fid fuel = ReachesB m b fid fuel
+  | 0, _, _ => rfl
+  | fuel + 1, fid, hlt => by
+    have hf : (m₂.frames.getD fid default).captured = (m.frames.getD fid default).captured := by
+      rcases hcap fid with h | h
+      · exact h
+      · exact absurd (Nat.le_of_lt hlt) h
+    rw [ReachesB, ReachesB, hf]
+    cases hc : (m.frames.getD fid default).captured with
+    | none => rfl
+    | some p =>
+      simp only []
+      rw [reachesB_congr_below hcd hcap fuel p (Nat.lt_trans (hcd fid p hc) hlt)]
+
+/-- **The seal's congruence.** Stated over `captured` and `size` rather than over the frames
+array, so that a write to a frame's `locals` is one of its instances. -/
+theorem Sealed.congr {b : FrameId} {m m₂ : Machine} (h : Sealed b m)
+    (hsz : m₂.frames.size = m.frames.size)
+    (hcap : ∀ f, (m₂.frames.getD f default).captured = (m.frames.getD f default).captured)
+    (hh : m₂.heap = m.heap) (hst : ∀ fid ∈ m₂.stack, fid ∈ m.stack) : Sealed b m₂ where
+  stack := fun fid hmem => by
+    rw [hsz, reachesB_captured_congr hcap]
+    exact h.stack fid (hst fid hmem)
+  clos := fun o cl hcl => by
+    rw [hsz, reachesB_captured_congr hcap]
+    exact h.clos o cl (by rw [hh] at hcl; exact hcl)
+
+/-- **Popping the stack.** The frames the seal talks about only shrink. -/
+theorem Sealed.pop {b : FrameId} {m : Machine} (h : Sealed b m) :
+    Sealed b { m with stack := m.stack.tail } :=
+  h.congr rfl (fun _ => rfl) rfl (fun fid hmem => List.mem_of_mem_tail hmem)
+
+/-- **Anything that is not the frames, the stack or the heap** — `ctl`, `kont`, `out`,
+`globals`, `currentExc`: the fields the seal does not read. -/
+theorem Sealed.frameOnly {b : FrameId} {m m₂ : Machine} (h : Sealed b m)
+    (hs : m₂.stack = m.stack) (hf : m₂.frames = m.frames) (hh : m₂.heap = m.heap) :
+    Sealed b m₂ :=
+  h.congr (by rw [hf]) (fun _ => by rw [hf]) hh (fun fid hmem => hs ▸ hmem)
+
+/-- **A local write.** `setLocal` touches `locals`, and the seal reads `captured`. -/
+theorem Sealed.setLocal {b : FrameId} {m : Machine} (h : Sealed b m) (x : String) (w : Value) :
+    Sealed b (m.setLocal x w) := by
+  have hsz : (m.setLocal x w).frames.size = m.frames.size := by
+    show (m.frames.set! _ _).size = _
+    simp [Array.set!]
+  refine h.congr hsz (fun f => ?_) rfl (fun fid hmem => hmem)
+  show ((m.frames.set! _ _).getD f default).captured = _
+  by_cases hf : f = Machine.setLocal.owner m x (m.stack.headD 0) (m.stack.headD 0)
+      (m.frames.size + 1)
+  · by_cases hlt : f < m.frames.size
+    · rw [hf, getD_set!_self m.frames _ _ (hf ▸ hlt)]
+    · rw [hf, getD_set!_oob m.frames _ _ (fun hc => hlt (hf ▸ hc))]
+  · rw [getD_set!_ne m.frames _ f _ hf]
+
+#print axioms Sealed.congr
+#print axioms Sealed.setLocal
+
 end Ratchet.Denote
