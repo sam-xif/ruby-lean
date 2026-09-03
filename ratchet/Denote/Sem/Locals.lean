@@ -526,4 +526,110 @@ theorem Sealed.alloc {b : FrameId} {m : Machine} (h : Sealed b m) (obj : Object)
 
 #print axioms Sealed.alloc
 
+/-! ## `FramesWF`'s preservation, and the composite invariant
+
+The seal is the interesting half of the run-level invariant; `FramesWF` is the bookkeeping half,
+and it has to travel with it because `Sealed.push` consumes it. Same five machine changes, and
+each one is one clause at a time.
+
+`StepInv` bundles the three things a step has to be handed and hand back: the seal, the
+well-formedness, and `b`'s own in-rangeness (which a `push` preserves and nothing shrinks). -/
+
+theorem FramesWF.pop {m : Machine} (h : FramesWF m) :
+    FramesWF { m with stack := m.stack.tail } where
+  down := h.down
+  stack := fun fid hmem => h.stack fid (List.mem_of_mem_tail hmem)
+  clos := h.clos
+
+theorem FramesWF.frameOnly {m m₂ : Machine} (h : FramesWF m) (hs : m₂.stack = m.stack)
+    (hf : m₂.frames = m.frames) (hh : m₂.heap = m.heap) : FramesWF m₂ where
+  down := fun fid p hc => h.down fid p (by rw [hf] at hc; exact hc)
+  stack := fun fid hmem => by rw [hf]; exact h.stack fid (hs ▸ hmem)
+  clos := fun o cl hcl => by rw [hf]; exact h.clos o cl (by rw [hh] at hcl; exact hcl)
+
+theorem FramesWF.setLocal {m : Machine} (h : FramesWF m) (x : String) (w : Value) :
+    FramesWF (m.setLocal x w) := by
+  have hsz : (m.setLocal x w).frames.size = m.frames.size := by
+    show (m.frames.set! _ _).size = _
+    simp [Array.set!]
+  have hcap : ∀ f, ((m.setLocal x w).frames.getD f default).captured
+      = (m.frames.getD f default).captured := by
+    intro f
+    show ((m.frames.set! _ _).getD f default).captured = _
+    by_cases hf : f = Machine.setLocal.owner m x (m.stack.headD 0) (m.stack.headD 0)
+        (m.frames.size + 1)
+    · by_cases hlt : f < m.frames.size
+      · rw [hf, getD_set!_self m.frames _ _ (hf ▸ hlt)]
+      · rw [hf, getD_set!_oob m.frames _ _ (fun hc => hlt (hf ▸ hc))]
+    · rw [getD_set!_ne m.frames _ f _ hf]
+  exact { down := fun fid p hc => h.down fid p (by rw [hcap fid] at hc; exact hc)
+          stack := fun fid hmem => by rw [hsz]; exact h.stack fid hmem
+          clos := fun o cl hcl => by rw [hsz]; exact h.clos o cl hcl }
+
+theorem FramesWF.push {m : Machine} (h : FramesWF m) (fr : RubyCore.Frame)
+    (hin : ∀ p, fr.captured = some p → p < m.frames.size) :
+    FramesWF { m with frames := m.frames.push fr, stack := m.frames.size :: m.stack } := by
+  have hsz : ((m.frames.push fr).size) = m.frames.size + 1 := by simp
+  have hlt : ∀ f, f < m.frames.size →
+      (m.frames.push fr).getD f default = m.frames.getD f default := by
+    intro f hf
+    rw [Array.getD_eq_getD_getElem?, Array.getD_eq_getD_getElem?,
+      Array.getElem?_push_lt hf, Array.getElem?_eq_getElem hf]
+  have hself : (m.frames.push fr).getD m.frames.size default = fr := by
+    simp [Array.getD_eq_getD_getElem?, Array.getElem?_push]
+  refine { down := ?_, stack := ?_, clos := ?_ }
+  · intro fid p hc
+    by_cases hf : fid < m.frames.size
+    · rw [hlt fid hf] at hc
+      exact h.down fid p hc
+    · by_cases hfe : fid = m.frames.size
+      · rw [hfe, hself] at hc
+        exact hfe ▸ hin p hc
+      · -- past the end: `default` captures nothing
+        rw [show (m.frames.push fr).getD fid default = default from by
+          rw [Array.getD_eq_getD_getElem?, Array.getElem?_push, if_neg hfe,
+            Array.getElem?_eq_none (Nat.le_of_not_lt hf), Option.getD_none]] at hc
+        rw [show (default : RubyCore.Frame).captured = none from rfl] at hc
+        exact absurd hc (by simp)
+  · intro fid hmem
+    show fid < (m.frames.push fr).size
+    rw [hsz]
+    rcases List.mem_cons.mp hmem with hfe | hmem'
+    · exact hfe ▸ Nat.lt_succ_self _
+    · exact Nat.lt_succ_of_lt (h.stack fid hmem')
+  · intro o cl hcl
+    show cl.captured < (m.frames.push fr).size
+    rw [hsz]
+    exact Nat.lt_succ_of_lt (h.clos o cl hcl)
+
+theorem FramesWF.alloc {m : Machine} (h : FramesWF m) (obj : Object)
+    (hcl : ∀ cl, obj.payload = .proc cl → cl.captured < m.frames.size) :
+    FramesWF { m with heap := (m.heap.alloc obj).2 } := by
+  refine { down := h.down, stack := h.stack, clos := ?_ }
+  intro o cl hcl'
+  rw [procClosure?] at hcl'
+  by_cases ho : o < m.heap.objs.size
+  · refine h.clos o cl ?_
+    rw [procClosure?, ← alloc_get_lt obj ho]
+    exact hcl'
+  · by_cases hoe : o = m.heap.objs.size
+    · rw [hoe, alloc_get_self obj] at hcl'
+      split at hcl'
+      · rename_i c heq
+        injection hcl' with hcl'
+        exact hcl' ▸ hcl c heq
+      · exact absurd hcl' (by simp)
+    · rw [alloc_get_gt obj ho hoe] at hcl'
+      rw [show (default : Object).payload = Payload.none from rfl] at hcl'
+      exact absurd hcl' (by simp)
+
+/-- **What a step is handed and hands back.** -/
+structure StepInv (b : FrameId) (m : Machine) : Prop where
+  sealed : Sealed b m
+  wf : FramesWF m
+  inRange : b < m.frames.size
+
+#print axioms FramesWF.push
+#print axioms FramesWF.alloc
+
 end Ratchet.Denote
