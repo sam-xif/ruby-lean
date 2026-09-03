@@ -479,7 +479,7 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## Semantic ratchet status (`Denote/Sem/`): **46 of 83 `Judge` rules discharged**
+## Semantic ratchet status (`Denote/Sem/`): **47 of 83 `Judge` rules discharged**
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (177 of 249). This measures
@@ -639,6 +639,26 @@ Discharged so far, all axiom-clean:
   is equality; **§F15** — and the refinement must not *manufacture* a `Ty.sameAs`, which
   `joinT` can, recording an alias claim the environment never made. `narrowNameOk` is six
   conjuncts now, each one a program that used to be certified.
+* **`Judge.ivarAsgn`** (clink 59, `Denote/Rules/IvarAsgn.lean`) — `@x = e`, and the rung that
+  brings **mutation** into the ladder. Every transport before it was `Ext` (allocation) or
+  `setLocal` (a rebinding); a write to an object's `ivars` is neither, and `Ext` is *false* of
+  it. `Denote/Sem/Mut.lean` is the third relation: frames, stack, globals, heap size and every
+  shape field (`klass`/`eigen`/`payload`/`frozen`) pinned, `ivars` free. It is a separate
+  relation rather than a widening of `Ext` because `Ext` grows the heap and `Mut` does not, so
+  the nine shape-only `StateOk` components each get a `.mut` twin beside their `.ext` one.
+  The transport's shape is worth recording: `denM_ivarWrite`'s hypothesis is stated at the
+  machine **before** the write, because stating it after is circular — and the induction closes
+  the gap, since at the moved spine entry the type owed is a *strict subterm* of the type being
+  inducted on. Read the other way, that is why the guard `ivarAgree x τ τ` is not vacuous: a
+  `Ty` cannot contain itself. The step's other two arms (`self` frozen, `self` an immediate)
+  raise `FrozenError` and so produce no value, discharged by having no case.
+  **§F17** is the finding, and it is **reachable** (`validate` accepted it): the rule moved the
+  `self` spine's `@x` entry and said nothing about the other five places a type can mention
+  `@x` — `κ.selfTy` mentions every ivar the class has, so `@o : C[@x : Integer]` with `@o`
+  holding `self` is falsified by `@x = "s"`. `ivarAsgnOk` checks **agreement**, not absence:
+  absence rejects every in-method assignment, and agreement at `I'`'s *own* `@x` entry rejects
+  type-changing reassignment. Arrows are exempt because they are `Later`-quantified and the
+  write is a `Later`; `Ty.clos` is not, which is §F1's split one component over.
 * **The remaining ladder is two items, not five** (clink 58). The fifteenth stall point's two
   halves are **entangled with the call decomposition**: the locals claim wants to be an
   induction on the expression, but `noLocalAsgn` must admit `.send`, which may dispatch a user

@@ -6206,3 +6206,88 @@ items outside both.
 every one of them tightened a guard and none cost a rung. `checkrungs` 177/177 + 145/145; the
 denotation gate's `#guard`s green; ladder **46/83**. No change under `lean/` since clink 54, so
 that clink's tier-0 difftest (1304 cases, 0 disagreements) still stands.
+
+## Clink 59 (2026-09-02) — mutation enters the ladder, and §F17. **177 rungs / 249, 47 of 83 rules**
+
+One rung, and it is the one that pays for a whole class of the remaining ones:
+`Judge.ivarAsgn`. Every transport the ladder had before this was `Ext` (allocation: the heap
+grows, old ids read back identically) or `setLocal` (a rebinding: the heap is untouched).
+`@x = e` is neither, and `Ext` is *false* of it — `Ext.get` promises every old id reads back
+identically, which is exactly what the write breaks.
+
+### `Mut`, and why it is a third relation and not a widening
+
+`Denote/Sem/Mut.lean` is the relation for a step that mutates an object already in the heap:
+frames, stack, globals and heap **size** are pinned, and so is every heap field the *shape*
+reads — `klass`, `eigen`, `payload`, `frozen`. What is not pinned is `ivars`, and that is the
+whole of it.
+
+Three relations rather than two, and the split is forced the same way `Ext`/`Later`'s was:
+`Ext` **grows** the heap and `Mut` does not, so neither implies the other and their common
+part is a shape interface that `Ext` satisfies only *in range*. Factoring that interface out
+of both would have obliged every existing `Ext` caller to supply the out-of-range clauses. The
+nine `StateOk` components that read only the heap's shape therefore have a `.mut` twin next to
+their `.ext` one, each the same proof with `Mut`'s reads substituted — which is *also* the
+measurement that `ivarAsgnOk`'s docstring is asserting when it says those components read only
+the shape.
+
+### The circularity, and where the induction breaks it
+
+`denM_ivarWrite` — "a `denM` claim survives the write, at a type that agrees about `@x`" —
+needs, at the one spine entry that moved, that the **new** value is in the type the spine
+claims of it: `denM τ m₂ v`. Taking that as a hypothesis is circular, because it is precisely
+what the rung has no other way to know: the premise gives `denM τ m₀ v` at the machine
+*before* the write.
+
+The fix is to state the hypothesis at the pre-write machine and let the induction close the
+gap. In the moved-entry arm the type owed is `ρ`, and `ivarAgree` says `ρ = τ` — but `ρ` is a
+**strict subterm** of the `σ` being inducted on, so the induction hypothesis at `ρ` transports
+`denM τ m v` to `denM τ m₂ v` without any circularity. The same fact read the other way is why
+the guard `ivarAgree x τ τ` is not vacuous: a `Ty` cannot contain itself, so "τ's spine
+mentions `@x` only at `τ`" means it does not mention it.
+
+Two more structural notes:
+
+* the theorem is a **conjunction** — the value reading and the spine walk — because `.inst`'s
+  second half and `.clos`'s captured scope are spine walks whose entries are types, and a
+  spine entry's type may itself be an `.inst`. One induction over `Ty` carries both, the shape
+  `Denote/Den.lean`'s own `FirstOrder` proof uses;
+* the spine half is parameterised over **two readers** related by "same, or this is the name
+  that moved", which covers `.inst` (two heaps, differing at `@x` and only for `self`) and
+  `.clos` (`closLocal`, a `frames` reader, differing nowhere) in one arm each.
+
+### The three arms of the step, and the two that need no premise
+
+`applyKont`'s `.asgnK .ivar` arm is three cases, and `Judge.ivarAsgn` has premises for none:
+`self` a live unfrozen reference (the write), `self` a frozen reference (`FrozenError`), and
+`self` an immediate (also `FrozenError` — immediates are frozen). The last two produce **no
+value**, so the obligation is discharged there by having no case, exactly as `Judge.constExc`'s
+is at `"IOError"`. `SelfLive` supplies the liveness the write needs, which is the component
+clink 51 added for `NameFreeOk`'s sake and which now has a second consumer.
+
+### §F17, and why the guard checks agreement
+
+The rung's stall was a soundness bug (`found-issues.md` §F17, **reachable** — `validate`
+accepted it): the rule moved the `@x` entry of the `self` spine and said nothing about the
+*other* places a type can mention `@x`. `κ.selfTy` mentions every ivar the class has, so
+`@o : C[@x : Integer]` with `@o` holding `self` is falsified by `@x = "s"`.
+
+The fix, `ivarAsgnOk`, checks **agreement** at six places — `Γ'`, `τ` itself, `κ.selfTy`,
+`κ.blockTy`, `κ.consts`, and now `I'`. Both weaker readings were tried and both are wrong:
+*absence* rejects every in-method assignment, and agreement at `I'`'s **own** `@x` entry
+rejects type-changing reassignment (`if flag then @v = 1 else @v = "s" end`, the program that
+put `joinIvars` in `Ratchet/Ty.lean`). `ivarAgreeIvars` exempts that one entry, soundly,
+because `ivarSet` replaces it.
+
+Arrows are waved through unexamined, and that is `Later`'s doing: an arrow's denotation is
+quantified over `Later`-futures and an ivar write is one (`IvarWrite.later`). `Ty.clos` is not
+exempt — it reads the captured scope and creation `self` at *this* machine — which is §F1's
+split, one component over. The `Later` widening this needed (drop `get`/`freshIvars`/
+`freshBasic`, add `klass`/`eigen`/`payloadObj`/`frozen`) is the one that structure's own
+docstring anticipated.
+
+### Gates
+
+Corpus 249/249 agreement, 0 disagreements; expect_validate mismatches **35**, unchanged
+through the guard; 177/177 hand derivations; 145/145 negative controls; `Denote/Examples.lean`
+green; no `sorry`, no new axioms. Nothing under `ruby/lean/` changed.

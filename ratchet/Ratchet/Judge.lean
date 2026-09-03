@@ -2371,14 +2371,29 @@ def ivarAgreeSelf (x : String) (τ : Ty) : Option Ty → Bool
   | none => true
   | some σ => ivarAgree x τ σ
 
+/-- **The incoming `self` spine, checked everywhere except at `@x` itself.**
+
+The sixth place, and the one that is not context: `I'` is what the *judgment* has inferred
+about `self`'s instance variables, and `SelfSpineOk` reads every entry of it through
+`ivarOf … self`. An entry `@a : C[@x : Int]` describes an object that could *be* `self`
+(`@a = self`), and then writing `@x` at a different type falsifies it.
+
+The top-level `@x` entry is **exempt**, and it has to be: `ivarSet` replaces it with `τ`, so
+its old type is not read after the write. Requiring agreement there instead of exempting it
+would reject every type-changing reassignment — `if flag then @v = 1 else @v = "s"`, which is
+the program that put `joinIvars` in `Ratchet/Ty.lean` in the first place. -/
+def ivarAgreeIvars (x : String) (τ : Ty) : Ty → Bool
+  | .ivarCons n σ rest => (n == x || ivarAgree x τ σ) && ivarAgreeIvars x τ rest
+  | _ => true
+
 /-- **Everything the context records that could hold a spine mentioning `@x`.** Five places,
 and the list is not a guess: it is the `StateOk` components whose statement applies `denM` to a
 type the *context* supplies — the environment, the right-hand side's own type, `self`'s type,
 the block's type, and the constant table. The others read only the heap's shape, which an
 instance-variable write leaves alone. -/
-def ivarAsgnOk (κ : Ctx) (x : String) (τ : Ty) (Γ' : Env) : Bool :=
+def ivarAsgnOk (κ : Ctx) (x : String) (τ : Ty) (Γ' : Env) (I' : Ty) : Bool :=
   ivarAgreeEnv x τ Γ' && ivarAgree x τ τ && ivarAgreeSelf x τ κ.selfTy &&
-  ivarAgreeSelf x τ κ.blockTy && ivarAgreeEnv x τ κ.consts
+  ivarAgreeSelf x τ κ.blockTy && ivarAgreeEnv x τ κ.consts && ivarAgreeIvars x τ I'
 
 /-- The expression whose type is a body's **result**.
 
@@ -3960,7 +3975,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       not absence). -/
   | ivarAsgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {x : String} {e : Expr} {τ : Ty} :
       Judge κ Γ I e τ Γ' I' →
-      (hst : ivarAsgnOk κ x τ Γ' = true := by rfl) →
+      (hst : ivarAsgnOk κ x τ Γ' I' = true := by rfl) →
       Judge κ Γ I (.vasgn .ivar x e) τ Γ' (ivarSet I' x τ)
   /-- An explicit-receiver, block-less `send` whose receiver and arguments type, and
       whose resulting shape has a justified `PrimSig`.

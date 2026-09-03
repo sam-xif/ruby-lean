@@ -23,6 +23,7 @@ import Denote.Rules.ClassOf
 import Denote.Rules.NewInst
 import Denote.Rules.Raise
 import Denote.Rules.NarrowInv
+import Denote.Rules.IvarAsgn
 import Denote.Sem.Frame
 
 /-!

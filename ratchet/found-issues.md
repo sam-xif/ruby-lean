@@ -1256,3 +1256,51 @@ rungs take), and `ClsQueryOk` says `===` there is `Module#===`.
 name unclaimed". This is the other half: **it also needs the operands to be what the shape
 assumes.** The narrowing functions read syntax; every fact they rely on about what that syntax
 *means* has to be a premise, because the judgment they are premises of is semantic.
+
+## §F17 — `@x = e` invalidated every spine that mentioned `@x`, and the rule said nothing
+
+**Reachable, and the checker accepted it.** `Judge.ivarAsgn` typed `@x = e` at `e`'s type and
+set the `self` spine's `@x` entry with `ivarSet`. What it did *not* do is notice that the same
+`@x` may be mentioned somewhere else — and every such mention is a claim about the object the
+write just changed. The smallest witness:
+
+```ruby
+class C
+  def initialize; @x = 1; end
+  def set(o); @o = o; end          # @o : C[@x : Integer]
+  def go;     @o.x_plus_one; end
+end
+c = C.new; c.set(c); c.instance_variable_set(:@x, "s")   # or, inside a method, @x = "s"
+```
+
+Inside a method of `C`, `κ.selfTy` is `.inst "C" (@x : Integer, @o : C[@x : Integer])`. The
+assignment `@x = "s"` moves the `@x` entry of the *outer* spine, and `ivarSet` does exactly
+that — but the `@o` entry still claims `C[@x : Integer]` of a value which, when `@o` is `self`,
+is now an object whose `@x` is a `String`. Reading `@o.@x` as an `Integer` then goes to a
+`String`. `κ.selfTy`, `κ.blockTy`, `κ.consts`, the environment `Γ'` and the inferred spine `I'`
+are five separate places a type can hold such a mention, and the rule guarded none of them.
+
+**The fix is agreement, not absence.** `ivarAsgnOk κ x τ Γ' I'` now checks
+`ivarAgree x τ σ` at each of those five, where `ivarAgree` walks a type and demands that every
+spine entry named `@x` claim exactly `τ`. Two rejected alternatives, each rejected by a program
+the corpus has:
+
+* **Absence** — "no reachable type mentions `@x`" — rejects *every* in-method assignment,
+  because `κ.selfTy` mentions every ivar the class has. Agreement admits the common case
+  (`@x = 1` in a class whose `selfTy` says `@x : Integer`) and rejects only the case that is
+  actually wrong.
+* **Agreement at the top-level entry of `I'` too** rejects type-changing reassignment —
+  `if flag then @v = 1 else @v = "s" end`, the program that put `joinIvars` in `Ratchet/Ty.lean`.
+  So `ivarAgreeIvars` exempts `I'`'s own `@x` entry, which is sound because `ivarSet` replaces
+  it: its old type is never read after the write.
+
+**Arrows are exempt, and that is `Later`'s doing.** `ivarAgree` waves `.arrow0`/`.arrowCons`
+through without looking. An arrow's denotation is a claim about *future* runs, quantified over
+`Later`-futures of the machine, and an ivar write is one (`IvarWrite.later`) — so the claim
+survives it for free. `Ty.clos` is **not** exempt: its denotation reads the captured scope and
+creation `self` at *this* machine, so both of its type components are checked. That split is
+the same one `found-issues.md` §F1 turned on, one component over.
+
+Corpus-neutral: mismatches 35, 249/249 corpus agreement with 0 disagreements, 177/177 hand
+derivations, 145/145 controls. One negative-control probe (240) is newly rejected, which is
+what a tightening should do.
