@@ -331,7 +331,7 @@ matter, because with `CaptureDown` the walk from `fid` never reads an index abov
 
 theorem reachesB_congr_below {m m₂ : Machine} {b : FrameId} (hcd : CaptureDown m)
     (hcap : ∀ f, (m₂.frames.getD f default).captured = (m.frames.getD f default).captured ∨
-      ¬ (f ≤ m.frames.size)) :
+      ¬ (f < m.frames.size)) :
     ∀ (fuel : Nat) (fid : FrameId), fid < m.frames.size →
       ReachesB m₂ b fid fuel = ReachesB m b fid fuel
   | 0, _, _ => rfl
@@ -339,7 +339,7 @@ theorem reachesB_congr_below {m m₂ : Machine} {b : FrameId} (hcd : CaptureDown
     have hf : (m₂.frames.getD fid default).captured = (m.frames.getD fid default).captured := by
       rcases hcap fid with h | h
       · exact h
-      · exact absurd (Nat.le_of_lt hlt) h
+      · exact absurd hlt h
     rw [ReachesB, ReachesB, hf]
     cases hc : (m.frames.getD fid default).captured with
     | none => rfl
@@ -389,5 +389,87 @@ theorem Sealed.setLocal {b : FrameId} {m : Machine} (h : Sealed b m) (x : String
 
 #print axioms Sealed.congr
 #print axioms Sealed.setLocal
+
+/-! ## The frame array's well-formedness, and the push
+
+`Sealed.push` needs three facts that are true of the interpreter and are not consequences of
+anything above: every id the walk can reach is *in range*. `CaptureDown` is one of them; the
+other two are the stack's and the closures'. Bundled, because all three are destined for the
+same `StateOk` component and every producer of a machine owes all three at once.
+
+Measurable at the booted machine, which is the test `Denote/Sanity.lean` applies to every
+component: the boot machine has one frame, an empty capture chain and no closures. -/
+
+structure FramesWF (m : Machine) : Prop where
+  /-- A frame captures an older frame. -/
+  down : CaptureDown m
+  /-- Every frame on the activation stack exists. -/
+  stack : ∀ fid ∈ m.stack, fid < m.frames.size
+  /-- …and so does every frame a closure captured. -/
+  clos : ∀ (o : ObjId) (cl : Closure), procClosure? m.heap (.ref o) = some cl →
+    cl.captured < m.frames.size
+
+/-- **Pushing a frame.** The seal survives it exactly when the pushed frame's *captured* frame
+is one the seal already covers — which is free for a **method** frame, whose `captured` is
+`none`, and is a fact about the closure for a **block** frame. That split is the sixteenth stall
+point, and this is where it is spent. -/
+theorem Sealed.push {b : FrameId} {m : Machine} (h : Sealed b m) (hwf : FramesWF m)
+    (hb : b < m.frames.size) (fr : RubyCore.Frame)
+    (hin : ∀ p, fr.captured = some p → p < m.frames.size)
+    (hcap : ∀ p, fr.captured = some p → ReachesB m b p (m.frames.size + 1) = false) :
+    Sealed b { m with frames := m.frames.push fr, stack := m.frames.size :: m.stack } := by
+  -- the array agrees with the old one *below* the pushed index, which is all the walk reads
+  have hbelow : ∀ f,
+      ((m.frames.push fr).getD f default).captured = (m.frames.getD f default).captured ∨
+      ¬ (f < m.frames.size) := by
+    intro f
+    by_cases hf : f < m.frames.size
+    · refine Or.inl ?_
+      rw [Array.getD_eq_getD_getElem?, Array.getD_eq_getD_getElem?,
+        Array.getElem?_push_lt hf, Array.getElem?_eq_getElem hf]
+    · exact Or.inr hf
+  have hsz : ((m.frames.push fr).size) = m.frames.size + 1 := by simp
+  refine { stack := ?_, clos := ?_ }
+  · intro fid hmem
+    show ReachesB _ b fid ((m.frames.push fr).size + 1) = false
+    rw [hsz]
+    rcases List.mem_cons.mp hmem with hfe | hmem'
+    · -- the fresh frame: it is not `b` (which is in range), and its chain is the captured one
+      subst hfe
+      rw [ReachesB]
+      have hne : (m.frames.size == b) = false := by
+        simp only [beq_eq_false_iff_ne, ne_eq]
+        exact fun hc => absurd (hc ▸ hb) (Nat.lt_irrefl _)
+      rw [hne]
+      simp only [Bool.false_or]
+      cases hc : ((m.frames.push fr).getD m.frames.size default).captured with
+      | none => rfl
+      | some p =>
+        simp only []
+        have hfr : ((m.frames.push fr).getD m.frames.size default) = fr := by
+          simp [Array.getD_eq_getD_getElem?, Array.getElem?_push]
+        rw [hfr] at hc
+        rw [reachesB_congr_below (m := m) hwf.down hbelow _ p (hin p hc)]
+        rw [reachesB_fuel_irrel (m := m) hwf.down p (m.frames.size + 1)
+          (m.frames.size + 1) (Nat.lt_succ_of_lt (hin p hc)) (Nat.lt_succ_of_lt (hin p hc))]
+        exact hcap p hc
+    · -- an old stack frame: in range, so the walk never reads the pushed index
+      have hlt := hwf.stack fid hmem'
+      rw [reachesB_congr_below (m := m) hwf.down hbelow _ fid hlt,
+        reachesB_fuel_irrel (m := m) hwf.down fid (m.frames.size + 1 + 1)
+          (m.frames.size + 1) (Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hlt))
+          (Nat.lt_succ_of_lt hlt)]
+      exact h.stack fid hmem'
+  · intro o cl hcl
+    show ReachesB _ b cl.captured ((m.frames.push fr).size + 1) = false
+    rw [hsz]
+    have hlt := hwf.clos o cl hcl
+    rw [reachesB_congr_below (m := m) hwf.down hbelow _ cl.captured hlt,
+      reachesB_fuel_irrel (m := m) hwf.down cl.captured (m.frames.size + 1 + 1)
+        (m.frames.size + 1) (Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hlt))
+        (Nat.lt_succ_of_lt hlt)]
+    exact h.clos o cl hcl
+
+#print axioms Sealed.push
 
 end Ratchet.Denote
