@@ -901,6 +901,66 @@ What it needs, in the order the effort falls:
 * The `&&` shape (`narrowCond?`'s first arm) is the desugarer's `seq`/`vasgn`/`if'` sandwich
   and is `thenOnly`; it reduces to the `.var` case once the sandwich is stepped through.
 
+## The sixteenth stall point — the fifteenth's plan names a theorem that is **false**
+
+Measured while starting the layer (clink 59, after `Judge.ivarAsgn`). The fifteenth stall point
+below says the locals half needs
+
+> a callee's run leaves the caller's frame's locals alone
+
+and **that statement is not true of the semantics.** The witness is three lines of ordinary
+Ruby:
+
+```ruby
+x = 1
+f = lambda { x = 2 }
+def g(p); p.call; end
+g(f)                      # x is 2
+```
+
+`g`'s activation writes `x`, a local of `g`'s *caller's* frame. It can, because
+`Machine.setLocal` walks the **capture chain** rather than the frame stack, and `f`'s closure
+captured the caller's frame. Nothing about being inside a callee prevents reaching it: the
+callee only needs to get its hands on a closure that captured it, and an argument, an ivar, a
+constant or a global will all carry one.
+
+So the layer cannot be built as planned. What *is* true has to name the closures:
+
+> a run leaves frame `b`'s locals alone **provided no closure the run can reach captures a
+> frame whose chain contains `b`**
+
+and that is a claim about the heap, not about syntax — which means the syntactic premise
+(`noLocalAsgn`) cannot imply it on its own, at any tightening. Three consequences, in the
+order they bite:
+
+1. **`found-issues.md` §F13 is not fixable by tightening `noLocalAsgn`'s grammar.** Every
+   tightening still admits a `.send`, and `x && x > 1` (rung 132, `narrow-and-guard`) is the
+   program the feature exists for, so `.send` cannot be dropped: three rung derivations
+   (132 plus `begin'`'s two, 192/194) stop compiling if it is, which the 177/177 gate forbids.
+   Measured by making the send arm answer `false` and rebuilding.
+2. **Pinning the dispatch to a builtin does not work either**, and this was measured rather
+   than assumed. A `StateOk` component of the `QueryOk` family — "at every class this name
+   resolves to a builtin" — is *false at the booted heap* for every operator the rungs need
+   except `nil?` and `length`: `>`/`<`/`>=`/`<=` resolve to a **prelude** `Comparable` method
+   at `Symbol`, `Numeric` and `Pathname`, `==` at `Numeric`/`Pathname`/`Encoding`, `!=` at
+   *every* class, `empty?` at `Pathname`, `size` at `Range`. A prelude body is arbitrary Ruby
+   and dispatches `<=>` onward, so the builtin route collapses back into the general case.
+3. **The honest premise bounds the program's closures, not its expressions.** `Ctx.closures`
+   is already the checker's closure table, and `StateOk`'s `ClosuresOk` is currently `trivial`
+   — so the shape of the fix is an **exactness** component in `MethodsExact`'s mould ("every
+   closure in the heap is one `κ` records, or the prelude's") plus a syntactic premise over
+   that table ("no closure assigns a local it captures"). Rungs 132/192/194 have no closures at
+   all, so it should be corpus-neutral; §F13's own witness (corpus 248) is refused for the
+   right reason under it.
+
+The exactness component is the part with a cost that has not been paid anywhere yet: unlike
+`MethodsExact`, whose upper bound is measured once at the booted heap and grown by
+`declaresName`, closures are created **at run time** by `lambdaLit`/`iterBlock`, so the
+component has to be preserved by rules that allocate them — and `Judge.lambdaLit` is already
+discharged, which means it gets re-proved. That is expected (the procedure above: a rung that
+will not close is information about a `StateOk` component), and it is worth knowing before
+starting rather than during.
+
 ## The fifteenth stall point — **syntax-directed run invariants**, and it is now the largest piece
 
 Named in clink 57, and it is the *merge* of two findings that turned out to be one thing. Both

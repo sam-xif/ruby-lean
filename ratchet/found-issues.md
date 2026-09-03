@@ -1143,6 +1143,17 @@ induction over `stepFn` carrying a syntactic predicate through the machine, whic
 it is well-defined, which is progress of a kind — the six lemmas that were the *stated* next
 step are done, and what they uncovered is a single named wall rather than a list.
 
+**Update (clink 59): the fix is not a grammar tightening.** `Denote/Sem/notes.md`'s
+sixteenth stall point records the measurement: `Machine.setLocal` walks the **capture chain**,
+not the frame stack, so `x = 1; f = lambda { x = 2 }; def g(p); p.call; end; g(f)` leaves `x`
+as `2` — a callee writing its caller's local, confirmed under CRuby. No tightening of
+`noLocalAsgn`'s grammar excludes that, because every tightening still has to admit `.send`
+(rung 132 `x && x > 1` is the program the feature exists for, and dropping the send arm stops
+three rung derivations compiling), and pinning the dispatch to a builtin is *false at the
+booted heap* for every operator but `nil?` and `length`. The honest premise bounds the
+program's **closures** — a `ClosuresOk` exactness component in `MethodsExact`'s mould plus "no
+closure assigns a local it captures" over `κ.closures`.
+
 ## §F14 — `x.nil?` is a dispatch, and the narrowing read the *shape* where it needed the *name*
 
 **Confirmed reachable, `validate` accepted it.** Corpus `249-nilq-narrow-redefined-unsafe`:
