@@ -939,6 +939,35 @@ Not wasted: the attempt is what found **§F18**, which is a reachable soundness 
 rule, and the guard that fixes it (`constAsgnOk`) is what any future version of the rule needs
 anyway.
 
+## The layer, as built so far (clink 59) — and one correction to its per-step statement
+
+Three files, bottom-up, and the order is `RubyCore/Proof/KontFrame*.lean`'s:
+
+| File | What is proved |
+|---|---|
+| `Locals.lean` | the capture chain (`ReachesB`), `setLocal`'s target is on it, `CaptureDown` + fuel-irrelevance, `getLocal_congr`, and `Sealed` |
+| `FrameLocal.lean` | **the whole `Builtins` layer**: `builtins_run_locals` and the six dispatchers under it |
+| `StepLocal.lean` | `LocalsOff` — `LocalsSame` weakened to one frame — and the three leaf closers the interpreter needs |
+
+**The correction.** The per-step claim cannot be stated with `¬ ReachesFrame m b`. Measured on
+`unwind`, whose automation closes every arm but the four helper hand-offs, one of which
+(`callClosure`) is reached at `{ m with stack := m.stack.tail }`: `ReachesFrame` reads the chain
+from `m.stack.headD 0`, so **a stack pop can make `b` reachable again** — which is the end of an
+activation, and exactly why `Sealed` quantifies over every frame on the stack. So the claim is
+
+```
+Sealed b m → b < m.frames.size → stepFn m = .next m' → LocalsOff b m m' ∧ Sealed b m'
+```
+
+and the second conjunct is where the layer stops being automation: each of the six
+`frames.push`es needs "the new frame's chain misses `b`" — free for a method frame (`captured =
+none`), a *fact about the closure* for a block frame — and each closure allocation needs "the new
+closure's captured chain misses `b`". Which is the closure premise the sixteenth stall point
+predicted, arriving where it said it would.
+
+Next: `Sealed.pop`/`push_method`/`push_block`/`alloc_closure`, and the `ClosuresOk` exactness
+component they are stated against.
+
 ## The sixteenth stall point — the fifteenth's plan names a theorem that is **false**
 
 Measured while starting the layer (clink 59, after `Judge.ivarAsgn`). The fifteenth stall point

@@ -58,4 +58,34 @@ theorem LocalsOff.setLocal {b : FrameId} {m : Machine} {x : String} {w : Value}
 
 #print axioms LocalsOff.push
 
+/-! ## What the first attempt at `unwind` measured, and what it changes
+
+`unwind` was attempted with the `Builtins` layer's automation and three more leaf closers (the
+three ways the interpreter can leave `b` alone: frames untouched, a frame pushed past `b`, a
+local written on a chain `b` is off). It closes all but **four** arms, and those four name the
+four helpers `unwind` hands off to: `forStep`, `callClosure`, `finishRegion`, `nextClause`.
+
+That is not the interesting part. The interesting part is what the fourth of them shows about
+the *statement*: `callClosure` is reached at `{ m with stack := m.stack.tail }`, and
+
+> `¬ ReachesFrame m b` does not survive a stack pop.
+
+`ReachesFrame` reads the chain from `m.stack.headD 0`, so popping makes a *different* frame
+current — and if `b` is the frame being returned to, it is now on the chain. Which is exactly
+the end of an activation, and exactly why `Denote/Sem/Locals.lean`'s `Sealed` quantifies over
+**every** frame on the stack rather than over the current one. So the per-step claim has to be
+stated with `Sealed b m`, not `¬ ReachesFrame m b`, and its conclusion has to carry `Sealed b m'`
+onward for the run-level induction to compose.
+
+Carrying `Sealed b m'` is where the interpreter layer stops being automation: for each of the
+six `frames.push`es it needs "the new frame's chain misses `b`" (free for a method frame, whose
+`captured` is `none`; a *fact about the closure* for a block frame), and for each closure
+allocation it needs "the new closure's captured chain misses `b`". Those two are the closure
+premise the sixteenth stall point identifies, arriving where it was predicted to.
+
+So the next step is not more arms: it is `Sealed`'s preservation lemmas — `Sealed.pop`,
+`Sealed.push_method`, `Sealed.push_block`, `Sealed.alloc_closure` — and the `ClosuresOk`
+exactness component they need. The vocabulary above is what they will be stated over.
+-/
+
 end Ratchet.Denote
