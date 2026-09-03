@@ -231,4 +231,78 @@ theorem getLocal_congr {m m₂ : Machine} {x : String} (hs : m₂.stack = m.stac
 
 #print axioms getLocal_congr
 
+/-! ## `ReachesB`'s two congruences
+
+Both are needed before the invariant below can be *stated* usefully, because the invariant
+quantifies `ReachesB` at the fuel `m.frames.size + 1` and an activation grows that size.
+
+* **Fuel** — irrelevant above `fid`, for `getLocal`'s reason and by the same induction.
+* **The machine** — `ReachesB` reads only `captured`, so it does not move when a step rewrites a
+  frame's `locals` or appends new frames. That is what makes the invariant survive `setLocal`
+  and a frame push without any argument about *which* frame was written. -/
+
+theorem reachesB_fuel_irrel {m : Machine} {b : FrameId} (hcd : CaptureDown m) :
+    ∀ (fid : FrameId), ∀ (n₁ n₂ : Nat), fid < n₁ → fid < n₂ →
+      ReachesB m b fid n₁ = ReachesB m b fid n₂ := by
+  intro fid
+  induction fid using Nat.strongRecOn with
+  | _ fid ih =>
+    intro n₁ n₂ h₁ h₂
+    cases n₁ with
+    | zero => exact absurd h₁ (Nat.not_lt_zero _)
+    | succ k₁ =>
+    cases n₂ with
+    | zero => exact absurd h₂ (Nat.not_lt_zero _)
+    | succ k₂ =>
+      rw [ReachesB, ReachesB]
+      cases hc : (m.frames.getD fid default).captured with
+      | none => rfl
+      | some p =>
+        simp only []
+        have hp : p < fid := hcd fid p hc
+        rw [ih p hp k₁ k₂ (Nat.lt_of_lt_of_le hp (Nat.le_of_lt_succ h₁))
+          (Nat.lt_of_lt_of_le hp (Nat.le_of_lt_succ h₂))]
+
+theorem reachesB_captured_congr {m m₂ : Machine} {b : FrameId}
+    (hcap : ∀ f, (m₂.frames.getD f default).captured = (m.frames.getD f default).captured) :
+    ∀ (fuel : Nat) (fid : FrameId), ReachesB m₂ b fid fuel = ReachesB m b fid fuel
+  | 0, _ => rfl
+  | fuel + 1, fid => by
+    rw [ReachesB, ReachesB, hcap fid]
+    cases hc : (m.frames.getD fid default).captured with
+    | none => rfl
+    | some p => simp only []; rw [reachesB_captured_congr hcap fuel p]
+
+/-! ## The seal
+
+`Sealed b m` is the invariant an activation carries, and the sixteenth stall point is the reason
+it has a **second** conjunct. The first says the obvious thing — no frame the machine can make
+current has `b` on its chain — and on its own it is not preserved: invoking a closure makes the
+*closure's* captured frame current, so a closure that captured a chain through `b` reopens it.
+That is the falsifier, stated as a clause.
+
+Not stated: anything about `m.kont`. A continuation carries frame *ids* to restore, and
+restoring one only pops back to a frame already on the stack, which the first clause covers. -/
+
+structure Sealed (b : FrameId) (m : Machine) : Prop where
+  /-- No frame on the activation stack reaches `b`. -/
+  stack : ∀ fid ∈ m.stack, ReachesB m b fid (m.frames.size + 1) = false
+  /-- …and no closure in the heap captured a chain through `b`. -/
+  clos : ∀ (o : ObjId) (cl : Closure), procClosure? m.heap (.ref o) = some cl →
+    ReachesB m b cl.captured (m.frames.size + 1) = false
+
+/-- The seal implies what the write lemma above wants, at the current frame. -/
+theorem not_reachesFrame_of_sealed {b : FrameId} {m : Machine} (h : Sealed b m)
+    (hne : m.stack ≠ []) : ¬ ReachesFrame m b := by
+  intro hr
+  have hmem : m.stack.headD 0 ∈ m.stack := by
+    cases hs : m.stack with
+    | nil => exact absurd hs hne
+    | cons a rest => simp [hs]
+  rw [ReachesFrame, h.stack _ hmem] at hr
+  exact absurd hr (by simp)
+
+#print axioms not_reachesFrame_of_sealed
+#print axioms reachesB_fuel_irrel
+
 end Ratchet.Denote
