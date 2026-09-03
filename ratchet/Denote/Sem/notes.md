@@ -901,6 +901,44 @@ What it needs, in the order the effort falls:
 * The `&&` shape (`narrowCond?`'s first arm) is the desugarer's `seq`/`vasgn`/`if'` sandwich
   and is `thenOnly`; it reduces to the `.var` case once the sandwich is stepped through.
 
+## The seventeenth stall point — `Judge.casgn` looked free, and `ConstScopeOk` is what it is not
+
+Measured after §F18 (clink 59). `Judge.casgn` is the rule with **no premise at all** and no
+context growth — its conclusion threads `Γ'`/`I'` straight through from its right-hand side —
+so it looked like the one remaining rule outside both walls. It is not, and the obstruction is
+worth writing down because it is a *component* defect rather than a missing lemma.
+
+`applyKont`'s `.casgnK` arm writes `constSetIn h defmod n v`, i.e. into
+`m.currentFrame.defmod`'s own constant table. `ConstScopeOk` says
+
+```
+∀ n, constResolveAt m n = constLookup m.heap n
+```
+
+and `constLookup` is **only `Object`'s own table** (`RubyCore/Heap.lean` L597). At a machine
+standing inside `class A … end` the two sides agree as long as `A` owns no constants — which
+is exactly the machine a class body starts from, so such a machine *is* conformant. Writing the
+body's first constant makes `constResolveAt m₂ "X"` answer `A`'s new entry while
+`constLookup m₂.heap "X"` still answers `none`. So `StateOk` holds before the step and fails
+after it, and `SemJudge`'s conclusion asks for it after.
+
+**The component cannot simply be strengthened, because it is on both sides of the implication.**
+`ConstScopeOk` is a conjunct of `StateOk κ Γ I m` (hypothesis) *and* of `StateOk κ Γ' I' m'`
+(conclusion); what fails is the conclusion, so the fix has to be a **weakening**, and the
+obvious weakenings all break the three `.const` rungs that consume it — excluding names a cref
+class owns excludes exactly the names those rungs are about, since at `cref = [Object]` the
+owning class *is* the toplevel table.
+
+Which is the **eighth stall point** arriving from a new direction: the honest fix is for `Ctx`
+to record the cref and for the `.const` rules to be about resolution *at the recorded cref*
+rather than at the toplevel. So `casgn`/`cpathAsgn` belong to the declaration-family redesign
+after all, and `AGENTS.md`'s "the remaining ladder is two items" survives the audit — with the
+list of what is in item (2) two rules longer than it looked.
+
+Not wasted: the attempt is what found **§F18**, which is a reachable soundness bug in the same
+rule, and the guard that fixes it (`constAsgnOk`) is what any future version of the rule needs
+anyway.
+
 ## The sixteenth stall point — the fifteenth's plan names a theorem that is **false**
 
 Measured while starting the layer (clink 59, after `Judge.ivarAsgn`). The fifteenth stall point

@@ -668,7 +668,14 @@ Discharged so far, all axiom-clean:
   absence rejects every in-method assignment, and agreement at `I'`'s *own* `@x` entry rejects
   type-changing reassignment. Arrows are exempt because they are `Later`-quantified and the
   write is a `Later`; `Ty.clos` is not, which is §F1's split one component over.
-* **The remaining ladder is two items, not five** (clink 58). The fifteenth stall point's two
+* **The remaining ladder is two items, not five** (clink 58; re-audited clink 59, and
+  `casgn`/`cpathAsgn` moved *into* item (2) — see `Denote/Sem/notes.md`'s seventeenth stall
+  point: `Judge.casgn` has no premise and no context growth, but `applyKont`'s `.casgnK` writes
+  into `currentFrame.defmod`'s own table, and `ConstScopeOk` compares resolution against
+  `Object`'s table alone, so a class body's first constant makes the *conclusion*'s `StateOk`
+  false. The component is on both sides of the implication, so the fix is a weakening, and
+  every obvious weakening breaks the three `.const` rungs that consume it — which is the
+  eighth stall point again). The fifteenth stall point's two
   halves are **entangled with the call decomposition**: the locals claim wants to be an
   induction on the expression, but `noLocalAsgn` must admit `.send`, which may dispatch a user
   method — so it needs "a callee's run leaves the caller's frame's locals alone", the same
