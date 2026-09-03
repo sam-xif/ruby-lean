@@ -146,4 +146,89 @@ theorem locals_setLocal_of_not_reaches {m : Machine} {b : FrameId} {x : String} 
 
 #print axioms locals_setLocal_of_not_reaches
 
+/-! ## The chain runs *downhill*, and that is what makes the fuel irrelevant
+
+`Machine.getLocal` walks with `m.frames.size + 1` fuel, so two machines whose frame arrays have
+different sizes walk with different fuel — and an activation grows the array. Comparing the two
+walks therefore needs the fuel to stop mattering, which needs the chain to be finite, which is
+not a fact about the *types*: `Frame.captured` is an arbitrary `Option FrameId` and nothing in
+`RubyCore/Machine.lean` forbids a cycle.
+
+`CaptureDown` is the fact that makes it finite, and it is true of the interpreter for a mundane
+reason: a frame captures a frame that already existed, and frames are appended, so the captured
+id is *smaller*. Stated here rather than assumed, because it is destined to be a `StateOk`
+component — every producer of a machine has to keep it, and the ones that only rewrite a
+frame's `locals` (`setLocal`, the `asgnK` arms) keep it for free. -/
+
+/-- **A frame captures an older frame.** -/
+def CaptureDown (m : Machine) : Prop :=
+  ∀ fid p, (m.frames.getD fid default).captured = some p → p < fid
+
+/-- With the chain running downhill, `getLocal`'s walk is done after `fid` steps, so any two
+fuels above that agree. Strong induction on `fid`, which is what "downhill" buys. -/
+theorem getLocal_go_fuel_irrel {m : Machine} {x : String} (hcd : CaptureDown m) :
+    ∀ (fid : FrameId), ∀ (n₁ n₂ : Nat), fid < n₁ → fid < n₂ →
+      Machine.getLocal.go m x fid n₁ = Machine.getLocal.go m x fid n₂ := by
+  intro fid
+  induction fid using Nat.strongRecOn with
+  | _ fid ih =>
+    intro n₁ n₂ h₁ h₂
+    cases n₁ with
+    | zero => exact absurd h₁ (Nat.not_lt_zero _)
+    | succ k₁ =>
+    cases n₂ with
+    | zero => exact absurd h₂ (Nat.not_lt_zero _)
+    | succ k₂ =>
+      rw [Machine.getLocal.go, Machine.getLocal.go]
+      cases hf : (m.frames.getD fid default).locals.find? (·.1 == x) with
+      | some p => rfl
+      | none =>
+        cases hc : (m.frames.getD fid default).captured with
+        | none => rfl
+        | some p =>
+          have hp : p < fid := hcd fid p hc
+          exact ih p hp k₁ k₂ (Nat.lt_of_lt_of_le hp (Nat.le_of_lt_succ h₁))
+            (Nat.lt_of_lt_of_le hp (Nat.le_of_lt_succ h₂))
+
+/-! ## …so a walk over unchanged frames answers the same thing
+
+The form the run-level statement will be consumed at: two machines, the same stack, and every
+frame **on the chain** reading back the same. Nothing is asked about the frames off it, which is
+the point — an activation appends frames and rewrites its own, and neither is on the caller's
+chain. -/
+
+theorem getLocal_go_congr {m m₂ : Machine} {x : String} :
+    ∀ (fuel : Nat) (fid : FrameId),
+      (∀ f, ReachesB m f fid fuel = true → m₂.frames.getD f default = m.frames.getD f default) →
+      Machine.getLocal.go m₂ x fid fuel = Machine.getLocal.go m x fid fuel
+  | 0, _, _ => rfl
+  | fuel + 1, fid, hagree => by
+    have hhead : m₂.frames.getD fid default = m.frames.getD fid default :=
+      hagree fid (reachesB_head m fid fuel)
+    rw [Machine.getLocal.go, Machine.getLocal.go, hhead]
+    cases hf : (m.frames.getD fid default).locals.find? (·.1 == x) with
+    | some p => rfl
+    | none =>
+      cases hc : (m.frames.getD fid default).captured with
+      | none => rfl
+      | some p =>
+        simp only []
+        exact getLocal_go_congr fuel p
+          (fun f hr => hagree f (reachesB_step hc hr))
+
+/-- **The lemma the layer is for.** -/
+theorem getLocal_congr {m m₂ : Machine} {x : String} (hs : m₂.stack = m.stack)
+    (_hcd : CaptureDown m) (hcd₂ : CaptureDown m₂)
+    (hlt : m.stack.headD 0 < m.frames.size) (hlt₂ : m.stack.headD 0 < m₂.frames.size)
+    (hagree : ∀ f, ReachesB m f (m.stack.headD 0) (m.frames.size + 1) = true →
+      m₂.frames.getD f default = m.frames.getD f default) :
+    m₂.getLocal x = m.getLocal x := by
+  rw [Machine.getLocal, Machine.getLocal, hs]
+  -- both walks are run at the *same* fuel first, then each is moved to its own
+  rw [getLocal_go_fuel_irrel (x := x) hcd₂ (m.stack.headD 0) (m₂.frames.size + 1)
+        (m.frames.size + 1) (Nat.lt_succ_of_lt hlt₂) (Nat.lt_succ_of_lt hlt)]
+  exact getLocal_go_congr _ _ hagree
+
+#print axioms getLocal_congr
+
 end Ratchet.Denote
