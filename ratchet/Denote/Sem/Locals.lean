@@ -352,25 +352,29 @@ array, so that a write to a frame's `locals` is one of its instances. -/
 theorem Sealed.congr {b : FrameId} {m m₂ : Machine} (h : Sealed b m)
     (hsz : m₂.frames.size = m.frames.size)
     (hcap : ∀ f, (m₂.frames.getD f default).captured = (m.frames.getD f default).captured)
-    (hh : m₂.heap = m.heap) (hst : ∀ fid ∈ m₂.stack, fid ∈ m.stack) : Sealed b m₂ where
+    (hh : ∀ (o : ObjId) (cl : Closure), procClosure? m₂.heap (.ref o) = some cl →
+      ReachesB m b cl.captured (m.frames.size + 1) = false)
+    (hst : ∀ fid ∈ m₂.stack, fid ∈ m.stack) : Sealed b m₂ where
   stack := fun fid hmem => by
     rw [hsz, reachesB_captured_congr hcap]
     exact h.stack fid (hst fid hmem)
   clos := fun o cl hcl => by
     rw [hsz, reachesB_captured_congr hcap]
-    exact h.clos o cl (by rw [hh] at hcl; exact hcl)
+    exact hh o cl hcl
 
 /-- **Popping the stack.** The frames the seal talks about only shrink. -/
 theorem Sealed.pop {b : FrameId} {m : Machine} (h : Sealed b m) :
     Sealed b { m with stack := m.stack.tail } :=
-  h.congr rfl (fun _ => rfl) rfl (fun fid hmem => List.mem_of_mem_tail hmem)
+  h.congr rfl (fun _ => rfl) (fun o cl hc => h.clos o cl hc)
+    (fun fid hmem => List.mem_of_mem_tail hmem)
 
 /-- **Anything that is not the frames, the stack or the heap** — `ctl`, `kont`, `out`,
 `globals`, `currentExc`: the fields the seal does not read. -/
 theorem Sealed.frameOnly {b : FrameId} {m m₂ : Machine} (h : Sealed b m)
     (hs : m₂.stack = m.stack) (hf : m₂.frames = m.frames) (hh : m₂.heap = m.heap) :
     Sealed b m₂ :=
-  h.congr (by rw [hf]) (fun _ => by rw [hf]) hh (fun fid hmem => hs ▸ hmem)
+  h.congr (by rw [hf]) (fun _ => by rw [hf])
+    (fun o cl hc => h.clos o cl (by rw [hh] at hc; exact hc)) (fun fid hmem => hs ▸ hmem)
 
 /-- **A local write.** `setLocal` touches `locals`, and the seal reads `captured`. -/
 theorem Sealed.setLocal {b : FrameId} {m : Machine} (h : Sealed b m) (x : String) (w : Value) :
@@ -378,7 +382,7 @@ theorem Sealed.setLocal {b : FrameId} {m : Machine} (h : Sealed b m) (x : String
   have hsz : (m.setLocal x w).frames.size = m.frames.size := by
     show (m.frames.set! _ _).size = _
     simp [Array.set!]
-  refine h.congr hsz (fun f => ?_) rfl (fun fid hmem => hmem)
+  refine h.congr hsz (fun f => ?_) (fun o cl hc => h.clos o cl hc) (fun fid hmem => hmem)
   show ((m.frames.set! _ _).getD f default).captured = _
   by_cases hf : f = Machine.setLocal.owner m x (m.stack.headD 0) (m.stack.headD 0)
       (m.frames.size + 1)
@@ -471,5 +475,55 @@ theorem Sealed.push {b : FrameId} {m : Machine} (h : Sealed b m) (hwf : FramesWF
     exact h.clos o cl hcl
 
 #print axioms Sealed.push
+
+/-! ### Reading an allocated heap
+
+Three lemmas, one per position relative to the fresh id. `RubyCore/Proof/HeapFacts.lean` has the
+`set!` flavours; these are `push`'s. -/
+
+theorem alloc_get_lt {h : Heap} {o : ObjId} (obj : Object) (ho : o < h.objs.size) :
+    ((h.alloc obj).2).get o = h.get o := by
+  simp only [Heap.alloc, Heap.get]
+  rw [Array.getD_eq_getD_getElem?, Array.getD_eq_getD_getElem?,
+    Array.getElem?_push_lt ho, Array.getElem?_eq_getElem ho]
+
+theorem alloc_get_self {h : Heap} (obj : Object) :
+    ((h.alloc obj).2).get h.objs.size = obj := by
+  simp only [Heap.alloc, Heap.get]
+  simp [Array.getD_eq_getD_getElem?, Array.getElem?_push]
+
+theorem alloc_get_gt {h : Heap} {o : ObjId} (obj : Object) (ho : ¬ o < h.objs.size)
+    (hne : ¬ o = h.objs.size) : ((h.alloc obj).2).get o = default := by
+  simp only [Heap.alloc, Heap.get]
+  rw [Array.getD_eq_getD_getElem?, Array.getElem?_push, if_neg hne,
+    Array.getElem?_eq_none (Nat.le_of_not_lt ho), Option.getD_none]
+
+/-- **Allocating an object.** The seal survives it unless the object *is* a closure over a
+chain through `b` — the other half of the sixteenth stall point's premise, and the half a
+syntactic condition can decide: a block literal's captured frame is the frame it is created in.
+
+Built through `Sealed.congr`, whose closure clause is stated at the *old* machine — which is
+what lets the fresh id be discharged by the premise while every old id goes through the seal. -/
+theorem Sealed.alloc {b : FrameId} {m : Machine} (h : Sealed b m) (obj : Object)
+    (hcl : ∀ cl, obj.payload = .proc cl → ReachesB m b cl.captured (m.frames.size + 1) = false) :
+    Sealed b { m with heap := (m.heap.alloc obj).2 } := by
+  refine h.congr rfl (fun _ => rfl) (fun o cl hcl' => ?_) (fun fid hmem => hmem)
+  rw [procClosure?] at hcl'
+  by_cases ho : o < m.heap.objs.size
+  · refine h.clos o cl ?_
+    rw [procClosure?, ← alloc_get_lt obj ho]
+    exact hcl'
+  · by_cases hoe : o = m.heap.objs.size
+    · rw [hoe, alloc_get_self obj] at hcl'
+      split at hcl'
+      · rename_i c heq
+        injection hcl' with hcl'
+        exact hcl' ▸ hcl c heq
+      · exact absurd hcl' (by simp)
+    · rw [alloc_get_gt obj ho hoe] at hcl'
+      rw [show (default : Object).payload = Payload.none from rfl] at hcl'
+      exact absurd hcl' (by simp)
+
+#print axioms Sealed.alloc
 
 end Ratchet.Denote
