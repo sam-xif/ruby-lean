@@ -88,4 +88,43 @@ So the next step is not more arms: it is `Sealed`'s preservation lemmas — `Sea
 exactness component they need. The vocabulary above is what they will be stated over.
 -/
 
+/-! ## The composites
+
+One lemma per machine change, pairing the locals claim with the invariant so an arm of the
+interpreter closes with a single `exact`. These are what the interpreter walk is stated over. -/
+
+/-- `Step b m m'`: the step left `b`'s locals alone and handed the invariant back. -/
+def Step (b : FrameId) (m m' : Machine) : Prop := LocalsOff b m m' ∧ StepInv b m'
+
+theorem Step.refl {b : FrameId} {m : Machine} (h : StepInv b m) : Step b m m :=
+  ⟨LocalsOff.refl b m, h⟩
+
+theorem Step.trans {b : FrameId} {a c d : Machine} (h₁ : Step b a c) (h₂ : Step b c d) :
+    Step b a d := ⟨h₁.1.trans h₂.1, h₂.2⟩
+
+/-- Everything that is not the frames, the stack or the heap. -/
+theorem Step.frameOnly {b : FrameId} {m m₂ : Machine} (h : StepInv b m)
+    (hs : m₂.stack = m.stack) (hf : m₂.frames = m.frames) (hh : m₂.heap = m.heap) :
+    Step b m m₂ :=
+  ⟨by unfold LocalsOff; rw [hf],
+   { sealed := h.sealed.frameOnly hs hf hh
+     wf := h.wf.frameOnly hs hf hh
+     inRange := by rw [hf]; exact h.inRange }⟩
+
+theorem Step.pop {b : FrameId} {m : Machine} (h : StepInv b m) (hne : m.stack.tail ≠ []) :
+    Step b m { m with stack := m.stack.tail } :=
+  ⟨rfl, { sealed := h.sealed.pop, wf := h.wf.pop hne, inRange := h.inRange }⟩
+
+theorem Step.setLocal {b : FrameId} {m : Machine} (h : StepInv b m) (x : String) (w : Value) :
+    Step b m (m.setLocal x w) :=
+  ⟨LocalsOff.setLocal (not_reachesFrame_of_sealed h.sealed h.wf.nonEmpty),
+   { sealed := h.sealed.setLocal x w
+     wf := h.wf.setLocal x w
+     inRange := by
+       rw [show (m.setLocal x w).frames.size = m.frames.size from by
+         show (m.frames.set! _ _).size = _
+         simp [Array.set!]]
+       exact h.inRange }⟩
+
 end Ratchet.Denote
+

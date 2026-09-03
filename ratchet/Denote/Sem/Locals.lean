@@ -407,6 +407,10 @@ component: the boot machine has one frame, an empty capture chain and no closure
 structure FramesWF (m : Machine) : Prop where
   /-- A frame captures an older frame. -/
   down : CaptureDown m
+  /-- **There is a current frame.** Not bookkeeping: without it `m.stack.headD 0` is `0`, a
+      frame the seal says nothing about, and `setLocal` could write `b` through *its* chain.
+      `Denote/Sem/State.lean`'s `FrameInRange` is the same clause one file over. -/
+  nonEmpty : m.stack ≠ []
   /-- Every frame on the activation stack exists. -/
   stack : ∀ fid ∈ m.stack, fid < m.frames.size
   /-- …and so does every frame a closure captured. -/
@@ -535,15 +539,17 @@ each one is one clause at a time.
 `StepInv` bundles the three things a step has to be handed and hand back: the seal, the
 well-formedness, and `b`'s own in-rangeness (which a `push` preserves and nothing shrinks). -/
 
-theorem FramesWF.pop {m : Machine} (h : FramesWF m) :
+theorem FramesWF.pop {m : Machine} (h : FramesWF m) (hne : m.stack.tail ≠ []) :
     FramesWF { m with stack := m.stack.tail } where
   down := h.down
+  nonEmpty := hne
   stack := fun fid hmem => h.stack fid (List.mem_of_mem_tail hmem)
   clos := h.clos
 
 theorem FramesWF.frameOnly {m m₂ : Machine} (h : FramesWF m) (hs : m₂.stack = m.stack)
     (hf : m₂.frames = m.frames) (hh : m₂.heap = m.heap) : FramesWF m₂ where
   down := fun fid p hc => h.down fid p (by rw [hf] at hc; exact hc)
+  nonEmpty := by rw [hs]; exact h.nonEmpty
   stack := fun fid hmem => by rw [hf]; exact h.stack fid (hs ▸ hmem)
   clos := fun o cl hcl => by rw [hf]; exact h.clos o cl (by rw [hh] at hcl; exact hcl)
 
@@ -563,6 +569,7 @@ theorem FramesWF.setLocal {m : Machine} (h : FramesWF m) (x : String) (w : Value
       · rw [hf, getD_set!_oob m.frames _ _ (fun hc => hlt (hf ▸ hc))]
     · rw [getD_set!_ne m.frames _ f _ hf]
   exact { down := fun fid p hc => h.down fid p (by rw [hcap fid] at hc; exact hc)
+          nonEmpty := h.nonEmpty
           stack := fun fid hmem => by rw [hsz]; exact h.stack fid hmem
           clos := fun o cl hcl => by rw [hsz]; exact h.clos o cl hcl }
 
@@ -577,7 +584,7 @@ theorem FramesWF.push {m : Machine} (h : FramesWF m) (fr : RubyCore.Frame)
       Array.getElem?_push_lt hf, Array.getElem?_eq_getElem hf]
   have hself : (m.frames.push fr).getD m.frames.size default = fr := by
     simp [Array.getD_eq_getD_getElem?, Array.getElem?_push]
-  refine { down := ?_, stack := ?_, clos := ?_ }
+  refine { down := ?_, nonEmpty := by simp, stack := ?_, clos := ?_ }
   · intro fid p hc
     by_cases hf : fid < m.frames.size
     · rw [hlt fid hf] at hc
@@ -605,7 +612,7 @@ theorem FramesWF.push {m : Machine} (h : FramesWF m) (fr : RubyCore.Frame)
 theorem FramesWF.alloc {m : Machine} (h : FramesWF m) (obj : Object)
     (hcl : ∀ cl, obj.payload = .proc cl → cl.captured < m.frames.size) :
     FramesWF { m with heap := (m.heap.alloc obj).2 } := by
-  refine { down := h.down, stack := h.stack, clos := ?_ }
+  refine { down := h.down, nonEmpty := h.nonEmpty, stack := h.stack, clos := ?_ }
   intro o cl hcl'
   rw [procClosure?] at hcl'
   by_cases ho : o < m.heap.objs.size
