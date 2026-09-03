@@ -6207,7 +6207,7 @@ every one of them tightened a guard and none cost a rung. `checkrungs` 177/177 +
 denotation gate's `#guard`s green; ladder **46/83**. No change under `lean/` since clink 54, so
 that clink's tier-0 difftest (1304 cases, 0 disagreements) still stands.
 
-## Clink 59 (2026-09-02) — mutation enters the ladder, and §F17. **177 rungs / 249, 47 of 83 rules**
+## Clink 59 (2026-09-02) — mutation enters the ladder, two reachable soundness bugs, and the layer's plan corrected. **177 rungs / 250, 47 of 83 rules**
 
 One rung, and it is the one that pays for a whole class of the remaining ones:
 `Judge.ivarAsgn`. Every transport the ladder had before this was `Ext` (allocation: the heap
@@ -6286,8 +6286,114 @@ split, one component over. The `Later` widening this needed (drop `get`/`freshIv
 `freshBasic`, add `klass`/`eigen`/`payloadObj`/`frozen`) is the one that structure's own
 docstring anticipated.
 
+
+### §F18, and the rule that had no premise
+
+Found while sizing `Judge.casgn` for the *next* rung, and it is **reachable**:
+`X = 1; y = (X = "s"); X + 1` was certified `Integer`; CRuby raises `TypeError`. Corpus rung
+250 is the witness, and it read `validate=true (MISMATCH)` before the fix.
+
+`Ctx.afterStmt` records a constant's type through `extendConsts`, which matches a **top-level
+`casgn` statement**. An assignment anywhere else is not that shape, so `κ.consts` keeps the old
+type — and `Judge.casgn`'s own docstring called that invisibility "conservative, in the
+direction that costs a rung rather than soundness", which is backwards: invisibility is
+conservative only for a name the tables say *nothing* about. For a name they already describe,
+the write makes the description wrong.
+
+**Two doors.** `constEnv` reads the stale entry; and `constBuiltin`/`constCls`/`constExc`'s
+premise is `constGet? κ n = none`, which a buried write *satisfies* — so
+`y = (String = 5); String.new` types `String` as the class object while the machine holds `5`.
+
+`constAsgnOk` is the fix, and it is §F17's shape arriving twice in one clink: **agreement, not
+absence.** The first assignment of a name resolves nowhere yet (so absence is the common case),
+a re-assignment at the recorded type changes nothing anyone read, and what is refused is a
+rebinding the tables would then be wrong about — a different type, a declared class, a builtin
+class, an exception class. `Judge.cpathAsgn` carries it at `constKeyIn owner n`, the key
+`extendConsts` uses, so the guard and the table agree about which name moved.
+
+The generalisation, now three instances deep (§F17, §F18, and §F10 read this way): **every
+table the context carries is a claim about the machine, so every rule that writes what a table
+describes owes that table a premise.**
+
+### The layer's plan named a theorem that is false
+
+The fifteenth stall point sized the remaining ladder around
+
+> a callee's run leaves the caller's frame's locals alone
+
+and that is **not true of the semantics**. `Machine.setLocal` walks the *capture chain*, not
+the frame stack, so `x = 1; f = lambda { x = 2 }; def g(p); p.call; end; g(f)` leaves `x` as
+`2` — confirmed under CRuby. A callee only has to reach a closure that captured its caller, and
+an argument will do.
+
+Two further measurements, both negative and both cheap to redo:
+
+* **No tightening of `noLocalAsgn`'s grammar fixes §F13.** Every tightening still admits
+  `.send`, and `x && x > 1` (rung 132) is the program the feature exists for; making the send
+  arm answer `false` stops three rung derivations compiling, which the 177/177 gate forbids.
+* **Pinning the operator's dispatch to a builtin does not work either.** A `QueryOk`-family
+  component — "at every non-module class this name resolves to a builtin" — is *false at the
+  booted heap* for every name the rungs need except `nil?` and `length`: `>`/`<`/`>=`/`<=`
+  resolve to a **prelude** `Comparable` method at `Symbol`, `Numeric` and `Pathname`, `==` at
+  `Numeric`/`Pathname`/`Encoding`, `!=` at every class, `empty?` at `Pathname`, `size` at
+  `Range`. A prelude body is arbitrary Ruby and dispatches `<=>` onward, so the builtin route
+  collapses into the general case.
+
+So the honest premise bounds the program's **closures**, not its expressions: a `ClosuresOk`
+exactness component in `MethodsExact`'s mould ("every closure in the heap is one `κ` records,
+or the prelude's") plus a syntactic check over `κ.closures`. Rungs 132/192/194 have no closures
+at all, so it should be corpus-neutral, and §F13's own witness (corpus 248) is refused for the
+right reason under it. The cost not yet paid anywhere: unlike `MethodsExact`, whose upper bound
+is measured once at the booted heap, closures are created **at run time**, so the component has
+to be preserved by `lambdaLit`/`iterBlock` — and `Judge.lambdaLit` is already discharged, so it
+gets re-proved.
+
+### Four bricks of the corrected layer, and the narrowing's other half
+
+`Denote/Sem/Locals.lean` is the part that can be built without any of the closure apparatus,
+and every later piece calls it:
+
+* **`ReachesB`** — the capture chain as a fuel-bounded `Bool`, mirroring
+  `Machine.setLocal.owner`/`getLocal.go`'s own shape so the eventual `StateOk` component can be
+  *computed* at the booted machine;
+* **`setLocal`'s target is on the chain it starts from** — one lemma, a disjunction because the
+  walk has two ways to end (a frame that owns the name, or the `start` fallback), which
+  coincide at the call site. This is the reason an activation is safe: not that it is a callee,
+  but that `b` is off its chain;
+* **`CaptureDown` and fuel-irrelevance** — `getLocal` walks with `m.frames.size + 1` fuel and
+  an activation grows the array, so comparing two walks needs the fuel to stop mattering, which
+  needs the chain to be finite. That is *not* a fact about the types (`Frame.captured` is an
+  arbitrary `Option FrameId`); `CaptureDown` — a frame captures a frame that already existed,
+  so a smaller id — is what makes it so, and it is destined to be a `StateOk` component;
+* **`Sealed`** — the invariant, with two conjuncts, the second being the falsifier above stated
+  as a clause. Nothing about `m.kont`: restoring a frame id only pops back to a frame already
+  on the stack.
+
+And narrowing's **then** side, which clink 58 left out because the guards read only the else
+side: `EnvOk_refineOne_then`, `narrow_then_fact`, `stateOk_narrow_then`. Two notes. The `then`
+transport is a *copy* of the `else` one rather than one lemma parameterised over `refineOne`'s
+`thenSide` — that was tried first, and the function's own `let refine := fun τ => if thenSide
+then …` leaves an `if` in every goal, so `split` picks it instead of the `isAliasTy` guard the
+proof is analysing. And `stateOk_narrow_then` needs a hypothesis its twin did not, because the
+then side of `narrowEnvs` refines for **both** `NarrowSides`: the `&&` sandwich, the only
+`thenOnly` producer, has to be excluded by the caller. That exclusion is §F13, and it sizes
+what is left of `Judge.if'` exactly — with the sandwich admitted, this lemma plus the run
+inversion *is* the rung.
+
+### And the seventeenth stall point: `casgn` is not free after all
+
+`Judge.casgn` has no premise and no context growth, so it looked like the one remaining rule
+outside both walls. `applyKont`'s `.casgnK` writes into `currentFrame.defmod`'s own constant
+table; `ConstScopeOk` compares resolution against `Object`'s table alone. A machine inside
+`class A … end` is conformant until the body's first constant and not after it — so `StateOk`
+holds before the step and fails after, and the conclusion asks for it after. The component is a
+conjunct of **both** sides of the implication, so the fix is a weakening, and every obvious
+weakening breaks the three `.const` rungs that consume it. That is the eighth stall point from
+a new direction, and it moves `casgn`/`cpathAsgn` into the declaration-family redesign.
+
 ### Gates
 
-Corpus 249/249 agreement, 0 disagreements; expect_validate mismatches **35**, unchanged
-through the guard; 177/177 hand derivations; 145/145 negative controls; `Denote/Examples.lean`
-green; no `sorry`, no new axioms. Nothing under `ruby/lean/` changed.
+Corpus **250/250** agreement, 0 disagreements (the corpus grew by §F18's witness);
+expect_validate mismatches **35**, unchanged through both guards; 177/177 hand derivations;
+145/145 negative controls; `Denote/Examples.lean` green; no `sorry`, no new axioms. Nothing
+under `ruby/lean/` changed.
