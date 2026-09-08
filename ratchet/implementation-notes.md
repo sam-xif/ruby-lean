@@ -6399,11 +6399,11 @@ expect_validate mismatches **35**, unchanged through both guards; 177/177 hand d
 under `ruby/lean/` changed.
 
 
-## Clink 60 (2026-09-07) — the seal is not inductive, and a census that says why the ladder did not move. **178 rungs / 250, 47 of 83 rules**
+## Clink 60 (2026-09-07) — the seal is not inductive, §F19's four doors, and a census. **178 rungs / 254, 47 of 83 rules**
 
-**No rung.** That is the result, and it was reached by attempting the layer's own next step and
-by auditing all 36 remaining rules rather than by running out of time on one of them. Two
-things landed: a refutation, and a census.
+**No rung**, and that was reached by attempting the layer's own next step and by auditing all 36
+remaining rules rather than by running out of time on one of them. Three things landed: a
+refutation, **four reachable soundness bugs**, and a census.
 
 ### The refutation — `not_BuiltinsSeal`
 
@@ -6454,6 +6454,62 @@ And a working lesson, the second time it has paid: **write the layer's target do
 `LocalsSame` (532 lines) before anything asked whether the seal travelled across it; stating
 `BuiltinsSeal` first would have cost an hour and found this. Same lesson as `KontFrame`.
 
+### §F19 — `bodyResult` is right for a lambda and wrong for a proc, and there were four doors
+
+Found by the *census*, not by search: sizing the jump-freeness conjunct (the fourteenth stall
+point) means asking which `Judge` rules would have to discharge "this expression's run emits no
+return jump", and `Judge.lambdaLit` is the rule that cannot — it has no premise about the block
+body at all. Asking why that was safe produced a program that is not:
+
+```ruby
+def f;  p = proc { return "s" };  p.call;  1;  end;  f + 1   # certified Integer; TypeError
+```
+
+and then three more, one per site `bodyResult` had spread to (`iterBlock`, `yieldExpr`,
+`iterClosPass`). All four are certified `Integer` and raise `TypeError` under CRuby *and* the
+model. Written up as `found-issues.md` **§F19**; corpus rungs **251–254**.
+
+`bodyResult` rewrites a body that is exactly `return e` to `e`. `return` in a **lambda** returns
+from the lambda, so that is exactly right and `lambda-explicit-return` (rung 105) is the rung
+that needs it. `return` in a **proc** or a **block** returns from the *enclosing method*, so the
+call never comes back and the method's value becomes `e`'s — the call has no type, and the
+method's recorded return type is a lie. Its own docstring said the rewriting was "applied only
+at `closCall`, because only a lambda rung asks"; by the time it was read, `bodyResult` sat at
+four rules and `closCall` could not tell a lambda from a proc.
+
+**Decisions that were not forced, and the alternatives rejected.**
+
+* **A refusal at `lambdaLit`, not a field on `Clos`.** The precise fix is to record `lam` on
+  `Clos` and make `bodyResult` conditional at all four sites. Rejected on blast radius: `Clos`
+  is what `closIdx?` matches on (by syntax, so the field would have to join the key), what
+  `Denote/Sem/State.lean`'s `closTblOk` compares, and what `collectBlocks` builds — and the
+  precision it buys is `proc { return e }`, which is a program nobody should write. `procRetOk`
+  is one `Bool` on the one rule that can see `m`, and a `proc` whose body is exactly `return e`
+  now gets **no type**.
+* **`iterClosPass` was left alone**, and that is a consequence rather than an omission. With
+  `procRetOk` in place the only `Ty.clos` with a `.ret` body comes from a `lambda`, and
+  `[1].map(&->(y){ return e })` is *sound* — there the `return` really is the block's value. So
+  the rule keeps its precision and the fourth witness is refused because its `&p` premise can no
+  longer be met.
+* **`iterBlock` and `yieldExpr` lose the rewriting outright.** Both take a block **literal**
+  (`yieldExpr` reads `κ.blockTy`, which `callDefBlk` fills from a literal), never a lambda, so
+  there is nothing to condition on. A whole-body `return` in a block now has no rule, which is
+  the right answer.
+* **The guard matches `bodyResult`'s pattern rather than mentioning `.ret` generally.** A
+  `return` anywhere other than as the whole body already had no rule, so the narrow guard
+  refuses nothing that was previously derivable — checked by the mismatch count staying at 35.
+
+`Ratchet/Proof/ChkSound.lean` needed one line (the guard is a fourth `&&` conjunct, so
+`lambdaLit`'s destructuring nests one deeper) and `Denote/Rules/Lambda.lean` one (`intro` gains
+the new hypothesis) — the semantic rung survives the premise, since an extra hypothesis makes an
+obligation easier.
+
+**And it is a different pattern from §F17/§F18.** Those were "a rule that writes what a table
+describes owes that table a premise". This one is: **a syntactic shortcut is scoped to the rule
+that justified it, and copying it to a second rule re-opens the justification.** `bodyResult`'s
+argument was correct for lambdas at `closCall` and was never re-run at the three sites it was
+later reused at.
+
 ### The census — why no rung was available
 
 `Denote/Sem/notes.md` §Where the remaining 36 rules sit is the audit, rule by rule. The result
@@ -6480,12 +6536,15 @@ Two findings from the audit worth carrying:
 ### State
 
 Semantic ratchet **47 of 83** (unchanged; `Judge` 32/67, `JudgeSeq` 3/4, the six companion
-families complete). Syntactic ratchet **178 of 250** rungs certified well-typed, 35
-expect_validate mismatches, 250/250 CRuby agreement — all unchanged, and nothing under
-`Ratchet/`, `corpus/`, `slice/` or `ruby/lean/` was touched. 177/177 hand derivations and
-145/145 negative controls (`checkrungs`); `Denote/Examples.lean` green; no `sorry`, no new
-axioms.
+families complete, denominator still 83). Syntactic ratchet **178 of 254** rungs certified
+well-typed — the corpus grew by §F19's four witnesses, all four correctly refused — with
+expect_validate mismatches at **35**, unchanged, and 254/254 CRuby agreement with 0
+disagreements. 177/177 hand derivations and 145/145 negative controls (`checkrungs`);
+`Denote/Examples.lean` green; no `sorry`, no new axioms. `Ratchet/Judge.lean`,
+`Ratchet/Validate.lean` and `Ratchet/Proof/ChkSound.lean` changed for §F19 and for nothing
+else; nothing under `slice/` or `ruby/lean/` was touched.
 
 *(Note for the next session: the goal text quotes the syntactic ratchet as "177/232" and the
-negative controls as "140/140". Both are stale — the corpus has grown to 250 and the controls to
-145 since those numbers were written. The gates are green at the numbers clink 59 recorded.)*
+negative controls as "140/140". Both are stale — 177 is the count of hand-authored derivations,
+which `checkrungs` still reads at 177/177; the ladder's denominator is the corpus, now 254, and
+the controls are 145.)*

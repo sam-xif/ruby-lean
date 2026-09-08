@@ -1366,3 +1366,73 @@ that mentions `@x`". This is the same sentence with the constant table in place 
 spine — and the same wrong first instinct (absence) and the same right answer (agreement).
 Worth stating as a rule for the rules: **every table the context carries is a claim about the
 machine, so every rule that writes what a table describes owes that table a premise.**
+
+## §F19 — `bodyResult` is right for a lambda and wrong for a proc, and there were four doors
+
+**Reachable, four ways, and the checker accepted all four.** Each of these is certified
+`Integer` and raises `TypeError` under CRuby *and* under the Lean model:
+
+```ruby
+def f;  p = proc { return "s" };  p.call;              1; end;  f + 1   # closCall
+def h;  x = [1].map { |y| return "s" };                1; end;  h + 1   # iterBlock
+def m;  yield; end
+def h;  m { return "s" };                              1; end;  h + 1   # yieldExpr
+def h;  p = proc { |y| return "s" }; x = [1].map(&p);  1; end;  h + 1   # iterClosPass
+```
+
+Corpus rungs **251–254** are the four, each `expect_validate=False`,
+`false_reason="unsafe_program"`.
+
+**The mechanism is one function used in four places.** `bodyResult` rewrites a body that is
+*exactly* `return e` to `e`, so a call to that body is typed as `e`'s type. Its docstring
+explains why the rewriting is a function on syntax rather than a `Judge` rule for `.ret`
+(a rule would make `def f; return "a"; 2; end` validate at `Int`), and it says the rewriting is
+"applied only at `closCall`, because only a lambda rung asks". Both halves of that sentence were
+false by the time it was read: `bodyResult` had spread to `iterBlock`, `iterClosPass` and
+`yieldExpr`, and `closCall` itself cannot tell a lambda from a proc.
+
+**The distinction it needed is Ruby's, and it is not subtle.** `return` inside a **lambda**
+returns from the lambda — so `lambda { return e }.call` really does evaluate to `e`, and
+`corpus/105-lambda-explicit-return` is that rung. `return` inside a **proc** or a **block**
+returns from the *enclosing method* — so the call never comes back at all, and the method's
+value becomes `e`'s. Typing the call as `e`'s type is then wrong twice: the call has no type,
+and the method's recorded return type is a lie. Every one of the four witnesses above is that
+second lie being spent by a caller.
+
+**The fix is a refusal at the one rule that can see the difference.** `Judge.lambdaLit` is the
+only rule that turns a block literal into a callable `Ty.clos`, and it admits `lambda` and
+`proc` alike:
+
+```lean
+def procRetOk (m : String) (body : Expr) : Bool :=
+  match body with
+  | .ret (some _) => m == "lambda"
+  | _ => true
+```
+
+as a premise of `lambdaLit`. A `proc` whose body is exactly `return e` now gets **no type**, so
+`closCall` never sees one and `bodyResult` stays sound where it is still used — and
+`iterClosPass` needs no change at all, because a `&lambda` with a `return` body is genuinely
+sound (there the `return` really is the block's value) and a `&proc` no longer has a `Ty.clos`
+to be passed.
+
+The other two doors are blocks, never lambdas, so they lose the rewriting outright:
+`Judge.iterBlock` and `Judge.yieldExpr` now judge `body` / `c.body` as written. A whole-body
+`return` in a block literal has no rule, which is the right answer.
+
+Note the guard matches `bodyResult`'s pattern rather than merely mentioning `.ret`, and that is
+deliberate: a `return` anywhere *other* than as the whole body already had no rule, so this
+refuses nothing that was previously derivable.
+
+**Corpus-neutral.** 178/254 certified, expect_validate mismatches **35** (unchanged), 254/254
+agreement with 0 disagreements, 177/177 hand derivations, 145/145 negative controls, semantic
+ladder unchanged at 47/83.
+
+**The pattern, and it is a different one from §F17/§F18.** Those were "a rule that writes what a
+table describes owes that table a premise". This one is: **a syntactic shortcut is scoped to the
+rule that justified it, and copying it to a second rule re-opens the justification.**
+`bodyResult` was introduced with an argument that was correct *for lambdas at `closCall`*, and
+the argument was never re-run at the three sites it was later reused at. Worth a rule for the
+rules of its own: a function whose soundness argument names a rule does not travel to another
+rule for free.
+

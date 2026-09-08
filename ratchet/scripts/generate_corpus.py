@@ -2222,6 +2222,46 @@ R("casgn-buried-rebind-unsafe", 13,
   'X = 1\ny = (X = "s")\nX + 1\n',
   expect_validate=False, false_reason="unsafe_program")
 
+R("proc-return-escapes-unsafe", 9,
+  "**A candidate UNSAFE program, and \u00a7F19\u2019s first counterexample.** `bodyResult` "
+  "rewrites a body that is exactly `return e` to `e`, so `closCall` types the call as `e`\u2019s "
+  "type. That is right for a **lambda**, whose `return` is local to it (rung "
+  "`lambda-explicit-return`), and wrong for a **proc**, whose `return` returns from the "
+  "*enclosing method*: `p.call` never comes back, and `f`\u2019s value is `\"s\"` rather than the "
+  "`1` the judgment records. `Judge.lambdaLit` admitted `lambda` and `proc` alike, so both got "
+  "the same `Ty.clos` and `closCall` could not tell them apart. Fixed by `procRetOk`, which "
+  "refuses a `proc` whose body is exactly `return e`.",
+  'def f\n  p = proc { return "s" }\n  p.call\n  1\nend\nf + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
+
+R("iter-block-return-escapes-unsafe", 9,
+  "**A candidate UNSAFE program, \u00a7F19\u2019s second door.** The same `bodyResult` rewriting "
+  "sat in `Judge.iterBlock`, where the body is a **block literal** and therefore never a lambda "
+  "\u2014 so `return` inside `map`\u2019s block returns from `h`, and `h` answers `\"s\"` while the "
+  "rule records `Integer`. Fixed by dropping `bodyResult` from the rule: a block literal\u2019s "
+  "body is typed as written, and a whole-body `return` has no rule.",
+  'def h\n  x = [1].map { |y| return "s" }\n  1\nend\nh + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
+
+R("yield-block-return-escapes-unsafe", 9,
+  "**A candidate UNSAFE program, \u00a7F19\u2019s third door.** `Judge.yieldExpr` invokes the "
+  "block the running method was called with, which `callDefBlk` put in `\u03ba.blockTy` from a "
+  "block *literal* \u2014 never a lambda \u2014 and it too applied `bodyResult`. So `m { return "
+  "\"s\" }` types the `yield` as `String` while the `return` leaves `h` entirely. Fixed the same "
+  "way as `iterBlock`.",
+  'def m\n  yield\nend\ndef h\n  m { return "s" }\n  1\nend\nh + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
+
+R("block-pass-proc-return-escapes-unsafe", 9,
+  "**A candidate UNSAFE program, \u00a7F19\u2019s fourth door.** `Judge.iterClosPass` types "
+  "`arr.map(&p)` by typing the closure\u2019s body, `bodyResult` and all. Passing a **proc** whose "
+  "body is `return e` is the same escape one call deeper. This one needs no change to "
+  "`iterClosPass`: with `procRetOk` in place, a `proc { return e }` has no `Ty.clos` at all, so "
+  "the `&p` premise cannot be met \u2014 and a `&lambda` with a `return` body stays sound, since "
+  "there the `return` really is the block\u2019s value.",
+  'def h\n  p = proc { |y| return "s" }\n  x = [1].map(&p)\n  1\nend\nh + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):

@@ -180,7 +180,7 @@ theorem ext_lamPush {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} (hm : StateOk �
     (by simp [lamObj]) (by simp [lamObj]) hm.core.procBasic
 
 theorem Sem.Judge.lambdaLit : Obl.Judge.lambdaLit := by
-  intro κ Γ I n ps body idx hn _hidx hfree
+  intro κ Γ I n ps body idx hn _hidx hfree _hret
   first
     | refine ⟨by first | trivial | simp [PlainAll, Plain]
                        | simp_all [PlainAll, Plain], ?_⟩

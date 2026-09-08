@@ -2437,6 +2437,30 @@ def bodyResult : Expr → Expr
   | .ret (some e) => e
   | e => e
 
+/-- **A `return` is local to a lambda and not to a proc**, which is what `bodyResult` above
+did not distinguish (`found-issues.md` §F19).
+
+`lambda { return e }.call` evaluates `e` and hands it back to the caller — so rewriting the
+body to `e` is exactly right, and `lambda-explicit-return` (rung 105) is that rung.
+`proc { return e }.call` does something else entirely: the `return` returns from the
+**enclosing method**, so the call never comes back at all and the *method's* value becomes
+`e`'s. Typing the call as `e`'s type is then wrong twice over — the call has no type, and the
+method's recorded return type is a lie.
+
+`Judge.lambdaLit` is the only rule that turns a block literal into a callable `Ty.clos`, and it
+admits `lambda` and `proc` alike, so this is the one place the distinction can be drawn without
+adding a field to `Clos`. It is drawn as a **refusal**: a `proc` whose body is exactly
+`return e` gets no type, so `closCall` never sees one and `bodyResult` stays sound where it is
+still used.
+
+Note the guard has to match `bodyResult`'s pattern and not merely mention `.ret`: a `return`
+anywhere *other* than as the whole body has no rule of its own, so those bodies were already
+untypeable and this refuses nothing new. -/
+def procRetOk (m : String) (body : Expr) : Bool :=
+  match body with
+  | .ret (some _) => m == "lambda"
+  | _ => true
+
 /-! ## Tier 12's narrowing
 
 The capability that makes `nilable` and `union` usable: inside a branch of an `if`, a local
@@ -3658,6 +3682,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       (m = "lambda" ∨ m = "proc") →
       closIdx? κ.closures ps body = some idx →
       (hfree : nameFree κ m = true := by rfl) →
+      (hret : procRetOk m body = true := by rfl) →
       Judge κ Γ I (.send none m [] (some (.block ps [] body)))
         (.clos idx (envToSpine Γ) (κ.selfTy.getD .never)) Γ I
   /-- **`f.call(args)` / `f[args]`** — invoke a callable, by checking its body here.
@@ -3751,7 +3776,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       IterSig m elem argTys βs ρ res →
       paramEnv ps βs = some Γb →
-      Judge κ (Γb ++ blockLocals locs ++ killAliases Γ₂) I₂ (bodyResult body) ρ Γb' I₂ →
+      Judge κ (Γb ++ blockLocals locs ++ killAliases Γ₂) I₂ body ρ Γb' I₂ →
       capIntact (envToSpine Γ₂) (Γb ++ blockLocals locs ++ killAliases Γ₂) Γb' = true →
       Judge κ Γ I (.send (some recv) m args (some (.block ps locs body))) res
         (killAliases Γ₂) I₂
@@ -3937,7 +3962,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       JudgeAll κ Γ I args argTys Γ' I' →
       closGet? κ.closures idx = some c →
       paramEnvB none c.params argTys = some Γb →
-      Judge (κ.inClosure σ) (Γb ++ spineToEnv cap) (closSpine σ) (bodyResult c.body) ρ Γb'
+      Judge (κ.inClosure σ) (Γb ++ spineToEnv cap) (closSpine σ) c.body ρ Γb'
         (closSpine σ) →
       capIntact cap (Γb ++ spineToEnv cap) Γb' = true →
       Judge κ Γ I (.yield' args) ρ (killAliases Γ') I'

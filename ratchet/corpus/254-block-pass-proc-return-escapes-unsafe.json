@@ -1,0 +1,96 @@
+{
+  "id": "block-pass-proc-return-escapes-unsafe",
+  "tier": 9,
+  "description": "**A candidate UNSAFE program, \u00a7F19\u2019s fourth door.** `Judge.iterClosPass` types `arr.map(&p)` by typing the closure\u2019s body, `bodyResult` and all. Passing a **proc** whose body is `return e` is the same escape one call deeper. This one needs no change to `iterClosPass`: with `procRetOk` in place, a `proc { return e }` has no `Ty.clos` at all, so the `&p` premise cannot be met \u2014 and a `&lambda` with a `return` body stays sound, since there the `return` really is the block\u2019s value.",
+  "program": {
+    "v": 5,
+    "ast": [
+      "seq",
+      [
+        "def",
+        "h",
+        [],
+        [
+          "seq",
+          [
+            "vasgn",
+            "local",
+            "p",
+            [
+              "send",
+              null,
+              "proc",
+              [],
+              [
+                "block",
+                [
+                  [
+                    "preq",
+                    "y"
+                  ]
+                ],
+                [],
+                [],
+                [
+                  "return",
+                  [
+                    "str",
+                    "s"
+                  ]
+                ]
+              ]
+            ]
+          ],
+          [
+            "vasgn",
+            "local",
+            "x",
+            [
+              "send",
+              [
+                "array",
+                [
+                  [
+                    "int",
+                    1
+                  ]
+                ]
+              ],
+              "map",
+              [],
+              [
+                "blockpass",
+                [
+                  "var",
+                  "local",
+                  "p"
+                ]
+              ]
+            ]
+          ],
+          [
+            "int",
+            1
+          ]
+        ]
+      ],
+      [
+        "send",
+        [
+          "vcall",
+          "h"
+        ],
+        "+",
+        [
+          [
+            "int",
+            1
+          ]
+        ],
+        null
+      ]
+    ]
+  },
+  "expect_validate": false,
+  "false_reason": "unsafe_program"
+}

@@ -939,9 +939,9 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
           have hd := hname
           simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq,
             List.isEmpty_iff] at hd
-          obtain ⟨⟨hm, ha⟩, hfree⟩ := hd
+          obtain ⟨⟨⟨hm, ha⟩, hfree⟩, hret⟩ := hd
           subst ha
-          exact .lambdaLit hm hidx hfree
+          exact .lambdaLit hm hidx hfree hret
         · exact absurd h (by simp)
       · -- anything else: the block goes to a method
         split at h

@@ -476,7 +476,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     | none =>
       -- `nameFree` is §F2: a toplevel `def lambda` shadows `Kernel#lambda`, so the block is
       -- an argument to *that* method and not a Proc at all.
-      if (m = "lambda" || m = "proc") && args.isEmpty && nameFree κ m then
+      if (m = "lambda" || m = "proc") && args.isEmpty && nameFree κ m
+          && procRetOk m body then
         match closIdx? κ.closures ps body with
         | some idx => some (.clos idx (envToSpine Γ) (κ.selfTy.getD .never), Γ, I)
         | none => none
@@ -628,7 +629,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
         | some βs =>
           match paramEnv ps βs with
           | some Γb =>
-            match chk f κ (Γb ++ blockLocals locs ++ killAliases Γ₂) I₂ (bodyResult body) with
+            match chk f κ (Γb ++ blockLocals locs ++ killAliases Γ₂) I₂ body with
             | some (ρ, Γb', Iout) =>
               if Iout = I₂ then
                 if capIntact (envToSpine Γ₂) (Γb ++ blockLocals locs ++ killAliases Γ₂) Γb'
@@ -905,7 +906,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
           match paramEnvB none c.params argTys with
           | some Γb =>
             match chk f (κ.inClosure cself) (Γb ++ spineToEnv cap) (closSpine cself)
-                (bodyResult c.body) with
+                c.body with
             | some (ρ, Γb', Iout) =>
               if Iout = closSpine cself then
                 (if capIntact cap (Γb ++ spineToEnv cap) Γb' then

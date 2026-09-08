@@ -668,6 +668,27 @@ Discharged so far, all axiom-clean:
   absence rejects every in-method assignment, and agreement at `I'`'s *own* `@x` entry rejects
   type-changing reassignment. Arrows are exempt because they are `Later`-quantified and the
   write is a `Later`; `Ty.clos` is not, which is §F1's split one component over.
+* **`found-issues.md` §F19 — four reachable soundness bugs, one function** (clink 60; corpus
+  rungs **251–254**). `bodyResult` rewrites a body that is exactly `return e` to `e`, so a call
+  to it is typed as `e`'s type. That is right for a **lambda**, whose `return` is local to it
+  (rung 105, `lambda-explicit-return`), and wrong for a **proc** or a **block**, whose `return`
+  returns from the *enclosing method* — the call never comes back, and the method's recorded
+  return type is a lie a caller then spends. Its docstring said the rewriting was "applied only
+  at `closCall`, because only a lambda rung asks"; by the time it was read it sat at four rules,
+  and `closCall` cannot tell a lambda from a proc. All four doors were reachable and certified
+  `Integer` against a `TypeError` under CRuby *and* the model: `proc { return e }.call`
+  (`closCall`), `arr.map { |y| return e }` (`iterBlock`), `m { return e }` + `yield`
+  (`yieldExpr`), and `arr.map(&p)` at a proc (`iterClosPass`). Fixed by **`procRetOk`**, one
+  premise on `Judge.lambdaLit` — the only rule that turns a block literal into a callable
+  `Ty.clos` and the only one that can see whether the head was `lambda` or `proc` — so a
+  `proc { return e }` gets **no type** at all; `iterBlock`/`yieldExpr` lose the rewriting
+  outright (a block literal is never a lambda) and `iterClosPass` needs no change, since with
+  `procRetOk` in place a `&`-passed closure with a `.ret` body can only be a lambda, where it is
+  sound. Corpus-neutral: mismatches stayed at **35**. Found by the *census* rather than by
+  search — sizing the fourteenth stall point's jump-freeness conjunct means asking which rules
+  could discharge it, and `lambdaLit` is the one that cannot. **The pattern is new**, and it is
+  not §F17/§F18's: *a syntactic shortcut is scoped to the rule that justified it, and copying it
+  to a second rule re-opens the justification.*
 * **The seal is not inductive, and one builtin is why** (clink 60,
   `Denote/Sem/StepLocal.lean`'s `not_BuiltinsSeal`; `Denote/Sem/notes.md`'s **eighteenth stall
   point**). Item (1)'s locals half is built up to `Sealed`/`FramesWF`/`StepInv` and the
@@ -1390,7 +1411,7 @@ makes an actual constraint, not just a coincidence).
   exception's (class, message). This is what makes a rung's *type* mean something — a
   program the model executes differently from Ruby is a program whose type is a
   statement about a fiction — so `run_ratchet.sh` runs it first and aborts on any
-  disagreement. Currently **238/238 agree**. Needs `uv` and a CRuby; skip with
+  disagreement. Currently **254/254 agree**. Needs `uv` and a CRuby; skip with
   `RATCHET_SKIP_AGREEMENT=1`. Note the division of labour with `checkrungs`: this compares
   *the model against Ruby* over the whole corpus, `checkrungs` compares *a hand-derived type
   against the model* over the 129 covered rungs.
@@ -1416,7 +1437,7 @@ this is stricter than the first cut of this corpus was, and `Ratchet/Corpus.lean
 module docstring for the two reasons a rung is allowed to target `false` at all.
 
 **Every rung also agrees with CRuby**, checked by `scripts/run_agreement.sh` before the
-ladder is reported: 238/238 (§Architecture) — including the eight slice files and the
+ladder is reported: 254/254 (§Architecture) — including the eight slice files and the
 2,176-line linked slice.
 
 1. Literals (8 rungs) — all eight climbed.
@@ -1645,7 +1666,7 @@ whole linked program.
 Run `scripts/run_ratchet.sh` for current numbers:
 
 ```
-corpus agreement (CRuby vs the Lean semantics): 238/238 agree, 0 disagree
+corpus agreement (CRuby vs the Lean semantics): 254/254 agree, 0 disagree
 
 tier 1: 8/8    tier 2: 18/20  tier 3: 6/6    tier 4: 8/9    tier 5: 8/8
 tier 6: 6/10   tier 7: 16/16  tier 8: 10/10  tier 9: 20/27  tier 10: 6/6
@@ -1670,7 +1691,7 @@ Three numbers, and they move for different reasons:
   work to do, and a rung targeting `false` that answers `true` is a soundness bug.
 - **"flagged Ty language gaps"** should stay flat unless `Ty.lean`'s grammar itself grows
   (§Ty language gaps) — not something `chk` alone can move.
-- **"238/238 agree" should never move.** A disagreement there is a bug in the model or the
+- **"254/254 agree" should never move.** A disagreement there is a bug in the model or the
   desugarer, not a climb. It is also why a program the *model* cannot run stays out of the
   corpus even when it is ordinary Ruby — see §Frontier item 13.
 
