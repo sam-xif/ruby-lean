@@ -805,6 +805,30 @@ story ultimately wants. `StuckFree` (`State.lean`) and `StuckFreeTarget` (`../Ad
 state it; nothing counts it. Folding it in would make every rung carry two proofs of different
 shapes under one number, and the ladder's number is supposed to mean one thing.
 
+## Where the remaining 36 rules sit — **re-audited, clink 60**
+
+The table above was written at 30 of 83 and three of its four walls have moved since. This is
+the same census at 47, rule by rule, and its point is that **nothing on the list is one rung's
+work**: every one of the 36 is behind one of four unbuilt layers, and no layer is smaller than a
+clink.
+
+| Layer | Rules waiting on it | Status |
+|---|---|---|
+| **The locals/frame invariant** (15th/16th/18th) | `if'`, `ifNoElse`, `begin'` | `Sealed`/`FramesWF`/`StepInv` built; the seal is **not inductive** (18th), so the invariant needs its control-state half before the interpreter walk can start |
+| **The call lemma + jump-freeness** (13th/14th) | the 22 call rules — `callAsm`, `callDef`, `callDefKw`, `callMethod`, `callMissing`, `selfCall`, `superCall`, `zsuperCall`, `callSMethod`, `selfNew`, `selfSCall`, `closCall`, `iterBlock`, `iterSymPass`, `iterClosPass`, `callDefBlk`, `callMethodBlk`, `callSMethodBlk`, `selfCallBlk`, `yieldExpr`, `vcallAsm`, `vcallDef`, `newInst` — plus `while'`, which needs only the jump-freeness half (`break` in a `while` body *is* the loop's value, so the obligation is false without it) | unwritten. `Denote/Sem/Send.lean`'s `run_args` takes a call apart down to `finishSend`; what is missing is the activation between the frame push and its pop, and it cannot be *stated* without jump-freeness |
+| **`κ` threaded through the judgment** (6th/17th) | `defStmt`, `classStmt`, `moduleStmt`, `casgn`, `cpathAsgn`, and **`JudgeSeq.cons`** — whose second premise is at `κ.afterStmt e σ` while its own hypothesis is at `κ`, so it is the same problem read from the consumer's end | a change to `Judge`'s signature, i.e. to all 178 derivations |
+| **`PrimSig`, row by row** (13th, expensive end) | `prim` — one rule, ~200 facts about CRuby's builtins | the "list of named builtins" `../../type-safety-by-reachability.md` §9.0 already calls the remaining model-coverage job |
+| **A falsity, not a layer** (7th's remnant) | `arrayLit`, `hashLit` | the transport a `DenAllAt` consumer needs is **false** (a later element can mutate an earlier one); the three candidate repairs are in §The seventh stall point's remnant and none is a one-liner |
+
+**And the two closest rules are behind a falsity as well as a layer.** `Judge.if'`/`ifNoElse`
+look one lemma away — all six narrowing type-lemmas are proved (clink 57), and
+`Denote/Rules/NarrowInv.lean`'s `stateOk_narrow_then`/`stateOk_narrow_else` are the assembled
+transports — but each is blocked *twice*: by the `&&` sandwich's `thenOnly` refinement (the
+locals layer) **and** by the eleventh stall point, where `joinEnv` synthesizes an alias nobody
+promised and the obligation is false as written. Worth stating plainly because it changes what
+"next up" means: the ladder's own order (`semladder` prints the inductive's) puts `if'` first,
+and `if'` is not the cheapest remaining rung — there is no cheapest remaining rung.
+
 ## The fifth stall point — **cleared** (clink 54)
 
 `RubyCore.Proof.stepFn_frame` is `KontFrameCatchFree`'s statement, proved over the whole of
@@ -1027,6 +1051,68 @@ component has to be preserved by rules that allocate them — and `Judge.lambdaL
 discharged, which means it gets re-proved. That is expected (the procedure above: a rung that
 will not close is information about a `StateOk` component), and it is worth knowing before
 starting rather than during.
+
+## The eighteenth stall point — **the seal is not inductive**, and one builtin is why
+
+Measured in clink 60, by attempting the step the layer's own plan names next: carry `Sealed b`
+across `Builtins.run`. `Denote/Sem/FrameLocal.lean` had already proved that layer uniform for
+`LocalsSame`, and the seal reads `captured` rather than `locals`, so this looked like the free
+half. It is false, and there is exactly one falsifier in the whole builtin table.
+
+`Symbol#to_proc` (`RubyCore/Builtins/Strings.lean` L441) **allocates a closure**:
+
+```lean
+let cl : Closure :=
+  { params := [.req "__recv", .rest (some "__rest")], locals := [],
+    body := .send (some (.var .lvar "__recv")) s [.splat (some (.var .lvar "__rest"))] none,
+    captured := 0, home := 0, lam := true }
+```
+
+`captured := 0` — the **toplevel frame** — because `Closure.captured` is a `FrameId` and not an
+`Option FrameId`, so there is no way to spell "captures nothing" and `0` is the inert choice.
+`Sealed`'s `clos` clause reads exactly that field, so the allocation drops a closure over frame
+`0` into the heap and the seal at `b = 0` is gone. `Denote/Sem/StepLocal.lean`'s
+**`not_BuiltinsSeal`** is the refutation, at the smallest machine where the seal says anything
+(two frames, neither capturing, the caller `0` sealed off behind the frame that is running, an
+empty heap), conditional on one `#guard`ed `Bool` for `Denote/Sanity.lean`'s reason.
+
+`b = 0` is not an edge case. It is the **toplevel frame**, which is the frame every toplevel
+narrowing rung is about.
+
+Three things follow, and the third is the design consequence.
+
+1. **It is not a soundness bug in the model.** The closure's body is `__recv.s(*__rest)` — a
+   fixed, assignment-free expression — so invoking it cannot write a local of frame `0`.
+   `Sealed` is a *sufficient* condition for "`b`'s locals are stable", and this is a place where
+   it is strictly stronger than the truth.
+2. **It is not repairable by strengthening `Sealed.alloc`.** The allocation really happens, at a
+   machine the seal really holds at, so no premise stated over `(b, m)` can exclude it. What
+   distinguishes the `to_proc` closure from a dangerous one is its **body**.
+3. **So the frame graph is not enough, and the closure clause is not the only one that moves.**
+   Admitting an escape (`… ∨ this closure cannot write`) in `Sealed.clos` is the easy half. The
+   hard half is that `Sealed.stack` then breaks: `callClosure` pushes a **block frame** whose
+   `captured` is the inert closure's, so a frame on the stack now does reach `b`, and the stack
+   clause is unconditional. Weakening *it* the same way needs "the code running in that frame
+   cannot write", which is a property of `ctl`/`kont` — not of `frames`.
+
+Which is the fifteenth stall point's own prediction arriving with a number on it: the invariant
+has to be **joint over the frame graph and the control state** (`LocalStable m x` lifted from an
+expression to a whole machine), not a predicate on `frames` alone. `Sealed` is the frame-graph
+half and it is built; what is missing is the half that says what the machine is *about to do*.
+
+Two consequences for the next attempt:
+
+* **`ClosuresOk` needs a third escape.** The sixteenth stall point sized the exactness component
+  as "every closure in the heap is one `κ` records, or the prelude's". `Symbol#to_proc`'s is
+  neither: it is created at run time by a **builtin**, from source that is not in the program
+  and not in the prelude. Grep says it is the only one (`RubyCore/Builtins/` has exactly one
+  `.proc` allocation), so the escape is a fixed shape rather than an open set — but it has to be
+  written down, and it would not have been predicted from the plan.
+* **The measurement order was wrong, and cheaply so.** The `Builtins` layer was proved uniform
+  for `LocalsSame` (532 lines, clink 59) before anything checked whether the *seal* travelled
+  across it. Stating `BuiltinsSeal` as a named `Prop` first would have cost an hour and found
+  this. Same lesson as `KontFrame`, and the second time it has paid: **write the layer's target
+  down as a `def` before proving the layer under it.**
 
 ## The fifteenth stall point — **syntax-directed run invariants**, and it is now the largest piece
 

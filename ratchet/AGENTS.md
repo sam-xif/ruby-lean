@@ -668,6 +668,37 @@ Discharged so far, all axiom-clean:
   absence rejects every in-method assignment, and agreement at `I'`'s *own* `@x` entry rejects
   type-changing reassignment. Arrows are exempt because they are `Later`-quantified and the
   write is a `Later`; `Ty.clos` is not, which is §F1's split one component over.
+* **The seal is not inductive, and one builtin is why** (clink 60,
+  `Denote/Sem/StepLocal.lean`'s `not_BuiltinsSeal`; `Denote/Sem/notes.md`'s **eighteenth stall
+  point**). Item (1)'s locals half is built up to `Sealed`/`FramesWF`/`StepInv` and the
+  `Builtins` layer is uniform for `LocalsSame` — so carrying the **seal** across `Builtins.run`
+  looked like the free step before the interpreter walk. It is **false**: `Symbol#to_proc`
+  allocates a `Closure` with `captured := 0` (the toplevel frame — `Closure.captured` is a
+  `FrameId`, so there is no way to spell "captures nothing"), which is exactly the field
+  `Sealed.clos` reads, and `b = 0` is the frame every toplevel narrowing rung is about. Not a
+  model bug: that closure's body is `__recv.s(*__rest)`, assignment-free, so `Sealed` is
+  strictly stronger than the truth here — and not repairable at `Sealed.alloc`, since the
+  allocation happens at a machine the seal really holds at. Admitting an inertness escape in
+  `clos` is the easy half and insufficient, because `callClosure` then pushes a **block frame**
+  whose `captured` is that closure's and the unconditional `stack` clause breaks. So the
+  invariant has to be **joint over the frame graph and the control state**, which is the
+  fifteenth stall point's own prediction arriving with a number on it; `ClosuresOk`'s exactness
+  also needs a third escape the plan did not name — a closure a *builtin* created, from source
+  that is in neither the program nor the prelude (grep: this is the only one). Working lesson,
+  the second time it has paid: **write the layer's target down as a named `Prop` before proving
+  the layer under it.**
+* **The 36 remaining rules, re-audited** (clink 60, `Denote/Sem/notes.md` §Where the remaining
+  36 rules sit) — **none of them is one rung's work.** Each is behind one of the two items
+  above, `Judge.prim`'s ~200 `PrimSig` rows, or a stated falsity (`arrayLit`/`hashLit`). Two
+  corrections the audit forced: **`JudgeSeq.cons` belongs to item (2)** (its second premise is
+  at `κ.afterStmt e σ` while its own hypothesis is at `κ` — the sixth stall point read from the
+  consumer's end), and **`Judge.if'` is not the cheapest remaining rung** despite `semladder`
+  listing it first. All six narrowing type-lemmas are proved and
+  `stateOk_narrow_then`/`stateOk_narrow_else` are assembled, but `if'` is blocked *twice*: by
+  the `&&` sandwich's `thenOnly` refinement (item 1) and by the **eleventh stall point**, where
+  `joinEnv` synthesizes an alias nobody promised and the obligation is false as written — whose
+  two recorded repairs each re-open something already climbed (`Judge.vasgn`'s §F5 premise) or
+  move `joinT`'s output types and therefore the syntactic ratchet.
 * **The remaining ladder is two items, not five** (clink 58; re-audited clink 59, and
   `casgn`/`cpathAsgn` moved *into* item (2) — see `Denote/Sem/notes.md`'s seventeenth stall
   point: `Judge.casgn` has no premise and no context growth, but `applyKont`'s `.casgnK` writes

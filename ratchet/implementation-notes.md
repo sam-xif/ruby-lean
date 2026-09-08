@@ -6397,3 +6397,95 @@ Corpus **250/250** agreement, 0 disagreements (the corpus grew by §F18's witnes
 expect_validate mismatches **35**, unchanged through both guards; 177/177 hand derivations;
 145/145 negative controls; `Denote/Examples.lean` green; no `sorry`, no new axioms. Nothing
 under `ruby/lean/` changed.
+
+
+## Clink 60 (2026-09-07) — the seal is not inductive, and a census that says why the ladder did not move. **178 rungs / 250, 47 of 83 rules**
+
+**No rung.** That is the result, and it was reached by attempting the layer's own next step and
+by auditing all 36 remaining rules rather than by running out of time on one of them. Two
+things landed: a refutation, and a census.
+
+### The refutation — `not_BuiltinsSeal`
+
+`Denote/Sem/StepLocal.lean`'s plan (clinks 57–59) reads: `Sealed`/`FramesWF`/`StepInv` are
+built, `Denote/Sem/FrameLocal.lean` has the `Builtins` layer uniform for `LocalsSame`, so
+carrying the **seal** across `Builtins.run` is the free half before the interpreter walk starts.
+It is not free. It is false, and there is exactly one falsifier in the table.
+
+`Symbol#to_proc` (`RubyCore/Builtins/Strings.lean` L441) allocates a `Closure` with
+`captured := 0` — the toplevel frame — because `Closure.captured` is a `FrameId` and not an
+`Option FrameId`, so there is no way to spell "captures nothing". `Sealed.clos` reads exactly
+that field. So a builtin call drops a closure over frame `0` into the heap and the seal at
+`b = 0` is gone, and `b = 0` is the frame every toplevel narrowing rung is about.
+
+`not_BuiltinsSeal` is the proof, at the smallest machine where the seal says anything (two
+frames, neither capturing, the caller `0` sealed off behind the frame that is running, an empty
+heap), conditional on one `#guard`ed `Bool` — `Denote/Sanity.lean`'s trade, for its reason.
+Axiom-clean.
+
+**Decisions that were not forced, and what was rejected.**
+
+* **Stated and refuted rather than patched.** The alternative was to add a hypothesis at
+  `Sealed.alloc`'s call site and move on. Rejected for `Denote/Sem/Frame.lean`'s reason: the
+  claim is false at a machine the seal really holds at, so no premise over `(b, m)` excludes it,
+  and a hypothesis would have hidden that.
+* **The model was not changed.** `captured := 0` is inert — the closure's body is
+  `__recv.s(*__rest)`, assignment-free — so retyping the field or picking a different id would
+  be a semantics change made to suit a proof, and the field has no "none" to pick. Rejected on
+  `AGENTS.md` §Justification grounds: the denotation should not edit the machine to make itself
+  provable.
+* **`ClosInert` was not added yet.** Admitting an escape (`… ∨ this closure cannot write`) in
+  `Sealed.clos` is easy and *insufficient*: `callClosure` then pushes a block frame whose
+  `captured` is the inert closure's, and `Sealed.stack` — unconditional — breaks. Weakening that
+  clause the same way needs "the code running in this frame cannot write", which is a property
+  of `ctl`/`kont`. Writing the easy half alone would have looked like progress and been a dead
+  end, so it is recorded as the eighteenth stall point instead.
+
+The design consequence is the fifteenth stall point's own prediction with a number on it: **the
+invariant has to be joint over the frame graph and the control state.** `Sealed` is the
+frame-graph half and it is built; the half that says what the machine is about to do is not.
+One thing the plan did not predict: `ClosuresOk`'s exactness needs a **third** escape beyond
+"the program's or the prelude's" — a closure a *builtin* created, from source that is in
+neither. Grep says `Symbol#to_proc` is the only one, so it is a fixed shape rather than an open
+set.
+
+And a working lesson, the second time it has paid: **write the layer's target down as a named
+`Prop` before proving the layer under it.** The `Builtins` layer was proved uniform for
+`LocalsSame` (532 lines) before anything asked whether the seal travelled across it; stating
+`BuiltinsSeal` first would have cost an hour and found this. Same lesson as `KontFrame`.
+
+### The census — why no rung was available
+
+`Denote/Sem/notes.md` §Where the remaining 36 rules sit is the audit, rule by rule. The result
+is that **none of the 36 is one rung's work**: each is behind one of four unbuilt layers (the
+locals/control invariant; the call lemma plus jump-freeness; `κ` threaded through `Judge`'s
+signature; `PrimSig` row by row), or behind a stated falsity (`arrayLit`/`hashLit`, the seventh
+stall point's remnant).
+
+Two findings from the audit worth carrying:
+
+* **`JudgeSeq.cons` belongs to the declaration family**, which the old table did not say. Its
+  second premise is at `κ.afterStmt e σ` while its own hypothesis is at `κ`, so it is the sixth
+  stall point read from the consumer's end rather than a sequencing lemma.
+* **`Judge.if'` is not the cheapest remaining rung, and there is no cheapest remaining rung.**
+  `semladder` prints the inductive's constructor order, which puts `if'` first, and `if'` looks
+  one lemma away — all six narrowing type-lemmas are proved (clink 57) and
+  `stateOk_narrow_then`/`stateOk_narrow_else` are the assembled transports. It is blocked
+  *twice*: by the `&&` sandwich's `thenOnly` refinement (the locals layer) **and** by the
+  eleventh stall point, where `joinEnv` synthesizes an alias nobody promised and the obligation
+  is false as written. Both of the eleventh's recorded repairs cost something this clink's
+  constraints forbid — one re-opens `Judge.vasgn`'s already-discharged premise, the other moves
+  `joinT`'s output types and therefore the syntactic ratchet.
+
+### State
+
+Semantic ratchet **47 of 83** (unchanged; `Judge` 32/67, `JudgeSeq` 3/4, the six companion
+families complete). Syntactic ratchet **178 of 250** rungs certified well-typed, 35
+expect_validate mismatches, 250/250 CRuby agreement — all unchanged, and nothing under
+`Ratchet/`, `corpus/`, `slice/` or `ruby/lean/` was touched. 177/177 hand derivations and
+145/145 negative controls (`checkrungs`); `Denote/Examples.lean` green; no `sorry`, no new
+axioms.
+
+*(Note for the next session: the goal text quotes the syntactic ratchet as "177/232" and the
+negative controls as "140/140". Both are stale — the corpus has grown to 250 and the controls to
+145 since those numbers were written. The gates are green at the numbers clink 59 recorded.)*
