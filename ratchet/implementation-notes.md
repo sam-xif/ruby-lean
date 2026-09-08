@@ -6533,6 +6533,44 @@ Two findings from the audit worth carrying:
   constraints forbid — one re-opens `Judge.vasgn`'s already-discharged premise, the other moves
   `joinT`'s output types and therefore the syntactic ratchet.
 
+### EMERGENCY EXIT — the layer gating the largest block of rungs needs a redesign, not a continuation
+
+Flagged here so the next session reads it before starting rather than rediscovering it.
+
+**The deficiency.** `Denote/Sem/Locals.lean`'s `Sealed` — the frame-graph invariant the whole
+locals layer is built on — **is not inductive over `stepFn`**. `not_BuiltinsSeal` is the proof.
+The layer's plan (clinks 57–59) was: `Sealed`/`FramesWF`/`StepInv`, then the `Builtins` layer,
+then the interpreter walk. The `Builtins` layer is where it stops: one builtin allocates a
+closure over frame `0`, and no premise stated over `(b, m)` can exclude it, because the
+allocation happens at a machine the seal really holds at. The escape that would admit it
+(`… ∨ this closure cannot write`) fixes `Sealed.clos` and breaks `Sealed.stack`, whose repair is
+a statement about `ctl`/`kont`.
+
+**Why that is a rewrite and not a next step.** The invariant has to become **joint over the
+frame graph and the control state**. `Sealed` survives as one half; the interpreter walk it was
+being built for cannot start until the other half exists, and the 532 lines of `FrameLocal.lean`
+were proved for a target that was never stated as a `Prop` first. That is the layer gating
+`if'`, `ifNoElse`, `begin'`, and — through jump-freeness, which the call decomposition cannot be
+*stated* without — the 22 call rules.
+
+**What was verified before flagging**, so the next session does not re-derive it: all four
+remaining layers were probed, and none has a rung available at its near edge. The call lemma
+needs `JumpOpaque K` and `retK` is precisely a continuation that turns an escaping jump into a
+value; a fully recursive jump-freeness conjunct un-discharges `Judge.lambdaLit`, which has no
+premise about its block body; the declaration family needs `Judge`'s signature, i.e. all 177
+derivations; `Judge.prim` is the ~200-row model-coverage job. `arrayLit`/`hashLit` and
+`if'`/`ifNoElse` are each additionally behind a **stated falsity** (§the seventh stall point's
+remnant, §the eleventh stall point).
+
+**What was done after flagging, and why it does not change the flag.** The census that produced
+this conclusion is also what produced §F19 — four *reachable* soundness bugs, found by asking
+which rules could discharge a jump-freeness conjunct. Fixing them is `AGENTS.md`
+§Justification's own instruction and moves the checker, not the ladder. The ladder is still 47.
+
+**Where to start.** State the joint invariant as a named `Prop` — `Sealed b m` paired with a
+predicate on `ctl`/`kont` — and *attack it* before proving anything under it. That is the lesson
+`not_KontFrame` taught in clink 52 and this clink paid for a second time.
+
 ### State
 
 Semantic ratchet **47 of 83** (unchanged; `Judge` 32/67, `JudgeSeq` 3/4, the six companion

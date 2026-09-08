@@ -481,6 +481,13 @@ translation and §Semantic ratchet status is the ladder that climbs it.
 
 ## Semantic ratchet status (`Denote/Sem/`): **47 of 83 `Judge` rules discharged**
 
+> **Halted, clink 60 — the locals layer needs a redesign before the ladder can move again.**
+> `Sealed`, the frame-graph invariant that layer is built on, is **not inductive** over
+> `stepFn` (`Denote/Sem/StepLocal.lean`'s `not_BuiltinsSeal`; `Denote/Sem/notes.md`'s
+> eighteenth stall point). All 36 remaining rules were audited and none has a rung available at
+> the near edge of any of the four unbuilt layers — see `implementation-notes.md` clink 60
+> §EMERGENCY EXIT for what was verified and where to start.
+
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (177 of 249). This measures
 *justification*: how many of `Ratchet/Judge.lean`'s **rules** have been discharged as a proof
