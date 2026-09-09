@@ -6620,7 +6620,7 @@ negative controls as "140/140". Both are stale — 177 is the count of hand-auth
 which `checkrungs` still reads at 177/177; the ladder's denominator is the corpus, now 254, and
 the controls are 145.)*
 
-## Clink 61 (2026-09-08) — the seal's blocker was a model fiction; the seal is closed; the `Builtins` layer is half proved. **178 rungs / 254, 47 of 83 rules**
+## Clink 61 (2026-09-08) — the seal's blocker was a model fiction; the seal is closed; two half-layers proved; the census re-verified rule by rule. **178 rungs / 254, 47 of 83 rules**
 
 Clink 60 exited on an architectural flag: `Sealed` is not inductive over `stepFn`, so the
 locals layer — which gates `if'`/`ifNoElse`/`begin'` directly and the 22 call rules through
@@ -6780,6 +6780,56 @@ added to `LocalsSame`: nearly every arm discharges it through `LocalsSame.of_eq 
 `of_eq` has no heap hypothesis to discharge it with. The second walk needs its own
 allocation-monotone predicate and its own copy of the twenty machine-threading helper lemmas.
 A clink, not a follow-on.
+
+### L268 — `JudgeSeq.cons`'s run half, and the transport that is not merely unproved
+
+The census (clink 60) says every remaining rule is behind one of four layers. Rather than
+trust it, three rules were attacked directly. Each hit exactly the layer the census predicted,
+and the third produced a proof and a measurement worth keeping.
+
+* **`Judge.begin'`** — the one rule gated by the *locals* layer alone, so the obvious candidate
+  after L266/L267. It needs `StateOk` at an **arbitrary intermediate point** of the body's run
+  (a handler runs mid-body; that is what `noLocalAsgn body` is a premise about). That is the
+  fifteenth stall point, not a lemma.
+* **`Judge.vcallAsm`** — looked nearly free: `AsmsOk` is already the exact semantic content of
+  `κ.asms`, so the value's type is immediate. It is not enough. The obligation also demands
+  `Framed m m'` and `StateOk κ Γ I m'` **across an arbitrary user method call**, and `AsmsOk`
+  says nothing about state preservation. That is the call layer.
+* **`JudgeSeq.cons`** — the one that moved.
+
+**The run half is proved** (`Denote/Rules/SeqCons.lean`, axiom-clean). `Judge.seq`'s docstring
+said `cons` was blocked by the *fifth* stall point — the first statement runs under `.seqK
+rest`, a non-empty continuation, while `Evals` is defined at an empty one — and that stall
+point was cleared in clink 54. `evals_seq_cons` spends it: a run of `.seq (e :: e' :: es)` **is**
+a run of `e` followed by a run of `.seq (e' :: es)`, both machines exhibited. Three obligations
+to `run_split`, each one computation: `CatchFree [.seqK rest]`, `JumpOpaque [.seqK rest]`
+(word for word `jumpOpaque_asgnK`, which its own docstring predicted would be the shape every
+literal kont follows), and the two one-step equalities at either end.
+
+**One asymmetry that is not bookkeeping**, and it cost the second half of the file:
+`evalExpr`'s singleton arm (`.seq [e]`) pushes **no** continuation, while `applyKont`'s `.seqK`
+arm pushes a trailing `.seqK []`. So delivering into a *one-statement* tail does not land on
+the machine `evalFrom` reaches, and that case needs a second `run_split` at `[.seqK []]` whose
+delivery is a value at an empty continuation. `evals_seqK_tail` is that case split.
+
+**And the blocker that remains was measured, not assumed.** `Obl.JudgeSeq.cons`'s second
+premise is at `κ.afterStmt e σ` and its conclusion at `κ`, so the rung needs `StateOk`
+transported **both ways**. The finding is that the two directions fail on *different*
+components, which is what rules out the obvious repair:
+
+| a bigger table makes the claim… | components | transport it gives |
+|---|---|---|
+| **weaker** (antecedent fires on fewer names) | `NameFreeOk`, `BareNameFree`, `MissFree` | up only |
+| **stronger** (`∀ c ∈ C` ranges over more) | `ClassesOk`, `DefsOk`, the `consts`/`privConsts` family | down only |
+
+So there is no monotonicity lemma to prove in either direction, and strengthening `SemJudge`'s
+conclusion to the grown context — the move the goal statement explicitly sanctions — buys *up*
+at the cost of *down*, leaving `JudgeSeq.cons`'s own conclusion unstatable. The design that
+would work is visible: `SemJudgeSeq` must conclude at the context after **all** of `es`, so
+nothing ever transports downward — and that needs a "context after a statement list" function,
+which `extendConsts` blocks by taking the statement's *type*, which the signature does not
+carry. Hence the census's verdict, now with evidence rather than by inspection: a change to
+`Judge`'s signature, i.e. to all 178 derivations.
 
 ### State
 
