@@ -6533,6 +6533,39 @@ Two findings from the audit worth carrying:
   constraints forbid — one re-opens `Judge.vasgn`'s already-discharged premise, the other moves
   `joinT`'s output types and therefore the syntactic ratchet.
 
+### Probed against CRuby afterwards (2026-09-08) — and it downgrades the exit
+
+The exit below was written from the refutation alone. Probing the arm it exploits against the
+reference semantics — 20 programs replayed under `--sut lean` (17 agree, 2 disagree, 1 gate),
+plus CRuby-only probes — says the blocker is **in the model, not in the invariant**, and is
+bounded. `found-issues.md` §A6 is the entry; `Denote/Sem/notes.md`'s eighteenth stall point
+carries the detail.
+
+`:upcase.to_proc.binding` raises `ArgumentError` and `source_location` is `nil`: **CRuby's
+`Symbol#to_proc` proc has no binding at all.** So `captured := 0` is a capture edge the
+reference semantics does not have, forced by `Closure.captured : Nat` where `Frame.captured` is
+already `Option FrameId`. The clink below rejected touching the model on "the denotation should
+not edit the machine to make itself provable" grounds; that reasoning does not survive the
+measurement, because giving the field its `Option` is a **fidelity fix justified independently
+of the proof**. Blast radius: 2 construction sites, ~4 readers in `RubyCore/Interp/`, 14 files
+in `RubyCore/Proof/`, 12 in `Denote/`.
+
+Two corrections to the clink below, both measured: there are **two** spurious-edge sites, not
+one (`coerceToProc` in `Interp/Support.lean:448` builds the same closure for `&:sym`, so the
+fiction is not confined to the `Builtins` layer), and the `Sealed.stack` objection that made
+this look like a redesign was a consequence of the inertness escape — which the fidelity fix
+makes unnecessary.
+
+`not_BuiltinsSeal` stands unchanged: it is a theorem about `Sealed` and `Builtins.run`, both
+definitions in this repo, so fidelity does not bear on its truth. What moves is the prognosis —
+**try the `Option` and re-attempt the `Builtins` layer before designing a joint
+frame-graph/control-state invariant.**
+
+Two unrelated fidelity gaps came out of the same probe run and are filed with it: the model's
+`Symbol#to_proc` is **not identity-stable** (CRuby interns per symbol, `a.equal?(b)` is `true`
+there and `false` here) and its zero-argument `ArgumentError` carries a different message
+(`"wrong number of arguments (given 0, expected 1+)"` vs CRuby's `"no receiver given"`).
+
 ### EMERGENCY EXIT — the layer gating the largest block of rungs needs a redesign, not a continuation
 
 Flagged here so the next session reads it before starting rather than rediscovering it.

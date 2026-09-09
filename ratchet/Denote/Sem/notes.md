@@ -1114,6 +1114,52 @@ Two consequences for the next attempt:
   this. Same lesson as `KontFrame`, and the second time it has paid: **write the layer's target
   down as a `def` before proving the layer under it.**
 
+### Probed against CRuby (2026-09-08) — and the diagnosis above is **too pessimistic**
+
+The section above concludes "the frame graph is not enough" and hands the layer a redesign. A
+20-program probe corpus replayed under `--sut lean`, plus CRuby-only probes for what the model
+cannot express, says the blocker is smaller than that and sits **in the model, not in the
+invariant**. Recorded in `../../found-issues.md` §A6.
+
+**CRuby's `Symbol#to_proc` proc has no binding at all** — `:upcase.to_proc.binding` raises
+`ArgumentError` (C-level Proc), `source_location` is `nil`. So `captured := 0` is not "the inert
+choice" in a semantically neutral sense; it is an **edge the reference semantics does not have**,
+forced by `Closure.captured : Nat` (`RubyCore/Heap.lean:136`) where `Frame.captured` is already
+`Option FrameId` (`RubyCore/Machine.lean:57`). `Sealed.clos` reads exactly that field.
+
+That reframes the repair. This file rejected touching the model on "the denotation should not
+edit the machine to make itself provable" grounds — and that reasoning does not survive the
+measurement: giving `Closure.captured` the `Option` its `Frame` counterpart already has is a
+**fidelity fix, justified independently of any proof**, and it happens to make `Sealed.alloc`'s
+premise dischargeable at both sites. Blast radius measured: 2 construction sites, ~4 readers
+under `RubyCore/Interp/`, 14 files under `RubyCore/Proof/`, 12 under `../`.
+
+**Two corrections to the section above, both from the probes:**
+
+* **There are two spurious-edge sites, not one.** `grep 'captured := 0'` over the whole model
+  finds `Builtins/Strings.lean:449` (`Symbol#to_proc`) **and**
+  `Interp/Support.lean:448` (`coerceToProc`, the `&:sym` block-pass path). The section's
+  "grep says it is the only one" was scoped to `Builtins/`; the interpreter layer creates the
+  same fiction, so the problem recurs at the next layer of the walk rather than being confined
+  to the one below it.
+* **The inertness escape is not needed**, and with it goes the `Sealed.stack` objection that
+  made this look like a redesign. That objection was a consequence of admitting inert closures
+  in `clos`; if the edge simply is not created, nothing pushes a block frame over `b` and the
+  unconditional `stack` clause is fine.
+
+**What the probes do *not* say.** They remove the known counterexample; they do not establish
+that `Sealed` is inductive. `not_BuiltinsSeal` remains valid as a statement about the model as
+it stands today — it is a theorem about `Sealed` and `Builtins.run`, both definitions in this
+repo, and no amount of CRuby fidelity bears on its truth. What changes is the *prognosis*: the
+next attempt should try the `Option` first and re-attempt the `Builtins` layer, rather than
+starting from a joint frame-graph/control-state invariant.
+
+**And the seal is guarding something real**, which was worth checking rather than assuming. The
+sixteenth stall point's witness reproduces on both executors — `x = 1; f = lambda { x = 2 };
+def g(p); p.call; end; g(f); x` is `2` under CRuby *and* under the model — while the same shape
+with a `to_proc` proc leaves `x` at `1` on both. So the hazard `Sealed` exists for is genuine
+and `Symbol#to_proc` is not an instance of it.
+
 ## The fifteenth stall point — **syntax-directed run invariants**, and it is now the largest piece
 
 Named in clink 57, and it is the *merge* of two findings that turned out to be one thing. Both

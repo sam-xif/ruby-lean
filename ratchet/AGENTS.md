@@ -487,6 +487,13 @@ translation and §Semantic ratchet status is the ladder that climbs it.
 > eighteenth stall point). All 36 remaining rules were audited and none has a rung available at
 > the near edge of any of the four unbuilt layers — see `implementation-notes.md` clink 60
 > §EMERGENCY EXIT for what was verified and where to start.
+>
+> **Downgraded 2026-09-08 by probing against CRuby** (`found-issues.md` §A6): the closure that
+> breaks the seal carries a binding **CRuby's `Symbol#to_proc` does not have**
+> (`:upcase.to_proc.binding` raises `ArgumentError`; `source_location` is `nil`), so the blocker
+> is a bounded **model-fidelity** fix — `Closure.captured` wants the `Option` that
+> `Frame.captured` already has — rather than an invariant redesign. Try that first, then
+> re-attempt the `Builtins` layer.
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (177 of 249). This measures

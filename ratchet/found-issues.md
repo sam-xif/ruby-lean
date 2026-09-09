@@ -127,6 +127,77 @@ in terms of `start_with?`, so the gate fires one method down).
 
 ---
 
+### A6. `Symbol#to_proc` — the model's proc carries a **binding CRuby's does not have**, and is not identity-stable
+
+**Status:** open. **Severity:** medium for identity, **high for the capture edge** — see below,
+it is what stalled the semantic ratchet's locals layer.
+
+Measured 2026-09-08 with a 20-program probe corpus replayed under `--sut lean` (17 agree,
+2 disagree, 1 gate) plus CRuby-only probes for what the model cannot express. CRuby 4.0.5.
+
+**A6a — the capture edge is a fiction.** Both `Symbol#to_proc`
+(`RubyCore/Builtins/Strings.lean:449`) and the `&:sym` block-pass path
+(`coerceToProc`, `RubyCore/Interp/Support.lean:448`) build
+
+```lean
+{ params := [.req "__recv", .rest (some "__rest")], locals := [],
+  body := .send (some (.var .lvar "__recv")) s [.splat (some (.var .lvar "__rest"))] none,
+  captured := 0, home := 0, lam := true }
+```
+
+`captured := 0` names the **toplevel frame**. CRuby's object has no binding at all:
+
+```
+:upcase.to_proc.binding          # => ArgumentError (C-level Proc)
+:upcase.to_proc.source_location  # => nil
+```
+
+So the model's capture graph has an **edge the reference semantics does not have**. It is not
+a free choice: `Closure.captured : Nat` (`RubyCore/Heap.lean:136`) while `Frame.captured :
+Option FrameId` (`RubyCore/Machine.lean:57`) — the closure record has no way to spell "captures
+nothing", and `0` is the least-wrong filler.
+
+**Unobservable through the body, and that is why it has gone unnoticed.** The body's only free
+names are its own parameters, so nothing reads or writes the captured frame — probed both ways
+and agreeing: a `to_proc` proc invoked from inside a callee cannot read (`b5`) or write (`c2`)
+an enclosing local, in CRuby *or* in the model, while a real `lambda { x = 2 }` writes its
+captor in both (`c1` → `2` on both sides). Shadowing probes (`__recv`/`__rest` bound at
+toplevel) agree too.
+
+**But it is observable to a proof about the capture graph**, which is exactly what
+`ratchet/Denote/Sem/Locals.lean`'s `Sealed` is. `Sealed.clos` reads `cl.captured`, so this
+fiction breaks the seal at `b = 0` — the toplevel frame, the one every toplevel narrowing rung
+is about. `ratchet/Denote/Sem/StepLocal.lean`'s `not_BuiltinsSeal` is the refutation, and
+`Denote/Sem/notes.md`'s eighteenth stall point is the write-up. **The honest fix is here, not
+there**: give `Closure.captured` the `Option` its `Frame` counterpart already has, so a C-level
+proc captures nothing. Blast radius measured: 2 construction sites, ~4 readers under
+`RubyCore/Interp/`, 14 files under `RubyCore/Proof/`, 12 under `ratchet/Denote/`.
+
+**A6b — not identity-stable.** CRuby interns the proc per symbol; the model allocates a fresh
+object on every call.
+
+```ruby
+a = :upcase.to_proc
+b = :upcase.to_proc
+a.equal?(b)        # CRuby: true    model: false
+```
+
+`:a.to_proc.equal?(:b.to_proc)` is `false` on both, so the interning is per-symbol.
+`frozen?` is `false` on both. Independent of A6a and not fixed by it.
+
+**A6c — the zero-argument message.** `:upcase.to_proc.call` raises `ArgumentError` on both
+sides, with different messages: CRuby `"no receiver given"`, the model `"wrong number of
+arguments (given 0, expected 1+)"`. The model implements the coercion as a genuine two-parameter
+lambda where CRuby has a bespoke C-level receiver check.
+
+**What the probes confirm is faithful**, so the arm is close and these three are the whole gap:
+`call` (`"AB"`), `&:sym` block-pass (`["1","2","3"]`), extra arguments through the rest
+parameter (`:+.to_proc.call(1,2)` → `3`), `lambda?` → `true` on both, `class` → `Proc`,
+`NoMethodError` propagation, reuse across calls, and nesting (`map(&:first).map(&:to_s)`).
+CRuby's `parameters` is `[[:req],[:rest]]`, which is exactly the model's
+`[.req "__recv", .rest (some "__rest")]`. `Proc#arity` is unmodeled (a gate, not a
+disagreement).
+
 ## B. Model gates — the model refuses the program (exit 3)
 
 Not disagreements. Each is a real Ruby construct that the slice, or a natural driver for
