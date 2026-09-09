@@ -424,7 +424,7 @@ def reifyBlock (m : Machine) (params : List Param) (locals : List String) (body 
   -- This is exactly `returnTarget` evaluated at the defining frame — so a
   -- `proc { return }` created inside a lambda returns from that lambda [V].
   let home := returnTarget m
-  let cl : Closure := { params, locals, body, captured := cur, home, lam }
+  let cl : Closure := { params, locals, body, captured := some cur, home, lam }
   let (o, h) := m.heap.alloc { klass := Boot.procId, payload := .proc cl }
   (.ref o, { m with heap := h })
 
@@ -445,7 +445,11 @@ def coerceToProc (m : Machine) (v : Value) : Except String (Option Value × Mach
       { params := [.req "__recv", .rest (some "__rest")], locals := [],
         body := .send (some (.var .lvar "__recv")) s
                   [.splat (some (.var .lvar "__rest"))] none,
-        captured := 0, home := 0, lam := true }
+        -- `captured := none`: this Proc is the model's *invention* for a Symbol,
+        -- and CRuby's has no binding at all (`ratchet/found-issues.md` §A6a).
+        -- The body's only free names are its own parameters, so there is nothing
+        -- for a capture chain to resolve. L266.
+        captured := none, home := 0, lam := true }
     let (o, h) := m.heap.alloc { klass := Boot.procId, payload := .proc cl }
     .ok (some (.ref o), { m with heap := h })
   | _ => .error "block-pass of a non-Proc"
@@ -522,7 +526,11 @@ def callClosure (m : Machine) (cl : Closure) (args : List Value)
         let (rv, m) := Builtins.allocArr m midArgs.toArray
         (pre.zip preVals ++ [(rname, rv)] ++ post.zip postVals, m)
     let locals := locals ++ cl.locals.map (fun n => (n, Value.nil))
-    let capF := m.frames.getD cl.captured default
+    -- `getD 0` for a capture-free closure (`captured = none`, the `Symbol#to_proc`
+    -- fiction — L266): reads the toplevel frame's `self`/`defmod`/`blk`/`cref`,
+    -- exactly the frame this line read when the field was a bare `Nat` written `0`.
+    -- What changed is the *pushed* frame's own `captured` below, which is now `none`.
+    let capF := m.frames.getD (cl.captured.getD 0) default
     -- `selfOv`/`defmodOv` are the `instance_eval`/`class_eval` rebinding (L64):
     -- everything else about the block frame (captured chain, home, cref, lam) is
     -- unchanged, so free variables, `return` and constant lookup keep the
@@ -530,7 +538,7 @@ def callClosure (m : Machine) (cl : Closure) (args : List Value)
     let frame : Frame :=
       { self := selfOv.getD capF.self, defmod := defmodOv.getD capF.defmod,
         blk := capF.blk,
-        locals, kind := .block, captured := some cl.captured,
+        locals, kind := .block, captured := cl.captured,
         home := cl.home, lam := cl.lam, cref := capF.cref }
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }

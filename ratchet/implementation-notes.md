@@ -6619,3 +6619,118 @@ else; nothing under `slice/` or `ruby/lean/` was touched.
 negative controls as "140/140". Both are stale — 177 is the count of hand-authored derivations,
 which `checkrungs` still reads at 177/177; the ladder's denominator is the corpus, now 254, and
 the controls are 145.)*
+
+## Clink 61 (2026-09-08) — the seal's blocker was a model fiction, and it is gone. **178 rungs / 254, 47 of 83 rules**
+
+Clink 60 exited on an architectural flag: `Sealed` is not inductive over `stepFn`, so the
+locals layer — which gates `if'`/`ifNoElse`/`begin'` directly and the 22 call rules through
+jump-freeness — needed a joint frame-graph/control-state invariant before it could continue.
+This session executed the decision recorded against that flag, and the flag comes down.
+
+**The ladder does not move, and that is the honest reading.** 47 of 83, unchanged. What this
+clink removes is a *refutation*, not an obligation: `not_BuiltinsSeal` is retired, so the
+`Builtins` layer can be re-attempted at all. A session that discharges no rule and says so is
+the point of counting rules rather than counting work.
+
+### What was discharged
+
+Nothing. See above. The deliverable is L266, below, plus one baseline finding.
+
+### L266 — `Closure.captured : Option Nat`
+
+`RubyCore/Heap.lean`'s `Closure.captured` was a bare `Nat`, so "captures nothing" was
+unspellable and the two sites where the model *invents* a Proc for a Symbol
+(`Interp/Support.lean`'s `coerceToProc` on `&:sym`, and `Builtins/Strings.lean`'s
+`Symbol#to_proc`) wrote `0` — the toplevel frame. `Sealed.clos` reads that field, so the
+allocation put a closure over frame `0` into the heap and the seal at `b = 0` was destroyed by
+a capture edge **CRuby does not have**: `:upcase.to_proc.binding` raises `ArgumentError` and
+`source_location` is `nil` (`found-issues.md` §A6a, probed 2026-09-08).
+
+The field is now `Option Nat` — `Nat` and not `FrameId` for the import-cycle reason
+`MethodDef.capturedFrame` already documents — and those two sites take `none`.
+
+**Not forced, and recorded because it is the interesting half.** Three places had a real
+choice, and `.getD 0` was the cheap answer at all three. It is right at two and wrong at one:
+
+* `Interp/Support.lean`'s `callClosure` reads `m.frames.getD (cl.captured.getD 0) default` for
+  `self`/`defmod`/`blk`/`cref`. **Kept `getD 0`** — it is byte-for-byte the frame this line
+  read before, so the two `none` closures see exactly the `self` they saw, and the *only*
+  behavioural change is that the pushed block frame's own `captured` is now `none` instead of
+  `some 0`. Unobservable: the body's free names are its own parameters.
+* `Denote/Apply.lean`'s `closSelf` mirrors that line, so it **keeps `getD 0` too** — a
+  denotation that disagreed with `callClosure` here would be describing a different call.
+* `Denote/Apply.lean`'s `closLocal` **does not**, and this is the one that would have been a
+  silent bug. It is the closure's captured-*locals* reader, and the block frame `callClosure`
+  pushes carries `captured := none`, so the body's walk stops at its own activation and every
+  free name reads `nil`. `getD 0` would have had the denotation reading the toplevel's locals
+  for a program that reads none of them. New `frameLocal?` answers `.nil` for `none`; four
+  transport lemmas (`Ext`, `Mut`, `reCtl`, `setLocal`) grew a two-case split and nothing else.
+
+**Two definitions changed shape rather than parenthesisation**, which is where the fidelity
+actually moved. `Sealed.clos` and `FramesWF.clos` are now quantified —
+`∀ p, cl.captured = some p → …` — matching the shape their `Frame`-side clauses
+(`Sealed.push`, `FramesWF.push`) already had. A capture-free closure discharges them
+**vacuously**. That is the whole repair; everything else is transport.
+
+**Rejected, and it was decided before implementation** (full four reasons in
+`Denote/Sem/notes.md` §The decision): keep `captured := 0` and discharge the allocation with a
+lemma showing `Symbol#to_proc`'s body mutates nothing. It does not discharge `Sealed` as
+stated — that clause is about the capture *graph* — so spending it means first weakening
+`clos` to "…or this closure is inert", and that escape is exactly what drags the unconditional
+`stack` clause into control-state territory. Its one merit was costing no difftest re-run.
+
+**`not_BuiltinsSeal` retired.** It was a true theorem about two definitions in this repo and
+L266 changed one of them. `toProcBreaksB` → `toProcSealsB`, still a `#guard` and still
+non-vacuous: it checks the call **returns a Proc** *and* that the Proc captures nothing, so it
+cannot pass by `Builtins.run` gating. `BuiltinsSeal` is left **stated and unproved** — one
+builtin measured is not the layer walked, and pretending otherwise is how a `#guard` becomes a
+theorem it never was.
+
+**Smaller than advertised.** The hand-off priced eight model sites plus 14 `RubyCore/Proof/`
+files and 12 `Denote/` files. Lean's `Option` coercion absorbed every *construction* site that
+wrote a bare `FrameId` — `blockClosure`, `lamClos`, `dmPcl` all still elaborate untouched (they
+are now written with an explicit `some`, for readers) — so what actually broke were the
+*reads*. Six proof files and five `Denote/` files.
+
+### The `MethodDef` arm is still a draft
+
+L266 did not touch it. `Denote/Sem/notes.md` has the clause, its `FramesWF` twin, its consumer
+(`Sealed.push` at `enterUserMethod`) and the writer-by-writer argument that it is closed; the
+measurement behind it (`probes/measure_captures.lean`: 0 capturing methods and 0 Procs at the
+booted machine, re-run and re-confirmed after L266) still stands. It is the next thing the
+locals layer needs after the `Builtins` walk.
+
+### Baseline finding: `lake build Metatheory` is red at HEAD — `found-issues.md` §A7
+
+Found while establishing a baseline, on a clean tree, before any edit. Three breaks, none
+caused by L266. The one worth reading is the first: `Proof/Static/Iter.lean`'s
+`startArgs_lambda` is **a false statement**, not a broken script — commit `0657e1c` (the A5 fix,
+"teach the model to shadow `Kernel#lambda`") put a `shadowed` test in front of the branch it
+claims is `reifyBlock` by `rfl`, so a user `def lambda` refutes it. Its consumer in
+`Preservation.lean` then needs a fragment invariant supplying `shadowed = false`, which the
+fragment does not have; that missing clause is the real finding. The other two
+(`Preservation.lean:1518`, `:2404`) are proof-script repairs.
+
+Extent was measured rather than guessed: with exactly those three transiently `sorry`ed,
+`Metatheory` + `Judgment` + `HJudge` build clean and the only remaining failures are the
+`#guard_msgs` axiom bills correctly reporting `sorryAx`. The `sorry`s were then reverted — the
+tree carries none. This is the rot mode `lean/lakefile.toml`'s own comment predicts for a
+library outside `defaultTargets`, arriving on schedule.
+
+**Not fixed, deliberately.** Repairing it is a separate job with a soundness-shaped question at
+its centre, and it is not what the semantic ratchet is blocked on. Filed so the next session
+starts from a known baseline instead of attributing it to whatever it changes next.
+
+### State
+
+Semantic ratchet **47 of 83**, unchanged (`Judge` 32/67, `JudgeSeq` 3/4, the six companion
+families complete, denominator still 83). Syntactic ratchet **178 of 254** rungs certified
+well-typed, unchanged, expect_validate mismatches **35**, unchanged. Because L266 changes the
+*machine*, everything downstream was re-verified rather than assumed: difftest tier 0 **1304
+ran, 992 agree, 0 disagree**; corpus agreement **254/254**; `checkrungs` **177/177 hand
+derivations + 145/145 negative controls**; `Denote/Examples.lean`'s `#guard`s green; `lake
+build` clean in both packages; no `sorry`, and every `#print axioms` a subset of
+`propext`/`Classical.choice`/`Quot.sound`. **Nothing under `Ratchet/` was touched.** Changed:
+`ruby/lean/RubyCore/{Heap,Interp/Support,Interp/Reflect,Builtins/Strings}.lean` and six files
+under `RubyCore/Proof/`; `ratchet/Denote/{Apply,Ext,Local,Rules/Core,Rules/Lambda,Sem/Mut,
+Sem/Locals,Sem/StepLocal}.lean`; `probes/measure_captures.lean`.

@@ -108,9 +108,16 @@ theorem frameLocal_go_reCtl (m : Machine) (c : Ctl) (k : List Kont) (x : String)
     (x : String) : frameLocal (reCtl m c k) fid x = frameLocal m fid x :=
   frameLocal_go_reCtl m c k x _ _
 
+@[simp] theorem frameLocal?_reCtl (m : Machine) (c : Ctl) (k : List Kont)
+    (fid? : Option FrameId) (x : String) :
+    frameLocal? (reCtl m c k) fid? x = frameLocal? m fid? x := by
+  cases fid? with
+  | none => rfl
+  | some fid => exact frameLocal_reCtl m c k fid x
+
 @[simp] theorem closLocal_reCtl (m : Machine) (c : Ctl) (k : List Kont) (cl : Closure) :
     closLocal (reCtl m c k) cl = closLocal m cl := by
-  funext x; exact frameLocal_reCtl m c k cl.captured x
+  funext x; exact frameLocal?_reCtl m c k cl.captured x
 
 @[simp] theorem closSelf_reCtl (m : Machine) (c : Ctl) (k : List Kont) (cl : Closure) :
     closSelf (reCtl m c k) cl = closSelf m cl := rfl

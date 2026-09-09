@@ -1951,7 +1951,12 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
         have hclt : m.stack.headD 0 < m.frames.size := by
           simpa [curFid] using hfsh.2.1
         -- The closure's captured id *is* the send site's frame, but only by `rfl`.
-        have hbc : (blockClosure { m with kont := k2 } [.req x2] [] body2 false).captured
+        -- Two forms since L266 made the field an `Option`: `hbcS` is the field itself,
+        -- which is what the pushed block frame's own `captured` copies, and `hbc` is the
+        -- frame index `callClosure` reads off it.
+        have hbcS : (blockClosure { m with kont := k2 } [.req x2] [] body2 false).captured
+            = some (m.stack.headD 0) := rfl
+        have hbc : (blockClosure { m with kont := k2 } [.req x2] [] body2 false).captured.getD 0
             = m.stack.headD 0 := rfl
         -- Everything the block frame's environment claims is `.any`, so its conformance
         -- is `ValueTy.any` at every name and needs no lookup (L247).
@@ -2006,16 +2011,17 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           intro κ hm cl' hcl'
           have hfacts : ∀ (f1 f2 : Frame) (h' : Heap),
               (∀ kk, h'.classPayload? kk = m.heap.classPayload? kk) →
-              ∀ cl0 : Closure, cl0.captured = m.stack.headD 0 →
-              cl0.captured < ((m.frames.push f1).push f2).size ∧
-              (((m.frames.push f1).push f2).getD cl0.captured default).captured = none ∧
-              (h'.classPayload? (((m.frames.push f1).push f2).getD cl0.captured
+              ∀ cl0 : Closure, cl0.captured.getD 0 = m.stack.headD 0 →
+              cl0.captured.getD 0 < ((m.frames.push f1).push f2).size ∧
+              (((m.frames.push f1).push f2).getD (cl0.captured.getD 0) default).captured = none ∧
+              (h'.classPayload? (((m.frames.push f1).push f2).getD (cl0.captured.getD 0)
                 default).defmod).isSome = true ∧
-              Boot.objectId ∈ (((m.frames.push f1).push f2).getD cl0.captured default).cref := by
+              Boot.objectId ∈
+                (((m.frames.push f1).push f2).getD (cl0.captured.getD 0) default).cref := by
             intro f1 f2 h' hpp cl0 hc0
-            have h1 : cl0.captured < m.frames.size := hc0 ▸ hclt
-            have h2 : ((m.frames.push f1).push f2).getD cl0.captured default
-                = m.frames.getD cl0.captured default := by
+            have h1 : cl0.captured.getD 0 < m.frames.size := hc0 ▸ hclt
+            have h2 : ((m.frames.push f1).push f2).getD (cl0.captured.getD 0) default
+                = m.frames.getD (cl0.captured.getD 0) default := by
               rw [getD_push_lt _ _ _ (by
                   simp only [Array.size_push]; exact Nat.lt_succ_of_lt h1),
                 getD_push_lt _ _ _ h1]
@@ -2053,11 +2059,13 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
             · simp only [Array.size_push]; exact Nat.lt_succ_self _
             · simp only [Array.size_push]; exact Nat.lt_succ_of_lt (hlt g hgm')
           · intro q hq
-            rw [getD_push_lt_self] at hq
+            -- L266: the pushed block frame's `captured` **is** `cl.captured`, an `Option`,
+            -- so `hbcS` (not `Option.some.injEq` alone) is what names the hop.
+            rw [getD_push_lt_self, hbcS] at hq
             simp only [Option.some.injEq] at hq
             subst hq
             refine ⟨by simp only [Array.size_push]; exact Nat.lt_succ_of_lt hclt, ?_⟩
-            rw [hbc, hpop _ _ _ hclt]
+            rw [hpop _ _ _ hclt]
             exact hcapn
           · rw [getD_push_lt_self, hbc, getD_push_lt _ _ _ hclt, hg.payload]
             exact hcap3.1
@@ -2184,8 +2192,11 @@ theorem step_ok {m : Machine} (h : Inv m) : StepOk (stepFn m) := by
           · -- `ShallowChain`: one hop, and it lands on a self-contained frame.
             intro q hq
             rw [getD_push_lt_self] at hq
-            simp only [Option.some.injEq] at hq
-            subst hq
+            -- L266: `hq : cl.captured = some q`, so `q` *is* the index `hcaplt`/`hcapn`
+            -- are about — `cl.captured.getD 0`.
+            have hq₂ : cl.captured = some q := hq
+            have hq' : cl.captured.getD 0 = q := by simp [hq₂]
+            subst hq'
             exact ⟨hcaplt, by rw [getD_push_lt _ _ _ hcaplt]; exact hcapn⟩
           · rw [getD_push_lt_self]; exact hcappay
           · -- The parameter is in the frame's **own** locals, so its read is one lookup;

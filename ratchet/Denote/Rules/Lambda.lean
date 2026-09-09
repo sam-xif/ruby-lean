@@ -136,7 +136,7 @@ theorem nameFree_declaresName {κ : Ctx} {n : String} (h : nameFree κ n = true)
 **current** frame (which is why the spine below is read through `m.getLocal`). -/
 def lamClos (m : Machine) (ps : List RubyCore.Param) (body : RubyCore.Expr) (lam : Bool) :
     Closure :=
-  { params := ps, locals := [], body, captured := m.stack.headD 0,
+  { params := ps, locals := [], body, captured := some (m.stack.headD 0),
     home := Interp.returnTarget m, lam }
 
 /-- The `Proc` object `reifyBlock` pushes. -/
@@ -216,7 +216,7 @@ theorem Sem.Judge.lambdaLit : Obl.Judge.lambdaLit := by
     have hloc : closLocal (lamMachine m (toRubyParams ps) (toRuby body) lam)
         (lamClos m (toRubyParams ps) (toRuby body) lam) = fun x => m.getLocal x := by
       funext x
-      simp only [closLocal, lamClos]
+      simp only [closLocal, lamClos, frameLocal?]
       rw [he.frameLocal_eq]
       exact frameLocal_head m x
     rw [hloc]
@@ -234,7 +234,7 @@ theorem Sem.Judge.lambdaLit : Obl.Judge.lambdaLit := by
       -- same frame is `FrameInRange`'s non-emptiness conjunct.
       have : closSelf (lamMachine m (toRubyParams ps) (toRuby body) lam)
           (lamClos m (toRubyParams ps) (toRuby body) lam) = m.currentFrame.self := by
-        simp only [closSelf, lamClos, lamMachine]
+        simp only [closSelf, lamClos, lamMachine, Option.getD_some]
         rw [currentFrame_headD hm.frameInRange.1]
       rw [Option.getD_some, this]
       exact denM_ext he hself

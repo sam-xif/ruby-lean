@@ -22,8 +22,9 @@ def capturedMethods (m : Machine) : List (ObjId × String × Nat) :=
         | none => none
     | none => []
 
-/-- …and every Proc object in the heap, with the frame it captured. -/
-def heapProcs (m : Machine) : List (ObjId × Nat) :=
+/-- …and every Proc object in the heap, with the frame it captured (`none` since L266 for a
+    `Symbol#to_proc` Proc, which captures nothing). -/
+def heapProcs (m : Machine) : List (ObjId × Option Nat) :=
   (List.range m.heap.objs.size).filterMap fun o =>
     match (m.heap.get o).payload with
     | .proc cl => some (o, cl.captured)

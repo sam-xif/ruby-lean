@@ -394,23 +394,27 @@ transport below has a side condition rather than being unconditional. -/
 theorem closLocal_setLocal (m : Machine) (x : String) (w : Value) (cl : Closure) (y : String) :
     closLocal (m.setLocal x w) cl y = closLocal m cl y ∨
       (y = x ∧ closLocal (m.setLocal x w) cl y = w) := by
+  -- L266: a capture-free closure reads `nil` at every name, before the write and after it.
+  cases hc : cl.captured with
+  | none => exact Or.inl (by simp only [closLocal, hc, frameLocal?])
+  | some p =>
   by_cases hy : y = x
   · subst hy
     rw [setLocal_eq_setAt]
-    simp only [closLocal, frameLocal, setAt_framesSize]
+    simp only [closLocal, hc, frameLocal?, frameLocal, setAt_framesSize]
     rcases frameLocal_go_setAt_self m y w
       (Machine.setLocal.owner m y (m.stack.headD 0) (m.stack.headD 0) (m.frames.size + 1))
-      (m.frames.size + 1) cl.captured with h | h
+      (m.frames.size + 1) p with h | h
     · exact Or.inr ⟨by simp, h⟩
     · exact Or.inl h
   · refine Or.inl ?_
     rw [setLocal_eq_setAt]
-    simp only [closLocal, frameLocal, setAt_framesSize]
+    simp only [closLocal, hc, frameLocal?, frameLocal, setAt_framesSize]
     exact frameLocal_go_setAt_ne m x w _ hy _ _
 
 theorem closSelf_setLocal (m : Machine) (x : String) (w : Value) (cl : Closure) :
     closSelf (m.setLocal x w) cl = closSelf m cl := by
-  rw [setLocal_eq_setAt]; exact setAt_self m x w _ cl.captured
+  rw [setLocal_eq_setAt]; exact setAt_self m x w _ (cl.captured.getD 0)
 
 /-- **A type's meaning survives a rebinding, unless it recorded one.**
 

@@ -444,9 +444,15 @@ theorem Ext.frameLocal_go_eq {m m₂ : Machine} (he : Ext m m₂) (x : String) :
   simp only [frameLocal, he.frames]
   exact he.frameLocal_go_eq x _ _
 
+@[simp] theorem Ext.frameLocal?_eq {m m₂ : Machine} (he : Ext m m₂) (fid? : Option FrameId)
+    (x : String) : frameLocal? m₂ fid? x = frameLocal? m fid? x := by
+  cases fid? with
+  | none => rfl
+  | some fid => exact he.frameLocal_eq fid x
+
 @[simp] theorem Ext.closLocal_eq {m m₂ : Machine} (he : Ext m m₂) (cl : Closure) :
     closLocal m₂ cl = closLocal m cl := by
-  funext x; exact he.frameLocal_eq cl.captured x
+  funext x; exact he.frameLocal?_eq cl.captured x
 
 @[simp] theorem Ext.closSelf_eq {m m₂ : Machine} (he : Ext m m₂) (cl : Closure) :
     closSelf m₂ cl = closSelf m cl := by

@@ -65,7 +65,7 @@ def dmMd (cref : List ObjId) (owner : ObjId) (fromPrelude : Bool) : MethodDef :=
 
 /-- The closure the block reifies to. -/
 def dmPcl (m : Machine) : Closure :=
-  { params := [], locals := [], body := dmBody, captured := m.stack.headD 0,
+  { params := [], locals := [], body := dmBody, captured := some (m.stack.headD 0),
     home := returnTarget m, lam := false }
 
 /-- The proc object the reification allocates. -/
@@ -81,7 +81,7 @@ def dmPo (m : Machine) : ObjId := (m.heap.alloc (dmPobj m)).1
 def dmM₂ (m : Machine) : Machine :=
   { dmM₁ m with
     heap := defineMethod (dmM₁ m).heap (curFrame m).defmod "shout"
-      (dmMd ((dmM₁ m).frames.getD (dmPcl m).captured default).cref
+      (dmMd ((dmM₁ m).frames.getD ((dmPcl m).captured.getD 0) default).cref
         (curFrame m).defmod m.preludeMode) }
 
 /-- **The step, in one equation**: on a machine whose current frame is a class
@@ -234,7 +234,7 @@ theorem semAxiomsOk_dm : SemAxiomsOk [dmClaim] := by
   have hctx₁ : className (dmM₁ m).heap (curFrame m).defmod = "String" := by
     rw [hg₁.className_eq]; exact hctx
   -- the installed MethodDef, named
-  have hcrefmd : Boot.objectId ∈ (dmMd ((dmM₁ m).frames.getD (dmPcl m).captured
+  have hcrefmd : Boot.objectId ∈ (dmMd ((dmM₁ m).frames.getD ((dmPcl m).captured.getD 0)
       default).cref (curFrame m).defmod m.preludeMode).cref := by
     show Boot.objectId ∈ (m.frames.getD (m.stack.headD 0) default).cref
     rw [hst]

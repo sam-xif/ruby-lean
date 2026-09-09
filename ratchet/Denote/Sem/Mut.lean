@@ -188,7 +188,11 @@ theorem Mut.isProcVEq {m m₂ : Machine} (h : Mut m m₂) (v : Value) :
 theorem Mut.closLocalEq {m m₂ : Machine} (h : Mut m m₂) (cl : Closure) :
     closLocal m₂ cl = closLocal m cl := by
   funext y
-  simp only [closLocal, frameLocal, h.frames]
+  -- L266: a capture-free closure reads `nil` in both machines.
+  cases hc : cl.captured with
+  | none => simp only [closLocal, hc, frameLocal?]
+  | some p =>
+  simp only [closLocal, hc, frameLocal?, frameLocal, h.frames]
   -- `frameLocal.go` is a fixed walk over `m.frames`, so the two walks are the same walk
   suffices hgo : ∀ (fuel : Nat) (fid : FrameId),
       frameLocal.go m₂ y fid fuel = frameLocal.go m y fid fuel by

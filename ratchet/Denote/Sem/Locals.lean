@@ -297,9 +297,15 @@ restoring one only pops back to a frame already on the stack, which the first cl
 structure Sealed (b : FrameId) (m : Machine) : Prop where
   /-- No frame on the activation stack reaches `b`. -/
   stack : ∀ fid ∈ m.stack, ReachesB m b fid (m.frames.size + 1) = false
-  /-- …and no closure in the heap captured a chain through `b`. -/
+  /-- …and no closure in the heap captured a chain through `b`.
+
+      Quantified over the captured id rather than projecting it (L266): `Closure.captured`
+      is an `Option`, and a closure that captured **nothing** — the `Symbol#to_proc` pair,
+      the only source — reaches nothing, so the clause is vacuous there rather than being a
+      claim about frame `0`. That is the whole fidelity repair the sixteenth stall point
+      needed; the shape is now the same one `Sealed.push` already used for `Frame`. -/
   clos : ∀ (o : ObjId) (cl : Closure), procClosure? m.heap (.ref o) = some cl →
-    ReachesB m b cl.captured (m.frames.size + 1) = false
+    ∀ p, cl.captured = some p → ReachesB m b p (m.frames.size + 1) = false
 
 /-- The seal implies what the write lemma above wants, at the current frame. -/
 theorem not_reachesFrame_of_sealed {b : FrameId} {m : Machine} (h : Sealed b m)
@@ -353,14 +359,14 @@ theorem Sealed.congr {b : FrameId} {m m₂ : Machine} (h : Sealed b m)
     (hsz : m₂.frames.size = m.frames.size)
     (hcap : ∀ f, (m₂.frames.getD f default).captured = (m.frames.getD f default).captured)
     (hh : ∀ (o : ObjId) (cl : Closure), procClosure? m₂.heap (.ref o) = some cl →
-      ReachesB m b cl.captured (m.frames.size + 1) = false)
+      ∀ p, cl.captured = some p → ReachesB m b p (m.frames.size + 1) = false)
     (hst : ∀ fid ∈ m₂.stack, fid ∈ m.stack) : Sealed b m₂ where
   stack := fun fid hmem => by
     rw [hsz, reachesB_captured_congr hcap]
     exact h.stack fid (hst fid hmem)
-  clos := fun o cl hcl => by
+  clos := fun o cl hcl p hp => by
     rw [hsz, reachesB_captured_congr hcap]
-    exact hh o cl hcl
+    exact hh o cl hcl p hp
 
 /-- **Popping the stack.** The frames the seal talks about only shrink. -/
 theorem Sealed.pop {b : FrameId} {m : Machine} (h : Sealed b m) :
@@ -413,9 +419,9 @@ structure FramesWF (m : Machine) : Prop where
   nonEmpty : m.stack ≠ []
   /-- Every frame on the activation stack exists. -/
   stack : ∀ fid ∈ m.stack, fid < m.frames.size
-  /-- …and so does every frame a closure captured. -/
+  /-- …and so does every frame a closure captured — when it captured one at all (L266). -/
   clos : ∀ (o : ObjId) (cl : Closure), procClosure? m.heap (.ref o) = some cl →
-    cl.captured < m.frames.size
+    ∀ p, cl.captured = some p → p < m.frames.size
 
 /-- **Pushing a frame.** The seal survives it exactly when the pushed frame's *captured* frame
 is one the seal already covers — which is free for a **method** frame, whose `captured` is
@@ -468,15 +474,15 @@ theorem Sealed.push {b : FrameId} {m : Machine} (h : Sealed b m) (hwf : FramesWF
           (m.frames.size + 1) (Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hlt))
           (Nat.lt_succ_of_lt hlt)]
       exact h.stack fid hmem'
-  · intro o cl hcl
-    show ReachesB _ b cl.captured ((m.frames.push fr).size + 1) = false
+  · intro o cl hcl p hp
+    show ReachesB _ b p ((m.frames.push fr).size + 1) = false
     rw [hsz]
-    have hlt := hwf.clos o cl hcl
-    rw [reachesB_congr_below (m := m) hwf.down hbelow _ cl.captured hlt,
-      reachesB_fuel_irrel (m := m) hwf.down cl.captured (m.frames.size + 1 + 1)
+    have hlt := hwf.clos o cl hcl p hp
+    rw [reachesB_congr_below (m := m) hwf.down hbelow _ p hlt,
+      reachesB_fuel_irrel (m := m) hwf.down p (m.frames.size + 1 + 1)
         (m.frames.size + 1) (Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hlt))
         (Nat.lt_succ_of_lt hlt)]
-    exact h.clos o cl hcl
+    exact h.clos o cl hcl p hp
 
 #print axioms Sealed.push
 
@@ -509,7 +515,8 @@ syntactic condition can decide: a block literal's captured frame is the frame it
 Built through `Sealed.congr`, whose closure clause is stated at the *old* machine — which is
 what lets the fresh id be discharged by the premise while every old id goes through the seal. -/
 theorem Sealed.alloc {b : FrameId} {m : Machine} (h : Sealed b m) (obj : Object)
-    (hcl : ∀ cl, obj.payload = .proc cl → ReachesB m b cl.captured (m.frames.size + 1) = false) :
+    (hcl : ∀ cl, obj.payload = .proc cl → ∀ p, cl.captured = some p →
+      ReachesB m b p (m.frames.size + 1) = false) :
     Sealed b { m with heap := (m.heap.alloc obj).2 } := by
   refine h.congr rfl (fun _ => rfl) (fun o cl hcl' => ?_) (fun fid hmem => hmem)
   rw [procClosure?] at hcl'
@@ -571,7 +578,7 @@ theorem FramesWF.setLocal {m : Machine} (h : FramesWF m) (x : String) (w : Value
   exact { down := fun fid p hc => h.down fid p (by rw [hcap fid] at hc; exact hc)
           nonEmpty := h.nonEmpty
           stack := fun fid hmem => by rw [hsz]; exact h.stack fid hmem
-          clos := fun o cl hcl => by rw [hsz]; exact h.clos o cl hcl }
+          clos := fun o cl hcl p hp => by rw [hsz]; exact h.clos o cl hcl p hp }
 
 theorem FramesWF.push {m : Machine} (h : FramesWF m) (fr : RubyCore.Frame)
     (hin : ∀ p, fr.captured = some p → p < m.frames.size) :
@@ -604,13 +611,13 @@ theorem FramesWF.push {m : Machine} (h : FramesWF m) (fr : RubyCore.Frame)
     rcases List.mem_cons.mp hmem with hfe | hmem'
     · exact hfe ▸ Nat.lt_succ_self _
     · exact Nat.lt_succ_of_lt (h.stack fid hmem')
-  · intro o cl hcl
-    show cl.captured < (m.frames.push fr).size
+  · intro o cl hcl p hp
+    show p < (m.frames.push fr).size
     rw [hsz]
-    exact Nat.lt_succ_of_lt (h.clos o cl hcl)
+    exact Nat.lt_succ_of_lt (h.clos o cl hcl p hp)
 
 theorem FramesWF.alloc {m : Machine} (h : FramesWF m) (obj : Object)
-    (hcl : ∀ cl, obj.payload = .proc cl → cl.captured < m.frames.size) :
+    (hcl : ∀ cl, obj.payload = .proc cl → ∀ p, cl.captured = some p → p < m.frames.size) :
     FramesWF { m with heap := (m.heap.alloc obj).2 } := by
   refine { down := h.down, nonEmpty := h.nonEmpty, stack := h.stack, clos := ?_ }
   intro o cl hcl'

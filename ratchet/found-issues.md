@@ -129,9 +129,11 @@ in terms of `start_with?`, so the gate fires one method down).
 
 ### A6. `Symbol#to_proc` — the model's proc carries a **binding CRuby's does not have**, and is not identity-stable
 
-**Status:** A6a **decided, not yet implemented** (2026-09-08 — `Closure.captured` becomes an
-`Option FrameId` and the two `:sym.to_proc` sites take `none`; see `ratchet/Denote/Sem/notes.md`,
-the eighteenth stall point, for the eight sites and the rejected alternative). A6b/A6c open.
+**Status:** A6a **FIXED** (2026-09-08, L266 — `Closure.captured` is now `Option Nat` and the
+two `:sym.to_proc` sites take `none`; `Sealed.clos`/`FramesWF.clos` are quantified over the
+captured id so a capture-free closure discharges them vacuously, and `Denote/Sem/StepLocal.lean`'s
+`not_BuiltinsSeal` is retired. See `ratchet/Denote/Sem/notes.md`, the eighteenth stall point,
+for what was implemented and how it differed from the plan). A6b/A6c open.
 **Severity:** medium for identity, **high for the capture edge** — see below, it is what stalled
 the semantic ratchet's locals layer.
 
@@ -1518,3 +1520,32 @@ the argument was never re-run at the three sites it was later reused at. Worth a
 rules of its own: a function whose soundness argument names a rule does not travel to another
 rule for free.
 
+
+
+### A7. `lake build Metatheory` is red at HEAD — three breaks, all pre-existing
+
+**Status:** open. **Severity:** medium — no *model* claim depends on these, but `AGENTS.md`
+advertises the Direction-B type-safety result as axiom-clean and the library that carries it
+does not currently compile. Found 2026-09-08 while establishing a baseline for L266, on a
+clean tree; none of the three is caused by that change.
+
+`RubyCore/Proof/` is not in `defaultTargets` (deliberately — it is slow, and nothing the SUT
+does depends on it), which is exactly the rot mode `lakefile.toml`'s own comment predicts.
+
+1. **`Proof/Static/Iter.lean:196`, `startArgs_lambda` — the statement is now false, not just
+   unproved.** It claims `startArgs … .implicit "lambda" … (.lit ps ls body)` is `reifyBlock`
+   by `rfl`. Commit `0657e1c` (the A5 fix — *"teach the model to shadow `Kernel#lambda`"*)
+   put a `shadowed` test in front of that branch: a user `def lambda` makes the send an
+   ordinary dispatch. So the theorem needs a `shadowed = false` hypothesis, and its consumer
+   (`Preservation.lean`, L261's lambda-literal case) then needs a fragment invariant that
+   supplies it — which the fragment does not currently have. That missing clause is the real
+   finding; the `rfl` is just where it surfaced.
+2. **`Proof/Static/Preservation.lean:1518`** — `simp only [List.any_eq_true] at hcond` makes
+   no progress, in the private-method gate's `exfalso` branch.
+3. **`Proof/Static/Preservation.lean:2404`** (2415 after L266's added lines) — the `arrSplatK`
+   case's `exact inv_continueArray …` no longer typechecks.
+
+Measured extent: with exactly those three transiently `sorry`ed, `Metatheory` + `Judgment` +
+`HJudge` build clean and the only remaining failures are the `#guard_msgs` axiom bills
+correctly reporting `sorryAx`. So the rot is three spots, not a general decay — and (2) and
+(3) are proof-script repairs, while (1) is a soundness-shaped gap in the fragment's invariant.

@@ -41,7 +41,7 @@ set_option maxHeartbeats 1000000
 def blockClosure (m : Machine) (ps : List Param) (ls : List String) (body : Expr)
     (lam : Bool) : Closure :=
   { params := ps, locals := ls, body := body,
-    captured := m.stack.headD 0, home := returnTarget m, lam := lam }
+    captured := some (m.stack.headD 0), home := returnTarget m, lam := lam }
 
 theorem reifyBlock_eq (m : Machine) (ps : List Param) (ls : List String) (body : Expr)
     (lam : Bool) :
@@ -143,7 +143,7 @@ theorem iterStep_nil (m : Machine) (cl : Closure) (brk : FrameId)
     the `.block` node, so `infer`'s rule can check all three.
 
     The frame it builds is the one `FrameConforms` had to be generalized for (L243):
-    `captured := some cl.captured`, and the parameter is in its *own* `locals`, so the
+    `captured := cl.captured`, and the parameter is in its *own* `locals`, so the
     read of a parameter is one lookup and the read of an enclosing local is one hop. -/
 theorem callClosure_req1 {m : Machine} {cl : Closure} {x : String} {v : Value}
     {brk : FrameId} (hps : cl.params = [.req x]) (hls : cl.locals = [])
@@ -152,12 +152,12 @@ theorem callClosure_req1 {m : Machine} {cl : Closure} {x : String} {v : Value}
       = .next (withKont
           { m with
             frames := m.frames.push
-              { self := (m.frames.getD cl.captured default).self,
-                defmod := (m.frames.getD cl.captured default).defmod,
-                blk := (m.frames.getD cl.captured default).blk,
-                locals := [(x, v)], kind := .block, captured := some cl.captured,
+              { self := (m.frames.getD (cl.captured.getD 0) default).self,
+                defmod := (m.frames.getD (cl.captured.getD 0) default).defmod,
+                blk := (m.frames.getD (cl.captured.getD 0) default).blk,
+                locals := [(x, v)], kind := .block, captured := cl.captured,
                 home := cl.home, lam := cl.lam,
-                cref := (m.frames.getD cl.captured default).cref },
+                cref := (m.frames.getD (cl.captured.getD 0) default).cref },
             stack := m.frames.size :: m.stack }
           (.eval cl.body) (.blkFrameK m.frames.size cl.lam (some brk) cl [v])) := by
   unfold callClosure

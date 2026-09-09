@@ -125,15 +125,25 @@ deriving Inhabited
     Essence's generative jump targets (sketch §1.1):
     - `captured` is the FrameId of the defining frame — free variables resolve
       up its chain and `self`/`defmod`/method-block are inherited from it.
+      **`none` means the closure closes over nothing**, which is not the same as
+      closing over frame `0`: the only such closures are the ones the model
+      *invents* for `Symbol#to_proc` (`&:sym` and the builtin), and CRuby's
+      answer there is a C-level Proc with no binding at all —
+      `:upcase.to_proc.binding` raises and its `source_location` is `nil`
+      (`ratchet/found-issues.md` §A6a). Matches `Frame.captured`, which has been
+      an `Option` all along (`Machine.lean`); before L266 this was a bare `Nat`
+      and those two sites wrote `0`, a capture edge into the toplevel that the
+      reference semantics does not have and that `ratchet/Denote/Sem/`'s frame
+      seal read as real.
     - `home` is the method activation that a non-lambda `return` unwinds to.
     - `lam` selects lambda semantics (strict arity, local `return`/`break`).
     FrameId = Nat (defined in Machine); kept as Nat here to avoid an import
-    cycle. -/
+    cycle — as `MethodDef.capturedFrame`, the other capture field, already does. -/
 structure Closure where
   params : List Param
   locals : List String
   body : Expr
-  captured : Nat
+  captured : Option Nat
   home : Nat
   lam : Bool := false
 deriving Inhabited

@@ -127,47 +127,49 @@ theorem Step.setLocal {b : FrameId} {m : Machine} (h : StepInv b m) (x : String)
        exact h.inRange }⟩
 
 
-/-! ## The seal is **not** preserved by `Builtins.run` — measured, not predicted
+/-! ## The seal and `Builtins.run`: the one measured refutation, and its repair
 
-`Denote/Sem/FrameLocal.lean` proved the `Builtins` layer uniform for `LocalsSame`, and the
-plan above reads as though the seal came with it: a builtin writes no frame, so `Sealed`
-should travel across `Builtins.run` for free. It does not, and the reason is a single
-builtin.
+**History, because the number in `AGENTS.md` moved on it.** `Denote/Sem/FrameLocal.lean`
+proved the `Builtins` layer uniform for `LocalsSame`, and the plan read as though the seal
+came with it: a builtin writes no frame, so `Sealed` should travel across `Builtins.run` for
+free. Until L266 it did not, and the reason was a single builtin.
 
-`Symbol#to_proc` (`RubyCore/Builtins/Strings.lean` L441) *allocates a closure*:
+`Symbol#to_proc` (`RubyCore/Builtins/Strings.lean`) *allocates a closure*, and it used to
+write
 
 ```lean
-let cl : Closure :=
-  { params := [.req "__recv", .rest (some "__rest")], locals := [],
-    body := .send (some (.var .lvar "__recv")) s [.splat (some (.var .lvar "__rest"))] none,
     captured := 0, home := 0, lam := true }
 ```
 
-`captured := 0` — the **toplevel frame**, because a `Closure`'s `captured` is a `FrameId` and
-not an `Option FrameId`, so there is no way to spell "captures nothing" and `0` is the
-inert choice. `Sealed`'s `clos` clause reads exactly that field, so the allocation puts a
-closure over frame `0` into the heap and the seal at `b = 0` is gone. `Sealed.alloc`'s premise
-(`∀ cl, obj.payload = .proc cl → ReachesB m b cl.captured … = false`) is therefore **false**
-at the one `b` the toplevel narrowing rungs are about.
+`captured := 0` — the **toplevel frame**, because a `Closure`'s `captured` was a `FrameId`
+and not an `Option FrameId`, so there was no way to spell "captures nothing" and `0` was the
+inert-looking choice. `Sealed`'s `clos` clause reads exactly that field, so the allocation put
+a closure over frame `0` into the heap and the seal at `b = 0` was gone; `BuiltinsSeal` below
+was refuted by a `#guard`, and the whole locals layer stalled behind it (clink 60).
 
-Three things follow, and the third is the design consequence.
+**What the refutation turned out to be measuring.** Probed against CRuby
+(`ratchet/found-issues.md` §A6a): `:upcase.to_proc.binding` raises `ArgumentError` and its
+`source_location` is `nil` — CRuby's `Symbol#to_proc` proc is a C-level Proc with **no
+binding at all**. So the capture edge the seal tripped over was not a fact about Ruby; it was
+the model's, forced by the field's type. L266 gave `Closure.captured` the `Option` that
+`Frame.captured` always had and set the two `Symbol#to_proc` construction sites to `none`,
+and the probe below now measures the repair instead of the break.
 
-1. **It is not a soundness bug in the model.** The closure's body is
-   `__recv.s(*__rest)` — a fixed, assignment-free expression — so invoking it cannot write a
-   local of frame `0`. `Sealed` is a *sufficient* condition for "`b`'s locals are stable" and
-   this is a place where it is strictly stronger than the truth.
-2. **It is not repairable by strengthening `Sealed.alloc`.** The allocation really happens, at
-   a machine the seal really holds at, so no premise stated over `(b, m)` can exclude it. What
-   distinguishes the `to_proc` closure from a dangerous one is its *body*.
-3. **So the frame graph is not enough.** The invariant the layer needs cannot be a predicate on
-   `frames` alone; the closure clause has to be able to say "…or this closure cannot write",
-   which is a syntactic condition on `cl.body`. That is `Ctx.closures`' exactness component
-   (`StateOk`'s `ClosuresOk`, still `trivial`) arriving from the direction the sixteenth stall
-   point predicted, with **one escape it did not name**: a closure that no `Judge` rule and no
-   prelude line created, but a *builtin* did.
+Three things that were true of the refutation and are worth keeping, because two of them
+still bind:
 
-Stated as a `Prop` with a name and refuted, for the reason `Denote/Sem/Frame.lean`'s
-`KontFrame` was: a comment saying "the seal probably travels" would still be a comment. -/
+1. **It never was a soundness bug in the model.** The closure's body is `__recv.s(*__rest)` —
+   a fixed, assignment-free expression — so invoking it could not write a local of frame `0`.
+   `Sealed` is a *sufficient* condition for "`b`'s locals are stable" and that was a place
+   where it was strictly stronger than the truth.
+2. **It was not repairable by strengthening `Sealed.alloc`.** The allocation really happened,
+   at a machine the seal really held at, so no premise stated over `(b, m)` could exclude it.
+   Which is why the repair is in the *model*, not in the invariant.
+3. **A closure a builtin creates is still a closure no `Judge` rule and no prelude line
+   created.** The escape the sixteenth stall point did not name is closed here only because
+   this particular builtin's Proc captures nothing. `BuiltinsSeal` is stated below and is
+   **not** proved: the probe is one builtin, and the layer is the walk.
+-/
 
 /-- **What the plan wanted**: the `Builtins` layer preserves the seal outright. -/
 def BuiltinsSeal : Prop :=
@@ -222,36 +224,29 @@ theorem framesWF_toProcM : FramesWF toProcM := by
     simp
   · intro o cl h; exact absurd h (fun hc => toProcM_noProc o cl hc)
 
-/-- The probe: `Symbol#to_proc` at `toProcM` answers with a closure whose captured chain
-reaches frame `0`. A `Bool` and a `#guard` rather than a `decide`, for `Denote/Sanity.lean`'s
-reason — this is a build gate, and `native_decide` would cost an axiom. -/
-def toProcBreaksB : Bool :=
+/-- **The probe, at the shape that used to fail.** `Symbol#to_proc` at `toProcM` really does
+allocate and really does return a Proc — so the `#guard` below is not vacuous — and the
+closure it returns captures **nothing**, which is what `Sealed.alloc`'s premise needs. A
+`Bool` and a `#guard` rather than a `decide`, for `Denote/Sanity.lean`'s reason: this is a
+build gate, and `native_decide` would cost an axiom.
+
+Both conjuncts matter. Dropping the first would let the whole probe pass by `Builtins.run`
+gating, which is how a repair-measuring `#guard` goes quietly vacuous. -/
+def toProcSealsB : Bool :=
   match Builtins.run "Symbol#to_proc" (.sym "f") [] toProcM with
   | .ok v m' =>
       match procClosure? m'.heap v with
-      | some cl => ReachesB m' 0 cl.captured (m'.frames.size + 1)
+      | some cl => cl.captured == none
       | none => false
   | _ => false
 
-#guard toProcBreaksB
+#guard toProcSealsB
 
-/-- **`BuiltinsSeal` is refutable.** -/
-theorem not_BuiltinsSeal (hb : toProcBreaksB = true) : ¬ BuiltinsSeal := by
-  intro h
-  rw [toProcBreaksB] at hb
-  split at hb
-  · rename_i v m' heq
-    have hs := h 0 "Symbol#to_proc" (.sym "f") [] toProcM sealed_toProcM framesWF_toProcM
-      (by show 0 < (#[(default : RubyCore.Frame), default]).size; simp) v m' heq
-    split at hb
-    · rename_i cl hcl
-      cases v with
-      | ref o => rw [hs.clos o cl hcl] at hb; exact absurd hb (by simp)
-      | _ => exact absurd hcl (by simp [procClosure?])
-    · exact absurd hb (by simp)
-  · exact absurd hb (by simp)
-
-#print axioms not_BuiltinsSeal
+-- `BuiltinsSeal` is left **stated and unproved**, deliberately: `toProcSealsB` retires the
+-- one measured refutation, it does not survey the other builtins, and a `Prop` that reads
+-- "every builtin, every receiver, every argument list" is not something one `#guard` earns.
+-- The Builtins-layer walk is where it gets proved or refuted again.
+#print axioms Sealed.push
 
 end Ratchet.Denote
 

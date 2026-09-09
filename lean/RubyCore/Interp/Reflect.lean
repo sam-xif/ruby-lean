@@ -220,7 +220,7 @@ def reflectDefineMethod (m : Machine) (recv : Value) (mname : String)
             | some target =>
               let m := dmTargetM m recv singleton
               -- constants in the body resolve at the *definition* site [V]
-              let cref := (m.frames.getD cl.captured default).cref
+              let cref := (m.frames.getD (cl.captured.getD 0) default).cref
               -- **J33: capture erasure for closed bodies.** A body that can
               -- never read or write a local (`localFreeB`) never consults the
               -- chain, so installing it chain-free is unobservable — and it is
@@ -234,7 +234,7 @@ def reflectDefineMethod (m : Machine) (recv : Value) (mname : String)
                     -- fuel bounds the *depth*; any body deeper than this keeps
                     -- its capture (the conservative direction)
                     if localFreeB 1000000 cl.body then none
-                    else some cl.captured,
+                    else cl.captured,
                   declared := cl.locals,
                   fromPrelude := m.preludeMode }
               let m := { m with heap := defineMethod m.heap target name md }

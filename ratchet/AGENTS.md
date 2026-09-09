@@ -481,19 +481,21 @@ translation and §Semantic ratchet status is the ladder that climbs it.
 
 ## Semantic ratchet status (`Denote/Sem/`): **47 of 83 `Judge` rules discharged**
 
-> **Halted, clink 60 — the locals layer needs a redesign before the ladder can move again.**
-> `Sealed`, the frame-graph invariant that layer is built on, is **not inductive** over
-> `stepFn` (`Denote/Sem/StepLocal.lean`'s `not_BuiltinsSeal`; `Denote/Sem/notes.md`'s
-> eighteenth stall point). All 36 remaining rules were audited and none has a rung available at
-> the near edge of any of the four unbuilt layers — see `implementation-notes.md` clink 60
-> §EMERGENCY EXIT for what was verified and where to start.
+> **Unblocked 2026-09-08 (L266). The blocker was model fidelity, and it is fixed.**
+> `Sealed`, the frame-graph invariant the locals layer is built on, was not inductive over
+> `stepFn`: `Symbol#to_proc` allocated a closure with `captured := 0`, a capture edge into the
+> toplevel. Probing against CRuby (`found-issues.md` §A6a) showed that edge does not exist in
+> the reference — `:upcase.to_proc.binding` raises, `source_location` is `nil` — so the repair
+> was in the *model*, not the invariant. `Closure.captured` is now an `Option` (matching
+> `Frame.captured`, which always was one), the two `:sym.to_proc` sites take `none`, and
+> `Sealed.clos`/`FramesWF.clos` are quantified over the captured id so a capture-free closure
+> discharges them vacuously. `not_BuiltinsSeal` is **retired**; `toProcSealsB` `#guard`s the
+> repair in its place.
 >
-> **Downgraded 2026-09-08 by probing against CRuby** (`found-issues.md` §A6): the closure that
-> breaks the seal carries a binding **CRuby's `Symbol#to_proc` does not have**
-> (`:upcase.to_proc.binding` raises `ArgumentError`; `source_location` is `nil`), so the blocker
-> is a bounded **model-fidelity** fix — `Closure.captured` wants the `Option` that
-> `Frame.captured` already has — rather than an invariant redesign. Try that first, then
-> re-attempt the `Builtins` layer.
+> **The ladder did not move on this change (47/83), and that is expected** — it removes a
+> refutation, it does not discharge a rule. The resume point is the `Builtins` layer walk
+> (`BuiltinsSeal` is stated and unproved), then the `MethodDef` arm of `Sealed` drafted in
+> `Denote/Sem/notes.md`. Read `HANDOFF.md` first.
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (177 of 249). This measures

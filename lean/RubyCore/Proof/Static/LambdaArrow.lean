@@ -70,12 +70,22 @@ theorem ValuesTy.weaken {h : Heap} : ∀ {vs : List Value} {σs τs : List Ty},
     header), exhibiting *one* such reachable state is the whole story for
     this closure — there is no other branch to also rule out. -/
 def LamTy (Γcap : Env) (dom : List Ty) (cod : Ty) (p : ObjId) : Prop :=
-  ∀ (m : Machine) (c : Closure) (args : List Value) (brk : Option FrameId) (m' : Machine),
+  ∀ (m : Machine) (c : Closure) (args : List Value) (brk : Option FrameId) (m' : Machine)
+    (fcap : FrameId),
     (m.heap.get p).payload = .proc c →
     c.lam = true →
-    c.captured < m.frames.size →
-    (m.frames.getD c.captured default).captured = none →
-    FrameConforms m.heap m.frames Γcap c.captured →
+    -- **The captured frame, named** (L266). `Closure.captured` became an `Option`, so
+    -- "the frame this closure closes over" is a hypothesis rather than a projection, and
+    -- the three clauses below are about `fcap` instead of about `c.captured` coerced to a
+    -- `Nat`. The scope this costs is exactly the capture-free closures — which is to say
+    -- the two `Symbol#to_proc` sites, the only source of `captured = none` in the model —
+    -- and `LamTy` says nothing about those. That is the honest reading and not a
+    -- weakening in substance: with `captured = none` there *is* no frame for `Γcap` to
+    -- describe, and the old statement silently pointed `Γcap` at frame `0`.
+    c.captured = some fcap →
+    fcap < m.frames.size →
+    (m.frames.getD fcap default).captured = none →
+    FrameConforms m.heap m.frames Γcap fcap →
     ValuesTy m.heap args dom →
     callClosure m c args brk = .next m' →
     ∃ (v : Value) (m'' : Machine), Reaches m' m'' ∧
@@ -93,9 +103,9 @@ def LamTy (Γcap : Env) (dom : List Ty) (cod : Ty) (p : ObjId) : Prop :=
 theorem LamTy.variance {Γcap : Env} {dom dom' : List Ty} {cod cod' : Ty} {p : ObjId}
     (h : LamTy Γcap dom cod p) (hdom : subTys dom' dom = true) (hcod : subTy cod cod' = true) :
     LamTy Γcap dom' cod' p := by
-  intro m c args brk m' hpay hlam hcap hshallow hconf hargs' hcall
+  intro m c args brk m' fcap hpay hlam hfc hcap hshallow hconf hargs' hcall
   obtain ⟨v, m'', hreach, hstack, hkont, hctl, hv⟩ :=
-    h m c args brk m' hpay hlam hcap hshallow hconf (hargs'.weaken hdom) hcall
+    h m c args brk m' fcap hpay hlam hfc hcap hshallow hconf (hargs'.weaken hdom) hcall
   exact ⟨v, m'', hreach, hstack, hkont, hctl, hv.weaken hcod⟩
 
 /-! ## 4. The direct semantic proof, for a bare-capture-read body
@@ -112,12 +122,12 @@ theorem callClosure_req2_lam {m : Machine} {cl : Closure} {v1 v2 : Value}
       = .next (withKont
           { m with
             frames := m.frames.push
-              { self := (m.frames.getD cl.captured default).self,
-                defmod := (m.frames.getD cl.captured default).defmod,
-                blk := (m.frames.getD cl.captured default).blk,
-                locals := [(x, v1), (y, v2)], kind := .block, captured := some cl.captured,
+              { self := (m.frames.getD (cl.captured.getD 0) default).self,
+                defmod := (m.frames.getD (cl.captured.getD 0) default).defmod,
+                blk := (m.frames.getD (cl.captured.getD 0) default).blk,
+                locals := [(x, v1), (y, v2)], kind := .block, captured := cl.captured,
                 home := cl.home, lam := cl.lam,
-                cref := (m.frames.getD cl.captured default).cref },
+                cref := (m.frames.getD (cl.captured.getD 0) default).cref },
             stack := m.frames.size :: m.stack }
           (.eval cl.body) (.blkFrameK m.frames.size cl.lam brk cl [v1, v2])) := by
   unfold callClosure
@@ -152,7 +162,7 @@ theorem lamTy_of_capture_read {Γcap : Env} {dom : List Ty} {cod : Ty} {p : ObjI
     (hbody : c.body = .var .lvar y) (hne1 : x₁ ≠ y) (hne2 : x₂ ≠ y)
     (hcapy : envGet? Γcap y = some cod) (hdomlen : dom.length = 2) :
     LamTy Γcap dom cod p := by
-  intro m c' args brk m' hpay hlam' hcaplt hshallow hconf hargs hcall
+  intro m c' args brk m' fcap hpay hlam' hfc hcaplt hshallow hconf hargs hcall
   have hc : c = c' := by
     have h1 := hpayload m
     rw [hpay] at h1
@@ -166,22 +176,25 @@ theorem lamTy_of_capture_read {Γcap : Env} {dom : List Ty} {cod : Ty} {p : ObjI
     | [_, _], _, [_], hargs => simp [ValuesTy] at hargs
     | [_, _], _, _ :: _ :: _ :: _, hargs => simp [ValuesTy] at hargs
   rw [callClosure_req2_lam hps hls hlam] at hcall
+  -- L266: `callClosure` reads `cl.captured.getD 0` and copies `cl.captured` onto the
+  -- pushed frame; `hfc` names both.
+  simp only [hfc, Option.getD_some] at hcall
   injection hcall with hcall
   subst hcall
   let fid := m.frames.size
   have hfid : fid = m.frames.size := rfl
   let nf : Frame :=
-    { self := (m.frames.getD c.captured default).self,
-      defmod := (m.frames.getD c.captured default).defmod,
-      blk := (m.frames.getD c.captured default).blk,
-      locals := [(x₁, v1), (x₂, v2)], kind := .block, captured := some c.captured,
-      home := c.home, lam := c.lam, cref := (m.frames.getD c.captured default).cref }
+    { self := (m.frames.getD fcap default).self,
+      defmod := (m.frames.getD fcap default).defmod,
+      blk := (m.frames.getD fcap default).blk,
+      locals := [(x₁, v1), (x₂, v2)], kind := .block, captured := some fcap,
+      home := c.home, lam := c.lam, cref := (m.frames.getD fcap default).cref }
   have hnf : nf =
-    { self := (m.frames.getD c.captured default).self,
-      defmod := (m.frames.getD c.captured default).defmod,
-      blk := (m.frames.getD c.captured default).blk,
-      locals := [(x₁, v1), (x₂, v2)], kind := .block, captured := some c.captured,
-      home := c.home, lam := c.lam, cref := (m.frames.getD c.captured default).cref } := rfl
+    { self := (m.frames.getD fcap default).self,
+      defmod := (m.frames.getD fcap default).defmod,
+      blk := (m.frames.getD fcap default).blk,
+      locals := [(x₁, v1), (x₂, v2)], kind := .block, captured := some fcap,
+      home := c.home, lam := c.lam, cref := (m.frames.getD fcap default).cref } := rfl
   let M1 : Machine :=
     withKont { m with frames := m.frames.push nf, stack := fid :: m.stack }
       (.eval c.body) (.blkFrameK fid c.lam brk c [v1, v2])
@@ -206,12 +219,12 @@ theorem lamTy_of_capture_read {Γcap : Env} {dom : List Ty} {cod : Ty} {p : ObjI
       exact getD_push_lt_self m.frames nf
     rw [hcur] at hq
     simp only [hnf] at hq
-    have hq' : c.captured = q := by simpa using hq
+    have hq' : fcap = q := by simpa using hq
     subst hq'
     refine ⟨hcaplt, ?_⟩
-    have : (M1.frames.getD c.captured default) = m.frames.getD c.captured default := by
+    have : (M1.frames.getD fcap default) = m.frames.getD fcap default := by
       simp only [hM1, withKont]
-      exact getD_push_lt m.frames c.captured nf hcaplt
+      exact getD_push_lt m.frames fcap nf hcaplt
     rw [this]; exact hshallow
   have hcur : curFrame M1 = nf := by
     show M1.frames.getD (curFid M1) default = nf
@@ -219,23 +232,23 @@ theorem lamTy_of_capture_read {Γcap : Env} {dom : List Ty} {cod : Ty} {p : ObjI
     rw [this]
     simp only [hM1, withKont]
     exact getD_push_lt_self m.frames nf
-  have hgetcap : (M1.frames.getD c.captured default) = m.frames.getD c.captured default := by
+  have hgetcap : (M1.frames.getD fcap default) = m.frames.getD fcap default := by
     simp only [hM1, withKont]
-    exact getD_push_lt m.frames c.captured nf hcaplt
+    exact getD_push_lt m.frames fcap nf hcaplt
   -- **step 1**: the body, a bare local read, is one `evalExpr` step.
   let v : Value := M1.getLocal y
   have hv : v = M1.getLocal y := rfl
   have hval : ValueTy m.heap v cod := by
     have hstep : M1.getLocal y = localOfIn M1.frames (curFrame M1) y := getLocal_curIn hM1shallow y
     rw [hcur] at hstep
-    have hnfval : localOfIn M1.frames nf y = localOf (m.frames.getD c.captured default) y := by
+    have hnfval : localOfIn M1.frames nf y = localOf (m.frames.getD fcap default) y := by
       simp only [hnf, localOfIn]
       have hx1 : ¬ ((x₁ == y) = true) := by simpa using hne1
       have hx2 : ¬ ((x₂ == y) = true) := by simpa using hne2
       simp only [List.find?, hx1, hx2, hgetcap]
     rw [hv, hstep, hnfval]
-    have hloc : localOfIn m.frames (m.frames.getD c.captured default) y
-        = localOf (m.frames.getD c.captured default) y :=
+    have hloc : localOfIn m.frames (m.frames.getD fcap default) y
+        = localOf (m.frames.getD fcap default) y :=
       localOfIn_of_captured_none y hshallow
     rw [← hloc]
     exact hconf.2.2 y cod hcapy

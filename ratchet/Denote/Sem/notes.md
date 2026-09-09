@@ -1230,6 +1230,40 @@ Three honest caveats, because this is an enumeration of *writers* and not a proo
 
 ### The decision (2026-09-08): **`Closure.captured` becomes an `Option`, and the `:sym.to_proc` sites take `none`**
 
+> **DONE (2026-09-08, L266).** Implemented exactly as decided below, with three departures
+> worth reading before trusting the table: the field is `Option Nat` and not `Option FrameId`
+> (the same import-cycle dodge `MethodDef.capturedFrame` already makes, and the docstring now
+> says so in one place instead of two); Lean's `Option` coercion means every *construction*
+> site that wrote a bare `FrameId` — `blockClosure`, `lamClos`, `dmPcl` — still elaborates
+> untouched, so the ripple was smaller than the eight-site count suggested and the sites that
+> actually broke were the *reads*; and two definitions changed shape rather than being
+> re-parenthesised, which is where the fidelity actually moved:
+>
+> * `Sealed.clos` and `FramesWF.clos` are now quantified — `∀ p, cl.captured = some p → …` —
+>   matching the shape their `Frame` clauses already had. A capture-free closure discharges
+>   them **vacuously** instead of being a claim about frame `0`. This is the repair.
+> * `Denote/Apply.lean`'s `closLocal` goes through a new `frameLocal?`, which answers `.nil`
+>   for `none`. `getD 0` would have been wrong here and nowhere else: `callClosure` pushes the
+>   block frame with `captured := none`, so the *body's* walk stops at its own activation,
+>   and a denotation reading frame `0`'s locals would have described a program the machine
+>   does not run. `closSelf` **does** take `getD 0`, because `callClosure` does.
+>
+> `Denote/Sem/StepLocal.lean`'s `not_BuiltinsSeal` is **retired**: `toProcBreaksB` is replaced
+> by `toProcSealsB` (`#guard`ed, and non-vacuous — it checks the call returns a Proc *and*
+> that the Proc captures nothing). `BuiltinsSeal` is left stated and unproved on purpose; one
+> builtin measured is not the layer walked.
+>
+> Re-verified, all green: difftest tier 0 **1304 ran / 992 agree / 0 disagree**; corpus
+> agreement **254/254**; `checkrungs` **177/177 + 145/145**; `run_ratchet.sh` **178/254**
+> (unmoved); `semladder` **47/83** with the denominator still 83; `lake build` clean in both
+> packages, no `sorry`, axioms a subset of `propext`/`Classical.choice`/`Quot.sound`.
+>
+> **Not done, and not attributable to this change:** `lake build Metatheory` is red at HEAD
+> and stayed red — three pre-existing breaks, listed in `../found-issues.md` §A7. Every
+> `Option` ripple *inside* `Metatheory` was fixed and verified (by transiently `sorry`ing
+> exactly those three and building the whole closure, then reverting), so the library is no
+> worse than it was found.
+
 Taken deliberately rather than derived, so the reasoning is recorded here with the alternative
 that was turned down.
 
@@ -1294,6 +1328,10 @@ costs no difftest re-run. That is real and it is not enough — the `Option` re-
 one-time cost and the fiction is permanent.
 
 ### Draft: the **`MethodDef` arm** of `Sealed`
+
+> **Still a draft after L266** — the `Option` change did not touch it. It is the next thing
+> the locals layer needs, and the shape below is unchanged except that the existing `clos`
+> clause it leans on is now the quantified one.
 
 The third clause the enumeration above says is missing. Written out here so the next session
 implements rather than re-derives it.

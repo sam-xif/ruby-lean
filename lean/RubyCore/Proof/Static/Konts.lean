@@ -1187,17 +1187,24 @@ def KontClosure : Kont → Option Closure
     A **list-wide** predicate over the kont rather than a positional pairing of kont
     against stack — which is what L246 priced and L247 withdrew. Preserving it is three
     observations: frames only grow, `setLocal` writes `locals` and not `captured`, and
-    the one step that pushes such a kont pushes it with `cl.captured = m.stack.headD 0`,
-    whose non-blockness is `StackCtx`'s L243 clause. -/
+    the one step that pushes such a kont pushes it with `cl.captured = some (m.stack.headD 0)`,
+    whose non-blockness is `StackCtx`'s L243 clause.
+
+    Stated at **`cl.captured.getD 0`** since L266 made the field an `Option`: that is the
+    frame `callClosure` actually reads, so the clause is unchanged for every closure the
+    fragment builds (all of which capture `some _`), and for a capture-free one
+    (`Symbol#to_proc`, the only source) it degenerates to a claim about the toplevel frame,
+    where all four conjuncts hold. -/
 def ClosuresOk (m : Machine) : Prop :=
   ∀ κ ∈ m.kont, ∀ cl, KontClosure κ = some cl →
-    cl.captured < m.frames.size ∧ (m.frames.getD cl.captured default).captured = none ∧
+    cl.captured.getD 0 < m.frames.size ∧
+    (m.frames.getD (cl.captured.getD 0) default).captured = none ∧
     -- **L250: and the three *name-free* `StackCtx` clauses of that frame** — the ones a
     -- block activation's own entry will owe, since `callClosure` copies `defmod`, `cref`
     -- and `defVis` from here. Name-free is the whole point: `className … = c.cls` is the
     -- clause that needs the pairing, and it is guarded on `c.inBlock` instead (L250).
-    (m.heap.classPayload? (m.frames.getD cl.captured default).defmod).isSome ∧
-    Boot.objectId ∈ (m.frames.getD cl.captured default).cref
+    (m.heap.classPayload? (m.frames.getD (cl.captured.getD 0) default).defmod).isSome ∧
+    Boot.objectId ∈ (m.frames.getD (cl.captured.getD 0) default).cref
 
 theorem ClosuresOk.cons {m : Machine} {κ : Kont} {ctl : Ctl}
     (hκ : KontClosure κ = none) (h : ClosuresOk m) :

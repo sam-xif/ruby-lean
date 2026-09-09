@@ -88,9 +88,29 @@ principle, and the per-arm `stepFn` walk is still the work. Measure the new
 clause at the booted machine (`Denote/Sanity.lean`, `MethodsExact`'s shape)
 before writing it down.
 
-## Decided, not yet implemented — and one thing it does **not** cover
+## DONE (2026-09-08, L266) — and one thing it does **not** cover
 
-**Decision (2026-09-08):** `Closure.captured` becomes `Option FrameId` (matching
+**Implemented.** Read the box at `Denote/Sem/notes.md` §The decision for how the
+work differed from the plan (three departures, two of which changed a definition's
+*shape* rather than its parenthesisation). Re-verification, all green: difftest
+tier 0 1304/992 agree/**0 disagree**, corpus agreement 254/254, `checkrungs`
+177/177 + 145/145, `run_ratchet.sh` **178/254** (unmoved), `semladder` **47/83**
+(denominator still 83), `lake build` clean in both packages, no `sorry`.
+
+**`not_BuiltinsSeal` is retired.** It was a true theorem about two definitions in
+this repo, and L266 changed one of them: `Symbol#to_proc`'s Proc now captures
+`none`, so `Sealed.alloc`'s premise holds for it. `toProcSealsB` (`#guard`ed)
+replaces `toProcBreaksB`. `BuiltinsSeal` itself is still **stated and unproved** —
+one builtin measured is not the layer walked, and re-attempting that walk is the
+resume point now.
+
+**Baseline finding, unrelated and not fixed:** `lake build Metatheory` is red at
+HEAD, three pre-existing breaks — `found-issues.md` §A7. One of them
+(`startArgs_lambda`) is a *false statement*, not a broken script.
+
+---
+
+**The original decision, for the record (2026-09-08):** `Closure.captured` becomes `Option FrameId` (matching
 `Frame.captured`, which always was one) and the two `:sym.to_proc` construction
 sites take `none`. Eight sites in the model proper, listed in
 `Denote/Sem/notes.md` §The decision, plus the `cl.captured` statements in

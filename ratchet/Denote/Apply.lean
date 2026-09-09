@@ -138,14 +138,24 @@ def frameLocal (m : Machine) (fid : FrameId) (x : String) : Value :=
         | none => .nil
   go fid (m.frames.size + 1)
 
+/-- `frameLocal` from an **optional** frame, which is what `Closure.captured` is since
+L266: `none` binds nothing at all. Not the same as reading frame `0` — a capture-free
+closure (the `Symbol#to_proc` pair, the only source) is pushed by `callClosure` with
+`captured := none`, so its body's walk stops at its own activation and every name it did
+not bind itself reads `nil`. -/
+def frameLocal? (m : Machine) : Option FrameId → String → Value
+  | some fid, x => frameLocal m fid x
+  | none, _ => .nil
+
 /-- The `self` a closure's body will see: its capture frame's, which is exactly what
-`Interp.callClosure` copies into the block frame it pushes. -/
+`Interp.callClosure` copies into the block frame it pushes — including the `getD 0`
+it uses for a capture-free closure. -/
 def closSelf (m : Machine) (cl : Closure) : Value :=
-  (m.frames.getD cl.captured default).self
+  (m.frames.getD (cl.captured.getD 0) default).self
 
 /-- A closure's captured-scope reader, as the `String → Value` a spine denotation wants. -/
 def closLocal (m : Machine) (cl : Closure) : String → Value :=
-  frameLocal m cl.captured
+  frameLocal? m cl.captured
 
 #print axioms Reaches.trans
 
