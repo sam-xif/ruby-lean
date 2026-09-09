@@ -294,6 +294,15 @@ That is the falsifier, stated as a clause.
 Not stated: anything about `m.kont`. A continuation carries frame *ids* to restore, and
 restoring one only pops back to a frame already on the stack, which the first clause covers. -/
 
+/-- **Every method installed anywhere in the heap**, as a lookup the seal can quantify over.
+`define_method` installs a body that sees the defining scope's locals
+(`MethodDef.capturedFrame`, `RubyCore/Heap.lean`) and `enterUserMethod` pushes a frame with
+`captured := md.capturedFrame` — so a method table is a **second capture graph**, and `Sealed`
+has to read it as well as the closures'. Named here so the two clauses below and their
+consumers all say it the same way. -/
+def methodIn (h : Heap) (k : ObjId) (n : String) : Option MethodDef :=
+  (h.classPayload? k).bind (fun cp => (cp.methods.find? (·.1 == n)).map (·.2))
+
 structure Sealed (b : FrameId) (m : Machine) : Prop where
   /-- No frame on the activation stack reaches `b`. -/
   stack : ∀ fid ∈ m.stack, ReachesB m b fid (m.frames.size + 1) = false
@@ -306,6 +315,37 @@ structure Sealed (b : FrameId) (m : Machine) : Prop where
       needed; the shape is now the same one `Sealed.push` already used for `Frame`. -/
   clos : ∀ (o : ObjId) (cl : Closure), procClosure? m.heap (.ref o) = some cl →
     ∀ p, cl.captured = some p → ReachesB m b p (m.frames.size + 1) = false
+  /-- …and no **method** in the heap did either.
+
+      The third clause, and the one the eighteenth stall point's enumeration found missing:
+      of the six `frames.push` sites, four default `captured` to `none` and the two that set
+      it read `Closure.captured` (which `clos` covers) and **`MethodDef.capturedFrame`, which
+      nothing above mentions**. `enterUserMethod` is the push, `define_method` the writer, and
+      the hazard is real on both executors —
+
+      ```ruby
+      x = 1
+      Object.send(:define_method, :setx) { x = 2 }
+      def g; setx; end
+      g
+      x                        # CRuby: 2   model: 2
+      ```
+
+      It is **closed**, which is why adding it terminates rather than opening a fourth clause:
+      `reflectDefineMethod` takes its `capturedFrame` from a closure already in the heap, so
+      `clos` discharges it; every other writer either defaults the field to `none` (ordinary
+      `def`, `def self.m`, the `attr_*` accessors, the undef stub) or copies an
+      already-installed method (visibility, `module_function`, `alias`); and J33's capture
+      erasure installs `none` for any `localFreeB` body.
+
+      Measured before it was written down, per `Denote/Sanity.lean`'s rule
+      (`probes/measure_captures.lean`): the booted machine carries **0** methods with a
+      `capturedFrame` and **0** Procs, so this clause and `clos` are both vacuous where the
+      ladder starts. That is the check worth doing — a component that is *unsatisfiable* makes
+      every obligation true for the wrong reason, and this one is satisfiable and trivially
+      so. -/
+  meth : ∀ (k : ObjId) (n : String) (md : MethodDef), methodIn m.heap k n = some md →
+    ∀ p, md.capturedFrame = some p → ReachesB m b p (m.frames.size + 1) = false
 
 /-- The seal implies what the write lemma above wants, at the current frame. -/
 theorem not_reachesFrame_of_sealed {b : FrameId} {m : Machine} (h : Sealed b m)
@@ -360,6 +400,8 @@ theorem Sealed.congr {b : FrameId} {m m₂ : Machine} (h : Sealed b m)
     (hcap : ∀ f, (m₂.frames.getD f default).captured = (m.frames.getD f default).captured)
     (hh : ∀ (o : ObjId) (cl : Closure), procClosure? m₂.heap (.ref o) = some cl →
       ∀ p, cl.captured = some p → ReachesB m b p (m.frames.size + 1) = false)
+    (hm : ∀ (k : ObjId) (n : String) (md : MethodDef), methodIn m₂.heap k n = some md →
+      ∀ p, md.capturedFrame = some p → ReachesB m b p (m.frames.size + 1) = false)
     (hst : ∀ fid ∈ m₂.stack, fid ∈ m.stack) : Sealed b m₂ where
   stack := fun fid hmem => by
     rw [hsz, reachesB_captured_congr hcap]
@@ -367,11 +409,14 @@ theorem Sealed.congr {b : FrameId} {m m₂ : Machine} (h : Sealed b m)
   clos := fun o cl hcl p hp => by
     rw [hsz, reachesB_captured_congr hcap]
     exact hh o cl hcl p hp
+  meth := fun k n md hmd p hp => by
+    rw [hsz, reachesB_captured_congr hcap]
+    exact hm k n md hmd p hp
 
 /-- **Popping the stack.** The frames the seal talks about only shrink. -/
 theorem Sealed.pop {b : FrameId} {m : Machine} (h : Sealed b m) :
     Sealed b { m with stack := m.stack.tail } :=
-  h.congr rfl (fun _ => rfl) (fun o cl hc => h.clos o cl hc)
+  h.congr rfl (fun _ => rfl) (fun o cl hc => h.clos o cl hc) (fun k n md hmd => h.meth k n md hmd)
     (fun fid hmem => List.mem_of_mem_tail hmem)
 
 /-- **Anything that is not the frames, the stack or the heap** — `ctl`, `kont`, `out`,
@@ -380,7 +425,9 @@ theorem Sealed.frameOnly {b : FrameId} {m m₂ : Machine} (h : Sealed b m)
     (hs : m₂.stack = m.stack) (hf : m₂.frames = m.frames) (hh : m₂.heap = m.heap) :
     Sealed b m₂ :=
   h.congr (by rw [hf]) (fun _ => by rw [hf])
-    (fun o cl hc => h.clos o cl (by rw [hh] at hc; exact hc)) (fun fid hmem => hs ▸ hmem)
+    (fun o cl hc => h.clos o cl (by rw [hh] at hc; exact hc))
+    (fun k n md hmd => h.meth k n md (by rw [hh] at hmd; exact hmd))
+    (fun fid hmem => hs ▸ hmem)
 
 /-- **A local write.** `setLocal` touches `locals`, and the seal reads `captured`. -/
 theorem Sealed.setLocal {b : FrameId} {m : Machine} (h : Sealed b m) (x : String) (w : Value) :
@@ -388,7 +435,8 @@ theorem Sealed.setLocal {b : FrameId} {m : Machine} (h : Sealed b m) (x : String
   have hsz : (m.setLocal x w).frames.size = m.frames.size := by
     show (m.frames.set! _ _).size = _
     simp [Array.set!]
-  refine h.congr hsz (fun f => ?_) (fun o cl hc => h.clos o cl hc) (fun fid hmem => hmem)
+  refine h.congr hsz (fun f => ?_) (fun o cl hc => h.clos o cl hc)
+    (fun k n md hmd => h.meth k n md hmd) (fun fid hmem => hmem)
   show ((m.frames.set! _ _).getD f default).captured = _
   by_cases hf : f = Machine.setLocal.owner m x (m.stack.headD 0) (m.stack.headD 0)
       (m.frames.size + 1)
@@ -422,6 +470,9 @@ structure FramesWF (m : Machine) : Prop where
   /-- …and so does every frame a closure captured — when it captured one at all (L266). -/
   clos : ∀ (o : ObjId) (cl : Closure), procClosure? m.heap (.ref o) = some cl →
     ∀ p, cl.captured = some p → p < m.frames.size
+  /-- …and so does every frame a **method** captured: `Sealed.meth`'s in-range twin. -/
+  meth : ∀ (k : ObjId) (n : String) (md : MethodDef), methodIn m.heap k n = some md →
+    ∀ p, md.capturedFrame = some p → p < m.frames.size
 
 /-- **Pushing a frame.** The seal survives it exactly when the pushed frame's *captured* frame
 is one the seal already covers — which is free for a **method** frame, whose `captured` is
@@ -443,7 +494,7 @@ theorem Sealed.push {b : FrameId} {m : Machine} (h : Sealed b m) (hwf : FramesWF
         Array.getElem?_push_lt hf, Array.getElem?_eq_getElem hf]
     · exact Or.inr hf
   have hsz : ((m.frames.push fr).size) = m.frames.size + 1 := by simp
-  refine { stack := ?_, clos := ?_ }
+  refine { stack := ?_, clos := ?_, meth := ?_ }
   · intro fid hmem
     show ReachesB _ b fid ((m.frames.push fr).size + 1) = false
     rw [hsz]
@@ -483,6 +534,17 @@ theorem Sealed.push {b : FrameId} {m : Machine} (h : Sealed b m) (hwf : FramesWF
         (m.frames.size + 1) (Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hlt))
         (Nat.lt_succ_of_lt hlt)]
     exact h.clos o cl hcl p hp
+  · -- the method graph, word for word the closure case: a `frames.push` does not touch the
+    -- heap, so `methodIn` is the same lookup and only the walk's fuel and array move
+    intro k n md hmd p hp
+    show ReachesB _ b p ((m.frames.push fr).size + 1) = false
+    rw [hsz]
+    have hlt := hwf.meth k n md hmd p hp
+    rw [reachesB_congr_below (m := m) hwf.down hbelow _ p hlt,
+      reachesB_fuel_irrel (m := m) hwf.down p (m.frames.size + 1 + 1)
+        (m.frames.size + 1) (Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hlt))
+        (Nat.lt_succ_of_lt hlt)]
+    exact h.meth k n md hmd p hp
 
 #print axioms Sealed.push
 
@@ -516,24 +578,50 @@ Built through `Sealed.congr`, whose closure clause is stated at the *old* machin
 what lets the fresh id be discharged by the premise while every old id goes through the seal. -/
 theorem Sealed.alloc {b : FrameId} {m : Machine} (h : Sealed b m) (obj : Object)
     (hcl : ∀ cl, obj.payload = .proc cl → ∀ p, cl.captured = some p →
-      ReachesB m b p (m.frames.size + 1) = false) :
+      ReachesB m b p (m.frames.size + 1) = false)
+    -- **…and the method graph's half of the same premise.** A fresh object can be a *class*,
+    -- and a class carries a method table, so the `meth` clause owes the same thing `clos`
+    -- does. Every caller in the model discharges it the same trivial way — classes are
+    -- allocated with `methods := []`, and a method is installed by `defineMethod` into an
+    -- *existing* payload, which is `Sealed.setClassPayload`'s case and not this one.
+    (hmd : ∀ cp, obj.payload = .cls cp → ∀ n md, (cp.methods.find? (·.1 == n)).map (·.2) = some md →
+      ∀ p, md.capturedFrame = some p → ReachesB m b p (m.frames.size + 1) = false) :
     Sealed b { m with heap := (m.heap.alloc obj).2 } := by
-  refine h.congr rfl (fun _ => rfl) (fun o cl hcl' => ?_) (fun fid hmem => hmem)
-  rw [procClosure?] at hcl'
-  by_cases ho : o < m.heap.objs.size
-  · refine h.clos o cl ?_
-    rw [procClosure?, ← alloc_get_lt obj ho]
-    exact hcl'
-  · by_cases hoe : o = m.heap.objs.size
-    · rw [hoe, alloc_get_self obj] at hcl'
-      split at hcl'
-      · rename_i c heq
-        injection hcl' with hcl'
-        exact hcl' ▸ hcl c heq
-      · exact absurd hcl' (by simp)
-    · rw [alloc_get_gt obj ho hoe] at hcl'
-      rw [show (default : Object).payload = Payload.none from rfl] at hcl'
-      exact absurd hcl' (by simp)
+  refine h.congr rfl (fun _ => rfl) (fun o cl hcl' => ?_) (fun k n md hmd' => ?_)
+    (fun fid hmem => hmem)
+  · -- the closure graph: three positions relative to the fresh id, and only the middle one
+    -- is the premise's
+    rw [procClosure?] at hcl'
+    by_cases ho : o < m.heap.objs.size
+    · refine h.clos o cl ?_
+      rw [procClosure?, ← alloc_get_lt obj ho]
+      exact hcl'
+    · by_cases hoe : o = m.heap.objs.size
+      · rw [hoe, alloc_get_self obj] at hcl'
+        split at hcl'
+        · rename_i c heq
+          injection hcl' with hcl'
+          exact hcl' ▸ hcl c heq
+        · exact absurd hcl' (by simp)
+      · rw [alloc_get_gt obj ho hoe] at hcl'
+        rw [show (default : Object).payload = Payload.none from rfl] at hcl'
+        exact absurd hcl' (by simp)
+  · -- the method graph, at the same three positions
+    unfold methodIn Heap.classPayload? at hmd'
+    by_cases ho : k < m.heap.objs.size
+    · refine h.meth k n md ?_
+      unfold methodIn Heap.classPayload?
+      rw [← alloc_get_lt obj ho]
+      exact hmd'
+    · by_cases hoe : k = m.heap.objs.size
+      · rw [hoe, alloc_get_self obj] at hmd'
+        revert hmd'
+        cases hp : obj.payload with
+        | cls cp => intro hmd'; exact hmd _ hp n md (by simpa using hmd')
+        | _ => intro hmd'; exact absurd hmd' (by simp)
+      · rw [alloc_get_gt obj ho hoe] at hmd'
+        rw [show (default : Object).payload = Payload.none from rfl] at hmd'
+        exact absurd hmd' (by simp)
 
 #print axioms Sealed.alloc
 
@@ -552,13 +640,17 @@ theorem FramesWF.pop {m : Machine} (h : FramesWF m) (hne : m.stack.tail ≠ []) 
   nonEmpty := hne
   stack := fun fid hmem => h.stack fid (List.mem_of_mem_tail hmem)
   clos := h.clos
+  meth := h.meth
 
 theorem FramesWF.frameOnly {m m₂ : Machine} (h : FramesWF m) (hs : m₂.stack = m.stack)
     (hf : m₂.frames = m.frames) (hh : m₂.heap = m.heap) : FramesWF m₂ where
   down := fun fid p hc => h.down fid p (by rw [hf] at hc; exact hc)
   nonEmpty := by rw [hs]; exact h.nonEmpty
   stack := fun fid hmem => by rw [hf]; exact h.stack fid (hs ▸ hmem)
-  clos := fun o cl hcl => by rw [hf]; exact h.clos o cl (by rw [hh] at hcl; exact hcl)
+  clos := fun o cl hcl p hp => by
+    rw [hf]; exact h.clos o cl (by rw [hh] at hcl; exact hcl) p hp
+  meth := fun k n md hmd p hp => by
+    rw [hf]; exact h.meth k n md (by rw [hh] at hmd; exact hmd) p hp
 
 theorem FramesWF.setLocal {m : Machine} (h : FramesWF m) (x : String) (w : Value) :
     FramesWF (m.setLocal x w) := by
@@ -578,7 +670,8 @@ theorem FramesWF.setLocal {m : Machine} (h : FramesWF m) (x : String) (w : Value
   exact { down := fun fid p hc => h.down fid p (by rw [hcap fid] at hc; exact hc)
           nonEmpty := h.nonEmpty
           stack := fun fid hmem => by rw [hsz]; exact h.stack fid hmem
-          clos := fun o cl hcl p hp => by rw [hsz]; exact h.clos o cl hcl p hp }
+          clos := fun o cl hcl p hp => by rw [hsz]; exact h.clos o cl hcl p hp
+          meth := fun k n md hmd p hp => by rw [hsz]; exact h.meth k n md hmd p hp }
 
 theorem FramesWF.push {m : Machine} (h : FramesWF m) (fr : RubyCore.Frame)
     (hin : ∀ p, fr.captured = some p → p < m.frames.size) :
@@ -591,7 +684,7 @@ theorem FramesWF.push {m : Machine} (h : FramesWF m) (fr : RubyCore.Frame)
       Array.getElem?_push_lt hf, Array.getElem?_eq_getElem hf]
   have hself : (m.frames.push fr).getD m.frames.size default = fr := by
     simp [Array.getD_eq_getD_getElem?, Array.getElem?_push]
-  refine { down := ?_, nonEmpty := by simp, stack := ?_, clos := ?_ }
+  refine { down := ?_, nonEmpty := by simp, stack := ?_, clos := ?_, meth := ?_ }
   · intro fid p hc
     by_cases hf : fid < m.frames.size
     · rw [hlt fid hf] at hc
@@ -615,27 +708,49 @@ theorem FramesWF.push {m : Machine} (h : FramesWF m) (fr : RubyCore.Frame)
     show p < (m.frames.push fr).size
     rw [hsz]
     exact Nat.lt_succ_of_lt (h.clos o cl hcl p hp)
+  · intro k n md hmd p hp
+    show p < (m.frames.push fr).size
+    rw [hsz]
+    exact Nat.lt_succ_of_lt (h.meth k n md hmd p hp)
 
 theorem FramesWF.alloc {m : Machine} (h : FramesWF m) (obj : Object)
-    (hcl : ∀ cl, obj.payload = .proc cl → ∀ p, cl.captured = some p → p < m.frames.size) :
+    (hcl : ∀ cl, obj.payload = .proc cl → ∀ p, cl.captured = some p → p < m.frames.size)
+    (hmd : ∀ cp, obj.payload = .cls cp → ∀ n md, (cp.methods.find? (·.1 == n)).map (·.2) = some md →
+      ∀ p, md.capturedFrame = some p → p < m.frames.size) :
     FramesWF { m with heap := (m.heap.alloc obj).2 } := by
-  refine { down := h.down, nonEmpty := h.nonEmpty, stack := h.stack, clos := ?_ }
-  intro o cl hcl'
-  rw [procClosure?] at hcl'
-  by_cases ho : o < m.heap.objs.size
-  · refine h.clos o cl ?_
-    rw [procClosure?, ← alloc_get_lt obj ho]
-    exact hcl'
-  · by_cases hoe : o = m.heap.objs.size
-    · rw [hoe, alloc_get_self obj] at hcl'
-      split at hcl'
-      · rename_i c heq
-        injection hcl' with hcl'
-        exact hcl' ▸ hcl c heq
-      · exact absurd hcl' (by simp)
-    · rw [alloc_get_gt obj ho hoe] at hcl'
-      rw [show (default : Object).payload = Payload.none from rfl] at hcl'
-      exact absurd hcl' (by simp)
+  refine { down := h.down, nonEmpty := h.nonEmpty, stack := h.stack, clos := ?_, meth := ?_ }
+  · intro o cl hcl'
+    rw [procClosure?] at hcl'
+    by_cases ho : o < m.heap.objs.size
+    · refine h.clos o cl ?_
+      rw [procClosure?, ← alloc_get_lt obj ho]
+      exact hcl'
+    · by_cases hoe : o = m.heap.objs.size
+      · rw [hoe, alloc_get_self obj] at hcl'
+        split at hcl'
+        · rename_i c heq
+          injection hcl' with hcl'
+          exact hcl' ▸ hcl c heq
+        · exact absurd hcl' (by simp)
+      · rw [alloc_get_gt obj ho hoe] at hcl'
+        rw [show (default : Object).payload = Payload.none from rfl] at hcl'
+        exact absurd hcl' (by simp)
+  · intro k n md hmd'
+    unfold methodIn Heap.classPayload? at hmd'
+    by_cases ho : k < m.heap.objs.size
+    · refine h.meth k n md ?_
+      unfold methodIn Heap.classPayload?
+      rw [← alloc_get_lt obj ho]
+      exact hmd'
+    · by_cases hoe : k = m.heap.objs.size
+      · rw [hoe, alloc_get_self obj] at hmd'
+        revert hmd'
+        cases hp : obj.payload with
+        | cls cp => intro hmd'; exact hmd _ hp n md (by simpa using hmd')
+        | _ => intro hmd'; exact absurd hmd' (by simp)
+      · rw [alloc_get_gt obj ho hoe] at hmd'
+        rw [show (default : Object).payload = Payload.none from rfl] at hmd'
+        exact absurd hmd' (by simp)
 
 /-- **What a step is handed and hands back.** -/
 structure StepInv (b : FrameId) (m : Machine) : Prop where

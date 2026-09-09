@@ -40,7 +40,7 @@ theorem LocalsOff.trans {b : FrameId} {a c d : Machine} (h₁ : LocalsOff b a c)
   unfold LocalsOff at h₁ h₂ ⊢; rw [h₂, h₁]
 
 theorem LocalsSame.off {b : FrameId} {m m' : Machine} (h : LocalsSame m m') :
-    LocalsOff b m m' := h.2 b
+    LocalsOff b m m' := h.2.1 b
 
 /-- A push writes past the end, so a frame already in range is untouched. -/
 theorem LocalsOff.push {b : FrameId} {m : Machine} {fr : RubyCore.Frame} {st : List FrameId}
@@ -171,6 +171,68 @@ still bind:
    **not** proved: the probe is one builtin, and the layer is the walk.
 -/
 
+/-! ### The frame half of `BuiltinsSeal`, proved — and the gap named exactly
+
+`Sealed` and `FramesWF` read exactly two things: the **frames'** `captured` links, and the
+**heap's** closures and methods. L267 put `captured` (and the frame count) into `LocalsSame`,
+which the 600-arm `Builtins` walk already establishes — so the frame half of both invariants
+now comes for free across `Builtins.run`, and what is left is the heap half and nothing else.
+
+Worth stating as two lemmas rather than as a remark: it turns "the layer is unproved" into a
+proposition with two named hypotheses, and those two hypotheses are the specification of the
+second walk. -/
+
+/-- **`LocalsSame` is exactly the seal's frame-side congruence.** The two hypotheses left are
+the heap's, verbatim `Sealed`'s own two clauses read at `m'`. -/
+theorem Sealed.of_localsSame {b : FrameId} {m m' : Machine} (h : Sealed b m)
+    (hls : LocalsSame m m')
+    (hh : ∀ (o : ObjId) (cl : Closure), procClosure? m'.heap (.ref o) = some cl →
+      ∀ p, cl.captured = some p → ReachesB m b p (m.frames.size + 1) = false)
+    (hm : ∀ (k : ObjId) (n : String) (md : MethodDef), methodIn m'.heap k n = some md →
+      ∀ p, md.capturedFrame = some p → ReachesB m b p (m.frames.size + 1) = false) :
+    Sealed b m' :=
+  h.congr hls.2.2.2 hls.2.2.1 hh hm (fun fid hmem => hls.1 ▸ hmem)
+
+/-- …and the same for the bookkeeping half. `nonEmpty` rides the stack equation. -/
+theorem FramesWF.of_localsSame {m m' : Machine} (h : FramesWF m) (hls : LocalsSame m m')
+    (hh : ∀ (o : ObjId) (cl : Closure), procClosure? m'.heap (.ref o) = some cl →
+      ∀ p, cl.captured = some p → p < m.frames.size)
+    (hm : ∀ (k : ObjId) (n : String) (md : MethodDef), methodIn m'.heap k n = some md →
+      ∀ p, md.capturedFrame = some p → p < m.frames.size) :
+    FramesWF m' where
+  down := fun fid p hc => by
+    rw [hls.2.2.1 fid] at hc; exact h.down fid p hc
+  nonEmpty := by rw [hls.1]; exact h.nonEmpty
+  stack := fun fid hmem => by rw [hls.2.2.2]; exact h.stack fid (hls.1 ▸ hmem)
+  clos := fun o cl hcl p hp => by rw [hls.2.2.2]; exact hh o cl hcl p hp
+  meth := fun k n md hmd p hp => by rw [hls.2.2.2]; exact hm k n md hmd p hp
+
+/-- **The `Builtins` layer preserves the seal's frame half.** Instantiates the two lemmas above
+at `builtins_run_locals`, so a caller owes only the heap clauses — which is the whole remaining
+content of `BuiltinsSeal` and is what the second walk has to prove. -/
+theorem builtins_run_seal {b : FrameId} {bid : String} {recv : Value} {args : List Value}
+    {m : Machine} {v : Value} {m' : Machine} (hrun : Builtins.run bid recv args m = .ok v m')
+    (h : Sealed b m)
+    (hh : ∀ (o : ObjId) (cl : Closure), procClosure? m'.heap (.ref o) = some cl →
+      ∀ p, cl.captured = some p → ReachesB m b p (m.frames.size + 1) = false)
+    (hm : ∀ (k : ObjId) (n : String) (md : MethodDef), methodIn m'.heap k n = some md →
+      ∀ p, md.capturedFrame = some p → ReachesB m b p (m.frames.size + 1) = false) :
+    Sealed b m' :=
+  h.of_localsSame (builtins_run_locals bid recv args m v m' hrun) hh hm
+
+theorem builtins_run_framesWF {bid : String} {recv : Value} {args : List Value}
+    {m : Machine} {v : Value} {m' : Machine} (hrun : Builtins.run bid recv args m = .ok v m')
+    (h : FramesWF m)
+    (hh : ∀ (o : ObjId) (cl : Closure), procClosure? m'.heap (.ref o) = some cl →
+      ∀ p, cl.captured = some p → p < m.frames.size)
+    (hm : ∀ (k : ObjId) (n : String) (md : MethodDef), methodIn m'.heap k n = some md →
+      ∀ p, md.capturedFrame = some p → p < m.frames.size) :
+    FramesWF m' :=
+  h.of_localsSame (builtins_run_locals bid recv args m v m' hrun) hh hm
+
+#print axioms builtins_run_seal
+#print axioms builtins_run_framesWF
+
 /-- **What the plan wanted**: the `Builtins` layer preserves the seal outright. -/
 def BuiltinsSeal : Prop :=
   ∀ (b : FrameId) (bid : String) (recv : Value) (args : List Value) (m : Machine),
@@ -194,14 +256,23 @@ theorem toProcM_frame : ∀ f : FrameId, toProcM.frames.getD f default = default
 theorem toProcM_captured (f : FrameId) : (toProcM.frames.getD f default).captured = none := by
   rw [toProcM_frame f]; rfl
 
+theorem toProcM_get (o : ObjId) : toProcM.heap.get o = default := by
+  show (Array.getD #[] o default) = default
+  rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_none (by simp)]; rfl
+
 theorem toProcM_noProc (o : ObjId) (cl : Closure) :
     procClosure? toProcM.heap (.ref o) = some cl → False := by
   intro h
-  rw [procClosure?] at h
-  rw [show (toProcM.heap.get o) = default from by
-    show (Array.getD #[] o default) = default
-    rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_none (by simp)]; rfl] at h
+  rw [procClosure?, toProcM_get o] at h
   rw [show (default : Object).payload = Payload.none from rfl] at h
+  exact absurd h (by simp)
+
+/-- …and no class either, so the method graph is empty too. -/
+theorem toProcM_noMeth (k : ObjId) (n : String) (md : MethodDef) :
+    methodIn toProcM.heap k n = some md → False := by
+  intro h
+  unfold methodIn Heap.classPayload? at h
+  rw [toProcM_get k, show (default : Object).payload = Payload.none from rfl] at h
   exact absurd h (by simp)
 
 theorem sealed_toProcM : Sealed 0 toProcM where
@@ -212,9 +283,10 @@ theorem sealed_toProcM : Sealed 0 toProcM where
     rw [ReachesB, toProcM_captured]
     rfl
   clos := fun o cl h => absurd h (fun hc => toProcM_noProc o cl hc)
+  meth := fun k n md h => absurd h (fun hc => toProcM_noMeth k n md hc)
 
 theorem framesWF_toProcM : FramesWF toProcM := by
-  refine { down := ?_, nonEmpty := ?_, stack := ?_, clos := ?_ }
+  refine { down := ?_, nonEmpty := ?_, stack := ?_, clos := ?_, meth := ?_ }
   · intro fid p hc; rw [toProcM_captured] at hc; exact absurd hc (by simp)
   · simp [toProcM]
   · intro fid hmem
@@ -223,6 +295,7 @@ theorem framesWF_toProcM : FramesWF toProcM := by
     show 1 < (#[(default : RubyCore.Frame), default]).size
     simp
   · intro o cl h; exact absurd h (fun hc => toProcM_noProc o cl hc)
+  · intro k n md h; exact absurd h (fun hc => toProcM_noMeth k n md hc)
 
 /-- **The probe, at the shape that used to fail.** `Symbol#to_proc` at `toProcM` really does
 allocate and really does return a Proc — so the `#guard` below is not vacuous — and the

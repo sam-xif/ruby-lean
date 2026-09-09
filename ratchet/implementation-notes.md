@@ -6620,7 +6620,7 @@ negative controls as "140/140". Both are stale — 177 is the count of hand-auth
 which `checkrungs` still reads at 177/177; the ladder's denominator is the corpus, now 254, and
 the controls are 145.)*
 
-## Clink 61 (2026-09-08) — the seal's blocker was a model fiction, and it is gone. **178 rungs / 254, 47 of 83 rules**
+## Clink 61 (2026-09-08) — the seal's blocker was a model fiction; the seal is closed; the `Builtins` layer is half proved. **178 rungs / 254, 47 of 83 rules**
 
 Clink 60 exited on an architectural flag: `Sealed` is not inductive over `stepFn`, so the
 locals layer — which gates `if'`/`ifNoElse`/`begin'` directly and the 22 call rules through
@@ -6721,10 +6721,74 @@ library outside `defaultTargets`, arriving on schedule.
 its centre, and it is not what the semantic ratchet is blocked on. Filed so the next session
 starts from a known baseline instead of attributing it to whatever it changes next.
 
+### L267 — the `MethodDef` arm, and the `Builtins` layer's frame half
+
+L266 removes the refutation; these two are the first work it makes possible.
+
+**`Sealed.meth` + `FramesWF.meth`.** The third clause the eighteenth stall point's enumeration
+found missing: of the six `frames.push` sites, the two that set `captured` read
+`Closure.captured` (which `clos` covers) and **`MethodDef.capturedFrame`, which nothing
+mentioned**. `enterUserMethod` is the push, `define_method` the writer, and the hazard is real
+on both executors (`x = 1; Object.send(:define_method, :setx) { x = 2 }; def g; setx; end; g; x`
+is `2` under CRuby and under the model). Threaded through all eleven preservation lemmas.
+
+**Two departures from the draft**, both found by the elaborator rather than by re-reading it:
+
+* **`Sealed.alloc`/`FramesWF.alloc` needed a second premise.** The draft's writer-by-writer
+  argument covers `defineMethod` writing into an *existing* payload. A fresh `Heap.alloc` of a
+  **class** carries a method table too, so the `meth` clause owes there exactly what `clos`
+  owes for a fresh Proc. Every caller in the model discharges it trivially — classes are
+  allocated with `methods := []` — but the lemma is false without it.
+* The lookup is a named `methodIn h k n` rather than the inline `bind`/`find?`/`map` chain
+  written three times, because the clause, its twin and their consumers have to agree on it
+  syntactically.
+
+**Vacuity re-measured, not assumed** (`probes/measure_captures.lean`, `Sanity.lean`'s rule):
+still 0 capturing methods and 0 Procs at the booted machine. Both clauses are satisfiable and
+trivially satisfied where the ladder starts — which is the check worth doing, since an
+unsatisfiable component makes every obligation true for the wrong reason.
+
+**`Sealed` is now the closed three-clause invariant** the enumeration predicted: stack,
+closures, methods, with no writer left over and the control state not in it.
+
+**And the `Builtins` layer's frame half fell out nearly free.** `Sealed`/`FramesWF` read exactly
+two things — the frames' `captured` links (plus the frame count, for the congruence) and the
+heap's closures and methods. The frame side was *already* being proved by this layer's existing
+600-arm walk (`FrameLocal.lean`'s `builtins_run_locals`); its claim `LocalsSame` was simply too
+weak to say so, projecting only `locals`. Adding two conjuncts — every frame's `captured`, and
+`frames.size` — cost **three lemmas and one `rfl`**: `setCurrentFrame` (the only arm in the
+layer that writes `frames` at all, and it copies the frame to flip a `Bool`),
+`setLastMatchValue` (the same `set!` shape), and one extra argument in the `builtin_arms`
+macro. Six hundred arms re-elaborated green with no other change.
+
+**Not forced, and the alternative was the expensive one.** The obvious move was a *second*
+predicate (`CapturedSame`) with its own traversal. Rejected: every one of the six hundred arms
+would discharge it by the same `of_eq` the first traversal already uses, so it is the same walk
+written twice. A conjunct is one walk.
+
+What that buys, in `Denote/Sem/StepLocal.lean`: `Sealed.of_localsSame`/`FramesWF.of_localsSame`
+(the frame-side congruence of each invariant *is* `LocalsSame`), and `builtins_run_seal`/
+`builtins_run_framesWF` — the same at `Builtins.run`, so a caller owes **only the heap
+clauses**. That turns "the layer is unproved" into a proposition with two named hypotheses,
+and those hypotheses are the specification of what remains.
+
+**What remains, and why it will not ride the first walk.** The two hypotheses say `Builtins.run`
+installs no capturing closure and no capturing method. Both are true — the layer's only closure
+allocation is `Symbol#to_proc`, which since L266 captures `none`. But a heap conjunct cannot be
+added to `LocalsSame`: nearly every arm discharges it through `LocalsSame.of_eq rfl rfl`
+(*frames* unchanged) while the heap is exactly what those arms change, by allocation, and
+`of_eq` has no heap hypothesis to discharge it with. The second walk needs its own
+allocation-monotone predicate and its own copy of the twenty machine-threading helper lemmas.
+A clink, not a follow-on.
+
 ### State
 
 Semantic ratchet **47 of 83**, unchanged (`Judge` 32/67, `JudgeSeq` 3/4, the six companion
-families complete, denominator still 83). Syntactic ratchet **178 of 254** rungs certified
+families complete, denominator still 83). **Three sessions' worth of layer work moved and the
+number did not, which is the ladder working as designed**: L266/L267 remove a refutation, close
+an invariant and prove half a layer, and none of that is a `Judge` rule. The census in
+`Denote/Sem/notes.md` §Where the remaining 36 rules sit still holds — every one of the 36 is
+behind one of four unbuilt layers, and no layer is smaller than a clink. Syntactic ratchet **178 of 254** rungs certified
 well-typed, unchanged, expect_validate mismatches **35**, unchanged. Because L266 changes the
 *machine*, everything downstream was re-verified rather than assumed: difftest tier 0 **1304
 ran, 992 agree, 0 disagree**; corpus agreement **254/254**; `checkrungs` **177/177 hand

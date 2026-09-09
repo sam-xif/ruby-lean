@@ -492,10 +492,21 @@ translation and §Semantic ratchet status is the ladder that climbs it.
 > discharges them vacuously. `not_BuiltinsSeal` is **retired**; `toProcSealsB` `#guard`s the
 > repair in its place.
 >
-> **The ladder did not move on this change (47/83), and that is expected** — it removes a
-> refutation, it does not discharge a rule. The resume point is the `Builtins` layer walk
-> (`BuiltinsSeal` is stated and unproved), then the `MethodDef` arm of `Sealed` drafted in
-> `Denote/Sem/notes.md`. Read `HANDOFF.md` first.
+> **L267 then closed the invariant and proved half the layer.** `Sealed.meth`/`FramesWF.meth`
+> — the `MethodDef` arm, the third clause `enterUserMethod`'s push needs — are built, so
+> `Sealed` is the closed three-clause invariant (stack, closures, methods) the enumeration
+> predicted, with the control state *not* in it. And the `Builtins` layer's **frame half** is
+> proved: `LocalsSame` grew `captured` and `frames.size`, the existing 600-arm walk carried
+> them with no change, and `builtins_run_seal`/`builtins_run_framesWF` now leave a caller
+> owing **only the heap clauses**. What remains of `BuiltinsSeal` is exactly "`Builtins.run`
+> installs no capturing closure and no capturing method" — true, but a second traversal of the
+> same six hundred arms, and it cannot ride the first (see `Denote/Sem/notes.md` §The
+> `Builtins` layer, half proved).
+>
+> **The ladder did not move across any of this (47/83), and that is expected** — removing a
+> refutation, closing an invariant and proving half a layer are not `Judge` rules. The census
+> at §Where the remaining 36 rules sit still holds: all 36 are behind one of four unbuilt
+> layers, none smaller than a clink. Read `HANDOFF.md` first.
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (177 of 249). This measures

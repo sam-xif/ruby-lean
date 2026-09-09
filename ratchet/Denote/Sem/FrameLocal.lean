@@ -38,41 +38,65 @@ namespace Ratchet.Denote
 
 open RubyCore
 
-/-- **Every frame's locals, and the stack, are where they were.** -/
+/-- **Every frame's locals and capture link, and the stack, are where they were.**
+
+The third conjunct is L267's, and it is what makes this layer's 600-arm walk pay for the
+*seal* as well as for `getLocal`. `Sealed` reads exactly two things: the frames' `captured`
+fields and the heap's closures/methods. `captured` is a frame field, so it belongs in the
+frame-side claim the walk already establishes — and it costs nothing, because the one arm in
+the whole layer that writes `frames` at all (`Object#=~`'s `matchXparent` flag, through
+`setCurrentFrame`) copies the frame and changes a `Bool`.
+
+Stated as a third conjunct rather than as a separate `CapturedSame` predicate on purpose: a
+second predicate would mean a second traversal of the same 600 arms, and every one of them
+would discharge it by the same `of_eq`. -/
 def LocalsSame (m m' : Machine) : Prop :=
   m'.stack = m.stack ∧
-  ∀ f, (m'.frames.getD f default).locals = (m.frames.getD f default).locals
+  (∀ f, (m'.frames.getD f default).locals = (m.frames.getD f default).locals) ∧
+  (∀ f, (m'.frames.getD f default).captured = (m.frames.getD f default).captured) ∧
+  m'.frames.size = m.frames.size
 
-theorem LocalsSame.refl (m : Machine) : LocalsSame m m := ⟨rfl, fun _ => rfl⟩
+theorem LocalsSame.refl (m : Machine) : LocalsSame m m :=
+  ⟨rfl, fun _ => rfl, fun _ => rfl, rfl⟩
 
 theorem LocalsSame.trans {a b c : Machine} (h₁ : LocalsSame a b) (h₂ : LocalsSame b c) :
     LocalsSame a c :=
-  ⟨by rw [h₂.1, h₁.1], fun f => by rw [h₂.2 f, h₁.2 f]⟩
+  ⟨by rw [h₂.1, h₁.1], fun f => by rw [h₂.2.1 f, h₁.2.1 f], fun f => by rw [h₂.2.2.1 f, h₁.2.2.1 f],
+   by rw [h₂.2.2.2, h₁.2.2.2]⟩
 
 /-- A machine that differs only in the heap (or in any field other than `frames`/`stack`). -/
 theorem LocalsSame.of_eq {m m' : Machine} (hs : m'.stack = m.stack)
     (hf : m'.frames = m.frames) : LocalsSame m m' :=
-  ⟨hs, fun f => by rw [hf]⟩
+  ⟨hs, fun f => by rw [hf], fun f => by rw [hf], by rw [hf]⟩
 
 /-- **`setCurrentFrame` keeps the locals it was handed.** The one shape in the `Builtins` layer
 that writes `frames` at all: a flag on the current frame, with `locals` copied. -/
 theorem LocalsSame.setCurrentFrame {m : Machine} {fr : RubyCore.Frame}
-    (h : fr.locals = m.currentFrame.locals) : LocalsSame m (m.setCurrentFrame fr) := by
+    (h : fr.locals = m.currentFrame.locals)
+    (hc : fr.captured = m.currentFrame.captured) : LocalsSame m (m.setCurrentFrame fr) := by
   unfold Machine.setCurrentFrame
   cases hs : m.stack with
   | nil => simp only [hs]; exact LocalsSame.refl m
   | cons fid rest =>
     simp only [hs]
-    refine ⟨hs.symm, fun f => ?_⟩
-    show ((m.frames.set! fid fr).getD f default).locals = _
-    by_cases hf : f = fid
-    · subst hf
-      by_cases hlt : f < m.frames.size
-      · rw [getD_set!_self m.frames f fr hlt, h]
-        simp only [Machine.currentFrame, hs]
-      · -- out of bounds `set!` is the identity, and both reads answer `default`
-        rw [getD_set!_oob m.frames f fr hlt]
-    · rw [getD_set!_ne m.frames fid f fr hf]
+    -- both field goals are the same three-way index split, so the frame equality is proved
+    -- once and each field read off it
+    have key : ∀ f, (m.frames.set! fid fr).getD f default = m.frames.getD f default ∨
+        ((m.frames.set! fid fr).getD f default = fr ∧ m.frames.getD f default = m.currentFrame) := by
+      intro f
+      by_cases hf : f = fid
+      · subst hf
+        by_cases hlt : f < m.frames.size
+        · exact Or.inr ⟨getD_set!_self m.frames f fr hlt, by simp only [Machine.currentFrame, hs]⟩
+        · -- out of bounds `set!` is the identity, and both reads answer `default`
+          exact Or.inl (getD_set!_oob m.frames f fr hlt)
+      · exact Or.inl (getD_set!_ne m.frames fid f fr hf)
+    refine ⟨hs.symm, fun f => ?_, fun f => ?_, by simp⟩ <;>
+      rcases key f with hk | ⟨hk1, hk2⟩
+    · rw [hk]
+    · rw [hk1, hk2, h]
+    · rw [hk]
+    · rw [hk1, hk2, hc]
 
 #print axioms LocalsSame.setCurrentFrame
 
@@ -186,11 +210,10 @@ theorem setLastMatchValue_locals (m : Machine) (v : Value) :
   unfold Machine.setLastMatchValue
   by_cases hlt : m.matchFrameId < m.frames.size
   · rw [if_pos hlt]
-    refine ⟨rfl, fun f => ?_⟩
-    show ((m.frames.set! m.matchFrameId _).getD f default).locals = _
-    by_cases hf : f = m.matchFrameId
-    · rw [hf, getD_set!_self m.frames m.matchFrameId _ hlt]
-    · rw [getD_set!_ne m.frames m.matchFrameId f _ hf]
+    refine ⟨rfl, fun f => ?_, fun f => ?_, by simp⟩ <;>
+    · by_cases hf : f = m.matchFrameId
+      · rw [hf, getD_set!_self m.frames m.matchFrameId _ hlt]
+      · rw [getD_set!_ne m.frames m.matchFrameId f _ hf]
   · rw [if_neg hlt]; exact LocalsSame.refl m
 
 theorem setMatchGlobals_locals (m : Machine) (md : Option Value) :
@@ -378,7 +401,7 @@ set_option hygiene false in
 macro "builtin_arms" : tactic => `(tactic|
   repeat (any_goals (first
     | (cases h; exact LocalsSame.refl _)
-    | (obtain ⟨-, rfl⟩ := h; exact LocalsSame.setCurrentFrame rfl)
+    | (obtain ⟨-, rfl⟩ := h; exact LocalsSame.setCurrentFrame rfl rfl)
     | (obtain ⟨-, rfl⟩ := h; exact LocalsSame.refl _)
     | (obtain ⟨-, rfl⟩ := h; exact setMatchGlobals_locals _ _)
     | (obtain ⟨-, rfl⟩ := h; first

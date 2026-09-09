@@ -1329,9 +1329,24 @@ one-time cost and the fiction is permanent.
 
 ### Draft: the **`MethodDef` arm** of `Sealed`
 
-> **Still a draft after L266** — the `Option` change did not touch it. It is the next thing
-> the locals layer needs, and the shape below is unchanged except that the existing `clos`
-> clause it leans on is now the quantified one.
+> **BUILT (2026-09-08, L267).** `Sealed.meth` and its `FramesWF.meth` twin are in
+> `Denote/Sem/Locals.lean`, stated through a named `methodIn` lookup, and threaded through all
+> eleven preservation lemmas. Two departures from the draft:
+> * **`Sealed.alloc`/`FramesWF.alloc` grew a second premise.** The draft's writer-by-writer
+>   argument is about `defineMethod` writing into an *existing* payload; a fresh `Heap.alloc`
+>   of a **class** object carries a method table too, and the clause owes it the same thing
+>   `clos` owes for a fresh Proc. Every caller in the model discharges it trivially (classes
+>   are allocated with `methods := []`) but the premise has to be there for the lemma to be
+>   true, and it was not in the draft.
+> * The lookup is named (`methodIn h k n`) rather than written inline three times, because
+>   the clause, its twin and their consumers all have to agree on it syntactically.
+>
+> Vacuity re-measured after the change (`probes/measure_captures.lean`): still **0** capturing
+> methods and **0** Procs at the booted machine, so `meth` and `clos` are both satisfiable and
+> trivially satisfied where the ladder starts.
+>
+> **`Sealed` is now the closed three-clause invariant the enumeration predicted** — stack,
+> closures, methods, with no writer left over and the control state not in it.
 
 The third clause the enumeration above says is missing. Written out here so the next session
 implements rather than re-derives it.
@@ -1599,3 +1614,51 @@ restriction), or **weaken `denM`'s `.arrayOf` arm** to quantify over `Later`-fut
 arrow arms do (which is what made `strLit` work in clink 45, and is the direction that has
 precedent). None is a one-liner, and none is on the critical path while the reachable set does
 not exercise it.
+
+
+## The `Builtins` layer, half proved — and the other half specified (L267)
+
+The eighteenth stall point's refutation is gone (L266) and `Sealed` is closed (L267's
+`MethodDef` arm), so `BuiltinsSeal` is attemptable again. It is now **half done**, and the
+half that is done was nearly free.
+
+**What the invariants read.** `Sealed` and `FramesWF` read exactly two things: the *frames'*
+`captured` links (plus, for the congruence, the frame count), and the *heap's* closures and
+methods. That is a clean split, and the frame side is already established by this layer's
+existing 600-arm walk — `FrameLocal.lean`'s `builtins_run_locals` — for a claim
+(`LocalsSame`) that happened to project only `locals`.
+
+**So `LocalsSame` grew two conjuncts** — every frame's `captured`, and `frames.size` — and the
+walk was untouched. The whole cost was three lemmas: `setCurrentFrame` (the one arm in the
+layer that writes `frames` at all, and it copies the frame to flip a `Bool`), `setLastMatchValue`
+(the same `set!` shape), and one extra `rfl` in the `builtin_arms` macro. Six hundred arms
+re-elaborated green with no other change, which is the thing worth recording: the walk was
+*already* proving this and only the statement was too weak to say so.
+
+**What is now proved.** `Denote/Sem/StepLocal.lean`:
+
+* `Sealed.of_localsSame` / `FramesWF.of_localsSame` — `LocalsSame` is exactly the frame-side
+  congruence of each invariant.
+* `builtins_run_seal` / `builtins_run_framesWF` — the same at `Builtins.run`, so a caller owes
+  **only the heap clauses**.
+
+**What is left, stated as the specification of the second walk.** Those two lemmas' remaining
+hypotheses, verbatim:
+
+```
+∀ o cl, procClosure? m'.heap (.ref o) = some cl → ∀ p, cl.captured = some p → <p is sealed>
+∀ k n md, methodIn m'.heap k n = some md → ∀ p, md.capturedFrame = some p → <p is sealed>
+```
+
+i.e. **`Builtins.run` installs no capturing closure and no capturing method**. Both are true —
+the layer's only closure allocation is `Symbol#to_proc`, which since L266 captures `none`
+(`toProcSealsB` `#guard`s it) — but "true" is not "walked", and this is a second traversal of
+the same six hundred arms.
+
+**And it will not ride the first one**, which is worth knowing before starting. Nearly every
+arm discharges `LocalsSame` through `LocalsSame.of_eq rfl rfl` — *frames* unchanged — while the
+heap is exactly what those arms *do* change, by allocation. So a heap conjunct cannot be added
+to `LocalsSame`: `of_eq` has no heap hypothesis to discharge it with, and giving it one changes
+all six hundred call sites. The second walk needs its own predicate (allocation-monotone: "every
+appended object is not a capturing closure, and not a class with a capturing method") and its own
+copy of the twenty machine-threading helper lemmas. That is the honest price, and it is a clink.
