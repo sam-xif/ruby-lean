@@ -1549,3 +1549,67 @@ Measured extent: with exactly those three transiently `sorry`ed, `Metatheory` + 
 `HJudge` build clean and the only remaining failures are the `#guard_msgs` axiom bills
 correctly reporting `sorryAx`. So the rot is three spots, not a general decay — and (2) and
 (3) are proof-script repairs, while (1) is a soundness-shaped gap in the fragment's invariant.
+
+
+### F20. A **buried `def`** never enters `κ.defs`, and `nameFree` believes it — `validate` certifies a `NoMethodError`
+
+**Status:** open, **reachable**. **Severity:** high — `validate` returns `true` with a type for a
+program both executors take to a type-stuck outcome. Found 2026-09-09 while testing whether
+`Judge`'s failure to thread `κ` is merely awkward or actually wrong. It is actually wrong.
+
+**The witness** (three shapes, one bug):
+
+```ruby
+x = (def lambda; 5; end)          # ...or `if true; def lambda; 5; end; end`
+f = lambda { 1 }                  # ...or `[def lambda; 5; end]`
+f.call + 1
+```
+
+| | answer |
+|---|---|
+| CRuby 4.0.5 | `NoMethodError: undefined method 'call' for an instance of Integer` |
+| the Lean model | `NoMethodError: undefined method 'call' for an instance of Integer` |
+| `validate` | **`true`**, `type: Integer`, `f : <closure#0>` |
+
+Both executors agree, so this is purely a **checker** unsoundness. Any expression position
+works — `vasgn` right-hand side, `if` branch, array element.
+
+**Why.** It is §F2/§A5 (a user `def lambda` shadows `Kernel#lambda`, so `lambda { 1 }` is `5`
+and `5.call` raises) reaching through a hole the fix left open. `Judge.lambdaLit`'s guard is
+`nameFree κ "lambda"`, which reads `κ.defs`; `κ.defs` is grown by `Ctx.afterStmt`, which
+`JudgeSeq.cons` applies to a **statement** and whose `extendDefs` matches only a top-level
+`.def' n ps body`. But `Judge.defStmt` has *no premise* and types a `def` **anywhere an
+expression is legal**. So a `def` that is not a top-level statement installs a method no table
+records, and every rule that reads a table *negatively* believes the name is unclaimed.
+
+**The class of bug, not just the instance.** The tables have two kinds of use and only one of
+them is served by "declared *already*":
+
+* **Positive** — "this method exists, call it" (`defDeclared?` feeding `callDef`). Program
+  order is essential here, and it is what `DefTable`'s docstring defends: a whole-program table
+  would certify `foo(); def foo; end`.
+* **Negative** — "no method of this name exists" (`nameFree` -> `lambdaLit`; `declaresName` ->
+  `MethodsExact`, `NameFreeOk`; `defDeclared? ... = none` -> `BareNameFree`; `MissFree`). Here
+  "already" is exactly the wrong question and a **whole-program** scan is the conservative and
+  correct one.
+
+`MethodsExact` is broken by the same programs for the same reason, which is why this shows up
+in the semantic layer too: `Judge.defStmt`'s obligation
+`SemJudge κ Γ I (.def' n ps body) .sym Γ I` is **false** — the run installs a method and
+`declaresName κ n` need not hold.
+
+**Two independent fixes, and they are worth separating.**
+
+1. **The narrow one, for this bug.** Split the tables' two uses: keep `κ.defs`/`κ.classes` as
+   the "already declared" tables the positive rules read, and give `Ctx` a **whole-program**
+   declaration set for the negative ones. `Ctx.withBlocks` (`Validate.lean`) is the existing
+   precedent — `κ.closures` is already seeded by a whole-program pre-pass for exactly this
+   reason. Small, local, and it does not touch `Judge`'s signature.
+2. **The architectural one.** `Judge` should thread `κ -> κ'` the way it already threads
+   `Γ -> Γ'` and `I -> I'`, so a declaration is reported by the rule that types it rather than
+   reconstructed from statement syntax by the sequence rule. See `Denote/Sem/notes.md`
+   §The sixth stall point; that change also dissolves `JudgeSeq.cons`'s transport (L268) and
+   makes the five declaration rules statable at all. It does **not** subsume fix 1: with κ
+   threaded, `if c; def lambda; end; end` still has to decide what the *join* of a declaring
+   and a non-declaring branch records, and the conservative answer for the negative uses is
+   the union — i.e. fix 1's whole-program set, arrived at from the other side.
