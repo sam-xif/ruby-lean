@@ -88,16 +88,18 @@ structure Pos where                 -- grows along program order
   privConsts : List String
 
 structure Neg where                 -- shrinks along program order
-  freeNames  : List String          -- no method of this name is declared anywhere reachable
+  /-- **Keyed by class, not flat** — see §4.5. `(c, n) ∈ noMethod` means *no class in `c`'s
+      ancestor chain provides `n`*. Subsumes three encodings that are separate today:
+      `nameFree`, `mroGet? κ.classes c n = none`, and `MissFree`'s `method_missing`. -/
+  noMethod   : List (String × String)
   freeConsts : List String          -- no constant of this path is bound
-  noMissing  : Bool                 -- no user `method_missing` is reachable from self
 
 structure Scope where               -- neither; lexical, rebound on entry, never reported out
   frame      : Option Frame
   selfTy     : Option Ty
   blockTy    : Option Ty
   closures   : ClosTable
-  asms       : AsmTable             -- see §7.3; assumption, not guarantee
+  asms       : AsmTable             -- see §7.3: an assumption, not a guarantee
 
 structure Ctx where
   pos : Pos
@@ -231,6 +233,61 @@ identity. A discipline in which every join is a meet in both components cannot p
 class of bug, and the `if`-buried-`def` shape of F20 (`if true; def lambda; …; end`) is refused
 by `N₁ ∩ N₂` for the right reason.
 
+### 4.5 `Neg` is keyed by class, and that is what makes `method_missing` work
+
+The obvious first cut of `Neg` is a flat set of names, and it is wrong for the same reason F20
+is wrong — it answers the question only for one implicit receiver.
+
+**What the machine does.** `dispatchMiss` (`RubyCore/Interp/Reflect.lean`) looks up
+`methodOn m.heap (classOf m.heap recv) "method_missing"` — the **receiver's** class chain, not
+the caller's — and then `enterUserMethod m recv "method_missing" mm` makes `recv` the new
+frame's `self`. So the receiver *does* become `self`, but only **after** the decision to
+dispatch there; the decision itself is keyed by the receiver's class.
+
+**What the checker already needs.** `Judge.callMissing` fires on an explicit receiver of type
+`.inst n Iself` and carries
+
+```lean
+mroGet? κ.classes n m = none          -- no ordinary method, so the fallback may fire
+¬ ObjectMethod m                      -- …and Object does not provide it either
+mroGet? κ.classes n "method_missing" = some (dc, d)
+```
+
+The first is a **negative fact about class `n`**, encoded — exactly as in §1.2 — as a *miss in
+the positive table*. The third is a positive fact. The second is a negative fact about the boot
+heap. Three encodings of two polarities, in one rule.
+
+So `Neg` is a relation, not a set:
+
+```
+(c, n) ∈ noMethod   ≜   no class in c's ancestor chain provides n
+```
+
+and the three premises become one positive lookup plus one `Neg` membership. `MissFree` is the
+same relation at `(selfClass, "method_missing")`; `nameFree κ "lambda"` is it at
+`(Object, "lambda")`. The scope-flag reading of `noMissing` survives only as the *implicit-self*
+special case, where the key comes from `κ.selfTy` — which is why it looked like scope.
+
+**Two consequences that are not bookkeeping.**
+
+* **The fact is MRO-closed, so `include`/`prepend`/reopening can invalidate it.** That is the
+  shrinking discipline doing its job, and it is a strictly better account than today's, where a
+  `mroGet?` miss is re-computed from a table that a later `include` silently changes.
+* **`Coherent` gets richer.** It is not `names(P) ∩ N = ∅` but
+
+  ```
+  ∀ (c, n) ∈ N,  P's MRO for c does not provide n
+  ```
+
+  i.e. the disjointness of §4 is *modulo inheritance*. This is the one place the design gets
+  harder rather than easier, and it should be pinned before implementation.
+
+**And `ObjectMethod` is the boot seed.** The ~45-name list is exactly `Neg`'s complement at the
+boot heap: every class provides those, so no `(c, n)` with `n ∈ objectMethodNames` may ever be
+in `noMethod`. Its own docstring already says "completeness is the soundness condition" — which
+is precisely the hazard of a negative fact carried as a table, and an argument for deriving the
+seed from `Denote/Sanity.lean`'s measured boot heap rather than maintaining the list by hand.
+
 ---
 
 ## 5. The seal, and what separation buys there
@@ -315,6 +372,7 @@ table", and a footprint *is* that premise, made compositional.
 | **eleventh stall point** (join invents an alias) | the class of bug is excluded by "every join is a meet" |
 | **`capStaleCtx`'s conservative premise** | can be replaced by a real outgoing context, recovering the precision §F1 records as lost |
 | **the seal layer** | a local, decidable premise replaces a `∀`-over-heap; `ClosuresOk` gets its content |
+| **`Judge.callMissing`'s three premises** | become one positive lookup and one `Neg` membership (§4.5) |
 
 And what it does not fix, so the ladder's remaining shape stays honest: the `Builtins` heap walk
 (§5.4), `ConstScopeOk`/the cref (§7.2), jump-freeness and the 22 call rules, `PrimSig`'s ~200
@@ -337,11 +395,14 @@ record the **cref** and the `.const` rules to resolve at the recorded cref rathe
 toplevel. That is a different change to the same structure — worth doing in the same edit
 window, and worth *not* conflating with this one in the write-up.
 
-### 7.3 `asms`
+### 7.3 `asms` — **settled: `Scope`**
 Neither a positive fact about the heap nor a negative one: it is a **conditional assumption**,
 and `AsmsOk` is a claim about runs. It grows like a positive fact but its meaning is an
-obligation, not a guarantee. **Proposal:** keep it in `Scope` and revisit when `callDef` is
-attempted, since `callDef` is the only rule that grows it and the only one that discharges it.
+obligation, not a guarantee, and `Ctx.inMethod` already keeps it across a body entry for a
+reason that is about scope ("a recursive call made from inside a body must still find the
+assumption discharging it"). **Decision: `Scope`**, revisited when `callDef` is attempted —
+that rule is the only one that grows the table and the only one that discharges it, so it is
+the only rule that can tell us we were wrong.
 
 ---
 
@@ -417,6 +478,8 @@ addition alongside §2.2, not a substitute.
    that precise means deciding what a `Judge` derivation's footprint *is* — the names it
    declares, plus the frames it captures, plus (probably) the ivars it writes. Worth pinning
    before any of §8 step 3.
-4. **Does `Neg` need per-scope entries?** `noMissing` is about `self`'s class, which changes on
-   entering a method body — so it may be scope-relative, in which case some of `Neg` is not
-   program-ordered at all and belongs with `Scope`. Check before implementing.
+4. ~~**Does `Neg` need per-scope entries?**~~ **Resolved (§4.5): no — it needs to be *keyed by
+   class*.** It looked scope-relative because `MissFree`'s only consumer is a bare name, where
+   the receiver is `self`. `dispatchMiss` keys on the *receiver's* class, and
+   `Judge.callMissing` already needs the same fact at an arbitrary `.inst n`. The residual
+   question is §4.5's second consequence: `Coherent` modulo inheritance.
