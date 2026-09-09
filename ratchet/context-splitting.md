@@ -233,6 +233,60 @@ identity. A discipline in which every join is a meet in both components cannot p
 class of bug, and the `if`-buried-`def` shape of F20 (`if true; def lambda; …; end`) is refused
 by `N₁ ∩ N₂` for the right reason.
 
+### 4.4 `Pos` **is** the footprint, and the asymmetry that proves it
+
+The judgment should be **local**: a rule states the facts it *requires* and admits any ambient
+context that contains at least those and stays `Coherent`. Then the frame rule of §4 is
+**admissible rather than primitive** — no rule is added, weakening does the work — and it is
+available for free because `PosOk`/`NegOk` are antitone (§2.1, §3).
+
+**The evidence that this is the right reading is that half of it is already true.** Counting
+`Ratchet/Judge.lean`'s table premises:
+
+| kind | form | count | local? |
+|---|---|---|---|
+| positive | `mroGet? κ.classes n m = some (dc, d)`, `clsGet? … = some`, `asmGet? κ.asms m argTys = some ρ` | 10 | **yes, already** |
+| negative | `nameFree κ n`, `mroGet? κ.classes n m = none`, `defDeclared? κ.defs n = none` | ~24 | **no — every one is a whole-table scan** |
+
+Every positive premise is a **lookup**: "the table contains at least this fact". That is
+exactly the local reading, and it needs no change. Every negative premise is a **miss**:
+`nameFree` scans `κ.defs` and every entry of `κ.classes`; `= none` is a claim about the whole
+table. A miss is a global assertion wearing a lookup's clothes, and it is only ever as true as
+the table's *completeness*.
+
+**That asymmetry is F20.** The buried `def` did not make a lookup wrong — it made a table
+incomplete, and a `= none` premise cannot tell the difference. Give `Neg` its own existence and
+a negative premise becomes `(c, n) ∈ κ.neg`, a lookup like the others; then **every** premise is
+local, no premise depends on any table being complete, and the frame rule is admissible on both
+sides.
+
+**The frame rule's side condition, precisely.** Not just coherence:
+
+```
+Judge S (P, N) Γ I e τ (P', N') Γ' I'
+  →  keys(R) # keys(P' \ P)          -- R is disjoint from what e *writes*
+  →  Coherent (P ⊎ R, N')            -- and adding R does not contradict what survives in N
+  →  Judge S (P ⊎ R, N) Γ I e τ (P' ⊎ R, N') Γ' I'
+```
+
+Two departures from separation logic's version, both in our favour and both worth stating:
+
+* **Read and write footprints separate here.** SL's `{P} C {Q}` conflates them — `P` is both
+  what `C` needs and what it may clobber — so `R` must avoid everything `C` reads. Our facts
+  are keyed and immutable-per-key, so `R` may freely overlap the *read* footprint: extra facts
+  about a class the rule merely looked up cannot invalidate the lookup. Only the **write**
+  footprint `P' \ P` must be avoided, and it is empty for every rule except the five
+  declarations.
+* **Coherence is a genuine extra condition, and it is the inheritance one.** Framing in
+  `class D < C` changes the *meaning* of an existing `(D, n) ∈ N`, because `D`'s ancestor chain
+  grew. So the side condition is not vacuous — but it is decidable, and it is the same
+  `Coherent` §4.5 already needs.
+
+**Locality costs the checker nothing.** It is a property of the *judgment*, not a burden on
+`validate`: `chk` goes on computing one ambient context and discharging premises by lookup,
+exactly as it does today. What changes is which propositions a derivation is allowed to lean
+on — and therefore which programs `chk` must refuse.
+
 ### 4.5 `Neg` is keyed by class, and that is what makes `method_missing` work
 
 The obvious first cut of `Neg` is a flat set of names, and it is wrong for the same reason F20
@@ -382,12 +436,13 @@ rows, and the `DenAllAt` transport falsity behind `arrayLit`/`hashLit`.
 
 ## 7. Three fields that need a decision
 
-### 7.1 `closures`
-Currently whole-program and constant (`collectBlocks`). It is *scope* by the §2 test (never
-rewritten, never reported). But §5.3 wants a per-run footprint, which is threaded. **Proposal:**
-keep the syntactic table in `Scope`, and put the footprint in a threaded component; they answer
-different questions ("which block literals does the program contain" vs. "which frames has this
-evaluation captured").
+### 7.1 `closures` — **the table is `Scope`; the footprint is re-keyed to it**
+The table itself is whole-program and constant (`collectBlocks`), so it is *scope* by the §2
+test: never rewritten, never reported. §5.3 additionally wants a per-evaluation capture
+footprint, and §10.2 settles its shape: **key the footprint by `ClosTable` index, not by frame
+id.** Then it is static program data like every other threaded fact, and the index→frame
+mapping — the only genuinely run-indexed part — stays on the semantic side in `ClosuresOk`,
+which is where a closure invariant belongs and is currently `True`.
 
 ### 7.2 `consts` and the cref
 The seventeenth stall point (`ConstScopeOk`) is **not** fixed by threading. It needs `Ctx` to
@@ -472,8 +527,16 @@ addition alongside §2.2, not a substitute.
 1. **Is `Neg` a set of names or a predicate?** A list of names is decidable and cheap; a
    predicate (`n ∉ declaredAnywhere p`) is exact and needs no maintenance. The second is
    probably right for `freeNames` and wrong for `noMissing`.
-2. **Do footprints belong in `Pos` or in a fourth component?** §7.1 argues fourth, because a
-   footprint is about the *run* and `Pos` is about the *program*. Not settled.
+2. **Do capture footprints belong in `Pos`?** Partly resolved. §4.4 settles that `Pos` *is* the
+   footprint for the **declaration** facts. The capture footprint of §5.3 is a different
+   domain: `Pos` is indexed by names and classes, which are program data, while a capture is a
+   set of **frame ids**, which are run data and do not exist statically. The way to make it
+   `Pos`-shaped is to **re-key it by syntactic block index** — `κ.closures`/`ClosTable` is
+   already a whole-program table with exactly those indices — and leave the index→frame
+   mapping to the semantic side (`ClosuresOk`, currently `True`). That is strictly better than
+   §5.3's framing and should replace it. What is still open is whether the re-keyed footprint
+   is a `Pos` field or a parallel one; it grows monotonically like `Pos`, but it is about the
+   evaluation rather than the program, so the two may want separate frame rules.
 3. **What is the frame rule's side condition, exactly?** §4 writes `footprint e # R`. Making
    that precise means deciding what a `Judge` derivation's footprint *is* — the names it
    declares, plus the frames it captures, plus (probably) the ivars it writes. Worth pinning
