@@ -1160,6 +1160,74 @@ def g(p); p.call; end; g(f); x` is `2` under CRuby *and* under the model — whi
 with a `to_proc` proc leaves `x` at `1` on both. So the hazard `Sealed` exists for is genuine
 and `Symbol#to_proc` is not an instance of it.
 
+### Would the `Option` make `Sealed` inductive? **Not on its own — it needs a third clause** (2026-09-08)
+
+Asked immediately after the probes, and answered by enumerating every writer of the two things
+`Sealed` reads rather than by argument. The model is small enough for this to be exhaustive.
+
+**Clause `clos` — every allocation of a `.proc` payload. There are exactly three:**
+
+| site | `captured` | after the `Option` fix |
+|---|---|---|
+| `reifyBlock`, `Interp/Support.lean:427` | `cur = m.stack.headD 0` | **free already** — `cur` is the current frame, which `FramesWF.nonEmpty` puts on the stack, so `Sealed.stack` at `cur` discharges `Sealed.alloc`'s premise |
+| `coerceToProc` (`&:sym`), `Interp/Support.lean:448` | `0` (the fiction) | `none` — free |
+| `Symbol#to_proc`, `Builtins/Strings.lean:449` | `0` (the fiction) | `none` — free |
+
+So the closure half **does** close, and the load-bearing observation is the first row rather
+than the fix: a user block captures the frame it is created in, and that frame is on the stack,
+so the seal pays for its own closures.
+
+**Clause `stack` — every `frames.push`. There are six**, and four push a frame whose `captured`
+is defaulted (`Dispatch.lean:229`, `284`, `403`, `Kont.lean:115` — class bodies and ordinary
+method frames), so they are free. The two that set it:
+
+| site | `captured` from | covered by |
+|---|---|---|
+| `callClosure`, `Interp/Support.lean:533` | `some cl.captured`, `cl` a `Closure` read from the heap | `Sealed.clos` — this is what that clause is *for* |
+| `enterUserMethod`, `Interp/Dispatch.lean:154` | `md.capturedFrame`, `md` a **`MethodDef`** read from the heap | **nothing in `Sealed`** |
+
+**`MethodDef.capturedFrame` is a second capture graph, and `Sealed` does not mention it.**
+`define_method` installs a method whose body sees the defining scope's locals
+(`Heap.lean:83`; set at `Reflect.lean:233`), and entering that method pushes a frame with
+`captured := md.capturedFrame`. So the sixteenth stall point's hazard has a second route,
+through a *method* rather than a proc — probed on both executors, agreeing:
+
+```ruby
+x = 1
+Object.send(:define_method, :setx) { x = 2 }
+def g; setx; end
+g
+x                       # CRuby: 2   model: 2
+```
+
+**But the third clause is closed, which is the whole question.** `reflectDefineMethod` sets
+`capturedFrame := some cl.captured` where `cl` comes from `procClosure? m bv` — a closure
+**already in the heap** — so `Sealed.clos` at that closure discharges the new clause exactly, in
+the same way `clos` discharges `callClosure`'s push. Every other `MethodDef` writer is either a
+fresh literal that defaults `capturedFrame := none` (ordinary `def` `Interp.lean:270`,
+`def self.m` `Interp.lean:377` / `Kont.lean:103`, the `attr_*` accessors `Dispatch.lean:582`/
+`585`, the undef stub `Heap.lean:666`) or a `{ md with … }` copy of a method already installed
+(`Reflect.lean:98`/`105`, `alias` `Interp.lean:311` / `Reflect.lean:499`), which inherits a
+`capturedFrame` the clause already covers. **J33's capture erasure helps too**: a `localFreeB`
+body is installed with `capturedFrame := none`, so the clause is vacuous for every
+`define_method` whose body reads no local.
+
+**Verdict.** `Sealed` + the `Option` + a clause over installed `MethodDef`s is **three clauses
+that discharge each other**, with no writer left over. That is a materially better position than
+the joint frame-graph/control-state invariant this stall point first called for — the control
+state does not have to enter after all.
+
+Three honest caveats, because this is an enumeration of *writers* and not a proof:
+
+* It establishes that **no arm is blocked in principle**. The per-arm walk over `stepFn` — the
+  thing `FrameLocal.lean` did for `LocalsSame` — is still the work.
+* The new clause needs the "installed anywhere in the heap" quantifier, which is
+  `MethodsExact`'s shape (`Denote/Sem/Frame.lean`), and like it should be **measured at the
+  booted machine** before it is written down — the prelude is a large body of installed methods
+  and `Denote/Sanity.lean` is where that check belongs.
+* The `Option` change ripples into `md.capturedFrame := cl.captured` (no longer `some`), and it
+  changes the *machine*, so the difftest and all 47 rungs need re-verification.
+
 ## The fifteenth stall point — **syntax-directed run invariants**, and it is now the largest piece
 
 Named in clink 57, and it is the *merge* of two findings that turned out to be one thing. Both

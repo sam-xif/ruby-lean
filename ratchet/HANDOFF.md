@@ -45,7 +45,8 @@ forced by `Closure.captured : Nat` (`../lean/RubyCore/Heap.lean:136`) where
 (`../lean/RubyCore/Machine.lean:57`). `Sealed.clos` reads exactly that field.
 
 **So: try the `Option` first, then re-attempt the `Builtins` layer**, before
-designing a joint frame-graph/control-state invariant. Two construction sites
+designing a joint frame-graph/control-state invariant. **And add a third clause
+while you are there** — see the next section. Two construction sites
 (`Builtins/Strings.lean:449` and `Interp/Support.lean:448` — the `&:sym`
 `coerceToProc` path builds the same closure, so the fiction is not confined to
 the `Builtins` layer), ~4 readers in `RubyCore/Interp/`, 14 files in
@@ -55,6 +56,37 @@ difftest and all 47 rungs have to be re-verified.
 `not_BuiltinsSeal` stands either way: it is a theorem about `Sealed` and
 `Builtins.run`, both definitions in this repo, so fidelity does not bear on its
 truth. What moved is the prognosis.
+
+## What the `Option` fix does and does not buy (enumerated 2026-09-08)
+
+Every writer of the two things `Sealed` reads was enumerated; the model is small
+enough for this to be exhaustive (`Denote/Sem/notes.md`, the eighteenth stall
+point's third subsection).
+
+- **Closures close.** Three `.proc` allocations exist. `reifyBlock` captures
+  `m.stack.headD 0` — the current frame, which is *on the stack*, so
+  `Sealed.stack` discharges it and it was never a problem. The other two are the
+  `:sym.to_proc` fiction and go to `none`.
+- **Six `frames.push` sites**; four default `captured` to `none`. Of the two that
+  set it, `callClosure` reads a `Closure` from the heap (that is what
+  `Sealed.clos` is for) and **`enterUserMethod` reads
+  `MethodDef.capturedFrame`, which `Sealed` does not mention at all.**
+- **So a third clause is needed**, over methods installed in the heap.
+  `define_method` is the writer, and the hazard is real on both executors:
+  `x = 1; Object.send(:define_method, :setx) { x = 2 }; def g; setx; end; g; x`
+  is `2` under CRuby *and* the model.
+- **The third clause is closed**, which is the point: `reflectDefineMethod` takes
+  its `capturedFrame` from a closure already in the heap, so `Sealed.clos`
+  discharges it. Every other `MethodDef` writer either defaults the field to
+  `none` or copies an already-installed method. J33's capture erasure makes it
+  vacuous for any body that reads no local.
+
+**Verdict:** `Sealed` + the `Option` + a `MethodDef` clause is three clauses that
+discharge each other, with no writer left over — the control state does not have
+to enter the invariant after all. Not a proof: it says no arm is blocked in
+principle, and the per-arm `stepFn` walk is still the work. Measure the new
+clause at the booted machine (`Denote/Sanity.lean`, `MethodsExact`'s shape)
+before writing it down.
 
 ## Two things worth not re-deriving
 
