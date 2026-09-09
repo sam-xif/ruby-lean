@@ -479,6 +479,21 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
+## [`context-splitting.md`](context-splitting.md) — the proposed `Ctx` redesign *(design, not built)*
+
+Positive facts that grow, negative facts that shrink, lexical scope that does neither — and
+`Judge` threading the first two out as `κ'` the way it already threads `Γ'`/`I'`. Written
+2026-09-09 after L268 measured that `StateOk` transports across `afterStmt` in **neither**
+direction (the two halves have opposite variance in the same index) and §F20 showed the same
+defect is a *reachable soundness bug*: a `def` buried in an expression never enters `κ.defs`,
+so `nameFree` believes the name is unclaimed and `validate` certifies a `NoMethodError`.
+
+Contains: the three pieces of evidence, the split, why every transport then goes the right way,
+where the disjointness actually is (**between** the polarities, not within one — same-polarity
+facts conjoin for free), what it buys the seal (footprints over **frames**, not over the heap —
+the capture graph is a proved DAG, the object graph is not), what it explicitly does not buy,
+a six-step migration, and four rejected alternatives.
+
 ## Semantic ratchet status (`Denote/Sem/`): **47 of 83 `Judge` rules discharged**
 
 > **Unblocked 2026-09-08 (L266). The blocker was model fidelity, and it is fixed.**
