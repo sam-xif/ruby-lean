@@ -129,8 +129,11 @@ in terms of `start_with?`, so the gate fires one method down).
 
 ### A6. `Symbol#to_proc` — the model's proc carries a **binding CRuby's does not have**, and is not identity-stable
 
-**Status:** open. **Severity:** medium for identity, **high for the capture edge** — see below,
-it is what stalled the semantic ratchet's locals layer.
+**Status:** A6a **decided, not yet implemented** (2026-09-08 — `Closure.captured` becomes an
+`Option FrameId` and the two `:sym.to_proc` sites take `none`; see `ratchet/Denote/Sem/notes.md`,
+the eighteenth stall point, for the eight sites and the rejected alternative). A6b/A6c open.
+**Severity:** medium for identity, **high for the capture edge** — see below, it is what stalled
+the semantic ratchet's locals layer.
 
 Measured 2026-09-08 with a 20-program probe corpus replayed under `--sut lean` (17 agree,
 2 disagree, 1 gate) plus CRuby-only probes for what the model cannot express. CRuby 4.0.5.
@@ -172,6 +175,14 @@ is about. `ratchet/Denote/Sem/StepLocal.lean`'s `not_BuiltinsSeal` is the refuta
 there**: give `Closure.captured` the `Option` its `Frame` counterpart already has, so a C-level
 proc captures nothing. Blast radius measured: 2 construction sites, ~4 readers under
 `RubyCore/Interp/`, 14 files under `RubyCore/Proof/`, 12 under `ratchet/Denote/`.
+
+**Scope of that fix, stated so it is not over-read.** It is right for exactly the two sites
+where the model *invents* a Proc for a Symbol. When `&obj` learns to dispatch a **user-defined
+`to_proc`** — today `coerceToProc` gates it ("block-pass of a non-Proc (to_proc dispatch is
+L2)") — the Proc that comes back is an ordinary `reifyBlock` closure over a real frame, and it
+will capture like any other. The `none` shortcut neither breaks nor helps there; the seal will
+have to carry it through `Sealed.clos` as usual. **Deliberately not addressed now**; re-read
+this paragraph when L2 lands.
 
 **A6b — not identity-stable.** CRuby interns the proc per symbol; the model allocates a fresh
 object on every call.

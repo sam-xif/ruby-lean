@@ -1228,6 +1228,144 @@ Three honest caveats, because this is an enumeration of *writers* and not a proo
 * The `Option` change ripples into `md.capturedFrame := cl.captured` (no longer `some`), and it
   changes the *machine*, so the difftest and all 47 rungs need re-verification.
 
+### The decision (2026-09-08): **`Closure.captured` becomes an `Option`, and the `:sym.to_proc` sites take `none`**
+
+Taken deliberately rather than derived, so the reasoning is recorded here with the alternative
+that was turned down.
+
+**What changes.** `Closure.captured : Nat` → `Option FrameId`, matching `Frame.captured`, which
+has been an `Option` all along. Eight sites in the model proper:
+
+| site | now | after |
+|---|---|---|
+| `RubyCore/Heap.lean:136` | `captured : Nat` | `captured : Option FrameId` |
+| `Interp/Support.lean:427` (`reifyBlock`) | `captured := cur` | `captured := some cur` |
+| `Interp/Support.lean:448` (`coerceToProc`, `&:sym`) | `captured := 0` | **`captured := none`** |
+| `Builtins/Strings.lean:449` (`Symbol#to_proc`) | `captured := 0` | **`captured := none`** |
+| `Interp/Support.lean:525` (`callClosure`) | `m.frames.getD cl.captured default` | `m.frames.getD (cl.captured.getD 0) default` |
+| `Interp/Support.lean:533` (`callClosure`) | `captured := some cl.captured` | `captured := cl.captured` |
+| `Interp/Reflect.lean:223` | `(m.frames.getD cl.captured default).cref` | `.getD (cl.captured.getD 0)` |
+| `Interp/Reflect.lean:237` | `else some cl.captured` | `else cl.captured` |
+
+plus the statements that mention `cl.captured` in `RubyCore/Proof/Static/{Konts,Locals,Iter,
+LambdaArrow}.lean` and in `../Apply.lean`, `../Local.lean`, `../Ext.lean`, `Locals.lean`.
+
+**Why it is behaviour-preserving at the two `none` sites, and why the `.getD 0` is not a
+cheat.** The `getD 0` keeps `callClosure` reading exactly the frame it reads today for these
+closures — frame `0`'s `self`/`defmod`/`blk`/`cref`. What *does* change is the pushed block
+frame's own `captured`, which becomes `none`: the chain stops at the block frame instead of
+continuing into the toplevel. Unobservable, because the body's only free names are its own
+parameters (`__recv`, `__rest`), so nothing walks the chain — and it is the **more faithful**
+reading, since CRuby's object has no binding at all (`found-issues.md` §A6a).
+
+**Tracking item — this is not a general fix, and it should not be read as one.** It is right
+for exactly the two sites where the model *invents* a Proc for a Symbol. The moment `&obj`
+dispatches a **user-defined `to_proc`** — today `coerceToProc` gates it ("block-pass of a
+non-Proc (to_proc dispatch is L2)") — the returned Proc is an ordinary closure created by
+`reifyBlock` at a real frame, and it will capture, and `Sealed.clos` will have to carry it
+exactly as it carries every other user closure. Nothing here breaks then; the point is that
+nothing here *helps* then either. **We are explicitly not solving that now.** When L2 lands,
+re-read this subsection before assuming the seal still closes.
+
+**Rejected: prove the seal survives by reducing `Symbol#to_proc` and showing it mutates
+nothing.** The alternative was to leave `captured := 0` in place and discharge the allocation
+with a lemma — unfold the arm, look at the closure it builds, observe that its body
+(`__recv.s(*__rest)`) can write no local of whatever frame it names, and conclude the seal is
+undisturbed. Turned down for four reasons, in the order they matter:
+
+1. **It does not discharge `Sealed` as stated.** `Sealed.clos` is a claim about the capture
+   *graph* — "no closure in the heap reaches `b`" — and the lemma would prove something about
+   what one closure *does*. To spend it you first have to weaken the clause to `… ∨ this
+   closure is inert`, and that escape is what drags `Sealed.stack` in after it (item 3 of this
+   stall point): `callClosure` pushes a block frame over `b` from an inert closure, the stack
+   clause is unconditional, and repairing *it* needs a predicate on `ctl`/`kont`. The lemma is
+   not the fix; it only buys the escape, and the escape is the expensive half.
+2. **It does not generalise.** The argument is about one fixed body. It says nothing about the
+   user-defined `to_proc` above, so the tracking item would come due with no machinery in hand.
+3. **It leaves the fidelity gap standing.** The model would keep a capture edge CRuby does not
+   have, and every future proof about the capture graph would pay for it again — the same
+   `Denote`-pays-for-the-model's-fiction trade, one more time.
+4. **The cost is the wrong way round.** The `Option` is eight sites and a mechanical ripple; the
+   inertness route is a new syntactic predicate, a weakened `clos`, a control-keyed `stack`, and
+   a per-arm walk that has to preserve both.
+
+The one thing the rejected route had going for it: it touches no `RubyCore/` definition, so it
+costs no difftest re-run. That is real and it is not enough — the `Option` re-run is a
+one-time cost and the fiction is permanent.
+
+### Draft: the **`MethodDef` arm** of `Sealed`
+
+The third clause the enumeration above says is missing. Written out here so the next session
+implements rather than re-derives it.
+
+```lean
+structure Sealed (b : FrameId) (m : Machine) : Prop where
+  /-- No frame on the activation stack reaches `b`. -/
+  stack : ∀ fid ∈ m.stack, ReachesB m b fid (m.frames.size + 1) = false
+  /-- …no closure in the heap captured a chain through `b`… -/
+  clos : ∀ (o : ObjId) (cl : Closure), procClosure? m.heap (.ref o) = some cl →
+    ∀ p, cl.captured = some p → ReachesB m b p (m.frames.size + 1) = false
+  /-- …and no **method** in the heap did either. `define_method` installs a body that sees the
+      defining scope's locals (`MethodDef.capturedFrame`, `RubyCore/Heap.lean:83`), and
+      `enterUserMethod` pushes a frame with `captured := md.capturedFrame` — so a method is a
+      second capture graph, and the seal has to read it too. -/
+  meth : ∀ (k : ObjId) (n : String) (md : MethodDef),
+    (m.heap.classPayload? k).bind
+      (fun cp => (cp.methods.find? (·.1 == n)).map (·.2)) = some md →
+    ∀ p, md.capturedFrame = some p → ReachesB m b p (m.frames.size + 1) = false
+```
+
+with the in-range twin on `FramesWF`, mirroring its `clos` clause:
+
+```lean
+  meth : ∀ k n md, <same lookup> = some md → ∀ p, md.capturedFrame = some p →
+    p < m.frames.size
+```
+
+**What consumes it:** `Sealed.push` at `enterUserMethod` (`Interp/Dispatch.lean:154`), which is
+the one frame push the two existing clauses do not cover.
+
+**What re-establishes it, writer by writer** (the enumeration above is the argument that this
+list is complete):
+
+* `reflectDefineMethod` (`Interp/Reflect.lean:233`) sets `capturedFrame` from `procClosure? m
+  bv` — a closure **already in the heap** — so `Sealed.clos` at that closure discharges it, the
+  same shape in which `clos` discharges `callClosure`'s push. This is the only writer that can
+  make the clause non-trivial.
+* Fresh literals that default the field to `none`: ordinary `def` (`Interp.lean:270`),
+  `def self.m` (`Interp.lean:377`, `Interp/Kont.lean:103`), the `attr_*` accessors
+  (`Interp/Dispatch.lean:582`/`585`), the undef stub (`Heap.lean:666`).
+* `{ md with … }` copies of an already-installed method, which inherit a `capturedFrame` the
+  clause already covers: visibility and `module_function` (`Interp/Reflect.lean:98`/`105`),
+  `alias` (`Interp.lean:311`, `Interp/Reflect.lean:499`).
+* **J33's capture erasure** makes it vacuous for free wherever it applies: a `localFreeB` body
+  is installed with `capturedFrame := none`.
+
+**Measured before writing it down**, which is `../Sanity.lean`'s rule and the reason the eighth
+and tenth stall points exist. At the booted machine (`probes/measure_captures.lean`):
+
+```
+methods with a capturedFrame : 0
+Proc objects in the heap     : 0
+frames.size                  : 71     (dead activations; the stack is [0])
+```
+
+So both the new clause and the existing `clos` clause are **vacuous at the machine the ladder
+starts from** — the prelude installs no capturing method and leaves no Proc behind. Adding the
+arm therefore costs no vacuity risk, which was the thing worth checking: a component that is
+unsatisfiable makes every obligation true for the wrong reason, and this one is satisfiable and
+trivially so.
+
+**The hazard it excludes is real**, probed on both executors:
+
+```ruby
+x = 1
+Object.send(:define_method, :setx) { x = 2 }
+def g; setx; end
+g
+x                        # CRuby: 2   model: 2
+```
+
 ## The fifteenth stall point — **syntax-directed run invariants**, and it is now the largest piece
 
 Named in clink 57, and it is the *merge* of two findings that turned out to be one thing. Both

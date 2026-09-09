@@ -88,6 +88,46 @@ principle, and the per-arm `stepFn` walk is still the work. Measure the new
 clause at the booted machine (`Denote/Sanity.lean`, `MethodsExact`'s shape)
 before writing it down.
 
+## Decided, not yet implemented — and one thing it does **not** cover
+
+**Decision (2026-09-08):** `Closure.captured` becomes `Option FrameId` (matching
+`Frame.captured`, which always was one) and the two `:sym.to_proc` construction
+sites take `none`. Eight sites in the model proper, listed in
+`Denote/Sem/notes.md` §The decision, plus the `cl.captured` statements in
+`RubyCore/Proof/Static/{Konts,Locals,Iter,LambdaArrow}.lean` and in
+`Denote/{Apply,Local,Ext}.lean` + `Denote/Sem/Locals.lean`. Behaviour-preserving
+(`callClosure` keeps reading the same frame via `.getD 0`; only the pushed block
+frame's own `captured` becomes `none`, and the body's free names are its own
+parameters). **Changes the machine**, so difftest and all 47 rungs need
+re-verification.
+
+**TRACKING — this is not a general fix.** It is right for exactly the two sites
+where the model *invents* a Proc for a Symbol. When `&obj` learns to dispatch a
+**user-defined `to_proc`** — `coerceToProc` gates it today ("block-pass of a
+non-Proc (to_proc dispatch is L2)") — the Proc returned is an ordinary
+`reifyBlock` closure over a real frame and it *will* capture. The `none`
+shortcut neither breaks nor helps there; `Sealed.clos` carries it like any other
+user closure. **Explicitly out of scope right now.** Re-read
+`found-issues.md` §A6a and `Denote/Sem/notes.md` §The decision before assuming
+the seal still closes once L2 lands.
+
+**Rejected alternative**, recorded so it is not re-proposed: keep `captured := 0`
+and discharge the allocation with a lemma that unfolds `Symbol#to_proc` and shows
+its closure body mutates nothing in whatever frame it names. It does not
+discharge `Sealed` as stated (that clause is about the capture *graph*, so you
+would first have to weaken it to "…or this closure is inert" — and that escape
+is what drags the unconditional `stack` clause into control-state territory), it
+does not generalise to the user-defined `to_proc` above, and it leaves the
+fidelity gap standing for every future proof to pay again. Full reasoning in
+`Denote/Sem/notes.md` §The decision.
+
+**Also drafted, not implemented:** the **`MethodDef` arm** of `Sealed` — the
+third clause, its `FramesWF` twin, what consumes it (`Sealed.push` at
+`enterUserMethod`), and the writer-by-writer argument that it is closed. Both it
+and the existing `clos` clause are **vacuous at the booted machine** (0 capturing
+methods, 0 Procs — `lake env lean probes/measure_captures.lean`), so the arm
+costs no vacuity risk.
+
 ## Two things worth not re-deriving
 
 - **The seal is guarding a real hazard.** `x = 1; f = lambda { x = 2 }; def
