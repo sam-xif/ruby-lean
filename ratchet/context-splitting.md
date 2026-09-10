@@ -88,10 +88,12 @@ structure Pos where                 -- grows along program order
   privConsts : List String
 
 structure Neg where                 -- shrinks along program order
-  /-- **Keyed by class, not flat** — see §4.5. `(c, n) ∈ noMethod` means *no class in `c`'s
-      ancestor chain provides `n`*. Subsumes three encodings that are separate today:
-      `nameFree`, `mroGet? κ.classes c n = none`, and `MissFree`'s `method_missing`. -/
-  noMethod   : List (String × String)
+  /-- **Keyed by a receiver *port*, not by a bare class** — see §4.5 and §4.6.
+      `(inst c, n) ∈ noMethod` means *nothing in `c`'s instance MRO provides `n`*;
+      `(cls c, n)` is the same for the class object's singleton chain **and** the metaclass
+      tail it falls through to. Subsumes four encodings that are separate today: `nameFree`,
+      `mroGet? … = none`, `smroGet? … = none`, and `MissFree`'s `method_missing`. -/
+  noMethod   : List (Port × String)     -- `Port := inst String | cls String`
   freeConsts : List String          -- no constant of this path is bound
 
 structure Scope where               -- neither; lexical, rebound on entry, never reported out
@@ -341,6 +343,73 @@ boot heap: every class provides those, so no `(c, n)` with `n ∈ objectMethodNa
 in `noMethod`. Its own docstring already says "completeness is the soundness condition" — which
 is precisely the hazard of a negative fact carried as a table, and an argument for deriving the
 seed from `Denote/Sanity.lean`'s measured boot heap rather than maintaining the list by hand.
+
+### 4.6 The key is a **receiver port**, not a class — instances, class objects, and eigenclasses
+
+`(class, name)` is not enough, because Ruby has more than one lookup relation and the checker
+already implements two of them plus a coarse belt for a third.
+
+**Two ports.** They are the two walks `Ratchet/Judge.lean` already has:
+
+| port | chain | the walk | consumed by |
+|---|---|---|---|
+| `inst C` | `prepends(C) ++ [C] ++ includes(C) ++ chain(super C)` … | `mroList?`/`mroGet?` | `Judge.callMissing`'s `mroGet? … = none` |
+| `cls C` | `C.smethods ++ C.extended` (reversed) `++ singChain(super C)` | `lookupUpS`/`smroGet?` | `Judge.clsToS`'s `smroGet? … = none` |
+
+So `Neg` is keyed by a *port* — `inst C` or `cls C` — and the two are read by different rules
+for different receiver types (`Ty.inst n` versus `Ty.clsOf n`).
+
+**The ports are not independent, and the dependency is §F7.** `lookupUpS` stops when
+`c.super? = none`. Ruby does not: once the eigenclass chain is exhausted, `C.foo` falls through
+to `Class → Module → Object → Kernel → BasicObject` **as instance methods**. So a
+`class Module; def to_s; …; end` binds ahead of the builtin for *every* class object, and
+`smroGet?` cannot see it. `nameFree κ "to_s"` is today's coarse belt for exactly that hole.
+
+Keyed `Neg` makes the belt precise, as an **entailment the seed must respect**:
+
+```
+(cls C, n) ∈ Neg   ⟺   singChain(C) declares no singleton n
+                    ∧   (inst Class, n) ∈ Neg          -- the metaclass tail
+```
+
+where the second conjunct unfolds through `Class`/`Module`/`Object`/`Kernel`/`BasicObject`'s
+*instance* methods. This is strictly better than what it replaces: today's belt goes false as
+soon as **any** class anywhere declares `to_s`; the keyed version asks only about the metaclass
+tail. It is also the mechanism behind §10.1's claim that the keying pays for the seeding —
+`Version#to_s` is an instance method of `Version`, so it touches neither
+`(inst Pathname, "to_s")` nor the metaclass tail.
+
+**Object eigenclasses need no third port**, and the reason is already in the denotation.
+`Denote/Val.lean`'s `isExactInst` requires
+
+```lean
+o < h.objs.size && (h.get o).eigen.isNone && (h.get o).klass == k
+```
+
+— so `Ty.inst C` denotes only objects whose class is exactly `C` **and which carry no
+singleton class**. An object that acquires one *leaves the type*. A `(inst C, n)` fact
+therefore applies to exactly the values `.inst C` denotes, with no extra clause and no
+per-object identity: the discipline the keying needs is already enforced on the semantic side.
+(§F12 is why — the `.inst` arm was is-a and was tightened to exact; this is a second thing that
+fix bought.)
+
+**But `def obj.m` still needs F20's treatment on the syntactic side.** Today `clsMember?`
+returns `none` for a `.defs` whose receiver is not `self'`, so the enclosing class never enters
+the table and nothing using it is typed — sound, but *by gating one syntactic position*, which
+is precisely F20's shape. Under a whole-program seed the rule is uniform and
+position-independent:
+
+> any `.defs` with a non-`self'` receiver, and any `define_singleton_method`, anywhere in the
+> program, removes `(inst C, n)` and `(cls C, n)` for **every** `C`.
+
+Coarse, and necessarily so: `Ty.inst` carries no object identity, so there is no finer sound
+answer available. It is also cheap — no corpus program does this outside a class body, where
+the existing gate already refuses it.
+
+**Immediates are ordinary `inst` keys.** `.int`/`.flt`/`.str`/`.sym`/`.bool`/`.nilT` are
+`inst Integer`/`Float`/`String`/`Symbol`/`TrueClass`|`FalseClass`/`NilClass`, and `classOf`
+answers a boot id for them without reading the heap, so they can never carry an eigenclass and
+the `eigen.isNone` conjunct is free.
 
 ---
 
