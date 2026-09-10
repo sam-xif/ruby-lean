@@ -80,6 +80,37 @@ theorem Step.finishRegion {b : FrameId} {m : Machine} (h : StepInv b m) (ens : O
     | exact Step.frameOnly h rfl rfl rfl
     | split))
 
+/-! ### `procClosure?` survives an allocation, which `callClosure` needs about itself
+
+`callClosure`'s rest-parameter path calls `allocArr` **before** it pushes the block frame, so the
+heap fact its push premise needs (`Sealed.clos` at the closure being invoked) has to be carried
+across that allocation. Note the in-range side condition is *derivable* rather than assumed: a
+`procClosure?` that answers `some` cannot be reading past the end of the heap, because
+`Heap.get`'s out-of-range answer is `default`, whose payload is `.none`. -/
+
+/-- Reading past the end of the heap answers `default`, whose payload is `.none`. Mirrors
+`alloc_get_gt`'s shape (`simp only` for the projections, `rw` for the array lemmas). -/
+theorem heap_get_oob {h : Heap} {o : ObjId} (ho : h.objs.size ≤ o) : h.get o = default := by
+  simp only [Heap.get]
+  rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_none ho, Option.getD_none]
+
+theorem procClosure_lt {h : Heap} {o : ObjId} {cl : Closure}
+    (hcl : procClosure? h (.ref o) = some cl) : o < h.objs.size := by
+  rcases Nat.lt_or_ge o h.objs.size with hlt | hge
+  · exact hlt
+  · rw [procClosure?, heap_get_oob hge,
+      show (default : Object).payload = Payload.none from rfl] at hcl
+    exact absurd hcl (by simp)
+
+theorem procClosure_alloc {h : Heap} {o : ObjId} {cl : Closure} (obj : Object)
+    (hcl : procClosure? h (.ref o) = some cl) :
+    procClosure? (h.alloc obj).2 (.ref o) = some cl := by
+  rw [procClosure?, alloc_get_lt obj (procClosure_lt hcl), ← procClosure?]
+  exact hcl
+
+#print axioms procClosure_lt
+#print axioms procClosure_alloc
+
 #print axioms Step.bindIvar
 #print axioms Step.reifyBlock
 #print axioms Step.doReturn
