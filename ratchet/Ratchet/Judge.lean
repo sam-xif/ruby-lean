@@ -3269,30 +3269,30 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
   /-- An integer literal — including a negative one: `-5` desugars to `int (-5)`, not to
       a unary send (rung 008), so this single rule covers both. -/
   | intLit {κ : Ctx} {Γ : Env} {I : Ty} {n : Int} :
-      Judge κ Γ I (.int n) .int κ Γ I
+      Judge κ Γ I (.int n) .int (κ.afterStmt (.int n) .int) Γ I
   /-- A float literal. `Expr.flt` carries IEEE bits; the type does not depend on them,
       so no side condition. -/
   | fltLit {κ : Ctx} {Γ : Env} {I : Ty} {bits : UInt64} :
-      Judge κ Γ I (.flt bits) .float κ Γ I
+      Judge κ Γ I (.flt bits) .float (κ.afterStmt (.flt bits) .float) Γ I
   /-- A string literal is *an instance of* `String` — `.cls "String"`, never a
       dedicated `str` type; this type language has none (`Ratchet/Ty.lean`). -/
   | strLit {κ : Ctx} {Γ : Env} {I : Ty} {s : String} :
-      Judge κ Γ I (.str s) (.cls "String") κ Γ I
+      Judge κ Γ I (.str s) (.cls "String") (κ.afterStmt (.str s) (.cls "String")) Γ I
   | symLit {κ : Ctx} {Γ : Env} {I : Ty} {s : String} :
-      Judge κ Γ I (.sym s) .sym κ Γ I
+      Judge κ Γ I (.sym s) .sym (κ.afterStmt (.sym s) .sym) Γ I
   /-- `true` and `false` share one type. `Ty` has no singleton-`true` type, and Ruby's
       two distinct classes (`TrueClass`/`FalseClass`) are not distinguished here —
       `Ty.bool` covers both, which is why rungs 002 and 003 both target `.bool`. -/
-  | truLit {κ : Ctx} {Γ : Env} {I : Ty} : Judge κ Γ I .tru .bool κ Γ I
-  | flsLit {κ : Ctx} {Γ : Env} {I : Ty} : Judge κ Γ I .fls .bool κ Γ I
+  | truLit {κ : Ctx} {Γ : Env} {I : Ty} : Judge κ Γ I .tru .bool (κ.afterStmt .tru .bool) Γ I
+  | flsLit {κ : Ctx} {Γ : Env} {I : Ty} : Judge κ Γ I .fls .bool (κ.afterStmt .fls .bool) Γ I
   /-- `nil : Nil` — the singleton type, not `nilable` of anything. -/
-  | nilLit {κ : Ctx} {Γ : Env} {I : Ty} : Judge κ Γ I .nil .nilT κ Γ I
+  | nilLit {κ : Ctx} {Γ : Env} {I : Ty} : Judge κ Γ I .nil .nilT (κ.afterStmt .nil .nilT) Γ I
   /-- Reading a local: its type is whatever the environment last recorded for it, and
       the read binds nothing. A name *not* in `Γ` has no rule — and correctly so, since
       the desugarer only emits `var lvar x` where Ruby's parser saw an assignment to `x`
       earlier in the same scope; a bare name it did not is a `vcall` (see `bareName`). -/
   | var {κ : Ctx} {Γ : Env} {I : Ty} {x : String} {τ : Ty} :
-      envGet? Γ x = some τ → isAliasTy τ = false → Judge κ Γ I (.var .lvar x) τ κ Γ I
+      envGet? Γ x = some τ → isAliasTy τ = false → Judge κ Γ I (.var .lvar x) τ (κ.afterStmt (.var .lvar x) τ) Γ I
   /-- Reading a local that currently **aliases** another (tier 12): its type is the alias's
       payload, so no expression ever has type `Ty.sameAs`. Split from `var` rather than folded
       into it (as `stripAlias` in the conclusion) for a purely mechanical reason worth recording,
@@ -3302,7 +3302,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       conclusion's `τ` a bare variable, and the premise discharges by `rfl` once it is
       solved. -/
   | varAlias {κ : Ctx} {Γ : Env} {I : Ty} {x y : String} {τ : Ty} :
-      envGet? Γ x = some (.sameAs y τ) → Judge κ Γ I (.var .lvar x) τ κ Γ I
+      envGet? Γ x = some (.sameAs y τ) → Judge κ Γ I (.var .lvar x) τ (κ.afterStmt (.var .lvar x) τ) Γ I
   /-- Assignment. Its *value* is the right-hand side's (Ruby's `x = e` evaluates to `e`),
       and its *effect* is to record that type for `x` in the outgoing environment.
 
@@ -3320,13 +3320,13 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       a binding). `Validate.lean`'s `var` arm has always stripped aliases so that "no
       expression ever has type `sameAs`"; this premise is that invariant, stated where the rule
       relies on it. -/
-  | vasgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {x : String} {e : Expr} {τ : Ty} {κ₁ : Ctx} :
-      Judge κ Γ I e τ κ₁ Γ' I' →
+  | vasgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {x : String} {e : Expr} {τ : Ty} :
+      Judge κ Γ I e τ (κ.afterStmt e τ) Γ' I' →
       (hcap : capStale x τ τ = false := by rfl) →
       (hctx : capStaleCtx x τ κ = false := by rfl) →
       (halias : isAliasTy τ = false := by rfl) →
       Judge κ Γ I (.vasgn .lvar x e) τ
-        κ (envSet (killClosOver (killAliasesTo Γ' x) x τ) x τ) (killClosOverSpine I' x τ)
+        (κ.afterStmt (.vasgn .lvar x e) τ) (envSet (killClosOver (killAliasesTo Γ' x) x τ) x τ) (killClosOverSpine I' x τ)
   /-- **`__dt_t1 = v` — an assignment that records an alias** (tier 12).
 
       Same value and same effect as `vasgn`; the only difference is what lands in the
@@ -3359,7 +3359,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       (hcap : capStale t τ τ = false := by rfl) →
       (hctx : capStaleCtx t τ κ = false := by rfl) →
       Judge κ Γ I (.vasgn .lvar t (.var .lvar x)) τ
-        κ (envSet (killClosOver (killAliasesTo Γ t) t τ) t (.sameAs x τ))
+        (κ.afterStmt (.vasgn .lvar t (.var .lvar x)) τ) (envSet (killClosOver (killAliasesTo Γ t) t τ) t (.sameAs x τ))
         (killClosOverSpine I t τ)
   /-- A statement sequence: the whole thing has the *last* statement's type, and both
       threaded states flow through all of them. Delegated to `JudgeSeq` so the non-empty
@@ -3367,7 +3367,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       thread (a `def` or a `class` is visible to the statements after it and to nothing
       else — see `DefTable`). -/
   | seq {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {es : List Expr} {τ : Ty} {κ₁ : Ctx} :
-      JudgeSeq κ Γ I es τ κ₁ Γ' I' → Judge κ Γ I (.seq es) τ κ Γ' I'
+      JudgeSeq κ Γ I es τ κ₁ Γ' I' → Judge κ Γ I (.seq es) τ (κ.afterStmt (.seq es) τ) Γ' I'
   /-- A bare identifier that is not a local: `x` desugars to `vcall "x"`, a method-call
       attempt on implicit `self`. When the name resolves to nothing (`BareNameError`),
       evaluating it raises `NameError` — which is *outside* the
@@ -3417,7 +3417,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       BareNameError m → κ.selfTy = none →
       (hx : nameFreeN κ m = true := by rfl) →
       (hmm : nameFreeN κ "method_missing" = true := by rfl) →
-      Judge κ Γ I (.vcall m) .any κ Γ I
+      Judge κ Γ I (.vcall m) .any (κ.afterStmt (.vcall m) .any) Γ I
   /-- `if c then t else e`. Three things about this rule are decisions, not defaults:
 
       **The condition's type is unconstrained.** `σ` appears nowhere in the conclusion.
@@ -3469,12 +3469,12 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       no substitution that could express it — see `implementation-notes.md` clink 12, and
       `NarrowCond` for what evaluating the condition is required not to do. -/
   | if' {κ : Ctx} {Γ Γc Γ₁ Γ₂ : Env} {I Ic I₁ I₂ I₃ : Ty} {c t e : Expr}
-      {σ τ₁ τ₂ : Ty} {κ₁ κ₂ κ₃ : Ctx} :
-      Judge κ Γ I c σ κ₁ Γc Ic →
-      Judge κ (narrowEnvs κ c Γc).1 (narrowSpine κ c Ic).1 t τ₁ κ₂ Γ₁ I₁ →
-      Judge κ (narrowEnvs κ c Γc).2 (narrowSpine κ c Ic).2 e τ₂ κ₃ Γ₂ I₂ →
+      {σ τ₁ τ₂ : Ty} :
+      Judge κ Γ I c σ (κ.afterStmt c σ) Γc Ic →
+      Judge κ (narrowEnvs κ c Γc).1 (narrowSpine κ c Ic).1 t τ₁ (κ.afterStmt t τ₁) Γ₁ I₁ →
+      Judge κ (narrowEnvs κ c Γc).2 (narrowSpine κ c Ic).2 e τ₂ (κ.afterStmt e τ₂) Γ₂ I₂ →
       joinSpine I₁ I₂ = I₃ →
-      Judge κ Γ I (.if' c t (some e)) (joinT τ₁ τ₂) κ (joinEnv Γ₁ Γ₂) I₃
+      Judge κ Γ I (.if' c t (some e)) (joinT τ₁ τ₂) (κ.afterStmt (.if' c t (some e)) (joinT τ₁ τ₂)) (joinEnv Γ₁ Γ₂) I₃
   /-- `if c then t end`, with no `else`. Ruby's missing branch evaluates to `nil`, so
       this is the same rule with the else-branch's type fixed at `.nilT` and its
       environment fixed at `Γc` — the state as of the end of the condition.
@@ -3488,12 +3488,12 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       but strictly less precise; using `.1` would be a bug. The spine is treated the same way,
       and its premise is the `joinSpine` of `if'`, with the absent branch's refined spine in
       place of a second branch's. -/
-  | ifNoElse {κ : Ctx} {Γ Γc Γ₁ : Env} {I Ic I₁ I₂ : Ty} {c t : Expr} {σ τ : Ty} {κ₁ κ₂ : Ctx} :
-      Judge κ Γ I c σ κ₁ Γc Ic →
-      Judge κ (narrowEnvs κ c Γc).1 (narrowSpine κ c Ic).1 t τ κ₂ Γ₁ I₁ →
+  | ifNoElse {κ : Ctx} {Γ Γc Γ₁ : Env} {I Ic I₁ I₂ : Ty} {c t : Expr} {σ τ : Ty} :
+      Judge κ Γ I c σ (κ.afterStmt c σ) Γc Ic →
+      Judge κ (narrowEnvs κ c Γc).1 (narrowSpine κ c Ic).1 t τ (κ.afterStmt t τ) Γ₁ I₁ →
       joinSpine I₁ (narrowSpine κ c Ic).2 = I₂ →
       Judge κ Γ I (.if' c t none) (joinT τ .nilT)
-        κ (joinEnv Γ₁ (narrowEnvs κ c Γc).2) I₂
+        (κ.afterStmt (.if' c t none) (joinT τ .nilT)) (joinEnv Γ₁ (narrowEnvs κ c Γc).2) I₂
   /-- An array literal. The elements are typed left to right — `JudgeAll` already
       threads both states in exactly Ruby's element-evaluation order, so this rule
       needs no new machinery beyond `elemTy` — and the literal's type is `arrayOf` of
@@ -3510,7 +3510,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       and there is as yet no rule for `Array#<<` or `Array#[]=`. Whichever tier adds one
       inherits the obligation. -/
   | arrayLit {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {es : List Expr} {τs : List Ty} :
-      JudgeAll κ Γ I es τs Γ' I' → Judge κ Γ I (.array es) (.arrayOf (elemTy τs)) κ Γ' I'
+      JudgeAll κ Γ I es τs Γ' I' → Judge κ Γ I (.array es) (.arrayOf (elemTy τs)) (κ.afterStmt (.array es) (.arrayOf (elemTy τs))) Γ' I'
   /-- A hash literal, typed `hashOf` the join of its keys' types and the join of its values'
       (tier 17b).
 
@@ -3525,7 +3525,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       still takes a key derivation, a value derivation and the rest. -/
   | hashLit {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {pairs : List (Expr × Expr)} {kτ vτ : Ty} :
       JudgePairs κ Γ I pairs kτ vτ Γ' I' →
-      Judge κ Γ I (.hash pairs) (.hashOf kτ vτ) κ Γ' I'
+      Judge κ Γ I (.hash pairs) (.hashOf kτ vτ) (κ.afterStmt (.hash pairs) (.hashOf kτ vτ)) Γ' I'
   /-- A top-level `def` **statement**. Its type is `.sym`: `def foo; end` evaluates to
       `:foo` in Ruby, which is easy to forget because nobody uses the value.
 
@@ -3556,7 +3556,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
   | callAsm {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : String}
       {args : List Expr} {argTys : List Ty} {ρ : Ty} :
       JudgeAll κ Γ I args argTys Γ' I' → asmGet? κ.asms m argTys = some ρ →
-      Judge κ Γ I (.send none m args none) ρ κ Γ' I'
+      Judge κ Γ I (.send none m args none) ρ (κ.afterStmt (.send none m args none) ρ) Γ' I'
   /-- **A call to a defined method, with its body checked at this call site's argument
       types.** The centre of tier 6.
 
@@ -3603,11 +3603,11 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       typed at `.never` makes the whole `else` branch `.never`, which the join then
       discards). -/
   | callDef {κ : Ctx} {Γ Γ' Γb Γb' : Env} {I I' : Ty} {m : String}
-      {args : List Expr} {argTys : List Ty} {d : Defn} {ρ : Ty} {κ₁ : Ctx} :
+      {args : List Expr} {argTys : List Ty} {d : Defn} {ρ : Ty} :
       JudgeAll κ Γ I args argTys Γ' I' → defGet? κ.defs m = some d →
       paramEnv d.params argTys = some Γb →
-      Judge (κ.pushAsm ⟨m, argTys, ρ⟩) Γb .ivar0 d.body ρ κ₁ Γb' .ivar0 →
-      Judge κ Γ I (.send none m args none) ρ κ Γ' I'
+      Judge (κ.pushAsm ⟨m, argTys, ρ⟩) Γb .ivar0 d.body ρ ((κ.pushAsm ⟨m, argTys, ρ⟩).afterStmt d.body ρ) Γb' .ivar0 →
+      Judge κ Γ I (.send none m args none) ρ (κ.afterStmt (.send none m args none) ρ) Γ' I'
   /-- **A call to a top-level method that passes keyword arguments** (tier 14c) —
       `build(type: "brew", name: "x")`.
 
@@ -3633,14 +3633,14 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       the key. -/
   | callDefKw {κ : Ctx} {Γ Γ₁ Γ' Γb Γb' : Env} {I I₁ I' : Ty} {m : String}
       {args pos : List Expr} {posTys : List Ty} {entries : List KwEntry}
-      {kws : List (String × Ty)} {d : Defn} {ρ : Ty} {κ₁ : Ctx} :
+      {kws : List (String × Ty)} {d : Defn} {ρ : Ty} :
       args = pos ++ [.kwargs entries] →
       JudgeAll κ Γ I pos posTys Γ₁ I₁ →
       JudgeKw κ Γ₁ I₁ entries kws Γ' I' →
       defGet? κ.defs m = some d →
       paramEnvK d.params posTys kws = some Γb →
-      Judge κ Γb .ivar0 d.body ρ κ₁ Γb' .ivar0 →
-      Judge κ Γ I (.send none m args none) ρ κ Γ' I'
+      Judge κ Γb .ivar0 d.body ρ (κ.afterStmt d.body ρ) Γb' .ivar0 →
+      Judge κ Γ I (.send none m args none) ρ (κ.afterStmt (.send none m args none) ρ) Γ' I'
   /-- **Strictness for an explicit-receiver send**: if the receiver or any argument has
       type `.never`, the send itself has type `.never`.
 
@@ -3661,10 +3661,10 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       are all equally justified and equally absent; each would be a rule of its own, and
       none has a rung. -/
   | primNever {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr}
-      {m : String} {args : List Expr} {σ : Ty} {argTys : List Ty} {κ₁ : Ctx} :
-      Judge κ Γ I recv σ κ₁ Γ₁ I₁ → JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
+      {m : String} {args : List Expr} {σ : Ty} {argTys : List Ty} :
+      Judge κ Γ I recv σ (κ.afterStmt recv σ) Γ₁ I₁ → JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       (σ = .never ∨ argTys.contains .never = true) →
-      Judge κ Γ I (.send (some recv) m args none) .never κ Γ₂ I₂
+      Judge κ Γ I (.send (some recv) m args none) .never (κ.afterStmt (.send (some recv) m args none) .never) Γ₂ I₂
   /-- Strictness for an implicit-self call: the same argument as `primNever`, with no
       receiver to consider. Placed *before* `callAsm`/`callDef` in `Validate.lean`'s
       match, so a call with a non-returning argument is `.never` whether or not the method
@@ -3672,7 +3672,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
   | callNever {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : String}
       {args : List Expr} {argTys : List Ty} :
       JudgeAll κ Γ I args argTys Γ' I' → argTys.contains .never = true →
-      Judge κ Γ I (.send none m args none) .never κ Γ' I'
+      Judge κ Γ I (.send none m args none) .never (κ.afterStmt (.send none m args none) .never) Γ' I'
   -- ### Tier 7 — the object model
   --
   -- Eight rules. `classStmt`/`constCls` are the declaration side; `newInst`/
@@ -3735,7 +3735,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       a derivation reading the same constant two ways. -/
   | constCls {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {c : Cls} :
       clsGet? κ.classes n = some c → constGet? κ n = none →
-      Judge κ Γ I (.const n) (.clsOf n) κ Γ I
+      Judge κ Γ I (.const n) (.clsOf n) (κ.afterStmt (.const n) (.clsOf n)) Γ I
   /-- **A constant naming a *builtin* class** (tier 12). Same conclusion as `constCls` —
       `.clsOf n` — for a class the program did not declare.
 
@@ -3755,7 +3755,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       `.clsOf` nobody can answer `is_a?` for, which is inert but pointless. -/
   | constBuiltin {κ : Ctx} {Γ : Env} {I : Ty} {n : String} :
       BuiltinCls n → clsGet? κ.classes n = none → constGet? κ n = none →
-      Judge κ Γ I (.const n) (.clsOf n) κ Γ I
+      Judge κ Γ I (.const n) (.clsOf n) (κ.afterStmt (.const n) (.clsOf n)) Γ I
   /-- **`C.new(args)` — allocation, and where an instance's type is manufactured.**
 
       The receiver must be a class object (`.clsOf n`), so this rule is reached through
@@ -3780,13 +3780,13 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       needs a fixpoint over the spine, and no rung asks. -/
   | newInst {κ : Ctx} {Γ Γ₁ Γ₂ Γb Γb' : Env} {I I₁ I₂ Iout : Ty} {recv : Expr}
       {n dc : String} {args : List Expr} {argTys : List Ty} {d : Defn}
-      {ρ : Ty} {κ₁ κ₂ : Ctx} :
-      Judge κ Γ I recv (.clsOf n) κ₁ Γ₁ I₁ →
+      {ρ : Ty} :
+      Judge κ Γ I recv (.clsOf n) (κ.afterStmt recv (.clsOf n)) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       ctorGet? κ.classes n = some (dc, d) →
       paramEnv d.params argTys = some Γb →
-      Judge (κ.inCtor n dc "initialize") Γb .ivar0 d.body ρ κ₂ Γb' Iout →
-      Judge κ Γ I (.send (some recv) "new" args none) (.inst n Iout) κ Γ₂ I₂
+      Judge (κ.inCtor n dc "initialize") Γb .ivar0 d.body ρ ((κ.inCtor n dc "initialize").afterStmt d.body ρ) Γb' Iout →
+      Judge κ Γ I (.send (some recv) "new" args none) (.inst n Iout) (κ.afterStmt (.send (some recv) "new" args none) (.inst n Iout)) Γ₂ I₂
   /-- `C.new` for a class with **no `initialize`**: the object starts with no instance
       variables, so its spine is `.ivar0`.
 
@@ -3803,12 +3803,12 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       the rule did not say), which is the same shape as §F6/§F7: a premise the checker supplies
       by accident of control flow and the judgment has to state. It discharges by `rfl`. -/
   | newInstNoInit {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr}
-      {n : String} {args : List Expr} {c : Cls} {κ₁ : Ctx} :
-      Judge κ Γ I recv (.clsOf n) κ₁ Γ₁ I₁ →
+      {n : String} {args : List Expr} {c : Cls} :
+      Judge κ Γ I recv (.clsOf n) (κ.afterStmt recv (.clsOf n)) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args [] Γ₂ I₂ →
       instClsGet? κ.classes n = some c → ctorGet? κ.classes n = none →
       (hnew : smroGet? κ.classes n "new" = none := by rfl) →
-      Judge κ Γ I (.send (some recv) "new" args none) (.inst n .ivar0) κ Γ₂ I₂
+      Judge κ Γ I (.send (some recv) "new" args none) (.inst n .ivar0) (κ.afterStmt (.send (some recv) "new" args none) (.inst n .ivar0)) Γ₂ I₂
   /-- **An instance method call.** The receiver's type carries both halves of what dispatch
       needs: `.inst n Iself` says which class to look the method up in *and* what the
       object's instance variables are, so the body is judged with `Iself` as its state and
@@ -3834,13 +3834,13 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       is ever wanted, is to key `AsmTable` by receiver type as well as name. -/
   | callMethod {κ : Ctx} {Γ Γ₁ Γ₂ Γb Γb' : Env} {I I₁ I₂ Iself : Ty} {recv : Expr}
       {m : String} {args : List Expr} {argTys : List Ty} {n dc : String}
-      {d : Defn} {ρ : Ty} {κ₁ κ₂ : Ctx} :
-      Judge κ Γ I recv (.inst n Iself) κ₁ Γ₁ I₁ →
+      {d : Defn} {ρ : Ty} :
+      Judge κ Γ I recv (.inst n Iself) (κ.afterStmt recv (.inst n Iself)) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       mroGet? κ.classes n m = some (dc, d) →
       paramEnv d.params argTys = some Γb →
-      Judge (κ.inMethod (.inst n Iself) dc m) Γb Iself d.body ρ κ₂ Γb' Iself →
-      Judge κ Γ I (.send (some recv) m args none) ρ κ Γ₂ I₂
+      Judge (κ.inMethod (.inst n Iself) dc m) Γb Iself d.body ρ ((κ.inMethod (.inst n Iself) dc m).afterStmt d.body ρ) Γb' Iself →
+      Judge κ Γ I (.send (some recv) m args none) ρ (κ.afterStmt (.send (some recv) m args none) ρ) Γ₂ I₂
   /-- **`method_missing` — dispatch found nothing, so the object gets asked** (tier 10).
 
       `Ghost.new.anything_at_all` with `def method_missing(name); "called " + name.to_s; end`.
@@ -3870,15 +3870,15 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       rung writes one, and it would be this rule copied. -/
   | callMissing {κ : Ctx} {Γ Γ₁ Γ₂ Γb Γb' : Env} {I I₁ I₂ Iself : Ty} {recv : Expr}
       {m : String} {args : List Expr} {argTys : List Ty} {n dc : String}
-      {d : Defn} {ρ : Ty} {κ₁ κ₂ : Ctx} :
-      Judge κ Γ I recv (.inst n Iself) κ₁ Γ₁ I₁ →
+      {d : Defn} {ρ : Ty} :
+      Judge κ Γ I recv (.inst n Iself) (κ.afterStmt recv (.inst n Iself)) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       mroGet? κ.classes n m = none →
       ¬ ObjectMethod m →
       mroGet? κ.classes n "method_missing" = some (dc, d) →
       paramEnv d.params (.sym :: argTys) = some Γb →
-      Judge (κ.inMethod (.inst n Iself) dc "method_missing") Γb Iself d.body ρ κ₂ Γb' Iself →
-      Judge κ Γ I (.send (some recv) m args none) ρ κ Γ₂ I₂
+      Judge (κ.inMethod (.inst n Iself) dc "method_missing") Γb Iself d.body ρ ((κ.inMethod (.inst n Iself) dc "method_missing").afterStmt d.body ρ) Γb' Iself →
+      Judge κ Γ I (.send (some recv) m args none) ρ (κ.afterStmt (.send (some recv) m args none) ρ) Γ₂ I₂
   /-- **Implicit-self dispatch inside a method body**: a bare name that names one of the
       object's own methods. `class Rect; def describe; "area=" + area.to_s; end; …` — the
       `area` there is a `vcall`, not a local read and not a top-level function call, and it
@@ -3894,12 +3894,12 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       `callDef`/`callAsm`). Extending that to instance methods is what tier 7's second clink
       needs for `super`, and is deliberately not done here. -/
   | selfCall {κ : Ctx} {Γ Γb Γb' : Env} {I Iself : Ty} {m : String} {n dc : String}
-      {d : Defn} {ρ : Ty} {κ₁ : Ctx} :
+      {d : Defn} {ρ : Ty} :
       κ.selfTy = some (.inst n Iself) →
       mroGet? κ.classes n m = some (dc, d) →
       paramEnv d.params [] = some Γb →
-      Judge (κ.inMethod (.inst n Iself) dc m) Γb Iself d.body ρ κ₁ Γb' Iself →
-      Judge κ Γ I (.vcall m) ρ κ Γ I
+      Judge (κ.inMethod (.inst n Iself) dc m) Γb Iself d.body ρ ((κ.inMethod (.inst n Iself) dc m).afterStmt d.body ρ) Γb' Iself →
+      Judge κ Γ I (.vcall m) ρ (κ.afterStmt (.vcall m) ρ) Γ I
   -- ### Tier 7's hierarchy
   --
   -- Three rules, and each one is about a place where "which class?" has a different answer
@@ -3933,15 +3933,15 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       different `Expr` head and has no rule. -/
   | superCall {κ : Ctx} {Γ Γ' Γb Γb' : Env} {I I' Iout : Ty} {args : List Expr}
       {argTys : List Ty} {fr : Frame} {mro rest : List String} {dc : String} {d : Defn}
-      {ρ : Ty} {κ₁ : Ctx} :
+      {ρ : Ty} :
       JudgeAll κ Γ I args argTys Γ' I' →
       κ.frame = some fr →
       mroList? κ.classes fr.recvClass = some mro →
       afterInMro mro fr.defClass = some rest →
       searchMro κ.classes rest fr.methName = some (dc, d) →
       paramEnv d.params argTys = some Γb →
-      Judge (κ.withFrame (some ⟨fr.recvClass, dc, fr.methName⟩)) Γb I' d.body ρ κ₁ Γb' Iout →
-      Judge κ Γ I (.super' args none) ρ κ Γ' Iout
+      Judge (κ.withFrame (some ⟨fr.recvClass, dc, fr.methName⟩)) Γb I' d.body ρ ((κ.withFrame (some ⟨fr.recvClass, dc, fr.methName⟩)).afterStmt d.body ρ) Γb' Iout →
+      Judge κ Γ I (.super' args none) ρ (κ.afterStmt (.super' args none) ρ) Γ' Iout
   /-- **`super` with no argument list** (`zsuper`) — forwards the running method's own
       arguments implicitly.
 
@@ -3961,7 +3961,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       which means putting the parameter list in `Frame` beside `methName`. Every body-entering
       rule has the `Defn` at hand, so that is mechanical rather than deep; no rung asks. -/
   | zsuperCall {κ : Ctx} {Γ Γb Γb' : Env} {I Iout : Ty} {fr : Frame}
-      {mro rest : List String} {dc : String} {dcur d : Defn} {ρ : Ty} {κ₁ : Ctx} :
+      {mro rest : List String} {dc : String} {dcur d : Defn} {ρ : Ty} :
       κ.frame = some fr →
       mroGet? κ.classes fr.recvClass fr.methName = some (fr.defClass, dcur) →
       dcur.params = [] →
@@ -3969,8 +3969,8 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       afterInMro mro fr.defClass = some rest →
       searchMro κ.classes rest fr.methName = some (dc, d) →
       paramEnv d.params [] = some Γb →
-      Judge (κ.withFrame (some ⟨fr.recvClass, dc, fr.methName⟩)) Γb I d.body ρ κ₁ Γb' Iout →
-      Judge κ Γ I (.zsuper none) ρ κ Γ Iout
+      Judge (κ.withFrame (some ⟨fr.recvClass, dc, fr.methName⟩)) Γb I d.body ρ ((κ.withFrame (some ⟨fr.recvClass, dc, fr.methName⟩)).afterStmt d.body ρ) Γb' Iout →
+      Judge κ Γ I (.zsuper none) ρ (κ.afterStmt (.zsuper none) ρ) Γ Iout
   /-- **A singleton ("class") method call**: `Point.origin`. The receiver is a class object,
       so lookup goes to the *other* table (`smroGet?`, which walks `super?` as well — Ruby
       inherits class methods), and the body is judged with `self` typed as
@@ -3985,13 +3985,13 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       singleton method that assigns one is not typed. -/
   | callSMethod {κ : Ctx} {Γ Γ₁ Γ₂ Γb Γb' : Env} {I I₁ I₂ : Ty} {recv : Expr}
       {m : String} {args : List Expr} {argTys : List Ty} {n dc : String}
-      {d : Defn} {ρ : Ty} {κ₁ κ₂ : Ctx} :
-      Judge κ Γ I recv (.clsOf n) κ₁ Γ₁ I₁ →
+      {d : Defn} {ρ : Ty} :
+      Judge κ Γ I recv (.clsOf n) (κ.afterStmt recv (.clsOf n)) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       smroGet? κ.classes n m = some (dc, d) →
       paramEnv d.params argTys = some Γb →
-      Judge (κ.inMethod (.clsOf n) dc m) Γb .ivar0 d.body ρ κ₂ Γb' .ivar0 →
-      Judge κ Γ I (.send (some recv) m args none) ρ κ Γ₂ I₂
+      Judge (κ.inMethod (.clsOf n) dc m) Γb .ivar0 d.body ρ ((κ.inMethod (.clsOf n) dc m).afterStmt d.body ρ) Γb' .ivar0 →
+      Judge κ Γ I (.send (some recv) m args none) ρ (κ.afterStmt (.send (some recv) m args none) ρ) Γ₂ I₂
   /-- **A bare `new(args)` inside a singleton method**: `def self.origin; new(0, 0); end`.
 
       An implicit-self send whose `self` is a class object, so it allocates. Everything else
@@ -4003,13 +4003,13 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       *another* singleton method from inside one, or to `new` on a class without an
       `initialize`, would each be another rule of the same shape; no rung asks. -/
   | selfNew {κ : Ctx} {Γ Γ' Γb Γb' : Env} {I I' Iout : Ty} {args : List Expr}
-      {argTys : List Ty} {n dc : String} {d : Defn} {ρ : Ty} {κ₁ : Ctx} :
+      {argTys : List Ty} {n dc : String} {d : Defn} {ρ : Ty} :
       κ.selfTy = some (.clsOf n) →
       JudgeAll κ Γ I args argTys Γ' I' →
       ctorGet? κ.classes n = some (dc, d) →
       paramEnv d.params argTys = some Γb →
-      Judge (κ.inCtor n dc "initialize") Γb .ivar0 d.body ρ κ₁ Γb' Iout →
-      Judge κ Γ I (.send none "new" args none) (.inst n Iout) κ Γ' I'
+      Judge (κ.inCtor n dc "initialize") Γb .ivar0 d.body ρ ((κ.inCtor n dc "initialize").afterStmt d.body ρ) Γb' Iout →
+      Judge κ Γ I (.send none "new" args none) (.inst n Iout) (κ.afterStmt (.send none "new" args none) (.inst n Iout)) Γ' I'
   -- ### Tier 8 — modules
   --
   -- Two rules, and the smallness is the finding: `M.foo` for a `def self.foo` is
@@ -4043,12 +4043,12 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       `M.value` resolving to a plain `def value` would be wrong. Zero arguments, because a
       `vcall` is the zero-argument bare-name form. -/
   | selfSCall {κ : Ctx} {Γ Γb Γb' : Env} {I : Ty} {m : String} {n dc : String}
-      {d : Defn} {ρ : Ty} {κ₁ : Ctx} :
+      {d : Defn} {ρ : Ty} :
       κ.selfTy = some (.clsOf n) →
       smroGet? κ.classes n m = some (dc, d) →
       paramEnv d.params [] = some Γb →
-      Judge (κ.inMethod (.clsOf n) dc m) Γb .ivar0 d.body ρ κ₁ Γb' .ivar0 →
-      Judge κ Γ I (.vcall m) ρ κ Γ I
+      Judge (κ.inMethod (.clsOf n) dc m) Γb .ivar0 d.body ρ ((κ.inMethod (.clsOf n) dc m).afterStmt d.body ρ) Γb' .ivar0 →
+      Judge κ Γ I (.vcall m) ρ (κ.afterStmt (.vcall m) ρ) Γ I
   -- ### Tier 9 — callable values
   --
   -- Two rules, and between them they are `callDef` again with the def table replaced by
@@ -4092,7 +4092,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       (hfree : nameFreeN κ m = true := by rfl) →
       (hret : procRetOk m body = true := by rfl) →
       Judge κ Γ I (.send none m [] (some (.block ps [] body)))
-        (.clos idx (envToSpine Γ) (κ.selfTy.getD .never)) κ Γ I
+        (.clos idx (envToSpine Γ) (κ.selfTy.getD .never)) (κ.afterStmt (.send none m [] (some (.block ps [] body))) (.clos idx (envToSpine Γ) (κ.selfTy.getD .never))) Γ I
   /-- **`f.call(args)` / `f[args]`** — invoke a callable, by checking its body here.
 
       The body is judged in `paramEnv c.params argTys ++ spineToEnv cap`: this call site's
@@ -4131,16 +4131,16 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       the same conservatism `callMethod` has, and the same fix would apply. -/
   | closCall {κ : Ctx} {Γ Γ₁ Γ₂ Γb' : Env} {I I₁ I₂ : Ty} {recv : Expr} {m : String}
       {args : List Expr} {argTys : List Ty} {idx : Nat} {cap σ : Ty} {c : Clos}
-      {Γb : Env} {ρ : Ty} {κ₁ κ₂ : Ctx} :
+      {Γb : Env} {ρ : Ty} :
       (m = "call" ∨ m = "[]") →
-      Judge κ Γ I recv (.clos idx cap σ) κ₁ Γ₁ I₁ →
+      Judge κ Γ I recv (.clos idx cap σ) (κ.afterStmt recv (.clos idx cap σ)) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       closGet? κ.closures idx = some c →
       paramEnv c.params argTys = some Γb →
-      Judge (κ.inClosure σ) (Γb ++ spineToEnv cap) (closSpine σ) (bodyResult c.body) ρ κ₂ Γb'
+      Judge (κ.inClosure σ) (Γb ++ spineToEnv cap) (closSpine σ) (bodyResult c.body) ρ ((κ.inClosure σ).afterStmt (bodyResult c.body) ρ) Γb'
         (closSpine σ) →
       capIntact cap (Γb ++ spineToEnv cap) Γb' = true →
-      Judge κ Γ I (.send (some recv) m args none) ρ κ (killAliases Γ₂) I₂
+      Judge κ Γ I (.send (some recv) m args none) ρ (κ.afterStmt (.send (some recv) m args none) ρ) (killAliases Γ₂) I₂
   -- ### Tier 9c — the builtin iterators
   --
   -- Three rules, one per *way a block reaches an iterator*: written out at the call site, or
@@ -4179,15 +4179,15 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       a method body (tier 11's `xc-ivar-array-map`). -/
   | iterBlock {κ : Ctx} {Γ Γ₁ Γ₂ Γb Γb' : Env} {I I₁ I₂ : Ty} {recv : Expr}
       {m : String} {args : List Expr} {argTys : List Ty} {ps : List Param}
-      {locs : List String} {body : Expr} {elem : Ty} {βs : List Ty} {ρ res : Ty} {κ₁ κ₂ : Ctx} :
-      Judge κ Γ I recv (.arrayOf elem) κ₁ Γ₁ I₁ →
+      {locs : List String} {body : Expr} {elem : Ty} {βs : List Ty} {ρ res : Ty} :
+      Judge κ Γ I recv (.arrayOf elem) (κ.afterStmt recv (.arrayOf elem)) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       IterSig m elem argTys βs ρ res →
       paramEnv ps βs = some Γb →
-      Judge κ (Γb ++ blockLocals locs ++ killAliases Γ₂) I₂ body ρ κ₂ Γb' I₂ →
+      Judge κ (Γb ++ blockLocals locs ++ killAliases Γ₂) I₂ body ρ (κ.afterStmt body ρ) Γb' I₂ →
       capIntact (envToSpine Γ₂) (Γb ++ blockLocals locs ++ killAliases Γ₂) Γb' = true →
       Judge κ Γ I (.send (some recv) m args (some (.block ps locs body))) res
-        κ (killAliases Γ₂) I₂
+        (κ.afterStmt (.send (some recv) m args (some (.block ps locs body))) res) (killAliases Γ₂) I₂
   /-- **`arr.map(&:to_s)` — a Symbol coerced to a block.**
 
       `Symbol#to_proc` builds a one-parameter callable that *sends that name to its argument*,
@@ -4200,12 +4200,12 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       of the same coercion; no rung writes it, and admitting it would be a second claim about
       `to_proc` rather than a generalisation of this one. -/
   | iterSymPass {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr}
-      {m s : String} {args : List Expr} {argTys : List Ty} {elem β ρ res : Ty} {κ₁ : Ctx} :
-      Judge κ Γ I recv (.arrayOf elem) κ₁ Γ₁ I₁ →
+      {m s : String} {args : List Expr} {argTys : List Ty} {elem β ρ res : Ty} :
+      Judge κ Γ I recv (.arrayOf elem) (κ.afterStmt recv (.arrayOf elem)) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       IterSig m elem argTys [β] ρ res →
       PrimSig β s [] ρ →
-      Judge κ Γ I (.send (some recv) m args (some (.blockpass (some (.sym s))))) res κ Γ₂ I₂
+      Judge κ Γ I (.send (some recv) m args (some (.blockpass (some (.sym s))))) res (κ.afterStmt (.send (some recv) m args (some (.blockpass (some (.sym s))))) res) Γ₂ I₂
 
   /-- **`arr.map(&some_lambda)` — a callable value passed as the block.**
 
@@ -4220,18 +4220,18 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       Ruby's order, and its outgoing states thread into the body. -/
   | iterClosPass {κ : Ctx} {Γ Γ₁ Γ₂ Γ₃ Γb Γb' : Env} {I I₁ I₂ I₃ : Ty} {recv pe : Expr}
       {m : String} {args : List Expr} {argTys : List Ty} {idx : Nat} {cap σ : Ty}
-      {c : Clos} {elem β ρ res : Ty} {κ₁ κ₂ κ₃ : Ctx} :
-      Judge κ Γ I recv (.arrayOf elem) κ₁ Γ₁ I₁ →
+      {c : Clos} {elem β ρ res : Ty} :
+      Judge κ Γ I recv (.arrayOf elem) (κ.afterStmt recv (.arrayOf elem)) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
-      Judge κ Γ₂ I₂ pe (.clos idx cap σ) κ₂ Γ₃ I₃ →
+      Judge κ Γ₂ I₂ pe (.clos idx cap σ) (κ.afterStmt pe (.clos idx cap σ)) Γ₃ I₃ →
       IterSig m elem argTys [β] ρ res →
       closGet? κ.closures idx = some c →
       paramEnv c.params [β] = some Γb →
-      Judge (κ.inClosure σ) (Γb ++ spineToEnv cap) (closSpine σ) (bodyResult c.body) ρ κ₃ Γb'
+      Judge (κ.inClosure σ) (Γb ++ spineToEnv cap) (closSpine σ) (bodyResult c.body) ρ ((κ.inClosure σ).afterStmt (bodyResult c.body) ρ) Γb'
         (closSpine σ) →
       capIntact cap (Γb ++ spineToEnv cap) Γb' = true →
       Judge κ Γ I (.send (some recv) m args (some (.blockpass (some pe)))) res
-        κ (killAliases Γ₃) I₃
+        (κ.afterStmt (.send (some recv) m args (some (.blockpass (some pe)))) res) (killAliases Γ₃) I₃
   -- ### Tier 9b — a block reaching a method
   --
   -- Four rules. `callDefBlk` is the call site that carries a block; `yieldExpr` is the one
@@ -4271,7 +4271,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       object, not the top-level `defs` table, which is `selfCallBlk`'s job. -/
   | callDefBlk {κ : Ctx} {Γ Γ' Γb Γb' : Env} {I I' : Ty} {m : String}
       {args : List Expr} {argTys : List Ty} {ps : List Param} {body : Expr}
-      {idx : Nat} {d : Defn} {ρ : Ty} {κ₁ : Ctx} :
+      {idx : Nat} {d : Defn} {ρ : Ty} :
       κ.selfTy = none →
       JudgeAll κ Γ I args argTys Γ' I' →
       closIdx? κ.closures ps body = some idx →
@@ -4279,8 +4279,9 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       paramEnvB (some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never))) d.params argTys
         = some Γb →
       Judge (κ.withBlockTy (some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never))))
-        Γb .ivar0 d.body ρ κ₁ Γb' .ivar0 →
-      Judge κ Γ I (.send none m args (some (.block ps [] body))) ρ κ (killAliases Γ') I'
+        Γb .ivar0 d.body ρ ((κ.withBlockTy (some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never)))).afterStmt d.body ρ)
+        Γb' .ivar0 →
+      Judge κ Γ I (.send none m args (some (.block ps [] body))) ρ (κ.afterStmt (.send none m args (some (.block ps [] body))) ρ) (killAliases Γ') I'
   -- ### Tier 11 — a block reaching a *method of an object*
   --
   -- Three rules, and no new idea in any of them: each is its block-less twin
@@ -4297,33 +4298,35 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       `callMethod` plus the block. -/
   | callMethodBlk {κ : Ctx} {Γ Γ₁ Γ₂ Γb Γb' : Env} {I I₁ I₂ Iself : Ty} {recv : Expr}
       {m : String} {args : List Expr} {argTys : List Ty} {n dc : String} {d : Defn}
-      {ps : List Param} {body : Expr} {idx : Nat} {ρ : Ty} {κ₁ κ₂ : Ctx} :
-      Judge κ Γ I recv (.inst n Iself) κ₁ Γ₁ I₁ →
+      {ps : List Param} {body : Expr} {idx : Nat} {ρ : Ty} :
+      Judge κ Γ I recv (.inst n Iself) (κ.afterStmt recv (.inst n Iself)) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       closIdx? κ.closures ps body = some idx →
       mroGet? κ.classes n m = some (dc, d) →
       paramEnvB (some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never))) d.params argTys
         = some Γb →
       Judge ((κ.inMethod (.inst n Iself) dc m).withBlockTy (some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never))))
-        Γb Iself d.body ρ κ₂ Γb' Iself →
+        Γb Iself d.body ρ (((κ.inMethod (.inst n Iself) dc m).withBlockTy
+          (some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never)))).afterStmt d.body ρ) Γb' Iself →
       Judge κ Γ I (.send (some recv) m args (some (.block ps [] body))) ρ
-        κ (killAliases Γ₂) I₂
+        (κ.afterStmt (.send (some recv) m args (some (.block ps [] body))) ρ) (killAliases Γ₂) I₂
   /-- **`C.m(args) { |x| … }`** — a singleton method (or a module function) called with a
       block. `callSMethod` plus the block; the spine is `.ivar0` on both sides, because a
       class object has no instance variables this checker models. -/
   | callSMethodBlk {κ : Ctx} {Γ Γ₁ Γ₂ Γb Γb' : Env} {I I₁ I₂ : Ty} {recv : Expr}
       {m : String} {args : List Expr} {argTys : List Ty} {n dc : String} {d : Defn}
-      {ps : List Param} {body : Expr} {idx : Nat} {ρ : Ty} {κ₁ κ₂ : Ctx} :
-      Judge κ Γ I recv (.clsOf n) κ₁ Γ₁ I₁ →
+      {ps : List Param} {body : Expr} {idx : Nat} {ρ : Ty} :
+      Judge κ Γ I recv (.clsOf n) (κ.afterStmt recv (.clsOf n)) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       closIdx? κ.closures ps body = some idx →
       smroGet? κ.classes n m = some (dc, d) →
       paramEnvB (some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never))) d.params argTys
         = some Γb →
       Judge ((κ.inMethod (.clsOf n) dc m).withBlockTy (some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never))))
-        Γb .ivar0 d.body ρ κ₂ Γb' .ivar0 →
+        Γb .ivar0 d.body ρ (((κ.inMethod (.clsOf n) dc m).withBlockTy
+          (some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never)))).afterStmt d.body ρ) Γb' .ivar0 →
       Judge κ Γ I (.send (some recv) m args (some (.block ps [] body))) ρ
-        κ (killAliases Γ₂) I₂
+        (κ.afterStmt (.send (some recv) m args (some (.block ps [] body))) ρ) (killAliases Γ₂) I₂
   /-- **`m(args) { |x| … }` inside a method body** — implicit-self dispatch carrying a block.
       `selfCall` plus the block, plus arguments (which `selfCall` itself does not have, because
       a *bare* name is the zero-argument form and a `vcall` has nowhere to put a block).
@@ -4335,7 +4338,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       mechanisms meeting with nothing added to either. -/
   | selfCallBlk {κ : Ctx} {Γ Γ' Γb Γb' : Env} {I I' Iself : Ty} {m : String}
       {args : List Expr} {argTys : List Ty} {n dc : String} {d : Defn}
-      {ps : List Param} {body : Expr} {idx : Nat} {ρ : Ty} {κ₁ : Ctx} :
+      {ps : List Param} {body : Expr} {idx : Nat} {ρ : Ty} :
       κ.selfTy = some (.inst n Iself) →
       JudgeAll κ Γ I args argTys Γ' I' →
       closIdx? κ.closures ps body = some idx →
@@ -4343,8 +4346,9 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       paramEnvB (some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never))) d.params argTys
         = some Γb →
       Judge ((κ.inMethod (.inst n Iself) dc m).withBlockTy (some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never))))
-        Γb Iself d.body ρ κ₁ Γb' Iself →
-      Judge κ Γ I (.send none m args (some (.block ps [] body))) ρ κ (killAliases Γ') I'
+        Γb Iself d.body ρ (((κ.inMethod (.inst n Iself) dc m).withBlockTy
+          (some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never)))).afterStmt d.body ρ) Γb' Iself →
+      Judge κ Γ I (.send none m args (some (.block ps [] body))) ρ (κ.afterStmt (.send none m args (some (.block ps [] body))) ρ) (killAliases Γ') I'
   /-- **`yield args`** — invoke the block the enclosing method was called with.
 
       `Ctx.blockTy` supplies it, so this rule is only available inside a body entered through
@@ -4362,20 +4366,20 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       now be an instance method, which is what `xc-class-yield-ivar`/`xc-module-yield`/
       `xc-inherit-implicit-block` need. -/
   | yieldExpr {κ : Ctx} {Γ Γ' Γb' : Env} {I I' : Ty} {args : List Expr}
-      {argTys : List Ty} {idx : Nat} {cap σ : Ty} {c : Clos} {Γb : Env} {ρ : Ty} {κ₁ : Ctx} :
+      {argTys : List Ty} {idx : Nat} {cap σ : Ty} {c : Clos} {Γb : Env} {ρ : Ty} :
       κ.blockTy = some (.clos idx cap σ) →
       JudgeAll κ Γ I args argTys Γ' I' →
       closGet? κ.closures idx = some c →
       paramEnvB none c.params argTys = some Γb →
-      Judge (κ.inClosure σ) (Γb ++ spineToEnv cap) (closSpine σ) c.body ρ κ₁ Γb'
+      Judge (κ.inClosure σ) (Γb ++ spineToEnv cap) (closSpine σ) c.body ρ ((κ.inClosure σ).afterStmt c.body ρ) Γb'
         (closSpine σ) →
       capIntact cap (Γb ++ spineToEnv cap) Γb' = true →
-      Judge κ Γ I (.yield' args) ρ κ (killAliases Γ') I'
+      Judge κ Γ I (.yield' args) ρ (κ.afterStmt (.yield' args) ρ) (killAliases Γ') I'
   /-- A **bare name that is a top-level method**, with the instantiation assumed. `vcallAsm`
       is to `callAsm` what `vcallDef` is to `callDef`; see `AsmTable`. -/
   | vcallAsm {κ : Ctx} {Γ : Env} {I : Ty} {m : String} {ρ : Ty} :
       κ.selfTy = none → asmGet? κ.asms m [] = some ρ →
-      Judge κ Γ I (.vcall m) ρ κ Γ I
+      Judge κ Γ I (.vcall m) ρ (κ.afterStmt (.vcall m) ρ) Γ I
   /-- A **bare name that is a top-level method**: `def apply_twice; …; end; apply_twice`.
 
       `bareName`'s docstring has recorded this gap since tier 6 — "there is no rule for a
@@ -4386,17 +4390,17 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
 
       This does not overlap `bareName`, which requires `defGet? κ.defs m = none`, nor
       `selfCall`/`selfSCall`, which require a `self`. -/
-  | vcallDef {κ : Ctx} {Γ Γb Γb' : Env} {I : Ty} {m : String} {d : Defn} {ρ : Ty} {κ₁ : Ctx} :
+  | vcallDef {κ : Ctx} {Γ Γb Γb' : Env} {I : Ty} {m : String} {d : Defn} {ρ : Ty} :
       κ.selfTy = none → defGet? κ.defs m = some d → paramEnv d.params [] = some Γb →
-      Judge (κ.pushAsm ⟨m, [], ρ⟩) Γb .ivar0 d.body ρ κ₁ Γb' .ivar0 →
-      Judge κ Γ I (.vcall m) ρ κ Γ I
+      Judge (κ.pushAsm ⟨m, [], ρ⟩) Γb .ivar0 d.body ρ ((κ.pushAsm ⟨m, [], ρ⟩).afterStmt d.body ρ) Γb' .ivar0 →
+      Judge κ Γ I (.vcall m) ρ (κ.afterStmt (.vcall m) ρ) Γ I
   /-- `self`. Its type is whatever the context says, which inside a method body is
       `.inst n Iself` — not merely "a `Point`" but *this* `Point`, ivars and all. That is
       what makes `Point.new(7).myself.getX` type: `myself` returns a value whose type still
       records `@x : Integer` (rung `class-self-returning-method`). At top level `κ.selfTy`
       is `none` and there is no rule. -/
   | selfExpr {κ : Ctx} {Γ : Env} {I : Ty} {σ : Ty} :
-      κ.selfTy = some σ → Judge κ Γ I .self' σ κ Γ I
+      κ.selfTy = some σ → Judge κ Γ I .self' σ (κ.afterStmt .self' σ) Γ I
   /-- Reading an instance variable. `(ivarGet? I x).getD .nilT` — and the defaulting is the
       rule's content, not a fallback: **reading an instance variable that was never assigned
       yields `nil` in Ruby**; it does not raise. So `class Box; def reveal; @secret; end;
@@ -4407,7 +4411,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       no-retyping premise buys. Without that premise this rule would be the place the
       unsoundness surfaced. -/
   | ivarRead {κ : Ctx} {Γ : Env} {I : Ty} {x : String} :
-      Judge κ Γ I (.var .ivar x) ((ivarGet? I x).getD .nilT) κ Γ I
+      Judge κ Γ I (.var .ivar x) ((ivarGet? I x).getD .nilT) (κ.afterStmt (.var .ivar x) ((ivarGet? I x).getD .nilT)) Γ I
   /-- Assigning an instance variable. Value is the right-hand side's, exactly as for a
       local; effect is on the spine rather than on `Γ`, and lands in `I'` — the spine the
       right-hand side left behind — for the same evaluation-order reason `vasgn` adds to
@@ -4425,10 +4429,10 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       `self` and is where a mention normally appears (`@a = 1` inside a method of `C` whose
       `selfTy` is `.inst "C" (@a : Integer)` is fine, and has to be: the check is *agreement*,
       not absence). -/
-  | ivarAsgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {x : String} {e : Expr} {τ : Ty} {κ₁ : Ctx} :
-      Judge κ Γ I e τ κ₁ Γ' I' →
+  | ivarAsgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {x : String} {e : Expr} {τ : Ty} :
+      Judge κ Γ I e τ (κ.afterStmt e τ) Γ' I' →
       (hst : ivarAsgnOk κ x τ Γ' I' = true := by rfl) →
-      Judge κ Γ I (.vasgn .ivar x e) τ κ Γ' (ivarSet I' x τ)
+      Judge κ Γ I (.vasgn .ivar x e) τ (κ.afterStmt (.vasgn .ivar x e) τ) Γ' (ivarSet I' x τ)
   /-- An explicit-receiver, block-less `send` whose receiver and arguments type, and
       whose resulting shape has a justified `PrimSig`.
 
@@ -4442,11 +4446,11 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       is exactly what `rescue StandardError => e` binds — and that subclass may redefine the
       method the row is about. `primDispatchOk` excludes it. -/
   | prim {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr} {m : String}
-      {args : List Expr} {σ τ : Ty} {argTys : List Ty} {κ₁ : Ctx} :
-      Judge κ Γ I recv σ κ₁ Γ₁ I₁ → JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
+      {args : List Expr} {σ τ : Ty} {argTys : List Ty} :
+      Judge κ Γ I recv σ (κ.afterStmt recv σ) Γ₁ I₁ → JudgeAll κ Γ₁ I₁ args argTys Γ₂ I₂ →
       PrimSig σ m argTys τ →
       (hdisp : primDispatchOk κ.classes σ m = true := by rfl) →
-      Judge κ Γ I (.send (some recv) m args none) τ κ Γ₂ I₂
+      Judge κ Γ I (.send (some recv) m args none) τ (κ.afterStmt (.send (some recv) m args none) τ) Γ₂ I₂
   /-- **`recv.is_a?(C)` → `Bool`** (tier 12).
 
       Not a `PrimSig` row, and the reason is the interesting part: `PrimSig` is a relation on
@@ -4480,12 +4484,12 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       `dispatchMiss`, whose last question before raising is whether the receiver has a
       `method_missing` that *returns*. -/
   | isAQuery {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr}
-      {args : List Expr} {σ : Ty} {cn : String} {κ₁ : Ctx} :
-      Judge κ Γ I recv σ κ₁ Γ₁ I₁ → JudgeAll κ Γ₁ I₁ args [.clsOf cn] Γ₂ I₂ →
+      {args : List Expr} {σ : Ty} {cn : String} :
+      Judge κ Γ I recv σ (κ.afterStmt recv σ) Γ₁ I₁ → JudgeAll κ Γ₁ I₁ args [.clsOf cn] Γ₂ I₂ →
       isADispatchOk κ.classes σ = true →
       (hisa : nameFreeN κ "is_a?" = true := by rfl) →
       (hmm : nameFreeN κ "method_missing" = true := by rfl) →
-      Judge κ Γ I (.send (some recv) "is_a?" args none) .bool κ Γ₂ I₂
+      Judge κ Γ I (.send (some recv) "is_a?" args none) .bool (κ.afterStmt (.send (some recv) "is_a?" args none) .bool) Γ₂ I₂
   /-- **`C === v` → `Bool`** (tier 12) — `Module#===`, which is what `case v when C` desugars
       to.
 
@@ -4510,12 +4514,12 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       raises. As with `isAQuery`, the rule computes nothing about the *answer*; `isAAnswer` does
       that, and only `narrowEnvs` consults it. -/
   | caseEqQuery {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr}
-      {args : List Expr} {cn : String} {σ : Ty} {κ₁ : Ctx} :
-      Judge κ Γ I recv (.clsOf cn) κ₁ Γ₁ I₁ →
+      {args : List Expr} {cn : String} {σ : Ty} :
+      Judge κ Γ I recv (.clsOf cn) (κ.afterStmt recv (.clsOf cn)) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args [σ] Γ₂ I₂ →
       (hce : nameFreeN κ "===" = true := by rfl) →
       (hmm : nameFreeN κ "method_missing" = true := by rfl) →
-      Judge κ Γ I (.send (some recv) "===" args none) .bool κ Γ₂ I₂
+      Judge κ Γ I (.send (some recv) "===" args none) .bool (κ.afterStmt (.send (some recv) "===" args none) .bool) Γ₂ I₂
   -- ### Tier 13 — constants
   --
   -- Two rules, and the design is in `Ctx.consts`/§Constants: the binding is created by
@@ -4537,8 +4541,8 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       rebound name still see the class object, which is why `constCls`/`constBuiltin` grew
       their `constGet? κ n = none` premises rather than this rule growing a
       `clsGet? = none`. -/
-  | casgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {n : String} {e : Expr} {τ : Ty} {κ₁ : Ctx} :
-      Judge κ Γ I e τ κ₁ Γ' I' →
+  | casgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {n : String} {e : Expr} {τ : Ty} :
+      Judge κ Γ I e τ (κ.afterStmt e τ) Γ' I' →
       (hca : constAsgnOk κ n τ = true := by rfl) →
       Judge κ Γ I (.casgn n e) τ (κ.afterStmt (.casgn n e) τ) Γ' I'
   /-- **A constant read.** The third `.const` rule, and the only one that reads a binding the
@@ -4549,7 +4553,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       raises `NameError` and gets no derivation, where a whole-program constant table would
       have certified it. -/
   | constEnv {κ : Ctx} {Γ : Env} {I : Ty} {n : String} {τ : Ty} :
-      constGet? κ n = some τ → Judge κ Γ I (.const n) τ κ Γ I
+      constGet? κ n = some τ → Judge κ Γ I (.const n) τ (κ.afterStmt (.const n) τ) Γ I
   /-- **A regexp literal** (tier 15) — `.cls "Regexp"`, and **opaque**: nothing anywhere reads
       the pattern or the flags.
 
@@ -4562,7 +4566,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       The flags are carried in the syntax (`opts`) and ignored here for the same reason;
       `regexp-extended-flag` is the rung that checks that ignoring them is enough. -/
   | regexpLit {κ : Ctx} {Γ : Env} {I : Ty} {src : String} {opts : Nat} :
-      Judge κ Γ I (.regexpLit src opts) (.cls "Regexp") κ Γ I
+      Judge κ Γ I (.regexpLit src opts) (.cls "Regexp") (κ.afterStmt (.regexpLit src opts) (.cls "Regexp")) Γ I
   /-- **A builtin exception class named as a constant** (tier 16b) — `.clsOf n`, the third
       `const` rule of its kind and the same shape as `constBuiltin`, for names that relation
       deliberately does not admit (see `ExcCls`).
@@ -4571,7 +4575,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       a name it assigned goes through `constEnv`. -/
   | constExc {κ : Ctx} {Γ : Env} {I : Ty} {n : String} :
       ExcCls n → clsGet? κ.classes n = none → constGet? κ n = none →
-      Judge κ Γ I (.const n) (.clsOf n) κ Γ I
+      Judge κ Γ I (.const n) (.clsOf n) (κ.afterStmt (.const n) (.clsOf n)) Γ I
   /-- **`raise C` / `raise C, "msg"` → `.never`** (tier 16b), and `.never` is the whole point:
       `raise` does not return, so *no* claim about its value can be falsified. This is the same
       reading `primNever` gives a send with a non-returning argument, arrived at from the other
@@ -4598,7 +4602,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       excName? κ.classes n = true →
       (hrs : nameFreeN κ "raise" = true := by rfl) →
       (hmm : nameFreeN κ "method_missing" = true := by rfl) →
-      Judge κ Γ I (.send none "raise" args none) .never κ Γ' I'
+      Judge κ Γ I (.send none "raise" args none) .never (κ.afterStmt (.send none "raise" args none) .never) Γ' I'
   /-- **`begin … rescue … end`** (tier 16b), and in this target it is not error handling:
       `Vulnerability` raises and rescues its own `Uncomparable` as the **comparison protocol**,
       so a checker that cannot follow exceptions cannot type the decision core at all
@@ -4627,11 +4631,11 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       discarded and its assignments would have to join everywhere — and `ctl-begin-rescue-else-
       ensure` is the rung, blocked on the body assignment anyway. -/
   | begin' {κ : Ctx} {Γ Γb : Env} {I Ib : Ty} {body : Expr}
-      {rescues : List (List Expr × Option (TargetKind × String) × Expr)} {τb τr : Ty} {κ₁ : Ctx} :
-      Judge κ Γ I body τb κ₁ Γb Ib → Γb = Γ → Ib = I →
+      {rescues : List (List Expr × Option (TargetKind × String) × Expr)} {τb τr : Ty} :
+      Judge κ Γ I body τb (κ.afterStmt body τb) Γb Ib → Γb = Γ → Ib = I →
       noLocalAsgn body = true →
       JudgeRescues κ Γ I rescues τr →
-      Judge κ Γ I (.begin' body rescues none none) (joinT τb τr) κ Γ I
+      Judge κ Γ I (.begin' body rescues none none) (joinT τb τr) (κ.afterStmt (.begin' body rescues none none) (joinT τb τr)) Γ I
   /-- **`while c; body; end`** (tier 16). Its type is `.nilT`, which is what Ruby's `while`
       evaluates to.
 
@@ -4655,10 +4659,10 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
 
       A non-terminating loop produces no value, so `.nilT` is vacuously safe there. `until` is
       not a separate rule: the desugarer emits `while (cond).!`. -/
-  | while' {κ : Ctx} {Γ Γc Γb : Env} {I Ic Ib : Ty} {c body : Expr} {σ τ : Ty} {κ₁ κ₂ : Ctx} :
-      Judge κ Γ I c σ κ₁ Γc Ic → Γc = Γ → Ic = I →
-      Judge κ Γ I body τ κ₂ Γb Ib → Γb = Γ → Ib = I →
-      Judge κ Γ I (.while' c body) .nilT κ Γ I
+  | while' {κ : Ctx} {Γ Γc Γb : Env} {I Ic Ib : Ty} {c body : Expr} {σ τ : Ty} :
+      Judge κ Γ I c σ (κ.afterStmt c σ) Γc Ic → Γc = Γ → Ic = I →
+      Judge κ Γ I body τ (κ.afterStmt body τ) Γb Ib → Γb = Γ → Ib = I →
+      Judge κ Γ I (.while' c body) .nilT (κ.afterStmt (.while' c body) .nilT) Γ I
   /-- **`M::X` — a scoped constant read** (tier 13c). The key is absolute and the namespace is
       named by the base, so the lookup is a single `envGet?` with no search: unlike a bare
       `X`, `M::X` says where to look.
@@ -4675,11 +4679,11 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       Note that this reaches a *class's* constants too: `class Box; SIZE = 3; end; Box::SIZE`
       is this rule, and it is how Ruby spells the read that a bare `SIZE` at top level cannot
       do. -/
-  | constPath {κ : Ctx} {Γ Γ₁ : Env} {I I₁ : Ty} {base : Expr} {owner n : String} {τ : Ty} {κ₁ : Ctx} :
-      Judge κ Γ I base (.clsOf owner) κ₁ Γ₁ I₁ →
+  | constPath {κ : Ctx} {Γ Γ₁ : Env} {I I₁ : Ty} {base : Expr} {owner n : String} {τ : Ty} :
+      Judge κ Γ I base (.clsOf owner) (κ.afterStmt base (.clsOf owner)) Γ₁ I₁ →
       envGet? κ.consts (constKeyIn owner n) = some τ →
       κ.privConsts.contains (constKeyIn owner n) = false →
-      Judge κ Γ I (.cpath (some base) n) τ κ Γ₁ I₁
+      Judge κ Γ I (.cpath (some base) n) τ (κ.afterStmt (.cpath (some base) n) τ) Γ₁ I₁
   /-- **`M::Box` — a scoped *class* name** (tier 13e). `constPath`'s sibling, for the case
       where what the path names is a class or module rather than a value: nested declarations
       live in `κ.classes` under their qualified name, not in the constant table.
@@ -4696,11 +4700,11 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       `Outer::Inner` is this rule (`.clsOf "Outer::Inner"`), and only the outermost step is
       `constPath`. -/
   | constPathCls {κ : Ctx} {Γ Γ₁ : Env} {I I₁ : Ty} {base : Expr} {owner n : String}
-      {c : Cls} {κ₁ : Ctx} :
-      Judge κ Γ I base (.clsOf owner) κ₁ Γ₁ I₁ →
+      {c : Cls} :
+      Judge κ Γ I base (.clsOf owner) (κ.afterStmt base (.clsOf owner)) Γ₁ I₁ →
       clsGet? κ.classes (owner ++ "::" ++ n) = some c →
       envGet? κ.consts (constKeyIn owner n) = none →
-      Judge κ Γ I (.cpath (some base) n) (.clsOf (owner ++ "::" ++ n)) κ Γ₁ I₁
+      Judge κ Γ I (.cpath (some base) n) (.clsOf (owner ++ "::" ++ n)) (κ.afterStmt (.cpath (some base) n) (.clsOf (owner ++ "::" ++ n))) Γ₁ I₁
   /-- **`obj.class` — the inverse of `newInst`** (tier 13f). `.inst n _` in, `.clsOf n` out:
       the type already carries the class name, so this rule reads it off and forgets the ivar
       spine, which is exactly what the value does.
@@ -4713,12 +4717,12 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       Restricted to `.inst` receivers. `5.class` is ordinary Ruby and would need a row per
       builtin type; nothing asks, and the slice's use is `self.class.encode`. -/
   | classOf {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr} {args : List Expr}
-      {n : String} {ivars : Ty} {κ₁ : Ctx} :
-      Judge κ Γ I recv (.inst n ivars) κ₁ Γ₁ I₁ →
+      {n : String} {ivars : Ty} :
+      Judge κ Γ I recv (.inst n ivars) (κ.afterStmt recv (.inst n ivars)) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args [] Γ₂ I₂ →
       (hcls : nameFreeN κ "class" = true := by rfl) →
       (hmm : nameFreeN κ "method_missing" = true := by rfl) →
-      Judge κ Γ I (.send (some recv) "class" args none) (.clsOf n) κ Γ₂ I₂
+      Judge κ Γ I (.send (some recv) "class" args none) (.clsOf n) (κ.afterStmt (.send (some recv) "class" args none) (.clsOf n)) Γ₂ I₂
   /-- **`C.to_s` — `Module#to_s`, the class's name** (tier 13f). Total and never raises, so the
       only way it can be type-stuck is a `def self.to_s` on the class object, which the third
       premise excludes — the same shape of guard `caseEqQuery` uses for `Module#===`.
@@ -4732,12 +4736,12 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       Not a `PrimSig` row, because `PrimSig` cannot see the class table and the guard needs
       it. -/
   | clsToS {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {recv : Expr} {args : List Expr}
-      {n : String} {κ₁ : Ctx} :
-      Judge κ Γ I recv (.clsOf n) κ₁ Γ₁ I₁ →
+      {n : String} :
+      Judge κ Γ I recv (.clsOf n) (κ.afterStmt recv (.clsOf n)) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args [] Γ₂ I₂ →
       (hts : nameFreeN κ "to_s" = true := by rfl) →
       (hmm : nameFreeN κ "method_missing" = true := by rfl) →
-      Judge κ Γ I (.send (some recv) "to_s" args none) (.cls "String") κ Γ₂ I₂
+      Judge κ Γ I (.send (some recv) "to_s" args none) (.cls "String") (κ.afterStmt (.send (some recv) "to_s" args none) (.cls "String")) Γ₂ I₂
   /-- **`M::X = 4` — a scoped constant assignment** (tier 13c). `casgn`'s twin, and the same
       division of labour: this rule types the statement at its right-hand side's type and
       binds nothing, while `Ctx.afterStmt`/`extendConsts` makes the binding at
@@ -4747,9 +4751,9 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       into a namespace that is not one (`M = 5; M::X = 4`) raises `TypeError`. It is evaluated
       before the right-hand side, which is why the two `Judge` premises thread in that
       order. -/
-  | cpathAsgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {owner n : String} {e : Expr} {τ : Ty} {κ₁ κ₂ : Ctx} :
-      Judge κ Γ I (.const owner) (.clsOf owner) κ₁ Γ I →
-      Judge κ Γ I e τ κ₂ Γ' I' →
+  | cpathAsgn {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {owner n : String} {e : Expr} {τ : Ty} :
+      Judge κ Γ I (.const owner) (.clsOf owner) (κ.afterStmt (.const owner) (.clsOf owner)) Γ I →
+      Judge κ Γ I e τ (κ.afterStmt e τ) Γ' I' →
       (hca : constAsgnOk κ (constKeyIn owner n) τ = true := by rfl) →
       Judge κ Γ I (.cpathAsgn (some (.const owner)) n e) τ
         (κ.afterStmt (.cpathAsgn (some (.const owner)) n e) τ) Γ' I'
@@ -4768,11 +4772,11 @@ inductive JudgeRescues :
   | cons {κ : Ctx} {Γ Γh Γ' : Env} {I I' : Ty} {cls : List Expr}
       {binding : Option (TargetKind × String)} {handler : Expr} {names : List String}
       {τ τr : Ty}
-      {rest : List (List Expr × Option (TargetKind × String) × Expr)} {κ₁ : Ctx} :
+      {rest : List (List Expr × Option (TargetKind × String) × Expr)} :
       rescueClasses? cls = some names →
       names.all (fun n => excName? κ.classes n) = true →
       rescueBind? names binding = some Γh →
-      Judge κ (Γh ++ Γ) I handler τ κ₁ Γ' I' → Γ' = Γh ++ Γ → I' = I →
+      Judge κ (Γh ++ Γ) I handler τ (κ.afterStmt handler τ) Γ' I' → Γ' = Γh ++ Γ → I' = I →
       JudgeRescues κ Γ I rest τr →
       JudgeRescues κ Γ I ((cls, binding, handler) :: rest) (joinT τ τr)
 
@@ -4791,8 +4795,8 @@ order. -/
 inductive JudgeKw : Ctx → Env → Ty → List KwEntry → List (String × Ty) → Env → Ty → Prop
   | nil {κ : Ctx} {Γ : Env} {I : Ty} : JudgeKw κ Γ I [] [] Γ I
   | pair {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {k : String} {v : Expr} {τ : Ty}
-      {es : List KwEntry} {kws : List (String × Ty)} {κ₁ : Ctx} :
-      Judge κ Γ I v τ κ₁ Γ₁ I₁ →
+      {es : List KwEntry} {kws : List (String × Ty)} :
+      Judge κ Γ I v τ (κ.afterStmt v τ) Γ₁ I₁ →
       JudgeKw κ Γ₁ I₁ es kws Γ₂ I₂ →
       JudgeKw κ Γ I (.pair k v :: es) ((k, τ) :: kws) Γ₂ I₂
 
@@ -4801,8 +4805,8 @@ both states threaded left to right (Ruby's argument evaluation order). -/
 inductive JudgeAll : Ctx → Env → Ty → List Expr → List Ty → Env → Ty → Prop
   | nil {κ : Ctx} {Γ : Env} {I : Ty} : JudgeAll κ Γ I [] [] Γ I
   | cons {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {e : Expr} {es : List Expr}
-      {τ : Ty} {τs : List Ty} {κ₁ : Ctx} :
-      Judge κ Γ I e τ κ₁ Γ₁ I₁ → JudgeAll κ Γ₁ I₁ es τs Γ₂ I₂ →
+      {τ : Ty} {τs : List Ty} :
+      Judge κ Γ I e τ (κ.afterStmt e τ) Γ₁ I₁ → JudgeAll κ Γ₁ I₁ es τs Γ₂ I₂ →
       JudgeAll κ Γ I (e :: es) (τ :: τs) Γ₂ I₂
 
 /-- Key-then-value `Judge` over a hash literal's pairs, threading both states in
@@ -4811,8 +4815,8 @@ to require that each key and each value *has* one (see `Judge.hashLit`). -/
 inductive JudgePairs : Ctx → Env → Ty → List (Expr × Expr) → Ty → Ty → Env → Ty → Prop
   | nil {κ : Ctx} {Γ : Env} {I : Ty} : JudgePairs κ Γ I [] .never .never Γ I
   | cons {κ : Ctx} {Γ Γ₁ Γ₂ Γ₃ : Env} {I I₁ I₂ I₃ : Ty} {k v : Expr}
-      {ps : List (Expr × Expr)} {σ ν kr vr : Ty} {κ₁ κ₂ : Ctx} :
-      Judge κ Γ I k σ κ₁ Γ₁ I₁ → Judge κ Γ₁ I₁ v ν κ₂ Γ₂ I₂ →
+      {ps : List (Expr × Expr)} {σ ν kr vr : Ty} :
+      Judge κ Γ I k σ (κ.afterStmt k σ) Γ₁ I₁ → Judge κ Γ₁ I₁ v ν (κ.afterStmt v ν) Γ₂ I₂ →
       JudgePairs κ Γ₂ I₂ ps kr vr Γ₃ I₃ →
       JudgePairs κ Γ I ((k, v) :: ps) (joinT σ kr) (joinT ν vr) Γ₃ I₃
 
@@ -4825,12 +4829,14 @@ top-level `def` or `class` becomes visible to the statements that follow it and 
 earlier one. This is the only rule in the file that changes `κ.defs`/`κ.classes`, and it is
 why `foo(); def foo; end` has no derivation. -/
 inductive JudgeSeq : Ctx → Env → Ty → List Expr → Ty → Ctx → Env → Ty → Prop
-  | last {κ κ₁ : Ctx} {Γ Γ' : Env} {I I' : Ty} {e : Expr} {τ : Ty} :
-      Judge κ Γ I e τ κ₁ Γ' I' → JudgeSeq κ Γ I [e] τ κ₁ Γ' I'
-  | cons {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {e e' : Expr}
+  | last {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {e : Expr} {τ : Ty} :
+      Judge κ Γ I e τ (κ.afterStmt e τ) Γ' I' →
+      JudgeSeq κ Γ I [e] τ (κ.afterStmt e τ) Γ' I'
+  | cons {κ κ₁ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty} {e e' : Expr}
       {es : List Expr} {σ τ : Ty} :
-      Judge κ Γ I e σ κ₁ Γ₁ I₁ → JudgeSeq κ₁ Γ₁ I₁ (e' :: es) τ κ₂ Γ₂ I₂ →
-      JudgeSeq κ Γ I (e :: e' :: es) τ κ₂ Γ₂ I₂
+      Judge κ Γ I e σ (κ.afterStmt e σ) Γ₁ I₁ →
+      JudgeSeq (κ.afterStmt e σ) Γ₁ I₁ (e' :: es) τ κ₁ Γ₂ I₂ →
+      JudgeSeq κ Γ I (e :: e' :: es) τ κ₁ Γ₂ I₂
   /-- **The guard clause: `return e if c`, followed by more statements** (tier 12).
 
       Ruby's most common narrowing idiom, and the only one that narrows by *elimination of a
@@ -4871,9 +4877,9 @@ inductive JudgeSeq : Ctx → Env → Ty → List Expr → Ty → Ctx → Env →
       because the spine this rule reports is the *rest*'s: an ivar written on the returning
       path would be invisible to the caller's `Iout = Iself` check. -/
   | guard {κ : Ctx} {Γ Γc Γr Γ' : Env} {I Ic Ir I' : Ty} {c e : Expr}
-      {rest : List Expr} {σ ρ τ : Ty} {κ₁ : Ctx} {κ₂ κ₃ : Ctx} :
-      Judge κ Γ I c σ κ₂ Γc Ic →
-      Judge κ (narrowEnvs κ c Γc).1 (narrowSpine κ c Ic).1 e ρ κ₃ Γr Ir →
+      {rest : List Expr} {σ ρ τ : Ty} {κ₁ : Ctx} :
+      Judge κ Γ I c σ (κ.afterStmt c σ) Γc Ic →
+      Judge κ (narrowEnvs κ c Γc).1 (narrowSpine κ c Ic).1 e ρ (κ.afterStmt e ρ) Γr Ir →
       Ir = (narrowSpine κ c Ic).1 →
       JudgeSeq κ (narrowEnvs κ c Γc).2 (narrowSpine κ c Ic).2 rest τ κ₁ Γ' I' →
       JudgeSeq κ Γ I (.if' c (.ret (some e)) none :: rest) (joinT ρ τ) κ₁ Γ' I'
@@ -4897,8 +4903,8 @@ inductive JudgeSeq : Ctx → Env → Ty → List Expr → Ty → Ctx → Env →
       `next e` (with a value) is not covered: it would need `ρ` from the expression, which is
       `guard` with a different keyword and is owed rather than forbidden. -/
   | nextGuard {κ : Ctx} {Γ Γc Γ' : Env} {I Ic I' : Ty} {c : Expr}
-      {rest : List Expr} {σ τ : Ty} {κ₁ : Ctx} {κ₂ : Ctx} :
-      Judge κ Γ I c σ κ₂ Γc Ic →
+      {rest : List Expr} {σ τ : Ty} {κ₁ : Ctx} :
+      Judge κ Γ I c σ (κ.afterStmt c σ) Γc Ic →
       JudgeSeq κ (narrowEnvs κ c Γc).2 (narrowSpine κ c Ic).2 rest τ κ₁ Γ' I' →
       JudgeSeq κ Γ I (.if' c (.nxt none) none :: rest) (joinT .nilT τ) κ₁ Γ' I'
 
@@ -4917,9 +4923,9 @@ Two design points, both about which side of the check each half is on:
   tables in force are the ones that really are in force when the body runs. -/
 inductive JudgeConsts : Ctx → List (String × Expr) → Prop
   | nil {κ : Ctx} : JudgeConsts κ []
-  | cons {κ : Ctx} {n : String} {e : Expr} {τ : Ty} {cs : List (String × Expr)} {κ₁ : Ctx} :
+  | cons {κ : Ctx} {n : String} {e : Expr} {τ : Ty} {cs : List (String × Expr)} :
       constLitTy? e = some τ →
-      Judge κ [] .ivar0 e τ κ₁ [] .ivar0 →
+      Judge κ [] .ivar0 e τ (κ.afterStmt e τ) [] .ivar0 →
       JudgeConsts κ cs →
       JudgeConsts κ ((n, e) :: cs)
 

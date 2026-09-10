@@ -46,7 +46,7 @@ theorem Sem.JudgeRescues.cons : Obl.JudgeRescues.cons := by
     cases heq
     rw [hcls] at hcls'; cases hcls'
     rw [hbind] at hbind'; cases hbind'
-    obtain ⟨hstack, hden, hok⟩ := hhandler.2 m hm v m' hev
+    obtain ⟨hstack, hden, hok, -⟩ := hhandler.2 m hm v m' hev
     exact ⟨hstack, denM_joinT_left hden, hok⟩
   · obtain ⟨hstack, hden, hok⟩ :=
       hrest cls' binding' handler' htl names' Γh' hcls' hbind' m hm v m' hev

@@ -115,7 +115,7 @@ theorem Sem.Judge.primNever : Obl.Judge.primNever := by
     obtain ⟨n, v₀, m₀, hin, hc₀, hk₀, f₂, hout⟩ :=
       run_split _ (catchFree_recvK mname (toRubyList args) .none _)
         (jumpOpaque_recvK mname (toRubyList args) .none _) f (evalFrom m recv) v m' hrun
-    obtain ⟨_, hdenRecv, hok₁⟩ := hrecv.2 m hm v₀ m₀ ⟨n, hin⟩
+    obtain ⟨_, hdenRecv, hok₁, -⟩ := hrecv.2 m hm v₀ m₀ ⟨n, hin⟩
     rcases hnever with hσ | hargNever
     · -- the receiver's own type is `never`
       subst hσ

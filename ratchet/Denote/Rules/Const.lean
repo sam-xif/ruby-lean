@@ -150,7 +150,7 @@ differ only in how they produce it. -/
 theorem semJudge_const_clsOf {κ : Ctx} {Γ : Env} {I : Ty} {n : String}
     (hname : ∀ m : Machine, StateOk κ Γ I m → ∀ v, constResolveAt m n = some v →
       ∃ k, classNamed? m.heap n = some k ∧ v = .ref k) :
-    SemJudge κ Γ I (.const n) (.clsOf n) Γ I := by
+    SemJudge κ Γ I (.const n) (.clsOf n) (κ.afterStmt (.const n) (.clsOf n)) Γ I := by
   refine ⟨trivial, ?_⟩
   intro m hm v m' hev
   -- The machine answered *something*, so resolution succeeded; that is where the value is.
@@ -159,7 +159,7 @@ theorem semJudge_const_clsOf {κ : Ctx} {Γ : Env} {I : Ty} {n : String}
   | some w =>
     obtain ⟨k, hk, rfl⟩ := hname m hm w hr
     obtain ⟨rfl, rfl⟩ := evals_pure (stepFn_const hr) hev
-    exact ⟨Framed_reCtl _ _ _, denM_reCtl.mpr (denM_clsOf_of_classNamed hk), StateOk_reCtl hm _ _⟩
+    exact ⟨Framed_reCtl _ _ _, denM_reCtl.mpr (denM_clsOf_of_classNamed hk), StateOk_reCtl hm _ _, StateOk_reCtl hm _ _⟩
 
 
 /-! ## The three rules
@@ -230,7 +230,7 @@ theorem Sem.Judge.constEnv : Obl.Judge.constEnv := by
   intro m hm v m' hev
   obtain ⟨w, hres, hden⟩ := hm.consts n τ hget
   obtain ⟨rfl, rfl⟩ := evals_pure (stepFn_const hres) hev
-  exact ⟨Framed_reCtl _ _ _, denM_reCtl.mpr hden, StateOk_reCtl hm _ _⟩
+  exact ⟨Framed_reCtl _ _ _, denM_reCtl.mpr hden, StateOk_reCtl hm _ _, StateOk_reCtl hm _ _⟩
 
 #print axioms Sem.Judge.constCls
 #print axioms Sem.Judge.constBuiltin

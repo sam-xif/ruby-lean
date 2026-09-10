@@ -225,7 +225,7 @@ theorem Sem.Judge.ivarAsgn : Obl.Judge.ivarAsgn := by
     run_split [.asgnK .ivar x] (catchFree_asgnK_ivar x) (jumpOpaque_asgnK .ivar x) f
       (evalFrom m e) v m' hf
   -- **The premise**, at the sub-run.
-  obtain ⟨hframe, hden, hSt'⟩ := hprem.2 m hm v₀ m₀ ⟨n, hin⟩
+  obtain ⟨hframe, hden, hSt', -⟩ := hprem.2 m hm v₀ m₀ ⟨n, hin⟩
   -- `M` is the delivery state with the continuation already popped: the machine the write
   -- happens at.
   have hMok : StateOk κ Γ' I' (reCtl m₀ (.value v₀) []) := StateOk_reCtl hSt' _ _
@@ -256,7 +256,10 @@ theorem Sem.Judge.ivarAsgn : Obl.Judge.ivarAsgn := by
         (by rw [Ratchet.ivarAsgnOk, Bool.and_eq_true, Bool.and_eq_true, Bool.and_eq_true,
               Bool.and_eq_true, Bool.and_eq_true] at hst
             exact hst.1.1.1.1.2) hdenM)
-    · exact StateOk_reCtl (StateOk_ivarWrite hMok (hs' ▸ hw) hdenM hst) _ _
+    -- Both outgoing conjuncts (`SemJudge`'s §Outgoing conformance); an ivar assignment
+    -- declares nothing, so the reported context is the incoming one.
+    · exact ⟨StateOk_reCtl (StateOk_ivarWrite hMok (hs' ▸ hw) hdenM hst) _ _,
+             StateOk_reCtl (StateOk_ivarWrite hMok (hs' ▸ hw) hdenM hst) _ _⟩
   · -- **the two raising arms**: no value, so nothing to prove
     exfalso
     have hstuck : ∀ o, m₀.currentFrame.self = .ref o → (m₀.heap.get o).frozen = true := by

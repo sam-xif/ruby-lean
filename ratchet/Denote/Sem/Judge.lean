@@ -131,14 +131,49 @@ theorem Framed.of_heap_stack {m m' : Machine} (hh : m'.heap = m.heap)
     (hs : m'.stack = m.stack) : Framed m m' :=
   ⟨hs, fun k h => by rw [hh]; exact h⟩
 
-/-- **The semantic judgment.** See the module docstring for the four choices in it, and
-§`Plain` above for the fifth. -/
-def SemJudge (κ : Ctx) (Γ : Env) (I : Ty) (e : Ratchet.Expr) (τ : Ty) (Γ' : Env) (I' : Ty) :
-    Prop :=
+/-! ### Outgoing conformance, at both ends of a rule's context
+
+(`context-splitting.md` §3, and the resolution of L268's "`StateOk` transports in neither direction").
+
+Threading gave `Judge` an outgoing context `κ'`, and the obvious semantic reading is to move
+`SemJudge`'s conclusion to it — §8.1 step 4 says exactly that. Moving it is not enough, and the
+measurement is sharp: it *weakens* the premise that every non-declaring rule lives on. Those
+rules consume their sub-derivation's outgoing conformance and republish it at their own `κ`, and
+with the conclusion at `κ'` alone they would receive it at `κ.afterStmt e τ` instead. Getting
+back is the **down-transport**, which §3 prices at "antitone, one line" and which is *false* for
+`ConstsOk`: `extendConsts` is `envSet`, which **overwrites**, so a statement that rebinds a
+constant at a different type falsifies the old `ConstsOk` at the new machine. §F18's
+`constAsgnOk` is precisely the premise that rules that out, and it lives on the *syntactic*
+`Judge.casgn` — nothing a semantic obligation quantified over an arbitrary `SemJudge` can see.
+(§10.3's "our facts are keyed and immutable-per-key" is the assumption that fails: `consts` is
+keyed and **mutable** per key.)
+
+So the outgoing state is claimed at **both** contexts, and the two are for different readers:
+
+* `StateOk κ Γ' I' m'` — what the rule's *consumer* needs. A send republishes its receiver's
+  conformance at its own context; an assignment republishes its right-hand side's. This is the
+  claim that used to be the whole conclusion, and keeping it is what makes the migration
+  cost the 47 discharged rungs one component rather than a re-proof.
+* `StateOk κ' Γ' I' m'` — what the *next statement* needs. This is the new content, and it is
+  the one §3 is about: for the five declaration rules it says "one `stepFn` step installs
+  exactly what `κ'` records", which is what makes `JudgeSeq.cons` compose without transport.
+  For every other rule `κ'` is `κ` definitionally, so the second conjunct is the first.
+
+Neither direction is transported. Both are stated.
+
+Written as two flat conjuncts rather than a bundled pair, so that a consumer that wants the
+first reads it off with an extra `-` in its pattern and a producer whose `κ'` is `κ` supplies
+the same term twice. Bundling would have made every existing `⟨_, _, hok⟩` silently bind `hok`
+to the pair. -/
+
+/-- **The semantic judgment.** See the module docstring for the four choices in it,
+§`Plain` above for the fifth, and §Outgoing conformance for the sixth. -/
+def SemJudge (κ : Ctx) (Γ : Env) (I : Ty) (e : Ratchet.Expr) (τ : Ty) (κ' : Ctx)
+    (Γ' : Env) (I' : Ty) : Prop :=
   Plain e ∧
   ∀ m : Machine, StateOk κ Γ I m →
     ∀ v m', Evals m e v m' →
-      Framed m m' ∧ denM τ m' v ∧ StateOk κ Γ' I' m'
+      Framed m m' ∧ denM τ m' v ∧ StateOk κ Γ' I' m' ∧ StateOk κ' Γ' I' m'
 
 /-- Evaluating a list of expressions left to right, each returning a value of its own type,
 threading the state. The value list is existential because the *judgment* says nothing about
@@ -240,7 +275,7 @@ value is the last statement's — but kept a separate definition to mirror `Judg
 whole reason for existing is that the context grows between statements
 (`Ctx.afterStmt`). -/
 def SemJudgeSeq (κ : Ctx) (Γ : Env) (I : Ty) (es : List Ratchet.Expr) (τ : Ty)
-    (Γ' : Env) (I' : Ty) : Prop :=
+    (_κ' : Ctx) (Γ' : Env) (I' : Ty) : Prop :=
   PlainAll es ∧
   ∀ m : Machine, StateOk κ Γ I m →
     ∀ v m', Evals m (.seq es) v m' →
@@ -270,7 +305,7 @@ initialiser is judged in the *empty* environment". So its semantic reading is ju
 same two facts, with `SemJudge` in place of `Judge`. Nothing here needs a machine index,
 because `SemJudge` quantifies over machines itself. -/
 def SemJudgeConsts (κ : Ctx) (cs : List (String × Ratchet.Expr)) : Prop :=
-  ∀ n e, (n, e) ∈ cs → ∃ τ, constLitTy? e = some τ ∧ SemJudge κ [] .ivar0 e τ [] .ivar0
+  ∀ n e, (n, e) ∈ cs → ∃ τ, constLitTy? e = some τ ∧ SemJudge κ [] .ivar0 e τ (κ.afterStmt e τ) [] .ivar0
 
 /-- A class body's **nested** class and module declarations (tier 13e): each nested body's own
 constants are semantically judged.

@@ -52,7 +52,7 @@ theorem Sem.Judge.selfExpr : Obl.Judge.selfExpr := by
     | skip
   intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (stepFn_self m) h
-  refine ⟨Framed_reCtl _ _ _, ?_, StateOk_reCtl hm _ _⟩
+  refine ⟨Framed_reCtl _ _ _, ?_, StateOk_reCtl hm _ _, StateOk_reCtl hm _ _⟩
   have hden : denM σ m m.currentFrame.self := by
     have := hm.selfTy; unfold SelfTyOk at this; rw [hself] at this; exact this
   simpa using denM_reCtl.mpr hden
@@ -112,7 +112,7 @@ theorem Sem.Judge.ivarRead : Obl.Judge.ivarRead := by
     | skip
   intro m hm v m' h
   obtain ⟨rfl, rfl⟩ := evals_pure (stepFn_ivar m x) h
-  refine ⟨Framed_reCtl _ _ _, ?_, StateOk_reCtl hm _ _⟩
+  refine ⟨Framed_reCtl _ _ _, ?_, StateOk_reCtl hm _ _, StateOk_reCtl hm _ _⟩
   have hspine := hm.selfSpine
   unfold SelfSpineOk at hspine
   refine denM_reCtl.mpr ?_

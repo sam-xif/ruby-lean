@@ -37,7 +37,7 @@ theorem Sem.Judge.isAQuery : Obl.Judge.isAQuery := by
     obtain ⟨nb, v₀, m₀, hin, hc₀, hk₀, hout⟩ :=
       run_split _ (catchFree_recvK "is_a?" (toRubyList args) .none _)
         (jumpOpaque_recvK "is_a?" (toRubyList args) .none _) f (evalFrom m recv) v m' hrun
-    obtain ⟨hstack, _, hok₁⟩ := hrecv.2 m hm v₀ m₀ ⟨nb, hin⟩
+    obtain ⟨hstack, _, hok₁, -⟩ := hrecv.2 m hm v₀ m₀ ⟨nb, hin⟩
     obtain ⟨f₂, hf₂⟩ := hout
     revert hf₂
     rcases f₂ with _ | f₃
@@ -108,7 +108,7 @@ theorem Sem.Judge.isAQuery : Obl.Judge.isAQuery := by
                     · rw [show Interp.withCtl ma (Ctl.value (Value.bool (isA ma.heap v₀ ka)))
                             = reCtl ma (.value (.bool (isA ma.heap v₀ ka))) [] from by
                           rw [Interp.withCtl, reCtl, hk₁]]
-                      exact StateOk_reCtl hok₂ _ _
+                      exact ⟨StateOk_reCtl hok₂ _ _, StateOk_reCtl hok₂ _ _⟩
                 · rw [hd] at hstep; exact absurd hstep (by simp)
               | none =>
                 obtain ⟨_, hq2⟩ := hok₂.query "is_a?" "Object#is_a?" (by simp [queryBuiltins])

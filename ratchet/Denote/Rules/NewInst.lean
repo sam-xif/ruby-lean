@@ -239,7 +239,7 @@ theorem Sem.Judge.newInstNoInit : Obl.Judge.newInstNoInit := by
     obtain ⟨nb, v₀, m₀, hin, hc₀, hk₀, hout⟩ :=
       run_split _ (catchFree_recvK "new" (toRubyList args) .none _)
         (jumpOpaque_recvK "new" (toRubyList args) .none _) f (evalFrom m recv) v m' hrun
-    obtain ⟨hframe₁, hdenR, hok₁⟩ := hrecv.2 m hm v₀ m₀ ⟨nb, hin⟩
+    obtain ⟨hframe₁, hdenR, hok₁, -⟩ := hrecv.2 m hm v₀ m₀ ⟨nb, hin⟩
     obtain ⟨k, hcn, rfl, hkp⟩ := denM_clsOf_ref hdenR
     obtain ⟨f₂, hf₂⟩ := hout
     revert hf₂
@@ -324,7 +324,7 @@ theorem Sem.Judge.newInstNoInit : Obl.Judge.newInstNoInit := by
                 rw [run_succ, hwc, stepFn_value_nil] at hf₄
                 dsimp only at hf₄
                 cases hf₄
-                refine ⟨hframe₁.trans (Framed.of_ext hext), ?_, StateOk_ext hok₂ hext⟩
+                refine ⟨hframe₁.trans (Framed.of_ext hext), ?_, ⟨StateOk_ext hok₂ hext, StateOk_ext hok₂ hext⟩⟩
                 -- `.inst n .ivar0`: exactly `k`'s instance, live, and with no ivars at all
                 rw [denM]
                 refine ⟨?_, by rw [denSpineFrom]; trivial⟩

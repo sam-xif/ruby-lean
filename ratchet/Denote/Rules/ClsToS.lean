@@ -206,7 +206,7 @@ theorem Sem.Judge.clsToS : Obl.Judge.clsToS := by
     obtain ⟨nb, v₀, m₀, hin, hc₀, hk₀, hout⟩ :=
       run_split _ (catchFree_recvK "to_s" (toRubyList args) .none _)
         (jumpOpaque_recvK "to_s" (toRubyList args) .none _) f (evalFrom m recv) v m' hrun
-    obtain ⟨hframe₁, hdenR, hok₁⟩ := hrecv.2 m hm v₀ m₀ ⟨nb, hin⟩
+    obtain ⟨hframe₁, hdenR, hok₁, -⟩ := hrecv.2 m hm v₀ m₀ ⟨nb, hin⟩
     obtain ⟨k, _, rfl, hk⟩ := denM_clsOf_ref hdenR
     obtain ⟨f₂, hf₂⟩ := hout
     revert hf₂
@@ -266,7 +266,7 @@ theorem Sem.Judge.clsToS : Obl.Judge.clsToS := by
                 rw [run_succ, hwc, stepFn_value_nil] at hf₄
                 dsimp only at hf₄
                 cases hf₄
-                refine ⟨hframe₁.trans (Framed.of_ext hext), ?_, StateOk_ext hok₂ hext⟩
+                refine ⟨hframe₁.trans (Framed.of_ext hext), ?_, ⟨StateOk_ext hok₂ hext, StateOk_ext hok₂ hext⟩⟩
                 -- `.ref size` is a `String`, by `strLit`'s three lines at `m₁`
                 have hanc : ∀ j, ancestors (pushHeap m₁.heap (strObj str)) j
                     = ancestors m₁.heap j :=

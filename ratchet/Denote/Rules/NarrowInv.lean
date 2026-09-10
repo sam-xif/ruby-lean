@@ -879,10 +879,10 @@ this judgment types either. -/
 
 theorem stateOk_narrow_else {κ : Ctx} {Γ Γc : Env} {I Ic : Ty} {c : Ratchet.Expr} {σ : Ty}
     {m : Machine} {v : Value} {m' : Machine}
-    (hc : SemJudge κ Γ I c σ Γc Ic) (hok : StateOk κ Γ I m)
+    (hc : SemJudge κ Γ I c σ (κ.afterStmt c σ) Γc Ic) (hok : StateOk κ Γ I m)
     (hev : Evals m c v m') (hfalsy : v.truthy = false) :
     StateOk κ (Ratchet.narrowEnvs κ c Γc).2 (Ratchet.narrowSpine κ c Ic).2 m' := by
-  obtain ⟨_, _, hok'⟩ := hc.2 m hok v m' hev
+  obtain ⟨_, _, hok', -⟩ := hc.2 m hok v m' hev
   simp only [Ratchet.narrowEnvs, Ratchet.narrowSpine]
   cases hnc : Ratchet.narrowCond? c with
   | none => simpa using hok'
@@ -942,11 +942,11 @@ minus the run inversion; with it excluded, it is the four `both` shapes and comp
 
 theorem stateOk_narrow_then {κ : Ctx} {Γ Γc : Env} {I Ic : Ty} {c : Ratchet.Expr} {σ : Ty}
     {m : Machine} {v : Value} {m' : Machine}
-    (hc : SemJudge κ Γ I c σ Γc Ic) (hok : StateOk κ Γ I m)
+    (hc : SemJudge κ Γ I c σ (κ.afterStmt c σ) Γc Ic) (hok : StateOk κ Γ I m)
     (hev : Evals m c v m') (htruthy : v.truthy = true)
     (hnto : ∀ k x nk, Ratchet.narrowCond? c ≠ some (k, x, nk, .thenOnly)) :
     StateOk κ (Ratchet.narrowEnvs κ c Γc).1 (Ratchet.narrowSpine κ c Ic).1 m' := by
-  obtain ⟨_, _, hok'⟩ := hc.2 m hok v m' hev
+  obtain ⟨_, _, hok', -⟩ := hc.2 m hok v m' hev
   simp only [Ratchet.narrowEnvs, Ratchet.narrowSpine]
   cases hnc : Ratchet.narrowCond? c with
   | none => simpa using hok'
@@ -1163,7 +1163,7 @@ theorem jumpOpaque_nil : JumpOpaque [] := by
   exact jump_empty_never_value fuel _ v m' ⟨j, rfl⟩ rfl h
 
 theorem Sem.JudgeSeq.nextGuard : Obl.JudgeSeq.nextGuard := by
-  intro κ Γ Γc Γ' I Ic I' c rest σ τ hc htail
+  intro κ Γ Γc Γ' I Ic I' c rest σ τ κ₁ hc htail
   refine ⟨fun e he => ?_, ?_⟩
   · rcases List.mem_cons.mp he with h | h
     · rw [h]; trivial
@@ -1188,7 +1188,7 @@ theorem Sem.JudgeSeq.nextGuard : Obl.JudgeSeq.nextGuard := by
       obtain ⟨nb, vc, mc, hin, hcc, hkc, hf₂⟩ :=
         run_split _ hcf hjo fu (evalFrom m c) v m' hr
       obtain ⟨f₂, hf₂⟩ := hf₂
-      obtain ⟨hframe, _, _⟩ := hc.2 m hm vc mc ⟨nb, hin⟩
+      obtain ⟨hframe, _, _, -⟩ := hc.2 m hm vc mc ⟨nb, hin⟩
       -- a truthy condition takes the `next`, which escapes; so the condition was falsy
       have ht : vc.truthy = false := by
         by_cases ht : vc.truthy = false
@@ -1375,7 +1375,7 @@ theorem ret_no_value (m : Machine) (e : Ratchet.Expr) (Kout : List Kont)
 
 
 theorem Sem.JudgeSeq.guard : Obl.JudgeSeq.guard := by
-  intro κ Γ Γc Γr Γ' I Ic Ir I' c e rest σ ρ τ hc _he _hir htail
+  intro κ Γ Γc Γr Γ' I Ic Ir I' c e rest σ ρ τ κ₁ hc _he _hir htail
   refine ⟨fun e' he' => ?_, ?_⟩
   · rcases List.mem_cons.mp he' with h | h
     · rw [h]; trivial
@@ -1399,7 +1399,7 @@ theorem Sem.JudgeSeq.guard : Obl.JudgeSeq.guard := by
       obtain ⟨nb, vc, mc, hin, hcc, hkc, hf₂⟩ :=
         run_split _ hcf hjo fu (evalFrom m c) v m' hr
       obtain ⟨f₂, hf₂⟩ := hf₂
-      obtain ⟨hframe, _, _⟩ := hc.2 m hm vc mc ⟨nb, hin⟩
+      obtain ⟨hframe, _, _, -⟩ := hc.2 m hm vc mc ⟨nb, hin⟩
       have ht : vc.truthy = false := by
         by_cases ht : vc.truthy = false
         · exact ht

@@ -51,7 +51,7 @@ theorem Sem.Judge.caseEqQuery : Obl.Judge.caseEqQuery := by
     obtain ⟨nb, v₀, m₀, hin, hc₀, hk₀, hout⟩ :=
       run_split _ (catchFree_recvK "===" (toRubyList args) .none _)
         (jumpOpaque_recvK "===" (toRubyList args) .none _) f (evalFrom m recv) v m' hrun
-    obtain ⟨hframe₁, hdenR, hok₁⟩ := hrecv.2 m hm v₀ m₀ ⟨nb, hin⟩
+    obtain ⟨hframe₁, hdenR, hok₁, -⟩ := hrecv.2 m hm v₀ m₀ ⟨nb, hin⟩
     -- the receiver is a live class object, **at `m₀`**
     obtain ⟨k, _, rfl, hk⟩ := denM_clsOf_ref hdenR
     obtain ⟨f₂, hf₂⟩ := hout
@@ -123,7 +123,7 @@ theorem Sem.Judge.caseEqQuery : Obl.Judge.caseEqQuery := by
                     · rw [show Interp.withCtl ma (Ctl.value (Value.bool (isA ma.heap av k)))
                             = reCtl ma (.value (.bool (isA ma.heap av k))) [] from by
                           rw [Interp.withCtl, reCtl, hk₁]]
-                      exact StateOk_reCtl hok₂ _ _
+                      exact ⟨StateOk_reCtl hok₂ _ _, StateOk_reCtl hok₂ _ _⟩
                 · rw [hd] at hstep; exact absurd hstep (by simp)
               | none =>
                 obtain ⟨_, hq2⟩ := hok₂.clsQuery "===" "Module#===" (by simp [clsQueryBuiltins])

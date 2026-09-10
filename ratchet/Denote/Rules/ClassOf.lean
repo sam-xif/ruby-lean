@@ -44,7 +44,7 @@ theorem Sem.Judge.classOf : Obl.Judge.classOf := by
     obtain ⟨nb, v₀, m₀, hin, hc₀, hk₀, hout⟩ :=
       run_split _ (catchFree_recvK "class" (toRubyList args) .none _)
         (jumpOpaque_recvK "class" (toRubyList args) .none _) f (evalFrom m recv) v m' hrun
-    obtain ⟨hframe₁, hdenR, hok₁⟩ := hrecv.2 m hm v₀ m₀ ⟨nb, hin⟩
+    obtain ⟨hframe₁, hdenR, hok₁, -⟩ := hrecv.2 m hm v₀ m₀ ⟨nb, hin⟩
     obtain ⟨f₂, hf₂⟩ := hout
     revert hf₂
     rcases f₂ with _ | f₃
@@ -93,7 +93,7 @@ theorem Sem.Judge.classOf : Obl.Judge.classOf := by
                 rw [run_succ, hwc, stepFn_value_nil] at hf₄
                 dsimp only at hf₄
                 cases hf₄
-                refine ⟨hframe₁.trans (Framed_reCtl _ _ _), ?_, StateOk_reCtl hok₂ _ _⟩
+                refine ⟨hframe₁.trans (Framed_reCtl _ _ _), ?_, ⟨StateOk_reCtl hok₂ _ _, StateOk_reCtl hok₂ _ _⟩⟩
                 -- **the two ends meet**: the receiver's type says `realClassOf v₀` *is* the
                 -- class `n` resolves to, and that is the value the builtin answered
                 obtain ⟨k, hcn, hrc⟩ := denM_inst_exact hdenR

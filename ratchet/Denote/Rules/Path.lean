@@ -83,7 +83,7 @@ theorem Sem.Judge.constPath : Obl.Judge.constPath := by
     dsimp only at hrun
     obtain ⟨nb, v₀, m₀, hin, hc₀, hk₀, hout⟩ :=
       run_split _ (catchFree_cpathK n) (jumpOpaque_cpathK n) f (evalFrom m base) v m' hrun
-    obtain ⟨hstack, hdenBase, hok₁⟩ := hbase.2 m hm v₀ m₀ ⟨nb, hin⟩
+    obtain ⟨hstack, hdenBase, hok₁, -⟩ := hbase.2 m hm v₀ m₀ ⟨nb, hin⟩
     -- the base's value is the class named `owner`
     have hcls : ∃ k, classNamed? m₀.heap owner = some k ∧ v₀ = .ref k := by
       simp only [denM, isClassRefNamed] at hdenBase
@@ -135,9 +135,10 @@ theorem Sem.Judge.constPath : Obl.Judge.constPath := by
             split at hlk
             · exact absurd hlk (by simp)
             · exact hlk
-          refine ⟨?_, ?_, ?_⟩
+          refine ⟨?_, ?_, ?_, ?_⟩
           · exact hstack.trans (Framed_reCtl _ _ _)
           · exact denM_reCtl.mpr (hok₁.constPaths owner n τ k hkey hcn v hfound)
+          · exact StateOk_reCtl hok₁ _ _
           · exact StateOk_reCtl hok₁ _ _
       | none =>
         -- the two miss paths: the gate, and the raise
@@ -173,7 +174,7 @@ theorem Sem.Judge.constPathCls : Obl.Judge.constPathCls := by
     dsimp only at hrun
     obtain ⟨nb, v₀, m₀, hin, hc₀, hk₀, hout⟩ :=
       run_split _ (catchFree_cpathK n) (jumpOpaque_cpathK n) f (evalFrom m base) v m' hrun
-    obtain ⟨hstack, hdenBase, hok₁⟩ := hbase.2 m hm v₀ m₀ ⟨nb, hin⟩
+    obtain ⟨hstack, hdenBase, hok₁, -⟩ := hbase.2 m hm v₀ m₀ ⟨nb, hin⟩
     have hcl : ∃ k, classNamed? m₀.heap owner = some k ∧ v₀ = .ref k := by
       simp only [denM, isClassRefNamed] at hdenBase
       cases hcn : classNamed? m₀.heap owner with
@@ -221,11 +222,12 @@ theorem Sem.Judge.constPathCls : Obl.Judge.constPathCls := by
             split at hlk
             · exact absurd hlk (by simp)
             · exact hlk
-          refine ⟨?_, ?_, ?_⟩
+          refine ⟨?_, ?_, ?_, ?_⟩
           · exact hstack.trans (Framed_reCtl _ _ _)
           · refine denM_reCtl.mpr ?_
             simp only [denM]
             exact hok₁.nested owner n c hcls k v hcn hfound
+          · exact StateOk_reCtl hok₁ _ _
           · exact StateOk_reCtl hok₁ _ _
       | none =>
         rw [hlk] at hf₂

@@ -118,12 +118,15 @@ theorem Sem.Judge.vasgn : Obl.Judge.vasgn := by
       (evalFrom m e) v m' hf
   -- **The premise**, at that sub-run — which is a run under the *empty* continuation, which
   -- is the whole point of the decomposition.
-  obtain ⟨hstack, hden, hSt'⟩ := hprem.2 m hm v₀ m₀ ⟨n, hin⟩
+  obtain ⟨hstack, hden, hSt', -⟩ := hprem.2 m hm v₀ m₀ ⟨n, hin⟩
   -- **The tail**: two steps, the write and the end of the run.
   obtain ⟨hveq, hmeq⟩ := run_two (stepFn_asgnK m₀ x v₀) hout
   subst hmeq
   subst hveq
-  exact vasgn_close hcap hctx halias hstack hden hSt'
+  -- Both outgoing conjuncts (`SemJudge`'s §Outgoing conformance): `vasgn` declares nothing,
+  -- so the context it reports is the one it started in and `vasgn_close` answers both.
+  obtain ⟨hf₁, hd₁, ho₁⟩ := vasgn_close hcap hctx halias hstack hden hSt'
+  exact ⟨hf₁, hd₁, ho₁, ho₁⟩
 
 #print axioms Sem.Judge.vasgn
 

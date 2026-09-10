@@ -58,7 +58,7 @@ theorem Sem.JudgeAll.cons : Obl.JudgeAll.cons := by
   | nil => exact absurd hev (by simp [EvalsAll])
   | cons v vs =>
     obtain ⟨m₁, hEv, hRest⟩ := hev
-    obtain ⟨hst, hden, hok₁⟩ := hhead.2 m hm v m₁ hEv
+    obtain ⟨hst, hden, hok₁, -⟩ := hhead.2 m hm v m₁ hEv
     obtain ⟨hst', hall, hok₂⟩ := htail.2 m₁ hok₁ vs m' hRest
     exact ⟨hst.trans hst', ⟨m₁, hEv, hden, hall⟩, hok₂⟩
 
@@ -80,7 +80,7 @@ theorem Sem.JudgeKw.pair : Obl.JudgeKw.pair := by
   | nil => exact absurd hev (by simp [EvalsAll])
   | cons w vs =>
     obtain ⟨m₁, hEv, hRest⟩ := hev
-    obtain ⟨hst, hden, hok₁⟩ := hhead.2 m hm w m₁ hEv
+    obtain ⟨hst, hden, hok₁, -⟩ := hhead.2 m hm w m₁ hEv
     obtain ⟨hst', hall, hok₂⟩ := htail m₁ hok₁ vs m' hRest
     refine ⟨hst.trans hst', ?_, hok₂⟩
     rw [kwExprs]
@@ -129,8 +129,8 @@ theorem Sem.JudgePairs.cons : Obl.JudgePairs.cons := by
     exact absurd hrest (by simp [EvalsAll])
   | kv :: vv :: vals =>
     obtain ⟨m₁, hEk, m₂, hEv, hRest⟩ := hev
-    obtain ⟨hst₁, hkd, hok₁⟩ := hkey.2 m hm kv m₁ hEk
-    obtain ⟨hst₂, hvd, hok₂⟩ := hval.2 m₁ hok₁ vv m₂ hEv
+    obtain ⟨hst₁, hkd, hok₁, -⟩ := hkey.2 m hm kv m₁ hEk
+    obtain ⟨hst₂, hvd, hok₂, -⟩ := hval.2 m₁ hok₁ vv m₂ hEv
     obtain ⟨hst₃, hall, hok₃⟩ := htail m₂ hok₂ vals m' hRest
     refine ⟨(hst₁.trans hst₂).trans hst₃, ?_, hok₃⟩
     rw [DenPairsAt]

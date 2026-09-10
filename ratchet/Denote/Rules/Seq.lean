@@ -45,7 +45,11 @@ theorem Sem.JudgeSeq.last : Obl.JudgeSeq.last := by
   -- the singleton's plainness is the statement's own premise
   refine ⟨fun e' he' => by rcases List.mem_singleton.mp he' with rfl; exact hj.1, ?_⟩
   intro m hm v m' h
-  exact hj.2 m hm v m' (evals_seq_one h)
+  -- `SemJudgeSeq`'s outgoing conformance is at its *incoming* `κ` (see `SemJudge`'s
+  -- §Outgoing conformance), so the statement's fourth conjunct — its report at `κ'` — is
+  -- what the *next* statement will consume in `JudgeSeq.cons`, and is dropped here.
+  obtain ⟨hf, hd, hok, -⟩ := hj.2 m hm v m' (evals_seq_one h)
+  exact ⟨hf, hd, hok⟩
 
 #print axioms Sem.JudgeSeq.last
 

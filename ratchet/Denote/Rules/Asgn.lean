@@ -86,13 +86,16 @@ theorem Sem.Judge.vasgnAlias : Obl.Judge.vasgnAlias := by
     simpa using denM_reCtl.mpr hd
   have hgetM : M.getLocal x = m.getLocal x := by rw [hM]; simp
   rw [hgetM] at hdenM
-  refine ⟨?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_⟩
   · -- Frame balance and class-persistence: neither the control word nor the write touches
     -- the stack, and neither touches the heap at all.
     exact ((Framed_reCtl m _ _).trans (Framed_setLocal M t _)).trans (Framed_reCtl _ _ _)
   · -- The value's type, transported across the write by `capStale`.
     exact denM_reCtl.mpr (denM_setLocal hdenM hcap hdenM)
-  · -- Conformance, by the two transports.
+  -- Conformance, by the two transports — and claimed twice, at `κ` and at the reported `κ'`
+  -- (see `SemJudge`'s §Outgoing conformance). This rule declares nothing, so the two contexts
+  -- are the same one and `all_goals` proves both with the one argument.
+  all_goals
     refine StateOk_reCtl (StateOk_setLocal hMok hdenM hcap hctx rfl ?_) _ _
     -- The alias the rule records: `t` now holds what `x` holds. When `x` and `t` are the
     -- same name that is the value just written; otherwise `x` was not touched.

@@ -76,12 +76,12 @@ each of the seven companion relations, is semantically true.
 Not proved — see the module docstring. Written out by hand rather than derived, because unlike
 the 83 obligations this is eight statements and reading them is the point. -/
 def AdequacyTarget : Prop :=
-  (∀ κ Γ I e τ Γ' I', Judge κ Γ I e τ Γ' I' → SemJudge κ Γ I e τ Γ' I') ∧
+  (∀ κ Γ I e τ κ' Γ' I', Judge κ Γ I e τ κ' Γ' I' → SemJudge κ Γ I e τ κ' Γ' I') ∧
   (∀ κ Γ I es τs Γ' I', JudgeAll κ Γ I es τs Γ' I' → SemJudgeAll κ Γ I es τs Γ' I') ∧
   (∀ κ Γ I es kws Γ' I', JudgeKw κ Γ I es kws Γ' I' → SemJudgeKw κ Γ I es kws Γ' I') ∧
   (∀ κ Γ I ps kr vr Γ' I',
       JudgePairs κ Γ I ps kr vr Γ' I' → SemJudgePairs κ Γ I ps kr vr Γ' I') ∧
-  (∀ κ Γ I es τ Γ' I', JudgeSeq κ Γ I es τ Γ' I' → SemJudgeSeq κ Γ I es τ Γ' I') ∧
+  (∀ κ Γ I es τ κ' Γ' I', JudgeSeq κ Γ I es τ κ' Γ' I' → SemJudgeSeq κ Γ I es τ κ' Γ' I') ∧
   (∀ κ Γ I rs τ, JudgeRescues κ Γ I rs τ → SemJudgeRescues κ Γ I rs τ) ∧
   (∀ κ cs, JudgeConsts κ cs → SemJudgeConsts κ cs) ∧
   (∀ κ pfx nst, JudgeNested κ pfx nst → SemJudgeNested κ pfx nst)
@@ -90,7 +90,7 @@ def AdequacyTarget : Prop :=
 a well-typed expression never reaches a type-stuck outcome. Not implied by `AdequacyTarget` —
 `SemJudge` quantifies only over runs that produced a value. -/
 def StuckFreeTarget : Prop :=
-  ∀ κ Γ I e τ Γ' I', Judge κ Γ I e τ Γ' I' →
+  ∀ κ Γ I e τ κ' Γ' I', Judge κ Γ I e τ κ' Γ' I' →
     ∀ m, StateOk κ Γ I m → StuckFree m e
 
 /-- Where the generated conjunction of all 83 obligations lives. Single-backtick: it does not

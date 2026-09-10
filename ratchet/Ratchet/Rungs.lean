@@ -60,11 +60,12 @@ structure Rung where
       would not fit this structure. None does; `@x = 1` at `main` is legal Ruby that this
       judgment types but that no rung exercises.
 
-      The **outgoing context** is `Judge.out_afterStmt`'s. Threading
-      (`context-splitting.md` §3) made it an index of the judgment, and that lemma says what it
-      is for any statement — `κ.afterStmt program ty`, which for every rung's top-level `.seq`
-      reduces to `κ` itself. Writing it here rather than quantifying it existentially keeps a
-      rung's derivation term exactly what it was before the threading. -/
+      The **outgoing context** is `Judge.out_afterStmt`'s value. Threading
+      (`context-splitting.md` §3) made it an index of the judgment; every rule reports
+      `κ.afterStmt e τ`, and for a rung's top-level `.seq` that reduces to `κ` itself. It is
+      written in the `afterStmt` form rather than as `κ` so that the elaborator's unification
+      of a derivation's two ends is syntactic, which is what keeps every derivation term below
+      exactly what it was before the threading. -/
   deriv : Judge (ctx0.withBlocks program) [] .ivar0 program ty
     ((ctx0.withBlocks program).afterStmt program ty) outEnv .ivar0
 

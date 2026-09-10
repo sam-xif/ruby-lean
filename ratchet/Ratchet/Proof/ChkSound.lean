@@ -367,7 +367,7 @@ nothing in the derivation discharges it: `Ctx.afterStmt` (a class body's constan
 rather than a trusted row — it says an expression `constLitTy?` types **really has that type,
 in any context whatsoever**, with no premise to supply:
 
-  `constLitTy? e = some τ → Judge κ Γ I e τ κ Γ I`
+  `constLitTy? e = some τ → Judge κ Γ I e τ (κ.afterStmt e τ) Γ I`
 
 Note the shape: `κ`, `Γ` and `I` are universally quantified and unchanged across the
 conclusion. That is a strong statement and it is exactly why the function is restricted to
@@ -420,7 +420,7 @@ theorem constLitTy?_primDispatchOk : ∀ {e : Expr} {τ : Ty} {C : CTable} {m : 
 mutual
 
 theorem constLitTy?_sound : ∀ {e : Expr} {τ : Ty} {κ : Ctx} {Γ : Env} {I : Ty},
-    constLitTy? e = some τ → Judge κ Γ I e τ κ Γ I := by
+    constLitTy? e = some τ → Judge κ Γ I e τ (κ.afterStmt e τ) Γ I := by
   intro e τ κ Γ I h
   unfold constLitTy? at h
   split at h
