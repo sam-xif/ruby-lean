@@ -686,7 +686,7 @@ theorem narrow_else_fact {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Ratch
     (hnc : Ratchet.narrowCond? c = some (k, x, nk, sides)) (hboth : sides = .both)
     (hg : Ratchet.narrowNameOk κ nk = true) (hk : k = .lvar ∨ k = .ivar) :
     ∀ τ, denM τ m' (readVar k x m') →
-      denM (Ratchet.refineElse κ.classes nk τ) m' (readVar k x m') := by
+      denM (Ratchet.refineElse κ.classes κ.wholeCls nk τ) m' (readVar k x m') := by
   -- `split` on the recogniser's own match, which is what makes the shape analysis exhaustive
   -- without enumerating `Expr`
   unfold Ratchet.narrowCond? at hnc
@@ -787,7 +787,7 @@ theorem narrow_then_fact {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Ratch
     (hnc : Ratchet.narrowCond? c = some (k, x, nk, sides)) (hboth : sides = .both)
     (hg : Ratchet.narrowNameOk κ nk = true) (hk : k = .lvar ∨ k = .ivar) :
     ∀ τ, denM τ m' (readVar k x m') →
-      denM (Ratchet.refineThen κ.classes nk τ) m' (readVar k x m') := by
+      denM (Ratchet.refineThen κ.classes κ.wholeCls nk τ) m' (readVar k x m') := by
   unfold Ratchet.narrowCond? at hnc
   split at hnc
   · -- the `&&` sandwich is `thenOnly`, and `hboth` says the caller is not asking for it

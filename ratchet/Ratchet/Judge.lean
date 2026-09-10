@@ -1523,12 +1523,12 @@ declared class whose chain leaves the table.
 
 Not defined on `.union`/`.nilable`: those are not a single class, and treating them here
 would hide the fact that a union's answer is per-member. `isATy`/`notATy` decompose them. -/
-def isAAnswer (C : CTable) (cn : String) : Ty → Option Bool
+def isAAnswer (C W : CTable) (cn : String) : Ty → Option Bool
   | .inst n _ => (ancestors? C n).bind (fun ch =>
       if (ch ++ rootAncestors).contains cn then some true
       -- `ancestors?` checked the *declared* chain's mixins; `rootAncestors` is appended
       -- blindly, so `class Object; include M; end` is the case this guard covers
-      else if mixinFreeChain C rootAncestors then some false else none)
+      else if mixinFreeChain W rootAncestors then some false else none)
   -- **§F9**: the builtin chain is a *static table*, and `class Integer; include M; end` really
   -- does make `5.is_a?(M)` true; and the type denotes **is-a**, so a declared subclass's
   -- instance is one of its values. So *neither* answer is available at a context that has
@@ -1541,7 +1541,7 @@ def isAAnswer (C : CTable) (cn : String) : Ty → Option Bool
   -- that a `StateOk` component has no business assuming. Gating costs precision only where a
   -- program mixes into or subclasses a core class, and buys the exactness the proof uses.
   | τ => (builtinAncestors τ).bind (fun ch =>
-      if isANoOk C ch then (if ch.contains cn then some true else some false) else none)
+      if isANoOk W ch then (if ch.contains cn then some true else some false) else none)
 
 /-- **Does any *declared* class descend from `n` and redefine `m`?** — `found-issues.md`
 §F11's guard, and the answer it wants is "no".
@@ -2018,6 +2018,23 @@ structure Neg where
       `define_singleton_method` with one. Nothing is free at such a program, and saying so with
       a flag is what keeps the two lists above meaning "and nothing more". -/
   unpinned : Bool
+  /-- **The whole program's class table**, `extendClasses` folded over every `class`/`module`
+      node wherever written. Read only by the **negative** guards §F9 needs — `isANoOk` and
+      `mixinFreeChain`, which ask whether anything *anywhere* disturbs a builtin ancestor chain.
+      The *positive* half of narrowing still reads `κ.classes`, the already-declared table, and
+      the split is the point: a chain is broken by a class declared later just as much as by one
+      declared earlier, while a constant not yet assigned resolves nowhere and raises.
+
+      Asking it whole-program is **strictly more conservative** — a bigger table can only make
+      `mixinFreeChain`/`noDeclaredBelow` answer `false`, i.e. refuse more refinements — so it
+      cannot admit anything the per-point table refused. What it buys is that the guard is
+      *invariant* under `Ctx.afterStmt`, which is what `StateOk`'s down-transport needs and what
+      `context-splitting.md` §3 assumed without it. -/
+  wholeCls : CTable
+  /-- Every constant **name** the program binds anywhere. `coreConstFreeN`'s complement, and it
+      is here for `wholeCls`'s reason: `coreConstFree` read `constGet? κ`, which grows, so the
+      guard it feeds was antitone in `Pos`. -/
+  boundConsts : List String
   /-- No constant of this absolute path is bound anywhere in the program. Not yet consumed by
       any rule — the cref work (§7.2) is what needs it — and seeded empty. -/
   freeConsts : List String
@@ -2076,6 +2093,8 @@ the four named updaters below. -/
 @[reducible] def Ctx.noMethod (κ : Ctx) : List (Port × String) := κ.neg.noMethod
 @[reducible] def Ctx.declared (κ : Ctx) : List String := κ.neg.declared
 @[reducible] def Ctx.negUnpinned (κ : Ctx) : Bool := κ.neg.unpinned
+@[reducible] def Ctx.wholeCls (κ : Ctx) : CTable := κ.neg.wholeCls
+@[reducible] def Ctx.boundConsts (κ : Ctx) : List String := κ.neg.boundConsts
 @[reducible] def Ctx.freeConsts (κ : Ctx) : List String := κ.neg.freeConsts
 @[reducible] def Ctx.frame (κ : Ctx) : Option Frame := κ.scope.frame
 @[reducible] def Ctx.closures (κ : Ctx) : ClosTable := κ.scope.closures
@@ -2153,11 +2172,13 @@ structure NegAcc where
   emits : List NegEmit
   wild : List String
   decls : List Expr
+  /-- Every constant **name** bound, wherever written. -/
+  consts : List String
 
 instance : Append NegAcc where
-  append a b := ⟨a.emits ++ b.emits, a.wild ++ b.wild, a.decls ++ b.decls⟩
+  append a b := ⟨a.emits ++ b.emits, a.wild ++ b.wild, a.decls ++ b.decls, a.consts ++ b.consts⟩
 
-def NegAcc.empty : NegAcc := ⟨[], [], []⟩
+def NegAcc.empty : NegAcc := ⟨[], [], [], []⟩
 
 /-- The site a `def` written here installs onto: the lexically enclosing class or module, or
 `Object` at top level. Carried down through method bodies and blocks, because that is what
@@ -2179,49 +2200,49 @@ mutual
 /-- Every declaration the program performs, with the port it lands on. Recurses into **every**
 expression position, which is the whole point (§F20). -/
 def negEmit (s : NegSite) : Expr → NegAcc
-  | .def' n _ body => ⟨[(.inst s, n)], [], []⟩ ++ negEmit s body
+  | .def' n _ body => ⟨[(.inst s, n)], [], [], []⟩ ++ negEmit s body
   -- `def self.m` inside `class C` is a singleton method of `C`. Anywhere else — a `def obj.m`
   -- on some other receiver, or a `def self.m` at top level, where `self` is `main` — the port
   -- is not expressible (`Ty.inst` carries no object identity), so §4.6's uniform answer: the
   -- name leaves every port.
   | .defs recv n _ body =>
     (match recv with
-     | .self' => if s == "Object" then ⟨[], [n], []⟩ else ⟨[(.cls s, n)], [], []⟩
-     | _ => ⟨[], [n], []⟩) ++ negEmit s recv ++ negEmit s body
+     | .self' => if s == "Object" then ⟨[], [n], [], []⟩ else ⟨[(.cls s, n)], [], [], []⟩
+     | _ => ⟨[], [n], [], []⟩) ++ negEmit s recv ++ negEmit s body
   | e@(.class' n sup body) =>
-    ⟨[], [], [e]⟩ ++ negEmitOpt s sup ++ negEmit n body
-  | e@(.module' n body) => ⟨[], [], [e]⟩ ++ negEmit n body
+    ⟨[], [], [e], []⟩ ++ negEmitOpt s sup ++ negEmit n body
+  | e@(.module' n body) => ⟨[], [], [e], []⟩ ++ negEmit n body
   -- A `class << obj` body declares singleton methods on an object the checker cannot name, so
   -- every name it declares leaves every port.
   | .sclass obj body =>
     let inner := negEmit s body
-    ⟨[], inner.emits.map (·.2), []⟩ ++ negEmit s obj ++ inner
-  | .alias' nw _ => ⟨[(.inst s, nw)], [], []⟩
-  | .undef ns => ⟨[], ns, []⟩
+    ⟨[], inner.emits.map (·.2), [], []⟩ ++ negEmit s obj ++ inner
+  | .alias' nw _ => ⟨[(.inst s, nw)], [], [], []⟩
+  | .undef ns => ⟨[], ns, [], []⟩
   | .send recv m args blk =>
     let base := negEmitOpt s recv ++ negEmitAll s args ++ negEmitOpt s blk
     -- The reflective declarers. A literal-symbol name is as pinnable as a `def`; a computed
     -- one is not, and there is nothing honest to do with it but drop every name — which the
     -- `""` marker does, by emptying the seed.
     if m == "attr_reader" || m == "attr_accessor" || m == "attr_writer" then
-      ⟨attrNames s m args, [], []⟩ ++ base
+      ⟨attrNames s m args, [], [], []⟩ ++ base
     else if m == "define_method" then
       (match args with
-       | [.sym n] => ⟨[(.inst s, n)], [], []⟩
-       | _ => ⟨[], [""], []⟩) ++ base
+       | [.sym n] => ⟨[(.inst s, n)], [], [], []⟩
+       | _ => ⟨[], [""], [], []⟩) ++ base
     else if m == "alias_method" then
       (match args with
-       | [.sym nw, _] => ⟨[(.inst s, nw)], [], []⟩
-       | _ => ⟨[], [""], []⟩) ++ base
+       | [.sym nw, _] => ⟨[(.inst s, nw)], [], [], []⟩
+       | _ => ⟨[], [""], [], []⟩) ++ base
     else if m == "define_singleton_method" then
       (match args with
-       | .sym n :: _ => ⟨[], [n], []⟩
-       | _ => ⟨[], [""], []⟩) ++ base
+       | .sym n :: _ => ⟨[], [n], [], []⟩
+       | _ => ⟨[], [""], [], []⟩) ++ base
     else base
   | .seq es => negEmitAll s es
   | .vasgn _ _ e => negEmit s e
-  | .casgn _ e => negEmit s e
-  | .cpathAsgn b _ e => negEmitOpt s b ++ negEmit s e
+  | .casgn n e => ⟨[], [], [], [n]⟩ ++ negEmit s e
+  | .cpathAsgn b n e => ⟨[], [], [], [n]⟩ ++ negEmitOpt s b ++ negEmit s e
   | .cpath b _ => negEmitOpt s b
   | .array es => negEmitAll s es
   | .hash ps => negEmitPairs s ps
@@ -2329,7 +2350,7 @@ def negSeed (p : Expr) : Neg :=
   -- A declaration whose name could not be pinned to a port removes that name everywhere; the
   -- empty string is `negEmit`'s marker for "a reflective declarer with a computed name", which
   -- nothing can be sound about, so it empties the seed.
-  if acc.wild.contains "" then ⟨[], [], [], true, []⟩ else
+  if acc.wild.contains "" then ⟨[], [], [], true, C, acc.consts, []⟩ else
   let names := negNames.filter (fun n => !acc.wild.contains n)
   let owners := negOwnerNames C
   let ports := owners.flatMap (fun c => [Port.inst c, Port.cls c])
@@ -2340,7 +2361,7 @@ def negSeed (p : Expr) : Neg :=
         (if negClsHit C E c n then [] else [(Port.cls c, n)])))
   -- The coarse belt, whole-program: every name the program declares anywhere, at any port or
   -- at none. This is what `nameFree` used to read off the already-declared tables.
-  ⟨ports, noMethod, E.map (·.2) ++ acc.wild, false, []⟩
+  ⟨ports, noMethod, E.map (·.2) ++ acc.wild, false, C, acc.consts, []⟩
 
 /-! #### Reading `Neg`
 
@@ -2921,45 +2942,45 @@ refinement narrows nothing and the branch is typed at the same type it had. -/
 
 /-- What a `nil` member contributes to the then-branch: `nil.is_a?(cn)` is decided by
 `NilClass`'s chain, which `builtinAncestors .nilT` gives. -/
-def isANilPart (C : CTable) (cn : String) : Ty :=
+def isANilPart (_C W : CTable) (cn : String) : Ty :=
   if ("NilClass" :: rootAncestors).contains cn then .nilT
   -- §F9 again, at `nil`: `class NilClass; include M; end` makes `nil.is_a?(M)` true, so the
   -- `.never` is only available when the context leaves that chain alone — and `isANoOk` is
   -- the same guard `isAAnswer`'s negative answer uses, which is what lets one component
   -- (`BaseChainsOk`) serve both
-  else if isANoOk C ("NilClass" :: rootAncestors) then .never else .nilT
+  else if isANoOk W ("NilClass" :: rootAncestors) then .never else .nilT
 
 /-- …and to the else-branch, which is its complement. -/
 def notANilPart (cn : String) : Ty :=
   if ("NilClass" :: rootAncestors).contains cn then .never else .nilT
 
 /-- The values of `τ` that **are** a `cn`. -/
-def isATy (C : CTable) (cn : String) : Ty → Ty
-  | .union σ τ => joinT (isATy C cn σ) (isATy C cn τ)
-  | .nilable ρ => joinT (isANilPart C cn) (isATy C cn ρ)
-  | τ => match isAAnswer C cn τ with
+def isATy (C W : CTable) (cn : String) : Ty → Ty
+  | .union σ τ => joinT (isATy C W cn σ) (isATy C W cn τ)
+  | .nilable ρ => joinT (isANilPart C W cn) (isATy C W cn ρ)
+  | τ => match isAAnswer C W cn τ with
     | some false => .never
     | _ => τ
 
 /-- The values of `τ` that are **not** a `cn`. -/
-def notATy (C : CTable) (cn : String) : Ty → Ty
-  | .union σ τ => joinT (notATy C cn σ) (notATy C cn τ)
-  | .nilable ρ => joinT (notANilPart cn) (notATy C cn ρ)
-  | τ => match isAAnswer C cn τ with
+def notATy (C W : CTable) (cn : String) : Ty → Ty
+  | .union σ τ => joinT (notATy C W cn σ) (notATy C W cn τ)
+  | .nilable ρ => joinT (notANilPart cn) (notATy C W cn ρ)
+  | τ => match isAAnswer C W cn τ with
     | some true => .never
     | _ => τ
 
 /-- The refinement the **then**-branch applies. -/
-def refineThen (C : CTable) : NarrowKind → Ty → Ty
+def refineThen (C W : CTable) : NarrowKind → Ty → Ty
   | .truthy, τ => truthyTy τ
   | .isNil, τ => isNilTy τ
-  | .isA cn, τ => isATy C cn τ
+  | .isA cn, τ => isATy C W cn τ
 
 /-- The refinement the **else**-branch applies. -/
-def refineElse (C : CTable) : NarrowKind → Ty → Ty
+def refineElse (C W : CTable) : NarrowKind → Ty → Ty
   | .truthy, τ => falsyTy τ
   | .isNil, τ => nonNilTy τ
-  | .isA cn, τ => notATy C cn τ
+  | .isA cn, τ => notATy C W cn τ
 
 /-- Which branches a recognized condition licenses a refinement in (tier 12's
 `narrow-and-guard`).
@@ -3096,8 +3117,8 @@ target is refined from **its own current binding**, not from the alias's payload
 equal by construction, and reading the binding makes it obviously so rather than an invariant to
 maintain. The alias itself is kept, with a refined payload, so a *second* test on the same
 temporary (the `when String` arm, which sits in the first arm's else-branch) narrows again. -/
-def refineOne (C : CTable) (k : NarrowKind) (thenSide : Bool) (Γ : Env) (x : String) : Env :=
-  let refine := fun τ => if thenSide then refineThen C k τ else refineElse C k τ
+def refineOne (C W : CTable) (k : NarrowKind) (thenSide : Bool) (Γ : Env) (x : String) : Env :=
+  let refine := fun τ => if thenSide then refineThen C W k τ else refineElse C W k τ
   match envGet? Γ x with
   | none => Γ
   | some (.sameAs y τ) =>
@@ -3155,6 +3176,16 @@ narrowing off program-wide — and blunt in the direction that costs rungs. -/
 def coreConstFree (κ : Ctx) : Bool :=
   coreChainNames.all (fun n => (constGet? κ n).isNone)
 
+/-- **The same guard, asked over the whole program** — `Neg.boundConsts` instead of
+`constGet? κ`, for `Neg.wholeCls`'s reason and with the same trade. `constGet? κ` grows along
+program order, so the guard it fed was **antitone in `Pos`** and `StateOk` could not be
+transported back down across a statement that bound a constant
+(`context-splitting.md` §12.2, `found-issues.md` §F21). Asking whether the name is bound
+*anywhere* is invariant, and strictly more conservative: a program that rebinds a core class
+name loses the refinement everywhere rather than only after the assignment. -/
+def coreConstFreeN (κ : Ctx) : Bool :=
+  coreChainNames.all (fun n => !κ.boundConsts.contains n)
+
 /-- **`found-issues.md` §F10's guard: the name has to mean the class it names.**
 
 `narrowCond?` reads the tested class out of the condition's **syntax** — `x.is_a?(Foo)` gives
@@ -3185,11 +3216,11 @@ def narrowNameOk (κ : Ctx) : NarrowKind → Bool
   -- to be stated. `nameFree κ "==="` is the companion: with the name unclaimed, `ClsQueryOk`
   -- says what `===` at a class object resolves to.
   | .isA cn =>
-    (constGet? κ cn).isNone && coreConstFree κ &&
+    (constGet? κ cn).isNone && coreConstFreeN κ &&
     ((clsGet? κ.classes cn).isSome || builtinClsNames.contains cn) &&
     nameFreeN κ "===" && nameFreeN κ "is_a?" && nameFreeN κ "method_missing" &&
     -- and §F9's root-chain guard, which `isAAnswer`'s `.inst` arm consults
-    mixinFreeChain κ.classes rootAncestors
+    mixinFreeChain κ.wholeCls rootAncestors
   -- **§F14**: `x.nil?` is a *dispatch*, and `nil?` is an ordinary method name. A program that
   -- redefines it moves the branch the refinement is attached to:
   -- `class NilClass; def nil?; false; end; end; x = nil; if x.nil? then 1 else x + 1 end`
@@ -3216,9 +3247,9 @@ def narrowEnvs (κ : Ctx) (c : Expr) (Γ : Env) : Env × Env :=
   match narrowCond? c with
   | some (.lvar, x, k, sides) =>
     if narrowNameOk κ k then
-      (refineOne κ.classes k true Γ x,
+      (refineOne κ.classes κ.wholeCls k true Γ x,
        match sides with
-       | .both => refineOne κ.classes k false Γ x
+       | .both => refineOne κ.classes κ.wholeCls k false Γ x
        | .thenOnly => Γ)
     else (Γ, Γ)
   | _ => (Γ, Γ)
@@ -3241,9 +3272,9 @@ def narrowSpine (κ : Ctx) (c : Expr) (I : Ty) : Ty × Ty :=
   | some (.ivar, x, k, sides) =>
     if narrowNameOk κ k then
       let τ := (ivarGet? I x).getD .nilT
-      (ivarSet I x (refineThen κ.classes k τ),
+      (ivarSet I x (refineThen κ.classes κ.wholeCls k τ),
        match sides with
-       | .both => ivarSet I x (refineElse κ.classes k τ)
+       | .both => ivarSet I x (refineElse κ.classes κ.wholeCls k τ)
        | .thenOnly => I)
     else (I, I)
   | _ => (I, I)

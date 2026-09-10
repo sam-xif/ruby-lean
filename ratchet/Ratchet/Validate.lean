@@ -1160,7 +1160,7 @@ because a program's top level is inside no method and runs somewhere `self` is n
 instance of anything this judgment models. The constant table (tier 13) is empty for the
 first of those reasons: a program's first statement is the first thing that could assign
 one. -/
-def ctx0 : Ctx := ⟨⟨[], [], [], []⟩, ⟨[], [], [], false, []⟩, ⟨none, [], none, none, []⟩⟩
+def ctx0 : Ctx := ⟨⟨[], [], [], []⟩, ⟨[], [], [], false, [], [], []⟩, ⟨none, [], none, none, []⟩⟩
 
 /-- `ctx0` with the two whole-program pre-passes run: the block table and the `Neg` seed.
 

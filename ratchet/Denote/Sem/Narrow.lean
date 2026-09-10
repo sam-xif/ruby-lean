@@ -242,8 +242,8 @@ into equality. (That clause is also the one §F11 is about, from the other side.
 theorem isA_base_of_cls {κ : Ctx} {m : Machine} (hbc : BaseChainsOk κ m) {n : String}
     {ch : List String} {v : Value} {base : ObjId}
     (hmem : (base, ch) ∈ builtinBases) (hhead : ch.head? = some n)
-    (hcf : Ratchet.coreConstFree κ = true)
-    (hno : Ratchet.isANoOk κ.classes ch = true) (hv : denM (.cls n) m v) :
+    (hcf : Ratchet.coreConstFreeN κ = true)
+    (hno : Ratchet.isANoOk κ.wholeCls ch = true) (hv : denM (.cls n) m v) :
     RubyCore.classOf m.heap v = base := by
   obtain ⟨hpos, hneg⟩ := hbc base ch hmem
   obtain ⟨hnamed, _⟩ := hpos hcf
@@ -258,9 +258,9 @@ theorem isA_base_of_cls {κ : Ctx} {m : Machine} (hbc : BaseChainsOk κ m) {n : 
 `isAName`. (`.arrayOf`/`.hashOf` have no row — see `builtinAncestors`, where they were dropped
 for exactly the reason this lemma would otherwise have to invent one.) -/
 theorem isA_base_of_denM {κ : Ctx} {m : Machine} (hbc : BaseChainsOk κ m)
-    (hcf : Ratchet.coreConstFree κ = true) :
+    (hcf : Ratchet.coreConstFreeN κ = true) :
     ∀ (τ : Ty) (ch : List String) (v : Value),
-      Ratchet.builtinAncestors τ = some ch → Ratchet.isANoOk κ.classes ch = true →
+      Ratchet.builtinAncestors τ = some ch → Ratchet.isANoOk κ.wholeCls ch = true →
       denM τ m v → ∃ base, (base, ch) ∈ builtinBases ∧ RubyCore.classOf m.heap v = base := by
   intro τ ch v hb hno hv
   match τ with
@@ -309,10 +309,10 @@ conformance, packaged for the two refinement lemmas: at a type with a `builtinAn
 if the machine says the value is a `cn` then `cn` is in the row — so `some false` is
 unavailable. Everything the proof needs beyond `BaseChainsOk` is `isA_base_of_denM`. -/
 theorem mem_chain_of_isA {κ : Ctx} {m : Machine} (hbc : BaseChainsOk κ m)
-    (hcf : Ratchet.coreConstFree κ = true)
+    (hcf : Ratchet.coreConstFreeN κ = true)
     {τ : Ty} {ch : List String} {v : Value} {cn : String} {k : ObjId}
     (hg : (Ratchet.constGet? κ cn).isNone = true)
-    (hb : Ratchet.builtinAncestors τ = some ch) (hno : Ratchet.isANoOk κ.classes ch = true)
+    (hb : Ratchet.builtinAncestors τ = some ch) (hno : Ratchet.isANoOk κ.wholeCls ch = true)
     (hv : denM τ m v) (hcn : classNamed? m.heap cn = some k)
     (hisa : RubyCore.isA m.heap v k = true) : cn ∈ ch := by
   obtain ⟨base, hmem, hcls⟩ := isA_base_of_denM hbc hcf τ ch v hb hno hv
@@ -327,7 +327,7 @@ theorem mem_chain_of_isA_inst {κ : Ctx} {m : Machine} (hdc : DeclClassOk κ m)
     {n : String} {I : Ty} {v : Value} {cn : String} {k : ObjId} {ch : List String}
     (hmem : ∃ c ∈ κ.classes, c.name = n)
     (hanc : Ratchet.ancestors? κ.classes n = some ch)
-    (hmf : Ratchet.mixinFreeChain κ.classes Ratchet.rootAncestors = true)
+    (hmf : Ratchet.mixinFreeChain κ.wholeCls Ratchet.rootAncestors = true)
     (hv : denM (.inst n I) m v) (hcn : classNamed? m.heap cn = some k)
     (hisa : RubyCore.isA m.heap v k = true) : cn ∈ ch ++ Ratchet.rootAncestors := by
   obtain ⟨c, hc, hcname⟩ := hmem
@@ -384,11 +384,11 @@ theorem ancestors?_mem {C : Ratchet.CTable} {n : String} {ch : List String}
 clause for a declared class. Everything else answers `none`, which is not `some false`. -/
 theorem isAAnswer_not_no {κ : Ctx} {m : Machine} (hbc : BaseChainsOk κ m)
     (hdc : DeclClassOk κ m)
-    (hmf : Ratchet.mixinFreeChain κ.classes Ratchet.rootAncestors = true)
-    (hcf : Ratchet.coreConstFree κ = true)
+    (hmf : Ratchet.mixinFreeChain κ.wholeCls Ratchet.rootAncestors = true)
+    (hcf : Ratchet.coreConstFreeN κ = true)
     {τ : Ty} {v : Value} {cn : String} {k : ObjId}
     (hg : (Ratchet.constGet? κ cn).isNone = true)
-    (ha : Ratchet.isAAnswer κ.classes cn τ = some false)
+    (ha : Ratchet.isAAnswer κ.classes κ.wholeCls cn τ = some false)
     (hv : denM τ m v) (hcn : classNamed? m.heap cn = some k)
     (hisa : RubyCore.isA m.heap v k = true) : False := by
   cases τ
@@ -423,10 +423,10 @@ it spends the *other* direction of the same two clauses (every name in the chain
 real ancestor). `notATy`'s `.never` is the answer this refutes. -/
 theorem isAAnswer_not_yes {κ : Ctx} {m : Machine} (hbc : BaseChainsOk κ m)
     (hdc : DeclClassOk κ m)
-    (hmf : Ratchet.mixinFreeChain κ.classes Ratchet.rootAncestors = true)
-    (hcf : Ratchet.coreConstFree κ = true)
+    (hmf : Ratchet.mixinFreeChain κ.wholeCls Ratchet.rootAncestors = true)
+    (hcf : Ratchet.coreConstFreeN κ = true)
     {τ : Ty} {v : Value} {cn : String} {k : ObjId}
-    (ha : Ratchet.isAAnswer κ.classes cn τ = some true)
+    (ha : Ratchet.isAAnswer κ.classes κ.wholeCls cn τ = some true)
     (hv : denM τ m v) (hcn : classNamed? m.heap cn = some k)
     (hisa : RubyCore.isA m.heap v k = false) : False := by
   cases τ
@@ -488,12 +488,12 @@ and the conclusion is that the refined type still denotes it. -/
 
 /-- **`isATy` keeps the values that really are a `cn`.** -/
 theorem denM_isATy {κ : Ctx} {m : Machine} (hbc : BaseChainsOk κ m) (hdc : DeclClassOk κ m)
-    (hmf : Ratchet.mixinFreeChain κ.classes Ratchet.rootAncestors = true)
-    (hcf : Ratchet.coreConstFree κ = true) {cn : String}
+    (hmf : Ratchet.mixinFreeChain κ.wholeCls Ratchet.rootAncestors = true)
+    (hcf : Ratchet.coreConstFreeN κ = true) {cn : String}
     (hg : (Ratchet.constGet? κ cn).isNone = true) :
     ∀ (τ : Ty) {v : Value} {k : ObjId},
       denM τ m v → classNamed? m.heap cn = some k → RubyCore.isA m.heap v k = true →
-      denM (Ratchet.isATy κ.classes cn τ) m v := by
+      denM (Ratchet.isATy κ.classes κ.wholeCls cn τ) m v := by
   intro τ
   induction τ with
   | union σ τ ihσ ihτ =>
@@ -541,11 +541,11 @@ refuting `some true` instead of `some false`, and its `.nilable` arm reads `notA
 one piece that needed no §F9 guard, because its `.never` is on the side where `cn` *is* in
 `NilClass`'s chain. -/
 theorem denM_notATy {κ : Ctx} {m : Machine} (hbc : BaseChainsOk κ m) (hdc : DeclClassOk κ m)
-    (hmf : Ratchet.mixinFreeChain κ.classes Ratchet.rootAncestors = true)
-    (hcf : Ratchet.coreConstFree κ = true) {cn : String} :
+    (hmf : Ratchet.mixinFreeChain κ.wholeCls Ratchet.rootAncestors = true)
+    (hcf : Ratchet.coreConstFreeN κ = true) {cn : String} :
     ∀ (τ : Ty) {v : Value} {k : ObjId},
       denM τ m v → classNamed? m.heap cn = some k → RubyCore.isA m.heap v k = false →
-      denM (Ratchet.notATy κ.classes cn τ) m v := by
+      denM (Ratchet.notATy κ.classes κ.wholeCls cn τ) m v := by
   intro τ
   induction τ with
   | union σ τ ihσ ihτ =>

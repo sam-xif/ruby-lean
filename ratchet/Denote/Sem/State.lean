@@ -874,11 +874,11 @@ def BaseChainsOk (κ : Ctx) (m : Machine) : Prop :=
     -- mixin only *adds* ancestors — which is exactly why `isAAnswer`'s positive answer is
     -- ungated. The clauses that say what is **not** an ancestor need `isANoOk`, the gate on
     -- the negative answer, and the third needs the tested name unbound as well.
-    ((Ratchet.coreConstFree κ = true →
+    ((Ratchet.coreConstFreeN κ = true →
       (∀ bn, ch.head? = some bn → classNamed? m.heap bn = some base) ∧
       (∀ cn ∈ ch, ∃ j, classNamed? m.heap cn = some j ∧
         (ancestors m.heap base).contains j = true)) ∧
-     (Ratchet.isANoOk κ.classes ch = true →
+     (Ratchet.isANoOk κ.wholeCls ch = true →
       (∀ cn j, (Ratchet.constGet? κ cn).isNone = true → classNamed? m.heap cn = some j →
         (ancestors m.heap base).contains j = true → cn ∈ ch) ∧
       (∀ k, (ancestors m.heap k).contains base = true → k = base)))
@@ -993,7 +993,7 @@ def DeclClassOk (κ : Ctx) (m : Machine) : Prop :=
     -- claim for the *builtin* rows; this is the declared one, and it needs no
     -- no-subclasses clause because `.inst` denotes the class **exactly** (§F12).
     (∀ ch, Ratchet.ancestors? κ.classes c.name = some ch →
-      Ratchet.mixinFreeChain κ.classes Ratchet.rootAncestors = true →
+      Ratchet.mixinFreeChain κ.wholeCls Ratchet.rootAncestors = true →
       (∀ cn ∈ ch ++ Ratchet.rootAncestors, ∃ j, classNamed? m.heap cn = some j ∧
           (ancestors m.heap k).contains j = true) ∧
       (∀ cn j, classNamed? m.heap cn = some j → (ancestors m.heap k).contains j = true →

@@ -136,11 +136,11 @@ theorem stripAlias_of_not_alias {τ : Ty} (h : Ratchet.isAliasTy τ = false) :
     Ratchet.stripAlias τ = τ := by
   cases τ <;> simp_all [Ratchet.isAliasTy, Ratchet.stripAlias]
 
-theorem EnvOk_refineOne_else {C : Ratchet.CTable} {Γ : Env} {x : String}
+theorem EnvOk_refineOne_else {C W : Ratchet.CTable} {Γ : Env} {x : String}
     {nk : Ratchet.NarrowKind} {m : Machine} (h : EnvOk Γ m)
     (hfact : ∀ τ, denM τ m (m.getLocal x) →
-      denM (Ratchet.refineElse C nk τ) m (m.getLocal x)) :
-    EnvOk (Ratchet.refineOne C nk false Γ x) m := by
+      denM (Ratchet.refineElse C W nk τ) m (m.getLocal x)) :
+    EnvOk (Ratchet.refineOne C W nk false Γ x) m := by
   have hlow := h.1
   unfold Ratchet.refineOne
   dsimp only
@@ -154,14 +154,14 @@ theorem EnvOk_refineOne_else {C : Ratchet.CTable} {Γ : Env} {x : String}
       simp only [Bool.false_eq_true, if_false]
       have hxy : m.getLocal x = m.getLocal y := (hlow x (.sameAs y ρ) hgx).2 y ρ rfl
       have hρ : denM ρ m (m.getLocal x) := (hlow x (.sameAs y ρ) hgx).1
-      have h1 : EnvOk (Ratchet.envSet Γ x (.sameAs y (Ratchet.refineElse C nk ρ))) m :=
+      have h1 : EnvOk (Ratchet.envSet Γ x (.sameAs y (Ratchet.refineElse C W nk ρ))) m :=
         EnvOk_envSet h (by
-          show denM (Ratchet.refineElse C nk ρ) m (m.getLocal x)
+          show denM (Ratchet.refineElse C W nk ρ) m (m.getLocal x)
           exact hfact ρ hρ) (fun y' ρ' he => by
           injection he with he₁ _
           rw [he₁] at hxy
           exact hxy)
-      cases hgy : envGet? (Ratchet.envSet Γ x (.sameAs y (Ratchet.refineElse C nk ρ))) y with
+      cases hgy : envGet? (Ratchet.envSet Γ x (.sameAs y (Ratchet.refineElse C W nk ρ))) y with
       | none => exact h1
       | some σy =>
         have hy := (h1.1 y σy hgy).1
@@ -206,11 +206,11 @@ parameterised over `refineOne`'s `thenSide`, which was tried first: the function
 `let refine := fun τ => if thenSide then …`, so a variable side leaves an `if` inside every
 goal, and `split` then picks *it* rather than the `isAliasTy` guard the proof is analysing.
 Two readable scripts beat one that has to disambiguate three `if`s. -/
-theorem EnvOk_refineOne_then {C : Ratchet.CTable} {Γ : Env} {x : String}
+theorem EnvOk_refineOne_then {C W : Ratchet.CTable} {Γ : Env} {x : String}
     {nk : Ratchet.NarrowKind} {m : Machine} (h : EnvOk Γ m)
     (hfact : ∀ τ, denM τ m (m.getLocal x) →
-      denM (Ratchet.refineThen C nk τ) m (m.getLocal x)) :
-    EnvOk (Ratchet.refineOne C nk true Γ x) m := by
+      denM (Ratchet.refineThen C W nk τ) m (m.getLocal x)) :
+    EnvOk (Ratchet.refineOne C W nk true Γ x) m := by
   have hlow := h.1
   unfold Ratchet.refineOne
   dsimp only
@@ -224,14 +224,14 @@ theorem EnvOk_refineOne_then {C : Ratchet.CTable} {Γ : Env} {x : String}
       simp only [if_true]
       have hxy : m.getLocal x = m.getLocal y := (hlow x (.sameAs y ρ) hgx).2 y ρ rfl
       have hρ : denM ρ m (m.getLocal x) := (hlow x (.sameAs y ρ) hgx).1
-      have h1 : EnvOk (Ratchet.envSet Γ x (.sameAs y (Ratchet.refineThen C nk ρ))) m :=
+      have h1 : EnvOk (Ratchet.envSet Γ x (.sameAs y (Ratchet.refineThen C W nk ρ))) m :=
         EnvOk_envSet h (by
-          show denM (Ratchet.refineThen C nk ρ) m (m.getLocal x)
+          show denM (Ratchet.refineThen C W nk ρ) m (m.getLocal x)
           exact hfact ρ hρ) (fun y' ρ' he => by
           injection he with he₁ _
           rw [he₁] at hxy
           exact hxy)
-      cases hgy : envGet? (Ratchet.envSet Γ x (.sameAs y (Ratchet.refineThen C nk ρ))) y with
+      cases hgy : envGet? (Ratchet.envSet Γ x (.sameAs y (Ratchet.refineThen C W nk ρ))) y with
       | none => exact h1
       | some σy =>
         have hy := (h1.1 y σy hgy).1
