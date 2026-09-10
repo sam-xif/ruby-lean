@@ -6977,7 +6977,7 @@ Proof/ChkSound}.lean`, `CheckRungs.lean`, `Denote/{Adequacy,Sanity,Rules}.lean`,
 `Denote/Sem/{Judge,State,Frame,Narrow,NarrowState}.lean`, a new `Denote/Sem/Down.lean`, and
 fourteen files under `Denote/Rules/`.
 
-## Clink 62 (2026-09-10) — `BuiltinsSeal` reduced to one walk, four of its six dispatchers proved, and §F22. **178 rungs / 254, 48 of 83 rules**
+## Clink 62 (2026-09-10) — **`BuiltinsSeal` proved**, the eighteenth stall point closed, and §F22. **178 rungs / 254, 48 of 83 rules**
 
 **The ladder did not move, and that was known before the session started.** All 35 remaining
 rules were re-audited independently against `Denote/Sem/notes.md`'s census, and the census holds:
@@ -7003,14 +7003,14 @@ candidate repairs (identity-keyed nominal arms, which `Ty.inst`'s `isExactInst` 
 would close both. Recorded, not fixed: `casgn` needs the cref *and* one of these, so it is two
 fixes away rather than one.
 
-### The layer: `BuiltinsSeal` is now one named walk, and four sixths of it are on file
+### The layer: **`BuiltinsSeal` is proved**
 
 `Denote/Sem/BuiltinsCap.lean` + one module per dispatcher. **`CapMono h h'`** — the heap's
-capture edges did not grow — with `Sealed.of_capMono`/`FramesWF.of_capMono` taking
-`builtins_run_seal`'s two remaining hypotheses down to a **single** missing theorem,
-`builtins_run_cap`. `runRegex`/`runModules`/`runCollections`/`runStrings` are proved and
-axiom-clean (17 s / 48 s / 5 s / 8 s). `runNumerics` is not, and `runObjects`/`Builtins.run` sit
-behind it unelaborated, so `BuiltinsSeal` itself is still stated and unproved.
+capture edges did not grow — with `Sealed.of_capMono`/`FramesWF.of_capMono` discharging
+`builtins_run_seal`'s two remaining hypotheses from it. **All six dispatchers are proved and
+axiom-clean** (19/48/3/7/5/5 s), and `BuiltinsCapRun.lean`'s `builtinsSeal : BuiltinsSeal` plus
+`builtinsFramesWF` join them to `FrameLocal.lean`'s frame half. **The eighteenth stall point is
+closed: `Sealed` survives `Builtins.run`.**
 
 **Two decisions that were not forced.**
 
@@ -7051,21 +7051,38 @@ dispatcher after it in the chain also reports zero errors of its own while never
 at all. Both halves are why `runNumerics` looked like it built five times before anyone had
 elaborated it once.
 
-### Why `runNumerics` is not just "slow"
+### `runNumerics`: 14 GB and non-terminating → 5 s, and the cause was one tactic
 
-It reaches **14 GB resident and does not terminate, with `maxHeartbeats` never tripping** — which
-points at the kernel checking a gigantic proof term rather than at a tactic search. The two
-suspects are the two `simp`s still in the walk, either of which can try to *evaluate* `Int`/`Float`
-literals on an arithmetic arm. The fix shape is the one that already worked three times: move the
-`simp` into a pure-term lemma keyed on the arm. Written up at the end of
-`Denote/Sem/BuiltinsCapStrings.lean` so the next attempt starts there.
+The last dispatcher to fall, and the most instructive. With `simp at h` reachable early it took
+the elaborator past **14 GB of proof term without terminating** and `maxHeartbeats` never
+tripped. The cause is exact rather than mysterious: on an arithmetic arm `simp` tries to
+*evaluate* the `Int`/`Float` literals, while the one thing it was needed for is beta-reducing a
+`(fun b => match …) b` arm so `split` can see the match — which **`dsimp only at h` does
+definitionally and for free**. Demoting `simp at h` below the unfolds and putting `dsimp only`
+in its place closed the file in 5 s, and re-verified the other five unchanged.
+
+Two smaller ordering facts came out of the same measurement, both now in the shared tactic:
+`Builtins.withIndex` must be unfolded **before** `split at h`, because it takes a continuation
+and `split` otherwise peels the `if`s inside its lambda and strands the arm; and every dispatcher
+needs **fall-through** closers for the ones below it in the chain — `runNumerics`' final open
+goal was `runStrings bid recv args m = .ok v m'`, i.e. `runStrings_cap h`.
+
+The diagnosis method is the reusable part, since Lean gives no in-file progress (verified: a 5 s
+`IO.sleep` between two `#print axioms` markers emits both at the same timestamp under `--json`).
+What works is **one module per dispatcher** (live progress from `lake`, plus caching, plus a
+smaller closer list each), `set_option profiler true` with a threshold (which found the 12 s
+spikes), and **`sample <pid>`** on the live worker, which is what identified the root cause as
+unification against stuck metavariables rather than proof search.
 
 ### State
 
 Semantic ratchet **48 of 83**, unmoved — `BuiltinsSeal` is a layer, not a `Judge` rule, and
-nothing here claims otherwise. Syntactic ratchet **178 of 254**, unmoved tier for tier;
+nothing here claims otherwise. What it unblocks is the *next* step of the locals layer
+(`Sealed.push`/`pop`/`alloc_closure` at the interpreter's frame pushes, `ClosuresOk`'s exactness,
+then the `stepFn` walk), which is still several clinks from any rung. Syntactic ratchet **178 of 254**, unmoved tier for tier;
 `expect_validate` mismatches **35**, unchanged. `checkrungs` **177/177 hand derivations +
 148/148 negative controls**. `lake build` clean, no `sorry`, every `#print axioms` a subset of
 `propext`/`Classical.choice`/`Quot.sound`. **`Ratchet/` untouched.** Added:
-`Denote/Sem/BuiltinsCap{,Regex,Modules,Collections,Strings}.lean`. Changed:
-`Denote/Sem/notes.md`, `found-issues.md` (§F22).
+`Denote/Sem/BuiltinsCap{,Regex,Modules,Collections,Strings,Numerics,Objects,Run}.lean`. Changed:
+`Denote/Sem/notes.md`, `Denote/Sem/StepLocal.lean` (its "stated and unproved" note),
+`found-issues.md` (§F22), `AGENTS.md`.

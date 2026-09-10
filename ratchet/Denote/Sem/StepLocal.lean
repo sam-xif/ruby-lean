@@ -315,10 +315,13 @@ def toProcSealsB : Bool :=
 
 #guard toProcSealsB
 
--- `BuiltinsSeal` is left **stated and unproved**, deliberately: `toProcSealsB` retires the
--- one measured refutation, it does not survey the other builtins, and a `Prop` that reads
--- "every builtin, every receiver, every argument list" is not something one `#guard` earns.
--- The Builtins-layer walk is where it gets proved or refuted again.
+-- `BuiltinsSeal` is **PROVED** (L269): `Denote/Sem/BuiltinsCapRun.lean`'s `builtinsSeal`,
+-- from the frame half (`builtins_run_locals`, `FrameLocal.lean`'s 600-arm walk) and the heap
+-- half (`builtins_run_cap`, the same 600 arms again for `CapMono`), joined by
+-- `Sealed.of_capMono`. It was left unproved for one clink on honest grounds -- `toProcSealsB`
+-- retires a measured *refutation* and does not survey the other builtins, and a `Prop` that
+-- reads "every builtin, every receiver, every argument list" is not something one `#guard`
+-- earns. It is now earned by a walk.
 #print axioms Sealed.push
 
 end Ratchet.Denote

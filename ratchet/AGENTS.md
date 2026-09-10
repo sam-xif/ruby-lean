@@ -550,19 +550,29 @@ the seal) is untouched**, as its own piece.
 > at §Where the remaining 36 rules sit still holds: all 36 are behind one of four unbuilt
 > layers, none smaller than a clink. Read `HANDOFF.md` first.
 >
-> **L269 (clink 62) reduced `BuiltinsSeal` to one walk and proved four of its six dispatchers.**
-> `Denote/Sem/BuiltinsCap.lean`'s **`CapMono`** — the heap's capture edges did not grow — plus
-> `Sealed.of_capMono`/`FramesWF.of_capMono` take `builtins_run_seal`'s two remaining hypotheses
-> down to a **single** missing theorem, `builtins_run_cap`; `runRegex`/`runModules`/
-> `runCollections`/`runStrings` are proved, axiom-clean, in seconds each. `runNumerics` is not —
-> it reaches **14 GB** of proof term without terminating — and `runObjects`/`Builtins.run` sit
-> behind it unelaborated, so **`BuiltinsSeal` is still stated and unproved**. The predicate is
-> existential in the object id because `Object#dup` *refutes* the id-keyed form, and `CapAt`'s
-> class arm is keyed on the `methodIn` lookup because `Sealed.meth` cannot consume a
-> membership-shaped one. **The transferable result is the tactic**, seven measurements recorded in
-> `Denote/Sem/notes.md` §The second walk — chiefly *put the arm's shape in a `rfl`-provable
-> hypothesis and leave the conclusion first-order*, which took the walk from "unfinished after 35
-> minutes" to 17 s per dispatcher.
+> **L269 (clink 62) proved `BuiltinsSeal`, and with it the eighteenth stall point is closed.**
+> `Denote/Sem/BuiltinsCap.lean`'s **`CapMono`** — the heap's capture edges did not grow — is the
+> heap-side predicate; `Sealed.of_capMono`/`FramesWF.of_capMono` discharge
+> `builtins_run_seal`'s two remaining hypotheses from it; and the walk itself is on file, one
+> module per dispatcher, all six proved and axiom-clean in seconds each (19/48/3/7/5/5 s), with
+> `BuiltinsCapRun.lean`'s **`builtinsSeal : BuiltinsSeal`** and `builtinsFramesWF` joining them to
+> `FrameLocal.lean`'s frame half. **`Sealed` survives `Builtins.run`.** Next in the locals layer:
+> `Sealed.push`/`pop`/`alloc_closure` at the *interpreter*'s frame pushes, `ClosuresOk`'s
+> exactness, then the `stepFn` walk.
+>
+> Two definitional decisions, neither forced: `CapMono` is **existential in the object id**
+> because `Object#dup` *refutes* the id-keyed form (it pushes a copy of the source's payload, so
+> `p.dup` on a Proc puts the same edge at a fresh id), and `CapAt`'s class arm is keyed on the
+> **`methodIn` lookup** rather than on membership in `cp.methods`, because the membership form is
+> easier to establish and `Sealed.meth` cannot consume it — the sixth stall point's rule one layer
+> down.
+>
+> **The transferable result is the tactic**, eight measurements in `Denote/Sem/notes.md` §The
+> second walk. The two that matter most: *put the arm's shape in a `rfl`-provable hypothesis and
+> leave the conclusion first-order*, which took the walk from "unfinished after 35 minutes" to
+> 17 s per dispatcher because it is what makes **failing** cheap; and *a `simp` in a 600-arm walk
+> is a search, not a step* — `simp at h` alone took `runNumerics` past 14 GB of proof term without
+> terminating, and `dsimp only at h` in its place closes the same file in 5 s.
 >
 > **The ladder still reads 48/83, and clink 62 does not claim otherwise.** It also filed
 > `found-issues.md` **§F22** — `constAsgnOk`'s guard list is not the set of class names a `Ty` can

@@ -1701,25 +1701,14 @@ all six hundred call sites. The second walk needs its own predicate (allocation-
 appended object is not a capturing closure, and not a class with a capturing method") and its own
 copy of the twenty machine-threading helper lemmas. That is the honest price, and it is a clink.
 
-### The second walk, **four of six dispatchers** — and the price was tactics rather than lemmas (2026-09-10)
+### The second walk, **built — `BuiltinsSeal` is proved** (2026-09-10)
 
 `Denote/Sem/BuiltinsCap.lean` (the predicate and the lemmas) plus one module per dispatcher.
-`runRegex`, `runModules`, `runCollections` and `runStrings` are **proved, axiom-clean**, in
-17 s / 48 s / 5 s / 8 s. `runNumerics` is **not**, and `runObjects`/`Builtins.run` sit behind it
-in the import chain and have never been elaborated — so **`BuiltinsSeal` is still stated and
-unproved**, and the honest reading of this section is "two thirds of one layer".
-
-What *is* closed is the reduction: `Sealed.of_capMono`/`FramesWF.of_capMono` take
-`builtins_run_seal`'s two remaining hypotheses down to a single missing theorem
-(`builtins_run_cap`), so the layer is now one named walk rather than an open question.
-
-`runNumerics`' failure is **not a stalled goal**: elaboration reaches 14 GB resident and does not
-terminate, with `maxHeartbeats` never tripping — which points at a proof *term* the kernel then
-has to check rather than at a tactic search. The two suspects are the two `simp`s still in the
-walk (`cap_norm`'s `simp only` over the sixteen machine helpers, and `cap_arms`' `simp at h`
-fallback), either of which can try to *evaluate* `Int`/`Float` literals on an arithmetic arm.
-That is item 3 below biting a fourth time, and the fix shape is the one that worked the first
-three: move the `simp` into a pure-term lemma keyed on the arm.
+All six are proved and axiom-clean — `runRegex` 19 s, `runModules` 48 s, `runCollections` 3 s,
+`runStrings` 7 s, `runNumerics` 5 s, `runObjects` 5 s — and `BuiltinsCapRun.lean`'s
+**`builtinsSeal : BuiltinsSeal`** joins the heap half to `FrameLocal.lean`'s frame half through
+`Sealed.of_capMono`. `builtinsFramesWF` is the bookkeeping twin `Sealed.push` needs beside it.
+So the eighteenth stall point is closed: `Sealed` survives `Builtins.run`.
 
 The prediction above was right about the *shape* — its own predicate and its own copy of the
 twenty helpers — and wrong about where the cost sat. The lemmas were an afternoon; the **tactic**
@@ -1738,7 +1727,8 @@ rather than on membership in `cp.methods`. A membership-shaped `CapAt` would be 
 could establish and `Sealed.meth` could not consume. The sixth stall point's rule (*state the
 component over the lookup function*), one layer down.
 
-**The tactic, in seven measurements, each of which cost a full run.** The frame walk closes the
+**The tactic, in eight measurements, each of which cost a full run.** The lemmas were an
+afternoon; every one of these was a day. The frame walk closes the
 same six hundred arms in **89 s**; the first version of this one had not finished in **thirty-five
 minutes**, and `sample` on the live process said why — 60 % of it in
 `whnfImp`/`tryHeuristic`/`reduceMatcher?`/`getStuckMVar?`, i.e. unification against stuck
@@ -1801,3 +1791,16 @@ caches each success, and each dispatcher pays only for **its own** expensive clo
    `?mid.heap.objs ≟ m.heap.objs.push cpy` is the shape problem again. Also: `simp at h` runs
    *before* the leaf closers get the goal, so it has already unfolded `dupObj` — a closer keyed on
    a helper the fallback `simp` dissolves can never fire.
+8. **`simp at h` was the whole `runNumerics` problem, and `dsimp only at h` is the whole fix.**
+   With `simp` reachable early, `runNumerics` took the elaborator past **14 GB of proof term
+   without terminating**; with it demoted below the unfolds and `dsimp only at h` in its place,
+   the same file closes in **5 s**. The reason is exact: on an arithmetic arm `simp` tries to
+   *evaluate* the `Int`/`Float` literals, while the one thing it was actually needed for is
+   beta-reducing a `(fun b => match …) b` arm so `split` can see the match — which `dsimp` does
+   definitionally and for free. Two smaller ordering facts came out of the same measurement:
+   `Builtins.withIndex` must be unfolded **before** `split at h` (it takes a continuation, so
+   `split` otherwise peels the `if`s inside its lambda and strands the arm), and every dispatcher
+   needs the **fall-through** closers for the dispatchers below it in the chain — `runNumerics`'
+   last open goal was `runStrings bid recv args m = .ok v m'`, which is just `runStrings_cap h`.
+   This is the eighth measurement and the fourth instance of item 3: *a `simp` in a 600-arm walk
+   is a search, not a step.*

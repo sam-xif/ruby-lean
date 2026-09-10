@@ -705,7 +705,7 @@ macro "cap_norm" : tactic => `(tactic|
   simp only [Builtins.allocStr, Builtins.allocStrEnc, Builtins.allocArr, Builtins.allocHsh,
     Builtins.allocExc, Builtins.allocMData, Builtins.dupObj, Builtins.okStr, Builtins.okStrEnc,
     Builtins.setMatchGlobals, Machine.setLastMatchValue, Machine.emit, Machine.setCurrentFrame,
-    Heap.alloc, Heap.set, Heap.setClassPayload, apply_ite, ite_self])
+    Heap.alloc, Heap.set, Heap.setClassPayload])
 
 set_option hygiene false in
 macro "cap_step" : tactic => `(tactic|
@@ -900,6 +900,8 @@ macro "cap_arms" : tactic => `(tactic|
   repeat (any_goals (first
     | (cases h; cap_leaf)
     | (obtain ⟨-, rfl⟩ := h; cap_leaf)
+    | (dsimp only at h)
+    | (unfold Builtins.withIndex at h)
     | split at h
     | (exact putsImpl_cap _ _ _ _ h)
     | (exact regexApply_cap _ _ _ _ _ _ h)
@@ -922,7 +924,6 @@ macro "cap_arms" : tactic => `(tactic|
     | (unfold Builtins.floatToInt at h)
     | (unfold Builtins.raiseImpl at h)
     | (unfold Builtins.raiseClass at h)
-    | (unfold Builtins.withIndex at h)
     | (unfold Builtins.intBitRef at h)
     | (unfold Builtins.numCmp at h)
     | (unfold Builtins.sortImpl at h)
@@ -935,6 +936,11 @@ macro "cap_arms" : tactic => `(tactic|
     | (unfold Builtins.allocHsh at h)
     | (unfold Builtins.allocExc at h)
     | (unfold Builtins.dupObj at h)
+    -- `simp at h` **last**: on an arithmetic arm it tries to evaluate `Int`/`Float` literals,
+    -- which took `runNumerics` to a 14 GB proof term that never finished. `dsimp only at h`
+    -- above does the one thing it was actually needed for -- beta-reducing a
+    -- `(fun b => match …) b` arm so `split` can see the match -- definitionally.
+    | (simp at h)
     | (exact runRegex_cap _ _ _ _ _ _ h)
     | (exact runModules_cap _ _ _ _ _ _ h)
     | (exact runCollections_cap _ _ _ _ _ _ h)
@@ -949,6 +955,8 @@ macro "cap_arms_rx" : tactic => `(tactic|
   repeat (any_goals (first
     | (cases h; cap_leaf_rx)
     | (obtain ⟨-, rfl⟩ := h; cap_leaf_rx)
+    | (dsimp only at h)
+    | (unfold Builtins.withIndex at h)
     | split at h
     | (exact putsImpl_cap _ _ _ _ h)
     | (exact regexApply_cap _ _ _ _ _ _ h)
@@ -971,7 +979,6 @@ macro "cap_arms_rx" : tactic => `(tactic|
     | (unfold Builtins.floatToInt at h)
     | (unfold Builtins.raiseImpl at h)
     | (unfold Builtins.raiseClass at h)
-    | (unfold Builtins.withIndex at h)
     | (unfold Builtins.intBitRef at h)
     | (unfold Builtins.numCmp at h)
     | (unfold Builtins.sortImpl at h)
@@ -984,6 +991,11 @@ macro "cap_arms_rx" : tactic => `(tactic|
     | (unfold Builtins.allocHsh at h)
     | (unfold Builtins.allocExc at h)
     | (unfold Builtins.dupObj at h)
+    -- `simp at h` **last**: on an arithmetic arm it tries to evaluate `Int`/`Float` literals,
+    -- which took `runNumerics` to a 14 GB proof term that never finished. `dsimp only at h`
+    -- above does the one thing it was actually needed for -- beta-reducing a
+    -- `(fun b => match …) b` arm so `split` can see the match -- definitionally.
+    | (simp at h)
     | (exact runRegex_cap _ _ _ _ _ _ h)
     | (exact runModules_cap _ _ _ _ _ _ h)
     | (exact runCollections_cap _ _ _ _ _ _ h)
@@ -998,6 +1010,8 @@ macro "cap_arms_mod" : tactic => `(tactic|
   repeat (any_goals (first
     | (cases h; cap_leaf_mod)
     | (obtain ⟨-, rfl⟩ := h; cap_leaf_mod)
+    | (dsimp only at h)
+    | (unfold Builtins.withIndex at h)
     | split at h
     | (exact putsImpl_cap _ _ _ _ h)
     | (exact regexApply_cap _ _ _ _ _ _ h)
@@ -1020,7 +1034,6 @@ macro "cap_arms_mod" : tactic => `(tactic|
     | (unfold Builtins.floatToInt at h)
     | (unfold Builtins.raiseImpl at h)
     | (unfold Builtins.raiseClass at h)
-    | (unfold Builtins.withIndex at h)
     | (unfold Builtins.intBitRef at h)
     | (unfold Builtins.numCmp at h)
     | (unfold Builtins.sortImpl at h)
@@ -1033,6 +1046,11 @@ macro "cap_arms_mod" : tactic => `(tactic|
     | (unfold Builtins.allocHsh at h)
     | (unfold Builtins.allocExc at h)
     | (unfold Builtins.dupObj at h)
+    -- `simp at h` **last**: on an arithmetic arm it tries to evaluate `Int`/`Float` literals,
+    -- which took `runNumerics` to a 14 GB proof term that never finished. `dsimp only at h`
+    -- above does the one thing it was actually needed for -- beta-reducing a
+    -- `(fun b => match …) b` arm so `split` can see the match -- definitionally.
+    | (simp at h)
     | (exact runRegex_cap _ _ _ _ _ _ h)
     | (exact runModules_cap _ _ _ _ _ _ h)
     | (exact runCollections_cap _ _ _ _ _ _ h)
@@ -1047,6 +1065,8 @@ macro "cap_arms_obj" : tactic => `(tactic|
   repeat (any_goals (first
     | (cases h; cap_leaf_obj)
     | (obtain ⟨-, rfl⟩ := h; cap_leaf_obj)
+    | (dsimp only at h)
+    | (unfold Builtins.withIndex at h)
     | split at h
     | (exact putsImpl_cap _ _ _ _ h)
     | (exact regexApply_cap _ _ _ _ _ _ h)
@@ -1069,7 +1089,6 @@ macro "cap_arms_obj" : tactic => `(tactic|
     | (unfold Builtins.floatToInt at h)
     | (unfold Builtins.raiseImpl at h)
     | (unfold Builtins.raiseClass at h)
-    | (unfold Builtins.withIndex at h)
     | (unfold Builtins.intBitRef at h)
     | (unfold Builtins.numCmp at h)
     | (unfold Builtins.sortImpl at h)
@@ -1082,6 +1101,11 @@ macro "cap_arms_obj" : tactic => `(tactic|
     | (unfold Builtins.allocHsh at h)
     | (unfold Builtins.allocExc at h)
     | (unfold Builtins.dupObj at h)
+    -- `simp at h` **last**: on an arithmetic arm it tries to evaluate `Int`/`Float` literals,
+    -- which took `runNumerics` to a 14 GB proof term that never finished. `dsimp only at h`
+    -- above does the one thing it was actually needed for -- beta-reducing a
+    -- `(fun b => match …) b` arm so `split` can see the match -- definitionally.
+    | (simp at h)
     | (exact runRegex_cap _ _ _ _ _ _ h)
     | (exact runModules_cap _ _ _ _ _ _ h)
     | (exact runCollections_cap _ _ _ _ _ _ h)
