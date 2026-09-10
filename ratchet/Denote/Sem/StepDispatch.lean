@@ -385,6 +385,232 @@ theorem Step.tryIterator {b : FrameId} {m m' : Machine} (h : StepInv b m) (recv 
 #print axioms Step.startIter
 #print axioms Step.tryIterator
 
+
+/-! ## Method installation, the mixins, and two lemmas about *closer* shape
+
+The remaining stage-2 helpers, and what they cost is not semantics but the shape of the
+hypotheses a closer can consume:
+
+* **`CapMono.defineMethod`** — installing a method carries no *new* capture edge when the
+  installed `MethodDef`'s captured frame is one the heap already reaches. Vacuous for every
+  writer but `define_method` (an ordinary `def`, the `attr_*` accessors and the `undef` stub all
+  install `capturedFrame := none`), and the content is the **other** names: `defineMethod`
+  prepends and filters the old entry out while `methodOf` reads the first match, so a name other
+  than the one written has to be shown to resolve exactly as it did (`find?_filter_ne`).
+  Installing a method can only *hide* an edge.
+* **the `E` forms.** `refine`/`exact` **refuse to postpone an implicit argument** that a later
+  `rfl` would determine — *don't know how to synthesize implicit argument `cp`* — which makes
+  `CapMono.setClassPayload_methods` unusable inside a closer list, where the class payload is
+  available only as a `split`'s inaccessible hypothesis. Restating the pair as one existential
+  and discharging it with `⟨_, by assumption, by rfl⟩` fixes it, and the **`by`** on the `rfl`
+  is load-bearing: a `rfl` *term* in that position is elaborated first and assigns the wrong
+  payload. Same for `methodIn_of_moduleHookE`, whose machine is one `kont` push behind the one
+  the activation runs at.
+* **and one more argument-position rule** (fourth costume): a peel supplied as an *argument*
+  (`Step.withCtl' (Step.heap' … rfl rfl ?_) _`) lets the `rfl`s unify the target machine with
+  the intermediate one, silently proving the wrong statement's shape and then failing; supplied
+  as a **separate `refine`**, the goal fixes the target first. That is what closed `extend`. -/
+
+/-- Filtering a name out of a method table does not move the *first* entry of any **other**
+name, which is what `methodOf` reads. -/
+theorem find?_filter_ne {n n' : String} (hne : n' ≠ n) :
+    ∀ (l : List (String × MethodDef)),
+      (l.filter (·.1 != n)).find? (·.1 == n') = l.find? (·.1 == n')
+  | [] => rfl
+  | a :: rest => by
+    by_cases hk : a.1 = n
+    · have h1 : (a.1 != n) = false := by simp [hk]
+      have h2 : (a.1 == n') = false := by
+        simp only [beq_eq_false_iff_ne]
+        rw [hk]; exact fun hc => hne (hc.symm)
+      rw [List.filter_cons, h1, if_neg (by simp), find?_filter_ne hne rest,
+        List.find?_cons, h2]
+    · have h1 : (a.1 != n) = true := by simp [hk]
+      rw [List.filter_cons, h1, if_pos (by simp), List.find?_cons, List.find?_cons]
+      cases h2 : (a.1 == n') with
+      | true => rfl
+      | false => simp only []; exact find?_filter_ne hne rest
+
+
+/-- **Overwriting an object with one whose new edge is somewhere else in the heap** —
+`CapMono.set`'s existential form, which `defineMethod` needs because a `define_method` body's
+captured frame is carried by the *Proc* it came from and not by the class being written. -/
+theorem CapMono.set_gen {h : Heap} {o : ObjId} {obj : Object}
+    (hcf : ∀ p, CapAt obj p → ∃ o', CapAt (h.get o') p) : CapMono h (h.set o obj) := by
+  intro o' p hc
+  by_cases hf : o' = o
+  · subst hf
+    by_cases hlt : o' < h.objs.size
+    · rw [show Heap.get (h.set o' obj) o' = obj from getD_set!_self h.objs o' obj hlt] at hc
+      exact hcf p hc
+    · rw [show Heap.get (h.set o' obj) o' = h.get o' from
+        getD_set!_oob h.objs o' obj hlt] at hc
+      exact ⟨o', hc⟩
+  · rw [show Heap.get (h.set o obj) o' = h.get o' from
+      getD_set!_ne h.objs o o' obj hf] at hc
+    exact ⟨o', hc⟩
+
+/-- **`defineMethod` carries no *new* capture edge** when the installed method's captured frame
+is one the heap already reaches — which is every writer in the model: an ordinary `def`, the
+`attr_*` accessors and the `undef` stub install `capturedFrame := none` (the hypothesis is then
+vacuous), and `define_method` takes it from a Proc already in the heap.
+
+The content is the **other** names: `defineMethod` *prepends* and filters the old entry out, and
+`methodOf` reads the first match, so a name other than `n` has to be shown to resolve exactly as
+it did (`find?_filter_ne`). Installing a method can therefore only *hide* an edge, never add
+one. -/
+theorem CapMono.defineMethod {h : Heap} {cls : ObjId} {n : String} {md : MethodDef}
+    (hcf : ∀ p, md.capturedFrame = some p → ∃ o', CapAt (h.get o') p) :
+    CapMono h (RubyCore.defineMethod h cls n md) := by
+  unfold RubyCore.defineMethod
+  cases hc : h.classPayload? cls with
+  | none => exact CapMono.refl h
+  | some c =>
+    dsimp only
+    have hpl : (h.get cls).payload = .cls c := by
+      simp only [Heap.classPayload?] at hc
+      cases hp : (h.get cls).payload with
+      | cls c' => rw [hp] at hc; exact congrArg Payload.cls (Option.some.inj hc)
+      | _ => rw [hp] at hc; exact absurd hc (by simp)
+    refine CapMono.set_gen (fun p hcap => ?_)
+    simp only [CapAt] at hcap
+    obtain ⟨n', md', hmd, hcap'⟩ := hcap
+    by_cases hne : n' = n
+    · -- the installed entry itself: its edge is the hypothesis'
+      subst hne
+      simp only [methodOf, List.find?_cons, beq_self_eq_true, Option.map_some] at hmd
+      rw [← Option.some.inj hmd] at hcap'
+      exact hcf p hcap'
+    · -- any other name resolves exactly as it did
+      refine ⟨cls, ?_⟩
+      simp only [CapAt, hpl]
+      refine ⟨n', md', ?_, hcap'⟩
+      have hhd : ((n, md).1 == n') = false := by
+        simp only [beq_eq_false_iff_ne]
+        exact fun hh => hne (hh.symm)
+      simp only [methodOf, List.find?_cons, hhd] at hmd
+      rw [find?_filter_ne hne] at hmd
+      simp only [methodOf]
+      exact hmd
+
+
+
+/-- The fold whose accumulator carries the machine **first** — `defineAttr`'s shape. -/
+theorem Step.foldPairL {b : FrameId} {α β : Type} (f : Machine × β → α → Machine × β)
+    (hf : ∀ (p : Machine × β) (a : α), StepInv b p.1 → Step b p.1 (f p a).1) :
+    ∀ (l : List α) (p : Machine × β), StepInv b p.1 → Step b p.1 (l.foldl f p).1
+  | [], p, h => Step.refl h
+  | a :: rest, p, h => by
+    rw [List.foldl_cons]
+    exact (hf p a h).trans (Step.foldPairL f hf rest (f p a) (hf p a h).2)
+
+/-- **`defineAttr`** — `attr_reader`/`attr_writer`/`attr_accessor`: up to two `defineMethod`
+writes per name, and both installed methods have `capturedFrame = none` (they are synthesized
+`def`s, not blocks), so `CapMono.defineMethod`'s hypothesis is vacuous.
+
+Written as **one** `Step.heap` over the composed heap rather than two peels, because a peel
+whose target is a record update leaves `?mid` under a projection (the nineteenth stall point);
+`CapMono.trans` composes the two writes where the *goal* determines both heaps first-order. -/
+theorem Step.defineAttr {b : FrameId} {m : Machine} (h : StepInv b m) (cls : ObjId)
+    (mname : String) (args : List Value) :
+    Step b m (Interp.defineAttr m cls mname args).1 := by
+  unfold Interp.defineAttr
+  refine Step.foldPairL _ (fun p a hp => ?_) _ _ h
+  cases a
+  case sym s =>
+    dsimp only
+    have cmfree : ∀ (h₀ : Heap) (c : ObjId) (n : String) (md : MethodDef),
+        md.capturedFrame = none → CapMono h₀ (RubyCore.defineMethod h₀ c n md) :=
+      fun _ _ _ _ hcn => CapMono.defineMethod (fun _ hc => absurd (hcn ▸ hc) (by simp))
+    by_cases h1 : (mname != "attr_writer") = true
+    · rw [if_pos h1]
+      by_cases h2 : (mname != "attr_reader") = true
+      · rw [if_pos h2]
+        refine Step.heap hp rfl rfl ?_
+        -- the *second* write first: its conclusion is the goal's heap, so it determines both
+        refine CapMono.trans ?_ (cmfree _ _ _ _ rfl)
+        exact cmfree _ _ _ _ rfl
+      · rw [if_neg h2]
+        exact Step.heap hp rfl rfl (cmfree _ _ _ _ rfl)
+    · rw [if_neg h1]
+      by_cases h2 : (mname != "attr_reader") = true
+      · rw [if_pos h2]
+        exact Step.heap hp rfl rfl (cmfree _ _ _ _ rfl)
+      · rw [if_neg h2]
+        exact Step.refl hp
+  all_goals exact Step.refl hp
+
+
+
+/-- `setClassPayload_methods` with the old payload **existentially** quantified. `refine`/`exact`
+refuse to postpone the implicit `cp` of the direct form (the error is *don't know how to
+synthesize implicit argument*), which makes it unusable inside a closer list where the lookup is
+only available as a `split`'s inaccessible hypothesis; this form is discharged by
+`⟨_, by assumption, by rfl⟩`, where the `by assumption` determines the payload **before** the
+`rfl` is checked. A `rfl` **term** in that position is elaborated first and assigns the wrong
+payload — measured. -/
+theorem CapMono.setClassPayload_methodsE {h : Heap} {o : ObjId} {cp' : ClassPayload}
+    (hex : ∃ cp, h.classPayload? o = some cp ∧ cp'.methods = cp.methods) :
+    CapMono h (h.setClassPayload o cp') := by
+  obtain ⟨cp, hc, hm⟩ := hex
+  exact CapMono.setClassPayload_methods hc hm
+
+/-- `methodIn_of_moduleHook` in the same style: the machine the hook was looked up at is
+existential, so a caller that reads it one `kont` push later closes with a `rfl` on the heaps. -/
+theorem methodIn_of_moduleHookE {h₀ : Heap} {n : String} {md : MethodDef}
+    (hex : ∃ (m : Machine) (mo : ObjId), Interp.moduleHook m mo n = some md ∧ m.heap = h₀) :
+    ∃ c, methodIn h₀ c n = some md := by
+  obtain ⟨m, mo, hl, hh⟩ := hex
+  obtain ⟨c, hc⟩ := methodIn_of_moduleHook hl
+  exact ⟨c, by rw [← hh]; exact hc⟩
+
+/-- `enterUserMethod` where the `MethodDef` is known only to be installed *somewhere* — `include`'s `included` callback. The hook
+lookup happens at the machine *before* the `includeK` push, whose heap is the same, so the
+`methodIn` bridge applies through one equation. Hypothesis first (the ordering rule), and
+`hhook` second so that `by assumption` can find the `split`'s own inaccessible hypothesis. -/
+theorem Step.enterUserMethod_ex {b : FrameId} {m mid m' : Machine}
+    {n : String} {md : MethodDef} {recv : Value} {args : List Value} {blk : Option Value}
+    {kw : List (Value × Value)}
+    (hstep : Interp.enterUserMethod mid recv n md args blk kw = .next m')
+    (s : Step b m mid) (hex : ∃ c, methodIn mid.heap c n = some md) : Step b m m' := by
+  obtain ⟨c, hc⟩ := hex
+  exact s.trans (Step.enterUserMethod s.2 recv n hc args blk kw hstep)
+
+set_option maxHeartbeats 2000000 in
+/-- **`tryMixin`** — `include`/`prepend`/`extend`. Every arm is a `setClassPayload` that rewrites
+`includes`/`prepends` and leaves `methods` (`CapMono.setClassPayload_methods`), plus — for
+`include` with an `included` hook — a `frameK` activation of the hook. `extend` realises the
+eigenclass first, which is `Step.eigenclassOf`. -/
+theorem Step.tryMixin {b : FrameId} {m m' : Machine} (h : StepInv b m) (recv : Value)
+    (mname : String) (args : List Value)
+    (hstep : Interp.tryMixin m recv mname args = some (.next m')) : Step b m m' := by
+  rw [Interp.tryMixin.eq_def] at hstep
+  repeat (any_goals (first
+    | (refine Step.enterUserMethod_ex hstep
+         (Step.heap h rfl rfl (CapMono.setClassPayload_methodsE ⟨_, by assumption, by rfl⟩)) ?_
+       exact methodIn_of_moduleHookE ⟨_, _, by assumption, by rfl⟩)
+    | (simp only [Option.some.injEq] at hstep)
+    | (cases hstep
+       refine Step.withCtl' ?_ _
+       exact Step.heap h rfl rfl (CapMono.setClassPayload_methodsE ⟨_, by assumption, by rfl⟩))
+    | (cases hstep
+       refine Step.withCtl' ?_ _
+       refine Step.heap' (Step.eigenclassOf m _ h) rfl rfl ?_
+       exact CapMono.setClassPayload_methodsE ⟨_, by assumption, by rfl⟩)
+    | (cases hstep; exact Step.withCtl h _)
+    | (simp at hstep)
+    | (split at hstep)))
+
+#print axioms find?_filter_ne
+#print axioms CapMono.set_gen
+#print axioms CapMono.defineMethod
+#print axioms CapMono.setClassPayload_methodsE
+#print axioms methodIn_of_moduleHookE
+#print axioms Step.foldPairL
+#print axioms Step.defineAttr
+#print axioms Step.enterUserMethod_ex
+#print axioms Step.tryMixin
+
 #print axioms Step.eigenclassOf_go
 #print axioms Step.eigenclassOf
 

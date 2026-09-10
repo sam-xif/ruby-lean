@@ -10,11 +10,12 @@
 > before touching any other `Interp/` let-chain**, because `finishSend`, `invokeDispatch`,
 > `startArgs`, `tryReflect` and `evalExpr` are the same shape.
 >
-> **The new resume point** is stage 2's remainder and then stage 4: `tryMixin` (its `moduleHook`
-> equation has to come out of a `split`'s inaccessible hypothesis — an `assumption`-discharged
-> peel), `defineAttr` (one `CapMono` lemma for `defineMethod` installing a `capturedFrame :=
-> none` method), and then **`tryReflect`**, because `dispatchMiss` routes through it and the
-> dispatch spine (`invokeDispatch`/`invoke`/`finishSend`) cannot close until it does.
+> **`tryMixin` and `defineAttr` landed too, so stage 2 is complete except `enterClassBody`**
+> (deprioritised — declaration family). **The new resume point is stage 4, `tryReflect`**:
+> `dispatchMiss` routes through it, so the dispatch spine
+> (`invokeDispatch`/`invoke`/`finishSend`) cannot close until it does. ~15 `reflect*` helpers,
+> each the size of the ones already done, and `CapMono.defineMethod`/`set_gen` are the two heap
+> lemmas most of them will want.
 > `PreAct` (`StepSupport.lean`) is the transport every allocating-then-pushing helper needs, and
 > the six `methodIn` bridges are on file, so a new caller of `enterUserMethod` costs one line.
 > **The ladder is unchanged at 48/83 and none of this moves it directly.**

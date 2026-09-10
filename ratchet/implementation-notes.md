@@ -7327,12 +7327,36 @@ hypothesis unifies `?mid` with the outer machine `m` and then rejects the real o
 therefore take **the hypothesis first**. This is the third time in two clinks that the fix was
 argument order rather than a lemma.
 
-### What is still owed in stage 2, honestly
+### `tryMixin` and `defineAttr` — done in the same session, and they cost *closer shape* again
 
-`tryMixin` and `defineAttr` are not done: `tryMixin` needs its `moduleHook` equation pulled out
-of a `split`'s inaccessible hypothesis (an `assumption`-discharged peel, or hand peels), and
-`defineAttr` needs one `CapMono` lemma for `defineMethod` installing a `capturedFrame := none`
-method. `enterClassBody` stays deprioritised (declaration family). Above them, `invokeDispatch`
+Both landed after the above was written, so **stage 2 is complete except `enterClassBody`**
+(deprioritised: declaration family). Neither needed a semantic idea; all three costs were the
+shape of the hypotheses a closer can consume.
+
+* **`CapMono.defineMethod`** — installing a method adds no capture edge when the installed
+  method's captured frame is one the heap already reaches. Vacuous for every writer but
+  `define_method`. The content is the *other* names: `defineMethod` prepends and filters the old
+  entry out while `methodOf` reads the first match, so a name other than the one written has to
+  be shown to resolve exactly as before (`find?_filter_ne`) — installing a method can only
+  **hide** an edge. `CapMono.set_gen` (the existential form of `CapMono.set`) is what a
+  `define_method` body needs, because its edge is carried by the *Proc*, not by the class.
+* **The `E` forms, and this is the transferable half.** `refine`/`exact` **refuse to postpone an
+  implicit argument** that a later `rfl` would determine — *don't know how to synthesize implicit
+  argument `cp`* — so `CapMono.setClassPayload_methods` cannot be used inside a closer list,
+  where the payload is available only as a `split`'s inaccessible hypothesis. Restating the pair
+  as one existential and discharging it `⟨_, by assumption, by rfl⟩` fixes it, and the **`by`**
+  on the `rfl` is load-bearing: a `rfl` *term* there is elaborated first and assigns the wrong
+  payload. `methodIn_of_moduleHookE` is the same move for the hook lookup, whose machine is one
+  `kont` push behind the activation's.
+* **A fourth costume for the ordering rule.** A peel supplied as an *argument*
+  (`Step.withCtl' (Step.heap' … rfl rfl ?_) _`) lets the `rfl`s unify the *target* machine with
+  the intermediate one — it type-checks a different statement's shape and then fails; supplied as
+  a **separate `refine`**, the goal fixes the target first. That is what closed `extend`.
+
+`Step.defineAttr` also needed `Step.foldPairL`, the fold whose accumulator carries the machine
+**first**. `Step.tryMixin` closes in 5 s, `Step.defineAttr` immediately.
+
+Above them, `invokeDispatch`
 now has everything it needs *except* `dispatchMiss`, which routes through `tryReflect` — the whole
 stage-4 reflection dispatcher — so the dispatch spine cannot be closed before stage 4. That is
 the honest next boundary, and it is not a new obstruction: it is the bottom-up order
@@ -7346,6 +7370,7 @@ ratchet **178 of 254**, tier for tier; corpus agreement **254/254**; `expect_val
 **35**; `checkrungs` **177/177 + 148/148**. `lake build` clean, no `sorry`, every `#print axioms`
 inside `propext`/`Classical.choice`/`Quot.sound`. **`Ratchet/` untouched.** Added:
 `Denote/Sem/StepAct.lean`. Changed: `Denote/Sem/StepSupport.lean` (the two `Machine` folds,
-`PreAct` and its lemmas), `Denote/Sem/StepDispatch.lean` (the bridges and the helpers; its
+`PreAct` and its lemmas), `Denote/Sem/StepDispatch.lean` (the bridges, the helpers, method
+installation and the mixins; its
 `enterUserMethod` prose was a status note and is now a pointer), `Denote/Sem/notes.md`
 (nineteenth stall point), `AGENTS.md`, `HANDOFF.md`.

@@ -545,8 +545,15 @@ the seal) is untouched**, as its own piece.
 > method still installed, every Proc still there — with both folds and `destructureBind`), the
 > **six `methodIn` bridges** (`lookup`/`methodOn`/`lookupAbove`/`superFound`/`userInit?`/
 > `moduleHook`, one arm lemma between them), and `Step.missNoMethod`/`visError`/`iterStep`/
-> `startIter`/`tryIterator`. Still owed in stage 2: `tryMixin`, `defineAttr`; and the dispatch
-> spine cannot close before **stage 4**, since `dispatchMiss` routes through `tryReflect`.
+> `startIter`/`tryIterator`, plus **`tryMixin`** and **`defineAttr`** (on `CapMono.defineMethod`:
+> installing a method can only *hide* a capture edge). **Stage 2 is complete except
+> `enterClassBody`** (deprioritised — declaration family). The dispatch spine cannot close before
+> **stage 4**, since `dispatchMiss` routes through `tryReflect`.
+>
+> Three of the session's four costs were **closer shape, not semantics**, and the new one
+> generalises: `refine`/`exact` refuse to postpone an implicit argument a later `rfl` would
+> determine, so a lemma meant for a closer list states that pair as one existential and takes
+> `⟨_, by assumption, by rfl⟩` — where the `by` on the `rfl` is load-bearing.
 
 > **Unblocked 2026-09-08 (L266). The blocker was model fidelity, and it is fixed.**
 > `Sealed`, the frame-graph invariant the locals layer is built on, was not inductive over
