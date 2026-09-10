@@ -1958,6 +1958,25 @@ Three ways to pay for it, in the order they should be tried:
    version of (1) and costs the 89 s + 25 s walks twice more.
 3. A `BRes`-level relation (`BResSame`) proved once and projected — more machinery than either.
 
+### Measured, before it was priced (2026-09-10)
+
+Option (2) was tried on **one** dispatcher to size the rest, and the answer is much better than
+the prognosis above: `runObjects_locals` for `.err` closes in **9 s with the existing
+`builtin_arms` tactic unchanged**, leaving **two** goals — both of them *helper delegations*
+(`putsImpl`, and one more), which need the helper's own `.err` twin and nothing else. The reason
+the tactic transfers is structural: its closers act by `cases h`, and an arm that answers `.ok`
+meets a `.err` hypothesis as a **constructor mismatch**, which `cases` closes by no-confusion. So
+the six dispatchers' `.err`/`.throwV` walks are *refutations* almost everywhere, and the real work
+is the dozen or so helper lemmas (`putsImpl_locals`, `regexApply_locals`, `scanAll_locals`,
+`splitBy_locals`, `splitOn_locals`, `subst_locals`, `runRegex_locals`) getting outcome-generic
+statements.
+
+**That is the right shape for option (1)**: generalise the *helpers* over the result, and the
+dispatchers follow by re-running the tactic. (A five-dispatcher batch was left running to price
+the big two — `runStrings` and `runNumerics`, the ones that cost 48 s and a 14 GB blow-up on the
+`.ok` side — and had not finished at 10 minutes, so those two are where the cost is, exactly as
+on the `.ok` side.)
+
 Until then the honest statement of the layer is **"`Builtins.run` preserves the locals layer *when
 it answers with a value*"**, and `Denote/Sem/StepReflect.lean`'s `Step.dispatchMiss` is the top of
 what can be closed without it: the miss path never consults a builtin's result.

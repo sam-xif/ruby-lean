@@ -7419,6 +7419,18 @@ three ways to pay for it (generalise over the result and re-run the existing tac
 instantiations; a `BRes`-level relation). **The finding is that it was invisible** — `Step.builtins`
 reads like "the layer is done".
 
+**And it was sized by measurement rather than by guess**, which changed the prognosis: the
+existing `builtin_arms` tactic closes `runObjects`'s **`.err`** walk **unchanged, in 9 s**,
+leaving **two** goals — both helper delegations. The tactic transfers because its closers act by
+`cases h`, and an arm that answers `.ok` meets a `.err` hypothesis as a *constructor mismatch*
+that `cases` closes by no-confusion. So the six dispatchers are refutations almost everywhere and
+the real work is a dozen **helper** lemmas (`putsImpl_locals`, `regexApply_locals`,
+`scanAll_locals`, `splitBy_locals`, `splitOn_locals`, `subst_locals`, `runRegex_locals`) getting
+outcome-generic statements. A five-dispatcher batch left running to price the big two
+(`runStrings`, `runNumerics` — the pair that cost 48 s and a 14 GB blow-up on the `.ok` side) had
+**not finished at 20 minutes**, so the cost sits exactly where it sat before. Recorded in the
+twentieth stall point; not attempted further this session.
+
 **Superseded note, kept because the diagnosis was half right: `Step.reflectVisibility`.** Its walk (`Step.visRun`,
 `Step.visStep`, `Step.foldOpt`) and every heap lemma under it **are** proved; what is left is the
 caller's four leaf shapes, which a closer list cannot take — three arrive with the hypothesis
