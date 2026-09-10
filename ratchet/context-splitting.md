@@ -94,7 +94,8 @@ structure Neg where                 -- shrinks along program order
       tail it falls through to. Subsumes four encodings that are separate today: `nameFree`,
       `mroGet? … = none`, `smroGet? … = none`, and `MissFree`'s `method_missing`. -/
   noMethod   : List (Port × String)     -- `Port := inst String | cls String`
-  freeConsts : List String          -- no constant of this path is bound
+  freeConsts : List String          -- no constant of this path is bound; see §7.2 — constant
+                                    -- lookup is cref-relative, so this key may need a port too
 
 structure Scope where               -- neither; lexical, rebound on entry, never reported out
   frame      : Option Frame
@@ -141,8 +142,9 @@ stronger claim. That is the whole mechanism, and §3 is why it is enough.
 (`Ratchet/Validate.lean`) is the existing precedent — `κ.closures` is already filled from
 `collectBlocks p` over the entire program for exactly this reason.
 
-`freeNames` starts as *every shadowable name that no `def`, `define_method`, class body or
-singleton-method definition anywhere in the program mentions*. This is the direct fix for F20:
+`noMethod` starts as *every port/name pair that no `def`, `define_method`, class body or
+singleton-method definition anywhere in the program puts on that port's chain* (§4.6 for what
+the two chains are). This is the direct fix for F20:
 a buried `def lambda` excludes `"lambda"` at seed time, so `Judge.lambdaLit`'s guard fails
 without any rule having to notice the burial.
 
@@ -189,7 +191,9 @@ impossible transport and becomes *"one `stepFn` step installs exactly the method
 The instinct that this is a separation structure is right, but it is worth being precise about
 *which* conjunction is separating, because the obvious candidate is not.
 
-**Not between same-polarity facts.** `PosOk` is `∀ f ∈ P, φ f`, so
+### 4.1 Not between same-polarity facts
+
+`PosOk` is `∀ f ∈ P, φ f`, so
 
 ```
 PosOk (P₁ ∪ P₂) m  ↔  PosOk P₁ m ∧ PosOk P₂ m
@@ -197,15 +201,19 @@ PosOk (P₁ ∪ P₂) m  ↔  PosOk P₁ m ∧ PosOk P₂ m
 
 holds with **no disjointness side condition at all**. Facts of one polarity just conjoin.
 
-**The disjointness is between the polarities.** `Pos` and `Neg` are not independent: adding
-"class `C` declares method `m`" to `P` *invalidates* "`m` is a free name" in `N`. So the design
-carries a well-formedness invariant
+### 4.2 It is between the polarities, and `Coherent` is where it lives
+
+`Pos` and `Neg` are not independent: adding "class `C` declares method `m`" to `P`
+*invalidates* "`m` is a free name" in `N`. So the design carries a well-formedness invariant
 
 ```
-Coherent (P, N)  :=  names(P) ∩ N.freeNames = ∅   (and likewise for constants)
+Coherent (P, N)  :=  ∀ (port, n) ∈ N.noMethod,  P puts nothing named n on port's chain
+                     (and likewise for constants)
 ```
 
-and it is `Coherent` that makes the two families composable. **The frame rule is the statement
+— spelled out per port in §4.6, since the two chains differ and the class-object one has a tail
+into the instance chain of `Class` — and it is `Coherent` that makes the two families
+composable. **The frame rule is the statement
 that a derivation's effect is confined to its footprint**, so a context extended by anything
 disjoint from that footprint comes through untouched:
 
@@ -220,8 +228,10 @@ that declare disjoint names needs no interaction reasoning between them, and —
 point — a rule consuming a sub-derivation does not have to re-verify the parts of the context
 the sub-derivation never mentioned.
 
-**Joins are forced, and forced conservative.** With `κ` threaded, `Judge.if'` must combine two
-branches' outgoing contexts, and the polarities settle it with no room for invention:
+### 4.3 Joins are forced, and forced conservative
+
+With `κ` threaded, `Judge.if'` must combine two branches' outgoing contexts, and the polarities
+settle it with no room for invention:
 
 ```
 P_out = P₁ ∩ P₂        -- only what both branches guarantee
@@ -289,7 +299,7 @@ Two departures from separation logic's version, both in our favour and both wort
 exactly as it does today. What changes is which propositions a derivation is allowed to lean
 on — and therefore which programs `chk` must refuse.
 
-### 4.5 `Neg` is keyed by class, and that is what makes `method_missing` work
+### 4.5 `Neg` has to be **keyed**, and `method_missing` is what shows it
 
 The obvious first cut of `Neg` is a flat set of names, and it is wrong for the same reason F20
 is wrong — it answers the question only for one implicit receiver.
@@ -316,7 +326,7 @@ heap. Three encodings of two polarities, in one rule.
 So `Neg` is a relation, not a set:
 
 ```
-(c, n) ∈ noMethod   ≜   no class in c's ancestor chain provides n
+(c, n) ∈ noMethod   ≜   nothing on c's lookup chain provides n
 ```
 
 and the three premises become one positive lookup plus one `Neg` membership. `MissFree` is the
@@ -324,23 +334,30 @@ same relation at `(selfClass, "method_missing")`; `nameFree κ "lambda"` is it a
 `(Object, "lambda")`. The scope-flag reading of `noMissing` survives only as the *implicit-self*
 special case, where the key comes from `κ.selfTy` — which is why it looked like scope.
 
+*"`c`'s lookup chain" is doing real work here and §4.6 unpacks it: there are **two** chains, and
+the key is a receiver **port** rather than a bare class name.*
+
 **Two consequences that are not bookkeeping.**
 
 * **The fact is MRO-closed, so `include`/`prepend`/reopening can invalidate it.** That is the
   shrinking discipline doing its job, and it is a strictly better account than today's, where a
   `mroGet?` miss is re-computed from a table that a later `include` silently changes.
-* **`Coherent` gets richer.** It is not `names(P) ∩ N = ∅` but
+* **`Coherent` gets richer.** It is not `names(P) ∩ N = ∅` but, per port (§4.6),
 
   ```
-  ∀ (c, n) ∈ N,  P's MRO for c does not provide n
+  ∀ (inst c, n) ∈ N,  nothing in c's instance MRO under P provides n
+  ∀ (cls  c, n) ∈ N,  nothing in c's singleton chain under P provides n
+                      ∧ (inst Class, n) ∈ N            -- the metaclass tail
   ```
 
-  i.e. the disjointness of §4 is *modulo inheritance*. This is the one place the design gets
-  harder rather than easier, and it should be pinned before implementation.
+  i.e. the disjointness of §4 is *modulo inheritance*, and on the class-object port it is
+  modulo the metaclass tail as well. This is the one place the design gets harder rather than
+  easier — §10.4 is where it is discharged.
 
 **And `ObjectMethod` is the boot seed.** The ~45-name list is exactly `Neg`'s complement at the
-boot heap: every class provides those, so no `(c, n)` with `n ∈ objectMethodNames` may ever be
-in `noMethod`. Its own docstring already says "completeness is the soundness condition" — which
+boot heap: every object has those, so no `(inst c, n)` with `n ∈ objectMethodNames` may ever be
+in `noMethod` — **and no `(cls c, n)` either**, since a class object is an object and the
+metaclass tail of §4.6 reaches `Object` too. Its own docstring already says "completeness is the soundness condition" — which
 is precisely the hazard of a negative fact carried as a table, and an argument for deriving the
 seed from `Denote/Sanity.lean`'s measured boot heap rather than maintaining the list by hand.
 
@@ -455,9 +472,10 @@ is over a structure that is already proved acyclic.
 
 ### 5.3 What that changes concretely
 
-Add to `Pos` (or, more likely, to a fourth component keyed to the run rather than the program —
-see §9.1) a **capture footprint**: *"evaluating `e` allocates closures and installs methods
-capturing at most the frames in `F`."* Then:
+Add a **capture footprint** — a fourth component, parallel to `Pos`/`Neg` rather than a field
+of either (§10.2), and keyed by `ClosTable` index rather than by frame id (§7.1, §10.2):
+*"evaluating `e` allocates closures and installs methods drawn from at most the block literals
+in `F`."* Then:
 
 | today | with footprints |
 |---|---|
@@ -496,6 +514,7 @@ table", and a footprint *is* that premise, made compositional.
 | **`capStaleCtx`'s conservative premise** | can be replaced by a real outgoing context, recovering the precision §F1 records as lost |
 | **the seal layer** | a local, decidable premise replaces a `∀`-over-heap; `ClosuresOk` gets its content |
 | **`Judge.callMissing`'s three premises** | become one positive lookup and one `Neg` membership (§4.5) |
+| **§F7's belt** (`nameFree κ "to_s"` guarding what `smroGet?` cannot see) | becomes precise: the metaclass-tail entailment of §4.6, instead of "does *any* class declare this name" |
 
 And what it does not fix, so the ladder's remaining shape stays honest: the `Builtins` heap walk
 (§5.4), `ConstScopeOk`/the cref (§7.2), jump-freeness and the 22 call rules, `PrimSig`'s ~200
@@ -533,9 +552,9 @@ the only rule that can tell us we were wrong.
 ## 8. Migration
 
 ### 8.1 Order
-1. **F20's narrow fix, which *is* the `Neg` seed** — whole-program and **keyed by class**
-   (§10.1: the keying has to land with the seeding, not after it, or the six slice programs
-   regress), for the negative uses only; `κ.defs` unchanged for the positive ones. No signature
+1. **F20's narrow fix, which *is* the `Neg` seed** — whole-program and **keyed by receiver
+   port** (§4.6; and per §10.1 the keying has to land *with* the seeding, not after it, or the
+   six slice programs regress), for the negative uses only; `κ.defs` unchanged for the positive ones. No signature
    change. Closes a reachable soundness bug, is independently valuable, and produces §11's
    measurement. Corpus witnesses for all three F20 shapes.
 2. **Split `Ctx` into `Pos`/`Neg`/`Scope`** with `afterStmt` still doing the growth. Pure
@@ -598,7 +617,7 @@ addition alongside §2.2, not a substitute.
 Resolved 2026-09-09 with judgement rather than by further measurement, except where a
 measurement was cheap — those are marked.
 
-### 10.1 `Neg` is a **materialized set, seeded whole-program, keyed by class, threaded but constant**
+### 10.1 `Neg` is a **materialized set, seeded whole-program, keyed by receiver port, threaded but constant**
 
 Not a predicate. Four reasons, in the order they decide it:
 
@@ -611,8 +630,8 @@ Not a predicate. Four reasons, in the order they decide it:
    it. Almost all of the maintenance burden and almost all of the coherence churn disappear.
 3. **The seed can be MRO-closed**, because `extendClasses` already reads superclasses,
    `include`, `prepend` and `extend` statically. So the whole static hierarchy is visible to
-   one pre-pass, and §4.5's "`Coherent` modulo inheritance" is established **by construction at
-   seed time** rather than re-checked per rule (§10.4).
+   one pre-pass, and §4.5/§4.6's "`Coherent` modulo inheritance and the metaclass tail" is
+   established **by construction at seed time** rather than re-checked per rule (§10.4).
 4. **Thread it anyway.** Dynamic declaration — `define_method` with a computed name,
    `Class.new`, `send(:include, …)` — is exactly what a syntactic pre-pass cannot see, and
    threading is where those shrink it. For the fragment `validate` types today **nothing
@@ -626,8 +645,9 @@ and `def to_s` at line ~226. A *coarse* whole-program seed (today's `nameFree` a
 class declare this name") would go false program-wide and refuse them.
 
 Keyed `Neg` does not: the fact those rules need is `(Pathname, "to_s") ∈ Neg`, which
-`Version#to_s` leaves untouched. So **the keying of §4.5 recovers more precision than the
-seeding of §2.2 costs**, and the net is finer-grained than today. The two changes are
+`Version#to_s` leaves untouched — it is an instance method of `Version`, so it lands on neither
+`inst Pathname`'s chain nor the metaclass tail. So **the keying of §4.5–4.6 recovers more
+precision than the seeding of §2.2 costs**, and the net is finer-grained than today. The two changes are
 complementary and should land together; landing the seed without the keying would be a
 regression.
 
@@ -672,17 +692,23 @@ The one set of declaration keys the rule *writes*. Three exclusions, each load-b
 * **Captures are the other key space** (§10.2), with their own `W`.
 
 `W` governs both frame rules at once — `keys(R_P) # W` for the positive side and `R_N # W` for
-the negative, since a rule that declares `(c, n)` invalidates exactly `(c, n)` among framed
-negative facts. And **`W = ∅` for every rule except the five declarations**, so the side
+the negative, since a rule that declares a method on a port invalidates exactly that
+`(port, n)` among framed negative facts — plus, on the `cls` side, whatever the metaclass-tail
+entailment of §4.6 propagates. And **`W = ∅` for every rule except the five declarations**, so the side
 condition is discharged by `rfl` in 78 of 83 cases.
 
 ### 10.4 `Coherent` modulo inheritance is a **seed-time property**
 
-Resolved by 10.1(3). The pre-pass sees the entire static hierarchy, so it can compute an
-MRO-closed `Neg` that is coherent with the whole program's `Pos` by construction. Coherence
-becomes a per-rule obligation only for a rule that changes the hierarchy *dynamically*, and
-`Judge` has no such rule today — `Class.new` and `send(:include, …)` are not typed. When one is
-added it inherits the obligation, which is the right place for it.
+Resolved by 10.1(3). The pre-pass sees the entire static hierarchy — superclasses, `include`,
+`prepend`, `extend` — so it can compute a `Neg` closed under **both** chains of §4.6 and
+coherent with the whole program's `Pos` by construction. The metaclass tail is closed the same
+way and at the same time: it is a fixed suffix (`Class`/`Module`/`Object`/`Kernel`/
+`BasicObject`), so `(cls c, n)` is seeded only when `(inst Class, n)` is.
+
+Coherence becomes a per-rule obligation only for a rule that changes a lookup chain
+*dynamically*, and `Judge` has no such rule today — `Class.new`, `send(:include, …)` and
+`define_singleton_method` are not typed. When one is added it inherits the obligation, which is
+the right place for it.
 
 ## 11. What is genuinely still open
 
