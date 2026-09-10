@@ -34,6 +34,10 @@ namespace Ratchet
 -- program, which is a deeper reduction than any previous premise needed.
 set_option maxRecDepth 8000
 
+-- The `by rfl` autoparams on the `Neg` premises evaluate `negSeed` over the rung's whole
+-- program, which is a deeper reduction than any previous premise needed.
+set_option maxRecDepth 8000
+
 /-- One rung: the program, the type it was hand-derived at, and the derivation. The
 `deriv` field is what distinguishes this from a test table — it cannot be filled in
 wrongly. -/
@@ -54,8 +58,15 @@ structure Rung where
       The **outgoing spine is required to be `.ivar0` too**, and that is a real (if
       currently free) restriction: a rung whose top-level code assigned an instance variable
       would not fit this structure. None does; `@x = 1` at `main` is legal Ruby that this
-      judgment types but that no rung exercises. -/
-  deriv : Judge (ctx0.withBlocks program) [] .ivar0 program ty outEnv .ivar0
+      judgment types but that no rung exercises.
+
+      The **outgoing context** is `Judge.out_afterStmt`'s. Threading
+      (`context-splitting.md` §3) made it an index of the judgment, and that lemma says what it
+      is for any statement — `κ.afterStmt program ty`, which for every rung's top-level `.seq`
+      reduces to `κ` itself. Writing it here rather than quantifying it existentially keeps a
+      rung's derivation term exactly what it was before the threading. -/
+  deriv : Judge (ctx0.withBlocks program) [] .ivar0 program ty
+    ((ctx0.withBlocks program).afterStmt program ty) outEnv .ivar0
 
 /-! ## Tier 1 — the eight literals
 
@@ -1646,32 +1657,40 @@ def r129 : Rung :=
     -- while the branches are being elaborated. It is also the most informative thing to state
     -- about this rung: it *is* the widened spine.
     (by
-      refine .seq (.cons (.classStmt rfl rfl rfl .nil .nil)
+      exact .seq (.cons (.classStmt rfl rfl rfl .nil .nil)
         (.last (.callMethod
           (Iself := .ivarCons "@v" (.union .int (.cls "String")) .ivar0) (Γb' := [])
           (.newInst (.constCls rfl rfl) (.cons .truLit .nil) rfl rfl
             (.if' (.var rfl rfl) (.ivarAsgn .intLit) (.ivarAsgn .strLit) rfl))
-          .nil rfl rfl ?_)))
-      -- `describe`'s body, deferred to a hole so it is elaborated *after* `callMethod`'s
-      -- `mroGet?` premise has produced the `Defn` it is the `.body` of. Without that, the
-      -- condition's syntax is still a metavariable when `narrowSpine` has to reduce, and the
-      -- refined `@v` cannot be computed.
-      -- Every index of the `if'` is written out, and then each premise is a separate hole.
-      -- The reason is the same one `narrow-union-subclass` records — `joinT`/`joinEnv`/
-      -- `joinSpine` are not injective, so the branch types, environments and spines cannot be
-      -- recovered from the conclusion — with one addition specific to an *ivar* refinement:
-      -- `narrowSpine` also needs the condition's **syntax**, which only the conclusion
-      -- supplies. `refine` unifies the conclusion first; the holes are then concrete.
-      -- Read the six as the statement of what this rung does: `@v` enters as a union, the
-      -- branches see `Int` and `String`, and `joinSpine` returns it to the union.
-      refine Judge.if' (Γc := []) (Γ₁ := []) (Γ₂ := [])
-        (Ic := .ivarCons "@v" (.union .int (.cls "String")) .ivar0)
-        (I₁ := .ivarCons "@v" .int .ivar0)
-        (I₂ := .ivarCons "@v" (.cls "String") .ivar0)
-        (τ₁ := .int) (τ₂ := .cls "String") (σ := .bool) ?_ ?_ ?_ rfl
-      · exact .isAQuery .ivarRead (.cons (.constBuiltin .integer rfl rfl) .nil) rfl
-      · exact .prim .ivarRead (.cons .intLit .nil) .intAdd
-      · exact .prim .ivarRead (.cons .strLit .nil) .strAdd)⟩
+          .nil rfl rfl
+          -- `describe`'s body, deferred so it is elaborated *after* `callMethod`'s `mroGet?`
+          -- premise has produced the `Defn` it is the `.body` of. Without that, the condition's
+          -- syntax is still a metavariable when `narrowSpine` has to reduce, and the refined
+          -- `@v` cannot be computed.
+          --
+          -- A nested `by` rather than a `refine` hole, and the difference is the **outgoing
+          -- context**: threading (`context-splitting.md` §3) made it an index, `refine` will
+          -- not finish with an index of the goal unassigned, and there is nothing to assign it
+          -- to until the body's own derivation exists. A postponed `by` block has the same
+          -- deferral and does leave the unification to the end, so the index solves itself.
+          --
+          -- Every index of the `if'` is written out, and then each premise is its own nested
+          -- block, for the reason `narrow-union-subclass` records — `joinT`/`joinEnv`/
+          -- `joinSpine` are not injective, so the branch types, environments and spines cannot
+          -- be recovered from the conclusion — with one addition specific to an *ivar*
+          -- refinement: `narrowSpine` also needs the condition's **syntax**, which only the
+          -- conclusion supplies. Read the six as the statement of what this rung does: `@v`
+          -- enters as a union, the branches see `Int` and `String`, and `joinSpine` returns it
+          -- to the union.
+          (by
+            exact Judge.if' (Γc := []) (Γ₁ := []) (Γ₂ := [])
+              (Ic := .ivarCons "@v" (.union .int (.cls "String")) .ivar0)
+              (I₁ := .ivarCons "@v" .int .ivar0)
+              (I₂ := .ivarCons "@v" (.cls "String") .ivar0)
+              (τ₁ := .int) (τ₂ := .cls "String") (σ := .bool)
+              (by exact .isAQuery .ivarRead (.cons (.constBuiltin .integer rfl rfl) .nil) rfl)
+              (by exact .prim .ivarRead (.cons .intLit .nil) .intAdd)
+              (by exact .prim .ivarRead (.cons .strLit .nil) .strAdd) rfl)))))⟩
 
 /-! ## Tier 9c — the builtin iterators
 

@@ -5,7 +5,7 @@ import Ratchet.Validate
 
 The single theorem that makes `Ratchet/Validate.lean`'s `Bool` worth reading:
 
-  `chk_sound : chk fuel κ Γ I e = some (τ, Γ', I') → Judge κ Γ I e τ Γ' I'`
+  `chk_sound : chk fuel κ Γ I e = some (τ, Γ', I') → Judge κ Γ I e τ (κ.afterStmt e τ) Γ' I'`
 
 i.e. the executable checker never certifies anything the hand-authored judgment
 (`Ratchet/Judge.lean`) does not derive. This is *not* the semantic soundness theorem —
@@ -367,7 +367,7 @@ nothing in the derivation discharges it: `Ctx.afterStmt` (a class body's constan
 rather than a trusted row — it says an expression `constLitTy?` types **really has that type,
 in any context whatsoever**, with no premise to supply:
 
-  `constLitTy? e = some τ → Judge κ Γ I e τ Γ I`
+  `constLitTy? e = some τ → Judge κ Γ I e τ κ Γ I`
 
 Note the shape: `κ`, `Γ` and `I` are universally quantified and unchanged across the
 conclusion. That is a strong statement and it is exactly why the function is restricted to
@@ -420,7 +420,7 @@ theorem constLitTy?_primDispatchOk : ∀ {e : Expr} {τ : Ty} {C : CTable} {m : 
 mutual
 
 theorem constLitTy?_sound : ∀ {e : Expr} {τ : Ty} {κ : Ctx} {Γ : Env} {I : Ty},
-    constLitTy? e = some τ → Judge κ Γ I e τ Γ I := by
+    constLitTy? e = some τ → Judge κ Γ I e τ κ Γ I := by
   intro e τ κ Γ I h
   unfold constLitTy? at h
   split at h
@@ -531,7 +531,7 @@ mutual
 
 theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
     {τ : Ty} {Γ' : Env} {I' : Ty},
-    chk fuel κ Γ I e = some (τ, Γ', I') → Judge κ Γ I e τ Γ' I' := by
+    chk fuel κ Γ I e = some (τ, Γ', I') → Judge κ Γ I e τ (κ.afterStmt e τ) Γ' I' := by
   intro fuel κ Γ I e τ Γ' I' h
   unfold chk at h
   -- One `split` per arm of `chk`'s match, in the order they are written there: the
@@ -629,7 +629,7 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
         exact .ivarAsgn (chk_sound hrhs) hst
       · exact absurd h (by simp)
     · exact absurd h (by simp)
-  · exact .seq (chkSeq_sound h)
+  · exact (chkSeq_sound h).elim (fun _ hs => .seq hs)
   · -- `if' c t (some e)`: condition, then-branch and else-branch all typed, the two
     -- branches agreed on the spine, and the result/locals are the joins the rule names.
     split at h
@@ -1593,7 +1593,7 @@ object. One `split`, because the arm it is extracted from is the only thing in i
 theorem chkOwner?_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ Γ₁ : Env} {I I₁ : Ty} {base : Expr}
     {owner : String},
     chkOwner? fuel κ Γ I base = some (owner, Γ₁, I₁) →
-    Judge κ Γ I base (.clsOf owner) Γ₁ I₁ := by
+    Judge κ Γ I base (.clsOf owner) (κ.afterStmt base (.clsOf owner)) Γ₁ I₁ := by
   intro fuel κ Γ Γ₁ I I₁ base owner h
   unfold chkOwner? at h
   split at h
@@ -1728,13 +1728,13 @@ theorem chkPairs_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ Γ' : Env} {I I' : Ty}
 
 theorem chkSeq_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty}
     {es : List Expr} {τ : Ty} {Γ' : Env} {I' : Ty},
-    chkSeq fuel κ Γ I es = some (τ, Γ', I') → JudgeSeq κ Γ I es τ Γ' I' := by
+    chkSeq fuel κ Γ I es = some (τ, Γ', I') → ∃ κ', JudgeSeq κ Γ I es τ κ' Γ' I' := by
   intro fuel κ Γ I es τ Γ' I' h
   unfold chkSeq at h
   split at h
   · exact absurd h (by simp)
   · exact absurd h (by simp)
-  · exact .last (chk_sound h)
+  · exact ⟨_, .last (chk_sound h)⟩
   · -- tier 16's `next if …` guard (`JudgeSeq.nextGuard`), matched before both the return guard
     -- and the generic `cons` arm.
     split at h
@@ -1744,7 +1744,7 @@ theorem chkSeq_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty}
         injection h with h
         injection h with h h'; injection h' with h' h''
         subst h; subst h'; subst h''
-        exact JudgeSeq.nextGuard (chk_sound hc) (chkSeq_sound hrest)
+        exact (chkSeq_sound hrest).elim (fun _ hr => ⟨_, .nextGuard (chk_sound hc) hr⟩)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · -- tier 12's guard clause, matched before the generic `cons` arm
@@ -1759,14 +1759,20 @@ theorem chkSeq_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty}
             injection h with h
             injection h with h h'; injection h' with h' h''
             subst h; subst h'; subst h''
-            exact JudgeSeq.guard (chk_sound hc) (chk_sound hr) hI (chkSeq_sound hrest)
+            exact (chkSeq_sound hrest).elim
+              (fun _ ht => ⟨_, .guard (chk_sound hc) (chk_sound hr) hI ht⟩)
           · exact absurd h (by simp)
         · exact absurd h (by simp)
       · exact absurd h (by simp)
     · exact absurd h (by simp)
   · split at h
     · rename_i hhd
-      exact .cons (chk_sound hhd) (chkSeq_sound h)
+      -- **The threaded step** (`context-splitting.md` §3). `chkSeq` recurses at
+      -- `κ.afterStmt hd σ`, and `Judge.out_afterStmt` is what says the derivation just built
+      -- for `hd` reports exactly that context — so the two premises compose by threading,
+      -- with no transport at any step.
+      exact ((Judge.out_afterStmt (chk_sound hhd)) ▸ chkSeq_sound h).elim
+        (fun _ ht => ⟨_, .cons (chk_sound hhd) ht⟩)
     · exact absurd h (by simp)
 
 end
@@ -1776,13 +1782,17 @@ the whole program, from the empty environment, with **nothing defined and nothin
 assumed**, no `self`, and the program's own block table. The empty assumption table is what
 makes this an unconditional statement rather than one relative to a table of assumptions — see
 `AsmTable` and `ctx0`; `Ctx.withBlocks` is the one component that starts non-empty, and it is
-derived from the program by `collectBlocks`. -/
+derived from the program by `collectBlocks`, and `negSeed` is the other.
+
+The outgoing context is existential here rather than named: `chk_sound` reports it as
+`κ.afterStmt p τ` (see `Judge.out_afterStmt`), but nothing at the top level consumes it — a
+program is the last statement in its own sequence. -/
 theorem validate_sound_syntactic {p : Expr} (h : validate p = true) :
-    ∃ τ Γ' I', Judge (ctx0.withBlocks p) [] .ivar0 p τ Γ' I' := by
+    ∃ τ κ' Γ' I', Judge (ctx0.withBlocks p) [] .ivar0 p τ κ' Γ' I' := by
   unfold validate at h
   cases hc : chk fuelDefault (ctx0.withBlocks p) [] .ivar0 p with
   | none => simp [hc] at h
-  | some r => exact ⟨r.1, r.2.1, r.2.2, chk_sound (by simpa using hc)⟩
+  | some r => exact ⟨r.1, _, r.2.1, r.2.2, chk_sound (by simpa using hc)⟩
 
 #print axioms narrowCond?_sound
 #print axioms nilQSafe?_sound
