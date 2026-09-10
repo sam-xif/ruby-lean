@@ -7127,6 +7127,29 @@ capture chain *by recursion*, so unifying against `setLocal ?m ?x ?w` unfolds a 
 function. `evalExpr` never calls it (`.vasgn` pushes an `.asgnK`; the write is `applyKont`'s), so
 `Step.setLocal`/`setLocal'` belong to `ApplyKontSound`'s list and nowhere else.
 
+### The re-audit's real conclusion: the ceiling is 76, not 83
+
+The session's last measurement, and the one that should change how the target is read. **Seven
+of the 35 remaining obligations are false as stated**, not unproved, and every repair path for
+them crosses into `Ratchet/`: `defStmt` (confirmed *by construction* this session — the
+obligation is premise-free, `DefsOk κ.defs m'` demands the body `defineMethod` just replaced, so
+instantiating `κ.defs = [⟨"foo", [], .int 1⟩]` and running `def foo; "s"; end` refutes it),
+`arrayLit`/`hashLit` (seventh stall point's remnant, witness `corpus/242`), `casgn`/`cpathAsgn`
+(seventeenth *and* §F22), `if'`/`ifNoElse` (eleventh, with an explicit two-environment witness).
+
+**None of the seven is an unsoundness** — `validate` is right on every one of the reproducers,
+which the sixth stall point checked for `defStmt` and §F22 checked for `casgn` — so the standing
+"if a `Judge` rule looks genuinely unsound, fix it" exception does not license the edits. They
+are false because `Judge` was designed to be *checked*, not *denoted*: four of its rules
+re-assert an incoming context or a snapshot the semantics has already invalidated. That is the
+sixth, seventh, eleventh and seventeenth stall points saying one thing from four directions.
+
+So the honest form of the target is: **76 of 83 is the ceiling in `Denote/` alone.** The last
+seven need the declaration redesign (`Judge` threading a cref, premises on `defStmt`/`casgn`) or
+a decision to move `joinT`/`constAsgnOk` and re-run the syntactic ratchet — both `Ratchet/`
+work, both already sized in `context-splitting.md` and the stall points, neither blocked on
+anything in `Denote/`.
+
 ### State
 
 Semantic ratchet **48 of 83**, unmoved — `BuiltinsSeal` is a layer, not a `Judge` rule, and

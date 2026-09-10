@@ -1858,3 +1858,64 @@ caches each success, and each dispatcher pays only for **its own** expensive clo
    last open goal was `runStrings bid recv args m = .ok v m'`, which is just `runStrings_cap h`.
    This is the eighth measurement and the fourth instance of item 3: *a `simp` in a 600-arm walk
    is a search, not a step.*
+
+## The remaining 35, re-audited 2026-09-10 — and **seven are false as stated**
+
+Written because "35 remaining" reads as 35 units of work, and the useful fact is that a
+identifiable subset is not work at all: those obligations are **false**, and every repair path
+for them crosses into `Ratchet/`.
+
+The distinction that matters is not *hard vs. easy*. It is:
+
+| kind | count | what it needs |
+|---|---|---|
+| **(A) false as stated, repair is in `Ratchet/`, and the rule is *not* unsound** | 7 | a `Judge` premise or a `Ty`/`joinT` change |
+| **(B) true, behind the locals + call layer** | 26 | the walk this file specifies — ordinary work |
+| **(C) true, behind `PrimSig` row by row** | 1 (`prim`) | ~200 conformance facts, two per row (13th stall point) |
+| **(D) true, behind the declaration redesign** | 1 (`classStmt`/`moduleStmt` share it) | `Ctx` recording the cref |
+
+### (A), rule by rule, with the witness for each
+
+* **`defStmt`** — *newly confirmed by construction, not inferred.* `Obl.Judge.defStmt` is
+  **premise-free** (`#print` it: it quantifies over every `κ`), its conclusion carries
+  `StateOk κ Γ I m'`, and `DefsOk κ.defs m'` demands that every recorded entry's body be the
+  *installed* one. `RubyCore.defineMethod` **replaces**. So at `κ.defs = [⟨"foo", [], .int 1⟩]`
+  and a conformant machine, running `def foo; "s"; end` falsifies it. Repair: a premise
+  (`defGet? κ.defs n = none`, or the threading the sixth stall point describes). **The rule is
+  not unsound** — the sixth stall point checked `validate` on the reproducer and it is right —
+  so this is not the unsoundness exception, it is a `Judge` signature change.
+* **`arrayLit`, `hashLit`** — the seventh stall point's remnant, and it is a *falsity*: a later
+  element can mutate an earlier one, so `DenAllAt`'s per-element machines cannot be moved to the
+  literal's final machine (`corpus/242-array-lit-element-mutated-unsafe` is the witness). The
+  three candidate repairs are recorded there; `Ty.arrayOf` cannot express one machine per
+  element, a purity premise is `Ratchet/`, and the `Later`-quantified `.arrayOf` arm does not
+  actually transport (it makes the *establishing* side harder, not the consuming side easier).
+* **`casgn`, `cpathAsgn`** — false twice over, independently: the seventeenth stall point
+  (`ConstScopeOk` is falsified by a class body's first constant, and the component sits on both
+  sides of the implication so the fix is a weakening that breaks the three `.const` rungs), and
+  §F22 (`constAsgnOk`'s guard list is not the set of class names a `Ty` can carry; `Regexp` is
+  outside it, measured). Both repairs are `Ratchet/`: the first wants `Ctx` to record the cref,
+  the second wants the guard widened.
+* **`if'`, `ifNoElse`** — the eleventh stall point, with an explicit two-environment witness:
+  `joinEnv` synthesises a `Ty.sameAs` that neither branch promised, and `EnvOk`'s identity
+  conjunct does not fire on a union of aliases. Repair 1 (strengthen `EnvOk` over `unionMems`) is
+  `Denote`-only but re-opens `Judge.vasgn`'s §F5 premise, which is `Ratchet/`; repair 2 (strip
+  aliases in `joinT`'s union arm) moves the checker's output types and therefore the syntactic
+  ratchet.
+
+### What that means for a "climb to 83/83" instruction
+
+**Seven of the 83 obligations cannot be discharged without editing `Ratchet/`**, and none of the
+seven is an unsoundness — so the standing exception ("if a `Judge` rule looks genuinely unsound,
+fix it") does not reach them. They are false because the *judgment's shape* and the
+*denotation's* shape disagree, which is the sixth, seventh, eleventh and seventeenth stall points
+saying the same thing from four directions: `Judge` was designed to be checked, not to be
+denoted, and four of its rules re-assert an incoming context or a snapshot the semantics has
+already invalidated.
+
+This is worth stating as a **precondition** rather than as a stall: the ladder's ceiling under a
+no-`Ratchet/` constraint is **76 of 83**, not 83. Reaching 83 requires either the declaration
+redesign (`Judge` threading a cref, and premises on `defStmt`/`casgn`) or a decision to move
+`joinT`/`constAsgnOk` and re-run the syntactic ratchet. Both are `Ratchet/` work, both are
+sized in `context-splitting.md` and the stall points, and neither is blocked on anything in
+`Denote/`.

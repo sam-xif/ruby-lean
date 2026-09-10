@@ -574,6 +574,16 @@ the seal) is untouched**, as its own piece.
 > is a search, not a step* — `simp at h` alone took `runNumerics` past 14 GB of proof term without
 > terminating, and `dsimp only at h` in its place closes the same file in 5 s.
 >
+> **The ladder's ceiling under a no-`Ratchet/` constraint is 76 of 83, not 83** (clink 62's
+> re-audit, `Denote/Sem/notes.md` §The remaining 35). **Seven obligations are false as stated,
+> not unproved** — `defStmt` (confirmed by construction: the obligation is premise-free, and
+> `DefsOk` at the incoming `κ` demands the body `defineMethod` just replaced), `arrayLit`/
+> `hashLit` (the seventh stall point's remnant, witness `corpus/242`), `casgn`/`cpathAsgn`
+> (the seventeenth stall point *and* §F22), and `if'`/`ifNoElse` (the eleventh). None of the
+> seven is an *unsoundness*, so the standing "fix a genuinely unsound rule" exception does not
+> reach them; each repair is a `Judge` premise, a cref in `Ctx`, or a move to `joinT`. They are
+> a precondition on the target, not a stall in the work.
+>
 > **The ladder still reads 48/83, and clink 62 does not claim otherwise.** It also filed
 > `found-issues.md` **§F22** — `constAsgnOk`'s guard list is not the set of class names a `Ty` can
 > carry, and `Regexp` is outside it, which is a *third* independent reason `Judge.casgn`'s
