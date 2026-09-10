@@ -6848,3 +6848,101 @@ build` clean in both packages; no `sorry`, and every `#print axioms` a subset of
 `ruby/lean/RubyCore/{Heap,Interp/Support,Interp/Reflect,Builtins/Strings}.lean` and six files
 under `RubyCore/Proof/`; `ratchet/Denote/{Apply,Ext,Local,Rules/Core,Rules/Lambda,Sem/Mut,
 Sem/Locals,Sem/StepLocal}.lean`; `probes/measure_captures.lean`.
+
+---
+
+## Clink 61 (2026-09-09) — `context-splitting.md` steps 1–4, built and measured
+
+`context-splitting.md` was a design when this clink started. Four of its five migration steps
+are now on file, in the doc's own order, with the ladder measured after each. **No rung moved
+in either direction at any point** — 178/254, `checkrungs` 177/177 hand derivations, semantic
+ratchet 47/83 — and the negative controls went **145 → 148**.
+
+### Step 2 — the split, made cheap by an accessor layer
+
+`Ctx` became `Pos`/`Neg`/`Scope`. The thing that made this a one-sitting refactor rather than a
+churn of 277 KB of rules is worth recording as a technique: **`@[reducible] def Ctx.classes
+(κ) := κ.pos.classes`** and eight siblings. Dot notation resolves `κ.classes` to the def, and
+reducibility keeps every `by rfl` premise and every `simp` in the proofs working unchanged. So
+only the *writers* moved — sixteen `{ κ with … }` sites, replaced by four named updaters
+(`pushAsm`, `withFrame`, `withBlockTy`, `withClosures`). Six `simp` calls in `Denote/Sanity.lean`
+needed the accessor name added to their lemma list; that was the whole downstream cost.
+
+### Step 1 — the `Neg` seed, and §F20 closed
+
+`negEmit` walks **every expression position** carrying the lexical cref down, so
+`class C; def a; def b; end; end; end` puts `b` on `C`'s chain and a top-level `def` anywhere
+puts its name on `Object`'s. `negSeed` closes that over both chains of §4.6 and materialises the
+port grid; `Ctx.withBlocks` runs it once, beside `collectBlocks`, for the same reason.
+
+Three positive-table *misses* were deleted along with the encoding that made them wrong —
+`bareName`'s `defDeclared? … = none`, and `clsToS`/`caseEqQuery`'s `smroGet? … = none`. Each was
+a claim about a table's *completeness* wearing a lookup's clothes, which is §4.4's diagnosis and
+§F20's mechanism.
+
+**Two decisions inside the seed.**
+
+* **`Neg` stores the *declared* names, not the free ones.** The free set would have to be
+  enumerated against a name list, and a name missing from that list would read as "free" — the
+  unsound direction. A name missing from `declared` is a name the program does not declare,
+  which is the fact itself. The keyed `noMethod` grid still needs a name list (`negNames`), and
+  there a missing name means "unseeded", so a rule asking about it declines: conservative.
+* **The four query rules are *not* keyed yet**, though the seed materialises the keyed fact and
+  `tyPorts?` computes the port. The blocker is semantic: `QueryOk`/`ClsQueryOk` are quantified
+  over **class ids** with a name-global antecedent, so a keyed premise has nothing to discharge
+  them with. Recorded at the end of §F20.
+
+**§11's first open question, answered by measurement.** The keying pays for the seeding
+*exactly*: the ladder held tier for tier on all 254 rungs, not just the six §10.1 priced.
+
+### Step 3 — threading, and the elaboration tax §8.2 predicted
+
+`Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → Prop`. Three shapes were tried for the
+outgoing index of a *premise*, and the third is the only one that works:
+
+1. **Floating** (a fresh implicit per premise). Reads best and is what §2 describes. Fails on
+   the semantic side: a rule that discards its sub-derivation's outgoing context cannot then
+   republish conformance at its own, because the two are unrelated.
+2. **Pinned to the incoming context.** Elaborates perfectly and refuses exactly the F20 shapes.
+   Fails `chk_sound`: `chk` accepts a declaration in an expression position that `Judge` would
+   then not derive, so the guard would have to be added at ~40 recursion sites.
+3. **Determined — `κ.afterStmt e τ`, in premises *and* conclusions.** Derivable set identical to
+   before (`Judge.out_afterStmt`, `cases h <;> rfl`), `chk_sound` needs no change to `chk`, and
+   the semantic premise delivers exactly what the next statement wants. Uniformity is what makes
+   the elaborator's unification of a derivation's two ends syntactic; mixing `κ` in conclusions
+   with `afterStmt` in premises leaves it trying `κ =?= κ.afterStmt ?e ?τ` and stuck.
+
+§8.2's warning cost exactly one rung: `narrow-union-ivar` defers its method body to a hole, and
+`refine` will not finish with an index of the goal unassigned. A postponed nested `by` has the
+same deferral and leaves the unification to the end, so the index solves itself.
+
+### Step 4 — the conclusion does not *move* to `κ'`, it gains it
+
+§8.1 step 4 says "`SemJudge`'s conclusion moves to `κ'`". Moving it **weakens the premise every
+non-declaring rule lives on**, and the repair is not a lemma: see §F21 and `context-splitting.md`
+§12. So `SemJudge` claims outgoing conformance at **both** contexts, which are for different
+readers — `StateOk κ` is what a consumer republishes, `StateOk κ'` is what the next statement
+needs. Written as two flat conjuncts rather than a bundled pair, so a consumer that wants the
+first adds `-` to its pattern and a producer whose `κ'` is `κ` supplies the same term twice;
+bundling would have made every existing `⟨_, _, hok⟩` silently bind `hok` to the pair.
+
+### Step 5 — not landed, and the reason is a correction to §3
+
+`Obl.JudgeSeq.cons` needs `StateOk` transported **down** across `afterStmt`. The *up* direction,
+which L268 recorded as the other half, is **gone**: step 1 put `NameFreeOk`/`BareNameFree`/
+`MissFree`/`MethodsExact` onto `Neg` (invariant under `afterStmt`) and step 4 states the
+grown-context conformance rather than transporting to it. Down is blocked by `consts` (which
+`envSet` **overwrites**) and by `BaseChainsOk` (three κ-dependent antecedents, each firing on
+fewer inputs as the context grows) — §F21. `Ratchet.ctxKept` states the sufficient condition
+decidably, was tried as a premise, and was **measured**: the constants clauses cost nothing, the
+`isANoOk` clause costs one rung. A rung is not worth a rung, so it was not landed.
+
+### State
+
+Syntactic ratchet **178 of 254**, unchanged tier for tier; `expect_validate` mismatches **35**,
+unchanged. `checkrungs` **177/177 hand derivations + 148/148 negative controls** (three new, one
+per §F20 shape, each confirmed genuinely type-stuck by the real semantics). Semantic ratchet
+**47 of 83**, unchanged. `Denote/Examples.lean` green, `lake build` clean, no `sorry`, every
+`#print axioms` a subset of `propext`/`Classical.choice`/`Quot.sound`. Changed: `Ratchet/{Judge,
+Validate,Rungs,Proof/ChkSound}.lean`, `CheckRungs.lean`, `Denote/{Adequacy,Sanity}.lean`,
+`Denote/Sem/{Judge,State,Frame}.lean`, and thirteen files under `Denote/Rules/`.

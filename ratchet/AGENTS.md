@@ -479,20 +479,41 @@ this first. The one item on that list that has since been **taken up** is `Judge
 the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
-## [`context-splitting.md`](context-splitting.md) — the proposed `Ctx` redesign *(design, not built)*
+## [`context-splitting.md`](context-splitting.md) — the `Ctx` redesign *(**built through step 4**)*
 
 Positive facts that grow, negative facts that shrink, lexical scope that does neither — and
 `Judge` threading the first two out as `κ'` the way it already threads `Γ'`/`I'`. Written
 2026-09-09 after L268 measured that `StateOk` transports across `afterStmt` in **neither**
-direction (the two halves have opposite variance in the same index) and §F20 showed the same
-defect is a *reachable soundness bug*: a `def` buried in an expression never enters `κ.defs`,
-so `nameFree` believes the name is unclaimed and `validate` certifies a `NoMethodError`.
+direction and §F20 showed the same defect is a *reachable soundness bug*.
+
+**Four of its five migration steps are on file** (clink 61), each measured, **and no rung moved
+in either direction at any point**:
+
+* **step 2** — `Ctx` split into `Pos`/`Neg`/`Scope`, made cheap by a `@[reducible]` accessor
+  layer so every `κ.classes` in the rules and proofs reads as before;
+* **step 1** — `Neg` seeded whole-program and keyed by receiver port. **§F20 closed**; negative
+  controls **145 → 148**, one per witness shape. §11's first open question answered: the keying
+  pays for the seeding *exactly*, on all 254 rungs and not just the six §10.1 priced;
+* **step 3** — `Judge` threads `κ'`. `Judge.out_afterStmt` (`cases h <;> rfl`) is the proof that
+  the threaded judgment derives exactly what the `afterStmt` one did;
+* **step 4** — `SemJudge` claims outgoing conformance at **both** `κ` and `κ'`. It is *not* the
+  "move the conclusion to `κ'`" §8.1 asks for: moving it weakens the premise every non-declaring
+  rule lives on.
+
+**Step 5 (`JudgeSeq.cons`) is not**, and building it corrected the document's central claim —
+see its own **§12** and `found-issues.md` §F21. §3 prices the down-transport at "antitone, one
+line" on §10.3's grounds that the facts are "keyed and immutable-per-key"; `consts` is keyed and
+**mutable** (`extendConsts` is `envSet`, which overwrites) and `BaseChainsOk` is **antitone** in
+`Pos` (three κ-dependent antecedents). The *up* transport is now gone — that half was step 1's
+payoff — so this is the only thing left before that rung. `Ratchet.ctxKept` states the
+sufficient condition decidably; measured as a premise, its constants clauses cost nothing and
+its `isANoOk` clause costs one rung, so it was not landed.
 
 Contains: the three pieces of evidence, the split, why every transport then goes the right way,
 where the disjointness actually is (**between** the polarities, not within one — same-polarity
 facts conjoin for free), what it buys the seal (footprints over **frames**, not over the heap —
 the capture graph is a proved DAG, the object graph is not), what it explicitly does not buy,
-a six-step migration, and four rejected alternatives.
+a six-step migration, four rejected alternatives, and §12's correction.
 
 ## Semantic ratchet status (`Denote/Sem/`): **47 of 83 `Judge` rules discharged**
 
