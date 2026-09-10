@@ -1,4 +1,28 @@
-# ratchet — hand-off note (2026-09-08)
+# ratchet — hand-off note (2026-09-10)
+
+> **Superseded in one respect, 2026-09-10 (L269, clink 62): `BuiltinsSeal` is PROVED.**
+> This file's resume point was "re-attempt the `Builtins` layer walk". That walk is done —
+> `Denote/Sem/BuiltinsCap*.lean`, all six dispatchers plus `Builtins.run`, axiom-clean, seconds
+> each — and `builtinsSeal`/`builtinsFramesWF` close the eighteenth stall point: `Sealed` survives
+> `Builtins.run`. Read `implementation-notes.md` clink 62 and `Denote/Sem/notes.md` §The second
+> walk (eight tactic measurements) before starting anything else in this layer; the two that
+> transfer are *put the arm's shape in a `rfl`-provable hypothesis and leave the conclusion
+> first-order* and *a `simp` in a 600-arm walk is a search, not a step*.
+>
+> **The new resume point is the next step of the same layer**: `Sealed.push`/`pop`/
+> `alloc_closure` at the *interpreter*'s six frame pushes, `ClosuresOk`'s exactness component
+> (the sixteenth stall point sized it; note it needs a third escape for a closure a *builtin*
+> created), and then the per-arm `stepFn` walk. After that come jump-freeness and the `frameK`
+> decomposition, which the fifteenth stall point argues cannot be sequenced apart. **The ladder
+> is unchanged at 48/83 and none of this moves it directly** — `if'`/`ifNoElse`/`begin'` and the
+> 22 call rules come out at the end of the whole layer, not in stages.
+>
+> Also new: `found-issues.md` **§F22**, a third independent reason `Judge.casgn`'s obligation is
+> false (`constAsgnOk`'s guard list is not the set of class names a `Ty` can carry, and `Regexp`
+> is outside it). Not reachable. It means `casgn` is two fixes away, not one.
+
+## The 2026-09-08 note, unchanged below
+
 
 > Written after clink 60 so a fresh-context agent can pick up the **semantic
 > ratchet** without re-deriving the last session. Read [`AGENTS.md`](AGENTS.md)
