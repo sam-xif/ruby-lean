@@ -331,6 +331,19 @@ theorem MCap.set_payload_eq {m m' : Machine} {o : ObjId} {obj : Object}
     (hp : obj.payload = (m.heap.get o).payload) : MCap m m' :=
   MCap.set_eq he (fun p hc => (capAt_congr hp p).mp hc)
 
+/-- **Push a capture-free object, then write a field of an existing one** — `eigenclassOf`'s
+shape: allocate the eigenclass (a `.cls` with an empty method table), then set the attachee's
+`eigen`. The `push_copy_then_set` twin, for a fresh object rather than a copy, and keyed for the
+same reason: `MCap.trans` would need the intermediate machine and `?mid.heap.objs` is a
+projection against a metavariable. -/
+theorem MCap.push_free_then_set {m m' : Machine} {new obj : Object} {o : ObjId}
+    (he : m'.heap.objs = (m.heap.objs.push new).set! o obj)
+    (hcf : ∀ p, ¬ CapAt new p)
+    (hq : obj.payload = (Heap.get ⟨m.heap.objs.push new⟩ o).payload) : MCap m m' :=
+  (MCap.push_eq (m' := { m with heap := ⟨m.heap.objs.push new⟩ }) rfl hcf).trans
+    (MCap.set_eq (m := { m with heap := ⟨m.heap.objs.push new⟩ }) he
+      (fun p hc => (capAt_congr hq p).mp hc))
+
 /-- **`String#freeze`/`clone` on a `dup`**: push a copy, then set the *new* object's flag. It
 needs its own lemma rather than `push_copy_eq.trans set_payload_eq`, because `MCap.trans` would
 have to be given the intermediate machine and `?mid.heap.objs ≟ m.heap.objs.push cpy` is a
