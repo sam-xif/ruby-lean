@@ -3216,7 +3216,7 @@ def narrowNameOk (κ : Ctx) : NarrowKind → Bool
   -- to be stated. `nameFree κ "==="` is the companion: with the name unclaimed, `ClsQueryOk`
   -- says what `===` at a class object resolves to.
   | .isA cn =>
-    (constGet? κ cn).isNone && coreConstFreeN κ &&
+    !κ.boundConsts.contains cn && coreConstFreeN κ &&
     ((clsGet? κ.classes cn).isSome || builtinClsNames.contains cn) &&
     nameFreeN κ "===" && nameFreeN κ "is_a?" && nameFreeN κ "method_missing" &&
     -- and §F9's root-chain guard, which `isAAnswer`'s `.inst` arm consults

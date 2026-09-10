@@ -879,7 +879,7 @@ def BaseChainsOk (κ : Ctx) (m : Machine) : Prop :=
       (∀ cn ∈ ch, ∃ j, classNamed? m.heap cn = some j ∧
         (ancestors m.heap base).contains j = true)) ∧
      (Ratchet.isANoOk κ.wholeCls ch = true →
-      (∀ cn j, (Ratchet.constGet? κ cn).isNone = true → classNamed? m.heap cn = some j →
+      (∀ cn j, κ.boundConsts.contains cn = false → classNamed? m.heap cn = some j →
         (ancestors m.heap base).contains j = true → cn ∈ ch) ∧
       (∀ k, (ancestors m.heap k).contains base = true → k = base)))
 

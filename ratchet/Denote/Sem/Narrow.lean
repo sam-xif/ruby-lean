@@ -311,7 +311,7 @@ unavailable. Everything the proof needs beyond `BaseChainsOk` is `isA_base_of_de
 theorem mem_chain_of_isA {κ : Ctx} {m : Machine} (hbc : BaseChainsOk κ m)
     (hcf : Ratchet.coreConstFreeN κ = true)
     {τ : Ty} {ch : List String} {v : Value} {cn : String} {k : ObjId}
-    (hg : (Ratchet.constGet? κ cn).isNone = true)
+    (hg : κ.boundConsts.contains cn = false)
     (hb : Ratchet.builtinAncestors τ = some ch) (hno : Ratchet.isANoOk κ.wholeCls ch = true)
     (hv : denM τ m v) (hcn : classNamed? m.heap cn = some k)
     (hisa : RubyCore.isA m.heap v k = true) : cn ∈ ch := by
@@ -387,7 +387,7 @@ theorem isAAnswer_not_no {κ : Ctx} {m : Machine} (hbc : BaseChainsOk κ m)
     (hmf : Ratchet.mixinFreeChain κ.wholeCls Ratchet.rootAncestors = true)
     (hcf : Ratchet.coreConstFreeN κ = true)
     {τ : Ty} {v : Value} {cn : String} {k : ObjId}
-    (hg : (Ratchet.constGet? κ cn).isNone = true)
+    (hg : κ.boundConsts.contains cn = false)
     (ha : Ratchet.isAAnswer κ.classes κ.wholeCls cn τ = some false)
     (hv : denM τ m v) (hcn : classNamed? m.heap cn = some k)
     (hisa : RubyCore.isA m.heap v k = true) : False := by
@@ -490,7 +490,7 @@ and the conclusion is that the refined type still denotes it. -/
 theorem denM_isATy {κ : Ctx} {m : Machine} (hbc : BaseChainsOk κ m) (hdc : DeclClassOk κ m)
     (hmf : Ratchet.mixinFreeChain κ.wholeCls Ratchet.rootAncestors = true)
     (hcf : Ratchet.coreConstFreeN κ = true) {cn : String}
-    (hg : (Ratchet.constGet? κ cn).isNone = true) :
+    (hg : κ.boundConsts.contains cn = false) :
     ∀ (τ : Ty) {v : Value} {k : ObjId},
       denM τ m v → classNamed? m.heap cn = some k → RubyCore.isA m.heap v k = true →
       denM (Ratchet.isATy κ.classes κ.wholeCls cn τ) m v := by

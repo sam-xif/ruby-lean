@@ -833,7 +833,7 @@ theorem narrow_then_fact {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Ratch
     obtain ⟨j, hj, hveq, hread, hheap⟩ := isaq_inv hok hisaf hk hev
     intro τ hτ
     rw [Ratchet.refineThen]
-    refine denM_isATy hok'.baseChains hok'.declCls hmf hcf hcg τ hτ
+    refine denM_isATy hok'.baseChains hok'.declCls hmf hcf (by simpa using hcg) τ hτ
       (by rw [hheap]; exact hj) ?_
     rw [hread, hheap]
     cases hia : isA m.heap (readVar k' x' m) j with
@@ -854,7 +854,7 @@ theorem narrow_then_fact {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Ratch
         · exact Or.inr (by simpa using h)) hk hev
     intro τ hτ
     rw [Ratchet.refineThen]
-    refine denM_isATy hok'.baseChains hok'.declCls hmf hcf hcg τ hτ
+    refine denM_isATy hok'.baseChains hok'.declCls hmf hcf (by simpa using hcg) τ hτ
       (by rw [hheap]; exact hj) ?_
     rw [hread, hheap]
     cases hia : isA m.heap (readVar k' x' m) j with
