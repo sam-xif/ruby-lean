@@ -549,6 +549,25 @@ the seal) is untouched**, as its own piece.
 > refutation, closing an invariant and proving half a layer are not `Judge` rules. The census
 > at §Where the remaining 36 rules sit still holds: all 36 are behind one of four unbuilt
 > layers, none smaller than a clink. Read `HANDOFF.md` first.
+>
+> **L269 (clink 62) reduced `BuiltinsSeal` to one walk and proved four of its six dispatchers.**
+> `Denote/Sem/BuiltinsCap.lean`'s **`CapMono`** — the heap's capture edges did not grow — plus
+> `Sealed.of_capMono`/`FramesWF.of_capMono` take `builtins_run_seal`'s two remaining hypotheses
+> down to a **single** missing theorem, `builtins_run_cap`; `runRegex`/`runModules`/
+> `runCollections`/`runStrings` are proved, axiom-clean, in seconds each. `runNumerics` is not —
+> it reaches **14 GB** of proof term without terminating — and `runObjects`/`Builtins.run` sit
+> behind it unelaborated, so **`BuiltinsSeal` is still stated and unproved**. The predicate is
+> existential in the object id because `Object#dup` *refutes* the id-keyed form, and `CapAt`'s
+> class arm is keyed on the `methodIn` lookup because `Sealed.meth` cannot consume a
+> membership-shaped one. **The transferable result is the tactic**, seven measurements recorded in
+> `Denote/Sem/notes.md` §The second walk — chiefly *put the arm's shape in a `rfl`-provable
+> hypothesis and leave the conclusion first-order*, which took the walk from "unfinished after 35
+> minutes" to 17 s per dispatcher.
+>
+> **The ladder still reads 48/83, and clink 62 does not claim otherwise.** It also filed
+> `found-issues.md` **§F22** — `constAsgnOk`'s guard list is not the set of class names a `Ty` can
+> carry, and `Regexp` is outside it, which is a *third* independent reason `Judge.casgn`'s
+> obligation is false (not reachable; §F10's pattern read from the assignment side).
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (177 of 249). This measures

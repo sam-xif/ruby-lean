@@ -963,6 +963,44 @@ Not wasted: the attempt is what found **§F18**, which is a reachable soundness 
 rule, and the guard that fixes it (`constAsgnOk`) is what any future version of the rule needs
 anyway.
 
+### …and a **third** reason, which is not about where the machine is standing (2026-09-10)
+
+Measured while re-sizing `casgn` after `context-splitting.md` step 5 had removed the "κ is not
+threaded" obstruction. The rule now has three independent obstructions, and this is the one the
+cref redesign does **not** fix, because it is not about the frame at all.
+
+`constAsgnOk`'s guard (§F18) refuses a rebinding only when the *tables* describe the name — a
+recorded constant at a different type, a declared class, a `builtinClsNames` entry, or an
+`excName?`. `builtinClsNames` is nine names, and **`Regexp` is not one of them** while
+`Judge.regexpLit` concludes `.cls "Regexp"`. Measured:
+
+```
+constAsgnOk ctx0 "Regexp" (.cls "String")  =  true      -- permitted
+constAsgnOk ctx0 "Comparable" .int         =  true
+constAsgnOk ctx0 "Range" .int              =  true
+```
+
+`denM (.cls n)` is `isAName`, which resolves `n` through `classNamed?` → `constLookup` → the
+toplevel table. So at `Γ = [("r", .cls "Regexp")]` and a conformant machine where `r` holds a
+Regexp, the run of `Regexp = "s"` returns and leaves `classNamed? m'.heap "Regexp" = none` —
+`EnvOk Γ m'` is false, so **`Obl.Judge.casgn`'s `StateOk κ Γ' I' m'` conjunct is false**, and
+no premise of the rule can exclude it.
+
+Not reachable, and that was checked: every other producer of a nominal `Ty` is inside the guard
+(`constCls` needs `clsGet?`, `constBuiltin` needs `BuiltinCls`, `constExc` needs `excName?`,
+`rescueBind?`'s `.cls n` is an exception class), and rebinding the constant `Regexp` is
+behaviourally inert — no `PrimSig` row has a `Regexp` receiver and `/x/` consults no constant.
+Written up as `found-issues.md` **§F22**, with the two candidate repairs; the point for this
+stall point is that `casgn` needs *both* the cref and one of those, so it is two fixes away
+rather than one.
+
+**And the pattern is §F10's, read from the other side.** §F10 was "a narrowing read the
+constant's *name*, and a constant is not its name"; this is "an *assignment* to a name falsifies
+every type that mentions it, and the set of names a `Ty` can mention is not the set the context
+records." Both are the nominal arms being name-keyed against a mutable table, and the second
+candidate repair in §F22 — identity-keyed nominal arms, which `Ty.inst`'s `isExactInst` already
+half-is — would close both.
+
 ## The layer, as built so far (clink 59) — and one correction to its per-step statement
 
 Three files, bottom-up, and the order is `RubyCore/Proof/KontFrame*.lean`'s:
@@ -1662,3 +1700,104 @@ to `LocalsSame`: `of_eq` has no heap hypothesis to discharge it with, and giving
 all six hundred call sites. The second walk needs its own predicate (allocation-monotone: "every
 appended object is not a capturing closure, and not a class with a capturing method") and its own
 copy of the twenty machine-threading helper lemmas. That is the honest price, and it is a clink.
+
+### The second walk, **four of six dispatchers** — and the price was tactics rather than lemmas (2026-09-10)
+
+`Denote/Sem/BuiltinsCap.lean` (the predicate and the lemmas) plus one module per dispatcher.
+`runRegex`, `runModules`, `runCollections` and `runStrings` are **proved, axiom-clean**, in
+17 s / 48 s / 5 s / 8 s. `runNumerics` is **not**, and `runObjects`/`Builtins.run` sit behind it
+in the import chain and have never been elaborated — so **`BuiltinsSeal` is still stated and
+unproved**, and the honest reading of this section is "two thirds of one layer".
+
+What *is* closed is the reduction: `Sealed.of_capMono`/`FramesWF.of_capMono` take
+`builtins_run_seal`'s two remaining hypotheses down to a single missing theorem
+(`builtins_run_cap`), so the layer is now one named walk rather than an open question.
+
+`runNumerics`' failure is **not a stalled goal**: elaboration reaches 14 GB resident and does not
+terminate, with `maxHeartbeats` never tripping — which points at a proof *term* the kernel then
+has to check rather than at a tactic search. The two suspects are the two `simp`s still in the
+walk (`cap_norm`'s `simp only` over the sixteen machine helpers, and `cap_arms`' `simp at h`
+fallback), either of which can try to *evaluate* `Int`/`Float` literals on an arithmetic arm.
+That is item 3 below biting a fourth time, and the fix shape is the one that worked the first
+three: move the `simp` into a pure-term lemma keyed on the arm.
+
+The prediction above was right about the *shape* — its own predicate and its own copy of the
+twenty helpers — and wrong about where the cost sat. The lemmas were an afternoon; the **tactic**
+was the whole difficulty, and it is worth writing down because it is a reusable technique for any
+future walk over this interpreter.
+
+**The predicate.** `CapMono h h'` — every capture edge readable at `h'` was already readable at
+`h`, **existentially in the object id**. Not id-keyed, and `Object#dup` is why: `dupObj` pushes a
+fresh object carrying the *source's* payload, so `p.dup` on a Proc puts the same edge at a new
+id. The seal does not care (`Sealed.clos` at the source discharges it), so the id-keyed version
+is a refutation and the existential one is what `Sealed`'s own clauses consume. Measured, not
+predicted: the first version would not close for `dupObj`.
+
+`CapAt` is keyed on `methodOf` — the **first** entry of a name, which is what `methodIn` reads —
+rather than on membership in `cp.methods`. A membership-shaped `CapAt` would be a claim this file
+could establish and `Sealed.meth` could not consume. The sixth stall point's rule (*state the
+component over the lookup function*), one layer down.
+
+**The tactic, in seven measurements, each of which cost a full run.** The frame walk closes the
+same six hundred arms in **89 s**; the first version of this one had not finished in **thirty-five
+minutes**, and `sample` on the live process said why — 60 % of it in
+`whnfImp`/`tryHeuristic`/`reduceMatcher?`/`getStuckMVar?`, i.e. unification against stuck
+metavariables rather than proof search.
+
+1. **Put the arm's shape in a `rfl`-provable hypothesis; leave the conclusion first-order.** This
+   is the whole thing. `LocalsSame.of_eq rfl rfl` is cheap because its conclusion is
+   `LocalsSame m ?m'` — unifies with any goal in one step — and everything specific is an
+   equation between *projections*. `CapMono.push` concluding `CapMono ?h ⟨?h.objs.push ?obj⟩` is
+   the opposite: to *fail* on a non-allocating arm the unifier has to unfold
+   `Builtins.allocStr`/`Heap.alloc` against a machine-sized term. `MCap.push_eq`/`set_eq`/
+   `push_trans_eq`/`set_trans_eq`/`fold_eq` are the repair, and every one has a first-order
+   conclusion. **35 min → 25 s.**
+2. **`split at h` first, not last.** The frame walk puts the closers first and `split at h` last.
+   Here that costs two 12 s spikes on the *first* goal alone: before any split, `h`'s type is the
+   undivided match over `bid`, and every helper closer unifies against a stuck match with
+   hundreds of arms. Splitting before closing removes it outright.
+3. **No nested `by` in a closer.** `CapMono.push (fun _ hc => by simp at hc)` is tried on every
+   leaf of six hundred arms, and a `simp` on a machine-sized goal is a search, not a side
+   condition. Every side condition here is a pure term — `fun _ hc => hc` where the payload's
+   constructor makes `CapAt` reduce to `False` by iota, `Option.noConfusion` for the layer's one
+   Proc allocation (`Symbol#to_proc`, `captured := none` since L266), `capAt_cls_nil` for its one
+   class allocation (`Class.new`, `methods := []`) — and where it cannot be a term,
+   `refine … ?_` defers it to a **goal**, by which time the object is assigned.
+4. **`cap_norm` before the closers** — `RubyCore/Proof/KontFrame.lean`'s `frame_simp` technique.
+   Unfolding the sixteen machine-threading helpers *once, in the goal* replaces fifteen expensive
+   goal-keyed unification failures with one `simp only`. `apply_ite`/`ite_self` belong in the set
+   for `setLastMatchValue`, whose two branches differ in `frames` and agree on `heap`.
+5. **A fold lemma applied through `trans` never fires.** `foldPair_cap`'s conclusion is
+   `MCap ?p.2 (?l.foldl ?f ?p).2`, so `MCap.trans (foldPair_cap _ ?_ _ _) ?_` asks unification to
+   solve `?p.2 ≟ m` — a projection against a metavariable, which it cannot do. The branch fails
+   **silently** and leaves the arm open (`Regexp#names` is the arm, and it is what found this).
+   Passing a concrete second argument works and reintroduces item 1's cost; `MCap.fold_eq`, which
+   reads the fold off the goal by `rfl`, is the version that is both correct and cheap.
+
+**And split the walk one dispatcher per module.** Lean buffers a module's messages until the
+module ends — verified, a 5 s `IO.sleep` between two `#print axioms` markers emits both at the
+same timestamp under `--json` — so one file holding all six is a black box for as long as it runs,
+and a failure in the last discards the first five. Split, `lake` prints a line per dispatcher and
+caches each success, and each dispatcher pays only for **its own** expensive closers:
+`printFold`/`pGo` are `Object#print`/`p` (`runObjects`) and `setClassPayload_methods` is
+`Module#private_constant` (`runModules`), so four of the six use the cheap `cap_arms` and two use
+`cap_arms_ctx`. `set_option profiler true` with a threshold is how the 12 s spikes were found;
+`sample <pid>` is how their cause was.
+
+6. **A closer's side condition must be a *pure term*, and the fourth violation cost 14 GB.**
+   Items 1–3 are all the same lesson, and it kept being relearned in new clothing: a
+   `simp only [CapAt] at hc` closer, added because the elaborator will not unfold `CapAt` to
+   expose an `Eq` in argument position (`Option.noConfusion hc` fails on
+   `hc : CapAt obj p`), took `runStrings` from 7 s to fine but is the prime suspect for
+   `runNumerics`. `capAt_proc_none`/`capAt_emptyCore`/`capAt_cls_nil` are the three lemmas that
+   replace it — one per payload iota cannot reduce (a Proc's `captured = none`, `Class#allocate`'s
+   `emptyCorePayload` *call*, `Class.new`'s empty method table).
+7. **Four arms needed hand-written closers, and that is normal.** `FrameLocal.lean` hand-writes
+   `newImpl_locals` for the same reason. Here they are in `BuiltinsCapStrings.lean`: `String#[]`
+   with a `Regexp` selector *delegates to `runRegex`* (so `runStrings` needs the regex tail, which
+   is also why the per-module closer split has to follow delegation and not just file names),
+   `Symbol#to_proc`, and `String#freeze` on a `dup` — the last needing `push_copy_then_set`,
+   because `MCap.trans` would have to be handed the intermediate machine and
+   `?mid.heap.objs ≟ m.heap.objs.push cpy` is the shape problem again. Also: `simp at h` runs
+   *before* the leaf closers get the goal, so it has already unfolded `dupObj` — a closer keyed on
+   a helper the fallback `simp` dissolves can never fire.

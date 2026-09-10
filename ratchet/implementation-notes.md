@@ -6976,3 +6976,96 @@ genuinely type-stuck by the real semantics). Semantic ratchet **48 of 83** (`Jud
 Proof/ChkSound}.lean`, `CheckRungs.lean`, `Denote/{Adequacy,Sanity,Rules}.lean`,
 `Denote/Sem/{Judge,State,Frame,Narrow,NarrowState}.lean`, a new `Denote/Sem/Down.lean`, and
 fourteen files under `Denote/Rules/`.
+
+## Clink 62 (2026-09-10) — `BuiltinsSeal` reduced to one walk, four of its six dispatchers proved, and §F22. **178 rungs / 254, 48 of 83 rules**
+
+**The ladder did not move, and that was known before the session started.** All 35 remaining
+rules were re-audited independently against `Denote/Sem/notes.md`'s census, and the census holds:
+six candidates were checked by hand and every one is behind a named layer or a stated falsity
+(`defStmt`'s `StateOk κ` conjunct asks `DefsOk` for the entry `defineMethod` just replaced;
+`casgn`/`cpathAsgn` behind the seventeenth stall point *and* §F22 below; `if'`/`ifNoElse` behind
+the locals layer *and* the eleventh; `while'` and the 22 call rules behind jump-freeness at the
+**run** level, which no syntactic conjunct supplies; `callAsm` behind `AsmsOk`'s `DenAll` at the
+call machine, which is the seventh stall point's remnant and false; `prim` behind ~200 rows).
+So the session went at the layer `HANDOFF.md` names as the resume point.
+
+### `found-issues.md` §F22 — a third reason `Judge.casgn`'s obligation is false
+
+Found by measuring `constAsgnOk` rather than by reading it. Its guard refuses a rebinding only
+for names the *tables* describe — a recorded constant at a different type, a declared class, one
+of nine `builtinClsNames`, or an `excName?` — and **`Regexp` is in none of them** while
+`Judge.regexpLit` concludes `.cls "Regexp"`. Since `denM (.cls n)` is `isAName`, which resolves
+`n` through `constLookup`, `Γ = [("r", .cls "Regexp")]` plus `Regexp = "s"` falsifies `EnvOk` at
+the post-machine. Not reachable — every other producer of a nominal `Ty` is inside the guard, and
+rebinding the constant `Regexp` is behaviourally inert — so it is an obligation falsity, not a
+wrong answer. **It is §F10's pattern read from the assignment side**, and the second of §F22's two
+candidate repairs (identity-keyed nominal arms, which `Ty.inst`'s `isExactInst` already half-is)
+would close both. Recorded, not fixed: `casgn` needs the cref *and* one of these, so it is two
+fixes away rather than one.
+
+### The layer: `BuiltinsSeal` is now one named walk, and four sixths of it are on file
+
+`Denote/Sem/BuiltinsCap.lean` + one module per dispatcher. **`CapMono h h'`** — the heap's
+capture edges did not grow — with `Sealed.of_capMono`/`FramesWF.of_capMono` taking
+`builtins_run_seal`'s two remaining hypotheses down to a **single** missing theorem,
+`builtins_run_cap`. `runRegex`/`runModules`/`runCollections`/`runStrings` are proved and
+axiom-clean (17 s / 48 s / 5 s / 8 s). `runNumerics` is not, and `runObjects`/`Builtins.run` sit
+behind it unelaborated, so `BuiltinsSeal` itself is still stated and unproved.
+
+**Two decisions that were not forced.**
+
+* **`CapMono` is existential in the object id**, not keyed to it. The id-keyed version is
+  *refuted* by `Object#dup`: `dupObj` pushes a fresh object carrying the source's payload, so
+  `p.dup` on a Proc puts the same edge at a new id. `Sealed.clos` at the source discharges it, so
+  the existential form is both true and exactly what `Sealed`'s clauses consume. Rejected
+  alternative: keep the id-keyed form and special-case `dup` — which would have been a claim about
+  one builtin standing in for a claim about the heap.
+* **`CapAt`'s class arm is keyed on `methodOf`** — the *first* entry of a name, which is what
+  `methodIn` reads — not on membership in `cp.methods`. The membership form is easier to establish
+  and `Sealed.meth` **cannot consume it**, since that clause constrains only the first match. The
+  sixth stall point's rule (*state the component over the lookup function*) one layer down.
+
+**The cost was tactics, not lemmas, and that is the transferable part** (`Denote/Sem/notes.md`
+§The second walk, seven measurements). `FrameLocal.lean` closes the same 600 arms in 89 s; the
+first version of this walk had not finished in 35 minutes, and `sample` on the live process
+diagnosed it — 60 % in `whnfImp`/`tryHeuristic`/`reduceMatcher?`/`getStuckMVar?`, i.e.
+unification against stuck metavariables. The governing rule: **put the arm's shape in a
+`rfl`-provable hypothesis and leave the conclusion first-order** (`MCap.push_eq rfl ?_`, not
+`CapMono.push` concluding `CapMono ?h ⟨?h.objs.push ?obj⟩`), because that is what makes *failing*
+cheap. 35 min → 25 s. Then `split at h` first, not last (two 12 s spikes on the undivided match
+over `bid`); `cap_norm` before the closers, which is `KontFrame.lean`'s `frame_simp` technique;
+and no `simp` anywhere in the walk — every side condition is a pure term
+(`capAt_proc_none`/`capAt_emptyCore`/`capAt_cls_nil`, one per payload iota cannot reduce).
+
+**Also recorded because it wasted a run:** a fold lemma applied through `MCap.trans` **fails
+silently** — `foldPair_cap`'s conclusion is `MCap ?p.2 (?l.foldl ?f ?p).2` and `?p.2 ≟ m` is a
+projection against a metavariable — so `Regexp#names`' arm looked like a missing case rather than
+a mis-applied tactic. `MCap.fold_eq`, which reads the fold off the goal by `rfl`, is the version
+that is correct *and* cheap.
+
+**And one measurement error worth confessing**, since it briefly produced a false green: the
+sequence script counted errors with `grep "BuiltinsCap$t.lean:[0-9]+:[0-9]+: error"`, and Lean's
+format is `error: <file>:L:C: unsolved goals` — so it matched nothing and reported `errors=0` for
+modules that had failed. Compounding it, a module that fails is never *imported*, so every
+dispatcher after it in the chain also reports zero errors of its own while never being elaborated
+at all. Both halves are why `runNumerics` looked like it built five times before anyone had
+elaborated it once.
+
+### Why `runNumerics` is not just "slow"
+
+It reaches **14 GB resident and does not terminate, with `maxHeartbeats` never tripping** — which
+points at the kernel checking a gigantic proof term rather than at a tactic search. The two
+suspects are the two `simp`s still in the walk, either of which can try to *evaluate* `Int`/`Float`
+literals on an arithmetic arm. The fix shape is the one that already worked three times: move the
+`simp` into a pure-term lemma keyed on the arm. Written up at the end of
+`Denote/Sem/BuiltinsCapStrings.lean` so the next attempt starts there.
+
+### State
+
+Semantic ratchet **48 of 83**, unmoved — `BuiltinsSeal` is a layer, not a `Judge` rule, and
+nothing here claims otherwise. Syntactic ratchet **178 of 254**, unmoved tier for tier;
+`expect_validate` mismatches **35**, unchanged. `checkrungs` **177/177 hand derivations +
+148/148 negative controls**. `lake build` clean, no `sorry`, every `#print axioms` a subset of
+`propext`/`Classical.choice`/`Quot.sound`. **`Ratchet/` untouched.** Added:
+`Denote/Sem/BuiltinsCap{,Regex,Modules,Collections,Strings}.lean`. Changed:
+`Denote/Sem/notes.md`, `found-issues.md` (§F22).

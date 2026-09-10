@@ -1724,3 +1724,70 @@ what it was for, and the semantic ratchet went **47 → 48 of 83**.
 the table (`class Uncomparable < StandardError`). That was fatal while the guard had to be
 *preserved* across a declaration; with the guard invariant it is only a precision question.
 Sharpening it would be a loosening of §F9's guard and wants its own measurement.
+
+### F22. `constAsgnOk`'s guard list is not the set of class names a `Ty` can carry — and `Regexp` is outside it
+
+**Status:** **open, and not a soundness bug** — a blocker on `Obl.Judge.casgn`, filed so the
+next attempt does not re-derive it. **Severity:** low as a wrong answer (there is none, and
+§Why it is not reachable says why), medium as a proof obstruction: it is the *third* independent
+reason `Judge.casgn`'s obligation is false, and unlike the other two it is not about where the
+machine is standing. Found 2026-09-10 while sizing `casgn` against the seventeenth stall point.
+
+**The measurement.** `constAsgnOk κ n τ` (§F18's guard) refuses a rebinding only when the name
+is one the *tables* describe — a recorded constant at a different type, a declared class, a
+`builtinClsNames` entry, or an `excName?`. Measured at `ctx0`
+(`lake env lean` on `#eval constAsgnOk ctx0 …`):
+
+```
+constAsgnOk ctx0 "Regexp" (.cls "String")  =  true    -- permitted
+constAsgnOk ctx0 "Comparable" .int         =  true    -- permitted
+constAsgnOk ctx0 "Range" .int              =  true    -- permitted
+constAsgnOk ctx0 "String" (.cls "String")  =  false   -- refused (builtinClsNames)
+constAsgnOk ctx0 "StandardError" .int      =  false   -- refused (excName?)
+```
+
+`builtinClsNames` is nine names (`Integer Float String Symbol NilClass TrueClass FalseClass
+Array Hash`). **`Regexp` is not one of them, and `Judge.regexpLit` concludes `.cls "Regexp"`.**
+
+**Why the obligation is false.** `denM (.cls n) m v` is `isAName m.heap v n`, which resolves
+`n` through `classNamed?` → `constLookup` → the toplevel constant table (`Denote/Val.lean`).
+So take
+
+```
+Γ = [("r", .cls "Regexp")]      and      Regexp = "s"
+```
+
+at any machine where `r` holds a Regexp instance. The machine is conformant with `(κ, Γ, I)`;
+the run returns; and at `m'` the name `Regexp` resolves to a **String object**, whose
+`classPayload?` is `none`, so `classNamed? m'.heap "Regexp" = none` and `isAName … = false`.
+`EnvOk Γ m'` fails, hence `StateOk κ Γ' I' m'` — the conjunct §12.3 of `context-splitting.md`
+keeps for the rule's *consumer* — is false. Nothing in the rule's premises can exclude it.
+
+**Why it is not reachable**, which was checked rather than assumed. The other producers of a
+nominal `Ty` are all inside the guard: `constCls` requires `clsGet? κ.classes n = some c`
+(refused), `constBuiltin` requires `BuiltinCls n` (refused), `constExc` requires `excName?`
+(refused), and `rescueBind?`'s `.cls n` is an exception class (refused). That leaves `Regexp`,
+and rebinding the *constant* `Regexp` is behaviourally inert: no `PrimSig` row has a `Regexp`
+receiver, `/x/` is a literal that consults no constant, and `"a".match?(r)` dispatches on the
+**object** `r` still holds. So the type goes stale while the program keeps working — the
+opposite polarity from §F10, where the stale name made the checker *wrong*.
+
+**The shape, stated for the next fix.** This is §F10's pattern (*a constant is not its name*)
+read from the assignment side rather than the read side: a `casgn` can falsify any type that
+mentions the name, and the set of names a `Ty` can mention is not the set of names the
+context's tables record. Two candidate repairs, neither a one-liner and neither in this
+window's edit surface:
+
+1. **Widen the guard** to "the name currently names no class at all". That is a fact about the
+   *machine*, not about `κ`, so as a `Judge` premise it would have to be approximated — the
+   honest approximation is a fixed list of every nominal name the `Ty` grammar and the
+   `PrimSig` table can produce, which is `builtinClsNames ∪ {Regexp} ∪ excNames`. Cheap, and it
+   moves `Ratchet/`.
+2. **Make the nominal arms identity-based rather than name-based.** `denM (.cls n)` would carry
+   the class *object* the name resolved to when the type was made, which is what `Ty.inst`'s
+   `isExactInst` already half-does (§F12). That is a `denM` change with a blast radius through
+   `DenB`, `Examples.lean` and every nominal rung.
+
+Recorded here rather than fixed because `Judge.casgn` is blocked by the seventeenth stall point
+as well (`ConstScopeOk` is falsified by a class body's first constant), and that one needs `Ctx`
+to record the cref. Fixing this alone moves no rung.
