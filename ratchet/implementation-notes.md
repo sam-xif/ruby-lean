@@ -7154,7 +7154,7 @@ anything in `Denote/`.
 
 After the exit finding was recorded the brief was narrowed to *prove the true facts and ignore
 the untrue obligations*, and the layer advanced accordingly. `Denote/Sem/Step{Interp,Walk,Eval,
-Support,Dispatch}.lean` hold **71 theorems**, all axiom-clean:
+Support,Dispatch}.lean` hold **76 theorems**, all axiom-clean:
 
 * the full `Step` composite vocabulary with peels — `frameOnly`, `pop`, `setLocal`, `withCtl`,
   `withKont`, `raiseErr`, five allocators, `setGlobal`, `setLastMatchValue`, `heap` (the
@@ -7186,12 +7186,27 @@ machine-irrelevant `vals`), is *unnecessary* because a lemma should exist instea
 **Only the last was ever an obstruction to the theorem**; the other three are addressing
 conventions.
 
-**Three helpers remain, each with a measurement rather than a guess.** `enterUserMethod` runs
-26 minutes without finishing at 60M heartbeats *with memory flat at ~516 MB* — search, not a term
-explosion — so it wants `KontFrame.lean`'s remedy of hand-splitting its ten branch points, not a
-bigger budget. `destructureBind` wants the same batch (resolve the irrelevant match first).
-`enterClassBody` is deprioritised rather than blocked: it feeds `classStmt`/`moduleStmt`, which
-are declaration-family rules and not among the reachable ones.
+**`destructureBind` then fell**, and its two causes were both addressing rather than semantics:
+`split` picks the *first* match it finds, and `vals` — machine-irrelevant, every branch yielding
+the same machine — precedes the rest-parameter match the proof needs, so it is resolved by hand;
+and the stubborn `∀ o, v = Value.ref o → False` goal was never `split`'s at all but a **side
+condition of the conditional equation lemma** `rw [Interp.destructureBind]` picked.
+`rw [f.eq_def]` has none. That is tooling lesson 1 biting from a direction it does not mention —
+the bare *name* in a `rw` is as wrong as `simp only [f]`, and the symptom reads as an unsolved
+case rather than a failed rewrite.
+
+**The `_eq` forms are the other generalisation.** `Step.raiseErr_eq`/`allocArr_eq`/`allocHsh_eq`/
+`withKont_eq` move each composite's shape out of its conclusion into a `rfl` hypothesis — the
+same change that took the `Builtins` walk from "unfinished after 35 minutes" to 17 s per
+dispatcher, which this layer had simply not applied to itself.
+
+**Two helpers remain, both deliberate.** `enterUserMethod` is **one transcription away with no
+unknowns**: everything it needs is proved, and three attempts (4M heartbeats, 60M, and every
+closer in `_eq` form) establish that what is left is neither a proof nor a budget problem but
+`split` on a 135-line body with ten branch points outrunning any closer list — the same
+conclusion `KontFrame.lean` reached about the same function. The ~7 conditions want transcribing
+as explicit peels. `enterClassBody` is deprioritised rather than blocked: it feeds
+`classStmt`/`moduleStmt`, which are declaration-family rules and not among the reachable ones.
 
 ### EMERGENCY EXIT INVOKED — 83/83 is unreachable under the stated constraints
 

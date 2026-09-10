@@ -261,6 +261,33 @@ theorem Step.frameOnly' {b : FrameId} {m mid m₂ : Machine} (s : Step b m mid)
     (hs : m₂.stack = mid.stack) (hf : m₂.frames = mid.frames) (hh : m₂.heap = mid.heap) :
     Step b m m₂ := s.trans (Step.frameOnly s.2 hs hf hh)
 
+/-! ### The composites in `_eq` form — the shape in a `rfl` hypothesis
+
+The lesson that took the `Builtins` walk from "unfinished after 35 minutes" to 17 s per
+dispatcher, applied to this layer, where it had been missed: a closer whose **conclusion**
+carries the shape (`Step b m (Interp.raiseErr m ?cls ?msg)`) is expensive *to fail*, because
+unification must unfold the callee against a machine-sized term at every goal it does not
+close. Moving the shape into a `rfl`-provable hypothesis makes the conclusion `Step b ?m ?m'` —
+first-order, instant — and failure a `rfl` head-check.
+
+Measured on `enterUserMethod`: with the goal-keyed forms its closer fixpoint does not finish at
+4 000 000 heartbeats. -/
+
+theorem Step.raiseErr_eq {b : FrameId} {m m' : Machine} (h : StepInv b m) {cls : ObjId}
+    {msg : String} (he : m' = Interp.raiseErr m cls msg) : Step b m m' :=
+  he ▸ Step.raiseErr h cls msg
+
+theorem Step.allocArr_eq {b : FrameId} {m m' : Machine} (h : StepInv b m) {xs : Array Value}
+    (he : m' = (Builtins.allocArr m xs).2) : Step b m m' := he ▸ Step.allocArr h xs
+
+theorem Step.allocHsh_eq {b : FrameId} {m m' : Machine} (h : StepInv b m)
+    {xs : Array (Value × Value)} (he : m' = (Builtins.allocHsh m xs).2) : Step b m m' :=
+  he ▸ Step.allocHsh h xs
+
+theorem Step.withKont_eq {b : FrameId} {m m' mid : Machine} (s : Step b m mid) {c : Ctl}
+    {kk : Kont} (he : m' = Interp.withKont mid c kk) : Step b m m' := he ▸ Step.withKont' s c kk
+
+
 #print axioms Step.withCtl
 #print axioms Step.withCtl'
 #print axioms Step.raiseErr

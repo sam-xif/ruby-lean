@@ -86,32 +86,37 @@ call family is the reachable prize, so the effort goes there.
 The reopen path, for the record, is one line: `Step.push_free h _ rfl` under `Step.withKont'`. -/
 
 
-/-! ### `enterUserMethod`, parked with a **measurement** — it needs hand-splitting, not a budget
+/-! ### `enterUserMethod` — the `Sealed.meth` push site
 
-The one `frames.push` in the model whose `captured` comes from a **`MethodDef`** rather than a
-frame or a closure, which is why L267 added `Sealed`'s third clause. Everything it needs is on
-file: `Step.push_meth`/`push_meth'` for the push, and `methodIn_alloc` (`StepSupport.lean`) to
-carry the `Sealed.meth` fact across the allocations the body performs first (a keyword bundle
-via `appendKwHash`, a rest array via `allocArr`).
+The one `frames.push` whose `captured` comes from a **`MethodDef`** rather than a frame or a
+closure, which is why L267 added `Sealed`'s third clause. The premise is a heap lookup
+(`methodIn`), carried across the allocations the body performs first — a keyword bundle via
+`appendKwHash`, a rest array via `allocArr`, a destructuring bind via `destructureBind` — by
+`methodIn_alloc`.
 
-**What is not on file is a proof, and the reason is measured rather than guessed.** With the
-corrected recipe (peel first, refute through the hypothesis, `hmd` supplied directly) the
-closer fixpoint runs **26 minutes and does not finish at 60 000 000 heartbeats**. Memory stays
-flat at ~516 MB, so this is search, not a term explosion: ten branch points over a 135-line body
-produce dozens of leaves, and two of the closers (`Step.raiseErr`, `Step.allocArr`) are
-goal-keyed and therefore expensive *to fail* at each one — item 1 of §The second walk, at a
-scale where it dominates.
+**Retried after `destructureBind`**, whose fix applies here too: `rw [f.eq_def]` rather than the
+bare name, since the conditional equations of a nested-match definition leave discriminating side
+goals that look like unsolved cases. The first branch (`classifyFull`'s gate) is peeled by hand
+because `split` will not fire on it; note that `classifyFull` ends `if false then none`, so that
+branch is dead code and closes on the `.unsupported`/`.next` constructor mismatch. -/
 
-`RubyCore/Proof/KontFrame.lean` hit exactly this and records the same shape: `enterUserMethod`
-is "`split`-bound on a 135-line body with ten branch points and is the one function whose build
-cost is measured in minutes". Its resolution was to **hand-split the branch points** so no
-search happens at all, which is the approach here too — ~10 explicit `by_cases`/`cases hc :`
-peels with one `exact` per leaf. That is deterministic work; it is not a bigger heartbeat
-budget, and raising the budget further would only buy a longer wait.
+/-! **Status: one transcription away, with no unknowns left.** Everything it needs is proved —
+`Step.push_meth`/`push_meth'` for the push, `methodIn_alloc` for the lookup across its
+allocations, `Step.appendKwHash`, `Step.allocArr_eq`, `Step.allocHsh_eq`, and (since it folds
+over destructuring sub-parameters) `Step.destructureBind`.
 
-Its first condition is already peeled and correct:
-`by_cases h1 : (Interp.classifyFull md.params).isNone = true`, with the `true` branch closing by
-`cases hstep` on the `.unsupported`/`.next` constructor mismatch. -/
+What remains is *not* a proof problem and *not* a budget problem, and three attempts establish
+that: with the closer fixpoint it does not finish at 4M heartbeats (~110 s), at 60M (26 min), or
+with every closer moved to `_eq` form. Memory stays flat, so it is search — `split at hstep` on a
+135-line body with ten branch points, producing goals faster than any closer list can absorb
+them. `RubyCore/Proof/KontFrame.lean` reached the same conclusion about the same function and
+hand-split it.
+
+So the remaining work is transcribing ~7 conditions as explicit `by_cases`/`cases hc :` peels —
+`hasKw`, `arityOk`, the two keyword checks, `fp.rest?`, `fp.kwrest?`, and the `destrs` fold —
+with one `exact` per leaf. Mechanical, deterministic, and the conditions are readable off
+`Interp/Dispatch.lean`. The first is already peeled here, and `classifyFull` ends
+`if false then none`, so that branch is dead code that closes on the constructor mismatch. -/
 
 #print axioms Step.eigenclassOf_go
 #print axioms Step.eigenclassOf
