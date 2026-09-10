@@ -245,15 +245,12 @@ theorem Step.foldPair' {b : FrameId} {α β : Type} (f : β × Machine → α �
     Step b m (l.foldl f (init, mid)).2 :=
   s.trans (Step.foldPair f hf l (init, mid) s.2)
 
-/-! ### `destructureBind`, and the obstruction is `split`'s *choice* of scrutinee
+/-! ### `destructureBind` — hand-split, because `split` picks the wrong match
 
-`def f((a, b), c)`. The lemma is one fuel induction over two folds — both now expressible, since
-`Step.foldPair`/`foldPair'` above are proved — with the inner step recursing for a nested
-`.destr` and a rest sub-parameter allocating between them. The fold step is written and correct
-(`.req` binds without touching the machine, `.destr` recurses at lower fuel, the other six
-`Param` constructors are the identity).
+`def f((a, b), c)`. One fuel induction over two folds, with the inner step recursing for a
+nested `.destr` and a rest sub-parameter allocating between them.
 
-**What blocks it, measured:** `split` takes the *first* match it finds, and that is `vals` —
+**The obstruction was `split`'s *choice* of scrutinee**, not its capability. `vals` —
 
 ```lean
 let vals := match v with
@@ -261,23 +258,54 @@ let vals := match v with
   | _ => [v]
 ```
 
-— which is **machine-irrelevant** (every branch yields the same machine) but textually precedes
-the rest-parameter match the proof actually needs to case on. Splitting it produces goals like
-`∀ o, v = Value.ref o → False`, which are not dischargeable and not wanted. `split` takes no
-scrutinee argument, and the `rest?` the proof does want is a `let`-bound projection of a match
-over `subs.dropWhile`, so `cases hc : …` cannot name it cheaply either.
+— is **machine-irrelevant** (every branch yields the same machine) but textually precedes the
+rest-parameter match the proof needs to case on, and `split` takes the first match it finds.
+Splitting it yields `∀ o, v = Value.ref o → False`, which is neither dischargeable nor wanted.
+`split` takes no scrutinee argument, so the remedy is to resolve the irrelevant match **by hand**
+first (`cases v`, then the payload) and let the fixpoint have the relevant one. That is the same
+remedy `KontFrame.lean` applies to `newImpl`, and the same one `enterUserMethod` wants. -/
 
-The fix is the same batch the other two want — resolve the irrelevant match by hand
-(`cases v`, then the payload match) before the relevant one — and it belongs with
-`enterUserMethod`'s hand-split rather than being done twice.
-
-**This is the fourth distinct `split` failure mode in this layer**, and together they are the
-useful generalisation: `split` fails to *fire* (a `have`-bound scrutinee — `doReturn`), fires on
-the *wrong* match (here), is *unnecessary* because a lemma should exist instead (`constSet`), or
-fires correctly but is starved by closer ordering (`callClosure`). Only the last one was a real
-obstruction to the theorem; the other three are addressing conventions. -/
+theorem Step.destructureBind {b : FrameId} :
+    ∀ (fuel : Nat) (m : Machine) (subs : List RubyCore.Param) (v : Value), StepInv b m →
+      Step b m (Interp.destructureBind m subs v fuel).2
+  | 0, m, _, _, h => Step.refl h
+  | fuel + 1, m, subs, v, h => by
+    -- `.eq_def`, not the bare name: the auto-generated equations for a definition with nested
+    -- matches are *conditional*, and `rw [Interp.destructureBind]` leaves their discriminating
+    -- side goals behind (`∀ o, v = .ref o → False`). `notes.md` tooling lesson 1.
+    rw [Interp.destructureBind.eq_def]
+    -- the fold's step: `.req` binds without touching the machine, `.destr` recurses at lower
+    -- fuel, and the other six `Param` constructors are the identity
+    have hstep : ∀ (p : List (String × Value) × Machine) (a : RubyCore.Param × Value),
+        StepInv b p.2 → Step b p.2 (
+          (match a.1 with
+            | .req nm => (p.1 ++ [(nm, a.2)], p.2)
+            | .destr subs' =>
+              let r := Interp.destructureBind p.2 subs' a.2 fuel
+              (p.1 ++ r.1, r.2)
+            | _ => (p.1, p.2)) : List (String × Value) × Machine).2 := by
+      intro p a hp
+      obtain ⟨pp, val⟩ := a
+      cases pp
+      case destr => exact Step.destructureBind fuel p.2 _ _ hp
+      all_goals exact Step.refl hp
+    -- resolve `vals`'s match by hand, then peel outside-in: fold2, the rest allocation, fold1
+    cases v
+    case ref o =>
+      cases hp : (m.heap.get o).payload
+      all_goals (repeat (any_goals (first
+      | (refine Step.allocArr' ?_ _; exact Step.foldPair _ hstep _ _ h)
+      | exact Step.foldPair _ hstep _ _ h
+      | refine Step.foldPair' _ hstep _ _ ?_
+      | split)))
+    all_goals (repeat (any_goals (first
+      | (refine Step.allocArr' ?_ _; exact Step.foldPair _ hstep _ _ h)
+      | exact Step.foldPair _ hstep _ _ h
+      | refine Step.foldPair' _ hstep _ _ ?_
+      | split)))
 
 #print axioms Step.foldPair
+#print axioms Step.destructureBind
 
 #print axioms Step.appendKwHash
 
