@@ -14,13 +14,16 @@
 > (deprioritised — declaration family), **and stage 4 is thirteen of fifteen**
 > (`Denote/Sem/StepReflect.lean`).
 >
-> **The resume point is exactly two lemmas**: `Step.reflectVisibility` — its walk (`Step.visRun`)
-> and every heap lemma under it are proved, so what is owed is the caller's four leaves peeled by
-> hand (`recv`, the `names.length` check, `names.isEmpty`, `classMeth`, `visOk`), because three of
-> them arrive `And`-wrapped and one does not `subst` — and then **`Step.tryReflect`** and
-> **`Step.dispatchMiss`**, which are dispatchers over lemmas that now all exist. After that the
-> **dispatch spine** (`invokeDispatch`/`invoke`, then stage 3's `finishSend`/`startArgs`) is
-> unblocked for the first time. Read `Denote/Sem/StepReflect.lean`'s header first: it lists the
+> **Stage 4 is complete and `Step.dispatchMiss` is proved — the miss path is closed.**
+>
+> **The resume point is the twentieth stall point** (`Denote/Sem/notes.md`): `Builtins.run` answers
+> four ways and three carry a machine, but every walk under it (`builtins_run_locals`,
+> `builtins_run_cap`, `Step.builtins`) is stated over **`.ok` alone** — so a builtin that *raises*
+> is outside the layer, and `invokeDispatch` cannot be closed. Try (1) first: generalise the
+> statement over the result (`∀ r, Builtins.run … = r → LocalsSame m (mOf r)`) and re-run the
+> existing `builtin_arms`/`cap_norm` tactics; that is one measurement rather than a new walk. After
+> that the **dispatch spine** (`invokeDispatch`/`invoke`, then stage 3's `finishSend`/`startArgs`)
+> is unblocked for the first time. Read `Denote/Sem/StepReflect.lean`'s header first: it lists the
 > two relation-level corrections (`PreAct` is false across `defineMethod`; `PayKeep` is the
 > interface for `eigenclassOf`) and the ordering rule's fifth and sixth costumes.
 > `PreAct` (`StepSupport.lean`) is the transport every allocating-then-pushing helper needs, and

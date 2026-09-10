@@ -550,9 +550,19 @@ the seal) is untouched**, as its own piece.
 > `enterClassBody`** (deprioritised — declaration family). The dispatch spine cannot close before
 > **stage 4**, since `dispatchMiss` routes through `tryReflect`.
 >
-> **Stage 4 is thirteen of fifteen** (`Denote/Sem/StepReflect.lean`): every `reflect*` helper but
-> `reflectVisibility` — which is parked *with* its walk and heap lemmas proved, needing only its
-> caller's four leaves hand-peeled — and `tryReflect`, which waits on it. Two relation-level
+> **Stage 4 is complete** (`Denote/Sem/StepReflect.lean`): all fifteen `reflect*` helpers,
+> **`tryReflect` and `dispatchMiss`** — *the miss path is closed*. `reflectVisibility` was the last
+> and its measurement is the sharpest: hand-peeling its leaves left a **28 s timeout**, and
+> `Step.visRun_eq` (the shape in a `rfl` hypothesis, clink 62's rule for the fifth time) closes the
+> same walk in **2.3 s**.
+>
+> **And `invokeDispatch` is still blocked — the twentieth stall point.** `Builtins.run` answers
+> four ways and three carry a machine, but the layer's 600-arm walks (`builtins_run_locals`,
+> `builtins_run_cap`, `Step.builtins`, and the eighteenth stall point's `Sealed` result) are stated
+> over **`.ok` alone**. A builtin that *raises* therefore leaves the locals layer with nothing to
+> say, and every dispatcher's error path is unreachable. It is a second pass of the same two walks,
+> not a design problem — `Denote/Sem/notes.md` prices three ways to pay for it — but it was
+> **invisible**, because `Step.builtins` reads like "the layer is done". Two relation-level
 > corrections came out of it, both found by the type checker: **`PreAct` is false across
 > `defineMethod`** (which *replaces*, so the walks are `Step` and their second write **establishes**
 > the new fact rather than transporting the old), and **`PayKeep`** — payloads preserved — is the

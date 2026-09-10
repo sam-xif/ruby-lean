@@ -7397,7 +7397,29 @@ lemma's **premise** is fine (`exact` checks up to defeq, and two matchers for th
 defeq) — it is only `rw`/`generalize`/`simp only`, which match *syntactically*, that the fresh
 matcher constant defeats. That distinction is the nineteenth stall point's fine print.
 
-**Parked with a diagnosis, not half-done: `Step.reflectVisibility`.** Its walk (`Step.visRun`,
+**`reflectVisibility` then fell too, and its measurement is the clink's sharpest one.** It was
+parked for one attempt on "its four leaves need hand peels" — right and insufficient: with the
+leaves peeled the walk still **timed out at 1M heartbeats (28 s)**. The cause is clink 62's rule
+for the fifth time: a closer whose *conclusion* carries the shape
+(`Step b m (visRun (eigenclassOf m ?o).2 …)`) is expensive **to fail**, since unification unfolds
+the callee against a machine-sized term at every goal it does not close. `Step.visRun_eq` moves
+the shape into a `rfl` hypothesis: **28 s timeout → 2.3 s**. So **stage 4 is fifteen of fifteen**,
+and with it **`Step.tryReflect` and `Step.dispatchMiss` are proved — the miss path is closed**,
+which is what `invokeDispatch` was waiting on.
+
+### …and `invokeDispatch` is *not* closed, for a reason worth a stall point: the twentieth
+
+`Builtins.run` answers **four** ways, and three carry a machine (`.ok v m`, `.err cls msg m`,
+`.throwV v m`). The layer's 600-arm walks — `builtins_run_locals`, `builtins_run_cap`,
+`Step.builtins`, and therefore the eighteenth stall point's "`Sealed` survives `Builtins.run`" —
+are all stated over **`.ok` alone**. So a builtin that *raises* leaves the locals layer with
+nothing to say, and every dispatcher's error path is unreachable. Not a design problem: it is a
+second pass of the same two walks, and `Denote/Sem/notes.md`'s twentieth stall point prices the
+three ways to pay for it (generalise over the result and re-run the existing tactic; two more
+instantiations; a `BRes`-level relation). **The finding is that it was invisible** — `Step.builtins`
+reads like "the layer is done".
+
+**Superseded note, kept because the diagnosis was half right: `Step.reflectVisibility`.** Its walk (`Step.visRun`,
 `Step.visStep`, `Step.foldOpt`) and every heap lemma under it **are** proved; what is left is the
 caller's four leaf shapes, which a closer list cannot take — three arrive with the hypothesis
 wrapped in an `And` (`simp` turns `if c then some x else none = some y` into `c ∧ x = y`) and one
@@ -7413,7 +7435,8 @@ Semantic ratchet **48 of 83**, unmoved — nothing here is a `Judge` rule, and t
 ratchet **178 of 254**, tier for tier; corpus agreement **254/254**; `expect_validate` mismatches
 **35**; `checkrungs` **177/177 + 148/148**. `lake build` clean, no `sorry`, every `#print axioms`
 inside `propext`/`Classical.choice`/`Quot.sound`. **`Ratchet/` untouched.** Added:
-`Denote/Sem/StepAct.lean`, `Denote/Sem/StepReflect.lean`. Changed: `Denote/Sem/StepSupport.lean` (the two `Machine` folds,
+`Denote/Sem/StepAct.lean`, `Denote/Sem/StepReflect.lean` (stage 4 whole, plus `tryReflect` and
+`dispatchMiss`). Changed: `Denote/Sem/StepSupport.lean` (the two `Machine` folds,
 `PreAct` and its lemmas), `Denote/Sem/StepDispatch.lean` (the bridges, the helpers, method
 installation and the mixins; its
 `enterUserMethod` prose was a status note and is now a pointer), `Denote/Sem/notes.md`

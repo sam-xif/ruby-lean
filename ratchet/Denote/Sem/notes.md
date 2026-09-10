@@ -1927,6 +1927,41 @@ let-chains of the same kind.
 hypothesis unifies `?mid` with `m` — the outer machine — and then rejects the real one. So
 `Step.callClosure_at`/`iterStep_at` take the hypothesis first. Same for `Step.startIter_pre`.
 
+## The twentieth stall point — **the `Builtins` layer proved `.ok` only**, and every dispatcher's error path needs the other two *(open, sized)*
+
+Found by trying `invokeDispatch` once `dispatchMiss` was closed (clink 63). `Builtins.run` answers
+**four** ways —
+
+```lean
+| .ok v m   | .err cls msg m   | .throwV v m   | .unsupported r
+```
+
+— and three of them carry a machine that `invokeDispatch` then uses (`withCtl m (.value v)`,
+`raiseErr m cls msg`, `withCtl m (.jump (.raiseJ v))`). The layer's 600-arm walks are stated for
+the **`.ok`** outcome alone: `builtins_run_locals`, `builtins_run_cap`, and therefore
+`Step.builtins`, all read `Builtins.run … = .ok v m'`. So a builtin that *raises* — every
+`TypeError`, every `ArgumentError`, `Object#raise` itself — leaves the locals layer with nothing
+to say about the machine it raised at, and `invokeDispatch` cannot be closed.
+
+**This is not a design problem; it is a second pass of the same two walks**, with `.err`/`.throwV`
+in place of `.ok`. Worth recording as a stall point because it is invisible from the outside:
+`Step.builtins` reads like "the `Builtins` layer is done", and the eighteenth stall point's
+closure (`Sealed` survives `Builtins.run`) is stated over `.ok` too.
+
+Three ways to pay for it, in the order they should be tried:
+
+1. **Generalise the statement over the result**, `∀ r, Builtins.run … = r → LocalsSame m (mOf r)`
+   with `mOf : BRes → Machine`, and re-run the existing `builtin_arms`/`cap_norm` tactics. If the
+   arms' shapes are uniform in the outcome (they are, for every arm that does not *branch* on it),
+   this is one measurement rather than a new walk.
+2. **Two more instantiations** (`_err`, `_throwV`) of the same tactic, which is the conservative
+   version of (1) and costs the 89 s + 25 s walks twice more.
+3. A `BRes`-level relation (`BResSame`) proved once and projected — more machinery than either.
+
+Until then the honest statement of the layer is **"`Builtins.run` preserves the locals layer *when
+it answers with a value*"**, and `Denote/Sem/StepReflect.lean`'s `Step.dispatchMiss` is the top of
+what can be closed without it: the miss path never consults a builtin's result.
+
 ## The remaining 35, re-audited 2026-09-10 — and **seven are false as stated**
 
 Written because "35 remaining" reads as 35 units of work, and the useful fact is that a

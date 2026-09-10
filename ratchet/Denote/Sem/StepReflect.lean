@@ -764,16 +764,69 @@ theorem Step.removeRun {b : FrameId} {m : Machine} (h : StepInv b m) (o : ObjId)
   | none => exact Step.refl h
   | some m₂ => exact Step.removeNames h o undef names m₂ hv
 
-/-! **Parked, with the diagnosis**: `Step.reflectVisibility`. Its walk (`Step.visRun`) and every
-heap lemma under it are **proved above**; what is left is the *caller*'s four leaf shapes, and a
-closer list cannot take them. Three of the four arrive with the hypothesis wrapped in an `And`
-(`simp` turns `if c then some x else none = some y` into `c ∧ x = y`), and of those the
-`setCurrentFrame` leaf's equation does not `subst` — while the `*_class_method` leaves need the
-`(eigenclassOf …).2` composition supplied as one `exact` term (a `refine … ?_` leaves the
-eigenclass's object id undetermined, since it is an *intermediate*). Both are the ordering rule
-again, and the remedy is the one `enterUserMethod` needed: peel the conditions by hand
-(`recv`, the `names.length` check, `names.isEmpty`, `classMeth`, `visOk`) rather than search.
-Left undone deliberately rather than half-done; `tryReflect` waits on it. -/
+/-! ### `reflectVisibility`, and the measurement that closed it
+
+Parked for one attempt on the diagnosis "its four leaves need hand peels", which was right and
+insufficient: with the leaves peeled the walk still **timed out at 1M heartbeats (28 s)**, and the
+cause is clink 62's rule arriving for the fifth time — a closer whose *conclusion* carries the
+shape (`Step b m (visRun (eigenclassOf m ?o).2 …)`) is expensive **to fail**, because unification
+must unfold the callee against a machine-sized term at every goal it does not close.
+`Step.visRun_eq`/`visRunEigen_eq` move the shape into a `rfl` hypothesis and the same walk closes
+in **2.3 s**. -/
+
+/-- `visRun` in `_eq` form: the shape in a `rfl` hypothesis, the conclusion first-order — clink
+62's rule, which this leaf needed because the goal-keyed form is expensive **to fail** (a
+`Step b m (visRun (eigenclassOf m ?o).2 …)` conclusion forces `whnf` against a machine-sized term
+at every goal it does not close, and the walk timed out at 1M heartbeats). -/
+theorem Step.visRun_eq {b : FrameId} {m m' : Machine} (h : StepInv b m) {o target : ObjId}
+    {vis : Visibility} {modFun : Bool} {names : List String}
+    (he : m' = Interp.visRun m o target vis modFun names) : Step b m m' :=
+  he ▸ Step.visRun h o target vis modFun names
+
+/-- …and the same after an eigenclass realisation, which is the `*_class_method` shape. -/
+theorem Step.visRunEigen_eq {b : FrameId} {m m' : Machine} (h : StepInv b m) {o o₂ target : ObjId}
+    {vis : Visibility} {modFun : Bool} {names : List String}
+    (he : m' = Interp.visRun (Interp.eigenclassOf m o).2 o₂ target vis modFun names) :
+    Step b m m' :=
+  he ▸ (Step.eigenclassOf m o h).trans
+    (Step.visRun (Step.eigenclassOf m o h).2 o₂ target vis modFun names)
+
+set_option maxHeartbeats 1000000 in
+theorem Step.reflectVisibility {b : FrameId} {m m' : Machine} (h : StepInv b m) (recv : Value)
+    (mname : String) (args : List Value) (blk : Option Value)
+    (hstep : Interp.reflectVisibility m recv mname args blk = some (.next m')) : Step b m m' := by
+  rw [Interp.reflectVisibility.eq_def] at hstep
+  cases recv
+  case ref o0 =>
+    dsimp only at hstep
+    by_cases hl : ((args.filterMap (Interp.symOrStr m)).length != args.length) = true
+    · rw [if_pos hl] at hstep; exact absurd hstep (by simp)
+    · rw [if_neg hl] at hstep
+      by_cases he : (args.filterMap (Interp.symOrStr m)).isEmpty = true
+      · rw [if_pos he] at hstep
+        by_cases hc1 : (mname == "private_class_method" || mname == "public_class_method") = true
+        · rw [if_pos hc1] at hstep; exact absurd hstep (by simp)
+        · rw [if_neg hc1] at hstep
+          by_cases hc2 : (mname == "module_function") = true
+          · rw [if_pos hc2] at hstep; exact absurd hstep (by simp)
+          · rw [if_neg hc2] at hstep
+            simp only [Option.some.injEq, StepResult.next.injEq] at hstep
+            cases hstep
+            refine Step.withCtl' ?_ _
+            exact Step.setCurrentFrame h _ rfl rfl
+      · rw [if_neg he] at hstep
+        repeat (any_goals (first
+          | (cases hstep
+             refine Step.withCtl' ?_ _
+             refine Step.allocArr' ?_ _
+             exact Step.visRunEigen_eq h rfl)
+          | (cases hstep
+             refine Step.withCtl' ?_ _
+             refine Step.allocArr' ?_ _
+             exact Step.visRun_eq h rfl)
+          | (cases hstep)
+          | (split at hstep)))
+  all_goals exact absurd hstep (by simp)
 
 /-- **`remove_method`/`undef_method`**. -/
 theorem Step.reflectRemoveMethod {b : FrameId} {m m' : Machine} (h : StepInv b m) (recv : Value)
@@ -792,6 +845,56 @@ theorem Step.reflectRemoveMethod {b : FrameId} {m m' : Machine} (h : StepInv b m
        cases hst
        exact Step.raiseErr h _ _)
     | (simp at hstep)
+    | (split at hstep)))
+
+/-- **`tryReflect`** — the reflection dispatcher: a match on the method name over the fifteen
+helpers above, so one closer each and no work of its own. -/
+theorem Step.tryReflect {b : FrameId} {m m' : Machine} (h : StepInv b m) (recv : Value)
+    (mname : String) (args : List Value) (blk : Option Value)
+    (hstep : Interp.tryReflect m recv mname args blk = some (.next m')) : Step b m m' := by
+  rw [Interp.tryReflect.eq_def] at hstep
+  repeat (any_goals (first
+    | exact Step.reflectDefineMethod h recv _ args blk hstep
+    | exact Step.reflectEval h recv _ args blk hstep
+    | exact Step.reflectCatch h recv _ args blk hstep
+    | exact Step.reflectThrow h recv _ args blk hstep
+    | exact Step.reflectVisibility h recv _ args blk hstep
+    | exact Step.reflectSingletonClass h recv _ args blk hstep
+    | exact Step.reflectIvarGet h recv _ args blk hstep
+    | exact Step.reflectIvarSet h recv _ args blk hstep
+    | exact Step.reflectIvarNames h recv _ args blk hstep
+    | exact Step.reflectConstGet h recv _ args blk hstep
+    | exact Step.reflectConstSet h recv _ args blk hstep
+    | exact Step.reflectRemoveMethod h recv _ args blk hstep
+    | exact Step.reflectAliasMethod h recv _ args blk hstep
+    | exact Step.reflectAttr h recv _ args blk hstep
+    | exact Step.reflectMethodDefined h recv _ args blk hstep
+    | exact Step.reflectRespondTo h recv _ args blk hstep
+    | (cases hstep)
+    | (split at hstep)))
+
+
+
+set_option maxHeartbeats 1000000 in
+/-- **`dispatchMiss`** — the lookup-miss path: the native iterators, the mixin hooks, the
+reflection dispatcher, three CRuby-shadow gates, then a user `method_missing` (whose `MethodDef`
+comes from `methodOn`, so the bridge applies) or the byte-exact `NoMethodError`.
+
+**This closes the miss path**, which is what `invokeDispatch` waits on. -/
+theorem Step.dispatchMiss {b : FrameId} {m m' : Machine} (h : StepInv b m) (recv : Value)
+    (site : SendSite) (mname : String) (args : List Value) (blk : Option Value)
+    (hstep : Interp.dispatchMiss m recv site mname args blk = .next m') : Step b m m' := by
+  rw [Interp.dispatchMiss.eq_def] at hstep
+  repeat (any_goals (first
+    | exact Step.tryIterator h recv _ args blk (by rw [← hstep]; assumption)
+    | exact Step.tryMixin h recv _ args (by rw [← hstep]; assumption)
+    | exact Step.tryReflect h recv _ args blk (by rw [← hstep]; assumption)
+    | exact Step.missNoMethod h recv site _ args hstep
+    | (exact Step.enterUserMethod h recv _ (methodIn_of_methodOn (by assumption)) _ _ _ hstep)
+    | (cases hstep)
+    -- `dispatchMiss`'s gates sit under a `have chain := …`, which `split` cannot see through
+    -- (failure mode 1); zeta-reducing it is what puts the match in reach
+    | (dsimp only at hstep)
     | (split at hstep)))
 
 #print axioms capAt_of_methodIn
@@ -828,5 +931,9 @@ theorem Step.reflectRemoveMethod {b : FrameId} {m m' : Machine} (h : StepInv b m
 #print axioms Step.removeStep
 #print axioms Step.removeRun
 #print axioms Step.reflectRemoveMethod
+#print axioms Step.visRun_eq
+#print axioms Step.reflectVisibility
+#print axioms Step.tryReflect
+#print axioms Step.dispatchMiss
 
 end Ratchet.Denote
