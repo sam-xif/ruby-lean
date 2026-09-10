@@ -7150,6 +7150,39 @@ a decision to move `joinT`/`constAsgnOk` and re-run the syntactic ratchet — bo
 work, both already sized in `context-splitting.md` and the stall points, neither blocked on
 anything in `Denote/`.
 
+### EMERGENCY EXIT INVOKED — 83/83 is unreachable under the stated constraints
+
+Recorded as the clink's conclusion rather than as a remark, because it is a **precondition on
+the target** and the next session should not re-derive it.
+
+**The deficiency.** Seven of the 83 obligations are *false as stated*, not unproved:
+
+| rule | witness |
+|---|---|
+| `defStmt` | the obligation is **premise-free** (`#print` it), its conclusion carries `StateOk κ Γ I m'`, and `DefsOk κ.defs m'` demands the body `defineMethod` just **replaced**. Instantiate `κ.defs = [⟨"foo", [], .int 1⟩]` at a conformant machine, run `def foo; "s"; end` |
+| `arrayLit`, `hashLit` | seventh stall point's remnant — a later element can mutate an earlier one; `corpus/242` |
+| `casgn`, `cpathAsgn` | seventeenth stall point (`ConstScopeOk`, cref) **and** §F22, independently |
+| `if'`, `ifNoElse` | eleventh stall point — `joinEnv` synthesises a `Ty.sameAs` neither branch promised |
+
+**Why it is terminal rather than hard.** Every repair is a change to `Judge`: a premise on
+`defStmt`, a cref recorded in `Ctx`, a purity premise on `arrayLit`, or a move to
+`joinT`/`constAsgnOk`. That is the `context-splitting.md` step-3 class of change — the judgment's
+signature, all 178 hand derivations, and the corpus gate — which this repo has done once and
+recorded as a whole clink. The session's brief was **"do not modify `Ratchet/`"**, and the
+standing exception ("if a `Judge` rule looks genuinely *unsound*, fix it") does **not** reach
+these seven: `validate` answers correctly on every reproducer, which the sixth stall point
+checked for `defStmt` and §F22 checked for `casgn`. So they are false for a reason that is not
+unsoundness and cannot be repaired inside the permitted edit surface.
+
+**The ceiling is 76 of 83 in `Denote/` alone.** Reaching 83 needs a decision that is not a
+proof: either lift the constraint for those seven rules and accept the re-run, or re-target the
+ladder at 76.
+
+**What is *not* the reason.** The 26 rules behind the locals + call layer are ordinary work, and
+this clink advanced that layer substantially (`BuiltinsSeal` proved, `StepSound` stated, the
+closer vocabulary complete, stages 1–2 begun). The exit is not "this is hard"; it is "seven of
+the obligations are false and the fix is outside the brief".
+
 ### State
 
 Semantic ratchet **48 of 83**, unmoved — `BuiltinsSeal` is a layer, not a `Judge` rule, and
