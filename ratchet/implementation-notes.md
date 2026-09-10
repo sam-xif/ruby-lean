@@ -7150,6 +7150,49 @@ a decision to move `joinT`/`constAsgnOk` and re-run the syntactic ratchet — bo
 work, both already sized in `context-splitting.md` and the stall points, neither blocked on
 anything in `Denote/`.
 
+### The locals layer, stage 1–2: 46 theorems, and the four `split` failure modes
+
+After the exit finding was recorded the brief was narrowed to *prove the true facts and ignore
+the untrue obligations*, and the layer advanced accordingly. `Denote/Sem/Step{Interp,Walk,Eval,
+Support,Dispatch}.lean` hold **71 theorems**, all axiom-clean:
+
+* the full `Step` composite vocabulary with peels — `frameOnly`, `pop`, `setLocal`, `withCtl`,
+  `withKont`, `raiseErr`, five allocators, `setGlobal`, `setLastMatchValue`, `heap` (the
+  `MCap`-shaped one that subsumes every heap change), and `push_free`/`push_clos`/`push_meth`
+  covering all six `frames.push` sites;
+* the two heap transports the push premises need, `procClosure_alloc` and `methodIn_alloc`,
+  whose in-range side conditions are **derivable** rather than assumed (`classPayload?`/
+  `procClosure?` of an out-of-range read is `none`, because `default.payload` is `.none`);
+* `Step.foldPair`/`foldPair'`, the layer's fold lemma and its peel;
+* and the helpers: `bindIvar`, `reifyBlock`, `doReturn`, `finishRegion`, `appendKwHash`,
+  `callClosure`, `enterHandler`, `eigenclassOf`/`_go`.
+
+`Step.callClosure` is the load-bearing one — the first frame-pusher, and what the closure, block
+and `yield` families all route through. `Step.reifyBlock` is the one that shows the seal paying
+for its own closures: its `captured` is the current frame, which `FramesWF.nonEmpty` puts on the
+stack, so `Sealed.stack` discharges `Sealed.alloc`'s premise.
+
+**A wrong diagnosis, corrected.** Three lemmas were parked on "`split at h` cannot peel
+`Interp/`'s chains". One line of `set_option trace.split.failure true` refutes it. The real cause
+was a **postponement trap**: `exact absurd hstep (by simp)` looks like a closer but the `by simp`
+is postponed, so the `exact` succeeds, that alternative wins the `first`, and the correct closers
+never run — surfacing 70 stray `¬ …` goals at the *end*, which reads like an incomplete walk
+rather than one bad alternative. Two of the three lemmas fell immediately once it was removed.
+
+**The generalisation worth keeping**, since this layer met all four: `split` fails to *fire* (a
+`have`-bound scrutinee — `doReturn`), fires on the *wrong* match (`destructureBind`'s
+machine-irrelevant `vals`), is *unnecessary* because a lemma should exist instead (`constSet` →
+`CapMono.of_constSet`), or fires correctly but is starved by closer ordering (`callClosure`).
+**Only the last was ever an obstruction to the theorem**; the other three are addressing
+conventions.
+
+**Three helpers remain, each with a measurement rather than a guess.** `enterUserMethod` runs
+26 minutes without finishing at 60M heartbeats *with memory flat at ~516 MB* — search, not a term
+explosion — so it wants `KontFrame.lean`'s remedy of hand-splitting its ten branch points, not a
+bigger budget. `destructureBind` wants the same batch (resolve the irrelevant match first).
+`enterClassBody` is deprioritised rather than blocked: it feeds `classStmt`/`moduleStmt`, which
+are declaration-family rules and not among the reachable ones.
+
 ### EMERGENCY EXIT INVOKED — 83/83 is unreachable under the stated constraints
 
 Recorded as the clink's conclusion rather than as a remark, because it is a **precondition on

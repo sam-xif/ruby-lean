@@ -217,6 +217,68 @@ theorem Step.enterHandler {b : FrameId} {m : Machine} (h : StepInv b m) (node : 
 
 #print axioms Step.enterHandler
 
+/-! ### `destructureBind` — a fuel recursion with two folds, and the folds recurse
+
+`def f((a, b), c)`. Two folds over `bindPos`, which for a nested `.destr` sub-parameter calls
+`destructureBind` again at lower fuel; between them, a rest sub-parameter allocates an array.
+So it needs a `Step`-level fold lemma first — the analogue of `foldPair_cap` for the *layer*
+rather than for `MCap` — and then one induction on the fuel.
+
+This is the helper clink 53 gave a fuel bound to (it was a `partial def`, and an opaque constant
+has no equation lemmas, so nothing about it was provable at all). The bound is what makes this
+induction possible. -/
+
+theorem Step.foldPair {b : FrameId} {α β : Type} (f : β × Machine → α → β × Machine)
+    (hf : ∀ (p : β × Machine) (a : α), StepInv b p.2 → Step b p.2 (f p a).2) :
+    ∀ (l : List α) (p : β × Machine), StepInv b p.2 → Step b p.2 (l.foldl f p).2
+  | [], p, h => Step.refl h
+  | a :: rest, p, h => by
+    rw [List.foldl_cons]
+    exact (hf p a h).trans (Step.foldPair f hf rest (f p a) (hf p a h).2)
+
+/-- The fold as a **peel**. Needed because a bare `have`/`Step.trans` gives the fold term no
+expected type, so its list argument cannot be inferred; peeling from the outside in lets the
+goal supply it at every step. -/
+theorem Step.foldPair' {b : FrameId} {α β : Type} (f : β × Machine → α → β × Machine)
+    (hf : ∀ (p : β × Machine) (a : α), StepInv b p.2 → Step b p.2 (f p a).2)
+    (l : List α) (init : β) {m mid : Machine} (s : Step b m mid) :
+    Step b m (l.foldl f (init, mid)).2 :=
+  s.trans (Step.foldPair f hf l (init, mid) s.2)
+
+/-! ### `destructureBind`, and the obstruction is `split`'s *choice* of scrutinee
+
+`def f((a, b), c)`. The lemma is one fuel induction over two folds — both now expressible, since
+`Step.foldPair`/`foldPair'` above are proved — with the inner step recursing for a nested
+`.destr` and a rest sub-parameter allocating between them. The fold step is written and correct
+(`.req` binds without touching the machine, `.destr` recurses at lower fuel, the other six
+`Param` constructors are the identity).
+
+**What blocks it, measured:** `split` takes the *first* match it finds, and that is `vals` —
+
+```lean
+let vals := match v with
+  | .ref o => match (m.heap.get o).payload with | .arr xs => xs.toList | _ => [v]
+  | _ => [v]
+```
+
+— which is **machine-irrelevant** (every branch yields the same machine) but textually precedes
+the rest-parameter match the proof actually needs to case on. Splitting it produces goals like
+`∀ o, v = Value.ref o → False`, which are not dischargeable and not wanted. `split` takes no
+scrutinee argument, and the `rest?` the proof does want is a `let`-bound projection of a match
+over `subs.dropWhile`, so `cases hc : …` cannot name it cheaply either.
+
+The fix is the same batch the other two want — resolve the irrelevant match by hand
+(`cases v`, then the payload match) before the relevant one — and it belongs with
+`enterUserMethod`'s hand-split rather than being done twice.
+
+**This is the fourth distinct `split` failure mode in this layer**, and together they are the
+useful generalisation: `split` fails to *fire* (a `have`-bound scrutinee — `doReturn`), fires on
+the *wrong* match (here), is *unnecessary* because a lemma should exist instead (`constSet`), or
+fires correctly but is starved by closer ordering (`callClosure`). Only the last one was a real
+obstruction to the theorem; the other three are addressing conventions. -/
+
+#print axioms Step.foldPair
+
 #print axioms Step.appendKwHash
 
 #print axioms Step.bindIvar
