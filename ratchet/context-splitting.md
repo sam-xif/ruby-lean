@@ -434,7 +434,7 @@ rows, and the `DenAllAt` transport falsity behind `arrayLit`/`hashLit`.
 
 ---
 
-## 7. Three fields that need a decision
+## 7. Three fields, decided
 
 ### 7.1 `closures` — **the table is `Scope`; the footprint is re-keyed to it**
 The table itself is whole-program and constant (`collectBlocks`), so it is *scope* by the §2
@@ -464,9 +464,11 @@ the only rule that can tell us we were wrong.
 ## 8. Migration
 
 ### 8.1 Order
-1. **F20's narrow fix alone** — whole-program `Neg` seed for the negative uses, `κ.defs`
-   unchanged for the positive ones. No signature change. Closes a reachable soundness bug and
-   is independently valuable; corpus witnesses for all three shapes.
+1. **F20's narrow fix, which *is* the `Neg` seed** — whole-program and **keyed by class**
+   (§10.1: the keying has to land with the seeding, not after it, or the six slice programs
+   regress), for the negative uses only; `κ.defs` unchanged for the positive ones. No signature
+   change. Closes a reachable soundness bug, is independently valuable, and produces §11's
+   measurement. Corpus witnesses for all three F20 shapes.
 2. **Split `Ctx` into `Pos`/`Neg`/`Scope`** with `afterStmt` still doing the growth. Pure
    refactor; the ladders must not move.
 3. **Thread `Pos`/`Neg`** through `Judge`, retire `afterStmt`, rewrite the joins as meets.
@@ -522,27 +524,109 @@ addition alongside §2.2, not a substitute.
 
 ---
 
-## 10. Open questions
+## 10. The four questions, resolved
 
-1. **Is `Neg` a set of names or a predicate?** A list of names is decidable and cheap; a
-   predicate (`n ∉ declaredAnywhere p`) is exact and needs no maintenance. The second is
-   probably right for `freeNames` and wrong for `noMissing`.
-2. **Do capture footprints belong in `Pos`?** Partly resolved. §4.4 settles that `Pos` *is* the
-   footprint for the **declaration** facts. The capture footprint of §5.3 is a different
-   domain: `Pos` is indexed by names and classes, which are program data, while a capture is a
-   set of **frame ids**, which are run data and do not exist statically. The way to make it
-   `Pos`-shaped is to **re-key it by syntactic block index** — `κ.closures`/`ClosTable` is
-   already a whole-program table with exactly those indices — and leave the index→frame
-   mapping to the semantic side (`ClosuresOk`, currently `True`). That is strictly better than
-   §5.3's framing and should replace it. What is still open is whether the re-keyed footprint
-   is a `Pos` field or a parallel one; it grows monotonically like `Pos`, but it is about the
-   evaluation rather than the program, so the two may want separate frame rules.
-3. **What is the frame rule's side condition, exactly?** §4 writes `footprint e # R`. Making
-   that precise means deciding what a `Judge` derivation's footprint *is* — the names it
-   declares, plus the frames it captures, plus (probably) the ivars it writes. Worth pinning
-   before any of §8 step 3.
-4. ~~**Does `Neg` need per-scope entries?**~~ **Resolved (§4.5): no — it needs to be *keyed by
-   class*.** It looked scope-relative because `MissFree`'s only consumer is a bare name, where
-   the receiver is `self`. `dispatchMiss` keys on the *receiver's* class, and
-   `Judge.callMissing` already needs the same fact at an arbitrary `.inst n`. The residual
-   question is §4.5's second consequence: `Coherent` modulo inheritance.
+Resolved 2026-09-09 with judgement rather than by further measurement, except where a
+measurement was cheap — those are marked.
+
+### 10.1 `Neg` is a **materialized set, seeded whole-program, keyed by class, threaded but constant**
+
+Not a predicate. Four reasons, in the order they decide it:
+
+1. **Membership has to be one decidable `Bool`.** The ratchet's architecture rests on
+   obligations a kernel can check; `chk` discharges every other premise by lookup and this one
+   should be no different. A semantic predicate (`n ∉ declaredAnywhere p`) is a fine *meaning*
+   and a bad *premise*.
+2. **Seed it whole-program** (§2.2). That is what closes F20, and it has a consequence worth
+   more than the fix: a *static* declaration never has to shrink `Neg`, because it was never in
+   it. Almost all of the maintenance burden and almost all of the coherence churn disappear.
+3. **The seed can be MRO-closed**, because `extendClasses` already reads superclasses,
+   `include`, `prepend` and `extend` statically. So the whole static hierarchy is visible to
+   one pre-pass, and §4.5's "`Coherent` modulo inheritance" is established **by construction at
+   seed time** rather than re-checked per rule (§10.4).
+4. **Thread it anyway.** Dynamic declaration — `define_method` with a computed name,
+   `Class.new`, `send(:include, …)` — is exactly what a syntactic pre-pass cannot see, and
+   threading is where those shrink it. For the fragment `validate` types today **nothing
+   shrinks `Neg`**, so it is a constant, and the proofs should exploit that rather than carry a
+   generality no rule uses.
+
+**Measured: what the whole-program seed costs, and why the keying more than pays for it.**
+Six corpus programs use a guarded name *before* declaring it — `226/227/229/230/231/232`, all
+Homebrew slice, all the same shape: `spec.to_s` at line ~123 inside `def self.process_spec`,
+and `def to_s` at line ~226. A *coarse* whole-program seed (today's `nameFree` asks "does **any**
+class declare this name") would go false program-wide and refuse them.
+
+Keyed `Neg` does not: the fact those rules need is `(Pathname, "to_s") ∈ Neg`, which
+`Version#to_s` leaves untouched. So **the keying of §4.5 recovers more precision than the
+seeding of §2.2 costs**, and the net is finer-grained than today. The two changes are
+complementary and should land together; landing the seed without the keying would be a
+regression.
+
+*(All six are tier 18/19, currently 0/8 and 0/3, so nothing on the ladder moves either way
+today — but they are rungs the slice work intends to climb, so the interaction was worth
+measuring rather than assuming.)*
+
+**One hazard noted and not demonstrated.** Today's reading is ordering-sensitive, and a method
+body is typed where it is *defined* and run much later — so a declaration between the two is a
+window where a guard typed `true` could be false at call time. I probed the sharpest shape I
+could construct (`class C; end; def m; C.to_s; end; class C; def self.to_s; 42; end; end;
+m + "x"`); `validate` refuses it, so there is **no witness** and this is recorded as a
+suspicion, not a finding. Making the fact order-independent removes the question rather than
+answering it, which is a further argument for the seed.
+
+### 10.2 The capture footprint is a **parallel component**, not a `Pos` field
+
+Same discipline, different invariant, and the invariant is what decides it:
+
+* **`Coherent` is what ties `Pos` to `Neg`**, and a capture footprint participates in no
+  coherence condition with `Neg` — closures do not declare methods. Folding it into `Pos` would
+  make every coherence check range over facts that cannot violate it.
+* **The key spaces are disjoint by construction** — class×name versus `ClosTable` index — so
+  they can never collide in the frame rule, and keeping them apart means the disjointness check
+  never compares incomparable keys.
+
+They do share a *shape*: a monotone set, an antitone interpretation, a `weaken` lemma and an
+admissible frame rule. **Factor that shape once** — a small interface with `Ok`, `weaken` and
+`keys`, instantiated at `Pos`, `Neg` and the footprint — so the Lean side gets one lemma per
+instance instead of three ad-hoc families. That is the whole engineering content of this
+answer.
+
+### 10.3 A derivation's footprint is **`W = P' \ P`**, and nothing else
+
+The one set of declaration keys the rule *writes*. Three exclusions, each load-bearing:
+
+* **Reads need no accounting.** §4.4: premises are lookups, facts are keyed and
+  immutable-per-key, so framed facts may overlap what a rule merely read.
+* **`Γ` and `I` are not in it.** Locals and the self-ivar spine are already threaded in their
+  own indices (`Γ → Γ'`, `I → I'`); they are state, but not *context* state, and adding them
+  here would double-count.
+* **Captures are the other key space** (§10.2), with their own `W`.
+
+`W` governs both frame rules at once — `keys(R_P) # W` for the positive side and `R_N # W` for
+the negative, since a rule that declares `(c, n)` invalidates exactly `(c, n)` among framed
+negative facts. And **`W = ∅` for every rule except the five declarations**, so the side
+condition is discharged by `rfl` in 78 of 83 cases.
+
+### 10.4 `Coherent` modulo inheritance is a **seed-time property**
+
+Resolved by 10.1(3). The pre-pass sees the entire static hierarchy, so it can compute an
+MRO-closed `Neg` that is coherent with the whole program's `Pos` by construction. Coherence
+becomes a per-rule obligation only for a rule that changes the hierarchy *dynamically*, and
+`Judge` has no such rule today — `Class.new` and `send(:include, …)` are not typed. When one is
+added it inherits the obligation, which is the right place for it.
+
+## 11. What is genuinely still open
+
+Both are **measurements, not designs** — they cannot be settled by thinking harder, only by
+building step 1 of §8 and reading the number.
+
+1. **Does keyed-and-seeded `Neg` hold `run_ratchet.sh` at 178/254?** §10.1 argues the keying
+   pays for the seeding, and the six measured programs support it, but that is an argument
+   about six programs and the corpus has 254. The honest expectation is that the number moves
+   *up* (keying is finer than `nameFree`'s any-class coarseness) and that some rung shifts
+   in each direction; whatever happens is the deliverable and should be recorded, not avoided.
+2. **If the keying does not pay, does `Neg` need an ordered component as well?** The fallback
+   is to keep a "declared already" set alongside the whole-program one and let the positive
+   rules read the first while the negative rules read the second. It doubles the bookkeeping and
+   should not be built pre-emptively — but it is the escape hatch if (1) comes back badly, and
+   it is worth knowing it exists before starting.
