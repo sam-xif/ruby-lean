@@ -378,9 +378,9 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
         | some d =>
           match paramEnv d.params [] with
           | some Γb =>
-            match chk f { κ with asms := ⟨m, [], .never⟩ :: κ.asms } Γb .ivar0 d.body with
+            match chk f (κ.pushAsm ⟨m, [], .never⟩) Γb .ivar0 d.body with
             | some (ρ₀, _, _) =>
-              match chk f { κ with asms := ⟨m, [], ρ₀⟩ :: κ.asms } Γb .ivar0 d.body with
+              match chk f (κ.pushAsm ⟨m, [], ρ₀⟩) Γb .ivar0 d.body with
               | some (ρ₁, _, Iout) =>
                 if ρ₁ = ρ₀ then (if Iout = .ivar0 then some (ρ₀, Γ, I) else none) else none
               | none => none
@@ -492,8 +492,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                   d.params argTys with
               | some Γb =>
                 match chk f
-                    { κ with
-                      blockTy := some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never)) }
+                    (κ.withBlockTy
+                        (some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never))))
                     Γb .ivar0 d.body with
                 | some (ρ, _, Iout) =>
                   if Iout = .ivar0 then some (ρ, killAliases Γ', I') else none
@@ -516,8 +516,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                 d.params argTys with
             | some Γb =>
               match chk f
-                  { (κ.inMethod (.inst n Iself) dc m) with
-                    blockTy := some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never)) }
+                  ((κ.inMethod (.inst n Iself) dc m).withBlockTy
+                      (some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never))))
                   Γb Iself d.body with
               | some (ρ, _, Iout) =>
                 if Iout = Iself then some (ρ, killAliases Γ', I') else none
@@ -580,7 +580,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
               -- not return. Nothing downstream trusts the answer; it exists only to
               -- produce a candidate return type, and for a non-recursive method it is
               -- simply the body's type computed twice.
-              match chk f { κ with asms := ⟨m, argTys, .never⟩ :: κ.asms } Γb .ivar0
+              match chk f (κ.pushAsm ⟨m, argTys, .never⟩) Γb .ivar0
                   d.body with
               | some (ρ₀, _, _) =>
                 -- **Pass B — the check.** The candidate is put in the assumption table and
@@ -588,7 +588,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                 -- pass `chk_sound` reads, and the only one `Judge.callDef` mentions. The
                 -- control in `CheckRungs.lean` shows it is load-bearing: a body whose
                 -- recursive branch is type-stuck passes A and fails B.
-                match chk f { κ with asms := ⟨m, argTys, ρ₀⟩ :: κ.asms } Γb .ivar0
+                match chk f (κ.pushAsm ⟨m, argTys, ρ₀⟩) Γb .ivar0
                     d.body with
                 | some (ρ₁, _, Iout) =>
                   if ρ₁ = ρ₀ then (if Iout = .ivar0 then some (ρ₀, Γ', I') else none)
@@ -662,8 +662,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                   d.params argTys with
               | some Γb =>
                 match chk f
-                    { (κ.inMethod (.inst n Iself) dc m) with
-                      blockTy := some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never)) }
+                    ((κ.inMethod (.inst n Iself) dc m).withBlockTy
+                        (some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never))))
                     Γb Iself d.body with
                 | some (ρ, _, Iout) =>
                   if Iout = Iself then some (ρ, killAliases Γ₂, I₂) else none
@@ -688,8 +688,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                   d.params argTys with
               | some Γb =>
                 match chk f
-                    { (κ.inMethod (.clsOf n) dc m) with
-                      blockTy := some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never)) }
+                    ((κ.inMethod (.clsOf n) dc m).withBlockTy
+                        (some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never))))
                     Γb .ivar0 d.body with
                 | some (ρ, _, Iout) =>
                   if Iout = .ivar0 then some (ρ, killAliases Γ₂, I₂) else none
@@ -938,7 +938,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
                 match paramEnv d.params [] with
                 | some Γb =>
                   match chk f
-                      { κ with frame := some ⟨fr.recvClass, dc, fr.methName⟩ } Γb I d.body with
+                      (κ.withFrame (some ⟨fr.recvClass, dc, fr.methName⟩)) Γb I d.body with
                   | some (ρ, _, Iout) => some (ρ, Γ, Iout)
                   | none => none
                 | none => none
@@ -964,7 +964,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
               match paramEnv d.params argTys with
               | some Γb =>
                 match chk f
-                    { κ with frame := some ⟨fr.recvClass, dc, fr.methName⟩ } Γb I' d.body with
+                    (κ.withFrame (some ⟨fr.recvClass, dc, fr.methName⟩)) Γb I' d.body with
                 | some (ρ, _, Iout) => some (ρ, Γ', Iout)
                 | none => none
               | none => none
@@ -1159,13 +1159,13 @@ because a program's top level is inside no method and runs somewhere `self` is n
 instance of anything this judgment models. The constant table (tier 13) is empty for the
 first of those reasons: a program's first statement is the first thing that could assign
 one. -/
-def ctx0 : Ctx := ⟨[], [], [], none, [], none, none, [], []⟩
+def ctx0 : Ctx := ⟨⟨[], [], [], []⟩, ⟨[], []⟩, ⟨none, [], none, none, []⟩⟩
 
 /-- `ctx0` with the program's block table filled in. The one component of `Ctx` that is not
 empty at the start and never changes afterwards: `collectBlocks` runs once, before checking,
 so that `Ty.clos`'s index means the same thing at every point in the derivation (see
 `collectBlocks`). -/
-def Ctx.withBlocks (κ : Ctx) (p : Expr) : Ctx := { κ with closures := collectBlocks p }
+def Ctx.withBlocks (κ : Ctx) (p : Expr) : Ctx := κ.withClosures (collectBlocks p)
 
 /-- The ratchet's verdict for one rung: did `chk` synthesize *any* type for the whole
 program, from the empty local environment and the empty ivar spine, in `ctx0`? -/

@@ -547,16 +547,16 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
         exact absurd hk (by simp [envGet?, List.find?, Ratchet.ctx0])
       nested := by
         intro owner n c hc _ _ _ _
-        exact absurd hc (by simp [Ratchet.clsGet?, Ratchet.ctx0])
+        exact absurd hc (by simp [Ratchet.clsGet?, Ratchet.ctx0, Ratchet.Ctx.classes])
       query := queryOkB_sound hq Ratchet.ctx0
       clsQuery := clsQueryOkB_sound hcq Ratchet.ctx0
       baseChains := baseChainsOkB_sound hbc Ratchet.ctx0
       nilQuery := nilQueryOkB_sound hnq Ratchet.ctx0
       -- vacuous at `ctx0`: the class table is empty, exactly as for `ClassesOk`/`DefsOk`
-      declCls := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0])
-      classes := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0])
-      defs := by intro d hd; exact absurd hd (by simp [Ratchet.ctx0])
-      asms := by intro a ha; exact absurd ha (by simp [Ratchet.ctx0])
+      declCls := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0, Ratchet.Ctx.classes])
+      classes := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0, Ratchet.Ctx.classes])
+      defs := by intro d hd; exact absurd hd (by simp [Ratchet.ctx0, Ratchet.Ctx.defs])
+      asms := by intro a ha; exact absurd ha (by simp [Ratchet.ctx0, Ratchet.Ctx.asms])
       frameInRange := ⟨by simpa using hne, hfr⟩
       frame := by simp only [FrameOk, Ratchet.ctx0]; exact hkind
       closures := trivial
@@ -564,7 +564,8 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
       selfTy := by simp [SelfTyOk, Ratchet.ctx0]
       consts := by
         intro p τ hp
-        exact absurd hp (by simp [constGet?, Ratchet.constPaths, envGet?, Ratchet.ctx0])
+        exact absurd hp (by simp [constGet?, Ratchet.constPaths, envGet?, Ratchet.ctx0,
+          Ratchet.Ctx.consts, Ratchet.Ctx.frame])
       privConsts := trivial
       constScope := constScope_of_topScope htop
       exact := methodsExactB_sound hex

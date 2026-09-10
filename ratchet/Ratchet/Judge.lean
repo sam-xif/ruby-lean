@@ -1943,14 +1943,76 @@ def collectBlocksPairs : List (Expr × Expr) → ClosTable
 
 end
 
-/-- The read-only half of the judgment's state, bundled. `classes`/`defs` grow at statement
-boundaries (`JudgeSeq.cons`), `asms` grows at a call site being discharged
-(`Judge.callDef`), and `frame`/`selfTy` are set once, on entry to a method body, and never
-threaded. -/
-structure Ctx where
+/-! ## The context, split by polarity (`context-splitting.md`)
+
+`Ctx` used to be one flat record of nine fields, and `context-splitting.md` §1 measured why
+that was wrong: the fields have **three different disciplines** and the single record threaded
+none of them. They are now three structures.
+
+* **`Pos`** — facts that only ever *grow* along program order. Every premise that reads one is
+  a **lookup** ("the table contains at least this fact"), so `PosOk` is a `∀`-over-a-set and
+  weakening to a subset is one line.
+* **`Neg`** — facts that only ever *shrink*. Every premise that reads one is a **membership**,
+  not a miss in `Pos`: absence is its own fact, seeded whole-program (§2.2), not the complement
+  of whatever `extendDefs` happened to reconstruct. That is `found-issues.md` §F20's fix.
+* **`Scope`** — lexical, rebound on entry to a body, and never reported out. `Ctx.inMethod`
+  already drew this line; this names it.
+
+Only `Pos` and `Neg` thread (`Judge`'s `κ'`); `Scope` is pinned equal by every rule. -/
+
+/-- A **receiver port**: the two method-lookup relations this checker walks
+(`context-splitting.md` §4.6). `inst C` is `mroList?`/`mroGet?`'s chain — prepends, `C`,
+includes, then the superclass chain. `cls C` is `lookupUpS`/`smroGet?`'s — `C`'s singleton
+methods and `extend`s, up the superclass chain, **and then the metaclass tail** into `Class`'s
+instance chain, which is the entailment §4.6 makes the seed respect. -/
+inductive Port where
+  | inst (c : String)
+  | cls (c : String)
+deriving BEq, DecidableEq, Repr, Inhabited
+
+/-- Facts that grow: everything the checker learns as it walks the program in order.
+
+The four fields are unchanged from the old flat `Ctx`; what changed is that they are now
+together, with one discipline, and reported out of a derivation rather than reconstructed by
+`JudgeSeq.cons`. -/
+structure Pos where
   classes : CTable
   defs : DefTable
-  asms : AsmTable
+  /-- The **constant** environment (tier 13), keyed by absolute path (`"::LIMIT"`). Carried
+      unchanged into every method body, which is the whole reason it is here rather than in
+      `Env` — see §Constants below `Ctx.inCtor` for the three facts that force this
+      placement. -/
+  consts : Env
+  /-- The absolute keys `private_constant` has hidden (tier 13d). Read by `Judge.constPath`
+      and by nothing else. -/
+  privConsts : List String
+deriving Inhabited
+
+/-- Facts that shrink: what the program provably does **not** provide.
+
+`noMethod` is keyed by a receiver **port** (§4.5, §4.6) rather than by a bare name, because
+Ruby has more than one lookup relation and "is this name free?" has a different answer per
+receiver. `(p, n) ∈ noMethod` means *nothing on `p`'s chain provides `n`* — which subsumes four
+encodings that used to be separate: `nameFree`, `mroGet? … = none`, `smroGet? … = none`, and
+`MissFree`'s `method_missing`.
+
+**Seeded whole-program** (`negSeed`), not built up: a `def` buried in an expression is still a
+`def`, and a table reconstructed from statement syntax cannot see it (§F20). Forgetting to seed
+a name is conservative (a rule declines); forgetting to *remove* one is unsound, so the fragile
+step lives at one place that sees all the syntax. -/
+structure Neg where
+  noMethod : List (Port × String)
+  /-- No constant of this absolute path is bound anywhere in the program. Not yet consumed by
+      any rule — the cref work (§7.2) is what needs it — and seeded empty. -/
+  freeConsts : List String
+deriving Inhabited
+
+/-- Lexical scope: rebound on entry to a body, never reported out.
+
+Neither a positive fact about the heap nor a negative one. `asms` is here by §7.3's decision —
+it is a conditional *assumption*, not a guarantee, and `Ctx.inMethod` already keeps it across a
+body entry for a reason that is about scope. -/
+structure Scope where
   /-- The definition site of the running method, or `none` outside any method body. -/
   frame : Option Frame
   /-- Every block literal in the program, indexed by `Ty.clos`. Constant for a whole run —
@@ -1973,15 +2035,50 @@ structure Ctx where
       `class-self-returning-method` work — `self` there is not merely "a `Point`", it is
       *this* `Point`, ivars and all. -/
   selfTy : Option Ty
-  /-- The **constant** environment (tier 13), keyed by absolute path (`"::LIMIT"`). Grows
-      at statement boundaries (`Ctx.afterStmt`) and is carried unchanged into every method
-      body, which is the whole reason it is here rather than in `Env` — see §Constants
-      below `Ctx.inCtor` for the three facts that force this placement. -/
-  consts : Env
-  /-- The absolute keys `private_constant` has hidden (tier 13d). Read by `Judge.constPath`
-      and by nothing else — see §`private_constant` for why it is a separate field and why it
-      is precision rather than soundness. -/
-  privConsts : List String
+  /-- The assumptions in force, grown at a call site being discharged (`Judge.callDef`). -/
+  asms : AsmTable
+deriving Inhabited
+
+/-- The judgment's non-local state, in three disciplines. -/
+structure Ctx where
+  pos : Pos
+  neg : Neg
+  scope : Scope
+deriving Inhabited
+
+/-! ### Field accessors
+
+`Ctx.classes` and friends are `abbrev`s onto the sub-structures, so every `κ.classes` in the
+checker, the rules and the proofs reads exactly as it did before the split and still reduces by
+`rfl`. Only the *writers* — the sixteen `{ κ with … }` sites — had to move, and they moved to
+the four named updaters below. -/
+@[reducible] def Ctx.classes (κ : Ctx) : CTable := κ.pos.classes
+@[reducible] def Ctx.defs (κ : Ctx) : DefTable := κ.pos.defs
+@[reducible] def Ctx.consts (κ : Ctx) : Env := κ.pos.consts
+@[reducible] def Ctx.privConsts (κ : Ctx) : List String := κ.pos.privConsts
+@[reducible] def Ctx.noMethod (κ : Ctx) : List (Port × String) := κ.neg.noMethod
+@[reducible] def Ctx.freeConsts (κ : Ctx) : List String := κ.neg.freeConsts
+@[reducible] def Ctx.frame (κ : Ctx) : Option Frame := κ.scope.frame
+@[reducible] def Ctx.closures (κ : Ctx) : ClosTable := κ.scope.closures
+@[reducible] def Ctx.blockTy (κ : Ctx) : Option Ty := κ.scope.blockTy
+@[reducible] def Ctx.selfTy (κ : Ctx) : Option Ty := κ.scope.selfTy
+@[reducible] def Ctx.asms (κ : Ctx) : AsmTable := κ.scope.asms
+
+/-- Push an assumption (`Judge.callAsm`/`callDef`/`vcallDef`). -/
+@[reducible] def Ctx.pushAsm (κ : Ctx) (a : Asm) : Ctx :=
+  { κ with scope := { κ.scope with asms := a :: κ.scope.asms } }
+
+/-- Re-point the running method's definition site (`super`). -/
+@[reducible] def Ctx.withFrame (κ : Ctx) (f : Option Frame) : Ctx :=
+  { κ with scope := { κ.scope with frame := f } }
+
+/-- Bind the implicit block a body was entered with (`Judge.callDefBlk`). -/
+@[reducible] def Ctx.withBlockTy (κ : Ctx) (t : Option Ty) : Ctx :=
+  { κ with scope := { κ.scope with blockTy := t } }
+
+/-- Fill in the whole-program block table (`Ctx.withBlocks`, `Ratchet/Validate.lean`). -/
+@[reducible] def Ctx.withClosures (κ : Ctx) (K : ClosTable) : Ctx :=
+  { κ with scope := { κ.scope with closures := K } }
 
 /-- **The frame-sensitive records in `Ctx` that an assignment can invalidate.**
 
@@ -2016,13 +2113,13 @@ because a recursive call made from inside a body must still find the assumption 
 it. The body's *locals* are not in `Ctx` at all — they are the threaded `Env`, and a call
 rule supplies `paramEnv`'s fresh one. -/
 def Ctx.inMethod (κ : Ctx) (σ : Ty) (dc m : String) : Ctx :=
-  { κ with selfTy := some σ, frame := some ⟨selfClsName σ, dc, m⟩ }
+  { κ with scope := { κ.scope with selfTy := some σ, frame := some ⟨selfClsName σ, dc, m⟩ } }
 
 /-- Entering a body whose `self` this judgment declines to type — `initialize` (see
 `Judge.newInst`) — but whose *definition site* still has to be recorded, because the body may
 call `super`. -/
 def Ctx.inCtor (κ : Ctx) (rc dc m : String) : Ctx :=
-  { κ with frame := some ⟨rc, dc, m⟩ }
+  κ.withFrame (some ⟨rc, dc, m⟩)
 
 /-! ### Constants (tier 13)
 
@@ -2117,9 +2214,9 @@ by `JudgeSeq.cons`, which is the only rule that knows about statement order.
 
 `τ` is used by `extendConsts` alone; every other component of the result is syntactic. -/
 def Ctx.afterStmt (κ : Ctx) (e : Expr) (τ : Ty) : Ctx :=
-  { κ with classes := extendClasses κ.classes e, defs := extendDefs κ.defs e,
-           consts := extendConsts κ.consts e τ,
-           privConsts := extendPrivConsts κ.privConsts e }
+  { κ with pos := { classes := extendClasses κ.classes e, defs := extendDefs κ.defs e,
+                     consts := extendConsts κ.consts e τ,
+                     privConsts := extendPrivConsts κ.privConsts e } }
 
 /-- Is the method name `m` **unclaimed by the program** — no top-level `def`, and no class or
 module in the table declaring it as an instance or singleton method?
@@ -2299,7 +2396,7 @@ body has no rule (`blockTy = none`) even though Ruby resolves it to the enclosin
 block. Making either precise means recording it in `Ty.clos` too, exactly as `selfTy` now is;
 no rung asks. -/
 def Ctx.inClosure (κ : Ctx) (σ : Ty) : Ctx :=
-  { κ with selfTy := closSelf? σ, frame := none, blockTy := none }
+  { κ with scope := { κ.scope with selfTy := closSelf? σ, frame := none, blockTy := none } }
 
 /-- The block-local list of a `|x; y|` block (the desugarer's third `block` field), bound at
 `.nilT`.
@@ -3198,7 +3295,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       {args : List Expr} {argTys : List Ty} {d : Defn} {ρ : Ty} :
       JudgeAll κ Γ I args argTys Γ' I' → defGet? κ.defs m = some d →
       paramEnv d.params argTys = some Γb →
-      Judge { κ with asms := ⟨m, argTys, ρ⟩ :: κ.asms } Γb .ivar0 d.body ρ Γb' .ivar0 →
+      Judge (κ.pushAsm ⟨m, argTys, ρ⟩) Γb .ivar0 d.body ρ Γb' .ivar0 →
       Judge κ Γ I (.send none m args none) ρ Γ' I'
   /-- **A call to a top-level method that passes keyword arguments** (tier 14c) —
       `build(type: "brew", name: "x")`.
@@ -3532,7 +3629,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       afterInMro mro fr.defClass = some rest →
       searchMro κ.classes rest fr.methName = some (dc, d) →
       paramEnv d.params argTys = some Γb →
-      Judge { κ with frame := some ⟨fr.recvClass, dc, fr.methName⟩ } Γb I' d.body ρ Γb' Iout →
+      Judge (κ.withFrame (some ⟨fr.recvClass, dc, fr.methName⟩)) Γb I' d.body ρ Γb' Iout →
       Judge κ Γ I (.super' args none) ρ Γ' Iout
   /-- **`super` with no argument list** (`zsuper`) — forwards the running method's own
       arguments implicitly.
@@ -3561,7 +3658,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       afterInMro mro fr.defClass = some rest →
       searchMro κ.classes rest fr.methName = some (dc, d) →
       paramEnv d.params [] = some Γb →
-      Judge { κ with frame := some ⟨fr.recvClass, dc, fr.methName⟩ } Γb I d.body ρ Γb' Iout →
+      Judge (κ.withFrame (some ⟨fr.recvClass, dc, fr.methName⟩)) Γb I d.body ρ Γb' Iout →
       Judge κ Γ I (.zsuper none) ρ Γ Iout
   /-- **A singleton ("class") method call**: `Point.origin`. The receiver is a class object,
       so lookup goes to the *other* table (`smroGet?`, which walks `super?` as well — Ruby
@@ -3870,7 +3967,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       defGet? κ.defs m = some d →
       paramEnvB (some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never))) d.params argTys
         = some Γb →
-      Judge { κ with blockTy := some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never)) }
+      Judge (κ.withBlockTy (some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never))))
         Γb .ivar0 d.body ρ Γb' .ivar0 →
       Judge κ Γ I (.send none m args (some (.block ps [] body))) ρ (killAliases Γ') I'
   -- ### Tier 11 — a block reaching a *method of an object*
@@ -3896,8 +3993,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       mroGet? κ.classes n m = some (dc, d) →
       paramEnvB (some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never))) d.params argTys
         = some Γb →
-      Judge { (κ.inMethod (.inst n Iself) dc m) with
-              blockTy := some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never)) }
+      Judge ((κ.inMethod (.inst n Iself) dc m).withBlockTy (some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never))))
         Γb Iself d.body ρ Γb' Iself →
       Judge κ Γ I (.send (some recv) m args (some (.block ps [] body))) ρ
         (killAliases Γ₂) I₂
@@ -3913,8 +4009,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       smroGet? κ.classes n m = some (dc, d) →
       paramEnvB (some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never))) d.params argTys
         = some Γb →
-      Judge { (κ.inMethod (.clsOf n) dc m) with
-              blockTy := some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never)) }
+      Judge ((κ.inMethod (.clsOf n) dc m).withBlockTy (some (.clos idx (envToSpine Γ₂) (κ.selfTy.getD .never))))
         Γb .ivar0 d.body ρ Γb' .ivar0 →
       Judge κ Γ I (.send (some recv) m args (some (.block ps [] body))) ρ
         (killAliases Γ₂) I₂
@@ -3936,8 +4031,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       mroGet? κ.classes n m = some (dc, d) →
       paramEnvB (some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never))) d.params argTys
         = some Γb →
-      Judge { (κ.inMethod (.inst n Iself) dc m) with
-              blockTy := some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never)) }
+      Judge ((κ.inMethod (.inst n Iself) dc m).withBlockTy (some (.clos idx (envToSpine Γ') (κ.selfTy.getD .never))))
         Γb Iself d.body ρ Γb' Iself →
       Judge κ Γ I (.send none m args (some (.block ps [] body))) ρ (killAliases Γ') I'
   /-- **`yield args`** — invoke the block the enclosing method was called with.
@@ -3983,7 +4077,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       `selfCall`/`selfSCall`, which require a `self`. -/
   | vcallDef {κ : Ctx} {Γ Γb Γb' : Env} {I : Ty} {m : String} {d : Defn} {ρ : Ty} :
       κ.selfTy = none → defGet? κ.defs m = some d → paramEnv d.params [] = some Γb →
-      Judge { κ with asms := ⟨m, [], ρ⟩ :: κ.asms } Γb .ivar0 d.body ρ Γb' .ivar0 →
+      Judge (κ.pushAsm ⟨m, [], ρ⟩) Γb .ivar0 d.body ρ Γb' .ivar0 →
       Judge κ Γ I (.vcall m) ρ Γ I
   /-- `self`. Its type is whatever the context says, which inside a method body is
       `.inst n Iself` — not merely "a `Point`" but *this* `Point`, ivars and all. That is
