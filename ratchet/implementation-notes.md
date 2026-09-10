@@ -7254,3 +7254,98 @@ then the `stepFn` walk), which is still several clinks from any rung. Syntactic 
 `Denote/Sem/{StepInterp,StepWalk,StepEval}.lean`. Changed:
 `Denote/Sem/notes.md`, `Denote/Sem/StepLocal.lean` (its "stated and unproved" note and its
 stale next-step list), `found-issues.md` (§F22), `AGENTS.md`, `HANDOFF.md`.
+
+## Clink 63 (2026-09-10) — **`enterUserMethod` proved**, the nineteenth stall point, and stage 2's helpers. **178 rungs / 254, 48 of 83 rules**
+
+**The ladder did not move, and it could not have.** All 35 remaining rules are behind the locals
++ call layer (26), `PrimSig` row by row (1), the declaration redesign (1) or a stated falsity (7,
+clink 62's exit finding — unchanged and unrepairable inside the brief). So this session did the
+layer's own work, at the resume point `HANDOFF.md` names, and the headline is that **the helper
+three previous attempts parked is proved**.
+
+### `Step.enterUserMethod`, and why the parked diagnosis was half wrong
+
+`Denote/Sem/StepAct.lean`. The previous entry's prescription was *transcribe the ~7 conditions as
+explicit `by_cases` peels*; that was measured this session and **does not work**, for a reason
+that is now `Denote/Sem/notes.md`'s **nineteenth stall point**: `Interp.enterUserMethod` threads
+the machine through nine `let`s, the activation push is a flat record literal whose **nine fields
+are each a projection of the pre-push machine**, and so any tactic that touches the body produces
+~1200 lines of hypothesis with every intermediate machine written out nine times. Both ways out
+are then closed: a goal-side peel leaves `?mid` under a projection (clink 62's
+`MCap.push_trans_eq` failure, arriving where the vocabulary was thought complete), and
+`generalize … at h` **cannot name the machine either** — every machine-producing subterm is
+guarded by a `match`, a hand-written `match` elaborates to a *fresh matcher constant*, and
+`generalize` then abstracts nothing and **reports no error**. The silent no-op is the trap worth
+recording: it reads as "the subterm is not in the hypothesis" rather than "your pattern is a
+different constant".
+
+**The fix is a mirror gated by `rfl`.** `enterUM` is the same function with its five
+machine-touching stages given names (`Act.restBind`/`kwrestBind`/`destrBind`/`actPush`/
+`actLocals`), and `enterUM_eq : Interp.enterUserMethod … = enterUM …` is `rfl` — fidelity is a
+kernel check, so a transcription error is a build failure rather than a semantic gap. With the
+stages named, every machine in the walk is an argument of a named callee, the goal determines it
+first-order, and **the walk closes in 18 s** with a six-line closer list. `rfl` itself costs 12 s
+(and needs 4M heartbeats; 200k is not enough).
+
+**A decision that was not forced: mirror rather than refactor the model.** Factoring
+`Interp/Dispatch.lean` itself is the same change one file lower and is arguably *more* correct —
+that file's header claims each helper "performs one transition" — but it breaks
+`RubyCore/Proof/KontFrameDispatch.lean`'s `enterUserMethod_frame`, which `stepFn_frame` and hence
+the **climbed** `Judge.vasgn` rung sit on. A model edit whose blast radius is the ladder, against
+a mirror that costs one `rfl` and no re-verification: the mirror wins. Rejected alternative also
+recorded: proving the prefix's `frames`-equality and pushing at the *entry* machine's facts — it
+turned out to be unnecessary, because every premise `Sealed.push` needs is read at the
+intermediate machine, where `Step` already hands back `Sealed`/`FramesWF`.
+
+### `PreAct` — the transport the activation actually needed
+
+`Step` alone cannot carry an activation's push: the `MethodDef` is read out of the heap at the
+*caller's* machine and pushed at a machine three allocations later. **`PreAct b m m'`** is `Step`
+plus the two heap facts a push reads — every installed method is still installed
+(`Sealed.meth`/`enterUserMethod`) and every Proc is still there (`Sealed.clos`/`callClosure`) —
+with `refl`/`trans`, the two allocators, `appendKwHash`, both folds (`List` and `Array`) and
+**`PreAct.destructureBind`**, which is `Step.destructureBind`'s structure verbatim one relation
+up. Stated over `methodIn` (the lookup) and not over membership in `cp.methods`, the sixth stall
+point's rule and clink 62's `CapAt` decision for the third time.
+
+### The six `methodIn` bridges, and stage 2's remaining helpers
+
+Every caller of `enterUserMethod` holds its `MethodDef` in a different currency, so each needs a
+bridge to the heap fact: `lookup` (receiver-keyed), `methodOn` (class-keyed), `lookupAbove` (the
+block fallback), `superFound` (`super`), `userInit?` (`Class#new`) and `moduleHook` (the mixin
+hooks). All six are the same walk over one class's own table, so they cost one arm lemma
+(`methodIn_of_arm`) and one `firstM` lemma; they are `[propext]`-only.
+
+Then the helpers themselves: **`Step.missNoMethod`**, **`Step.visError`**, and the native
+block-iterator trio **`Step.iterStep`/`startIter`/`tryIterator`** — the last of which is where
+`PreAct`'s *closure* half pays for itself, because `Hash#each` allocates one `[k, v]` array per
+entry **before** the loop starts and the block's Proc fact has to cross that fold.
+
+**And a third costume for the ordering rule** (§The second walk item 3): a `callClosure`/
+`iterStep` peel that takes the `Step` argument, or the closure fact, *before* the `.next m'`
+hypothesis unifies `?mid` with the outer machine `m` and then rejects the real one. The peels
+therefore take **the hypothesis first**. This is the third time in two clinks that the fix was
+argument order rather than a lemma.
+
+### What is still owed in stage 2, honestly
+
+`tryMixin` and `defineAttr` are not done: `tryMixin` needs its `moduleHook` equation pulled out
+of a `split`'s inaccessible hypothesis (an `assumption`-discharged peel, or hand peels), and
+`defineAttr` needs one `CapMono` lemma for `defineMethod` installing a `capturedFrame := none`
+method. `enterClassBody` stays deprioritised (declaration family). Above them, `invokeDispatch`
+now has everything it needs *except* `dispatchMiss`, which routes through `tryReflect` — the whole
+stage-4 reflection dispatcher — so the dispatch spine cannot be closed before stage 4. That is
+the honest next boundary, and it is not a new obstruction: it is the bottom-up order
+`StepEval.lean` specified, with one more layer than the ladder's optimism assumed.
+
+### State
+
+Semantic ratchet **48 of 83**, unmoved — nothing here is a `Judge` rule, and the layer that gates
+26 of them still needs stages 2–6 plus jump-freeness plus the `frameK` decomposition. Syntactic
+ratchet **178 of 254**, tier for tier; corpus agreement **254/254**; `expect_validate` mismatches
+**35**; `checkrungs` **177/177 + 148/148**. `lake build` clean, no `sorry`, every `#print axioms`
+inside `propext`/`Classical.choice`/`Quot.sound`. **`Ratchet/` untouched.** Added:
+`Denote/Sem/StepAct.lean`. Changed: `Denote/Sem/StepSupport.lean` (the two `Machine` folds,
+`PreAct` and its lemmas), `Denote/Sem/StepDispatch.lean` (the bridges and the helpers; its
+`enterUserMethod` prose was a status note and is now a pointer), `Denote/Sem/notes.md`
+(nineteenth stall point), `AGENTS.md`, `HANDOFF.md`.

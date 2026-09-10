@@ -314,4 +314,130 @@ theorem Step.destructureBind {b : FrameId} :
 #print axioms Step.doReturn
 #print axioms Step.finishRegion
 
+/-! ### The two folds over a bare `Machine`, and `PreAct`
+
+`Step.foldPair` above is the fold whose accumulator is a pair; `enterUserMethod`'s phase-B
+`setLocal` walk folds over the **machine alone**, so it needs the other shape.
+
+**`PreAct` is the layer's second relation**, and it exists for one reason: the frame push at the
+end of an activation reads a `MethodDef` out of the heap (`Step.push_meth`), and the machine it
+pushes at is not the machine the caller read that `MethodDef` at — an activation *allocates*
+first (a keyword bundle, a rest array, a kwrest hash, a destructuring bind). So the heap fact has
+to travel, and `Step` alone does not carry it. `PreAct` is `Step` plus exactly that transport:
+**every method installed in the heap is still installed**, which every allocation satisfies
+(`methodIn_alloc`) and which is all `Sealed.meth` needs at the push.
+
+Stated over `methodIn` — the *lookup*, not membership in `cp.methods` — for the sixth stall
+point's reason, and the same one `CapAt`'s class arm was keyed that way for (clink 62): the
+membership form is easier to establish and `Sealed.meth` cannot consume it.
+
+A `frames`/`stack` conjunct was drafted alongside and **rejected as unnecessary**: the push
+lemma's premises are all read at the *intermediate* machine, where `Step` already hands back
+`Sealed`/`FramesWF`, so nothing has to be transported across the prefix except the heap fact. -/
+
+theorem Step.foldM {b : FrameId} {α : Type} (f : Machine → α → Machine)
+    (hf : ∀ (m : Machine) (a : α), StepInv b m → Step b m (f m a)) :
+    ∀ (l : List α) (m : Machine), StepInv b m → Step b m (l.foldl f m)
+  | [], m, h => Step.refl h
+  | a :: rest, m, h => by
+    rw [List.foldl_cons]
+    exact (hf m a h).trans (Step.foldM f hf rest (f m a) (hf m a h).2)
+
+/-- …and as a peel, for a fold reached after something else. -/
+theorem Step.foldM' {b : FrameId} {α : Type} (f : Machine → α → Machine)
+    (hf : ∀ (m : Machine) (a : α), StepInv b m → Step b m (f m a))
+    (l : List α) {m mid : Machine} (s : Step b m mid) : Step b m (l.foldl f mid) :=
+  s.trans (Step.foldM f hf l mid s.2)
+
+/-- **`Step`, plus the two heap facts a frame push reads.** What the allocating prefix of an
+activation preserves: `b`'s locals and the invariant, **every installed method is still
+installed** (`enterUserMethod`'s push, via `Sealed.meth`) and **every Proc in the heap is still
+there** (`callClosure`'s push, via `Sealed.clos`). Both are needed for the same reason and by
+the same shape of caller — a helper that allocates before it pushes — so they travel together. -/
+def PreAct (b : FrameId) (m m' : Machine) : Prop :=
+  Step b m m'
+  ∧ (∀ (k : ObjId) (n : String) (md : MethodDef),
+      methodIn m.heap k n = some md → methodIn m'.heap k n = some md)
+  ∧ (∀ (o : ObjId) (cl : Closure),
+      procClosure? m.heap (.ref o) = some cl → procClosure? m'.heap (.ref o) = some cl)
+
+theorem PreAct.refl {b : FrameId} {m : Machine} (h : StepInv b m) : PreAct b m m :=
+  ⟨Step.refl h, fun _ _ _ hm => hm, fun _ _ hc => hc⟩
+
+theorem PreAct.trans {b : FrameId} {a c d : Machine} (h₁ : PreAct b a c) (h₂ : PreAct b c d) :
+    PreAct b a d :=
+  ⟨h₁.1.trans h₂.1, fun k n md hm => h₂.2.1 k n md (h₁.2.1 k n md hm),
+   fun o cl hc => h₂.2.2 o cl (h₁.2.2 o cl hc)⟩
+
+theorem PreAct.allocArr {b : FrameId} {m mid : Machine} (p : PreAct b m mid) (xs : Array Value) :
+    PreAct b m (Builtins.allocArr mid xs).2 :=
+  ⟨Step.allocArr' p.1 xs, fun k n md hm => methodIn_alloc _ (p.2.1 k n md hm),
+   fun o cl hc => procClosure_alloc _ (p.2.2 o cl hc)⟩
+
+theorem PreAct.allocHsh {b : FrameId} {m mid : Machine} (p : PreAct b m mid)
+    (xs : Array (Value × Value)) : PreAct b m (Builtins.allocHsh mid xs).2 :=
+  ⟨Step.allocHsh' p.1 xs, fun k n md hm => methodIn_alloc _ (p.2.1 k n md hm),
+   fun o cl hc => procClosure_alloc _ (p.2.2 o cl hc)⟩
+
+theorem PreAct.appendKwHash {b : FrameId} {m mid : Machine} (p : PreAct b m mid)
+    (args : List Value) (kw : List (Value × Value)) :
+    PreAct b m (Interp.appendKwHash mid args kw).2 := by
+  unfold Interp.appendKwHash
+  split
+  · exact p
+  · exact p.allocHsh _
+
+/-- `Step.foldPair`'s twin one relation up. -/
+theorem PreAct.foldPair {b : FrameId} {α β : Type} (f : β × Machine → α → β × Machine)
+    (hf : ∀ (p : β × Machine) (a : α), StepInv b p.2 → PreAct b p.2 (f p a).2) :
+    ∀ (l : List α) (p : β × Machine), StepInv b p.2 → PreAct b p.2 (l.foldl f p).2
+  | [], p, h => PreAct.refl h
+  | a :: rest, p, h => by
+    rw [List.foldl_cons]
+    exact (hf p a h).trans (PreAct.foldPair f hf rest (f p a) (hf p a h).1.2)
+
+theorem PreAct.foldPair' {b : FrameId} {α β : Type} (f : β × Machine → α → β × Machine)
+    (hf : ∀ (p : β × Machine) (a : α), StepInv b p.2 → PreAct b p.2 (f p a).2)
+    (l : List α) (init : β) {m mid : Machine} (s : PreAct b m mid) :
+    PreAct b m (l.foldl f (init, mid)).2 :=
+  s.trans (PreAct.foldPair f hf l (init, mid) s.1.2)
+
+/-- **`destructureBind` at `PreAct`** — `Step.destructureBind`'s structure verbatim, one
+relation up, because a nested `.destr` allocates a rest array at every level. -/
+theorem PreAct.destructureBind {b : FrameId} :
+    ∀ (fuel : Nat) (m : Machine) (subs : List RubyCore.Param) (v : Value), StepInv b m →
+      PreAct b m (Interp.destructureBind m subs v fuel).2
+  | 0, m, _, _, h => PreAct.refl h
+  | fuel + 1, m, subs, v, h => by
+    rw [Interp.destructureBind.eq_def]
+    have hstep : ∀ (p : List (String × Value) × Machine) (a : RubyCore.Param × Value),
+        StepInv b p.2 → PreAct b p.2 (
+          (match a.1 with
+            | .req nm => (p.1 ++ [(nm, a.2)], p.2)
+            | .destr subs' =>
+              let r := Interp.destructureBind p.2 subs' a.2 fuel
+              (p.1 ++ r.1, r.2)
+            | _ => (p.1, p.2)) : List (String × Value) × Machine).2 := by
+      intro p a hp
+      obtain ⟨pp, val⟩ := a
+      cases pp
+      case destr => exact PreAct.destructureBind fuel p.2 _ _ hp
+      all_goals exact PreAct.refl hp
+    cases v
+    case ref o =>
+      cases hp : (m.heap.get o).payload
+      all_goals (repeat (any_goals (first
+      | (refine PreAct.allocArr ?_ _; exact PreAct.foldPair _ hstep _ _ h)
+      | exact PreAct.foldPair _ hstep _ _ h
+      | refine PreAct.foldPair' _ hstep _ _ ?_
+      | split)))
+    all_goals (repeat (any_goals (first
+      | (refine PreAct.allocArr ?_ _; exact PreAct.foldPair _ hstep _ _ h)
+      | exact PreAct.foldPair _ hstep _ _ h
+      | refine PreAct.foldPair' _ hstep _ _ ?_
+      | split)))
+
+#print axioms Step.foldM
+#print axioms PreAct.destructureBind
+
 end Ratchet.Denote

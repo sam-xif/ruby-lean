@@ -523,6 +523,31 @@ the seal) is untouched**, as its own piece.
 
 ## Semantic ratchet status (`Denote/Sem/`): **48 of 83 `Judge` rules discharged**
 
+> **Clink 63 (2026-09-10) proved `enterUserMethod` — the layer's parked helper — and stage 2's
+> block-iterator trio. The ladder is unmoved at 48/83, as expected: none of it is a `Judge`
+> rule.** The recorded diagnosis (*hand-split the ~7 conditions*) was measured and **does not
+> work**; `Denote/Sem/notes.md`'s **nineteenth stall point** is why. `Interp.enterUserMethod`
+> threads the machine through nine `let`s and its activation push is a flat record literal whose
+> nine fields are each a *projection* of the pre-push machine, so a goal-side peel leaves `?mid`
+> under a projection and `generalize … at h` cannot name it either — every machine-producing
+> subterm is guarded by a `match`, a hand-written `match` is a **fresh matcher constant**, and
+> `generalize` then abstracts nothing and reports **no error**.
+>
+> The fix is a **mirror gated by `rfl`**: `Denote/Sem/StepAct.lean`'s `enterUM` is the same
+> function with its five machine-touching stages named, `enterUM_eq` is `rfl` (so fidelity is a
+> kernel check), and the walk then closes in **18 s** against three previous non-terminating
+> attempts. Chosen over refactoring `Interp/Dispatch.lean` itself because that breaks
+> `KontFrameDispatch`'s `enterUserMethod_frame`, which the climbed `Judge.vasgn` rung sits on.
+> **The rule generalises** — `finishSend`, `invokeDispatch`, `startArgs`, `tryReflect` and
+> `evalExpr` are let-chains of the same kind.
+>
+> Also landed: **`PreAct`** (`Step` plus the two heap facts a frame push reads — every installed
+> method still installed, every Proc still there — with both folds and `destructureBind`), the
+> **six `methodIn` bridges** (`lookup`/`methodOn`/`lookupAbove`/`superFound`/`userInit?`/
+> `moduleHook`, one arm lemma between them), and `Step.missNoMethod`/`visError`/`iterStep`/
+> `startIter`/`tryIterator`. Still owed in stage 2: `tryMixin`, `defineAttr`; and the dispatch
+> spine cannot close before **stage 4**, since `dispatchMiss` routes through `tryReflect`.
+
 > **Unblocked 2026-09-08 (L266). The blocker was model fidelity, and it is fixed.**
 > `Sealed`, the frame-graph invariant the locals layer is built on, was not inductive over
 > `stepFn`: `Symbol#to_proc` allocated a closure with `captured := 0`, a capture edge into the

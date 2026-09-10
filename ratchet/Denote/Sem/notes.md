@@ -1859,6 +1859,74 @@ caches each success, and each dispatcher pays only for **its own** expensive clo
    This is the eighth measurement and the fourth instance of item 3: *a `simp` in a 600-arm walk
    is a search, not a step.*
 
+## The nineteenth stall point — **a `let`-chain has no callees**, and the mirror that fixes it *(RESOLVED, clink 63)*
+
+`enterUserMethod` was parked three times (§`enterUserMethod` wants hand-splitting): 4M
+heartbeats, then 60M / 26 minutes, then every closer in `_eq` form, none finishing. That entry's
+diagnosis — "`split` on a 135-line body with ten branch points outruns any closer list" — is
+right about the symptom and its prescription (*transcribe the ~7 conditions as explicit peels*)
+**does not work either**. Measured, and this is the stall point:
+
+`Interp.enterUserMethod` threads the machine through **nine** `let`s. Any tactic that touches the
+body zeta-expands them, and each intermediate machine is then written out *once per use of the
+name it was bound to*:
+
+* the activation push is a **flat record literal whose nine fields are each a projection of the
+  pre-push machine** — and that machine is itself a nest of `appendKwHash`/`allocArr`/`allocHsh`/
+  `destructureBind`, so it appears nine times;
+* hence ~1200 printed lines of hypothesis for a 135-line function.
+
+Two mechanical consequences follow, and between them they close off both directions:
+
+1. **A goal-side peel cannot recover the intermediate machine.** `{ mid with frames :=
+   mid.frames.push fr, … }` leaves `?mid` under a projection in every field — the same
+   unification failure `MCap.push_trans_eq` hit in clink 62, arriving where the vocabulary was
+   thought to be complete.
+2. **`generalize … at h` cannot name it either.** Pure subterms generalise fine (`List.take …
+   args` did, first try), but every machine-producing subterm here is guarded by a `match`, and a
+   **hand-written `match` elaborates to a fresh matcher constant** — defeq to the model's, not
+   syntactically equal — so `generalize` abstracts *nothing* and **reports no error**. Silent
+   no-op; the symptom is a hypothesis that looks unchanged, which reads as "the term is not
+   there" rather than "your pattern is a different constant". (`rw` on the same term fails
+   differently and more honestly: *motive is not type correct*.)
+
+### The remedy: mirror the function with its stages named, and gate the mirror with `rfl`
+
+`Denote/Sem/StepAct.lean`'s `enterUM` is `Interp.enterUserMethod` transcribed with its five
+machine-touching stages pulled out as named definitions (`Act.restBind`/`kwrestBind`/`destrBind`/
+`actPush`/`actLocals`), and `enterUM_eq : Interp.enterUserMethod … = enterUM …` is **`rfl`** — so
+the transcription's fidelity is a kernel check and a mistake in it is a build failure, not a
+semantic gap. The mirror is not a second semantics: it is the same term with five subterms given
+names.
+
+With the stages named every machine in the walk is *an argument of a named callee*
+(`Act.actPush mid fr`), so the goal determines it first-order and the peels compose exactly as
+`Step.withCtl'` already did. **The walk is then 18 seconds** — against three non-terminating
+attempts — and its closer list is six lines. `rfl` costs 12 s at 4M heartbeats (200k is not
+enough).
+
+**Why this was the right move rather than refactoring the model.** Factoring
+`Interp/Dispatch.lean` itself would be the same change one file lower and would be *better*
+(`Interp/Dispatch.lean`'s own header claims each helper "performs one transition"), but it breaks
+`RubyCore/Proof/KontFrameDispatch.lean`'s `enterUserMethod_frame`, which `stepFn_frame` and hence
+the climbed `Judge.vasgn` rung depend on — a model edit whose blast radius is the ladder. The
+mirror gets the same proof-side shape for one `rfl` and no re-verification.
+
+**The transferable rule**, and it is clink 62's in a new costume: *put the shape where
+unification can see it.* There it meant moving an arm's shape into a `rfl` hypothesis
+(`MCap.push_eq rfl ?_`); here it means giving a `let`-chain's stages names, and where the model
+inlines them, mirroring the function and paying one `rfl`. **Reusable, and the rest of the layer
+will need it**: `finishSend`, `invokeDispatch`, `startArgs`, `tryReflect` and `evalExpr` are
+let-chains of the same kind.
+
+### A third costume for the ordering rule, while we are here
+
+§The second walk item 3 says an argument that *determines* metavariables goes early and one that
+*consumes* them goes late. In this layer it decides whether a peel works **at all**: a
+`callClosure`/`iterStep` peel that takes the `Step` (or the closure fact) before the `.next m'`
+hypothesis unifies `?mid` with `m` — the outer machine — and then rejects the real one. So
+`Step.callClosure_at`/`iterStep_at` take the hypothesis first. Same for `Step.startIter_pre`.
+
 ## The remaining 35, re-audited 2026-09-10 — and **seven are false as stated**
 
 Written because "35 remaining" reads as 35 units of work, and the useful fact is that a
@@ -1953,7 +2021,7 @@ leaves goals, suspect the *order and shape of the closer list* before concluding
 the interpreter. Two of this layer's three "structural" obstructions have now dissolved into
 tactic bugs (`BuiltinsSeal`'s 35-minute non-termination, and these three lemmas).
 
-### `enterUserMethod` wants hand-splitting, not a bigger budget (measured 2026-09-10)
+### `enterUserMethod` wants hand-splitting, not a bigger budget (measured 2026-09-10) — *and hand-splitting does not work either; see §The nineteenth stall point, where it is **proved** instead*
 
 The one remaining stage-2 helper, and the measurement is the point: with the corrected recipe
 above (peel first, refute through the hypothesis, `hmd` supplied directly) the closer fixpoint

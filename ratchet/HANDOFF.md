@@ -1,5 +1,24 @@
 # ratchet — hand-off note (2026-09-10)
 
+> **Superseded again, 2026-09-10 (clink 63): `enterUserMethod` is PROVED, and the "one
+> transcription away" note below is wrong about the transcription.** Hand-splitting the
+> conditions does not work — see `Denote/Sem/notes.md` §The nineteenth stall point (nine `let`s,
+> a nine-field projection literal, and `generalize … at h` silently abstracting nothing because a
+> hand-written `match` is a fresh matcher constant). What works is
+> `Denote/Sem/StepAct.lean`'s **mirror gated by `rfl`**: the same function with its five
+> machine-touching stages named, `enterUM_eq` by `rfl`, walk in 18 s. **Read that file's header
+> before touching any other `Interp/` let-chain**, because `finishSend`, `invokeDispatch`,
+> `startArgs`, `tryReflect` and `evalExpr` are the same shape.
+>
+> **The new resume point** is stage 2's remainder and then stage 4: `tryMixin` (its `moduleHook`
+> equation has to come out of a `split`'s inaccessible hypothesis — an `assumption`-discharged
+> peel), `defineAttr` (one `CapMono` lemma for `defineMethod` installing a `capturedFrame :=
+> none` method), and then **`tryReflect`**, because `dispatchMiss` routes through it and the
+> dispatch spine (`invokeDispatch`/`invoke`/`finishSend`) cannot close until it does.
+> `PreAct` (`StepSupport.lean`) is the transport every allocating-then-pushing helper needs, and
+> the six `methodIn` bridges are on file, so a new caller of `enterUserMethod` costs one line.
+> **The ladder is unchanged at 48/83 and none of this moves it directly.**
+
 > **Superseded in one respect, 2026-09-10 (L269, clink 62): `BuiltinsSeal` is PROVED.**
 > This file's resume point was "re-attempt the `Builtins` layer walk". That walk is done —
 > `Denote/Sem/BuiltinsCap*.lean`, all six dispatchers plus `Builtins.run`, axiom-clean, seconds
