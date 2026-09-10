@@ -130,6 +130,31 @@ theorem Step.raiseErr {b : FrameId} {m : Machine} (h : StepInv b m) (cls : ObjId
   let s := Step.allocExc h cls msg
   s.trans (Step.frameOnly s.2 rfl rfl rfl)
 
+/-! ### The unifying composite: **any capture-monotone heap change**
+
+`Step.alloc` above is the special case of this, and writing one `Step.X` per heap-touching helper
+in `Interp/Support.lean` would have been the obvious route. It is the wrong one: every heap change
+the interpreter makes is exactly `MCap` — *the heap's capture edges did not grow* — and
+`BuiltinsCap.lean` already has the closer set for that (`push_eq`, `set_eq`, `set_payload_eq`,
+`push_copy_eq`, `fold_eq`), each with a first-order conclusion and a `rfl` hypothesis.
+
+So one lemma covers `bindIvar`, `setClassPayload`, every allocator, and `dup` — and the arms
+close with the closers already built and measured, instead of a second vocabulary. `Sealed`'s and
+`FramesWF`'s `of_capMono` are what make this possible, which is the second thing the `Builtins`
+walk bought beyond the seal itself. -/
+
+theorem Step.heap {b : FrameId} {m m' : Machine} (h : StepInv b m)
+    (hs : m'.stack = m.stack) (hf : m'.frames = m.frames) (hcm : MCap m m') : Step b m m' :=
+  ⟨by unfold LocalsOff; rw [hf],
+   { sealed := h.sealed.of_capMono (LocalsSame.of_eq hs hf) hcm
+     wf := h.wf.of_capMono (LocalsSame.of_eq hs hf) hcm
+     inRange := by rw [hf]; exact h.inRange }⟩
+
+/-- …and as a peel, for an arm that changed the heap after doing something else. -/
+theorem Step.heap' {b : FrameId} {m mid m' : Machine} (s : Step b m mid)
+    (hs : m'.stack = mid.stack) (hf : m'.frames = mid.frames) (hcm : MCap mid m') :
+    Step b m m' := s.trans (Step.heap s.2 hs hf hcm)
+
 /-! ### …and the same keyed composites as **peels**
 
 An arm rarely ends at `withCtl m c`: it ends at `withCtl m₂ c` where `m₂` is what an earlier
