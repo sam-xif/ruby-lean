@@ -7362,6 +7362,50 @@ stage-4 reflection dispatcher — so the dispatch spine cannot be closed before 
 the honest next boundary, and it is not a new obstruction: it is the bottom-up order
 `StepEval.lean` specified, with one more layer than the ladder's optimism assumed.
 
+### Stage 4, most of it: thirteen `reflect*` helpers and two facts about the relations
+
+`Denote/Sem/StepReflect.lean`. `dispatchMiss` routes through `tryReflect`, so this file is on the
+reachable path and not a corner. **Thirteen of the fifteen helpers are proved**, axiom-clean:
+`instance_variable_get`/`_set`/`instance_variables`, `const_get`/`const_set`,
+`method_defined?`/`respond_to?`, `singleton_class`, `throw`, `attr_*`, `catch`, the `*_eval`
+family, `define_method`/`define_singleton_method`, `alias_method` and
+`remove_method`/`undef_method`. Most are queries and fall to one shared closer list; the four
+that write the method graph or push a frame needed one heap lemma each
+(`CapMono.defineMethod_clos`/`_copy`/`setClassPayload_filter`, `methodIn_defineMethod`).
+
+**Two corrections to the layer's relations, both found by the type checker rather than by
+thinking:**
+
+* **`PreAct` is *false* across `defineMethod`.** Its method conjunct says every installed method
+  is still installed, and `defineMethod` **replaces** — a redefinition drops the old entry. So the
+  visibility and removal walks are `Step`, not `PreAct`, and what their second write needs is not
+  the old fact transported but the **new** one established (`methodIn_defineMethod`: a method just
+  installed is installed). The checker refused a `PayKeep` for a `defineMethod` and that is what
+  surfaced it.
+* **`PayKeep` is the right interface for `eigenclassOf`.** "The heap only grew" is false of it (it
+  writes the attachee's `eigen` field, an object already there), but "every payload that was there
+  is still there" is true — and payloads are all `methodIn`/`procClosure?` read. `PayKeep` is
+  therefore what transports both across it, and `PreAct.eigenclassOf` is proved through it.
+
+**The ordering rule got its fifth and sixth costume**, and by now it is the layer's dominant cost:
+a composition whose *intermediate* carries an argument the goal does not mention
+(`(eigenclassOf m ?o).2`) must be supplied as **one `exact` term**, since a `refine … ?_` never
+determines `?o`; and a peel whose target is a record update (`m.setCurrentFrame ?fr`) must be
+reached by a **separate `refine`**, or the `rfl` side conditions unify `?fr` with the *unmodified*
+frame and the closer proves the wrong statement. Also worth recording: a hand-written `match` in a
+lemma's **premise** is fine (`exact` checks up to defeq, and two matchers for the same match are
+defeq) — it is only `rw`/`generalize`/`simp only`, which match *syntactically*, that the fresh
+matcher constant defeats. That distinction is the nineteenth stall point's fine print.
+
+**Parked with a diagnosis, not half-done: `Step.reflectVisibility`.** Its walk (`Step.visRun`,
+`Step.visStep`, `Step.foldOpt`) and every heap lemma under it **are** proved; what is left is the
+caller's four leaf shapes, which a closer list cannot take — three arrive with the hypothesis
+wrapped in an `And` (`simp` turns `if c then some x else none = some y` into `c ∧ x = y`) and one
+of those does not `subst`, while the `*_class_method` leaves need the eigenclass composition as a
+single `exact`. The remedy is `enterUserMethod`'s: peel `recv`, the `names.length` check,
+`names.isEmpty`, `classMeth` and `visOk` by hand. **`tryReflect` waits on it**, and so does
+`dispatchMiss`.
+
 ### State
 
 Semantic ratchet **48 of 83**, unmoved — nothing here is a `Judge` rule, and the layer that gates
@@ -7369,7 +7413,7 @@ Semantic ratchet **48 of 83**, unmoved — nothing here is a `Judge` rule, and t
 ratchet **178 of 254**, tier for tier; corpus agreement **254/254**; `expect_validate` mismatches
 **35**; `checkrungs` **177/177 + 148/148**. `lake build` clean, no `sorry`, every `#print axioms`
 inside `propext`/`Classical.choice`/`Quot.sound`. **`Ratchet/` untouched.** Added:
-`Denote/Sem/StepAct.lean`. Changed: `Denote/Sem/StepSupport.lean` (the two `Machine` folds,
+`Denote/Sem/StepAct.lean`, `Denote/Sem/StepReflect.lean`. Changed: `Denote/Sem/StepSupport.lean` (the two `Machine` folds,
 `PreAct` and its lemmas), `Denote/Sem/StepDispatch.lean` (the bridges, the helpers, method
 installation and the mixins; its
 `enterUserMethod` prose was a status note and is now a pointer), `Denote/Sem/notes.md`

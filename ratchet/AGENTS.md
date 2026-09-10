@@ -550,7 +550,15 @@ the seal) is untouched**, as its own piece.
 > `enterClassBody`** (deprioritised — declaration family). The dispatch spine cannot close before
 > **stage 4**, since `dispatchMiss` routes through `tryReflect`.
 >
-> Three of the session's four costs were **closer shape, not semantics**, and the new one
+> **Stage 4 is thirteen of fifteen** (`Denote/Sem/StepReflect.lean`): every `reflect*` helper but
+> `reflectVisibility` — which is parked *with* its walk and heap lemmas proved, needing only its
+> caller's four leaves hand-peeled — and `tryReflect`, which waits on it. Two relation-level
+> corrections came out of it, both found by the type checker: **`PreAct` is false across
+> `defineMethod`** (which *replaces*, so the walks are `Step` and their second write **establishes**
+> the new fact rather than transporting the old), and **`PayKeep`** — payloads preserved — is the
+> right interface for `eigenclassOf`, which writes an `eigen` field and so is not heap-growth.
+>
+> Most of the session's costs were **closer shape, not semantics**, and the new one
 > generalises: `refine`/`exact` refuse to postpone an implicit argument a later `rfl` would
 > determine, so a lemma meant for a closer list states that pair as one existential and takes
 > `⟨_, by assumption, by rfl⟩` — where the `by` on the `rfl` is load-bearing.

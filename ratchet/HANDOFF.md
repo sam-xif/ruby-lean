@@ -11,11 +11,18 @@
 > `startArgs`, `tryReflect` and `evalExpr` are the same shape.
 >
 > **`tryMixin` and `defineAttr` landed too, so stage 2 is complete except `enterClassBody`**
-> (deprioritised — declaration family). **The new resume point is stage 4, `tryReflect`**:
-> `dispatchMiss` routes through it, so the dispatch spine
-> (`invokeDispatch`/`invoke`/`finishSend`) cannot close until it does. ~15 `reflect*` helpers,
-> each the size of the ones already done, and `CapMono.defineMethod`/`set_gen` are the two heap
-> lemmas most of them will want.
+> (deprioritised — declaration family), **and stage 4 is thirteen of fifteen**
+> (`Denote/Sem/StepReflect.lean`).
+>
+> **The resume point is exactly two lemmas**: `Step.reflectVisibility` — its walk (`Step.visRun`)
+> and every heap lemma under it are proved, so what is owed is the caller's four leaves peeled by
+> hand (`recv`, the `names.length` check, `names.isEmpty`, `classMeth`, `visOk`), because three of
+> them arrive `And`-wrapped and one does not `subst` — and then **`Step.tryReflect`** and
+> **`Step.dispatchMiss`**, which are dispatchers over lemmas that now all exist. After that the
+> **dispatch spine** (`invokeDispatch`/`invoke`, then stage 3's `finishSend`/`startArgs`) is
+> unblocked for the first time. Read `Denote/Sem/StepReflect.lean`'s header first: it lists the
+> two relation-level corrections (`PreAct` is false across `defineMethod`; `PayKeep` is the
+> interface for `eigenclassOf`) and the ordering rule's fifth and sixth costumes.
 > `PreAct` (`StepSupport.lean`) is the transport every allocating-then-pushing helper needs, and
 > the six `methodIn` bridges are on file, so a new caller of `enterUserMethod` costs one line.
 > **The ladder is unchanged at 48/83 and none of this moves it directly.**
