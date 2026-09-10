@@ -91,6 +91,100 @@ theorem Step.push_meth {b : FrameId} {m : Machine} (h : StepInv b m) (fr : RubyC
     simp only [Array.size_push]
     exact Nat.lt_succ_of_lt h.inRange
 
+/-! ## Keyed composites, one per helper `evalExpr` actually calls
+
+`notes.md`'s shape problem: Lean collapses nested record updates into one flat literal, so a
+machine that *is* `withCtl m c` does not unify with a lemma stated about `{ ?m with ctl := ?c }`.
+The fix there was a keyed variant per callee, and it is the fix here — an arm that ends in
+`withCtl` closes by `exact Step.withCtl h _`, with no unification against a machine-sized term.
+
+`raiseErr` is the one that is not just a `ctl` write: it **allocates** the exception object
+first, so it is `Step.alloc` (an `.exc` payload, capture-free by its constructor) composed with
+the `ctl` change. -/
+
+theorem Step.withCtl {b : FrameId} {m : Machine} (h : StepInv b m) (c : Ctl) :
+    Step b m (Interp.withCtl m c) := Step.frameOnly h rfl rfl rfl
+
+theorem Step.withKont {b : FrameId} {m : Machine} (h : StepInv b m) (c : Ctl) (k : Kont) :
+    Step b m (Interp.withKont m c k) := Step.frameOnly h rfl rfl rfl
+
+theorem Step.allocStr {b : FrameId} {m : Machine} (h : StepInv b m) (str : String) :
+    Step b m (Builtins.allocStr m str).2 := Step.alloc h (fun _ hc => hc)
+
+theorem Step.allocStrEnc {b : FrameId} {m : Machine} (h : StepInv b m) (str : String) (bin : Bool) :
+    Step b m (Builtins.allocStrEnc m str bin).2 := Step.alloc h (fun _ hc => hc)
+
+theorem Step.allocArr {b : FrameId} {m : Machine} (h : StepInv b m) (xs : Array Value) :
+    Step b m (Builtins.allocArr m xs).2 := Step.alloc h (fun _ hc => hc)
+
+theorem Step.allocHsh {b : FrameId} {m : Machine} (h : StepInv b m)
+    (xs : Array (Value × Value)) : Step b m (Builtins.allocHsh m xs).2 :=
+  Step.alloc h (fun _ hc => hc)
+
+theorem Step.allocExc {b : FrameId} {m : Machine} (h : StepInv b m) (cls : ObjId) (msg : String) :
+    Step b m (Builtins.allocExc m cls msg).2 := Step.alloc h (fun _ hc => hc)
+
+/-- `raiseErr` allocates the exception and then writes `ctl`. -/
+theorem Step.raiseErr {b : FrameId} {m : Machine} (h : StepInv b m) (cls : ObjId) (msg : String) :
+    Step b m (Interp.raiseErr m cls msg) :=
+  let s := Step.allocExc h cls msg
+  s.trans (Step.frameOnly s.2 rfl rfl rfl)
+
+/-! ### …and the same keyed composites as **peels**
+
+An arm rarely ends at `withCtl m c`: it ends at `withCtl m₂ c` where `m₂` is what an earlier
+part of the same arm produced (`matchGlobal`'s global write, an allocation, a frame push). So
+each composite also needs a form that takes `Step b m mid` and extends it.
+
+**These peel, where `MCap`'s did not.** `MCap.push_trans_eq` could not recover its intermediate
+machine because `?mid` appeared only under a projection (`?mid.heap.objs`); here `mid` is an
+*argument* of the keyed callee (`withCtl mid c`), so the goal determines it first-order and a
+`repeat` fixpoint over these closes a chain of any length. -/
+
+theorem Step.withCtl' {b : FrameId} {m mid : Machine} (s : Step b m mid) (c : Ctl) :
+    Step b m (Interp.withCtl mid c) := s.trans (Step.withCtl s.2 c)
+
+theorem Step.withKont' {b : FrameId} {m mid : Machine} (s : Step b m mid) (c : Ctl) (k : Kont) :
+    Step b m (Interp.withKont mid c k) := s.trans (Step.withKont s.2 c k)
+
+theorem Step.raiseErr' {b : FrameId} {m mid : Machine} (s : Step b m mid) (cls : ObjId)
+    (msg : String) : Step b m (Interp.raiseErr mid cls msg) := s.trans (Step.raiseErr s.2 cls msg)
+
+theorem Step.allocStr' {b : FrameId} {m mid : Machine} (s : Step b m mid) (str : String) :
+    Step b m (Builtins.allocStr mid str).2 := s.trans (Step.allocStr s.2 str)
+
+theorem Step.allocStrEnc' {b : FrameId} {m mid : Machine} (s : Step b m mid) (str : String)
+    (bin : Bool) : Step b m (Builtins.allocStrEnc mid str bin).2 :=
+  s.trans (Step.allocStrEnc s.2 str bin)
+
+theorem Step.allocArr' {b : FrameId} {m mid : Machine} (s : Step b m mid) (xs : Array Value) :
+    Step b m (Builtins.allocArr mid xs).2 := s.trans (Step.allocArr s.2 xs)
+
+theorem Step.allocHsh' {b : FrameId} {m mid : Machine} (s : Step b m mid)
+    (xs : Array (Value × Value)) : Step b m (Builtins.allocHsh mid xs).2 :=
+  s.trans (Step.allocHsh s.2 xs)
+
+theorem Step.allocExc' {b : FrameId} {m mid : Machine} (s : Step b m mid) (cls : ObjId)
+    (msg : String) : Step b m (Builtins.allocExc mid cls msg).2 :=
+  s.trans (Step.allocExc s.2 cls msg)
+
+theorem Step.setLocal' {b : FrameId} {m mid : Machine} (s : Step b m mid) (x : String)
+    (w : Value) : Step b m (mid.setLocal x w) := s.trans (Step.setLocal s.2 x w)
+
+theorem Step.push_free' {b : FrameId} {m mid : Machine} (s : Step b m mid) (fr : RubyCore.Frame)
+    (hfr : fr.captured = none) :
+    Step b m { mid with frames := mid.frames.push fr, stack := mid.frames.size :: mid.stack } :=
+  s.trans (Step.push_free s.2 fr hfr)
+
+/-- The generic peel for a machine change the seal cannot see at all: same frames, same stack,
+same heap. Stated with the three equations as hypotheses so it is `rfl`-checked per arm. -/
+theorem Step.frameOnly' {b : FrameId} {m mid m₂ : Machine} (s : Step b m mid)
+    (hs : m₂.stack = mid.stack) (hf : m₂.frames = mid.frames) (hh : m₂.heap = mid.heap) :
+    Step b m m₂ := s.trans (Step.frameOnly s.2 hs hf hh)
+
+#print axioms Step.withCtl
+#print axioms Step.withCtl'
+#print axioms Step.raiseErr
 #print axioms Step.alloc
 #print axioms Step.push_free
 #print axioms Step.push_clos

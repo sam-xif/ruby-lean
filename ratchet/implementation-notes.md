@@ -7095,6 +7095,38 @@ corrected in the same pass: it still named `Sealed.push_method`/`push_block`/`al
 the next step (they are built, under the names `Sealed.push`/`alloc`), and still said
 `BuiltinsSeal` was "stated below and **not** proved".
 
+### The layer's target, stated — and the walk's order, measured
+
+`Denote/Sem/StepWalk.lean`: **`StepSound`**, the layer's per-step target, written down as a named
+`Prop` *before* any walk under it — the working rule this layer has now paid for three times.
+`stepSound_of` decomposes it into `EvalExprSound`/`ApplyKontSound`/`UnwindSound`, one per `ctl`
+shape, and takes all three as hypotheses so the decomposition is checkable before a single arm is
+closed.
+
+**The first attempt at `EvalExprSound` did not terminate, and that is the finding.** A single
+closer-list tactic over `evalExpr`'s 43 arms ran 20 000 000 heartbeats / 8½ minutes to a
+`timeout at whnf`. Not the arm count and not the closers: `evalExpr`'s send arms *delegate* — to
+`startArgs` (×3), `finishSend`, `enterUserMethod`, `startSuperArgs` (×2), `doSuper`, `startYield`,
+`enterClassBody` (×2), `doReturn`, `evalDefined`, `continueArray`, `undefNames`/`undefAliasMiss`,
+plus `lookup` and `defineMethod` (×3 each) — and with no `Step` lemma for any of them the tactic
+falls through to `split at hstep` and unfolds the whole `Dispatch`/`Send`/`Reflect` layer inside
+`isDefEq`. `RubyCore/Proof/KontFrame.lean` did not make this mistake; its order is helpers first,
+then dispatchers, then `Builtins.run`, then above. So the companion working rule: **prove the
+callees before the callers, because a missing helper lemma does not fail — it inlines.** Third
+time measurement order has cost this layer a run, and the first time the failure was
+non-termination rather than a false theorem.
+
+`StepEval.lean` therefore holds the **specification** rather than a proof: the five-stage
+bottom-up order (`Support`, `Dispatch`, `Send`, `Reflect`, then `evalExpr`, then
+`applyKont`/`unwind`), `StepThrough` as the shape each helper lemma takes, and
+`stepThrough_builtins` as the one entry already discharged — `Builtins.run` being the bottom of
+the chain and done. No `sorry`; the file states what is owed instead of pretending to it.
+
+One closer is recorded as poison for any list that does not need it: `Machine.setLocal` walks the
+capture chain *by recursion*, so unifying against `setLocal ?m ?x ?w` unfolds a recursive
+function. `evalExpr` never calls it (`.vasgn` pushes an `.asgnK`; the write is `applyKont`'s), so
+`Step.setLocal`/`setLocal'` belong to `ApplyKontSound`'s list and nowhere else.
+
 ### State
 
 Semantic ratchet **48 of 83**, unmoved — `BuiltinsSeal` is a layer, not a `Judge` rule, and
@@ -7105,6 +7137,6 @@ then the `stepFn` walk), which is still several clinks from any rung. Syntactic 
 148/148 negative controls**. `lake build` clean, no `sorry`, every `#print axioms` a subset of
 `propext`/`Classical.choice`/`Quot.sound`. **`Ratchet/` untouched.** Added:
 `Denote/Sem/BuiltinsCap{,Regex,Modules,Collections,Strings,Numerics,Objects,Run}.lean` and
-`Denote/Sem/StepInterp.lean`. Changed:
+`Denote/Sem/{StepInterp,StepWalk,StepEval}.lean`. Changed:
 `Denote/Sem/notes.md`, `Denote/Sem/StepLocal.lean` (its "stated and unproved" note and its
 stale next-step list), `found-issues.md` (§F22), `AGENTS.md`, `HANDOFF.md`.

@@ -1729,6 +1729,41 @@ So every machine change `stepFn` performs has a named closer, and the remaining 
 layer is the per-arm walk itself — `evalExpr`'s 43 arms, `applyKont`/`unwind`, and the
 `Dispatch`/`Send`/`Reflect` helpers — with the eight tactic measurements below as the method.
 
+### …and the walk has to be built **bottom-up**, which cost a run to learn (2026-09-10)
+
+`Denote/Sem/StepWalk.lean` states the target (`StepSound`) and `stepSound_of` decomposes it into
+`EvalExprSound`/`ApplyKontSound`/`UnwindSound`. The first attempt at `EvalExprSound` was a single
+closer-list tactic over `evalExpr`'s 43 arms, and it **does not terminate** — 20 000 000
+heartbeats, 8½ minutes, `timeout at whnf`.
+
+The cause is not the arm count and not the closers. `evalExpr`'s send arms *delegate* — to
+`startArgs` (×3), `finishSend`, `enterUserMethod`, `startSuperArgs` (×2), `doSuper`,
+`startYield`, `enterClassBody` (×2), `doReturn`, `evalDefined`, `continueArray`,
+`undefNames`/`undefAliasMiss`, plus `lookup` (×3) and `defineMethod` (×3) — and with no `Step`
+lemma for any of them the tactic has nothing to close those arms with, falls through to
+`split at hstep`, and unfolds the whole `Dispatch`/`Send`/`Reflect` layer inside `isDefEq`.
+
+**`RubyCore/Proof/KontFrame.lean` did not make this mistake**, and its order is the correction:
+helpers first (`printArm_frame`, `binArg_frame`, `numBin_frame`, `numCmp_frame`,
+`withIndex_frame`), then the dispatchers, then `Builtins.run`, then the layers above. So the
+companion to this file's existing working rule — *write the layer's target down as a named `Prop`
+before proving the layer under it* — is: **prove the callees before the callers, because a
+missing helper lemma does not fail, it inlines.** That is the third time measurement order has
+cost this layer a run (`FrameLocal.lean`'s false target, `BuiltinsSeal`'s frame-half-first, and
+now this), and it is the first time the failure mode was *non-termination* rather than a wrong
+theorem.
+
+`Denote/Sem/StepEval.lean` records the five-stage order the walk needs — `Support`, `Dispatch`,
+`Send`, `Reflect`, then `evalExpr`, then `applyKont`/`unwind` — with `StepThrough` as the shape
+each helper lemma takes and `Step.builtins` as the one entry already discharged (`Builtins.run`
+is the bottom of the chain and is done).
+
+**One closer must not be in a list that does not need it**, and this is worth keeping separately
+because it is not about ordering: `Machine.setLocal` walks the capture chain *by recursion*, so
+unifying a goal's machine against `setLocal ?m ?x ?w` unfolds a recursive function. `evalExpr`
+never calls it — `.vasgn` pushes an `.asgnK` and the write happens in `applyKont` — so
+`Step.setLocal`/`setLocal'` belong to `ApplyKontSound`'s closer list and nowhere else.
+
 The prediction above was right about the *shape* — its own predicate and its own copy of the
 twenty helpers — and wrong about where the cost sat. The lemmas were an afternoon; the **tactic**
 was the whole difficulty, and it is worth writing down because it is a reusable technique for any
