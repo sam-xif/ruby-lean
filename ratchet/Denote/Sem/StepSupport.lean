@@ -108,8 +108,28 @@ theorem procClosure_alloc {h : Heap} {o : ObjId} {cl : Closure} (obj : Object)
   rw [procClosure?, alloc_get_lt obj (procClosure_lt hcl), ← procClosure?]
   exact hcl
 
+/-- The `methodIn` twin of `procClosure_alloc`, for the same reason one layer over:
+`enterUserMethod` can allocate (a keyword bundle, a rest array) **before** it pushes the method
+frame, so the `Sealed.meth` fact its push premise needs has to cross that allocation. The
+in-range side condition is derivable the same way — `classPayload?` of an out-of-range read is
+`none`, because `default.payload` is `.none`. -/
+theorem methodIn_lt {h : Heap} {k : ObjId} {n : String} {md : MethodDef}
+    (hmd : methodIn h k n = some md) : k < h.objs.size := by
+  rcases Nat.lt_or_ge k h.objs.size with hlt | hge
+  · exact hlt
+  · rw [methodIn, Heap.classPayload?, heap_get_oob hge,
+      show (default : Object).payload = Payload.none from rfl] at hmd
+    exact absurd hmd (by simp)
+
+theorem methodIn_alloc {h : Heap} {k : ObjId} {n : String} {md : MethodDef} (obj : Object)
+    (hmd : methodIn h k n = some md) : methodIn (h.alloc obj).2 k n = some md := by
+  rw [methodIn, Heap.classPayload?, alloc_get_lt obj (methodIn_lt hmd), ← Heap.classPayload?,
+    ← methodIn]
+  exact hmd
+
 #print axioms procClosure_lt
 #print axioms procClosure_alloc
+#print axioms methodIn_alloc
 
 /-! ### `callClosure` — the first frame-pusher, and its push premise is a *heap* fact
 

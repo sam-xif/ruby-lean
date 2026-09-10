@@ -1952,3 +1952,27 @@ What actually went wrong, and it is a new failure mode worth the entry:
 leaves goals, suspect the *order and shape of the closer list* before concluding anything about
 the interpreter. Two of this layer's three "structural" obstructions have now dissolved into
 tactic bugs (`BuiltinsSeal`'s 35-minute non-termination, and these three lemmas).
+
+### `enterUserMethod` wants hand-splitting, not a bigger budget (measured 2026-09-10)
+
+The one remaining stage-2 helper, and the measurement is the point: with the corrected recipe
+above (peel first, refute through the hypothesis, `hmd` supplied directly) the closer fixpoint
+runs **26 minutes and does not finish at 60 000 000 heartbeats**, with memory flat at ~516 MB.
+Flat memory is the diagnostic — this is **search**, not a term explosion, so it is not the
+`runNumerics` failure in a new place.
+
+Ten branch points over a 135-line body produce dozens of leaves, and two closers
+(`Step.raiseErr`, `Step.allocArr`) are goal-keyed and so expensive *to fail* at every one of
+them. That is item 1 of §The second walk at a scale where it dominates rather than annoys.
+
+`RubyCore/Proof/KontFrame.lean` met exactly this and recorded the same shape —
+`enterUserMethod` is "`split`-bound on a 135-line body with ten branch points and is the one
+function whose build cost is measured in minutes" — and resolved it by **hand-splitting the
+branch points** so that no search happens. That is the approach here too: ~10 explicit
+`by_cases`/`cases hc :` peels with one `exact` per leaf. Deterministic, and *not* a budget
+question; raising the heartbeat limit again only buys a longer wait.
+
+**Everything else it needs is already on file**: `Step.push_meth`/`push_meth'` for the push (the
+`Sealed.meth` clause L267 added is exactly what covers it) and `methodIn_alloc` to carry the
+lookup across the keyword-bundle and rest-array allocations the body performs first. Its first
+condition is peeled and correct.

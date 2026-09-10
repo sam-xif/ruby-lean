@@ -86,6 +86,33 @@ call family is the reachable prize, so the effort goes there.
 The reopen path, for the record, is one line: `Step.push_free h _ rfl` under `Step.withKont'`. -/
 
 
+/-! ### `enterUserMethod`, parked with a **measurement** — it needs hand-splitting, not a budget
+
+The one `frames.push` in the model whose `captured` comes from a **`MethodDef`** rather than a
+frame or a closure, which is why L267 added `Sealed`'s third clause. Everything it needs is on
+file: `Step.push_meth`/`push_meth'` for the push, and `methodIn_alloc` (`StepSupport.lean`) to
+carry the `Sealed.meth` fact across the allocations the body performs first (a keyword bundle
+via `appendKwHash`, a rest array via `allocArr`).
+
+**What is not on file is a proof, and the reason is measured rather than guessed.** With the
+corrected recipe (peel first, refute through the hypothesis, `hmd` supplied directly) the
+closer fixpoint runs **26 minutes and does not finish at 60 000 000 heartbeats**. Memory stays
+flat at ~516 MB, so this is search, not a term explosion: ten branch points over a 135-line body
+produce dozens of leaves, and two of the closers (`Step.raiseErr`, `Step.allocArr`) are
+goal-keyed and therefore expensive *to fail* at each one — item 1 of §The second walk, at a
+scale where it dominates.
+
+`RubyCore/Proof/KontFrame.lean` hit exactly this and records the same shape: `enterUserMethod`
+is "`split`-bound on a 135-line body with ten branch points and is the one function whose build
+cost is measured in minutes". Its resolution was to **hand-split the branch points** so no
+search happens at all, which is the approach here too — ~10 explicit `by_cases`/`cases hc :`
+peels with one `exact` per leaf. That is deterministic work; it is not a bigger heartbeat
+budget, and raising the budget further would only buy a longer wait.
+
+Its first condition is already peeled and correct:
+`by_cases h1 : (Interp.classifyFull md.params).isNone = true`, with the `true` branch closing by
+`cases hstep` on the `.unsupported`/`.next` constructor mismatch. -/
+
 #print axioms Step.eigenclassOf_go
 #print axioms Step.eigenclassOf
 

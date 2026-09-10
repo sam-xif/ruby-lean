@@ -244,6 +244,12 @@ theorem Step.push_clos' {b : FrameId} {m mid : Machine} (s : Step b m mid) (fr :
     Step b m { mid with frames := mid.frames.push fr, stack := mid.frames.size :: mid.stack } :=
   s.trans (Step.push_clos s.2 fr hcl hfr)
 
+theorem Step.push_meth' {b : FrameId} {m mid : Machine} (s : Step b m mid) (fr : RubyCore.Frame)
+    {k : ObjId} {n : String} {md : MethodDef} (hmd : methodIn mid.heap k n = some md)
+    (hfr : fr.captured = md.capturedFrame) :
+    Step b m { mid with frames := mid.frames.push fr, stack := mid.frames.size :: mid.stack } :=
+  s.trans (Step.push_meth s.2 fr hmd hfr)
+
 theorem Step.push_free' {b : FrameId} {m mid : Machine} (s : Step b m mid) (fr : RubyCore.Frame)
     (hfr : fr.captured = none) :
     Step b m { mid with frames := mid.frames.push fr, stack := mid.frames.size :: mid.stack } :=
