@@ -83,9 +83,12 @@ six `frames.push`es it needs "the new frame's chain misses `b`" (free for a meth
 allocation it needs "the new closure's captured chain misses `b`". Those two are the closure
 premise the sixteenth stall point identifies, arriving where it was predicted to.
 
-So the next step is not more arms: it is `Sealed`'s preservation lemmas — `Sealed.pop`,
-`Sealed.push_method`, `Sealed.push_block`, `Sealed.alloc_closure` — and the `ClosuresOk`
-exactness component they need. The vocabulary above is what they will be stated over.
+So the next step is not more arms: it is `Sealed`'s preservation lemmas — and those are now
+**built** (`Locals.lean`: `Sealed.pop`/`push`/`alloc`/`setLocal`/`frameOnly`/`congr` and the
+`FramesWF` twins), so the vocabulary above is what the *interpreter* walk is stated over.
+`Step.builtins` (`BuiltinsCapRun.lean`) is the first arm of it to close, and the remaining
+`ClosuresOk` exactness component is the sixteenth stall point's, needed by the rules that
+*allocate* a closure rather than by these lemmas.
 -/
 
 /-! ## The composites
@@ -167,8 +170,10 @@ still bind:
    Which is why the repair is in the *model*, not in the invariant.
 3. **A closure a builtin creates is still a closure no `Judge` rule and no prelude line
    created.** The escape the sixteenth stall point did not name is closed here only because
-   this particular builtin's Proc captures nothing. `BuiltinsSeal` is stated below and is
-   **not** proved: the probe is one builtin, and the layer is the walk.
+   this particular builtin's Proc captures nothing — and that is now a *walked* fact rather
+   than a probed one: `BuiltinsCapRun.lean`'s `builtinsSeal` proves `BuiltinsSeal`, and the
+   `Symbol#to_proc` arm discharges its side condition through `capAt_proc_none`. The `#guard`
+   below stays as the cheap regression test for the field's value.
 -/
 
 /-! ### The frame half of `BuiltinsSeal`, proved — and the gap named exactly

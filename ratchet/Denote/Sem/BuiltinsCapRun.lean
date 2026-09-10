@@ -45,4 +45,27 @@ theorem builtinsFramesWF {bid : String} {recv : Value} {args : List Value} {m : 
 
 #print axioms builtinsFramesWF
 
+/-! ## The composite the interpreter walk actually consumes
+
+`Denote/Sem/StepLocal.lean` states the per-step target as `Step b m m'` — the locals claim and
+the invariant, paired so that one arm of the interpreter closes with a single `exact`. A builtin
+arm now has one: `Builtins.run` leaves `b`'s locals alone (`builtins_run_locals`, the frame
+walk), keeps the seal (`builtinsSeal`, the heap walk) and keeps the bookkeeping
+(`builtinsFramesWF`), and `frames.size` is carried by `LocalsSame`'s fourth conjunct so
+`inRange` travels too.
+
+Stated here rather than in `StepLocal.lean` because it is the *conclusion* of this file's walk;
+`StepLocal.lean` owns the vocabulary and this owns the theorem. -/
+
+theorem Step.builtins {b : FrameId} {bid : String} {recv : Value} {args : List Value}
+    {m : Machine} {v : Value} {m' : Machine} (h : StepInv b m)
+    (hrun : Builtins.run bid recv args m = .ok v m') : Step b m m' :=
+  have hls := builtins_run_locals bid recv args m v m' hrun
+  ⟨hls.off,
+   { sealed := builtinsSeal b bid recv args m h.sealed h.wf h.inRange v m' hrun
+     wf := builtinsFramesWF hrun h.wf
+     inRange := by rw [hls.2.2.2]; exact h.inRange }⟩
+
+#print axioms Step.builtins
+
 end Ratchet.Denote

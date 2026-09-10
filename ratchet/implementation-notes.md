@@ -7074,6 +7074,17 @@ smaller closer list each), `set_option profiler true` with a threshold (which fo
 spikes), and **`sample <pid>`** on the live worker, which is what identified the root cause as
 unification against stuck metavariables rather than proof search.
 
+### And one arm of the *next* walk, so it starts from a theorem
+
+`Step.builtins` (`BuiltinsCapRun.lean`): `StepInv b m → Builtins.run … = .ok v m' → Step b m m'`.
+`Denote/Sem/StepLocal.lean` states the interpreter's per-step target as `Step` — the locals claim
+paired with the invariant, so an arm closes with one `exact` — and the builtin arm now has one,
+from `builtins_run_locals` (frames), `builtinsSeal` (heap), `builtinsFramesWF` (bookkeeping), with
+`inRange` riding `LocalsSame`'s `frames.size` conjunct. Two comments in `StepLocal.lean` were
+corrected in the same pass: it still named `Sealed.push_method`/`push_block`/`alloc_closure` as
+the next step (they are built, under the names `Sealed.push`/`alloc`), and still said
+`BuiltinsSeal` was "stated below and **not** proved".
+
 ### State
 
 Semantic ratchet **48 of 83**, unmoved — `BuiltinsSeal` is a layer, not a `Judge` rule, and
@@ -7084,5 +7095,5 @@ then the `stepFn` walk), which is still several clinks from any rung. Syntactic 
 148/148 negative controls**. `lake build` clean, no `sorry`, every `#print axioms` a subset of
 `propext`/`Classical.choice`/`Quot.sound`. **`Ratchet/` untouched.** Added:
 `Denote/Sem/BuiltinsCap{,Regex,Modules,Collections,Strings,Numerics,Objects,Run}.lean`. Changed:
-`Denote/Sem/notes.md`, `Denote/Sem/StepLocal.lean` (its "stated and unproved" note),
-`found-issues.md` (§F22), `AGENTS.md`.
+`Denote/Sem/notes.md`, `Denote/Sem/StepLocal.lean` (its "stated and unproved" note and its
+stale next-step list), `found-issues.md` (§F22), `AGENTS.md`, `HANDOFF.md`.
