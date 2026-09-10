@@ -7074,13 +7074,23 @@ smaller closer list each), `set_option profiler true` with a threshold (which fo
 spikes), and **`sample <pid>`** on the live worker, which is what identified the root cause as
 unification against stuck metavariables rather than proof search.
 
-### And one arm of the *next* walk, so it starts from a theorem
+### And the closer set for the *next* walk, complete
 
-`Step.builtins` (`BuiltinsCapRun.lean`): `StepInv b m → Builtins.run … = .ok v m' → Step b m m'`.
-`Denote/Sem/StepLocal.lean` states the interpreter's per-step target as `Step` — the locals claim
-paired with the invariant, so an arm closes with one `exact` — and the builtin arm now has one,
-from `builtins_run_locals` (frames), `builtinsSeal` (heap), `builtinsFramesWF` (bookkeeping), with
-`inRange` riding `LocalsSame`'s `frames.size` conjunct. Two comments in `StepLocal.lean` were
+`Denote/Sem/StepLocal.lean` states the interpreter's per-step target as `Step b m m'` — the
+locals claim paired with the invariant, so an arm closes with one `exact`. **Every machine change
+`stepFn` performs now has one.** `Step.frameOnly`/`pop`/`setLocal` were already there;
+`Step.builtins` (`BuiltinsCapRun.lean`) composes the two walks above with `inRange` riding
+`LocalsSame`'s `frames.size` conjunct; and `Denote/Sem/StepInterp.lean` adds the two kinds a
+builtin never makes:
+
+* **`Step.alloc`**, stated over **`CapAt`** rather than over `Sealed.alloc`'s two `ReachesB`
+  premises — a deliberate choice, so that the `cap_free` closers built for the `Builtins` walk
+  discharge it *unchanged*. Restating it in `ReachesB` terms would have been the obvious reading
+  and would have needed a second set of closers.
+* **`Step.push_free`/`push_clos`/`push_meth`**, covering **all six** `frames.push` sites: the
+  four that default `captured` to `none` close with no side condition (which is the L266 `Option`
+  paying off), and the two that set it read a `Closure` or a `MethodDef` out of the heap — exactly
+  what `Sealed`'s `clos` and L267's `meth` clauses exist for. Two comments in `StepLocal.lean` were
 corrected in the same pass: it still named `Sealed.push_method`/`push_block`/`alloc_closure` as
 the next step (they are built, under the names `Sealed.push`/`alloc`), and still said
 `BuiltinsSeal` was "stated below and **not** proved".
@@ -7094,6 +7104,7 @@ then the `stepFn` walk), which is still several clinks from any rung. Syntactic 
 `expect_validate` mismatches **35**, unchanged. `checkrungs` **177/177 hand derivations +
 148/148 negative controls**. `lake build` clean, no `sorry`, every `#print axioms` a subset of
 `propext`/`Classical.choice`/`Quot.sound`. **`Ratchet/` untouched.** Added:
-`Denote/Sem/BuiltinsCap{,Regex,Modules,Collections,Strings,Numerics,Objects,Run}.lean`. Changed:
+`Denote/Sem/BuiltinsCap{,Regex,Modules,Collections,Strings,Numerics,Objects,Run}.lean` and
+`Denote/Sem/StepInterp.lean`. Changed:
 `Denote/Sem/notes.md`, `Denote/Sem/StepLocal.lean` (its "stated and unproved" note and its
 stale next-step list), `found-issues.md` (§F22), `AGENTS.md`, `HANDOFF.md`.

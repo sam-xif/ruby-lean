@@ -1710,6 +1710,25 @@ All six are proved and axiom-clean — `runRegex` 19 s, `runModules` 48 s, `runC
 `Sealed.of_capMono`. `builtinsFramesWF` is the bookkeeping twin `Sealed.push` needs beside it.
 So the eighteenth stall point is closed: `Sealed` survives `Builtins.run`.
 
+**And the closer set for the `stepFn` walk is now complete** (`Denote/Sem/StepInterp.lean`).
+`StepLocal.lean` had the three composites a heap-free machine change needs (`Step.frameOnly`,
+`Step.pop`, `Step.setLocal`); `Step.builtins` came with the walk above; and this file adds the
+two kinds the *interpreter* makes and a builtin never did —
+
+* **`Step.alloc`**, stated over **`CapAt`** rather than over `Sealed.alloc`'s two `ReachesB`
+  premises, precisely so the `cap_free` closers built for the `Builtins` walk discharge it
+  unchanged (one pure term per payload iota cannot reduce); and
+* **`Step.push_free`/`push_clos`/`push_meth`**, which between them cover **all six**
+  `frames.push` sites — the four that default `captured` to `none` (ordinary method frames and
+  class bodies) close with no side condition, and the two that set it read a `Closure` or a
+  `MethodDef` out of the heap, which is exactly what `Sealed`'s `clos` and `meth` clauses exist
+  for. The L266 `Option` and the L267 `meth` arm are what make the first four vacuous and the
+  last two lookups.
+
+So every machine change `stepFn` performs has a named closer, and the remaining work in this
+layer is the per-arm walk itself — `evalExpr`'s 43 arms, `applyKont`/`unwind`, and the
+`Dispatch`/`Send`/`Reflect` helpers — with the eight tactic measurements below as the method.
+
 The prediction above was right about the *shape* — its own predicate and its own copy of the
 twenty helpers — and wrong about where the cost sat. The lemmas were an afternoon; the **tactic**
 was the whole difficulty, and it is worth writing down because it is a reusable technique for any
