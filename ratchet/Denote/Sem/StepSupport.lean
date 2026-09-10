@@ -111,20 +111,50 @@ theorem procClosure_alloc {h : Heap} {o : ObjId} {cl : Closure} (obj : Object)
 #print axioms procClosure_lt
 #print axioms procClosure_alloc
 
-/-! ### `callClosure`, parked — and the obstruction is `split`, not the seal
+/-! ### `callClosure` — the first frame-pusher, and its push premise is a *heap* fact
 
-Its push premise is **already discharged**: `Step.push_clos` plus `procClosure_alloc` above give
-`callClosure` everything it needs about the heap, and the first `ite` peels by hand exactly as
-`doReturn`'s does. What blocks it is mechanical: the body is **five nested `ite`s**, `split at h`
-cannot peel any of them (measured — it fails in under a second, the same way it fails on
-`doReturn`'s `have`-bound target), and **`split_ifs` is Mathlib-only and not in this package's
-dependency set** (checked). So each condition has to be transcribed by hand, and two of them
-(`autoSplat`, `arityOk`) are defined through a `let`-chain over `classifySimple`'s result — the
-`newImpl_locals` situation, which `FrameLocal.lean` solved by naming the payload and peeling the
-`if`s by hand across ~15 lines.
+`Sealed.clos` at the closure being invoked is exactly what covers the push, which is what that
+clause exists for (the eighteenth stall point's enumeration). Three shapes in the body: two
+`.unsupported` gates (not `.next`, so refuted), the arity `raiseErr`, and the main path — which
+on the rest-parameter branch **allocates before it pushes**, so `procClosure_alloc` carries the
+heap fact across.
 
-That is ordinary work and it is *not* on the critical path for anything else in stage 1, so it is
-recorded here rather than half-done. Nothing above depends on it. -/
+**Correction to an earlier diagnosis, recorded because it cost three lemmas.** This was parked
+on the grounds that `split at hstep` cannot peel `Interp/`'s chains. That is **false** —
+`set_option trace.split.failure true` reports no failure here, and `split at hstep` peels this
+body fine. What went wrong the first time was *ordering*: closers that ran before `split` and
+searched instead of peeling. `Builtins` was not the wrong sample after all; the closer list was
+in the wrong order. -/
+
+set_option maxHeartbeats 4000000 in
+theorem Step.callClosure {b : FrameId} {m m' : Machine} (h : StepInv b m) {o : ObjId}
+    {cl : Closure} (hcl : procClosure? m.heap (.ref o) = some cl) (args : List Value)
+    (brk : Option FrameId) (selfOv : Option Value) (defmodOv : Option ObjId)
+    (hstep : Interp.callClosure m cl args brk selfOv defmodOv = .next m') : Step b m m' := by
+  rw [Interp.callClosure] at hstep
+  dsimp only at hstep
+  repeat (any_goals (first
+    -- peel first: this is the ordering the first attempt got wrong
+    | split at hstep
+    | (cases hstep; exact Step.raiseErr h _ _)
+    | (cases hstep
+       refine Step.withKont' ?_ _ _
+       exact Step.push_clos h _ hcl rfl)
+    -- `o` and `cl` are implicit and appear only in `hcl`, so it has to be supplied
+    -- directly rather than left as `?_` -- otherwise they are unsolvable at that point
+    | (cases hstep
+       refine Step.withKont' ?_ _ _
+       refine Step.push_clos' ?_ _ (procClosure_alloc _ hcl) rfl
+       exact Step.allocArr h _)
+    | (dsimp only at hstep)
+    -- the two `.unsupported` gates, refuted **by rewriting the hypothesis**. `exact absurd
+    -- hstep (by simp)` is wrong here and wrong subtly: the `by simp` is postponed, so the
+    -- `exact` succeeds, this alternative wins, and the correct closers never run -- 70 stray
+    -- `¬ …` goals surface at the end instead. A refutation in a `first` chain must act on the
+    -- hypothesis, not park a term-level side goal.
+    | (simp at hstep)))
+
+#print axioms Step.callClosure
 
 /-! ### `appendKwHash` and `enterHandler` — the two remaining allocation/write helpers -/
 
@@ -136,15 +166,36 @@ theorem Step.appendKwHash {b : FrameId} {m : Machine} (h : StepInv b m) (args : 
   · exact Step.refl h
   · exact Step.allocHsh h _
 
-/-! ### `enterHandler`, parked with `callClosure` — and for a related reason
+/-! **`enterHandler`** — sets `$!`, binds the `=> x` target in whichever of the five ways the
+target names, then `withKont`. `lvar` is `Step.setLocal'`, `gvar` is `Step.setGlobal'` (which is
+what forced `Step.setLastMatchValue`), `ivar` is `Step.bindIvar`, `const` is a `constSet` — a
+`setClassPayload` that rewrites `consts` and leaves `methods`, so
+`CapMono.setClassPayload_methods` is its shape — and `cvar` is the identity. -/
 
-Four of its five target arms close (`lvar` by `Step.setLocal'`, `gvar` by `Step.setGlobal'`
-— which is what forced `Step.setLastMatchValue` above — `ivar` by `Step.bindIvar`, `cvar` by
-identity). The `const` arm is a `Heap.constSet`, which is a `setClassPayload` that rewrites
-`consts` and leaves `methods`, so `CapMono.setClassPayload_methods` is exactly its shape — but
-`constSet` carries its *own* `match h.classPayload? Object`, and getting the split and the
-`by assumption` for the payload lookup to line up inside a fixpoint is the same mechanical
-problem `callClosure` has. Recorded rather than half-done; nothing else in stage 1 depends on it. -/
+set_option maxHeartbeats 2000000 in
+theorem Step.enterHandler {b : FrameId} {m : Machine} (h : StepInv b m) (node : RubyCore.BeginNode)
+    (exc : Value) (ref : Option (RubyCore.TargetKind × String)) (handler : RubyCore.Expr) :
+    Step b m (Interp.enterHandler m node exc ref handler) := by
+  unfold Interp.enterHandler
+  have h0 : Step b m { m with currentExc := some exc } := Step.frameOnly h rfl rfl rfl
+  refine Step.withKont' ?_ _ _
+  repeat (any_goals (first
+    | split
+    | exact h0
+    | refine Step.setLocal' h0 _ _
+    | refine Step.setGlobal' h0 _ _
+    | exact h0.trans (Step.bindIvar h0.2 _ _)
+    -- the `MCap` goal `heap'` leaves has to reach the *outer* fixpoint, because `constSet`
+    -- carries its own `match classPayload?` and needs this list's `split`
+    | refine Step.heap' h0 rfl rfl ?_
+    | exact MCap.of_eq rfl
+    | exact MCap.set_payload_eq rfl rfl
+    | exact CapMono.setClassPayload_methods (by assumption) rfl
+    -- `constSet` is a *call*: proved once as `CapMono.constSet` rather than unfolded inside
+    -- this fixpoint, which is the kind of guessing that costs a run
+    | exact CapMono.of_constSet _ _ _))
+
+#print axioms Step.enterHandler
 
 #print axioms Step.appendKwHash
 

@@ -235,6 +235,7 @@ theorem CapMono.set_payload {h : Heap} {o : ObjId} {obj : Object}
     (hp : obj.payload = (h.get o).payload) : CapMono h (h.set o obj) :=
   CapMono.set (fun p hc => (capAt_congr hp p).mp hc)
 
+
 /-! ### At the machine
 
 The arms hand back machines, so the walk is stated at machines and the heap projection is
@@ -699,6 +700,18 @@ theorem CapMono.setClassPayload_methods {h : Heap} {o : ObjId} {cp cp' : ClassPa
   simp only [methodOf] at hmd ⊢
   rw [← hm]
   exact hmd
+
+/-- **`constSet`** — a constant write is a `setClassPayload` on `Object` that rewrites
+`consts` and leaves `methods`, or (no payload) the identity. Proved once here rather than peeled
+per use site: it is a *call*, so `split` cannot see its match at a use site until it is unfolded,
+and unfolding it inside a closer fixpoint is exactly the kind of guessing that costs a run. -/
+theorem CapMono.of_constSet (h : Heap) (name : String) (v : Value) :
+    CapMono h (RubyCore.constSet h name v) := by
+  unfold RubyCore.constSet
+  split
+  · rename_i c heq
+    exact CapMono.setClassPayload_methods heq rfl
+  · exact CapMono.refl h
 
 /-! `cap_norm` is `RubyCore/Proof/KontFrame.lean`'s `frame_simp` technique, and it is what makes
 the closer list short. Measured (`profiler.threshold 400` on `runRegex`): a **goal**-keyed helper

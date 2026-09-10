@@ -1919,3 +1919,36 @@ redesign (`Judge` threading a cref, and premises on `defStmt`/`casgn`) or a deci
 `joinT`/`constAsgnOk` and re-run the syntactic ratchet. Both are `Ratchet/` work, both are
 sized in `context-splitting.md` and the stall points, and neither is blocked on anything in
 `Denote/`.
+
+### `split at h` was never the problem — the closer *ordering* was (2026-09-10)
+
+Three `Interp/` helpers were parked on the diagnosis "`split at h` cannot peel `Interp/`'s
+chains, and `split_ifs` is Mathlib-only". The second half is true; the first is **false**, and
+`set_option trace.split.failure true` says so in one line — `split at hstep` peels
+`callClosure`'s five nested `ite`s fine. `Step.callClosure` and `Step.enterHandler` are now
+proved, axiom-clean, in 3.7 s and 93 s.
+
+What actually went wrong, and it is a new failure mode worth the entry:
+
+1. **A refutation in a `first` chain must act on the hypothesis, not park a term-level side
+   goal.** `exact absurd hstep (by simp)` looks like a closer and behaves like a trap: the
+   `by simp` is **postponed**, so the `exact` succeeds, that alternative wins, and the correct
+   closers never run. The symptom is not a failure — it is 70 stray `¬ …` goals surfacing at the
+   *end* of the proof, which reads like the walk being incomplete rather than like one bad
+   alternative. `simp at hstep` is the honest form.
+2. **Peel before closing.** With the trap removed, `split at hstep` still had to come *first* in
+   the list; behind the closers it never got a turn.
+3. **An implicit that appears only in a deferred hypothesis cannot be deferred.**
+   `Step.push_clos'`'s `o`/`cl` occur only in `hcl`, so `refine … ?_ _ ?_ rfl` leaves them
+   unsolvable ("don't know how to synthesize implicit argument `o`"). Supplying
+   `procClosure_alloc _ hcl` directly fixes it — the mirror image of item 3 in §The second walk,
+   where a side condition had to be *deferred* so its object was known. The rule is really: an
+   argument that *determines* metavariables goes early; one that *consumes* them goes late.
+4. **A function call hides its own match.** `constSet` is a call, so `split` cannot see the
+   `match classPayload?` inside it at a use site. `CapMono.of_constSet` proves it once instead of
+   unfolding inside a fixpoint — the same discipline as `capAt_proc_none`.
+
+**The general lesson, third time this layer has paid for it in a new costume:** when a walk
+leaves goals, suspect the *order and shape of the closer list* before concluding anything about
+the interpreter. Two of this layer's three "structural" obstructions have now dissolved into
+tactic bugs (`BuiltinsSeal`'s 35-minute non-termination, and these three lemmas).

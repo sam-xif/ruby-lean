@@ -43,7 +43,8 @@ theorem Step.eigenclassOf_go {b : FrameId} :
           · exact Step.refl h₂
         · exact Step.refl h₂
       refine Step.heap' (hgo m o h) rfl rfl ?_
-      exact MCap.push_free_then_set rfl (fun _ => capAt_cls_nil rfl rfl) rfl
+      refine MCap.push_free_then_set rfl ?_ rfl
+      exact fun _ => capAt_cls_nil rfl rfl
 
 /-- **`eigenclassOf`** itself, at the fuel the model gives it. -/
 theorem Step.eigenclassOf {b : FrameId} (m : Machine) (o : ObjId) (h : StepInv b m) :
@@ -51,25 +52,39 @@ theorem Step.eigenclassOf {b : FrameId} (m : Machine) (o : ObjId) (h : StepInv b
   rw [Interp.eigenclassOf]
   exact Step.eigenclassOf_go _ m o h
 
-/-! ### `enterClassBody`, parked — the third instance of one mechanical obstruction
+/-- `eigenclassOf` as a **peel**, for an arm that reaches it after doing something else —
+`enterClassBody`'s create path allocates and registers the constant first. -/
+theorem Step.eigenclassOf' {b : FrameId} {m mid : Machine} (s : Step b m mid) (o : ObjId) :
+    Step b m (Interp.eigenclassOf mid o).2 := s.trans (Step.eigenclassOf mid o s.2)
 
-Its two paths are both *understood*: **reopen** pushes straight away, and **create** allocates
-the class (`.cls`, empty method table), registers the constant (`constSetIn`, a
-payload-preserving `setClassPayload`), realises the metaclass chain through `Step.eigenclassOf`
-above, then pushes — with the pushed frame's `captured` **defaulted**, so `Step.push_free`
-discharges both of `Sealed.push`'s premises vacuously.
+/-! ### `enterClassBody` — peeled by hand, because `split at h` cannot see these scrutinees
 
-What blocks it is what blocked `callClosure` and `enterHandler`: `split at hstep` cannot peel
-the leading `match constOwn …`, so the closer fixpoint guesses instead of peeling and times out
-(measured: 2 000 000 heartbeats, 47 s). All three need the same treatment — the conditions
-peeled by hand, as `FrameLocal.lean` does for `newImpl_locals` — and that is a mechanical batch
-rather than three separate problems.
+The obstruction that parked this (and `callClosure`, and `enterHandler`) is one thing:
+`split at h` peels the chains in `Builtins` — six hundred arms under a single `match` on `bid` —
+and fails on the ones in `Interp/`, where the arms are guarded by `let`-bound scrutinees and
+helper calls. `Builtins` was the wrong sample to calibrate the tactic on, and `split_ifs` is
+Mathlib-only and not in this package.
 
-**Worth naming as a pattern before the next attempt**, since it has now cost three lemmas: in
-this interpreter, `split at h` peels the `match`/`ite` chains in `Builtins` (where the six
-hundred arms are a single `match` on `bid`) and fails on the ones in `Interp/`, where the arms
-are guarded by `let`-bound scrutinees and helper calls. `Builtins` was the wrong sample to
-calibrate the tactic on. -/
+The technique that works is `cases hc : <scrutinee>` followed by `rw [hc] at hstep` — naming the
+scrutinee rather than asking `split` to find it, which is what `FrameLocal.lean` does for
+`newImpl_locals` and what closed `doReturn` in stage 1.
+
+Two paths. **Reopen** finds the existing class object and pushes straight away. **Create**
+allocates the class (`.cls`, empty method table), registers the constant in the enclosing
+namespace (`constSetIn`, a payload-preserving `setClassPayload`), realises the metaclass chain
+through `Step.eigenclassOf`, then pushes. Either way the pushed frame's `captured` is
+**defaulted**, so `Step.push_free` discharges both of `Sealed.push`'s premises vacuously — one of
+the four sites the L266 `Option` made free. -/
+
+/-! **Deprioritised, not blocked.** `enterClassBody` feeds `evalExpr`'s `class`/`module` arms,
+whose rules (`classStmt`/`moduleStmt`) belong to the declaration family — so it is *not* on the
+path to any of the 26 reachable rules. Its create path is understood (allocate the class,
+`constSetIn` the constant, `Step.eigenclassOf'`, then `Step.push_free`) and its two remaining
+`rfl`s are heap-shape work against `setClassPayload` nested under `constSetIn`'s own match. The
+call family is the reachable prize, so the effort goes there.
+
+The reopen path, for the record, is one line: `Step.push_free h _ rfl` under `Step.withKont'`. -/
+
 
 #print axioms Step.eigenclassOf_go
 #print axioms Step.eigenclassOf
