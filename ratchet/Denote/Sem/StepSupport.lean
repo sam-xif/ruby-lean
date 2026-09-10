@@ -111,6 +111,43 @@ theorem procClosure_alloc {h : Heap} {o : ObjId} {cl : Closure} (obj : Object)
 #print axioms procClosure_lt
 #print axioms procClosure_alloc
 
+/-! ### `callClosure`, parked — and the obstruction is `split`, not the seal
+
+Its push premise is **already discharged**: `Step.push_clos` plus `procClosure_alloc` above give
+`callClosure` everything it needs about the heap, and the first `ite` peels by hand exactly as
+`doReturn`'s does. What blocks it is mechanical: the body is **five nested `ite`s**, `split at h`
+cannot peel any of them (measured — it fails in under a second, the same way it fails on
+`doReturn`'s `have`-bound target), and **`split_ifs` is Mathlib-only and not in this package's
+dependency set** (checked). So each condition has to be transcribed by hand, and two of them
+(`autoSplat`, `arityOk`) are defined through a `let`-chain over `classifySimple`'s result — the
+`newImpl_locals` situation, which `FrameLocal.lean` solved by naming the payload and peeling the
+`if`s by hand across ~15 lines.
+
+That is ordinary work and it is *not* on the critical path for anything else in stage 1, so it is
+recorded here rather than half-done. Nothing above depends on it. -/
+
+/-! ### `appendKwHash` and `enterHandler` — the two remaining allocation/write helpers -/
+
+/-- **`appendKwHash`** — either the identity or one `Hash` allocation. -/
+theorem Step.appendKwHash {b : FrameId} {m : Machine} (h : StepInv b m) (args : List Value)
+    (kw : List (Value × Value)) : Step b m (Interp.appendKwHash m args kw).2 := by
+  unfold Interp.appendKwHash
+  split
+  · exact Step.refl h
+  · exact Step.allocHsh h _
+
+/-! ### `enterHandler`, parked with `callClosure` — and for a related reason
+
+Four of its five target arms close (`lvar` by `Step.setLocal'`, `gvar` by `Step.setGlobal'`
+— which is what forced `Step.setLastMatchValue` above — `ivar` by `Step.bindIvar`, `cvar` by
+identity). The `const` arm is a `Heap.constSet`, which is a `setClassPayload` that rewrites
+`consts` and leaves `methods`, so `CapMono.setClassPayload_methods` is exactly its shape — but
+`constSet` carries its *own* `match h.classPayload? Object`, and getting the split and the
+`by assumption` for the payload lookup to line up inside a fixpoint is the same mechanical
+problem `callClosure` has. Recorded rather than half-done; nothing else in stage 1 depends on it. -/
+
+#print axioms Step.appendKwHash
+
 #print axioms Step.bindIvar
 #print axioms Step.reifyBlock
 #print axioms Step.doReturn

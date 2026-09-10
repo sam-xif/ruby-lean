@@ -155,6 +155,48 @@ theorem Step.heap' {b : FrameId} {m mid m' : Machine} (s : Step b m mid)
     (hs : m'.stack = mid.stack) (hf : m'.frames = mid.frames) (hcm : MCap mid m') :
     Step b m m' := s.trans (Step.heap s.2 hs hf hcm)
 
+/-! ### `$~` writes a **frame**, so `setGlobal` is not `frameOnly`
+
+`Machine.setGlobal` has an `x == "$~"` branch that routes to `setLastMatchValue`, which is a
+`frames.set!` — so `frames` is *not* unchanged and `Step.frameOnly` does not apply. Measured, by
+`Step.enterHandler`'s `gvar` arm failing on exactly this.
+
+It is still a `LocalsSame` change (the frame is copied and only `lastMatch` moves), and
+`FrameLocal.lean` already proved that (`setLastMatchValue_locals`, one of the two frame writers
+the `Builtins` walk had to handle) — so the seal travels by `of_localsSame` with the heap clauses
+coming straight from the hypothesis, the heap being untouched. -/
+
+theorem setLastMatchValue_heap (m : Machine) (v : Value) :
+    (m.setLastMatchValue v).heap = m.heap := by
+  unfold Machine.setLastMatchValue
+  by_cases hlt : m.matchFrameId < m.frames.size
+  · rw [if_pos hlt]
+  · rw [if_neg hlt]
+
+theorem Step.setLastMatchValue {b : FrameId} {m : Machine} (h : StepInv b m) (v : Value) :
+    Step b m (m.setLastMatchValue v) :=
+  have hls := setLastMatchValue_locals m v
+  ⟨hls.off,
+   { sealed := h.sealed.of_localsSame hls
+       (fun o cl hc => h.sealed.clos o cl (by rw [setLastMatchValue_heap] at hc; exact hc))
+       (fun k n md hm => h.sealed.meth k n md
+         (by rw [setLastMatchValue_heap] at hm; exact hm))
+     wf := h.wf.of_localsSame hls
+       (fun o cl hc => h.wf.clos o cl (by rw [setLastMatchValue_heap] at hc; exact hc))
+       (fun k n md hm => h.wf.meth k n md
+         (by rw [setLastMatchValue_heap] at hm; exact hm))
+     inRange := by rw [hls.2.2.2]; exact h.inRange }⟩
+
+theorem Step.setGlobal {b : FrameId} {m : Machine} (h : StepInv b m) (x : String) (v : Value) :
+    Step b m (m.setGlobal x v) := by
+  unfold Machine.setGlobal
+  split
+  · exact Step.setLastMatchValue h v
+  · exact Step.frameOnly h rfl rfl rfl
+
+theorem Step.setGlobal' {b : FrameId} {m mid : Machine} (s : Step b m mid) (x : String)
+    (v : Value) : Step b m (mid.setGlobal x v) := s.trans (Step.setGlobal s.2 x v)
+
 /-! ### …and the same keyed composites as **peels**
 
 An arm rarely ends at `withCtl m c`: it ends at `withCtl m₂ c` where `m₂` is what an earlier
@@ -195,6 +237,12 @@ theorem Step.allocExc' {b : FrameId} {m mid : Machine} (s : Step b m mid) (cls :
 
 theorem Step.setLocal' {b : FrameId} {m mid : Machine} (s : Step b m mid) (x : String)
     (w : Value) : Step b m (mid.setLocal x w) := s.trans (Step.setLocal s.2 x w)
+
+theorem Step.push_clos' {b : FrameId} {m mid : Machine} (s : Step b m mid) (fr : RubyCore.Frame)
+    {o : ObjId} {cl : Closure} (hcl : procClosure? mid.heap (.ref o) = some cl)
+    (hfr : fr.captured = cl.captured) :
+    Step b m { mid with frames := mid.frames.push fr, stack := mid.frames.size :: mid.stack } :=
+  s.trans (Step.push_clos s.2 fr hcl hfr)
 
 theorem Step.push_free' {b : FrameId} {m mid : Machine} (s : Step b m mid) (fr : RubyCore.Frame)
     (hfr : fr.captured = none) :
