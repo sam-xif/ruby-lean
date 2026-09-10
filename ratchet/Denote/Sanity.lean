@@ -172,7 +172,7 @@ def methodsExactB (κ : Ratchet.Ctx) (m : Machine) : Bool :=
   (List.range m.heap.objs.size).all fun k =>
     match m.heap.classPayload? k with
     | some cp => cp.methods.all fun p =>
-        p.2.fromPrelude || p.2.builtin.isSome || declaresName κ p.1
+        p.2.fromPrelude || p.2.builtin.isSome || !nameFreeN κ p.1
     | none => true
 
 theorem classPayload?_oob (h : Heap) {o : ObjId} (ho : h.objs.size ≤ o) :
@@ -190,7 +190,7 @@ theorem methodsExactB_sound {κ : Ratchet.Ctx} {m : Machine} (hb : methodsExactB
     rcases hall (n, md) (by simpa using hmem) with (h3 | h3) | h3
     · exact Or.inl h3
     · exact Or.inr (Or.inl h3)
-    · exact Or.inr (Or.inr h3)
+    · exact Or.inr (Or.inr (by simpa using h3))
   · rw [classPayload?_oob m.heap (Nat.le_of_not_lt hlt)] at hk
     exact absurd hk (by simp)
 
@@ -199,7 +199,7 @@ has three entries, so both are computations at a concrete machine.
 
 `NameFreeOk` is checked in its *strongest* form here — nothing on the chain carries one of the
 three names at all — which is more than the component asks (it would also accept a builtin or
-a tombstone). That is deliberate: at `ctx0` the `declaresName` escape is uniformly `false`, so
+a tombstone). That is deliberate: at `ctx0` the `nameFreeN` escape is uniformly `false`, so
 a weaker check would be indistinguishable from a stronger one at the only machine we exhibit,
 and the stronger one is the fact worth recording. Measured: the toplevel chain carries ~40
 prelude-written methods and none of the three. -/

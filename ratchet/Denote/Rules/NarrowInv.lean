@@ -210,7 +210,7 @@ machine is `m` with its control word moved — so the fact holds at the *post*-c
 which is what the refinement is applied at. -/
 theorem nilq_inv {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {k : Ratchet.VarKind} {x : String}
     {v : Value} {m' : Machine} (hok : StateOk κ Γ I m)
-    (hfree : Ratchet.nameFree κ "nil?" = true) (hk : k = .lvar ∨ k = .ivar)
+    (hfree : Ratchet.nameFreeN κ "nil?" = true) (hk : k = .lvar ∨ k = .ivar)
     (hev : Evals m (.send (some (.var k x)) "nil?" [] none) v m') :
     v = .bool (isNilV (readVar k x m)) ∧ readVar k x m' = readVar k x m := by
   have hsr := send_zeroarg_inv hk hev
@@ -385,7 +385,7 @@ name resolves to, and both the read and the resolution are unchanged at the post
 machine. `ConstScopeOk` is what turns the machine's lexical resolution into `classNamed?`. -/
 theorem isaq_inv {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {k : Ratchet.VarKind} {x : String}
     {cn : String} {v : Value} {m' : Machine} (hok : StateOk κ Γ I m)
-    (hfree : Ratchet.nameFree κ "is_a?" = true) (hk : k = .lvar ∨ k = .ivar)
+    (hfree : Ratchet.nameFreeN κ "is_a?" = true) (hk : k = .lvar ∨ k = .ivar)
     (hev : Evals m (.send (some (.var k x)) "is_a?" [.const cn] none) v m') :
     ∃ j, classNamed? m.heap cn = some j ∧
       v = .bool (isA m.heap (readVar k x m) j) ∧ readVar k x m' = readVar k x m ∧
@@ -605,7 +605,7 @@ the name resolves to — reached through `ClsQueryOk` rather than `QueryOk`, bec
 is the *class object*. -/
 theorem caseeq_inv {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {k : Ratchet.VarKind} {x : String}
     {cn : String} {v : Value} {m' : Machine} (hok : StateOk κ Γ I m)
-    (hce : Ratchet.nameFree κ "===" = true)
+    (hce : Ratchet.nameFreeN κ "===" = true)
     (hcls : (Ratchet.clsGet? κ.classes cn).isSome = true ∨ cn ∈ Ratchet.builtinClsNames)
     (hk : k = .lvar ∨ k = .ivar)
     (hev : Evals m (.send (some (.const cn)) "===" [.var k x] none) v m') :

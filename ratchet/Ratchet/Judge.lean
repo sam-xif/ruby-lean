@@ -2001,7 +2001,23 @@ encodings that used to be separate: `nameFree`, `mroGet? … = none`, `smroGet? 
 a name is conservative (a rule declines); forgetting to *remove* one is unsound, so the fragile
 step lives at one place that sees all the syntax. -/
 structure Neg where
+  /-- The ports the seed enumerated. A port outside this list is unseeded, so a rule asking
+      about it declines — the conservative direction §2.2 names. -/
+  ports : List Port
   noMethod : List (Port × String)
+  /-- Every method name the program declares **anywhere**, on any port. The coarse belt is its
+      complement: `nameFree`'s old question, asked over the whole program instead of over the
+      already-declared tables, for the rules that have no receiver type to hand.
+
+      Stated as the *declared* set rather than the free one on purpose. The free set would have
+      to be enumerated against a name list, and a name missing from that list would read as
+      "free" — the unsound direction. A name missing from `declared` is one the program does not
+      declare, which is the fact itself. -/
+  declared : List String
+  /-- A reflective declarer this pre-pass cannot read — `define_method` with a computed name,
+      `define_singleton_method` with one. Nothing is free at such a program, and saying so with
+      a flag is what keeps the two lists above meaning "and nothing more". -/
+  unpinned : Bool
   /-- No constant of this absolute path is bound anywhere in the program. Not yet consumed by
       any rule — the cref work (§7.2) is what needs it — and seeded empty. -/
   freeConsts : List String
@@ -2056,7 +2072,10 @@ the four named updaters below. -/
 @[reducible] def Ctx.defs (κ : Ctx) : DefTable := κ.pos.defs
 @[reducible] def Ctx.consts (κ : Ctx) : Env := κ.pos.consts
 @[reducible] def Ctx.privConsts (κ : Ctx) : List String := κ.pos.privConsts
+@[reducible] def Ctx.ports (κ : Ctx) : List Port := κ.neg.ports
 @[reducible] def Ctx.noMethod (κ : Ctx) : List (Port × String) := κ.neg.noMethod
+@[reducible] def Ctx.declared (κ : Ctx) : List String := κ.neg.declared
+@[reducible] def Ctx.negUnpinned (κ : Ctx) : Bool := κ.neg.unpinned
 @[reducible] def Ctx.freeConsts (κ : Ctx) : List String := κ.neg.freeConsts
 @[reducible] def Ctx.frame (κ : Ctx) : Option Frame := κ.scope.frame
 @[reducible] def Ctx.closures (κ : Ctx) : ClosTable := κ.scope.closures
@@ -2079,6 +2098,297 @@ the four named updaters below. -/
 /-- Fill in the whole-program block table (`Ctx.withBlocks`, `Ratchet/Validate.lean`). -/
 @[reducible] def Ctx.withClosures (κ : Ctx) (K : ClosTable) : Ctx :=
   { κ with scope := { κ.scope with closures := K } }
+
+
+/-! ### Seeding `Neg` (`context-splitting.md` §2.2, §4.5, §4.6)
+
+`Neg` is not built up as the checker walks; it is **seeded by a whole-program pre-pass**, the
+way `Ctx.closures` already is. That is what closes `found-issues.md` §F20: a `def` buried in an
+expression is still a `def`, and a table reconstructed from *statement* syntax by
+`Ctx.afterStmt` cannot see it, so every premise that read absence as a miss in that table
+believed a name was unclaimed when it was not.
+
+The polarity of the mistake is what makes a pre-pass the right shape. **Forgetting to seed a
+name is conservative** — the rule that wanted the fact declines — while forgetting to *remove*
+one is unsound. So the fragile step lives at one place that sees all the syntax, instead of at
+every rule that might declare something.
+
+Three pieces:
+
+1. `negEmit` — walk the whole program and emit one `(Port, name)` for every declaration,
+   *wherever* it is written. The site is carried down, so a `def` nested in a method body of
+   `class C` lands on `inst C` and not on `Object`, which is both correct and the precision
+   §10.1 measured as paying for the seeding.
+2. `negWild` — the declarations whose port cannot be pinned (`def obj.m` for an `obj` that is
+   not the enclosing `self`, `define_singleton_method`, a computed `define_method` name). These
+   remove the name from **every** port; §4.6 argues that is the only sound answer available,
+   since `Ty.inst` carries no object identity.
+3. `negSeed` — the grid, closed under both chains of §4.6. -/
+
+/-- The method names a rule ever asks `Neg` about. A name absent from this list is simply never
+seeded, so a rule asking about it fails its premise — the conservative direction. -/
+def negNames : List String :=
+  ["lambda", "proc", "method_missing", "is_a?", "===", "nil?", "raise", "to_s", "class", "x",
+   "new", "call"]
+
+/-- The metaclass tail of §4.6: once a class object's singleton chain is exhausted, `C.foo`
+falls through to these classes' **instance** methods. So `(cls C, n)` may only be seeded when
+none of them declares `n` either — which is what makes the seed strictly finer than the
+`nameFree κ "to_s"` belt §F7 needed, rather than merely different. -/
+def metaTail : List String := ["Class", "Module", "Object", "Kernel", "BasicObject"]
+
+/-- The class objects the seed enumerates. Anything outside this list is unseeded, so a rule
+asking about it declines. -/
+def negOwnerNames (C : CTable) : List String :=
+  ("Object" :: "Proc" :: "Regexp" :: "Range" :: metaTail ++ builtinClsNames) ++ C.map (·.name)
+
+/-- One declaration, at the port it lands on. -/
+abbrev NegEmit := Port × String
+
+/-- What one pass over a subexpression yields: the declarations it performs, the names whose
+port it could not pin, and every `class`/`module` node it contains — the last so that the
+**whole-program** class table can be folded from them, since `Ctx.afterStmt`'s version sees
+only top-level statements and that is the other half of §F20. -/
+structure NegAcc where
+  emits : List NegEmit
+  wild : List String
+  decls : List Expr
+
+instance : Append NegAcc where
+  append a b := ⟨a.emits ++ b.emits, a.wild ++ b.wild, a.decls ++ b.decls⟩
+
+def NegAcc.empty : NegAcc := ⟨[], [], []⟩
+
+/-- The site a `def` written here installs onto: the lexically enclosing class or module, or
+`Object` at top level. Carried down through method bodies and blocks, because that is what
+Ruby's *cref* does — `class C; def a; def b; end; end; end` makes `b` an instance method of
+`C`. -/
+abbrev NegSite := String
+
+/-- The instance-method names an `attr_*` call declares. `attr_writer`/`attr_accessor` also
+declare the `name=` setter. -/
+def attrNames (s : NegSite) (m : String) : List Expr → List NegEmit
+  | [] => []
+  | .sym n :: rest =>
+    let setter := if m == "attr_reader" then [] else [(Port.inst s, n ++ "=")]
+    (Port.inst s, n) :: setter ++ attrNames s m rest
+  | _ :: rest => attrNames s m rest
+
+mutual
+
+/-- Every declaration the program performs, with the port it lands on. Recurses into **every**
+expression position, which is the whole point (§F20). -/
+def negEmit (s : NegSite) : Expr → NegAcc
+  | .def' n _ body => ⟨[(.inst s, n)], [], []⟩ ++ negEmit s body
+  -- `def self.m` inside `class C` is a singleton method of `C`. Anywhere else — a `def obj.m`
+  -- on some other receiver, or a `def self.m` at top level, where `self` is `main` — the port
+  -- is not expressible (`Ty.inst` carries no object identity), so §4.6's uniform answer: the
+  -- name leaves every port.
+  | .defs recv n _ body =>
+    (match recv with
+     | .self' => if s == "Object" then ⟨[], [n], []⟩ else ⟨[(.cls s, n)], [], []⟩
+     | _ => ⟨[], [n], []⟩) ++ negEmit s recv ++ negEmit s body
+  | e@(.class' n sup body) =>
+    ⟨[], [], [e]⟩ ++ negEmitOpt s sup ++ negEmit n body
+  | e@(.module' n body) => ⟨[], [], [e]⟩ ++ negEmit n body
+  -- A `class << obj` body declares singleton methods on an object the checker cannot name, so
+  -- every name it declares leaves every port.
+  | .sclass obj body =>
+    let inner := negEmit s body
+    ⟨[], inner.emits.map (·.2), []⟩ ++ negEmit s obj ++ inner
+  | .alias' nw _ => ⟨[(.inst s, nw)], [], []⟩
+  | .undef ns => ⟨[], ns, []⟩
+  | .send recv m args blk =>
+    let base := negEmitOpt s recv ++ negEmitAll s args ++ negEmitOpt s blk
+    -- The reflective declarers. A literal-symbol name is as pinnable as a `def`; a computed
+    -- one is not, and there is nothing honest to do with it but drop every name — which the
+    -- `""` marker does, by emptying the seed.
+    if m == "attr_reader" || m == "attr_accessor" || m == "attr_writer" then
+      ⟨attrNames s m args, [], []⟩ ++ base
+    else if m == "define_method" then
+      (match args with
+       | [.sym n] => ⟨[(.inst s, n)], [], []⟩
+       | _ => ⟨[], [""], []⟩) ++ base
+    else if m == "alias_method" then
+      (match args with
+       | [.sym nw, _] => ⟨[(.inst s, nw)], [], []⟩
+       | _ => ⟨[], [""], []⟩) ++ base
+    else if m == "define_singleton_method" then
+      (match args with
+       | .sym n :: _ => ⟨[], [n], []⟩
+       | _ => ⟨[], [""], []⟩) ++ base
+    else base
+  | .seq es => negEmitAll s es
+  | .vasgn _ _ e => negEmit s e
+  | .casgn _ e => negEmit s e
+  | .cpathAsgn b _ e => negEmitOpt s b ++ negEmit s e
+  | .cpath b _ => negEmitOpt s b
+  | .array es => negEmitAll s es
+  | .hash ps => negEmitPairs s ps
+  | .block _ _ body => negEmit s body
+  | .yield' args => negEmitAll s args
+  | .blockpass e => negEmitOpt s e
+  | .if' c t e => negEmit s c ++ negEmit s t ++ negEmitOpt s e
+  | .while' c body => negEmit s c ++ negEmit s body
+  | .dowhile body c => negEmit s body ++ negEmit s c
+  | .for' _ coll body => negEmit s coll ++ negEmit s body
+  | .begin' body rescues els ens =>
+    negEmit s body ++ negEmitRescues s rescues ++ negEmitOpt s els ++ negEmitOpt s ens
+  | .super' args blk => negEmitAll s args ++ negEmitOpt s blk
+  | .zsuper blk => negEmitOpt s blk
+  | .ret e => negEmitOpt s e
+  | .brk e => negEmitOpt s e
+  | .nxt e => negEmitOpt s e
+  | .splat e => negEmitOpt s e
+  | .defined e => negEmit s e
+  | .kwargs es => negEmitKw s es
+  -- `class A::B` / `module A::B` — the base is an expression and the body declares under `B`.
+  -- The node itself is **not** offered to `extendClasses`, which does not read these shapes; a
+  -- class it cannot read is a class no rule can use, and the declarations inside it are still
+  -- emitted, which is the conservative direction.
+  | .scopedClass b n body => negEmitOpt s b ++ negEmit n body
+  | .scopedModule b n body => negEmitOpt s b ++ negEmit n body
+  | _ => NegAcc.empty
+
+def negEmitAll (s : NegSite) : List Expr → NegAcc
+  | [] => NegAcc.empty
+  | e :: es => negEmit s e ++ negEmitAll s es
+
+def negEmitOpt (s : NegSite) : Option Expr → NegAcc
+  | none => NegAcc.empty
+  | some e => negEmit s e
+
+def negEmitPairs (s : NegSite) : List (Expr × Expr) → NegAcc
+  | [] => NegAcc.empty
+  | (k, v) :: ps => negEmit s k ++ negEmit s v ++ negEmitPairs s ps
+
+def negEmitKw (s : NegSite) : List KwEntry → NegAcc
+  | [] => NegAcc.empty
+  | .pair _ v :: es => negEmit s v ++ negEmitKw s es
+  | .dyn k v :: es => negEmit s k ++ negEmit s v ++ negEmitKw s es
+  | .splat e :: es => negEmit s e ++ negEmitKw s es
+
+def negEmitRescues (s : NegSite) :
+    List (List Expr × Option (TargetKind × String) × Expr) → NegAcc
+  | [] => NegAcc.empty
+  | (cls, _, body) :: rs => negEmitAll s cls ++ negEmit s body ++ negEmitRescues s rs
+
+end
+
+
+/-! #### Closing the seed under the two chains (§4.6)
+
+A raw emission says where a declaration *lands*; a `Neg` fact is about a whole **chain**. The
+two are joined here, and the closure is done **at seed time** rather than re-checked per rule —
+which is §10.4's resolution: the pre-pass sees the entire static hierarchy (superclasses,
+`include`, `prepend`, `extend`), so `Coherent` modulo inheritance holds by construction. -/
+
+/-- The instance lookup chain of `c` under the whole-program table, plus `Object` — which is on
+every instance chain and is where a top-level `def` lands. -/
+def negInstChain (C : CTable) (c : String) : List String :=
+  ((mroList? C c).getD [c]) ++ ["Object"]
+
+/-- The class object's own chain: `c` and its superclasses, walked with `C.length` fuel the way
+`lookupUpS` does. -/
+def negSingChain (C : CTable) : Nat → String → List String
+  | 0, _ => []
+  | k + 1, n =>
+    n :: (match clsGet? C n with
+          | some c => match c.super? with
+                      | some sn => negSingChain C k sn
+                      | none => []
+          | none => [])
+
+/-- Does any emission put `n` on `inst c`'s chain? Also reads each chain entry's `prepends`
+and `includes`, which `mroList?` already folds in, so this is a lookup rather than a walk. -/
+def negInstHit (C : CTable) (E : List NegEmit) (c n : String) : Bool :=
+  (negInstChain C c).any (fun a => E.contains (.inst a, n))
+
+/-- Does any emission put `n` on `cls c`'s chain — the singleton chain, the modules each of its
+entries `extend`s, **or the metaclass tail**? The third disjunct is §F7's belt made precise:
+today's `nameFree κ "to_s"` goes false as soon as any class anywhere declares `to_s`; this asks
+only about `Class`/`Module`/`Object`/`Kernel`/`BasicObject`. -/
+def negClsHit (C : CTable) (E : List NegEmit) (c n : String) : Bool :=
+  let chain := negSingChain C (C.length + 1) c
+  chain.any (fun a =>
+    E.contains (.cls a, n) ||
+    (match clsGet? C a with
+     | some cl => cl.extended.any (fun mm => negInstHit C E mm n)
+     | none => false)) ||
+  metaTail.any (fun t => negInstHit C E t n)
+
+/-- The whole-program class table: `extendClasses` folded over **every** `class`/`module` node
+`negEmit` found, wherever written. -/
+def wholeClasses (ds : List Expr) : CTable := ds.foldl extendClasses []
+
+/-- The `Neg` a program is checked under. -/
+def negSeed (p : Expr) : Neg :=
+  let acc := negEmit "Object" p
+  let C := wholeClasses acc.decls
+  let E := acc.emits
+  -- A declaration whose name could not be pinned to a port removes that name everywhere; the
+  -- empty string is `negEmit`'s marker for "a reflective declarer with a computed name", which
+  -- nothing can be sound about, so it empties the seed.
+  if acc.wild.contains "" then ⟨[], [], [], true, []⟩ else
+  let names := negNames.filter (fun n => !acc.wild.contains n)
+  let owners := negOwnerNames C
+  let ports := owners.flatMap (fun c => [Port.inst c, Port.cls c])
+  let noMethod :=
+    names.flatMap (fun n =>
+      owners.flatMap (fun c =>
+        (if negInstHit C E c n then [] else [(Port.inst c, n)]) ++
+        (if negClsHit C E c n then [] else [(Port.cls c, n)])))
+  -- The coarse belt, whole-program: every name the program declares anywhere, at any port or
+  -- at none. This is what `nameFree` used to read off the already-declared tables.
+  ⟨ports, noMethod, E.map (·.2) ++ acc.wild, false, []⟩
+
+/-! #### Reading `Neg`
+
+Three queries, and the shape §4.4 argues for: every one is a **lookup**, not a whole-table
+scan. A miss in a positive table is a claim about that table's completeness; a hit in `Neg` is
+a fact of its own. -/
+
+/-- **Is `n` free on this receiver port?** The keyed query (§4.5). -/
+def portFree (κ : Ctx) (p : Port) (n : String) : Bool := κ.noMethod.contains (p, n)
+
+/-- **Is `n` declared nowhere in the program?** The coarse belt, for a rule with no receiver
+type to hand — `Judge.bareName`, `lambdaLit`, `raiseCls`, and the narrowing guards, all of
+which are implicit-self sends whose `self` this judgment does not always type.
+
+This is `nameFree`'s question, and the only change is *where* it is asked: over the whole
+program, so a `def` written anywhere at all answers it (`found-issues.md` §F20), rather than
+over the tables `Ctx.afterStmt` reconstructed from statement syntax. -/
+def nameFreeN (κ : Ctx) (n : String) : Bool := !κ.negUnpinned && !κ.declared.contains n
+
+/-- The receiver ports a type denotes, or `none` where the type pins no class — `.any`, an
+arrow, an ivar spine. `none` is not "no ports": a rule asking about an unpinned receiver gets
+`false` and declines. -/
+def tyPorts? : Ty → Option (List Port)
+  | .int => some [.inst "Integer"]
+  | .float => some [.inst "Float"]
+  | .bool => some [.inst "TrueClass", .inst "FalseClass"]
+  | .nilT => some [.inst "NilClass"]
+  | .sym => some [.inst "Symbol"]
+  | .cls n => some [.inst n]
+  | .clsOf n => some [.cls n]
+  | .arrayOf _ => some [.inst "Array"]
+  | .hashOf _ _ => some [.inst "Hash"]
+  | .inst n _ => some [.inst n]
+  | .clos _ _ _ => some [.inst "Proc"]
+  | .never => some []
+  | .nilable τ => (tyPorts? τ).map (fun ps => .inst "NilClass" :: ps)
+  | .union σ τ =>
+    match tyPorts? σ, tyPorts? τ with
+    | some a, some b => some (a ++ b)
+    | _, _ => none
+  | .sameAs _ τ => tyPorts? τ
+  | _ => none
+
+/-- **Is `n` free on every port a receiver of type `σ` can have?** -/
+def tyFree (κ : Ctx) (σ : Ty) (n : String) : Bool :=
+  match tyPorts? σ with
+  | some ps => ps.all (fun p => portFree κ p n)
+  | none => false
 
 /-- **The frame-sensitive records in `Ctx` that an assignment can invalidate.**
 
@@ -2877,7 +3187,7 @@ def narrowNameOk (κ : Ctx) : NarrowKind → Bool
   | .isA cn =>
     (constGet? κ cn).isNone && coreConstFree κ &&
     ((clsGet? κ.classes cn).isSome || builtinClsNames.contains cn) &&
-    nameFree κ "===" && nameFree κ "is_a?" && nameFree κ "method_missing" &&
+    nameFreeN κ "===" && nameFreeN κ "is_a?" && nameFreeN κ "method_missing" &&
     -- and §F9's root-chain guard, which `isAAnswer`'s `.inst` arm consults
     mixinFreeChain κ.classes rootAncestors
   -- **§F14**: `x.nil?` is a *dispatch*, and `nil?` is an ordinary method name. A program that
@@ -2887,7 +3197,7 @@ def narrowNameOk (κ : Ctx) : NarrowKind → Bool
   -- certified, and it runs `nil + 1`. `Judge.nilQuery` guards its own *typing* of `x.nil?`
   -- with `NilQSafe`, which is about the receiver's shape rather than the name; the narrowing
   -- needs the name, and `nameFree` is the same premise §F6 added for `is_a?`.
-  | .isNil => nameFree κ "nil?" && nameFree κ "method_missing"
+  | .isNil => nameFreeN κ "nil?" && nameFreeN κ "method_missing"
   | _ => true
 
 /-- **The two branch environments of an `if`, given the state at the end of its condition.**
@@ -3104,8 +3414,9 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       name a defined method (`def get5; 5; end; get5`, no parentheses — the desugarer emits
       a `vcall`, not an argument-less `send`). Such a program is simply not typed. -/
   | bareName {κ : Ctx} {Γ : Env} {I : Ty} {m : String} :
-      BareNameError m → defDeclared? κ.defs m = none → κ.selfTy = none →
-      (hmm : nameFree κ "method_missing" = true := by rfl) →
+      BareNameError m → κ.selfTy = none →
+      (hx : nameFreeN κ m = true := by rfl) →
+      (hmm : nameFreeN κ "method_missing" = true := by rfl) →
       Judge κ Γ I (.vcall m) .any Γ I
   /-- `if c then t else e`. Three things about this rule are decisions, not defaults:
 
@@ -3778,7 +4089,7 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       {body : Expr} {idx : Nat} :
       (m = "lambda" ∨ m = "proc") →
       closIdx? κ.closures ps body = some idx →
-      (hfree : nameFree κ m = true := by rfl) →
+      (hfree : nameFreeN κ m = true := by rfl) →
       (hret : procRetOk m body = true := by rfl) →
       Judge κ Γ I (.send none m [] (some (.block ps [] body)))
         (.clos idx (envToSpine Γ) (κ.selfTy.getD .never)) Γ I
@@ -4172,8 +4483,8 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       {args : List Expr} {σ : Ty} {cn : String} :
       Judge κ Γ I recv σ Γ₁ I₁ → JudgeAll κ Γ₁ I₁ args [.clsOf cn] Γ₂ I₂ →
       isADispatchOk κ.classes σ = true →
-      (hisa : nameFree κ "is_a?" = true := by rfl) →
-      (hmm : nameFree κ "method_missing" = true := by rfl) →
+      (hisa : nameFreeN κ "is_a?" = true := by rfl) →
+      (hmm : nameFreeN κ "method_missing" = true := by rfl) →
       Judge κ Γ I (.send (some recv) "is_a?" args none) .bool Γ₂ I₂
   /-- **`C === v` → `Bool`** (tier 12) — `Module#===`, which is what `case v when C` desugars
       to.
@@ -4202,9 +4513,8 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       {args : List Expr} {cn : String} {σ : Ty} :
       Judge κ Γ I recv (.clsOf cn) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args [σ] Γ₂ I₂ →
-      smroGet? κ.classes cn "===" = none →
-      (hce : nameFree κ "===" = true := by rfl) →
-      (hmm : nameFree κ "method_missing" = true := by rfl) →
+      (hce : nameFreeN κ "===" = true := by rfl) →
+      (hmm : nameFreeN κ "method_missing" = true := by rfl) →
       Judge κ Γ I (.send (some recv) "===" args none) .bool Γ₂ I₂
   -- ### Tier 13 — constants
   --
@@ -4286,8 +4596,8 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       JudgeAll κ Γ I args argTys Γ' I' →
       (argTys = [.clsOf n] ∨ argTys = [.clsOf n, .cls "String"]) →
       excName? κ.classes n = true →
-      (hrs : nameFree κ "raise" = true := by rfl) →
-      (hmm : nameFree κ "method_missing" = true := by rfl) →
+      (hrs : nameFreeN κ "raise" = true := by rfl) →
+      (hmm : nameFreeN κ "method_missing" = true := by rfl) →
       Judge κ Γ I (.send none "raise" args none) .never Γ' I'
   /-- **`begin … rescue … end`** (tier 16b), and in this target it is not error handling:
       `Vulnerability` raises and rescues its own `Uncomparable` as the **comparison protocol**,
@@ -4406,8 +4716,8 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       {n : String} {ivars : Ty} :
       Judge κ Γ I recv (.inst n ivars) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args [] Γ₂ I₂ →
-      (hcls : nameFree κ "class" = true := by rfl) →
-      (hmm : nameFree κ "method_missing" = true := by rfl) →
+      (hcls : nameFreeN κ "class" = true := by rfl) →
+      (hmm : nameFreeN κ "method_missing" = true := by rfl) →
       Judge κ Γ I (.send (some recv) "class" args none) (.clsOf n) Γ₂ I₂
   /-- **`C.to_s` — `Module#to_s`, the class's name** (tier 13f). Total and never raises, so the
       only way it can be type-stuck is a `def self.to_s` on the class object, which the third
@@ -4425,9 +4735,8 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Env → Ty → Prop
       {n : String} :
       Judge κ Γ I recv (.clsOf n) Γ₁ I₁ →
       JudgeAll κ Γ₁ I₁ args [] Γ₂ I₂ →
-      smroGet? κ.classes n "to_s" = none →
-      (hts : nameFree κ "to_s" = true := by rfl) →
-      (hmm : nameFree κ "method_missing" = true := by rfl) →
+      (hts : nameFreeN κ "to_s" = true := by rfl) →
+      (hmm : nameFreeN κ "method_missing" = true := by rfl) →
       Judge κ Γ I (.send (some recv) "to_s" args none) (.cls "String") Γ₂ I₂
   /-- **`M::X = 4` — a scoped constant assignment** (tier 13c). `casgn`'s twin, and the same
       division of labour: this rule types the statement at its right-hand side's type and

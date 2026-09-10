@@ -588,7 +588,7 @@ this is a fact about the machine the ladder starts from rather than a hopeful in
 def MethodsExact (κ : Ctx) (m : Machine) : Prop :=
   ∀ k cp, m.heap.classPayload? k = some cp →
     ∀ n md, (n, md) ∈ cp.methods →
-      md.fromPrelude = true ∨ md.builtin.isSome = true ∨ declaresName κ n = true
+      md.fromPrelude = true ∨ md.builtin.isSome = true ∨ nameFreeN κ n = false
 
 /-- **`self` is a real object.** Every reference `StateOk` describes has to be one the heap
 actually holds, and this is the one place it was not said: `Machine.currentFrame.self`.
@@ -651,7 +651,7 @@ Three things about the shape, each of which could have gone another way and did 
 def NameFreeOk (κ : Ctx) (m : Machine) : Prop :=
   ∀ n ∈ shadowableNames, ∀ o md,
     Interp.methodOn m.heap (classOf m.heap m.currentFrame.self) n = some (o, md) →
-      md.builtin.isSome = true ∨ md.undefined = true ∨ declaresName κ n = true
+      md.builtin.isSome = true ∨ md.undefined = true ∨ nameFreeN κ n = false
 
 /-- **What a bare name at top level must not find** (`Judge.bareName`).
 
@@ -681,7 +681,7 @@ Quantified over the `BareNameError` **inductive** rather than over a copied list
 a row added to that table is covered here the same day — and `Denote/Sanity.lean`'s `Bool` is
 then what has to be re-measured. -/
 def BareNameFree (κ : Ctx) (m : Machine) : Prop :=
-  ∀ n, Ratchet.BareNameError n → defDeclared? κ.defs n = none → κ.selfTy = none →
+  ∀ n, Ratchet.BareNameError n → nameFreeN κ n = true → κ.selfTy = none →
     lookup m.heap m.currentFrame.self n = none
 
 /-- **No *user* `method_missing` is reachable from `self`** (`Judge.bareName`).
@@ -700,10 +700,10 @@ Two things about the shape:
   than at the sharper test it could have made is the point: a component is a claim about what
   the machine does, and inventing a check the machine does not perform would make the rung a
   proof about a different interpreter.
-* **The escape is the rule's own premise**, `nameFree κ "method_missing" = true` — the premise
+* **The escape is the rule's own premise**, `nameFreeN κ "method_missing" = true` — the premise
   clink 52 added — for the same reason `BareNameFree`'s is. -/
 def MissFree (κ : Ctx) (m : Machine) : Prop :=
-  nameFree κ "method_missing" = true → κ.selfTy = none →
+  nameFreeN κ "method_missing" = true → κ.selfTy = none →
     ∀ o md, Interp.methodOn m.heap (classOf m.heap m.currentFrame.self) "method_missing"
       = some (o, md) → md.builtin.isSome = true
 
@@ -737,7 +737,7 @@ def queryBuiltins : List (String × String) :=
   [("is_a?", "Object#is_a?"), ("class", "Object#class"), ("raise", "Object#raise")]
 
 def QueryOk (κ : Ctx) (m : Machine) : Prop :=
-  ∀ mname bid, (mname, bid) ∈ queryBuiltins → nameFree κ mname = true → ∀ k,
+  ∀ mname bid, (mname, bid) ∈ queryBuiltins → nameFreeN κ mname = true → ∀ k,
     (∀ owner md, Interp.methodOn m.heap k mname = some (owner, md) →
         md.builtin = some bid ∧ md.undefined = false ∧ md.visibility = .pub ∧
         md.fromPrelude = false ∧
@@ -762,7 +762,7 @@ def clsQueryBuiltins : List (String × String) :=
   [("===", "Module#==="), ("to_s", "Module#to_s")]
 
 def ClsQueryOk (κ : Ctx) (m : Machine) : Prop :=
-  ∀ mname bid, (mname, bid) ∈ clsQueryBuiltins → nameFree κ mname = true → ∀ o,
+  ∀ mname bid, (mname, bid) ∈ clsQueryBuiltins → nameFreeN κ mname = true → ∀ o,
     (m.heap.classPayload? o).isSome = true →
     (∀ owner md, Interp.methodOn m.heap (classOf m.heap (.ref o)) mname = some (owner, md) →
         md.builtin = some bid ∧ md.undefined = false ∧ md.visibility = .pub ∧
@@ -915,7 +915,7 @@ disjunction in the conclusion is enough for the consumer. Measured at the booted
 105 classes resolve `nil?` nowhere (14 modules and `BasicObject`) and **zero** resolve it to
 anything else. -/
 def NilQueryOk (κ : Ctx) (m : Machine) : Prop :=
-  Ratchet.nameFree κ "nil?" = true → ∀ k,
+  Ratchet.nameFreeN κ "nil?" = true → ∀ k,
     (∀ owner md, Interp.methodOn m.heap k "nil?" = some (owner, md) →
         (md.builtin = some "Object#nil?" ∨ md.builtin = some "NilClass#nil?") ∧
         md.undefined = false ∧ md.visibility = .pub ∧ md.fromPrelude = false ∧

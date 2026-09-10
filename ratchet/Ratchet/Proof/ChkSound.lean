@@ -785,18 +785,16 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
           · exact absurd h (by simp)
         · rename_i _ _hdef
           split at h
+          · rename_i hbare
+            injection h with h
+            injection h with h h'; injection h' with h' h''
+            subst h; subst h'; subst h''
+            -- Three conjuncts now: the name table, §F20's whole-program `Neg` membership for
+            -- the name itself, and §F4's for `method_missing`.
+            obtain ⟨hbare, hmm⟩ := Bool.and_eq_true .. |>.mp hbare
+            obtain ⟨hbare, hx⟩ := Bool.and_eq_true .. |>.mp hbare
+            exact .bareName (bareNameError?_sound hbare) hself hx hmm
           · exact absurd h (by simp)
-          · rename_i hdecl
-            split at h
-            · rename_i hbare
-              injection h with h
-              injection h with h h'; injection h' with h' h''
-              subst h; subst h'; subst h''
-              -- `found-issues.md` §F4: the guard is now a conjunction, and the second
-              -- conjunct *is* the rule's `method_missing` premise.
-              obtain ⟨hbare, hmm⟩ := Bool.and_eq_true .. |>.mp hbare
-              exact .bareName (bareNameError?_sound hbare) hdecl hself hmm
-            · exact absurd h (by simp)
   · -- `self'`: only where the context supplies a type.
     split at h
     · rename_i hself
@@ -1277,18 +1275,16 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
               subst hm
               split at h
               · -- `split` substituted `σ := .clsOf cn` and `argTys := [_]`
+                -- §F7's belt is now one `cls`-keyed `Neg` lookup per name (the seed closes it
+                -- over the singleton chain *and* the metaclass tail), so the guard `if` splits
+                -- into exactly the rule's two premises.
                 split at h
-                · rename_i hok
-                  -- §F7's two `nameFree` conjuncts: the guard `if` splits, and its true
-                  -- branch carries exactly the rule's new premises
-                  split at h
-                  · rename_i hnf
-                    simp only [Bool.and_eq_true] at hnf
-                    injection h with h
-                    injection h with h h'; injection h' with h' h''
-                    subst h; subst h'; subst h''
-                    exact .caseEqQuery (chk_sound hrecv) (chkAll_sound hargs) hok hnf.1 hnf.2
-                  · exact absurd h (by simp)
+                · rename_i hnf
+                  simp only [Bool.and_eq_true] at hnf
+                  injection h with h
+                  injection h with h h'; injection h' with h' h''
+                  subst h; subst h'; subst h''
+                  exact .caseEqQuery (chk_sound hrecv) (chkAll_sound hargs) hnf.1 hnf.2
                 · exact absurd h (by simp)
               · -- tier 16: the receiver is a *value*, so `===` is the `PrimSig` row
                 split at h
@@ -1340,19 +1336,20 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                       · exact absurd h (by simp)
                     · exact absurd h (by simp)
                   · rename_i hsmnone
-                    -- Tier 13f: `Module#to_s` is matched here, after `smroGet?` missed -- and
-                    -- that miss *is* `Judge.clsToS`'s guard, so `hsmnone` is the premise.
+                    -- Tier 13f: `Module#to_s` is matched here, after `smroGet?` missed. The
+                    -- miss is no longer `clsToS`'s guard -- that rule asks `Neg` at the
+                    -- `cls n` port instead, which is closed over the eigenclass chain and the
+                    -- metaclass tail alike -- so it is only what routes `chk` here.
                     split at h
                     · rename_i hts
                       injection h with h
                       injection h with h h'; injection h' with h' h''
                       subst h; subst h'; subst h''
-                      -- four conjuncts now: the name, the arity, and §F7's two `nameFree`s
+                      -- four conjuncts: the name, the arity, and the two `Neg` lookups
                       simp only [Bool.and_eq_true, decide_eq_true_eq] at hts
                       obtain ⟨⟨⟨hmts, hzero⟩, hnf⟩, hnfmm⟩ := hts
                       subst hmts
-                      exact .clsToS (chk_sound hrecv) (hzero ▸ chkAll_sound hargs) hsmnone
-                        hnf hnfmm
+                      exact .clsToS (chk_sound hrecv) (hzero ▸ chkAll_sound hargs) hnf hnfmm
                     · split at h
                       · rename_i hnew
                         split at h

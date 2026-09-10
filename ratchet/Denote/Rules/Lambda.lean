@@ -119,16 +119,16 @@ theorem frameLocal_head (m : Machine) (x : String) :
 @[simp] theorem returnTarget_reCtl (m : Machine) (c : Ctl) (k : List Kont) :
     Interp.returnTarget (reCtl m c k) = Interp.returnTarget m := rfl
 
-/-! ## `nameFree` is `declaresName`'s negation -/
+/-! ## The escape and the premise are now the same fact
 
-theorem nameFree_declaresName {κ : Ctx} {n : String} (h : nameFree κ n = true) :
-    declaresName κ n = false := by
-  simp only [nameFree, Bool.and_eq_true, List.all_eq_true, Option.isNone_iff_eq_none,
-    List.find?_eq_none] at h
-  simp only [declaresName, Bool.or_eq_false_iff, List.any_eq_false, Bool.not_eq_true]
-  exact ⟨fun d hd => by simpa using h.1 d hd,
-         fun c hc => ⟨fun d hd => by simpa using (h.2 c hc).1 d hd,
-                      fun d hd => by simpa using (h.2 c hc).2 d hd⟩⟩
+`NameFreeOk`'s escape used to be `declaresName κ n = true`, read off `κ.defs`/`κ.classes`, while
+the rule's premise was `nameFree κ n = true`, read off the same two tables — so the two had to
+be related by a lemma, and both were wrong together at a program with a buried `def`
+(`found-issues.md` §F20). Both are now the one whole-program fact `Neg` carries
+(`context-splitting.md` §2.2), so what was a lemma is a rewrite. -/
+
+theorem nameFree_declaresName {κ : Ctx} {n : String} (h : nameFreeN κ n = true) :
+    nameFreeN κ n = false ↔ False := by simp [h]
 
 /-! ## The step -/
 
@@ -187,7 +187,7 @@ theorem Sem.Judge.lambdaLit : Obl.Judge.lambdaLit := by
     | skip
   intro m hm v m' hev
   -- The machine-side reading of `nameFree`: `NameFreeOk` at a `shadowableNames` entry, with
-  -- the `declaresName` escape closed by the rule's own premise.
+  -- the `nameFreeN` escape closed by the rule's own premise.
   have hsh : ∀ o md, Interp.methodOn m.heap (classOf m.heap m.currentFrame.self) n
       = some (o, md) → (md.builtin.isNone && !md.undefined) = false := by
     intro o md hmo
@@ -200,7 +200,7 @@ theorem Sem.Judge.lambdaLit : Obl.Judge.lambdaLit := by
         | some _ => rfl
       simp [this]
     · simp [h]
-    · exact absurd h (by simp [nameFree_declaresName hfree])
+    · exact absurd h (by simp [hfree])
   obtain ⟨lam, hstep⟩ := stepFn_lambdaLit m n hn ps body hsh
   obtain ⟨rfl, rfl⟩ := evals_pure hstep hev
   have he : Ext m (lamMachine m (toRubyParams ps) (toRuby body) lam) :=

@@ -194,7 +194,7 @@ theorem invokeDispatch_clsToS_miss {m : Machine} {recv : Value} {site : SendSite
 /-! ## The rung -/
 
 theorem Sem.Judge.clsToS : Obl.Judge.clsToS := by
-  intro κ Γ Γ₁ Γ₂ I I₁ I₂ recv args n hrecv hargs _hsmro hts _hmmfree
+  intro κ Γ Γ₁ Γ₂ I I₁ I₂ recv args n hrecv hargs hts _hmmfree
   refine ⟨trivial, ?_⟩
   intro m hm v m' hev
   obtain ⟨fuel, hrun⟩ := hev

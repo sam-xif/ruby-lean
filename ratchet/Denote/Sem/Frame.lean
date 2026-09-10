@@ -129,9 +129,9 @@ induction over the ancestor walk. -/
 theorem MethodsExact.lookup {κ : Ctx} {m : Machine} (h : MethodsExact κ m)
     {v : Value} {n : String} {o : ObjId} {md : MethodDef}
     (hl : lookup m.heap v n = some (o, md)) :
-    md.fromPrelude = true ∨ md.builtin.isSome = true ∨ declaresName κ n = true := by
+    md.fromPrelude = true ∨ md.builtin.isSome = true ∨ nameFreeN κ n = false := by
   have go : ∀ (ks : List ObjId), lookup.go m.heap n ks = some (o, md) →
-      md.fromPrelude = true ∨ md.builtin.isSome = true ∨ declaresName κ n = true := by
+      md.fromPrelude = true ∨ md.builtin.isSome = true ∨ nameFreeN κ n = false := by
     intro ks
     induction ks with
     | nil => intro hg; exact absurd hg (by simp [lookup.go])

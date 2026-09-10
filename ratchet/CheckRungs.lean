@@ -1385,6 +1385,29 @@ def controls : List Control :=
             .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] (.int 1)))),
             .send (some (.send (some (.var .lvar "f")) "call" [] none))
               "+" [.int 1] none]⟩
+    -- (`found-issues.md` §F20) **The same shadowing, through a `def` that is not a
+    -- statement.** Three witnesses, one bug: `Ctx.afterStmt`'s `extendDefs` matches only a
+    -- top-level `.def' n ps body`, while `Judge.defStmt` types a `def` *anywhere an expression
+    -- is legal* — so a buried one installs a method no table records, `nameFree` believed the
+    -- name unclaimed, and `validate` returned `true` with `Integer` for a program both
+    -- executors take to `NoMethodError`. The fix is the whole-program `Neg` seed
+    -- (`negSeed`, `context-splitting.md` §2.2): `negEmit` recurses into *every* expression
+    -- position, so the burial is invisible to it. Each shape is a different position.
+  , ⟨"x = (def lambda; 5; end); f = lambda { 1 }; f.call + 1",
+      .seq [.vasgn .lvar "x" (.def' "lambda" [] (.int 5)),
+            .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] (.int 1)))),
+            .send (some (.send (some (.var .lvar "f")) "call" [] none))
+              "+" [.int 1] none]⟩
+  , ⟨"if true; def lambda; 5; end; end; f = lambda { 1 }; f.call + 1",
+      .seq [.if' .tru (.def' "lambda" [] (.int 5)) none,
+            .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] (.int 1)))),
+            .send (some (.send (some (.var .lvar "f")) "call" [] none))
+              "+" [.int 1] none]⟩
+  , ⟨"[def lambda; 5; end]; f = lambda { 1 }; f.call + 1",
+      .seq [.array [.def' "lambda" [] (.int 5)],
+            .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] (.int 1)))),
+            .send (some (.send (some (.var .lvar "f")) "call" [] none))
+              "+" [.int 1] none]⟩
     -- (clink 52, `found-issues.md` §F4) **A user `method_missing` turns the miss
     -- `Judge.bareName` reasons from into a return.** The rule read a bare `x` as
     -- `NameError` — outside the type-stuck family, hence `.any` and `Γ`/`I` threaded out

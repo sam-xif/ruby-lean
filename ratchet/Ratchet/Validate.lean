@@ -390,13 +390,15 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
           -- `defGet?` answering `none` is no longer the same question as "this name is not a
           -- method": since `found-issues.md` §F3 it also answers `none` for a method whose
           -- body declares. `bareName` means the *name* is undefined, so it asks the raw table.
-          match defDeclared? κ.defs m with
-          | some _ => none
-          | none =>
-            -- `nameFree κ "method_missing"` is `found-issues.md` §F4: a user
-            -- `method_missing` turns the miss this rule reasons from into a *return*, and
-            -- the body it runs can rebind an ivar the spine threads out unchanged.
-            if bareNameError? m && nameFree κ "method_missing" then some (.any, Γ, I) else none
+          -- `nameFreeN κ m` is the whole-program form of the old `defDeclared? κ.defs m =
+          -- none`: a `def x` buried in an expression is still a `def`, and the reconstructed
+          -- table cannot see it (`found-issues.md` §F20).
+          -- `nameFreeN κ "method_missing"` is §F4: a user `method_missing` turns the miss this
+          -- rule reasons from into a *return*, and the body it runs can rebind an ivar the
+          -- spine threads out unchanged.
+          if bareNameError? m && nameFreeN κ m && nameFreeN κ "method_missing" then
+            some (.any, Γ, I)
+          else none
   | _ + 1, .self' =>
     match κ.selfTy with
     | some σ => some (σ, Γ, I)
@@ -476,7 +478,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     | none =>
       -- `nameFree` is §F2: a toplevel `def lambda` shadows `Kernel#lambda`, so the block is
       -- an argument to *that* method and not a Proc at all.
-      if (m = "lambda" || m = "proc") && args.isEmpty && nameFree κ m
+      if (m = "lambda" || m = "proc") && args.isEmpty && nameFreeN κ m
           && procRetOk m body then
         match closIdx? κ.closures ps body with
         | some idx => some (.clos idx (envToSpine Γ) (κ.selfTy.getD .never), Γ, I)
@@ -562,7 +564,7 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
       -- would otherwise reach -- no rung has one.
       -- The comment above ("no rung has one") was the argument; §F6's shape makes it a
       -- premise instead, because `Judge` quantifies over contexts that do.
-      else if m = "raise" && nameFree κ "raise" && nameFree κ "method_missing" then
+      else if m = "raise" && nameFreeN κ "raise" && nameFreeN κ "method_missing" then
         match argTys with
         | [.clsOf n] => if excName? κ.classes n then some (.never, Γ', I') else none
         | [.clsOf n, .cls "String"] =>
@@ -760,15 +762,14 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
           -- class object, and the class object must not override `===` (`Judge.caseEqQuery`).
           match σ, argTys with
           | .clsOf cn, [_] =>
-            match smroGet? κ.classes cn "===" with
-            -- `found-issues.md` §F7: `smroGet?` sees only singleton methods on `cn`, and the
-            -- dispatch walks the whole eigenclass chain, so the boot `Module#===` being intact
-            -- has to be checked too — and `method_missing` for the eigenclass that resolves
-            -- `===` nowhere.
-            | none =>
-              if nameFree κ "===" && nameFree κ "method_missing" then some (.bool, Γ₂, I₂)
-              else none
-            | some _ => none
+            -- `found-issues.md` §F7 used to need two premises here: `smroGet?` sees only
+            -- singleton methods on `cn`, and the dispatch walks the whole eigenclass chain,
+            -- so the boot `Module#===` being intact had to be checked by a second, coarse
+            -- `nameFree`. A `cls`-keyed `Neg` fact is closed under both (`negClsHit` walks the
+            -- singleton chain *and* the metaclass tail), so it is one lookup.
+            if nameFreeN κ "===" && nameFreeN κ "method_missing" then
+              some (.bool, Γ₂, I₂)
+            else none
           -- Tier 16: any other receiver is a *value*, and `===` there is the `PrimSig` row
           -- (`case t when "pypi"` desugars to `"pypi" === t`). Written out rather than falling
           -- through to the dispatch below because this `if` has already committed to `m`.
@@ -788,8 +789,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
             -- `found-issues.md` §F6: `isADispatchOk` guards the *user table* and only for
             -- `.inst` types, so the boot `is_a?` being intact has to be checked too — and
             -- `method_missing` for the receiver whose class does not resolve `is_a?` at all.
-            if isADispatchOk κ.classes σ && nameFree κ "is_a?"
-               && nameFree κ "method_missing" then some (.bool, Γ₂, I₂) else none
+            if isADispatchOk κ.classes σ && nameFreeN κ "is_a?"
+               && nameFreeN κ "method_missing" then some (.bool, Γ₂, I₂) else none
           | _ => none
         else
           -- Tier 7's dispatch, keyed on what the receiver's type *is*: a class object
@@ -812,8 +813,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
               -- found above and dispatched to instead.
               -- `found-issues.md` §F7 again: the `smroGet?` miss above is about `n` itself,
               -- and `Module#to_s` is reached through the eigenclass chain.
-              if m = "to_s" && argTys = [] && nameFree κ "to_s"
-                 && nameFree κ "method_missing" then some (.cls "String", Γ₂, I₂)
+              if m = "to_s" && argTys = [] && nameFreeN κ "to_s"
+                 && nameFreeN κ "method_missing" then some (.cls "String", Γ₂, I₂)
               else if m = "new" then
                 match ctorGet? κ.classes n with
                 | some (dc, d) =>
@@ -858,8 +859,8 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
             -- Tier 13f: `Object#class`, matched before dispatch. `mroGet?` cannot find a
             -- user-written `class` (Ruby has no way to write one -- `class` is a keyword), so
             -- unlike `is_a?` this needs no guard beyond the arity (`Judge.classOf`).
-            if m = "class" && argTys = [] && nameFree κ "class"
-               && nameFree κ "method_missing" then some (.clsOf n, Γ₂, I₂)
+            if m = "class" && argTys = [] && nameFreeN κ "class"
+               && nameFreeN κ "method_missing" then some (.clsOf n, Γ₂, I₂)
             else
             match mroGet? κ.classes n m with
             | some (dc, d) =>
@@ -1159,13 +1160,21 @@ because a program's top level is inside no method and runs somewhere `self` is n
 instance of anything this judgment models. The constant table (tier 13) is empty for the
 first of those reasons: a program's first statement is the first thing that could assign
 one. -/
-def ctx0 : Ctx := ⟨⟨[], [], [], []⟩, ⟨[], []⟩, ⟨none, [], none, none, []⟩⟩
+def ctx0 : Ctx := ⟨⟨[], [], [], []⟩, ⟨[], [], [], false, []⟩, ⟨none, [], none, none, []⟩⟩
 
-/-- `ctx0` with the program's block table filled in. The one component of `Ctx` that is not
-empty at the start and never changes afterwards: `collectBlocks` runs once, before checking,
-so that `Ty.clos`'s index means the same thing at every point in the derivation (see
-`collectBlocks`). -/
-def Ctx.withBlocks (κ : Ctx) (p : Expr) : Ctx := κ.withClosures (collectBlocks p)
+/-- `ctx0` with the two whole-program pre-passes run: the block table and the `Neg` seed.
+
+These are the components of `Ctx` that are not empty at the start and never change afterwards,
+and they are pre-passes for the same reason. `collectBlocks` runs once so that `Ty.clos`'s index
+means the same thing at every point in the derivation (see `collectBlocks`); `negSeed` runs once
+because absence is a whole-program fact and a table reconstructed from statement syntax cannot
+see a declaration written anywhere else (`context-splitting.md` §2.2, `found-issues.md` §F20).
+
+The name is now slightly narrow for what it does. It is kept because every derivation in
+`Ratchet/Rungs.lean` is stated at `ctx0.withBlocks program`, and the seed belongs in exactly the
+same place — a rung's context is whatever `validate` starts from, and this is that. -/
+def Ctx.withBlocks (κ : Ctx) (p : Expr) : Ctx :=
+  { κ.withClosures (collectBlocks p) with neg := negSeed p }
 
 /-- The ratchet's verdict for one rung: did `chk` synthesize *any* type for the whole
 program, from the empty local environment and the empty ivar spine, in `ctx0`? -/

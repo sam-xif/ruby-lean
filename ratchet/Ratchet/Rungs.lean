@@ -30,6 +30,10 @@ something checkable about the real semantics.
 
 namespace Ratchet
 
+-- The `by rfl` autoparams on the `Neg` premises evaluate `negSeed` over the rung's whole
+-- program, which is a deeper reduction than any previous premise needed.
+set_option maxRecDepth 8000
+
 /-- One rung: the program, the type it was hand-derived at, and the derivation. The
 `deriv` field is what distinguishes this from a test table — it cannot be filled in
 wrongly. -/
@@ -244,7 +248,7 @@ def r031 : Rung :=
     because the program contains no `def`; the control that makes it non-trivial is
     `def x; 1 + true; end; x` in `CheckRungs.lean`. -/
 def r032 : Rung :=
-  ⟨"bare-undeclared-var", .vcall "x", .any, [], .bareName .x rfl rfl⟩
+  ⟨"bare-undeclared-var", .vcall "x", .any, [], .bareName .x rfl⟩
 
 /-- `x = 1; y = 2; x + y` → `Integer`, leaving both locals bound. Two *different* names,
     where the previous rungs rebind one — so this is the rung that would catch an
@@ -2315,10 +2319,10 @@ def r128 : Rung :=
                 (.if' (.var rfl rfl) .intLit .strLit rfl)))
         (.last (.seq (.cons (.vasgnAlias rfl rfl rfl)
           (.last (.if'
-            (.caseEqQuery (.constBuiltin .integer rfl rfl) (.cons (.varAlias rfl) .nil) rfl)
+            (.caseEqQuery (.constBuiltin .integer rfl rfl) (.cons (.varAlias rfl) .nil))
             (.prim (.var rfl rfl) (.cons .intLit .nil) .intMul)
             (.if'
-              (.caseEqQuery (.constBuiltin .string rfl rfl) (.cons (.varAlias rfl) .nil) rfl)
+              (.caseEqQuery (.constBuiltin .string rfl rfl) (.cons (.varAlias rfl) .nil))
               (.prim (.var rfl rfl) (.cons (.var rfl rfl) .nil) .strAdd)
               .intLit rfl)
             rfl)))))))⟩
@@ -2480,7 +2484,7 @@ def r165 : Rung :=
       (.last (.prim .strLit
         (.cons (.seq (.cons (.vasgnAlias rfl rfl rfl)
           (.last (.if'
-            (.caseEqQuery (.constBuiltin .string rfl rfl) (.cons (.varAlias rfl) .nil) rfl)
+            (.caseEqQuery (.constBuiltin .string rfl rfl) (.cons (.varAlias rfl) .nil))
             (.varAlias rfl)
             (.primNever (.varAlias rfl) .nil (.inl rfl))
             rfl)))) .nil)
@@ -2881,7 +2885,7 @@ def r148 : Rung :=
       (.last (.clsToS
         (.classOf (.newInstNoInit (.constPathCls (.constCls rfl rfl) rfl rfl) .nil rfl rfl)
           .nil)
-        .nil rfl)))⟩
+        .nil)))⟩
 
 /-! ## Tier 14 — parameters and arguments
 
@@ -3146,7 +3150,7 @@ def r166 : Rung :=
       (.last (.prim .strLit
         (.cons (.seq (.cons (.vasgn (.prim (.var rfl rfl) (.cons .intLit .nil) .intAdd))
           (.last (.if' (τ₁ := .never) (τ₂ := .cls "String")
-            (.caseEqQuery (.constBuiltin .string rfl rfl) (.cons (.var rfl rfl) .nil) rfl)
+            (.caseEqQuery (.constBuiltin .string rfl rfl) (.cons (.var rfl rfl) .nil))
             (.var rfl rfl)
             (.prim (.var rfl rfl) .nil .intAsString)
             rfl)))) .nil)

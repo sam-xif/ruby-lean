@@ -1553,7 +1553,8 @@ correctly reporting `sorryAx`. So the rot is three spots, not a general decay �
 
 ### F20. A **buried `def`** never enters `κ.defs`, and `nameFree` believes it — `validate` certifies a `NoMethodError`
 
-**Status:** open, **reachable**. **Severity:** high — `validate` returns `true` with a type for a
+**Status:** **FIXED** 2026-09-09 (`negSeed`, `context-splitting.md` §2.2 / §8.1 step 1 — see
+the fix note at the end of this entry). **Severity:** high — `validate` returns `true` with a type for a
 program both executors take to a type-stuck outcome. Found 2026-09-09 while testing whether
 `Judge`'s failure to thread `κ` is merely awkward or actually wrong. It is actually wrong.
 
@@ -1613,3 +1614,42 @@ in the semantic layer too: `Judge.defStmt`'s obligation
    threaded, `if c; def lambda; end; end` still has to decide what the *join* of a declaring
    and a non-declaring branch records, and the conservative answer for the negative uses is
    the union — i.e. fix 1's whole-program set, arrived at from the other side.
+
+**The fix, as built (2026-09-09).** Fix 1, with `context-splitting.md`'s §4.5/§4.6 keying
+landed at the same time — §10.1 argues the two have to arrive together or the seed is a
+regression.
+
+* `Neg` (`Ratchet/Judge.lean`) is a component of `Ctx` in its own right, seeded once by
+  `Ctx.withBlocks` alongside the block table and never changed afterwards.
+* `negEmit` walks **every expression position** — the point of the whole thing — carrying the
+  lexical *cref* down, so `class C; def a; def b; end; end; end` puts `b` on `C`'s chain and a
+  top-level `def` anywhere puts its name on `Object`'s. `negSeed` then closes that over both
+  chains of §4.6 (`negInstHit`/`negClsHit`, the latter including the metaclass tail) and
+  materialises the port grid.
+* Every rule's negative premise now reads `Neg`: `nameFreeN` (declared nowhere in the program)
+  where the receiver's type is not to hand, `portFree`/`tyFree` at a receiver port where it is.
+  `Judge.bareName`'s `defDeclared? κ.defs m = none` and `clsToS`/`caseEqQuery`'s
+  `smroGet? … = none` are gone: each was a **miss in a positive table**, which is a claim about
+  that table's completeness, and completeness is exactly what a buried `def` breaks.
+* The semantic components that carried the same defect moved with them —
+  `MethodsExact`/`NameFreeOk`'s `declaresName κ n = true` escape and `BareNameFree`/`MissFree`'s
+  antecedents are the one whole-program fact now, so `Denote/Rules/Lambda.lean`'s
+  `nameFree_declaresName` (the lemma that used to relate the rule's premise to the component's
+  escape) is a rewrite.
+
+**Measured.** `context-splitting.md` §11's first open question — does the keyed-and-seeded `Neg`
+hold the ladder? — answers **yes, exactly**: `run_ratchet.sh` 178/254 unmoved tier for tier,
+`checkrungs` 177/177, `semladder` 47/83. The negative controls go **145 → 148**: all three F20
+shapes (`x = (def lambda; …)`, `if true; def lambda; …; end`, `[def lambda; …]`) are now
+refused, and `checkrungs` confirms the real semantics takes each of them to an uncaught
+`NoMethodError`.
+
+**What is not yet keyed.** `Judge.isAQuery`/`caseEqQuery`/`classOf`/`clsToS` ask `nameFreeN`
+(whole-program, name-global) rather than `portFree` at the receiver's port, even though the
+seed materialises the keyed fact and `tyPorts?` computes the port. The blocker is on the
+*semantic* side, not the syntactic one: `QueryOk`/`ClsQueryOk` (`Denote/Sem/State.lean`) are
+quantified over **class ids** with a name-global antecedent, so a keyed premise has nothing to
+discharge them with. Keying them needs a "this `Port` denotes this class id" relation, which is
+a `denM`-level change and belongs with the semantic layer rather than with the seed. Nothing on
+the ladder turns on it today (the six programs §10.1 measured are tier 18/19, currently 0/8 and
+0/3); it is the remaining half of §4.5.

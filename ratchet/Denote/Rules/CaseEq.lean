@@ -39,7 +39,7 @@ namespace Ratchet.Denote
 open RubyCore
 
 theorem Sem.Judge.caseEqQuery : Obl.Judge.caseEqQuery := by
-  intro κ Γ Γ₁ Γ₂ I I₁ I₂ recv args cn σ hrecv hargs _hsmro hce _hmmfree
+  intro κ Γ Γ₁ Γ₂ I I₁ I₂ recv args cn σ hrecv hargs hce _hmmfree
   refine ⟨trivial, ?_⟩
   intro m hm v m' hev
   obtain ⟨fuel, hrun⟩ := hev
