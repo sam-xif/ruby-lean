@@ -1653,3 +1653,70 @@ discharge them with. Keying them needs a "this `Port` denotes this class id" rel
 a `denM`-level change and belongs with the semantic layer rather than with the seed. Nothing on
 the ladder turns on it today (the six programs §10.1 measured are tier 18/19, currently 0/8 and
 0/3); it is the remaining half of §4.5.
+
+### F21. `Pos` is not a growing *set* — `consts` overwrites, and `BaseChainsOk` is antitone in both
+
+**Status:** open, **not a soundness bug** — it is a blocker on a proof, and on a claim
+`context-splitting.md` §3 makes. **Severity:** medium (it is what stops `JudgeSeq.cons`).
+Found 2026-09-09 while building §8.1 steps 1–4 and then trying step 5.
+
+**The claim it falsifies.** `context-splitting.md` §3:
+
+> | weaken an outgoing `P'` back to a smaller `P` | `P ⊆ P' → PosOk P' m → PosOk P m` | antitone, one line |
+
+and §10.3's justification for it:
+
+> our facts are keyed and **immutable-per-key**
+
+**Two counterexamples, both inside `Pos`.**
+
+1. **`consts` is keyed and *mutable* per key.** `extendConsts` is `envSet`, which **overwrites**.
+   `X = 1; y = (X = "s")` makes `ConstsOk κ` — which still says `X : Integer` — false at the
+   machine the statement left behind, so `StateOk (κ.afterStmt e τ) → StateOk κ` fails outright.
+   A *qualified* binding is the second shape: adding `::Box::X` shadows `::X` for
+   `constGet?` inside a method declared in `Box`, changing the answer without changing any key's
+   value. §F18's `constAsgnOk` is exactly the premise that rules the first out — and it lives on
+   the *syntactic* `Judge.casgn`, which is nothing a semantic obligation quantified over an
+   arbitrary `SemJudge` premise can see.
+
+2. **`BaseChainsOk` is antitone in `Pos`.** Three of its clauses are guarded by facts about the
+   context — `coreConstFree κ`, `isANoOk κ.classes ch`, `(constGet? κ cn).isNone` — and every
+   one fires on **fewer** inputs as the context grows. §3's table does not list it at all.
+
+The rest of `Pos` really is free, and the reason is worth recording so the next attempt does not
+re-derive it: `mergeCls` **prepends** the merged entry rather than replacing it in place, and
+`extendDefs`/`addPrivNames` cons — so `classes`/`defs`/`privConsts` grow as *lists*, and
+`ClassesOk`/`DefsOk`/`DeclClassOk`/`NestedClassesOk` weaken for nothing.
+
+**What it costs.** `Obl.JudgeSeq.cons` needs the down-transport and cannot have it. The *up*
+transport, which L268 recorded as the other half of the problem, is **gone**: step 1 moved
+`NameFreeOk`/`BareNameFree`/`MissFree`/`MethodsExact` onto `Neg` (which `afterStmt` does not
+touch, so they are invariant), and step 4's second conjunct states the grown-context conformance
+instead of transporting to it. So this is the only thing left between the ladder and that rung.
+
+**Measured, not assumed.** `Ratchet.ctxKept` states the sufficient condition decidably and was
+tried as a premise on `JudgeSeq.cons`:
+
+* the constants clauses cost **nothing** — all 178 hand derivations discharge them by `rfl`;
+* the `isANoOk` clause costs **one rung**, `class Uncomparable < StandardError`.
+  `noDeclaredBelow` answers `false` when `ancestors? C c.name` is `none`, which it is for a class
+  whose superclass is outside the table, so the *first* class declaration in such a program flips
+  `isANoOk` from `true` to `false` — even though `BaseChainsOk κ m'` is perfectly true there
+  (nothing below `StandardError` is in `Integer`'s ancestors).
+
+So the premise was not landed; a rung is not worth a rung. `ctxKept` stays on file as the
+statement of what is owed, with the measurement in its docstring.
+
+**The fix, and why it is its own edit window.** `context-splitting.md` §12.5: `consts` is not a
+`Pos` field, and `coreConstFree`/`isANoOk` are **negative** facts about the context ("no constant
+rebinds a core name", "no class is declared below this base") which by §2's own test belong in
+`Neg`, seeded whole-program the way `noMethod` now is. All three become invariant and the
+transport is free — the same move step 1 made for `nameFree`, applied twice more. Two decisions
+gate it, and neither is a refactor:
+
+1. **`isAAnswer` reads one table for two purposes.** Its *negative* answer wants the
+   whole-program table (a class declared later still breaks the chain); its *positive* answer
+   wants the already-declared one (a `Foo` not yet declared raises `NameError` rather than
+   narrowing). Splitting them is a soundness question about §F9/§F10's guard.
+2. **`noDeclaredBelow`'s "unknown ⇒ false"** is what costs the rung above; sharpening it to look
+   through a known exception superclass is a change to the same guard.

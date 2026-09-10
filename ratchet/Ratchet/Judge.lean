@@ -3248,6 +3248,70 @@ def narrowSpine (κ : Ctx) (c : Expr) (I : Ty) : Ty × Ty :=
     else (I, I)
   | _ => (I, I)
 
+/-! ## What a statement owes the context the sequence rule reports back down
+
+`context-splitting.md` §3 prices "weaken an outgoing `P'` back to a smaller `P`" at "antitone,
+one line", on the grounds that `PosOk` is a `∀`-over-a-set and a bigger set is a stronger claim.
+Three of `StateOk`'s components are not that shape, and this predicate is what buys them:
+
+* **`ConstsOk`/`ConstPathsOk`** — `extendConsts` is `envSet`, which **overwrites**. A statement
+  that rebinds a constant at a different type falsifies the old claim outright, and one that
+  binds a *qualified* key can shadow an unqualified one `constGet?` was resolving through the
+  frame's cref. §10.3's "our facts are keyed and immutable-per-key" is exactly what `consts` is
+  not: it is keyed and **mutable** per key.
+* **`BaseChainsOk`** — three of its clauses are guarded by facts *about the context*
+  (`coreConstFree`, `isANoOk`, and `constGet? cn = none`), and every one of them fires on
+  **fewer** inputs as the context grows. So it is antitone exactly where `ClassesOk` is
+  monotone. That is §1.1's opposite-variance problem again, surviving the polarity split
+  because this time it is *inside* `Pos`.
+
+Each clause is a decidable `Bool` at a concrete pair of contexts, discharged by `rfl` wherever
+it is a premise — the same shape `Neg`'s premises have, for §10.1(1)'s reason. What it refuses
+is a statement that rebinds a constant, shadows one through the cref, binds a **class** to a new
+constant (§F10's `Foo = Integer` shape), rebinds a core class name, or declares a class below a
+builtin base. `Judge.casgn`'s `constAsgnOk` (§F18) already refuses the first; no corpus program
+does any of the rest, which is what makes this a premise rather than a loss.
+
+The honest reading: this is the *residue* of §7.2. `consts` is not a `Pos` field — it neither
+grows monotonically nor stays immutable per key — and the two facts `BaseChainsOk` guards on are
+**negative** facts about the context ("no constant rebinds a core name", "no class is declared
+below this base"), which by §2's own test belong in `Neg`, seeded whole-program the way
+`noMethod` is. Until that edit window, this predicate names the gap and makes it checkable. -/
+
+/-- Does this type denote a class *object*? `.clsOf` is the only arm that does, and §F10's
+shape (`Foo = Integer`) is exactly a constant bound at one. -/
+def isClsOfTy : Ty → Bool
+  | .clsOf _ => true
+  | _ => false
+
+/-- The seven static ancestor chains `Denote/Sem/State.lean`'s `BaseChainsOk` is stated over,
+without the boot ids — so that a `Ratchet`-side premise can talk about them. Kept here rather
+than there because the *checker* is what has to discharge it. -/
+def builtinChains : List (List String) :=
+  [["Integer", "Numeric", "Comparable"] ++ rootAncestors,
+   ["Float", "Numeric", "Comparable"] ++ rootAncestors,
+   "NilClass" :: rootAncestors,
+   ["Symbol", "Comparable"] ++ rootAncestors,
+   ["String", "Comparable"] ++ rootAncestors,
+   ["Hash", "Enumerable"] ++ rootAncestors,
+   ["Array", "Enumerable"] ++ rootAncestors]
+
+/-- **Everything `κ` claims about a machine, `κ'` still claims.** -/
+def ctxKept (κ κ' : Ctx) : Bool :=
+  -- every constant fact survives, at the same type…
+  κ.consts.all (fun p => envGet? κ'.consts p.1 == some p.2) &&
+  -- …no new key shadows one `constGet?` was resolving through the frame's cref…
+  (match κ.frame with
+   | none => true
+   | some f => κ'.consts.all (fun p =>
+       (envGet? κ.consts p.1).isSome || !("::" ++ f.defClass ++ "::").isPrefixOf p.1)) &&
+  -- …no new constant names a class…
+  κ'.consts.all (fun p => (envGet? κ.consts p.1).isSome || !isClsOfTy p.2) &&
+  -- …no core class name is rebound…
+  (!coreConstFree κ || coreConstFree κ') &&
+  -- …and no builtin chain loses its negative-answer gate.
+  builtinChains.all (fun ch => !isANoOk κ.classes ch || isANoOk κ'.classes ch)
+
 mutual
 
 /-- `Judge κ Γ I e τ κ₁ Γ' I'`: in context `κ` (classes, methods, assumptions, the type of

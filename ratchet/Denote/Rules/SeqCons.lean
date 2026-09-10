@@ -25,36 +25,70 @@ with both machines exhibited. Three obligations to `run_split`, and each is one 
   `pushK [.seqK rest]`, and `applyKont`'s `.seqK` arm lands on exactly what `evalFrom` of the
   tail sequence steps to.
 
-**What this does *not* close, and it is worth being exact about it.** `Obl.JudgeSeq.cons`'s
-second premise is at context **`κ.afterStmt e σ`** while its conclusion is at `κ`, so the rung
-needs `StateOk` transported *both ways* across `afterStmt`:
+**What this does *not* close** — rewritten 2026-09-09, after `context-splitting.md` was built
+through §8.1 step 4 and the remaining obligation was measured rather than predicted.
 
-* **up** (to apply premise 2): `StateOk κ Γ₁ I₁ m₁ → StateOk (κ.afterStmt e σ) Γ₁ I₁ m₁`, and
-* **down** (to state the conclusion): `StateOk (κ.afterStmt e σ) Γ₂ I₂ m' → StateOk κ Γ₂ I₂ m'`.
+The **run** half is done and was always the larger half. What is left is one transport, and the
+history of it is worth keeping because two of the three things L268 recorded here turned out to
+be wrong.
 
-`afterStmt` is the identity on every expression head except the five declarations
-(`.def'`, `.class'`, `.module'`, `.casgn`, `.cpathAsgn` — read off `extendDefs`/
-`extendClasses`/`extendConsts`/`extendPrivConsts`), so both directions are `rfl` when the first
-statement is not a declaration. In general **neither holds, and they fail on *different*
-components** — which is the fact worth recording, because it rules out the obvious repair.
-`StateOk`'s table-reading components are monotone in opposite directions:
+`Obl.JudgeSeq.cons`'s second premise is at context `κ.afterStmt e σ` while its conclusion is at
+`κ`, so the rung needs `StateOk` moved **both ways** across `afterStmt`.
 
-| direction of growth | components | which transport it gives |
-|---|---|---|
-| a bigger table makes the claim **weaker** — the antecedent fires on fewer names | `NameFreeOk` (`declaresName κ n` is a *disjunct* of the conclusion), `BareNameFree` (`defDeclared? κ.defs n = none` is an antecedent), `MissFree` (`nameFree κ "method_missing"` is an antecedent) | **up** only |
-| a bigger table makes the claim **stronger** — `∀ c ∈ C` ranges over more | `ClassesOk`, `DefsOk`, and the `consts`/`privConsts` family | **down** only |
+**The *up* direction is gone**, and two changes removed it:
 
-So there is no monotonicity lemma to prove in either direction: a single `StateOk` cannot be
-transported across `afterStmt` at all, and strengthening `SemJudge`'s conclusion to the grown
-context buys the *up* direction at the cost of the *down* one, leaving the conclusion of
-`JudgeSeq.cons` unstatable.
+* **Step 1's `Neg` seed** (`found-issues.md` §F20). L268's "up only" column was
+  `NameFreeOk`/`BareNameFree`/`MissFree` — each of which read a *positive* table negatively
+  (`declaresName κ n`, `defDeclared? κ.defs n = none`, `nameFree κ "method_missing"`). All three
+  now read `Neg`, which `Ctx.afterStmt` does not touch, so all three are **invariant**. The
+  column is empty.
+* **Step 4's second conjunct.** `SemJudge` now claims outgoing conformance at `κ` *and* at the
+  context it reports (`Denote/Sem/Judge.lean` §Outgoing conformance), so premise 1 hands
+  premise 2 exactly the `StateOk (κ.afterStmt e σ) Γ₁ I₁ m₁` it wants. Nothing is transported
+  up; it is stated.
 
-The design that would work is visible from here and is not a lemma: `SemJudgeSeq`'s conclusion
-has to be at the context after **all** of `es`, so that no step ever transports downward. That
-needs a "context after a statement list" function — and `extendConsts` takes the statement's
-*type*, which `SemJudgeSeq`'s signature does not carry. Hence the census's verdict: this is a
-change to `Judge`'s signature, i.e. to all 178 derivations, and not something a rung can route
-around.
+**The *down* direction is what is left, and §3's "antitone, one line" is not true of it.**
+`ClassesOk`/`DefsOk`/`DeclClassOk`/`NestedClassesOk` are free — `mergeCls` *prepends* the merged
+entry rather than replacing it in place, and `extendDefs`/`addPrivNames` cons, so `Pos`'s list
+components literally grow and a `∀ c ∈ C` claim weakens for nothing. Two components are not:
+
+* **`ConstsOk`/`ConstPathsOk`.** `extendConsts` is `envSet`, which **overwrites**. A statement
+  that rebinds a constant at a different type falsifies the old claim outright, and one that
+  binds a *qualified* key can shadow an unqualified one `constGet?` was resolving through the
+  frame's cref. `context-splitting.md` §10.3's "our facts are keyed and immutable-per-key" is
+  exactly what `consts` is not.
+* **`BaseChainsOk`.** Three of its clauses are guarded by facts *about the context* —
+  `coreConstFree κ`, `isANoOk κ.classes ch`, and `(constGet? κ cn).isNone` — and every one of
+  them fires on **fewer** inputs as the context grows. So it is antitone precisely where
+  `ClassesOk` is monotone. That is §1.1's opposite-variance problem again, surviving the
+  polarity split because this time it is *inside* `Pos`.
+
+`Ratchet.ctxKept` states the sufficient condition, decidably, and it was **measured** as a
+premise on `JudgeSeq.cons`:
+
+* the constants clauses cost nothing — all 178 hand derivations discharge them by `rfl`;
+* the `isANoOk` clause costs **one rung**, `rescue-uncomparable`'s
+  `class Uncomparable < StandardError`. `noDeclaredBelow` answers `false` when
+  `ancestors? C c.name` is `none`, which it is for a class whose superclass is outside the
+  table — so the *first* class declaration in such a program flips `isANoOk` from `true` to
+  `false` and the premise fails, even though `BaseChainsOk κ m'` is perfectly true there
+  (nothing declared below `StandardError` is in `Integer`'s ancestors).
+
+So the premise was **not** landed: a rung is not worth a rung. What the measurement bought is a
+sharp statement of the residue, and it is `context-splitting.md` §7.2's, arrived at from the
+proof side: **`consts` is not a `Pos` field**, and `coreConstFree`/`isANoOk` are *negative* facts
+about the context ("no constant rebinds a core name", "no class is declared below this base")
+which by §2's own test belong in `Neg`, seeded whole-program the way `noMethod` now is. Doing
+that makes all three invariant and the transport free.
+
+Two things make it a separate edit window rather than a continuation of this one:
+
+1. **`isAAnswer` reads one table for two purposes.** Its negative answer wants the whole-program
+   table (a class declared later still breaks the chain); its positive answer wants the
+   already-declared one (a `Foo` not yet declared raises `NameError` rather than narrowing).
+   Splitting them is a soundness question about §F9/§F10's guard, not a refactor.
+2. **`noDeclaredBelow`'s "unknown ⇒ false"** is what costs the rung above, and sharpening it to
+   look through a known exception superclass is a change to the same guard.
 
 That is the sixth stall point ("`κ` threaded through the judgment") arriving from the consumer's
 end, exactly as `Denote/Sem/notes.md` says it does — and it is now the *only* thing between this

@@ -1,8 +1,12 @@
 # Splitting the context: positive facts, negative facts, and a frame rule
 
-**Status:** design, not built. Written 2026-09-09 after L268 measured why `JudgeSeq.cons`
-cannot be discharged and F20 showed the same defect is a *reachable soundness bug*, not just an
-awkwardness. Nothing in `Ratchet/` or `Denote/` has been changed for it yet.
+**Status:** **BUILT through §8.1 step 4** (2026-09-09). Steps 1–4 are on file and measured;
+step 5 (`JudgeSeq.cons`) is blocked on a defect in §3 that only building it exposed. See
+**§12 What was built, and what §3 got wrong** at the end. Everything above §12 is the design as
+written, left unedited so the correction is legible against it.
+
+Written 2026-09-09 after L268 measured why `JudgeSeq.cons` cannot be discharged and F20 showed
+the same defect is a *reachable soundness bug*, not just an awkwardness.
 
 **One sentence.** `Ctx` conflates three things — facts that only ever *grow*, facts that only
 ever *shrink*, and lexical scope that does neither — and threads none of them out of a
@@ -725,3 +729,94 @@ building step 1 of §8 and reading the number.
    rules read the first while the negative rules read the second. It doubles the bookkeeping and
    should not be built pre-emptively — but it is the escape hatch if (1) comes back badly, and
    it is worth knowing it exists before starting.
+
+
+---
+
+## 12. What was built, and what §3 got wrong
+
+Written after building §8.1 steps 1–4. Every number below is measured, not projected.
+
+### 12.1 Landed
+
+| step | what | ladder |
+|---|---|---|
+| **2** | `Ctx` split into `Pos`/`Neg`/`Scope`. Made cheap by an accessor layer — `@[reducible] def Ctx.classes` onto the sub-structure — so every `κ.classes` in the checker, the rules and the proofs read as before and only the sixteen `{ κ with … }` *writers* moved. | 178/254, 177/177 |
+| **1** | `Neg` seeded whole-program and keyed by receiver port (`negEmit`/`negSeed`). **§F20 closed** — three witness shapes added as negative controls, each confirmed genuinely type-stuck by the real semantics. Every negative premise became a lookup; three positive-table misses (`bareName`'s `defDeclared? … = none`, `clsToS`/`caseEqQuery`'s `smroGet? … = none`) are gone with the encoding that made them wrong. The semantic components that carried the same defect moved with them. | 178/254, 177/177, **145 → 148** controls |
+| **3** | `Judge` threads: `Judge κ Γ I e τ κ' Γ' I' `. `JudgeSeq.cons` reads the way §3 says — premise 1 outputs, premise 2 consumes, conclusion reports, no transport at the syntactic level. `Judge.out_afterStmt` (`cases h <;> rfl`) proves the threaded judgment derives exactly what the `afterStmt` one did. | 178/254, 177/177 |
+| **4** | `SemJudge` claims outgoing conformance at **both** `κ` and `κ'`. | 47/83 |
+
+**§11's first open question, answered.** Does keyed-and-seeded `Neg` hold `run_ratchet.sh` at
+178/254? **Yes, exactly** — tier for tier, no rung moved in either direction. §10.1's argument
+that the keying pays for the seeding is confirmed on the whole corpus, not just the six
+programs.
+
+### 12.2 What §3 gets wrong
+
+> | weaken an outgoing `P'` back to a smaller `P` | `P ⊆ P' → PosOk P' m → PosOk P m` | antitone, one line |
+
+Two of the components are not that shape, and both are the same mistake §1.1 diagnosed, one
+level down: **the conflation survives the polarity split, because it is inside `Pos`.**
+
+* **`consts` is keyed and *mutable* per key.** `extendConsts` is `envSet`, which **overwrites**.
+  A statement that rebinds a constant at a different type falsifies the old `ConstsOk` at the new
+  machine; one that binds a *qualified* key can shadow an unqualified one `constGet?` was
+  resolving through the frame's cref. §10.3's own words — "our facts are keyed and
+  **immutable-per-key**" — are the assumption, and `consts` is the counterexample. §F18's
+  `constAsgnOk` is the premise that rules the first case out, and it lives on the *syntactic*
+  `Judge.casgn`, which is nothing a semantic obligation quantified over an arbitrary `SemJudge`
+  premise can see.
+* **`BaseChainsOk` is antitone in `Pos`.** Three of its clauses are guarded by facts about the
+  context — `coreConstFree κ`, `isANoOk κ.classes ch`, `(constGet? κ cn).isNone` — and every one
+  fires on **fewer** inputs as the context grows. §3's table does not mention it.
+
+The rest of `Pos` *is* free, and for a reason worth recording: `mergeCls` **prepends** the merged
+entry rather than replacing it in place, and `extendDefs`/`addPrivNames` cons, so
+`classes`/`defs`/`privConsts` literally grow as lists and `ClassesOk`/`DefsOk`/`DeclClassOk`/
+`NestedClassesOk` weaken for nothing.
+
+### 12.3 The other half of the correction: `SemJudge`'s conclusion is not *moved*
+
+§8.1 step 4 says "`SemJudge`'s conclusion moves to `κ'`". Moving it **weakens the premise every
+non-declaring rule lives on**: those rules consume their sub-derivation's outgoing conformance
+and republish it at their own `κ`, and at `κ'` alone they receive it at `κ.afterStmt e τ`
+instead — needing exactly the down-transport above. So the conclusion carries **both**, and the
+two have different readers: `StateOk κ …` is what a consumer republishes, `StateOk κ' …` is what
+the next statement needs. Neither direction is transported; both are stated. That is what cost
+the 47 discharged rungs one component each rather than a re-proof.
+
+### 12.4 The residue, measured
+
+`Ratchet.ctxKept` states the sufficient condition decidably. It was tried as a premise on
+`JudgeSeq.cons` and **measured**:
+
+* the constants clauses cost **nothing** — all 178 hand derivations discharge them by `rfl`;
+* the `isANoOk` clause costs **one rung**, `class Uncomparable < StandardError`.
+  `noDeclaredBelow` answers `false` when `ancestors? C c.name` is `none`, which it is for a class
+  whose superclass is outside the table — so the *first* class declaration in such a program
+  flips `isANoOk` from `true` to `false`, even though `BaseChainsOk κ m'` is perfectly true there
+  (nothing below `StandardError` is in `Integer`'s ancestors).
+
+So the premise was not landed. `ctxKept` stays on file as the statement of what is owed, with
+the measurement attached.
+
+### 12.5 What to do next, and why it is a separate edit window
+
+The prescription is §7.2's, arrived at from the proof side: **`consts` is not a `Pos` field**,
+and `coreConstFree`/`isANoOk` are *negative* facts about the context ("no constant rebinds a core
+name", "no class is declared below this base") which by **§2's own test belong in `Neg`**, seeded
+whole-program the way `noMethod` now is. All three then become invariant and the transport is
+free — the same move step 1 already made for `nameFree`, applied twice more.
+
+Two things make it its own window rather than a continuation:
+
+1. **`isAAnswer` reads one table for two purposes.** Its *negative* answer wants the
+   whole-program table (a class declared later still breaks the chain); its *positive* answer
+   wants the already-declared one (a `Foo` not yet declared raises `NameError` rather than
+   narrowing). Splitting them is a soundness question about §F9/§F10's guard, not a refactor —
+   and it is the kind of thing §11 says must be measured, not assumed.
+2. **`noDeclaredBelow`'s "unknown ⇒ false"** is what costs the rung in §12.4, and sharpening it
+   to look through a known exception superclass is a change to the same guard.
+
+Neither is blocked on anything; both need a decision about what `isAAnswer` may read, which is
+the seventeenth stall point's territory rather than this document's.
