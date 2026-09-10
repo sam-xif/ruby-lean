@@ -1767,12 +1767,16 @@ theorem chkSeq_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty}
     · exact absurd h (by simp)
   · split at h
     · rename_i hhd
-      -- **The threaded step** (`context-splitting.md` §3). `chkSeq` recurses at
-      -- `κ.afterStmt hd σ`, and `Judge.out_afterStmt` is what says the derivation just built
-      -- for `hd` reports exactly that context — so the two premises compose by threading,
-      -- with no transport at any step.
-      exact ((Judge.out_afterStmt (chk_sound hhd)) ▸ chkSeq_sound h).elim
-        (fun _ ht => ⟨_, .cons (chk_sound hhd) ht⟩)
+      split at h
+      · rename_i hkept
+        -- **The threaded step** (`context-splitting.md` §3). `chkSeq` recurses at
+        -- `κ.afterStmt hd σ`, and `Judge.out_afterStmt` is what says the derivation just built
+        -- for `hd` reports exactly that context — so the two premises compose by threading,
+        -- with no transport at any step. `hkept` is `chkSeq`'s own guard, which *is* the
+        -- rule's third premise.
+        exact ((Judge.out_afterStmt (chk_sound hhd)) ▸ chkSeq_sound h).elim
+          (fun _ ht => ⟨_, .cons (chk_sound hhd) ht hkept⟩)
+      · exact absurd h (by simp)
     · exact absurd h (by simp)
 
 end

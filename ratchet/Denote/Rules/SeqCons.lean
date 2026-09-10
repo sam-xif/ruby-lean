@@ -1,5 +1,6 @@
 import Denote.Rules.Seq
 import Denote.Sem.Decompose
+import Denote.Sem.Down
 
 /-!
 # `Denote/Rules/SeqCons.lean` — the multi-statement sequence, decomposed
@@ -25,70 +26,41 @@ with both machines exhibited. Three obligations to `run_split`, and each is one 
   `pushK [.seqK rest]`, and `applyKont`'s `.seqK` arm lands on exactly what `evalFrom` of the
   tail sequence steps to.
 
-**What this does *not* close** — rewritten 2026-09-09, after `context-splitting.md` was built
-through §8.1 step 4 and the remaining obligation was measured rather than predicted.
-
-The **run** half is done and was always the larger half. What is left is one transport, and the
-history of it is worth keeping because two of the three things L268 recorded here turned out to
-be wrong.
+**Closed 2026-09-10.** `Sem.JudgeSeq.cons` is at the bottom of this file, axiom-clean. What
+follows is the account of the transport, kept because two of the three things L268 recorded
+here turned out to be wrong and the corrections are the content.
 
 `Obl.JudgeSeq.cons`'s second premise is at context `κ.afterStmt e σ` while its conclusion is at
-`κ`, so the rung needs `StateOk` moved **both ways** across `afterStmt`.
+`κ`, so the rung needs `StateOk` moved **both ways** across `afterStmt`. L268 measured that
+neither direction held, on two families with opposite variance. Both were removed, by different
+pieces of `context-splitting.md`, and neither by a monotonicity lemma:
 
-**The *up* direction is gone**, and two changes removed it:
+**Up — gone, because the components moved to `Neg`.** L268's "up only" column was
+`NameFreeOk`/`BareNameFree`/`MissFree`, each of which read a *positive* table negatively
+(`declaresName κ n`, `defDeclared? κ.defs n = none`, `nameFree κ "method_missing"`). Step 1's
+whole-program seed (§F20) put all three — and `MethodsExact`, and then `BaseChainsOk`'s three
+guards — onto `Neg`, which `Ctx.afterStmt` does not touch. They are **invariant**, so the column
+is empty. And step 4 made `SemJudge` claim outgoing conformance at the context a statement
+*reports* as well as the one it started from, so premise 1 hands premise 2 exactly the
+`StateOk (κ.afterStmt e σ) Γ₁ I₁ m₁` it wants: nothing is transported up, it is stated.
 
-* **Step 1's `Neg` seed** (`found-issues.md` §F20). L268's "up only" column was
-  `NameFreeOk`/`BareNameFree`/`MissFree` — each of which read a *positive* table negatively
-  (`declaresName κ n`, `defDeclared? κ.defs n = none`, `nameFree κ "method_missing"`). All three
-  now read `Neg`, which `Ctx.afterStmt` does not touch, so all three are **invariant**. The
-  column is empty.
-* **Step 4's second conjunct.** `SemJudge` now claims outgoing conformance at `κ` *and* at the
-  context it reports (`Denote/Sem/Judge.lean` §Outgoing conformance), so premise 1 hands
-  premise 2 exactly the `StateOk (κ.afterStmt e σ) Γ₁ I₁ m₁` it wants. Nothing is transported
-  up; it is stated.
+**Down — proved, but not as §3 priced it.** `Denote/Sem/Down.lean` is the transport, and it
+splits three ways rather than being "antitone, one line":
 
-**The *down* direction is what is left, and §3's "antitone, one line" is not true of it.**
-`ClassesOk`/`DefsOk`/`DeclClassOk`/`NestedClassesOk` are free — `mergeCls` *prepends* the merged
-entry rather than replacing it in place, and `extendDefs`/`addPrivNames` cons, so `Pos`'s list
-components literally grow and a `∀ c ∈ C` claim weakens for nothing. Two components are not:
+* **Free** — `ClassesOk`, `DefsOk`, and the membership halves of `NestedClassesOk`/`DeclClassOk`
+  really are `∀ x ∈ table` claims over a table that *grows*: `mergeCls` **prepends** the merged
+  entry rather than replacing it in place, and `extendDefs`/`addPrivNames` cons.
+* **Invariant** — everything reading `κ.neg` or `κ.scope`, which is most of `StateOk`, since
+  `Ctx.afterStmt` rewrites only `pos`. Those are the same proposition at both contexts.
+* **Owed** — `ConstsOk`/`ConstPathsOk`, because `extendConsts` is `envSet` and **overwrites**;
+  and `DeclClassOk`'s four guarded clauses, whose antecedents fire on fewer inputs as the table
+  grows. `Ratchet.ctxKept` is the decidable premise that buys exactly these, it is
+  `JudgeSeq.cons`'s third, and every one of the 178 hand derivations discharges it by `rfl`.
 
-* **`ConstsOk`/`ConstPathsOk`.** `extendConsts` is `envSet`, which **overwrites**. A statement
-  that rebinds a constant at a different type falsifies the old claim outright, and one that
-  binds a *qualified* key can shadow an unqualified one `constGet?` was resolving through the
-  frame's cref. `context-splitting.md` §10.3's "our facts are keyed and immutable-per-key" is
-  exactly what `consts` is not.
-* **`BaseChainsOk`.** Three of its clauses are guarded by facts *about the context* —
-  `coreConstFree κ`, `isANoOk κ.classes ch`, and `(constGet? κ cn).isNone` — and every one of
-  them fires on **fewer** inputs as the context grows. So it is antitone precisely where
-  `ClassesOk` is monotone. That is §1.1's opposite-variance problem again, surviving the
-  polarity split because this time it is *inside* `Pos`.
-
-`Ratchet.ctxKept` states the sufficient condition, decidably, and it was **measured** as a
-premise on `JudgeSeq.cons`:
-
-* the constants clauses cost nothing — all 178 hand derivations discharge them by `rfl`;
-* the `isANoOk` clause costs **one rung**, `rescue-uncomparable`'s
-  `class Uncomparable < StandardError`. `noDeclaredBelow` answers `false` when
-  `ancestors? C c.name` is `none`, which it is for a class whose superclass is outside the
-  table — so the *first* class declaration in such a program flips `isANoOk` from `true` to
-  `false` and the premise fails, even though `BaseChainsOk κ m'` is perfectly true there
-  (nothing declared below `StandardError` is in `Integer`'s ancestors).
-
-So the premise was **not** landed: a rung is not worth a rung. What the measurement bought is a
-sharp statement of the residue, and it is `context-splitting.md` §7.2's, arrived at from the
-proof side: **`consts` is not a `Pos` field**, and `coreConstFree`/`isANoOk` are *negative* facts
-about the context ("no constant rebinds a core name", "no class is declared below this base")
-which by §2's own test belong in `Neg`, seeded whole-program the way `noMethod` now is. Doing
-that makes all three invariant and the transport free.
-
-Two things make it a separate edit window rather than a continuation of this one:
-
-1. **`isAAnswer` reads one table for two purposes.** Its negative answer wants the whole-program
-   table (a class declared later still breaks the chain); its positive answer wants the
-   already-declared one (a `Foo` not yet declared raises `NameError` rather than narrowing).
-   Splitting them is a soundness question about §F9/§F10's guard, not a refactor.
-2. **`noDeclaredBelow`'s "unknown ⇒ false"** is what costs the rung above, and sharpening it to
-   look through a known exception superclass is a change to the same guard.
+So the "design that would work" this file used to describe — `SemJudgeSeq` concluding after
+*all* of `es` — was not needed, and the census's verdict that this is "a change to `Judge`'s
+signature, i.e. to all 178 derivations" was right about the change and wrong about the cost: the
+signature changed, and no derivation term moved (`Judge.out_afterStmt`).
 
 That is the sixth stall point ("`κ` threaded through the judgment") arriving from the consumer's
 end, exactly as `Denote/Sem/notes.md` says it does — and it is now the *only* thing between this
@@ -215,7 +187,41 @@ theorem evals_seq_cons {m : Machine} {e e' : Ratchet.Expr} {es : List Ratchet.Ex
     rw [hd] at houter
     exact evals_seqK_tail houter
 
+/-! ## The rung
+
+Everything above is the *run* half. This is the rest, and it is short because the two halves of
+the transport that L268 could not have were each removed by a different piece of
+`context-splitting.md`:
+
+* **up** — premise 1's second outgoing conjunct *is* `StateOk (κ.afterStmt e σ) Γ₁ I₁ m₁`, which
+  is exactly premise 2's input. Nothing is transported; `SemJudge` states it
+  (`Denote/Sem/Judge.lean` §Outgoing conformance). That is step 4.
+* **down** — `StateOk_afterStmt_down` (`Denote/Sem/Down.lean`), which the rule's third premise
+  `ctxKept` buys. That is §F21's residue, made checkable.
+
+`Framed` composes by `trans`, and the plainness conjunct is the two premises'. -/
+
+theorem Sem.JudgeSeq.cons : Obl.JudgeSeq.cons := by
+  intro κ κ₁ Γ Γ₁ Γ₂ I I₁ I₂ e e' es σ τ hhead htail hkept
+  refine ⟨fun x hx => ?_, ?_⟩
+  · -- plainness: the head's is its own premise, the tail's is the tail's
+    rcases List.mem_cons.mp hx with rfl | hx
+    · exact hhead.1
+    · exact htail.1 x hx
+  intro m hm v m' hev
+  -- **the run splits**, and both machines are exhibited
+  obtain ⟨v₀, m₀, hin, hout⟩ := evals_seq_cons hev
+  -- **premise 1** at the head's own run. Its *second* outgoing conjunct is the one premise 2
+  -- wants: conformance at the context the statement reports, not at the one it started from.
+  obtain ⟨hf₁, _, _, hok₁⟩ := hhead.2 m hm v₀ m₀ hin
+  -- **premise 2** consumes it directly — this is the step L268 measured as impossible
+  obtain ⟨hf₂, hden, hok₂⟩ := htail.2 m₀ hok₁ v m' hout
+  -- **the conclusion** is at `κ`, and `ctxKept` is what carries the tail's conformance back
+  -- down the declaration the head performed.
+  exact ⟨hf₁.trans hf₂, hden, StateOk_afterStmt_down hkept hok₂⟩
+
 #print axioms evals_seq_cons
 #print axioms jumpOpaque_seqK
+#print axioms Sem.JudgeSeq.cons
 
 end Ratchet.Denote

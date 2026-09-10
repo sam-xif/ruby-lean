@@ -1147,7 +1147,13 @@ def chkSeq (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (es : List Expr) :
     | none => none
   | f + 1, e :: e' :: es =>
     match chk f κ Γ I e with
-    | some (σ, Γ₁, I₁) => chkSeq f (κ.afterStmt e σ) Γ₁ I₁ (e' :: es)
+    -- `ctxKept` is `JudgeSeq.cons`'s third premise, and it is here for the reason every other
+    -- premise is: `chk` must refuse what `Judge` cannot derive. It refuses a statement that
+    -- rebinds or shadows a constant, or reopens a class the context already records in a way
+    -- that moves its ancestor chain, its `new` or its `initialize`.
+    | some (σ, Γ₁, I₁) =>
+      if ctxKept κ (κ.afterStmt e σ) then chkSeq f (κ.afterStmt e σ) Γ₁ I₁ (e' :: es)
+      else none
     | none => none
 
 end

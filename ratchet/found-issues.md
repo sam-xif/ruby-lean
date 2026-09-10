@@ -1656,9 +1656,10 @@ the ladder turns on it today (the six programs §10.1 measured are tier 18/19, c
 
 ### F21. `Pos` is not a growing *set* — `consts` overwrites, and `BaseChainsOk` is antitone in both
 
-**Status:** open, **not a soundness bug** — it is a blocker on a proof, and on a claim
-`context-splitting.md` §3 makes. **Severity:** medium (it is what stops `JudgeSeq.cons`).
-Found 2026-09-09 while building §8.1 steps 1–4 and then trying step 5.
+**Status:** **FIXED** 2026-09-10 — see the closing note. Never a soundness bug: it was a
+blocker on a proof, and on a claim `context-splitting.md` §3 makes. **Severity:** medium (it was
+what stopped `JudgeSeq.cons`). Found 2026-09-09 while building §8.1 steps 1–4 and then trying
+step 5.
 
 **The claim it falsifies.** `context-splitting.md` §3:
 
@@ -1694,29 +1695,32 @@ transport, which L268 recorded as the other half of the problem, is **gone**: st
 touch, so they are invariant), and step 4's second conjunct states the grown-context conformance
 instead of transporting to it. So this is the only thing left between the ladder and that rung.
 
-**Measured, not assumed.** `Ratchet.ctxKept` states the sufficient condition decidably and was
-tried as a premise on `JudgeSeq.cons`:
+**The fix (2026-09-10), and it is §2's own test applied twice more.** Three of the antitone
+components are *negative* facts about the context — "no constant rebinds a core name", "no class
+is declared below this base", "this name is not bound" — so by §2 they belong in `Neg`, seeded
+whole-program the way `noMethod` is. `Neg` gained `wholeCls` and `boundConsts`; `isANoOk`/
+`mixinFreeChain` read the first, `coreConstFreeN` and `BaseChainsOk`'s third clause the second.
+`Ctx.afterStmt` does not touch `Neg`, so all three are now **invariant** and transport both ways.
 
-* the constants clauses cost **nothing** — all 178 hand derivations discharge them by `rfl`;
-* the `isANoOk` clause costs **one rung**, `class Uncomparable < StandardError`.
-  `noDeclaredBelow` answers `false` when `ancestors? C c.name` is `none`, which it is for a class
-  whose superclass is outside the table, so the *first* class declaration in such a program flips
-  `isANoOk` from `true` to `false` — even though `BaseChainsOk κ m'` is perfectly true there
-  (nothing below `StandardError` is in `Integer`'s ancestors).
+Each is **strictly more conservative** — a bigger class table can only make
+`mixinFreeChain`/`noDeclaredBelow` answer `false`, and not-bound-*ever* implies not-bound-*yet* —
+so none can admit anything the per-point version refused. The *positive* half of narrowing still
+reads `κ.classes`: a chain is broken by a class declared later just as much as by one declared
+earlier, while a constant not yet assigned resolves nowhere and raises. **The ladder did not
+move.**
 
-So the premise was not landed; a rung is not worth a rung. `ctxKept` stays on file as the
-statement of what is owed, with the measurement in its docstring.
+What stayed is `Ratchet.ctxKept`, `JudgeSeq.cons`'s third premise: the constants clauses, and
+`DeclClassOk`'s four guarded antecedents stated one-directionally. **All 178 hand derivations
+discharge it by `rfl`**, `chkSeq` carries the matching guard so `chk_sound` still holds, and
+what it refuses is a statement that rebinds a constant, shadows one through the cref, or reopens
+a class the context already records in a way that moves its ancestor chain, its `new` or its
+`initialize`. `Judge.casgn`'s `constAsgnOk` (§F18) already refused the first.
 
-**The fix, and why it is its own edit window.** `context-splitting.md` §12.5: `consts` is not a
-`Pos` field, and `coreConstFree`/`isANoOk` are **negative** facts about the context ("no constant
-rebinds a core name", "no class is declared below this base") which by §2's own test belong in
-`Neg`, seeded whole-program the way `noMethod` now is. All three become invariant and the
-transport is free — the same move step 1 made for `nameFree`, applied twice more. Two decisions
-gate it, and neither is a refactor:
+`Denote/Sem/Down.lean` is the transport; `Sem.JudgeSeq.cons` (`Denote/Rules/SeqCons.lean`) is
+what it was for, and the semantic ratchet went **47 → 48 of 83**.
 
-1. **`isAAnswer` reads one table for two purposes.** Its *negative* answer wants the
-   whole-program table (a class declared later still breaks the chain); its *positive* answer
-   wants the already-declared one (a `Foo` not yet declared raises `NameError` rather than
-   narrowing). Splitting them is a soundness question about §F9/§F10's guard.
-2. **`noDeclaredBelow`'s "unknown ⇒ false"** is what costs the rung above; sharpening it to look
-   through a known exception superclass is a change to the same guard.
+**One thing the earlier measurement got right and is worth keeping.** `noDeclaredBelow` answers
+`false` when it cannot compute a chain — which it cannot for a class whose superclass is outside
+the table (`class Uncomparable < StandardError`). That was fatal while the guard had to be
+*preserved* across a declaration; with the guard invariant it is only a precision question.
+Sharpening it would be a loosening of §F9's guard and wants its own measurement.

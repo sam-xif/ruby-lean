@@ -6,6 +6,7 @@ import Denote.Rules.Nil
 import Denote.Rules.Asgn
 import Denote.Rules.Read
 import Denote.Rules.Seq
+import Denote.Rules.SeqCons
 import Denote.Rules.Regexp
 import Denote.Rules.Cls
 import Denote.Rules.Rescue

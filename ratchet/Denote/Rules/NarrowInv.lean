@@ -3,6 +3,10 @@ import Denote.Rules.Read
 import Denote.Rules.Lit
 import Denote.Rules.Const
 import Denote.Sem.NarrowState
+-- `jumpOpaque_seqK`/`catchFree_seqK` live here: both files needed them and both had a copy,
+-- which is fine until an import closure contains both. `SeqCons` is the one whose subject they
+-- are (`JudgeSeq.cons`'s decomposition), so this file takes them from there.
+import Denote.Rules.SeqCons
 
 /-!
 # `Denote/Rules/NarrowInv.lean` — narrowing soundness, the run half
@@ -1037,19 +1041,6 @@ theorem jumpOpaque_ifK (t : RubyCore.Expr) (e : Option RubyCore.Expr) :
     rw [hs] at h
     exact jump_empty_never_value f _ v m' ⟨j, rfl⟩ rfl h
 
-/-- …and so does `seqK`: the statement sequence is not a jump boundary (only `while`/`for` are),
-which is what makes `next` escape a guard clause rather than being consumed by it. -/
-theorem jumpOpaque_seqK (rest : List RubyCore.Expr) : JumpOpaque [Kont.seqK rest] := by
-  intro m j fuel v m' h
-  match fuel with
-  | 0 => exact absurd h (by simp [Interp.run])
-  | f + 1 =>
-    rw [Interp.run] at h
-    have hs : Interp.stepFn { m with ctl := .jump j, kont := [Kont.seqK rest] }
-        = .next (Interp.withCtl { m with ctl := .jump j, kont := [] } (.jump j)) := rfl
-    rw [hs] at h
-    exact jump_empty_never_value f _ v m' ⟨j, rfl⟩ rfl h
-
 theorem jumpOpaque_ifK_seqK (t : RubyCore.Expr) (e : Option RubyCore.Expr)
     (rest : List RubyCore.Expr) : JumpOpaque [Kont.ifK t e, Kont.seqK rest] := by
   intro m j fuel v m' h
@@ -1064,7 +1055,6 @@ theorem jumpOpaque_ifK_seqK (t : RubyCore.Expr) (e : Option RubyCore.Expr)
     exact jumpOpaque_seqK rest _ j f v m' h
 
 #print axioms jumpOpaque_ifK
-#print axioms jumpOpaque_seqK
 #print axioms jumpOpaque_ifK_seqK
 
 
@@ -1082,14 +1072,6 @@ theorem nxt_no_value (m : Machine) (K : List Kont) (hK : JumpOpaque K)
             (.jump (.nxtJ .nil))) := rfl
     rw [hs]
     exact hK _ (.nxtJ .nil) f v m'
-
-theorem catchFree_seqK (rest : List RubyCore.Expr) :
-    RubyCore.Proof.CatchFree [Kont.seqK rest] := by
-  intro k hk
-  simp only [List.mem_singleton] at hk
-  rw [hk]
-  intro t
-  simp
 
 theorem catchFree_seqK_nil : RubyCore.Proof.CatchFree [Kont.seqK []] := by
   intro k hk

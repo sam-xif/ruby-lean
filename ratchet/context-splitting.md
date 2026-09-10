@@ -1,9 +1,11 @@
 # Splitting the context: positive facts, negative facts, and a frame rule
 
-**Status:** **BUILT through §8.1 step 4** (2026-09-09). Steps 1–4 are on file and measured;
-step 5 (`JudgeSeq.cons`) is blocked on a defect in §3 that only building it exposed. See
-**§12 What was built, and what §3 got wrong** at the end. Everything above §12 is the design as
-written, left unedited so the correction is legible against it.
+**Status:** **BUILT — §8.1 steps 1–5** (2026-09-09/10). All five are on file and measured, with
+**no rung moved in either direction at any point**; `JudgeSeq.cons` is discharged and the
+semantic ratchet is **48/83**. Step 6 (footprints and the seal) is untouched, as its own piece.
+§3's central claim needed correcting to get step 5 — see **§12 What was built, and what §3 got
+wrong** at the end. Everything above §12 is the design as written, left unedited so the
+correction is legible against it.
 
 Written 2026-09-09 after L268 measured why `JudgeSeq.cons` cannot be discharged and F20 showed
 the same defect is a *reachable soundness bug*, not just an awkwardness.
@@ -745,6 +747,7 @@ Written after building §8.1 steps 1–4. Every number below is measured, not pr
 | **1** | `Neg` seeded whole-program and keyed by receiver port (`negEmit`/`negSeed`). **§F20 closed** — three witness shapes added as negative controls, each confirmed genuinely type-stuck by the real semantics. Every negative premise became a lookup; three positive-table misses (`bareName`'s `defDeclared? … = none`, `clsToS`/`caseEqQuery`'s `smroGet? … = none`) are gone with the encoding that made them wrong. The semantic components that carried the same defect moved with them. | 178/254, 177/177, **145 → 148** controls |
 | **3** | `Judge` threads: `Judge κ Γ I e τ κ' Γ' I' `. `JudgeSeq.cons` reads the way §3 says — premise 1 outputs, premise 2 consumes, conclusion reports, no transport at the syntactic level. `Judge.out_afterStmt` (`cases h <;> rfl`) proves the threaded judgment derives exactly what the `afterStmt` one did. | 178/254, 177/177 |
 | **4** | `SemJudge` claims outgoing conformance at **both** `κ` and `κ'`. | 47/83 |
+| **5** | **`JudgeSeq.cons` discharged**, axiom-clean (`Denote/Rules/SeqCons.lean`), on `evals_seq_cons` plus one new transport (`Denote/Sem/Down.lean`). | **48/83** |
 
 **§11's first open question, answered.** Does keyed-and-seeded `Neg` hold `run_ratchet.sh` at
 178/254? **Yes, exactly** — tier for tier, no rung moved in either direction. §10.1's argument
@@ -785,38 +788,52 @@ two have different readers: `StateOk κ …` is what a consumer republishes, `St
 the next statement needs. Neither direction is transported; both are stated. That is what cost
 the 47 discharged rungs one component each rather than a re-proof.
 
-### 12.4 The residue, measured
+### 12.4 The residue, and how it was paid
 
-`Ratchet.ctxKept` states the sufficient condition decidably. It was tried as a premise on
-`JudgeSeq.cons` and **measured**:
+Three of the antitone components were fixed by applying **§2's own test** to them: they are
+*negative* facts about the context, so they belong in `Neg`, seeded whole-program the way
+`noMethod` is. `Neg` gained `wholeCls` (the whole program's class table) and `boundConsts`
+(every constant name bound anywhere), and:
 
-* the constants clauses cost **nothing** — all 178 hand derivations discharge them by `rfl`;
-* the `isANoOk` clause costs **one rung**, `class Uncomparable < StandardError`.
-  `noDeclaredBelow` answers `false` when `ancestors? C c.name` is `none`, which it is for a class
-  whose superclass is outside the table — so the *first* class declaration in such a program
-  flips `isANoOk` from `true` to `false`, even though `BaseChainsOk κ m'` is perfectly true there
-  (nothing below `StandardError` is in `Integer`'s ancestors).
+* `isANoOk`/`mixinFreeChain` — §F9's guards — read `wholeCls`;
+* `coreConstFree` became `coreConstFreeN` over `boundConsts`;
+* `BaseChainsOk`'s third clause asks `boundConsts.contains cn = false` (not-bound-*ever*) rather
+  than `(constGet? κ cn).isNone` (not-bound-*yet*).
 
-So the premise was not landed. `ctxKept` stays on file as the statement of what is owed, with
-the measurement attached.
+Each is **strictly more conservative** — a bigger class table can only make
+`mixinFreeChain`/`noDeclaredBelow` answer `false`, and a name bound anywhere is treated as bound
+everywhere — so none of them can admit anything the per-point version refused. The *positive*
+half of narrowing still reads `κ.classes`, and that split is the point: a chain is broken by a
+class declared later just as much as by one declared earlier, while a constant not yet assigned
+resolves nowhere and raises. **Measured: the ladder did not move.**
 
-### 12.5 What to do next, and why it is a separate edit window
+What could not be made invariant is what `Ratchet.ctxKept` states, decidably, and it is
+`JudgeSeq.cons`'s third premise:
 
-The prescription is §7.2's, arrived at from the proof side: **`consts` is not a `Pos` field**,
-and `coreConstFree`/`isANoOk` are *negative* facts about the context ("no constant rebinds a core
-name", "no class is declared below this base") which by **§2's own test belong in `Neg`**, seeded
-whole-program the way `noMethod` now is. All three then become invariant and the transport is
-free — the same move step 1 already made for `nameFree`, applied twice more.
+* **constants** — every binding survives at the same type, and inside a method body no *new*
+  key at all (which is Ruby's own rule: "dynamic constant assignment" is a SyntaxError there);
+* **the class table's antecedents** — `DeclClassOk`'s `smroGet? … "new" = none`,
+  `ctorGet? … = none` and `ancestors? … = some ch`, stated one-directionally.
 
-Two things make it its own window rather than a continuation:
+**All 178 hand derivations discharge it by `rfl`**, and `chkSeq` carries the matching guard so
+`chk_sound` still holds. What it refuses is a statement that rebinds a constant, shadows one
+through the cref, or reopens a class the context already records in a way that moves its
+ancestor chain, its `new` or its `initialize` — and `Judge.casgn`'s `constAsgnOk` (§F18) already
+refused the first.
 
-1. **`isAAnswer` reads one table for two purposes.** Its *negative* answer wants the
-   whole-program table (a class declared later still breaks the chain); its *positive* answer
-   wants the already-declared one (a `Foo` not yet declared raises `NameError` rather than
-   narrowing). Splitting them is a soundness question about §F9/§F10's guard, not a refactor —
-   and it is the kind of thing §11 says must be measured, not assumed.
-2. **`noDeclaredBelow`'s "unknown ⇒ false"** is what costs the rung in §12.4, and sharpening it
-   to look through a known exception superclass is a change to the same guard.
+### 12.5 What is left
 
-Neither is blocked on anything; both need a decision about what `isAAnswer` may read, which is
-the seventeenth stall point's territory rather than this document's.
+Step 6 — footprints and the seal (§5) — is untouched and is its own piece.
+
+Two smaller things this window declined to do, with the reason:
+
+1. **The four query rules are not keyed** (§4.5's remaining half). The seed materialises the
+   keyed fact and `tyPorts?` computes the port, but `QueryOk`/`ClsQueryOk` are quantified over
+   **class ids** with a name-global antecedent, so a keyed premise has nothing to discharge them
+   with. Keying them needs a "this `Port` denotes this class id" relation — a `denM`-level
+   change. Nothing on the ladder turns on it today.
+2. **`noDeclaredBelow` still answers `false` when it cannot compute a chain**, which is what a
+   class whose superclass is outside the table (`class Uncomparable < StandardError`) produces.
+   That is now only a *precision* question rather than a blocker, since the guard it feeds is
+   invariant either way. Sharpening it to look through a known exception superclass would be a
+   loosening of §F9's guard and wants its own measurement.

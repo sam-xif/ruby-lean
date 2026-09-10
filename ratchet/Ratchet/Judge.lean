@@ -3327,21 +3327,38 @@ def builtinChains : List (List String) :=
    ["Hash", "Enumerable"] ++ rootAncestors,
    ["Array", "Enumerable"] ++ rootAncestors]
 
-/-- **Everything `κ` claims about a machine, `κ'` still claims.** -/
+/-- **Everything `κ` claims about a machine, `κ'` still claims.**
+
+Two families of clause, one per component that is not simply a `∀`-over-a-growing-set:
+
+* **constants** (`ConstsOk`, `ConstPathsOk`) — every binding survives at the same type, and no
+  new key shadows one `constGet?` was resolving through the frame's cref.
+* **the class table's *antecedents*** (`DeclClassOk`) — `smroGet? … "new" = none`,
+  `ctorGet? … = none`, `ancestors? … = some ch` and `mixinFreeChain` all guard clauses of that
+  component, and all four fire on fewer inputs as the table grows. Stated one-directionally,
+  since only "the goal's antecedent implies the hypothesis's" is needed.
+
+`BaseChainsOk`'s three guards are **not** here: they were moved to `Neg` (`wholeCls`,
+`boundConsts`), which `Ctx.afterStmt` does not touch, so they are invariant rather than
+merely checked.
+
+What is refused is a statement that rebinds a constant, shadows one through the cref, or
+**reopens a class the context already records** in a way that changes its ancestor chain, its
+`new`, or its `initialize`. `Judge.casgn`'s `constAsgnOk` (§F18) already refused the first. -/
 def ctxKept (κ κ' : Ctx) : Bool :=
-  -- every constant fact survives, at the same type…
-  κ.consts.all (fun p => envGet? κ'.consts p.1 == some p.2) &&
-  -- …no new key shadows one `constGet?` was resolving through the frame's cref…
+  κ.consts.all (fun p => decide (envGet? κ'.consts p.1 = some p.2)) &&
+  -- Inside a method body, no *new* constant key at all. That is not the restriction it looks
+  -- like: `constGet?` resolves through the frame's cref, so a new qualified key can change the
+  -- answer for a name whose binding did not move — and Ruby forbids the shape anyway
+  -- ("dynamic constant assignment" is a SyntaxError inside a method).
   (match κ.frame with
    | none => true
-   | some f => κ'.consts.all (fun p =>
-       (envGet? κ.consts p.1).isSome || !("::" ++ f.defClass ++ "::").isPrefixOf p.1)) &&
-  -- …no new constant names a class…
-  κ'.consts.all (fun p => (envGet? κ.consts p.1).isSome || !isClsOfTy p.2) &&
-  -- …no core class name is rebound…
-  (!coreConstFree κ || coreConstFree κ') &&
-  -- …and no builtin chain loses its negative-answer gate.
-  builtinChains.all (fun ch => !isANoOk κ.classes ch || isANoOk κ'.classes ch)
+   | some _ => κ'.consts.all (fun p => (envGet? κ.consts p.1).isSome)) &&
+  κ.classes.all (fun c =>
+    (ancestors? κ.classes c.name == ancestors? κ'.classes c.name) &&
+    (!(smroGet? κ.classes c.name "new").isNone || (smroGet? κ'.classes c.name "new").isNone) &&
+    (!(ctorGet? κ.classes c.name).isNone || (ctorGet? κ'.classes c.name).isNone)) &&
+  (!mixinFreeChain κ.classes rootAncestors || mixinFreeChain κ'.classes rootAncestors)
 
 mutual
 
@@ -4931,6 +4948,7 @@ inductive JudgeSeq : Ctx → Env → Ty → List Expr → Ty → Ctx → Env →
       {es : List Expr} {σ τ : Ty} :
       Judge κ Γ I e σ (κ.afterStmt e σ) Γ₁ I₁ →
       JudgeSeq (κ.afterStmt e σ) Γ₁ I₁ (e' :: es) τ κ₁ Γ₂ I₂ →
+      (hkept : ctxKept κ (κ.afterStmt e σ) = true := by rfl) →
       JudgeSeq κ Γ I (e :: e' :: es) τ κ₁ Γ₂ I₂
   /-- **The guard clause: `return e if c`, followed by more statements** (tier 12).
 

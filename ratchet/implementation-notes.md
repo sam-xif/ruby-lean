@@ -6851,12 +6851,12 @@ Sem/Locals,Sem/StepLocal}.lean`; `probes/measure_captures.lean`.
 
 ---
 
-## Clink 61 (2026-09-09) — `context-splitting.md` steps 1–4, built and measured
+## Clink 61 (2026-09-09/10) — `context-splitting.md` steps 1–5, built and measured
 
-`context-splitting.md` was a design when this clink started. Four of its five migration steps
-are now on file, in the doc's own order, with the ladder measured after each. **No rung moved
-in either direction at any point** — 178/254, `checkrungs` 177/177 hand derivations, semantic
-ratchet 47/83 — and the negative controls went **145 → 148**.
+`context-splitting.md` was a design when this clink started. All five of its migration steps are
+now on file, in the doc's own order, with the ladder measured after each. **No rung moved in
+either direction at any point** — 178/254, `checkrungs` 177/177 hand derivations — the negative
+controls went **145 → 148**, and the semantic ratchet went **47 → 48 of 83**.
 
 ### Step 2 — the split, made cheap by an accessor layer
 
@@ -6926,23 +6926,53 @@ needs. Written as two flat conjuncts rather than a bundled pair, so a consumer t
 first adds `-` to its pattern and a producer whose `κ'` is `κ` supplies the same term twice;
 bundling would have made every existing `⟨_, _, hok⟩` silently bind `hok` to the pair.
 
-### Step 5 — not landed, and the reason is a correction to §3
+### Step 5 — `JudgeSeq.cons`, and the correction to §3 that getting it required
 
 `Obl.JudgeSeq.cons` needs `StateOk` transported **down** across `afterStmt`. The *up* direction,
 which L268 recorded as the other half, is **gone**: step 1 put `NameFreeOk`/`BareNameFree`/
 `MissFree`/`MethodsExact` onto `Neg` (invariant under `afterStmt`) and step 4 states the
-grown-context conformance rather than transporting to it. Down is blocked by `consts` (which
-`envSet` **overwrites**) and by `BaseChainsOk` (three κ-dependent antecedents, each firing on
-fewer inputs as the context grows) — §F21. `Ratchet.ctxKept` states the sufficient condition
-decidably, was tried as a premise, and was **measured**: the constants clauses cost nothing, the
-`isANoOk` clause costs one rung. A rung is not worth a rung, so it was not landed.
+grown-context conformance rather than transporting to it.
+
+Down is not "antitone, one line" (§F21). It splits three ways, and the split is the finding:
+
+* **Free** — `ClassesOk`/`DefsOk` and the membership halves of `NestedClassesOk`/`DeclClassOk`
+  really are `∀ x ∈ table` over a table that grows, because **`mergeCls` prepends** the merged
+  entry rather than replacing it in place. That is a fact about a function whose docstring
+  already gave the reason, and it makes a third of the transport free.
+* **Invariant** — most of `StateOk`, since `Ctx.afterStmt` rewrites only `pos`. Those components
+  are the same proposition at both contexts and are *reused*, not transported.
+* **Owed** — `ConstsOk`/`ConstPathsOk` (`extendConsts` is `envSet`, which overwrites) and
+  `DeclClassOk`'s four guarded clauses.
+
+**Three of the antitone guards were fixed rather than paid for**, by applying §2's own test:
+`isANoOk`/`mixinFreeChain`/`coreConstFree` and `BaseChainsOk`'s `constGet? = none` clause are
+*negative* facts about the context, so they belong in `Neg`, seeded whole-program the way
+`noMethod` is. `Neg` gained `wholeCls` and `boundConsts`; the guards read those and are now
+invariant. Every one of the three is **strictly more conservative** — a bigger class table can
+only make `mixinFreeChain`/`noDeclaredBelow` answer `false`, and not-bound-*ever* implies
+not-bound-*yet* — so none can admit what the per-point version refused. The *positive* half of
+narrowing still reads `κ.classes`, and the split is deliberate: a chain is broken by a class
+declared later just as much as by one declared earlier, while a constant not yet assigned
+resolves nowhere and raises. Measured: the ladder did not move.
+
+What is left is `Ratchet.ctxKept` — the constants clauses, and `DeclClassOk`'s antecedents
+stated one-directionally — carried as `JudgeSeq.cons`'s third premise and as `chkSeq`'s guard so
+`chk_sound` still holds. **All 178 hand derivations discharge it by `rfl`.**
+
+An earlier shape of `ctxKept` demanded the `isANoOk` implication instead of making the guard
+invariant, and that version cost exactly one rung (`class Uncomparable < StandardError`, because
+`noDeclaredBelow` answers `false` when `ancestors?` cannot compute a chain). Recorded because it
+is why the `Neg` move was worth making rather than paying the premise: a rung is not worth a
+rung.
 
 ### State
 
 Syntactic ratchet **178 of 254**, unchanged tier for tier; `expect_validate` mismatches **35**,
-unchanged. `checkrungs` **177/177 hand derivations + 148/148 negative controls** (three new, one
-per §F20 shape, each confirmed genuinely type-stuck by the real semantics). Semantic ratchet
-**47 of 83**, unchanged. `Denote/Examples.lean` green, `lake build` clean, no `sorry`, every
-`#print axioms` a subset of `propext`/`Classical.choice`/`Quot.sound`. Changed: `Ratchet/{Judge,
-Validate,Rungs,Proof/ChkSound}.lean`, `CheckRungs.lean`, `Denote/{Adequacy,Sanity}.lean`,
-`Denote/Sem/{Judge,State,Frame}.lean`, and thirteen files under `Denote/Rules/`.
+unchanged. Corpus agreement **254/254, 0 disagreements**. `checkrungs` **177/177 hand
+derivations + 148/148 negative controls** (three new, one per §F20 shape, each confirmed
+genuinely type-stuck by the real semantics). Semantic ratchet **48 of 83** (`JudgeSeq` 4/4).
+`Denote/Examples.lean` green, `lake build` clean, no `sorry`, every `#print axioms` a subset of
+`propext`/`Classical.choice`/`Quot.sound`. Changed: `Ratchet/{Judge,Validate,Rungs,
+Proof/ChkSound}.lean`, `CheckRungs.lean`, `Denote/{Adequacy,Sanity,Rules}.lean`,
+`Denote/Sem/{Judge,State,Frame,Narrow,NarrowState}.lean`, a new `Denote/Sem/Down.lean`, and
+fourteen files under `Denote/Rules/`.
