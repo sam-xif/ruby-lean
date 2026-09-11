@@ -8168,3 +8168,89 @@ Before: *8 rules registered, 8 rungs proved safe* — which reads as though the 
 other. After: *8 registered, 7 exercised, 1 named exception*, plus a per-rung cross-check
 against the built corpus. Same proofs; the report stopped implying something it had not
 checked.
+
+---
+
+## Clink 71 (2026-09-11) — the safety field is the **invariant**, not whole-program safety
+
+Clink 69 made safety a field of the clink target as
+
+```lean
+def SafeJudge (Γ : Env) (e : Ratchet.Expr) : Prop :=
+  ∀ m, StateOk ctx0 Γ .ivar0 m → StuckFree m e
+```
+
+and that is **too weak**, for a reason that is structural rather than a matter of degree.
+
+### What was wrong with it
+
+`StuckFree m e` is `SafeA (evalFrom m e)`, and `evalFrom` **empties the continuation**. So the
+field said: *run this expression as a whole program and nothing gets stuck.* It said nothing
+about a machine part-way through a larger program, which is the only situation a composite
+rule's premise ever arrives in. `vasgn` evaluates its right-hand side under an `asgnK` frame;
+what it would have had in hand is a fact about evaluating that right-hand side from an *empty*
+continuation, and bridging the two is fuel arithmetic that every composite rule would redo.
+Four rules owed, four bridges.
+
+It was also not an invariant in any useful sense: nothing in it mentioned the continuation, so
+there was nothing for a frame-pushing rule to discharge and nothing for a frame to accept.
+
+### The replacement
+
+```lean
+inductive DKontOk (τa : Ty) : List Kont → Env → Ty → Prop
+  | nil {Γ : Env} : DKontOk τa [] Γ τa
+
+def SafeUnder (Γ : Env) (e : Ratchet.Expr) (τ : Ty) (Γ' : Env) : Prop :=
+  ∀ (τa : Ty) (m : Machine), StateOk ctx0 Γ .ivar0 m →
+    m.ctl = .eval (toRuby e) → DKontOk τa m.kont Γ' τ → SafeA m
+```
+
+Safety of the **machine**, under **any** continuation that accepts the expression's type. Two
+indices carry the content:
+
+* **the continuation typing `DKontOk`**, which is the invariant's hard half. One constructor
+  today because no registered rule pushes a frame; `vasgn` will add `asgnK` with a value
+  clause (write and pass on) and an escape clause (pop and pass on). The census that priced
+  the full set at 36 of `Kont`'s 49 constructors is in `AGENTS.md`.
+* **the answer type `τa`** — the type the *empty* continuation accepts, i.e.
+  Wright–Felleisen's context typing `E : τ ⇒ τ_ans`. `nil` pins it to the program's own type,
+  and that pin is load-bearing: the deleted prototype found that with `nil` accepting anything,
+  the invariant proves safety while proving **nothing about types**, because the existential
+  over the current type forgets what the certificate claimed. The pin is the only reason the
+  value clause is recoverable.
+
+`dregistry_safe` — safety of every program the fragment types — is now one line:
+`dregistry_safeUnder` at `DKontOk.nil`. The invariant does the work; the whole-program theorem
+instantiates it.
+
+### The observation worth keeping: the Church encoding *is* the induction
+
+`Denote/Proto/Safety.lean` proved `preserved` by `cases` on an inductive `PJudge`. That route
+is **not available** here, and it is not an oversight: `DJudgeC` is Church-encoded
+(`∀ F, Closed R F → F.judge …`), so a derivation cannot be inverted — there is no `cases` on
+it at all.
+
+What the encoding gives instead is elimination into *any family closed under the rules*. So
+choosing the family to be "the invariant holds here" **is** the inductive proof of the
+invariant, with one case per rule — and those cases are exactly the `Clink.sem` fields. The
+registry design and the invariant design are the same design seen twice; realising that is
+what made the field's shape obvious once the weak version was written down.
+
+`Denote/Sem/Invariant.lean` §1 stays for the monolithic form (`SafetyObligations`,
+`safety_of_invariant`, and `InvInit` parameterised by what "accepted" means), which is still
+the right thing if a concrete `Inv` is ever wanted for a non-registry judgment.
+
+### Cost
+
+Eight proofs, unchanged in substance: `safeUnder_of_step` is the same two fuel cases over
+`safeA_value_nil`, now with `DKontOk`'s inversion supplying `m.kont = []`. What changed is
+that the step facts had to be restated in `m.ctl = .eval (toRuby e)` form with the
+continuation left alone — §1a's `evalFrom` versions are the `kont = []` instances of the same
+three facts. The string literal's is stated in terms of `Builtins.allocStr`'s own result
+rather than `pushHeap`, because `safeUnder_of_step`'s existential only needs *some* machine to
+land on; relating the fresh heap to `pushHeap` is work `SemJudgeA`'s half needs (for the `Ext`)
+and this half does not.
+
+Unmoved: reach 18, agreement 252/0, 8 clinks, 8 rungs proved safe, `var` still the named
+unexercised rule (§F30).

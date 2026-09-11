@@ -43,6 +43,13 @@ theorem derivD_intLit_safe {Γ : Env} {n : Int} {m : Machine}
     (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) : StuckFree m (.int n) :=
   dregistry_safe derivD_intLit hm
 
+/-- The invariant form the safety above is an instance of — and the thing the old
+whole-program `SafeJudge` could not say: safety at a machine whose continuation is **not**
+empty is available as soon as `DKontOk` has a frame clause for it. Stated here at the one
+continuation `DKontOk` admits today, so the shape is on file before the frames arrive. -/
+theorem derivD_intLit_safeUnder {Γ : Env} {n : Int} :
+    SafeUnder Γ (.int n) .int Γ := dregistry_safeUnder derivD_intLit
+
 /-- And a local read, which is the rule whose premise the certificate cannot supply. -/
 theorem derivD_var_sem {Γ : Env} {x : String} {τ : Ty} (hget : envGet? Γ x = some τ)
     (halias : isAliasTy τ = false) : SemJudgeA Γ (.var .lvar x) τ Γ :=
@@ -74,12 +81,18 @@ diagnostic is a control that gets deleted. -/
 example : DClink.intLit.form dsemFam =
     (∀ {Γ : Env} {n : Int}, SemSafeA Γ (.int n) .int Γ) := rfl
 
+/-- …and `SemSafeA` really is the pair, so "registered" means both obligations were proved. -/
+example {Γ : Env} {n : Int} :
+    SemSafeA Γ (.int n) .int Γ = (SemJudgeA Γ (.int n) .int Γ ∧ SafeUnder Γ (.int n) .int Γ) :=
+  rfl
+
 example : DClink.intLit.form dsynFam =
     (∀ {Γ : Env} {n : Int}, DJudge Γ (.int n) .int Γ) := rfl
 
 #print axioms derivD_intLit
 #print axioms derivD_intLit_sem
 #print axioms derivD_intLit_safe
+#print axioms derivD_intLit_safeUnder
 #print axioms derivD_var_sem
 
 

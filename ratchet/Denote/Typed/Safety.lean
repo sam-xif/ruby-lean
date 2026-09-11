@@ -20,13 +20,23 @@ corpus/NNN-id.rb  --(pipeline)-->  Deriv  --(check)-->  DJudge
 **at every fuel**, so it covers runs that return, escape, diverge and gate alike. `typeStuck`
 is the model's own predicate for an uncaught `NoMethodError`/`ArgumentError`/`TypeError`.
 
+The `dregistry_safe` step in that diagram is one line: `dregistry_safeUnder` at `DKontOk.nil`,
+with the answer type pinned to the program's own.
+
 ## Why it cannot go stale
 
-Safety is a **field of the clink target** (`SemSafeA` = `SemJudgeA ∧ SafeJudge`), so
+Safety is a **field of the clink target** (`SemSafeA` = `SemJudgeA ∧ SafeUnder`), so
 `dregistry_safe` is unconditional and holds at every registry size. A rule cannot join
 `DJudgeC` without its safety proof, and a rule leaving would break `dclinks`. So "the safety
 proof stays green at every clink" is not a discipline anyone has to remember — it is what the
-`Clink` structure's third field means.
+clink target's second conjunct means.
+
+And the conjunct is the **invariant**, not whole-program safety: `SafeUnder` says a machine
+evaluating the expression *under a continuation that accepts its type* is safe, quantified
+over the continuation and the answer type (`Denote/Typed/JudgeA.lean` §1b). The theorems
+below are that statement at the empty continuation. The difference matters as soon as a rule
+has a sub-expression: a whole-program reading gives a premise about running the
+sub-expression *from an empty continuation*, which is not what the rule creates.
 
 What each theorem below *adds* to that is the discharge of the remaining hypothesis: the
 program has a derivation using only registered rules, and `bootMachine` conforms. The second

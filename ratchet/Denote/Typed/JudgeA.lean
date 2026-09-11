@@ -115,42 +115,78 @@ def SemJudgeA (Γ : Env) (e : Ratchet.Expr) (τ : Ty) (Γ' : Env) : Prop :=
       Framed m m₀ ∧ AnsOk τ m₀ a ∧
         (∀ v, a = .val v → StateOk Ratchet.ctx0 Γ' .ivar0 m₀)
 
-/-! ### §1b …and end-to-end safety, which is **also** part of a clink's target
+/-! ### §1b …and safety, stated through the **continuation typing**
 
-`SemJudgeA` is a statement about runs that reach an **answer**. That is not the same as
-safety, and the gap is real: a run can halt `.uncaught` — the one type-stuck outcome — and
-`runA` reports that as `.halt`, not `.ans`, so the obligation is silent on it. Closing that
-gap *in general* needs `UncaughtInv` (`answer-typed-schema.md` §7: `.uncaught` is only
-`unwind`'s empty-continuation arm on a `raiseJ`, so `runA` should stop at the answer point
-first — the converse of `done_inv`, and it does not exist).
+`SemJudgeA` is a statement about runs that reach an **answer**. That is not safety, and the
+gap is real: a run can halt `.uncaught` — the one type-stuck outcome — which `runA` reports as
+`.halt`, not `.ans`. Closing that gap by *derivation* needs `UncaughtInv`
+(`answer-typed-schema.md` §7), which does not exist. So safety is a **second obligation
+carried by the same clink**.
 
-So safety is **not derived** from `SemJudgeA` here. It is a **second obligation, carried by
-the same clink**, and `SemSafeA` below is the conjunction that `Clink.sem` must prove. Two
-consequences, and the second is the reason for the choice:
+**The shape of that obligation is the whole content of this section**, because the obvious
+version is too weak. Safety of a *program* —
 
-* a rule cannot enter the certified judgment without an end-to-end safety proof, so
-  `dregistry_safe` is **unconditional at every registry size** — green at clink 1, green at
-  clink 8, and green at clink 9 before anyone asks;
-* the general derivation (`SemJudgeA → safety`, via `UncaughtInv`) remains worth having and
-  is *not* on the critical path. When it lands, `SafeJudge` becomes a projection instead of an
-  obligation and every clink keeps its proof.
+```
+∀ m, StateOk ctx0 Γ .ivar0 m → StuckFree m e        -- too weak
+```
 
-Note what `SafeJudge` does **not** mention: `τ` and `Γ'`. Safety is a property of the program
-and the incoming environment; the type is what `SemJudgeA` is for. Bundling them in one
-`Prop` rather than one predicate would have made the family's member say two things about
-different indices. -/
+— is about `evalFrom m e`, which **empties the continuation**. It therefore says nothing about
+a machine part-way through a larger program, and it does not compose: a rule with a
+sub-expression premise gets a fact about the sub-expression run *as a whole program* and needs
+one about it *under the frame the rule just pushed*. Every composite rule would have to bridge
+that itself with fuel arithmetic.
 
-/-- **Safety, judgment-shaped**: from every machine conformant with the incoming environment,
-running `e` never reaches a type-stuck outcome (`Semantics.typeStuck`, i.e. an uncaught
-`NoMethodError`/`ArgumentError`/`TypeError`). -/
-def SafeJudge (Γ : Env) (e : Ratchet.Expr) : Prop :=
-  ∀ m : Machine, StateOk Ratchet.ctx0 Γ .ivar0 m → StuckFree m e
+The obligation below is the **invariant** instead (`Denote/Sem/Invariant.lean` is the
+reduction; this is its content at this judgment): a machine whose control word is this
+expression and whose **continuation is well-typed** is safe. `DKontOk` is the continuation
+typing, and it is indexed by the *answer type* `τa` — the type the empty continuation accepts
+— which is Wright–Felleisen's context typing `E : τ ⇒ τ_ans`. The prototype found the hard way
+that dropping that index makes an invariant prove safety while proving nothing about types,
+because the existential over the current type forgets what the certificate claimed.
 
-/-- **The target of a clink**: the answer-typed reading *and* safety. `Denote/Typed/Clink.lean`
-instantiates `dsemFam` at this, so both halves are fields of the same proof obligation and
-neither can be registered without the other. -/
+**Why this is the induction and not a substitute for it.** `DJudgeC` is Church-encoded
+(`Denote/Clink/Spec.lean` §3), so a derivation cannot be *inverted* — there is no `cases` on
+it, and `preserved` cannot be proved by case analysis over the derivation the way
+`Denote/Proto/Safety.lean` did over an inductive `PJudge`. What the encoding gives instead is
+elimination into any family closed under the rules, so **choosing the family to be "the
+invariant holds here" *is* the inductive proof**, with one case per rule — and those cases are
+exactly the clink fields. Safety of every program the fragment types then follows by
+instantiating at the empty continuation.
+
+Stated as safety of the **machine** (`SafeA m`) rather than of the program, so that it
+composes: a rule that pushes a frame consumes its premise at a machine whose continuation is
+the frame it pushed, which is what `DKontOk`'s frame clauses will say. -/
+
+/-- **The continuation typing.** `DKontOk τa K Γ τ`: the continuation `K` accepts a value of
+type `τ` at environment `Γ`, and the run as a whole will answer at type `τa`.
+
+One constructor today, because **no registered rule pushes a frame** — the eight are the seven
+literals and a local read. A frame joins when the rule that pushes it registers: `vasgn` will
+add `asgnK`, with a value clause (write and pass on) and an escape clause (pop and pass on).
+`probes/kont_census.lean` priced the full set at 36 of `Kont`'s 49 constructors before it was
+deleted with the corpus it walked; that number is the target, one rule at a time. -/
+inductive DKontOk (τa : Ty) : List Kont → Env → Ty → Prop
+  /-- **The empty continuation accepts exactly the program's own type.** Not "anything": with
+      `nil` accepting any type the invariant proves safety and says nothing about types, which
+      is the prototype's second finding and the reason `τa` is an index at all. -/
+  | nil {Γ : Env} : DKontOk τa [] Γ τa
+
+/-- **Safety, through the invariant.** A machine about to evaluate `e`, conformant with the
+incoming environment, under a continuation that accepts `e`'s type, is safe: no run from it
+reaches a type-stuck outcome, at any fuel.
+
+Universally quantified over `τa` and over the continuation — that is what makes it the
+invariant rather than a statement about whole programs, and what lets a composite rule use its
+premise at the machine it actually creates. -/
+def SafeUnder (Γ : Env) (e : Ratchet.Expr) (τ : Ty) (Γ' : Env) : Prop :=
+  ∀ (τa : Ty) (m : Machine), StateOk Ratchet.ctx0 Γ .ivar0 m →
+    m.ctl = .eval (toRuby e) → DKontOk τa m.kont Γ' τ → SafeA m
+
+/-- **The target of a clink**: the answer-typed reading *and* the invariant. `dsemFam` is
+instantiated at this, so both are fields of the same obligation and neither can be registered
+without the other. -/
 def SemSafeA (Γ : Env) (e : Ratchet.Expr) (τ : Ty) (Γ' : Env) : Prop :=
-  SemJudgeA Γ e τ Γ' ∧ SafeJudge Γ e
+  SemJudgeA Γ e τ Γ' ∧ SafeUnder Γ e τ Γ'
 
 /-! ## §1a Three facts about `stepFn`, and nothing about any judgment
 
@@ -218,16 +254,58 @@ theorem leafOk {Γ : Env} {τ : Ty} {m m₁ : Machine} {w : Value}
   subst hm₁
   exact ⟨Framed_reCtl _ _ _, hden, fun _ _ => StateOk_reCtl hm _ _⟩
 
-/-- **The safety half of a one-step rule.** Everything the registered fragment derives
-evaluates in a single `stepFn` step to a value at the empty continuation, and
-`safeA_value_nil` says such a machine is one step from `.done`. So the whole proof is two
-fuel cases, and no `UncaughtInv` is needed: the run cannot reach `unwind` at all. -/
-theorem safeJudge_of_step {Γ : Env} {e : Ratchet.Expr}
-    (hstep : ∀ m : Machine, ∃ (m₁ : Machine) (w : Value),
-      Interp.stepFn (evalFrom m e) = .next (reCtl m₁ (.value w) [])) :
-    SafeJudge Γ e := by
-  intro m _ fuel
-  obtain ⟨m₁, w, hs⟩ := hstep m
+/-! ### The step facts in `ctl`-form, and the safety half of a one-step rule
+
+`§1a`'s lemmas are stated at `evalFrom m e`, which is what `SemJudgeA` needs. `SafeUnder`
+quantifies over the *machine*, so it needs the same facts from a `m.ctl = .eval …` hypothesis
+with the continuation left alone. Two shapes of the same three facts; the `evalFrom` ones are
+the `kont = []` instances. -/
+
+/-- `DKontOk`'s inversion. One constructor, so: the continuation is empty and the answer type
+is the expression's. As frames join, this becomes a `cases` with a clause each. -/
+theorem dKontOk_inv {τa : Ty} {K : List Kont} {Γ : Env} {τ : Ty} (h : DKontOk τa K Γ τ) :
+    K = [] ∧ τa = τ := by
+  cases h; exact ⟨rfl, rfl⟩
+
+/-- A literal: one step to its value, **continuation untouched** (which is the difference from
+§1a's `evalFrom` versions, and what makes the invariant composable). -/
+theorem step_lit_ctl {m : Machine} {e : Ratchet.Expr} {w : Value}
+    (hc : m.ctl = .eval (toRuby e))
+    (hev : Interp.evalExpr m (toRuby e) = .next (Interp.withCtl m (.value w))) :
+    Interp.stepFn m = .next (reCtl m (.value w) m.kont) := by
+  simp only [Interp.stepFn, hc, hev, Interp.withCtl, reCtl]
+
+/-- A local read. -/
+theorem step_var_ctl {m : Machine} {x : String} (hc : m.ctl = .eval (toRuby (.var .lvar x))) :
+    Interp.stepFn m = .next (reCtl m (.value (m.getLocal x)) m.kont) :=
+  step_lit_ctl hc (by simp [toRuby, toRubyVarKind, Interp.evalExpr, Interp.withCtl])
+
+/-- A string literal, which **allocates**. Stated in terms of `Builtins.allocStr`'s own result
+rather than in terms of `pushHeap`: the invariant only needs *some* machine and value for the
+step to land on (`safeUnder_of_step`'s existential), so relating the fresh heap to `pushHeap`
+would be work spent to state something nothing here reads. §1a's `stepFn_str` does relate
+them, because `SemJudgeA`'s half needs the `Ext`. -/
+theorem step_str_ctl {m : Machine} {s : String} (hc : m.ctl = .eval (toRuby (.str s))) :
+    Interp.stepFn m =
+      .next (reCtl (Builtins.allocStr m s).2 (.value (Builtins.allocStr m s).1) m.kont) := by
+  simp only [toRuby] at hc
+  simp [Interp.stepFn, hc, Interp.evalExpr, Interp.withCtl, reCtl, Builtins.allocStr]
+
+/-- **The invariant at a one-step rule.** Everything the registered fragment derives steps to
+a value with the continuation untouched; `DKontOk` has only `nil`, so that continuation is
+empty and `safeA_value_nil` finishes it. Two fuel cases, and no `UncaughtInv` — the run never
+reaches `unwind` at all.
+
+As frames join `DKontOk`, this gains the clause that delivers a value to each, which is the
+invariant's value clause and the place where the rule that pushed the frame pays for it. -/
+theorem safeUnder_of_step {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
+    (hstep : ∀ m : Machine, m.ctl = .eval (toRuby e) → ∃ (m₁ : Machine) (w : Value),
+      Interp.stepFn m = .next (reCtl m₁ (.value w) m.kont)) :
+    SafeUnder Γ e τ Γ' := by
+  intro τa m _ hc hk fuel
+  obtain ⟨m₁, w, hs⟩ := hstep m hc
+  obtain ⟨hk0, -⟩ := dKontOk_inv hk
+  rw [hk0] at hs
   match fuel with
   | 0 => simp [Interp.run, Semantics.typeStuck]
   | f + 1 => rw [run_succ, hs]; exact safeA_value_nil m₁ w f
@@ -246,37 +324,37 @@ two. The escape arm is discharged by unreachability: `runA_pure` says the answer
 so `AnsOk`'s `esc` arm never arises. -/
 
 theorem SemA.intLit {Γ : Env} {n : Int} : SemSafeA Γ (.int n) .int Γ := by
-  refine ⟨?_, safeJudge_of_step (fun m => ⟨m, .int n, rfl⟩)⟩
+  refine ⟨?_, safeUnder_of_step (fun m hc => ⟨m, .int n, step_lit_ctl hc rfl⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .int n) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isIntV])
 
 theorem SemA.fltLit {Γ : Env} {b : UInt64} : SemSafeA Γ (.flt b) .float Γ := by
-  refine ⟨?_, safeJudge_of_step (fun m => ⟨m, .flt (Float.ofBits b), rfl⟩)⟩
+  refine ⟨?_, safeUnder_of_step (fun m hc => ⟨m, .flt (Float.ofBits b), step_lit_ctl hc rfl⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .flt (Float.ofBits b)) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isFltV])
 
 theorem SemA.symLit {Γ : Env} {s : String} : SemSafeA Γ (.sym s) .sym Γ := by
-  refine ⟨?_, safeJudge_of_step (fun m => ⟨m, .sym s, rfl⟩)⟩
+  refine ⟨?_, safeUnder_of_step (fun m hc => ⟨m, .sym s, step_lit_ctl hc rfl⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .sym s) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isSymV])
 
 theorem SemA.truLit {Γ : Env} : SemSafeA Γ .tru .bool Γ := by
-  refine ⟨?_, safeJudge_of_step (fun m => ⟨m, .bool true, rfl⟩)⟩
+  refine ⟨?_, safeUnder_of_step (fun m hc => ⟨m, .bool true, step_lit_ctl hc rfl⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .bool true) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isBoolV])
 
 theorem SemA.flsLit {Γ : Env} : SemSafeA Γ .fls .bool Γ := by
-  refine ⟨?_, safeJudge_of_step (fun m => ⟨m, .bool false, rfl⟩)⟩
+  refine ⟨?_, safeUnder_of_step (fun m hc => ⟨m, .bool false, step_lit_ctl hc rfl⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .bool false) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isBoolV])
 
 theorem SemA.nilLit {Γ : Env} : SemSafeA Γ .nil .nilT Γ := by
-  refine ⟨?_, safeJudge_of_step (fun m => ⟨m, .nil, rfl⟩)⟩
+  refine ⟨?_, safeUnder_of_step (fun m hc => ⟨m, .nil, step_lit_ctl hc rfl⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .nil) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isNilV])
@@ -288,7 +366,7 @@ theorem SemA.nilLit {Γ : Env} : SemSafeA Γ .nil .nilT Γ := by
 is a `Ty.sameAs` that is strictly weaker than the conclusion. `found-issues.md` §F29. -/
 theorem SemA.var {Γ : Env} {x : String} {τ : Ty} (hget : envGet? Γ x = some τ)
     (halias : isAliasTy τ = false) : SemSafeA Γ (.var .lvar x) τ Γ := by
-  refine ⟨?_, safeJudge_of_step (fun m => ⟨m, m.getLocal x, stepFn_var m x⟩)⟩
+  refine ⟨?_, safeUnder_of_step (fun m hc => ⟨m, m.getLocal x, step_var_ctl hc⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (stepFn_var m x) h
   refine leafOk hm rfl ?_
@@ -301,8 +379,8 @@ theorem SemA.var {Γ : Env} {x : String} {τ : Ty} (hget : envGet? Γ x = some �
 control word — it has a longer heap. `Ext` is what carries conformance and the denotation
 across the push, exactly as in `Denote/Rules/Lit.lean`'s value-shaped twin. -/
 theorem SemA.strLit {Γ : Env} {s : String} : SemSafeA Γ (.str s) (.cls "String") Γ := by
-  refine ⟨?_, safeJudge_of_step (fun m =>
-    ⟨{ m with heap := pushHeap m.heap (strObj s) }, .ref m.heap.objs.size, stepFn_str m s⟩)⟩
+  refine ⟨?_, safeUnder_of_step (fun m hc =>
+    ⟨(Builtins.allocStr m s).2, (Builtins.allocStr m s).1, step_str_ctl hc⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (stepFn_str m s) h
   have hext : Ext m (reCtl { m with heap := pushHeap m.heap (strObj s) }

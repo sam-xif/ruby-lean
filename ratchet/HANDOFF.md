@@ -90,8 +90,12 @@ certified judgment (`DJudgeC dclinks`) and each has an **end-to-end safety theor
 booted machine. Rungs 009-018 are checker coverage only.
 
 Safety cannot go stale: it is a **field of the clink target** (`SemSafeA = SemJudgeA ∧
-SafeJudge`), so `dregistry_safe` is unconditional at every registry size and a rule cannot
-join `DJudgeC` without proving it. Three gates keep the *count* honest too — the list carries
+SafeUnder`), so `dregistry_safe` is unconditional at every registry size and a rule cannot
+join `DJudgeC` without proving it. The field is the **invariant**, not whole-program safety:
+`SafeUnder` says a machine evaluating the expression under a continuation that accepts its
+type (`DKontOk`, indexed by the answer type) is safe — quantified over the continuation, so it
+composes to sub-expressions, which the whole-program reading did not. `dregistry_safe` is that
+statement at `DKontOk.nil`. Three gates keep the *count* honest too — the list carries
 the programs and the theorem is proved over it; `semladder build` compares each theorem's
 `Expr` against the program the pipeline built for that rung; and every registered rule must be
 exercised by a covered rung or named in `unexercised`. That last one found §F30 on its first

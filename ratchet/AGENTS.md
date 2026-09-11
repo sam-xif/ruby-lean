@@ -190,17 +190,41 @@ and it is in the right place: a named divergence in an untrusted emitter.
 
 ### The semantic layer: **8 clinks, each carrying an end-to-end safety proof**
 
-**Safety is a field of the clink target, not a consequence of it.** `SemSafeA` is
-`SemJudgeA ∧ SafeJudge`, so `Clink.sem` proves both and `dregistry_safe` — *a certified
-program never reaches a type-stuck outcome, from any conformant machine, at any fuel* — is
-unconditional at every registry size. It was green at clink 1 and cannot stop being green as
-the registry grows: a rule that cannot prove safety cannot register.
+**Safety is a field of the clink target, not a consequence of it — and the field is the
+invariant.** `SemSafeA` is `SemJudgeA ∧ SafeUnder`, where
 
-Why safety is *not* derived from `SemJudgeA`: that judgment constrains runs which reach an
+```lean
+def SafeUnder (Γ : Env) (e : Expr) (τ : Ty) (Γ' : Env) : Prop :=
+  ∀ (τa : Ty) (m : Machine), StateOk ctx0 Γ .ivar0 m →
+    m.ctl = .eval (toRuby e) → DKontOk τa m.kont Γ' τ → SafeA m
+```
+
+`DKontOk` is the **continuation typing**, indexed by the *answer type* `τa` — the type the
+empty continuation accepts, which is Wright–Felleisen's `E : τ ⇒ τ_ans`. It has one
+constructor today because no registered rule pushes a frame; a frame joins when the rule that
+pushes it registers (`vasgn` brings `asgnK`, with a value clause and an escape clause).
+
+**Why not whole-program safety.** `∀ m, StateOk … → StuckFree m e` was the first version and
+is too weak: `StuckFree` is about `evalFrom m e`, which *empties the continuation*, so it says
+nothing about a machine part-way through a larger program and does not compose. A rule with a
+sub-expression premise would get a fact about running that sub-expression as a whole program
+and need one about running it under the frame it just pushed — bridged per rule with fuel
+arithmetic. `SafeUnder` is that fact directly. `dregistry_safe` (safety of every program the
+fragment types) is then one line: `SafeUnder` at `DKontOk.nil`.
+
+**Why this is the induction, not a substitute for it.** `DJudgeC` is Church-encoded, so a
+derivation cannot be *inverted* — there is no `cases` on it, and `preserved` cannot be proved
+by case analysis over the derivation. What the encoding gives is elimination into any family
+closed under the rules, so **choosing the family to be "the invariant holds here" is the
+inductive proof**, with one case per rule — and those cases are exactly the clink fields.
+`Denote/Sem/Invariant.lean` §1 keeps the abstract reduction for when a monolithic `Inv` is
+wanted; it is parameterised by what "accepted" means and needs no judgment.
+
+Safety is *not* derived from `SemJudgeA`: that judgment constrains runs which reach an
 **answer**, and a run can halt `.uncaught` (the one type-stuck outcome), which `runA` reports
 as `.halt`. Closing that in general needs `UncaughtInv` (`answer-typed-schema.md` §7) and is
-not on the critical path — when it lands, `SafeJudge` becomes a projection and every clink
-keeps its proof.
+not on the critical path — when it lands, `SafeUnder` gains a derivation and every clink keeps
+its proof.
 
 **`Denote/Typed/Safety.lean` is the file to watch**: one theorem per certified corpus rung, at
 the real prelude-booted machine, every hypothesis discharged (`stateOk_boot`, conditional on

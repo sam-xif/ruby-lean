@@ -52,10 +52,10 @@ structure DFam where
 /-- The syntactic reading: `Ratchet/Check.lean`'s own relation. -/
 def dsynFam : DFam := { judge := DJudge }
 
-/-- The **answer-typed semantic reading, conjoined with end-to-end safety**
+/-- The **answer-typed semantic reading, conjoined with the invariant**
 (`Denote/Typed/JudgeA.lean` §1b). This is the field that makes a clink here mean something: a
-rule cannot join the judgment without proving both that the answer is in the type *and* that
-the program never reaches a type-stuck outcome. -/
+rule cannot join the judgment without proving both that the answer is in the type *and* that a
+machine evaluating it under a well-typed continuation is safe. -/
 def dsemFam : DFam := { judge := SemSafeA }
 
 /-! ## §2 Registration
@@ -168,14 +168,25 @@ the escape is not type-stuck. -/
 theorem dregistry_semJudge {Γ : Env} {e : Ratchet.Expr} {τ : Ty} {Γ' : Env}
     (h : (DJudgeC dclinks).judge Γ e τ Γ') : SemJudgeA Γ e τ Γ' := (dregistry_sound h).1
 
-/-- **The end-to-end safety half.** From any conformant machine, a certified program never
-reaches a type-stuck outcome — at any fuel, whether it returns, escapes, diverges or gates.
-This is the theorem the ladder exists to produce, and `Denote/Typed/Safety.lean` lands it on
-the corpus's own rungs at the real prelude-booted machine. -/
+/-- **The invariant half**, as the clinks state it: a machine evaluating a certified
+expression under a continuation that accepts its type is safe. Quantified over the
+continuation and the answer type, which is what makes it usable at a machine part-way through
+a larger program. -/
+theorem dregistry_safeUnder {Γ : Env} {e : Ratchet.Expr} {τ : Ty} {Γ' : Env}
+    (h : (DJudgeC dclinks).judge Γ e τ Γ') : SafeUnder Γ e τ Γ' := (dregistry_sound h).2
+
+/-- **Safety of every program the fragment types**, which is the theorem the ladder exists to
+produce: from any conformant machine, a certified program never reaches a type-stuck outcome —
+at any fuel, whether it returns, escapes, diverges or gates.
+
+One line, and the line is the point: it is `dregistry_safeUnder` at the **empty continuation**
+(`DKontOk.nil`, with the answer type pinned to the program's own). The invariant does the
+work; this instantiates it. `Denote/Typed/Safety.lean` lands it on the corpus's own rungs at
+the real prelude-booted machine. -/
 theorem dregistry_safe {Γ : Env} {e : Ratchet.Expr} {τ : Ty} {Γ' : Env}
     (h : (DJudgeC dclinks).judge Γ e τ Γ')
     {m : Machine} (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) : StuckFree m e :=
-  (dregistry_sound h).2 m hm
+  dregistry_safeUnder h τ (evalFrom m e) (StateOk_reCtl hm _ _) rfl DKontOk.nil
 
 /-- …and it is a `DJudge` derivation, so `Ratchet/Check.lean`'s checker and this judgment are
 about the same rules. -/
