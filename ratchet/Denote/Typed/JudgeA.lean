@@ -115,6 +115,43 @@ def SemJudgeA (Γ : Env) (e : Ratchet.Expr) (τ : Ty) (Γ' : Env) : Prop :=
       Framed m m₀ ∧ AnsOk τ m₀ a ∧
         (∀ v, a = .val v → StateOk Ratchet.ctx0 Γ' .ivar0 m₀)
 
+/-! ### §1b …and end-to-end safety, which is **also** part of a clink's target
+
+`SemJudgeA` is a statement about runs that reach an **answer**. That is not the same as
+safety, and the gap is real: a run can halt `.uncaught` — the one type-stuck outcome — and
+`runA` reports that as `.halt`, not `.ans`, so the obligation is silent on it. Closing that
+gap *in general* needs `UncaughtInv` (`answer-typed-schema.md` §7: `.uncaught` is only
+`unwind`'s empty-continuation arm on a `raiseJ`, so `runA` should stop at the answer point
+first — the converse of `done_inv`, and it does not exist).
+
+So safety is **not derived** from `SemJudgeA` here. It is a **second obligation, carried by
+the same clink**, and `SemSafeA` below is the conjunction that `Clink.sem` must prove. Two
+consequences, and the second is the reason for the choice:
+
+* a rule cannot enter the certified judgment without an end-to-end safety proof, so
+  `dregistry_safe` is **unconditional at every registry size** — green at clink 1, green at
+  clink 8, and green at clink 9 before anyone asks;
+* the general derivation (`SemJudgeA → safety`, via `UncaughtInv`) remains worth having and
+  is *not* on the critical path. When it lands, `SafeJudge` becomes a projection instead of an
+  obligation and every clink keeps its proof.
+
+Note what `SafeJudge` does **not** mention: `τ` and `Γ'`. Safety is a property of the program
+and the incoming environment; the type is what `SemJudgeA` is for. Bundling them in one
+`Prop` rather than one predicate would have made the family's member say two things about
+different indices. -/
+
+/-- **Safety, judgment-shaped**: from every machine conformant with the incoming environment,
+running `e` never reaches a type-stuck outcome (`Semantics.typeStuck`, i.e. an uncaught
+`NoMethodError`/`ArgumentError`/`TypeError`). -/
+def SafeJudge (Γ : Env) (e : Ratchet.Expr) : Prop :=
+  ∀ m : Machine, StateOk Ratchet.ctx0 Γ .ivar0 m → StuckFree m e
+
+/-- **The target of a clink**: the answer-typed reading *and* safety. `Denote/Typed/Clink.lean`
+instantiates `dsemFam` at this, so both halves are fields of the same proof obligation and
+neither can be registered without the other. -/
+def SemSafeA (Γ : Env) (e : Ratchet.Expr) (τ : Ty) (Γ' : Env) : Prop :=
+  SemJudgeA Γ e τ Γ' ∧ SafeJudge Γ e
+
 /-! ## §1a Three facts about `stepFn`, and nothing about any judgment
 
 Moved here from the deleted `Denote/Rules/Lit.lean` (clink 68), which proved the old
@@ -181,6 +218,20 @@ theorem leafOk {Γ : Env} {τ : Ty} {m m₁ : Machine} {w : Value}
   subst hm₁
   exact ⟨Framed_reCtl _ _ _, hden, fun _ _ => StateOk_reCtl hm _ _⟩
 
+/-- **The safety half of a one-step rule.** Everything the registered fragment derives
+evaluates in a single `stepFn` step to a value at the empty continuation, and
+`safeA_value_nil` says such a machine is one step from `.done`. So the whole proof is two
+fuel cases, and no `UncaughtInv` is needed: the run cannot reach `unwind` at all. -/
+theorem safeJudge_of_step {Γ : Env} {e : Ratchet.Expr}
+    (hstep : ∀ m : Machine, ∃ (m₁ : Machine) (w : Value),
+      Interp.stepFn (evalFrom m e) = .next (reCtl m₁ (.value w) [])) :
+    SafeJudge Γ e := by
+  intro m _ fuel
+  obtain ⟨m₁, w, hs⟩ := hstep m
+  match fuel with
+  | 0 => simp [Interp.run, Semantics.typeStuck]
+  | f + 1 => rw [run_succ, hs]; exact safeA_value_nil m₁ w f
+
 /-! ## §3 The obligations, rule-local
 
 One theorem per `DJudge` rule, in the shape a `Clink.sem` field has: premises as
@@ -194,32 +245,38 @@ already proved, and the proof *bodies* transfer; what changes is the packaging, 
 two. The escape arm is discharged by unreachability: `runA_pure` says the answer is a value,
 so `AnsOk`'s `esc` arm never arises. -/
 
-theorem SemA.intLit {Γ : Env} {n : Int} : SemJudgeA Γ (.int n) .int Γ := by
+theorem SemA.intLit {Γ : Env} {n : Int} : SemSafeA Γ (.int n) .int Γ := by
+  refine ⟨?_, safeJudge_of_step (fun m => ⟨m, .int n, rfl⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .int n) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isIntV])
 
-theorem SemA.fltLit {Γ : Env} {b : UInt64} : SemJudgeA Γ (.flt b) .float Γ := by
+theorem SemA.fltLit {Γ : Env} {b : UInt64} : SemSafeA Γ (.flt b) .float Γ := by
+  refine ⟨?_, safeJudge_of_step (fun m => ⟨m, .flt (Float.ofBits b), rfl⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .flt (Float.ofBits b)) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isFltV])
 
-theorem SemA.symLit {Γ : Env} {s : String} : SemJudgeA Γ (.sym s) .sym Γ := by
+theorem SemA.symLit {Γ : Env} {s : String} : SemSafeA Γ (.sym s) .sym Γ := by
+  refine ⟨?_, safeJudge_of_step (fun m => ⟨m, .sym s, rfl⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .sym s) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isSymV])
 
-theorem SemA.truLit {Γ : Env} : SemJudgeA Γ .tru .bool Γ := by
+theorem SemA.truLit {Γ : Env} : SemSafeA Γ .tru .bool Γ := by
+  refine ⟨?_, safeJudge_of_step (fun m => ⟨m, .bool true, rfl⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .bool true) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isBoolV])
 
-theorem SemA.flsLit {Γ : Env} : SemJudgeA Γ .fls .bool Γ := by
+theorem SemA.flsLit {Γ : Env} : SemSafeA Γ .fls .bool Γ := by
+  refine ⟨?_, safeJudge_of_step (fun m => ⟨m, .bool false, rfl⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .bool false) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isBoolV])
 
-theorem SemA.nilLit {Γ : Env} : SemJudgeA Γ .nil .nilT Γ := by
+theorem SemA.nilLit {Γ : Env} : SemSafeA Γ .nil .nilT Γ := by
+  refine ⟨?_, safeJudge_of_step (fun m => ⟨m, .nil, rfl⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .nil) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isNilV])
@@ -230,7 +287,8 @@ theorem SemA.nilLit {Γ : Env} : SemJudgeA Γ .nil .nilT Γ := by
 `StateOk`'s environment component supplies `denM (stripAlias τ)`, and at a binding whose type
 is a `Ty.sameAs` that is strictly weaker than the conclusion. `found-issues.md` §F29. -/
 theorem SemA.var {Γ : Env} {x : String} {τ : Ty} (hget : envGet? Γ x = some τ)
-    (halias : isAliasTy τ = false) : SemJudgeA Γ (.var .lvar x) τ Γ := by
+    (halias : isAliasTy τ = false) : SemSafeA Γ (.var .lvar x) τ Γ := by
+  refine ⟨?_, safeJudge_of_step (fun m => ⟨m, m.getLocal x, stepFn_var m x⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (stepFn_var m x) h
   refine leafOk hm rfl ?_
@@ -242,7 +300,9 @@ theorem SemA.var {Γ : Env} {x : String} {τ : Ty} (hget : envGet? Γ x = some �
 /-- **A string literal allocates**, so the machine the answer arrives at is not `m` with a new
 control word — it has a longer heap. `Ext` is what carries conformance and the denotation
 across the push, exactly as in `Denote/Rules/Lit.lean`'s value-shaped twin. -/
-theorem SemA.strLit {Γ : Env} {s : String} : SemJudgeA Γ (.str s) (.cls "String") Γ := by
+theorem SemA.strLit {Γ : Env} {s : String} : SemSafeA Γ (.str s) (.cls "String") Γ := by
+  refine ⟨?_, safeJudge_of_step (fun m =>
+    ⟨{ m with heap := pushHeap m.heap (strObj s) }, .ref m.heap.objs.size, stepFn_str m s⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (stepFn_str m s) h
   have hext : Ext m (reCtl { m with heap := pushHeap m.heap (strObj s) }

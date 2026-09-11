@@ -35,12 +35,18 @@ theorem derivD_intLit {Γ : Env} {n : Int} :
 registered rules is answer-typed semantically true: for *every* run that reaches an answer —
 value or escape — the answer is in the type or the escape is not type-stuck. -/
 theorem derivD_intLit_sem {Γ : Env} {n : Int} : SemJudgeA Γ (.int n) .int Γ :=
-  dregistry_sound derivD_intLit
+  dregistry_semJudge derivD_intLit
+
+/-- …and the **safety** half, which is the end of the chain: from any conformant machine, the
+program never reaches a type-stuck outcome, at any fuel. -/
+theorem derivD_intLit_safe {Γ : Env} {n : Int} {m : Machine}
+    (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) : StuckFree m (.int n) :=
+  dregistry_safe derivD_intLit hm
 
 /-- And a local read, which is the rule whose premise the certificate cannot supply. -/
 theorem derivD_var_sem {Γ : Env} {x : String} {τ : Ty} (hget : envGet? Γ x = some τ)
     (halias : isAliasTy τ = false) : SemJudgeA Γ (.var .lvar x) τ Γ :=
-  dregistry_sound (by intro F hF; exact hF DClink.var (by simp [dclinks]) hget halias)
+  dregistry_semJudge (by intro F hF; exact hF DClink.var (by simp [dclinks]) hget halias)
 
 /-! ### The refusal
 
@@ -66,13 +72,14 @@ metavariable numbers and elaborator phrasing, and a control that goes red when L
 diagnostic is a control that gets deleted. -/
 
 example : DClink.intLit.form dsemFam =
-    (∀ {Γ : Env} {n : Int}, SemJudgeA Γ (.int n) .int Γ) := rfl
+    (∀ {Γ : Env} {n : Int}, SemSafeA Γ (.int n) .int Γ) := rfl
 
 example : DClink.intLit.form dsynFam =
     (∀ {Γ : Env} {n : Int}, DJudge Γ (.int n) .int Γ) := rfl
 
 #print axioms derivD_intLit
 #print axioms derivD_intLit_sem
+#print axioms derivD_intLit_safe
 #print axioms derivD_var_sem
 
 

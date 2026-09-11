@@ -52,9 +52,11 @@ structure DFam where
 /-- The syntactic reading: `Ratchet/Check.lean`'s own relation. -/
 def dsynFam : DFam := { judge := DJudge }
 
-/-- The **answer-typed** semantic reading. This is the field that makes a clink here mean
-more than a clink in `Denote/Clink/Registry.lean`. -/
-def dsemFam : DFam := { judge := SemJudgeA }
+/-- The **answer-typed semantic reading, conjoined with end-to-end safety**
+(`Denote/Typed/JudgeA.lean` §1b). This is the field that makes a clink here mean something: a
+rule cannot join the judgment without proving both that the answer is in the type *and* that
+the program never reaches a type-stuck outcome. -/
+def dsemFam : DFam := { judge := SemSafeA }
 
 /-! ## §2 Registration
 
@@ -153,12 +155,27 @@ own `sem` fields. -/
 def DJudgeC (R : List (Clink dsynFam dsemFam)) : DFam where
   judge Γ e τ Γ' := ∀ F : DFam, Closed R F → F.judge Γ e τ Γ'
 
-/-- **Every derivation in the certified typed judgment is answer-typed semantically true.**
-The hypothesis is an answer, not a value; the conclusion says whether the run reached a
-type-stuck outcome. Unconditional at every registry size. -/
+/-- **Every derivation in the certified typed judgment is semantically true and safe.**
+Unconditional at every registry size: the hypothesis is discharged from the clinks' own `sem`
+fields, so this theorem was green when the registry had one rule in it and cannot stop being
+green as it grows. -/
 theorem dregistry_sound {Γ : Env} {e : Ratchet.Expr} {τ : Ty} {Γ' : Env}
-    (h : (DJudgeC dclinks).judge Γ e τ Γ') : SemJudgeA Γ e τ Γ' :=
+    (h : (DJudgeC dclinks).judge Γ e τ Γ') : SemSafeA Γ e τ Γ' :=
   h dsemFam (closed_target dclinks)
+
+/-- The answer-typed half: for every run that reaches an answer, the value is in the type or
+the escape is not type-stuck. -/
+theorem dregistry_semJudge {Γ : Env} {e : Ratchet.Expr} {τ : Ty} {Γ' : Env}
+    (h : (DJudgeC dclinks).judge Γ e τ Γ') : SemJudgeA Γ e τ Γ' := (dregistry_sound h).1
+
+/-- **The end-to-end safety half.** From any conformant machine, a certified program never
+reaches a type-stuck outcome — at any fuel, whether it returns, escapes, diverges or gates.
+This is the theorem the ladder exists to produce, and `Denote/Typed/Safety.lean` lands it on
+the corpus's own rungs at the real prelude-booted machine. -/
+theorem dregistry_safe {Γ : Env} {e : Ratchet.Expr} {τ : Ty} {Γ' : Env}
+    (h : (DJudgeC dclinks).judge Γ e τ Γ')
+    {m : Machine} (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) : StuckFree m e :=
+  (dregistry_sound h).2 m hm
 
 /-- …and it is a `DJudge` derivation, so `Ratchet/Check.lean`'s checker and this judgment are
 about the same rules. -/

@@ -74,7 +74,8 @@
 |---|---|---|
 | Ladder reach (*the headline*) | **18 rungs** -- the leading run meeting their recorded target; frontier `019-to-s-call`, one `DPrim` row away | `scripts/run_typed_ratchet.sh` |
 | Agreement | **252 agree, 0 disagreements** over the sig-stripped programs | same, step 3 |
-| Clinks (*what the judgment may contain*) | **8 of `DJudge`'s 12** rules carry an answer-typed proof; 4 owed, all behind **one** lemma | `scripts/run_denote.sh`, or `lake exe semladder` |
+| Clinks (*what the judgment may contain*) | **8 of `DJudge`'s 12** rules, each carrying an answer-typed proof **and** a safety proof; 4 owed, all behind **one** lemma | `scripts/run_denote.sh`, or `lake exe semladder` |
+| End-to-end safety | **8 corpus rungs** proved `StuckFree bootMachine <program>` at every fuel | same |
 
 **Clink 68 deleted the old ladder**, so the three rows above are all of them. Gone: `Judge`
 (83 rules), `chk`, `Rungs.lean`'s 177 derivations, `ChkSound.lean`, `corpus-untyped/`,
@@ -84,8 +85,13 @@ everything from `AGENTS.md` §LEGACY onward is history for a judgment that no lo
 
 `Ratchet/Check.lean`'s `check` **returns the derivation**, so its type is the soundness
 statement and the Lean typechecker is the oracle. Rungs **001-008** are derivable in the
-certified judgment (`DJudgeC dclinks`), which makes them an answer-typed safety claim; rungs
-009-018 are checker coverage only.
+certified judgment (`DJudgeC dclinks`) and each has an **end-to-end safety theorem** in
+`Denote/Typed/Safety.lean` — `StuckFree bootMachine <program>`, at every fuel, at the real
+booted machine. Rungs 009-018 are checker coverage only.
+
+Safety cannot go stale: it is a **field of the clink target** (`SemSafeA = SemJudgeA ∧
+SafeJudge`), so `dregistry_safe` is unconditional at every registry size and a rule cannot
+join `DJudgeC` without proving it.
 
 The four owed rules (`vasgn`, `seq`, `prim`, `if'`) are all behind **`RunAPushK`** -- the
 answer-level counterpart of `run_pushK`, stated as a named `Prop` in

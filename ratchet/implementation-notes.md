@@ -8021,3 +8021,86 @@ Four files: `Join`, `JoinState`, `AnswerCatch`, `Invariant`. Nothing imports the
 compiles them anyway (the `Denote` lib is a glob), so they stay verified. They are the next
 rung's inputs — join soundness, `CatchFree`, the safety reduction — and a ladder that deletes
 its own next step to make a dependency graph tidy has optimised the wrong thing.
+
+---
+
+## Clink 69 (2026-09-11) — **safety is a field of the clink**, and eight rungs have an end-to-end proof
+
+Asked whether there is an end-to-end safety proof and where it can be watched growing. There
+was not, and the chain stopped one link short in a way worth recording precisely, because the
+obvious fix is the wrong one.
+
+### Where it stopped
+
+`dregistry_sound` gave `SemJudgeA`, whose hypothesis is `runA fuel (evalFrom m e) = .ans a m₀
+rest`. That is a statement about runs which reach an **answer** — and the one type-stuck
+outcome, `.uncaught`, is reported by `runA` as `.halt`, not `.ans`. So on exactly the runs
+safety is about, the obligation was silent.
+
+The tempting repair is to derive safety from `SemJudgeA`: `.uncaught` is constructed at one
+site (`unwind`'s empty-continuation arm on a `raiseJ`), and `unwind` pops **one frame per
+step**, so a machine that is about to produce `.uncaught` has `ctl = .jump (.raiseJ exc)` and
+`kont = []` — which *is* an answer point, so `runA` stops and reports `.ans (.esc …)` first.
+That argument is correct and it is the schema's §3.1 losslessness claim. It is also
+**unproved**: it needs `UncaughtInv`, the converse of `done_inv`, which does not exist and
+belongs in the other package next to it.
+
+### The repair, and why it is better than the derivation
+
+Make safety a **second obligation carried by the same clink**:
+
+```lean
+def SafeJudge (Γ : Env) (e : Ratchet.Expr) : Prop :=
+  ∀ m, StateOk ctx0 Γ .ivar0 m → StuckFree m e
+
+def SemSafeA (Γ : Env) (e : Ratchet.Expr) (τ : Ty) (Γ' : Env) : Prop :=
+  SemJudgeA Γ e τ Γ' ∧ SafeJudge Γ e
+```
+
+and instantiate the target family at `SemSafeA`. Then `Clink.sem`'s type demands both halves,
+`dregistry_safe` is **unconditional at every registry size**, and the property the question
+was really about — *the safety proof stays green at every clink* — is not a discipline anyone
+has to remember. It is what the structure's field means: a rule that cannot prove safety
+cannot register, and a registered rule cannot lose the proof without `dclinks` failing to
+build.
+
+Two things this buys over waiting for `UncaughtInv`:
+
+* **No critical path.** The general derivation is still worth having; when it lands,
+  `SafeJudge` becomes a *projection* of `SemJudgeA` rather than an obligation, and every clink
+  keeps its existing proof unchanged. Nothing has to be redone.
+* **The registered fragment needs no such lemma at all.** Everything the eight rules derive
+  evaluates in one `stepFn` step to a value at the empty continuation, so the run never
+  reaches `unwind`. `safeJudge_of_step` is two fuel cases over `safeA_value_nil`, and each of
+  the eight safety halves is then one line.
+
+`SafeJudge` deliberately does not mention `τ` or `Γ'`: safety is a property of the program and
+the incoming environment, and the type is what the other half is for.
+
+### Where it can be watched
+
+`Denote/Typed/Safety.lean`, one theorem per certified corpus rung, at the **real
+prelude-booted machine** the difftest SUT runs:
+
+```lean
+theorem safe_004_str_lit (hb : bootOkB = true) : StuckFree bootMachine (.str "hello") :=
+  dregistry_safe derivD_strLit (stateOk_boot hb)
+```
+
+Eight of them — rungs 001–008, the corpus's own programs — each axiom-clean, each with its
+one remaining hypothesis discharged by `stateOk_boot`. That hypothesis is conditional on one
+`Bool` (`bootOkB`) rather than `decide`d, because the booted heap is the output of
+`Interp.run 200_000` over the whole prelude; the `Bool` is a build gate in
+`Denote/Sanity.lean` and `native_decide` was rejected for the axiom it costs.
+
+`lake exe semladder` prints the list and `safeRungFloor` ratchets the count. `004-str-lit` is
+the interesting one of the eight: it is the only rung here whose evaluation **allocates**, so
+its clink's answer-typed half goes through `ext_push` and `Ext` rather than being `rfl` at the
+step — which is the shape every allocating rule will reuse.
+
+### What is still coverage rather than safety
+
+Rungs 009–018 are checked by `Ratchet/Check.lean` and have no safety theorem, because `prim`,
+`seq`, `vasgn` and `if'` are unregistered. All four are behind `RunAPushK`, and `semladder`
+now prints two numbers side by side so that gap is a line in the report rather than a
+footnote in a file.

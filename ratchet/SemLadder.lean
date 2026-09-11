@@ -1,4 +1,4 @@
-import Denote.Typed.Clink
+import Denote.Typed.Safety
 
 /-!
 # `semladder` — the clink registry's report
@@ -31,6 +31,12 @@ which is a light nobody reads.
 
 open Ratchet.Denote.Typed
 
+/-- The recorded number of corpus rungs with an **end-to-end safety proof** at the real
+prelude-booted machine (`Denote/Typed/Safety.lean`). This is the number the ladder exists to
+grow: `StuckFree bootMachine <program>`, at every fuel, with every hypothesis discharged. A
+drop means a theorem was deleted. -/
+def safeRungFloor : Nat := 8
+
 /-- The recorded size of the registry. **A clink once registered never unregisters**
 (`ratchet/AGENTS.md`), and this number is sound to ratchet on: a clink cannot be registered
 without its proof, so the count is a count of proofs. Raise it when the registry grows; a
@@ -46,12 +52,24 @@ def main : IO UInt32 := do
   IO.println s!"  owed:       {String.intercalate ", " dUnregisteredRules} \
 (all four behind `RunAPushK` -- Denote/Typed/JudgeA.lean §4)"
   IO.println ""
-  IO.println "Every registered rule carries its own proof (`Clink.sem`), in the ANSWER-TYPED"
-  IO.println "shape: the hypothesis is an answer rather than a value, and the conclusion says"
-  IO.println "whether the run reached a type-stuck outcome. `dregistry_sound` is unconditional"
-  IO.println "and holds at every registry size. The right-hand column is COVERAGE, not debt:"
-  IO.println "an unregistered rule is not in the judgment at all, so nothing is owed for it"
-  IO.println "and nothing unsound can be certified with it."
+  IO.println "Every registered rule carries its own proof (`Clink.sem`), and that proof is"
+  IO.println "TWO obligations: the answer-typed reading (hypothesis is an answer, not a value;"
+  IO.println "the conclusion says whether the run reached a type-stuck outcome) AND end-to-end"
+  IO.println "safety. So `dregistry_safe` is unconditional and holds at every registry size --"
+  IO.println "a rule cannot join without its safety proof. The right-hand column is COVERAGE,"
+  IO.println "not debt: an unregistered rule is not in the judgment at all."
+  IO.println ""
+  IO.println "=== END-TO-END SAFETY, at the real prelude-booted machine ==="
+  IO.println s!"  {safeRungs.length} corpus rungs proved `StuckFree bootMachine <program>`, \
+at every fuel:"
+  IO.println s!"    {String.intercalate ", " safeRungs}"
+  IO.println "  Each is one theorem in Denote/Typed/Safety.lean with every hypothesis"
+  IO.println "  discharged (`stateOk_boot`, conditional on the `bootOkB` build gate), and"
+  IO.println "  `#print axioms` showing only propext/Classical.choice/Quot.sound."
+  if safeRungs.length < safeRungFloor then
+    IO.println s!"SAFETY RATCHET REGRESSED: {safeRungs.length} rungs proved safe, \
+floor is {safeRungFloor}"
+    return 1
   if dn < clinkFloor then
     IO.println s!"CLINK RATCHET REGRESSED: {dn} registered, floor is {clinkFloor} \
 -- a clink was lost, which means a semantic proof was deleted or broken"

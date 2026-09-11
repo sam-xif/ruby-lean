@@ -14,7 +14,8 @@ one rung at a time. Three numbers, three scripts, no others:
 |---|---|---|
 | ladder reach | **18 rungs** (leading run meeting their recorded target); frontier `019-to-s-call` | `scripts/run_typed_ratchet.sh` |
 | agreement | **252 agree, 0 disagreements** (CRuby vs the Lean semantics, over the sig-stripped programs) | same, step 3 |
-| clinks | **8 of `DJudge`'s 12** rules carry an answer-typed semantic proof; 4 owed | `scripts/run_denote.sh`, or `lake exe semladder` |
+| clinks | **8 of `DJudge`'s 12** rules carry an answer-typed proof **and a safety proof**; 4 owed | `scripts/run_denote.sh`, or `lake exe semladder` |
+| end-to-end safety | **8 corpus rungs** proved `StuckFree bootMachine <program>` at every fuel, at the real prelude-booted machine | same |
 
 Two exes (`ratchetd`, `semladder`), one report exe (`denotereport`), 41 Lean files, ~14k lines.
 
@@ -187,7 +188,26 @@ The emitter reconstructs the spine from `initialize`'s declared parameters where
 first method call on such a receiver blocks. This is the first thing `check` will reject,
 and it is in the right place: a named divergence in an untrusted emitter.
 
-### The semantic layer: **8 answer-typed clinks**, and the one lemma that gates the rest
+### The semantic layer: **8 clinks, each carrying an end-to-end safety proof**
+
+**Safety is a field of the clink target, not a consequence of it.** `SemSafeA` is
+`SemJudgeA ∧ SafeJudge`, so `Clink.sem` proves both and `dregistry_safe` — *a certified
+program never reaches a type-stuck outcome, from any conformant machine, at any fuel* — is
+unconditional at every registry size. It was green at clink 1 and cannot stop being green as
+the registry grows: a rule that cannot prove safety cannot register.
+
+Why safety is *not* derived from `SemJudgeA`: that judgment constrains runs which reach an
+**answer**, and a run can halt `.uncaught` (the one type-stuck outcome), which `runA` reports
+as `.halt`. Closing that in general needs `UncaughtInv` (`answer-typed-schema.md` §7) and is
+not on the critical path — when it lands, `SafeJudge` becomes a projection and every clink
+keeps its proof.
+
+**`Denote/Typed/Safety.lean` is the file to watch**: one theorem per certified corpus rung, at
+the real prelude-booted machine, every hypothesis discharged (`stateOk_boot`, conditional on
+the `bootOkB` build gate; `native_decide` was rejected for the axiom it costs). Eight today —
+rungs 001-008 — reported by `lake exe semladder` and ratcheted by `safeRungFloor`.
+
+### The eight rules, and the one lemma that gates the rest
 
 `Denote/Typed/` is `Denote/Clink/`'s mechanism at this judgment, with the semantic reading
 **restated**: `SemJudgeA`, whose hypothesis is an `Answer` rather than a value and whose
