@@ -73,11 +73,19 @@
 | Ladder | Reads | Script |
 |---|---|---|
 | Syntactic (*reach*) | **178 / 259** rungs certified, 35 expect_validate mismatches, agreement 0 disagreements | `scripts/run_ratchet.sh` (now over `corpus-untyped/`) |
-| Typed pipeline (*Sorbet in the loop*) | srb clean **184/259**, derivation emitted **75/259**, `validateD` (a **shape check**, not typing) accepts 75 | `scripts/run_typed_ratchet.sh` |
+| Typed pipeline (*Sorbet in the loop*) | **ladder reach 18 rungs**; srb clean **184/259**, derivation emitted **75/259**, `validateD` (real typing) accepts **29/259** | `scripts/run_typed_ratchet.sh` |
 | Clink registry (*what the judgment may contain*) | **48 registered**, each proved by construction; **35 rules not in the judgment** (coverage, not debt) | `scripts/run_denote.sh`, or `lake exe semladder` |
 
 `checkrungs corpus-untyped` reads 177/177 hand derivations + 148/148 negative
 controls.
+
+**The second row is now a real checker.** `Ratchet/Check.lean`'s `check` returns the
+`DJudge` derivation, so its *type* is the soundness statement and the Lean typechecker
+is the oracle. Reach is a **prefix** — the leading run of rungs meeting their recorded
+target — which is 18 (tiers 1–2 through `018-bad-plus`, correctly refused), ratcheted by
+`MainTyped.lean`'s `ladderFloor`. The frontier is `019-to-s-call`, one `DPrim` row away.
+`DJudge` has 13 rules and `DPrim` 7; neither has a semantic proof yet, and
+`Ratchet/Check.lean` §5 is the owed list.
 
 **The third row changed meaning on 2026-09-11** and the old reading (*47 of 83
 `Judge` rules discharged*) is gone. The judgment is now generated from the

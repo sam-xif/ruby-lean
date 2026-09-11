@@ -13,15 +13,21 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## The typed pipeline (2026-09-11): **Sorbet in the loop, on a stub `validateD`**
+## The typed pipeline: **Sorbet in the loop, ladder reach 18 rungs**
 
-`../docs/semantics/answer-typed-schema.md` is the work order; this is the first slice of
-it, and it is deliberately the **plumbing** slice. The corpus is now Sorbet-annotated
-Ruby, Sorbet's answer becomes certificate data, and a `Deriv` is checked against the
-**sig-stripped** program by a Lean binary. `validateD` is a **shape check only** — it
-verifies the certificate is a derivation about this program and checks no types — so no
-number in this section is a type-safety claim. It is the half that has to be right
-before the typing half is worth writing.
+`../docs/semantics/answer-typed-schema.md` is the work order; this is its first two slices.
+The corpus is Sorbet-annotated Ruby, Sorbet's answer becomes certificate data, and a `Deriv`
+is checked against the **sig-stripped** program by a Lean binary.
+
+**`validateD` types, and the checker returns the derivation.** `Ratchet/Check.lean`'s `check`
+matches the program, derives the type itself, compares every `Ty` the certificate claims, and
+hands back a `DJudge` term — so layer 3 is not a theorem *about* the checker, it is the
+checker's **type**, and the oracle that judges a rung is the Lean typechecker. There is no gap
+for a soundness proof to be weaker across.
+
+What a `true` does **not** mean: type-safe. `DJudge`'s thirteen rules have no semantic proofs
+yet; `Ratchet/Check.lean` §5 says exactly which are owed and what each costs. That is the same
+coverage-not-debt reading §The clink registry establishes, one layer down.
 
 ### The five stages, and which one is trusted
 
@@ -49,16 +55,44 @@ in as certificate data and re-checked. `Ratchet/Deriv.lean`'s header carries the
 certified (`static-soundness-poc.md` §8.3). Stage 2 deletes the annotations; Sorbet's
 answer survives only as data.
 
-### Where it stands (`lake exe ratchetd build`, 2026-09-11)
+### Where it stands (`lake exe ratchetd build`)
 
 ```
 rungs:                              259
   srb typechecks the annotation:    184/259   (259/259 agree with the recorded expect_sorbet)
   rungs declaring a usable sig:      81/259   (50 rungs drop at least one sig `Ty` cannot express)
   emitter produced a derivation:     75/259   (blocked 177, upstream failure 7 -- all recorded)
-  validateD accepted it:             75/259
+  validateD (typing) accepted it:    29/259
+  rungs meeting their target:        75/259
+
+LADDER REACH: 18 rungs
+  frontier: 019-to-s-call -- expect_validate=true, got false
 agreement over the stripped programs (--sut lean): 252 agree, 0 disagreements
 ```
+
+**Reach is a prefix, and that is the headline number.** The leading run of rungs whose
+verdict equals the recorded `expect_validate` — 18 today, which is tiers 1 and 2 through
+`018-bad-plus` (a program that really raises `TypeError`, correctly refused). A prefix rather
+than a total because "we are at rung N" is what a ladder means, and because a rung that
+certifies out of order says nothing about the ones before it. `MainTyped.lean`'s
+`ladderFloor` ratchets it; the exit code is non-zero if reach drops.
+
+**The judgment behind those 18 rungs** (`Ratchet/Check.lean`, and it imports neither
+`Judge.lean` nor `Validate.lean`):
+
+* `DJudge`/`DJudgeAll`/`DJudgeSeq` — **thirteen rules**: seven literals, `var`, `vasgn`,
+  `seq`, `prim`, `if'`, and the two list companions. `Env`-indexed, no `Ctx` and no ivar
+  spine, because the fragment declares nothing and has no `self` — a context would be a field
+  nothing reads, and copying `Judge`'s is the wrong move ahead of a rule that needs it.
+* `DPrim` — **seven rows**: `Integer#+ - * /`, `Integer#<`, `String#+`, `!` on a boolean.
+  Seven against `PrimSig`'s ~90 on purpose: the semantic obligation for a table grows a row
+  at a time, which is what the ~200-fact block behind `Sem.Judge.prim` never could.
+
+**Why not extend `chk`/`Judge`.** That judgment has 83 rules, 35 with no semantic proof and
+7 known false as stated. Growing it is the thing §The clink registry exists to stop. The
+legacy ladder is untouched and still runs (`corpus-untyped/`, 178/259, 177 derivations,
+148 controls); the intent is replacement when reach covers the corpus, and
+`Ratchet/Check.lean` §6 states that condition rather than assuming it.
 
 **The 75 unblocked rungs are not the interesting number; the block census is.** It is
 printed every run, ranked, and it is the work list:
@@ -93,18 +127,20 @@ The emitter reconstructs the spine from `initialize`'s declared parameters where
 first method call on such a receiver blocks. This is the first thing `check` will reject,
 and it is in the right place: a named divergence in an untrusted emitter.
 
-### What this commit does *not* do
+### What is not built
 
-* **`check` does not exist.** `validateD` is `derivShapeOk`. `Ratchet/DerivControls.lean`
-  pins what that does and does not buy, including one `#guard` recording that an ill-typed
-  program with a well-shaped certificate is **accepted today** — so the day `check` lands,
-  that line has to be edited.
-* **`check_sound` does not exist**, nor do the `Judge` rules `Deriv.defDecl`/`callSig`
-  need (a body checked once at its declared signature, rather than per call site).
-* **The old ladder is untouched and still runs**, against the moved corpus:
-  `scripts/run_ratchet.sh` → 178/259 certified, 35 `expect_validate` mismatches,
-  `lake exe checkrungs corpus-untyped` → 177/177 + 148/148. The typed corpus was ported
-  from it (`scripts/port_corpus.py`), so nothing was thrown away.
+* **No semantic proof for any `DJudge` rule.** §5 of `Ratchet/Check.lean` is the owed list,
+  ordered by cost: the literals/`var`/`vasgn`/`seq` are a *reconciliation* (their
+  `Obl.Judge.*` counterparts are proved, at a different index shape), `if'` needs join
+  soundness (`denM`-wise, which is `Denote/notes.md`'s unbuilt `subTy` soundness), and `prim`
+  needs one conformance fact per row.
+* **No clink for any `DJudge` rule**, therefore — so nothing here is in a certified judgment
+  yet, and the reach number is coverage of the *checker*, not justification.
+* **`Deriv`'s other rules are refused, by name**: `defDecl`, `callSig`, `callMethodSig`,
+  `classDecl`, `newInst`, `ivarRead`, `ivarAsgn`, `constCls`, `arrayLit`, `hashLit`,
+  `selfExpr`. Each joins with a `DJudge` rule, and each joining is a rung. `defDecl` is the
+  interesting one: it is where a Sorbet `sig` stops being decoration and becomes the premise
+  the body is checked at.
 
 ### Layout
 
@@ -119,8 +155,9 @@ scripts/build_corpus.py   stages 1-4 over the whole corpus
 scripts/annotate_corpus.py  the sig table; idempotent; re-run after adding a rung
 scripts/record_baseline.py  freeze expect_sorbet / known_upstream_failure
 scripts/run_typed_ratchet.sh  all of it, one command
-Ratchet/Deriv.lean        the certificate language, its decoder, the stub `validateD`
-Ratchet/DerivControls.lean  the negative controls (#guard)
+Ratchet/Deriv.lean        the certificate language and its decoder (layer 1)
+Ratchet/Check.lean        DPrim, DJudge, `check` (which returns the derivation), `validateD`
+Ratchet/DerivControls.lean  16 negative controls (#guard), including the typing ones
 Ratchet/Rung.lean         a built rung as `build/*.rung.json` leaves it
 MainTyped.lean            `lake exe ratchetd` -- stage 5
 ```

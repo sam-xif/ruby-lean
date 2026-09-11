@@ -7743,3 +7743,107 @@ It does not prove a single new rule, and the registry is the same 48. The reach 
 `Ratchet/Deriv.lean` both target the authoring surface, so the next piece of work is to point
 the certificate checker at `JudgeC clinks` — at which point the 35 uncovered rules become a
 reach limit that is visible in the corpus number instead of an assumption in a docstring.
+
+---
+
+## Clink 66 (2026-09-11) — the typed ladder's checker: `check` **returns** the derivation, and the first 18 rungs climb
+
+The goal was the first 18 rungs of the Sorbet-typed ladder with `validate` taking a `Deriv`,
+and the constraint was explicit: **do not marry this to `chk`/`Judge`.** Both are met.
+`lake exe ratchetd build` reports `LADDER REACH: 18 rungs`, frontier `019-to-s-call`.
+
+### The one design decision that mattered
+
+`check` could have been `Nat → Env → Expr → Deriv → Option (Ty × Env)` with a separate
+`check_sound : check … = some … → DJudge …`. That was written first, and abandoned after the
+proof skeleton made the cost visible: it is one `induction fuel` with a `split` over a
+23-arm match, and **every arm is a place the proof can be weaker than the function.** An arm
+whose `none` branch is discharged by `simp` proves nothing about what that arm actually does;
+the theorem would be 200 lines of which the load-bearing part is invisible.
+
+So `check` returns the derivation:
+
+```lean
+structure Certified (Γ : Env) (e : Expr) where
+  ty : Ty
+  out : Env
+  judged : DJudge Γ e ty out
+
+def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) : Option (Certified Γ e)
+```
+
+Layer 3 of `answer-typed-schema.md` §3 is then not a theorem *about* layer 2 — it is layer
+2's **type**, and the oracle is the Lean typechecker. `validateD_typed` is one `match`. This
+is `Denote/Clink/`'s `Clink.sem` move one level down: put the obligation in a field and there
+is no gap to be weaker across.
+
+Cost of the choice, recorded: `check`'s arms carry witnesses, so they are noisier to read than
+`chk`'s; and the return type is dependent (`Option (Certified Γ e)`), so every `match` on the
+expression refines it. Lean handled both without help.
+
+### Dispatch is on the expression, not the certificate
+
+Both orders typecheck. Matching `e` first and *requiring* the certificate to be the rule that
+concludes about it is the right one, because the alternative lets a certificate choose which
+rule to try — the same class of mistake as letting it choose a type. Concretely: everything is
+computed from the program and **compared** against the certificate's claim (`prim`'s `recvTy`
+and `retTy`, `if`'s `join`, every literal). None is believed.
+
+Worth being precise about why, since soundness does not require it: `DJudge Γ (.int 1) .int Γ`
+holds whatever the certificate says, so accepting a certificate that claims `intLit 5` for the
+program `1` would be *sound* and would mean the certificate was never read. A checker that
+ignores its certificate makes the whole pipeline downstream of `scripts/emit_deriv.py`
+unfalsifiable. `Ratchet/DerivControls.lean` has 16 `#guard`s for exactly this, in five shapes:
+wrong program, wrong depth (both directions), wrong rule, wrong claimed result type, wrong
+claimed receiver type.
+
+### The control that flipped, as promised
+
+The previous commit's `DerivControls.lean` §4 recorded, with a `#guard … = true`, that an
+**ill-typed program with a well-shaped certificate was accepted** — `"a" + 1` with a
+`String#+` derivation — and said the line would have to be edited the day the typing half
+landed. It is now `= false`: `dprim?` has no row for `String#+` at an `Integer`. The positive
+control next to it (`"a" + "b"`, accepted) is what makes that `false` about the types rather
+than about the row being missing.
+
+### Small, on purpose
+
+`DJudge` has **13 rules** (seven literals, `var`, `vasgn`, `seq`, `prim`, `if'`, plus two list
+companions) and `DPrim` has **7 rows** (`Integer#+ - * /`, `Integer#<`, `String#+`, `!` on a
+boolean). Two size decisions, each with a reason:
+
+**No `Ctx`, no ivar spine.** `DJudge` is `Env → Expr → Ty → Env → Prop`. The 18-rung fragment
+declares nothing, has no `self` and opens no class, so a context would be a field nothing
+reads. Copying `Judge`'s `Ctx` — with `afterStmt`, `ctxKept`, `narrowEnvs`, the assumption
+table — ahead of a rule that needs it is how the old judgment acquired premises nobody could
+justify. The declaration rules will need one; they can bring it.
+
+**7 primitive rows, not 90.** `Sem.Judge.prim` — the obligation that every `PrimSig` row is
+true of CRuby — is priced at "~200 conformance facts, two per row" and is one of the 35
+unproved rules. A table that grows a row at a time has an obligation that grows a row at a
+time, which is the whole argument for starting again rather than inheriting. The frontier rung
+(`019-to-s-call`) is one row away, and that is the shape of every rung from here.
+
+### Reach is a prefix
+
+`MainTyped.lean` reports **ladder reach**: the length of the leading run of rungs whose
+verdict equals the recorded `expect_validate`. 18 today. A prefix rather than a total because
+that is what "we are at rung N" means, and because the total (75 rungs meet their target,
+29 certify) is inflated by rungs that pass out of order — e.g. rungs whose target is `false`
+and which the emitter happens to block. `ladderFloor := 18` ratchets it and the exit code is
+non-zero if it drops.
+
+### Deleted
+
+`Ratchet/Deriv.lean`'s `derivShapeOk`/`paramNamesMatch`/`supMatch` — the shape-check stub.
+Replaced by `check`, which subsumes it: dispatching on the expression *is* the
+about-this-program property, and the controls that pinned it are unchanged.
+
+### Not done
+
+No semantic proof for any `DJudge` rule, so nothing here is a `Clink` and the reach number is
+coverage of the checker rather than justification. `Ratchet/Check.lean` §5 is the owed list,
+ordered by cost — literals/`var`/`vasgn`/`seq` are a reconciliation of index shapes with
+`Obl.Judge.*` (already proved), `if'` needs join soundness under `denM`, `prim` needs one
+conformance fact per row. §6 states the condition under which `Judge.lean`/`Validate.lean`
+get deleted rather than assuming it.

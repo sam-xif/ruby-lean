@@ -1,17 +1,19 @@
-import Ratchet.Deriv
+import Ratchet.Check
 
 /-!
 Negative controls for `validateD`.
 
 `answer-typed-schema.md` §8.10 asks for these from day one, and the reason is blunt: **a
-checker that accepts everything satisfies `check_sound` just as well.** `validateD` is a
-shape check today, so what these pin is exactly the property a shape check has -- that a
-certificate is tied to *this* program -- and nothing more. When the typing half lands,
-the ill-typed controls below stop being shape-accepted and this file grows the cases
-that separate the two.
+checker that accepts everything satisfies its soundness statement just as well.** `check`
+now returns the derivation (`Ratchet/Check.lean` §3), so "sound" is not the question these
+controls answer — the typechecker answered it. What they answer is the other two:
+
+* is the certificate *checked*, or ignored? (§1–§3: wrong program, wrong depth, wrong rule,
+  wrong claimed type)
+* is the **typing** real? (§4 — the control that flipped)
 
 `#guard`, not `native_decide`: `certificate-language.md` §7 norm 5 forbids the latter on
-anything the checker's answer depends on, and there is no reason to reach for it here.
+anything the checker's answer depends on.
 -/
 
 namespace Ratchet
@@ -36,41 +38,69 @@ literal moved. This is the control that says a `Deriv` is *about* a program. -/
 
 /-! ### Control 2 -- a certificate of the wrong depth
 
-An extra argument on one side and not the other. `derivShapeAll` is where this is
-caught, and it is caught in both directions. -/
+An extra argument on one side and not the other. `checkAll` is where this is caught, and it
+is caught in both directions. -/
 #guard validateD (.send (some (.int 1)) "+" [.int 2, .int 3] none) ctlDeriv = false
 #guard validateD ctlProg (.prim (.intLit 1) "+" [.intLit 2, .intLit 3] .int .int) = false
 
 /-! ### Control 3 -- a certificate using the wrong rule
 
-`Deriv.callSig` and `Deriv.prim` are both about sends, and only one of them is about a
-send *with a receiver*. -/
+`Deriv.callSig` and `Deriv.prim` are both about sends, and only one of them is about a send
+*with a receiver* — and `callSig` has no `DJudge` rule at all, so it is refused twice over. -/
 #guard validateD ctlProg (.callSig "+" [.intLit 2] .int) = false
 
-/-! ### Control 4 -- an ill-typed program with a well-shaped certificate
+/-! ### Control 4 -- **the one that flipped**
 
-**This one is accepted, and that is the point.** `"a" + 1` is a `TypeError` at run time;
-the emitter would never write this certificate (`prim_ret` has no row for it), but a
-buggy or adversarial one could, and today's `validateD` has no grounds to refuse it. The
-guard records `true` so that the day `check` lands, this line has to be edited -- which
-is the cheapest possible reminder that the shape check is not a soundness check. -/
+`"a" + 1` is a `TypeError` at run time. Under the shape-check stub this certificate was
+**accepted**, and the `#guard` recorded `true` with a note saying the line would have to be
+edited the day the typing half landed. This is that edit: `dprim?` has no row for
+`String#+` at an `Integer` argument, so `check` refuses, and the refusal is the difference
+between a checker that reads a certificate and one that types a program. -/
 #guard validateD (.send (some (.str "a")) "+" [.int 1] none)
                  (.prim (.strLit "a") "+" [.intLit 1] (.cls "String") (.cls "String"))
+       = false
+
+-- The control for it: the same shape with the *right* argument type is accepted, so §4's
+-- `false` is about the types and not about `String#+` being missing from the table.
+#guard validateD (.send (some (.str "a")) "+" [.str "b"] none)
+                 (.prim (.strLit "a") "+" [.strLit "b"] (.cls "String") (.cls "String"))
        = true
 
-/-! ### Control 5 -- a declared signature whose parameter names are not the `def`'s
+/-! ### Control 5 -- a claimed type that is not the derived one
 
-`paramNamesMatch`: a certificate that renames a parameter is about a different program,
-because the body is checked in an environment built from those names. -/
-def ctlDef : Expr := .def' "add" [.req "x", .req "y"] (.var .lvar "x")
-#guard validateD ctlDef (.defDecl "add" [("x", .int), ("y", .int)] .int (.var .lvar "x"))
-       = true
-#guard validateD ctlDef (.defDecl "add" [("x", .int), ("z", .int)] .int (.var .lvar "x"))
-       = false
--- An optional or rest parameter is outside the fragment, and fails rather than being
--- accepted at some name the body does not bind.
-#guard validateD (.def' "add" [.req "x", .opt "y" (.int 0)] (.var .lvar "x"))
-                 (.defDecl "add" [("x", .int), ("y", .int)] .int (.var .lvar "x"))
-       = false
+The certificate's `Ty` fields are recomputed and compared, so a certificate that is
+perfectly well-shaped and *lies about the result type* is rejected. This is the property
+that makes the untrusted emitter safe to be wrong: a wrong claim costs a rejection, never a
+wrong accept (`sorbet-cert/README.md` §3's tamper argument, at this layer). -/
+#guard validateD ctlProg (.prim (.intLit 1) "+" [.intLit 2] .int (.cls "String")) = false
+
+-- …and lying about the *receiver* type is caught in the same place.
+#guard validateD ctlProg (.prim (.intLit 1) "+" [.intLit 2] .bool .int) = false
+
+/-! ### Control 6 -- an unbound local
+
+`x` with no binding has no type, and the `var` rule's premise is `envGet? Γ x = some τ`, so
+there is nothing to return. A certificate cannot supply the missing binding. -/
+#guard validateD (.var .lvar "x") (.var .lvar "x") = false
+
+-- The control: bound first, and the read types.
+#guard validateD (.seq [.vasgn .lvar "x" (.int 1), .var .lvar "x"])
+                 (.seq [.vasgn .lvar "x" (.intLit 1), .var .lvar "x"]) = true
+
+/-! ### Control 7 -- the `if` join is recomputed
+
+`true && false` desugars to a `seq` of a temp assignment and an `if`, and the `if`'s type is
+the join of its branches. A certificate claiming a different join is rejected; the honest one
+is accepted. -/
+def ctlAnd : Expr :=
+  .seq [.vasgn .lvar "t" .tru, .if' (.var .lvar "t") .fls (some (.var .lvar "t"))]
+
+#guard validateD ctlAnd
+  (.seq [.vasgn .lvar "t" .truLit,
+         .ifD (.var .lvar "t") .flsLit (some (.var .lvar "t")) .bool]) = true
+
+#guard validateD ctlAnd
+  (.seq [.vasgn .lvar "t" .truLit,
+         .ifD (.var .lvar "t") .flsLit (some (.var .lvar "t")) .int]) = false
 
 end Ratchet

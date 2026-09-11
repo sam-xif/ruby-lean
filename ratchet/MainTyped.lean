@@ -11,15 +11,16 @@ derivation is checked, never trusted.
     scripts/build_corpus.py      # stages 1-4, into build/
     lake exe ratchetd build      # stage 5
 
-**`validateD` is a stub in this commit** (`Ratchet/Deriv.lean` §"The stub checker"): it
-checks that the certificate is a derivation *about this program* and nothing about types.
-So the `certified` column below is not yet a type-safety claim, and the report says so on
-every run rather than in a footnote. What it does measure honestly, today:
+**`validateD` types.** `Ratchet/Check.lean`'s `check` matches the program, derives the type
+itself, compares every `Ty` the certificate claims, and **returns the `DJudge` derivation** —
+so a `true` below is "there is a derivation of this program in the certified judgment", with
+no theorem in between (the checker's *type* is the soundness statement). What it is not is a
+claim about the semantics: `DJudge`'s thirteen rules have no semantic proofs yet, and
+`Ratchet/Check.lean` §Semantic status says which are owed.
 
-* how much of the corpus **Sorbet** accepts as annotated (`srb clean`);
-* how many signatures resolve into this package's `Ty`, and what the rest drop on;
-* how far the **emitter** reaches before it hits a named fragment boundary;
-* and that the shape of every emitted derivation matches the program it is about.
+The headline number is **ladder reach**: the length of the leading run of rungs that meet
+their recorded target. A prefix, not a total, because that is what "we are at rung N" means
+and because a rung that certifies out of order tells you nothing about the ones before it.
 -/
 
 open Ratchet
@@ -28,6 +29,12 @@ open Lean (Json)
 structure Row where
   rung : Rung
   verdict : Bool
+
+/-- **The ratchet.** The recorded ladder reach; a rung once climbed never un-climbs
+(`AGENTS.md`). Raise it when the reach grows; a drop is a regression and the exit code says
+so. Unlike the old syntactic ladder's number this one is a prefix, so it cannot be inflated
+by a rung that happens to certify out of order. -/
+def ladderFloor : Nat := 18
 
 def loadRung (p : System.FilePath) : IO Rung := do
   let contents ← IO.FS.readFile p
@@ -71,6 +78,10 @@ def main (args : List String) : IO UInt32 := do
   let newFailures := failedRows.filter (·.rung.knownUpstreamFailure.isNone)
   let sorbetDisagree := rows.filter (fun x => x.rung.srbClean != x.rung.expectSorbet)
   let certified := (rows.filter (·.verdict)).length
+  -- The ladder: rungs that meet their recorded target, and the leading run of them.
+  let met := rows.map (fun x => x.verdict == x.rung.expectValidate)
+  let reach := (met.takeWhile id).length
+  let frontier := rows.drop reach |>.head?
   let withSigs := (rows.filter (·.rung.sigs > 0)).length
   let dropping := (rows.filter (!·.rung.dropped.isEmpty)).length
 
@@ -82,7 +93,15 @@ def main (args : List String) : IO UInt32 := do
 ({dropping} rungs have at least one signature srb resolved but `Ty` cannot express)"
   IO.println s!"  emitter produced a derivation:    {emitted}/{n} \
 (blocked {blocked}, upstream failure {failed} -- all recorded)"
-  IO.println s!"  validateD accepted it:            {certified}/{n}"
+  IO.println s!"  validateD (typing) accepted it:   {certified}/{n}"
+  IO.println s!"  rungs meeting their target:       {(met.filter id).length}/{n}"
+  IO.println s!"\nLADDER REACH: {reach} rungs \
+(the leading run whose verdict equals its recorded expect_validate)"
+  match frontier with
+  | some f =>
+    IO.println s!"  frontier: {f.rung.base} (tier {f.rung.tier}) -- \
+expect_validate={f.rung.expectValidate}, got {f.verdict}; {stageLabel f.rung.stage}"
+  | none => IO.println "  frontier: none -- every rung meets its target"
 
   IO.println "\n--- what the emitter blocked on (the fragment boundary, counted) ---"
   let reasons := rows.filterMap (fun x => match x.rung.stage with
@@ -99,9 +118,10 @@ def main (args : List String) : IO UInt32 := do
     let ts := rows.filter (·.rung.tier == t)
     IO.println s!"tier {t}: {(ts.filter (·.verdict)).length}/{ts.length}"
 
-  IO.println "\nNOTE: `validateD` is a SHAPE CHECK ONLY in this commit -- it verifies the \
-certificate is a derivation about this program and checks no types at all \
-(Ratchet/Deriv.lean §\"The stub checker\"). No number above is a type-safety claim."
+  IO.println "\nNOTE: a `true` above means a `DJudge` derivation exists for the program \
+(Ratchet/Check.lean -- the checker returns the derivation, so its type is the soundness \
+statement). It does NOT yet mean type-safe: `DJudge`'s rules have no semantic proofs, and \
+`Denote/Clink/` is where a rule acquires one."
 
   -- Two things are failures rather than measurements, and both are ratchets
   -- (`scripts/record_baseline.py`): an upstream stage that errored and was not already
@@ -112,9 +132,11 @@ certificate is a derivation about this program and checks no types at all \
 (expect_sorbet={x.rung.expectSorbet}, srb says {x.rung.srbClean})"
   for x in newFailures do
     IO.eprintln s!"  NEW upstream failure: {x.rung.id}: {stageLabel x.rung.stage}"
-  if !newFailures.isEmpty || !sorbetDisagree.isEmpty then
+  if reach < ladderFloor then
+    IO.eprintln s!"  LADDER REGRESSED: reach {reach}, floor {ladderFloor}"
+  if !newFailures.isEmpty || !sorbetDisagree.isEmpty || reach < ladderFloor then
     IO.println s!"RATCHETD: {newFailures.length} new upstream failure(s), \
-{sorbetDisagree.length} moved Sorbet verdict(s)"
+{sorbetDisagree.length} moved Sorbet verdict(s), reach {reach}/{ladderFloor}"
     return 1
   IO.println "RATCHETD OK (pipeline green; see the note above for what that does not mean)"
   return 0

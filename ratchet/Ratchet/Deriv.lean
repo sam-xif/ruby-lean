@@ -167,82 +167,18 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
   | "constCls" => return .constCls (← name "name")
   | other => throw s!"Deriv.ofJson?: unknown rule '{other}'"
 
-/-! ## The stub checker
+/-! ## The checker lives in `Ratchet/Check.lean`
 
-**This is not `check`.** It answers one question -- *is this certificate a derivation
-about this program?* -- and answers nothing about types. Every `Ty` field above is read
-past without being verified.
+This file is layer 1 only: the certificate language and its decoder. The checker that used
+to sit here -- `derivShapeOk`, a shape check that verified a certificate was *about* a
+program and checked no types at all -- is **deleted**, replaced by `Ratchet/Check.lean`'s
+`check`, which does both: it matches the program, derives the type itself, compares every
+`Ty` the certificate claims, and returns the `DJudge` derivation. The shape check's one
+property (a certificate for the wrong program is rejected) is a consequence of `check`
+dispatching on the expression; `Ratchet/DerivControls.lean` keeps the controls that pin it.
 
-It is here because the pipeline it completes is worth running before the typing half
-exists: with it, `scripts/run_ratchet.sh` puts Sorbet in the loop for every rung
-(annotate -> `srb` -> sigs -> strip -> AST -> emit -> decode -> check) and reports a real
-number, and the two ways the plumbing can silently lie -- a certificate for the wrong
-program, and a certificate of the wrong shape -- are exactly what it catches. See
-`corpus-negative/` for the controls that pin that.
-
-The typing half replaces this function body; the name and its consumers stay. -/
-
-/-- A declared signature's parameter names must be the `def`'s, in order. Only required
-positional parameters are in the fragment; anything else fails the shape check rather
-than being silently accepted at a name the body does not bind. -/
-def paramNamesMatch : List Param → List SigParam → Bool
-  | [], [] => true
-  | .req n :: ps, (n', _) :: sps => n == n' && paramNamesMatch ps sps
-  | _, _ => false
-
-/-- A `class C < D` derivation must name the same superclass, and a superclass that is
-not a bare constant is out of the fragment. -/
-def supMatch : Option Expr → Option String → Bool
-  | none, none => true
-  | some (.const n), some n' => n == n'
-  | _, _ => false
-
-mutual
-/-- The shape check: every `Deriv` node's rule is the one its `Expr`'s head admits, and
-the two trees have the same children in the same order. -/
-partial def derivShapeOk : Expr → Deriv → Bool
-  | .int n, .intLit n' => n == n'
-  | .flt b, .fltLit b' => b == b'
-  | .str s, .strLit s' => s == s'
-  | .sym s, .symLit s' => s == s'
-  | .tru, .truLit => true
-  | .fls, .flsLit => true
-  | .nil, .nilLit => true
-  | .self', .selfExpr => true
-  | .var k n, .var k' n' => k == k' && n == n'
-  | .var .ivar n, .ivarRead n' _ => n == n'
-  | .vasgn k n e, .vasgn k' n' d => k == k' && n == n' && derivShapeOk e d
-  | .vasgn .ivar n e, .ivarAsgn n' d => n == n' && derivShapeOk e d
-  | .seq es, .seq ds => derivShapeAll es ds
-  | .if' c t none, .ifD dc dt none _ => derivShapeOk c dc && derivShapeOk t dt
-  | .if' c t (some e), .ifD dc dt (some de) _ =>
-    derivShapeOk c dc && derivShapeOk t dt && derivShapeOk e de
-  | .array es, .arrayLit ds _ => derivShapeAll es ds
-  | .hash ps, .hashLit dks dvs _ _ =>
-    derivShapeAll (ps.map (·.1)) dks && derivShapeAll (ps.map (·.2)) dvs
-  | .send (some r) m args none, .prim dr m' dargs _ _ =>
-    m == m' && derivShapeOk r dr && derivShapeAll args dargs
-  | .send (some r) m args none, .callMethodSig dr m' dargs _ =>
-    m == m' && derivShapeOk r dr && derivShapeAll args dargs
-  | .send none m args none, .callSig m' dargs _ => m == m' && derivShapeAll args dargs
-  | .vcall m, .callSig m' [] _ => m == m'
-  | .def' n ps body, .defDecl n' sps _ dbody =>
-    n == n' && paramNamesMatch ps sps && derivShapeOk body dbody
-  | .send (some (.const c)) "new" args none, .newInst c' dargs _ =>
-    c == c' && derivShapeAll args dargs
-  | .class' n sup body, .classDecl n' dsup dbody =>
-    n == n' && supMatch sup dsup && derivShapeOk body dbody
-  | .const n, .constCls n' => n == n'
-  | _, _ => false
-
-partial def derivShapeAll : List Expr → List Deriv → Bool
-  | [], [] => true
-  | e :: es, d :: ds => derivShapeOk e d && derivShapeAll es ds
-  | _, _ => false
-end
-
-/-- **The stub of layer 2.** Today: the shape check alone -- see the section header.
-Tomorrow: `(check ctx0 [] .ivar0 p d).isSome`. -/
-def validateD (p : Expr) (d : Deriv) : Bool := derivShapeOk p d
+`validateD` keeps its name and its consumers (`Ratchet/Rung.lean`, `MainTyped.lean`) and
+lives in `Check.lean` next to what it calls.
+-/
 
 end Ratchet
