@@ -22,7 +22,12 @@ literals = {}
 collector = Class.new(Prism::Visitor) do
   define_method(:visit_constant_write_node) do |node|
     if node.value.is_a?(Prism::RegularExpressionNode)
-      literals[node.name.to_s] = src[node.value.location.start_offset...node.value.location.end_offset]
+      # `byteslice`, not `[]`: the offsets are byte offsets (see the binary-editing
+      # note below), and a file with a multi-byte character before the literal would
+      # otherwise capture a shifted span.
+      literals[node.name.to_s] =
+        src.byteslice(node.value.location.start_offset,
+                      node.value.location.end_offset - node.value.location.start_offset)
     end
     super(node)
   end
@@ -88,7 +93,12 @@ rewriter = Class.new(Prism::Visitor) do
 end.new(literals, strings, edits)
 result.value.accept(rewriter)
 
-out = src.dup
+# Prism reports **byte** offsets and `String#[]` indexes by **characters**, so a file
+# with any multi-byte character before an edit had the wrong span replaced. Editing in
+# binary makes the two agree (see `difftest/ruby/require_strip.rb` for the case that
+# found it, and `ratchet/found-issues.md`).
+out = src.dup.force_encoding(Encoding::BINARY)
 edits.sort_by! { |(s, _, _)| -s }
 edits.each { |(s, e, lit)| out[s...e] = lit }
+out = out.force_encoding(src.encoding)
 print out

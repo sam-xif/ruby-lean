@@ -27,8 +27,14 @@ finder = Class.new(Prism::Visitor) do
   end
 end.new
 result.value.accept(finder)
-out = src.dup
+# Prism reports **byte** offsets; `String#[]` indexes by **characters**. A file with
+# any multi-byte character before a `require` (an em dash in a header comment is
+# enough) therefore had the wrong span deleted -- `require "sorbet-runtime"\nclass`
+# came out as `relass`. Editing in binary makes the two agree. Found by
+# `ratchet/scripts/build_corpus.py` on the slice rungs; see `ratchet/found-issues.md`.
+out = src.dup.force_encoding(Encoding::BINARY)
 edits.sort_by! { |(s, _)| -s }
 edits.each { |(s, e)| out[s...e] = "" }
+out = out.force_encoding(src.encoding)
 out = out.lines.map { |l| l.strip.empty? && !l.empty? ? "\n" : l }.join
 print out
