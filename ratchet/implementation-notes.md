@@ -7546,3 +7546,62 @@ two premises), `Ratchet/Validate.lean` (the two guards), `Ratchet/Proof/ChkSound
 `AGENTS.md`.
 **This is the one edit to `Ratchet/` this session, and it is the standing exception: a genuinely
 unsound rule, reported, witnessed in the corpus, then fixed.**
+
+## EMERGENCY EXIT INVOKED (2026-09-10, clink 64) — **the ladder's unit of measurement and the work's unit of delivery do not match**
+
+Recorded in the brief's own form, because three consecutive sessions have now ended at the same
+number while doing substantial, verified work, and the reason is structural rather than a matter
+of effort.
+
+### The deficiency
+
+`semladder` counts **one rule at a time**, and the brief says to discharge them *in the
+inductives' own constructor order*. For the 35 that remain, that unit does not exist:
+
+| kind | count | the unit the work actually has |
+|---|---|---|
+| false as stated, repair crosses into `Ratchet/` and is **not** an unsoundness | 7 | a `Judge` signature change (cref threading, purity premises, `joinT`) — clink 62's exit, unchanged |
+| true, behind the locals + call layer | 26 | **the whole layer**. `AGENTS.md`'s own words: they "come out at the end of the whole layer, not in stages" |
+| true, behind `PrimSig` row by row | 1 (`prim`) | ~200 conformance facts, two per row |
+| true, behind the declaration redesign | 1 | `Ctx` recording the cref |
+
+So a session that starts here reads 48/83 at the end **unless it finishes the entire layer**, and
+the layer is not a session: it is six `Interp/` stages, a run-level induction, jump-freeness, and
+the `frameK` decomposition. This session completed stages 2 and 4 of six, proved the helper three
+previous attempts had parked, closed the lookup-miss path, and found that a *third* prerequisite
+had been silently missing (the twentieth stall point). None of that is a rung, and none of it
+could have been.
+
+### The evidence that this is structural
+
+| clink | work delivered | ladder |
+|---|---|---|
+| 62 | `BuiltinsSeal` proved (six 600-arm walks), `StepSound` stated, the closer vocabulary | 47 → 48 |
+| 63 | `enterUserMethod` (the nineteenth stall point), stage 2 complete | 48 → 48 |
+| 64 | stage 4 complete, `dispatchMiss`, the twentieth stall point, **§F23 fixed** | 48 → 48 |
+
+Three sessions, three stall points found and two of them *closed*, and one number that cannot
+move. A ratchet whose number is insensitive to three sessions of correct work is not measuring
+the work.
+
+### What would fix it — and the cheapest option is a *ladder* change, not a proof change
+
+1. **Conditional rungs.** Let an obligation be discharged *modulo a named layer hypothesis* —
+   `StepSound → Obl.Judge.if'` is a real, checkable theorem, and the layer hypothesis is already
+   a named `Prop` (`Denote/Sem/StepWalk.lean`). The ladder then counts what is actually being
+   built, the composition is one `exact` per rule once the layer lands, and nothing is claimed
+   that is not proved. **Most of this session's work would have counted**, and no proof would
+   have been weaker.
+2. **Lift the no-`Ratchet/` constraint for the seven false obligations**, which is the
+   `context-splitting.md` step-3 class of change and wants its own clink (all 178 derivations,
+   the corpus gate).
+3. **Re-target the ladder at 76** and measure layer progress on a second axis.
+
+(1) is recommended: it is a change to `Denote/Ladder.lean`'s counting rule, it is honest, and it
+is the only one that makes the next session's number move for the right reason.
+
+### What is *not* the reason
+
+Not difficulty, and not the model: §F23 this session is a **reachable soundness bug found by
+reading an obligation and fixed** — the ladder's stated purpose, delivered. The exit is about the
+measurement, not about the enterprise.

@@ -535,7 +535,18 @@ the capture graph is a proved DAG, the object graph is not), what it explicitly 
 a six-step migration, four rejected alternatives, and §12's correction. **Step 6 (footprints and
 the seal) is untouched**, as its own piece.
 
-## Semantic ratchet status (`Denote/Sem/`): **48 of 83 `Judge` rules discharged**
+## Semantic ratchet status (`Denote/Sem/`): **48 of 83 `Judge` rules discharged** — *and the count is the problem, see the exit below*
+
+> **EMERGENCY EXIT INVOKED (clink 64).** The ladder counts **one rule at a time**; 26 of the 35
+> remaining rules come out **together**, at the end of a layer that is several sessions long, and
+> 7 more are false as stated with repairs that cross into `Ratchet/`. Three consecutive sessions
+> (clinks 62, 63, 64) delivered verified work — `BuiltinsSeal`, `enterUserMethod`, stages 2 and 4,
+> `dispatchMiss`, two stall points closed, **a reachable soundness bug found and fixed (§F23)** —
+> and the number moved 47 → 48 → 48 → 48. A ratchet insensitive to that is measuring the wrong
+> unit. The recommended repair is a **ladder** change and not a proof change: count **conditional
+> rungs** (`StepSound → Obl.Judge.if'` is a real, checkable theorem, and the layer hypothesis is
+> already a named `Prop` in `Denote/Sem/StepWalk.lean`). Full statement and evidence:
+> `implementation-notes.md` §EMERGENCY EXIT.
 
 > **Clink 63 (2026-09-10) proved `enterUserMethod` — the layer's parked helper — and stage 2's
 > block-iterator trio. The ladder is unmoved at 48/83, as expected: none of it is a `Judge`

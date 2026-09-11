@@ -1,5 +1,13 @@
 # ratchet — hand-off note (2026-09-10)
 
+> **EMERGENCY EXIT INVOKED, clink 64** — see `implementation-notes.md` §EMERGENCY EXIT for the
+> statement and the evidence. In one line: the ladder counts one rule at a time and 26 of the 35
+> remaining rules only come out *together*, at the end of a layer that is several sessions long,
+> so three consecutive sessions of verified work have left the number at 48. The recommended fix
+> is a **ladder** change, not a proof change — count **conditional rungs** (`StepSound →
+> Obl.Judge.if'` is a real theorem and the layer hypothesis is already a named `Prop`), which
+> would have counted most of clinks 62–64 without weakening anything.
+
 > **Superseded again, 2026-09-10 (clink 63): `enterUserMethod` is PROVED, and the "one
 > transcription away" note below is wrong about the transcription.** Hand-splitting the
 > conditions does not work — see `Denote/Sem/notes.md` §The nineteenth stall point (nine `let`s,
