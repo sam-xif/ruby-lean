@@ -11,6 +11,13 @@ propositions* — with a refutation of the naive version and a measurement of th
 one's cost. This file consumes the proofs, which live where that file said they belong:
 `RubyCore/Proof/KontFrame*.lean`, next to `stepFn`.
 
+> **Generalised 2026-09-11.** `Denote/Sem/AnswerValue.lean`'s `run_split_A` is `run_split`
+> with the same statement and the same two hypotheses, derived in 41 lines with **no
+> induction** from `Denote/Sem/Answer.lean`'s `run_pushK` — which is this induction with the
+> four non-`.value` outcomes kept instead of excluded. `JumpOpaque` survives as a hypothesis
+> and is spent in one `exact`, in the branch named `esc`. Nothing here is retired; the 48
+> discharged rungs consume this file unchanged.
+
 ## What the proofs actually say
 
 `RubyCore.Proof.stepFn_frame` is the frame rule, with the two hypotheses the ratchet's
