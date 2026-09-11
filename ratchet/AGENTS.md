@@ -15,7 +15,7 @@ one rung at a time. Three numbers, three scripts, no others:
 | ladder reach | **18 rungs** (leading run meeting their recorded target); frontier `019-to-s-call` | `scripts/run_typed_ratchet.sh` |
 | agreement | **252 agree, 0 disagreements** (CRuby vs the Lean semantics, over the sig-stripped programs) | same, step 3 |
 | clinks | **8 of `DJudge`'s 12** rules carry an answer-typed proof **and a safety proof**; 4 owed | `scripts/run_denote.sh`, or `lake exe semladder` |
-| end-to-end safety | **8 corpus rungs** proved `StuckFree bootMachine <program>` at every fuel, at the real prelude-booted machine | same |
+| end-to-end safety | **8 corpus rungs** proved `StuckFree bootMachine <program>` at every fuel; **7 of the 8 rules exercised**, `var` named as the exception (§F30) | `scripts/run_typed_ratchet.sh` step 4, or `lake exe semladder build` |
 
 Two exes (`ratchetd`, `semladder`), one report exe (`denotereport`), 41 Lean files, ~14k lines.
 
@@ -205,7 +205,21 @@ keeps its proof.
 **`Denote/Typed/Safety.lean` is the file to watch**: one theorem per certified corpus rung, at
 the real prelude-booted machine, every hypothesis discharged (`stateOk_boot`, conditional on
 the `bootOkB` build gate; `native_decide` was rejected for the axiom it costs). Eight today —
-rungs 001-008 — reported by `lake exe semladder` and ratcheted by `safeRungFloor`.
+rungs 001-008 — ratcheted by `safeRungFloor`.
+
+**Three gates keep that number honest**, because a safety count can be wrong in three
+different ways:
+
+* `safeRungs` carries the *programs*, and `safeRungs_safe` is proved over the list — so a name
+  without a theorem does not typecheck. (It used to be a `List String` with a `#guard` on its
+  length, which eight names and no theorems would have satisfied.)
+* `lake exe semladder build` compares each theorem's `Expr` against the **program the pipeline
+  actually built** for that rung. A theorem can be true of `.str "hello"` and say nothing
+  about rung 004; this is what rules that out. `scripts/run_typed_ratchet.sh` step 4.
+* `rulesUsed` + `unexercised` require every registered rule to be *exercised* by some covered
+  rung, or named as an exception. This failed on its first run and produced **§F30**: `var` is
+  registered and proved, and no covered rung reads a local — structurally, since the smallest
+  witness needs `vasgn` and `seq`.
 
 ### The eight rules, and the one lemma that gates the rest
 

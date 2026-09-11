@@ -75,7 +75,7 @@
 | Ladder reach (*the headline*) | **18 rungs** -- the leading run meeting their recorded target; frontier `019-to-s-call`, one `DPrim` row away | `scripts/run_typed_ratchet.sh` |
 | Agreement | **252 agree, 0 disagreements** over the sig-stripped programs | same, step 3 |
 | Clinks (*what the judgment may contain*) | **8 of `DJudge`'s 12** rules, each carrying an answer-typed proof **and** a safety proof; 4 owed, all behind **one** lemma | `scripts/run_denote.sh`, or `lake exe semladder` |
-| End-to-end safety | **8 corpus rungs** proved `StuckFree bootMachine <program>` at every fuel | same |
+| End-to-end safety | **8 corpus rungs** proved `StuckFree bootMachine <program>` at every fuel; **7 of 8 rules exercised** (`var` is the named exception, §F30) | `run_typed_ratchet.sh` step 4, or `lake exe semladder build` |
 
 **Clink 68 deleted the old ladder**, so the three rows above are all of them. Gone: `Judge`
 (83 rules), `chk`, `Rungs.lean`'s 177 derivations, `ChkSound.lean`, `corpus-untyped/`,
@@ -91,7 +91,11 @@ booted machine. Rungs 009-018 are checker coverage only.
 
 Safety cannot go stale: it is a **field of the clink target** (`SemSafeA = SemJudgeA ∧
 SafeJudge`), so `dregistry_safe` is unconditional at every registry size and a rule cannot
-join `DJudgeC` without proving it.
+join `DJudgeC` without proving it. Three gates keep the *count* honest too — the list carries
+the programs and the theorem is proved over it; `semladder build` compares each theorem's
+`Expr` against the program the pipeline built for that rung; and every registered rule must be
+exercised by a covered rung or named in `unexercised`. That last one found §F30 on its first
+run: `var` is proved and registered, and no covered rung reads a local.
 
 The four owed rules (`vasgn`, `seq`, `prim`, `if'`) are all behind **`RunAPushK`** -- the
 answer-level counterpart of `run_pushK`, stated as a named `Prop` in

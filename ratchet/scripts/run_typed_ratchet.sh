@@ -18,16 +18,22 @@
 #      certificates are about. A rung the model runs differently from CRuby is a rung
 #      whose type is a statement about a fiction. Skip with RATCHET_SKIP_AGREEMENT=1.
 #   3. **The report** (`lake exe ratchetd`), whose exit code is non-zero on a moved
-#      Sorbet verdict or a new upstream failure -- both ratchets -- and zero on a
-#      *block*, which is the emitter reporting its own fragment boundary.
+#      Sorbet verdict, a new upstream failure, or a drop in ladder reach.
+#   4. **The safety proof, cross-checked against the corpus** (`lake exe semladder build`).
+#      The end-to-end theorems in `Denote/Typed/Safety.lean` name their rung in a docstring;
+#      this reads the rung the pipeline actually built and compares its sig-stripped program
+#      against the `Expr` each theorem is about, so "rung 004 is proved safe" cannot be true
+#      of a theorem and false of the ladder. It also reports which registered rules those
+#      rungs **exercise**, and names the ones they do not (today: `var`, structurally -- see
+#      `found-issues.md` §F30). Non-zero on any mismatch.
 #
-# `validateD` is a SHAPE CHECK in this commit; see `Ratchet/Deriv.lean`.
+# `validateD` types (`Ratchet/Check.lean`); a `true` means a `DJudge` derivation exists.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 RATCHET_DIR="$PWD"
 
 echo "=== the negative controls (#guard, at build time) ==="
-lake build Ratchet.DerivControls ratchetd
+lake build Ratchet.DerivControls Denote.Typed.Safety ratchetd semladder
 echo
 
 echo "=== stages 1-4: sorbet -> strip -> desugar -> emit ==="
@@ -43,4 +49,8 @@ fi
 echo
 
 echo "=== stage 5: the typed ladder ==="
-exec .lake/build/bin/ratchetd build
+.lake/build/bin/ratchetd build
+echo
+
+echo "=== the safety proof, cross-checked against the corpus it is about ==="
+exec .lake/build/bin/semladder build

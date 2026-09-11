@@ -115,18 +115,107 @@ theorem safe_007_flt_lit (hb : bootOkB = true) :
 theorem safe_008_neg_int_lit (hb : bootOkB = true) : StuckFree bootMachine (.int (-5)) :=
   dregistry_safe derivD_intLit (stateOk_boot hb)
 
-/-! ## §3 The count, for the report
+/-! ## §3 The list **is** the theorem's subject
 
-Hand-maintained and `#guard`ed against the floor `SemLadder.lean` prints, because the list is
-what a reader checks against the theorems above. Adding a rung means adding a theorem *and* a
-line here; the `#guard` is what makes forgetting the second one a build failure rather than a
-quiet undercount. -/
+`safeRungs` pairs each rung's name with the program the theorem above is about, and
+`safeRungs_safe` is proved over the list — so the list and the proofs cannot drift. The
+previous version was a `List String` with a `#guard` on its *length*, which would have been
+satisfied by eight names and no theorems. -/
 
-def safeRungs : List String :=
-  ["001-int-lit", "002-bool-true", "003-bool-false", "004-str-lit",
-   "005-sym-lit", "006-nil-lit", "007-flt-lit", "008-neg-int-lit"]
+def safeRungs : List (String × Ratchet.Expr) :=
+  [("001-int-lit", .int 1),
+   ("002-bool-true", .tru),
+   ("003-bool-false", .fls),
+   ("004-str-lit", .str "hello"),
+   ("005-sym-lit", .sym "ok"),
+   ("006-nil-lit", .nil),
+   ("007-flt-lit", .flt (1.5 : Float).toBits),
+   ("008-neg-int-lit", .int (-5))]
 
-#guard safeRungs.length == 8
+/-- **Every program named in `safeRungs` is safe at the booted machine.** One case per entry,
+each discharging to the named theorem above, so adding a list entry without a theorem does not
+typecheck. -/
+theorem safeRungs_safe (hb : bootOkB = true) :
+    ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
+  intro q hq
+  simp only [safeRungs, List.mem_cons, List.not_mem_nil, or_false] at hq
+  rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  · exact safe_001_int_lit hb
+  · exact safe_002_bool_true hb
+  · exact safe_003_bool_false hb
+  · exact safe_004_str_lit hb
+  · exact safe_005_sym_lit hb
+  · exact safe_006_nil_lit hb
+  · exact safe_007_flt_lit hb
+  · exact safe_008_neg_int_lit hb
+
+/-! ## §4 …and every registered rule is **exercised** by it
+
+The gate this section adds. A rule could be registered — proved, in the judgment, counted —
+and never appear in any program the safety proof is about, in which case the end-to-end claim
+would be about a fragment narrower than the registry. `rulesUsed` says which rules a
+derivation of a program *must* use (exact for this fragment: each `Expr` head admits exactly
+one `DJudge` rule), and the `#guard` below requires every registered rule to be used by at
+least one rung.
+
+It grows by itself in the direction that matters: register `vasgn` and the guard fails until
+`safeRungs` gains a program containing an assignment. That is the check
+`scripts/run_typed_ratchet.sh` asks for, run at build time where it cannot be skipped. -/
+
+mutual
+/-- The `DJudge` rules a derivation of `e` must use. `"?"` for a head with no rule, so an
+unsupported program shows up as an uncovered name rather than as an empty list. -/
+def rulesUsed : Ratchet.Expr → List String
+  | .int _ => ["intLit"]
+  | .flt _ => ["fltLit"]
+  | .str _ => ["strLit"]
+  | .sym _ => ["symLit"]
+  | .tru => ["truLit"]
+  | .fls => ["flsLit"]
+  | .nil => ["nilLit"]
+  | .var .lvar _ => ["var"]
+  | .vasgn .lvar _ e => "vasgn" :: rulesUsed e
+  | .seq es => "seq" :: rulesUsedAll es
+  | .send (some r) _ args none => "prim" :: (rulesUsed r ++ rulesUsedAll args)
+  | .if' c t (some e) => "if'" :: (rulesUsed c ++ rulesUsed t ++ rulesUsed e)
+  | _ => ["?"]
+
+def rulesUsedAll : List Ratchet.Expr → List String
+  | [] => []
+  | e :: es => rulesUsed e ++ rulesUsedAll es
+end
+
+/-- Every rule the safety proof's programs need, with duplicates. -/
+def rulesExercised : List String := rulesUsedAll (safeRungs.map (·.2))
+
+/-- Registered rules that **no rung the safety proof covers uses**, frozen by name. The gate
+below fails if anything else joins this list, so a newly registered rule must either be
+exercised end to end or be added here with a reason.
+
+Today: **`var`**, and the reason is structural rather than an oversight
+(`found-issues.md` §F30). A program that reads a local has to bind it first, so exercising
+`var` needs an assignment and a statement sequence — `vasgn` and `seq`, both unregistered and
+both behind `RunAPushK`. There is no single-expression program in the corpus that reads a
+local: a bare name that is *not* a local desugars to `vcall`, which has no rule at all. So
+`var`'s clink is proved and in the judgment, and the end-to-end safety claim genuinely does
+not reach it yet. **Only ever shrink this.** -/
+def unexercised : List String := ["var"]
+
+-- **The coverage gate.** Every registered rule is either used by a rung the safety proof
+-- covers, or a named exception. Register a rule without exercising it and this goes red.
+#guard dRegisteredRules.all (fun r => rulesExercised.contains r || unexercised.contains r)
+
+-- The other direction, and the control that keeps the gate from being vacuous: every name in
+-- `unexercised` really is registered and really is unexercised.
+#guard unexercised.all (fun r => dRegisteredRules.contains r && !rulesExercised.contains r)
+
+-- And no rung uses an unregistered rule -- which the safety theorems' existence already
+-- forces, but stating it makes the two columns' relationship checkable.
+#guard dUnregisteredRules.all (fun r => !rulesExercised.contains r)
+
+-- And no rung reaches a head with no rule, which would make `rulesUsed` an over-approximation
+-- of something unprovable.
+#guard !rulesExercised.contains "?"
 
 #print axioms safe_001_int_lit
 #print axioms safe_004_str_lit

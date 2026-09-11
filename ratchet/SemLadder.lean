@@ -1,4 +1,5 @@
 import Denote.Typed.Safety
+import Ratchet.Rung
 
 /-!
 # `semladder` — the clink registry's report
@@ -29,7 +30,9 @@ Not "non-zero while rules remain" — under the old framing that was a permanent
 which is a light nobody reads.
 -/
 
+open Ratchet
 open Ratchet.Denote.Typed
+open Lean (Json)
 
 /-- The recorded number of corpus rungs with an **end-to-end safety proof** at the real
 prelude-booted machine (`Denote/Typed/Safety.lean`). This is the number the ladder exists to
@@ -43,7 +46,41 @@ without its proof, so the count is a count of proofs. Raise it when the registry
 drop means a proof was deleted or broken. -/
 def clinkFloor : Nat := 8
 
-def main : IO UInt32 := do
+/-! ## The cross-check: the safety proof is about the **corpus's own** programs
+
+`Denote/Typed/Safety.lean`'s theorems name their rung in a docstring — `corpus/004-str-lit.rb`
+— and until now that was prose. This reads the rung the pipeline actually built and compares
+its **sig-stripped program** against the `Expr` the theorem is about. A theorem proved about
+`.str "hello"` while `corpus/004-str-lit.rb` says something else is the one way the safety
+number could be honest per-theorem and wrong per-ladder.
+
+Reported per rung and non-zero on any mismatch, so `scripts/run_typed_ratchet.sh` can gate on
+it next to reach and agreement. -/
+
+structure RungCheck where
+  name : String
+  status : String
+  ok : Bool
+
+def checkRung (dir : System.FilePath) (name : String) (p : Ratchet.Expr) : IO RungCheck := do
+  let path := dir / (name ++ ".rung.json")
+  if !(← path.pathExists) then
+    return { name, status := "NO BUILT RUNG (run scripts/build_corpus.py)", ok := false }
+  let contents ← IO.FS.readFile path
+  match Json.parse contents with
+  | .error e => return { name, status := s!"unparseable: {e}", ok := false }
+  | .ok j =>
+    match j.getObjVal? "program" with
+    | .error _ => return { name, status := "rung has no `program` (upstream stage failed)", ok := false }
+    | .ok pj =>
+      match Decode.program pj with
+      | .error e => return { name, status := s!"undecodable: {e}", ok := false }
+      | .ok prog =>
+        if prog == p then return { name, status := "matches the corpus program", ok := true }
+        else return { name, status := "MISMATCH: the theorem is about a different program",
+                      ok := false }
+
+def main (args : List String) : IO UInt32 := do
   let dn := dRegisteredRules.length
   IO.println "=== CLINK REGISTRY: rules in the certified judgment `DJudgeC dclinks` ==="
   IO.println ""
@@ -62,10 +99,33 @@ def main : IO UInt32 := do
   IO.println "=== END-TO-END SAFETY, at the real prelude-booted machine ==="
   IO.println s!"  {safeRungs.length} corpus rungs proved `StuckFree bootMachine <program>`, \
 at every fuel:"
-  IO.println s!"    {String.intercalate ", " safeRungs}"
+  IO.println s!"    {String.intercalate ", " (safeRungs.map (·.1))}"
   IO.println "  Each is one theorem in Denote/Typed/Safety.lean with every hypothesis"
   IO.println "  discharged (`stateOk_boot`, conditional on the `bootOkB` build gate), and"
   IO.println "  `#print axioms` showing only propext/Classical.choice/Quot.sound."
+  IO.println ""
+  IO.println s!"  rules exercised by those rungs: \
+{String.intercalate ", " (dRegisteredRules.filter (fun r => rulesExercised.contains r))}"
+  if !unexercised.isEmpty then
+    IO.println s!"  registered but NOT exercised end to end: \
+{String.intercalate ", " unexercised} -- see found-issues.md §F30"
+  -- The cross-check, when a build directory is given.
+  let mut crossOk := true
+  match args.head? with
+  | none =>
+    IO.println ""
+    IO.println "  (pass a build directory -- `lake exe semladder build` -- to also check each"
+    IO.println "   theorem is about the program the pipeline built for that rung)"
+  | some dir =>
+    IO.println ""
+    IO.println s!"  cross-check against {dir}:"
+    for q in safeRungs do
+      let r ← checkRung dir q.1 q.2
+      IO.println s!"    {q.1}: {r.status}"
+      if !r.ok then crossOk := false
+  if !crossOk then
+    IO.println "SAFETY CROSS-CHECK FAILED: a safety theorem is not about its rung's program"
+    return 1
   if safeRungs.length < safeRungFloor then
     IO.println s!"SAFETY RATCHET REGRESSED: {safeRungs.length} rungs proved safe, \
 floor is {safeRungFloor}"

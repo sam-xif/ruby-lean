@@ -2204,3 +2204,38 @@ drops premises like this silently; that is the whole argument.
 
 Cost: one premise on the rule, one `if` in `check`'s `var` arm, and **no movement in the
 ladder** (reach 18 before and after) — because nothing reachable ever had an alias.
+
+---
+
+## §F30 — `var` is registered, proved, and **not reachable by any end-to-end safety proof** *(open; structural, not an oversight)*
+
+Found by the coverage gate added in clink 70, which asks the question the ladder had not been
+asking: does the final safety proof *involve* every rule the registry contains?
+
+It does not. Eight rules are registered and eight corpus rungs have an end-to-end safety
+theorem, but the rungs are 001–008 — all **literals** — so the rules they exercise are the
+seven literal rules. `DJudge.var`'s clink is proved (both halves: the answer-typed obligation
+and `SafeJudge`), it is in `DJudgeC dclinks`, and `dregistry_safe` applies to it. No program
+the safety proof covers reads a local.
+
+**Why no rung can fix this today.** A program that reads a local has to bind it first, so the
+smallest witness is `x = 1; x` — which needs `vasgn` **and** `seq`, both unregistered and both
+behind `RunAPushK` (`Denote/Typed/JudgeA.lean` §4). And there is no single-expression
+alternative: a bare name that is *not* a local desugars to `Expr.vcall`, which has no `DJudge`
+rule at all (deliberately — `vcall` is an implicit-self send whose miss is `NameError`, and
+`NameError` is outside the type-error family). So `var` is genuinely unreachable end to end
+until the composite rules land, and it will be exercised by the first `vasgn`/`seq` rung
+automatically.
+
+**Why this is worth a finding rather than a silent gap.** "8 rules registered, 8 rungs proved
+safe" reads as though the two numbers cover each other. They do not, and nothing in the ladder
+said so until the gate was written. The residue is now named in three places that a reader
+cannot miss: `unexercised` in `Denote/Typed/Safety.lean` (frozen by name, with a `#guard` that
+fails if anything *else* joins it), the `lake exe semladder` report, and
+`scripts/run_typed_ratchet.sh`'s step 4.
+
+**The control that makes the gate mean something**, and it is the reason the gate is not
+vacuous: `#guard unexercised.all (fun r => dRegisteredRules.contains r && !rulesExercised.contains r)`
+— every name on the list really is registered and really is unexercised — together with
+`#guard dUnregisteredRules.all (fun r => !rulesExercised.contains r)`, which says no rung
+leans on a rule that has no proof.

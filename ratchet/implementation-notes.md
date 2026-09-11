@@ -8104,3 +8104,67 @@ Rungs 009–018 are checked by `Ratchet/Check.lean` and have no safety theorem, 
 `seq`, `vasgn` and `if'` are unregistered. All four are behind `RunAPushK`, and `semladder`
 now prints two numbers side by side so that gap is a line in the report rather than a
 footnote in a file.
+
+---
+
+## Clink 70 (2026-09-11) — the safety proof is cross-checked against the corpus, and the coverage gate finds §F30 immediately
+
+Asked to make `run_typed_ratchet.sh` check that the final safety proof involves each semantic
+rung. Two checks were missing, they are different, and one of them failed on the first run.
+
+### 1. The list was not the theorem's subject
+
+`safeRungs` was a `List String` with `#guard safeRungs.length == 8`. That guard is satisfied
+by eight names and **no theorems** — it counted a hand-maintained list against a
+hand-maintained floor. Fixed by making the list carry the programs and proving the theorem
+*over the list*:
+
+```lean
+def safeRungs : List (String × Ratchet.Expr) := [("001-int-lit", .int 1), …]
+
+theorem safeRungs_safe (hb : bootOkB = true) : ∀ q ∈ safeRungs, StuckFree bootMachine q.2
+```
+
+Now adding a name without a theorem does not typecheck. Verified by tampering: changing one
+entry's program made the build fail in three places.
+
+### 2. …and the theorems' link to the corpus was prose
+
+`safe_004_str_lit`'s docstring said *`corpus/004-str-lit.rb` — `"hello"`*. Nothing checked it.
+A safety theorem can be perfectly true of `.str "hello"` and say nothing about rung 004 if the
+rung's program is something else — honest per theorem, wrong per ladder.
+
+`lake exe semladder build` now reads each rung the pipeline actually built and compares its
+**sig-stripped program** against the `Expr` the theorem is about, using the same
+`Decode.program` the checker uses. Eight matches. Verified in the direction that matters by
+tampering with `build/004-str-lit.rung.json` rather than with the Lean: the theorem still
+compiled, and the cross-check reported `MISMATCH` and exited 1.
+
+Both directions therefore bite, and they bite in different places — the Lean build catches a
+theorem drifting from the list, the script catches the corpus drifting from the theorem.
+
+### 3. The coverage gate, and what it found
+
+The question as asked — *does the safety proof involve each registered rule?* — is decidable:
+each `Expr` head admits exactly one `DJudge` rule in this fragment, so `rulesUsed` says which
+rules a derivation of a program must use, and the gate is one `#guard`.
+
+**It failed on the first run**, and the finding is §F30: `var` is registered, proved on both
+halves, in `DJudgeC` — and **no rung the safety proof covers reads a local**. It cannot: the
+smallest witness is `x = 1; x`, which needs `vasgn` and `seq`, both unregistered and both
+behind `RunAPushK`; and the single-expression alternative, a bare name, desugars to
+`Expr.vcall`, which has no rule at all. So the gap is structural and self-healing — the first
+`vasgn`/`seq` rung exercises `var` for free.
+
+Recorded rather than papered over, in the shape `legacyUnclinked` established: a frozen
+`unexercised := ["var"]` with a `#guard` that fails if anything *else* joins it. So a newly
+registered rule must be exercised end to end or be added here with a reason, and the two
+controls next to it (every listed name really is registered and really is unexercised; no rung
+leans on an unregistered rule) are what keep the gate from being vacuous.
+
+### What the numbers looked like before and after
+
+Before: *8 rules registered, 8 rungs proved safe* — which reads as though the two cover each
+other. After: *8 registered, 7 exercised, 1 named exception*, plus a per-rung cross-check
+against the built corpus. Same proofs; the report stopped implying something it had not
+checked.
