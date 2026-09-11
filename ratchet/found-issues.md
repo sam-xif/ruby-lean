@@ -1858,6 +1858,11 @@ point's, unchanged here.
 
 ## §F24 — the same shape at `break`, **checked and not a bug** *(negative result, pinned)*
 
+> **The control was run, which is what makes this a result rather than an absence.** The two
+> witnesses with the `break` *removed* (`[1,2].each { |y| s = "a"; s = 1 }; s + 1` and the `while`
+> twin) both validate **true**, so the rejection below is caused by the `break` specifically and
+> not by the shape being unsupported. Contrast §F25, where the control fails too.
+
 §F23's reasoning applies verbatim to `break`: it leaves the *loop* (or, in a block, the *call*)
 where `next` leaves the iteration, and `Judge.while'`'s `Γb = Γ` / `Judge.iterBlock`'s `capIntact`
 are read at the body's end just the same. Both witnesses were written and run —
@@ -1882,3 +1887,33 @@ are on file as corpus rungs (`while-break-escapes-unsafe`, `iter-block-break-esc
 tier 16, `unsafe_program`) for one reason: **they are the regression pin for the day a `break`
 rule is written.** The `nxtPrefixOk` premise §F23 added says nothing about `.brk`, so that rule
 will need the same treatment, and these two rungs will say so.
+
+
+## §F25 — and the same question at `raise`, which the checker **cannot answer yet** *(open, pinned)*
+
+`begin`'s body leaves in the middle too: a raise hands control to the handler at the environment
+the *raise point* left, not the one the body's last statement would have. So the §F23 pattern has
+a third door in principle —
+
+```ruby
+x = 1
+begin
+  x = "s"
+  raise "boom"
+  x = 2
+rescue
+  nil
+end
+x + 1                            # CRuby: TypeError
+```
+
+— and `validate` rejects it. **But the negative is vacuous**, and saying so is the finding: the
+**raise-free control** (the same program with `raise "boom"` deleted) is rejected too, so what is
+being refused is `begin`/`rescue` itself, not the escape. `ctl-begin-rescue-else-ensure` is an
+unclimbed rung and `Judge.begin'` is undischarged on the semantic ladder.
+
+On file as `corpus/…-begin-rescue-midway-escapes-unsafe` for the same reason as §F24's pair: it is
+the pin for the day `Judge.begin'` is written, and `nxtPrefixOk` says nothing about a raise.
+**Method note**: the control is what separates §F24 (a real negative — its controls validate
+`true`) from this one (an absence). Running it costs one `#eval` and it is the difference between
+"checked" and "assumed".

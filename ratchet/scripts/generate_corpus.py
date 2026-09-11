@@ -2295,6 +2295,16 @@ R("iter-block-break-escapes-unsafe", 16,
   's = 0\n[1, 2].each do |y|\n  s = "a"\n  break if y == 1\n  s = 1\nend\ns + 1\n',
   expect_validate=False, false_reason="unsafe_program")
 
+R("begin-rescue-midway-escapes-unsafe", 16,
+  "**\u00a7F25 \u2014 \u00a7F23's question at `raise`, which today's checker cannot answer.** A "
+  "`begin` body leaves *in the middle* too: the handler runs at the environment the raise point "
+  "left, not the one the body's last statement would have. `validate` rejects this \u2014 but it "
+  "rejects the **raise-free control** as well, so the rejection is `begin`/`rescue` being "
+  "unsupported rather than the escape being handled. The rung is the pin for the day "
+  "`Judge.begin'` is implemented: whatever premise it gets has to cover this.",
+  'x = 1\nbegin\n  x = "s"\n  raise "boom"\n  x = 2\nrescue\n  nil\nend\nx + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):

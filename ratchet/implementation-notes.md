@@ -7522,15 +7522,27 @@ is a *negative* finding, and the two programs are on file (`while-break-escapes-
 `iter-block-break-escapes-unsafe`) as **the regression pin for the day a `break` rule is
 written** — `nxtPrefixOk` says nothing about `.brk`, and those rungs will say so.
 
+### The method note, which is the part that generalises
+
+Three doors were asked about, and the *controls* are what separate the answers: §F23 (`next`) was
+a real bug — witnesses certified, fix applied, both now rejected; §F24 (`break`) is a real
+**negative** — the witnesses are rejected *and* their break-free controls validate `true`, so the
+rejection is caused by the `break`; §F25 (`raise`) is an **absence** — the witness is rejected,
+but so is the raise-free control, because `begin`/`rescue` is not typed at all yet. Running the
+control costs one `#eval` and it is the whole difference between "checked" and "assumed". All
+three are corpus rungs, because the two negatives are the regression pins for the day a `break`
+rule or a `Judge.begin'` is written — `nxtPrefixOk` covers neither.
+
 ### State
 
 Semantic ratchet **48 of 83**, unmoved, denominator still 83 (a premise is not a rule). Syntactic
-ratchet **178 of 258** — the two new rungs are permanent negatives, so the climbed count is
+ratchet **178 of 259** — the two new rungs are permanent negatives, so the climbed count is
 unchanged and the denominator grew by the two witnesses; `expect_validate` mismatches **35**,
 unchanged; corpus agreement **256/256**; `checkrungs` **177/177 + 148/148**. `lake build` clean,
 no `sorry`, axiom-clean. Changed: `Ratchet/Judge.lean` (`nxtFree`/`asgnFree`/`nxtPrefixOk` and the
 two premises), `Ratchet/Validate.lean` (the two guards), `Ratchet/Proof/ChkSound.lean` (two arms),
 `scripts/generate_corpus.py` + `corpus/` (four witnesses: §F23's two, which the fix now rejects,
-and §F24's two, which were already rejected), `found-issues.md` (§F23, §F24), `AGENTS.md`.
+§F24's two and §F25's one, which were already rejected), `found-issues.md` (§F23, §F24, §F25),
+`AGENTS.md`.
 **This is the one edit to `Ratchet/` this session, and it is the standing exception: a genuinely
 unsound rule, reported, witnessed in the corpus, then fixed.**
