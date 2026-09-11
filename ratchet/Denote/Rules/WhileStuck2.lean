@@ -7,6 +7,14 @@ import Denote.Rules.WhileStuck
 **Diagnosis**: `../../../docs/semantics/answer-typed-judgments.md` §2.3 — the false
 `JumpStuckFree` below is one of the four walls that document traces to a single cause.
 
+> **SUPERSEDED, 2026-09-11 — the two false hypotheses are gone.**
+> `Denote/Rules/WhileAnswer.lean`'s `SemStuckA.Judge.while'` is this theorem **without**
+> `hJc`/`hJb`, proved through the answer type (`Denote/Sem/Answer.lean`), together with a
+> fully-discharged instance (`while 1; 2; end`) that this file cannot state. The §"What is
+> still owed" refutation below is still true of `JumpStuckFree` and is the reason the
+> interface changed; read it, then read `WhileAnswer.lean`'s header for what replaced it.
+> Kept as the statement of record — it is the measurement that priced the change.
+
 Follows `WhileStuck.lean`'s probe, which concluded that `stuckFreeRun_pushK` could not serve
 a back edge because its delivery hypothesis was quantified over **all** fuel. That is fixed
 (`stuckFreeRun_pushK_le`, `VasgnStuck.lean`), and this file spends the fix.

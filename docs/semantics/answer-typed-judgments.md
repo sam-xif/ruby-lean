@@ -1,8 +1,9 @@
 # Answer-typed judgments — one root cause behind four separate walls
 
-> **Status:** findings artifact, 2026-09-10/11. Records a diagnosis and a proposal;
-> **nothing here is built**, but every claim below is either mechanised (named theorem,
-> axiom-clean) or measured against CRuby 4.0.5 / `srb` 0.6.13405.
+> **Status:** findings artifact, 2026-09-10/11; **§6's decomposition layer BUILT 2026-09-11
+> — see §10**, which also corrects §6 and closes two of §8's four open questions. Every claim
+> below is either mechanised (named theorem, axiom-clean) or measured against CRuby 4.0.5 /
+> `srb` 0.6.13405.
 >
 > Evidence tags per [`README.md`](README.md): **[V]** verified in this workspace,
 > **[M]** mechanised in Lean here, **[D]** documentation or literature, **[?]** open,
@@ -325,3 +326,120 @@ Mechanised here **[M]**: `ratchet/Denote/Rules/VasgnStuck.lean`,
 `ratchet/Denote/Rules/WhileStuck.lean`, `ratchet/Denote/Rules/WhileStuck2.lean`,
 `lean/RubyCore/HCtx/Bind.lean`. All axiom-clean
 (`propext`, `Classical.choice`, `Quot.sound`).
+
+---
+
+## 10. Built — the decomposition layer, and what it cost *(2026-09-11)*
+
+§6 was implemented **for the decomposition layer only**, deliberately: that is where all four
+of §2's walls actually stand, and it can be done without touching the 83 obligations or the
+48 discharged rungs. Four files, all axiom-clean (`propext`, `Classical.choice`,
+`Quot.sound`), full `lake build` green, and **both ladders unmoved** — `semladder` 48/83,
+`run_ratchet.sh` 178/254. Nothing existing was deleted; the old lemmas still build and are
+still consumed by the 48.
+
+| file | what it is |
+|---|---|
+| `ratchet/Denote/Sem/Answer.lean` | `Answer`, `answerPoint`, `runA`, `ARes.out`, and **`run_pushK`** |
+| `ratchet/Denote/Sem/SafeKont.lean` | `SafeKont`/`Delivers`/`HaltBlind`, `safe_pushK{,_le}`, the fuel arithmetic, `delivers_safeA` |
+| `ratchet/Denote/Sem/AnswerValue.lean` | `run_split_A` — `run_split` re-derived, to show the value axis survives |
+| `ratchet/Denote/Rules/VasgnAnswer.lean` | `SemStuckA.Judge.vasgn` — the control, same `Prop` as the old rung |
+| `ratchet/Denote/Rules/WhileAnswer.lean` | **`SemStuckA.Judge.while'`** — §2.3's wall, gone |
+
+### 10.1 The master equation **[M]**
+
+```lean
+theorem run_pushK (K : List Kont) (hK : RubyCore.Proof.CatchFree K) :
+    ∀ fuel m, Interp.run fuel (pushK K m) = (runA fuel m).out K
+```
+
+One equation, one hypothesis, five outcomes accounted for. `runA` is `Interp.run` stopped at
+the **answer point** — an empty continuation with a value or a jump in flight — rather than
+run through it, and `ARes.out` reassembles. The coincidence that makes the cut correct is
+that the answer point is *exactly* `RubyCore.Proof.stepFn_frame`'s side condition
+(`hside_of_none`, two lines): the states where appending a continuation changes what happens
+next are the states where an answer is handed over.
+
+`CatchFree` survives, as §7 predicted: it is a fact about `stepFn` (a `throw` reads the whole
+continuation), not about the projection.
+
+### 10.2 Cost, measured **[M]**
+
+Non-blank, non-comment lines of the theorem body.
+
+| | projection | answer | note |
+|---|---|---|---|
+| decomposition, value axis | `run_split` **82** | — | |
+| decomposition, stuck axis | `stuckFreeRun_pushK_le` **86** | — | |
+| decomposition, both axes | — | `run_pushK` **62** + `stepFn_frameR` **21** | one induction, not two |
+| `run_split` recovered | — | `run_split_A` **41**, no induction | |
+| jump side condition, value | `JumpOpaque` 3 + `jump_empty_never_value` **27** | *deleted* — one `exact` in `run_split_A`'s `esc` arm | |
+| jump side condition, stuck | `JumpStuckFree` 4 + `jumpStuckFree_asgnK` **14** | `safeKont_asgnK_esc` **7** | |
+| the `vasgn` rung | 16 | 12 | same `Prop`, checked by `example` |
+| the `while'` rung | `loop_stuck_of_jumps` **41**, *two false hypotheses* | `loop_stuck` **65**, *no hypotheses* | proves both loop entry points |
+
+Net: 168 lines of paired induction become 83, one of the two jump side conditions is deleted
+outright and the other shrinks by half, and the `while'` rung grows by 24 lines in exchange
+for being **true**.
+
+### 10.3 §2.3's wall is gone **[M]**
+
+`SemStuckA.Judge.while'` is `SemStuck.Judge.while_of_jumps` minus `hJc`/`hJb` — the two
+`JumpStuckFree` hypotheses §2.3 refuted — and plus one premise that is satisfiable:
+
+```lean
+def AnswerOkAt (κ : Ctx) (Γ : Env) (I : Ty) (e : Ratchet.Expr) : Prop :=
+  ∀ m, StateOk κ Γ I m → Delivers (evalFrom m e) (fun _ m₀ => StateOk κ Γ I m₀)
+```
+
+`Delivers` quantifies over **answers**, so this one definition says both "the loop re-enters
+conformant after a normal iteration" (the `val` arm — what `WhileStuck2.lean` took from
+`SemJudge`'s third conjunct) and "…and after a `next` or a `redo`" (the `esc` arm, which no
+obligation of `SemJudge`'s shape can state, §2.1).
+
+Non-vacuity, which `WhileStuck2.lean` could not exhibit at all: `StuckFreeAt κ Γ I (.while'
+(.int 1) (.int 2))` is proved with every hypothesis discharged, from `answerOk_pure` (a
+two-line leaf lemma) and the existing `stuckFree_pure`.
+
+**And `AnswerOkAt` is not a new invention — it is the meaning of a premise `Judge.while'`
+already carries.** §F23 added `nxtPrefixOk body = true` ("a `next` may only occur before
+anything has assigned") after a reachable soundness bug found by *reading* this rule's
+semantic obligation; its whole purpose is to make the environment at a mid-body `next` equal
+the body's incoming one. That is `AnswerOkAt`'s `esc` arm, verbatim. So the answer type does
+not merely make the loop provable — it gives §F23's premise the first obligation that can
+consume it, which is precisely §2.1's complaint about `raise`'s `excName?`.
+
+### 10.4 Two of §8's open questions, closed **[✗→]**
+
+- **Q1 — "does `Answer` need the target as well as the jump?"** **No.** `Jump` already
+  carries what a target-sensitive arm needs (`retJ v tgt`), and the back edge turned out not
+  to want the target at all: `whileUnwind`'s `nxtJ`/`redoJ` arms re-enter at `m₀`, and what
+  they need is `StateOk κ Γ I m₀` — a fact about the *machine*, supplied by the `esc` clause.
+  §2.3's suggestion that "the target matters at a back edge" was reading the right symptom
+  and naming the wrong cause.
+- **Q2 — "can the `gate` arm be collapsed into `esc`?"** **The question was malformed, and
+  §6's three-armed `Answer` was wrong.** `.unsupported` is never *delivered* to a
+  continuation; it aborts the run regardless of what is below it. So it belongs with
+  `.uncaught` and `.stuck` in a separate `Halt`, and `Answer` has exactly two arms.
+  The distinction that matters is **delivered vs. terminal**, not value vs. escape vs. gate.
+  `HaltBlind` is the residue: the one thing a composition must know about a halt is that the
+  property being proved does not read the continuation off its reported machine, which is
+  two lines to discharge and is bookkeeping for `Interp.run`'s habit of reporting the
+  *pre-step* machine on `.unsupported`/`.stuck`.
+
+### 10.5 What was **not** done, and why
+
+- **`SemJudge` is not restated.** §6's price — "every one of the 83 obligations changes
+  shape, and the 48 discharged ones each gain a case" — is not paid, and on this evidence
+  need not be paid to get most of the benefit: `run_split_A` shows the existing obligations
+  consume the new decomposition **unchanged**. The restatement is worth doing when a rung
+  needs to *conclude* something about an escape, and the first such rung is not on the value
+  ladder at all — it is the second ladder's `while'`, which is now proved without it.
+- **The second ladder is still two rungs long** (`vasgn`, `while'`, plus `intLit`). This
+  session removed the wall in front of it; climbing it is a separate, and now unblocked,
+  exercise.
+- **§2.4 stands untouched**, exactly as §7 said it would. Nothing here repairs the Iris
+  `Language.Context` instance and nothing here needs to.
+- **§8's Q3 and Q4 are still open**, and Q3 ("how much of the 48 survives mechanically?") is
+  now answerable cheaply, since the decomposition it depends on is a corollary rather than a
+  rewrite.

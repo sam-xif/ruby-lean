@@ -6,6 +6,12 @@ import Denote.Rules.Vasgn
 **Diagnosis of why this axis exists at all**: `../../../docs/semantics/answer-typed-judgments.md`
 (§2.1–§2.2 cite this file).
 
+> **Re-proved 2026-09-11 through the answer type** — `Denote/Rules/VasgnAnswer.lean`, same
+> `Prop`, with a cost table comparing the two. `stuckFreeRun_pushK_le` below (86 lines, this
+> axis only) is subsumed by `run_pushK` (`Denote/Sem/Answer.lean`, 62 lines, **both** axes),
+> and `JumpStuckFree` is deleted rather than shrunk. This file still builds and still holds
+> the measurement the change was priced from.
+
 **The experiment.** `Denote/Sem/State.lean` states `StuckFree` and says "nothing in the
 ladder uses it yet"; `Denote/Adequacy.lean` states `StuckFreeTarget` and records that it is
 **not implied by** `AdequacyTarget`, because `SemJudge` quantifies only over runs that
