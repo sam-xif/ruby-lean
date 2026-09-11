@@ -32,6 +32,12 @@ certified with nothing checked. It is checked: the escape is a `brkJ`, `unwind [
 
 ## Four departures from `Denote/Sem/Invariant.lean`, stated because they are the honest bits
 
+(There used to be a fifth, unstated and unintended: every theorem from `pInv_init` down fixed
+the *incoming environment* to `[]`. Nothing needed it — see `pInv_init` — and fixing `Γ` is
+what made the adequacy theorem useless for the one job an adequacy theorem has, since a
+sub-derivation lives at a non-empty environment. Now universally quantified; §7 of
+`Checker.lean` exhibits a non-empty witness.)
+
 1. **`SemJudge` is not edited in place; `PSemJudge` is a parallel definition.** Changing the
    real one breaks the 48 discharged rungs and the build goes red, which would defeat a
    prototype whose purpose is confidence. The migration is §6's business.
@@ -381,18 +387,25 @@ theorem pInv_safe (τa : Ty) : ∀ (fuel : Nat) (m : Machine), PInv τa m →
 
 /-! ## §7 From a program and a certificate to the invariant -/
 
-/-- **`InvInit` for the fragment.** A certificate for the whole program, at any conformant
-machine, is the invariant at the machine that starts running it. This is the whole of the
-checker's contribution: `PKontOk.nil` says the top level accepts anything, and the certificate
-is dropped straight into the `eval` arm. -/
-theorem pInv_init {p : Ratchet.Expr} {τ : Ty} {Γ' : Env} (hj : PJudge [] p τ Γ')
-    {m : Machine} (hm : StateOk Ratchet.ctx0 [] .ivar0 m) : PInv τ (evalFrom m p) :=
-  Or.inl ⟨p, [], Γ', τ, rfl, StateOk_reCtl hm _ _, hj, PKontOk.nil⟩
+/-- **`InvInit` for the fragment.** A derivation for `p` **at any incoming environment**, at any
+machine conformant with it, is the invariant at the machine that starts running `p`. The
+certificate is dropped straight into the `eval` arm and `PKontOk.nil` supplies the rest.
+
+**`Γ` is universally quantified, and that is load-bearing rather than generous.** An earlier
+version fixed `Γ = []` — the environment a *whole program* starts at — and everything below
+inherited the restriction, which made the adequacy theorem (§9) useless for the one thing an
+adequacy theorem is for: a sub-derivation of a larger program lives at a *non-empty* `Γ`.
+Nothing in the proof ever needed the emptiness; `PInv` quantifies the environment
+existentially and `PKontOk.nil` holds at every `Γ`. `κ` is still fixed to `ctx0` (departure 4),
+and that one *is* forced here: `PJudge.vasgn` names `ctx0` in its `capStaleCtx` premise. -/
+theorem pInv_init {p : Ratchet.Expr} {τ : Ty} {Γ Γ' : Env} (hj : PJudge Γ p τ Γ')
+    {m : Machine} (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) : PInv τ (evalFrom m p) :=
+  Or.inl ⟨p, Γ, Γ', τ, rfl, StateOk_reCtl hm _ _, hj, PKontOk.nil⟩
 
 /-- **The theorem the prototype exists to produce**: a type certificate rules out type-stuck
 outcomes for the program it certifies. Every hypothesis is discharged; nothing is assumed. -/
-theorem certificate_implies_safe {p : Ratchet.Expr} {τ : Ty} {Γ' : Env}
-    (hj : PJudge [] p τ Γ') {m : Machine} (hm : StateOk Ratchet.ctx0 [] .ivar0 m) :
+theorem certificate_implies_safe {p : Ratchet.Expr} {τ : Ty} {Γ Γ' : Env}
+    (hj : PJudge Γ p τ Γ') {m : Machine} (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) :
     StuckFree m p :=
   fun fuel => pInv_safe τ fuel (evalFrom m p) (pInv_init hj hm)
 
@@ -494,16 +507,16 @@ theorem inv_runA (τa : Ty) : ∀ (fuel : Nat) (m : Machine) (a : Answer) (m₀ 
 
 /-- **The answer-typed semantic judgment, derived.** Both clauses: the value clause comes from
 `PKontOk.nil`'s `τa` pin, the escape clause from `PJumpOk`. -/
-theorem psemJudge_of_pjudge {p : Ratchet.Expr} {τ : Ty} {Γ' : Env} (hj : PJudge [] p τ Γ') :
-    PSemJudge [] p τ := by
+theorem psemJudge_of_pjudge {p : Ratchet.Expr} {τ : Ty} {Γ Γ' : Env} (hj : PJudge Γ p τ Γ') :
+    PSemJudge Γ p τ := by
   intro m hm fuel a m₀ rest hr
   have hinv := inv_runA τ fuel (evalFrom m p) a m₀ rest hr (pInv_init hj hm)
   have hap : answerPoint m₀ = some a := answerPoint_of_ans fuel (evalFrom m p) a m₀ rest hr
   cases a with
   | val v =>
     obtain ⟨hc, hk⟩ := ctl_kont_of_val hap
-    rcases hinv with ⟨e₀, Γ, Γ₂, τ₂, hce, -, -, -⟩ | ⟨w, Γ, τ₂, hcw, -, hd, hkk⟩ |
-      ⟨j, Γ, τ₂, hcj, -, -⟩
+    rcases hinv with ⟨e₀, Γ₁, Γ₂, τ₂, hce, -, -, -⟩ | ⟨w, Γ₁, τ₂, hcw, -, hd, hkk⟩ |
+      ⟨j, Γ₁, τ₂, hcj, -, -⟩
     · rw [hc] at hce; exact absurd hce (by simp)
     · -- the value arm, and `PKontOk.nil` is what forces `τ₂ = τ`
       have hvw : w = v := by rw [hc] at hcw; injection hcw with he; exact he.symm
@@ -514,8 +527,8 @@ theorem psemJudge_of_pjudge {p : Ratchet.Expr} {τ : Ty} {Γ' : Env} (hj : PJudg
     · rw [hc] at hcj; exact absurd hcj (by simp)
   | esc j =>
     have hc := ctl_of_esc hap
-    rcases hinv with ⟨e₀, Γ, Γ₂, τ₂, hce, -, -, -⟩ | ⟨w, Γ, τ₂, hcw, -, -, -⟩ |
-      ⟨j₂, Γ, τ₂, hcj, hjo, -⟩
+    rcases hinv with ⟨e₀, Γ₁, Γ₂, τ₂, hce, -, -, -⟩ | ⟨w, Γ₁, τ₂, hcw, -, -, -⟩ |
+      ⟨j₂, Γ₁, τ₂, hcj, hjo, -⟩
     · rw [hc] at hce; exact absurd hce (by simp)
     · rw [hc] at hcw; exact absurd hcw (by simp)
     · -- the escape arm: the only jump the fragment builds is a `brkJ`, and that is safe
@@ -525,8 +538,8 @@ theorem psemJudge_of_pjudge {p : Ratchet.Expr} {τ : Ty} {Γ' : Env} (hj : PJudg
 
 /-- The certificate's *type* claim, not just its safety claim: whenever the certified program
 returns, the value is in the type the certificate named. -/
-theorem certificate_types_the_value {p : Ratchet.Expr} {τ : Ty} {Γ' : Env}
-    (hj : PJudge [] p τ Γ') {m : Machine} (hm : StateOk Ratchet.ctx0 [] .ivar0 m)
+theorem certificate_types_the_value {p : Ratchet.Expr} {τ : Ty} {Γ Γ' : Env}
+    (hj : PJudge Γ p τ Γ') {m : Machine} (hm : StateOk Ratchet.ctx0 Γ .ivar0 m)
     (fuel : Nat) (v : Value) (m₀ : Machine) (rest : Nat)
     (hr : runA fuel (evalFrom m p) = .ans (.val v) m₀ rest) : denM τ m₀ v :=
   psemJudge_of_pjudge hj m hm fuel _ m₀ rest hr
@@ -535,8 +548,8 @@ theorem certificate_types_the_value {p : Ratchet.Expr} {τ : Ty} {Γ' : Env}
 how the `esc` clause is discharged — from safety, through `delivers_safeA`, rather than from
 `PJumpOk`. Vacuous here (nothing in the fragment raises), and that is why it is *not* what
 `psemJudge_of_pjudge` uses. -/
-theorem psemJudge_escOk {p : Ratchet.Expr} {τ : Ty} {Γ' : Env} (hj : PJudge [] p τ Γ')
-    {m : Machine} (hm : StateOk Ratchet.ctx0 [] .ivar0 m) :
+theorem psemJudge_escOk {p : Ratchet.Expr} {τ : Ty} {Γ Γ' : Env} (hj : PJudge Γ p τ Γ')
+    {m : Machine} (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) :
     ∀ (fuel : Nat) (exc : Value) (m₀ : Machine) (rest : Nat),
       runA fuel (evalFrom m p) = .ans (.esc (.raiseJ exc)) m₀ rest →
       Semantics.isTypeError m₀.heap exc = false := by

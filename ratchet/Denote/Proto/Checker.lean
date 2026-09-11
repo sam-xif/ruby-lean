@@ -168,29 +168,43 @@ theorem pvalidate_sound {p : Ratchet.Expr} {cert : PHint} (h : pvalidate p cert 
   obtain ⟨⟨τ, Γ'⟩, hp⟩ := h
   exact ⟨τ, Γ', pcheck_sound cert [] p τ Γ' hp⟩
 
-/-! ## §3 The end-to-end theorem, left route (via the invariant) -/
+/-! ## §3 The end-to-end theorem, left route (via the invariant)
 
-/-- **The final theorem.** A checked `(program, certificate)` pair is safe: no run from any
-conformant machine reaches a `NoMethodError`/`ArgumentError`/`TypeError`, at any fuel. -/
+Stated **at an arbitrary incoming environment** and specialised to `[]` afterwards, not the
+other way round. `pcheck_sound` was always `∀ Γ`; it is `pvalidate` — the whole-program
+verdict — that is at `[]`, and conflating the two is what made the first version of this
+file's theorems weaker than their proofs. See `Safety.lean`'s `pInv_init`. -/
+
+/-- **The final theorem, general form.** A checked `(program, certificate)` pair is safe at
+every machine conformant with the environment it was checked in: no run reaches a
+`NoMethodError`/`ArgumentError`/`TypeError`, at any fuel. -/
+theorem checkedAt_implies_safe {p : Ratchet.Expr} {cert : PHint} {Γ : Env} {τ : Ty} {Γ' : Env}
+    (h : pcheck Γ p cert = some (τ, Γ'))
+    {m : Machine} (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) : StuckFree m p :=
+  certificate_implies_safe (pcheck_sound cert Γ p τ Γ' h) hm
+
+/-- …and the whole-program specialisation, which is what `pvalidate`'s `Bool` means: a program
+starts with no locals. -/
 theorem checked_implies_safe {p : Ratchet.Expr} {cert : PHint} (h : pvalidate p cert = true)
     {m : Machine} (hm : StateOk Ratchet.ctx0 [] .ivar0 m) : StuckFree m p := by
-  obtain ⟨τ, Γ', hj⟩ := pvalidate_sound h
-  exact certificate_implies_safe hj hm
+  simp only [pvalidate, Option.isSome_iff_exists] at h
+  obtain ⟨⟨τ, Γ'⟩, hp⟩ := h
+  exact checkedAt_implies_safe hp hm
 
 /-- …and the type claim, which is the other half of what a checker is for: the type `pcheck`
 computed really does describe the value, whenever there is one. -/
-theorem checked_types_the_value {p : Ratchet.Expr} {cert : PHint} {τ : Ty} {Γ' : Env}
-    (h : pcheck [] p cert = some (τ, Γ'))
-    {m : Machine} (hm : StateOk Ratchet.ctx0 [] .ivar0 m)
+theorem checked_types_the_value {p : Ratchet.Expr} {cert : PHint} {Γ : Env} {τ : Ty} {Γ' : Env}
+    (h : pcheck Γ p cert = some (τ, Γ'))
+    {m : Machine} (hm : StateOk Ratchet.ctx0 Γ .ivar0 m)
     (fuel : Nat) (v : Value) (m₀ : Machine) (rest : Nat)
     (hr : runA fuel (evalFrom m p) = .ans (.val v) m₀ rest) : denM τ m₀ v :=
-  certificate_types_the_value (pcheck_sound cert [] p τ Γ' h) hm fuel v m₀ rest hr
+  certificate_types_the_value (pcheck_sound cert Γ p τ Γ' h) hm fuel v m₀ rest hr
 
 /-- The checker's verdict composed with adequacy: the answer-typed semantic judgment, straight
 from a `Bool`. -/
-theorem psemJudge_of_pvalidate {p : Ratchet.Expr} {cert : PHint} {τ : Ty} {Γ' : Env}
-    (h : pcheck [] p cert = some (τ, Γ')) : PSemJudge [] p τ :=
-  psemJudge_of_pjudge (pcheck_sound cert [] p τ Γ' h)
+theorem psemJudge_of_pcheck {p : Ratchet.Expr} {cert : PHint} {Γ : Env} {τ : Ty} {Γ' : Env}
+    (h : pcheck Γ p cert = some (τ, Γ')) : PSemJudge Γ p τ :=
+  psemJudge_of_pjudge (pcheck_sound cert Γ p τ Γ' h)
 
 /-! ## §4 The right route: `PSemJudge` implies stuck-freedom directly
 
@@ -249,9 +263,9 @@ theorem no_halt (τa : Ty) : ∀ (fuel : Nat) (m : Machine) (h : Halt),
 
 `PInv` appears only to supply `no_halt`; every use of the *typing* content goes through
 `PSemJudge`. -/
-theorem stuckFree_of_psemJudge {p : Ratchet.Expr} {τ : Ty} {Γ' : Env}
-    (hj : PJudge [] p τ Γ') (hsem : PSemJudge [] p τ)
-    {m : Machine} (hm : StateOk Ratchet.ctx0 [] .ivar0 m) : StuckFree m p := by
+theorem stuckFree_of_psemJudge {p : Ratchet.Expr} {τ : Ty} {Γ Γ' : Env}
+    (hj : PJudge Γ p τ Γ') (hsem : PSemJudge Γ p τ)
+    {m : Machine} (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) : StuckFree m p := by
   intro fuel
   rw [run_eq_out_nil fuel (evalFrom m p)]
   cases hr : runA fuel (evalFrom m p) with
@@ -305,10 +319,10 @@ theorem stuckFree_of_psemJudge {p : Ratchet.Expr} {τ : Ty} {Γ' : Env}
 
 /-- **The two routes agree**, which is the check worth having: the same `Bool` yields the same
 theorem through the invariant and through adequacy. -/
-theorem checked_implies_safe' {p : Ratchet.Expr} {cert : PHint} {τ : Ty} {Γ' : Env}
-    (h : pcheck [] p cert = some (τ, Γ'))
-    {m : Machine} (hm : StateOk Ratchet.ctx0 [] .ivar0 m) : StuckFree m p :=
-  stuckFree_of_psemJudge (pcheck_sound cert [] p τ Γ' h) (psemJudge_of_pvalidate h) hm
+theorem checked_implies_safe' {p : Ratchet.Expr} {cert : PHint} {Γ : Env} {τ : Ty} {Γ' : Env}
+    (h : pcheck Γ p cert = some (τ, Γ'))
+    {m : Machine} (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) : StuckFree m p :=
+  stuckFree_of_psemJudge (pcheck_sound cert Γ p τ Γ' h) (psemJudge_of_pcheck h) hm
 
 /-! ## §5 What the general right route needs, stated -/
 
@@ -360,11 +374,61 @@ theorem break_checked_safe (hb : bootOkB = true) :
     StuckFree bootMachine progBreak :=
   checked_implies_safe (cert := certBreak) (by decide) (stateOk_boot hb)
 
+/-! ## §7 The generalisation is not vacuous: a non-empty incoming environment
+
+`Γ` being universally quantified is worth nothing unless `StateOk ctx0 Γ .ivar0 m` is
+satisfiable for a `Γ` that is not `[]` — and at the booted machine it is not, because `EnvOk`
+is *complete* (a name `Γ` does not mention reads as `nil`) and the booted machine has no
+locals. The satisfiable non-empty environments are the ones that arise **mid-run**, which is
+exactly the case the generalisation exists for.
+
+So the witness is built the way the machine builds it: write a local, and `stateOk_write` hands
+back conformance at the environment the write produced. Then a derivation *at that
+environment* — `PJudge.var`, which cannot be stated at `[]` at all, since `envGet? [] x` is
+`none` — is checked, and both the safety and the typing claims follow. -/
+
+/-- The environment after `x = 1`, and the machine that matches it. -/
+def envX : Env := envAfter [] "x" .int
+
+def machX : Machine := bootMachine.setLocal "x" (.int 1)
+
+theorem stateOk_machX (hb : bootOkB = true) : StateOk Ratchet.ctx0 envX .ivar0 machX :=
+  stateOk_write (stateOk_boot hb) (by simp [denM, isIntV]) (by decide) (by decide) (by decide)
+
+-- `x` really is bound to `Integer` there, so `PHint.var` is checkable and the whole chain runs
+-- at a non-empty environment…
+#guard pcheck envX (.var .lvar "x") .var == some (.int, envX)
+-- …and the same pair is rejected at the empty environment, which is the contrast.
+#guard ! pvalidate (.var .lvar "x") .var
+
+theorem readX_safe (hb : bootOkB = true) : StuckFree machX (.var .lvar "x") :=
+  checkedAt_implies_safe (Γ := envX) (cert := .var) (τ := .int) (Γ' := envX)
+    (by decide) (stateOk_machX hb)
+
+/-- The typing claim at a non-empty environment: reading `x` yields an `Integer`. -/
+theorem readX_types (hb : bootOkB = true) :
+    ∀ (fuel : Nat) (v : Value) (m₀ : Machine) (rest : Nat),
+      runA fuel (evalFrom machX (.var .lvar "x")) = .ans (.val v) m₀ rest → denM .int m₀ v :=
+  fun fuel v m₀ rest hr =>
+    checked_types_the_value (Γ := envX) (cert := .var) (Γ' := envX) (by decide)
+      (stateOk_machX hb) fuel v m₀ rest hr
+
+/-- And the typing claim is not vacuous either: the run does return, and it returns `1`. -/
+def readXValue : Bool :=
+  match Interp.run 8 (evalFrom machX (.var .lvar "x")) with
+  | .value (.int n) _ => n == 1
+  | _ => false
+
+#guard readXValue
+
 #print axioms pcheck_sound
+#print axioms checkedAt_implies_safe
 #print axioms checked_implies_safe
 #print axioms checked_types_the_value
 #print axioms stuckFree_of_psemJudge
 #print axioms checked_implies_safe'
 #print axioms nested_checked_safe
+#print axioms readX_safe
+#print axioms readX_types
 
 end Ratchet.Denote.Proto
