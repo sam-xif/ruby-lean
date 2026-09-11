@@ -1917,3 +1917,112 @@ the pin for the day `Judge.begin'` is written, and `nxtPrefixOk` says nothing ab
 **Method note**: the control is what separates §F24 (a real negative — its controls validate
 `true`) from this one (an absence). Running it costs one `#eval` and it is the difference between
 "checked" and "assumed".
+
+
+## §F26 — how strict `Judge.while'` actually is, measured; and one **pure over-strictness** in it *(open, actionable)*
+
+Prompted by the question "are ordinary imperative loop patterns allowed?". Measured rather
+than read off the premises: 42 programs through three checkers — `validate` (via a scratch
+corpus and `.lake/build/bin/ratchet`), **CRuby 4.0.5** for ground truth, and **`sorbet`
+0.6.13405** at `# typed: true` for comparison. Reproduce with
+
+```sh
+python3 probes/loop_strictness.py     # 24 loop shapes, three columns
+python3 probes/loop_controls.py       # the same bodies with the loop removed
+python3 probes/loop_more.py           # other loop heads, assigning/compound conditions
+python3 probes/loop_workarounds.py    # the same rejections with the locals hoisted
+```
+
+### The rule, in one line
+
+`Judge.while'` requires `Γc = Γ`, `Ic = I`, `Γb = Γ`, `Ib = I` — **the condition and the body
+must each leave the local environment exactly as they found it** — plus `nxtPrefixOk body`
+(§F23). That is a fixed point by equality, not by joining, and everything below follows from
+it.
+
+### What passes **[V]**
+
+Counters in every direction, which was the question asked: `i = i + 1`, `i = i - 1`, `i -= 1`,
+`i = i - 2`, `until i <= 0`, accumulation into a second local (`n = n + i`, `s = s + "a"`), a
+branching body whose arms both advance the counter, a body that calls a user-defined method,
+`while true; end` (diverges, safe by prefix-closure), and a body that *retypes* a local and
+restores it before the end.
+
+### What is rejected, and why — three different reasons, only one of them the loop rule **[V]**
+
+The straight-line controls are what separate them.
+
+| rejected | control (loop removed) | cause |
+|---|---|---|
+| new local in the body (`y = i`) | **passes** | **the loop rule** — `Γb` gained `y` |
+| nested loops (inner counter `j`) | **passes** | the loop rule, same fact (`j` is new) |
+| a swap through a temp (`t = a; …`) | **passes** | the loop rule, same fact |
+| `while (j = i) < 3` | — | the loop rule — `Γc` gained `j` |
+| `while i < 3 && x > 0` | **passes** | the loop rule, **and it is a bug — see below** |
+| `next` after the increment | (§F23's premise) | `nxtPrefixOk`, deliberately |
+| `break if …` in a loop | fails too | **not the loop rule** — `Judge` has no `.brk` rule at all (`ctl-break` unclimbed, §F24) |
+| float counter (`x = x + 0.5`) | fails too | not the loop rule — `Float#+`/`Float#<` have no `PrimSig` row |
+| `a.push(i)`, `a = a + [i]` | fails too | not the loop rule — those sends are untyped straight-line as well |
+| `dowhile`, `for i in 0..2`, `3.times`, `0.upto` | — | separate heads, unclimbed rungs |
+| `x = nil` then `x = i` in the body | — | the loop rule; **and `srb` rejects it too** (7001) |
+
+**Hoisting recovers every loop-rule rejection.** The same four programs with the body's new
+locals pre-initialised before the loop — `y = 0`, `j = 0`, `t = 0`, `j = 0` — all validate
+`true`. So the restriction is *"every local the loop touches must already be bound, at the
+type the loop preserves"*, not *"no imperative loops"*.
+
+### The bug: a compound loop condition is rejected by an artefact of desugaring **[V]**
+
+`while i < 3 && x > 0` is rejected, and the cause is neither the loop nor `&&`. `&&` desugars
+to a **synthetic temp assignment**:
+
+```
+["while", ["seq", ["vasgn","local","__dt_t1", i < 3],
+                  ["if", ["var","local","__dt_t1"], x > 0, ["var","local","__dt_t1"]]], …]
+```
+
+so the *condition* binds a new local and `Γc = Γ` fails. Two controls pin it: the same `&&`
+outside a loop validates `true`, and the same loop with `__dt_t1 = false` hoisted by hand
+**validates `true`** (`probes/loop_workarounds.py`, `hoist-dt-temp`). The temp is dead after
+the condition, so there is no soundness content here at all — this is pure over-strictness,
+and it rules out a very large fraction of real `while` conditions.
+
+Two candidate fixes, not yet decided: weaken `Γc = Γ` to "agrees on every name the loop's
+body or continuation can read" (a liveness condition, which is what the premise is trying to
+approximate), or let the premise quotient by the desugarer's `__dt_*` namespace (cheaper,
+narrower, and leaves the general case standing). The same weakening would admit the body
+cases too, at which point the hoisting workaround stops being needed.
+
+### How Sorbet handles `while` **[V]**
+
+**The same restriction, by the same name.** `sorbet` 0.6.13405 answers the widening cases
+with error **7001, "Changing the type of a variable is not permitted in loops and blocks"**,
+and autocorrects by asking for the loop-invariant type up front:
+
+```
+probe.rb:5: Changing the type of a variable is not permitted in loops and blocks https://srb.help/7001
+  Existing variable has type: `NilClass`
+  Attempting to change type to: `Integer(0)`
+  Autocorrect: Replace with `T.let(nil, T.nilable(Integer))`
+```
+
+So `Judge.while'`'s `Γb = Γ` is not an eccentricity of this checker; it is Sorbet's rule for
+loops, arrived at independently, and Sorbet's `T.let` is the ascription this checker has no
+syntax for. Where the two differ:
+
+* **Sorbet is more permissive** on new locals and nested loops (a local introduced in the
+  body is fine, because Sorbet joins at the loop header where 7001 only fires on a *changed*
+  type), and on compound conditions (it does not desugar `&&` into an assignment).
+* **Sorbet is more permissive on the `while (x = …)` idiom**, for the same reason.
+* **Sorbet is *less* permissive** on retype-and-restore (`x = "s"; x = 2` inside the body is
+  7001; `validate` accepts it, soundly, because `nxtPrefixOk` bans a `next` in between and
+  there is no `.brk` rule) and on a body that calls an unannotated method (`i = f(i)` is
+  7001 because `f` returns `T.untyped`; `validate` accepts it by typing `f`'s body).
+* On `while true; end` both say the program is fine; on `if`-bodies Sorbet adds **7006
+  "This code is unreachable"**, which `difftest/checker_relation.py` already excludes as a
+  reachability opinion rather than a type one.
+
+**Method note**: the three-column table is the point. `validate=false` on its own cannot
+distinguish "the loop rule refused this" from "this rung is not climbed yet", and eleven of
+the twenty-four round-one rejections turned out to be the latter.
+
