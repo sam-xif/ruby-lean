@@ -13,7 +13,7 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **178 rungs of 238 — tier 13 complete, tiers 14–17 open**
+## Checker status: **178 rungs of 256 — tier 13 complete, tiers 14–17 open**
 
 `Ratchet/Validate.lean`'s `validate` covers **every tier of the ladder**, tier 13 whole, and a
 good half of tiers 14–17: the eight literals,
@@ -48,6 +48,15 @@ tier 13 **complete** (12/13, six clinks), and tiers 14–17 taken from 1/15, 3/1
 **9/15, 13/19, 10/15 and 11/23**. So the headline was **177 of 232**, with **34 rungs differing
 from their recorded target** (down from 81) and 21 permanent negatives — one fewer than before,
 because a flagged `Ty` gap turned out not to be one (§Ty language gaps, clink 40).
+
+**Clink 64 found and fixed a reachable soundness bug** (`found-issues.md` §F23), which is what
+moved the denominator to **256**: `Judge.while'` and `Judge.iterBlock` both check the body's
+**outgoing** environment (`Γb = Γ`, `capIntact … Γb'`), and a `next` leaves the iteration *in the
+middle* — so `while …; x = "s"; next if c; x = 2; end; x + 1` was certified `Integer` against a
+CRuby `TypeError`. Fixed by a `nxtPrefixOk body` premise on both rules (*a `next` may only occur
+before anything has assigned*, so the escape environment **is** the incoming one the outgoing
+premise pins). Both witnesses are corpus rungs and both are now rejected; `ctl-next` still climbs.
+Permanent negatives: **23**.
 
 **Clink 46 made it 178 of 235**, and the three new rungs are a *soundness* fix rather than
 coverage: the semantic ratchet found `Judge.vasgn` accepting a type-stuck program

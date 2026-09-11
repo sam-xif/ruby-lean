@@ -677,6 +677,174 @@ def declFreeRescues :
 
 end
 
+/-! ### `next` may not escape past an assignment — §F23
+
+**A reachable soundness bug, found by reading `Judge.while'`'s semantic obligation** and
+confirmed against CRuby (`corpus/…-while-next-escapes-unsafe`, `…-iter-block-next-escapes-unsafe`;
+`found-issues.md` §F23). Both `Judge.while'` and `Judge.iterBlock` constrain the body's
+**outgoing** environment — `Γb = Γ` for the loop, `capIntact … Γb'` for the block — and a `next`
+leaves the iteration **mid-body**, at an environment neither premise mentions. So
+
+```ruby
+i = 0; x = 1
+while i < 2
+  i = i + 1; x = "s"
+  next if i == 2
+  x = 2
+end
+x + 1                     # x is "s": TypeError, and `validate` said Integer
+```
+
+was certified. The premise was being checked at the wrong point.
+
+The fix is the conservative one the shape allows: **a `next` may only occur before anything has
+assigned**, and then the environment at the escape *is* the body's incoming one, which is exactly
+what the outgoing premise already pins. It keeps every climbed rung (`ctl-next`'s `next if x == 2`
+is the body's first statement) and rejects both witnesses.
+
+Recorded limitation, and it is `found-issues.md` §F13's: `noLocalAsgn` is **syntactic**, so a
+`next` after a call to a closure that assigns a captured local is still accepted. That hole is
+the fifteenth stall point's and is not made worse here. -/
+
+mutual
+
+/-- Does this expression contain no `next` that would escape to *this* body? A nested block,
+loop or definition is a boundary: a `next` inside one belongs to it, not to us. -/
+def nxtFree : Expr → Bool
+  -- the escape itself
+  | .nxt _ => false
+  -- boundaries: an inner `next` belongs to the inner construct
+  | .block .. | .def' .. | .defs .. | .class' .. | .module' .. => true
+  | .scopedClass .. | .scopedModule .. | .sclass .. => true
+  | .for' .. | .dowhile .. => true
+  | .while' c _ => nxtFree c
+  -- containers
+  | .vasgn _ _ e | .splat (some e) | .ret (some e) | .brk (some e)
+  | .blockpass (some e) | .cpath (some e) _ | .defined e | .casgn _ e
+  | .cpathAsgn _ _ e => nxtFree e
+  | .send recv _ args blk =>
+    (match recv with | some r => nxtFree r | none => true) &&
+    nxtFreeAll args &&
+    (match blk with | some b => nxtFree b | none => true)
+  | .seq es | .array es | .yield' es => nxtFreeAll es
+  | .hash ps => nxtFreePairs ps
+  | .kwargs entries => nxtFreeKw entries
+  | .if' c t e =>
+    nxtFree c && nxtFree t && (match e with | some x => nxtFree x | none => true)
+  | .begin' body rescues els ens =>
+    nxtFree body && nxtFreeRescues rescues &&
+    (match els with | some x => nxtFree x | none => true) &&
+    (match ens with | some x => nxtFree x | none => true)
+  | .super' args blk =>
+    nxtFreeAll args && (match blk with | some b => nxtFree b | none => true)
+  | .zsuper blk => (match blk with | some b => nxtFree b | none => true)
+  -- leaves
+  | .int _ | .flt _ | .str _ | .sym _ | .regexpLit .. | .tru | .fls | .nil | .self'
+  | .var .. | .const _ | .vcall _ | .fwd | .retry' | .redo'
+  | .cpath none _ | .splat none | .ret none | .brk none
+  | .undef .. | .alias' .. | .blockpass none => true
+
+def nxtFreeAll : List Expr → Bool
+  | [] => true
+  | e :: es => nxtFree e && nxtFreeAll es
+
+def nxtFreePairs : List (Expr × Expr) → Bool
+  | [] => true
+  | (k, v) :: ps => nxtFree k && nxtFree v && nxtFreePairs ps
+
+def nxtFreeKw : List KwEntry → Bool
+  | [] => true
+  | .pair _ v :: es => nxtFree v && nxtFreeKw es
+  | .dyn k v :: es => nxtFree k && nxtFree v && nxtFreeKw es
+  | .splat e :: es => nxtFree e && nxtFreeKw es
+
+def nxtFreeRescues :
+    List (List Expr × Option (TargetKind × String) × Expr) → Bool
+  | [] => true
+  | (cls, _, handler) :: rs => nxtFreeAll cls && nxtFree handler && nxtFreeRescues rs
+
+end
+
+mutual
+
+/-- Does this expression **assign no local**? Unlike `noLocalAsgn` — which is a whitelist of
+shapes a *narrowing condition* may take, and answers `false` for anything it does not
+recognise, `next` included — this is the honest question: is there a `vasgn` (or a `for`
+target, or a block body that writes a captured local) anywhere in here.
+
+Needed because §F23's premise is "no `next` **after an assignment**", and asking
+`noLocalAsgn` instead rejects `next if c` itself — which is exactly the shape the climbed
+`ctl-next` rung is built out of. Measured: the first version of this premise broke that rung. -/
+def asgnFree : Expr → Bool
+  -- the assignments
+  | .vasgn .. => false
+  | .for' .. => false
+  -- a block can write a local it captured
+  | .block _ _ body => asgnFree body
+  -- containers
+  | .splat (some e) | .ret (some e) | .brk (some e) | .nxt (some e)
+  | .blockpass (some e) | .cpath (some e) _ | .defined e | .casgn _ e
+  | .cpathAsgn _ _ e => asgnFree e
+  | .send recv _ args blk =>
+    (match recv with | some r => asgnFree r | none => true) &&
+    asgnFreeAll args &&
+    (match blk with | some b => asgnFree b | none => true)
+  | .seq es | .array es | .yield' es => asgnFreeAll es
+  | .hash ps => asgnFreePairs ps
+  | .kwargs entries => asgnFreeKw entries
+  | .if' c t e =>
+    asgnFree c && asgnFree t && (match e with | some x => asgnFree x | none => true)
+  | .while' c body => asgnFree c && asgnFree body
+  | .dowhile body cond => asgnFree body && asgnFree cond
+  | .begin' body rescues els ens =>
+    asgnFree body && asgnFreeRescues rescues &&
+    (match els with | some x => asgnFree x | none => true) &&
+    (match ens with | some x => asgnFree x | none => true)
+  | .super' args blk =>
+    asgnFreeAll args && (match blk with | some b => asgnFree b | none => true)
+  | .zsuper blk => (match blk with | some b => asgnFree b | none => true)
+  -- declarations bind no local of *this* frame
+  | .def' .. | .defs .. | .class' .. | .module' .. => true
+  | .scopedClass .. | .scopedModule .. | .sclass .. => true
+  | .undef .. | .alias' .. => true
+  -- leaves
+  | .int _ | .flt _ | .str _ | .sym _ | .regexpLit .. | .tru | .fls | .nil | .self'
+  | .var .. | .const _ | .vcall _ | .fwd | .retry' | .redo'
+  | .cpath none _ | .splat none | .ret none | .brk none | .nxt none
+  | .blockpass none => true
+
+def asgnFreeAll : List Expr → Bool
+  | [] => true
+  | e :: es => asgnFree e && asgnFreeAll es
+
+def asgnFreePairs : List (Expr × Expr) → Bool
+  | [] => true
+  | (k, v) :: ps => asgnFree k && asgnFree v && asgnFreePairs ps
+
+def asgnFreeKw : List KwEntry → Bool
+  | [] => true
+  | .pair _ v :: es => asgnFree v && asgnFreeKw es
+  | .dyn k v :: es => asgnFree k && asgnFree v && asgnFreeKw es
+  | .splat e :: es => asgnFree e && asgnFreeKw es
+
+def asgnFreeRescues :
+    List (List Expr × Option (TargetKind × String) × Expr) → Bool
+  | [] => true
+  | (cls, _, handler) :: rs => asgnFreeAll cls && asgnFree handler && asgnFreeRescues rs
+
+end
+
+/-- The statement walk: a `next` is allowed while nothing has assigned, and not after. -/
+def nxtPrefixGo : List Expr → Bool
+  | [] => true
+  | s :: rest => if asgnFree s then nxtPrefixGo rest else nxtFree s && nxtFreeAll rest
+
+/-- **§F23's premise**: in this body, no `next` follows an assignment — so every `next` escapes
+at the body's *incoming* environment, which the enclosing rule's outgoing premise already pins. -/
+def nxtPrefixOk : Expr → Bool
+  | .seq es => nxtPrefixGo es
+  | e => asgnFree e || nxtFree e
+
 /-- Is a method of this name **declared** at all — the raw table lookup, with no
 callability filter. Read by `Judge.bareName`, whose premise means "this name is not a method
 of the program" and must not be weakened by `defGet?`'s guard: a `def x` whose body declares
@@ -3028,6 +3196,7 @@ def noLocalAsgnAll : List Expr → Bool
 
 end
 
+
 /-- `NarrowCond c x k`: evaluating condition `c` performs test `k` on the local `x`, *and
 evaluating it has no other effect that could invalidate the refinement*.
 
@@ -4298,6 +4467,9 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
       paramEnv ps βs = some Γb →
       Judge κ (Γb ++ blockLocals locs ++ killAliases Γ₂) I₂ body ρ (κ.afterStmt body ρ) Γb' I₂ →
       capIntact (envToSpine Γ₂) (Γb ++ blockLocals locs ++ killAliases Γ₂) Γb' = true →
+      -- §F23: `capIntact` is read at the body's *outgoing* environment, and a `next` escapes
+      -- before it. Same premise, same reason as `Judge.while'`.
+      (hnxt : nxtPrefixOk body = true := by rfl) →
       Judge κ Γ I (.send (some recv) m args (some (.block ps locs body))) res
         (κ.afterStmt (.send (some recv) m args (some (.block ps locs body))) res) (killAliases Γ₂) I₂
   /-- **`arr.map(&:to_s)` — a Symbol coerced to a block.**
@@ -4774,6 +4946,12 @@ inductive Judge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty → 
   | while' {κ : Ctx} {Γ Γc Γb : Env} {I Ic Ib : Ty} {c body : Expr} {σ τ : Ty} :
       Judge κ Γ I c σ (κ.afterStmt c σ) Γc Ic → Γc = Γ → Ic = I →
       Judge κ Γ I body τ (κ.afterStmt body τ) Γb Ib → Γb = Γ → Ib = I →
+      -- §F23: a `next` leaves the iteration *mid-body*, at an environment `Γb = Γ` says
+      -- nothing about, so it is allowed only before anything has assigned. An `autoParam`, so
+      -- the 27 derivations that predate the premise discharge it the way they would have
+      -- written it (`rfl`) without being re-edited -- and a derivation whose body *does*
+      -- `next` after an assignment fails to elaborate, which is the point.
+      (hnxt : nxtPrefixOk body = true := by rfl) →
       Judge κ Γ I (.while' c body) .nilT (κ.afterStmt (.while' c body) .nilT) Γ I
   /-- **`M::X` — a scoped constant read** (tier 13c). The key is absolute and the namespace is
       named by the base, so the lookup is a single `envGet?` with no search: unlike a bare

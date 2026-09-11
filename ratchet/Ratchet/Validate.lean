@@ -327,7 +327,10 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
     | some (_, Γc, Ic) =>
       if Γc = Γ && Ic = I then
         match chk f κ Γ I body with
-        | some (_, Γb, Ib) => if Γb = Γ && Ib = I then some (.nilT, Γ, I) else none
+        | some (_, Γb, Ib) =>
+          -- §F23: and no `next` after an assignment, since `Γb = Γ` is read at the body's
+          -- *end* while a `next` leaves in the middle.
+          if Γb = Γ && Ib = I && nxtPrefixOk body then some (.nilT, Γ, I) else none
         | none => none
       else none
     | none => none
@@ -634,7 +637,10 @@ def chk (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) :
             match chk f κ (Γb ++ blockLocals locs ++ killAliases Γ₂) I₂ body with
             | some (ρ, Γb', Iout) =>
               if Iout = I₂ then
+                -- §F23: `capIntact` is read at the body's *outgoing* environment, and a
+                -- `next` escapes before it -- so no `next` after an assignment.
                 if capIntact (envToSpine Γ₂) (Γb ++ blockLocals locs ++ killAliases Γ₂) Γb'
+                    && nxtPrefixOk body
                 then
                   match iterResult? m elem argTys ρ with
                   | some res => some (res, killAliases Γ₂, I₂)

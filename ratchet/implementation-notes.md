@@ -7453,3 +7453,73 @@ inside `propext`/`Classical.choice`/`Quot.sound`. **`Ratchet/` untouched.** Adde
 installation and the mixins; its
 `enterUserMethod` prose was a status note and is now a pointer), `Denote/Sem/notes.md`
 (nineteenth stall point), `AGENTS.md`, `HANDOFF.md`.
+
+
+## Clink 64 (2026-09-10) — **§F23: a reachable soundness bug, found by reading an obligation**. **178 rungs / 256, 48 of 83 rules**
+
+The session's last hour, and the only part of it that moved a number. Written as its own clink
+because it is the semantic ratchet doing the job it exists for: **the bug was found by reading
+`Obl.Judge.while'`, not by search.**
+
+### The bug
+
+`Judge.while'`'s premises are `Γc = Γ` and `Γb = Γ` — the condition's and the body's **outgoing**
+environments — and a `next` leaves the iteration *in the middle*, at an environment neither
+premise mentions:
+
+```ruby
+i = 0; x = 1
+while i < 2
+  i = i + 1; x = "s"
+  next if i == 2      # leaves with x : String
+  x = 2               # ...which is why Γb = Γ holds anyway
+end
+x + 1                 # CRuby: TypeError. `validate` said Integer.
+```
+
+**Reachable** — `validate` certified it — and the same hole sits one rule over in
+`Judge.iterBlock`, whose `capIntact` is read at the block body's outgoing environment too
+(`[1,2].each { |y| s = "a"; next if y == 2; s = 1 }; s + 1`). Both are corpus rungs now
+(`while-next-escapes-unsafe`, `iter-block-next-escapes-unsafe`, tier 16), both `unsafe_program`,
+and the Lean model agrees with CRuby on both (corpus agreement **256/256**).
+
+### The fix, and three decisions that were not forced
+
+A premise `nxtPrefixOk body = true` on both rules: **a `next` may only occur before anything has
+assigned**, so the environment at the escape *is* the body's incoming one — which is exactly what
+the outgoing premise already pins. Conservative, and it keeps every climbed rung.
+
+* **`asgnFree`, not `noLocalAsgn`.** The first version reused the existing `noLocalAsgn`, which is
+  a *whitelist of narrowing-condition shapes* and answers `false` for `next` itself — so it
+  rejected `ctl-next`, a climbed rung, and the build said so. `asgnFree` asks the honest question
+  (a `vasgn`, a `for` target, or a block body writing a captured local, anywhere) and keeps it.
+  **Rejected alternative**: requiring the body to be `next`-free outright, which is simpler and
+  costs `ctl-next`.
+* **An `autoParam` (`:= by rfl`)** for the premise, so the **27** hand derivations that predate it
+  discharge it the way they would have written it, with no re-editing — and a derivation whose
+  body *does* `next` after an assignment fails to elaborate, which is the point. **Rejected
+  alternative**: editing 27 sites by hand, which is the same change with a worse failure mode.
+* **The precise fix was rejected on price**: the environment after the loop is really the *join*
+  of the body's normal exit and every `next` exit, and computing it needs the judgment to thread
+  an escape environment — a signature change of the `context-splitting.md` step-3 class. The
+  conservative premise is sound and costs nothing measurable.
+
+**The whole ripple of a `Judge` premise is two lines**, and that is worth knowing: `Ratchet/Proof/
+ChkSound.lean`'s `while'` and `iterBlock` arms destructure one more conjunct out of `validate`'s
+guard. Nothing else moved.
+
+**Known limitation, inherited not introduced**: `asgnFree` is syntactic, so a `next` after a call
+to a closure that assigns a captured local is still accepted — §F13's hole, the fifteenth stall
+point's, unchanged.
+
+### State
+
+Semantic ratchet **48 of 83**, unmoved, denominator still 83 (a premise is not a rule). Syntactic
+ratchet **178 of 256** — the two new rungs are permanent negatives, so the climbed count is
+unchanged and the denominator grew by the two witnesses; `expect_validate` mismatches **35**,
+unchanged; corpus agreement **256/256**; `checkrungs` **177/177 + 148/148**. `lake build` clean,
+no `sorry`, axiom-clean. Changed: `Ratchet/Judge.lean` (`nxtFree`/`asgnFree`/`nxtPrefixOk` and the
+two premises), `Ratchet/Validate.lean` (the two guards), `Ratchet/Proof/ChkSound.lean` (two arms),
+`scripts/generate_corpus.py` + `corpus/` (the two witnesses), `found-issues.md` (§F23), `AGENTS.md`.
+**This is the one edit to `Ratchet/` this session, and it is the standing exception: a genuinely
+unsound rule, reported, witnessed in the corpus, then fixed.**

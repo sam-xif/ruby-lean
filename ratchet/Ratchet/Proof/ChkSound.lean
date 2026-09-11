@@ -687,11 +687,12 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
           split at h
           · rename_i hfixb
             simp only [Bool.and_eq_true, decide_eq_true_eq] at hfixb
-            obtain ⟨hΓb, hIb⟩ := hfixb
+            -- §F23 put a third conjunct here: no `next` after an assignment
+            obtain ⟨⟨hΓb, hIb⟩, hnxt⟩ := hfixb
             injection h with h
             injection h with h h'; injection h' with h' h''
             subst h; subst h'; subst h''
-            exact .while' (chk_sound hc) hΓc hIc (chk_sound hb) hΓb hIb
+            exact .while' (chk_sound hc) hΓc hIc (chk_sound hb) hΓb hIb hnxt
           · exact absurd h (by simp)
         · exact absurd h (by simp)
       · exact absurd h (by simp)
@@ -1132,9 +1133,11 @@ theorem chk_sound : ∀ {fuel : Nat} {κ : Ctx} {Γ : Env} {I : Ty} {e : Expr}
                     injection h with h
                     injection h with h h'; injection h' with h' h''
                     subst h; subst h'; subst h''
+                    -- §F23 put a second conjunct in the `capIntact` guard
+                    obtain ⟨hcap', hnxt⟩ := Bool.and_eq_true .. ▸ hcap
                     exact .iterBlock (chk_sound hrecv) (chkAll_sound hargs)
                       (iterSig?_sound hpar hres) hpe
-                      (by subst hI; exact chk_sound hbody) hcap
+                      (by subst hI; exact chk_sound hbody) hcap' hnxt
                   · exact absurd h (by simp)
                 · exact absurd h (by simp)
               · exact absurd h (by simp)

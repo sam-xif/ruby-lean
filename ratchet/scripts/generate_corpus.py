@@ -2262,6 +2262,24 @@ R("block-pass-proc-return-escapes-unsafe", 9,
   'def h\n  p = proc { |y| return "s" }\n  x = [1].map(&p)\n  1\nend\nh + 1\n',
   expect_validate=False, false_reason="unsafe_program")
 
+R("while-next-escapes-unsafe", 16,
+  "**A candidate UNSAFE program, \u00a7F23.** `Judge.while'` requires the body to leave every "
+  "local's type where it found it (`\u0393b = \u0393`), which is a claim about the body's "
+  "**final** environment \u2014 and a `next` exits the iteration *mid-body*, at an environment "
+  "the premise never mentions. So the loop can exit with `x : String` while the rule concludes "
+  "the incoming `x : Integer`. The premise is checked at the wrong point, and the fix is to "
+  "require the environment at **every** `next` to agree too.",
+  'i = 0\nx = 1\nwhile i < 2\n  i = i + 1\n  x = "s"\n  next if i == 2\n  x = 2\nend\nx + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
+
+R("iter-block-next-escapes-unsafe", 16,
+  "**\u00a7F23's second door.** The same hole one rule over: an `each` block's body is typed "
+  "for its normal exit, and a `next` leaves the iteration at an environment no premise "
+  "constrains \u2014 so the local's type after the call is the block's *final* one rather than "
+  "the one the last iteration actually left behind.",
+  's = 0\n[1, 2].each do |y|\n  s = "a"\n  next if y == 2\n  s = 1\nend\ns + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):

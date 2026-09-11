@@ -1791,3 +1791,66 @@ window's edit surface:
 Recorded here rather than fixed because `Judge.casgn` is blocked by the seventeenth stall point
 as well (`ConstScopeOk` is falsified by a class body's first constant), and that one needs `Ctx`
 to record the cref. Fixing this alone moves no rung.
+
+
+## §F23 — **a `next` escapes mid-body, and both loop rules check the environment at the end** *(reachable; FIXED)*
+
+**Found by reading `Judge.while'`'s semantic obligation** rather than by search, which is what
+the semantic ratchet is for: the rule's premises are `Γc = Γ` and `Γb = Γ` — claims about the
+condition's and the body's **outgoing** environments — and a `next` leaves the iteration *in the
+middle*, at an environment neither premise mentions.
+
+```ruby
+i = 0
+x = 1
+while i < 2
+  i = i + 1
+  x = "s"
+  next if i == 2      # leaves with x : String
+  x = 2               # ...which is why Γb = Γ holds anyway
+end
+x + 1                 # CRuby: TypeError. `validate` said Integer.
+```
+
+**Reachable**: `validate` certified it (`corpus/…-while-next-escapes-unsafe`, added), and CRuby
+raises `TypeError: no implicit conversion of Integer into String`. The Lean model agrees
+(corpus agreement 256/256).
+
+**The same hole one rule over**, because `Judge.iterBlock`'s `capIntact` is read at the block
+body's outgoing environment too:
+
+```ruby
+s = 0
+[1, 2].each do |y|
+  s = "a"
+  next if y == 2
+  s = 1
+end
+s + 1                 # CRuby: TypeError. `validate` said Integer.
+```
+
+(`corpus/…-iter-block-next-escapes-unsafe`.)
+
+**The fix** is the conservative one the shape allows: a new premise `nxtPrefixOk body = true` on
+both rules — *a `next` may only occur before anything has assigned*. Then the environment at the
+escape **is** the body's incoming one, which is exactly what the outgoing premise already pins.
+It keeps every climbed rung (`ctl-next`'s `next if x == 2` is its body's first statement) and
+rejects both witnesses. Corpus: **178 of 256**, mismatches unchanged at 35, `checkrungs`
+177/177 + 148/148.
+
+Three notes on the fix, because each was a decision:
+
+* **`asgnFree`, not `noLocalAsgn`.** The first version used the existing `noLocalAsgn`, which is a
+  *whitelist of narrowing-condition shapes* and answers `false` for `next` itself — so it rejected
+  `ctl-next`, a climbed rung. `asgnFree` asks the honest question (is there a `vasgn`, a `for`
+  target, or a block body that writes a captured local anywhere in here) and keeps it.
+* **An `autoParam` (`:= by rfl`)**, so the 27 hand derivations that predate the premise discharge
+  it the way they would have written it, without being re-edited — and a derivation whose body
+  *does* `next` after an assignment fails to elaborate, which is the point.
+* **`Ratchet/Proof/ChkSound.lean` paid two lines**: the `while'` and `iterBlock` arms now destructure
+  one more conjunct out of `validate`'s guard. That is the whole ripple of a `Judge` premise, and
+  it is worth knowing it is two lines and not a clink.
+
+**Known limitation, inherited not introduced**: `asgnFree` is syntactic, so a `next` after a call
+to a closure that assigns a captured local is still accepted — §F13's hole, the fifteenth stall
+point's, unchanged here.
