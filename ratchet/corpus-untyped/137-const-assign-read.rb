@@ -1,2 +1,0 @@
-LIMIT = 10
-LIMIT + 1

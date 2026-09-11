@@ -1,2 +1,0 @@
-s = :high
-s == :high

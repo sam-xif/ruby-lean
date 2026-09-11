@@ -1,5 +1,5 @@
 import Denote.Sem.Frame
-import Ratchet.Validate
+import Ratchet.Judge
 import RubyCore.HeapCert
 
 /-!

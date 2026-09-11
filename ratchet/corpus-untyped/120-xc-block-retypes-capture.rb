@@ -1,7 +1,0 @@
-def t
-  yield(1)
-end
-
-a = 1
-t { |x| a = "s" }
-a + 1

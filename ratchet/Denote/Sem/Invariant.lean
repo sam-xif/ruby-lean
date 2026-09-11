@@ -1,10 +1,10 @@
-import Denote.Sem.NoProgress
+import Denote.Sem.SafeKont
 
 /-!
 # `Denote/Sem/Invariant.lean` — what an inductive invariant proving type safety looks like on
 this side of the world
 
-**Why this file exists.** `Denote/Sem/NoProgress.lean` refutes "`SemJudge` implies
+**Why this file exists.** The refutation of "`SemJudge` implies
 stuck-freedom". The follow-up question is what *would* prove it, and the answer is not a
 better `SemJudge`: it is an invariant over **whole machine configurations**, because the thing
 to be excluded (`Semantics.typeStuck`) is a property of a *reachable machine*, and `SemJudge`

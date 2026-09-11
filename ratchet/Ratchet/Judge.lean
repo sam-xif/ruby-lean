@@ -5277,4 +5277,19 @@ theorem Judge.out_afterStmt {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {e : Ex
   cases h <;> rfl
 
 
+/-! ## The starting context
+
+Moved here from `Ratchet/Validate.lean` when that file was deleted (clink 68): the *value*
+is part of the context datatype's interface, and `Denote/Sem/State.lean`'s conformance
+statements are the only consumers left. -/
+
+/-- The starting context: no classes, no methods, no assumptions, no `self`. Every
+emptiness is load-bearing, and for a different reason — the two syntax tables because
+nothing is declared before a program's first statement, the assumption table because a
+derivation carrying one is only a conditional claim, and `frame`/`selfTy` because a
+program's top level is inside no method and runs somewhere `self` is not an instance of
+anything this judgment models. The constant table is empty for the first of those reasons:
+a program's first statement is the first thing that could assign one. -/
+def ctx0 : Ctx := ⟨⟨[], [], [], []⟩, ⟨[], [], [], false, [], [], []⟩, ⟨none, [], none, none, []⟩⟩
+
 end Ratchet

@@ -1,6 +1,6 @@
 name = "ratchet"
 version = "0.1.0"
-defaultTargets = ["ratchet", "Semantics", "Denote"]
+defaultTargets = ["Ratchet", "Semantics", "Denote", "ratchetd", "semladder"]
 
 # `Ratchet/` (the certificate checker: `Expr`/`Ty` ported as copied text, `Cert`,
 # `Validate`) is deliberately isolated from `../lean/`'s `rubycore` package: no
@@ -49,9 +49,6 @@ root = "DenoteReport"
 name = "semladder"
 root = "SemLadder"
 
-[[lean_exe]]
-name = "ratchet"
-root = "Main"
 
 # The typed ladder's runner: stage 5 of `scripts/build_corpus.py`'s pipeline, the only
 # trusted one. See `MainTyped.lean`.
@@ -66,7 +63,4 @@ path = "../lean"
 # The evidence behind every climbed rung: pins each hand-authored `Judge` derivation
 # (`Ratchet/Rungs.lean`) to the corpus syntax and to what the real semantics actually
 # computes. Separate exe from `ratchet` so the ratchet's headline number stays a pure
-# statement about `validate` -- see `CheckRungs.lean`'s docstring.
-[[lean_exe]]
-name = "checkrungs"
-root = "CheckRungs"
+
