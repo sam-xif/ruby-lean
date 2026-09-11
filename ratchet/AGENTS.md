@@ -647,9 +647,128 @@ the capture graph is a proved DAG, the object graph is not), what it explicitly 
 a six-step migration, four rejected alternatives, and §12's correction. **Step 6 (footprints and
 the seal) is untouched**, as its own piece.
 
-## Semantic ratchet status (`Denote/Sem/`): **48 of 83 `Judge` rules discharged** — *and the count is the problem, see the exit below*
+## The clink registry (`Denote/Clink/`): **the judgment is generated from the proofs — 48 rules registered, growth gated**
 
-> **BEING RESHAPED, 2026-09-11.** The two-ladder framing this section describes is being
+**Reshaped 2026-09-11.** This replaces the framing the section below describes, and the
+replacement is structural rather than presentational: **a rule enters the judgment only as a
+`Clink`, and a `Clink` cannot be constructed without its semantic proof.** Not by convention
+— by typing.
+
+### What was wrong, in three sentences
+
+The judgment was an independent inductive (`Ratchet.Judge`, 83 constructors) and the semantic
+side was a *report* (48 obligations discharged, the gap printed by `lake exe semladder`). So a
+rule could be authored, used by `validate`, and counted as a climbed corpus rung with no
+justification at all; **seven of the undischarged rules turned out to be false as stated**
+(§F19/§F23/§F24) while already being in the judgment and already reachable by a certificate;
+and the only theorem that would have tied the 48 proofs to anything was one 83-case mutual
+induction, so it could only close at 83/83, so it never closed, so nothing forced the
+pairing. `implementation-notes.md`'s EMERGENCY EXIT (clink 64) is what that dead end looks
+like from inside: three consecutive sessions of verified work moved the number 47 → 48 → 48 →
+48.
+
+### The device
+
+A rule is written **once**, with the judgment family abstracted — `form : Fam → Prop`, where
+`Fam` is the eight-member mutual family as a record of predicates. Instantiating that one
+`form` twice gives both readings, and they cannot drift because there is only one of them:
+
+| reading | type | who supplies it |
+|---|---|---|
+| syntactic | `form synFam` | the `Judge` constructor itself |
+| semantic | `form semFam` | **a proof, and it is a field (`Clink.sem`)** |
+
+This is `Denote/Sem/Obligations.lean`'s substitution reified: that file derived
+`Obl.<Family>.<rule>` by replacing one constant with another inside the constructor's type;
+`Denote/Clink/Derive.lean` replaces it with a *projection of a parameter*, which is the same
+operation made first-class. `register_clink Judge.vasgn` reads the constructor, derives
+`form`, demands `Sem.Judge.vasgn`, and declares the clink — so `syn` and `sem` are each
+kernel-checked against a statement neither of them chose.
+
+The judgment is then **generated from the registry**, impredicatively (Böhm–Berarducci, in
+`Prop`):
+
+```lean
+JudgeC R |>.judge κ Γ I e τ κ' Γ' I' := ∀ F : Fam, Closed R F → F.judge κ Γ I e τ κ' Γ' I'
+```
+
+### What that buys, and each of these is a file you can read
+
+* **`registry_sound` is unconditional and one line** — instantiate `F := semFam`, discharge
+  closure from the clinks' own `sem` fields. It holds at every registry size and held at size
+  1. There is no 83/83, no `AdequacyHyps`, no terminal clink. (`Denote/Clink/Spec.lean` §3,
+  `Registry.lean` §2, axiom-clean.)
+* **An unregistered rule is not in the judgment** — not an undischarged obligation, not a rung
+  owed. So the §F19 failure mode is gone rather than reported better: a rule whose obligation
+  is *false* has no proof, hence no clink, hence never enters `JudgeC`.
+* **A derivation is a term, polymorphic in `F`** — you use the rules you are handed (`hF c hc`),
+  so a derivation *is* a witness that only registered rules were used. No closure lemma and no
+  monotonicity is needed, and there could not be a generic one: a Horn rule mentions the
+  judgment contravariantly in its premises. Worked examples, one line each, in
+  `Denote/Clink/Controls.lean` §1, which also runs `registry_sound` on one to get `SemJudge`
+  out.
+* **Growth is gated by `lake build`.** `register_clink` refuses a rule with no proof
+  (`Controls.lean` §2 captures the refusal with `#guard_msgs`, so the gate going quiet is a
+  build failure); the 35 legacy unclinked constructors are frozen **by name** in
+  `Registry.lean`'s `legacyUnclinked`, and a `#guard` fails if anything not on that list is
+  unregistered. A rule added from now on therefore *must* arrive with its semantic proof. The
+  list only ever shrinks, and proving a legacy rule needs no edit to it.
+* **The ratchet is now sound to ratchet on.** `SemLadder.lean`'s `clinkFloor` (48) is a floor
+  on *proofs*, and the exit code is non-zero only if the registry **shrank** — not "while
+  rules remain", which under the old framing was a permanent red light.
+* **Restating the semantic reading is a new registry, not a rewrite.** `Clink` is
+  parameterised by both families (`Clink (S T : Fam)`), so the answer-typed migration
+  (`answer-typed-schema.md` §3.1, `SemJudge` → `SemJudgeA`) changes the *target* and leaves the
+  mechanism alone — and it makes the cost per-rule and honest: a clink whose `sem` field does
+  not carry over stops building, by name, instead of a report continuing to say "48
+  discharged" about a superseded statement.
+
+### The number, and what it is not a fraction of
+
+```
+$ lake exe semladder
+  Judge          32   registered   35 not in the judgment
+  ...
+  total          48   registered   35 not in the judgment
+CLINK RATCHET OK (48 registered, all proved by construction; 35 rules not in the judgment
+                  -- that is coverage, not debt)
+```
+
+The right column is **coverage**: what `JudgeC` cannot type. It matters because
+`Ratchet/Validate.lean` and `Ratchet/Deriv.lean` still target `Judge`, so it bounds what can
+be certified *soundly* — and that, not a fraction, is the thing to reduce.
+`Denote/Adequacy.lean` now says exactly what targeting `Judge` assumes
+(`semJudge_of_judge_of_adequate`), which is how the assumption became visible.
+
+### Layout
+
+```
+Denote/Clink/Spec.lean      Fam, synFam/semFam, RuleF, Clink, Closed, JudgeC, the 10
+                            unconditional soundness/admissibility theorems
+Denote/Clink/Derive.lean    register_clink: the constructor -> form -> the clink, and the
+                            refusal when there is no proof
+Denote/Clink/Registry.lean  build_clink_registry, `clinks`, registry_sound/_syn, the report,
+                            the growth gate + legacyUnclinked
+Denote/Clink/Controls.lean  worked derivations, the captured refusal, the two `rfl`s that
+                            pin what the field types are, the positive control
+```
+
+**Deleted, and what replaced it:** `Denote/Ladder.lean` (the 48/83 report and its `isDefEq`
+check — the check is now `Clink.sem`'s type, enforced at declaration instead of counted in a
+report) and `Denote/Adequacy.lean`'s `AdequacyHyps`/`StuckFreeTarget` (the 83-conjunction and
+the parallel stuck-freedom statement — the conjunction is `Closed clinks semFam`, proved in
+one line for any registry).
+
+## Semantic ratchet status (`Denote/Sem/`): **historical — the 48/83 framing was replaced by the clink registry, see above**
+
+> **SUPERSEDED, 2026-09-11 — read §The clink registry above first.** Everything below is the
+> record of the 48/83 ladder: its evidence is still good (the 48 proofs are the `sem` fields
+> of the 48 clinks, and the stall points, measurements and refutations are all still on file),
+> but its *framing* — a numerator of proofs over a denominator of rules authored, with the gap
+> as debt — is gone, and the three sessions that ended in the EMERGENCY EXIT below are why.
+> Do not plan against a number in this section.
+>
+> **ALSO BEING RESHAPED, 2026-09-11.** The two-ladder framing this section describes is being
 > replaced by a single **answer-typed** judgment plus an inductive invariant, because
 > `SemJudge` has no progress content at all and that is now proved, not argued
 > (`Denote/Sem/NoProgress.lean`'s `not_semJudgeImpliesStuckFree`). The work order is

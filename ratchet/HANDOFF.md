@@ -68,16 +68,26 @@
 > is only the resume point and the one correction that arrived after the clink
 > was written.
 
-## Where the two ladders stand
+## Where the ladders stand
 
 | Ladder | Reads | Script |
 |---|---|---|
-| Syntactic (*reach*) | **178 / 254** rungs certified, 35 expect_validate mismatches, 254/254 CRuby agreement | `scripts/run_ratchet.sh` |
-| Semantic (*justification*) | **47 / 83** `Judge` rules discharged | `scripts/run_denote.sh`, or `lake exe semladder` |
+| Syntactic (*reach*) | **178 / 259** rungs certified, 35 expect_validate mismatches, agreement 0 disagreements | `scripts/run_ratchet.sh` (now over `corpus-untyped/`) |
+| Typed pipeline (*Sorbet in the loop*) | srb clean **184/259**, derivation emitted **75/259**, `validateD` (a **shape check**, not typing) accepts 75 | `scripts/run_typed_ratchet.sh` |
+| Clink registry (*what the judgment may contain*) | **48 registered**, each proved by construction; **35 rules not in the judgment** (coverage, not debt) | `scripts/run_denote.sh`, or `lake exe semladder` |
 
-`checkrungs` reads 177/177 hand derivations + 145/145 negative controls. Both
-ladder scripts exit nonzero while anything remains; that is the convention, not
-a failure.
+`checkrungs corpus-untyped` reads 177/177 hand derivations + 148/148 negative
+controls.
+
+**The third row changed meaning on 2026-09-11** and the old reading (*47 of 83
+`Judge` rules discharged*) is gone. The judgment is now generated from the
+proofs (`Denote/Clink/`): a rule enters `JudgeC clinks` only as a `Clink`, whose
+`sem` field *is* the semantic proof, so `registry_sound` is unconditional at
+every registry size and an unregistered rule is not an obligation owed — it is
+not a rule. `lake exe semladder` exits nonzero only if the registry **shrank**;
+`Denote/Clink/Registry.lean`'s growth gate fails the build if a `Judge`
+constructor appears that is neither registered nor a named legacy exception.
+See `AGENTS.md` §The clink registry and `implementation-notes.md` clink 65.
 
 ## The resume point, in one paragraph
 
