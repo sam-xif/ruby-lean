@@ -73,3 +73,15 @@ globs = ["RubyCore.Judgment.+"]
 name = "HJudge"
 srcDir = "."
 globs = ["RubyCore.HJudge.+"]
+
+# The bind-rule probe (`RubyCore/HCtx/`) — can iris-lean's `wp_bind` be had for
+# the RubyCore machine? Its own lib, off the default target, for `HJudge`'s
+# reason (nothing the SUT does depends on it, and it elaborates Iris). Kept
+# separate from `HJudge` so the second `Language` instance it needs cannot
+# collide with that one's (`Lang.lean`'s no-diamond discipline):
+#
+#     lake build HCtx
+[[lean_lib]]
+name = "HCtx"
+srcDir = "."
+globs = ["RubyCore.HCtx.+"]

@@ -138,6 +138,22 @@ precise proof-goal shape (coupling invariant `Inv` + stuttering forward simulati
 argues everything hinges on constructing `Inv` and lays out its clause taxonomy plus the
 executable-`Inv` validation path (assert it on live CRuby heaps first).
 
+**Control (findings, 2026-09-11):** [Answer-typed judgments](answer-typed-judgments.md) — one
+root cause behind four separate walls hit in a single investigation: `Evals` keeps the
+`.value` arm of `RunResult` and discards the other four, so every rule's semantic
+obligation is vacuous on an escape. Records the measurements (stuck-freedom does *not*
+follow from the value axis; `Judge.vasgn` proved on the second axis for 16 marginal lines;
+`Judge.while'` proved modulo two jump conditions, one of which turns out **false**; Iris's
+`wp_bind` proved **unavailable** for this machine; and a 49-continuation census showing
+Ruby's void-value rule exempts five of the seven jump constructors and *neither* of the two
+ordinary code produces), the prior-art consensus that **an escape belongs to the answer,
+not the step** (Essence-of-Ruby's `r ::= v | [v]^t | wrong`, λ_JS, Wright–Felleisen,
+CakeML's `Rval | Rerr`, monadic/algebraic effects, double-barrelled CPS, Hazel's
+protocols), and what RubyCore already has versus the one line where it diverges. §5 is
+explicit that `lean-model-sketch.md`'s rejections of big-step and of meta-level exceptions
+both **stand** — the answer type is orthogonal to both. §6 prices the proposal honestly:
+it is a re-statement of the judgment layer, not a patch.
+
 **Types:** [Sorbet's type system & a preservation roadmap](types-and-preservation.md) — a
 research artifact (to grow): Part A is a formalization-oriented deep dive on **Sorbet**
 (type grammar, flow-sensitive narrowing, the unsound-by-design stance + escape hatches,
