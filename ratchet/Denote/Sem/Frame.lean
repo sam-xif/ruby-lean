@@ -1,4 +1,4 @@
-import Denote.Rules.Core
+import Denote.Sem.Transport
 
 /-!
 # `Denote/Sem/Frame.lean` — `StateOk` describes the whole world, and nothing more

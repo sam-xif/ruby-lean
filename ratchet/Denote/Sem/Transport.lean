@@ -1,7 +1,7 @@
-import Denote.Sem.Judge
+import Denote.Sem.Framed
 
 /-!
-# `Denote/Rules/Core.lean` — the two lemmas every leaf rung needs
+# `Denote/Sem/Transport.lean` — the two lemmas every leaf rung needs
 
 A rung is "invert the run" (`Denote/Sem/notes.md`), and inverting even the shortest run
 produces a machine that is **not** the one the obligation started from: `evalFrom` rewrites

@@ -1,7 +1,7 @@
 import Ratchet.Check
 import Denote.Sem.SafeKont
-import Denote.Rules.Core
-import Denote.Rules.Lit
+import Denote.Sem.Transport
+import Denote.Sem.Alloc
 import Denote.Sanity
 
 /-!
@@ -42,9 +42,6 @@ why the `CatchFree` side condition `run_pushK` needs is free for the frames a ru
 whole-machine invariant; at an empty base kont the warning does not bite).
 
 ## What is taken from the old checker, and it is not the checker
-
-`Denote/Rules/Lit.lean` is imported for its `stepFn_var`/`stepFn_str`/`strObj` — facts about
-`Interp.stepFn`, not about any judgment, and reusable for that reason.
 
 `Ratchet/Validate.lean` is imported transitively (via `Denote/Sanity.lean`) for exactly two
 things: the **empty context value** `ctx0`, because `StateOk` is `Ctx`-indexed and `Ctx` lives
@@ -117,6 +114,35 @@ def SemJudgeA (Γ : Env) (e : Ratchet.Expr) (τ : Ty) (Γ' : Env) : Prop :=
       runA fuel (evalFrom m e) = .ans a m₀ rest →
       Framed m m₀ ∧ AnsOk τ m₀ a ∧
         (∀ v, a = .val v → StateOk Ratchet.ctx0 Γ' .ivar0 m₀)
+
+/-! ## §1a Three facts about `stepFn`, and nothing about any judgment
+
+Moved here from the deleted `Denote/Rules/Lit.lean` (clink 68), which proved the old
+value-shaped obligations around them. They are statements about `Interp.stepFn` alone, which
+is why they survived their file: `evalFrom` sets the control word, and one step evaluates the
+literal or the local read.
+
+The six *pure* literals need no lemma at all — `stepFn (evalFrom m (.int n)) = …` is `rfl` —
+so only the two that do something are here: a local read redirects the machine first
+(`getLocal_reCtl`), and a string literal **allocates**. -/
+
+/-- The one step of a local read is `.value (m.getLocal x)`, but at the *redirected* machine,
+so this is `getLocal_reCtl` rather than `rfl`. -/
+theorem stepFn_var (m : Machine) (x : String) :
+    Interp.stepFn (evalFrom m (.var .lvar x)) = .next (reCtl m (.value (m.getLocal x)) []) := by
+  simp only [evalFrom, toRuby, toRubyVarKind, Interp.stepFn, Interp.evalExpr, Interp.withCtl,
+    reCtl, getLocal_reCtl]
+
+/-- The object a string literal allocates: `Builtins.allocStr`'s. Unfrozen, no ivars, no
+eigenclass — which is what makes `ext_push`'s three hypotheses `rfl`. -/
+def strObj (s : String) : Object := { klass := Boot.stringId, payload := .str s }
+
+/-- One `stepFn` step from a string literal: the fresh object is at the old heap's `size`, and
+nothing but `ctl` and the heap moves. -/
+theorem stepFn_str (m : Machine) (s : String) :
+    Interp.stepFn (evalFrom m (.str s)) =
+      .next (reCtl { m with heap := pushHeap m.heap (strObj s) }
+        (.value (.ref m.heap.objs.size)) []) := rfl
 
 /-! ## §2 The inversion lemma for a one-step expression
 
@@ -249,7 +275,20 @@ what the answer-typed obligations are stated over.
 
 So one lemma gates four rules. It is the same induction as `run_pushK`, at the `runA` level,
 and `answer-typed-schema.md` §5's delete list already anticipates it (`run_split`'s body
-becoming a derivation from `run_pushK`). -/
+becoming a derivation from `run_pushK`).
+
+What each of the four needs *besides* it, so nobody prices them wrong:
+
+* `vasgn` — nothing. `run_pushK`'s `CatchFree` side condition is free here (`[.asgnK …]`), and
+  `StateOk_setLocal` is proved.
+* `seq` — nothing beyond the same decomposition per statement.
+* `if'` — nothing. `Denote/Join.lean`'s `denM_joinT_left`/`_right` and
+  `Denote/JoinState.lean`'s environment/spine join are **already proved**; those two files were
+  kept through the clink-68 sweep for this row.
+* `prim` — one conformance fact per `DPrim` row (7 of them), each saying that CRuby's builtin
+  really returns a value of the row's result type from the prelude-booted heap. This is the
+  only one of the four whose cost grows with the table, which is why the table has 7 rows and
+  not 90. -/
 
 /-- What running under a pushed continuation does to an `ARes` — the answer-level counterpart
 of `Denote/Sem/Answer.lean`'s `ARes.out`. The `ans` arm is the whole content: the inner

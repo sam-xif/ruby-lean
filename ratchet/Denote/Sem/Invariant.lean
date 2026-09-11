@@ -179,32 +179,27 @@ theorem safety_of_invariant {Inv : Machine → Prop} (h : SafetyObligations Inv)
     | unsupported r => simp [Semantics.typeStuck]
     | stuck msg => simp [Semantics.typeStuck]
 
-/-- The third obligation, which is the *checker's* half: a program the judgment accepts starts
-at an `Inv` machine. Stated separately because it is the only one that mentions `Judge` — the
-two above are about `stepFn` alone, which is what lets them be proved by a walk. -/
-def InvInit (Inv : Machine → Prop) : Prop :=
-  ∀ (p : Ratchet.Expr) (τ : Ty) (κ' : Ctx) (Γ' : Env) (I' : Ty),
-    Judge Ratchet.ctx0 [] .ivar0 p τ κ' Γ' I' →
+/-- The third obligation, which is the *checker's* half: a program the checker accepts starts
+at an `Inv` machine.
+
+**Parameterised by what "accepts" means** (Norm A), rather than naming a judgment. It used to
+read `Judge ctx0 [] .ivar0 p τ κ' Γ' I' → …` and so was the one declaration in this file that
+depended on the judgment; generalising it costs nothing — no proof below changes — and it is
+what lets the reduction be instantiated at `Ratchet/Check.lean`'s `DTyped` without this file
+importing the checker. The two obligations above are about `stepFn` alone, which is what lets
+them be proved by a walk. -/
+def InvInit (Accepted : Ratchet.Expr → Prop) (Inv : Machine → Prop) : Prop :=
+  ∀ p : Ratchet.Expr, Accepted p →
     ∀ m : Machine, StateOk Ratchet.ctx0 [] .ivar0 m → Inv (evalFrom m p)
 
 /-- **The whole theorem, assembled.** With the three obligations, the checker's verdict rules
 out type-stuck outcomes for the program it accepted. Proved from §1; every hypothesis is a
 named `Prop` and none of them is discharged here. -/
-theorem stuckFree_of_obligations {Inv : Machine → Prop} (ho : SafetyObligations Inv)
-    (hi : InvInit Inv) :
-    ∀ (p : Ratchet.Expr) (τ : Ty) (κ' : Ctx) (Γ' : Env) (I' : Ty),
-      Judge Ratchet.ctx0 [] .ivar0 p τ κ' Γ' I' →
+theorem stuckFree_of_obligations {Accepted : Ratchet.Expr → Prop} {Inv : Machine → Prop}
+    (ho : SafetyObligations Inv) (hi : InvInit Accepted Inv) :
+    ∀ p : Ratchet.Expr, Accepted p →
       ∀ m : Machine, StateOk Ratchet.ctx0 [] .ivar0 m → StuckFree m p :=
-  fun p τ κ' Γ' I' hj m hm fuel =>
-    safety_of_invariant ho fuel (evalFrom m p) (hi p τ κ' Γ' I' hj m hm)
-
-/-- …and that is exactly `StuckFreeTarget`'s shape at the top-level context, so the reduction
-lands on the statement `Denote/Adequacy.lean` already names. -/
-theorem stuckFreeTarget_at_ctx0 {Inv : Machine → Prop} (ho : SafetyObligations Inv)
-    (hi : InvInit Inv) :
-    ∀ p τ κ' Γ' I', Judge Ratchet.ctx0 [] .ivar0 p τ κ' Γ' I' →
-      ∀ m, StateOk Ratchet.ctx0 [] .ivar0 m → StuckFree m p :=
-  stuckFree_of_obligations ho hi
+  fun p hp m hm fuel => safety_of_invariant ho fuel (evalFrom m p) (hi p hp m hm)
 
 /-! ## §1a What the `∀ m` in `SemJudge` does and does not give — a correction
 
@@ -251,105 +246,28 @@ theorem eq_pushK_evalFrom {m : Machine} {e : Ratchet.Expr} (hc : m.ctl = .eval (
     m = pushK m.kont (evalFrom m e) := by
   simp only [pushK, evalFrom, List.nil_append, ← hc]
 
-/-! ## §2 The invariant's three components -/
+/-! ## §2 The invariant's three components lived here, and are gone
 
-/-- **What is in flight**, one arm per `Ctl` — and the last two arms are the two arms of
-`Answer`, which is the payoff from `Denote/Sem/Answer.lean`: an invariant that had to read
-`Interp.run`'s five-way split would need five arms and would have nothing to say about three
-of them.
+`CtlOk`/`KontOk`/`Inv` were the skeleton of layer 6, indexed by the deleted `Ratchet.Judge`
+(its `.eval` arm asserted the expression in flight was `toRuby e₀` for a **`Judge`**-derived
+`e₀`, and `KontOk`'s frame clauses carried `Judge` premises). They went with that judgment in
+clink 68, along with the two sanity checks that instantiated them.
 
-The `.eval` arm is the checker's interface: a machine mid-evaluation is invariant-conformant
-when the expression it is evaluating is one the *judgment* derives. `hdel` is the
-answer-axis adequacy bridge — see §2.3 of the module docstring; it is not `SemJudge` and
-cannot be got from it. -/
-def CtlOk (κ : Ctx) (Γ : Env) (I : Ty) (τ : Ty) (m : Machine) : Prop :=
-  match m.ctl with
-  | .eval e => ∃ (e₀ : Ratchet.Expr) (κ' : Ctx) (Γ' : Env) (I' : Ty),
-      toRuby e₀ = e ∧ Judge κ Γ I e₀ τ κ' Γ' I'
-  | .value v => denM τ m v
-  | .jump _ => True   -- the escape clause lives in `KontOk`, where the frame that sees it is
+**§1 above is what survives, and it is the part that was worth keeping**: the reduction is
+proved for an *abstract* `Inv`, so it is exactly as usable against `Ratchet/Check.lean`'s
+`DJudge` as it was against the old one. What an instantiation now owes is the same two
+obligations — `preserved` and `noBadStep` — over whatever invariant the typed ladder defines,
+and `probes/kont_census.lean`'s measurement (deleted with the corpus it walked; the number is
+in `AGENTS.md`) priced the frame set at 36 constructors.
 
-/-- **What is waiting for it.** Indexed by the type the innermost frame expects (`τ`), by the
-description the machine must conform to when the frame resumes (`Γ`/`I`), and by the **live
-`catch` tags** (`tags`) — §3's second fixed point, and the index that makes `throw`'s
-whole-stack read local.
+Not a regression to re-derive: `Denote/Proto/Safety.lean` closed all of it end to end on a
+four-expression fragment before both files were deleted, and `implementation-notes.md`
+clink 65 records what that exercise found — that the continuation typing has to be indexed by
+the program's own answer type, which no design discussion had anticipated. -/
 
-Six constructors, deliberately: enough to exhibit every interesting shape, and short of the
-49 it will need. **`sorry`-free**: this is a real inductive, it is just incomplete, and an
-incomplete inductive is honest in a way that a complete one with `sorry`ed cases is not. -/
-inductive KontOk (κ : Ctx) : List Kont → Env → Ty → Ty → List Value → Prop
-  /-- The empty continuation: the program's own answer. Any type, no tags. -/
-  | nil {Γ I τ} : KontOk κ [] Γ I τ []
-  /-- **Pass-through.** `asgnK` accepts any value, writes it, and delivers the same value on.
-      Its escape clause is trivial — `unwind`'s default arm hands the jump straight back —
-      which is the same fact `jumpStuckFree_asgnK` was four lines of. -/
-  | asgnK {rest Γ I τ tags x} :
-      KontOk κ rest Γ I τ tags → KontOk κ (.asgnK .lvar x :: rest) Γ I τ tags
-  /-- **Sequence.** Discards the value and continues with the remaining statements, which must
-      themselves be judged — so this constructor is where `JudgeSeq` enters the invariant. -/
-  | seqK {es rest Γ I σ τ tags κ' Γ' I'} :
-      JudgeSeq κ Γ I es σ κ' Γ' I' → KontOk κ rest Γ' I' σ tags →
-      KontOk κ (.seqK (es.map toRuby) :: rest) Γ I τ tags
-  /-- **The back edge, condition side.** The loop may resume here on a truthy value *or* on a
-      `nxtJ`, and both resume at `Γ`/`I` — which is what `Judge.while'`'s `Γc = Γ` premise
-      is for, and what `nxtPrefixOk` (§F23) makes true at a mid-body `next`. -/
-  | whileCondK {c body rest Γ I σ τ tags κc Γc Ic κb Γb Ib} :
-      Judge κ Γ I c σ κc Γc Ic → Judge κ Γ I body τ κb Γb Ib →
-      nxtPrefixOk body = true →
-      KontOk κ rest Γ I .nilT tags →
-      KontOk κ (.whileCondK (toRuby c) (toRuby body) :: rest) Γ I σ tags
-  /-- **The back edge, body side.** Same premises, other entry point — and the two are
-      mutually reachable (`nxtJ` one way, `redoJ` the other), which is why
-      `Denote/Rules/WhileAnswer.lean`'s `loop_stuck` proves them together. -/
-  | whileBodyK {c body rest Γ I σ τ tags κc Γc Ic κb Γb Ib} :
-      Judge κ Γ I c σ κc Γc Ic → Judge κ Γ I body τ κb Γb Ib →
-      nxtPrefixOk body = true →
-      KontOk κ rest Γ I .nilT tags →
-      KontOk κ (.whileBodyK (toRuby c) (toRuby body) :: rest) Γ I τ tags
-  /-- **The tag.** The only constructor that grows `tags`, and the reason `tags` is an index:
-      `Interp.hasCatcher` asks whether *any* frame below carries a matching tag, and with this
-      constructor that question is answered by the index instead of by a walk. -/
-  | catchK {t rest Γ I τ tags} :
-      KontOk κ rest Γ I τ tags → KontOk κ (.catchK t :: rest) Γ I τ (t :: tags)
-
-/-- **The invariant.** Three components, existentially quantified over the description — which
-is right rather than lazy: a reachable machine does not come with its types attached, and the
-invariant's job is to say that *some* consistent description exists. -/
-def Inv (m : Machine) : Prop :=
-  ∃ (κ : Ctx) (Γ : Env) (I : Ty) (τ : Ty) (tags : List Value),
-    StateOk κ Γ I m ∧ CtlOk κ Γ I τ m ∧ KontOk κ m.kont Γ I τ tags
-
-/-! ## §3 Two sanity checks on the skeleton
-
-Neither is a step toward the proof; both are checks that the definitions are not vacuous or
-mistyped, which is the failure mode a skeleton actually has. -/
-
-/-- The empty continuation at a judged expression satisfies the `Ctl`/`Kont` halves — i.e. the
-initial machine's shape is derivable, which is `InvInit`'s content modulo `StateOk`. -/
-theorem inv_of_judge_init {p : Ratchet.Expr} {τ : Ty} {κ' : Ctx} {Γ' : Env} {I' : Ty}
-    (hj : Judge Ratchet.ctx0 [] .ivar0 p τ κ' Γ' I')
-    {m : Machine} (hm : StateOk Ratchet.ctx0 [] .ivar0 m) :
-    Inv (evalFrom m p) :=
-  ⟨Ratchet.ctx0, [], .ivar0, τ, [],
-   StateOk_reCtl hm _ _, ⟨p, κ', Γ', I', rfl, hj⟩, KontOk.nil⟩
-
-/-- `tags` really does track the live tags: one `catch` frame, one tag. -/
-example (t : Value) (Γ : Env) (I τ : Ty) :
-    KontOk Ratchet.ctx0 [.catchK t] Γ I τ [t] := KontOk.catchK KontOk.nil
-
-/-- And the two loop entry points are the *same* premises at different indices, which is the
-structural reason `loop_stuck` could not prove one without the other. -/
-example {c body : Ratchet.Expr} {σ τ : Ty} {Γ : Env} {I : Ty} {κc Γc Ic κb Γb Ib}
-    (hc : Judge Ratchet.ctx0 Γ I c σ κc Γc Ic)
-    (hb : Judge Ratchet.ctx0 Γ I body τ κb Γb Ib)
-    (hn : nxtPrefixOk body = true) :
-    KontOk Ratchet.ctx0 [.whileCondK (toRuby c) (toRuby body)] Γ I σ [] ∧
-    KontOk Ratchet.ctx0 [.whileBodyK (toRuby c) (toRuby body)] Γ I τ [] :=
-  ⟨.whileCondK hc hb hn .nil, .whileBodyK hc hb hn .nil⟩
 
 #print axioms eq_pushK_evalFrom
 #print axioms safety_of_invariant
 #print axioms stuckFree_of_obligations
-#print axioms inv_of_judge_init
 
 end Ratchet.Denote

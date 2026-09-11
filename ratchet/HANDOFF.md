@@ -72,34 +72,26 @@
 
 | Ladder | Reads | Script |
 |---|---|---|
-| Syntactic (*reach*) | **178 / 259** rungs certified, 35 expect_validate mismatches, agreement 0 disagreements | `scripts/run_ratchet.sh` (now over `corpus-untyped/`) |
-| Typed pipeline (*Sorbet in the loop*) | **ladder reach 18 rungs**; srb clean **184/259**, derivation emitted **75/259**, `validateD` (real typing) accepts **29/259** | `scripts/run_typed_ratchet.sh` |
-| Clink registry, `SemJudge`-shaped | **48 registered**, each proved by construction; **35 rules not in the judgment** (coverage, not debt) | `scripts/run_denote.sh`, or `lake exe semladder` |
-| Clink registry, **answer-typed** (`SemJudgeA`) | **8 registered** of `DJudge`'s 12 — the project's first clinks whose hypothesis is an answer, not a value; 4 owed, all behind one lemma | same |
+| Ladder reach (*the headline*) | **18 rungs** -- the leading run meeting their recorded target; frontier `019-to-s-call`, one `DPrim` row away | `scripts/run_typed_ratchet.sh` |
+| Agreement | **252 agree, 0 disagreements** over the sig-stripped programs | same, step 3 |
+| Clinks (*what the judgment may contain*) | **8 of `DJudge`'s 12** rules carry an answer-typed proof; 4 owed, all behind **one** lemma | `scripts/run_denote.sh`, or `lake exe semladder` |
 
-`checkrungs corpus-untyped` reads 177/177 hand derivations + 148/148 negative
-controls.
+**Clink 68 deleted the old ladder**, so the three rows above are all of them. Gone: `Judge`
+(83 rules), `chk`, `Rungs.lean`'s 177 derivations, `ChkSound.lean`, `corpus-untyped/`,
+`Denote/Rules/`'s 48 value-shaped obligations, and `SemJudge` itself. 41 Lean files, ~14k
+lines, from 110 files and ~42k. `AGENTS.md` §What was deleted lists it with reasons, and
+everything from `AGENTS.md` §LEGACY onward is history for a judgment that no longer exists.
 
-**The second row is now a real checker.** `Ratchet/Check.lean`'s `check` returns the
-`DJudge` derivation, so its *type* is the soundness statement and the Lean typechecker
-is the oracle. Reach is a **prefix** — the leading run of rungs meeting their recorded
-target — which is 18 (tiers 1–2 through `018-bad-plus`, correctly refused), ratcheted by
-`MainTyped.lean`'s `ladderFloor`. The frontier is `019-to-s-call`, one `DPrim` row away.
-`DJudge` has 12 rules (plus 4 companions) and `DPrim` 7 rows. **Eight of the 12 now carry an
-answer-typed semantic proof** (`Denote/Typed/`) and are registered clinks, which makes rungs
-**001–008** a real safety claim; rungs 009–018 are checker coverage only. The four owed rules
-(`vasgn`, `seq`, `prim`, `if'`) are all behind **one** lemma, `RunAPushK` — the answer-level
-counterpart of `run_pushK`, stated in `Denote/Typed/JudgeA.lean` §4 and unproved.
+`Ratchet/Check.lean`'s `check` **returns the derivation**, so its type is the soundness
+statement and the Lean typechecker is the oracle. Rungs **001-008** are derivable in the
+certified judgment (`DJudgeC dclinks`), which makes them an answer-typed safety claim; rungs
+009-018 are checker coverage only.
 
-**The third row changed meaning on 2026-09-11** and the old reading (*47 of 83
-`Judge` rules discharged*) is gone. The judgment is now generated from the
-proofs (`Denote/Clink/`): a rule enters `JudgeC clinks` only as a `Clink`, whose
-`sem` field *is* the semantic proof, so `registry_sound` is unconditional at
-every registry size and an unregistered rule is not an obligation owed — it is
-not a rule. `lake exe semladder` exits nonzero only if the registry **shrank**;
-`Denote/Clink/Registry.lean`'s growth gate fails the build if a `Judge`
-constructor appears that is neither registered nor a named legacy exception.
-See `AGENTS.md` §The clink registry and `implementation-notes.md` clink 65.
+The four owed rules (`vasgn`, `seq`, `prim`, `if'`) are all behind **`RunAPushK`** -- the
+answer-level counterpart of `run_pushK`, stated as a named `Prop` in
+`Denote/Typed/JudgeA.lean` §4 and unproved. Read that section before starting: it prices what
+each of the four needs *besides* the lemma, and three of them need nothing (`if'`'s join
+soundness is already proved, in `Denote/Join.lean`).
 
 ## The resume point, in one paragraph
 

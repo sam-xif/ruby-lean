@@ -1,4 +1,3 @@
-import Denote.Clink.Registry
 import Denote.Typed.Clink
 
 /-!
@@ -30,46 +29,37 @@ Not "non-zero while rules remain" — under the old framing that was a permanent
 which is a light nobody reads.
 -/
 
-open Ratchet.Denote
 open Ratchet.Denote.Typed
 
 /-- The recorded size of the registry. **A clink once registered never unregisters**
-(`ratchet/AGENTS.md`), and unlike the old ladder's number this one is sound to ratchet on: a
-clink cannot be registered without its proof, so the count is a count of proofs. Raise this
-when the registry grows; a drop is a regression. -/
-def clinkFloor : Nat := 48
-
-/-- The typed ladder's registry floor. Separate from `clinkFloor` because these are clinks
-against a **different and stronger statement** — `SemJudgeA`, whose hypothesis is an answer
-rather than a value — and merging the two counts would let the weaker one launder as the
-stronger. -/
-def dclinkFloor : Nat := 8
+(`ratchet/AGENTS.md`), and this number is sound to ratchet on: a clink cannot be registered
+without its proof, so the count is a count of proofs. Raise it when the registry grows; a
+drop means a proof was deleted or broken. -/
+def clinkFloor : Nat := 8
 
 def main : IO UInt32 := do
-  IO.println clinkReport
-  IO.println ""
-  let n := registeredRules.length
-  if n < clinkFloor then
-    IO.println s!"CLINK RATCHET REGRESSED: {n} registered, floor is {clinkFloor} \
--- a clink was lost, which means a semantic proof was deleted or broken"
-    return 1
-  if n > clinkFloor then
-    IO.println s!"CLINK RATCHET: {n} registered, floor is {clinkFloor} \
--- raise `clinkFloor` in SemLadder.lean to lock it in"
-    return 0
-  IO.println s!"CLINK RATCHET OK ({n} registered, all proved by construction; \
-{unregisteredRules.length} rules not in the judgment -- that is coverage, not debt)"
-  -- The typed ladder's registry, reported separately and for the reason `dclinkFloor` gives.
   let dn := dRegisteredRules.length
+  IO.println "=== CLINK REGISTRY: rules in the certified judgment `DJudgeC dclinks` ==="
   IO.println ""
-  IO.println s!"=== TYPED CLINK REGISTRY (answer-typed: `SemJudgeA`, not `SemJudge`) ==="
-  IO.println s!"  DJudge         {dn} registered   {dUnregisteredRules.length} not in the judgment"
+  IO.println s!"  DJudge   {dn} registered   {dUnregisteredRules.length} not in the judgment"
   IO.println s!"  registered: {String.intercalate ", " dRegisteredRules}"
   IO.println s!"  owed:       {String.intercalate ", " dUnregisteredRules} \
 (all four behind `RunAPushK` -- Denote/Typed/JudgeA.lean §4)"
-  if dn < dclinkFloor then
-    IO.println s!"TYPED CLINK RATCHET REGRESSED: {dn} registered, floor is {dclinkFloor}"
+  IO.println ""
+  IO.println "Every registered rule carries its own proof (`Clink.sem`), in the ANSWER-TYPED"
+  IO.println "shape: the hypothesis is an answer rather than a value, and the conclusion says"
+  IO.println "whether the run reached a type-stuck outcome. `dregistry_sound` is unconditional"
+  IO.println "and holds at every registry size. The right-hand column is COVERAGE, not debt:"
+  IO.println "an unregistered rule is not in the judgment at all, so nothing is owed for it"
+  IO.println "and nothing unsound can be certified with it."
+  if dn < clinkFloor then
+    IO.println s!"CLINK RATCHET REGRESSED: {dn} registered, floor is {clinkFloor} \
+-- a clink was lost, which means a semantic proof was deleted or broken"
     return 1
-  IO.println s!"TYPED CLINK RATCHET OK ({dn} registered; these are the first clinks in the \
-project whose hypothesis is an answer rather than a value)"
+  if dn > clinkFloor then
+    IO.println s!"CLINK RATCHET: {dn} registered, floor is {clinkFloor} \
+-- raise `clinkFloor` in SemLadder.lean to lock it in"
+    return 0
+  IO.println s!"CLINK RATCHET OK ({dn} registered, all proved by construction; \
+{dUnregisteredRules.length} rules not in the judgment -- that is coverage, not debt)"
   return 0

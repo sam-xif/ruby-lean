@@ -1,17 +1,75 @@
-# AGENTS.md — `ratchet/`: a type-checking ladder, restarted small
+# AGENTS.md — `ratchet/`: the Sorbet-typed ladder
 
-This is a **restart** of the type-checking work, deliberately isolated from `../lean/`
-(`RubyCore`) and from `../certify/`/the judgment layer (own `lakefile.toml`/
-`lean-toolchain`, no import of `RubyCore`). Those are real, load-bearing, and not being
-replaced — see `../type-safety-by-reachability.md` and
-`../docs/semantics/certificate-language.md`/`judgment-layer.md` for that work. This
-folder exists because that machinery grew by tackling ambitious whole-slice goals
-(Homebrew's `version.rb`, Sorbet fragments, `define_method`) before the checker itself
-had a graduated coverage ladder to climb. **The idea here: drive the checker from a corpus that ratchets up in complexity one
-rung at a time, so "how far does `validate` reach today" is always a single number, not
-a research question.** It started as a certificate-checking ladder and kept the
-architecture minus the certificates (§Claim-free): a rung is now a program and a target,
-and `validate` either synthesizes the type or does not.
+**Read this section, then §The typed pipeline. Everything from §LEGACY onward documents a
+judgment that no longer exists** — kept because the learnings are real and the findings are
+cited from the live code, not because any of it describes the current tree.
+
+## What this package is, now
+
+A **certificate ladder**: Sorbet-annotated Ruby in, a `Deriv` emitted by an untrusted
+emitter, checked by a Lean checker that *returns the derivation*, over a corpus that ratchets
+one rung at a time. Three numbers, three scripts, no others:
+
+| what | reads | script |
+|---|---|---|
+| ladder reach | **18 rungs** (leading run meeting their recorded target); frontier `019-to-s-call` | `scripts/run_typed_ratchet.sh` |
+| agreement | **252 agree, 0 disagreements** (CRuby vs the Lean semantics, over the sig-stripped programs) | same, step 3 |
+| clinks | **8 of `DJudge`'s 12** rules carry an answer-typed semantic proof; 4 owed | `scripts/run_denote.sh`, or `lake exe semladder` |
+
+Two exes (`ratchetd`, `semladder`), one report exe (`denotereport`), 41 Lean files, ~14k lines.
+
+## What was deleted, and the one rule that decided it
+
+**Clink 68** removed the pre-answer-typed machinery: 69 files and ~28k lines of Lean, plus the
+518-file untyped corpus. The rule was *keep what the answer-typed ladder needs; delete what
+served the old judgment* — and the old judgment is `Ratchet.Judge`, 83 rules of which 35 had
+no semantic proof and 7 were known false as stated.
+
+Gone: `Judge` and its seven companions, `chk` (`Validate.lean`), `Rungs.lean`'s 177 hand
+derivations, `ChkSound.lean`, `CheckRungs.lean`, `Main.lean`, `corpus-untyped/`, `slice/`,
+`Denote/Rules/`'s 48 value-shaped obligations, `Denote/Sem/Obligations.lean`, the `Fam`
+registry, `Denote/Proto/`, `Denote/Adequacy.lean`, `Denote/Sem/{Step*,BuiltinsCap*,Locals,Mut,
+Narrow*,Query,Send,Down,FrameLocal}.lean` (the layer push the EMERGENCY EXIT was about), and
+**`SemJudge` itself** — the value-shaped judgment, deleted rather than deprecated so that no
+future rule can acquire a proof of the weaker statement and count.
+
+Kept on purpose, including things currently unreachable, because they are what the next rung
+needs: `Denote/Join.lean` + `JoinState.lean` (join soundness under `denM` — `if'` needs
+exactly this and it turned out to be *already proved*, which corrected
+`Ratchet/Check.lean` §5), `Denote/Sem/AnswerCatch.lean` (`CatchFree`, for `RunAPushK`),
+`Denote/Sem/Invariant.lean` §1 (the safety reduction, proved for an abstract `Inv` and now
+parameterised by what "accepted" means rather than naming a judgment), `Denote/Sanity.lean`
+(the vacuity witness — without `stateOk_boot` every `SemJudgeA` could be vacuous),
+`Denote/Examples.lean` + `DenB`/`ArrowCheck` (33 `#guard`s validating `denM` against the real
+`stepFn`, which is the evidence `AnsOk`'s value arm rests on), and all the prose.
+
+`Ratchet/Judge.lean` survives at 3,571 lines as the **datatype substrate**: `Ctx` and its
+polarities, the class/method/constant tables, and the predicates `StateOk`'s conformance
+components read. Also `PrimSig`, `EqSafe`, `NilQSafe`, `NarrowCond` and the narrowing
+functions — tables and predicates rather than rules, each recording a fact about CRuby that a
+`DPrim` row or a future narrowing rule will want. Nothing in the certified path reads them.
+
+## Layout
+
+```
+corpus/NNN-id.rb          annotated Ruby, the source of truth (hand-edited)
+corpus/NNN-id.meta.json   tier, description, expect_validate, expect_sorbet, sorbet_note
+build/                    everything derived (gitignored)
+scripts/                  srb_sigs, emit_deriv, build_corpus, annotate_corpus,
+                          record_baseline, run_typed_ratchet.sh, run_denote.sh
+Ratchet/Ty,Expr,JsonUtil  the type language and the syntax (standalone)
+Ratchet/Judge.lean        the `Ctx` datatype substrate (no judgment)
+Ratchet/Deriv.lean        the certificate language and its decoder (layer 1)
+Ratchet/Check.lean        DPrim, DJudge, `check` (returns the derivation), `validateD`
+Ratchet/DerivControls.lean  16 negative controls (#guard)
+Ratchet/Rung.lean         a built rung as `build/*.rung.json` leaves it
+MainTyped.lean            `lake exe ratchetd` -- stage 5 of the pipeline
+Denote/                   the denotation of `Ty` (Val/Apply/Den/DenB/Ext/Grow/Arrow/Join)
+Denote/Sem/               Framed, StateOk, Answer, SafeKont, AnswerCatch, Invariant, Trans
+Denote/Clink/             Spec (the mechanism), Form (the `form` derivation)
+Denote/Typed/             SemJudgeA + the 8 obligations, the registry, the controls
+SemLadder.lean            `lake exe semladder` -- the clink report
+```
 
 ## The typed pipeline: **Sorbet in the loop, ladder reach 18 rungs**
 
@@ -193,6 +251,18 @@ Denote/Typed/Clink.lean   DFam, register_dclink, `dclinks`, dregistry_sound
 Ratchet/Rung.lean         a built rung as `build/*.rung.json` leaves it
 MainTyped.lean            `lake exe ratchetd` -- stage 5
 ```
+
+---
+
+# LEGACY — everything below describes the deleted judgment
+
+**None of this is the current tree.** It documents `Ratchet.Judge`/`chk`, its 259-rung untyped
+corpus, and the 48/83 semantic ladder, all removed in clink 68. It is kept because the
+*learnings* are load-bearing and are cited from live code and from `found-issues.md`: the
+seven rules that were false as stated, the nineteen stall points, the EMERGENCY EXIT's
+diagnosis, the `kont_census` measurement that priced `KontOk` at 36 constructors, the
+`context-splitting` redesign. Read it as history. Numbers in it are historical; do not plan
+against them, and do not look for the files it names without checking they still exist.
 
 ## Checker status: **178 rungs of 259 — tier 13 complete, tiers 14–17 open**
 

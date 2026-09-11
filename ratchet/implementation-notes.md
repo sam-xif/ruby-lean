@@ -7943,3 +7943,81 @@ them an answer-typed safety claim; rungs **009–018** are checked by `Ratchet/C
 are coverage of the checker only, because `prim`, `seq`, `vasgn` and `if'` are unregistered.
 The two halves of the ladder now differ in kind, which is the first time that has been true
 and is the right shape for it to have.
+
+---
+
+## Clink 68 (2026-09-11) — **the old ladder deleted**: 69 files, ~28k lines of Lean, and the 518-file untyped corpus
+
+Asked to be radical: delete the proof cruft the new ladder does not need, keep the prose as a
+legacy reference, and regress none of the measuring scripts. Done — 110 Lean files and ~42k
+lines become **41 files and ~14k**, with reach 18, agreement 252/0 and 8 clinks unmoved at
+every stage.
+
+### The rule that decided each call
+
+*Keep what the answer-typed ladder needs; delete what served the old judgment.* Stated that
+way because "delete what is unreachable" would have been wrong in **both** directions, and
+the two mistakes it would have made are the interesting part.
+
+**It would have deleted things the next rung needs.** `Denote/Join.lean` and
+`Denote/JoinState.lean` were unreachable — and they are `denM_joinT_left`/`_right` plus the
+environment/spine join, i.e. *exactly* the join soundness `DJudge.if'`'s obligation needs.
+`Ratchet/Check.lean` §5 had said that fact was "stated nowhere yet". It was proved, in a file
+the sweep was about to remove. Finding it is what corrected the owed list, and it is the
+strongest argument for reading a file before deleting it: `answer-typed-schema.md`'s own
+advice, applied to a deletion rather than to a proof.
+
+**It would have kept things that are traps.** `SemJudge` was reachable (through the step
+lemmas the typed layer borrowed) and is the *value-shaped* judgment whose vacuity is the whole
+reason for the restatement. Leaving it available would let a future rule acquire a proof of
+the weaker statement and register, which is the one failure mode the clink discipline exists
+to prevent. So it is deleted rather than deprecated, and `Denote/Sem/Judge.lean` is renamed
+`Denote/Sem/Framed.lean` after the one thing in it the new judgment reuses.
+
+### Four severings, in dependency order
+
+Each was a one-identifier problem hiding behind a large file, which is worth recording because
+the files looked entangled and were not:
+
+1. **`ctx0`** was the only thing anything outside `Ratchet/Validate.lean` used from it — one
+   line, moved next to `Ctx` in `Ratchet/Judge.lean`. 1,196 lines of `chk` then deleted
+   outright.
+2. **Three `stepFn` facts** (`stepFn_var`, `stepFn_str`, `strObj`) were the only reason
+   `Denote/Typed/JudgeA.lean` imported `Denote/Rules/Lit.lean` and therefore the entire
+   48-obligation tree. Moved into `JudgeA.lean` §1a; `Denote/Rules/` deleted whole.
+   `Denote/Rules/{Core,Alloc}.lean` were not rules at all (transport lemmas and `ext_push`)
+   and are now `Denote/Sem/{Transport,Alloc}.lean`.
+3. **`ruleForm`** was the only thing `Denote/Typed/Clink.lean` used from
+   `Denote/Clink/Derive.lean`, which pulled in `Obligations.lean` and the `Fam` registry. Moved
+   to `Denote/Clink/Form.lean`; `Spec.lean` keeps the mechanism and loses `Fam`/`JudgeC`/16
+   theorems.
+4. **`InvInit`** was the one declaration in `Denote/Sem/Invariant.lean` §1 that named `Judge`.
+   Generalising it to take *what "accepted" means* as a parameter (Norm A) cost no proof
+   change and severed the file from any judgment — so the safety reduction, which is layer 7
+   and proved for an abstract `Inv`, survives intact and is immediately usable against
+   `DJudge`. §2/§3's `CtlOk`/`KontOk`/`Inv` skeleton was `Judge`-indexed and went.
+
+### What the numbers cost
+
+| deleted | lines | replaced by |
+|---|---|---|
+| `corpus-untyped/` + `slice/` | 518 files | `corpus/` (annotated), derived at build time |
+| `Rungs.lean` + `ChkSound.lean` + `CheckRungs.lean` + `Main.lean` | ~7,500 | `Ratchet/Check.lean` (409), whose checker returns the derivation |
+| `Validate.lean` (`chk`) | 1,196 | the same |
+| `Judge`'s 83 rules and their threading lemma | ~1,750 | `DJudge`'s 12 |
+| `Denote/Rules/` (48 obligations) + `Obligations.lean` | ~6,000 | `Denote/Typed/JudgeA.lean`'s 8, answer-typed |
+| `Denote/Sem/{Step*,BuiltinsCap*,Locals,Mut,Narrow*,Query,Send,Down,FrameLocal}` | ~8,600 | nothing yet; this was the layer push the EMERGENCY EXIT was about |
+| `Denote/Proto/` | 1,009 | `Denote/Typed/`, which is the real thing at 8 rules |
+| `SemJudge` + companions | ~200 | `SemJudgeA` |
+
+`Denote/Sem/FrameLocal.lean`'s 555 lines are the one deletion worth flagging separately:
+`HANDOFF.md`'s working rule exists *because* of that file — it was proved against a target
+that was never written down and the target turned out false. It is the cleanest possible
+example of what the rule prevents, which is why the rule is quoted and the file is not.
+
+### What survives unreachable, and why that is not a contradiction
+
+Four files: `Join`, `JoinState`, `AnswerCatch`, `Invariant`. Nothing imports them; `lake build`
+compiles them anyway (the `Denote` lib is a glob), so they stay verified. They are the next
+rung's inputs — join soundness, `CatchFree`, the safety reduction — and a ladder that deletes
+its own next step to make a dependency graph tidy has optimised the wrong thing.

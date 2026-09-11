@@ -1,7 +1,7 @@
-import Denote.Rules.Core
+import Denote.Sem.Transport
 
 /-!
-# `Denote/Rules/Alloc.lean` — the allocating step, as an `Ext`
+# `Denote/Sem/Alloc.lean` — the allocating step, as an `Ext`
 
 The semantic ratchet's first three rungs were the same two `stepFn` steps
 (`Denote/Rules/Lit.lean`); the fourth, `Judge.strLit`, is not, and the difference is one

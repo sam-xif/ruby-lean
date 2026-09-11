@@ -1,5 +1,5 @@
 import Denote.Typed.JudgeA
-import Denote.Clink.Derive
+import Denote.Clink.Form
 
 /-!
 # `Denote/Typed/Clink.lean` — the typed ladder's clink registry

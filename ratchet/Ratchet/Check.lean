@@ -389,7 +389,7 @@ What is owed, in the order it gets cheaper — and the first three rows are **on
 | rule | what its obligation needs |
 |---|---|
 | `vasgn`, `seq`, `prim`, `if'` | `RunAPushK` (`Denote/Typed/JudgeA.lean` §4): the answer-level counterpart of `run_pushK`. All four evaluate a sub-expression **under a pushed frame**, and the decomposition exists for `Interp.run` and not for `runA`. One induction, gating four rules |
-| `if'`, additionally | `joinT`/`joinEnv` soundness — that a join is an upper bound on both branches under `denM`. Stated nowhere yet; `Denote/notes.md` §"not built" lists `subTy` soundness, which is the same fact |
+| `if'`, additionally | nothing. **`joinT`/`joinEnv` soundness is already proved** — `Denote/Join.lean`'s `denM_joinT_left`/`_right` (a join is an upper bound under `denM`) and `Denote/JoinState.lean`'s environment/spine counterpart. Both survived the clink-68 deletion sweep *because* of this row, and finding them is what corrected it: an earlier version of this table said "stated nowhere yet" |
 | `prim`, additionally | one conformance fact per row: that CRuby's `Integer#+` really returns an `Integer` from the prelude-booted heap. `DPrim` has **7** rows against `PrimSig`'s ~90 precisely so this is a countable obligation rather than the ~200-fact block that stalled the old ladder three sessions running |
 
 ## §6 Relationship to `Ratchet/Judge.lean` and `Ratchet/Validate.lean`

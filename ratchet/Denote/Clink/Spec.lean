@@ -1,4 +1,4 @@
-import Denote.Sem.Judge
+import Denote.Sem.Framed
 
 /-!
 # `Denote/Clink/Spec.lean` — a rule is one object with two readings, and the semantic one carries its proof
@@ -90,41 +90,20 @@ open RubyCore Ratchet
 
 /-! ## §1 The family, as a parameter
 
-One field per member of `Ratchet/Judge.lean`'s mutual family, at exactly that member's
-signature. A field's signature differing from its syntactic twin's would be caught the moment
-a `form` is instantiated at `synFam`, i.e. when the `Clink`'s `syn` field is kernel-checked
-against the constructor. -/
+A judgment's relations, bundled as a **record of predicates**, so that a rule's premises and
+conclusion can be stated against a parameter rather than against a particular relation. The
+record itself is supplied by whoever is registering rules — `Denote/Typed/Clink.lean`'s
+`DFam` is the one instance today — and everything in this file is generic in it.
 
-structure Fam where
-  judge : Ctx → Env → Ty → Ratchet.Expr → Ty → Ctx → Env → Ty → Prop
-  all : Ctx → Env → Ty → List Ratchet.Expr → List Ty → Env → Ty → Prop
-  kw : Ctx → Env → Ty → List Ratchet.KwEntry → List (String × Ty) → Env → Ty → Prop
-  pairs : Ctx → Env → Ty → List (Ratchet.Expr × Ratchet.Expr) → Ty → Ty → Env → Ty → Prop
-  seq : Ctx → Env → Ty → List Ratchet.Expr → Ty → Ctx → Env → Ty → Prop
-  rescues : Ctx → Env → Ty →
-    List (List Ratchet.Expr × Option (Ratchet.TargetKind × String) × Ratchet.Expr) → Ty → Prop
-  consts : Ctx → List (String × Ratchet.Expr) → Prop
-  nested : Ctx → String → Ratchet.Nested → Prop
-
-/-- The syntactic reading: `Ratchet/Judge.lean`'s own relations. -/
-def synFam : Fam :=
-  { judge := Judge, all := JudgeAll, kw := JudgeKw, pairs := JudgePairs, seq := JudgeSeq,
-    rescues := JudgeRescues, consts := JudgeConsts, nested := JudgeNested }
-
-/-- The semantic reading: `Denote/Sem/Judge.lean`'s denotational relations, at the same
-signatures (which is what made `Obligations.lean`'s substitution well-typed and is what makes
-this one well-typed). -/
-def semFam : Fam :=
-  { judge := SemJudge, all := SemJudgeAll, kw := SemJudgeKw, pairs := SemJudgePairs,
-    seq := SemJudgeSeq, rescues := SemJudgeRescues, consts := SemJudgeConsts,
-    nested := SemJudgeNested }
+The instance that used to live here was `Fam`, the eight-member record mirroring
+`Ratchet/Judge.lean`'s mutual family, together with `JudgeC` and sixteen soundness theorems
+over it. It went with that judgment (clink 68). What is left is the mechanism, which was
+always the part worth having. -/
 
 /-- A rule, with the judgment abstracted. Both readings are instantiations of one of these.
 
-Generic in the family **record type**, not just in the two instances: `Ratchet/Check.lean`'s
-typed ladder has its own three-member family (`Denote/Typed/Clink.lean`'s `DFam`) and reuses
-`Clink`/`Closed` unchanged. Only `JudgeC` below is specific to `Fam`, because it *constructs*
-one. -/
+Generic in the family **record type**: `Denote/Typed/Clink.lean`'s `DFam` is the instance, and
+`Clink`/`Closed` below never mention it. -/
 abbrev RuleF (F : Type) := F → Prop
 
 /-! ## §2 The clink
@@ -169,87 +148,31 @@ theorem closed_target (R : List (Clink S T)) : Closed R T := fun c _ => c.sem
 /-- The **source** family likewise, from the other field. -/
 theorem closed_source (R : List (Clink S T)) : Closed R S := fun c _ => c.syn
 
-/-! ## §3 The certified judgment
+/-! ## §3 The certified judgment, and why it is not here
 
-The least family closed under `R`, impredicatively. Eight members, each the intersection over
-all closed families — which is exactly "derivable from the registered rules and nothing
-else". -/
+`JudgeC R` — the least family closed under `R`, written impredicatively as
+`∀ F, Closed R F → F.judge …` — has to *construct* a family record, so it is the one part of
+the mechanism that cannot be generic in the record type. Each judgment defines its own; it is
+three lines. `Denote/Typed/Clink.lean` §3 is the instance, with its one-line soundness
+theorem, and reading it is the fastest way to see what `Closed` buys:
 
-def JudgeC {S T : Fam} (R : List (Clink S T)) : Fam where
-  judge κ Γ I e τ κ' Γ' I' := ∀ F : Fam, Closed R F → F.judge κ Γ I e τ κ' Γ' I'
-  all κ Γ I es τs Γ' I' := ∀ F : Fam, Closed R F → F.all κ Γ I es τs Γ' I'
-  kw κ Γ I es kws Γ' I' := ∀ F : Fam, Closed R F → F.kw κ Γ I es kws Γ' I'
-  pairs κ Γ I ps kr vr Γ' I' := ∀ F : Fam, Closed R F → F.pairs κ Γ I ps kr vr Γ' I'
-  seq κ Γ I es τ κ' Γ' I' := ∀ F : Fam, Closed R F → F.seq κ Γ I es τ κ' Γ' I'
-  rescues κ Γ I rs τ := ∀ F : Fam, Closed R F → F.rescues κ Γ I rs τ
-  consts κ cs := ∀ F : Fam, Closed R F → F.consts κ cs
-  nested κ pfx nst := ∀ F : Fam, Closed R F → F.nested κ pfx nst
+```lean
+def DJudgeC (R : List (Clink dsynFam dsemFam)) : DFam where
+  judge Γ e τ Γ' := ∀ F : DFam, Closed R F → F.judge Γ e τ Γ'
 
-/-! ### Soundness, unconditional, at every registry size
+theorem dregistry_sound (h : (DJudgeC dclinks).judge Γ e τ Γ') : SemJudgeA Γ e τ Γ' :=
+  h dsemFam (closed_target dclinks)
+```
 
-Sixteen theorems, each one line: eight taking a `JudgeC` derivation to the **target** family
-(soundness) and eight to the **source** (admissibility — the registry is a sub-judgment of
-the authoring surface). Nothing here is conditional on the registry being complete, because
-completeness is not a thing a registry can fail to be: every rule in it is proved, and a rule
-not in it is not a rule.
+**A derivation is a term, and it never mentions closure.** To use a registered rule you are
+*handed* it: `hF` is the closure hypothesis, `hF c hc` is the rule at whatever family the
+consumer chose, and the premises are sub-derivations applied at the same family. No
+monotonicity, no closure lemma, no induction — and a derivation that used an unregistered rule
+would have nothing to apply, which is the sense in which growth is sound by construction.
 
-`Denote/Clink/Registry.lean` §2 specialises the ones a consumer actually calls at
-`S := synFam`, `T := semFam`, where the target reads as `SemJudge` on the nose. -/
-
-section Sound
-variable {S T : Fam} {R : List (Clink S T)}
-
-theorem judgeC_target {κ Γ I e τ κ' Γ' I'} (h : (JudgeC R).judge κ Γ I e τ κ' Γ' I') :
-    T.judge κ Γ I e τ κ' Γ' I' := h T (closed_target R)
-
-theorem judgeC_target_all {κ Γ I es τs Γ' I'} (h : (JudgeC R).all κ Γ I es τs Γ' I') :
-    T.all κ Γ I es τs Γ' I' := h T (closed_target R)
-
-theorem judgeC_target_kw {κ Γ I es kws Γ' I'} (h : (JudgeC R).kw κ Γ I es kws Γ' I') :
-    T.kw κ Γ I es kws Γ' I' := h T (closed_target R)
-
-theorem judgeC_target_pairs {κ Γ I ps kr vr Γ' I'} (h : (JudgeC R).pairs κ Γ I ps kr vr Γ' I') :
-    T.pairs κ Γ I ps kr vr Γ' I' := h T (closed_target R)
-
-theorem judgeC_target_seq {κ Γ I es τ κ' Γ' I'} (h : (JudgeC R).seq κ Γ I es τ κ' Γ' I') :
-    T.seq κ Γ I es τ κ' Γ' I' := h T (closed_target R)
-
-theorem judgeC_target_rescues {κ Γ I rs τ} (h : (JudgeC R).rescues κ Γ I rs τ) :
-    T.rescues κ Γ I rs τ := h T (closed_target R)
-
-theorem judgeC_target_consts {κ cs} (h : (JudgeC R).consts κ cs) : T.consts κ cs :=
-  h T (closed_target R)
-
-theorem judgeC_target_nested {κ pfx nst} (h : (JudgeC R).nested κ pfx nst) :
-    T.nested κ pfx nst := h T (closed_target R)
-
-theorem judgeC_source {κ Γ I e τ κ' Γ' I'} (h : (JudgeC R).judge κ Γ I e τ κ' Γ' I') :
-    S.judge κ Γ I e τ κ' Γ' I' := h S (closed_source R)
-
-theorem judgeC_source_seq {κ Γ I es τ κ' Γ' I'} (h : (JudgeC R).seq κ Γ I es τ κ' Γ' I') :
-    S.seq κ Γ I es τ κ' Γ' I' := h S (closed_source R)
-
-end Sound
-
-/-! ## §4 A derivation is a term, and it never mentions closure
-
-The Church encoding pays for itself here. To use a registered rule you are *handed* it: `hF`
-is the closure hypothesis, `hF c hc` is the rule at whatever family the consumer chose, and
-the premises are the sub-derivations applied at the same family. No monotonicity, no closure
-lemma, no induction — and a derivation that used an unregistered rule would have nothing to
-apply, which is the sense in which growth is sound by construction.
-
-The two examples below are stated over an **arbitrary** registry containing the clink, not
-over the committed one (Norm A, `answer-typed-schema.md` §1): a derivation is valid in any
-registry that has the rules it uses. -/
-
-/-- The shape, concretely, at an arbitrary registry: a premise-free rule applied.
-Membership is the only hypothesis, and it is *decidable data* about the registry rather than
-a proof obligation about the rule. -/
-example {S T : Fam} {R : List (Clink S T)} {c : Clink S T} (hc : c ∈ R)
-    (hform : ∀ F : Fam, c.form F → ∀ κ Γ I (n : Int), F.judge κ Γ I (.int n) .int κ Γ I) :
-    ∀ κ Γ I (n : Int), (JudgeC R).judge κ Γ I (.int n) .int κ Γ I := by
-  intro κ Γ I n F hF
-  exact hform F (hF c hc) κ Γ I n
+No generic closure lemma exists and there cannot be one: a Horn rule mentions the judgment
+**contravariantly** in its premises, so `c.form` is not monotone in `F` and `Closed R (JudgeC R)`
+has no proof uniform in `c`. It is not needed — see the worked derivations in
+`Denote/Typed/Clink.lean` §5. -/
 
 end Ratchet.Denote
