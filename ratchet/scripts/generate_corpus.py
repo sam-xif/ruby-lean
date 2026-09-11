@@ -2280,6 +2280,21 @@ R("iter-block-next-escapes-unsafe", 16,
   's = 0\n[1, 2].each do |y|\n  s = "a"\n  next if y == 2\n  s = 1\nend\ns + 1\n',
   expect_validate=False, false_reason="unsafe_program")
 
+R("while-break-escapes-unsafe", 16,
+  "**\u00a7F24 \u2014 \u00a7F23's shape at `break`.** `break` leaves the *loop* where `next` "
+  "leaves the iteration, and `Judge.while'`'s `\u0393b = \u0393` is read at the body's end just "
+  "the same, so the loop can exit with `x : String` while the rule concludes the incoming "
+  "`x : Integer`. Same premise, different escape.",
+  'i = 0\nx = 1\nwhile i < 2\n  i = i + 1\n  x = "s"\n  break if i == 2\n  x = 2\nend\nx + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
+
+R("iter-block-break-escapes-unsafe", 16,
+  "**\u00a7F24's second door.** `break` inside an `each` block ends the *call*, so the local's "
+  "type after it is the one the aborted iteration left behind \u2014 not the block body's "
+  "outgoing one that `capIntact` was read at.",
+  's = 0\n[1, 2].each do |y|\n  s = "a"\n  break if y == 1\n  s = 1\nend\ns + 1\n',
+  expect_validate=False, false_reason="unsafe_program")
+
 def main():
     os.makedirs(CORPUS_DIR, exist_ok=True)
     for old in os.listdir(CORPUS_DIR):

@@ -13,7 +13,7 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
-## Checker status: **178 rungs of 256 — tier 13 complete, tiers 14–17 open**
+## Checker status: **178 rungs of 258 — tier 13 complete, tiers 14–17 open**
 
 `Ratchet/Validate.lean`'s `validate` covers **every tier of the ladder**, tier 13 whole, and a
 good half of tiers 14–17: the eight literals,
@@ -56,7 +56,9 @@ middle* — so `while …; x = "s"; next if c; x = 2; end; x + 1` was certified 
 CRuby `TypeError`. Fixed by a `nxtPrefixOk body` premise on both rules (*a `next` may only occur
 before anything has assigned*, so the escape environment **is** the incoming one the outgoing
 premise pins). Both witnesses are corpus rungs and both are now rejected; `ctl-next` still climbs.
-Permanent negatives: **23**.
+Permanent negatives: **25** — the other two are §F24, the same question asked at `break`, where
+`validate` **already** rejects both witnesses (it has no `break` rule in either position); they are
+on file as the regression pin for the day one is written.
 
 **Clink 46 made it 178 of 235**, and the three new rungs are a *soundness* fix rather than
 coverage: the semantic ratchet found `Judge.vasgn` accepting a type-stuck program

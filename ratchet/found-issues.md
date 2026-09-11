@@ -1854,3 +1854,31 @@ Three notes on the fix, because each was a decision:
 **Known limitation, inherited not introduced**: `asgnFree` is syntactic, so a `next` after a call
 to a closure that assigns a captured local is still accepted — §F13's hole, the fifteenth stall
 point's, unchanged here.
+
+
+## §F24 — the same shape at `break`, **checked and not a bug** *(negative result, pinned)*
+
+§F23's reasoning applies verbatim to `break`: it leaves the *loop* (or, in a block, the *call*)
+where `next` leaves the iteration, and `Judge.while'`'s `Γb = Γ` / `Judge.iterBlock`'s `capIntact`
+are read at the body's end just the same. Both witnesses were written and run —
+
+```ruby
+i = 0; x = 1
+while i < 2
+  i = i + 1; x = "s"
+  break if i == 2
+  x = 2
+end
+x + 1                            # CRuby: TypeError
+
+s = 0
+[1, 2].each { |y| s = "a"; break if y == 1; s = 1 }
+s + 1                            # CRuby: TypeError
+```
+
+— and **`validate` rejects both already**, because it has no rule that types a `break` in either
+position (`ctl-break` is an unclimbed rung). So this is a *negative* finding, and the two programs
+are on file as corpus rungs (`while-break-escapes-unsafe`, `iter-block-break-escapes-unsafe`,
+tier 16, `unsafe_program`) for one reason: **they are the regression pin for the day a `break`
+rule is written.** The `nxtPrefixOk` premise §F23 added says nothing about `.brk`, so that rule
+will need the same treatment, and these two rungs will say so.

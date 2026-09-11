@@ -7512,14 +7512,25 @@ guard. Nothing else moved.
 to a closure that assigns a captured local is still accepted — §F13's hole, the fifteenth stall
 point's, unchanged.
 
+### …and the same question at `break`, which is a negative result worth pinning
+
+§F23's reasoning applies verbatim to `break` — it leaves the loop (or, in a block, the call) where
+`next` leaves the iteration, and both rules read their premise at the body's end just the same.
+Both witnesses were written and run against CRuby (both `TypeError`), and **`validate` rejects
+them already**: it has no rule that types a `break` in either position. So `found-issues.md` §F24
+is a *negative* finding, and the two programs are on file (`while-break-escapes-unsafe`,
+`iter-block-break-escapes-unsafe`) as **the regression pin for the day a `break` rule is
+written** — `nxtPrefixOk` says nothing about `.brk`, and those rungs will say so.
+
 ### State
 
 Semantic ratchet **48 of 83**, unmoved, denominator still 83 (a premise is not a rule). Syntactic
-ratchet **178 of 256** — the two new rungs are permanent negatives, so the climbed count is
+ratchet **178 of 258** — the two new rungs are permanent negatives, so the climbed count is
 unchanged and the denominator grew by the two witnesses; `expect_validate` mismatches **35**,
 unchanged; corpus agreement **256/256**; `checkrungs` **177/177 + 148/148**. `lake build` clean,
 no `sorry`, axiom-clean. Changed: `Ratchet/Judge.lean` (`nxtFree`/`asgnFree`/`nxtPrefixOk` and the
 two premises), `Ratchet/Validate.lean` (the two guards), `Ratchet/Proof/ChkSound.lean` (two arms),
-`scripts/generate_corpus.py` + `corpus/` (the two witnesses), `found-issues.md` (§F23), `AGENTS.md`.
+`scripts/generate_corpus.py` + `corpus/` (four witnesses: §F23's two, which the fix now rejects,
+and §F24's two, which were already rejected), `found-issues.md` (§F23, §F24), `AGENTS.md`.
 **This is the one edit to `Ratchet/` this session, and it is the standing exception: a genuinely
 unsound rule, reported, witnessed in the corpus, then fixed.**
