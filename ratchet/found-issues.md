@@ -2026,3 +2026,103 @@ syntax for. Where the two differ:
 distinguish "the loop rule refused this" from "this rung is not climbed yet", and eleven of
 the twenty-four round-one rejections turned out to be the latter.
 
+## §F27 — `SemJudge` implies stuck-freedom is **false**, refuted; and what would prove it instead *(refutation on file)*
+
+Raised as a question: `SemJudge`'s obligation has `Evals` on the left, so an expression whose
+runs never reach `.value` satisfies it vacuously, and if such an expression is also
+`typeStuck` then "well-typed implies safe" is false. **Correct**, and now proved rather than
+documented: `Denote/Sem/NoProgress.lean`.
+
+### Status before this
+
+Three places already record the gap and none of them claims the implication:
+`Denote/Adequacy.lean`'s `StuckFreeTarget` is annotated "Not implied by `AdequacyTarget`";
+`Denote/Sem/Judge.lean`'s choice 1 and `Denote/Sem/State.lean`'s `Evals` docstring both say
+partial correctness is deliberate; `../docs/semantics/answer-typed-judgments.md` §2.1 states
+it as the diagnosis ("no progress content at all"). So there was no false theorem *asserted* —
+but there was no refutation either, and this package's rule is that a named `Prop` is one that
+can be attacked (`not_KontFrame`, `not_BuiltinsSeal`, `ctx_law3_fails`).
+
+### The refutation, and why the obvious witnesses fail **[M]**
+
+`SemJudgeImpliesStuckFree` is the claim; `not_semJudgeImpliesStuckFree` refutes it, axiom-clean
+and conditional only on two `#guard`ed `Bool`s (`bootOkB`, `brkBadStuckB`). Getting a witness
+took three attempts and the failures are the interesting part:
+
+| candidate | `Evals` unsatisfiable? | `typeStuck`? | refutes? |
+|---|---|---|---|
+| a gated expression (`regexpLit`, §2.1's own example) | yes, structurally | **no** — `.unsupported` is not type-stuck | no |
+| `break` with no operand | yes (`jump_empty_never_value`) | **no** — `.stuck`, not `.uncaught` | no |
+| `1.foo` alone | **no** — see below | yes | no |
+| **`break(1.foo)`** | **yes, for any operand** | **yes** | **yes** |
+
+`.brk (some f)` can never return a value *whatever `f` does*: if `f` returns, the `jumpValK`
+frame converts the value to a `brkJ`; if `f` escapes, the escape passes through; either way a
+jump meets the empty continuation. So `evals_brk_never` needs **no hypothesis about the heap**,
+which is what makes `SemJudge` hold unconditionally at *every* type — `semJudge_brk` proves
+the same expression is a semantic judgment at `.int`, `.cls "String"` and `.never`
+simultaneously.
+
+**And the third row is a second finding.** The obvious witness — just an expression that gets
+stuck — does not work, because `StateOk ctx0 [] .ivar0 m` does **not** entail that `m` lacks an
+`Integer#foo`: `MethodsExact` permits any method marked `fromPrelude`, and `NameFreeOk`
+sharpens that to "absent" only on the fixed list of names the rules reason from, which does not
+include `"foo"` (`Denote/Sem/Frame.lean` §2 — `StateOk` is a lower bound plus *partial*
+exactness). Routing the vacuity through a `break` sidesteps the heap entirely. So the cost of
+`StateOk`'s partial exactness is measurable here too: it makes the refutation harder, not the
+theorem truer.
+
+### What would prove type safety instead **[M, skeleton]**
+
+`Denote/Sem/Invariant.lean`. The answer is not a better `SemJudge` — `typeStuck` is a property
+of a *reachable machine* and `SemJudge` is a property of an expression run from an **empty
+continuation**, so the gap is the continuation, and closing it needs an invariant over whole
+configurations.
+
+* **The reduction is proved**: `SafetyObligations` (two obligations — `preserved` and
+  `noBadStep`) plus `InvInit` give `stuckFree_of_obligations`, which lands exactly on
+  `StuckFreeTarget`'s shape. Note what is *not* an obligation: progress in the usual sense.
+  Ruby programs legitimately raise, diverge and gate, so the second obligation is a *bad-step
+  exclusion*, which is why divergence is free.
+* **The invariant is three components**: `StateOk` (**built**, reused as-is), `CtlOk` (three
+  arms, one per `Ctl` — and the last two are the two arms of `Answer`, so this component is a
+  definition rather than a design problem), and `KontOk` (**the work**).
+* **Two things fix `KontOk`'s shape.** It *cannot* be `SafeKont`: `safe_pushK` requires
+  `CatchFree m.kont`, and a reachable machine can have a `catchK`, so the answer-typed
+  decomposition is a per-rule tool and not a whole-machine invariant (§F26's companion finding
+  lives in `Denote/Sem/AnswerCatch.lean`). And therefore `KontOk` must carry the **live
+  `catch` tags** as an index, at which point `hasCatcher`'s whole-stack read becomes local and
+  `CatchFree` is not needed at all. That index is Ueno et al.'s exception context `T` and
+  Hazel's protocol — the design lands where the literature said, arrived at backwards.
+* **One thing the invariant must say that no `SemJudge` obligation does**: the machine carries
+  `RubyCore.Expr` and the judgment is over `Ratchet.Expr`, so `CtlOk`'s `.eval` arm has to
+  assert the expression in flight is *the image of* a judged one (`toRuby e₀ = e`).
+  Preservation then owes "an `Inv` machine never steps to an out-of-image expression".
+
+### The cost, measured — and it is a negative result **[V]**
+
+`probes/kont_census.lean` walks every committed corpus program under the real `stepFn` from the
+prelude-booted heap and collects every continuation frame ever pushed:
+
+```
+corpus programs walked: 259; targeting validate=true: 213
+Kont constructors: 49
+  pushed by SOME corpus program: 36
+  pushed by a program the judgment is meant to accept: 36     <- identical
+  never reached (13): raiseNewK includeK defsK sclassK scopedClassDefK forStartK forBodyK
+                      yieldSplatK superSplatK catchK definedRecvK definedCpathK definedGuardK
+```
+
+The hope was that the judged fragment (25 of `Expr`'s heads, tier ≤16) would touch far fewer
+than 49 frames and shrink `KontOk` accordingly. **It does not**: 36 either way, because `Judge`
+covers `send` and the send spine reaches most of the frame set on its own
+(`argsK`/`argsSplatK`/`kwPairK`/`kwSplatK`/`kwDynKeyK`/`kwDynValK` from `startArgs`;
+`recvK`/`frameK`/`blkFrameK`/`blkCoerceK`/`iterK`/`newK` from `finishSend`). So `KontOk` is a
+36-constructor relation and `preserved` is 48 `evalExpr` arms + 36 frames × 2 answer clauses.
+That is the number to plan against.
+
+Two smaller results from the same run: **`catchK` is never reached by any rung**, so the tag
+index the design requires would be built untested — worth a corpus rung before it is worth a
+constructor; and the 13 unreached frames are a coherent set (five declaration frames, the two
+`for` frames, the two splat-forwarding frames, the four `catch`/`defined?` frames), so the
+census doubles as a coverage report on the corpus.
