@@ -1,0 +1,10 @@
+{
+  "id": "class-setter-method",
+  "tier": 7,
+  "description": "grow reassigns @size to a new value derived from the old one -- an ivar vasgn whose right-hand side reads the same ivar.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": true
+}

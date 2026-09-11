@@ -1,3 +1,4 @@
+# typed: true
 x = 1
 f = lambda { x = nil; true }
 if x && f.call

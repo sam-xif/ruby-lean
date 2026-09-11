@@ -1,0 +1,11 @@
+{
+  "id": "proc-return-escapes-unsafe",
+  "tier": 9,
+  "description": "**A candidate UNSAFE program, and \u00a7F19\u2019s first counterexample.** `bodyResult` rewrites a body that is exactly `return e` to `e`, so `closCall` types the call as `e`\u2019s type. That is right for a **lambda**, whose `return` is local to it (rung `lambda-explicit-return`), and wrong for a **proc**, whose `return` returns from the *enclosing method*: `p.call` never comes back, and `f`\u2019s value is `\"s\"` rather than the `1` the judgment records. `Judge.lambdaLit` admitted `lambda` and `proc` alike, so both got the same `Ty.clos` and `closCall` could not tell them apart. Fixed by `procRetOk`, which refuses a `proc` whose body is exactly `return e`.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 1,
+  "annotated": true,
+  "sorbet_note": "Expected `Integer` but found `String(\"s\")` for method result type"
+}

@@ -1,3 +1,6 @@
+# typed: true
+extend T::Sig
+sig { params(n: Integer).returns(Integer) }
 def fact(n)
   if n <= 1
     1

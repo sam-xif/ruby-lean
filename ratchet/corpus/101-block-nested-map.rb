@@ -1,1 +1,2 @@
+# typed: true
 [[1, 2], [3, 4]].map { |row| row.map { |x| x + 1 } }

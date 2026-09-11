@@ -1,3 +1,4 @@
+# typed: true
 a = [3]
 x = a[0]
 if x && x > 1

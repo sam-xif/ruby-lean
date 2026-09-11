@@ -1,3 +1,4 @@
+# typed: true
 module Runner
   def self.twice
     yield(1) + yield(2)

@@ -1,0 +1,10 @@
+{
+  "id": "div",
+  "tier": 2,
+  "description": "10 / 2 : Int.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

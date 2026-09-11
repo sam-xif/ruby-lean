@@ -1,0 +1,10 @@
+{
+  "id": "const-attr-reader",
+  "tier": 13,
+  "description": "`attr_reader :x, :y` -- the slice's other definition form (14 sites), and one the ladder has never had: a method that exists because a *call in a class body* created it. Tier 10 taught the checker that `define_method` does this; `attr_reader` is the same move with a fixed body (return the ivar of the same name), so the rule is a row in the class-body interpretation rather than anything new in `Judge`.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

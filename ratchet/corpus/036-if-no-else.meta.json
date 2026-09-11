@@ -1,0 +1,10 @@
+{
+  "id": "if-no-else",
+  "tier": 4,
+  "description": "if true then 1 end (no else): types as nilable(Int) via Ty.mkNilable.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

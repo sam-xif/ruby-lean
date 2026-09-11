@@ -1,0 +1,11 @@
+{
+  "id": "param-missing-keyword-unsafe",
+  "tier": 14,
+  "description": "An UNSAFE program: `build(type: \"brew\")` against `def build(type:, name:)` raises ArgumentError (\"missing keyword: :name\"). The control for keyword matching being by name: a checker that only counted arguments certifies it, and counting is exactly what the positional rule does. Permanent negative target.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 1,
+  "annotated": true,
+  "sorbet_note": "Missing required keyword argument `name` for method `Object#build`"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "bad-plus",
+  "tier": 2,
+  "description": "1 + true is real, genuinely ill-typed Ruby: it raises TypeError when run, unconditionally. No certificate should ever certify it -- a checker that did would be unsound. Permanent negative target.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Expected `Integer` but found `TrueClass` for argument `arg0`"
+}

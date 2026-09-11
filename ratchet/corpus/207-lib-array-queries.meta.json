@@ -1,0 +1,10 @@
+{
+  "id": "lib-array-queries",
+  "tier": 17,
+  "description": "`any?`/`all?` with a block, `include?`, `empty?` -- the four predicates, in one rung because they share a row shape (higher-order for the first two, total for the last two) and all four appear in `cvss.rb#parse` alone.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

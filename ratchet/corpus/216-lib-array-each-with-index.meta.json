@@ -1,0 +1,10 @@
+{
+  "id": "lib-array-each-with-index",
+  "tier": 17,
+  "description": "`each_with_index` with a two-parameter block -- the block's parameters have *different* types (element, `Integer`), which tier 9's iterator rows never needed: `inject` has two parameters but both come from the same place.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

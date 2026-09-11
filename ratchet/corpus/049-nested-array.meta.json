@@ -1,0 +1,10 @@
+{
+  "id": "nested-array",
+  "tier": 5,
+  "description": "[[1, 2], [3, 4]] : an Array of (an Array of Int).",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

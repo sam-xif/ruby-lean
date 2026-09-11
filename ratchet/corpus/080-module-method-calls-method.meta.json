@@ -1,0 +1,10 @@
+{
+  "id": "module-method-calls-method",
+  "tier": 8,
+  "description": "self.describe calls self.value, another singleton method on the same module, via an implicit-self `vcall` -- self bound to Ty.clsOf \"M\" inside a `self.` method, resolved the same way class-method-calls-method's `area` was.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": false
+}

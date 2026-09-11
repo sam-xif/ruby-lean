@@ -1,0 +1,10 @@
+{
+  "id": "const-frozen-array",
+  "tier": 13,
+  "description": "NAMES = [\"a\", \"b\"].freeze; NAMES[0] -- the shape of every table in the slice (`BASE_METRICS`, `TAG_PATTERNS`, `LOWERCASE_PATH_HOSTS`). Two demands: `Object#freeze` returns the receiver at the receiver's own type, and the constant's type is the *initialiser's* type, which is where constant inference differs from a local -- there is one assignment, so there is a principal type and no join.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

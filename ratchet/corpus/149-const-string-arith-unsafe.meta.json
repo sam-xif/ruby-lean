@@ -1,0 +1,11 @@
+{
+  "id": "const-string-arith-unsafe",
+  "tier": 13,
+  "description": "An UNSAFE program: SIZE = \"3\"; SIZE + 1 really raises TypeError. The control for constant *inference* -- a checker that gave every constant `.any` rather than its initialiser's type would certify it, and `.any` is the tempting shortcut here precisely because the slice's constants are tables. Permanent negative target.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Expected `String` but found `Integer(1)` for argument `arg0`"
+}

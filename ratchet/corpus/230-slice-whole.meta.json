@@ -1,0 +1,12 @@
+{
+  "id": "slice-whole",
+  "tier": 19,
+  "description": "**The whole slice, as one program.** All eight files linked from `pkg_version.rb`, `vulns/vulnerability.rb` and `vulns/identify.rb` (8 spliced, 0 thunked, 0 external requires, 0 cycles), driven by `homebrew/slice-driver/driver.rb`: an OSV advisory with a `SEMVER` range and an `ECOSYSTEM` range over the same package, ten installed versions through `range_status`, the two orderings compared on the pairs where they differ, CVSS scoring, purl construction and six source URLs identified. ~2,180 lines. The driver is referenced rather than copied -- it is the demonstration `homebrew/slice-driver/` already runs, now also a rung.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 124,
+  "annotated": false,
+  "sorbet_note": "Can't make method alias from `eql?` to non existing method `==`",
+  "known_upstream_failure": "strip: sig_strip.rb: unstrippable Sorbet constructs remain: T::Helpers, T, T::Struct, T.nilable, T::Boolean"
+}

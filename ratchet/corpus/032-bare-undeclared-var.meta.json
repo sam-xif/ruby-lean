@@ -1,0 +1,11 @@
+{
+  "id": "bare-undeclared-var",
+  "tier": 3,
+  "description": "A bare `x`, never assigned anywhere, desugars to a `vcall` (a method-call attempt), not a `var` read. If run, it raises NameError -- but NameError is *not* in the type-error family (NoMethodError/ArgumentError/TypeError) this project's notion of type safety is defined over, exactly like ZeroDivisionError isn't (see tier 2's div rung in the old design notes). So by this project's own precise definition, this program is type-safe even though it crashes -- type safety here is not the same as crash-freedom. Claimed `Ty.any` on the vcall node, since it never actually produces a value for anything to depend on.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Method `x` does not exist on `T.class_of(<root>)`"
+}

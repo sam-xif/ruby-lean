@@ -1,0 +1,10 @@
+{
+  "id": "lib-hash-key-p",
+  "tier": 17,
+  "description": "h.key?(\"a\") -- the guard `cvss.rb#valid_values?` is eight copies of. Total, `Bool`.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

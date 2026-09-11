@@ -1,0 +1,11 @@
+{
+  "id": "lib-array-sort-by-max-by",
+  "tier": 17,
+  "description": "`sort_by` and `max_by` -- tier 9 has `sort_by`; `max_by` is its `nilable`-returning sibling (nil on an empty receiver), and `range_status` ends with `past_fixes.max_by { |v| Version.new(v) }` feeding a field that is declared nilable for exactly that reason.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Method `+` does not exist on `NilClass` component of `T.nilable(String)`"
+}

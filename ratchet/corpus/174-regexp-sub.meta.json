@@ -1,0 +1,10 @@
+{
+  "id": "regexp-sub",
+  "tier": 15,
+  "description": "\"v1.2.3\".sub(/\\Av/, \"\") -- `String#sub`, seven sites in the slice and the exact call `vulnerability.rb`'s `normalize_version` makes on every version string that enters the decision core. Total, `String` in and `String` out, whether or not it matched.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

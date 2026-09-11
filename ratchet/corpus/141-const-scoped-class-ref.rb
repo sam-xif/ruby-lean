@@ -1,3 +1,4 @@
+# typed: true
 module M
   class Box
     def initialize(v)

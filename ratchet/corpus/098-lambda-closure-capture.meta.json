@@ -1,0 +1,10 @@
+{
+  "id": "lambda-closure-capture",
+  "tier": 9,
+  "description": "`n = 10; add_n = ->(x) { x + n }` -- the block body mentions a local bound in the *enclosing* scope. The block's arrow says nothing about `n`: typing the body requires the environment at the point of the literal, not just its params, which is the first rung on this ladder where a block cannot be typed in isolation.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

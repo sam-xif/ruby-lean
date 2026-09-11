@@ -1,0 +1,10 @@
+{
+  "id": "class-no-initialize",
+  "tier": 7,
+  "description": "A class with no initialize at all -- real Ruby's default #new takes no arguments and returns the new instance; a rebuilt `.new` dispatch rule needs this as a fallback default when the class declares no `initialize`, not an error.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

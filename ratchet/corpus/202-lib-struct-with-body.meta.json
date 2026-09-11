@@ -1,0 +1,10 @@
+{
+  "id": "lib-struct-with-body",
+  "tier": 17,
+  "description": "The same with a **block** defining extra methods -- `RangeStatus`'s `affected?`/ `fixed?` exactly. The block body is a class body, so the checker has to judge it in a `self` typed as the class it is in the middle of manufacturing.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": false
+}

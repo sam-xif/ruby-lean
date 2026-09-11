@@ -1,3 +1,4 @@
+# typed: true
 module M
   def self.value
     21

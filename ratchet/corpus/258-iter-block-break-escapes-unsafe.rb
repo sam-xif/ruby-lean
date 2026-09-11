@@ -1,3 +1,4 @@
+# typed: true
 s = 0
 [1, 2].each do |y|
   s = "a"

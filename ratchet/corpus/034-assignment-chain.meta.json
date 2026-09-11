@@ -1,0 +1,10 @@
+{
+  "id": "assignment-chain",
+  "tier": 3,
+  "description": "x = 1; y = x + 1; z = y + 1; z : Int -- a four-statement chain.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

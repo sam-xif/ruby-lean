@@ -1,0 +1,10 @@
+{
+  "id": "lib-spaceship-int",
+  "tier": 17,
+  "description": "`1 <=> 2` -- the builtin row underneath the previous rung. Returns `Integer`, and on mismatched types returns **nil**, which is why `pkg_version.rb`'s `<=>` is declared `T.nilable(Integer)` and why every caller in the slice checks. One row; two rungs, because the mixin and the primitive fail independently.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

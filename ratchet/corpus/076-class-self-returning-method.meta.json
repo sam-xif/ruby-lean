@@ -1,0 +1,10 @@
+{
+  "id": "class-self-returning-method",
+  "tier": 7,
+  "description": "myself returns bare `self`; the result is then chained into another method call -- typed as whatever self is bound to for an instance method (Ty.cls \"Point\"), so the `self'` node needs the enclosing method's receiver type in scope.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 3,
+  "annotated": true
+}

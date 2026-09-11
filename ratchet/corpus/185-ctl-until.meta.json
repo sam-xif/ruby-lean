@@ -1,0 +1,10 @@
+{
+  "id": "ctl-until",
+  "tier": 16,
+  "description": "`until` -- sugar for `while !cond`, and the rung is here to pin that the desugarer does that rather than emitting a second head.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

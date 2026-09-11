@@ -1,0 +1,11 @@
+{
+  "id": "xc-block-retypes-ivar",
+  "tier": 11,
+  "description": "An UNSAFE program: a block retypes an *instance variable* rather than a local. `run { @x = \"s\" }` then `@x + 1` really raises TypeError. The ivar twin of xc-block-retypes-capture, and it checks a different premise: the block body is judged with the enclosing ivar spine, and closCall/yieldExpr require that spine to come back unchanged. Permanent negative target.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 3,
+  "annotated": true,
+  "sorbet_note": "Method `run` uses `yield` but does not mention a block parameter"
+}

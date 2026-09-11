@@ -1,0 +1,12 @@
+{
+  "id": "slice-version",
+  "tier": 18,
+  "description": "`version.rb` + a driver over the token hierarchy, the ordering it induces, and `Version.detect` across ten source-URL shapes. The largest file in the slice: nine classes, 63 `def`s, a 30-entry `VERSION_PARSERS` table built by interpolating six regexp fragments into each other, and the `<=>` that the whole vulnerability decision rests on whenever an advisory range is `ECOSYSTEM`-typed. Everything below this rung in the tier is a proper part of what it needs.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 74,
+  "annotated": false,
+  "sorbet_note": "Method `null?` does not exist on `NilClass` component of `T.nilable(Version::Token)`",
+  "known_upstream_failure": "strip: sig_strip.rb: unstrippable Sorbet constructs remain: T::Helpers, T"
+}

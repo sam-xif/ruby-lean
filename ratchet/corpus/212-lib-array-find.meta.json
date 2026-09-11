@@ -1,0 +1,10 @@
+{
+  "id": "lib-array-find",
+  "tier": 17,
+  "description": "`find` -- `nilable elem`, because there may be no match. `advisory_url` is `references.find { ... }&.dig(\"url\")`, i.e. this rung composed with safe navigation and `dig`, so all three have to answer nilable for that one line to type.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

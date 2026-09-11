@@ -1,0 +1,10 @@
+{
+  "id": "xc-module-yield",
+  "tier": 11,
+  "description": "A module singleton method that yields: Runner.twice { |x| x * 10 } : Int. Tier 8's callSMethod does not set Ctx.blockTy, and there is no rule for an explicit-receiver send with a block, so this fails for the same reason xc-class-block-param does -- one tier over. Worth having separately because the fix for a `.clsOf` receiver is not literally the fix for an `.inst` one.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": false
+}

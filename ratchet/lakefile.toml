@@ -53,6 +53,12 @@ root = "SemLadder"
 name = "ratchet"
 root = "Main"
 
+# The typed ladder's runner: stage 5 of `scripts/build_corpus.py`'s pipeline, the only
+# trusted one. See `MainTyped.lean`.
+[[lean_exe]]
+name = "ratchetd"
+root = "MainTyped"
+
 [[require]]
 name = "rubycore"
 path = "../lean"

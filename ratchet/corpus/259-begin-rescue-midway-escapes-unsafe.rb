@@ -1,3 +1,4 @@
+# typed: true
 x = 1
 begin
   x = "s"

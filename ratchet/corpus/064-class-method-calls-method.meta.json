@@ -1,0 +1,10 @@
+{
+  "id": "class-method-calls-method",
+  "tier": 7,
+  "description": "A method (describe) calling another method (area) on the same object via an implicit-self `vcall` -- resolving that requires a rebuilt `vcall` rule to consult the current `self` type, not just a top-level function table.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 3,
+  "annotated": true
+}

@@ -1,3 +1,6 @@
+# typed: true
+extend T::Sig
+sig { returns(Integer) }
 def lambda
   5
 end

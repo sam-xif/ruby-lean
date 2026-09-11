@@ -1,0 +1,11 @@
+{
+  "id": "regexp-match-captures",
+  "tier": 15,
+  "description": "m = \"1.2.3\".match(/(\\d+)\\.(\\d+)/); m[1] + m[2] -- `String#match` answers a `MatchData` **or nil**, and `MatchData#[]` answers a `String` or nil. So the honest type is `nilable`, twice over, and this program is safe only because the match succeeds -- which no `Ty` here can say. Expect this to be the tier's hard rung: it is `narrow-nilable-and-union`'s problem in the slice's own idiom, and `semver.rb`, `identify.rb` and `pkg_version.rb` all write it.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Method `[]` does not exist on `NilClass` component of `T.nilable(MatchData)`"
+}

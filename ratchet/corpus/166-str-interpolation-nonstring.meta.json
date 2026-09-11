@@ -1,0 +1,10 @@
+{
+  "id": "str-interpolation-nonstring",
+  "tier": 15,
+  "description": "\"n = #{n + 1}\" over an Integer -- the point of the previous rung, made unavoidable: the interpolated subterm has a non-String type and the result is a String anyway. A checker that typed interpolation as `String#+` would reject it.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

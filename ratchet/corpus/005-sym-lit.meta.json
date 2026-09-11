@@ -1,0 +1,10 @@
+{
+  "id": "sym-lit",
+  "tier": 1,
+  "description": ":ok : Sym.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

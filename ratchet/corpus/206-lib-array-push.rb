@@ -1,3 +1,4 @@
+# typed: true
 xs = []
 xs << 1
 xs << 2

@@ -1,0 +1,10 @@
+{
+  "id": "module-nested-call-chain",
+  "tier": 8,
+  "description": "M.greeting.length chains a module call into a builtin method call on its result, so the `.length` rule (tier 2's str-length) has to fire on a receiver type that came out of user-defined dispatch rather than a literal.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": false
+}

@@ -1,0 +1,10 @@
+{
+  "id": "regexp-gsub-block",
+  "tier": 15,
+  "description": "\"abc\".gsub(/[abc]/) { |c| c.upcase } -- `gsub` with a **block**, which is a higher-order `PrimSig` row of exactly the kind tier 9c introduced for the iterators: the block is called with a `String` and its result must be one. `purl.rb`'s `encode` and `identify.rb`'s `decode` are both this, and both are on the path of every purl the slice emits.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

@@ -1,0 +1,11 @@
+{
+  "id": "elsif-chain",
+  "tier": 4,
+  "description": "if/elsif/else desugars to nested if' nodes; a three-way chain with every branch Int types fine via nested joinTy calls.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "This code is unreachable"
+}

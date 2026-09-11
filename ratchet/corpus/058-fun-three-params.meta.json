@@ -1,0 +1,10 @@
+{
+  "id": "fun-three-params",
+  "tier": 6,
+  "description": "def sum3(a, b, c) = a + b + c; sum3(1, 2, 3) : Int -- three required params, each a separate nested send.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

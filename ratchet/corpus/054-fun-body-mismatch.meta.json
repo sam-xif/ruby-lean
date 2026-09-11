@@ -1,0 +1,11 @@
+{
+  "id": "fun-body-mismatch",
+  "tier": 6,
+  "description": "def bad(x) = x + true; bad(1) -- the body really does raise NoMethodError when called (Int has no matching + for Bool). The call site looks fine; the error is inside a body that is only reached by dispatch, so a checker has to look through the def to see it. Permanent negative target.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 1,
+  "annotated": true,
+  "sorbet_note": "Expected `Integer` but found `TrueClass` for argument `arg0`"
+}

@@ -1,0 +1,10 @@
+{
+  "id": "class-method-with-param",
+  "tier": 7,
+  "description": "class Counter; def initialize(n); @n = n; end; def add(k); @n + k; end; end; c = Counter.new(10); c.add(5) -- an instance stored in a local, then a method call taking its own argument.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": true
+}

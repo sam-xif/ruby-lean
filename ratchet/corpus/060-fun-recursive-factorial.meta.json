@@ -1,0 +1,10 @@
+{
+  "id": "fun-recursive-factorial",
+  "tier": 6,
+  "description": "def fact(n) = if n <= 1 then 1 else n * fact(n - 1); fact(4) : Int -- fact calls itself by name, so its signature is needed to check the very body it is inferred from. Whatever replaces the old declaration table has to break that cycle (assume-then-verify, or a fixpoint), which is the real content of this rung.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

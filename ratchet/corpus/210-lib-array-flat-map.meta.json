@@ -1,0 +1,10 @@
+{
+  "id": "lib-array-flat-map",
+  "tier": 17,
+  "description": "`flat_map` -- `fixed_versions` is two nested ones. A higher-order row whose result type is the block's *element* type, which is a third answer beside tier 9c's three (`map`'s block return, `each`'s receiver, `select`'s element).",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

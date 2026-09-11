@@ -1,3 +1,4 @@
+# typed: true
 module Logger
   def speak
     "logged: " + super

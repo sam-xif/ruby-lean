@@ -1,0 +1,10 @@
+{
+  "id": "block-select-with-if",
+  "tier": 9,
+  "description": "A predicate block whose body is a whole `if` expression: `[1,2,3,4].select { |x| if x > 2 then true else false end }`. Combines tier 4's join-the-branches rule *inside* a block body (both branches Bool, so the block is arrow_of([Int], Bool)) with Array#select's rule, which unlike map returns arrayOf(the *receiver's* element type) regardless of the block's return type.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

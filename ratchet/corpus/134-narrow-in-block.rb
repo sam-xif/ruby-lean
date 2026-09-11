@@ -1,3 +1,4 @@
+# typed: true
 t = [1, 2]
 s = 0
 t.each do |x|

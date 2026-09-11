@@ -1,0 +1,11 @@
+{
+  "id": "nilq-narrow-redefined-unsafe",
+  "tier": 12,
+  "description": "**A candidate UNSAFE program, and \u00a7F14\u2019s counterexample.** `x.nil?` is a *dispatch*, and `nil?` is an ordinary method name. Redefining it on `NilClass` sends a `nil` down the **else** branch, where `nonNilTy .nilT` is `.never` \u2014 so everything in that branch is certified, and it runs `nil + 1`. `Judge.nilQuery` guards its own typing of `x.nil?` with `NilQSafe`, which is about the receiver\u2019s *shape*; the narrowing needs the *name*, which is what `nameFree \u03ba \"nil?\"` supplies.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 1,
+  "annotated": true,
+  "sorbet_note": "This code is unreachable"
+}

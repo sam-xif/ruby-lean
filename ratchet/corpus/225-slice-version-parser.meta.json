@@ -1,0 +1,12 @@
+{
+  "id": "slice-version-parser",
+  "tier": 18,
+  "description": "`version/parser.rb` + a driver over the parser hierarchy. The slice's one piece of classical OO -- an `abstract!` base, `RegexParser` holding a regexp and an optional block, and two subclasses that differ only in `process_spec`. Tier 7's `super`, tier 10's mixin ancestry and tier 14's `&block` parameter, over a receiver whose method is found three classes up. Also the file that exposed the boot-stub gap the ratchet had to close: with only `Object#blank?` stubbed, `nil.blank?` is *false* and `RegexParser#parse` is unusable -- see `scripts/build_slice_rungs.py`'s `BLANK_NIL_STUB`.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 16,
+  "annotated": false,
+  "sorbet_note": "Attempting to instantiate abstract class `Version::Parser`",
+  "known_upstream_failure": "strip: sig_strip.rb: unstrippable Sorbet constructs remain: T::Helpers, T"
+}

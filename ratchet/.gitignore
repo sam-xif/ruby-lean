@@ -1,1 +1,4 @@
 .lake/
+# Everything under build/ is derived by scripts/build_corpus.py from corpus/*.rb
+# (sigs, stripped source, AST, derivation). The .rb is the source of truth.
+build/

@@ -1,0 +1,11 @@
+{
+  "id": "regexp-no-match-unsafe",
+  "tier": 15,
+  "description": "An UNSAFE program: `\"abc\".match(/(\\d+)/)[1]` really raises NoMethodError, because `match` answers nil when it does not match. The control for `String#match`'s return being `nilable` rather than `MatchData` -- and the sharpest one on this tier, because the *safe* twin (`regexp-match-captures`) is a program the checker must also accept, so the two together force the narrowing rather than a blanket answer either way. Permanent negative target.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Method `[]` does not exist on `NilClass` component of `T.nilable(MatchData)`"
+}

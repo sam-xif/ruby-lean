@@ -1,0 +1,10 @@
+{
+  "id": "lambda-as-argument",
+  "tier": 9,
+  "description": "The other half of higher-order: a *method parameter* whose type is an arrow. `def apply(f, v); f.call(v); end` has signature arrow_of([arrow_of([Int], Int), Int], Int) -- an arrow nested in a param position rather than a return position -- and the call site passes a lambda literal, so the argument check is arrow-against-arrow.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

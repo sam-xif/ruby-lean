@@ -1575,7 +1575,7 @@ def toRubyCorePairs : List (Expr × Expr) → Option (List (RubyCore.Expr × Rub
 end
 
 def main (args : List String) : IO UInt32 := do
-  let corpusDir : System.FilePath := args.headD "corpus"
+  let corpusDir : System.FilePath := args.headD "corpus-untyped"
   let dirEntries ← corpusDir.readDir
   let files := (dirEntries.map (·.path)).toList.filter (fun p => p.toString.endsWith ".json")
   let rows ← rungs.mapM (checkRung corpusDir files)

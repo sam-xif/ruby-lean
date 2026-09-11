@@ -1,0 +1,10 @@
+{
+  "id": "ctl-begin-rescue-else-ensure",
+  "tier": 16,
+  "description": "All four clauses of `begin` at once. `else` runs only when the body did not raise and `ensure` runs on every path and contributes *nothing* to the value -- two facts a checker gets wrong in opposite directions if it treats the four clauses uniformly.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

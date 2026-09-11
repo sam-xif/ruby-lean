@@ -1,0 +1,11 @@
+{
+  "id": "if-does-not-leak-reassignment",
+  "tier": 4,
+  "description": "x = 1; if true; x = \"hello\"; end; x + 1 -- an UNSAFE program, and the rung that makes environment-joining at an `if` a soundness requirement rather than a precision nicety. The lone branch rebinds x to a String, so `x + 1` really does raise TypeError (verified under CRuby and under the model; that is why this corpus entry agrees). An `if` rule that discarded the branches' environments -- carrying the environment from *before* the if forward, which is what an earlier version of this checker did and what this rung's description used to claim was a harmless simplification -- would see x as Int and certify a program that raises. The correct rule joins the branch environments, giving x : union(Int, String) afterwards, which matches no PrimSig row, so `x + 1` is soundly rejected. The rung's name is kept for continuity with the ladder's history; what it now pins is that the leak MUST be modelled.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Expected `String` but found `Integer(1)` for argument `arg0`"
+}

@@ -1,0 +1,10 @@
+{
+  "id": "nil-eq-nil",
+  "tier": 2,
+  "description": "nil == nil : Bool (both sides Nil).",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

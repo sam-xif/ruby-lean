@@ -1,0 +1,11 @@
+{
+  "id": "slice-purl",
+  "tier": 18,
+  "description": "`vulns/purl.rb` + a driver over construction, per-type normalisation, percent-encoding and structural equality. The slice's smallest *class*: an `initialize` with four keyword parameters (two optional), `attr_reader`, an `alias`, a `case/when` on a String, `self.class` dispatch from an instance method, and a `gsub` with a block. So it is tiers 13, 14, 15 and 16 in one 90-line file, which is what makes it the right second target.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 16,
+  "annotated": false,
+  "sorbet_note": "Cannot call `Homebrew::Vulns::Purl#initialize` with a `Hash` keyword splat because the method has required keyword parameters"
+}

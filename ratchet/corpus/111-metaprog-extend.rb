@@ -1,3 +1,4 @@
+# typed: true
 module Loud
   def shout
     "LOUD"

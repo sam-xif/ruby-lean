@@ -1,0 +1,10 @@
+{
+  "id": "array-heterogeneous",
+  "tier": 5,
+  "description": "[1, \"a\", true] is runtime-safe real Ruby (Ruby arrays are heterogeneous). Ty.arrayOf requires one element type structurally, but Ty.any already exists for exactly this: arrayOf(Ty.any) is expressible today. No language gap -- the array rule needs to join its element types (falling back to `any`) rather than requiring them equal.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

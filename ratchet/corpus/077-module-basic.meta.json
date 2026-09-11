@@ -1,0 +1,10 @@
+{
+  "id": "module-basic",
+  "tier": 8,
+  "description": "module M; def self.foo; 1; end; end; M.foo : Int at runtime.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": false
+}

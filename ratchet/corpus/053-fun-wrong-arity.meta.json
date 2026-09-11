@@ -1,0 +1,11 @@
+{
+  "id": "fun-wrong-arity",
+  "tier": 6,
+  "description": "The same add as simple-fun, called with one argument instead of two: this really does raise ArgumentError when run. Arity is visible in the syntax on both sides, so this is the cheapest soundness regression test in tier 6. Permanent negative target.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 1,
+  "annotated": true,
+  "sorbet_note": "Not enough arguments provided for method `Object#add`. Expected: `2`, got: `1`"
+}

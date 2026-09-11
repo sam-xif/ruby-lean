@@ -1,0 +1,10 @@
+{
+  "id": "simple-assign",
+  "tier": 3,
+  "description": "x = 5; x + 1 : Int -- vasgn's type flows into the following var read.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

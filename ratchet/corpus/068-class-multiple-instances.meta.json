@@ -1,0 +1,10 @@
+{
+  "id": "class-multiple-instances",
+  "tier": 7,
+  "description": "Two independent Point instances, their getX results combined.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": true
+}

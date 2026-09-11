@@ -12,4 +12,4 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 lake build checkrungs
-exec .lake/build/bin/checkrungs corpus
+exec .lake/build/bin/checkrungs corpus-untyped

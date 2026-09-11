@@ -1,0 +1,10 @@
+{
+  "id": "const-frozen-hash",
+  "tier": 13,
+  "description": "The same for a hash. Notable because tier 5 left `Hash` unparameterised (`.cls \"Hash\"`), so `TABLE[\"a\"]` is `.any` -- and the slice reads its frozen tables with `fetch`, whose result then flows into arithmetic (`cvss.rb`'s `AV.fetch(...)` is a Float). A `Hash` with no key/value parameters cannot type that chain, which is the first concrete demand for a parameterised hash type in the whole ladder.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

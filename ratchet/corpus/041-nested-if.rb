@@ -1,3 +1,4 @@
+# typed: true
 if true
   if false
     1

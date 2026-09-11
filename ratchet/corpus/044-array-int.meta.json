@@ -1,0 +1,10 @@
+{
+  "id": "array-int",
+  "tier": 5,
+  "description": "[1, 2, 3] : an Array of Int.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

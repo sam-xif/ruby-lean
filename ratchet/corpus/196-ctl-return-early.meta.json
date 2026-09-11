@@ -1,0 +1,11 @@
+{
+  "id": "ctl-return-early",
+  "tier": 16,
+  "description": "`return d if a.empty?` -- the guard clause, in a method with a *value* after it. Already the subject of `narrow-guard-clause` (tier 12); this rung is the plain control-flow half of it, without the narrowing, so the two can be climbed independently and the `.ret`-in-statement-position rule can be justified once.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true,
+  "sorbet_note": "Expected `Integer` but found `T.nilable(Integer)` for method result type"
+}

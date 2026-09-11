@@ -1,0 +1,11 @@
+{
+  "id": "block-bad-arith",
+  "tier": 9,
+  "description": "`[1,2].each { |x| x + \"a\" }` really raises TypeError (\"String can't be coerced into Integer\") on the first element -- tier 2's bad-plus, moved inside a block body where the receiver's element type is what makes it ill-typed. Nothing about the block wrapper should launder it. Permanent negative target.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Expected `Integer` but found `String(\"a\")` for argument `arg0`"
+}

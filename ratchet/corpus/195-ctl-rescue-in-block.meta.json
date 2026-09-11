@@ -1,0 +1,10 @@
+{
+  "id": "ctl-rescue-in-block",
+  "tier": 16,
+  "description": "A `rescue` clause **inside a block body**, with `next` as the handler -- the shape `range_status` uses in its innermost loop (`rescue Uncomparable; next`). It is the cross-product of this tier with tier 9's blocks, and it is where the block's result type has three contributors rather than two.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

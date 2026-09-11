@@ -1,0 +1,10 @@
+{
+  "id": "const-scoped-read",
+  "tier": 13,
+  "description": "M::X -- the `cpath` node, 155 of them in the slice. Ruby has no member-access syntax for constants: `cpath` is its own head with an optional base expression, so this is not a `send` and no `PrimSig` row can reach it.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

@@ -1,0 +1,11 @@
+{
+  "id": "and-narrow-closure-write",
+  "tier": 12,
+  "description": "**\u00a7F13\u2019s witness, and a *negative control that is not yet reachable*.** `narrowCond?`\u2019s `&&` arm licenses a then-branch refinement when the right-hand side passes `noLocalAsgn` \u2014 no *syntactic* assignment. That does not exclude **calling a closure that assigns**: the lambda here rebinds `x` to `nil` and returns `true`, so the then-branch runs with `x : Integer` recorded and `nil` in the local, and `x + 1` raises NoMethodError. `validate` rejects the program today, but for an unrelated reason (the lambda body assigns a *captured* local, which `Judge.lambdaLit`\u2019s `capStale` machinery refuses), so this is a control against the day that changes rather than a bug report against the checker.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Changing the type of a variable is not permitted in loops and blocks"
+}

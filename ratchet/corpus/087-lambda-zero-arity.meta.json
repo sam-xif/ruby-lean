@@ -1,0 +1,10 @@
+{
+  "id": "lambda-zero-arity",
+  "tier": 9,
+  "description": "The smallest callable literal: `lambda { 1 }` desugars to `send none \"lambda\" [] (block [] [] (int 1))` -- no new Expr head, just a send whose `blk` child is a block with no params. The type belongs to the *block* node and is an arrow spine with no params, arrow_of([], Int); `f.call` then eliminates it. (This is the same program the umbrella project's J31 semantic-axiom pilot uses.)",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

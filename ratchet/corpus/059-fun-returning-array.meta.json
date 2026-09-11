@@ -1,0 +1,10 @@
+{
+  "id": "fun-returning-array",
+  "tier": 6,
+  "description": "def make_pair(x, y) = [x, y]; make_pair(1, 2) : an Array of Int -- the return type is inferred from the body and is a structured Ty (arrayOf), not a scalar; the parameters are constrained only by the call site here, not by the body.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

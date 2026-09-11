@@ -1,0 +1,10 @@
+{
+  "id": "param-rest",
+  "tier": 14,
+  "description": "def total(*ns) -- the rest parameter, bound to an `Array` of the remaining arguments. This is half of the `ty_language_gap` that `proc-arity-leniency` and `metaprog-method-missing-splat` have flagged since tier 9: the *value* side is easy (`arrayOf` of the join of the extra arguments' types), and the gap is in describing the arity, which only matters for a callable in a variable. A `def` is called by name, so this rung needs no arity spine at all -- which is the finding.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

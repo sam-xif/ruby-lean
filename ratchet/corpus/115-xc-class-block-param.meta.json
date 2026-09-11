@@ -1,0 +1,10 @@
+{
+  "id": "xc-class-block-param",
+  "tier": 11,
+  "description": "class A; def a(&blk); blk.call(3); end; end; A.new.a { |v| v } -- REPORTED BY A HUMAN, and the reason this tier exists. Two independent blockers, both of them restrictions introduced deliberately in earlier tiers, neither of them an unmodeled feature. (1) No rule covers an explicit-receiver send that carries a block: callMethod (tier 7) requires blk = none and callDefBlk (tier 9b) requires an implicit receiver, so this program matches nothing -- and removing the block, or moving the def to top level, makes each half validate on its own. (2) Behind it, closCall requires selfTy = none, so `blk.call` *inside an instance method body* would still be rejected even with (1) fixed; that one is documented (clink 9) and its fix is to put selfTy into Ty.clos beside the captured locals. Safe Ruby returning 3, so this is conservative, not unsound.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

@@ -1,0 +1,11 @@
+{
+  "id": "slice-semver",
+  "tier": 18,
+  "description": "`vulns/semver.rb` + a driver over SemVer 2.0 \u00a711: 18 ordered pairs, seven spec violations that must answer nil, and a sort. The smallest slice file (5 `def`s, one module, no state) and therefore the first whole-file target: it needs tier 13's constants and `private_constant`, tier 15's interpolated `/x` regexp and `match`/`match?`/`strip`/`delete_prefix`, tier 16's guard `return`s, and tier 17's `fetch`/`zip`/`empty?` -- and nothing else. If any file on this ladder is accepted first, it is this one.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 11,
+  "annotated": false,
+  "sorbet_note": "Method `empty?` does not exist on `Object`"
+}

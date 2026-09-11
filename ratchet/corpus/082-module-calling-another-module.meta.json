@@ -1,0 +1,10 @@
+{
+  "id": "module-calling-another-module",
+  "tier": 8,
+  "description": "M1.foo calls M2.bar -- two separate modules, one calling into the other via `.const \"M2\"` typed Ty.clsOf \"M2\".",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": false
+}

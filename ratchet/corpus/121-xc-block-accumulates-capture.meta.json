@@ -1,0 +1,11 @@
+{
+  "id": "xc-block-accumulates-capture",
+  "tier": 11,
+  "description": "def t; yield(1); end; a = 1; t { |x| a = a + x }; a + 1 : Int -- the boundary case for capIntact, and the reason it compares *types* rather than forbidding assignment. The block really does mutate a captured local, and that is fine because it leaves the type alone: same shape as class-setter-method for ivars. Sits next to xc-block-retypes-capture on purpose -- the two differ only in the assigned type.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true,
+  "sorbet_note": "Method `t` uses `yield` but does not mention a block parameter"
+}

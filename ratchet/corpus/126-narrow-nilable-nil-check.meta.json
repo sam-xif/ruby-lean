@@ -1,0 +1,10 @@
+{
+  "id": "narrow-nilable-nil-check",
+  "tier": 12,
+  "description": "if x.nil? then 0 else x + 10 end : Int -- narrowing in the **else** branch, which is a different rule from the truthy one and not merely its mirror: the condition is a send (`send (var x) \"nil?\" []`), so the checker has to recognise a *method call* as a type test. Also forces a PrimSig row for `nil?`, whose honest receiver is `.any` -- the wildcard receiver clink 1 explicitly declined to admit for `!`. This rung is where that decision has to be revisited.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

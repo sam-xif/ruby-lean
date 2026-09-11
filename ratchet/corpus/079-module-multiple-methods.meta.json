@@ -1,0 +1,10 @@
+{
+  "id": "module-multiple-methods",
+  "tier": 8,
+  "description": "A module with two independent singleton methods.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": false
+}

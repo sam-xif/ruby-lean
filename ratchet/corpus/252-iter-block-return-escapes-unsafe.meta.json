@@ -1,0 +1,11 @@
+{
+  "id": "iter-block-return-escapes-unsafe",
+  "tier": 9,
+  "description": "**A candidate UNSAFE program, \u00a7F19\u2019s second door.** The same `bodyResult` rewriting sat in `Judge.iterBlock`, where the body is a **block literal** and therefore never a lambda \u2014 so `return` inside `map`\u2019s block returns from `h`, and `h` answers `\"s\"` while the rule records `Integer`. Fixed by dropping `bodyResult` from the rule: a block literal\u2019s body is typed as written, and a whole-body `return` has no rule.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 1,
+  "annotated": true,
+  "sorbet_note": "Expected `Integer` but found `String(\"s\")` for method result type"
+}

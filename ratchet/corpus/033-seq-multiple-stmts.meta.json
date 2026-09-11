@@ -1,0 +1,10 @@
+{
+  "id": "seq-multiple-stmts",
+  "tier": 3,
+  "description": "x = 1; y = 2; x + y : Int.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

@@ -1,3 +1,4 @@
+# typed: true
 class A
   def self.===(o)
     "s"

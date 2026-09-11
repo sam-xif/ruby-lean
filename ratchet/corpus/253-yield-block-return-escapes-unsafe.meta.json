@@ -1,0 +1,11 @@
+{
+  "id": "yield-block-return-escapes-unsafe",
+  "tier": 9,
+  "description": "**A candidate UNSAFE program, \u00a7F19\u2019s third door.** `Judge.yieldExpr` invokes the block the running method was called with, which `callDefBlk` put in `\u03ba.blockTy` from a block *literal* \u2014 never a lambda \u2014 and it too applied `bodyResult`. So `m { return \"s\" }` types the `yield` as `String` while the `return` leaves `h` entirely. Fixed the same way as `iterBlock`.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 2,
+  "annotated": true,
+  "sorbet_note": "Method `m` uses `yield` but does not mention a block parameter"
+}

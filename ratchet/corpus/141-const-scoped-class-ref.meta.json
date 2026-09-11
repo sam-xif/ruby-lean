@@ -1,0 +1,10 @@
+{
+  "id": "const-scoped-class-ref",
+  "tier": 13,
+  "description": "M::Box.new(7).get -- a `cpath` in *receiver* position, resolving to a class object that is then allocated. This is the join between tier 13 and tier 7: `newInst` reads the class off the receiver's `Ty.clsOf`, so it needs `cpath` to produce one, and every `Purl.new`/`Version.new` in the slice is this shape.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": false
+}

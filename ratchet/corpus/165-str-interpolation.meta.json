@@ -1,0 +1,10 @@
+{
+  "id": "str-interpolation",
+  "tier": 15,
+  "description": "\"hello #{name}\" -- the desugarer expands interpolation into `__as_string` calls and a concatenation, so this is *not* a new `Expr` node; what is new is the `__as_string` row itself, which is total (every object answers `to_s`) and returns `String`. Total and unconstrained, so it is the cleanest new `PrimSig` row on the ladder.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

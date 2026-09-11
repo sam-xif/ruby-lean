@@ -1,0 +1,10 @@
+{
+  "id": "class-factory-method",
+  "tier": 7,
+  "description": "Point.origin is a singleton (self.) method on the class itself that constructs and returns an ordinary instance -- `defs` nested inside a `class'`, the same shape a module's `self.` methods use. Its body's bare `new(0, 0)` is a vcall/send dispatched with self bound to Ty.clsOf \"Point\", resolving to Point's own initialize.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": true
+}

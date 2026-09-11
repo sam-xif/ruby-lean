@@ -1,0 +1,10 @@
+{
+  "id": "module-boolean-method",
+  "tier": 8,
+  "description": "A module method returning the result of a comparison.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": false
+}

@@ -1,3 +1,4 @@
+# typed: true
 module Outer
   module Inner
     Y = "deep"

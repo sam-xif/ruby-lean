@@ -1,0 +1,10 @@
+{
+  "id": "class-ivar-lazy-nil",
+  "tier": 7,
+  "description": "reveal reads @secret, which no method ever assigns -- real Ruby answers nil for an unset ivar rather than raising. So ivar inference cannot simply collect the writes: a read with no matching write is Nil, not an error.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

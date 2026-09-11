@@ -1,3 +1,4 @@
+# typed: true
 module M
   def self.sum3(a, b, c)
     a + b + c

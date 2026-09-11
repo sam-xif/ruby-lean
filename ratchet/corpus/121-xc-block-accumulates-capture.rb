@@ -1,3 +1,6 @@
+# typed: true
+extend T::Sig
+sig { returns(T.untyped) }
 def t
   yield(1)
 end

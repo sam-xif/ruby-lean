@@ -1,3 +1,4 @@
+# typed: true
 class Box
   SIZE = 3
 

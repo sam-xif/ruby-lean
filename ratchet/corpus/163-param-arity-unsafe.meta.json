@@ -1,0 +1,11 @@
+{
+  "id": "param-arity-unsafe",
+  "tier": 14,
+  "description": "An UNSAFE program: `def f(a); end; f(1, 2)` really raises ArgumentError, which is in the type-error family. The control that keeps positional arity a *checked* premise -- the ladder has never had a rung where a `def` call could get the count wrong, because before this tier every parameter was required and every call site literal.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 1,
+  "annotated": true,
+  "sorbet_note": "Too many arguments provided for method `Object#f`. Expected: `1`, got: `2`"
+}

@@ -1,3 +1,4 @@
+# typed: true
 x = 1
 unless x.nil?
   x + 1

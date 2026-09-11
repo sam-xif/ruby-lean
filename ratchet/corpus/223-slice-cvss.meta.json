@@ -1,0 +1,11 @@
+{
+  "id": "slice-cvss",
+  "tier": 18,
+  "description": "`vulns/cvss.rb` + a driver over the FIRST specification's own worked examples, every severity-band boundary, and eight malformed vectors that must answer nil rather than raise. Seven `def`s, six frozen `Hash` constants, and the slice's only **Float** arithmetic -- `**`, `round`, and the Appendix A Roundup. The binding constraint is tier 17's `Hash#fetch`: every one of the seven metric lookups is a `fetch` into a constant table, and `Ty`'s unparameterised `Hash` cannot say the result is a Float.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 13,
+  "annotated": false,
+  "sorbet_note": "Method `empty?` does not exist on `Object`"
+}

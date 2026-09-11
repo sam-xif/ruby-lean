@@ -1,0 +1,10 @@
+{
+  "id": "eq-different-type",
+  "tier": 2,
+  "description": "1 == \"a\" is completely safe real Ruby -- `==` never raises, it just answers false for unrelated types. So the `==` rule chk needs is Object#== : (any) -> Bool, on *any* two receivers; a rule requiring both sides the same Ty would be conservative (it would reject this safe program) rather than sound-and-tight.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

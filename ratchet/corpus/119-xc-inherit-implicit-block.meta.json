@@ -1,0 +1,11 @@
+{
+  "id": "xc-inherit-implicit-block",
+  "tier": 11,
+  "description": "Child#show calls an *inherited* method with a block, by bare name: wrap { 7 }, where Base#wrap is \"[\" + yield.to_s + \"]\". Three tiers in concert -- tier 7's mroGet? walk to find wrap on Base, tier 9b's blockTy for the yield inside it, and tier 8-style implicit-self dispatch (selfCall) which today handles only a zero-argument vcall with no block. String result, so it also exercises strAdd over a yielded value.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": true,
+  "sorbet_note": "Method `wrap` uses `yield` but does not mention a block parameter"
+}

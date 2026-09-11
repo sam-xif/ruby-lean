@@ -31,7 +31,7 @@ import tempfile
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 RATCHET_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, ".."))
 HARNESS = os.path.normpath(os.path.join(RATCHET_DIR, "..", "harness", "desugar-dt", "bin", "export-json"))
-CORPUS_DIR = os.path.join(RATCHET_DIR, "corpus")
+CORPUS_DIR = os.path.join(RATCHET_DIR, "corpus-untyped")
 
 
 def export(rb_source: str) -> dict:

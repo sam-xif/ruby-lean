@@ -1,0 +1,10 @@
+{
+  "id": "sym-compare",
+  "tier": 15,
+  "description": "s == :high -- comparing symbols, which is how every one of the slice's state tests is written. Already covered by `Object#==`'s unconstrained-argument row (tier 2), and the rung is here to say so: a checker that grew a `Symbol#==` row would be adding one it does not need.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

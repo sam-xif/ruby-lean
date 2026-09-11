@@ -1,0 +1,10 @@
+{
+  "id": "module-method-with-arg",
+  "tier": 8,
+  "description": "module Greeter; def self.hello(name); \"hi \" + name; end; end; Greeter.hello(\"sam\").",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": false
+}

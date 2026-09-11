@@ -1,0 +1,10 @@
+{
+  "id": "not-expr",
+  "tier": 2,
+  "description": "!true desugars to a send of `!` with no args; Bool.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

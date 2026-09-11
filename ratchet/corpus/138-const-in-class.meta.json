@@ -1,0 +1,10 @@
+{
+  "id": "const-in-class",
+  "tier": 13,
+  "description": "A constant declared in a class body and read from an instance method -- the shape `vulns/cvss.rb` uses for all six of its metric tables. The read is a bare `const` node with no path, so resolving it needs the *enclosing* declaration, which is what makes the constant environment scope-threaded rather than flat.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": false
+}

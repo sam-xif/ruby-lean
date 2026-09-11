@@ -1,3 +1,4 @@
+# typed: true
 class Holder
   def initialize(flag)
     if flag

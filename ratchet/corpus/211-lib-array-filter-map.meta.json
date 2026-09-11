@@ -1,0 +1,10 @@
+{
+  "id": "lib-array-filter-map",
+  "tier": 17,
+  "description": "`filter_map` -- `arrayOf` of the **non-nil part** of the block's return type, which makes it the eliminator twin of `compact` and a fourth distinct higher-order answer. `fix_urls` and `fixed_versions` both use it.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

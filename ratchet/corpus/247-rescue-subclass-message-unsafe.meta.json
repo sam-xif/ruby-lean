@@ -1,0 +1,10 @@
+{
+  "id": "rescue-subclass-message-unsafe",
+  "tier": 16,
+  "description": "**A candidate UNSAFE program, and \u00a7F11\u2019s counterexample.** `rescue StandardError => e` binds whatever was raised, and Ruby lets that be an instance of a **subclass** \u2014 which is why `Ty.cls n`\u2019s denotation is `is_a?` and not equality. `PrimSig`\u2019s `excMessage` row then answers `.cls \"String\"` for `e.message`, but the subclass redefined `message` to return an Integer, so `+ \"s\"` runs `Integer#+` on a String and raises TypeError. `PrimSig` cannot see the class table, so the guard is a premise of `Judge.prim` (`primDispatchOk`).",
+  "expect_sorbet": true,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 1,
+  "annotated": true
+}

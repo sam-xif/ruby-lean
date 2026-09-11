@@ -1,3 +1,4 @@
+# typed: true
 module M
   def self.foo
     1

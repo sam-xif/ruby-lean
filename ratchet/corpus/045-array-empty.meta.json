@@ -1,0 +1,10 @@
+{
+  "id": "array-empty",
+  "tier": 5,
+  "description": "[] : an Array of Ty.any (nothing to unify an element type from).",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

@@ -1,0 +1,10 @@
+{
+  "id": "narrow-union-subclass",
+  "tier": 12,
+  "description": "Narrowing a union of *user classes* by is_a?, where the two arms are related by inheritance: union(inst Dog, inst Animal) refined to Dog in one branch to reach #fetch, and left alone in the other to reach the inherited #speak. Tier 7's mroGet? walk in concert with narrowing -- and the rung where subTy finally has something to do, since `is_a?(Animal)` must *not* narrow a Dog away while `is_a?(Dog)` must narrow an Animal. subTy has sat in Ty.lean unused since the port and this is the first rung that needs it.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 3,
+  "annotated": true
+}

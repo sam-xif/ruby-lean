@@ -1,0 +1,10 @@
+{
+  "id": "lib-array-uniq-compact",
+  "tier": 17,
+  "description": "`compact.uniq` -- and `compact` is the interesting half: it takes `arrayOf (nilable T)` to `arrayOf T`, so it is the one builtin in the slice that *removes* a nilable rather than introducing or consuming one.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

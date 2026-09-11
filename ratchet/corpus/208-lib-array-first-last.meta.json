@@ -1,0 +1,10 @@
+{
+  "id": "lib-array-first-last",
+  "tier": 17,
+  "description": "`xs.first` / `xs.last` -- `nilable elem`, for the same reason `Array#[]` is (tier 5), and worth its own rung because the slice calls them on arrays it has just checked are non-empty, which is the narrowing-by-length case `Ty` has no vocabulary for.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

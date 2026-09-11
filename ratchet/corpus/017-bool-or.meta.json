@@ -1,0 +1,11 @@
+{
+  "id": "bool-or",
+  "tier": 2,
+  "description": "false || true, same desugaring shape as bool-and.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Left side of `||` condition was always `falsy`"
+}

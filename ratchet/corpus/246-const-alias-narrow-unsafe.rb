@@ -1,3 +1,4 @@
+# typed: true
 Foo = Integer
 x = 5
 if x.is_a?(Foo)

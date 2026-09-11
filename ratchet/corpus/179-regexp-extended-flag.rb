@@ -1,3 +1,4 @@
+# typed: true
 re = /
   \A
   \d+

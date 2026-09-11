@@ -1,0 +1,10 @@
+{
+  "id": "regexp-match-p",
+  "tier": 15,
+  "description": "\"1.2.3\".match?(/\\A\\d+(\\.\\d+)*\\z/) -- `regexp_lit`, the head, and the cheapest eliminator: `String#match?` is total and returns `Bool`. That makes it the right first rung of the regexp story, because it needs a type for a `Regexp` value and nothing else -- `Ty` has no `Regexp`, so this rung's whole demand is one `.cls` row.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

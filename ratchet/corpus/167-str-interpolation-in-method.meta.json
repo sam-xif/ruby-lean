@@ -1,0 +1,10 @@
+{
+  "id": "str-interpolation-in-method",
+  "tier": 15,
+  "description": "\"#{Box.new(2)}\" where Box defines its own `to_s` -- interpolation *dispatches*. This is `pkg_version.rb`'s `\"#{version}_#{revision}\"` exactly, and it is why `__as_string` cannot be a plain builtin row: on a user instance it has to reach the class's own `to_s` through the MRO, and fall back to the default only if there is none.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": true
+}

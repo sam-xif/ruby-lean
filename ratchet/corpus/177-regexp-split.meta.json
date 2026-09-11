@@ -1,0 +1,10 @@
+{
+  "id": "regexp-split",
+  "tier": 15,
+  "description": "\"a/b/c\".split(\"/\") -- six sites in the slice. Returns `arrayOf String`, which is the first builtin on the ladder whose return type is a *parameterised* array rather than the receiver or an element of it.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

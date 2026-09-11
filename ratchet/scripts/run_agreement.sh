@@ -23,4 +23,4 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 RATCHET_DIR="$PWD"
 cd ../difftest
-exec uv run python -m difftest replay "$RATCHET_DIR/corpus" --sut lean "$@"
+exec uv run python -m difftest replay "$RATCHET_DIR/corpus-untyped" --sut lean "$@"

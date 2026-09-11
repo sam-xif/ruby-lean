@@ -1,3 +1,4 @@
+# typed: true
 i = 0
 x = 1
 while i < 2

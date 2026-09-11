@@ -1,0 +1,11 @@
+{
+  "id": "ctl-rescue-wrong-class-unsafe",
+  "tier": 16,
+  "description": "An UNSAFE program: the body raises TypeError and the handler only catches ArgumentError, so the TypeError escapes. The control that keeps `rescue` from being read as \"and therefore nothing raises\" -- a checker that treated any `begin` as discharging the type-error family would certify it, and that is the natural wrong generalisation of the `ctl-rescue` rule. Permanent negative target.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Expected `Integer` but found `String(\"a\")` for argument `arg0`"
+}

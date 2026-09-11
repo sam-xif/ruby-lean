@@ -1,4 +1,7 @@
+# typed: true
 class E < StandardError
+  extend T::Sig
+  sig { returns(Integer) }
   def message
     5
   end

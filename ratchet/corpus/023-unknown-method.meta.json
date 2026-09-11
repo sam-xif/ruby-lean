@@ -1,0 +1,11 @@
+{
+  "id": "unknown-method",
+  "tier": 2,
+  "description": "5.foo_bar_baz is a made-up method name -- Integer has no such method, so this really does raise NoMethodError when run. Permanent negative target, and the pair to unmodeled-builtin-zero-p: same shape, one real method and one not, so a checker cannot pass both by being generous about unknown selectors.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Method `foo_bar_baz` does not exist on `Integer` component of `Integer(5)`"
+}

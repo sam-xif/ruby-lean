@@ -1,0 +1,11 @@
+{
+  "id": "xc-block-retypes-capture",
+  "tier": 11,
+  "description": "def t; yield(1); end; a = 1; t { |x| a = \"s\" }; a + 1 -- an UNSAFE program, and the one that found a real soundness bug in the committed tier-9 rules. A Ruby block captures locals **by reference**, so the assignment inside it is visible afterwards and `a + 1` really raises TypeError. Ty.clos captures by *value* into a spine and the call rules discarded the body's outgoing environment, so the checker still believed a : Int and certified this. Fixed by the capIntact premise on closCall/yieldExpr -- the exact analogue of callMethod's no-retyping premise for instance variables, and the same general rule: a callee may not retype state its caller can still see. Permanent negative target; it is what stops that fix from being quietly reverted.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 1,
+  "annotated": true,
+  "sorbet_note": "Method `t` uses `yield` but does not mention a block parameter"
+}

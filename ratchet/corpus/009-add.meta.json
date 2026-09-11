@@ -1,0 +1,10 @@
+{
+  "id": "add",
+  "tier": 2,
+  "description": "1 + 2, real desugared as a send, typed via the hardcoded Integer#+ rule.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

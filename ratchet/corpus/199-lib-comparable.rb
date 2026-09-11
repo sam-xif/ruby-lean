@@ -1,14 +1,19 @@
+# typed: true
 class Rev
+  extend T::Sig
   include Comparable
 
+  sig { params(n: Integer).void }
   def initialize(n)
     @n = n
   end
 
+  sig { returns(Integer) }
   def n
     @n
   end
 
+  sig { params(other: Rev).returns(Integer) }
   def <=>(other)
     n <=> other.n
   end

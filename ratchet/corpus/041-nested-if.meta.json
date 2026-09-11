@@ -1,0 +1,11 @@
+{
+  "id": "nested-if",
+  "tier": 4,
+  "description": "if true then (if false then 1 else 2) else 3 end : Int.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "This code is unreachable"
+}

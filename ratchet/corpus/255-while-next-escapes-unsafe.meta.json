@@ -1,0 +1,11 @@
+{
+  "id": "while-next-escapes-unsafe",
+  "tier": 16,
+  "description": "**A candidate UNSAFE program, \u00a7F23.** `Judge.while'` requires the body to leave every local's type where it found it (`\u0393b = \u0393`), which is a claim about the body's **final** environment \u2014 and a `next` exits the iteration *mid-body*, at an environment the premise never mentions. So the loop can exit with `x : String` while the rule concludes the incoming `x : Integer`. The premise is checked at the wrong point, and the fix is to require the environment at **every** `next` to agree too.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Changing the type of a variable is not permitted in loops and blocks"
+}

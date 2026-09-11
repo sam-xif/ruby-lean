@@ -1,0 +1,10 @@
+{
+  "id": "str-methods",
+  "tier": 15,
+  "description": "s.strip.downcase.tr(\"_\", \"-\").delete_prefix(\"f\") -- the String chain, four rows at once, all total and all `String -> String`. Written as one rung rather than four because that is how the slice writes them (`semver.rb`'s `parse` opens with `version.strip.delete_prefix(\"v\").delete_prefix(\"V\").match(...)`), and because a chain is where a wrong return type shows up immediately.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

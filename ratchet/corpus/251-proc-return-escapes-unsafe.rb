@@ -1,3 +1,6 @@
+# typed: true
+extend T::Sig
+sig { returns(Integer) }
 def f
   p = proc { return "s" }
   p.call

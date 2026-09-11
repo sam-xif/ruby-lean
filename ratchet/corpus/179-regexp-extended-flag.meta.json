@@ -1,0 +1,10 @@
+{
+  "id": "regexp-extended-flag",
+  "tier": 15,
+  "description": "A `/x`-flagged multi-line regexp -- `regexp_lit`'s second field is its option bits, and `semver.rb`, `identify.rb` and `version.rb` all use `/x` (and `/i`, and `/n`) to keep their patterns readable. The rung pins that the options survive the desugarer, because a `/x` pattern read without them matches nothing.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

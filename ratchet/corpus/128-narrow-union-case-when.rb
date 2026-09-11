@@ -1,3 +1,4 @@
+# typed: true
 def pick(flag)
   if flag
     1

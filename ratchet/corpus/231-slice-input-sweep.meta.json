@@ -1,0 +1,12 @@
+{
+  "id": "slice-input-sweep",
+  "tier": 19,
+  "description": "The same linked program, driven by a **sweep of generated inputs**: 16 versions through one advisory carrying both a `SEMVER` and an `ECOSYSTEM` range, reported as a histogram (`{affected: 8, fixed: 4, not_applicable: 4, none: 0, raised: 0}`). One output line, and it is the one that says the verdict is genuinely **input-dependent** rather than constant -- which is what makes typing this program a statement about a function rather than about a constant folding. Narrowed from `probes/input-sweep.rb`'s 64 inputs to fit the agreement gate's 10-second budget; the cost per input is the probe's own finding and stays recorded there.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 123,
+  "annotated": false,
+  "sorbet_note": "Can't make method alias from `eql?` to non existing method `==`",
+  "known_upstream_failure": "strip: sig_strip.rb: unstrippable Sorbet constructs remain: T::Helpers, T, T::Struct, T.nilable, T::Boolean"
+}

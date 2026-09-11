@@ -1,0 +1,10 @@
+{
+  "id": "class-inheritance-override",
+  "tier": 7,
+  "description": "Dog overrides the speak method Animal also defines -- the two `def speak` nodes are disambiguated by scoping the search to each class' own body, since names alone collide.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": true
+}

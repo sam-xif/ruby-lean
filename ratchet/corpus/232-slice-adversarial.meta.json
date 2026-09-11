@@ -1,0 +1,12 @@
+{
+  "id": "slice-adversarial",
+  "tier": 19,
+  "description": "**An UNSAFE program, and the ladder's last word.** The same linked slice, driven by `probes/adversarial-inputs.rb`: the real `range_status`/`affects_version?` entry points, with only the advisory Hash and the version String varying over shapes a caller can actually supply. It reaches five type-family raises -- four `ArgumentError` from `Version.new()` and two `TypeError` from `Integer#[]` -- and two of them come from a *schema-conformant* advisory. So the whole-slice program is type-safe only under a precondition on its inputs, and this rung is the permanent negative that says so: certifying it would be unsound, and the sibling `slice-whole` rung is the same code under inputs that satisfy the precondition. That pair is the sharpest statement on the ladder of what a `validate` verdict does and does not claim. (One row of the upstream probe is dropped -- a sorbet-runtime `T.let` failure whose message carries the caller's file path, so the two executors cannot agree on it by construction.)",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 127,
+  "annotated": false,
+  "sorbet_note": "Can't make method alias from `eql?` to non existing method `==`",
+  "known_upstream_failure": "strip: sig_strip.rb: unstrippable Sorbet constructs remain: T::Helpers, T, T::Struct, T.nilable, T::Boolean"
+}

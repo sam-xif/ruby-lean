@@ -1,0 +1,10 @@
+{
+  "id": "lambda-capture-reassigned-unsafe",
+  "tier": 9,
+  "description": "**An UNSAFE program, and the regression test for `found-issues.md` \u00a7F1.** A Ruby block captures locals *by reference*, so `Ty.clos`'s captured spine is a claim about a **binding** -- the same kind of thing `Ty.sameAs` is -- and reassigning the captured name at a different type makes it wrong. `f.call` returns the String `x` now holds, so `f.call + 1` raises TypeError. `validate` certified this as `Integer` until clink 46 (`Judge.vasgn` killed aliases to the assigned name but no closure over it); the fix is `killClosOver`/`killClosOverSpine` in `Ratchet/Ty.lean`. A `true` here is that bug returning. The sibling positive is a reassignment at the *same* type, which stays typable -- see `capStale`, which only erases when the recorded type differs. Found by the semantic ratchet reading `Obl.Judge.vasgn`, not by any corpus rung, which is why the control did not exist before.",
+  "expect_sorbet": true,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 0,
+  "annotated": false
+}

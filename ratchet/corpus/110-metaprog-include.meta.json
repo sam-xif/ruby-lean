@@ -1,0 +1,10 @@
+{
+  "id": "metaprog-include",
+  "tier": 10,
+  "description": "Person includes Greetable; greet, defined once inside the module, becomes callable as an instance method of Person. `include` desugars to an ordinary `send none \"include\" [const Greetable] none` inside Person's class body -- no special Expr head at all. A rebuilt ancestor walk needs to treat Greetable as an *additional* instance-method source for Person (distinct from superclass lookup), which is a dispatch-design extension, not a language gap: greet's signature is the same arrow-spine shape as any other method's.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": false
+}

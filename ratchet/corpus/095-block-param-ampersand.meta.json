@@ -1,0 +1,10 @@
+{
+  "id": "block-param-ampersand",
+  "tier": 9,
+  "description": "`def run(&b)` reifies the passed block as an ordinary local `b` (a `pblock` param), which is then called with `b.call(5)` -- the same elimination form as a lambda's. This is the reified counterpart of yield-arith: the block arrives as a *value* with an arrow type, so `Param.block`'s type is exactly the type of the block literal at the call site.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

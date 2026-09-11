@@ -1,0 +1,10 @@
+{
+  "id": "reassign-same-type",
+  "tier": 3,
+  "description": "x = 1; x = 2; x + 3 : Int.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

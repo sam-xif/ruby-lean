@@ -1,0 +1,11 @@
+{
+  "id": "param-kwrest",
+  "tier": 14,
+  "description": "def opts(**kw) -- the keyword-rest parameter, bound to a `Hash`. Same shape as `param-rest` and the same finding, with tier 5's unparameterised `Hash` now the binding constraint: `kw[\"a\"]` can only be `.any` until a hash type carries its keys. `version.rb`'s `self.detect(url, **specs)` is this.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true,
+  "sorbet_note": "Expected `Symbol` but found `String(\"a\")` for argument `arg0`"
+}

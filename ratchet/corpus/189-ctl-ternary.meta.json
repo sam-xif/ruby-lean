@@ -1,0 +1,10 @@
+{
+  "id": "ctl-ternary",
+  "tier": 16,
+  "description": "x.zero? ? \"zero\" : \"nonzero\" -- an `if` in expression position, and the shape the slice writes its short branches in. Nothing new for `Judge`; the rung is the control that says so.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

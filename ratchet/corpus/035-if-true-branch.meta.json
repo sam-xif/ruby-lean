@@ -1,0 +1,11 @@
+{
+  "id": "if-true-branch",
+  "tier": 4,
+  "description": "if true then 1 else 2 end : Int.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "This code is unreachable"
+}

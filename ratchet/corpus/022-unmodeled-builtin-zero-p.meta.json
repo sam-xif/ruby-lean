@@ -1,0 +1,10 @@
+{
+  "id": "unmodeled-builtin-zero-p",
+  "tier": 2,
+  "description": "5.zero? is a real, total Integer method that is not in the hardcoded builtin table (unlike to_s): safe to run, and Int -> Bool every time. Climbing it means adding that row to PrimSig, justified against the semantics the way the five existing rows were -- there is no shortcut, and that is the point.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

@@ -1,0 +1,10 @@
+{
+  "id": "to-s-call",
+  "tier": 2,
+  "description": "5.to_s, an instance of String, via the universal Object#to_s rule.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

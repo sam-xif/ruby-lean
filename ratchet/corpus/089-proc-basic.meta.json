@@ -1,0 +1,10 @@
+{
+  "id": "proc-basic",
+  "tier": 9,
+  "description": "`proc { |x| x * 2 }` is the same send-with-block shape as lambda, differing only in the selector (\"proc\" vs \"lambda\"). Called at the arity it declares, a proc behaves exactly like a lambda, so the same arrow type is honest here -- contrast proc-arity-leniency, which is the case where it stops being honest.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

@@ -1,3 +1,4 @@
+# typed: true
 class Box
   SECRET = 1
   private_constant :SECRET

@@ -1,0 +1,10 @@
+{
+  "id": "class-two-getters",
+  "tier": 7,
+  "description": "A class exposing two separate ivars through two separate getter methods, combined arithmetically at the call site.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 3,
+  "annotated": true
+}

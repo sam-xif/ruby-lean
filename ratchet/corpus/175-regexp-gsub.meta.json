@@ -1,0 +1,10 @@
+{
+  "id": "regexp-gsub",
+  "tier": 15,
+  "description": "\"a_b_c\".gsub(/_/, \"-\") -- `String#gsub`, eight sites. Same row shape as `sub`; the pair is two rungs rather than one because the slice uses both and a table with one of them is a table that was written from a rung rather than from the target.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

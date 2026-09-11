@@ -1,0 +1,10 @@
+{
+  "id": "ctl-next",
+  "tier": 16,
+  "description": "`next if x == 2` inside an `each` block -- 11 sites in the slice, and the idiom `identify.rb`'s two `each` loops are built out of. `Expr.nxt` ends the block's *iteration*, so the block's result type is the join of its normal exit and every `next`, which is `bodyResult`'s problem from tier 9b in a new position.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

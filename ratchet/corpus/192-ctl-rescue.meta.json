@@ -1,0 +1,10 @@
+{
+  "id": "ctl-rescue",
+  "tier": 16,
+  "description": "A method body with a `rescue` clause and a typed exception binding -- `Expr.begin'`, a head the corpus never emitted, and the def-body form (no explicit `begin`) that the slice uses. Three demands: the body's type joins with the handler's, the bound variable `e` enters the handler's environment at the rescued class's type, and a `raise` is `Ty.never` so it contributes nothing to the join.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

@@ -1,0 +1,11 @@
+{
+  "id": "slice-identify",
+  "tier": 18,
+  "description": "`vulns/identify.rb` + a driver over 40 real source URLs: ten forge shapes, eight tag patterns, fourteen package registries, and the near-misses that must *not* match. The most regexp-dense file in the slice (14 patterns, several interpolated, one `/x`), plus `Struct.new(keyword_init: true)`, `Regexp.last_match`, and a `case/when` with fourteen arms over a String. Tier 15 and tier 17 together, at the density the target actually writes them.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 23,
+  "annotated": false,
+  "sorbet_note": "Method `empty?` does not exist on `Object`"
+}

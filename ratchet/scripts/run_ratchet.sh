@@ -30,8 +30,8 @@ fi
 
 echo "=== the evidence behind the climbed rungs (hand derivations vs corpus + semantics) ==="
 lake build ratchet checkrungs
-.lake/build/bin/checkrungs corpus
+.lake/build/bin/checkrungs corpus-untyped
 echo
 
 echo "=== the ladder (validate vs each rung's target) ==="
-exec .lake/build/bin/ratchet corpus
+exec .lake/build/bin/ratchet corpus-untyped

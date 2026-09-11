@@ -1,0 +1,10 @@
+{
+  "id": "lib-array-zip",
+  "tier": 17,
+  "description": "[1, 2].zip([\"a\", \"b\"]) -- `arrayOf (arrayOf (union Int String))` under the current type language, which is *sound and useless*: the real answer is an array of pairs. `semver.rb#compare_prerelease` uses `zip` with a block and relies on the pairing, so this is where the ladder's array type stops being expressive enough for the target.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

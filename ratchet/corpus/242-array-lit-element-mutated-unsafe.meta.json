@@ -1,0 +1,10 @@
+{
+  "id": "array-lit-element-mutated-unsafe",
+  "tier": 12,
+  "description": "**A candidate UNSAFE program, and the probe for the seventh stall point\u2019s remnant.** `Judge.arrayLit` types the literal at `(elemTy \u03c4s).arrayOf`, and `denM`\u2019s `arrayOf` arm reads the elements **at the machine the whole literal ended at** \u2014 while `SemJudgeAll`\u2019s `DenAllAt` (clink 53) deliberately says each element is in its type at the machine *its own* evaluation ended at. A later element that mutates an earlier one\u2019s ivars separates the two: the second element\u2019s evaluation makes the first element\u2019s recorded `.inst` spine false, so the array\u2019s element type is false of the array.",
+  "expect_sorbet": true,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 2,
+  "annotated": true
+}

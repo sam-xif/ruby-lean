@@ -1,0 +1,11 @@
+{
+  "id": "narrow-and-guard",
+  "tier": 12,
+  "description": "`if x && x > 1` -- narrowing that has to flow out of a **compound condition**. `&&` desugars to a temp plus a nested if, so the outer if's condition position holds an entire `seq`, and the then-branch uses `x` rather than the temp. Two things follow: the checker cannot read the tested variable off the condition's syntax, and the refinement established inside the condition has to survive being carried out of it. Note also that `x > 1` inside the condition already needs x narrowed -- the refinement is used in the same expression that establishes it.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "This code is unreachable"
+}

@@ -1,0 +1,10 @@
+{
+  "id": "module-passing-multiple-args",
+  "tier": 8,
+  "description": "A module method taking three arguments.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": false
+}

@@ -1,0 +1,10 @@
+{
+  "id": "narrow-union-in-ivar",
+  "tier": 12,
+  "description": "A union living in an **instance variable**, narrowed inside a method: Holder's initialize assigns @v at Int or String depending on a parameter, and describe narrows it back apart. Two capabilities at once, and the first is a change to an existing rule: Judge.if' currently requires the two branches to *agree* on the ivar spine (I1 = I2), so this program cannot even produce the union -- that premise has to become a join once narrowing exists to consume one. Then the narrowing has to refine an ivar rather than a local, which is a different environment.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": false
+}

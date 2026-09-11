@@ -1,3 +1,4 @@
+# typed: true
 module M2
   def self.bar
     10

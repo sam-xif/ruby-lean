@@ -1,3 +1,4 @@
+# typed: true
 module Twice
   def self.apply(f, v)
     f.call(f.call(v))

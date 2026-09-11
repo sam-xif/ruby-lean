@@ -1,0 +1,10 @@
+{
+  "id": "xc-module-applies-lambda",
+  "tier": 11,
+  "description": "Twice.apply(lambda { |x| x + 1 }, 5) : Int, where the module method calls its argument twice: f.call(f.call(v)). The blocker is precisely closCall's selfTy = none premise -- inside a singleton method body selfTy is some (.clsOf \"Twice\"), so the callable cannot be invoked even though it was created at top level and captured nothing. The cleanest single demand in this tier for putting selfTy into Ty.clos.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": false
+}

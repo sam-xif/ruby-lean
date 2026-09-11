@@ -1,0 +1,10 @@
+{
+  "id": "narrow-guard-clause",
+  "tier": 12,
+  "description": "def first_or_zero(a); x = a[0]; return 0 if x.nil?; x + 1; end : Int -- the idiomatic guard clause, and the hardest narrowing shape here. The refinement is licensed not by being inside a branch but by the *other* branch having left: after the guard, x cannot be nil because that path returned. So this needs narrowing by elimination, plus a real story for `.ret` in statement position -- JudgeSeq takes the last statement's type unconditionally today, and bodyResult's docstring records why the naive `.ret` rule is unsound. Also the first rung whose narrowing crosses a statement boundary rather than living inside one expression.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

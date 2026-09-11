@@ -1,0 +1,10 @@
+{
+  "id": "lambda-stabby-one-param",
+  "tier": 9,
+  "description": "`->(x) { x + 1 }.call(2)`: the stabby-lambda syntax desugars to the *exact same* shape as `lambda { .. }` (`send none \"lambda\"`), so a checker needs one rule, not two. Nothing declares `x`'s type: it has to come from the body (`x + 1` is typeable only at Int, given PrimSig) or from the call site's argument -- the same parameter-inference question tier 6 asks about `def`.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

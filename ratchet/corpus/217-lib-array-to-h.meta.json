@@ -1,0 +1,10 @@
+{
+  "id": "lib-array-to-h",
+  "tier": 17,
+  "description": "[[\"a\", 1]].to_h -- an array of pairs to a Hash, which `cvss.rb#parse` uses with a block to build its metric table. The inverse of the `zip` problem and blocked on the same missing pair type.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

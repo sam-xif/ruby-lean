@@ -1,0 +1,10 @@
+{
+  "id": "class-basic",
+  "tier": 7,
+  "description": "class Point; def initialize(x, y); @x = x; @y = y; end; def getX; @x; end; end; Point.new(1, 2).getX -- construction, an ivar write in initialize, an ivar read in another method.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": true
+}

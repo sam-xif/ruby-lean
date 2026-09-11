@@ -1,0 +1,11 @@
+{
+  "id": "while-break-escapes-unsafe",
+  "tier": 16,
+  "description": "**\u00a7F24 \u2014 \u00a7F23's shape at `break`.** `break` leaves the *loop* where `next` leaves the iteration, and `Judge.while'`'s `\u0393b = \u0393` is read at the body's end just the same, so the loop can exit with `x : String` while the rule concludes the incoming `x : Integer`. Same premise, different escape.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Changing the type of a variable is not permitted in loops and blocks"
+}

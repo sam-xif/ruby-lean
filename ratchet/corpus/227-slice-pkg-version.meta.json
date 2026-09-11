@@ -1,0 +1,12 @@
+{
+  "id": "slice-pkg-version",
+  "tier": 18,
+  "description": "`pkg_version.rb` + a driver over parsing, the composite ordering, the `Comparable` operators and the `Forwardable` delegation. Only 8 `def`s, but it is the tier's **mixin** rung: `include Comparable` and `extend Forwardable` in one class, plus a `delegate` DSL call that manufactures five methods -- tier 17's `lib-comparable` and tier 13's `attr_reader` are the two isolated capabilities it composes, over the whole of `version.rb` underneath.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 81,
+  "annotated": false,
+  "sorbet_note": "Can't make method alias from `eql?` to non existing method `==`",
+  "known_upstream_failure": "strip: sig_strip.rb: unstrippable Sorbet constructs remain: T::Helpers, T"
+}

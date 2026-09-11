@@ -1,0 +1,10 @@
+{
+  "id": "lib-hash-fetch",
+  "tier": 17,
+  "description": "`h.fetch(\"a\")` and `h.fetch(\"b\", 0)` -- **62 sites** in the slice, the single most used builtin in it. Two rows, and the difference is the point: one-argument `fetch` raises KeyError on a miss (outside the type-error family, so it is safe by this ladder's reading) and two-argument `fetch` is total. Both return the value type, which tier 5's unparameterised `Hash` cannot name -- so this rung is the strongest demand in the corpus for a keyed hash type.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

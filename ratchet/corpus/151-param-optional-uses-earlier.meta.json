@@ -1,0 +1,10 @@
+{
+  "id": "param-optional-uses-earlier",
+  "tier": 14,
+  "description": "def pad(s, n = s.length) -- the default *reads an earlier parameter*, which is what makes \"judge the default in the environment of the parameters to its left\" a real premise rather than a formality. Ruby evaluates defaults left to right at call time, so `paramEnv` has to be built incrementally.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

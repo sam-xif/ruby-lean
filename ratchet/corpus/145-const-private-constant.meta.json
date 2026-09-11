@@ -1,0 +1,10 @@
+{
+  "id": "const-private-constant",
+  "tier": 13,
+  "description": "`private_constant :SECRET` -- 30 sites in the slice, on essentially every constant it declares. It is an ordinary implicit-self `send` in a class body whose *effect* is on the constant environment, so the checker either models it (and rejects an out-of-scope read) or ignores it (and is merely imprecise). Ignoring it is sound; the rung is here to make that a decision rather than an oversight.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": false
+}

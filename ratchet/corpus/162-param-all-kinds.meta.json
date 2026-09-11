@@ -1,0 +1,10 @@
+{
+  "id": "param-all-kinds",
+  "tier": 14,
+  "description": "def f(a, b = 2, *rest, c:, d: 4, **kw, &blk) -- every parameter kind in one signature, called with only the two arguments that are required. The cross-product rung for this tier: each kind above has a rule, and the ordering constraints between them (positional prefix, then rest, then keywords in any order, then the block) are only visible when they are all present at once.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

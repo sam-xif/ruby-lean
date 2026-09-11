@@ -1,0 +1,10 @@
+{
+  "id": "class-array-of-instances",
+  "tier": 7,
+  "description": "An array literal containing two constructed instances -- element type arrayOf(an instance of Point), which follows structurally once `.new` dispatch types a construction.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

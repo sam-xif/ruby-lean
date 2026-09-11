@@ -1,0 +1,10 @@
+{
+  "id": "block-each-int",
+  "tier": 9,
+  "description": "The first *iterator* block: `[1,2,3].each { |x| x + 1 }`. The block is the send's `blk` child, and the rule that types it is receiver-directed -- Array#each feeds the block one element (Int, from the receiver's arrayOf Int) and returns the *receiver*, not the block's result.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

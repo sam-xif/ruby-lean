@@ -1,0 +1,10 @@
+{
+  "id": "lib-comparable",
+  "tier": 17,
+  "description": "`include Comparable` plus a `<=>`, and the five operators it manufactures. Three of the eight slice files do exactly this (`Version`, `PkgVersion`, `Version::Token`), and it is the payoff of tier 10's mixin work: `Comparable` is a module in the MRO whose methods are *defined in terms of a method the including class supplies*, so typing `r < s` means dispatching to `Comparable#<`, whose body calls the receiver's own `<=>`. Nothing new in `Judge`; everything in the prelude the checker reads.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 3,
+  "annotated": true
+}

@@ -1,0 +1,11 @@
+{
+  "id": "include-into-core-narrow-unsafe",
+  "tier": 12,
+  "description": "**A candidate UNSAFE program.** `isAAnswer` answers `is_a?` from a **static** table (`builtinAncestors`), so at `.int` it reports `some false` for any name outside `[\"Integer\", \"Numeric\", \"Comparable\"] ++ rootAncestors` \u2014 and `isATy` turns `some false` into `.never`, i.e. \"this branch cannot run\". Ruby lets a program falsify that: `class Integer; include M; end` puts `M` in `Integer`\u2019s ancestors, the then-branch *does* run, and with `x : never` there anything in it is certified. `x + \"s\"` raises TypeError.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Expected `Integer` but found `String(\"s\")` for argument `arg0`"
+}

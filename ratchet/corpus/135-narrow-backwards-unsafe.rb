@@ -1,3 +1,6 @@
+# typed: true
+extend T::Sig
+sig { params(flag: T::Boolean).returns(T.any(Integer, String)) }
 def pick(flag)
   if flag
     1

@@ -1,0 +1,10 @@
+{
+  "id": "int-lit",
+  "tier": 1,
+  "description": "1 : Int.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

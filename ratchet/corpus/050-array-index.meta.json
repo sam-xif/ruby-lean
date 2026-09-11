@@ -1,0 +1,10 @@
+{
+  "id": "array-index",
+  "tier": 5,
+  "description": "Indexing is just `#[]`, a send -- the real Expr has no dedicated index constructor. Typing it structurally means a receiver-directed rule reading the element type back off arrayOf Int (and, to be honest about out-of-range indices, returning nilable Int unless the index is a literal in range).",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

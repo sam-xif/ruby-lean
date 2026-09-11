@@ -1,0 +1,10 @@
+{
+  "id": "lambda-returns-lambda",
+  "tier": 9,
+  "description": "Curried addition: `add = ->(x) { ->(y) { x + y } }`, eliminated by `add.call(1).call(2)`. The outer block's type is a *higher-order* arrow -- arrow_of([Int], arrow_of([Int], Int)) -- which the Ty spine can already state, since `arrow0`'s return is an arbitrary Ty. The inner block also captures the outer's `x` (closure capture again, one level in).",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

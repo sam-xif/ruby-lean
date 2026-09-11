@@ -323,6 +323,21 @@ partial def Ty.ofJson? (j : Json) : Except String Ty := do
     let param ← Ty.ofJson? (← j.getObjVal? "param")
     let rest ← Ty.ofJson? (← j.getObjVal? "rest")
     return .arrowCons param rest
+  -- Ratchet-local constructors (see the fork note below). Added for `Deriv`'s wire
+  -- format: an emitter that cannot say `hashOf`/`never`/`inst` cannot describe a rung
+  -- above tier 5.
+  | "hashOf" =>
+    let k ← Ty.ofJson? (← j.getObjVal? "key")
+    let v ← Ty.ofJson? (← j.getObjVal? "val")
+    return .hashOf k v
+  | "never" => return .never
+  | "inst" =>
+    return .inst (← j.getObjValAs? String "name") (← Ty.ofJson? (← j.getObjVal? "ivars"))
+  | "ivar0" => return .ivar0
+  | "ivarCons" =>
+    let τ ← Ty.ofJson? (← j.getObjVal? "ty")
+    let rest ← Ty.ofJson? (← j.getObjVal? "rest")
+    return .ivarCons (← j.getObjValAs? String "name") τ rest
   | other => throw s!"Ty.ofJson?: unknown tag '{other}'"
 
 /-! ## Ratchet-local additions (a deliberate fork of the ported file)

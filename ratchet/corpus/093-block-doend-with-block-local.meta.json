@@ -1,0 +1,10 @@
+{
+  "id": "block-doend-with-block-local",
+  "tier": 9,
+  "description": "A multi-statement do/end block that assigns a block-local `y`. The desugarer records `y` in the block node's *locals* slot (v5's fourth child), separately from its params -- so a block frame binds params and locals together, and `y` must not leak to the enclosing scope. Body is a `seq`, typed left to right, block's type is its last statement's.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

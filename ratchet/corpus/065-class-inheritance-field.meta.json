@@ -1,0 +1,10 @@
+{
+  "id": "class-inheritance-field",
+  "tier": 7,
+  "description": "class Animal; def initialize(name); @name = name; end; def speak; @name; end; end; class Dog < Animal; end; Dog.new(\"Rex\").speak -- Dog inherits both the field and the method from Animal; a rebuilt dispatch rule needs to walk the parent chain to find speak declared on Animal.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": true
+}

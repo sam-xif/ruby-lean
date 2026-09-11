@@ -1,0 +1,10 @@
+{
+  "id": "xc-ivar-array-map",
+  "tier": 11,
+  "description": "Shelf.new([1, 2]).names, where names is @items.map { |i| i.to_s } : an Array of String. Four tiers at once: tier 5's array literal and elemTy, tier 7's ivar spine holding an arrayOf, tier 9c's still-unwritten higher-order rule for Array#map, and the tier-7-x-9 gap for a block reaching an instance method. The deepest rung in the corpus by feature count.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": true
+}

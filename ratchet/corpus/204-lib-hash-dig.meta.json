@@ -1,0 +1,10 @@
+{
+  "id": "lib-hash-dig",
+  "tier": 17,
+  "description": "h.dig(\"pkg\", \"name\") -- eight sites. `dig` walks and answers nil at any miss, so its result is `nilable`; `vulnerability.rb#affected_entry_relevant?` then narrows it in the same expression (`if (ecosystem = aff.dig(...)) && ...`).",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

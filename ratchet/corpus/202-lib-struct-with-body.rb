@@ -1,3 +1,4 @@
+# typed: true
 Status = Struct.new(:state, keyword_init: true) do
   def affected?
     state == :affected

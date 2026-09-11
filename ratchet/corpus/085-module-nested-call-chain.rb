@@ -1,3 +1,4 @@
+# typed: true
 module M
   def self.greeting
     "hi"

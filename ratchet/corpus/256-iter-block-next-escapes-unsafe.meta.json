@@ -1,0 +1,11 @@
+{
+  "id": "iter-block-next-escapes-unsafe",
+  "tier": 16,
+  "description": "**\u00a7F23's second door.** The same hole one rule over: an `each` block's body is typed for its normal exit, and a `next` leaves the iteration at an environment no premise constrains \u2014 so the local's type after the call is the block's *final* one rather than the one the last iteration actually left behind.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Changing the type of a variable is not permitted in loops and blocks"
+}

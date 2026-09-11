@@ -1,0 +1,10 @@
+{
+  "id": "block-two-params-inject",
+  "tier": 9,
+  "description": "`[1,2,3].inject(0) { |acc, x| acc + x }`: the first block in the corpus with *two* params, and the first whose param types come from two different places -- `acc` from the send's seed argument, `x` from the receiver's element type -- with the extra obligation that the block's return type must equal `acc`'s (that is what makes the fold well-typed at every step, not just the first).",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

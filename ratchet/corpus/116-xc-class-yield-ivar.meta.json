@@ -1,0 +1,11 @@
+{
+  "id": "xc-class-yield-ivar",
+  "tier": 11,
+  "description": "An instance method that yields, with the block reading an instance variable through the receiver's ivar spine: Counter.new(5).bump { |x| x + 1 } : Int. Needs tier 7's ivar spine and tier 9b's Ctx.blockTy at the same time -- and needs blockTy to be set by a *dispatch* rule rather than only by callDefBlk, which is the tier-7-x-tier-9b gap again from the yield side rather than the &blk side.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": true,
+  "sorbet_note": "Method `bump` uses `yield` but does not mention a block parameter"
+}

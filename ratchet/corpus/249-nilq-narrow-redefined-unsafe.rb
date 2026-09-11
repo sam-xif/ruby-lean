@@ -1,4 +1,7 @@
+# typed: true
 class NilClass
+  extend T::Sig
+  sig { returns(T::Boolean) }
   def nil?
     false
   end

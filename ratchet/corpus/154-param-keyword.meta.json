@@ -1,0 +1,10 @@
+{
+  "id": "param-keyword",
+  "tier": 14,
+  "description": "def build(type:, name:) -- the required keyword parameter, and the corresponding `kwargs` node at the call site. This is `purl.rb`'s constructor exactly. Arguments stop being positional: the call's `kwargs` entries have to be matched to parameters **by name**, and a missing one is an ArgumentError, which is in the type-error family -- so unlike a positional arity mismatch this is a soundness obligation the checker must discharge, not a convenience.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

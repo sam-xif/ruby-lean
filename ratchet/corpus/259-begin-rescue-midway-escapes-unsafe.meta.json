@@ -1,0 +1,11 @@
+{
+  "id": "begin-rescue-midway-escapes-unsafe",
+  "tier": 16,
+  "description": "**\u00a7F25 \u2014 \u00a7F23's question at `raise`, which today's checker cannot answer.** A `begin` body leaves *in the middle* too: the handler runs at the environment the raise point left, not the one the body's last statement would have. `validate` rejects this \u2014 but it rejects the **raise-free control** as well, so the rejection is `begin`/`rescue` being unsupported rather than the escape being handled. The rung is the pin for the day `Judge.begin'` is implemented: whatever premise it gets has to cover this.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "This code is unreachable"
+}

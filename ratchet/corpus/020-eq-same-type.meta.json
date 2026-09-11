@@ -1,0 +1,10 @@
+{
+  "id": "eq-same-type",
+  "tier": 2,
+  "description": "1 == 1 : Bool (both sides Int).",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

@@ -1,0 +1,10 @@
+{
+  "id": "xc-lambda-in-ivar",
+  "tier": 11,
+  "description": "A callable stored in an instance variable and invoked through a method: Box.new(lambda { |x| x * 2 }).apply(4) : Int. The interesting part is that the ivar spine has to hold a Ty.clos -- tier 7's Ty.inst carrying tier 9's callable -- so the closure's index and captured environment survive inside an object's type. Also needs closCall to work with selfTy set, since @f.call happens inside a method body.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": true
+}

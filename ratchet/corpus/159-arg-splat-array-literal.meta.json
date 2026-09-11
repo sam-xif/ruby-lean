@@ -1,0 +1,10 @@
+{
+  "id": "arg-splat-array-literal",
+  "tier": 14,
+  "description": "[1, *xs, 4] -- a splat inside an array literal, which `elemTy` has to join *through*: the spliced elements contribute `xs`'s element type, not `xs`'s type. Unlike the call form this needs no length, which is why it is a separate rung from `arg-splat-call`.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

@@ -1,0 +1,10 @@
+{
+  "id": "param-optional",
+  "tier": 14,
+  "description": "def greet(name, greeting = \"hi\") -- the optional parameter. `Judge.callDef` types a body once per call-site argument shape, so an optional parameter is not one signature with a hole: it is *two* shapes, and the default's own type is judged in the environment of the parameters to its left. Both call shapes appear here so the rung cannot be climbed by handling only one.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

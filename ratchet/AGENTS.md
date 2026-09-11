@@ -13,6 +13,118 @@ a research question.** It started as a certificate-checking ladder and kept the
 architecture minus the certificates (§Claim-free): a rung is now a program and a target,
 and `validate` either synthesizes the type or does not.
 
+## The typed pipeline (2026-09-11): **Sorbet in the loop, on a stub `validateD`**
+
+`../docs/semantics/answer-typed-schema.md` is the work order; this is the first slice of
+it, and it is deliberately the **plumbing** slice. The corpus is now Sorbet-annotated
+Ruby, Sorbet's answer becomes certificate data, and a `Deriv` is checked against the
+**sig-stripped** program by a Lean binary. `validateD` is a **shape check only** — it
+verifies the certificate is a derivation about this program and checks no types — so no
+number in this section is a type-safety claim. It is the half that has to be right
+before the typing half is worth writing.
+
+### The five stages, and which one is trusted
+
+```
+corpus/NNN-id.rb        annotated Ruby -- the source of truth, hand-edited
+  1. srb -p symbol-table      -> the signature manifest         untrusted
+  2. the strip stack          -> the plain program              untrusted
+  3. export-json              -> the AST                        untrusted
+  4. scripts/emit_deriv.py    -> a `Deriv`, or a named block     untrusted
+  5. lake exe ratchetd        -> `validateD`'s Bool             TRUSTED, and only this
+```
+
+One command: `scripts/run_typed_ratchet.sh` (negative controls, stages 1–4, agreement,
+report). `build/` is derived and gitignored; delete it freely.
+
+**Why the certificate exists at all**, when `validate` synthesizes: `Judge.callDef` types
+a method body once *per call-site argument shape*, because Ruby writes no parameter types
+and there is therefore nothing to check a call against. A `sig` is exactly the missing
+input and cannot be handed to an inference algorithm without trusting it — so it is handed
+in as certificate data and re-checked. `Ratchet/Deriv.lean`'s header carries the argument;
+`sorbet-cert/README.md` §3 carries the tamper control that pins it.
+
+**Why the program is the stripped one:** `sorbet-runtime` executes as ordinary Ruby, so a
+`sig` is ~217 machine steps of reflective metaprogramming *inside* the program being
+certified (`static-soundness-poc.md` §8.3). Stage 2 deletes the annotations; Sorbet's
+answer survives only as data.
+
+### Where it stands (`lake exe ratchetd build`, 2026-09-11)
+
+```
+rungs:                              259
+  srb typechecks the annotation:    184/259   (259/259 agree with the recorded expect_sorbet)
+  rungs declaring a usable sig:      81/259   (50 rungs drop at least one sig `Ty` cannot express)
+  emitter produced a derivation:     75/259   (blocked 177, upstream failure 7 -- all recorded)
+  validateD accepted it:             75/259
+agreement over the stripped programs (--sut lean): 252 agree, 0 disagreements
+```
+
+**The 75 unblocked rungs are not the interesting number; the block census is.** It is
+printed every run, ranked, and it is the work list:
+
+| blocked on | count | what it is |
+|---|---|---|
+| a block argument | 42 | the emitter's fragment, deliberate |
+| `module` / `casgn` / `regexp_lit` / `while` / `begin` / `yield` / `splat` / `defs` | ~50 | emitter rules not written |
+| `T.untyped` in a signature | ~8 | Sorbet declining to make a claim — the fragment gate, working as designed |
+| `parameter kind 'pkey'/'popt'` | ~8 | required positionals only, for now |
+| `no builtin signature for X#m` | ~20 | `prim_ret`'s table is a subset of `PrimSig` |
+
+**Two results worth reading before extending anything.**
+
+1. **Sorbet rejects most of the unsafe corpus.** 75 of 259 rungs fail `srb`, and the
+   overlap with the `unsafe_program` targets is large (`054-fun-body-mismatch`,
+   `163-param-arity-unsafe`, `241-reopen-integer-is-a-unsafe`, the four
+   `*-return-escapes-unsafe`, …). Each rung's `expect_sorbet` and `sorbet_note` record
+   it, and `ratchetd` exits non-zero if a verdict moves. That is a ratchet on Sorbet's
+   answer, not on ours.
+2. **Sorbet also rejects things that are safe**, and the reasons are specific and worth
+   knowing: implicit `yield` without a declared block parameter (8 rungs),
+   `196-ctl-return-early`'s nilable `a[0]` behind a guard Sorbet cannot read,
+   `156-param-kwrest`'s `**kw` keyed by `Symbol`. These are recorded, not worked around.
+
+### The known divergence, named where it bites
+
+A Sorbet signature says `Point`; `Ratchet/Ty.lean` types an instance as
+`.inst "Point" <ivar spine>`, because "an object's observable type is not its class name".
+The emitter reconstructs the spine from `initialize`'s declared parameters where it can
+(`Emitter.as_inst`/`seed_ivars`) and leaves `.cls` where it cannot, at which point the
+first method call on such a receiver blocks. This is the first thing `check` will reject,
+and it is in the right place: a named divergence in an untrusted emitter.
+
+### What this commit does *not* do
+
+* **`check` does not exist.** `validateD` is `derivShapeOk`. `Ratchet/DerivControls.lean`
+  pins what that does and does not buy, including one `#guard` recording that an ill-typed
+  program with a well-shaped certificate is **accepted today** — so the day `check` lands,
+  that line has to be edited.
+* **`check_sound` does not exist**, nor do the `Judge` rules `Deriv.defDecl`/`callSig`
+  need (a body checked once at its declared signature, rather than per call site).
+* **The old ladder is untouched and still runs**, against the moved corpus:
+  `scripts/run_ratchet.sh` → 178/259 certified, 35 `expect_validate` mismatches,
+  `lake exe checkrungs corpus-untyped` → 177/177 + 148/148. The typed corpus was ported
+  from it (`scripts/port_corpus.py`), so nothing was thrown away.
+
+### Layout
+
+```
+corpus/NNN-id.rb          annotated Ruby, the source of truth (hand-edited)
+corpus/NNN-id.meta.json   tier, description, expect_validate, expect_sorbet, sorbet_note
+corpus-untyped/           the pre-2026-09-11 corpus, still driving the old ladder
+build/                    everything derived (gitignored)
+scripts/srb_sigs.py       srb -p symbol-table -> sigs in this package's `Ty` encoding
+scripts/emit_deriv.py     the untrusted emitter
+scripts/build_corpus.py   stages 1-4 over the whole corpus
+scripts/annotate_corpus.py  the sig table; idempotent; re-run after adding a rung
+scripts/record_baseline.py  freeze expect_sorbet / known_upstream_failure
+scripts/run_typed_ratchet.sh  all of it, one command
+Ratchet/Deriv.lean        the certificate language, its decoder, the stub `validateD`
+Ratchet/DerivControls.lean  the negative controls (#guard)
+Ratchet/Rung.lean         a built rung as `build/*.rung.json` leaves it
+MainTyped.lean            `lake exe ratchetd` -- stage 5
+```
+
 ## Checker status: **178 rungs of 259 — tier 13 complete, tiers 14–17 open**
 
 `Ratchet/Validate.lean`'s `validate` covers **every tier of the ladder**, tier 13 whole, and a

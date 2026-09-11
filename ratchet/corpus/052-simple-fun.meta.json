@@ -1,0 +1,10 @@
+{
+  "id": "simple-fun",
+  "tier": 6,
+  "description": "def add(x, y) = x + y; add(1, 2) : Int. The signature (Int, Int) -> Int is not written anywhere in the program: it has to come from the body (x + y is only typeable when both are Int, given PrimSig) and be checked against the call site's arguments.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

@@ -1,0 +1,10 @@
+{
+  "id": "block-pass-lambda-variable",
+  "tier": 9,
+  "description": "The other blockpass shape: `&double` where `double` is a local holding a lambda. Here the arrow *is* available -- `blockpass (var local double)` -- so the iterator rule can use the variable's own type as the block's type, with no coercion rule needed. Contrast block-pass-symbol-to-proc.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

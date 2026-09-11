@@ -1,0 +1,10 @@
+{
+  "id": "narrow-in-block",
+  "tier": 12,
+  "description": "Narrowing inside a block body, in concert with tier 9c's iterators and clink 11's capIntact: `t.each do |x| y = [10,20][x]; if y then s = s + y end end`. The nilable comes from Array#[] inside the block, the narrowing happens in the block's own environment, and the accumulation into the captured `s` is legal only because it preserves s's type -- the boundary xc-block-accumulates-capture pins. Deliberately the messiest rung in the tier.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

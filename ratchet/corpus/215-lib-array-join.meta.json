@@ -1,0 +1,10 @@
+{
+  "id": "lib-array-join",
+  "tier": 17,
+  "description": "[\"a\", \"b\"].join(\"/\") -- total, `String`. `purl.rb#to_s` builds every namespace with it.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

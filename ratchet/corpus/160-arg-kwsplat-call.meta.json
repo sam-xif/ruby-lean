@@ -1,0 +1,10 @@
+{
+  "id": "arg-kwsplat-call",
+  "tier": 14,
+  "description": "build(**kw) -- the `kwsplat` entry kind in a `kwargs` node. Same problem as the positional splat and worse: the hash's *keys* decide which parameters are bound, and tier 5's `Hash` type does not carry them, so a sound checker cannot tell whether the required keywords are all present.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

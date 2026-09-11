@@ -1,0 +1,10 @@
+{
+  "id": "class-instance-in-hash",
+  "tier": 7,
+  "description": "A hash literal whose value is a constructed instance -- typed as the bare .cls \"Hash\" regardless, same as any other hash literal.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true
+}

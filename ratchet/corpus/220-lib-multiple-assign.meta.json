@@ -1,0 +1,11 @@
+{
+  "id": "lib-multiple-assign",
+  "tier": 17,
+  "description": "a, b = \"x-1\".split(\"-\") -- `masgn` over an array of unknown length, which is how `identify.rb` reads every `rpartition`/`partition` result. Each target gets `nilable elem` on the honest reading, and the program is safe only because the split yields two -- the length problem again, now in assignment position.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Method `+` does not exist on `NilClass` component of `T.nilable(String)`"
+}

@@ -1,0 +1,10 @@
+{
+  "id": "metaprog-class-reopening",
+  "tier": 10,
+  "description": "Foo is defined via two separate `class' \"Foo\"` nodes, each contributing different methods -- the declaration table accumulates across both by name, the same way it would across any two top-level defs.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": true
+}

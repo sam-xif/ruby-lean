@@ -1,0 +1,10 @@
+{
+  "id": "lambda-capture-reassigned-same-type",
+  "tier": 9,
+  "description": "The precision control for the rung above: reassigning a captured local at the **same** type does not invalidate the capture, so `f.call + 1` is still `Integer` and the program is certified. Without this, `killClosOver` could have been a blanket erasure and nothing would have noticed.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

@@ -1,3 +1,4 @@
+# typed: true
 x = 1
 if true
   x = "hello"

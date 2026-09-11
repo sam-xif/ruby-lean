@@ -118,7 +118,7 @@ def runStdin : IO UInt32 := do
 def main (args : List String) : IO UInt32 := do
   if args.contains "--stdin" then
     return ← runStdin
-  let corpusDir : System.FilePath := args.headD "corpus"
+  let corpusDir : System.FilePath := args.headD "corpus-untyped"
   let dirEntries ← corpusDir.readDir
   let files := (dirEntries.map (·.path)).toList.filter (fun p => p.toString.endsWith ".json")
   let sorted := files.toArray.qsort (fun a b => a.toString < b.toString) |>.toList

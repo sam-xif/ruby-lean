@@ -1,0 +1,10 @@
+{
+  "id": "hash-index",
+  "tier": 5,
+  "description": "Hash indexing is also just `#[]`, but there is nothing to read the value type off: Ty has no parameterised Hash type (see hash-lit), so the receiver's .cls \"Hash\" says nothing about what comes out. Typing this precisely needs a hashOf-style constructor; the honest intermediate answer is Ty.any.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

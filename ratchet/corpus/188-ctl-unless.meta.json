@@ -1,0 +1,10 @@
+{
+  "id": "ctl-unless",
+  "tier": 16,
+  "description": "`unless x.nil? ... else ... end` -- sugar for `if` with the branches swapped, and the rung matters because of **narrowing**: tier 12's refinements are keyed to which branch is which, so a desugarer that swaps them and a checker that does not both produce a wrong answer, in opposite directions.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

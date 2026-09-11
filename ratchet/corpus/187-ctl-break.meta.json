@@ -1,0 +1,10 @@
+{
+  "id": "ctl-break",
+  "tier": 16,
+  "description": "`break if x == 3` -- `Expr.brk`, which ends the *call* rather than the iteration, so unlike `next` it contributes to the type of the `each` send itself. Two heads, two rules, and the difference between them is the rung.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

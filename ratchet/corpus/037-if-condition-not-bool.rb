@@ -1,3 +1,4 @@
+# typed: true
 if 5
   1
 else

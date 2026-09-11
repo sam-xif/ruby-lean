@@ -1,0 +1,11 @@
+{
+  "id": "iter-block-break-escapes-unsafe",
+  "tier": 16,
+  "description": "**\u00a7F24's second door.** `break` inside an `each` block ends the *call*, so the local's type after it is the one the aborted iteration left behind \u2014 not the block body's outgoing one that `capIntact` was read at.",
+  "expect_sorbet": false,
+  "expect_validate": false,
+  "false_reason": "unsafe_program",
+  "defs": 0,
+  "annotated": false,
+  "sorbet_note": "Changing the type of a variable is not permitted in loops and blocks"
+}

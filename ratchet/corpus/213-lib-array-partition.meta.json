@@ -1,0 +1,10 @@
+{
+  "id": "lib-array-partition",
+  "tier": 17,
+  "description": "`a, b = xs.partition { ... }` -- a block-taking builtin returning a **pair**, destructured by a multiple assignment. Two new things at once: a tuple-shaped result (which `arrayOf` cannot describe, since the two halves are the same type here but need not be) and `masgn`.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

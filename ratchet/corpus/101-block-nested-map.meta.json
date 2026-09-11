@@ -1,0 +1,10 @@
+{
+  "id": "block-nested-map",
+  "tier": 9,
+  "description": "`[[1,2],[3,4]].map { |row| row.map { |x| x + 1 } }` -- a block literal inside a block literal, over a nested array. The outer block's param is arrayOf Int (the receiver's element type) and its return is arrayOf Int, making the whole send arrayOf(arrayOf Int): the iterator rule has to compose with itself, and `arrayOf` has to nest.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

@@ -1,3 +1,6 @@
+# typed: true
+extend T::Sig
+sig { params(a: T::Array[Integer], d: Integer).returns(Integer) }
 def first_or(a, d)
   return d if a.empty?
   a[0]
