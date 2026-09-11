@@ -119,8 +119,13 @@ def semFam : Fam :=
     seq := SemJudgeSeq, rescues := SemJudgeRescues, consts := SemJudgeConsts,
     nested := SemJudgeNested }
 
-/-- A rule, with the judgment abstracted. Both readings are instantiations of one of these. -/
-abbrev RuleF := Fam → Prop
+/-- A rule, with the judgment abstracted. Both readings are instantiations of one of these.
+
+Generic in the family **record type**, not just in the two instances: `Ratchet/Check.lean`'s
+typed ladder has its own three-member family (`Denote/Typed/Clink.lean`'s `DFam`) and reuses
+`Clink`/`Closed` unchanged. Only `JudgeC` below is specific to `Fam`, because it *constructs*
+one. -/
+abbrev RuleF (F : Type) := F → Prop
 
 /-! ## §2 The clink
 
@@ -137,11 +142,11 @@ not a rewrite of this file. What that costs is then visible and per-rule: every 
 `sem` field does not carry over stops building, by name, instead of a report continuing to
 say "48 discharged" about a superseded statement. -/
 
-structure Clink (S T : Fam) where
+structure Clink {F : Type} (S T : F) where
   /-- `"Judge.vasgn"` — for the report only; nothing depends on it. -/
   name : String
   /-- The rule, authored once. -/
-  form : RuleF
+  form : RuleF F
   /-- The rule holds of the **source** family: for `S = synFam` this is the `Judge`
       constructor itself. -/
   syn : form S
@@ -151,11 +156,11 @@ structure Clink (S T : Fam) where
       `Obl.<Family>.<rule>`. -/
   sem : form T
 
-variable {S T : Fam}
+variable {F : Type} {S T : F}
 
-/-- A family `F` is **closed** under a registry when every registered rule holds of it. The
+/-- A family `G` is **closed** under a registry when every registered rule holds of it. The
 one hypothesis every derivation is parameterised by. -/
-def Closed (R : List (Clink S T)) (F : Fam) : Prop := ∀ c ∈ R, c.form F
+def Closed (R : List (Clink S T)) (G : F) : Prop := ∀ c ∈ R, c.form G
 
 /-- The **target** family is closed under any registry, because every clink says so. This is
 the whole soundness argument; everything below is `Closed` applied. -/
@@ -170,7 +175,7 @@ The least family closed under `R`, impredicatively. Eight members, each the inte
 all closed families — which is exactly "derivable from the registered rules and nothing
 else". -/
 
-def JudgeC (R : List (Clink S T)) : Fam where
+def JudgeC {S T : Fam} (R : List (Clink S T)) : Fam where
   judge κ Γ I e τ κ' Γ' I' := ∀ F : Fam, Closed R F → F.judge κ Γ I e τ κ' Γ' I'
   all κ Γ I es τs Γ' I' := ∀ F : Fam, Closed R F → F.all κ Γ I es τs Γ' I'
   kw κ Γ I es kws Γ' I' := ∀ F : Fam, Closed R F → F.kw κ Γ I es kws Γ' I'
@@ -192,7 +197,7 @@ not in it is not a rule.
 `S := synFam`, `T := semFam`, where the target reads as `SemJudge` on the nose. -/
 
 section Sound
-variable {R : List (Clink S T)}
+variable {S T : Fam} {R : List (Clink S T)}
 
 theorem judgeC_target {κ Γ I e τ κ' Γ' I'} (h : (JudgeC R).judge κ Γ I e τ κ' Γ' I') :
     T.judge κ Γ I e τ κ' Γ' I' := h T (closed_target R)

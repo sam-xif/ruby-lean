@@ -36,7 +36,7 @@ exhaustion answers `none`, so it can only cost completeness.
 
 ## What is deliberately not in the judgment yet
 
-`DJudge` has thirteen rules. Everything else a `Deriv` can express — `defDecl`, `callSig`,
+`DJudge` has twelve rules (plus four in the two list companions). Everything else a `Deriv` can express — `defDecl`, `callSig`,
 `callMethodSig`, `classDecl`, `newInst`, `ivarRead`, `ivarAsgn`, `constCls`, `arrayLit`,
 `hashLit`, `selfExpr` — answers `none`, by name, in `check`'s last arms. They join a rule at
 a time, and each one joining is a rung.
@@ -137,9 +137,17 @@ inductive DJudge : Env → Expr → Ty → Env → Prop
   | flsLit {Γ : Env} : DJudge Γ .fls .bool Γ
   | nilLit {Γ : Env} : DJudge Γ .nil .nilT Γ
   /-- Reading a local. The type comes from the environment, so there is nothing for a
-      certificate to choose and `Deriv.var` carries only the name. -/
+      certificate to choose and `Deriv.var` carries only the name.
+
+      **`halias` — recovered by the answer-typed obligation** (`found-issues.md` §F29, and
+      it is `§F5` found a second time the same way). Without it the rule is not provable:
+      `StateOk`'s environment component gives `denM (stripAlias τ)`, so at a binding whose
+      type is a `Ty.sameAs` the conclusion claims more than conformance supplies. No
+      `DJudge` rule *produces* a `sameAs`, so no reachable environment has one — but
+      `SemJudgeA` quantifies over every environment with a conformant machine, which is
+      what made the gap visible. -/
   | var {Γ : Env} {x : String} {τ : Ty} :
-      envGet? Γ x = some τ → DJudge Γ (.var .lvar x) τ Γ
+      envGet? Γ x = some τ → isAliasTy τ = false → DJudge Γ (.var .lvar x) τ Γ
   /-- Assignment. Its *value* is the right-hand side's (Ruby's `x = e` evaluates to `e`) and
       its *effect* is to record that type for `x`. The binding lands in `Γ₁` — the
       environment the right-hand side left behind — not in `Γ`, because the right-hand side
@@ -250,7 +258,7 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) : Option (Certified Γ 
     | .var .lvar x, .var .lvar x' =>
       if x == x' then
         match hg : envGet? Γ x with
-        | some τ => some ⟨τ, Γ, .var hg⟩
+        | some τ => if ha : isAliasTy τ = false then some ⟨τ, Γ, .var hg ha⟩ else none
         | none => none
       else none
     | .vasgn .lvar x ev, .vasgn .lvar x' dv =>
@@ -362,24 +370,27 @@ theorem validateD_typed {p : Expr} {d : Deriv} (h : validateD p d = true) : DTyp
 handed it over rather than asserting it. That is layers 1–3 of the schema, closed.
 
 It does **not** mean `p` is type-safe, and the gap is exactly the one `Denote/Clink/` was
-built to keep visible: `DJudge`'s thirteen rules have **no semantic proofs**. None of them is
-a `Clink`, so none is in a certified judgment, and the honest reading of the ladder's reach is
-*coverage of the checker*, not justification.
+built to keep visible: **eight of `DJudge`'s twelve rules have an answer-typed semantic proof**
+(`Denote/Typed/JudgeA.lean`) and are registered clinks (`Denote/Typed/Clink.lean`); the other
+four -- `vasgn`, `seq`, `prim`, `if'` -- have none. So `validateD = true` is a type-safety
+claim exactly on the programs the eight derive (a literal, or a local read: corpus rungs
+001-008), and on rungs 009-018 it is coverage of the *checker* rather than justification.
 
-Why the 48 proofs already on file do not transfer for free: `Denote/Sem/Obligations.lean`'s
-`Obl.Judge.*` are statements about `SemJudge` alone (no `Judge` occurs in them), so they are
-reusable *facts* — but they are stated at `Judge`'s index shape, with a `Ctx` and an ivar
-spine, and `DJudge` deliberately has neither (§Not in the judgment). Reconciling the two is a
-piece of work with a known shape and it has not been done; claiming the 48 here would be
-claiming a theorem about a different judgment.
+Why the 48 proofs in `Denote/Clink/Registry.lean` did not transfer: they are `SemJudge`-shaped
+— *if the run returns a value, the value is in the type* — and
+`Denote/Sem/NoProgress.lean`'s `not_semJudgeImpliesStuckFree` proves that shape says nothing
+about a run that **escapes**. The obligations here are `SemJudgeA`-shaped instead: the
+hypothesis is an `Answer`, and the conclusion carries whether the run reached a type-stuck
+outcome. So the eight clinks in `Denote/Typed/Clink.lean` are the project's first ones against
+a statement with progress content, and they were proved rather than inherited.
 
-What is owed, in the order it gets cheaper:
+What is owed, in the order it gets cheaper — and the first three rows are **one lemma**:
 
-| rule | what its semantic obligation needs |
+| rule | what its obligation needs |
 |---|---|
-| the seven literals, `var`, `vasgn`, `seq` | the `Env`-only counterpart of `StateOk`, then one `stepFn` unfolding each. The corresponding `Obl.Judge.*` are all **proved** at `Judge`'s shape, so this is a reconciliation, not a discovery |
-| `if'` | `joinT`/`joinEnv` soundness — that a join is an upper bound on both branches under `denM`. Stated nowhere yet; `Denote/notes.md` §"not built" lists `subTy` soundness, which is the same fact |
-| `prim` | one conformance fact per row: that CRuby's `Integer#+` really returns an `Integer` from the prelude-booted heap. `DPrim` has **7** rows against `PrimSig`'s ~90 precisely so this is a countable obligation rather than the ~200-fact block that stalled the old ladder three sessions running |
+| `vasgn`, `seq`, `prim`, `if'` | `RunAPushK` (`Denote/Typed/JudgeA.lean` §4): the answer-level counterpart of `run_pushK`. All four evaluate a sub-expression **under a pushed frame**, and the decomposition exists for `Interp.run` and not for `runA`. One induction, gating four rules |
+| `if'`, additionally | `joinT`/`joinEnv` soundness — that a join is an upper bound on both branches under `denM`. Stated nowhere yet; `Denote/notes.md` §"not built" lists `subTy` soundness, which is the same fact |
+| `prim`, additionally | one conformance fact per row: that CRuby's `Integer#+` really returns an `Integer` from the prelude-booted heap. `DPrim` has **7** rows against `PrimSig`'s ~90 precisely so this is a countable obligation rather than the ~200-fact block that stalled the old ladder three sessions running |
 
 ## §6 Relationship to `Ratchet/Judge.lean` and `Ratchet/Validate.lean`
 

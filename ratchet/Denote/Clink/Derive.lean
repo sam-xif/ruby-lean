@@ -59,7 +59,8 @@ def famField : List (Name × Name) :=
 /-- The registry's clink type: source `synFam`, target `semFam`. `Clink` is parameterised by
 both (`Spec.lean` §2) so that restating the semantic reading is a new registry rather than an
 edit to the mechanism; this is the pairing the committed registry uses. -/
-def clinkTy : Lean.Expr := mkApp2 (mkConst ``Clink) (mkConst ``synFam) (mkConst ``semFam)
+def clinkTy : Lean.Expr :=
+  mkApp3 (mkConst ``Clink) (mkConst ``Fam) (mkConst ``synFam) (mkConst ``semFam)
 
 /-- `Clink.Judge.vasgn` from `Ratchet.Judge.vasgn`. -/
 def clinkName (ctor : Name) : Name :=
@@ -67,16 +68,20 @@ def clinkName (ctor : Name) : Name :=
   | .str (.str _ fam) rule => `Ratchet.Denote.Clink ++ Name.mkSimple fam ++ Name.mkSimple rule
   | _ => `Ratchet.Denote.Clink ++ ctor
 
-/-- The rule, with the family abstracted: `fun F : Fam => <ctor type>[Judge := F.judge, …]`.
+/-- The rule, with the family abstracted: `fun F : <famTy> => <ctor type>[<head> := F.<field>, …]`.
+
+Parameterised by the family record and its field table, so the typed ladder's own family
+(`Denote/Typed/Clink.lean`'s `DFam`) reuses it rather than copying it.
 
 `withLocalDeclD` rather than a raw `bvar`, because `Expr.replace` visits subterms under
 binders and a de Bruijn index would be wrong at every depth but the outermost. An `fvar` is
 depth-independent, and `mkLambdaFVars` puts the binder back. -/
-def ruleForm (ctorType : Lean.Expr) : MetaM Lean.Expr :=
-  withLocalDeclD `F (mkConst ``Fam) fun f => do
+def ruleForm (famTy : Name) (table : List (Name × Name)) (ctorType : Lean.Expr) :
+    MetaM Lean.Expr :=
+  withLocalDeclD `F (mkConst famTy) fun f => do
     let body := Lean.Expr.replace (fun x =>
       match x with
-      | .const n _ => (famField.lookup n).map (fun fld => mkApp (mkConst fld) f)
+      | .const n _ => (table.lookup n).map (fun fld => mkApp (mkConst fld) f)
       | _ => none) ctorType
     mkLambdaFVars #[f] body
 
@@ -97,9 +102,9 @@ def registerClink (ctor : Name) : CommandElabM Unit := do
       Write `theorem {sem} : {oblName ctor} := …` in Denote/Rules/ first.\n\
       A rule with no proof is not a rule (Denote/Clink/Spec.lean)."
   let value ← liftTermElabM do
-    let form ← ruleForm ci.type
+    let form ← ruleForm ``Fam famField ci.type
     let v := mkAppN (mkConst ``Clink.mk)
-      #[mkConst ``synFam, mkConst ``semFam,
+      #[mkConst ``Fam, mkConst ``synFam, mkConst ``semFam,
         mkStrLit s!"{ci.induct.getString!}.{ctor.getString!}", form, mkConst ctor, mkConst sem]
     -- Kernel-check here rather than at `addDecl`, so the error names the field.
     let ty ← inferType v

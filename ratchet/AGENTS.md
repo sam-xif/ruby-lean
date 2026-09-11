@@ -25,7 +25,9 @@ hands back a `DJudge` term — so layer 3 is not a theorem *about* the checker, 
 checker's **type**, and the oracle that judges a rung is the Lean typechecker. There is no gap
 for a soundness proof to be weaker across.
 
-What a `true` does **not** mean: type-safe. `DJudge`'s thirteen rules have no semantic proofs
+What a `true` does **not** mean: type-safe for every rung. **Eight of `DJudge`'s twelve rules
+now have an answer-typed semantic proof** and are registered clinks (`Denote/Typed/`), which
+covers rungs 001-008; the remaining four have no proof
 yet; `Ratchet/Check.lean` §5 says exactly which are owed and what each costs. That is the same
 coverage-not-debt reading §The clink registry establishes, one layer down.
 
@@ -80,7 +82,7 @@ certifies out of order says nothing about the ones before it. `MainTyped.lean`'s
 **The judgment behind those 18 rungs** (`Ratchet/Check.lean`, and it imports neither
 `Judge.lean` nor `Validate.lean`):
 
-* `DJudge`/`DJudgeAll`/`DJudgeSeq` — **thirteen rules**: seven literals, `var`, `vasgn`,
+* `DJudge`/`DJudgeAll`/`DJudgeSeq` — **twelve rules** (plus four companions): seven literals, `var`, `vasgn`,
   `seq`, `prim`, `if'`, and the two list companions. `Env`-indexed, no `Ctx` and no ivar
   spine, because the fragment declares nothing and has no `self` — a context would be a field
   nothing reads, and copying `Judge`'s is the wrong move ahead of a rule that needs it.
@@ -127,20 +129,48 @@ The emitter reconstructs the spine from `initialize`'s declared parameters where
 first method call on such a receiver blocks. This is the first thing `check` will reject,
 and it is in the right place: a named divergence in an untrusted emitter.
 
-### What is not built
+### The semantic layer: **8 answer-typed clinks**, and the one lemma that gates the rest
 
-* **No semantic proof for any `DJudge` rule.** §5 of `Ratchet/Check.lean` is the owed list,
-  ordered by cost: the literals/`var`/`vasgn`/`seq` are a *reconciliation* (their
-  `Obl.Judge.*` counterparts are proved, at a different index shape), `if'` needs join
-  soundness (`denM`-wise, which is `Denote/notes.md`'s unbuilt `subTy` soundness), and `prim`
-  needs one conformance fact per row.
-* **No clink for any `DJudge` rule**, therefore — so nothing here is in a certified judgment
-  yet, and the reach number is coverage of the *checker*, not justification.
+`Denote/Typed/` is `Denote/Clink/`'s mechanism at this judgment, with the semantic reading
+**restated**: `SemJudgeA`, whose hypothesis is an `Answer` rather than a value and whose
+conclusion carries whether the run reached a type-stuck outcome (`AnsOk`'s `esc (.raiseJ exc)`
+arm is `isTypeError m₀.heap exc = false`). That is why the 48 `SemJudge`-shaped clinks were
+**not** reusable here: `not_semJudgeImpliesStuckFree` proves that shape says nothing about a
+run that escapes, so inheriting them would have been inheriting proofs of the weaker
+statement. The two registries stay separate and `lake exe semladder` prints both.
+
+Registered, axiom-clean: the **seven literals and `var`** — every rule whose evaluation is one
+`stepFn` step to a value at the empty continuation. So rungs **001–008** are derivable in
+`DJudgeC dclinks` and `dregistry_sound` makes them an answer-typed safety claim; rungs
+**009–018** are checker coverage only.
+
+Owed: `vasgn`, `seq`, `prim`, `if'` — all four behind **one** missing lemma, `RunAPushK`
+(`Denote/Typed/JudgeA.lean` §4), the answer-level counterpart of `run_pushK`. Each evaluates a
+sub-expression under a pushed frame, and the decomposition exists for `Interp.run` and not for
+`runA`. `if'` additionally needs join soundness under `denM`; `prim` additionally needs one
+conformance fact per `DPrim` row.
+
+**Why rule-local proofs are possible at all:** `evalFrom` empties the continuation, so every
+obligation is about a run from an empty kont — which is why §9.2's warning that `safe_pushK`
+needs `CatchFree m.kont` does not bite at this layer.
+
+**§F29** is what the restatement bought immediately: `DJudge.var`'s obligation did not close,
+because the rule had dropped `isAliasTy τ = false` (§F5's premise, on a rule three hours old).
+No corpus rung could have found it — nothing in `DJudge` produces an alias — but `SemJudgeA`
+quantifies over every conformant environment. One premise, no ladder movement.
+
+### Still not built
+
 * **`Deriv`'s other rules are refused, by name**: `defDecl`, `callSig`, `callMethodSig`,
   `classDecl`, `newInst`, `ivarRead`, `ivarAsgn`, `constCls`, `arrayLit`, `hashLit`,
   `selfExpr`. Each joins with a `DJudge` rule, and each joining is a rung. `defDecl` is the
   interesting one: it is where a Sorbet `sig` stops being decoration and becomes the premise
   the body is checked at.
+* **The growth gate does not yet cover `DJudge`.** `Denote/Clink/Registry.lean`'s gate ranges
+  over `Ratchet.Judge`'s family only, which is how twelve unproved rules were authored in one
+  commit without the build going red. `Denote/Typed/Clink.lean`'s `#guard`s pin the current
+  8/4 split, so a *thirteenth* rule without a proof breaks them — but that is a count, not
+  the by-name freeze `legacyUnclinked` gives.
 
 ### Layout
 
@@ -158,6 +188,8 @@ scripts/run_typed_ratchet.sh  all of it, one command
 Ratchet/Deriv.lean        the certificate language and its decoder (layer 1)
 Ratchet/Check.lean        DPrim, DJudge, `check` (which returns the derivation), `validateD`
 Ratchet/DerivControls.lean  16 negative controls (#guard), including the typing ones
+Denote/Typed/JudgeA.lean  SemJudgeA/AnsOk/EscOk, runA_pure, the 8 obligations, RunAPushK
+Denote/Typed/Clink.lean   DFam, register_dclink, `dclinks`, dregistry_sound
 Ratchet/Rung.lean         a built rung as `build/*.rung.json` leaves it
 MainTyped.lean            `lake exe ratchetd` -- stage 5
 ```

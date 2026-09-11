@@ -2169,3 +2169,38 @@ agreement gate, from the other direction: the corruption was *upstream of the se
 in a transform nobody types or proves anything about, and the thing that caught it was
 running CRuby over the actual artifact the certificate is about. A strip transform is
 trusted by nothing and therefore checked by nothing — except this.
+
+---
+
+## §F29 — the answer-typed obligation recovered a missing premise on a rule authored hours earlier *(fixed; §F5 found a second time, the same way)*
+
+`Ratchet/Check.lean`'s `DJudge.var` was written as
+
+```lean
+| var : envGet? Γ x = some τ → DJudge Γ (.var .lvar x) τ Γ
+```
+
+and its answer-typed obligation (`Denote/Typed/JudgeA.lean`'s `SemA.var`) **does not close**.
+
+**Why.** `StateOk`'s environment component supplies `denM (stripAlias τ) m v` — the *stripped*
+type. At a binding whose type is a `Ty.sameAs y σ` (tier 12's alias, recorded for the
+desugarer's `&&`/`case` temporaries) the conclusion `denM τ` therefore claims strictly more
+than conformance gives: it claims `x` and `y` hold the same value, which reading `x` does not
+establish. The fix is the premise the old judgment already had — `isAliasTy τ = false` — and
+`Ratchet/Judge.lean`'s `Judge.var` carries it for exactly this reason, recorded there as §F5.
+
+**What is worth recording is not the premise, it is how it surfaced.** No `DJudge` rule
+*produces* a `sameAs` type, so no environment the checker can reach has one, so no corpus rung
+exercises it and no amount of testing would have found it. `SemJudgeA` quantifies over every
+environment with a conformant machine, which is what made the gap a failed proof instead of a
+latent hole. That is the mechanism `Denote/Clink/` was built for, working on a rule **three
+hours old**: an unprovable obligation is information about the definition.
+
+**The control.** `Judge.var`'s §F5 was found the same way (by a semantic rung, against the
+value-shaped obligation) and the repair is identical, which is the useful part: the
+answer-typed restatement did not invent a new requirement, it re-derived a known one on a
+freshly authored rule that had dropped it. A rule set that grows without its obligations
+drops premises like this silently; that is the whole argument.
+
+Cost: one premise on the rule, one `if` in `check`'s `var` arm, and **no movement in the
+ladder** (reach 18 before and after) — because nothing reachable ever had an alias.

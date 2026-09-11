@@ -7847,3 +7847,99 @@ ordered by cost — literals/`var`/`vasgn`/`seq` are a reconciliation of index s
 `Obl.Judge.*` (already proved), `if'` needs join soundness under `denM`, `prim` needs one
 conformance fact per row. §6 states the condition under which `Judge.lean`/`Validate.lean`
 get deleted rather than assuming it.
+
+---
+
+## Clink 67 (2026-09-11) — **eight answer-typed clinks**, the first in the project whose hypothesis is an answer rather than a value
+
+Asked, after clink 66, whether any clinks had actually been achieved. The honest answer was
+**no** — the registry was still the same 48, every `sem` field predating the session, and
+`DJudge`'s twelve rules had none. Two things were wrong and both are fixed here.
+
+### The gate had a hole, and I had walked through it
+
+`Denote/Clink/Registry.lean`'s growth gate ranges over `familyCtors` — `Ratchet.Judge`'s
+eight-member mutual family. It has no opinion about any *other* judgment. So clink 66
+authored twelve brand-new unproved rules in `Ratchet/Check.lean` and nothing went red, one
+commit after building a gate whose entire purpose is "a rule enters only with its proof".
+Not a violation of the letter; squarely one of the spirit, and the kind of hole that is
+invisible until someone asks.
+
+### Which shape the obligations should be in, and why the 48 were not reusable
+
+The first instinct was to re-index `DJudge` to `SemJudge`'s shape, at which point ten of the
+twelve rules would have inherited an existing proof verbatim — `Obl.Judge.intLit` is a
+statement about `SemJudge` alone, and `Sem.Judge.intLit` discharges it. **That was the wrong
+instinct**, and the correction is the substance of this clink: `SemJudge`'s hypothesis is a
+*value*, so `Denote/Sem/NoProgress.lean`'s `not_semJudgeImpliesStuckFree` shows it says
+nothing at all about a run that escapes. Inheriting those ten would have been inheriting ten
+proofs of the weaker statement and calling the ladder justified.
+
+So the obligations are `SemJudgeA`-shaped instead (`answer-typed-schema.md` §3.1, the
+prototype's `PSemJudge` generalised):
+
+* the hypothesis is `runA fuel (evalFrom m e) = .ans a m₀ rest` — an **answer**, not a value;
+* the conclusion carries `AnsOk`, whose `esc (.raiseJ exc)` arm is
+  `isTypeError m₀.heap exc = false`, i.e. **whether the run reached a type-stuck outcome**.
+
+The two registries are kept separate rather than merged, and that is deliberate: they are
+clinks against different statements, and one count would let the weaker launder as the
+stronger. `lake exe semladder` prints both, with `dclinkFloor` ratcheting the new one.
+
+### The structural fact that made rule-local proofs possible at all
+
+`evalFrom m e = { m with ctl := .eval (toRuby e), kont := [] }` — it **empties the
+continuation**. So every obligation is about a run from an empty continuation, and
+`answer-typed-schema.md` §9.2's warning (that `safe_pushK` needs `CatchFree m.kont`, which a
+reachable machine can violate, so the answer-typed decomposition is a per-rule tool and not a
+whole-machine invariant) does not bite: at an empty base kont the frames a rule pushes are the
+only ones there, and those are catch-free by inspection. Worth writing down because the
+warning reads like a blocker and is not one at this layer.
+
+### What that bought, and the one lemma that gates the rest
+
+Eight rules proved and registered, axiom-clean: the seven literals and `var`. Each is one
+`runA_pure` inversion plus packaging, and the packaging is **smaller** than the value-shaped
+twin's — no `Plain` conjunct, one outgoing `StateOk` instead of two. `runA_pure` itself is
+shorter than `evals_pure` for a pleasing reason: `evals_pure` needs two steps because
+`Interp.run` has to *deliver* the value to the empty continuation before reporting `.value`,
+while `runA` stops at the answer point, so one step is the whole run.
+
+The other four — `vasgn`, `seq`, `prim`, `if'` — are behind **one** missing lemma, stated as a
+named `Prop` before anything is proved under it (`HANDOFF.md`'s working rule, which
+`FrameLocal.lean` paid for twice): `RunAPushK`, the answer-level counterpart of `run_pushK`.
+All four evaluate a sub-expression under a pushed frame and the decomposition exists for
+`Interp.run` and not for `runA`. One induction gating four rules is a good ratio, and
+`Denote/Rules/VasgnAnswer.lean` already measured what it buys downstream: the `esc` clause was
+**four lines** against the projection route's twenty-two.
+
+### §F29, and it is the mechanism working
+
+`DJudge.var`'s obligation **did not close**, and the reason was a premise I had dropped when
+authoring the rule three hours earlier: `StateOk` supplies `denM (stripAlias τ)`, so at a
+`Ty.sameAs` binding the conclusion claims more than conformance gives. That is §F5, on
+`Judge.var`, found a second time by the same route. No corpus rung could have found it —
+nothing in `DJudge` *produces* an alias, so no reachable environment has one — but
+`SemJudgeA` quantifies over every conformant environment, so the hole was a failed proof
+rather than a latent bug. Cost of the fix: one premise, one `if` in `check`, and **no ladder
+movement** (reach 18 before and after).
+
+### Mechanism changes
+
+`Clink` is now generic in the family **record type** (`{F : Type} (S T : F)`), and
+`register_clink`'s form derivation takes the family constant and field table as parameters.
+So `Denote/Typed/Clink.lean` supplies a one-member `DFam` and reuses `Clink`, `Closed`,
+`closed_target`/`closed_source` and `ruleForm` unchanged rather than copying them. `DFam` has
+one member on purpose: `DJudgeAll`/`DJudgeSeq` join when a rule concluding about them acquires
+a proof, which needs an answer-typed reading of a *list* evaluation that nothing yet consumes,
+and inventing a statement nothing checks is how the old family got components no rung could
+discharge.
+
+### Where it leaves the ladder
+
+Reach is still 18 rungs, and now says two different things over its length: rungs **001–008**
+are derivable in the certified typed judgment (`DJudgeC dclinks`), so `dregistry_sound` makes
+them an answer-typed safety claim; rungs **009–018** are checked by `Ratchet/Check.lean` and
+are coverage of the checker only, because `prim`, `seq`, `vasgn` and `if'` are unregistered.
+The two halves of the ladder now differ in kind, which is the first time that has been true
+and is the right shape for it to have.

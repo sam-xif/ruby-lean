@@ -1,4 +1,5 @@
 import Denote.Clink.Registry
+import Denote.Typed.Clink
 
 /-!
 # `semladder` — the clink registry's report
@@ -30,12 +31,19 @@ which is a light nobody reads.
 -/
 
 open Ratchet.Denote
+open Ratchet.Denote.Typed
 
 /-- The recorded size of the registry. **A clink once registered never unregisters**
 (`ratchet/AGENTS.md`), and unlike the old ladder's number this one is sound to ratchet on: a
 clink cannot be registered without its proof, so the count is a count of proofs. Raise this
 when the registry grows; a drop is a regression. -/
 def clinkFloor : Nat := 48
+
+/-- The typed ladder's registry floor. Separate from `clinkFloor` because these are clinks
+against a **different and stronger statement** — `SemJudgeA`, whose hypothesis is an answer
+rather than a value — and merging the two counts would let the weaker one launder as the
+stronger. -/
+def dclinkFloor : Nat := 8
 
 def main : IO UInt32 := do
   IO.println clinkReport
@@ -51,4 +59,17 @@ def main : IO UInt32 := do
     return 0
   IO.println s!"CLINK RATCHET OK ({n} registered, all proved by construction; \
 {unregisteredRules.length} rules not in the judgment -- that is coverage, not debt)"
+  -- The typed ladder's registry, reported separately and for the reason `dclinkFloor` gives.
+  let dn := dRegisteredRules.length
+  IO.println ""
+  IO.println s!"=== TYPED CLINK REGISTRY (answer-typed: `SemJudgeA`, not `SemJudge`) ==="
+  IO.println s!"  DJudge         {dn} registered   {dUnregisteredRules.length} not in the judgment"
+  IO.println s!"  registered: {String.intercalate ", " dRegisteredRules}"
+  IO.println s!"  owed:       {String.intercalate ", " dUnregisteredRules} \
+(all four behind `RunAPushK` -- Denote/Typed/JudgeA.lean §4)"
+  if dn < dclinkFloor then
+    IO.println s!"TYPED CLINK RATCHET REGRESSED: {dn} registered, floor is {dclinkFloor}"
+    return 1
+  IO.println s!"TYPED CLINK RATCHET OK ({dn} registered; these are the first clinks in the \
+project whose hypothesis is an answer rather than a value)"
   return 0
