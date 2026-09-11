@@ -537,6 +537,17 @@ the seal) is untouched**, as its own piece.
 
 ## Semantic ratchet status (`Denote/Sem/`): **48 of 83 `Judge` rules discharged** — *and the count is the problem, see the exit below*
 
+> **BEING RESHAPED, 2026-09-11.** The two-ladder framing this section describes is being
+> replaced by a single **answer-typed** judgment plus an inductive invariant, because
+> `SemJudge` has no progress content at all and that is now proved, not argued
+> (`Denote/Sem/NoProgress.lean`'s `not_semJudgeImpliesStuckFree`). The work order is
+> **[`../docs/semantics/answer-typed-schema.md`](../docs/semantics/answer-typed-schema.md)** —
+> seven layers, an explicit delete list, and a migration that says where the ladder gets
+> *restated* rather than climbed. The diagnosis and the built decomposition layer are
+> `../docs/semantics/answer-typed-judgments.md` §1–§5 and §10; the worked end-to-end
+> prototype is `Denote/Proto/`. **Read the schema before touching anything under
+> `Denote/Sem/`.**
+
 > **EMERGENCY EXIT INVOKED (clink 64).** The ladder counts **one rule at a time**; 26 of the 35
 > remaining rules come out **together**, at the end of a layer that is several sessions long, and
 > 7 more are false as stated with repairs that cross into `Ratchet/`. Three consecutive sessions

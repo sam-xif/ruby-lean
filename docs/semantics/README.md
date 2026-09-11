@@ -154,6 +154,21 @@ explicit that `lean-model-sketch.md`'s rejections of big-step and of meta-level 
 both **stand** — the answer type is orthogonal to both. §6 prices the proposal honestly:
 it is a re-statement of the judgment layer, not a patch.
 
+**Control (work order, 2026-09-11):** [The answer-typed schema](answer-typed-schema.md) — the
+target shape for `ratchet/` and how to move it there, written to be handed to an agent. Seven
+layers (certificate language → checker → `check_sound` → the answer-typed `SemJudgeA` →
+adequacy → `CtlOk`/`KontOk`/`Inv` → safety), each with a working four-rule prototype to read
+first (`ratchet/Denote/Proto/`, proved end to end). Carries an explicit **delete list** and a
+migration in commit-sized steps, including the one step where the semantic ladder is
+*restated* rather than climbed and how to report that honestly. Adds two norms to the standing
+set: **state the general version of every theorem** unless a named requirement prevents it (the
+prototype's adequacy was written at `Γ = []` and was useless for the only job adequacy has —
+generalising it changed no proof), and **do not be married to existing code; delete dead code
+liberally**, distinguishing *superseded* (delete) from *refuted* (keep the counterexample).
+§7 lists the named gaps — `UncaughtInv`, the protocol-indexed frame rule, `catchK`'s missing
+corpus rung, and the six of thirty-six continuation frames that correspond to no derivation
+position — and §9 the four temptations that have already been tried and measured.
+
 **Types:** [Sorbet's type system & a preservation roadmap](types-and-preservation.md) — a
 research artifact (to grow): Part A is a formalization-oriented deep dive on **Sorbet**
 (type grammar, flow-sensitive narrowing, the unsound-by-design stance + escape hatches,

@@ -10,6 +10,11 @@
 > **[✗→]** a correction of a plausible-but-false claim made earlier in the same
 > investigation, recorded so it is not reintroduced.
 >
+> **Reshaping order:** [`answer-typed-schema.md`](answer-typed-schema.md) is the work order
+> that turns §6/§10 into the shape `ratchet/` should have — seven layers, a delete list, a
+> migration in commit-sized steps, and the two norms it adds (state the general theorem;
+> delete dead code). Point an agent at *that*, not at this file.
+>
 > Companions: [`types-and-preservation.md`](types-and-preservation.md) §B surveys type
 > soundness and says nothing about *control*; this is that gap.
 > [`lean-model-sketch.md`](lean-model-sketch.md) §1.1/§What-we-reject is the earlier
