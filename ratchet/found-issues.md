@@ -2205,6 +2205,16 @@ drops premises like this silently; that is the whole argument.
 Cost: one premise on the rule, one `if` in `check`'s `var` arm, and **no movement in the
 ladder** (reach 18 before and after) — because nothing reachable ever had an alias.
 
+**It happened again at `vasgn`** (clink 72), and the second time was predictable from the
+first: `DJudge.vasgn` was authored with outgoing environment `envSet Γ₁ x τ` and no premises,
+and its obligation is unprovable that way. `StateOk_setLocal` — the conformance lemma for a
+local write — needs `capStale x τ τ = false` (writing `x` makes a captured spine that mentions
+it stale) and `isAliasTy τ = false` (§F5 again), and produces `envAfter Γ₁ x τ`, which kills
+aliases to `x` and closures over it before writing. Neither function does anything on an
+environment `DJudge` can reach, because no rule produces a `sameAs` or a `clos` — and the
+obligation quantifies over every environment a *conformant machine* can have, which is what
+made the gap visible. Reach 18 before and after, again.
+
 ---
 
 ## §F30 — `var` is registered, proved, and **not reachable by any end-to-end safety proof** *(open; structural, not an oversight)*

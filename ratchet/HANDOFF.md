@@ -74,8 +74,8 @@
 |---|---|---|
 | Ladder reach (*the headline*) | **18 rungs** -- the leading run meeting their recorded target; frontier `019-to-s-call`, one `DPrim` row away | `scripts/run_typed_ratchet.sh` |
 | Agreement | **252 agree, 0 disagreements** over the sig-stripped programs | same, step 3 |
-| Clinks (*what the judgment may contain*) | **8 of `DJudge`'s 12** rules, each carrying an answer-typed proof **and** a safety proof; 4 owed, all behind **one** lemma | `scripts/run_denote.sh`, or `lake exe semladder` |
-| End-to-end safety | **8 corpus rungs** proved `StuckFree bootMachine <program>` at every fuel; **7 of 8 rules exercised** (`var` is the named exception, §F30) | `run_typed_ratchet.sh` step 4, or `lake exe semladder build` |
+| Clinks (*what the judgment may contain*) | **9 of `DJudge`'s 12** rules, each carrying an answer-typed proof **and** an invariant proof; 3 owed | `scripts/run_denote.sh`, or `lake exe semladder` |
+| End-to-end safety | **8 corpus rungs** proved `StuckFree bootMachine <program>` at every fuel; **7 of 9 rules exercised** (`var`/`vasgn`, §F30) | `run_typed_ratchet.sh` step 4, or `lake exe semladder build` |
 
 **Clink 68 deleted the old ladder**, so the three rows above are all of them. Gone: `Judge`
 (83 rules), `chk`, `Rungs.lean`'s 177 derivations, `ChkSound.lean`, `corpus-untyped/`,

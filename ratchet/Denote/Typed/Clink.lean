@@ -194,6 +194,72 @@ theorem dregistry_syn {Γ : Env} {e : Ratchet.Expr} {τ : Ty} {Γ' : Env}
     (h : (DJudgeC dclinks).judge Γ e τ Γ') : DJudge Γ e τ Γ' :=
   h dsynFam (closed_source dclinks)
 
+/-! ## §3a The invariant, as a predicate on machines
+
+`SafeUnder` is the invariant *per expression*, which is the shape a clink field has to have.
+This is the same content as a predicate on **machines** — the object
+`Denote/Sem/Invariant.lean` is written against, and the one a reader looking for "the
+inductive invariant" expects to find.
+
+Two arms today, one per `Ctl` the fragment can be in. There is no `jump` arm because no
+registered rule produces a jump: `DJudge` has no `ret`, `throw`, `brk` or `next`. It gains one
+with the first rule that does, and that arm is where §F27's `retJ`/`throwJ` class-table
+question comes due. -/
+
+def DInv (τa : Ty) (m : Machine) : Prop :=
+  (∃ (Γ Γ' : Env) (e : Ratchet.Expr) (τ : Ty),
+      m.ctl = .eval (toRuby e) ∧ StateOk Ratchet.ctx0 Γ .ivar0 m ∧
+      (DJudgeC dclinks).judge Γ e τ Γ' ∧ DKontOk τa m.kont Γ' τ) ∨
+  (∃ (Γ : Env) (τ : Ty) (v : Value),
+      m.ctl = .value v ∧ StateOk Ratchet.ctx0 Γ .ivar0 m ∧ denM τ m v ∧
+      DKontOk τa m.kont Γ τ)
+
+/-- **An `Inv` machine is safe.** The eval arm is the registry's own obligation
+(`dregistry_safeUnder`); the value arm is the invariant's value clause, one case per frame. -/
+theorem dInv_safe {τa : Ty} {m : Machine} (h : DInv τa m) : SafeA m := by
+  rcases h with ⟨Γ, Γ', e, τ, hc, hm, hj, hk⟩ | ⟨Γ, τ, v, hc, hm, hd, hk⟩
+  · exact dregistry_safeUnder hj τa m hm hc hk
+  · exact safeA_value_kontOk hk hc rfl hm hd
+
+/-- **A certified program starts at an `Inv` machine.** `InvInit`'s content, with
+`DKontOk.nil` supplying the continuation half — and the answer type pinned to the program's
+own, which is the index that makes the value clause recoverable. -/
+theorem dInv_init {Γ Γ' : Env} {p : Ratchet.Expr} {τ : Ty}
+    (hj : (DJudgeC dclinks).judge Γ p τ Γ') {m : Machine}
+    (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) : DInv τ (evalFrom m p) :=
+  Or.inl ⟨Γ, Γ', p, τ, rfl, StateOk_reCtl hm _ _, hj, DKontOk.nil⟩
+
+/-- **Safety, through the invariant.** The same theorem as `dregistry_safe`, factored the way
+`Denote/Sem/Invariant.lean` factors it: a certified program starts `Inv`, and `Inv` machines
+are safe.
+
+`example` rather than a second theorem, because it is `dregistry_safe` with the steps named
+(Norm B — one statement, not two). What it is *for* is the shape: when a jump arm and more
+frames arrive, this is the composition that does not change. -/
+example {Γ Γ' : Env} {p : Ratchet.Expr} {τ : Ty}
+    (hj : (DJudgeC dclinks).judge Γ p τ Γ') {m : Machine}
+    (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) : StuckFree m p :=
+  dInv_safe (dInv_init hj hm)
+
+/-! ### What is **not** proved about `DInv`, and why it is not needed
+
+`preserved` — *an `Inv` machine steps to an `Inv` machine* — is the obligation
+`Denote/Sem/Invariant.lean`'s `safety_of_invariant` consumes, and it is **not proved here**.
+It cannot be, by the route that file anticipates: the eval arm carries a `DJudgeC` derivation,
+`DJudgeC` is Church-encoded, and proving that the *successor* is judged would need to take
+that derivation apart. There is no `cases` on a Π-type. (`Denote/Proto/Safety.lean` did
+exactly this by `cases` on an inductive `PJudge`, before both were deleted.)
+
+`dInv_safe` does not need it, and the reason is the design rather than luck: the eval arm's
+obligation is `SafeUnder`, which already speaks about the **whole future** of the machine, not
+about one step. The induction that `preserved` + `safety_of_invariant` would perform over the
+run has already been performed — once per rule, at registration, by choosing the family to be
+the invariant. `preserved` would be a second, redundant pass over the same ground.
+
+What is genuinely lost: `safety_of_invariant`'s reduction is stated for an abstract `Inv` and
+proved once, so a *different* judgment could reuse it. This one cannot, and that is the price
+of generating the judgment from the registry. It is recorded rather than papered over. -/
+
 /-! ## §4 The report and the gate -/
 
 def dRegisteredRules : List String :=
@@ -208,13 +274,15 @@ def dUnregisteredRules : List String :=
 -- The registry and its report agree about its size.
 #guard dclinks.length == dRegisteredRules.length
 
--- Eight registered, and the five unregistered rules are the composite ones, all of which are
--- behind `RunAPushK` (`Denote/Typed/JudgeA.lean` §4). A sixth appearing here without a proof
--- is a rule authored without its justification, and this guard is what says so.
-#guard dRegisteredRules.length == 8
-#guard dUnregisteredRules == ["vasgn", "seq", "prim", "if'"]
+-- Nine registered. The three unregistered rules are the remaining composite ones; a fourth
+-- appearing here without a proof is a rule authored without its justification, and this guard
+-- is what says so.
+#guard dRegisteredRules.length == 9
+#guard dUnregisteredRules == ["seq", "prim", "if'"]
 
 #print axioms dregistry_sound
+#print axioms dInv_safe
+#print axioms dInv_init
 #print axioms dregistry_syn
 
 end Ratchet.Denote.Typed

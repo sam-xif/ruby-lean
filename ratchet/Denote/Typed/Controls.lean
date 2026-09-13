@@ -57,18 +57,21 @@ theorem derivD_var_sem {Γ : Env} {x : String} {τ : Ty} (hget : envGet? Γ x = 
 
 /-! ### The refusal
 
-`DJudge.vasgn` is a real rule — `Ratchet/Check.lean` types every assignment with it and the
-corpus ladder reaches rung 018 through it — and it has no answer-typed proof, because it is
-behind `RunAPushK`. Under a discipline where rules are authored and justified separately that
-would be a line in a report. Here it makes `register_dclink` fail, and the failure is what
-this control checks: if the gate ever stops refusing, this file goes red. -/
+`DJudge.if'` is a real, used rule — `Ratchet/Check.lean` types every conditional with it and
+the corpus ladder reaches rung 018 through it — and it has no answer-typed proof. Under a
+discipline where rules are authored and justified separately that would be a line in a report.
+Here it makes `register_dclink` fail, and the failure is what this control checks: if the gate
+ever stops refusing, this file goes red.
 
-/-- error: register_dclink: Ratchet.DJudge.vasgn has no answer-typed proof.
-Write `theorem Ratchet.Denote.Typed.SemA.vasgn : SemJudgeA …` in Denote/Typed/JudgeA.lean first.
+(It named `vasgn` until clink 72, when `vasgn` acquired its proof and the control had to move
+to a rule that still lacks one. That is the control doing its job.) -/
+
+/-- error: register_dclink: Ratchet.DJudge.if' has no answer-typed proof.
+Write `theorem Ratchet.Denote.Typed.SemA.if' : SemJudgeA …` in Denote/Typed/JudgeA.lean first.
 A rule with no proof is not a rule (Denote/Clink/Spec.lean).
 -/
 #guard_msgs in
-register_dclink DJudge.vasgn
+register_dclink DJudge.if'
 
 /-! ### …and a proof of a different rule does not stand in for it
 

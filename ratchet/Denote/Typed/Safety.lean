@@ -202,14 +202,19 @@ def rulesExercised : List String := rulesUsedAll (safeRungs.map (·.2))
 below fails if anything else joins this list, so a newly registered rule must either be
 exercised end to end or be added here with a reason.
 
-Today: **`var`**, and the reason is structural rather than an oversight
-(`found-issues.md` §F30). A program that reads a local has to bind it first, so exercising
-`var` needs an assignment and a statement sequence — `vasgn` and `seq`, both unregistered and
-both behind `RunAPushK`. There is no single-expression program in the corpus that reads a
-local: a bare name that is *not* a local desugars to `vcall`, which has no rule at all. So
-`var`'s clink is proved and in the judgment, and the end-to-end safety claim genuinely does
-not reach it yet. **Only ever shrink this.** -/
-def unexercised : List String := ["var"]
+Today: **`var` and `vasgn`**, and the reason is structural rather than an oversight
+(`found-issues.md` §F30). Both need a **statement sequence** to appear in a corpus rung:
+
+* a program that reads a local has to bind it first, so the smallest witness for `var` is
+  `x = 1; x`. There is no single-expression alternative — a bare name that is *not* a local
+  desugars to `vcall`, which has no rule at all;
+* and no corpus rung is a bare assignment. The nearest, `029-simple-assign`, is `x = 5; x + 1`
+  — a `seq` of two statements.
+
+So both clinks are proved and in the judgment, and the end-to-end safety claim genuinely does
+not reach them yet. `seq` is what unlocks both, which is why it is next. **Only ever shrink
+this.** -/
+def unexercised : List String := ["var", "vasgn"]
 
 -- **The coverage gate.** Every registered rule is either used by a rung the safety proof
 -- covers, or a named exception. Register a rule without exercising it and this goes red.

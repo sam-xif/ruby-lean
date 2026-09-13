@@ -44,7 +44,7 @@ def safeRungFloor : Nat := 8
 (`ratchet/AGENTS.md`), and this number is sound to ratchet on: a clink cannot be registered
 without its proof, so the count is a count of proofs. Raise it when the registry grows; a
 drop means a proof was deleted or broken. -/
-def clinkFloor : Nat := 8
+def clinkFloor : Nat := 9
 
 /-! ## The cross-check: the safety proof is about the **corpus's own** programs
 
@@ -87,7 +87,7 @@ def main (args : List String) : IO UInt32 := do
   IO.println s!"  DJudge   {dn} registered   {dUnregisteredRules.length} not in the judgment"
   IO.println s!"  registered: {String.intercalate ", " dRegisteredRules}"
   IO.println s!"  owed:       {String.intercalate ", " dUnregisteredRules} \
-(all four behind `RunAPushK` -- Denote/Typed/JudgeA.lean §4)"
+(`runA_pushK` is proved; see Denote/Typed/JudgeA.lean §4 for what each still needs)"
   IO.println ""
   IO.println "Every registered rule carries its own proof (`Clink.sem`), and that proof is"
   IO.println "TWO obligations: the answer-typed reading (hypothesis is an answer, not a value;"

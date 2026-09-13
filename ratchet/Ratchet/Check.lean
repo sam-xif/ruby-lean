@@ -111,6 +111,28 @@ theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
   · rw [Option.some.injEq] at h; subst h; exact .notBool
   · exact absurd h (by simp)
 
+/-! ## §1a The environment a write leaves behind
+
+`envSet` alone is not it. A local write can invalidate two kinds of binding elsewhere in the
+environment, and both are `Ratchet/Ty.lean`'s functions rather than anything new here:
+
+* **an alias** (`Ty.sameAs y τ`) recorded for the desugarer's `&&`/`case` temporaries — once
+  `x` holds a new object, a binding that said "same value as `x`" no longer does
+  (`killAliasesTo`);
+* **a closure's captured spine** — a `Ty.clos` records the locals as of its creation, and
+  rebinding one of them makes that record stale (`killClosOver`).
+
+Neither can arise in the fragment `DJudge` types today: no rule produces a `sameAs` or a
+`clos`, so both functions are the identity on every environment the checker can reach. They
+are here anyway, because the **obligation** quantifies over every environment a conformant
+machine can have, and `StateOk_setLocal` is stated at exactly this environment. Writing
+`envSet` instead would make `SemA.vasgn` unprovable — the same shape as §F29 one rule over. -/
+
+/-- The environment after writing `x : σ`. Exactly `StateOk_setLocal`'s outgoing environment,
+so the rule and the conformance lemma agree by construction rather than by a rewrite. -/
+def envAfter (Γ : Env) (x : String) (σ : Ty) : Env :=
+  envSet (killClosOver (killAliasesTo Γ x) x σ) x σ
+
 /-! ## §2 The judgment
 
 `DJudge Γ e τ Γ'`: in local environment `Γ`, the expression `e` has type `τ` and leaves `Γ'`.
@@ -151,9 +173,17 @@ inductive DJudge : Env → Expr → Ty → Env → Prop
   /-- Assignment. Its *value* is the right-hand side's (Ruby's `x = e` evaluates to `e`) and
       its *effect* is to record that type for `x`. The binding lands in `Γ₁` — the
       environment the right-hand side left behind — not in `Γ`, because the right-hand side
-      may itself assign (`y = (x = 1) + 1`). -/
+      may itself assign (`y = (x = 1) + 1`).
+
+      **The two premises and `envAfter` were forced by the obligation**, not chosen: the
+      conformance lemma for a local write (`StateOk_setLocal`) needs both, and produces
+      exactly `envAfter`'s environment. `hcap` says the written type does not mention `x` in a
+      captured spine (writing `x` would make that spine stale); `halias` is §F29's, one rule
+      over — `envSet` records the right-hand side's type verbatim, and an alias type there
+      would claim `x` and `y` hold the same object, which the assignment does not establish. -/
   | vasgn {Γ Γ₁ : Env} {x : String} {e : Expr} {τ : Ty} :
-      DJudge Γ e τ Γ₁ → DJudge Γ (.vasgn .lvar x e) τ (envSet Γ₁ x τ)
+      DJudge Γ e τ Γ₁ → capStale x τ τ = false → isAliasTy τ = false →
+      DJudge Γ (.vasgn .lvar x e) τ (envAfter Γ₁ x τ)
   /-- A statement sequence, via `DJudgeSeq`. -/
   | seq {Γ Γ' : Env} {es : List Expr} {τ : Ty} :
       DJudgeSeq Γ es τ Γ' → DJudge Γ (.seq es) τ Γ'
@@ -264,7 +294,11 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) : Option (Certified Γ 
     | .vasgn .lvar x ev, .vasgn .lvar x' dv =>
       if x == x' then
         match check n Γ ev dv with
-        | some ⟨τ, Γ₁, hv⟩ => some ⟨τ, envSet Γ₁ x τ, .vasgn hv⟩
+        | some ⟨τ, Γ₁, hv⟩ =>
+          if hcap : capStale x τ τ = false then
+            if ha : isAliasTy τ = false then some ⟨τ, envAfter Γ₁ x τ, .vasgn hv hcap ha⟩
+            else none
+          else none
         | none => none
       else none
     | .seq es, .seq ds =>

@@ -534,6 +534,15 @@ theorem denSpine_setLocal {τ τ' : Ty} {m : Machine} {x : String} {w : Value}
 @[simp] theorem setLocal_stack (m : Machine) (x : String) (w : Value) :
     (m.setLocal x w).stack = m.stack := rfl
 
+/-- The write touches `frames` and nothing else, so the control word and the continuation read
+back unchanged. Needed by the `asgnK` frame's clauses, which have to say what machine the
+frame leaves behind. -/
+@[simp] theorem setLocal_kont (m : Machine) (x : String) (w : Value) :
+    (m.setLocal x w).kont = m.kont := rfl
+
+@[simp] theorem setLocal_ctl (m : Machine) (x : String) (w : Value) :
+    (m.setLocal x w).ctl = m.ctl := rfl
+
 /-- Every frame field but `locals` is copied, so the current frame's `self`, `blk`, `kind` and
 `meth` all read back unchanged — which is what `SelfSpineOk`, `FrameOk`, `BlockTyOk` and
 `SelfTyOk` are stated over. -/

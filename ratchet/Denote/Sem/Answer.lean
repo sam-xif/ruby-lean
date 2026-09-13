@@ -265,6 +265,102 @@ theorem run_pushK (K : List Kont) (hK : RubyCore.Proof.CatchFree K) :
       | unsupported r => simp only [RubyCore.Proof.frameR]; rfl
       | stuck msg => simp only [RubyCore.Proof.frameR]; rfl
 
+/-! ## The answer-level master equation
+
+`run_pushK` relates `Interp.run` under a pushed continuation to the inner `runA`. The
+*answer-typed* obligations (`Denote/Typed/JudgeA.lean`) are stated over `runA` on both sides,
+so they need the same equation at the `runA` level — which is this, and it is `run_pushK`'s
+proof with `Interp.run` replaced by `runA` and `ARes.out` by `resOutA`.
+
+One lemma gates four rules: `vasgn`, `seq`, `prim` and `if'` all evaluate a sub-expression
+under a frame they just pushed, and the premise they hold is about that sub-expression at an
+**empty** continuation (`evalFrom` empties it). -/
+
+/-- A halt, seen from outside a pushed continuation. `.uncaught` reports the machine *after*
+`unwind` has emptied the stack, so the continuation is already gone from it; the other two
+report the pre-step machine, which under `pushK` is the pushed one. Mirrors `Halt.out`. -/
+def Halt.underK (K : List Kont) : Halt → Halt
+  | .uncaught exc m => .uncaught exc m
+  | .unsupported r m => .unsupported r (pushK K m)
+  | .stuck msg m => .stuck msg (pushK K m)
+
+/-- What running under a pushed continuation does to an `ARes`. The `ans` arm is the content:
+the inner computation reaches an answer, and the outer run continues by delivering that answer
+to `K` with the fuel that was left. -/
+def resOutA (K : List Kont) : ARes → ARes
+  | .ans a m rest => runA rest (deliverA a m K)
+  | .halt h => .halt (h.underK K)
+  | .oof m => .oof (pushK K m)
+
+/-- Pushing a continuation onto a machine that is **not** at an answer point leaves it not at
+one: an answer point has an empty continuation, and `pushK` only ever appends. -/
+theorem answerPoint_pushK_none {m : Machine} (K : List Kont) (h : answerPoint m = none) :
+    answerPoint (pushK K m) = none := by
+  cases hk : m.kont with
+  | cons k r => simp [answerPoint, pushK, hk]
+  | nil =>
+    cases hc : m.ctl with
+    | eval e => cases K <;> simp [answerPoint, pushK, hk, hc]
+    | value v => rw [answerPoint, hk] at h; simp only at h; rw [hc] at h; simp at h
+    | jump j => rw [answerPoint, hk] at h; simp only at h; rw [hc] at h; simp at h
+
+/-- At an answer point, pushing the continuation **is** delivering the answer to it. Shared by
+`run_pushK` and `runA_pushK`, which each had their own copy of this three-case argument. -/
+theorem pushK_eq_deliverA {m : Machine} {a : Answer} (K : List Kont)
+    (hap : answerPoint m = some a) : pushK K m = deliverA a m K := by
+  cases hk : m.kont with
+  | cons k r => rw [answerPoint, hk] at hap; simp at hap
+  | nil =>
+    cases hc : m.ctl with
+    | eval e => rw [answerPoint, hk] at hap; simp only at hap; rw [hc] at hap; simp at hap
+    | value v =>
+      rw [answerPoint, hk] at hap; simp only at hap; rw [hc] at hap
+      simp only [Option.some.injEq] at hap
+      subst hap
+      simp only [pushK, deliverA, Answer.ctl, hk, List.nil_append, ← hc]
+    | jump j =>
+      rw [answerPoint, hk] at hap; simp only at hap; rw [hc] at hap
+      simp only [Option.some.injEq] at hap
+      subst hap
+      simp only [pushK, deliverA, Answer.ctl, hk, List.nil_append, ← hc]
+
+/-- **The answer-level master equation.** Same induction as `run_pushK`, same one hypothesis
+(`CatchFree K` — a `catchK` intercepts, so the frame rule does not hold through it), same five
+outcomes accounted for. -/
+theorem runA_pushK (K : List Kont) (hK : RubyCore.Proof.CatchFree K) :
+    ∀ (fuel : Nat) (m : Machine), runA fuel (pushK K m) = resOutA K (runA fuel m) := by
+  intro fuel
+  induction fuel with
+  | zero =>
+    intro m
+    cases hap : answerPoint m with
+    | some a =>
+      rw [runA_ans hap, pushK_eq_deliverA K hap]
+      simp only [resOutA]
+    | none =>
+      rw [runA_zero hap, runA_zero (answerPoint_pushK_none K hap)]
+      simp only [resOutA]
+  | succ n ih =>
+    intro m
+    cases hap : answerPoint m with
+    | some a =>
+      rw [runA_ans hap, pushK_eq_deliverA K hap]
+      simp only [resOutA]
+    | none =>
+      rw [runA_succ hap, runA_succ (answerPoint_pushK_none K hap),
+        stepFn_frameR K hK m (hside_of_none hap)]
+      cases hev : Interp.stepFn m with
+      | next m₂ => simp only [RubyCore.Proof.frameR]; exact ih m₂
+      | done v m₂ =>
+        exfalso
+        obtain ⟨hc, hk, -⟩ := RubyCore.Proof.done_inv m v m₂ hev
+        rw [answerPoint, hk] at hap; simp only at hap; rw [hc] at hap; simp at hap
+      | uncaught exc m₂ => simp only [RubyCore.Proof.frameR, resOutA, Halt.underK]
+      | unsupported r => simp only [RubyCore.Proof.frameR, resOutA, Halt.underK]
+      | stuck msg => simp only [RubyCore.Proof.frameR, resOutA, Halt.underK]
+
+#print axioms runA_pushK
+
 /-- The equation at the empty continuation: `runA` is `Interp.run` with the answer point
 named. This is what lets a premise stated over the *inner* run (`StuckFree`, `Evals`) be
 consumed by a rule reasoning about the outer one. -/

@@ -14,8 +14,8 @@ one rung at a time. Three numbers, three scripts, no others:
 |---|---|---|
 | ladder reach | **18 rungs** (leading run meeting their recorded target); frontier `019-to-s-call` | `scripts/run_typed_ratchet.sh` |
 | agreement | **252 agree, 0 disagreements** (CRuby vs the Lean semantics, over the sig-stripped programs) | same, step 3 |
-| clinks | **8 of `DJudge`'s 12** rules carry an answer-typed proof **and a safety proof**; 4 owed | `scripts/run_denote.sh`, or `lake exe semladder` |
-| end-to-end safety | **8 corpus rungs** proved `StuckFree bootMachine <program>` at every fuel; **7 of the 8 rules exercised**, `var` named as the exception (§F30) | `scripts/run_typed_ratchet.sh` step 4, or `lake exe semladder build` |
+| clinks | **9 of `DJudge`'s 12** rules carry an answer-typed proof **and an invariant proof**; 3 owed | `scripts/run_denote.sh`, or `lake exe semladder` |
+| end-to-end safety | **8 corpus rungs** proved `StuckFree bootMachine <program>` at every fuel; **7 of the 9 rules exercised**, `var`/`vasgn` named as exceptions (§F30) | `scripts/run_typed_ratchet.sh` step 4, or `lake exe semladder build` |
 
 Two exes (`ratchetd`, `semladder`), one report exe (`denotereport`), 41 Lean files, ~14k lines.
 
@@ -213,10 +213,12 @@ arithmetic. `SafeUnder` is that fact directly. `dregistry_safe` (safety of every
 fragment types) is then one line: `SafeUnder` at `DKontOk.nil`.
 
 **Why this is the induction, not a substitute for it.** `DJudgeC` is Church-encoded, so a
-derivation cannot be *inverted* — there is no `cases` on it, and `preserved` cannot be proved
-by case analysis over the derivation. What the encoding gives is elimination into any family
-closed under the rules, so **choosing the family to be "the invariant holds here" is the
-inductive proof**, with one case per rule — and those cases are exactly the clink fields.
+derivation is a **Π-type, not an inductive** — there is no constructor to match on, so
+`preserved` cannot be proved by `cases` over the derivation. Induction with an index-only
+motive is free (it is what the definition is); **inversion** is not, though it is recoverable
+by pairing the motive with `DJudgeC` itself, which additionally needs per-rule closure. Nothing
+here needs it: **choosing the family to be "the invariant holds here" is the inductive proof**,
+with one case per rule — and those cases are exactly the clink fields.
 `Denote/Sem/Invariant.lean` §1 keeps the abstract reduction for when a monolithic `Inv` is
 wanted; it is parameterised by what "accepted" means and needs no judgment.
 
@@ -255,16 +257,21 @@ arm is `isTypeError m₀.heap exc = false`). That is why the 48 `SemJudge`-shape
 run that escapes, so inheriting them would have been inheriting proofs of the weaker
 statement. The two registries stay separate and `lake exe semladder` prints both.
 
-Registered, axiom-clean: the **seven literals and `var`** — every rule whose evaluation is one
-`stepFn` step to a value at the empty continuation. So rungs **001–008** are derivable in
-`DJudgeC dclinks` and `dregistry_sound` makes them an answer-typed safety claim; rungs
-**009–018** are checker coverage only.
+Registered, axiom-clean: the **seven literals, `var` and `vasgn`**. Rungs **001–008** are
+derivable in `DJudgeC dclinks` and have end-to-end safety theorems; rungs **009–018** are
+checker coverage only.
 
-Owed: `vasgn`, `seq`, `prim`, `if'` — all four behind **one** missing lemma, `RunAPushK`
-(`Denote/Typed/JudgeA.lean` §4), the answer-level counterpart of `run_pushK`. Each evaluates a
-sub-expression under a pushed frame, and the decomposition exists for `Interp.run` and not for
-`runA`. `if'` additionally needs join soundness under `denM`; `prim` additionally needs one
-conformance fact per `DPrim` row.
+`vasgn` is the first composite rule, and the two halves diverge: the **invariant half is five
+lines with no fuel arithmetic** (step to the pushed frame, hand the premise the machine that
+step created, and `DKontOk.asgnK` is that machine's continuation typing), while the
+**answer-typed half is ~60 lines** and is `runA_pushK`'s customer. That asymmetry is the
+evidence that stating the obligation over the machine was right.
+
+Owed: `seq`, `prim`, `if'`. The lemma that gated them, `runA_pushK` — the answer-level
+counterpart of `run_pushK` — is now **proved** (`Denote/Sem/Answer.lean`). What each still
+needs is in `Denote/Typed/JudgeA.lean` §4: `seq` needs a `DFam` member and the `seqK` frame's
+clauses, `if'` needs nothing (join soundness is already proved in `Denote/Join.lean`), `prim`
+needs one conformance fact per `DPrim` row.
 
 **Why rule-local proofs are possible at all:** `evalFrom` empties the continuation, so every
 obligation is about a run from an empty kont — which is why §9.2's warning that `safe_pushK`

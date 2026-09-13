@@ -145,12 +145,17 @@ that dropping that index makes an invariant prove safety while proving nothing a
 because the existential over the current type forgets what the certificate claimed.
 
 **Why this is the induction and not a substitute for it.** `DJudgeC` is Church-encoded
-(`Denote/Clink/Spec.lean` §3), so a derivation cannot be *inverted* — there is no `cases` on
-it, and `preserved` cannot be proved by case analysis over the derivation the way
-`Denote/Proto/Safety.lean` did over an inductive `PJudge`. What the encoding gives instead is
-elimination into any family closed under the rules, so **choosing the family to be "the
-invariant holds here" *is* the inductive proof**, with one case per rule — and those cases are
-exactly the clink fields. Safety of every program the fragment types then follows by
+(`Denote/Clink/Spec.lean` §3), so a derivation is a **Π-type, not an inductive**: there is no
+constructor to match on, and `preserved` cannot be proved by `cases` over the derivation the
+way `Denote/Proto/Safety.lean` did over an inductive `PJudge`.
+
+Induction with an index-only motive is *free* — it is what the definition is. What the
+encoding does not hand over is **inversion** ("the last rule must have been `intLit`"). That
+is recoverable by the standard pairing trick (take the motive `DJudgeC R · ∧ Inv ·`), but it
+additionally needs `Closed R (DJudgeC R)`, which is provable rule by rule and not by a lemma
+uniform in `c`. Nothing here has needed it, because **choosing the family to be "the invariant
+holds here" *is* the inductive proof** — one case per rule, and those cases are exactly the
+clink fields. Safety of every program the fragment types then follows by
 instantiating at the empty continuation.
 
 Stated as safety of the **machine** (`SafeA m`) rather than of the program, so that it
@@ -170,6 +175,17 @@ inductive DKontOk (τa : Ty) : List Kont → Env → Ty → Prop
       `nil` accepting any type the invariant proves safety and says nothing about types, which
       is the prototype's second finding and the reason `τa` is an index at all. -/
   | nil {Γ : Env} : DKontOk τa [] Γ τa
+  /-- **The frame `vasgn` pushes.** It accepts a value of `τ` at `Γ`, writes `x`, and hands
+      the same value on to a continuation that accepts `τ` at `envAfter Γ x τ` — the *same*
+      type, because Ruby's `x = e` evaluates to `e`.
+
+      The two side conditions are the rule's own (`DJudge.vasgn`), and they are consumed
+      here rather than there: `denM_setLocal` needs `hcap` to transport the value's type
+      across the write, and `StateOk_setLocal` needs it and `halias` for conformance. That is
+      the invariant paying for the rule's premises at the point the frame fires. -/
+  | asgnK {rest : List Kont} {Γ : Env} {τ : Ty} {x : String} :
+      capStale x τ τ = false → isAliasTy τ = false →
+      DKontOk τa rest (envAfter Γ x τ) τ → DKontOk τa (.asgnK .lvar x :: rest) Γ τ
 
 /-- **Safety, through the invariant.** A machine about to evaluate `e`, conformant with the
 incoming environment, under a continuation that accepts `e`'s type, is safe: no run from it
@@ -254,6 +270,51 @@ theorem leafOk {Γ : Env} {τ : Ty} {m m₁ : Machine} {w : Value}
   subst hm₁
   exact ⟨Framed_reCtl _ _ _, hden, fun _ _ => StateOk_reCtl hm _ _⟩
 
+/-! ### The machines a frame builds, and the conformance it needs
+
+The interpreter builds its machines in its own field order (pop, then write, then set `ctl`),
+so a lemma stated in any other order is not `rfl`. These name the shapes. -/
+
+/-- The machine `asgnK` leaves behind: the frame popped, the local written, the same value
+still in flight. -/
+def afterWrite (m : Machine) (x : String) (v : Value) (rest : List Kont) : Machine :=
+  Interp.withCtl (({ m with kont := rest }).setLocal x v) (.value v)
+
+theorem withCtl_eq_reCtl (m : Machine) (c : Ctl) : Interp.withCtl m c = reCtl m c m.kont := rfl
+
+theorem popK_eq (m : Machine) (rest : List Kont) :
+    ({ m with kont := rest } : Machine) = reCtl m m.ctl rest := rfl
+
+theorem StateOk_withCtl {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    (h : StateOk κ Γ I m) (c : Ctl) : StateOk κ Γ I (Interp.withCtl m c) := by
+  rw [withCtl_eq_reCtl]; exact StateOk_reCtl h _ _
+
+theorem denM_withCtl {τ : Ty} {m : Machine} {c : Ctl} {v : Value} :
+    denM τ (Interp.withCtl m c) v ↔ denM τ m v := by
+  rw [withCtl_eq_reCtl]; exact denM_reCtl
+
+theorem afterWrite_kont (m : Machine) (x : String) (v : Value) (rest : List Kont) :
+    (afterWrite m x v rest).kont = rest := rfl
+
+theorem afterWrite_ctl (m : Machine) (x : String) (v : Value) (rest : List Kont) :
+    (afterWrite m x v rest).ctl = .value v := rfl
+
+theorem killClosOverSpine_ivar0 (x : String) (τ : Ty) :
+    killClosOverSpine .ivar0 x τ = .ivar0 := rfl
+
+/-- **Conformance across a local write.** `StateOk_setLocal` at this fragment's context: the
+ivar spine is empty so `killClosOverSpine` is the identity on it, and `capStaleCtx` at `ctx0`
+is `false` by computation (no `self`, no block type, no constants) — which is why
+`DJudge.vasgn` does not carry that premise. -/
+theorem stateOk_write {Γ : Env} {m : Machine} {x : String} {τ : Ty} {v : Value}
+    (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) (hd : denM τ m v)
+    (hcap : capStale x τ τ = false) (halias : isAliasTy τ = false) :
+    StateOk Ratchet.ctx0 (envAfter Γ x τ) .ivar0 (m.setLocal x v) := by
+  have h := StateOk_setLocal hm hd hcap (by rfl)
+    (ρ := τ) (by cases τ <;> simp_all [Ratchet.stripAlias, Ratchet.isAliasTy])
+    (by intro y σ hy; rw [hy] at halias; simp [Ratchet.isAliasTy] at halias)
+  simpa [envAfter, killClosOverSpine_ivar0] using h
+
 /-! ### The step facts in `ctl`-form, and the safety half of a one-step rule
 
 `§1a`'s lemmas are stated at `evalFrom m e`, which is what `SemJudgeA` needs. `SafeUnder`
@@ -261,14 +322,14 @@ quantifies over the *machine*, so it needs the same facts from a `m.ctl = .eval 
 with the continuation left alone. Two shapes of the same three facts; the `evalFrom` ones are
 the `kont = []` instances. -/
 
-/-- `DKontOk`'s inversion. One constructor, so: the continuation is empty and the answer type
-is the expression's. As frames join, this becomes a `cases` with a clause each. -/
-theorem dKontOk_inv {τa : Ty} {K : List Kont} {Γ : Env} {τ : Ty} (h : DKontOk τa K Γ τ) :
-    K = [] ∧ τa = τ := by
-  cases h; exact ⟨rfl, rfl⟩
+/-! ### The step facts in `ctl`-form
 
-/-- A literal: one step to its value, **continuation untouched** (which is the difference from
-§1a's `evalFrom` versions, and what makes the invariant composable). -/
+§1a's lemmas are stated at `evalFrom m e`, which is what `SemJudgeA` needs. `SafeUnder`
+quantifies over the *machine*, so it needs the same facts from a `m.ctl = .eval …` hypothesis
+with the continuation left alone. The `evalFrom` ones are the `kont = []` instances. -/
+
+/-- A literal: one step to its value, **continuation untouched** — which is the difference
+from §1a's versions, and what makes the invariant composable. -/
 theorem step_lit_ctl {m : Machine} {e : Ratchet.Expr} {w : Value}
     (hc : m.ctl = .eval (toRuby e))
     (hev : Interp.evalExpr m (toRuby e) = .next (Interp.withCtl m (.value w))) :
@@ -280,35 +341,140 @@ theorem step_var_ctl {m : Machine} {x : String} (hc : m.ctl = .eval (toRuby (.va
     Interp.stepFn m = .next (reCtl m (.value (m.getLocal x)) m.kont) :=
   step_lit_ctl hc (by simp [toRuby, toRubyVarKind, Interp.evalExpr, Interp.withCtl])
 
-/-- A string literal, which **allocates**. Stated in terms of `Builtins.allocStr`'s own result
-rather than in terms of `pushHeap`: the invariant only needs *some* machine and value for the
-step to land on (`safeUnder_of_step`'s existential), so relating the fresh heap to `pushHeap`
-would be work spent to state something nothing here reads. §1a's `stepFn_str` does relate
-them, because `SemJudgeA`'s half needs the `Ext`. -/
+/-- A string literal, which **allocates**. -/
 theorem step_str_ctl {m : Machine} {s : String} (hc : m.ctl = .eval (toRuby (.str s))) :
     Interp.stepFn m =
-      .next (reCtl (Builtins.allocStr m s).2 (.value (Builtins.allocStr m s).1) m.kont) := by
+      .next (reCtl { m with heap := pushHeap m.heap (strObj s) }
+        (.value (.ref m.heap.objs.size)) m.kont) := by
   simp only [toRuby] at hc
-  simp [Interp.stepFn, hc, Interp.evalExpr, Interp.withCtl, reCtl, Builtins.allocStr]
+  simp [Interp.stepFn, hc, Interp.evalExpr, Interp.withCtl, reCtl, Builtins.allocStr,
+    pushHeap, strObj, Heap.alloc]
 
-/-- **The invariant at a one-step rule.** Everything the registered fragment derives steps to
-a value with the continuation untouched; `DKontOk` has only `nil`, so that continuation is
-empty and `safeA_value_nil` finishes it. Two fuel cases, and no `UncaughtInv` — the run never
-reaches `unwind` at all.
+/-- **`vasgn` pushes its frame**: the right-hand side goes into the control word and `asgnK`
+onto the continuation. The one rule so far whose step is not to a value. -/
+theorem step_vasgn_ctl {m : Machine} {x : String} {e : Ratchet.Expr}
+    (hc : m.ctl = .eval (toRuby (.vasgn .lvar x e))) :
+    Interp.stepFn m = .next (reCtl m (.eval (toRuby e)) (.asgnK .lvar x :: m.kont)) := by
+  simp only [toRuby, toRubyVarKind] at hc
+  simp only [Interp.stepFn, hc, Interp.evalExpr, Interp.withKont, reCtl]
 
-As frames join `DKontOk`, this gains the clause that delivers a value to each, which is the
-invariant's value clause and the place where the rule that pushed the frame pays for it. -/
-theorem safeUnder_of_step {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
-    (hstep : ∀ m : Machine, m.ctl = .eval (toRuby e) → ∃ (m₁ : Machine) (w : Value),
-      Interp.stepFn m = .next (reCtl m₁ (.value w) m.kont)) :
-    SafeUnder Γ e τ Γ' := by
-  intro τa m _ hc hk fuel
-  obtain ⟨m₁, w, hs⟩ := hstep m hc
-  obtain ⟨hk0, -⟩ := dKontOk_inv hk
-  rw [hk0] at hs
+/-- The frame firing on a value: pop, write, pass the value on. -/
+theorem step_asgnK_val {m : Machine} {x : String} {v : Value} {rest : List Kont}
+    (hc : m.ctl = .value v) (hk : m.kont = .asgnK .lvar x :: rest) :
+    Interp.stepFn m = .next (afterWrite m x v rest) := by
+  simp only [Interp.stepFn, hc, Interp.applyKont, hk, afterWrite]
+
+/-- The frame firing on an **escape**: `unwind`'s default arm pops the frame and hands the
+jump back. One step, and the value clause's counterpart for the escape side. -/
+theorem step_asgnK_jump {m : Machine} {x : String} {j : Jump} {rest : List Kont}
+    (hc : m.ctl = .jump j) (hk : m.kont = .asgnK .lvar x :: rest) :
+    Interp.stepFn m = .next (reCtl m (.jump j) rest) := by
+  simp only [Interp.stepFn, hc, Interp.unwind, hk]
+  cases j <;> simp only [Interp.withCtl, reCtl]
+
+/-- Delivering an answer to a continuation changes only `ctl` and `kont`, so it is a `reCtl`
+and the two transports reach it. -/
+theorem deliverA_eq_reCtl (a : Answer) (m : Machine) (K : List Kont) :
+    deliverA a m K = reCtl m a.ctl K := rfl
+
+theorem denM_deliverA {τ : Ty} {a : Answer} {m : Machine} {K : List Kont} {v : Value} :
+    denM τ (deliverA a m K) v ↔ denM τ m v := denM_reCtl
+
+theorem StateOk_deliverA {κ : Ctx} {Γ : Env} {I : Ty} {a : Answer} {m : Machine}
+    {K : List Kont} (h : StateOk κ Γ I m) : StateOk κ Γ I (deliverA a m K) :=
+  StateOk_reCtl h _ _
+
+/-! ### The invariant's **value clause**
+
+A value in flight under a well-typed continuation is safe. One induction over `DKontOk`, one
+case per frame — which is the shape the whole layer has: adding a frame adds a case here and
+nothing anywhere else.
+
+`nil` is the base (`safeA_value_nil`: one step to `.done`). `asgnK` writes and recurses, and
+the two transports it needs are exactly the two side conditions the frame carries. -/
+theorem safeA_value_kontOk : ∀ {τa : Ty} {K : List Kont} {Γ : Env} {τ : Ty},
+    DKontOk τa K Γ τ → ∀ {m : Machine} {v : Value}, m.ctl = .value v → m.kont = K →
+      StateOk Ratchet.ctx0 Γ .ivar0 m → denM τ m v → SafeA m := by
+  intro τa K Γ τ hk
+  induction hk with
+  | nil =>
+    intro m v hc hkm _ _
+    simpa [← hc, ← hkm] using safeA_value_nil m v
+  | @asgnK rest Γ τ x hcap halias _ ih =>
+    intro m v hc hkm hm hd fuel
+    match fuel with
+    | 0 => simp [Interp.run, Semantics.typeStuck]
+    | f + 1 =>
+      rw [run_succ, step_asgnK_val hc hkm]
+      refine ih (afterWrite_ctl m x v rest) (afterWrite_kont m x v rest) ?_ ?_ f
+      · exact StateOk_withCtl
+          (stateOk_write (by rw [popK_eq]; exact StateOk_reCtl hm _ _)
+            (by rw [popK_eq]; exact denM_reCtl.mpr hd) hcap halias) _
+      · exact denM_withCtl.mpr
+          (denM_setLocal (by rw [popK_eq]; exact denM_reCtl.mpr hd) hcap
+            (by rw [popK_eq]; exact denM_reCtl.mpr hd))
+
+/-- **The invariant at a one-step rule.** Everything the seven literals and `var` derive steps
+to a value with the continuation untouched; the value clause takes it from there, whatever the
+continuation is. No fuel arithmetic and no `UncaughtInv` — the run never reaches `unwind`.
+
+Specialised to `Γ' = Γ`, which is every rule it serves: a literal and a local read leave the
+environment alone. -/
+theorem safeUnder_of_step {Γ : Env} {e : Ratchet.Expr} {τ : Ty}
+    (hstep : ∀ m : Machine, StateOk Ratchet.ctx0 Γ .ivar0 m → m.ctl = .eval (toRuby e) →
+      ∃ (m' : Machine) (w : Value), Interp.stepFn m = .next m' ∧ m'.ctl = .value w ∧
+        m'.kont = m.kont ∧ StateOk Ratchet.ctx0 Γ .ivar0 m' ∧ denM τ m' w) :
+    SafeUnder Γ e τ Γ := by
+  intro τa m hm hc hk fuel
+  obtain ⟨m', w, hs, hc', hk', hm', hd⟩ := hstep m hm hc
   match fuel with
   | 0 => simp [Interp.run, Semantics.typeStuck]
-  | f + 1 => rw [run_succ, hs]; exact safeA_value_nil m₁ w f
+  | f + 1 =>
+    rw [run_succ, hs]
+    exact safeA_value_kontOk (hk' ▸ hk) hc' rfl hm' hd f
+
+/-! ### Two facts both halves of a rule need
+
+Factored because `SemJudgeA`'s half and `SafeUnder`'s half each want them, at machines that
+differ only in the continuation. -/
+
+/-- What `StateOk`'s environment component gives about a local read, with the alias stripped
+away by the rule's own premise (§F29). -/
+theorem denM_getLocal {Γ : Env} {m : Machine} {x : String} {τ : Ty}
+    (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) (hget : envGet? Γ x = some τ)
+    (halias : isAliasTy τ = false) : denM τ m (m.getLocal x) := by
+  have hden := (hm.env.1 x τ hget).1
+  have hstrip : stripAlias τ = τ := by
+    cases τ <;> simp_all [Ratchet.stripAlias, Ratchet.isAliasTy]
+  rw [hstrip] at hden
+  exact hden
+
+/-- **The allocation a string literal performs, as an `Ext`** — and the two facts that follow
+from it: the machine still conforms, and the fresh reference really is a `String`. Stated at
+an arbitrary continuation, because the two halves of `SemA.strLit` need it at `[]` and at
+`m.kont` respectively. -/
+theorem strLit_alloc_ok {Γ : Env} {m : Machine} {s : String} (K : List Kont)
+    (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) :
+    StateOk Ratchet.ctx0 Γ .ivar0
+        (reCtl { m with heap := pushHeap m.heap (strObj s) } (.value (.ref m.heap.objs.size)) K) ∧
+      denM (.cls "String")
+        (reCtl { m with heap := pushHeap m.heap (strObj s) } (.value (.ref m.heap.objs.size)) K)
+        (.ref m.heap.objs.size) := by
+  have hext : Ext m (reCtl { m with heap := pushHeap m.heap (strObj s) }
+      (.value (.ref m.heap.objs.size)) K) :=
+    (ext_push (m := m) (strObj s) hm.sat hm.core.basicSelf
+      (fun c => by simp [strObj]) rfl rfl (by simpa [strObj] using hm.core.stringBasic)).trans
+      (Ext_toReCtl _ _ _)
+  refine ⟨StateOk_ext hm hext, ?_⟩
+  have hanc : ∀ k, ancestors (pushHeap m.heap (strObj s)) k = ancestors m.heap k :=
+    Proof.ancestors_congr_grow hext.shapeAgree hext.size hm.sat
+  have hcls : classOf (pushHeap m.heap (strObj s)) (.ref m.heap.objs.size) = Boot.stringId := by
+    simp [classOf, pushHeap_get_self, strObj]
+  show denM (.cls "String") _ _
+  rw [denM, isAName, hext.classNamed?_eq, hm.core.stringNamed]
+  show (ancestors (pushHeap m.heap (strObj s)) _).contains _ = true
+  rw [hcls, hanc]
+  exact hm.core.stringSelf
 
 /-! ## §3 The obligations, rule-local
 
@@ -324,37 +490,46 @@ two. The escape arm is discharged by unreachability: `runA_pure` says the answer
 so `AnsOk`'s `esc` arm never arises. -/
 
 theorem SemA.intLit {Γ : Env} {n : Int} : SemSafeA Γ (.int n) .int Γ := by
-  refine ⟨?_, safeUnder_of_step (fun m hc => ⟨m, .int n, step_lit_ctl hc rfl⟩)⟩
+  refine ⟨?_, safeUnder_of_step (fun m hm hc =>
+    ⟨_, .int n, step_lit_ctl hc rfl, rfl, rfl, StateOk_reCtl hm _ _, by simp [denM, isIntV]⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .int n) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isIntV])
 
 theorem SemA.fltLit {Γ : Env} {b : UInt64} : SemSafeA Γ (.flt b) .float Γ := by
-  refine ⟨?_, safeUnder_of_step (fun m hc => ⟨m, .flt (Float.ofBits b), step_lit_ctl hc rfl⟩)⟩
+  refine ⟨?_, safeUnder_of_step (fun m hm hc =>
+    ⟨_, .flt (Float.ofBits b), step_lit_ctl hc rfl, rfl, rfl, StateOk_reCtl hm _ _,
+     by simp [denM, isFltV]⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .flt (Float.ofBits b)) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isFltV])
 
 theorem SemA.symLit {Γ : Env} {s : String} : SemSafeA Γ (.sym s) .sym Γ := by
-  refine ⟨?_, safeUnder_of_step (fun m hc => ⟨m, .sym s, step_lit_ctl hc rfl⟩)⟩
+  refine ⟨?_, safeUnder_of_step (fun m hm hc =>
+    ⟨_, .sym s, step_lit_ctl hc rfl, rfl, rfl, StateOk_reCtl hm _ _, by simp [denM, isSymV]⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .sym s) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isSymV])
 
 theorem SemA.truLit {Γ : Env} : SemSafeA Γ .tru .bool Γ := by
-  refine ⟨?_, safeUnder_of_step (fun m hc => ⟨m, .bool true, step_lit_ctl hc rfl⟩)⟩
+  refine ⟨?_, safeUnder_of_step (fun m hm hc =>
+    ⟨_, .bool true, step_lit_ctl hc rfl, rfl, rfl, StateOk_reCtl hm _ _,
+     by simp [denM, isBoolV]⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .bool true) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isBoolV])
 
 theorem SemA.flsLit {Γ : Env} : SemSafeA Γ .fls .bool Γ := by
-  refine ⟨?_, safeUnder_of_step (fun m hc => ⟨m, .bool false, step_lit_ctl hc rfl⟩)⟩
+  refine ⟨?_, safeUnder_of_step (fun m hm hc =>
+    ⟨_, .bool false, step_lit_ctl hc rfl, rfl, rfl, StateOk_reCtl hm _ _,
+     by simp [denM, isBoolV]⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .bool false) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isBoolV])
 
 theorem SemA.nilLit {Γ : Env} : SemSafeA Γ .nil .nilT Γ := by
-  refine ⟨?_, safeUnder_of_step (fun m hc => ⟨m, .nil, step_lit_ctl hc rfl⟩)⟩
+  refine ⟨?_, safeUnder_of_step (fun m hm hc =>
+    ⟨_, .nil, step_lit_ctl hc rfl, rfl, rfl, StateOk_reCtl hm _ _, by simp [denM, isNilV]⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (w := .nil) (m₁ := m) rfl h
   exact leafOk hm rfl (by simp [denM, isNilV])
@@ -366,87 +541,146 @@ theorem SemA.nilLit {Γ : Env} : SemSafeA Γ .nil .nilT Γ := by
 is a `Ty.sameAs` that is strictly weaker than the conclusion. `found-issues.md` §F29. -/
 theorem SemA.var {Γ : Env} {x : String} {τ : Ty} (hget : envGet? Γ x = some τ)
     (halias : isAliasTy τ = false) : SemSafeA Γ (.var .lvar x) τ Γ := by
-  refine ⟨?_, safeUnder_of_step (fun m hc => ⟨m, m.getLocal x, step_var_ctl hc⟩)⟩
+  refine ⟨?_, safeUnder_of_step (fun m hm hc =>
+    ⟨_, m.getLocal x, step_var_ctl hc, rfl, rfl, StateOk_reCtl hm _ _,
+     denM_reCtl.mpr (denM_getLocal hm hget halias)⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (stepFn_var m x) h
-  refine leafOk hm rfl ?_
-  have hden := (hm.env.1 x τ hget).1
-  have hstrip : stripAlias τ = τ := by cases τ <;> simp_all [stripAlias, isAliasTy]
-  rw [hstrip] at hden
-  simpa using denM_reCtl.mpr hden
+  exact leafOk hm rfl (by simpa using denM_reCtl.mpr (denM_getLocal hm hget halias))
 
 /-- **A string literal allocates**, so the machine the answer arrives at is not `m` with a new
-control word — it has a longer heap. `Ext` is what carries conformance and the denotation
-across the push, exactly as in `Denote/Rules/Lit.lean`'s value-shaped twin. -/
+control word — it has a longer heap. `strLit_alloc_ok` carries conformance and the type across
+the push for both halves. -/
 theorem SemA.strLit {Γ : Env} {s : String} : SemSafeA Γ (.str s) (.cls "String") Γ := by
-  refine ⟨?_, safeUnder_of_step (fun m hc =>
-    ⟨(Builtins.allocStr m s).2, (Builtins.allocStr m s).1, step_str_ctl hc⟩)⟩
+  refine ⟨?_, safeUnder_of_step (fun m hm hc =>
+    ⟨_, .ref m.heap.objs.size, step_str_ctl hc, rfl, rfl,
+     (strLit_alloc_ok m.kont hm).1, (strLit_alloc_ok m.kont hm).2⟩)⟩
   intro m hm fuel a m₀ rest h
   obtain ⟨rfl, rfl⟩ := runA_pure (stepFn_str m s) h
-  have hext : Ext m (reCtl { m with heap := pushHeap m.heap (strObj s) }
-      (.value (.ref m.heap.objs.size)) []) :=
-    (ext_push (m := m) (strObj s) hm.sat hm.core.basicSelf
-      (fun c => by simp [strObj]) rfl rfl (by simpa [strObj] using hm.core.stringBasic)).trans
-      (Ext_toReCtl _ _ _)
-  refine ⟨Framed.of_ext hext, ?_, fun _ _ => StateOk_ext hm hext⟩
-  have hanc : ∀ k, ancestors (pushHeap m.heap (strObj s)) k = ancestors m.heap k :=
-    Proof.ancestors_congr_grow hext.shapeAgree hext.size hm.sat
-  have hcls : classOf (pushHeap m.heap (strObj s)) (.ref m.heap.objs.size) = Boot.stringId := by
-    simp [classOf, pushHeap_get_self, strObj]
-  show denM (.cls "String") _ _
-  rw [denM, isAName, hext.classNamed?_eq, hm.core.stringNamed]
-  show (ancestors (pushHeap m.heap (strObj s)) _).contains _ = true
-  rw [hcls, hanc]
-  exact hm.core.stringSelf
+  obtain ⟨hok, hden⟩ := strLit_alloc_ok (Γ := Γ) (m := m) (s := s) [] hm
+  exact ⟨Framed.of_ext ((ext_push (m := m) (strObj s) hm.sat hm.core.basicSelf
+      (fun c => by simp [strObj]) rfl rfl
+      (by simpa [strObj] using hm.core.stringBasic)).trans (Ext_toReCtl _ _ _)),
+    hden, fun _ _ => hok⟩
 
-/-! ## §4 The missing equation, named before anything is proved under it
+/-! ## §3a `vasgn` — the first composite rule
 
-`HANDOFF.md`'s working rule: write the layer's target down as a named `Prop` first.
-`FrameLocal.lean`'s 532 lines were proved for a target that was never stated, and the target
-turned out false.
+The rule that has a sub-expression, and therefore the first one where the two halves are
+proved by different machinery:
 
-`seq`, `vasgn`, `prim` and `if'` all need to decompose a run that happens **under a pushed
-frame**: `.vasgn x e` steps to `pushK [.asgnK .lvar x] (evalFrom m e)`, and the premise is
-about `evalFrom m e` with an empty continuation. The decomposition exists for `Interp.run`
-(`Denote/Sem/Answer.lean`'s `run_pushK`, the master equation) and **not for `runA`**, which is
-what the answer-typed obligations are stated over.
+* the **invariant half** is five lines and needs no fuel arithmetic at all. Step to the pushed
+  frame, hand the premise the machine that step created, and `DKontOk.asgnK` is exactly the
+  continuation typing that machine has. This is the payoff of stating the obligation over the
+  machine rather than over the program: the premise applies where the rule actually uses it.
+* the **answer-typed half** needs `runA_pushK` (`Denote/Sem/Answer.lean`), the answer-level
+  master equation, because `SemJudgeA` is stated at `evalFrom` on both sides and `evalFrom`
+  empties the continuation. It is the whole of the work below. -/
 
-So one lemma gates four rules. It is the same induction as `run_pushK`, at the `runA` level,
-and `answer-typed-schema.md` §5's delete list already anticipates it (`run_split`'s body
-becoming a derivation from `run_pushK`).
+/-- The machine `vasgn` steps to **is** the sub-expression's machine under one pushed frame.
+`rfl`, and worth a name because it is what lets `runA_pushK` apply. -/
+theorem vasgn_step_pushK (m : Machine) (x : String) (e : Ratchet.Expr) :
+    reCtl (evalFrom m (.vasgn .lvar x e)) (.eval (toRuby e))
+        (.asgnK .lvar x :: (evalFrom m (.vasgn .lvar x e)).kont)
+      = pushK [.asgnK .lvar x] (evalFrom m e) := rfl
 
-What each of the four needs *besides* it, so nobody prices them wrong:
+theorem catchFree_asgnK (x : String) :
+    RubyCore.Proof.CatchFree [.asgnK .lvar x] := by
+  intro k hk t
+  rcases List.mem_cons.mp hk with rfl | hmem
+  · simp
+  · exact absurd hmem (by simp)
 
-* `vasgn` — nothing. `run_pushK`'s `CatchFree` side condition is free here (`[.asgnK …]`), and
-  `StateOk_setLocal` is proved.
-* `seq` — nothing beyond the same decomposition per statement.
+theorem SemA.vasgn {Γ Γ₁ : Env} {x : String} {e : Ratchet.Expr} {τ : Ty}
+    (hprem : SemSafeA Γ e τ Γ₁) (hcap : capStale x τ τ = false) (halias : isAliasTy τ = false) :
+    SemSafeA Γ (.vasgn .lvar x e) τ (envAfter Γ₁ x τ) := by
+  obtain ⟨hsem, hsafe⟩ := hprem
+  refine ⟨?_, ?_⟩
+  · -- the answer-typed half
+    intro m hm fuel a m₀ rest h
+    match fuel with
+    | 0 =>
+      rw [runA_zero (answerPoint_evalFrom m _)] at h; exact absurd h (by simp)
+    | f + 1 =>
+      rw [runA_succ (answerPoint_evalFrom m _),
+        step_vasgn_ctl (m := evalFrom m (.vasgn .lvar x e)) rfl] at h
+      simp only at h
+      rw [vasgn_step_pushK m x e, runA_pushK _ (catchFree_asgnK x) f (evalFrom m e)] at h
+      cases hr : runA f (evalFrom m e) with
+      | halt hh => rw [hr] at h; exact absurd h (by cases hh <;> simp [resOutA, Halt.underK])
+      | oof m₂ => rw [hr] at h; exact absurd h (by simp [resOutA])
+      | ans a₁ m₁ r₁ =>
+        rw [hr] at h
+        simp only [resOutA] at h
+        obtain ⟨hfr, hans, hout⟩ := hsem m hm f a₁ m₁ r₁ hr
+        cases a₁ with
+        | val v =>
+          have hm₁ : StateOk Ratchet.ctx0 Γ₁ .ivar0 m₁ := hout v rfl
+          have hd : denM τ m₁ v := hans
+          match r₁ with
+          | 0 => rw [runA_zero (by simp [answerPoint, deliverA])] at h; exact absurd h (by simp)
+          | g + 1 =>
+            rw [runA_succ (by simp [answerPoint, deliverA]),
+              step_asgnK_val (m := deliverA (.val v) m₁ [.asgnK .lvar x]) rfl rfl] at h
+            simp only at h
+            rw [runA_ans (m := afterWrite (deliverA (.val v) m₁ [.asgnK .lvar x]) x v [])
+              (a := .val v) (by simp [answerPoint, afterWrite, Interp.withCtl])] at h
+            injection h with h1 h2 _
+            cases h1; cases h2
+            refine ⟨?_, ?_, ?_⟩
+            · exact hfr.trans (Framed.of_heap_stack (by simp [afterWrite, deliverA,
+                Interp.withCtl]) (by simp [afterWrite, deliverA, Interp.withCtl]))
+            · show denM τ _ v
+              exact denM_withCtl.mpr (denM_setLocal
+                (by rw [popK_eq]; exact denM_reCtl.mpr (denM_deliverA.mpr hd)) hcap
+                (by rw [popK_eq]; exact denM_reCtl.mpr (denM_deliverA.mpr hd)))
+            · intro w hw
+              injection hw with hw; subst hw
+              exact StateOk_withCtl (stateOk_write
+                (by rw [popK_eq]; exact StateOk_reCtl (StateOk_deliverA hm₁) _ _)
+                (by rw [popK_eq]; exact denM_reCtl.mpr (denM_deliverA.mpr hd)) hcap halias) _
+        | esc j =>
+          match r₁ with
+          | 0 => rw [runA_zero (by simp [answerPoint, deliverA])] at h; exact absurd h (by simp)
+          | g + 1 =>
+            rw [runA_succ (by simp [answerPoint, deliverA]),
+              step_asgnK_jump (m := deliverA (.esc j) m₁ [.asgnK .lvar x]) rfl rfl] at h
+            simp only at h
+            rw [runA_ans (m := reCtl (deliverA (.esc j) m₁ [.asgnK .lvar x]) (.jump j) [])
+              (a := .esc j) (by simp [answerPoint, reCtl])] at h
+            injection h with h1 h2 _
+            cases h1; cases h2
+            refine ⟨hfr.trans (Framed_reCtl _ _ _), ?_, ?_⟩
+            · show EscOk _ j
+              cases j <;> simpa [AnsOk, EscOk, reCtl, deliverA] using hans
+            · intro w hw; exact absurd hw (by simp)
+  · -- the invariant half
+    intro τa m hm hc hk fuel
+    match fuel with
+    | 0 => simp [Interp.run, Semantics.typeStuck]
+    | f + 1 =>
+      rw [run_succ, step_vasgn_ctl hc]
+      exact hsafe τa _ (StateOk_reCtl hm _ _) rfl (.asgnK hcap halias hk) f
+
+/-! ## §4 The equation that was missing, now proved
+
+This section used to state `RunAPushK` as a named `Prop` — *the answer-level counterpart of
+`run_pushK`* — following `HANDOFF.md`'s rule to write a layer's target down before proving
+anything under it. It is now **`Denote/Sem/Answer.lean`'s `runA_pushK`**, proved, axiom-clean,
+and living next to `run_pushK` because it is the same induction one level up.
+
+One lemma gated four rules; `vasgn` is the first to spend it (§3a), and `seq`, `prim` and
+`if'` spend it the same way. What each needs *besides* it:
+
+* `seq` — nothing beyond the same decomposition per statement, plus a `DFam` member for
+  `DJudgeSeq` and the `seqK` frame's two `DKontOk` clauses.
 * `if'` — nothing. `Denote/Join.lean`'s `denM_joinT_left`/`_right` and
-  `Denote/JoinState.lean`'s environment/spine join are **already proved**; those two files were
-  kept through the clink-68 sweep for this row.
+  `Denote/JoinState.lean`'s environment join are **already proved**; those two files were kept
+  through the clink-68 deletion sweep for this row.
 * `prim` — one conformance fact per `DPrim` row (7 of them), each saying that CRuby's builtin
-  really returns a value of the row's result type from the prelude-booted heap. This is the
-  only one of the four whose cost grows with the table, which is why the table has 7 rows and
-  not 90. -/
+  really returns a value of the row's result type from the prelude-booted heap. The only one
+  of the three whose cost grows with the table, which is why the table has 7 rows and not 90.
 
-/-- What running under a pushed continuation does to an `ARes` — the answer-level counterpart
-of `Denote/Sem/Answer.lean`'s `ARes.out`. The `ans` arm is the whole content: the inner
-computation reaches an answer, and the outer run continues by delivering that answer to `K`
-with the fuel that was left. -/
-def resOutA (K : List Kont) : ARes → ARes
-  | .ans a m rest => runA rest (deliverA a m K)
-  | .halt h => .halt h
-  | .oof m => .oof (pushK K m)
-
-/-- **`RunAPushK` — the answer-level master equation.** Not proved. When it is, `SemA.vasgn`,
-`SemA.seq`, `SemA.prim` and `SemA.if'` follow by the same argument
-`Denote/Rules/VasgnAnswer.lean` used on the stuck axis, where the `esc` clause was **four
-lines** against the projection route's 22.
-
-Stated for an arbitrary `CatchFree K` rather than for `[.asgnK …]`, per Norm A: the four rules
-push different frames and each would otherwise need its own copy. -/
-def RunAPushK : Prop :=
-  ∀ (K : List Kont), RubyCore.Proof.CatchFree K →
-    ∀ (fuel : Nat) (m : Machine), runA fuel (pushK K m) = resOutA K (runA fuel m)
+The `Prop` and its `resOutA` are deleted rather than kept alongside the theorem (Norm B). -/
 
 #print axioms SemA.intLit
 #print axioms SemA.fltLit
@@ -455,6 +689,7 @@ def RunAPushK : Prop :=
 #print axioms SemA.flsLit
 #print axioms SemA.nilLit
 #print axioms SemA.var
+#print axioms SemA.vasgn
 #print axioms SemA.strLit
 #print axioms runA_pure
 

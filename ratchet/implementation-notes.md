@@ -8254,3 +8254,96 @@ and this half does not.
 
 Unmoved: reach 18, agreement 252/0, 8 clinks, 8 rungs proved safe, `var` still the named
 unexercised rule (§F30).
+
+**[✗→] Correction to the section above (2026-09-13).** "A derivation cannot be inverted — there
+is no `cases` on it at all" overstates it. What is true: a `DJudgeC` derivation is a Π-type, so
+there is no constructor to match on and `cases` does not apply; and induction with an
+index-only motive is free, since that is what the definition *is*. But **inversion is
+recoverable**, by the standard pairing trick — take the motive `DJudgeC R · ∧ Inv ·` so the
+original derivation is available in the induction hypothesis — at the cost of also proving
+`Closed R (DJudgeC R)`, which goes through rule by rule but has no proof uniform in `c` (a Horn
+rule mentions the judgment contravariantly in its premises, so `c.form` is not monotone). No
+one has needed it, and the invariant-as-motive route does not, which is why the gap went
+unnoticed until the encoding was explained out loud.
+
+---
+
+## Clink 72 (2026-09-13) — `runA_pushK` proved, `vasgn` registered, and safety restated through `DInv`
+
+Two asks: build the `vasgn` rule, then define the safety property in terms of `DInv`. Both
+done; the second one has a caveat that is the interesting part.
+
+### The lemma that was gating four rules
+
+`runA_pushK : runA fuel (pushK K m) = resOutA K (runA fuel m)`, for `CatchFree K`. Proved, in
+`Denote/Sem/Answer.lean` next to `run_pushK`, because it is the same induction one level up —
+`Interp.run` becomes `runA`, `ARes.out` becomes `resOutA`, and the five outcomes are accounted
+for the same way. It was stated as a named `Prop` (`RunAPushK`) in clink 70 and is now the
+theorem; the `Prop` is deleted rather than kept beside it.
+
+Two small things fell out of writing it that `run_pushK` had inline and now shares:
+`pushK_eq_deliverA` (at an answer point, pushing the continuation **is** delivering to it —
+the same three-case argument `run_pushK` had twice) and `answerPoint_pushK_none`.
+
+### `vasgn`, and the two halves diverging for the first time
+
+This is the first rule with a sub-expression, so the first where the halves are proved by
+different machinery — and the asymmetry is the clearest evidence yet that clink 71's
+restatement was right:
+
+* the **invariant half is five lines and uses no fuel arithmetic at all**. Step to the pushed
+  frame, hand the premise the machine that step created, and `DKontOk.asgnK` is exactly the
+  continuation typing that machine has. The premise applies *where the rule uses it*. Under
+  clink 69's whole-program `SafeJudge` this would have been a `safe_pushK` instance with its
+  own fuel bookkeeping — which is what `VasgnAnswer.lean` was, at 12 lines plus a 22-line
+  side-condition apparatus it replaced.
+* the **answer-typed half is ~60 lines** and is the whole of `runA_pushK`'s customer: decompose
+  the run, case on the inner answer, and deliver. The `val` arm writes the local and needs
+  `denM_setLocal` and `StateOk_setLocal`; the `esc` arm pops the frame and is four lines,
+  exactly as `VasgnAnswer.lean` measured on the stuck axis before it was deleted.
+
+`DKontOk` gains its first frame: `asgnK`, carrying the rule's two side conditions, with a value
+clause and an escape clause. The value clause of the invariant (`safeA_value_kontOk`) becomes a
+real induction over the continuation — one case per frame, which is the shape the whole layer
+has from here.
+
+**§F29 happened again.** `DJudge.vasgn` was authored with outgoing environment `envSet Γ₁ x τ`
+and no premises; the obligation is unprovable that way, because `StateOk_setLocal` needs
+`capStale`/`isAliasTy` and produces `envAfter`. Same finding as `var`, one rule over, and for
+the same reason: nothing the checker can *reach* has an alias or a closure, and the obligation
+quantifies over every environment a conformant machine can have. Reach 18 before and after.
+
+### Safety through `DInv`, and what `preserved` costs
+
+`DInv τa m` is now defined as a predicate on machines — two arms, `eval` and `value`, no
+`jump` arm because no registered rule produces one — with `dInv_safe` and `dInv_init` proved
+and `StuckFree` derived as `dInv_safe (dInv_init hj hm)`. That is the factoring
+`Denote/Sem/Invariant.lean` uses, so the object a reader looks for now exists.
+
+**`preserved` is not proved, and cannot be by the route that file anticipates.** The eval arm
+carries a `DJudgeC` derivation; `DJudgeC` is Church-encoded; showing the *successor* is judged
+means taking that derivation apart, and there is no `cases` on a Π-type. `Denote/Proto/Safety.lean`
+did exactly this by `cases` on an inductive `PJudge`, before both were deleted.
+
+`dInv_safe` does not need it, and that is the design rather than luck: the eval arm's
+obligation is `SafeUnder`, which already speaks about the machine's **whole future**. The
+induction `preserved` + `safety_of_invariant` would perform over the run has already been
+performed — once per rule, at registration, by choosing the family to be the invariant.
+`preserved` would be a second pass over the same ground.
+
+What is genuinely lost, recorded rather than papered over: `safety_of_invariant` is stated for
+an abstract `Inv` and proved once, so a *different* judgment could reuse it. This one cannot.
+That is the price of generating the judgment from the registry, and it is the first thing that
+design has cost.
+
+### Numbers
+
+9 clinks (was 8), 3 rules owed (was 4). Ladder reach 18, agreement 252/0, 8 rungs proved safe
+end to end — **unchanged**, and `unexercised` grows to `["var", "vasgn"]`: no corpus rung is a
+bare assignment (`029-simple-assign` is `x = 5; x + 1`, a `seq`), so neither rule is reachable
+by an end-to-end safety theorem until `seq` lands. The coverage gate said so without being
+asked, which is what it is for. `seq` unlocks both, plus rungs 029–034.
+
+The refusal control in `Denote/Typed/Controls.lean` moved from `vasgn` to `if'`, because
+`vasgn` now has a proof and the control has to name a rule that does not. That is the control
+doing its job.
