@@ -404,25 +404,27 @@ theorem validateD_typed {p : Expr} {d : Deriv} (h : validateD p d = true) : DTyp
 handed it over rather than asserting it. That is layers 1–3 of the schema, closed.
 
 It does **not** mean `p` is type-safe, and the gap is exactly the one `Denote/Clink/` was
-built to keep visible: **eight of `DJudge`'s twelve rules have an answer-typed semantic proof**
+built to keep visible: **nine of `DJudge`'s twelve rules have an answer-typed semantic proof**
 (`Denote/Typed/JudgeA.lean`) and are registered clinks (`Denote/Typed/Clink.lean`); the other
-four -- `vasgn`, `seq`, `prim`, `if'` -- have none. So `validateD = true` is a type-safety
-claim exactly on the programs the eight derive (a literal, or a local read: corpus rungs
-001-008), and on rungs 009-018 it is coverage of the *checker* rather than justification.
+three -- `seq`, `prim`, `if'` -- have none. So `validateD = true` is a type-safety claim
+exactly on the programs the nine derive (a literal, a local read, or an assignment: corpus
+rungs 001-008), and on rungs 009-018 it is coverage of the *checker* rather than
+justification. Which rungs those are, and what each waits on, is `lake exe semladder build`'s
+unmet-goals list.
 
 Why the 48 proofs in `Denote/Clink/Registry.lean` did not transfer: they are `SemJudge`-shaped
 — *if the run returns a value, the value is in the type* — and
 `Denote/Sem/NoProgress.lean`'s `not_semJudgeImpliesStuckFree` proves that shape says nothing
 about a run that **escapes**. The obligations here are `SemJudgeA`-shaped instead: the
 hypothesis is an `Answer`, and the conclusion carries whether the run reached a type-stuck
-outcome. So the eight clinks in `Denote/Typed/Clink.lean` are the project's first ones against
-a statement with progress content, and they were proved rather than inherited.
+outcome. So the clinks in `Denote/Typed/Clink.lean` are the project's first ones against a
+statement with progress content, and they were proved rather than inherited.
 
-What is owed, in the order it gets cheaper — and the first three rows are **one lemma**:
+What is owed, in the order it gets cheaper:
 
 | rule | what its obligation needs |
 |---|---|
-| `vasgn`, `seq`, `prim`, `if'` | `RunAPushK` (`Denote/Typed/JudgeA.lean` §4): the answer-level counterpart of `run_pushK`. All four evaluate a sub-expression **under a pushed frame**, and the decomposition exists for `Interp.run` and not for `runA`. One induction, gating four rules |
+| all three | `runA_pushK` (`Denote/Typed/JudgeA.lean` §4) — the answer-level counterpart of `run_pushK` — **is now proved**, and it is what let `vasgn` off this table. It is no longer the blocker for the remaining three; each now needs only its own rule-specific work, below |
 | `if'`, additionally | nothing. **`joinT`/`joinEnv` soundness is already proved** — `Denote/Join.lean`'s `denM_joinT_left`/`_right` (a join is an upper bound under `denM`) and `Denote/JoinState.lean`'s environment/spine counterpart. Both survived the clink-68 deletion sweep *because* of this row, and finding them is what corrected it: an earlier version of this table said "stated nowhere yet" |
 | `prim`, additionally | one conformance fact per row: that CRuby's `Integer#+` really returns an `Integer` from the prelude-booted heap. `DPrim` has **7** rows against `PrimSig`'s ~90 precisely so this is a countable obligation rather than the ~200-fact block that stalled the old ladder three sessions running |
 

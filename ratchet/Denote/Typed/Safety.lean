@@ -164,13 +164,22 @@ theorem safeRungs_safe (hb : bootOkB = true) :
 The gate this section adds. A rule could be registered — proved, in the judgment, counted —
 and never appear in any program the safety proof is about, in which case the end-to-end claim
 would be about a fragment narrower than the registry. `rulesUsed` says which rules a
-derivation of a program *must* use (exact for this fragment: each `Expr` head admits exactly
-one `DJudge` rule), and the `#guard` below requires every registered rule to be used by at
-least one rung.
+derivation of a program *must* use, and the coverage gate requires every registered rule to
+be used by at least one rung, or to be named in `unexercised` with a reason.
 
-It grows by itself in the direction that matters: register `vasgn` and the guard fails until
-`safeRungs` gains a program containing an assignment. That is the check
-`scripts/run_typed_ratchet.sh` asks for, run at build time where it cannot be skipped. -/
+**What this section is and is not.** `rulesUsed` is a *predictor*: it reads rules off a
+program's `Expr` heads, which is exact only if each head admits exactly one `DJudge` rule.
+That property used to be asserted here in prose and checked nowhere. It is now checked, per
+rung, against the rule set read off the actual proof term —
+`Denote/Typed/RuleAudit.lean` §3 — and the authoritative coverage gate runs over *that* set.
+What remains here is the syntactic half, kept because it is also the predictor
+`SemLadder.lean` needs for rungs that have **no** proof yet (a rung whose rules are all
+registered but which nothing has proved safe is the ladder's next goal, and there is no proof
+term to read for it).
+
+It grows by itself in the direction that matters: `unexercised` has a recorded ceiling below,
+so a newly registered rule must either be exercised end to end or be admitted by an edit that
+raises a number someone reviews. -/
 
 mutual
 /-- The `DJudge` rules a derivation of `e` must use. `"?"` for a head with no rule, so an
@@ -195,8 +204,10 @@ def rulesUsedAll : List Ratchet.Expr → List String
   | e :: es => rulesUsed e ++ rulesUsedAll es
 end
 
-/-- Every rule the safety proof's programs need, with duplicates. -/
-def rulesExercised : List String := rulesUsedAll (safeRungs.map (·.2))
+/-- Every rule the safety proof's programs need, **predicted from their `Expr` heads**, with
+duplicates. Cross-checked against the proof terms in `Denote/Typed/RuleAudit.lean` §3; the
+coverage gate that matters runs over the proof-derived set, not this one. -/
+def rulesPredicted : List String := rulesUsedAll (safeRungs.map (·.2))
 
 /-- Registered rules that **no rung the safety proof covers uses**, frozen by name. The gate
 below fails if anything else joins this list, so a newly registered rule must either be
@@ -213,24 +224,38 @@ Today: **`var` and `vasgn`**, and the reason is structural rather than an oversi
 
 So both clinks are proved and in the judgment, and the end-to-end safety claim genuinely does
 not reach them yet. `seq` is what unlocks both, which is why it is next. **Only ever shrink
-this.** -/
+this** — and `unexercisedCeiling` is what makes that more than an instruction. -/
 def unexercised : List String := ["var", "vasgn"]
 
--- **The coverage gate.** Every registered rule is either used by a rung the safety proof
--- covers, or a named exception. Register a rule without exercising it and this goes red.
-#guard dRegisteredRules.all (fun r => rulesExercised.contains r || unexercised.contains r)
+/-- The recorded length of `unexercised`, ratcheted the way `safeRungFloor` and `clinkFloor`
+are — except downward, because this is the one list in the ladder that is supposed to shrink.
+
+It exists because the coverage gate has an escape hatch and the hatch was used: `unexercised`
+went from `["var"]` to `["var", "vasgn"]` when `vasgn` was registered, and nothing went red,
+because the gate only asks that a rule be *listed*, not that the list stay small. A ceiling
+turns "we added an exception" from an invisible edit into a number a reviewer sees move.
+Lower it when a rung starts exercising one of these; raising it is the reviewable act. -/
+def unexercisedCeiling : Nat := 2
+
+-- The ceiling, at build time. `SemLadder.lean` reports it too, next to the floors.
+#guard unexercised.length ≤ unexercisedCeiling
+
+-- **The coverage gate, predicted half.** Every registered rule is either used by a rung the
+-- safety proof covers, or a named exception. Register a rule without exercising it and this
+-- goes red. The proof-derived half is `Denote/Typed/RuleAudit.lean` §4.
+#guard dRegisteredRules.all (fun r => rulesPredicted.contains r || unexercised.contains r)
 
 -- The other direction, and the control that keeps the gate from being vacuous: every name in
 -- `unexercised` really is registered and really is unexercised.
-#guard unexercised.all (fun r => dRegisteredRules.contains r && !rulesExercised.contains r)
+#guard unexercised.all (fun r => dRegisteredRules.contains r && !rulesPredicted.contains r)
 
 -- And no rung uses an unregistered rule -- which the safety theorems' existence already
 -- forces, but stating it makes the two columns' relationship checkable.
-#guard dUnregisteredRules.all (fun r => !rulesExercised.contains r)
+#guard dUnregisteredRules.all (fun r => !rulesPredicted.contains r)
 
 -- And no rung reaches a head with no rule, which would make `rulesUsed` an over-approximation
 -- of something unprovable.
-#guard !rulesExercised.contains "?"
+#guard !rulesPredicted.contains "?"
 
 #print axioms safe_001_int_lit
 #print axioms safe_004_str_lit

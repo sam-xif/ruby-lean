@@ -15,9 +15,9 @@ one rung at a time. Three numbers, three scripts, no others:
 | ladder reach | **18 rungs** (leading run meeting their recorded target); frontier `019-to-s-call` | `scripts/run_typed_ratchet.sh` |
 | agreement | **252 agree, 0 disagreements** (CRuby vs the Lean semantics, over the sig-stripped programs) | same, step 3 |
 | clinks | **9 of `DJudge`'s 12** rules carry an answer-typed proof **and an invariant proof**; 3 owed | `scripts/run_denote.sh`, or `lake exe semladder` |
-| end-to-end safety | **8 corpus rungs** proved `StuckFree bootMachine <program>` at every fuel; **7 of the 9 rules exercised**, `var`/`vasgn` named as exceptions (§F30) | `scripts/run_typed_ratchet.sh` step 4, or `lake exe semladder build` |
+| end-to-end safety | **8 corpus rungs** proved `StuckFree bootMachine <program>` at every fuel; **7 of the 9 rules exercised** (read off the proof terms), `var`/`vasgn` named as exceptions under a ceiling (§F30) | `scripts/run_typed_ratchet.sh` step 4, or `lake exe semladder build` — which also lists the **unmet goals in corpus rung order** |
 
-Two exes (`ratchetd`, `semladder`), one report exe (`denotereport`), 41 Lean files, ~14k lines.
+Two exes (`ratchetd`, `semladder`), one report exe (`denotereport`), 42 Lean files, ~14k lines.
 
 ## What was deleted, and the one rule that decided it
 
@@ -68,7 +68,8 @@ MainTyped.lean            `lake exe ratchetd` -- stage 5 of the pipeline
 Denote/                   the denotation of `Ty` (Val/Apply/Den/DenB/Ext/Grow/Arrow/Join)
 Denote/Sem/               Framed, StateOk, Answer, SafeKont, AnswerCatch, Invariant, Trans
 Denote/Clink/             Spec (the mechanism), Form (the `form` derivation)
-Denote/Typed/             SemJudgeA + the 8 obligations, the registry, the controls
+Denote/Typed/             SemJudgeA + the obligations, the registry, the controls,
+                          RuleAudit (rules read off the proof terms)
 SemLadder.lean            `lake exe semladder` -- the clink report
 ```
 
@@ -233,7 +234,7 @@ the real prelude-booted machine, every hypothesis discharged (`stateOk_boot`, co
 the `bootOkB` build gate; `native_decide` was rejected for the axiom it costs). Eight today —
 rungs 001-008 — ratcheted by `safeRungFloor`.
 
-**Three gates keep that number honest**, because a safety count can be wrong in three
+**Five gates keep that number honest**, because a safety count can be wrong in five
 different ways:
 
 * `safeRungs` carries the *programs*, and `safeRungs_safe` is proved over the list — so a name
@@ -242,10 +243,23 @@ different ways:
 * `lake exe semladder build` compares each theorem's `Expr` against the **program the pipeline
   actually built** for that rung. A theorem can be true of `.str "hello"` and say nothing
   about rung 004; this is what rules that out. `scripts/run_typed_ratchet.sh` step 4.
-* `rulesUsed` + `unexercised` require every registered rule to be *exercised* by some covered
-  rung, or named as an exception. This failed on its first run and produced **§F30**: `var` is
-  registered and proved, and no covered rung reads a local — structurally, since the smallest
-  witness needs `vasgn` and `seq`.
+* `rulesExercised` + `unexercised` require every registered rule to be *exercised* by some
+  covered rung, or named as an exception. This failed on its first run and produced **§F30**:
+  `var` is registered and proved, and no covered rung reads a local — structurally, since the
+  smallest witness needs `vasgn` and `seq`. The exception list has a **ceiling**
+  (`unexercisedCeiling`), because the gate's first version could be satisfied by widening the
+  list, and was (§F30's 2026-09-13 update).
+* **`Denote/Typed/RuleAudit.lean`** computes `rulesExercised` off the **proof terms** — a
+  derivation is `fun _ hF => hF DClink.X hc`, so its rules are the clinks handed to the
+  closure hypothesis — and requires that to agree, per rung, with what `rulesUsed` predicts
+  from the program's `Expr` heads. That predictor was exact only if each head admits exactly
+  one `DJudge` rule, which was prose. (A flat `getUsedConstants` scan does **not** work here:
+  the `by simp [dclinks]` membership proof unfolds the whole registry, so every rung reports
+  every rule. The walk is structural for that reason.)
+* A built rung whose program uses **only registered rules** and has no safety theorem is red
+  (`SAFETY COVERAGE REGRESSED`). `safeRungs` is hand-written while the registry grows on its
+  own, so without this, registering `seq` would make a pile of rungs provable and nothing
+  would ask for their proofs.
 
 ### The eight rules, and the one lemma that gates the rest
 

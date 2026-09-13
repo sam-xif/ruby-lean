@@ -15,8 +15,10 @@ derivation is checked, never trusted.
 itself, compares every `Ty` the certificate claims, and **returns the `DJudge` derivation** —
 so a `true` below is "there is a derivation of this program in the certified judgment", with
 no theorem in between (the checker's *type* is the soundness statement). What it is not is a
-claim about the semantics: `DJudge`'s thirteen rules have no semantic proofs yet, and
-`Ratchet/Check.lean` §Semantic status says which are owed.
+claim about the semantics: nine of `DJudge`'s twelve rules have a semantic proof and three
+(`seq`, `prim`, `if'`) do not, so a `true` on a rung needing one of those three is coverage of
+the *checker*. `Ratchet/Check.lean` §Semantic status says what each still needs, and
+`lake exe semladder build` prints the unmet goals in corpus order.
 
 The headline number is **ladder reach**: the length of the leading run of rungs that meet
 their recorded target. A prefix, not a total, because that is what "we are at rung N" means
@@ -120,8 +122,9 @@ expect_validate={f.rung.expectValidate}, got {f.verdict}; {stageLabel f.rung.sta
 
   IO.println "\nNOTE: a `true` above means a `DJudge` derivation exists for the program \
 (Ratchet/Check.lean -- the checker returns the derivation, so its type is the soundness \
-statement). It does NOT yet mean type-safe: `DJudge`'s rules have no semantic proofs, and \
-`Denote/Clink/` is where a rule acquires one."
+statement). It does NOT yet mean type-safe: three of `DJudge`'s twelve rules (`seq`, `prim`, \
+`if'`) still have no semantic proof, so a rung needing one of those is checked but not \
+justified. `lake exe semladder build` reports which, per rung, in corpus order."
 
   -- Two things are failures rather than measurements, and both are ratchets
   -- (`scripts/record_baseline.py`): an upstream stage that errored and was not already

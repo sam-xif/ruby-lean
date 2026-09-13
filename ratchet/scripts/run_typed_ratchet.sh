@@ -24,8 +24,18 @@
 #      this reads the rung the pipeline actually built and compares its sig-stripped program
 #      against the `Expr` each theorem is about, so "rung 004 is proved safe" cannot be true
 #      of a theorem and false of the ladder. It also reports which registered rules those
-#      rungs **exercise**, and names the ones they do not (today: `var`, structurally -- see
-#      `found-issues.md` §F30). Non-zero on any mismatch.
+#      rungs **exercise** -- read off the proof terms, not guessed from the programs
+#      (`Denote/Typed/RuleAudit.lean`) -- and names the ones they do not (today: `var` and
+#      `vasgn`, structurally; see `found-issues.md` §F30), and it ends with the **unmet
+#      goals in corpus rung order**: every built rung that has no safety proof, with the
+#      rules it is waiting on, and a tally of which missing rule blocks the most rungs.
+#
+#      Three ways it goes non-zero, beyond a moved floor:
+#        * a safety theorem is about a different program than its rung's;
+#        * a built rung uses **only registered rules** and has no safety theorem -- the
+#          registry can already justify it and nothing has (`SAFETY COVERAGE REGRESSED`);
+#        * the `unexercised` exemption list grew past its recorded ceiling
+#          (`COVERAGE HATCH WIDENED`).
 #
 # `validateD` types (`Ratchet/Check.lean`); a `true` means a `DJudge` derivation exists.
 set -euo pipefail
@@ -33,7 +43,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 RATCHET_DIR="$PWD"
 
 echo "=== the negative controls (#guard, at build time) ==="
-lake build Ratchet.DerivControls Denote.Typed.Safety ratchetd semladder
+lake build Ratchet.DerivControls Denote.Typed.Safety Denote.Typed.RuleAudit ratchetd semladder
 echo
 
 echo "=== stages 1-4: sorbet -> strip -> desugar -> emit ==="
@@ -52,5 +62,5 @@ echo "=== stage 5: the typed ladder ==="
 .lake/build/bin/ratchetd build
 echo
 
-echo "=== the safety proof, cross-checked against the corpus it is about ==="
+echo "=== the safety proof, cross-checked against the corpus -- and the unmet goals ==="
 exec .lake/build/bin/semladder build

@@ -2249,3 +2249,40 @@ vacuous: `#guard unexercised.all (fun r => dRegisteredRules.contains r && !rules
 — every name on the list really is registered and really is unexercised — together with
 `#guard dUnregisteredRules.all (fun r => !rulesExercised.contains r)`, which says no rung
 leans on a rule that has no proof.
+
+### Update, 2026-09-13 — the gate was right, its *hatch* was not
+
+Two things happened to this finding, and the second is the interesting one.
+
+**`vasgn` was registered** (clink 72), so the registry is nine rules, not eight. The paragraph
+above predicted `var` "will be exercised by the first `vasgn`/`seq` rung automatically" —
+that has not happened, because registering `vasgn` did not produce a *rung*: no corpus program
+is a bare assignment, `029-simple-assign` being `x = 5; x + 1`, a `seq`. So `unexercised` went
+from `["var"]` to `["var", "vasgn"]`.
+
+**And nothing went red when it did.** The control quoted above checks that every name on the
+list is registered-and-unexercised; it does not check that the list is *short*. "Frozen by
+name, with a `#guard` that fails if anything else joins it" was the claim, and it was wrong:
+joining is a one-word edit to a literal, and the guard is satisfied by the edit that widens it.
+A gate with a hand-editable exemption list is a gate whose real bound is the exemption list.
+
+Three things were added in response, and only the first is about this finding:
+
+1. **`unexercisedCeiling`** (`Denote/Typed/Safety.lean`), ratcheted downward the way
+   `safeRungFloor` and `clinkFloor` ratchet upward, with a `#guard` at build time and a
+   `COVERAGE HATCH WIDENED` exit in `lake exe semladder`. Widening the hatch is still allowed
+   — it has to be, `var` really is unreachable — but it now moves a number a reviewer sees.
+2. **The `READY` gate** (`SemLadder.lean`): a built rung whose program uses only *registered*
+   rules and has no safety theorem is now red. This finding's converse, and the one that will
+   bite when `seq` lands: registering one composite rule makes a pile of corpus rungs provable
+   in a single commit, and nothing was asking for their theorems.
+3. **`Denote/Typed/RuleAudit.lean`**, which is about the word *`rulesExercised`* in the
+   control quoted above. That set was computed from the programs' `Expr` heads via a
+   hand-written head→rule table, exact only if each head admits exactly one `DJudge` rule —
+   asserted in prose, checked nowhere. It is now computed a second way, off the **proof
+   terms**, and the two are required to agree per rung. Verified by perturbation: swapping two
+   entries in the table leaves `Denote/Typed/Safety.lean` building clean and every
+   pre-existing guard green, and only the new cross-check catches it.
+
+The residue itself is unchanged: `var` and `vasgn` are proved, in the judgment, and not
+exercised end to end, and `seq` is still what unlocks both.
