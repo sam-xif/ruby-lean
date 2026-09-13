@@ -105,6 +105,12 @@ corpus/NNN-id.rb        annotated Ruby -- the source of truth, hand-edited
 One command: `scripts/run_typed_ratchet.sh` (negative controls, stages 1–4, agreement,
 report). `build/` is derived and gitignored; delete it freely.
 
+It prints **the goal list and nothing else** — the unmet rungs in corpus order, truncated at
+20, with the tally of what blocks them — because that is what a commit-time gate is for.
+`--verbose` streams every stage (the old output, ~1400 lines against ~25). Quiet never hides
+a failure: each stage's exit code is checked, and the first that fails names the stage, says
+why it matters, and prints its errors. `--help` for the stage list.
+
 **Why the certificate exists at all**, when `validate` synthesizes: `Judge.callDef` types
 a method body once *per call-site argument shape*, because Ruby writes no parameter types
 and there is therefore nothing to check a call against. A `sig` is exactly the missing
@@ -330,7 +336,7 @@ scripts/emit_deriv.py     the untrusted emitter
 scripts/build_corpus.py   stages 1-4 over the whole corpus
 scripts/annotate_corpus.py  the sig table; idempotent; re-run after adding a rung
 scripts/record_baseline.py  freeze expect_sorbet / known_upstream_failure
-scripts/run_typed_ratchet.sh  all of it, one command
+scripts/run_typed_ratchet.sh  all of it, one command; quiet by default, `--verbose` for all of it
 Ratchet/Deriv.lean        the certificate language and its decoder (layer 1)
 Ratchet/Check.lean        DPrim, DJudge, `check` (which returns the derivation), `validateD`
 Ratchet/DerivControls.lean  16 negative controls (#guard), including the typing ones

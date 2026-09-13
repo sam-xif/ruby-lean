@@ -8,59 +8,160 @@
 #     4. emit_deriv.py         -> a `Deriv`, or a named block   ] untrusted
 #     5. lake exe ratchetd     -> `validateD`'s Bool            ] TRUSTED, and only this
 #
-# Four steps, in the order that matters:
+# ## Two modes, and what the quiet one is for
 #
-#   0. **The negative controls** (`Ratchet/DerivControls.lean`, `#guard`ed at build
-#      time): a checker that accepts everything would pass every rung below, so the
-#      controls are checked before any count is reported.
+# By default this prints **the goal list and nothing else**: the unmet rungs in corpus order,
+# truncated at 20, with the tally of what blocks them. That is the output of a commit-time
+# gate -- the answer to "am I green, and what is next", which is the question anyone running
+# this actually has. Everything each stage says on the way is captured to a log and dropped.
+#
+# `--verbose` streams all of it: the Lean build, the corpus pipeline, the agreement replay,
+# the reach table, the registry columns and the per-rung cross-check.
+#
+# **Quiet never hides a failure.** Every stage's exit code is checked; the first one that
+# fails prints what it was, why it matters, and the tail of its captured output, then stops.
+# The flag chooses how much is said when everything is fine, never when it is not.
+#
+# ## The stages, in the order that matters
+#
+#   0. **The negative controls** (`Ratchet/DerivControls.lean`, `Denote/Typed/Controls.lean`,
+#      `#guard`ed at build time): a checker that accepts everything would pass every rung
+#      below, so the controls are checked before any count is reported.
 #   1. **Stages 1-4** over every rung, into `build/`.
-#   2. **Agreement** (`--sut lean`) over the *stripped* programs -- the ones the
-#      certificates are about. A rung the model runs differently from CRuby is a rung
-#      whose type is a statement about a fiction. Skip with RATCHET_SKIP_AGREEMENT=1.
-#   3. **The report** (`lake exe ratchetd`), whose exit code is non-zero on a moved
-#      Sorbet verdict, a new upstream failure, or a drop in ladder reach.
-#   4. **The safety proof, cross-checked against the corpus** (`lake exe semladder build`).
-#      The end-to-end theorems in `Denote/Typed/Safety.lean` name their rung in a docstring;
-#      this reads the rung the pipeline actually built and compares its sig-stripped program
+#   2. **Agreement** (`--sut lean`) over the *stripped* programs -- the ones the certificates
+#      are about. A rung the model runs differently from CRuby is a rung whose type is a
+#      statement about a fiction. Skip with RATCHET_SKIP_AGREEMENT=1.
+#   3. **The report** (`lake exe ratchetd`), whose exit code is non-zero on a moved Sorbet
+#      verdict, a new upstream failure, or a drop in ladder reach.
+#   4. **The safety proof, cross-checked against the corpus** (`lake exe semladder`). The
+#      end-to-end theorems in `Denote/Typed/Safety.lean` name their rung in a docstring; this
+#      reads the rung the pipeline actually built and compares its sig-stripped program
 #      against the `Expr` each theorem is about, so "rung 004 is proved safe" cannot be true
 #      of a theorem and false of the ladder. It also reports which registered rules those
 #      rungs **exercise** -- read off the proof terms, not guessed from the programs
 #      (`Denote/Typed/RuleAudit.lean`) -- and names the ones they do not (today: `var` and
-#      `vasgn`, structurally; see `found-issues.md` §F30), and it ends with the **unmet
-#      goals in corpus rung order**: every built rung that has no safety proof, with the
-#      rules it is waiting on, and a tally of which missing rule blocks the most rungs.
+#      `vasgn`, structurally; see `found-issues.md` §F30).
 #
-#      Three ways it goes non-zero, beyond a moved floor:
+#      Four ways it goes non-zero, beyond a moved floor:
 #        * a safety theorem is about a different program than its rung's;
 #        * a built rung uses **only registered rules** and has no safety theorem -- the
 #          registry can already justify it and nothing has (`SAFETY COVERAGE REGRESSED`);
-#        * the `unexercised` exemption list grew past its recorded ceiling
-#          (`COVERAGE HATCH WIDENED`).
+#        * the `unexercised` exemption list grew past its ceiling (`COVERAGE HATCH WIDENED`);
+#        * a rung count or the registry size fell below its floor.
 #
 # `validateD` types (`Ratchet/Check.lean`); a `true` means a `DJudge` derivation exists.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 RATCHET_DIR="$PWD"
 
-echo "=== the negative controls (#guard, at build time) ==="
-lake build Ratchet.DerivControls Denote.Typed.Safety Denote.Typed.RuleAudit ratchetd semladder
-echo
+VERBOSE=0
+PASSTHROUGH=()
+for arg in "$@"; do
+  case "$arg" in
+    --verbose|-v) VERBOSE=1 ;;
+    --help|-h)
+      sed -n '2,52p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      exit 0 ;;
+    *) PASSTHROUGH+=("$arg") ;;
+  esac
+done
 
-echo "=== stages 1-4: sorbet -> strip -> desugar -> emit ==="
-python3 scripts/build_corpus.py "$@"
-echo
+LOGDIR="$(mktemp -d)"
+CURRENT_STAGE=""
+cleanup() { rm -rf "$LOGDIR"; }
+trap cleanup EXIT
+
+# fail <label> <why> [logfile]
+fail() {
+  local label="$1" why="$2" log="${3:-}"
+  {
+    echo
+    echo "RATCHET FAILED -- stage: ${label}"
+    echo
+    echo "  ${why}"
+    if [[ -n "$log" && -s "$log" ]]; then
+      echo
+      # Prefer the error lines themselves. A lake log is mostly `#print axioms` info and
+      # deprecation warnings, so a blind tail buries the one thing worth reading.
+      if grep -qE '^error' "$log"; then
+        echo "  --- the errors ---"
+        grep -E '^error' -A 6 "$log" \
+          | grep -vE '^(trace|info|warning|--|Note:)' | head -30 | sed 's/^/  | /'
+      else
+        echo "  --- last 40 lines of that stage ---"
+        tail -40 "$log" | sed 's/^/  | /'
+      fi
+      echo
+      echo "  (re-run with --verbose for the whole thing)"
+    fi
+  } >&2
+  exit 1
+}
+
+# stage <label> <why-it-matters> -- <command...>
+stage() {
+  local label="$1" why="$2"; shift 3   # drop label, why, and the literal `--`
+  CURRENT_STAGE="$label"
+  if [[ "$VERBOSE" == 1 ]]; then
+    echo "=== ${label} ==="
+    "$@" || fail "$label" "$why"
+    echo
+  else
+    local log="${LOGDIR}/$(echo "$label" | tr -c 'a-zA-Z0-9' '_').log"
+    "$@" >"$log" 2>&1 || fail "$label" "$why" "$log"
+    LAST_LOG="$log"
+  fi
+}
+
+stage "build: the negative controls and the proofs" \
+  "A Lean source does not compile, or a #guard/#guard_msgs control failed. These are the gates
+  that cannot be skipped -- the coverage cross-check (Denote/Typed/RuleAudit.lean), the
+  registration refusals (Denote/Typed/Controls.lean), and the safety theorems themselves." \
+  -- lake build Ratchet.DerivControls Denote.Typed.Safety Denote.Typed.RuleAudit \
+                ratchetd semladder
+
+stage "stages 1-4: sorbet -> strip -> desugar -> emit" \
+  "The untrusted pipeline errored building build/*.rung.json. Usually srb is missing or a
+  strip transform hit a construct it cannot handle; a rung that merely falls outside the
+  fragment is recorded as blocked, not as a failure, so this is a real error." \
+  -- python3 scripts/build_corpus.py ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}
+CORPUS_LOG="${LAST_LOG:-}"
 
 if [[ "${RATCHET_SKIP_AGREEMENT:-0}" == "1" ]]; then
-  echo "=== agreement (CRuby vs the Lean semantics): SKIPPED (RATCHET_SKIP_AGREEMENT=1)"
+  [[ "$VERBOSE" == 1 ]] && echo "=== agreement: SKIPPED (RATCHET_SKIP_AGREEMENT=1) ===" && echo
+  AGREE_LINE="agreement SKIPPED"
 else
-  echo "=== agreement over the sig-stripped programs (CRuby vs the Lean semantics) ==="
-  ( cd ../difftest && uv run python -m difftest replay "$RATCHET_DIR/build" --sut lean )
+  stage "agreement: CRuby vs the Lean semantics" \
+    "The Lean model and CRuby disagree on a sig-stripped program, or the replay harness
+  errored. A rung the model runs differently from CRuby is a rung whose certificate is a
+  statement about a fiction, so this gates the safety claim rather than decorating it." \
+    -- bash -c 'cd "$1"/../difftest && uv run python -m difftest replay "$1/build" --sut lean' _ "$RATCHET_DIR"
+  if [[ "$VERBOSE" == 1 ]]; then
+    AGREE_LINE=""
+  else
+    AGREE_LINE="$(grep -o '"agree": *[0-9]*' "$LAST_LOG" | head -1 | tr -d ' ' | tr ':' ' ' \
+                  | awk '{print $2" agree"}')"
+    DIS="$(grep -c '"disagreements": \[\]' "$LAST_LOG" || true)"
+    [[ "$DIS" == "0" ]] && AGREE_LINE="${AGREE_LINE}, DISAGREEMENTS" || AGREE_LINE="${AGREE_LINE}, 0 disagree"
+  fi
 fi
-echo
 
-echo "=== stage 5: the typed ladder ==="
-.lake/build/bin/ratchetd build
-echo
+stage "stage 5: the typed ladder (reach)" \
+  "Ladder reach dropped below its recorded floor, a Sorbet verdict moved, or a new upstream
+  failure appeared. All three are ratchets: a rung once climbed never un-climbs." \
+  -- ./.lake/build/bin/ratchetd build
 
-echo "=== the safety proof, cross-checked against the corpus -- and the unmet goals ==="
-exec .lake/build/bin/semladder build
+if [[ "$VERBOSE" == 1 ]]; then
+  echo "=== the safety proof, cross-checked against the corpus -- and the unmet goals ==="
+  exec ./.lake/build/bin/semladder build
+fi
+
+# Quiet: one line of pipeline facts, then the goal list, which is the whole point.
+REACH="$(grep -m1 '^LADDER REACH:' "$LAST_LOG" 2>/dev/null | sed 's/^LADDER REACH: //; s/ (.*//')"
+echo "pipeline: reach ${REACH:-?}${AGREE_LINE:+ · }${AGREE_LINE:-}"
+
+./.lake/build/bin/semladder build --quiet || fail \
+  "the safety proof and its gates" \
+  "See the finding printed above: a safety theorem is about the wrong program, a built rung is
+  provable but unproved, the coverage hatch widened past its ceiling, or a recorded floor
+  moved. Each of those is explained where it is printed."

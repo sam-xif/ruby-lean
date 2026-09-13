@@ -57,6 +57,11 @@ without its proof, so the count is a count of proofs. Raise it when the registry
 drop means a proof was deleted or broken. -/
 def clinkFloor : Nat := 9
 
+/-- How many unmet goals the **quiet** report prints before truncating. The full list is
+`--verbose`; this is the number that keeps a commit-time gate readable, since the list is 251
+entries long today and a report nobody scrolls is a report nobody reads. -/
+def goalLimit : Nat := 20
+
 /-! ## The cross-check: the safety proof is about the **corpus's own** programs
 
 `Denote/Typed/Safety.lean`'s theorems name their rung in a docstring — `corpus/004-str-lit.rb`
@@ -110,6 +115,10 @@ structure Goal where
   name : String
   state : GoalState
 
+/-- Left-justify to `w`, so the quiet list reads as two columns. -/
+def pad (w : Nat) (s : String) : String :=
+  if s.length >= w then s else s ++ String.ofList (List.replicate (w - s.length) ' ')
+
 /-- Classify one built rung. `rulesUsed` is the predictor `Denote/Typed/Safety.lean` §4
 describes -- and the reason it is trustworthy here is `Denote/Typed/RuleAudit.lean` §3, which
 checks it against the proof terms on every rung that has one. -/
@@ -162,71 +171,97 @@ def checkRung (dir : System.FilePath) (name : String) (p : Ratchet.Expr) : IO Ru
         else return { name, status := "MISMATCH: the theorem is about a different program",
                       ok := false }
 
+/-! ## The two reports
+
+`--quiet` (what `scripts/run_typed_ratchet.sh` runs by default) prints the **goal list and
+nothing else**: the unmet rungs in corpus order, truncated at `goalLimit`, with the rolled-up
+tally. Everything above it -- the registry columns, the safety banner, the per-rung
+cross-check -- is narration for a reader who asked for it, and `--verbose` is where it lives.
+
+What `--quiet` does *not* suppress is any gate firing. Every failure path below prints its own
+explanation and returns non-zero in both modes; the flag chooses how much is said when
+everything is fine, never how much is said when it is not. -/
+
 def main (args : List String) : IO UInt32 := do
+  let quiet := args.contains "--quiet"
+  let dirArg? := (args.filter fun a => !a.startsWith "--").head?
   let dn := dRegisteredRules.length
-  IO.println "=== CLINK REGISTRY: rules in the certified judgment `DJudgeC dclinks` ==="
-  IO.println ""
-  IO.println s!"  DJudge   {dn} registered   {dUnregisteredRules.length} not in the judgment"
-  IO.println s!"  registered: {String.intercalate ", " dRegisteredRules}"
-  IO.println s!"  owed:       {String.intercalate ", " dUnregisteredRules} \
+  -- `say` is the narration; `IO.println` is a finding. The distinction is the whole flag.
+  let say : String → IO Unit := fun m => unless quiet do IO.println m
+  say "=== CLINK REGISTRY: rules in the certified judgment `DJudgeC dclinks` ==="
+  say ""
+  say s!"  DJudge   {dn} registered   {dUnregisteredRules.length} not in the judgment"
+  say s!"  registered: {String.intercalate ", " dRegisteredRules}"
+  say s!"  owed:       {String.intercalate ", " dUnregisteredRules} \
 (`runA_pushK` is proved; see Denote/Typed/JudgeA.lean §4 for what each still needs)"
   if !dFamBlockedRules.isEmpty then
-    IO.println s!"  of those, owed TWICE: {String.intercalate ", " dFamBlockedRules} \
+    say s!"  of those, owed TWICE: {String.intercalate ", " dFamBlockedRules} \
 -- their premises reach {String.intercalate ", " dCompanionRules},"
-    IO.println "              which `DFam` carries no field for, so `register_dclink` refuses"
-    IO.println "              them before asking for a proof: the statement a proof would have"
-    IO.println "              to prove is the wrong one until the family is extended (§F31)."
-  IO.println ""
-  IO.println "Every registered rule carries its own proof (`Clink.sem`), and that proof is"
-  IO.println "TWO obligations: the answer-typed reading (hypothesis is an answer, not a value;"
-  IO.println "the conclusion says whether the run reached a type-stuck outcome) AND end-to-end"
-  IO.println "safety. So `dregistry_safe` is unconditional and holds at every registry size --"
-  IO.println "a rule cannot join without its safety proof. The right-hand column is COVERAGE,"
-  IO.println "not debt: an unregistered rule is not in the judgment at all."
-  IO.println ""
-  IO.println "=== END-TO-END SAFETY, at the real prelude-booted machine ==="
-  IO.println s!"  {safeRungs.length} corpus rungs proved `StuckFree bootMachine <program>`, \
+    say "              which `DFam` carries no field for, so `register_dclink` refuses"
+    say "              them before asking for a proof: the statement a proof would have"
+    say "              to prove is the wrong one until the family is extended (§F31)."
+  say ""
+  say "Every registered rule carries its own proof (`Clink.sem`), and that proof is"
+  say "TWO obligations: the answer-typed reading (hypothesis is an answer, not a value;"
+  say "the conclusion says whether the run reached a type-stuck outcome) AND end-to-end"
+  say "safety. So `dregistry_safe` is unconditional and holds at every registry size --"
+  say "a rule cannot join without its safety proof. The right-hand column is COVERAGE,"
+  say "not debt: an unregistered rule is not in the judgment at all."
+  say ""
+  say "=== END-TO-END SAFETY, at the real prelude-booted machine ==="
+  say s!"  {safeRungs.length} corpus rungs proved `StuckFree bootMachine <program>`, \
 at every fuel:"
-  IO.println s!"    {String.intercalate ", " (safeRungs.map (·.1))}"
-  IO.println "  Each is one theorem in Denote/Typed/Safety.lean with every hypothesis"
-  IO.println "  discharged (`stateOk_boot`, conditional on the `bootOkB` build gate), and"
-  IO.println "  `#print axioms` showing only propext/Classical.choice/Quot.sound."
-  IO.println ""
-  IO.println s!"  rules exercised by those rungs: \
+  say s!"    {String.intercalate ", " (safeRungs.map (·.1))}"
+  say "  Each is one theorem in Denote/Typed/Safety.lean with every hypothesis"
+  say "  discharged (`stateOk_boot`, conditional on the `bootOkB` build gate), and"
+  say "  `#print axioms` showing only propext/Classical.choice/Quot.sound."
+  say ""
+  say s!"  rules exercised by those rungs: \
 {String.intercalate ", " (dRegisteredRules.filter (fun r => rulesExercised.contains r))}"
-  IO.println "  (read off the proof terms, not off the programs -- Denote/Typed/RuleAudit.lean)"
+  say "  (read off the proof terms, not off the programs -- Denote/Typed/RuleAudit.lean)"
   if !unexercised.isEmpty then
-    IO.println s!"  registered but NOT exercised end to end: \
+    say s!"  registered but NOT exercised end to end: \
 {String.intercalate ", " unexercised} ({unexercised.length} of a ceiling of \
 {unexercisedCeiling}) -- see found-issues.md §F30"
   -- The cross-check, when a build directory is given.
   let mut crossOk := true
   let mut ready : List String := []
-  match args.head? with
+  match dirArg? with
   | none =>
-    IO.println ""
-    IO.println "  (pass a build directory -- `lake exe semladder build` -- to also check each"
-    IO.println "   theorem is about the program the pipeline built for that rung, and to list"
-    IO.println "   the unmet goals in corpus order)"
+    say ""
+    say "  (pass a build directory -- `lake exe semladder build` -- to also check each"
+    say "   theorem is about the program the pipeline built for that rung, and to list"
+    say "   the unmet goals in corpus order)"
   | some dir =>
-    IO.println ""
-    IO.println s!"  cross-check against {dir}:"
+    say ""
+    say s!"  cross-check against {dir}:"
     for q in safeRungs do
       let r ← checkRung dir q.1 q.2
-      IO.println s!"    {q.1}: {r.status}"
-      if !r.ok then crossOk := false
-    -- The goal list, in corpus rung order.
+      -- A mismatch is a finding, so it is printed in both modes.
+      if r.ok then say s!"    {q.1}: {r.status}"
+      else
+        IO.println s!"    {q.1}: {r.status}"
+        crossOk := false
+    -- The goal list, in corpus rung order. This is the part `--quiet` keeps.
     let goals ← loadGoals dir
     ready := goals.filterMap fun g => match g.state with | .ready => some g.name | _ => none
     let unmet := goals.filter fun g => match g.state with | .proved => false | _ => true
     IO.println ""
-    IO.println "=== UNMET GOALS, in corpus rung order ==="
+    if quiet then
+      IO.println s!"{goals.length} rungs, {goals.length - unmet.length} proved safe, \
+{unmet.length} unmet -- {dn} clinks, {dUnregisteredRules.length} rules owed"
+    else
+      IO.println "=== UNMET GOALS, in corpus rung order ==="
     IO.println ""
     if unmet.isEmpty then
       IO.println "  (none -- every built rung has an end-to-end safety proof)"
     else
-      for g in unmet do
-        IO.println s!"  {g.name}  --  {g.state.label}"
+      let shown := if quiet then unmet.take goalLimit else unmet
+      for g in shown do
+        IO.println s!"  {pad 44 g.name}{g.state.label}"
+      if quiet && unmet.length > goalLimit then
+        IO.println s!"  ... and {unmet.length - goalLimit} more \
+(--verbose for the full list, and for how each number above was reached)"
     IO.println ""
     -- The work queue, rolled up: which missing rule blocks the most rungs.
     let blocking := (goals.flatMap fun g => match g.state with
@@ -239,13 +274,15 @@ at every fuel:"
             | .outOfFragment on => on.contains r
             | _ => false).length)
     let sortedTally := tally.toArray.qsort (fun a b => a.2 > b.2) |>.toList
-    IO.println s!"  {goals.length} built rungs: {goals.length - unmet.length} proved, \
+    unless quiet do
+      IO.println s!"  {goals.length} built rungs: {goals.length - unmet.length} proved, \
 {unmet.length} unmet"
     if !sortedTally.isEmpty then
       IO.println s!"  blocked on: \
 {String.intercalate ", " (sortedTally.map fun t => s!"{t.1} ({t.2})")}"
-    IO.println "  -- a rule with a rung count is the next unit of work; `?` is a head with no"
-    IO.println "     DJudge rule at all, so those rungs need the judgment extended first."
+    say "  -- a rule with a rung count is the next unit of work; `?` is a head with no"
+    say "     DJudge rule at all, so those rungs need the judgment extended first."
+  -- The gates. Each prints in both modes: `--quiet` is about narration, not about findings.
   if !crossOk then
     IO.println ""
     IO.println "SAFETY CROSS-CHECK FAILED: a safety theorem is not about its rung's program"
@@ -275,6 +312,6 @@ floor is {safeRungFloor}"
     IO.println s!"CLINK RATCHET: {dn} registered, floor is {clinkFloor} \
 -- raise `clinkFloor` in SemLadder.lean to lock it in"
     return 0
-  IO.println s!"CLINK RATCHET OK ({dn} registered, all proved by construction; \
+  say s!"CLINK RATCHET OK ({dn} registered, all proved by construction; \
 {dUnregisteredRules.length} rules not in the judgment -- that is coverage, not debt)"
   return 0
