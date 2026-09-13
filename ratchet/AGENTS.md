@@ -291,10 +291,19 @@ needs one conformance fact per `DPrim` row.
 obligation is about a run from an empty kont — which is why §9.2's warning that `safe_pushK`
 needs `CatchFree m.kont` does not bite at this layer.
 
-**§F29** is what the restatement bought immediately: `DJudge.var`'s obligation did not close,
-because the rule had dropped `isAliasTy τ = false` (§F5's premise, on a rule three hours old).
-No corpus rung could have found it — nothing in `DJudge` produces an alias — but `SemJudgeA`
-quantifies over every conformant environment. One premise, no ladder movement.
+**§F29** is what the restatement bought immediately, twice: `DJudge.var`'s obligation did not
+close because the rule had dropped `isAliasTy τ = false` (§F5's premise, on a rule three hours
+old), and `DJudge.vasgn`'s did not close because it guessed `envSet` with no premises where
+`StateOk_setLocal` wants two and concludes at `envAfter`. No corpus rung could have found
+either — nothing in `DJudge` produces an alias or a closure — but the obligation quantifies
+over every environment a *conformant machine* can have, not every one the checker can reach.
+No ladder movement either time.
+
+The working rule that came out of it is **`Ratchet/Check.lean` §Authoring a rule**: *let the
+transport lemma write a rule's premises and its outgoing environment.* Deliberately a rule of
+thumb rather than a checked invariant — the stronger form (*never re-type an existing entry*)
+is false for Ruby, and `killClosOver` re-types entries the rule did not bind on purpose. How
+the environment may evolve stays open; soundness is forced at proof time.
 
 ### Still not built
 

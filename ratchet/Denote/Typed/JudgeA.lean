@@ -565,6 +565,12 @@ theorem SemA.strLit {Γ : Env} {s : String} : SemSafeA Γ (.str s) (.cls "String
 
 /-! ## §3a `vasgn` — the first composite rule
 
+**Before adding a rule, read `Ratchet/Check.lean` §Authoring a rule.** Twice the obligation
+here has refused to close because the constructor was authored with a guessed outgoing
+environment and no premises (`found-issues.md` §F29, at `var` and at `vasgn`); the working
+rule extracted from it — *let the transport lemma write the premises and the outgoing
+environment* — is what makes the difference between this being bookkeeping and a redesign.
+
 The rule that has a sub-expression, and therefore the first one where the two halves are
 proved by different machinery:
 

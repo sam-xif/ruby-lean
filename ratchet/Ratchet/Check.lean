@@ -34,6 +34,55 @@ fields) whose structural recursion Lean will accept but whose *induction* in a m
 with two list companions is a fight. Fuel makes `check_sound` one `induction fuel`. Fuel
 exhaustion answers `none`, so it can only cost completeness.
 
+## Authoring a rule: **let the transport lemma write the premises and the outgoing environment**
+
+A working rule, paid for twice (`found-issues.md` §F29, at `var` and again at `vasgn`). It is
+a rule of thumb rather than a checked invariant, deliberately — see the end of this section.
+
+**The procedure.** Before writing a `DJudge` constructor, find the `Denote/Sem/` lemma that
+transports `StateOk` across the machine change the rule makes:
+
+| the rule changes | the lemma |
+|---|---|
+| only `ctl`/`kont` | `StateOk_reCtl` — no premises, environment unchanged |
+| the heap, by allocating | `StateOk_ext` (via `ext_push`) — environment unchanged |
+| a local | `StateOk_setLocal` — **premises**, and a specific outgoing environment |
+| an ivar | `StateOk_ivarWrite` |
+
+Then: **its hypotheses are the rule's premises, and its conclusion's environment is the
+rule's outgoing environment.** `vasgn` is the worked case — `StateOk_setLocal` wants
+`capStale x τ τ = false` and (through `stripAlias`) `isAliasTy τ = false`, and concludes at
+`envSet (killClosOver (killAliasesTo Γ x) x τ) x τ`, which is why `envAfter` exists and why
+those two premises are on the constructor. Both times I wrote the rule first and guessed
+`envSet` with no premises; both times the obligation refused to close.
+
+**Why it bites even though nothing reachable triggers it.** No `DJudge` rule produces a
+`Ty.sameAs` or a `Ty.clos`, so `killAliasesTo` and `killClosOver` are the identity on every
+environment the *checker* can reach, and `isAliasTy` is always false there. The obligation
+does not quantify over reachable environments — it quantifies over every environment a
+**conformant machine** can have. That gap is the whole reason the discipline is worth stating:
+testing cannot find these, and two of two rules with an interesting environment had one.
+
+**Why it makes the *next* rule's proof simpler**, which is the real payoff. `DKontOk.asgnK`'s
+tail index is literally `envAfter Γ x τ` — it matches `DJudge.vasgn`'s conclusion because both
+were copied from the same lemma, so the frame clause composes with the rule by `rfl`. Had the
+rule said `envSet`, every frame clause, every sequence rule and every consumer downstream
+would carry a rewrite between the two. A rule stated at the transport lemma's own environment
+is a rule nothing has to translate.
+
+**The other half of the same question is §F31**: this rule says where a premise's *content*
+comes from, and §F31 says a premise's sub-derivation must be the **family's** relation and not
+the raw syntactic one, or the obligation is about a derivation the registry never vetted. A
+rule's premises are constrained from both sides.
+
+**Why this is not hoisted into a stated invariant.** The tempting generalisation — *a rule may
+only grow the environment, never re-type an existing entry* — is **false for Ruby**:
+`corpus/031-reassign-different-type.rb` is `x = 1; x = true; x` and is a legitimate program
+that must type. And `killClosOver` deliberately re-types entries the rule did not bind, because
+writing `x` invalidates any other binding whose type captured it. So how the environment may
+evolve stays open, and soundness is forced at proof time instead. That is a choice for
+flexibility, with the obligation as the forcing function.
+
 ## What is deliberately not in the judgment yet
 
 `DJudge` has twelve rules (plus four in the two list companions). Everything else a `Deriv` can express — `defDecl`, `callSig`,

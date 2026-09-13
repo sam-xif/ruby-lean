@@ -265,9 +265,21 @@ disagreements are §A6b (`Symbol#to_proc` is not identity-stable — CRuby inter
 per symbol) and §A6c (the zero-argument `ArgumentError` message); the gate is
 `Proc#arity`, unmodeled.
 
-## The working rule this session paid for twice
+## Two working rules, each paid for twice
 
 **Write the layer's target down as a named `Prop` before proving the layer under
 it.** `FrameLocal.lean`'s 532 lines were proved for a target that was never
 stated, and the target turned out to be false. The same lesson is what
 `not_KontFrame` bought in clink 52.
+
+**Let the transport lemma write a rule's premises and its outgoing environment.**
+Before authoring a `DJudge` constructor, find the `Denote/Sem/` lemma that carries
+`StateOk` across the machine change the rule makes (`StateOk_reCtl`,
+`StateOk_ext`, `StateOk_setLocal`, `StateOk_ivarWrite`); its hypotheses are the
+premises and its conclusion's environment is the outgoing one. `var` and `vasgn`
+were both authored without doing this and both obligations refused to close
+(`found-issues.md` §F29). It is a rule of thumb, not a checked invariant: the
+stronger version — *never re-type an existing entry* — is false for Ruby
+(`031-reassign-different-type` is `x = 1; x = true; x`). Full statement, with why
+it makes the **next** rule's proof simpler, in `Ratchet/Check.lean`
+§Authoring a rule.

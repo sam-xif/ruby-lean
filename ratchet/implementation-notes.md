@@ -8347,3 +8347,57 @@ asked, which is what it is for. `seq` unlocks both, plus rungs 029–034.
 The refusal control in `Denote/Typed/Controls.lean` moved from `vasgn` to `if'`, because
 `vasgn` now has a proof and the control has to name a rule that does not. That is the control
 doing its job.
+
+---
+
+## Clink 73 (2026-09-13) — a working rule, written down after paying for it twice
+
+Not a proof. `found-issues.md` §F29 had recorded the same failure at two rules — `var` and
+`vasgn` — and the project's own threshold for turning a finding into a norm is "paid for
+twice" (`HANDOFF.md`'s other working rule cites `FrameLocal.lean` and `not_KontFrame`). So it
+is stated, in `Ratchet/Check.lean` §Authoring a rule, next to the constructors it is about.
+
+**The rule.** Before writing a `DJudge` constructor, find the `Denote/Sem/` lemma that
+transports `StateOk` across the machine change the rule makes — `StateOk_reCtl` for
+`ctl`/`kont`, `StateOk_ext` for an allocation, `StateOk_setLocal` for a local write,
+`StateOk_ivarWrite` for an ivar. **Its hypotheses are the rule's premises; its conclusion's
+environment is the rule's outgoing environment.** Both times I wrote the rule first and
+guessed; both times the obligation refused.
+
+**Why it bites when nothing reachable triggers it**, which is the part that makes it worth
+stating rather than assuming people will notice: no rule produces a `Ty.sameAs` or a
+`Ty.clos`, so `killAliasesTo`/`killClosOver` are the identity and `isAliasTy` is always false
+on every environment the *checker* can reach. The obligation quantifies over every environment
+a **conformant machine** can have. No amount of corpus testing finds these, and two of the two
+rules with an interesting environment had one.
+
+**Why it makes the next rule's proof simpler** — the reason this is a rule of thumb about
+*authoring* and not just an observation about proving. `DKontOk.asgnK`'s tail index is
+literally `envAfter Γ x τ`, and it matches `DJudge.vasgn`'s conclusion because both were
+copied from `StateOk_setLocal`. The frame clause composes with the rule by `rfl`. Had the rule
+said `envSet`, every frame clause, every sequence rule and every downstream consumer would
+carry a rewrite between the two forms. A rule stated at the transport lemma's own environment
+is a rule nothing has to translate.
+
+**What was deliberately *not* done.** The tempting generalisation is to hoist this into a
+checked invariant: *a rule may only grow the environment, never re-type an existing entry*,
+enforced as a third conjunct on the clink target next to `SemJudgeA` and `SafeUnder`. It is
+**false for Ruby** — `corpus/031-reassign-different-type.rb` is `x = 1; x = true; x` and must
+type, because "real Ruby locals are not statically single-typed, and neither is this checker"
+— and `killClosOver` re-types entries the rule did not bind *on purpose*, since writing `x`
+invalidates any other binding whose type captured it. The nearer-true version (monotone in the
+**domain**: `envKeys Γ ⊆ envKeys Γ'`) was floated and left alone too, on the grounds that
+constraining how the environment may evolve buys less than keeping it open and letting the
+obligation force soundness case by case. Recorded here so the idea is not re-proposed as new.
+
+Cross-referenced from `Denote/Typed/JudgeA.lean` §3a (where the obligation refuses),
+`HANDOFF.md` (now "two working rules") and `AGENTS.md` §F29's paragraph. One statement, three
+pointers — not four copies.
+
+**Its sibling is §F31**, landed the same day from the other direction. This norm is about the
+premises a rule *needs* — read off the transport lemma. §F31 is about the premises a rule
+*states* — and specifically that `ruleForm` leaves any head not in `dFamField` raw, so
+`seq`'s and `prim`'s sub-derivation premises would have been the **syntactic** relation rather
+than the family's, and the obligation would have been about a derivation the registry never
+vetted. Together they bracket the same question: a rule's premises are not free variables, and
+both halves of what constrains them now have a name.
