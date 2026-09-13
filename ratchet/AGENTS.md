@@ -14,7 +14,7 @@ one rung at a time. Three numbers, three scripts, no others:
 |---|---|---|
 | ladder reach | **18 rungs** (leading run meeting their recorded target); frontier `019-to-s-call` | `scripts/run_typed_ratchet.sh` |
 | agreement | **252 agree, 0 disagreements** (CRuby vs the Lean semantics, over the sig-stripped programs) | same, step 3 |
-| clinks | **9 of `DJudge`'s 12** rules carry an answer-typed proof **and an invariant proof**; 3 owed | `scripts/run_denote.sh`, or `lake exe semladder` |
+| clinks | **9 of `DJudge`'s 12** rules carry an answer-typed proof **and an invariant proof**; 3 owed, and 2 of those (`seq`, `prim`) are owed twice — a proof *and* a `DFam` field that can state it (§F31) | `scripts/run_denote.sh`, or `lake exe semladder` |
 | end-to-end safety | **8 corpus rungs** proved `StuckFree bootMachine <program>` at every fuel; **7 of the 9 rules exercised** (read off the proof terms), `var`/`vasgn` named as exceptions under a ceiling (§F30) | `scripts/run_typed_ratchet.sh` step 4, or `lake exe semladder build` — which also lists the **unmet goals in corpus rung order** |
 
 Two exes (`ratchetd`, `semladder`), one report exe (`denotereport`), 42 Lean files, ~14k lines.

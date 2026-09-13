@@ -425,6 +425,7 @@ What is owed, in the order it gets cheaper:
 | rule | what its obligation needs |
 |---|---|
 | all three | `runA_pushK` (`Denote/Typed/JudgeA.lean` §4) — the answer-level counterpart of `run_pushK` — **is now proved**, and it is what let `vasgn` off this table. It is no longer the blocker for the remaining three; each now needs only its own rule-specific work, below |
+| `seq`, `prim` | **`DFam` extended with a list field first** (`Denote/Typed/Clink.lean`, header, and §F31). Their premises are `DJudgeSeq`/`DJudgeAll`, which `ruleForm` does not abstract, so a proof written today would prove the wrong statement — `register_dclink` refuses them for that reason before it asks for one |
 | `if'`, additionally | nothing. **`joinT`/`joinEnv` soundness is already proved** — `Denote/Join.lean`'s `denM_joinT_left`/`_right` (a join is an upper bound under `denM`) and `Denote/JoinState.lean`'s environment/spine counterpart. Both survived the clink-68 deletion sweep *because* of this row, and finding them is what corrected it: an earlier version of this table said "stated nowhere yet" |
 | `prim`, additionally | one conformance fact per row: that CRuby's `Integer#+` really returns an `Integer` from the prelude-booted heap. `DPrim` has **7** rows against `PrimSig`'s ~90 precisely so this is a countable obligation rather than the ~200-fact block that stalled the old ladder three sessions running |
 

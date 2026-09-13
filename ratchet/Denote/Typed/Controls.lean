@@ -73,6 +73,41 @@ A rule with no proof is not a rule (Denote/Clink/Spec.lean).
 #guard_msgs in
 register_dclink DJudge.if'
 
+/-! ### …and a rule whose premise escapes the family is refused *before* its proof is asked for
+
+`if'` above is refused for the ordinary reason — nobody has proved it. `seq` and `prim` are
+refused for a **stronger** one, and the order of the two checks is the point: writing
+`SemA.seq` would not help, because the statement it would have to prove is the wrong one.
+
+`ruleForm` rewrites only the heads in `dFamField`. `DJudge.seq`'s premise is `DJudgeSeq`,
+which is not one, so the derived form would be
+
+    fun F => ∀ …, DJudgeSeq Γ es τ Γ' → F.judge Γ (.seq es) τ Γ'
+
+— a premise that is the **syntactic** relation rather than the family's. At `dsemFam` that
+obligation reads *"a sequence is safe given a raw sub-derivation"*, and a raw sub-derivation
+may be built from the three rules with no semantic proof at all. The registry's whole claim is
+that `DJudgeC dclinks` means "derivable using only registered rules"; this is the side door
+out of it. Compare `vasgn`, whose premise *is* rewritten (`F.judge Γ e τ Γ₁`) and whose
+obligation is therefore compositional.
+
+Refused mechanically, by reading the constructor's premises — not by trusting that nobody
+types `register_dclink DJudge.seq`. See `found-issues.md` §F31. -/
+
+/-- error: register_dclink: Ratchet.DJudge.seq's premises reach Ratchet.DJudgeSeq, which DFam does not carry.
+`ruleForm` would leave that premise as the raw inductive, so the clink's obligation would quantify over derivations built from UNREGISTERED rules -- the registry's discipline, escaped through a side door.
+Give DFam a field for it (and `dFamField` a row) before registering this rule (Denote/Typed/Clink.lean, header).
+-/
+#guard_msgs in
+register_dclink DJudge.seq
+
+/-- error: register_dclink: Ratchet.DJudge.prim's premises reach Ratchet.DJudgeAll, which DFam does not carry.
+`ruleForm` would leave that premise as the raw inductive, so the clink's obligation would quantify over derivations built from UNREGISTERED rules -- the registry's discipline, escaped through a side door.
+Give DFam a field for it (and `dFamField` a row) before registering this rule (Denote/Typed/Clink.lean, header).
+-/
+#guard_msgs in
+register_dclink DJudge.prim
+
 /-! ### …and a proof of a different rule does not stand in for it
 
 The two `rfl`s say what the kernel enforces at the point of registration: both field types are

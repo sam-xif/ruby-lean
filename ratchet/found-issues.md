@@ -2286,3 +2286,60 @@ Three things were added in response, and only the first is about this finding:
 
 The residue itself is unchanged: `var` and `vasgn` are proved, in the judgment, and not
 exercised end to end, and `seq` is still what unlocks both.
+
+## §F31 — `seq` and `prim` could have been registered with a premise that escapes the registry *(fixed; a latent hole, found before it fired)*
+
+Found by asking an accounting question and getting a design answer. The question was small:
+`build_dclink_registry` scans `Ratchet.DJudge`'s constructors, so `DJudgeAll`'s and
+`DJudgeSeq`'s constructors appear in neither column of the report — not "registered", not
+"owed". Where are they counted? Nowhere. That much is cosmetic.
+
+**What it turned into.** `ruleForm` builds a rule's `form` by replacing the heads listed in
+`dFamField` with a projection of the family parameter, and leaving **every other constant
+alone**. `dFamField` has one row, `DJudge ↦ DFam.judge`. So:
+
+| rule | premise, after `ruleForm` |
+|---|---|
+| `vasgn` | `F.judge Γ e τ Γ₁` — abstracted, compositional |
+| `seq` | `Ratchet.DJudgeSeq Γ es τ Γ'` — **raw** |
+| `prim` | `F.judge Γ recv σ Γ₁` and `Ratchet.DJudgeAll Γ₁ args argTys Γ₂` — **half raw** |
+
+A raw premise is the *syntactic* relation, not the family's. At `dsemFam` the `seq` obligation
+would have read "a sequence is safe given a `DJudgeSeq` sub-derivation" — and a `DJudgeSeq`
+sub-derivation is built from arbitrary `DJudge` rules, including the three that have no
+semantic proof at all. `DJudgeC dclinks`'s entire meaning is *derivable using only registered
+rules*; this is a side door out of it, in the one direction the mechanism exists to close.
+
+**Why the existing refusal did not catch it.** `registerDClink` checked `ci.induct` — the
+inductive a constructor *concludes* about — and refused anything that was not `DJudge`. That
+refuses `DJudgeSeq.cons`, which nobody would ever type. The rules that actually reach the
+companions are `DJudge.seq` and `DJudge.prim`, which conclude about `DJudge` like every other
+rule and mention the companions only in their **premises**. The check was on the wrong end of
+the arrow. `Denote/Typed/Clink.lean`'s header said the list rules were "refused by name rather
+than by omission", and the two rules that mattered were refused by neither.
+
+**Why it had not fired.** Both rules are unregistered for an unrelated reason — no
+`SemA.seq`/`SemA.prim` — and the proof-existence check runs before anything else would have.
+So the hole was one `theorem SemA.seq : …` away from opening, and the person writing that
+theorem would have been proving a statement that looks right and is not. Registering `vasgn`
+(clink 72) was the near miss: it is the first rule with a sub-derivation, and its premise
+*is* abstracted, so it gave no warning that the next two are different.
+
+**The fix**, and it is deliberately not "extend `DFam` now" — the header's argument against
+inventing a statement nothing consumes still holds:
+
+* `registerDClink` reads the constructor's **premises** and refuses any rule reaching a
+  judgment inductive `DFam` carries no field for, *before* asking whether a proof exists — so
+  the failure names the real problem rather than sending someone off to write the wrong
+  theorem. Captured in `Denote/Typed/Controls.lean` for both `seq` and `prim`.
+* `dFamBlockedRules` and `dCompanionRules` are generated alongside the two existing columns,
+  and `lake exe semladder` prints *owed TWICE: seq, prim*. Three owed rules were never three
+  units of the same work; the report said they were.
+* `dCompanionRules` is frozen by `#guard`, which is the original accounting question answered:
+  a constructor added to `DJudgeAll`/`DJudgeSeq` is now visible somewhere.
+
+**What is still owed** is unchanged and now stated honestly: `if'` needs a proof; `seq` and
+`prim` need `DFam` extended with a list field, the answer-typed reading of a list evaluation
+that field would carry, and then a proof each. The goal list says `seq` blocks 177 corpus
+rungs and `prim` 169, so this is the next real work and it is one field larger than the ladder
+had been claiming.

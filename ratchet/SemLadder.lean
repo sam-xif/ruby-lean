@@ -170,6 +170,12 @@ def main (args : List String) : IO UInt32 := do
   IO.println s!"  registered: {String.intercalate ", " dRegisteredRules}"
   IO.println s!"  owed:       {String.intercalate ", " dUnregisteredRules} \
 (`runA_pushK` is proved; see Denote/Typed/JudgeA.lean §4 for what each still needs)"
+  if !dFamBlockedRules.isEmpty then
+    IO.println s!"  of those, owed TWICE: {String.intercalate ", " dFamBlockedRules} \
+-- their premises reach {String.intercalate ", " dCompanionRules},"
+    IO.println "              which `DFam` carries no field for, so `register_dclink` refuses"
+    IO.println "              them before asking for a proof: the statement a proof would have"
+    IO.println "              to prove is the wrong one until the family is extended (§F31)."
   IO.println ""
   IO.println "Every registered rule carries its own proof (`Clink.sem`), and that proof is"
   IO.println "TWO obligations: the answer-typed reading (hypothesis is an answer, not a value;"

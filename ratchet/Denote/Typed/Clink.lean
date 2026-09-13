@@ -24,15 +24,33 @@ stronger.
 about them acquires a proof — which needs an answer-typed reading of a *list* evaluation, and
 that reading has no consumer yet (`prim` and `seq` are both behind `RunAPushK`,
 `Denote/Typed/JudgeA.lean` §4). Adding a field now would mean inventing a statement nothing
-checks; `register_dclink` refuses a constructor whose inductive is not in the table, so the
-list rules are refused by name rather than by omission.
+checks.
+
+**What the refusal has to cover, and did not.** `register_dclink` refused a constructor whose
+*conclusion* is about `DJudgeAll`/`DJudgeSeq` — which nobody would try to register. The rules
+that actually reach the companions are `DJudge.seq` and `DJudge.prim`, whose **premises**
+mention them, and their conclusions are ordinary `DJudge`, so the by-name check waved them
+through. `ruleForm` rewrites only the heads in `dFamField`, so `DJudge.seq` would have
+acquired the form
+
+    fun F => ∀ …, DJudgeSeq Γ es τ Γ' → F.judge Γ (.seq es) τ Γ'
+
+whose premise is the **syntactic** relation, not the family's — re-admitting all twelve rules
+(three of them unproved) inside a judgment whose entire meaning is "derivable using only
+registered rules". `vasgn` is the contrast: its premise *is* rewritten, so its obligation is
+compositional and its registration is honest.
+
+`registerDClink` now reads the constructor's premises and refuses on that basis, so the door
+is shut mechanically rather than by nobody happening to try it. §F31, and
+`Denote/Typed/Controls.lean` has both refusals captured.
 
 ## What the registry covers
 
-Eight rules — the seven literals and `var` — and therefore exactly the programs those rules
-derive: a single literal, or a single local read. That is **corpus rungs 001–008**, which are
-the eight literal rungs. Rungs 009–018 are checked by `Ratchet/Check.lean` and are *not* in
-this judgment, because `prim`, `seq`, `vasgn` and `if'` are not registered.
+Nine rules — the seven literals, `var` and `vasgn` — and therefore exactly the programs those
+rules derive: a single literal, a single local read, or a single assignment. That is **corpus
+rungs 001–008**, the eight literal rungs. Rungs 009–018 are checked by `Ratchet/Check.lean`
+and are *not* in this judgment, because `prim`, `seq` and `if'` are not registered — and two
+of those three are owed twice over, a proof *and* a family that can state it.
 -/
 
 set_option autoImplicit false
@@ -70,6 +88,17 @@ the rule). -/
 `DJudgeSeq` is refused here, by name — see the header for why that is the honest state. -/
 def dFamField : List (Name × Name) := [(``Ratchet.DJudge, ``DFam.judge)]
 
+/-- The judgment inductives `Ratchet/Check.lean` defines. `DJudge` is the judgment proper;
+the other two are its **list companions**, the auxiliary relations `seq` and `prim` reach
+through. Frozen as a list so that a fourth one cannot appear without this file noticing. -/
+def dJudgmentInductives : List Name :=
+  [``Ratchet.DJudge, ``Ratchet.DJudgeAll, ``Ratchet.DJudgeSeq]
+
+/-- Judgment inductives `DFam` does **not** carry a field for. A rule whose premises reach
+one of these cannot be registered: see `registerDClink`. -/
+def dUncarriedJudgments : List Name :=
+  dJudgmentInductives.filter fun n => !dFamField.any (fun (ind, _) => ind == n)
+
 def dclinkTy : Lean.Expr :=
   mkApp3 (mkConst ``Clink) (mkConst ``DFam) (mkConst ``dsynFam) (mkConst ``dsemFam)
 
@@ -92,6 +121,22 @@ def registerDClink (ctor : Name) : CommandElabM Unit := do
     throwError m!"register_dclink: {ctor} belongs to {ci.induct}, which is not in DFam.\n\
       The list companions join when a rule concluding about them acquires a proof \
       (Denote/Typed/Clink.lean, header)."
+  -- **The premise check.** `ruleForm` rewrites only the heads in `dFamField`; every other
+  -- constant passes through *raw*. So a rule whose premise mentions an uncarried judgment
+  -- would get a form like `DJudgeSeq Γ es τ Γ' → F.judge Γ (.seq es) τ Γ'` — a premise that is
+  -- the **syntactic** relation rather than the family's. That re-admits every rule, including
+  -- the unregistered ones, inside a judgment whose whole meaning is "derivable using only
+  -- registered rules". Refused mechanically, by reading the constructor, rather than by
+  -- trusting that nobody writes `register_dclink DJudge.seq`.
+  let reached := dUncarriedJudgments.filter (ci.type.getUsedConstants.contains ·)
+  unless reached.isEmpty do
+    throwError m!"register_dclink: {ctor}'s premises reach \
+{String.intercalate ", " (reached.map toString)}, which DFam does not carry.\n\
+      `ruleForm` would leave that premise as the raw inductive, so the clink's obligation \
+would quantify over derivations built from UNREGISTERED rules -- the registry's discipline, \
+escaped through a side door.\n\
+      Give DFam a field for it (and `dFamField` a row) before registering this rule \
+(Denote/Typed/Clink.lean, header)."
   let sem := dsemName ctor
   unless (env.find? sem).isSome do
     throwError m!"register_dclink: {ctor} has no answer-typed proof.\n\
@@ -142,6 +187,22 @@ elab "build_dclink_registry" : command => do
         hints := .opaque, safety := .safe })
   mkStr `Ratchet.Denote.Typed.dclinkRegistered reg
   mkStr `Ratchet.Denote.Typed.dclinkUnregistered unreg
+  -- Of the unregistered, the ones that need **DFam extended** before a proof would even be
+  -- the right statement. Without this the owed column reads as three units of the same kind
+  -- of work; two of them are not.
+  let famBlocked := unreg.filter fun c =>
+    match env.find? c with
+    | some (.ctorInfo ci) => (dUncarriedJudgments.filter (ci.type.getUsedConstants.contains ·)) != []
+    | _ => false
+  mkStr `Ratchet.Denote.Typed.dclinkFamBlocked famBlocked
+  -- The list companions' own constructors, which live in neither column above because
+  -- `build_dclink_registry` scans `DJudge` only. Emitted so they are counted somewhere.
+  let mut companions : List Name := []
+  for ind in dUncarriedJudgments do
+    if let some (.inductInfo vi) := env.find? ind then
+      companions := companions ++ vi.ctors.map fun c =>
+        Name.mkSimple s!"{ind.getString!}.{c.getString!}"
+  mkStr `Ratchet.Denote.Typed.dclinkCompanionRules companions
 
 build_dclink_registry
 
@@ -268,6 +329,20 @@ def dRegisteredRules : List String :=
 def dUnregisteredRules : List String :=
   if dclinkUnregistered.isEmpty then [] else dclinkUnregistered.splitOn " "
 
+/-- Unregistered rules that need **`DFam` extended** before a proof would even be the right
+statement: their premises reach a list companion the family does not carry, so `ruleForm`
+would hand them a raw-inductive premise and `registerDClink` refuses them. Strictly harder
+than the rules that merely lack a proof. -/
+def dFamBlockedRules : List String :=
+  if dclinkFamBlocked.isEmpty then [] else dclinkFamBlocked.splitOn " "
+
+/-- The list companions' constructors. These are **not rules** — no `DJudge` derivation is one
+— but they are the obligations that arrive with `seq` and `prim`, and they appear in neither
+column of the report because the registry scans `DJudge` alone. Frozen here so that a
+constructor added to `DJudgeAll`/`DJudgeSeq` is visible rather than silent. -/
+def dCompanionRules : List String :=
+  if dclinkCompanionRules.isEmpty then [] else dclinkCompanionRules.splitOn " "
+
 -- Non-empty, so `dregistry_sound` is not vacuously about nothing.
 #guard dclinks.length > 0
 
@@ -279,6 +354,16 @@ def dUnregisteredRules : List String :=
 -- is what says so.
 #guard dRegisteredRules.length == 9
 #guard dUnregisteredRules == ["seq", "prim", "if'"]
+
+-- Two of the three owed rules are owed *twice*: a proof, and a family that can state it.
+#guard dFamBlockedRules == ["seq", "prim"]
+
+-- The companions, frozen. A fourth constructor here is a new obligation that would otherwise
+-- arrive unannounced, because nothing else in the ladder counts these.
+#guard dCompanionRules == ["DJudgeAll.nil", "DJudgeAll.cons", "DJudgeSeq.last", "DJudgeSeq.cons"]
+
+-- Every family-blocked rule is unregistered, which `registerDClink` enforces and this states.
+#guard dFamBlockedRules.all (fun r => dUnregisteredRules.contains r)
 
 #print axioms dregistry_sound
 #print axioms dInv_safe
