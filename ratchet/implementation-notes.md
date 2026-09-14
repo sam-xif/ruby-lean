@@ -8496,3 +8496,12 @@ both halves of what constrains them now have a name.
   primitive composition in 15. All proofs use only standard Lean axioms.
 - Deferred finding: rung 039's emitter produces `Int | (Int | String)` while `joinT`
   normalizes to `Int | String`; align the emitter, then add its existing-rule derivation.
+
+## Clink 78 (2026-09-13) — normalized certificate joins
+
+- Mirror `joinT` in the emitter: preserve its structural nil/nilable cases, then
+  flatten unions, remove duplicates in first-occurrence order, and rebuild rightward.
+  Rung 039 now claims the checker's `Int | String` instead of `Int | (Int | String)`.
+- Raise `fragmentFloor` to 39. The new `validateD_safe_boot` bridge supplies safety
+  from acceptance; the 38 worked corpus theorems remain regression examples.
+- Full quiet ratchet: GREEN, fragment 39, checker reach 31, 252 agree / 0 disagree.

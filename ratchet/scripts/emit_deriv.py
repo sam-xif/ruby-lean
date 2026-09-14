@@ -78,7 +78,7 @@ def spine(pairs: list[tuple[str, dict]]) -> dict:
 
 
 def join(a: dict, b: dict) -> dict:
-    """`joinT`, as far as this emitter needs it. `.never` is the unit."""
+    """Mirror `joinT`: structural cases first, then an ordered, deduplicated union."""
     if a == NEVER:
         return b
     if b == NEVER:
@@ -89,7 +89,24 @@ def join(a: dict, b: dict) -> dict:
         return {"tag": "nilable", "elem": b}
     if b == NIL:
         return {"tag": "nilable", "elem": a}
-    return {"tag": "union", "l": a, "r": b}
+    if a == {"tag": "nilable", "elem": b}:
+        return a
+    if b == {"tag": "nilable", "elem": a}:
+        return b
+
+    def members(t):
+        if t.get("tag") == "union":
+            return members(t["l"]) + members(t["r"])
+        return [t]
+
+    unique = []
+    for t in members(a) + members(b):
+        if t not in unique:
+            unique.append(t)
+    out = unique[-1]
+    for t in reversed(unique[:-1]):
+        out = {"tag": "union", "l": t, "r": out}
+    return out
 
 
 class Blocked(Exception):
