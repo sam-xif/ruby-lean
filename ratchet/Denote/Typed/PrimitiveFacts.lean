@@ -62,6 +62,10 @@ theorem int_lt_run (m : Machine) (x y : Int) :
 theorem bool_not_run (m : Machine) (x : Bool) :
     Builtins.run "Object#!" (.bool x) [] m = .ok (.bool (!x)) m := by cases x <;> rfl
 
+theorem int_to_s_run (m : Machine) (x : Int) :
+    Builtins.run "Integer#to_s" (.int x) [] m =
+      Builtins.okStrEnc m false (toString x) := by rfl
+
 theorem invokeDispatch_builtin {site : SendSite} {m : Machine} {recv : Value} {name bid : String}
     {args : List Value} {owner : ObjId} {md : MethodDef}
     (hl : lookup m.heap recv name = some (owner, md))

@@ -49,7 +49,7 @@ open Lean (Json)
 prelude-booted machine (`Denote/Typed/Safety.lean`). This is the number the ladder exists to
 grow: `StuckFree bootMachine <program>`, at every fuel, with every hypothesis discharged. A
 drop means a theorem was deleted. -/
-def safeRungFloor : Nat := 29
+def safeRungFloor : Nat := 30
 
 /-- The recorded size of the registry. **A clink once registered never unregisters**
 (`ratchet/AGENTS.md`), and this number is sound to ratchet on: a clink cannot be registered

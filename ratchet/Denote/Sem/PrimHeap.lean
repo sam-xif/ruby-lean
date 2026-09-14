@@ -1,6 +1,6 @@
 import Denote.Grow
 
-/-! Heap facts consumed by the seven primitive rows. Method provenance alone does not pin
+/-! Heap facts consumed by the primitive rows. Method provenance alone does not pin
 which builtin is installed, and nominal String membership alone does not imply a payload. -/
 
 set_option autoImplicit false
@@ -10,7 +10,8 @@ open RubyCore
 def primitiveMethods : List (ObjId × String × String) :=
   [(Boot.integerId, "+", "Integer#+"), (Boot.integerId, "-", "Integer#-"),
    (Boot.integerId, "*", "Integer#*"), (Boot.integerId, "/", "Integer#/"),
-   (Boot.integerId, "<", "Integer#<"), (Boot.stringId, "+", "String#+"),
+   (Boot.integerId, "<", "Integer#<"), (Boot.integerId, "to_s", "Integer#to_s"),
+   (Boot.stringId, "+", "String#+"),
    (Boot.trueClassId, "!", "Object#!"), (Boot.falseClassId, "!", "Object#!")]
 
 def primitiveDispatchB (h : Heap) (free : String → Bool) : Bool :=

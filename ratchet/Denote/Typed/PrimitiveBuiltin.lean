@@ -74,6 +74,13 @@ theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Val
       (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl),
       int_lt_run]
     exact stepSpec_value hm hk (by simp [denM, isBoolV])
+  | intToS =>
+    cases ha
+    obtain ⟨x, rfl⟩ := int_value hr
+    rw [primitive_invoke (bid := "Integer#to_s") (k := Boot.integerId) hm
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl),
+      int_to_s_run]
+    exact stepSpec_string hm hk _ false
   | strAdd =>
     cases ha
     rename_i v vs hv hs

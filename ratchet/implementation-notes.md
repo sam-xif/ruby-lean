@@ -8450,3 +8450,16 @@ both halves of what constrains them now have a name.
   approached five minutes; the largest primitive-row build took about 16 seconds.
 - The first green commit necessarily closes all three rule gaps together: the existing
   gate forbids committing any of the intermediate red states.
+
+## Clink 75 (2026-09-13) — decimal `Integer#to_s`
+
+- Add the nullary `DPrim.intToS` row and pin its actual builtin in `primitiveMethods`.
+  `StateOk_ext` already transports the dispatch pins; `stepSpec_string` supplies the
+  allocation, String payload, result typing, and continuation safety obligations.
+- The builtin reduces to `okStrEnc false (toString x)` by `rfl`, for every integer.
+  Radix arguments stay outside this row: invalid bases can raise `ArgumentError`.
+  Controls reject a forged Integer result and a nil radix; negative integers type.
+- Rung 019 gains a constructor-wise safety proof. Floors: checker reach 19, 30 safe
+  rungs; safety prefix stays 17 because 018 is a permanent unsafe control.
+  The primitive proof builds in 15 seconds, with only the standard Lean axioms.
+- Full quiet ratchet: GREEN, 252 agree / 0 disagree, 30 safe rungs, checker reach 19.

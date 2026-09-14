@@ -2,9 +2,9 @@
 
 ## Current state (2026-09-13)
 
-The typed/safe gap is closed: **29 accepted corpus rungs have end-to-end `StuckFree`
+The typed/safe gap is closed: **30 accepted corpus rungs have end-to-end `StuckFree`
 proofs**, **safety reach 17**, **16 registered rules** (12 expressions + 4 list companions),
-**0 owed**, **0 exempt**. Checker reach is 18 because rung 018 is correctly rejected;
+**0 owed**, **0 exempt**. Checker reach is 19; rung 018 is correctly rejected,
 the safety prefix ends at 017. Agreement: **252 agree, 0 disagreements**. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh); a rung is climbed only when
 its certificate checks and its safety proof matches the actual stripped program.
@@ -25,7 +25,7 @@ coverage gaps. [`MainTyped.lean`](MainTyped.lean) reports checker reach;
 ## The proof boundary
 
 [`Ratchet/Check.lean`](Ratchet/Check.lean) defines `DJudge`, `DJudgeAll`, `DJudgeSeq`,
-and seven `DPrim` rows. [`Denote/Typed/Clink.lean`](Denote/Typed/Clink.lean) derives each
+and eight `DPrim` rows. [`Denote/Typed/Clink.lean`](Denote/Typed/Clink.lean) derives each
 constructor's semantic obligation and registers only proved rules. **All three judgments
 are fields of `DFam`**: no raw syntactic premise may bypass the registry.
 
@@ -52,7 +52,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/Sequence.lean`, `Branch.lean` | Sequence and conditional obligations |
 | `Denote/Typed/Primitive*.lean` | Primitive dispatch, allocation, argument composition, regression controls |
 | `Denote/Sem/PrimHeap.lean`, `Denote/JoinState.lean` | Primitive heap invariants and sound binding joins |
-| `Denote/Typed/Derivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 29 concrete safety proofs |
+| `Denote/Typed/Derivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 30 concrete safety proofs |
 | `Denote/Typed/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |
 | `Denote/Sanity.lean` | Executable boot conformance gate and its kernel soundness theorem |
 | `scripts/run_typed_ratchet.sh` | Full pre-commit gate |

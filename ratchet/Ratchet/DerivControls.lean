@@ -27,6 +27,13 @@ def ctlDeriv : Deriv := .prim (.intLit 1) "+" [.intLit 2] .int .int
 
 #guard validateD ctlProg ctlDeriv = true
 
+-- Decimal conversion's result is String. Radix arguments need their own obligation.
+#guard validateD (.send (some (.int (-5))) "to_s" [] none)
+    (.prim (.intLit (-5)) "to_s" [] .int (.cls "String"))
+#guard !validateD (.send (some (.int 5)) "to_s" [] none)
+    (.prim (.intLit 5) "to_s" [] .int .int)
+#guard dprim? .int "to_s" [.nilT] = none
+
 /-! ### Control 1 -- a certificate for a different program
 
 The derivation above, against `1 + 3`. Everything about the shape is right; only the
