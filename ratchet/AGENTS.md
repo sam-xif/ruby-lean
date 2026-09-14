@@ -225,6 +225,13 @@ old method scopes. `checked_instance_entry` recovers both code and site from con
 then applies an annotation-checked body through actual explicit dispatch. Caller restoration,
 ordinary receiver payload, constructors, and class-rule admission remain; its RunSpec is
 body-local, not a full instance-call contract.
+`Framed.fields` now preserves first-order field observations of every old live object,
+including eigenclass-bearing receivers invisible to `Ty.inst`. `FieldsPres` composes with
+heap growth; allocation, definitions, fresh classes, initializer publication, and method
+return establish it. `InstanceReturn` restores the caller's open/closed self-spine from an
+annotation-checked body, independently of the callee's self/spine. Controls prove the old
+contract's blind spot at full fresh-class conformance (§F34). Full caller conformance,
+constructor contracts, and class-rule admission remain gated.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -280,6 +287,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/InstanceSite.lean`, `InstanceSiteEntry.lean`, `Denote/Typed/InstanceState.lean`, `InstanceStateControls.lean` | Heap-only class sites, fresh-site proof, full annotated body entry, and lookup/annotation controls |
 | `Denote/Sem/InstanceSiteWrite.lean`, `Denote/Typed/InstanceSitePublish.lean`, `InstanceSiteWriteControls.lean` | Site preservation under definitions/field writes, actual-step publication, and reservation/hook controls |
 | `Denote/Sem/InstanceSiteClass.lean`, `Denote/Typed/InstanceCallEntry.lean`, `ClassSitesControls.lean` | Persistent sites across fresh classes, conformance-driven checked call entry, and constant/rebinding controls |
+| `Denote/Sem/FieldsPres.lean`, `Denote/Typed/InstanceReturn.lean`, `InstanceReturnControls.lean` | Retained field types, different-self caller-spine restoration, and full-state eigenclass countermodel |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |

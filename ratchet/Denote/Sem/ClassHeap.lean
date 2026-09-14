@@ -271,7 +271,10 @@ theorem Framed.of_freshClass {κ : Ctx} {Γ : Env} {I : Ty} {m n : Machine}
   have hp : DataPres m.heap n.heap := by
     rw [hh]; exact FreshClass.dataPres hm.core.classReady hm.sat hm.core.basicSelf hn he
   exact ⟨hs, fun k hk => by rw [hh]; exact FreshClass.classPayload_live hk,
-    hp.nominal, fun _ ht _ hv => hp.denM ht hv, hf⟩
+    hp.nominal, fun _ ht _ hv => hp.denM ht hv, hf,
+    .of_unchanged (by rw [hh, Proof.Judgment.freshClsHeap_size]; omega)
+      (fun o ho => by funext x; simp only [hh, ivarOf, (FreshClass.fields ho).1])
+      (fun _ ht _ hv => hp.denM ht hv)⟩
 
 #print axioms Framed.of_freshClass
 end Ratchet.Denote

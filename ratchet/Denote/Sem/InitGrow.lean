@@ -136,7 +136,9 @@ unchanged full frame contract; it does not grant that contract inside the initia
 theorem Framed.of_initGrow {m n : Machine} (hg : InitGrow m.heap n.heap)
     (hs : n.stack = m.stack) (hf : FramePres m n) : Framed m n :=
   ⟨hs, fun k hk => by rw [hg.payload k]; exact hk, fun _ _ hv => hg.isAName_mono hv,
-    fun _ ht _ hv => hg.denM ht hv, hf⟩
+    fun _ ht _ hv => hg.denM ht hv, hf,
+    .of_unchanged hg.size (fun o ho => by funext x; simp only [ivarOf, hg.get o ho])
+      (fun _ ht _ hv => hg.denM ht hv)⟩
 
 #print axioms InitGrow.bindIvar
 #print axioms InitGrow.denM

@@ -2453,3 +2453,18 @@ Next: refine retained-type framing with an explicit effect/ownership or compatib
 invariant, including the constructor's private initialization phase. Do not remove the
 preservation premise from consumers: earlier arguments, collection elements, and inactive
 caller locals use it. No constructor admission or coverage increase is claimed yet.
+
+## F34 — first-order value framing misses eigenclass-bearing receivers (2026-09-14)
+
+**Extension obstacle, not an accepted unsafe program.** An object with an eigenclass inhabits
+no `Ty.inst`, so changing its ivars can preserve every first-order value denotation while
+destroying a caller's closed self-spine. `InstanceReturnControls.eigen_write_old_frame`
+proves all five old frame clauses survive; `boot_class_field_frame_gap` locates the blind
+spot at full conformance after actual fresh-class entry. The injected write is not claimed
+to be an accepted method body.
+
+Clink 127 adds `Framed.fields`: first-order field-type preservation for all old live objects,
+plus heap-size monotonicity for composition. This is not raw field-value equality. Existing
+producers prove it, including initialization published from the preallocation anchor.
+`method_pop_selfSpine` restores the caller's own spine independently of the callee's self.
+Full caller conformance and class-rule admission remain separate obligations.

@@ -1,5 +1,6 @@
 import Denote.Sem.State
 import Denote.Sem.FramePres
+import Denote.Sem.FieldsPres
 
 /-!
 # `Denote/Sem/Framed.lean` — the parallel judgment, semantically
@@ -132,22 +133,46 @@ structure Framed (m m' : Machine) : Prop where
   firstOrder : ∀ τ, FirstOrder τ = true → ∀ v, denM τ m v → denM τ m' v
   /-- Uncaptured activations cannot modify inactive caller frames. -/
   frames : FramePres m m'
+  /-- Saved receivers retain field types even when `Ty.inst` cannot describe them. -/
+  fields : FieldsPres m m'
 
 theorem Framed.refl (m : Machine) : Framed m m :=
-  ⟨rfl, fun _ h => h, fun _ _ h => h, fun _ _ _ h => h, .refl m⟩
+  ⟨rfl, fun _ h => h, fun _ _ h => h, fun _ _ _ h => h, .refl m, .refl m⟩
 
 theorem Framed.trans {m₁ m₂ m₃ : Machine} (h₁ : Framed m₁ m₂) (h₂ : Framed m₂ m₃) :
     Framed m₁ m₃ :=
   ⟨by rw [h₂.stack, h₁.stack], fun k h => h₂.cls k (h₁.cls k h),
     fun v n h => h₂.nominal v n (h₁.nominal v n h),
     fun τ ht v h => h₂.firstOrder τ ht v (h₁.firstOrder τ ht v h),
-    h₁.frames.trans h₂.frames h₁.stack⟩
+    h₁.frames.trans h₂.frames h₁.stack, h₁.fields.trans h₂.fields⟩
 
 /-- Equal heaps/stacks do not imply frame preservation; callers must supply it explicitly. -/
 theorem Framed.of_heap_stack {m m' : Machine} (hh : m'.heap = m.heap)
     (hs : m'.stack = m.stack) (hf : FramePres m m') : Framed m m' :=
   ⟨hs, fun k h => by rw [hh]; exact h, fun v n h => by rw [hh]; exact h,
-    fun _ ht _ h => (denM_heap_only ht hh.symm).mp h, hf⟩
+    fun _ ht _ h => (denM_heap_only ht hh.symm).mp h, hf, .of_heap_eq hh⟩
+
+/-- Recover a retained receiver's fields, including completeness when requested.
+Liveness concerns the incoming receiver, not the callee's potentially different self. -/
+theorem Framed.selfSpine {m n : Machine} {I : Ty} {closed : Bool} (h : Framed m n)
+    (hs : n.currentFrame.self = m.currentFrame.self)
+    (hl : ∀ o, m.currentFrame.self = .ref o → o < m.heap.objs.size)
+    (ht : FirstOrder I = true) (hi : SelfSpineOk I m closed) : SelfSpineOk I n closed := by
+  have hg : ∀ x τ, FirstOrder τ = true →
+      denM τ m (ivarOf m.heap m.currentFrame.self x) →
+      denM τ n (ivarOf n.heap n.currentFrame.self x) := by
+    intro x τ hf hv
+    rw [hs]
+    cases he : m.currentFrame.self with
+    | ref o => exact h.fields.typed o (hl o he) x τ hf (by simpa only [he] using hv)
+    | _ =>
+      simp only [he, ivarOf] at hv ⊢
+      exact h.firstOrder τ hf _ hv
+  refine ⟨denSpineFrom_mono hg ht hi.1, ?_⟩
+  intro x hx hc
+  have hv := hg x .nilT rfl (by rw [hi.2 x hx hc, denM]; rfl)
+  rw [denM] at hv
+  cases he : ivarOf n.heap n.currentFrame.self x <;> simp_all only [isNilV, Bool.false_eq_true]
 
 /-! ## The judgment that lived here, and why the shape had to go
 

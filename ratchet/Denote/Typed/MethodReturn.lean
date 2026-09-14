@@ -50,7 +50,7 @@ theorem method_pop_framed {m n : Machine} {f : RubyCore.Frame}
     (hl : m.stack.headD 0 < m.frames.size) (hc : f.captured = none)
     (h : Framed (pushMethodFrame m f) n) : Framed m (popMethodFrame n) := by
   refine ⟨by simp [popMethodFrame, h.stack, pushMethodFrame], h.cls, h.nominal, ?_,
-    method_frame_pop hl hc h.stack h.frames⟩
+    method_frame_pop hl hc h.stack h.frames, h.fields.reheap rfl rfl⟩
   intro τ ht v hv
   have he : denM τ (pushMethodFrame m f) v :=
     (denM_heap_only (m₁ := m) (m₂ := pushMethodFrame m f) ht rfl).mp hv

@@ -9547,3 +9547,22 @@ both halves of what constrains them now have a name.
   remain required for 061.
 - Full quiet ratchet GREEN: fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree.
+
+## Clink 127 (2026-09-14) — preserve caller field observations
+
+- Refuted the old frame contract before extending caller restoration (§F34). An eigenclass
+  prevents every exact-instance denotation, so an ivar write can preserve all old frame
+  clauses while destroying a closed caller spine. The countermodel includes full StateOk
+  at an actual fresh-class entry; it is not a newly discovered accepted unsafe program.
+- `FieldsPres` preserves first-order types of every field on old live objects, not exact
+  field values. Heap-size monotonicity keeps the quantified domain live during composition.
+  `Framed` carries this separate observation contract; the type grammar is unchanged.
+  Equal heaps, allocation, definitions, fresh classes, preallocation-anchored initialization,
+  and frame return prove it. Fresh constructor fields remain writable before publication.
+- `method_pop_selfSpine` restores the caller's known fields and optional completeness without
+  equating caller/callee self or spines. `checked_body_pop_fields` consumes the annotation
+  body proof, preserving its return type and recovering caller fields. Full caller StateOk,
+  constructor/payload contracts, and class-rule admission remain; no new rule or admission.
+- New modules compile below a second, standard axioms only. Full quiet ratchet GREEN:
+  fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
+  252 agree / 0 disagree.
