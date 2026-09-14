@@ -1,4 +1,5 @@
 import Denote.Typed.PrimitiveAlloc
+import Denote.Typed.Context
 
 /-! Bare `x` follows ordinary dispatch to a non-type-error NameError. -/
 set_option autoImplicit false
@@ -18,9 +19,10 @@ theorem invoke_x (m : Machine) (recv : Value) :
     all_goals first | rfl | simp [Interp.invoke.invokeMaybeNew]
   | _ => rfl
 
-theorem dispatchMiss_x {Γ : Env} {m : Machine} (hm : StateOk ctx0 Γ .ivar0 m)
-    (hk : m.kont = []) :
-    StepSpec m Γ .any (Interp.dispatchMiss m m.currentFrame.self .vcall "x" [] none) := by
+theorem dispatchMiss_x {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : StateOk κ Γ I m)
+    (hk : m.kont = []) (hmiss : nameFreeN κ "method_missing" = true := by rfl)
+    (hself : κ.selfTy = none := by rfl) :
+    StepSpec m Γ .any (Interp.dispatchMiss m m.currentFrame.self .vcall "x" [] none) κ I := by
   simp only [Interp.dispatchMiss, Interp.tryIterator, Interp.tryMixin, Interp.tryReflect]
   cases Interp.crubySingletonShadow m.heap m.currentFrame.self "x" with
   | some _ => trivial
@@ -35,28 +37,33 @@ theorem dispatchMiss_x {Γ : Env} {m : Machine} (hm : StateOk ctx0 Γ .ivar0 m)
         | none => exact stepSpec_error hm hk (by simp [primitiveErrorClasses]) _
         | some p =>
           obtain ⟨owner, md⟩ := p
-          have hb := hm.missFree rfl rfl owner md hl
+          have hb := hm.missFree hmiss hself owner md hl
           cases he : md.builtin with
           | none => rw [he] at hb; cases hb
           | some bid =>
             simp only [he, Option.isNone, Bool.false_eq_true, ↓reduceIte]
             exact stepSpec_error hm hk (by simp [primitiveErrorClasses]) _
 
-theorem SemA.bareName {Γ : Env} : SemSafeA Γ (.vcall "x") .any Γ := by
-  apply semSafe_of_runSpec
+theorem SemSafeCtxA.bareName {κ : Ctx} {Γ : Env} {I : Ty}
+    (hx : nameFreeN κ "x" = true) (hmiss : nameFreeN κ "method_missing" = true)
+    (hself : κ.selfTy = none) : SemSafeCtxA κ Γ I (.vcall "x") .any κ Γ I := by
   intro m hm
   apply RunSpec.rebase (middle := evalFrom m (.vcall "x")) ?_ (Framed_reCtl m _ [])
   apply RunSpec.of_stepSpec (by rfl)
   change StepSpec (evalFrom m (.vcall "x")) Γ .any
-    (Interp.invoke (evalFrom m (.vcall "x")) m.currentFrame.self .vcall "x" [] none [])
+    (Interp.invoke (evalFrom m (.vcall "x")) m.currentFrame.self .vcall "x" [] none []) κ I
   rw [invoke_x, Interp.invoke.invokeDispatch]
   have hm' := StateOk_reCtl hm (.eval (.vcall "x")) []
   have hx : lookup (evalFrom m (.vcall "x")).heap m.currentFrame.self "x" = none :=
-    hm.bareFree "x" .x rfl rfl
+    hm.bareFree "x" .x hx hself
   rw [hx]
-  have h := dispatchMiss_x hm' rfl
+  have h := dispatchMiss_x hm' rfl hmiss hself
   exact h
 
+theorem SemA.bareName {Γ : Env} : SemSafeA Γ (.vcall "x") .any Γ :=
+  semSafeA_iff_context.mpr (SemSafeCtxA.bareName rfl rfl rfl)
+
+#print axioms SemSafeCtxA.bareName
 #print axioms SemA.bareName
 
 -- Both sites really raise; only the bare-name site's exception is outside type-stuck.

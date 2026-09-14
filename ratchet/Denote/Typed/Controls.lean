@@ -69,6 +69,32 @@ example {κ : Ctx} {Γ : Env} {I : Ty} : SemSafeCtxA κ Γ I
 
 #print axioms context_branch_body
 
+/-- Collection-valued bodies retain the annotated parameter through both allocations. -/
+theorem context_collection_body {κ : Ctx} {I : Ty} : SemSafeCtxA κ [("x", .int)] I
+    (.hash [(.sym "values", .array [.var .lvar "x", .var .lvar "x"])])
+    (.hashOf .sym (.arrayOf .int)) κ [("x", .int)] I := by
+  have ha : SemSafeCtxA κ [("x", .int)] I
+      (.array [.var .lvar "x", .var .lvar "x"]) (.arrayOf .int) κ [("x", .int)] I :=
+    SemSafeCtxA.arrayLit (tys := [.int, .int])
+      (.cons (SemSafeCtxA.var rfl rfl) (.cons (SemSafeCtxA.var rfl rfl) .nil rfl) rfl) rfl
+  exact SemSafeCtxA.hashLit (ks := [.sym]) (vs := [.arrayOf .int])
+    (.cons SemSafeCtxA.symLit ha .nil) rfl rfl
+
+-- A key's outgoing local binding is available to the value, including outside ctx0.
+example {κ : Ctx} (hk : capStaleCtx "x" .int κ = false) : SemSafeCtxA κ [] .ivar0
+    (.hash [(.vasgn .lvar "x" (.int 1), .var .lvar "x")])
+    (.hashOf .int .int) κ [("x", .int)] .ivar0 :=
+  SemSafeCtxA.hashLit (ks := [.int]) (vs := [.int])
+    (.cons (SemSafeCtxA.intLit.vasgn rfl rfl hk) (SemSafeCtxA.var rfl rfl) .nil) rfl rfl
+
+example {κ : Ctx} {Γ : Env} {I : Ty} (hx : nameFreeN κ "x" = true)
+    (hm : nameFreeN κ "method_missing" = true) (hs : κ.selfTy = none) :
+    SemSafeCtxA κ Γ I (.vcall "x") .any κ Γ I := SemSafeCtxA.bareName hx hm hs
+
+#guard !nameFreeN { ctx0 with neg := { ctx0.neg with declared := ["x"] } } "x"
+#guard !nameFreeN { ctx0 with neg := { ctx0.neg with declared := ["method_missing"] } } "method_missing"
+#print axioms context_collection_body
+
 /-! ## Derivations
 
 A derivation is a term polymorphic in the family, so it never mentions `DJudgeC`'s definition

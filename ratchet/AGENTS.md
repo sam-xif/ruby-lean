@@ -73,8 +73,10 @@ annotations alone. `Primitive.lean` threads distinct incoming/outgoing contexts 
 spines through receiver/argument evaluation; all 16 rows require dispatch guards at the
 final context. The existing `SemA.prim` is its top-level specialization. Literals, sequences,
 and both conditional forms are also context-general; branches require matching outgoing
-contexts/spines while joining local/result types. Arrays, hashes, and bare names remain
-the existing fragment's context-specialized proofs. Checked-signature/context integration
+contexts/spines while joining local/result types. Arrays and interleaved hash pairs thread
+all state indices as well; bare names require explicit absence/self guards. Thus all 16
+expression proofs have context-general counterparts, with all three list companions.
+Checked-signature/context integration
 remains next; explicit `return` needs an answer-contract extension. Neither boundary lemmas nor
 declaration-only acceptance count as 052. `methodBootOkB` checks additional method-start
 facts, and `methodInstallBootOkB` also checks top-level installation/lookup/hook facts;

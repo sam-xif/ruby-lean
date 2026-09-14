@@ -8824,3 +8824,22 @@ both halves of what constrains them now have a name.
   method definitions/calls remain rejected. No coverage increase claimed.
 - New proofs are axiom-clean and build in under a second. Full quiet ratchet GREEN:
   fragment 49, checker reach 51, 252 agree / 0 disagree, 22 rules proved.
+
+## Clink 94 (2026-09-14) — complete the fragment's context-general proofs
+
+- Arrays use `SemAllCtxA`; hashes use `SemPairsCtxA` with separate key/value state
+  transitions. Generalize allocation conformance and the accumulator proofs without
+  changing first-order retention or duplicate-key behavior. The old registered rules
+  specialize the new ones. Body controls cover nested collections from an annotated
+  Integer parameter and a key assignment whose binding is consumed by its value.
+- Bare `x` needs explicit absence guards for `x` and `method_missing`, plus `selfTy = none`;
+  the old proof obtained them by reducing `ctx0`. Defining either name cannot silently
+  retain the missing-name proof. The guard failures and the generic rule are controlled.
+- All 16 expression rules now have `SemSafeCtxA` counterparts, and all three list
+  companions thread full state indices. This completes the semantic prerequisite for
+  the judgment/checker migration, not the migration itself. Definitions must still
+  consume annotation-checked bodies and calls must consume checked signatures; both
+  remain rejected by `validateD` until that connection is proved.
+- All new proofs are axiom-clean; collections build in under a second and bare-name
+  dispatch in 3.4 seconds. Full quiet ratchet GREEN: fragment 49, checker reach 51,
+  252 agree / 0 disagree, 22 rules proved.
