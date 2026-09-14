@@ -22,9 +22,9 @@ theorem hash_payload {m : Machine} {v : Value} {σ τ : Ty} (hd : denM (.hashOf 
     | _ => simp [hshEntries?, hp] at hx
   | _ => simp [hshEntries?] at hx
 
-theorem hash_index_invoke {site : SendSite} {Γ : Env} {m : Machine} {o : ObjId}
-    {xs : Array (Value × Value)} (hm : StateOk ctx0 Γ .ivar0 m)
-    (hp : (m.heap.get o).payload = .hsh xs) (key : Value) :
+theorem hash_index_invoke {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : Machine} {o : ObjId}
+    {xs : Array (Value × Value)} (hm : StateOk κ Γ I m)
+    (hp : (m.heap.get o).payload = .hsh xs) (key : Value) (hfree : nameFreeN κ "[]" = true := by rfl) :
     Interp.invoke m (.ref o) site "[]" [key] none [] =
       builtinStep (Builtins.run "Hash#[]" (.ref o) [key] m) := by
   obtain ⟨hc, hd⟩ := hm.hashPayload o xs hp
@@ -35,19 +35,19 @@ theorem hash_index_invoke {site : SendSite} {Γ : Env} {m : Machine} {o : ObjId}
       Bool.false_and, Bool.false_eq_true, ↓reduceIte, hp]
     rcases hashDefaultNilB_cases hd with hd | hd <;> simp only [hd]
   obtain ⟨owner, md, hl, hb, hu, hv, hpre, hs⟩ :=
-    primitive_lookup hm (by simp [primitiveMethods])
+    primitive_lookup hm (by simp [primitiveMethods]) hfree
       (k := Boot.hashId) (name := "[]") (bid := "Hash#[]")
   rw [hi]
   apply invokeDispatch_builtin (owner := owner) (md := md) _ hb hu hv hpre _ (by rfl) (by rfl)
   · rw [lookup_eq_methodOn, hc]; exact hl
   · simpa only [hc] using hs
 
-theorem hash_index_step {site : SendSite} {Γ : Env} {m : Machine} {recv : Value} {σ τ : Ty}
-    (hm : StateOk ctx0 Γ .ivar0 m) (hk : m.kont = [])
-    (hd : denM (.hashOf σ τ) m recv) (key : Value) :
-    StepSpec m Γ (.nilable τ) (Interp.invoke m recv site "[]" [key] none []) := by
+theorem hash_index_step {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : Machine} {recv : Value} {σ τ : Ty}
+    (hm : StateOk κ Γ I m) (hk : m.kont = [])
+    (hd : denM (.hashOf σ τ) m recv) (key : Value) (hfree : nameFreeN κ "[]" = true := by rfl) :
+    StepSpec m Γ (.nilable τ) (Interp.invoke m recv site "[]" [key] none []) κ I := by
   obtain ⟨o, xs, rfl, hp, hx⟩ := hash_payload hd
-  rw [hash_index_invoke hm hp key]
+  rw [hash_index_invoke hm hp key hfree]
   have hr : Builtins.unrepresentableByteStr m.heap (.ref o) = false := by
     simp [Builtins.unrepresentableByteStr, Builtins.strPayload?, hp]
   unfold Builtins.run
@@ -55,7 +55,7 @@ theorem hash_index_step {site : SendSite} {Γ : Env} {m : Machine} {recv : Value
   split
   · trivial
   · change StepSpec m Γ (.nilable τ)
-      (builtinStep (Builtins.runCollections "Hash#[]" (.ref o) [key] m))
+      (builtinStep (Builtins.runCollections "Hash#[]" (.ref o) [key] m)) κ I
     unfold Builtins.runCollections
     simp only [Builtins.binArg, hp]
     cases hf : xs.find? (fun p => valueEql m.heap p.1 key) with

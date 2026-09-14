@@ -68,7 +68,10 @@ and proves the actual `def` installation/lookup path, with visibility, shadowing
 checks intact. `Sem/MethodHeap.lean` and `Sem/MethodInstall.lean` now preserve first-order
 types and full conformance through fresh top-level definitions; reserving a name weakens
 absence facts but grants no callable entry. A real-boot definition-step + installed-call
-pilot consumes the Integer annotation's body proof. Checked-signature/context integration
+pilot now handles `add(x, y)` for every pair of Integers, consuming a body proof from the
+annotations alone. `Primitive.lean` threads distinct incoming/outgoing contexts and ivar
+spines through receiver/argument evaluation; all 16 rows require dispatch guards at the
+final context. The existing `SemA.prim` is its top-level specialization. Checked-signature/context integration
 remains next; explicit `return` needs an answer-contract extension. Neither boundary lemmas nor
 declaration-only acceptance count as 052. `methodBootOkB` checks additional method-start
 facts, and `methodInstallBootOkB` also checks top-level installation/lookup/hook facts;

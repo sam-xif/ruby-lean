@@ -7,23 +7,23 @@ set_option maxRecDepth 4000
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
-theorem stepSpec_string {Γ : Env} {m : Machine} (hm : StateOk ctx0 Γ .ivar0 m)
+theorem stepSpec_string {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : StateOk κ Γ I m)
     (hk : m.kont = []) (s : String) (binary : Bool) :
-    StepSpec m Γ (.cls "String") (builtinStep (Builtins.okStrEnc m binary s)) := by
+    StepSpec m Γ (.cls "String") (builtinStep (Builtins.okStrEnc m binary s)) κ I := by
   have he := ext_push (m := m) (strObj s binary) hm.sat hm.core.basicSelf
     (fun c => by simp [strObj]) rfl rfl (by simpa [strObj] using hm.core.stringBasic)
   obtain ⟨hn, hd⟩ := strLit_alloc_ok (Γ := Γ) (m := m) (s := s) [] hm binary
   have hf := (Framed.of_ext he).trans (Framed_reCtl _ (.value (.ref m.heap.objs.size)) [])
   have h := RunSpec.answer (a := .val (.ref m.heap.objs.size))
-    (show ResultOk m Γ (.cls "String") _ _ from
+    (show ResultOk m Γ (.cls "String") _ _ κ I from
       ⟨hf, hd, fun _ hv => by cases hv; exact hn⟩)
   simpa only [StepSpec, builtinStep, Builtins.okStrEnc, Builtins.allocStrEnc,
     Heap.alloc, pushHeap, strObj, Interp.withCtl, deliverA, Answer.ctl, reCtl, hk] using h
 
-theorem stepSpec_error {Γ : Env} {m : Machine} {τ : Ty} {cls : ObjId}
-    (hm : StateOk ctx0 Γ .ivar0 m) (hk : m.kont = [])
+theorem stepSpec_error {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {τ : Ty} {cls : ObjId}
+    (hm : StateOk κ Γ I m) (hk : m.kont = [])
     (hcls : cls ∈ primitiveErrorClasses) (msg : String) :
-    StepSpec m Γ τ (.next (Interp.raiseErr m cls msg)) := by
+    StepSpec m Γ τ (.next (Interp.raiseErr m cls msg)) κ I := by
   have hp := List.all_eq_true.mp hm.primitiveErrors cls hcls
   simp only [primitiveErrorB, Bool.and_eq_true, Bool.not_eq_true'] at hp
   let obj : Object := { klass := cls, payload := .exc msg }
@@ -36,13 +36,13 @@ theorem stepSpec_error {Γ : Env} {m : Machine} {τ : Ty} {cls : ObjId}
     simp only [EscOk, Semantics.isTypeError, Semantics.typeErrorFamily, List.any_cons,
       List.any_nil, isA, hc, he.ancestors, hp.1.1.2, hp.1.2, hp.2, Bool.false_or]
   have h := RunSpec.answer (a := .esc (.raiseJ (.ref m.heap.objs.size)))
-    (show ResultOk m Γ τ _ n from ⟨Framed.of_ext he, hsafe, fun _ hv => by cases hv⟩)
+    (show ResultOk m Γ τ _ n κ I from ⟨Framed.of_ext he, hsafe, fun _ hv => by cases hv⟩)
   simpa only [StepSpec, Interp.raiseErr, Builtins.allocExc, Heap.alloc, n, pushHeap, obj,
     deliverA, Answer.ctl, hk] using h
 
-theorem stepSpec_zeroDiv {Γ : Env} {m : Machine} {τ : Ty}
-    (hm : StateOk ctx0 Γ .ivar0 m) (hk : m.kont = []) (msg : String) :
-    StepSpec m Γ τ (.next (Interp.raiseErr m Boot.zeroDivisionErrorId msg)) :=
+theorem stepSpec_zeroDiv {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {τ : Ty}
+    (hm : StateOk κ Γ I m) (hk : m.kont = []) (msg : String) :
+    StepSpec m Γ τ (.next (Interp.raiseErr m Boot.zeroDivisionErrorId msg)) κ I :=
   stepSpec_error hm hk (by simp [primitiveErrorClasses]) msg
 
 theorem string_add_run (m : Machine) (a b : Value) :

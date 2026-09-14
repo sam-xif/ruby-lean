@@ -25,11 +25,14 @@ private theorem bool_value {m : Machine} {v : Value} (h : denM .bool m v) :
 private theorem nil_value {m : Machine} {v : Value} (h : denM .nilT m v) :
     v = .nil := by cases v <;> simp_all [denM, isNilV]
 
-theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Value} {args : List Value}
+theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : Machine}
+    {recv : Value} {args : List Value}
     {σ τ : Ty} {tys : List Ty} {name : String} (hp : DPrim σ name tys τ)
-    (hm : StateOk ctx0 Γ .ivar0 m) (hk : m.kont = []) (hr : denM σ m recv)
-    (ha : ArgsDen m tys args) :
-    StepSpec m Γ τ (Interp.invoke m recv site name args none []) := by
+    (hm : StateOk κ Γ I m) (hk : m.kont = []) (hr : denM σ m recv)
+    (ha : ArgsDen m tys args) (hfree : nameFreeN κ name = true := by rfl)
+    (hstring : σ = .cls "String" →
+      isANoOk κ.wholeCls (["String", "Comparable"] ++ rootAncestors) = true := by intro; rfl) :
+    StepSpec m Γ τ (Interp.invoke m recv site name args none []) κ I := by
   cases hp with
   | intAdd =>
     cases ha
@@ -37,7 +40,7 @@ theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Val
     cases hs
     obtain ⟨x, rfl⟩ := int_value hr
     obtain ⟨y, rfl⟩ := int_value hv
-    rw [invoke_int_add hm x y]
+    rw [invoke_int_add hm x y hfree]
     exact stepSpec_value hm hk (by simp [denM, isIntV])
   | intSub =>
     cases ha
@@ -46,7 +49,7 @@ theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Val
     obtain ⟨x, rfl⟩ := int_value hr
     obtain ⟨y, rfl⟩ := int_value hv
     rw [primitive_invoke (bid := "Integer#-") (k := Boot.integerId) hm
-      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl),
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
       int_sub_run]
     exact stepSpec_value hm hk (by simp [denM, isIntV])
   | intMul =>
@@ -56,7 +59,7 @@ theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Val
     obtain ⟨x, rfl⟩ := int_value hr
     obtain ⟨y, rfl⟩ := int_value hv
     rw [primitive_invoke (bid := "Integer#*") (k := Boot.integerId) hm
-      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl),
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
       int_mul_run]
     exact stepSpec_value hm hk (by simp [denM, isIntV])
   | intDiv =>
@@ -66,7 +69,7 @@ theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Val
     obtain ⟨x, rfl⟩ := int_value hr
     obtain ⟨y, rfl⟩ := int_value hv
     rw [primitive_invoke (bid := "Integer#/") (k := Boot.integerId) hm
-      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl),
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
       int_div_run]
     split
     · exact stepSpec_zeroDiv hm hk _
@@ -78,14 +81,14 @@ theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Val
     obtain ⟨x, rfl⟩ := int_value hr
     obtain ⟨y, rfl⟩ := int_value hv
     rw [primitive_invoke (bid := "Integer#<") (k := Boot.integerId) hm
-      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl),
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
       int_lt_run]
     exact stepSpec_value hm hk (by simp [denM, isBoolV])
   | intToS =>
     cases ha
     obtain ⟨x, rfl⟩ := int_value hr
     rw [primitive_invoke (bid := "Integer#to_s") (k := Boot.integerId) hm
-      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl),
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
       int_to_s_run]
     exact stepSpec_string hm hk _ false
   | intEq =>
@@ -95,13 +98,13 @@ theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Val
     obtain ⟨x, rfl⟩ := int_value hr
     rw [primitive_invoke (bid := "Integer#==") (k := Boot.integerId) hm
       (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho)
-      (int_eq_defer hm x v) (by rfl)]
+      (int_eq_defer hm x v hfree) (by rfl) hfree]
     exact int_eq_step hm hk x v
   | intZero =>
     cases ha
     obtain ⟨x, rfl⟩ := int_value hr
     rw [primitive_invoke (bid := "Integer#zero?") (k := Boot.integerId) hm
-      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl),
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
       int_zero_run]
     exact stepSpec_value hm hk (by simp [denM, isBoolV])
   | intLe =>
@@ -111,7 +114,7 @@ theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Val
     obtain ⟨x, rfl⟩ := int_value hr
     obtain ⟨y, rfl⟩ := int_value hv
     rw [primitive_invoke (bid := "Integer#<=") (k := Boot.integerId) hm
-      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl),
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
       int_le_run]
     exact stepSpec_value hm hk (by simp [denM, isBoolV])
   | intGe =>
@@ -121,7 +124,7 @@ theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Val
     obtain ⟨x, rfl⟩ := int_value hr
     obtain ⟨y, rfl⟩ := int_value hv
     rw [primitive_invoke (bid := "Integer#>=") (k := Boot.integerId) hm
-      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl),
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
       int_ge_run]
     exact stepSpec_value hm hk (by simp [denM, isBoolV])
   | nilEq =>
@@ -130,26 +133,26 @@ theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Val
     cases hs
     obtain rfl := nil_value hr
     rw [primitive_invoke (bid := "Object#==") (k := Boot.nilClassId) hm
-      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl),
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
       nil_eq_run]
     exact stepSpec_value hm hk (by simp [denM, isBoolV])
   | strLength =>
     cases ha
-    obtain ⟨o, s, rfl, hs⟩ := string_payload hm hr
+    obtain ⟨o, s, rfl, hs⟩ := string_payload hm hr (hstring rfl)
     rw [primitive_invoke (bid := "String#length") (k := Boot.stringId) hm
-      (by simp [primitiveMethods]) (string_class hm hr) (by rfl)
-      (by intro k hk; cases hk; exact ⟨s, hs⟩) (by rfl) (by rfl), string_length_run]
+      (by simp [primitiveMethods]) (string_class hm hr (hstring rfl)) (by rfl)
+      (by intro k hk; cases hk; exact ⟨s, hs⟩) (by rfl) (by rfl) hfree, string_length_run]
     simp only [Builtins.runStrings, Builtins.strPayload?, hs]
     exact stepSpec_value hm hk (by simp [denM, isIntV])
   | strAdd =>
     cases ha
     rename_i v vs hv hs
     cases hs
-    obtain ⟨o, s, rfl, hs⟩ := string_payload hm hr
-    obtain ⟨p, t, rfl, ht⟩ := string_payload hm hv
+    obtain ⟨o, s, rfl, hs⟩ := string_payload hm hr (hstring rfl)
+    obtain ⟨p, t, rfl, ht⟩ := string_payload hm hv (hstring rfl)
     rw [primitive_invoke (bid := "String#+") (k := Boot.stringId) hm
-      (by simp [primitiveMethods]) (string_class hm hr) (by rfl)
-      (by intro k hk; cases hk; exact ⟨s, hs⟩) (by rfl) (by rfl), string_add_run]
+      (by simp [primitiveMethods]) (string_class hm hr (hstring rfl)) (by rfl)
+      (by intro k hk; cases hk; exact ⟨s, hs⟩) (by rfl) (by rfl) hfree, string_add_run]
     simp only [Builtins.runStrings, Builtins.binArg, Builtins.strPayload?, hs, ht]
     cases he : Builtins.concatEnc m.heap (.ref o) s (.ref p) t with
     | ok binary => exact stepSpec_string hm hk _ binary
@@ -160,19 +163,19 @@ theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Val
     cases b <;>
       rw [primitive_invoke (bid := "Object#!") hm
         (by simp [primitiveMethods, classOf]) rfl (by rfl)
-        (by intro o ho; cases ho) (by rfl) (by rfl), bool_not_run] <;>
+        (by intro o ho; cases ho) (by rfl) (by rfl) hfree, bool_not_run] <;>
       exact stepSpec_value hm hk (by simp [denM, isBoolV])
   | arrayIndex _ =>
     cases ha
     rename_i v vs hv hs
     cases hs
     obtain ⟨i, rfl⟩ := int_value hv
-    exact array_index_step hm hk hr i
+    exact array_index_step hm hk hr i hfree
   | hashIndex _ =>
     cases ha
     rename_i key more hkey htail
     cases htail
-    exact hash_index_step hm hk hr key
+    exact hash_index_step hm hk hr key hfree
 
 #print axioms primitive_builtin
 end Ratchet.Denote.Typed

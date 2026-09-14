@@ -448,9 +448,9 @@ theorem denM_getLocal {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {x : String} 
 from it: the machine still conforms, and the fresh reference really is a `String`. Stated at
 an arbitrary continuation, because the two halves of `SemA.strLit` need it at `[]` and at
 `m.kont` respectively. -/
-theorem strLit_alloc_ok {Γ : Env} {m : Machine} {s : String} (K : List Kont)
-    (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) (binary : Bool := false) :
-    StateOk Ratchet.ctx0 Γ .ivar0
+theorem strLit_alloc_ok {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {s : String} (K : List Kont)
+    (hm : StateOk κ Γ I m) (binary : Bool := false) :
+    StateOk κ Γ I
         (reCtl { m with heap := pushHeap m.heap (strObj s binary) } (.value (.ref m.heap.objs.size)) K) ∧
       denM (.cls "String")
         (reCtl { m with heap := pushHeap m.heap (strObj s binary) } (.value (.ref m.heap.objs.size)) K)

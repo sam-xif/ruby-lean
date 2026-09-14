@@ -7,14 +7,14 @@ set_option maxRecDepth 4000
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
-theorem primitive_lookup {Γ : Env} {m : Machine} (hm : StateOk ctx0 Γ .ivar0 m)
-    {k : ObjId} {name bid : String} (hr : (k, name, bid) ∈ primitiveMethods) :
+theorem primitive_lookup {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : StateOk κ Γ I m)
+    {k : ObjId} {name bid : String} (hr : (k, name, bid) ∈ primitiveMethods)
+    (hf : nameFreeN κ name = true := by rfl) :
     ∃ owner md, Interp.methodOn m.heap k name = some (owner, md) ∧
       md.builtin = some bid ∧ md.undefined = false ∧ md.visibility = .pub ∧
       md.fromPrelude = false ∧
       Interp.crubyShadow m.heap ((ancestors m.heap k).takeWhile (fun x => x != owner)) name = none := by
   have hp := List.all_eq_true.mp hm.primitiveDispatch (k, name, bid) hr
-  have hf : nameFreeN ctx0 name = true := by rfl
   simp only [hf, Bool.not_true, Bool.false_or] at hp
   cases hl : Interp.methodOn m.heap k name with
   | none => rw [hl] at hp; cases hp
@@ -24,19 +24,21 @@ theorem primitive_lookup {Γ : Env} {m : Machine} (hm : StateOk ctx0 Γ .ivar0 m
     simpa only [hl, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
       Option.isNone_iff_eq_none, and_assoc] using hp
 
-theorem string_class {Γ : Env} {m : Machine} {v : Value}
-    (hm : StateOk ctx0 Γ .ivar0 m) (hd : denM (.cls "String") m v) :
+theorem string_class {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {v : Value}
+    (hm : StateOk κ Γ I m) (hd : denM (.cls "String") m v)
+    (hg : isANoOk κ.wholeCls (["String", "Comparable"] ++ rootAncestors) = true := by rfl) :
     classOf m.heap v = Boot.stringId := by
   have ha : (ancestors m.heap (classOf m.heap v)).contains Boot.stringId = true := by
     simpa only [denM, isAName, isA, hm.core.stringNamed] using hd
   have hb := hm.baseChains Boot.stringId (["String", "Comparable"] ++ rootAncestors)
     (by simp [builtinBases])
-  exact (hb.2 (by rfl)).2 _ ha
+  exact (hb.2 hg).2 _ ha
 
-theorem string_payload {Γ : Env} {m : Machine} {v : Value}
-    (hm : StateOk ctx0 Γ .ivar0 m) (hd : denM (.cls "String") m v) :
+theorem string_payload {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {v : Value}
+    (hm : StateOk κ Γ I m) (hd : denM (.cls "String") m v)
+    (hg : isANoOk κ.wholeCls (["String", "Comparable"] ++ rootAncestors) = true := by rfl) :
     ∃ o s, v = .ref o ∧ (m.heap.get o).payload = .str s := by
-  have hc := string_class hm hd
+  have hc := string_class hm hd hg
   cases v with
   | ref o =>
     obtain ⟨s, hs⟩ := hm.stringPayload o hc

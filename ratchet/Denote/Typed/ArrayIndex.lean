@@ -34,9 +34,9 @@ theorem array_index_run {m : Machine} {o : ObjId} {xs : Array Value}
   unfold Builtins.runCollections
   simp only [Builtins.arrPayload?, hp]
 
-theorem array_index_invoke {site : SendSite} {Γ : Env} {m : Machine} {o : ObjId}
-    {xs : Array Value} (hm : StateOk ctx0 Γ .ivar0 m)
-    (hp : (m.heap.get o).payload = .arr xs) (i : Int) :
+theorem array_index_invoke {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : Machine} {o : ObjId}
+    {xs : Array Value} (hm : StateOk κ Γ I m)
+    (hp : (m.heap.get o).payload = .arr xs) (i : Int) (hfree : nameFreeN κ "[]" = true := by rfl) :
     Interp.invoke m (.ref o) site "[]" [.int i] none [] =
       builtinStep (Builtins.run "Array#[]" (.ref o) [.int i] m) := by
   have hc := hm.arrayPayload o xs hp
@@ -46,22 +46,22 @@ theorem array_index_invoke {site : SendSite} {Γ : Env} {m : Machine} {o : ObjId
     simp only [show ("[]" == "send" || "[]" == "public_send" || "[]" == "__send__") = false from rfl,
       Bool.false_and, Bool.false_eq_true, ↓reduceIte, hp]
   obtain ⟨owner, md, hl, hb, hu, hv, hpre, hs⟩ :=
-    primitive_lookup hm (by simp [primitiveMethods])
+    primitive_lookup hm (by simp [primitiveMethods]) hfree
       (k := Boot.arrayId) (name := "[]") (bid := "Array#[]")
   rw [hi]
   apply invokeDispatch_builtin (owner := owner) (md := md) _ hb hu hv hpre _ (by rfl) (by rfl)
   · rw [lookup_eq_methodOn, hc]; exact hl
   · simpa only [hc] using hs
 
-theorem array_index_step {site : SendSite} {Γ : Env} {m : Machine} {recv : Value} {τ : Ty}
-    (hm : StateOk ctx0 Γ .ivar0 m) (hk : m.kont = [])
-    (hd : denM (.arrayOf τ) m recv) (i : Int) :
-    StepSpec m Γ (.nilable τ) (Interp.invoke m recv site "[]" [.int i] none []) := by
+theorem array_index_step {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : Machine} {recv : Value} {τ : Ty}
+    (hm : StateOk κ Γ I m) (hk : m.kont = [])
+    (hd : denM (.arrayOf τ) m recv) (i : Int) (hfree : nameFreeN κ "[]" = true := by rfl) :
+    StepSpec m Γ (.nilable τ) (Interp.invoke m recv site "[]" [.int i] none []) κ I := by
   obtain ⟨o, xs, rfl, hp, hx⟩ := array_payload hd
-  rw [array_index_invoke hm hp i, array_index_run hp i]
+  rw [array_index_invoke hm hp i hfree, array_index_run hp i]
   let idx : Int := if i < 0 then i + xs.size else i
   change StepSpec m Γ (.nilable τ)
-    (builtinStep (if idx < 0 || idx ≥ xs.size then .ok .nil m else .ok xs[idx.toNat]! m))
+    (builtinStep (if idx < 0 || idx ≥ xs.size then .ok .nil m else .ok xs[idx.toNat]! m)) κ I
   by_cases hbound : (decide (idx < 0) || decide (idx ≥ xs.size)) = true
   · rw [if_pos hbound]
     exact stepSpec_value hm hk (by rw [denM]; exact Or.inl rfl)

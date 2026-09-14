@@ -8784,3 +8784,24 @@ both halves of what constrains them now have a name.
 - All new proofs are axiom-clean and each module builds in under a second.
 - Full quiet ratchet GREEN: fragment 49, checker reach 51, 252 agree / 0 disagree,
   22 rules proved. Installation and real-boot controls are included in the full gate.
+
+## Clink 92 (2026-09-14) — primitive bodies outside the top-level context
+
+- Generalize all 16 primitive-row proofs and `StepSpec` to arbitrary `Ctx`/ivar spine.
+  A method frame previously could type a local but not `x + y`: the dispatch proof
+  demanded `ctx0`. Make its real premise explicit (`nameFreeN`), including equality's
+  reverse-dispatch exclusion. String receivers additionally need the existing base-chain
+  guard; nominal String membership alone does not exclude program subclasses.
+- `SemAllCtxA` and `SemSafeCtxA.prim` thread distinct contexts, locals, and spines through
+  receiver then arguments. Dispatch guards concern the **final** context, since evaluating
+  either can change the heap. The old registered primitive rule specializes this proof;
+  no duplicated evaluator or weaker top-level safety contract.
+- Upgrade the installed-method pilot from identity to `add(x, y)`. Its body is proved
+  against the two Integer annotations at arbitrary context/spine (with the `+` guard),
+  then composed through full installation conformance and actual dispatch for every
+  pair of Integers. No per-call body inference or concrete-body safety proof. Context/
+  checked-signature integration in the validator remains owed; no method admission yet.
+- All new proofs are axiom-clean; the composition and installed-call modules build in
+  under a second (the largest rebuilt primitive module took 25 seconds).
+- Full quiet ratchet GREEN: fragment 49, checker reach 51, 252 agree / 0 disagree,
+  22 rules proved. The annotation-body and actual installed-call proofs are in the gate.
