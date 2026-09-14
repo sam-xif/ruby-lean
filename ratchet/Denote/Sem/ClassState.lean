@@ -4,6 +4,7 @@ import Denote.Sem.ClassNative
 import Denote.Sem.ClassNames
 import Denote.Sem.ClassMethods
 import Denote.Sem.ClassDeclared
+import Denote.Sem.ClassScopeEntry
 
 /-! Full conformance at entry to an empty fresh class scope. The body is still to be
 checked, and no future definition has been inserted into the positive table. -/
@@ -34,6 +35,11 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
     constants ho hn rfl hd hm.constScope hscope ht.consts hm.consts
   exact {
     runtime := by intro h; cases h
+    classRuntime := by
+      intro cn hr
+      change some name = some cn at hr
+      cases hr
+      exact scope_ready hc hm.sat he hmain
     sat := Proof.Judgment.saturated_freshC hc hm.sat ho hel
     primitiveDispatch := (primitiveDispatch hc hm.sat _).trans hm.primitiveDispatch
     primitiveErrors := (primitiveErrors hc hm.sat).trans hm.primitiveErrors

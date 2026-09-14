@@ -25,6 +25,7 @@ theorem method_enter_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m : Machine}
     (hs : f.self = m.currentFrame.self) (hb : f.blk = m.currentFrame.blk)
     (hc : f.cref = m.currentFrame.cref) (hd : f.defmod = m.currentFrame.defmod)
     (hcap : f.captured = m.currentFrame.captured)
+    (hvis : κ.scope.runtimeClass ≠ none → defaultDefVis (pushMethodFrame m f) = .pub)
     (hk : ∀ x, constGet? (κ.withFrame fr) x = constGet? κ x)
     (he : EnvOk Γb (pushMethodFrame m f)) (hf : FrameOk fr (pushMethodFrame m f)) :
     StateOk (κ.withFrame fr) Γb I (pushMethodFrame m f) :=
@@ -33,7 +34,7 @@ theorem method_enter_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m : Machine}
     (by rw [currentFrame_pushMethodFrame]; exact hb)
     (by rw [currentFrame_pushMethodFrame]; exact hc)
     (by rw [currentFrame_pushMethodFrame]; exact hd)
-    (by rw [currentFrame_pushMethodFrame]; exact hcap) rfl hk
+    (by rw [currentFrame_pushMethodFrame]; exact hcap) rfl hvis hk
     (by simp [FrameInRange, pushMethodFrame]) he hf
 
 theorem method_pop_currentFrame {m n : Machine} {f : RubyCore.Frame}
@@ -87,6 +88,7 @@ theorem method_pop_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m n : Machine}
     (congrArg FrameScope.self hscope) (congrArg FrameScope.blk hscope)
     (congrArg FrameScope.cref hscope) (congrArg FrameScope.defmod hscope)
     (congrArg FrameScope.captured hscope) rfl
+    (fun hr => by simpa only [defaultDefVis, hpop] using hm.classRuntime.visibility hr)
     (fun x => (hk x).symm)
     (show FrameInRange (popMethodFrame n) from
       ⟨by rw [hp.stack]; exact hm.frameInRange.1,
@@ -122,7 +124,8 @@ theorem required_method_runSpec {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : Machi
   have he : StateOk (κ.withFrame fr) ps I entry :=
     method_enter_state hm ht ha (congrArg FrameScope.self hscope)
       (congrArg FrameScope.blk hscope) (congrArg FrameScope.cref hscope)
-      (congrArg FrameScope.defmod hscope) (congrArg FrameScope.captured hscope) hk
+      (congrArg FrameScope.defmod hscope) (congrArg FrameScope.captured hscope)
+      (fun _ => by simp only [defaultDefVis, currentFrame_pushMethodFrame, f, requiredFrame]; rfl) hk
       (requiredFrame_envOk m _ name md ps args hlen hargs hps) hframe
   have hu : RootUncaptured m := by
     unfold RootUncaptured

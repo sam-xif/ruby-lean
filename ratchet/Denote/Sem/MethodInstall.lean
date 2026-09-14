@@ -85,8 +85,19 @@ theorem MainReady.methodWrite {m : Machine} (h : MainReady m) (cls : ObjId)
   · simpa only [Proof.classOf_defineMethod, Proof.ancestors_defineMethod] using h.chain
   · simpa only [isAName_defineMethod] using h.object
   · simpa only [Proof.classPayload?_isSome_defineMethod] using h.classLive
-  · simpa only [objectHookQuietB, Proof.lookup_defineMethod _ _ _ _ _ _ hq
+  · simpa only [objectHookQuietB, definitionHookQuietB, Proof.lookup_defineMethod _ _ _ _ _ _ hq
       (Proof.classOf_defineMethod ..)] using h.hook
+
+theorem ClassScopeReady.methodWrite {cn : String} {m : Machine}
+    (h : ClassScopeReady cn m) (cls : ObjId) (name : String) (md : MethodDef)
+    (hq : "method_added" ≠ name) :
+    ClassScopeReady cn { m with heap := defineMethod m.heap cls name md } := by
+  obtain ⟨k, h⟩ := h
+  exact ⟨k, ⟨by simpa only [classNamed?_defineMethod] using h.named,
+    by simpa only [Proof.objs_size_defineMethod] using h.live,
+    h.owner, h.cref, h.captured, h.phase, h.visibility,
+    by simpa only [definitionHookQuietB, Proof.lookup_defineMethod _ _ _ _ _ _ hq
+        (Proof.classOf_defineMethod ..)] using h.hook⟩⟩
 
 /-- Common state transport. The positive method/class tables are the installation
 rule's obligations; all data, scope, and negative dispatch facts are derived here.
@@ -136,6 +147,7 @@ theorem StateOk_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} 
     rw [hcf]; exact ivarOf_defineMethod ..
   refine {
     runtime := fun hr => (hm.runtime hr).methodWrite cls name md hquiet
+    classRuntime := fun cn hr => (hm.classRuntime cn hr).methodWrite cls name md hquiet
     sat := Proof.Saturated_defineMethod hm.sat _ _ _
     primitiveDispatch := (primitiveDispatchB_defineMethod hn).trans hm.primitiveDispatch
     primitiveErrors := (primitiveErrorsB_defineMethod ..).trans hm.primitiveErrors

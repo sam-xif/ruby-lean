@@ -36,14 +36,10 @@ def DefHookQuiet (m : Machine) : Prop :=
     (md.undefined || owner == Boot.objectId || owner == Boot.kernelId ||
       owner == Boot.basicObjectId) = true
 
-def defHookQuietB (m : Machine) : Bool :=
-  match lookup m.heap (.ref m.currentFrame.defmod) "method_added" with
-  | none => true
-  | some (owner, md) => md.undefined || owner == Boot.objectId ||
-      owner == Boot.kernelId || owner == Boot.basicObjectId
+def defHookQuietB (m : Machine) : Bool := definitionHookQuietB m.heap m.currentFrame.defmod
 
 theorem defHookQuietB_sound {m : Machine} (h : defHookQuietB m = true) : DefHookQuiet m := by
-  unfold defHookQuietB at h
+  unfold defHookQuietB definitionHookQuietB at h
   unfold DefHookQuiet
   cases he : lookup m.heap (.ref m.currentFrame.defmod) "method_added" with
   | none => trivial
@@ -53,11 +49,7 @@ theorem mainReady_defHookQuiet {m : Machine} (h : MainReady m) : DefHookQuiet m 
   defHookQuietB_sound (by
     unfold defHookQuietB
     rw [h.owner]
-    have hh := h.hook
-    unfold objectHookQuietB at hh
-    cases hl : lookup m.heap (.ref Boot.objectId) "method_added" with
-    | none => rfl
-    | some p => cases p; simpa only [hl] using hh)
+    exact h.hook)
 
 theorem defHookQuiet_install {m : Machine} {name : String} {ps : List RubyCore.Param}
     {body : RubyCore.Expr} (hn : "method_added" ≠ name) (hh : DefHookQuiet m) :

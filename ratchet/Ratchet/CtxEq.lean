@@ -106,14 +106,14 @@ theorem negEqB_sound (a b : Ratchet.Neg) (h : negEqB a b = true) : a = b := by
 
 def scopeEqB (a b : Scope) : Bool := listEqB closEqB a.closures b.closures &&
   decide (a.frame = b.frame ∧ a.blockTy = b.blockTy ∧ a.selfTy = b.selfTy ∧ a.asms = b.asms ∧
-    a.runtimeMain = b.runtimeMain)
+    a.runtimeMain = b.runtimeMain ∧ a.runtimeClass = b.runtimeClass)
 
 theorem scopeEqB_sound (a b : Scope) (h : scopeEqB a b = true) : a = b := by
   cases a; cases b
   simp only [scopeEqB, Bool.and_eq_true, decide_eq_true_eq] at h
-  obtain ⟨hc, hf, hb, hs, ha, hr⟩ := h
+  obtain ⟨hc, hf, hb, hs, ha, hr, hcl⟩ := h
   simp only [Scope.mk.injEq]
-  exact ⟨hf, listEqB_sound closEqB_sound hc, hb, hs, ha, hr⟩
+  exact ⟨hf, listEqB_sound closEqB_sound hc, hb, hs, ha, hr, hcl⟩
 
 def ctxEqB (a b : Ctx) : Bool := posEqB a.pos b.pos && negEqB a.neg b.neg && scopeEqB a.scope b.scope
 

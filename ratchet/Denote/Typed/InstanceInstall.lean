@@ -1,6 +1,7 @@
 import Denote.Typed.MethodDispatch
 import Denote.Sem.ClassFrame
 import Denote.Sem.ClassDispatch
+import Denote.Sem.ClassScopeEntry
 
 /-! Ordinary instance-method metadata and the real definition step in a fresh class.
 This is installation, not body admission: annotated body checking is a separate obligation. -/
@@ -27,20 +28,19 @@ theorem fresh_class_hook (hc : Proof.ChainsIn m.heap) (hs : Proof.Saturated m.he
   apply defHookQuietB_sound
   unfold defHookQuietB
   rw [FreshClass.current_frame]
-  change (match lookup (freshClsHeap m.heap Boot.objectId cn cn e)
-      (.ref m.heap.objs.size) "method_added" with
-    | none => true
-    | some (owner, md) => md.undefined || owner == Boot.objectId || owner == Boot.kernelId ||
-        owner == Boot.basicObjectId) = true
-  rw [lookup_eq_methodOn, Proof.Judgment.classOf_freshC_k,
-    FreshClass.method_eigen hc hs (hc.eigen Boot.objectId hc.boot.2.2.2.2 e he)]
-  simp only [objectHookQuietB, lookup_eq_methodOn, classOf, he] at hh
-  cases hl : Interp.methodOn m.heap e "method_added" with
-  | none => rfl
-  | some pair =>
-    obtain ⟨owner, md⟩ := pair
-    rw [hl] at hh
-    exact hh
+  exact FreshClass.hook_quiet hc hs he hh
+
+/-- A requested scope supplies definition metadata in every conformant state, not only
+the fresh-entry witness. Body typing remains a separate premise of admission. -/
+theorem scoped_defined_instanceCode {name : String} {ps : List RubyCore.Param}
+    {code : RubyCore.Expr} {k : ObjId} (h : ClassScopeAt cn k m) :
+    InstanceMethodCode k name (definedMethod m name ps code) := by
+  refine ⟨⟨h.owner, h.cref, rfl, rfl, rfl, rfl, h.phase⟩, ?_⟩
+  change (if name == "initialize" then .priv else defaultDefVis m) = _
+  rw [h.visibility]
+
+theorem scoped_defHookQuiet {k : ObjId} (h : ClassScopeAt cn k m) : DefHookQuiet m :=
+  defHookQuietB_sound (by simpa only [defHookQuietB, h.owner] using h.hook)
 
 theorem fresh_defined_instanceCode {name : String} {ps : List RubyCore.Param}
     {code : RubyCore.Expr} (hc : m.currentFrame.cref = [Boot.objectId])
@@ -68,4 +68,5 @@ theorem fresh_class_def_step {name : String} {ps : List RubyCore.Param} {code : 
 #print axioms definedMethod_instanceCode
 #print axioms fresh_class_hook
 #print axioms fresh_class_def_step
+#print axioms scoped_defined_instanceCode
 end Ratchet.Denote.Typed

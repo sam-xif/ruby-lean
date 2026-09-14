@@ -8,11 +8,17 @@ set_option autoImplicit false
 namespace Ratchet.Denote
 open RubyCore Ratchet
 
-def objectHookQuietB (h : Heap) : Bool :=
-  match lookup h (.ref Boot.objectId) "method_added" with
+def definitionHookQuietB (h : Heap) (k : ObjId) : Bool :=
+  match lookup h (.ref k) "method_added" with
   | none => true
   | some (owner, md) => md.undefined || owner == Boot.objectId ||
       owner == Boot.kernelId || owner == Boot.basicObjectId
+
+def objectHookQuietB (h : Heap) : Bool := definitionHookQuietB h Boot.objectId
+
+/-- The default used by ordinary `def`; `initialize` has its separate privacy override. -/
+def defaultDefVis (m : Machine) : Visibility :=
+  if m.currentFrame.kind == .toplevel then .priv else m.currentFrame.defVis
 
 structure MainReady (m : Machine) : Prop where
   self : m.currentFrame.self = .ref Boot.mainId
@@ -85,7 +91,7 @@ theorem MainReady.ext {m n : Machine} (h : MainReady m) (he : Ext m n)
     by rw [hmain]; exact h.payload, ?_, he.isAName_mono h.object,
     by rw [he.payload]; exact h.classLive, ?_⟩
   · simpa only [classOf, hmain, he.ancestors] using h.chain
-  · simpa only [objectHookQuietB, hlookup] using h.hook
+  · simpa only [objectHookQuietB, definitionHookQuietB, hlookup] using h.hook
 
 #print axioms mainReadyB_sound
 #print axioms MainReady.ext

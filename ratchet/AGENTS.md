@@ -192,6 +192,14 @@ including aliases. `StateOk_methodWrite_tables` permits updated class and def ta
 `StateOk_publish_instance` derives the code/def tables but still requires constructor and
 nested-name contracts. `InstancePublish` connects publication to the actual def step.
 Controls retain another owner's same-name method and refute a stale aliased record by a call.
+`Scope.runtimeClass` now requests an ordinary lexical class owner, independently of self's
+type. `Sem/ClassScope` interprets it in StateOk, including owner/cref/capture, phase, default
+visibility, and quiet hooks; allocation, locals, writes, installation, and method frame
+switches preserve it. `ClassScopeEntry` establishes it at real fresh entry. The full old-state
+privacy counterexample is retained with the request absent; the requested world rejects it.
+`step_scoped_instance_state` derives installation metadata and full outgoing conformance from
+that scope, retaining explicit constructor/nested obligations. Annotation-body admission and
+instance/constructor dispatch remain gated.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -241,6 +249,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/MethodCode.lean`, `Denote/Typed/InstanceInstall.lean`, `InstanceCodeControls.lean` | Ordinary class-method metadata, actual def installation, and call-through countermodels |
 | `Denote/Sem/InstanceTable.lean`, `Denote/Typed/InstancePublish.lean`, `InstanceTableControls.lean` | Installed-member publication, owner-sensitive preservation, and alias countermodel |
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
+| `Denote/Sem/ClassScope.lean`, `ClassScopeEntry.lean`, `Denote/Typed/ClassScopeControls.lean` | Lexical class-world request, actual entry, transports, and full-state privacy counterexample |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |

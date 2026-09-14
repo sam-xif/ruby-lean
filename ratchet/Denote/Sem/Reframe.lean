@@ -9,6 +9,11 @@ set_option autoImplicit false
 namespace Ratchet.Denote
 open RubyCore Ratchet
 
+theorem StateOk_forgetClassScope {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    (h : StateOk κ Γ I m) :
+    StateOk { κ with scope := { κ.scope with runtimeClass := none } } Γ I m :=
+  { h with classRuntime := by intro cn hc; cases hc }
+
 structure ReframeFO (κ : Ctx) (I : Ty) : Prop where
   spine : FirstOrder I = true
   self : ∀ τ, κ.selfTy = some τ → FirstOrder τ = true
@@ -38,6 +43,7 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
     (hd : n.currentFrame.defmod = m.currentFrame.defmod)
     (hcap : n.currentFrame.captured = m.currentFrame.captured)
     (hphase : n.preludeMode = m.preludeMode)
+    (hvis : κ.scope.runtimeClass ≠ none → defaultDefVis n = .pub)
     (hlookup : ∀ x, constGet? (κ.withFrame fr) x = constGet? κ x)
     (hr : FrameInRange n) (he : EnvOk Γ' n) (hf : FrameOk fr n) :
     StateOk (κ.withFrame fr) Γ' I n := by
@@ -51,6 +57,11 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
   have hcore : coreConstFreeN (κ.withFrame fr) = coreConstFreeN κ := rfl
   refine {
     runtime := fun hr => (h.runtime hr).reframe hh hs hd hc hcap hphase
+    classRuntime := by
+      intro cn hr
+      obtain ⟨k, hk⟩ := h.classRuntime cn hr
+      exact ⟨k, hk.reframe hh hd hc hcap hphase
+        ((hvis (by rw [hr]; simp)).trans hk.visibility.symm)⟩
     sat := by simpa only [HeapSaturated, hh] using h.sat
     primitiveDispatch := by simpa only [hh, hfree] using h.primitiveDispatch
     primitiveErrors := by simpa only [hh] using h.primitiveErrors

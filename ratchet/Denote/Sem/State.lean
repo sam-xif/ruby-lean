@@ -3,6 +3,7 @@ import Denote.Local
 import Denote.Sem.Trans
 import Denote.Sem.PrimHeap
 import Denote.Sem.Ready
+import Denote.Sem.ClassScope
 import Denote.Sem.ClassReady
 import Denote.Sem.MethodCode
 
@@ -1041,6 +1042,7 @@ than by omission — a `StateOk` that quietly skipped a field would be a place f
 rule to hide. -/
 structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   runtime : RuntimeOk κ m
+  classRuntime : ClassRuntimeOk κ m
   sat : HeapSaturated m
   primitiveDispatch : primitiveDispatchB m.heap (nameFreeN κ) = true
   primitiveErrors : primitiveErrorsB m.heap = true
@@ -1128,6 +1130,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     (hh : HashPayloadOk m₂.heap) (hphase : m₂.preludeMode = m.preludeMode) :
     StateOk κ Γ I m₂ where
   runtime := fun hr => (h.runtime hr).ext he hphase
+  classRuntime := fun cn hr => (h.classRuntime cn hr).ext he hphase
   primitiveDispatch := (primitiveDispatchB_ext he _).trans h.primitiveDispatch
   primitiveErrors := (primitiveErrorsB_ext he).trans h.primitiveErrors
   stringPayload := hp
@@ -1481,6 +1484,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
   obtain ⟨⟨hslf, hblk⟩, hcst⟩ := hctx
   exact
     { runtime := fun hr => (h.runtime hr).setLocal x w
+      classRuntime := fun cn hr => (h.classRuntime cn hr).setLocal x w
       sat := h.sat
       core := h.core
       frameInRange := by

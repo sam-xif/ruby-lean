@@ -9424,3 +9424,27 @@ both halves of what constrains them now have a name.
   constructor/nested contracts, and instance entry/dispatch remain required for 061.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree.
+
+## Clink 121 (2026-09-14) — request the lexical class world explicitly
+
+- Full old-StateOk counterexample: a class-valued self still permits a private-default
+  activation. Defining answer there then explicitly calling Point.new.answer is type-stuck.
+  This compiled before strengthening StateOk; the retained control clears only the new
+  request. A second theorem rejects private defaults when the request is present.
+- `Scope.runtimeClass` names the lexical owner, independently of self's type. It persists
+  through withFrame: ordinary method activations share their class's owner/cref. ClassScopeAt
+  pins resolution/live owner, defmod/cref/capture, user phase, effective public default, and
+  quiet method_added. Effective visibility, rather than exact frame kind, permits both class
+  bodies and method activations without admitting top-level private defaults. Ctx equality
+  compares the request; boot has none. No global class-valued-self inference is introduced.
+- StateOk carries the contract through allocation, locals, ivar writes, method installation,
+  and frame switches. Entry supplies the real method frame's public default; return recovers
+  the caller's. Fresh class entry derives the world from MainReady. Hook checking is shared
+  with ordinary installation. `step_scoped_instance_state` now obtains metadata/hook facts
+  from incoming conformance and proves actual installation plus full outgoing conformance;
+  constructor/nested contracts remain explicit, and signatures still certify no bodies.
+- New modules build below a second; InstanceInstall remains about 2.4 seconds. Standard
+  axioms only. No new rule or admission: checked class-body caches and instance/constructor
+  execution remain required for 061.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree.

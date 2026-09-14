@@ -2241,6 +2241,9 @@ structure Scope where
   /-- The ordinary `main` receiver world, shared by top level and its method activations.
       False imposes no runtime restriction; changing this flag requires state transport. -/
   runtimeMain : Bool := false
+  /-- Ordinary lexical class owner, shared by a class body and its method activations.
+      This is independent of the receiver type; `none` imposes no class-scope requirement. -/
+  runtimeClass : Option String := none
 deriving Inhabited
 
 /-- The judgment's non-local state, in three disciplines. -/
@@ -3569,6 +3572,6 @@ derivation carrying one is only a conditional claim, and `frame`/`selfTy` becaus
 program's top level is inside no method and runs somewhere `self` is not an instance of
 anything this judgment models. The constant table is empty for the first of those reasons:
 a program's first statement is the first thing that could assign one. -/
-def ctx0 : Ctx := ⟨⟨[], [], [], []⟩, ⟨[], [], [], false, [], [], []⟩, ⟨none, [], none, none, [], true⟩⟩
+def ctx0 : Ctx := ⟨⟨[], [], [], []⟩, ⟨[], [], [], false, [], [], []⟩, ⟨none, [], none, none, [], true, none⟩⟩
 
 end Ratchet

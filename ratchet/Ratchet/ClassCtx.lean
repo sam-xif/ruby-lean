@@ -10,7 +10,8 @@ def classBodyCtx (κ : Ctx) (name : String) : Ctx :=
       frame := none
       blockTy := none
       selfTy := some (.clsOf name)
-      runtimeMain := false } }
+      runtimeMain := false
+      runtimeClass := some name } }
 
 /-- Publish one executed definition, retaining earlier declarations. Admission must check
 name freshness and the body; this updater never scans or advertises a future class body. -/

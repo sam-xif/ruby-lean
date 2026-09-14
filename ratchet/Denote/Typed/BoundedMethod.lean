@@ -45,7 +45,8 @@ theorem required_method_runSpecAt {N : Nat} {κ : Ctx} {Γ Γb : Env} {I τ : Ty
   have he : StateOk (κ.withFrame fr) ps I entry :=
     method_enter_state hm ht ha (congrArg FrameScope.self hscope)
       (congrArg FrameScope.blk hscope) (congrArg FrameScope.cref hscope)
-      (congrArg FrameScope.defmod hscope) (congrArg FrameScope.captured hscope) hk
+      (congrArg FrameScope.defmod hscope) (congrArg FrameScope.captured hscope)
+      (fun _ => by simp only [defaultDefVis, currentFrame_pushMethodFrame, f, requiredFrame]; rfl) hk
       (requiredFrame_envOk m _ name md ps args hlen hargs hps) hframe
   have hu : RootUncaptured m := by
     unfold RootUncaptured

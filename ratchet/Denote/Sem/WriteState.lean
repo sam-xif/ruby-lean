@@ -62,6 +62,17 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     funext cls; simp only [primitiveErrorB, hw.ancestors_eq]
   refine {
     runtime := ?_
+    classRuntime := by
+      intro cn hr
+      obtain ⟨k, hk⟩ := h.classRuntime cn hr
+      exact ⟨k, ⟨by simpa only [hn] using hk.named,
+        by simpa only [hw.size] using hk.live,
+        by simpa only [bindIvar_currentFrame] using hk.owner,
+        by simpa only [bindIvar_currentFrame] using hk.cref,
+        by simpa only [bindIvar_currentFrame] using hk.captured,
+        hphase.trans hk.phase,
+        by simpa only [defaultDefVis, bindIvar_currentFrame] using hk.visibility,
+        by simpa only [definitionHookQuietB, hw.lookup_eq] using hk.hook⟩⟩
     sat := ?_
     primitiveDispatch := by simpa only [primitiveDispatchB, hmethod, hw.ancestors_eq, hshadow] using h.primitiveDispatch
     primitiveErrors := by simpa only [primitiveErrorsB, herr] using h.primitiveErrors
@@ -110,7 +121,7 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
       by simpa only [hw.classOf_eq, hw.ancestors_eq] using hm.chain,
       by simpa only [ha] using hm.object,
       by simpa only [hw.classPayload] using hm.classLive,
-      by simpa only [objectHookQuietB, hw.lookup_eq] using hm.hook⟩
+      by simpa only [objectHookQuietB, definitionHookQuietB, hw.lookup_eq] using hm.hook⟩
   · simpa only [HeapSaturated, Proof.Saturated, hw.size,
       Proof.modAncestors_go_congr hw.shape, Proof.ancestors_go_congr hw.shape] using h.sat
   · exact ⟨h.core.classReady.ivarOnly hw,
