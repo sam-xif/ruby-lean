@@ -252,6 +252,7 @@ theorem HashPayloadOk.defineMethod {h : Heap} {cls : ObjId} {name : String}
 
 theorem CoreOk.defineMethod {h : Heap} {cls : ObjId} {name : String}
     {md : MethodDef} (hc : CoreOk h) : CoreOk (defineMethod h cls name md) where
+  classReady := hc.classReady.defineMethod
   basicSelf := by simpa only [Proof.ancestors_defineMethod] using hc.basicSelf
   stringNamed := by simpa only [classNamed?_defineMethod] using hc.stringNamed
   stringSelf := by simpa only [Proof.ancestors_defineMethod] using hc.stringSelf

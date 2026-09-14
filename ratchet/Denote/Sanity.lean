@@ -52,6 +52,7 @@ theorem bootMachine_kont : bootMachine.kont = [] := by
 
 /-- `CoreOk` as a `Bool`, so all its clauses are checked at boot. -/
 def coreOkB (h : Heap) : Bool :=
+  classReadyB h &&
   (ancestors h Boot.basicObjectId == [Boot.basicObjectId]) &&
   (classNamed? h "String" == some Boot.stringId) &&
   (ancestors h Boot.stringId).contains Boot.stringId &&
@@ -70,8 +71,8 @@ def coreOkB (h : Heap) : Bool :=
 
 theorem coreOkB_sound {h : Heap} (hb : coreOkB h = true) : CoreOk h := by
   simp only [coreOkB, Bool.and_eq_true, beq_iff_eq, List.all_eq_true] at hb
-  rcases hb with ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hb, sn⟩, ss⟩, sb⟩, rn⟩, rs⟩, rb⟩, pb⟩, ab⟩, hb'⟩, names⟩
-  refine ⟨hb, sn, ss, sb, rn, rs, rb, pb, ab, hb', ?_⟩
+  rcases hb with ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hc, hb⟩, sn⟩, ss⟩, sb⟩, rn⟩, rs⟩, rb⟩, pb⟩, ab⟩, hb'⟩, names⟩
+  refine ⟨classReadyB_sound hc, hb, sn, ss, sb, rn, rs, rb, pb, ab, hb', ?_⟩
   intro n hn v hv
   have := names n hn
   rw [hv] at this

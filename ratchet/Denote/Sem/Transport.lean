@@ -130,9 +130,9 @@ observed a `Reaches`-seeded arrow would *not* have had. -/
 theorem Ext_reCtl {m m₂ : Machine} {c : Ctl} {k : List Kont} :
     Ext (reCtl m c k) m₂ ↔ Ext m m₂ :=
   ⟨fun h => ⟨h.frames, h.stack, h.size, h.get, h.payload, h.ancestors, h.freshIvars,
-              h.freshBasic⟩,
+              h.freshBasic, h.chains⟩,
    fun h => ⟨h.frames, h.stack, h.size, h.get, h.payload, h.ancestors, h.freshIvars,
-              h.freshBasic⟩⟩
+              h.freshBasic, h.chains⟩⟩
 
 theorem Later_reCtl {m m₂ : Machine} {c : Ctl} {k : List Kont} :
     Later (reCtl m c k) m₂ ↔ Later m m₂ :=
@@ -208,6 +208,7 @@ theorem Ext_toReCtl (m : Machine) (c : Ctl) (k : List Kont) : Ext m (reCtl m c k
   ancestors := fun _ => rfl
   freshIvars := fun o ho => by rw [get_oob m.heap ho]; rfl
   freshBasic := fun o ho k hk => by rw [classOf_oob m.heap ho]; exact hk
+  chains := id
 
 /-- **`Framed` at a leaf rung**: `reCtl` touches neither the heap nor the frame stack, so both
 fields are `rfl`. This is the first conjunct of every rule whose value is produced in one step

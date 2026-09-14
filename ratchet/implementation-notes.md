@@ -9171,3 +9171,27 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree. New proof modules build in under a second,
   using standard Lean axioms only.
+
+## Clink 110 (2026-09-14) — carry fresh-class prerequisites through the invariant
+
+- Reuse `RubyCore.Proof.Judgment.ClsFresh`'s operational/heap lemmas, not its judgment.
+  The real default-superclass path allocates a class and its eigenclass, registers the
+  constant, and pushes the class-body frame. It needs Object's eigenclass already cached
+  and class/dispatch edges in bounds; ancestor-fuel saturation proves neither.
+- `ClassReady` carries these facts in `CoreOk`, reflected by the existing `bootOkB` gate.
+  Allocation, method installation, and ivar writes preserve it; same-heap transports reuse
+  it. `Ext` needs an explicit edge-preservation implication, not an unconditional premise
+  that would break reflexivity on arbitrary heaps. The non-class producer derives its
+  fresh class pointer's bound from BasicObject ancestry and reuses `chainsIn_push`.
+- A counterexample explains that strengthening: a fresh object's eigenclass can point to
+  BasicObject while its hidden `klass` dangles. Old-object equality and `freshBasic` do not
+  imply `ChainsIn`. This is not a claim that the existing literal producers were unsafe.
+- `stepFn_class_fresh` consumes full state conformance and reduces the actual entry to the
+  model's composite. Name registration and post-creation readiness are proved; real-boot
+  controls check the pushed frame and both fresh ancestor chains. No fixed allocation id
+  is baked into the theorem. Replace the temporary class probe with these gated controls.
+- No class acceptance yet: full body-state transport, annotation-checked body families,
+  and constructor entry/return still owe their proofs. No registry or floor changes.
+  New proof modules build in under a second, with standard Lean axioms only.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree. 061 remains the next expected acceptance.

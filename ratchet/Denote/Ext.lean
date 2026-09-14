@@ -160,6 +160,9 @@ structure Ext (m m₂ : Machine) : Prop where
   freshBasic : ∀ o, m.heap.objs.size ≤ o → ∀ k,
     (RubyCore.ancestors m.heap Boot.basicObjectId).contains k = true →
     (RubyCore.ancestors m₂.heap (classOf m₂.heap (.ref o))).contains k = true
+  /-- Allocation preserves bounded class/dispatch edges. Old-object agreement alone
+      says nothing about the `klass` or `eigen` pointers of a fresh object. -/
+  chains : Proof.ChainsIn m.heap → Proof.ChainsIn m₂.heap
 
 /-! ## `Later` — the arrow's quantifier
 
@@ -274,6 +277,7 @@ theorem Ext.refl (m : Machine) : Ext m m where
   ancestors := fun _ => rfl
   freshIvars := fun o ho => by rw [get_oob m.heap ho]; rfl
   freshBasic := fun o ho k hk => by rw [classOf_oob m.heap ho]; exact hk
+  chains := id
 
 theorem Ext.trans {m m₂ m₃ : Machine} (h₁ : Ext m m₂) (h₂ : Ext m₂ m₃) : Ext m m₃ where
   frames := by rw [h₂.frames, h₁.frames]
@@ -282,6 +286,7 @@ theorem Ext.trans {m m₂ m₃ : Machine} (h₁ : Ext m m₂) (h₂ : Ext m₂ m
   get := fun o ho => by rw [h₂.get o (Nat.lt_of_lt_of_le ho h₁.size), h₁.get o ho]
   payload := fun k => by rw [h₂.payload k, h₁.payload k]
   ancestors := fun k => by rw [h₂.ancestors k, h₁.ancestors k]
+  chains := h₂.chains ∘ h₁.chains
   freshIvars := fun o ho => by
     by_cases hc : o < m₂.heap.objs.size
     · rw [h₂.get o hc]; exact h₁.freshIvars o ho

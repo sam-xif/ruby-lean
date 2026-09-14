@@ -151,7 +151,7 @@ theorem ext_push {m : Machine} (obj : Object)
   have hsize : m.heap.objs.size ≤ (pushHeap m.heap obj).objs.size := by simp
   have hanc : ∀ k, ancestors (pushHeap m.heap obj) k = ancestors m.heap k :=
     Proof.ancestors_congr_grow hshape hsize hsat
-  refine ⟨rfl, rfl, hsize, ?_, hpay, hanc, ?_, ?_⟩
+  refine ⟨rfl, rfl, hsize, ?_, hpay, hanc, ?_, ?_, ?_⟩
   · intro o ho; exact pushHeap_get_lt m.heap obj ho
   · intro o ho
     rcases Nat.eq_or_lt_of_le ho with he | he
@@ -172,6 +172,21 @@ theorem ext_push {m : Machine} (obj : Object)
       rw [classOf_oob (pushHeap m.heap obj) (by simp only [pushHeap_size]; omega), hanc,
         hbasic]
       rfl
+
+  · intro hch
+    have hkl : obj.klass < m.heap.objs.size := by
+      by_cases hout : obj.klass < m.heap.objs.size
+      · exact hout
+      apply False.elim
+      have hp := Proof.classPayload?_oob m.heap obj.klass hout
+      have ha : ancestors m.heap obj.klass = [obj.klass] := by
+        simp [ancestors, ancestors.go, hp]
+      have he : Boot.basicObjectId = obj.klass := by simpa only [ha, List.contains_cons,
+        List.contains_nil, Bool.or_false, beq_iff_eq] using hklass
+      have hb : Boot.basicObjectId < m.heap.objs.size :=
+        Nat.lt_of_le_of_lt (by decide : Boot.basicObjectId ≤ Boot.objectId) hch.boot.2.2.2.2
+      exact hout (he ▸ hb)
+    exact Proof.chainsIn_push hch hkl heig (fun cp hp => False.elim (hnc cp hp))
 
 #print axioms ext_push
 

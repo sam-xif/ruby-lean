@@ -141,6 +141,12 @@ families, certificate checking, class installation, and constructor dispatch rem
 `writeTypesB`, proved sufficient in `WriteStable.lean`/`InitWrite.lean`. The Point body uses
 that generic guard, with controls for nested aliases and every value-sensitive context field;
 it no longer relies on an Integer-only preservation lemma.
+`Sem/ClassReady.lean` carries bounded class/dispatch edges and Object's cached eigenclass
+through `CoreOk`; the existing boot gate checks both. `Ext` now preserves edge bounds,
+proved by every allocating producer. `ClassEntry.lean` reuses the model's fresh-class
+composite to prove the actual entry step, name registration, and readiness after creation.
+`ClassControls.lean` checks boot entry and refutes inferring fresh-pointer bounds from old
+object preservation alone. Full class-body conformance and constructor calls remain gated.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -178,6 +184,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/InitGrow.lean`, `Denote/Typed/InitReturn.lean`, `InitControls.lean` | Preallocation-anchored preservation, caller-frame publication, and fresh two-field controls |
 | `Denote/Sem/WriteState.lean`, `Denote/Typed/InstanceWrite.lean`, `InitRun.lean`, `InitExpr.lean`, `InitBodyControls.lean` | Scoped initializer semantics, explicit typed write preservation, and the annotation-domain 061 body proof |
 | `Ratchet/WriteTypes.lean`, `WriteControls.lean`, `Denote/Sem/WriteStable.lean`, `Denote/Typed/InitWrite.lean` | Executable write-preservation guards, their semantic proof, and alias/context controls |
+| `Denote/Sem/ClassReady.lean`, `Denote/Typed/ClassEntry.lean`, `ClassControls.lean` | Boot-checked class readiness, its preservation, and actual fresh-class entry/registration |
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
