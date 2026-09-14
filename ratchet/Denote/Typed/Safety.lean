@@ -1,4 +1,5 @@
 import Denote.Typed.CorpusSafety
+import Denote.Typed.MethodInstallControls
 
 /-! Safety coverage: predict rules from syntax, then cross-check against the actual proof
 terms in `RuleAudit`. Concrete programs and their safety theorems live in `CorpusSafety`.

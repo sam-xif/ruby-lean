@@ -79,8 +79,11 @@ all state indices as well; bare names require explicit absence/self guards. Thus
 expression proofs have context-general counterparts, with all three list companions.
 `DJudge` and all three companions now carry those indices through `DFam` and the registry;
 `djudge_context` proves the fundamental lemma at arbitrary contexts. The executable checker
-still specializes to top level; its state-indexed results and checked-signature integration
-remain next. Explicit `return` needs an answer-contract extension. Neither boundary lemmas nor
+now takes those incoming indices and returns every outgoing index with its derivation;
+`CtxEq.lean` supplies proof-producing branch compatibility (unsupported syntax comparisons
+decline). `certified_context` connects these results to semantics; the installed `add` pilot
+now consumes a body certificate checked against its annotations, not a hand body proof.
+Checked-signature/definition/call rules remain next. Explicit `return` needs an answer-contract extension. Neither boundary lemmas nor
 declaration-only acceptance count as 052. `methodBootOkB` checks additional method-start
 facts, and `methodInstallBootOkB` also checks top-level installation/lookup/hook facts;
 these must join the validator's boot contract when methods are admitted.
@@ -100,6 +103,7 @@ String membership needs a payload invariant. See
 | Path | Role |
 |---|---|
 | `Ratchet/Ty.lean`, `Expr.lean`, `Deriv.lean` | Types, syntax, and certificate data |
+| `Ratchet/CtxEq.lean` | Sound conservative syntax/context comparison for branch compatibility |
 | `Ratchet/Check.lean`, `DerivControls.lean` | Derivation-returning checker and negative controls |
 | `Denote/Typed/JudgeA.lean` | Semantic judgment, continuation typing, literal/local rules |
 | `Denote/Typed/Sequence.lean`, `Branch*.lean`, `BareName.lean` | Sequence, conditional, and bare-name obligations |

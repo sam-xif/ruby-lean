@@ -1,5 +1,5 @@
 import Ratchet.Deriv
-import Ratchet.Judge
+import Ratchet.CtxEq
 
 /-!
 # `Ratchet/Check.lean` — the certificate checker, and the judgment it decides
@@ -93,8 +93,10 @@ a time, and each one joining is a rung.
 companions. Guards and state transitions are copied from the context-general semantic
 proofs. Trailing `optParam` indices keep existing top-level derivations readable; defaults
 are only notation, not a restriction of the relation. Use `@DJudge` when passing the entire
-family as a value. The executable checker below still specializes to `ctx0`/`ivar0` pending
-its state-indexed result migration; neither method rule is admitted yet.
+family as a value. The executable checker accepts the incoming context/spine and returns
+the outgoing indices with their derivation. Branch compatibility uses proof-producing
+`ctxEq?`; unsupported comparisons decline rather than assert an equality. Neither method
+rule is admitted yet: a stored signature must be justified by its annotation-checked body.
 -/
 
 set_option autoImplicit false
@@ -383,183 +385,209 @@ and the whole pipeline downstream of `scripts/emit_deriv.py` would be unfalsifia
 recursion structural and obviously terminating. Exhaustion answers `none`, so it can only cost
 completeness. -/
 
-/-- A checked answer: a type, an outgoing environment, **and the derivation**. The third
-field is why `check`'s type is the soundness statement. -/
-structure Certified (Γ : Env) (e : Expr) where
+/-- A checked answer: the type and every outgoing state index, with their derivation.
+No outgoing declaration table is reconstructed separately from the expression proof. -/
+structure Certified (Γ : Env) (e : Expr) (κ : Ctx := ctx0) (I : Ty := .ivar0) where
   ty : Ty
   out : Env
-  judged : DJudge Γ e ty out
+  ctx : Ctx
+  spine : Ty
+  judged : DJudge Γ e ty out κ I ctx spine
 
-/-- The same for a send's argument list: the argument types, in order, with their
-derivation. -/
-structure CertifiedAll (Γ : Env) (es : List Expr) where
+structure CertifiedAll (Γ : Env) (es : List Expr) (κ : Ctx := ctx0) (I : Ty := .ivar0) where
   tys : List Ty
   out : Env
-  judged : DJudgeAll Γ es tys out
+  ctx : Ctx
+  spine : Ty
+  judged : DJudgeAll Γ es tys out κ I ctx spine
 
-/-- And for a statement sequence. -/
-structure CertifiedSeq (Γ : Env) (es : List Expr) where
+structure CertifiedSeq (Γ : Env) (es : List Expr) (κ : Ctx := ctx0) (I : Ty := .ivar0) where
   ty : Ty
   out : Env
-  judged : DJudgeSeq Γ es ty out
+  ctx : Ctx
+  spine : Ty
+  judged : DJudgeSeq Γ es ty out κ I ctx spine
 
-/-- Parallel certificate lists, checked in the source pairs' evaluation order. -/
-structure CertifiedPairs (Γ : Env) (ps : List (Expr × Expr)) where
+structure CertifiedPairs (Γ : Env) (ps : List (Expr × Expr)) (κ : Ctx := ctx0) (I : Ty := .ivar0) where
   keys : List Ty
   vals : List Ty
   out : Env
-  judged : DJudgePairs Γ ps keys vals out
+  ctx : Ctx
+  spine : Ty
+  judged : DJudgePairs Γ ps keys vals out κ I ctx spine
 
 mutual
-/-- Check a certificate against a program, returning its derivation.
-
-Dispatch is on the **expression**, because the expression is what the derivation has to be
-about; the certificate is then required to be the matching rule. The other order would let a
-certificate choose which rule to try, which is the same mistake as letting it choose a type. -/
-def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) : Option (Certified Γ e) :=
+/-- The program selects the rule; the certificate supplies sub-derivations and checked
+claims. Every recursive result carries its actual outgoing context, locals, and spine. -/
+def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I : Ty := .ivar0) :
+    Option (Certified Γ e κ I) :=
   match fuel with
   | 0 => none
   | n + 1 =>
     match e, d with
-    | .int k, .intLit k' => if k == k' then some ⟨.int, Γ, .intLit⟩ else none
-    | .flt b, .fltLit b' => if b == b' then some ⟨.float, Γ, .fltLit⟩ else none
-    | .str s, .strLit s' => if s == s' then some ⟨.cls "String", Γ, .strLit⟩ else none
-    | .sym s, .symLit s' => if s == s' then some ⟨.sym, Γ, .symLit⟩ else none
-    | .tru, .truLit => some ⟨.bool, Γ, .truLit⟩
-    | .fls, .flsLit => some ⟨.bool, Γ, .flsLit⟩
-    | .nil, .nilLit => some ⟨.nilT, Γ, .nilLit⟩
-    | .vcall "x", .bareName "x" => some ⟨.any, Γ, .bareName rfl rfl rfl⟩
+    | .int k, .intLit k' => if k == k' then some ⟨.int, Γ, κ, I, .intLit⟩ else none
+    | .flt b, .fltLit b' => if b == b' then some ⟨.float, Γ, κ, I, .fltLit⟩ else none
+    | .str s, .strLit s' => if s == s' then some ⟨.cls "String", Γ, κ, I, .strLit⟩ else none
+    | .sym s, .symLit s' => if s == s' then some ⟨.sym, Γ, κ, I, .symLit⟩ else none
+    | .tru, .truLit => some ⟨.bool, Γ, κ, I, .truLit⟩
+    | .fls, .flsLit => some ⟨.bool, Γ, κ, I, .flsLit⟩
+    | .nil, .nilLit => some ⟨.nilT, Γ, κ, I, .nilLit⟩
+    | .vcall "x", .bareName "x" =>
+      if hx : nameFreeN κ "x" = true then
+        if hm : nameFreeN κ "method_missing" = true then
+          if hs : κ.selfTy = none then some ⟨.any, Γ, κ, I, .bareName hx hm hs⟩ else none
+        else none
+      else none
     | .var .lvar x, .var .lvar x' =>
       if x == x' then
         match hg : envGet? Γ x with
-        | some τ => if ha : isAliasTy τ = false then some ⟨τ, Γ, .var hg ha⟩ else none
+        | some τ => if ha : isAliasTy τ = false then some ⟨τ, Γ, κ, I, .var hg ha⟩ else none
         | none => none
       else none
     | .vasgn .lvar x ev, .vasgn .lvar x' dv =>
       if x == x' then
-        match check n Γ ev dv with
-        | some ⟨τ, Γ₁, hv⟩ =>
+        match check n Γ ev dv κ I with
+        | some ⟨τ, Γ₁, κ₁, I₁, hv⟩ =>
           if hcap : capStale x τ τ = false then
-            if ha : isAliasTy τ = false then some ⟨τ, envAfter Γ₁ x τ, .vasgn hv hcap ha rfl⟩
+            if ha : isAliasTy τ = false then
+              if hk : capStaleCtx x τ κ₁ = false then
+                some ⟨τ, envAfter Γ₁ x τ, κ₁, killClosOverSpine I₁ x τ, .vasgn hv hcap ha hk⟩
+              else none
             else none
           else none
         | none => none
       else none
     | .seq es, .seq ds =>
-      match checkSeq n Γ es ds with
-      | some ⟨τ, Γ', hs⟩ => some ⟨τ, Γ', .seq hs⟩
+      match checkSeq n Γ es ds κ I with
+      | some ⟨τ, Γ', κ', I', hs⟩ => some ⟨τ, Γ', κ', I', .seq hs⟩
       | none => none
     | .send (some recv) m args none, .prim dr dm dargs σc τc =>
       if dm == m then
-        match check n Γ recv dr with
-        | some ⟨σ, Γ₁, hr⟩ =>
+        match check n Γ recv dr κ I with
+        | some ⟨σ, Γ₁, κ₁, I₁, hr⟩ =>
           if σ == σc then
-            match checkAll n Γ₁ args dargs with
-            | some ⟨argTys, Γ₂, ha⟩ =>
+            match checkAll n Γ₁ args dargs κ₁ I₁ with
+            | some ⟨argTys, Γ₂, κ₂, I₂, ha⟩ =>
               match hp : dprim? σ m argTys with
               | some τ =>
-                if τ == τc then some ⟨τ, Γ₂, .prim hr ha (dprim?_sound hp) rfl (by intro; rfl)⟩ else none
+                if τ == τc then
+                  if hf : nameFreeN κ₂ m = true then
+                    if hs : σ = .cls "String" →
+                        isANoOk κ₂.wholeCls (["String", "Comparable"] ++ rootAncestors) = true then
+                      some ⟨τ, Γ₂, κ₂, I₂, .prim hr ha (dprim?_sound hp) hf hs⟩
+                    else none
+                  else none
+                else none
               | none => none
             | none => none
           else none
         | none => none
       else none
     | .if' c t (some el), .ifD dc dt (some de) j =>
-      match check n Γ c dc with
-      | some ⟨_, Γc, hc⟩ =>
-        match check n Γc t dt, check n Γc el de with
-        | some ⟨τ₁, Γ₁, ht⟩, some ⟨τ₂, Γ₂, he⟩ =>
-          if joinT τ₁ τ₂ == j then some ⟨joinT τ₁ τ₂, joinEnv Γ₁ Γ₂, .if' hc ht he⟩ else none
+      match check n Γ c dc κ I with
+      | some ⟨_, Γc, κc, Ic, hc⟩ =>
+        match check n Γc t dt κc Ic, check n Γc el de κc Ic with
+        | some ⟨τ₁, Γ₁, κ₁, I₁, ht⟩, some ⟨τ₂, Γ₂, κ₂, I₂, he⟩ =>
+          if joinT τ₁ τ₂ == j then
+            match ctxEq? κ₁ κ₂ with
+            | some ⟨hctx⟩ =>
+              if hi : I₁ = I₂ then
+                some ⟨joinT τ₁ τ₂, joinEnv Γ₁ Γ₂, κ₁, I₁,
+                  .if' hc ht (by cases hctx; cases hi; exact he)⟩
+              else none
+            | none => none
+          else none
         | _, _ => none
       | none => none
     | .if' c t none, .ifD dc dt none j =>
-      match check n Γ c dc with
-      | some ⟨_, Γc, hc⟩ =>
-        match check n Γc t dt with
-        | some ⟨τ, Γt, ht⟩ =>
+      match check n Γ c dc κ I with
+      | some ⟨_, Γc, κc, Ic, hc⟩ =>
+        match check n Γc t dt κc Ic with
+        | some ⟨τ, Γt, κt, It, ht⟩ =>
           if joinT τ .nilT == j then
-            some ⟨joinT τ .nilT, joinEnv Γt Γc, .ifNoElse hc ht⟩
+            match ctxEq? κt κc with
+            | some ⟨hctx⟩ =>
+              if hi : It = Ic then
+                some ⟨joinT τ .nilT, joinEnv Γt Γc, κc, Ic,
+                  .ifNoElse hc (by cases hctx; cases hi; exact ht)⟩
+              else none
+            | none => none
           else none
         | none => none
       | none => none
     | .array es, .arrayLit ds elem =>
-      match checkAll n Γ es ds with
-      | some ⟨tys, Γ', hs⟩ =>
+      match checkAll n Γ es ds κ I with
+      | some ⟨tys, Γ', κ', I', hs⟩ =>
         if elemTy tys == elem then
           if hf : FirstOrder (elemTy tys) = true then
-            some ⟨.arrayOf (elemTy tys), Γ', .arrayLit hs hf⟩
+            some ⟨.arrayOf (elemTy tys), Γ', κ', I', .arrayLit hs hf⟩
           else none
         else none
       | none => none
     | .hash ps, .hashLit dks dvs key val =>
-      match checkPairs n Γ ps dks dvs with
-      | some ⟨ks, vs, Γ', hs⟩ =>
+      match checkPairs n Γ ps dks dvs κ I with
+      | some ⟨ks, vs, Γ', κ', I', hs⟩ =>
         if elemTy ks == key && elemTy vs == val then
           if hk : FirstOrder (elemTy ks) = true then
             if hv : FirstOrder (elemTy vs) = true then
-              some ⟨.hashOf (elemTy ks) (elemTy vs), Γ', .hashLit hs hk hv⟩
+              some ⟨.hashOf (elemTy ks) (elemTy vs), Γ', κ', I', .hashLit hs hk hv⟩
             else none
           else none
         else none
       | none => none
-    -- Out of the judgment. Every remaining certificate rule -- `defDecl`, `callSig`,
-    -- `callMethodSig`, `classDecl`, `newInst`, `ivarRead`, `ivarAsgn`, `constCls`,
-    -- `selfExpr` -- and every expression head with no rule, answers
-    -- `none`. Each joins by acquiring a `DJudge` rule, and each joining is a rung.
+    -- Definitions/calls still require checked annotation bodies and signature contracts.
     | _, _ => none
 
-def checkAll (fuel : Nat) (Γ : Env) (es : List Expr) (ds : List Deriv) :
-    Option (CertifiedAll Γ es) :=
+def checkAll (fuel : Nat) (Γ : Env) (es : List Expr) (ds : List Deriv)
+    (κ : Ctx := ctx0) (I : Ty := .ivar0) : Option (CertifiedAll Γ es κ I) :=
   match fuel with
   | 0 => none
   | n + 1 =>
     match es, ds with
-    | [], [] => some ⟨[], Γ, .nil⟩
+    | [], [] => some ⟨[], Γ, κ, I, .nil⟩
     | e :: es', d :: ds' =>
-      match check n Γ e d with
-      | some ⟨τ, Γ₁, he⟩ =>
-        match checkAll n Γ₁ es' ds' with
-        | some ⟨τs, Γ₂, hr⟩ => some ⟨τ :: τs, Γ₂, .cons he hr he.plainArg⟩
+      match check n Γ e d κ I with
+      | some ⟨τ, Γ₁, κ₁, I₁, he⟩ =>
+        match checkAll n Γ₁ es' ds' κ₁ I₁ with
+        | some ⟨τs, Γ₂, κ₂, I₂, hr⟩ => some ⟨τ :: τs, Γ₂, κ₂, I₂, .cons he hr he.plainArg⟩
         | none => none
       | none => none
-    -- A certificate with the wrong number of arguments is rejected here, in both
-    -- directions. `Ratchet/DerivControls.lean` §3 is the control.
     | _, _ => none
 
-def checkPairs (fuel : Nat) (Γ : Env) (ps : List (Expr × Expr)) (dks dvs : List Deriv) :
-    Option (CertifiedPairs Γ ps) :=
+def checkPairs (fuel : Nat) (Γ : Env) (ps : List (Expr × Expr)) (dks dvs : List Deriv)
+    (κ : Ctx := ctx0) (I : Ty := .ivar0) : Option (CertifiedPairs Γ ps κ I) :=
   match fuel with
   | 0 => none
   | n + 1 =>
     match ps, dks, dvs with
-    | [], [], [] => some ⟨[], [], Γ, .nil⟩
+    | [], [], [] => some ⟨[], [], Γ, κ, I, .nil⟩
     | (k, v) :: ps', dk :: dks', dv :: dvs' =>
-      match check n Γ k dk with
-      | some ⟨σ, Γk, hk⟩ =>
-        match check n Γk v dv with
-        | some ⟨τ, Γv, hv⟩ =>
-          match checkPairs n Γv ps' dks' dvs' with
-          | some ⟨ks, vs, Γ', hs⟩ => some ⟨σ :: ks, τ :: vs, Γ', .cons hk hv hs⟩
+      match check n Γ k dk κ I with
+      | some ⟨σ, Γk, κk, Ik, hk⟩ =>
+        match check n Γk v dv κk Ik with
+        | some ⟨τ, Γv, κv, Iv, hv⟩ =>
+          match checkPairs n Γv ps' dks' dvs' κv Iv with
+          | some ⟨ks, vs, Γ', κ', I', hs⟩ => some ⟨σ :: ks, τ :: vs, Γ', κ', I', .cons hk hv hs⟩
           | none => none
         | none => none
       | none => none
     | _, _, _ => none
 
-def checkSeq (fuel : Nat) (Γ : Env) (es : List Expr) (ds : List Deriv) :
-    Option (CertifiedSeq Γ es) :=
+def checkSeq (fuel : Nat) (Γ : Env) (es : List Expr) (ds : List Deriv)
+    (κ : Ctx := ctx0) (I : Ty := .ivar0) : Option (CertifiedSeq Γ es κ I) :=
   match fuel with
   | 0 => none
   | n + 1 =>
     match es, ds with
     | [e], [d] =>
-      match check n Γ e d with
-      | some ⟨τ, Γ', he⟩ => some ⟨τ, Γ', .last he⟩
+      match check n Γ e d κ I with
+      | some ⟨τ, Γ', κ', I', he⟩ => some ⟨τ, Γ', κ', I', .last he⟩
       | none => none
     | e :: e' :: es', d :: d' :: ds' =>
-      match check n Γ e d with
-      | some ⟨_, Γ₁, he⟩ =>
-        match checkSeq n Γ₁ (e' :: es') (d' :: ds') with
-        | some ⟨τ, Γ₂, hr⟩ => some ⟨τ, Γ₂, .cons he hr⟩
+      match check n Γ e d κ I with
+      | some ⟨_, Γ₁, κ₁, I₁, he⟩ =>
+        match checkSeq n Γ₁ (e' :: es') (d' :: ds') κ₁ I₁ with
+        | some ⟨τ, Γ₂, κ₂, I₂, hr⟩ => some ⟨τ, Γ₂, κ₂, I₂, .cons he hr⟩
         | none => none
       | none => none
     | _, _ => none
@@ -578,7 +606,7 @@ def fuelD : Nat := 200
 
 /-- The certified judgment, as a proposition about a program: it types at *some* type in the
 empty environment. -/
-def DTyped (p : Expr) : Prop := ∃ τ Γ', DJudge [] p τ Γ'
+def DTyped (p : Expr) : Prop := ∃ τ Γ' κ' I', DJudge [] p τ Γ' ctx0 .ivar0 κ' I'
 
 /-- **The ladder's verdict.** `true` iff the certificate checks. -/
 def validateD (p : Expr) (d : Deriv) : Bool := (check fuelD [] p d).isSome
@@ -588,7 +616,7 @@ one `match`, because the `Certified` the checker returned carries the derivation
 theorem validateD_typed {p : Expr} {d : Deriv} (h : validateD p d = true) : DTyped p := by
   unfold validateD at h
   match hc : check fuelD [] p d with
-  | some c => exact ⟨c.ty, c.out, c.judged⟩
+  | some c => exact ⟨c.ty, c.out, c.ctx, c.spine, c.judged⟩
   | none => rw [hc] at h; exact absurd h (by simp)
 
 /-! ## §5 Semantic status

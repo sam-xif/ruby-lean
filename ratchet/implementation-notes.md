@@ -8876,3 +8876,28 @@ both halves of what constrains them now have a name.
   is unsupported). No declaration-only accepts and no coverage increase are claimed.
 - Registry and bridge build in under a second, axiom-clean. Full quiet ratchet GREEN:
   fragment 49, checker reach 51, 252 agree / 0 disagree, all 22 rules proved.
+
+## Clink 97 (2026-09-14) — context-aware certificate replay and a checked-body call
+
+- `check` and all companions now take incoming context/spine and return all outgoing
+  indices in `Certified*`, backed by the same `DJudge` proof. Sequential subchecks consume
+  those outputs; assignment/dispatch guards are no longer replaced by top-level `rfl`s.
+  `DTyped` existentially carries the outputs; `validateD_safe_boot`/`_run` remain unchanged.
+- `CtxEq` proves the existing conservative syntax comparator sound by mutual functional
+  induction, then checks every context field and returns an optional equality proof.
+  Branches cast only with that proof and decidable spine equality. This is not full
+  decidable syntax equality: unsupported `exprEq`/`paramEq` cases return no proof, even
+  on identical syntax. Such comparisons decline, not merge. No unchecked BEq cast.
+- Method-context controls replay primitive bodies and both conditional forms, preserve
+  the returned method context, reject an overridden primitive name, and distinguish
+  Integer from nilable-Integer annotations. Different method bodies compare unequal.
+- `certified_context`/`certified_safe` interpret a result at arbitrary indices. The installed
+  `add(x, y)` pilot now consumes a data certificate checked at its Integer annotations
+  through this bridge, then proves actual dispatch safe for every pair of Integers.
+  Move its import after the bridge (via `Safety`) to avoid a dependency cycle; the full
+  gate still builds it. No per-call inference or body-execution shortcut.
+- Definition/call rules and the checked-signature invariant remain owed. This is body
+  replay connected to a real call, not whole-program method admission or a 052 claim.
+- Context comparison builds in 4.1 seconds; checker, bridge, and installed-call pilot each
+  build in under a second, axiom-clean. Full quiet ratchet GREEN: fragment 49, checker
+  reach 51, 252 agree / 0 disagree, all 22 rules proved.

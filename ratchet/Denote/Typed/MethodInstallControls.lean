@@ -2,6 +2,7 @@ import Denote.Sem.MethodInstall
 import Denote.Typed.MethodDispatch
 import Denote.Typed.MethodStateControls
 import Denote.Typed.Primitive
+import Denote.Typed.Bridge
 
 /-! A real-boot method write followed by dispatch, with full state conformance and
 an annotation-checked body. Still not a checker admission or a corpus rung. -/
@@ -23,6 +24,21 @@ theorem add_annotated_body {κ : Ctx} {I : Ty} (hf : nameFreeN κ "+" = true) :
       κ [("x", .int), ("y", .int)] I :=
   (SemSafeCtxA.var rfl rfl).prim (.cons (SemSafeCtxA.var rfl rfl) .nil rfl)
     .intAdd hf (by intro h; cases h)
+
+private def addBodyCert : Deriv :=
+  .prim (.var .lvar "x") "+" [.var .lvar "y"] .int .int
+
+/-- The certificate is checked under the annotations in the installed method context.
+No argument values or concrete execution enter this check. -/
+private def addBodyChecked : Certified [("x", .int), ("y", .int)] addBody
+    (installedCtx.withFrame (some ⟨"Object", "Object", "add"⟩)) :=
+  (check 100 [("x", .int), ("y", .int)] addBody addBodyCert
+    (installedCtx.withFrame (some ⟨"Object", "Object", "add"⟩))).get (by decide)
+
+theorem add_body_from_certificate : SemSafeCtxA
+    (installedCtx.withFrame (some ⟨"Object", "Object", "add"⟩)) [("x", .int), ("y", .int)] .ivar0
+    addBody .int (installedCtx.withFrame (some ⟨"Object", "Object", "add"⟩))
+    [("x", .int), ("y", .int)] .ivar0 := certified_context addBodyChecked
 
 /-- Checks the concrete boot premises; not a per-program post-installation checker. -/
 def methodInstallBootOkB : Bool := methodBootOkB &&
@@ -92,7 +108,7 @@ theorem add_installed_call (hb : methodInstallBootOkB = true) (x y : Int) :
       change isAName installed.heap installed.currentFrame.self "Object" = true
       rw [hcf]
       simpa only [installed, installMethod, isAName_defineMethod] using hobj)
-    (add_annotated_body rfl)
+    add_body_from_certificate
   refine ⟨next, ?_, hr⟩
   have hrecv : installed.currentFrame.self = .ref Boot.mainId := (congrArg RubyCore.Frame.self hcf).trans hself
   rw [hrecv] at he ⊢
@@ -104,6 +120,7 @@ theorem add_installed_call (hb : methodInstallBootOkB = true) (x y : Int) :
   exact he
 
 #print axioms add_annotated_body
+#print axioms add_body_from_certificate
 #print axioms add_installed_call
 #print axioms add_definition_step
 end Ratchet.Denote.Typed

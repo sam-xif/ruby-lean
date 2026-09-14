@@ -124,6 +124,15 @@ theorem djudge_context {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Ex
     (h : DJudge Γ e τ Γ' κ I κ' I') : SemSafeCtxA κ Γ I e τ κ' Γ' I' :=
   dregistry_context (djudge_certified h)
 
+/-- A checker result carries the generic semantic contract, including a method frame. -/
+theorem certified_context {κ : Ctx} {I : Ty} {Γ : Env} {e : Ratchet.Expr}
+    (c : Certified Γ e κ I) : SemSafeCtxA κ Γ I e c.ty c.ctx c.out c.spine :=
+  djudge_context c.judged
+
+theorem certified_safe {κ : Ctx} {I : Ty} {Γ : Env} {e : Ratchet.Expr}
+    (c : Certified Γ e κ I) {m : Machine} (hm : StateOk κ Γ I m) : StuckFree m e :=
+  (certified_context c).closed hm
+
 /-- An annotation-based body derivation crosses the same registry as whole programs. -/
 theorem annotated_add_judgment {κ : Ctx} {I : Ty} (hf : nameFreeN κ "+" = true) :
     DJudge [("x", .int), ("y", .int)]
@@ -156,7 +165,7 @@ from any conformant machine never reaches a type-stuck outcome — at any fuel, 
 returns, escapes, diverges or gates. -/
 theorem validateD_safe {p : Ratchet.Expr} {d : Deriv} (h : validateD p d = true)
     {m : Machine} (hm : StateOk Ratchet.ctx0 [] .ivar0 m) : StuckFree m p := by
-  obtain ⟨_, _, hj⟩ := validateD_typed h
+  obtain ⟨_, _, _, _, hj⟩ := validateD_typed h
   exact dregistry_safe (djudge_certified hj) hm
 
 /-- …at the **fresh prelude-booted machine**, which is the one the difftest harness runs a
@@ -181,6 +190,7 @@ theorem validateD_safe_run {p : Ratchet.Expr} {d : Deriv} (h : validateD p d = t
 
 #print axioms djudge_certified
 #print axioms djudge_context
+#print axioms certified_context
 #print axioms validateD_safe
 #print axioms validateD_safe_boot
 #print axioms validateD_safe_run

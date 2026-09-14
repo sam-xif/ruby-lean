@@ -3,7 +3,6 @@ import Denote.Typed.PrimitiveControls
 import Denote.Typed.MethodEntryControls
 import Denote.Typed.MethodStateControls
 import Denote.Typed.MethodDispatchControls
-import Denote.Typed.MethodInstallControls
 
 /-!
 # `Denote/Typed/Controls.lean` — derivations in the certified judgment, and the gate

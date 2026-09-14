@@ -284,4 +284,26 @@ def ctlAnnotationDefCert : Deriv :=
 #guard !validateD (.seq [ctlAnnotationDef, .send none "annotation_probe" [.int 1] none])
   (.seq [ctlAnnotationDefCert, .callSig "annotation_probe" [.intLit 1] .int])
 
+-- Replay from a method frame and installed declaration table, not just ctx0.
+def ctlMethodCtx : Ctx :=
+  { ctx0 with
+    pos := { ctx0.pos with defs := [⟨"annotation_probe", [.req "x"], ctlAnnotationBody⟩] }
+    neg := { ctx0.neg with declared := ["annotation_probe"] }
+    scope := { ctx0.scope with frame := some ⟨"Object", "Object", "annotation_probe"⟩ } }
+
+#guard (check 100 [("x", .int)] ctlAnnotationBody ctlAnnotationBodyCert ctlMethodCtx).isSome
+#guard (check 100 [("x", .nilable .int)] ctlAnnotationBody ctlAnnotationBodyCert ctlMethodCtx).isNone
+#guard (check 100 [("x", .int)] ctlAnnotationBody ctlAnnotationBodyCert
+  { ctlMethodCtx with neg := { ctlMethodCtx.neg with declared := ["annotation_probe", "+"] } }).isNone
+
+-- Conditional replay compares the full method context and retains it in its result.
+#guard match check 100 [("x", .int)] (.if' .tru ctlAnnotationBody (some (.int 0)))
+    (.ifD .truLit ctlAnnotationBodyCert (some (.intLit 0)) .int) ctlMethodCtx with
+  | some c => ctxEqB c.ctx ctlMethodCtx && c.spine == .ivar0 && c.ty == .int
+  | none => false
+#guard (check 100 [("x", .int)] (.if' .tru ctlAnnotationBody none)
+  (.ifD .truLit ctlAnnotationBodyCert none (.nilable .int)) ctlMethodCtx).isSome
+#guard (ctxEq? ctlMethodCtx { ctlMethodCtx with pos :=
+  { ctlMethodCtx.pos with defs := [⟨"annotation_probe", [.req "x"], .nil⟩] } }).isNone
+
 end Ratchet
