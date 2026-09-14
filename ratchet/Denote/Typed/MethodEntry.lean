@@ -9,6 +9,13 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
+theorem toRubyParams_required (ps : List SigParam) :
+    toRubyParams (ps.map (fun p => Ratchet.Param.req p.1)) =
+      (ps.map (·.1)).map RubyCore.Param.req := by
+  induction ps with
+  | nil => rfl
+  | cons p ps ih => simpa only [List.map_cons, toRubyParams, toRubyParam] using congrArg (RubyCore.Param.req p.1 :: ·) ih
+
 theorem classifyFull_required (names : List String) :
     Interp.classifyFull (names.map RubyCore.Param.req) =
       some ⟨names, [], none, [], [], none, none, []⟩ := by

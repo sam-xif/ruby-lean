@@ -92,9 +92,14 @@ it directly. `DefsOk` now also pins ordinary-method metadata (`TopMethodCode`);
 the ordinary main-receiver world, and `StateOk.runtime` supplies its physical facts
 (`Sem/Ready.lean`): receiver/owner/cref/capture, phase, payload/ancestors, and quiet hook.
 The same `bootOkB` checks them; transport covers allocation, locals, installation, and
-method entry/return. Separate pilot-only boot gates are retired. Installed-signature and
-definition/call expression rules remain next. Explicit `return` needs an answer-contract
-extension. Neither boundary lemmas nor declaration-only acceptance count as 052.
+method entry/return. Separate pilot-only boot gates are retired. `MethodDefine.lean` and
+`MethodCall.lean` now prove the definition/call semantic obligations; `MethodArgs.lean`
+handles arbitrary required-argument lists, and `MethodResolve.lean` keeps semantic body
+application below the syntactic bridge. `MethodRuleControls.lean` composes the full
+`def add …; add(x, y)` program from one checked body for arbitrary Integers. Its
+`validateD` rejection is still pinned: judgment registration and cached-signature checker
+integration remain next. Explicit `return` needs an answer-contract extension. Neither
+semantic pilots nor declaration-only acceptance count as 052.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -123,6 +128,9 @@ String membership needs a payload invariant. See
 | `Denote/Sem/Reframe.lean`, `Denote/Typed/MethodState.lean` | Full frame-switch conformance and post-dispatch calls from annotated body proofs |
 | `Denote/Typed/MethodDispatch.lean` | Actual definition/lookup/dispatch equalities and call safety from annotated bodies |
 | `Denote/Typed/MethodLookup.lean` | Actual dispatched code recovered from `DefsOk`, then applied using a checked body |
+| `Ratchet/MethodCtx.lean`, `Denote/Typed/MethodDefine.lean` | Definition-site contexts and the annotation-checked definition obligation |
+| `Denote/Typed/MethodArgs.lean`, `MethodCall.lean`, `MethodResolve.lean` | Argument retention, call obligation, and semantic installed-body application |
+| `Denote/Typed/MethodRuleControls.lean` | Full definition + call composition from a single checked body (validator still gated) |
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

@@ -8963,3 +8963,24 @@ both halves of what constrains them now have a name.
 - Runtime and state-transport proofs build in under a second; context equality stays at
   4.1 seconds. All are axiom-clean. Full quiet ratchet GREEN: fragment 49, checker reach 51,
   252 agree / 0 disagree, all 22 rules proved.
+
+## Clink 101 (2026-09-14) — generic definition and call obligations compose
+
+- `topDeclCtx` reserves the name and records the installed definition; `topBodyCtx` selects
+  its method frame. `SemSafeCtxA.defDecl` installs the actual method and transports the full
+  state, requiring a body proof at its declared parameters/return even when uncalled.
+- `SemAllCtxA.startArgs` handles arbitrary ordinary argument lists, carrying each prior
+  argument's first-order denotation through later evaluations. Its callback receives the
+  final context/locals/spine and typed values. `SemSafeCtxA.callSig` composes that walk with
+  actual installed lookup, the annotation-based body proof, and caller restoration.
+- Move semantic resolution/application below the syntactic bridge (`MethodResolve`);
+  the checked-artifact adapter remains in `MethodLookup`. Otherwise importing the semantic
+  call obligation into the registry would create a cycle through `checked_body_context`.
+- A composed `def add …; add(x, y)` theorem now works for arbitrary Integers from `bootOkB`,
+  using one `CheckedBody` for both rule premises. The full gate builds this control.
+  Its `validateD` rejection stays explicit: no new judgment constructors, registration,
+  or executable definition/call admission yet. Next is caching already-checked body proofs
+  and consuming their signatures at calls, not re-inference from particular arguments.
+- Definition, argument, call, and composed program proofs each build in under a second,
+  axiom-clean. Full quiet ratchet GREEN: fragment 49, checker reach 51,
+  252 agree / 0 disagree, all 22 registered rules proved. No reach increase is claimed.

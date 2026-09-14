@@ -17,9 +17,7 @@ theorem checked_body_rubyParams {κ : Ctx} {I : Ty} {decl : Defn}
     (c : CheckedBody κ I decl) :
     toRubyParams decl.params = (c.params.map (·.1)).map RubyCore.Param.req := by
   rw [c.paramShape]
-  induction c.params with
-  | nil => rfl
-  | cons p ps ih => simpa only [List.map_cons, toRubyParams, toRubyParam] using congrArg (RubyCore.Param.req p.1 :: ·) ih
+  exact toRubyParams_required c.params
 
 /-- Consume an already checked body. The remaining hypotheses concern the actual method
 and caller state, not the body certificate or its derivation. -/
