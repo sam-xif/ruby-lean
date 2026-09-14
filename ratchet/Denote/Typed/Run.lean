@@ -1,29 +1,33 @@
 import Denote.Typed.Compose
 
-/-! The existing answer contract at an explicit machine entry. List evaluation starts under
-an argument or sequence frame, so its entry is not always `evalFrom`. -/
+/-! The answer contract at an explicit machine entry. List evaluation starts under an
+argument or sequence frame, so its entry is not always `evalFrom`. The outgoing context and
+ivar spine are explicit, defaulting to the declaration-free fragment's `ctx0`/`ivar0`. -/
 
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
-def ResultOk (origin : Machine) (Γ : Env) (τ : Ty) (a : Answer) (m : Machine) : Prop :=
-  Framed origin m ∧ AnsOk τ m a ∧ (∀ v, a = .val v → StateOk ctx0 Γ .ivar0 m)
+def ResultOk (origin : Machine) (Γ : Env) (τ : Ty) (a : Answer) (m : Machine)
+    (κ : Ctx := ctx0) (I : Ty := .ivar0) : Prop :=
+  Framed origin m ∧ AnsOk τ m a ∧ (∀ v, a = .val v → StateOk κ Γ I m)
 
-def RunSpec (origin start : Machine) (Γ : Env) (τ : Ty) : Prop :=
-  SafeA start ∧ ∀ fuel a m rest, runA fuel start = .ans a m rest → ResultOk origin Γ τ a m
+def RunSpec (origin start : Machine) (Γ : Env) (τ : Ty)
+    (κ : Ctx := ctx0) (I : Ty := .ivar0) : Prop :=
+  SafeA start ∧ ∀ fuel a m rest, runA fuel start = .ans a m rest → ResultOk origin Γ τ a m κ I
 
 theorem RunSpec.rebase {origin middle start : Machine} {Γ : Env} {τ : Ty}
-    (h : RunSpec middle start Γ τ) (hf : Framed origin middle) :
-    RunSpec origin start Γ τ := by
+    {κ : Ctx} {I : Ty} (h : RunSpec middle start Γ τ κ I) (hf : Framed origin middle) :
+    RunSpec origin start Γ τ κ I := by
   refine ⟨h.1, ?_⟩
   intro fuel a m rest hr
   obtain ⟨hf', hd, hm⟩ := h.2 fuel a m rest hr
   exact ⟨hf.trans hf', hd, hm⟩
 
 theorem RunSpec.step {origin start next : Machine} {Γ : Env} {τ : Ty}
+    {κ : Ctx} {I : Ty}
     (ha : answerPoint start = none) (hs : Interp.stepFn start = .next next)
-    (h : RunSpec origin next Γ τ) : RunSpec origin start Γ τ := by
+    (h : RunSpec origin next Γ τ κ I) : RunSpec origin start Γ τ κ I := by
   constructor
   · intro fuel
     cases fuel with
@@ -35,8 +39,9 @@ theorem RunSpec.step {origin start next : Machine} {Γ : Env} {τ : Ty}
     | succ f => rw [runA_succ ha, hs] at hr; exact h.2 f a m rest hr
 
 theorem RunSpec.unsupported {origin start : Machine} {Γ : Env} {τ : Ty} {msg : String}
+    {κ : Ctx} {I : Ty}
     (ha : answerPoint start = none) (hs : Interp.stepFn start = .unsupported msg) :
-    RunSpec origin start Γ τ := by
+    RunSpec origin start Γ τ κ I := by
   constructor
   · intro fuel
     cases fuel with
@@ -58,7 +63,8 @@ theorem semSafe_of_runSpec {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
     safeUnder_of_closed (fun m hm => (h m hm).2) (fun m hm => (h m hm).1)⟩
 
 theorem RunSpec.answer {origin m : Machine} {Γ : Env} {τ : Ty} {a : Answer}
-    (hr : ResultOk origin Γ τ a m) : RunSpec origin (deliverA a m []) Γ τ := by
+    {κ : Ctx} {I : Ty} (hr : ResultOk origin Γ τ a m κ I) :
+    RunSpec origin (deliverA a m []) Γ τ κ I := by
   constructor
   · cases a with
     | val v => exact safeA_value_nil m v
@@ -73,16 +79,18 @@ theorem RunSpec.answer {origin m : Machine} {Γ : Env} {τ : Ty} {a : Answer}
       | esc j => cases j <;> simpa [AnsOk, EscOk, deliverA] using hr.2.1
     · intro v hv; exact StateOk_deliverA (hr.2.2 v hv)
 
-/-- Compose one expression with a continuation contract. Halts remain covered by the
-safety premise, and the continuation receives the complete answer contract. -/
-theorem RunSpec.bind {Γ Γ₁ Γ₂ : Env} {e : Ratchet.Expr} {σ τ : Ty}
-    (h : SemSafeA Γ e σ Γ₁) {m : Machine} (hm : StateOk ctx0 Γ .ivar0 m)
+/-- Compose a run with a continuation contract, allowing a different outgoing context and
+ivar spine. Halts remain covered; the continuation receives the complete answer contract. -/
+theorem RunSpec.bindSpec {Γ₁ Γ₂ : Env} {e : Ratchet.Expr} {σ τ : Ty}
+    {κ₁ κ₂ : Ctx} {I₁ I₂ : Ty} {m : Machine}
+    (h : RunSpec m (evalFrom m e) Γ₁ σ κ₁ I₁)
     {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
-    (hk : ∀ a n, ResultOk m Γ₁ σ a n → RunSpec m (deliverA a n K) Γ₂ τ) :
-    RunSpec m (pushK K (evalFrom m e)) Γ₂ τ := by
+    (hk : ∀ a n, ResultOk m Γ₁ σ a n κ₁ I₁ →
+      RunSpec m (deliverA a n K) Γ₂ τ κ₂ I₂) :
+    RunSpec m (pushK K (evalFrom m e)) Γ₂ τ κ₂ I₂ := by
   constructor
-  · exact safe_pushK hK haltBlind_stuck oof_stuck (h.closed hm)
-      (h.1 m hm) (fun a n hn => (hk a n hn).1)
+  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1
+      h.2 (fun a n hn => (hk a n hn).1)
   · intro fuel a n rest hr
     rw [runA_pushK _ hK] at hr
     cases hs : runA fuel (evalFrom m e) with
@@ -90,7 +98,15 @@ theorem RunSpec.bind {Γ Γ₁ Γ₂ : Env} {e : Ratchet.Expr} {σ τ : Ty}
     | oof n' => rw [hs] at hr; cases hr
     | ans a₁ n₁ r₁ =>
       rw [hs] at hr
-      exact (hk a₁ n₁ (h.1 m hm fuel a₁ n₁ r₁ hs)).2 r₁ a n rest hr
+      exact (hk a₁ n₁ (h.2 fuel a₁ n₁ r₁ hs)).2 r₁ a n rest hr
+
+/-- The existing fragment uses the context-general composition theorem unchanged. -/
+theorem RunSpec.bind {Γ Γ₁ Γ₂ : Env} {e : Ratchet.Expr} {σ τ : Ty}
+    (h : SemSafeA Γ e σ Γ₁) {m : Machine} (hm : StateOk ctx0 Γ .ivar0 m)
+    {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
+    (hk : ∀ a n, ResultOk m Γ₁ σ a n → RunSpec m (deliverA a n K) Γ₂ τ) :
+    RunSpec m (pushK K (evalFrom m e)) Γ₂ τ :=
+  (h.runSpec hm).bindSpec hK hk
 
 #print axioms RunSpec.bind
 end Ratchet.Denote.Typed

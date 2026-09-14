@@ -250,4 +250,23 @@ def ctlHashIndexCert (dk : Deriv) (ret : Ty := .nilable .int) : Deriv :=
 #guard dprim? (.hashOf .sym (.arrow0 .int)) "[]" [.int] == none
 #guard dprim? (.hashOf .sym (.arrayOf .int)) "[]" [.nilT] == some (.nilable (.arrayOf .int))
 
+-- Definition admission must check annotations against the body even when no call follows.
+-- These are permanent negative controls, not a positive claim of method coverage.
+#guard !validateD (.def' "bad" [] .tru) (.defDecl "bad" [] .int .truLit)
+#guard !validateD (.def' "bad" [.req "x"] (.var .lvar "x"))
+  (.defDecl "bad" [("x", .int)] .bool (.var .lvar "x"))
+#guard !validateD
+  (.def' "bad" [.req "x"] (.send (some (.var .lvar "x")) "+" [.str "oops"] none))
+  (.defDecl "bad" [("x", .int)] .int
+    (.prim (.var .lvar "x") "+" [.strLit "oops"] .int .int))
+-- A method body cannot borrow the definition site's local environment.
+#guard !validateD (.seq [.vasgn .lvar "outer" (.int 1),
+    .def' "bad" [] (.var .lvar "outer")])
+  (.seq [.vasgn .lvar "outer" (.intLit 1), .defDecl "bad" [] .int (.var .lvar "outer")])
+-- Signature data cannot rename the program's formal parameter or hoist an installation.
+#guard !validateD (.def' "bad" [.req "x"] (.var .lvar "x"))
+  (.defDecl "bad" [("y", .int)] .int (.var .lvar "x"))
+#guard !validateD (.seq [.send none "later" [] none, .def' "later" [] (.int 1)])
+  (.seq [.callSig "later" [] .int, .defDecl "later" [] .int (.intLit 1)])
+
 end Ratchet

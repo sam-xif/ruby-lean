@@ -1,5 +1,6 @@
 import Denote.Typed.Clink
 import Denote.Typed.PrimitiveControls
+import Denote.Typed.Context
 
 /-!
 # `Denote/Typed/Controls.lean` — derivations in the certified judgment, and the gate
@@ -19,6 +20,19 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 
 open RubyCore Ratchet Ratchet.Denote
+
+/-- The context-general composition path still discharges the existing invariant target. -/
+example : SemSafeA [] (.seq [.vasgn .lvar "x" (.int 3), .var .lvar "x"])
+    .int [("x", .int)] :=
+  semSafeA_iff_context.mpr
+    ((SemSafeCtxA.intLit.vasgn (by rfl) (by rfl) (by rfl)).seq
+      (SemSafeCtxA.var (by rfl) (by rfl)))
+
+/-- Writes outside `ctx0` retain the explicit context guard and transformed ivar spine. -/
+example {κ : Ctx} {Γ : Env} {I : Ty} (hctx : capStaleCtx "x" .int κ = false) :
+    SemSafeCtxA κ Γ I (.vasgn .lvar "x" (.int 3)) .int κ (envAfter Γ "x" .int)
+      (killClosOverSpine I "x" .int) :=
+  SemSafeCtxA.intLit.vasgn (by rfl) (by rfl) hctx
 
 /-! ## Derivations
 

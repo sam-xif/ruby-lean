@@ -8616,3 +8616,26 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet: GREEN, fragment 48→49, checker reach 50→51, 252 agree /
   0 disagree. All 22 registered rules remain proved; the new primitive and the
   acceptance-to-safety theorem are axiom-clean. Next positive frontier: 052, functions.
+
+## Clink 85 (2026-09-13) — thread the semantic context before functions
+
+- Two concrete obstacles to 052: `MethodsExact ctx0` excludes user definitions;
+  `FrameOk ctx0.frame` excludes method activations. Generalize `ResultOk`/`RunSpec`
+  to an outgoing `Ctx` and ivar spine, with defaults preserving current clients.
+  The existing `bind` now uses context-general `bindSpec`, so current composition
+  exercises the generalized proof rather than leaving it as unused scaffolding.
+- `SemSafeCtxA` carries incoming/outgoing context, locals, and ivar spine separately.
+  Prove equivalence to `SemSafeA` at `ctx0`/`ivar0`, plus context-general literal,
+  local-read, assignment, and sequence rules. Assignment consumes `capStaleCtx`
+  and outputs `killClosOverSpine`; these were hidden computations at `ctx0`/`ivar0`.
+  Sequencing consumes exactly the predecessor's outgoing state, not its old table.
+- No new checker admission yet. The user reiterated the body-checking requirement:
+  check every definition against its parameter/return annotations before accepting,
+  even if uncalled; calls must consume a checked signature, not re-infer the body
+  at each argument shape. The emitter currently discards its body result type, so
+  the trusted checker must enforce this. Add permanent rejection controls for bad
+  uncalled bodies, definition-site locals, renamed parameters, and call-before-def.
+  Positive define-then-call controls are required before claiming method coverage.
+- Full quiet ratchet GREEN: fragment 49, checker reach 51, 252 agree / 0 disagree;
+  all 22 rules proved. The context equivalence, assignment, and sequence proofs
+  are axiom-clean. Coverage is unchanged; 052 remains the next positive frontier.

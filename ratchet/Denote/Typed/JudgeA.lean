@@ -435,8 +435,8 @@ differ only in the continuation. -/
 
 /-- What `StateOk`'s environment component gives about a local read, with the alias stripped
 away by the rule's own premise (§F29). -/
-theorem denM_getLocal {Γ : Env} {m : Machine} {x : String} {τ : Ty}
-    (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) (hget : envGet? Γ x = some τ)
+theorem denM_getLocal {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {x : String} {τ : Ty}
+    (hm : StateOk κ Γ I m) (hget : envGet? Γ x = some τ)
     (halias : isAliasTy τ = false) : denM τ m (m.getLocal x) := by
   have hden := (hm.env.1 x τ hget).1
   have hstrip : stripAlias τ = τ := by

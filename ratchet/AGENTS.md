@@ -51,6 +51,12 @@ The semantic target is `SemSafeA = SemJudgeA ∧ SafeUnder`: answer correctness 
 under a typed continuation. [`Compose.lean`](Denote/Typed/Compose.lean) proves the
 continuation lifting; [`Run.lean`](Denote/Typed/Run.lean) exposes the same contract at
 machine entries used by sequence and argument frames. Safety holds at every fuel.
+`Context.lean` generalizes that run contract to distinct incoming/outgoing `Ctx`, local
+environments, and ivar spines, with an equivalence to the existing fragment's target and
+context-general local/assignment/sequence proofs. This is infrastructure for 052, not method
+coverage: `defDecl`/`callSig` remain rejected. Before admitting definitions, check every body
+against its parameter/return annotations, including uncalled bodies; require define-then-call
+positive controls as well as declaration controls. Never treat a signature as its own proof.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 proofs use no `sorry`, `native_decide`, or new axioms.
 
@@ -69,6 +75,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/JudgeA.lean` | Semantic judgment, continuation typing, literal/local rules |
 | `Denote/Typed/Sequence.lean`, `Branch*.lean`, `BareName.lean` | Sequence, conditional, and bare-name obligations |
 | `Denote/Typed/Array.lean` | First-order array evaluation, retention, and allocation |
+| `Denote/Typed/Context.lean` | Context-indexed run contract, specialization equivalence, assignment and sequence |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |
 | `Denote/Typed/HashIndex.lean` | Hash dispatch, lookup, nil defaults, and default-value counterexample |
