@@ -12,8 +12,10 @@ example {κ : Ctx} {Γ : Env} :
     SemSafeCtxA κ Γ (.ivarCons "@x" .int .ivar0) (.var .ivar "@x") .int
       κ Γ (.ivarCons "@x" .int .ivar0) := SemSafeCtxA.ivarRead
 
-example {κ : Ctx} {Γ : Env} :
-    SemSafeCtxA κ Γ .ivar0 (.var .ivar "@unset") .nilT κ Γ .ivar0 := SemSafeCtxA.ivarRead
+example {κ : Ctx} {Γ : Env} (hc : κ.scope.closedIvars = true) :
+    SemSafeCtxA κ Γ .ivar0 (.var .ivar "@unset") .nilT κ Γ .ivar0 := by
+  simpa [Ctx.ivarReadTy, ivarGet?, hc] using
+    (SemSafeCtxA.ivarRead (κ := κ) (Γ := Γ) (I := .ivar0) (x := "@unset"))
 
 -- A shadowed duplicate contributes no contradictory type to a read.
 example {κ : Ctx} {Γ : Env} :

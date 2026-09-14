@@ -156,29 +156,14 @@ def EnvOk (Γ : Env) (m : Machine) : Prop :=
   -- convenience. `Denote/Sanity.lean`'s boot machine satisfies it.
   (∀ x, envGet? Γ x = none → m.getLocal x = .nil)
 
-/-- `self`'s instance variables match the spine `I`, **and the spine is complete**: an ivar
-the spine does not mention reads as `nil`.
-
-The second conjunct was forced by `Judge.ivarRead` (clink 48), and it is the invariant that
-rule's own docstring already named — *"the default is sound only because the spine is complete
-— every ivar the object has ever been given a value for appears in it"*. `Judge.ivarRead`
-types `@x` as `(ivarGet? I x).getD .nilT`, so at a spine that is silent about `@x` it claims
-`@x : Nil`; the first conjunct alone is a **lower** bound (`Denote/Den.lean` says so of
-`denM`'s `inst` arm: "ivars the type does not mention are unconstrained"), so without this
-clause a conformant machine could hold `@x = 7` at `I = .ivar0` and the rule would be false of
-the semantics.
-
-Stated as "reads as `nil`" rather than "is absent from the object", because that is what the
-rule needs and it is the weaker of the two: CRuby's `@x = nil` and an unset `@x` are
-indistinguishable to a read, and `Judge.ivarAsgn` at a `nil` right-hand side would have to
-re-establish the stronger form without being able to remove the entry.
-
-Note the asymmetry with `EnvOk`, which needs no completeness clause: there is no rule that
-types an *unbound local* — `Judge.var` requires `envGet? Γ x = some τ` — while `ivarRead` is
-total in `x` on purpose, because in Ruby reading an unset ivar is legal and yields `nil`. -/
-def SelfSpineOk (I : Ty) (m : Machine) : Prop :=
+/-- The receiver's known field types, optionally with a complete field set. The default
+retains clink 48's closed-spine contract: unmentioned fields read as nil (whether absent or
+explicitly assigned nil). `Ty.inst` is an open record and supplies only the lower bound;
+ordinary method entry must not infer completeness from it. `Scope.closedIvars` selects the
+contract, and `Ctx.ivarReadTy` defaults to nil only when completeness was requested. -/
+def SelfSpineOk (I : Ty) (m : Machine) (closed : Bool := true) : Prop :=
   denSpine I m (ivarOf m.heap m.currentFrame.self) ∧
-  ∀ x, ivarGet? I x = none → ivarOf m.heap m.currentFrame.self x = .nil
+  ∀ x, ivarGet? I x = none → closed = true → ivarOf m.heap m.currentFrame.self x = .nil
 
 /-- A `Ty.clos` really names *this* Proc: the heap closure's parameters and body are the
 translation of the table entry `idx` points at.
@@ -1052,7 +1037,7 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   core : CoreOk m.heap
   frameInRange : FrameInRange m
   env : EnvOk Γ m
-  selfSpine : SelfSpineOk I m
+  selfSpine : SelfSpineOk I m κ.scope.closedIvars
   classes : ClassesOk κ.classes m
   defs : DefsOk κ.defs m
   asms : AsmsOk κ.asms m

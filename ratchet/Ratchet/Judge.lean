@@ -2244,6 +2244,9 @@ structure Scope where
   /-- Ordinary lexical class owner, shared by a class body and its method activations.
       This is independent of the receiver type; `none` imposes no class-scope requirement. -/
   runtimeClass : Option String := none
+  /-- Unmentioned self ivars are known to read as nil. Ordinary open instance annotations
+      do not provide this fact; fresh initialization does. -/
+  closedIvars : Bool := true
 deriving Inhabited
 
 /-- The judgment's non-local state, in three disciplines. -/
@@ -2252,6 +2255,10 @@ structure Ctx where
   neg : Neg
   scope : Scope
 deriving Inhabited
+
+/-- Open receiver annotations say nothing about unmentioned fields. -/
+def Ctx.ivarReadTy (κ : Ctx) (I : Ty) (x : String) : Ty :=
+  (ivarGet? I x).getD (if κ.scope.closedIvars then .nilT else .any)
 
 /-! ### Field accessors
 
@@ -3572,6 +3579,6 @@ derivation carrying one is only a conditional claim, and `frame`/`selfTy` becaus
 program's top level is inside no method and runs somewhere `self` is not an instance of
 anything this judgment models. The constant table is empty for the first of those reasons:
 a program's first statement is the first thing that could assign one. -/
-def ctx0 : Ctx := ⟨⟨[], [], [], []⟩, ⟨[], [], [], false, [], [], []⟩, ⟨none, [], none, none, [], true, none⟩⟩
+def ctx0 : Ctx := ⟨⟨[], [], [], []⟩, ⟨[], [], [], false, [], [], []⟩, ⟨none, [], none, none, [], true, none, true⟩⟩
 
 end Ratchet

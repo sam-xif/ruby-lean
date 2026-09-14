@@ -14,6 +14,11 @@ theorem StateOk_forgetClassScope {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     StateOk { κ with scope := { κ.scope with runtimeClass := none } } Γ I m :=
   { h with classRuntime := by intro cn hc; cases hc }
 
+theorem StateOk_forgetIvars {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    (h : StateOk κ Γ I m) :
+    StateOk { κ with scope := { κ.scope with closedIvars := false } } Γ .ivar0 m :=
+  { h with selfSpine := ⟨by simp [denSpine, denSpineFrom], by intro _ _ hc; cases hc⟩ }
+
 structure ReframeFO (κ : Ctx) (I : Ty) : Prop where
   spine : FirstOrder I = true
   self : ∀ τ, κ.selfTy = some τ → FirstOrder τ = true

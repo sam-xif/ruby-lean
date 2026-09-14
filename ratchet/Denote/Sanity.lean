@@ -563,7 +563,7 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
               -- completeness at the boot machine: the toplevel frame binds nothing, so every
               -- name reads as `nil`
               fun x _ => localsEmptyB_sound hle x⟩
-      selfSpine := ⟨by simp [denSpine, denSpineFrom], fun x _ => selfIvarsEmpty_sound hself x⟩
+      selfSpine := ⟨by simp [denSpine, denSpineFrom], fun x _ _ => selfIvarsEmpty_sound hself x⟩
       constPaths := by
         intro owner n τ k hk _ _ _
         exact absurd hk (by simp [envGet?, List.find?, Ratchet.ctx0])

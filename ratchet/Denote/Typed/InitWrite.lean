@@ -19,7 +19,7 @@ theorem InitState.bindIvar {anchor : Heap} {κ : Ctx} {Γ : Env} {I ρ : Ty}
     intro y τ hy
     obtain ⟨z, hz⟩ := envGet?_mem hy
     exact denM_writeStable (ht.locals (z, τ) hz) (hm.typed.env.1 y τ hy).1)
-  have hspine : SelfSpineOk (ivarSet I x ρ) (Interp.bindIvar m x v) :=
+  have hspine : SelfSpineOk (ivarSet I x ρ) (Interp.bindIvar m x v) κ.scope.closedIvars :=
     selfSpine_bindIvar ho hlive hm.typed.selfSpine hv' (by
       intro y τ hne hy
       have hd := denSpineFrom_get hm.typed.selfSpine.1 (by simp) hy

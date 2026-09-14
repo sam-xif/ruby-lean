@@ -9448,3 +9448,22 @@ both halves of what constrains them now have a name.
   execution remain required for 061.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree.
+
+## Clink 122 (2026-09-14) — preserve open receiver fields at method entry
+
+- A receiver's `.inst cn I` denotation is a lower bound, but the old SelfSpineOk required
+  unmentioned fields to be nil. A proved counterexample precedes the change: empty open
+  instance fields coexist with @extra = 7. The real define/call read_extra also returns 7.
+- `Scope.closedIvars` requests completeness separately; boot/fresh class scopes retain it,
+  `instanceBodyCtx` does not. Ctx equality checks the flag. State transport and checked writes
+  preserve it. Unknown open reads get `.any`; known fields retain their type. This grants no
+  unchecked calls or return-annotation casts. The existing Integer getter proof still works.
+- `InstanceEntry` derives open self-spine/type through requiredFrame for arbitrary typed
+  receivers, without concrete-call specialization. `StateOk_forgetIvars` safely erases field
+  information only while opening the spine; a full-state real-boot witness has empty open
+  fields and reads 7. New modules build below a second, with standard axioms only.
+- No rule or admission added. Full instance-entry scope/dispatch conformance, class-body
+  caches, and constructor integration remain; the absence facts for a changed receiver
+  and its lexical constants must be justified rather than copied from the caller.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree.

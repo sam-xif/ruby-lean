@@ -33,7 +33,7 @@ theorem bindIvar_isExactInst (m : Machine) (x : String) (v w : Value) (cn : Stri
 theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     (h : StateOk κ Γ I m) (x : String) (v : Value)
     (he : EnvOk Γ' (Interp.bindIvar m x v))
-    (hi : SelfSpineOk I' (Interp.bindIvar m x v))
+    (hi : SelfSpineOk I' (Interp.bindIvar m x v) κ.scope.closedIvars)
     (hb : BlockTyOk κ.blockTy (Interp.bindIvar m x v))
     (hs : SelfTyOk κ.selfTy (Interp.bindIvar m x v))
     (hc : ConstsOk κ (Interp.bindIvar m x v))

@@ -24,10 +24,15 @@ theorem denSpineFrom_get {m : Machine} {g : String → Value} {I τ : Ty} {x : S
         simpa only [beq_iff_eq] using hne)) hx) hg
   | _ => simp [ivarGet?] at hg
 
-theorem selfSpine_read {m : Machine} {I : Ty} (h : SelfSpineOk I m) (x : String) :
-    denM ((ivarGet? I x).getD .nilT) m (ivarOf m.heap m.currentFrame.self x) := by
+theorem selfSpine_read {m : Machine} {I : Ty} {closed : Bool}
+    (h : SelfSpineOk I m closed) (x : String) :
+    denM ((ivarGet? I x).getD (if closed then .nilT else .any)) m
+      (ivarOf m.heap m.currentFrame.self x) := by
   cases hg : ivarGet? I x with
-  | none => simp only [Option.getD_none]; rw [h.2 x hg]; simp [denM, isNilV]
+  | none =>
+    cases hc : closed with
+    | false => simp [denM]
+    | true => simp only [↓reduceIte, Option.getD_none]; rw [h.2 x hg hc]; simp [denM, isNilV]
   | some τ => exact denSpineFrom_get h.1 (by simp) hg
 
 theorem stepFn_ivarRead (m : Machine) (x : String) :
@@ -43,11 +48,11 @@ theorem stepFn_ivarRead (m : Machine) (x : String) :
   cases (m.heap.get o).ivars.find? (·.1 == x) <;> rfl
 
 theorem SemSafeCtxA.ivarRead {κ : Ctx} {Γ : Env} {I : Ty} {x : String} :
-    SemSafeCtxA κ Γ I (.var .ivar x) ((ivarGet? I x).getD .nilT) κ Γ I := by
+    SemSafeCtxA κ Γ I (.var .ivar x) (κ.ivarReadTy I x) κ Γ I := by
   apply SemSafeCtxA.leaf
   intro m hm
   exact ⟨m, ivarOf m.heap m.currentFrame.self x, stepFn_ivarRead m x, .refl m,
-    by simpa only [AnsOk] using selfSpine_read hm.selfSpine x, fun _ _ => hm⟩
+    by simpa only [AnsOk, Ctx.ivarReadTy] using selfSpine_read hm.selfSpine x, fun _ _ => hm⟩
 
 theorem SemSafeCtxA.selfRead {κ : Ctx} {Γ : Env} {I τ : Ty}
     (hs : κ.selfTy = some τ) : SemSafeCtxA κ Γ I .self' τ κ Γ I := by

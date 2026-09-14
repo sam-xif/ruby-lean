@@ -11,7 +11,19 @@ def classBodyCtx (κ : Ctx) (name : String) : Ctx :=
       blockTy := none
       selfTy := some (.clsOf name)
       runtimeMain := false
-      runtimeClass := some name } }
+      runtimeClass := some name
+      closedIvars := true } }
+
+/-- A receiver annotation is an open field record, even when its constructor originally
+knew a complete shape. Method bodies do not silently recover that erased information. -/
+def instanceBodyCtx (κ : Ctx) (fr : Frame) (I : Ty) : Ctx :=
+  { κ with scope := { κ.scope with
+      frame := some fr
+      blockTy := none
+      selfTy := some (.inst fr.recvClass I)
+      runtimeMain := false
+      runtimeClass := some fr.defClass
+      closedIvars := false } }
 
 /-- Publish one executed definition, retaining earlier declarations. Admission must check
 name freshness and the body; this updater never scans or advertises a future class body. -/

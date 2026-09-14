@@ -31,7 +31,7 @@ theorem ivar_nil (x : String) : ivarOf (entry).heap (entry).currentFrame.self x 
     Proof.Judgment.clsObjE]
 
 theorem spine_empty : SelfSpineOk .ivar0 entry := by
-  refine ⟨?_, fun x _ => ivar_nil x⟩
+  refine ⟨?_, fun x _ _ => ivar_nil x⟩
   simp [denSpine, denSpineFrom]
 
 theorem frame_ok : FrameOk none entry := by

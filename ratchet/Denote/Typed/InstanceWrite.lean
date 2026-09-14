@@ -77,11 +77,12 @@ theorem ivarOf_bindIvar_ne {m : Machine} {o : ObjId} {x y : String} {v : Value}
 
 /-- The assigned value and every untouched visible field have types in the *post* heap. -/
 theorem selfSpine_bindIvar {m : Machine} {o : ObjId} {I ρ : Ty} {x : String} {v : Value}
+    {closed : Bool}
     (hs : m.currentFrame.self = .ref o) (ho : o < m.heap.objs.size)
-    (hi : SelfSpineOk I m) (hv : denM ρ (Interp.bindIvar m x v) v)
+    (hi : SelfSpineOk I m closed) (hv : denM ρ (Interp.bindIvar m x v) v)
     (hkeep : ∀ y τ, y ≠ x → ivarGet? I y = some τ →
       denM τ (Interp.bindIvar m x v) (ivarOf m.heap (.ref o) y)) :
-    SelfSpineOk (ivarSet I x ρ) (Interp.bindIvar m x v) := by
+    SelfSpineOk (ivarSet I x ρ) (Interp.bindIvar m x v) closed := by
   have hshape := denSpineFrom_shape hi.1
   have hread (y : String) :
       ivarOf (Interp.bindIvar m x v).heap (.ref o) y =
@@ -98,13 +99,13 @@ theorem selfSpine_bindIvar {m : Machine} {o : ObjId} {I ρ : Ty} {x : String} {v
       cases Option.some.inj hg; exact hv
     · simp only [hy, ↓reduceIte] at hg ⊢
       exact hkeep y τ hy hg
-  · intro y hg
+  · intro y hg hc
     rw [ivarGet?_set hshape] at hg
     by_cases hy : y = x
     · simp [hy] at hg
     · simp only [hy, ↓reduceIte] at hg
       simp only [bindIvar_currentFrame, hs, hread, hy, ↓reduceIte]
-      simpa only [hs] using hi.2 y hg
+      simpa only [hs] using hi.2 y hg hc
 
 theorem getLocal_bindIvar (m : Machine) (x : String) (v : Value) (y : String) :
     (Interp.bindIvar m x v).getLocal y = m.getLocal y := by
