@@ -70,7 +70,9 @@ remain next; explicit `return` needs an answer-contract extension. Neither bound
 declaration-only acceptance count as 052. `methodBootOkB` checks additional method-start
 facts which must join the validator's boot contract when methods are admitted.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
-proofs use no `sorry`, `native_decide`, or new axioms.
+`bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
+`validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
+Proofs use no `sorry`, `native_decide`, or new axioms.
 
 Before authoring a rule, find its state-transport lemma. **That lemma determines the
 premises and outgoing environment** (`Check.lean`, “Authoring a rule”). The composite

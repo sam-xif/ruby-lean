@@ -8743,3 +8743,17 @@ both halves of what constrains them now have a name.
   Every new theorem is axiom-clean; the dispatcher module builds in under a second.
 - Full quiet ratchet GREEN: fragment 49, checker reach 51, 252 agree / 0 disagree,
   all 22 rules proved. The new runtime controls are imported by the full gate.
+
+## Clink 90 (2026-09-14) — correct the proof-side user-code initial machine
+
+- The method-installation pilot exposed `bootMachine.preludeMode = true`: `Sanity`
+  reused `Prelude.boot`'s phase-one evaluator, while `Semantics.run` and the difftest
+  SUT correctly construct fresh phase-two frames and clear prelude mode. In the old
+  proof helper a user `def` would be marked `fromPrelude`, skipping hook/shadow checks.
+  This was a proof/runner mismatch, not a bug in the executable model.
+- Make `bootMachine` use the runner's exact `Machine.initOn` + boot-globals recipe;
+  guard that prelude mode is off. Add `validateD_safe_run` over `Semantics.run` itself:
+  successful boot agrees with `evalFrom bootMachine`, failed boot yields Unsupported.
+  No interpreter changes, new axioms, or per-program concrete safety proofs.
+- Full quiet ratchet GREEN at the corrected initial machine: fragment 49, checker
+  reach 51, 252 agree / 0 disagree, all 22 rules proved. `validateD_safe_run` is axiom-clean.

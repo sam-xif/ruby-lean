@@ -132,8 +132,19 @@ theorem validateD_safe_boot {p : Ratchet.Expr} {d : Deriv} (h : validateD p d = 
     (hb : bootOkB = true) : StuckFree bootMachine p :=
   validateD_safe h (stateOk_boot hb)
 
+/-- The executable ratchet runner, not just a separately named initial machine.
+On boot failure the runner reports Unsupported; on success the initial states agree. -/
+theorem validateD_safe_run {p : Ratchet.Expr} {d : Deriv} (h : validateD p d = true)
+    (hb : bootOkB = true) (fuel : Nat) :
+    Semantics.typeStuck (Semantics.run fuel (toRuby p)) = false := by
+  have hs := validateD_safe_boot h hb fuel
+  cases hboot : Semantics.bootedMachine with
+  | error msg => simp only [Semantics.run, hboot, Semantics.typeStuck]
+  | ok m => simpa only [Semantics.run, bootMachine, hboot, evalFrom, Machine.initOn] using hs
+
 #print axioms djudge_certified
 #print axioms validateD_safe
 #print axioms validateD_safe_boot
+#print axioms validateD_safe_run
 
 end Ratchet.Denote.Typed

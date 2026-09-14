@@ -35,13 +35,16 @@ set_option autoImplicit false
 namespace Ratchet.Denote
 open RubyCore
 
-/-- The prelude-booted machine — the same one `Ratchet.Semantics.run` executes a rung from,
+/-- The user-code initial machine — the same one `Ratchet.Semantics.run` executes a rung from,
 and the same one `Denote/Examples.lean`'s 31 guards observe. A boot failure falls back to a
-machine that fails the checks below loudly rather than passing them vacuously. -/
+machine that fails the checks below loudly rather than passing them vacuously.
+Do not reuse the phase-one machine: its `preludeMode` is true and its frames are stale. -/
 def bootMachine : Machine :=
   match Semantics.bootedMachine with
-  | .ok m => m
+  | .ok m => { Machine.initOn m.heap .nil with globals := m.globals }
   | .error _ => Machine.init .nil
+
+#guard !bootMachine.preludeMode
 
 /-- `CoreOk` as a `Bool`, so all its clauses are checked at boot. -/
 def coreOkB (h : Heap) : Bool :=
