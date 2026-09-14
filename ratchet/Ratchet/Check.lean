@@ -1,14 +1,13 @@
 import Ratchet.Deriv
+import Ratchet.Judge
 
 /-!
 # `Ratchet/Check.lean` — the certificate checker, and the judgment it decides
 
 Layers 1–3 of `../docs/semantics/answer-typed-schema.md` §3, built **standalone**. Nothing
-here imports `Ratchet/Judge.lean` or `Ratchet/Validate.lean`, and that is deliberate: the
-old `chk` is an *inference* algorithm over an 83-rule inductive of which 35 rules have no
-semantic justification and 7 are known false as stated. Growing that is the thing the clink
-discipline (`Denote/Clink/`) exists to stop. So the typed ladder gets its own judgment,
-authored one rule at a time, and this file is the whole of it.
+here imports `Denote/`. The retained `Ratchet/Judge.lean` supplies the context/type
+substrate, not the older checker or judgment (deleted in clink 68). This file owns the
+answer-typed judgment, authored one justified rule at a time.
 
 What is reused is **type-level only** — `Ratchet/Ty.lean`'s `Ty`, `Env`, `envGet?`, `envSet`,
 `joinT`, `joinEnv` — and `Ratchet/Expr.lean`'s syntax. Neither mentions a judgment.
@@ -90,10 +89,12 @@ flexibility, with the obligation as the forcing function.
 `selfExpr` — answers `none`, by name, in `check`'s last arms. They join a rule at
 a time, and each one joining is a rung.
 
-Also not here, and *not* an oversight: `DJudge` carries no `Ctx` and no ivar spine. The
-fragment it covers declares nothing, has no `self`, and opens no class, so a context would be
-a field nothing reads. `Ratchet/Judge.lean`'s `Ctx` is where the declaration machinery lives
-and it is the wrong thing to copy in ahead of a rule that needs it.
+`DJudge` now carries distinct incoming/outgoing contexts and ivar spines, as do all three
+companions. Guards and state transitions are copied from the context-general semantic
+proofs. Trailing `optParam` indices keep existing top-level derivations readable; defaults
+are only notation, not a restriction of the relation. Use `@DJudge` when passing the entire
+family as a value. The executable checker below still specializes to `ctx0`/`ivar0` pending
+its state-indexed result migration; neither method rule is admitted yet.
 -/
 
 set_option autoImplicit false
@@ -226,7 +227,8 @@ def plainArgB : Expr → Bool
 
 /-! ## §2 The judgment
 
-`DJudge Γ e τ Γ'`: in local environment `Γ`, the expression `e` has type `τ` and leaves `Γ'`.
+`DJudge Γ e τ Γ' κ I κ' I'`: expression `e` transforms the incoming state index into the
+outgoing one and returns type `τ`. Omitting the four trailing indices selects top level.
 Three companions: arguments/array elements (`DJudgeAll`), statement sequences (`DJudgeSeq`),
 and interleaved key/value pairs (`DJudgePairs`).
 
@@ -237,18 +239,19 @@ soundness bug, and the reason they could accumulate unnoticed is that nothing fo
 and its justification to arrive together. -/
 
 mutual
-inductive DJudge : Env → Expr → Ty → Env → Prop
+inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
+    (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
   /-- An integer literal, negative ones included: `-5` desugars to `int (-5)`, not to a
       unary send. -/
-  | intLit {Γ : Env} {n : Int} : DJudge Γ (.int n) .int Γ
+  | intLit {κ : Ctx} {Γ : Env} {I : Ty} {n : Int} : DJudge Γ (.int n) .int Γ κ I
   /-- A float literal, carried as IEEE-754 bits by the syntax layer. -/
-  | fltLit {Γ : Env} {b : UInt64} : DJudge Γ (.flt b) .float Γ
+  | fltLit {κ : Ctx} {Γ : Env} {I : Ty} {b : UInt64} : DJudge Γ (.flt b) .float Γ κ I
   /-- A string literal is an *instance* of `String`; `Ty` has no string arm. -/
-  | strLit {Γ : Env} {s : String} : DJudge Γ (.str s) (.cls "String") Γ
-  | symLit {Γ : Env} {s : String} : DJudge Γ (.sym s) .sym Γ
-  | truLit {Γ : Env} : DJudge Γ .tru .bool Γ
-  | flsLit {Γ : Env} : DJudge Γ .fls .bool Γ
-  | nilLit {Γ : Env} : DJudge Γ .nil .nilT Γ
+  | strLit {κ : Ctx} {Γ : Env} {I : Ty} {s : String} : DJudge Γ (.str s) (.cls "String") Γ κ I
+  | symLit {κ : Ctx} {Γ : Env} {I : Ty} {s : String} : DJudge Γ (.sym s) .sym Γ κ I
+  | truLit {κ : Ctx} {Γ : Env} {I : Ty} : DJudge Γ .tru .bool Γ κ I
+  | flsLit {κ : Ctx} {Γ : Env} {I : Ty} : DJudge Γ .fls .bool Γ κ I
+  | nilLit {κ : Ctx} {Γ : Env} {I : Ty} : DJudge Γ .nil .nilT Γ κ I
   /-- Reading a local. The type comes from the environment, so there is nothing for a
       certificate to choose and `Deriv.var` carries only the name.
 
@@ -259,8 +262,8 @@ inductive DJudge : Env → Expr → Ty → Env → Prop
       `DJudge` rule *produces* a `sameAs`, so no reachable environment has one — but
       `SemJudgeA` quantifies over every environment with a conformant machine, which is
       what made the gap visible. -/
-  | var {Γ : Env} {x : String} {τ : Ty} :
-      envGet? Γ x = some τ → isAliasTy τ = false → DJudge Γ (.var .lvar x) τ Γ
+  | var {κ : Ctx} {Γ : Env} {I τ : Ty} {x : String} :
+      envGet? Γ x = some τ → isAliasTy τ = false → DJudge Γ (.var .lvar x) τ Γ κ I
   /-- Assignment. Its *value* is the right-hand side's (Ruby's `x = e` evaluates to `e`) and
       its *effect* is to record that type for `x`. The binding lands in `Γ₁` — the
       environment the right-hand side left behind — not in `Γ`, because the right-hand side
@@ -272,19 +275,23 @@ inductive DJudge : Env → Expr → Ty → Env → Prop
       captured spine (writing `x` would make that spine stale); `halias` is §F29's, one rule
       over — `envSet` records the right-hand side's type verbatim, and an alias type there
       would claim `x` and `y` hold the same object, which the assignment does not establish. -/
-  | vasgn {Γ Γ₁ : Env} {x : String} {e : Expr} {τ : Ty} :
-      DJudge Γ e τ Γ₁ → capStale x τ τ = false → isAliasTy τ = false →
-      DJudge Γ (.vasgn .lvar x e) τ (envAfter Γ₁ x τ)
+  | vasgn {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {e : Expr} {x : String} :
+      DJudge Γ e τ Γ' κ I κ' I' → capStale x τ τ = false → isAliasTy τ = false →
+      capStaleCtx x τ κ' = false →
+      DJudge Γ (.vasgn .lvar x e) τ (envAfter Γ' x τ) κ I κ' (killClosOverSpine I' x τ)
   /-- A statement sequence, via `DJudgeSeq`. -/
-  | seq {Γ Γ' : Env} {es : List Expr} {τ : Ty} :
-      DJudgeSeq Γ es τ Γ' → DJudge Γ (.seq es) τ Γ'
+  | seq {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty} {es : List Expr} {τ : Ty} :
+      DJudgeSeq Γ es τ Γ' κ I κ' I' → DJudge Γ (.seq es) τ Γ' κ I κ' I'
   /-- A send with an explicit receiver, resolved by the primitive table. Receiver first, then
       arguments left to right — Ruby's own evaluation order, which is what makes threading
       `Γ` through them in this order the right claim. -/
-  | prim {Γ Γ₁ Γ₂ : Env} {recv : Expr} {m : String} {args : List Expr}
+  | prim {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty}
+      {recv : Expr} {m : String} {args : List Expr}
       {σ τ : Ty} {argTys : List Ty} :
-      DJudge Γ recv σ Γ₁ → DJudgeAll Γ₁ args argTys Γ₂ → DPrim σ m argTys τ →
-      DJudge Γ (.send (some recv) m args none) τ Γ₂
+      DJudge Γ recv σ Γ₁ κ I κ₁ I₁ → DJudgeAll Γ₁ args argTys Γ₂ κ₁ I₁ κ₂ I₂ →
+      DPrim σ m argTys τ → nameFreeN κ₂ m = true →
+      (σ = .cls "String" → isANoOk κ₂.wholeCls (["String", "Comparable"] ++ rootAncestors) = true) →
+      DJudge Γ (.send (some recv) m args none) τ Γ₂ κ I κ₂ I₂
   /-- `if c then t else e end`. The type is the join of the branches; the outgoing
       environment is the **pointwise** join, which is a soundness requirement rather than a
       precision one (`Ratchet/Ty.lean`'s `joinEnv`: carrying the pre-`if` environment forward
@@ -294,47 +301,58 @@ inductive DJudge : Env → Expr → Ty → Env → Prop
       evaluates the condition before either. No narrowing — a `nilable` or `union` condition
       refines nothing here, and the rule that would do the refining is a separate rule with a
       separate justification. -/
-  | if' {Γ Γc Γ₁ Γ₂ : Env} {c t e : Expr} {σ τ₁ τ₂ : Ty} :
-      DJudge Γ c σ Γc → DJudge Γc t τ₁ Γ₁ → DJudge Γc e τ₂ Γ₂ →
-      DJudge Γ (.if' c t (some e)) (joinT τ₁ τ₂) (joinEnv Γ₁ Γ₂)
+  | if' {κ κc κ' : Ctx} {Γ Γc Γ₁ Γ₂ : Env} {I Ic I' : Ty} {c t e : Expr} {σ τ₁ τ₂ : Ty} :
+      DJudge Γ c σ Γc κ I κc Ic → DJudge Γc t τ₁ Γ₁ κc Ic κ' I' →
+      DJudge Γc e τ₂ Γ₂ κc Ic κ' I' →
+      DJudge Γ (.if' c t (some e)) (joinT τ₁ τ₂) (joinEnv Γ₁ Γ₂) κ I κ' I'
   /-- The absent else leaves `Γc` unchanged and returns nil. Join both paths. -/
-  | ifNoElse {Γ Γc Γt : Env} {c t : Expr} {σ τ : Ty} :
-      DJudge Γ c σ Γc → DJudge Γc t τ Γt →
-      DJudge Γ (.if' c t none) (joinT τ .nilT) (joinEnv Γt Γc)
+  | ifNoElse {κ κc : Ctx} {Γ Γc Γt : Env} {I Ic : Ty} {c t : Expr} {σ τ : Ty} :
+      DJudge Γ c σ Γc κ I κc Ic → DJudge Γc t τ Γt κc Ic →
+      DJudge Γ (.if' c t none) (joinT τ .nilT) (joinEnv Γt Γc) κ I κc Ic
   /-- `BareNameFree` currently certifies absence only for `x`. Ordinary sends do not
       use this rule: a missing `x()` raises NoMethodError rather than NameError. -/
-  | bareName {Γ : Env} : DJudge Γ (.vcall "x") .any Γ
+  | bareName {κ : Ctx} {Γ : Env} {I : Ty} : nameFreeN κ "x" = true →
+      nameFreeN κ "method_missing" = true → κ.selfTy = none → DJudge Γ (.vcall "x") .any Γ κ I
   /-- Later elements preserve earlier first-order values. Closure types need stronger
       capture tracking before they can be retained across arbitrary element evaluation. -/
-  | arrayLit {Γ Γ' : Env} {es : List Expr} {tys : List Ty} :
-      DJudgeAll Γ es tys Γ' → FirstOrder (elemTy tys) = true →
-      DJudge Γ (.array es) (.arrayOf (elemTy tys)) Γ'
+  | arrayLit {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty} {es : List Expr} {tys : List Ty} :
+      DJudgeAll Γ es tys Γ' κ I κ' I' → FirstOrder (elemTy tys) = true →
+      DJudge Γ (.array es) (.arrayOf (elemTy tys)) Γ' κ I κ' I'
   /-- Pair evaluation is interleaved, not all keys followed by all values. -/
-  | hashLit {Γ Γ' : Env} {ps : List (Expr × Expr)} {ks vs : List Ty} :
-      DJudgePairs Γ ps ks vs Γ' → FirstOrder (elemTy ks) = true →
-      FirstOrder (elemTy vs) = true → DJudge Γ (.hash ps) (.hashOf (elemTy ks) (elemTy vs)) Γ'
+  | hashLit {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty} {ps : List (Expr × Expr)} {ks vs : List Ty} :
+      DJudgePairs Γ ps ks vs Γ' κ I κ' I' → FirstOrder (elemTy ks) = true →
+      FirstOrder (elemTy vs) = true → DJudge Γ (.hash ps) (.hashOf (elemTy ks) (elemTy vs)) Γ' κ I κ' I'
 
-inductive DJudgeAll : Env → List Expr → List Ty → Env → Prop
-  | nil {Γ : Env} : DJudgeAll Γ [] [] Γ
-  | cons {Γ Γ₁ Γ₂ : Env} {e : Expr} {es : List Expr} {τ : Ty} {τs : List Ty} :
-      DJudge Γ e τ Γ₁ → DJudgeAll Γ₁ es τs Γ₂ → plainArgB e = true →
-      DJudgeAll Γ (e :: es) (τ :: τs) Γ₂
+inductive DJudgeAll : Env → List Expr → List Ty → Env → (κ : optParam Ctx ctx0) →
+    (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
+  | nil {κ : Ctx} {Γ : Env} {I : Ty} : DJudgeAll Γ [] [] Γ κ I
+  | cons {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ τ : Ty}
+      {e : Expr} {es : List Expr} {τs : List Ty} :
+      DJudge Γ e τ Γ₁ κ I κ₁ I₁ → DJudgeAll Γ₁ es τs Γ₂ κ₁ I₁ κ₂ I₂ → plainArgB e = true →
+      DJudgeAll Γ (e :: es) (τ :: τs) Γ₂ κ I κ₂ I₂
 
-inductive DJudgeSeq : Env → List Expr → Ty → Env → Prop
+inductive DJudgeSeq : Env → List Expr → Ty → Env → (κ : optParam Ctx ctx0) →
+    (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
   /-- The sequence's type is its **last** statement's. -/
-  | last {Γ Γ' : Env} {e : Expr} {τ : Ty} : DJudge Γ e τ Γ' → DJudgeSeq Γ [e] τ Γ'
-  | cons {Γ Γ₁ Γ₂ : Env} {e e' : Expr} {es : List Expr} {σ τ : Ty} :
-      DJudge Γ e σ Γ₁ → DJudgeSeq Γ₁ (e' :: es) τ Γ₂ → DJudgeSeq Γ (e :: e' :: es) τ Γ₂
+  | last {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {e : Expr} :
+      DJudge Γ e τ Γ' κ I κ' I' → DJudgeSeq Γ [e] τ Γ' κ I κ' I'
+  | cons {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ σ τ : Ty}
+      {e e' : Expr} {es : List Expr} :
+      DJudge Γ e σ Γ₁ κ I κ₁ I₁ → DJudgeSeq Γ₁ (e' :: es) τ Γ₂ κ₁ I₁ κ₂ I₂ →
+      DJudgeSeq Γ (e :: e' :: es) τ Γ₂ κ I κ₂ I₂
 
-inductive DJudgePairs : Env → List (Expr × Expr) → List Ty → List Ty → Env → Prop
-  | nil {Γ : Env} : DJudgePairs Γ [] [] [] Γ
-  | cons {Γ Γk Γv Γ' : Env} {k v : Expr} {ps : List (Expr × Expr)}
-      {σ τ : Ty} {ks vs : List Ty} :
-      DJudge Γ k σ Γk → DJudge Γk v τ Γv → DJudgePairs Γv ps ks vs Γ' →
-      DJudgePairs Γ ((k, v) :: ps) (σ :: ks) (τ :: vs) Γ'
+inductive DJudgePairs : Env → List (Expr × Expr) → List Ty → List Ty → Env →
+    (κ : optParam Ctx ctx0) → (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
+  | nil {κ : Ctx} {Γ : Env} {I : Ty} : DJudgePairs Γ [] [] [] Γ κ I
+  | cons {κ κk κv κ' : Ctx} {Γ Γk Γv Γ' : Env} {I Ik Iv I' σ τ : Ty}
+      {k v : Expr} {ps : List (Expr × Expr)} {ks vs : List Ty} :
+      DJudge Γ k σ Γk κ I κk Ik → DJudge Γk v τ Γv κk Ik κv Iv →
+      DJudgePairs Γv ps ks vs Γ' κv Iv κ' I' →
+      DJudgePairs Γ ((k, v) :: ps) (σ :: ks) (τ :: vs) Γ' κ I κ' I'
 end
 
-theorem DJudge.plainArg {Γ Γ' : Env} {e : Expr} {τ : Ty} (h : DJudge Γ e τ Γ') :
+theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ : Ty}
+    (h : DJudge Γ e τ Γ' κ I κ' I') :
     plainArgB e = true := by cases h <;> rfl
 
 /-! ## §3 The checker, which *builds* the derivation
@@ -410,7 +428,7 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) : Option (Certified Γ 
     | .tru, .truLit => some ⟨.bool, Γ, .truLit⟩
     | .fls, .flsLit => some ⟨.bool, Γ, .flsLit⟩
     | .nil, .nilLit => some ⟨.nilT, Γ, .nilLit⟩
-    | .vcall "x", .bareName "x" => some ⟨.any, Γ, .bareName⟩
+    | .vcall "x", .bareName "x" => some ⟨.any, Γ, .bareName rfl rfl rfl⟩
     | .var .lvar x, .var .lvar x' =>
       if x == x' then
         match hg : envGet? Γ x with
@@ -422,7 +440,7 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) : Option (Certified Γ 
         match check n Γ ev dv with
         | some ⟨τ, Γ₁, hv⟩ =>
           if hcap : capStale x τ τ = false then
-            if ha : isAliasTy τ = false then some ⟨τ, envAfter Γ₁ x τ, .vasgn hv hcap ha⟩
+            if ha : isAliasTy τ = false then some ⟨τ, envAfter Γ₁ x τ, .vasgn hv hcap ha rfl⟩
             else none
           else none
         | none => none
@@ -440,7 +458,7 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) : Option (Certified Γ 
             | some ⟨argTys, Γ₂, ha⟩ =>
               match hp : dprim? σ m argTys with
               | some τ =>
-                if τ == τc then some ⟨τ, Γ₂, .prim hr ha (dprim?_sound hp)⟩ else none
+                if τ == τc then some ⟨τ, Γ₂, .prim hr ha (dprim?_sound hp) rfl (by intro; rfl)⟩ else none
               | none => none
             | none => none
           else none

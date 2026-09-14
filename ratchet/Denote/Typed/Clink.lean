@@ -5,6 +5,7 @@ import Denote.Typed.BareName
 import Denote.Typed.Primitive
 import Denote.Typed.Array
 import Denote.Typed.Hash
+import Denote.Typed.RulesCtx
 import Denote.Clink.Form
 
 /-! The answer-typed registry carries the expression judgment and all three list companions.
@@ -25,25 +26,31 @@ open RubyCore Ratchet Ratchet.Denote
 
 /-- The expression judgment and its three list companions. -/
 structure DFam where
-  judge : Env → Ratchet.Expr → Ty → Env → Prop
-  all : Env → List Ratchet.Expr → List Ty → Env → Prop
-  seq : Env → List Ratchet.Expr → Ty → Env → Prop
-  pairs : Env → List (Ratchet.Expr × Ratchet.Expr) → List Ty → List Ty → Env → Prop
+  judge : Env → Ratchet.Expr → Ty → Env → (κ : optParam Ctx ctx0) →
+    (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
+  all : Env → List Ratchet.Expr → List Ty → Env → (κ : optParam Ctx ctx0) →
+    (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
+  seq : Env → List Ratchet.Expr → Ty → Env → (κ : optParam Ctx ctx0) →
+    (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
+  pairs : Env → List (Ratchet.Expr × Ratchet.Expr) → List Ty → List Ty → Env →
+    (κ : optParam Ctx ctx0) → (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
 
 /-- The syntactic reading: `Ratchet/Check.lean`'s own relation. -/
-def dsynFam : DFam := { judge := DJudge, all := DJudgeAll, seq := DJudgeSeq, pairs := DJudgePairs }
+def dsynFam : DFam := { judge := @DJudge, all := @DJudgeAll, seq := @DJudgeSeq, pairs := @DJudgePairs }
 
-/-- The **answer-typed semantic reading, conjoined with the invariant**
-(`Denote/Typed/JudgeA.lean` §1b). This is the field that makes a clink here mean something: a
-rule cannot join the judgment without proving both that the answer is in the type *and* that a
-machine evaluating it under a well-typed continuation is safe. -/
-def dsemFam : DFam := { judge := SemSafeA, all := SemAllA, seq := SemSeqA, pairs := SemPairsA }
+/-- The context-indexed run contract: safety at every fuel, typed answers, and full outgoing
+conformance. At top level it is equivalent to `SemSafeA`, including `SafeUnder`. -/
+def dsemFam : DFam where
+  judge Γ e τ Γ' κ I κ' I' := SemSafeCtxA κ Γ I e τ κ' Γ' I'
+  all Γ es tys Γ' κ I κ' I' := SemAllCtxA κ Γ I es tys κ' Γ' I'
+  seq Γ es τ Γ' κ I κ' I' := SemSeqCtxA κ Γ I es τ κ' Γ' I'
+  pairs Γ ps ks vs Γ' κ I κ' I' := SemPairsCtxA κ Γ I ps ks vs κ' Γ' I'
 
 /-! ## §2 Registration
 
 `register_dclink DJudge.intLit`: read the constructor, derive its `form` by replacing the
 judgment head with a projection of a `DFam` parameter, demand the proof, declare the clink.
-The proof is named `SemA.<rule>` (family-qualified for companions); absence is a
+The proof is named `SemSafeCtxA.<rule>` (family-qualified for companions, `sequence` for `seq`); absence is a
 build failure, and so is a proof of a different statement (the field's type is computed from
 the rule). -/
 
@@ -66,12 +73,14 @@ def dUncarriedJudgments : List Name :=
 def dclinkTy : Lean.Expr :=
   mkApp3 (mkConst ``Clink) (mkConst ``DFam) (mkConst ``dsynFam) (mkConst ``dsemFam)
 
-/-- `SemA.intLit` from `Ratchet.DJudge.intLit` — where the answer-typed proof must live. -/
+/-- Suffix shared by constructor names, registry names, and semantic obligations. -/
 def dRuleSuffix (ctor : Name) : Name :=
   if ctor.getPrefix == ``Ratchet.DJudge then Name.mkSimple ctor.getString!
   else Name.mkSimple ctor.getPrefix.getString! ++ Name.mkSimple ctor.getString!
 
-def dsemName (ctor : Name) : Name := `Ratchet.Denote.Typed.SemA ++ dRuleSuffix ctor
+def dsemName (ctor : Name) : Name :=
+  `Ratchet.Denote.Typed.SemSafeCtxA ++
+    (if ctor == ``Ratchet.DJudge.seq then `sequence else dRuleSuffix ctor)
 
 def dclinkName (ctor : Name) : Name := `Ratchet.Denote.Typed.DClink ++ dRuleSuffix ctor
 
@@ -174,10 +183,15 @@ Each family projection quantifies over closed interpretations. Soundness instant
 family at `dsemFam` and discharges closure from the clinks' own `sem` fields. -/
 
 def DJudgeC (R : List (Clink dsynFam dsemFam)) : DFam where
-  judge Γ e τ Γ' := ∀ F : DFam, Closed R F → F.judge Γ e τ Γ'
-  all Γ es tys Γ' := ∀ F : DFam, Closed R F → F.all Γ es tys Γ'
-  seq Γ es τ Γ' := ∀ F : DFam, Closed R F → F.seq Γ es τ Γ'
-  pairs Γ ps ks vs Γ' := ∀ F : DFam, Closed R F → F.pairs Γ ps ks vs Γ'
+  judge Γ e τ Γ' κ I κ' I' := ∀ F : DFam, Closed R F → F.judge Γ e τ Γ' κ I κ' I'
+  all Γ es tys Γ' κ I κ' I' := ∀ F : DFam, Closed R F → F.all Γ es tys Γ' κ I κ' I'
+  seq Γ es τ Γ' κ I κ' I' := ∀ F : DFam, Closed R F → F.seq Γ es τ Γ' κ I κ' I'
+  pairs Γ ps ks vs Γ' κ I κ' I' := ∀ F : DFam, Closed R F → F.pairs Γ ps ks vs Γ' κ I κ' I'
+
+/-- The registry's principal contract carries distinct incoming/outgoing state indices. -/
+theorem dregistry_context {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty} {e : Ratchet.Expr} {τ : Ty}
+    (h : (DJudgeC dclinks).judge Γ e τ Γ' κ I κ' I') : SemSafeCtxA κ Γ I e τ κ' Γ' I' :=
+  h dsemFam (closed_target dclinks)
 
 /-- **Every derivation in the certified typed judgment is semantically true and safe.**
 Unconditional at every registry size: the hypothesis is discharged from the clinks' own `sem`
@@ -185,7 +199,7 @@ fields, so this theorem was green when the registry had one rule in it and canno
 green as it grows. -/
 theorem dregistry_sound {Γ : Env} {e : Ratchet.Expr} {τ : Ty} {Γ' : Env}
     (h : (DJudgeC dclinks).judge Γ e τ Γ') : SemSafeA Γ e τ Γ' :=
-  h dsemFam (closed_target dclinks)
+  semSafeA_iff_context.mpr (dregistry_context h)
 
 /-- The answer-typed half: for every run that reaches an answer, the value is in the type or
 the escape is not type-stuck. -/
@@ -203,19 +217,17 @@ theorem dregistry_safeUnder {Γ : Env} {e : Ratchet.Expr} {τ : Ty} {Γ' : Env}
 produce: from any conformant machine, a certified program never reaches a type-stuck outcome —
 at any fuel, whether it returns, escapes, diverges or gates.
 
-One line, and the line is the point: it is `dregistry_safeUnder` at the **empty continuation**
-(`DKontOk.nil`, with the answer type pinned to the program's own). The invariant does the
-work; this instantiates it. `Denote/Typed/Safety.lean` lands it on the corpus's own rungs at
-the real prelude-booted machine. -/
-theorem dregistry_safe {Γ : Env} {e : Ratchet.Expr} {τ : Ty} {Γ' : Env}
-    (h : (DJudgeC dclinks).judge Γ e τ Γ')
-    {m : Machine} (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) : StuckFree m e :=
-  dregistry_safeUnder h τ (evalFrom m e) (StateOk_reCtl hm _ _) rfl DKontOk.nil
+This closes the context-indexed run contract. At top level it also follows from
+`dregistry_safeUnder` at the empty continuation. `Denote/Typed/Safety.lean` lands it on the
+corpus's own rungs at the real prelude-booted machine. -/
+theorem dregistry_safe {κ κ' : Ctx} {I I' : Ty} {Γ : Env} {e : Ratchet.Expr} {τ : Ty} {Γ' : Env}
+    (h : (DJudgeC dclinks).judge Γ e τ Γ' κ I κ' I')
+    {m : Machine} (hm : StateOk κ Γ I m) : StuckFree m e := (dregistry_context h).closed hm
 
 /-- …and it is a `DJudge` derivation, so `Ratchet/Check.lean`'s checker and this judgment are
 about the same rules. -/
-theorem dregistry_syn {Γ : Env} {e : Ratchet.Expr} {τ : Ty} {Γ' : Env}
-    (h : (DJudgeC dclinks).judge Γ e τ Γ') : DJudge Γ e τ Γ' :=
+theorem dregistry_syn {κ κ' : Ctx} {I I' : Ty} {Γ : Env} {e : Ratchet.Expr} {τ : Ty} {Γ' : Env}
+    (h : (DJudgeC dclinks).judge Γ e τ Γ' κ I κ' I') : DJudge Γ e τ Γ' κ I κ' I' :=
   h dsynFam (closed_source dclinks)
 
 /-! ## §3a The invariant, as a predicate on machines
@@ -325,6 +337,7 @@ def dCompanionRules : List String :=
 #guard dFamBlockedRules.all (fun r => dUnregisteredRules.contains r)
 
 #print axioms dregistry_sound
+#print axioms dregistry_context
 #print axioms dInv_safe
 #print axioms dInv_init
 #print axioms dregistry_syn

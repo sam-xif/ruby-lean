@@ -33,7 +33,7 @@ theorem derivD_vasgn {Γ Γ' : Env} {x : String} {e : Ratchet.Expr} {τ : Ty}
     (he : (DJudgeC dclinks).judge Γ e τ Γ')
     (hc : capStale x τ τ = false) (ha : isAliasTy τ = false) :
     (DJudgeC dclinks).judge Γ (.vasgn .lvar x e) τ (envAfter Γ' x τ) :=
-  fun F hF => hF DClink.vasgn (by simp [dclinks]) (he F hF) hc ha
+  fun F hF => hF DClink.vasgn (by simp [dclinks]) (he F hF) hc ha rfl
 
 theorem derivD_seq {Γ Γ' : Env} {es : List Ratchet.Expr} {τ : Ty}
     (he : (DJudgeC dclinks).seq Γ es τ Γ') :
@@ -64,7 +64,7 @@ theorem derivD_prim {Γ Γ₁ Γ₂ : Env} {recv : Ratchet.Expr} {name : String}
     (hr : (DJudgeC dclinks).judge Γ recv σ Γ₁) (ha : (DJudgeC dclinks).all Γ₁ args tys Γ₂)
     (hp : DPrim σ name tys τ) :
     (DJudgeC dclinks).judge Γ (.send (some recv) name args none) τ Γ₂ :=
-  fun F hF => hF DClink.prim (by simp [dclinks]) (hr F hF) (ha F hF) hp
+  fun F hF => hF DClink.prim (by simp [dclinks]) (hr F hF) (ha F hF) hp rfl (by intro; rfl)
 
 theorem derivD_if {Γ Γc Γ₁ Γ₂ : Env} {c t e : Ratchet.Expr} {σ τ₁ τ₂ : Ty}
     (hc : (DJudgeC dclinks).judge Γ c σ Γc) (ht : (DJudgeC dclinks).judge Γc t τ₁ Γ₁)
@@ -78,7 +78,7 @@ theorem derivD_ifNoElse {Γ Γc Γt : Env} {c t : Ratchet.Expr} {σ τ : Ty}
   fun F hF => hF DClink.ifNoElse (by simp [dclinks]) (hc F hF) (ht F hF)
 
 theorem derivD_bareName {Γ : Env} : (DJudgeC dclinks).judge Γ (.vcall "x") .any Γ :=
-  fun _ hF => hF DClink.bareName (by simp [dclinks])
+  fun _ hF => hF DClink.bareName (by simp [dclinks]) rfl rfl rfl
 
 theorem derivD_arrayLit {Γ Γ' : Env} {es : List Ratchet.Expr} {tys : List Ty}
     (hs : (DJudgeC dclinks).all Γ es tys Γ') (hf : FirstOrder (elemTy tys) = true) :

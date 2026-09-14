@@ -53,51 +53,88 @@ mutual
 
 /-- **Every syntactic derivation is a certified one.** The registry covers `DJudge`, so the
 judgment `check` returns lands in the judgment `dregistry_safe` consumes. -/
-theorem djudge_certified {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
-    (h : DJudge Γ e τ Γ') : (DJudgeC dclinks).judge Γ e τ Γ' := by
+theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
+    (h : DJudge Γ e τ Γ' κ I κ' I') : (DJudgeC dclinks).judge Γ e τ Γ' κ I κ' I' := by
   cases h with
-  | intLit => exact derivD_intLit
-  | fltLit => exact derivD_fltLit
-  | strLit => exact derivD_strLit
-  | symLit => exact derivD_symLit
-  | truLit => exact derivD_truLit
-  | flsLit => exact derivD_flsLit
-  | nilLit => exact derivD_nilLit
-  | var hg ha => exact derivD_var hg ha
-  | vasgn he hc ha => exact derivD_vasgn (djudge_certified he) hc ha
-  | seq hs => exact derivD_seq (djudgeSeq_certified hs)
-  | prim hr ha hp => exact derivD_prim (djudge_certified hr) (djudgeAll_certified ha) hp
+  | intLit => intro F hF; exact hF DClink.intLit (by simp [dclinks])
+  | fltLit => intro F hF; exact hF DClink.fltLit (by simp [dclinks])
+  | strLit => intro F hF; exact hF DClink.strLit (by simp [dclinks])
+  | symLit => intro F hF; exact hF DClink.symLit (by simp [dclinks])
+  | truLit => intro F hF; exact hF DClink.truLit (by simp [dclinks])
+  | flsLit => intro F hF; exact hF DClink.flsLit (by simp [dclinks])
+  | nilLit => intro F hF; exact hF DClink.nilLit (by simp [dclinks])
+  | var hg ha => intro F hF; exact hF DClink.var (by simp [dclinks]) hg ha
+  | vasgn he hc ha hk =>
+    intro F hF
+    exact hF DClink.vasgn (by simp [dclinks]) (djudge_certified he F hF) hc ha hk
+  | seq hs => intro F hF; exact hF DClink.seq (by simp [dclinks]) (djudgeSeq_certified hs F hF)
+  | prim hr ha hp hf hs =>
+    intro F hF
+    exact hF DClink.prim (by simp [dclinks])
+      (djudge_certified hr F hF) (djudgeAll_certified ha F hF) hp hf hs
   | if' hc ht he =>
-      exact derivD_if (djudge_certified hc) (djudge_certified ht) (djudge_certified he)
-  | ifNoElse hc ht => exact derivD_ifNoElse (djudge_certified hc) (djudge_certified ht)
-  | bareName => exact derivD_bareName
-  | arrayLit hs hf => exact derivD_arrayLit (djudgeAll_certified hs) hf
-  | hashLit hs hk hv => exact derivD_hashLit (djudgePairs_certified hs) hk hv
+    intro F hF
+    exact hF DClink.if' (by simp [dclinks])
+      (djudge_certified hc F hF) (djudge_certified ht F hF) (djudge_certified he F hF)
+  | ifNoElse hc ht =>
+    intro F hF
+    exact hF DClink.ifNoElse (by simp [dclinks]) (djudge_certified hc F hF) (djudge_certified ht F hF)
+  | bareName hx hm hs => intro F hF; exact hF DClink.bareName (by simp [dclinks]) hx hm hs
+  | arrayLit hs hf =>
+    intro F hF; exact hF DClink.arrayLit (by simp [dclinks]) (djudgeAll_certified hs F hF) hf
+  | hashLit hs hk hv =>
+    intro F hF; exact hF DClink.hashLit (by simp [dclinks]) (djudgePairs_certified hs F hF) hk hv
 
 /-- The argument-list companion. -/
-theorem djudgeAll_certified {Γ Γ' : Env} {es : List Ratchet.Expr} {tys : List Ty}
-    (h : DJudgeAll Γ es tys Γ') : (DJudgeC dclinks).all Γ es tys Γ' := by
+theorem djudgeAll_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {es : List Ratchet.Expr} {tys : List Ty}
+    (h : DJudgeAll Γ es tys Γ' κ I κ' I') : (DJudgeC dclinks).all Γ es tys Γ' κ I κ' I' := by
   cases h with
-  | nil => exact derivD_allNil
-  | cons he ht hp => exact derivD_allCons (djudge_certified he) (djudgeAll_certified ht) hp
+  | nil => intro F hF; exact hF DClink.DJudgeAll.nil (by simp [dclinks])
+  | cons he ht hp =>
+    intro F hF
+    exact hF DClink.DJudgeAll.cons (by simp [dclinks])
+      (djudge_certified he F hF) (djudgeAll_certified ht F hF) hp
 
 /-- The statement-sequence companion. -/
-theorem djudgeSeq_certified {Γ Γ' : Env} {es : List Ratchet.Expr} {τ : Ty}
-    (h : DJudgeSeq Γ es τ Γ') : (DJudgeC dclinks).seq Γ es τ Γ' := by
+theorem djudgeSeq_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {es : List Ratchet.Expr} {τ : Ty}
+    (h : DJudgeSeq Γ es τ Γ' κ I κ' I') : (DJudgeC dclinks).seq Γ es τ Γ' κ I κ' I' := by
   cases h with
-  | last he => exact derivD_seqLast (djudge_certified he)
-  | cons he ht => exact derivD_seqCons (djudge_certified he) (djudgeSeq_certified ht)
+  | last he =>
+    intro F hF; exact hF DClink.DJudgeSeq.last (by simp [dclinks]) (djudge_certified he F hF)
+  | cons he ht =>
+    intro F hF
+    exact hF DClink.DJudgeSeq.cons (by simp [dclinks])
+      (djudge_certified he F hF) (djudgeSeq_certified ht F hF)
 
 /-- The pair-list companion follows the source's key/value evaluation order. -/
-theorem djudgePairs_certified {Γ Γ' : Env} {ps : List (Ratchet.Expr × Ratchet.Expr)}
-    {ks vs : List Ty} (h : DJudgePairs Γ ps ks vs Γ') :
-    (DJudgeC dclinks).pairs Γ ps ks vs Γ' := by
+theorem djudgePairs_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {ps : List (Ratchet.Expr × Ratchet.Expr)}
+    {ks vs : List Ty} (h : DJudgePairs Γ ps ks vs Γ' κ I κ' I') :
+    (DJudgeC dclinks).pairs Γ ps ks vs Γ' κ I κ' I' := by
   cases h with
-  | nil => exact derivD_pairsNil
+  | nil => intro F hF; exact hF DClink.DJudgePairs.nil (by simp [dclinks])
   | cons hk hv hs =>
-    exact derivD_pairsCons (djudge_certified hk) (djudge_certified hv) (djudgePairs_certified hs)
+    intro F hF
+    exact hF DClink.DJudgePairs.cons (by simp [dclinks])
+      (djudge_certified hk F hF) (djudge_certified hv F hF) (djudgePairs_certified hs F hF)
 
 end
+
+/-- Fundamental lemma at arbitrary method contexts, not just the top-level specialization. -/
+theorem djudge_context {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
+    (h : DJudge Γ e τ Γ' κ I κ' I') : SemSafeCtxA κ Γ I e τ κ' Γ' I' :=
+  dregistry_context (djudge_certified h)
+
+/-- An annotation-based body derivation crosses the same registry as whole programs. -/
+theorem annotated_add_judgment {κ : Ctx} {I : Ty} (hf : nameFreeN κ "+" = true) :
+    DJudge [("x", .int), ("y", .int)]
+      (.send (some (.var .lvar "x")) "+" [.var .lvar "y"] none)
+      .int [("x", .int), ("y", .int)] κ I :=
+  .prim (.var rfl rfl) (.cons (.var rfl rfl) .nil rfl) .intAdd hf (by intro h; cases h)
+
+example {κ : Ctx} {I : Ty} (hf : nameFreeN κ "+" = true) :
+    SemSafeCtxA κ [("x", .int), ("y", .int)] I
+      (.send (some (.var .lvar "x")) "+" [.var .lvar "y"] none)
+      .int κ [("x", .int), ("y", .int)] I := djudge_context (annotated_add_judgment hf)
 
 /-! ## §2 …and therefore the checker's `Bool` is an end-to-end safety claim
 
@@ -143,6 +180,7 @@ theorem validateD_safe_run {p : Ratchet.Expr} {d : Deriv} (h : validateD p d = t
   | ok m => simpa only [Semantics.run, bootMachine, hboot, evalFrom, Machine.initOn] using hs
 
 #print axioms djudge_certified
+#print axioms djudge_context
 #print axioms validateD_safe
 #print axioms validateD_safe_boot
 #print axioms validateD_safe_run

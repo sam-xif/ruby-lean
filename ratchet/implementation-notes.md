@@ -8855,3 +8855,24 @@ both halves of what constrains them now have a name.
   caller-local types may replace the declared parameter environment during body checking.
 - CRuby reproduces `2` / `NoMethodError`. Full quiet ratchet GREEN: fragment 49,
   checker reach 51, 252 agree / 0 disagree, 22 rules proved; no coverage claim for these controls.
+
+## Clink 96 (2026-09-14) — context-indexed judgment and registry
+
+- `DJudge` and all three companions carry separate incoming/outgoing contexts and ivar
+  spines. Copy guards and transitions from the proved `SemSafeCtxA` rules: assignments
+  invalidate captured spines; primitive guards read the post-argument context; branches
+  agree on context/spine and join local/result types. No new expression rules.
+- `DFam`, generated obligations, and the mutual `djudge_certified` bridge now quantify
+  over these indices. `dregistry_context`/`djudge_context` compose to the generic run
+  contract. Old safety/invariant statements remain valid top-level specializations.
+  A syntactic `x + y` derivation from Integer annotations crosses the generalized registry.
+- Trailing `optParam` indices preserve existing corpus notation. First-class family values
+  require `@DJudge` (etc.) or Lean eagerly specializes their default indices. No wrapper
+  inductive or raw body judgment bypasses the four-field registry.
+- The executable checker still returns top-level-specialized certificates in this batch;
+  its outgoing-state data and checked-signature integration remain next. A generic branch
+  checker will need proof-producing context compatibility, not an unchecked `BEq`: `Ctx`
+  contains nested syntax and has no `DecidableEq` (automatic deriving on the mutual syntax
+  is unsupported). No declaration-only accepts and no coverage increase are claimed.
+- Registry and bridge build in under a second, axiom-clean. Full quiet ratchet GREEN:
+  fragment 49, checker reach 51, 252 agree / 0 disagree, all 22 rules proved.

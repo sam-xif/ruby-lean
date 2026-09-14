@@ -47,8 +47,9 @@ checker returning a `DJudgeC` derivation: `Ratchet/` stays ignorant of `Denote/`
 `DJudgeC dclinks` quantifies over every `DFam` closed under the clinks, so a second semantic
 backend reuses the bridge unchanged instead of forcing a rewrite of `check`.
 
-The semantic target is `SemSafeA = SemJudgeA ∧ SafeUnder`: answer correctness and safety
-under a typed continuation. [`Compose.lean`](Denote/Typed/Compose.lean) proves the
+The semantic target is now `SemSafeCtxA`, with full incoming/outgoing context, locals, and
+ivar indices. Its top-level specialization is equivalent to `SemSafeA = SemJudgeA ∧ SafeUnder`:
+answer correctness and safety under a typed continuation. [`Compose.lean`](Denote/Typed/Compose.lean) proves the
 continuation lifting; [`Run.lean`](Denote/Typed/Run.lean) exposes the same contract at
 machine entries used by sequence and argument frames. Safety holds at every fuel.
 `Context.lean` generalizes that run contract to distinct incoming/outgoing `Ctx`, local
@@ -76,8 +77,10 @@ and both conditional forms are also context-general; branches require matching o
 contexts/spines while joining local/result types. Arrays and interleaved hash pairs thread
 all state indices as well; bare names require explicit absence/self guards. Thus all 16
 expression proofs have context-general counterparts, with all three list companions.
-Checked-signature/context integration
-remains next; explicit `return` needs an answer-contract extension. Neither boundary lemmas nor
+`DJudge` and all three companions now carry those indices through `DFam` and the registry;
+`djudge_context` proves the fundamental lemma at arbitrary contexts. The executable checker
+still specializes to top level; its state-indexed results and checked-signature integration
+remain next. Explicit `return` needs an answer-contract extension. Neither boundary lemmas nor
 declaration-only acceptance count as 052. `methodBootOkB` checks additional method-start
 facts, and `methodInstallBootOkB` also checks top-level installation/lookup/hook facts;
 these must join the validator's boot contract when methods are admitted.

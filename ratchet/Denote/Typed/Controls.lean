@@ -144,21 +144,23 @@ The list companions join when a rule concluding about them acquires a proof (Den
 register_dclink DPrim.intAdd
 
 example : DClink.seq.form dsemFam =
-    (∀ {Γ Γ' : Env} {es : List Ratchet.Expr} {τ : Ty},
-      SemSeqA Γ es τ Γ' → SemSafeA Γ (.seq es) τ Γ') := rfl
+    (∀ {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty} {es : List Ratchet.Expr} {τ : Ty},
+      SemSeqCtxA κ Γ I es τ κ' Γ' I' → SemSafeCtxA κ Γ I (.seq es) τ κ' Γ' I') := rfl
 
 example : DClink.DJudgeAll.cons.form dsemFam =
-    (∀ {Γ Γ₁ Γ₂ : Env} {e : Ratchet.Expr} {es : List Ratchet.Expr} {τ : Ty} {tys : List Ty},
-      SemSafeA Γ e τ Γ₁ → SemAllA Γ₁ es tys Γ₂ → plainArgB e = true →
-        SemAllA Γ (e :: es) (τ :: tys) Γ₂) := rfl
+    (∀ {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ τ : Ty}
+      {e : Ratchet.Expr} {es : List Ratchet.Expr} {tys : List Ty},
+      SemSafeCtxA κ Γ I e τ κ₁ Γ₁ I₁ → SemAllCtxA κ₁ Γ₁ I₁ es tys κ₂ Γ₂ I₂ → plainArgB e = true →
+        SemAllCtxA κ Γ I (e :: es) (τ :: tys) κ₂ Γ₂ I₂) := rfl
 
 #guard dUncarriedJudgments.isEmpty
 
 example : DClink.DJudgePairs.cons.form dsemFam =
-    (∀ {Γ Γk Γv Γ' : Env} {k v : Ratchet.Expr} {ps : List (Ratchet.Expr × Ratchet.Expr)}
-      {σ τ : Ty} {ks vs : List Ty},
-      SemSafeA Γ k σ Γk → SemSafeA Γk v τ Γv → SemPairsA Γv ps ks vs Γ' →
-        SemPairsA Γ ((k, v) :: ps) (σ :: ks) (τ :: vs) Γ') := rfl
+    (∀ {κ κk κv κ' : Ctx} {Γ Γk Γv Γ' : Env} {I Ik Iv I' σ τ : Ty}
+      {k v : Ratchet.Expr} {ps : List (Ratchet.Expr × Ratchet.Expr)} {ks vs : List Ty},
+      SemSafeCtxA κ Γ I k σ κk Γk Ik → SemSafeCtxA κk Γk Ik v τ κv Γv Iv →
+      SemPairsCtxA κv Γv Iv ps ks vs κ' Γ' I' →
+        SemPairsCtxA κ Γ I ((k, v) :: ps) (σ :: ks) (τ :: vs) κ' Γ' I') := rfl
 
 #guard dUnregisteredRules.isEmpty
 
@@ -171,7 +173,7 @@ metavariable numbers and elaborator phrasing, and a control that goes red when L
 diagnostic is a control that gets deleted. -/
 
 example : DClink.intLit.form dsemFam =
-    (∀ {Γ : Env} {n : Int}, SemSafeA Γ (.int n) .int Γ) := rfl
+    (∀ {κ : Ctx} {Γ : Env} {I : Ty} {n : Int}, SemSafeCtxA κ Γ I (.int n) .int κ Γ I) := rfl
 
 /-- …and `SemSafeA` really is the pair, so "registered" means both obligations were proved. -/
 example {Γ : Env} {n : Int} :
@@ -179,7 +181,7 @@ example {Γ : Env} {n : Int} :
   rfl
 
 example : DClink.intLit.form dsynFam =
-    (∀ {Γ : Env} {n : Int}, DJudge Γ (.int n) .int Γ) := rfl
+    (∀ {κ : Ctx} {Γ : Env} {I : Ty} {n : Int}, DJudge Γ (.int n) .int Γ κ I) := rfl
 
 #print axioms derivD_intLit
 #print axioms derivD_intLit_sem
