@@ -85,7 +85,7 @@ flexibility, with the obligation as the forcing function.
 
 ## What is deliberately not in the judgment yet
 
-`DJudge` has thirteen rules (plus four in the two list companions). Everything else a `Deriv` can express — `defDecl`, `callSig`,
+`DJudge` has fourteen rules (plus four in the two list companions). Everything else a `Deriv` can express — `defDecl`, `callSig`,
 `callMethodSig`, `classDecl`, `newInst`, `ivarRead`, `ivarAsgn`, `constCls`, `arrayLit`,
 `hashLit`, `selfExpr` — answers `none`, by name, in `check`'s last arms. They join a rule at
 a time, and each one joining is a rung.
@@ -288,6 +288,9 @@ inductive DJudge : Env → Expr → Ty → Env → Prop
   | ifNoElse {Γ Γc Γt : Env} {c t : Expr} {σ τ : Ty} :
       DJudge Γ c σ Γc → DJudge Γc t τ Γt →
       DJudge Γ (.if' c t none) (joinT τ .nilT) (joinEnv Γt Γc)
+  /-- `BareNameFree` currently certifies absence only for `x`. Ordinary sends do not
+      use this rule: a missing `x()` raises NoMethodError rather than NameError. -/
+  | bareName {Γ : Env} : DJudge Γ (.vcall "x") .any Γ
 
 inductive DJudgeAll : Env → List Expr → List Ty → Env → Prop
   | nil {Γ : Env} : DJudgeAll Γ [] [] Γ
@@ -371,6 +374,7 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) : Option (Certified Γ 
     | .tru, .truLit => some ⟨.bool, Γ, .truLit⟩
     | .fls, .flsLit => some ⟨.bool, Γ, .flsLit⟩
     | .nil, .nilLit => some ⟨.nilT, Γ, .nilLit⟩
+    | .vcall "x", .bareName "x" => some ⟨.any, Γ, .bareName⟩
     | .var .lvar x, .var .lvar x' =>
       if x == x' then
         match hg : envGet? Γ x with

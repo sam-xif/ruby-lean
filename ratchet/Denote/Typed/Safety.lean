@@ -17,6 +17,7 @@ def rulesUsed : Ratchet.Expr → List String
   | .tru => ["truLit"]
   | .fls => ["flsLit"]
   | .nil => ["nilLit"]
+  | .vcall "x" => ["bareName"]
   | .var .lvar _ => ["var"]
   | .vasgn .lvar _ e => "vasgn" :: rulesUsed e
   | .seq es => "seq" :: rulesUsedSeq es

@@ -183,6 +183,12 @@ def program_031_reassign_different_type : Ratchet.Expr :=
 theorem safe_031_reassign_different_type (hb : bootOkB = true) : StuckFree bootMachine program_031_reassign_different_type :=
   dregistry_safe (derivD_seq (derivD_seqCons (derivD_vasgn (derivD_intLit) rfl rfl) (derivD_seqCons (derivD_vasgn (derivD_truLit) rfl rfl) (derivD_seqLast (derivD_var rfl rfl))))) (stateOk_boot hb)
 
+def program_032_bare_undeclared_var : Ratchet.Expr := .vcall "x"
+
+theorem safe_032_bare_undeclared_var (hb : bootOkB = true) :
+    StuckFree bootMachine program_032_bare_undeclared_var :=
+  dregistry_safe derivD_bareName (stateOk_boot hb)
+
 def program_033_seq_multiple_stmts : Ratchet.Expr :=
   .seq [.vasgn .lvar "x" (.int (1)), .vasgn .lvar "y" (.int (2)), .send (some (.var .lvar "x")) "+" [.var .lvar "y"] none]
 
@@ -277,6 +283,7 @@ def safeRungs : List (String × Ratchet.Expr) :=
    ("029-simple-assign", program_029_simple_assign),
    ("030-reassign-same-type", program_030_reassign_same_type),
    ("031-reassign-different-type", program_031_reassign_different_type),
+   ("032-bare-undeclared-var", program_032_bare_undeclared_var),
    ("033-seq-multiple-stmts", program_033_seq_multiple_stmts),
    ("034-assignment-chain", program_034_assignment_chain),
    ("035-if-true-branch", program_035_if_true_branch),
@@ -292,7 +299,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
     ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
   intro q hq
   simp only [safeRungs, List.mem_cons, List.not_mem_nil, or_false] at hq
-  rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact safe_001_int_lit hb
   · exact safe_002_bool_true hb
   · exact safe_003_bool_false hb
@@ -322,6 +329,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   · exact safe_029_simple_assign hb
   · exact safe_030_reassign_same_type hb
   · exact safe_031_reassign_different_type hb
+  · exact safe_032_bare_undeclared_var hb
   · exact safe_033_seq_multiple_stmts hb
   · exact safe_034_assignment_chain hb
   · exact safe_035_if_true_branch hb

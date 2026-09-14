@@ -336,6 +336,8 @@ class Emitter:
 
     # sends
     def n_vcall(self, n):
+        if n[1] == "x":
+            return {"rule": "bareName", "name": "x"}, {"tag": "any"}
         return self.implicit_send(n[1], [])
 
     def n_send(self, n):

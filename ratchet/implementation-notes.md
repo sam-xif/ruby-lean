@@ -8519,3 +8519,19 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet: GREEN, fragment 40, 17 proved rules, checker reach 31,
   252 agree / 0 disagree. The new semantic proof builds in under one second;
   `validateD_safe_boot` remains axiom-clean.
+
+## Clink 80 (2026-09-13) — bare-name dispatch and NameError
+
+- `BareNameFree` and `MissFree` already pin absence of `x` and user `method_missing`
+  at `ctx0`. The rule admits exactly that table's current name, `x`, through a new
+  `Deriv.bareName` leaf. Other bare names and ordinary `x()` sends are refused;
+  the latter raises NoMethodError. Runtime controls confirm both exception paths.
+- Generalize the checked exception-family predicate and allocation proof from
+  ZeroDivisionError to a table including NameError. Each must descend from BasicObject
+  and none may descend from NoMethodError, ArgumentError, or TypeError. Allocation
+  then preserves framing and proves a safe escape; it need not produce a typed value.
+- `BareName.lean` walks the actual dispatch path, including all Unsupported shadow
+  exits. The checker, registry, emitter, and bridge gain the leaf together; rung 032
+  exercises it. Floors rise to fragment 41, 18 rules, and checker reach 43.
+- Full quiet ratchet: GREEN, 252 agree / 0 disagree, all new floors met. The bare-name
+  proof builds in five seconds; the full acceptance-to-safety theorem is axiom-clean.

@@ -1,13 +1,14 @@
 import Denote.Typed.Sequence
 import Denote.Typed.Branch
 import Denote.Typed.BranchMissing
+import Denote.Typed.BareName
 import Denote.Typed.Primitive
 import Denote.Clink.Form
 
 /-! The answer-typed registry carries the expression judgment and both list companions.
 Every constructor registers only with a proof of its constructor-derived semantic form.
 `ruleForm` replaces all three judgment heads with family projections; a premise reaching
-an uncarried judgment is refused before registration. All seventeen constructors are proved.
+an uncarried judgment is refused before registration. All eighteen constructors are proved.
 `DJudgeC` is their Church encoding, with unconditional semantic and safety interpretations. -/
 
 set_option autoImplicit false
@@ -303,8 +304,8 @@ def dCompanionRules : List String :=
 -- The registry and its report agree about its size.
 #guard dclinks.length == dRegisteredRules.length
 
--- Thirteen expression rules and four companions; adding an unproved rule fails the gate.
-#guard dRegisteredRules.length == 17
+-- Fourteen expression rules and four companions; adding an unproved rule fails the gate.
+#guard dRegisteredRules.length == 18
 #guard dUnregisteredRules == []
 
 -- Every judgment premise is represented in the semantic family.

@@ -148,4 +148,9 @@ def ctlAnd : Expr :=
       .ifD .truLit (.vasgn .lvar "x" (.intLit 2)) none (.nilable .int),
       .prim (.var .lvar "x") "+" [.intLit 1] .int .int])
 
+#guard validateD (.vcall "x") (.bareName "x")
+#guard !validateD (.vcall "lambda") (.bareName "x")
+#guard !validateD (.vcall "x") (.bareName "y")
+#guard !validateD (.send none "x" [] none) (.bareName "x")
+
 end Ratchet

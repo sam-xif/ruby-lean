@@ -77,4 +77,7 @@ theorem derivD_ifNoElse {Γ Γc Γt : Env} {c t : Ratchet.Expr} {σ τ : Ty}
     (DJudgeC dclinks).judge Γ (.if' c t none) (joinT τ .nilT) (joinEnv Γt Γc) :=
   fun F hF => hF DClink.ifNoElse (by simp [dclinks]) (hc F hF) (ht F hF)
 
+theorem derivD_bareName {Γ : Env} : (DJudgeC dclinks).judge Γ (.vcall "x") .any Γ :=
+  fun _ hF => hF DClink.bareName (by simp [dclinks])
+
 end Ratchet.Denote.Typed

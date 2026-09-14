@@ -26,11 +26,15 @@ def primitiveDispatchB (h : Heap) (free : String → Bool) : Bool :=
       md.builtin == some bid && !md.undefined && md.visibility == .pub && !md.fromPrelude &&
         (Interp.crubyShadow h ((ancestors h k).takeWhile (fun x => x != owner)) name).isNone
 
-def primitiveErrorsB (h : Heap) : Bool :=
-  (ancestors h Boot.zeroDivisionErrorId).contains Boot.basicObjectId &&
-  !(ancestors h Boot.zeroDivisionErrorId).contains Boot.noMethodErrorId &&
-  !(ancestors h Boot.zeroDivisionErrorId).contains Boot.argumentErrorId &&
-  !(ancestors h Boot.zeroDivisionErrorId).contains Boot.typeErrorId
+def primitiveErrorClasses : List ObjId := [Boot.zeroDivisionErrorId, Boot.nameErrorId]
+
+def primitiveErrorB (h : Heap) (cls : ObjId) : Bool :=
+  (ancestors h cls).contains Boot.basicObjectId &&
+  !(ancestors h cls).contains Boot.noMethodErrorId &&
+  !(ancestors h cls).contains Boot.argumentErrorId &&
+  !(ancestors h cls).contains Boot.typeErrorId
+
+def primitiveErrorsB (h : Heap) : Bool := primitiveErrorClasses.all (primitiveErrorB h)
 
 /-- Only references whose dispatch class is String need a string payload. -/
 def StringPayloadOk (h : Heap) : Prop :=
@@ -43,7 +47,10 @@ theorem primitiveDispatchB_ext {m n : Machine} (he : Ext m n) (free : String →
 
 theorem primitiveErrorsB_ext {m n : Machine} (he : Ext m n) :
     primitiveErrorsB n.heap = primitiveErrorsB m.heap := by
-  simp only [primitiveErrorsB, he.ancestors]
+  unfold primitiveErrorsB
+  congr 1
+  funext cls
+  simp only [primitiveErrorB, he.ancestors]
 
 def stringPayloadB (h : Heap) : Bool :=
   (List.range h.objs.size).all fun o =>

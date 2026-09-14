@@ -1,6 +1,6 @@
 import Denote.Typed.PrimitiveStep
 
-/-! The two primitive allocation results: a String value and a ZeroDivisionError escape. -/
+/-! Primitive allocation results: a String value or a checked non-type-error exception. -/
 
 set_option autoImplicit false
 set_option maxRecDepth 4000
@@ -20,16 +20,17 @@ theorem stepSpec_string {Γ : Env} {m : Machine} (hm : StateOk ctx0 Γ .ivar0 m)
   simpa only [StepSpec, builtinStep, Builtins.okStrEnc, Builtins.allocStrEnc,
     Heap.alloc, pushHeap, strObj, Interp.withCtl, deliverA, Answer.ctl, reCtl, hk] using h
 
-theorem stepSpec_zeroDiv {Γ : Env} {m : Machine} {τ : Ty}
-    (hm : StateOk ctx0 Γ .ivar0 m) (hk : m.kont = []) (msg : String) :
-    StepSpec m Γ τ (.next (Interp.raiseErr m Boot.zeroDivisionErrorId msg)) := by
-  have hp := hm.primitiveErrors
-  simp only [primitiveErrorsB, Bool.and_eq_true, Bool.not_eq_true'] at hp
-  let obj : Object := { klass := Boot.zeroDivisionErrorId, payload := .exc msg }
+theorem stepSpec_error {Γ : Env} {m : Machine} {τ : Ty} {cls : ObjId}
+    (hm : StateOk ctx0 Γ .ivar0 m) (hk : m.kont = [])
+    (hcls : cls ∈ primitiveErrorClasses) (msg : String) :
+    StepSpec m Γ τ (.next (Interp.raiseErr m cls msg)) := by
+  have hp := List.all_eq_true.mp hm.primitiveErrors cls hcls
+  simp only [primitiveErrorB, Bool.and_eq_true, Bool.not_eq_true'] at hp
+  let obj : Object := { klass := cls, payload := .exc msg }
   let n : Machine := { m with heap := pushHeap m.heap obj }
   have he : Ext m n := ext_push obj hm.sat hm.core.basicSelf
     (fun c => by simp [obj]) rfl rfl hp.1.1.1
-  have hc : classOf n.heap (.ref m.heap.objs.size) = Boot.zeroDivisionErrorId := by
+  have hc : classOf n.heap (.ref m.heap.objs.size) = cls := by
     simp [n, classOf, pushHeap_get_self, obj]
   have hsafe : EscOk n (.raiseJ (.ref m.heap.objs.size)) := by
     simp only [EscOk, Semantics.isTypeError, Semantics.typeErrorFamily, List.any_cons,
@@ -38,6 +39,11 @@ theorem stepSpec_zeroDiv {Γ : Env} {m : Machine} {τ : Ty}
     (show ResultOk m Γ τ _ n from ⟨Framed.of_ext he, hsafe, fun _ hv => by cases hv⟩)
   simpa only [StepSpec, Interp.raiseErr, Builtins.allocExc, Heap.alloc, n, pushHeap, obj,
     deliverA, Answer.ctl, hk] using h
+
+theorem stepSpec_zeroDiv {Γ : Env} {m : Machine} {τ : Ty}
+    (hm : StateOk ctx0 Γ .ivar0 m) (hk : m.kont = []) (msg : String) :
+    StepSpec m Γ τ (.next (Interp.raiseErr m Boot.zeroDivisionErrorId msg)) :=
+  stepSpec_error hm hk (by simp [primitiveErrorClasses]) msg
 
 theorem string_add_run (m : Machine) (a b : Value) :
     Builtins.run "String#+" a [b] m = Builtins.runStrings "String#+" a [b] m := by

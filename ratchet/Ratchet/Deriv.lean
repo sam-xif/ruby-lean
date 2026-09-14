@@ -71,6 +71,8 @@ inductive Deriv where
   | truLit
   | flsLit
   | nilLit
+  /-- A bare-name miss from the explicitly supported absence table. -/
+  | bareName (name : String)
   | selfExpr
   /-- `Judge.var`: a local/ivar/cvar/gvar read. The type comes from the environment. -/
   | var (k : VarKind) (name : String)
@@ -141,6 +143,7 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
   | "truLit" => return .truLit
   | "flsLit" => return .flsLit
   | "nilLit" => return .nilLit
+  | "bareName" => return .bareName (← name "name")
   | "selfExpr" => return .selfExpr
   | "var" => return .var (← varKindOfJson? (← j.getObjVal? "kind")) (← name "name")
   | "vasgn" =>
