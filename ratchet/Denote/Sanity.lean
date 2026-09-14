@@ -553,6 +553,7 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
   exact
     { runtime := fun _ => mainReadyB_sound hready
       classRuntime := by intro cn h; cases h
+      classSites := by intro cn h; cases h
       primitiveDispatch := hpd
       primitiveErrors := hpe
       stringPayload := stringPayloadB_sound hsp

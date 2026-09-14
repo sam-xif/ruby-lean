@@ -12,7 +12,13 @@ open RubyCore Ratchet
 theorem StateOk_forgetClassScope {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (h : StateOk κ Γ I m) :
     StateOk { κ with scope := { κ.scope with runtimeClass := none } } Γ I m :=
-  { h with classRuntime := by intro cn hc; cases hc }
+  { h with
+    classRuntime := by intro cn hc; cases hc
+    classSites := by
+      intro cn hc
+      apply h.classSites cn
+      exact List.mem_append_left _ (by simpa only [classSiteNames, Option.toList_none,
+        List.append_nil] using hc) }
 
 theorem StateOk_forgetIvars {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (h : StateOk κ Γ I m) :
@@ -67,6 +73,9 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
       obtain ⟨k, hk⟩ := h.classRuntime cn hr
       exact ⟨k, hk.reframe hh hd hc hcap hphase
         ((hvis (by rw [hr]; simp)).trans hk.visibility.symm)⟩
+    classSites := by
+      rw [hh]
+      exact h.classSites.recontext (fun _ hc => hc) (fun _ hn => hn)
     sat := by simpa only [HeapSaturated, hh] using h.sat
     primitiveDispatch := by simpa only [hh, hfree] using h.primitiveDispatch
     primitiveErrors := by simpa only [hh] using h.primitiveErrors

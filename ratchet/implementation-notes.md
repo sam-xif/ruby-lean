@@ -9524,3 +9524,26 @@ both halves of what constrains them now have a name.
   constructors, and annotation-checked class/body certificate integration remain.
 - Full quiet ratchet GREEN: fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree.
+
+## Clink 126 (2026-09-14) — persist sites in full conformance
+
+- `StateOk.classSites` covers installed class names plus the pending runtimeClass request.
+  These existing Ctx fields already identify the obligations; no new certificate/context
+  field was added. A site's representation depends only on the negative-name function,
+  keeping caller scope out of its meaning. Shared definitions moved below State to avoid a
+  dependency cycle; the same boot Bool discharges the initially empty site collection.
+- All state transports preserve sites. Definition publication obtains the new member's site
+  from the requested scope, retains old sites at arbitrary owners, and stores the result in
+  full outgoing conformance. `InstanceSiteClass` proves fresh class creation preserves old
+  sites: the new constant changes absence to a class value, but lexical/global agreement
+  survives. Controls exercise that value through an old method and refute nonfresh rebinding.
+- `checked_instance_entry` now recovers the installed code and site from StateOk, checks the
+  argument-domain obligation at the stored body's annotations, and connects explicit dispatch
+  to full body-state entry and its checked RunSpec. No separate site or method metadata is
+  assumed. Its RunSpec deliberately remains body-local; ordinary payload and caller return
+  are not inferred from nominal typing or from the body result.
+- New modules build below a second, standard axioms only. No rules, exemptions, or admissions.
+  Caller restoration, constructor/payload contracts, and class/body certificate integration
+  remain required for 061.
+- Full quiet ratchet GREEN: fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree.

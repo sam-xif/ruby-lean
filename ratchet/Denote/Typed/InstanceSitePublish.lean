@@ -1,9 +1,8 @@
 import Denote.Typed.InstancePublish
 import Denote.Sem.InstanceSiteWrite
 
-/-! Keep instance entry facts alongside the actual definition/table publication.
-The site is still explicit; this is not an admission from a signature or an outgoing
-site assumed as a premise. -/
+/-! Keep instance entry facts in conformance across actual definition/table publication.
+No signature certifies a body, and no outgoing site is assumed as a premise. -/
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
@@ -22,7 +21,6 @@ theorem instance_site_install {κ : Ctx} {cn : String} {k : ObjId} {m : Machine}
 still supply constructor/nested contracts and check the annotated method body. -/
 theorem step_scoped_instance_world {κ : Ctx} {Γ : Env} {I : Ty} {c : Cls} {d : Defn}
     {m : Machine} (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeClass = some c.name)
-    (site : InstanceSite κ c.name m.currentFrame.defmod m.heap)
     (ht : ReframeFO κ I) (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
     (ha : κ.asms = []) (hc : ClassesOk [c] m)
     (hobj : m.currentFrame.defmod ≠ Boot.objectId)
@@ -40,6 +38,10 @@ theorem step_scoped_instance_world {κ : Ctx} {Γ : Env} {I : Ty} {c : Cls} {d :
   obtain ⟨n, hn, hstate⟩ := step_scoped_instance_state hm hr ht hΓ ha hc hobj hf hs
     hmiss hquiet hnested hdecl hctl
   obtain ⟨k, ready⟩ := hm.classRuntime c.name hr
+  obtain ⟨j, site⟩ := hm.classSites.of_scope hr
+  have hj : j = m.currentFrame.defmod :=
+    Option.some.inj (site.named.symm.trans (ready.owner.symm ▸ ready.named))
+  subst j
   have hquiet' : DefHookQuiet (installMethod m d.name (toRubyParams d.params) (toRuby d.body)) :=
     defHookQuiet_install hquiet (scoped_defHookQuiet ready)
   have he := step_def_install hctl hquiet'

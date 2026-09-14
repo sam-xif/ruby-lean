@@ -1,5 +1,6 @@
 import Denote.Sem.MethodHeap
 import Denote.Sem.Reframe
+import Denote.Sem.InstanceSiteWrite
 
 /-! Conformance after installing a method. Positive tables must describe what was
 installed; negative-name facts are retained only away from the written name.
@@ -109,6 +110,8 @@ theorem StateOk_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} 
     (hn : nameFreeN κ name = false) (hmiss : "method_missing" ≠ name)
     (hquiet : "method_added" ≠ name)
     (hclasses : ClassesOk C { m with heap := defineMethod m.heap cls name md })
+    (hsites : ClassSitesOk { κ with pos := { κ.pos with classes := C } }
+      (defineMethod m.heap cls name md))
     (hdefs : DefsOk D { m with heap := defineMethod m.heap cls name md })
     (hnested : NestedClassesOk C { m with heap := defineMethod m.heap cls name md })
     (hdecl : DeclClassOk { κ with pos := { κ.pos with classes := C } }
@@ -148,6 +151,7 @@ theorem StateOk_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} 
   refine {
     runtime := fun hr => (hm.runtime hr).methodWrite cls name md hquiet
     classRuntime := fun cn hr => (hm.classRuntime cn hr).methodWrite cls name md hquiet
+    classSites := hsites
     sat := Proof.Saturated_defineMethod hm.sat _ _ _
     primitiveDispatch := (primitiveDispatchB_defineMethod hn).trans hm.primitiveDispatch
     primitiveErrors := (primitiveErrorsB_defineMethod ..).trans hm.primitiveErrors
@@ -273,7 +277,8 @@ theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : 
     (hdecl : DeclClassOk κ { m with heap := defineMethod m.heap cls name md }) :
     StateOk { κ with pos := { κ.pos with defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } :=
-  StateOk_methodWrite_tables hm ht hΓ ha hn hmiss hquiet hclasses hdefs
+  StateOk_methodWrite_tables hm ht hΓ ha hn hmiss hquiet hclasses
+    (hm.classSites.methodWrite hn hquiet) hdefs
     (by simpa only [NestedClassesOk, isClassRefNamed, classNamed?_defineMethod,
       Proof.constLookupFrom_defineMethod] using hm.nested) hdecl
 
@@ -313,6 +318,7 @@ theorem StateOk_reserveName {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     | false => rfl
     | true => have he := hfree x hn; rw [hx] at he; cases he
   refine { hm with
+    classSites := hm.classSites.recontext (fun _ hc => hc) hneg
     primitiveDispatch := ?_
     exact := fun k cp hp n md hmem =>
       (hm.exact k cp hp n md hmem).imp id (Or.imp id (hneg n))

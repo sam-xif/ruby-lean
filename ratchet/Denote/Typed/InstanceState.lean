@@ -35,6 +35,14 @@ theorem instance_enter_state {κ : Ctx} {Γ : Env} {I Ib : Ty} {m : Machine}
   refine {
     runtime := by intro h; cases h
     classRuntime := ?_
+    classSites := by
+      intro q hq
+      change q ∈ κ.classes.map (·.name) ++ [cn] at hq
+      rcases List.mem_append.mp hq with hq | hq
+      · exact hm.classSites q (List.mem_append_left _ hq)
+      · have hq := List.mem_singleton.mp hq
+        subst q
+        exact ⟨k, site⟩
     sat := hm.sat
     primitiveDispatch := hm.primitiveDispatch
     primitiveErrors := hm.primitiveErrors

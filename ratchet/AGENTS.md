@@ -218,8 +218,13 @@ Controls apply one checked Integer body to every Integer argument, reject nullab
 annotations, and exercise actual definition/call and hidden-name/constant-shadowing failures.
 `InstanceSiteWrite` preserves sites across reserved method writes and ivar-only changes;
 `step_scoped_instance_world` returns full state and the derived site from actual installation.
-Sites still need persistent conformance storage, and caller restoration remains required;
-the body-local RunSpec is not a full instance-call or class-rule admission.
+`StateOk.classSites` now stores them for installed class names and the pending lexical class,
+using existing Ctx fields. Definitions, allocation, field writes, frame changes, and fresh
+class creation preserve them; a newly introduced constant becomes visible consistently in
+old method scopes. `checked_instance_entry` recovers both code and site from conformance,
+then applies an annotation-checked body through actual explicit dispatch. Caller restoration,
+ordinary receiver payload, constructors, and class-rule admission remain; its RunSpec is
+body-local, not a full instance-call contract.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -274,6 +279,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/InstanceResolve.lean`, `InstanceResolveControls.lean` | Installed instance lookup, explicit dispatch, frame facts, and interception controls |
 | `Denote/Sem/InstanceSite.lean`, `InstanceSiteEntry.lean`, `Denote/Typed/InstanceState.lean`, `InstanceStateControls.lean` | Heap-only class sites, fresh-site proof, full annotated body entry, and lookup/annotation controls |
 | `Denote/Sem/InstanceSiteWrite.lean`, `Denote/Typed/InstanceSitePublish.lean`, `InstanceSiteWriteControls.lean` | Site preservation under definitions/field writes, actual-step publication, and reservation/hook controls |
+| `Denote/Sem/InstanceSiteClass.lean`, `Denote/Typed/InstanceCallEntry.lean`, `ClassSitesControls.lean` | Persistent sites across fresh classes, conformance-driven checked call entry, and constant/rebinding controls |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |

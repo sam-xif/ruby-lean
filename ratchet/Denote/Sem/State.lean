@@ -6,6 +6,7 @@ import Denote.Sem.Ready
 import Denote.Sem.ClassScope
 import Denote.Sem.ClassReady
 import Denote.Sem.MethodCode
+import Denote.Sem.InstanceSite
 
 /-!
 # `Denote/Sem/State.lean` — evaluation, and what it means for a machine to *match* a
@@ -304,6 +305,12 @@ of `Object` (`Kernel`, `BasicObject`) owns no constants — which is what makes 
 phase agree with `Object`'s own table rather than overshoot it. -/
 def ConstScopeOk (m : Machine) : Prop :=
   ∀ n, constResolveAt m n = constLookup m.heap n
+
+theorem InstanceSite.constScope {κ : Ctx} {cn : String} {k : ObjId} {m : Machine}
+    (h : InstanceSite κ cn k m.heap) (hc : m.currentFrame.cref = [k, Boot.objectId])
+    (ho : m.currentFrame.defmod = k) : ConstScopeOk m := by
+  intro n
+  simpa only [constResolveAt, hc, ho, instanceConstResolve] using h.constants n
 
 /-- Both resolutions read the heap only through `classPayload?` and `ancestors`, and the frame
 only through `currentFrame` — the three things `Ext` pins outright. -/
@@ -611,7 +618,7 @@ theorem classOf_self_ext {m m₂ : Machine} (he : Ext m m₂) (hl : SelfLive m) 
   | bool b => cases b <;> rfl
   | _ => rfl
 
-/-- The names whose *absence* a rule reasons from: `BareNameError`'s one row
+/- The names whose *absence* a rule reasons from: `BareNameError`'s one row
 (`Judge.bareName`) and `nameFree`'s two (`Judge.lambdaLit`). A list, so the component below
 is one decidable `Bool` at a concrete machine — `CoreOk`'s trade, for the same reason.
 
@@ -620,7 +627,6 @@ allows a **prelude** method. `Judge.bareName` needs `x` to resolve to *nothing*,
 strictly stronger thing than "not the user's", and it is only true name by name. Measured at
 the booted machine: the toplevel ancestor chain carries ~40 prelude-written methods (`tap`,
 `format`, `Integer`, `!=`, and the `__`-prefixed helpers) and **none of these three**. -/
-def shadowableNames : List String := ["lambda", "proc", "x"]
 
 /-- Current self, Object's metaclass (inherited by fresh class self), and Object itself
 (inherited by fresh instances). Unrelated singleton methods such as `T.proc` are allowed. -/
@@ -767,17 +773,6 @@ theorem QueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : QueryOk
   · intro hnone o md hfound
     rw [hm] at hnone hfound
     exact h2 hnone o md hfound
-
-/-- A class payload pins its reference **live**: past the end of the heap `Heap.get` answers
-`default`, whose payload is `.none`. -/
-theorem lt_size_of_classPayload {h : Heap} {o : ObjId}
-    (hp : (h.classPayload? o).isSome = true) : o < h.objs.size := by
-  by_cases hk : o < h.objs.size
-  · exact hk
-  · exfalso
-    simp only [Heap.classPayload?, Heap.get, Array.getD_eq_getD_getElem?,
-      Array.getElem?_eq_none (by simpa using hk), Option.getD_none] at hp
-    exact absurd hp (by decide)
 
 theorem ClsQueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : ClsQueryOk κ m) :
     ClsQueryOk κ m₂ := by
@@ -1028,6 +1023,7 @@ rule to hide. -/
 structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   runtime : RuntimeOk κ m
   classRuntime : ClassRuntimeOk κ m
+  classSites : ClassSitesOk κ m.heap
   sat : HeapSaturated m
   primitiveDispatch : primitiveDispatchB m.heap (nameFreeN κ) = true
   primitiveErrors : primitiveErrorsB m.heap = true
@@ -1116,6 +1112,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     StateOk κ Γ I m₂ where
   runtime := fun hr => (h.runtime hr).ext he hphase
   classRuntime := fun cn hr => (h.classRuntime cn hr).ext he hphase
+  classSites := h.classSites.ext he
   primitiveDispatch := (primitiveDispatchB_ext he _).trans h.primitiveDispatch
   primitiveErrors := (primitiveErrorsB_ext he).trans h.primitiveErrors
   stringPayload := hp
@@ -1470,6 +1467,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
   exact
     { runtime := fun hr => (h.runtime hr).setLocal x w
       classRuntime := fun cn hr => (h.classRuntime cn hr).setLocal x w
+      classSites := by simpa only [setLocal_heap] using h.classSites
       sat := h.sat
       core := h.core
       frameInRange := by

@@ -5,6 +5,8 @@ import Denote.Sem.ClassNames
 import Denote.Sem.ClassMethods
 import Denote.Sem.ClassDeclared
 import Denote.Sem.ClassScopeEntry
+import Denote.Sem.InstanceSiteEntry
+import Denote.Sem.InstanceSiteClass
 
 /-! Full conformance at entry to an empty fresh class scope. The body is still to be
 checked, and no future definition has been inserted into the positive table. -/
@@ -40,6 +42,16 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
       change some name = some cn at hr
       cases hr
       exact scope_ready hc hm.sat he hmain
+    classSites := by
+      intro cn hcn
+      change cn ∈ κ.classes.map (·.name) ++ [name] at hcn
+      rcases List.mem_append.mp hcn with hcn | hcn
+      · obtain ⟨k, site⟩ := hm.classSites cn (List.mem_append_left _ hcn)
+        exact ⟨k, instanceSite_old site hc hm.sat hmain.classLive hn⟩
+      · have heq := List.mem_singleton.mp hcn
+        subst cn
+        exact ⟨m.heap.objs.size, (instanceSite (κ := κ) (body := body) hm hr he).recontext
+          (fun _ hn => hn)⟩
     sat := Proof.Judgment.saturated_freshC hc hm.sat ho hel
     primitiveDispatch := (primitiveDispatch hc hm.sat _).trans hm.primitiveDispatch
     primitiveErrors := (primitiveErrors hc hm.sat).trans hm.primitiveErrors

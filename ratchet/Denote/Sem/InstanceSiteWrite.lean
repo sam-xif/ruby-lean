@@ -1,22 +1,13 @@
 import Denote.Sem.InstanceSite
 import Denote.Sem.MethodHeap
 import Ratchet.MethodCtx
+import Ratchet.ClassCtx
 
 /-! Preserve a class's instance-call site while installing methods or writing fields.
 Reserving a name weakens absence facts; it does not install or certify a callable body. -/
 set_option autoImplicit false
 namespace Ratchet.Denote
 open RubyCore Ratchet
-
-theorem InstanceSite.recontext {κ κ' : Ctx} {cn : String} {k : ObjId} {h : Heap}
-    (site : InstanceSite κ cn k h)
-    (hn : ∀ n, nameFreeN κ n = false → nameFreeN κ' n = false) : InstanceSite κ' cn k h := by
-  refine ⟨site.named, site.front, site.hook, site.constants, ?_⟩
-  intro n hmem owner md hm
-  rcases site.names n hmem owner md hm with hb | hu | hf
-  · exact Or.inl hb
-  · exact Or.inr (Or.inl hu)
-  · exact Or.inr (Or.inr (hn n hf))
 
 theorem InstanceSite.reserveName {κ : Ctx} {cn : String} {k : ObjId} {h : Heap}
     (site : InstanceSite κ cn k h) (name : String) :
@@ -65,6 +56,36 @@ theorem InstanceSite.ivarOnly {κ : Ctx} {cn : String} {k : ObjId} {h h' : Heap}
   · intro n hmem owner md hm
     simp only [Interp.methodOn, hi.classPayload, hi.ancestors_eq] at hm
     exact site.names n hmem owner md hm
+
+theorem ClassSitesOk.methodWrite {κ : Ctx} {name : String} {cls : ObjId}
+    {h : Heap} {md : MethodDef} (sites : ClassSitesOk κ h)
+    (hn : nameFreeN κ name = false) (hq : "method_added" ≠ name) :
+    ClassSitesOk κ (defineMethod h cls name md) := by
+  intro cn hcn
+  obtain ⟨k, site⟩ := sites cn hcn
+  exact ⟨k, site.methodWrite hn hq⟩
+
+theorem ClassSitesOk.ivarOnly {κ : Ctx} {h h' : Heap} (sites : ClassSitesOk κ h)
+    (hi : Proof.IvarOnly h h') : ClassSitesOk κ h' := by
+  intro cn hcn
+  obtain ⟨k, site⟩ := sites cn hcn
+  exact ⟨k, site.ivarOnly hi⟩
+
+theorem ClassSitesOk.publish_instance {κ : Ctx} {c : Cls} {d : Defn} {cls : ObjId}
+    {h : Heap} {md : MethodDef} (sites : ClassSitesOk κ h)
+    (site : InstanceSite κ c.name cls h) (hq : "method_added" ≠ d.name) :
+    ClassSitesOk (instanceDeclCtx κ c d) (defineMethod h cls d.name md) := by
+  intro cn hcn
+  change cn ∈ (classWithMethod c d :: κ.classes).map (·.name) ++ κ.scope.runtimeClass.toList at hcn
+  simp only [List.map_cons, List.cons_append, List.mem_cons] at hcn
+  rcases hcn with he | hcn
+  · change cn = c.name at he
+    subst cn
+    exact ⟨cls, (site.reserveName d.name).methodWrite
+      (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hq⟩
+  · obtain ⟨k, old⟩ := sites cn hcn
+    exact ⟨k, (old.reserveName d.name).methodWrite
+      (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hq⟩
 
 #print axioms InstanceSite.methodWrite
 #print axioms InstanceSite.ivarOnly

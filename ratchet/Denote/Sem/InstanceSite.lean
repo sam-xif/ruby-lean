@@ -1,4 +1,5 @@
-import Denote.Sem.State
+import Denote.Sem.Ready
+import Denote.Ext
 
 /-! Heap facts needed when an ordinary instance call changes self and lexical scope.
 These are obligations to publish with the class, not consequences of a method signature.
@@ -42,20 +43,50 @@ def instanceConstResolve (h : Heap) (k : ObjId) (n : String) : Option Value :=
   ([k, Boot.objectId].firstM (fun j => constOwn h j n)).orElse
     (fun _ => constLookupFrom h k n)
 
-structure InstanceSite (κ : Ctx) (cn : String) (k : ObjId) (h : Heap) : Prop where
+/-- The finite names whose absence is stronger than MethodsExact's prelude allowance. -/
+def shadowableNames : List String := ["lambda", "proc", "x"]
+
+structure InstanceSiteAt (free : String → Bool) (cn : String) (k : ObjId) (h : Heap) : Prop where
   named : classNamed? h cn = some k
   front : classFrontB h k = true
   hook : definitionHookQuietB h k = true
   constants : ∀ n, instanceConstResolve h k n = constLookup h n
   names : ∀ n ∈ shadowableNames, ∀ owner md,
     Interp.methodOn h k n = some (owner, md) →
-      md.builtin.isSome = true ∨ md.undefined = true ∨ nameFreeN κ n = false
+      md.builtin.isSome = true ∨ md.undefined = true ∨ free n = false
 
-theorem InstanceSite.constScope {κ : Ctx} {cn : String} {k : ObjId} {m : Machine}
-    (h : InstanceSite κ cn k m.heap) (hc : m.currentFrame.cref = [k, Boot.objectId])
-    (ho : m.currentFrame.defmod = k) : ConstScopeOk m := by
-  intro n
-  simpa only [constResolveAt, hc, ho, instanceConstResolve] using h.constants n
+/-- Only negative-name information affects a site's meaning, not the caller's scope. -/
+abbrev InstanceSite (κ : Ctx) := InstanceSiteAt (nameFreeN κ)
+
+/-- A class payload pins its reference live, even though Heap.get is total. -/
+theorem lt_size_of_classPayload {h : Heap} {o : ObjId}
+    (hp : (h.classPayload? o).isSome = true) : o < h.objs.size := by
+  by_cases hk : o < h.objs.size
+  · exact hk
+  · exfalso
+    simp only [Heap.classPayload?, Heap.get, Array.getD_eq_getD_getElem?,
+      Array.getElem?_eq_none (by simpa using hk), Option.getD_none] at hp
+    exact absurd hp (by decide)
+
+theorem InstanceSite.live {κ : Ctx} {cn : String} {k : ObjId} {h : Heap}
+    (site : InstanceSite κ cn k h) : k < h.objs.size := by
+  have hn := site.named
+  unfold classNamed? at hn
+  split at hn
+  · split at hn
+    · rename_i hp; cases hn; exact lt_size_of_classPayload hp
+    · cases hn
+  · cases hn
+
+theorem InstanceSite.recontext {κ κ' : Ctx} {cn : String} {k : ObjId} {h : Heap}
+    (site : InstanceSite κ cn k h)
+    (hn : ∀ n, nameFreeN κ n = false → nameFreeN κ' n = false) : InstanceSite κ' cn k h := by
+  refine ⟨site.named, site.front, site.hook, site.constants, ?_⟩
+  intro n hmem owner md hm
+  rcases site.names n hmem owner md hm with hb | hu | hf
+  · exact Or.inl hb
+  · exact Or.inr (Or.inl hu)
+  · exact Or.inr (Or.inr (hn n hf))
 
 /-- Scope-independent, so the same site survives a frame change or an allocation.
 This does not claim that method installation or class mutation preserves it. -/
@@ -68,15 +99,51 @@ theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
     simp only [constOwn, he.payload]
   have hi (name : String) : constLookupFrom n.heap k name = constLookupFrom m.heap k name := by
     simp only [constLookupFrom, he.payload, he.ancestors]
+  have hlk : lookup n.heap (.ref k) "method_added" = lookup m.heap (.ref k) "method_added" := by
+    have hg (ks : List ObjId) : lookup.go n.heap "method_added" ks =
+        lookup.go m.heap "method_added" ks := by
+      induction ks with
+      | nil => rfl
+      | cons j ks ih => simp only [lookup.go, he.payload, ih]
+    simp only [lookup, classOf, he.get k hl, he.ancestors, hg]
   refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · simpa only [he.classNamed?_eq] using h.named
   · simpa only [classFrontB, he.payload] using h.front
-  · simpa only [definitionHookQuietB, lookup_eq_methodOn, classOf, he.get k hl, hm] using h.hook
+  · simpa only [definitionHookQuietB, hlk] using h.hook
   · intro name
     simpa only [instanceConstResolve, hc, hi, he.constLookup_eq] using h.constants name
   · intro name hn owner md hmd
     rw [hm] at hmd
     exact h.names name hn owner md hmd
+
+/-- Installed classes persist after leaving a scope. The pending lexical class requests
+its site before a method/constructor record has been published. No new Ctx field is needed. -/
+def classSiteNames (κ : Ctx) : List String :=
+  κ.classes.map (·.name) ++ κ.scope.runtimeClass.toList
+
+def ClassSitesOk (κ : Ctx) (h : Heap) : Prop :=
+  ∀ cn ∈ classSiteNames κ, ∃ k, InstanceSite κ cn k h
+
+theorem ClassSitesOk.of_class {κ : Ctx} {h : Heap} (sites : ClassSitesOk κ h)
+    {c : Cls} (hc : c ∈ κ.classes) : ∃ k, InstanceSite κ c.name k h :=
+  sites c.name (List.mem_append_left _ (List.mem_map.mpr ⟨c, hc, rfl⟩))
+
+theorem ClassSitesOk.of_scope {κ : Ctx} {h : Heap} (sites : ClassSitesOk κ h)
+    {cn : String} (hc : κ.scope.runtimeClass = some cn) : ∃ k, InstanceSite κ cn k h :=
+  sites cn (by simp [classSiteNames, hc])
+
+theorem ClassSitesOk.recontext {κ κ' : Ctx} {h : Heap} (sites : ClassSitesOk κ h)
+    (hc : ∀ cn ∈ classSiteNames κ', cn ∈ classSiteNames κ)
+    (hn : ∀ n, nameFreeN κ n = false → nameFreeN κ' n = false) : ClassSitesOk κ' h := by
+  intro cn hcn
+  obtain ⟨k, site⟩ := sites cn (hc cn hcn)
+  exact ⟨k, site.recontext hn⟩
+
+theorem ClassSitesOk.ext {κ : Ctx} {m n : Machine} (sites : ClassSitesOk κ m.heap)
+    (he : Ext m n) : ClassSitesOk κ n.heap := by
+  intro cn hcn
+  obtain ⟨k, site⟩ := sites cn hcn
+  exact ⟨k, site.ext he site.live⟩
 
 #print axioms classFrontB_sound
 #print axioms InstanceSite.ext

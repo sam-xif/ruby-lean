@@ -97,6 +97,7 @@ theorem StateOk_publish_instance {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (ha : κ.asms = [])
     (hc : ClassesOk [c] m) (hk : classNamed? m.heap c.name = some cls)
+    (hsite : InstanceSite κ c.name cls m.heap)
     (hobj : cls ≠ Boot.objectId) (hf : ∀ old ∈ c.methods, old.name ≠ d.name)
     (hs : ∀ old ∈ κ.classes, classNamed? m.heap old.name = some cls →
       ∀ method ∈ old.methods, method.name ≠ d.name)
@@ -113,6 +114,7 @@ theorem StateOk_publish_instance {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
   exact StateOk_methodWrite_tables (StateOk_reserveName hm d.name) hr hΓ ha
     (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hmiss hquiet
     (ClassesOk_publish_instance hm.classes hc hk hf hs hp hb hu hcode)
+    (hm.classSites.publish_instance hsite hquiet)
     (DefsOk_methodWrite_other hm.defs hobj) hnested hdecl
 
 #print axioms ClassesOk_methodWrite_old
