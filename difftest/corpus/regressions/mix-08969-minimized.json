@@ -1,0 +1,24 @@
+{
+  "status": "open",
+  "filed_by": "difftest campaign (automatic)",
+  "arm": "tier1",
+  "seed": 20260914,
+  "case_id": "mix-08969",
+  "diff": "stdout: 'retry:boom\\n0\\n' vs 'retry:boom\\n' | result: 'nil' vs None | exception: None vs ('TypeError', 'no implicit conversion of C0 into String')",
+  "control": {
+    "stdout": "retry:boom\n0\n",
+    "result_repr": "nil",
+    "exception": null,
+    "timed_out": false
+  },
+  "sut": {
+    "stdout": "retry:boom\n",
+    "result_repr": null,
+    "exception": [
+      "TypeError",
+      "no implicit conversion of C0 into String"
+    ],
+    "timed_out": false
+  },
+  "note": "Minimized by hypothesis. Re-run with `difftest run --tier regressions`; flip `status` to \"fixed\" once it agrees, which that tier will insist on."
+}
