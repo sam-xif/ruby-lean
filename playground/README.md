@@ -243,6 +243,25 @@ The **semantic steps** checkbox in the header hides the step pane and gives the
 editor the whole window. It is a layout change only — the trace is kept, and
 **Step it ▶** switches it back on.
 
+## Tab 3 — the typed ratchet checker
+
+This tab reads the current `ratchet/corpus/*.rb` files and their sibling
+`*.meta.json` records. It exposes the same live pipeline as
+`ratchet/scripts/run_typed_ratchet.sh`, one artifact at a time:
+
+```
+annotated Ruby -> strip stack -> RubyCore -> emit_deriv.py -> validateD
+                                  |
+                                  +-> Lean model / CRuby
+```
+
+The annotated and stripped programs have separate editors. The RubyCore view
+and emitted `Deriv` are visible, and the derivation remains editable before
+the trusted `validateD` check. The Lean model and CRuby buttons execute the
+stripped program; their stdout comparison is shown beside the validation
+result. `validate-one` is a small adapter executable around the existing
+`validateD`; build it with `cd ratchet && lake build validate-one`.
+
 ## Notes
 
 - The `--trace N` step cap defaults to 4000 (server) / 3000 (binary) — a tight

@@ -16,6 +16,8 @@ anything, so none boots the prelude and none depends on model coverage.
 Run:  python3 server.py [port]      (default 8077)
 Needs: CRuby 4.0.5 (brew) + a built `rubycore` (cd ../lean && lake build).
 """
+from __future__ import annotations
+
 import json
 import os
 import shutil
@@ -28,7 +30,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent  # ruby/
 EXPORT_JSON = ROOT / "harness" / "desugar-dt" / "bin" / "export-json"
 RUBYCORE = ROOT / "lean" / ".lake" / "build" / "bin" / "rubycore"
-RATCHET = ROOT / "ratchet" / ".lake" / "build" / "bin" / "ratchet"
+RATCHET_VALIDATE = ROOT / "ratchet" / ".lake" / "build" / "bin" / "validate-one"
 MAX_STEPS = "4000"
 # The desugar budget. It used to be 15s, which is a toy's budget: the linked
 # Homebrew slice is 2,151 lines and the slice explorer feeds it to the same first
@@ -144,11 +146,13 @@ class Handler(BaseHTTPRequestHandler):
         "/slice/cruby":    lambda q: cruby_run(q.get("source", "")),
         "/slice/derive":   lambda q: derive(q.get("source", "")),
         "/slice/validate": lambda q: validate(q.get("source", ""), q.get("cert", "")),
-        # ── Tab 3: the ratchet checker — model_run/cruby_run reused verbatim,
-        # a fresh route only for the new checker.
+        # ── Tab 3: the current typed ratchet pipeline.
+        "/ratchet/strip":  lambda q: strip_chain(q.get("source", "")),
+        "/ratchet/desugar": lambda q: desugar_only(q.get("source", "")),
+        "/ratchet/derive": lambda q: ratchet_derive(q.get("source", "")),
+        "/ratchet/validate": lambda q: ratchet_validate(q.get("source", ""), q.get("deriv")),
         "/ratchet/model":  lambda q: model_run(q.get("source", "")),
         "/ratchet/cruby":  lambda q: cruby_run(q.get("source", "")),
-        "/ratchet/check":  lambda q: ratchet_check(q.get("source", "")),
         "/ratchet/corpus-source": lambda q: ratchet_corpus_source(q.get("file", "")),
     }
 
@@ -301,22 +305,21 @@ def corpus_stems() -> list[str]:
     `ratchet`'s own runner sorts them — filename order, which is tier order."""
     if not CORPUS.is_dir():
         return []
-    return sorted(p.stem for p in CORPUS.glob("*.json"))
+    return sorted(p.name.removesuffix(".meta.json") for p in CORPUS.glob("*.meta.json"))
 
 
 def ratchet_corpus() -> dict:
-    """The corpus ladder's own rungs, metadata only (`id`/`tier`/`description`/
-    `expect_validate` — never `program`, which is desugared JSON already, not Ruby,
-    and is what `/ratchet/corpus-source` below hands the *matching* `.rb` for)."""
+    """The live typed ladder's `*.meta.json` records."""
     out = []
     for stem in corpus_stems():
         try:
-            entry = json.loads((CORPUS / f"{stem}.json").read_text())
+            entry = json.loads((CORPUS / f"{stem}.meta.json").read_text())
         except ValueError:
             continue
         out.append({"file": stem, "id": entry.get("id"), "tier": entry.get("tier"),
                     "description": entry.get("description"),
-                    "expect_validate": entry.get("expect_validate")})
+                    "expect_validate": entry.get("expect_validate"),
+                    "expect_sorbet": entry.get("expect_sorbet")})
     return {"root": str(CORPUS), "entries": out}
 
 
@@ -332,32 +335,64 @@ def ratchet_corpus_source(stem: str) -> dict:
     return {"file": stem, "source": p.read_text(errors="replace")}
 
 
-def ratchet_check(source: str) -> dict:
-    """`ratchet --stdin` (`../ratchet/`) — `Ratchet/Validate.lean`'s `chk`, the
-    corpus-ladder checker, read the same desugared JSON every other query reads.
-    On `"validate": false` that's the whole payload; on `true` it's joined by
-    `type` (the program's result type), `locals` (the final environment — every
-    local's type), and `ivars` (the final self-ivar spine), all rendered in
-    Sorbet's own vocabulary. A second, isolated checker project from `rubycore`'s
-    (see `ratchet/AGENTS.md`), so this is its own subprocess rather than a
-    `lean_query` flag."""
-    if not RATCHET.exists():
-        return {"error": "setup",
-                "message": f"ratchet not built at {RATCHET} — run `cd ../ratchet && lake build ratchet`"}
-    core, err = desugar(source)
+def ratchet_derive(source: str) -> dict:
+    """Run the typed ladder's untrusted Sorbet -> strip -> desugar -> Deriv stages."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        rb = Path(td) / "playground.rb"
+        rb.write_text(source)
+        sigs = subprocess.run(
+            [sys.executable, str(ROOT / "ratchet/scripts/srb_sigs.py"), "--quiet", str(rb)],
+            capture_output=True, text=True, timeout=LONG)
+        if sigs.returncode != 0:
+            return {"error": "sorbet", "message": sigs.stderr.strip()[:2000]}
+        stripped = strip_chain(source)
+        if stripped.get("error"):
+            return stripped
+        core, err = desugar(stripped["source"])
+        if err:
+            return err
+        sp, ap = Path(td) / "sigs.json", Path(td) / "ast.json"
+        sp.write_text(sigs.stdout)
+        ap.write_text(core)
+        emit = subprocess.run(
+            [sys.executable, str(ROOT / "ratchet/scripts/emit_deriv.py"),
+             "--ast", str(ap), "--sigs", str(sp)],
+            capture_output=True, text=True, timeout=LONG)
+        if emit.returncode != 0:
+            return {"error": "derive", "message": emit.stderr.strip()[:2000]}
+        try:
+            report = json.loads(emit.stdout)
+            sig_report = json.loads(sigs.stdout)
+        except ValueError as exc:
+            return {"error": "derive", "message": f"unparseable pipeline output: {exc}"}
+        return {"emit": report, "deriv": report.get("deriv"), "ty": report.get("ty"),
+                "stripped": stripped["source"], "core": json.loads(core),
+                "sorbet": sig_report}
+
+
+def ratchet_validate(source: str, deriv) -> dict:
+    """Check the displayed Deriv with the trusted `validateD` Bool."""
+    if not RATCHET_VALIDATE.exists():
+        return {"error": "setup", "message": f"validate-one not built at {RATCHET_VALIDATE} — run `cd ../ratchet && lake build validate-one`"}
+    stripped = strip_chain(source)
+    if stripped.get("error"):
+        return stripped
+    core, err = desugar(stripped["source"])
     if err:
         return err
+    payload = {"program": json.loads(core), "deriv": deriv}
     try:
-        p = subprocess.run([str(RATCHET), "--stdin"], input=core,
+        p = subprocess.run([str(RATCHET_VALIDATE)], input=json.dumps(payload),
                            capture_output=True, text=True, timeout=TIMEOUT)
     except subprocess.TimeoutExpired:
-        return {"error": "timeout", "message": "ratchet timed out"}
+        return {"error": "timeout", "message": "validateD timed out"}
     if p.returncode != 0:
-        return {"error": "ratchet", "message": p.stderr.strip()[:500] or f"ratchet exit {p.returncode}"}
+        return {"error": "validate", "message": p.stderr.strip()[:2000] or f"exit {p.returncode}"}
     try:
         return json.loads(p.stdout)
-    except ValueError as e:
-        return {"error": "ratchet", "message": f"unparseable ratchet output: {e}"}
+    except ValueError as exc:
+        return {"error": "validate", "message": f"unparseable validateD output: {exc}"}
 
 
 def assn(source: str, top: bool = False) -> dict:
@@ -604,7 +639,7 @@ def main():
     print(f"Ruby-in-Lean playground on http://localhost:{port}")
     print(f"  ruby:     {RUBY}")
     print(f"  rubycore: {RUBYCORE}  ({'built' if RUBYCORE.exists() else 'NOT BUILT'})")
-    print(f"  ratchet:  {RATCHET}  ({'built' if RATCHET.exists() else 'NOT BUILT'})")
+    print(f"  validate: {RATCHET_VALIDATE}  ({'built' if RATCHET_VALIDATE.exists() else 'NOT BUILT'})")
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 
 

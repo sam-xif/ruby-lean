@@ -56,6 +56,10 @@ root = "SemLadder"
 name = "ratchetd"
 root = "MainTyped"
 
+[[lean_exe]]
+name = "validate-one"
+root = "MainValidateOne"
+
 [[require]]
 name = "rubycore"
 path = "../lean"
@@ -63,4 +67,3 @@ path = "../lean"
 # The evidence behind every climbed rung: pins each hand-authored `Judge` derivation
 # (`Ratchet/Rungs.lean`) to the corpus syntax and to what the real semantics actually
 # computes. Separate exe from `ratchet` so the ratchet's headline number stays a pure
-

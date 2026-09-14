@@ -221,28 +221,37 @@
     <pre class="out tall" id="slicevalout"><span class="empty">— derive a certificate, then validate it</span></pre>
    </div>
 
-   <!-- ── Tab 3: the ratchet checker ────────────────────────────────────────
-        One buffer, loadable from any rung of `../ratchet/corpus/` (its own
-        graduated corpus, `ratchet/AGENTS.md`), and four tools over it, each the
-        thing named beside it: the Lean model (`rubycore`, run to completion —
-        the observation record, not the stepper's rendering), CRuby (the oracle),
-        `../ratchet/`'s own checker (`ratchet --stdin` → `Ratchet/Validate.lean`'s
-        `chk` — a second, isolated checker project from `rubycore`'s static
-        queries in tab 1), and the stepper (tab 1's right-hand pane, shared). -->
+   <!-- The live typed ratchet: annotated Ruby -> strip -> RubyCore -> Deriv ->
+        validateD, with the model and CRuby execution beside it. -->
    <div class="pane" id="pane-ratchet">
     <div class="row">
-      <select id="ratchetcorpus" title="ratchet/corpus/*.json — the checker's own graduated corpus, tier by tier"></select>
+      <select id="ratchetcorpus" title="ratchet/corpus/*.rb with sibling *.meta.json — the typed ladder"></select>
       <button class="ghost" id="ratchetcorpusload">Load rung</button>
       <span id="ratchetmsg" class="detail"></span>
     </div>
     <div id="ratcheterr"></div>
-    <textarea id="ratchetsrc" spellcheck="false" style="height:200px"></textarea>
+    <h2>Corpus Ruby — Sorbet annotated</h2>
+    <textarea id="ratchetsrc" spellcheck="false" style="height:180px"></textarea>
+
+    <div class="stage"><h2>1. Strip Sorbet signatures</h2>
+      <button class="ghost" id="ratchetstrip">Strip ▸</button>
+      <span id="ratchetstripmsg" class="detail"></span></div>
+    <textarea id="ratchetstripped" spellcheck="false" style="height:150px" placeholder="sig-stripped program appears here"></textarea>
+
+    <div class="stage"><h2>2. Desugar</h2>
+      <button class="ghost" id="ratchetdesugar">Desugar ▸</button></div>
+    <pre class="out sexpr" id="ratchetcore"><span class="empty">— strip, then desugar</span></pre>
+
+    <div class="stage"><h2>3. Type derivation</h2>
+      <button class="ghost" id="ratchetderive">Derive ▸</button>
+      <span id="ratchetderivemsg" class="detail"></span></div>
+    <textarea id="ratchetderiv" class="cert" spellcheck="false" placeholder="emitted Deriv JSON appears here and remains editable"></textarea>
 
     <div class="stage">
       <h2>Run it</h2>
       <button class="ghost" id="ratchetmodel" title="rubycore — run to completion, the observation record">Lean model ▶</button>
       <button class="ghost" id="ratchetcruby" title="the oracle">CRuby ▶</button>
-      <button class="ghost" id="ratchetcheck" title="ratchet --stdin — Ratchet/Validate.lean's chk, over the same desugared JSON: validate, plus the program's type and its locals' types on an accept">Ratchet checker ✓</button>
+      <button class="ghost" id="ratchetvalidate" title="the trusted validateD Bool checks the displayed Deriv against the stripped program">validateD ✓</button>
       <button class="ghost" id="ratchetstep" title="trace this buffer in the stepper pane">Step it ▶</button>
       <label class="detail">start at <input id="ratchetat" size="16" placeholder="send .compare("></label>
       <label class="detail">or step <input id="ratchetfrom" size="7" placeholder="0"></label>
@@ -251,13 +260,13 @@
     <div class="row"><span class="pill" id="pillratchetmodel">model —</span>
       <span class="pill" id="pillratchetcruby">CRuby —</span>
       <span class="pill" id="pillratchetdiff">agree —</span>
-      <span class="pill" id="pillratchetcheck">checker —</span></div>
+      <span class="pill" id="pillratchetcheck">validateD —</span></div>
     <h2>Lean model — observation record</h2>
     <pre class="out tall" id="ratchetmodelout"><span class="empty">— press “Lean model”</span></pre>
     <h2>CRuby stdout</h2>
     <pre class="out tall" id="ratchetcrubyout"><span class="empty">— press “CRuby”</span></pre>
-    <h2>Ratchet checker — <span class="detail">validate : Expr → Bool</span></h2>
-    <div id="ratchetcheckbox"><span class="empty">— press “Ratchet checker”</span></div>
+    <h2>Validation — <span class="detail">validateD : Expr → Deriv → Bool</span></h2>
+    <div id="ratchetcheckbox"><span class="empty">— derive, then press “validateD”</span></div>
    </div>
   </div>
   <div class="right">
@@ -696,7 +705,7 @@ document.addEventListener('keydown', e => {
 const HINTS = {
   stepper: 'write Ruby · Run · step with ← → · or type it: infer / inferOpen',
   slice:   'pick a slice file or link the whole slice · strip ▸ desugar ▸ run ▸ derive ▸ validate',
-  ratchet: 'write Ruby · run it in the Lean model and in CRuby · run ../ratchet/\'s checker (validate : Expr → Bool)',
+  ratchet: 'load annotated Ruby · strip signatures · desugar · inspect Deriv · run validateD, Lean, and CRuby',
 };
 function showTab(name) {
   for (const n of ['stepper', 'slice', 'ratchet']) {
@@ -886,7 +895,7 @@ async function ratchetBtn(id, msgId, label, fn) {
   try { await fn(); } catch(e) { $('ratcheterr').innerHTML = `<div class="err">${esc(String(e))}</div>`; }
   finally { $(id).disabled = false; }
 }
-const ratchetText = () => $('ratchetsrc').value;
+const ratchetText = () => $('ratchetstripped').value || $('ratchetsrc').value;
 function ratchetErr(d) {
   $('ratcheterr').innerHTML = `<div class="err">[${d.error}] ${esc(d.message||'')}</div>`;
 }
@@ -926,40 +935,48 @@ $('ratchetcruby').onclick = () => ratchetBtn('ratchetcruby','ratchetrunmsg','run
   $('ratchetrunmsg').textContent = '';
 });
 
-// `ratchet --stdin` — `Ratchet/Validate.lean`'s `validate`, over the same
-// desugared JSON the model/CRuby buttons above read.
-$('ratchetcheck').onclick = () => ratchetBtn('ratchetcheck','ratchetrunmsg','checking…', async () => {
-  const d = await post('/ratchet/check', {source: ratchetText()});
+$('ratchetstrip').onclick = () => ratchetBtn('ratchetstrip','ratchetstripmsg','stripping…', async () => {
+  const d = await post('/ratchet/strip', {source: $('ratchetsrc').value});
+  if (d.error) return ratchetErr(d);
+  $('ratchetstripped').value = d.source;
+  $('ratchetstripmsg').textContent = `${d.applied.length} transforms applied`;
+});
+
+$('ratchetdesugar').onclick = () => ratchetBtn('ratchetdesugar','ratchetrunmsg','desugaring…', async () => {
+  const d = await post('/ratchet/desugar', {source: ratchetText()});
+  if (d.error) return ratchetErr(d);
+  $('ratchetcore').innerHTML = fmtSexpr(d.ast);
+  $('ratchetrunmsg').textContent = `${d.bytes} bytes of RubyCore JSON`;
+});
+
+$('ratchetderive').onclick = () => ratchetBtn('ratchetderive','ratchetderivemsg','running Sorbet and emitter…', async () => {
+  const d = await post('/ratchet/derive', {source: $('ratchetsrc').value});
+  if (d.error) return ratchetErr(d);
+  if (d.stripped) $('ratchetstripped').value = d.stripped;
+  $('ratchetderiv').value = d.deriv ? JSON.stringify(d.deriv, null, 2) : JSON.stringify(d.emit, null, 2);
+  $('ratchetderivemsg').textContent = d.deriv ? `emitted · result ${JSON.stringify(d.ty)}` : `blocked: ${d.emit.why}`;
+});
+
+$('ratchetvalidate').onclick = () => ratchetBtn('ratchetvalidate','ratchetrunmsg','checking validateD…', async () => {
+  let deriv;
+  try { deriv = JSON.parse($('ratchetderiv').value); }
+  catch(e) { return ratchetErr({error:'input', message:`Deriv JSON: ${e}`}); }
+  const d = await post('/ratchet/validate', {source: $('ratchetsrc').value, deriv});
   if (d.error) {
     ratchetErr(d);
-    pill('pillratchetcheck', `checker ${d.error}`, 'no');
+    pill('pillratchetcheck', `validateD ${d.error}`, 'no');
     $('ratchetcheckbox').innerHTML = '';
     return;
   }
-  const ok = d.validate === true;
-  pill('pillratchetcheck', ok ? 'checker validate=true' : 'checker validate=false', ok ? 'ok' : 'warn');
-  // On `validate: false` chk synthesized nothing, so there is no type to show —
-  // only on `true` does the payload carry the program's type, its locals'
-  // types, and the final self-ivar spine (`chk`'s whole result triple, not
-  // just `validate`'s Bool).
-  const L = [`<span class="k">validate</span> ${esc(String(d.validate))}`];
-  if (ok) {
-    L.push(`<span class="k">type</span> <span class="ty">${esc(d.type||'')}</span>`);
-    const locals = (d.locals||[]).length
-      ? (d.locals).map(l => `${esc(l.name)} : <span class="ty">${esc(l.type)}</span>`).join(', ')
-      : '<span class="empty">(none)</span>';
-    L.push(`<span class="k">locals</span> ${locals}`);
-    L.push(`<span class="k">self ivars</span> ${esc(d.ivars||'{}')}`);
-  }
+  const ok = d.validateD === true;
+  pill('pillratchetcheck', `validateD=${ok}`, ok ? 'ok' : 'warn');
+  const L = [`<span class="k">validateD</span> ${esc(String(ok))}`];
   $('ratchetcheckbox').innerHTML =
     `<div class="verdict ${ok ? 'accept' : 'unknown'}">${L.join('<br>')}</div>`;
   $('ratchetrunmsg').textContent = '';
 });
 
-// The corpus dropdown — `../ratchet/corpus/*.json`'s own metadata (id/tier/
-// description/expect_validate), loaded once; "Load rung" reads the *sibling*
-// `.rb` file (`corpus-source`), since the `.json` carries the already-desugared
-// AST, not Ruby text.
+// The live corpus is annotated `.rb` plus sibling `.meta.json`.
 async function loadRatchetCorpus() {
   const d = await (await fetch('/ratchet/corpus')).json();
   $('ratchetcorpus').innerHTML = (d.entries||[]).map(e =>
@@ -972,6 +989,9 @@ $('ratchetcorpusload').onclick = () => ratchetBtn('ratchetcorpusload','ratchetms
   const d = await post('/ratchet/corpus-source', {file: $('ratchetcorpus').value});
   if (d.error) return ratchetErr(d);
   $('ratchetsrc').value = d.source;
+  $('ratchetstripped').value = '';
+  $('ratchetderiv').value = '';
+  $('ratchetcore').innerHTML = '<span class="empty">— strip, then desugar</span>';
   $('ratchetmsg').textContent = `${d.file} — ${d.source.split('\n').length} line(s)`;
 });
 
@@ -985,16 +1005,7 @@ $('ratchetstep').onclick = () => {
                      $('ratchetstep'), $('ratchetrunmsg'));
 };
 
-$('ratchetsrc').value = `class Point
-  def initialize(x, y)
-    @x = x
-    @y = y
-  end
-  def sum
-    @x + @y
-  end
-end
-Point.new(1, 2).sum`;
+$('ratchetsrc').value = `# typed: true\n1 + 2`;
 
 loadFiles();
 loadRatchetCorpus();
