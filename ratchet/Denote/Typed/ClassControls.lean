@@ -12,6 +12,7 @@ import Denote.Typed.InstanceTableControls
 import Denote.Typed.ClassScopeControls
 import Denote.Typed.InstanceSpineControls
 import Denote.Typed.InstanceResolveControls
+import Denote.Typed.InstanceStateControls
 import Denote.Sanity
 
 /-! Fresh-class controls. They establish actual entry and heap facts, not acceptance of

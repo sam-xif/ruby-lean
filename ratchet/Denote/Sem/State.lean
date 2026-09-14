@@ -622,10 +622,10 @@ the booted machine: the toplevel ancestor chain carries ~40 prelude-written meth
 `format`, `Integer`, `!=`, and the `__`-prefixed helpers) and **none of these three**. -/
 def shadowableNames : List String := ["lambda", "proc", "x"]
 
-/-- Current self, and Object's class-object dispatch chain, inherited by fresh class self.
-Not all class objects: the real prelude's unrelated singleton method `T.proc` is allowed. -/
+/-- Current self, Object's metaclass (inherited by fresh class self), and Object itself
+(inherited by fresh instances). Unrelated singleton methods such as `T.proc` are allowed. -/
 def nameFreeSites (m : Machine) : List ObjId :=
-  [classOf m.heap m.currentFrame.self, classOf m.heap (.ref Boot.objectId)]
+  [classOf m.heap m.currentFrame.self, classOf m.heap (.ref Boot.objectId), Boot.objectId]
 
 /-- On each relevant chain, a shadowable method is builtin, undefined, or a name reserved
 by the context. Unlike `MethodsExact`, being prelude code alone is insufficient. Reserving

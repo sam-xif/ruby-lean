@@ -24,12 +24,16 @@ theorem name_site_parent (hc : Proof.ChainsIn m.heap)
     rw [Proof.Judgment.classOf_freshC_k]
     simp only [parent, if_neg (Nat.succ_ne_self _), ite_true]
     simp [nameFreeSites, hco]
-  · have hk := List.mem_singleton.mp hk
-    subst k
-    change parent m.heap e
-      (classOf (freshClsHeap m.heap Boot.objectId name name e) (.ref Boot.objectId)) ∈ _
-    rw [classOf_old ho, parent_old (Proof.ClsGrow.classOf_lt hc ho)]
-    exact List.mem_cons_of_mem _ (List.mem_singleton_self _)
+  · rcases List.mem_cons.mp hk with hk | hk
+    · subst k
+      change parent m.heap e
+        (classOf (freshClsHeap m.heap Boot.objectId name name e) (.ref Boot.objectId)) ∈ _
+      rw [classOf_old ho, parent_old (Proof.ClsGrow.classOf_lt hc ho)]
+      simp [nameFreeSites]
+    · have hk := List.mem_singleton.mp hk
+      subst k
+      rw [parent_old ho]
+      simp [nameFreeSites]
 
 theorem nameFree (hc : Proof.ChainsIn m.heap) (hs : Proof.Saturated m.heap)
     (he : (m.heap.get Boot.objectId).eigen = some e) (hn : NameFreeOk κ m) :

@@ -203,7 +203,7 @@ theorem methodsExactB_sound {κ : Ratchet.Ctx} {m : Machine} (hb : methodsExactB
   · rw [classPayload?_oob m.heap (Nat.le_of_not_lt hlt)] at hk
     exact absurd hk (by simp)
 
-/-- Check actual absence at both relevant sites. This is stronger than `NameFreeOk`'s
+/-- Check actual absence at all relevant sites. This is stronger than `NameFreeOk`'s
 builtin/tombstone disjunction and also discharges `BareNameFree` at current self. -/
 def nameFreeB (m : Machine) : Bool :=
   shadowableNames.all fun n => (nameFreeSites m).all fun k =>
@@ -487,7 +487,8 @@ theorem bareNameFreeB_sound {m : Machine} (hb : nameFreeB m = true) (κ : Ratche
   intro n hn _ _
   cases hn
   simp only [nameFreeB, List.all_eq_true] at hb
-  have h := hb "x" (by simp [shadowableNames]) _ (List.mem_cons_self (l := [_]))
+  have h := hb "x" (by simp [shadowableNames]) (classOf m.heap m.currentFrame.self)
+    (by simp [nameFreeSites])
   rw [lookup_eq_methodOn]
   simpa using h
 

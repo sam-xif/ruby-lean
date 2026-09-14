@@ -9486,3 +9486,24 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree. Concurrent playground updates are preserved;
   their runner diagnostic's accidental shell substitutions were fixed in a separate commit.
+
+## Clink 124 (2026-09-14) — full annotated instance-body entry
+
+- `InstanceSite` names heap-only facts: class identity, MRO head, quiet hook, lexical constant
+  agreement, and shadowable-name guarantees. `classFrontB` moved here without changing its
+  meaning. Allocation preserves the site; fresh class creation establishes it. Ordinary
+  receiver payload remains a separate dispatch obligation, not a restriction on `Ty.inst`.
+- Fresh instances inherit Object, not its metaclass. NameFreeOk's third site now covers that
+  chain; the same boot Bool and all transports cover it. A component countermodel masks x on
+  both old sites while a fresh instance reaches a hidden Object#x and fails at +1. A second
+  actual call fails through class-local LIMIT despite the global Integer constant value.
+- `instance_enter_state` derives full StateOk when self, block, scope, and spine change;
+  parameter types come from annotations, not concrete values. The real enterUserMethod
+  theorem pins the actual body control. A single checked inc body supplies the body-local
+  RunSpec for every Integer argument; nullable parameters and a Boolean return annotation
+  reject. An independent actual class-definition/new/call returns 4.
+- New modules compile below a second, standard axioms only. No new rule or admission.
+  Persistent site publication across method definitions, full caller restoration, constructor
+  contracts, and class/body certificate integration remain required for 061.
+- Full quiet ratchet GREEN: fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree.

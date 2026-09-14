@@ -1,5 +1,6 @@
 import Denote.Typed.InstanceEntry
 import Denote.Typed.MethodResolve
+import Denote.Sem.InstanceSite
 
 /-! Installed instance-method resolution and real explicit dispatch. A method record is
 not a body proof; this layer supplies the code which an annotation-checked body must cover.
@@ -7,37 +8,6 @@ No-prepend and ordinary-payload obligations remain visible, not inferred from a 
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
-
-private theorem dedup_head (k : ObjId) (xs tail : List ObjId) :
-    (xs.foldl (fun acc x => if acc.contains x then acc else acc ++ [x]) (k :: tail)).head? =
-      some k := by
-  induction xs generalizing tail with
-  | nil => rfl
-  | cons x xs ih =>
-    simp only [List.foldl_cons]
-    split
-    · exact ih tail
-    · exact ih (tail ++ [x])
-
-def classFrontB (h : Heap) (k : ObjId) : Bool :=
-  (h.classPayload? k).any (fun cp => cp.prepends.isEmpty)
-
-theorem classFrontB_sound {h : Heap} {k : ObjId} (hf : classFrontB h k = true) :
-    ∃ rest, ancestors h k = k :: rest := by
-  cases hp : h.classPayload? k with
-  | none => simp [classFrontB, hp] at hf
-  | some cp =>
-    have hn : cp.prepends = [] := by simpa [classFrontB, hp] using hf
-    have hh : (ancestors h k).head? = some k := by
-      simp only [ancestors, ancestors.go, hp, hn, List.reverse_nil, List.flatMap_nil,
-        List.nil_append, List.cons_append, List.foldl_cons, List.contains_nil,
-        Bool.false_eq_true, ↓reduceIte, List.nil_append]
-      exact dedup_head k _ []
-    cases ha : ancestors h k with
-    | nil => simp [ha] at hh
-    | cons a rest =>
-      have hk : a = k := by simpa only [ha, List.head?_cons, Option.some.injEq] using hh
-      exact ⟨rest, by simpa only [hk] using ha⟩
 
 theorem exactInst_receiver {h : Heap} {recv : Value} {cn : String} {k : ObjId}
     (hv : isExactInst h recv cn = true) (hk : classNamed? h cn = some k) :
