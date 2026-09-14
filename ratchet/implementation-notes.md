@@ -8639,3 +8639,29 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 49, checker reach 51, 252 agree / 0 disagree;
   all 22 rules proved. The context equivalence, assignment, and sequence proofs
   are axiom-clean. Coverage is unchanged; 052 remains the next positive frontier.
+
+## Clink 86 (2026-09-13) — actual method entry and the caller-frame obligation
+
+- Prove `classifyFull_required` and `enterUserMethod_required` over arbitrary lists
+  of required positional names/arguments, not a two-argument special case. The
+  latter names the actual fresh method frame and `frameK`, with no captured frame,
+  block, or keyword bundle. No interpreter changes. Normalize preprocessing before
+  case-splitting the reversed parameter list; no large evaluator proof is needed.
+- `requiredFrame_envOk` derives the body's environment from the signature's types
+  and the arguments' denotations. Lookup follows the actual first matching name;
+  absent names read nil, never a caller local. First-order, non-alias parameter
+  types are explicit premises: heap-only denotations survive the frame change;
+  arbitrary captured-frame/behavioral types need a stronger transport.
+- Runtime controls exercise body execution and caller return, zero-argument entry,
+  absent caller locals, and both wrong-arity directions. These are semantics tests,
+  not claims that the checker accepts methods; annotation/body checking stays owed.
+- **Counterexample to the next proposed transport:** `Framed entered damaged` can
+  hold while an inactive caller local changes from Integer to Boolean. The witness
+  is not asserted reachable; it proves the current contract alone cannot restore
+  caller `EnvOk`. `Framed` pins heap properties and the active stack, not the frame
+  array. Add caller isolation/preservation (and its compositional transport) before
+  claiming a call clink. A checked body must carry that effect information as well
+  as its annotated answer type; assuming restoration would repeat the old pitfall.
+- Full quiet ratchet GREEN: fragment 49, checker reach 51, 252 agree / 0 disagree,
+  all 22 rules proved. New entry/environment proofs and the counterexample are
+  axiom-clean; no coverage increase is claimed until definitions and calls certify.

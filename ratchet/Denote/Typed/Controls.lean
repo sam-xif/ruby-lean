@@ -1,6 +1,6 @@
 import Denote.Typed.Clink
 import Denote.Typed.PrimitiveControls
-import Denote.Typed.Context
+import Denote.Typed.MethodEntryControls
 
 /-!
 # `Denote/Typed/Controls.lean` — derivations in the certified judgment, and the gate
