@@ -9507,3 +9507,20 @@ both halves of what constrains them now have a name.
   contracts, and class/body certificate integration remain required for 061.
 - Full quiet ratchet GREEN: fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree.
+
+## Clink 125 (2026-09-14) — preserve instance sites through definition publication
+
+- `InstanceSite.methodWrite` preserves identity, MRO head, constants, hooks, and negative
+  names at arbitrary owners, including aliases. The written name must be reserved; a new
+  method_added needs another hook proof. Recontextualization weakens only negative names.
+  Ivar-only changes preserve sites without imposing a receiver-payload restriction.
+- `step_scoped_instance_world` joins actual installation, positive method-table publication,
+  full state, and the derived outgoing site. No outgoing site is assumed. The fresh-class
+  definition control proves the site after execution; an unreserved shadowable method is
+  proved to destroy it. Explicit x dispatch still returns 1; a heap-injected singleton hook
+  makes a later harmless definition execute false + 1 and become type-stuck.
+- New modules build in at most 1.3 seconds, standard axioms only. No rules or admissions.
+  Sites remain explicit alongside StateOk; persistent conformance storage, caller restoration,
+  constructors, and annotation-checked class/body certificate integration remain.
+- Full quiet ratchet GREEN: fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree.

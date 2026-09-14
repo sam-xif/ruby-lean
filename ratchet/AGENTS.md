@@ -216,7 +216,9 @@ fresh class creation establishes it and allocation preserves it. `InstanceState`
 full body StateOk through real required-parameter entry with a different receiver and scope.
 Controls apply one checked Integer body to every Integer argument, reject nullable/wrong-return
 annotations, and exercise actual definition/call and hidden-name/constant-shadowing failures.
-Persistent site publication across definitions and caller restoration are still required;
+`InstanceSiteWrite` preserves sites across reserved method writes and ivar-only changes;
+`step_scoped_instance_world` returns full state and the derived site from actual installation.
+Sites still need persistent conformance storage, and caller restoration remains required;
 the body-local RunSpec is not a full instance-call or class-rule admission.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
@@ -271,6 +273,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/InstanceEntry.lean`, `InstanceSpineControls.lean` | Open receiver fields at method entry, completeness counterexample, and getter proof |
 | `Denote/Typed/InstanceResolve.lean`, `InstanceResolveControls.lean` | Installed instance lookup, explicit dispatch, frame facts, and interception controls |
 | `Denote/Sem/InstanceSite.lean`, `InstanceSiteEntry.lean`, `Denote/Typed/InstanceState.lean`, `InstanceStateControls.lean` | Heap-only class sites, fresh-site proof, full annotated body entry, and lookup/annotation controls |
+| `Denote/Sem/InstanceSiteWrite.lean`, `Denote/Typed/InstanceSitePublish.lean`, `InstanceSiteWriteControls.lean` | Site preservation under definitions/field writes, actual-step publication, and reservation/hook controls |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |
