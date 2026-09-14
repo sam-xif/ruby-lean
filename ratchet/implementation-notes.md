@@ -9332,3 +9332,23 @@ both halves of what constrains them now have a name.
   full class-body conformance and annotation-checked instance methods/constructors remain.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree.
+
+## Clink 117 (2026-09-14) — preserve existing declared-class contracts
+
+- `ClassDeclared` transports all DeclClassOk clauses through fresh registration: BasicObject
+  membership, non-module/class status, constructor metadata/native-shadow/miss guards,
+  initializer absence, and both directions of named ancestry. ClassesOk supplies the old
+  positive resolutions, so fresh registration cannot silently activate a formerly vacuous
+  declaration. Reverse ancestry uses old-id-bounded name inversion, not global name equality.
+- The new class is deliberately not advertised by this lemma. An execution control shows
+  why: even with no own methods, it can inherit Object#initialize with a required argument.
+  A default zero-argument constructor needs a real lookup premise, not an empty-table test.
+  A positive control finishes Older then enters Point, retaining Older’s constructor and
+  ancestry facts. Both controls then call Point.new: the empty default constructor succeeds,
+  while the inherited required argument produces ArgumentError. `class_entry_declared`
+  composes the proof through the actual class step.
+- New modules build below one second, with standard axioms only. No rule, admission,
+  exemption, or floor changes. Constant/path-table transport, full state assembly, and
+  annotation-checked instance-method/constructor integration remain required.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree.
