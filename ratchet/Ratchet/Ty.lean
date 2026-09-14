@@ -568,11 +568,17 @@ def envKeys : Env → List String
   | [] => []
   | (k, _) :: Γ => k :: envKeys Γ
 
+/-- A binding keeps an alias identity only when both branches record the same type.
+Union normalization can expose a nested alias; its value type survives, but its identity
+was not a top-level promise of either branch. -/
+def joinBinding (σ τ : Ty) : Ty :=
+  if σ == τ then σ else deAlias (joinT σ τ)
+
 /-- Pointwise environment join at a given list of names. -/
 def joinEnvAt (Γ₁ Γ₂ : Env) : List String → Env
   | [] => []
   | k :: ks =>
-    (k, joinT ((envGet? Γ₁ k).getD .nilT) ((envGet? Γ₂ k).getD .nilT))
+    (k, joinBinding ((envGet? Γ₁ k).getD .nilT) ((envGet? Γ₂ k).getD .nilT))
       :: joinEnvAt Γ₁ Γ₂ ks
 
 /-- The join of two branch **environments**, pointwise over the union of their names.

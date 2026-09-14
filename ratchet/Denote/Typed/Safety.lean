@@ -1,189 +1,14 @@
-import Denote.Typed.Controls
+import Denote.Typed.CorpusSafety
 
-/-!
-# `Denote/Typed/Safety.lean` — **the end-to-end safety proof, one theorem per certified rung**
-
-This is where the ladder's safety claim is cashed out, and it is the file to watch: one
-theorem per corpus rung the certified judgment covers, at the **real prelude-booted machine**
-the difftest SUT runs, with every hypothesis discharged.
-
-```
-corpus/NNN-id.rb  --(pipeline)-->  Deriv  --(check)-->  DJudge
-                                                         |
-                        registered rules only -----> DJudgeC dclinks
-                                                         |  dregistry_safe
-                                                         v
-                                   StuckFree bootMachine <program>
-```
-
-`StuckFree m e` is `∀ fuel, Semantics.typeStuck (Interp.run fuel (evalFrom m e)) = false` —
-**at every fuel**, so it covers runs that return, escape, diverge and gate alike. `typeStuck`
-is the model's own predicate for an uncaught `NoMethodError`/`ArgumentError`/`TypeError`.
-
-The `dregistry_safe` step in that diagram is one line: `dregistry_safeUnder` at `DKontOk.nil`,
-with the answer type pinned to the program's own.
-
-## Why it cannot go stale
-
-Safety is a **field of the clink target** (`SemSafeA` = `SemJudgeA ∧ SafeUnder`), so
-`dregistry_safe` is unconditional and holds at every registry size. A rule cannot join
-`DJudgeC` without its safety proof, and a rule leaving would break `dclinks`. So "the safety
-proof stays green at every clink" is not a discipline anyone has to remember — it is what the
-clink target's second conjunct means.
-
-And the conjunct is the **invariant**, not whole-program safety: `SafeUnder` says a machine
-evaluating the expression *under a continuation that accepts its type* is safe, quantified
-over the continuation and the answer type (`Denote/Typed/JudgeA.lean` §1b). The theorems
-below are that statement at the empty continuation. The difference matters as soon as a rule
-has a sub-expression: a whole-program reading gives a premise about running the
-sub-expression *from an empty continuation*, which is not what the rule creates.
-
-What each theorem below *adds* to that is the discharge of the remaining hypothesis: the
-program has a derivation using only registered rules, and `bootMachine` conforms. The second
-is `stateOk_boot`, conditional on one `Bool` (`bootOkB`) rather than `decide`d, because the
-booted heap is the output of `Interp.run 200_000` over the whole prelude and kernel reduction
-of that is not on the table. The `Bool` is a build gate in `Denote/Sanity.lean`;
-`native_decide` was rejected for the axiom it costs.
-
-## What is *not* claimed
-
-These are the rungs whose derivations use **only the eight registered rules**: a literal, or a
-local read. Rungs 009 onward are checked by `Ratchet/Check.lean` and have no safety theorem,
-because `prim`, `seq`, `vasgn` and `if'` are unregistered — all four behind `RunAPushK`
-(`Denote/Typed/JudgeA.lean` §4). `lake exe semladder` reports both numbers so the gap is a
-line in the report rather than a footnote here.
--/
+/-! Safety coverage: predict rules from syntax, then cross-check against the actual proof
+terms in `RuleAudit`. Concrete programs and their safety theorems live in `CorpusSafety`.
+The list companions count as rules too: their premises cross the same family boundary. -/
 
 set_option autoImplicit false
-
 namespace Ratchet.Denote.Typed
-
 open RubyCore Ratchet Ratchet.Denote
 
-/-! ## §1 The derivations, one per registered leaf
-
-Each is `hF c hc` — the rule, handed over by the closure hypothesis. One line, because the
-Church encoding makes a derivation a term (`Denote/Clink/Spec.lean` §3). -/
-
-theorem derivD_fltLit {Γ : Env} {b : UInt64} : (DJudgeC dclinks).judge Γ (.flt b) .float Γ :=
-  fun _ hF => hF DClink.fltLit (by simp [dclinks])
-
-theorem derivD_strLit {Γ : Env} {s : String} :
-    (DJudgeC dclinks).judge Γ (.str s) (.cls "String") Γ :=
-  fun _ hF => hF DClink.strLit (by simp [dclinks])
-
-theorem derivD_symLit {Γ : Env} {s : String} : (DJudgeC dclinks).judge Γ (.sym s) .sym Γ :=
-  fun _ hF => hF DClink.symLit (by simp [dclinks])
-
-theorem derivD_truLit {Γ : Env} : (DJudgeC dclinks).judge Γ .tru .bool Γ :=
-  fun _ hF => hF DClink.truLit (by simp [dclinks])
-
-theorem derivD_flsLit {Γ : Env} : (DJudgeC dclinks).judge Γ .fls .bool Γ :=
-  fun _ hF => hF DClink.flsLit (by simp [dclinks])
-
-theorem derivD_nilLit {Γ : Env} : (DJudgeC dclinks).judge Γ .nil .nilT Γ :=
-  fun _ hF => hF DClink.nilLit (by simp [dclinks])
-
-/-! ## §2 The rungs, at the booted machine
-
-The programs are the corpus's own — `corpus/001-int-lit.rb` is `1`, and so on down to
-`008-neg-int-lit.rb`'s `-5`, which the desugarer emits as a negative literal rather than a
-unary send (which is why one rule covers both). -/
-
-/-- `corpus/001-int-lit.rb` — `1`. -/
-theorem safe_001_int_lit (hb : bootOkB = true) : StuckFree bootMachine (.int 1) :=
-  dregistry_safe derivD_intLit (stateOk_boot hb)
-
-/-- `corpus/002-bool-true.rb` — `true`. -/
-theorem safe_002_bool_true (hb : bootOkB = true) : StuckFree bootMachine .tru :=
-  dregistry_safe derivD_truLit (stateOk_boot hb)
-
-/-- `corpus/003-bool-false.rb` — `false`. -/
-theorem safe_003_bool_false (hb : bootOkB = true) : StuckFree bootMachine .fls :=
-  dregistry_safe derivD_flsLit (stateOk_boot hb)
-
-/-- `corpus/004-str-lit.rb` — `"hello"`. The one rung here whose evaluation **allocates**, so
-its clink's proof goes through `ext_push` rather than being `rfl` at the step. -/
-theorem safe_004_str_lit (hb : bootOkB = true) : StuckFree bootMachine (.str "hello") :=
-  dregistry_safe derivD_strLit (stateOk_boot hb)
-
-/-- `corpus/005-sym-lit.rb` — `:ok`. -/
-theorem safe_005_sym_lit (hb : bootOkB = true) : StuckFree bootMachine (.sym "ok") :=
-  dregistry_safe derivD_symLit (stateOk_boot hb)
-
-/-- `corpus/006-nil-lit.rb` — `nil`. -/
-theorem safe_006_nil_lit (hb : bootOkB = true) : StuckFree bootMachine .nil :=
-  dregistry_safe derivD_nilLit (stateOk_boot hb)
-
-/-- `corpus/007-flt-lit.rb` — `1.5`, carried as its IEEE-754 bit pattern by the syntax layer
-(`Ratchet/Expr.lean`: `Float` has no useful `DecidableEq`, so `flt` stores the bits). -/
-theorem safe_007_flt_lit (hb : bootOkB = true) :
-    StuckFree bootMachine (.flt (1.5 : Float).toBits) :=
-  dregistry_safe derivD_fltLit (stateOk_boot hb)
-
-/-- `corpus/008-neg-int-lit.rb` — `-5`. -/
-theorem safe_008_neg_int_lit (hb : bootOkB = true) : StuckFree bootMachine (.int (-5)) :=
-  dregistry_safe derivD_intLit (stateOk_boot hb)
-
-/-! ## §3 The list **is** the theorem's subject
-
-`safeRungs` pairs each rung's name with the program the theorem above is about, and
-`safeRungs_safe` is proved over the list — so the list and the proofs cannot drift. The
-previous version was a `List String` with a `#guard` on its *length*, which would have been
-satisfied by eight names and no theorems. -/
-
-def safeRungs : List (String × Ratchet.Expr) :=
-  [("001-int-lit", .int 1),
-   ("002-bool-true", .tru),
-   ("003-bool-false", .fls),
-   ("004-str-lit", .str "hello"),
-   ("005-sym-lit", .sym "ok"),
-   ("006-nil-lit", .nil),
-   ("007-flt-lit", .flt (1.5 : Float).toBits),
-   ("008-neg-int-lit", .int (-5))]
-
-/-- **Every program named in `safeRungs` is safe at the booted machine.** One case per entry,
-each discharging to the named theorem above, so adding a list entry without a theorem does not
-typecheck. -/
-theorem safeRungs_safe (hb : bootOkB = true) :
-    ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
-  intro q hq
-  simp only [safeRungs, List.mem_cons, List.not_mem_nil, or_false] at hq
-  rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
-  · exact safe_001_int_lit hb
-  · exact safe_002_bool_true hb
-  · exact safe_003_bool_false hb
-  · exact safe_004_str_lit hb
-  · exact safe_005_sym_lit hb
-  · exact safe_006_nil_lit hb
-  · exact safe_007_flt_lit hb
-  · exact safe_008_neg_int_lit hb
-
-/-! ## §4 …and every registered rule is **exercised** by it
-
-The gate this section adds. A rule could be registered — proved, in the judgment, counted —
-and never appear in any program the safety proof is about, in which case the end-to-end claim
-would be about a fragment narrower than the registry. `rulesUsed` says which rules a
-derivation of a program *must* use, and the coverage gate requires every registered rule to
-be used by at least one rung, or to be named in `unexercised` with a reason.
-
-**What this section is and is not.** `rulesUsed` is a *predictor*: it reads rules off a
-program's `Expr` heads, which is exact only if each head admits exactly one `DJudge` rule.
-That property used to be asserted here in prose and checked nowhere. It is now checked, per
-rung, against the rule set read off the actual proof term —
-`Denote/Typed/RuleAudit.lean` §3 — and the authoritative coverage gate runs over *that* set.
-What remains here is the syntactic half, kept because it is also the predictor
-`SemLadder.lean` needs for rungs that have **no** proof yet (a rung whose rules are all
-registered but which nothing has proved safe is the ladder's next goal, and there is no proof
-term to read for it).
-
-It grows by itself in the direction that matters: `unexercised` has a recorded ceiling below,
-so a newly registered rule must either be exercised end to end or be admitted by an edit that
-raises a number someone reviews. -/
-
 mutual
-/-- The `DJudge` rules a derivation of `e` must use. `"?"` for a head with no rule, so an
-unsupported program shows up as an uncovered name rather than as an empty list. -/
 def rulesUsed : Ratchet.Expr → List String
   | .int _ => ["intLit"]
   | .flt _ => ["fltLit"]
@@ -194,72 +19,34 @@ def rulesUsed : Ratchet.Expr → List String
   | .nil => ["nilLit"]
   | .var .lvar _ => ["var"]
   | .vasgn .lvar _ e => "vasgn" :: rulesUsed e
-  | .seq es => "seq" :: rulesUsedAll es
-  | .send (some r) _ args none => "prim" :: (rulesUsed r ++ rulesUsedAll args)
+  | .seq es => "seq" :: rulesUsedSeq es
+  | .send (some r) _ args none => "prim" :: (rulesUsed r ++ rulesUsedArgs args)
   | .if' c t (some e) => "if'" :: (rulesUsed c ++ rulesUsed t ++ rulesUsed e)
   | _ => ["?"]
 
-def rulesUsedAll : List Ratchet.Expr → List String
-  | [] => []
-  | e :: es => rulesUsed e ++ rulesUsedAll es
+def rulesUsedSeq : List Ratchet.Expr → List String
+  | [] => ["?"]
+  | [e] => "DJudgeSeq.last" :: rulesUsed e
+  | e :: e' :: es => "DJudgeSeq.cons" :: (rulesUsed e ++ rulesUsedSeq (e' :: es))
+
+def rulesUsedArgs : List Ratchet.Expr → List String
+  | [] => ["DJudgeAll.nil"]
+  | e :: es => "DJudgeAll.cons" :: (rulesUsed e ++ rulesUsedArgs es)
 end
 
-/-- Every rule the safety proof's programs need, **predicted from their `Expr` heads**, with
-duplicates. Cross-checked against the proof terms in `Denote/Typed/RuleAudit.lean` §3; the
-coverage gate that matters runs over the proof-derived set, not this one. -/
+def rulesUsedAll (es : List Ratchet.Expr) : List String := es.flatMap rulesUsed
+
 def rulesPredicted : List String := rulesUsedAll (safeRungs.map (·.2))
 
-/-- Registered rules that **no rung the safety proof covers uses**, frozen by name. The gate
-below fails if anything else joins this list, so a newly registered rule must either be
-exercised end to end or be added here with a reason.
+/-- All registered rules now occur in corpus safety proofs. The ceiling only decreases. -/
+def unexercised : List String := []
+def unexercisedCeiling : Nat := 0
 
-Today: **`var` and `vasgn`**, and the reason is structural rather than an oversight
-(`found-issues.md` §F30). Both need a **statement sequence** to appear in a corpus rung:
-
-* a program that reads a local has to bind it first, so the smallest witness for `var` is
-  `x = 1; x`. There is no single-expression alternative — a bare name that is *not* a local
-  desugars to `vcall`, which has no rule at all;
-* and no corpus rung is a bare assignment. The nearest, `029-simple-assign`, is `x = 5; x + 1`
-  — a `seq` of two statements.
-
-So both clinks are proved and in the judgment, and the end-to-end safety claim genuinely does
-not reach them yet. `seq` is what unlocks both, which is why it is next. **Only ever shrink
-this** — and `unexercisedCeiling` is what makes that more than an instruction. -/
-def unexercised : List String := ["var", "vasgn"]
-
-/-- The recorded length of `unexercised`, ratcheted the way `safeRungFloor` and `clinkFloor`
-are — except downward, because this is the one list in the ladder that is supposed to shrink.
-
-It exists because the coverage gate has an escape hatch and the hatch was used: `unexercised`
-went from `["var"]` to `["var", "vasgn"]` when `vasgn` was registered, and nothing went red,
-because the gate only asks that a rule be *listed*, not that the list stay small. A ceiling
-turns "we added an exception" from an invisible edit into a number a reviewer sees move.
-Lower it when a rung starts exercising one of these; raising it is the reviewable act. -/
-def unexercisedCeiling : Nat := 2
-
--- The ceiling, at build time. `SemLadder.lean` reports it too, next to the floors.
 #guard unexercised.length ≤ unexercisedCeiling
-
--- **The coverage gate, predicted half.** Every registered rule is either used by a rung the
--- safety proof covers, or a named exception. Register a rule without exercising it and this
--- goes red. The proof-derived half is `Denote/Typed/RuleAudit.lean` §4.
 #guard dRegisteredRules.all (fun r => rulesPredicted.contains r || unexercised.contains r)
-
--- The other direction, and the control that keeps the gate from being vacuous: every name in
--- `unexercised` really is registered and really is unexercised.
 #guard unexercised.all (fun r => dRegisteredRules.contains r && !rulesPredicted.contains r)
-
--- And no rung uses an unregistered rule -- which the safety theorems' existence already
--- forces, but stating it makes the two columns' relationship checkable.
 #guard dUnregisteredRules.all (fun r => !rulesPredicted.contains r)
-
--- And no rung reaches a head with no rule, which would make `rulesUsed` an over-approximation
--- of something unprovable.
 #guard !rulesPredicted.contains "?"
 
-#print axioms safe_001_int_lit
-#print axioms safe_004_str_lit
-#print axioms safe_007_flt_lit
-#print axioms safe_008_neg_int_lit
-
+#print axioms safeRungs_safe
 end Ratchet.Denote.Typed

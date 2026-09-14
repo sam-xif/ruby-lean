@@ -81,6 +81,22 @@ theorem pushHeap_classPayload (h : Heap) (obj : Object) (hnc : ∀ c, obj.payloa
     | _ => rfl
   · simp only [Heap.classPayload?, pushHeap_get_gt h obj hk, get_oob h (Nat.le_of_lt hk)]
 
+theorem stringPayloadOk_push {h : Heap} {obj : Object} (hp : StringPayloadOk h)
+    (ho : obj.eigen.getD obj.klass = Boot.stringId → ∃ s, obj.payload = .str s) :
+    StringPayloadOk (pushHeap h obj) := by
+  intro o hc
+  rcases Nat.lt_trichotomy o h.objs.size with hl | he | hg
+  · rw [show classOf (pushHeap h obj) (.ref o) = classOf h (.ref o) by
+      simp only [classOf, pushHeap_get_lt h obj hl]] at hc
+    simpa only [pushHeap_get_lt h obj hl] using hp o hc
+  · subst he
+    rw [classOf, pushHeap_get_self] at hc
+    rw [pushHeap_get_self]
+    apply ho
+    cases heigen : obj.eigen <;> simpa [heigen] using hc
+  · simp only [classOf, pushHeap_get_gt h obj hg] at hc
+    cases hc
+
 /-! ## The producer -/
 
 /-- **A non-class, ivar-less allocation of a `BasicObject` descendant is an `Ext`.**

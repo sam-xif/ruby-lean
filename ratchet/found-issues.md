@@ -2344,7 +2344,13 @@ that field would carry, and then a proof each. The goal list says `seq` blocks 1
 rungs and `prim` 169, so this is the next real work and it is one field larger than the ladder
 had been claiming.
 
-## §F32 — the ladder claimed 18 rungs while the safety determination reached 8 *(open; the ratchet is RED on it)*
+## §F32 — the ladder claimed 18 rungs while the safety determination reached 8 *(closed, clink 74)*
+
+**2026-09-13:** all 29 accepted rungs now have proof-term-audited safety proofs; safety
+reach is 17, all 16 expression/companion rules are registered and exercised, and the
+exemption ceiling is zero. No floor or acceptance target was lowered. See
+`implementation-notes.md` clink 74 for the conformance counterexamples the proofs forced.
+The original finding follows.
 
 Not found by a gate. Found by stating what a rung *means* and noticing the ladder had two
 answers.

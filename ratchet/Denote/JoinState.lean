@@ -59,7 +59,7 @@ theorem get_of_mem_envKeys {Γ : Env} {x : String} (h : x ∈ envKeys Γ) :
 theorem envGet?_joinEnvAt {Γ₁ Γ₂ : Env} {x : String} :
     ∀ (ks : List String), x ∈ ks →
       envGet? (joinEnvAt Γ₁ Γ₂ ks) x =
-        some (joinT ((envGet? Γ₁ x).getD .nilT) ((envGet? Γ₂ x).getD .nilT)) := by
+        some (joinBinding ((envGet? Γ₁ x).getD .nilT) ((envGet? Γ₂ x).getD .nilT)) := by
   intro ks
   induction ks with
   | nil => intro h; exact absurd h (by simp)
@@ -76,7 +76,7 @@ theorem envGet?_joinEnvAt {Γ₁ Γ₂ : Env} {x : String} :
 theorem envGet?_joinEnv {Γ₁ Γ₂ : Env} {x : String}
     (h : x ∈ envKeys Γ₁ ∨ x ∈ envKeys Γ₂) :
     envGet? (joinEnv Γ₁ Γ₂) x =
-      some (joinT ((envGet? Γ₁ x).getD .nilT) ((envGet? Γ₂ x).getD .nilT)) := by
+      some (joinBinding ((envGet? Γ₁ x).getD .nilT) ((envGet? Γ₂ x).getD .nilT)) := by
   refine envGet?_joinEnvAt _ ?_
   rcases h with h | h
   · exact List.mem_append_left _ h
@@ -109,17 +109,96 @@ theorem envGet?_joinEnv_none {Γ₁ Γ₂ : Env} {x : String}
     rw [joinEnvAt, envGet?_cons_ne _ _ hk]
     exact ih (fun h => hx (List.mem_cons_of_mem _ h))
 
-/-! ## …and the case that is *not* provable yet
+/-! ## Binding joins preserve values without manufacturing identities -/
 
-`EnvOk`'s identity conjunct is a claim about `y` when the recorded type is `.sameAs y ρ`, and
-`joinT` **can** return an alias that neither branch's `EnvOk` supports — see
-`Denote/Sem/notes.md` §The eleventh stall point for the counterexample
-(`joinT (.union A A) A` dedups to `[A]`) and for the two candidate fixes. So the `EnvOk` join
-itself is not here; the key lemmas above are, because they are what either fix will need.
--/
+theorem denM_joinBinding_left {σ τ : Ty} {m : Machine} {v : Value}
+    (h : denM σ m v) : denM (joinBinding σ τ) m v := by
+  unfold joinBinding
+  split
+  · exact h
+  · exact denM_deAlias.mpr (denM_joinT_left h)
 
-#print axioms envGet?_joinEnv
+theorem denM_joinBinding_right {σ τ : Ty} {m : Machine} {v : Value}
+    (h : denM τ m v) : denM (joinBinding σ τ) m v := by
+  unfold joinBinding
+  split
+  · rename_i heq; rw [ty_eq_of_beq heq]; exact h
+  · exact denM_deAlias.mpr (denM_joinT_right h)
 
-#print axioms envGet?_joinEnv_none
+theorem joinBinding_alias {σ τ ρ : Ty} {y : String}
+    (h : joinBinding σ τ = .sameAs y ρ) : σ = .sameAs y ρ ∧ τ = .sameAs y ρ := by
+  unfold joinBinding at h
+  split at h
+  · rename_i heq
+    exact ⟨h, (ty_eq_of_beq heq).symm.trans h⟩
+  · exact False.elim (deAlias_ne_sameAs _ y ρ h)
+
+-- The old join produced an alias from a union that made no identity promise.
+#guard joinT (.union (.sameAs "y" .int) (.sameAs "y" .int)) (.sameAs "y" .int) ==
+  .sameAs "y" .int
+#guard joinBinding (.union (.sameAs "y" .int) (.sameAs "y" .int)) (.sameAs "y" .int) == .int
+#guard joinBinding (.sameAs "y" .int) (.sameAs "y" .int) == .sameAs "y" .int
+
+private theorem envOk_getD {Γ : Env} {m : Machine} (h : EnvOk Γ m) (x : String) :
+    denM ((envGet? Γ x).getD .nilT) m (m.getLocal x) := by
+  cases hg : envGet? Γ x with
+  | none => simp [h.2 x hg, denM, isNilV]
+  | some τ => exact denM_stripAlias.mp (h.1 x τ hg).1
+
+private theorem envOk_alias_getD {Γ : Env} {m : Machine} (h : EnvOk Γ m)
+    {x y : String} {ρ : Ty} (ha : (envGet? Γ x).getD .nilT = .sameAs y ρ) :
+    m.getLocal x = m.getLocal y := by
+  cases hg : envGet? Γ x with
+  | none => simp [hg] at ha
+  | some τ => exact (h.1 x τ hg).2 y ρ (by simpa [hg] using ha)
+
+private theorem get_none_of_not_mem {Γ : Env} {x : String} (h : x ∉ envKeys Γ) :
+    envGet? Γ x = none := by
+  cases hg : envGet? Γ x with
+  | none => rfl
+  | some τ => exact False.elim (h (mem_envKeys_of_get hg))
+
+/-- The side is an explicit parameter so both branches use exactly the same proof. -/
+theorem envOk_joinEnv (Γ₁ Γ₂ : Env) {m : Machine} (left : Bool)
+    (h : EnvOk (if left then Γ₁ else Γ₂) m) : EnvOk (joinEnv Γ₁ Γ₂) m := by
+  constructor
+  · intro x τ hx
+    have hk : x ∈ envKeys Γ₁ ∨ x ∈ envKeys Γ₂ := by
+      by_cases hl : x ∈ envKeys Γ₁
+      · exact Or.inl hl
+      by_cases hr : x ∈ envKeys Γ₂
+      · exact Or.inr hr
+      rw [envGet?_joinEnv_none (get_none_of_not_mem hl) (get_none_of_not_mem hr)] at hx
+      cases hx
+    rw [envGet?_joinEnv hk] at hx
+    cases hx
+    constructor
+    · apply denM_stripAlias.mpr
+      cases left with
+      | false => exact denM_joinBinding_right (envOk_getD h x)
+      | true => exact denM_joinBinding_left (envOk_getD h x)
+    · intro y ρ ha
+      obtain ⟨hl, hr⟩ := joinBinding_alias ha
+      cases left with
+      | false => exact envOk_alias_getD h hr
+      | true => exact envOk_alias_getD h hl
+  · intro x hx
+    have hk : x ∉ envKeys Γ₁ ∧ x ∉ envKeys Γ₂ := by
+      constructor <;> intro hk
+      all_goals
+        have hj := envGet?_joinEnv (Γ₁ := Γ₁) (Γ₂ := Γ₂)
+          (x := x) (by first | exact Or.inl hk | exact Or.inr hk)
+        rw [hx] at hj
+        cases hj
+    cases left with
+    | false => exact h.2 x (get_none_of_not_mem hk.2)
+    | true => exact h.2 x (get_none_of_not_mem hk.1)
+
+theorem StateOk_joinEnv {κ : Ctx} {Γ₁ Γ₂ : Env} {I : Ty} {m : Machine} (left : Bool)
+    (h : StateOk κ (if left then Γ₁ else Γ₂) I m) :
+    StateOk κ (joinEnv Γ₁ Γ₂) I m :=
+  { h with env := envOk_joinEnv Γ₁ Γ₂ left h.env }
+
+#print axioms StateOk_joinEnv
 
 end Ratchet.Denote

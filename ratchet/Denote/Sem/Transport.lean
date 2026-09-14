@@ -219,7 +219,10 @@ theorem Framed_reCtl (m : Machine) (c : Ctl) (k : List Kont) : Framed m (reCtl m
 Every allocating leaf rung already builds one for `StateOk_ext`, so this is where those rungs
 get their first conjunct. -/
 theorem Framed.of_ext {m m' : Machine} (he : Ext m m') : Framed m m' :=
-  ⟨he.stack, fun k h => by rw [he.payload]; exact h⟩
+  ⟨he.stack, fun k h => by rw [he.payload]; exact h,
+    fun v n h => by
+      simpa only [denM] using
+        (denM_ext (τ := .cls n) (v := v) he (by simpa only [denM] using h))⟩
 
 theorem Framed_withCtl (m : Machine) (c : Ctl) : Framed m (Interp.withCtl m c) :=
   Framed.of_heap_stack rfl rfl
@@ -236,7 +239,7 @@ of collapsing it is that there is now exactly one place where "component `X` sur
 change to the machine" is proved. -/
 theorem StateOk_reCtl {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} (h : StateOk κ Γ I m)
     (c : Ctl) (k : List Kont) : StateOk κ Γ I (reCtl m c k) :=
-  StateOk_ext h (Ext_toReCtl m c k)
+  StateOk_ext h (Ext_toReCtl m c k) h.stringPayload
 
 /-! ## Inverting a two-step run -/
 

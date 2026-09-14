@@ -1,4 +1,5 @@
 import Denote.Typed.Clink
+import Denote.Typed.PrimitiveControls
 
 /-!
 # `Denote/Typed/Controls.lean` — derivations in the certified judgment, and the gate
@@ -55,58 +56,29 @@ theorem derivD_var_sem {Γ : Env} {x : String} {τ : Ty} (hget : envGet? Γ x = 
     (halias : isAliasTy τ = false) : SemJudgeA Γ (.var .lvar x) τ Γ :=
   dregistry_semJudge (by intro F hF; exact hF DClink.var (by simp [dclinks]) hget halias)
 
-/-! ### The refusal
+/-! ### The family boundary remains enforced
 
-`DJudge.if'` is a real, used rule — `Ratchet/Check.lean` types every conditional with it and
-the corpus ladder reaches rung 018 through it — and it has no answer-typed proof. Under a
-discipline where rules are authored and justified separately that would be a line in a report.
-Here it makes `register_dclink` fail, and the failure is what this control checks: if the gate
-ever stops refusing, this file goes red.
+All judgment constructors now have proofs. A constructor outside the family is still
+refused; the sequence and argument forms below also check that their premises are semantic
+family projections, rather than raw syntactic derivations. -/
 
-(It named `vasgn` until clink 72, when `vasgn` acquired its proof and the control had to move
-to a rule that still lacks one. That is the control doing its job.) -/
-
-/-- error: register_dclink: Ratchet.DJudge.if' has no answer-typed proof.
-Write `theorem Ratchet.Denote.Typed.SemA.if' : SemJudgeA …` in Denote/Typed/JudgeA.lean first.
-A rule with no proof is not a rule (Denote/Clink/Spec.lean).
+/-- error: register_dclink: Ratchet.DPrim.intAdd belongs to Ratchet.DPrim, which is not in DFam.
+The list companions join when a rule concluding about them acquires a proof (Denote/Typed/Clink.lean, header).
 -/
 #guard_msgs in
-register_dclink DJudge.if'
+register_dclink DPrim.intAdd
 
-/-! ### …and a rule whose premise escapes the family is refused *before* its proof is asked for
+example : DClink.seq.form dsemFam =
+    (∀ {Γ Γ' : Env} {es : List Ratchet.Expr} {τ : Ty},
+      SemSeqA Γ es τ Γ' → SemSafeA Γ (.seq es) τ Γ') := rfl
 
-`if'` above is refused for the ordinary reason — nobody has proved it. `seq` and `prim` are
-refused for a **stronger** one, and the order of the two checks is the point: writing
-`SemA.seq` would not help, because the statement it would have to prove is the wrong one.
+example : DClink.DJudgeAll.cons.form dsemFam =
+    (∀ {Γ Γ₁ Γ₂ : Env} {e : Ratchet.Expr} {es : List Ratchet.Expr} {τ : Ty} {tys : List Ty},
+      SemSafeA Γ e τ Γ₁ → SemAllA Γ₁ es tys Γ₂ → plainArgB e = true →
+        SemAllA Γ (e :: es) (τ :: tys) Γ₂) := rfl
 
-`ruleForm` rewrites only the heads in `dFamField`. `DJudge.seq`'s premise is `DJudgeSeq`,
-which is not one, so the derived form would be
-
-    fun F => ∀ …, DJudgeSeq Γ es τ Γ' → F.judge Γ (.seq es) τ Γ'
-
-— a premise that is the **syntactic** relation rather than the family's. At `dsemFam` that
-obligation reads *"a sequence is safe given a raw sub-derivation"*, and a raw sub-derivation
-may be built from the three rules with no semantic proof at all. The registry's whole claim is
-that `DJudgeC dclinks` means "derivable using only registered rules"; this is the side door
-out of it. Compare `vasgn`, whose premise *is* rewritten (`F.judge Γ e τ Γ₁`) and whose
-obligation is therefore compositional.
-
-Refused mechanically, by reading the constructor's premises — not by trusting that nobody
-types `register_dclink DJudge.seq`. See `found-issues.md` §F31. -/
-
-/-- error: register_dclink: Ratchet.DJudge.seq's premises reach Ratchet.DJudgeSeq, which DFam does not carry.
-`ruleForm` would leave that premise as the raw inductive, so the clink's obligation would quantify over derivations built from UNREGISTERED rules -- the registry's discipline, escaped through a side door.
-Give DFam a field for it (and `dFamField` a row) before registering this rule (Denote/Typed/Clink.lean, header).
--/
-#guard_msgs in
-register_dclink DJudge.seq
-
-/-- error: register_dclink: Ratchet.DJudge.prim's premises reach Ratchet.DJudgeAll, which DFam does not carry.
-`ruleForm` would leave that premise as the raw inductive, so the clink's obligation would quantify over derivations built from UNREGISTERED rules -- the registry's discipline, escaped through a side door.
-Give DFam a field for it (and `dFamField` a row) before registering this rule (Denote/Typed/Clink.lean, header).
--/
-#guard_msgs in
-register_dclink DJudge.prim
+#guard dUncarriedJudgments.isEmpty
+#guard dUnregisteredRules.isEmpty
 
 /-! ### …and a proof of a different rule does not stand in for it
 

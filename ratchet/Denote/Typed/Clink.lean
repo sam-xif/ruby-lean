@@ -1,57 +1,13 @@
-import Denote.Typed.JudgeA
+import Denote.Typed.Sequence
+import Denote.Typed.Branch
+import Denote.Typed.Primitive
 import Denote.Clink.Form
 
-/-!
-# `Denote/Typed/Clink.lean` — the typed ladder's clink registry
-
-`Denote/Clink/Spec.lean`'s mechanism, instantiated at `Ratchet/Check.lean`'s judgment and
-`Denote/Typed/JudgeA.lean`'s **answer-typed** semantic reading. Nothing is copied: `Clink`,
-`Closed`, `closed_target`/`closed_source` and `register_clink`'s form derivation are generic
-in the family record type, and this file supplies the record.
-
-**These are the project's first answer-typed clinks.** The 48 in `Denote/Clink/Registry.lean`
-are `SemJudge`-shaped — *if the run returns a value, the value is in the type* — which
-`Denote/Sem/NoProgress.lean` proves says nothing about a run that escapes. The eight here are
-`SemJudgeA`-shaped: the hypothesis is an **answer**, and the conclusion says whether the run
-reached a **type-stuck** outcome. So a rule registered here carries the content the old shape
-was missing, and the two registries are deliberately separate rather than merged: they are
-clinks against different statements, and merging them would let the weaker one launder as the
-stronger.
-
-## The family has one member, and that is the current state rather than a simplification
-
-`DFam` carries `judge` only. `DJudgeAll`/`DJudgeSeq` join it when the first rule concluding
-about them acquires a proof — which needs an answer-typed reading of a *list* evaluation, and
-that reading has no consumer yet (`prim` and `seq` are both behind `RunAPushK`,
-`Denote/Typed/JudgeA.lean` §4). Adding a field now would mean inventing a statement nothing
-checks.
-
-**What the refusal has to cover, and did not.** `register_dclink` refused a constructor whose
-*conclusion* is about `DJudgeAll`/`DJudgeSeq` — which nobody would try to register. The rules
-that actually reach the companions are `DJudge.seq` and `DJudge.prim`, whose **premises**
-mention them, and their conclusions are ordinary `DJudge`, so the by-name check waved them
-through. `ruleForm` rewrites only the heads in `dFamField`, so `DJudge.seq` would have
-acquired the form
-
-    fun F => ∀ …, DJudgeSeq Γ es τ Γ' → F.judge Γ (.seq es) τ Γ'
-
-whose premise is the **syntactic** relation, not the family's — re-admitting all twelve rules
-(three of them unproved) inside a judgment whose entire meaning is "derivable using only
-registered rules". `vasgn` is the contrast: its premise *is* rewritten, so its obligation is
-compositional and its registration is honest.
-
-`registerDClink` now reads the constructor's premises and refuses on that basis, so the door
-is shut mechanically rather than by nobody happening to try it. §F31, and
-`Denote/Typed/Controls.lean` has both refusals captured.
-
-## What the registry covers
-
-Nine rules — the seven literals, `var` and `vasgn` — and therefore exactly the programs those
-rules derive: a single literal, a single local read, or a single assignment. That is **corpus
-rungs 001–008**, the eight literal rungs. Rungs 009–018 are checked by `Ratchet/Check.lean`
-and are *not* in this judgment, because `prim`, `seq` and `if'` are not registered — and two
-of those three are owed twice over, a proof *and* a family that can state it.
--/
+/-! The answer-typed registry carries the expression judgment and both list companions.
+Every constructor registers only with a proof of its constructor-derived semantic form.
+`ruleForm` replaces all three judgment heads with family projections; a premise reaching
+an uncarried judgment is refused before registration. All sixteen constructors are proved.
+`DJudgeC` is their Church encoding, with unconditional semantic and safety interpretations. -/
 
 set_option autoImplicit false
 
@@ -63,30 +19,32 @@ open RubyCore Ratchet Ratchet.Denote
 
 /-! ## §1 The family -/
 
-/-- The typed judgment as a record of predicates. One member today; see the header. -/
+/-- The expression judgment and its two list companions. -/
 structure DFam where
   judge : Env → Ratchet.Expr → Ty → Env → Prop
+  all : Env → List Ratchet.Expr → List Ty → Env → Prop
+  seq : Env → List Ratchet.Expr → Ty → Env → Prop
 
 /-- The syntactic reading: `Ratchet/Check.lean`'s own relation. -/
-def dsynFam : DFam := { judge := DJudge }
+def dsynFam : DFam := { judge := DJudge, all := DJudgeAll, seq := DJudgeSeq }
 
 /-- The **answer-typed semantic reading, conjoined with the invariant**
 (`Denote/Typed/JudgeA.lean` §1b). This is the field that makes a clink here mean something: a
 rule cannot join the judgment without proving both that the answer is in the type *and* that a
 machine evaluating it under a well-typed continuation is safe. -/
-def dsemFam : DFam := { judge := SemSafeA }
+def dsemFam : DFam := { judge := SemSafeA, all := SemAllA, seq := SemSeqA }
 
 /-! ## §2 Registration
 
 `register_dclink DJudge.intLit`: read the constructor, derive its `form` by replacing the
 judgment head with a projection of a `DFam` parameter, demand the proof, declare the clink.
-The proof must be named `SemA.<rule>` and live in `Denote/Typed/JudgeA.lean`; absence is a
+The proof is named `SemA.<rule>` (family-qualified for companions); absence is a
 build failure, and so is a proof of a different statement (the field's type is computed from
 the rule). -/
 
-/-- The one-row field table: `DJudge` ↦ `DFam.judge`. A constructor of `DJudgeAll` or
-`DJudgeSeq` is refused here, by name — see the header for why that is the honest state. -/
-def dFamField : List (Name × Name) := [(``Ratchet.DJudge, ``DFam.judge)]
+/-- All judgment heads must be abstracted, including those occurring only in premises. -/
+def dFamField : List (Name × Name) := [(``Ratchet.DJudge, ``DFam.judge),
+  (``Ratchet.DJudgeAll, ``DFam.all), (``Ratchet.DJudgeSeq, ``DFam.seq)]
 
 /-- The judgment inductives `Ratchet/Check.lean` defines. `DJudge` is the judgment proper;
 the other two are its **list companions**, the auxiliary relations `seq` and `prim` reach
@@ -103,15 +61,13 @@ def dclinkTy : Lean.Expr :=
   mkApp3 (mkConst ``Clink) (mkConst ``DFam) (mkConst ``dsynFam) (mkConst ``dsemFam)
 
 /-- `SemA.intLit` from `Ratchet.DJudge.intLit` — where the answer-typed proof must live. -/
-def dsemName (ctor : Name) : Name :=
-  match ctor with
-  | .str _ rule => `Ratchet.Denote.Typed.SemA ++ Name.mkSimple rule
-  | _ => `Ratchet.Denote.Typed.SemA ++ ctor
+def dRuleSuffix (ctor : Name) : Name :=
+  if ctor.getPrefix == ``Ratchet.DJudge then Name.mkSimple ctor.getString!
+  else Name.mkSimple ctor.getPrefix.getString! ++ Name.mkSimple ctor.getString!
 
-def dclinkName (ctor : Name) : Name :=
-  match ctor with
-  | .str _ rule => `Ratchet.Denote.Typed.DClink ++ Name.mkSimple rule
-  | _ => `Ratchet.Denote.Typed.DClink ++ ctor
+def dsemName (ctor : Name) : Name := `Ratchet.Denote.Typed.SemA ++ dRuleSuffix ctor
+
+def dclinkName (ctor : Name) : Name := `Ratchet.Denote.Typed.DClink ++ dRuleSuffix ctor
 
 def registerDClink (ctor : Name) : CommandElabM Unit := do
   let env ← getEnv
@@ -146,7 +102,7 @@ escaped through a side door.\n\
     let form ← ruleForm ``DFam dFamField ci.type
     let v := mkAppN (mkConst ``Clink.mk)
       #[mkConst ``DFam, mkConst ``dsynFam, mkConst ``dsemFam,
-        mkStrLit s!"DJudge.{ctor.getString!}", form, mkConst ctor, mkConst sem]
+        mkStrLit s!"{ci.induct.getString!}.{ctor.getString!}", form, mkConst ctor, mkConst sem]
     let ty ← inferType v
     unless (← isDefEq ty dclinkTy) do
       throwError m!"register_dclink: {ctor}'s clink is not a {dclinkTy} (it is a {ty})"
@@ -161,16 +117,17 @@ elab "register_dclink " id:ident : command => registerDClink (`Ratchet ++ id.get
 reported. Live in both directions, exactly as `registerAll` is. -/
 elab "build_dclink_registry" : command => do
   let env ← getEnv
-  let some (.inductInfo vi) := env.find? ``Ratchet.DJudge
-    | throwError "Ratchet.DJudge is not an inductive"
   let mut reg : List Name := []
   let mut unreg : List Name := []
-  for c in vi.ctors do
-    if (env.find? (dsemName c)).isSome then
-      registerDClink c
-      reg := reg ++ [c]
-    else
-      unreg := unreg ++ [c]
+  for ind in dJudgmentInductives do
+    let some (.inductInfo vi) := env.find? ind
+      | throwError m!"{ind} is not an inductive"
+    for c in vi.ctors do
+      if (env.find? (dsemName c)).isSome then
+        registerDClink c
+        reg := reg ++ [c]
+      else
+        unreg := unreg ++ [c]
   let listExpr : Lean.Expr :=
     reg.foldr
       (fun c acc =>
@@ -183,10 +140,10 @@ elab "build_dclink_registry" : command => do
   let mkStr (nm : Name) (xs : List Name) : CommandElabM Unit :=
     liftCoreM <| addAndCompile (.defnDecl
       { name := nm, levelParams := [], type := mkConst ``String,
-        value := mkStrLit (String.intercalate " " (xs.map (·.getString!))),
+        value := mkStrLit (String.intercalate " " (xs.map toString)),
         hints := .opaque, safety := .safe })
-  mkStr `Ratchet.Denote.Typed.dclinkRegistered reg
-  mkStr `Ratchet.Denote.Typed.dclinkUnregistered unreg
+  mkStr `Ratchet.Denote.Typed.dclinkRegistered (reg.map dRuleSuffix)
+  mkStr `Ratchet.Denote.Typed.dclinkUnregistered (unreg.map dRuleSuffix)
   -- Of the unregistered, the ones that need **DFam extended** before a proof would even be
   -- the right statement. Without this the owed column reads as three units of the same kind
   -- of work; two of them are not.
@@ -194,27 +151,26 @@ elab "build_dclink_registry" : command => do
     match env.find? c with
     | some (.ctorInfo ci) => (dUncarriedJudgments.filter (ci.type.getUsedConstants.contains ·)) != []
     | _ => false
-  mkStr `Ratchet.Denote.Typed.dclinkFamBlocked famBlocked
+  mkStr `Ratchet.Denote.Typed.dclinkFamBlocked (famBlocked.map dRuleSuffix)
   -- The list companions' own constructors, which live in neither column above because
   -- `build_dclink_registry` scans `DJudge` only. Emitted so they are counted somewhere.
   let mut companions : List Name := []
-  for ind in dUncarriedJudgments do
+  for ind in dJudgmentInductives.tail do
     if let some (.inductInfo vi) := env.find? ind then
-      companions := companions ++ vi.ctors.map fun c =>
-        Name.mkSimple s!"{ind.getString!}.{c.getString!}"
+      companions := companions ++ vi.ctors.map dRuleSuffix
   mkStr `Ratchet.Denote.Typed.dclinkCompanionRules companions
 
 build_dclink_registry
 
 /-! ## §3 The certified judgment and its soundness
 
-`Denote/Clink/Spec.lean`'s `JudgeC` constructs a `Fam`, so it does not apply here; the
-one-member counterpart is three lines. The soundness theorem is the same one line, and it is
-**unconditional**: instantiate the family at `dsemFam` and discharge closure from the clinks'
-own `sem` fields. -/
+Each family projection quantifies over closed interpretations. Soundness instantiates the
+family at `dsemFam` and discharges closure from the clinks' own `sem` fields. -/
 
 def DJudgeC (R : List (Clink dsynFam dsemFam)) : DFam where
   judge Γ e τ Γ' := ∀ F : DFam, Closed R F → F.judge Γ e τ Γ'
+  all Γ es tys Γ' := ∀ F : DFam, Closed R F → F.all Γ es tys Γ'
+  seq Γ es τ Γ' := ∀ F : DFam, Closed R F → F.seq Γ es τ Γ'
 
 /-- **Every derivation in the certified typed judgment is semantically true and safe.**
 Unconditional at every registry size: the hypothesis is discharged from the clinks' own `sem`
@@ -336,10 +292,7 @@ than the rules that merely lack a proof. -/
 def dFamBlockedRules : List String :=
   if dclinkFamBlocked.isEmpty then [] else dclinkFamBlocked.splitOn " "
 
-/-- The list companions' constructors. These are **not rules** — no `DJudge` derivation is one
-— but they are the obligations that arrive with `seq` and `prim`, and they appear in neither
-column of the report because the registry scans `DJudge` alone. Frozen here so that a
-constructor added to `DJudgeAll`/`DJudgeSeq` is visible rather than silent. -/
+/-- The four list-companion constructors, also included in the registered rule count. -/
 def dCompanionRules : List String :=
   if dclinkCompanionRules.isEmpty then [] else dclinkCompanionRules.splitOn " "
 
@@ -349,14 +302,12 @@ def dCompanionRules : List String :=
 -- The registry and its report agree about its size.
 #guard dclinks.length == dRegisteredRules.length
 
--- Nine registered. The three unregistered rules are the remaining composite ones; a fourth
--- appearing here without a proof is a rule authored without its justification, and this guard
--- is what says so.
-#guard dRegisteredRules.length == 9
-#guard dUnregisteredRules == ["seq", "prim", "if'"]
+-- Twelve expression rules and four companions; adding an unproved rule fails the gate.
+#guard dRegisteredRules.length == 16
+#guard dUnregisteredRules == []
 
--- Two of the three owed rules are owed *twice*: a proof, and a family that can state it.
-#guard dFamBlockedRules == ["seq", "prim"]
+-- Every judgment premise is represented in the semantic family.
+#guard dFamBlockedRules == []
 
 -- The companions, frozen. A fourth constructor here is a new obligation that would otherwise
 -- arrive unannounced, because nothing else in the ladder counts these.

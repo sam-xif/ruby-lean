@@ -1,382 +1,64 @@
 # AGENTS.md — `ratchet/`: the Sorbet-typed ladder
 
-**Read this section, then §The typed pipeline. Everything from §LEGACY onward documents a
-judgment that no longer exists** — kept because the learnings are real and the findings are
-cited from the live code, not because any of it describes the current tree.
+## Current state (2026-09-13)
 
-## What this package is, now
+The typed/safe gap is closed: **29 accepted corpus rungs have end-to-end `StuckFree`
+proofs**, **safety reach 17**, **16 registered rules** (12 expressions + 4 list companions),
+**0 owed**, **0 exempt**. Checker reach is 18 because rung 018 is correctly rejected;
+the safety prefix ends at 017. Agreement: **252 agree, 0 disagreements**. The full gate is
+[`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh); a rung is climbed only when
+its certificate checks and its safety proof matches the actual stripped program.
 
-A **certificate ladder**: Sorbet-annotated Ruby in, a `Deriv` emitted by an untrusted
-emitter, checked by a Lean checker that *returns the derivation*, over a corpus that ratchets
-one rung at a time. Three numbers, three scripts, no others:
+The gate also checks Sorbet expectations, negative controls, floors, and the rules read
+from each proof term. It must pass before committing. Use quiet mode; `--verbose` is only
+for a failure whose captured error is insufficient. In a sandbox with a protected uv cache,
+set `UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache`.
 
-| what | reads | script |
-|---|---|---|
-| ladder reach | **safety reach 8** — the leading run typed *and* proved `StuckFree`, which is what a climbed rung means. `ratchetd`'s **checker reach 18** counts the weaker claim; the 21 rungs between them are certified and unproved, and the ratchet is **RED** until that closes | `scripts/run_typed_ratchet.sh` |
-| agreement | **252 agree, 0 disagreements** (CRuby vs the Lean semantics, over the sig-stripped programs) | same, step 3 |
-| clinks | **9 of `DJudge`'s 12** rules carry an answer-typed proof **and an invariant proof**; 3 owed, and 2 of those (`seq`, `prim`) are owed twice — a proof *and* a `DFam` field that can state it (§F31) | `scripts/run_denote.sh`, or `lake exe semladder` |
-| end-to-end safety | **8 corpus rungs** proved `StuckFree bootMachine <program>` at every fuel; **7 of the 9 rules exercised** (read off the proof terms), `var`/`vasgn` named as exceptions under a ceiling (§F30) | `scripts/run_typed_ratchet.sh` step 4, or `lake exe semladder build` — which also lists the **unmet goals in corpus rung order** |
+## The pipeline
 
-Two exes (`ratchetd`, `semladder`), one report exe (`denotereport`), 42 Lean files, ~14k lines.
+Annotated `corpus/NNN-id.rb` → Sorbet signatures → annotation stripping → RubyCore JSON →
+untrusted derivation emitter → Lean `check`, which returns a `DJudge` proof.
+`build/` is generated. The corpus has 259 rungs; unsupported constructs remain explicit
+coverage gaps. [`MainTyped.lean`](MainTyped.lean) reports checker reach;
+[`SemLadder.lean`](SemLadder.lean) checks safety coverage and reports the unmet rungs.
 
-**Two rule counts, easy to read as one.** `lake exe semladder` prints both, and they are
-different claims with different directions:
+## The proof boundary
 
-* **owed** — `seq`, `prim`, `if'`: rules `Ratchet/Check.lean` defines and the registry has no
-  semantic proof for, so they are *not in the certified judgment at all* and nothing that
-  needs one can be certified. This is **coverage**, and the target is **0**. The unmet-goal
-  tally says which buys the most (`seq` 177 rungs, `prim` 169).
-* **exempt** (`unexercised`, `2/2` today) — `var`, `vasgn`: rules that *are* certified, proved
-  and in the judgment, but that no rung the safety proof covers uses, so the end-to-end claim
-  is about a narrower fragment than the registry. **Never large.** Non-empty is legitimate in
-  an intermediate state — `var` needs a program that binds a local, which needs `seq` (§F30) —
-  but `unexercisedCeiling` only ever moves down, and raising it is the reviewable act.
+[`Ratchet/Check.lean`](Ratchet/Check.lean) defines `DJudge`, `DJudgeAll`, `DJudgeSeq`,
+and seven `DPrim` rows. [`Denote/Typed/Clink.lean`](Denote/Typed/Clink.lean) derives each
+constructor's semantic obligation and registers only proved rules. **All three judgments
+are fields of `DFam`**: no raw syntactic premise may bypass the registry.
 
-Neither is "debt owed to a plan": a rule with no proof is not an undischarged obligation, it
-is not a rule. Both are still the things to shrink.
+The semantic target is `SemSafeA = SemJudgeA ∧ SafeUnder`: answer correctness and safety
+under a typed continuation. [`Compose.lean`](Denote/Typed/Compose.lean) proves the
+continuation lifting; [`Run.lean`](Denote/Typed/Run.lean) exposes the same contract at
+machine entries used by sequence and argument frames. Safety holds at every fuel.
+The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
+proofs use no `sorry`, `native_decide`, or new axioms.
 
-## What was deleted, and the one rule that decided it
+Before authoring a rule, find its state-transport lemma. **That lemma determines the
+premises and outgoing environment** (`Check.lean`, “Authoring a rule”). The composite
+proofs exposed two missing facts: joins must not manufacture alias identity, and nominal
+String membership needs a payload invariant. See
+[`implementation-notes.md`, clink 74](implementation-notes.md) for the witnesses and fixes.
 
-**Clink 68** removed the pre-answer-typed machinery: 69 files and ~28k lines of Lean, plus the
-518-file untyped corpus. The rule was *keep what the answer-typed ladder needs; delete what
-served the old judgment* — and the old judgment is `Ratchet.Judge`, 83 rules of which 35 had
-no semantic proof and 7 were known false as stated.
+## Files to open
 
-Gone: `Judge` and its seven companions, `chk` (`Validate.lean`), `Rungs.lean`'s 177 hand
-derivations, `ChkSound.lean`, `CheckRungs.lean`, `Main.lean`, `corpus-untyped/`, `slice/`,
-`Denote/Rules/`'s 48 value-shaped obligations, `Denote/Sem/Obligations.lean`, the `Fam`
-registry, `Denote/Proto/`, `Denote/Adequacy.lean`, `Denote/Sem/{Step*,BuiltinsCap*,Locals,Mut,
-Narrow*,Query,Send,Down,FrameLocal}.lean` (the layer push the EMERGENCY EXIT was about), and
-**`SemJudge` itself** — the value-shaped judgment, deleted rather than deprecated so that no
-future rule can acquire a proof of the weaker statement and count.
+| Path | Role |
+|---|---|
+| `Ratchet/Ty.lean`, `Expr.lean`, `Deriv.lean` | Types, syntax, and certificate data |
+| `Ratchet/Check.lean`, `DerivControls.lean` | Derivation-returning checker and negative controls |
+| `Denote/Typed/JudgeA.lean` | Semantic judgment, continuation typing, literal/local rules |
+| `Denote/Typed/Sequence.lean`, `Branch.lean` | Sequence and conditional obligations |
+| `Denote/Typed/Primitive*.lean` | Primitive dispatch, allocation, argument composition, regression controls |
+| `Denote/Sem/PrimHeap.lean`, `Denote/JoinState.lean` | Primitive heap invariants and sound binding joins |
+| `Denote/Typed/Derivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 29 concrete safety proofs |
+| `Denote/Typed/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |
+| `Denote/Sanity.lean` | Executable boot conformance gate and its kernel soundness theorem |
+| `scripts/run_typed_ratchet.sh` | Full pre-commit gate |
 
-Kept on purpose, including things currently unreachable, because they are what the next rung
-needs: `Denote/Join.lean` + `JoinState.lean` (join soundness under `denM` — `if'` needs
-exactly this and it turned out to be *already proved*, which corrected
-`Ratchet/Check.lean` §5), `Denote/Sem/AnswerCatch.lean` (`CatchFree`, for `RunAPushK`),
-`Denote/Sem/Invariant.lean` §1 (the safety reduction, proved for an abstract `Inv` and now
-parameterised by what "accepted" means rather than naming a judgment), `Denote/Sanity.lean`
-(the vacuity witness — without `stateOk_boot` every `SemJudgeA` could be vacuous),
-`Denote/Examples.lean` + `DenB`/`ArrowCheck` (33 `#guard`s validating `denM` against the real
-`stepFn`, which is the evidence `AnsOk`'s value arm rests on), and all the prose.
-
-`Ratchet/Judge.lean` survives at 3,571 lines as the **datatype substrate**: `Ctx` and its
-polarities, the class/method/constant tables, and the predicates `StateOk`'s conformance
-components read. Also `PrimSig`, `EqSafe`, `NilQSafe`, `NarrowCond` and the narrowing
-functions — tables and predicates rather than rules, each recording a fact about CRuby that a
-`DPrim` row or a future narrowing rule will want. Nothing in the certified path reads them.
-
-## Layout
-
-```
-corpus/NNN-id.rb          annotated Ruby, the source of truth (hand-edited)
-corpus/NNN-id.meta.json   tier, description, expect_validate, expect_sorbet, sorbet_note
-build/                    everything derived (gitignored)
-scripts/                  srb_sigs, emit_deriv, build_corpus, annotate_corpus,
-                          record_baseline, run_typed_ratchet.sh, run_denote.sh
-Ratchet/Ty,Expr,JsonUtil  the type language and the syntax (standalone)
-Ratchet/Judge.lean        the `Ctx` datatype substrate (no judgment)
-Ratchet/Deriv.lean        the certificate language and its decoder (layer 1)
-Ratchet/Check.lean        DPrim, DJudge, `check` (returns the derivation), `validateD`
-Ratchet/DerivControls.lean  16 negative controls (#guard)
-Ratchet/Rung.lean         a built rung as `build/*.rung.json` leaves it
-MainTyped.lean            `lake exe ratchetd` -- stage 5 of the pipeline
-Denote/                   the denotation of `Ty` (Val/Apply/Den/DenB/Ext/Grow/Arrow/Join)
-Denote/Sem/               Framed, StateOk, Answer, SafeKont, AnswerCatch, Invariant, Trans
-Denote/Clink/             Spec (the mechanism), Form (the `form` derivation)
-Denote/Typed/             SemJudgeA + the obligations, the registry, the controls,
-                          RuleAudit (rules read off the proof terms)
-SemLadder.lean            `lake exe semladder` -- the clink report
-```
-
-## The typed pipeline: **Sorbet in the loop, ladder reach 18 rungs**
-
-`../docs/semantics/answer-typed-schema.md` is the work order; this is its first two slices.
-The corpus is Sorbet-annotated Ruby, Sorbet's answer becomes certificate data, and a `Deriv`
-is checked against the **sig-stripped** program by a Lean binary.
-
-**`validateD` types, and the checker returns the derivation.** `Ratchet/Check.lean`'s `check`
-matches the program, derives the type itself, compares every `Ty` the certificate claims, and
-hands back a `DJudge` term — so layer 3 is not a theorem *about* the checker, it is the
-checker's **type**, and the oracle that judges a rung is the Lean typechecker. There is no gap
-for a soundness proof to be weaker across.
-
-What a `true` does **not** mean: type-safe for every rung. **Eight of `DJudge`'s twelve rules
-now have an answer-typed semantic proof** and are registered clinks (`Denote/Typed/`), which
-covers rungs 001-008; the remaining four have no proof
-yet; `Ratchet/Check.lean` §5 says exactly which are owed and what each costs. That is the same
-coverage-not-debt reading §The clink registry establishes, one layer down.
-
-### The five stages, and which one is trusted
-
-```
-corpus/NNN-id.rb        annotated Ruby -- the source of truth, hand-edited
-  1. srb -p symbol-table      -> the signature manifest         untrusted
-  2. the strip stack          -> the plain program              untrusted
-  3. export-json              -> the AST                        untrusted
-  4. scripts/emit_deriv.py    -> a `Deriv`, or a named block     untrusted
-  5. lake exe ratchetd        -> `validateD`'s Bool             TRUSTED, and only this
-```
-
-One command: `scripts/run_typed_ratchet.sh` (negative controls, stages 1–4, agreement,
-report). `build/` is derived and gitignored; delete it freely.
-
-**The last line is the verdict, and a rung is climbed when it is typed AND proved
-`StuckFree`** — not when `validateD` alone is satisfied. **GREEN** means nothing is started and
-incomplete: every rung the checker accepts has an end-to-end safety proof, every certified rule
-is exercised or exempt within its ceiling, every floor holds, the model agrees with CRuby and
-reach has not dropped. What remains is *ascent* — rungs nobody has begun, which the checker
-rejects or which need rules nobody has proved. **RED** means something is started and
-incomplete, chiefly **a rung `validateD` accepts with no safety proof**: the certificate exists
-and checks, so the ladder is claiming a rung the safety determination does not reach. Also a
-theorem about the wrong program, an exemption list past its ceiling, a floor that moved, a rule
-registered without its floor raised, or a stage that errored.
-
-So "251 rungs unproved" is GREEN; *one* rung certified and left unproved is RED, because a
-half-climbed rung is what a ratchet exists to catch. **Today it is RED at 21** (§F32).
-
-It prints **the goal list and nothing else** — the unmet rungs in corpus order, truncated at
-20, with the tally of what blocks them — because that is what a commit-time gate is for.
-`--verbose` streams every stage (the old output, ~1400 lines against ~25). Quiet never hides
-a failure: each stage's exit code is checked, and the first that fails names the stage, says
-why it matters, and prints its errors. `--help` for the stage list.
-
-**Why the certificate exists at all**, when `validate` synthesizes: `Judge.callDef` types
-a method body once *per call-site argument shape*, because Ruby writes no parameter types
-and there is therefore nothing to check a call against. A `sig` is exactly the missing
-input and cannot be handed to an inference algorithm without trusting it — so it is handed
-in as certificate data and re-checked. `Ratchet/Deriv.lean`'s header carries the argument;
-`sorbet-cert/README.md` §3 carries the tamper control that pins it.
-
-**Why the program is the stripped one:** `sorbet-runtime` executes as ordinary Ruby, so a
-`sig` is ~217 machine steps of reflective metaprogramming *inside* the program being
-certified (`static-soundness-poc.md` §8.3). Stage 2 deletes the annotations; Sorbet's
-answer survives only as data.
-
-### Where it stands (`lake exe ratchetd build`)
-
-```
-rungs:                              259
-  srb typechecks the annotation:    184/259   (259/259 agree with the recorded expect_sorbet)
-  rungs declaring a usable sig:      81/259   (50 rungs drop at least one sig `Ty` cannot express)
-  emitter produced a derivation:     75/259   (blocked 177, upstream failure 7 -- all recorded)
-  validateD (typing) accepted it:    29/259
-  rungs meeting their target:        75/259
-
-LADDER REACH: 18 rungs
-  frontier: 019-to-s-call -- expect_validate=true, got false
-agreement over the stripped programs (--sut lean): 252 agree, 0 disagreements
-```
-
-**Reach is a prefix, and that is the headline number.** The leading run of rungs whose
-verdict equals the recorded `expect_validate` — 18 today, which is tiers 1 and 2 through
-`018-bad-plus` (a program that really raises `TypeError`, correctly refused). A prefix rather
-than a total because "we are at rung N" is what a ladder means, and because a rung that
-certifies out of order says nothing about the ones before it. `MainTyped.lean`'s
-`ladderFloor` ratchets it; the exit code is non-zero if reach drops.
-
-**The judgment behind those 18 rungs** (`Ratchet/Check.lean`, and it imports neither
-`Judge.lean` nor `Validate.lean`):
-
-* `DJudge`/`DJudgeAll`/`DJudgeSeq` — **twelve rules** (plus four companions): seven literals, `var`, `vasgn`,
-  `seq`, `prim`, `if'`, and the two list companions. `Env`-indexed, no `Ctx` and no ivar
-  spine, because the fragment declares nothing and has no `self` — a context would be a field
-  nothing reads, and copying `Judge`'s is the wrong move ahead of a rule that needs it.
-* `DPrim` — **seven rows**: `Integer#+ - * /`, `Integer#<`, `String#+`, `!` on a boolean.
-  Seven against `PrimSig`'s ~90 on purpose: the semantic obligation for a table grows a row
-  at a time, which is what the ~200-fact block behind `Sem.Judge.prim` never could.
-
-**Why not extend `chk`/`Judge`.** That judgment has 83 rules, 35 with no semantic proof and
-7 known false as stated. Growing it is the thing §The clink registry exists to stop. The
-legacy ladder is untouched and still runs (`corpus-untyped/`, 178/259, 177 derivations,
-148 controls); the intent is replacement when reach covers the corpus, and
-`Ratchet/Check.lean` §6 states that condition rather than assuming it.
-
-**The 75 unblocked rungs are not the interesting number; the block census is.** It is
-printed every run, ranked, and it is the work list:
-
-| blocked on | count | what it is |
-|---|---|---|
-| a block argument | 42 | the emitter's fragment, deliberate |
-| `module` / `casgn` / `regexp_lit` / `while` / `begin` / `yield` / `splat` / `defs` | ~50 | emitter rules not written |
-| `T.untyped` in a signature | ~8 | Sorbet declining to make a claim — the fragment gate, working as designed |
-| `parameter kind 'pkey'/'popt'` | ~8 | required positionals only, for now |
-| `no builtin signature for X#m` | ~20 | `prim_ret`'s table is a subset of `PrimSig` |
-
-**Two results worth reading before extending anything.**
-
-1. **Sorbet rejects most of the unsafe corpus.** 75 of 259 rungs fail `srb`, and the
-   overlap with the `unsafe_program` targets is large (`054-fun-body-mismatch`,
-   `163-param-arity-unsafe`, `241-reopen-integer-is-a-unsafe`, the four
-   `*-return-escapes-unsafe`, …). Each rung's `expect_sorbet` and `sorbet_note` record
-   it, and `ratchetd` exits non-zero if a verdict moves. That is a ratchet on Sorbet's
-   answer, not on ours.
-2. **Sorbet also rejects things that are safe**, and the reasons are specific and worth
-   knowing: implicit `yield` without a declared block parameter (8 rungs),
-   `196-ctl-return-early`'s nilable `a[0]` behind a guard Sorbet cannot read,
-   `156-param-kwrest`'s `**kw` keyed by `Symbol`. These are recorded, not worked around.
-
-### The known divergence, named where it bites
-
-A Sorbet signature says `Point`; `Ratchet/Ty.lean` types an instance as
-`.inst "Point" <ivar spine>`, because "an object's observable type is not its class name".
-The emitter reconstructs the spine from `initialize`'s declared parameters where it can
-(`Emitter.as_inst`/`seed_ivars`) and leaves `.cls` where it cannot, at which point the
-first method call on such a receiver blocks. This is the first thing `check` will reject,
-and it is in the right place: a named divergence in an untrusted emitter.
-
-### The semantic layer: **8 clinks, each carrying an end-to-end safety proof**
-
-**Safety is a field of the clink target, not a consequence of it — and the field is the
-invariant.** `SemSafeA` is `SemJudgeA ∧ SafeUnder`, where
-
-```lean
-def SafeUnder (Γ : Env) (e : Expr) (τ : Ty) (Γ' : Env) : Prop :=
-  ∀ (τa : Ty) (m : Machine), StateOk ctx0 Γ .ivar0 m →
-    m.ctl = .eval (toRuby e) → DKontOk τa m.kont Γ' τ → SafeA m
-```
-
-`DKontOk` is the **continuation typing**, indexed by the *answer type* `τa` — the type the
-empty continuation accepts, which is Wright–Felleisen's `E : τ ⇒ τ_ans`. It has one
-constructor today because no registered rule pushes a frame; a frame joins when the rule that
-pushes it registers (`vasgn` brings `asgnK`, with a value clause and an escape clause).
-
-**Why not whole-program safety.** `∀ m, StateOk … → StuckFree m e` was the first version and
-is too weak: `StuckFree` is about `evalFrom m e`, which *empties the continuation*, so it says
-nothing about a machine part-way through a larger program and does not compose. A rule with a
-sub-expression premise would get a fact about running that sub-expression as a whole program
-and need one about running it under the frame it just pushed — bridged per rule with fuel
-arithmetic. `SafeUnder` is that fact directly. `dregistry_safe` (safety of every program the
-fragment types) is then one line: `SafeUnder` at `DKontOk.nil`.
-
-**Why this is the induction, not a substitute for it.** `DJudgeC` is Church-encoded, so a
-derivation is a **Π-type, not an inductive** — there is no constructor to match on, so
-`preserved` cannot be proved by `cases` over the derivation. Induction with an index-only
-motive is free (it is what the definition is); **inversion** is not, though it is recoverable
-by pairing the motive with `DJudgeC` itself, which additionally needs per-rule closure. Nothing
-here needs it: **choosing the family to be "the invariant holds here" is the inductive proof**,
-with one case per rule — and those cases are exactly the clink fields.
-`Denote/Sem/Invariant.lean` §1 keeps the abstract reduction for when a monolithic `Inv` is
-wanted; it is parameterised by what "accepted" means and needs no judgment.
-
-Safety is *not* derived from `SemJudgeA`: that judgment constrains runs which reach an
-**answer**, and a run can halt `.uncaught` (the one type-stuck outcome), which `runA` reports
-as `.halt`. Closing that in general needs `UncaughtInv` (`answer-typed-schema.md` §7) and is
-not on the critical path — when it lands, `SafeUnder` gains a derivation and every clink keeps
-its proof.
-
-**`Denote/Typed/Safety.lean` is the file to watch**: one theorem per certified corpus rung, at
-the real prelude-booted machine, every hypothesis discharged (`stateOk_boot`, conditional on
-the `bootOkB` build gate; `native_decide` was rejected for the axiom it costs). Eight today —
-rungs 001-008 — ratcheted by `safeRungFloor`.
-
-**Five gates keep that number honest**, because a safety count can be wrong in five
-different ways:
-
-* `safeRungs` carries the *programs*, and `safeRungs_safe` is proved over the list — so a name
-  without a theorem does not typecheck. (It used to be a `List String` with a `#guard` on its
-  length, which eight names and no theorems would have satisfied.)
-* `lake exe semladder build` compares each theorem's `Expr` against the **program the pipeline
-  actually built** for that rung. A theorem can be true of `.str "hello"` and say nothing
-  about rung 004; this is what rules that out. `scripts/run_typed_ratchet.sh` step 4.
-* `rulesExercised` + `unexercised` require every registered rule to be *exercised* by some
-  covered rung, or named as an exception. This failed on its first run and produced **§F30**:
-  `var` is registered and proved, and no covered rung reads a local — structurally, since the
-  smallest witness needs `vasgn` and `seq`. The exception list has a **ceiling**
-  (`unexercisedCeiling`), because the gate's first version could be satisfied by widening the
-  list, and was (§F30's 2026-09-13 update).
-* **`Denote/Typed/RuleAudit.lean`** computes `rulesExercised` off the **proof terms** — a
-  derivation is `fun _ hF => hF DClink.X hc`, so its rules are the clinks handed to the
-  closure hypothesis — and requires that to agree, per rung, with what `rulesUsed` predicts
-  from the program's `Expr` heads. That predictor was exact only if each head admits exactly
-  one `DJudge` rule, which was prose. (A flat `getUsedConstants` scan does **not** work here:
-  the `by simp [dclinks]` membership proof unfolds the whole registry, so every rung reports
-  every rule. The walk is structural for that reason.)
-* A built rung whose program uses **only registered rules** and has no safety theorem is red
-  (`SAFETY COVERAGE REGRESSED`). `safeRungs` is hand-written while the registry grows on its
-  own, so without this, registering `seq` would make a pile of rungs provable and nothing
-  would ask for their proofs.
-
-### The eight rules, and the one lemma that gates the rest
-
-`Denote/Typed/` is `Denote/Clink/`'s mechanism at this judgment, with the semantic reading
-**restated**: `SemJudgeA`, whose hypothesis is an `Answer` rather than a value and whose
-conclusion carries whether the run reached a type-stuck outcome (`AnsOk`'s `esc (.raiseJ exc)`
-arm is `isTypeError m₀.heap exc = false`). That is why the 48 `SemJudge`-shaped clinks were
-**not** reusable here: `not_semJudgeImpliesStuckFree` proves that shape says nothing about a
-run that escapes, so inheriting them would have been inheriting proofs of the weaker
-statement. The two registries stay separate and `lake exe semladder` prints both.
-
-Registered, axiom-clean: the **seven literals, `var` and `vasgn`**. Rungs **001–008** are
-derivable in `DJudgeC dclinks` and have end-to-end safety theorems; rungs **009–018** are
-checker coverage only.
-
-`vasgn` is the first composite rule, and the two halves diverge: the **invariant half is five
-lines with no fuel arithmetic** (step to the pushed frame, hand the premise the machine that
-step created, and `DKontOk.asgnK` is that machine's continuation typing), while the
-**answer-typed half is ~60 lines** and is `runA_pushK`'s customer. That asymmetry is the
-evidence that stating the obligation over the machine was right.
-
-Owed: `seq`, `prim`, `if'`. The lemma that gated them, `runA_pushK` — the answer-level
-counterpart of `run_pushK` — is now **proved** (`Denote/Sem/Answer.lean`). What each still
-needs is in `Denote/Typed/JudgeA.lean` §4: `seq` needs a `DFam` member and the `seqK` frame's
-clauses, `if'` needs nothing (join soundness is already proved in `Denote/Join.lean`), `prim`
-needs one conformance fact per `DPrim` row.
-
-**Why rule-local proofs are possible at all:** `evalFrom` empties the continuation, so every
-obligation is about a run from an empty kont — which is why §9.2's warning that `safe_pushK`
-needs `CatchFree m.kont` does not bite at this layer.
-
-**§F29** is what the restatement bought immediately, twice: `DJudge.var`'s obligation did not
-close because the rule had dropped `isAliasTy τ = false` (§F5's premise, on a rule three hours
-old), and `DJudge.vasgn`'s did not close because it guessed `envSet` with no premises where
-`StateOk_setLocal` wants two and concludes at `envAfter`. No corpus rung could have found
-either — nothing in `DJudge` produces an alias or a closure — but the obligation quantifies
-over every environment a *conformant machine* can have, not every one the checker can reach.
-No ladder movement either time.
-
-The working rule that came out of it is **`Ratchet/Check.lean` §Authoring a rule**: *let the
-transport lemma write a rule's premises and its outgoing environment.* Deliberately a rule of
-thumb rather than a checked invariant — the stronger form (*never re-type an existing entry*)
-is false for Ruby, and `killClosOver` re-types entries the rule did not bind on purpose. How
-the environment may evolve stays open; soundness is forced at proof time.
-
-### Still not built
-
-* **`Deriv`'s other rules are refused, by name**: `defDecl`, `callSig`, `callMethodSig`,
-  `classDecl`, `newInst`, `ivarRead`, `ivarAsgn`, `constCls`, `arrayLit`, `hashLit`,
-  `selfExpr`. Each joins with a `DJudge` rule, and each joining is a rung. `defDecl` is the
-  interesting one: it is where a Sorbet `sig` stops being decoration and becomes the premise
-  the body is checked at.
-* **The growth gate does not yet cover `DJudge`.** `Denote/Clink/Registry.lean`'s gate ranges
-  over `Ratchet.Judge`'s family only, which is how twelve unproved rules were authored in one
-  commit without the build going red. `Denote/Typed/Clink.lean`'s `#guard`s pin the current
-  8/4 split, so a *thirteenth* rule without a proof breaks them — but that is a count, not
-  the by-name freeze `legacyUnclinked` gives.
-
-### Layout
-
-```
-corpus/NNN-id.rb          annotated Ruby, the source of truth (hand-edited)
-corpus/NNN-id.meta.json   tier, description, expect_validate, expect_sorbet, sorbet_note
-corpus-untyped/           the pre-2026-09-11 corpus, still driving the old ladder
-build/                    everything derived (gitignored)
-scripts/srb_sigs.py       srb -p symbol-table -> sigs in this package's `Ty` encoding
-scripts/emit_deriv.py     the untrusted emitter
-scripts/build_corpus.py   stages 1-4 over the whole corpus
-scripts/annotate_corpus.py  the sig table; idempotent; re-run after adding a rung
-scripts/record_baseline.py  freeze expect_sorbet / known_upstream_failure
-scripts/run_typed_ratchet.sh  all of it, one command; quiet by default, `--verbose` for all of it
-Ratchet/Deriv.lean        the certificate language and its decoder (layer 1)
-Ratchet/Check.lean        DPrim, DJudge, `check` (which returns the derivation), `validateD`
-Ratchet/DerivControls.lean  16 negative controls (#guard), including the typing ones
-Denote/Typed/JudgeA.lean  SemJudgeA/AnsOk/EscOk, runA_pure, the 8 obligations, RunAPushK
-Denote/Typed/Clink.lean   DFam, register_dclink, `dclinks`, dregistry_sound
-Ratchet/Rung.lean         a built rung as `build/*.rung.json` leaves it
-MainTyped.lean            `lake exe ratchetd` -- stage 5
-```
-
----
+The material below is historical: it describes the deleted pre-answer-typed judgment.
+Keep it as the investigation record, not as instructions for the current implementation.
 
 # LEGACY — everything below describes the deleted judgment
 

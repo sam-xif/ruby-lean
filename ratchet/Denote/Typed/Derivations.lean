@@ -1,0 +1,75 @@
+import Denote.Typed.Controls
+
+/-! Constructor-wise builders for proof-term-audited corpus derivations. -/
+set_option autoImplicit false
+namespace Ratchet.Denote.Typed
+open RubyCore Ratchet Ratchet.Denote
+
+theorem derivD_fltLit {Γ : Env} {b : UInt64} : (DJudgeC dclinks).judge Γ (.flt b) .float Γ :=
+  fun _ hF => hF DClink.fltLit (by simp [dclinks])
+
+theorem derivD_strLit {Γ : Env} {s : String} :
+    (DJudgeC dclinks).judge Γ (.str s) (.cls "String") Γ :=
+  fun _ hF => hF DClink.strLit (by simp [dclinks])
+
+theorem derivD_symLit {Γ : Env} {s : String} : (DJudgeC dclinks).judge Γ (.sym s) .sym Γ :=
+  fun _ hF => hF DClink.symLit (by simp [dclinks])
+
+theorem derivD_truLit {Γ : Env} : (DJudgeC dclinks).judge Γ .tru .bool Γ :=
+  fun _ hF => hF DClink.truLit (by simp [dclinks])
+
+theorem derivD_flsLit {Γ : Env} : (DJudgeC dclinks).judge Γ .fls .bool Γ :=
+  fun _ hF => hF DClink.flsLit (by simp [dclinks])
+
+theorem derivD_nilLit {Γ : Env} : (DJudgeC dclinks).judge Γ .nil .nilT Γ :=
+  fun _ hF => hF DClink.nilLit (by simp [dclinks])
+
+theorem derivD_var {Γ : Env} {x : String} {τ : Ty}
+    (hg : envGet? Γ x = some τ) (ha : isAliasTy τ = false) :
+    (DJudgeC dclinks).judge Γ (.var .lvar x) τ Γ :=
+  fun _ hF => hF DClink.var (by simp [dclinks]) hg ha
+
+theorem derivD_vasgn {Γ Γ' : Env} {x : String} {e : Ratchet.Expr} {τ : Ty}
+    (he : (DJudgeC dclinks).judge Γ e τ Γ')
+    (hc : capStale x τ τ = false) (ha : isAliasTy τ = false) :
+    (DJudgeC dclinks).judge Γ (.vasgn .lvar x e) τ (envAfter Γ' x τ) :=
+  fun F hF => hF DClink.vasgn (by simp [dclinks]) (he F hF) hc ha
+
+theorem derivD_seq {Γ Γ' : Env} {es : List Ratchet.Expr} {τ : Ty}
+    (he : (DJudgeC dclinks).seq Γ es τ Γ') :
+    (DJudgeC dclinks).judge Γ (.seq es) τ Γ' :=
+  fun F hF => hF DClink.seq (by simp [dclinks]) (he F hF)
+
+theorem derivD_seqLast {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
+    (he : (DJudgeC dclinks).judge Γ e τ Γ') : (DJudgeC dclinks).seq Γ [e] τ Γ' :=
+  fun F hF => hF DClink.DJudgeSeq.last (by simp [dclinks]) (he F hF)
+
+theorem derivD_seqCons {Γ Γ₁ Γ₂ : Env} {e e' : Ratchet.Expr} {es : List Ratchet.Expr}
+    {σ τ : Ty} (he : (DJudgeC dclinks).judge Γ e σ Γ₁)
+    (ht : (DJudgeC dclinks).seq Γ₁ (e' :: es) τ Γ₂) :
+    (DJudgeC dclinks).seq Γ (e :: e' :: es) τ Γ₂ :=
+  fun F hF => hF DClink.DJudgeSeq.cons (by simp [dclinks]) (he F hF) (ht F hF)
+
+theorem derivD_allNil {Γ : Env} : (DJudgeC dclinks).all Γ [] [] Γ :=
+  fun _ hF => hF DClink.DJudgeAll.nil (by simp [dclinks])
+
+theorem derivD_allCons {Γ Γ₁ Γ₂ : Env} {e : Ratchet.Expr} {es : List Ratchet.Expr}
+    {τ : Ty} {tys : List Ty} (he : (DJudgeC dclinks).judge Γ e τ Γ₁)
+    (ht : (DJudgeC dclinks).all Γ₁ es tys Γ₂) (hp : plainArgB e = true) :
+    (DJudgeC dclinks).all Γ (e :: es) (τ :: tys) Γ₂ :=
+  fun F hF => hF DClink.DJudgeAll.cons (by simp [dclinks]) (he F hF) (ht F hF) hp
+
+theorem derivD_prim {Γ Γ₁ Γ₂ : Env} {recv : Ratchet.Expr} {name : String}
+    {args : List Ratchet.Expr} {σ τ : Ty} {tys : List Ty}
+    (hr : (DJudgeC dclinks).judge Γ recv σ Γ₁) (ha : (DJudgeC dclinks).all Γ₁ args tys Γ₂)
+    (hp : DPrim σ name tys τ) :
+    (DJudgeC dclinks).judge Γ (.send (some recv) name args none) τ Γ₂ :=
+  fun F hF => hF DClink.prim (by simp [dclinks]) (hr F hF) (ha F hF) hp
+
+theorem derivD_if {Γ Γc Γ₁ Γ₂ : Env} {c t e : Ratchet.Expr} {σ τ₁ τ₂ : Ty}
+    (hc : (DJudgeC dclinks).judge Γ c σ Γc) (ht : (DJudgeC dclinks).judge Γc t τ₁ Γ₁)
+    (he : (DJudgeC dclinks).judge Γc e τ₂ Γ₂) :
+    (DJudgeC dclinks).judge Γ (.if' c t (some e)) (joinT τ₁ τ₂) (joinEnv Γ₁ Γ₂) :=
+  fun F hF => hF DClink.if' (by simp [dclinks]) (hc F hF) (ht F hF) (he F hF)
+
+end Ratchet.Denote.Typed

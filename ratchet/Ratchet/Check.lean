@@ -112,8 +112,8 @@ rules with no proof, priced at "~200 conformance facts, two per row"
 whose semantic obligation can grow a row at a time too, which is the whole argument for
 starting again here rather than inheriting.
 
-Each row is a claim about CRuby that is **not yet proved from the semantics** — see
-§Semantic status at the bottom of this file for exactly what is and is not owed. -/
+Each row is proved against the executable semantics in `Denote/Typed/PrimitiveBuiltin.lean`,
+under the heap conformance facts in `Denote/Sem/PrimHeap.lean`. -/
 
 inductive DPrim : Ty → String → List Ty → Ty → Prop
   /-- `Integer#+`, `-`, `*`, `/` at an `Integer` argument. `/` included: integer division by
@@ -181,6 +181,12 @@ machine can have, and `StateOk_setLocal` is stated at exactly this environment. 
 so the rule and the conformance lemma agree by construction rather than by a rewrite. -/
 def envAfter (Γ : Env) (x : String) (σ : Ty) : Env :=
   envSet (killClosOver (killAliasesTo Γ x) x σ) x σ
+
+/-- Argument-list syntax is interpreted specially by `startArgs`, rather than evaluated
+as an ordinary expression. A semantic argument premise must exclude those heads. -/
+def plainArgB : Expr → Bool
+  | .splat _ | .kwargs _ | .fwd => false
+  | _ => true
 
 /-! ## §2 The judgment
 
@@ -259,7 +265,8 @@ inductive DJudge : Env → Expr → Ty → Env → Prop
 inductive DJudgeAll : Env → List Expr → List Ty → Env → Prop
   | nil {Γ : Env} : DJudgeAll Γ [] [] Γ
   | cons {Γ Γ₁ Γ₂ : Env} {e : Expr} {es : List Expr} {τ : Ty} {τs : List Ty} :
-      DJudge Γ e τ Γ₁ → DJudgeAll Γ₁ es τs Γ₂ → DJudgeAll Γ (e :: es) (τ :: τs) Γ₂
+      DJudge Γ e τ Γ₁ → DJudgeAll Γ₁ es τs Γ₂ → plainArgB e = true →
+      DJudgeAll Γ (e :: es) (τ :: τs) Γ₂
 
 inductive DJudgeSeq : Env → List Expr → Ty → Env → Prop
   /-- The sequence's type is its **last** statement's. -/
@@ -267,6 +274,9 @@ inductive DJudgeSeq : Env → List Expr → Ty → Env → Prop
   | cons {Γ Γ₁ Γ₂ : Env} {e e' : Expr} {es : List Expr} {σ τ : Ty} :
       DJudge Γ e σ Γ₁ → DJudgeSeq Γ₁ (e' :: es) τ Γ₂ → DJudgeSeq Γ (e :: e' :: es) τ Γ₂
 end
+
+theorem DJudge.plainArg {Γ Γ' : Env} {e : Expr} {τ : Ty} (h : DJudge Γ e τ Γ') :
+    plainArgB e = true := by cases h <;> rfl
 
 /-! ## §3 The checker, which *builds* the derivation
 
@@ -394,7 +404,7 @@ def checkAll (fuel : Nat) (Γ : Env) (es : List Expr) (ds : List Deriv) :
       match check n Γ e d with
       | some ⟨τ, Γ₁, he⟩ =>
         match checkAll n Γ₁ es' ds' with
-        | some ⟨τs, Γ₂, hr⟩ => some ⟨τ :: τs, Γ₂, .cons he hr⟩
+        | some ⟨τs, Γ₂, hr⟩ => some ⟨τ :: τs, Γ₂, .cons he hr he.plainArg⟩
         | none => none
       | none => none
     -- A certificate with the wrong number of arguments is rejected here, in both
@@ -447,49 +457,19 @@ theorem validateD_typed {p : Expr} {d : Deriv} (h : validateD p d = true) : DTyp
   | some c => exact ⟨c.ty, c.out, c.judged⟩
   | none => rw [hc] at h; exact absurd h (by simp)
 
-/-! ## §5 Semantic status — what a `true` does and does not mean
+/-! ## §5 Semantic status
 
-`validateD p d = true` means: **there is a `DJudge` derivation of `p`**, and the checker
-handed it over rather than asserting it. That is layers 1–3 of the schema, closed.
+`validateD p d = true` means the checker returned a `DJudge` derivation of `p`.
+All twelve expression rules and four list companions have answer-typed semantic proofs
+registered in `Denote/Typed/Clink.lean`. The semantic target includes safety under a typed
+continuation, so escapes and halts are covered as well as returned values.
 
-It does **not** mean `p` is type-safe, and the gap is exactly the one `Denote/Clink/` was
-built to keep visible: **nine of `DJudge`'s twelve rules have an answer-typed semantic proof**
-(`Denote/Typed/JudgeA.lean`) and are registered clinks (`Denote/Typed/Clink.lean`); the other
-three -- `seq`, `prim`, `if'` -- have none. So `validateD = true` is a type-safety claim
-exactly on the programs the nine derive (a literal, a local read, or an assignment: corpus
-rungs 001-008), and on rungs 009-018 it is coverage of the *checker* rather than
-justification. Which rungs those are, and what each waits on, is `lake exe semladder build`'s
-unmet-goals list.
+`Denote/Typed/CorpusSafety.lean` carries concrete derivations and safety proofs for every
+accepted corpus rung. `RuleAudit.lean` checks the actual proof terms, and `SemLadder.lean`
+compares each proof's program to the pipeline's stripped program. A newly accepted rung
+without that end-to-end proof still makes the full ratchet red.
 
-Why the 48 proofs in `Denote/Clink/Registry.lean` did not transfer: they are `SemJudge`-shaped
-— *if the run returns a value, the value is in the type* — and
-`Denote/Sem/NoProgress.lean`'s `not_semJudgeImpliesStuckFree` proves that shape says nothing
-about a run that **escapes**. The obligations here are `SemJudgeA`-shaped instead: the
-hypothesis is an `Answer`, and the conclusion carries whether the run reached a type-stuck
-outcome. So the clinks in `Denote/Typed/Clink.lean` are the project's first ones against a
-statement with progress content, and they were proved rather than inherited.
-
-What is owed, in the order it gets cheaper:
-
-| rule | what its obligation needs |
-|---|---|
-| all three | `runA_pushK` (`Denote/Typed/JudgeA.lean` §4) — the answer-level counterpart of `run_pushK` — **is now proved**, and it is what let `vasgn` off this table. It is no longer the blocker for the remaining three; each now needs only its own rule-specific work, below |
-| `seq`, `prim` | **`DFam` extended with a list field first** (`Denote/Typed/Clink.lean`, header, and §F31). Their premises are `DJudgeSeq`/`DJudgeAll`, which `ruleForm` does not abstract, so a proof written today would prove the wrong statement — `register_dclink` refuses them for that reason before it asks for one |
-| `if'`, additionally | nothing. **`joinT`/`joinEnv` soundness is already proved** — `Denote/Join.lean`'s `denM_joinT_left`/`_right` (a join is an upper bound under `denM`) and `Denote/JoinState.lean`'s environment/spine counterpart. Both survived the clink-68 deletion sweep *because* of this row, and finding them is what corrected it: an earlier version of this table said "stated nowhere yet" |
-| `prim`, additionally | one conformance fact per row: that CRuby's `Integer#+` really returns an `Integer` from the prelude-booted heap. `DPrim` has **7** rows against `PrimSig`'s ~90 precisely so this is a countable obligation rather than the ~200-fact block that stalled the old ladder three sessions running |
-
-## §6 Relationship to `Ratchet/Judge.lean` and `Ratchet/Validate.lean`
-
-They are untouched and still live: `lake exe ratchet corpus-untyped` and `lake exe checkrungs
-corpus-untyped` run the legacy syntactic ladder (178/259 rungs, 177 hand derivations, 148
-negative controls), and that evidence is real. Nothing here imports them, and nothing there
-imports this.
-
-The intent is replacement, not coexistence, and the condition is stated rather than assumed:
-when the typed ladder's reach covers the corpus, the legacy ladder is what gets deleted — and
-the reason to prefer the new one is not that it reaches further today (it does not, by a lot)
-but that every rule it gains can arrive with a proof, one rung at a time, which is the thing
-83 rules with 48 proofs cannot be retrofitted into.
--/
+`Ratchet/Judge.lean` is the retained type/context substrate. The older judgment and checker
+were deleted in clink 68; the current proof boundary is the answer-typed registry. -/
 
 end Ratchet

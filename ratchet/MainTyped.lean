@@ -14,11 +14,11 @@ derivation is checked, never trusted.
 **`validateD` types.** `Ratchet/Check.lean`'s `check` matches the program, derives the type
 itself, compares every `Ty` the certificate claims, and **returns the `DJudge` derivation** —
 so a `true` below is "there is a derivation of this program in the certified judgment", with
-no theorem in between (the checker's *type* is the soundness statement). What it is not is a
-claim about the semantics: nine of `DJudge`'s twelve rules have a semantic proof and three
-(`seq`, `prim`, `if'`) do not, so a `true` on a rung needing one of those three is coverage of
-the *checker*. `Ratchet/Check.lean` §Semantic status says what each still needs, and
-`lake exe semladder build` prints the unmet goals in corpus order.
+no theorem in between (the checker's *type* is the syntactic soundness statement).
+All twelve expression rules and four list companions now have answer-typed semantic proofs.
+`lake exe semladder build` checks concrete safety proofs against the stripped corpus and
+prints the remaining unmet goals.
+
 
 The headline number is **ladder reach**: the length of the leading run of rungs that meet
 their recorded target. A prefix, not a total, because that is what "we are at rung N" means
@@ -120,11 +120,10 @@ expect_validate={f.rung.expectValidate}, got {f.verdict}; {stageLabel f.rung.sta
     let ts := rows.filter (·.rung.tier == t)
     IO.println s!"tier {t}: {(ts.filter (·.verdict)).length}/{ts.length}"
 
-  IO.println "\nNOTE: a `true` above means a `DJudge` derivation exists for the program \
-(Ratchet/Check.lean -- the checker returns the derivation, so its type is the soundness \
-statement). It does NOT yet mean type-safe: three of `DJudge`'s twelve rules (`seq`, `prim`, \
-`if'`) still have no semantic proof, so a rung needing one of those is checked but not \
-justified. `lake exe semladder build` reports which, per rung, in corpus order."
+  IO.println "\nNOTE: a `true` above means a `DJudge` derivation exists. Every judgment rule \
+has an answer-typed semantic proof. `lake exe semladder build` checks each accepted rung's \
+end-to-end safety proof against the actual stripped program."
+
 
   -- Two things are failures rather than measurements, and both are ratchets
   -- (`scripts/record_baseline.py`): an upstream stage that errored and was not already

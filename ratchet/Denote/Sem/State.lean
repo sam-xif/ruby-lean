@@ -1,6 +1,7 @@
 import Ratchet.Judge
 import Denote.Local
 import Denote.Sem.Trans
+import Denote.Sem.PrimHeap
 
 /-!
 # `Denote/Sem/State.lean` — evaluation, and what it means for a machine to *match* a
@@ -1064,6 +1065,9 @@ than by omission — a `StateOk` that quietly skipped a field would be a place f
 rule to hide. -/
 structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   sat : HeapSaturated m
+  primitiveDispatch : primitiveDispatchB m.heap (nameFreeN κ) = true
+  primitiveErrors : primitiveErrorsB m.heap = true
+  stringPayload : StringPayloadOk m.heap
   core : CoreOk m.heap
   frameInRange : FrameInRange m
   env : EnvOk Γ m
@@ -1141,7 +1145,10 @@ theorem lookup_eq_methodOn (h : Heap) (v : Value) (n : String) :
       | some p => simp [hf]
 
 theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : StateOk κ Γ I m)
-    (he : Ext m m₂) : StateOk κ Γ I m₂ where
+    (he : Ext m m₂) (hp : StringPayloadOk m₂.heap) : StateOk κ Γ I m₂ where
+  primitiveDispatch := (primitiveDispatchB_ext he _).trans h.primitiveDispatch
+  primitiveErrors := (primitiveErrorsB_ext he).trans h.primitiveErrors
+  stringPayload := hp
   sat := Proof.Saturated_grow he.shapeAgree he.size h.sat
   core := CoreOk.ext rfl rfl he h.core
   frameInRange := by
@@ -1622,6 +1629,9 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
         refine h.missFree hfree hself o md ?_
         rw [← hm]
         simp only [Interp.methodOn, classOf, setLocal_heap, currentFrame_setLocal_self]
+      primitiveDispatch := by simpa only [setLocal_heap] using h.primitiveDispatch
+      primitiveErrors := by simpa only [setLocal_heap] using h.primitiveErrors
+      stringPayload := by simpa only [setLocal_heap] using h.stringPayload
       selfLive := by
         intro o ho
         rw [currentFrame_setLocal_self m x w] at ho

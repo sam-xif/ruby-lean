@@ -48,16 +48,12 @@ things: the **empty context value** `ctx0`, because `StateOk` is `Ctx`-indexed a
 in `Ratchet/Judge.lean`, and `stateOk_boot`, the `#guard`ed conformance witness for the
 prelude-booted machine. Neither is `chk`, and nothing here mentions `Judge` or `validate`.
 
-## What is proved here, and what is named and not
+## Rule proofs
 
-Proved, rule-local and axiom-clean: the **seven literals** and **`var`** — every `DJudge` rule
-whose evaluation is a single `stepFn` step to a value at the empty continuation.
-
-Not proved, and the reason is one missing lemma rather than eight: `seq`, `vasgn`, `prim` and
-`if'` all need to decompose a run that happens **under a pushed frame**, and the decomposition
-exists only for `Interp.run` (`run_pushK`) and not for `runA`. §4 states the missing equation
-as a named `Prop` (`RunAPushK`) before anything is proved under it, per `HANDOFF.md`'s working
-rule. It is the same induction as `run_pushK`, at the `runA` level.
+This file proves the seven literals, local reads, and assignment. `Sequence.lean`,
+`Branch.lean`, and `Primitive.lean` prove the remaining rules; `Clink.lean` registers all
+of them and both list companions. `Compose.lean` lifts closed safety and answer correctness
+to `SafeUnder`, using the escape clause of the continuation typing and `run_pushK`.
 -/
 
 set_option autoImplicit false
@@ -165,11 +161,9 @@ the frame it pushed, which is what `DKontOk`'s frame clauses will say. -/
 /-- **The continuation typing.** `DKontOk τa K Γ τ`: the continuation `K` accepts a value of
 type `τ` at environment `Γ`, and the run as a whole will answer at type `τa`.
 
-One constructor today, because **no registered rule pushes a frame** — the eight are the seven
-literals and a local read. A frame joins when the rule that pushes it registers: `vasgn` will
-add `asgnK`, with a value clause (write and pass on) and an escape clause (pop and pass on).
-`probes/kont_census.lean` priced the full set at 36 of `Kont`'s 49 constructors before it was
-deleted with the corpus it walked; that number is the target, one rule at a time. -/
+The empty continuation accepts the answer type; an assignment frame writes the value
+and passes it on. Other composite rules use `Compose.lean`'s proved lifting theorem to
+satisfy the same `SafeUnder` target. -/
 inductive DKontOk (τa : Ty) : List Kont → Env → Ty → Prop
   /-- **The empty continuation accepts exactly the program's own type.** Not "anything": with
       `nil` accepting any type the invariant proves safety and says nothing about types, which
@@ -224,7 +218,8 @@ theorem stepFn_var (m : Machine) (x : String) :
 
 /-- The object a string literal allocates: `Builtins.allocStr`'s. Unfrozen, no ivars, no
 eigenclass — which is what makes `ext_push`'s three hypotheses `rfl`. -/
-def strObj (s : String) : Object := { klass := Boot.stringId, payload := .str s }
+def strObj (s : String) (binary : Bool := false) : Object :=
+  { klass := Boot.stringId, payload := .str s, binary }
 
 /-- One `stepFn` step from a string literal: the fresh object is at the old heap's `size`, and
 nothing but `ctl` and the heap moves. -/
@@ -454,25 +449,26 @@ from it: the machine still conforms, and the fresh reference really is a `String
 an arbitrary continuation, because the two halves of `SemA.strLit` need it at `[]` and at
 `m.kont` respectively. -/
 theorem strLit_alloc_ok {Γ : Env} {m : Machine} {s : String} (K : List Kont)
-    (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) :
+    (hm : StateOk Ratchet.ctx0 Γ .ivar0 m) (binary : Bool := false) :
     StateOk Ratchet.ctx0 Γ .ivar0
-        (reCtl { m with heap := pushHeap m.heap (strObj s) } (.value (.ref m.heap.objs.size)) K) ∧
+        (reCtl { m with heap := pushHeap m.heap (strObj s binary) } (.value (.ref m.heap.objs.size)) K) ∧
       denM (.cls "String")
-        (reCtl { m with heap := pushHeap m.heap (strObj s) } (.value (.ref m.heap.objs.size)) K)
+        (reCtl { m with heap := pushHeap m.heap (strObj s binary) } (.value (.ref m.heap.objs.size)) K)
         (.ref m.heap.objs.size) := by
-  have hext : Ext m (reCtl { m with heap := pushHeap m.heap (strObj s) }
+  have hext : Ext m (reCtl { m with heap := pushHeap m.heap (strObj s binary) }
       (.value (.ref m.heap.objs.size)) K) :=
-    (ext_push (m := m) (strObj s) hm.sat hm.core.basicSelf
+    (ext_push (m := m) (strObj s binary) hm.sat hm.core.basicSelf
       (fun c => by simp [strObj]) rfl rfl (by simpa [strObj] using hm.core.stringBasic)).trans
       (Ext_toReCtl _ _ _)
-  refine ⟨StateOk_ext hm hext, ?_⟩
-  have hanc : ∀ k, ancestors (pushHeap m.heap (strObj s)) k = ancestors m.heap k :=
+  refine ⟨StateOk_ext hm hext
+    (stringPayloadOk_push hm.stringPayload (fun _ => ⟨s, rfl⟩)), ?_⟩
+  have hanc : ∀ k, ancestors (pushHeap m.heap (strObj s binary)) k = ancestors m.heap k :=
     Proof.ancestors_congr_grow hext.shapeAgree hext.size hm.sat
-  have hcls : classOf (pushHeap m.heap (strObj s)) (.ref m.heap.objs.size) = Boot.stringId := by
+  have hcls : classOf (pushHeap m.heap (strObj s binary)) (.ref m.heap.objs.size) = Boot.stringId := by
     simp [classOf, pushHeap_get_self, strObj]
   show denM (.cls "String") _ _
   rw [denM, isAName, hext.classNamed?_eq, hm.core.stringNamed]
-  show (ancestors (pushHeap m.heap (strObj s)) _).contains _ = true
+  show (ancestors (pushHeap m.heap (strObj s binary)) _).contains _ = true
   rw [hcls, hanc]
   exact hm.core.stringSelf
 
@@ -667,26 +663,12 @@ theorem SemA.vasgn {Γ Γ₁ : Env} {x : String} {e : Ratchet.Expr} {τ : Ty}
       rw [run_succ, step_vasgn_ctl hc]
       exact hsafe τa _ (StateOk_reCtl hm _ _) rfl (.asgnK hcap halias hk) f
 
-/-! ## §4 The equation that was missing, now proved
+/-! ## §4 Composite rules
 
-This section used to state `RunAPushK` as a named `Prop` — *the answer-level counterpart of
-`run_pushK`* — following `HANDOFF.md`'s rule to write a layer's target down before proving
-anything under it. It is now **`Denote/Sem/Answer.lean`'s `runA_pushK`**, proved, axiom-clean,
-and living next to `run_pushK` because it is the same induction one level up.
-
-One lemma gated four rules; `vasgn` is the first to spend it (§3a), and `seq`, `prim` and
-`if'` spend it the same way. What each needs *besides* it:
-
-* `seq` — nothing beyond the same decomposition per statement, plus a `DFam` member for
-  `DJudgeSeq` and the `seqK` frame's two `DKontOk` clauses.
-* `if'` — nothing. `Denote/Join.lean`'s `denM_joinT_left`/`_right` and
-  `Denote/JoinState.lean`'s environment join are **already proved**; those two files were kept
-  through the clink-68 deletion sweep for this row.
-* `prim` — one conformance fact per `DPrim` row (7 of them), each saying that CRuby's builtin
-  really returns a value of the row's result type from the prelude-booted heap. The only one
-  of the three whose cost grows with the table, which is why the table has 7 rows and not 90.
-
-The `Prop` and its `resOutA` are deleted rather than kept alongside the theorem (Norm B). -/
+`runA_pushK` is proved in `Denote/Sem/Answer.lean`. Sequence and conditional proofs live
+in `Sequence.lean` and `Branch.lean`; primitive evaluation, dispatch, and allocation are
+split across `Primitive*.lean`. `JoinState.lean` now proves the binding join, after correcting
+the alias-normalization counterexample. See implementation-notes clink 74. -/
 
 #print axioms SemA.intLit
 #print axioms SemA.fltLit

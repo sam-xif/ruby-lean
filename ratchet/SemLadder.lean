@@ -49,13 +49,13 @@ open Lean (Json)
 prelude-booted machine (`Denote/Typed/Safety.lean`). This is the number the ladder exists to
 grow: `StuckFree bootMachine <program>`, at every fuel, with every hypothesis discharged. A
 drop means a theorem was deleted. -/
-def safeRungFloor : Nat := 8
+def safeRungFloor : Nat := 29
 
 /-- The recorded size of the registry. **A clink once registered never unregisters**
 (`ratchet/AGENTS.md`), and this number is sound to ratchet on: a clink cannot be registered
 without its proof, so the count is a count of proofs. Raise it when the registry grows; a
 drop means a proof was deleted or broken. -/
-def clinkFloor : Nat := 9
+def clinkFloor : Nat := 16
 
 /-- How many unmet goals the **quiet** report prints before truncating. The full list is
 `--verbose`; this is the number that keeps a commit-time gate readable, since the list is 251

@@ -101,7 +101,9 @@ def rulesOfProof (env : Environment) (n : Name) : List String := Id.run do
     for c' in v.getUsedConstants do
       if !isClink c' && (c' == n || (env.find? c').any (fun i => isDeriv i.type)) then
         work := work ++ [c']
-  return hits.toList.eraseDups.map (·.getString!)
+  return hits.toList.eraseDups.map fun c =>
+    if c.getPrefix == `Ratchet.Denote.Typed.DClink then c.getString!
+    else c.getPrefix.getString! ++ "." ++ c.getString!
 
 /-- The rung theorems, discovered from **`safeRungs_safe`'s own proof term** — the theorem
 already proved over `safeRungs`, which `SemLadder.lean` already ties to the corpus. So this

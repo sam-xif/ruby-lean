@@ -119,17 +119,20 @@ argument premise runs from the machine the *receiver* left behind. -/
 structure Framed (m m' : Machine) : Prop where
   stack : m'.stack = m.stack
   cls : ∀ k, (m.heap.classPayload? k).isSome = true → (m'.heap.classPayload? k).isSome = true
+  /-- A receiver evaluated before its arguments keeps its nominal type while they run. -/
+  nominal : ∀ v n, isAName m.heap v n = true → isAName m'.heap v n = true
 
-theorem Framed.refl (m : Machine) : Framed m m := ⟨rfl, fun _ h => h⟩
+theorem Framed.refl (m : Machine) : Framed m m := ⟨rfl, fun _ h => h, fun _ _ h => h⟩
 
 theorem Framed.trans {m₁ m₂ m₃ : Machine} (h₁ : Framed m₁ m₂) (h₂ : Framed m₂ m₃) :
     Framed m₁ m₃ :=
-  ⟨by rw [h₂.stack, h₁.stack], fun k h => h₂.cls k (h₁.cls k h)⟩
+  ⟨by rw [h₂.stack, h₁.stack], fun k h => h₂.cls k (h₁.cls k h),
+    fun v n h => h₂.nominal v n (h₁.nominal v n h)⟩
 
 /-- The two machine updates that keep the heap and the frame stack: `Framed` is free at both. -/
 theorem Framed.of_heap_stack {m m' : Machine} (hh : m'.heap = m.heap)
     (hs : m'.stack = m.stack) : Framed m m' :=
-  ⟨hs, fun k h => by rw [hh]; exact h⟩
+  ⟨hs, fun k h => by rw [hh]; exact h, fun v n h => by rw [hh]; exact h⟩
 
 /-! ## The judgment that lived here, and why the shape had to go
 

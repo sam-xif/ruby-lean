@@ -8401,3 +8401,52 @@ premises a rule *needs* — read off the transport lemma. §F31 is about the pre
 than the family's, and the obligation would have been about a derivation the registry never
 vetted. Together they bracket the same question: a rule's premises are not free variables, and
 both halves of what constrains them now have a name.
+
+## Clink 74 (2026-09-13) — typed/safe gap closed
+
+- `Typed/Compose.lean` proves the escape clause of `DKontOk` and lifts a safe,
+  answer-correct closed run to `SafeUnder` using `run_pushK`. Both premises are
+  necessary: answer correctness alone says nothing about halts. `Typed/Run.lean`
+  exposes the same contract at a machine entry for sequence/argument frames.
+- `Typed/Sequence.lean` proves `SemA.seq` from an inductive list of **semantic**
+  premises (`SemSeqA`), including the final empty `seqK`. `Typed/Branch.lean`
+  proves `SemA.if'`; `Typed/Primitive.lean` composes the seven proved builtin rows.
+  `DFam` now carries both list companions. All 16 constructors register and are
+  counted by family-qualified names in the syntax/proof audit.
+- The claimed `EnvOk` join prerequisite was absent and false: union normalization
+  can expose a `sameAs` identity neither branch promised. `joinBinding` preserves
+  identical bindings and otherwise removes exposed alias layers after joining.
+  `JoinState.lean` now proves `StateOk_joinEnv` and checks the counterexample.
+- A primitive counterexample compiled before strengthening conformance: append
+  `{ klass := Boot.stringId }` (no payload), bind it as `x`, then evaluate
+  `"a" + x`. `ext_push`/`StateOk_setLocal` proved conformance, `DJudge.prim`
+  typed it as String, and `#guard typeStuck (run 100 …)` passed at the real boot.
+  `Sem/PrimHeap.lean` therefore pins String payloads, the eight dispatch entries
+  used by the seven primitive rows, and ZeroDivisionError's non-type-error chain.
+  Dispatch pins are conditional on the context leaving the name unclaimed.
+  The strengthened `bootOkB` is checked at the real boot (whose boolean `!`
+  resolves to `Object#!`). Allocation now owes the new object's payload invariant.
+- `Framed.nominal` transports a receiver's nominal type across argument evaluation;
+  state conformance alone relates neither the captured receiver nor two heaps.
+  Existing allocation and local-write proofs discharge it through `Ext` or heap equality.
+- Sandbox runs use `UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache`; otherwise the
+  agreement stage fails on the protected default uv cache. Baseline: reach 18,
+  252 agree / 0 disagree, safety reach 8, 21 accepted rungs lacking safety proofs.
+- `DJudgeAll.cons` now states `plainArgB e = true`: the interpreter treats splats,
+  kwargs, and forwarding as argument-list syntax. An expression's semantic premise
+  alone can be vacuous there. `DJudge.plainArg` proves every syntactic derivation
+  satisfies the guard, so the checker returns exactly the same verdicts.
+- Primitive dispatch is proved for every `SendSite`, including literal `self` receivers;
+  the methods are public. String allocation retains its encoding tag. Integer division
+  includes the ZeroDivisionError path, whose fresh object must remain a BasicObject.
+- `CorpusSafety.lean` carries 29 concrete constructor-wise derivations. The checker is
+  not used as a trusted shortcut. All 16 rules are exercised, including list `nil`/`cons`
+  and sequence `last`/`cons`; the exemption ceiling falls from 2 to 0. Safety prefix is
+  17; checker reach remains 18 because rung 018 is a correctly rejected unsafe program.
+- Validation: the full quiet ratchet is GREEN (252 agree / 0 disagree), with the same
+  29 accepts and no reduced floors or targets. The new malformed-payload, division-by-zero,
+  argument-head, and alias-join controls compile. `safeRungs_safe` and all new semantic
+  rule proofs use only `propext`, `Classical.choice`, and `Quot.sound`. No proof build
+  approached five minutes; the largest primitive-row build took about 16 seconds.
+- The first green commit necessarily closes all three rule gaps together: the existing
+  gate forbids committing any of the intermediate red states.
