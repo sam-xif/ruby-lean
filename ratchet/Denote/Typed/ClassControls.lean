@@ -3,6 +3,7 @@ import Denote.Sem.ClassHeap
 import Denote.Typed.ClassQueryControls
 import Denote.Typed.ClassCoreControls
 import Denote.Typed.ClassFrameControls
+import Denote.Typed.ClassBaseControls
 import Denote.Sanity
 
 /-! Fresh-class controls. They establish actual entry and heap facts, not acceptance of

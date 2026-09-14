@@ -161,6 +161,11 @@ composes these through actual entry, including pre-existing methods and an absen
 resolution. `ClassReturn.lean` composes pre-allocation heap publication with body framing
 and uncaptured-frame restoration, recovering caller locals and first-order types. Controls
 check local isolation and refute extending empty-scope resolution through constant shadowing.
+`ClassBases.lean` preserves builtin ancestry answers and the no-proper-subclasses clauses.
+Its countermodel passed the entire previous boot check: Object's eigenclass aliased Float,
+so class creation introduced a Float subclass. `ClassReady.eigenSeparate`, checked at boot
+and transported everywhere, rules this out. Reverse name transport is limited to old ids;
+a dangling constant may legitimately become an alias to the new class.
 Full class-body conformance and constructor calls remain gated.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
@@ -204,6 +209,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/ClassDispatch.lean`, `ClassQueries.lean`, `Denote/Typed/ClassQueryControls.lean` | Fresh-class dispatch/query preservation, direct-Class invariant, and countermodels |
 | `Denote/Sem/ClassCore.lean`, `ClassMethods.lean`, `Denote/Typed/ClassCoreControls.lean` | Core/payload and installed-method preservation through actual class entry |
 | `Denote/Sem/ClassFrame.lean`, `ClassConstants.lean`, `Denote/Typed/ClassReturn.lean`, `ClassFrameControls.lean` | Fresh body scope, constant resolution, caller restoration, and scope controls |
+| `Denote/Sem/BuiltinBases.lean`, `ClassBases.lean`, `Denote/Typed/ClassBaseControls.lean` | Builtin ancestry preservation, metaclass separation, and dangling-alias controls |
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

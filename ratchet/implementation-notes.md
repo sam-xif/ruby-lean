@@ -9290,3 +9290,27 @@ both halves of what constrains them now have a name.
   instance-method/constructor integration remain required; no rule or admission changes.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree.
+
+## Clink 115 (2026-09-14) — preserve builtin ancestry across class creation
+
+- A countermodel passed the **complete previous boot-check conjunction**, verified before
+  changing the invariant: Object's eigenclass points to Float, with Float's `===`/`to_s`
+  entries made compatible with the class-query rows. Fresh Point creation then introduces
+  a proper Float subclass via its new eigenclass, violating BaseChainsOk. This is an
+  invariant countermodel, not a reachable-program bug or an admitted class program.
+- `ClassReady.eigenSeparate` excludes builtin value bases as Object's eigenclass. The same
+  boot gate checks it; allocation, definitions, ivar writes, and class creation preserve it.
+  Share the existing base table in `BuiltinBases`, rather than duplicate a blacklist or
+  freeze a concrete eigenclass id. Split `coreDataB` from readiness to retain an executable
+  audit of every old check while confirming the strengthened check rejects the countermodel.
+- `ClassBases` proves all BaseChainsOk clauses: preserve positive names/chains; invert new
+  resolutions only at old ids; exclude each fresh class from builtin-base descent using
+  Object's distinct id and the new metaclass-separation fact. All old and out-of-range sites
+  are covered. A dangling constant can become an alias to the new class, so unrestricted
+  reverse name preservation is false; a control checks that case still preserves base chains.
+- `class_entry_bases` composes the proof through actual class entry and joins the full gate.
+  New modules build in under a second, with standard axioms only. Full context assembly,
+  receiver-sensitive absence facts, constant/path-table transport, and checked instance
+  methods/constructors remain; no rule, exemption, floor, or admission changes.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree.

@@ -849,21 +849,6 @@ theorem ClsQueryOk.setLocal {κ : Ctx} {m : Machine} (x : String) (w : Value)
   simp only [ClassQuerySite, setLocal_heap] at hp ⊢
   exact h mname bid hmem hfree o hp
 
-/-- **The base class of each `builtinAncestors` row**, paired with the row itself. The table is
-the bridge between `Ratchet/Judge.lean`'s *static* chains and the heap's own class ids, and it
-is the reason `BaseChainsOk` can be one statement rather than eight.
-
-Ordered exactly as `builtinAncestors`' rows, and the chain includes the base's own name first —
-`isANoOk` reads `ch.head?` to find the base it must check for declared subclasses. -/
-def builtinBases : List (ObjId × List String) :=
-  [(Boot.integerId, ["Integer", "Numeric", "Comparable"] ++ Ratchet.rootAncestors),
-   (Boot.floatId, ["Float", "Numeric", "Comparable"] ++ Ratchet.rootAncestors),
-   (Boot.nilClassId, "NilClass" :: Ratchet.rootAncestors),
-   (Boot.symbolId, ["Symbol", "Comparable"] ++ Ratchet.rootAncestors),
-   (Boot.stringId, ["String", "Comparable"] ++ Ratchet.rootAncestors),
-   (Boot.hashId, ["Hash", "Enumerable"] ++ Ratchet.rootAncestors),
-   (Boot.arrayId, ["Array", "Enumerable"] ++ Ratchet.rootAncestors)]
-
 /-- **`isAAnswer`'s static tables really are the machine's tables** — the conformance fact
 narrowing's `isATy`/`notATy` need, and the component `found-issues.md` §F9 and §F10 were found
 while writing.
