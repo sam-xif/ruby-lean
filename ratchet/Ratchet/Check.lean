@@ -103,9 +103,9 @@ namespace Ratchet
 /-! ## §1 The primitive table
 
 The rules for sends this fragment can type, as an inductive (`DPrim`) with a decision
-procedure (`dprim?`) and a soundness lemma between them. Eight rows.
+procedure (`dprim?`) and a soundness lemma between them. Nine rows.
 
-The original seven rows grew by decimal `Integer#to_s`. `Judge.lean`'s `PrimSig` has ~90 rows and `Denote/`'s
+The table grows with proved builtin obligations. `Judge.lean`'s `PrimSig` has ~90 rows and `Denote/`'s
 `Sem.Judge.prim` — the obligation that every one of them is true of CRuby — is one of the 35
 rules with no proof, priced at "~200 conformance facts, two per row"
 (`implementation-notes.md`, EMERGENCY EXIT). A table that grows a row at a time is a table
@@ -128,6 +128,8 @@ inductive DPrim : Ty → String → List Ty → Ty → Prop
   | intLt : DPrim .int "<" [.int] .bool
   /-- Decimal conversion allocates a String; optional radix arguments are separate rows. -/
   | intToS : DPrim .int "to_s" [] (.cls "String")
+  /-- Conformance excludes the reverse call to a program-defined `==` on the argument. -/
+  | intEq {α : Ty} : DPrim .int "==" [α] .bool
   /-- `String#+` at a `String` argument — a `TypeError` at any other, which is why the
       argument type is pinned rather than free. -/
   | strAdd : DPrim (.cls "String") "+" [.cls "String"] (.cls "String")
@@ -146,6 +148,7 @@ def dprim? : Ty → String → List Ty → Option Ty
   | .int, "/", [.int] => some .int
   | .int, "<", [.int] => some .bool
   | .int, "to_s", [] => some (.cls "String")
+  | .int, "==", [_] => some .bool
   | .cls "String", "+", [.cls "String"] => some (.cls "String")
   | .bool, "!", [] => some .bool
   | _, _, _ => none
@@ -160,6 +163,7 @@ theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
   · rw [Option.some.injEq] at h; subst h; exact .intDiv
   · rw [Option.some.injEq] at h; subst h; exact .intLt
   · rw [Option.some.injEq] at h; subst h; exact .intToS
+  · rw [Option.some.injEq] at h; subst h; exact .intEq
   · rw [Option.some.injEq] at h; subst h; exact .strAdd
   · rw [Option.some.injEq] at h; subst h; exact .notBool
   · exact absurd h (by simp)

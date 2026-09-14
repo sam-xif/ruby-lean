@@ -8463,3 +8463,17 @@ both halves of what constrains them now have a name.
   rungs; safety prefix stays 17 because 018 is a permanent unsafe control.
   The primitive proof builds in 15 seconds, with only the standard Lean axioms.
 - Full quiet ratchet: GREEN, 252 agree / 0 disagree, 30 safe rungs, checker reach 19.
+
+## Clink 76 (2026-09-13) — integer equality at any argument type
+
+- `DPrim.intEq` quantifies over the argument type. The argument still needs its own
+  semantic derivation and is evaluated before dispatch; arity remains exactly one.
+- `Integer#==` can reverse into the argument's program-defined `==`.
+  `MethodsExact.lookup` at `ctx0` proves `hasProgramEq = false` for every value;
+  `PrimitiveEquality.lean` uses that fact to rule out the callback. No new heap
+  invariant is needed beyond pinning the receiver's actual `Integer#==` builtin.
+- The builtin proof retains the binary-string Unsupported path and proves Boolean
+  result typing on every value path. Rungs 020 and 021 get independent derivations;
+  controls reject wrong arity and an unsafe argument expression.
+- Full quiet ratchet: GREEN, 252 agree / 0 disagree, checker reach 21, 32 safe rungs.
+  Equality facts build in 30 seconds; composition in 15. Only standard Lean axioms.

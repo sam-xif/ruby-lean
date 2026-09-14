@@ -115,6 +115,20 @@ def program_019_to_s_call : Ratchet.Expr :=
 theorem safe_019_to_s_call (hb : bootOkB = true) : StuckFree bootMachine program_019_to_s_call :=
   dregistry_safe (derivD_prim derivD_intLit derivD_allNil .intToS) (stateOk_boot hb)
 
+def program_020_eq_same_type : Ratchet.Expr :=
+  .send (some (.int 1)) "==" [.int 1] none
+
+theorem safe_020_eq_same_type (hb : bootOkB = true) : StuckFree bootMachine program_020_eq_same_type :=
+  dregistry_safe (derivD_prim derivD_intLit (derivD_allCons derivD_intLit derivD_allNil rfl)
+    .intEq) (stateOk_boot hb)
+
+def program_021_eq_different_type : Ratchet.Expr :=
+  .send (some (.int 1)) "==" [.str "a"] none
+
+theorem safe_021_eq_different_type (hb : bootOkB = true) : StuckFree bootMachine program_021_eq_different_type :=
+  dregistry_safe (derivD_prim derivD_intLit (derivD_allCons derivD_strLit derivD_allNil rfl)
+    .intEq) (stateOk_boot hb)
+
 def program_027_nested_arith : Ratchet.Expr :=
   .send (some (.send (some (.int (1))) "+" [.int (2)] none)) "*" [.int (3)] none
 
@@ -206,6 +220,8 @@ def safeRungs : List (String × Ratchet.Expr) :=
    ("016-bool-and", program_016_bool_and),
    ("017-bool-or", program_017_bool_or),
    ("019-to-s-call", program_019_to_s_call),
+   ("020-eq-same-type", program_020_eq_same_type),
+   ("021-eq-different-type", program_021_eq_different_type),
    ("027-nested-arith", program_027_nested_arith),
    ("029-simple-assign", program_029_simple_assign),
    ("030-reassign-same-type", program_030_reassign_same_type),
@@ -223,7 +239,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
     ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
   intro q hq
   simp only [safeRungs, List.mem_cons, List.not_mem_nil, or_false] at hq
-  rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact safe_001_int_lit hb
   · exact safe_002_bool_true hb
   · exact safe_003_bool_false hb
@@ -242,6 +258,8 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   · exact safe_016_bool_and hb
   · exact safe_017_bool_or hb
   · exact safe_019_to_s_call hb
+  · exact safe_020_eq_same_type hb
+  · exact safe_021_eq_different_type hb
   · exact safe_027_nested_arith hb
   · exact safe_029_simple_assign hb
   · exact safe_030_reassign_same_type hb

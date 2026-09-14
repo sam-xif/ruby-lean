@@ -1,4 +1,5 @@
 import Denote.Typed.PrimitiveAlloc
+import Denote.Typed.PrimitiveEquality
 
 /-! Each `DPrim` row discharges against the interpreter and preserves conformance on values. -/
 
@@ -81,6 +82,15 @@ theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Val
       (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl),
       int_to_s_run]
     exact stepSpec_string hm hk _ false
+  | intEq =>
+    cases ha
+    rename_i v vs hv hs
+    cases hs
+    obtain ⟨x, rfl⟩ := int_value hr
+    rw [primitive_invoke (bid := "Integer#==") (k := Boot.integerId) hm
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho)
+      (int_eq_defer hm x v) (by rfl)]
+    exact int_eq_step hm hk x v
   | strAdd =>
     cases ha
     rename_i v vs hv hs

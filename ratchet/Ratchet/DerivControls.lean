@@ -34,6 +34,16 @@ def ctlDeriv : Deriv := .prim (.intLit 1) "+" [.intLit 2] .int .int
     (.prim (.intLit 5) "to_s" [] .int .int)
 #guard dprim? .int "to_s" [.nilT] = none
 
+-- Equality accepts unrelated argument types, but still checks arity and argument safety.
+#guard validateD (.send (some (.int 1)) "==" [.nil] none)
+    (.prim (.intLit 1) "==" [.nilLit] .int .bool)
+#guard dprim? .int "==" [] = none
+#guard dprim? .int "==" [.int, .int] = none
+#guard !validateD (.send (some (.int 1)) "=="
+    [.send (some (.str "a")) "+" [.int 1] none] none)
+    (.prim (.intLit 1) "=="
+      [.prim (.strLit "a") "+" [.intLit 1] (.cls "String") (.cls "String")] .int .bool)
+
 /-! ### Control 1 -- a certificate for a different program
 
 The derivation above, against `1 + 3`. Everything about the shape is right; only the
