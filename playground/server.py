@@ -149,6 +149,7 @@ class Handler(BaseHTTPRequestHandler):
         # ── Tab 3: the current typed ratchet pipeline.
         "/ratchet/strip":  lambda q: strip_chain(q.get("source", "")),
         "/ratchet/desugar": lambda q: desugar_only(q.get("source", "")),
+        "/ratchet/sorbet": lambda q: ratchet_sorbet(q.get("source", "")),
         "/ratchet/derive": lambda q: ratchet_derive(q.get("source", "")),
         "/ratchet/validate": lambda q: ratchet_validate(q.get("source", ""), q.get("deriv")),
         "/ratchet/model":  lambda q: model_run(q.get("source", "")),
@@ -335,6 +336,40 @@ def ratchet_corpus_source(stem: str) -> dict:
     return {"file": stem, "source": p.read_text(errors="replace")}
 
 
+def ratchet_sorbet(source: str) -> dict:
+    """`srb` over the **unstripped** program -- the annotated source as written, before
+    the strip stack takes the signatures back out.
+
+    This is `build_corpus.py`'s stage 1, run through the same `srb_sigs.py` rather than a
+    second invocation of the binary, so `clean` here is the `srb_clean` a rung's
+    `expect_sorbet` is recorded against. It is the one stage of the pipeline whose input is
+    the top editor and not the stripped buffer: stripping is exactly the removal of what
+    Sorbet reads, so running this downstream would be asking a different question."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        rb = Path(td) / "playground.rb"
+        rb.write_text(source)
+        p = subprocess.run(
+            [sys.executable, str(ROOT / "ratchet/scripts/srb_sigs.py"), "--quiet", str(rb)],
+            capture_output=True, text=True, timeout=LONG)
+        if p.returncode != 0:
+            return {"error": "sorbet", "message": p.stderr.strip()[:2000] or f"exit {p.returncode}"}
+        try:
+            report = json.loads(p.stdout)
+        except ValueError as exc:
+            return {"error": "sorbet", "message": f"unparseable srb_sigs output: {exc}"}
+        return scrub_sigs(report, rb)
+
+
+def scrub_sigs(report: dict, rb: Path) -> dict:
+    """The temp path leaks into srb's diagnostics; the file the user is looking at is the
+    editor, so say so rather than naming a directory that no longer exists."""
+    report["diagnostics"] = [line.replace(str(rb), "(editor)")
+                             for line in report.get("srb_diagnostics", [])]
+    report["file"] = "(editor)"
+    return report
+
+
 def ratchet_derive(source: str) -> dict:
     """Run the typed ladder's untrusted Sorbet -> strip -> desugar -> Deriv stages."""
     import tempfile
@@ -368,7 +403,7 @@ def ratchet_derive(source: str) -> dict:
             return {"error": "derive", "message": f"unparseable pipeline output: {exc}"}
         return {"emit": report, "deriv": report.get("deriv"), "ty": report.get("ty"),
                 "stripped": stripped["source"], "core": json.loads(core),
-                "sorbet": sig_report}
+                "sorbet": scrub_sigs(sig_report, rb)}
 
 
 def ratchet_validate(source: str, deriv) -> dict:

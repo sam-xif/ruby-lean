@@ -233,6 +233,11 @@
     <h2>Corpus Ruby — Sorbet annotated</h2>
     <textarea id="ratchetsrc" spellcheck="false" style="height:180px"></textarea>
 
+    <div class="stage"><h2>0. Sorbet — over the unstripped program</h2>
+      <button class="ghost" id="ratchetsorbet" title="srb over the annotated source above, via ratchet/scripts/srb_sigs.py — the check a rung's expect_sorbet is recorded against">Sorbet ✓</button>
+      <span id="ratchetsorbetmsg" class="detail"></span></div>
+    <pre class="out" id="ratchetsorbetout"><span class="empty">— press “Sorbet”</span></pre>
+
     <div class="stage"><h2>1. Strip Sorbet signatures</h2>
       <button class="ghost" id="ratchetstrip">Strip ▸</button>
       <span id="ratchetstripmsg" class="detail"></span></div>
@@ -257,7 +262,8 @@
       <label class="detail">or step <input id="ratchetfrom" size="7" placeholder="0"></label>
       <span id="ratchetrunmsg" class="detail"></span>
     </div>
-    <div class="row"><span class="pill" id="pillratchetmodel">model —</span>
+    <div class="row"><span class="pill" id="pillratchetsorbet">srb —</span>
+      <span class="pill" id="pillratchetmodel">model —</span>
       <span class="pill" id="pillratchetcruby">CRuby —</span>
       <span class="pill" id="pillratchetdiff">agree —</span>
       <span class="pill" id="pillratchetcheck">validateD —</span></div>
@@ -724,8 +730,21 @@ $('showsteps').onchange = e => $('wrap').classList.toggle('nosteps', !e.target.c
 // buffer is the single source of truth: load or link fills it, strip rewrites
 // it, and every downstream stage reads it — so an edit is a first-class input
 // and not a thing the pipeline can silently ignore.
+// A non-JSON body means the server did not route this at all -- almost always a
+// `server.py` older than the page, still running from before an endpoint existed.
+// Reporting that beats letting `r.json()` fail on the 404's own text, which reads as
+// a syntax error in the answer rather than the absence of one.
 const post = (path, body) => fetch(path, {method:'POST', body: JSON.stringify(body)})
-  .then(r => r.json());
+  .then(async r => {
+    const text = await r.text();
+    try { return JSON.parse(text); }
+    catch (e) {
+      const why = r.status === 404
+        ? `no route for ${path} — restart server.py (it predates this endpoint)`
+        : `HTTP ${r.status}: ${text.slice(0, 200)}`;
+      return {error: 'server', message: why};
+    }
+  });
 const srcText = () => $('slicesrc').value;
 function sliceErr(d) {
   $('sliceerr').innerHTML = `<div class="err">[${d.error}] ${esc(d.message||'')}</div>`;
@@ -935,6 +954,38 @@ $('ratchetcruby').onclick = () => ratchetBtn('ratchetcruby','ratchetrunmsg','run
   $('ratchetrunmsg').textContent = '';
 });
 
+// Stage 0. The only stage whose input is the *top* editor: stripping removes exactly
+// what Sorbet reads, so asking this downstream would be a different question. `Derive`
+// runs the same `srb_sigs.py` on its way to a `Deriv`, so it refreshes this pill too
+// rather than leaving a stale verdict beside a fresh derivation.
+function showSorbet(r) {
+  const clean = r.srb_clean === true;
+  pill('pillratchetsorbet', clean ? 'srb clean' : 'srb errors', clean ? 'ok' : 'no');
+  const diags = r.diagnostics || r.srb_diagnostics || [];
+  const head = clean
+    ? `<span class="k">no type errors</span>`
+    : `<span class="k">Sorbet rejects this program</span>`;
+  const sigs = `${(r.sigs||[]).length} signature(s) read` +
+    ((r.dropped||[]).length ? `, ${r.dropped.length} dropped` : '');
+  $('ratchetsorbetout').innerHTML =
+    [head, `<span class="empty">${esc(sigs)}</span>`, '',
+     ...(diags.length ? diags.map(esc) : ['<span class="empty">— no diagnostics</span>'])
+    ].join('\n');
+  return clean;
+}
+
+$('ratchetsorbet').onclick = () => ratchetBtn('ratchetsorbet','ratchetsorbetmsg','running srb…', async () => {
+  const d = await post('/ratchet/sorbet', {source: $('ratchetsrc').value});
+  if (d.error) {
+    ratchetErr(d);
+    pill('pillratchetsorbet', `srb ${d.error}`, 'no');
+    $('ratchetsorbetout').innerHTML = '';
+    return;
+  }
+  const clean = showSorbet(d);
+  $('ratchetsorbetmsg').textContent = clean ? 'clean' : `${(d.diagnostics||[]).length} line(s) of diagnostics`;
+});
+
 $('ratchetstrip').onclick = () => ratchetBtn('ratchetstrip','ratchetstripmsg','stripping…', async () => {
   const d = await post('/ratchet/strip', {source: $('ratchetsrc').value});
   if (d.error) return ratchetErr(d);
@@ -954,6 +1005,7 @@ $('ratchetderive').onclick = () => ratchetBtn('ratchetderive','ratchetderivemsg'
   if (d.error) return ratchetErr(d);
   if (d.stripped) $('ratchetstripped').value = d.stripped;
   $('ratchetderiv').value = d.deriv ? JSON.stringify(d.deriv, null, 2) : JSON.stringify(d.emit, null, 2);
+  if (d.sorbet) showSorbet(d.sorbet);
   $('ratchetderivemsg').textContent = d.deriv ? `emitted · result ${JSON.stringify(d.ty)}` : `blocked: ${d.emit.why}`;
 });
 
@@ -992,6 +1044,8 @@ $('ratchetcorpusload').onclick = () => ratchetBtn('ratchetcorpusload','ratchetms
   $('ratchetstripped').value = '';
   $('ratchetderiv').value = '';
   $('ratchetcore').innerHTML = '<span class="empty">— strip, then desugar</span>';
+  $('ratchetsorbetout').innerHTML = '<span class="empty">— press “Sorbet”</span>';
+  pill('pillratchetsorbet', 'srb —');
   $('ratchetmsg').textContent = `${d.file} — ${d.source.split('\n').length} line(s)`;
 });
 

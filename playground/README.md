@@ -40,6 +40,12 @@ python3 server.py            # http://localhost:8077   (or: python3 server.py 90
 No dependencies — Python stdlib `http.server` only. `server.py` finds Ruby via
 `$RUBY`, then `brew --prefix ruby`, then `ruby`.
 
+**Restart it after editing `server.py`.** There is no reloader, so a long-lived
+process serves the routes it was started with while the browser loads the newer
+`index.html` from disk — a button whose endpoint is younger than the process gets
+a 404. That reads as `[server] no route for … — restart server.py`, which is the
+one thing the page cannot fix for you.
+
 ## What runs and what doesn't
 
 **Whatever the model runs.** The stepper is a *printer* over `stepFn`, not a
@@ -250,17 +256,49 @@ This tab reads the current `ratchet/corpus/*.rb` files and their sibling
 `ratchet/scripts/run_typed_ratchet.sh`, one artifact at a time:
 
 ```
-annotated Ruby -> strip stack -> RubyCore -> emit_deriv.py -> validateD
-                                  |
-                                  +-> Lean model / CRuby
+annotated Ruby -+-> srb                    (stage 0, the unstripped program)
+                |
+                +-> strip stack -> RubyCore -> emit_deriv.py -> validateD
+                                     |
+                                     +-> Lean model / CRuby
 ```
 
 The annotated and stripped programs have separate editors. The RubyCore view
 and emitted `Deriv` are visible, and the derivation remains editable before
-the trusted `validateD` check. The Lean model and CRuby buttons execute the
-stripped program; their stdout comparison is shown beside the validation
-result. `validate-one` is a small adapter executable around the existing
-`validateD`; build it with `cd ratchet && lake build validate-one`.
+the trusted `validateD` check.
+
+**Sorbet ✓** (stage 0) runs `srb` over the **unstripped** program — the annotated
+source in the top editor, as written. It is the one stage whose input is that
+editor rather than the stripped buffer, and necessarily so: stripping removes
+exactly what Sorbet reads, so running it downstream would answer a different
+question. It goes through `ratchet/scripts/srb_sigs.py`, not a second invocation
+of the binary, so `srb clean` here is the same `srb_clean` that
+`build_corpus.py`'s stage 1 records and a rung's `expect_sorbet` is checked
+against — a rung whose `.meta.json` says `"expect_sorbet": false` should show
+`srb errors` and its diagnostics. The pane also reports how many signatures were
+read and how many were dropped, which is what stage 3's emitter will and will not
+have to work with. **Derive ▸** runs the same script on its way to a `Deriv`, so
+it refreshes this pane too rather than leaving a stale verdict beside a fresh
+derivation.
+
+Sorbet's verdict is not the ladder's. `srb clean` and `validateD=false` is an
+ordinary, GREEN combination — it says Sorbet accepts a program the certified
+fragment has no rules for.
+
+The Lean model and CRuby buttons execute the stripped program; their stdout
+comparison is shown beside the validation result. `validate-one` is a small
+adapter executable around the existing `validateD`; build it with
+`cd ratchet && lake build validate-one`.
+
+**A `false` here can be a stale binary rather than a verdict.** The pane shells
+out to the compiled `validate-one`, so it answers for whatever `validateD` was
+when that binary was last built — a rung whose rules landed since then reads
+`false`, correctly, for a checker that no longer exists. `run_typed_ratchet.sh`
+now builds `validate-one` alongside `ratchetd`, so **run it (or
+`cd ratchet && lake build validate-one`) after pulling or after touching
+`Ratchet/`** to be sure this tab and the ratchet are answering as one checker.
+If the two disagree about a rung, check the build times before reading anything
+into it: that was the whole of the 052-simple-fun discrepancy.
 
 ## Notes
 

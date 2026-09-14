@@ -147,9 +147,11 @@ stage() {
 stage "build: the negative controls and the proofs" \
   "A Lean source does not compile, or a #guard/#guard_msgs control failed. These are the gates
   that cannot be skipped -- the coverage cross-check (Denote/Typed/RuleAudit.lean), the
-  registration refusals (Denote/Typed/Controls.lean), and the safety theorems themselves." \
+  registration refusals (Denote/Typed/Controls.lean), and the safety theorems themselves.
+  `validate-one` is not a gate here -- it is the playground's adapter around the same
+  `validateD`, built alongside `ratchetd` so the two cannot answer differently." \
   -- lake build Ratchet.DerivControls Denote.Typed.Safety Denote.Typed.RuleAudit \
-                ratchetd semladder
+                ratchetd semladder validate-one
 
 stage "stages 1-4: sorbet -> strip -> desugar -> emit" \
   "The untrusted pipeline errored building build/*.rung.json. Usually srb is missing or a
