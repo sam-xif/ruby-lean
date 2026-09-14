@@ -8984,3 +8984,27 @@ both halves of what constrains them now have a name.
 - Definition, argument, call, and composed program proofs each build in under a second,
   axiom-clean. Full quiet ratchet GREEN: fragment 49, checker reach 51,
   252 agree / 0 disagree, all 22 registered rules proved. No reach increase is claimed.
+
+## Clink 102 (2026-09-14) — definitions and calls validate end to end
+
+- Register `defDecl`/`callSig` with explicit annotation-body premises. Move `CheckedBody`
+  and `checkMethodBody` into the mutual checker: definitions check once at declared parameter
+  and return types, including uncalled bodies. Calls consume cached proofs and compare their
+  arguments to the declared types; neither caller locals nor particular values type the body.
+- Cache entries carry their full context/spine. Reuse requires proof-producing context
+  equality and installed-definition membership. Thread caches through all evaluation orders;
+  a compatible branch may retain either universal proof. No context weakening is assumed:
+  later installations can stale earlier entries. 057 needs transport or definition-time
+  refresh; recursive signatures still cannot bootstrap a proof. Return/argument compatibility
+  remains exact until semantic subsumption is proved.
+- The old bridge's recursion happened to decrease on expression size. A call's stored body
+  breaks that measure. Replace it with explicit mutual derivation induction (`DJudge.rec`),
+  keeping list hypotheses inside the proof instead of separate recursive wrappers. The bridge
+  builds below a second, at the default heartbeat limit, with only standard Lean axioms.
+- Controls cover positive define-and-call, zero args, body-local writes/caller isolation,
+  nullable identity, wrong arity/type/return, uncalled annotation violations, unsupported and
+  recursive bodies, and stale/replaced definitions. The nullable increment stays rejected
+  even with only Integer calls. 052's worked derivation independently exercises both new rules.
+- Measured ascent: 052, 055, 058, 059 accepted; fragment 49→53, checker reach 51→56,
+  registered rules 22→24, worked theorems 44→45; 0 owed/exempt. Agreement remains
+  252 / 0 disagree. All corresponding floors raised; full quiet ratchet GREEN.

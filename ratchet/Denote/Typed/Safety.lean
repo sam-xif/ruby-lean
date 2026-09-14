@@ -24,6 +24,8 @@ def rulesUsed : Ratchet.Expr → List String
   | .vasgn .lvar _ e => "vasgn" :: rulesUsed e
   | .seq es => "seq" :: rulesUsedSeq es
   | .send (some r) _ args none => "prim" :: (rulesUsed r ++ rulesUsedArgs args)
+  | .def' _ _ body => "defDecl" :: rulesUsed body
+  | .send none _ args none => "callSig" :: rulesUsedArgs args
   | .if' c t (some e) => "if'" :: (rulesUsed c ++ rulesUsed t ++ rulesUsed e)
   | .if' c t none => "ifNoElse" :: (rulesUsed c ++ rulesUsed t)
   | .array es => "arrayLit" :: rulesUsedArgs es

@@ -1,5 +1,6 @@
 import Ratchet.Check
 import Ratchet.MethodCheck
+import Ratchet.MethodControls
 
 /-!
 Negative controls for `validateD`.
@@ -69,7 +70,7 @@ is caught in both directions. -/
 /-! ### Control 3 -- a certificate using the wrong rule
 
 `Deriv.callSig` and `Deriv.prim` are both about sends, and only one of them is about a send
-*with a receiver* — and `callSig` has no `DJudge` rule at all, so it is refused twice over. -/
+*with a receiver* — `callSig` only admits implicit-self calls to installed, checked bodies. -/
 #guard validateD ctlProg (.callSig "+" [.intLit 2] .int) = false
 
 /-! ### Control 4 -- **the one that flipped**

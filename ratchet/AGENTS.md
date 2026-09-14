@@ -12,9 +12,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 49 rungs, reach 17**, **22 registered rules** (16 expressions + 6 list companions),
-**0 owed**, **0 exempt**. Checker reach is 51; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 44 rungs additionally carry a
+**Fragment 53 rungs, reach 17**, **24 registered rules** (18 expressions + 6 list companions),
+**0 owed**, **0 exempt**. Checker reach is 56; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 45 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -54,8 +54,8 @@ continuation lifting; [`Run.lean`](Denote/Typed/Run.lean) exposes the same contr
 machine entries used by sequence and argument frames. Safety holds at every fuel.
 `Context.lean` generalizes that run contract to distinct incoming/outgoing `Ctx`, local
 environments, and ivar spines, with an equivalence to the existing fragment's target and
-context-general local/assignment/sequence proofs. This is infrastructure for 052, not method
-coverage: `defDecl`/`callSig` remain rejected. Before admitting definitions, check every body
+context-general local/assignment/sequence proofs. `defDecl`/`callSig` now admit required-positional
+top-level methods: 052, 055, 058, and 059. Before admitting definitions, check every body
 against its parameter/return annotations, including uncalled bodies; require define-then-call
 positive controls as well as declaration controls. Never treat a signature as its own proof.
 `MethodEntry.lean` proves required-positional binding and the annotated parameter environment.
@@ -83,7 +83,7 @@ now takes those incoming indices and returns every outgoing index with its deriv
 `CtxEq.lean` supplies proof-producing branch compatibility (unsupported syntax comparisons
 decline). `certified_context` connects these results to semantics; the installed `add` pilot
 now consumes a body certificate checked against its annotations, not a hand body proof.
-`MethodCheck.lean` packages that proof as `CheckedBody`: required formal names/order,
+`Check.lean` packages that proof as `CheckedBody`: required formal names/order,
 first-order parameter/return annotations, exact return compatibility, and unchanged
 context/spine are checked before the artifact exists. `checked_method_runSpec` consumes
 it directly. `DefsOk` now also pins ordinary-method metadata (`TopMethodCode`);
@@ -96,10 +96,15 @@ method entry/return. Separate pilot-only boot gates are retired. `MethodDefine.l
 `MethodCall.lean` now prove the definition/call semantic obligations; `MethodArgs.lean`
 handles arbitrary required-argument lists, and `MethodResolve.lean` keeps semantic body
 application below the syntactic bridge. `MethodRuleControls.lean` composes the full
-`def add …; add(x, y)` program from one checked body for arbitrary Integers. Its
-`validateD` rejection is still pinned: judgment registration and cached-signature checker
-integration remain next. Explicit `return` needs an answer-contract extension. Neither
-semantic pilots nor declaration-only acceptance count as 052.
+`def add …; add(x, y)` program from one checked body for arbitrary Integers; its data certificate
+now validates at Integer. Definitions check every body at its annotations and cache the proof;
+calls check argument types against that stored signature, with installed-code and exact-context
+checks. The cache follows sequential evaluation and compatible branches. A later definition
+can make an earlier cached context stale; transporting or refreshing those proofs at definition
+time is next (057, methods calling other methods). Recursion and explicit `return` remain out.
+`MethodControls.lean` pins positive calls and bad uncalled bodies; `MethodDerivations.lean`
+adds the proof-term-audited 052 example. The bridge now uses `DJudge.rec`, not expression-size
+recursion: a call's body is not its syntactic subexpression.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -118,7 +123,7 @@ String membership needs a payload invariant. See
 | `Ratchet/Ty.lean`, `Expr.lean`, `Deriv.lean` | Types, syntax, and certificate data |
 | `Ratchet/CtxEq.lean` | Sound conservative syntax/context comparison for branch compatibility |
 | `Ratchet/Check.lean`, `DerivControls.lean` | Derivation-returning checker and negative controls |
-| `Ratchet/MethodCheck.lean`, `Denote/Typed/MethodChecked.lean` | Checked annotation/body artifacts and their method-entry contract |
+| `Ratchet/Check.lean`, `MethodControls.lean`, `Denote/Typed/MethodChecked.lean` | Cached annotation/body proofs, end-to-end controls, and the method-entry contract |
 | `Denote/Typed/JudgeA.lean` | Semantic judgment, continuation typing, literal/local rules |
 | `Denote/Typed/Sequence.lean`, `Branch*.lean`, `BareName.lean` | Sequence, conditional, and bare-name obligations |
 | `Denote/Typed/Array.lean` | First-order array evaluation, retention, and allocation |
@@ -130,7 +135,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/MethodLookup.lean` | Actual dispatched code recovered from `DefsOk`, then applied using a checked body |
 | `Ratchet/MethodCtx.lean`, `Denote/Typed/MethodDefine.lean` | Definition-site contexts and the annotation-checked definition obligation |
 | `Denote/Typed/MethodArgs.lean`, `MethodCall.lean`, `MethodResolve.lean` | Argument retention, call obligation, and semantic installed-body application |
-| `Denote/Typed/MethodRuleControls.lean` | Full definition + call composition from a single checked body (validator still gated) |
+| `Denote/Typed/MethodRuleControls.lean`, `MethodDerivations.lean` | Full definition + call, validator acceptance, and the proof-term-audited 052 example |
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
@@ -138,7 +143,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/HashIndex.lean` | Hash dispatch, lookup, nil defaults, and default-value counterexample |
 | `Denote/Typed/Primitive*.lean` | Primitive dispatch, allocation, argument composition, regression controls |
 | `Denote/Sem/PrimHeap.lean`, `Denote/JoinState.lean` | Primitive heap invariants and sound binding joins |
-| `Denote/Typed/Derivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 44 concrete safety proofs |
+| `Denote/Typed/Derivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 45 concrete safety proofs |
 | `Denote/Typed/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Typed/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |
 | `Denote/Sanity.lean` | Executable boot conformance gate and its kernel soundness theorem |

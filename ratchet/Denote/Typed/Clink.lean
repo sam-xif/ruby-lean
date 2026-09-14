@@ -6,6 +6,8 @@ import Denote.Typed.Primitive
 import Denote.Typed.Array
 import Denote.Typed.Hash
 import Denote.Typed.RulesCtx
+import Denote.Typed.MethodDefine
+import Denote.Typed.MethodCall
 import Denote.Clink.Form
 
 /-! The answer-typed registry carries the expression judgment and all three list companions.
@@ -321,8 +323,8 @@ def dCompanionRules : List String :=
 -- The registry and its report agree about its size.
 #guard dclinks.length == dRegisteredRules.length
 
--- Sixteen expression rules and six companions; adding an unproved rule fails the gate.
-#guard dRegisteredRules.length == 22
+-- Eighteen expression rules and six companions; adding an unproved rule fails the gate.
+#guard dRegisteredRules.length == 24
 #guard dUnregisteredRules == []
 
 -- Every judgment premise is represented in the semantic family.

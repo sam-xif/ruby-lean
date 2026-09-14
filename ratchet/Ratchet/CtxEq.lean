@@ -55,6 +55,13 @@ theorem defnEqB_sound (a b : Defn) (h : defnEqB a b = true) : a = b := by
   simp only [Defn.mk.injEq]
   exact ⟨h.1.1, paramEqAll_sound h.1.2, exprEq_sound _ _ h.2⟩
 
+/-- Membership evidence, never an unchecked cast from the syntax comparator. -/
+def defnMem? (d : Defn) : (ds : List Defn) → Option (PLift (d ∈ ds))
+  | [] => none
+  | x :: xs =>
+    if h : defnEqB d x = true then some ⟨List.mem_cons.mpr (Or.inl (defnEqB_sound _ _ h))⟩
+    else (defnMem? d xs).map (fun h => ⟨List.mem_cons.mpr (Or.inr h.down)⟩)
+
 def clsEqB (a b : Cls) : Bool :=
   decide (a.name = b.name ∧ a.super? = b.super? ∧ a.isModule = b.isModule ∧
     a.includes = b.includes ∧ a.prepends = b.prepends ∧ a.extended = b.extended) &&

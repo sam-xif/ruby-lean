@@ -3,8 +3,8 @@ import Denote.Typed.MethodCall
 import Denote.Typed.MethodChecked
 import Denote.Typed.Sequence
 
-/-! Composed definition + call through the generic semantic rules. The single body artifact
-is checked from annotations and reused. This does not claim `validateD` admission yet. -/
+/-! Definition + call through both the semantic rules and the executable validator.
+The single body artifact is checked from annotations and reused. -/
 
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed
@@ -40,8 +40,10 @@ theorem add_program_sem (x y : Int) :
 theorem add_program_safe (hb : bootOkB = true) (x y : Int) :
     StuckFree bootMachine (addProgram x y) := (add_program_sem x y).closed (stateOk_boot hb)
 
--- This remaining gate must flip only when the definition and call checker rules land.
-#guard !validateD (addProgram 1 2) (.seq [cert, .callSig "add" [.intLit 1, .intLit 2] .int])
+-- Full validator acceptance, including body checking and the actual call.
+#guard validateD (addProgram 1 2) (.seq [cert, .callSig "add" [.intLit 1, .intLit 2] .int])
+#guard (check fuelD [] (addProgram 1 2)
+  (.seq [cert, .callSig "add" [.intLit 1, .intLit 2] .int])).map (·.ty) == some .int
 #print axioms add_program_sem
 #print axioms add_program_safe
 end Ratchet.Denote.Typed

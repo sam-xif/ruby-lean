@@ -36,9 +36,9 @@ semantic backend — a different `dsemFam`, a different notion of "safe" — reu
 unchanged and needs no new bridge. Threading `DJudgeC` through the checker would have fixed
 one target into the checker's return type and made the second backend a rewrite.
 
-The cases are one line each because `Denote/Typed/Derivations.lean` already has a
-constructor-wise builder per rule, taking its premises at `DJudgeC dclinks`. This induction is
-precisely "replace each `DJudge` constructor by its `derivD_*`".
+The mutual recursor replaces each constructor with its registered rule, including the three
+list families. Induction is on the derivation, not expression size: a call's stored body
+need not be smaller than the call. The list induction hypotheses stay inside this proof.
 -/
 
 set_option autoImplicit false
@@ -49,75 +49,56 @@ open RubyCore Ratchet Ratchet.Denote
 
 /-! ## §1 The bridge, by mutual induction over the judgment and its list companions -/
 
-mutual
-
 /-- **Every syntactic derivation is a certified one.** The registry covers `DJudge`, so the
 judgment `check` returns lands in the judgment `dregistry_safe` consumes. -/
 theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
     (h : DJudge Γ e τ Γ' κ I κ' I') : (DJudgeC dclinks).judge Γ e τ Γ' κ I κ' I' := by
-  cases h with
-  | intLit => intro F hF; exact hF DClink.intLit (by simp [dclinks])
-  | fltLit => intro F hF; exact hF DClink.fltLit (by simp [dclinks])
-  | strLit => intro F hF; exact hF DClink.strLit (by simp [dclinks])
-  | symLit => intro F hF; exact hF DClink.symLit (by simp [dclinks])
-  | truLit => intro F hF; exact hF DClink.truLit (by simp [dclinks])
-  | flsLit => intro F hF; exact hF DClink.flsLit (by simp [dclinks])
-  | nilLit => intro F hF; exact hF DClink.nilLit (by simp [dclinks])
-  | var hg ha => intro F hF; exact hF DClink.var (by simp [dclinks]) hg ha
-  | vasgn he hc ha hk =>
-    intro F hF
-    exact hF DClink.vasgn (by simp [dclinks]) (djudge_certified he F hF) hc ha hk
-  | seq hs => intro F hF; exact hF DClink.seq (by simp [dclinks]) (djudgeSeq_certified hs F hF)
-  | prim hr ha hp hf hs =>
-    intro F hF
+  intro F hF
+  induction h using DJudge.rec
+    (motive_2 := fun Γ es tys Γ' κ I κ' I' _ => F.all Γ es tys Γ' κ I κ' I')
+    (motive_3 := fun Γ es τ Γ' κ I κ' I' _ => F.seq Γ es τ Γ' κ I κ' I')
+    (motive_4 := fun Γ ps ks vs Γ' κ I κ' I' _ => F.pairs Γ ps ks vs Γ' κ I κ' I')
+  case intLit => exact hF DClink.intLit (by simp [dclinks])
+  case fltLit => exact hF DClink.fltLit (by simp [dclinks])
+  case strLit => exact hF DClink.strLit (by simp [dclinks])
+  case symLit => exact hF DClink.symLit (by simp [dclinks])
+  case truLit => exact hF DClink.truLit (by simp [dclinks])
+  case flsLit => exact hF DClink.flsLit (by simp [dclinks])
+  case nilLit => exact hF DClink.nilLit (by simp [dclinks])
+  case var hg ha => exact hF DClink.var (by simp [dclinks]) hg ha
+  case vasgn he hc ha hk ihe =>
+    exact hF DClink.vasgn (by simp [dclinks]) ihe hc ha hk
+  case seq hs ihs => exact hF DClink.seq (by simp [dclinks]) ihs
+  case prim hr ha hp hf hs ihr iha =>
     exact hF DClink.prim (by simp [dclinks])
-      (djudge_certified hr F hF) (djudgeAll_certified ha F hF) hp hf hs
-  | if' hc ht he =>
-    intro F hF
+      ihr iha hp hf hs
+  case if' hc ht he ihc iht ihe =>
     exact hF DClink.if' (by simp [dclinks])
-      (djudge_certified hc F hF) (djudge_certified ht F hF) (djudge_certified he F hF)
-  | ifNoElse hc ht =>
-    intro F hF
-    exact hF DClink.ifNoElse (by simp [dclinks]) (djudge_certified hc F hF) (djudge_certified ht F hF)
-  | bareName hx hm hs => intro F hF; exact hF DClink.bareName (by simp [dclinks]) hx hm hs
-  | arrayLit hs hf =>
-    intro F hF; exact hF DClink.arrayLit (by simp [dclinks]) (djudgeAll_certified hs F hF) hf
-  | hashLit hs hk hv =>
-    intro F hF; exact hF DClink.hashLit (by simp [dclinks]) (djudgePairs_certified hs F hF) hk hv
+      ihc iht ihe
+  case ifNoElse hc ht ihc iht =>
+    exact hF DClink.ifNoElse (by simp [dclinks]) ihc iht
+  case bareName hx hm hs => exact hF DClink.bareName (by simp [dclinks]) hx hm hs
+  case arrayLit hs hf ihs =>
+    exact hF DClink.arrayLit (by simp [dclinks]) ihs hf
+  case hashLit hs hk hv ihs =>
+    exact hF DClink.hashLit (by simp [dclinks]) ihs hk hv
+  case defDecl hp hps hr hb hm hc hs hbl hco ha hi hg hf hmiss hquiet ihb =>
+    exact hF DClink.defDecl (by simp [dclinks]) hp hps hr ihb
+      hm hc hs hbl hco ha hi hg hf hmiss hquiet
+  case callSig hp hps hr hb hargs hd hstart hm hs hbl hco ha hi hg ihb ihargs =>
+    exact hF DClink.callSig (by simp [dclinks]) hp hps hr ihb
+      ihargs hd hstart hm hs hbl hco ha hi hg
+  case nil => exact hF DClink.DJudgeAll.nil (by simp [dclinks])
+  case cons he ht hp ihe iht =>
+    exact hF DClink.DJudgeAll.cons (by simp [dclinks]) ihe iht hp
+  case last he ihe => exact hF DClink.DJudgeSeq.last (by simp [dclinks]) ihe
+  case cons he ht ihe iht =>
+    exact hF DClink.DJudgeSeq.cons (by simp [dclinks]) ihe iht
+  case nil => exact hF DClink.DJudgePairs.nil (by simp [dclinks])
+  case cons =>
+    intros
+    apply hF DClink.DJudgePairs.cons (by simp [dclinks]) <;> assumption
 
-/-- The argument-list companion. -/
-theorem djudgeAll_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {es : List Ratchet.Expr} {tys : List Ty}
-    (h : DJudgeAll Γ es tys Γ' κ I κ' I') : (DJudgeC dclinks).all Γ es tys Γ' κ I κ' I' := by
-  cases h with
-  | nil => intro F hF; exact hF DClink.DJudgeAll.nil (by simp [dclinks])
-  | cons he ht hp =>
-    intro F hF
-    exact hF DClink.DJudgeAll.cons (by simp [dclinks])
-      (djudge_certified he F hF) (djudgeAll_certified ht F hF) hp
-
-/-- The statement-sequence companion. -/
-theorem djudgeSeq_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {es : List Ratchet.Expr} {τ : Ty}
-    (h : DJudgeSeq Γ es τ Γ' κ I κ' I') : (DJudgeC dclinks).seq Γ es τ Γ' κ I κ' I' := by
-  cases h with
-  | last he =>
-    intro F hF; exact hF DClink.DJudgeSeq.last (by simp [dclinks]) (djudge_certified he F hF)
-  | cons he ht =>
-    intro F hF
-    exact hF DClink.DJudgeSeq.cons (by simp [dclinks])
-      (djudge_certified he F hF) (djudgeSeq_certified ht F hF)
-
-/-- The pair-list companion follows the source's key/value evaluation order. -/
-theorem djudgePairs_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {ps : List (Ratchet.Expr × Ratchet.Expr)}
-    {ks vs : List Ty} (h : DJudgePairs Γ ps ks vs Γ' κ I κ' I') :
-    (DJudgeC dclinks).pairs Γ ps ks vs Γ' κ I κ' I' := by
-  cases h with
-  | nil => intro F hF; exact hF DClink.DJudgePairs.nil (by simp [dclinks])
-  | cons hk hv hs =>
-    intro F hF
-    exact hF DClink.DJudgePairs.cons (by simp [dclinks])
-      (djudge_certified hk F hF) (djudge_certified hv F hF) (djudgePairs_certified hs F hF)
-
-end
 
 /-- Fundamental lemma at arbitrary method contexts, not just the top-level specialization. -/
 theorem djudge_context {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
