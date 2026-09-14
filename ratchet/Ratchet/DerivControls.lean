@@ -39,6 +39,11 @@ def ctlDeriv : Deriv := .prim (.intLit 1) "+" [.intLit 2] .int .int
     (.prim (.intLit 1) "==" [.nilLit] .int .bool)
 #guard dprim? .int "==" [] = none
 #guard dprim? .int "==" [.int, .int] = none
+#guard dprim? .int "zero?" [.int] = none
+#guard dprim? .int "<=" [.cls "String"] = none
+#guard dprim? .int ">=" [.nilT] = none
+#guard dprim? .nilT "==" [] = none
+#guard dprim? (.cls "String") "length" [.int] = none
 #guard !validateD (.send (some (.int 1)) "=="
     [.send (some (.str "a")) "+" [.int 1] none] none)
     (.prim (.intLit 1) "=="

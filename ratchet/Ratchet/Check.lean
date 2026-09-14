@@ -103,7 +103,7 @@ namespace Ratchet
 /-! ## §1 The primitive table
 
 The rules for sends this fragment can type, as an inductive (`DPrim`) with a decision
-procedure (`dprim?`) and a soundness lemma between them. Nine rows.
+procedure (`dprim?`) and a soundness lemma between them. Fourteen rows.
 
 The table grows with proved builtin obligations. `Judge.lean`'s `PrimSig` has ~90 rows and `Denote/`'s
 `Sem.Judge.prim` — the obligation that every one of them is true of CRuby — is one of the 35
@@ -124,12 +124,17 @@ inductive DPrim : Ty → String → List Ty → Ty → Prop
   | intSub : DPrim .int "-" [.int] .int
   | intMul : DPrim .int "*" [.int] .int
   | intDiv : DPrim .int "/" [.int] .int
-  /-- `Integer#<`. The other three comparisons are absent until a rung needs one. -/
+  /-- `Integer#<`; `<=` and `>=` also have rows below. -/
   | intLt : DPrim .int "<" [.int] .bool
   /-- Decimal conversion allocates a String; optional radix arguments are separate rows. -/
   | intToS : DPrim .int "to_s" [] (.cls "String")
   /-- Conformance excludes the reverse call to a program-defined `==` on the argument. -/
   | intEq {α : Ty} : DPrim .int "==" [α] .bool
+  | intZero : DPrim .int "zero?" [] .bool
+  | intLe : DPrim .int "<=" [.int] .bool
+  | intGe : DPrim .int ">=" [.int] .bool
+  | nilEq {α : Ty} : DPrim .nilT "==" [α] .bool
+  | strLength : DPrim (.cls "String") "length" [] .int
   /-- `String#+` at a `String` argument — a `TypeError` at any other, which is why the
       argument type is pinned rather than free. -/
   | strAdd : DPrim (.cls "String") "+" [.cls "String"] (.cls "String")
@@ -149,6 +154,11 @@ def dprim? : Ty → String → List Ty → Option Ty
   | .int, "<", [.int] => some .bool
   | .int, "to_s", [] => some (.cls "String")
   | .int, "==", [_] => some .bool
+  | .int, "zero?", [] => some .bool
+  | .int, "<=", [.int] => some .bool
+  | .int, ">=", [.int] => some .bool
+  | .nilT, "==", [_] => some .bool
+  | .cls "String", "length", [] => some .int
   | .cls "String", "+", [.cls "String"] => some (.cls "String")
   | .bool, "!", [] => some .bool
   | _, _, _ => none
@@ -164,6 +174,11 @@ theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
   · rw [Option.some.injEq] at h; subst h; exact .intLt
   · rw [Option.some.injEq] at h; subst h; exact .intToS
   · rw [Option.some.injEq] at h; subst h; exact .intEq
+  · rw [Option.some.injEq] at h; subst h; exact .intZero
+  · rw [Option.some.injEq] at h; subst h; exact .intLe
+  · rw [Option.some.injEq] at h; subst h; exact .intGe
+  · rw [Option.some.injEq] at h; subst h; exact .nilEq
+  · rw [Option.some.injEq] at h; subst h; exact .strLength
   · rw [Option.some.injEq] at h; subst h; exact .strAdd
   · rw [Option.some.injEq] at h; subst h; exact .notBool
   · exact absurd h (by simp)

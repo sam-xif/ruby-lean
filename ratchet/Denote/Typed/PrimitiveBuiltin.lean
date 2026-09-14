@@ -1,5 +1,6 @@
 import Denote.Typed.PrimitiveAlloc
 import Denote.Typed.PrimitiveEquality
+import Denote.Typed.PrimitiveQueries
 
 /-! Each `DPrim` row discharges against the interpreter and preserves conformance on values. -/
 
@@ -18,6 +19,9 @@ private theorem int_value {m : Machine} {v : Value} (h : denM .int m v) :
 
 private theorem bool_value {m : Machine} {v : Value} (h : denM .bool m v) :
     ∃ b, v = .bool b := by cases v <;> simp_all [denM, isBoolV]
+
+private theorem nil_value {m : Machine} {v : Value} (h : denM .nilT m v) :
+    v = .nil := by cases v <;> simp_all [denM, isNilV]
 
 theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Value} {args : List Value}
     {σ τ : Ty} {tys : List Ty} {name : String} (hp : DPrim σ name tys τ)
@@ -91,6 +95,50 @@ theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Val
       (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho)
       (int_eq_defer hm x v) (by rfl)]
     exact int_eq_step hm hk x v
+  | intZero =>
+    cases ha
+    obtain ⟨x, rfl⟩ := int_value hr
+    rw [primitive_invoke (bid := "Integer#zero?") (k := Boot.integerId) hm
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl),
+      int_zero_run]
+    exact stepSpec_value hm hk (by simp [denM, isBoolV])
+  | intLe =>
+    cases ha
+    rename_i v vs hv hs
+    cases hs
+    obtain ⟨x, rfl⟩ := int_value hr
+    obtain ⟨y, rfl⟩ := int_value hv
+    rw [primitive_invoke (bid := "Integer#<=") (k := Boot.integerId) hm
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl),
+      int_le_run]
+    exact stepSpec_value hm hk (by simp [denM, isBoolV])
+  | intGe =>
+    cases ha
+    rename_i v vs hv hs
+    cases hs
+    obtain ⟨x, rfl⟩ := int_value hr
+    obtain ⟨y, rfl⟩ := int_value hv
+    rw [primitive_invoke (bid := "Integer#>=") (k := Boot.integerId) hm
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl),
+      int_ge_run]
+    exact stepSpec_value hm hk (by simp [denM, isBoolV])
+  | nilEq =>
+    cases ha
+    rename_i v vs hv hs
+    cases hs
+    obtain rfl := nil_value hr
+    rw [primitive_invoke (bid := "Object#==") (k := Boot.nilClassId) hm
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl),
+      nil_eq_run]
+    exact stepSpec_value hm hk (by simp [denM, isBoolV])
+  | strLength =>
+    cases ha
+    obtain ⟨o, s, rfl, hs⟩ := string_payload hm hr
+    rw [primitive_invoke (bid := "String#length") (k := Boot.stringId) hm
+      (by simp [primitiveMethods]) (string_class hm hr) (by rfl)
+      (by intro k hk; cases hk; exact ⟨s, hs⟩) (by rfl) (by rfl), string_length_run]
+    simp only [Builtins.runStrings, Builtins.strPayload?, hs]
+    exact stepSpec_value hm hk (by simp [denM, isIntV])
   | strAdd =>
     cases ha
     rename_i v vs hv hs

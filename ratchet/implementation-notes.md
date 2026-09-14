@@ -8477,3 +8477,22 @@ both halves of what constrains them now have a name.
   controls reject wrong arity and an unsafe argument expression.
 - Full quiet ratchet: GREEN, 252 agree / 0 disagree, checker reach 21, 32 safe rungs.
   Equality facts build in 30 seconds; composition in 15. Only standard Lean axioms.
+
+## Clink 77 (2026-09-13) — scalar queries complete tier 2
+
+- Add proved rows for Integer `zero?`/`<=`/`>=`, nil `==`, and String `length`.
+  These preserve the machine, so `StateOk_reCtl` is the transport; string payload
+  conformance already supplies the length receiver's representation. The byte-aware
+  builtin path admits binary strings too. Nil equality inherits `Object#==` and
+  accepts any argument type without the numeric reversal protocol.
+- Each dispatch entry joins `primitiveMethods` and is checked at the actual boot.
+  Controls reject extra query arguments and non-integer ordered comparisons.
+  Six corpus safety derivations raise the safe-rung floor to 38 and checker reach
+  to 31. Rung 032 (bare undeclared name) is the next checker frontier.
+- The first full gate also found rung 189 newly accepted through `zero?`; its
+  sequence/conditional safety proof joins this batch, as required by the gate.
+- Full quiet ratchet: GREEN, 252 agree / 0 disagree, checker reach 31, 38 safe rungs,
+  safety prefix 17, no owed rules or exemptions. Query equations build in 1.6 seconds;
+  primitive composition in 15. All proofs use only standard Lean axioms.
+- Deferred finding: rung 039's emitter produces `Int | (Int | String)` while `joinT`
+  normalizes to `Int | String`; align the emitter, then add its existing-rule derivation.

@@ -129,11 +129,41 @@ theorem safe_021_eq_different_type (hb : bootOkB = true) : StuckFree bootMachine
   dregistry_safe (derivD_prim derivD_intLit (derivD_allCons derivD_strLit derivD_allNil rfl)
     .intEq) (stateOk_boot hb)
 
+def program_022_unmodeled_builtin_zero_p : Ratchet.Expr :=
+  .send (some (.int 5)) "zero?" [] none
+
+theorem safe_022_unmodeled_builtin_zero_p (hb : bootOkB = true) : StuckFree bootMachine program_022_unmodeled_builtin_zero_p :=
+  dregistry_safe (derivD_prim derivD_intLit derivD_allNil .intZero) (stateOk_boot hb)
+
+def program_024_cmp_le : Ratchet.Expr :=
+  .send (some (.int 1)) "<=" [.int 2] none
+
+theorem safe_024_cmp_le (hb : bootOkB = true) : StuckFree bootMachine program_024_cmp_le :=
+  dregistry_safe (derivD_prim derivD_intLit (derivD_allCons derivD_intLit derivD_allNil rfl) .intLe) (stateOk_boot hb)
+
+def program_025_cmp_ge : Ratchet.Expr :=
+  .send (some (.int 1)) ">=" [.int 2] none
+
+theorem safe_025_cmp_ge (hb : bootOkB = true) : StuckFree bootMachine program_025_cmp_ge :=
+  dregistry_safe (derivD_prim derivD_intLit (derivD_allCons derivD_intLit derivD_allNil rfl) .intGe) (stateOk_boot hb)
+
+def program_026_nil_eq_nil : Ratchet.Expr :=
+  .send (some .nil) "==" [.nil] none
+
+theorem safe_026_nil_eq_nil (hb : bootOkB = true) : StuckFree bootMachine program_026_nil_eq_nil :=
+  dregistry_safe (derivD_prim derivD_nilLit (derivD_allCons derivD_nilLit derivD_allNil rfl) .nilEq) (stateOk_boot hb)
+
 def program_027_nested_arith : Ratchet.Expr :=
   .send (some (.send (some (.int (1))) "+" [.int (2)] none)) "*" [.int (3)] none
 
 theorem safe_027_nested_arith (hb : bootOkB = true) : StuckFree bootMachine program_027_nested_arith :=
   dregistry_safe (derivD_prim (derivD_prim (derivD_intLit) (derivD_allCons (derivD_intLit) (derivD_allNil) rfl) .intAdd) (derivD_allCons (derivD_intLit) (derivD_allNil) rfl) .intMul) (stateOk_boot hb)
+
+def program_028_str_length : Ratchet.Expr :=
+  .send (some (.str "abc")) "length" [] none
+
+theorem safe_028_str_length (hb : bootOkB = true) : StuckFree bootMachine program_028_str_length :=
+  dregistry_safe (derivD_prim derivD_strLit derivD_allNil .strLength) (stateOk_boot hb)
 
 def program_029_simple_assign : Ratchet.Expr :=
   .seq [.vasgn .lvar "x" (.int (5)), .send (some (.var .lvar "x")) "+" [.int (1)] none]
@@ -201,6 +231,16 @@ def program_043_elsif_chain : Ratchet.Expr :=
 theorem safe_043_elsif_chain (hb : bootOkB = true) : StuckFree bootMachine program_043_elsif_chain :=
   dregistry_safe (derivD_if (derivD_truLit) (derivD_intLit) (derivD_if (derivD_flsLit) (derivD_intLit) (derivD_intLit))) (stateOk_boot hb)
 
+def program_189_ctl_ternary : Ratchet.Expr :=
+  .seq [.vasgn .lvar "x" (.int 1),
+    .if' (.send (some (.var .lvar "x")) "zero?" [] none)
+      (.str "zero") (some (.str "nonzero"))]
+
+theorem safe_189_ctl_ternary (hb : bootOkB = true) : StuckFree bootMachine program_189_ctl_ternary :=
+  dregistry_safe (derivD_seq (derivD_seqCons (derivD_vasgn derivD_intLit rfl rfl)
+    (derivD_seqLast (derivD_if (derivD_prim (derivD_var rfl rfl) derivD_allNil .intZero)
+      derivD_strLit derivD_strLit)))) (stateOk_boot hb)
+
 def safeRungs : List (String × Ratchet.Expr) :=
   [("001-int-lit", program_001_int_lit),
    ("002-bool-true", program_002_bool_true),
@@ -222,7 +262,12 @@ def safeRungs : List (String × Ratchet.Expr) :=
    ("019-to-s-call", program_019_to_s_call),
    ("020-eq-same-type", program_020_eq_same_type),
    ("021-eq-different-type", program_021_eq_different_type),
+   ("022-unmodeled-builtin-zero-p", program_022_unmodeled_builtin_zero_p),
+   ("024-cmp-le", program_024_cmp_le),
+   ("025-cmp-ge", program_025_cmp_ge),
+   ("026-nil-eq-nil", program_026_nil_eq_nil),
    ("027-nested-arith", program_027_nested_arith),
+   ("028-str-length", program_028_str_length),
    ("029-simple-assign", program_029_simple_assign),
    ("030-reassign-same-type", program_030_reassign_same_type),
    ("031-reassign-different-type", program_031_reassign_different_type),
@@ -233,13 +278,14 @@ def safeRungs : List (String × Ratchet.Expr) :=
    ("038-if-branch-mismatch", program_038_if_branch_mismatch),
    ("040-if-nil-condition", program_040_if_nil_condition),
    ("041-nested-if", program_041_nested_if),
-   ("043-elsif-chain", program_043_elsif_chain)]
+   ("043-elsif-chain", program_043_elsif_chain),
+   ("189-ctl-ternary", program_189_ctl_ternary)]
 
 theorem safeRungs_safe (hb : bootOkB = true) :
     ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
   intro q hq
   simp only [safeRungs, List.mem_cons, List.not_mem_nil, or_false] at hq
-  rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact safe_001_int_lit hb
   · exact safe_002_bool_true hb
   · exact safe_003_bool_false hb
@@ -260,7 +306,12 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   · exact safe_019_to_s_call hb
   · exact safe_020_eq_same_type hb
   · exact safe_021_eq_different_type hb
+  · exact safe_022_unmodeled_builtin_zero_p hb
+  · exact safe_024_cmp_le hb
+  · exact safe_025_cmp_ge hb
+  · exact safe_026_nil_eq_nil hb
   · exact safe_027_nested_arith hb
+  · exact safe_028_str_length hb
   · exact safe_029_simple_assign hb
   · exact safe_030_reassign_same_type hb
   · exact safe_031_reassign_different_type hb
@@ -272,6 +323,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   · exact safe_040_if_nil_condition hb
   · exact safe_041_nested_if hb
   · exact safe_043_elsif_chain hb
+  · exact safe_189_ctl_ternary hb
 
 #print axioms safeRungs_safe
 end Ratchet.Denote.Typed

@@ -12,6 +12,9 @@ def primitiveMethods : List (ObjId × String × String) :=
    (Boot.integerId, "*", "Integer#*"), (Boot.integerId, "/", "Integer#/"),
    (Boot.integerId, "<", "Integer#<"), (Boot.integerId, "to_s", "Integer#to_s"),
    (Boot.integerId, "==", "Integer#=="),
+   (Boot.integerId, "zero?", "Integer#zero?"),
+   (Boot.integerId, "<=", "Integer#<="), (Boot.integerId, ">=", "Integer#>="),
+   (Boot.nilClassId, "==", "Object#=="), (Boot.stringId, "length", "String#length"),
    (Boot.stringId, "+", "String#+"),
    (Boot.trueClassId, "!", "Object#!"), (Boot.falseClassId, "!", "Object#!")]
 
