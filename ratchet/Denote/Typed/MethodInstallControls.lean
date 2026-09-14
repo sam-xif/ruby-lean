@@ -2,7 +2,7 @@ import Denote.Sem.MethodInstall
 import Denote.Typed.MethodDispatch
 import Denote.Typed.MethodStateControls
 import Denote.Typed.Primitive
-import Denote.Typed.Bridge
+import Denote.Typed.MethodChecked
 
 /-! A real-boot method write followed by dispatch, with full state conformance and
 an annotation-checked body. Still not a checker admission or a corpus rung. -/
@@ -30,15 +30,15 @@ private def addBodyCert : Deriv :=
 
 /-- The certificate is checked under the annotations in the installed method context.
 No argument values or concrete execution enter this check. -/
-private def addBodyChecked : Certified [("x", .int), ("y", .int)] addBody
-    (installedCtx.withFrame (some ⟨"Object", "Object", "add"⟩)) :=
-  (check 100 [("x", .int), ("y", .int)] addBody addBodyCert
-    (installedCtx.withFrame (some ⟨"Object", "Object", "add"⟩))).get (by decide)
+private def addBodyChecked : CheckedBody
+    (installedCtx.withFrame (some ⟨"Object", "Object", "add"⟩)) .ivar0 addDecl :=
+  (checkMethodBody 100 (installedCtx.withFrame (some ⟨"Object", "Object", "add"⟩)) .ivar0 addDecl
+    (.defDecl "add" [("x", .int), ("y", .int)] .int addBodyCert)).get (by decide)
 
 theorem add_body_from_certificate : SemSafeCtxA
     (installedCtx.withFrame (some ⟨"Object", "Object", "add"⟩)) [("x", .int), ("y", .int)] .ivar0
     addBody .int (installedCtx.withFrame (some ⟨"Object", "Object", "add"⟩))
-    [("x", .int), ("y", .int)] .ivar0 := certified_context addBodyChecked
+    [("x", .int), ("y", .int)] .ivar0 := checked_body_context addBodyChecked
 
 /-- Checks the concrete boot premises; not a per-program post-installation checker. -/
 def methodInstallBootOkB : Bool := methodBootOkB &&
@@ -95,10 +95,9 @@ theorem add_installed_call (hb : methodInstallBootOkB = true) (x y : Int) :
         (definedMethod bootMachine "add" [.req "x", .req "y"] (toRuby addBody)) ["x", "y"] [.int x, .int y]) =
       frameScope installed.currentFrame := by
     simp [frameScope, requiredFrame, definedMethod, hcf, hblk, hcap]
-  obtain ⟨next, he, hr⟩ := required_method_runSpec (ps := [("x", .int), ("y", .int)]) (e := addBody)
-    (Γb := [("x", .int), ("y", .int)]) (fr := some ⟨"Object", "Object", "add"⟩)
-    hm (ReframeFO.empty rfl rfl rfl rfl) rfl hkont rfl rfl rfl rfl rfl
-    (by simp [DenAll, denM, isIntV]) (by simp [FirstOrder, isAliasTy]) rfl
+  obtain ⟨next, he, hr⟩ := checked_method_runSpec addBodyChecked
+    hm (ReframeFO.empty rfl rfl rfl rfl) rfl hkont rfl rfl rfl rfl (by rfl)
+    (by change DenAll [.int, .int] installed [.int x, .int y]; simp [DenAll, denM, isIntV])
     (by simp) hs
     (fun x => by rw [constGet?_empty (κ := installedCtx.withFrame _) rfl,
       constGet?_empty (κ := installedCtx) rfl])
@@ -108,7 +107,6 @@ theorem add_installed_call (hb : methodInstallBootOkB = true) (x y : Int) :
       change isAName installed.heap installed.currentFrame.self "Object" = true
       rw [hcf]
       simpa only [installed, installMethod, isAName_defineMethod] using hobj)
-    add_body_from_certificate
   refine ⟨next, ?_, hr⟩
   have hrecv : installed.currentFrame.self = .ref Boot.mainId := (congrArg RubyCore.Frame.self hcf).trans hself
   rw [hrecv] at he ⊢

@@ -1,4 +1,5 @@
 import Ratchet.Check
+import Ratchet.MethodCheck
 
 /-!
 Negative controls for `validateD`.
@@ -305,5 +306,29 @@ def ctlMethodCtx : Ctx :=
   (.ifD .truLit ctlAnnotationBodyCert none (.nilable .int)) ctlMethodCtx).isSome
 #guard (ctxEq? ctlMethodCtx { ctlMethodCtx with pos :=
   { ctlMethodCtx.pos with defs := [⟨"annotation_probe", [.req "x"], .nil⟩] } }).isNone
+
+-- A reusable body artifact checks the whole declared signature, not merely the body hint.
+def ctlMethodDecl : Defn := ⟨"annotation_probe", [.req "x"], ctlAnnotationBody⟩
+def ctlCheckedBody (ps : List SigParam) (ret : Ty) :=
+  checkMethodBody 100 ctlMethodCtx .ivar0 ctlMethodDecl
+    (.defDecl "annotation_probe" ps ret ctlAnnotationBodyCert)
+#guard (ctlCheckedBody [("x", .int)] .int).isSome
+#guard (ctlCheckedBody [("x", .nilable .int)] .int).isNone
+#guard (ctlCheckedBody [("x", .int)] (.cls "String")).isNone
+#guard (ctlCheckedBody [("other", .int)] .int).isNone
+#guard (ctlCheckedBody [] .int).isNone
+#guard (ctlCheckedBody [("x", .int), ("extra", .int)] .int).isNone
+#guard (ctlCheckedBody [("x", .sameAs "caller" .int)] .int).isNone
+#guard (checkMethodBody 100 ctlMethodCtx .ivar0 ctlMethodDecl
+  (.defDecl "other" [("x", .int)] .int ctlAnnotationBodyCert)).isNone
+#guard (checkMethodBody 100 ctlMethodCtx .ivar0 ctlMethodDecl
+  (.defDecl "annotation_probe" [("x", .int)] .int (.intLit 1))).isNone
+-- A nullable annotation is usable when the body genuinely handles its entire domain.
+#guard (checkMethodBody 100 ctlMethodCtx .ivar0 ⟨"identity", [.req "x"], .var .lvar "x"⟩
+  (.defDecl "identity" [("x", .nilable .int)] (.nilable .int) (.var .lvar "x"))).isSome
+-- A signature with an unsupported body cannot become a callable assumption.
+#guard (checkMethodBody 100 ctlMethodCtx .ivar0
+    ⟨"forward", [.req "x"], .send none "annotation_probe" [.var .lvar "x"] none⟩
+  (.defDecl "forward" [("x", .int)] .int (.callSig "annotation_probe" [.var .lvar "x"] .int))).isNone
 
 end Ratchet

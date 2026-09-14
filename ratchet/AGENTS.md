@@ -83,7 +83,10 @@ now takes those incoming indices and returns every outgoing index with its deriv
 `CtxEq.lean` supplies proof-producing branch compatibility (unsupported syntax comparisons
 decline). `certified_context` connects these results to semantics; the installed `add` pilot
 now consumes a body certificate checked against its annotations, not a hand body proof.
-Checked-signature/definition/call rules remain next. Explicit `return` needs an answer-contract extension. Neither boundary lemmas nor
+`MethodCheck.lean` packages that proof as `CheckedBody`: required formal names/order,
+first-order parameter/return annotations, exact return compatibility, and unchanged
+context/spine are checked before the artifact exists. `checked_method_runSpec` consumes
+it directly. Installed-signature/definition/call rules remain next. Explicit `return` needs an answer-contract extension. Neither boundary lemmas nor
 declaration-only acceptance count as 052. `methodBootOkB` checks additional method-start
 facts, and `methodInstallBootOkB` also checks top-level installation/lookup/hook facts;
 these must join the validator's boot contract when methods are admitted.
@@ -105,6 +108,7 @@ String membership needs a payload invariant. See
 | `Ratchet/Ty.lean`, `Expr.lean`, `Deriv.lean` | Types, syntax, and certificate data |
 | `Ratchet/CtxEq.lean` | Sound conservative syntax/context comparison for branch compatibility |
 | `Ratchet/Check.lean`, `DerivControls.lean` | Derivation-returning checker and negative controls |
+| `Ratchet/MethodCheck.lean`, `Denote/Typed/MethodChecked.lean` | Checked annotation/body artifacts and their method-entry contract |
 | `Denote/Typed/JudgeA.lean` | Semantic judgment, continuation typing, literal/local rules |
 | `Denote/Typed/Sequence.lean`, `Branch*.lean`, `BareName.lean` | Sequence, conditional, and bare-name obligations |
 | `Denote/Typed/Array.lean` | First-order array evaluation, retention, and allocation |

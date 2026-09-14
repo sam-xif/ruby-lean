@@ -8901,3 +8901,24 @@ both halves of what constrains them now have a name.
 - Context comparison builds in 4.1 seconds; checker, bridge, and installed-call pilot each
   build in under a second, axiom-clean. Full quiet ratchet GREEN: fragment 49, checker
   reach 51, 252 agree / 0 disagree, all 22 rules proved.
+
+## Clink 98 (2026-09-14) — a checked signature is a body artifact
+
+- `checkMethodBody` checks a `defDecl` certificate against the actual definition: name,
+  required parameter names/order, first-order non-alias parameter types, first-order return
+  type, and the body at precisely those annotations. Its `CheckedBody` stores the `DJudge`
+  proof, with unchanged context/spine but arbitrary outgoing locals. Caller locals and
+  argument values are not inputs. Return compatibility is exact until semantic subsumption
+  is proved; the legacy `subTy` is not evidence of denotation inclusion.
+- `checked_body_context` sends the stored derivation through the same registry;
+  `checked_method_runSpec` consumes the artifact at actual method entry. The installed
+  `add` pilot now checks its entire signature and calls through this API for arbitrary
+  Integer arguments. Neither a raw body hint nor a return assertion can fill its premise.
+- Controls distinguish wrong returns, renamed/missing/extra formals, wrong definition
+  names, aliases, and unsupported bodies. Nullable identity succeeds; nullable `x + 1`
+  fails even though Integer callers would work. These are body-artifact checks, not
+  whole-program definition accepts. Installation/order-sensitive callable tables and the
+  `defDecl`/`callSig` rules remain owed; no 052 or declaration-only coverage is claimed.
+- Artifact checker, bridge, and installed-call proof each build in under a second,
+  axiom-clean. Full quiet ratchet GREEN: fragment 49, checker reach 51,
+  252 agree / 0 disagree, all 22 rules proved.
