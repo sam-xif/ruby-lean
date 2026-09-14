@@ -29,6 +29,17 @@ private def identityDef (name : String) : Ratchet.Expr :=
   | .value (.int 3) m => Value.identEq (m.getLocal "x") (.int 90) && m.stack == [0]
   | _ => false
 
+-- A successful call is not evidence for the broader nilable-Integer annotation.
+-- DerivControls rejects this body at that annotation, even with only the first call.
+private def annotationProbe (arg : Ratchet.Expr) : Ratchet.Expr := .seq [
+  .def' "annotation_probe" [.req "x"]
+    (.send (some (.var .lvar "x")) "+" [.int 1] none),
+  .send none "annotation_probe" [arg] none]
+#guard match runControl (annotationProbe (.int 1)) with
+  | .value (.int 2) _ => true
+  | _ => false
+#guard Semantics.typeStuck (runControl (annotationProbe .nil))
+
 -- Installation really makes a top-level definition private; literal self is a
 -- separate Ruby call site, so use a local receiver to test the explicit-site failure.
 #guard match runControl (.seq [identityDef "identity", .vasgn .lvar "receiver" .self',

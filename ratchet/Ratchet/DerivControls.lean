@@ -269,4 +269,19 @@ def ctlHashIndexCert (dk : Deriv) (ret : Ty := .nilable .int) : Deriv :=
 #guard !validateD (.seq [.send none "later" [] none, .def' "later" [] (.int 1)])
   (.seq [.callSig "later" [] .int, .defDecl "later" [] .int (.intLit 1)])
 
+-- An Integer call can work even when the body violates its nilable-Integer annotation.
+-- The body check must use the annotation, not types inferred from those calls.
+def ctlAnnotationBody : Expr := .send (some (.var .lvar "x")) "+" [.int 1] none
+def ctlAnnotationBodyCert : Deriv := .prim (.var .lvar "x") "+" [.intLit 1] .int .int
+def ctlAnnotationDef : Expr := .def' "annotation_probe" [.req "x"] ctlAnnotationBody
+def ctlAnnotationDefCert : Deriv :=
+  .defDecl "annotation_probe" [("x", .nilable .int)] .int ctlAnnotationBodyCert
+
+-- These body-level controls are meaningful before definition admission exists.
+#guard (check 100 [("x", .int)] ctlAnnotationBody ctlAnnotationBodyCert).isSome
+#guard (check 100 [("x", .nilable .int)] ctlAnnotationBody ctlAnnotationBodyCert).isNone
+#guard !validateD ctlAnnotationDef ctlAnnotationDefCert
+#guard !validateD (.seq [ctlAnnotationDef, .send none "annotation_probe" [.int 1] none])
+  (.seq [ctlAnnotationDefCert, .callSig "annotation_probe" [.intLit 1] .int])
+
 end Ratchet

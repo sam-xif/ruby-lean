@@ -8843,3 +8843,15 @@ both halves of what constrains them now have a name.
 - All new proofs are axiom-clean; collections build in under a second and bare-name
   dispatch in 3.4 seconds. Full quiet ratchet GREEN: fragment 49, checker reach 51,
   252 agree / 0 disagree, 22 rules proved.
+
+## Clink 95 (2026-09-14) — annotations, not observed argument types
+
+- Pin the user's failure mode: `x + 1` checks at `x : Integer` but not at
+  `x : T.nilable(Integer)`. The body-level checks already distinguish these, independently
+  of the still-gated declaration rules. Permanent definition controls reject both an
+  uncalled nilable-annotated body and the same definition followed only by an Integer call.
+- Interpreter controls show why call samples are insufficient: the Integer call returns
+  2, while the admitted-by-annotation nil call is type-stuck. Neither call results nor
+  caller-local types may replace the declared parameter environment during body checking.
+- CRuby reproduces `2` / `NoMethodError`. Full quiet ratchet GREEN: fragment 49,
+  checker reach 51, 252 agree / 0 disagree, 22 rules proved; no coverage claim for these controls.
