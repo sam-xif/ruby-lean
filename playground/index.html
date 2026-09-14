@@ -101,6 +101,79 @@
   .pill.warn { color:var(--warn); }
   textarea.cert { height:150px; font-size:12px; }
   pre.out.tall { max-height:300px; overflow:auto; }
+
+  /* ── Tab 3: the ratchet checker, laid out as its pipeline ───────────────
+     A rail of five stages across the top, source and the selected artifact
+     side by side under it, execution at the foot. The grid is `auto-fit` so
+     the same markup is two columns with the step view hidden and one column
+     with it shown -- the layout follows the width rather than the tab. */
+  /* `.on` is load-bearing here, not decoration: an id selector outranks `.pane`,
+     so a bare `#pane-ratchet { display:flex }` beats `.pane { display:none }` and
+     the pane renders under every tab. Scoping it to `.on` keeps the tab switch
+     the one thing that decides. */
+  #pane-ratchet.on { display:flex; flex-direction:column; gap:12px; }
+  .rk-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .rk-bar select { flex:1 1 220px; min-width:0; max-width:680px; }
+
+  /* Five across when there is room, wrapping rather than truncating when there is
+     not -- at the width the step view leaves, five fixed columns squeeze the pills
+     down to `SRB C…` and the verdict stops being readable, which is the one thing
+     the rail exists to show. */
+  .rk-rail { display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
+    gap:6px; }
+  .rk-stage { background:var(--panel); border:1px solid var(--edge);
+    border-top:2px solid var(--edge); border-radius:8px; padding:6px 9px 7px;
+    cursor:pointer; min-width:0; display:flex; flex-direction:column; gap:2px; }
+  .rk-stage:hover { border-color:var(--accent); }
+  .rk-stage.sel { background:var(--panel2); }
+  .rk-stage .n { display:flex; justify-content:space-between; align-items:center;
+    gap:6px; font-family:var(--mono); font-size:10px; color:var(--dim);
+    text-transform:uppercase; letter-spacing:.07em; white-space:nowrap;
+    flex-wrap:wrap; }
+  /* Not uppercased: the pill carries `validateD=false`, and upper-casing it reads
+     as "VALIDATED", which is a different word and the wrong one. */
+  /* The pill wraps to its own line rather than eliding when the chip is narrow --
+     `validateD=fal…` is worse than a two-line chip, and stage 4's `· trusted` label
+     is the one that squeezes it. */
+  .rk-stage .n .pill { font-size:10px; padding:1px 6px;
+    text-transform:none; letter-spacing:0; white-space:nowrap; }
+  /* Pinned, because `.ok`/`.no` are global text-colour utilities and the chip wears
+     one as a state class -- without this the whole chip turns green or red and the
+     border-top stops being the thing that carries the verdict. */
+  .rk-stage .t { font-size:13px; font-weight:600; display:flex; align-items:center;
+    gap:6px; white-space:nowrap; color:var(--fg); }
+  .rk-stage .s { font-family:var(--mono); font-size:11px; color:var(--dim);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* The top edge carries the verdict, so the rail reads as a row of lights. */
+  .rk-stage.ok   { border-top-color:var(--good); }
+  .rk-stage.no   { border-top-color:var(--bad); }
+  .rk-stage.warn { border-top-color:var(--warn); }
+  /* Stale = computed from a buffer that has since been edited. Showing it dimmed
+     rather than clearing it keeps the old artifact readable without letting it
+     pass for a statement about the text now on screen. */
+  .rk-stage.stale { opacity:.4; }
+  .rk-go { padding:0 6px; font-size:12px; line-height:1.6; font-weight:400; }
+
+  .rk-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(360px,1fr));
+    gap:12px; align-items:stretch; }
+  .rk-card { background:var(--panel); border:1px solid var(--edge); border-radius:8px;
+    padding:10px 12px; min-width:0; }
+  .rk-card > h2:first-child, .rk-art > h2:first-child { margin-top:0; }
+  /* The artifact card matches the editor beside it rather than shrinking to whatever
+     the selected stage happens to hold -- otherwise switching stages resizes the page. */
+  .rk-grid > .rk-card { display:flex; flex-direction:column; }
+  .rk-grid > .rk-card > .rk-art.on { flex:1; display:flex; flex-direction:column; }
+  .rk-art.on > textarea, .rk-art.on > pre.out { flex:1; }
+  .rk-art.on > pre.out { max-height:none; }
+  .rk-card textarea { height:320px; }
+  .rk-card textarea.cert { height:320px; }
+  .rk-card pre.out.tall { max-height:320px; }
+  .rk-art { display:none; } .rk-art.on { display:block; }
+  .rk-foot { display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+    margin-bottom:4px; }
+  .rk-two { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+    gap:0 12px; }
+  .rk-two pre.out.tall { max-height:200px; }
 </style>
 </head>
 <body>
@@ -221,58 +294,109 @@
     <pre class="out tall" id="slicevalout"><span class="empty">— derive a certificate, then validate it</span></pre>
    </div>
 
-   <!-- The live typed ratchet: annotated Ruby -> strip -> RubyCore -> Deriv ->
-        validateD, with the model and CRuby execution beside it. -->
+   <!-- The live typed ratchet, laid out as the pipeline it is: a rail of five
+        stages across the top, the source and the selected stage's artifact side by
+        side beneath it, execution and the verdict at the foot. Every stage is still
+        one existing tool over the buffer -- the layout changed, not the pipeline. -->
    <div class="pane" id="pane-ratchet">
-    <div class="row">
+    <div class="rk-bar">
       <select id="ratchetcorpus" title="ratchet/corpus/*.rb with sibling *.meta.json — the typed ladder"></select>
       <button class="ghost" id="ratchetcorpusload">Load rung</button>
+      <button id="ratchetrunall" title="cascade every stage in order: srb · strip · desugar · emit · validateD">Run all ⏩</button>
+      <span class="pill" id="ratchetexpect" title="the rung's recorded expect_validate — what the ladder says this rung should do">target —</span>
       <span id="ratchetmsg" class="detail"></span>
     </div>
     <div id="ratcheterr"></div>
-    <h2>Corpus Ruby — Sorbet annotated</h2>
-    <textarea id="ratchetsrc" spellcheck="false" style="height:180px"></textarea>
 
-    <div class="stage"><h2>0. Sorbet — over the unstripped program</h2>
-      <button class="ghost" id="ratchetsorbet" title="srb over the annotated source above, via ratchet/scripts/srb_sigs.py — the check a rung's expect_sorbet is recorded against">Sorbet ✓</button>
-      <span id="ratchetsorbetmsg" class="detail"></span></div>
-    <pre class="out" id="ratchetsorbetout"><span class="empty">— press “Sorbet”</span></pre>
-
-    <div class="stage"><h2>1. Strip Sorbet signatures</h2>
-      <button class="ghost" id="ratchetstrip">Strip ▸</button>
-      <span id="ratchetstripmsg" class="detail"></span></div>
-    <textarea id="ratchetstripped" spellcheck="false" style="height:150px" placeholder="sig-stripped program appears here"></textarea>
-
-    <div class="stage"><h2>2. Desugar</h2>
-      <button class="ghost" id="ratchetdesugar">Desugar ▸</button></div>
-    <pre class="out sexpr" id="ratchetcore"><span class="empty">— strip, then desugar</span></pre>
-
-    <div class="stage"><h2>3. Type derivation</h2>
-      <button class="ghost" id="ratchetderive">Derive ▸</button>
-      <span id="ratchetderivemsg" class="detail"></span></div>
-    <textarea id="ratchetderiv" class="cert" spellcheck="false" placeholder="emitted Deriv JSON appears here and remains editable"></textarea>
-
-    <div class="stage">
-      <h2>Run it</h2>
-      <button class="ghost" id="ratchetmodel" title="rubycore — run to completion, the observation record">Lean model ▶</button>
-      <button class="ghost" id="ratchetcruby" title="the oracle">CRuby ▶</button>
-      <button class="ghost" id="ratchetvalidate" title="the trusted validateD Bool checks the displayed Deriv against the stripped program">validateD ✓</button>
-      <button class="ghost" id="ratchetstep" title="trace this buffer in the stepper pane">Step it ▶</button>
-      <label class="detail">start at <input id="ratchetat" size="16" placeholder="send .compare("></label>
-      <label class="detail">or step <input id="ratchetfrom" size="7" placeholder="0"></label>
-      <span id="ratchetrunmsg" class="detail"></span>
+    <!-- The rail. Each chip is a stage: click to show its artifact, ▸ to run it.
+         A chip greys out when the buffer it was computed from has since changed. -->
+    <div class="rk-rail" id="ratchetrail">
+      <div class="rk-stage sel" id="rail-sorbet" data-art="sorbet">
+        <div class="n"><span>stage 0</span><span class="pill" id="pillratchetsorbet">—</span></div>
+        <div class="t">Sorbet <button class="rk-go ghost" id="ratchetsorbet" title="srb over the annotated source above, via ratchet/scripts/srb_sigs.py — the check a rung's expect_sorbet is recorded against">▸</button></div>
+        <div class="s" id="sum-sorbet">the unstripped program</div>
+      </div>
+      <div class="rk-stage" id="rail-strip" data-art="strip">
+        <div class="n"><span>stage 1</span><span class="pill" id="pillratchetstrip">—</span></div>
+        <div class="t">Strip <button class="rk-go ghost" id="ratchetstrip" title="certify-file.sh's chain: sig · visibility · freeze · require · const_inline · class_sugar">▸</button></div>
+        <div class="s" id="sum-strip">signatures out</div>
+      </div>
+      <div class="rk-stage" id="rail-desugar" data-art="desugar">
+        <div class="n"><span>stage 2</span><span class="pill" id="pillratchetdesugar">—</span></div>
+        <div class="t">Desugar <button class="rk-go ghost" id="ratchetdesugar" title="harness/desugar-dt/bin/export-json">▸</button></div>
+        <div class="s" id="sum-desugar">to RubyCore</div>
+      </div>
+      <div class="rk-stage" id="rail-derive" data-art="derive">
+        <div class="n"><span>stage 3</span><span class="pill" id="pillratchetderive">—</span></div>
+        <div class="t">Derive <button class="rk-go ghost" id="ratchetderive" title="scripts/emit_deriv.py — untrusted; a block is a coverage fact, not a verdict">▸</button></div>
+        <div class="s" id="sum-derive">emit a Deriv</div>
+      </div>
+      <div class="rk-stage" id="rail-validate" data-art="validate">
+        <div class="n"><span>stage 4 · trusted</span><span class="pill" id="pillratchetcheck">—</span></div>
+        <div class="t">validateD <button class="rk-go ghost" id="ratchetvalidate" title="the trusted validateD Bool checks the displayed Deriv against the stripped program">▸</button></div>
+        <div class="s" id="sum-validate">the kernel Bool</div>
+      </div>
     </div>
-    <div class="row"><span class="pill" id="pillratchetsorbet">srb —</span>
-      <span class="pill" id="pillratchetmodel">model —</span>
-      <span class="pill" id="pillratchetcruby">CRuby —</span>
-      <span class="pill" id="pillratchetdiff">agree —</span>
-      <span class="pill" id="pillratchetcheck">validateD —</span></div>
-    <h2>Lean model — observation record</h2>
-    <pre class="out tall" id="ratchetmodelout"><span class="empty">— press “Lean model”</span></pre>
-    <h2>CRuby stdout</h2>
-    <pre class="out tall" id="ratchetcrubyout"><span class="empty">— press “CRuby”</span></pre>
-    <h2>Validation — <span class="detail">validateD : Expr → Deriv → Bool</span></h2>
-    <div id="ratchetcheckbox"><span class="empty">— derive, then press “validateD”</span></div>
+
+    <div class="rk-grid">
+     <div class="rk-card">
+      <h2>Corpus Ruby — Sorbet annotated <span class="detail">· the input every stage reads</span></h2>
+      <textarea id="ratchetsrc" spellcheck="false"></textarea>
+     </div>
+
+     <div class="rk-card">
+      <!-- stage 0 -->
+      <div class="rk-art on" id="art-sorbet">
+        <h2>Sorbet — over the unstripped program <span class="detail" id="ratchetsorbetmsg"></span></h2>
+        <pre class="out tall" id="ratchetsorbetout"><span class="empty">— press ▸ on stage 0</span></pre>
+      </div>
+      <!-- stage 1 -->
+      <div class="rk-art" id="art-strip">
+        <h2>Stripped program <span class="detail" id="ratchetstripmsg"></span></h2>
+        <textarea id="ratchetstripped" spellcheck="false" placeholder="sig-stripped program appears here"></textarea>
+      </div>
+      <!-- stage 2 -->
+      <div class="rk-art" id="art-desugar">
+        <h2>RubyCore <span class="detail">· s-expression</span></h2>
+        <pre class="out sexpr tall" id="ratchetcore"><span class="empty">— strip, then desugar</span></pre>
+      </div>
+      <!-- stage 3 -->
+      <div class="rk-art" id="art-derive">
+        <h2>Deriv <span class="detail" id="ratchetderivemsg">· editable before stage 4 reads it</span></h2>
+        <textarea id="ratchetderiv" class="cert" spellcheck="false" placeholder="emitted Deriv JSON appears here and remains editable"></textarea>
+      </div>
+      <!-- stage 4 -->
+      <div class="rk-art" id="art-validate">
+        <h2>Validation — <span class="detail">validateD : Expr → Deriv → Bool</span></h2>
+        <div id="ratchetcheckbox"><span class="empty">— derive, then run stage 4</span></div>
+      </div>
+     </div>
+    </div>
+
+    <div class="rk-card">
+      <div class="rk-foot">
+        <h2 style="margin:0">Execution <span class="detail">· the stripped program, both ways</span></h2>
+        <button class="ghost" id="ratchetmodel" title="rubycore — run to completion, the observation record">Lean model ▶</button>
+        <button class="ghost" id="ratchetcruby" title="the oracle">CRuby ▶</button>
+        <button class="ghost" id="ratchetstep" title="trace this buffer in the stepper pane">Step it ▶</button>
+        <label class="detail">start at <input id="ratchetat" size="14" placeholder="send .compare("></label>
+        <label class="detail">or step <input id="ratchetfrom" size="6" placeholder="0"></label>
+        <span class="pill" id="pillratchetmodel">model —</span>
+        <span class="pill" id="pillratchetcruby">CRuby —</span>
+        <span class="pill" id="pillratchetdiff">agree —</span>
+        <span id="ratchetrunmsg" class="detail"></span>
+      </div>
+      <div class="rk-two">
+        <div>
+          <h2>Lean model — observation record</h2>
+          <pre class="out tall" id="ratchetmodelout"><span class="empty">— press “Lean model”</span></pre>
+        </div>
+        <div>
+          <h2>CRuby stdout</h2>
+          <pre class="out tall" id="ratchetcrubyout"><span class="empty">— press “CRuby”</span></pre>
+        </div>
+      </div>
+    </div>
    </div>
   </div>
   <div class="right">
@@ -918,6 +1042,115 @@ const ratchetText = () => $('ratchetstripped').value || $('ratchetsrc').value;
 function ratchetErr(d) {
   $('ratcheterr').innerHTML = `<div class="err">[${d.error}] ${esc(d.message||'')}</div>`;
 }
+// ── The rail ──────────────────────────────────────────────────────────────
+// Five stages in pipeline order. `rkDone` is the only writer of a chip's verdict,
+// and finishing a stage marks every *later* one stale: an artifact computed from
+// an input that has since changed is still worth reading, but it is not a claim
+// about the text now on screen, and dimming it says so without discarding it.
+const RK_STAGES = ['sorbet','strip','desugar','derive','validate'];
+const RK_PILL = {sorbet:'pillratchetsorbet', strip:'pillratchetstrip',
+                 desugar:'pillratchetdesugar', derive:'pillratchetderive',
+                 validate:'pillratchetcheck'};
+
+function rkShow(key) {
+  for (const k of RK_STAGES) {
+    $('rail-' + k).classList.toggle('sel', k === key);
+    $('art-' + k).classList.toggle('on', k === key);
+  }
+}
+for (const k of RK_STAGES) {
+  // The ▸ inside a chip runs the stage; the rest of the chip selects its artifact.
+  $('rail-' + k).addEventListener('click', e => {
+    if (!e.target.closest('.rk-go')) rkShow(k);
+  });
+}
+// Staleness is per *buffer*, not per position in the rail. Each buffer carries a
+// version; a stage records the versions it read, and is stale when one of them has
+// moved since. Position would be wrong in both directions -- stage 3 re-runs srb on
+// its way to a `Deriv`, which must not stale the strip beside it, and editing the
+// stripped buffer must stale stage 4 without touching stage 0, which never reads it.
+const RK_BUF  = {src:'ratchetsrc', stripped:'ratchetstripped', deriv:'ratchetderiv'};
+const RK_DEPS = {sorbet:['src'], strip:['src'], desugar:['src','stripped'],
+                 derive:['src'], validate:['src','stripped','deriv']};
+let rkVer  = {src:0, stripped:0, deriv:0};
+let rkText = {src:null, stripped:null, deriv:null};
+let rkSeen = {};
+
+// A version moves only when the text actually differs -- stage 3 rewrites the
+// stripped buffer with (normally) the same bytes stage 1 put there, and a bump on
+// an identical write would stale stage 2 for no reason.
+function rkTouch(b) {
+  const cur = $(RK_BUF[b]).value;
+  if (cur === rkText[b]) return;
+  rkText[b] = cur; rkVer[b]++;
+}
+function rkPaint() {
+  for (const k of RK_STAGES) {
+    const seen = rkSeen[k];
+    $('rail-' + k).classList.toggle('stale',
+      !!seen && RK_DEPS[k].some(b => seen[b] !== rkVer[b]));
+  }
+}
+function rkSync() { for (const b in RK_BUF) rkTouch(b); rkPaint(); }
+function rkDone(key, cls, pillText, summary, show) {
+  const el = $('rail-' + key);
+  el.classList.remove('ok','no','warn');
+  if (cls) el.classList.add(cls);
+  pill(RK_PILL[key], pillText, cls === 'no' ? 'no' : cls);
+  $('sum-' + key).textContent = summary;
+  for (const b in RK_BUF) rkTouch(b);          // the stage may have written one
+  rkSeen[key] = Object.fromEntries(RK_DEPS[key].map(b => [b, rkVer[b]]));
+  rkPaint();
+  if (show) rkShow(key);
+}
+function rkReset() {
+  rkSeen = {};
+  for (const k of RK_STAGES) {
+    $('rail-' + k).classList.remove('stale','ok','no','warn');
+    pill(RK_PILL[k], '—');
+  }
+  ['the unstripped program','signatures out','to RubyCore','emit a Deriv','the kernel Bool']
+    .forEach((t, i) => { $('sum-' + RK_STAGES[i]).textContent = t; });
+  rkSync();
+}
+for (const b in RK_BUF) $(RK_BUF[b]).addEventListener('input', rkSync);
+
+// The rung's recorded `expect_validate`: what the ladder says this rung should do.
+// Kept beside the verdict because `validateD=false` is only a finding when the
+// target says true -- on a negative rung it IS the target.
+let rkExpect = null;
+function rkTarget(verdict) {
+  if (rkExpect === null || rkExpect === undefined) {
+    pill('ratchetexpect', 'target —'); return;
+  }
+  if (verdict === null) {
+    pill('ratchetexpect', `target validateD=${rkExpect}`); return;
+  }
+  const met = verdict === rkExpect;
+  pill('ratchetexpect', met ? `meets target (${rkExpect})` : `OFF TARGET — wanted ${rkExpect}`,
+       met ? 'ok' : 'no');
+}
+
+// Run all: the five stages in order, halting on a hard error. A red Sorbet is
+// not one -- a rung whose `expect_sorbet` is false is *supposed* to fail srb, and
+// the rest of the pipeline runs over it either way (build_corpus.py does the same).
+$('ratchetrunall').onclick = async () => {
+  const btn = $('ratchetrunall'), label = btn.textContent;
+  btn.disabled = true;
+  try {
+    for (const k of RK_STAGES) {
+      btn.textContent = `${k}…`;
+      await $('ratchet' + k).onclick();
+      if ($('ratcheterr').innerHTML) {
+        $('sum-' + k).textContent = 'stopped here';
+        $('rail-' + k).classList.add('no');
+        rkShow(k);
+        break;
+      }
+    }
+  } finally { btn.disabled = false; btn.textContent = label; }
+};
+
 let lastRatchetModelOut = null, lastRatchetCrubyOut = null;
 function ratchetDiff() {
   if (lastRatchetModelOut === null || lastRatchetCrubyOut === null) { pill('pillratchetdiff', 'agree —'); return; }
@@ -960,8 +1193,13 @@ $('ratchetcruby').onclick = () => ratchetBtn('ratchetcruby','ratchetrunmsg','run
 // rather than leaving a stale verdict beside a fresh derivation.
 function showSorbet(r) {
   const clean = r.srb_clean === true;
-  pill('pillratchetsorbet', clean ? 'srb clean' : 'srb errors', clean ? 'ok' : 'no');
   const diags = r.diagnostics || r.srb_diagnostics || [];
+  // `warn`, not `no`: a rung whose `expect_sorbet` is false is meant to fail srb,
+  // so red here would be a verdict the pane is not entitled to. The target chip
+  // is the thing that knows which was wanted.
+  rkDone('sorbet', clean ? 'ok' : 'warn', clean ? 'srb clean' : 'srb errors',
+         clean ? `${(r.sigs||[]).length} sig(s), no errors`
+               : `${diags.length} diagnostic line(s)`);
   const head = clean
     ? `<span class="k">no type errors</span>`
     : `<span class="k">Sorbet rejects this program</span>`;
@@ -978,7 +1216,7 @@ $('ratchetsorbet').onclick = () => ratchetBtn('ratchetsorbet','ratchetsorbetmsg'
   const d = await post('/ratchet/sorbet', {source: $('ratchetsrc').value});
   if (d.error) {
     ratchetErr(d);
-    pill('pillratchetsorbet', `srb ${d.error}`, 'no');
+    rkDone('sorbet', 'no', `srb ${d.error}`, d.message ? String(d.message).slice(0,60) : 'errored');
     $('ratchetsorbetout').innerHTML = '';
     return;
   }
@@ -988,49 +1226,87 @@ $('ratchetsorbet').onclick = () => ratchetBtn('ratchetsorbet','ratchetsorbetmsg'
 
 $('ratchetstrip').onclick = () => ratchetBtn('ratchetstrip','ratchetstripmsg','stripping…', async () => {
   const d = await post('/ratchet/strip', {source: $('ratchetsrc').value});
-  if (d.error) return ratchetErr(d);
+  if (d.error) { rkDone('strip','no','strip failed', d.error); return ratchetErr(d); }
   $('ratchetstripped').value = d.source;
   $('ratchetstripmsg').textContent = `${d.applied.length} transforms applied`;
+  rkDone('strip', 'ok', `${d.applied.length} transforms`,
+         `${d.source.split('\n').length} line(s) out`);
 });
 
 $('ratchetdesugar').onclick = () => ratchetBtn('ratchetdesugar','ratchetrunmsg','desugaring…', async () => {
   const d = await post('/ratchet/desugar', {source: ratchetText()});
-  if (d.error) return ratchetErr(d);
+  if (d.error) { rkDone('desugar','no','desugar failed', d.error); return ratchetErr(d); }
   $('ratchetcore').innerHTML = fmtSexpr(d.ast);
   $('ratchetrunmsg').textContent = `${d.bytes} bytes of RubyCore JSON`;
+  rkDone('desugar', 'ok', 'desugared', `${d.bytes} bytes of RubyCore`);
 });
 
 $('ratchetderive').onclick = () => ratchetBtn('ratchetderive','ratchetderivemsg','running Sorbet and emitter…', async () => {
   const d = await post('/ratchet/derive', {source: $('ratchetsrc').value});
-  if (d.error) return ratchetErr(d);
+  if (d.error) { rkDone('derive','no','emitter failed', d.error); return ratchetErr(d); }
   if (d.stripped) $('ratchetstripped').value = d.stripped;
   $('ratchetderiv').value = d.deriv ? JSON.stringify(d.deriv, null, 2) : JSON.stringify(d.emit, null, 2);
   if (d.sorbet) showSorbet(d.sorbet);
-  $('ratchetderivemsg').textContent = d.deriv ? `emitted · result ${JSON.stringify(d.ty)}` : `blocked: ${d.emit.why}`;
+  $('ratchetderivemsg').textContent = d.deriv ? `· emitted, result ${JSON.stringify(d.ty)}` : `· blocked`;
+  // A block is a coverage fact about the untrusted emitter, never a verdict on the
+  // program -- `warn`, and the reason is the summary, because the reason is the
+  // whole content (it names the fragment boundary that stopped it).
+  rkDone('derive', d.deriv ? 'ok' : 'warn', d.deriv ? 'emitted' : 'blocked',
+         d.deriv ? `result ${JSON.stringify(d.ty)}` : d.emit.why, true);
 });
 
 $('ratchetvalidate').onclick = () => ratchetBtn('ratchetvalidate','ratchetrunmsg','checking validateD…', async () => {
   let deriv;
   try { deriv = JSON.parse($('ratchetderiv').value); }
   catch(e) { return ratchetErr({error:'input', message:`Deriv JSON: ${e}`}); }
+  // Stage 3 blocked: what is in the box is the emitter's block report, not a
+  // certificate. Posting it would ask the kernel to decode a `Deriv` that was never
+  // emitted and report the decode failure as if it were a verdict. The ladder
+  // already answers this case -- `Ratchet/Rung.lean`'s `verdict` is `false` for a
+  // rung with no derivation -- so say that, and say why it is not the same `false`.
+  if (deriv && typeof deriv.rule !== 'string' && typeof deriv.status === 'string') {
+    rkDone('validate', 'warn', 'validateD=false', 'no certificate to check', true);
+    rkTarget(false);
+    $('ratchetcheckbox').innerHTML = `<div class="verdict unknown">` + [
+      `<span class="k">validateD</span> false`,
+      `<span class="k">why</span> stage 3 emitted no certificate — ${esc(deriv.why || deriv.status)}`,
+      `<span class="k">means</span> a blocked rung is not an accept (Ratchet/Rung.lean's <span class="ty">verdict</span>),`,
+      `      and a block is a coverage fact about the untrusted emitter, not a verdict on the program.`,
+    ].join('<br>') + `</div>`;
+    $('ratchetrunmsg').textContent = '';
+    return;
+  }
   const d = await post('/ratchet/validate', {source: $('ratchetsrc').value, deriv});
   if (d.error) {
     ratchetErr(d);
-    pill('pillratchetcheck', `validateD ${d.error}`, 'no');
+    rkDone('validate', 'no', `validateD ${d.error}`, d.message ? String(d.message).slice(0,60) : 'errored');
     $('ratchetcheckbox').innerHTML = '';
     return;
   }
   const ok = d.validateD === true;
-  pill('pillratchetcheck', `validateD=${ok}`, ok ? 'ok' : 'warn');
+  const met = rkExpect === null || rkExpect === undefined ? null : ok === rkExpect;
+  rkDone('validate', ok ? 'ok' : 'warn', `validateD=${ok}`,
+         met === null ? (ok ? 'in the fragment' : 'not in the fragment')
+                      : (met ? 'meets its target' : `off target — wanted ${rkExpect}`), true);
+  rkTarget(ok);
   const L = [`<span class="k">validateD</span> ${esc(String(ok))}`];
+  if (met !== null) L.push(met
+    ? `<span class="k">target</span> expect_validate=${rkExpect} — met`
+    : `<span class="k">target</span> expect_validate=${rkExpect} — <span class="no">NOT met</span>`);
+  L.push(ok
+    ? `<span class="k">means</span> safe by validateD_safe_boot, one theorem over every accepted rung`
+    : `<span class="k">means</span> the checker declines this certificate — either the judgment has no
+rule for it, or the Deriv is wrong. Not a claim that the program fails.`);
   $('ratchetcheckbox').innerHTML =
     `<div class="verdict ${ok ? 'accept' : 'unknown'}">${L.join('<br>')}</div>`;
   $('ratchetrunmsg').textContent = '';
 });
 
 // The live corpus is annotated `.rb` plus sibling `.meta.json`.
+let rkEntries = {};
 async function loadRatchetCorpus() {
   const d = await (await fetch('/ratchet/corpus')).json();
+  rkEntries = Object.fromEntries((d.entries||[]).map(e => [e.file, e]));
   $('ratchetcorpus').innerHTML = (d.entries||[]).map(e =>
     `<option value="${esc(e.file)}">${esc(e.file)} (tier ${e.tier}` +
     `${e.expect_validate === false ? ', expect false' : ''}) — ${esc(e.description||'')}</option>`
@@ -1044,9 +1320,14 @@ $('ratchetcorpusload').onclick = () => ratchetBtn('ratchetcorpusload','ratchetms
   $('ratchetstripped').value = '';
   $('ratchetderiv').value = '';
   $('ratchetcore').innerHTML = '<span class="empty">— strip, then desugar</span>';
-  $('ratchetsorbetout').innerHTML = '<span class="empty">— press “Sorbet”</span>';
-  pill('pillratchetsorbet', 'srb —');
-  $('ratchetmsg').textContent = `${d.file} — ${d.source.split('\n').length} line(s)`;
+  $('ratchetsorbetout').innerHTML = '<span class="empty">— press ▸ on stage 0</span>';
+  $('ratchetcheckbox').innerHTML = '<span class="empty">— derive, then run stage 4</span>';
+  rkReset(); rkShow('sorbet');
+  const e = rkEntries[$('ratchetcorpus').value] || {};
+  rkExpect = e.expect_validate;
+  rkTarget(null);
+  $('ratchetmsg').textContent =
+    `${d.file} — ${d.source.split('\n').length} line(s), tier ${e.tier ?? '?'}`;
 });
 
 // `traceSource` is the stepper's own driver (L302), shared across every tab: this

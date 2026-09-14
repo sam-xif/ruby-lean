@@ -263,12 +263,66 @@ annotated Ruby -+-> srb                    (stage 0, the unstripped program)
                                      +-> Lean model / CRuby
 ```
 
-The annotated and stripped programs have separate editors. The RubyCore view
-and emitted `Deriv` are visible, and the derivation remains editable before
-the trusted `validateD` check.
+### The layout: a rail, one artifact, and the target
 
-**Sorbet ✓** (stage 0) runs `srb` over the **unstripped** program — the annotated
-source in the top editor, as written. It is the one stage whose input is that
+The pane is laid out as the pipeline it is, rather than as six stacked boxes in a
+narrow column:
+
+```
+[ rung ▾ ] [Load rung] [Run all ⏩]  (meets target (true))
+┌ 0 Sorbet ▸┐┌ 1 Strip ▸┐┌ 2 Desugar ▸┐┌ 3 Derive ▸┐┌ 4 validateD ▸┐   ← the rail
+│ srb clean ││6 transf. ││ desugared  ││ emitted   ││ validateD=true│
+└───────────┘└──────────┘└────────────┘└───────────┘└───────────────┘
+┌ the annotated source ────────┐┌ the selected stage's artifact ─────┐
+│  (the input every stage reads)││  diagnostics / stripped / s-expr /│
+│                               ││  Deriv / verdict                  │
+└───────────────────────────────┘└───────────────────────────────────┘
+┌ execution: Lean model ▶ · CRuby ▶ · Step it ▶ ─ model | CRuby | agree ┐
+└ the two stdouts, side by side ───────────────────────────────────────┘
+```
+
+**The rail** is five chips in pipeline order. Each chip's **▸** runs that stage
+and the rest of the chip selects its artifact into the pane on the right, so one
+big viewer replaces five short ones and switching stages does not resize the page.
+The chip's top edge carries the verdict, so the rail reads left to right as a row
+of lights; its bottom line is the stage's own summary (`171 bytes of RubyCore`,
+`a block argument is outside the fragment`, `meets its target`). The grid is
+`auto-fit`, so the same markup is two columns with the step view hidden and one
+column with it shown — the layout follows the width, not the tab.
+
+**Run all ⏩** cascades all five in order. A red Sorbet does not stop it: a rung
+whose `expect_sorbet` is false is *supposed* to fail `srb`, and `build_corpus.py`
+runs the rest of the pipeline over it either way.
+
+**A stale chip is dimmed.** Staleness is tracked per *buffer*, not by position in
+the rail: each buffer carries a version, a stage records the versions it read, and
+a chip dims when one of them has moved since. Position would be wrong in both
+directions — stage 3 re-runs `srb` on its way to a `Deriv` and must not stale the
+strip beside it, and editing the stripped program must stale stage 4 without
+touching stage 0, which never reads it. A version moves only when the text
+actually differs, so stage 3 rewriting the stripped buffer with the same bytes
+stage 1 put there changes nothing. The dimmed artifact is kept rather than
+cleared: it is still worth reading, it is just not a statement about the text now
+on screen.
+
+**The target chip** beside `Run all` is the rung's recorded `expect_validate`, and
+after stage 4 it says whether the verdict met it. This is the distinction the
+pane exists to make: `validateD=false` is only a finding when the target says
+`true`. On a negative rung the `false` **is** the target, and the chip reads
+`meets target (false)`.
+
+The `Deriv` stays editable before the trusted check, which is the point of
+`derive` and `validateD` being two stages: tamper with the certificate and stage 4
+tells you so. If stage 3 **blocked**, stage 4 does not post the emitter's block
+report to the kernel — that would ask it to decode a `Deriv` that was never
+emitted and report the decode failure as a verdict. It answers `false` directly,
+which is what `Ratchet/Rung.lean`'s own `verdict` does for a rung with no
+derivation, and names the fragment boundary that stopped the emitter.
+
+### The stages
+
+**Stage 0, Sorbet** runs `srb` over the **unstripped** program — the annotated
+source in the left editor, as written. It is the one stage whose input is that
 editor rather than the stripped buffer, and necessarily so: stripping removes
 exactly what Sorbet reads, so running it downstream would answer a different
 question. It goes through `ratchet/scripts/srb_sigs.py`, not a second invocation
@@ -277,18 +331,20 @@ of the binary, so `srb clean` here is the same `srb_clean` that
 against — a rung whose `.meta.json` says `"expect_sorbet": false` should show
 `srb errors` and its diagnostics. The pane also reports how many signatures were
 read and how many were dropped, which is what stage 3's emitter will and will not
-have to work with. **Derive ▸** runs the same script on its way to a `Deriv`, so
-it refreshes this pane too rather than leaving a stale verdict beside a fresh
+have to work with. Stage 3 runs the same script on its way to a `Deriv`, so it
+refreshes this chip too rather than leaving a stale verdict beside a fresh
 derivation.
 
 Sorbet's verdict is not the ladder's. `srb clean` and `validateD=false` is an
 ordinary, GREEN combination — it says Sorbet accepts a program the certified
 fragment has no rules for.
 
-The Lean model and CRuby buttons execute the stripped program; their stdout
-comparison is shown beside the validation result. `validate-one` is a small
-adapter executable around the existing `validateD`; build it with
-`cd ratchet && lake build validate-one`.
+The execution strip at the foot runs the **stripped** program both ways and
+compares the two stdouts — the same diff the ratchet's agreement stage gates on.
+
+**Stage 4, `validateD`,** is the only trusted one, and its chip says so.
+`validate-one` is a small adapter executable around the existing `validateD`;
+build it with `cd ratchet && lake build validate-one`.
 
 **A `false` here can be a stale binary rather than a verdict.** The pane shells
 out to the compiled `validate-one`, so it answers for whatever `validateD` was
