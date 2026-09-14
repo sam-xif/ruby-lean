@@ -2,7 +2,7 @@ import Denote.Sem.MethodInstall
 import Denote.Typed.MethodDispatch
 import Denote.Typed.MethodStateControls
 import Denote.Typed.Primitive
-import Denote.Typed.MethodChecked
+import Denote.Typed.MethodLookup
 
 /-! A real-boot method write followed by dispatch, with full state conformance and
 an annotation-checked body. Still not a checker admission or a corpus rung. -/
@@ -48,7 +48,7 @@ def methodInstallBootOkB : Bool := methodBootOkB &&
   (match (bootMachine.heap.get Boot.mainId).payload with | .none => true | _ => false) &&
   (ancestors bootMachine.heap (classOf bootMachine.heap (.ref Boot.mainId)) ==
     [Boot.objectId, Boot.kernelId, Boot.basicObjectId]) && !bootMachine.preludeMode &&
-  defHookQuietB bootMachine
+  defHookQuietB bootMachine && (bootMachine.currentFrame.cref == [Boot.objectId])
 
 #guard methodInstallBootOkB
 
@@ -58,7 +58,7 @@ theorem add_definition_step (hb : methodInstallBootOkB = true) :
   have hh : defHookQuietB bootMachine = true := by
     have h := hb
     simp only [methodInstallBootOkB, Bool.and_eq_true] at h
-    exact h.2
+    exact h.1.2
   have hkont : bootMachine.kont = [] := by
     simp only [methodInstallBootOkB, methodBootOkB, Bool.and_eq_true, and_assoc] at hb
     exact List.isEmpty_iff.mp hb.2.2.2.1
@@ -74,7 +74,7 @@ theorem add_installed_call (hb : methodInstallBootOkB = true) (x y : Int) :
         [.int x, .int y] .none = .next next ∧ RunSpec installed next [] .int installedCtx := by
   simp only [methodInstallBootOkB, methodBootOkB, Bool.and_eq_true, Option.isNone_iff_eq_none,
     List.isEmpty_iff, beq_iff_eq, Bool.not_eq_true', and_assoc] at hb
-  obtain ⟨hboot, hcap, hobj, hkont, howner, hclass, hselfB, hpayloadB, hchain, hpre, _hquiet⟩ := hb
+  obtain ⟨hboot, hcap, hobj, hkont, howner, hclass, hselfB, hpayloadB, hchain, hpre, _hquiet, hcref⟩ := hb
   have hself : bootMachine.currentFrame.self = .ref Boot.mainId := by
     cases hs : bootMachine.currentFrame.self <;> simp_all
   have hpayload : (bootMachine.heap.get Boot.mainId).payload = .none := by
@@ -86,36 +86,25 @@ theorem add_installed_call (hb : methodInstallBootOkB = true) (x y : Int) :
       (md := definedMethod bootMachine "add" [.req "x", .req "y"] (toRuby addBody))
       hm₁ (ReframeFO.empty rfl rfl rfl rfl) (by simp) rfl rfl rfl (by decide)
       hclass (by intro old ho; exact False.elim (List.not_mem_nil ho)) rfl rfl rfl
+      (definedMethod_code howner hcref hpre)
     have hnil : reservedCtx.defs = [] := rfl
     simpa only [installed, installMethod, howner, addDecl, installedCtx, hnil] using h
   have hblk : bootMachine.currentFrame.blk = none := hm₀.blockTy
   have hcf : installed.currentFrame = bootMachine.currentFrame := rfl
-  have hs : frameScope
-      (requiredFrame installed.currentFrame.self "add"
-        (definedMethod bootMachine "add" [.req "x", .req "y"] (toRuby addBody)) ["x", "y"] [.int x, .int y]) =
-      frameScope installed.currentFrame := by
-    simp [frameScope, requiredFrame, definedMethod, hcf, hblk, hcap]
-  obtain ⟨next, he, hr⟩ := checked_method_runSpec addBodyChecked
-    hm (ReframeFO.empty rfl rfl rfl rfl) rfl hkont rfl rfl rfl rfl (by rfl)
+  apply checked_top_call (decl := addDecl) (args := [.int x, .int y]) (o := Boot.mainId)
+    (rest := [Boot.kernelId, Boot.basicObjectId]) addBodyChecked hm (by change addDecl ∈ [addDecl]; simp)
+    (ReframeFO.empty rfl rfl rfl rfl) rfl rfl (by simp) hkont (by rfl)
     (by change DenAll [.int, .int] installed [.int x, .int y]; simp [DenAll, denM, isIntV])
-    (by simp) hs
-    (fun x => by rw [constGet?_empty (κ := installedCtx.withFrame _) rfl,
-      constGet?_empty (κ := installedCtx) rfl])
+    (by rw [hcf]; exact hself)
     (by
-      simp only [FrameOk, currentFrame_pushMethodFrame]
-      refine ⟨rfl, ?_⟩
-      change isAName installed.heap installed.currentFrame.self "Object" = true
-      rw [hcf]
-      simpa only [installed, installMethod, isAName_defineMethod] using hobj)
-  refine ⟨next, ?_, hr⟩
-  have hrecv : installed.currentFrame.self = .ref Boot.mainId := (congrArg RubyCore.Frame.self hcf).trans hself
-  rw [hrecv] at he ⊢
-  rw [show Interp.finishSend installed (.ref Boot.mainId) .implicit "add" [.int x, .int y] .none =
-      Interp.enterUserMethod installed (.ref Boot.mainId) "add"
-        (definedMethod bootMachine "add" [.req "x", .req "y"] (toRuby addBody)) [.int x, .int y] none from
-    finishSend_installed hpayload (by rw [howner]; decide) (by rw [howner]; exact hclass)
-      (by rw [howner]; exact hchain) hpre]
-  exact he
+      change ((defineMethod bootMachine.heap _ _ _).get Boot.mainId).payload = .none
+      rw [heap_get_defineMethod_ne (by rw [howner]; decide), hpayload])
+    (by simpa only [installed, installMethod, Proof.classOf_defineMethod,
+      Proof.ancestors_defineMethod] using hchain)
+    (by rw [hcf]; exact howner) (by rw [hcf]; exact hcref)
+    (by rw [hcf]; exact hcap) (by rw [hcf]; exact hblk)
+  rw [hcf]
+  simpa only [installed, installMethod, isAName_defineMethod] using hobj
 
 #print axioms add_annotated_body
 #print axioms add_body_from_certificate

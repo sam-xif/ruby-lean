@@ -86,7 +86,10 @@ now consumes a body certificate checked against its annotations, not a hand body
 `MethodCheck.lean` packages that proof as `CheckedBody`: required formal names/order,
 first-order parameter/return annotations, exact return compatibility, and unchanged
 context/spine are checked before the artifact exists. `checked_method_runSpec` consumes
-it directly. Installed-signature/definition/call rules remain next. Explicit `return` needs an answer-contract extension. Neither boundary lemmas nor
+it directly. `DefsOk` now also pins ordinary-method metadata (`TopMethodCode`);
+`MethodLookup.lean` recovers the actual dispatched entry from conformance, and
+`checked_top_call` combines it with the checked body. Physical method-ready frame facts
+still need to enter the invariant. Installed-signature/definition/call rules remain next. Explicit `return` needs an answer-contract extension. Neither boundary lemmas nor
 declaration-only acceptance count as 052. `methodBootOkB` checks additional method-start
 facts, and `methodInstallBootOkB` also checks top-level installation/lookup/hook facts;
 these must join the validator's boot contract when methods are admitted.
@@ -117,6 +120,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/FramePres.lean`, `Denote/Typed/MethodReturn.lean` | Caller isolation, local restoration, and method-continuation composition |
 | `Denote/Sem/Reframe.lean`, `Denote/Typed/MethodState.lean` | Full frame-switch conformance and post-dispatch calls from annotated body proofs |
 | `Denote/Typed/MethodDispatch.lean` | Actual definition/lookup/dispatch equalities and call safety from annotated bodies |
+| `Denote/Typed/MethodLookup.lean` | Actual dispatched code recovered from `DefsOk`, then applied using a checked body |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |

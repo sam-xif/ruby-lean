@@ -8,6 +8,23 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
+-- Identical parameter/body fields do not suffice to describe callable user code.
+private def codeProbe : MethodDef :=
+  { params := [.req "x"], body := .var .lvar "x", owner := Boot.objectId, cref := [Boot.objectId] }
+example : TopMethodCode codeProbe := ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+example : ¬ TopMethodCode { codeProbe with builtin := some "Integer#+" } := by
+  intro h; cases h.builtin
+example : ¬ TopMethodCode { codeProbe with capturedFrame := some 0 } := by
+  intro h; cases h.captured
+example : ¬ TopMethodCode { codeProbe with declared := ["x"] } := by
+  intro h; cases h.declared
+example : ¬ TopMethodCode { codeProbe with superName := some "other" } := by
+  intro h; cases h.superName
+example : ¬ TopMethodCode { codeProbe with fromPrelude := true } := by
+  intro h; cases h.fromPrelude
+example : ¬ TopMethodCode { codeProbe with cref := [] } := by
+  intro h; cases h.cref
+
 private def runControl (p : Ratchet.Expr) : Interp.RunResult :=
   Interp.run 200 (Machine.init (toRuby p))
 

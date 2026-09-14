@@ -58,16 +58,16 @@ theorem DefsOk_defineMethod {D : DefTable} {m : Machine} {d : Defn} {md : Method
     (hm : DefsOk D m) (hc : (m.heap.classPayload? Boot.objectId).isSome = true)
     (hn : ∀ old ∈ D, old.name ≠ d.name)
     (hp : md.params = toRubyParams d.params) (hb : md.body = toRuby d.body)
-    (hu : md.undefined = false) :
+    (hu : md.undefined = false) (hcode : TopMethodCode md) :
     DefsOk (d :: D) { m with heap := defineMethod m.heap Boot.objectId d.name md } := by
   intro old ho
   simp only [List.mem_cons] at ho
   rcases ho with he | ho
   · subst old
-    exact ⟨md, ownMethod_defineMethod_self m.heap Boot.objectId d.name md hc, hp, hb, hu⟩
-  · obtain ⟨prev, hfind, hparams, hbody, hundef⟩ := hm old ho
+    exact ⟨md, ownMethod_defineMethod_self m.heap Boot.objectId d.name md hc, hp, hb, hu, hcode⟩
+  · obtain ⟨prev, hfind, hparams, hbody, hundef, hprev⟩ := hm old ho
     exact ⟨prev, (ownMethod_defineMethod_ne m.heap Boot.objectId Boot.objectId
-      d.name old.name md (hn old ho)).trans hfind, hparams, hbody, hundef⟩
+      d.name old.name md (hn old ho)).trans hfind, hparams, hbody, hundef, hprev⟩
 
 /-- Common state transport. The positive method/class tables are the installation
 rule's obligations; all data, scope, and negative dispatch facts are derived here.
@@ -238,12 +238,12 @@ theorem StateOk_defineTopMethod {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (hc : (m.heap.classPayload? Boot.objectId).isSome = true)
     (hfresh : ∀ old ∈ κ.defs, old.name ≠ d.name)
     (hp : md.params = toRubyParams d.params) (hb : md.body = toRuby d.body)
-    (hu : md.undefined = false) :
+    (hu : md.undefined = false) (hcode : TopMethodCode md) :
     StateOk { κ with pos := { κ.pos with defs := d :: κ.defs } } Γ I
       { m with heap := defineMethod m.heap Boot.objectId d.name md } :=
   StateOk_methodWrite hm ht hΓ ha hn hmiss
     (by simp [ClassesOk, hclasses])
-    (DefsOk_defineMethod hm.defs hc hfresh hp hb hu)
+    (DefsOk_defineMethod hm.defs hc hfresh hp hb hu hcode)
     (by simp [DeclClassOk, hclasses])
 
 /-- Reserving a method name weakens absence facts; it does not install a method or

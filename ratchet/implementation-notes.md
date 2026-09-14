@@ -8922,3 +8922,24 @@ both halves of what constrains them now have a name.
 - Artifact checker, bridge, and installed-call proof each build in under a second,
   axiom-clean. Full quiet ratchet GREEN: fragment 49, checker reach 51,
   252 agree / 0 disagree, all 22 rules proved.
+
+## Clink 99 (2026-09-14) — conformance must describe the code dispatch executes
+
+- `DefsOk` previously pinned only parameters/body/undefined. That is insufficient for
+  consuming a body proof: a builtin ignores the body; a captured method binds a different
+  environment. Add `TopMethodCode`: Object owner/cref, no alias super-name, builtin,
+  captured frame, predeclared locals, or prelude provenance. Visibility remains unrestricted
+  for implicit-self calls. Installation now proves these fields and transports old entries
+  unchanged. The ordinary definition constructor discharges them from its real frame.
+- `defsOk_lookup` derives the actual lookup hit from the conformance table and the
+  receiver's ancestor chain. `checked_top_call` uses that hit and a stored `CheckedBody`,
+  with no independently chosen runtime method. The installed `add` pilot now goes through
+  this route; its boot check additionally pins cref. Negative metadata controls cover the
+  routes that would invalidate ordinary body entry while leaving the syntax fields unchanged.
+- This is a necessary strengthening before method admission, not a bug in an already
+  admitted method rule. Physical method-ready frame facts still need to enter conformance;
+  the checker still declines whole-program methods. User status question answered explicitly:
+  body/call pilot proofs are not an end-to-end `validateD` example.
+- State, installation, lookup, and pilot proofs each build in under a second, axiom-clean.
+  Full quiet ratchet GREEN: fragment 49, checker reach 51, 252 agree / 0 disagree,
+  all 22 rules proved. Reach has not increased.

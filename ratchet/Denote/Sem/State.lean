@@ -200,13 +200,25 @@ def ClassesOk (C : CTable) (m : Machine) : Prop :=
         (fun cp => (cp.methods.find? (·.1 == d.name)).map (·.2)) = some md ∧
       md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧ md.undefined = false)
 
-/-- The top-level `def` table describes methods installed on `Object`, and *only* the ones a
+/-- Metadata required to enter an ordinary top-level method at its checked body. Matching
+syntax alone is insufficient: a builtin ignores that body, and a captured method binds a
+different environment. Visibility is unrestricted because these calls use implicit self. -/
+structure TopMethodCode (md : MethodDef) : Prop where
+  owner : md.owner = Boot.objectId
+  cref : md.cref = [Boot.objectId]
+  superName : md.superName = none
+  builtin : md.builtin = none
+  captured : md.capturedFrame = none
+  declared : md.declared = []
+  fromPrelude : md.fromPrelude = false
+
+/-- The top-level `def` table describes ordinary methods installed on `Object`, and *only* the ones a
 preceding statement performed — which is the whole soundness content of `DefTable`'s
 "already", per its docstring: a whole-program table would certify `foo(); def foo; end`. -/
 def DefsOk (D : DefTable) (m : Machine) : Prop :=
   ∀ d ∈ D, ∃ md, (m.heap.classPayload? Boot.objectId).bind
       (fun cp => (cp.methods.find? (·.1 == d.name)).map (·.2)) = some md ∧
-    md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧ md.undefined = false
+    md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧ md.undefined = false ∧ TopMethodCode md
 
 /-- **The assumption table's semantic content**, and the one component that is itself a
 statement about running the semantics rather than about the shape of the heap.

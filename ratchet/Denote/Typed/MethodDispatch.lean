@@ -22,6 +22,11 @@ def installMethod (m : Machine) (name : String) (ps : List RubyCore.Param)
   let md := definedMethod m name ps body
   { m with heap := defineMethod m.heap m.currentFrame.defmod name md }
 
+theorem definedMethod_code {m : Machine} {name : String} {ps : List RubyCore.Param}
+    {body : RubyCore.Expr} (ho : m.currentFrame.defmod = Boot.objectId)
+    (hc : m.currentFrame.cref = [Boot.objectId]) (hp : m.preludeMode = false) :
+    TopMethodCode (definedMethod m name ps body) := ⟨ho, hc, rfl, rfl, rfl, rfl, hp⟩
+
 /-- A missing or CRuby-shadowed `method_added` does not run user code. A genuine
 hook is deliberately not covered by this definition-only transition. -/
 def DefHookQuiet (m : Machine) : Prop :=
