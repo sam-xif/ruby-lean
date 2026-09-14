@@ -206,7 +206,9 @@ def main (args : List String) : IO UInt32 := do
   say "the conclusion says whether the run reached a type-stuck outcome) AND end-to-end"
   say "safety. So `dregistry_safe` is unconditional and holds at every registry size --"
   say "a rule cannot join without its safety proof. The right-hand column is COVERAGE,"
-  say "not debt: an unregistered rule is not in the judgment at all."
+  say "not debt: an unregistered rule is not in the judgment at all. Which is not a reason to"
+  say "leave it there -- coverage bounds what any certificate can say, so the target is 0 and"
+  say "the rung tally at the bottom says which rule buys the most."
   say ""
   say "=== END-TO-END SAFETY, at the real prelude-booted machine ==="
   say s!"  {safeRungs.length} corpus rungs proved `StuckFree bootMachine <program>`, \
@@ -222,7 +224,12 @@ at every fuel:"
   if !unexercised.isEmpty then
     say s!"  registered but NOT exercised end to end: \
 {String.intercalate ", " unexercised} ({unexercised.length} of a ceiling of \
-{unexercisedCeiling}) -- see found-issues.md §F30"
+{unexercisedCeiling}) -- see found-issues.md §F30."
+    say "  These are proved and in the judgment, but no rung the safety proof covers uses"
+    say "  them, so the end-to-end claim is about a narrower fragment than the registry."
+    say "  A non-empty list is legitimate in an intermediate state -- `var` needs a program"
+    say "  that binds a local first, which needs `seq` -- but it should never be LARGE, and"
+    say "  `unexercisedCeiling` only ever moves down. Growing it is the reviewable act."
   -- The cross-check, when a build directory is given.
   let mut crossOk := true
   let mut ready : List String := []
@@ -249,7 +256,22 @@ at every fuel:"
     IO.println ""
     if quiet then
       IO.println s!"{goals.length} rungs, {goals.length - unmet.length} proved safe, \
-{unmet.length} unmet -- {dn} clinks, {dUnregisteredRules.length} rules owed"
+{unmet.length} unmet"
+      -- The two rule counts mean different things and are easy to read as one. Both carry
+      -- their direction, because a bare number invites the reader to decide it is fine.
+      if dUnregisteredRules.isEmpty then
+        IO.println s!"  {dn} rules certified, 0 owed -- every rule in the judgment is proved"
+      else
+        IO.println s!"  {dn} rules certified · {dUnregisteredRules.length} OWED: \
+{String.intercalate ", " dUnregisteredRules} -- no semantic proof, so nothing that needs one"
+        IO.println "    can be certified. This is coverage, and the target is 0."
+      if unexercised.isEmpty then
+        IO.println "  0 exempt -- every certified rule is exercised by a proved rung"
+      else
+        IO.println s!"  {unexercised.length}/{unexercisedCeiling} certified rules EXEMPT from \
+end-to-end exercise: {String.intercalate ", " unexercised} -- proved and"
+        IO.println "    in the judgment, but no proved rung uses them. Only ever shrink this;"
+        IO.println "    non-empty is legitimate mid-ladder, large is not (§F30)."
     else
       IO.println "=== UNMET GOALS, in corpus rung order ==="
     IO.println ""

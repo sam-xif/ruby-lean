@@ -19,6 +19,22 @@ one rung at a time. Three numbers, three scripts, no others:
 
 Two exes (`ratchetd`, `semladder`), one report exe (`denotereport`), 42 Lean files, ~14k lines.
 
+**Two rule counts, easy to read as one.** `lake exe semladder` prints both, and they are
+different claims with different directions:
+
+* **owed** — `seq`, `prim`, `if'`: rules `Ratchet/Check.lean` defines and the registry has no
+  semantic proof for, so they are *not in the certified judgment at all* and nothing that
+  needs one can be certified. This is **coverage**, and the target is **0**. The unmet-goal
+  tally says which buys the most (`seq` 177 rungs, `prim` 169).
+* **exempt** (`unexercised`, `2/2` today) — `var`, `vasgn`: rules that *are* certified, proved
+  and in the judgment, but that no rung the safety proof covers uses, so the end-to-end claim
+  is about a narrower fragment than the registry. **Never large.** Non-empty is legitimate in
+  an intermediate state — `var` needs a program that binds a local, which needs `seq` (§F30) —
+  but `unexercisedCeiling` only ever moves down, and raising it is the reviewable act.
+
+Neither is "debt owed to a plan": a rule with no proof is not an undischarged obligation, it
+is not a rule. Both are still the things to shrink.
+
 ## What was deleted, and the one rule that decided it
 
 **Clink 68** removed the pre-answer-typed machinery: 69 files and ~28k lines of Lean, plus the
