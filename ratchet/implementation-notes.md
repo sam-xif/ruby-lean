@@ -8665,3 +8665,32 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 49, checker reach 51, 252 agree / 0 disagree,
   all 22 rules proved. New entry/environment proofs and the counterexample are
   axiom-clean; no coverage increase is claimed until definitions and calls certify.
+
+## Clink 87 (2026-09-14) — preserve caller frames in the actual body contract
+
+- Add `FramePres` to `Framed`, hence to every existing semantic rule. It preserves
+  frame-count growth and the root's captured-parent field, and preserves inactive
+  old frames when that parent is absent. The captured-parent field makes isolation
+  compositional. Captured activations deliberately do not promise isolation; a
+  runtime control still writes an outer local through one. No blanket ban on captures.
+- Prove local-write preservation from the actual `setLocal.owner` walk. Equal
+  heaps/stacks no longer construct `Framed` without a frame-effect proof; allocation
+  and control updates supply equality, writes supply `FramePres.setLocal`. Existing
+  sequence/argument rules compose it automatically. The clink-86 damage witness is
+  retained as a heap/stack counterexample and now proved excluded by `Framed`.
+- `MethodReturn` derives saved-frame preservation and `Framed` after popping a
+  required method, then restores first-order caller locals (including alias value
+  equalities) for an uncaptured caller. A worked same-name shadowing control restores
+  `outer : Integer` after the callee writes its own `outer = true`. Captured callers
+  need a captured-chain transport, not an assumed lookup equality after frame growth.
+- Generalize `bindSpec`'s outgoing origin: a method continuation returns to the
+  caller, so retaining the body's origin would demand the wrong stack balance.
+  `methodFrame_runSpec` consumes the body contract through the actual `frameK`,
+  handles value/escape/Unsupported outcomes, and leaves full caller `StateOk` as an
+  explicit premise. That final conformance transport and checked-signature/context
+  integration remain owed; explicit `return` also needs a body-answer contract that
+  admits targeted returns. No checker method admission or coverage increase yet.
+- Full quiet ratchet GREEN: fragment 49, checker reach 51, 252 agree / 0 disagree,
+  all 22 rules proved under the stronger framing contract. Caller restoration,
+  method-frame composition, and `validateD_safe_boot` are axiom-clean. The first
+  gate attempt caught a doc-comment placement error; corrected before the green run.

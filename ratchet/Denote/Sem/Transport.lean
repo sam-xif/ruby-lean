@@ -213,7 +213,7 @@ theorem Ext_toReCtl (m : Machine) (c : Ctl) (k : List Kont) : Ext m (reCtl m c k
 fields are `rfl`. This is the first conjunct of every rule whose value is produced in one step
 without allocating. -/
 theorem Framed_reCtl (m : Machine) (c : Ctl) (k : List Kont) : Framed m (reCtl m c k) :=
-  Framed.of_heap_stack rfl rfl
+  Framed.of_heap_stack rfl rfl (.of_eq rfl rfl)
 
 /-- An `Ext` is a `Framed`: it pins the frame stack and every object's class-ness outright.
 Every allocating leaf rung already builds one for `StateOk_ext`, so this is where those rungs
@@ -223,14 +223,14 @@ theorem Framed.of_ext {m m' : Machine} (he : Ext m m') : Framed m m' :=
     fun v n h => by
       simpa only [denM] using
         (denM_ext (τ := .cls n) (v := v) he (by simpa only [denM] using h)),
-    fun _ _ _ h => denM_ext he h⟩
+    fun _ _ _ h => denM_ext he h, .of_eq he.stack he.frames⟩
 
 theorem Framed_withCtl (m : Machine) (c : Ctl) : Framed m (Interp.withCtl m c) :=
-  Framed.of_heap_stack rfl rfl
+  Framed.of_heap_stack rfl rfl (.of_eq rfl rfl)
 
 theorem Framed_setLocal (m : Machine) (x : String) (w : Value) :
     Framed m (m.setLocal x w) :=
-  Framed.of_heap_stack (setLocal_heap m x w) (setLocal_stack m x w)
+  Framed.of_heap_stack (setLocal_heap m x w) (setLocal_stack m x w) (.setLocal m x w)
 
 /-- **Conformance does not read the control word.** A corollary of `StateOk_ext`
 (`Denote/Sem/State.lean`) rather than a second component-by-component induction: rewriting

@@ -79,15 +79,16 @@ theorem RunSpec.answer {origin m : Machine} {Γ : Env} {τ : Ty} {a : Answer}
       | esc j => cases j <;> simpa [AnsOk, EscOk, deliverA] using hr.2.1
     · intro v hv; exact StateOk_deliverA (hr.2.2 v hv)
 
-/-- Compose a run with a continuation contract, allowing a different outgoing context and
-ivar spine. Halts remain covered; the continuation receives the complete answer contract. -/
+/-- Compose a run with a continuation contract, allowing a different outgoing context,
+ivar spine, and origin (a method continuation restores the caller's frame). Halts remain
+covered; the continuation receives the complete answer contract. -/
 theorem RunSpec.bindSpec {Γ₁ Γ₂ : Env} {e : Ratchet.Expr} {σ τ : Ty}
-    {κ₁ κ₂ : Ctx} {I₁ I₂ : Ty} {m : Machine}
+    {κ₁ κ₂ : Ctx} {I₁ I₂ : Ty} {m origin : Machine}
     (h : RunSpec m (evalFrom m e) Γ₁ σ κ₁ I₁)
     {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
     (hk : ∀ a n, ResultOk m Γ₁ σ a n κ₁ I₁ →
-      RunSpec m (deliverA a n K) Γ₂ τ κ₂ I₂) :
-    RunSpec m (pushK K (evalFrom m e)) Γ₂ τ κ₂ I₂ := by
+      RunSpec origin (deliverA a n K) Γ₂ τ κ₂ I₂) :
+    RunSpec origin (pushK K (evalFrom m e)) Γ₂ τ κ₂ I₂ := by
   constructor
   · exact safe_pushK hK haltBlind_stuck oof_stuck h.1
       h.2 (fun a n hn => (hk a n hn).1)

@@ -631,8 +631,9 @@ theorem SemA.vasgn {Γ Γ₁ : Env} {x : String} {e : Ratchet.Expr} {τ : Ty}
             injection h with h1 h2 _
             cases h1; cases h2
             refine ⟨?_, ?_, ?_⟩
-            · exact hfr.trans (Framed.of_heap_stack (by simp [afterWrite, deliverA,
-                Interp.withCtl]) (by simp [afterWrite, deliverA, Interp.withCtl]))
+            · exact hfr.trans
+                ((Framed_reCtl m₁ (.value v) []).trans
+                  ((Framed_setLocal _ x v).trans (Framed_withCtl _ (.value v))))
             · show denM τ _ v
               exact denM_withCtl.mpr (denM_setLocal
                 (by rw [popK_eq]; exact denM_reCtl.mpr (denM_deliverA.mpr hd)) hcap

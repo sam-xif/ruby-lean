@@ -75,7 +75,7 @@ theorem SemSafeCtxA.vasgn {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty}
         (by intro y σ hy; rw [hy] at ha; simp [isAliasTy] at ha)
     have hresult : ResultOk m (envAfter Γ' x τ) τ (.val v) (base.setLocal x v)
         κ' (killClosOverSpine I' x τ) :=
-      ⟨hr.1.trans (Framed.of_heap_stack rfl rfl), denM_setLocal hd hc hd,
+      ⟨hr.1.trans ((Framed_reCtl n _ []).trans (Framed_setLocal base x v)), denM_setLocal hd hc hd,
         fun _ _ => hout⟩
     apply RunSpec.step (by rfl)
       (show Interp.stepFn (deliverA (.val v) n [.asgnK .lvar x]) =

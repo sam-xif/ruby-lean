@@ -1,4 +1,4 @@
-import Denote.Typed.MethodEntry
+import Denote.Typed.MethodReturn
 
 /-! Runtime controls for the real call boundary, and a caller-framing counterexample.
 None of these is counted as checker method coverage. -/
@@ -46,22 +46,65 @@ example : EnvOk [("x", .int), ("y", .int)]
   requiredFrame_envOk caller _ "add" addMethod _ _ rfl
     (by simp [DenAll, denM, isIntV]) (by simp [FirstOrder, isAliasTy])
 
--- Framed alone does NOT protect the inactive caller's locals. The damaged state is
--- not claimed reachable: it refutes a proposed transport from this contract alone.
+-- Equal heaps/stacks alone do NOT protect the inactive caller's locals. The damaged
+-- state is not claimed reachable; the strengthened Framed now excludes this witness.
 private def entered : Machine :=
   pushMethodFrame caller (requiredFrame caller.currentFrame.self "add" addMethod [] [])
 private def damaged : Machine :=
   let badFrame := { caller.currentFrame with locals := [("outer", .bool true)] }
   { entered with frames := entered.frames.set! 0 badFrame }
 
-theorem framed_does_not_protect_caller :
-    Framed entered damaged ∧
+theorem heap_stack_does_not_protect_caller :
+    damaged.heap = entered.heap ∧ damaged.stack = entered.stack ∧
       ¬ EnvOk [("outer", .int)] { damaged with stack := damaged.stack.tail } := by
-  refine ⟨Framed.of_heap_stack rfl rfl, ?_⟩
+  refine ⟨rfl, rfl, ?_⟩
   intro h
   have hd := (h.1 "outer" .int rfl).1
   change denM .int _ (.bool true) at hd
   simp [denM, isIntV] at hd
 
-#print axioms framed_does_not_protect_caller
+theorem framed_excludes_caller_damage : ¬ Framed entered damaged := by
+  intro h
+  have hf := h.frames.isolated rfl 0 (by decide) (by decide)
+  have hv := congrArg (fun f => (f.locals.find? (·.1 == "outer")).map (·.2)) hf
+  change some (Value.bool true) = some (Value.int 9) at hv
+  cases hv
+
+private theorem caller_env : EnvOk [("outer", .int)] caller := by
+  constructor
+  · intro x τ hx
+    have hx' : "outer" = x ∧ Ty.int = τ := by simpa [envGet?] using hx
+    rcases hx' with ⟨rfl, rfl⟩
+    constructor
+    · unfold caller
+      rw [getLocal_setLocal_self _ _ _ (by decide)]
+      simp [stripAlias, denM, isIntV]
+    · intro y ρ h; cases h
+  · intro x hx
+    have hn : x ≠ "outer" := by
+      intro he
+      subst x
+      simp [envGet?] at hx
+    unfold caller
+    rw [getLocal_setLocal_ne _ _ _ hn]
+    rfl
+
+-- A same-named local written inside the uncaptured method leaves the caller typed.
+example : EnvOk [("outer", .int)] (popMethodFrame (entered.setLocal "outer" (.bool true))) :=
+  method_pop_envOk (m := caller)
+    (f := requiredFrame caller.currentFrame.self "add" addMethod [] [])
+    (by decide) rfl rfl (Framed_setLocal entered "outer" (.bool true))
+    caller_env (by simp [stripAlias, FirstOrder])
+
+-- Captured activations may write the caller; FramePres deliberately does not deny this.
+private def capturedEntry : Machine :=
+  pushMethodFrame caller
+    { requiredFrame caller.currentFrame.self "dm" addMethod [] [] with captured := some 0 }
+#guard Value.identEq
+  ((popMethodFrame (capturedEntry.setLocal "outer" (.bool true))).getLocal "outer") (.bool true)
+example : FramePres capturedEntry (capturedEntry.setLocal "outer" (.bool true)) :=
+  .setLocal _ _ _
+
+#print axioms heap_stack_does_not_protect_caller
+#print axioms framed_excludes_caller_damage
 end Ratchet.Denote.Typed

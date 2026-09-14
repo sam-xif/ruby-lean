@@ -1,4 +1,5 @@
 import Denote.Sem.State
+import Denote.Sem.FramePres
 
 /-!
 # `Denote/Sem/Framed.lean` — the parallel judgment, semantically
@@ -115,7 +116,12 @@ per-rule and each rule pays only for the bids it dispatches to.
 It is also, as invariants go, cheap to discharge: `reCtl`/`withCtl`/`setLocal` do not touch the
 heap at all, an `Ext` pins `classPayload?` outright, and a rule with sub-judgments composes its
 premises' fields by `Framed.trans` — which is where the transport comes from, since a send's
-argument premise runs from the machine the *receiver* left behind. -/
+argument premise runs from the machine the *receiver* left behind.
+
+`frames` adds the missing caller-isolation contract (clink 87). Equal heaps/stacks
+alone permit arbitrary damage to inactive locals. `FramePres` preserves all inactive old
+frames when the activation has no captured parent, and preserves that guard for composition.
+Captured activations may still write through their captured chain. -/
 structure Framed (m m' : Machine) : Prop where
   stack : m'.stack = m.stack
   cls : ∀ k, (m.heap.classPayload? k).isSome = true → (m'.heap.classPayload? k).isSome = true
@@ -124,21 +130,24 @@ structure Framed (m m' : Machine) : Prop where
   /-- Retained collection elements survive later evaluations in the nonmutating fragment.
       Captured-frame types are excluded: a local write can invalidate them. -/
   firstOrder : ∀ τ, FirstOrder τ = true → ∀ v, denM τ m v → denM τ m' v
+  /-- Uncaptured activations cannot modify inactive caller frames. -/
+  frames : FramePres m m'
 
 theorem Framed.refl (m : Machine) : Framed m m :=
-  ⟨rfl, fun _ h => h, fun _ _ h => h, fun _ _ _ h => h⟩
+  ⟨rfl, fun _ h => h, fun _ _ h => h, fun _ _ _ h => h, .refl m⟩
 
 theorem Framed.trans {m₁ m₂ m₃ : Machine} (h₁ : Framed m₁ m₂) (h₂ : Framed m₂ m₃) :
     Framed m₁ m₃ :=
   ⟨by rw [h₂.stack, h₁.stack], fun k h => h₂.cls k (h₁.cls k h),
     fun v n h => h₂.nominal v n (h₁.nominal v n h),
-    fun τ ht v h => h₂.firstOrder τ ht v (h₁.firstOrder τ ht v h)⟩
+    fun τ ht v h => h₂.firstOrder τ ht v (h₁.firstOrder τ ht v h),
+    h₁.frames.trans h₂.frames h₁.stack⟩
 
-/-- The two machine updates that keep the heap and the frame stack: `Framed` is free at both. -/
+/-- Equal heaps/stacks do not imply frame preservation; callers must supply it explicitly. -/
 theorem Framed.of_heap_stack {m m' : Machine} (hh : m'.heap = m.heap)
-    (hs : m'.stack = m.stack) : Framed m m' :=
+    (hs : m'.stack = m.stack) (hf : FramePres m m') : Framed m m' :=
   ⟨hs, fun k h => by rw [hh]; exact h, fun v n h => by rw [hh]; exact h,
-    fun _ ht _ h => (denM_heap_only ht hh.symm).mp h⟩
+    fun _ ht _ h => (denM_heap_only ht hh.symm).mp h, hf⟩
 
 /-! ## The judgment that lived here, and why the shape had to go
 

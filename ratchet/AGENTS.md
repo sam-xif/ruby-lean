@@ -1,6 +1,6 @@
 # AGENTS.md — `ratchet/`: the Sorbet-typed ladder
 
-## Current state (2026-09-13)
+## Current state (2026-09-14)
 
 The typed/safe gap is closed **by a theorem, not rung by rung**.
 [`Denote/Typed/Bridge.lean`](Denote/Typed/Bridge.lean) proves
@@ -57,11 +57,13 @@ context-general local/assignment/sequence proofs. This is infrastructure for 052
 coverage: `defDecl`/`callSig` remain rejected. Before admitting definitions, check every body
 against its parameter/return annotations, including uncalled bodies; require define-then-call
 positive controls as well as declaration controls. Never treat a signature as its own proof.
-`MethodEntry.lean` proves required-positional binding against the actual entry function and
-establishes the annotated parameter environment. `MethodEntryControls.lean` exposes the next
-transport obligation: `Framed` alone does not preserve inactive caller locals (proved
-counterexample). Caller restoration must gain an explicit frame-preservation contract before
-call admission; neither entry lemmas nor declaration-only acceptance count as 052.
+`MethodEntry.lean` proves required-positional binding and the annotated parameter environment.
+`Framed` now carries `FramePres`: uncaptured activations preserve inactive caller frames;
+captured ones may still write through their captured chain. `MethodReturn.lean` restores the
+caller frame and first-order local environment, and composes a body run through the real
+method continuation. Full caller `StateOk` is still an explicit obligation, and explicit
+`return` needs an answer-contract extension. Neither boundary lemmas nor declaration-only
+acceptance count as 052; method admission and checked-signature integration remain next.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 proofs use no `sorry`, `native_decide`, or new axioms.
 
@@ -82,6 +84,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/Array.lean` | First-order array evaluation, retention, and allocation |
 | `Denote/Typed/Context.lean` | Context-indexed run contract, specialization equivalence, assignment and sequence |
 | `Denote/Typed/MethodEntry.lean` | Required-positional method entry and annotated parameter-environment conformance |
+| `Denote/Sem/FramePres.lean`, `Denote/Typed/MethodReturn.lean` | Caller isolation, local restoration, and method-continuation composition |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |
 | `Denote/Typed/HashIndex.lean` | Hash dispatch, lookup, nil defaults, and default-value counterexample |
