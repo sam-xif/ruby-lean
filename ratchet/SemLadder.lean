@@ -1,4 +1,5 @@
 import Denote.Typed.RuleAudit
+import Denote.Typed.Bridge
 import Ratchet.Rung
 
 /-!
@@ -57,6 +58,13 @@ without its proof, so the count is a count of proofs. Raise it when the registry
 drop means a proof was deleted or broken. -/
 def clinkFloor : Nat := 16
 
+/-- The recorded size of **the certified fragment**: corpus rungs `validateD` accepts, each
+safe by `validateD_safe_boot` (`Denote/Typed/Bridge.lean`). This is the number the ladder
+exists to grow, and the one that means "climbed" now that acceptance and safety are the same
+fact. It only ever rises: a rung the checker accepted once is a rung it should still accept,
+so a drop is a rule weakened or a corpus rung changed. -/
+def fragmentFloor : Nat := 38
+
 /-- How many unmet goals the **quiet** report prints before truncating. The full list is
 `--verbose`; this is the number that keeps a commit-time gate readable, since the list is 251
 entries long today and a report nobody scrolls is a report nobody reads. -/
@@ -98,37 +106,26 @@ A built rung falls into one of four states:
 Only `READY` is red. The rest is the goal list. -/
 
 inductive GoalState where
-  /-- Typed **and** proved `StuckFree` end to end. The only complete state. -/
-  | proved
-  /-- `validateD` accepted it and every rule it needs is registered: the registry can
-  justify it today and nobody has. Started and incomplete. -/
-  | ready
-  /-- `validateD` accepted it, so a **certificate exists** — but the derivation leans on
-  rules with no semantic proof, so nothing backs that certificate end to end. Started and
-  incomplete, and the rule names say what is owed. -/
-  | certified (on : List String)
-  /-- The checker rejects it and every rule it needs is registered: no certificate, so
-  nothing is owed. (A deliberately ill-typed rung lives here.) -/
-  | rejected
-  /-- Not accepted, and needs a rule that is not in the judgment. Pure ascent. -/
-  | blocked (on : List String)
-  | outOfFragment (on : List String)
+  /-- `validateD` accepts a certificate for it, so `validateD_safe_boot` proves it
+  `StuckFree bootMachine` — no per-rung theorem required. **In the fragment.** -/
+  | inFragment
+  /-- The checker rejects it: no certificate, so nothing is claimed and nothing is owed.
+  A deliberately ill-typed rung lives here, and so does one whose `sig`s `Ty` cannot say. -/
+  | rejected (why : String)
+  /-- The judgment has no rule for something in it, so the checker cannot even try. This is
+  the ascent: the fragment grows by giving `DJudge` a rule, proving it, and registering it. -/
+  | outside (why : String)
   | noProgram (why : String)
 
 def GoalState.label : GoalState → String
-  | .proved => "proved"
-  | .ready => "STARTED, INCOMPLETE -- every rule registered, no safety theorem"
-  | .certified on => s!"STARTED, INCOMPLETE -- certified, but {String.intercalate ", " on} \
-{if on.length == 1 then "has" else "have"} no semantic proof"
-  | .rejected => "rejected by the checker (no certificate, nothing owed)"
-  | .blocked on => s!"blocked on {String.intercalate ", " on}"
-  | .outOfFragment on => s!"outside the judgment ({String.intercalate ", " on})"
+  | .inFragment => "in the fragment -- safe by validateD_safe_boot"
+  | .rejected why => s!"rejected by the checker ({why})"
+  | .outside why => s!"outside the judgment -- {why}"
   | .noProgram why => s!"no program ({why})"
 
-/-- The states that are **started and incomplete** -- the ones that make the ratchet RED. -/
-def GoalState.isRed : GoalState → Bool
-  | .ready => true
-  | .certified _ => true
+/-- Is this rung inside the certified fragment? -/
+def GoalState.inFrag : GoalState → Bool
+  | .inFragment => true
   | _ => false
 
 structure Goal where
@@ -139,29 +136,34 @@ structure Goal where
 def pad (w : Nat) (s : String) : String :=
   if s.length >= w then s else s ++ String.ofList (List.replicate (w - s.length) ' ')
 
-/-- Classify one built rung. `rulesUsed` is the predictor `Denote/Typed/Safety.lean` §4
-describes -- and the reason it is trustworthy here is `Denote/Typed/RuleAudit.lean` §3, which
-checks it against the proof terms on every rung that has one.
+/-! ### Classifying a rung, after the bridge
 
-**`accepted` is what makes a rung "started".** `validateD` accepting a rung means a
-certificate for it exists and checks; a rung is on the ladder from that moment. If no
-end-to-end safety proof backs it, the rung is half-climbed -- the ladder is claiming a rung
-the safety determination does not reach. Whether that is because the rules are proved and
-nobody wrote the theorem (`ready`) or because the rules themselves have no semantic proof
-(`certified`) changes the remedy, not the verdict. -/
-def classify (name : String) (accepted : Bool) (prog : Option Ratchet.Expr) : GoalState :=
-  match prog with
-  | none => .noProgram "upstream stage declined"
-  | some p =>
-    if safeRungs.any (·.1 == name) then .proved
-    else
-      let used := (rulesUsed p).eraseDups
-      let missing := used.filter fun r => !dRegisteredRules.contains r
-      if accepted then
-        if missing.isEmpty then .ready else .certified missing
-      else if missing.contains "?" then .outOfFragment missing
-      else if missing.isEmpty then .rejected
-      else .blocked missing
+Before `Denote/Typed/Bridge.lean` this function asked "does a *per-rung safety theorem* exist
+for it", and a rung the checker accepted without one was `STARTED, INCOMPLETE` (§F32). That
+question is now answered once, for every rung at once, by
+
+    validateD_safe_boot : validateD p d = true → bootOkB = true → StuckFree bootMachine p
+
+so acceptance **is** the safety proof and the half-climbed state cannot occur. What is left to
+ask of a rung is only whether it is in the fragment, and if not, why — which is the work queue
+for making the fragment bigger.
+
+The one thing that could reopen the gap is the bridge ceasing to cover the judgment: a rule
+added to `DJudge` without a clink. That is a whole-registry fact, not a per-rung one, so it is
+gated once in `main` rather than tested here. -/
+def classify (accepted expectValidate : Bool) (falseReason : Option String)
+    (stage : Ratchet.RungStage) (prog : Option Ratchet.Expr) : GoalState :=
+  if accepted then .inFragment
+  else match stage, prog with
+    | .failed st why, _ => .noProgram s!"{st}: {why}"
+    | .blocked why, _ => .outside why
+    | .ok, none => .noProgram "no program"
+    | .ok, some _ =>
+      -- The emitter produced a certificate and `validateD` said no. Whether that is correct
+      -- depends on what the rung is *for*, which `expect_validate` records: a negative rung
+      -- is doing its job, a positive one is a checker gap and `ratchetd` gates reach on it.
+      if expectValidate then .outside "expected to type, and the checker declines it"
+      else .rejected (falseReason.getD "ill-typed on purpose")
 
 /-- Every built rung, in corpus order (the filenames are `NNN-name.rung.json`, so sorting
 the paths *is* the corpus ordering). -/
@@ -181,7 +183,11 @@ def loadGoals (dir : System.FilePath) : IO (List Goal) := do
       | .ok j => (Ratchet.Rung.ofJson? j).toOption
     let prog := rung?.bind (·.program)
     let accepted := (rung?.map (·.verdict)).getD false
-    goals := goals ++ [{ name, state := classify name accepted prog }]
+    let stage := (rung?.map (·.stage)).getD (.failed "load" "unreadable rung.json")
+    let expectV := (rung?.map (·.expectValidate)).getD false
+    let falseWhy := rung?.bind (·.falseReason)
+    goals := goals ++
+      [{ name, state := classify accepted expectV falseWhy stage prog }]
   return goals
 
 def checkRung (dir : System.FilePath) (name : String) (p : Ratchet.Expr) : IO RungCheck := do
@@ -263,8 +269,7 @@ at every fuel:"
     say "  `unexercisedCeiling` only ever moves down. Growing it is the reviewable act."
   -- The cross-check, when a build directory is given.
   let mut crossOk := true
-  let mut ready : List String := []
-  let mut goals' : List Goal := []
+  let mut fragment : Nat := 0
   match dirArg? with
   | none =>
     say ""
@@ -283,122 +288,113 @@ at every fuel:"
         crossOk := false
     -- The goal list, in corpus rung order. This is the part `--quiet` keeps.
     let goals ← loadGoals dir
-    goals' := goals
-    ready := goals.filterMap fun g => if g.state.isRed then some g.name else none
-    let unmet := goals.filter fun g => match g.state with | .proved => false | _ => true
+    let frag := goals.filter (·.state.inFrag)
+    let outside := goals.filter fun g => !g.state.inFrag
+    fragment := frag.length
+    -- **The fragment's reach**: the leading run of corpus rungs inside it. One number now,
+    -- not two -- `ratchetd`'s LADDER REACH and this used to differ by the rungs that were
+    -- certified and unproved (§F32), and the bridge closed that gap by construction.
+    let fragReach := (goals.takeWhile (·.state.inFrag)).length
     IO.println ""
-    -- **The ladder's reach, under the definition this report enforces**: the leading run of
-    -- corpus rungs that are typed *and* proved `StuckFree`. `ratchetd`'s LADDER REACH counts
-    -- the leading run the *checker* is satisfied by, which is a weaker thing and a larger
-    -- number; the gap between them is exactly the RED below.
-    let safetyReach := (goals.takeWhile fun g =>
-      match g.state with | .proved => true | _ => false).length
     if quiet then
-      IO.println s!"{goals.length} rungs · safety reach {safetyReach} · \
-{goals.length - unmet.length} proved safe · {unmet.length} unmet"
-      -- The two rule counts mean different things and are easy to read as one. Both carry
-      -- their direction, because a bare number invites the reader to decide it is fine.
-      if dUnregisteredRules.isEmpty then
-        IO.println s!"  {dn} rules certified, 0 owed -- every rule in the judgment is proved"
-      else
-        IO.println s!"  {dn} rules certified · {dUnregisteredRules.length} OWED: \
-{String.intercalate ", " dUnregisteredRules} -- no semantic proof, so nothing that needs one"
-        IO.println "    can be certified. This is coverage, and the target is 0."
-      if unexercised.isEmpty then
-        IO.println "  0 exempt -- every certified rule is exercised by a proved rung"
-      else
+      IO.println s!"{goals.length} rungs · fragment {frag.length} (reach {fragReach}) · \
+{outside.length} outside"
+      IO.println s!"  {dn} rules certified, {dUnregisteredRules.length} owed -- \
+every rule in the judgment is proved, so `djudge_certified` covers the whole"
+      IO.println "    judgment and `validateD` accepting a rung IS that rung's safety proof"
+      IO.println s!"    (Denote/Typed/Bridge.lean). {safeRungs.length} rungs additionally have \
+a worked theorem, cross-checked."
+      if !unexercised.isEmpty then
         IO.println s!"  {unexercised.length}/{unexercisedCeiling} certified rules EXEMPT from \
-end-to-end exercise: {String.intercalate ", " unexercised} -- proved and"
-        IO.println "    in the judgment, but no proved rung uses them. Only ever shrink this;"
-        IO.println "    non-empty is legitimate mid-ladder, large is not (§F30)."
+end-to-end exercise: {String.intercalate ", " unexercised} (§F30)."
     else
-      IO.println s!"=== SAFETY REACH: {safetyReach} rungs typed AND proved StuckFree ==="
+      IO.println s!"=== THE CERTIFIED FRAGMENT: {frag.length} rungs, reach {fragReach} ==="
       IO.println ""
-      IO.println "  This is the ladder's reach under the definition the gate below enforces."
-      IO.println "  `ratchetd`'s LADDER REACH counts the leading run the *checker* accepts,"
-      IO.println "  which is a weaker claim and a larger number. A rung between the two is"
-      IO.println "  certified and unproved -- started, and incomplete."
+      IO.println "  A rung is in the fragment when `validateD` accepts a certificate for it."
+      IO.println "  That is the whole safety claim, by one theorem over all of them:"
       IO.println ""
-      IO.println "=== UNMET GOALS, in corpus rung order ==="
+      IO.println "    validateD_safe_boot : validateD p d = true → bootOkB = true →"
+      IO.println "                          StuckFree bootMachine p"
+      IO.println ""
+      IO.println "  composed in Denote/Typed/Bridge.lean from `validateD_typed` (the checker"
+      IO.println "  returns a DJudge derivation), `djudge_certified` (the bridge: every"
+      IO.println "  syntactic derivation is a certified one, because every rule has a clink)"
+      IO.println "  and `dregistry_safe`. So there is no per-rung obligation left to owe, and"
+      IO.println "  no gap between what the checker accepts and what is proved safe."
+      IO.println ""
+      IO.println s!"  {safeRungs.length} rungs additionally carry a worked theorem in"
+      IO.println "  Denote/Typed/CorpusSafety.lean, cross-checked against the corpus above."
+      IO.println "  Those are examples and regression, no longer the coverage story."
+      IO.println ""
+      IO.println "=== OUTSIDE THE FRAGMENT, in corpus rung order ==="
+      IO.println "  (the ascent: each needs the judgment extended, then proved, then"
+      IO.println "   registered -- at which point the bridge carries it in automatically)"
     IO.println ""
-    if unmet.isEmpty then
-      IO.println "  (none -- every built rung has an end-to-end safety proof)"
+    if outside.isEmpty then
+      IO.println "  (none -- every built rung is inside the certified fragment)"
     else
-      let shown := if quiet then unmet.take goalLimit else unmet
+      let shown := if quiet then outside.take goalLimit else outside
       for g in shown do
         IO.println s!"  {pad 44 g.name}{g.state.label}"
-      if quiet && unmet.length > goalLimit then
-        IO.println s!"  ... and {unmet.length - goalLimit} more \
+      if quiet && outside.length > goalLimit then
+        IO.println s!"  ... and {outside.length - goalLimit} more \
 (--verbose for the full list, and for how each number above was reached)"
     IO.println ""
-    -- The work queue, rolled up: which missing rule blocks the most rungs.
-    let blocking := (goals.flatMap fun g => match g.state with
-      | .blocked on => on
-      | .outOfFragment on => on
-      | _ => []).eraseDups
-    let tally := blocking.map fun r =>
-      (r, (goals.filter fun g => match g.state with
-            | .blocked on => on.contains r
-            | .outOfFragment on => on.contains r
-            | _ => false).length)
+    -- The work queue, rolled up: what the *pipeline* says it hit, counted.
+    let reasons := (outside.filterMap fun g =>
+      match g.state with
+      | .outside why => some why
+      | _ => none).eraseDups
+    let tally := reasons.map fun r =>
+      (r, (outside.filter fun g =>
+            match g.state with | .outside why => why == r | _ => false).length)
     let sortedTally := tally.toArray.qsort (fun a b => a.2 > b.2) |>.toList
     unless quiet do
-      IO.println s!"  {goals.length} built rungs: {goals.length - unmet.length} proved, \
-{unmet.length} unmet"
+      IO.println s!"  {goals.length} built rungs: {frag.length} in the fragment, \
+{outside.length} outside"
     if !sortedTally.isEmpty then
-      IO.println s!"  blocked on: \
-{String.intercalate ", " (sortedTally.map fun t => s!"{t.1} ({t.2})")}"
-    say "  -- a rule with a rung count is the next unit of work; `?` is a head with no"
-    say "     DJudge rule at all, so those rungs need the judgment extended first."
+      IO.println "  what the emitter hit, counted -- the fragment grows by clearing these:"
+      for t in sortedTally.take 6 do
+        IO.println s!"    {pad 6 s!"{t.2}x"}{t.1}"
   -- The gates. Each prints in both modes: `--quiet` is about narration, not about findings.
   if !crossOk then
     IO.println ""
-    IO.println "RATCHET RED -- a safety theorem is about a different program than its rung's."
+    IO.println "RATCHET RED -- a worked theorem is about a different program than its rung's."
     IO.println "  The rung is started and incomplete: the theorem is true of something, and"
     IO.println "  not of the program the pipeline built. See the MISMATCH lines above."
     return 1
-  if !ready.isEmpty then
+  -- **The bridge's side condition, as a runtime gate.** `djudge_certified` only typechecks
+  -- while every `DJudge` rule has a clink, so this cannot be false in a tree that builds --
+  -- `Clink.lean`'s `#guard` and the bridge itself both stop it first. It is checked anyway
+  -- because it is the hypothesis the fragment's whole safety claim rests on, and a report
+  -- that asserts the claim without testing its premise is a report that will one day be
+  -- wrong quietly. Defence in depth, and it costs one comparison.
+  if !dUnregisteredRules.isEmpty then
     IO.println ""
-    IO.println s!"RATCHET RED -- {ready.length} rung(s) started and incomplete."
-    IO.println ""
-    IO.println "  `validateD` accepts each of these, so a certificate for it exists and checks."
-    IO.println "  None has an end-to-end safety proof, so the ladder is claiming rungs the"
-    IO.println "  safety determination does not reach. A rung is climbed when it is typed AND"
-    IO.println "  proved `StuckFree` -- not when the checker alone is satisfied."
-    IO.println ""
-    let nowProvable := ready.filter fun n =>
-      goals'.any fun g => g.name == n && (match g.state with | .ready => true | _ => false)
-    let owedRules := ((goals'.filterMap fun g =>
-      match g.state with | .certified on => some on | _ => none).flatten).eraseDups
-    if !nowProvable.isEmpty then
-      IO.println s!"  provable today ({nowProvable.length}) -- every rule registered, nobody \
-wrote the theorem:"
-      IO.println s!"    {String.intercalate ", " nowProvable}"
-    let leaningNames := ready.filter fun n => !nowProvable.contains n
-    let leaning := leaningNames.length
-    if leaning > 0 then
-      let shown := String.intercalate ", " (leaningNames.take 12)
-      let andMore := if leaning > 12 then s!" ... and {leaning - 12} more" else ""
-      IO.println s!"  certified against rules with no semantic proof ({leaning}), waiting on \
-{String.intercalate ", " owedRules}:"
-      IO.println s!"    {shown}{andMore}"
-    IO.println ""
-    IO.println "  Two ways out, and they are not equivalent: prove the rules and then the"
-    IO.println "  rungs, which is the work; or lower the recorded reach so the ladder stops"
-    IO.println "  claiming them, which is the honest bookkeeping if the reach was aspirational."
+    IO.println s!"RATCHET RED -- the bridge no longer covers the judgment: \
+{dUnregisteredRules.length} rule(s) have no semantic proof"
+    IO.println s!"    {String.intercalate ", " dUnregisteredRules}"
+    IO.println "  `validateD` accepts programs those rules derive, and `validateD_safe_boot`"
+    IO.println "  cannot speak for them, so the fragment is claiming rungs it cannot back."
+    IO.println "  Prove them (Denote/Typed/JudgeA.lean) and register them, or remove the rule."
     return 1
   if unexercised.length > unexercisedCeiling then
     IO.println ""
     IO.println s!"RATCHET RED -- the exemption list widened: {unexercised.length} certified \
 rules are exempt from end-to-end exercise, ceiling is {unexercisedCeiling}."
-    IO.println "  Exempt rules are started and incomplete by construction. Non-empty is"
-    IO.println "  legitimate mid-ladder; growing the list is not, unless the ceiling moves"
-    IO.println "  with it and someone reviews that (§F30)."
+    IO.println "  Only ever shrink this; non-empty is legitimate mid-ladder (§F30)."
+    return 1
+  if fragment < fragmentFloor then
+    IO.println ""
+    IO.println s!"RATCHET RED -- the fragment shrank: {fragment} rungs certified, floor is \
+{fragmentFloor}."
+    IO.println "  The fragment only ever grows -- a rung the checker accepted once is a rung"
+    IO.println "  it should still accept. A rule was weakened, or a corpus rung changed."
     return 1
   if safeRungs.length < safeRungFloor then
     IO.println ""
-    IO.println s!"RATCHET RED -- a recorded floor moved: {safeRungs.length} rungs proved safe, \
-floor is {safeRungFloor}. A rung once climbed never un-climbs, so a proof was deleted."
+    IO.println s!"RATCHET RED -- a recorded floor moved: {safeRungs.length} worked theorems, \
+floor is {safeRungFloor}. One was deleted."
     return 1
   if dn < clinkFloor then
     IO.println ""
@@ -410,11 +406,16 @@ floor is {safeRungFloor}. A rung once climbed never un-climbs, so a proof was de
     IO.println s!"RATCHET RED -- {dn} rules certified against a floor of {clinkFloor}. This is \
 progress, not damage: raise `clinkFloor` in SemLadder.lean to lock it in."
     return 1
+  if fragment > fragmentFloor then
+    IO.println ""
+    IO.println s!"RATCHET RED -- the fragment grew to {fragment} against a floor of \
+{fragmentFloor}. This is the ladder ascending: raise `fragmentFloor` to lock it in."
+    return 1
   -- GREEN is deliberately not claimed here. This report knows its own gates passed; it does
   -- not know that the Lean build, the corpus pipeline, agreement and reach did.
   -- `scripts/run_typed_ratchet.sh` is the layer that knows, and it is the layer that says so.
   say ""
-  say s!"This report's gates pass: {dn} rules certified, {safeRungs.length} rungs proved safe,"
+  say s!"This report's gates pass: {dn} rules certified, {fragment} rungs in the fragment,"
   say "every floor held. Reach and agreement are `scripts/run_typed_ratchet.sh`'s to check,"
   say "so the overall GREEN/RED verdict is its to give, not this report's."
   return 0

@@ -2388,5 +2388,43 @@ reports. The remedies are named and they are not equivalent:
 * **lower the recorded reach** so the ladder stops claiming what it cannot back. Honest
   bookkeeping if `ladderFloor = 18` was aspirational, and a lie if it was load-bearing.
 
-Left open deliberately, and RED. The point of the verdict is that this state is visible; a
-number chosen to make it green would be the finding happening again.
+### Closed twice, and the second one removes the category
+
+**First** by the remedy the entry named: `seq`, `prim` and `if'` were proved and registered
+(clink 74), so the certified-and-unproved rungs became proved. That closes the instance.
+
+**Then** by a remedy that was not on the list. `Denote/Typed/Bridge.lean` proves
+
+    djudge_certified : DJudge Γ e τ Γ' → (DJudgeC dclinks).judge Γ e τ Γ'
+
+by mutual induction over `DJudge`/`DJudgeAll`/`DJudgeSeq` — one line per case, each being the
+`derivD_*` builder that already existed — and composes it with `validateD_typed` and
+`dregistry_safe` into
+
+    validateD_safe_boot : validateD p d = true → bootOkB = true → StuckFree bootMachine p
+
+So a rung being accepted **is** its safety proof, for every rung at once. The state
+"certified and unproved" is no longer reachable, rather than currently empty, and the two
+reach numbers became one. Both entries above were needed: the first made the second provable.
+
+**Why it could not have been written when this was filed.** `djudge_certified` is a
+completeness statement about the registry — every constructor needs a clink to discharge its
+case, which is exactly `dUnregisteredRules = []`. That became true only with clink 74, and the
+list companions could only be registered after §F31 put them in `DFam`. The three findings are
+one chain: §F31 unblocked the registrations, the registrations made the bridge provable, the
+bridge removed the category.
+
+**What the bridge is worth beyond closing this.** It is self-gating in the direction that
+matters: a rule added to `DJudge` without a semantic proof is a case of the induction with
+nothing to close it, so the lemma stops compiling. `Clink.lean`'s `#guard` says the same thing
+as a `Bool`, and `semladder` checks it a third time at runtime, so a report cannot assert the
+fragment's safety without testing its premise.
+
+It is a bridge rather than `check` returning a `DJudgeC` derivation because `DJudgeC dclinks`
+quantifies over *every* `DFam` closed under the clinks. The syntactic side stays ignorant of
+the semantic one, and a second semantic backend — a different `dsemFam`, a different notion of
+safe — reuses the lemma unchanged instead of forcing a rewrite of the checker.
+
+The ratchet's RED condition moved up a level accordingly: no longer "a rung is certified and
+unproved", which is unreachable now, but "the fragment claims something the bridge cannot
+back".

@@ -18,22 +18,26 @@
 #   *ascent*: rungs nobody has started, blocked on rules nobody has proved. That is the
 #   ordinary state of an unfinished ladder and it is not a failure.
 #
-#   **RED** -- something is started and incomplete. Chiefly: **a rung `validateD` accepts
-#   that has no end-to-end safety proof.** Accepting it means a certificate for it exists and
-#   checks, so the rung is on the ladder from that moment; without a safety proof the ladder
-#   is claiming a rung the safety determination does not reach. Also: a theorem about a
-#   different program than its rung's; an exemption list wider than its ceiling; a floor that
-#   moved; a rule registered without its floor raised; a stage that errored.
+#   **RED** -- something is started and incomplete. Chiefly: **a rule in `DJudge` with no
+#   semantic proof.** `validateD` accepts programs its rules derive, so an unproved rule is
+#   the fragment claiming rungs `validateD_safe_boot` cannot speak for. Also: a worked theorem
+#   about a different program than its rung's; the fragment shrinking below its floor; an
+#   exemption list wider than its ceiling; a floor that moved without being raised; a stage
+#   that errored.
 #
-# **A rung is climbed when it is typed AND proved `StuckFree`** -- not when the checker alone
-# is satisfied. That is why there are two reach numbers and only one of them is the ladder:
-# `ratchetd`'s LADDER REACH counts the leading run the *checker* accepts, `semladder`'s SAFETY
-# REACH counts the leading run that is also proved. Every rung between them is half-climbed.
+# **A rung is climbed when `validateD` accepts it** -- and that is the *whole* safety claim,
+# because `Denote/Typed/Bridge.lean` proves
 #
-# The distinction is deliberate: "251 rungs unproved" is GREEN, because none of them has been
-# begun -- the checker rejects them, or they need rules nobody has proved and no certificate
-# claims them. One rung begun and left is RED, because a half-climbed rung is the thing a
-# ratchet exists to catch.
+#     validateD_safe_boot : validateD p d = true → bootOkB = true → StuckFree bootMachine p
+#
+# by composing the checker's own `validateD_typed`, the bridge `djudge_certified` (every
+# syntactic derivation is a certified one, which holds exactly while every rule has a clink)
+# and `dregistry_safe`. Acceptance and safety are one fact, so there is no per-rung obligation
+# left to owe and no gap between the two reach numbers -- which is what §F32 was about, closed.
+#
+# The distinction is deliberate: "221 rungs outside the fragment" is GREEN, because none of
+# them is claimed -- the checker declines them, or the judgment has no rule for what is in
+# them. What is RED is the fragment claiming something it cannot back.
 #
 # ## Two modes, and what the quiet one is for
 #
@@ -207,7 +211,7 @@ fi
 # pipeline, agreement, reach and the safety gates are five separate exit codes and they are
 # all zero. So this is where the verdict belongs.
 echo
-echo "RATCHET GREEN -- nothing is started and incomplete. Every rung with a proof has a"
-echo "  correct one, every certified rule is exercised or exempt within its ceiling, and"
-echo "  every recorded floor holds. The only work left is to keep ascending: the first rung"
-echo "  in the list above is next, and the tally says which rule unblocks the most of them."
+echo "RATCHET GREEN -- the certified fragment is fully backed. Every rung validateD accepts"
+echo "  is safe by validateD_safe_boot, one theorem over all of them; every rule in the"
+echo "  judgment carries a semantic proof, so the bridge covers the whole fragment; every"
+echo "  floor holds. The only work left is ascent -- the tally above says what to clear next."

@@ -2,12 +2,24 @@
 
 ## Current state (2026-09-13)
 
-The typed/safe gap is closed: **38 accepted corpus rungs have end-to-end `StuckFree`
-proofs**, **safety reach 17**, **16 registered rules** (12 expressions + 4 list companions),
-**0 owed**, **0 exempt**. Checker reach is 31; rung 018 is correctly rejected,
-the safety prefix ends at 017. Agreement: **252 agree, 0 disagreements**. The full gate is
-[`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh); a rung is climbed only when
-its certificate checks and its safety proof matches the actual stripped program.
+The typed/safe gap is closed **by a theorem, not rung by rung**.
+[`Denote/Typed/Bridge.lean`](Denote/Typed/Bridge.lean) proves
+
+    validateD_safe_boot : validateD p d = true → bootOkB = true → StuckFree bootMachine p
+
+axiom-clean, composing the checker's `validateD_typed`, the bridge `djudge_certified` (every
+syntactic derivation is a certified one — it typechecks exactly while every rule has a clink)
+and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
+`validateD` accepts it, and there is one reach number instead of two (§F32, closed).
+
+**Fragment 38 rungs, reach 17**, **16 registered rules** (12 expressions + 4 list companions),
+**0 owed**, **0 exempt**. Checker reach is 31; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 38 rungs additionally carry a
+worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
+and regression now, not the coverage story. The full gate is
+[`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
+fragment claims something the bridge cannot back: a rule with no semantic proof, a shrunk
+fragment, a worked theorem about the wrong program, or a moved floor.
 
 The gate also checks Sorbet expectations, negative controls, floors, and the rules read
 from each proof term. It must pass before committing. Use quiet mode; `--verbose` is only
@@ -27,7 +39,13 @@ coverage gaps. [`MainTyped.lean`](MainTyped.lean) reports checker reach;
 [`Ratchet/Check.lean`](Ratchet/Check.lean) defines `DJudge`, `DJudgeAll`, `DJudgeSeq`,
 and fourteen `DPrim` rows. [`Denote/Typed/Clink.lean`](Denote/Typed/Clink.lean) derives each
 constructor's semantic obligation and registers only proved rules. **All three judgments
-are fields of `DFam`**: no raw syntactic premise may bypass the registry.
+are fields of `DFam`**: no raw syntactic premise may bypass the registry — which is also what
+lets `djudge_certified` be a mutual induction over all three (§F31 was the prerequisite).
+
+The bridge deliberately runs *from* the syntactic judgment *to* `DJudgeC`, rather than the
+checker returning a `DJudgeC` derivation: `Ratchet/` stays ignorant of `Denote/`, and
+`DJudgeC dclinks` quantifies over every `DFam` closed under the clinks, so a second semantic
+backend reuses the bridge unchanged instead of forcing a rewrite of `check`.
 
 The semantic target is `SemSafeA = SemJudgeA ∧ SafeUnder`: answer correctness and safety
 under a typed continuation. [`Compose.lean`](Denote/Typed/Compose.lean) proves the
@@ -53,6 +71,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/Primitive*.lean` | Primitive dispatch, allocation, argument composition, regression controls |
 | `Denote/Sem/PrimHeap.lean`, `Denote/JoinState.lean` | Primitive heap invariants and sound binding joins |
 | `Denote/Typed/Derivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 38 concrete safety proofs |
+| `Denote/Typed/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Typed/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |
 | `Denote/Sanity.lean` | Executable boot conformance gate and its kernel soundness theorem |
 | `scripts/run_typed_ratchet.sh` | Full pre-commit gate |
