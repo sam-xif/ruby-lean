@@ -9243,3 +9243,27 @@ both halves of what constrains them now have a name.
   and annotation-checked instance-method/constructor integration remain next.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree. 061 remains the next expected acceptance.
+
+## Clink 113 (2026-09-14) — class entry preserves builtin and installed-code conformance
+
+- `ClassCore` preserves primitive dispatch/errors, String/Array/Hash payload contracts,
+  and every CoreOk field. Primitive rows start at old bounded ids, so both lookup and
+  native shadow prefixes stay fixed. Regexp's live id follows from its named-class fact,
+  not the smaller boot-id bound used by primitive rows.
+- `ClassHeap.get_nonclass` pins the entire object whenever the successor has no class
+  payload, including out-of-range ids; both new objects are classes. This preserves hash
+  defaults as well as array/hash dispatch. String's converse-shaped invariant separately
+  excludes both fresh ids from String dispatch. Move `ClassReady.freshClass` into the heap
+  module so these semantic facts need not import typed execution proofs.
+- Core-name preservation handles a newly bound name as well as old bindings: CoreOk permits
+  the absent IOError constant to become a class. Do not blanket-ban core names; the fresh-name
+  premise already prevents overwriting String/Regexp. Both Point and IOError entry are checked.
+- `ClassMethods` preserves own method lists (empty for fresh ids), exact code lookups,
+  ClassesOk, DefsOk including ordinary-method metadata, and MethodsExact. No body text is
+  installed early and no annotation becomes its own proof. `class_entry_core` composes all
+  nine conformance components through the actual step from arbitrary conformant states.
+- New controls join the full gate; modules build in under a second, with standard axioms
+  only. Remaining class-body scope/constant/negative facts and checked constructor integration
+  are still required before 061 can be admitted. No rule, floor, or exemption changes.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree.

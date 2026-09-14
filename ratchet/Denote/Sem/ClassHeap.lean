@@ -26,13 +26,40 @@ theorem classPayload_live {k : ObjId} (hk : (h.classPayload? k).isSome = true) :
   rw [Proof.Judgment.freshClsHeap_get_old hl]
   exact (Proof.classPayload?_isSome_constSetIn h Boot.objectId k name _).trans hk
 
-theorem payload_nonclass {o : ObjId} (ho : o < h.objs.size)
-    (hp : h.classPayload? o = none) : ((h₁).get o).payload = (h.get o).payload := by
+theorem classPayload_old_isSome {k : ObjId} (hk : k < h.objs.size) :
+    ((h₁).classPayload? k).isSome = (h.classPayload? k).isSome := by
+  unfold Heap.classPayload?
+  rw [Proof.Judgment.freshClsHeap_get_old hk]
+  exact Proof.classPayload?_isSome_constSetIn h Boot.objectId k name _
+
+theorem get_old_nonclass {o : ObjId} (ho : o < h.objs.size)
+    (hp : h.classPayload? o = none) : (h₁).get o = h.get o := by
   rw [Proof.Judgment.freshClsHeap_get_old ho]
   by_cases he : o = Boot.objectId
   · subst o
     simp only [Proof.Judgment.hmidOf, constSetIn, hp]
-  · exact Proof.payload_constSetIn_ne h Boot.objectId name _ o he
+  · exact Proof.Static.get_constSetIn_ne h Boot.objectId o name _ he
+
+theorem payload_nonclass {o : ObjId} (ho : o < h.objs.size)
+    (hp : h.classPayload? o = none) : ((h₁).get o).payload = (h.get o).payload := by
+  rw [get_old_nonclass ho hp]
+
+/-- No non-class object is created or changed, including beyond the heap's end. -/
+theorem get_nonclass {o : ObjId} (hp : (h₁).classPayload? o = none) :
+    (h₁).get o = h.get o := by
+  by_cases hl : o < h.objs.size
+  · have hp₀ : h.classPayload? o = none := by
+      have hh := classPayload_old_isSome (name := name) (e := e) hl
+      rw [hp] at hh
+      cases hx : h.classPayload? o <;> simp_all
+    exact get_old_nonclass hl hp₀
+  · by_cases hk : o = h.objs.size
+    · subst o; rw [Proof.Judgment.freshClsHeap_cp_k] at hp; contradiction
+    · by_cases he' : o = h.objs.size + 1
+      · subst o; rw [Proof.Judgment.freshClsHeap_cp_e] at hp; contradiction
+      · have hout := Nat.le_of_not_lt (Proof.Judgment.not_lt_add_two hl hk he')
+        rw [get_oob h (Nat.le_of_not_lt hl),
+          get_oob _ (by rw [Proof.Judgment.freshClsHeap_size]; exact hout)]
 
 theorem array {v : Value} {xs : Array Value} (hv : arrElems? h v = some xs) :
     arrElems? h₁ v = some xs := by
@@ -196,6 +223,24 @@ end Ratchet.Denote.FreshClass
 
 namespace Ratchet.Denote
 open RubyCore Ratchet
+open RubyCore.Proof.Judgment (freshClsHeap)
+
+/-- The same readiness invariant survives both allocations and constant registration. -/
+theorem ClassReady.freshClass {h : Heap} {d : ObjId} {name q : String} {e : ObjId}
+    (hc : ClassReady h) (hsat : Proof.Saturated h) (hd : d < h.objs.size)
+    (he : (h.get Boot.objectId).eigen = some e) :
+    ClassReady (freshClsHeap h d name q e) := by
+  have ho := hc.chains.boot.2.2.2.2
+  have hel := hc.chains.eigen _ ho _ he
+  refine ⟨Proof.Judgment.chainsIn_freshC hc.chains hd hel, ⟨e, ?_, ?_⟩, ?_⟩
+  · rw [Proof.Judgment.freshClsHeap_get_old ho,
+      (Proof.get_constSetIn_fields h d name (.ref h.objs.size) Boot.objectId).2.2.1]
+    exact he
+  · rw [Proof.Judgment.ancestors_old_freshC hc.chains hsat hel]
+    obtain ⟨e', he', hb⟩ := hc.objectEigen
+    rw [he] at he'; cases he'; exact hb
+  · rw [Proof.Judgment.ancestors_old_freshC hc.chains hsat hc.chains.boot.1]
+    exact hc.classBasic
 
 /-- Restore frame balance separately: this is the heap half of class publication. -/
 theorem Framed.of_freshClass {κ : Ctx} {Γ : Env} {I : Ty} {m n : Machine}

@@ -22,9 +22,7 @@ theorem class_site_parent (hc : Proof.ChainsIn h)
   · subst k
     by_cases hl : o < h.objs.size
     · have hp₀ : (h.classPayload? o).isSome = true := by
-        unfold Heap.classPayload? at hp
-        rw [Proof.Judgment.freshClsHeap_get_old hl] at hp
-        exact (Proof.classPayload?_isSome_constSetIn h Boot.objectId o name _).symm.trans hp
+        rwa [classPayload_old_isSome hl] at hp
       rw [classOf_old hl, parent_old (Proof.ClsGrow.classOf_lt hc hl)]
       exact Or.inr ⟨o, hp₀, rfl⟩
     · by_cases hok : o = h.objs.size

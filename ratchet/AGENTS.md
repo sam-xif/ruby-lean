@@ -154,6 +154,9 @@ to old sites; `ClassQueries.lean` preserves the three query invariants with nati
 `ClsQueryOk` now includes direct Class dispatch, checked by the existing boot gate: a fresh
 eigenclass uses that path even if every old class receiver masks it with an eigenclass.
 `ClassQueryControls.lean` checks actual Point entry and a countermodel to the old domain.
+`ClassCore.lean` preserves primitive dispatch/errors, payload invariants, and core names;
+`ClassMethods.lean` preserves installed code and method exactness. `ClassCoreControls.lean`
+composes these through actual entry, including pre-existing methods and an absent core name.
 Full class-body conformance and constructor calls remain gated.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
@@ -195,6 +198,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/ClassReady.lean`, `Denote/Typed/ClassEntry.lean`, `ClassControls.lean` | Boot-checked class readiness, its preservation, and actual fresh-class entry/registration |
 | `Denote/Sem/ClassHeap.lean`, `DataPres.lean` | Old-data preservation and full caller framing across fresh class creation; shared first-order transport |
 | `Denote/Sem/ClassDispatch.lean`, `ClassQueries.lean`, `Denote/Typed/ClassQueryControls.lean` | Fresh-class dispatch/query preservation, direct-Class invariant, and countermodels |
+| `Denote/Sem/ClassCore.lean`, `ClassMethods.lean`, `Denote/Typed/ClassCoreControls.lean` | Core/payload and installed-method preservation through actual class entry |
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

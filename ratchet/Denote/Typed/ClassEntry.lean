@@ -1,4 +1,5 @@
 import Denote.Typed.JudgeA
+import Denote.Sem.ClassHeap
 import RubyCore.Proof.Judgment.ClsFresh
 
 /-! Fresh class entry uses the model's proved heap composite, not a second allocator.
@@ -10,23 +11,6 @@ namespace Ratchet.Denote
 open RubyCore Ratchet
 open RubyCore.Interp (stepFn)
 open RubyCore.Proof.Judgment (freshClsHeap freshClsMachine)
-
-/-- The same readiness invariant survives both allocations and constant registration. -/
-theorem ClassReady.freshClass {h : Heap} {d : ObjId} {name q : String} {e : ObjId}
-    (hc : ClassReady h) (hsat : Proof.Saturated h) (hd : d < h.objs.size)
-    (he : (h.get Boot.objectId).eigen = some e) :
-    ClassReady (freshClsHeap h d name q e) := by
-  have ho := hc.chains.boot.2.2.2.2
-  have hel := hc.chains.eigen _ ho _ he
-  refine ⟨Proof.Judgment.chainsIn_freshC hc.chains hd hel, ⟨e, ?_, ?_⟩, ?_⟩
-  · rw [Proof.Judgment.freshClsHeap_get_old ho,
-      (Proof.get_constSetIn_fields h d name (.ref h.objs.size) Boot.objectId).2.2.1]
-    exact he
-  · rw [Proof.Judgment.ancestors_old_freshC hc.chains hsat hel]
-    obtain ⟨e', he', hb⟩ := hc.objectEigen
-    rw [he] at he'; cases he'; exact hb
-  · rw [Proof.Judgment.ancestors_old_freshC hc.chains hsat hc.chains.boot.1]
-    exact hc.classBasic
 
 /-- Default-superclass entry at an ordinary top-level frame. The successor's heap and
 class-body frame are explicit; the body has not executed or been accepted by this lemma. -/
