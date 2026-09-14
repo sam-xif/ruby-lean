@@ -12,9 +12,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 39 rungs, reach 17**, **16 registered rules** (12 expressions + 4 list companions),
+**Fragment 40 rungs, reach 17**, **17 registered rules** (13 expressions + 4 list companions),
 **0 owed**, **0 exempt**. Checker reach is 31; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 38 rungs additionally carry a
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 39 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the

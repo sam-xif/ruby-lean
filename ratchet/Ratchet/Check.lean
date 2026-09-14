@@ -85,7 +85,7 @@ flexibility, with the obligation as the forcing function.
 
 ## What is deliberately not in the judgment yet
 
-`DJudge` has twelve rules (plus four in the two list companions). Everything else a `Deriv` can express — `defDecl`, `callSig`,
+`DJudge` has thirteen rules (plus four in the two list companions). Everything else a `Deriv` can express — `defDecl`, `callSig`,
 `callMethodSig`, `classDecl`, `newInst`, `ivarRead`, `ivarAsgn`, `constCls`, `arrayLit`,
 `hashLit`, `selfExpr` — answers `none`, by name, in `check`'s last arms. They join a rule at
 a time, and each one joining is a rung.
@@ -284,6 +284,10 @@ inductive DJudge : Env → Expr → Ty → Env → Prop
   | if' {Γ Γc Γ₁ Γ₂ : Env} {c t e : Expr} {σ τ₁ τ₂ : Ty} :
       DJudge Γ c σ Γc → DJudge Γc t τ₁ Γ₁ → DJudge Γc e τ₂ Γ₂ →
       DJudge Γ (.if' c t (some e)) (joinT τ₁ τ₂) (joinEnv Γ₁ Γ₂)
+  /-- The absent else leaves `Γc` unchanged and returns nil. Join both paths. -/
+  | ifNoElse {Γ Γc Γt : Env} {c t : Expr} {σ τ : Ty} :
+      DJudge Γ c σ Γc → DJudge Γc t τ Γt →
+      DJudge Γ (.if' c t none) (joinT τ .nilT) (joinEnv Γt Γc)
 
 inductive DJudgeAll : Env → List Expr → List Ty → Env → Prop
   | nil {Γ : Env} : DJudgeAll Γ [] [] Γ
@@ -409,6 +413,16 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) : Option (Certified Γ 
         | some ⟨τ₁, Γ₁, ht⟩, some ⟨τ₂, Γ₂, he⟩ =>
           if joinT τ₁ τ₂ == j then some ⟨joinT τ₁ τ₂, joinEnv Γ₁ Γ₂, .if' hc ht he⟩ else none
         | _, _ => none
+      | none => none
+    | .if' c t none, .ifD dc dt none j =>
+      match check n Γ c dc with
+      | some ⟨_, Γc, hc⟩ =>
+        match check n Γc t dt with
+        | some ⟨τ, Γt, ht⟩ =>
+          if joinT τ .nilT == j then
+            some ⟨joinT τ .nilT, joinEnv Γt Γc, .ifNoElse hc ht⟩
+          else none
+        | none => none
       | none => none
     -- Out of the judgment. Every remaining certificate rule -- `defDecl`, `callSig`,
     -- `callMethodSig`, `classDecl`, `newInst`, `ivarRead`, `ivarAsgn`, `constCls`,

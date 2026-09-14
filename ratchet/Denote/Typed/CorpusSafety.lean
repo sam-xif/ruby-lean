@@ -201,6 +201,12 @@ def program_035_if_true_branch : Ratchet.Expr :=
 theorem safe_035_if_true_branch (hb : bootOkB = true) : StuckFree bootMachine program_035_if_true_branch :=
   dregistry_safe (derivD_if (derivD_truLit) (derivD_intLit) (derivD_intLit)) (stateOk_boot hb)
 
+def program_036_if_no_else : Ratchet.Expr :=
+  .if' .tru (.int 1) none
+
+theorem safe_036_if_no_else (hb : bootOkB = true) : StuckFree bootMachine program_036_if_no_else :=
+  dregistry_safe (derivD_ifNoElse derivD_truLit derivD_intLit) (stateOk_boot hb)
+
 def program_037_if_condition_not_bool : Ratchet.Expr :=
   .if' (.int (5)) (.int (1)) (some (.int (2)))
 
@@ -274,6 +280,7 @@ def safeRungs : List (String × Ratchet.Expr) :=
    ("033-seq-multiple-stmts", program_033_seq_multiple_stmts),
    ("034-assignment-chain", program_034_assignment_chain),
    ("035-if-true-branch", program_035_if_true_branch),
+   ("036-if-no-else", program_036_if_no_else),
    ("037-if-condition-not-bool", program_037_if_condition_not_bool),
    ("038-if-branch-mismatch", program_038_if_branch_mismatch),
    ("040-if-nil-condition", program_040_if_nil_condition),
@@ -285,7 +292,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
     ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
   intro q hq
   simp only [safeRungs, List.mem_cons, List.not_mem_nil, or_false] at hq
-  rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact safe_001_int_lit hb
   · exact safe_002_bool_true hb
   · exact safe_003_bool_false hb
@@ -318,6 +325,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   · exact safe_033_seq_multiple_stmts hb
   · exact safe_034_assignment_chain hb
   · exact safe_035_if_true_branch hb
+  · exact safe_036_if_no_else hb
   · exact safe_037_if_condition_not_bool hb
   · exact safe_038_if_branch_mismatch hb
   · exact safe_040_if_nil_condition hb

@@ -69,6 +69,7 @@ theorem djudge_certified {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
   | prim hr ha hp => exact derivD_prim (djudge_certified hr) (djudgeAll_certified ha) hp
   | if' hc ht he =>
       exact derivD_if (djudge_certified hc) (djudge_certified ht) (djudge_certified he)
+  | ifNoElse hc ht => exact derivD_ifNoElse (djudge_certified hc) (djudge_certified ht)
 
 /-- The argument-list companion. -/
 theorem djudgeAll_certified {Γ Γ' : Env} {es : List Ratchet.Expr} {tys : List Ty}

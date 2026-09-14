@@ -8505,3 +8505,17 @@ both halves of what constrains them now have a name.
 - Raise `fragmentFloor` to 39. The new `validateD_safe_boot` bridge supplies safety
   from acceptance; the 38 worked corpus theorems remain regression examples.
 - Full quiet ratchet: GREEN, fragment 39, checker reach 31, 252 agree / 0 disagree.
+
+## Clink 79 (2026-09-13) — `if` without `else`
+
+- The false path returns nil immediately, rather than evaluating a nil expression.
+  `BranchMissing.lean` therefore composes `RunSpec.bind` with a direct answer on
+  that path. `StateOk_joinEnv` determines the rule's outgoing environment:
+  join the body's environment with the condition's, not the incoming environment.
+- Add `DJudge.ifNoElse`, its checked certificate arm, clink, and bridge case.
+  Rung 036's worked theorem exercises the new rule. Controls check nullable result
+  claims and force the checker to reject rung 042's unsafe reassignment certificate;
+  the same-type reassignment control passes. No emitter rejection is relied upon.
+- Full quiet ratchet: GREEN, fragment 40, 17 proved rules, checker reach 31,
+  252 agree / 0 disagree. The new semantic proof builds in under one second;
+  `validateD_safe_boot` remains axiom-clean.

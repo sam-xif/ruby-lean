@@ -72,4 +72,9 @@ theorem derivD_if {Γ Γc Γ₁ Γ₂ : Env} {c t e : Ratchet.Expr} {σ τ₁ τ
     (DJudgeC dclinks).judge Γ (.if' c t (some e)) (joinT τ₁ τ₂) (joinEnv Γ₁ Γ₂) :=
   fun F hF => hF DClink.if' (by simp [dclinks]) (hc F hF) (ht F hF) (he F hF)
 
+theorem derivD_ifNoElse {Γ Γc Γt : Env} {c t : Ratchet.Expr} {σ τ : Ty}
+    (hc : (DJudgeC dclinks).judge Γ c σ Γc) (ht : (DJudgeC dclinks).judge Γc t τ Γt) :
+    (DJudgeC dclinks).judge Γ (.if' c t none) (joinT τ .nilT) (joinEnv Γt Γc) :=
+  fun F hF => hF DClink.ifNoElse (by simp [dclinks]) (hc F hF) (ht F hF)
+
 end Ratchet.Denote.Typed

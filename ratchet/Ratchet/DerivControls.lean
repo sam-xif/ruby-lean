@@ -125,4 +125,27 @@ def ctlAnd : Expr :=
   (.seq [.vasgn .lvar "t" .truLit,
          .ifD (.var .lvar "t") .flsLit (some (.var .lvar "t")) .int]) = false
 
+-- An absent else contributes nil, and the certificate must record that join.
+#guard validateD (.if' .fls (.int 1) none)
+    (.ifD .flsLit (.intLit 1) none (.nilable .int))
+#guard !validateD (.if' .fls (.int 1) none)
+    (.ifD .flsLit (.intLit 1) none .int)
+#guard !validateD (.if' .fls (.int 1) (some (.str "a")))
+    (.ifD .flsLit (.intLit 1) none (.nilable .int))
+
+-- Rung 042's unsafe reassignment must be refused by the checker itself, even if
+-- an emitter supplies the certificate it currently declines to generate.
+#guard !validateD
+    (.seq [.vasgn .lvar "x" (.int 1), .if' .tru (.vasgn .lvar "x" (.str "hello")) none,
+      .send (some (.var .lvar "x")) "+" [.int 1] none])
+    (.seq [.vasgn .lvar "x" (.intLit 1),
+      .ifD .truLit (.vasgn .lvar "x" (.strLit "hello")) none (.nilable (.cls "String")),
+      .prim (.var .lvar "x") "+" [.intLit 1] .int .int])
+#guard validateD
+    (.seq [.vasgn .lvar "x" (.int 1), .if' .tru (.vasgn .lvar "x" (.int 2)) none,
+      .send (some (.var .lvar "x")) "+" [.int 1] none])
+    (.seq [.vasgn .lvar "x" (.intLit 1),
+      .ifD .truLit (.vasgn .lvar "x" (.intLit 2)) none (.nilable .int),
+      .prim (.var .lvar "x") "+" [.intLit 1] .int .int])
+
 end Ratchet
