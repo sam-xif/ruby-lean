@@ -9467,3 +9467,22 @@ both halves of what constrains them now have a name.
   and its lexical constants must be justified rather than copied from the caller.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree.
+
+## Clink 123 (2026-09-14) — connect installed instance code to explicit dispatch
+
+- `InstanceResolve` derives the exact receiver's live identity and dispatch class, recovers
+  code/metadata from ClassesOk, and equates real explicit finishSend with enterUserMethod.
+  Required-frame typing, self liveness, and lexical scope follow from receiver/code facts;
+  phase and quiet-hook obligations remain explicit. No body safety follows merely from a row.
+- `classFrontB` checks no prepends; its kernel proof establishes the MRO's first element
+  through deduplication. A real prepend retains Point's answer row but calls Interceptor's
+  Boolean body. A separate heap countermodel changes only a receiver's payload to Proc:
+  exact nominal typing, own code, and MRO still match, yet call executes the closure. Thus
+  ordinary payload cannot be inferred from the receiver type. The unmodified define/call
+  controls return 1; explicit initialize correctly raises despite its valid private metadata.
+- New modules build below a second, standard axioms only. No rules, admissions, or floors
+  changed. Persistent class heap contracts must discharge these guards and the remaining
+  scope/absence facts before full instance entry can consume an annotated body proof.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree. Concurrent playground updates are preserved;
+  their runner diagnostic's accidental shell substitutions were fixed in a separate commit.

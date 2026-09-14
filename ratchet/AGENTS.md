@@ -206,6 +206,11 @@ instance/constructor dispatch remain gated.
 boot witness and actual define/call returning an unmentioned field. Known getter fields
 remain Integer; unknown open fields are `.any`, not nil. No unchecked send or body admission
 is added. Allocation/write/frame transports preserve the distinction.
+`InstanceResolve` recovers installed instance code from ClassesOk, derives receiver identity,
+and connects explicit dispatch to enterUserMethod. It proves frame/live/scope facts for the
+required activation. The first-in-MRO and ordinary-payload obligations are explicit: controls
+retain a method row while prepend or a Proc payload changes the called body. Private
+initialize is not admitted as a public call. Full state entry and body application remain.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -257,6 +262,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/ClassScope.lean`, `ClassScopeEntry.lean`, `Denote/Typed/ClassScopeControls.lean` | Lexical class-world request, actual entry, transports, and full-state privacy counterexample |
 | `Denote/Typed/InstanceEntry.lean`, `InstanceSpineControls.lean` | Open receiver fields at method entry, completeness counterexample, and getter proof |
+| `Denote/Typed/InstanceResolve.lean`, `InstanceResolveControls.lean` | Installed instance lookup, explicit dispatch, frame facts, and interception controls |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |
