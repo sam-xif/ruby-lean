@@ -8720,3 +8720,26 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 49, checker reach 51, 252 agree / 0 disagree;
   all 22 rules remain proved. Frame-switch conformance, the composed post-dispatch
   call, and the real-boot worked example are axiom-clean.
+
+## Clink 89 (2026-09-14) — actual definition installation and ordinary dispatch
+
+- `MethodDispatch` names the exact `def` record and heap write, proves the definition
+  step when `method_added` is quiet, and derives lookup from the existing heap facts.
+  Quiet includes absent hooks and the model's CRuby-shadowed Object/Kernel/BasicObject
+  entries, not arbitrary user hooks. A differently named definition preserves this
+  fact; defining `method_added` itself requires checking the installed state.
+- Ordinary-object dispatch preserves all visibility and CRuby-shadow checks. A found
+  entry shadows the reflective send family; no name blacklist is needed. Installation
+  supplies lookup when the defining class is first in the receiver's ancestor chain,
+  plus the empty-between-chain shadow check. Eigenclasses/prepends cannot silently
+  bypass that premise. No semantics changes or concrete-body execution in these proofs.
+- `required_method_call_runSpec` composes real `finishSend` dispatch with the annotated
+  body contract and full method-boundary proof. Installation's **conformance transport**
+  and the checker's context/checked-signature integration are still owed: an interpreter
+  equality is not a definition clink. No method admission or coverage increase yet.
+- Runtime controls exercise actual definition then call, primitive use in the body,
+  caller-local restoration, explicit private-call failure, reflective-name overrides,
+  and real singleton versus shadowed instance `method_added` hooks. All match CRuby.
+  Every new theorem is axiom-clean; the dispatcher module builds in under a second.
+- Full quiet ratchet GREEN: fragment 49, checker reach 51, 252 agree / 0 disagree,
+  all 22 rules proved. The new runtime controls are imported by the full gate.
