@@ -37,6 +37,38 @@ example {κ : Ctx} {Γ : Env} {I : Ty} (hctx : capStaleCtx "x" .int κ = false) 
       (killClosOverSpine I "x" .int) :=
   SemSafeCtxA.intLit.vasgn (by rfl) (by rfl) hctx
 
+/-- An annotated body with allocation before a branch, proved independently of call values.
+Both branches return Integer and preserve the parameter environment and method context. -/
+theorem context_branch_body {κ : Ctx} {I : Ty}
+    (hlt : nameFreeN κ "<" = true) (hsub : nameFreeN κ "-" = true) :
+    SemSafeCtxA κ [("x", .int)] I
+      (.seq [.str "ignored", .if'
+        (.send (some (.var .lvar "x")) "<" [.int 0] none)
+        (.send (some (.int 0)) "-" [.var .lvar "x"] none) (some (.var .lvar "x"))])
+      .int κ [("x", .int)] I := by
+  have hc : SemSafeCtxA κ [("x", .int)] I
+      (.send (some (.var .lvar "x")) "<" [.int 0] none) .bool κ [("x", .int)] I :=
+    (SemSafeCtxA.var rfl rfl).prim (.cons SemSafeCtxA.intLit .nil rfl)
+      .intLt hlt (by intro h; cases h)
+  have ht : SemSafeCtxA κ [("x", .int)] I
+      (.send (some (.int 0)) "-" [.var .lvar "x"] none) .int κ [("x", .int)] I :=
+    SemSafeCtxA.intLit.prim (.cons (SemSafeCtxA.var rfl rfl) .nil rfl)
+      .intSub hsub (by intro h; cases h)
+  exact SemSafeCtxA.strLit.seq (hc.if' ht (SemSafeCtxA.var (τ := .int) (x := "x") rfl rfl))
+
+/-- The false path of an omitted else keeps the condition's state, with a nullable result. -/
+example {κ : Ctx} {I : Ty} : SemSafeCtxA κ [("x", .bool)] I
+    (.if' (.var .lvar "x") (.int 1) none) (.nilable .int) κ [("x", .bool)] I :=
+  (SemSafeCtxA.var rfl rfl).ifNoElse SemSafeCtxA.intLit
+
+-- All statements, including ignored literals, have context-indexed proofs.
+example {κ : Ctx} {Γ : Env} {I : Ty} : SemSafeCtxA κ Γ I
+    (.seq [.flt 0, .sym "ok", .tru, .fls, .nil]) .nilT κ Γ I :=
+  SemSafeCtxA.sequence (.cons SemSafeCtxA.fltLit (.cons SemSafeCtxA.symLit
+    (.cons SemSafeCtxA.truLit (.cons SemSafeCtxA.flsLit (.last SemSafeCtxA.nilLit)))))
+
+#print axioms context_branch_body
+
 /-! ## Derivations
 
 A derivation is a term polymorphic in the family, so it never mentions `DJudgeC`'s definition

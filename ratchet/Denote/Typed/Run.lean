@@ -24,6 +24,20 @@ theorem RunSpec.rebase {origin middle start : Machine} {Γ : Env} {τ : Ty}
   obtain ⟨hf', hd, hm⟩ := h.2 fuel a m rest hr
   exact ⟨hf.trans hf', hd, hm⟩
 
+/-- Change only the final contract, retaining safety and framing at the original entry. -/
+theorem RunSpec.weaken {origin start : Machine} {κ₁ κ₂ : Ctx} {Γ₁ Γ₂ : Env} {I₁ I₂ σ τ : Ty}
+    (h : RunSpec origin start Γ₁ σ κ₁ I₁)
+    (hout : ∀ m v, StateOk κ₁ Γ₁ I₁ m → denM σ m v →
+      StateOk κ₂ Γ₂ I₂ m ∧ denM τ m v) : RunSpec origin start Γ₂ τ κ₂ I₂ := by
+  refine ⟨h.1, ?_⟩
+  intro fuel a m rest hr
+  obtain ⟨hf, hd, hs⟩ := h.2 fuel a m rest hr
+  cases a with
+  | val v =>
+    obtain ⟨hm, hv⟩ := hout m v (hs v rfl) hd
+    exact ⟨hf, hv, fun _ _ => hm⟩
+  | esc j => exact ⟨hf, hd, fun _ hv => by cases hv⟩
+
 theorem RunSpec.step {origin start next : Machine} {Γ : Env} {τ : Ty}
     {κ : Ctx} {I : Ty}
     (ha : answerPoint start = none) (hs : Interp.stepFn start = .next next)

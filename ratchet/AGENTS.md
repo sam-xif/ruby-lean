@@ -71,7 +71,10 @@ absence facts but grants no callable entry. A real-boot definition-step + instal
 pilot now handles `add(x, y)` for every pair of Integers, consuming a body proof from the
 annotations alone. `Primitive.lean` threads distinct incoming/outgoing contexts and ivar
 spines through receiver/argument evaluation; all 16 rows require dispatch guards at the
-final context. The existing `SemA.prim` is its top-level specialization. Checked-signature/context integration
+final context. The existing `SemA.prim` is its top-level specialization. Literals, sequences,
+and both conditional forms are also context-general; branches require matching outgoing
+contexts/spines while joining local/result types. Arrays, hashes, and bare names remain
+the existing fragment's context-specialized proofs. Checked-signature/context integration
 remains next; explicit `return` needs an answer-contract extension. Neither boundary lemmas nor
 declaration-only acceptance count as 052. `methodBootOkB` checks additional method-start
 facts, and `methodInstallBootOkB` also checks top-level installation/lookup/hook facts;
@@ -96,7 +99,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/JudgeA.lean` | Semantic judgment, continuation typing, literal/local rules |
 | `Denote/Typed/Sequence.lean`, `Branch*.lean`, `BareName.lean` | Sequence, conditional, and bare-name obligations |
 | `Denote/Typed/Array.lean` | First-order array evaluation, retention, and allocation |
-| `Denote/Typed/Context.lean` | Context-indexed run contract, specialization equivalence, assignment and sequence |
+| `Denote/Typed/Context.lean` | Context-indexed contract, specialization, literals, assignment, and frame composition |
 | `Denote/Typed/MethodEntry.lean` | Required-positional method entry and annotated parameter-environment conformance |
 | `Denote/Sem/FramePres.lean`, `Denote/Typed/MethodReturn.lean` | Caller isolation, local restoration, and method-continuation composition |
 | `Denote/Sem/Reframe.lean`, `Denote/Typed/MethodState.lean` | Full frame-switch conformance and post-dispatch calls from annotated body proofs |

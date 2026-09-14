@@ -8805,3 +8805,22 @@ both halves of what constrains them now have a name.
   under a second (the largest rebuilt primitive module took 25 seconds).
 - Full quiet ratchet GREEN: fragment 49, checker reach 51, 252 agree / 0 disagree,
   22 rules proved. The annotation-body and actual installed-call proofs are in the gate.
+
+## Clink 93 (2026-09-14) — context-indexed control flow
+
+- Complete the seven literal rules at arbitrary context/spine. Generalize sequence
+  evaluation to `SemSeqCtxA`, threading each statement's outgoing index into the next;
+  both the old registered rule and the two-expression convenience form now reuse it.
+- `RunSpec.weaken` transports final conformance/result typing without weakening safety.
+  A context-general frame composition proves both conditional forms. Branches must agree
+  on outgoing context/spine; only locals/result types join. The omitted-else branch must
+  preserve the condition's context/spine. Different declaration tables or ivar effects
+  require a proved join, not an optimistic merge. Existing registered rules specialize
+  these proofs and retain all previous behavior.
+- Gate controls include a generic annotated Integer body with string allocation before
+  an arithmetic conditional, an omitted else, and multi-statement literal sequences.
+  No concrete call values enter the body proof. Arrays, hashes, and bare names are the
+  remaining context-specialized expression proofs before the judgment/checker migration;
+  method definitions/calls remain rejected. No coverage increase claimed.
+- New proofs are axiom-clean and build in under a second. Full quiet ratchet GREEN:
+  fragment 49, checker reach 51, 252 agree / 0 disagree, 22 rules proved.
