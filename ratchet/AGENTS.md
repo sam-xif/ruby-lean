@@ -174,7 +174,13 @@ that passed every old boot check; all state transports and the same boot gate co
 initializer absence, and both directions of ancestry. It requires ClassesOk's positive
 existence facts; a control refutes giving a fresh class with inherited initialize a default
 zero-argument constructor just because its own method table is empty.
-Full class-body conformance and constructor calls remain gated.
+`ClassState.lean` now assembles full StateOk at fresh class-body entry, with `classBodyCtx`
+changing only lexical scope, self, block, and runtime-main mode. `ClassTablesFrame` states
+the first-order/owner/leaf conditions needed to preserve constant and nested-class claims;
+countermodels show how a new owner, a new leaf, or a dangling alias can activate old claims.
+`ClassNative` makes native-name guards executable. The actual-step theorem and real-boot
+witness are in `ClassStateControls`. Positive class registration, checked body execution,
+instance-method installation, constructor calls, and full outgoing conformance remain gated.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -220,6 +226,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/BuiltinBases.lean`, `ClassBases.lean`, `Denote/Typed/ClassBaseControls.lean` | Builtin ancestry preservation, metaclass separation, and dangling-alias controls |
 | `Denote/Sem/ClassNames.lean`, `Denote/Typed/ClassNameControls.lean` | Receiver-sensitive absence facts and the hidden-metaclass countermodel |
 | `Denote/Sem/ClassDeclared.lean`, `Denote/Typed/ClassDeclaredControls.lean` | Existing declarations, constructor lookup, and inherited-initializer control |
+| `Ratchet/ClassCtx.lean`, `Denote/Sem/ClassTables.lean`, `ClassNative.lean`, `ClassState.lean`, `Denote/Typed/ClassStateControls.lean` | Full fresh class-entry conformance, explicit table frame, executable native guard, and activation countermodels |
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

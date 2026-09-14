@@ -9352,3 +9352,29 @@ both halves of what constrains them now have a name.
   annotation-checked instance-method/constructor integration remain required.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree.
+
+## Clink 118 (2026-09-14) — full conformance at fresh class-body entry
+
+- `ClassTables` proves bare/qualified constant and nested-class conformance. Bare constants
+  cannot collide with a genuinely fresh name: ConstsOk plus ConstScopeOk already rules that
+  out. Qualified claims are conditional on owner/value existence, so naive transport fails.
+  Controls separately activate an absent owner, change a leaf under existing Object, and
+  activate a differently named dangling alias; an untouched LIMIT remains Integer.
+- `ClassTablesFrame` makes the input obligations explicit: first-order values, already
+  resolved qualified owners, and untouched qualified leaves. This is a conservative frame,
+  not a postcondition or an admission route. It is vacuous for empty tables; nonempty tables
+  require these proofs, not merely owner != the fresh name. More precise shadowing-sensitive
+  frames may relax the leaf condition later. Behavioral assumptions remain empty because
+  their existing Later relation does not permit class registration.
+- `classBodyCtx` changes scope only: frame/block absent, self at `.clsOf name`, no main-world
+  requirement. It does not install the class's future methods or advertise a constructor.
+  `ClassNative.nativeFrameB` checks both new native names for each still-unreserved query,
+  with a kernel soundness proof; Point/IOError pass and String fails.
+- `FreshClass.state` assembles **all** StateOk fields, using the preceding heap, dispatch,
+  ancestry, method, frame, and constant proofs. `class_entry_state` connects it to the actual
+  step; `boot_class_state` supplies the real-boot witness. New modules build below a second,
+  with standard axioms only. Registration in the positive class table, annotation-checked
+  method bodies, constructor integration, and outgoing state remain; no rule or admission
+  changes and no signature-only shortcut.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree.
