@@ -1,4 +1,4 @@
-import Denote.Sem.InitGrow
+import Denote.Typed.InitRun
 import Denote.Typed.MethodReturn
 
 /-! Fresh initialization publishes the original caller's frame contract. The heap
@@ -14,6 +14,11 @@ theorem initializer_pop_framed {m n : Machine} {f : RubyCore.Frame}
     Framed m (popMethodFrame n) :=
   Framed.of_initGrow hg (by simp [popMethodFrame, hb, pushMethodFrame])
     (method_frame_pop hl hc hb hf)
+
+theorem InitFrame.publish {m n : Machine} {f : RubyCore.Frame}
+    (hl : m.stack.headD 0 < m.frames.size) (hc : f.captured = none)
+    (h : InitFrame m.heap (pushMethodFrame m f) n) : Framed m (popMethodFrame n) :=
+  initializer_pop_framed hl hc h.stack h.frames h.growth
 
 #print axioms initializer_pop_framed
 end Ratchet.Denote.Typed

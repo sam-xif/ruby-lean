@@ -4,6 +4,7 @@ import Denote.Typed.MethodRuleControls
 import Denote.Typed.BoundedControls
 import Denote.Typed.InstanceControls
 import Denote.Typed.InitControls
+import Denote.Typed.InitBodyControls
 
 /-! Safety coverage: predict rules from syntax, then cross-check against the actual proof
 terms in `RuleAudit`. Concrete programs and their safety theorems live in `CorpusSafety`.

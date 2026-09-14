@@ -129,8 +129,14 @@ assignment, not a failed tactic. No class or ivar-write rule is admitted yet.
 initialization, anchored before allocation. It permits fresh ivars without weakening
 `Framed`; `InitReturn.lean` recovers that full contract after caller-frame restoration.
 `InitControls.lean` proves two real writes, the initialized result shape, and publication
-for arbitrary Integer arguments, including a real-boot instance. The scoped body judgment
-and annotation-checked constructor admission are still the next work, not assumed here.
+for arbitrary Integer arguments, including a real-boot instance. `InitRun.lean` now defines
+the scoped semantic body contract (`SemInitA`): all-fuel safety, answer typing, full outgoing
+conformance, a fresh writable receiver, and anchored heap/frame preservation. `InitExpr.lean`
+composes reads, writes, and sequences. `WriteState.lean`/`InstanceWrite.lean` transport the
+actual write, with explicit obligations for value-sensitive conformance. The complete 061
+initializer has a semantic body proof from its Integer parameter environment in
+`InitBodyControls.lean`, with `.any` return and the initialized self type. Syntactic body
+families, certificate checking, class installation, and constructor dispatch remain gated.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -166,6 +172,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/Recursive.lean`, `RecursiveDerivations.lean`, `Ratchet/RecursiveControls.lean` | Scoped recursive semantics, worked 060 proof, and annotation/call controls |
 | `Denote/Typed/InstanceRead.lean`, `InstanceControls.lean`, `Denote/Sem/IvarMutation.lean` | Instance-read prerequisites, precise write facts, and the constructor framing counterexample (§F33) |
 | `Denote/Sem/InitGrow.lean`, `Denote/Typed/InitReturn.lean`, `InitControls.lean` | Preallocation-anchored preservation, caller-frame publication, and fresh two-field controls |
+| `Denote/Sem/WriteState.lean`, `Denote/Typed/InstanceWrite.lean`, `InitRun.lean`, `InitExpr.lean`, `InitBodyControls.lean` | Scoped initializer semantics, explicit typed write preservation, and the annotation-domain 061 body proof |
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

@@ -9117,3 +9117,33 @@ both halves of what constrains them now have a name.
 - New modules build in under a second, with standard Lean axioms only. No floor changes.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree. 061 remains the next expected acceptance.
+
+## Clink 108 (2026-09-14) — the initializer's semantic body contract
+
+- `SemInitA` uses `InitRunSpec`, not the impossible interior `Framed` claim. It retains
+  all-fuel safety, answer typing, and full outgoing `StateOk`, plus fresh writable self,
+  frame isolation/balance, and `InitGrow` at the preallocation anchor. `InitFrame.publish`
+  connects its answers to the unchanged caller frame contract. Step, answer, continuation
+  composition, rebasing, and weakening are proved against the actual runner.
+- `StateOk_bindIvar` transports structural/dispatch facts, including hash defaults and
+  runtime readiness. The six value-sensitive components are explicit postconditions:
+  locals, fields, block, self, constants, and constant paths. Behavioral assumptions
+  transport through `Later`; no universal old-field preservation is smuggled back in.
+- Field updates use first-visible lookup plus completeness. Prove spine shape, lookup after
+  `ivarSet`, unchanged other slots, and reconstruction with first-binding shadowing. Local
+  reads and alias equalities remain unchanged, but each retained local/field denotation must
+  be supplied at the post heap. Duplicate-field controls cover hidden incompatible types.
+- `InitExpr` composes variables, assignments, and arbitrary nonempty sequences. Its write
+  premise is a semantic preservation obligation, not certificate data. The 061 body pilot
+  discharges it for the annotated Integer environment, proves both writes and full outgoing
+  conformance, then safely forgets only the return value (`void` → `.any`). No concrete call
+  arguments occur in this proof. A corollary recovers the initialized instance type; a
+  wrong-result control refutes the run contract even at fuel zero.
+- This is not checker admission. Next add the scoped syntactic body/sequence families to
+  the registry and annotation-checked certificate path, then class installation and calls.
+  No signature may bypass that body proof. New modules build in under a second and use
+  standard Lean axioms only; no existing rule or floor is weakened.
+  Do not blindly embed ordinary derivations: `Framed` alone does not imply `InitGrow`
+  (method-table installation is one counterexample). Each admitted subtree needs its effect proof.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree. 061 remains outside the checker.
