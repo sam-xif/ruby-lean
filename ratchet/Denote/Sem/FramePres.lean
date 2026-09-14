@@ -12,10 +12,22 @@ open RubyCore
 def RootUncaptured (m : Machine) : Prop :=
   (m.frames.getD (m.stack.headD 0) default).captured = none
 
+/-- The frame fields read by conformance. Locals, match state, and default visibility
+are intentionally absent: evaluating a body may change those. -/
+structure FrameScope where
+  self : Value
+  blk : Option Value
+  cref : List ObjId
+  defmod : ObjId
+  captured : Option FrameId
+
+def frameScope (f : RubyCore.Frame) : FrameScope :=
+  ⟨f.self, f.blk, f.cref, f.defmod, f.captured⟩
+
 structure FramePres (m n : Machine) : Prop where
   size : m.frames.size ≤ n.frames.size
-  rootCaptured : (n.frames.getD (n.stack.headD 0) default).captured =
-    (m.frames.getD (m.stack.headD 0) default).captured
+  scope : frameScope (n.frames.getD (n.stack.headD 0) default) =
+    frameScope (m.frames.getD (m.stack.headD 0) default)
   isolated : RootUncaptured m → ∀ i, i < m.frames.size → i ≠ m.stack.headD 0 →
     n.frames.getD i default = m.frames.getD i default
 
@@ -27,9 +39,14 @@ theorem FramePres.of_eq {m n : Machine} (hs : n.stack = m.stack)
 
 theorem FramePres.refl (m : Machine) : FramePres m m := .of_eq rfl rfl
 
+theorem FramePres.rootCaptured {m n : Machine} (h : FramePres m n) :
+    (n.frames.getD (n.stack.headD 0) default).captured =
+      (m.frames.getD (m.stack.headD 0) default).captured :=
+  congrArg FrameScope.captured h.scope
+
 theorem FramePres.trans {m n p : Machine} (h : FramePres m n) (h' : FramePres n p)
     (hs : n.stack = m.stack) : FramePres m p := by
-  refine ⟨Nat.le_trans h.size h'.size, h'.rootCaptured.trans h.rootCaptured, ?_⟩
+  refine ⟨Nat.le_trans h.size h'.size, h'.scope.trans h.scope, ?_⟩
   intro hc i hi hn
   have hc' : RootUncaptured n := h.rootCaptured.trans hc
   rw [h'.isolated hc' i (Nat.lt_of_lt_of_le hi h.size) (by simpa [hs] using hn),
@@ -38,8 +55,8 @@ theorem FramePres.trans {m n p : Machine} (h : FramePres m n) (h' : FramePres n 
 theorem FramePres.setLocal (m : Machine) (x : String) (v : Value) :
     FramePres m (m.setLocal x v) := by
   refine ⟨by simp, ?_, ?_⟩
-  · simp only [setLocal_eq_setAt]
-    exact setAt_captured _ _ _ _ _
+  · simp only [setLocal_eq_setAt, setAt_stack, frameScope, setAt_self,
+      setAt_blk, setAt_cref, setAt_defmod, setAt_captured]
   · intro hc i _ hn
     have ho : Machine.setLocal.owner m x (m.stack.headD 0) (m.stack.headD 0)
         (m.frames.size + 1) = m.stack.headD 0 := by

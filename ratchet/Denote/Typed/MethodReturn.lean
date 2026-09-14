@@ -39,9 +39,9 @@ theorem method_pop_framed {m n : Machine} {f : RubyCore.Frame}
     · have hh := h.frames.size
       simp only [pushMethodFrame, Array.size_push] at hh
       exact Nat.le_trans (Nat.le_succ _) hh
-    · change ((popMethodFrame n).frames.getD ((popMethodFrame n).stack.headD 0) default).captured = _
+    · change frameScope ((popMethodFrame n).frames.getD ((popMethodFrame n).stack.headD 0) default) = _
       rw [hs]
-      exact congrArg RubyCore.Frame.captured (hf _ hl)
+      exact congrArg frameScope (hf _ hl)
     · intro _ i hi _
       exact hf i hi
 
@@ -109,8 +109,8 @@ private theorem frameK_escape {origin n : Machine} {Γ : Env} {τ I : Ty} {κ : 
       simp [Interp.stepFn, deliverA, Answer.ctl, Interp.unwind, hc]
 
 /-- Consume a checked body at its method frame and return an answer at the caller.
-The remaining conformance premise is explicit: this theorem does not manufacture the
-caller's `StateOk` from its local environment alone. Method-return jumps require the
+The conformance premise is explicit; `MethodState.lean` discharges it rather than
+manufacturing the caller's `StateOk` from its local environment alone. Method-return jumps require the
 future answer contract's return arm; the current body contract excludes them. -/
 theorem methodFrame_runSpec {m : Machine} {f : RubyCore.Frame} {e : Ratchet.Expr}
     {Γb Γ : Env} {κb κ : Ctx} {Ib I τ : Ty}

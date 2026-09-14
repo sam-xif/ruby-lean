@@ -61,9 +61,12 @@ positive controls as well as declaration controls. Never treat a signature as it
 `Framed` now carries `FramePres`: uncaptured activations preserve inactive caller frames;
 captured ones may still write through their captured chain. `MethodReturn.lean` restores the
 caller frame and first-order local environment, and composes a body run through the real
-method continuation. Full caller `StateOk` is still an explicit obligation, and explicit
-`return` needs an answer-contract extension. Neither boundary lemmas nor declaration-only
-acceptance count as 052; method admission and checked-signature integration remain next.
+method continuation. `MethodState.lean` now proves full entry/return conformance and consumes
+an annotated body proof through `enterUserMethod`; a real-boot identity-method example works
+for every Integer argument. Installation/dispatch and checked-signature integration remain
+next; explicit `return` needs an answer-contract extension. Neither boundary lemmas nor
+declaration-only acceptance count as 052. `methodBootOkB` checks additional method-start
+facts which must join the validator's boot contract when methods are admitted.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 proofs use no `sorry`, `native_decide`, or new axioms.
 
@@ -85,6 +88,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/Context.lean` | Context-indexed run contract, specialization equivalence, assignment and sequence |
 | `Denote/Typed/MethodEntry.lean` | Required-positional method entry and annotated parameter-environment conformance |
 | `Denote/Sem/FramePres.lean`, `Denote/Typed/MethodReturn.lean` | Caller isolation, local restoration, and method-continuation composition |
+| `Denote/Sem/Reframe.lean`, `Denote/Typed/MethodState.lean` | Full frame-switch conformance and post-dispatch calls from annotated body proofs |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |
 | `Denote/Typed/HashIndex.lean` | Hash dispatch, lookup, nil defaults, and default-value counterexample |

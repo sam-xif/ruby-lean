@@ -8694,3 +8694,29 @@ both halves of what constrains them now have a name.
   all 22 rules proved under the stronger framing contract. Caller restoration,
   method-frame composition, and `validateD_safe_boot` are axiom-clean. The first
   gate attempt caught a doc-comment placement error; corrected before the green run.
+
+## Clink 88 (2026-09-14) — full method-boundary conformance from the body proof
+
+- `StateOk_reframe` transports the entire conformance record across a same-heap
+  frame switch. Locals/frame validity are supplied; scope types must be first-order,
+  value-only recursive assumptions empty, and constant lookup unchanged. The last
+  premise matters: `constGet?` reads the static frame's definition class, so merely
+  retaining the constant table is insufficient. Empty constant tables discharge it.
+- Widen `FramePres`'s root metadata from the captured parent to `FrameScope`: self,
+  block, cref, definition module, and captured parent. These are exactly the fields
+  conformance reads. Locals, match state, and default visibility may still change.
+  Local-write/equality/transitivity proofs carry this through every existing rule.
+- `MethodState` proves full entry and caller restoration, then composes
+  `required_method_runSpec` through actual `enterUserMethod`. Its body premise is
+  `SemSafeCtxA` at the annotated parameter/return types; no signature-as-proof and
+  no assumed caller `StateOk` remain in the composed result. Installation/dispatch,
+  syntactic context/signature integration, and explicit-return answers remain owed.
+- Worked `identity_after_dispatch`: every Integer argument, from the real boot,
+  using the generic local-read body proof and full boundary lemmas. Additional boot
+  facts (uncaptured current frame, Object receiver, empty continuation) are checked
+  by `methodBootOkB`, not assumed from `ctx0`. This check must join the validator's
+  boot contract at method admission. No coverage increase is claimed for a direct
+  post-dispatch proof; the checker still rejects method declarations/calls.
+- Full quiet ratchet GREEN: fragment 49, checker reach 51, 252 agree / 0 disagree;
+  all 22 rules remain proved. Frame-switch conformance, the composed post-dispatch
+  call, and the real-boot worked example are axiom-clean.
