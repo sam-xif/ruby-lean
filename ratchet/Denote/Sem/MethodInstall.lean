@@ -91,16 +91,18 @@ theorem MainReady.methodWrite {m : Machine} (h : MainReady m) (cls : ObjId)
 /-- Common state transport. The positive method/class tables are the installation
 rule's obligations; all data, scope, and negative dispatch facts are derived here.
 `method_missing` needs a stronger query contract before it can be rewritten. -/
-theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : ObjId}
-    {name : String} {md : MethodDef} {D : DefTable}
+theorem StateOk_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : ObjId}
+    {name : String} {md : MethodDef} {C : CTable} {D : DefTable}
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (ha : κ.asms = [])
     (hn : nameFreeN κ name = false) (hmiss : "method_missing" ≠ name)
     (hquiet : "method_added" ≠ name)
-    (hclasses : ClassesOk κ.classes { m with heap := defineMethod m.heap cls name md })
+    (hclasses : ClassesOk C { m with heap := defineMethod m.heap cls name md })
     (hdefs : DefsOk D { m with heap := defineMethod m.heap cls name md })
-    (hdecl : DeclClassOk κ { m with heap := defineMethod m.heap cls name md }) :
-    StateOk { κ with pos := { κ.pos with defs := D } } Γ I
+    (hnested : NestedClassesOk C { m with heap := defineMethod m.heap cls name md })
+    (hdecl : DeclClassOk { κ with pos := { κ.pos with classes := C } }
+      { m with heap := defineMethod m.heap cls name md }) :
+    StateOk { κ with pos := { κ.pos with classes := C, defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } := by
   let n : Machine := { m with heap := defineMethod m.heap cls name md }
   have hcf : n.currentFrame = m.currentFrame := rfl
@@ -153,7 +155,7 @@ theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : 
     selfTy := ?_
     consts := ?_
     constPaths := ?_
-    nested := ?_
+    nested := hnested
     privConsts := trivial
     constScope := ?_
     exact := MethodsExact_defineMethod hm.exact hn
@@ -207,8 +209,6 @@ theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : 
     simp only [n, classNamed?_defineMethod] at hk
     simp only [n, Proof.constLookupFrom_defineMethod] at hv
     exact hden _ (ht.paths _ τ hx) _ (hm.constPaths owner x τ k hx hk v hv)
-  · simpa only [NestedClassesOk, isClassRefNamed, classNamed?_defineMethod,
-      Proof.constLookupFrom_defineMethod] using hm.nested
   · intro x
     exact (hresolve x).trans ((hm.constScope x).trans (constLookup_defineMethod ..).symm)
   · intro x hx k hk o md' hfound
@@ -247,6 +247,23 @@ theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : 
       crubyShadow_defineMethod] using hm.nilQuery hfree k
   · change SelfLive n
     simpa only [SelfLive, hcf, n, Proof.objs_size_defineMethod] using hm.selfLive
+
+/-- Backward-compatible specialization: a top-level definition changes only the def table.
+The class/nested tables still describe the same declarations. -/
+theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : ObjId}
+    {name : String} {md : MethodDef} {D : DefTable}
+    (hm : StateOk κ Γ I m) (ht : ReframeFO κ I)
+    (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (ha : κ.asms = [])
+    (hn : nameFreeN κ name = false) (hmiss : "method_missing" ≠ name)
+    (hquiet : "method_added" ≠ name)
+    (hclasses : ClassesOk κ.classes { m with heap := defineMethod m.heap cls name md })
+    (hdefs : DefsOk D { m with heap := defineMethod m.heap cls name md })
+    (hdecl : DeclClassOk κ { m with heap := defineMethod m.heap cls name md }) :
+    StateOk { κ with pos := { κ.pos with defs := D } } Γ I
+      { m with heap := defineMethod m.heap cls name md } :=
+  StateOk_methodWrite_tables hm ht hΓ ha hn hmiss hquiet hclasses hdefs
+    (by simpa only [NestedClassesOk, isClassRefNamed, classNamed?_defineMethod,
+      Proof.constLookupFrom_defineMethod] using hm.nested) hdecl
 
 /-- Full conformance for the top-level method slice (no program class declarations).
 This discharges the positive-table premises of `StateOk_methodWrite` as well. It says
@@ -309,6 +326,7 @@ theorem StateOk_reserveName {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
 #print axioms MethodsExact_defineMethod
 #print axioms DefsOk_defineMethod
 #print axioms StateOk_methodWrite
+#print axioms StateOk_methodWrite_tables
 #print axioms StateOk_defineTopMethod
 #print axioms StateOk_reserveName
 end Ratchet.Denote

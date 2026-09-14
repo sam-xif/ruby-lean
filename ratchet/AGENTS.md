@@ -187,6 +187,11 @@ InstanceCodeControls changes only a builtin tag and observes a real call failure
 matching the old syntax checks. `InstanceInstall` proves ordinary def metadata, inherited
 quiet hooks, and the fresh class's actual definition step. Checked-body/table publication
 and instance dispatch still need integration; no new judgment rule is admitted.
+`InstanceTable` publishes one installed member and preserves old records by heap owner,
+including aliases. `StateOk_methodWrite_tables` permits updated class and def tables;
+`StateOk_publish_instance` derives the code/def tables but still requires constructor and
+nested-name contracts. `InstancePublish` connects publication to the actual def step.
+Controls retain another owner's same-name method and refute a stale aliased record by a call.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -234,6 +239,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/ClassDeclared.lean`, `Denote/Typed/ClassDeclaredControls.lean` | Existing declarations, constructor lookup, and inherited-initializer control |
 | `Ratchet/ClassCtx.lean`, `Denote/Sem/ClassTables.lean`, `ClassNative.lean`, `ClassState.lean`, `Denote/Typed/ClassStateControls.lean` | Full fresh class-entry conformance, explicit table frame, executable native guard, and activation countermodels |
 | `Denote/Sem/MethodCode.lean`, `Denote/Typed/InstanceInstall.lean`, `InstanceCodeControls.lean` | Ordinary class-method metadata, actual def installation, and call-through countermodels |
+| `Denote/Sem/InstanceTable.lean`, `Denote/Typed/InstancePublish.lean`, `InstanceTableControls.lean` | Installed-member publication, owner-sensitive preservation, and alias countermodel |
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

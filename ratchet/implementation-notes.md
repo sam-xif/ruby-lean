@@ -9402,3 +9402,25 @@ both halves of what constrains them now have a name.
   dispatch, constructor integration, and outgoing conformance remain required.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree.
+
+## Clink 120 (2026-09-14) — publish installed instance-method records
+
+- `classWithMethod`/`instanceDeclCtx` publish exactly one executed member, never a scan of
+  the remaining body. A new first-match descriptor retains previous method records; freshness
+  is an explicit premise, so overwriting a recorded body requires a different update proof.
+- `ClassesOk_publish_instance` derives the installed record with all metadata and preserves
+  old records. Its freshness guard is indexed by **heap owner**, not class name: unrelated
+  owners can share a method name, but aliases cannot keep stale body records. Controls change
+  Point#answer while Other#answer still returns 2; an Alias of Point loses its old Integer
+  body record, and the actual aliased call plus one becomes type-stuck.
+- `StateOk_methodWrite_tables` generalizes the existing state transport to updated class and
+  def tables, retaining the old top-level API as a specialization. `StateOk_publish_instance`
+  derives code/def conformance and all ordinary state fields after name reservation. It still
+  requires the outgoing constructor and nested-name contracts explicitly; it does not infer
+  those from signatures or empty method tables. `step_instance_publish` joins metadata,
+  actual installation, and positive publication through the real def step.
+- New modules build below a second, with standard axioms only. No body-safety claim, rule,
+  admission, exemption, or floor changes. Scoped body-state requirements, checked-body cache,
+  constructor/nested contracts, and instance entry/dispatch remain required for 061.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree.
