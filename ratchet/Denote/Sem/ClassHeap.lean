@@ -242,6 +242,21 @@ theorem ClassReady.freshClass {h : Heap} {d : ObjId} {name q : String} {e : ObjI
   · rw [Proof.Judgment.ancestors_old_freshC hc.chains hsat hc.chains.boot.1]
     exact hc.classBasic
 
+/-- The newly registered name denotes the allocated class, not its eigenclass. -/
+theorem classNamed_freshClass {h : Heap} {name : String} {e : ObjId}
+    (hc : (h.classPayload? Boot.objectId).isSome = true)
+    (ho : Boot.objectId < h.objs.size) :
+    classNamed? (freshClsHeap h Boot.objectId name name e) name = some h.objs.size := by
+  have hn : constOwn (freshClsHeap h Boot.objectId name name e) Boot.objectId name =
+      some (.ref h.objs.size) := by
+    rw [Proof.Judgment.constOwn_old_freshC ho ho]
+    exact Proof.Judgment.constOwn_constSetIn_self hc ho
+  have hl : constLookup (freshClsHeap h Boot.objectId name name e) name =
+      some (.ref h.objs.size) := by
+    cases hp : (freshClsHeap h Boot.objectId name name e).classPayload? Boot.objectId <;>
+      simpa only [constLookup, constOwn, hp, Option.bind] using hn
+  simp only [classNamed?, hl, Proof.Judgment.freshClsHeap_cp_k, Option.isSome_some, ite_true]
+
 /-- Restore frame balance separately: this is the heap half of class publication. -/
 theorem Framed.of_freshClass {κ : Ctx} {Γ : Env} {I : Ty} {m n : Machine}
     {name : String} {e : ObjId} (hm : StateOk κ Γ I m)

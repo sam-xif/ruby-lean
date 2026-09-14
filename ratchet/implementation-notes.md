@@ -9267,3 +9267,26 @@ both halves of what constrains them now have a name.
   are still required before 061 can be admitted. No rule, floor, or exemption changes.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree.
+
+## Clink 114 (2026-09-14) — fresh class scope and caller restoration
+
+- `ClassFrame` proves the actual fresh frame is live, uncaptured, outside a method, without
+  a block or inherited locals, with an empty complete ivar spine and self at `.clsOf name`.
+  Move the class-name registration lemma into the heap module to keep this below typed rules.
+- `ClassConstants` transports inherited constant lookup on old chains for names other than
+  the newly registered name. The fresh class's empty own table adds no lexical shadow;
+  the new name resolves directly through Object's updated table. Together with incoming
+  main scope and ConstScopeOk, this proves the outgoing ConstScopeOk without assuming every
+  inherited scope is empty. A class-local Integer binding refutes extending that conclusion
+  beyond an empty scope; it is a regression control, not an admitted constant-write rule.
+- `ClassReturn` separates the pre-allocation heap anchor from the post-entry body anchor.
+  Compose `Framed.of_freshClass` with uncaptured-frame restoration to recover full caller
+  framing and first-order local types; no weaker caller contract or same-heap assumption.
+  Reuse the method-return machinery, exposing its existing uncaptured-local lookup lemma.
+- `class_entry_scope` composes nine frame/scope facts through actual entry. Execution controls
+  check new/existing/missing names and `x = 7; class Point; x = 9; end`: body result 9,
+  caller x still 7. All new proof modules build in under a second, with standard axioms only.
+  Full context assembly, remaining negative/constant-table invariants, and checked
+  instance-method/constructor integration remain required; no rule or admission changes.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree.

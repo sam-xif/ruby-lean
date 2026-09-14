@@ -57,7 +57,7 @@ theorem method_pop_framed {m n : Machine} {f : RubyCore.Frame}
   exact (denM_heap_only (m₁ := n) (m₂ := popMethodFrame n) ht rfl).mp
     (h.firstOrder τ ht v he)
 
-private theorem getLocal_uncaptured {m : Machine} (hc : RootUncaptured m) (x : String) :
+theorem getLocal_uncaptured {m : Machine} (hc : RootUncaptured m) (x : String) :
     m.getLocal x = (((m.frames.getD (m.stack.headD 0) default).locals.find?
       (·.1 == x)).map (·.2)).getD .nil := by
   unfold RootUncaptured at hc

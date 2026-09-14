@@ -35,21 +35,6 @@ theorem stepFn_class_fresh {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
       ho he (by simp only [evalFrom, currentFrame_reCtl, hd, beq_self_eq_true, ite_true])
       (by simp only [hne, Bool.false_eq_true, not_false_eq_true]))
 
-/-- The newly registered name denotes the allocated class, not its eigenclass. -/
-theorem classNamed_freshClass {h : Heap} {name : String} {e : ObjId}
-    (hc : (h.classPayload? Boot.objectId).isSome = true)
-    (ho : Boot.objectId < h.objs.size) :
-    classNamed? (freshClsHeap h Boot.objectId name name e) name = some h.objs.size := by
-  have hn : constOwn (freshClsHeap h Boot.objectId name name e) Boot.objectId name =
-      some (.ref h.objs.size) := by
-    rw [Proof.Judgment.constOwn_old_freshC ho ho]
-    exact Proof.Judgment.constOwn_constSetIn_self hc ho
-  have hl : constLookup (freshClsHeap h Boot.objectId name name e) name =
-      some (.ref h.objs.size) := by
-    cases hp : (freshClsHeap h Boot.objectId name name e).classPayload? Boot.objectId <;>
-      simpa only [constLookup, constOwn, hp, Option.bind] using hn
-  simp only [classNamed?, hl, Proof.Judgment.freshClsHeap_cp_k, Option.isSome_some, ite_true]
-
 #print axioms ClassReady.freshClass
 #print axioms stepFn_class_fresh
 #print axioms classNamed_freshClass
