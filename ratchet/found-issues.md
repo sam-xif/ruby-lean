@@ -2428,3 +2428,28 @@ safe — reuses the lemma unchanged instead of forcing a rewrite of the checker.
 The ratchet's RED condition moved up a level accordingly: no longer "a rung is certified and
 unproved", which is unreachable now, but "the fragment claims something the bridge cannot
 back".
+
+## F33 — universal first-order framing excludes initializer writes (2026-09-14)
+
+**An extension obstacle, not an accepted unsafe program.** `Framed.firstOrder` quantifies over
+every first-order type/value, not just source bindings. A fresh `Point` with unset `@x`
+inhabits `.inst "Point" (.ivarCons "@x" .nilT .ivar0)`. After `@x = 1`, it does not. Thus even
+an initializer with no caller-local aliases cannot satisfy the current body contract.
+
+`Denote/Sem/IvarMutation.lean` proves `nil_ivar_write_not_framed` for an arbitrary live
+receiver. `Denote/Typed/InstanceControls.lean` instantiates it on a small heap and proves the
+actual `stepFn` assignment transition. This is not a claim of boot conformance for that
+heap. The generic obstruction applies wherever those receiver facts hold.
+
+The same write preserves class/dispatch metadata and every other object; these facts are
+proved separately using `Proof.IvarOnly`. They do **not** justify retaining arbitrary
+instance shapes through the write: aliases nested inside arrays/ivars can observe it too.
+`retained_array_observes_mutation` pins the distinct-array case, refuting a frame weakened
+only by excluding values equal to `self`.
+Clink 81 already warned that blanket first-order preservation was nonmutating-only; 061
+reaches that limit before collection mutation does.
+
+Next: refine retained-type framing with an explicit effect/ownership or compatible-type
+invariant, including the constructor's private initialization phase. Do not remove the
+preservation premise from consumers: earlier arguments, collection elements, and inactive
+caller locals use it. No constructor admission or coverage increase is claimed yet.

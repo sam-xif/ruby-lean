@@ -9074,3 +9074,25 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 54→55, checker reach 59→60, rules 24→31,
   worked theorems 45→46, 0 owed/exempt, 252 agree / 0 disagree. 061 classes is next;
   explicit return, forward references, and mutual recursion remain separate frontiers.
+
+## Clink 106 (2026-09-14) — instance reads and the constructor frame boundary
+
+- Prove self/ivar reads at arbitrary `Ctx`/locals/spines. Spine lookup respects first-binding
+  shadowing; absence uses `SelfSpineOk`'s completeness clause, not a lower-bound assumption.
+  `ignoreResult` permits a void/ignored result only after safety and outgoing conformance
+  are proved. 061's initializer manifest uses `.any`, so body checking must preserve those
+  obligations even though its returned value is discarded.
+- Before attempting write preservation, refute the old frame contract (§F33): assigning
+  Integer to an unset ivar destroys a first-order instance type asserting nil there.
+  `nil_ivar_write_not_framed` is generic; a small concrete heap supplies a kernel-checked
+  witness and actual assignment step, without claiming boot conformance.
+  A second witness uses a distinct array containing the receiver: excluding `self` alone
+  from retained values would still be unsound.
+- Prove what `bindIvar` does preserve: all fields except ivars, heap size, dispatch metadata
+  (`Proof.IvarOnly`), and other objects. These are reusable write facts, not a substitute
+  for retained-value preservation. The next structural task is refined framing for mutable
+  self/constructor ownership; simply adding `ivarAsgn` under `Framed` cannot work.
+- The full gate imports all new controls; no checker/registry admission or floor change.
+  New proof modules build in under a second with standard Lean axioms only.
+- Full quiet ratchet GREEN: fragment/reach remain 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree. The class frontier remains open.

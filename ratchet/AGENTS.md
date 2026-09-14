@@ -119,6 +119,12 @@ nodes around self-calls; closed subtrees reuse ordinary proofs. The checker now 
 factorial at Integer, with an independent worked derivation exercising all seven new rules.
 `RecursiveControls.lean` covers invalid uncalled bodies, nullable annotations, wrong recursive
 calls, and context refresh. No signature enters the checked-body cache without its body proof.
+For 061, `InstanceRead.lean` proves context-general self/ivar reads and safe ignored results.
+`IvarMutation.lean` proves the successful write step and unchanged dispatch/other-object
+metadata. Its counterexample (§F33) shows why constructors need a refined frame contract:
+the current `Framed.firstOrder` preserves arbitrary old ivar shapes, including the receiver's
+pre-initialization nil slots. `InstanceControls.lean` pins that obstruction with a concrete
+assignment, not a failed tactic. No class or ivar-write rule is admitted yet.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -152,6 +158,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/MethodRuleControls.lean`, `MethodDerivations.lean` | Full definition + call, validator acceptance, and the proof-term-audited 052 example |
 | `Denote/Typed/BoundedRun.lean`, `BoundedMethod.lean`, `BoundedCall.lean`, `BoundedControls.lean` | Fuel-indexed contracts, guarded actual dispatch, and recursive semantic controls |
 | `Denote/Typed/Recursive.lean`, `RecursiveDerivations.lean`, `Ratchet/RecursiveControls.lean` | Scoped recursive semantics, worked 060 proof, and annotation/call controls |
+| `Denote/Typed/InstanceRead.lean`, `InstanceControls.lean`, `Denote/Sem/IvarMutation.lean` | Instance-read prerequisites, precise write facts, and the constructor framing counterexample (§F33) |
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
