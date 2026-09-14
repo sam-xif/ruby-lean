@@ -1,5 +1,5 @@
 import Denote.Typed.MethodState
-import RubyCore.Proof.HeapFacts
+import Denote.Sem.MethodHeap
 
 /-! The ordinary method's installation and dispatch paths. These are interpreter
 equalities, not annotation-based admission: safety still consumes the checked body.
@@ -30,6 +30,19 @@ def DefHookQuiet (m : Machine) : Prop :=
   | some (owner, md) =>
     (md.undefined || owner == Boot.objectId || owner == Boot.kernelId ||
       owner == Boot.basicObjectId) = true
+
+def defHookQuietB (m : Machine) : Bool :=
+  match lookup m.heap (.ref m.currentFrame.defmod) "method_added" with
+  | none => true
+  | some (owner, md) => md.undefined || owner == Boot.objectId ||
+      owner == Boot.kernelId || owner == Boot.basicObjectId
+
+theorem defHookQuietB_sound {m : Machine} (h : defHookQuietB m = true) : DefHookQuiet m := by
+  unfold defHookQuietB at h
+  unfold DefHookQuiet
+  cases he : lookup m.heap (.ref m.currentFrame.defmod) "method_added" with
+  | none => trivial
+  | some pair => cases pair; simpa only [he] using h
 
 theorem defHookQuiet_install {m : Machine} {name : String} {ps : List RubyCore.Param}
     {body : RubyCore.Expr} (hn : "method_added" ≠ name) (hh : DefHookQuiet m) :
@@ -75,15 +88,6 @@ theorem lookup_installed {m : Machine} {recv : Value} {name : String}
   dsimp only
   rw [Proof.classOf_defineMethod, Proof.ancestors_defineMethod, ha]
   exact Proof.lookup_go_defineMethod_self _ _ _ _ hc _
-
-theorem heap_get_defineMethod_ne {h : Heap} {cls o : ObjId} {name : String}
-    {md : MethodDef} (hne : o ≠ cls) :
-    (defineMethod h cls name md).get o = h.get o := by
-  unfold defineMethod
-  split
-  · unfold Heap.setClassPayload Heap.get Heap.set
-    rw [Proof.objs_getD_set!_ne _ _ _ _ hne]
-  · rfl
 
 theorem invokeDispatch_userMethod {m : Machine} {recv : Value} {site : SendSite}
     {name : String} {md : MethodDef} {owner : ObjId} {args : List Value}

@@ -65,10 +65,14 @@ method continuation. `MethodState.lean` proves full entry/return conformance and
 an annotated body proof through `enterUserMethod`; a real-boot identity-method example works
 for every Integer argument. `MethodDispatch.lean` connects this contract to ordinary dispatch
 and proves the actual `def` installation/lookup path, with visibility, shadowing, and hook
-checks intact. Conformance transport across installation and checked-signature integration
-remain next; explicit `return` needs an answer-contract extension. Neither boundary lemmas nor
+checks intact. `Sem/MethodHeap.lean` and `Sem/MethodInstall.lean` now preserve first-order
+types and full conformance through fresh top-level definitions; reserving a name weakens
+absence facts but grants no callable entry. A real-boot definition-step + installed-call
+pilot consumes the Integer annotation's body proof. Checked-signature/context integration
+remains next; explicit `return` needs an answer-contract extension. Neither boundary lemmas nor
 declaration-only acceptance count as 052. `methodBootOkB` checks additional method-start
-facts which must join the validator's boot contract when methods are admitted.
+facts, and `methodInstallBootOkB` also checks top-level installation/lookup/hook facts;
+these must join the validator's boot contract when methods are admitted.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -94,6 +98,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/FramePres.lean`, `Denote/Typed/MethodReturn.lean` | Caller isolation, local restoration, and method-continuation composition |
 | `Denote/Sem/Reframe.lean`, `Denote/Typed/MethodState.lean` | Full frame-switch conformance and post-dispatch calls from annotated body proofs |
 | `Denote/Typed/MethodDispatch.lean` | Actual definition/lookup/dispatch equalities and call safety from annotated bodies |
+| `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |
 | `Denote/Typed/HashIndex.lean` | Hash dispatch, lookup, nil defaults, and default-value counterexample |

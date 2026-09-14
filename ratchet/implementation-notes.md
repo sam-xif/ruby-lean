@@ -8757,3 +8757,30 @@ both halves of what constrains them now have a name.
   No interpreter changes, new axioms, or per-program concrete safety proofs.
 - Full quiet ratchet GREEN at the corrected initial machine: fragment 49, checker
   reach 51, 252 agree / 0 disagree, all 22 rules proved. `validateD_safe_run` is axiom-clean.
+
+## Clink 91 (2026-09-14) — full conformance across method installation
+
+- `MethodHeap` transports first-order denotations (including collections, aliases,
+  instance/ivar types) through `defineMethod`, and constructs `Framed`. A method write
+  is not an `Ext`: its class payload really changes. Keep object-data projections,
+  constant/ancestor facts, and differently named lookups; do not pretend the whole
+  payload is fixed or extend this to behavioral arrows without their own argument.
+- `StateOk_methodWrite` derives data/scope/negative-dispatch preservation, with the
+  positive class/method tables supplied by the installation rule. `StateOk_defineTopMethod`
+  discharges those too for the top-level method slice. Explicit limits: first-order
+  types, empty recursive assumptions, no program classes, fresh method names, and no
+  `method_missing` write (the query miss clauses require a stronger contract for that).
+  Freshness is forced by legacy `DefsOk`/`extendDefs`: they require every entry to hold
+  and prepend without replacing. Broader redefinition support must fix that table.
+- `StateOk_reserveName` only weakens absence facts. It installs no syntax/signature and
+  cannot authorize call-before-definition. The new body is recorded by the actual
+  table write; a call separately consumes its annotation-checked semantic body proof.
+- `MethodInstallControls` checks real-boot installation/lookup/hook premises once,
+  proves the actual identity-definition step, derives the full installed state, and
+  proves its dispatched call for every Integer argument from the generic local-read
+  body proof. No per-program post-state validation or concrete-body safety shortcut.
+  These controls exposed clink 90's boot mismatch. Checker context/checked-signature
+  integration remains owed; definitions/calls are still not admitted or counted.
+- All new proofs are axiom-clean and each module builds in under a second.
+- Full quiet ratchet GREEN: fragment 49, checker reach 51, 252 agree / 0 disagree,
+  22 rules proved. Installation and real-boot controls are included in the full gate.
