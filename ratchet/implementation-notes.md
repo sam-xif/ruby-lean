@@ -9147,3 +9147,27 @@ both halves of what constrains them now have a name.
   (method-table installation is one counterexample). Each admitted subtree needs its effect proof.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree. 061 remains outside the checker.
+
+## Clink 109 (2026-09-14) — executable write-preservation obligations
+
+- `IvarStable` is a sufficient type predicate, not a replacement for ownership/effect
+  reasoning. It covers scalars, nominal classes/empty-spine instances, nullable/union
+  types, and recursively stable arrays/hashes; field snapshots and captured/behavioral
+  types decline. Prove denotation equivalence through `bindIvar` by type/spine induction.
+- `writeTypesB` checks the assigned type, retained locals/fields, self, block, and constants.
+  Fields use first-visible lookup and skip the overwritten name, so hidden duplicates or
+  an overwritten old snapshot do not reject needlessly. Aliases preserve value equality;
+  their underlying local types must still be stable. Both lexical and qualified constant
+  conformance follow from the checked constant-table entries.
+- `InitState.bindIvar` discharges all six value-sensitive components of `StateOk_bindIvar`;
+  `SemInitA.ivarAsgnChecked` now has a Boolean guard ready for a constructor-mirroring
+  certificate checker. No empty-block/constant-table assumption is needed. Replace the
+  Integer-only Point pilot lemma with this generic proof; also prove a collection-parameter
+  write with a non-void collection return. Controls independently refute unstable assigned
+  values, locals, fields, self, blocks, constants, and nested collection aliases.
+- Keep registration with end-to-end class integration: the zero-exemption coverage gate
+  requires new rules to occur in whole-program corpus proofs, not only body pilots. No new
+  expression judgment or checker acceptance is claimed by these type predicates.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree. New proof modules build in under a second,
+  using standard Lean axioms only.
