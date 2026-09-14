@@ -702,4 +702,13 @@ def elemTy : List Ty → Ty
   | [] => .never
   | τ :: τs => joinT τ (elemTy τs)
 
+/-- Types whose denotation reads only the heap, not captured frames or execution. -/
+def FirstOrder : Ty → Bool
+  | .arrow0 _ | .arrowCons .. | .clos .. => false
+  | .nilable τ | .arrayOf τ | .sameAs _ τ => FirstOrder τ
+  | .union σ τ | .hashOf σ τ => FirstOrder σ && FirstOrder τ
+  | .inst _ I => FirstOrder I
+  | .ivarCons _ σ rest => FirstOrder σ && FirstOrder rest
+  | _ => true
+
 end Ratchet

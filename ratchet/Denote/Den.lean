@@ -230,17 +230,6 @@ is exactly `denM` (`denM_heap_only`); for an arrow or a `clos` it is *a* reading
 /-- `denM` at a bare machine over `h`. -/
 def den (τ : Ty) (h : Heap) (v : Value) : Prop := denM τ (Machine.initOn h .nil) v
 
-/-- Is `τ` free of the two constructors whose denotation reads the frame array? Both arrow
-arms and `clos` read it (the arrow through `Returns`/`applyIn`, `clos` through
-`closLocal`/`closSelf`); everything else touches only `m.heap`. -/
-def FirstOrder : Ty → Bool
-  | .arrow0 _ | .arrowCons .. | .clos .. => false
-  | .nilable τ | .arrayOf τ | .sameAs _ τ => FirstOrder τ
-  | .union σ τ | .hashOf σ τ => FirstOrder σ && FirstOrder τ
-  | .inst _ I => FirstOrder I
-  | .ivarCons _ σ rest => FirstOrder σ && FirstOrder rest
-  | _ => true
-
 /-- **The machine is irrelevant for a first-order type.** Two machines with the same heap
 agree on every arrow-free, `clos`-free type — so for that whole fragment `denM` really is the
 `Ty → Heap → Value → Prop` the design note asked for, and `den` loses nothing.

@@ -24,6 +24,7 @@ def rulesUsed : Ratchet.Expr → List String
   | .send (some r) _ args none => "prim" :: (rulesUsed r ++ rulesUsedArgs args)
   | .if' c t (some e) => "if'" :: (rulesUsed c ++ rulesUsed t ++ rulesUsed e)
   | .if' c t none => "ifNoElse" :: (rulesUsed c ++ rulesUsed t)
+  | .array es => "arrayLit" :: rulesUsedArgs es
   | _ => ["?"]
 
 def rulesUsedSeq : List Ratchet.Expr → List String

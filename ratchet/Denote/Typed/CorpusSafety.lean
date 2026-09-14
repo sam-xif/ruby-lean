@@ -253,6 +253,14 @@ theorem safe_189_ctl_ternary (hb : bootOkB = true) : StuckFree bootMachine progr
     (derivD_seqLast (derivD_if (derivD_prim (derivD_var rfl rfl) derivD_allNil .intZero)
       derivD_strLit derivD_strLit)))) (stateOk_boot hb)
 
+def program_044_array_int : Ratchet.Expr := .array [.int 1, .int 2, .int 3]
+
+theorem safe_044_array_int (hb : bootOkB = true) : StuckFree bootMachine program_044_array_int :=
+  dregistry_safe (derivD_arrayLit
+    (derivD_allCons derivD_intLit
+      (derivD_allCons derivD_intLit (derivD_allCons derivD_intLit derivD_allNil rfl) rfl) rfl)
+    rfl) (stateOk_boot hb)
+
 def safeRungs : List (String × Ratchet.Expr) :=
   [("001-int-lit", program_001_int_lit),
    ("002-bool-true", program_002_bool_true),
@@ -293,13 +301,14 @@ def safeRungs : List (String × Ratchet.Expr) :=
    ("040-if-nil-condition", program_040_if_nil_condition),
    ("041-nested-if", program_041_nested_if),
    ("043-elsif-chain", program_043_elsif_chain),
-   ("189-ctl-ternary", program_189_ctl_ternary)]
+   ("189-ctl-ternary", program_189_ctl_ternary),
+   ("044-array-int", program_044_array_int)]
 
 theorem safeRungs_safe (hb : bootOkB = true) :
     ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
   intro q hq
   simp only [safeRungs, List.mem_cons, List.not_mem_nil, or_false] at hq
-  rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact safe_001_int_lit hb
   · exact safe_002_bool_true hb
   · exact safe_003_bool_false hb
@@ -340,6 +349,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   · exact safe_041_nested_if hb
   · exact safe_043_elsif_chain hb
   · exact safe_189_ctl_ternary hb
+  · exact safe_044_array_int hb
 
 #print axioms safeRungs_safe
 end Ratchet.Denote.Typed

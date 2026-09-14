@@ -523,6 +523,8 @@ structure CoreOk (h : Heap) : Prop where
       rule concludes `.clos`, not `.cls "Proc"`, so the only thing spent is `ext_push`'s
       descendant clause. -/
   procBasic : (ancestors h Boot.procId).contains Boot.basicObjectId = true
+  /-- Fresh arrays use this actual boot class, independently of constant rebinding. -/
+  arrayBasic : (ancestors h Boot.arrayId).contains Boot.basicObjectId = true
   /-- **A core class name, if it is bound at all, is bound to a class** (clink 49).
 
       The two `.const` rules that need no declaration (`constBuiltin`, `constExc`) conclude
@@ -545,6 +547,7 @@ theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m
   regexpSelf := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.regexpSelf
   regexpBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.regexpBasic
   procBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.procBasic
+  arrayBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.arrayBasic
   coreNamed := by
     subst hm; subst hm₂; intro n hn v hv
     exact hc.coreNamed n hn v (by rw [← he.constLookup_eq]; exact hv) |>.imp

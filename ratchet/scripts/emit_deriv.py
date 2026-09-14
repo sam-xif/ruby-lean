@@ -314,8 +314,8 @@ class Emitter:
     def n_array(self, n):
         ds, ts = self.go_all(n[1])
         elem = NEVER
-        for t in ts:
-            elem = join(elem, t)
+        for t in reversed(ts):  # Match elemTy's right fold, including nilable joins.
+            elem = join(t, elem)
         return {"rule": "arrayLit", "elems": ds, "elem": elem}, array_of(elem)
 
     def n_hash(self, n):

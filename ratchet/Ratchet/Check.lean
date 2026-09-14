@@ -85,8 +85,8 @@ flexibility, with the obligation as the forcing function.
 
 ## What is deliberately not in the judgment yet
 
-`DJudge` has fourteen rules (plus four in the two list companions). Everything else a `Deriv` can express — `defDecl`, `callSig`,
-`callMethodSig`, `classDecl`, `newInst`, `ivarRead`, `ivarAsgn`, `constCls`, `arrayLit`,
+`DJudge` has fifteen rules (plus four in the two list companions). Everything else a `Deriv` can express — `defDecl`, `callSig`,
+`callMethodSig`, `classDecl`, `newInst`, `ivarRead`, `ivarAsgn`, `constCls`,
 `hashLit`, `selfExpr` — answers `none`, by name, in `check`'s last arms. They join a rule at
 a time, and each one joining is a rung.
 
@@ -291,6 +291,11 @@ inductive DJudge : Env → Expr → Ty → Env → Prop
   /-- `BareNameFree` currently certifies absence only for `x`. Ordinary sends do not
       use this rule: a missing `x()` raises NoMethodError rather than NameError. -/
   | bareName {Γ : Env} : DJudge Γ (.vcall "x") .any Γ
+  /-- Later elements preserve earlier first-order values. Closure types need stronger
+      capture tracking before they can be retained across arbitrary element evaluation. -/
+  | arrayLit {Γ Γ' : Env} {es : List Expr} {tys : List Ty} :
+      DJudgeAll Γ es tys Γ' → FirstOrder (elemTy tys) = true →
+      DJudge Γ (.array es) (.arrayOf (elemTy tys)) Γ'
 
 inductive DJudgeAll : Env → List Expr → List Ty → Env → Prop
   | nil {Γ : Env} : DJudgeAll Γ [] [] Γ
@@ -428,9 +433,18 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) : Option (Certified Γ 
           else none
         | none => none
       | none => none
+    | .array es, .arrayLit ds elem =>
+      match checkAll n Γ es ds with
+      | some ⟨tys, Γ', hs⟩ =>
+        if elemTy tys == elem then
+          if hf : FirstOrder (elemTy tys) = true then
+            some ⟨.arrayOf (elemTy tys), Γ', .arrayLit hs hf⟩
+          else none
+        else none
+      | none => none
     -- Out of the judgment. Every remaining certificate rule -- `defDecl`, `callSig`,
     -- `callMethodSig`, `classDecl`, `newInst`, `ivarRead`, `ivarAsgn`, `constCls`,
-    -- `arrayLit`, `hashLit`, `selfExpr` -- and every expression head with no rule, answers
+    -- `hashLit`, `selfExpr` -- and every expression head with no rule, answers
     -- `none`. Each joins by acquiring a `DJudge` rule, and each joining is a rung.
     | _, _ => none
 

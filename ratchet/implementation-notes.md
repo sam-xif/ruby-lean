@@ -8535,3 +8535,24 @@ both halves of what constrains them now have a name.
   exercises it. Floors rise to fragment 41, 18 rules, and checker reach 43.
 - Full quiet ratchet: GREEN, 252 agree / 0 disagree, all new floors met. The bare-name
   proof builds in five seconds; the full acceptance-to-safety theorem is axiom-clean.
+
+## Clink 81 (2026-09-13) — first-order array literals
+
+- Reuse the certified list companion for left-to-right evaluation. `Array.lean`
+  retains an accumulator at the joined element type, propagates safe escapes, and
+  allocates only after the last element. `CoreOk.arrayBasic` checks the actual boot
+  class needed by `ext_push`; no constant-name assumption substitutes for that id.
+- `Framed` now preserves first-order denotations, including nested arrays. Heap-equal
+  local writes use `denM_heap_only`; allocations use `denM_ext`. Move `FirstOrder`
+  to the type vocabulary so the checker can require it. Higher-order types are
+  excluded because later local writes can invalidate a captured environment.
+- This is a contract for the current heap-nonmutating fragment, **not a mutator
+  solution**: pushing into an empty array destroys its `arrayOf never` denotation.
+  Collection writes will require a more precise retained-type framing discipline.
+- The checker recomputes the element join and checks arity. Align the emitter with
+  `elemTy`'s right fold; its structural nilable cases make fold direction significant.
+  Controls cover forged types, arity, nesting, splats, unsafe elements, evaluation
+  order, and higher-order retention. Rung 044's worked proof exercises the new clink.
+- Full quiet ratchet: GREEN, fragment 41→46 (044–047 and 049), checker reach 43→47,
+  19 proved rules, 252 agree / 0 disagree. The array proof builds in under a second;
+  `validateD_safe_boot` remains axiom-clean. Next positive frontier: 048, hash literals.

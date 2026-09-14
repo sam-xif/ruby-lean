@@ -153,4 +153,27 @@ def ctlAnd : Expr :=
 #guard !validateD (.vcall "x") (.bareName "y")
 #guard !validateD (.send none "x" [] none) (.bareName "x")
 
+-- Array types and arity are recomputed, including empty and nested arrays.
+#guard validateD (.array []) (.arrayLit [] .never)
+#guard !validateD (.array []) (.arrayLit [] .any)
+#guard !validateD (.array [.int 1]) (.arrayLit [.intLit 1] .bool)
+#guard !validateD (.array [.int 1]) (.arrayLit [] .int)
+#guard !validateD (.array []) (.arrayLit [.intLit 1] .int)
+#guard validateD (.array [.array [.int 1], .array [.int 2]])
+  (.arrayLit [.arrayLit [.intLit 1] .int, .arrayLit [.intLit 2] .int] (.arrayOf .int))
+#guard !validateD (.array [.splat (some (.int 1))]) (.arrayLit [.intLit 1] .int)
+#guard !validateD (.array [.send (some (.int 1)) "+" [.str "x"] none])
+  (.arrayLit [.prim (.intLit 1) "+" [.strLit "x"] .int .int] .int)
+
+-- Element evaluation threads locals left to right; reading before the write is rejected.
+#guard validateD (.array [.vasgn .lvar "x" (.int 1), .var .lvar "x"])
+  (.arrayLit [.vasgn .lvar "x" (.intLit 1), .var .lvar "x"] .int)
+#guard !validateD (.array [.var .lvar "x", .vasgn .lvar "x" (.int 1)])
+  (.arrayLit [.var .lvar "x", .vasgn .lvar "x" (.intLit 1)] .int)
+
+-- Higher-order values in an incoming environment cannot bypass the retention guard.
+#guard (check 30 [("f", .arrow0 .int)] (.var .lvar "f") (.var .lvar "f")).isSome
+#guard (check 30 [("f", .arrow0 .int)] (.array [.var .lvar "f"])
+  (.arrayLit [.var .lvar "f"] (.arrow0 .int))).isNone
+
 end Ratchet

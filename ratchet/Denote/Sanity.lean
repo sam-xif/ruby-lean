@@ -43,9 +43,7 @@ def bootMachine : Machine :=
   | .ok m => m
   | .error _ => Machine.init .nil
 
-/-- `CoreOk` as a `Bool`, so its clauses are one computation. Seven of them since clink 48:
-`Judge.regexpLit` added the `Regexp` row, exactly as `CoreOk`'s docstring said the `String`
-one would be joined. -/
+/-- `CoreOk` as a `Bool`, so all its clauses are checked at boot. -/
 def coreOkB (h : Heap) : Bool :=
   (ancestors h Boot.basicObjectId == [Boot.basicObjectId]) &&
   (classNamed? h "String" == some Boot.stringId) &&
@@ -55,6 +53,7 @@ def coreOkB (h : Heap) : Bool :=
   (ancestors h Boot.regexpId).contains Boot.regexpId &&
   (ancestors h Boot.regexpId).contains Boot.basicObjectId &&
   (ancestors h Boot.procId).contains Boot.basicObjectId &&
+  (ancestors h Boot.arrayId).contains Boot.basicObjectId &&
   coreClsNames.all (fun n =>
     match constLookup h n with
     | some (.ref o) => (h.classPayload? o).isSome
@@ -63,10 +62,10 @@ def coreOkB (h : Heap) : Bool :=
 
 theorem coreOkB_sound {h : Heap} (hb : coreOkB h = true) : CoreOk h := by
   simp only [coreOkB, Bool.and_eq_true, beq_iff_eq, List.all_eq_true] at hb
-  refine ⟨hb.1.1.1.1.1.1.1.1, hb.1.1.1.1.1.1.1.2, hb.1.1.1.1.1.1.2, hb.1.1.1.1.1.2,
-          hb.1.1.1.1.2, hb.1.1.1.2, hb.1.1.2, hb.1.2, ?_⟩
+  rcases hb with ⟨⟨⟨⟨⟨⟨⟨⟨⟨hb, sn⟩, ss⟩, sb⟩, rn⟩, rs⟩, rb⟩, pb⟩, ab⟩, names⟩
+  refine ⟨hb, sn, ss, sb, rn, rs, rb, pb, ab, ?_⟩
   intro n hn v hv
-  have := hb.2 n hn
+  have := names n hn
   rw [hv] at this
   cases v with
   | ref o => exact ⟨o, rfl, by simpa using this⟩

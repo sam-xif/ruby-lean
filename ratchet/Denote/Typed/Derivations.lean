@@ -80,4 +80,9 @@ theorem derivD_ifNoElse {Γ Γc Γt : Env} {c t : Ratchet.Expr} {σ τ : Ty}
 theorem derivD_bareName {Γ : Env} : (DJudgeC dclinks).judge Γ (.vcall "x") .any Γ :=
   fun _ hF => hF DClink.bareName (by simp [dclinks])
 
+theorem derivD_arrayLit {Γ Γ' : Env} {es : List Ratchet.Expr} {tys : List Ty}
+    (hs : (DJudgeC dclinks).all Γ es tys Γ') (hf : FirstOrder (elemTy tys) = true) :
+    (DJudgeC dclinks).judge Γ (.array es) (.arrayOf (elemTy tys)) Γ' :=
+  fun F hF => hF DClink.arrayLit (by simp [dclinks]) (hs F hF) hf
+
 end Ratchet.Denote.Typed
