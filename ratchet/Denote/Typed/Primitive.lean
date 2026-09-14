@@ -16,8 +16,11 @@ inductive SemAllA : Env → List Ratchet.Expr → List Ty → Env → Prop
 
 theorem primitive_framed {σ τ : Ty} {name : String} {tys : List Ty} (hp : DPrim σ name tys τ)
     {m n : Machine} {v : Value} (hf : Framed m n) (hv : denM σ m v) : denM σ n v := by
-  cases hp <;> simp only [denM] at hv ⊢
-  all_goals first | exact hv | exact hf.nominal _ _ hv
+  cases hp with
+  | arrayIndex hfo => exact hf.firstOrder (.arrayOf _) hfo _ hv
+  | _ =>
+    simp only [denM] at hv ⊢
+    first | exact hv | exact hf.nominal _ _ hv
 
 private theorem prim_catchFree (k : Kont)
     (h : ∀ tag, k ≠ .catchK tag) : RubyCore.Proof.CatchFree [k] := by

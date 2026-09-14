@@ -8575,3 +8575,25 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet: GREEN, fragment 46→47, checker reach 47→49, 22 proved rules,
   252 agree / 0 disagree. The hash proof builds in under a second, axiom-clean.
   Next positive frontier: 050, array indexing.
+
+## Clink 83 (2026-09-13) — array indexing and payload dispatch
+
+- `arrayOf τ` constrains payload elements, not the object's dispatch class. A
+  synthetic BasicObject with an array payload satisfies that shape yet `a[0]`
+  reaches type-stuck; `ArrayIndex.lean` pins the witness as a runtime control.
+  Add boot-checked `ArrayPayloadOk`, preserved across each allocation and local
+  write. It pins payload-bearing arrays to boot Array, so subclass/eigenclass
+  admission will need a more general dispatch invariant, not an unchecked premise.
+- Add the `Array#[]` dispatch-table fact and the first-order `DPrim.arrayIndex` row.
+  The semantic proof follows actual lookup, normalizes negative indices, proves
+  in-range membership, and returns nil at either outer bound. The argument's
+  evaluation preserves the receiver through `Framed.firstOrder`.
+- Use `unfold runCollections`, not its generated simp equations: Lean fails to
+  generate an equation for the unrelated overlapping `Array#<<` branch. Unfolding
+  the definition proves the indexing equation directly; no evaluator change.
+- Controls cover forged non-null result claims, wrong argument types/arity, empty
+  and nested arrays, higher-order rejection, and an index that retypes a local.
+  Runtime boundary cases match CRuby's `[nil, 10, 20, 10, 20, nil]` at -3 through 2.
+- Full quiet ratchet: GREEN, fragment 47→48, checker reach 49→50, 252 agree /
+  0 disagree. All 22 registered rules remain proved; the new primitive and the
+  acceptance-to-safety theorem are axiom-clean. Next positive frontier: 051, hash indexing.

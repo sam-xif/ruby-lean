@@ -97,6 +97,21 @@ theorem stringPayloadOk_push {h : Heap} {obj : Object} (hp : StringPayloadOk h)
   · simp only [classOf, pushHeap_get_gt h obj hg] at hc
     cases hc
 
+theorem arrayPayloadOk_push {h : Heap} {obj : Object} (hp : ArrayPayloadOk h)
+    (ho : ∀ xs, obj.payload = .arr xs → obj.eigen.getD obj.klass = Boot.arrayId) :
+    ArrayPayloadOk (pushHeap h obj) := by
+  intro o xs hx
+  rcases Nat.lt_trichotomy o h.objs.size with hl | he | hg
+  · simp only [pushHeap_get_lt h obj hl] at hx
+    simpa only [classOf, pushHeap_get_lt h obj hl] using hp o xs hx
+  · subst he
+    rw [pushHeap_get_self] at hx
+    have hc := ho xs hx
+    simp only [classOf, pushHeap_get_self]
+    cases heigen : obj.eigen <;> simpa [heigen] using hc
+  · rw [pushHeap_get_gt h obj hg] at hx
+    cases hx
+
 /-! ## The producer -/
 
 /-- **A non-class, ivar-less allocation of a `BasicObject` descendant is an `Ext`.**

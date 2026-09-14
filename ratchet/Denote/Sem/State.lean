@@ -1073,6 +1073,7 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   primitiveDispatch : primitiveDispatchB m.heap (nameFreeN κ) = true
   primitiveErrors : primitiveErrorsB m.heap = true
   stringPayload : StringPayloadOk m.heap
+  arrayPayload : ArrayPayloadOk m.heap
   core : CoreOk m.heap
   frameInRange : FrameInRange m
   env : EnvOk Γ m
@@ -1150,10 +1151,12 @@ theorem lookup_eq_methodOn (h : Heap) (v : Value) (n : String) :
       | some p => simp [hf]
 
 theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : StateOk κ Γ I m)
-    (he : Ext m m₂) (hp : StringPayloadOk m₂.heap) : StateOk κ Γ I m₂ where
+    (he : Ext m m₂) (hp : StringPayloadOk m₂.heap) (ha : ArrayPayloadOk m₂.heap) :
+    StateOk κ Γ I m₂ where
   primitiveDispatch := (primitiveDispatchB_ext he _).trans h.primitiveDispatch
   primitiveErrors := (primitiveErrorsB_ext he).trans h.primitiveErrors
   stringPayload := hp
+  arrayPayload := ha
   sat := Proof.Saturated_grow he.shapeAgree he.size h.sat
   core := CoreOk.ext rfl rfl he h.core
   frameInRange := by
@@ -1637,6 +1640,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
       primitiveDispatch := by simpa only [setLocal_heap] using h.primitiveDispatch
       primitiveErrors := by simpa only [setLocal_heap] using h.primitiveErrors
       stringPayload := by simpa only [setLocal_heap] using h.stringPayload
+      arrayPayload := by simpa only [setLocal_heap] using h.arrayPayload
       selfLive := by
         intro o ho
         rw [currentFrame_setLocal_self m x w] at ho

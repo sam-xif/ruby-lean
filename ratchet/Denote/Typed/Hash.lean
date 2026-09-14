@@ -66,6 +66,7 @@ private theorem hash_alloc {Γ : Env} {m : Machine} {σ τ : Ty}
     (fun c => by simp [obj]) rfl rfl hm.core.hashBasic
   have hn : StateOk ctx0 Γ .ivar0 n := StateOk_ext hm he
     (stringPayloadOk_push hm.stringPayload (by simp [obj, Boot.hashId, Boot.stringId]))
+    (arrayPayloadOk_push hm.arrayPayload (by simp [obj]))
   have hv : denM (.hashOf σ τ) n (.ref m.heap.objs.size) := by
     rw [denM]
     refine ⟨acc.toArray, ?_, ?_⟩

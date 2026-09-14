@@ -203,4 +203,26 @@ def ctlAnd : Expr :=
 #guard (check 30 [("f", .arrow0 .int)] (.hash [(.int 1, .var .lvar "f")])
   (.hashLit [.intLit 1] [.var .lvar "f"] .int (.arrow0 .int))).isNone
 
+-- Array indexing always claims element-or-nil, including at a literal in-range index.
+def ctlIndex (i : Expr) : Expr := .send (some (.array [.int 1, .int 2])) "[]" [i] none
+def ctlIndexCert (di : Deriv) (ret : Ty := .nilable .int) : Deriv :=
+  .prim (.arrayLit [.intLit 1, .intLit 2] .int) "[]" [di] (.arrayOf .int) ret
+
+#guard validateD (ctlIndex (.int 0)) (ctlIndexCert (.intLit 0))
+#guard validateD (ctlIndex (.int (-1))) (ctlIndexCert (.intLit (-1)))
+#guard validateD (ctlIndex (.int 99)) (ctlIndexCert (.intLit 99))
+#guard !validateD (ctlIndex (.int 0)) (ctlIndexCert (.intLit 0) .int)
+#guard !validateD (ctlIndex (.str "bad")) (ctlIndexCert (.strLit "bad"))
+#guard validateD (.send (some (.array [])) "[]" [.int 0] none)
+  (.prim (.arrayLit [] .never) "[]" [.intLit 0] (.arrayOf .never) (.nilable .never))
+#guard !validateD (.send (some (.array [])) "[]" [] none)
+  (.prim (.arrayLit [] .never) "[]" [] (.arrayOf .never) (.nilable .never))
+#guard validateD
+  (.send (some (.array [.vasgn .lvar "x" (.int 1)])) "[]"
+    [.seq [.vasgn .lvar "x" (.str "changed"), .int 0]] none)
+  (.prim (.arrayLit [.vasgn .lvar "x" (.intLit 1)] .int) "[]"
+    [.seq [.vasgn .lvar "x" (.strLit "changed"), .intLit 0]] (.arrayOf .int) (.nilable .int))
+#guard dprim? (.arrayOf (.arrow0 .int)) "[]" [.int] == none
+#guard dprim? (.arrayOf (.arrayOf .int)) "[]" [.int] == some (.nilable (.arrayOf .int))
+
 end Ratchet

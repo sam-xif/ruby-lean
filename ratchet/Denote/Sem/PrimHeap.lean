@@ -16,6 +16,7 @@ def primitiveMethods : List (ObjId × String × String) :=
    (Boot.integerId, "<=", "Integer#<="), (Boot.integerId, ">=", "Integer#>="),
    (Boot.nilClassId, "==", "Object#=="), (Boot.stringId, "length", "String#length"),
    (Boot.stringId, "+", "String#+"),
+   (Boot.arrayId, "[]", "Array#[]"),
    (Boot.trueClassId, "!", "Object#!"), (Boot.falseClassId, "!", "Object#!")]
 
 def primitiveDispatchB (h : Heap) (free : String → Bool) : Bool :=
@@ -39,6 +40,25 @@ def primitiveErrorsB (h : Heap) : Bool := primitiveErrorClasses.all (primitiveEr
 /-- Only references whose dispatch class is String need a string payload. -/
 def StringPayloadOk (h : Heap) : Prop :=
   ∀ o, classOf h (.ref o) = Boot.stringId → ∃ s, (h.get o).payload = .str s
+
+/-- In the current fragment, array payloads dispatch through the boot Array class.
+    Payload shape alone does not establish this, especially at an incoming environment. -/
+def ArrayPayloadOk (h : Heap) : Prop :=
+  ∀ o xs, (h.get o).payload = .arr xs → classOf h (.ref o) = Boot.arrayId
+
+def arrayPayloadB (h : Heap) : Bool :=
+  (List.range h.objs.size).all fun o =>
+    match (h.get o).payload with
+    | .arr _ => classOf h (.ref o) == Boot.arrayId
+    | _ => true
+
+theorem arrayPayloadB_sound {h : Heap} (hb : arrayPayloadB h = true) : ArrayPayloadOk h := by
+  intro o xs hx
+  by_cases ho : o < h.objs.size
+  · have hp := List.all_eq_true.mp hb o (List.mem_range.mpr ho)
+    simpa only [hx, beq_iff_eq] using hp
+  · rw [get_oob h (Nat.le_of_not_gt ho)] at hx
+    cases hx
 
 theorem primitiveDispatchB_ext {m n : Machine} (he : Ext m n) (free : String → Bool) :
     primitiveDispatchB n.heap free = primitiveDispatchB m.heap free := by

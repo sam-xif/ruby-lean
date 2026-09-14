@@ -1,6 +1,7 @@
 import Denote.Typed.PrimitiveAlloc
 import Denote.Typed.PrimitiveEquality
 import Denote.Typed.PrimitiveQueries
+import Denote.Typed.ArrayIndex
 
 /-! Each `DPrim` row discharges against the interpreter and preserves conformance on values. -/
 
@@ -160,6 +161,12 @@ theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Val
         (by simp [primitiveMethods, classOf]) rfl (by rfl)
         (by intro o ho; cases ho) (by rfl) (by rfl), bool_not_run] <;>
       exact stepSpec_value hm hk (by simp [denM, isBoolV])
+  | arrayIndex _ =>
+    cases ha
+    rename_i v vs hv hs
+    cases hs
+    obtain ⟨i, rfl⟩ := int_value hv
+    exact array_index_step hm hk hr i
 
 #print axioms primitive_builtin
 end Ratchet.Denote.Typed

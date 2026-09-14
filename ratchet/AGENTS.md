@@ -12,9 +12,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 47 rungs, reach 17**, **22 registered rules** (16 expressions + 6 list companions),
-**0 owed**, **0 exempt**. Checker reach is 49; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 42 rungs additionally carry a
+**Fragment 48 rungs, reach 17**, **22 registered rules** (16 expressions + 6 list companions),
+**0 owed**, **0 exempt**. Checker reach is 50; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 43 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -37,7 +37,7 @@ coverage gaps. [`MainTyped.lean`](MainTyped.lean) reports checker reach;
 ## The proof boundary
 
 [`Ratchet/Check.lean`](Ratchet/Check.lean) defines `DJudge`, `DJudgeAll`, `DJudgeSeq`, `DJudgePairs`,
-and fourteen `DPrim` rows. [`Denote/Typed/Clink.lean`](Denote/Typed/Clink.lean) derives each
+and fifteen `DPrim` rows. [`Denote/Typed/Clink.lean`](Denote/Typed/Clink.lean) derives each
 constructor's semantic obligation and registers only proved rules. **All four judgments
 are fields of `DFam`**: no raw syntactic premise may bypass the registry — which is also what
 lets `djudge_certified` be a mutual induction over all four (§F31 was the prerequisite).
@@ -69,10 +69,11 @@ String membership needs a payload invariant. See
 | `Denote/Typed/JudgeA.lean` | Semantic judgment, continuation typing, literal/local rules |
 | `Denote/Typed/Sequence.lean`, `Branch*.lean`, `BareName.lean` | Sequence, conditional, and bare-name obligations |
 | `Denote/Typed/Array.lean` | First-order array evaluation, retention, and allocation |
+| `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |
 | `Denote/Typed/Primitive*.lean` | Primitive dispatch, allocation, argument composition, regression controls |
 | `Denote/Sem/PrimHeap.lean`, `Denote/JoinState.lean` | Primitive heap invariants and sound binding joins |
-| `Denote/Typed/Derivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 42 concrete safety proofs |
+| `Denote/Typed/Derivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 43 concrete safety proofs |
 | `Denote/Typed/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Typed/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |
 | `Denote/Sanity.lean` | Executable boot conformance gate and its kernel soundness theorem |
