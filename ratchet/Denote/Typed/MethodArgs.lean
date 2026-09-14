@@ -33,7 +33,7 @@ theorem denAll_length {m : Machine} {ts : List Ty} {vs : List Value} (h : DenAll
   | nil => cases vs <;> simp_all [DenAll]
   | cons t ts ih => cases vs <;> simp_all [DenAll]
 
-private theorem startArgs_cons (m : Machine) (recv : Value) (name : String) (acc : List Value)
+theorem startArgs_cons (m : Machine) (recv : Value) (name : String) (acc : List Value)
     (e : Ratchet.Expr) (es : List Ratchet.Expr) (hp : plainArgB e = true) :
     Interp.startArgs m recv .implicit name acc (toRubyList (e :: es)) .none =
       .next (Interp.withKont m (.eval (toRuby e)) (.argsK recv .implicit name acc (toRubyList es) .none)) := by

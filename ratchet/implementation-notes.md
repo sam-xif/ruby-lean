@@ -9028,3 +9028,24 @@ both halves of what constrains them now have a name.
   Forward references remain a target; no source-order-independent admission is claimed.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree; annotation controls and the unchanged
   axiom-clean semantic bridge pass. `Check` builds in 1.1s; method controls in 0.3s.
+
+## Clink 104 (2026-09-14) — guard recursive calls by actual execution fuel
+
+- A cached signature cannot prove its own body. `RunSpecAt N` bounds both safety and answer
+  typing; `∀ N, RunSpecAt N` is proved equivalent to the old `RunSpec`, not a weaker target.
+  Its continuation composition bounds the inner run too (`safe_pushK_le` still required
+  unbounded inner premises). `runA_rest_le` supplies the remaining-budget inequality.
+- Bounded method entry reuses conformance, annotated binding, lookup, and caller restoration.
+  Extract `methodFrame_continue_spec` so bounded/unbounded paths share the return proof.
+  Bounded argument evaluation feeds `SemSafeCtxAt.callSig`: body/arguments at N, call at N+1.
+  This strict decrease is paid by `stepFn`, not by a guessed numeric termination measure.
+- The guarded induction closes `def spin(x); spin(x); end; spin(0)` semantically, for Integer
+  annotations. It deliberately claims no termination. A control rejects a Boolean answer
+  at Integer even at zero fuel; an unevaluated expression at zero is vacuous, so no finite
+  bound alone admits a program. The recursive data certificate remains explicitly rejected.
+- Next for 060: bounded expression composition, scoped recursive-body derivations, and their
+  fundamental lemma before checker integration. Do not install an unchecked self-signature
+  or count this semantic pilot as validator coverage. All new proof modules build below a
+  second with standard Lean axioms only. Fragment/reach remain 54/59; no floor increase.
+- Full quiet ratchet GREEN: all 24 registered rules proved, 0 owed/exempt, and
+  252 CRuby/model agreements with 0 disagreements. The full gate builds the bounded controls.

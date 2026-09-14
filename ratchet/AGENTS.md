@@ -107,6 +107,13 @@ even uncalled bodies. Recursion (060) and explicit `return` remain out.
 `MethodControls.lean` pins positive calls and bad uncalled bodies; `MethodDerivations.lean`
 adds the proof-term-audited 052 example. The bridge now uses `DJudge.rec`, not expression-size
 recursion: a call's body is not its syntactic subexpression.
+`BoundedRun.lean` now exposes fuel-indexed safety **and** answer typing, proved equivalent
+to the existing contract when quantified over every bound. `BoundedMethod.lean` and
+`BoundedCall.lean` carry that contract through real lookup/binding/return and arbitrary
+required arguments; the actual send step guards the recursive body hypothesis (`N`→`N+1`).
+`BoundedControls.lean` closes a self-recursive semantic pilot and checks that even zero-fuel
+answers need their type. No new validator admission: 060 still needs bounded expression
+composition and scoped recursive-body certificates with a fundamental lemma.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -138,6 +145,7 @@ String membership needs a payload invariant. See
 | `Ratchet/MethodCtx.lean`, `Denote/Typed/MethodDefine.lean` | Definition-site contexts and the annotation-checked definition obligation |
 | `Denote/Typed/MethodArgs.lean`, `MethodCall.lean`, `MethodResolve.lean` | Argument retention, call obligation, and semantic installed-body application |
 | `Denote/Typed/MethodRuleControls.lean`, `MethodDerivations.lean` | Full definition + call, validator acceptance, and the proof-term-audited 052 example |
+| `Denote/Typed/BoundedRun.lean`, `BoundedMethod.lean`, `BoundedCall.lean`, `BoundedControls.lean` | Fuel-indexed contracts, guarded actual dispatch, and recursive semantic controls (060 still gated) |
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

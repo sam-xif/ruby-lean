@@ -108,6 +108,29 @@ private theorem frameK_escape {origin n : Machine} {Γ : Env} {τ I : Ty} {κ : 
     · apply RunSpec.unsupported (msg := "break/next/retry/redo crossing a method boundary") (by rfl)
       simp [Interp.stepFn, deliverA, Answer.ctl, Interp.unwind, hc]
 
+/-- The return continuation depends only on the delivered answer, not on an unbounded
+body hypothesis. Bounded and unbounded method entry share this proof. -/
+theorem methodFrame_continue_spec {m : Machine} {f : RubyCore.Frame}
+    {Γb Γ : Env} {κb κ : Ctx} {Ib I τ : Ty}
+    (hl : m.stack.headD 0 < m.frames.size) (hc : f.captured = none)
+    (ht : FirstOrder τ = true)
+    (hs : ∀ n v, ResultOk (pushMethodFrame m f) Γb τ (.val v) n κb Ib →
+      StateOk κ Γ I (popMethodFrame n))
+    {a : Answer} {n : Machine} (hr : ResultOk (pushMethodFrame m f) Γb τ a n κb Ib) :
+    RunSpec m (deliverA a n [.frameK m.frames.size]) Γ τ κ I := by
+  have hf := method_pop_framed hl hc hr.1
+  cases a with
+  | val v =>
+    apply RunSpec.step (by rfl) (step_frameK_value n _ v)
+    exact RunSpec.answer ⟨hf,
+      (denM_heap_only (m₁ := n) (m₂ := popMethodFrame n) ht rfl).mp hr.2.1,
+      fun _ _ => hs n v hr⟩
+  | esc j =>
+    apply frameK_escape _ j hr.2.1
+    apply RunSpec.answer
+    refine ⟨hf, ?_, fun _ hv => by cases hv⟩
+    cases j <;> exact hr.2.1
+
 /-- Consume a checked body at its method frame and return an answer at the caller.
 The conformance premise is explicit; `MethodState.lean` discharges it rather than
 manufacturing the caller's `StateOk` from its local environment alone. Method-return jumps require the
@@ -126,18 +149,7 @@ theorem methodFrame_runSpec {m : Machine} {f : RubyCore.Frame} {e : Ratchet.Expr
     subst hk
     simp)
   intro a n hr
-  have hf := method_pop_framed hl hc hr.1
-  cases a with
-  | val v =>
-    apply RunSpec.step (by rfl) (step_frameK_value n _ v)
-    exact RunSpec.answer ⟨hf,
-      (denM_heap_only (m₁ := n) (m₂ := popMethodFrame n) ht rfl).mp hr.2.1,
-      fun _ _ => hs n v hr⟩
-  | esc j =>
-    apply frameK_escape _ j hr.2.1
-    apply RunSpec.answer
-    refine ⟨hf, ?_, fun _ hv => by cases hv⟩
-    cases j <;> exact hr.2.1
+  exact methodFrame_continue_spec hl hc ht hs hr
 
 #print axioms method_pop_envOk
 #print axioms methodFrame_runSpec
