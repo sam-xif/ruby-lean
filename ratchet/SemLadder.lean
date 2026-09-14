@@ -98,18 +98,38 @@ A built rung falls into one of four states:
 Only `READY` is red. The rest is the goal list. -/
 
 inductive GoalState where
+  /-- Typed **and** proved `StuckFree` end to end. The only complete state. -/
   | proved
+  /-- `validateD` accepted it and every rule it needs is registered: the registry can
+  justify it today and nobody has. Started and incomplete. -/
   | ready
+  /-- `validateD` accepted it, so a **certificate exists** — but the derivation leans on
+  rules with no semantic proof, so nothing backs that certificate end to end. Started and
+  incomplete, and the rule names say what is owed. -/
+  | certified (on : List String)
+  /-- The checker rejects it and every rule it needs is registered: no certificate, so
+  nothing is owed. (A deliberately ill-typed rung lives here.) -/
+  | rejected
+  /-- Not accepted, and needs a rule that is not in the judgment. Pure ascent. -/
   | blocked (on : List String)
   | outOfFragment (on : List String)
   | noProgram (why : String)
 
 def GoalState.label : GoalState → String
   | .proved => "proved"
-  | .ready => "READY -- every rule registered, no safety theorem"
+  | .ready => "STARTED, INCOMPLETE -- every rule registered, no safety theorem"
+  | .certified on => s!"STARTED, INCOMPLETE -- certified, but {String.intercalate ", " on} \
+{if on.length == 1 then "has" else "have"} no semantic proof"
+  | .rejected => "rejected by the checker (no certificate, nothing owed)"
   | .blocked on => s!"blocked on {String.intercalate ", " on}"
   | .outOfFragment on => s!"outside the judgment ({String.intercalate ", " on})"
   | .noProgram why => s!"no program ({why})"
+
+/-- The states that are **started and incomplete** -- the ones that make the ratchet RED. -/
+def GoalState.isRed : GoalState → Bool
+  | .ready => true
+  | .certified _ => true
+  | _ => false
 
 structure Goal where
   name : String
@@ -121,8 +141,15 @@ def pad (w : Nat) (s : String) : String :=
 
 /-- Classify one built rung. `rulesUsed` is the predictor `Denote/Typed/Safety.lean` §4
 describes -- and the reason it is trustworthy here is `Denote/Typed/RuleAudit.lean` §3, which
-checks it against the proof terms on every rung that has one. -/
-def classify (name : String) (prog : Option Ratchet.Expr) : GoalState :=
+checks it against the proof terms on every rung that has one.
+
+**`accepted` is what makes a rung "started".** `validateD` accepting a rung means a
+certificate for it exists and checks; a rung is on the ladder from that moment. If no
+end-to-end safety proof backs it, the rung is half-climbed -- the ladder is claiming a rung
+the safety determination does not reach. Whether that is because the rules are proved and
+nobody wrote the theorem (`ready`) or because the rules themselves have no semantic proof
+(`certified`) changes the remedy, not the verdict. -/
+def classify (name : String) (accepted : Bool) (prog : Option Ratchet.Expr) : GoalState :=
   match prog with
   | none => .noProgram "upstream stage declined"
   | some p =>
@@ -130,8 +157,10 @@ def classify (name : String) (prog : Option Ratchet.Expr) : GoalState :=
     else
       let used := (rulesUsed p).eraseDups
       let missing := used.filter fun r => !dRegisteredRules.contains r
-      if missing.contains "?" then .outOfFragment missing
-      else if missing.isEmpty then .ready
+      if accepted then
+        if missing.isEmpty then .ready else .certified missing
+      else if missing.contains "?" then .outOfFragment missing
+      else if missing.isEmpty then .rejected
       else .blocked missing
 
 /-- Every built rung, in corpus order (the filenames are `NNN-name.rung.json`, so sorting
@@ -144,13 +173,15 @@ def loadGoals (dir : System.FilePath) : IO (List Goal) := do
   for f in sorted do
     let name := (f.fileName.getD "?").replace ".rung.json" ""
     let contents ← IO.FS.readFile f
-    let prog : Option Ratchet.Expr :=
+    -- The whole rung, not just its program: `Rung.verdict` is `validateD` on the pair, the
+    -- same Bool `ratchetd` reports, and it is what says whether a certificate exists.
+    let rung? : Option Ratchet.Rung :=
       match Json.parse contents with
       | .error _ => none
-      | .ok j => match j.getObjVal? "program" with
-        | .error _ => none
-        | .ok pj => (Decode.program pj).toOption
-    goals := goals ++ [{ name, state := classify name prog }]
+      | .ok j => (Ratchet.Rung.ofJson? j).toOption
+    let prog := rung?.bind (·.program)
+    let accepted := (rung?.map (·.verdict)).getD false
+    goals := goals ++ [{ name, state := classify name accepted prog }]
   return goals
 
 def checkRung (dir : System.FilePath) (name : String) (p : Ratchet.Expr) : IO RungCheck := do
@@ -233,6 +264,7 @@ at every fuel:"
   -- The cross-check, when a build directory is given.
   let mut crossOk := true
   let mut ready : List String := []
+  let mut goals' : List Goal := []
   match dirArg? with
   | none =>
     say ""
@@ -251,12 +283,19 @@ at every fuel:"
         crossOk := false
     -- The goal list, in corpus rung order. This is the part `--quiet` keeps.
     let goals ← loadGoals dir
-    ready := goals.filterMap fun g => match g.state with | .ready => some g.name | _ => none
+    goals' := goals
+    ready := goals.filterMap fun g => if g.state.isRed then some g.name else none
     let unmet := goals.filter fun g => match g.state with | .proved => false | _ => true
     IO.println ""
+    -- **The ladder's reach, under the definition this report enforces**: the leading run of
+    -- corpus rungs that are typed *and* proved `StuckFree`. `ratchetd`'s LADDER REACH counts
+    -- the leading run the *checker* is satisfied by, which is a weaker thing and a larger
+    -- number; the gap between them is exactly the RED below.
+    let safetyReach := (goals.takeWhile fun g =>
+      match g.state with | .proved => true | _ => false).length
     if quiet then
-      IO.println s!"{goals.length} rungs, {goals.length - unmet.length} proved safe, \
-{unmet.length} unmet"
+      IO.println s!"{goals.length} rungs · safety reach {safetyReach} · \
+{goals.length - unmet.length} proved safe · {unmet.length} unmet"
       -- The two rule counts mean different things and are easy to read as one. Both carry
       -- their direction, because a bare number invites the reader to decide it is fine.
       if dUnregisteredRules.isEmpty then
@@ -273,6 +312,13 @@ end-to-end exercise: {String.intercalate ", " unexercised} -- proved and"
         IO.println "    in the judgment, but no proved rung uses them. Only ever shrink this;"
         IO.println "    non-empty is legitimate mid-ladder, large is not (§F30)."
     else
+      IO.println s!"=== SAFETY REACH: {safetyReach} rungs typed AND proved StuckFree ==="
+      IO.println ""
+      IO.println "  This is the ladder's reach under the definition the gate below enforces."
+      IO.println "  `ratchetd`'s LADDER REACH counts the leading run the *checker* accepts,"
+      IO.println "  which is a weaker claim and a larger number. A rung between the two is"
+      IO.println "  certified and unproved -- started, and incomplete."
+      IO.println ""
       IO.println "=== UNMET GOALS, in corpus rung order ==="
     IO.println ""
     if unmet.isEmpty then
@@ -313,11 +359,33 @@ end-to-end exercise: {String.intercalate ", " unexercised} -- proved and"
     return 1
   if !ready.isEmpty then
     IO.println ""
-    IO.println s!"RATCHET RED -- {ready.length} rung(s) started and incomplete:"
-    IO.println s!"    {String.intercalate ", " ready}"
-    IO.println "  Each uses only registered rules, so the registry can already justify it, and"
-    IO.println "  nothing has. Prove them in Denote/Typed/Safety.lean and add them to"
-    IO.println "  `safeRungs`, or the ladder claims less than it has earned."
+    IO.println s!"RATCHET RED -- {ready.length} rung(s) started and incomplete."
+    IO.println ""
+    IO.println "  `validateD` accepts each of these, so a certificate for it exists and checks."
+    IO.println "  None has an end-to-end safety proof, so the ladder is claiming rungs the"
+    IO.println "  safety determination does not reach. A rung is climbed when it is typed AND"
+    IO.println "  proved `StuckFree` -- not when the checker alone is satisfied."
+    IO.println ""
+    let nowProvable := ready.filter fun n =>
+      goals'.any fun g => g.name == n && (match g.state with | .ready => true | _ => false)
+    let owedRules := ((goals'.filterMap fun g =>
+      match g.state with | .certified on => some on | _ => none).flatten).eraseDups
+    if !nowProvable.isEmpty then
+      IO.println s!"  provable today ({nowProvable.length}) -- every rule registered, nobody \
+wrote the theorem:"
+      IO.println s!"    {String.intercalate ", " nowProvable}"
+    let leaningNames := ready.filter fun n => !nowProvable.contains n
+    let leaning := leaningNames.length
+    if leaning > 0 then
+      let shown := String.intercalate ", " (leaningNames.take 12)
+      let andMore := if leaning > 12 then s!" ... and {leaning - 12} more" else ""
+      IO.println s!"  certified against rules with no semantic proof ({leaning}), waiting on \
+{String.intercalate ", " owedRules}:"
+      IO.println s!"    {shown}{andMore}"
+    IO.println ""
+    IO.println "  Two ways out, and they are not equivalent: prove the rules and then the"
+    IO.println "  rungs, which is the work; or lower the recorded reach so the ladder stops"
+    IO.println "  claiming them, which is the honest bookkeeping if the reach was aspirational."
     return 1
   if unexercised.length > unexercisedCeiling then
     IO.println ""

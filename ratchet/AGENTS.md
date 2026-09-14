@@ -12,7 +12,7 @@ one rung at a time. Three numbers, three scripts, no others:
 
 | what | reads | script |
 |---|---|---|
-| ladder reach | **18 rungs** (leading run meeting their recorded target); frontier `019-to-s-call` | `scripts/run_typed_ratchet.sh` |
+| ladder reach | **safety reach 8** — the leading run typed *and* proved `StuckFree`, which is what a climbed rung means. `ratchetd`'s **checker reach 18** counts the weaker claim; the 21 rungs between them are certified and unproved, and the ratchet is **RED** until that closes | `scripts/run_typed_ratchet.sh` |
 | agreement | **252 agree, 0 disagreements** (CRuby vs the Lean semantics, over the sig-stripped programs) | same, step 3 |
 | clinks | **9 of `DJudge`'s 12** rules carry an answer-typed proof **and an invariant proof**; 3 owed, and 2 of those (`seq`, `prim`) are owed twice — a proof *and* a `DFam` field that can state it (§F31) | `scripts/run_denote.sh`, or `lake exe semladder` |
 | end-to-end safety | **8 corpus rungs** proved `StuckFree bootMachine <program>` at every fuel; **7 of the 9 rules exercised** (read off the proof terms), `var`/`vasgn` named as exceptions under a ceiling (§F30) | `scripts/run_typed_ratchet.sh` step 4, or `lake exe semladder build` — which also lists the **unmet goals in corpus rung order** |
@@ -121,15 +121,19 @@ corpus/NNN-id.rb        annotated Ruby -- the source of truth, hand-edited
 One command: `scripts/run_typed_ratchet.sh` (negative controls, stages 1–4, agreement,
 report). `build/` is derived and gitignored; delete it freely.
 
-**The last line is the verdict.** **GREEN** means nothing is started and incomplete: every
-rung with a proof has a correct one, every certified rule is exercised or exempt within its
-ceiling, every floor holds, the model agrees with CRuby and reach has not dropped. What
-remains is *ascent* — rungs nobody has begun, blocked on rules nobody has proved — which is
-the ordinary state of an unfinished ladder. **RED** means something is started and incomplete:
-a rung the registry can already justify with no theorem, a theorem about the wrong program, an
-exemption list past its ceiling, a floor that moved, a rule registered without its floor
-raised, or a stage that errored. So "251 rungs unproved" is GREEN; *one* rung begun and left
-is RED, because a half-climbed rung is what a ratchet exists to catch.
+**The last line is the verdict, and a rung is climbed when it is typed AND proved
+`StuckFree`** — not when `validateD` alone is satisfied. **GREEN** means nothing is started and
+incomplete: every rung the checker accepts has an end-to-end safety proof, every certified rule
+is exercised or exempt within its ceiling, every floor holds, the model agrees with CRuby and
+reach has not dropped. What remains is *ascent* — rungs nobody has begun, which the checker
+rejects or which need rules nobody has proved. **RED** means something is started and
+incomplete, chiefly **a rung `validateD` accepts with no safety proof**: the certificate exists
+and checks, so the ladder is claiming a rung the safety determination does not reach. Also a
+theorem about the wrong program, an exemption list past its ceiling, a floor that moved, a rule
+registered without its floor raised, or a stage that errored.
+
+So "251 rungs unproved" is GREEN; *one* rung certified and left unproved is RED, because a
+half-climbed rung is what a ratchet exists to catch. **Today it is RED at 21** (§F32).
 
 It prints **the goal list and nothing else** — the unmet rungs in corpus order, truncated at
 20, with the tally of what blocks them — because that is what a commit-time gate is for.

@@ -2343,3 +2343,44 @@ inventing a statement nothing consumes still holds:
 that field would carry, and then a proof each. The goal list says `seq` blocks 177 corpus
 rungs and `prim` 169, so this is the next real work and it is one field larger than the ladder
 had been claiming.
+
+## §F32 — the ladder claimed 18 rungs while the safety determination reached 8 *(open; the ratchet is RED on it)*
+
+Not found by a gate. Found by stating what a rung *means* and noticing the ladder had two
+answers.
+
+`ratchetd` reports **LADDER REACH: 18** — the leading run of corpus rungs whose `validateD`
+verdict meets its recorded target. `semladder` reports **8 rungs proved `StuckFree`**. Both
+numbers were green, side by side, in the same run, and nothing related them. They are not two
+views of one ladder: the first says *the checker accepted a certificate*, the second says *the
+certificate is backed end to end*. Between them sat **21 rungs** that `validateD` accepts and
+no safety proof reaches — `009-add` through `017-bool-or`, `027-nested-arith`,
+`029-simple-assign` and the rest — every one of them certified against `prim`, `seq` or `if'`,
+none of which has a semantic proof.
+
+**Why that is a half-climbed rung and not merely unfinished work.** A rung nobody has begun is
+the ordinary state of an unfinished ladder: the checker rejects it, or it needs a rule nobody
+has proved and no certificate claims it. `009-add` is not that. A certificate for it exists,
+checks, and is counted in the reach — the rung is on the ladder — and the thing the ladder is
+*for*, the end-to-end safety determination, does not reach it. The number said 18 and the
+guarantee covered 8, and the ten rungs of difference were invisible because each number was
+reported against its own floor and neither was reported against the other.
+
+This is the same shape as §F30 and §F31, one level up. §F30: a rule registered and not
+exercised. §F31: a rule registrable with a premise that escapes the registry. Here: a rung
+certified and not proved. Each time the mechanism was sound and the *accounting* let something
+sit in a state nothing was asking about.
+
+**The fix** is that `semladder` now classifies a rung by `Rung.verdict` as well as by its
+rules, and any rung the checker accepts without a safety proof is `STARTED, INCOMPLETE` and
+turns the ratchet RED. It reports a **safety reach** — the leading run typed *and* proved —
+next to the checker's, so the gap has a number instead of being the difference between two
+reports. The remedies are named and they are not equivalent:
+
+* **prove the rules, then the rungs.** `prim` unblocks 157 rungs and `seq` 170, and both are
+  additionally blocked on extending `DFam` (§F31). This is the work.
+* **lower the recorded reach** so the ladder stops claiming what it cannot back. Honest
+  bookkeeping if `ladderFloor = 18` was aspirational, and a lie if it was load-bearing.
+
+Left open deliberately, and RED. The point of the verdict is that this state is visible; a
+number chosen to make it green would be the finding happening again.

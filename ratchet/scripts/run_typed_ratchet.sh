@@ -18,14 +18,22 @@
 #   *ascent*: rungs nobody has started, blocked on rules nobody has proved. That is the
 #   ordinary state of an unfinished ladder and it is not a failure.
 #
-#   **RED** -- something is started and incomplete. A rung the registry can already justify
-#   with no theorem; a theorem about a different program than its rung's; an exemption list
-#   wider than its ceiling; a floor that moved; a rule registered without its floor raised; a
-#   stage that errored. Each names itself and says what to do.
+#   **RED** -- something is started and incomplete. Chiefly: **a rung `validateD` accepts
+#   that has no end-to-end safety proof.** Accepting it means a certificate for it exists and
+#   checks, so the rung is on the ladder from that moment; without a safety proof the ladder
+#   is claiming a rung the safety determination does not reach. Also: a theorem about a
+#   different program than its rung's; an exemption list wider than its ceiling; a floor that
+#   moved; a rule registered without its floor raised; a stage that errored.
+#
+# **A rung is climbed when it is typed AND proved `StuckFree`** -- not when the checker alone
+# is satisfied. That is why there are two reach numbers and only one of them is the ladder:
+# `ratchetd`'s LADDER REACH counts the leading run the *checker* accepts, `semladder`'s SAFETY
+# REACH counts the leading run that is also proved. Every rung between them is half-climbed.
 #
 # The distinction is deliberate: "251 rungs unproved" is GREEN, because none of them has been
-# begun. One rung begun and left is RED, because a half-climbed rung is the thing a ratchet
-# exists to catch.
+# begun -- the checker rejects them, or they need rules nobody has proved and no certificate
+# claims them. One rung begun and left is RED, because a half-climbed rung is the thing a
+# ratchet exists to catch.
 #
 # ## Two modes, and what the quiet one is for
 #
