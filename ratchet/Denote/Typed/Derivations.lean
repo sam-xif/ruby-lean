@@ -85,4 +85,20 @@ theorem derivD_arrayLit {Γ Γ' : Env} {es : List Ratchet.Expr} {tys : List Ty}
     (DJudgeC dclinks).judge Γ (.array es) (.arrayOf (elemTy tys)) Γ' :=
   fun F hF => hF DClink.arrayLit (by simp [dclinks]) (hs F hF) hf
 
+theorem derivD_pairsNil {Γ : Env} : (DJudgeC dclinks).pairs Γ [] [] [] Γ :=
+  fun _ hF => hF DClink.DJudgePairs.nil (by simp [dclinks])
+
+theorem derivD_pairsCons {Γ Γk Γv Γ' : Env} {k v : Ratchet.Expr}
+    {ps : List (Ratchet.Expr × Ratchet.Expr)} {σ τ : Ty} {ks vs : List Ty}
+    (hk : (DJudgeC dclinks).judge Γ k σ Γk) (hv : (DJudgeC dclinks).judge Γk v τ Γv)
+    (hs : (DJudgeC dclinks).pairs Γv ps ks vs Γ') :
+    (DJudgeC dclinks).pairs Γ ((k, v) :: ps) (σ :: ks) (τ :: vs) Γ' :=
+  fun F hF => hF DClink.DJudgePairs.cons (by simp [dclinks]) (hk F hF) (hv F hF) (hs F hF)
+
+theorem derivD_hashLit {Γ Γ' : Env} {ps : List (Ratchet.Expr × Ratchet.Expr)} {ks vs : List Ty}
+    (hs : (DJudgeC dclinks).pairs Γ ps ks vs Γ') (hk : FirstOrder (elemTy ks) = true)
+    (hv : FirstOrder (elemTy vs) = true) :
+    (DJudgeC dclinks).judge Γ (.hash ps) (.hashOf (elemTy ks) (elemTy vs)) Γ' :=
+  fun F hF => hF DClink.hashLit (by simp [dclinks]) (hs F hF) hk hv
+
 end Ratchet.Denote.Typed

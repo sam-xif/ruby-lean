@@ -54,6 +54,7 @@ def coreOkB (h : Heap) : Bool :=
   (ancestors h Boot.regexpId).contains Boot.basicObjectId &&
   (ancestors h Boot.procId).contains Boot.basicObjectId &&
   (ancestors h Boot.arrayId).contains Boot.basicObjectId &&
+  (ancestors h Boot.hashId).contains Boot.basicObjectId &&
   coreClsNames.all (fun n =>
     match constLookup h n with
     | some (.ref o) => (h.classPayload? o).isSome
@@ -62,8 +63,8 @@ def coreOkB (h : Heap) : Bool :=
 
 theorem coreOkB_sound {h : Heap} (hb : coreOkB h = true) : CoreOk h := by
   simp only [coreOkB, Bool.and_eq_true, beq_iff_eq, List.all_eq_true] at hb
-  rcases hb with ⟨⟨⟨⟨⟨⟨⟨⟨⟨hb, sn⟩, ss⟩, sb⟩, rn⟩, rs⟩, rb⟩, pb⟩, ab⟩, names⟩
-  refine ⟨hb, sn, ss, sb, rn, rs, rb, pb, ab, ?_⟩
+  rcases hb with ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hb, sn⟩, ss⟩, sb⟩, rn⟩, rs⟩, rb⟩, pb⟩, ab⟩, hb'⟩, names⟩
+  refine ⟨hb, sn, ss, sb, rn, rs, rb, pb, ab, hb', ?_⟩
   intro n hn v hv
   have := names n hn
   rw [hv] at this

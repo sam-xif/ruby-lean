@@ -4,12 +4,13 @@ import Denote.Typed.BranchMissing
 import Denote.Typed.BareName
 import Denote.Typed.Primitive
 import Denote.Typed.Array
+import Denote.Typed.Hash
 import Denote.Clink.Form
 
-/-! The answer-typed registry carries the expression judgment and both list companions.
+/-! The answer-typed registry carries the expression judgment and all three list companions.
 Every constructor registers only with a proof of its constructor-derived semantic form.
-`ruleForm` replaces all three judgment heads with family projections; a premise reaching
-an uncarried judgment is refused before registration. All nineteen constructors are proved.
+`ruleForm` replaces all four judgment heads with family projections; a premise reaching
+an uncarried judgment is refused before registration. All twenty-two constructors are proved.
 `DJudgeC` is their Church encoding, with unconditional semantic and safety interpretations. -/
 
 set_option autoImplicit false
@@ -22,20 +23,21 @@ open RubyCore Ratchet Ratchet.Denote
 
 /-! ## §1 The family -/
 
-/-- The expression judgment and its two list companions. -/
+/-- The expression judgment and its three list companions. -/
 structure DFam where
   judge : Env → Ratchet.Expr → Ty → Env → Prop
   all : Env → List Ratchet.Expr → List Ty → Env → Prop
   seq : Env → List Ratchet.Expr → Ty → Env → Prop
+  pairs : Env → List (Ratchet.Expr × Ratchet.Expr) → List Ty → List Ty → Env → Prop
 
 /-- The syntactic reading: `Ratchet/Check.lean`'s own relation. -/
-def dsynFam : DFam := { judge := DJudge, all := DJudgeAll, seq := DJudgeSeq }
+def dsynFam : DFam := { judge := DJudge, all := DJudgeAll, seq := DJudgeSeq, pairs := DJudgePairs }
 
 /-- The **answer-typed semantic reading, conjoined with the invariant**
 (`Denote/Typed/JudgeA.lean` §1b). This is the field that makes a clink here mean something: a
 rule cannot join the judgment without proving both that the answer is in the type *and* that a
 machine evaluating it under a well-typed continuation is safe. -/
-def dsemFam : DFam := { judge := SemSafeA, all := SemAllA, seq := SemSeqA }
+def dsemFam : DFam := { judge := SemSafeA, all := SemAllA, seq := SemSeqA, pairs := SemPairsA }
 
 /-! ## §2 Registration
 
@@ -47,13 +49,14 @@ the rule). -/
 
 /-- All judgment heads must be abstracted, including those occurring only in premises. -/
 def dFamField : List (Name × Name) := [(``Ratchet.DJudge, ``DFam.judge),
-  (``Ratchet.DJudgeAll, ``DFam.all), (``Ratchet.DJudgeSeq, ``DFam.seq)]
+  (``Ratchet.DJudgeAll, ``DFam.all), (``Ratchet.DJudgeSeq, ``DFam.seq),
+  (``Ratchet.DJudgePairs, ``DFam.pairs)]
 
 /-- The judgment inductives `Ratchet/Check.lean` defines. `DJudge` is the judgment proper;
-the other two are its **list companions**, the auxiliary relations `seq` and `prim` reach
-through. Frozen as a list so that a fourth one cannot appear without this file noticing. -/
+the other three are its **list companions**, reached by `seq`, `prim`/`arrayLit`, and `hashLit`.
+Frozen so another judgment cannot appear without this file noticing. -/
 def dJudgmentInductives : List Name :=
-  [``Ratchet.DJudge, ``Ratchet.DJudgeAll, ``Ratchet.DJudgeSeq]
+  [``Ratchet.DJudge, ``Ratchet.DJudgeAll, ``Ratchet.DJudgeSeq, ``Ratchet.DJudgePairs]
 
 /-- Judgment inductives `DFam` does **not** carry a field for. A rule whose premises reach
 one of these cannot be registered: see `registerDClink`. -/
@@ -174,6 +177,7 @@ def DJudgeC (R : List (Clink dsynFam dsemFam)) : DFam where
   judge Γ e τ Γ' := ∀ F : DFam, Closed R F → F.judge Γ e τ Γ'
   all Γ es tys Γ' := ∀ F : DFam, Closed R F → F.all Γ es tys Γ'
   seq Γ es τ Γ' := ∀ F : DFam, Closed R F → F.seq Γ es τ Γ'
+  pairs Γ ps ks vs Γ' := ∀ F : DFam, Closed R F → F.pairs Γ ps ks vs Γ'
 
 /-- **Every derivation in the certified typed judgment is semantically true and safe.**
 Unconditional at every registry size: the hypothesis is discharged from the clinks' own `sem`
@@ -295,7 +299,7 @@ than the rules that merely lack a proof. -/
 def dFamBlockedRules : List String :=
   if dclinkFamBlocked.isEmpty then [] else dclinkFamBlocked.splitOn " "
 
-/-- The four list-companion constructors, also included in the registered rule count. -/
+/-- The six list-companion constructors, also included in the registered rule count. -/
 def dCompanionRules : List String :=
   if dclinkCompanionRules.isEmpty then [] else dclinkCompanionRules.splitOn " "
 
@@ -305,16 +309,17 @@ def dCompanionRules : List String :=
 -- The registry and its report agree about its size.
 #guard dclinks.length == dRegisteredRules.length
 
--- Fifteen expression rules and four companions; adding an unproved rule fails the gate.
-#guard dRegisteredRules.length == 19
+-- Sixteen expression rules and six companions; adding an unproved rule fails the gate.
+#guard dRegisteredRules.length == 22
 #guard dUnregisteredRules == []
 
 -- Every judgment premise is represented in the semantic family.
 #guard dFamBlockedRules == []
 
--- The companions, frozen. A fourth constructor here is a new obligation that would otherwise
+-- The companions, frozen. Another constructor here is a new obligation that would otherwise
 -- arrive unannounced, because nothing else in the ladder counts these.
-#guard dCompanionRules == ["DJudgeAll.nil", "DJudgeAll.cons", "DJudgeSeq.last", "DJudgeSeq.cons"]
+#guard dCompanionRules == ["DJudgeAll.nil", "DJudgeAll.cons", "DJudgeSeq.last", "DJudgeSeq.cons",
+  "DJudgePairs.nil", "DJudgePairs.cons"]
 
 -- Every family-blocked rule is unregistered, which `registerDClink` enforces and this states.
 #guard dFamBlockedRules.all (fun r => dUnregisteredRules.contains r)

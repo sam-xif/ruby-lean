@@ -525,6 +525,7 @@ structure CoreOk (h : Heap) : Prop where
   procBasic : (ancestors h Boot.procId).contains Boot.basicObjectId = true
   /-- Fresh arrays use this actual boot class, independently of constant rebinding. -/
   arrayBasic : (ancestors h Boot.arrayId).contains Boot.basicObjectId = true
+  hashBasic : (ancestors h Boot.hashId).contains Boot.basicObjectId = true
   /-- **A core class name, if it is bound at all, is bound to a class** (clink 49).
 
       The two `.const` rules that need no declaration (`constBuiltin`, `constExc`) conclude
@@ -548,6 +549,7 @@ theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m
   regexpBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.regexpBasic
   procBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.procBasic
   arrayBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.arrayBasic
+  hashBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.hashBasic
   coreNamed := by
     subst hm; subst hm₂; intro n hn v hv
     exact hc.coreNamed n hn v (by rw [← he.constLookup_eq]; exact hv) |>.imp

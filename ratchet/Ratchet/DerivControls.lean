@@ -176,4 +176,31 @@ def ctlAnd : Expr :=
 #guard (check 30 [("f", .arrow0 .int)] (.array [.var .lvar "f"])
   (.arrayLit [.var .lvar "f"] (.arrow0 .int))).isNone
 
+-- Hash certificate lists have independent arity checks and recomputed joins.
+#guard validateD (.hash []) (.hashLit [] [] .never .never)
+#guard !validateD (.hash []) (.hashLit [] [] .any .any)
+#guard validateD (.hash [(.sym "k", .int 1), (.sym "k", .int 2)])
+  (.hashLit [.symLit "k", .symLit "k"] [.intLit 1, .intLit 2] .sym .int)
+#guard !validateD (.hash [(.sym "k", .int 1)]) (.hashLit [] [.intLit 1] .sym .int)
+#guard !validateD (.hash [(.sym "k", .int 1)]) (.hashLit [.symLit "k"] [] .sym .int)
+#guard !validateD (.hash []) (.hashLit [.symLit "k"] [.intLit 1] .sym .int)
+#guard !validateD (.hash [(.sym "k", .int 1)]) (.hashLit [.symLit "k"] [.intLit 1] .int .int)
+#guard !validateD (.hash [(.sym "k", .int 1)]) (.hashLit [.symLit "k"] [.intLit 1] .sym .bool)
+#guard !validateD (.hash [(.sym "k", .send (some (.int 1)) "+" [.str "x"] none)])
+  (.hashLit [.symLit "k"] [.prim (.intLit 1) "+" [.strLit "x"] .int .int] .sym .int)
+
+-- Key before value, and the first value before the next key (not two separate walks).
+#guard validateD (.hash [(.vasgn .lvar "x" (.int 1), .var .lvar "x")])
+  (.hashLit [.vasgn .lvar "x" (.intLit 1)] [.var .lvar "x"] .int .int)
+#guard validateD (.hash [(.int 1, .vasgn .lvar "x" (.int 2)), (.var .lvar "x", .int 3)])
+  (.hashLit [.intLit 1, .var .lvar "x"] [.vasgn .lvar "x" (.intLit 2), .intLit 3] .int .int)
+#guard !validateD (.hash [(.var .lvar "x", .int 1), (.vasgn .lvar "x" (.int 2), .int 3)])
+  (.hashLit [.var .lvar "x", .vasgn .lvar "x" (.intLit 2)] [.intLit 1, .intLit 3] .int .int)
+#guard validateD (.hash [(.sym "k", .array [.int 1])])
+  (.hashLit [.symLit "k"] [.arrayLit [.intLit 1] .int] .sym (.arrayOf .int))
+#guard (check 30 [("f", .arrow0 .int)] (.hash [(.var .lvar "f", .int 1)])
+  (.hashLit [.var .lvar "f"] [.intLit 1] (.arrow0 .int) .int)).isNone
+#guard (check 30 [("f", .arrow0 .int)] (.hash [(.int 1, .var .lvar "f")])
+  (.hashLit [.intLit 1] [.var .lvar "f"] .int (.arrow0 .int))).isNone
+
 end Ratchet

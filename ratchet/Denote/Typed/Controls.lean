@@ -78,6 +78,13 @@ example : DClink.DJudgeAll.cons.form dsemFam =
         SemAllA Γ (e :: es) (τ :: tys) Γ₂) := rfl
 
 #guard dUncarriedJudgments.isEmpty
+
+example : DClink.DJudgePairs.cons.form dsemFam =
+    (∀ {Γ Γk Γv Γ' : Env} {k v : Ratchet.Expr} {ps : List (Ratchet.Expr × Ratchet.Expr)}
+      {σ τ : Ty} {ks vs : List Ty},
+      SemSafeA Γ k σ Γk → SemSafeA Γk v τ Γv → SemPairsA Γv ps ks vs Γ' →
+        SemPairsA Γ ((k, v) :: ps) (σ :: ks) (τ :: vs) Γ') := rfl
+
 #guard dUnregisteredRules.isEmpty
 
 /-! ### …and a proof of a different rule does not stand in for it

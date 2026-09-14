@@ -31,7 +31,7 @@ is the property `Ratchet/DerivControls.lean` §4 pins.
 `check` recurses on a `Nat` rather than structurally on `Deriv`, for the reason `chk` did: a
 `partial def` cannot be reasoned about, and `Deriv` is a nested inductive (`List Deriv`
 fields) whose structural recursion Lean will accept but whose *induction* in a mutual block
-with two list companions is a fight. Fuel makes `check_sound` one `induction fuel`. Fuel
+with list companions is a fight. Fuel makes recursive checking explicit. Fuel
 exhaustion answers `none`, so it can only cost completeness.
 
 ## Authoring a rule: **let the transport lemma write the premises and the outgoing environment**
@@ -85,9 +85,9 @@ flexibility, with the obligation as the forcing function.
 
 ## What is deliberately not in the judgment yet
 
-`DJudge` has fifteen rules (plus four in the two list companions). Everything else a `Deriv` can express — `defDecl`, `callSig`,
+`DJudge` has sixteen rules (plus six in the three list companions). Everything else a `Deriv` can express — `defDecl`, `callSig`,
 `callMethodSig`, `classDecl`, `newInst`, `ivarRead`, `ivarAsgn`, `constCls`,
-`hashLit`, `selfExpr` — answers `none`, by name, in `check`'s last arms. They join a rule at
+`selfExpr` — answers `none`, by name, in `check`'s last arms. They join a rule at
 a time, and each one joining is a rung.
 
 Also not here, and *not* an oversight: `DJudge` carries no `Ctx` and no ivar spine. The
@@ -214,8 +214,8 @@ def plainArgB : Expr → Bool
 /-! ## §2 The judgment
 
 `DJudge Γ e τ Γ'`: in local environment `Γ`, the expression `e` has type `τ` and leaves `Γ'`.
-Two companions, for the two places a rule needs a list: a send's arguments (`DJudgeAll`,
-which also reports their types) and a statement sequence (`DJudgeSeq`).
+Three companions: arguments/array elements (`DJudgeAll`), statement sequences (`DJudgeSeq`),
+and interleaved key/value pairs (`DJudgePairs`).
 
 Every rule is one line and says one thing. That is the property worth protecting: the old
 judgment's rules acquired premises over time (`nameFree`, `ctxKept`, `capStaleCtx`,
@@ -296,6 +296,10 @@ inductive DJudge : Env → Expr → Ty → Env → Prop
   | arrayLit {Γ Γ' : Env} {es : List Expr} {tys : List Ty} :
       DJudgeAll Γ es tys Γ' → FirstOrder (elemTy tys) = true →
       DJudge Γ (.array es) (.arrayOf (elemTy tys)) Γ'
+  /-- Pair evaluation is interleaved, not all keys followed by all values. -/
+  | hashLit {Γ Γ' : Env} {ps : List (Expr × Expr)} {ks vs : List Ty} :
+      DJudgePairs Γ ps ks vs Γ' → FirstOrder (elemTy ks) = true →
+      FirstOrder (elemTy vs) = true → DJudge Γ (.hash ps) (.hashOf (elemTy ks) (elemTy vs)) Γ'
 
 inductive DJudgeAll : Env → List Expr → List Ty → Env → Prop
   | nil {Γ : Env} : DJudgeAll Γ [] [] Γ
@@ -308,6 +312,13 @@ inductive DJudgeSeq : Env → List Expr → Ty → Env → Prop
   | last {Γ Γ' : Env} {e : Expr} {τ : Ty} : DJudge Γ e τ Γ' → DJudgeSeq Γ [e] τ Γ'
   | cons {Γ Γ₁ Γ₂ : Env} {e e' : Expr} {es : List Expr} {σ τ : Ty} :
       DJudge Γ e σ Γ₁ → DJudgeSeq Γ₁ (e' :: es) τ Γ₂ → DJudgeSeq Γ (e :: e' :: es) τ Γ₂
+
+inductive DJudgePairs : Env → List (Expr × Expr) → List Ty → List Ty → Env → Prop
+  | nil {Γ : Env} : DJudgePairs Γ [] [] [] Γ
+  | cons {Γ Γk Γv Γ' : Env} {k v : Expr} {ps : List (Expr × Expr)}
+      {σ τ : Ty} {ks vs : List Ty} :
+      DJudge Γ k σ Γk → DJudge Γk v τ Γv → DJudgePairs Γv ps ks vs Γ' →
+      DJudgePairs Γ ((k, v) :: ps) (σ :: ks) (τ :: vs) Γ'
 end
 
 theorem DJudge.plainArg {Γ Γ' : Env} {e : Expr} {τ : Ty} (h : DJudge Γ e τ Γ') :
@@ -337,7 +348,7 @@ and the whole pipeline downstream of `scripts/emit_deriv.py` would be unfalsifia
 
 ### Why fuel
 
-`Deriv` is a nested inductive and `check` is mutual with two list companions; fuel makes the
+`Deriv` is a nested inductive and `check` is mutual with three list companions; fuel makes the
 recursion structural and obviously terminating. Exhaustion answers `none`, so it can only cost
 completeness. -/
 
@@ -360,6 +371,13 @@ structure CertifiedSeq (Γ : Env) (es : List Expr) where
   ty : Ty
   out : Env
   judged : DJudgeSeq Γ es ty out
+
+/-- Parallel certificate lists, checked in the source pairs' evaluation order. -/
+structure CertifiedPairs (Γ : Env) (ps : List (Expr × Expr)) where
+  keys : List Ty
+  vals : List Ty
+  out : Env
+  judged : DJudgePairs Γ ps keys vals out
 
 mutual
 /-- Check a certificate against a program, returning its derivation.
@@ -442,9 +460,20 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) : Option (Certified Γ 
           else none
         else none
       | none => none
+    | .hash ps, .hashLit dks dvs key val =>
+      match checkPairs n Γ ps dks dvs with
+      | some ⟨ks, vs, Γ', hs⟩ =>
+        if elemTy ks == key && elemTy vs == val then
+          if hk : FirstOrder (elemTy ks) = true then
+            if hv : FirstOrder (elemTy vs) = true then
+              some ⟨.hashOf (elemTy ks) (elemTy vs), Γ', .hashLit hs hk hv⟩
+            else none
+          else none
+        else none
+      | none => none
     -- Out of the judgment. Every remaining certificate rule -- `defDecl`, `callSig`,
     -- `callMethodSig`, `classDecl`, `newInst`, `ivarRead`, `ivarAsgn`, `constCls`,
-    -- `hashLit`, `selfExpr` -- and every expression head with no rule, answers
+    -- `selfExpr` -- and every expression head with no rule, answers
     -- `none`. Each joins by acquiring a `DJudge` rule, and each joining is a rung.
     | _, _ => none
 
@@ -465,6 +494,25 @@ def checkAll (fuel : Nat) (Γ : Env) (es : List Expr) (ds : List Deriv) :
     -- A certificate with the wrong number of arguments is rejected here, in both
     -- directions. `Ratchet/DerivControls.lean` §3 is the control.
     | _, _ => none
+
+def checkPairs (fuel : Nat) (Γ : Env) (ps : List (Expr × Expr)) (dks dvs : List Deriv) :
+    Option (CertifiedPairs Γ ps) :=
+  match fuel with
+  | 0 => none
+  | n + 1 =>
+    match ps, dks, dvs with
+    | [], [], [] => some ⟨[], [], Γ, .nil⟩
+    | (k, v) :: ps', dk :: dks', dv :: dvs' =>
+      match check n Γ k dk with
+      | some ⟨σ, Γk, hk⟩ =>
+        match check n Γk v dv with
+        | some ⟨τ, Γv, hv⟩ =>
+          match checkPairs n Γv ps' dks' dvs' with
+          | some ⟨ks, vs, Γ', hs⟩ => some ⟨σ :: ks, τ :: vs, Γ', .cons hk hv hs⟩
+          | none => none
+        | none => none
+      | none => none
+    | _, _, _ => none
 
 def checkSeq (fuel : Nat) (Γ : Env) (es : List Expr) (ds : List Deriv) :
     Option (CertifiedSeq Γ es) :=
@@ -515,14 +563,13 @@ theorem validateD_typed {p : Expr} {d : Deriv} (h : validateD p d = true) : DTyp
 /-! ## §5 Semantic status
 
 `validateD p d = true` means the checker returned a `DJudge` derivation of `p`.
-All twelve expression rules and four list companions have answer-typed semantic proofs
+All sixteen expression rules and six list companions have answer-typed semantic proofs
 registered in `Denote/Typed/Clink.lean`. The semantic target includes safety under a typed
 continuation, so escapes and halts are covered as well as returned values.
 
-`Denote/Typed/CorpusSafety.lean` carries concrete derivations and safety proofs for every
-accepted corpus rung. `RuleAudit.lean` checks the actual proof terms, and `SemLadder.lean`
-compares each proof's program to the pipeline's stripped program. A newly accepted rung
-without that end-to-end proof still makes the full ratchet red.
+`Denote/Typed/Bridge.lean` proves `validateD_safe_boot` for every accepted certificate.
+`CorpusSafety.lean` additionally carries worked derivations exercising every registered rule;
+`RuleAudit.lean` checks their proof terms, and `SemLadder.lean` cross-checks their programs.
 
 `Ratchet/Judge.lean` is the retained type/context substrate. The older judgment and checker
 were deleted in clink 68; the current proof boundary is the answer-typed registry. -/

@@ -25,6 +25,7 @@ def rulesUsed : Ratchet.Expr → List String
   | .if' c t (some e) => "if'" :: (rulesUsed c ++ rulesUsed t ++ rulesUsed e)
   | .if' c t none => "ifNoElse" :: (rulesUsed c ++ rulesUsed t)
   | .array es => "arrayLit" :: rulesUsedArgs es
+  | .hash ps => "hashLit" :: rulesUsedPairs ps
   | _ => ["?"]
 
 def rulesUsedSeq : List Ratchet.Expr → List String
@@ -35,6 +36,10 @@ def rulesUsedSeq : List Ratchet.Expr → List String
 def rulesUsedArgs : List Ratchet.Expr → List String
   | [] => ["DJudgeAll.nil"]
   | e :: es => "DJudgeAll.cons" :: (rulesUsed e ++ rulesUsedArgs es)
+
+def rulesUsedPairs : List (Ratchet.Expr × Ratchet.Expr) → List String
+  | [] => ["DJudgePairs.nil"]
+  | (k, v) :: ps => "DJudgePairs.cons" :: (rulesUsed k ++ rulesUsed v ++ rulesUsedPairs ps)
 end
 
 def rulesUsedAll (es : List Ratchet.Expr) : List String := es.flatMap rulesUsed

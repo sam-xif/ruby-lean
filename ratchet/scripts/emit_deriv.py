@@ -321,16 +321,17 @@ class Emitter:
     def n_hash(self, n):
         kds, kts, vds, vts = [], [], [], []
         for pair in n[1]:
-            if pair[0] != "pair":
-                raise Blocked(f"hash entry '{pair[0]}' is outside the fragment")
-            kd, kt = self.go(pair[1])
-            vd, vt = self.go(pair[2])
+            # Exported pairs are [key_ast, value_ast], not tagged nodes.
+            if len(pair) != 2 or not all(isinstance(e, list) for e in pair):
+                raise Blocked(f"hash entry '{pair}' is outside the fragment")
+            kd, kt = self.go(pair[0])
+            vd, vt = self.go(pair[1])
             kds.append(kd); kts.append(kt); vds.append(vd); vts.append(vt)
         k, v = NEVER, NEVER
-        for t in kts:
-            k = join(k, t)
-        for t in vts:
-            v = join(v, t)
+        for t in reversed(kts):
+            k = join(t, k)
+        for t in reversed(vts):
+            v = join(t, v)
         return ({"rule": "hashLit", "keys": kds, "vals": vds, "key": k, "val": v},
                 hash_of(k, v))
 

@@ -12,9 +12,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 46 rungs, reach 17**, **19 registered rules** (15 expressions + 4 list companions),
-**0 owed**, **0 exempt**. Checker reach is 47; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 41 rungs additionally carry a
+**Fragment 47 rungs, reach 17**, **22 registered rules** (16 expressions + 6 list companions),
+**0 owed**, **0 exempt**. Checker reach is 49; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 42 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -36,11 +36,11 @@ coverage gaps. [`MainTyped.lean`](MainTyped.lean) reports checker reach;
 
 ## The proof boundary
 
-[`Ratchet/Check.lean`](Ratchet/Check.lean) defines `DJudge`, `DJudgeAll`, `DJudgeSeq`,
+[`Ratchet/Check.lean`](Ratchet/Check.lean) defines `DJudge`, `DJudgeAll`, `DJudgeSeq`, `DJudgePairs`,
 and fourteen `DPrim` rows. [`Denote/Typed/Clink.lean`](Denote/Typed/Clink.lean) derives each
-constructor's semantic obligation and registers only proved rules. **All three judgments
+constructor's semantic obligation and registers only proved rules. **All four judgments
 are fields of `DFam`**: no raw syntactic premise may bypass the registry — which is also what
-lets `djudge_certified` be a mutual induction over all three (§F31 was the prerequisite).
+lets `djudge_certified` be a mutual induction over all four (§F31 was the prerequisite).
 
 The bridge deliberately runs *from* the syntactic judgment *to* `DJudgeC`, rather than the
 checker returning a `DJudgeC` derivation: `Ratchet/` stays ignorant of `Denote/`, and
@@ -69,9 +69,10 @@ String membership needs a payload invariant. See
 | `Denote/Typed/JudgeA.lean` | Semantic judgment, continuation typing, literal/local rules |
 | `Denote/Typed/Sequence.lean`, `Branch*.lean`, `BareName.lean` | Sequence, conditional, and bare-name obligations |
 | `Denote/Typed/Array.lean` | First-order array evaluation, retention, and allocation |
+| `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |
 | `Denote/Typed/Primitive*.lean` | Primitive dispatch, allocation, argument composition, regression controls |
 | `Denote/Sem/PrimHeap.lean`, `Denote/JoinState.lean` | Primitive heap invariants and sound binding joins |
-| `Denote/Typed/Derivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 41 concrete safety proofs |
+| `Denote/Typed/Derivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 42 concrete safety proofs |
 | `Denote/Typed/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Typed/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |
 | `Denote/Sanity.lean` | Executable boot conformance gate and its kernel soundness theorem |

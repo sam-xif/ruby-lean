@@ -72,6 +72,7 @@ theorem djudge_certified {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
   | ifNoElse hc ht => exact derivD_ifNoElse (djudge_certified hc) (djudge_certified ht)
   | bareName => exact derivD_bareName
   | arrayLit hs hf => exact derivD_arrayLit (djudgeAll_certified hs) hf
+  | hashLit hs hk hv => exact derivD_hashLit (djudgePairs_certified hs) hk hv
 
 /-- The argument-list companion. -/
 theorem djudgeAll_certified {Γ Γ' : Env} {es : List Ratchet.Expr} {tys : List Ty}
@@ -86,6 +87,15 @@ theorem djudgeSeq_certified {Γ Γ' : Env} {es : List Ratchet.Expr} {τ : Ty}
   cases h with
   | last he => exact derivD_seqLast (djudge_certified he)
   | cons he ht => exact derivD_seqCons (djudge_certified he) (djudgeSeq_certified ht)
+
+/-- The pair-list companion follows the source's key/value evaluation order. -/
+theorem djudgePairs_certified {Γ Γ' : Env} {ps : List (Ratchet.Expr × Ratchet.Expr)}
+    {ks vs : List Ty} (h : DJudgePairs Γ ps ks vs Γ') :
+    (DJudgeC dclinks).pairs Γ ps ks vs Γ' := by
+  cases h with
+  | nil => exact derivD_pairsNil
+  | cons hk hv hs =>
+    exact derivD_pairsCons (djudge_certified hk) (djudge_certified hv) (djudgePairs_certified hs)
 
 end
 

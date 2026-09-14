@@ -36,7 +36,7 @@ structure Row where
 (`AGENTS.md`). Raise it when the reach grows; a drop is a regression and the exit code says
 so. Unlike the old syntactic ladder's number this one is a prefix, so it cannot be inflated
 by a rung that happens to certify out of order. -/
-def ladderFloor : Nat := 47
+def ladderFloor : Nat := 49
 
 def loadRung (p : System.FilePath) : IO Rung := do
   let contents ← IO.FS.readFile p

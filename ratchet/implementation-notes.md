@@ -8556,3 +8556,22 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet: GREEN, fragment 41→46 (044–047 and 049), checker reach 43→47,
   19 proved rules, 252 agree / 0 disagree. The array proof builds in under a second;
   `validateD_safe_boot` remains axiom-clean. Next positive frontier: 048, hash literals.
+
+## Clink 82 (2026-09-13) — interleaved hash literals
+
+- Add `DJudgePairs`/`SemPairsA`, not two `DJudgeAll` walks: a value can assign a local
+  the next key reads. The pair relation is a fourth `DFam` projection, carried through
+  registration, certified builders, and the mutual bridge; no raw syntactic premise
+  crosses the semantic boundary. A constructor-form control pins that boundary.
+- `Hash.lean` proves key/value evaluation, safe escape propagation, duplicate-key
+  replacement (old key, new value), and allocation. First-order framing retains both
+  accumulator components; `CoreOk.hashBasic` supplies allocation's boot-class fact.
+  The proof keeps `valueEql` abstract: only membership of the retained key matters.
+- Fix the emitter's stale tagged-pair assumption: export supplies `[key_ast, val_ast]`.
+  Walk pairs in source order and right-fold both joins, as `elemTy` does. Checker
+  controls pin independent certificate-list lengths, forged joins, unsafe values,
+  nested arrays, key/value ordering, and higher-order rejection. A runtime guard and
+  CRuby probe agree on duplicate-key position and last-value behavior.
+- Full quiet ratchet: GREEN, fragment 46→47, checker reach 47→49, 22 proved rules,
+  252 agree / 0 disagree. The hash proof builds in under a second, axiom-clean.
+  Next positive frontier: 050, array indexing.
