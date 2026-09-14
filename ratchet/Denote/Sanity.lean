@@ -267,24 +267,25 @@ def queryOkB (m : Machine) : Bool :=
           && (Interp.crubyShadow m.heap
                 ((RubyCore.ancestors m.heap k).takeWhile (fun x => x != owner)) p.1).isNone))
 
-/-- **`ClsQueryOk` as one `Bool`** — the same five facts at a *class object* receiver, where
-the walk starts at the eigenclass. Only class objects are checked, which is also all the
-component claims. -/
-def clsQueryOkB (m : Machine) : Bool :=
-  (List.range m.heap.objs.size).all (fun o =>
-    !(m.heap.classPayload? o).isSome ||
+/-- The class-query rows at one dispatch site. -/
+def clsQueryAtB (m : Machine) (k : ObjId) : Bool :=
     Ratchet.Denote.clsQueryBuiltins.all (fun p =>
-      match Interp.methodOn m.heap (classOf m.heap (.ref o)) p.1 with
+      match Interp.methodOn m.heap k p.1 with
       | none =>
-        match Interp.methodOn m.heap (classOf m.heap (.ref o)) "method_missing" with
+        match Interp.methodOn m.heap k "method_missing" with
         | none => true
         | some (_, mm) => mm.builtin.isSome
       | some (owner, md) =>
         md.builtin == some p.2 && !md.undefined && md.visibility == Visibility.pub
           && !md.fromPrelude
           && (Interp.crubyShadow m.heap
-                ((RubyCore.ancestors m.heap (classOf m.heap (.ref o))).takeWhile
-                  (fun x => x != owner)) p.1).isNone))
+                ((RubyCore.ancestors m.heap k).takeWhile
+                  (fun x => x != owner)) p.1).isNone)
+
+/-- Check existing class receivers and the direct Class path used by fresh eigenclasses. -/
+def clsQueryOkB (m : Machine) : Bool :=
+  clsQueryAtB m Boot.classId && (List.range m.heap.objs.size).all (fun o =>
+    !(m.heap.classPayload? o).isSome || clsQueryAtB m (classOf m.heap (.ref o)))
 
 /-- **`BaseChainsOk` as one `Bool`.** Three computations per row: every name in the row
 resolves to an ancestor of the base, every *constant* name that resolves into the base's
@@ -380,10 +381,15 @@ theorem baseChainsOkB_sound {m : Machine} (hb : baseChainsOkB m = true) (κ : Ra
 
 theorem clsQueryOkB_sound {m : Machine} (hb : clsQueryOkB m = true) (κ : Ratchet.Ctx) :
     Ratchet.Denote.ClsQueryOk κ m := by
-  intro mname bid hmem _ o hp
-  have hlt : o < m.heap.objs.size := Ratchet.Denote.lt_size_of_classPayload hp
-  have hrow := List.all_eq_true.mp hb o (by simpa using hlt)
-  simp only [hp, Bool.not_true, Bool.false_or] at hrow
+  intro mname bid hmem _ k hp
+  simp only [clsQueryOkB, Bool.and_eq_true] at hb
+  obtain ⟨hclass, hobjects⟩ := hb
+  have hrow : clsQueryAtB m k = true := by
+    rcases hp with hk | ⟨o, ho, hco⟩
+    · subst k; exact hclass
+    · have hlt := Ratchet.Denote.lt_size_of_classPayload ho
+      have hr := List.all_eq_true.mp hobjects o (by simpa using hlt)
+      simpa only [ho, Bool.not_true, Bool.false_or, hco] using hr
   have hp2 := List.all_eq_true.mp hrow (mname, bid) (by simpa using hmem)
   refine ⟨?_, ?_⟩
   · intro owner md hfound

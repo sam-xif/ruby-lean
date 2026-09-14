@@ -90,7 +90,8 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     bareFree := by simpa only [BareNameFree, bindIvar_currentFrame, hw.lookup_eq] using h.bareFree
     missFree := by simpa only [MissFree, bindIvar_currentFrame, hw.classOf_eq, hmethod] using h.missFree
     query := by simpa only [QueryOk, hmethod, hw.ancestors_eq, hshadow] using h.query
-    clsQuery := by simpa only [ClsQueryOk, hmethod, hw.classPayload, hw.classOf_eq, hw.ancestors_eq, hshadow] using h.clsQuery
+    clsQuery := by simpa only [ClsQueryOk, ClassQuerySite, hmethod, hw.classPayload,
+      hw.classOf_eq, hw.ancestors_eq, hshadow] using h.clsQuery
     declCls := by simpa only [DeclClassOk, hn, hw.classPayload, hw.classOf_eq, hw.ancestors_eq,
       hmethod, hshadow, Interp.userInit?] using h.declCls
     baseChains := by simpa only [BaseChainsOk, hn, hw.ancestors_eq] using h.baseChains

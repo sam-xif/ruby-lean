@@ -769,31 +769,26 @@ def QueryOk (κ : Ctx) (m : Machine) : Prop :=
       ∀ o md, Interp.methodOn m.heap k "method_missing" = some (o, md) →
         md.builtin.isSome = true)
 
-/-- `QueryOk` for the names dispatched at a **class object** receiver — `Module#===`, which
-`case x when C` desugars to. Same five facts and the same miss clause; the difference is where
-the walk starts. `classOf` of a class object is its *eigenclass*, so the claim is indexed by
-the class object rather than by a class id, and it is conditioned on the object actually being
-a class (which also pins the reference live, so `Ext` can transport it).
-
-Measured at the booted machine before each row was written down: all 87 class objects resolve
-`===` to `Module#===` and `to_s` to `Module#to_s`, public and unshadowed in both cases. (Over
-*arbitrary* receivers neither name is clean — `===` fails at 43 classes and `to_s` at 63 — which
-is why the component is indexed by the receiver rather than by its class, and why `QueryOk`'s
-own list cannot simply absorb these two rows.) -/
+/-- Class-object queries are not clean at arbitrary receivers (e.g. String's `to_s`). -/
 def clsQueryBuiltins : List (String × String) :=
   [("===", "Module#==="), ("to_s", "Module#to_s")]
 
+/-- Existing class-object dispatch sites, plus Class itself: a fresh eigenclass has no
+eigenclass of its own and dispatches directly there. Existing receivers need not expose it. -/
+def ClassQuerySite (h : Heap) (k : ObjId) : Prop :=
+  k = Boot.classId ∨ ∃ o, (h.classPayload? o).isSome = true ∧ classOf h (.ref o) = k
+
 def ClsQueryOk (κ : Ctx) (m : Machine) : Prop :=
-  ∀ mname bid, (mname, bid) ∈ clsQueryBuiltins → nameFreeN κ mname = true → ∀ o,
-    (m.heap.classPayload? o).isSome = true →
-    (∀ owner md, Interp.methodOn m.heap (classOf m.heap (.ref o)) mname = some (owner, md) →
+  ∀ mname bid, (mname, bid) ∈ clsQueryBuiltins → nameFreeN κ mname = true → ∀ k,
+    ClassQuerySite m.heap k →
+    (∀ owner md, Interp.methodOn m.heap k mname = some (owner, md) →
         md.builtin = some bid ∧ md.undefined = false ∧ md.visibility = .pub ∧
         md.fromPrelude = false ∧
         Interp.crubyShadow m.heap
-          ((ancestors m.heap (classOf m.heap (.ref o))).takeWhile (fun x => x != owner))
+          ((ancestors m.heap k).takeWhile (fun x => x != owner))
           mname = none) ∧
-    (Interp.methodOn m.heap (classOf m.heap (.ref o)) mname = none →
-      ∀ o₂ md, Interp.methodOn m.heap (classOf m.heap (.ref o)) "method_missing"
+    (Interp.methodOn m.heap k mname = none →
+      ∀ o₂ md, Interp.methodOn m.heap k "method_missing"
         = some (o₂, md) → md.builtin.isSome = true)
 
 theorem QueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : QueryOk κ m) :
@@ -826,22 +821,23 @@ theorem lt_size_of_classPayload {h : Heap} {o : ObjId}
 
 theorem ClsQueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : ClsQueryOk κ m) :
     ClsQueryOk κ m₂ := by
-  intro mname bid hmem hfree o hp
-  have hlt : o < m.heap.objs.size := by
-    rw [he.payload] at hp; exact lt_size_of_classPayload hp
-  have hco : classOf m₂.heap (.ref o) = classOf m.heap (.ref o) := by
-    simp only [classOf, he.get o hlt]
-  have hm : ∀ n, Interp.methodOn m₂.heap (classOf m₂.heap (.ref o)) n
-      = Interp.methodOn m.heap (classOf m.heap (.ref o)) n := by
-    intro n; simp only [hco, Interp.methodOn, he.payload, he.ancestors]
-  rw [he.payload] at hp
-  obtain ⟨h1, h2⟩ := h mname bid hmem hfree o hp
+  intro mname bid hmem hfree k hp
+  have hs : ClassQuerySite m.heap k := by
+    rcases hp with hk | ⟨o, ho, hco⟩
+    · exact Or.inl hk
+    · rw [he.payload] at ho
+      have hlt := lt_size_of_classPayload ho
+      simp only [classOf, he.get o hlt] at hco
+      exact Or.inr ⟨o, ho, hco⟩
+  have hm : ∀ n, Interp.methodOn m₂.heap k n = Interp.methodOn m.heap k n := by
+    intro n; simp only [Interp.methodOn, he.payload, he.ancestors]
+  obtain ⟨h1, h2⟩ := h mname bid hmem hfree k hs
   refine ⟨?_, ?_⟩
   · intro owner md hfound
     rw [hm] at hfound
     obtain ⟨hb, hu, hv, hpre, hsh⟩ := h1 owner md hfound
     refine ⟨hb, hu, hv, hpre, ?_⟩
-    simp only [hco, Interp.crubyShadow, className, he.payload, he.ancestors] at hsh ⊢
+    simp only [Interp.crubyShadow, className, he.payload, he.ancestors] at hsh ⊢
     exact hsh
   · intro hnone o₂ md hfound
     rw [hm] at hnone hfound
@@ -850,7 +846,7 @@ theorem ClsQueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : ClsQ
 theorem ClsQueryOk.setLocal {κ : Ctx} {m : Machine} (x : String) (w : Value)
     (h : ClsQueryOk κ m) : ClsQueryOk κ (m.setLocal x w) := by
   intro mname bid hmem hfree o hp
-  simp only [setLocal_heap] at hp ⊢
+  simp only [ClassQuerySite, setLocal_heap] at hp ⊢
   exact h mname bid hmem hfree o hp
 
 /-- **The base class of each `builtinAncestors` row**, paired with the row itself. The table is

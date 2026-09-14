@@ -232,7 +232,8 @@ theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : 
       crubyShadow_defineMethod] using hm.query x bid hx hfree k
   · intro x bid hx hfree o hp
     have he := hne x hfree
-    rw [Proof.classPayload?_isSome_defineMethod] at hp
+    simp only [ClassQuerySite, Proof.classPayload?_isSome_defineMethod,
+      Proof.classOf_defineMethod] at hp
     simpa only [Proof.classOf_defineMethod, methodOn_defineMethod _ _ _ _ _ _ he,
       methodOn_defineMethod _ _ _ _ _ _ hmiss, Proof.ancestors_defineMethod,
       crubyShadow_defineMethod] using hm.clsQuery x bid hx hfree o hp

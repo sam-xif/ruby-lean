@@ -149,7 +149,12 @@ composite to prove the actual entry step, name registration, and readiness after
 object preservation alone. `Sem/ClassHeap.lean` proves preservation of all old first-order
 types across fresh class creation, including nested field snapshots and dangling references.
 `DataPres` shares the type/spine induction with initializer publication. A negative control
-refutes replacing an existing class name. Full class-body conformance and constructor calls remain gated.
+refutes replacing an existing class name. `ClassDispatch.lean` maps all new dispatch sites
+to old sites; `ClassQueries.lean` preserves the three query invariants with native-name guards.
+`ClsQueryOk` now includes direct Class dispatch, checked by the existing boot gate: a fresh
+eigenclass uses that path even if every old class receiver masks it with an eigenclass.
+`ClassQueryControls.lean` checks actual Point entry and a countermodel to the old domain.
+Full class-body conformance and constructor calls remain gated.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -189,6 +194,7 @@ String membership needs a payload invariant. See
 | `Ratchet/WriteTypes.lean`, `WriteControls.lean`, `Denote/Sem/WriteStable.lean`, `Denote/Typed/InitWrite.lean` | Executable write-preservation guards, their semantic proof, and alias/context controls |
 | `Denote/Sem/ClassReady.lean`, `Denote/Typed/ClassEntry.lean`, `ClassControls.lean` | Boot-checked class readiness, its preservation, and actual fresh-class entry/registration |
 | `Denote/Sem/ClassHeap.lean`, `DataPres.lean` | Old-data preservation and full caller framing across fresh class creation; shared first-order transport |
+| `Denote/Sem/ClassDispatch.lean`, `ClassQueries.lean`, `Denote/Typed/ClassQueryControls.lean` | Fresh-class dispatch/query preservation, direct-Class invariant, and countermodels |
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

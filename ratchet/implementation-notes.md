@@ -9219,3 +9219,27 @@ both halves of what constrains them now have a name.
   no class rule, admission, or floor changes. New proofs build in under a second, axiom-clean.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree. 061 remains the next expected acceptance.
+
+## Clink 112 (2026-09-14) — preserve queries at fresh class dispatch sites
+
+- `ClassDispatch` maps fresh class/eigenclass lookup to Object/Object's eigenclass;
+  old live sites stay fixed and out-of-range sites remain methodless. Native-name shadow
+  prefixes need a separate proof: identical modeled lookup does not imply identical
+  dispatch. `NativeQuiet` retains explicit guards for the class and eigenclass names;
+  eventual class admission must discharge them, not whitelist the Point control.
+- `ClsQueryOk` previously covered only existing class-object receivers. A fresh eigenclass
+  dispatches directly through Class, which those receivers need not expose. Extend its
+  domain with that site, including the existing boot Bool and all state transports.
+  Do not freeze Class's eigenclass or drop the invariant to make preservation go through.
+- A heap countermodel redirects old class receivers through Module and gives Class an
+  incompatible `to_s`: readiness, saturation, and every old receiver check pass, but an
+  actual fresh-class entry exposes the bad direct-Class path. The strengthened check
+  rejects it. This is an invariant countermodel, not a reachable-program claim.
+- `ClassQueries` proves preservation of QueryOk, ClsQueryOk, and NilQueryOk; real boot Point
+  entry composes all three. A forced native-name composite separately checks that lookup
+  inheritance can coexist with a native shadow. Controls join the full safety build.
+  Proof modules build in under a second, with standard axioms only. No new class admission,
+  signature-only acceptance, registry rule, or floor change: full class-body conformance
+  and annotation-checked instance-method/constructor integration remain next.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree. 061 remains the next expected acceptance.
