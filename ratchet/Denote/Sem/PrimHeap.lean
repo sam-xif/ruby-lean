@@ -17,6 +17,7 @@ def primitiveMethods : List (ObjId × String × String) :=
    (Boot.nilClassId, "==", "Object#=="), (Boot.stringId, "length", "String#length"),
    (Boot.stringId, "+", "String#+"),
    (Boot.arrayId, "[]", "Array#[]"),
+   (Boot.hashId, "[]", "Hash#[]"),
    (Boot.trueClassId, "!", "Object#!"), (Boot.falseClassId, "!", "Object#!")]
 
 def primitiveDispatchB (h : Heap) (free : String → Bool) : Bool :=
@@ -57,6 +58,39 @@ theorem arrayPayloadB_sound {h : Heap} (hb : arrayPayloadB h = true) : ArrayPayl
   by_cases ho : o < h.objs.size
   · have hp := List.all_eq_true.mp hb o (List.mem_range.mpr ho)
     simpa only [hx, beq_iff_eq] using hp
+  · rw [get_oob h (Nat.le_of_not_gt ho)] at hx
+    cases hx
+
+/-- Both absent defaults and explicit nil defaults return nil on a miss. -/
+def hashDefaultNilB : Option HashDefault → Bool
+  | none | some (.val .nil) => true
+  | _ => false
+
+theorem hashDefaultNilB_cases {d : Option HashDefault} (hd : hashDefaultNilB d = true) :
+    d = none ∨ d = some (.val .nil) := by
+  cases d with
+  | none => exact Or.inl rfl
+  | some d =>
+    cases d with
+    | prc _ => cases hd
+    | val v => cases v <;> simp_all [hashDefaultNilB]
+
+/-- Literal-fragment hashes use Hash dispatch and have no non-nil/default-proc behavior. -/
+def HashPayloadOk (h : Heap) : Prop :=
+  ∀ o xs, (h.get o).payload = .hsh xs →
+    classOf h (.ref o) = Boot.hashId ∧ hashDefaultNilB (h.get o).hashDflt = true
+
+def hashPayloadB (h : Heap) : Bool :=
+  (List.range h.objs.size).all fun o =>
+    match (h.get o).payload with
+    | .hsh _ => classOf h (.ref o) == Boot.hashId && hashDefaultNilB (h.get o).hashDflt
+    | _ => true
+
+theorem hashPayloadB_sound {h : Heap} (hb : hashPayloadB h = true) : HashPayloadOk h := by
+  intro o xs hx
+  by_cases ho : o < h.objs.size
+  · have hp := List.all_eq_true.mp hb o (List.mem_range.mpr ho)
+    simpa only [hx, Bool.and_eq_true, beq_iff_eq] using hp
   · rw [get_oob h (Nat.le_of_not_gt ho)] at hx
     cases hx
 

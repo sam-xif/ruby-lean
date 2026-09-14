@@ -2,6 +2,7 @@ import Denote.Typed.PrimitiveAlloc
 import Denote.Typed.PrimitiveEquality
 import Denote.Typed.PrimitiveQueries
 import Denote.Typed.ArrayIndex
+import Denote.Typed.HashIndex
 
 /-! Each `DPrim` row discharges against the interpreter and preserves conformance on values. -/
 
@@ -167,6 +168,11 @@ theorem primitive_builtin {site : SendSite} {Γ : Env} {m : Machine} {recv : Val
     cases hs
     obtain ⟨i, rfl⟩ := int_value hv
     exact array_index_step hm hk hr i
+  | hashIndex _ =>
+    cases ha
+    rename_i key more hkey htail
+    cases htail
+    exact hash_index_step hm hk hr key
 
 #print axioms primitive_builtin
 end Ratchet.Denote.Typed

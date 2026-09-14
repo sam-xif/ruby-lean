@@ -278,6 +278,14 @@ theorem safe_050_array_index (hb : bootOkB = true) : StuckFree bootMachine progr
       (derivD_allCons derivD_intLit (derivD_allCons derivD_intLit derivD_allNil rfl) rfl) rfl) rfl)
     (derivD_allCons derivD_intLit derivD_allNil rfl) (.arrayIndex rfl)) (stateOk_boot hb)
 
+def program_051_hash_index : Ratchet.Expr :=
+  .send (some (.hash [(.str "a", .int 1)])) "[]" [.str "a"] none
+
+theorem safe_051_hash_index (hb : bootOkB = true) : StuckFree bootMachine program_051_hash_index :=
+  dregistry_safe (derivD_prim
+    (derivD_hashLit (derivD_pairsCons derivD_strLit derivD_intLit derivD_pairsNil) rfl rfl)
+    (derivD_allCons derivD_strLit derivD_allNil rfl) (.hashIndex rfl)) (stateOk_boot hb)
+
 def safeRungs : List (String × Ratchet.Expr) :=
   [("001-int-lit", program_001_int_lit),
    ("002-bool-true", program_002_bool_true),
@@ -321,13 +329,14 @@ def safeRungs : List (String × Ratchet.Expr) :=
    ("189-ctl-ternary", program_189_ctl_ternary),
    ("044-array-int", program_044_array_int),
    ("048-hash-lit", program_048_hash_lit),
-   ("050-array-index", program_050_array_index)]
+   ("050-array-index", program_050_array_index),
+   ("051-hash-index", program_051_hash_index)]
 
 theorem safeRungs_safe (hb : bootOkB = true) :
     ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
   intro q hq
   simp only [safeRungs, List.mem_cons, List.not_mem_nil, or_false] at hq
-  rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact safe_001_int_lit hb
   · exact safe_002_bool_true hb
   · exact safe_003_bool_false hb
@@ -371,6 +380,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   · exact safe_044_array_int hb
   · exact safe_048_hash_lit hb
   · exact safe_050_array_index hb
+  · exact safe_051_hash_index hb
 
 #print axioms safeRungs_safe
 end Ratchet.Denote.Typed

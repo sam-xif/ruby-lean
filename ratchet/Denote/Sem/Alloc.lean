@@ -112,6 +112,23 @@ theorem arrayPayloadOk_push {h : Heap} {obj : Object} (hp : ArrayPayloadOk h)
   · rw [pushHeap_get_gt h obj hg] at hx
     cases hx
 
+theorem hashPayloadOk_push {h : Heap} {obj : Object} (hp : HashPayloadOk h)
+    (ho : ∀ xs, obj.payload = .hsh xs →
+      obj.eigen.getD obj.klass = Boot.hashId ∧ hashDefaultNilB obj.hashDflt = true) :
+    HashPayloadOk (pushHeap h obj) := by
+  intro o xs hx
+  rcases Nat.lt_trichotomy o h.objs.size with hl | he | hg
+  · simp only [pushHeap_get_lt h obj hl] at hx
+    simpa only [classOf, pushHeap_get_lt h obj hl] using hp o xs hx
+  · subst he
+    rw [pushHeap_get_self] at hx
+    obtain ⟨hc, hd⟩ := ho xs hx
+    simp only [classOf, pushHeap_get_self]
+    refine ⟨?_, hd⟩
+    cases heigen : obj.eigen <;> simpa [heigen] using hc
+  · rw [pushHeap_get_gt h obj hg] at hx
+    cases hx
+
 /-! ## The producer -/
 
 /-- **A non-class, ivar-less allocation of a `BasicObject` descendant is an `Ext`.**

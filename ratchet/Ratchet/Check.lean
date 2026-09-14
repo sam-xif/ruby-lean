@@ -103,7 +103,7 @@ namespace Ratchet
 /-! ## §1 The primitive table
 
 The rules for sends this fragment can type, as an inductive (`DPrim`) with a decision
-procedure (`dprim?`) and a soundness lemma between them. Fifteen rows.
+procedure (`dprim?`) and a soundness lemma between them. Sixteen rows.
 
 The table grows with proved builtin obligations. `Judge.lean`'s `PrimSig` has ~90 rows and `Denote/`'s
 `Sem.Judge.prim` — the obligation that every one of them is true of CRuby — is one of the 35
@@ -146,6 +146,9 @@ inductive DPrim : Ty → String → List Ty → Ty → Prop
   | notBool : DPrim .bool "!" [] .bool
   /-- Index evaluation must retain the receiver's element denotations. -/
   | arrayIndex {τ : Ty} : FirstOrder τ = true → DPrim (.arrayOf τ) "[]" [.int] (.nilable τ)
+  /-- Hash query types need not match stored keys; misses return nil. -/
+  | hashIndex {σ τ α : Ty} :
+      FirstOrder (.hashOf σ τ) = true → DPrim (.hashOf σ τ) "[]" [α] (.nilable τ)
 
 /-- The decidable counterpart. A miss is `none`, never a guess. -/
 def dprim? : Ty → String → List Ty → Option Ty
@@ -164,6 +167,7 @@ def dprim? : Ty → String → List Ty → Option Ty
   | .cls "String", "+", [.cls "String"] => some (.cls "String")
   | .bool, "!", [] => some .bool
   | .arrayOf τ, "[]", [.int] => if FirstOrder τ then some (.nilable τ) else none
+  | .hashOf σ τ, "[]", [_] => if FirstOrder (.hashOf σ τ) then some (.nilable τ) else none
   | _, _, _ => none
 
 theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
@@ -186,6 +190,9 @@ theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
   · rw [Option.some.injEq] at h; subst h; exact .notBool
   · split at h
     · rw [Option.some.injEq] at h; subst h; exact .arrayIndex (by assumption)
+    · cases h
+  · split at h
+    · rw [Option.some.injEq] at h; subst h; exact .hashIndex (by assumption)
     · cases h
   · exact absurd h (by simp)
 

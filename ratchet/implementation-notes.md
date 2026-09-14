@@ -8597,3 +8597,22 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet: GREEN, fragment 47→48, checker reach 49→50, 252 agree /
   0 disagree. All 22 registered rules remain proved; the new primitive and the
   acceptance-to-safety theorem are axiom-clean. Next positive frontier: 051, hash indexing.
+
+## Clink 84 (2026-09-13) — hash lookup and nil defaults
+
+- `hashOf key val` describes entries, not missing-key behavior. An empty hash with
+  default `true` returns a Boolean despite having no entry values; a runtime control
+  pins this witness. Add boot-checked `HashPayloadOk`: Hash dispatch and an absent
+  or explicit-nil default. Non-nil defaults/default procs need a type/default
+  relationship before admission; they are not silently interpreted as nil.
+- Preserve that fact across allocation and local writes. `HashIndex.lean` follows
+  actual dispatch (including bypassing only the now-excluded default-proc path),
+  retains the byte-string Unsupported gate, and gets result typing from membership
+  of the pair returned by `find?`. `valueEql` itself needs no new theorem.
+- The new primitive row accepts any query type, not just the stored key type, and
+  retains first-order key/value denotations while the query runs. Controls cover
+  misses, foreign query types, arity, forged non-null results, local retyping,
+  higher-order rejection, explicit nil defaults, and the byte-string gate.
+- Full quiet ratchet: GREEN, fragment 48→49, checker reach 50→51, 252 agree /
+  0 disagree. All 22 registered rules remain proved; the new primitive and the
+  acceptance-to-safety theorem are axiom-clean. Next positive frontier: 052, functions.

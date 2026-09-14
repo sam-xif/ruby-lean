@@ -225,4 +225,29 @@ def ctlIndexCert (di : Deriv) (ret : Ty := .nilable .int) : Deriv :=
 #guard dprim? (.arrayOf (.arrow0 .int)) "[]" [.int] == none
 #guard dprim? (.arrayOf (.arrayOf .int)) "[]" [.int] == some (.nilable (.arrayOf .int))
 
+-- Hash queries may have a different type from stored keys, but the result remains nullable.
+def ctlHashIndex (k : Expr) : Expr := .send (some (.hash [(.sym "a", .int 1)])) "[]" [k] none
+def ctlHashIndexCert (dk : Deriv) (ret : Ty := .nilable .int) : Deriv :=
+  .prim (.hashLit [.symLit "a"] [.intLit 1] .sym .int) "[]" [dk] (.hashOf .sym .int) ret
+
+#guard validateD (ctlHashIndex (.sym "a")) (ctlHashIndexCert (.symLit "a"))
+#guard validateD (ctlHashIndex (.sym "missing")) (ctlHashIndexCert (.symLit "missing"))
+#guard validateD (ctlHashIndex (.int 1)) (ctlHashIndexCert (.intLit 1))
+#guard !validateD (ctlHashIndex (.sym "a")) (ctlHashIndexCert (.symLit "a") .int)
+#guard validateD (.send (some (.hash [])) "[]" [.nil] none)
+  (.prim (.hashLit [] [] .never .never) "[]" [.nilLit] (.hashOf .never .never) (.nilable .never))
+#guard !validateD (.send (some (.hash [])) "[]" [] none)
+  (.prim (.hashLit [] [] .never .never) "[]" [] (.hashOf .never .never) (.nilable .never))
+#guard !validateD (.send (some (.hash [])) "[]" [.nil, .nil] none)
+  (.prim (.hashLit [] [] .never .never) "[]" [.nilLit, .nilLit]
+    (.hashOf .never .never) (.nilable .never))
+#guard validateD
+  (.send (some (.hash [(.sym "a", .vasgn .lvar "x" (.int 1))])) "[]"
+    [.seq [.vasgn .lvar "x" (.str "changed"), .sym "a"]] none)
+  (.prim (.hashLit [.symLit "a"] [.vasgn .lvar "x" (.intLit 1)] .sym .int) "[]"
+    [.seq [.vasgn .lvar "x" (.strLit "changed"), .symLit "a"]] (.hashOf .sym .int) (.nilable .int))
+#guard dprim? (.hashOf (.arrow0 .int) .int) "[]" [.int] == none
+#guard dprim? (.hashOf .sym (.arrow0 .int)) "[]" [.int] == none
+#guard dprim? (.hashOf .sym (.arrayOf .int)) "[]" [.nilT] == some (.nilable (.arrayOf .int))
+
 end Ratchet

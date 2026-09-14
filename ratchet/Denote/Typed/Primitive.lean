@@ -18,6 +18,7 @@ theorem primitive_framed {σ τ : Ty} {name : String} {tys : List Ty} (hp : DPri
     {m n : Machine} {v : Value} (hf : Framed m n) (hv : denM σ m v) : denM σ n v := by
   cases hp with
   | arrayIndex hfo => exact hf.firstOrder (.arrayOf _) hfo _ hv
+  | hashIndex hfo => exact hf.firstOrder (.hashOf _ _) hfo _ hv
   | _ =>
     simp only [denM] at hv ⊢
     first | exact hv | exact hf.nominal _ _ hv
