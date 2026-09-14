@@ -36,8 +36,8 @@ semantic backend — a different `dsemFam`, a different notion of "safe" — reu
 unchanged and needs no new bridge. Threading `DJudgeC` through the checker would have fixed
 one target into the checker's return type and made the second backend a rewrite.
 
-The mutual recursor replaces each constructor with its registered rule, including the three
-list families. Induction is on the derivation, not expression size: a call's stored body
+The mutual recursor replaces each constructor with its registered rule, including list and
+scoped recursive families. Induction is on the derivation, not expression size: a call's stored body
 need not be smaller than the call. The list induction hypotheses stay inside this proof.
 -/
 
@@ -47,58 +47,55 @@ namespace Ratchet.Denote.Typed
 
 open RubyCore Ratchet Ratchet.Denote
 
-/-! ## §1 The bridge, by mutual induction over the judgment and its list companions -/
+/-! ## §1 The bridge, by mutual induction over all six judgment families -/
 
 /-- **Every syntactic derivation is a certified one.** The registry covers `DJudge`, so the
 judgment `check` returns lands in the judgment `dregistry_safe` consumes. -/
 theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
     (h : DJudge Γ e τ Γ' κ I κ' I') : (DJudgeC dclinks).judge Γ e τ Γ' κ I κ' I' := by
   intro F hF
-  induction h using DJudge.rec
+  refine DJudge.rec
+    (motive_1 := fun Γ e τ Γ' κ I κ' I' _ => F.judge Γ e τ Γ' κ I κ' I')
     (motive_2 := fun Γ es tys Γ' κ I κ' I' _ => F.all Γ es tys Γ' κ I κ' I')
     (motive_3 := fun Γ es τ Γ' κ I κ' I' _ => F.seq Γ es τ Γ' κ I κ' I')
     (motive_4 := fun Γ ps ks vs Γ' κ I κ' I' _ => F.pairs Γ ps ks vs Γ' κ I κ' I')
-  case intLit => exact hF DClink.intLit (by simp [dclinks])
-  case fltLit => exact hF DClink.fltLit (by simp [dclinks])
-  case strLit => exact hF DClink.strLit (by simp [dclinks])
-  case symLit => exact hF DClink.symLit (by simp [dclinks])
-  case truLit => exact hF DClink.truLit (by simp [dclinks])
-  case flsLit => exact hF DClink.flsLit (by simp [dclinks])
-  case nilLit => exact hF DClink.nilLit (by simp [dclinks])
-  case var hg ha => exact hF DClink.var (by simp [dclinks]) hg ha
-  case vasgn he hc ha hk ihe =>
-    exact hF DClink.vasgn (by simp [dclinks]) ihe hc ha hk
-  case seq hs ihs => exact hF DClink.seq (by simp [dclinks]) ihs
-  case prim hr ha hp hf hs ihr iha =>
-    exact hF DClink.prim (by simp [dclinks])
-      ihr iha hp hf hs
-  case if' hc ht he ihc iht ihe =>
-    exact hF DClink.if' (by simp [dclinks])
-      ihc iht ihe
-  case ifNoElse hc ht ihc iht =>
-    exact hF DClink.ifNoElse (by simp [dclinks]) ihc iht
-  case bareName hx hm hs => exact hF DClink.bareName (by simp [dclinks]) hx hm hs
-  case arrayLit hs hf ihs =>
-    exact hF DClink.arrayLit (by simp [dclinks]) ihs hf
-  case hashLit hs hk hv ihs =>
-    exact hF DClink.hashLit (by simp [dclinks]) ihs hk hv
-  case defDecl hp hps hr hb hm hc hs hbl hco ha hi hg hf hmiss hquiet ihb =>
-    exact hF DClink.defDecl (by simp [dclinks]) hp hps hr ihb
+    (motive_5 := fun κ I s Γ e τ Γ' _ => F.recBody κ I s Γ e τ Γ')
+    (motive_6 := fun κ I s Γ es tys Γ' _ => F.recArgs κ I s Γ es tys Γ')
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+  all_goals intros
+  · apply hF DClink.intLit (by simp [dclinks]) <;> assumption
+  · apply hF DClink.fltLit (by simp [dclinks]) <;> assumption
+  · apply hF DClink.strLit (by simp [dclinks]) <;> assumption
+  · apply hF DClink.symLit (by simp [dclinks]) <;> assumption
+  · apply hF DClink.truLit (by simp [dclinks]) <;> assumption
+  · apply hF DClink.flsLit (by simp [dclinks]) <;> assumption
+  · apply hF DClink.nilLit (by simp [dclinks]) <;> assumption
+  · apply hF DClink.var (by simp [dclinks]) <;> assumption
+  · apply hF DClink.vasgn (by simp [dclinks]) <;> assumption
+  · apply hF DClink.seq (by simp [dclinks]) <;> assumption
+  · apply hF DClink.prim (by simp [dclinks]) <;> assumption
+  · apply hF DClink.if' (by simp [dclinks]) <;> assumption
+  · apply hF DClink.ifNoElse (by simp [dclinks]) <;> assumption
+  · apply hF DClink.bareName (by simp [dclinks]) <;> assumption
+  · apply hF DClink.arrayLit (by simp [dclinks]) <;> assumption
+  · apply hF DClink.hashLit (by simp [dclinks]) <;> assumption
+  · rename_i κd Γd Γb Id τd d ps hp hps ht hb hm hc hs hbl hco ha hi hg hf hmiss hquiet ihb
+    exact hF DClink.defDecl (by simp [dclinks]) hp hps ht ihb
       hm hc hs hbl hco ha hi hg hf hmiss hquiet
-  case callSig hp hps hr hb hargs hd hstart hm hs hbl hco ha hi hg ihb ihargs =>
-    exact hF DClink.callSig (by simp [dclinks]) hp hps hr ihb
-      ihargs hd hstart hm hs hbl hco ha hi hg
-  case nil => exact hF DClink.DJudgeAll.nil (by simp [dclinks])
-  case cons he ht hp ihe iht =>
-    exact hF DClink.DJudgeAll.cons (by simp [dclinks]) ihe iht hp
-  case last he ihe => exact hF DClink.DJudgeSeq.last (by simp [dclinks]) ihe
-  case cons he ht ihe iht =>
-    exact hF DClink.DJudgeSeq.cons (by simp [dclinks]) ihe iht
-  case nil => exact hF DClink.DJudgePairs.nil (by simp [dclinks])
-  case cons =>
-    intros
-    apply hF DClink.DJudgePairs.cons (by simp [dclinks]) <;> assumption
-
+  · apply hF DClink.callSig (by simp [dclinks]) <;> assumption
+  · apply hF DClink.recursive (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DJudgeAll.nil (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DJudgeAll.cons (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DJudgeSeq.last (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DJudgeSeq.cons (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DJudgePairs.nil (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DJudgePairs.cons (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DJudgeRec.embed (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DJudgeRec.prim (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DJudgeRec.if' (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DJudgeRec.selfCall (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DJudgeRecAll.nil (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DJudgeRecAll.cons (by simp [dclinks]) <;> assumption
 
 /-- Fundamental lemma at arbitrary method contexts, not just the top-level specialization. -/
 theorem djudge_context {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}

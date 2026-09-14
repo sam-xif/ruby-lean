@@ -3,7 +3,7 @@ import Denote.Typed.MethodDefine
 import Denote.Typed.MethodCall
 import Denote.Typed.Sequence
 
-/-! Guard controls and a recursive semantic pilot. These are not validator admission. -/
+/-! Guard controls and a recursive semantic pilot, now also admitted by a body certificate. -/
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
@@ -61,9 +61,8 @@ theorem spin_program_sem : SemSafeCtxA ctx0 [] .ivar0 spinProgram .int
 theorem spin_program_safe (hb : bootOkB = true) : StuckFree bootMachine spinProgram :=
   spin_program_sem.closed (stateOk_boot hb)
 
--- The checker still requires a finite syntactic body proof. Scoped recursive-body
--- certificates and their fundamental lemma must land before this gate can flip.
-#guard !validateD spinProgram (.seq [
+-- The finite scoped derivation closes the recursive hypothesis; the signature alone cannot.
+#guard validateD spinProgram (.seq [
   .defDecl "spin" spinParams .int (.callSig "spin" [.var .lvar "x"] .int),
   .callSig "spin" [.intLit 0] .int])
 

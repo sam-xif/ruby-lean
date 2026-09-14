@@ -9049,3 +9049,28 @@ both halves of what constrains them now have a name.
   second with standard Lean axioms only. Fragment/reach remain 54/59; no floor increase.
 - Full quiet ratchet GREEN: all 24 registered rules proved, 0 owed/exempt, and
   252 CRuby/model agreements with 0 disagreements. The full gate builds the bounded controls.
+
+## Clink 105 (2026-09-14) — check recursive bodies at their annotations
+
+- Split `DJudge.lean` from `Check.lean`. Two scoped families carry the definition, parameter
+  annotations, return annotation, and fixed context/spine. Closed subtrees embed ordinary
+  derivations; only conditionals, primitives, and self-calls surrounding recursion need new
+  rules. All six families cross `DFam`; no raw body premise bypasses the registry.
+- `RecHyp N` grants the annotated body only below execution bound N, with existential outgoing
+  locals. Bounded argument/conditional/primitive composition preserves the same contract.
+  The real send step pays the self-call's strict decrease; `recursive` closes the hypothesis
+  by strong induction. This proves every execution bound, not just checker fuel 200, and
+  claims no termination. Primitive dispatch reuses its existing unbounded proof.
+- `checkRec` is a proof-carrying fallback, not an unchecked cache entry. Definition-site
+  body checking and refresh close the scoped proof before storing `CheckedBody`; ordinary
+  calls still consume it. Annotation/name/arity/context checks remain explicit. Controls
+  include factorial definition+call at Integer, divergent recursion, invalid uncalled base
+  branches, nullable parameters, bad self-calls, and refresh with invalidated dispatch guards.
+- Use `DJudge.rec` directly: tactic `induction` mishandled duplicate constructor names with
+  differing arities across families. The fundamental lemma builds in under a second.
+  Worked 060 constructs its own Church derivation; the syntax predictor distinguishes scoped
+  nodes from closed embeddings, and the independent proof-term audit agrees on all seven
+  new rules. No exemptions or new axioms; new files remain below 1000 lines.
+- Full quiet ratchet GREEN: fragment 54→55, checker reach 59→60, rules 24→31,
+  worked theorems 45→46, 0 owed/exempt, 252 agree / 0 disagree. 061 classes is next;
+  explicit return, forward references, and mutual recursion remain separate frontiers.

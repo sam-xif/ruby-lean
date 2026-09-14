@@ -77,6 +77,11 @@ theorem RunSpecAt.answer {N : Nat} {origin m : Machine} {Γ : Env} {τ I : Ty} {
     {a : Answer} (hr : ResultOk origin Γ τ a m κ I) :
     RunSpecAt N origin (deliverA a m []) Γ τ κ I := (RunSpec.answer hr).at N
 
+theorem RunSpecAt.stepWithin {N : Nat} {origin start next : Machine} {Γ : Env}
+    {τ I : Ty} {κ : Ctx} (ha : answerPoint start = none)
+    (hs : Interp.stepFn start = .next next) (h : RunSpecAt N origin next Γ τ κ I) :
+    RunSpecAt N origin start Γ τ κ I := (RunSpecAt.step ha hs h).mono (Nat.le_succ N)
+
 theorem RunSpecAt.unsupported {N : Nat} {origin start : Machine} {Γ : Env}
     {τ I : Ty} {κ : Ctx} {msg : String}
     (ha : answerPoint start = none) (hs : Interp.stepFn start = .unsupported msg) :

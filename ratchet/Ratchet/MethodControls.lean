@@ -28,9 +28,11 @@ private def runInc (args : List Expr) (ds : List Deriv) (ret : Ty := .int) : Boo
 #guard !validateD inc (.defDecl "inc" [("x", .int)] .bool incProof)
 #guard !validateD (.def' "bad" [] (.send none "missing" [] none))
   (.defDecl "bad" [] .int (.callSig "missing" [] .int))
--- A recursive signature cannot certify itself.
-#guard !validateD (.def' "loop" [] (.send none "loop" [] none))
+-- The guarded recursive-body rule checks the call against the annotation.
+#guard validateD (.def' "loop" [] (.send none "loop" [] none))
   (.defDecl "loop" [] .int (.callSig "loop" [] .int))
+#guard validateD (.seq [.def' "loop" [] (.send none "loop" [] none), .send none "loop" [] none])
+  (.seq [.defDecl "loop" [] .int (.callSig "loop" [] .int), .callSig "loop" [] .int])
 
 #guard validateD (.seq [.def' "get5" [] (.int 5), .send none "get5" [] none])
   (.seq [.defDecl "get5" [] .int (.intLit 5), .callSig "get5" [] .int])

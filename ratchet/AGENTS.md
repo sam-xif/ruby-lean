@@ -12,9 +12,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 54 rungs, reach 17**, **24 registered rules** (18 expressions + 6 list companions),
-**0 owed**, **0 exempt**. Checker reach is 59; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 45 rungs additionally carry a
+**Fragment 55 rungs, reach 17**, **31 registered rules** (19 expressions + 12 companions),
+**0 owed**, **0 exempt**. Checker reach is 60; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 46 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -36,11 +36,11 @@ coverage gaps. [`MainTyped.lean`](MainTyped.lean) reports checker reach;
 
 ## The proof boundary
 
-[`Ratchet/Check.lean`](Ratchet/Check.lean) defines `DJudge`, `DJudgeAll`, `DJudgeSeq`, `DJudgePairs`,
-and sixteen `DPrim` rows. [`Denote/Typed/Clink.lean`](Denote/Typed/Clink.lean) derives each
-constructor's semantic obligation and registers only proved rules. **All four judgments
+[`Ratchet/DJudge.lean`](Ratchet/DJudge.lean) defines `DJudge`, its three list companions,
+`DJudgeRec`/`DJudgeRecAll`, and sixteen `DPrim` rows. [`Denote/Typed/Clink.lean`](Denote/Typed/Clink.lean) derives each
+constructor's semantic obligation and registers only proved rules. **All six judgments
 are fields of `DFam`**: no raw syntactic premise may bypass the registry — which is also what
-lets `djudge_certified` be a mutual induction over all four (§F31 was the prerequisite).
+lets `djudge_certified` be a mutual induction over all six (§F31 was the prerequisite).
 
 The bridge deliberately runs *from* the syntactic judgment *to* `DJudgeC`, rather than the
 checker returning a `DJudgeC` derivation: `Ratchet/` stays ignorant of `Denote/`, and
@@ -103,7 +103,7 @@ checks. The cache follows sequential evaluation and compatible branches. At each
 `refreshBodies` replays earlier bodies in the enlarged context, oldest first, using their stored
 annotations and untrusted body-certificate hints. This admits 057 (methods calling methods),
 without call-site re-inference or unchecked context casts. Invalidated dispatch guards reject
-even uncalled bodies. Recursion (060) and explicit `return` remain out.
+even uncalled bodies. Explicit `return`, forward references, and mutual recursion remain out.
 `MethodControls.lean` pins positive calls and bad uncalled bodies; `MethodDerivations.lean`
 adds the proof-term-audited 052 example. The bridge now uses `DJudge.rec`, not expression-size
 recursion: a call's body is not its syntactic subexpression.
@@ -112,8 +112,13 @@ to the existing contract when quantified over every bound. `BoundedMethod.lean` 
 `BoundedCall.lean` carry that contract through real lookup/binding/return and arbitrary
 required arguments; the actual send step guards the recursive body hypothesis (`N`→`N+1`).
 `BoundedControls.lean` closes a self-recursive semantic pilot and checks that even zero-fuel
-answers need their type. No new validator admission: 060 still needs bounded expression
-composition and scoped recursive-body certificates with a fundamental lemma.
+answers need their type. `BoundedExpr.lean`/`BoundedPrimitive.lean` compose bounded conditionals
+and sends. `Recursive.lean` interprets scoped body/argument derivations using a strictly
+smaller-bound body hypothesis, discharged by the `recursive` rule. `checkRec` checks only the
+nodes around self-calls; closed subtrees reuse ordinary proofs. The checker now admits 060
+factorial at Integer, with an independent worked derivation exercising all seven new rules.
+`RecursiveControls.lean` covers invalid uncalled bodies, nullable annotations, wrong recursive
+calls, and context refresh. No signature enters the checked-body cache without its body proof.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -131,7 +136,7 @@ String membership needs a payload invariant. See
 |---|---|
 | `Ratchet/Ty.lean`, `Expr.lean`, `Deriv.lean` | Types, syntax, and certificate data |
 | `Ratchet/CtxEq.lean` | Sound conservative syntax/context comparison for branch compatibility |
-| `Ratchet/Check.lean`, `DerivControls.lean` | Derivation-returning checker and negative controls |
+| `Ratchet/DJudge.lean`, `Check.lean`, `DerivControls.lean` | Six-family judgment, derivation-returning checker, and negative controls |
 | `Ratchet/Check.lean`, `MethodControls.lean`, `Denote/Typed/MethodChecked.lean` | Cached annotation/body proofs, end-to-end controls, and the method-entry contract |
 | `Denote/Typed/JudgeA.lean` | Semantic judgment, continuation typing, literal/local rules |
 | `Denote/Typed/Sequence.lean`, `Branch*.lean`, `BareName.lean` | Sequence, conditional, and bare-name obligations |
@@ -145,7 +150,8 @@ String membership needs a payload invariant. See
 | `Ratchet/MethodCtx.lean`, `Denote/Typed/MethodDefine.lean` | Definition-site contexts and the annotation-checked definition obligation |
 | `Denote/Typed/MethodArgs.lean`, `MethodCall.lean`, `MethodResolve.lean` | Argument retention, call obligation, and semantic installed-body application |
 | `Denote/Typed/MethodRuleControls.lean`, `MethodDerivations.lean` | Full definition + call, validator acceptance, and the proof-term-audited 052 example |
-| `Denote/Typed/BoundedRun.lean`, `BoundedMethod.lean`, `BoundedCall.lean`, `BoundedControls.lean` | Fuel-indexed contracts, guarded actual dispatch, and recursive semantic controls (060 still gated) |
+| `Denote/Typed/BoundedRun.lean`, `BoundedMethod.lean`, `BoundedCall.lean`, `BoundedControls.lean` | Fuel-indexed contracts, guarded actual dispatch, and recursive semantic controls |
+| `Denote/Typed/Recursive.lean`, `RecursiveDerivations.lean`, `Ratchet/RecursiveControls.lean` | Scoped recursive semantics, worked 060 proof, and annotation/call controls |
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
@@ -153,7 +159,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/HashIndex.lean` | Hash dispatch, lookup, nil defaults, and default-value counterexample |
 | `Denote/Typed/Primitive*.lean` | Primitive dispatch, allocation, argument composition, regression controls |
 | `Denote/Sem/PrimHeap.lean`, `Denote/JoinState.lean` | Primitive heap invariants and sound binding joins |
-| `Denote/Typed/Derivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 45 concrete safety proofs |
+| `Denote/Typed/Derivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 46 concrete safety proofs |
 | `Denote/Typed/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Typed/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |
 | `Denote/Sanity.lean` | Executable boot conformance gate and its kernel soundness theorem |

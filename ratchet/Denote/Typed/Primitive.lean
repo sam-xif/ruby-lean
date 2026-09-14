@@ -38,20 +38,20 @@ theorem primitive_framed {σ τ : Ty} {name : String} {tys : List Ty} (hp : DPri
     simp only [denM] at hv ⊢
     first | exact hv | exact hf.nominal _ _ hv
 
-private theorem prim_catchFree (k : Kont)
+theorem prim_catchFree (k : Kont)
     (h : ∀ tag, k ≠ .catchK tag) : RubyCore.Proof.CatchFree [k] := by
   intro k' hk tag
   simp only [List.mem_singleton] at hk
   subst hk
   exact h tag
 
-private theorem recv_one_step {site : SendSite} (m : Machine) (v : Value) (name : String) (e : Ratchet.Expr)
+theorem recv_one_step {site : SendSite} (m : Machine) (v : Value) (name : String) (e : Ratchet.Expr)
     (hp : plainArgB e = true) :
     Interp.stepFn (deliverA (.val v) m [.recvK name [toRuby e] .none site]) =
       .next (pushK [.argsK v site name [] [] .none] (evalFrom m e)) := by
   cases e <;> cases hp <;> rfl
 
-private theorem primitive_frame {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env}
+theorem primitive_frame {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env}
     {m start : Machine} {recv : Value}
     {args : List Value} {σ τ : Ty} {tys : List Ty} {name : String}
     (hp : DPrim σ name tys τ) (hm : StateOk κ Γ I m)

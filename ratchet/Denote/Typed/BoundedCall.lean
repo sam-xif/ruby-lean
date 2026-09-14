@@ -14,6 +14,14 @@ inductive SemAllCtxAt (N : Nat) : Ctx → Env → Ty → List Ratchet.Expr → L
       SemSafeCtxAt N κ Γ I e τ κ₁ Γ₁ I₁ → SemAllCtxAt N κ₁ Γ₁ I₁ es tys κ₂ Γ₂ I₂ →
       plainArgB e = true → SemAllCtxAt N κ Γ I (e :: es) (τ :: tys) κ₂ Γ₂ I₂
 
+theorem SemAllCtxAt.mono {N n : Nat} {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty}
+    {es : List Ratchet.Expr} {tys : List Ty}
+    (h : SemAllCtxAt N κ Γ I es tys κ' Γ' I') (hn : n ≤ N) :
+    SemAllCtxAt n κ Γ I es tys κ' Γ' I' := by
+  induction h with
+  | nil => exact .nil
+  | cons he _ hp ih => exact .cons (he.mono hn) ih hp
+
 /-- The continuation contract is about final argument values, not their source expressions.
 It receives full conformance at the argument derivation's outgoing context. -/
 theorem SemAllCtxAt.startArgs {N : Nat} {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty}
