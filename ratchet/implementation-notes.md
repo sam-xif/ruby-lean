@@ -9096,3 +9096,24 @@ both halves of what constrains them now have a name.
   New proof modules build in under a second with standard Lean axioms only.
 - Full quiet ratchet GREEN: fragment/reach remain 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree. The class frontier remains open.
+
+## Clink 107 (2026-09-14) — preserve callers across fresh initialization
+
+- `InitGrow` anchors old-object equality before allocation; it permits fresh ivars and
+  ignores frames. Keep class payloads/ancestors fixed and retain `freshBasic`: arbitrary
+  conformant states may contain dangling references. Exact instance denotations supply
+  their own old liveness, so their ivars agree without `Ext.freshIvars`. A mutual type/spine
+  induction preserves all first-order denotations, including nested collection aliases.
+- Existing allocations imply `InitGrow`; it composes and survives repeated `bindIvar`
+  writes to receivers fresh relative to the original anchor. `Framed.of_initGrow` recovers
+  the unchanged universal frame after stack balance and frame isolation are supplied.
+  Factor method-frame restoration out of heap transport; ordinary method callers retain
+  their existing contract. `initializer_pop_framed` uses the separate heap/frame anchors.
+- Controls cover two real writes with arbitrary Integer values, the initialized result
+  shape, caller publication at any conformant heap (also actual boot), and refusal of the
+  old `Ext` relation for that result. F33's old-object/array-alias refutations remain gates.
+  No class admission: an initializer body still needs a scoped safety/state/effect judgment
+  checked from annotations; the publication lemma is not a body certificate.
+- New modules build in under a second, with standard Lean axioms only. No floor changes.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree. 061 remains the next expected acceptance.

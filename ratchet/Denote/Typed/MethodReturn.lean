@@ -10,40 +10,52 @@ open RubyCore Ratchet Ratchet.Denote
 
 def popMethodFrame (m : Machine) : Machine := { m with stack := m.stack.tail }
 
-theorem method_savedFrames {m n : Machine} {f : RubyCore.Frame}
-    (hc : f.captured = none) (h : Framed (pushMethodFrame m f) n) :
+theorem method_frame_savedFrames {m n : Machine} {f : RubyCore.Frame}
+    (hc : f.captured = none) (h : FramePres (pushMethodFrame m f) n) :
     ∀ i, i < m.frames.size → n.frames.getD i default = m.frames.getD i default := by
   have hu : RootUncaptured (pushMethodFrame m f) := by
     simp [RootUncaptured, pushMethodFrame, Array.getD_eq_getD_getElem?, hc]
   intro i hi
-  have hs := h.frames.isolated hu i
+  have hs := h.isolated hu i
     (by simpa [pushMethodFrame] using Nat.lt_succ_of_lt hi)
     (by simpa [pushMethodFrame] using Nat.ne_of_lt hi)
   have hr : (m.frames.push f).getD i default = m.frames.getD i default := by
     simp [Array.getD, hi, Nat.lt_succ_of_lt hi, Array.getElem_push_lt]
   simpa only [pushMethodFrame, hr] using hs
 
+theorem method_savedFrames {m n : Machine} {f : RubyCore.Frame}
+    (hc : f.captured = none) (h : Framed (pushMethodFrame m f) n) :
+    ∀ i, i < m.frames.size → n.frames.getD i default = m.frames.getD i default :=
+  method_frame_savedFrames hc h.frames
+
+/-- Frame restoration is independent of any claim that the body preserves heap types. -/
+theorem method_frame_pop {m n : Machine} {f : RubyCore.Frame}
+    (hl : m.stack.headD 0 < m.frames.size) (hc : f.captured = none)
+    (hb : n.stack = (pushMethodFrame m f).stack) (h : FramePres (pushMethodFrame m f) n) :
+    FramePres m (popMethodFrame n) := by
+  have hs : (popMethodFrame n).stack = m.stack := by
+    simp [popMethodFrame, hb, pushMethodFrame]
+  have hf := method_frame_savedFrames hc h
+  refine ⟨?_, ?_, ?_⟩
+  · have hh := h.size
+    simp only [pushMethodFrame, Array.size_push] at hh
+    exact Nat.le_trans (Nat.le_succ _) hh
+  · change frameScope ((popMethodFrame n).frames.getD ((popMethodFrame n).stack.headD 0) default) = _
+    rw [hs]
+    exact congrArg frameScope (hf _ hl)
+  · intro _ i hi _
+    exact hf i hi
+
 theorem method_pop_framed {m n : Machine} {f : RubyCore.Frame}
     (hl : m.stack.headD 0 < m.frames.size) (hc : f.captured = none)
     (h : Framed (pushMethodFrame m f) n) : Framed m (popMethodFrame n) := by
-  have hs : (popMethodFrame n).stack = m.stack := by
-    simp [popMethodFrame, h.stack, pushMethodFrame]
-  have hf := method_savedFrames hc h
-  refine ⟨hs, h.cls, h.nominal, ?_, ?_⟩
-  · intro τ ht v hv
-    have he : denM τ (pushMethodFrame m f) v :=
-      (denM_heap_only (m₁ := m) (m₂ := pushMethodFrame m f) ht rfl).mp hv
-    exact (denM_heap_only (m₁ := n) (m₂ := popMethodFrame n) ht rfl).mp
-      (h.firstOrder τ ht v he)
-  · refine ⟨?_, ?_, ?_⟩
-    · have hh := h.frames.size
-      simp only [pushMethodFrame, Array.size_push] at hh
-      exact Nat.le_trans (Nat.le_succ _) hh
-    · change frameScope ((popMethodFrame n).frames.getD ((popMethodFrame n).stack.headD 0) default) = _
-      rw [hs]
-      exact congrArg frameScope (hf _ hl)
-    · intro _ i hi _
-      exact hf i hi
+  refine ⟨by simp [popMethodFrame, h.stack, pushMethodFrame], h.cls, h.nominal, ?_,
+    method_frame_pop hl hc h.stack h.frames⟩
+  intro τ ht v hv
+  have he : denM τ (pushMethodFrame m f) v :=
+    (denM_heap_only (m₁ := m) (m₂ := pushMethodFrame m f) ht rfl).mp hv
+  exact (denM_heap_only (m₁ := n) (m₂ := popMethodFrame n) ht rfl).mp
+    (h.firstOrder τ ht v he)
 
 private theorem getLocal_uncaptured {m : Machine} (hc : RootUncaptured m) (x : String) :
     m.getLocal x = (((m.frames.getD (m.stack.headD 0) default).locals.find?

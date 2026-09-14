@@ -125,6 +125,12 @@ metadata. Its counterexample (§F33) shows why constructors need a refined frame
 the current `Framed.firstOrder` preserves arbitrary old ivar shapes, including the receiver's
 pre-initialization nil slots. `InstanceControls.lean` pins that obstruction with a concrete
 assignment, not a failed tactic. No class or ivar-write rule is admitted yet.
+`Sem/InitGrow.lean` now preserves every old first-order denotation across fresh-object
+initialization, anchored before allocation. It permits fresh ivars without weakening
+`Framed`; `InitReturn.lean` recovers that full contract after caller-frame restoration.
+`InitControls.lean` proves two real writes, the initialized result shape, and publication
+for arbitrary Integer arguments, including a real-boot instance. The scoped body judgment
+and annotation-checked constructor admission are still the next work, not assumed here.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -159,6 +165,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/BoundedRun.lean`, `BoundedMethod.lean`, `BoundedCall.lean`, `BoundedControls.lean` | Fuel-indexed contracts, guarded actual dispatch, and recursive semantic controls |
 | `Denote/Typed/Recursive.lean`, `RecursiveDerivations.lean`, `Ratchet/RecursiveControls.lean` | Scoped recursive semantics, worked 060 proof, and annotation/call controls |
 | `Denote/Typed/InstanceRead.lean`, `InstanceControls.lean`, `Denote/Sem/IvarMutation.lean` | Instance-read prerequisites, precise write facts, and the constructor framing counterexample (§F33) |
+| `Denote/Sem/InitGrow.lean`, `Denote/Typed/InitReturn.lean`, `InitControls.lean` | Preallocation-anchored preservation, caller-frame publication, and fresh two-field controls |
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

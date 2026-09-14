@@ -28,6 +28,21 @@ theorem bindIvar_size (m : Machine) (x : String) (v : Value) :
   unfold Interp.bindIvar
   split <;> simp [Heap.set]
 
+@[simp] theorem bindIvar_frames (m : Machine) (x : String) (v : Value) :
+    (Interp.bindIvar m x v).frames = m.frames := by
+  unfold Interp.bindIvar; split <;> rfl
+
+@[simp] theorem bindIvar_stack (m : Machine) (x : String) (v : Value) :
+    (Interp.bindIvar m x v).stack = m.stack := by
+  unfold Interp.bindIvar; split <;> rfl
+
+@[simp] theorem bindIvar_currentFrame (m : Machine) (x : String) (v : Value) :
+    (Interp.bindIvar m x v).currentFrame = m.currentFrame := by
+  simp only [Machine.currentFrame, bindIvar_frames, bindIvar_stack]
+
+theorem FramePres.bindIvar (m : Machine) (x : String) (v : Value) :
+    FramePres m (Interp.bindIvar m x v) := .of_eq (by simp) (by simp)
+
 theorem bindIvar_ivarOnly (m : Machine) (x : String) (v : Value) :
     Proof.IvarOnly m.heap (Interp.bindIvar m x v).heap :=
   ⟨bindIvar_size m x v,
@@ -41,6 +56,13 @@ theorem bindIvar_get_other {m : Machine} {o k : ObjId} {x : String} {v : Value}
     (Interp.bindIvar m x v).heap.get k = m.heap.get k := by
   simp only [Interp.bindIvar, hs, Heap.get, Heap.set]
   exact Proof.objs_getD_set!_ne _ _ _ _ hk
+
+theorem bindIvar_get_self {m : Machine} {o : ObjId} {x : String} {v : Value}
+    (hs : m.currentFrame.self = .ref o) (ho : o < m.heap.objs.size) :
+    (Interp.bindIvar m x v).heap.get o =
+      { m.heap.get o with ivars := (x, v) :: (m.heap.get o).ivars.filter (·.1 != x) } := by
+  simp only [Interp.bindIvar, hs, Heap.get, Heap.set]
+  exact Proof.objs_getD_set!_self _ _ _ ho
 
 theorem ivarOf_bindIvar_self {m : Machine} {o : ObjId} {x : String} {v : Value}
     (hs : m.currentFrame.self = .ref o) (ho : o < m.heap.objs.size) :
