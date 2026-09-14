@@ -7,6 +7,7 @@ import Denote.Typed.ClassBaseControls
 import Denote.Typed.ClassNameControls
 import Denote.Typed.ClassDeclaredControls
 import Denote.Typed.ClassStateControls
+import Denote.Typed.InstanceCodeControls
 import Denote.Sanity
 
 /-! Fresh-class controls. They establish actual entry and heap facts, not acceptance of

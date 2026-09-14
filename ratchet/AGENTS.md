@@ -181,6 +181,12 @@ countermodels show how a new owner, a new leaf, or a dangling alias can activate
 `ClassNative` makes native-name guards executable. The actual-step theorem and real-boot
 witness are in `ClassStateControls`. Positive class registration, checked body execution,
 instance-method installation, constructor calls, and full outgoing conformance remain gated.
+`MethodCode` now shares owner/lexical-scope metadata between top-level and ordinary class
+methods. ClassesOk requires InstanceMethodCode, not merely matching parameters/body;
+InstanceCodeControls changes only a builtin tag and observes a real call failure despite
+matching the old syntax checks. `InstanceInstall` proves ordinary def metadata, inherited
+quiet hooks, and the fresh class's actual definition step. Checked-body/table publication
+and instance dispatch still need integration; no new judgment rule is admitted.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -227,6 +233,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/ClassNames.lean`, `Denote/Typed/ClassNameControls.lean` | Receiver-sensitive absence facts and the hidden-metaclass countermodel |
 | `Denote/Sem/ClassDeclared.lean`, `Denote/Typed/ClassDeclaredControls.lean` | Existing declarations, constructor lookup, and inherited-initializer control |
 | `Ratchet/ClassCtx.lean`, `Denote/Sem/ClassTables.lean`, `ClassNative.lean`, `ClassState.lean`, `Denote/Typed/ClassStateControls.lean` | Full fresh class-entry conformance, explicit table frame, executable native guard, and activation countermodels |
+| `Denote/Sem/MethodCode.lean`, `Denote/Typed/InstanceInstall.lean`, `InstanceCodeControls.lean` | Ordinary class-method metadata, actual def installation, and call-through countermodels |
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

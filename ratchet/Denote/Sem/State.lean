@@ -4,6 +4,7 @@ import Denote.Sem.Trans
 import Denote.Sem.PrimHeap
 import Denote.Sem.Ready
 import Denote.Sem.ClassReady
+import Denote.Sem.MethodCode
 
 /-!
 # `Denote/Sem/State.lean` — evaluation, and what it means for a machine to *match* a
@@ -189,30 +190,15 @@ def closTblOk (K : ClosTable) (idx : Nat) (m : Machine) (f : Value) : Prop :=
   ∃ c cl, closGet? K idx = some c ∧ procClosure? m.heap f = some cl ∧
     cl.params = toRubyParams c.params ∧ cl.body = toRuby c.body
 
-/-- The class table describes real classes. Per entry: a class object of that name exists,
-its superclass is the one recorded (`none` meaning `Object`), and every method the table lists
-is installed on it with the translated parameters and body.
-
-`.smethods` (singleton methods) are checked on the class's eigenclass. Modules
-(`Cls.isMod`) are the classes `ctorGet?` refuses to allocate; that refusal is a *precision*
-fact about `Judge.newInst` rather than a conformance fact about the heap, so it is not here. -/
+/-- Each positive class exists, and its instance methods are installed with the recorded
+syntax and ordinary top-level-class metadata. Superclass/constructor facts live in
+DeclClassOk; singleton methods and nested lexical scopes are not covered by this component. -/
 def ClassesOk (C : CTable) (m : Machine) : Prop :=
   ∀ c ∈ C, ∃ k, classNamed? m.heap c.name = some k ∧
     (∀ d ∈ c.methods, ∃ md, (m.heap.classPayload? k).bind
         (fun cp => (cp.methods.find? (·.1 == d.name)).map (·.2)) = some md ∧
-      md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧ md.undefined = false)
-
-/-- Metadata required to enter an ordinary top-level method at its checked body. Matching
-syntax alone is insufficient: a builtin ignores that body, and a captured method binds a
-different environment. Visibility is unrestricted because these calls use implicit self. -/
-structure TopMethodCode (md : MethodDef) : Prop where
-  owner : md.owner = Boot.objectId
-  cref : md.cref = [Boot.objectId]
-  superName : md.superName = none
-  builtin : md.builtin = none
-  captured : md.capturedFrame = none
-  declared : md.declared = []
-  fromPrelude : md.fromPrelude = false
+      md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧ md.undefined = false ∧
+      InstanceMethodCode k d.name md)
 
 /-- The top-level `def` table describes ordinary methods installed on `Object`, and *only* the ones a
 preceding statement performed — which is the whole soundness content of `DefTable`'s

@@ -9378,3 +9378,27 @@ both halves of what constrains them now have a name.
   changes and no signature-only shortcut.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree.
+
+## Clink 119 (2026-09-14) — ordinary instance-method metadata and installation
+
+- A call-through countermodel changes only the builtin tag of Point#answer. The old
+  ClassesOk parameter/body/undefined checks still match `def answer; 1; end`, but dispatch
+  executes Object#nil? instead; `Point.new.answer + 1` becomes type-stuck. The unmodified
+  definition and call return 2. This is a metadata countermodel, not validator acceptance.
+- `OrdinaryMethodCode` factors the existing seven top-level code facts with explicit owner
+  and cref parameters. TopMethodCode keeps its old meaning. ClassesOk now additionally
+  requires InstanceMethodCode: ordinary top-level-class lexical scope, with public methods
+  except private initialize. This is the current class fragment's scope/visibility contract;
+  nested lexical scopes and visibility changes need separate contracts, not erased metadata.
+  Existing transports preserve the stronger claim. Executable controls independently alter
+  owner, cref, superName, capture, declared locals, prelude status, and visibility.
+- `InstanceInstall` proves def constructs that metadata. A fresh class inherits its
+  method_added lookup from Object's metaclass, so MainReady's quiet-hook fact transports;
+  existing installation preserves it away from method_added. Compose through the real def
+  step. Initializer privacy is explicitly checked. Proofs use standard axioms only and new
+  modules build in at most 2.5 seconds.
+- No signature certifies a body here, and no new rule, admission, exemption, or floor is
+  added. Positive class-table publication, annotation-checked body caches, instance entry/
+  dispatch, constructor integration, and outgoing conformance remain required.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree.
