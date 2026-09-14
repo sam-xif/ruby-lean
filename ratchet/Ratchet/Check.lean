@@ -409,7 +409,7 @@ and the whole pipeline downstream of `scripts/emit_deriv.py` would be unfalsifia
 recursion structural and obviously terminating. Exhaustion answers `none`, so it can only cost
 completeness. -/
 
-/-- A body checked once at its parameter/return annotations. Calls reuse this artifact. -/
+/-- A body checked at its parameter/return annotations in this context. Calls reuse it. -/
 structure CheckedBody (κ : Ctx) (I : Ty) (decl : Defn) where
   params : List SigParam
   ret : Ty
@@ -426,6 +426,8 @@ structure CachedBody where
   spine : Ty
   decl : Defn
   body : CheckedBody ctx spine decl
+  /-- Replay hint only. Refresh reconstructs the signature from the checked artifact. -/
+  deriv : Deriv
 
 abbrev BodyCache := List CachedBody
 
@@ -616,12 +618,13 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
       if hmiss : "method_missing" ≠ name then do
       if hquiet : "method_added" ≠ name then do
         let decl : Defn := ⟨name, formals, body⟩
-        let c ← checkMethodBody n (topBodyCtx κ decl) I decl (.defDecl name' ps ret db) cache
+        let fresh ← refreshBodies n (topDeclCtx κ decl) I cache
+        let c ← checkMethodBody n (topBodyCtx κ decl) I decl (.defDecl name' ps ret db) fresh
         some ⟨.sym, Γ, topDeclCtx κ decl, I,
           .defDecl c.paramShape c.paramsFO c.returnFO c.judged hm
             (List.isEmpty_iff.mp hc) hs hb hco ha hi (List.all_eq_true.mp hg)
             (by simpa only [List.all_eq_true, bne_iff_ne] using hf) hmiss hquiet,
-          ⟨topBodyCtx κ decl, I, decl, c⟩ :: cache⟩
+          ⟨topBodyCtx κ decl, I, decl, c, db⟩ :: fresh⟩
       else none
       else none
       else none
@@ -718,7 +721,7 @@ def checkSeq (fuel : Nat) (Γ : Env) (es : List Expr) (ds : List Deriv)
       | none => none
     | _, _ => none
 
-/-- Check the declaration's body once in its annotation environment. Caller locals and
+/-- Check the declaration's body in its annotation environment. Caller locals and
 argument values are deliberately not inputs. Return compatibility is exact for now;
 subtyping needs a proved denotation-inclusion rule, not the legacy unchecked `subTy`. -/
 def checkMethodBody (fuel : Nat) (κ : Ctx) (I : Ty) (decl : Defn) (d : Deriv)
@@ -745,6 +748,20 @@ def checkMethodBody (fuel : Nat) (κ : Ctx) (I : Ty) (decl : Defn) (d : Deriv)
     else none
   | _ => none
 
+/-- Recheck existing bodies when a definition changes their context, oldest first so calls
+can use already-refreshed predecessors. This runs at definitions, never at calls. The old
+artifact supplies the annotations; a replay hint cannot silently change the signature. -/
+def refreshBodies (fuel : Nat) (κ : Ctx) (I : Ty) (cache : BodyCache) : Option BodyCache :=
+  match fuel with
+  | 0 => none
+  | n + 1 => match cache with
+    | [] => some []
+    | c :: cs => do
+      let fresh ← refreshBodies n κ I cs
+      let bodyCtx := κ.withFrame (some ⟨"Object", "Object", c.decl.name⟩)
+      let body ← checkMethodBody n bodyCtx I c.decl
+        (.defDecl c.decl.name c.body.params c.body.ret c.deriv) fresh
+      some (⟨bodyCtx, I, c.decl, body, c.deriv⟩ :: fresh)
 end
 
 /-! ## §4 The entry point

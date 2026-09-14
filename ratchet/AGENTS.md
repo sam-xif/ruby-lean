@@ -12,8 +12,8 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 53 rungs, reach 17**, **24 registered rules** (18 expressions + 6 list companions),
-**0 owed**, **0 exempt**. Checker reach is 56; rung 018 is correctly rejected, the fragment's
+**Fragment 54 rungs, reach 17**, **24 registered rules** (18 expressions + 6 list companions),
+**0 owed**, **0 exempt**. Checker reach is 59; rung 018 is correctly rejected, the fragment's
 prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 45 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
@@ -55,7 +55,7 @@ machine entries used by sequence and argument frames. Safety holds at every fuel
 `Context.lean` generalizes that run contract to distinct incoming/outgoing `Ctx`, local
 environments, and ivar spines, with an equivalence to the existing fragment's target and
 context-general local/assignment/sequence proofs. `defDecl`/`callSig` now admit required-positional
-top-level methods: 052, 055, 058, and 059. Before admitting definitions, check every body
+top-level methods: 052, 055, 057, 058, and 059. Before admitting definitions, check every body
 against its parameter/return annotations, including uncalled bodies; require define-then-call
 positive controls as well as declaration controls. Never treat a signature as its own proof.
 `MethodEntry.lean` proves required-positional binding and the annotated parameter environment.
@@ -99,9 +99,11 @@ application below the syntactic bridge. `MethodRuleControls.lean` composes the f
 `def add …; add(x, y)` program from one checked body for arbitrary Integers; its data certificate
 now validates at Integer. Definitions check every body at its annotations and cache the proof;
 calls check argument types against that stored signature, with installed-code and exact-context
-checks. The cache follows sequential evaluation and compatible branches. A later definition
-can make an earlier cached context stale; transporting or refreshing those proofs at definition
-time is next (057, methods calling other methods). Recursion and explicit `return` remain out.
+checks. The cache follows sequential evaluation and compatible branches. At each new definition,
+`refreshBodies` replays earlier bodies in the enlarged context, oldest first, using their stored
+annotations and untrusted body-certificate hints. This admits 057 (methods calling methods),
+without call-site re-inference or unchecked context casts. Invalidated dispatch guards reject
+even uncalled bodies. Recursion (060) and explicit `return` remain out.
 `MethodControls.lean` pins positive calls and bad uncalled bodies; `MethodDerivations.lean`
 adds the proof-term-audited 052 example. The bridge now uses `DJudge.rec`, not expression-size
 recursion: a call's body is not its syntactic subexpression.

@@ -9008,3 +9008,23 @@ both halves of what constrains them now have a name.
 - Measured ascent: 052, 055, 058, 059 accepted; fragment 49→53, checker reach 51→56,
   registered rules 22→24, worked theorems 44→45; 0 owed/exempt. Agreement remains
   252 / 0 disagree. All corresponding floors raised; full quiet ratchet GREEN.
+
+## Clink 103 (2026-09-14) — refresh annotated bodies at definition boundaries
+
+- A new definition enlarges `Ctx`, so old body proofs cannot be cast into it. Store each
+  body's certificate hint beside its checked artifact; `refreshBodies` replays oldest first
+  at the new context before checking the new definition. Replay takes parameter/return types
+  from the existing artifact, not from the hint or call arguments. Calls remain cache lookups.
+- This supports acyclic method dependencies without changing the judgment or semantic rules.
+  Refresh rechecks dispatch guards; a new definition that invalidates an older body is refused
+  even if it is never called. This conservatively performs quadratically many body replays;
+  dependency-sensitive transport is a later optimization, not an unchecked weakening now.
+- Controls cover `inc(inc(x))`, three-deep dependencies, calling older methods after refresh,
+  uncalled/called nullable-annotation violations, wrong returns, invalidated primitive guards,
+  tampered replay hints, and fuel exhaustion. Recursive signatures still cannot prove themselves.
+- Measured: 057 now validates, fragment 53→54, checker reach 56→59; 060 recursion is next.
+  The registry remains 24 proved rules, 0 owed/exempt; worked examples remain 45.
+- Correct 057's legacy metadata: its source checks a predecessor, not a forward reference.
+  Forward references remain a target; no source-order-independent admission is claimed.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree; annotation controls and the unchanged
+  axiom-clean semantic bridge pass. `Check` builds in 1.1s; method controls in 0.3s.

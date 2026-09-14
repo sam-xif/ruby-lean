@@ -1,7 +1,7 @@
 {
   "id": "fun-calling-another-fun",
   "tier": 6,
-  "description": "def inc(x) = x + 1; def twice(x) = inc(inc(x)); twice(3) : Int -- both top-level defs are collected into the function-signature table *before* any body is checked, so twice's body can call inc regardless of source order.",
+  "description": "Annotated def inc(x) = x + 1; def twice(x) = inc(inc(x)); twice(3) : Int. Check both bodies at their annotations and refresh inc's proof when twice is defined. This source order tests a checked predecessor; forward references remain a separate target.",
   "expect_sorbet": true,
   "expect_validate": true,
   "false_reason": null,

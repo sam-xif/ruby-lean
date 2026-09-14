@@ -63,7 +63,7 @@ safe by `validateD_safe_boot` (`Denote/Typed/Bridge.lean`). This is the number t
 exists to grow, and the one that means "climbed" now that acceptance and safety are the same
 fact. It only ever rises: a rung the checker accepted once is a rung it should still accept,
 so a drop is a rule weakened or a corpus rung changed. -/
-def fragmentFloor : Nat := 53
+def fragmentFloor : Nat := 54
 
 /-- How many unmet goals the **quiet** report prints before truncating. The full list is
 `--verbose`; this is the number that keeps a commit-time gate readable, since the list is 251

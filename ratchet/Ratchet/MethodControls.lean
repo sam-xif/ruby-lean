@@ -57,12 +57,55 @@ private def localProof : Deriv := .seq [.vasgn .lvar "y" incProof, .var .lvar "y
   (.seq [incCert, .callSig "inc" [.vasgn .lvar "a" (.intLit 3)] .int,
     .callSig "inc" [.var .lvar "a"] .int])
 
--- A second installation makes this first cache entry stale; do not cast its proof.
-#guard !validateD (.seq [inc, .def' "later" [] (.int 0), .send none "inc" [.int 1] none])
+-- A second installation refreshes earlier annotation proofs before accepting.
+#guard validateD (.seq [inc, .def' "later" [] (.int 0), .send none "inc" [.int 1] none])
   (.seq [incCert, .defDecl "later" [] .int (.intLit 0), .callSig "inc" [.intLit 1] .int])
 #guard !validateD (.seq [inc, .def' "inc" [.req "x"] (.str "changed"),
     .send none "inc" [.int 1] none])
   (.seq [incCert, .defDecl "inc" [("x", .int)] (.cls "String") (.strLit "changed"),
     .callSig "inc" [.intLit 1] .int])
+
+private def twiceBody : Expr :=
+  .send none "inc" [.send none "inc" [.var .lvar "x"] none] none
+private def twiceProof : Deriv :=
+  .callSig "inc" [.callSig "inc" [.var .lvar "x"] .int] .int
+private def twice : Expr := .def' "twice" [.req "x"] twiceBody
+private def twiceCert : Deriv := .defDecl "twice" [("x", .int)] .int twiceProof
+private def twiceProgram : Expr := .seq [inc, twice, .send none "twice" [.int 3] none]
+private def twiceProgramCert : Deriv := .seq [incCert, twiceCert, .callSig "twice" [.intLit 3] .int]
+#guard validateD twiceProgram twiceProgramCert
+#guard (check fuelD [] twiceProgram twiceProgramCert).map (·.ty) == some .int
+
+-- A third definition must refresh both the leaf and its caller, in dependency order.
+#guard validateD (.seq [inc, twice,
+    .def' "four" [.req "x"] (.send none "twice" [.send none "twice" [.var .lvar "x"] none] none),
+    .send none "four" [.int 0] none, .send none "twice" [.int 1] none,
+    .send none "inc" [.int 2] none])
+  (.seq [incCert, twiceCert,
+    .defDecl "four" [("x", .int)] .int
+      (.callSig "twice" [.callSig "twice" [.var .lvar "x"] .int] .int),
+    .callSig "four" [.intLit 0] .int, .callSig "twice" [.intLit 1] .int,
+    .callSig "inc" [.intLit 2] .int])
+
+-- Calls in bodies use the body's annotations too, even when never invoked.
+#guard !validateD (.seq [inc, twice])
+  (.seq [incCert, .defDecl "twice" [("x", .nilable .int)] .int twiceProof])
+#guard !validateD twiceProgram
+  (.seq [incCert, .defDecl "twice" [("x", .nilable .int)] .int twiceProof,
+    .callSig "twice" [.intLit 3] .int])
+#guard !validateD (.seq [inc, twice])
+  (.seq [incCert, .defDecl "twice" [("x", .int)] .bool twiceProof])
+
+-- Refresh is rechecking, not context casting: invalidated dispatch guards still reject.
+#guard !validateD (.seq [inc, .def' "+" [.req "x"] (.str "changed")])
+  (.seq [incCert, .defDecl "+" [("x", .int)] (.cls "String") (.strLit "changed")])
+
+-- A replay hint cannot change the annotated signature on refresh.
+private def installedInc := (check fuelD [] inc incCert).get (by decide)
+private def incCache := installedInc.cache
+#guard (refreshBodies fuelD installedInc.ctx .ivar0 incCache).isSome
+#guard (refreshBodies fuelD installedInc.ctx .ivar0
+  (incCache.map fun c => { c with deriv := .truLit })).isNone
+#guard (refreshBodies 0 installedInc.ctx .ivar0 incCache).isNone
 
 end Ratchet
