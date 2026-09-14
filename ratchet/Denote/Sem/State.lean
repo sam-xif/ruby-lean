@@ -650,29 +650,17 @@ the booted machine: the toplevel ancestor chain carries ~40 prelude-written meth
 `format`, `Integer`, `!=`, and the `__`-prefixed helpers) and **none of these three**. -/
 def shadowableNames : List String := ["lambda", "proc", "x"]
 
-/-- **"And nothing more", sharpened on `shadowableNames` and localised to the chain.** A
-method of one of those names that dispatch can *reach from the current `self`* is an
-axiomatized builtin, a tombstone, or a name `κ` records.
+/-- Current self, and Object's class-object dispatch chain, inherited by fresh class self.
+Not all class objects: the real prelude's unrelated singleton method `T.proc` is allowed. -/
+def nameFreeSites (m : Machine) : List ObjId :=
+  [classOf m.heap m.currentFrame.self, classOf m.heap (.ref Boot.objectId)]
 
-Three things about the shape, each of which could have gone another way and did not:
-
-* **Chain-local, not heap-global.** The heap-global version is **false**: the prelude really
-  does define a method named `proc` — `T.proc`, the sorbet shim's type constructor, installed
-  as a *singleton* method on the `T` module, i.e. on `#<Class:T>`. That is off the toplevel
-  chain (`extend`/`include` move a module's *instance* methods, never its singleton ones), so
-  the model's own shadowing test — which walks `methodOn (classOf recv)` — is right about it,
-  and this component has to be stated at the same walk to say so.
-* **`builtin.isSome ∨ undefined`, not `fromPrelude`.** This is the `MethodsExact` disjunction
-  with the prelude escape removed, which is exactly what makes it strong enough for a rule
-  claiming *absence*; and it is the same `md.builtin.isNone && !md.undefined` test
-  `finishSend` uses to decide whether a user definition shadows `lambda`/`proc`.
-* **The `declaresName` escape stays.** Without it a program that really does `def lambda`
-  would make `StateOk` *unsatisfiable* rather than making the rule inapplicable — vacuity
-  instead of falsity, which is the failure mode `Denote/Sanity.lean` exists to police. With
-  it, such a program is perfectly conformant and it is `nameFree`'s premise that fails. -/
+/-- On each relevant chain, a shadowable method is builtin, undefined, or a name reserved
+by the context. Unlike `MethodsExact`, being prelude code alone is insufficient. Reserving
+a user definition disables absence-based rules without making conformance impossible. -/
 def NameFreeOk (κ : Ctx) (m : Machine) : Prop :=
-  ∀ n ∈ shadowableNames, ∀ o md,
-    Interp.methodOn m.heap (classOf m.heap m.currentFrame.self) n = some (o, md) →
+  ∀ n ∈ shadowableNames, ∀ k ∈ nameFreeSites m, ∀ o md,
+    Interp.methodOn m.heap k n = some (o, md) →
       md.builtin.isSome = true ∨ md.undefined = true ∨ nameFreeN κ n = false
 
 /-- **What a bare name at top level must not find** (`Judge.bareName`).
@@ -1236,10 +1224,14 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     intro k cp hk
     exact h.exact k cp (by rw [he.payload] at hk; exact hk)
   nameFree := by
-    intro n hn o md hm
-    refine h.nameFree n hn o md ?_
+    have hs : nameFreeSites m₂ = nameFreeSites m := by
+      unfold nameFreeSites
+      rw [classOf_self_ext he h.selfLive]
+      simp only [classOf, he.get Boot.objectId h.core.classReady.chains.boot.2.2.2.2]
+    intro n hn k hk o md hm
+    refine h.nameFree n hn k (hs ▸ hk) o md ?_
     rw [← hm]
-    simp only [Interp.methodOn, classOf_self_ext he h.selfLive, he.payload, he.ancestors]
+    simp only [Interp.methodOn, he.payload, he.ancestors]
   bareFree := by
     intro n hn hdef hself
     rw [show lookup m₂.heap m₂.currentFrame.self n
@@ -1620,10 +1612,8 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
       constScope := ConstScopeOk.setLocal x w h.constScope
       exact := h.exact
       nameFree := by
-        intro n hn o md hm
-        refine h.nameFree n hn o md ?_
-        rw [← hm]
-        simp only [Interp.methodOn, classOf, setLocal_heap, currentFrame_setLocal_self]
+        simpa only [NameFreeOk, nameFreeSites, setLocal_heap, currentFrame_setLocal_self]
+          using h.nameFree
       bareFree := by
         intro n hn hdef hself
         rw [show lookup (m.setLocal x w).heap (m.setLocal x w).currentFrame.self n

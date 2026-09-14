@@ -203,18 +203,11 @@ theorem methodsExactB_sound {κ : Ratchet.Ctx} {m : Machine} (hb : methodsExactB
   · rw [classPayload?_oob m.heap (Nat.le_of_not_lt hlt)] at hk
     exact absurd hk (by simp)
 
-/-- **`NameFreeOk` and `SelfLive` as one `Bool`.** The chain walk is finite and the name list
-has three entries, so both are computations at a concrete machine.
-
-`NameFreeOk` is checked in its *strongest* form here — nothing on the chain carries one of the
-three names at all — which is more than the component asks (it would also accept a builtin or
-a tombstone). That is deliberate: at `ctx0` the `nameFreeN` escape is uniformly `false`, so
-a weaker check would be indistinguishable from a stronger one at the only machine we exhibit,
-and the stronger one is the fact worth recording. Measured: the toplevel chain carries ~40
-prelude-written methods and none of the three. -/
+/-- Check actual absence at both relevant sites. This is stronger than `NameFreeOk`'s
+builtin/tombstone disjunction and also discharges `BareNameFree` at current self. -/
 def nameFreeB (m : Machine) : Bool :=
-  shadowableNames.all fun n =>
-    (Interp.methodOn m.heap (classOf m.heap m.currentFrame.self) n).isNone
+  shadowableNames.all fun n => (nameFreeSites m).all fun k =>
+    (Interp.methodOn m.heap k n).isNone
 
 def selfLiveB (m : Machine) : Bool :=
   match m.currentFrame.self with
@@ -223,9 +216,9 @@ def selfLiveB (m : Machine) : Bool :=
 
 theorem nameFreeB_sound {m : Machine} (hb : nameFreeB m = true) (κ : Ratchet.Ctx) :
     NameFreeOk κ m := by
-  intro n hn o md hm
+  intro n hn k hk o md hm
   simp only [nameFreeB, List.all_eq_true] at hb
-  have := hb n (by simpa using hn)
+  have := hb n hn k hk
   rw [hm] at this
   exact absurd this (by simp)
 
@@ -494,7 +487,7 @@ theorem bareNameFreeB_sound {m : Machine} (hb : nameFreeB m = true) (κ : Ratche
   intro n hn _ _
   cases hn
   simp only [nameFreeB, List.all_eq_true] at hb
-  have h := hb "x" (by simp [shadowableNames])
+  have h := hb "x" (by simp [shadowableNames]) _ (List.mem_cons_self (l := [_]))
   rw [lookup_eq_methodOn]
   simpa using h
 

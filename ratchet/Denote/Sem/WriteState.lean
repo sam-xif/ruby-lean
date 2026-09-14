@@ -86,7 +86,9 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     privConsts := trivial
     constScope := by simpa only [ConstScopeOk, hresolve, constLookup, hw.classPayload] using h.constScope
     exact := by simpa only [MethodsExact, hw.classPayload] using h.exact
-    nameFree := by simpa only [NameFreeOk, bindIvar_currentFrame, hw.classOf_eq, hmethod] using h.nameFree
+    nameFree := by
+      simpa only [NameFreeOk, nameFreeSites, bindIvar_currentFrame, hw.classOf_eq, hmethod]
+        using h.nameFree
     bareFree := by simpa only [BareNameFree, bindIvar_currentFrame, hw.lookup_eq] using h.bareFree
     missFree := by simpa only [MissFree, bindIvar_currentFrame, hw.classOf_eq, hmethod] using h.missFree
     query := by simpa only [QueryOk, hmethod, hw.ancestors_eq, hshadow] using h.query

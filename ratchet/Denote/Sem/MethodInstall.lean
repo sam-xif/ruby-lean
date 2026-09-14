@@ -211,12 +211,12 @@ theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : 
       Proof.constLookupFrom_defineMethod] using hm.nested
   · intro x
     exact (hresolve x).trans ((hm.constScope x).trans (constLookup_defineMethod ..).symm)
-  · intro x hx o md' hfound
+  · intro x hx k hk o md' hfound
     by_cases he : x = name
     · exact Or.inr (Or.inr (he ▸ hn))
-    · change Interp.methodOn n.heap (classOf n.heap n.currentFrame.self) x = _ at hfound
-      rw [hcf, hco, hmo _ _ he] at hfound
-      exact hm.nameFree x hx o md' hfound
+    · rw [hmo _ _ he] at hfound
+      change k ∈ nameFreeSites n at hk
+      exact hm.nameFree x hx k (by simpa only [nameFreeSites, hcf, hco] using hk) o md' hfound
   · intro x hx hfree hself
     change lookup n.heap n.currentFrame.self x = none
     rw [hcf, hl _ _ (hne x hfree)]
@@ -287,7 +287,8 @@ theorem StateOk_reserveName {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     primitiveDispatch := ?_
     exact := fun k cp hp n md hmem =>
       (hm.exact k cp hp n md hmem).imp id (Or.imp id (hneg n))
-    nameFree := fun n hn o md hl => (hm.nameFree n hn o md hl).imp id (Or.imp id (hneg n))
+    nameFree := fun n hn k hk o md hl =>
+      (hm.nameFree n hn k hk o md hl).imp id (Or.imp id (hneg n))
     bareFree := fun n hn hf hs => hm.bareFree n hn (hfree n hf) hs
     missFree := fun hf hs => hm.missFree (hfree _ hf) hs
     query := fun n bid hn hf => hm.query n bid hn (hfree n hf)

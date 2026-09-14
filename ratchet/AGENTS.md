@@ -166,6 +166,10 @@ Its countermodel passed the entire previous boot check: Object's eigenclass alia
 so class creation introduced a Float subclass. `ClassReady.eigenSeparate`, checked at boot
 and transported everywhere, rules this out. Reverse name transport is limited to old ids;
 a dangling constant may legitimately become an alias to the new class.
+`ClassNames.lean` preserves method-absence facts through the new self's dispatch chain.
+`NameFreeOk` now covers current self and Object's metaclass, but not unrelated class objects
+(`T.proc` is real prelude code). Controls refute the previous current-only domain at a heap
+that passed every old boot check; all state transports and the same boot gate cover both sites.
 Full class-body conformance and constructor calls remain gated.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
@@ -210,6 +214,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/ClassCore.lean`, `ClassMethods.lean`, `Denote/Typed/ClassCoreControls.lean` | Core/payload and installed-method preservation through actual class entry |
 | `Denote/Sem/ClassFrame.lean`, `ClassConstants.lean`, `Denote/Typed/ClassReturn.lean`, `ClassFrameControls.lean` | Fresh body scope, constant resolution, caller restoration, and scope controls |
 | `Denote/Sem/BuiltinBases.lean`, `ClassBases.lean`, `Denote/Typed/ClassBaseControls.lean` | Builtin ancestry preservation, metaclass separation, and dangling-alias controls |
+| `Denote/Sem/ClassNames.lean`, `Denote/Typed/ClassNameControls.lean` | Receiver-sensitive absence facts and the hidden-metaclass countermodel |
 | `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

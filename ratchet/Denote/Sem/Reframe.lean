@@ -74,7 +74,7 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
     privConsts := h.privConsts
     constScope := by simpa only [ConstScopeOk, hresolve, hh] using h.constScope
     exact := by simpa only [MethodsExact, hh, hfree] using h.exact
-    nameFree := by simpa only [NameFreeOk, hh, hs, hfree] using h.nameFree
+    nameFree := by simpa only [NameFreeOk, nameFreeSites, hh, hs, hfree] using h.nameFree
     bareFree := by simpa only [BareNameFree, hh, hs, hfree] using h.bareFree
     missFree := by simpa only [MissFree, hh, hs, hfree] using h.missFree
     query := by simpa only [QueryOk, hh, hfree] using h.query

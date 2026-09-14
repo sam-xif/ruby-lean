@@ -9314,3 +9314,21 @@ both halves of what constrains them now have a name.
   methods/constructors remain; no rule, exemption, floor, or admission changes.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree.
+
+## Clink 116 (2026-09-14) — preserve absence facts when class entry changes self
+
+- A fake prelude `lambda` on Object's metaclass passed the complete previous boot check,
+  verified before changing the invariant. Fresh Point self then reached that unrecorded,
+  nonbuiltin method. This is a heap-invariant countermodel, not a reachable Ruby bug.
+- `NameFreeOk` covers two dispatch sites: current self and the Object class object. Fresh
+  class self inherits the latter. A heap-global or all-class-object condition is false at
+  real boot because of the shim's `T.proc`; retain that positive countercontrol. The existing
+  boot checker tests actual absence at both sites, retaining the stronger fact BareNameFree
+  needs. Allocation, local assignment, reframe, method installation, and ivar writes preserve
+  the enlarged domain; reservations still disable absence rules without granting a method.
+- `ClassNames` maps both successor sites to old sites and proves NameFreeOk through actual
+  fresh class entry. Controls include real boot and Point entry. New modules build below
+  one second, with standard axioms only. No rule, admission, exemption, or floor changes;
+  full class-body conformance and annotation-checked instance methods/constructors remain.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree.
