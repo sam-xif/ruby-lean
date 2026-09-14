@@ -463,7 +463,7 @@ theorem strLit_alloc_ok {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {s : String
   refine ⟨StateOk_ext hm hext
     (stringPayloadOk_push hm.stringPayload (fun _ => ⟨s, rfl⟩))
     (arrayPayloadOk_push hm.arrayPayload (by simp [strObj]))
-    (hashPayloadOk_push hm.hashPayload (by simp [strObj])), ?_⟩
+    (hashPayloadOk_push hm.hashPayload (by simp [strObj])) rfl, ?_⟩
   have hanc : ∀ k, ancestors (pushHeap m.heap (strObj s binary)) k = ancestors m.heap k :=
     Proof.ancestors_congr_grow hext.shapeAgree hext.size hm.sat
   have hcls : classOf (pushHeap m.heap (strObj s binary)) (.ref m.heap.objs.size) = Boot.stringId := by

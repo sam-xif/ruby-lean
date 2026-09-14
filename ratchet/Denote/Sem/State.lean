@@ -2,6 +2,7 @@ import Ratchet.Judge
 import Denote.Local
 import Denote.Sem.Trans
 import Denote.Sem.PrimHeap
+import Denote.Sem.Ready
 
 /-!
 # `Denote/Sem/State.lean` — evaluation, and what it means for a machine to *match* a
@@ -1081,6 +1082,7 @@ Nine `Ctx` fields, nine components, and the two that are `True` say so with a do
 than by omission — a `StateOk` that quietly skipped a field would be a place for an unsound
 rule to hide. -/
 structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
+  runtime : RuntimeOk κ m
   sat : HeapSaturated m
   primitiveDispatch : primitiveDispatchB m.heap (nameFreeN κ) = true
   primitiveErrors : primitiveErrorsB m.heap = true
@@ -1165,8 +1167,9 @@ theorem lookup_eq_methodOn (h : Heap) (v : Value) (n : String) :
 
 theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : StateOk κ Γ I m)
     (he : Ext m m₂) (hp : StringPayloadOk m₂.heap) (ha : ArrayPayloadOk m₂.heap)
-    (hh : HashPayloadOk m₂.heap) :
+    (hh : HashPayloadOk m₂.heap) (hphase : m₂.preludeMode = m.preludeMode) :
     StateOk κ Γ I m₂ where
+  runtime := fun hr => (h.runtime hr).ext he hphase
   primitiveDispatch := (primitiveDispatchB_ext he _).trans h.primitiveDispatch
   primitiveErrors := (primitiveErrorsB_ext he).trans h.primitiveErrors
   stringPayload := hp
@@ -1515,7 +1518,8 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
   simp only [capStaleCtx, Bool.or_eq_false_iff] at hctx
   obtain ⟨⟨hslf, hblk⟩, hcst⟩ := hctx
   exact
-    { sat := h.sat
+    { runtime := fun hr => (h.runtime hr).setLocal x w
+      sat := h.sat
       core := h.core
       frameInRange := by
         have := h.frameInRange

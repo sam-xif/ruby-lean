@@ -69,6 +69,25 @@ theorem DefsOk_defineMethod {D : DefTable} {m : Machine} {d : Defn} {md : Method
     exact ⟨prev, (ownMethod_defineMethod_ne m.heap Boot.objectId Boot.objectId
       d.name old.name md (hn old ho)).trans hfind, hparams, hbody, hundef, hprev⟩
 
+theorem MainReady.methodWrite {m : Machine} (h : MainReady m) (cls : ObjId)
+    (name : String) (md : MethodDef) (hq : "method_added" ≠ name) :
+    MainReady { m with heap := defineMethod m.heap cls name md } := by
+  have hmain : (defineMethod m.heap cls name md).get Boot.mainId = m.heap.get Boot.mainId := by
+    by_cases he : Boot.mainId = cls
+    · subst cls
+      have hc : m.heap.classPayload? Boot.mainId = none := by
+        simp only [Heap.classPayload?, h.payload]
+      simp only [defineMethod, hc]
+    · exact heap_get_defineMethod_ne he
+  refine ⟨h.self, h.owner, h.cref, h.captured, h.phase,
+    by simpa only [Proof.objs_size_defineMethod] using h.live,
+    by rw [hmain]; exact h.payload, ?_, ?_, ?_, ?_⟩
+  · simpa only [Proof.classOf_defineMethod, Proof.ancestors_defineMethod] using h.chain
+  · simpa only [isAName_defineMethod] using h.object
+  · simpa only [Proof.classPayload?_isSome_defineMethod] using h.classLive
+  · simpa only [objectHookQuietB, Proof.lookup_defineMethod _ _ _ _ _ _ hq
+      (Proof.classOf_defineMethod ..)] using h.hook
+
 /-- Common state transport. The positive method/class tables are the installation
 rule's obligations; all data, scope, and negative dispatch facts are derived here.
 `method_missing` needs a stronger query contract before it can be rewritten. -/
@@ -77,6 +96,7 @@ theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : 
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (ha : κ.asms = [])
     (hn : nameFreeN κ name = false) (hmiss : "method_missing" ≠ name)
+    (hquiet : "method_added" ≠ name)
     (hclasses : ClassesOk κ.classes { m with heap := defineMethod m.heap cls name md })
     (hdefs : DefsOk D { m with heap := defineMethod m.heap cls name md })
     (hdecl : DeclClassOk κ { m with heap := defineMethod m.heap cls name md }) :
@@ -113,6 +133,7 @@ theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : 
   have hivar : ivarOf n.heap n.currentFrame.self = ivarOf m.heap m.currentFrame.self := by
     rw [hcf]; exact ivarOf_defineMethod ..
   refine {
+    runtime := fun hr => (hm.runtime hr).methodWrite cls name md hquiet
     sat := Proof.Saturated_defineMethod hm.sat _ _ _
     primitiveDispatch := (primitiveDispatchB_defineMethod hn).trans hm.primitiveDispatch
     primitiveErrors := (primitiveErrorsB_defineMethod ..).trans hm.primitiveErrors
@@ -235,13 +256,14 @@ theorem StateOk_defineTopMethod {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
     (ha : κ.asms = []) (hclasses : κ.classes = [])
     (hn : nameFreeN κ d.name = false) (hmiss : "method_missing" ≠ d.name)
+    (hquiet : "method_added" ≠ d.name)
     (hc : (m.heap.classPayload? Boot.objectId).isSome = true)
     (hfresh : ∀ old ∈ κ.defs, old.name ≠ d.name)
     (hp : md.params = toRubyParams d.params) (hb : md.body = toRuby d.body)
     (hu : md.undefined = false) (hcode : TopMethodCode md) :
     StateOk { κ with pos := { κ.pos with defs := d :: κ.defs } } Γ I
       { m with heap := defineMethod m.heap Boot.objectId d.name md } :=
-  StateOk_methodWrite hm ht hΓ ha hn hmiss
+  StateOk_methodWrite hm ht hΓ ha hn hmiss hquiet
     (by simp [ClassesOk, hclasses])
     (DefsOk_defineMethod hm.defs hc hfresh hp hb hu hcode)
     (by simp [DeclClassOk, hclasses])

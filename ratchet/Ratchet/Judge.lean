@@ -2238,6 +2238,9 @@ structure Scope where
   selfTy : Option Ty
   /-- The assumptions in force, grown at a call site being discharged (`Judge.callDef`). -/
   asms : AsmTable
+  /-- The ordinary `main` receiver world, shared by top level and its method activations.
+      False imposes no runtime restriction; changing this flag requires state transport. -/
+  runtimeMain : Bool := false
 deriving Inhabited
 
 /-- The judgment's non-local state, in three disciplines. -/
@@ -3566,6 +3569,6 @@ derivation carrying one is only a conditional claim, and `frame`/`selfTy` becaus
 program's top level is inside no method and runs somewhere `self` is not an instance of
 anything this judgment models. The constant table is empty for the first of those reasons:
 a program's first statement is the first thing that could assign one. -/
-def ctx0 : Ctx := ⟨⟨[], [], [], []⟩, ⟨[], [], [], false, [], [], []⟩, ⟨none, [], none, none, []⟩⟩
+def ctx0 : Ctx := ⟨⟨[], [], [], []⟩, ⟨[], [], [], false, [], [], []⟩, ⟨none, [], none, none, [], true⟩⟩
 
 end Ratchet

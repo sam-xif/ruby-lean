@@ -46,6 +46,10 @@ def bootMachine : Machine :=
 
 #guard !bootMachine.preludeMode
 
+theorem bootMachine_kont : bootMachine.kont = [] := by
+  unfold bootMachine
+  cases Semantics.bootedMachine <;> rfl
+
 /-- `CoreOk` as a `Bool`, so all its clauses are checked at boot. -/
 def coreOkB (h : Heap) : Bool :=
   (ancestors h Boot.basicObjectId == [Boot.basicObjectId]) &&
@@ -529,7 +533,7 @@ def bootOkB : Bool :=
     && primitiveDispatchB bootMachine.heap (nameFreeN Ratchet.ctx0)
     && primitiveErrorsB bootMachine.heap && stringPayloadB bootMachine.heap
     && arrayPayloadB bootMachine.heap
-    && hashPayloadB bootMachine.heap
+    && hashPayloadB bootMachine.heap && mainReadyB bootMachine
 
 /-- **The satisfiability witness.** `StateOk` holds at the real booted machine in the empty
 context, so no obligation on the ladder is vacuously true for want of a conformant machine.
@@ -538,13 +542,15 @@ The hypothesis is discharged by the `#guard` below, at build time, against the s
 prelude-booted heap the difftest SUT and `Denote/Examples.lean` use. -/
 theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 bootMachine := by
   simp only [bootOkB, Bool.and_eq_true] at hb
+  obtain ⟨hb, hready⟩ := hb
   obtain ⟨⟨⟨⟨⟨hb, hpd⟩, hpe⟩, hsp⟩, hap⟩, hhp⟩ := hb
   simp only [frameOkB, Bool.and_eq_true, bne_iff_ne, ne_eq, Option.isNone_iff_eq_none,
     decide_eq_true_eq] at hb
   obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hsat, hcore⟩, ⟨⟨⟨hkind, hblk⟩, hne⟩, hfr⟩, hself⟩, htop⟩, hex⟩, hnf⟩, hmf⟩,
     hsl⟩, hle⟩, hq⟩, hcq⟩, hbc⟩, hnq⟩ := hb
   exact
-    { primitiveDispatch := hpd
+    { runtime := fun _ => mainReadyB_sound hready
+      primitiveDispatch := hpd
       primitiveErrors := hpe
       stringPayload := stringPayloadB_sound hsp
       arrayPayload := arrayPayloadB_sound hap

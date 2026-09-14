@@ -18,7 +18,7 @@ theorem stepSpec_array {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {τ : Ty}
   have hn : StateOk κ Γ I n := StateOk_ext hm he
     (stringPayloadOk_push hm.stringPayload (by simp [obj, Boot.arrayId, Boot.stringId]))
     (arrayPayloadOk_push hm.arrayPayload (by simp [obj]))
-    (hashPayloadOk_push hm.hashPayload (by simp [obj]))
+    (hashPayloadOk_push hm.hashPayload (by simp [obj])) rfl
   have hv : denM (.arrayOf τ) n (.ref m.heap.objs.size) := by
     rw [denM]
     refine ⟨xs.toArray, ?_, ?_⟩

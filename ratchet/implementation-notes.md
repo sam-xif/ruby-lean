@@ -8943,3 +8943,23 @@ both halves of what constrains them now have a name.
 - State, installation, lookup, and pilot proofs each build in under a second, axiom-clean.
   Full quiet ratchet GREEN: fragment 49, checker reach 51, 252 agree / 0 disagree,
   all 22 rules proved. Reach has not increased.
+
+## Clink 100 (2026-09-14) — method-ready facts belong in conformance
+
+- `Scope.runtimeMain` requests the ordinary main-receiver world (at top level and inside
+  its methods); false imposes no such restriction. `ctx0` requests it. `StateOk.runtime`
+  then supplies `MainReady`: receiver, owner, cref, no capture, user-code phase, live ordinary
+  payload, Object-headed ancestors, nominal membership, class presence, and a quiet hook.
+  `mainReadyB` is checked by the existing `bootOkB`, not a second validator hypothesis.
+- Transport is proved across allocation, local writes, frame entry/return, and method-table
+  writes. `Ext` alone does not pin `preludeMode`, so `StateOk_ext` explicitly requires phase
+  preservation; all allocating callers prove it by `rfl`. Frame transport likewise pins
+  capture and phase. Hook mutation is excluded explicitly at method writes. Branch context
+  equality compares the new flag, so a merge cannot silently discard the runtime contract.
+- `checked_top_call` now obtains its physical dispatch/entry facts from conformance. Both
+  method pilots use ordinary `bootOkB`; remove their extra method-only boot gates. This closes
+  the known invariant gap, not the expression-rule/checker integration: no new method program
+  is accepted yet. The checked body artifact still cannot be replaced by signature data.
+- Runtime and state-transport proofs build in under a second; context equality stays at
+  4.1 seconds. All are axiom-clean. Full quiet ratchet GREEN: fragment 49, checker reach 51,
+  252 agree / 0 disagree, all 22 rules proved.

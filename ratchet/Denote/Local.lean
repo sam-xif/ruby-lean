@@ -588,6 +588,13 @@ theorem currentFrame_setLocal_defmod (m : Machine) (x : String) (w : Value) :
   | nil => rfl
   | cons fid rest => rw [setLocal_eq_setAt]; exact setAt_defmod m x w _ fid
 
+theorem currentFrame_setLocal_captured (m : Machine) (x : String) (w : Value) :
+    (m.setLocal x w).currentFrame.captured = m.currentFrame.captured := by
+  simp only [Machine.currentFrame, setLocal_stack]
+  cases m.stack with
+  | nil => rfl
+  | cons fid rest => rw [setLocal_eq_setAt]; exact setAt_captured m x w _ fid
+
 @[simp] theorem framesSize_setLocal (m : Machine) (x : String) (w : Value) :
     (m.setLocal x w).frames.size = m.frames.size := by
   rw [setLocal_eq_setAt]; exact setAt_framesSize m x w _

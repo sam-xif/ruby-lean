@@ -240,7 +240,7 @@ of collapsing it is that there is now exactly one place where "component `X` sur
 change to the machine" is proved. -/
 theorem StateOk_reCtl {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} (h : StateOk κ Γ I m)
     (c : Ctl) (k : List Kont) : StateOk κ Γ I (reCtl m c k) :=
-  StateOk_ext h (Ext_toReCtl m c k) h.stringPayload h.arrayPayload h.hashPayload
+  StateOk_ext h (Ext_toReCtl m c k) h.stringPayload h.arrayPayload h.hashPayload rfl
 
 /-! ## Inverting a two-step run -/
 

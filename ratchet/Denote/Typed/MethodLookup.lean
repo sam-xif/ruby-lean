@@ -37,37 +37,34 @@ theorem defsOk_lookup {D : DefTable} {m : Machine} {decl : Defn} {recv : Value}
   exact ⟨md, lookup_own_first ha hl, hp, hb, hu, hcode⟩
 
 /-- Ordinary top-level dispatch uses the installed table and the stored body derivation.
-The remaining physical-frame facts must be carried by the method-ready state invariant
-before this can become a whole-program rule. -/
+All physical-frame facts now come from conformance at the requested runtime scope. -/
 theorem checked_top_call {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {decl : Defn}
-    {args : List Value} {o : ObjId} {rest : List ObjId}
+    {args : List Value}
     (c : CheckedBody (κ.withFrame (some ⟨"Object", "Object", decl.name⟩)) I decl)
     (hm : StateOk κ Γ I m) (hd : decl ∈ κ.defs)
     (ht : ReframeFO κ I) (ha : κ.asms = []) (hc : κ.consts = [])
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
     (hkont : m.kont = []) (hlen : args.length = c.params.length)
     (hargs : DenAll (c.params.map (·.2)) m args)
-    (hself : m.currentFrame.self = .ref o) (ho : (m.heap.get o).payload = .none)
-    (hchain : ancestors m.heap (classOf m.heap (.ref o)) = Boot.objectId :: rest)
-    (howner : m.currentFrame.defmod = Boot.objectId)
-    (hcref : m.currentFrame.cref = [Boot.objectId])
-    (hcap : m.currentFrame.captured = none) (hblk : m.currentFrame.blk = none)
-    (hobj : isAName m.heap m.currentFrame.self "Object" = true) :
+    (hruntime : κ.scope.runtimeMain = true) (hblock : κ.blockTy = none) :
     ∃ next, Interp.finishSend m m.currentFrame.self .implicit decl.name args .none = .next next ∧
       RunSpec m next Γ c.ret κ I := by
-  obtain ⟨md, hl, hp, hb, hu, hcode⟩ := defsOk_lookup hm.defs hd hchain
+  have ready := hm.runtime hruntime
+  have hblk : m.currentFrame.blk = none := by simpa only [BlockTyOk, hblock] using hm.blockTy
+  obtain ⟨md, hl, hp, hb, hu, hcode⟩ := defsOk_lookup hm.defs hd ready.chain
   obtain ⟨next, he, hr⟩ := checked_method_runSpec c hm ht ha hkont hp hcode.captured hcode.declared hb
     hlen hargs hΓ
-    (by simp [frameScope, requiredFrame, hcode.owner, hcode.cref, howner, hcref, hcap, hblk])
+    (by simp [frameScope, requiredFrame, hcode.owner, hcode.cref,
+      ready.owner, ready.cref, ready.captured, hblk])
     (fun x => (constGet?_empty (κ := κ.withFrame (some ⟨"Object", "Object", decl.name⟩)) hc x).trans
       (constGet?_empty hc x).symm)
     (by
       simp only [FrameOk, currentFrame_pushMethodFrame, requiredFrame, hcode.superName, Option.getD_none]
-      exact ⟨trivial, hobj⟩)
+      exact ⟨trivial, by rw [ready.self]; exact ready.object⟩)
   refine ⟨next, ?_, hr⟩
-  rw [hself] at he ⊢
-  rw [finishSend_ordinary_userMethod ho hl hcode.builtin hu hcode.fromPrelude
-    (by simp [hchain, Interp.crubyShadow]; rfl)]
+  rw [ready.self] at he ⊢
+  rw [finishSend_ordinary_userMethod ready.payload hl hcode.builtin hu hcode.fromPrelude
+    (by simp [ready.chain, Interp.crubyShadow]; rfl)]
   exact he
 
 #print axioms defsOk_lookup

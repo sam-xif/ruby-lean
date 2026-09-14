@@ -82,7 +82,7 @@ private theorem hash_alloc {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {σ τ :
   have hn : StateOk κ Γ I n := StateOk_ext hm he
     (stringPayloadOk_push hm.stringPayload (by simp [obj, Boot.hashId, Boot.stringId]))
     (arrayPayloadOk_push hm.arrayPayload (by simp [obj]))
-    (hashPayloadOk_push hm.hashPayload (by simp [obj, hashDefaultNilB]))
+    (hashPayloadOk_push hm.hashPayload (by simp [obj, hashDefaultNilB])) rfl
   have hv : denM (.hashOf σ τ) n (.ref m.heap.objs.size) := by
     rw [denM]
     refine ⟨acc.toArray, ?_, ?_⟩

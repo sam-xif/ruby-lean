@@ -98,14 +98,15 @@ theorem negEqB_sound (a b : Ratchet.Neg) (h : negEqB a b = true) : a = b := by
   exact ⟨hp, hn, hd, hu, listEqB_sound clsEqB_sound hc, hb, hf⟩
 
 def scopeEqB (a b : Scope) : Bool := listEqB closEqB a.closures b.closures &&
-  decide (a.frame = b.frame ∧ a.blockTy = b.blockTy ∧ a.selfTy = b.selfTy ∧ a.asms = b.asms)
+  decide (a.frame = b.frame ∧ a.blockTy = b.blockTy ∧ a.selfTy = b.selfTy ∧ a.asms = b.asms ∧
+    a.runtimeMain = b.runtimeMain)
 
 theorem scopeEqB_sound (a b : Scope) (h : scopeEqB a b = true) : a = b := by
   cases a; cases b
   simp only [scopeEqB, Bool.and_eq_true, decide_eq_true_eq] at h
-  obtain ⟨hc, hf, hb, hs, ha⟩ := h
+  obtain ⟨hc, hf, hb, hs, ha, hr⟩ := h
   simp only [Scope.mk.injEq]
-  exact ⟨hf, listEqB_sound closEqB_sound hc, hb, hs, ha⟩
+  exact ⟨hf, listEqB_sound closEqB_sound hc, hb, hs, ha, hr⟩
 
 def ctxEqB (a b : Ctx) : Bool := posEqB a.pos b.pos && negEqB a.neg b.neg && scopeEqB a.scope b.scope
 
@@ -119,6 +120,7 @@ def ctxEq? (a b : Ctx) : Option (PLift (a = b)) :=
   if h : ctxEqB a b = true then some ⟨ctxEqB_sound h⟩ else none
 
 #guard (ctxEq? ctx0 ctx0).isSome
+#guard (ctxEq? ctx0 { ctx0 with scope := { ctx0.scope with runtimeMain := false } }).isNone
 #guard (ctxEq? ctx0 (ctx0.withFrame (some ⟨"Object", "Object", "add"⟩))).isNone
 #guard (ctxEq? ctx0 { ctx0 with neg := { ctx0.neg with declared := ["+"] } }).isNone
 #print axioms ctxEqB_sound

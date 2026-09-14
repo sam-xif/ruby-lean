@@ -88,11 +88,13 @@ first-order parameter/return annotations, exact return compatibility, and unchan
 context/spine are checked before the artifact exists. `checked_method_runSpec` consumes
 it directly. `DefsOk` now also pins ordinary-method metadata (`TopMethodCode`);
 `MethodLookup.lean` recovers the actual dispatched entry from conformance, and
-`checked_top_call` combines it with the checked body. Physical method-ready frame facts
-still need to enter the invariant. Installed-signature/definition/call rules remain next. Explicit `return` needs an answer-contract extension. Neither boundary lemmas nor
-declaration-only acceptance count as 052. `methodBootOkB` checks additional method-start
-facts, and `methodInstallBootOkB` also checks top-level installation/lookup/hook facts;
-these must join the validator's boot contract when methods are admitted.
+`checked_top_call` combines it with the checked body. `Scope.runtimeMain` now requests
+the ordinary main-receiver world, and `StateOk.runtime` supplies its physical facts
+(`Sem/Ready.lean`): receiver/owner/cref/capture, phase, payload/ancestors, and quiet hook.
+The same `bootOkB` checks them; transport covers allocation, locals, installation, and
+method entry/return. Separate pilot-only boot gates are retired. Installed-signature and
+definition/call expression rules remain next. Explicit `return` needs an answer-contract
+extension. Neither boundary lemmas nor declaration-only acceptance count as 052.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -121,6 +123,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/Reframe.lean`, `Denote/Typed/MethodState.lean` | Full frame-switch conformance and post-dispatch calls from annotated body proofs |
 | `Denote/Typed/MethodDispatch.lean` | Actual definition/lookup/dispatch equalities and call safety from annotated bodies |
 | `Denote/Typed/MethodLookup.lean` | Actual dispatched code recovered from `DefsOk`, then applied using a checked body |
+| `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |

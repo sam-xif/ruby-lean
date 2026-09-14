@@ -36,6 +36,8 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
     (hb : n.currentFrame.blk = m.currentFrame.blk)
     (hc : n.currentFrame.cref = m.currentFrame.cref)
     (hd : n.currentFrame.defmod = m.currentFrame.defmod)
+    (hcap : n.currentFrame.captured = m.currentFrame.captured)
+    (hphase : n.preludeMode = m.preludeMode)
     (hlookup : ∀ x, constGet? (κ.withFrame fr) x = constGet? κ x)
     (hr : FrameInRange n) (he : EnvOk Γ' n) (hf : FrameOk fr n) :
     StateOk (κ.withFrame fr) Γ' I n := by
@@ -48,6 +50,7 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
   have hfree : nameFreeN (κ.withFrame fr) = nameFreeN κ := rfl
   have hcore : coreConstFreeN (κ.withFrame fr) = coreConstFreeN κ := rfl
   refine {
+    runtime := fun hr => (h.runtime hr).reframe hh hs hd hc hcap hphase
     sat := by simpa only [HeapSaturated, hh] using h.sat
     primitiveDispatch := by simpa only [hh, hfree] using h.primitiveDispatch
     primitiveErrors := by simpa only [hh] using h.primitiveErrors

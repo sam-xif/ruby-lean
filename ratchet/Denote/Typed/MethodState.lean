@@ -24,6 +24,7 @@ theorem method_enter_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m : Machine}
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I) (ha : κ.asms = [])
     (hs : f.self = m.currentFrame.self) (hb : f.blk = m.currentFrame.blk)
     (hc : f.cref = m.currentFrame.cref) (hd : f.defmod = m.currentFrame.defmod)
+    (hcap : f.captured = m.currentFrame.captured)
     (hk : ∀ x, constGet? (κ.withFrame fr) x = constGet? κ x)
     (he : EnvOk Γb (pushMethodFrame m f)) (hf : FrameOk fr (pushMethodFrame m f)) :
     StateOk (κ.withFrame fr) Γb I (pushMethodFrame m f) :=
@@ -31,7 +32,8 @@ theorem method_enter_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m : Machine}
     (by rw [currentFrame_pushMethodFrame]; exact hs)
     (by rw [currentFrame_pushMethodFrame]; exact hb)
     (by rw [currentFrame_pushMethodFrame]; exact hc)
-    (by rw [currentFrame_pushMethodFrame]; exact hd) hk
+    (by rw [currentFrame_pushMethodFrame]; exact hd)
+    (by rw [currentFrame_pushMethodFrame]; exact hcap) rfl hk
     (by simp [FrameInRange, pushMethodFrame]) he hf
 
 theorem method_pop_currentFrame {m n : Machine} {f : RubyCore.Frame}
@@ -84,6 +86,7 @@ theorem method_pop_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m n : Machine}
   have hout := StateOk_reframe hn htypes ha (n := popMethodFrame n) (fr := κ.frame) rfl
     (congrArg FrameScope.self hscope) (congrArg FrameScope.blk hscope)
     (congrArg FrameScope.cref hscope) (congrArg FrameScope.defmod hscope)
+    (congrArg FrameScope.captured hscope) rfl
     (fun x => (hk x).symm)
     (show FrameInRange (popMethodFrame n) from
       ⟨by rw [hp.stack]; exact hm.frameInRange.1,
@@ -119,7 +122,7 @@ theorem required_method_runSpec {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : Machi
   have he : StateOk (κ.withFrame fr) ps I entry :=
     method_enter_state hm ht ha (congrArg FrameScope.self hscope)
       (congrArg FrameScope.blk hscope) (congrArg FrameScope.cref hscope)
-      (congrArg FrameScope.defmod hscope) hk
+      (congrArg FrameScope.defmod hscope) (congrArg FrameScope.captured hscope) hk
       (requiredFrame_envOk m _ name md ps args hlen hargs hps) hframe
   have hu : RootUncaptured m := by
     unfold RootUncaptured
