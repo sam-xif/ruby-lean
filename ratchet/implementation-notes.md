@@ -9195,3 +9195,27 @@ both halves of what constrains them now have a name.
   New proof modules build in under a second, with standard Lean axioms only.
 - Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree. 061 remains the next expected acceptance.
+
+## Clink 111 (2026-09-14) — fresh-class heap publication preserves old types
+
+- `ClassHeap` transports the observations first-order types actually read: successful
+  class-name resolutions, nominal/exact instance membership, ivars, and array/hash payloads.
+  Registration changes Object's class payload and creates two more, so the old `Ext` and
+  `InitGrow` relations do not apply. Reuse the model's old-id and fresh-chain facts instead.
+- Preserve successful names, not absence: the newly registered name was unbound. A boot
+  counterexample forces the composite to overwrite String and refutes `DataPres`; it is
+  intentionally not the actual Ruby reopen branch. The fresh-name guard remains essential.
+- Do not assume all values are live. A dangling reference may already have a nominal
+  BasicObject type. `ClassReady` now also pins BasicObject ancestry for Class and Object's
+  eigenclass, checked at boot and transported everywhere. These are exactly the two chains
+  the newly allocated objects use. Live exact instances retain their eigen/klass and fields;
+  successful collection projections pin their references in range.
+- `DataPres` factors the type/spine induction out of initializer publication and reuses it
+  for class creation, covering nested collections and instance snapshots. It is a heap
+  preservation contract, not another expression judgment. `Framed.of_freshClass` recovers
+  the unchanged full caller contract once frame balance/isolation are supplied.
+- Boot publication and nested-snapshot controls join the full gate. Full outgoing class-body
+  state, annotation-checked method installation, and constructor entry/return remain next;
+  no class rule, admission, or floor changes. New proofs build in under a second, axiom-clean.
+- Full quiet ratchet GREEN: fragment/reach 55/60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree. 061 remains the next expected acceptance.

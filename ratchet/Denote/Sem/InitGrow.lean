@@ -1,4 +1,5 @@
 import Denote.Sem.IvarMutation
+import Denote.Sem.DataPres
 
 /-! Constructor publication preserves the heap that existed *before allocation*.
 Unlike `Ext`, this relation permits initialized ivars on fresh objects and says nothing
@@ -114,70 +115,17 @@ theorem InitGrow.bindIvar {h : Heap} {m : Machine} (hg : InitGrow h m.heap)
     exact hg.freshBasic k hk c hc
 
 /-- No frame assumptions: first-order types inspect only old, successfully resolved data. -/
+theorem InitGrow.dataPres {h h' : Heap} (hg : InitGrow h h') : DataPres h h' :=
+  ⟨fun _ _ hv => hg.isAName_mono hv,
+    fun cn _ hk => by rw [hg.classNamed?_eq cn]; exact hk,
+    fun _ _ hv => hg.exactInst_data hv,
+    fun _ _ hv => hg.arrElems?_eq hv, fun _ _ hv => hg.hshEntries?_eq hv⟩
+
 theorem InitGrow.denM_aux {m n : Machine} (hg : InitGrow m.heap n.heap) :
     ∀ τ : Ty, FirstOrder τ = true →
     (∀ v, denM τ m v → denM τ n v) ∧
-    (∀ seen g, denSpineFrom seen τ m g → denSpineFrom seen τ n g) := by
-  intro τ
-  induction τ with
-  | int | bool | nilT | sym | float | any | never =>
-    intro _
-    exact ⟨fun _ hv => by rwa [denM] at hv ⊢,
-      fun _ _ hv => absurd hv (by simp [denSpineFrom])⟩
-  | ivar0 =>
-    intro _
-    exact ⟨fun _ hv => absurd hv (by simp [denM]), fun _ _ _ => by simp [denSpineFrom]⟩
-  | cls cn =>
-    intro _
-    exact ⟨fun _ hv => by rw [denM] at hv ⊢; exact hg.isAName_mono hv,
-      fun _ _ hv => absurd hv (by simp [denSpineFrom])⟩
-  | clsOf cn =>
-    intro _
-    exact ⟨fun _ hv => by simpa only [denM, isClassRefNamed, hg.classNamed?_eq] using hv,
-      fun _ _ hv => absurd hv (by simp [denSpineFrom])⟩
-  | nilable τ ih =>
-    intro hf
-    exact ⟨fun _ hv => by rw [denM] at hv ⊢; exact hv.imp id ((ih hf).1 _),
-      fun _ _ hv => absurd hv (by simp [denSpineFrom])⟩
-  | union σ τ ihσ ihτ =>
-    intro hf
-    simp only [FirstOrder, Bool.and_eq_true] at hf
-    exact ⟨fun _ hv => by rw [denM] at hv ⊢; exact hv.imp ((ihσ hf.1).1 _) ((ihτ hf.2).1 _),
-      fun _ _ hv => absurd hv (by simp [denSpineFrom])⟩
-  | sameAs x τ ih =>
-    intro hf
-    exact ⟨fun _ hv => by rw [denM] at hv ⊢; exact (ih hf).1 _ hv,
-      fun _ _ hv => absurd hv (by simp [denSpineFrom])⟩
-  | arrayOf τ ih =>
-    intro hf
-    refine ⟨fun v hv => ?_, fun _ _ hv => absurd hv (by simp [denSpineFrom])⟩
-    rw [denM] at hv ⊢
-    obtain ⟨xs, hx, hall⟩ := hv
-    exact ⟨xs, hg.arrElems?_eq hx, fun x hxs => (ih hf).1 x (hall x hxs)⟩
-  | hashOf k w ihk ihw =>
-    intro hf
-    simp only [FirstOrder, Bool.and_eq_true] at hf
-    refine ⟨fun v hv => ?_, fun _ _ hv => absurd hv (by simp [denSpineFrom])⟩
-    rw [denM] at hv ⊢
-    obtain ⟨es, hx, hall⟩ := hv
-    exact ⟨es, hg.hshEntries?_eq hx,
-      fun p hp => ⟨(ihk hf.1).1 _ (hall p hp).1, (ihw hf.2).1 _ (hall p hp).2⟩⟩
-  | inst cn I ih =>
-    intro hf
-    refine ⟨fun v hv => ?_, fun _ _ hv => absurd hv (by simp [denSpineFrom])⟩
-    rw [denM] at hv ⊢
-    obtain ⟨hc, hi⟩ := hg.exactInst_data hv.1
-    refine ⟨hc, ?_⟩
-    rw [hi]
-    exact (ih hf).2 [] _ hv.2
-  | ivarCons x σ rest ihσ ihrest =>
-    intro hf
-    simp only [FirstOrder, Bool.and_eq_true] at hf
-    refine ⟨fun _ hv => by rwa [denM] at hv ⊢, fun seen g hv => ?_⟩
-    rw [denSpineFrom] at hv ⊢
-    exact ⟨hv.1.imp id ((ihσ hf.1).1 _), (ihrest hf.2).2 _ g hv.2⟩
-  | arrow0 _ _ | arrowCons _ _ _ _ | clos _ _ _ _ _ =>
-    intro hf; cases hf
+    (∀ seen g, denSpineFrom seen τ m g → denSpineFrom seen τ n g) :=
+  hg.dataPres.denM_aux
 
 theorem InitGrow.denM {m n : Machine} (hg : InitGrow m.heap n.heap) {τ : Ty}
     (hf : FirstOrder τ = true) {v : Value} (hv : denM τ m v) : denM τ n v :=

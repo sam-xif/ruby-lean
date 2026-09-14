@@ -13,15 +13,20 @@ open RubyCore.Proof.Judgment (freshClsHeap freshClsMachine)
 
 /-- The same readiness invariant survives both allocations and constant registration. -/
 theorem ClassReady.freshClass {h : Heap} {d : ObjId} {name q : String} {e : ObjId}
-    (hc : ClassReady h) (hd : d < h.objs.size)
+    (hc : ClassReady h) (hsat : Proof.Saturated h) (hd : d < h.objs.size)
     (he : (h.get Boot.objectId).eigen = some e) :
     ClassReady (freshClsHeap h d name q e) := by
   have ho := hc.chains.boot.2.2.2.2
-  refine ⟨Proof.Judgment.chainsIn_freshC hc.chains hd (hc.chains.eigen _ ho _ he), ?_⟩
-  refine ⟨e, ?_⟩
-  rw [Proof.Judgment.freshClsHeap_get_old ho,
-    (Proof.get_constSetIn_fields h d name (.ref h.objs.size) Boot.objectId).2.2.1]
-  exact he
+  have hel := hc.chains.eigen _ ho _ he
+  refine ⟨Proof.Judgment.chainsIn_freshC hc.chains hd hel, ⟨e, ?_, ?_⟩, ?_⟩
+  · rw [Proof.Judgment.freshClsHeap_get_old ho,
+      (Proof.get_constSetIn_fields h d name (.ref h.objs.size) Boot.objectId).2.2.1]
+    exact he
+  · rw [Proof.Judgment.ancestors_old_freshC hc.chains hsat hel]
+    obtain ⟨e', he', hb⟩ := hc.objectEigen
+    rw [he] at he'; cases he'; exact hb
+  · rw [Proof.Judgment.ancestors_old_freshC hc.chains hsat hc.chains.boot.1]
+    exact hc.classBasic
 
 /-- Default-superclass entry at an ordinary top-level frame. The successor's heap and
 class-body frame are explicit; the body has not executed or been accepted by this lemma. -/
@@ -33,7 +38,7 @@ theorem stepFn_class_fresh {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
       stepFn (evalFrom m (.class' name none body)) =
         .next (freshClsMachine (evalFrom m (.class' name none body)) Boot.objectId
           m.currentFrame.cref name name e (toRuby body)) := by
-  obtain ⟨e, he⟩ := hm.core.classReady.objectEigen
+  obtain ⟨e, he, _⟩ := hm.core.classReady.objectEigen
   have ho := hm.core.classReady.chains.boot.2.2.2.2
   have hd := (hm.runtime hr).owner
   refine ⟨e, he, ?_⟩

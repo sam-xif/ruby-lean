@@ -1,4 +1,5 @@
 import Denote.Typed.ClassEntry
+import Denote.Sem.ClassHeap
 import Denote.Sanity
 
 /-! Fresh-class controls. They establish actual entry and heap facts, not acceptance of
@@ -43,8 +44,40 @@ theorem boot_class_entry (hb : bootOkB = true) {name : String} {body : Ratchet.E
   have hm := stateOk_boot hb
   obtain ⟨e, he, hs⟩ := stepFn_class_fresh (body := body) hm rfl hn hne
   have ho := hm.core.classReady.chains.boot.2.2.2.2
-  exact ⟨e, hs, hm.core.classReady.freshClass ho he,
+  exact ⟨e, hs, hm.core.classReady.freshClass hm.sat ho he,
     classNamed_freshClass ((hm.runtime rfl).classLive) ho⟩
+
+/-- The class heap change preserves the full caller contract, including nested snapshots.
+This is heap publication with unchanged frames, not execution of the class body. -/
+theorem boot_class_publication (hb : bootOkB = true) {name : String} {e : ObjId}
+    (hn : constOwn bootMachine.heap Boot.objectId name = none)
+    (he : (bootMachine.heap.get Boot.objectId).eigen = some e) :
+    Framed bootMachine { bootMachine with
+      heap := freshClsHeap bootMachine.heap Boot.objectId name name e } :=
+  .of_freshClass (stateOk_boot hb) hn he rfl rfl (.of_eq rfl rfl)
+
+example (hb : bootOkB = true) {name cn : String} {e : ObjId} {v : Value}
+    (hn : constOwn bootMachine.heap Boot.objectId name = none)
+    (he : (bootMachine.heap.get Boot.objectId).eigen = some e)
+    (hv : denM (.arrayOf (.inst cn (.ivarCons "@x" .int .ivar0))) bootMachine v) :
+    denM (.arrayOf (.inst cn (.ivarCons "@x" .int .ivar0)))
+      { bootMachine with heap := freshClsHeap bootMachine.heap Boot.objectId name name e } v :=
+  (boot_class_publication hb hn he).firstOrder _ rfl v hv
+
+/-- Registration must be fresh. Force the composite to overwrite String (not the actual
+Ruby reopen branch), and preservation of its old nominal meaning is false. -/
+theorem rebinding_string_breaks_data (hb : bootOkB = true) (e : ObjId) :
+    ¬ DataPres bootMachine.heap
+      (freshClsHeap bootMachine.heap Boot.objectId "String" "String" e) := by
+  intro hp
+  have hm := stateOk_boot hb
+  have ho := hm.core.classReady.chains.boot.2.2.2.2
+  have hn := classNamed_freshClass (name := "String") (e := e) ((hm.runtime rfl).classLive) ho
+  have hold := hp.named "String" Boot.stringId hm.core.stringNamed
+  rw [hn] at hold
+  have hlt : Boot.stringId < bootMachine.heap.objs.size :=
+    Nat.lt_of_le_of_lt (by decide : Boot.stringId ≤ Boot.procId) hm.core.classReady.chains.boot.2.2.2.1
+  exact (Nat.ne_of_lt hlt) (Option.some.inj hold).symm
 
 -- Independent execution check of both fresh chains, registration, and the pushed frame.
 #guard match Interp.enterClassBody bootMachine "Point" false none .nil with
@@ -62,5 +95,7 @@ theorem boot_class_entry (hb : bootOkB = true) {name : String} {body : Ratchet.E
   | _ => false
 
 #print axioms boot_class_entry
+#print axioms boot_class_publication
+#print axioms rebinding_string_breaks_data
 #print axioms fresh_dispatch_can_hide_bad_klass
 end Ratchet.Denote.Typed
