@@ -307,33 +307,46 @@ end-to-end exercise: {String.intercalate ", " unexercised} -- proved and"
   -- The gates. Each prints in both modes: `--quiet` is about narration, not about findings.
   if !crossOk then
     IO.println ""
-    IO.println "SAFETY CROSS-CHECK FAILED: a safety theorem is not about its rung's program"
+    IO.println "RATCHET RED -- a safety theorem is about a different program than its rung's."
+    IO.println "  The rung is started and incomplete: the theorem is true of something, and"
+    IO.println "  not of the program the pipeline built. See the MISMATCH lines above."
     return 1
   if !ready.isEmpty then
     IO.println ""
-    IO.println s!"SAFETY COVERAGE REGRESSED: {ready.length} built rung(s) use only registered \
-rules and have no safety theorem:"
+    IO.println s!"RATCHET RED -- {ready.length} rung(s) started and incomplete:"
     IO.println s!"    {String.intercalate ", " ready}"
-    IO.println "  The registry can already justify these. Prove them in Denote/Typed/Safety.lean"
-    IO.println "  and add them to `safeRungs`, or the ladder claims less than it has earned."
+    IO.println "  Each uses only registered rules, so the registry can already justify it, and"
+    IO.println "  nothing has. Prove them in Denote/Typed/Safety.lean and add them to"
+    IO.println "  `safeRungs`, or the ladder claims less than it has earned."
     return 1
   if unexercised.length > unexercisedCeiling then
     IO.println ""
-    IO.println s!"COVERAGE HATCH WIDENED: {unexercised.length} registered rules are exempt \
-from end-to-end exercise, ceiling is {unexercisedCeiling}"
+    IO.println s!"RATCHET RED -- the exemption list widened: {unexercised.length} certified \
+rules are exempt from end-to-end exercise, ceiling is {unexercisedCeiling}."
+    IO.println "  Exempt rules are started and incomplete by construction. Non-empty is"
+    IO.println "  legitimate mid-ladder; growing the list is not, unless the ceiling moves"
+    IO.println "  with it and someone reviews that (§F30)."
     return 1
   if safeRungs.length < safeRungFloor then
-    IO.println s!"SAFETY RATCHET REGRESSED: {safeRungs.length} rungs proved safe, \
-floor is {safeRungFloor}"
+    IO.println ""
+    IO.println s!"RATCHET RED -- a recorded floor moved: {safeRungs.length} rungs proved safe, \
+floor is {safeRungFloor}. A rung once climbed never un-climbs, so a proof was deleted."
     return 1
   if dn < clinkFloor then
-    IO.println s!"CLINK RATCHET REGRESSED: {dn} registered, floor is {clinkFloor} \
--- a clink was lost, which means a semantic proof was deleted or broken"
+    IO.println ""
+    IO.println s!"RATCHET RED -- a recorded floor moved: {dn} rules certified, floor is \
+{clinkFloor}. A clink was lost, which means a semantic proof was deleted or broken."
     return 1
   if dn > clinkFloor then
-    IO.println s!"CLINK RATCHET: {dn} registered, floor is {clinkFloor} \
--- raise `clinkFloor` in SemLadder.lean to lock it in"
-    return 0
-  say s!"CLINK RATCHET OK ({dn} registered, all proved by construction; \
-{dUnregisteredRules.length} rules not in the judgment -- that is coverage, not debt)"
+    IO.println ""
+    IO.println s!"RATCHET RED -- {dn} rules certified against a floor of {clinkFloor}. This is \
+progress, not damage: raise `clinkFloor` in SemLadder.lean to lock it in."
+    return 1
+  -- GREEN is deliberately not claimed here. This report knows its own gates passed; it does
+  -- not know that the Lean build, the corpus pipeline, agreement and reach did.
+  -- `scripts/run_typed_ratchet.sh` is the layer that knows, and it is the layer that says so.
+  say ""
+  say s!"This report's gates pass: {dn} rules certified, {safeRungs.length} rungs proved safe,"
+  say "every floor held. Reach and agreement are `scripts/run_typed_ratchet.sh`'s to check,"
+  say "so the overall GREEN/RED verdict is its to give, not this report's."
   return 0

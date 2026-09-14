@@ -8,6 +8,25 @@
 #     4. emit_deriv.py         -> a `Deriv`, or a named block   ] untrusted
 #     5. lake exe ratchetd     -> `validateD`'s Bool            ] TRUSTED, and only this
 #
+# ## GREEN and RED
+#
+# The last line is the verdict, and it means one thing:
+#
+#   **GREEN** -- nothing is started and incomplete. Every rung with a proof has a correct one,
+#   every certified rule is exercised end to end or exempt within its recorded ceiling, every
+#   floor holds, the model agrees with CRuby, and reach has not dropped. What remains is
+#   *ascent*: rungs nobody has started, blocked on rules nobody has proved. That is the
+#   ordinary state of an unfinished ladder and it is not a failure.
+#
+#   **RED** -- something is started and incomplete. A rung the registry can already justify
+#   with no theorem; a theorem about a different program than its rung's; an exemption list
+#   wider than its ceiling; a floor that moved; a rule registered without its floor raised; a
+#   stage that errored. Each names itself and says what to do.
+#
+# The distinction is deliberate: "251 rungs unproved" is GREEN, because none of them has been
+# begun. One rung begun and left is RED, because a half-climbed rung is the thing a ratchet
+# exists to catch.
+#
 # ## Two modes, and what the quiet one is for
 #
 # By default this prints **the goal list and nothing else**: the unmet rungs in corpus order,
@@ -60,7 +79,7 @@ for arg in "$@"; do
   case "$arg" in
     --verbose|-v) VERBOSE=1 ;;
     --help|-h)
-      sed -n '2,52p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,71p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0 ;;
     *) PASSTHROUGH+=("$arg") ;;
   esac
@@ -76,7 +95,7 @@ fail() {
   local label="$1" why="$2" log="${3:-}"
   {
     echo
-    echo "RATCHET FAILED -- stage: ${label}"
+    echo "RATCHET RED -- ${label}"
     echo
     echo "  ${why}"
     if [[ -n "$log" && -s "$log" ]]; then
@@ -151,17 +170,36 @@ stage "stage 5: the typed ladder (reach)" \
   failure appeared. All three are ratchets: a rung once climbed never un-climbs." \
   -- ./.lake/build/bin/ratchetd build
 
+SAFETY_WHY="See the RATCHET RED line printed above, which names which gate fired: a safety
+  theorem about the wrong program, a rung started and left incomplete, the exemption list
+  widened past its ceiling, or a recorded floor moved."
+
+SL_LOG="${LOGDIR}/semladder.log"
 if [[ "$VERBOSE" == 1 ]]; then
   echo "=== the safety proof, cross-checked against the corpus -- and the unmet goals ==="
-  exec ./.lake/build/bin/semladder build
+  SL_ARGS=(build)
+else
+  # Quiet: one line of pipeline facts, then the goal list, which is the whole point.
+  REACH="$(grep -m1 '^LADDER REACH:' "$LAST_LOG" 2>/dev/null | sed 's/^LADDER REACH: //; s/ (.*//')"
+  echo "pipeline: reach ${REACH:-?}${AGREE_LINE:+ · }${AGREE_LINE:-}"
+  SL_ARGS=(build --quiet)
+fi
+set +e
+./.lake/build/bin/semladder "${SL_ARGS[@]}" 2>&1 | tee "$SL_LOG"
+SL_RC=${PIPESTATUS[0]}
+set -e
+if [[ "$SL_RC" -ne 0 ]]; then
+  # semladder names its own gate, so a second banner would only repeat it. One is added
+  # only if it failed *without* saying so -- a crash rather than a finding.
+  grep -q '^RATCHET RED' "$SL_LOG" || fail "the safety proof and its gates" "$SAFETY_WHY"
+  exit 1
 fi
 
-# Quiet: one line of pipeline facts, then the goal list, which is the whole point.
-REACH="$(grep -m1 '^LADDER REACH:' "$LAST_LOG" 2>/dev/null | sed 's/^LADDER REACH: //; s/ (.*//')"
-echo "pipeline: reach ${REACH:-?}${AGREE_LINE:+ · }${AGREE_LINE:-}"
-
-./.lake/build/bin/semladder build --quiet || fail \
-  "the safety proof and its gates" \
-  "See the finding printed above: a safety theorem is about the wrong program, a built rung is
-  provable but unproved, the coverage hatch widened past its ceiling, or a recorded floor
-  moved. Each of those is explained where it is printed."
+# Every stage passed, and this is the only layer that knows that -- the build, the corpus
+# pipeline, agreement, reach and the safety gates are five separate exit codes and they are
+# all zero. So this is where the verdict belongs.
+echo
+echo "RATCHET GREEN -- nothing is started and incomplete. Every rung with a proof has a"
+echo "  correct one, every certified rule is exercised or exempt within its ceiling, and"
+echo "  every recorded floor holds. The only work left is to keep ascending: the first rung"
+echo "  in the list above is next, and the tally says which rule unblocks the most of them."

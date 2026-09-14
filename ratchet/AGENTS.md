@@ -121,6 +121,16 @@ corpus/NNN-id.rb        annotated Ruby -- the source of truth, hand-edited
 One command: `scripts/run_typed_ratchet.sh` (negative controls, stages 1–4, agreement,
 report). `build/` is derived and gitignored; delete it freely.
 
+**The last line is the verdict.** **GREEN** means nothing is started and incomplete: every
+rung with a proof has a correct one, every certified rule is exercised or exempt within its
+ceiling, every floor holds, the model agrees with CRuby and reach has not dropped. What
+remains is *ascent* — rungs nobody has begun, blocked on rules nobody has proved — which is
+the ordinary state of an unfinished ladder. **RED** means something is started and incomplete:
+a rung the registry can already justify with no theorem, a theorem about the wrong program, an
+exemption list past its ceiling, a floor that moved, a rule registered without its floor
+raised, or a stage that errored. So "251 rungs unproved" is GREEN; *one* rung begun and left
+is RED, because a half-climbed rung is what a ratchet exists to catch.
+
 It prints **the goal list and nothing else** — the unmet rungs in corpus order, truncated at
 20, with the tally of what blocks them — because that is what a commit-time gate is for.
 `--verbose` streams every stage (the old output, ~1400 lines against ~25). Quiet never hides
