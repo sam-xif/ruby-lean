@@ -118,9 +118,9 @@ theorem ClassScopeReady.methodWrite {cn : String} {m : Machine}
 /-- Common state transport. The positive method/class tables are the installation
 rule's obligations; all data, scope, and negative dispatch facts are derived here.
 `method_missing` needs a stronger query contract before it can be rewritten. -/
-theorem StateOk_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : ObjId}
+theorem StateCore_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : ObjId}
     {name : String} {md : MethodDef} {C : CTable} {D : DefTable}
-    (hm : StateOk κ Γ I m) (ht : ReframeFO κ I)
+    (hm : StateCore κ Γ I m) (ht : ReframeFO κ I)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (ha : κ.asms = [])
     (hn : nameFreeN κ name = false) (hmiss : "method_missing" ≠ name)
     (hquiet : "method_added" ≠ name)
@@ -131,7 +131,7 @@ theorem StateOk_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} 
     (hnested : NestedClassesOk C { m with heap := defineMethod m.heap cls name md })
     (hdecl : DeclClassOk { κ with pos := { κ.pos with classes := C } }
       { m with heap := defineMethod m.heap cls name md }) :
-    StateOk { κ with pos := { κ.pos with classes := C, defs := D } } Γ I
+    StateCore { κ with pos := { κ.pos with classes := C, defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } := by
   let n : Machine := { m with heap := defineMethod m.heap cls name md }
   have hcf : n.currentFrame = m.currentFrame := rfl
@@ -284,6 +284,41 @@ theorem StateOk_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} 
 
 /-- Backward-compatible specialization: a top-level definition changes only the def table.
 The class/nested tables still describe the same declarations. -/
+theorem StateOk_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : ObjId}
+    {name : String} {md : MethodDef} {C : CTable} {D : DefTable}
+    (hm : StateOk κ Γ I m) (ht : ReframeFO κ I)
+    (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (ha : κ.asms = [])
+    (hn : nameFreeN κ name = false) (hmiss : "method_missing" ≠ name)
+    (hquiet : "method_added" ≠ name)
+    (hclasses : ClassesOk C { m with heap := defineMethod m.heap cls name md })
+    (hsites : ClassSitesOk { κ with pos := { κ.pos with classes := C } }
+      (defineMethod m.heap cls name md))
+    (hdefs : DefsOk D { m with heap := defineMethod m.heap cls name md })
+    (hnested : NestedClassesOk C { m with heap := defineMethod m.heap cls name md })
+    (hdecl : DeclClassOk { κ with pos := { κ.pos with classes := C } }
+      { m with heap := defineMethod m.heap cls name md })
+    (hown : ClassOwnNames C (defineMethod m.heap cls name md)) :
+    StateOk { κ with pos := { κ.pos with classes := C, defs := D } } Γ I
+      { m with heap := defineMethod m.heap cls name md } :=
+  ⟨StateCore_methodWrite_tables hm.toStateCore ht hΓ ha hn hmiss hquiet
+    hclasses hsites hdefs hnested hdecl, hown⟩
+
+theorem StateCore_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : ObjId}
+    {name : String} {md : MethodDef} {D : DefTable}
+    (hm : StateCore κ Γ I m) (ht : ReframeFO κ I)
+    (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (ha : κ.asms = [])
+    (hn : nameFreeN κ name = false) (hmiss : "method_missing" ≠ name)
+    (hquiet : "method_added" ≠ name)
+    (hclasses : ClassesOk κ.classes { m with heap := defineMethod m.heap cls name md })
+    (hdefs : DefsOk D { m with heap := defineMethod m.heap cls name md })
+    (hdecl : DeclClassOk κ { m with heap := defineMethod m.heap cls name md }) :
+    StateCore { κ with pos := { κ.pos with defs := D } } Γ I
+      { m with heap := defineMethod m.heap cls name md } :=
+  StateCore_methodWrite_tables hm ht hΓ ha hn hmiss hquiet hclasses
+    (hm.classSites.methodWrite hn hquiet) hdefs
+    (by simpa only [NestedClassesOk, isClassRefNamed, classNamed?_defineMethod,
+      Proof.constLookupFrom_defineMethod] using hm.nested) hdecl
+
 theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : ObjId}
     {name : String} {md : MethodDef} {D : DefTable}
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I)
@@ -292,13 +327,11 @@ theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : 
     (hquiet : "method_added" ≠ name)
     (hclasses : ClassesOk κ.classes { m with heap := defineMethod m.heap cls name md })
     (hdefs : DefsOk D { m with heap := defineMethod m.heap cls name md })
-    (hdecl : DeclClassOk κ { m with heap := defineMethod m.heap cls name md }) :
+    (hdecl : DeclClassOk κ { m with heap := defineMethod m.heap cls name md })
+    (hown : ClassOwnNames κ.classes (defineMethod m.heap cls name md)) :
     StateOk { κ with pos := { κ.pos with defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } :=
-  StateOk_methodWrite_tables hm ht hΓ ha hn hmiss hquiet hclasses
-    (hm.classSites.methodWrite hn hquiet) hdefs
-    (by simpa only [NestedClassesOk, isClassRefNamed, classNamed?_defineMethod,
-      Proof.constLookupFrom_defineMethod] using hm.nested) hdecl
+  ⟨StateCore_methodWrite hm.toStateCore ht hΓ ha hn hmiss hquiet hclasses hdefs hdecl, hown⟩
 
 /-- Full conformance for the top-level method slice (no program class declarations).
 This discharges the positive-table premises of `StateOk_methodWrite` as well. It says
@@ -320,6 +353,7 @@ theorem StateOk_defineTopMethod {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (by simp [ClassesOk, hclasses])
     (DefsOk_defineMethod hm.defs hc hfresh hp hb hu hcode)
     (by simp [DeclClassOk, hclasses])
+    (by rw [hclasses]; exact ClassOwnNames.empty _)
 
 /-- Reserving a method name weakens absence facts; it does not install a method or
 add a positive signature. Thus it cannot authorize a call before its definition. -/

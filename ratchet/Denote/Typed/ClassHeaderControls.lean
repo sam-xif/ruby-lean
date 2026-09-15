@@ -29,6 +29,8 @@ theorem class_entry_header {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
       hm.classes hm.declCls (headerTableFrameB_sound hframe)
   · exact ⟨m.heap.objs.size, classNamed_freshClass (hm.runtime hr).classLive
       hm.core.classReady.chains.boot.2.2.2.2, FreshClass.plain hm.core hm.sat⟩
+  · exact FreshClass.ownNames_header hm.core.classReady.chains.boot.2.2.2.2
+      (hm.runtime hr).classLive hn hm.classes hm.ownNames
 
 theorem boot_point_header (hb : bootOkB = true)
     (hn : constOwn bootMachine.heap Boot.objectId "Point" = none) (body : Ratchet.Expr) :

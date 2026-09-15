@@ -107,7 +107,8 @@ theorem StateOk_publish_instance {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (hnested : NestedClassesOk (classWithMethod c d :: κ.classes)
       { m with heap := defineMethod m.heap cls d.name md })
     (hdecl : DeclClassOk (instanceDeclCtx κ c d)
-      { m with heap := defineMethod m.heap cls d.name md }) :
+      { m with heap := defineMethod m.heap cls d.name md })
+    (hown : ClassOwnNames (classWithMethod c d :: κ.classes) (defineMethod m.heap cls d.name md)) :
     StateOk (instanceDeclCtx κ c d) Γ I { m with heap := defineMethod m.heap cls d.name md } := by
   have hr : ReframeFO (reserveNameCtx κ d.name) I :=
     ⟨ht.spine, ht.self, ht.block, ht.consts, ht.paths⟩
@@ -115,7 +116,7 @@ theorem StateOk_publish_instance {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hmiss hquiet
     (ClassesOk_publish_instance hm.classes hc hk hf hs hp hb hu hcode)
     (hm.classSites.publish_instance hsite hquiet)
-    (DefsOk_methodWrite_other hm.defs hobj) hnested hdecl
+    (DefsOk_methodWrite_other hm.defs hobj) hnested hdecl hown
 
 #print axioms ClassesOk_methodWrite_old
 #print axioms ClassesOk_publish_instance

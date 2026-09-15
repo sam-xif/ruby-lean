@@ -7,6 +7,16 @@ set_option autoImplicit false
 namespace Ratchet.Denote
 open RubyCore Ratchet
 
+/-- Complete conformance excludes unrecorded own methods at every declared class,
+regardless of whether the selector is reserved or implemented at another owner. -/
+theorem StateOk.ownMethod_absent {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    {c : Cls} {k : ObjId} {name : String} (hm : StateOk κ Γ I m)
+    (hc : c ∈ κ.classes) (hk : classNamed? m.heap c.name = some k)
+    (hn : name ∉ Ratchet.ownNames κ.classes c.name) :
+    (m.heap.classPayload? k).bind
+      (fun cp => (cp.methods.find? (·.1 == name)).map (·.2)) = none :=
+  hm.ownNames.absent hc hk hn
+
 theorem lookup_go_skip {h : Heap} {name : String} {pre rest : List ObjId}
     (hp : ∀ k ∈ pre, (h.classPayload? k).bind
       (fun cp => (cp.methods.find? (·.1 == name)).map (·.2)) = none) :
@@ -64,4 +74,5 @@ theorem classesOk_methodOn_after_prefix {C : CTable} {m : Machine} {c : Cls} {d 
 
 #print axioms methodOn_after_prefix
 #print axioms classesOk_methodOn_after_prefix
+#print axioms StateOk.ownMethod_absent
 end Ratchet.Denote

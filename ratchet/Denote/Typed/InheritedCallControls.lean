@@ -9,7 +9,7 @@ import Denote.Sem.OwnLookup
 import Denote.Sem.ClassOwnNames
 
 /-! Independent receiver/owner annotations and the missing inherited-lookup premise.
-The full-state omission witness does not expose an accepted unsafe program: present calls
+The full-old-state omission witness does not expose an accepted unsafe program: present calls
 require an own positive row. Inherited calls will also need proof of no earlier override. -/
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed.InheritedCallControls
@@ -70,8 +70,8 @@ private def setup : Ratchet.Expr := .seq [
     | _, _ => false
   | _ => false
 
-/-- Full current conformance permits a method omitted at its heap owner whenever its name
-is already globally reserved. This is why positive ancestor rows do not prove lookup. -/
+/-- The old contract (StateCore) permits a method omitted at its heap owner whenever its
+name is globally reserved. Complete StateOk additionally requires the owner-local bound. -/
 theorem unrecorded_shadow_preserves_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     {cls : ObjId} {name : String} {md : MethodDef}
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I)
@@ -81,8 +81,8 @@ theorem unrecorded_shadow_preserves_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Ma
     (hc : cls ≠ Boot.objectId)
     (hrows : ∀ c ∈ κ.classes, classNamed? m.heap c.name = some cls →
       ∀ d ∈ c.methods, d.name ≠ name) :
-    StateOk κ Γ I { m with heap := defineMethod m.heap cls name md } :=
-  StateOk_methodWrite hm ht hΓ ha hn hmiss hquiet (ClassesOk_methodWrite_old hm.classes hrows)
+    StateCore κ Γ I { m with heap := defineMethod m.heap cls name md } :=
+  StateCore_methodWrite hm.toStateCore ht hΓ ha hn hmiss hquiet (ClassesOk_methodWrite_old hm.classes hrows)
     (DefsOk_methodWrite_other hm.defs hc) (hm.declCls.methodWrite hnew hmiss)
 
 private def sourceDecl : Defn := ⟨"answer", [], .int 1⟩
@@ -107,11 +107,11 @@ private theorem source_state (hb : bootOkB = true) : StateOk sourceCtx [] .ivar0
 example : SemSafeCtxA (topBodyCtx ctx0 sourceDecl) [] .ivar0 sourceDecl.body .int
     (topBodyCtx ctx0 sourceDecl) [] .ivar0 := SemSafeCtxA.intLit
 
-/-- A boot-grounded full-StateOk witness: Child's declared own table is empty, but its
+/-- A boot-grounded full-old-contract witness: Child's declared own table is empty, but its
 actual answer overrides the retained Object#answer annotation with a Boolean body.
 The new owner-local bound rejects precisely this omission. -/
 theorem full_state_unrecorded_shadow (hb : bootOkB = true) :
-    ∃ n k, StateOk childCtx [] .ivar0 n ∧ classNamed? n.heap "Child" = some k ∧
+    ∃ n k, StateCore childCtx [] .ivar0 n ∧ classNamed? n.heap "Child" = some k ∧
       Interp.methodOn n.heap k "answer" = some (k, badMethod k) ∧
       ¬ ClassOwnNames childCtx.classes n.heap := by
   have hm := source_state hb
@@ -146,6 +146,13 @@ theorem full_state_unrecorded_shadow (hb : bootOkB = true) :
 #guard (classHeader "Child").methods.isEmpty
 #guard !nameFreeN childCtx "answer"
 
+/-- The old-contract witness is incompatible with complete conformance, not merely
+rejected by a heuristic or by the current checker's lack of an inherited-call rule. -/
+theorem hidden_override_not_state (hb : bootOkB = true) :
+    ∃ n, StateCore childCtx [] .ivar0 n ∧ ¬ StateOk childCtx [] .ivar0 n := by
+  obtain ⟨n, _, hold, _, _, hbad⟩ := full_state_unrecorded_shadow hb
+  exact ⟨n, hold, fun hn => hbad hn.ownNames⟩
+
 -- The same omission matters on a real non-root inheritance chain: keep the ancestor's
 -- row and the chain, insert an unrecorded child override, and the annotated use fails.
 private def inheritance : Ratchet.Expr := .seq [
@@ -173,4 +180,5 @@ private def parentRow (m : Machine) (parent : ObjId) : Bool :=
 
 #print axioms inherited_echo_run
 #print axioms full_state_unrecorded_shadow
+#print axioms hidden_override_not_state
 end Ratchet.Denote.Typed.InheritedCallControls

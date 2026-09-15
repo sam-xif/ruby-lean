@@ -10077,3 +10077,23 @@ both halves of what constrains them now have a name.
 - New proofs build in under a second each, standard axioms only. Full quiet ratchet GREEN:
   fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 151 (2026-09-15) — owner bounds in full conformance, F39 closed
+
+- StateOk now requires ClassOwnNames. Allocation, frame/field changes, fresh classes,
+  header publication and method installation preserve it; boot needs no extra check because
+  its declaration table is empty. No Ctx flag or annotation escape hatch.
+- StateCore retains exactly the former fields, not a second admission route. Shared method-
+  write proofs produce it; the full-state wrappers also require the owner bound. This keeps
+  F39's entire old-contract witness proved, while `hidden_override_not_state` excludes it
+  from current conformance. The typed semantic contracts still all require StateOk.
+- The existing memberFreshB includes memberOwnersB. Its semantic proof derives the needed
+  physical-alias separation; publication never infers it from different strings. Existing
+  member/body rules keep their full annotation premises and consume the stronger guard.
+- F40 identifies the next lookup fact: an unnamed included module preserves own bounds,
+  classFrontB and every globally named ancestor-membership answer while intercepting an
+  inherited call. The executable control probes those premises, not full StateOk. Physical-
+  chain correspondence and explicit-superclass creation remain ahead of 065.
+- All new lemmas are class/body/annotation-generic and axiom-clean. Full quiet ratchet GREEN:
+  fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
+  252 agree / 0 disagree. No new acceptance or moved floor in this prerequisite.

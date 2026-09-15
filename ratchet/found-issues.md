@@ -2526,13 +2526,13 @@ fresh declared chain in both directions; publication and annotation-body rules r
 
 ## F39 — positive class rows do not exclude hidden inherited overrides (2026-09-14)
 
-**Open extension obstacle, not an accepted unsafe program.** `ClassesOk` checks each
+**Closed by Clink 151; never an accepted unsafe program.** `ClassesOk` checks each
 declared own method, but says nothing about omitted selectors. `MethodsExact` only reserves
 names globally. Once `answer` is reserved anywhere, an unrecorded `Child#answer` can satisfy
 both invariants while shadowing an ancestor's checked body.
 
 `InheritedCallControls.unrecorded_shadow_preserves_state` proves the stronger statement:
-the write can preserve full current StateOk, including unchanged declaration tables.
+the write preserves the complete old contract, now named StateCore, including unchanged tables.
 `full_state_unrecorded_shadow` grounds it at boot with a real Object#answer returning an
 Integer and a fresh Child whose declared table is empty; Child dispatches to a Boolean body.
 A separate Parent/Child inheritance execution retains the parent row and ancestor chain
@@ -2548,6 +2548,20 @@ still requires its complete annotated proof at the actual receiver/owner context
 
 Clink 150 defines `ClassOwnNames`, proves its allocation/class/method transports, and
 derives inherited lookup from it plus the actual ordered prefix and positive owner row.
-The full-state witness now also proves that this bound rejects its hidden override.
-History/alias controls pin the union-of-records and physical-owner requirements. The bound
-is not yet a StateOk field; integrating all producers is the remaining F39 obligation.
+The full-old-state witness also proves that this bound rejects its hidden override.
+Clink 151 adds StateOk.ownNames and transports it through every current producer. Member
+freshness includes the proved alias-separation guard. `hidden_override_not_state` retains
+the boot-grounded old contract and proves it incompatible with full StateOk. No body proof
+or inherited call is admitted merely by bounding selectors.
+
+## F40 — named ancestry does not enumerate physical lookup owners (2026-09-15)
+
+**Open inherited-lookup prerequisite; not a full-StateOk countermodel or an accepted unsafe
+program.** `OwnNamesControls` inserts an unnamed module between Satellite and Depot. Every
+globally bound class name retains its ancestor-membership answer, classFrontB remains true,
+and ClassOwnNames still holds for both declared classes. The module's unrecorded alpha
+intercepts Depot's Integer body with false; the real call's `+ 1` changes from 2 to type-stuck.
+
+This refutes deriving complete physical-prefix coverage from those facts alone. The generic
+inherited lookup theorem deliberately requires that coverage; DeclClassOk's named membership
+clauses do not supply it. Establish physical-chain correspondence before removing the premise.

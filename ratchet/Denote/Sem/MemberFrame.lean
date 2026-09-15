@@ -29,7 +29,8 @@ theorem memberFreshB_sound {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     ∀ old ∈ κ.classes, classNamed? m.heap old.name = some k →
       ∀ prev ∈ old.methods, prev.name ≠ d.name := by
   intro old hold holdk prev hp
-  have hrow := List.all_eq_true.mp hf old hold
+  simp only [memberFreshB, Bool.and_eq_true] at hf
+  have hrow := List.all_eq_true.mp hf.1 old hold
   simp only [Bool.or_eq_true] at hrow
   rcases hrow with (hf | ha) | ha
   · have h := List.all_eq_true.mp hf prev hp

@@ -29,11 +29,4 @@ theorem ownNames_publish (C : CTable) (c : Cls) (d : Defn) :
   mem_ownNames.mpr ⟨classWithMethod c d, List.mem_cons_self, rfl,
     d, List.mem_cons_self, rfl⟩
 
-/-- Updating one name's bound must cover every alias to that heap owner. This sufficient
-guard proves that any declared alias has the same name, using ancestry in either direction. -/
-def memberOwnersB (κ : Ctx) (c : Cls) : Bool :=
-  κ.classes.all fun old => old.name == c.name ||
-    classApartB κ.classes κ.wholeCls c.name old.name ||
-    classApartB κ.classes κ.wholeCls old.name c.name
-
 end Ratchet

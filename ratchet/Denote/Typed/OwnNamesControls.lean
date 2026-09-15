@@ -63,6 +63,35 @@ private def code (k : ObjId) (d : Defn) : MethodDef :=
     | none => false
   | _ => false
 
+-- A separate remaining premise: named ancestor membership does not enumerate physical
+-- owners. An unnamed included module preserves those answers and the own bounds while
+-- intercepting an inherited call. This probes those premises, not full StateOk.
+#guard match Interp.run 100 (evalFrom bootMachine (.seq [
+    .class' "Depot" none (.def' a.name a.params a.body),
+    .class' "Satellite" (some (.const "Depot")) .nil])) with
+  | .value _ m => match classNamed? m.heap "Satellite" with
+    | some k => match m.heap.classPayload? k, m.heap.classPayload? Boot.objectId with
+      | some cp, some root =>
+        let u := m.heap.objs.size
+        let hidden : ClassPayload :=
+          { superclass := none, name := "", isModule := true
+            methods := [(a.name, code u { a with body := .fls })] }
+        let anon : Object := { klass := Boot.moduleId, payload := .cls hidden }
+        let h := (m.heap.alloc anon).2
+        let h := h.setClassPayload k { cp with includes := [u] }
+        let use := Ratchet.Expr.send (some (.send (some (.send
+          (some (.const "Satellite")) "new" [] none)) a.name [] none)) "+" [.int 1] none
+        classOwnNamesB [satellite, classWithMethod depot a] h && classFrontB h k &&
+          root.consts.all (fun (cn, _) => (classNamed? m.heap cn).all fun j =>
+            classNamed? h cn == some j &&
+              (ancestors m.heap k).contains j == (ancestors h k).contains j) &&
+          ((Interp.methodOn h k a.name).any fun (owner, _) => owner == u) &&
+          (match Interp.run 100 (evalFrom m use) with | .value (.int 2) _ => true | _ => false) &&
+          Semantics.typeStuck (Interp.run 100 (evalFrom { m with heap := h } use))
+      | _, _ => false
+    | none => false
+  | _ => false
+
 -- A caller cannot discharge the publication guard while retaining a differently named
 -- alias at full conformance. This is generic in both names, contexts and heap owners.
 theorem aliased_owner_guard_rejects {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}

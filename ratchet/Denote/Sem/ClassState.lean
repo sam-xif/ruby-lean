@@ -10,6 +10,7 @@ import Denote.Sem.InstanceSiteClass
 import Denote.Sem.MainSiteClass
 import Denote.Sem.ClassAllocators
 import Denote.Sem.ClassGlobalConsts
+import Denote.Sem.ClassOwnNames
 
 /-! Full conformance at entry to an empty fresh class scope. The body is still to be
 checked, and no future definition has been inserted into the positive table. -/
@@ -69,6 +70,7 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
     env := env_empty
     selfSpine := spine_empty
     classes := classes ho hn rfl hm.classes
+    ownNames := ownNames ho hn hm.classes hm.ownNames
     defs := defs ho rfl hm.defs
     asms := by
       intro a ham

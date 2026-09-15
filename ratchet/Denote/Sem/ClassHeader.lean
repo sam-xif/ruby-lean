@@ -46,11 +46,13 @@ retain their original meaning; only the positive table and its sites/nested clai
 theorem StateOk_publish_header {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {name : String}
     (hm : StateOk κ Γ I m) (hs : κ.scope.runtimeClass = some name)
     (hn : unqualifiedClassB name = true) (hd : DeclClassOk (classHeaderCtx κ name) m)
-    (ha : ∃ k, classNamed? m.heap name = some k ∧ PlainAllocator m.heap k) :
+    (ha : ∃ k, classNamed? m.heap name = some k ∧ PlainAllocator m.heap k)
+    (hown : ClassOwnNames (classHeader name :: κ.classes) m.heap) :
     StateOk (classHeaderCtx κ name) Γ I m := by
   obtain ⟨k, site⟩ := hm.classSites.of_scope hs
   refine { hm with
     classes := ?_
+    ownNames := hown
     classSites := ?_
     allocators := ?_
     nested := ?_

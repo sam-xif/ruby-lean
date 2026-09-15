@@ -11,6 +11,7 @@ import Denote.Sem.InstanceSite
 import Denote.Sem.MainSite
 import Denote.Sem.Allocator
 import Denote.Sem.GlobalConsts
+import Denote.Sem.OwnNames
 
 /-!
 # `Denote/Sem/State.lean` — evaluation, and what it means for a machine to *match* a
@@ -1026,7 +1027,9 @@ plus the three machine facts above.
 Nine `Ctx` fields, nine components, and the two that are `True` say so with a docstring rather
 than by omission — a `StateOk` that quietly skipped a field would be a place for an unsound
 rule to hide. -/
-structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
+/- Shared state facts, deliberately insufficient for typed admission without the
+owner-local bound. Kept separate so the previous contract's countermodel remains stated. -/
+structure StateCore (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   runtime : RuntimeOk κ m
   mainSite : κ.pos.mainWorld = true → MainSite κ m.heap
   classRuntime : ClassRuntimeOk κ m
@@ -1065,6 +1068,11 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   baseChains : BaseChainsOk κ m
   nilQuery : NilQueryOk κ m
   selfLive : SelfLive m
+
+/-- Complete state conformance. Positive rows and global selector reservations do not
+exclude hidden overrides; the own-table bound is also required at every typed state. -/
+structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop extends StateCore κ Γ I m where
+  ownNames : ClassOwnNames κ.classes m.heap
 
 /-! ## Conformance survives an allocation
 
@@ -1152,6 +1160,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     unfold SelfSpineOk at this ⊢
     rw [he.currentFrame_eq, funext (he.ivarOf_eq m.currentFrame.self)]
     exact ⟨denSpine_ext he this.1, this.2⟩
+  ownNames := h.ownNames.ext he
   classes := by
     intro c hc
     obtain ⟨k, hk, hm⟩ := h.classes c hc
@@ -1544,6 +1553,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
         exact ⟨denSpine_killClosOverSpine hw h2.1,
                fun y hy => h2.2 y (ivarGet?_killClosOverSpine_none _ hy)⟩
       classes := h.classes
+      ownNames := h.ownNames
       defs := h.defs
       asms := fun a ha m₃ he₃ => h.asms a ha m₃ ((setLocal_later m x w).trans he₃)
       frame := by

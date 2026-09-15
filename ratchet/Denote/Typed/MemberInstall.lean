@@ -33,6 +33,8 @@ theorem StateOk_install_member {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c :
     rfl rfl rfl hcode hmiss hquiet
     ((hm.nested.publish_member hplain).methodWrite)
     ((hm.declCls.methodWrite hnew hmiss).publish_member hc (declLookupFrameB_sound htab))
+    (hm.ownNames.publish_instance hc
+      (memberOwnersB_sound hm hc ready.named (memberFreshB_owners hf)))
 
 theorem step_member_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Cls} {d : Defn}
     (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeClass = some c.name) (hc : c ∈ κ.classes)
