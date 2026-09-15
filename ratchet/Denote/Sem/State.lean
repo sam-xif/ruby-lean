@@ -7,6 +7,7 @@ import Denote.Sem.ClassScope
 import Denote.Sem.ClassReady
 import Denote.Sem.MethodCode
 import Denote.Sem.InstanceSite
+import Denote.Sem.MainSite
 
 /-!
 # `Denote/Sem/State.lean` — evaluation, and what it means for a machine to *match* a
@@ -695,6 +696,24 @@ def MissFree (κ : Ctx) (m : Machine) : Prop :=
     ∀ o md, Interp.methodOn m.heap (classOf m.heap m.currentFrame.self) "method_missing"
       = some (o, md) → md.builtin.isSome = true
 
+theorem mainSite_of_scope {κ : Ctx} {m : Machine} (h : MainReady m)
+    (hn : NameFreeOk κ m) (hb : BareNameFree κ m) (hm : MissFree κ m)
+    (hs : κ.selfTy = none) (hc : ConstScopeOk m) : MainSite κ m.heap := by
+  refine ⟨h.view, ?_, ?_, ?_, ?_⟩
+  · intro n hn' o md hl
+    apply hn n hn' _ (List.mem_cons_self ..) o md
+    simpa only [h.self] using hl
+  · intro n hn' hf
+    simpa only [h.self] using hb n hn' hf hs
+  · intro hf o md hl
+    apply hm hf hs o md
+    simpa only [h.self] using hl
+  · intro n
+    have he : constResolveAt m n = mainConstResolve m.heap n := by
+      simp only [constResolveAt, h.cref, h.owner, List.firstM, mainConstResolve]
+      cases constOwn m.heap Boot.objectId n <;> rfl
+    exact he.symm.trans (hc n)
+
 /-! ## The query builtins
 
 `Judge.isAQuery`/`caseEqQuery`/`classOf`/`clsToS` all have the same shape: a *send* whose
@@ -1022,6 +1041,7 @@ than by omission — a `StateOk` that quietly skipped a field would be a place f
 rule to hide. -/
 structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   runtime : RuntimeOk κ m
+  mainSite : κ.pos.mainWorld = true → MainSite κ m.heap
   classRuntime : ClassRuntimeOk κ m
   classSites : ClassSitesOk κ m.heap
   sat : HeapSaturated m
@@ -1111,6 +1131,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     (hh : HashPayloadOk m₂.heap) (hphase : m₂.preludeMode = m.preludeMode) :
     StateOk κ Γ I m₂ where
   runtime := fun hr => (h.runtime hr).ext he hphase
+  mainSite := fun hr => (h.mainSite hr).ext he
   classRuntime := fun cn hr => (h.classRuntime cn hr).ext he hphase
   classSites := h.classSites.ext he
   primitiveDispatch := (primitiveDispatchB_ext he _).trans h.primitiveDispatch
@@ -1466,6 +1487,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
   obtain ⟨⟨hslf, hblk⟩, hcst⟩ := hctx
   exact
     { runtime := fun hr => (h.runtime hr).setLocal x w
+      mainSite := by simpa only [setLocal_heap] using h.mainSite
       classRuntime := fun cn hr => (h.classRuntime cn hr).setLocal x w
       classSites := by simpa only [setLocal_heap] using h.classSites
       sat := h.sat

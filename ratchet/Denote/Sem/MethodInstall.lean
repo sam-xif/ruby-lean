@@ -89,6 +89,28 @@ theorem MainReady.methodWrite {m : Machine} (h : MainReady m) (cls : ObjId)
   · simpa only [objectHookQuietB, definitionHookQuietB, Proof.lookup_defineMethod _ _ _ _ _ _ hq
       (Proof.classOf_defineMethod ..)] using h.hook
 
+theorem MainSite.methodWrite {κ : Ctx} {h : Heap} {cls : ObjId} {name : String} {md : MethodDef}
+    (site : MainSite κ h) (hn : nameFreeN κ name = false)
+    (hm : "method_missing" ≠ name) (hq : "method_added" ≠ name) :
+    MainSite κ (defineMethod h cls name md) := by
+  have hne (n : String) (hf : nameFreeN κ n = true) : n ≠ name := by
+    intro he; subst n; rw [hn] at hf; cases hf
+  refine ⟨site.ready.methodWrite cls name md hq, ?_, ?_, ?_, ?_⟩
+  · intro n hmem o found hl
+    by_cases he : n = name
+    · exact Or.inr (Or.inr (he ▸ hn))
+    · rw [Proof.classOf_defineMethod, methodOn_defineMethod _ _ _ _ _ _ he] at hl
+      exact site.names n hmem o found hl
+  · intro n hb hf
+    rw [Proof.lookup_defineMethod _ _ _ _ _ _ (hne n hf) (Proof.classOf_defineMethod ..)]
+    exact site.bare n hb hf
+  · intro hf o found hl
+    rw [Proof.classOf_defineMethod, methodOn_defineMethod _ _ _ _ _ _ hm] at hl
+    exact site.missing hf o found hl
+  · intro n
+    simpa only [mainConstResolve, Proof.constOwn_defineMethod, Proof.constLookupFrom_defineMethod,
+      constLookup_defineMethod] using site.constants n
+
 theorem ClassScopeReady.methodWrite {cn : String} {m : Machine}
     (h : ClassScopeReady cn m) (cls : ObjId) (name : String) (md : MethodDef)
     (hq : "method_added" ≠ name) :
@@ -150,6 +172,7 @@ theorem StateOk_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} 
     rw [hcf]; exact ivarOf_defineMethod ..
   refine {
     runtime := fun hr => (hm.runtime hr).methodWrite cls name md hquiet
+    mainSite := fun hr => (hm.mainSite hr).methodWrite hn hmiss hquiet
     classRuntime := fun cn hr => (hm.classRuntime cn hr).methodWrite cls name md hquiet
     classSites := hsites
     sat := Proof.Saturated_defineMethod hm.sat _ _ _
@@ -318,6 +341,7 @@ theorem StateOk_reserveName {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     | false => rfl
     | true => have he := hfree x hn; rw [hx] at he; cases he
   refine { hm with
+    mainSite := fun hr => (hm.mainSite hr).recontext hneg
     classSites := hm.classSites.recontext (fun _ hc => hc) hneg
     primitiveDispatch := ?_
     exact := fun k cp hp n md hmem =>

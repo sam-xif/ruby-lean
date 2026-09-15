@@ -2154,6 +2154,8 @@ structure Pos where
   /-- The absolute keys `private_constant` has hidden (tier 13d). Read by `Judge.constPath`
       and by nothing else. -/
   privConsts : List String
+  /-- Retain the top-level receiver's heap/dispatch world across other activations. -/
+  mainWorld : Bool := false
 deriving Inhabited
 
 /-- Facts that shrink: what the program provably does **not** provide.
@@ -3579,6 +3581,6 @@ derivation carrying one is only a conditional claim, and `frame`/`selfTy` becaus
 program's top level is inside no method and runs somewhere `self` is not an instance of
 anything this judgment models. The constant table is empty for the first of those reasons:
 a program's first statement is the first thing that could assign one. -/
-def ctx0 : Ctx := ⟨⟨[], [], [], []⟩, ⟨[], [], [], false, [], [], []⟩, ⟨none, [], none, none, [], true, none, true⟩⟩
+def ctx0 : Ctx := ⟨⟨[], [], [], [], true⟩, ⟨[], [], [], false, [], [], []⟩, ⟨none, [], none, none, [], true, none, true⟩⟩
 
 end Ratchet

@@ -552,6 +552,9 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
     hsl⟩, hle⟩, hq⟩, hcq⟩, hbc⟩, hnq⟩ := hb
   exact
     { runtime := fun _ => mainReadyB_sound hready
+      mainSite := fun _ => mainSite_of_scope (mainReadyB_sound hready)
+        (nameFreeB_sound hnf _) (bareNameFreeB_sound hnf _) (missFreeB_sound hmf _) rfl
+        (constScope_of_topScope htop)
       classRuntime := by intro cn h; cases h
       classSites := by intro cn h; cases h
       primitiveDispatch := hpd

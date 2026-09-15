@@ -34,6 +34,7 @@ theorem instance_enter_state {κ : Ctx} {Γ : Env} {I Ib : Ty} {m : Machine}
     exact exactInst_classOf hv.1 site.named
   refine {
     runtime := by intro h; cases h
+    mainSite := hm.mainSite
     classRuntime := ?_
     classSites := by
       intro q hq

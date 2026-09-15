@@ -68,6 +68,7 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
   have hcore : coreConstFreeN (κ.withFrame fr) = coreConstFreeN κ := rfl
   refine {
     runtime := fun hr => (h.runtime hr).reframe hh hs hd hc hcap hphase
+    mainSite := fun hr => by rw [hh]; exact h.mainSite hr
     classRuntime := by
       intro cn hr
       obtain ⟨k, hk⟩ := h.classRuntime cn hr

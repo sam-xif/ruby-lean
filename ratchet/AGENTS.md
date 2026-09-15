@@ -232,6 +232,13 @@ return establish it. `InstanceReturn` restores the caller's open/closed self-spi
 annotation-checked body, independently of the callee's self/spine. Controls prove the old
 contract's blind spot at full fresh-class conformance (§F34). Full caller conformance,
 constructor contracts, and class-rule admission remain gated.
+`Pos.mainWorld` requests a retained top-level heap world independently of the current frame.
+`StateOk.mainSite` preserves main's dispatch, hooks, bare-name/missing-method exclusions,
+and constant resolution across class/instance entry and all existing heap producers; the
+same boot Bool establishes it. `MainReturn` restores full top-level caller conformance.
+`InstanceCall.checked_instance_call_from_main` composes actual explicit lookup, annotated
+binding/body, and the real return continuation into a full RunSpec. Non-main callers,
+constructor payload/initialization, class exit/publication, and class-rule admission remain.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -288,6 +295,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/InstanceSiteWrite.lean`, `Denote/Typed/InstanceSitePublish.lean`, `InstanceSiteWriteControls.lean` | Site preservation under definitions/field writes, actual-step publication, and reservation/hook controls |
 | `Denote/Sem/InstanceSiteClass.lean`, `Denote/Typed/InstanceCallEntry.lean`, `ClassSitesControls.lean` | Persistent sites across fresh classes, conformance-driven checked call entry, and constant/rebinding controls |
 | `Denote/Sem/FieldsPres.lean`, `Denote/Typed/InstanceReturn.lean`, `InstanceReturnControls.lean` | Retained field types, different-self caller-spine restoration, and full-state eigenclass countermodel |
+| `Denote/Sem/MainSite*.lean`, `Denote/Typed/MainReturn.lean`, `InstanceCall.lean`, `MainSiteControls.lean` | Retained top-level world, full caller restoration and instance-call composition, with absence controls |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |

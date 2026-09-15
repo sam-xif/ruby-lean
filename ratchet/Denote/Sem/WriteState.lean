@@ -1,5 +1,6 @@
 import Denote.Sem.IvarMutation
 import Denote.Sem.InstanceSiteWrite
+import Denote.Sem.MainSiteWrite
 
 /-! A write preserves dispatch and machine structure, not arbitrary typed data.
 The six value-sensitive conformance components must be re-established explicitly.
@@ -63,6 +64,7 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     funext cls; simp only [primitiveErrorB, hw.ancestors_eq]
   refine {
     runtime := ?_
+    mainSite := fun hr => (h.mainSite hr).ivarOnly hw
     classSites := h.classSites.ivarOnly hw
     classRuntime := by
       intro cn hr

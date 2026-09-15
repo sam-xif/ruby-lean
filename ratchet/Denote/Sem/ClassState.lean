@@ -7,6 +7,7 @@ import Denote.Sem.ClassDeclared
 import Denote.Sem.ClassScopeEntry
 import Denote.Sem.InstanceSiteEntry
 import Denote.Sem.InstanceSiteClass
+import Denote.Sem.MainSiteClass
 
 /-! Full conformance at entry to an empty fresh class scope. The body is still to be
 checked, and no future definition has been inserted into the positive table. -/
@@ -37,6 +38,7 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
     constants ho hn rfl hd hm.constScope hscope ht.consts hm.consts
   exact {
     runtime := by intro h; cases h
+    mainSite := fun hr => mainSite (hm.mainSite hr) hm.core.classReady hm.sat hm.core.basicSelf hn he
     classRuntime := by
       intro cn hr
       change some name = some cn at hr

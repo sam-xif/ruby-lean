@@ -9566,3 +9566,27 @@ both halves of what constrains them now have a name.
 - New modules compile below a second, standard axioms only. Full quiet ratchet GREEN:
   fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 128 (2026-09-14) — retain main's world and compose full instance calls
+
+- Split current-frame requirements from retained heap requirements. `Pos.mainWorld` is a
+  positive request, seeded at ctx0 and retained by class/instance body contexts; `CtxEq`
+  compares it. `StateOk.mainSite` carries main's heap readiness, shadowable-name guards,
+  bare-name absence, builtin-only method_missing, and lexical/global constant agreement.
+  A normalized frame is only a heap-view device, not an alternative executor.
+- The same boot Bool proves the initial site. Allocation, field writes, name reservation,
+  method publication, and fresh class creation preserve it. Fresh constants become visible
+  consistently rather than preserving their old absence. These facts are not inferred from
+  first-order value framing or from the callee's current receiver.
+- A component countermodel installs builtin x: full Framed and MainReady survive, but bare
+  absence fails and an actual call returns false. This does not claim an old full-StateOk
+  counterexample. A positive real fresh-class entry retains the main site in full StateOk.
+- `instance_pop_main_state` restores the entire caller state from the checked body's state,
+  saved frame/fields, and retained site. `checked_instance_call_from_main` composes the
+  installed-code lookup, annotated binding/body, and real frameK return into a full RunSpec;
+  it no longer stops at the body boundary. Ordinary receiver payload remains an explicit
+  constructor obligation. Non-main callers, class exit/publication, constructor integration,
+  and class/body certificate rules remain. No new syntactic rule or admission.
+- New modules compile below a second, standard axioms only. Full quiet ratchet GREEN:
+  fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
+  252 agree / 0 disagree.
