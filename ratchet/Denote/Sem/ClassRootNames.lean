@@ -12,10 +12,7 @@ theorem rootNames {h : Heap} {name : String} {e : ObjId}
     (hc : RootNames h) (hl : ConstRefsLive h)
     (ho : (h.classPayload? Boot.objectId).isSome = true)
     (hn : constOwn h Boot.objectId name = none) :
-    RootNames (freshClsHeap h Boot.objectId name name e) := by
-  refine ⟨fun cn k hk => named (lt_size_of_classPayload ho) hn (hc.named cn k hk), ?_⟩
-  intro cn k hk hr
-  exact hc.only cn k (named_old_back ho (hc.live hl hr) hk) hr
+    RootNames (freshClsHeap h Boot.objectId name name e) := Subclass.rootNames hc hl ho hn
 
 theorem named_chain {h : Heap} {name : String} {e : ObjId}
     (hc : ClassReady h) (hs : Proof.Saturated h) (hr : RootNames h)

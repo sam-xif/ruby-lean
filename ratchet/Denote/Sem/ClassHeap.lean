@@ -2,6 +2,7 @@ import Denote.Sem.Framed
 import Denote.Sem.DataPres
 import Denote.Sem.SubclassReady
 import Denote.Sem.SubclassData
+import Denote.Sem.SubclassNames
 import RubyCore.Proof.Judgment.ClsFresh
 
 /-! Old data across a fresh top-level class declaration. The constant table changes and
@@ -21,25 +22,13 @@ theorem fields {o : ObjId} (ho : o < h.objs.size) :
   Subclass.fields ho
 
 theorem classPayload_live {k : ObjId} (hk : (h.classPayload? k).isSome = true) :
-    ((h₁).classPayload? k).isSome = true := by
-  have hl := lt_size_of_classPayload hk
-  unfold Heap.classPayload?
-  rw [Proof.Judgment.freshClsHeap_get_old hl]
-  exact (Proof.classPayload?_isSome_constSetIn h Boot.objectId k name _).trans hk
+    ((h₁).classPayload? k).isSome = true := Subclass.classPayload_live hk
 
 theorem classPayload_old_isSome {k : ObjId} (hk : k < h.objs.size) :
-    ((h₁).classPayload? k).isSome = (h.classPayload? k).isSome := by
-  unfold Heap.classPayload?
-  rw [Proof.Judgment.freshClsHeap_get_old hk]
-  exact Proof.classPayload?_isSome_constSetIn h Boot.objectId k name _
+    ((h₁).classPayload? k).isSome = (h.classPayload? k).isSome := Subclass.classPayload_old_isSome hk
 
 theorem get_old_nonclass {o : ObjId} (ho : o < h.objs.size)
-    (hp : h.classPayload? o = none) : (h₁).get o = h.get o := by
-  rw [Proof.Judgment.freshClsHeap_get_old ho]
-  by_cases he : o = Boot.objectId
-  · subst o
-    simp only [Proof.Judgment.hmidOf, constSetIn, hp]
-  · exact Proof.Static.get_constSetIn_ne h Boot.objectId o name _ he
+    (hp : h.classPayload? o = none) : (h₁).get o = h.get o := Subclass.get_old_nonclass ho hp
 
 theorem payload_nonclass {o : ObjId} (ho : o < h.objs.size)
     (hp : h.classPayload? o = none) : ((h₁).get o).payload = (h.get o).payload := by
@@ -47,20 +36,7 @@ theorem payload_nonclass {o : ObjId} (ho : o < h.objs.size)
 
 /-- No non-class object is created or changed, including beyond the heap's end. -/
 theorem get_nonclass {o : ObjId} (hp : (h₁).classPayload? o = none) :
-    (h₁).get o = h.get o := by
-  by_cases hl : o < h.objs.size
-  · have hp₀ : h.classPayload? o = none := by
-      have hh := classPayload_old_isSome (name := name) (e := e) hl
-      rw [hp] at hh
-      cases hx : h.classPayload? o <;> simp_all
-    exact get_old_nonclass hl hp₀
-  · by_cases hk : o = h.objs.size
-    · subst o; rw [Proof.Judgment.freshClsHeap_cp_k] at hp; contradiction
-    · by_cases he' : o = h.objs.size + 1
-      · subst o; rw [Proof.Judgment.freshClsHeap_cp_e] at hp; contradiction
-      · have hout := Nat.le_of_not_lt (Proof.Judgment.not_lt_add_two hl hk he')
-        rw [get_oob h (Nat.le_of_not_lt hl),
-          get_oob _ (by rw [Proof.Judgment.freshClsHeap_size]; exact hout)]
+    (h₁).get o = h.get o := Subclass.get_nonclass hp
 
 theorem array {v : Value} {xs : Array Value} (hv : arrElems? h v = some xs) :
     arrElems? h₁ v = some xs := by
@@ -241,17 +217,9 @@ theorem ClassReady.freshClass {h : Heap} {d : ObjId} {name q : String} {e : ObjI
 /-- The newly registered name denotes the allocated class, not its eigenclass. -/
 theorem classNamed_freshClass {h : Heap} {name : String} {e : ObjId}
     (hc : (h.classPayload? Boot.objectId).isSome = true)
-    (ho : Boot.objectId < h.objs.size) :
-    classNamed? (freshClsHeap h Boot.objectId name name e) name = some h.objs.size := by
-  have hn : constOwn (freshClsHeap h Boot.objectId name name e) Boot.objectId name =
-      some (.ref h.objs.size) := by
-    rw [Proof.Judgment.constOwn_old_freshC ho ho]
-    exact Proof.Judgment.constOwn_constSetIn_self hc ho
-  have hl : constLookup (freshClsHeap h Boot.objectId name name e) name =
-      some (.ref h.objs.size) := by
-    cases hp : (freshClsHeap h Boot.objectId name name e).classPayload? Boot.objectId <;>
-      simpa only [constLookup, constOwn, hp, Option.bind] using hn
-  simp only [classNamed?, hl, Proof.Judgment.freshClsHeap_cp_k, Option.isSome_some, ite_true]
+    (_ho : Boot.objectId < h.objs.size) :
+    classNamed? (freshClsHeap h Boot.objectId name name e) name = some h.objs.size :=
+  Subclass.named_fresh hc
 
 /-- Restore frame balance separately: this is the heap half of class publication. -/
 theorem Framed.of_freshClass {κ : Ctx} {Γ : Env} {I : Ty} {m n : Machine}

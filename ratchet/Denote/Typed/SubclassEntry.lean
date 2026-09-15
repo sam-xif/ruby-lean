@@ -1,5 +1,7 @@
 import Denote.Sem.SubclassHeap
 import Denote.Sem.MetaReadyClass
+import Denote.Sem.SubclassCore
+import Denote.Sem.SubclassMethods
 import Denote.Sem.ClassNative
 import Denote.Typed.ClassEntry
 
@@ -177,6 +179,35 @@ theorem enter_declared_queries {κ : Ratchet.Ctx} {Γ : Ratchet.Env} {I : Ratche
     (by simpa only [howner] using hf) (by simpa only [howner] using hch.boot.2.2.2.2) hl he
     (by simp only [howner, beq_self_eq_true, ite_true]) hn
 
+/-- Actual top-level registration preserves core/payload and installed-code conformance,
+and publishes a unique fresh name. This does not check or execute the new class body. -/
+theorem enter_declared_core {κ : Ratchet.Ctx} {Γ : Ratchet.Env} {I : Ratchet.Ty}
+    {m : Machine} {c : Ratchet.Cls} {parent : ObjId} {name : String} {body : RubyCore.Expr}
+    (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
+    (hc : c ∈ κ.classes) (hp : classNamed? m.heap c.name = some parent)
+    (hf : constOwn m.heap Boot.objectId name = none) (hn : name.isEmpty = false) :
+    ∃ n, enterClassBody m name false (some parent) body = .next n ∧
+      CoreOk n.heap ∧ StringPayloadOk n.heap ∧ ArrayPayloadOk n.heap ∧ HashPayloadOk n.heap ∧
+      ClassesOk κ.classes n ∧ DefsOk κ.defs n ∧ MethodsExact κ n ∧
+      classNamed? n.heap name = some m.heap.objs.size ∧
+      (∀ cn, classNamed? n.heap cn = some m.heap.objs.size → cn = name) := by
+  obtain ⟨ep, he, _, _⟩ := hm.classSites.metaclass hc hp
+  have hl := hm.core.classReady.constRefs c.name parent (classNamed_constOwn hp)
+  have hch := hm.core.classReady.chains
+  have hep := hch.eigen parent hl ep he
+  have ho := hch.boot.2.2.2.2
+  have howner := (hm.runtime hr).owner
+  refine ⟨machine m Boot.objectId m.currentFrame.cref name name parent ep body, ?_,
+    core hm.core hm.sat (hm.runtime hr).classLive hf hl hep,
+    stringPayload hch hm.stringPayload, arrayPayload hm.arrayPayload,
+    hashPayload hm.hashPayload, classes ho hf rfl hm.classes, defs rfl hm.defs,
+    methodsExact rfl hm.exact, named_fresh (hm.runtime hr).classLive,
+    fun _ hk => named_fresh_only hm.core.classReady.constRefs ho hk⟩
+  simpa only [howner] using enter_fresh (m := m) (q := name) (body := body)
+    (by simpa only [howner] using hf) (by simpa only [howner] using ho) hl he
+    (by simp only [howner, beq_self_eq_true, ite_true]) hn
+
+#print axioms enter_declared_core
 #print axioms enter_fresh
 #print axioms step_resolved
 #print axioms enter_fresh_ready

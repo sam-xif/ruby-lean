@@ -10232,3 +10232,27 @@ both halves of what constrains them now have a name.
 - New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
   fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 158 (2026-09-15) — shared subclass identity, core and installed-code preservation
+
+- SubclassNames preserves old names/root bindings and proves the freshly registered
+  identity. Reverse old-name transport requires an old id; fresh-name uniqueness consumes
+  ConstRefsLive. Runtime display name remains independent of the global registration key.
+- SubclassCore preserves CoreOk and String/Array/Hash payload contracts. SubclassMethods
+  preserves exact own method lists/code, ClassesOk, DefsOk and MethodsExact; fresh empty
+  tables agree with the formerly out-of-bounds lists. This publishes no future body and
+  does not imply absence of inherited initialize. Default-superclass lemmas delegate to
+  these generic proofs, including non-class reads and name identity.
+- `enter_declared_core` derives parent/metaclass liveness from incoming StateOk and
+  composes actual entry with these components and unique fresh identity. All production
+  statements quantify over classes/parents/bodies; no Point-specific proof is introduced.
+- Controls retain Relay's alias, ordinary method metadata and heap payloads, then execute
+  inherited initialization/getter calls for two fresh class names. Zero-argument new still
+  raises ArgumentError despite the child's empty own table. A synthetic dangling alias
+  becomes live at actual subclass entry, retaining the need for ConstRefsLive.
+- Full builtin-base/declaration/scope transport and inherited initializer/body-cache
+  checking remain ahead of 065. Complete annotation-domain body proofs, including uncalled
+  methods, remain mandatory; no checker acceptance, rule or floor changes.
+- New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
+  fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
+  252 agree / 0 disagree.

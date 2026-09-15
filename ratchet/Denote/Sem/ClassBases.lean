@@ -1,4 +1,5 @@
 import Denote.Sem.ClassHeap
+import Denote.Sem.SubclassNames
 
 /-! Fresh default-superclass declarations preserve builtin ancestry answers. The new
 metaclass inherits Object's eigenclass, whose identity must be separate from the bases. -/
@@ -14,24 +15,7 @@ local notation "h₁" => freshClsHeap h Boot.objectId name name e
 Names that held dangling references may acquire a new meaning, but only at a fresh id. -/
 theorem named_old_back (ho : (h.classPayload? Boot.objectId).isSome = true)
     {cn : String} {j : ObjId} (hj : j < h.objs.size) (hk : classNamed? h₁ cn = some j) :
-    classNamed? h cn = some j := by
-  have hol := lt_size_of_classPayload ho
-  by_cases hcn : cn = name
-  · subst cn
-    rw [classNamed_freshClass ho hol] at hk
-    exact False.elim ((Nat.ne_of_lt hj) (Option.some.inj hk).symm)
-  · unfold classNamed? at hk ⊢
-    rw [const_other hol hcn] at hk
-    split at hk
-    · rename_i o hl
-      split at hk
-      · rename_i hp
-        cases hk
-        have hp₀ : (h.classPayload? j).isSome = true := by
-          rw [← classPayload_old_isSome (name := name) (e := e) hj]; exact hp
-        simp only [hp₀, ite_true]
-      · cases hk
-    · cases hk
+    classNamed? h cn = some j := Subclass.named_old_back ho hj hk
 
 variable {κ : Ctx} {m n : Machine}
 

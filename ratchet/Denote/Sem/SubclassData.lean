@@ -8,8 +8,8 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Subclass
 open RubyCore Ratchet RubyCore.Proof RubyCore.Proof.Judgment
 
-variable {h : Heap} {name : String} {parent eParent : ObjId}
-local notation "h₁" => heap h Boot.objectId name name parent eParent
+variable {h : Heap} {name q : String} {parent eParent : ObjId}
+local notation "h₁" => heap h Boot.objectId name q parent eParent
 
 theorem classPayload_live {k : ObjId} (hk : (h.classPayload? k).isSome = true) :
     ((h₁).classPayload? k).isSome = true := by
@@ -24,7 +24,22 @@ theorem get_old_nonclass {o : ObjId} (ho : o < h.objs.size)
   · subst o; simp only [hmidOf, constSetIn, hp]
   · exact Static.get_constSetIn_ne h Boot.objectId o name _ he
 
-private theorem const_eq_own (g : Heap) (cn : String) :
+theorem get_nonclass {o : ObjId} (hp : (h₁).classPayload? o = none) : (h₁).get o = h.get o := by
+  by_cases hl : o < h.objs.size
+  · have hp₀ : h.classPayload? o = none := by
+      have hh := classPayload_old_isSome (d := Boot.objectId) (name := name) (q := q)
+        (parent := parent) (eParent := eParent) hl
+      rw [hp] at hh
+      cases he : h.classPayload? o <;> simp_all
+    exact get_old_nonclass hl hp₀
+  · by_cases hk : o = h.objs.size
+    · subst o; simp only [Heap.classPayload?, get_class, classObjE] at hp; contradiction
+    · by_cases he : o = h.objs.size + 1
+      · subst o; simp only [Heap.classPayload?, get_eigen, eigObjC] at hp; contradiction
+      · have hout := Nat.le_of_not_lt (not_lt_add_two hl hk he)
+        rw [get_oob h (Nat.le_of_not_lt hl), get_oob _ (by rw [size]; exact hout)]
+
+theorem const_eq_own (g : Heap) (cn : String) :
     constLookup g cn = constOwn g Boot.objectId cn := by
   cases hp : g.classPayload? Boot.objectId <;> simp [constLookup, constOwn, hp]
 
