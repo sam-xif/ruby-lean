@@ -1,5 +1,6 @@
 import Ratchet.MemberFrame
 import Ratchet.NativeGuards
+import Ratchet.CallWorld
 
 /-! Pure constructor-rule guards. Their semantic interpretation lives in Denote. -/
 namespace Ratchet
@@ -31,5 +32,16 @@ def mainCallB (κ : Ctx) (Γ : Env) (I : Ty) : Bool :=
   reframeTypesB κ I && localTypesB Γ &&
     decide (κ.asms = [] ∧ κ.scope.runtimeMain = true ∧ κ.pos.mainWorld = true ∧
       κ.scope.runtimeClass = none ∧ κ.consts = [])
+
+/-- Ordinary instance dispatch can return to either supported caller world. -/
+def instanceCallB (κ : Ctx) (Γ : Env) (I : Ty) : Bool :=
+  reframeTypesB κ I && localTypesB Γ && callWorldB κ &&
+    decide (κ.asms = [] ∧ κ.consts = [])
+
+theorem instanceCallB_of_mainCallB {κ : Ctx} {Γ : Env} {I : Ty}
+    (h : mainCallB κ Γ I = true) : instanceCallB κ Γ I = true := by
+  simp only [mainCallB, Bool.and_eq_true, decide_eq_true_eq] at h
+  obtain ⟨⟨ht, hΓ⟩, ha, hr, hw, hc, hco⟩ := h
+  simp [instanceCallB, ht, hΓ, callWorldB, hr, hw, hc, ha, hco]
 
 end Ratchet

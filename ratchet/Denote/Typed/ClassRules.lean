@@ -1,7 +1,7 @@
 import Denote.Typed.ClassHeaderRun
 import Denote.Typed.MemberDefine
 import Denote.Typed.ConstructorExpr
-import Denote.Typed.InstanceExpr
+import Denote.Typed.InstanceImplicit
 import Denote.Sem.ClassGuards
 import Denote.Sem.NativeGuards
 
@@ -90,19 +90,35 @@ theorem SemSafeCtxA.callMethodSig {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb : E
     (hret : FirstOrder τ = true) (hself : FirstOrder Ib = true)
     (hb : SemSafeCtxA (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name⟩ Ib) ps Ib d.body τ
       (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name⟩ Ib) Γb Ib)
-    (hg : mainCallB κ₂ Γ₂ I₂ = true) :
+    (hg : instanceCallB κ₂ Γ₂ I₂ = true) :
     SemSafeCtxA κ Γ I (.send (some recv) d.name args none) τ κ₂ Γ₂ I₂ := by
-  simp only [mainCallB, Bool.and_eq_true, decide_eq_true_eq] at hg
-  obtain ⟨⟨ht, hΓ⟩, hasms, hmain, hw, hcl, hco⟩ := hg
-  exact hr.instanceCall ha (explicitReceiverB_sound hs) hc hd hn (directCallNameB_sound hname)
-    hp hps hret hself hb (reframeTypesB_sound ht) hasms hmain hw hcl
+  simp only [instanceCallB, Bool.and_eq_true, decide_eq_true_eq] at hg
+  obtain ⟨⟨⟨ht, hΓ⟩, hw⟩, hasms, hco⟩ := hg
+  exact hr.instanceCall_at ha (explicitReceiverB_sound hs) hc hd hn (directCallNameB_sound hname)
+    hp hps hret hself hb (reframeTypesB_sound ht) hasms (callWorldB_sound hw)
     (fun x => (constGet?_empty (κ := instanceBodyCtx κ₂ ⟨c.name, c.name, d.name⟩ Ib) hco x).trans
       (constGet?_empty hco x).symm)
     (List.all_eq_true.mp hΓ)
+
+theorem SemSafeCtxA.vcallMethodSig {κ : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {c : Cls} {d : Defn}
+    (hs : κ.selfTy = some (.inst c.name Ib)) (hc : c ∈ κ.classes) (hd : d ∈ c.methods)
+    (hn : d.name ≠ "initialize") (hname : directCallNameB d.name = true) (hp : d.params = [])
+    (hret : FirstOrder τ = true) (hself : FirstOrder Ib = true)
+    (hb : SemSafeCtxA (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) [] Ib d.body τ
+      (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) Γb Ib)
+    (hg : instanceCallB κ Γ I = true) :
+    SemSafeCtxA κ Γ I (.vcall d.name) τ κ Γ I := by
+  simp only [instanceCallB, Bool.and_eq_true, decide_eq_true_eq] at hg
+  obtain ⟨⟨⟨ht, hΓ⟩, hw⟩, hasms, hco⟩ := hg
+  exact SemSafeCtxA.instanceVcall hs hc hd hn (directCallNameB_sound hname) hp hret hself hb
+    (reframeTypesB_sound ht) hasms (callWorldB_sound hw)
+    (fun x => (constGet?_empty (κ := instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) hco x).trans
+      (constGet?_empty hco x).symm) (List.all_eq_true.mp hΓ)
 
 #print axioms SemSafeCtxA.classDecl
 #print axioms SemSafeCtxA.memberDef
 #print axioms SemSafeCtxA.initDef
 #print axioms SemSafeCtxA.newInst
 #print axioms SemSafeCtxA.callMethodSig
+#print axioms SemSafeCtxA.vcallMethodSig
 end Ratchet.Denote.Typed

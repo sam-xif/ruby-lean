@@ -17,7 +17,7 @@ import Denote.Clink.Form
 /-! The registry carries ordinary expressions/lists and scoped recursive bodies/arguments.
 Every constructor registers only with a proof of its constructor-derived semantic form.
 `ruleForm` replaces all eight judgment heads with family projections; a premise reaching
-an uncarried judgment is refused before registration. All 44 constructors are proved.
+an uncarried judgment is refused before registration. All 45 constructors are proved.
 `DJudgeC` is their Church encoding, with unconditional semantic and safety interpretations. -/
 
 set_option autoImplicit false
@@ -348,7 +348,7 @@ def dCompanionRules : List String :=
 #guard dclinks.length == dRegisteredRules.length
 
 -- Twenty-six expression rules and eighteen companions; an unproved rule fails the gate.
-#guard dRegisteredRules.length == 44
+#guard dRegisteredRules.length == 45
 #guard dUnregisteredRules == []
 
 -- Every judgment premise is represented in the semantic family.

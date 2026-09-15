@@ -10002,3 +10002,29 @@ both halves of what constrains them now have a name.
 - New proofs build in about a second, standard axioms only. Full quiet ratchet GREEN:
   fragment 61, checker reach 63, 44 proved rules, 0 owed/exempt, 47 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 148 (2026-09-14) — annotation-checked method-to-method calls, 064 admitted
+
+- `instanceCallB` packages the generic caller-world guard; a pure implication retains every
+  former main-call case. The existing explicit method rule now uses it. Constructor calls
+  still need the main-only rule; ordinary return framing does not justify initialization.
+- `vcallMethodSig` carries the entire zero-parameter annotated body through DFam/Clink/Bridge.
+  Ruby's bare `area` is its actual vcall site, not an implicit-send AST rewrite or a missing-
+  name exemption. The checker requires empty certificate arguments, a zero-parameter cached
+  signature, exact receiver fields/context, actual owner/code membership and checked return.
+  No cache layout change or call-site body inference was needed.
+- Definition-time refresh already supplies predecessor bodies under the enlarged table.
+  This now admits nested members while continuing to reject invalidated uncalled bodies.
+  Controls vary class names and Integer/Boolean/nullable/array annotations, reject wrong
+  returns/arity/hints, retain two owners' independent signatures, and restore an Integer
+  caller field after a different class's Boolean-returning call.
+- The emitted 064 certificate validates at String. `RectDerivations` independently builds
+  the whole class/new/describe derivation from registered constructors, checking area from
+  its Integer fields and describe by consuming that full body proof. The proof-term audit
+  sees the new rule in both definition and final call contexts; actual execution returns
+  `"area=12"`. Rect is a worked instance, not a production-rule premise.
+- Floors ascend: fragment 61→62, checker reach 63→64, rules 44→45, worked proofs 47→48.
+  065 inheritance is next; the still-unregistered parenthesized implicit/self-read forms
+  are not silently accepted by the broader runtime proof.
+- Full quiet ratchet GREEN: all 45 rules exercised, 0 owed/exempt, 48 worked programs
+  cross-checked, 252 agree / 0 disagree. New proofs use only standard axioms.

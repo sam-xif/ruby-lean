@@ -2,6 +2,7 @@ import Denote.Typed.Derivations
 import Denote.Typed.MethodDerivations
 import Denote.Typed.RecursiveDerivations
 import Denote.Typed.ClassDerivations
+import Denote.Typed.RectDerivations
 
 /-! Concrete corpus programs and their derivations. `SemLadder` compares each program
 against the current stripped corpus; `RuleAudit` reads the clinks from these proofs. -/
@@ -336,14 +337,15 @@ def safeRungs : List (String × Ratchet.Expr) :=
    ("051-hash-index", program_051_hash_index),
    ("052-simple-fun", program_052_simple_fun),
    ("060-fun-recursive-factorial", program_060_fun_recursive_factorial),
-   ("061-class-basic", program_061_class_basic)]
+   ("061-class-basic", program_061_class_basic),
+   ("064-class-method-calls-method", program_064_class_method_calls_method)]
 
 theorem safeRungs_safe (hb : bootOkB = true) :
     ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
   intro q hq
   simp only [safeRungs, List.mem_cons, List.not_mem_nil, or_false] at hq
   rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
-    | rfl
+    | rfl | rfl
   · exact safe_001_int_lit hb
   · exact safe_002_bool_true hb
   · exact safe_003_bool_false hb
@@ -391,6 +393,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   · exact safe_052_simple_fun hb
   · exact safe_060_fun_recursive_factorial hb
   · exact safe_061_class_basic hb
+  · exact safe_064_class_method_calls_method hb
 
 #print axioms safeRungs_safe
 end Ratchet.Denote.Typed

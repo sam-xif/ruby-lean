@@ -126,6 +126,7 @@ def rulesUsed : Ratchet.Expr → List String
   | .fls => ["flsLit"]
   | .nil => ["nilLit"]
   | .vcall "x" => ["bareName"]
+  | .vcall _ => ["vcallMethodSig"]
   | .var .lvar _ => ["var"]
   | .var .ivar _ => ["ivarRead"]
   | .const _ => ["constClass"]

@@ -12,9 +12,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 61 rungs, reach 17**, **44 registered rules** (26 expressions + 18 companions),
-**0 owed**, **0 exempt**. Checker reach is 63; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 47 rungs additionally carry a
+**Fragment 62 rungs, reach 17**, **45 registered rules** (27 expressions + 18 companions),
+**0 owed**, **0 exempt**. Checker reach is 64; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 48 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -339,8 +339,8 @@ class constants, ivar reads, construction, and explicit instance calls, with ful
 premises. Both initializer families cross DFam through `InitBridge`; the semantic initializer
 lemma uses that same registry. `ClassDerivations` supplies an independently proof-audited
 whole 061 class/new/getX derivation, with bodies checked at definition and final call contexts.
-All 44 registered rules are exercised, with no exemptions. The executable checker now
-admits 061–063, 068, 071 and 072. `BodyCache` packages top-level/member/initializer artifacts;
+All registered rules are exercised, with no exemptions. The executable checker now
+admits 061–064, 068, 071 and 072. `BodyCache` packages top-level/member/initializer artifacts;
 `check` consumes the registered rules and preserves caches through evaluation. Initializers
 are checked from their annotated parameters and fresh empty fields, then supply the receiver
 field invariant for ordinary bodies. Member updates recheck every old class body; class exit
@@ -354,8 +354,14 @@ derives retained class identity from the existing first-order contract; no new s
 `CallWorld` reads the existing scope/self/table data. Generic calls cover every send site,
 and `InstanceImplicit` composes implicit and bare calls with the full annotated body proof.
 Controls exercise Alpha→Beta with Integer/Boolean fields and all three self-call forms.
-The next frontier remains 064: these semantic interfaces still need registry/checker
-integration; the executable call rules retain their main-only guards until then.
+`instanceCallB` now admits main or instance callers for explicit method calls, while the
+registered `vcallMethodSig` handles bare zero-argument calls with a full body premise.
+The checker consumes exact-context cached proofs, never signatures alone. 064 now validates
+at String and evaluates to `"area=12"`; `RectDerivations` supplies its independently audited
+whole-program derivation. `MemberCallControls` covers nested calls, cross-class return,
+uncalled bad annotations, wrong arity/hints and invalidation through later definitions.
+Next frontier: 065's inherited fields. Parenthesized implicit calls and explicit self reads
+still need their own judgment/checker integration; their semantic interfaces are ready.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -379,6 +385,7 @@ String membership needs a payload invariant. See
 | `Ratchet/DJudge.lean`, `InitJudge.lean`, `Check.lean`, `DerivControls.lean` | Eight judgment families, derivation-returning checker, and negative controls |
 | `Ratchet/Check.lean`, `MethodControls.lean`, `Denote/Typed/MethodChecked.lean` | Cached annotation/body proofs, end-to-end controls, and the method-entry contract |
 | `Ratchet/BodyCache.lean`, `ClassCheckControls.lean` | Owner-indexed checked bodies, exact lookup/branch annotations, and whole-class definition/call controls |
+| `Ratchet/MemberCallControls.lean`, `Denote/Typed/RectDerivations.lean` | Cached annotation-checked method-to-method calls, negative controls, and independently audited whole 064 |
 | `Denote/Typed/JudgeA.lean` | Semantic judgment, continuation typing, literal/local rules |
 | `Denote/Typed/Sequence.lean`, `Branch*.lean`, `BareName.lean` | Sequence, conditional, and bare-name obligations |
 | `Denote/Typed/Array.lean` | First-order array evaluation, retention, and allocation |
@@ -442,7 +449,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/HashIndex.lean` | Hash dispatch, lookup, nil defaults, and default-value counterexample |
 | `Denote/Typed/Primitive*.lean` | Primitive dispatch, allocation, argument composition, regression controls |
 | `Denote/Sem/PrimHeap.lean`, `Denote/JoinState.lean` | Primitive heap invariants and sound binding joins |
-| `Denote/Typed/Derivations.lean`, `ClassDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 47 concrete safety proofs |
+| `Denote/Typed/Derivations.lean`, `ClassDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 48 concrete safety proofs |
 | `Denote/Typed/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Typed/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |
 | `Denote/Sanity.lean` | Executable boot conformance gate and its kernel soundness theorem |

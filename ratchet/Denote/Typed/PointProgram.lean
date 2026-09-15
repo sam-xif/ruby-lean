@@ -17,7 +17,7 @@ theorem get_sem {Γ : Env} {I : Ty} (hI : FirstOrder I = true)
     .nil rfl
     (by change classWithMethod initClass getter ∈ [classWithMethod initClass getter, initClass, header]; simp)
     (by change getter ∈ [getter, initDecl]; simp) (by decide)
-    (by decide) rfl (by simp) rfl (by decide) getter_body (main_guard hI hΓ)
+    (by decide) rfl (by simp) rfl (by decide) getter_body (instanceCallB_of_mainCallB (main_guard hI hΓ))
 
 theorem full_run {Γ : Env} {I : Ty} {m : Machine} (hm : StateOk ctx0 Γ I m)
     (hI : FirstOrder I = true) (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (x y : Int) :

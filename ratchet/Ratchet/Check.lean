@@ -98,6 +98,30 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
           if hs : κ.selfTy = none then some ⟨.any, Γ, κ, I, .bareName hx hm hs, cache⟩ else none
         else none
       else none
+    | .vcall name, .callSig claimed [] ret => do
+      if name != claimed then none else do
+      match hs : κ.selfTy with
+      | some (.inst cn fields) => do
+        let f ← findClass cn κ.classes
+        let c ← findMember κ f.cls name cache.members
+        if hf : fields = c.fields then do
+        if hp : c.body.params = [] then do
+        if c.body.ret != ret then none else do
+        if hn : c.decl.name ≠ "initialize" then do
+        if hd : directCallNameB c.decl.name = true then do
+        if hg : instanceCallB κ Γ I = true then
+          some ⟨c.body.ret, Γ, κ, I, by
+            simpa only [c.nameOk] using
+              (DJudge.vcallMethodSig (Γ := Γ) (I := I)
+                (by simpa only [f.nameOk, hf] using hs) f.member c.installed hn hd
+                (by simpa only [hp, List.map_nil] using c.body.paramShape)
+                c.body.returnFO c.fieldsFO (by simpa only [hp] using c.body.judged) hg), cache⟩
+        else none
+        else none
+        else none
+        else none
+        else none
+      | _ => none
     | .var .lvar x, .var .lvar x' =>
       if x == x' then
         match hg : envGet? Γ x with
@@ -155,7 +179,7 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
         if hs : explicitReceiverB recv = true then do
         if hn : c.decl.name ≠ "initialize" then do
         if hd : directCallNameB c.decl.name = true then do
-        if hg : mainCallB a.ctx a.out a.spine = true then
+        if hg : instanceCallB a.ctx a.out a.spine = true then
           some ⟨c.body.ret, a.out, a.ctx, a.spine, by
             have hr : DJudge Γ recv (.inst f.cls.name c.fields) r.out κ I r.ctx r.spine := by
               simpa only [hrty, hf, f.nameOk] using r.judged

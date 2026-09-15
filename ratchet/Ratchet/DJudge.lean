@@ -387,7 +387,14 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       FirstOrder τ = true → FirstOrder Ib = true →
       DJudge ps d.body τ Γb (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name⟩ Ib) Ib
         (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name⟩ Ib) Ib →
-      mainCallB κ₂ Γ₂ I₂ = true → DJudge Γ (.send (some recv) d.name args none) τ Γ₂ κ I κ₂ I₂
+      instanceCallB κ₂ Γ₂ I₂ = true → DJudge Γ (.send (some recv) d.name args none) τ Γ₂ κ I κ₂ I₂
+  | vcallMethodSig {κ : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {c : Cls} {d : Defn} :
+      κ.selfTy = some (.inst c.name Ib) → c ∈ κ.classes → d ∈ c.methods →
+      d.name ≠ "initialize" → directCallNameB d.name = true → d.params = [] →
+      FirstOrder τ = true → FirstOrder Ib = true →
+      DJudge [] d.body τ Γb (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) Ib
+        (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) Ib →
+      instanceCallB κ Γ I = true → DJudge Γ (.vcall d.name) τ Γ κ I
 
 inductive DJudgeAll : Env → List Expr → List Ty → Env → (κ : optParam Ctx ctx0) →
     (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop

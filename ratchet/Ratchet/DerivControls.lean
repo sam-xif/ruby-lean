@@ -3,6 +3,7 @@ import Ratchet.MethodCheck
 import Ratchet.MethodControls
 import Ratchet.InitCheckControls
 import Ratchet.ClassCheckControls
+import Ratchet.MemberCallControls
 
 /-!
 Negative controls for `validateD`.
