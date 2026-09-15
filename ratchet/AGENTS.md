@@ -12,9 +12,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 55 rungs, reach 17**, **31 registered rules** (19 expressions + 12 companions),
+**Fragment 55 rungs, reach 17**, **44 registered rules** (26 expressions + 18 companions),
 **0 owed**, **0 exempt**. Checker reach is 60; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 46 rungs additionally carry a
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 47 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -37,10 +37,11 @@ coverage gaps. [`MainTyped.lean`](MainTyped.lean) reports checker reach;
 ## The proof boundary
 
 [`Ratchet/DJudge.lean`](Ratchet/DJudge.lean) defines `DJudge`, its three list companions,
-`DJudgeRec`/`DJudgeRecAll`, and sixteen `DPrim` rows. [`Denote/Typed/Clink.lean`](Denote/Typed/Clink.lean) derives each
-constructor's semantic obligation and registers only proved rules. **All six judgments
-are fields of `DFam`**: no raw syntactic premise may bypass the registry — which is also what
-lets `djudge_certified` be a mutual induction over all six (§F31 was the prerequisite).
+`DJudgeRec`/`DJudgeRecAll`, and sixteen `DPrim` rows; `InitJudge.lean` supplies the scoped
+initializer pair. [`Denote/Typed/Clink.lean`](Denote/Typed/Clink.lean) derives each constructor's
+semantic obligation and registers only proved rules. **All eight judgments are fields of
+`DFam`**: no raw syntactic premise may bypass the registry. `djudge_certified` uses the six-family
+mutual recursor and the initializer pair's independent registry bridge.
 
 The bridge deliberately runs *from* the syntactic judgment *to* `DJudgeC`, rather than the
 checker returning a `DJudgeC` derivation: `Ratchet/` stays ignorant of `Denote/`, and
@@ -333,8 +334,13 @@ class/member/initializer/new/instance-call semantic forms with pure side-conditi
 `NativeGuards` copies only the relevant CRuby metadata and proves its coverage against the
 model, retaining Ratchet's import isolation; unsupported query names decline. The frame guard
 admits multiple unqualified class records, exercised by two sequential class definitions.
-Point and FlagBox use the new forms. The initializer families are not yet DJudge premises:
-registry and class/cache integration remain; no new whole-program acceptance is claimed.
+Point and FlagBox use the new forms. DJudge now admits class/member/initializer definitions,
+class constants, ivar reads, construction, and explicit instance calls, with full body
+premises. Both initializer families cross DFam through `InitBridge`; the semantic initializer
+lemma uses that same registry. `ClassDerivations` supplies an independently proof-audited
+whole 061 class/new/getX derivation, with bodies checked at definition and final call contexts.
+All 44 registered rules are exercised, with no exemptions. Class/cache integration in the
+executable checker remains: 061 still does not validate, and fragment/reach are unchanged.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -355,7 +361,7 @@ String membership needs a payload invariant. See
 |---|---|
 | `Ratchet/Ty.lean`, `Expr.lean`, `Deriv.lean` | Types, syntax, and certificate data |
 | `Ratchet/CtxEq.lean` | Sound conservative syntax/context comparison for branch compatibility |
-| `Ratchet/DJudge.lean`, `Check.lean`, `DerivControls.lean` | Six-family judgment, derivation-returning checker, and negative controls |
+| `Ratchet/DJudge.lean`, `InitJudge.lean`, `Check.lean`, `DerivControls.lean` | Eight judgment families, derivation-returning checker, and negative controls |
 | `Ratchet/Check.lean`, `MethodControls.lean`, `Denote/Typed/MethodChecked.lean` | Cached annotation/body proofs, end-to-end controls, and the method-entry contract |
 | `Denote/Typed/JudgeA.lean` | Semantic judgment, continuation typing, literal/local rules |
 | `Denote/Typed/Sequence.lean`, `Branch*.lean`, `BareName.lean` | Sequence, conditional, and bare-name obligations |
@@ -419,7 +425,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/HashIndex.lean` | Hash dispatch, lookup, nil defaults, and default-value counterexample |
 | `Denote/Typed/Primitive*.lean` | Primitive dispatch, allocation, argument composition, regression controls |
 | `Denote/Sem/PrimHeap.lean`, `Denote/JoinState.lean` | Primitive heap invariants and sound binding joins |
-| `Denote/Typed/Derivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 46 concrete safety proofs |
+| `Denote/Typed/Derivations.lean`, `ClassDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 47 concrete safety proofs |
 | `Denote/Typed/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Typed/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |
 | `Denote/Sanity.lean` | Executable boot conformance gate and its kernel soundness theorem |

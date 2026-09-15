@@ -50,13 +50,13 @@ open Lean (Json)
 prelude-booted machine (`Denote/Typed/Safety.lean`). This is the number the ladder exists to
 grow: `StuckFree bootMachine <program>`, at every fuel, with every hypothesis discharged. A
 drop means a theorem was deleted. -/
-def safeRungFloor : Nat := 46
+def safeRungFloor : Nat := 47
 
 /-- The recorded size of the registry. **A clink once registered never unregisters**
 (`ratchet/AGENTS.md`), and this number is sound to ratchet on: a clink cannot be registered
 without its proof, so the count is a count of proofs. Raise it when the registry grows; a
 drop means a proof was deleted or broken. -/
-def clinkFloor : Nat := 31
+def clinkFloor : Nat := 44
 
 /-- The recorded size of **the certified fragment**: corpus rungs `validateD` accepts, each
 safe by `validateD_safe_boot` (`Denote/Typed/Bridge.lean`). This is the number the ladder

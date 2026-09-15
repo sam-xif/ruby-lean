@@ -1,6 +1,7 @@
 import Ratchet.MethodCheck
 import Denote.Typed.Bridge
 import Denote.Typed.MethodState
+import Denote.Typed.InstanceReturn
 
 /-! The checked body artifact carries its declared signature through the registry into the
 real method boundary. No call-site body inference or signature-as-proof assumption. -/
@@ -39,6 +40,20 @@ theorem checked_method_runSpec {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
   required_method_runSpec hm ht ha hkont (hp.trans (checked_body_rubyParams c)) hcap hdecl hbody
     hlen hargs c.paramsFO c.returnFO hΓ hscope hk hframe (checked_body_context c)
 
+/-- Checked specialization lives above the bridge; generic return lemmas remain below it. -/
+theorem checked_body_pop_fields {κ κb : Ctx} {Γ : Env} {I Ib : Ty} {m n : Machine}
+    {f : RubyCore.Frame} {decl : Defn} {fuel rest : Nat} {v : Value}
+    (body : CheckedBody κb Ib decl) (hm : StateOk κ Γ I m)
+    (ht : FirstOrder I = true) (hl : SelfLive m) (hc : f.captured = none)
+    (he : StateOk κb body.params Ib (pushMethodFrame m f))
+    (hr : runA fuel (evalFrom (pushMethodFrame m f) decl.body) = .ans (.val v) n rest) :
+    denM body.ret (popMethodFrame n) v ∧
+      SelfSpineOk I (popMethodFrame n) κ.scope.closedIvars := by
+  have result := (checked_body_context body _ he).2 fuel (.val v) n rest hr
+  exact ⟨(denM_heap_only (m₁ := n) (m₂ := popMethodFrame n) body.returnFO rfl).mp result.2.1,
+    method_pop_selfSpine hm ht hl hc result.1⟩
+
 #print axioms checked_body_context
+#print axioms checked_body_pop_fields
 #print axioms checked_method_runSpec
 end Ratchet.Denote.Typed

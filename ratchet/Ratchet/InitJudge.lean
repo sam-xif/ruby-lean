@@ -1,7 +1,7 @@
 import Ratchet.WriteTypes
 
 /-! Scoped initializer derivations: the fresh receiver's field shape may change. This is
-not an ordinary DJudge premise yet; registry integration must carry both new families.
+distinct from ordinary preservation; the registry carries both initializer families.
 No class, annotation, arity, or field name is fixed by these rules. -/
 set_option autoImplicit false
 namespace Ratchet

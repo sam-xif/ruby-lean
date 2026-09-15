@@ -1,4 +1,5 @@
 import Denote.Typed.ClassRun
+import Denote.Typed.Bridge
 import Denote.Sanity
 
 /-! Scope-only restoration retains executed declarations/reservations. The complete class

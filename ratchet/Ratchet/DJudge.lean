@@ -1,6 +1,8 @@
 import Ratchet.Deriv
 import Ratchet.CtxEq
 import Ratchet.MethodCtx
+import Ratchet.InitJudge
+import Ratchet.ClassGuards
 
 /-!
 # `Ratchet/DJudge.lean` — the answer-typed judgment
@@ -337,6 +339,55 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       plainArgB s.decl.body = true →
       DJudgeRec κ I s s.params s.decl.body s.ret Γb →
       DJudge s.params s.decl.body s.ret Γb κ I κ I
+
+  | ivarRead {κ : Ctx} {Γ : Env} {I : Ty} {x : String} :
+      DJudge Γ (.var .ivar x) (κ.ivarReadTy I x) Γ κ I
+  | constClass {κ : Ctx} {Γ : Env} {I : Ty} {c : Cls} :
+      c ∈ κ.classes → DJudge Γ (.const c.name) (.clsOf c.name) Γ κ I
+  | classDecl {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {name : String} {body : Expr} :
+      DJudge [] body τ Γb (classHeaderCtx (classBodyCtx κ name) name) .ivar0 κb Ib →
+      classRuleB κ κb Γ I τ name = true →
+      DJudge Γ (.class' name none body) τ Γ κ I (returnScopeCtx κ κb) I
+  /-- Every member body is checked at its parameter/return annotations, even if uncalled. -/
+  | memberDef {κ : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {c : Cls} {d : Defn} {ps : List SigParam} :
+      d.params = ps.map (fun p => Param.req p.1) →
+      (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) →
+      FirstOrder τ = true → FirstOrder Ib = true →
+      DJudge ps d.body τ Γb (instanceBodyCtx (instanceDeclCtx κ c d) ⟨c.name, c.name, d.name⟩ Ib) Ib
+        (instanceBodyCtx (instanceDeclCtx κ c d) ⟨c.name, c.name, d.name⟩ Ib) Ib →
+      d.name ≠ "initialize" → c ∈ κ.classes → memberRuleB κ Γ I c d = true →
+      DJudge Γ (.def' d.name d.params d.body) .sym Γ κ I (instanceDeclCtx κ c d) I
+  | initDef {κ : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {c : Cls} {d : Defn} {ps : List SigParam} :
+      d.name = "initialize" → d.params = ps.map (fun p => Param.req p.1) →
+      (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) →
+      FirstOrder τ = true → FirstOrder Ib = true →
+      InitJudge (initializerBodyCtx (instanceDeclCtx κ c d) c.name) ps .ivar0 d.body τ
+        (initializerBodyCtx (instanceDeclCtx κ c d) c.name) Γb Ib →
+      c ∈ κ.classes → memberRuleB κ Γ I c d = true →
+      DJudge Γ (.def' d.name d.params d.body) .sym Γ κ I (instanceDeclCtx κ c d) I
+  | newInst {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb : Env} {I I₁ I₂ Ib τ : Ty}
+      {c : Cls} {d : Defn} {ps : List SigParam} {recv : Expr} {args : List Expr} :
+      DJudge Γ recv (.clsOf c.name) Γ₁ κ I κ₁ I₁ →
+      DJudgeAll Γ₁ args (ps.map (·.2)) Γ₂ κ₁ I₁ κ₂ I₂ →
+      explicitReceiverB recv = true → c ∈ κ₂.classes → d ∈ c.methods → d.name = "initialize" →
+      smroGet? κ₂.classes c.name "new" = none → c.name ∈ κ₂.pos.plainAlloc →
+      d.params = ps.map (fun p => Param.req p.1) →
+      (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) →
+      FirstOrder τ = true → FirstOrder Ib = true →
+      InitJudge (initializerBodyCtx κ₂ c.name) ps .ivar0 d.body τ (initializerBodyCtx κ₂ c.name) Γb Ib →
+      mainCallB κ₂ Γ₂ I₂ = true →
+      DJudge Γ (.send (some recv) "new" args none) (.inst c.name Ib) Γ₂ κ I κ₂ I₂
+  | callMethodSig {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb : Env} {I I₁ I₂ Ib τ : Ty}
+      {c : Cls} {d : Defn} {ps : List SigParam} {recv : Expr} {args : List Expr} :
+      DJudge Γ recv (.inst c.name Ib) Γ₁ κ I κ₁ I₁ →
+      DJudgeAll Γ₁ args (ps.map (·.2)) Γ₂ κ₁ I₁ κ₂ I₂ →
+      explicitReceiverB recv = true → c ∈ κ₂.classes → d ∈ c.methods → d.name ≠ "initialize" →
+      directCallNameB d.name = true → d.params = ps.map (fun p => Param.req p.1) →
+      (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) →
+      FirstOrder τ = true → FirstOrder Ib = true →
+      DJudge ps d.body τ Γb (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name⟩ Ib) Ib
+        (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name⟩ Ib) Ib →
+      mainCallB κ₂ Γ₂ I₂ = true → DJudge Γ (.send (some recv) d.name args none) τ Γ₂ κ I κ₂ I₂
 
 inductive DJudgeAll : Env → List Expr → List Ty → Env → (κ : optParam Ctx ctx0) →
     (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop

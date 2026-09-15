@@ -93,6 +93,29 @@ def scopedArgRules (name : String) : List Ratchet.Expr → List String
   | e :: es => "DJudgeRecAll.cons" :: (scopedRules name e ++ scopedArgRules name es)
 end
 
+/-! Prediction for the currently worked initializer syntax. A void annotation adds
+ignoreResult at the definition; RuleAudit independently checks this against the proof. -/
+mutual
+def initRules : Ratchet.Expr → List String
+  | .var .lvar _ => ["InitJudge.var"]
+  | .vasgn .ivar _ e => "InitJudge.ivarAsgn" :: initRules e
+  | .seq es => "InitJudge.seq" :: initSeqRules es
+  | _ => ["?"]
+
+def initSeqRules : List Ratchet.Expr → List String
+  | [] => ["?"]
+  | [e] => "InitJudgeSeq.last" :: initRules e
+  | e :: e' :: es => "InitJudgeSeq.cons" :: (initRules e ++ initSeqRules (e' :: es))
+end
+
+/-- Only a prediction: recognises direct constructor results, regardless of class name.
+Other receiver shapes will need more context as the worked corpus grows. -/
+def explicitSendRule (recv : Ratchet.Expr) (name : String) : String :=
+  if name == "new" then "newInst" else
+  match recv with
+  | .send _ "new" _ none => "callMethodSig"
+  | _ => "prim"
+
 mutual
 def rulesUsed : Ratchet.Expr → List String
   | .int _ => ["intLit"]
@@ -104,9 +127,12 @@ def rulesUsed : Ratchet.Expr → List String
   | .nil => ["nilLit"]
   | .vcall "x" => ["bareName"]
   | .var .lvar _ => ["var"]
+  | .var .ivar _ => ["ivarRead"]
+  | .const _ => ["constClass"]
   | .vasgn .lvar _ e => "vasgn" :: rulesUsed e
   | .seq es => "seq" :: rulesUsedSeq es
-  | .send (some r) _ args none => "prim" :: (rulesUsed r ++ rulesUsedArgs args)
+  | .send (some r) name args none => explicitSendRule r name :: (rulesUsed r ++ rulesUsedArgs args)
+  | .class' _ none body => "classDecl" :: classRules body
   | .def' name _ body => "defDecl" ::
     (if hasSelfCall name body then "recursive" :: scopedRules name body else rulesUsed body)
   | .send none _ args none => "callSig" :: rulesUsedArgs args
@@ -128,6 +154,17 @@ def rulesUsedArgs : List Ratchet.Expr → List String
 def rulesUsedPairs : List (Ratchet.Expr × Ratchet.Expr) → List String
   | [] => ["DJudgePairs.nil"]
   | (k, v) :: ps => "DJudgePairs.cons" :: (rulesUsed k ++ rulesUsed v ++ rulesUsedPairs ps)
+
+def classRules : Ratchet.Expr → List String
+  | .def' "initialize" _ body => "initDef" :: "InitJudge.ignoreResult" :: initRules body
+  | .def' _ _ body => "memberDef" :: rulesUsed body
+  | .seq es => "seq" :: classSeqRules es
+  | _ => ["?"]
+
+def classSeqRules : List Ratchet.Expr → List String
+  | [] => ["?"]
+  | [e] => "DJudgeSeq.last" :: classRules e
+  | e :: e' :: es => "DJudgeSeq.cons" :: (classRules e ++ classSeqRules (e' :: es))
 end
 
 def rulesUsedAll (es : List Ratchet.Expr) : List String := es.flatMap rulesUsed

@@ -9828,6 +9828,29 @@ both halves of what constrains them now have a name.
   fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
   252 agree / 0 disagree.
 
+## Clink 145 (2026-09-14) — generic class rules cross the registry
+
+- DJudge gains seven constructor-mirroring rules: ivar/class reads, class/member/initializer
+  definitions, construction and explicit instance calls. Every rule is class/body/annotation-
+  parameterized and retains the full body premise; definitions cannot admit uncalled bad bodies.
+- DFam carries both InitJudge families, including the anchored heap semantics, for 44 rules
+  across eight families. InitBridge folds their six constructors through the registry before
+  the ordinary bridge consumes initializer premises. No raw syntactic body bypasses closure.
+  CheckedInitializer.sem now uses that same bridge rather than a separate semantic induction.
+- Move the checked-body return specialization above Bridge, retaining generic frame return
+  below it. This breaks the class-rule/registry import cycle without a new assumption.
+- The whole 061 derivation independently exercises all thirteen new rules, checking the
+  initializer and getter at definition and final call contexts, never at particular arguments.
+  RuleAudit reads constructor applications, not the generic bridge (which would over-report
+  its cases). Its syntax predictor now distinguishes class bodies and direct constructor
+  receivers without fixed class names; exact per-proof comparison remains mandatory.
+- This raises registered rules and worked proofs, not executable acceptance: class/body-cache
+  integration remains. The 061 AST is cross-checked against the generated corpus; existing
+  FlagBox and multiclass controls continue using the same generic semantic interfaces.
+- New derivation/bridge proofs build around one second and use standard axioms only. Full
+  quiet ratchet GREEN: fragment 55, checker reach 60, 44 proved rules, 0 owed/exempt,
+  47 worked theorems, 252 agree / 0 disagree.
+
 ## Clink 143 (2026-09-14) — annotation-checked initializer data certificates
 
 - Ordinary CheckedBody requires an unchanged field shape; it cannot certify initialization.

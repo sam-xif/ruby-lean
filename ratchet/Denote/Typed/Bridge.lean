@@ -1,4 +1,5 @@
 import Denote.Typed.Derivations
+import Denote.Typed.InitBridge
 
 /-!
 # `Denote/Typed/Bridge.lean` — the syntactic judgment lands in the certified one
@@ -47,7 +48,7 @@ namespace Ratchet.Denote.Typed
 
 open RubyCore Ratchet Ratchet.Denote
 
-/-! ## §1 The bridge, by mutual induction over all six judgment families -/
+/-! ## §1 Six-family mutual induction, using the initializer pair's registry bridge -/
 
 /-- **Every syntactic derivation is a certified one.** The registry covers `DJudge`, so the
 judgment `check` returns lands in the judgment `dregistry_safe` consumes. -/
@@ -61,7 +62,8 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
     (motive_4 := fun Γ ps ks vs Γ' κ I κ' I' _ => F.pairs Γ ps ks vs Γ' κ I κ' I')
     (motive_5 := fun κ I s Γ e τ Γ' _ => F.recBody κ I s Γ e τ Γ')
     (motive_6 := fun κ I s Γ es tys Γ' _ => F.recArgs κ I s Γ es tys Γ')
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals intros
   · apply hF DClink.intLit (by simp [dclinks]) <;> assumption
   · apply hF DClink.fltLit (by simp [dclinks]) <;> assumption
@@ -84,6 +86,19 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
       hm hc hs hbl hco ha hi hg hf hmiss hquiet
   · apply hF DClink.callSig (by simp [dclinks]) <;> assumption
   · apply hF DClink.recursive (by simp [dclinks]) <;> assumption
+  · exact hF DClink.ivarRead (by simp [dclinks])
+  · apply hF DClink.constClass (by simp [dclinks]) <;> assumption
+  · apply hF DClink.classDecl (by simp [dclinks]) <;> assumption
+  · rename_i κd Γd Γb Id Ib τd c d ps hp hps hret hself hb hn hc hg ihb
+    exact hF DClink.memberDef (by simp [dclinks]) hp hps hret hself ihb hn hc hg
+  · rename_i κd Γd Γb Id Ib τd c d ps hn hp hps hret hout hb hc hg
+    exact hF DClink.initDef (by simp [dclinks]) hn hp hps hret hout
+      (initJudge_certified hb F hF) hc hg
+  · rename_i κd κ₁ κ₂ Γd Γ₁ Γ₂ Γb Id I₁ I₂ Ib τd c d ps recv args
+      hr ha hs hc hd hn hnew halloc hp hps hret hout hb hg ihr iha
+    exact hF DClink.newInst (by simp [dclinks]) ihr iha hs hc hd hn hnew halloc hp hps
+      hret hout (initJudge_certified hb F hF) hg
+  · apply hF DClink.callMethodSig (by simp [dclinks]) <;> assumption
   · apply hF DClink.DJudgeAll.nil (by simp [dclinks]) <;> assumption
   · apply hF DClink.DJudgeAll.cons (by simp [dclinks]) <;> assumption
   · apply hF DClink.DJudgeSeq.last (by simp [dclinks]) <;> assumption

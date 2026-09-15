@@ -9,12 +9,15 @@ import Denote.Typed.RulesCtx
 import Denote.Typed.MethodDefine
 import Denote.Typed.MethodCall
 import Denote.Typed.Recursive
+import Denote.Typed.ClassRules
+import Denote.Typed.ClassConstant
+import Denote.Typed.InitRules
 import Denote.Clink.Form
 
 /-! The registry carries ordinary expressions/lists and scoped recursive bodies/arguments.
 Every constructor registers only with a proof of its constructor-derived semantic form.
-`ruleForm` replaces all six judgment heads with family projections; a premise reaching
-an uncarried judgment is refused before registration. All 31 constructors are proved.
+`ruleForm` replaces all eight judgment heads with family projections; a premise reaching
+an uncarried judgment is refused before registration. All 44 constructors are proved.
 `DJudgeC` is their Church encoding, with unconditional semantic and safety interpretations. -/
 
 set_option autoImplicit false
@@ -27,7 +30,7 @@ open RubyCore Ratchet Ratchet.Denote
 
 /-! ## §1 The family -/
 
-/-- All six mutually defined syntactic families, including scoped recursive premises. -/
+/-- All eight syntactic families, including recursive and fresh-initializer premises. -/
 structure DFam where
   judge : Env → Ratchet.Expr → Ty → Env → (κ : optParam Ctx ctx0) →
     (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
@@ -39,6 +42,8 @@ structure DFam where
     (κ : optParam Ctx ctx0) → (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
   recBody : Ctx → Ty → RecScope → Env → Ratchet.Expr → Ty → Env → Prop
   recArgs : Ctx → Ty → RecScope → Env → List Ratchet.Expr → List Ty → Env → Prop
+  init : Ctx → Env → Ty → Ratchet.Expr → Ty → Ctx → Env → Ty → Prop
+  initSeq : Ctx → Env → Ty → List Ratchet.Expr → Ty → Ctx → Env → Ty → Prop
 
 /-- The syntactic reading: `Ratchet/DJudge.lean`'s own relations. -/
 def dsynFam : DFam where
@@ -48,6 +53,8 @@ def dsynFam : DFam where
   pairs := @DJudgePairs
   recBody := DJudgeRec
   recArgs := DJudgeRecAll
+  init := InitJudge
+  initSeq := InitJudgeSeq
 
 /-- The context-indexed run contract: safety at every fuel, typed answers, and full outgoing
 conformance. At top level it is equivalent to `SemSafeA`, including `SafeUnder`. -/
@@ -58,6 +65,8 @@ def dsemFam : DFam where
   pairs Γ ps ks vs Γ' κ I κ' I' := SemPairsCtxA κ Γ I ps ks vs κ' Γ' I'
   recBody := SemRec
   recArgs := SemRecAll
+  init := SemInitA
+  initSeq := SemInitSeqA
 
 /-! ## §2 Registration
 
@@ -71,12 +80,13 @@ the rule). -/
 def dFamField : List (Name × Name) := [(``Ratchet.DJudge, ``DFam.judge),
   (``Ratchet.DJudgeAll, ``DFam.all), (``Ratchet.DJudgeSeq, ``DFam.seq),
   (``Ratchet.DJudgePairs, ``DFam.pairs), (``Ratchet.DJudgeRec, ``DFam.recBody),
-  (``Ratchet.DJudgeRecAll, ``DFam.recArgs)]
+  (``Ratchet.DJudgeRecAll, ``DFam.recArgs), (``Ratchet.InitJudge, ``DFam.init),
+  (``Ratchet.InitJudgeSeq, ``DFam.initSeq)]
 
-/-- The six judgment inductives. Frozen so a new family cannot bypass registration. -/
+/-- The eight judgment inductives. Frozen so a new family cannot bypass registration. -/
 def dJudgmentInductives : List Name :=
   [``Ratchet.DJudge, ``Ratchet.DJudgeAll, ``Ratchet.DJudgeSeq, ``Ratchet.DJudgePairs,
-    ``Ratchet.DJudgeRec, ``Ratchet.DJudgeRecAll]
+    ``Ratchet.DJudgeRec, ``Ratchet.DJudgeRecAll, ``Ratchet.InitJudge, ``Ratchet.InitJudgeSeq]
 
 /-- Judgment inductives `DFam` does **not** carry a field for. A rule whose premises reach
 one of these cannot be registered: see `registerDClink`. -/
@@ -201,6 +211,8 @@ def DJudgeC (R : List (Clink dsynFam dsemFam)) : DFam where
   pairs Γ ps ks vs Γ' κ I κ' I' := ∀ F : DFam, Closed R F → F.pairs Γ ps ks vs Γ' κ I κ' I'
   recBody κ I s Γ e τ Γ' := ∀ F : DFam, Closed R F → F.recBody κ I s Γ e τ Γ'
   recArgs κ I s Γ es tys Γ' := ∀ F : DFam, Closed R F → F.recArgs κ I s Γ es tys Γ'
+  init κ Γ I e τ κ' Γ' I' := ∀ F : DFam, Closed R F → F.init κ Γ I e τ κ' Γ' I'
+  initSeq κ Γ I es τ κ' Γ' I' := ∀ F : DFam, Closed R F → F.initSeq κ Γ I es τ κ' Γ' I'
 
 /-- The registry's principal contract carries distinct incoming/outgoing state indices. -/
 theorem dregistry_context {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty} {e : Ratchet.Expr} {τ : Ty}
@@ -335,8 +347,8 @@ def dCompanionRules : List String :=
 -- The registry and its report agree about its size.
 #guard dclinks.length == dRegisteredRules.length
 
--- Nineteen expression rules and twelve companions; an unproved rule fails the gate.
-#guard dRegisteredRules.length == 31
+-- Twenty-six expression rules and eighteen companions; an unproved rule fails the gate.
+#guard dRegisteredRules.length == 44
 #guard dUnregisteredRules == []
 
 -- Every judgment premise is represented in the semantic family.
@@ -346,7 +358,9 @@ def dCompanionRules : List String :=
 -- arrive unannounced, because nothing else in the ladder counts these.
 #guard dCompanionRules == ["DJudgeAll.nil", "DJudgeAll.cons", "DJudgeSeq.last", "DJudgeSeq.cons",
   "DJudgePairs.nil", "DJudgePairs.cons", "DJudgeRec.embed", "DJudgeRec.prim", "DJudgeRec.if'",
-  "DJudgeRec.selfCall", "DJudgeRecAll.nil", "DJudgeRecAll.cons"]
+  "DJudgeRec.selfCall", "DJudgeRecAll.nil", "DJudgeRecAll.cons",
+  "InitJudge.var", "InitJudge.ivarAsgn", "InitJudge.seq", "InitJudge.ignoreResult",
+  "InitJudgeSeq.last", "InitJudgeSeq.cons"]
 
 -- Every family-blocked rule is unregistered, which `registerDClink` enforces and this states.
 #guard dFamBlockedRules.all (fun r => dUnregisteredRules.contains r)
