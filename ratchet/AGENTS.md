@@ -489,12 +489,18 @@ bare/implicit calls remain separate integration work.
 `RootLookup` now reduces any selector absent from the declared chain to Object's physical
 root lookup, using ordered name/id conformance. `DefaultAllocation` preserves full caller
 state and returns an empty exact-class instance through the actual zero-argument builtin;
-`DefaultConstructor` connects resolved new dispatch, retaining explicit root-initializer
-absence. A prelude-marked Object#initialize passes the complete current state gate but makes
-default new raise ArgumentError (§F43). `bootStateB`/`stateOk_of_bootStateB` generalize the
-unchanged boot conjunction so this countermodel has full StateOk, not selected checks.
-Default-constructor admission therefore still needs retained root-initializer conformance
-and a complete new-dispatch contract. No rule, acceptance or floor changes yet.
+`DefaultConstructor` connects resolved new dispatch. A prelude-marked Object#initialize
+passed the complete previous state gate but made default new raise ArgumentError (§F43).
+`RootInitOk`, now retained in full StateOk and checked by the same boot gate, closes that
+gap: root absence is indexed by the existing top-level definition table, not global name
+reservations or another class's initializer. All heap/frame transports preserve it;
+instance writes use separation from Object's entire physical ancestor chain. Legitimate
+top-level initialize still requires its full annotated body proof and disables the root
+absence guard. The old-state countermodel remains checked via `bootStateBaseB`; the current
+gate excludes effective hidden Object and Kernel initializers. `StateOk.userInit_none` now derives
+actual initializer absence from the declared-prefix and root-table guards for any class.
+Default-constructor admission still needs a complete new-dispatch contract and checker
+integration. No rule, acceptance or floor changes yet.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -601,6 +607,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/PrimHeap.lean`, `Denote/JoinState.lean` | Primitive heap invariants and sound binding joins |
 | `Ratchet/InheritanceControls.lean`, `Denote/Typed/InheritedRules.lean`, `InheritanceDerivations.lean`, `Denote/Sem/NativePrefix.lean` | Generic inherited-rule admission, proved native-prefix guard, full-domain negative controls and independently audited whole 065 |
 | `Denote/Sem/RootLookup.lean`, `Denote/Typed/DefaultAllocation.lean`, `DefaultConstructor.lean`, `DefaultConstructorControls.lean` | Generic root-tail lookup and default allocation/dispatch, checked class controls, and full-state root-initializer omission (§F43) |
+| `Ratchet/RootInit.lean`, `Denote/Sem/RootInit.lean`, `RootInitWrite.lean`, `Denote/Typed/RootInitControls.lean` | Top-level-table-indexed root initializer conformance, generic write/extension transports, and full-old-state exclusion controls (§F43 closed) |
 | `Denote/Typed/Derivations.lean`, `ClassDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 49 concrete safety proofs |
 | `Denote/Typed/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Typed/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |

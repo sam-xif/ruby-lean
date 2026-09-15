@@ -36,6 +36,9 @@ theorem StateOk_install_member {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c :
     (hm.ownNames.publish_instance hc
       (memberOwnersB_sound hm hc ready.named (memberFreshB_owners hf)))
     ((hm.classChains.publish_member hc (declLookupFrameB_sound htab)).methodWrite)
+    (hm.rootInit.write_outside (by
+      rw [hm.core.classReady.objectChain]
+      exact declared_not_root hm ready.named hroot))
 
 theorem step_member_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Cls} {d : Defn}
     (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeClass = some c.name) (hc : c ∈ κ.classes)

@@ -31,7 +31,6 @@ theorem default_after_definitions (hb : bootOkB = true) {fuel rest : Nat} {v : V
     {k owner : ObjId} {md : MethodDef}
     (hr : runA fuel (evalFrom bootMachine definitions) = .ans (.val v) m rest)
     (hn : classNamed? m.heap "Satellite" = some k)
-    (hroot : Interp.userInit? m.heap Boot.objectId = none)
     (hnew : Interp.methodOn m.heap (classOf m.heap (.ref k)) "new" = some (owner, md))
     (hk : m.kont = []) :
     StepSpec m [] (.inst "Satellite" .ivar0)
@@ -41,7 +40,7 @@ theorem default_after_definitions (hb : bootOkB = true) {fuel rest : Nat} {v : V
     have he : f.cls = childClass := clsEqB_sound _ _ (by decide +kernel)
     exact he ▸ f.member
   exact declared_default_constructor (after_checked_definitions hb hr) hc hn
-    (by decide +kernel) (by decide +kernel) (by decide +kernel) hroot hnew hk
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel) hnew hk
 
 #guard validateD definitions hint
 #guard noDeclaredSelectorB checked.ctx.classes "Satellite" "initialize"
@@ -56,7 +55,7 @@ theorem default_after_definitions (hb : bootOkB = true) {fuel rest : Nat} {v : V
 #guard match Interp.run 160 (evalFrom bootMachine (.seq [definitions, newExpr [.int 1]])) with
   | .uncaught exc m => isAName m.heap exc "ArgumentError"
   | _ => false
--- The checker still declines new without its root-initializer obligation.
+-- Positive new dispatch and rule integration still precede checker admission.
 #guard !validateD (.seq [definitions, newExpr []])
   (.seq [hint, .newInst "Satellite" [] (.inst "Satellite" .ivar0)])
 
@@ -66,19 +65,27 @@ def hiddenInit : MethodDef :=
 def hiddenRoot : Machine :=
   { bootMachine with heap := defineMethod bootMachine.heap Boot.objectId "initialize" hiddenInit }
 
--- This is the exact complete boot-state gate, not a copied subset of conformance tests.
-#guard bootStateB hiddenRoot
+-- The complete previous gate passes; the new root-initializer clause excludes this heap.
+#guard bootStateBaseB hiddenRoot
+#guard !bootStateB hiddenRoot
 #guard (Interp.userInit? bootMachine.heap Boot.objectId).isNone
 #guard (Interp.userInit? hiddenRoot.heap Boot.objectId).isSome
 
-theorem hidden_root_full_state (hb : bootStateB hiddenRoot = true) :
-    StateOk ctx0 [] .ivar0 hiddenRoot ∧ Interp.userInit? hiddenRoot.heap Boot.objectId = some hiddenInit := by
-  have hm := stateOk_of_bootStateB hb
+theorem hidden_root_full_state (hb : bootStateBaseB hiddenRoot = true) :
+    StateCore ctx0 [] .ivar0 hiddenRoot ∧ ClassOwnNames ctx0.classes hiddenRoot.heap ∧
+      ClassChains ctx0.classes hiddenRoot.heap ∧ Interp.userInit? hiddenRoot.heap Boot.objectId = some hiddenInit := by
+  have hm := stateCore_of_bootStateBaseB hb
   have hl : (bootMachine.heap.classPayload? Boot.objectId).isSome = true := by
     simpa only [hiddenRoot, Proof.classPayload?_isSome_defineMethod] using (hm.runtime rfl).classLive
   have hp := ownMethod_defineMethod_self bootMachine.heap Boot.objectId "initialize" hiddenInit hl
   have hr := methodOn_own_first hm.core.classReady.objectChain hp
-  exact ⟨hm, by simp only [Interp.userInit?, hr]; rfl⟩
+  exact ⟨hm, ClassOwnNames.empty _, ClassChains.empty _, by simp only [Interp.userInit?, hr]; rfl⟩
+
+theorem hidden_root_not_state (hb : bootStateBaseB hiddenRoot = true) : ¬ StateOk ctx0 [] .ivar0 hiddenRoot := by
+  intro hm
+  have hi := hm.rootInit (by rfl)
+  rw [(hidden_root_full_state hb).2.2.2] at hi
+  cases hi
 
 -- Same checked definitions, same empty declared initializer prefix; actual new now fails.
 #guard match Interp.run 160 (evalFrom hiddenRoot (.seq [definitions, useExpr])) with
@@ -88,4 +95,5 @@ theorem hidden_root_full_state (hb : bootStateB hiddenRoot = true) :
 #print axioms after_checked_definitions
 #print axioms default_after_definitions
 #print axioms hidden_root_full_state
+#print axioms hidden_root_not_state
 end Ratchet.Denote.Typed.DefaultConstructorControls

@@ -36,11 +36,12 @@ theorem step_scoped_instance_world {κ : Ctx} {Γ : Env} {I : Ty} {c : Cls} {d :
     (hown : ClassOwnNames (classWithMethod c d :: κ.classes)
       (installMethod m d.name (toRubyParams d.params) (toRuby d.body)).heap)
     (hchain : ClassChains (classWithMethod c d :: κ.classes)
-      (installMethod m d.name (toRubyParams d.params) (toRuby d.body)).heap) :
+      (installMethod m d.name (toRubyParams d.params) (toRuby d.body)).heap)
+    (hroot : RootInitOk κ.defs (installMethod m d.name (toRubyParams d.params) (toRuby d.body)).heap) :
     ∃ n, Interp.stepFn m = .next n ∧ StateOk (instanceDeclCtx κ c d) Γ I n ∧
       InstanceSite (instanceDeclCtx κ c d) c.name m.currentFrame.defmod n.heap := by
   obtain ⟨n, hn, hstate⟩ := step_scoped_instance_state hm hr ht hΓ ha hc hobj hf hs
-    hmiss hquiet hnested hdecl hctl hown hchain
+    hmiss hquiet hnested hdecl hctl hown hchain hroot
   obtain ⟨k, ready⟩ := hm.classRuntime c.name hr
   obtain ⟨j, site⟩ := hm.classSites.of_scope hr
   have hj : j = m.currentFrame.defmod :=

@@ -93,6 +93,7 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
     classes := classes ho hn rfl hm.classes
     ownNames := ownNames ho hn hm.classes hm.ownNames
     classChains := classChains hm.core.classReady hm.sat hn hm.classes hm.classChains
+    rootInit := hm.rootInit.transport id (method_old hc hm.sat ho "initialize")
     defs := defs rfl hm.defs
     asms := by
       intro a ham

@@ -3,6 +3,7 @@ import Denote.Sem.Reframe
 import Denote.Sem.InstanceSiteWrite
 import Denote.Sem.OwnNamesWrite
 import Denote.Sem.ClassChainsWrite
+import Denote.Sem.RootInitWrite
 
 /-! Conformance after installing a method. Positive tables must describe what was
 installed; negative-name facts are retained only away from the written name.
@@ -299,11 +300,12 @@ theorem StateOk_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} 
     (hdecl : DeclClassOk { κ with pos := { κ.pos with classes := C } }
       { m with heap := defineMethod m.heap cls name md })
     (hown : ClassOwnNames C (defineMethod m.heap cls name md))
-    (hchain : ClassChains C (defineMethod m.heap cls name md)) :
+    (hchain : ClassChains C (defineMethod m.heap cls name md))
+    (hroot : RootInitOk D (defineMethod m.heap cls name md)) :
     StateOk { κ with pos := { κ.pos with classes := C, defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } :=
   ⟨StateCore_methodWrite_tables hm.toStateCore ht hΓ ha hn hmiss hquiet
-    hclasses hsites hdefs hnested hdecl, hown, hchain⟩
+    hclasses hsites hdefs hnested hdecl, hown, hchain, hroot⟩
 
 theorem StateCore_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : ObjId}
     {name : String} {md : MethodDef} {D : DefTable}
@@ -330,11 +332,12 @@ theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : 
     (hclasses : ClassesOk κ.classes { m with heap := defineMethod m.heap cls name md })
     (hdefs : DefsOk D { m with heap := defineMethod m.heap cls name md })
     (hdecl : DeclClassOk κ { m with heap := defineMethod m.heap cls name md })
-    (hown : ClassOwnNames κ.classes (defineMethod m.heap cls name md)) :
+    (hown : ClassOwnNames κ.classes (defineMethod m.heap cls name md))
+    (hroot : RootInitOk D (defineMethod m.heap cls name md)) :
     StateOk { κ with pos := { κ.pos with defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } :=
   ⟨StateCore_methodWrite hm.toStateCore ht hΓ ha hn hmiss hquiet hclasses hdefs hdecl,
-    hown, hm.classChains.methodWrite⟩
+    hown, hm.classChains.methodWrite, hroot⟩
 
 /-- Full conformance for the top-level method slice (no program class declarations).
 This discharges the positive-table premises of `StateOk_methodWrite` as well. It says
@@ -357,6 +360,7 @@ theorem StateOk_defineTopMethod {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (DefsOk_defineMethod hm.defs hc hfresh hp hb hu hcode)
     (by simp [DeclClassOk, hclasses])
     (by rw [hclasses]; exact ClassOwnNames.empty _)
+    hm.rootInit.defineTop
 
 /-- Reserving a method name weakens absence facts; it does not install a method or
 add a positive signature. Thus it cannot authorize a call before its definition. -/

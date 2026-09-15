@@ -526,7 +526,7 @@ that *is* a proof — `native_decide` — buys a theorem at the price of `Lean.o
 this package's rule is that every file reports only `propext`/`Classical.choice`/`Quot.sound`.
 So the witness below is stated **conditionally on this `Bool`**, and the `Bool` is a build
 gate. -/
-def bootStateB (m : Machine) : Bool :=
+def bootStateBaseB (m : Machine) : Bool :=
   saturatedB m.heap && coreOkB m.heap && frameOkB m &&
   topScopeB m && methodsExactB Ratchet.ctx0 m &&
   nameFreeB m && missFreeB m && selfLiveB m &&
@@ -539,13 +539,15 @@ def bootStateB (m : Machine) : Bool :=
     && newDispatchB m.heap (classOf m.heap (.ref Boot.objectId))
     && globalConstsOkB Ratchet.ctx0.pos.globalConsts m.heap
 
+def bootStateB (m : Machine) : Bool := bootStateBaseB m && rootInitOkB Ratchet.ctx0.defs m.heap
+
 def bootOkB : Bool := bootStateB bootMachine
 
-/-- The complete empty-context conformance gate works for any boot-shaped machine.
-Countermodels use exactly this check and theorem, rather than copying a subset of fields;
-`stateOk_boot` below specializes it to the real prelude boot. -/
-theorem stateOk_of_bootStateB {m : Machine} (hb : bootStateB m = true) : StateOk Ratchet.ctx0 [] .ivar0 m := by
-  simp only [bootStateB, Bool.and_eq_true] at hb
+/-- The previous empty-context gate supplies every StateCore field. Keeping this factored
+preserves the full-old-state countermodel when new conformance fields are added. -/
+theorem stateCore_of_bootStateBaseB {m : Machine} (hb : bootStateBaseB m = true) :
+    StateCore Ratchet.ctx0 [] .ivar0 m := by
+  simp only [bootStateBaseB, Bool.and_eq_true] at hb
   obtain ⟨hb, hglobals⟩ := hb
   obtain ⟨hb, hnew⟩ := hb
   obtain ⟨hb, hready⟩ := hb
@@ -588,8 +590,6 @@ theorem stateOk_of_bootStateB {m : Machine} (hb : bootStateB m = true) : StateOk
       -- vacuous at `ctx0`: the class table is empty, exactly as for `ClassesOk`/`DefsOk`
       declCls := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0, Ratchet.Ctx.classes])
       classes := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0, Ratchet.Ctx.classes])
-      ownNames := ClassOwnNames.empty _
-      classChains := ClassChains.empty _
       defs := by intro d hd; exact absurd hd (by simp [Ratchet.ctx0, Ratchet.Ctx.defs])
       asms := by intro a ha; exact absurd ha (by simp [Ratchet.ctx0, Ratchet.Ctx.asms])
       frameInRange := ⟨by simpa using hne, hfr⟩
@@ -608,6 +608,11 @@ theorem stateOk_of_bootStateB {m : Machine} (hb : bootStateB m = true) : StateOk
       bareFree := bareNameFreeB_sound hnf _
       missFree := missFreeB_sound hmf _
       selfLive := selfLiveB_sound hsl }
+
+/-- Complete conformance for any machine passing the current boot-shaped gate. -/
+theorem stateOk_of_bootStateB {m : Machine} (hb : bootStateB m = true) : StateOk Ratchet.ctx0 [] .ivar0 m := by
+  obtain ⟨hbase, hroot⟩ := Bool.and_eq_true_iff.mp hb
+  exact ⟨stateCore_of_bootStateBaseB hbase, ClassOwnNames.empty _, ClassChains.empty _, rootInitOkB_sound hroot⟩
 
 /-- The actual boot specializes the same conformance gate used by countermodels. -/
 theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 bootMachine :=

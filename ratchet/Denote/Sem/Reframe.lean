@@ -92,6 +92,7 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
     classes := by simpa only [ClassesOk, hh] using h.classes
     ownNames := by simpa only [hh] using h.ownNames
     classChains := by simpa only [hh] using h.classChains
+    rootInit := by simpa only [hh] using h.rootInit
     defs := by simpa only [DefsOk, hh] using h.defs
     asms := ?_
     frame := hf

@@ -44,12 +44,16 @@ theorem memberFreshB_sound {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     subst j
     exact False.elim ((classApartB_ne hm.declCls hold holdk hk site.front ha) rfl)
 
+theorem declared_not_root {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    {cn : String} {k : ObjId} (hm : StateOk κ Γ I m)
+    (hk : classNamed? m.heap cn = some k) (hn : cn ∉ rootAncestors) : k ∉ rootIds :=
+  fun hr => hn (hm.core.rootNames.only cn k hk hr)
+
 theorem declared_not_object {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     {cn : String} {k : ObjId} (hm : StateOk κ Γ I m)
     (hk : classNamed? m.heap cn = some k) (hn : cn ∉ rootAncestors) : k ≠ Boot.objectId := by
   intro he
-  subst k
-  exact hn (hm.core.rootNames.only cn Boot.objectId hk (by decide))
+  exact declared_not_root hm hk hn (he ▸ (by decide : Boot.objectId ∈ rootIds))
 
 #print axioms memberFreshB_sound
 end Ratchet.Denote

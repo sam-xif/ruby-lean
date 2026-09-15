@@ -74,6 +74,7 @@ theorem restore_instance_state {κ κb : Ctx} {Γ Γb : Env} {I Ib Is : Ty} {m n
     classes := hn.classes
     ownNames := hn.ownNames
     classChains := hn.classChains
+    rootInit := hn.rootInit
     defs := hn.defs
     asms := by change AsmsOk κ.asms _; simp [AsmsOk, ha]
     frame := ?_

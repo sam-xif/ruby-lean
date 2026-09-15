@@ -2605,11 +2605,12 @@ strengthened conformance. Full subclass state/body checking remains gated.
 
 ## F43 — declared initializer absence does not constrain prelude root code (2026-09-15)
 
-**Open prerequisite for default constructors; full-StateOk countermodel, not an accepted
+**Closed by Clink 169; full-old-StateOk countermodel, not an accepted
 unsafe program.** `DefaultConstructorControls.hiddenRoot` installs a prelude-marked
-Object#initialize requiring one argument. It passes the exact complete `bootStateB` gate;
-`hidden_root_full_state` derives StateOk and the actual initializer lookup from that checked
-hypothesis. No copied subset of the invariant is used. The context has no declared methods.
+Object#initialize requiring one argument. It passes the complete previous gate, retained
+as `bootStateBaseB`; `hidden_root_full_state` derives StateCore, ClassOwnNames, ClassChains
+and actual initializer lookup from that checked hypothesis. These are every old StateOk
+field, not selected checks. The context has no declared methods.
 
 The same annotation-checked Depot/Satellite definitions run in both heaps. At real boot,
 Satellite.new.answer returns "ready"; with the injected root initializer it raises
@@ -2617,9 +2618,15 @@ ArgumentError. Declared-chain absence remains true. MethodsExact allows prelude 
 ClassOwnNames constrains declared classes only, and the implicit root tail is not a declared
 owner. Even a globally unreserved initialize name therefore does not prove root absence.
 
-`RootLookup` proves that absence on all declared owners reduces lookup to Object's actual
-root lookup; `DefaultConstructor` keeps that remaining absence as an explicit premise.
-Before admitting 066/default new, retain a root-initializer contract through all heap/frame
-transports. It must account for legitimate top-level initialize definitions without treating
-an unrelated class's initialize as permission to change Object's initializer. The checker
-still rejects default construction, so this is a refuted proposed premise, not a regression.
+`RootLookup` reduces declared-owner absence to Object's actual lookup. StateOk now retains
+`RootInitOk κ.defs`: without a top-level initialize declaration, actual root userInit must
+be absent. All current transports preserve it; `hidden_root_not_state` proves full-state
+exclusion. An unrelated class initializer or global name reservation cannot waive it.
+Legitimate top-level initialize remains annotation-checked; its table entry disables the
+default-new root guard, not body checking. Writes must be outside the entire root chain,
+not just Object; after removing Object's builtin initializer, a Kernel injection also
+passes the old gate and fails the new one. With that builtin present, the masked Kernel
+method remains harmless to this contract: the invariant constrains effective lookup.
+`StateOk.userInit_none` derives actual initializer absence for arbitrary declared classes.
+The checker still gates default construction pending the new-dispatch contract/integration;
+this was a refuted proposed premise, not a regression in accepted programs.

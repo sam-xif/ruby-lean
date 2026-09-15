@@ -47,7 +47,8 @@ theorem step_scoped_instance_state {κ : Ctx} {Γ : Env} {I : Ty} {c : Cls} {d :
     (hown : ClassOwnNames (classWithMethod c d :: κ.classes)
       (installMethod m d.name (toRubyParams d.params) (toRuby d.body)).heap)
     (hchain : ClassChains (classWithMethod c d :: κ.classes)
-      (installMethod m d.name (toRubyParams d.params) (toRuby d.body)).heap) :
+      (installMethod m d.name (toRubyParams d.params) (toRuby d.body)).heap)
+    (hroot : RootInitOk κ.defs (installMethod m d.name (toRubyParams d.params) (toRuby d.body)).heap) :
     ∃ n, Interp.stepFn m = .next n ∧ StateOk (instanceDeclCtx κ c d) Γ I n := by
   obtain ⟨k, hk⟩ := hm.classRuntime c.name hr
   have ready : ClassScopeAt c.name m.currentFrame.defmod m := hk.owner.symm ▸ hk
@@ -57,7 +58,7 @@ theorem step_scoped_instance_state {κ : Ctx} {Γ : Env} {I : Ty} {c : Cls} {d :
   have hp : StateOk (instanceDeclCtx κ c d) Γ I
       (installMethod m d.name (toRubyParams d.params) (toRuby d.body)) :=
     StateOk_publish_instance hm ht hΓ ha hc ready.named site hobj hf hs rfl rfl rfl
-      (scoped_defined_instanceCode ready) hmiss hquiet hnested hdecl hown hchain
+      (scoped_defined_instanceCode ready) hmiss hquiet hnested hdecl hown hchain hroot
   refine ⟨_, step_def_install hctl (defHookQuiet_install hquiet (scoped_defHookQuiet ready)), ?_⟩
   exact StateOk_reCtl hp (.value (.sym d.name)) _
 

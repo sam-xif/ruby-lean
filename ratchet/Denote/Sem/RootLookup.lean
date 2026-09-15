@@ -43,6 +43,14 @@ theorem StateOk.userInit_eq_root {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     Interp.userInit? m.heap r = Interp.userInit? m.heap Boot.objectId := by
   simp only [Interp.userInit?, hm.methodOn_root_of_absent hc hk hn]
 
+theorem StateOk.userInit_none {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    {c : Cls} {r : ObjId} (hm : StateOk κ Γ I m) (hc : c ∈ κ.classes)
+    (hk : classNamed? m.heap c.name = some r)
+    (hn : noDeclaredSelectorB κ.classes c.name "initialize" = true)
+    (hr : rootInitFreeB κ.defs = true) : Interp.userInit? m.heap r = none :=
+  (hm.userInit_eq_root hc hk hn).trans (hm.rootInit hr)
+
 #print axioms StateOk.methodOn_root_of_absent
 #print axioms StateOk.userInit_eq_root
+#print axioms StateOk.userInit_none
 end Ratchet.Denote

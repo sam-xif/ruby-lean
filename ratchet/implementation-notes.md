@@ -10532,3 +10532,28 @@ both halves of what constrains them now have a name.
   fails on nested argument matches; direct unfolding avoids that Lean issue.
 - Full quiet ratchet GREEN: fragment 63, checker reach 65, 48 proved rules, 0 owed/exempt,
   49 worked theorems, 252 agree / 0 disagree. New proofs and controls build in seconds.
+
+## Clink 169 (2026-09-15) — retained root-initializer conformance, F43 closed
+
+- RootInitOk indexes root userInit absence by the existing top-level def table. No new Ctx
+  flag: only an actual initialize row waives absence; global name reservation and another
+  class's initializer do not. Definition rules still check every body at its annotations.
+- StateOk retains the contract through every current allocation, class entry, method
+  installation, write and frame/return transport. Generic methodOn_defineMethod_outside
+  requires separation from the queried owner's entire physical chain; cls ≠ Object alone
+  would miss Kernel/BasicObject. Existing root-name conformance derives this separation.
+- Factor the unchanged previous boot conjunction into bootStateBaseB/StateCore, then add
+  the root check to bootStateB. The full-old-state F43 witness remains checked; the new
+  invariant excludes it. Removing Object's builtin still passes full conformance; a
+  subsequent Kernel injection passes only the old gate. With the builtin present the
+  Kernel entry is masked and correctly remains legal: this is an effective-lookup contract.
+- Generic StateOk.userInit_none combines declared-chain and top-level-table guards. The
+  default constructor proof now consumes conformance rather than assuming physical root
+  absence. Controls preserve it after FlagBox's annotated initializer, permit an annotated
+  top-level initialize and its actual call, and reject a nilable-parameter/Integer-return
+  mismatch both uncalled and with a valid-looking Integer call.
+- No new rule or floor change; positive new dispatch and checker integration remain before
+  066. Production lemmas quantify over classes, bodies, annotations and contexts. New
+  proofs build in seconds with standard axioms only.
+- Full quiet ratchet GREEN: fragment 63, checker reach 65, 48 proved rules, 0 owed/exempt,
+  49 worked theorems, 252 agree / 0 disagree.

@@ -13,6 +13,7 @@ import Denote.Sem.Allocator
 import Denote.Sem.GlobalConsts
 import Denote.Sem.OwnNames
 import Denote.Sem.ClassChains
+import Denote.Sem.RootInit
 
 /-!
 # `Denote/Sem/State.lean` — evaluation, and what it means for a machine to *match* a
@@ -1075,6 +1076,7 @@ exclude hidden overrides; the own-table bound is also required at every typed st
 structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop extends StateCore κ Γ I m where
   ownNames : ClassOwnNames κ.classes m.heap
   classChains : ClassChains κ.classes m.heap
+  rootInit : RootInitOk κ.defs m.heap
 
 /-! ## Conformance survives an allocation
 
@@ -1164,6 +1166,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     exact ⟨denSpine_ext he this.1, this.2⟩
   ownNames := h.ownNames.ext he
   classChains := h.classChains.ext he
+  rootInit := h.rootInit.ext he
   classes := by
     intro c hc
     obtain ⟨k, hk, hm⟩ := h.classes c hc
@@ -1558,6 +1561,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
       classes := h.classes
       ownNames := h.ownNames
       classChains := h.classChains
+      rootInit := h.rootInit
       defs := h.defs
       asms := fun a ha m₃ he₃ => h.asms a ha m₃ ((setLocal_later m x w).trans he₃)
       frame := by
