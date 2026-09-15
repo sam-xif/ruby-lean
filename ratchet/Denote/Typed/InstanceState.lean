@@ -59,6 +59,7 @@ theorem instance_enter_state_at {κ : Ctx} {Γ : Env} {I Ib : Ty} {m : Machine}
     selfSpine := instance_required_spine md _ _ hi hv
     classes := hm.classes
     ownNames := hm.ownNames
+    classChains := hm.classChains
     defs := hm.defs
     asms := by intro a ham; change a ∈ κ.asms at ham; rw [ha] at ham; cases ham
     frame := instance_required_frame_at _ _ site.named hv site.front code

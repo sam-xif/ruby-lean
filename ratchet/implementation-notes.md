@@ -10097,3 +10097,25 @@ both halves of what constrains them now have a name.
 - All new lemmas are class/body/annotation-generic and axiom-clean. Full quiet ratchet GREEN:
   fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
   252 agree / 0 disagree. No new acceptance or moved floor in this prerequisite.
+
+## Clink 152 (2026-09-15) — complete ordered ancestry, F40 closed
+
+- NamedChain relates every declared name to its physical owner in order. StateOk.classChains
+  requires it whenever the static ancestor walk resolves; an unknown walk grants no claim.
+  This strengthens membership, not a no-mixin heuristic. No new Ctx flag or boot check: the
+  initial class table is empty, and fresh creation proves the complete root chain.
+- Allocation, frame/field changes and method writes preserve the correspondence. Header and
+  member publication reuse DeclLookupFrame to prevent newly activated old claims. All class
+  names/tables are parameters; no Point-specific physical ids are assumed.
+- `declared_inherited_code` derives the actual lookup from static ancestry, positive code
+  and owner-local absence. `declared_inherited_run` obtains both sites from conformance and
+  consumes the full annotated body at receiver/lexical-owner context, with ordinary caller
+  restoration. Native-prefix and payload guards remain explicit; signatures alone do nothing.
+- F40's unnamed interceptor retains its prior weak premises but fails classChainsB. The
+  generic `unnamed_ancestor_not_state` proves exclusion by full conformance. Fresh-class,
+  inherited execution and annotation-negative controls remain in the gate.
+- Explicit-superclass creation, inherited initializer binding/return and receiver-aware
+  annotation-body caching remain ahead of 065. No checker rule or floor changes here.
+- New core proofs build in under a second; standard axioms only. Full quiet ratchet GREEN:
+  fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
+  252 agree / 0 disagree.

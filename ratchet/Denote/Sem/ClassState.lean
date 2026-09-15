@@ -11,6 +11,7 @@ import Denote.Sem.MainSiteClass
 import Denote.Sem.ClassAllocators
 import Denote.Sem.ClassGlobalConsts
 import Denote.Sem.ClassOwnNames
+import Denote.Sem.ClassChainsFresh
 
 /-! Full conformance at entry to an empty fresh class scope. The body is still to be
 checked, and no future definition has been inserted into the positive table. -/
@@ -71,6 +72,7 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
     selfSpine := spine_empty
     classes := classes ho hn rfl hm.classes
     ownNames := ownNames ho hn hm.classes hm.ownNames
+    classChains := classChains hm.core.classReady hm.sat hn hm.classes hm.classChains
     defs := defs ho rfl hm.defs
     asms := by
       intro a ham

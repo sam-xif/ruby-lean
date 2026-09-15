@@ -376,8 +376,12 @@ alias-safe owner separation; the boot bound is vacuous because no classes are de
 `OwnLookup` derives inherited code from positive rows and absence over the ordered physical
 prefix. StateCore retains the other conformance fields, allowing F39's complete old-contract
 witness to remain proved; it cannot satisfy StateOk. F39 is closed. Full annotated bodies are
-still required. The next lookup prerequisite is physical-chain coverage (§F40): named
-ancestor membership and own bounds do not exclude an unnamed included interceptor.
+still required. StateOk.classChains now supplies ordered name/id correspondence for each
+resolved declared chain, preserved by every current producer (§F40 closed). InheritedLookup
+derives actual code without assuming a physical prefix; InheritedRun consumes it with the
+full mixed receiver/owner body proof. Native-interception guards remain explicit. Next:
+explicit-superclass creation, inherited constructors and receiver-aware body-cache checking
+for 065; these conditional semantic interfaces add no checker acceptance by themselves.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -460,6 +464,7 @@ String membership needs a payload invariant. See
 | `Ratchet/CallWorld.lean`, `Denote/Sem/FramedNames.lean`, `Denote/Typed/InstanceCallerReturn.lean`, `CallWorld.lean`, `InstanceImplicit.lean`, `InstanceCallerControls.lean` | Existing-context caller worlds, cross-class restoration, all ordinary call sites, and independent annotation/body controls |
 | `Denote/Typed/InstanceResolvedRun.lean`, `InheritedCallControls.lean` | Receiver/lexical-owner-separated annotated calls, real inherited controls, and full-state hidden-override witness (§F39) |
 | `Ratchet/OwnNames.lean`, `Denote/Sem/OwnNames*.lean`, `ClassOwnNames.lean`, `OwnLookup.lean`, `Denote/Typed/OwnNamesControls.lean` | StateOk's owner-local absence, retained-record union, alias-aware publication, ordered inherited lookup, and unnamed-ancestor control |
+| `Denote/Sem/NamedChain.lean`, `ClassChains*.lean`, `InheritedLookup.lean`, `Denote/Typed/InheritedRun.lean` | Complete physical-chain conformance, transports, and inherited calls consuming annotated bodies at separate receiver/owner contexts |
 | `Denote/Typed/InstanceDispatchControls.lean`, `PointProgram.lean`, `PointProgramControls.lean` | Interception controls and the complete semantic 061 proof (not checker admission) |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

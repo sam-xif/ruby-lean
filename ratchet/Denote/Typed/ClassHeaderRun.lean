@@ -39,6 +39,8 @@ theorem class_header_runSpec {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m : M
       hm.core.classReady.chains.boot.2.2.2.2, FreshClass.plain hm.core hm.sat⟩
     (FreshClass.ownNames_header hm.core.classReady.chains.boot.2.2.2.2
       (hm.runtime hr).classLive hn hm.classes hm.ownNames)
+    (FreshClass.classChains_header hm.core.classReady hm.sat hm.core.rootNames
+      (hm.runtime hr).classLive hn hm.classes hm.classChains (headerTableFrameB_sound hframe))
   have hrun := class_body_runSpec hstart ht ha hr hw hcl rfl hq hk hΓ hτ hn he (hb _ hheader)
   exact RunSpec.step (answerPoint_evalFrom _ _) hs (hrun.rebase (Framed_reCtl m _ []))
 

@@ -2,6 +2,7 @@ import Denote.Sem.MethodHeap
 import Denote.Sem.Reframe
 import Denote.Sem.InstanceSiteWrite
 import Denote.Sem.OwnNamesWrite
+import Denote.Sem.ClassChainsWrite
 
 /-! Conformance after installing a method. Positive tables must describe what was
 installed; negative-name facts are retained only away from the written name.
@@ -297,11 +298,12 @@ theorem StateOk_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} 
     (hnested : NestedClassesOk C { m with heap := defineMethod m.heap cls name md })
     (hdecl : DeclClassOk { κ with pos := { κ.pos with classes := C } }
       { m with heap := defineMethod m.heap cls name md })
-    (hown : ClassOwnNames C (defineMethod m.heap cls name md)) :
+    (hown : ClassOwnNames C (defineMethod m.heap cls name md))
+    (hchain : ClassChains C (defineMethod m.heap cls name md)) :
     StateOk { κ with pos := { κ.pos with classes := C, defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } :=
   ⟨StateCore_methodWrite_tables hm.toStateCore ht hΓ ha hn hmiss hquiet
-    hclasses hsites hdefs hnested hdecl, hown⟩
+    hclasses hsites hdefs hnested hdecl, hown, hchain⟩
 
 theorem StateCore_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : ObjId}
     {name : String} {md : MethodDef} {D : DefTable}
@@ -331,7 +333,8 @@ theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : 
     (hown : ClassOwnNames κ.classes (defineMethod m.heap cls name md)) :
     StateOk { κ with pos := { κ.pos with defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } :=
-  ⟨StateCore_methodWrite hm.toStateCore ht hΓ ha hn hmiss hquiet hclasses hdefs hdecl, hown⟩
+  ⟨StateCore_methodWrite hm.toStateCore ht hΓ ha hn hmiss hquiet hclasses hdefs hdecl,
+    hown, hm.classChains.methodWrite⟩
 
 /-- Full conformance for the top-level method slice (no program class declarations).
 This discharges the positive-table premises of `StateOk_methodWrite` as well. It says

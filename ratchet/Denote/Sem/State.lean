@@ -12,6 +12,7 @@ import Denote.Sem.MainSite
 import Denote.Sem.Allocator
 import Denote.Sem.GlobalConsts
 import Denote.Sem.OwnNames
+import Denote.Sem.ClassChains
 
 /-!
 # `Denote/Sem/State.lean` — evaluation, and what it means for a machine to *match* a
@@ -1073,6 +1074,7 @@ structure StateCore (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
 exclude hidden overrides; the own-table bound is also required at every typed state. -/
 structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop extends StateCore κ Γ I m where
   ownNames : ClassOwnNames κ.classes m.heap
+  classChains : ClassChains κ.classes m.heap
 
 /-! ## Conformance survives an allocation
 
@@ -1161,6 +1163,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     rw [he.currentFrame_eq, funext (he.ivarOf_eq m.currentFrame.self)]
     exact ⟨denSpine_ext he this.1, this.2⟩
   ownNames := h.ownNames.ext he
+  classChains := h.classChains.ext he
   classes := by
     intro c hc
     obtain ⟨k, hk, hm⟩ := h.classes c hc
@@ -1554,6 +1557,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
                fun y hy => h2.2 y (ivarGet?_killClosOverSpine_none _ hy)⟩
       classes := h.classes
       ownNames := h.ownNames
+      classChains := h.classChains
       defs := h.defs
       asms := fun a ha m₃ he₃ => h.asms a ha m₃ ((setLocal_later m x w).trans he₃)
       frame := by

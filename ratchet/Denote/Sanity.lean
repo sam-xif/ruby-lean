@@ -589,6 +589,7 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
       declCls := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0, Ratchet.Ctx.classes])
       classes := by intro c hc; exact absurd hc (by simp [Ratchet.ctx0, Ratchet.Ctx.classes])
       ownNames := ClassOwnNames.empty _
+      classChains := ClassChains.empty _
       defs := by intro d hd; exact absurd hd (by simp [Ratchet.ctx0, Ratchet.Ctx.defs])
       asms := by intro a ha; exact absurd ha (by simp [Ratchet.ctx0, Ratchet.Ctx.asms])
       frameInRange := ⟨by simpa using hne, hfr⟩

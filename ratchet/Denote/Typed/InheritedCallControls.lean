@@ -1,4 +1,4 @@
-import Denote.Typed.InstanceResolvedRun
+import Denote.Typed.InheritedRun
 import Denote.Typed.ClassHeaderControls
 import Denote.Typed.ConstructorLookup
 import Denote.Typed.MethodChecked

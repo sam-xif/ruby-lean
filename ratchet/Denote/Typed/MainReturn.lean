@@ -61,6 +61,7 @@ theorem restore_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mach
     selfSpine := hp.selfSpine (congrArg RubyCore.Frame.self hpop) hm.selfLive ht.spine hm.selfSpine
     classes := hn.classes
     ownNames := hn.ownNames
+    classChains := hn.classChains
     defs := hn.defs
     asms := by change AsmsOk κ.asms _; simp [AsmsOk, ha]
     frame := ?_

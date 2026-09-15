@@ -2556,12 +2556,15 @@ or inherited call is admitted merely by bounding selectors.
 
 ## F40 — named ancestry does not enumerate physical lookup owners (2026-09-15)
 
-**Open inherited-lookup prerequisite; not a full-StateOk countermodel or an accepted unsafe
+**Closed by Clink 152; not a full-StateOk countermodel or an accepted unsafe
 program.** `OwnNamesControls` inserts an unnamed module between Satellite and Depot. Every
 globally bound class name retains its ancestor-membership answer, classFrontB remains true,
 and ClassOwnNames still holds for both declared classes. The module's unrecorded alpha
 intercepts Depot's Integer body with false; the real call's `+ 1` changes from 2 to type-stuck.
 
-This refutes deriving complete physical-prefix coverage from those facts alone. The generic
-inherited lookup theorem deliberately requires that coverage; DeclClassOk's named membership
-clauses do not supply it. Establish physical-chain correspondence before removing the premise.
+This refutes deriving complete physical-prefix coverage from those facts alone; DeclClassOk's
+named membership clauses do not supply it. Clink 152 adds StateOk.classChains, an ordered
+name/id correspondence, with all current transports. The executable witness fails its check;
+`unnamed_ancestor_not_state` proves the exclusion generically. `declared_inherited_code` now
+derives the actual prefix and lookup from conformance and static declarations. The call
+wrapper still requires the full annotated body and native-interception guards.

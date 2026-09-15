@@ -1,6 +1,7 @@
 import Denote.Sem.OwnNamesWrite
 import Denote.Sem.OwnLookup
 import Denote.Sem.ClassOwnNames
+import Denote.Sem.InheritedLookup
 import Denote.Sanity
 
 /-! Owner bounds are not body proofs. These independent inheritance/history/alias controls
@@ -82,6 +83,8 @@ private def code (k : ObjId) (d : Defn) : MethodDef :=
         let use := Ratchet.Expr.send (some (.send (some (.send
           (some (.const "Satellite")) "new" [] none)) a.name [] none)) "+" [.int 1] none
         classOwnNamesB [satellite, classWithMethod depot a] h && classFrontB h k &&
+          classChainsB [satellite, classWithMethod depot a] m.heap &&
+          !classChainsB [satellite, classWithMethod depot a] h &&
           root.consts.all (fun (cn, _) => (classNamed? m.heap cn).all fun j =>
             classNamed? h cn == some j &&
               (ancestors m.heap k).contains j == (ancestors h k).contains j) &&
@@ -103,5 +106,17 @@ theorem aliased_owner_guard_rejects {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
   | false => rfl
   | true => exact False.elim (hne (memberOwnersB_sound hm hc hk hf alias ha hak))
 
+/-- Generic exclusion of F40's missing-owner shape, independent of concrete class names
+or method bodies. Unknown static chains must first be resolved before this fact is usable. -/
+theorem unnamed_ancestor_not_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    {c : Cls} {k u : ObjId} {ns : List String} (hc : c ∈ κ.classes)
+    (hk : classNamed? m.heap c.name = some k) (ha : ancestors? κ.classes c.name = some ns)
+    (hu : u ∈ ancestors m.heap k)
+    (hn : ∀ cn ∈ ns ++ rootAncestors, classNamed? m.heap cn ≠ some u) : ¬ StateOk κ Γ I m := by
+  intro hm
+  obtain ⟨cn, hmem, hnamed⟩ := hm.classChains.owner_named hc hk ha hu
+  exact hn cn hmem hnamed
+
 #print axioms aliased_owner_guard_rejects
+#print axioms unnamed_ancestor_not_state
 end Ratchet.Denote.Typed.OwnNamesControls

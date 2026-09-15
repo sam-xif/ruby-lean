@@ -91,6 +91,7 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     selfSpine := hi
     classes := by simpa only [ClassesOk, hn, hw.classPayload] using h.classes
     ownNames := by simpa only [ClassOwnNames, ownMethods, hn, hw.classPayload] using h.ownNames
+    classChains := h.classChains.heap hn hw.ancestors_eq
     defs := by simpa only [DefsOk, hw.classPayload] using h.defs
     asms := fun a ha n hl args hargs w n' hr =>
       h.asms a ha n ((bindIvar_later m x v).trans hl) args hargs w n' hr
