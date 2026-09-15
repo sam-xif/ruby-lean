@@ -2496,3 +2496,16 @@ checks it; allocation, definitions, ivar writes, and class registration preserve
 `ClassIdentity.named_fresh_only` derives fresh-name uniqueness from this bound. Existing
 aliases to live objects are not prohibited by the new predicate. Root ancestry, constructor
 publication, and class/body admission remain separate obligations.
+
+## F37 — main's chain does not determine Object's chain (2026-09-14)
+
+**Extension obstacle, not an accepted unsafe program.** `ClassRootControls` routes existing
+receivers through Kernel, prepends Object there, and leaves Object isolated. Main still has
+the expected Object/Kernel/BasicObject chain; every previous boot check passes. A fresh Point
+inherits Object alone, and actual Point.new produces an object with no BasicObject ancestor.
+
+Clink 132 checks Object's own chain in ClassReady and preserves it through all current heap
+producers. `ClassShape.ordinary` derives the fresh class's physical chain, rootedness, class/
+module distinctions, and absence of core-payload allocation cases. The actual-entry control
+includes full StateOk. Ancestor-name correspondence, constructor publication, and annotated
+body admission remain distinct obligations.

@@ -260,7 +260,7 @@ theorem ClassReady.freshClass {h : Heap} {d : ObjId} {name q : String} {e : ObjI
   have ho := hc.chains.boot.2.2.2.2
   have hel := hc.chains.eigen _ ho _ he
   refine ⟨Proof.Judgment.chainsIn_freshC hc.chains hd hel, ⟨e, ?_, ?_⟩, ?_, ?_,
-    hc.constRefs.freshClass hd ho⟩
+    hc.constRefs.freshClass hd ho, ?_⟩
   · rw [Proof.Judgment.freshClsHeap_get_old ho,
       (Proof.get_constSetIn_fields h d name (.ref h.objs.size) Boot.objectId).2.2.1]
     exact he
@@ -273,6 +273,7 @@ theorem ClassReady.freshClass {h : Heap} {d : ObjId} {name q : String} {e : ObjI
     rw [Proof.Judgment.freshClsHeap_get_old ho,
       (Proof.get_constSetIn_fields h d name (.ref h.objs.size) Boot.objectId).2.2.1] at he'
     exact hc.eigenSeparate e' he' base ch hbase
+  · rw [Proof.Judgment.ancestors_old_freshC hc.chains hsat ho]; exact hc.objectChain
 
 /-- The newly registered name denotes the allocated class, not its eigenclass. -/
 theorem classNamed_freshClass {h : Heap} {name : String} {e : ObjId}

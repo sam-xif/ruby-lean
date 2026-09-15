@@ -252,6 +252,10 @@ shadow guards. A full-old-boot countermodel retags Class#new and observes Point.
 prevent allocation from activating dangling aliases. `ClassIdentity` proves a fresh class's
 global name is unique at entry. `ClassAliasControls` retains the full-old-boot countermodel
 and actual is_a? result (§F36). This is an identity prerequisite, not complete ancestry publication.
+`ClassReady.objectChain` checks Object's own root chain, separately from main's dispatch chain;
+the latter can hold while Object is isolated (§F37). `ClassShape` derives a fresh class's
+physical chain, BasicObject membership, non-module status, and absence of payload-core ancestors.
+`ClassRootControls` composes those facts with full actual entry and executes the countermodel.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -312,6 +316,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/ClassReturnState.lean`, `ClassRun.lean`, `ClassReturnControls.lean` | Fresh-class body execution and full exit conformance, retaining outgoing tables while restoring caller scope |
 | `Denote/Sem/ClassNew.lean`, `ClassNewEntry.lean`, `Denote/Typed/ClassCtorControls.lean` | Boot-checked root constructor dispatch, fresh inheritance, and wrong-builtin/prelude controls |
 | `Denote/Sem/ConstLive.lean`, `ClassIdentity.lean`, `Denote/Typed/ClassAliasControls.lean` | Live global references, fresh-name uniqueness, and the dangling-alias countermodel |
+| `Denote/Sem/ClassShape.lean`, `Denote/Typed/ClassRootControls.lean` | Fresh ordinary-allocation prerequisites and the main-versus-Object chain countermodel |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |

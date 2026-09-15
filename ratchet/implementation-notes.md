@@ -9642,3 +9642,20 @@ both halves of what constrains them now have a name.
 - New proofs build below a second, standard axioms only. Full quiet ratchet GREEN:
   fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 132 (2026-09-14) — distinguish Object's chain from main's dispatch chain
+
+- Countermodel (§F37): existing receivers detour through Kernel with Object prepended;
+  Object itself is isolated. All previous boot checks pass, but actual Point.new allocates
+  an instance without BasicObject ancestry. MainReady's chain cannot supply the superclass
+  fact used by fresh ordinary constructors.
+- `ClassReady.objectChain` pins Object's own chain, checked at boot and preserved by Ext,
+  definitions, field writes, and fresh registration. This is a heap prerequisite, not an
+  annotation or an assertion about unexecuted class text.
+- `ClassShape.ordinary` proves the fresh class's live id, non-Class/non-Module status,
+  non-module payload, exact physical root chain, and both no-payload-core allocation tests.
+  `class_entry_ordinary` composes it with actual entry and full StateOk. Constructor execution,
+  ancestor-name correspondence, declaration publication, and body/certificate rules remain.
+- New proofs build in about a second or less, standard axioms only. Full quiet ratchet
+  GREEN: fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
+  252 agree / 0 disagree.
