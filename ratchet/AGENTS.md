@@ -462,8 +462,17 @@ same lemmas. `InheritedConstructor` derives first-owner lookup, code, allocation
 dispatch from conformance. `InheritedConstructorExpr` threads receiver/argument contexts
 and consumes the complete annotated body proof. Controls replay FlagBox's original Boolean
 annotation for a FlagChild receiver, prove both real class/new programs, reject bad/nullable
-return domains before calls, and execute the inherited arity failure. No checker cache or
-rule is admitted by this semantic composition; receiver-aware cache integration remains.
+return domains before calls, and execute the inherited arity failure. This semantic
+composition did not itself change checker admission. `MemberRoute`/`ReceiverCache` now
+carry checked first-owner lookup and exact receiver/owner body contexts. Cache refresh
+replays source annotations for every effective receiver, initializers before members;
+completeness checks declared selectors, not just cache contents, and yields full body
+artifacts by a generic theorem. Definition/exit guards reject missing or invalidated bodies
+even if uncalled. Controls reject an Integer or nilable child field behind an inherited
+String getter, retain compatible fields through multiple generations, and exclude retagged
+parent proofs and stale-owner lookup. The semantic cache consumers execute inherited new
+and members with their full proofs; native-prefix checks and subclass/call judgment,
+bridge and emitter integration still precede whole-program 065 admission.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -486,7 +495,8 @@ String membership needs a payload invariant. See
 | `Ratchet/CtxEq.lean` | Sound conservative syntax/context comparison for branch compatibility |
 | `Ratchet/DJudge.lean`, `InitJudge.lean`, `Check.lean`, `DerivControls.lean` | Eight judgment families, derivation-returning checker, and negative controls |
 | `Ratchet/Check.lean`, `MethodControls.lean`, `Denote/Typed/MethodChecked.lean` | Cached annotation/body proofs, end-to-end controls, and the method-entry contract |
-| `Ratchet/BodyCache.lean`, `ClassCheckControls.lean` | Owner-indexed checked bodies, exact lookup/branch annotations, and whole-class definition/call controls |
+| `Ratchet/BodyCache.lean`, `ClassCheckControls.lean` | Receiver/owner-indexed checked bodies, exact lookup/branch annotations, and whole-class definition/call controls |
+| `Ratchet/MemberRoute.lean`, `ReceiverCache.lean`, `ReceiverCacheControls.lean`, `Denote/Typed/ReceiverCache.lean`, `ReceiverCacheControls.lean` | Proved first-owner lookup, complete full-domain receiver-cache replay, checked inherited dispatch consumers, and uncalled-body invalidation controls |
 | `Ratchet/MemberCallControls.lean`, `Denote/Typed/RectDerivations.lean` | Cached annotation-checked method-to-method calls, negative controls, and independently audited whole 064 |
 | `Denote/Typed/JudgeA.lean` | Semantic judgment, continuation typing, literal/local rules |
 | `Denote/Typed/Sequence.lean`, `Branch*.lean`, `BareName.lean` | Sequence, conditional, and bare-name obligations |

@@ -10438,3 +10438,39 @@ both halves of what constrains them now have a name.
 - New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
   fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 166 (2026-09-15) — complete receiver-aware annotation-body caches
+
+- MemberRoute checks the declared ancestor split, owner/code membership and every earlier
+  owner-local absence. The union over retained records prevents a stale newest record from
+  hiding an earlier override. Callable artifacts pair that route with an exact-context body
+  proof; receiver/owner keys also participate in branch-signature agreement.
+- Refresh rebuilds effective receiver variants from own-definition sources, preserving
+  their original parameter/return annotations. All initializers precede member replay;
+  members use each receiver's proved initialized fields and earlier checked dependencies.
+  A new definition is added before the completeness gate. That gate enumerates declared
+  selectors, not existing cache entries; generic lemmas recover full callable artifacts
+  from success. Missing variants and applicable replay failures cannot be silently skipped.
+- Controls replay LabelBox→LabelChild→LabelLeaf with String fields. A child initializer
+  assigning String passes; Integer or nilable-String invalidates the inherited String getter
+  and rejects without a call. Dropped variants, retagged parent proofs, wrong owners,
+  shadowed lookup and changed receiver branch keys fail. Semantic consumers pass the cached
+  full-domain proofs through real inherited initializer/member dispatch, retaining the
+  explicit native-prefix obligation. The class/new pilot publishes the child's String
+  field, and the model's inherited getter returns that String.
+- Kernel replay of the expanded cache exceeded the default elaborator heartbeat budget
+  with rfl/decide. Switching those certificate witnesses to decide +kernel reduces the
+  complete cache-control build to about a second, without raising limits or native_decide.
+  New-member replay expands only that member after earlier bodies were already refreshed
+  in the new context; it does not repeat their identical checks.
+- The full gate exposed an older subclass control carrying the parent's declaration table
+  but no body cache; its now-failing Option.get triggered Lean's known elaboration crash.
+  The control now threads the parent's existing checked initializer through superclass and
+  child checks, and explicitly tests empty-cache rejection. Kernel-checked projection
+  equalities keep semantic composition from repeatedly normalizing the whole checker run.
+- No rule/acceptance/floor changes. Subclass and inherited-call judgment/bridge/emitter
+  integration, including a proved native-prefix guard, remains before 065. No signature
+  stands in for its body and no concrete call argument specializes an annotation.
+- Full quiet ratchet GREEN: fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt,
+  48 worked theorems, 252 agree / 0 disagree. New controls/proofs take seconds and use only
+  standard axioms.

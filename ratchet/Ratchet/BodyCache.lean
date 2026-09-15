@@ -1,5 +1,6 @@
 import Ratchet.DJudge
 import Ratchet.CheckInit
+import Ratchet.MemberRoute
 
 /-! Annotation-checked body artifacts. Lookup proves code membership and exact context;
 neither cached signatures nor a receiver's call-site shape can stand in for a body proof. -/
@@ -26,10 +27,12 @@ abbrev BodyCache := List CachedBody
 
 structure CachedMember extends CachedBody where
   owner : String
+  receiver : String
 
 structure CachedInitializer where
   ctx : Ctx
   owner : String
+  receiver : String
   decl : Defn
   body : CheckedInitializer ctx decl
   deriv : Deriv
@@ -44,10 +47,10 @@ signatures, rather than silently selecting one branch's declared parameter/field
 def cacheSignaturesB (a b : CheckedCache) : Bool :=
   (a.top.map fun c => (c.decl.name, c.body.params, c.body.ret, c.spine)) ==
     (b.top.map fun c => (c.decl.name, c.body.params, c.body.ret, c.spine)) &&
-  (a.members.map fun c => (c.owner, c.decl.name, c.body.params, c.body.ret, c.spine)) ==
-    (b.members.map fun c => (c.owner, c.decl.name, c.body.params, c.body.ret, c.spine)) &&
-  (a.initializers.map fun c => (c.owner, c.decl.name, c.body.params, c.body.ret, c.body.fields)) ==
-    (b.initializers.map fun c => (c.owner, c.decl.name, c.body.params, c.body.ret, c.body.fields))
+  (a.members.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.spine)) ==
+    (b.members.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.spine)) &&
+  (a.initializers.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.body.fields)) ==
+    (b.initializers.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.body.fields))
 
 structure CallableBody (κ : Ctx) (I : Ty) (name : String) where
   decl : Defn
@@ -68,18 +71,6 @@ def findBody (κ : Ctx) (I : Ty) (name : String) : BodyCache → Option (Callabl
       else none
     found.orElse (fun _ => findBody κ I name cs)
 
-structure FoundClass (C : CTable) (name : String) where
-  cls : Cls
-  member : cls ∈ C
-  nameOk : cls.name = name
-
-/-- First matching positive record, with both membership and identity evidence. -/
-def findClass (name : String) : (C : CTable) → Option (FoundClass C name)
-  | [] => none
-  | c :: cs => if hn : c.name = name then some ⟨c, by simp, hn⟩ else do
-      let f ← findClass name cs
-      some ⟨f.cls, List.mem_cons.mpr (Or.inr f.member), f.nameOk⟩
-
 structure CallableInitializer (κ : Ctx) (c : Cls) where
   decl : Defn
   nameOk : decl.name = "initialize"
@@ -90,7 +81,7 @@ def findInitializer (κ : Ctx) (c : Cls) : List CachedInitializer → Option (Ca
   | [] => none
   | b :: bs =>
     let found : Option (CallableInitializer κ c) := do
-      if b.owner != c.name then none else do
+      if b.owner != c.name || b.receiver != c.name then none else do
       if hn : b.decl.name = "initialize" then do
         let ⟨hc⟩ ← ctxEq? b.ctx (initializerBodyCtx κ c.name)
         let ⟨hd⟩ ← defnMem? b.decl c.methods
@@ -110,7 +101,7 @@ def findMember (κ : Ctx) (c : Cls) (name : String) : List CachedMember → Opti
   | [] => none
   | b :: bs =>
     let found : Option (CallableMember κ c name) := do
-      if b.owner != c.name then none else do
+      if b.owner != c.name || b.receiver != c.name then none else do
       if hn : b.decl.name = name then do
       if hf : FirstOrder b.spine = true then do
         let ⟨hc⟩ ← ctxEq? b.ctx (instanceBodyCtx κ ⟨c.name, c.name, b.decl.name⟩ b.spine)

@@ -1,4 +1,4 @@
-import Ratchet.BodyCache
+import Ratchet.ReceiverCache
 
 set_option autoImplicit false
 namespace Ratchet
@@ -454,18 +454,25 @@ def checkMemberDefinition (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (cn : Stri
     if hn : d.name = "initialize" then do
       let body ← checkInitializerBody n (initializerBodyCtx next f.cls.name) d hint
       let fresh ← refreshClassBodies n next { cache with initializers :=
-        ⟨initializerBodyCtx next f.cls.name, f.cls.name, d, body, db⟩ :: cache.initializers }
-      some ⟨.sym, Γ, next, I,
+        ⟨initializerBodyCtx next f.cls.name, f.cls.name, f.cls.name, d, body, db⟩ :: cache.initializers }
+      if receiverCacheCompleteB next fresh then
+        some ⟨.sym, Γ, next, I,
         .initDef hn body.paramShape body.paramsFO body.returnFO body.fieldsFO body.judged f.member hg, fresh⟩
+      else none
     else do
       let fresh ← refreshClassBodies n next cache
-      let fields := memberFields next (classWithMethod f.cls d) fresh
+      let fields := receiverFields next (classWithMethod f.cls d) fresh
       if hf : FirstOrder fields = true then do
         let bctx := instanceBodyCtx next ⟨f.cls.name, f.cls.name, d.name⟩ fields
         let body ← checkMethodBody n bctx fields d hint fresh
-        some ⟨.sym, Γ, next, I,
+        let variants ← refreshMemberReceivers n next fresh
+          ⟨⟨bctx, fields, d, body, db⟩, f.cls.name, f.cls.name⟩ (next.classes.map (·.name)).eraseDups
+        let complete := { fresh with members := variants ++ fresh.members }
+        if receiverCacheCompleteB next complete then
+          some ⟨.sym, Γ, next, I,
           .memberDef body.paramShape body.paramsFO body.returnFO hf body.judged hn f.member hg,
-          { fresh with members := ⟨⟨bctx, fields, d, body, db⟩, f.cls.name⟩ :: fresh.members }⟩
+          complete⟩
+        else none
       else none
     else none
 
@@ -573,7 +580,24 @@ def refreshTopBodies (fuel : Nat) (κ : Ctx) (I : Ty) (base : CheckedCache)
         (.defDecl c.decl.name c.body.params c.body.ret c.deriv) { base with top := fresh }
       some (⟨bodyCtx, I, c.decl, body, c.deriv⟩ :: fresh)
 
-/-- Recheck initializer signatures first; they determine receiver fields for members. -/
+/-- Rebuild a source initializer at every receiver where ordered lookup selects it.
+An inapplicable owner is skipped; every applicable replay failure propagates. -/
+def refreshInitializerReceivers (fuel : Nat) (κ : Ctx) (c : CachedInitializer) (names : List String) :
+    Option (List CachedInitializer) :=
+  match fuel with
+  | 0 => none
+  | n + 1 => match names with
+    | [] => some []
+    | cn :: names => do
+      let tail ← refreshInitializerReceivers n κ c names
+      match memberRoute? κ.classes cn c.owner c.decl with
+      | none => some tail
+      | some _ => do
+        let ctx := initializerBodyCtxAt κ cn c.owner
+        let body ← refreshInitializerBody n ctx c.body c.deriv
+        some (⟨ctx, c.owner, cn, c.decl, body, c.deriv⟩ :: tail)
+
+/-- Initializers for every receiver precede members: their proved fields type self. -/
 def refreshInitializers (fuel : Nat) (κ : Ctx) (cache : List CachedInitializer) :
     Option (List CachedInitializer) :=
   match fuel with
@@ -581,12 +605,31 @@ def refreshInitializers (fuel : Nat) (κ : Ctx) (cache : List CachedInitializer)
   | n + 1 => match cache with
     | [] => some []
     | c :: cs => do
-      let f ← findClass c.owner κ.classes
-      let _ ← defnMem? c.decl f.cls.methods
-      let body ← refreshInitializerBody n (initializerBodyCtx κ c.owner) c.body c.deriv
+      let _ ← memberRoute? κ.classes c.owner c.owner c.decl
+      let bodies ← refreshInitializerReceivers n κ c (κ.classes.map (·.name)).eraseDups
       let tail ← refreshInitializers n κ cs
-      some (⟨initializerBodyCtx κ c.owner, c.owner, c.decl, body, c.deriv⟩ :: tail)
+      some (bodies ++ tail)
 
+def refreshMemberReceivers (fuel : Nat) (κ : Ctx) (base : CheckedCache) (c : CachedMember)
+    (names : List String) : Option (List CachedMember) :=
+  match fuel with
+  | 0 => none
+  | n + 1 => match names with
+    | [] => some []
+    | cn :: names => do
+      let tail ← refreshMemberReceivers n κ base c names
+      match memberRoute? κ.classes cn c.owner c.decl with
+      | none => some tail
+      | some _ => do
+        let f ← findClass cn κ.classes
+        let fields := receiverFields κ f.cls base
+        let ctx := instanceBodyCtx κ ⟨cn, c.owner, c.decl.name⟩ fields
+        let body ← checkMethodBody n ctx fields c.decl
+          (.defDecl c.decl.name c.body.params c.body.ret c.deriv) base
+        some (⟨⟨ctx, fields, c.decl, body, c.deriv⟩, c.owner, cn⟩ :: tail)
+
+/-- Oldest source first, each expanded at all effective receivers. Earlier annotation
+proofs are dependencies; neither call values nor receiver-specialized signatures enter. -/
 def refreshMembers (fuel : Nat) (κ : Ctx) (base : CheckedCache) (cache : List CachedMember) :
     Option (List CachedMember) :=
   match fuel with
@@ -595,13 +638,10 @@ def refreshMembers (fuel : Nat) (κ : Ctx) (base : CheckedCache) (cache : List C
     | [] => some []
     | c :: cs => do
       let tail ← refreshMembers n κ base cs
-      let f ← findClass c.owner κ.classes
-      let _ ← defnMem? c.decl f.cls.methods
-      let fields := memberFields κ f.cls base
-      let bodyCtx := instanceBodyCtx κ ⟨c.owner, c.owner, c.decl.name⟩ fields
-      let body ← checkMethodBody n bodyCtx fields c.decl
-        (.defDecl c.decl.name c.body.params c.body.ret c.deriv) { base with members := tail }
-      some (⟨⟨bodyCtx, fields, c.decl, body, c.deriv⟩, c.owner⟩ :: tail)
+      let _ ← memberRoute? κ.classes c.owner c.owner c.decl
+      let bodies ← refreshMemberReceivers n κ { base with members := tail } c
+        (κ.classes.map (·.name)).eraseDups
+      some (bodies ++ tail)
 
 /-- Class bodies cannot call top-level methods. Keep those artifacts until class exit,
 where refreshBodies rechecks them in the restored caller scope, even if never called. -/
@@ -609,8 +649,8 @@ def refreshClassBodies (fuel : Nat) (κ : Ctx) (cache : CheckedCache) : Option C
   match fuel with
   | 0 => none
   | n + 1 => do
-    let is ← refreshInitializers n κ cache.initializers
-    let ms ← refreshMembers n κ { cache with initializers := is } cache.members
+    let is ← refreshInitializers n κ (cache.initializers.filter fun c => c.receiver == c.owner)
+    let ms ← refreshMembers n κ { cache with initializers := is } (cache.members.filter fun c => c.receiver == c.owner)
     some { cache with initializers := is, members := ms }
 
 def refreshBodies (fuel : Nat) (κ : Ctx) (I : Ty) (cache : CheckedCache) : Option CheckedCache :=
@@ -619,7 +659,8 @@ def refreshBodies (fuel : Nat) (κ : Ctx) (I : Ty) (cache : CheckedCache) : Opti
   | n + 1 => do
     let base ← refreshClassBodies n κ cache
     let ts ← refreshTopBodies n κ I base cache.top
-    some { base with top := ts }
+    let complete := { base with top := ts }
+    if receiverCacheCompleteB κ complete then some complete else none
 end
 
 /-! ## §4 The entry point
