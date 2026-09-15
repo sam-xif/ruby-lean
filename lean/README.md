@@ -30,7 +30,7 @@ against it and the adequacy theorems proved after.
 ## Build & run
 
 ```sh
-cd ruby/lean && lake build          # toolchain pinned in lean-toolchain (4.31.0)
+cd lean && lake build              # toolchain pinned in lean-toolchain
 echo 'puts 1 + 2' | "$(brew --prefix ruby)/bin/ruby" ../harness/desugar-dt/bin/export-json \
   | ./.lake/build/bin/rubycore
 ```

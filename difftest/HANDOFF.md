@@ -9,7 +9,7 @@
 ## Where things stand (resume point)
 
 - **Branch:** `sam-xif-investigation`. Engine committed in `e4d2830`.
-- **Run it:** `cd ruby/difftest && uv sync`, then the commands in README §Usage.
+- **Run it:** `cd difftest && uv sync`, then the commands in README §Usage.
   Oracle is Homebrew CRuby 4.0.5 (auto-resolved; `DIFFTEST_RUBY` overrides).
   `ANTHROPIC_API_KEY` lives in the gitignored `.env` (loaded by the CLI; real
   env vars win).

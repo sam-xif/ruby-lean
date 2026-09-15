@@ -181,7 +181,12 @@
   <h1>Ruby → Lean</h1>
   <div class="tabs">
     <button class="tab on" id="tab-stepper-btn">Stepper</button>
-    <button class="tab" id="tab-slice-btn">Homebrew slice explorer</button>
+    <!-- Tab 2 is hidden in this repository: the Homebrew slice explorer drives the
+         vendored brew checkout plus `homebrew/`, `linker/` and `certify/`, none of
+         which was carried into the ruby-lean extraction. The pane and its wiring are
+         kept intact below so the page is one edit away from the full workspace --
+         delete the `display:none` to get it back. See playground/README.md. -->
+    <button class="tab" id="tab-slice-btn" style="display:none">Homebrew slice explorer</button>
     <button class="tab" id="tab-ratchet-btn">Ratchet checker</button>
   </div>
   <span class="hint" id="tabhint">write Ruby · Run · step with ← → · or type it: infer / inferOpen</span>

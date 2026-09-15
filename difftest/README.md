@@ -10,7 +10,7 @@ Picking this up fresh? Read [`HANDOFF.md`](HANDOFF.md).
 ## Setup
 
 ```sh
-cd ruby/difftest
+cd difftest
 uv sync                 # Python 3.12+, hypothesis, anthropic
 # oracle: Homebrew CRuby (auto-resolved); override with DIFFTEST_RUBY=/path/to/ruby
 # tier 3 only: export ANTHROPIC_API_KEY=...

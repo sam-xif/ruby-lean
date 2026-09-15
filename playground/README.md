@@ -30,8 +30,9 @@ RubyCore JSON ──▶ rubycore --check        ──▶ decision / basis / ver
 ## Run
 
 ```sh
-# 1. build the model once (from ruby/lean)
+# 1. build the model once, and the ratchet tab's checker adapter
 cd ../lean && lake build && cd -
+cd ../ratchet && lake build validate-one && cd -
 
 # 2. start the playground (needs CRuby 4.0.5 on PATH or $RUBY / brew)
 python3 server.py            # http://localhost:8077   (or: python3 server.py 9000)
@@ -199,7 +200,15 @@ uses, while an open-params accept factors through a body-only judgement no `def`
 rule exists for (`infer`'s `def` arm still requires `params.isEmpty`). Merging
 them would report an accept rate the checker does not have.
 
-## Tab 2 — the Homebrew slice explorer
+## Tab 2 — the Homebrew slice explorer *(disabled in this repository)*
+
+> **Not available here.** This tab drives a vendored `brew` checkout through
+> `homebrew/`, `linker/` and `certify/` — tooling that was not carried into the
+> `ruby-lean` extraction (root README, *Provenance*). The tab button is hidden in
+> `index.html` and its `server.py` routes will 500 if called; the pane, the
+> routes and the description below are kept verbatim so the page is one deleted
+> `display:none` away from working again inside the full workspace.
+
 
 The second tab drives the **slice** — `homebrew/PLAN.md` §2's eight files, from
 the vendored `homebrew/vendor/brew` checkout — through the pipeline the ratchets

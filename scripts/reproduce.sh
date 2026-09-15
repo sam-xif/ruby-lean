@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Reproduce every headline number in README.md, from a clean checkout.
+#
+#   scripts/reproduce.sh              # build + the typed ratchet gate  (~20 min cold)
+#   scripts/reproduce.sh --with-difftest   # also replay the tier-0 bootstraptest corpus
+#   scripts/reproduce.sh --with-proofs     # also build the metatheory and check axioms
+#
+# Every step is a command you can run by hand; this script only puts them in
+# order and stops at the first one that fails. Nothing here is trusted by the
+# result — the only trusted artifact in the repo is `validateD`'s Bool, produced
+# by step 3 (see README §What is trusted).
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WITH_DIFFTEST=0
+WITH_PROOFS=0
+for a in "$@"; do
+  case "$a" in
+    --with-difftest) WITH_DIFFTEST=1 ;;
+    --with-proofs)   WITH_PROOFS=1 ;;
+    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    *) echo "unknown flag: $a" >&2; exit 2 ;;
+  esac
+done
+
+step() { echo; echo "── $* ──"; }
+
+step "0. prerequisites"
+"$ROOT/scripts/check-prereqs.sh"
+
+step "1. build the Lean model (lean/ — the rubycore SUT)"
+( cd "$ROOT/lean" && lake build )
+
+step "2. build the checker (ratchet/ — validateD and its proofs)"
+( cd "$ROOT/ratchet" && lake build )
+
+step "3. the typed ratchet gate (the headline numbers)"
+# Sorbet -> strip -> desugar -> emit -> validateD, over every corpus rung, plus
+# the negative controls, the CRuby/model agreement replay and the safety
+# cross-check. Prints GREEN or RED on its last line.
+( cd "$ROOT/ratchet" && ./scripts/run_typed_ratchet.sh )
+
+if [[ $WITH_DIFFTEST == 1 ]]; then
+  step "4. differential test: the Lean model vs CRuby over MRI's bootstraptest"
+  ( cd "$ROOT/difftest" && uv sync --quiet && uv run python -m difftest run --tier 0 --sut lean )
+fi
+
+if [[ $WITH_PROOFS == 1 ]]; then
+  step "5. the metatheory, and its axiom cleanliness"
+  # Off the default build target because it is slow and the SUT does not depend
+  # on it — which is exactly why it needs its own command.
+  ( cd "$ROOT/lean" && ./scripts/check-proofs.sh )
+fi
+
+echo
+echo "Done. The verdict that matters is the GREEN/RED line printed by step 3."

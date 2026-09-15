@@ -1,0 +1,17 @@
+# Lean / Lake
+.lake/
+*.olean
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.uv-cache/
+
+# Derived artifacts
+# ratchet/build/ is regenerated from ratchet/corpus/*.rb by scripts/build_corpus.py
+ratchet/build/
+difftest/reports/
+
+# OS
+.DS_Store
