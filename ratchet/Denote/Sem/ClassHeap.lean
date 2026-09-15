@@ -1,5 +1,6 @@
 import Denote.Sem.Framed
 import Denote.Sem.DataPres
+import Denote.Sem.SubclassReady
 import RubyCore.Proof.Judgment.ClsFresh
 
 /-! Old data across a fresh top-level class declaration. The constant table changes and
@@ -15,9 +16,8 @@ local notation "h₁" => freshClsHeap h Boot.objectId name name e
 
 theorem fields {o : ObjId} (ho : o < h.objs.size) :
     ((h₁).get o).ivars = (h.get o).ivars ∧ ((h₁).get o).klass = (h.get o).klass ∧
-      ((h₁).get o).eigen = (h.get o).eigen ∧ ((h₁).get o).frozen = (h.get o).frozen := by
-  rw [Proof.Judgment.freshClsHeap_get_old ho]
-  exact Proof.get_constSetIn_fields h Boot.objectId name (.ref h.objs.size) o
+      ((h₁).get o).eigen = (h.get o).eigen ∧ ((h₁).get o).frozen = (h.get o).frozen :=
+  Subclass.fields ho
 
 theorem classPayload_live {k : ObjId} (hk : (h.classPayload? k).isSome = true) :
     ((h₁).classPayload? k).isSome = true := by
@@ -228,52 +228,15 @@ open RubyCore.Proof.Judgment (freshClsHeap)
 /-- Registration introduces one live reference; all other global references keep their
 old bound. The definee need not be Object. -/
 theorem ConstRefsLive.freshClass {h : Heap} {d : ObjId} {name q : String} {e : ObjId}
-    (hc : ConstRefsLive h) (hd : d < h.objs.size) (ho : Boot.objectId < h.objs.size) :
-    ConstRefsLive (freshClsHeap h d name q e) := by
-  intro cn k hk
-  rw [Proof.Judgment.constOwn_old_freshC hd ho] at hk
-  change constOwn (constSetIn h d name (.ref h.objs.size)) Boot.objectId cn = some (.ref k) at hk
-  have hk' : k = h.objs.size ∨ k < h.objs.size := by
-    by_cases hdo : Boot.objectId = d
-    · subst d
-      by_cases hcn : cn = name
-      · subst cn
-        cases hp : h.classPayload? Boot.objectId with
-        | none => simp [constSetIn, constOwn, hp] at hk
-        | some cp =>
-          rw [Proof.Judgment.constOwn_constSetIn_self (by simp [hp]) ho] at hk
-          exact Or.inl (Value.ref.inj (Option.some.inj hk)).symm
-      · rw [Proof.constOwn_constSetIn_ne _ _ _ _ _ _ (Or.inr hcn)] at hk
-        exact Or.inr (hc cn k hk)
-    · rw [Proof.constOwn_constSetIn_ne _ _ _ _ _ _ (Or.inl hdo)] at hk
-      exact Or.inr (hc cn k hk)
-  rw [Proof.Judgment.freshClsHeap_size]
-  rcases hk' with hk' | hk'
-  · rw [hk']; exact Nat.lt_add_of_pos_right (by decide : 0 < 2)
-  · exact Nat.lt_of_lt_of_le hk' (Nat.le_add_right _ _)
+    (hc : ConstRefsLive h) (_hd : d < h.objs.size) (ho : Boot.objectId < h.objs.size) :
+    ConstRefsLive (freshClsHeap h d name q e) := hc.subclass ho
 
 /-- The same readiness invariant survives both allocations and constant registration. -/
 theorem ClassReady.freshClass {h : Heap} {d : ObjId} {name q : String} {e : ObjId}
-    (hc : ClassReady h) (hsat : Proof.Saturated h) (hd : d < h.objs.size)
+    (hc : ClassReady h) (hsat : Proof.Saturated h) (_hd : d < h.objs.size)
     (he : (h.get Boot.objectId).eigen = some e) :
     ClassReady (freshClsHeap h d name q e) := by
-  have ho := hc.chains.boot.2.2.2.2
-  have hel := hc.chains.eigen _ ho _ he
-  refine ⟨Proof.Judgment.chainsIn_freshC hc.chains hd hel, ⟨e, ?_, ?_⟩, ?_, ?_,
-    hc.constRefs.freshClass hd ho, ?_⟩
-  · rw [Proof.Judgment.freshClsHeap_get_old ho,
-      (Proof.get_constSetIn_fields h d name (.ref h.objs.size) Boot.objectId).2.2.1]
-    exact he
-  · rw [Proof.Judgment.ancestors_old_freshC hc.chains hsat hel]
-    obtain ⟨e', he', hb⟩ := hc.objectEigen
-    rw [he] at he'; cases he'; exact hb
-  · rw [Proof.Judgment.ancestors_old_freshC hc.chains hsat hc.chains.boot.1]
-    exact hc.classBasic
-  · intro e' he' base ch hbase
-    rw [Proof.Judgment.freshClsHeap_get_old ho,
-      (Proof.get_constSetIn_fields h d name (.ref h.objs.size) Boot.objectId).2.2.1] at he'
-    exact hc.eigenSeparate e' he' base ch hbase
-  · rw [Proof.Judgment.ancestors_old_freshC hc.chains hsat ho]; exact hc.objectChain
+  exact hc.subclass hsat hc.chains.boot.2.2.2.2 (hc.chains.eigen _ hc.chains.boot.2.2.2.2 _ he)
 
 /-- The newly registered name denotes the allocated class, not its eigenclass. -/
 theorem classNamed_freshClass {h : Heap} {name : String} {e : ObjId}

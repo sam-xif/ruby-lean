@@ -2568,3 +2568,17 @@ name/id correspondence, with all current transports. The executable witness fail
 `unnamed_ancestor_not_state` proves the exclusion generically. `declared_inherited_code` now
 derives the actual prefix and lookup from conformance and static declarations. The call
 wrapper still requires the full annotated body and native-interception guards.
+
+## F41 — ClassReady does not separate every parent's metaclass (2026-09-15)
+
+**Readiness-only extension obstacle, not a full-StateOk countermodel or an accepted unsafe
+program.** In `SubclassEntryControls`, run Anchor's real definition, then change only its
+cached eigen pointer to Float. ClassReady, Saturated and BaseChainsOk still pass. Actual
+fresh `Leaf < Anchor` entry retains readiness/saturation but allocates a metaclass with Float
+as superclass, violating BaseChainsOk's no-proper-subclasses clause.
+
+Object's existing eigenSeparate field is unchanged and cannot discharge this arbitrary-
+parent obligation. Full subclass conformance must derive separation from other incoming
+facts or carry an appropriate stronger invariant; a cached, in-bounds pointer alone is
+insufficient. Clink 154 proves readiness preservation without falsely claiming the stronger
+full-state transport. Whole-program inheritance remains gated.

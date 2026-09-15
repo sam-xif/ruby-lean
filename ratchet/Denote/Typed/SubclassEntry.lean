@@ -95,6 +95,23 @@ theorem step_resolved {m : Machine} {name q : String} {parent eParent : ObjId}
   simpa only [hctl, Machine.currentFrame] using
     enter_fresh (m := { m with kont := rest }) (body := body) hm hd hp he hq hn
 
+/-- Actual entry preserves bounded dispatch edges, constant-reference liveness and
+both walk saturations. Full StateOk and the annotation-checked body remain separate. -/
+theorem enter_fresh_ready {m : Machine} {name q : String} {parent eParent : ObjId}
+    {body : RubyCore.Expr} (hc : ClassReady m.heap) (hs : Saturated m.heap)
+    (hm : constOwn m.heap m.currentFrame.defmod name = none)
+    (hd : m.currentFrame.defmod < m.heap.objs.size) (hp : parent < m.heap.objs.size)
+    (he : (m.heap.get parent).eigen = some eParent)
+    (hq : (if m.currentFrame.defmod == Boot.objectId then name
+      else className m.heap m.currentFrame.defmod ++ "::" ++ name) = q)
+    (hn : q.isEmpty = false) :
+    ∃ n, enterClassBody m name false (some parent) body = .next n ∧
+      ClassReady n.heap ∧ Saturated n.heap := by
+  have hep := hc.chains.eigen parent hp eParent he
+  exact ⟨_, enter_fresh hm hd hp he hq hn, hc.subclass hs hp hep,
+    saturated hc.chains hs hp hep⟩
+
 #print axioms enter_fresh
 #print axioms step_resolved
+#print axioms enter_fresh_ready
 end Ratchet.Denote.Subclass

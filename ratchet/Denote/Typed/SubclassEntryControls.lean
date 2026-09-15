@@ -32,6 +32,7 @@ private def call : Ratchet.Expr := .send (some (.send (some (.const "Leaf")) "ne
             (match n.currentFrame.self with | .ref r => r == k | _ => false) &&
             n.currentFrame.defmod == k &&
             n.currentFrame.cref == [k, Boot.objectId] &&
+            classReadyB n.heap && saturatedB n.heap &&
             classChainsB [leaf, anchor] n.heap && classOwnNamesB [leaf, anchor] n.heap &&
             (match Interp.run 30 n with
               | .value _ finished => match Interp.run 100 (evalFrom finished call) with
@@ -49,12 +50,13 @@ private def call : Ratchet.Expr := .send (some (.send (some (.const "Leaf")) "ne
   | .value _ m => match classNamed? m.heap "Anchor" with
     | some parent =>
       let h := m.heap.set parent { m.heap.get parent with eigen := none }
-      classChainsB [anchor] h && classOwnNamesB [anchor] h &&
+      classChainsB [anchor] h && classOwnNamesB [anchor] h && classReadyB h && saturatedB h &&
         match Interp.enterClassBody { m with heap := h } "Leaf" false (some parent) .nil with
         | .next n =>
           let k := m.heap.objs.size
           n.heap.objs.size == k + 3 && (n.heap.get parent).eigen == some (k + 1) &&
             (n.heap.get k).eigen == some (k + 2) && classChainsB [leaf, anchor] n.heap &&
+            classReadyB n.heap && saturatedB n.heap &&
             (match Interp.run 30 n with
               | .value _ finished => match Interp.run 100 (evalFrom finished call) with
                 | .value (.bool true) _ => true
@@ -69,6 +71,28 @@ private def call : Ratchet.Expr := .send (some (.send (some (.const "Leaf")) "ne
   | .value _ m => match classNamed? m.heap "NotAClass" with
     | some parent => Semantics.typeStuck (Interp.run 30
         { m with ctl := .value (.ref parent), kont := [.classDefK "Leaf" .nil] })
+    | none => false
+  | _ => false
+
+-- Synthetic heap controls, not reachable-program or full-StateOk witnesses.
+-- An in-bounds self-cycle refutes deriving saturation from edge bounds alone.
+#guard match (bootMachine.heap.get Boot.objectId).eigen with
+  | some ep =>
+    let h := Subclass.heap bootMachine.heap Boot.objectId "Loop" "Loop" bootMachine.heap.objs.size ep
+    Proof.chainsInB h && !saturatedB h
+  | none => false
+
+-- Readiness still does not separate an arbitrary parent's metaclass from value bases.
+-- Actual subclass entry can preserve readiness while introducing a proper Float subclass.
+#guard match Interp.run 100 (evalFrom bootMachine baseProgram) with
+  | .value _ m => match classNamed? m.heap "Anchor" with
+    | some parent =>
+      let h := m.heap.set parent { m.heap.get parent with eigen := some Boot.floatId }
+      classReadyB h && saturatedB h && baseChainsOkB { m with heap := h } &&
+        match Interp.enterClassBody { m with heap := h } "Leaf" false (some parent) .nil with
+        | .next n => classReadyB n.heap && saturatedB n.heap && !baseChainsOkB n &&
+            (ancestors n.heap (h.objs.size + 1)).contains Boot.floatId
+        | _ => false
     | none => false
   | _ => false
 

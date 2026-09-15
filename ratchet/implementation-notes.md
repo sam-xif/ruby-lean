@@ -10140,3 +10140,25 @@ both halves of what constrains them now have a name.
 - New entry/chain proofs and controls build, standard axioms only. Full quiet ratchet GREEN:
   fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 154 (2026-09-15) — subclass readiness through shared growth contracts
+
+- `ClassGrowth` transports old edges/walks once; the producer supplies fresh edge bounds
+  and singleton module walks/class heads into old parents. Both walk fuels are covered.
+  `SubclassReady` discharges these for arbitrary class/metaclass parents, preserving
+  ChainsIn, Saturated, ConstRefsLive and ClassReady. The +2 heap-size bound supplies slack
+  for the new head; no acyclicity is inferred just from bounded edges.
+- Default-superclass field/liveness/readiness lemmas now specialize these proofs, replacing
+  duplicated arguments. `enter_fresh_ready` composes them with the actual entry equation.
+  Cache readiness remains explicit; class/body/annotation assumptions are not specialized.
+- Controls check readiness/saturation and inherited calls on cached and uncached paths.
+  A synthetic in-bounds self-cycle fails saturation. F41's actual entry from a modified heap
+  retains ClassReady/Saturated while a parent metaclass aliased to Float introduces a proper
+  Float subclass and breaks BaseChainsOk. This probes those premises, not full StateOk.
+- Full conformance must discharge parent-metaclass separation (derive it from existing
+  stronger facts or retain an appropriate invariant), rather than reusing Object-only
+  separation. Full subclass state transport and inherited body/initializer checking remain
+  ahead of 065; no rule, body-admission requirement or floor changes here.
+- New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
+  fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
+  252 agree / 0 disagree.

@@ -50,6 +50,15 @@ theorem get_class {h : Heap} {d parent eParent : ObjId} {name q : String} :
     h.objs.size _).getD h.objs.size default = _
   rw [objs_getD_set!_self _ _ _ (by rw [Array.size_push, Array.size_push, hmid_size]; omega)]
 
+theorem fields {h : Heap} {d parent eParent o : ObjId} {name q : String}
+    (ho : o < h.objs.size) :
+    ((heap h d name q parent eParent).get o).ivars = (h.get o).ivars ∧
+      ((heap h d name q parent eParent).get o).klass = (h.get o).klass ∧
+      ((heap h d name q parent eParent).get o).eigen = (h.get o).eigen ∧
+      ((heap h d name q parent eParent).get o).frozen = (h.get o).frozen := by
+  rw [get_old ho]
+  exact get_constSetIn_fields h d name (.ref h.objs.size) o
+
 theorem get_eigen {h : Heap} {d parent eParent : ObjId} {name q : String} :
     (heap h d name q parent eParent).get (h.objs.size + 1) = eigObjC q eParent := by
   show ((((hmidOf h d name).objs.push (classObj q parent)).push (eigObjC q eParent)).set!
