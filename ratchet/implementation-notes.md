@@ -9608,3 +9608,21 @@ both halves of what constrains them now have a name.
 - New proofs compile below a second, standard axioms only. Full quiet ratchet GREEN:
   fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 130 (2026-09-14) — retain the root constructor dispatch
+
+- Countermodel (§F35): retag Class#new to Object#nil?; the full old boot conjunction still
+  passes, but actual fresh Point.new returns false. Instance-code conformance cannot supply
+  constructor metadata. A global class-query row fails boot: Range/Struct legitimately
+  define prelude constructors. Keep the requirement at Object's class-object dispatch site.
+- `NewDispatch` states found-builtin/visibility/shadow and missing-method facts. Its finite
+  Bool is added to bootOkB; `MainSite.newDispatch` retains the root fact under the existing
+  mainWorld request and nameFreeN new guard. Context weakening, allocations, field writes,
+  reserved method writes, and fresh classes all preserve it; no new Ctx field is needed.
+- `ClassNewEntry` transfers that fact down the actual fresh eigenclass chain with a native
+  new-shadow guard. A full-StateOk entry control consumes it; execution controls separate
+  ordinary Point.new from the wrong tag and retain the legitimate prelude exceptions.
+  Class publication, initialized allocation, and annotated body/certificate rules remain.
+- New proofs build in about two seconds or less, standard axioms only. Full quiet ratchet
+  GREEN: fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
+  252 agree / 0 disagree.

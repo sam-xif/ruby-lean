@@ -13,7 +13,7 @@ theorem MainSite.ivarOnly {κ : Ctx} {h h' : Heap} (site : MainSite κ h)
     simp only [isAName, hn, isA, hi.classOf_eq, hi.ancestors_eq]
   have hm (k : ObjId) (name : String) : Interp.methodOn h' k name = Interp.methodOn h k name := by
     simp only [Interp.methodOn, hi.classPayload, hi.ancestors_eq]
-  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
   · have hr := site.ready
     exact ⟨rfl, rfl, rfl, rfl, rfl, by simpa only [mainView, hi.size] using hr.live,
       by simpa only [mainView, hi.payload] using hr.payload,
@@ -30,6 +30,12 @@ theorem MainSite.ivarOnly {κ : Ctx} {h h' : Heap} (site : MainSite κ h)
   · intro n
     simpa only [mainConstResolve, hi.constOwn_eq, constLookupFrom, constLookup,
       hi.classPayload, hi.ancestors_eq] using site.constants n
+  · intro hf
+    apply (site.newDispatch hf).transport
+    · simp only [hi.classOf_eq, hm]
+    · simp only [hi.classOf_eq, hm]
+    · intro owner
+      simp only [hi.classOf_eq, hi.ancestors_eq, Interp.crubyShadow, className, hi.classPayload]
 
 #print axioms MainSite.ivarOnly
 end Ratchet.Denote

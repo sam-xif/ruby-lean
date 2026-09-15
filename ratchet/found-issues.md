@@ -2468,3 +2468,17 @@ plus heap-size monotonicity for composition. This is not raw field-value equalit
 producers prove it, including initialization published from the preallocation anchor.
 `method_pop_selfSpine` restores the caller's own spine independently of the callee's self.
 Full caller conformance and class-rule admission remain separate obligations.
+
+## F35 — fresh class entry does not establish constructor dispatch (2026-09-14)
+
+**Extension obstacle, not an accepted unsafe program.** Retag Class#new as Object#nil?:
+every previous boot check passes, yet `class Point; end; Point.new` returns false.
+`ClassCtorControls` checks the entire old conjunction and the actual execution. Installed
+instance-code facts and method-name exclusions do not constrain that builtin tag.
+
+A global Class#new row is also wrong: Range and Struct legitimately use prelude constructors
+(the attempted broader boot gate rejected them). Clink 130 retains the dispatch inherited
+from Object's class object in `MainSite`, guarded by the new-name exclusion, with an added
+boot check. All existing transports preserve it. `ClassNewEntry` derives the fresh class's
+constructor dispatch, including native-shadow checks; initialization and class publication
+still need their own proofs. No class rule or new admission is claimed.

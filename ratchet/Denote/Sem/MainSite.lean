@@ -1,4 +1,4 @@
-import Denote.Sem.InstanceSite
+import Denote.Sem.ClassNew
 
 /-! The top-level receiver's heap obligations must outlive its activation.
 This view has a fixed frame; it is not an execution or an admission route. -/
@@ -39,6 +39,7 @@ structure MainSiteAt (free : String → Bool) (h : Heap) : Prop where
     Interp.methodOn h (classOf h (.ref Boot.mainId)) "method_missing" = some (owner, md) →
       md.builtin.isSome = true
   constants : ∀ n, mainConstResolve h n = constLookup h n
+  newDispatch : free "new" = true → NewDispatch h (classOf h (.ref Boot.objectId))
 
 abbrev MainSite (κ : Ctx) := MainSiteAt (nameFreeN κ)
 
@@ -49,7 +50,8 @@ theorem MainSite.recontext {κ κ' : Ctx} {h : Heap} (site : MainSite κ h)
     | true => rfl
     | false => rw [hn n he] at h; cases h
   exact ⟨site.ready, fun n hm o md hl => (site.names n hm o md hl).imp id (Or.imp id (hn n)),
-    fun n hb hf => site.bare n hb (ht n hf), fun hf => site.missing (ht _ hf), site.constants⟩
+    fun n hb hf => site.bare n hb (ht n hf), fun hf => site.missing (ht _ hf), site.constants,
+    fun hf => site.newDispatch (ht _ hf)⟩
 
 theorem MainSite.ext {κ : Ctx} {m n : Machine} (site : MainSite κ m.heap) (he : Ext m n) :
     MainSite κ n.heap := by
@@ -68,12 +70,19 @@ theorem MainSite.ext {κ : Ctx} {m n : Machine} (site : MainSite κ m.heap) (he 
       | nil => rfl
       | cons k ks ih => simp only [lookup.go, he.payload, ih]
     simp only [lookup, hco, he.ancestors, hg]
-  exact ⟨site.ready.ext hv rfl,
+  refine ⟨site.ready.ext hv rfl,
     fun name hm o md hmd => site.names name hm o md (by rwa [hmo] at hmd),
     fun name hb hf => (hl name).trans (site.bare name hb hf),
     fun hf o md hmd => site.missing hf o md (by rwa [hmo] at hmd), fun name => by
       simpa only [mainConstResolve, constOwn, constLookupFrom, constLookup, he.payload,
-        he.ancestors] using site.constants name⟩
+        he.ancestors] using site.constants name, ?_⟩
+  intro hf
+  have hc : classOf n.heap (.ref Boot.objectId) = classOf m.heap (.ref Boot.objectId) := by
+    simp only [classOf, he.get Boot.objectId (lt_size_of_classPayload site.ready.classLive)]
+  apply (site.newDispatch hf).transport
+  · simp only [Interp.methodOn, hc, he.payload, he.ancestors]
+  · simp only [Interp.methodOn, hc, he.payload, he.ancestors]
+  · intro owner; simp only [hc, he.ancestors, Interp.crubyShadow, className, he.payload]
 
 #print axioms MainSite.ext
 end Ratchet.Denote

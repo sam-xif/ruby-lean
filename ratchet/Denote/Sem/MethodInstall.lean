@@ -95,7 +95,7 @@ theorem MainSite.methodWrite {κ : Ctx} {h : Heap} {cls : ObjId} {name : String}
     MainSite κ (defineMethod h cls name md) := by
   have hne (n : String) (hf : nameFreeN κ n = true) : n ≠ name := by
     intro he; subst n; rw [hn] at hf; cases hf
-  refine ⟨site.ready.methodWrite cls name md hq, ?_, ?_, ?_, ?_⟩
+  refine ⟨site.ready.methodWrite cls name md hq, ?_, ?_, ?_, ?_, ?_⟩
   · intro n hmem o found hl
     by_cases he : n = name
     · exact Or.inr (Or.inr (he ▸ hn))
@@ -110,6 +110,12 @@ theorem MainSite.methodWrite {κ : Ctx} {h : Heap} {cls : ObjId} {name : String}
   · intro n
     simpa only [mainConstResolve, Proof.constOwn_defineMethod, Proof.constLookupFrom_defineMethod,
       constLookup_defineMethod] using site.constants n
+  · intro hf
+    apply (site.newDispatch hf).transport
+    · rw [Proof.classOf_defineMethod, methodOn_defineMethod _ _ _ _ _ _ (hne "new" hf)]
+    · rw [Proof.classOf_defineMethod, methodOn_defineMethod _ _ _ _ _ _ hm]
+    · intro owner
+      rw [Proof.classOf_defineMethod, Proof.ancestors_defineMethod, crubyShadow_defineMethod]
 
 theorem ClassScopeReady.methodWrite {cn : String} {m : Machine}
     (h : ClassScopeReady cn m) (cls : ObjId) (name : String) (md : MethodDef)

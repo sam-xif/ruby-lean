@@ -243,6 +243,11 @@ constructor payload/initialization, class publication, and class-rule admission 
 RunSpec. `returnScopeCtx` restores only the caller's scope, retaining outgoing declarations
 and weakened absence facts; `ClassReturnState` establishes full conformance there. Controls
 consume a literal-body certificate and check retained tables and actual caller-local isolation.
+`MainSite.newDispatch` retains Object's class-object constructor dispatch, guarded by the
+new-name exclusion and checked at boot. It is not global: Range/Struct have prelude constructors.
+`ClassNewEntry` derives a fresh class's dispatch through the real eigenclass chain, with native
+shadow guards. A full-old-boot countermodel retags Class#new and observes Point.new return false
+(`ClassCtorControls`, §F35). Positive class/constructor publication and body rules remain gated.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -301,6 +306,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/FieldsPres.lean`, `Denote/Typed/InstanceReturn.lean`, `InstanceReturnControls.lean` | Retained field types, different-self caller-spine restoration, and full-state eigenclass countermodel |
 | `Denote/Sem/MainSite*.lean`, `Denote/Typed/MainReturn.lean`, `InstanceCall.lean`, `MainSiteControls.lean` | Retained top-level world, full caller restoration and instance-call composition, with absence controls |
 | `Denote/Typed/ClassReturnState.lean`, `ClassRun.lean`, `ClassReturnControls.lean` | Fresh-class body execution and full exit conformance, retaining outgoing tables while restoring caller scope |
+| `Denote/Sem/ClassNew.lean`, `ClassNewEntry.lean`, `Denote/Typed/ClassCtorControls.lean` | Boot-checked root constructor dispatch, fresh inheritance, and wrong-builtin/prelude controls |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |

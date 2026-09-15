@@ -27,7 +27,7 @@ theorem mainSite {κ : Ctx} {h : Heap} {name : String} {e : ObjId}
       lookup h' (.ref k) n = lookup h (.ref k) n := by
     rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hk,
       method_old hc.chains hs (Proof.ClsGrow.classOf_lt hc.chains hk)]
-  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
   · refine ⟨rfl, rfl, rfl, rfl, rfl, ?_, ?_, ?_,
       nominal hc hs hb hn he hr.object, classPayload_live hr.classLive, ?_⟩
     · change Boot.mainId < h'.objs.size
@@ -55,6 +55,13 @@ theorem mainSite {κ : Ctx} {h : Heap} {name : String} {e : ObjId}
     · simpa only [mainConstResolve, const_own_old_other hc.chains.boot.2.2.2.2
         hc.chains.boot.2.2.2.2 heq, const_from_old_other hc.chains hs hc.chains.boot.2.2.2.2 heq,
         const_other hc.chains.boot.2.2.2.2 heq] using site.constants n
+  · intro hf
+    have hco := classOf_old (name := name) (e := e) hc.chains.boot.2.2.2.2
+    have hl := Proof.ClsGrow.classOf_lt hc.chains hc.chains.boot.2.2.2.2
+    apply (site.newDispatch hf).transport
+    · rw [hco, method_old hc.chains hs hl]
+    · rw [hco, method_old hc.chains hs hl]
+    · intro owner; rw [hco, shadow_before_old hc.chains hs hl]
 
 #print axioms mainSite
 end Ratchet.Denote.FreshClass

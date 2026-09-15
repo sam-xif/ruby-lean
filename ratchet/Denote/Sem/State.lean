@@ -698,8 +698,10 @@ def MissFree (κ : Ctx) (m : Machine) : Prop :=
 
 theorem mainSite_of_scope {κ : Ctx} {m : Machine} (h : MainReady m)
     (hn : NameFreeOk κ m) (hb : BareNameFree κ m) (hm : MissFree κ m)
-    (hs : κ.selfTy = none) (hc : ConstScopeOk m) : MainSite κ m.heap := by
-  refine ⟨h.view, ?_, ?_, ?_, ?_⟩
+    (hs : κ.selfTy = none) (hc : ConstScopeOk m)
+    (hnew : nameFreeN κ "new" = true → NewDispatch m.heap (classOf m.heap (.ref Boot.objectId))) :
+    MainSite κ m.heap := by
+  refine ⟨h.view, ?_, ?_, ?_, ?_, hnew⟩
   · intro n hn' o md hl
     apply hn n hn' _ (List.mem_cons_self ..) o md
     simpa only [h.self] using hl

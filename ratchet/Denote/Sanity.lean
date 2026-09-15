@@ -536,6 +536,7 @@ def bootOkB : Bool :=
     && primitiveErrorsB bootMachine.heap && stringPayloadB bootMachine.heap
     && arrayPayloadB bootMachine.heap
     && hashPayloadB bootMachine.heap && mainReadyB bootMachine
+    && newDispatchB bootMachine.heap (classOf bootMachine.heap (.ref Boot.objectId))
 
 /-- **The satisfiability witness.** `StateOk` holds at the real booted machine in the empty
 context, so no obligation on the ladder is vacuously true for want of a conformant machine.
@@ -544,6 +545,7 @@ The hypothesis is discharged by the `#guard` below, at build time, against the s
 prelude-booted heap the difftest SUT and `Denote/Examples.lean` use. -/
 theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 bootMachine := by
   simp only [bootOkB, Bool.and_eq_true] at hb
+  obtain ⟨hb, hnew⟩ := hb
   obtain ⟨hb, hready⟩ := hb
   obtain ⟨⟨⟨⟨⟨hb, hpd⟩, hpe⟩, hsp⟩, hap⟩, hhp⟩ := hb
   simp only [frameOkB, Bool.and_eq_true, bne_iff_ne, ne_eq, Option.isNone_iff_eq_none,
@@ -554,7 +556,7 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
     { runtime := fun _ => mainReadyB_sound hready
       mainSite := fun _ => mainSite_of_scope (mainReadyB_sound hready)
         (nameFreeB_sound hnf _) (bareNameFreeB_sound hnf _) (missFreeB_sound hmf _) rfl
-        (constScope_of_topScope htop)
+        (constScope_of_topScope htop) (fun _ => newDispatchB_sound hnew)
       classRuntime := by intro cn h; cases h
       classSites := by intro cn h; cases h
       primitiveDispatch := hpd
