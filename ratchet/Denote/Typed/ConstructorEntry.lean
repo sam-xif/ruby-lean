@@ -12,8 +12,8 @@ def ctorAllocated (m : Machine) (k : ObjId) : Machine :=
   { m with heap := pushHeap m.heap { klass := k }, kont := .newK (.ref m.heap.objs.size) :: m.kont }
 
 theorem finishSend_constructor {m : Machine} {k : ObjId} {md : MethodDef} {args : List Value}
-    (hc : OrdinaryClass m.heap k) (hd : NewDispatch m.heap (classOf m.heap (.ref k)))
-    (hmath : k ≠ Boot.mathId) (hi : Interp.userInit? m.heap k = some md) :
+    (hc : PlainAllocator m.heap k) (hd : NewDispatch m.heap (classOf m.heap (.ref k)))
+    (hi : Interp.userInit? m.heap k = some md) :
     Interp.finishSend m (.ref k) .explicit "new" args .none =
       Interp.enterUserMethod (ctorAllocated m k) (.ref m.heap.objs.size) "initialize" md args none := by
   obtain ⟨cp, hp, hm⟩ := hc.payload
@@ -26,7 +26,7 @@ theorem finishSend_constructor {m : Machine} {k : ObjId} {md : MethodDef} {args 
     show ("new" == "quote") = false from rfl,
     show ("new" == "union") = false from rfl,
     Bool.false_or, Bool.false_and, Bool.false_eq_true, ↓reduceIte, hp,
-    beq_eq_false_iff_ne.mpr hmath, Bool.and_false]
+    beq_eq_false_iff_ne.mpr hc.notMath, Bool.and_false]
   simp only [Interp.invoke.invokeMaybeNew]
   have hn := hd.no_userNew
   simp only [hm, beq_self_eq_true, Bool.not_false, Bool.true_and, Bool.not_eq_true']
@@ -41,8 +41,8 @@ theorem finishSend_constructor {m : Machine} {k : ObjId} {md : MethodDef} {args 
 
 theorem constructor_required_entry {m : Machine} {k : ObjId} {md : MethodDef}
     {args : List Value} {names : List String}
-    (hc : OrdinaryClass m.heap k) (hd : NewDispatch m.heap (classOf m.heap (.ref k)))
-    (hmath : k ≠ Boot.mathId) (hi : Interp.userInit? m.heap k = some md)
+    (hc : PlainAllocator m.heap k) (hd : NewDispatch m.heap (classOf m.heap (.ref k)))
+    (hi : Interp.userInit? m.heap k = some md)
     (hp : md.params = names.map RubyCore.Param.req) (hcap : md.capturedFrame = none)
     (hdecl : md.declared = []) (ha : args.length = names.length) :
     Interp.finishSend m (.ref k) .explicit "new" args .none =
@@ -50,7 +50,7 @@ theorem constructor_required_entry {m : Machine} {k : ObjId} {md : MethodDef}
         (pushMethodFrame (ctorAllocated m k)
           (requiredFrame (.ref m.heap.objs.size) "initialize" md names args))
         (.eval md.body) (.frameK m.frames.size)) := by
-  rw [finishSend_constructor hc hd hmath hi]
+  rw [finishSend_constructor hc hd hi]
   exact enterUserMethod_required _ _ _ _ _ _ hp hcap hdecl ha
 
 #print axioms finishSend_constructor

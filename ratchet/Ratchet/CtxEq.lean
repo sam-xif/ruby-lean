@@ -86,7 +86,8 @@ theorem closEqB_sound (a b : Clos) (h : closEqB a b = true) : a = b := by
 
 def posEqB (a b : Pos) : Bool := listEqB clsEqB a.classes b.classes &&
   listEqB defnEqB a.defs b.defs &&
-    decide (a.consts = b.consts ∧ a.privConsts = b.privConsts ∧ a.mainWorld = b.mainWorld)
+    decide (a.consts = b.consts ∧ a.privConsts = b.privConsts ∧ a.mainWorld = b.mainWorld ∧
+      a.plainAlloc = b.plainAlloc)
 
 theorem posEqB_sound (a b : Pos) (h : posEqB a b = true) : a = b := by
   cases a; cases b

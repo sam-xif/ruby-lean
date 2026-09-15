@@ -13,15 +13,6 @@ theorem boot_run (hb : bootOkB = true)
     RunSpec bootMachine (evalFrom bootMachine program) [] .sym callerCtx .ivar0 :=
   runSpec (stateOk_boot hb) rfl (by simp) hn
 
-theorem constructor_code {Γ : Env} {I : Ty} {m : Machine} (hm : StateOk callerCtx Γ I m) :
-    ∃ k md, InstanceSite callerCtx "Point" k m.heap ∧
-      NewDispatch m.heap (classOf m.heap (.ref k)) ∧
-      md.params = [.req "x", .req "y"] ∧ md.body = toRuby pointInitBody ∧
-      InstanceMethodCode k "initialize" md ∧ Interp.userInit? m.heap k = some md :=
-  declared_constructor_code (c := classWithMethod initClass getter) (d := initDecl) hm
-    (by change classWithMethod initClass getter ∈ [classWithMethod initClass getter, initClass, header]; simp)
-    (by change initDecl ∈ [getter, initDecl]; simp) rfl (by decide)
-
 theorem after_run {Γ : Env} {I : Ty} {m n : Machine} {fuel rest : Nat} {v : Value}
     (hm : StateOk ctx0 Γ I m) (hI : FirstOrder I = true)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)

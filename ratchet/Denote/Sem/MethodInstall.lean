@@ -181,6 +181,7 @@ theorem StateOk_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} 
     mainSite := fun hr => (hm.mainSite hr).methodWrite hn hmiss hquiet
     classRuntime := fun cn hr => (hm.classRuntime cn hr).methodWrite cls name md hquiet
     classSites := hsites
+    allocators := hm.allocators.defineMethod
     sat := Proof.Saturated_defineMethod hm.sat _ _ _
     primitiveDispatch := (primitiveDispatchB_defineMethod hn).trans hm.primitiveDispatch
     primitiveErrors := (primitiveErrorsB_defineMethod ..).trans hm.primitiveErrors

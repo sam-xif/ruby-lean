@@ -9778,3 +9778,24 @@ both halves of what constrains them now have a name.
 - New proofs build below a second, standard axioms only. Full quiet ratchet GREEN:
   fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 139 (2026-09-14) — constructor allocation from published conformance
+
+- `Pos.plainAlloc` names proved plain-object allocators, separately from class/method rows.
+  `StateOk.allocators` carries their live class ids, module/special-id exclusions, rootedness,
+  and absence of payload-core allocation. This does not assert every declared class is plain
+  or that an initializer is absent/safe. Context equality compares the capability list.
+- `PlainAllocator` replaces ConstructorRun's unnecessarily exact fresh-class ancestry premise;
+  ordinary inheritance need not have that exact list. Fresh publication proves the capability;
+  allocation, method installation, ivar writes, class creation, and frame entry/return preserve
+  it. Caller restoration keeps outgoing capabilities, not the caller's stale list. Freshness
+  excludes Math using the live Regexp id; the earlier Proc lower bound would be insufficient.
+- `PointConstructor.constructor_run` now derives allocation and dispatched initializer code
+  from StateOk, then applies the initializer proof at its Integer parameter/void annotations.
+  `after_class_constructor` composes this after a real class answer for arbitrary Integers and
+  caller locals, retaining framing from before class creation. Controls reject capability-only
+  context changes and show that allocation capability grants no method/initializer declaration.
+- Constructor/getter expression composition and initializer-body certificates remain. These
+  proofs do not add a DJudge rule or raise checker reach. Targeted builds are axiom-clean.
+- Full quiet ratchet GREEN: fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree. New constructor controls build below a second.

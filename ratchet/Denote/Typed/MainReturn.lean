@@ -35,6 +35,7 @@ theorem restore_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mach
   refine {
     runtime := fun _ => ready
     mainSite := fun _ => site
+    allocators := hn.allocators
     classRuntime := by
       intro cn hcn
       change κ.scope.runtimeClass = some cn at hcn

@@ -295,9 +295,13 @@ initializer body certificates, and checker admission remain gated; no signature 
 first-order caller locals and full outgoing conformance. Both bodies have proofs under the
 final table; the initializer is rechecked after getter installation. `ConstructorLookup`
 recovers actual new dispatch and initializer code from that state, not signature assumptions.
-The subsequent constructor/getter expression still needs composition: physical allocator
-shape is a separate premise of ConstructorRun, not currently a consequence of the published
-header. No new DJudge rule or checker acceptance is claimed.
+`Pos.plainAlloc` now retains plain-object allocation capabilities independently of method
+rows; StateOk interprets them and every heap/frame transport preserves them. Fresh header
+publication establishes the capability. `ConstructorRun` uses this weaker contract rather
+than an exact fresh-class ancestry list. `PointConstructor` derives constructor execution
+from published conformance and the initializer's annotation-domain proof; controls compose
+it after the actual class run, with no external allocator/code premise. Constructor/getter
+expression composition and body-certificate admission remain; no new checker acceptance.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -365,6 +369,7 @@ String membership needs a payload invariant. See
 | `Ratchet/ClassHeader.lean`, `Denote/Sem/ClassHeader.lean`, `Denote/Typed/ClassHeaderControls.lean` | Guarded pending-header publication, full entry conformance, and inherited-initializer control |
 | `Ratchet/DeclLookupFrame.lean`, `MemberFrame.lean`, `Denote/Sem/Member*.lean`, `Denote/Typed/Member*.lean` | Alias-aware definition guards, full installation conformance, and annotation-domain member/initializer definitions |
 | `Denote/Typed/ClassHeaderRun.lean`, `PointClass.lean`, `ConstructorLookup.lean`, `PointClassControls.lean` | Full annotated Point class execution, restored caller state, final-context body proofs, and conformance-derived constructor code |
+| `Denote/Sem/Allocator.lean`, `ClassAllocators.lean`, `Denote/Typed/PointConstructor.lean`, `PointConstructorControls.lean` | Persistent plain-allocation capabilities and annotation-checked construction from the published class state |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |

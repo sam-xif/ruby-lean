@@ -26,6 +26,14 @@ theorem OrdinaryClass.payload {h : Heap} {k : ObjId} (hc : OrdinaryClass h k) :
 theorem OrdinaryClass.rooted {h : Heap} {k : ObjId} (hc : OrdinaryClass h k) :
     (ancestors h k).contains Boot.basicObjectId = true := by simp [hc.chain]
 
+theorem OrdinaryClass.plain {h : Heap} {k : ObjId} (hc : OrdinaryClass h k)
+    (hm : k ≠ Boot.mathId) : PlainAllocator h k := by
+  refine ⟨hc.live, hc.notClass, hc.notModule, hm, ?_, hc.module, hc.rooted, hc.noCore, hc.noPayload⟩
+  intro he
+  have hn := hc.noPayload
+  rw [hc.chain] at hn
+  simp [he, Builtins.payloadCoreClasses] at hn
+
 theorem FreshClass.ordinary {h : Heap} {d : ObjId} {name q : String} {e : ObjId}
     (hc : ClassReady h) (hs : Proof.Saturated h) :
     OrdinaryClass (freshClsHeap h d name q e) h.objs.size := by

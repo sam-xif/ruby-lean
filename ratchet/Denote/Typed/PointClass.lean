@@ -2,6 +2,7 @@ import Denote.Typed.ClassHeaderRun
 import Denote.Typed.MemberDefine
 import Denote.Typed.InitBodyControls
 import Denote.Typed.Sequence
+import Denote.Typed.ConstructorLookup
 
 /-! The entire 061 class statement, with both method bodies proved from annotations.
 Its caller receives installed code and full state, not a constructor-call admission. -/
@@ -66,6 +67,15 @@ theorem getter_body :
       [] pointInitSpine getter.body .int
       (instanceBodyCtx callerCtx ⟨"Point", "Point", "getX"⟩ pointInitSpine) [] pointInitSpine :=
   SemSafeCtxA.ivarRead
+
+theorem constructor_code {Γ : Env} {I : Ty} {m : Machine} (hm : StateOk callerCtx Γ I m) :
+    ∃ k md, InstanceSite callerCtx "Point" k m.heap ∧
+      NewDispatch m.heap (classOf m.heap (.ref k)) ∧
+      md.params = [.req "x", .req "y"] ∧ md.body = toRuby pointInitBody ∧
+      InstanceMethodCode k "initialize" md ∧ Interp.userInit? m.heap k = some md :=
+  declared_constructor_code (c := classWithMethod initClass getter) (d := initDecl) hm
+    (by change classWithMethod initClass getter ∈ [classWithMethod initClass getter, initClass, header]; simp)
+    (by change initDecl ∈ [getter, initDecl]; simp) rfl (by decide)
 
 #print axioms body_sem
 #print axioms runSpec

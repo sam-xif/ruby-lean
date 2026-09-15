@@ -31,7 +31,7 @@ theorem point_constructor_body {m : Machine} {k : ObjId} {md : MethodDef}
       n.ctl = .eval (toRuby pointInitBody) ∧
       InitState m.heap initCtx pointInitParams .ivar0 n ∧
       InitRunSpec m.heap n (evalFrom n pointInitBody) pointInitParams .any initCtx pointInitSpine := by
-  exact constructor_body_entry hm (ReframeFO.empty rfl rfl rfl rfl) rfl hc site hd hmath
+  exact constructor_body_entry hm (ReframeFO.empty rfl rfl rfl rfl) rfl (hc.plain hmath) site hd
     (hm.runtime rfl).phase code hi hp hb rfl (by simp [pointInitParams, DenAll, denM, isIntV])
     (by simp [pointInitParams, FirstOrder, isAliasTy])
     (fun name => (constGet?_empty (κ := initCtx) rfl name).trans (constGet?_empty rfl name).symm)

@@ -9,26 +9,21 @@ namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
 theorem ctorAllocated_ext {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {k : ObjId}
-    (hm : StateOk κ Γ I m) (hc : OrdinaryClass m.heap k) : Ext m (ctorAllocated m k) := by
+    (hm : StateOk κ Γ I m) (hc : PlainAllocator m.heap k) : Ext m (ctorAllocated m k) := by
   have he := ext_push { klass := k } hm.sat hm.core.basicSelf (by intro c; cases c; simp)
     rfl rfl hc.rooted
   exact he.trans (Ext_toReCtl _ m.ctl (.newK (.ref m.heap.objs.size) :: m.kont))
 
 theorem ctorAllocated_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {k : ObjId}
-    (hm : StateOk κ Γ I m) (hc : OrdinaryClass m.heap k) :
+    (hm : StateOk κ Γ I m) (hc : PlainAllocator m.heap k) :
     StateOk κ Γ I (ctorAllocated m k) := by
-  have hns : k ≠ Boot.stringId := by
-    intro h
-    have hn := hc.noPayload
-    rw [hc.chain] at hn
-    simp [h, Builtins.payloadCoreClasses] at hn
   exact StateOk_ext hm (ctorAllocated_ext hm hc)
-    (stringPayloadOk_push hm.stringPayload (by simpa using hns))
+    (stringPayloadOk_push hm.stringPayload (by simpa using hc.notString))
     (arrayPayloadOk_push hm.arrayPayload (by simp))
     (hashPayloadOk_push hm.hashPayload (by simp)) rfl
 
 theorem ctorAllocated_receiver {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {k : ObjId}
-    {cn : String} (hm : StateOk κ Γ I m) (hc : OrdinaryClass m.heap k)
+    {cn : String} (hm : StateOk κ Γ I m) (hc : PlainAllocator m.heap k)
     (hn : classNamed? m.heap cn = some k) :
     denM (.inst cn .ivar0) (ctorAllocated m k) (.ref m.heap.objs.size) := by
   have he := ctorAllocated_ext hm hc
@@ -44,7 +39,7 @@ def constructorFrame (m : Machine) (k : ObjId) (md : MethodDef)
 theorem constructor_frame_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     {cn : String} {k : ObjId} {md : MethodDef} {ps : List SigParam} {args : List Value}
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I) (ha : κ.asms = [])
-    (hc : OrdinaryClass m.heap k) (site : InstanceSite κ cn k m.heap)
+    (hc : PlainAllocator m.heap k) (site : InstanceSite κ cn k m.heap)
     (hp : m.preludeMode = false) (code : InstanceMethodCode k "initialize" md)
     (hlen : args.length = ps.length) (hargs : DenAll (ps.map (·.2)) m args)
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
@@ -70,8 +65,8 @@ theorem constructor_body_entry {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {m :
     {cn : String} {k : ObjId} {md : MethodDef} {ps : List SigParam} {args : List Value}
     {body : Ratchet.Expr}
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I) (ha : κ.asms = [])
-    (hc : OrdinaryClass m.heap k) (site : InstanceSite κ cn k m.heap)
-    (hd : NewDispatch m.heap (classOf m.heap (.ref k))) (hmath : k ≠ Boot.mathId)
+    (hc : PlainAllocator m.heap k) (site : InstanceSite κ cn k m.heap)
+    (hd : NewDispatch m.heap (classOf m.heap (.ref k)))
     (hp : m.preludeMode = false) (code : InstanceMethodCode k "initialize" md)
     (hi : Interp.userInit? m.heap k = some md)
     (hparams : md.params = (ps.map (·.1)).map RubyCore.Param.req)
@@ -87,7 +82,7 @@ theorem constructor_body_entry {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {m :
   have he := constructor_frame_state hm ht ha hc site hp code hlen hargs hps hk
   let n := Interp.withKont (constructorFrame m k md ps args) (.eval md.body) (.frameK m.frames.size)
   have hn : InitState m.heap (initializerBodyCtx κ cn) ps .ivar0 n := he.reCtl _ _
-  exact ⟨n, constructor_required_entry hc hd hmath hi hparams code.captured code.declared
+  exact ⟨n, constructor_required_entry hc hd hi hparams code.captured code.declared
     (by simpa using hlen), congrArg Ctl.eval hbody, hn, hb m.heap n hn⟩
 
 #print axioms ctorAllocated_state

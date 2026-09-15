@@ -23,7 +23,9 @@ no future methods and makes no claim about inherited initialize. -/
 def classHeader (name : String) : Cls := ⟨name, none, [], [], false, [], [], []⟩
 
 def classHeaderCtx (κ : Ctx) (name : String) : Ctx :=
-  { κ with pos := { κ.pos with classes := classHeader name :: κ.classes } }
+  { κ with pos := { κ.pos with
+      classes := classHeader name :: κ.classes
+      plainAlloc := name :: κ.pos.plainAlloc } }
 
 theorem classHeader_ancestors (C : CTable) (name : String) :
     ancestors? (classHeader name :: C) name = some [name] := by

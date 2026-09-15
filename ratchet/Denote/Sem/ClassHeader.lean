@@ -45,12 +45,14 @@ theorem FreshClass.declared_header {κ : Ctx} {m n : Machine} {name : String} {e
 retain their original meaning; only the positive table and its sites/nested claims change. -/
 theorem StateOk_publish_header {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {name : String}
     (hm : StateOk κ Γ I m) (hs : κ.scope.runtimeClass = some name)
-    (hn : unqualifiedClassB name = true) (hd : DeclClassOk (classHeaderCtx κ name) m) :
+    (hn : unqualifiedClassB name = true) (hd : DeclClassOk (classHeaderCtx κ name) m)
+    (ha : ∃ k, classNamed? m.heap name = some k ∧ PlainAllocator m.heap k) :
     StateOk (classHeaderCtx κ name) Γ I m := by
   obtain ⟨k, site⟩ := hm.classSites.of_scope hs
   refine { hm with
     classes := ?_
     classSites := ?_
+    allocators := ?_
     nested := ?_
     declCls := hd }
   · apply hm.classSites.recontext (κ' := classHeaderCtx κ name) _ (fun _ h => h)
@@ -59,6 +61,11 @@ theorem StateOk_publish_header {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {nam
     rcases List.mem_cons.mp hcn with rfl | hcn
     · simp [classSiteNames, hs]
     · exact hcn
+  · intro cn hcn
+    change cn ∈ name :: κ.pos.plainAlloc at hcn
+    rcases List.mem_cons.mp hcn with rfl | hcn
+    · exact ha
+    · exact hm.allocators cn hcn
   · intro c hc
     change c ∈ classHeader name :: κ.classes at hc
     rcases List.mem_cons.mp hc with rfl | hc

@@ -559,6 +559,7 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
         (constScope_of_topScope htop) (fun _ => newDispatchB_sound hnew)
       classRuntime := by intro cn h; cases h
       classSites := by intro cn h; cases h
+      allocators := by intro cn h; cases h
       primitiveDispatch := hpd
       primitiveErrors := hpe
       stringPayload := stringPayloadB_sound hsp

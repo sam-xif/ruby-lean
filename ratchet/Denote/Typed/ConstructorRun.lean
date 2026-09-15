@@ -73,8 +73,8 @@ theorem constructor_runSpec {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m : Ma
     {body : Ratchet.Expr}
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I) (ha : κ.asms = [])
     (hout : ReframeFO (returnScopeCtx κ κb) I)
-    (hc : OrdinaryClass m.heap k) (site : InstanceSite κ cn k m.heap)
-    (hd : NewDispatch m.heap (classOf m.heap (.ref k))) (hmath : k ≠ Boot.mathId)
+    (hc : PlainAllocator m.heap k) (site : InstanceSite κ cn k m.heap)
+    (hd : NewDispatch m.heap (classOf m.heap (.ref k)))
     (code : InstanceMethodCode k "initialize" md) (hi : Interp.userInit? m.heap k = some md)
     (hparams : md.params = (ps.map (·.1)).map RubyCore.Param.req) (hbody : md.body = toRuby body)
     (hlen : args.length = ps.length) (hargs : DenAll (ps.map (·.2)) m args)
@@ -92,7 +92,7 @@ theorem constructor_runSpec {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m : Ma
   have he := constructor_frame_state hm ht ha hc site (hm.runtime hr).phase code hlen hargs hps hentry
   have hrun := constructor_body_runSpec hm hout ha hr hw hcl hq hk hΓ hs hIb
     (hb m.heap (constructorFrame m k md ps args) he)
-  refine ⟨_, constructor_required_entry hc hd hmath hi hparams code.captured code.declared
+  refine ⟨_, constructor_required_entry hc hd hi hparams code.captured code.declared
     (by simpa using hlen), ?_⟩
   simpa only [constructorFrame, ctorAllocated, pushMethodFrame, Interp.withKont, evalFrom,
     pushK, reCtl, hbody, hkont, List.nil_append] using hrun

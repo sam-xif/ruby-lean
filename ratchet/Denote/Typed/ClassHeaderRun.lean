@@ -33,6 +33,8 @@ theorem class_header_runSpec {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m : M
     (FreshClass.declared_header hm.core.classReady hm.sat hm.core.rootNames
       (hm.runtime hr).classLive hn hne he hquiet ((hm.mainSite hin).newDispatch hnew) rfl
       hm.classes hm.declCls (headerTableFrameB_sound hframe))
+    ⟨m.heap.objs.size, classNamed_freshClass (hm.runtime hr).classLive
+      hm.core.classReady.chains.boot.2.2.2.2, FreshClass.plain hm.core hm.sat⟩
   have hrun := class_body_runSpec hstart ht ha hr hw hcl rfl hq hk hΓ hτ hn he (hb _ hheader)
   exact RunSpec.step (answerPoint_evalFrom _ _) hs (hrun.rebase (Framed_reCtl m _ []))
 

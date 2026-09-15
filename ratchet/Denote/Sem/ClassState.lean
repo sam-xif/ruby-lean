@@ -8,6 +8,7 @@ import Denote.Sem.ClassScopeEntry
 import Denote.Sem.InstanceSiteEntry
 import Denote.Sem.InstanceSiteClass
 import Denote.Sem.MainSiteClass
+import Denote.Sem.ClassAllocators
 
 /-! Full conformance at entry to an empty fresh class scope. The body is still to be
 checked, and no future definition has been inserted into the positive table. -/
@@ -39,6 +40,7 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
   exact {
     runtime := by intro h; cases h
     mainSite := fun hr => mainSite (hm.mainSite hr) hm.core.classReady hm.sat hm.core.basicSelf hn he
+    allocators := allocators hc hm.sat hn hm.allocators
     classRuntime := by
       intro cn hr
       change some name = some cn at hr
