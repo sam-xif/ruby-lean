@@ -1,5 +1,6 @@
 import Ratchet.Expr
 import Ratchet.Ty
+import Ratchet.GlobalConsts
 
 /-!
 # `Judge` — the hand-authored typing judgment
@@ -2140,9 +2141,8 @@ deriving BEq, DecidableEq, Repr, Inhabited
 
 /-- Facts that grow: everything the checker learns as it walks the program in order.
 
-The four fields are unchanged from the old flat `Ctx`; what changed is that they are now
-together, with one discipline, and reported out of a derivation rather than reconstructed by
-`JudgeSeq.cons`. -/
+Facts are reported out of a derivation rather than reconstructed from later syntax.
+An upper bound such as `globalConsts` grows by weakening absence, not by granting a type. -/
 structure Pos where
   classes : CTable
   defs : DefTable
@@ -2158,6 +2158,9 @@ structure Pos where
   mainWorld : Bool := false
   /-- Classes proved to allocate plain objects, independently of method/initializer rows. -/
   plainAlloc : List String := []
+  /-- Upper bound on names possibly bound on Object now; absence outside it is justified
+      by conformance. Unlike `consts`, membership grants no value/type information. -/
+  globalConsts : List String := []
 deriving Inhabited
 
 /-- Facts that shrink: what the program provably does **not** provide.
@@ -3583,6 +3586,6 @@ derivation carrying one is only a conditional claim, and `frame`/`selfTy` becaus
 program's top level is inside no method and runs somewhere `self` is not an instance of
 anything this judgment models. The constant table is empty for the first of those reasons:
 a program's first statement is the first thing that could assign one. -/
-def ctx0 : Ctx := ⟨⟨[], [], [], [], true, []⟩, ⟨[], [], [], false, [], [], []⟩, ⟨none, [], none, none, [], true, none, true⟩⟩
+def ctx0 : Ctx := ⟨⟨[], [], [], [], true, [], bootGlobalConsts⟩, ⟨[], [], [], false, [], [], []⟩, ⟨none, [], none, none, [], true, none, true⟩⟩
 
 end Ratchet

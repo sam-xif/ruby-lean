@@ -23,15 +23,13 @@ theorem get_sem {Γ : Env} {I : Ty} (hI : FirstOrder I = true)
       rfl n).trans (constGet?_empty rfl n).symm) hΓ
 
 theorem full_run {Γ : Env} {I : Ty} {m : Machine} (hm : StateOk ctx0 Γ I m)
-    (hI : FirstOrder I = true) (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
-    (hn : constOwn m.heap Boot.objectId "Point" = none) (x y : Int) :
+    (hI : FirstOrder I = true) (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (x y : Int) :
     RunSpec m (evalFrom m (fullProgram x y)) Γ .int callerCtx I :=
-  (runSpec hm hI hΓ hn).thenSeq (.last (get_sem hI hΓ x y))
+  (runSpec hm hI hΓ).thenSeq (.last (get_sem hI hΓ x y))
 
-theorem boot_full_run (hb : bootOkB = true)
-    (hn : constOwn bootMachine.heap Boot.objectId "Point" = none) (x y : Int) :
+theorem boot_full_run (hb : bootOkB = true) (x y : Int) :
     RunSpec bootMachine (evalFrom bootMachine (fullProgram x y)) [] .int callerCtx .ivar0 :=
-  full_run (stateOk_boot hb) rfl (by simp) hn x y
+  full_run (stateOk_boot hb) rfl (by simp) x y
 
 #print axioms get_sem
 #print axioms full_run

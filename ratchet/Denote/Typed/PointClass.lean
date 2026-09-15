@@ -48,11 +48,10 @@ theorem body_sem : SemSafeCtxA entryCtx [] .ivar0 body .sym bodyCtx [] .ivar0 :=
 
 /-- All-fuel class entry/body/exit, retaining arbitrary first-order caller locals. -/
 theorem runSpec {Γ : Env} {I : Ty} {m : Machine} (hm : StateOk ctx0 Γ I m)
-    (hI : FirstOrder I = true) (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
-    (hn : constOwn m.heap Boot.objectId "Point" = none) :
+    (hI : FirstOrder I = true) (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) :
     RunSpec m (evalFrom m program) Γ .sym callerCtx I :=
   class_header_runSpec hm (ReframeFO.empty hI rfl rfl rfl) rfl rfl rfl rfl rfl rfl rfl
-    (fun _ => rfl) hΓ rfl (ClassTablesFrame.empty rfl rfl) (by decide) hn (by decide)
+    (fun _ => rfl) hΓ rfl (ClassTablesFrame.empty rfl rfl) (by decide) (by decide) (by decide)
     rfl (by constructor <;> decide) (by decide) (by decide) body_sem
 
 /-- Recheck the initializer under the final published table, after getX was installed.

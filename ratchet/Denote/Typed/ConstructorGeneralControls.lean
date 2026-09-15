@@ -37,11 +37,10 @@ theorem body_sem : SemSafeCtxA entryCtx [] .ivar0 body .sym bodyCtx [] .ivar0 :=
     (by change header ∈ [header]; simp) ht (by simp) rfl
     (by decide) (by decide) (by decide) (by decide)
 
-theorem class_run {m : Machine} (hm : StateOk ctx0 [] .ivar0 m)
-    (hn : constOwn m.heap Boot.objectId "FlagBox" = none) :
+theorem class_run {m : Machine} (hm : StateOk ctx0 [] .ivar0 m) :
     RunSpec m (evalFrom m program) [] .sym callerCtx .ivar0 :=
   class_header_runSpec hm (ReframeFO.empty rfl rfl rfl rfl) rfl rfl rfl rfl rfl rfl rfl
-    (fun _ => rfl) (by simp) rfl (ClassTablesFrame.empty rfl rfl) (by decide) hn (by decide)
+    (fun _ => rfl) (by simp) rfl (ClassTablesFrame.empty rfl rfl) (by decide) (by decide) (by decide)
     rfl (by constructor <;> decide) (by decide) (by decide) body_sem
 
 def newExpr : Ratchet.Expr := .send (some (.const "FlagBox")) "new" [.tru] none
@@ -59,11 +58,10 @@ theorem new_sem : SemSafeCtxA callerCtx [] .ivar0 newExpr
     (fun x => (constGet?_empty (κ := initializerBodyCtx callerCtx "FlagBox") rfl x).trans
       (constGet?_empty rfl x).symm) (by simp) rfl
 
-theorem class_new_run (hb : bootOkB = true)
-    (hn : constOwn bootMachine.heap Boot.objectId "FlagBox" = none) :
+theorem class_new_run (hb : bootOkB = true) :
     RunSpec bootMachine (evalFrom bootMachine (.seq [program, newExpr])) []
       (.inst "FlagBox" .ivar0) callerCtx .ivar0 :=
-  (class_run (stateOk_boot hb) hn).thenSeq (.last new_sem)
+  (class_run (stateOk_boot hb)).thenSeq (.last new_sem)
 
 #guard match Interp.run 150 (evalFrom bootMachine (.seq [program, newExpr])) with
   | .value (.ref o) n => isExactInst n.heap (.ref o) "FlagBox" && (n.heap.get o).ivars.isEmpty

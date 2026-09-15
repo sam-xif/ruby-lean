@@ -11,12 +11,16 @@ private def point : Cls := ⟨"Point", none, [], [], false, [], [], []⟩
 private def member : Defn := ⟨"x", [], .int 1⟩
 private def afterBody : Ctx := instanceDeclCtx (classBodyCtx ctx0 "Point") point member
 
-#guard ctxEqB (returnScopeCtx ctx0 afterBody) (instanceDeclCtx ctx0 point member)
+#guard ctxEqB (returnScopeCtx ctx0 afterBody)
+  (instanceDeclCtx { ctx0 with pos := { ctx0.pos with globalConsts := "Point" :: bootGlobalConsts } }
+    point member)
 #guard !ctxEqB (returnScopeCtx ctx0 afterBody) ctx0
 #guard !(nameFreeN (returnScopeCtx ctx0 afterBody) "x")
 #guard (returnScopeCtx ctx0 afterBody).scope.runtimeMain
 #guard (returnScopeCtx ctx0 afterBody).scope.runtimeClass.isNone
 #guard ((returnScopeCtx ctx0 afterBody).classes.map (·.name)) == ["Point"]
+#guard !freshClassNameB (returnScopeCtx ctx0 afterBody) "Point"
+#guard freshClassNameB (returnScopeCtx ctx0 afterBody) "AnotherClass"
 
 private def literalCert (κ : Ctx) (name : String) :
     Certified [] (.int 7) (classBodyCtx κ name) .ivar0 :=
@@ -29,7 +33,8 @@ private theorem literal_body (κ : Ctx) (name : String) :
 theorem boot_class_literal_run (hb : bootOkB = true) {name : String}
     (hq : FreshClass.nativeFrameB ctx0 name = true)
     (hn : constOwn bootMachine.heap Boot.objectId name = none) (hne : name.isEmpty = false) :
-    RunSpec bootMachine (evalFrom bootMachine (.class' name none (.int 7))) [] .int ctx0 .ivar0 :=
+    RunSpec bootMachine (evalFrom bootMachine (.class' name none (.int 7))) [] .int
+      (returnScopeCtx ctx0 (classBodyCtx ctx0 name)) .ivar0 :=
   class_runSpec (stateOk_boot hb) (ReframeFO.empty rfl rfl rfl rfl) rfl rfl rfl rfl rfl rfl
     (classBodyCtx_constGet rfl name) (by intro p hp; cases hp) rfl
     (ClassTablesFrame.empty rfl rfl) hq hn hne (literal_body ctx0 name)

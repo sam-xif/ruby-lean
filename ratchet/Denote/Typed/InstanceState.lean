@@ -36,6 +36,7 @@ theorem instance_enter_state {κ : Ctx} {Γ : Env} {I Ib : Ty} {m : Machine}
     runtime := by intro h; cases h
     mainSite := hm.mainSite
     allocators := hm.allocators
+    globalConsts := hm.globalConsts
     classRuntime := ?_
     classSites := by
       intro q hq

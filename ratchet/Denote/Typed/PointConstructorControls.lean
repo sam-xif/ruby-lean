@@ -12,12 +12,11 @@ theorem after_class_constructor {Γ : Env} {I : Ty} {m n : Machine}
     {fuel rest : Nat} {v : Value}
     (hm : StateOk ctx0 Γ I m) (hI : FirstOrder I = true)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
-    (hn : constOwn m.heap Boot.objectId "Point" = none)
     (hr : runA fuel (evalFrom m program) = .ans (.val v) n rest) (x y : Int) :
     ∃ k p, classNamed? n.heap "Point" = some k ∧
       Interp.finishSend n (.ref k) .explicit "new" [.int x, .int y] .none = .next p ∧
       RunSpec m p Γ (.inst "Point" pointInitSpine) callerCtx I := by
-  have result := (runSpec hm hI hΓ hn).2 fuel (.val v) n rest hr
+  have result := (runSpec hm hI hΓ).2 fuel (.val v) n rest hr
   have hk : n.kont = [] :=
     (congrArg Machine.kont (deliverA_nil_self (answerPoint_of_ans _ _ _ _ _ hr))).symm
   obtain ⟨k, p, hn, hs, hp⟩ := constructor_run (result.2.2 v rfl) hI hΓ hk x y

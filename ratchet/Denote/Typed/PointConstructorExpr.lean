@@ -38,11 +38,10 @@ theorem new_sem {Γ : Env} {I : Ty} (hI : FirstOrder I = true)
 /-- The complete class statement followed by construction, through both real sequence frames. -/
 theorem class_new_run {Γ : Env} {I : Ty} {m : Machine}
     (hm : StateOk ctx0 Γ I m) (hI : FirstOrder I = true)
-    (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
-    (hn : constOwn m.heap Boot.objectId "Point" = none) (x y : Int) :
+    (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (x y : Int) :
     RunSpec m (evalFrom m (.seq [program, newExpr x y])) Γ
       (.inst "Point" pointInitSpine) callerCtx I :=
-  (runSpec hm hI hΓ hn).thenSeq (.last (new_sem hI hΓ x y))
+  (runSpec hm hI hΓ).thenSeq (.last (new_sem hI hΓ x y))
 
 #print axioms constructor_expr
 #print axioms class_new_run

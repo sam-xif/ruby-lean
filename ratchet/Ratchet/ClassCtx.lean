@@ -10,6 +10,7 @@ def returnScopeCtx (caller body : Ctx) : Ctx := { body with scope := caller.scop
 
 def classBodyCtx (κ : Ctx) (name : String) : Ctx :=
   { κ with
+    pos := { κ.pos with globalConsts := name :: κ.pos.globalConsts }
     scope := { κ.scope with
       frame := none
       blockTy := none
@@ -17,6 +18,9 @@ def classBodyCtx (κ : Ctx) (name : String) : Ctx :=
       runtimeMain := false
       runtimeClass := some name
       closedIvars := true } }
+
+/-- Freshness is a static absence test backed by the interpreted global-name bound. -/
+def freshClassNameB (κ : Ctx) (name : String) : Bool := !κ.pos.globalConsts.contains name
 
 /-- The just-created ordinary class, before any body statement has executed. This records
 no future methods and makes no claim about inherited initialize. -/

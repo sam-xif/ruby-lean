@@ -8,22 +8,20 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed.PointClass
 open RubyCore Ratchet Ratchet.Denote
 
-theorem boot_run (hb : bootOkB = true)
-    (hn : constOwn bootMachine.heap Boot.objectId "Point" = none) :
+theorem boot_run (hb : bootOkB = true) :
     RunSpec bootMachine (evalFrom bootMachine program) [] .sym callerCtx .ivar0 :=
-  runSpec (stateOk_boot hb) rfl (by simp) hn
+  runSpec (stateOk_boot hb) rfl (by simp)
 
 theorem after_run {Γ : Env} {I : Ty} {m n : Machine} {fuel rest : Nat} {v : Value}
     (hm : StateOk ctx0 Γ I m) (hI : FirstOrder I = true)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
-    (hn : constOwn m.heap Boot.objectId "Point" = none)
     (hr : runA fuel (evalFrom m program) = .ans (.val v) n rest) :
     StateOk callerCtx Γ I n ∧
       ∃ k md, InstanceSite callerCtx "Point" k n.heap ∧
         NewDispatch n.heap (classOf n.heap (.ref k)) ∧
         md.params = [.req "x", .req "y"] ∧ md.body = toRuby pointInitBody ∧
         InstanceMethodCode k "initialize" md ∧ Interp.userInit? n.heap k = some md := by
-  have hs := ((runSpec hm hI hΓ hn).2 fuel (.val v) n rest hr).2.2 v rfl
+  have hs := ((runSpec hm hI hΓ).2 fuel (.val v) n rest hr).2.2 v rfl
   exact ⟨hs, constructor_code hs⟩
 
 -- The class result is the last definition's symbol, not an instance or initializer value.

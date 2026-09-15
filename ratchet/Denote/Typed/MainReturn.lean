@@ -36,6 +36,7 @@ theorem restore_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mach
     runtime := fun _ => ready
     mainSite := fun _ => site
     allocators := hn.allocators
+    globalConsts := hn.globalConsts
     classRuntime := by
       intro cn hcn
       change κ.scope.runtimeClass = some cn at hcn

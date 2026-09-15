@@ -9852,3 +9852,27 @@ both halves of what constrains them now have a name.
 - New proofs use standard axioms only; dispatch builds in 1.1s and composition below a second.
   Full quiet ratchet GREEN: fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree.
+
+## Clink 142 (2026-09-14) — context-justified freshness for arbitrary classes
+
+- Countermodel before strengthening: add `Occupied = 1` to the boot heap. Every existing
+  boot check passes, but `class Occupied` raises TypeError. Empty positive class/constant
+  type tables are not absence; live-reference bounds do not constrain Integer bindings.
+- `Pos.globalConsts` is an upper bound on global names possibly bound now, not their types.
+  StateOk interprets it; a finite data seed is checked against the actual prelude by the same
+  boot Bool. Extra listed names are conservative. No opaque boot computation enters the
+  checker and no additional pilot-specific boot hypothesis is introduced.
+- Fresh entry adds only its executed name. Method definitions, allocations, field writes,
+  and frame changes preserve the bound; restoring a caller must retain the outgoing bound,
+  not reset it to the caller's pre-class value. Context equality includes it. This is distinct
+  from whole-program `Neg.boundConsts`, which cannot express pointwise runtime absence.
+- `StateOk.freshClassName` and the class-header run lemma are name/class/body-generic.
+  The latter now consumes a static guard. Point and FlagBox only instantiate it, removing
+  their external heap-freshness hypotheses, including the complete Point/new/getX proof.
+  Their method bodies still require full parameter/return-annotation proofs, even uncalled.
+- Controls preserve the full-old-boot countermodel, reject missing seed names and occupied
+  names, retain names after definition/return, and reject incompatible branch bounds.
+  Class/initializer certificate admission remains gated; no new validator reach is claimed.
+- New proofs are axiom-clean and build below a second. Full quiet ratchet GREEN:
+  fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
+  252 agree / 0 disagree.

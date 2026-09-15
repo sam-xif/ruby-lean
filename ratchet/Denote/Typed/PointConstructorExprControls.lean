@@ -16,11 +16,10 @@ theorem argument_effects_sem : SemSafeCtxA callerCtx [] .ivar0 effectfulNew
     (.cons (SemSafeCtxA.intLit.vasgn rfl rfl (by decide))
       (.cons (SemSafeCtxA.var rfl rfl) .nil rfl) rfl) rfl rfl (by simp [FirstOrder, stripAlias])
 
-theorem class_argument_effects_run (hb : bootOkB = true)
-    (hn : constOwn bootMachine.heap Boot.objectId "Point" = none) :
+theorem class_argument_effects_run (hb : bootOkB = true) :
     RunSpec bootMachine (evalFrom bootMachine (.seq [program, effectfulNew]))
       [("a", .int)] (.inst "Point" pointInitSpine) callerCtx .ivar0 :=
-  (runSpec (stateOk_boot hb) rfl (by simp) hn).thenSeq (.last argument_effects_sem)
+  (runSpec (stateOk_boot hb) rfl (by simp)).thenSeq (.last argument_effects_sem)
 
 -- Argument allocation must retain the already evaluated class receiver's identity/type.
 theorem allocating_args_sem (x y : Int) : SemSafeCtxA callerCtx [] .ivar0

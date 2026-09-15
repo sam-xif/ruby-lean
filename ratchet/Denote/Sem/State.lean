@@ -10,6 +10,7 @@ import Denote.Sem.MethodCode
 import Denote.Sem.InstanceSite
 import Denote.Sem.MainSite
 import Denote.Sem.Allocator
+import Denote.Sem.GlobalConsts
 
 /-!
 # `Denote/Sem/State.lean` — evaluation, and what it means for a machine to *match* a
@@ -1031,6 +1032,7 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   classRuntime : ClassRuntimeOk κ m
   classSites : ClassSitesOk κ m.heap
   allocators : AllocatorsOk κ.pos.plainAlloc m.heap
+  globalConsts : GlobalConstsOk κ.pos.globalConsts m.heap
   sat : HeapSaturated m
   primitiveDispatch : primitiveDispatchB m.heap (nameFreeN κ) = true
   primitiveErrors : primitiveErrorsB m.heap = true
@@ -1122,6 +1124,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
   classRuntime := fun cn hr => (h.classRuntime cn hr).ext he hphase
   classSites := h.classSites.ext he
   allocators := h.allocators.ext he
+  globalConsts := h.globalConsts.ext he
   primitiveDispatch := (primitiveDispatchB_ext he _).trans h.primitiveDispatch
   primitiveErrors := (primitiveErrorsB_ext he).trans h.primitiveErrors
   stringPayload := hp
@@ -1479,6 +1482,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
       classRuntime := fun cn hr => (h.classRuntime cn hr).setLocal x w
       classSites := by simpa only [setLocal_heap] using h.classSites
       allocators := by simpa only [setLocal_heap] using h.allocators
+      globalConsts := by simpa only [setLocal_heap] using h.globalConsts
       sat := h.sat
       core := h.core
       frameInRange := by

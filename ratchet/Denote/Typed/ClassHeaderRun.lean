@@ -1,5 +1,6 @@
 import Denote.Typed.ClassRun
 import Denote.Sem.ClassHeader
+import Denote.Sem.ClassFreshness
 
 /-! Execute a class body in its published header context and retain its outgoing tables
 after restoring the caller. The body contract must include annotated definition proofs. -/
@@ -17,11 +18,12 @@ theorem class_header_runSpec {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m : M
     (hk : ∀ x, constGet? κb x = constGet? (returnScopeCtx κ κb) x)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (hτ : FirstOrder τ = true)
     (htables : ClassTablesFrame κ name m) (hnative : FreshClass.nativeFrameB κ name = true)
-    (hn : constOwn m.heap Boot.objectId name = none) (hne : name.isEmpty = false)
+    (hfresh : freshClassNameB κ name = true) (hne : name.isEmpty = false)
     (hnew : nameFreeN κ "new" = true) (hquiet : FreshClass.NativeQuiet name "new")
     (hplain : unqualifiedClassB name = true) (hframe : headerTableFrameB κ.classes name = true)
     (hb : SemSafeCtxA (classHeaderCtx (classBodyCtx κ name) name) [] .ivar0 body τ κb Γb Ib) :
     RunSpec m (evalFrom m (.class' name none body)) Γ τ (returnScopeCtx κ κb) I := by
+  have hn := hm.freshClassName hfresh
   obtain ⟨e, he, hs⟩ := stepFn_class_fresh (body := body) hm hr hn hne
   let start := evalFrom m (.class' name none body)
   have hstart : StateOk κ Γ I start := StateOk_reCtl hm _ []

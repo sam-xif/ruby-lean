@@ -70,6 +70,7 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
     runtime := fun hr => (h.runtime hr).reframe hh hs hd hc hcap hphase
     mainSite := fun hr => by rw [hh]; exact h.mainSite hr
     allocators := by rw [hh]; exact h.allocators
+    globalConsts := by rw [hh]; exact h.globalConsts
     classRuntime := by
       intro cn hr
       obtain ⟨k, hk⟩ := h.classRuntime cn hr

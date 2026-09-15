@@ -175,7 +175,7 @@ and both directions of ancestry. It requires ClassesOk's positive
 existence facts; a control refutes giving a fresh class with inherited initialize a default
 zero-argument constructor just because its own method table is empty.
 `ClassState.lean` now assembles full StateOk at fresh class-body entry, with `classBodyCtx`
-changing only lexical scope, self, block, and runtime-main mode. `ClassTablesFrame` states
+changing lexical scope, self, block, runtime-main mode, and the global-name bound. `ClassTablesFrame` states
 the first-order/owner/leaf conditions needed to preserve constant and nested-class claims;
 countermodels show how a new owner, a new leaf, or a dangling alias can activate old claims.
 `ClassNative` makes native-name guards executable. The actual-step theorem and real-boot
@@ -317,8 +317,14 @@ lookup, argument binding, and caller restoration. The checked-body API specializ
 same proof. `PointProgram` composes the whole 061 class/new/getX program at Integer for
 arbitrary Integer arguments and first-order caller locals; its AST matches generated 061.
 Controls retain the Proc#call counterexample and execute Record#answer on a Proc-payload
-receiver. Class freshness and class/initializer certificate admission remain; no new checker
-acceptance is claimed.
+receiver. `Pos.globalConsts` now bounds the global constants that can be bound at each point;
+the same boot gate checks its finite seed. `StateOk.freshClassName` derives actual absence
+from the static name guard, for arbitrary contexts/classes. Fresh entry adds its executed
+name, and all heap/frame transports retain the bound. `ClassHeaderRun` consumes this guard;
+the complete Point and FlagBox proofs no longer assume physical freshness separately.
+`ClassFreshnessControls` retains a heap passing every previous boot check where an extra
+Integer constant makes class entry raise TypeError. Class/initializer certificate admission
+remains; no new checker acceptance is claimed.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -387,6 +393,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/ConstructorReturn.lean`, `ConstructorRun.lean`, `ConstructorRunControls.lean` | Initialized result typing, restored caller conformance, and full new/initialize/return contract |
 | `Denote/Sem/RootNames.lean`, `ClassRootNames.lean`, `Denote/Typed/ClassRootNameControls.lean` | Canonical root bindings, complete fresh named ancestry, and redirected-Kernel countermodel |
 | `Ratchet/ClassHeader.lean`, `Denote/Sem/ClassHeader.lean`, `Denote/Typed/ClassHeaderControls.lean` | Guarded pending-header publication, full entry conformance, and inherited-initializer control |
+| `Ratchet/GlobalConsts.lean`, `Denote/Sem/GlobalConsts.lean`, `ClassGlobalConsts.lean`, `ClassFreshness.lean`, `Denote/Typed/ClassFreshnessControls.lean` | Boot-checked global-name bound, transport, generic static freshness, and occupied-name countermodel |
 | `Ratchet/DeclLookupFrame.lean`, `MemberFrame.lean`, `Denote/Sem/Member*.lean`, `Denote/Typed/Member*.lean` | Alias-aware definition guards, full installation conformance, and annotation-domain member/initializer definitions |
 | `Denote/Typed/ClassHeaderRun.lean`, `PointClass.lean`, `ConstructorLookup.lean`, `PointClassControls.lean` | Full annotated Point class execution, restored caller state, final-context body proofs, and conformance-derived constructor code |
 | `Denote/Sem/Allocator.lean`, `ClassAllocators.lean`, `Denote/Typed/PointConstructor.lean`, `PointConstructorControls.lean` | Persistent plain-allocation capabilities and annotation-checked construction from the published class state |
