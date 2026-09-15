@@ -10282,3 +10282,27 @@ both halves of what constrains them now have a name.
 - New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
   fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 160 (2026-09-15) — retained class-object name facts and generic subclass frames
+
+- InstanceSiteAt gains classNames, using NamesAt at the class object's dispatch id;
+  instance names remain a separate site. Both use existing nameFreeN, so reserving a name
+  weakens the obligation without publishing code or certifying a body. Fresh default-class
+  publication, allocation/frame changes, reserved method writes, ivar writes and unrelated
+  class creation preserve it. Boot's empty class-site table needs no extra check or Ctx flag.
+- F42's injected prelude-marked lambda leaves selected old instance/top-level contracts
+  intact but intercepts subclass-body self and raises ArgumentError. The new classNames
+  check rejects it; a generic theorem excludes full StateOk. An ordinary parent still
+  returns Proc, and the unrelated shim T.proc confirms this is not a heap-global restriction.
+- SubclassFrame proves uncaptured, empty local/ivar/block and saved-frame facts for any
+  parent, namespace and cref. Global class-object self typing uses Object registration.
+  SubclassNameEntry transports NameFreeOk from the parent metaclass's retained names;
+  default-superclass frame/name proofs delegate to these generic results.
+- `enter_declared_frame` composes actual entry with the frame/name components, deriving
+  its parent-site and metaclass evidence from StateOk. No new body's annotations are
+  assumed or checked by this theorem. Constants, complete sites, allocator/publication and
+  inherited initializer/body-cache integration still precede 065; no acceptance/rule/floor
+  changes, and every method body still requires its full annotation-domain proof.
+- New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
+  fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
+  252 agree / 0 disagree.

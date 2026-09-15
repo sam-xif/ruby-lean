@@ -1,5 +1,6 @@
 import Denote.Sem.ClassDispatch
 import Denote.Sem.ClassFrame
+import Denote.Sem.SubclassNameEntry
 
 /-! Fresh class self inherits Object's metaclass dispatch, already covered by NameFreeOk.
 No assumption about unrelated class objects or prelude methods is needed. -/
@@ -38,11 +39,11 @@ theorem name_site_parent (hc : Proof.ChainsIn m.heap)
 theorem nameFree (hc : Proof.ChainsIn m.heap) (hs : Proof.Saturated m.heap)
     (he : (m.heap.get Boot.objectId).eigen = some e) (hn : NameFreeOk κ m) :
     NameFreeOk κ entry := by
-  intro mn hmn k hk owner md hm
   have hel := hc.eigen Boot.objectId hc.boot.2.2.2.2 e he
-  change Interp.methodOn (freshClsHeap m.heap Boot.objectId name name e) k mn = _ at hm
-  rw [method_parent hc hs hel] at hm
-  exact hn mn hmn _ (name_site_parent hc he hk) owner md hm
+  apply Subclass.nameFree hc hs hel _ hn
+  intro mn hmn owner md hm
+  have hco : classOf m.heap (.ref Boot.objectId) = e := by simp only [classOf, he]
+  exact hn mn hmn e (by simp [nameFreeSites, hco]) owner md hm
 
 #print axioms name_site_parent
 #print axioms nameFree

@@ -423,6 +423,13 @@ preserves old declarations, exact physical chains and own-selector bounds; defau
 proofs specialize these transports. `enter_declared_tables` composes them at actual entry.
 Controls exercise three-level inherited calls and distinguish a waived builtin exclusion
 from an invalidated one. Full scope/site/allocator transport and inherited bodies remain.
+`InstanceSiteAt.classNames` now retains name exclusions for class-object dispatch, separately
+from instance dispatch. Fresh publication and existing allocation/write/frame transports
+preserve it without a new Ctx flag or boot check. `SubclassFrame`/`SubclassNameEntry` derive
+the generic body frame and NameFreeOk at actual entry; default-superclass proofs reuse them.
+An injected prelude-marked lambda preserves the old selected site/top-level facts but breaks
+the inherited body call; full conformance now excludes it (§F42). Constants, full sites and
+allocator/publication transport still precede inherited body/cache integration.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -513,6 +520,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/SubclassDispatch.lean`, `SubclassQueries.lean`, `Denote/Typed/SubclassDispatchControls.lean` | Shared class/metaclass source mapping, guarded query/primitive transport, actual entry and inherited-dispatch controls |
 | `Denote/Sem/SubclassNames.lean`, `SubclassCore.lean`, `SubclassMethods.lean`, `Denote/Typed/SubclassCoreControls.lean` | Generic registration identity, core/payload and installed-code preservation; actual-entry, alias and inherited-initializer controls |
 | `Ratchet/SubclassGuards.lean`, `Denote/Sem/SubclassBases.lean`, `SubclassDeclared.lean`, `Denote/Typed/SubclassTableControls.lean` | Guarded builtin ancestry, old declaration/ordered-chain/own-selector transport, actual entry and multi-level inherited controls |
+| `Denote/Sem/SubclassFrame.lean`, `SubclassNameEntry.lean`, `Denote/Typed/SubclassNameControls.lean` | Generic body-frame/name transport, retained class-object dispatch exclusions and inherited-call countermodel (§F42) |
 | `Denote/Typed/InstanceDispatchControls.lean`, `PointProgram.lean`, `PointProgramControls.lean` | Interception controls and the complete semantic 061 proof (not checker admission) |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

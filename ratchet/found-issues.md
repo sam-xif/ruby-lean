@@ -2585,3 +2585,20 @@ full-state transport. Clink 155 retains MetaReady in every class site, with fres
 and all current transports. The witness fails its Bool; `aliased_meta_not_state` proves
 exclusion by full StateOk for arbitrary classes and builtin bases. Actual declared-parent
 entry derives the cache fact from conformance. Whole-program inheritance remains gated.
+
+## F42 — retained instance names do not constrain subclass-body self (2026-09-15)
+
+**Closed by Clink 160; selected-contract countermodel, not full-old-StateOk or an accepted
+unsafe program.** `SubclassNameControls` creates ScopeBase, then injects a prelude-marked
+`lambda` requiring one argument into its metaclass. Top-level NameFree/MethodsExact,
+CoreOk/Saturated, class front/hook/metaclass readiness, own-name bounds, ordered instance
+ancestry and instance dispatch's name exclusions all still pass. Actual subclass entry
+changes self to a class object; its inherited `lambda { 1 }` now raises ArgumentError
+instead of returning a Proc. Prelude marking alone is not a name-absence guarantee.
+
+InstanceSiteAt now retains `classNames` separately from instance `names`, using the same
+NamesAt vocabulary and existing free-name function. Fresh publication and every current
+transport preserve it. This is site-local; the real shim's unrelated T.proc remains legal.
+`unreserved_metaclass_not_state` excludes the bad shape generically, and
+`enter_declared_frame` derives actual subclass NameFreeOk and fresh-frame facts from the
+strengthened conformance. Full subclass state/body checking remains gated.

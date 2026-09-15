@@ -4,6 +4,7 @@ import Denote.Sem.SubclassCore
 import Denote.Sem.SubclassMethods
 import Denote.Sem.SubclassBases
 import Denote.Sem.SubclassDeclared
+import Denote.Sem.SubclassNameEntry
 import Denote.Sem.ClassNative
 import Denote.Typed.ClassEntry
 
@@ -234,6 +235,31 @@ theorem enter_declared_tables {κ : Ratchet.Ctx} {Γ : Ratchet.Env} {I : Ratchet
     (by simpa only [howner] using hf) (by simpa only [howner] using ho) hl he
     (by simp only [howner, beq_self_eq_true, ite_true]) hn
 
+/-- The new class-body frame and its name-based dispatch contract come from allocation
+and retained parent-class facts, independently of the new body's annotations or syntax. -/
+theorem enter_declared_frame {κ : Ratchet.Ctx} {Γ : Ratchet.Env} {I : Ratchet.Ty}
+    {m : Machine} {c : Ratchet.Cls} {parent : ObjId} {name : String} {body : RubyCore.Expr}
+    (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
+    (hc : c ∈ κ.classes) (hp : classNamed? m.heap c.name = some parent)
+    (hf : constOwn m.heap Boot.objectId name = none) (hn : name.isEmpty = false) :
+    ∃ n, enterClassBody m name false (some parent) body = .next n ∧ NameFreeOk κ n ∧
+      FrameInRange n ∧ EnvOk [] n ∧ SelfSpineOk .ivar0 n ∧ FrameOk none n ∧
+      BlockTyOk none n ∧ SelfTyOk (some (.clsOf name)) n ∧ SelfLive n ∧ RootUncaptured n := by
+  have site := hm.classSites.at_class hc hp
+  obtain ⟨ep, he, _, _⟩ := site.metaclass
+  have hch := hm.core.classReady.chains
+  have hep := hch.eigen parent site.live ep he
+  have howner := (hm.runtime hr).owner
+  have hnames : NamesAt (Ratchet.nameFreeN κ) m.heap ep := by
+    simpa only [classOf, he] using site.classNames
+  refine ⟨machine m Boot.objectId m.currentFrame.cref name name parent ep body, ?_,
+    nameFree hch hm.sat hep hnames hm.nameFree, frame_in_range, env_empty, spine_empty,
+    frame_ok, block_none, self_type (hm.runtime hr).classLive, self_live, uncaptured⟩
+  simpa only [howner] using enter_fresh (m := m) (q := name) (body := body)
+    (by simpa only [howner] using hf) (by simpa only [howner] using hch.boot.2.2.2.2) site.live he
+    (by simp only [howner, beq_self_eq_true, ite_true]) hn
+
+#print axioms enter_declared_frame
 #print axioms enter_declared_tables
 #print axioms enter_declared_core
 #print axioms enter_fresh

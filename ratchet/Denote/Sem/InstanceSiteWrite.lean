@@ -29,7 +29,7 @@ theorem InstanceSite.methodWrite {κ : Ctx} {cn name : String} {k cls : ObjId}
     {h : Heap} {md : MethodDef} (site : InstanceSite κ cn k h)
     (hn : nameFreeN κ name = false) (hq : "method_added" ≠ name) :
     InstanceSite κ cn k (defineMethod h cls name md) := by
-  refine ⟨?_, ?_, ?_, ?_, ?_, site.metaclass.methodWrite⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, site.metaclass.methodWrite, ?_⟩
   · simpa only [classNamed?_defineMethod] using site.named
   · simpa only [classFrontB_defineMethod] using site.front
   · simpa only [definitionHookQuietB,
@@ -43,10 +43,15 @@ theorem InstanceSite.methodWrite {κ : Ctx} {cn name : String} {k cls : ObjId}
     · exact Or.inr (Or.inr (he ▸ hn))
     · rw [methodOn_defineMethod _ _ _ _ _ _ he] at hfound
       exact site.names n hmem owner found hfound
+  · intro n hmem owner found hfound
+    by_cases he : n = name
+    · exact Or.inr (Or.inr (he ▸ hn))
+    · rw [Proof.classOf_defineMethod, methodOn_defineMethod _ _ _ _ _ _ he] at hfound
+      exact site.classNames n hmem owner found hfound
 
 theorem InstanceSite.ivarOnly {κ : Ctx} {cn : String} {k : ObjId} {h h' : Heap}
     (site : InstanceSite κ cn k h) (hi : Proof.IvarOnly h h') : InstanceSite κ cn k h' := by
-  refine ⟨?_, ?_, ?_, ?_, ?_, site.metaclass.ivarOnly hi⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, site.metaclass.ivarOnly hi, ?_⟩
   · simpa only [classNamed?, constLookup, hi.classPayload] using site.named
   · simpa only [classFrontB, hi.classPayload] using site.front
   · simpa only [definitionHookQuietB, hi.lookup_eq] using site.hook
@@ -56,6 +61,9 @@ theorem InstanceSite.ivarOnly {κ : Ctx} {cn : String} {k : ObjId} {h h' : Heap}
   · intro n hmem owner md hm
     simp only [Interp.methodOn, hi.classPayload, hi.ancestors_eq] at hm
     exact site.names n hmem owner md hm
+  · intro n hmem owner md hm
+    simp only [hi.classOf_eq, Interp.methodOn, hi.classPayload, hi.ancestors_eq] at hm
+    exact site.classNames n hmem owner md hm
 
 theorem ClassSitesOk.methodWrite {κ : Ctx} {name : String} {cls : ObjId}
     {h : Heap} {md : MethodDef} (sites : ClassSitesOk κ h)

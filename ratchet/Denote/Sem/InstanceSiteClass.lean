@@ -59,12 +59,15 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
     rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hk,
       method_old hc hs (Proof.ClsGrow.classOf_lt hc hk)]
   refine ⟨named hc.boot.2.2.2.2 hn site.named, ?_, ?_,
-    instance_constants_old site hc hs ho hn, ?_, site.metaclass.subclass_old hc hs hk⟩
+    instance_constants_old site hc hs ho hn, ?_, site.metaclass.subclass_old hc hs hk, ?_⟩
   · simpa only [classFront_old hc.boot.2.2.2.2 hk] using site.front
   · simpa only [definitionHookQuietB, hl] using site.hook
   · intro n hn owner md hm
     rw [method_old hc hs hk] at hm
     exact site.names n hn owner md hm
+  · intro n hn owner md hm
+    rw [classOf_old hk, method_old hc hs (Proof.ClsGrow.classOf_lt hc hk)] at hm
+    exact site.classNames n hn owner md hm
 
 #print axioms instance_constants_old
 #print axioms instanceSite_old

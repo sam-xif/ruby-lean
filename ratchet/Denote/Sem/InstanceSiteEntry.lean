@@ -20,7 +20,7 @@ theorem instanceSite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {name : String
       (freshClsMachine m Boot.objectId m.currentFrame.cref name name e body) :=
     const_scope hc hm.sat ready.classLive ready.cref ready.owner hm.constScope
   refine ⟨classNamed_freshClass ready.classLive hc.boot.2.2.2.2, ?_,
-    hook_quiet (body := body) hc hm.sat he ready.hook, ?_, ?_, meta_fresh hm.core.classReady hm.sat he⟩
+    hook_quiet (body := body) hc hm.sat he ready.hook, ?_, ?_, meta_fresh hm.core.classReady hm.sat he, ?_⟩
   · simp only [classFrontB, Proof.Judgment.freshClsHeap_cp_k]; rfl
   · intro cn
     have hs := hs cn
@@ -29,6 +29,11 @@ theorem instanceSite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {name : String
   · intro n hn owner md hmd
     rw [method_class hc hm.sat] at hmd
     exact hm.nameFree n hn Boot.objectId (by simp [nameFreeSites]) owner md hmd
+  · intro n hn owner md hmd
+    rw [Proof.Judgment.classOf_freshC_k,
+      method_eigen hc hm.sat (hc.eigen Boot.objectId hc.boot.2.2.2.2 e he)] at hmd
+    have hco : classOf m.heap (.ref Boot.objectId) = e := by simp only [classOf, he]
+    exact hm.nameFree n hn e (by simp [nameFreeSites, hco]) owner md hmd
 
 #print axioms instanceSite
 end Ratchet.Denote.FreshClass

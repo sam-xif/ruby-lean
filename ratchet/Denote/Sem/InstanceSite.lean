@@ -47,15 +47,34 @@ def instanceConstResolve (h : Heap) (k : ObjId) (n : String) : Option Value :=
 /-- The finite names whose absence is stronger than MethodsExact's prelude allowance. -/
 def shadowableNames : List String := ["lambda", "proc", "x"]
 
+def NamesAt (free : String → Bool) (h : Heap) (k : ObjId) : Prop :=
+  ∀ n ∈ shadowableNames, ∀ owner md, Interp.methodOn h k n = some (owner, md) →
+    md.builtin.isSome = true ∨ md.undefined = true ∨ free n = false
+
+def namesAtB (free : String → Bool) (h : Heap) (k : ObjId) : Bool :=
+  shadowableNames.all fun n => (Interp.methodOn h k n).all fun (_, md) =>
+    md.builtin.isSome || md.undefined || !free n
+
+theorem namesAtB_sound {free : String → Bool} {h : Heap} {k : ObjId}
+    (hp : namesAtB free h k = true) : NamesAt free h k := by
+  intro n hn owner md hm
+  have hh := List.all_eq_true.mp hp n hn
+  simpa only [hm, Option.all_some, Bool.or_eq_true, Bool.not_eq_true', or_assoc] using hh
+
+theorem NamesAt.recontext {free free' : String → Bool} {h : Heap} {k : ObjId}
+    (hp : NamesAt free h k) (hn : ∀ n, free n = false → free' n = false) : NamesAt free' h k :=
+  fun n hm owner md hl => (hp n hm owner md hl).imp id (Or.imp id (hn n))
+
 structure InstanceSiteAt (free : String → Bool) (cn : String) (k : ObjId) (h : Heap) : Prop where
   named : classNamed? h cn = some k
   front : classFrontB h k = true
   hook : definitionHookQuietB h k = true
   constants : ∀ n, instanceConstResolve h k n = constLookup h n
-  names : ∀ n ∈ shadowableNames, ∀ owner md,
-    Interp.methodOn h k n = some (owner, md) →
-      md.builtin.isSome = true ∨ md.undefined = true ∨ free n = false
+  names : NamesAt free h k
   metaclass : MetaReady h k
+  /-- Retain class-object dispatch separately: subclass-body self inherits this chain,
+  not the instance chain. Prelude code alone is not an absence proof. -/
+  classNames : NamesAt free h (classOf h (.ref k))
 
 /-- Only negative-name information affects a site's meaning, not the caller's scope. -/
 abbrev InstanceSite (κ : Ctx) := InstanceSiteAt (nameFreeN κ)
@@ -83,12 +102,8 @@ theorem InstanceSite.live {κ : Ctx} {cn : String} {k : ObjId} {h : Heap}
 theorem InstanceSite.recontext {κ κ' : Ctx} {cn : String} {k : ObjId} {h : Heap}
     (site : InstanceSite κ cn k h)
     (hn : ∀ n, nameFreeN κ n = false → nameFreeN κ' n = false) : InstanceSite κ' cn k h := by
-  refine ⟨site.named, site.front, site.hook, site.constants, ?_, site.metaclass⟩
-  intro n hmem owner md hm
-  rcases site.names n hmem owner md hm with hb | hu | hf
-  · exact Or.inl hb
-  · exact Or.inr (Or.inl hu)
-  · exact Or.inr (Or.inr (hn n hf))
+  exact ⟨site.named, site.front, site.hook, site.constants, site.names.recontext hn,
+    site.metaclass, site.classNames.recontext hn⟩
 
 /-- Scope-independent, so the same site survives a frame change or an allocation.
 This does not claim that method installation or class mutation preserves it. -/
@@ -108,7 +123,7 @@ theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
       | nil => rfl
       | cons j ks ih => simp only [lookup.go, he.payload, ih]
     simp only [lookup, classOf, he.get k hl, he.ancestors, hg]
-  refine ⟨?_, ?_, ?_, ?_, ?_, h.metaclass.ext he hl⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, h.metaclass.ext he hl, ?_⟩
   · simpa only [he.classNamed?_eq] using h.named
   · simpa only [classFrontB, he.payload] using h.front
   · simpa only [definitionHookQuietB, hlk] using h.hook
@@ -117,6 +132,10 @@ theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
   · intro name hn owner md hmd
     rw [hm] at hmd
     exact h.names name hn owner md hmd
+  · intro name hn owner md hmd
+    rw [show classOf n.heap (.ref k) = classOf m.heap (.ref k) from by
+      simp only [classOf, he.get k hl], hm] at hmd
+    exact h.classNames name hn owner md hmd
 
 /-- Installed classes persist after leaving a scope. The pending lexical class requests
 its site before a method/constructor record has been published. No new Ctx field is needed. -/
@@ -134,13 +153,17 @@ theorem ClassSitesOk.of_scope {κ : Ctx} {h : Heap} (sites : ClassSitesOk κ h)
     {cn : String} (hc : κ.scope.runtimeClass = some cn) : ∃ k, InstanceSite κ cn k h :=
   sites cn (by simp [classSiteNames, hc])
 
-theorem ClassSitesOk.metaclass {κ : Ctx} {h : Heap} (sites : ClassSitesOk κ h)
+theorem ClassSitesOk.at_class {κ : Ctx} {h : Heap} (sites : ClassSitesOk κ h)
     {c : Cls} {k : ObjId} (hc : c ∈ κ.classes) (hn : classNamed? h c.name = some k) :
-    MetaReady h k := by
+    InstanceSite κ c.name k h := by
   obtain ⟨k', site⟩ := sites.of_class hc
   have he : k' = k := Option.some.inj (site.named.symm.trans hn)
   subst k'
-  exact site.metaclass
+  exact site
+
+theorem ClassSitesOk.metaclass {κ : Ctx} {h : Heap} (sites : ClassSitesOk κ h)
+    {c : Cls} {k : ObjId} (hc : c ∈ κ.classes) (hn : classNamed? h c.name = some k) :
+    MetaReady h k := (sites.at_class hc hn).metaclass
 
 theorem ClassSitesOk.recontext {κ κ' : Ctx} {h : Heap} (sites : ClassSitesOk κ h)
     (hc : ∀ cn ∈ classSiteNames κ', cn ∈ classSiteNames κ)
@@ -156,5 +179,6 @@ theorem ClassSitesOk.ext {κ : Ctx} {m n : Machine} (sites : ClassSitesOk κ m.h
   exact ⟨k, site.ext he site.live⟩
 
 #print axioms classFrontB_sound
+#print axioms namesAtB_sound
 #print axioms InstanceSite.ext
 end Ratchet.Denote
