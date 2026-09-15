@@ -328,8 +328,13 @@ scoped field-changing body derivations, and `CheckInit` returns annotation-check
 artifacts with inferred output fields. `InitChecked` proves their anchored semantic contract
 for arbitrary classes/annotations. Point and FlagBox consume these data certificates at
 definition and call; refresh rechecks in the final context without replacing annotations.
-The actual emitted 061 initializer also checks. These two families are not yet DJudge
-premises: registry and class/cache integration remain; no new whole-program acceptance is claimed.
+The actual emitted 061 initializer also checks. `ClassRules` now exposes constructor-ready
+class/member/initializer/new/instance-call semantic forms with pure side-condition Bools.
+`NativeGuards` copies only the relevant CRuby metadata and proves its coverage against the
+model, retaining Ratchet's import isolation; unsupported query names decline. The frame guard
+admits multiple unqualified class records, exercised by two sequential class definitions.
+Point and FlagBox use the new forms. The initializer families are not yet DJudge premises:
+registry and class/cache integration remain; no new whole-program acceptance is claimed.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -400,6 +405,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/RootNames.lean`, `ClassRootNames.lean`, `Denote/Typed/ClassRootNameControls.lean` | Canonical root bindings, complete fresh named ancestry, and redirected-Kernel countermodel |
 | `Ratchet/ClassHeader.lean`, `Denote/Sem/ClassHeader.lean`, `Denote/Typed/ClassHeaderControls.lean` | Guarded pending-header publication, full entry conformance, and inherited-initializer control |
 | `Ratchet/GlobalConsts.lean`, `Denote/Sem/GlobalConsts.lean`, `ClassGlobalConsts.lean`, `ClassFreshness.lean`, `Denote/Typed/ClassFreshnessControls.lean` | Boot-checked global-name bound, transport, generic static freshness, and occupied-name countermodel |
+| `Ratchet/NativeGuards.lean`, `ClassGuards.lean`, `Denote/Sem/NativeGuards.lean`, `ClassGuards.lean`, `Denote/Typed/ClassRules.lean`, `ClassRuleControls.lean` | Pure rule guards, proved native-metadata coverage/frame interpretation, constructor-ready semantic interfaces, and multiclass controls |
 | `Ratchet/DeclLookupFrame.lean`, `MemberFrame.lean`, `Denote/Sem/Member*.lean`, `Denote/Typed/Member*.lean` | Alias-aware definition guards, full installation conformance, and annotation-domain member/initializer definitions |
 | `Denote/Typed/ClassHeaderRun.lean`, `PointClass.lean`, `ConstructorLookup.lean`, `PointClassControls.lean` | Full annotated Point class execution, restored caller state, final-context body proofs, and conformance-derived constructor code |
 | `Denote/Sem/Allocator.lean`, `ClassAllocators.lean`, `Denote/Typed/PointConstructor.lean`, `PointConstructorControls.lean` | Persistent plain-allocation capabilities and annotation-checked construction from the published class state |

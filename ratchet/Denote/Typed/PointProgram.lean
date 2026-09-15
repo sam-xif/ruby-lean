@@ -13,14 +13,11 @@ def fullProgram (x y : Int) : Ratchet.Expr := .seq [program, getExpr x y]
 theorem get_sem {Γ : Env} {I : Ty} (hI : FirstOrder I = true)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (x y : Int) :
     SemSafeCtxA callerCtx Γ I (getExpr x y) .int callerCtx Γ I :=
-  (new_sem hI hΓ x y).instanceCall (c := classWithMethod initClass getter) (d := getter) (ps := [])
+  (new_sem hI hΓ x y).callMethodSig (c := classWithMethod initClass getter) (d := getter) (ps := [])
     .nil rfl
     (by change classWithMethod initClass getter ∈ [classWithMethod initClass getter, initClass, header]; simp)
     (by change getter ∈ [getter, initDecl]; simp) (by decide)
-    (directSendNameB_sound (by decide)) rfl (by simp) rfl (by decide) getter_body
-    (ReframeFO.empty hI rfl rfl rfl) rfl rfl rfl rfl
-    (fun n => (constGet?_empty (κ := instanceBodyCtx callerCtx ⟨"Point", "Point", "getX"⟩ pointInitSpine)
-      rfl n).trans (constGet?_empty rfl n).symm) hΓ
+    (by decide) rfl (by simp) rfl (by decide) getter_body (main_guard hI hΓ)
 
 theorem full_run {Γ : Env} {I : Ty} {m : Machine} (hm : StateOk ctx0 Γ I m)
     (hI : FirstOrder I = true) (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (x y : Int) :

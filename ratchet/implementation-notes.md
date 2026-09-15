@@ -9854,6 +9854,31 @@ both halves of what constrains them now have a name.
   standard axioms only. Full quiet ratchet GREEN: fragment 55, checker reach 60,
   31 proved rules, 0 owed/exempt, 46 worked theorems, 252 agree / 0 disagree.
 
+## Clink 144 (2026-09-14) — pure class-rule guards and constructor-ready semantic forms
+
+- Registration exposed remaining semantic-only premises: native shadowing, frame-type
+  stability, constant-scope compatibility, and class-table framing. The checker cannot
+  supply heap predicates or import Denote. `ClassRules` now packages these as pure checked
+  guards, interpreted by generic proofs, while keeping annotated body premises explicit.
+- Preserve Ratchet's isolation: `NativeGuards` copies the projection of CRuby metadata
+  needed for seven queries and the singleton-send exclusion set. Kernel-reduced finite
+  coverage proofs link it to the model's real tables. Unknown query names decline; a new
+  native blocker fails the coverage proof. No interpreter imports or assumed table agreement.
+  The actual invoke/send proofs still enforce payload, privacy, and native interception.
+- `reframeTypesB` checks all value-sensitive frame types. `plainClassTablesB` supports any
+  number of unqualified records (not just an empty table); those have no nested-name claims.
+  Constant annotations still require the existing stronger scoped-owner framing route.
+- Class, member, initializer, constructor and instance-call forms now expose only syntax/
+  type guards and body contracts. Point's full program and independent Boolean FlagBox use
+  them. A two-class sequential proof/run exercises retained old classes and outgoing names;
+  controls compare copied/native guards and reject stale names, qualified tables and bad scopes.
+- These interfaces prepare DJudge admission; they do not add a rule or bypass the registry.
+  The next change must carry InitJudge/InitJudgeSeq through DFam and preserve annotation-based
+  body caches across class/member updates and caller restoration.
+- New proofs build below two seconds and use standard axioms only. Full quiet ratchet
+  GREEN: fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree.
+
 ## Clink 141 (2026-09-14) — generic instance calls and the complete 061 semantic proof
 
 - Do not infer empty payload from `.inst`: the retained Proc#call countermodel disproves it.

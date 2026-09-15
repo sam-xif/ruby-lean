@@ -15,12 +15,13 @@ theorem constructor_expr {κ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty}
     (hsite : (match toRuby recv with | .self' => .selfRecv | _ => .explicit) = SendSite.explicit)
     (hI : FirstOrder I₂ = true) (hΓ : ∀ p ∈ Γ₂, FirstOrder (stripAlias p.2) = true) :
     SemSafeCtxA κ Γ I (.send (some recv) "new" args none)
-      (.inst "Point" pointInitSpine) callerCtx Γ₂ I₂ :=
-  hr.construct (c := classWithMethod initClass getter) (d := initDecl) (ps := pointInitParams) ha hsite
+      (.inst "Point" pointInitSpine) callerCtx Γ₂ I₂ := by
+  exact hr.newInst (c := classWithMethod initClass getter) (d := initDecl) (ps := pointInitParams) ha
+    (by cases recv <;> first | rfl | cases hsite)
     (by change classWithMethod initClass getter ∈ [classWithMethod initClass getter, initClass, header]; simp)
     (by change initDecl ∈ [getter, initDecl]; simp) rfl (by decide)
     (by change "Point" ∈ ["Point"]; simp) rfl (by simp [pointInitParams, FirstOrder, isAliasTy])
-    initializer_body (ReframeFO.empty hI rfl rfl rfl) rfl rfl rfl rfl initializer_consts hΓ (by decide)
+    rfl (by decide) initializer_body (main_guard hI hΓ)
 
 theorem const_point {Γ : Env} {I : Ty} :
     SemSafeCtxA callerCtx Γ I (.const "Point") (.clsOf "Point") callerCtx Γ I :=

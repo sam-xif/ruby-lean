@@ -4,6 +4,7 @@ import Denote.Typed.InitBodyControls
 import Denote.Typed.Sequence
 import Denote.Typed.ConstructorLookup
 import Denote.Typed.InitChecked
+import Denote.Typed.ClassRules
 
 /-! The entire 061 class statement, with both method bodies proved from annotations.
 Its caller receives installed code and full state, not a constructor-call admission. -/
@@ -33,37 +34,39 @@ def definitionInit : CheckedInitializer (initializerBodyCtx afterInit "Point") i
 def finalInit : CheckedInitializer (initializerBodyCtx callerCtx "Point") initDecl :=
   (refreshInitializerBody 80 (initializerBodyCtx callerCtx "Point") definitionInit initBodyHint).get (by rfl)
 
-private theorem scope_types {κ : Ctx} (hs : κ.selfTy = some (.clsOf "Point"))
-    (hb : κ.blockTy = none) (hc : κ.consts = []) : ReframeFO κ .ivar0 := by
-  refine ⟨rfl, ?_, ?_, ?_, ?_⟩
-  · intro τ ht; rw [hs] at ht; cases ht; rfl
-  · intro τ ht; rw [hb] at ht; cases ht
-  · intro x τ ht; rw [constGet?_empty hc x] at ht; cases ht
-  · intro x τ ht; simp [hc, envGet?] at ht
-
 theorem body_sem : SemSafeCtxA entryCtx [] .ivar0 body .sym bodyCtx [] .ivar0 := by
   have hi : SemSafeCtxA entryCtx [] .ivar0 (.def' initDecl.name initDecl.params initDecl.body)
       .sym afterInit [] .ivar0 :=
-    SemSafeCtxA.initializerDecl (ps := pointInitParams) (Ib := pointInitSpine) (τ := .any)
+    SemSafeCtxA.initDef (ps := pointInitParams) (Ib := pointInitSpine) (τ := .any)
       rfl rfl (by simp [pointInitParams, FirstOrder, isAliasTy]) rfl (by decide)
-      definitionInit.sem rfl (by change header ∈ [header]; simp)
-      (scope_types rfl rfl rfl) (by simp) rfl (by decide) (by decide) (by decide) (by decide)
+      definitionInit.sem (by change header ∈ [header]; simp) (by decide)
   have hg : SemSafeCtxA afterInit [] .ivar0 (.def' getter.name getter.params getter.body)
       .sym bodyCtx [] .ivar0 :=
-    SemSafeCtxA.memberDecl (ps := []) (Ib := pointInitSpine) (τ := .int)
+    SemSafeCtxA.memberDef (ps := []) (Ib := pointInitSpine) (τ := .int)
       rfl (by simp) rfl (by decide) SemSafeCtxA.ivarRead (by decide)
-      rfl (by change initClass ∈ [initClass, header]; simp)
-      (scope_types rfl rfl rfl) (by simp) rfl (by decide) (by decide) (by decide) (by decide)
-      (by decide) (by decide) (by decide)
+      (by change initClass ∈ [initClass, header]; simp) (by decide)
   exact hi.seq hg
 
 /-- All-fuel class entry/body/exit, retaining arbitrary first-order caller locals. -/
 theorem runSpec {Γ : Env} {I : Ty} {m : Machine} (hm : StateOk ctx0 Γ I m)
     (hI : FirstOrder I = true) (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) :
-    RunSpec m (evalFrom m program) Γ .sym callerCtx I :=
-  class_header_runSpec hm (ReframeFO.empty hI rfl rfl rfl) rfl rfl rfl rfl rfl rfl rfl
-    (fun _ => rfl) hΓ rfl (ClassTablesFrame.empty rfl rfl) (by decide) (by decide) (by decide)
-    rfl (by constructor <;> decide) (by decide) (by decide) body_sem
+    RunSpec m (evalFrom m program) Γ .sym callerCtx I := by
+  have ht : reframeTypesB (returnScopeCtx ctx0 bodyCtx) I = true := by
+    change FirstOrder I && true && true && true = true
+    simp [hI]
+  have hg : localTypesB Γ = true := List.all_eq_true.mpr hΓ
+  exact (SemSafeCtxA.classDecl body_sem (by
+    simp only [classRuleB, ht, hg, Bool.true_and]
+    decide)) m hm
+
+theorem main_guard {Γ : Env} {I : Ty} (hI : FirstOrder I = true)
+    (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) : mainCallB callerCtx Γ I = true := by
+  have ht : reframeTypesB callerCtx I = true := by
+    change FirstOrder I && true && true && true = true
+    simp [hI]
+  have hg : localTypesB Γ = true := List.all_eq_true.mpr hΓ
+  rw [mainCallB, ht, hg]
+  rfl
 
 /-- Recheck the initializer under the final published table, after getX was installed.
 This is an annotation-domain proof, not a cast of the earlier definition's context. -/
