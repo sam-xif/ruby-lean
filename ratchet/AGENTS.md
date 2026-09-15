@@ -170,8 +170,8 @@ a dangling constant may legitimately become an alias to the new class.
 `NameFreeOk` covers current self, Object's metaclass, and Object's instance chain, but not unrelated class objects
 (`T.proc` is real prelude code). Controls refute the previous current-only domain at a heap
 that passed every old boot check; all state transports and the same boot gate cover both sites.
-`ClassDeclared.lean` preserves existing class declarations, including constructor dispatch,
-initializer absence, and both directions of ancestry. It requires ClassesOk's positive
+`ClassDeclared.lean` preserves existing class declarations, including constructor dispatch
+and both directions of ancestry. It requires ClassesOk's positive
 existence facts; a control refutes giving a fresh class with inherited initialize a default
 zero-argument constructor just because its own method table is empty.
 `ClassState.lean` now assembles full StateOk at fresh class-body entry, with `classBodyCtx`
@@ -271,8 +271,16 @@ restoration. Class publication and body-certificate/class-rule admission remain 
 `ClassRootNameControls` redirects Kernel while passing the full old boot check (§F38);
 fresh Point.is_a?(Kernel) then returns false. `ClassRootNames.named_chain` now proves both
 directions of fresh named ancestry; the entry control includes full StateOk. Publication
-must still distinguish a pending class header from a callable constructor: an empty own
-method table does not prove inherited initialize absent (the earlier declaration control).
+distinguishes a pending class header from a callable constructor: an empty own-method table
+does not prove inherited initialize absent (the earlier declaration control).
+`ClassHeader` now publishes the fresh empty record with full StateOk at actual class entry.
+`DeclClassOk` no longer conflates that metadata with initializer absence; initialized calls
+already require positive lookup and an annotation-domain body proof. A future default
+allocator must separately prove absence. The executable header-table frame preserves old
+constructor/ancestry claims and rejects newly activated unknown superclasses; unqualified-name
+checking prevents accidental nested claims. A full-state inherited-initializer control has a
+valid Point header while Point.new() raises ArgumentError. No class/constructor rule is
+admitted yet; body-certificate integration and method/constructor publication remain.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -337,6 +345,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/ConstructorEntry.lean`, `ConstructorState.lean`, `ConstructorControls.lean` | Actual allocation/initializer binding, full annotated fresh entry, and Point-body application |
 | `Denote/Typed/ConstructorReturn.lean`, `ConstructorRun.lean`, `ConstructorRunControls.lean` | Initialized result typing, restored caller conformance, and full new/initialize/return contract |
 | `Denote/Sem/RootNames.lean`, `ClassRootNames.lean`, `Denote/Typed/ClassRootNameControls.lean` | Canonical root bindings, complete fresh named ancestry, and redirected-Kernel countermodel |
+| `Ratchet/ClassHeader.lean`, `Denote/Sem/ClassHeader.lean`, `Denote/Typed/ClassHeaderControls.lean` | Guarded pending-header publication, full entry conformance, and inherited-initializer control |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |

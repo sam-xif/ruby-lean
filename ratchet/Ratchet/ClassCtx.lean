@@ -18,6 +18,17 @@ def classBodyCtx (κ : Ctx) (name : String) : Ctx :=
       runtimeClass := some name
       closedIvars := true } }
 
+/-- The just-created ordinary class, before any body statement has executed. This records
+no future methods and makes no claim about inherited initialize. -/
+def classHeader (name : String) : Cls := ⟨name, none, [], [], false, [], [], []⟩
+
+def classHeaderCtx (κ : Ctx) (name : String) : Ctx :=
+  { κ with pos := { κ.pos with classes := classHeader name :: κ.classes } }
+
+theorem classHeader_ancestors (C : CTable) (name : String) :
+    ancestors? (classHeader name :: C) name = some [name] := by
+  simp [ancestors?, ancestorsUp, clsGet?, classHeader, mixinAncestors?]
+
 /-- A receiver annotation is an open field record, even when its constructor originally
 knew a complete shape. Method bodies do not silently recover that erased information. -/
 def instanceBodyCtx (κ : Ctx) (fr : Frame) (I : Ty) : Ctx :=

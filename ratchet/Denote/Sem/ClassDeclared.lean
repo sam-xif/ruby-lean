@@ -2,7 +2,7 @@ import Denote.Sem.ClassBases
 import Denote.Sem.ClassCore
 
 /-! Fresh registration preserves declarations about already-installed classes. Constructor
-dispatch, missing-initializer facts, and both directions of named ancestry remain intact.
+dispatch and both directions of named ancestry remain intact.
 The new class is not inserted into the positive table by this transport lemma. -/
 set_option autoImplicit false
 namespace Ratchet.Denote.FreshClass
@@ -35,8 +35,8 @@ theorem declared (hc : Proof.ChainsIn m.heap) (hs : Proof.Saturated m.heap)
   subst k
   have hjl := named_live hj
   have hcl := Proof.ClsGrow.classOf_lt hc hjl
-  obtain ⟨hroot, hcls, hmod, hism, hnew, hinit, hchain⟩ := hp c hmem j hj
-  refine ⟨?_, hcls, hmod, ?_, ?_, ?_, ?_⟩
+  obtain ⟨hroot, hcls, hmod, hism, hnew, hchain⟩ := hp c hmem j hj
+  refine ⟨?_, hcls, hmod, ?_, ?_, ?_⟩
   · rw [hh, Proof.Judgment.ancestors_old_freshC hc hs hjl]; exact hroot
   · rw [hh, module_old hol hjl]; exact hism
   · intro hnone
@@ -51,9 +51,6 @@ theorem declared (hc : Proof.ChainsIn m.heap) (hs : Proof.Saturated m.heap)
     · intro hm owner md hf
       rw [hh, classOf_old hjl, method_old hc hs hcl] at hm hf
       exact hmiss hm owner md hf
-  · intro hnone
-    rw [hh, Interp.userInit?, method_old hc hs hjl]
-    exact hinit hnone
   · intro ch hch hmix
     obtain ⟨hpos, hneg⟩ := hchain ch hch hmix
     refine ⟨?_, ?_⟩

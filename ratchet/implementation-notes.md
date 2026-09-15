@@ -9714,3 +9714,24 @@ both halves of what constrains them now have a name.
 - New proofs build below a second, standard axioms only. Full quiet ratchet GREEN:
   fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 136 (2026-09-14) — publish class headers without default constructors
+
+- Remove the legacy `ctorGet? = none → userInit? = none` clause from DeclClassOk. No current
+  judgment consumes it; ConstructorRun already requires positive lookup and an annotated
+  initializer-body proof. An empty own table cannot describe inherited absence. A future
+  default allocator must prove `userInit? = none` separately, not infer it from the header.
+- `classHeaderCtx` publishes only the newly executed class header. `declared_header` composes
+  physical shape, guarded constructor dispatch, and complete named ancestry; full StateOk
+  publication reuses the pending lexical site. No new readiness flag or future-body scan.
+- The table frame is semantic before it is executable: old negative-new and positive-ancestry
+  claims must still be justified. Its finite guard compares ancestor results and checks
+  missing-new implication; adding a formerly unknown superclass is rejected. This works over
+  nonempty old tables, not only ctx0. Unqualified names cannot introduce nested-path claims.
+- Actual entry controls cover ordinary boot and a conformant world with Object#initialize.
+  The latter publishes a valid Point header but a zero-argument new raises ArgumentError;
+  the identity initializer has an independent annotation-domain body proof. Neither headers
+  nor code-table publication grant callable signatures. Class/body admission remains gated.
+- New proofs build below a second, standard axioms only. Full quiet ratchet GREEN:
+  fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
+  252 agree / 0 disagree.

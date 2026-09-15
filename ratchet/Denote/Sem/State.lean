@@ -930,30 +930,15 @@ theorem NilQueryOk.setLocal {κ : Ctx} {m : Machine} (x : String) (w : Value)
   simp only [setLocal_heap]
   exact h hfree k
 
-/-- **What the machine's class object owes a class the context declares** — the component
-`Judge.newInstNoInit` spends, and the reason it is separate from `ClassesOk` is that `ClassesOk`
-is about the class's *methods* while every clause here is about **allocating** through it.
+/-- Class-header conformance, separate from installed method code (`ClassesOk`) and body
+proofs. Pins ordinary class status, guarded builtin `new` dispatch, and named ancestry.
+The dispatch guard permits declared singleton overrides; Range/Struct's prelude constructors
+are why this is not a universal class-object query invariant.
 
-Quantified over `κ.classes`, so it is vacuous at `ctx0` exactly as `ClassesOk`/`DefsOk` are:
-the content is discharged by the declaration rules, which is where a class enters the table.
-Five clauses, one per thing `Class#new` reads on the way to an object:
-
-* **`rooted`** — the chain reaches `BasicObject`. `ext_push` asks for it (an allocation is an
-  `Ext` only if the fresh object's class is a real class), and nothing else says it.
-* **`newIsBuiltin`** — `new` at the class object resolves to `Class#new`, public and
-  unshadowed. Guarded by `smroGet? … "new" = none`, which is the rule's own premise: a declared
-  `def self.new` **wins** over the allocator in CRuby and `invoke`'s `userNew` check honours
-  that, so the guard is not a convenience. Measured at the booted machine for the *boot*
-  classes: 16 of 87 class objects do **not** resolve `new` to `Class#new` (14 modules, plus
-  `Range` and `Struct`, whose `new` is prelude Ruby) — which is why this cannot be a
-  `ClsQueryOk` row and has to be keyed on the context's own table.
-* **`noUserInit`** — if the context records no `initialize` for the class, the machine's class
-  object has none either. `invoke` intercepts `new` on a class with a user `initialize` and
-  pushes a frame; without this clause the run goes somewhere this rung cannot follow.
-* **`notMeta`/`notModule`** — the class object is not `Class`, not `Module`, and not a module.
-  Those three are the `newImpl` arms that answer with a **class**, and an allocation that adds
-  a class is not an `Ext`. A program *can* write `class Class; end`, and then this clause is
-  false and the class simply never enters the table with it — conservative, and recorded. -/
+An empty declaration table does **not** prove inherited `initialize` absent. A constructor
+must separately establish its actual initializer route: positive lookup plus an annotated
+body proof, or an explicit `userInit? = none` premise for a future default allocator rule.
+Publishing a pending header grants neither route. -/
 def DeclClassOk (κ : Ctx) (m : Machine) : Prop :=
   ∀ c ∈ κ.classes, ∀ k, classNamed? m.heap c.name = some k →
     (ancestors m.heap k).contains Boot.basicObjectId = true ∧
@@ -969,7 +954,6 @@ def DeclClassOk (κ : Ctx) (m : Machine) : Prop :=
       (Interp.methodOn m.heap (classOf m.heap (.ref k)) "new" = none →
         ∀ o₂ md, Interp.methodOn m.heap (classOf m.heap (.ref k)) "method_missing"
           = some (o₂, md) → md.builtin.isSome = true)) ∧
-    (Ratchet.ctorGet? κ.classes c.name = none → Interp.userInit? m.heap k = none) ∧
     -- **the declared chain is the machine's chain**, in both directions, and it is what
     -- narrowing's `isATy`/`notATy` spend at an `.inst n` type. `BaseChainsOk` is the same
     -- claim for the *builtin* rows; this is the declared one, and it needs no
@@ -985,7 +969,7 @@ theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : Dec
     DeclClassOk κ m₂ := by
   intro c hc k hcn
   rw [he.classNamed?_eq] at hcn
-  obtain ⟨hroot, hcls, hmod, hism, hnew, hinit, hchain⟩ := h c hc k hcn
+  obtain ⟨hroot, hcls, hmod, hism, hnew, hchain⟩ := h c hc k hcn
   -- every clause reads only the class table and the ancestor walk, both pinned by `Ext`
   have hco : classOf m₂.heap (.ref k) = classOf m.heap (.ref k) := by
     by_cases hk : k < m.heap.objs.size
@@ -1000,7 +984,7 @@ theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : Dec
       = Interp.methodOn m.heap (classOf m.heap (.ref k)) n := by
     intro n; simp only [hco, Interp.methodOn, he.payload, he.ancestors]
   refine ⟨by rw [he.ancestors]; exact hroot, hcls, hmod, by rw [he.payload]; exact hism,
-    ?_, ?_, ?_⟩
+    ?_, ?_⟩
   · intro hsm
     obtain ⟨h1, h2⟩ := hnew hsm
     refine ⟨?_, ?_⟩
@@ -1013,10 +997,6 @@ theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : Dec
     · intro hnone o₂ md hfound
       rw [hm] at hnone hfound
       exact h2 hnone o₂ md hfound
-  · intro hct
-    have := hinit hct
-    simp only [Interp.userInit?, Interp.methodOn, he.payload, he.ancestors] at this ⊢
-    exact this
   · intro ch hch hmf
     obtain ⟨h1, h2⟩ := hchain ch hch hmf
     refine ⟨fun cn hcnm => ?_, fun cn j hj hanc => ?_⟩
