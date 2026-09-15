@@ -9659,3 +9659,21 @@ both halves of what constrains them now have a name.
 - New proofs build in about a second or less, standard axioms only. Full quiet ratchet
   GREEN: fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 133 (2026-09-14) — constructor dispatch to annotated initializer entry
+
+- `ConstructorEntry` proves real new interception, plain allocation, and required-parameter
+  entry. NewDispatch excludes a user singleton override; OrdinaryClass supplies allocator
+  shape. The separate non-Math-id premise is necessary because invoke special-cases that id.
+- `ConstructorState` preserves full caller conformance across allocation and establishes
+  InitState at the actual initializer frame, anchored before allocation. `initializerBodyCtx`
+  requests closed empty fields; an ordinary instance annotation remains open. Parameter
+  binding uses the annotated domain, not concrete-value body inference.
+- `constructor_body_entry` consumes SemInitA at that state. The Point specialization uses
+  the complete two-write body proof for arbitrary Integer arguments. Execution controls
+  include new/getter, wrong arity/type, and a singleton new that bypasses initialization.
+  The run theorem is body-local: newK/caller return, class publication, and initializer
+  certificate/class rules are not admitted by these operational controls.
+- New proofs build in about a second, standard axioms only. Full quiet ratchet GREEN:
+  fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
+  252 agree / 0 disagree.

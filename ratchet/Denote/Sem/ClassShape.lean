@@ -17,6 +17,12 @@ structure OrdinaryClass (h : Heap) (k : ObjId) : Prop where
   noPayload : (ancestors h k).any
     (fun a => Builtins.payloadCoreClasses.contains a || a == Boot.exceptionId) = false
 
+theorem OrdinaryClass.payload {h : Heap} {k : ObjId} (hc : OrdinaryClass h k) :
+    ∃ cp, (h.get k).payload = .cls cp ∧ cp.isModule = false := by
+  have hm := hc.module
+  unfold Heap.classPayload? at hm
+  cases hp : (h.get k).payload <;> simp_all
+
 theorem OrdinaryClass.rooted {h : Heap} {k : ObjId} (hc : OrdinaryClass h k) :
     (ancestors h k).contains Boot.basicObjectId = true := by simp [hc.chain]
 

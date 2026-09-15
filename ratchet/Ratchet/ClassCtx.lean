@@ -29,6 +29,12 @@ def instanceBodyCtx (κ : Ctx) (fr : Frame) (I : Ty) : Ctx :=
       runtimeClass := some fr.defClass
       closedIvars := false } }
 
+/-- Initializer entry has a freshly allocated receiver with a complete empty field set.
+This stronger scope is established by allocation, not by an open instance annotation. -/
+def initializerBodyCtx (κ : Ctx) (cn : String) : Ctx :=
+  let body := instanceBodyCtx κ ⟨cn, cn, "initialize"⟩ .ivar0
+  { body with scope := { body.scope with closedIvars := true } }
+
 /-- Publish one executed definition, retaining earlier declarations. Admission must check
 name freshness and the body; this updater never scans or advertises a future class body. -/
 def classWithMethod (c : Cls) (d : Defn) : Cls := { c with methods := d :: c.methods }

@@ -41,5 +41,23 @@ theorem newDispatchB_sound {h : Heap} {k : ObjId} (hb : newDispatchB h k = true)
   · intro hl owner md hm
     simpa [newDispatchB, hl, hm] using hb
 
+/-- The interpreter lets a user singleton new override initializer interception. -/
+theorem NewDispatch.no_userNew {h : Heap} {k : ObjId}
+    (hd : NewDispatch h (classOf h (.ref k))) :
+    (match (h.get k).eigen with
+     | some e => match Interp.methodOn h e "new" with
+       | some (_, md) => md.builtin.isNone && !md.undefined
+       | none => false
+     | none => false) = false := by
+  cases he : (h.get k).eigen with
+  | none => rfl
+  | some e =>
+    cases hm : Interp.methodOn h e "new" with
+    | none => simp only [hm]
+    | some hit =>
+      obtain ⟨owner, md⟩ := hit
+      have hb := (hd.found owner md (by simpa only [classOf, he] using hm)).1
+      simp only [hm, hb, Option.isNone_some, Bool.false_and]
+
 #print axioms newDispatchB_sound
 end Ratchet.Denote
