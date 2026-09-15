@@ -131,8 +131,28 @@ theorem enter_declared_fresh {κ : Ratchet.Ctx} {Γ : Ratchet.Env} {I : Ratchet.
   exact ⟨_, enter_fresh hf hd hl he hq hn, hm.core.classReady.subclass hm.sat hl hep,
     saturated hm.core.classReady.chains hm.sat hl hep, meta_fresh hm.core.classReady.chains hm.sat hep hb⟩
 
+/-- Top-level subclass entry preserves all incoming first-order data. Its metaclass
+ancestry is recovered from the parent site, independently of method/body annotations. -/
+theorem enter_declared_data {κ : Ratchet.Ctx} {Γ : Ratchet.Env} {I : Ratchet.Ty}
+    {m : Machine} {c : Ratchet.Cls} {parent : ObjId} {name : String} {body : RubyCore.Expr}
+    (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
+    (hc : c ∈ κ.classes) (hp : classNamed? m.heap c.name = some parent)
+    (hf : constOwn m.heap Boot.objectId name = none) (hn : name.isEmpty = false) :
+    ∃ n, enterClassBody m name false (some parent) body = .next n ∧ DataPres m.heap n.heap := by
+  obtain ⟨ep, he, hb, _⟩ := hm.classSites.metaclass hc hp
+  have hl := hm.core.classReady.constRefs c.name parent (classNamed_constOwn hp)
+  have hep := hm.core.classReady.chains.eigen parent hl ep he
+  have howner := (hm.runtime hr).owner
+  refine ⟨machine m Boot.objectId m.currentFrame.cref name name parent ep body, ?_, ?_⟩
+  · simpa only [howner] using enter_fresh (m := m) (q := name) (body := body)
+      (by simpa only [howner] using hf)
+      (by simpa only [howner] using hm.core.classReady.chains.boot.2.2.2.2) hl he
+      (by simp only [howner, beq_self_eq_true, ite_true]) hn
+  · exact dataPres hm.core.classReady hm.sat hm.core.basicSelf hf hep hb
+
 #print axioms enter_fresh
 #print axioms step_resolved
 #print axioms enter_fresh_ready
 #print axioms enter_declared_fresh
+#print axioms enter_declared_data
 end Ratchet.Denote.Subclass

@@ -10186,3 +10186,25 @@ both halves of what constrains them now have a name.
 - Entry and exclusion proofs build in seconds, standard axioms only. Full quiet ratchet
   GREEN: fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 156 (2026-09-15) — shared first-order preservation through subclass entry
+
+- `dataPres_of_class_growth` factors old reads, bounded ancestry, fresh BasicObject
+  membership and name preservation into DataPres. Its existing type/spine induction covers
+  all first-order types, including nested collections and instance fields. SubclassData
+  proves these observations for arbitrary parents; default-superclass DataPres now uses it.
+- `enter_declared_data` derives the parent's metaclass ancestry from full conformance and
+  proves actual entry preserves old data. `Subclass.framed` restores the heap/field half
+  of caller framing once the stack and inactive-frame obligations are supplied. Neither
+  theorem substitutes a signature for a checked body or claims full outgoing StateOk.
+- Controls retain a hash of arrays of Boolean-field instances and execute inherited
+  initialize/getter calls. Both allocated ids and the still-dangling next id retain their
+  BasicObject type. Synthetic stale-name registration loses the old exact-instance type.
+  Removing only a parent metaclass's superclass retains ClassReady/Saturated but loses a
+  dangling reference's BasicObject type after actual entry; the already-retained MetaReady
+  rejects it, and `unrooted_parent_not_state` proves generic full-state exclusion.
+- Full subclass state transport and inherited constructor/body-cache checking remain ahead
+  of 065. No checker rule, annotation requirement, acceptance or floor changes.
+- New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
+  fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
+  252 agree / 0 disagree.

@@ -402,6 +402,11 @@ carries these sites, so no new Ctx flag or boot gate is needed. `enter_declared_
 cached-parent entry from declared-class conformance and publishes the new metaclass facts.
 F41's weak-premise counterexample remains executable but is generically excluded by full
 StateOk (§F41 closed). Full subclass state transport and inherited body checking remain.
+`ClassData`/`SubclassData` now preserve every old first-order type and field observation
+through subclass registration; default-superclass DataPres uses the same proof. Actual
+declared-parent entry derives its metaclass ancestry from conformance. Controls cover nested
+hash/array/instance fields, inherited calls, dangling references and missing-root/stale-name
+countermodels. Full subclass state transport remains ahead of checker admission.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -488,6 +493,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/SubclassHeap.lean`, `SubclassChains.lean`, `Denote/Typed/SubclassEntry.lean`, `SubclassEntryControls.lean` | Parent-parameterized actual entry and ancestry; cached/uncached metaclass and inherited-call controls |
 | `Denote/Sem/ClassGrowth.lean`, `SubclassReady.lean` | Generic fresh-edge/walk contracts, subclass readiness/liveness/saturation, and shared default-superclass specialization |
 | `Denote/Sem/MetaReady.lean`, `MetaReadyClass.lean` | Retained class-site metaclass facts, generic transports/publication, and conformance-derived cached-parent entry (§F41) |
+| `Denote/Sem/ClassData.lean`, `SubclassData.lean`, `Denote/Typed/SubclassDataControls.lean` | Generic first-order/field preservation through subclass entry and caller framing, with nested-data and dangling-reference controls |
 | `Denote/Typed/InstanceDispatchControls.lean`, `PointProgram.lean`, `PointProgramControls.lean` | Interception controls and the complete semantic 061 proof (not checker admission) |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

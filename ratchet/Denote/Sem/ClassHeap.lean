@@ -1,6 +1,7 @@
 import Denote.Sem.Framed
 import Denote.Sem.DataPres
 import Denote.Sem.SubclassReady
+import Denote.Sem.SubclassData
 import RubyCore.Proof.Judgment.ClsFresh
 
 /-! Old data across a fresh top-level class declaration. The constant table changes and
@@ -211,11 +212,10 @@ theorem exactInst (ho : Boot.objectId < h.objs.size)
 theorem dataPres (hc : ClassReady h) (hs : Proof.Saturated h)
     (hb : ancestors h Boot.basicObjectId = [Boot.basicObjectId])
     (hn : constOwn h Boot.objectId name = none)
-    (he : (h.get Boot.objectId).eigen = some e) : DataPres h h₁ :=
-  ⟨fun _ _ hv => nominal hc hs hb hn he hv,
-    fun _ _ hk => named hc.chains.boot.2.2.2.2 hn hk,
-    fun _ _ hv => exactInst hc.chains.boot.2.2.2.2 hn hv,
-    fun _ _ hv => array hv, fun _ _ hv => hash hv⟩
+    (he : (h.get Boot.objectId).eigen = some e) : DataPres h h₁ := by
+  obtain ⟨e', he', hr⟩ := hc.objectEigen
+  rw [he] at he'; cases he'
+  exact Subclass.dataPres hc hs hb hn (hc.chains.eigen _ hc.chains.boot.2.2.2.2 _ he) hr
 
 #print axioms named
 #print axioms dataPres
