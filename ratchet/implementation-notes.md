@@ -10383,3 +10383,32 @@ both halves of what constrains them now have a name.
 - New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
   fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 164 (2026-09-15) — checked subclass execution and superclass context threading
+
+- ClassActivation factors class-frame restoration independently of the heap producer or
+  superclass: publication supplies the initial Framed proof, the checked body supplies the
+  next, and caller restoration retains the body's outgoing declarations. Default class
+  return/run proofs now delegate to it; SubclassBodyRun uses the generic subclass heap anchor.
+- SubclassRun composes non-module validation, actual entry, full header publication and
+  the checked body through classDefK/frameK. SubclassExpr then evaluates any typed superclass
+  expression, preserving its outgoing Ctx/Env/ivar indices, and propagates escapes normally.
+  In particular, the class result restores the superclass expression's updated caller,
+  not the stale incoming one. SubclassRule packages only static guards plus semantic body
+  premises; no DJudge constructor or unchecked annotation-cache route is added.
+- Checked controls run FlagBox→FlagChild→FlagLeaf, with an annotation-checked Boolean
+  initializer and child method. Superclass evaluation itself creates Sibling and a String
+  caller local; the child installs its method and shadows that local with an Integer. Full
+  outgoing state/result proofs retain Sibling, the new method and the caller String across
+  both subclasses. Wrong/nilable return-domain annotations are rejected before calls;
+  executable inherited-new/call and wrong-arity controls remain separate from admission.
+- Diagnostic: an attempted context-changing control used a top-level def after a class,
+  which the existing empty-class-table guard rejects. Its failed Option.get certificate
+  caused a downstream Lean crash; isolating that prefix exposed the rejection. The control
+  now uses supported sibling-class publication; no top-def guard was weakened.
+- No rule/acceptance/floor changes. Receiver-aware inherited initializer binding, return
+  and annotation-body cache checking remain before 065. Every body still needs its full
+  annotation-domain proof, including uncalled methods.
+- New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
+  fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
+  252 agree / 0 disagree.

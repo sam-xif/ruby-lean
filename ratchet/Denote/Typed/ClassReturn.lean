@@ -1,3 +1,4 @@
+import Denote.Typed.ClassActivation
 import Denote.Sem.ClassFrame
 import Denote.Typed.MethodState
 
@@ -23,35 +24,23 @@ theorem class_pop_framed (hm : StateOk κ Γ I m)
     (hn : constOwn m.heap Boot.objectId name = none)
     (he : (m.heap.get Boot.objectId).eigen = some e) (hb : Framed entry n) :
     Framed m (popMethodFrame n) := by
-  have hp : Framed m published := .of_freshClass hm hn he rfl rfl (.of_eq rfl rfl)
-  exact hp.trans (method_pop_framed hm.frameInRange.2 rfl (pushed_framed.trans hb))
+  exact ClassActivation.pop_framed hm.frameInRange.2
+    (.of_freshClass hm hn he rfl rfl (.of_eq rfl rfl)) (pushed_framed.trans hb)
 
 theorem class_pop_getLocal (hl : m.stack.headD 0 < m.frames.size) (hu : RootUncaptured m)
     (hb : Framed entry n) (x : String) : (popMethodFrame n).getLocal x = m.getLocal x := by
-  have hp := method_pop_getLocal (m := published) (f := frame) hl hu rfl (pushed_framed.trans hb) x
-  rw [getLocal_uncaptured (m := published) hu] at hp
-  rw [getLocal_uncaptured hu]
-  exact hp
+  exact ClassActivation.pop_getLocal hl hu (pushed_framed.trans hb) x
 
 theorem class_pop_currentFrame (hl : FrameInRange m) (hb : Framed entry n) :
     (popMethodFrame n).currentFrame = m.currentFrame :=
-  method_pop_currentFrame (m := published) hl rfl (pushed_framed.trans hb)
+  ClassActivation.pop_currentFrame hl (pushed_framed.trans hb)
 
 theorem class_pop_envOk (hm : StateOk κ Γ I m) (hu : RootUncaptured m)
     (hn : constOwn m.heap Boot.objectId name = none)
     (he : (m.heap.get Boot.objectId).eigen = some e) (hb : Framed entry n)
     (ht : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) : EnvOk Γ (popMethodFrame n) := by
-  have hp := class_pop_framed hm hn he hb
-  have hv := class_pop_getLocal hm.frameInRange.2 hu hb
-  refine ⟨?_, ?_⟩
-  · intro x τ hx
-    obtain ⟨z, hz⟩ := envGet?_mem hx
-    obtain ⟨hd, ha⟩ := hm.env.1 x τ hx
-    refine ⟨?_, ?_⟩
-    · rw [hv]; exact hp.firstOrder _ (ht (z, τ) hz) _ hd
-    · intro y ρ hy; rw [hv, hv]; exact ha y ρ hy
-  · intro x hx
-    rw [hv]; exact hm.env.2 x hx
+  exact ClassActivation.pop_envOk hm (.of_freshClass hm hn he rfl rfl (.of_eq rfl rfl))
+    hu (pushed_framed.trans hb) ht
 
 #print axioms class_pop_framed
 #print axioms class_pop_getLocal

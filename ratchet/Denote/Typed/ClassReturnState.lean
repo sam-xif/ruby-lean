@@ -38,25 +38,15 @@ theorem class_body_runSpec {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m : Mac
       RunSpec entry (evalFrom entry body) Γb τ κb Ib) :
     RunSpec m (freshClsMachine m Boot.objectId m.currentFrame.cref name name e (toRuby body))
       Γ τ (returnScopeCtx κ κb) I := by
-  let published := { m with heap := freshClsHeap m.heap Boot.objectId name name e }
-  let frame := freshModFrame m.heap.objs.size m.currentFrame.cref
-  let entry := freshClsMachine m Boot.objectId m.currentFrame.cref name name e (toRuby body)
-  have hentry : Framed (pushMethodFrame published frame) entry :=
-    .of_heap_stack rfl rfl (.of_eq rfl rfl)
-  have hback : Framed entry (pushMethodFrame published frame) :=
-    .of_heap_stack rfl rfl (.of_eq rfl rfl)
-  have hbody : RunSpec (pushMethodFrame published frame)
-      (evalFrom (pushMethodFrame published frame) body) Γb τ κb Ib := hb.rebase hentry
-  have hu : RootUncaptured m := by
-    unfold RootUncaptured
-    rw [rootFrame_eq_currentFrame hm.frameInRange.1]
-    exact (hm.runtime hr).captured
-  have hrun := methodFrame_runSpec (m := published) hm.frameInRange.2 (f := frame) rfl hτ hbody
-    (fun n v result => class_pop_main_state hm ht ha hr hw hcl hu hq hk hΓ hn he
-      (hback.trans result.1) (result.2.2 v rfl))
-  have hout := hrun.rebase (Framed.of_freshClass hm hn he rfl rfl (.of_eq rfl rfl))
-  simpa only [published, frame, pushMethodFrame, pushK, evalFrom, freshClsMachine,
-    Interp.withKont, hkont, List.nil_append] using hout
+  have hp : Framed m (ClassActivation.publishHeap m (freshClsHeap m.heap Boot.objectId name name e)) :=
+    .of_freshClass hm hn he rfl rfl (.of_eq rfl rfl)
+  have hbody := hb.rebase (Framed.of_heap_stack rfl rfl (.of_eq rfl rfl) :
+    Framed (pushMethodFrame (ClassActivation.publishHeap m (freshClsHeap m.heap Boot.objectId name name e))
+      (freshModFrame m.heap.objs.size m.currentFrame.cref))
+      (freshClsMachine m Boot.objectId m.currentFrame.cref name name e (toRuby body)))
+  have hrun := ClassActivation.runSpec hm hp ht ha hr hw hcl hq hk hΓ hτ hbody
+  simpa only [ClassActivation.publishHeap, pushMethodFrame, pushK, evalFrom, freshClsMachine,
+    Interp.withKont, hkont, List.nil_append] using hrun
 
 #print axioms class_pop_main_state
 #print axioms class_body_runSpec
