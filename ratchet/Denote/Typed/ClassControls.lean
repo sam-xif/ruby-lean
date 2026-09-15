@@ -34,6 +34,7 @@ import Denote.Typed.InstanceDispatchControls
 import Denote.Typed.PointProgramControls
 import Denote.Typed.ClassFreshnessControls
 import Denote.Typed.ClassRuleControls
+import Denote.Typed.InstanceCallerControls
 import Denote.Sanity
 
 /-! Fresh-class controls. They establish actual entry and heap facts, not acceptance of

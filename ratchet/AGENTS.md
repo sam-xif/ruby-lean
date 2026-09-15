@@ -348,8 +348,14 @@ also rechecks old top-level bodies in the restored caller scope. No call re-infe
 its arguments. Lookups prove code membership and context compatibility; branches additionally
 agree on cached signatures. `ClassCheckControls` covers Integer/Boolean/nullable/array fields,
 parameterized calls, two owners sharing names, bad uncalled bodies, annotation/hint tampering,
-and invalidated primitive guards. The next frontier is 064's instance method calling another
-method: the current call/return rule only restores a main caller, not an instance activation.
+and invalidated primitive guards. `InstanceCallerReturn` now restores arbitrary ordinary
+instance callers, independently of the callee class and field shape. `Framed.classNamed`
+derives retained class identity from the existing first-order contract; no new state flag.
+`CallWorld` reads the existing scope/self/table data. Generic calls cover every send site,
+and `InstanceImplicit` composes implicit and bare calls with the full annotated body proof.
+Controls exercise Alpha→Beta with Integer/Boolean fields and all three self-call forms.
+The next frontier remains 064: these semantic interfaces still need registry/checker
+integration; the executable call rules retain their main-only guards until then.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -428,6 +434,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/Send.lean`, `ClassConstant.lean`, `PointConstructorExpr.lean`, `PointConstructorExprControls.lean` | Receiver/argument composition, declared class reads, and full class/new runs with argument effects |
 | `Denote/Typed/ConstructorResolve.lean`, `ConstructorExpr.lean`, `ConstructorGeneralControls.lean` | Class-parameterized annotation-checked constructor runs/expressions, independently exercised by FlagBox |
 | `Denote/Sem/DispatchName.lean`, `Denote/Typed/InstanceDispatch.lean`, `InstanceRun.lean`, `InstanceExpr.lean` | Payload-or-name dispatch, full annotation-domain instance calls, and receiver/argument composition for arbitrary classes |
+| `Ratchet/CallWorld.lean`, `Denote/Sem/FramedNames.lean`, `Denote/Typed/InstanceCallerReturn.lean`, `CallWorld.lean`, `InstanceImplicit.lean`, `InstanceCallerControls.lean` | Existing-context caller worlds, cross-class restoration, all ordinary call sites, and independent annotation/body controls |
 | `Denote/Typed/InstanceDispatchControls.lean`, `PointProgram.lean`, `PointProgramControls.lean` | Interception controls and the complete semantic 061 proof (not checker admission) |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

@@ -9978,3 +9978,27 @@ both halves of what constrains them now have a name.
 - New proofs are axiom-clean and build below a second. Full quiet ratchet GREEN:
   fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 147 (2026-09-14) — restore generic instance callers, not only main
+
+- 064 exposed the missing caller contract, not a need for Point-specific dispatch.
+  `restore_instance_state` recovers the saved lexical owner and receiver independently;
+  their class names may differ from each other and from the callee. Post-call class sites
+  supply heap facts; the saved frame, first-order values and field preservation supply data.
+- No new Ctx or Framed field: named class-object identity is already preserved by
+  `Framed.firstOrder` at `.clsOf`. `Framed.classNamed` exposes that consequence. `CallWorld`
+  and its pure Bool select ordinary main/instance callers from existing scope/self/table
+  data, requiring retained sites for both the lexical owner and receiver name.
+- Actual instance dispatch/run now quantifies over the send site; the main-only interfaces
+  specialize the same proof. Receiver-bearing, implicit and bare-name expressions all consume
+  the complete parameter/return-domain body proof. Implicit arguments retain the receiver's
+  first-order type while threading outgoing context/locals/fields. No call-site inference.
+- Controls use Alpha→Beta, Boolean callee fields/results versus Integer caller fields,
+  a caller-field read after return, and bare/implicit/explicit self-calls. Entire getter
+  bodies have semantic proofs; real definition/new/call runs check the corresponding paths.
+  Missing lexical/receiver sites, class-object self and absent runtime worlds decline.
+- This is the semantic prerequisite, not 064 admission. Registry and cache/checker integration
+  remain; no rule, floor or accepted-program count changes in this chunk.
+- New proofs build in about a second, standard axioms only. Full quiet ratchet GREEN:
+  fragment 61, checker reach 63, 44 proved rules, 0 owed/exempt, 47 worked theorems,
+  252 agree / 0 disagree.
