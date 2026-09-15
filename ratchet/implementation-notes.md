@@ -10412,3 +10412,29 @@ both halves of what constrains them now have a name.
 - New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
   fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 165 (2026-09-15) — receiver/owner-generic inherited initialization
+
+- initializerBodyCtxAt uses the existing receiver/defining-class Frame split; allocation
+  establishes the child's exact self type and closed empty fields, while the actual method
+  owner establishes lexical scope. Constructor entry extends both sites through allocation.
+  The frame/new return proof separates those names too: lexical scope restores the caller,
+  and initialized self determines the result. Own constructors delegate to the split proof.
+- InheritedConstructor uses the ordered declaration/physical-chain correspondence and
+  owner-local absence to derive actual initialize lookup. Allocation and new dispatch come
+  from the receiver's retained capabilities. InheritedConstructorExpr evaluates receiver
+  and arguments first and uses their final Ctx/Env/spine for lookup and the full body proof.
+  No production lemma fixes a class name, owner, parameter domain, return or field shape.
+- The FlagBox→FlagChild control replays the existing initializer certificate at its original
+  Boolean parameter/return annotations in the child-receiver/parent-owner context. The
+  complete checked class/new runs prove an instance result for both Boolean values; the
+  initializer's Boolean result is not mistaken for new's result. Wrong return annotations
+  and nullable-to-Boolean domains reject before calls; actual inherited zero-argument new
+  raises ArgumentError. The semantic call lemma accepts any plain Boolean-typed argument
+  expression, not just those two values.
+- No rule/acceptance/floor changes. Receiver-aware full-domain body-cache replay and
+  subclass judgment/bridge/checker integration remain before 065. No signature-as-proof,
+  call-site specialization, new invariant field or admission shortcut is introduced.
+- New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
+  fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
+  252 agree / 0 disagree.

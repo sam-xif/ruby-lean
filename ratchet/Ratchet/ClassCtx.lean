@@ -48,9 +48,13 @@ def instanceBodyCtx (κ : Ctx) (fr : Frame) (I : Ty) : Ctx :=
 
 /-- Initializer entry has a freshly allocated receiver with a complete empty field set.
 This stronger scope is established by allocation, not by an open instance annotation. -/
-def initializerBodyCtx (κ : Ctx) (cn : String) : Ctx :=
-  let body := instanceBodyCtx κ ⟨cn, cn, "initialize"⟩ .ivar0
+def initializerBodyCtxAt (κ : Ctx) (receiver owner : String) : Ctx :=
+  let body := instanceBodyCtx κ ⟨receiver, owner, "initialize"⟩ .ivar0
   { body with scope := { body.scope with closedIvars := true } }
+
+/-- Own initializers specialize the receiver/lexical-owner split. -/
+def initializerBodyCtx (κ : Ctx) (cn : String) : Ctx :=
+  initializerBodyCtxAt κ cn cn
 
 /-- Publish one executed definition, retaining earlier declarations. Admission must check
 name freshness and the body; this updater never scans or advertises a future class body. -/

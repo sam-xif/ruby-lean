@@ -47,6 +47,7 @@ import Denote.Typed.SubclassScopeControls
 import Denote.Typed.SubclassStateControls
 import Denote.Typed.SubclassHeaderControls
 import Denote.Typed.SubclassRunControls
+import Denote.Typed.InheritedConstructorControls
 import Denote.Sanity
 
 /-! Fresh-class controls. They establish actual entry and heap facts, not acceptance of

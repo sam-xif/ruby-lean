@@ -455,6 +455,15 @@ into creation; `SubclassRule` exposes syntax/type-only semantic premises. Checke
 publish another class during superclass evaluation, install an annotated child method,
 retain caller locals despite body shadowing, and compose a second subclass. No new DJudge
 rule yet: receiver-aware inherited initializer/body-cache checking still precedes 065.
+`initializerBodyCtxAt` now separates the allocated receiver class from initialize's lexical
+owner using the existing Frame fields. `ConstructorState`/`ConstructorRun` prove entry,
+annotated execution and caller restoration for that split; own constructors specialize the
+same lemmas. `InheritedConstructor` derives first-owner lookup, code, allocation and new
+dispatch from conformance. `InheritedConstructorExpr` threads receiver/argument contexts
+and consumes the complete annotated body proof. Controls replay FlagBox's original Boolean
+annotation for a FlagChild receiver, prove both real class/new programs, reject bad/nullable
+return domains before calls, and execute the inherited arity failure. No checker cache or
+rule is admitted by this semantic composition; receiver-aware cache integration remains.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -550,6 +559,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/SubclassState.lean`, `SubclassMain.lean`, `SubclassTables.lean`, `SubclassGlobals.lean`, `Denote/Typed/SubclassStateEntry.lean`, `SubclassStateControls.lean` | Full generic entry conformance from existing parent capabilities; actual superclass step and boot-grounded parent/child controls |
 | `Ratchet/SubclassHeader.lean`, `Denote/Sem/SubclassHeader.lean`, `ClassPublish.lean`, `SubclassAllocator.lean`, `SubclassNewEntry.lean`, `SubclassNamedChain.lean`, `Denote/Typed/SubclassHeaderEntry.lean`, `SubclassHeaderControls.lean` | Executed subclass-header publication from actual parent capabilities, framed static chains, checked-parent controls and inherited constructor calls |
 | `Denote/Typed/ClassActivation.lean`, `SubclassBodyRun.lean`, `SubclassRun.lean`, `SubclassExpr.lean`, `SubclassRule.lean`, `SubclassRunControls.lean`, `Ratchet/SubclassRule.lean` | Shared caller restoration; full checked subclass execution with superclass context/local threading and multilevel controls; semantic rule awaits inherited body-cache admission |
+| `Denote/Typed/InheritedConstructor.lean`, `InheritedConstructorExpr.lean`, `InheritedConstructorControls.lean` | Class/owner-generic inherited initialization through full annotated entry, execution and return; replayed Boolean body and real class/new controls |
 | `Denote/Typed/InstanceDispatchControls.lean`, `PointProgram.lean`, `PointProgramControls.lean` | Interception controls and the complete semantic 061 proof (not checker admission) |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
