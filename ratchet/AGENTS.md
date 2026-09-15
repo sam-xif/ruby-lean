@@ -12,9 +12,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 62 rungs, reach 17**, **45 registered rules** (27 expressions + 18 companions),
-**0 owed**, **0 exempt**. Checker reach is 64; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 48 rungs additionally carry a
+**Fragment 63 rungs, reach 17**, **48 registered rules** (30 expressions + 18 companions),
+**0 owed**, **0 exempt**. Checker reach is 65; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 49 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -473,6 +473,19 @@ String getter, retain compatible fields through multiple generations, and exclud
 parent proofs and stale-owner lookup. The semantic cache consumers execute inherited new
 and members with their full proofs; native-prefix checks and subclass/call judgment,
 bridge and emitter integration still precede whole-program 065 admission.
+`InheritedRules` now connects receiver/owner-generic construction and explicit calls to the
+registry, alongside `subclassDecl`. The checker threads superclass context and consumes
+complete receiver-cache artifacts; own calls specialize the same artifacts. `NativePrefix`
+proves a conservative selector-absence guard against the model's native-name table without
+assuming runtime labels equal declared names. Inherited native selectors remain gated;
+own-method behavior is unchanged. The existing emitter format already supplies the needed
+parent and signature data. Whole 065 now validates at String, with a constructor-wise
+`InheritanceDerivations` proof for every input String and an actual `"Rex"` result. Controls
+vary classes and annotation domains, reject uncalled invalidated inherited bodies, and
+exercise overrides, multiple generations and wrong argument/field claims. The proof audit
+predicts own/inherited routes from syntax-derived declarations and still checks each worked
+proof exactly, with no exemptions. Next frontier: 066 needs the default allocator; inherited
+bare/implicit calls remain separate integration work.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -577,7 +590,8 @@ String membership needs a payload invariant. See
 | `Denote/Typed/HashIndex.lean` | Hash dispatch, lookup, nil defaults, and default-value counterexample |
 | `Denote/Typed/Primitive*.lean` | Primitive dispatch, allocation, argument composition, regression controls |
 | `Denote/Sem/PrimHeap.lean`, `Denote/JoinState.lean` | Primitive heap invariants and sound binding joins |
-| `Denote/Typed/Derivations.lean`, `ClassDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 48 concrete safety proofs |
+| `Ratchet/InheritanceControls.lean`, `Denote/Typed/InheritedRules.lean`, `InheritanceDerivations.lean`, `Denote/Sem/NativePrefix.lean` | Generic inherited-rule admission, proved native-prefix guard, full-domain negative controls and independently audited whole 065 |
+| `Denote/Typed/Derivations.lean`, `ClassDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 49 concrete safety proofs |
 | `Denote/Typed/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Typed/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |
 | `Denote/Sanity.lean` | Executable boot conformance gate and its kernel soundness theorem |

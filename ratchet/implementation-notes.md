@@ -10474,3 +10474,34 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt,
   48 worked theorems, 252 agree / 0 disagree. New controls/proofs take seconds and use only
   standard axioms.
+
+## Clink 167 (2026-09-15) — whole-program inherited fields, 065 admitted
+
+- Register subclassDecl, newInherited and callInherited against their generic semantic
+  forms. Receiver/argument/superclass evaluation threads Ctx, locals and fields; lookup
+  consumes first-owner route evidence and full receiver/owner-indexed annotation proofs.
+  InitJudge still crosses DFam through its registry bridge. No production premise fixes
+  Point, Animal, Dog, a field shape or an annotation domain.
+- The native-prefix obligation cannot assume runtime heap labels match declared names.
+  A pure selector set conservatively covers all 561 instance names in the model's 32 rows;
+  NativePrefix kernel-checks that coverage and proves absence on every heap/prefix. Inherited
+  native selector names decline for now. Own calls keep their existing empty-prefix route,
+  with a generic dependent-record equality lemma recovering the original own body indices.
+- The checker uses the receiver cache for new/explicit calls and replays all effective
+  inherited bodies at class exit. The existing emitter/schema already supplies superclass
+  names and inherited signatures, so no emitter change or annotation reinference is needed.
+  Controls accept String/Integer/Boolean and multilevel calls; reject uncalled incompatible
+  or nullable fields/domains, wrong arguments/arity/result claims, hidden parent lookup after
+  an override, unknown/cyclic parents and unsupported default allocation. Own overrides and
+  own native names retain positive controls. A valid-looking call cannot rescue a bad body.
+- Whole 065 has an independent Church derivation for every String input, exercising the
+  three new clinks and evaluating the actual corpus instance to "Rex". Rule prediction now
+  extracts class declarations and selects own/inherited lookup without hardcoded class
+  names; the proof-term audit cross-checks it per rung. Default root classes use the static
+  table's implicit-root convention, not a fabricated Object record. No exemptions.
+- Measured fragment 63, checker reach 65, 48 proved rules and 49 worked theorems; floors
+  raised accordingly. 066 remains gated on default allocation; inherited bare/implicit calls
+  remain separate integration work. New proof/control builds take seconds, standard axioms
+  only; decide +kernel avoids elaborator recursion limits on the large native-name set.
+- Full quiet ratchet GREEN: fragment 63, checker reach 65, 48 proved rules, 0 owed/exempt,
+  49 worked theorems, 252 agree / 0 disagree.

@@ -108,16 +108,48 @@ def initSeqRules : List Ratchet.Expr → List String
   | e :: e' :: es => "InitJudgeSeq.cons" :: (initRules e ++ initSeqRules (e' :: es))
 end
 
-/-- Only a prediction: recognises direct constructor results, regardless of class name.
-Other receiver shapes will need more context as the worked corpus grows. -/
-def explicitSendRule (recv : Ratchet.Expr) (name : String) : String :=
-  if name == "new" then "newInst" else
-  match recv with
+/-! Syntax-only class summary for predicting own versus inherited dispatch. It is not a
+typing premise: RuleAudit still checks every prediction against the actual proof term.
+Reopening and indirect receivers will need a richer predictor when they gain worked proofs. -/
+mutual
+def syntaxMethods : Ratchet.Expr → List Defn
+  | .def' name ps body => [⟨name, ps, body⟩]
+  | .seq es => syntaxMethodList es
+  | _ => []
+def syntaxMethodList : List Ratchet.Expr → List Defn
+  | [] => []
+  | e :: es => syntaxMethods e ++ syntaxMethodList es
+end
+
+mutual
+def syntaxClasses : Ratchet.Expr → CTable
+  | .class' name super body =>
+    [{ classHeader name with methods := syntaxMethods body, super? :=
+      match super with | some (.const parent) => some parent | _ => none }]
+  | .seq es => syntaxClassList es
+  | _ => []
+def syntaxClassList : List Ratchet.Expr → CTable
+  | [] => []
+  | e :: es => syntaxClasses e ++ syntaxClassList es
+end
+
+def inheritedSelectorB (C : CTable) (cn name : String) : Bool :=
+  ((ancestors? C cn).bind fun ns => searchMro C ns name).any (fun (owner, _) => owner != cn)
+
+/-- Predict using the extracted declarations, without any fixed class or method name. -/
+def explicitSendRule (C : CTable) (recv : Ratchet.Expr) (name : String) : String :=
+  if name == "new" then
+    match recv with
+    | .const cn => if inheritedSelectorB C cn "initialize" then "newInherited" else "newInst"
+    | _ => "newInst"
+  else match recv with
+  | .send (some (.const cn)) "new" _ none =>
+    if inheritedSelectorB C cn name then "callInherited" else "callMethodSig"
   | .send _ "new" _ none => "callMethodSig"
   | _ => "prim"
 
 mutual
-def rulesUsed : Ratchet.Expr → List String
+def rulesUsedAt (C : CTable) : Ratchet.Expr → List String
   | .int _ => ["intLit"]
   | .flt _ => ["fltLit"]
   | .str _ => ["strLit"]
@@ -130,43 +162,47 @@ def rulesUsed : Ratchet.Expr → List String
   | .var .lvar _ => ["var"]
   | .var .ivar _ => ["ivarRead"]
   | .const _ => ["constClass"]
-  | .vasgn .lvar _ e => "vasgn" :: rulesUsed e
-  | .seq es => "seq" :: rulesUsedSeq es
-  | .send (some r) name args none => explicitSendRule r name :: (rulesUsed r ++ rulesUsedArgs args)
-  | .class' _ none body => "classDecl" :: classRules body
+  | .vasgn .lvar _ e => "vasgn" :: rulesUsedAt C e
+  | .seq es => "seq" :: rulesUsedSeqAt C es
+  | .send (some r) name args none => explicitSendRule C r name :: (rulesUsedAt C r ++ rulesUsedArgsAt C args)
+  | .class' _ none body => "classDecl" :: classRulesAt C body
+  | .class' _ (some super) body => "subclassDecl" :: (rulesUsedAt C super ++ classRulesAt C body)
   | .def' name _ body => "defDecl" ::
-    (if hasSelfCall name body then "recursive" :: scopedRules name body else rulesUsed body)
-  | .send none _ args none => "callSig" :: rulesUsedArgs args
-  | .if' c t (some e) => "if'" :: (rulesUsed c ++ rulesUsed t ++ rulesUsed e)
-  | .if' c t none => "ifNoElse" :: (rulesUsed c ++ rulesUsed t)
-  | .array es => "arrayLit" :: rulesUsedArgs es
-  | .hash ps => "hashLit" :: rulesUsedPairs ps
+    (if hasSelfCall name body then "recursive" :: scopedRules name body else rulesUsedAt C body)
+  | .send none _ args none => "callSig" :: rulesUsedArgsAt C args
+  | .if' c t (some e) => "if'" :: (rulesUsedAt C c ++ rulesUsedAt C t ++ rulesUsedAt C e)
+  | .if' c t none => "ifNoElse" :: (rulesUsedAt C c ++ rulesUsedAt C t)
+  | .array es => "arrayLit" :: rulesUsedArgsAt C es
+  | .hash ps => "hashLit" :: rulesUsedPairsAt C ps
   | _ => ["?"]
 
-def rulesUsedSeq : List Ratchet.Expr → List String
+def rulesUsedSeqAt (C : CTable) : List Ratchet.Expr → List String
   | [] => ["?"]
-  | [e] => "DJudgeSeq.last" :: rulesUsed e
-  | e :: e' :: es => "DJudgeSeq.cons" :: (rulesUsed e ++ rulesUsedSeq (e' :: es))
+  | [e] => "DJudgeSeq.last" :: rulesUsedAt C e
+  | e :: e' :: es => "DJudgeSeq.cons" :: (rulesUsedAt C e ++ rulesUsedSeqAt C (e' :: es))
 
-def rulesUsedArgs : List Ratchet.Expr → List String
+def rulesUsedArgsAt (C : CTable) : List Ratchet.Expr → List String
   | [] => ["DJudgeAll.nil"]
-  | e :: es => "DJudgeAll.cons" :: (rulesUsed e ++ rulesUsedArgs es)
+  | e :: es => "DJudgeAll.cons" :: (rulesUsedAt C e ++ rulesUsedArgsAt C es)
 
-def rulesUsedPairs : List (Ratchet.Expr × Ratchet.Expr) → List String
+def rulesUsedPairsAt (C : CTable) : List (Ratchet.Expr × Ratchet.Expr) → List String
   | [] => ["DJudgePairs.nil"]
-  | (k, v) :: ps => "DJudgePairs.cons" :: (rulesUsed k ++ rulesUsed v ++ rulesUsedPairs ps)
+  | (k, v) :: ps => "DJudgePairs.cons" :: (rulesUsedAt C k ++ rulesUsedAt C v ++ rulesUsedPairsAt C ps)
 
-def classRules : Ratchet.Expr → List String
+def classRulesAt (C : CTable) : Ratchet.Expr → List String
   | .def' "initialize" _ body => "initDef" :: "InitJudge.ignoreResult" :: initRules body
-  | .def' _ _ body => "memberDef" :: rulesUsed body
-  | .seq es => "seq" :: classSeqRules es
+  | .def' _ _ body => "memberDef" :: rulesUsedAt C body
+  | .seq es => "seq" :: classSeqRulesAt C es
+  | .nil => ["nilLit"]
   | _ => ["?"]
 
-def classSeqRules : List Ratchet.Expr → List String
+def classSeqRulesAt (C : CTable) : List Ratchet.Expr → List String
   | [] => ["?"]
-  | [e] => "DJudgeSeq.last" :: classRules e
-  | e :: e' :: es => "DJudgeSeq.cons" :: (classRules e ++ classSeqRules (e' :: es))
+  | [e] => "DJudgeSeq.last" :: classRulesAt C e
+  | e :: e' :: es => "DJudgeSeq.cons" :: (classRulesAt C e ++ classSeqRulesAt C (e' :: es))
 end
+
+def rulesUsed (e : Ratchet.Expr) : List String := rulesUsedAt (syntaxClasses e) e
 
 def rulesUsedAll (es : List Ratchet.Expr) : List String := es.flatMap rulesUsed
 

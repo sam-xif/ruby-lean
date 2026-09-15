@@ -143,24 +143,45 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
         let fresh ← refreshBodies n (returnScopeCtx κ c.ctx) I c.cache
         some ⟨c.ty, Γ, returnScopeCtx κ c.ctx, I, .classDecl c.judged hg, fresh⟩
       else none
+    | .class' name (some super) body, .classDecl claimed (some parent) db => do
+      if name != claimed then none else do
+      let s ← check n Γ super (.constCls parent) κ I cache
+      let f ← findClass parent s.ctx.classes
+      if ht : s.ty = .clsOf f.cls.name then do
+        let c ← check n [] body db
+          (subclassHeaderCtx (classBodyCtx s.ctx name) name f.cls.name) .ivar0 s.cache
+        if hg : subclassRuleB s.ctx c.ctx s.out s.spine c.ty name f.cls.name = true then do
+          let fresh ← refreshBodies n (returnScopeCtx s.ctx c.ctx) s.spine c.cache
+          some ⟨c.ty, s.out, returnScopeCtx s.ctx c.ctx, s.spine,
+            .subclassDecl (by simpa only [ht] using s.judged) f.member c.judged hg, fresh⟩
+        else none
+      else none
     | .send (some (.const name)) "new" args none, .newInst claimed ds ty => do
       if name != claimed then none else do
       let start ← findClass name κ.classes
       let a ← checkAll n Γ args ds κ I cache
       let f ← findClass name a.ctx.classes
-      let c ← findInitializer a.ctx f.cls a.cache.initializers
+      let c ← findInitializerAt a.ctx f.cls a.cache.initializers
       if ht : a.tys = c.body.params.map (·.2) then do
       if ty != .inst name c.body.fields then none else do
       if hn : smroGet? a.ctx.classes f.cls.name "new" = none then do
       if hp : f.cls.name ∈ a.ctx.pos.plainAlloc then do
-      if hg : mainCallB a.ctx a.out a.spine = true then
-        some ⟨.inst name c.body.fields, a.out, a.ctx, a.spine, by
-          have hr : DJudge Γ (.const name) (.clsOf f.cls.name) Γ κ I := by
-            simpa only [start.nameOk, f.nameOk] using (DJudge.constClass (Γ := Γ) (I := I) start.member)
-          simpa only [f.nameOk] using
-            (DJudge.newInst hr (by simpa only [ht] using a.judged) rfl f.member c.installed
-              c.nameOk hn hp c.body.paramShape c.body.paramsFO c.body.returnFO c.body.fieldsFO
-              c.body.judged hg), a.cache⟩
+      if hg : mainCallB a.ctx a.out a.spine = true then do
+        have hr : DJudge Γ (.const name) (.clsOf f.cls.name) Γ κ I := by
+          simpa only [start.nameOk, f.nameOk] using (DJudge.constClass (Γ := Γ) (I := I) start.member)
+        if ho : c.owner = f.cls.name then do
+          let ⟨hd⟩ ← defnMem? c.decl f.cls.methods
+          some ⟨.inst name c.body.fields, a.out, a.ctx, a.spine, by
+            simpa only [f.nameOk] using
+              (DJudge.newInst hr (by simpa only [ht] using a.judged) rfl f.member hd
+                c.nameOk hn hp c.body.paramShape c.body.paramsFO c.body.returnFO c.body.fieldsFO
+                (by simpa only [ho, initializerBodyCtx] using c.body.judged) hg), a.cache⟩
+        else
+          some ⟨.inst name c.body.fields, a.out, a.ctx, a.spine, by
+            simpa only [f.nameOk] using
+              (DJudge.newInherited hr (by simpa only [ht] using a.judged) rfl f.member c.route
+                c.nameOk hn hp c.body.paramShape c.body.paramsFO c.body.returnFO c.body.fieldsFO
+                c.body.judged hg), a.cache⟩
       else none
       else none
       else none
@@ -172,20 +193,29 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
       | .inst cn fields => do
         let a ← checkAll n r.out args ds r.ctx r.spine r.cache
         let f ← findClass cn a.ctx.classes
-        let c ← findMember a.ctx f.cls name a.cache.members
+        let c ← findMemberAt a.ctx f.cls name a.cache.members
         if hf : fields = c.fields then do
         if ht : a.tys = c.body.params.map (·.2) then do
         if c.body.ret != ret then none else do
         if hs : explicitReceiverB recv = true then do
         if hn : c.decl.name ≠ "initialize" then do
         if hd : directCallNameB c.decl.name = true then do
-        if hg : instanceCallB a.ctx a.out a.spine = true then
-          some ⟨c.body.ret, a.out, a.ctx, a.spine, by
-            have hr : DJudge Γ recv (.inst f.cls.name c.fields) r.out κ I r.ctx r.spine := by
-              simpa only [hrty, hf, f.nameOk] using r.judged
-            simpa only [c.nameOk] using
-              (DJudge.callMethodSig hr (by simpa only [ht] using a.judged) hs f.member c.installed
-                hn hd c.body.paramShape c.body.paramsFO c.body.returnFO c.fieldsFO c.body.judged hg), a.cache⟩
+        if hg : instanceCallB a.ctx a.out a.spine = true then do
+          have hr : DJudge Γ recv (.inst f.cls.name c.fields) r.out κ I r.ctx r.spine := by
+            simpa only [hrty, hf, f.nameOk] using r.judged
+          if ho : c.owner = f.cls.name then do
+            let ⟨hm⟩ ← defnMem? c.decl f.cls.methods
+            some ⟨c.body.ret, a.out, a.ctx, a.spine, by
+              simpa only [c.nameOk] using
+                (DJudge.callMethodSig hr (by simpa only [ht] using a.judged) hs f.member hm
+                  hn hd c.body.paramShape c.body.paramsFO c.body.returnFO c.fieldsFO
+                  (c.own_judged ho) hg), a.cache⟩
+          else if hnative : nativeInstanceFreeB c.decl.name = true then
+            some ⟨c.body.ret, a.out, a.ctx, a.spine, by
+              simpa only [c.nameOk] using
+                (DJudge.callInherited hr (by simpa only [ht] using a.judged) hs f.member c.route
+                  hn hd hnative c.body.paramShape c.body.paramsFO c.body.returnFO c.fieldsFO c.body.judged hg), a.cache⟩
+          else none
         else none
         else none
         else none

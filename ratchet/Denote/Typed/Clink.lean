@@ -12,12 +12,14 @@ import Denote.Typed.Recursive
 import Denote.Typed.ClassRules
 import Denote.Typed.ClassConstant
 import Denote.Typed.InitRules
+import Denote.Typed.SubclassRule
+import Denote.Typed.InheritedRules
 import Denote.Clink.Form
 
 /-! The registry carries ordinary expressions/lists and scoped recursive bodies/arguments.
 Every constructor registers only with a proof of its constructor-derived semantic form.
 `ruleForm` replaces all eight judgment heads with family projections; a premise reaching
-an uncarried judgment is refused before registration. All 45 constructors are proved.
+an uncarried judgment is refused before registration. All 48 constructors are proved.
 `DJudgeC` is their Church encoding, with unconditional semantic and safety interpretations. -/
 
 set_option autoImplicit false
@@ -347,8 +349,8 @@ def dCompanionRules : List String :=
 -- The registry and its report agree about its size.
 #guard dclinks.length == dRegisteredRules.length
 
--- Twenty-six expression rules and eighteen companions; an unproved rule fails the gate.
-#guard dRegisteredRules.length == 45
+-- Thirty expression rules and eighteen companions; an unproved rule fails the gate.
+#guard dRegisteredRules.length == 48
 #guard dUnregisteredRules == []
 
 -- Every judgment premise is represented in the semantic family.

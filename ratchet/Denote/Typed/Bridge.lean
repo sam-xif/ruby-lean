@@ -63,7 +63,7 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
     (motive_5 := fun κ I s Γ e τ Γ' _ => F.recBody κ I s Γ e τ Γ')
     (motive_6 := fun κ I s Γ es tys Γ' _ => F.recArgs κ I s Γ es tys Γ')
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals intros
   · apply hF DClink.intLit (by simp [dclinks]) <;> assumption
   · apply hF DClink.fltLit (by simp [dclinks]) <;> assumption
@@ -100,6 +100,12 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
       hret hout (initJudge_certified hb F hF) hg
   · apply hF DClink.callMethodSig (by simp [dclinks]) <;> assumption
   · apply hF DClink.vcallMethodSig (by simp [dclinks]) <;> assumption
+  · apply hF DClink.subclassDecl (by simp [dclinks]) <;> assumption
+  · rename_i κd κ₁ κ₂ Γd Γ₁ Γ₂ Γb Id I₁ I₂ Ib τd c owner d ps recv args
+      hr ha hs hc route hn hnew halloc hp hps hret hout hb hg ihr iha
+    exact hF DClink.newInherited (by simp [dclinks]) ihr iha hs hc route hn hnew halloc hp hps
+      hret hout (initJudge_certified hb F hF) hg
+  · apply hF DClink.callInherited (by simp [dclinks]) <;> assumption
   · apply hF DClink.DJudgeAll.nil (by simp [dclinks]) <;> assumption
   · apply hF DClink.DJudgeAll.cons (by simp [dclinks]) <;> assumption
   · apply hF DClink.DJudgeSeq.last (by simp [dclinks]) <;> assumption

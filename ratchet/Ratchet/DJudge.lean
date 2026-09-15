@@ -3,6 +3,9 @@ import Ratchet.CtxEq
 import Ratchet.MethodCtx
 import Ratchet.InitJudge
 import Ratchet.ClassGuards
+import Ratchet.SubclassRule
+import Ratchet.MemberRoute
+import Ratchet.NativeInstanceNames
 
 /-!
 # `Ratchet/DJudge.lean` — the answer-typed judgment
@@ -395,6 +398,37 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       DJudge [] d.body τ Γb (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) Ib
         (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) Ib →
       instanceCallB κ Γ I = true → DJudge Γ (.vcall d.name) τ Γ κ I
+
+  | subclassDecl {κ κ₁ κb : Ctx} {Γ Γ₁ Γb : Env} {I I₁ Ib τ : Ty}
+      {c : Cls} {name : String} {super body : Expr} :
+      DJudge Γ super (.clsOf c.name) Γ₁ κ I κ₁ I₁ → c ∈ κ₁.classes →
+      DJudge [] body τ Γb (subclassHeaderCtx (classBodyCtx κ₁ name) name c.name) .ivar0 κb Ib →
+      subclassRuleB κ₁ κb Γ₁ I₁ τ name c.name = true →
+      DJudge Γ (.class' name (some super) body) τ Γ₁ κ I (returnScopeCtx κ₁ κb) I₁
+  | newInherited {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb : Env} {I I₁ I₂ Ib τ : Ty}
+      {c : Cls} {owner : String} {d : Defn} {ps : List SigParam} {recv : Expr} {args : List Expr} :
+      DJudge Γ recv (.clsOf c.name) Γ₁ κ I κ₁ I₁ →
+      DJudgeAll Γ₁ args (ps.map (·.2)) Γ₂ κ₁ I₁ κ₂ I₂ →
+      explicitReceiverB recv = true → c ∈ κ₂.classes → MemberRoute κ₂.classes c.name owner d →
+      d.name = "initialize" → smroGet? κ₂.classes c.name "new" = none → c.name ∈ κ₂.pos.plainAlloc →
+      d.params = ps.map (fun p => Param.req p.1) →
+      (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) →
+      FirstOrder τ = true → FirstOrder Ib = true →
+      InitJudge (initializerBodyCtxAt κ₂ c.name owner) ps .ivar0 d.body τ
+        (initializerBodyCtxAt κ₂ c.name owner) Γb Ib → mainCallB κ₂ Γ₂ I₂ = true →
+      DJudge Γ (.send (some recv) "new" args none) (.inst c.name Ib) Γ₂ κ I κ₂ I₂
+  | callInherited {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb : Env} {I I₁ I₂ Ib τ : Ty}
+      {c : Cls} {owner : String} {d : Defn} {ps : List SigParam} {recv : Expr} {args : List Expr} :
+      DJudge Γ recv (.inst c.name Ib) Γ₁ κ I κ₁ I₁ →
+      DJudgeAll Γ₁ args (ps.map (·.2)) Γ₂ κ₁ I₁ κ₂ I₂ →
+      explicitReceiverB recv = true → c ∈ κ₂.classes → MemberRoute κ₂.classes c.name owner d →
+      d.name ≠ "initialize" → directCallNameB d.name = true → nativeInstanceFreeB d.name = true →
+      d.params = ps.map (fun p => Param.req p.1) →
+      (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) →
+      FirstOrder τ = true → FirstOrder Ib = true →
+      DJudge ps d.body τ Γb (instanceBodyCtx κ₂ ⟨c.name, owner, d.name⟩ Ib) Ib
+        (instanceBodyCtx κ₂ ⟨c.name, owner, d.name⟩ Ib) Ib → instanceCallB κ₂ Γ₂ I₂ = true →
+      DJudge Γ (.send (some recv) d.name args none) τ Γ₂ κ I κ₂ I₂
 
 inductive DJudgeAll : Env → List Expr → List Ty → Env → (κ : optParam Ctx ctx0) →
     (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
