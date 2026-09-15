@@ -1,31 +1,27 @@
 import Denote.Typed.InstanceReturn
 import Ratchet.ClassCtx
 
-/-! Full top-level caller conformance after an annotation-checked instance body.
-The caller's frame/types and the retained heap world are separate proof inputs. -/
+/-! Restore the top-level activation while retaining the body's outgoing declaration and
+absence tables. Frame restoration and retained heap facts are separate proof inputs. -/
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
-theorem instance_pop_main_state {κ : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Machine}
-    {f : RubyCore.Frame} {fr : Ratchet.Frame}
-    (hm : StateOk κ Γ I m) (ht : ReframeFO κ I) (ha : κ.asms = [])
-    (hr : κ.scope.runtimeMain = true) (hw : κ.pos.mainWorld = true)
-    (hcl : κ.scope.runtimeClass = none) (hu : RootUncaptured m) (hc : f.captured = none)
-    (hk : ∀ x, constGet? (instanceBodyCtx κ fr Ib) x = constGet? κ x)
-    (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
-    (h : Framed (pushMethodFrame m f) n)
-    (hn : StateOk (instanceBodyCtx κ fr Ib) Γb Ib n) : StateOk κ Γ I (popMethodFrame n) := by
-  have hp := method_pop_framed hm.frameInRange.2 hc h
-  have hpop := method_pop_currentFrame hm.frameInRange hc h
+theorem restore_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Machine}
+    (hm : StateOk κ Γ I m) (ht : ReframeFO (returnScopeCtx κ κb) I) (ha : κ.asms = [])
+    (hr : κ.scope.runtimeMain = true) (hw : κb.pos.mainWorld = true)
+    (hcl : κ.scope.runtimeClass = none)
+    (hk : ∀ x, constGet? κb x = constGet? (returnScopeCtx κ κb) x)
+    (hp : Framed m (popMethodFrame n)) (hpop : (popMethodFrame n).currentFrame = m.currentFrame)
+    (he : EnvOk Γ (popMethodFrame n)) (hphase : n.preludeMode = false)
+    (hn : StateOk κb Γb Ib n) : StateOk (returnScopeCtx κ κb) Γ I (popMethodFrame n) := by
   have old := hm.runtime hr
-  have site : MainSite κ n.heap := hn.mainSite hw
-  obtain ⟨_, scope⟩ := hn.classRuntime fr.defClass rfl
+  have site : MainSite κb n.heap := hn.mainSite hw
   have ready : MainReady (popMethodFrame n) := MainReady.of_view (m := popMethodFrame n) site.ready
     ((congrArg RubyCore.Frame.self hpop).trans old.self)
     ((congrArg RubyCore.Frame.defmod hpop).trans old.owner)
     ((congrArg RubyCore.Frame.cref hpop).trans old.cref)
-    ((congrArg RubyCore.Frame.captured hpop).trans old.captured) scope.phase
+    ((congrArg RubyCore.Frame.captured hpop).trans old.captured) hphase
   have hscope : ConstScopeOk (popMethodFrame n) := by
     intro x
     have he : constResolveAt (popMethodFrame n) x = mainConstResolve n.heap x := by
@@ -39,13 +35,17 @@ theorem instance_pop_main_state {κ : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mac
   refine {
     runtime := fun _ => ready
     mainSite := fun _ => site
-    classRuntime := by intro cn hcn; rw [hcl] at hcn; cases hcn
+    classRuntime := by
+      intro cn hcn
+      change κ.scope.runtimeClass = some cn at hcn
+      rw [hcl] at hcn; cases hcn
     classSites := by
       intro cn hcn
       apply hn.classSites cn
       apply List.mem_append_left
-      change cn ∈ κ.classes.map (·.name)
-      simpa only [classSiteNames, hcl, Option.toList_none, List.append_nil] using hcn
+      change cn ∈ κb.classes.map (·.name)
+      change cn ∈ κb.classes.map (·.name) ++ κ.scope.runtimeClass.toList at hcn
+      simpa only [hcl, Option.toList_none, List.append_nil] using hcn
     sat := hn.sat
     primitiveDispatch := hn.primitiveDispatch
     primitiveErrors := hn.primitiveErrors
@@ -55,11 +55,11 @@ theorem instance_pop_main_state {κ : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mac
     core := hn.core
     frameInRange := ⟨by rw [hp.stack]; exact hm.frameInRange.1,
       by rw [hp.stack]; exact Nat.lt_of_lt_of_le hm.frameInRange.2 hp.frames.size⟩
-    env := method_pop_envOk hm.frameInRange.2 hu hc h hm.env hΓ
-    selfSpine := method_pop_selfSpine hm ht.spine hm.selfLive hc h
+    env := he
+    selfSpine := hp.selfSpine (congrArg RubyCore.Frame.self hpop) hm.selfLive ht.spine hm.selfSpine
     classes := hn.classes
     defs := hn.defs
-    asms := by simp [AsmsOk, ha]
+    asms := by change AsmsOk κ.asms _; simp [AsmsOk, ha]
     frame := ?_
     closures := trivial
     blockTy := ?_
@@ -80,7 +80,8 @@ theorem instance_pop_main_state {κ : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mac
     baseChains := hn.baseChains
     nilQuery := hn.nilQuery
     selfLive := fun o ho => Nat.lt_of_lt_of_le (hm.selfLive o (by rwa [hpop] at ho)) hp.fields.size }
-  · cases hf : κ.frame with
+  · change FrameOk κ.frame (popMethodFrame n)
+    cases hf : κ.frame with
     | none => simpa only [FrameOk, hf, hpop] using hm.frame
     | some fr =>
       have hold : m.currentFrame.meth = fr.methName ∧
@@ -88,13 +89,15 @@ theorem instance_pop_main_state {κ : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mac
         simpa only [FrameOk, hf] using hm.frame
       exact ⟨by rw [hpop]; exact hold.1,
         by rw [hpop]; exact hp.nominal _ _ hold.2⟩
-  · cases hb : κ.blockTy with
+  · change BlockTyOk κ.blockTy (popMethodFrame n)
+    cases hb : κ.blockTy with
     | none => simpa only [BlockTyOk, hb, hpop] using hm.blockTy
     | some τ =>
       obtain ⟨v, hv, hd⟩ := (show ∃ v, m.currentFrame.blk = some v ∧ denM τ m v by
         simpa only [BlockTyOk, hb] using hm.blockTy)
       exact ⟨v, by rw [hpop]; exact hv, hp.firstOrder τ (ht.block τ hb) v hd⟩
-  · cases hs : κ.selfTy with
+  · change SelfTyOk κ.selfTy (popMethodFrame n)
+    cases hs : κ.selfTy with
     | none => trivial
     | some τ =>
       change denM τ (popMethodFrame n) (popMethodFrame n).currentFrame.self
@@ -110,5 +113,21 @@ theorem instance_pop_main_state {κ : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mac
       exact site.names name hb owner md (by rwa [ready.self] at hl)
     · exact hn.nameFree name hb k (List.mem_cons_of_mem _ he) owner md hl
 
+/-- An ordinary instance body leaves its surrounding tables unchanged. -/
+theorem instance_pop_main_state {κ : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Machine}
+    {f : RubyCore.Frame} {fr : Ratchet.Frame}
+    (hm : StateOk κ Γ I m) (ht : ReframeFO κ I) (ha : κ.asms = [])
+    (hr : κ.scope.runtimeMain = true) (hw : κ.pos.mainWorld = true)
+    (hcl : κ.scope.runtimeClass = none) (hu : RootUncaptured m) (hc : f.captured = none)
+    (hk : ∀ x, constGet? (instanceBodyCtx κ fr Ib) x = constGet? κ x)
+    (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
+    (h : Framed (pushMethodFrame m f) n)
+    (hn : StateOk (instanceBodyCtx κ fr Ib) Γb Ib n) : StateOk κ Γ I (popMethodFrame n) := by
+  obtain ⟨_, scope⟩ := hn.classRuntime fr.defClass rfl
+  exact restore_main_state (κb := instanceBodyCtx κ fr Ib) hm ht ha hr hw hcl hk
+    (method_pop_framed hm.frameInRange.2 hc h) (method_pop_currentFrame hm.frameInRange hc h)
+    (method_pop_envOk hm.frameInRange.2 hu hc h hm.env hΓ) scope.phase hn
+
+#print axioms restore_main_state
 #print axioms instance_pop_main_state
 end Ratchet.Denote.Typed

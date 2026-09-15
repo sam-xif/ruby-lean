@@ -4,6 +4,10 @@ import Ratchet.MethodCtx
 /-! Enter the lexical scope of a fresh class, without advertising future methods. -/
 namespace Ratchet
 
+/-- Restore lexical activation only; executed declarations and weakened absence facts
+belong to the outgoing body context, not to the saved caller. -/
+def returnScopeCtx (caller body : Ctx) : Ctx := { body with scope := caller.scope }
+
 def classBodyCtx (κ : Ctx) (name : String) : Ctx :=
   { κ with
     scope := { κ.scope with

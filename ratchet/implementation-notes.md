@@ -9590,3 +9590,21 @@ both halves of what constrains them now have a name.
 - New modules compile below a second, standard axioms only. Full quiet ratchet GREEN:
   fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 129 (2026-09-14) — execute class bodies and restore scope, not stale tables
+
+- `returnScopeCtx` keeps the body's outgoing positive/negative tables and restores only
+  caller scope. Generalize main restoration accordingly; ordinary instance calls retain
+  their previous API as the unchanged-table specialization. Outgoing constant types and
+  lexical/global compatibility remain explicit, not inferred from the caller's old table.
+- `ClassReturnState` composes preallocation framing, uncaptured caller restoration, and
+  full outgoing conformance through the actual frameK. `ClassRun` adds the real fresh-class
+  entry step and applies a semantic body proof at full entry StateOk. No alternate executor,
+  constructor assumption, or signature-only body admission is introduced.
+- Controls consume a checker-produced literal-body certificate, retain installed-table/name
+  reservations on scope exit, and execute a class definition + instance call while preserving
+  a shadowed caller local. The latter is an execution control, not validator admission.
+  Class publication, constructor integration, and annotated class/body rules remain gated.
+- New proofs compile below a second, standard axioms only. Full quiet ratchet GREEN:
+  fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
+  252 agree / 0 disagree.

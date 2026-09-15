@@ -1,5 +1,5 @@
 import Denote.Sem.ClassFrame
-import Denote.Typed.MethodReturn
+import Denote.Typed.MethodState
 
 /-! Class-body return reuses uncaptured-frame restoration. Heap publication is anchored
 before class allocation; the body's framing contract starts after entry. Both are needed. -/
@@ -33,6 +33,10 @@ theorem class_pop_getLocal (hl : m.stack.headD 0 < m.frames.size) (hu : RootUnca
   rw [getLocal_uncaptured hu]
   exact hp
 
+theorem class_pop_currentFrame (hl : FrameInRange m) (hb : Framed entry n) :
+    (popMethodFrame n).currentFrame = m.currentFrame :=
+  method_pop_currentFrame (m := published) hl rfl (pushed_framed.trans hb)
+
 theorem class_pop_envOk (hm : StateOk κ Γ I m) (hu : RootUncaptured m)
     (hn : constOwn m.heap Boot.objectId name = none)
     (he : (m.heap.get Boot.objectId).eigen = some e) (hb : Framed entry n)
@@ -51,5 +55,6 @@ theorem class_pop_envOk (hm : StateOk κ Γ I m) (hu : RootUncaptured m)
 
 #print axioms class_pop_framed
 #print axioms class_pop_getLocal
+#print axioms class_pop_currentFrame
 #print axioms class_pop_envOk
 end Ratchet.Denote.Typed
