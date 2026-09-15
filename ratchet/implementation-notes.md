@@ -9827,3 +9827,28 @@ both halves of what constrains them now have a name.
 - New proofs are axiom-clean and build below a second. Full quiet ratchet GREEN:
   fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 141 (2026-09-14) — generic instance calls and the complete 061 semantic proof
+
+- Do not infer empty payload from `.inst`: the retained Proc#call countermodel disproves it.
+  `DirectSendName` is an alternative, excluding the interpreter's eleven payload-intercepted
+  names and generated CRuby singleton names. Its finite Bool proves the semantic predicate;
+  actual dispatch is proved for arbitrary heaps/classes. The ordinary-payload route remains
+  available, including names that cannot use this conservative alternative. No new heap flag.
+- `instance_method_run` takes class/method records, parameter/return annotations, receiver
+  fields, and a full body proof. It recovers actual code from StateOk and composes entry/body/
+  return. The older checked-body call API is now a specialization, not a duplicate proof.
+  `instanceCall` uses generic receiver/argument evaluation and the final context. Privacy,
+  required arity, lexical resolution, and first-in-MRO obligations remain intact.
+- Point's worked `full_run` composes class definition, constructor, and getter at Integer
+  for arbitrary Integer arguments and first-order caller locals. Both bodies are proved at
+  their annotations, not at those call values. The actual generated 061 program was compared
+  with `fullProgram 1 2` using the Lean Rung decoder and `exprEq`; they match. Runtime controls
+  check the result and caller-local restoration. Record#answer also runs unchanged with a
+  Proc payload while Record#call runs the closure instead; only the former passes the guard.
+- This is still a semantic proof, not a new DJudge/checker admission. Class freshness remains
+  an explicit class-entry premise; class/initializer certificate families and cache integration
+  must discharge the remaining obligations before the validator may accept 061.
+- New proofs use standard axioms only; dispatch builds in 1.1s and composition below a second.
+  Full quiet ratchet GREEN: fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt,
+  46 worked theorems, 252 agree / 0 disagree.

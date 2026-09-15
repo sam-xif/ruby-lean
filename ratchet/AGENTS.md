@@ -309,7 +309,16 @@ annotations, and resulting field shape. They derive code/allocation from conform
 require the full annotation-domain body proof. Point is a worked instance; the independent
 FlagBox control uses one Boolean parameter, a Boolean return, and no fields. Full class/new
 controls cover argument assignments, allocations, initialized fields, and retained caller
-locals. Getter dispatch/composition and body-certificate admission remain; no new acceptance.
+locals. `InstanceDispatch` now supplies a name-based alternative to the ordinary-payload
+premise: DirectSendName excludes payload interception and unmodeled native singleton names;
+it never infers empty payload from an instance annotation. `InstanceRun` and `InstanceExpr`
+are class/body/annotation-parameterized and consume the entire body proof through actual
+lookup, argument binding, and caller restoration. The checked-body API specializes this
+same proof. `PointProgram` composes the whole 061 class/new/getX program at Integer for
+arbitrary Integer arguments and first-order caller locals; its AST matches generated 061.
+Controls retain the Proc#call counterexample and execute Record#answer on a Proc-payload
+receiver. Class freshness and class/initializer certificate admission remain; no new checker
+acceptance is claimed.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -383,6 +392,8 @@ String membership needs a payload invariant. See
 | `Denote/Sem/Allocator.lean`, `ClassAllocators.lean`, `Denote/Typed/PointConstructor.lean`, `PointConstructorControls.lean` | Persistent plain-allocation capabilities and annotation-checked construction from the published class state |
 | `Denote/Typed/Send.lean`, `ClassConstant.lean`, `PointConstructorExpr.lean`, `PointConstructorExprControls.lean` | Receiver/argument composition, declared class reads, and full class/new runs with argument effects |
 | `Denote/Typed/ConstructorResolve.lean`, `ConstructorExpr.lean`, `ConstructorGeneralControls.lean` | Class-parameterized annotation-checked constructor runs/expressions, independently exercised by FlagBox |
+| `Denote/Sem/DispatchName.lean`, `Denote/Typed/InstanceDispatch.lean`, `InstanceRun.lean`, `InstanceExpr.lean` | Payload-or-name dispatch, full annotation-domain instance calls, and receiver/argument composition for arbitrary classes |
+| `Denote/Typed/InstanceDispatchControls.lean`, `PointProgram.lean`, `PointProgramControls.lean` | Interception controls and the complete semantic 061 proof (not checker admission) |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |

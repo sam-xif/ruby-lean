@@ -1,0 +1,39 @@
+import Denote.Typed.PointConstructorExpr
+import Denote.Typed.InstanceExpr
+
+/-! Worked instance of the generic class, constructor, and method-call lemmas: all of 061.
+This is a semantic program proof; class/initializer certificate admission remains separate. -/
+set_option autoImplicit false
+namespace Ratchet.Denote.Typed.PointClass
+open RubyCore Ratchet Ratchet.Denote
+
+def getExpr (x y : Int) : Ratchet.Expr := .send (some (newExpr x y)) "getX" [] none
+def fullProgram (x y : Int) : Ratchet.Expr := .seq [program, getExpr x y]
+
+theorem get_sem {Γ : Env} {I : Ty} (hI : FirstOrder I = true)
+    (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (x y : Int) :
+    SemSafeCtxA callerCtx Γ I (getExpr x y) .int callerCtx Γ I :=
+  (new_sem hI hΓ x y).instanceCall (c := classWithMethod initClass getter) (d := getter) (ps := [])
+    .nil rfl
+    (by change classWithMethod initClass getter ∈ [classWithMethod initClass getter, initClass, header]; simp)
+    (by change getter ∈ [getter, initDecl]; simp) (by decide)
+    (directSendNameB_sound (by decide)) rfl (by simp) rfl (by decide) getter_body
+    (ReframeFO.empty hI rfl rfl rfl) rfl rfl rfl rfl
+    (fun n => (constGet?_empty (κ := instanceBodyCtx callerCtx ⟨"Point", "Point", "getX"⟩ pointInitSpine)
+      rfl n).trans (constGet?_empty rfl n).symm) hΓ
+
+theorem full_run {Γ : Env} {I : Ty} {m : Machine} (hm : StateOk ctx0 Γ I m)
+    (hI : FirstOrder I = true) (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
+    (hn : constOwn m.heap Boot.objectId "Point" = none) (x y : Int) :
+    RunSpec m (evalFrom m (fullProgram x y)) Γ .int callerCtx I :=
+  (runSpec hm hI hΓ hn).thenSeq (.last (get_sem hI hΓ x y))
+
+theorem boot_full_run (hb : bootOkB = true)
+    (hn : constOwn bootMachine.heap Boot.objectId "Point" = none) (x y : Int) :
+    RunSpec bootMachine (evalFrom bootMachine (fullProgram x y)) [] .int callerCtx .ivar0 :=
+  full_run (stateOk_boot hb) rfl (by simp) hn x y
+
+#print axioms get_sem
+#print axioms full_run
+#print axioms boot_full_run
+end Ratchet.Denote.Typed.PointClass
