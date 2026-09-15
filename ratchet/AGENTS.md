@@ -407,6 +407,10 @@ through subclass registration; default-superclass DataPres uses the same proof. 
 declared-parent entry derives its metaclass ancestry from conformance. Controls cover nested
 hash/array/instance fields, inherited calls, dangling references and missing-root/stale-name
 countermodels. Full subclass state transport remains ahead of checker admission.
+`SubclassDispatch` maps both fresh lookup sites to their old parents, retaining native
+prefix guards. `SubclassQueries` preserves primitive dispatch/errors and all three query
+invariants; default-superclass proofs now specialize them. Actual declared-parent entry
+composes these facts, with instance/singleton-call and runtime-name interception controls.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -494,6 +498,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/ClassGrowth.lean`, `SubclassReady.lean` | Generic fresh-edge/walk contracts, subclass readiness/liveness/saturation, and shared default-superclass specialization |
 | `Denote/Sem/MetaReady.lean`, `MetaReadyClass.lean` | Retained class-site metaclass facts, generic transports/publication, and conformance-derived cached-parent entry (§F41) |
 | `Denote/Sem/ClassData.lean`, `SubclassData.lean`, `Denote/Typed/SubclassDataControls.lean` | Generic first-order/field preservation through subclass entry and caller framing, with nested-data and dangling-reference controls |
+| `Denote/Sem/SubclassDispatch.lean`, `SubclassQueries.lean`, `Denote/Typed/SubclassDispatchControls.lean` | Shared class/metaclass source mapping, guarded query/primitive transport, actual entry and inherited-dispatch controls |
 | `Denote/Typed/InstanceDispatchControls.lean`, `PointProgram.lean`, `PointProgramControls.lean` | Interception controls and the complete semantic 061 proof (not checker admission) |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

@@ -10208,3 +10208,27 @@ both halves of what constrains them now have a name.
 - New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
   fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 157 (2026-09-15) — shared superclass/metaclass dispatch and query transport
+
+- SubclassDispatch's source map sends the fresh class to its superclass, the fresh
+  metaclass to the parent's metaclass, and other ids to themselves. Old reads, whole
+  lookup and native-prefix preservation cover arbitrary parents, lexical owners and runtime
+  class names. Default-superclass dispatch is now a specialization, not a second proof.
+- SubclassQueries transports primitive dispatch/errors, QueryOk, ClsQueryOk and NilQueryOk.
+  The fresh class receiver maps to the actual parent class receiver; a fresh metaclass
+  still requires the pre-existing direct-Class query site. Default-superclass query/core
+  lemmas delegate to these generic proofs. Native guards remain mandatory.
+- `enter_declared_queries` composes actual entry with these conformance components, deriving
+  parent/metaclass facts from StateOk and consuming the existing NativeFrame guard. It does
+  not claim full outgoing StateOk or execute/accept the class body.
+- Controls execute Beacon/Flare inherited instance and singleton calls. A synthetic heap
+  registers Facade but stores runtime name String: pure inherited lookup agrees while
+  to_s gains a native interceptor. Thus the generic guard uses runtime name q, not the
+  registration key. Singleton definitions remain model controls, not checker admission.
+- Builtin-base, payload, declaration and scope transports still precede full subclass
+  conformance; inherited initializer/body caching remains. No rule, annotation requirement,
+  acceptance or floor changes.
+- New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
+  fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
+  252 agree / 0 disagree.

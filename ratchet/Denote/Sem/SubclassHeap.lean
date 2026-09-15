@@ -67,6 +67,44 @@ theorem get_eigen {h : Heap} {d parent eParent : ObjId} {name q : String} :
     show h.objs.size + 1 = ((hmidOf h d name).objs.push (classObj q parent)).size by
       rw [Array.size_push, hmid_size], objs_getD_push_self]
 
+theorem cp_oob {h : Heap} {d parent eParent o : ObjId} {name q : String}
+    (ho : h.objs.size + 2 ≤ o) : (heap h d name q parent eParent).classPayload? o = none :=
+  classPayload?_oob _ _ (by rw [size]; exact Nat.not_lt.mpr ho)
+
+theorem classPayload_old_isSome {h : Heap} {d parent eParent k : ObjId} {name q : String}
+    (hk : k < h.objs.size) :
+    ((heap h d name q parent eParent).classPayload? k).isSome = (h.classPayload? k).isSome := by
+  unfold Heap.classPayload?
+  rw [get_old hk]
+  exact classPayload?_isSome_constSetIn h d k name _
+
+theorem classOf_old {h : Heap} {d parent eParent o : ObjId} {name q : String}
+    (ho : o < h.objs.size) :
+    classOf (heap h d name q parent eParent) (.ref o) = classOf h (.ref o) := by
+  simp only [classOf, (fields ho).2.1, (fields ho).2.2.1]
+
+theorem classOf_class {h : Heap} {d parent eParent : ObjId} {name q : String} :
+    classOf (heap h d name q parent eParent) (.ref h.objs.size) = h.objs.size + 1 := by
+  simp only [classOf, get_class, classObjE]
+
+theorem classOf_eigen {h : Heap} {d parent eParent : ObjId} {name q : String} :
+    classOf (heap h d name q parent eParent) (.ref (h.objs.size + 1)) = Boot.classId := by
+  simp only [classOf, get_eigen, eigObjC]
+
+theorem className_class {h : Heap} {d parent eParent : ObjId} {name q : String}
+    (hq : q.isEmpty = false) : className (heap h d name q parent eParent) h.objs.size = q := by
+  simp only [className, Heap.classPayload?, get_class, classObjE, hq, Bool.false_eq_true, ↓reduceIte]
+
+theorem className_eigen {h : Heap} {d parent eParent : ObjId} {name q : String} :
+    className (heap h d name q parent eParent) (h.objs.size + 1) = "#<Class:" ++ q ++ ">" := by
+  simp only [className, Heap.classPayload?, get_eigen, eigObjC]
+  change (if ("#<Class:" ++ q ++ ">").isEmpty then _ else _) = _
+  rw [if_neg (by
+    simp only [String.isEmpty_iff]
+    intro he
+    have hl := congrArg String.length he
+    simp [String.length_append] at hl)]
+
 /-- Factor alloc/register/alloc/attach into the same heap used by the semantic proofs. -/
 theorem heap_machine (h : Heap) (d : ObjId) (name q : String) (parent eParent : ObjId)
     (hd : d < h.objs.size) :

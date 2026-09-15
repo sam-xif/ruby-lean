@@ -1,5 +1,6 @@
 import Denote.Sem.SubclassHeap
 import Denote.Sem.MetaReadyClass
+import Denote.Sem.ClassNative
 import Denote.Typed.ClassEntry
 
 /-! Actual subclass entry with a resolved superclass. Cached metaclass readiness is an
@@ -150,9 +151,36 @@ theorem enter_declared_data {κ : Ratchet.Ctx} {Γ : Ratchet.Env} {I : Ratchet.T
       (by simp only [howner, beq_self_eq_true, ite_true]) hn
   · exact dataPres hm.core.classReady hm.sat hm.core.basicSelf hf hep hb
 
+theorem enter_declared_queries {κ : Ratchet.Ctx} {Γ : Ratchet.Env} {I : Ratchet.Ty}
+    {m : Machine} {c : Ratchet.Cls} {parent : ObjId} {name : String} {body : RubyCore.Expr}
+    (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
+    (hc : c ∈ κ.classes) (hp : classNamed? m.heap c.name = some parent)
+    (hf : constOwn m.heap Boot.objectId name = none) (hn : name.isEmpty = false)
+    (hq : FreshClass.NativeFrame κ name) :
+    ∃ n, enterClassBody m name false (some parent) body = .next n ∧
+      QueryOk κ n ∧ ClsQueryOk κ n ∧ NilQueryOk κ n ∧
+      primitiveDispatchB n.heap (Ratchet.nameFreeN κ) = true ∧ primitiveErrorsB n.heap = true := by
+  obtain ⟨ep, he, _, _⟩ := hm.classSites.metaclass hc hp
+  have hl := hm.core.classReady.constRefs c.name parent (classNamed_constOwn hp)
+  have hch := hm.core.classReady.chains
+  have hep := hch.eigen parent hl ep he
+  have howner := (hm.runtime hr).owner
+  have hcp : (m.heap.classPayload? parent).isSome = true := by
+    simpa using congrArg Option.isSome (hm.declCls c hc parent hp).2.2.2.1
+  refine ⟨machine m Boot.objectId m.currentFrame.cref name name parent ep body, ?_,
+    query hch hm.sat hl hep hn hq.query rfl hm.query,
+    clsQuery hch hm.sat hcp he hn hq.clsQuery rfl hm.clsQuery,
+    nilQuery hch hm.sat hl hep hn hq.nilQuery rfl hm.nilQuery,
+    (primitiveDispatch hch hm.sat _).trans hm.primitiveDispatch,
+    (primitiveErrors hch hm.sat).trans hm.primitiveErrors⟩
+  simpa only [howner] using enter_fresh (m := m) (q := name) (body := body)
+    (by simpa only [howner] using hf) (by simpa only [howner] using hch.boot.2.2.2.2) hl he
+    (by simp only [howner, beq_self_eq_true, ite_true]) hn
+
 #print axioms enter_fresh
 #print axioms step_resolved
 #print axioms enter_fresh_ready
 #print axioms enter_declared_fresh
 #print axioms enter_declared_data
+#print axioms enter_declared_queries
 end Ratchet.Denote.Subclass

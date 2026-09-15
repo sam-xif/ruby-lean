@@ -1,4 +1,5 @@
 import Denote.Sem.ClassDispatch
+import Denote.Sem.SubclassQueries
 import Denote.Sem.ClassRootNames
 
 /-! Builtin conformance across fresh class creation: payloads, primitive dispatch/errors,
@@ -12,32 +13,11 @@ variable {h : Heap} {name : String} {e : ObjId}
 local notation "h₁" => freshClsHeap h Boot.objectId name name e
 
 theorem primitiveDispatch (hc : Proof.ChainsIn h) (hs : Proof.Saturated h)
-    (free : String → Bool) : primitiveDispatchB h₁ free = primitiveDispatchB h free := by
-  apply Bool.eq_iff_iff.mpr
-  simp only [primitiveDispatchB, List.all_eq_true]
-  apply forall_congr'
-  intro p
-  apply imp_congr_right
-  intro hp
-  rcases p with ⟨k, mn, bid⟩
-  have hbound : k ≤ Boot.procId := of_decide_eq_true (List.all_eq_true.mp
-    (by decide : primitiveMethods.all (fun p => decide (p.1 ≤ Boot.procId)) = true) _ hp)
-  have hk := Nat.lt_of_le_of_lt hbound hc.boot.2.2.2.1
-  simp only [method_old hc hs hk, shadow_before_old hc hs hk]
+    (free : String → Bool) : primitiveDispatchB h₁ free = primitiveDispatchB h free :=
+  Subclass.primitiveDispatch hc hs free
 
 theorem primitiveErrors (hc : Proof.ChainsIn h) (hs : Proof.Saturated h) :
-    primitiveErrorsB h₁ = primitiveErrorsB h := by
-  apply Bool.eq_iff_iff.mpr
-  simp only [primitiveErrorsB, List.all_eq_true]
-  apply forall_congr'
-  intro k
-  apply imp_congr_right
-  intro hk
-  have hl : k < h.objs.size := by
-    have hb : k ≤ Boot.procId := of_decide_eq_true (List.all_eq_true.mp
-      (by decide : primitiveErrorClasses.all (fun j => decide (j ≤ Boot.procId)) = true) _ hk)
-    exact Nat.lt_of_le_of_lt hb hc.boot.2.2.2.1
-  simp only [primitiveErrorB, Proof.Judgment.ancestors_old_freshC hc hs hl]
+    primitiveErrorsB h₁ = primitiveErrorsB h := Subclass.primitiveErrors hc hs
 
 theorem stringPayload (hc : Proof.ChainsIn h) (hp : StringPayloadOk h) : StringPayloadOk h₁ := by
   intro o hco
