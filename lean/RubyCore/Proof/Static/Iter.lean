@@ -196,12 +196,29 @@ example {m : Machine} {o : ObjId} {x : String} {body : Expr} {site : SendSite}
 /-- **The lambda literal's whole step** (L261), and it is `finishSend`'s `mkLam` branch:
     `reifyBlock` and nothing else — no dispatch, no frame, no continuation. Written as a
     reduction here beside the five block-send ones because it is the same allocation, and
-    L257's `_grow` transports are what the consecution case then spends. -/
-theorem startArgs_lambda (m : Machine) (ps : List Param) (ls : List String) (body : Expr) :
+    L257's `_grow` transports are what the consecution case then spends.
+
+    **Corrected: it needs the non-shadowing hypothesis, and used to be stated without one.**
+    `lambda` is a `Kernel` method, so a user `def lambda` shadows it and the send is an
+    ordinary dispatch carrying the block — the model was taught that in `finishSend`'s
+    `shadowed` test (`found-issues.md` §A5), and this theorem's `rfl` silently stopped
+    holding at that commit. It went unnoticed because `Proof/` is off the default build
+    target, which is the same failure mode `scripts/check-proofs.sh` exists to catch.
+    `hsh` says exactly what `mkLam` needs: whatever the ancestor walk finds for `lambda`
+    on the receiver's class, it is not a user (non-builtin, defined) entry. -/
+theorem startArgs_lambda (m : Machine) (ps : List Param) (ls : List String) (body : Expr)
+    (hsh : ∀ own md, methodOn m.heap (classOf m.heap m.currentFrame.self) "lambda"
+            = some (own, md) → (md.builtin.isNone && !md.undefined) = false) :
     startArgs m m.currentFrame.self SendSite.implicit "lambda" [] []
         (PendingBlk.lit ps ls body)
       = RubyCore.StepResult.next (withCtl (reifyBlock m ps ls body true).2
-          (.value (reifyBlock m ps ls body true).1)) := rfl
+          (.value (reifyBlock m ps ls body true).1)) := by
+  simp only [startArgs, finishSend]
+  cases h : methodOn m.heap (classOf m.heap m.currentFrame.self) "lambda" with
+  | none => simp
+  | some p =>
+    obtain ⟨own, md⟩ := p
+    simp [hsh own md h]
 
 end Static
 end Proof

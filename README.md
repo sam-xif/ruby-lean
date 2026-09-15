@@ -60,6 +60,17 @@ worth something rather than vacuous:
   time, so a checker that accepted everything would fail the build rather than
   pass every rung.
 
+"Axiom-clean" is checked by the build itself, not asserted here — `Bridge.lean`
+ends in `#print axioms`, so `lake build` prints
+
+```
+'Ratchet.Denote.Typed.validateD_safe_boot' depends on axioms:
+  [propext, Classical.choice, Quot.sound]
+```
+
+and nothing else. Those three are Lean's own; a `sorry` or a new axiom would
+show up in that line, in the log, on every build.
+
 ## Where it stands today
 
 Printed by `ratchet/scripts/run_typed_ratchet.sh` on a clean checkout of this
@@ -87,6 +98,17 @@ RATCHET GREEN
 that the ladder is finished. Unclimbed rungs are green because nothing claims
 them.
 
+And the model itself, against MRI's own `bootstraptest` suite
+(`scripts/reproduce.sh --with-difftest`, same checkout, same day):
+
+```
+1309 programs ran · 995 agree · 0 disagreements · 308 unsupported
+```
+
+`unsupported` is the model declining to guess — a construct outside its
+fragment, reported rather than approximated. **Zero disagreements** is the
+number that matters: nowhere does the model claim an answer CRuby contradicts.
+
 ## What is trusted, and what is not
 
 The pipeline is deliberately lopsided. Four of its five stages can be arbitrarily
@@ -106,7 +128,7 @@ could have had (a false *reject*), never an unsound one.
 
 ## Install
 
-Everything is off-the-shelf; there is nothing to vendor.
+Five external tools, all off-the-shelf.
 
 ```sh
 # Lean (the toolchain version itself is pinned by */lean-toolchain — elan fetches it)
@@ -145,8 +167,9 @@ second, driftable copy of the semantics. The first build fetches two Lean
 dependencies (`plausible`, `iris-lean`) into the manifest; neither is on the
 default target, and neither is needed for anything on this page.
 
-Expect roughly 5 minutes for `lean/` and appreciably longer for `ratchet/`'s
-proof libraries on a cold cache.
+On a cold cache expect a few minutes for `lean/` and on the order of half an
+hour for `ratchet/` — the bulk of it is elaborating `Denote/`, which is where
+the semantic proofs live. Incremental rebuilds are seconds.
 
 ## Reproduce
 
@@ -155,7 +178,10 @@ One command runs the whole thing in order and stops at the first failure:
 ```sh
 scripts/reproduce.sh                   # build + the typed ratchet gate
 scripts/reproduce.sh --with-difftest   # also: model vs CRuby over MRI's bootstraptest
+                                       #   (harvests the corpus on first run: one sparse
+                                       #    clone of ruby/ruby into $RUBY_SRC or /tmp)
 scripts/reproduce.sh --with-proofs     # also: the metatheory + `#print axioms`
+                                       #   (known red — see Status and limits)
 ```
 
 The gate itself is the thing to run if you only run one:
@@ -182,7 +208,11 @@ run); in a sandbox with a protected uv cache, set
 Other reproductions, each a single command:
 
 ```sh
-# the model against MRI's bootstraptest corpus, through the difftest engine
+# the model against MRI's bootstraptest corpus, through the difftest engine.
+# The corpus is harvested, not vendored — one sparse clone, once:
+git clone --depth 1 --filter=blob:none --sparse https://github.com/ruby/ruby /tmp/ruby-src
+(cd /tmp/ruby-src && git sparse-checkout set bootstraptest)
+harness/desugar-dt/bin/harvest_bootstraptest /tmp/ruby-src/bootstraptest
 cd difftest && uv sync && uv run python -m difftest run --tier 0 --sut lean
 
 # run one program through the model by hand
@@ -221,20 +251,31 @@ before the trusted check. See [`playground/README.md`](playground/README.md).
 Read these before quoting a number.
 
 * **The fragment is small.** `validateD` accepts a *prefix* of the corpus, not
-  Ruby: 63 of 259 rungs today, and blocks, `module`, `casgn` and constant
-  assignment are all still outside it. Everything outside is *declined*, not
+  Ruby: 63 of 259 rungs today, and block arguments, `module`, constant
+  assignment (`casgn`) and regexp literals are all still outside it. Everything outside is *declined*, not
   mis-certified — which is the design, but it means "certified type-safe" here
   is a claim about a slice.
-* **The model is a model.** Tier-0 agreement with CRuby is high but not total,
-  and the parts of Ruby the model does not reach are reported as `unsupported`
-  rather than guessed. Numbers and the current fragment are in
-  [`lean/README.md`](lean/README.md).
+* **The model is a model.** It agrees with CRuby wherever it answers (0
+  disagreements over 1309 bootstraptest programs) but it declines 308 of them —
+  roughly a quarter of the suite is outside its fragment. What is modeled, and
+  what is not, is listed in [`lean/README.md`](lean/README.md).
 * **Safety means one family.** `StuckFree` rules out reaching
   `NoMethodError`/`ArgumentError`/`TypeError`. It is not a claim about
   termination, about other exceptions, or about effects.
 * **Sorbet's verdict is not this repo's verdict.** `srb` clean with
   `validateD = false` is an ordinary, expected combination: Sorbet accepts many
   programs the certified fragment has no rules for yet.
+* **One metatheory file does not build.** `lean/`'s off-default `Metatheory`
+  target currently fails in `RubyCore/Proof/Static/Preservation.lean` (three
+  broken proofs), so `scripts/check-proofs.sh` — and therefore
+  `scripts/reproduce.sh --with-proofs` — exits non-zero. This is drift, not a
+  false claim: `Proof/` is off the default build target precisely because
+  nothing the SUT or the ratchet does depends on it, which is also why it rots
+  unnoticed. **Nothing on this page depends on it.** The headline theorem
+  `validateD_safe_boot` and every proof under `ratchet/Denote/` are on the
+  default target, build clean, and print their axioms on every build. (A related
+  break in `Proof/Static/Iter.lean` was repaired for this release — see
+  `CHANGELOG.md`.)
 * **`ratchet/build/` is derived.** It is regenerated from `corpus/*.rb` by the
   pipeline; the annotated `.rb` is the source of truth.
 

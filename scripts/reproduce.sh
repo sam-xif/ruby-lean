@@ -42,14 +42,37 @@ step "3. the typed ratchet gate (the headline numbers)"
 
 if [[ $WITH_DIFFTEST == 1 ]]; then
   step "4. differential test: the Lean model vs CRuby over MRI's bootstraptest"
+  # The corpus is *harvested*, not vendored: MRI's bootstraptest suite is not part
+  # of an installed Ruby and is not ours to ship. One sparse clone gets it.
+  CORPUS="$ROOT/harness/desugar-dt/corpus/bootstraptest"
+  if [[ ! -d "$CORPUS" ]]; then
+    RUBY_SRC="${RUBY_SRC:-/tmp/ruby-src}"
+    echo "no bootstraptest corpus yet — harvesting it into ${CORPUS}"
+    if [[ ! -d "$RUBY_SRC/bootstraptest" ]]; then
+      echo "  cloning ruby/ruby (sparse, blobless) into ${RUBY_SRC}"
+      git clone --depth 1 --filter=blob:none --sparse https://github.com/ruby/ruby "$RUBY_SRC"
+      ( cd "$RUBY_SRC" && git sparse-checkout set bootstraptest )
+    fi
+    "$ROOT/harness/desugar-dt/bin/harvest_bootstraptest" "$RUBY_SRC/bootstraptest"
+  fi
   ( cd "$ROOT/difftest" && uv sync --quiet && uv run python -m difftest run --tier 0 --sut lean )
 fi
 
 if [[ $WITH_PROOFS == 1 ]]; then
   step "5. the metatheory, and its axiom cleanliness"
   # Off the default build target because it is slow and the SUT does not depend
-  # on it — which is exactly why it needs its own command.
-  ( cd "$ROOT/lean" && ./scripts/check-proofs.sh )
+  # on it — which is exactly why it needs its own command, and why it rots.
+  #
+  # KNOWN RED at 0.01: RubyCore/Proof/Static/Preservation.lean has three broken
+  # proofs, so this step exits non-zero. It is reported, not hidden — but it is
+  # also not a failure of anything above it: the ratchet's own proofs and
+  # `validateD_safe_boot` are on the default target and built in step 2.
+  ( cd "$ROOT/lean" && ./scripts/check-proofs.sh ) || {
+    echo
+    echo "step 5 FAILED — expected at 0.01, see README §Status and limits."
+    echo "Steps 1-4 above are the reproduction; this one is a known-red target."
+    exit 1
+  }
 fi
 
 echo

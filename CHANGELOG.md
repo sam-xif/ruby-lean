@@ -42,8 +42,24 @@ monorepo with full per-file commit history preserved (841 commits).
 * `docs/README.md` — a reading order for the design record.
 * Apache-2.0 `LICENSE` and `NOTICE`.
 
+**Fixed**
+
+* `lean/RubyCore/Proof/Static/Iter.lean` — `startArgs_lambda` was stated without
+  the non-shadowing hypothesis and its `rfl` had silently stopped holding when
+  the model learned that a user `def lambda` shadows `Kernel#lambda`
+  (`found-issues.md` §A5). Restated with the hypothesis `mkLam` actually needs,
+  and proved. It went unnoticed because `Proof/` is off the default build
+  target — the failure mode `scripts/check-proofs.sh` exists to catch.
+
 **Known limits** — the certified fragment is a prefix of the 259-program corpus,
 not Ruby; `StuckFree` covers the `NoMethodError`/`ArgumentError`/`TypeError`
-family only; the playground's Homebrew-slice tab is disabled here because its
-backing tools were not part of the extraction. See the root README's *Status and
-limits*.
+family only; `lean/`'s off-default `Metatheory` target still fails in
+`RubyCore/Proof/Static/Preservation.lean` (three broken proofs, so
+`--with-proofs` exits non-zero — nothing on the default target or in the
+ratchet's proof chain depends on it); the playground's Homebrew-slice tab is
+disabled here because its backing tools were not part of the extraction. See the
+root README's *Status and limits*.
+
+**Measured on a clean checkout, 2026-09-15** — ratchet gate GREEN (259 rungs,
+fragment 63, 48 rules certified, 0 owed, 252 agree / 0 disagree); tier-0
+difftest 1309 programs, 995 agree, 0 disagreements, 308 unsupported.
