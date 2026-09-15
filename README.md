@@ -252,8 +252,8 @@ Read these before quoting a number.
 
 * **The fragment is small.** `validateD` accepts a *prefix* of the corpus, not
   Ruby: 63 of 259 rungs today, and block arguments, `module`, constant
-  assignment (`casgn`) and regexp literals are all still outside it. Everything outside is *declined*, not
-  mis-certified — which is the design, but it means "certified type-safe" here
+  assignment (`casgn`) and regexp literals are all still outside it. Everything
+  outside is *declined*, not mis-certified — which is the design, but it means "certified type-safe" here
   is a claim about a slice.
 * **The model is a model.** It agrees with CRuby wherever it answers (0
   disagreements over 1309 bootstraptest programs) but it declines 308 of them —
