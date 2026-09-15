@@ -10119,3 +10119,24 @@ both halves of what constrains them now have a name.
 - New core proofs build in under a second; standard axioms only. Full quiet ratchet GREEN:
   fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 153 (2026-09-15) — generic cached-parent subclass entry and ancestry
+
+- `Subclass.heap` factors actual alloc/register/alloc/attach for arbitrary lexical owner,
+  name, superclass and superclass metaclass. The existing Object-based heap/machine is its
+  exact specialization. `enter_fresh` proves model entry; `step_resolved` includes the real
+  superclass continuation's non-module class check and retains its surrounding continuation.
+- One `ancestors_new_head` lemma covers both fresh class and metaclass chains. Existing
+  ancestry remains unchanged; new walks prefix the corresponding parent chain. No Point,
+  fixed user-class id, method body or annotation appears as a production-proof assumption.
+- Cached parent metaclass is an explicit readiness premise. Controls remove only the cache
+  pointer while retaining instance-chain/own-table checks, then observe the actual extra
+  allocation: +3 objects rather than +2. Both paths execute inherited `echo(Boolean)`; a
+  module superclass is type-stuck. This probes those two invariants, not full StateOk.
+- This is entry/heap groundwork, not body acceptance or complete subclass conformance.
+  Parent-metaclass readiness, full state transport, inherited initialization and receiver-
+  aware annotation-body caching remain ahead of 065. Existing definition/call rules still
+  require full annotation-domain bodies, including uncalled methods. No floor changes.
+- New entry/chain proofs and controls build, standard axioms only. Full quiet ratchet GREEN:
+  fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
+  252 agree / 0 disagree.
