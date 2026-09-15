@@ -1,3 +1,4 @@
+import Denote.Sem.SubclassGlobals
 import Denote.Sem.ClassHeap
 import Denote.Sem.GlobalConsts
 
@@ -11,14 +12,7 @@ open RubyCore.Proof.Judgment (freshClsHeap)
 theorem globalConsts {names : List String} {h : Heap} {name : String} {e : ObjId}
     (ho : Boot.objectId < h.objs.size) (hc : GlobalConstsOk names h) :
     GlobalConstsOk (name :: names) (freshClsHeap h Boot.objectId name name e) := by
-  intro cn v hv
-  by_cases hn : cn = name
-  · subst cn; exact List.mem_cons_self
-  · apply List.mem_cons_of_mem
-    apply hc cn v
-    have he := const_other (e := e) ho hn
-    simp only [constLookup_eq_own] at he
-    exact he ▸ hv
+  exact Subclass.globalConsts ho hc
 
 #print axioms globalConsts
 end Ratchet.Denote.FreshClass

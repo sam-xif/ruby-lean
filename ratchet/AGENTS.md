@@ -436,8 +436,14 @@ scope agreement supplies the missing-global fallback fact; no new invariant is n
 Default-superclass constant/site/scope proofs reuse them. `enter_declared_sites` composes
 actual entry with ConstScopeOk, ClassScopeReady and retained/new class sites. Controls read
 global constants through inherited methods and exclude nonglobal parent constants using
-existing conformance. Remaining entry assembly: main-site, constant-table and allocator
-transports; then new-header publication and inherited initializer/body-cache integration.
+existing conformance. `SubclassState.state` now assembles full class/body-generic entry
+conformance, including retained main-site, constant-table and allocator facts. ParentCaps
+packages existing input facts from either main/Object or a declared parent; it adds no
+invariant. Default-superclass StateOk now delegates to this proof. `SubclassStateEntry`
+connects it to actual entry and the resolved-superclass continuation, including the
+non-module check. A checked, real-boot Carrier class run supplies full input state for Relay
+controls. New subclass-header publication and inherited initializer/body-cache integration
+remain before 065; entry alone neither certifies a body nor grants a callable signature.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -530,6 +536,7 @@ String membership needs a payload invariant. See
 | `Ratchet/SubclassGuards.lean`, `Denote/Sem/SubclassBases.lean`, `SubclassDeclared.lean`, `Denote/Typed/SubclassTableControls.lean` | Guarded builtin ancestry, old declaration/ordered-chain/own-selector transport, actual entry and multi-level inherited controls |
 | `Denote/Sem/SubclassFrame.lean`, `SubclassNameEntry.lean`, `Denote/Typed/SubclassNameControls.lean` | Generic body-frame/name transport, retained class-object dispatch exclusions and inherited-call countermodel (§F42) |
 | `Denote/Sem/SubclassConstants.lean`, `SubclassSites.lean`, `Denote/Typed/SubclassScopeControls.lean` | Generic constant/scope and old/new site preservation, actual entry, inherited reads and nonglobal-parent exclusion |
+| `Denote/Sem/SubclassState.lean`, `SubclassMain.lean`, `SubclassTables.lean`, `SubclassGlobals.lean`, `Denote/Typed/SubclassStateEntry.lean`, `SubclassStateControls.lean` | Full generic entry conformance from existing parent capabilities; actual superclass step and boot-grounded parent/child controls |
 | `Denote/Typed/InstanceDispatchControls.lean`, `PointProgram.lean`, `PointProgramControls.lean` | Interception controls and the complete semantic 061 proof (not checker admission) |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

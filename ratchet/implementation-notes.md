@@ -10331,3 +10331,26 @@ both halves of what constrains them now have a name.
 - New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
   fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 162 (2026-09-15) — full class-generic subclass entry conformance
+
+- SubclassMain/Tables/Globals preserve retained main dispatch, first-order constant/path
+  claims, old allocator capabilities and the executed global-name bound. ClassTablesFrame
+  moved unchanged to its own file to avoid a dependency cycle; old public wrappers remain.
+- SubclassState assembles every StateOk field at entry. ParentCaps bundles existing input
+  facts, derived either from main/Object or a declared parent's site and static base guard.
+  It is not a new state invariant, Ctx field, or checker admission route. The default-parent
+  StateOk and transport lemmas delegate to these same class/body-generic proofs.
+- SubclassStateEntry connects full conformance to actual enterClassBody and the resolved
+  superclass continuation. DeclClassOk supplies its non-module check; cached eigenclass,
+  parent bounds, dispatch names, constants and builtin separation come from incoming state.
+- Full-state Carrier→Relay controls start with a checked literal parent body, prove its
+  actual three-step run, restore main, then enter the child directly and via classDefK.
+  The parent allocator and declaration table are nonempty. Boot execution is not assumed:
+  the entry lemma plus kernel reduction proves the run under the existing bootOkB premise.
+- No rule/acceptance/floor changes. New subclass-header publication, class-run composition
+  and receiver-aware inherited initializer/body-cache checking remain before 065. Every
+  method still requires a full annotation-domain body proof, including uncalled methods.
+- New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
+  fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
+  252 agree / 0 disagree.

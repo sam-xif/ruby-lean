@@ -1,3 +1,4 @@
+import Denote.Sem.SubclassGlobals
 import Denote.Sem.ClassDeclared
 import Denote.Sem.ClassShape
 
@@ -12,12 +13,7 @@ theorem allocators {h : Heap} {names : List String} {name : String} {e : ObjId}
     (hc : Proof.ChainsIn h) (hs : Proof.Saturated h)
     (hn : constOwn h Boot.objectId name = none) (ha : AllocatorsOk names h) :
     AllocatorsOk names (freshClsHeap h Boot.objectId name name e) := by
-  intro cn hcn
-  obtain ⟨k, hk, hp⟩ := ha cn hcn
-  exact ⟨k, named hc.boot.2.2.2.2 hn hk,
-    hp.transport (by rw [Proof.Judgment.freshClsHeap_size]; omega)
-      (module_old hc.boot.2.2.2.2 hp.live)
-      (Proof.Judgment.ancestors_old_freshC hc hs hp.live)⟩
+  exact Subclass.allocators hc hs hn ha
 
 theorem plain {h : Heap} {d : ObjId} {name q : String} {e : ObjId}
     (hc : CoreOk h) (hs : Proof.Saturated h) :
