@@ -2,6 +2,8 @@ import Denote.Sem.SubclassHeap
 import Denote.Sem.MetaReadyClass
 import Denote.Sem.SubclassCore
 import Denote.Sem.SubclassMethods
+import Denote.Sem.SubclassBases
+import Denote.Sem.SubclassDeclared
 import Denote.Sem.ClassNative
 import Denote.Typed.ClassEntry
 
@@ -207,6 +209,32 @@ theorem enter_declared_core {κ : Ratchet.Ctx} {Γ : Ratchet.Env} {I : Ratchet.T
     (by simpa only [howner] using hf) (by simpa only [howner] using ho) hl he
     (by simp only [howner, beq_self_eq_true, ite_true]) hn
 
+/-- Preserve existing declaration/ancestry tables at actual entry. The static base frame
+and retained class sites discharge both fresh-head obligations from incoming conformance. -/
+theorem enter_declared_tables {κ : Ratchet.Ctx} {Γ : Ratchet.Env} {I : Ratchet.Ty}
+    {m : Machine} {c : Ratchet.Cls} {parent : ObjId} {name : String} {body : RubyCore.Expr}
+    (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
+    (hc : c ∈ κ.classes) (hp : classNamed? m.heap c.name = some parent)
+    (hf : constOwn m.heap Boot.objectId name = none) (hn : name.isEmpty = false)
+    (hb : Ratchet.subclassBaseFrameB κ c.name = true) :
+    ∃ n, enterClassBody m name false (some parent) body = .next n ∧
+      BaseChainsOk κ n ∧ DeclClassOk κ n ∧ ClassOwnNames κ.classes n.heap ∧ ClassChains κ.classes n.heap := by
+  obtain ⟨ep, he, _, hsep⟩ := hm.classSites.metaclass hc hp
+  have hl := named_live hp
+  have hch := hm.core.classReady.chains
+  have hep := hch.eigen parent hl ep he
+  have ho := hch.boot.2.2.2.2
+  have howner := (hm.runtime hr).owner
+  refine ⟨machine m Boot.objectId m.currentFrame.cref name name parent ep body, ?_,
+    baseChains hm.core.classReady hm.sat (hm.runtime hr).classLive hf hl hep
+      (fun _ _ hbase hneg => hm.subclass_parent_separate hc hp hb hbase hneg) hsep rfl hm.baseChains,
+    declared hch hm.sat (hm.runtime hr).classLive hf rfl hm.classes hm.declCls,
+    ownNames ho hf hm.classes hm.ownNames, classChains hm.core.classReady hm.sat hf hm.classes hm.classChains⟩
+  simpa only [howner] using enter_fresh (m := m) (q := name) (body := body)
+    (by simpa only [howner] using hf) (by simpa only [howner] using ho) hl he
+    (by simp only [howner, beq_self_eq_true, ite_true]) hn
+
+#print axioms enter_declared_tables
 #print axioms enter_declared_core
 #print axioms enter_fresh
 #print axioms step_resolved

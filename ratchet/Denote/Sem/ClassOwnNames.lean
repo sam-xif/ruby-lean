@@ -1,3 +1,4 @@
+import Denote.Sem.SubclassDeclared
 import Denote.Sem.OwnNames
 import Denote.Sem.ClassMethods
 
@@ -11,15 +12,8 @@ open RubyCore.Proof.Judgment (freshClsHeap)
 theorem ownNames {C : CTable} {m : Machine} {name : String} {e : ObjId}
     (ho : Boot.objectId < m.heap.objs.size) (hn : constOwn m.heap Boot.objectId name = none)
     (hc : ClassesOk C m) (hp : ClassOwnNames C m.heap) :
-    ClassOwnNames C (freshClsHeap m.heap Boot.objectId name name e) := by
-  apply hp.transport
-  · intro c hmem k hk
-    obtain ⟨j, hj, _⟩ := hc c hmem
-    have he := (named (e := e) ho hn hj).symm.trans hk
-    have heq := Option.some.inj he
-    exact heq ▸ hj
-  · intro k p hm
-    simpa only [ownMethods, own_methods ho] using hm
+    ClassOwnNames C (freshClsHeap m.heap Boot.objectId name name e) :=
+  Subclass.ownNames ho hn hc hp
 
 theorem ownNames_header {C : CTable} {m : Machine} {name : String} {e : ObjId}
     (ho : Boot.objectId < m.heap.objs.size)

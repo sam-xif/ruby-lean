@@ -10,6 +10,17 @@ open RubyCore Ratchet RubyCore.Proof RubyCore.Proof.Judgment
 variable {h : Heap} {name q : String} {parent eParent : ObjId}
 local notation "h₁" => heap h Boot.objectId name q parent eParent
 
+theorem named_live {cn : String} {k : ObjId} (hn : classNamed? h cn = some k) :
+    k < h.objs.size := by
+  unfold classNamed? at hn
+  split at hn
+  · split at hn
+    · rename_i hp
+      cases hn
+      exact lt_size_of_classPayload hp
+    · cases hn
+  · cases hn
+
 theorem constOwn_old {d o : ObjId} (ho : o < h.objs.size) (cn : String) :
     constOwn (heap h d name q parent eParent) o cn = constOwn (hmidOf h d name) o cn := by
   unfold constOwn Heap.classPayload?

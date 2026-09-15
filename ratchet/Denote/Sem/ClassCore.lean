@@ -28,15 +28,7 @@ theorem arrayPayload (hp : ArrayPayloadOk h) : ArrayPayloadOk h₁ := Subclass.a
 theorem hashPayload (hp : HashPayloadOk h) : HashPayloadOk h₁ := Subclass.hashPayload hp
 
 theorem named_live {cn : String} {k : ObjId} (hn : classNamed? h cn = some k) :
-    k < h.objs.size := by
-  unfold classNamed? at hn
-  split at hn
-  · split at hn
-    · rename_i hp
-      cases hn
-      exact lt_size_of_classPayload hp
-    · cases hn
-  · cases hn
+    k < h.objs.size := Subclass.named_live hn
 
 theorem core (hc : CoreOk h) (hs : Proof.Saturated h)
     (ho : (h.classPayload? Boot.objectId).isSome = true)

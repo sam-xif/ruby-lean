@@ -41,6 +41,7 @@ import Denote.Typed.SubclassEntryControls
 import Denote.Typed.SubclassDataControls
 import Denote.Typed.SubclassDispatchControls
 import Denote.Typed.SubclassCoreControls
+import Denote.Typed.SubclassTableControls
 import Denote.Sanity
 
 /-! Fresh-class controls. They establish actual entry and heap facts, not acceptance of

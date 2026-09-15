@@ -10256,3 +10256,29 @@ both halves of what constrains them now have a name.
 - New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
   fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 159 (2026-09-15) — guarded builtin ancestry and existing subclass-table transport
+
+- SubclassBases preserves BaseChainsOk through both fresh heads. Parent separation is
+  required only for active negative-answer guards; metaclass separation comes from
+  existing MetaReady. The pure subclassBaseFrameB checks those active rows against the
+  resolved parent chain, canonical core bindings and root mixin guard. Its soundness uses
+  existing StateOk declaration/site/base facts; no new state field or boot check.
+- This is a sufficient frame, not a builtin-parent blacklist: a whole-program String
+  subclass disables that row's negative answer, and the guard can still pass. The generic
+  transport accepts any proof of the physical separation condition, not only this Bool.
+  An actual Float-parent entry with a ready metaclass invalidates the unguarded boot
+  exclusion; aliased_parent_not_state rules out hidden active-base aliases generically.
+- SubclassDeclared preserves existing DeclClassOk (including constructor lookup and both
+  named-ancestry directions), ClassOwnNames and ClassChains. Default-superclass proofs
+  specialize these transports; names, superclass/metaclass, code and contexts are arbitrary.
+- `enter_declared_tables` composes actual entry with these four components and derives the
+  physical parent/metaclass obligations from conformance plus the static guard. Controls
+  retain old rows, execute three-level inheritance plus an unrelated same-selector class,
+  and decline unknown/stale parent facts or unavailable canonical core bindings.
+- Full scope/site/allocator transport and new subclass publication still precede 065;
+  inherited initializer and receiver-aware body caching remain. No checker rule, body
+  annotation requirement, acceptance or floor changes.
+- New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
+  fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
+  252 agree / 0 disagree.

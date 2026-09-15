@@ -1,3 +1,4 @@
+import Denote.Sem.SubclassDeclared
 import Denote.Sem.ClassChains
 import Denote.Sem.ClassRootNames
 
@@ -25,15 +26,8 @@ theorem classChains {C : CTable} {m : Machine} {name : String} {e : ObjId}
     (hc : ClassReady m.heap) (hs : Proof.Saturated m.heap)
     (hn : constOwn m.heap Boot.objectId name = none)
     (ht : ClassesOk C m) (hp : ClassChains C m.heap) :
-    ClassChains C (freshClsHeap m.heap Boot.objectId name name e) := by
-  intro c hmem k hk ns hns
-  obtain ⟨j, hj, _⟩ := ht c hmem
-  have he := (named (e := e) hc.chains.boot.2.2.2.2 hn hj).symm.trans hk
-  have heq := Option.some.inj he
-  subst k
-  rw [Proof.Judgment.ancestors_old_freshC hc.chains hs
-    (hc.constRefs c.name j (classNamed_constOwn hj))]
-  exact (hp c hmem j hj ns hns).names (fun _ _ hj => named hc.chains.boot.2.2.2.2 hn hj)
+    ClassChains C (freshClsHeap m.heap Boot.objectId name name e) :=
+  Subclass.classChains hc hs hn ht hp
 
 theorem classChains_header {C : CTable} {m : Machine} {name : String} {e : ObjId}
     (hc : ClassReady m.heap) (hs : Proof.Saturated m.heap) (hr : RootNames m.heap)
