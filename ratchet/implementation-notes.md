@@ -10054,3 +10054,26 @@ both halves of what constrains them now have a name.
 - Generic resolved-call proof builds in 0.5s; controls in 1.1s, standard axioms only.
   Full quiet ratchet GREEN: fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt,
   48 worked theorems, 252 agree / 0 disagree.
+
+## Clink 150 (2026-09-14) — owner-local absence and generic inherited lookup
+
+- `ownNames` unions selectors across all retained records of a class name. Using only the
+  latest snapshot would lose declarations when a new record was based on an earlier header.
+  `ClassOwnNames` bounds the actual own table, including builtin/prelude/undefined entries;
+  it grants neither positive code nor a body proof. No extra Ctx flag is needed.
+- Generic transports cover allocation, fresh-class/header publication, and method writes.
+  Publication requires covering every name aliasing the written physical owner.
+  `memberOwnersB_sound` derives a sufficient separation guard from declared ancestry in
+  either direction; unequal strings alone do not justify independent bounds.
+- `classesOk_methodOn_after_prefix` combines positive code with absence at every preceding
+  physical owner. Actual chain order and native-prefix guards remain explicit. All names,
+  tables, code and owners are parameters. The full annotation-domain call proof is unchanged.
+- Shared method-write membership now also proves the existing `MethodsExact` transport.
+  Controls cover history, inheritance, unrecorded overrides and aliased owners. F39's full-
+  StateOk witness is retained and strengthened with rejection by the new owner-local bound.
+- This chunk establishes the invariant and transports, not its integration into StateOk.
+  F39 remains open until all state producers carry the bound; no inherited checker rule,
+  acceptance or floor change. Fresh-superclass creation also remains ahead of 065.
+- New proofs build in under a second each, standard axioms only. Full quiet ratchet GREEN:
+  fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
+  252 agree / 0 disagree.

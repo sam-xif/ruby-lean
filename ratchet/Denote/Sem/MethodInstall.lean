@@ -1,6 +1,7 @@
 import Denote.Sem.MethodHeap
 import Denote.Sem.Reframe
 import Denote.Sem.InstanceSiteWrite
+import Denote.Sem.OwnNamesWrite
 
 /-! Conformance after installing a method. Positive tables must describe what was
 installed; negative-name facts are retained only away from the written name.
@@ -14,28 +15,14 @@ theorem MethodsExact_defineMethod {κ : Ctx} {m : Machine} {cls : ObjId}
     {name : String} {md : MethodDef} (hm : MethodsExact κ m) (hn : nameFreeN κ name = false) :
     MethodsExact κ { m with heap := defineMethod m.heap cls name md } := by
   intro k cp hp n md' hmem
-  change (defineMethod m.heap cls name md).classPayload? k = some cp at hp
-  unfold defineMethod at hp
-  split at hp
-  · rename_i c hc
-    by_cases hk : k = cls
-    · subst k
-      have hb : cls < m.heap.objs.size := lt_size_of_classPayload (by rw [hc]; rfl)
-      simp only [Heap.classPayload?, Heap.setClassPayload, Heap.get, Heap.set,
-        Proof.objs_getD_set!_self _ _ _ hb, Option.some.injEq] at hp
-      subst cp
-      simp only [List.mem_cons, List.mem_filter, Prod.mk.injEq] at hmem
-      rcases hmem with ⟨he, _⟩ | ⟨he, _⟩
-      · exact Or.inr (Or.inr (he ▸ hn))
-      · exact hm cls c hc n md' he
-    · have he : (m.heap.setClassPayload cls
-          { c with methods := (name, md) :: c.methods.filter (·.1 != name) }).classPayload? k =
-          m.heap.classPayload? k := by
-        simp only [Heap.classPayload?, Heap.setClassPayload, Heap.get, Heap.set,
-          Proof.objs_getD_set!_ne _ _ _ _ hk]
-      rw [he] at hp
-      exact hm k cp hp n md' hmem
-  · exact hm k cp hp n md' hmem
+  have hrow : (n, md') ∈ ownMethods (defineMethod m.heap cls name md) k := by
+    simpa only [ownMethods, hp, Option.map_some, Option.getD_some] using hmem
+  rcases ownMethods_defineMethod_mem hrow with ⟨_, he⟩ | hold
+  · obtain ⟨rfl, rfl⟩ := Prod.mk.inj he
+    exact Or.inr (Or.inr hn)
+  · cases hc : m.heap.classPayload? k with
+    | none => simp [ownMethods, hc] at hold
+    | some cp₀ => exact hm k cp₀ hc n md' (by simpa [ownMethods, hc] using hold)
 
 theorem ownMethod_defineMethod_ne (h : Heap) (cls k : ObjId) (name n : String)
     (md : MethodDef) (hn : n ≠ name) :

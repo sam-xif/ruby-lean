@@ -2545,3 +2545,9 @@ dispatch-path invariant; ancestor membership plus the parent row is insufficient
 actual lookup and native-prefix evidence. Copying the parent's exact-self body context is
 also invalid: a Satellite receiver is not an exact Depot instance. Every body application
 still requires its complete annotated proof at the actual receiver/owner context.
+
+Clink 150 defines `ClassOwnNames`, proves its allocation/class/method transports, and
+derives inherited lookup from it plus the actual ordered prefix and positive owner row.
+The full-state witness now also proves that this bound rejects its hidden override.
+History/alias controls pin the union-of-records and physical-owner requirements. The bound
+is not yet a StateOk field; integrating all producers is the remaining F39 obligation.

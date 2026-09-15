@@ -369,6 +369,11 @@ boot-grounded full-StateOk omission witness: an empty declared child table may h
 override of a globally reserved selector. Inherited lookup therefore needs owner-specific
 absence, not just positive ancestor rows (§F39). Superclass creation and those lookup facts
 remain prerequisites; 065 is not admitted by these conditional call proofs.
+`ClassOwnNames` now states owner-local selector bounds using the union of retained class
+records. Generic allocation/class/method transports and alias-aware publication are proved;
+`OwnLookup` derives inherited code from positive rows and absence over the ordered physical
+prefix. The F39 full-state witness also proves rejection by this bound. Integration into
+StateOk remains; the standalone bound adds no checker acceptance or annotation-body proof.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -450,6 +455,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/DispatchName.lean`, `Denote/Typed/InstanceDispatch.lean`, `InstanceRun.lean`, `InstanceExpr.lean` | Payload-or-name dispatch, full annotation-domain instance calls, and receiver/argument composition for arbitrary classes |
 | `Ratchet/CallWorld.lean`, `Denote/Sem/FramedNames.lean`, `Denote/Typed/InstanceCallerReturn.lean`, `CallWorld.lean`, `InstanceImplicit.lean`, `InstanceCallerControls.lean` | Existing-context caller worlds, cross-class restoration, all ordinary call sites, and independent annotation/body controls |
 | `Denote/Typed/InstanceResolvedRun.lean`, `InheritedCallControls.lean` | Receiver/lexical-owner-separated annotated calls, real inherited controls, and full-state hidden-override witness (§F39) |
+| `Ratchet/OwnNames.lean`, `Denote/Sem/OwnNames*.lean`, `ClassOwnNames.lean`, `OwnLookup.lean`, `Denote/Typed/OwnNamesControls.lean` | Owner-local absence, retained-record union, alias-aware publication, and ordered inherited lookup; StateOk integration pending |
 | `Denote/Typed/InstanceDispatchControls.lean`, `PointProgram.lean`, `PointProgramControls.lean` | Interception controls and the complete semantic 061 proof (not checker admission) |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

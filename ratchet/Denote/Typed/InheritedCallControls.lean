@@ -5,6 +5,8 @@ import Denote.Typed.MethodChecked
 import Denote.Sem.ClassFreshness
 import Denote.Sem.ClassGuards
 import Denote.Sem.MemberDeclared
+import Denote.Sem.OwnLookup
+import Denote.Sem.ClassOwnNames
 
 /-! Independent receiver/owner annotations and the missing inherited-lookup premise.
 The full-state omission witness does not expose an accepted unsafe program: present calls
@@ -106,10 +108,12 @@ example : SemSafeCtxA (topBodyCtx ctx0 sourceDecl) [] .ivar0 sourceDecl.body .in
     (topBodyCtx ctx0 sourceDecl) [] .ivar0 := SemSafeCtxA.intLit
 
 /-- A boot-grounded full-StateOk witness: Child's declared own table is empty, but its
-actual answer overrides the retained Object#answer annotation with a Boolean body. -/
+actual answer overrides the retained Object#answer annotation with a Boolean body.
+The new owner-local bound rejects precisely this omission. -/
 theorem full_state_unrecorded_shadow (hb : bootOkB = true) :
     ∃ n k, StateOk childCtx [] .ivar0 n ∧ classNamed? n.heap "Child" = some k ∧
-      Interp.methodOn n.heap k "answer" = some (k, badMethod k) := by
+      Interp.methodOn n.heap k "answer" = some (k, badMethod k) ∧
+      ¬ ClassOwnNames childCtx.classes n.heap := by
   have hm := source_state hb
   obtain ⟨m, _, hm⟩ := class_entry_header (name := "Child") (body := .nil) hm
     rfl rfl rfl rfl (ClassTablesFrame.empty rfl rfl) (by decide)
@@ -126,11 +130,18 @@ theorem full_state_unrecorded_shadow (hb : bootOkB = true) :
         classBodyCtx, sourceCtx, topDeclCtx, ctx0] using hc
       subst c
       cases hd)
-  refine ⟨_, k, hn, ?_, ?_⟩
+  refine ⟨_, k, hn, ?_, ?_, ?_⟩
   · rw [classNamed?_defineMethod]; exact site.named
   · obtain ⟨rest, hr⟩ := classFrontB_sound site.front
     exact methodOn_own_first (by rw [Proof.ancestors_defineMethod]; exact hr)
       (ownMethod_defineMethod_self m.heap k "answer" (badMethod k) (namedClass_payload site.named))
+  · intro hbnd
+    have hnone := hbnd.absent
+      (show classHeader "Child" ∈ childCtx.classes from by change _ ∈ [_]; simp)
+      (by rw [classNamed?_defineMethod]; exact site.named) (by decide :
+        "answer" ∉ ownNames childCtx.classes "Child")
+    rw [ownMethod_defineMethod_self _ _ _ _ (namedClass_payload site.named)] at hnone
+    cases hnone
 
 #guard (classHeader "Child").methods.isEmpty
 #guard !nameFreeN childCtx "answer"
