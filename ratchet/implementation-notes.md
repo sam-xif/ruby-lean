@@ -9758,3 +9758,23 @@ both halves of what constrains them now have a name.
 - New proofs build below a second, standard axioms only. Full quiet ratchet GREEN:
   fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 138 (2026-09-14) — execute the complete annotated Point class
+
+- `class_header_runSpec` composes header publication, a context-changing body proof, and
+  real class-frame exit. The caller keeps outgoing declarations, not its stale input table.
+- Point's complete class statement now has an all-fuel RunSpec for arbitrary first-order
+  caller locals. Initialize uses its Integer parameter annotations and void result; getX
+  uses the initialized field shape and its Integer return annotation. The final table gets
+  fresh body proofs, including rechecking initialize after getX rather than casting context.
+- `declared_constructor_code` derives actual builtin-new dispatch and user-initializer
+  lookup/code from StateOk and installed rows. `after_run` exposes these facts at the real
+  returned caller state. Controls execute class/new/getter, wrong arity, class-result Symbol,
+  and preserved String caller locals. The generated 061 class subtree matches this program.
+- The complete 061 expression is not yet admitted. ConstructorRun still asks separately
+  for physical allocation shape; the named-ancestry header does not store that premise.
+  Getter call composition and initializer-body certificates also remain. No checker/rule
+  count is advanced by these semantic class-statement proofs.
+- New proofs build below a second, standard axioms only. Full quiet ratchet GREEN:
+  fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
+  252 agree / 0 disagree.

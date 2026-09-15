@@ -290,6 +290,14 @@ parameter/return annotations and a full body proof (SemSafeCtxA or SemInitA resp
 Controls consume a checked inc body, reject nullable/wrong-return annotations, and apply the
 Point initializer definition contract at actual fresh entry. Class/constructor composition,
 initializer body certificates, and checker admission remain gated; no signature becomes a proof.
+`ClassHeaderRun` now composes published entry, annotated definitions, and class exit.
+`PointClass` proves the complete 061 class statement (initialize and getX), retaining arbitrary
+first-order caller locals and full outgoing conformance. Both bodies have proofs under the
+final table; the initializer is rechecked after getter installation. `ConstructorLookup`
+recovers actual new dispatch and initializer code from that state, not signature assumptions.
+The subsequent constructor/getter expression still needs composition: physical allocator
+shape is a separate premise of ConstructorRun, not currently a consequence of the published
+header. No new DJudge rule or checker acceptance is claimed.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -356,6 +364,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/RootNames.lean`, `ClassRootNames.lean`, `Denote/Typed/ClassRootNameControls.lean` | Canonical root bindings, complete fresh named ancestry, and redirected-Kernel countermodel |
 | `Ratchet/ClassHeader.lean`, `Denote/Sem/ClassHeader.lean`, `Denote/Typed/ClassHeaderControls.lean` | Guarded pending-header publication, full entry conformance, and inherited-initializer control |
 | `Ratchet/DeclLookupFrame.lean`, `MemberFrame.lean`, `Denote/Sem/Member*.lean`, `Denote/Typed/Member*.lean` | Alias-aware definition guards, full installation conformance, and annotation-domain member/initializer definitions |
+| `Denote/Typed/ClassHeaderRun.lean`, `PointClass.lean`, `ConstructorLookup.lean`, `PointClassControls.lean` | Full annotated Point class execution, restored caller state, final-context body proofs, and conformance-derived constructor code |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |

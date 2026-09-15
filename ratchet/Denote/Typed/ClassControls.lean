@@ -26,6 +26,7 @@ import Denote.Typed.ConstructorRunControls
 import Denote.Typed.ClassRootNameControls
 import Denote.Typed.ClassHeaderControls
 import Denote.Typed.MemberDefineControls
+import Denote.Typed.PointClassControls
 import Denote.Sanity
 
 /-! Fresh-class controls. They establish actual entry and heap facts, not acceptance of
