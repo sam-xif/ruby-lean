@@ -32,7 +32,7 @@ private def call : Ratchet.Expr := .send (some (.send (some (.const "Leaf")) "ne
             (match n.currentFrame.self with | .ref r => r == k | _ => false) &&
             n.currentFrame.defmod == k &&
             n.currentFrame.cref == [k, Boot.objectId] &&
-            classReadyB n.heap && saturatedB n.heap &&
+            classReadyB n.heap && saturatedB n.heap && metaReadyB n.heap k && metaReadyB n.heap parent &&
             classChainsB [leaf, anchor] n.heap && classOwnNamesB [leaf, anchor] n.heap &&
             (match Interp.run 30 n with
               | .value _ finished => match Interp.run 100 (evalFrom finished call) with
@@ -51,12 +51,13 @@ private def call : Ratchet.Expr := .send (some (.send (some (.const "Leaf")) "ne
     | some parent =>
       let h := m.heap.set parent { m.heap.get parent with eigen := none }
       classChainsB [anchor] h && classOwnNamesB [anchor] h && classReadyB h && saturatedB h &&
+        !metaReadyB h parent &&
         match Interp.enterClassBody { m with heap := h } "Leaf" false (some parent) .nil with
         | .next n =>
           let k := m.heap.objs.size
           n.heap.objs.size == k + 3 && (n.heap.get parent).eigen == some (k + 1) &&
             (n.heap.get k).eigen == some (k + 2) && classChainsB [leaf, anchor] n.heap &&
-            classReadyB n.heap && saturatedB n.heap &&
+            classReadyB n.heap && saturatedB n.heap && metaReadyB n.heap k && metaReadyB n.heap parent &&
             (match Interp.run 30 n with
               | .value _ finished => match Interp.run 100 (evalFrom finished call) with
                 | .value (.bool true) _ => true
@@ -88,7 +89,7 @@ private def call : Ratchet.Expr := .send (some (.send (some (.const "Leaf")) "ne
   | .value _ m => match classNamed? m.heap "Anchor" with
     | some parent =>
       let h := m.heap.set parent { m.heap.get parent with eigen := some Boot.floatId }
-      classReadyB h && saturatedB h && baseChainsOkB { m with heap := h } &&
+      classReadyB h && saturatedB h && baseChainsOkB { m with heap := h } && !metaReadyB h parent &&
         match Interp.enterClassBody { m with heap := h } "Leaf" false (some parent) .nil with
         | .next n => classReadyB n.heap && saturatedB n.heap && !baseChainsOkB n &&
             (ancestors n.heap (h.objs.size + 1)).contains Boot.floatId
@@ -96,4 +97,21 @@ private def call : Ratchet.Expr := .send (some (.send (some (.const "Leaf")) "ne
     | none => false
   | _ => false
 
+/-- A cached builtin-base alias is excluded by full conformance, for every declared class. -/
+theorem aliased_meta_not_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    {c : Cls} {k base : ObjId} {ch : List String} (hc : c ∈ κ.classes)
+    (hn : classNamed? m.heap c.name = some k) (he : (m.heap.get k).eigen = some base)
+    (hb : (base, ch) ∈ builtinBases) : ¬ StateOk κ Γ I m := by
+  intro hm
+  exact (hm.classSites.metaclass hc hn).not_base he hb rfl
+
+theorem uncached_parent_not_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    {c : Cls} {k : ObjId} (hc : c ∈ κ.classes) (hn : classNamed? m.heap c.name = some k)
+    (he : (m.heap.get k).eigen = none) : ¬ StateOk κ Γ I m := by
+  intro hm
+  obtain ⟨e, he', _, _⟩ := hm.classSites.metaclass hc hn
+  rw [he] at he'; cases he'
+
+#print axioms aliased_meta_not_state
+#print axioms uncached_parent_not_state
 end Ratchet.Denote.Typed.SubclassEntryControls

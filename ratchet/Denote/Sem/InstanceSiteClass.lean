@@ -1,6 +1,7 @@
 import Denote.Sem.InstanceSite
 import Denote.Sem.ClassConstants
 import Denote.Sem.ClassCore
+import Denote.Sem.MetaReadyClass
 
 /-! A fresh top-level class preserves existing instance-call sites. The newly bound
 constant is handled separately: absence is not stable, but lexical/global agreement is. -/
@@ -58,7 +59,7 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
     rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hk,
       method_old hc hs (Proof.ClsGrow.classOf_lt hc hk)]
   refine ⟨named hc.boot.2.2.2.2 hn site.named, ?_, ?_,
-    instance_constants_old site hc hs ho hn, ?_⟩
+    instance_constants_old site hc hs ho hn, ?_, site.metaclass.subclass_old hc hs hk⟩
   · simpa only [classFront_old hc.boot.2.2.2.2 hk] using site.front
   · simpa only [definitionHookQuietB, hl] using site.hook
   · intro n hn owner md hm

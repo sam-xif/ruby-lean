@@ -2571,8 +2571,8 @@ wrapper still requires the full annotated body and native-interception guards.
 
 ## F41 — ClassReady does not separate every parent's metaclass (2026-09-15)
 
-**Readiness-only extension obstacle, not a full-StateOk countermodel or an accepted unsafe
-program.** In `SubclassEntryControls`, run Anchor's real definition, then change only its
+**Closed by Clink 155; readiness-only counterexample, not a full-old-StateOk witness or an
+accepted unsafe program.** In `SubclassEntryControls`, run Anchor's real definition, then change only its
 cached eigen pointer to Float. ClassReady, Saturated and BaseChainsOk still pass. Actual
 fresh `Leaf < Anchor` entry retains readiness/saturation but allocates a metaclass with Float
 as superclass, violating BaseChainsOk's no-proper-subclasses clause.
@@ -2581,4 +2581,7 @@ Object's existing eigenSeparate field is unchanged and cannot discharge this arb
 parent obligation. Full subclass conformance must derive separation from other incoming
 facts or carry an appropriate stronger invariant; a cached, in-bounds pointer alone is
 insufficient. Clink 154 proves readiness preservation without falsely claiming the stronger
-full-state transport. Whole-program inheritance remains gated.
+full-state transport. Clink 155 retains MetaReady in every class site, with fresh publication
+and all current transports. The witness fails its Bool; `aliased_meta_not_state` proves
+exclusion by full StateOk for arbitrary classes and builtin bases. Actual declared-parent
+entry derives the cache fact from conformance. Whole-program inheritance remains gated.

@@ -10162,3 +10162,27 @@ both halves of what constrains them now have a name.
 - New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
   fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 155 (2026-09-15) — metaclass readiness retained in class sites, F41 closed
+
+- InstanceSiteAt now includes MetaReady: a cached eigen pointer, its BasicObject ancestry,
+  and separation from builtin value bases. The ancestry is needed to preserve old nominal
+  types when allocation makes formerly dangling references live; separation addresses F41.
+  Pointer bounds already follow from ChainsIn and are not duplicated in the new predicate.
+- StateOk's existing classSites field retains these facts for declared classes and pending
+  class scopes. Boot's site table is empty, so no extra boot check or Ctx flag. Fresh default
+  class entry proves the facts from actual contents. Allocation, method/field writes, frame
+  switches and unrelated class creation preserve them; old F39 witnesses still build.
+- `MetaReady.subclass_old` and `Subclass.meta_fresh` are class/name/parent-generic. The
+  actual `enter_declared_fresh` now derives its cached-parent premise from conformance,
+  preserves readiness/saturation and publishes the fresh metaclass's readiness. Full
+  StateOk transport, not a new annotation claim, remains the next obligation.
+- F41's modified heap retains all its earlier weak premises but fails metaReadyB. Generic
+  `aliased_meta_not_state` excludes it for any declared class/base; `uncached_parent_not_state`
+  similarly excludes missing-cache inputs from current conformance. The model's uncached
+  path still executes and restores ready parent/child metaclasses in the positive control.
+- Every method definition/call still requires the complete annotation-domain body proof.
+  No checker rule, acceptance or floor changes; inherited initializer/body caching remains.
+- Entry and exclusion proofs build in seconds, standard axioms only. Full quiet ratchet
+  GREEN: fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
+  252 agree / 0 disagree.

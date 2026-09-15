@@ -395,6 +395,13 @@ default-superclass readiness now specializes those generic proofs. Actual entry 
 them in `enter_fresh_ready`. Controls retain cached/uncached inherited calls, reject deriving
 saturation from bounded cyclic edges, and show that arbitrary parent-metaclass separation
 is not supplied by ClassReady alone (§F41). Full StateOk transport remains to be proved.
+`InstanceSiteAt.metaclass` now retains MetaReady: cached pointer, BasicObject ancestry and
+separation from builtin value bases. Fresh creation proves it; allocation, field/frame
+changes, method installation and unrelated class creation preserve it. StateOk already
+carries these sites, so no new Ctx flag or boot gate is needed. `enter_declared_fresh` derives
+cached-parent entry from declared-class conformance and publishes the new metaclass facts.
+F41's weak-premise counterexample remains executable but is generically excluded by full
+StateOk (§F41 closed). Full subclass state transport and inherited body checking remain.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -480,6 +487,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/NamedChain.lean`, `ClassChains*.lean`, `InheritedLookup.lean`, `Denote/Typed/InheritedRun.lean` | Complete physical-chain conformance, transports, and inherited calls consuming annotated bodies at separate receiver/owner contexts |
 | `Denote/Sem/SubclassHeap.lean`, `SubclassChains.lean`, `Denote/Typed/SubclassEntry.lean`, `SubclassEntryControls.lean` | Parent-parameterized actual entry and ancestry; cached/uncached metaclass and inherited-call controls |
 | `Denote/Sem/ClassGrowth.lean`, `SubclassReady.lean` | Generic fresh-edge/walk contracts, subclass readiness/liveness/saturation, and shared default-superclass specialization |
+| `Denote/Sem/MetaReady.lean`, `MetaReadyClass.lean` | Retained class-site metaclass facts, generic transports/publication, and conformance-derived cached-parent entry (§F41) |
 | `Denote/Typed/InstanceDispatchControls.lean`, `PointProgram.lean`, `PointProgramControls.lean` | Interception controls and the complete semantic 061 proof (not checker admission) |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

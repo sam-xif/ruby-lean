@@ -1,5 +1,6 @@
 import Denote.Sem.Ready
 import Denote.Ext
+import Denote.Sem.MetaReady
 
 /-! Heap facts needed when an ordinary instance call changes self and lexical scope.
 These are obligations to publish with the class, not consequences of a method signature.
@@ -54,6 +55,7 @@ structure InstanceSiteAt (free : String → Bool) (cn : String) (k : ObjId) (h :
   names : ∀ n ∈ shadowableNames, ∀ owner md,
     Interp.methodOn h k n = some (owner, md) →
       md.builtin.isSome = true ∨ md.undefined = true ∨ free n = false
+  metaclass : MetaReady h k
 
 /-- Only negative-name information affects a site's meaning, not the caller's scope. -/
 abbrev InstanceSite (κ : Ctx) := InstanceSiteAt (nameFreeN κ)
@@ -81,7 +83,7 @@ theorem InstanceSite.live {κ : Ctx} {cn : String} {k : ObjId} {h : Heap}
 theorem InstanceSite.recontext {κ κ' : Ctx} {cn : String} {k : ObjId} {h : Heap}
     (site : InstanceSite κ cn k h)
     (hn : ∀ n, nameFreeN κ n = false → nameFreeN κ' n = false) : InstanceSite κ' cn k h := by
-  refine ⟨site.named, site.front, site.hook, site.constants, ?_⟩
+  refine ⟨site.named, site.front, site.hook, site.constants, ?_, site.metaclass⟩
   intro n hmem owner md hm
   rcases site.names n hmem owner md hm with hb | hu | hf
   · exact Or.inl hb
@@ -106,7 +108,7 @@ theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
       | nil => rfl
       | cons j ks ih => simp only [lookup.go, he.payload, ih]
     simp only [lookup, classOf, he.get k hl, he.ancestors, hg]
-  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, h.metaclass.ext he hl⟩
   · simpa only [he.classNamed?_eq] using h.named
   · simpa only [classFrontB, he.payload] using h.front
   · simpa only [definitionHookQuietB, hlk] using h.hook
@@ -131,6 +133,14 @@ theorem ClassSitesOk.of_class {κ : Ctx} {h : Heap} (sites : ClassSitesOk κ h)
 theorem ClassSitesOk.of_scope {κ : Ctx} {h : Heap} (sites : ClassSitesOk κ h)
     {cn : String} (hc : κ.scope.runtimeClass = some cn) : ∃ k, InstanceSite κ cn k h :=
   sites cn (by simp [classSiteNames, hc])
+
+theorem ClassSitesOk.metaclass {κ : Ctx} {h : Heap} (sites : ClassSitesOk κ h)
+    {c : Cls} {k : ObjId} (hc : c ∈ κ.classes) (hn : classNamed? h c.name = some k) :
+    MetaReady h k := by
+  obtain ⟨k', site⟩ := sites.of_class hc
+  have he : k' = k := Option.some.inj (site.named.symm.trans hn)
+  subst k'
+  exact site.metaclass
 
 theorem ClassSitesOk.recontext {κ κ' : Ctx} {h : Heap} (sites : ClassSitesOk κ h)
     (hc : ∀ cn ∈ classSiteNames κ', cn ∈ classSiteNames κ)

@@ -29,7 +29,7 @@ theorem InstanceSite.methodWrite {κ : Ctx} {cn name : String} {k cls : ObjId}
     {h : Heap} {md : MethodDef} (site : InstanceSite κ cn k h)
     (hn : nameFreeN κ name = false) (hq : "method_added" ≠ name) :
     InstanceSite κ cn k (defineMethod h cls name md) := by
-  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, site.metaclass.methodWrite⟩
   · simpa only [classNamed?_defineMethod] using site.named
   · simpa only [classFrontB_defineMethod] using site.front
   · simpa only [definitionHookQuietB,
@@ -46,7 +46,7 @@ theorem InstanceSite.methodWrite {κ : Ctx} {cn name : String} {k cls : ObjId}
 
 theorem InstanceSite.ivarOnly {κ : Ctx} {cn : String} {k : ObjId} {h h' : Heap}
     (site : InstanceSite κ cn k h) (hi : Proof.IvarOnly h h') : InstanceSite κ cn k h' := by
-  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, site.metaclass.ivarOnly hi⟩
   · simpa only [classNamed?, constLookup, hi.classPayload] using site.named
   · simpa only [classFrontB, hi.classPayload] using site.front
   · simpa only [definitionHookQuietB, hi.lookup_eq] using site.hook

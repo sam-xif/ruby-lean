@@ -1,4 +1,5 @@
 import Denote.Sem.SubclassHeap
+import Denote.Sem.MetaReadyClass
 import Denote.Typed.ClassEntry
 
 /-! Actual subclass entry with a resolved superclass. Cached metaclass readiness is an
@@ -111,7 +112,27 @@ theorem enter_fresh_ready {m : Machine} {name q : String} {parent eParent : ObjI
   exact ⟨_, enter_fresh hm hd hp he hq hn, hc.subclass hs hp hep,
     saturated hc.chains hs hp hep⟩
 
+/-- Declared-parent conformance supplies the cached metaclass; no physical-cache premise
+is left for a certificate to assert. The newly created site is ready for further subclasses.
+This is still entry readiness, not full StateOk or a checked class body. -/
+theorem enter_declared_fresh {κ : Ratchet.Ctx} {Γ : Ratchet.Env} {I : Ratchet.Ty}
+    {m : Machine} {c : Ratchet.Cls} {parent : ObjId} {name q : String} {body : RubyCore.Expr}
+    (hm : StateOk κ Γ I m) (hc : c ∈ κ.classes) (hp : classNamed? m.heap c.name = some parent)
+    (hf : constOwn m.heap m.currentFrame.defmod name = none)
+    (hd : m.currentFrame.defmod < m.heap.objs.size)
+    (hq : (if m.currentFrame.defmod == Boot.objectId then name
+      else className m.heap m.currentFrame.defmod ++ "::" ++ name) = q)
+    (hn : q.isEmpty = false) :
+    ∃ n, enterClassBody m name false (some parent) body = .next n ∧
+      ClassReady n.heap ∧ Saturated n.heap ∧ MetaReady n.heap m.heap.objs.size := by
+  obtain ⟨ep, he, hb, _⟩ := hm.classSites.metaclass hc hp
+  have hl := hm.core.classReady.constRefs c.name parent (classNamed_constOwn hp)
+  have hep := hm.core.classReady.chains.eigen parent hl ep he
+  exact ⟨_, enter_fresh hf hd hl he hq hn, hm.core.classReady.subclass hm.sat hl hep,
+    saturated hm.core.classReady.chains hm.sat hl hep, meta_fresh hm.core.classReady.chains hm.sat hep hb⟩
+
 #print axioms enter_fresh
 #print axioms step_resolved
 #print axioms enter_fresh_ready
+#print axioms enter_declared_fresh
 end Ratchet.Denote.Subclass
