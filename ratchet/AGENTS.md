@@ -486,6 +486,15 @@ exercise overrides, multiple generations and wrong argument/field claims. The pr
 predicts own/inherited routes from syntax-derived declarations and still checks each worked
 proof exactly, with no exemptions. Next frontier: 066 needs the default allocator; inherited
 bare/implicit calls remain separate integration work.
+`RootLookup` now reduces any selector absent from the declared chain to Object's physical
+root lookup, using ordered name/id conformance. `DefaultAllocation` preserves full caller
+state and returns an empty exact-class instance through the actual zero-argument builtin;
+`DefaultConstructor` connects resolved new dispatch, retaining explicit root-initializer
+absence. A prelude-marked Object#initialize passes the complete current state gate but makes
+default new raise ArgumentError (§F43). `bootStateB`/`stateOk_of_bootStateB` generalize the
+unchanged boot conjunction so this countermodel has full StateOk, not selected checks.
+Default-constructor admission therefore still needs retained root-initializer conformance
+and a complete new-dispatch contract. No rule, acceptance or floor changes yet.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -591,6 +600,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/Primitive*.lean` | Primitive dispatch, allocation, argument composition, regression controls |
 | `Denote/Sem/PrimHeap.lean`, `Denote/JoinState.lean` | Primitive heap invariants and sound binding joins |
 | `Ratchet/InheritanceControls.lean`, `Denote/Typed/InheritedRules.lean`, `InheritanceDerivations.lean`, `Denote/Sem/NativePrefix.lean` | Generic inherited-rule admission, proved native-prefix guard, full-domain negative controls and independently audited whole 065 |
+| `Denote/Sem/RootLookup.lean`, `Denote/Typed/DefaultAllocation.lean`, `DefaultConstructor.lean`, `DefaultConstructorControls.lean` | Generic root-tail lookup and default allocation/dispatch, checked class controls, and full-state root-initializer omission (§F43) |
 | `Denote/Typed/Derivations.lean`, `ClassDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 49 concrete safety proofs |
 | `Denote/Typed/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Typed/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |

@@ -71,4 +71,30 @@ theorem NamedChain.split {h : Heap} {pre post : List String} {cn : String} {ks :
       exact ⟨j :: before, k, after, by simp only [List.cons_append, he],
         ⟨hp.1, hpre⟩, hk, hpost⟩
 
+theorem NamedChain.unique {h : Heap} {ns : List String} {ks js : List ObjId}
+    (hk : NamedChain h ns ks) (hj : NamedChain h ns js) : ks = js := by
+  induction ns generalizing ks js with
+  | nil => cases ks <;> cases js <;> simp_all [NamedChain]
+  | cons cn ns ih =>
+    cases ks with
+    | nil => cases hk
+    | cons k ks =>
+      cases js with
+      | nil => cases hj
+      | cons j js =>
+        have he := Option.some.inj (hk.1.symm.trans hj.1)
+        simp only [he, ih hk.2 hj.2]
+
+theorem NamedChain.split_append {h : Heap} {pre post : List String} {ks : List ObjId}
+    (hp : NamedChain h (pre ++ post) ks) :
+    ∃ before after, ks = before ++ after ∧ NamedChain h pre before ∧ NamedChain h post after := by
+  induction pre generalizing ks with
+  | nil => exact ⟨[], ks, rfl, trivial, hp⟩
+  | cons cn pre ih =>
+    cases ks with
+    | nil => cases hp
+    | cons k ks =>
+      obtain ⟨before, after, he, hb, ha⟩ := ih hp.2
+      exact ⟨k :: before, after, by simp only [List.cons_append, he], ⟨hp.1, hb⟩, ha⟩
+
 end Ratchet.Denote

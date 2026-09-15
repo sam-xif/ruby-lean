@@ -21,6 +21,13 @@ def findClass (name : String) : (C : CTable) → Option (FoundClass C name)
 def prefixClearB (C : CTable) (pre : List String) (name : String) : Bool :=
   pre.all fun cn => C.any fun c => c.name == cn && !(ownNames C cn).contains name
 
+/-- No declared owner before the implicit Object tail defines this selector. This is
+not absence at Object itself, and therefore not a default-constructor certificate. -/
+def noDeclaredSelectorB (C : CTable) (receiver name : String) : Bool :=
+  match ancestors? C receiver with
+  | none => false
+  | some ns => prefixClearB C ns name
+
 theorem prefixClearB_sound {C : CTable} {pre : List String} {name : String}
     (h : prefixClearB C pre name = true) :
     ∀ cn ∈ pre, ∃ old ∈ C, old.name = cn ∧ name ∉ ownNames C cn := by

@@ -2602,3 +2602,24 @@ transport preserve it. This is site-local; the real shim's unrelated T.proc rema
 `unreserved_metaclass_not_state` excludes the bad shape generically, and
 `enter_declared_frame` derives actual subclass NameFreeOk and fresh-frame facts from the
 strengthened conformance. Full subclass state/body checking remains gated.
+
+## F43 — declared initializer absence does not constrain prelude root code (2026-09-15)
+
+**Open prerequisite for default constructors; full-StateOk countermodel, not an accepted
+unsafe program.** `DefaultConstructorControls.hiddenRoot` installs a prelude-marked
+Object#initialize requiring one argument. It passes the exact complete `bootStateB` gate;
+`hidden_root_full_state` derives StateOk and the actual initializer lookup from that checked
+hypothesis. No copied subset of the invariant is used. The context has no declared methods.
+
+The same annotation-checked Depot/Satellite definitions run in both heaps. At real boot,
+Satellite.new.answer returns "ready"; with the injected root initializer it raises
+ArgumentError. Declared-chain absence remains true. MethodsExact allows prelude code,
+ClassOwnNames constrains declared classes only, and the implicit root tail is not a declared
+owner. Even a globally unreserved initialize name therefore does not prove root absence.
+
+`RootLookup` proves that absence on all declared owners reduces lookup to Object's actual
+root lookup; `DefaultConstructor` keeps that remaining absence as an explicit premise.
+Before admitting 066/default new, retain a root-initializer contract through all heap/frame
+transports. It must account for legitimate top-level initialize definitions without treating
+an unrelated class's initialize as permission to change Object's initializer. The checker
+still rejects default construction, so this is a refuted proposed premise, not a regression.

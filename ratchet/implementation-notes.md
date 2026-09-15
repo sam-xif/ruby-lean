@@ -10505,3 +10505,30 @@ both halves of what constrains them now have a name.
   only; decide +kernel avoids elaborator recursion limits on the large native-name set.
 - Full quiet ratchet GREEN: fragment 63, checker reach 65, 48 proved rules, 0 owed/exempt,
   49 worked theorems, 252 agree / 0 disagree.
+
+## Clink 168 (2026-09-15) — default allocation and the root-initializer boundary
+
+- NamedChain's generic uniqueness and append split turn declared-chain absence into an
+  exact physical root tail. noDeclaredSelectorB checks every retained owner-local bound;
+  RootLookup proves actual selector lookup equals Object's lookup, for arbitrary classes
+  and selectors. Unknown/cyclic chains and inherited declared initializers fail the guard.
+- DefaultAllocation proves full caller preservation and the empty exact-class result for
+  plain allocation, then covers the actual zero-argument newImpl builtin, including its
+  unsupported special-class branches. DefaultConstructor composes real dispatch and this
+  contract when lookup finds Class#new and the user initializer is absent. Required native
+  metadata, payload and byte-string guards are retained. No initializer is synthesized.
+- Depot/Satellite are annotation-checked before their result state feeds the generic call
+  proof. Actual new/getter returns String; an extra argument raises ArgumentError. The
+  checker still refuses default new: these are semantic prerequisites, not new admissions.
+- F43 isolates the missing root fact. A prelude-marked Object#initialize passes full
+  conformance yet makes the same default call raise ArgumentError. Factor the existing
+  boot conjunction/proof into machine-generic bootStateB/stateOk_of_bootStateB; bootOkB is
+  its unchanged real-boot specialization. The witness thus derives full StateOk without
+  manually copying an incomplete checklist. Keep root absence explicit until a retained
+  contract accounts for top-level initialize, independently of other classes' definitions.
+- No rules or floors change. Complete root-initializer/new-dispatch conformance and checker
+  integration remain before 066. New proofs are class/body/context-generic and use only
+  standard axioms. Unfold newImpl via its definition: its generated equation simplifier
+  fails on nested argument matches; direct unfolding avoids that Lean issue.
+- Full quiet ratchet GREEN: fragment 63, checker reach 65, 48 proved rules, 0 owed/exempt,
+  49 worked theorems, 252 agree / 0 disagree. New proofs and controls build in seconds.

@@ -526,26 +526,26 @@ that *is* a proof — `native_decide` — buys a theorem at the price of `Lean.o
 this package's rule is that every file reports only `propext`/`Classical.choice`/`Quot.sound`.
 So the witness below is stated **conditionally on this `Bool`**, and the `Bool` is a build
 gate. -/
-def bootOkB : Bool :=
-  saturatedB bootMachine.heap && coreOkB bootMachine.heap && frameOkB bootMachine &&
-  topScopeB bootMachine && methodsExactB Ratchet.ctx0 bootMachine &&
-  nameFreeB bootMachine && missFreeB bootMachine && selfLiveB bootMachine &&
-  localsEmptyB bootMachine && queryOkB bootMachine && clsQueryOkB bootMachine
-    && baseChainsOkB bootMachine && nilQueryOkB bootMachine
-    && primitiveDispatchB bootMachine.heap (nameFreeN Ratchet.ctx0)
-    && primitiveErrorsB bootMachine.heap && stringPayloadB bootMachine.heap
-    && arrayPayloadB bootMachine.heap
-    && hashPayloadB bootMachine.heap && mainReadyB bootMachine
-    && newDispatchB bootMachine.heap (classOf bootMachine.heap (.ref Boot.objectId))
-    && globalConstsOkB Ratchet.ctx0.pos.globalConsts bootMachine.heap
+def bootStateB (m : Machine) : Bool :=
+  saturatedB m.heap && coreOkB m.heap && frameOkB m &&
+  topScopeB m && methodsExactB Ratchet.ctx0 m &&
+  nameFreeB m && missFreeB m && selfLiveB m &&
+  localsEmptyB m && queryOkB m && clsQueryOkB m
+    && baseChainsOkB m && nilQueryOkB m
+    && primitiveDispatchB m.heap (nameFreeN Ratchet.ctx0)
+    && primitiveErrorsB m.heap && stringPayloadB m.heap
+    && arrayPayloadB m.heap
+    && hashPayloadB m.heap && mainReadyB m
+    && newDispatchB m.heap (classOf m.heap (.ref Boot.objectId))
+    && globalConstsOkB Ratchet.ctx0.pos.globalConsts m.heap
 
-/-- **The satisfiability witness.** `StateOk` holds at the real booted machine in the empty
-context, so no obligation on the ladder is vacuously true for want of a conformant machine.
+def bootOkB : Bool := bootStateB bootMachine
 
-The hypothesis is discharged by the `#guard` below, at build time, against the same
-prelude-booted heap the difftest SUT and `Denote/Examples.lean` use. -/
-theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 bootMachine := by
-  simp only [bootOkB, Bool.and_eq_true] at hb
+/-- The complete empty-context conformance gate works for any boot-shaped machine.
+Countermodels use exactly this check and theorem, rather than copying a subset of fields;
+`stateOk_boot` below specializes it to the real prelude boot. -/
+theorem stateOk_of_bootStateB {m : Machine} (hb : bootStateB m = true) : StateOk Ratchet.ctx0 [] .ivar0 m := by
+  simp only [bootStateB, Bool.and_eq_true] at hb
   obtain ⟨hb, hglobals⟩ := hb
   obtain ⟨hb, hnew⟩ := hb
   obtain ⟨hb, hready⟩ := hb
@@ -608,6 +608,10 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
       bareFree := bareNameFreeB_sound hnf _
       missFree := missFreeB_sound hmf _
       selfLive := selfLiveB_sound hsl }
+
+/-- The actual boot specializes the same conformance gate used by countermodels. -/
+theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 bootMachine :=
+  stateOk_of_bootStateB hb
 
 -- **The gate.** If this fails, the ladder's hypothesis has no exhibited model and every
 -- rung on it is suspect.
