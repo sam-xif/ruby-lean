@@ -2,6 +2,7 @@ import Ratchet.Check
 import Ratchet.MethodCheck
 import Ratchet.MethodControls
 import Ratchet.InitCheckControls
+import Ratchet.ClassCheckControls
 
 /-!
 Negative controls for `validateD`.

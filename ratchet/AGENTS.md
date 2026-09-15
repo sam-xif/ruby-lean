@@ -12,8 +12,8 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 55 rungs, reach 17**, **44 registered rules** (26 expressions + 18 companions),
-**0 owed**, **0 exempt**. Checker reach is 60; rung 018 is correctly rejected, the fragment's
+**Fragment 61 rungs, reach 17**, **44 registered rules** (26 expressions + 18 companions),
+**0 owed**, **0 exempt**. Checker reach is 63; rung 018 is correctly rejected, the fragment's
 prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 47 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
@@ -339,8 +339,17 @@ class constants, ivar reads, construction, and explicit instance calls, with ful
 premises. Both initializer families cross DFam through `InitBridge`; the semantic initializer
 lemma uses that same registry. `ClassDerivations` supplies an independently proof-audited
 whole 061 class/new/getX derivation, with bodies checked at definition and final call contexts.
-All 44 registered rules are exercised, with no exemptions. Class/cache integration in the
-executable checker remains: 061 still does not validate, and fragment/reach are unchanged.
+All 44 registered rules are exercised, with no exemptions. The executable checker now
+admits 061–063, 068, 071 and 072. `BodyCache` packages top-level/member/initializer artifacts;
+`check` consumes the registered rules and preserves caches through evaluation. Initializers
+are checked from their annotated parameters and fresh empty fields, then supply the receiver
+field invariant for ordinary bodies. Member updates recheck every old class body; class exit
+also rechecks old top-level bodies in the restored caller scope. No call re-infers a body from
+its arguments. Lookups prove code membership and context compatibility; branches additionally
+agree on cached signatures. `ClassCheckControls` covers Integer/Boolean/nullable/array fields,
+parameterized calls, two owners sharing names, bad uncalled bodies, annotation/hint tampering,
+and invalidated primitive guards. The next frontier is 064's instance method calling another
+method: the current call/return rule only restores a main caller, not an instance activation.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -363,6 +372,7 @@ String membership needs a payload invariant. See
 | `Ratchet/CtxEq.lean` | Sound conservative syntax/context comparison for branch compatibility |
 | `Ratchet/DJudge.lean`, `InitJudge.lean`, `Check.lean`, `DerivControls.lean` | Eight judgment families, derivation-returning checker, and negative controls |
 | `Ratchet/Check.lean`, `MethodControls.lean`, `Denote/Typed/MethodChecked.lean` | Cached annotation/body proofs, end-to-end controls, and the method-entry contract |
+| `Ratchet/BodyCache.lean`, `ClassCheckControls.lean` | Owner-indexed checked bodies, exact lookup/branch annotations, and whole-class definition/call controls |
 | `Denote/Typed/JudgeA.lean` | Semantic judgment, continuation typing, literal/local rules |
 | `Denote/Typed/Sequence.lean`, `Branch*.lean`, `BareName.lean` | Sequence, conditional, and bare-name obligations |
 | `Denote/Typed/Array.lean` | First-order array evaluation, retention, and allocation |

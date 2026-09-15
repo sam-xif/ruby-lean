@@ -107,7 +107,7 @@ private def installedInc := (check fuelD [] inc incCert).get (by decide)
 private def incCache := installedInc.cache
 #guard (refreshBodies fuelD installedInc.ctx .ivar0 incCache).isSome
 #guard (refreshBodies fuelD installedInc.ctx .ivar0
-  (incCache.map fun c => { c with deriv := .truLit })).isNone
+  { incCache with top := incCache.top.map fun c => { c with deriv := .truLit } }).isNone
 #guard (refreshBodies 0 installedInc.ctx .ivar0 incCache).isNone
 
 end Ratchet

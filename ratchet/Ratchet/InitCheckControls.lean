@@ -2,7 +2,7 @@ import Ratchet.CheckInit
 import Ratchet.ClassCtx
 
 /-! Annotation-domain initializer checks, including uncalled bad bodies. These controls
-do not claim whole-program acceptance; the initializer families are not yet in DJudge. -/
+are supplemented by the whole-program definition/call checks in ClassCheckControls. -/
 namespace Ratchet.InitCheckControls
 
 private def κ : Ctx := initializerBodyCtx ctx0 "Packet"

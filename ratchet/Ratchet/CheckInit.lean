@@ -4,7 +4,7 @@ import Ratchet.CtxEq
 
 /-! Initializer-body certificates are checked against the program and annotations, with
 no caller values or locals. The output field shape is inferred from proved writes. This
-checker does not yet admit any new whole-program DJudge rule. -/
+artifact is consumed by the whole-program checker's definition and constructor rules. -/
 set_option autoImplicit false
 namespace Ratchet
 

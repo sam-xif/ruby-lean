@@ -9851,6 +9851,34 @@ both halves of what constrains them now have a name.
   quiet ratchet GREEN: fragment 55, checker reach 60, 44 proved rules, 0 owed/exempt,
   47 worked theorems, 252 agree / 0 disagree.
 
+## Clink 146 (2026-09-14) — whole-class checking with annotation-preserving caches
+
+- `BodyCache` separates top/member/initializer artifacts; every entry carries its body proof.
+  Lookup checks owner, actual code membership and exact body context, not only a selector.
+  `check` now consumes all seven class-related rules registered in 145. No emitter change.
+- Initializers start from annotated parameters and fresh empty fields. Their checked output
+  supplies member self fields; missing initializers supply only an open empty annotation,
+  never a default constructor. Calls compare argument types and receiver fields with cached
+  annotations. They do not re-infer bodies, specialize parameter types, or trust claimed fields.
+- Every member update rechecks old initializers and members in the enlarged context, using
+  stored signatures and replay hints. Initializers go first, then members oldest first.
+  Top-level artifacts remain unavailable in the class world and are rechecked at class exit
+  in the restored main scope, including uncalled ones. Branches require compatible signature
+  caches as well as code contexts; equal code alone does not determine its annotations.
+- Whole-program controls vary class names and Integer/Boolean/nullable/array annotations,
+  include definition-plus-call positives, and reject dishonest returns, narrowed nullable
+  bodies, unchecked initializer suffixes, wrong arguments/fields, stale hints and unsupported
+  allocators. Two classes sharing initialize/get retain independent signatures. Installing +
+  rejects invalidated uncalled member and top-level arithmetic bodies.
+- Kernel-normalizing a whole checked class merely to extract a test artifact hit Lean's
+  heartbeat limit. The controls instead inspect the Option result with #guard, while body
+  proof construction and the generic soundness theorem remain kernel checked; no new axiom.
+- Actual emitted certificates now accept 061–063, 068, 071 and 072: fragment 55→61 and checker
+  reach 60→63. The next frontier, 064, needs an instance-caller return contract before method-
+  to-method calls can join; main-only guards remain intact.
+- Full quiet ratchet GREEN: 61 accepted, reach 63, 44 proved rules, 0 owed/exempt,
+  47 worked theorems, 252 agree / 0 disagree. No semantic lemma or axiom was added.
+
 ## Clink 143 (2026-09-14) — annotation-checked initializer data certificates
 
 - Ordinary CheckedBody requires an unchanged field shape; it cannot certify initialization.

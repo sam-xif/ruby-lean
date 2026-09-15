@@ -1,4 +1,4 @@
-import Ratchet.DJudge
+import Ratchet.BodyCache
 
 set_option autoImplicit false
 namespace Ratchet
@@ -31,47 +31,6 @@ and the whole pipeline downstream of `scripts/emit_deriv.py` would be unfalsifia
 recursion structural and obviously terminating. Exhaustion answers `none`, so it can only cost
 completeness. -/
 
-/-- A body checked at its parameter/return annotations in this context. Calls reuse it. -/
-structure CheckedBody (κ : Ctx) (I : Ty) (decl : Defn) where
-  params : List SigParam
-  ret : Ty
-  out : Env
-  paramShape : decl.params = params.map (fun p => Param.req p.1)
-  paramsFO : ∀ p ∈ params, FirstOrder p.2 = true ∧ isAliasTy p.2 = false
-  returnFO : FirstOrder ret = true
-  judged : DJudge params decl.body ret out κ I κ I
-
-/-- Checker data, not a new judgment premise. Exact context checks prevent stale proofs
-from being reused after a definition, spine change, or incompatible branch. -/
-structure CachedBody where
-  ctx : Ctx
-  spine : Ty
-  decl : Defn
-  body : CheckedBody ctx spine decl
-  /-- Replay hint only. Refresh reconstructs the signature from the checked artifact. -/
-  deriv : Deriv
-
-abbrev BodyCache := List CachedBody
-
-structure CallableBody (κ : Ctx) (I : Ty) (name : String) where
-  decl : Defn
-  nameOk : decl.name = name
-  body : CheckedBody (κ.withFrame (some ⟨"Object", "Object", decl.name⟩)) I decl
-  installed : decl ∈ κ.defs
-
-def findBody (κ : Ctx) (I : Ty) (name : String) : BodyCache → Option (CallableBody κ I name)
-  | [] => none
-  | c :: cs =>
-    let found : Option (CallableBody κ I name) := do
-      if hn : c.decl.name = name then do
-        let ⟨hc⟩ ← ctxEq? c.ctx (κ.withFrame (some ⟨"Object", "Object", c.decl.name⟩))
-        if hi : c.spine = I then do
-          let ⟨hd⟩ ← defnMem? c.decl κ.defs
-          some ⟨c.decl, hn, by simpa only [hc, hi] using c.body, hd⟩
-        else none
-      else none
-    found.orElse (fun _ => findBody κ I name cs)
-
 /-- A checked answer: the type and every outgoing state index, with their derivation.
 No outgoing declaration table is reconstructed separately from the expression proof. -/
 structure Certified (Γ : Env) (e : Expr) (κ : Ctx := ctx0) (I : Ty := .ivar0) where
@@ -80,7 +39,7 @@ structure Certified (Γ : Env) (e : Expr) (κ : Ctx := ctx0) (I : Ty := .ivar0) 
   ctx : Ctx
   spine : Ty
   judged : DJudge Γ e ty out κ I ctx spine
-  cache : BodyCache := []
+  cache : CheckedCache := {}
 
 structure CertifiedAll (Γ : Env) (es : List Expr) (κ : Ctx := ctx0) (I : Ty := .ivar0) where
   tys : List Ty
@@ -88,7 +47,7 @@ structure CertifiedAll (Γ : Env) (es : List Expr) (κ : Ctx := ctx0) (I : Ty :=
   ctx : Ctx
   spine : Ty
   judged : DJudgeAll Γ es tys out κ I ctx spine
-  cache : BodyCache := []
+  cache : CheckedCache := {}
 
 structure CertifiedSeq (Γ : Env) (es : List Expr) (κ : Ctx := ctx0) (I : Ty := .ivar0) where
   ty : Ty
@@ -96,7 +55,7 @@ structure CertifiedSeq (Γ : Env) (es : List Expr) (κ : Ctx := ctx0) (I : Ty :=
   ctx : Ctx
   spine : Ty
   judged : DJudgeSeq Γ es ty out κ I ctx spine
-  cache : BodyCache := []
+  cache : CheckedCache := {}
 
 structure CertifiedPairs (Γ : Env) (ps : List (Expr × Expr)) (κ : Ctx := ctx0) (I : Ty := .ivar0) where
   keys : List Ty
@@ -105,7 +64,7 @@ structure CertifiedPairs (Γ : Env) (ps : List (Expr × Expr)) (κ : Ctx := ctx0
   ctx : Ctx
   spine : Ty
   judged : DJudgePairs Γ ps keys vals out κ I ctx spine
-  cache : BodyCache := []
+  cache : CheckedCache := {}
 
 structure CertifiedRec (κ : Ctx) (I : Ty) (s : RecScope) (Γ : Env) (e : Expr) where
   ty : Ty
@@ -120,7 +79,7 @@ structure CertifiedRecAll (κ : Ctx) (I : Ty) (s : RecScope) (Γ : Env) (es : Li
 mutual
 /-- The program selects the rule; the certificate supplies sub-derivations and checked
 claims. Every recursive result carries its actual outgoing context, locals, and spine. -/
-def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I : Ty := .ivar0) (cache : BodyCache := []) :
+def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I : Ty := .ivar0) (cache : CheckedCache := {}) :
     Option (Certified Γ e κ I) :=
   match fuel with
   | 0 => none
@@ -145,6 +104,71 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
         | some τ => if ha : isAliasTy τ = false then some ⟨τ, Γ, κ, I, .var hg ha, cache⟩ else none
         | none => none
       else none
+    | .var .ivar x, .ivarRead y ty =>
+      if x == y && κ.ivarReadTy I x == ty then
+        some ⟨κ.ivarReadTy I x, Γ, κ, I, .ivarRead, cache⟩ else none
+    | .const name, .constCls claimed => do
+      if name != claimed then none else do
+      let c ← findClass name κ.classes
+      some ⟨.clsOf name, Γ, κ, I, by
+        simpa only [c.nameOk] using (DJudge.constClass (Γ := Γ) (I := I) c.member), cache⟩
+    | .class' name none body, .classDecl claimed none db => do
+      if name != claimed then none else do
+      let c ← check n [] body db (classHeaderCtx (classBodyCtx κ name) name) .ivar0 cache
+      if hg : classRuleB κ c.ctx Γ I c.ty name = true then do
+        let fresh ← refreshBodies n (returnScopeCtx κ c.ctx) I c.cache
+        some ⟨c.ty, Γ, returnScopeCtx κ c.ctx, I, .classDecl c.judged hg, fresh⟩
+      else none
+    | .send (some (.const name)) "new" args none, .newInst claimed ds ty => do
+      if name != claimed then none else do
+      let start ← findClass name κ.classes
+      let a ← checkAll n Γ args ds κ I cache
+      let f ← findClass name a.ctx.classes
+      let c ← findInitializer a.ctx f.cls a.cache.initializers
+      if ht : a.tys = c.body.params.map (·.2) then do
+      if ty != .inst name c.body.fields then none else do
+      if hn : smroGet? a.ctx.classes f.cls.name "new" = none then do
+      if hp : f.cls.name ∈ a.ctx.pos.plainAlloc then do
+      if hg : mainCallB a.ctx a.out a.spine = true then
+        some ⟨.inst name c.body.fields, a.out, a.ctx, a.spine, by
+          have hr : DJudge Γ (.const name) (.clsOf f.cls.name) Γ κ I := by
+            simpa only [start.nameOk, f.nameOk] using (DJudge.constClass (Γ := Γ) (I := I) start.member)
+          simpa only [f.nameOk] using
+            (DJudge.newInst hr (by simpa only [ht] using a.judged) rfl f.member c.installed
+              c.nameOk hn hp c.body.paramShape c.body.paramsFO c.body.returnFO c.body.fieldsFO
+              c.body.judged hg), a.cache⟩
+      else none
+      else none
+      else none
+      else none
+    | .send (some recv) name args none, .callMethodSig dr claimed ds ret => do
+      if name != claimed then none else do
+      let r ← check n Γ recv dr κ I cache
+      match hrty : r.ty with
+      | .inst cn fields => do
+        let a ← checkAll n r.out args ds r.ctx r.spine r.cache
+        let f ← findClass cn a.ctx.classes
+        let c ← findMember a.ctx f.cls name a.cache.members
+        if hf : fields = c.fields then do
+        if ht : a.tys = c.body.params.map (·.2) then do
+        if c.body.ret != ret then none else do
+        if hs : explicitReceiverB recv = true then do
+        if hn : c.decl.name ≠ "initialize" then do
+        if hd : directCallNameB c.decl.name = true then do
+        if hg : mainCallB a.ctx a.out a.spine = true then
+          some ⟨c.body.ret, a.out, a.ctx, a.spine, by
+            have hr : DJudge Γ recv (.inst f.cls.name c.fields) r.out κ I r.ctx r.spine := by
+              simpa only [hrty, hf, f.nameOk] using r.judged
+            simpa only [c.nameOk] using
+              (DJudge.callMethodSig hr (by simpa only [ht] using a.judged) hs f.member c.installed
+                hn hd c.body.paramShape c.body.paramsFO c.body.returnFO c.fieldsFO c.body.judged hg), a.cache⟩
+        else none
+        else none
+        else none
+        else none
+        else none
+        else none
+      | _ => none
     | .vasgn .lvar x ev, .vasgn .lvar x' dv =>
       if x == x' then
         match check n Γ ev dv κ I cache with
@@ -188,8 +212,8 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
       match check n Γ c dc κ I cache with
       | some ⟨_, Γc, κc, Ic, hc, cc⟩ =>
         match check n Γc t dt κc Ic cc, check n Γc el de κc Ic cc with
-        | some ⟨τ₁, Γ₁, κ₁, I₁, ht, ct⟩, some ⟨τ₂, Γ₂, κ₂, I₂, he, _⟩ =>
-          if joinT τ₁ τ₂ == j then
+        | some ⟨τ₁, Γ₁, κ₁, I₁, ht, ct⟩, some ⟨τ₂, Γ₂, κ₂, I₂, he, ce⟩ =>
+          if joinT τ₁ τ₂ == j && cacheSignaturesB ct ce then
             match ctxEq? κ₁ κ₂ with
             | some ⟨hctx⟩ =>
               if hi : I₁ = I₂ then
@@ -204,8 +228,8 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
       match check n Γ c dc κ I cache with
       | some ⟨_, Γc, κc, Ic, hc, cc⟩ =>
         match check n Γc t dt κc Ic cc with
-        | some ⟨τ, Γt, κt, It, ht, _⟩ =>
-          if joinT τ .nilT == j then
+        | some ⟨τ, Γt, κt, It, ht, ct⟩ =>
+          if joinT τ .nilT == j && cacheSignaturesB ct cc then
             match ctxEq? κt κc with
             | some ⟨hctx⟩ =>
               if hi : It = Ic then
@@ -238,6 +262,9 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
       | none => none
     | .def' name formals body, .defDecl name' ps ret db => do
       if name != name' then none else do
+      if let some cn := κ.scope.runtimeClass then
+        checkMemberDefinition n κ Γ I cn ⟨name, formals, body⟩ (.defDecl name' ps ret db) cache
+      else do
       if hm : κ.scope.runtimeMain = true then do
       if hc : κ.classes.isEmpty = true then do
       if hs : κ.selfTy = none then do
@@ -256,7 +283,7 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
           .defDecl c.paramShape c.paramsFO c.returnFO c.judged hm
             (List.isEmpty_iff.mp hc) hs hb hco ha hi (List.all_eq_true.mp hg)
             (by simpa only [List.all_eq_true, bne_iff_ne] using hf) hmiss hquiet,
-          ⟨topBodyCtx κ decl, I, decl, c, db⟩ :: fresh⟩
+          { fresh with top := ⟨topBodyCtx κ decl, I, decl, c, db⟩ :: fresh.top }⟩
       else none
       else none
       else none
@@ -271,7 +298,7 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
     | .send none name args none, .callSig name' ds ret => do
       if name != name' then none else do
       let a ← checkAll n Γ args ds κ I cache
-      let c ← findBody a.ctx a.spine name a.cache
+      let c ← findBody a.ctx a.spine name a.cache.top
       if ht : a.tys = c.body.params.map (·.2) then do
       if hr : c.body.ret = ret then do
       if hstart : κ.scope.runtimeMain = true then do
@@ -300,7 +327,7 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
     | _, _ => none
 
 def checkAll (fuel : Nat) (Γ : Env) (es : List Expr) (ds : List Deriv)
-    (κ : Ctx := ctx0) (I : Ty := .ivar0) (cache : BodyCache := []) : Option (CertifiedAll Γ es κ I) :=
+    (κ : Ctx := ctx0) (I : Ty := .ivar0) (cache : CheckedCache := {}) : Option (CertifiedAll Γ es κ I) :=
   match fuel with
   | 0 => none
   | n + 1 =>
@@ -316,7 +343,7 @@ def checkAll (fuel : Nat) (Γ : Env) (es : List Expr) (ds : List Deriv)
     | _, _ => none
 
 def checkPairs (fuel : Nat) (Γ : Env) (ps : List (Expr × Expr)) (dks dvs : List Deriv)
-    (κ : Ctx := ctx0) (I : Ty := .ivar0) (cache : BodyCache := []) : Option (CertifiedPairs Γ ps κ I) :=
+    (κ : Ctx := ctx0) (I : Ty := .ivar0) (cache : CheckedCache := {}) : Option (CertifiedPairs Γ ps κ I) :=
   match fuel with
   | 0 => none
   | n + 1 =>
@@ -335,7 +362,7 @@ def checkPairs (fuel : Nat) (Γ : Env) (ps : List (Expr × Expr)) (dks dvs : Lis
     | _, _, _ => none
 
 def checkSeq (fuel : Nat) (Γ : Env) (es : List Expr) (ds : List Deriv)
-    (κ : Ctx := ctx0) (I : Ty := .ivar0) (cache : BodyCache := []) : Option (CertifiedSeq Γ es κ I) :=
+    (κ : Ctx := ctx0) (I : Ty := .ivar0) (cache : CheckedCache := {}) : Option (CertifiedSeq Γ es κ I) :=
   match fuel with
   | 0 => none
   | n + 1 =>
@@ -357,7 +384,7 @@ def checkSeq (fuel : Nat) (Γ : Env) (es : List Expr) (ds : List Deriv)
 argument values are deliberately not inputs. Return compatibility is exact for now;
 subtyping needs a proved denotation-inclusion rule, not the legacy unchecked `subTy`. -/
 def checkMethodBody (fuel : Nat) (κ : Ctx) (I : Ty) (decl : Defn) (d : Deriv)
-    (cache : BodyCache := []) : Option (CheckedBody κ I decl) :=
+    (cache : CheckedCache := {}) : Option (CheckedBody κ I decl) :=
   match fuel with
   | 0 => none
   | n + 1 => match d with
@@ -388,10 +415,40 @@ def checkMethodBody (fuel : Nat) (κ : Ctx) (I : Ty) (decl : Defn) (d : Deriv)
     else none
   | _ => none
 
+/-- Definition admission is annotation-domain checking, including uncalled members.
+The current initializer's proved output supplies self fields; it is never a call argument. -/
+def checkMemberDefinition (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (cn : String)
+    (d : Defn) (hint : Deriv) (cache : CheckedCache) :
+    Option (Certified Γ (.def' d.name d.params d.body) κ I) :=
+  match fuel with
+  | 0 => none
+  | n + 1 => do
+    let f ← findClass cn κ.classes
+    if hg : memberRuleB κ Γ I f.cls d = true then do
+    let next := instanceDeclCtx κ f.cls d
+    let .defDecl _ _ _ db := hint | none
+    if hn : d.name = "initialize" then do
+      let body ← checkInitializerBody n (initializerBodyCtx next f.cls.name) d hint
+      let fresh ← refreshClassBodies n next { cache with initializers :=
+        ⟨initializerBodyCtx next f.cls.name, f.cls.name, d, body, db⟩ :: cache.initializers }
+      some ⟨.sym, Γ, next, I,
+        .initDef hn body.paramShape body.paramsFO body.returnFO body.fieldsFO body.judged f.member hg, fresh⟩
+    else do
+      let fresh ← refreshClassBodies n next cache
+      let fields := memberFields next (classWithMethod f.cls d) fresh
+      if hf : FirstOrder fields = true then do
+        let bctx := instanceBodyCtx next ⟨f.cls.name, f.cls.name, d.name⟩ fields
+        let body ← checkMethodBody n bctx fields d hint fresh
+        some ⟨.sym, Γ, next, I,
+          .memberDef body.paramShape body.paramsFO body.returnFO hf body.judged hn f.member hg,
+          { fresh with members := ⟨⟨bctx, fields, d, body, db⟩, f.cls.name⟩ :: fresh.members }⟩
+      else none
+    else none
+
 /-- Scoped recursion is a fallback for nodes containing a self-call. Closed subtrees keep
 their ordinary derivations; the scope is never inserted into the checked-body cache. -/
 def checkRec (fuel : Nat) (κ : Ctx) (I : Ty) (s : RecScope) (Γ : Env)
-    (e : Expr) (d : Deriv) (cache : BodyCache) : Option (CertifiedRec κ I s Γ e) :=
+    (e : Expr) (d : Deriv) (cache : CheckedCache) : Option (CertifiedRec κ I s Γ e) :=
   match fuel with
   | 0 => none
   | n + 1 =>
@@ -463,7 +520,7 @@ def checkRec (fuel : Nat) (κ : Ctx) (I : Ty) (s : RecScope) (Γ : Env)
       | _, _ => none
 
 def checkRecAll (fuel : Nat) (κ : Ctx) (I : Ty) (s : RecScope) (Γ : Env)
-    (es : List Expr) (ds : List Deriv) (cache : BodyCache) : Option (CertifiedRecAll κ I s Γ es) :=
+    (es : List Expr) (ds : List Deriv) (cache : CheckedCache) : Option (CertifiedRecAll κ I s Γ es) :=
   match fuel with
   | 0 => none
   | n + 1 => match es, ds with
@@ -479,17 +536,66 @@ def checkRecAll (fuel : Nat) (κ : Ctx) (I : Ty) (s : RecScope) (Γ : Env)
 /-- Recheck existing bodies when a definition changes their context, oldest first so calls
 can use already-refreshed predecessors. This runs at definitions, never at calls. The old
 artifact supplies the annotations; a replay hint cannot silently change the signature. -/
-def refreshBodies (fuel : Nat) (κ : Ctx) (I : Ty) (cache : BodyCache) : Option BodyCache :=
+def refreshTopBodies (fuel : Nat) (κ : Ctx) (I : Ty) (base : CheckedCache)
+    (cache : BodyCache) : Option BodyCache :=
   match fuel with
   | 0 => none
   | n + 1 => match cache with
     | [] => some []
     | c :: cs => do
-      let fresh ← refreshBodies n κ I cs
+      let fresh ← refreshTopBodies n κ I base cs
       let bodyCtx := κ.withFrame (some ⟨"Object", "Object", c.decl.name⟩)
       let body ← checkMethodBody n bodyCtx I c.decl
-        (.defDecl c.decl.name c.body.params c.body.ret c.deriv) fresh
+        (.defDecl c.decl.name c.body.params c.body.ret c.deriv) { base with top := fresh }
       some (⟨bodyCtx, I, c.decl, body, c.deriv⟩ :: fresh)
+
+/-- Recheck initializer signatures first; they determine receiver fields for members. -/
+def refreshInitializers (fuel : Nat) (κ : Ctx) (cache : List CachedInitializer) :
+    Option (List CachedInitializer) :=
+  match fuel with
+  | 0 => none
+  | n + 1 => match cache with
+    | [] => some []
+    | c :: cs => do
+      let f ← findClass c.owner κ.classes
+      let _ ← defnMem? c.decl f.cls.methods
+      let body ← refreshInitializerBody n (initializerBodyCtx κ c.owner) c.body c.deriv
+      let tail ← refreshInitializers n κ cs
+      some (⟨initializerBodyCtx κ c.owner, c.owner, c.decl, body, c.deriv⟩ :: tail)
+
+def refreshMembers (fuel : Nat) (κ : Ctx) (base : CheckedCache) (cache : List CachedMember) :
+    Option (List CachedMember) :=
+  match fuel with
+  | 0 => none
+  | n + 1 => match cache with
+    | [] => some []
+    | c :: cs => do
+      let tail ← refreshMembers n κ base cs
+      let f ← findClass c.owner κ.classes
+      let _ ← defnMem? c.decl f.cls.methods
+      let fields := memberFields κ f.cls base
+      let bodyCtx := instanceBodyCtx κ ⟨c.owner, c.owner, c.decl.name⟩ fields
+      let body ← checkMethodBody n bodyCtx fields c.decl
+        (.defDecl c.decl.name c.body.params c.body.ret c.deriv) { base with members := tail }
+      some (⟨⟨bodyCtx, fields, c.decl, body, c.deriv⟩, c.owner⟩ :: tail)
+
+/-- Class bodies cannot call top-level methods. Keep those artifacts until class exit,
+where refreshBodies rechecks them in the restored caller scope, even if never called. -/
+def refreshClassBodies (fuel : Nat) (κ : Ctx) (cache : CheckedCache) : Option CheckedCache :=
+  match fuel with
+  | 0 => none
+  | n + 1 => do
+    let is ← refreshInitializers n κ cache.initializers
+    let ms ← refreshMembers n κ { cache with initializers := is } cache.members
+    some { cache with initializers := is, members := ms }
+
+def refreshBodies (fuel : Nat) (κ : Ctx) (I : Ty) (cache : CheckedCache) : Option CheckedCache :=
+  match fuel with
+  | 0 => none
+  | n + 1 => do
+    let base ← refreshClassBodies n κ cache
+    let ts ← refreshTopBodies n κ I base cache.top
+    some { base with top := ts }
 end
 
 /-! ## §4 The entry point
@@ -521,7 +627,7 @@ theorem validateD_typed {p : Expr} {d : Deriv} (h : validateD p d = true) : DTyp
 /-! ## §5 Semantic status
 
 `validateD p d = true` means the checker returned a `DJudge` derivation of `p`.
-All nineteen expression rules and twelve companion rules have answer-typed semantic proofs
+All twenty-six expression rules and eighteen companion rules have answer-typed semantic proofs
 registered in `Denote/Typed/Clink.lean`. The semantic target includes safety under a typed
 continuation, so escapes and halts are covered as well as returned values.
 
