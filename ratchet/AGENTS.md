@@ -280,7 +280,16 @@ allocator must separately prove absence. The executable header-table frame prese
 constructor/ancestry claims and rejects newly activated unknown superclasses; unqualified-name
 checking prevents accidental nested claims. A full-state inherited-initializer control has a
 valid Point header while Point.new() raises ArgumentError. No class/constructor rule is
-admitted yet; body-certificate integration and method/constructor publication remain.
+admitted yet.
+`MemberInstall` now derives full definition-state conformance from incoming guards, including
+the formerly explicit outgoing constructor/nested obligations. `MemberFrame` proves owner
+separation from named ancestry, permitting another class's same-name method without assuming
+unequal names imply unequal heap ids. The header's lookup frame is shared with member updates.
+`MemberDefine` supplies ordinary-member and initializer semantic definition rules, requiring
+parameter/return annotations and a full body proof (SemSafeCtxA or SemInitA respectively).
+Controls consume a checked inc body, reject nullable/wrong-return annotations, and apply the
+Point initializer definition contract at actual fresh entry. Class/constructor composition,
+initializer body certificates, and checker admission remain gated; no signature becomes a proof.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -346,6 +355,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/ConstructorReturn.lean`, `ConstructorRun.lean`, `ConstructorRunControls.lean` | Initialized result typing, restored caller conformance, and full new/initialize/return contract |
 | `Denote/Sem/RootNames.lean`, `ClassRootNames.lean`, `Denote/Typed/ClassRootNameControls.lean` | Canonical root bindings, complete fresh named ancestry, and redirected-Kernel countermodel |
 | `Ratchet/ClassHeader.lean`, `Denote/Sem/ClassHeader.lean`, `Denote/Typed/ClassHeaderControls.lean` | Guarded pending-header publication, full entry conformance, and inherited-initializer control |
+| `Ratchet/DeclLookupFrame.lean`, `MemberFrame.lean`, `Denote/Sem/Member*.lean`, `Denote/Typed/Member*.lean` | Alias-aware definition guards, full installation conformance, and annotation-domain member/initializer definitions |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |

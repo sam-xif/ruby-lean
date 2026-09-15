@@ -9735,3 +9735,26 @@ both halves of what constrains them now have a name.
 - New proofs build below a second, standard axioms only. Full quiet ratchet GREEN:
   fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 137 (2026-09-14) — annotated instance-definition publication
+
+- Share `DeclLookupFrame` between header and member updates. Ordinary instance writes preserve
+  DeclClassOk; nested claims remain unchanged for unqualified owners. `new`, `method_missing`,
+  and `method_added` require different contracts and are excluded by this installation route.
+- `memberFreshB` uses complete named ancestry and class sites to prove different heap owners.
+  Comparing names alone is insufficient; banning the name globally is unnecessary. Same-name
+  methods at a provably different class remain legal, while duplicate writes at one owner
+  fail. `StateOk_install_member` derives all outgoing state from these input guards, with no
+  assumed post-installation constructor/nested facts.
+- Semantic definition rules require formal/annotated parameter agreement, first-order
+  parameter/return types, and the entire body proof. Ordinary methods use an open self shape;
+  initialize uses SemInitA from empty fresh fields to its proved outgoing shape. The proof
+  contexts contain the installed declaration; no concrete call argument types the body.
+- Controls consume a checked inc artifact, reject nullable/wrong-return annotations before
+  any call, and apply the full Point initializer definition contract at real fresh entry.
+  Runtime controls execute class/new/member calls, including another owner's same-name method.
+  These are semantic rules, not new DJudge/checker admissions. Constructor composition and
+  initializer-body certificate integration remain; old body proofs will need context refresh.
+- New proofs build below a second, standard axioms only. Full quiet ratchet GREEN:
+  fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
+  252 agree / 0 disagree.
