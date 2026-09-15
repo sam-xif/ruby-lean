@@ -10028,3 +10028,29 @@ both halves of what constrains them now have a name.
   are not silently accepted by the broader runtime proof.
 - Full quiet ratchet GREEN: all 45 rules exercised, 0 owed/exempt, 48 worked programs
   cross-checked, 252 agree / 0 disagree. New proofs use only standard axioms.
+
+## Clink 149 (2026-09-14) — distinct receiver/owner calls and the inherited-lookup obstruction
+
+- Inherited bodies need `self : inst receiver fields`, but method owner/cref belong to the
+  defining class. `instance_enter_state_at` and real entry now take two sites and use the
+  existing Frame's receiver/defining-class fields. The former same-class APIs specialize
+  them; no new context flag or class-specific premise.
+- `resolved_instance_run` consumes actual lookup/code, the native-shadow prefix check, and
+  a full annotated body at that mixed context. It composes binding/body/caller restoration
+  for arbitrary classes, bodies, annotations and call sites. Existing own-method calls use
+  this proof, deriving their empty prefix from the own-first lookup. Neither an ancestor's
+  signature nor its row alone supplies the inherited lookup premise.
+- Controls apply a Boolean annotation-domain body at Satellite self / Depot scope for every
+  Boolean argument, reject nullable/wrong returns, and execute real inherited initialization,
+  lookup, entry and call. Exact Depot self typing is false at that Satellite activation.
+- §F39 is proved, not merely suspected: `unrecorded_shadow_preserves_state` preserves full
+  current StateOk while writing a globally reserved selector absent from its owner's rows.
+  A boot-grounded instance retains Object#answer's Integer body and Child's empty declared
+  table but dispatches Child#answer to false. A separate actual Parent/Child inheritance run
+  retains the ancestor row/chain while the inserted child override makes `answer + 1` stuck.
+  Present calls require an own positive row, so this is not an accepted unsafe program.
+- Inheritance needs owner-specific absence/dispatch conformance plus explicit-superclass
+  creation. No checker rule, floor or accepted-program count changes in this prerequisite.
+- Generic resolved-call proof builds in 0.5s; controls in 1.1s, standard axioms only.
+  Full quiet ratchet GREEN: fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt,
+  48 worked theorems, 252 agree / 0 disagree.

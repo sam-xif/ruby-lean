@@ -2523,3 +2523,25 @@ Clink 135 adds CoreOk.rootNames, checked by the existing boot gate and preserved
 current heap producers. It fixes the canonical root bindings and excludes unlisted aliases
 of those root ids (non-root aliases remain allowed). `ClassRootNames.named_chain` proves the
 fresh declared chain in both directions; publication and annotation-body rules remain gated.
+
+## F39 — positive class rows do not exclude hidden inherited overrides (2026-09-14)
+
+**Open extension obstacle, not an accepted unsafe program.** `ClassesOk` checks each
+declared own method, but says nothing about omitted selectors. `MethodsExact` only reserves
+names globally. Once `answer` is reserved anywhere, an unrecorded `Child#answer` can satisfy
+both invariants while shadowing an ancestor's checked body.
+
+`InheritedCallControls.unrecorded_shadow_preserves_state` proves the stronger statement:
+the write can preserve full current StateOk, including unchanged declaration tables.
+`full_state_unrecorded_shadow` grounds it at boot with a real Object#answer returning an
+Integer and a fresh Child whose declared table is empty; Child dispatches to a Boolean body.
+A separate Parent/Child inheritance execution retains the parent row and ancestor chain
+while the inserted override changes `Child.new.answer + 1` from 2 to type-stuck.
+
+The present checker requires a positive own row, so it cannot consume that hidden override.
+Before adding inherited lookup, require owner-specific absence or an equivalent checked
+dispatch-path invariant; ancestor membership plus the parent row is insufficient.
+`InstanceResolvedRun` now separates receiver and lexical owner but deliberately requires
+actual lookup and native-prefix evidence. Copying the parent's exact-self body context is
+also invalid: a Satellite receiver is not an exact Depot instance. Every body application
+still requires its complete annotated proof at the actual receiver/owner context.

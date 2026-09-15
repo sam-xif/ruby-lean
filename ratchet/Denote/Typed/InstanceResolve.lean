@@ -38,11 +38,11 @@ theorem classesOk_lookup {C : CTable} {m : Machine} {c : Cls} {d : Defn}
   have hco := exactInst_classOf hv.1 hk
   exact ⟨k, md, hk, lookup_own_first (by rw [hco]; exact hrest) hm, hp, hb, hu, hcode⟩
 
-theorem instance_required_frame {m : Machine} {recv : Value} {cn name : String}
-    {k : ObjId} {md : MethodDef} {I : Ty} (names : List String) (args : List Value)
-    (hk : classNamed? m.heap cn = some k) (hv : denM (.inst cn I) m recv)
-    (hf : classFrontB m.heap k = true) (hc : InstanceMethodCode k name md) :
-    FrameOk (some ⟨cn, cn, name⟩) (pushMethodFrame m (requiredFrame recv name md names args)) := by
+theorem instance_required_frame_at {m : Machine} {recv : Value} {cn ownerCn name : String}
+    {r k : ObjId} {md : MethodDef} {I : Ty} (names : List String) (args : List Value)
+    (hk : classNamed? m.heap cn = some r) (hv : denM (.inst cn I) m recv)
+    (hf : classFrontB m.heap r = true) (hc : InstanceMethodCode k name md) :
+    FrameOk (some ⟨cn, ownerCn, name⟩) (pushMethodFrame m (requiredFrame recv name md names args)) := by
   rw [denM] at hv
   have hco := exactInst_classOf hv.1 hk
   obtain ⟨rest, ha⟩ := classFrontB_sound hf
@@ -50,6 +50,13 @@ theorem instance_required_frame {m : Machine} {recv : Value} {cn name : String}
   refine ⟨trivial, ?_⟩
   change isAName m.heap recv cn = true
   simp only [isAName, hk, isA, hco, ha, List.contains_cons, beq_self_eq_true, Bool.true_or]
+
+theorem instance_required_frame {m : Machine} {recv : Value} {cn name : String}
+    {k : ObjId} {md : MethodDef} {I : Ty} (names : List String) (args : List Value)
+    (hk : classNamed? m.heap cn = some k) (hv : denM (.inst cn I) m recv)
+    (hf : classFrontB m.heap k = true) (hc : InstanceMethodCode k name md) :
+    FrameOk (some ⟨cn, cn, name⟩) (pushMethodFrame m (requiredFrame recv name md names args)) :=
+  instance_required_frame_at names args hk hv hf hc
 
 theorem instance_required_live {m : Machine} {recv : Value} {cn name : String}
     {k : ObjId} {I : Ty} (md : MethodDef) (names : List String) (args : List Value)
@@ -108,6 +115,7 @@ theorem classesOk_explicit_entry {C : CTable} {m : Machine} {c : Cls} {d : Defn}
 #print axioms classFrontB_sound
 #print axioms classesOk_lookup
 #print axioms instance_required_frame
+#print axioms instance_required_frame_at
 #print axioms instance_required_live
 #print axioms instance_required_scope
 #print axioms classesOk_explicit_entry

@@ -362,6 +362,13 @@ whole-program derivation. `MemberCallControls` covers nested calls, cross-class 
 uncalled bad annotations, wrong arity/hints and invalidation through later definitions.
 Next frontier: 065's inherited fields. Parenthesized implicit calls and explicit self reads
 still need their own judgment/checker integration; their semantic interfaces are ready.
+`InstanceState` and `InstanceResolvedRun` now separate receiver and lexical owner, consuming
+the full annotated body at that mixed context. Existing own-method calls specialize this
+same proof. `InheritedCallControls` exercises Satellite→Depot entry/call and proves a
+boot-grounded full-StateOk omission witness: an empty declared child table may hide an
+override of a globally reserved selector. Inherited lookup therefore needs owner-specific
+absence, not just positive ancestor rows (§F39). Superclass creation and those lookup facts
+remain prerequisites; 065 is not admitted by these conditional call proofs.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -442,6 +449,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/ConstructorResolve.lean`, `ConstructorExpr.lean`, `ConstructorGeneralControls.lean` | Class-parameterized annotation-checked constructor runs/expressions, independently exercised by FlagBox |
 | `Denote/Sem/DispatchName.lean`, `Denote/Typed/InstanceDispatch.lean`, `InstanceRun.lean`, `InstanceExpr.lean` | Payload-or-name dispatch, full annotation-domain instance calls, and receiver/argument composition for arbitrary classes |
 | `Ratchet/CallWorld.lean`, `Denote/Sem/FramedNames.lean`, `Denote/Typed/InstanceCallerReturn.lean`, `CallWorld.lean`, `InstanceImplicit.lean`, `InstanceCallerControls.lean` | Existing-context caller worlds, cross-class restoration, all ordinary call sites, and independent annotation/body controls |
+| `Denote/Typed/InstanceResolvedRun.lean`, `InheritedCallControls.lean` | Receiver/lexical-owner-separated annotated calls, real inherited controls, and full-state hidden-override witness (§F39) |
 | `Denote/Typed/InstanceDispatchControls.lean`, `PointProgram.lean`, `PointProgramControls.lean` | Interception controls and the complete semantic 061 proof (not checker admission) |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
