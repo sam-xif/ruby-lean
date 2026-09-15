@@ -1,4 +1,5 @@
 import Denote.Sem.ClassDispatch
+import Denote.Sem.ClassRootNames
 
 /-! Builtin conformance across fresh class creation: payloads, primitive dispatch/errors,
 and core nominal names. No whole-object agreement is assumed for the constant owner. -/
@@ -91,6 +92,7 @@ theorem core (hc : CoreOk h) (hs : Proof.Saturated h)
   have hr := named_live hc.regexpNamed
   refine {
     classReady := hc.classReady.freshClass hs hch.boot.2.2.2.2 he
+    rootNames := rootNames hc.rootNames hc.classReady.constRefs ho hn
     basicSelf := ?_
     stringNamed := named hch.boot.2.2.2.2 hn hc.stringNamed
     stringSelf := ?_

@@ -68,12 +68,12 @@ def coreDataB (h : Heap) : Bool :=
     | some _ => false
     | none => true)
 
-def coreOkB (h : Heap) : Bool := classReadyB h && coreDataB h
+def coreOkB (h : Heap) : Bool := classReadyB h && rootNamesB h && coreDataB h
 
 theorem coreOkB_sound {h : Heap} (hb : coreOkB h = true) : CoreOk h := by
   simp only [coreOkB, coreDataB, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, and_assoc] at hb
-  rcases hb with ⟨hc, hb, sn, ss, sb, rn, rs, rb, pb, ab, hb', names⟩
-  refine ⟨classReadyB_sound hc, hb, sn, ss, sb, rn, rs, rb, pb, ab, hb', ?_⟩
+  rcases hb with ⟨hc, hr, hb, sn, ss, sb, rn, rs, rb, pb, ab, hb', names⟩
+  refine ⟨classReadyB_sound hc, rootNamesB_sound hr, hb, sn, ss, sb, rn, rs, rb, pb, ab, hb', ?_⟩
   intro n hn v hv
   have := names n hn
   rw [hv] at this

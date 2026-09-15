@@ -267,6 +267,12 @@ preallocation heap anchor and saved frames, deriving the result from initialized
 `point_constructor_run` covers arbitrary Integer arguments and first-order caller locals.
 Controls check the receiver rather than initialize's return value and a getter after local
 restoration. Class publication and body-certificate/class-rule admission remain gated.
+`CoreOk.rootNames` pins the nominal root tail and excludes unlisted aliases of root ids.
+`ClassRootNameControls` redirects Kernel while passing the full old boot check (§F38);
+fresh Point.is_a?(Kernel) then returns false. `ClassRootNames.named_chain` now proves both
+directions of fresh named ancestry; the entry control includes full StateOk. Publication
+must still distinguish a pending class header from a callable constructor: an empty own
+method table does not prove inherited initialize absent (the earlier declaration control).
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -330,6 +336,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/ClassShape.lean`, `Denote/Typed/ClassRootControls.lean` | Fresh ordinary-allocation prerequisites and the main-versus-Object chain countermodel |
 | `Denote/Typed/ConstructorEntry.lean`, `ConstructorState.lean`, `ConstructorControls.lean` | Actual allocation/initializer binding, full annotated fresh entry, and Point-body application |
 | `Denote/Typed/ConstructorReturn.lean`, `ConstructorRun.lean`, `ConstructorRunControls.lean` | Initialized result typing, restored caller conformance, and full new/initialize/return contract |
+| `Denote/Sem/RootNames.lean`, `ClassRootNames.lean`, `Denote/Typed/ClassRootNameControls.lean` | Canonical root bindings, complete fresh named ancestry, and redirected-Kernel countermodel |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |

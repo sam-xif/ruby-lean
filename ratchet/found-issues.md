@@ -2509,3 +2509,17 @@ producers. `ClassShape.ordinary` derives the fresh class's physical chain, roote
 module distinctions, and absence of core-payload allocation cases. The actual-entry control
 includes full StateOk. Ancestor-name correspondence, constructor publication, and annotated
 body admission remain distinct obligations.
+
+## F38 — primitive ancestor names do not determine the fresh root tail (2026-09-14)
+
+**Extension obstacle, not an accepted unsafe program.** Create a KernelProxy module, include
+it in each of the seven primitive bases, and rebind the global Kernel constant to it. The
+complete previous boot conjunction still passes, including Object's exact physical chain
+and all primitive named-ancestor rows. Actual fresh Point.new.is_a?(Kernel) returns false,
+contradicting the root tail that a proposed Point class declaration would advertise.
+
+`ClassRootNameControls` executes the witness and the unchanged-boot positive control.
+Clink 135 adds CoreOk.rootNames, checked by the existing boot gate and preserved by all
+current heap producers. It fixes the canonical root bindings and excludes unlisted aliases
+of those root ids (non-root aliases remain allowed). `ClassRootNames.named_chain` proves the
+fresh declared chain in both directions; publication and annotation-body rules remain gated.

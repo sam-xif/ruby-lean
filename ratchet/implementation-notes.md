@@ -9696,3 +9696,21 @@ both halves of what constrains them now have a name.
 - New proofs build below a second, standard axioms only. Full quiet ratchet GREEN:
   fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 135 (2026-09-14) — connect the physical root chain to its names
+
+- The full-old-boot countermodel (§F38) redirects Kernel to a new module included by each
+  primitive base. Existing named-ancestor rows remain correct, but a fresh Point does not
+  inherit that module. Object's physical chain and the global root bindings are separate facts.
+- Add `RootNames` to CoreOk, alongside its canonical String/Regexp facts. The finite boot
+  check pins the three root bindings and excludes unlisted global aliases of their ids;
+  non-root aliases remain allowed. Allocation, method writes, ivar writes, and fresh class
+  registration preserve it. Registration uses the actual missing-name premise, not arbitrary
+  constant replacement; ClassReady's lower-level generic allocator contract is unchanged.
+- `ClassRootNames.named_chain` composes those facts with fresh-name uniqueness and ordinary
+  allocation shape, proving both directions of named ancestry. The actual-entry control
+  carries full StateOk. No signature/body admission or constructor-readiness claim is added:
+  publishing an empty class record would still require the separate inherited-initializer fact.
+- New proofs build below a second, standard axioms only. Full quiet ratchet GREEN:
+  fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
+  252 agree / 0 disagree.

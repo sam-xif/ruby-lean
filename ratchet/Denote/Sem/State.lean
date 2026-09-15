@@ -5,6 +5,7 @@ import Denote.Sem.PrimHeap
 import Denote.Sem.Ready
 import Denote.Sem.ClassScope
 import Denote.Sem.ClassReady
+import Denote.Sem.RootNames
 import Denote.Sem.MethodCode
 import Denote.Sem.InstanceSite
 import Denote.Sem.MainSite
@@ -497,6 +498,7 @@ too, and each will want its own row here. Kept as a structure with named fields 
 a table so that a rung cites the clause it needs and an unused clause is visible. -/
 structure CoreOk (h : Heap) : Prop where
   classReady : ClassReady h
+  rootNames : RootNames h
   /-- `BasicObject` has no superclass and no mixins, so its ancestor list is just itself. -/
   basicSelf : ancestors h Boot.basicObjectId = [Boot.basicObjectId]
   /-- The name `String` resolves to the boot `String` class. -/
@@ -536,6 +538,7 @@ structure CoreOk (h : Heap) : Prop where
 theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m₂.heap = h')
     (he : Ext m m₂) (hc : CoreOk h) : CoreOk h' where
   classReady := by subst hm; subst hm₂; exact hc.classReady.ext he
+  rootNames := by subst hm; subst hm₂; exact hc.rootNames.ext he
   basicSelf := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.basicSelf
   stringNamed := by subst hm; subst hm₂; rw [he.classNamed?_eq]; exact hc.stringNamed
   stringSelf := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.stringSelf

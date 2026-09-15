@@ -129,6 +129,7 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
   · simpa only [HeapSaturated, Proof.Saturated, hw.size,
       Proof.modAncestors_go_congr hw.shape, Proof.ancestors_go_congr hw.shape] using h.sat
   · exact ⟨h.core.classReady.ivarOnly hw,
+      h.core.rootNames.ivarOnly hw,
       by simpa only [hw.ancestors_eq] using h.core.basicSelf,
       by simpa only [hn] using h.core.stringNamed,
       by simpa only [hw.ancestors_eq] using h.core.stringSelf,
