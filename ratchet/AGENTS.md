@@ -261,8 +261,12 @@ physical chain, BasicObject membership, non-module status, and absence of payloa
 requests complete empty fields only at that fresh entry. `constructor_body_entry` consumes
 an annotation-domain SemInitA proof. `ConstructorControls` applies the entire Point initializer
 for arbitrary Integers and executes definition/new/getter, bad arguments, and singleton-new
-override controls. The run theorem is body-local; constructor return, publication, and body
-certificate/class-rule admission remain gated.
+override controls. `ConstructorReturn` restores full main-caller conformance using the
+preallocation heap anchor and saved frames, deriving the result from initialized self fields.
+`ConstructorRun` composes the annotated body through actual frameK/newK, including escapes;
+`point_constructor_run` covers arbitrary Integer arguments and first-order caller locals.
+Controls check the receiver rather than initialize's return value and a getter after local
+restoration. Class publication and body-certificate/class-rule admission remain gated.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -325,6 +329,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/ConstLive.lean`, `ClassIdentity.lean`, `Denote/Typed/ClassAliasControls.lean` | Live global references, fresh-name uniqueness, and the dangling-alias countermodel |
 | `Denote/Sem/ClassShape.lean`, `Denote/Typed/ClassRootControls.lean` | Fresh ordinary-allocation prerequisites and the main-versus-Object chain countermodel |
 | `Denote/Typed/ConstructorEntry.lean`, `ConstructorState.lean`, `ConstructorControls.lean` | Actual allocation/initializer binding, full annotated fresh entry, and Point-body application |
+| `Denote/Typed/ConstructorReturn.lean`, `ConstructorRun.lean`, `ConstructorRunControls.lean` | Initialized result typing, restored caller conformance, and full new/initialize/return contract |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |

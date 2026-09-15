@@ -100,14 +100,14 @@ theorem method_pop_envOk {m n : Machine} {f : RubyCore.Frame} {Γ : Env}
     rw [hv]
     exact he.2 x hx
 
-theorem step_frameK_value (n : Machine) (fid : FrameId) (v : Value) :
-    Interp.stepFn (deliverA (.val v) n [.frameK fid]) =
-      .next (deliverA (.val v) (popMethodFrame n) []) := rfl
+theorem step_frameK_value (n : Machine) (fid : FrameId) (v : Value) {K : List Kont} :
+    Interp.stepFn (deliverA (.val v) n (.frameK fid :: K)) =
+      .next (deliverA (.val v) (popMethodFrame n) K) := rfl
 
-private theorem frameK_escape {origin n : Machine} {Γ : Env} {τ I : Ty} {κ : Ctx}
+theorem frameK_escape {origin n : Machine} {Γ : Env} {τ I : Ty} {κ : Ctx} {K : List Kont}
     (fid : FrameId) (j : Jump) (he : EscOk n j)
-    (hr : RunSpec origin (deliverA (.esc j) (popMethodFrame n) []) Γ τ κ I) :
-    RunSpec origin (deliverA (.esc j) n [.frameK fid]) Γ τ κ I := by
+    (hr : RunSpec origin (deliverA (.esc j) (popMethodFrame n) K) Γ τ κ I) :
+    RunSpec origin (deliverA (.esc j) n (.frameK fid :: K)) Γ τ κ I := by
   cases j with
   | retJ => cases he
   | throwJ => cases he

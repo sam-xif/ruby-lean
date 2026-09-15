@@ -109,6 +109,26 @@ theorem InitRunSpec.bindSpec {anchor : Heap} {m origin : Machine} {e : Ratchet.E
       rw [hs] at hr
       exact (hk a₁ n₁ (h.2 fuel a₁ n₁ r₁ hs)).2 r₁ a n rest hr
 
+/-- Exit initialization by composing its scoped result contract with an ordinary caller
+continuation. The continuation must publish the preallocation frame and typed result. -/
+theorem InitRunSpec.bindRunSpec {anchor : Heap} {m origin : Machine} {e : Ratchet.Expr}
+    {κ₁ κ₂ : Ctx} {Γ₁ Γ₂ : Env} {I₁ I₂ σ τ : Ty}
+    (h : InitRunSpec anchor m (evalFrom m e) Γ₁ σ κ₁ I₁)
+    {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
+    (hk : ∀ a n, InitResultOk anchor m Γ₁ σ a n κ₁ I₁ →
+      RunSpec origin (deliverA a n K) Γ₂ τ κ₂ I₂) :
+    RunSpec origin (pushK K (evalFrom m e)) Γ₂ τ κ₂ I₂ := by
+  constructor
+  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1)
+  · intro fuel a n rest hr
+    rw [runA_pushK _ hK] at hr
+    cases hs : runA fuel (evalFrom m e) with
+    | halt hh => rw [hs] at hr; cases hh <;> cases hr
+    | oof n' => rw [hs] at hr; cases hr
+    | ans a₁ n₁ r₁ =>
+      rw [hs] at hr
+      exact (hk a₁ n₁ (h.2 fuel a₁ n₁ r₁ hs)).2 r₁ a n rest hr
+
 theorem InitRunSpec.weaken {anchor : Heap} {origin start : Machine} {κ₁ κ₂ : Ctx}
     {Γ₁ Γ₂ : Env} {I₁ I₂ σ τ : Ty} (h : InitRunSpec anchor origin start Γ₁ σ κ₁ I₁)
     (hout : ∀ m v, InitState anchor κ₁ Γ₁ I₁ m → denM σ m v →
@@ -124,5 +144,6 @@ theorem InitRunSpec.weaken {anchor : Heap} {origin start : Machine} {κ₁ κ₂
   | esc j => exact ⟨hf, ha, fun _ hv => by cases hv⟩
 
 #print axioms InitRunSpec.bindSpec
+#print axioms InitRunSpec.bindRunSpec
 #print axioms InitRunSpec.weaken
 end Ratchet.Denote.Typed

@@ -9677,3 +9677,22 @@ both halves of what constrains them now have a name.
 - New proofs build in about a second, standard axioms only. Full quiet ratchet GREEN:
   fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 134 (2026-09-14) — return the initialized receiver to the typed caller
+
+- `ConstructorReturn` separates frame isolation (measured at initializer entry) from heap
+  preservation (anchored before allocation). It restores the actual caller frame/locals,
+  publishes Framed, and reuses full main-world restoration. The result type combines the
+  receiver's retained identity with its outgoing ivar spine, not initialize's return type.
+- `InitRunSpec.bindRunSpec` composes the scoped initializer contract into an ordinary
+  caller continuation. Method frame-return lemmas now accept a trailing continuation;
+  existing callers specialize it to nil. `ConstructorRun` handles both frameK and newK,
+  including escapes, and connects the result to actual new dispatch and annotated binding.
+- The Point run theorem covers all Integer arguments and first-order caller locals.
+  Controls distinguish new's receiver from initialize's Integer result, reject assigning
+  that receiver Integer type, and execute a getter alongside a restored String caller local.
+  No class/body certificate rule is admitted; positive class publication and annotation-body
+  families remain the checker frontier.
+- New proofs build below a second, standard axioms only. Full quiet ratchet GREEN:
+  fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
+  252 agree / 0 disagree.
