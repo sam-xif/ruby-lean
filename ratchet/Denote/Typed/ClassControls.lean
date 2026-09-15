@@ -19,6 +19,7 @@ import Denote.Typed.InstanceReturnControls
 import Denote.Typed.MainSiteControls
 import Denote.Typed.ClassReturnControls
 import Denote.Typed.ClassCtorControls
+import Denote.Typed.ClassAliasControls
 import Denote.Sanity
 
 /-! Fresh-class controls. They establish actual entry and heap facts, not acceptance of

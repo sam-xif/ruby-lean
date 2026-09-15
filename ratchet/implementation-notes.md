@@ -9626,3 +9626,19 @@ both halves of what constrains them now have a name.
 - New proofs build in about two seconds or less, standard axioms only. Full quiet ratchet
   GREEN: fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 131 (2026-09-14) — bound global references before publishing fresh identities
+
+- The full-old-boot countermodel (§F36) stores a dangling Future constant. Class allocation
+  turns it into an alias of Point; a real new/is_a? call returns true outside the proposed
+  ancestor-name list. Saturated ancestor walks and bounded dispatch edges do not bound data.
+- Add `ConstRefsLive` to ClassReady, not a source annotation or a new type. Its finite boot
+  check bounds only global constant references; ordinary aliases to live objects remain
+  allowed. Ext, method writes, and ivar writes preserve the table and grow its bound. Fresh
+  registration introduces one bounded reference and preserves the others, for any definee.
+- `ClassIdentity.named_fresh_only` proves that allocation cannot create an unadvertised
+  global class alias. The actual-entry control derives it alongside full StateOk; it is
+  not a constructor or complete ancestry proof. Those publications and body rules remain.
+- New proofs build below a second, standard axioms only. Full quiet ratchet GREEN:
+  fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
+  252 agree / 0 disagree.

@@ -2482,3 +2482,17 @@ from Object's class object in `MainSite`, guarded by the new-name exclusion, wit
 boot check. All existing transports preserve it. `ClassNewEntry` derives the fresh class's
 constructor dispatch, including native-shadow checks; initialization and class publication
 still need their own proofs. No class rule or new admission is claimed.
+
+## F36 — allocation activates dangling class aliases (2026-09-14)
+
+**Extension obstacle, not an accepted unsafe program.** Add Future = ref(heap.size) to
+Object's constants in the boot heap. Every previous boot check still passes; Future names
+no class yet. Actual `class Point; end; Point.new.is_a?(Future)` then returns true, although
+Future is absent from the declared Point/Object/Kernel/BasicObject chain.
+
+`ClassAliasControls` checks the full old conjunction and execution. Clink 131 adds
+`ClassReady.constRefs`: every global reference points to an allocated object. The boot Bool
+checks it; allocation, definitions, ivar writes, and class registration preserve it.
+`ClassIdentity.named_fresh_only` derives fresh-name uniqueness from this bound. Existing
+aliases to live objects are not prohibited by the new predicate. Root ancestry, constructor
+publication, and class/body admission remain separate obligations.

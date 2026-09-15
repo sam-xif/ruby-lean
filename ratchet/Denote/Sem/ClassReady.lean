@@ -1,4 +1,4 @@
-import Denote.Ext
+import Denote.Sem.ConstLive
 import Denote.Sem.BuiltinBases
 
 /-! Boot facts needed by fresh class creation. Bounded dispatch edges keep old walks
@@ -17,6 +17,7 @@ structure ClassReady (h : Heap) : Prop where
   /-- Object's eigenclass is not a builtin value base, even if its queries look compatible. -/
   eigenSeparate : ∀ e, (h.get Boot.objectId).eigen = some e →
     ∀ base ch, (base, ch) ∈ builtinBases → e ≠ base
+  constRefs : ConstRefsLive h
 
 def eigenSeparateB (h : Heap) : Bool :=
   match (h.get Boot.objectId).eigen with
@@ -34,26 +35,27 @@ def classReadyB (h : Heap) : Bool :=
     (match (h.get Boot.objectId).eigen with
      | some e => (ancestors h e).contains Boot.basicObjectId
      | none => false) &&
-    (ancestors h Boot.classId).contains Boot.basicObjectId && eigenSeparateB h
+    (ancestors h Boot.classId).contains Boot.basicObjectId && eigenSeparateB h && constRefsLiveB h
 
 theorem classReadyB_sound {h : Heap} (hb : classReadyB h = true) : ClassReady h := by
   simp only [classReadyB, Bool.and_eq_true] at hb
-  obtain ⟨⟨⟨hch, hei⟩, hclass⟩, hsep⟩ := hb
-  refine ⟨Proof.chainsInB_sound hch, ?_, hclass, fun _ he _ _ hbase => eigenSeparateB_sound hsep he hbase⟩
+  obtain ⟨⟨⟨⟨hch, hei⟩, hclass⟩, hsep⟩, href⟩ := hb
+  refine ⟨Proof.chainsInB_sound hch, ?_, hclass,
+    fun _ he _ _ hbase => eigenSeparateB_sound hsep he hbase, constRefsLiveB_sound href⟩
   cases he : (h.get Boot.objectId).eigen with
   | none => simp only [he] at hei; cases hei
   | some e => exact ⟨e, rfl, by simpa only [he] using hei⟩
 
 theorem ClassReady.ext {m n : Machine} (h : ClassReady m.heap) (he : Ext m n) :
     ClassReady n.heap := by
-  refine ⟨he.chains h.chains, ?_, ?_, ?_⟩
+  refine ⟨he.chains h.chains, ?_, ?_, ?_, h.constRefs.ext he⟩
   · simpa only [he.get Boot.objectId h.chains.boot.2.2.2.2, he.ancestors] using h.objectEigen
   · simpa only [he.ancestors] using h.classBasic
   · simpa only [he.get Boot.objectId h.chains.boot.2.2.2.2] using h.eigenSeparate
 
 theorem ClassReady.defineMethod {h : Heap} {k : ObjId} {name : String} {md : MethodDef}
     (hc : ClassReady h) : ClassReady (defineMethod h k name md) := by
-  refine ⟨Proof.chainsIn_defineMethod hc.chains, ?_, ?_, ?_⟩
+  refine ⟨Proof.chainsIn_defineMethod hc.chains, ?_, ?_, ?_, hc.constRefs.defineMethod⟩
   · simpa only [Proof.get_defineMethod_eigen, Proof.ancestors_defineMethod] using hc.objectEigen
   · simpa only [Proof.ancestors_defineMethod] using hc.classBasic
   · simpa only [Proof.get_defineMethod_eigen] using hc.eigenSeparate
@@ -63,7 +65,7 @@ theorem ClassReady.ivarOnly {h h' : Heap} (hc : ClassReady h) (hi : Proof.IvarOn
   ⟨Proof.chainsIn_ivarOnly hi hc.chains,
     by simpa only [hi.eigen, hi.ancestors_eq] using hc.objectEigen,
     by simpa only [hi.ancestors_eq] using hc.classBasic,
-    by simpa only [hi.eigen] using hc.eigenSeparate⟩
+    by simpa only [hi.eigen] using hc.eigenSeparate, hc.constRefs.ivarOnly hi⟩
 
 #print axioms classReadyB_sound
 end Ratchet.Denote

@@ -248,6 +248,10 @@ new-name exclusion and checked at boot. It is not global: Range/Struct have prel
 `ClassNewEntry` derives a fresh class's dispatch through the real eigenclass chain, with native
 shadow guards. A full-old-boot countermodel retags Class#new and observes Point.new return false
 (`ClassCtorControls`, §F35). Positive class/constructor publication and body rules remain gated.
+`ClassReady.constRefs` bounds references in global constants; its boot check and transports
+prevent allocation from activating dangling aliases. `ClassIdentity` proves a fresh class's
+global name is unique at entry. `ClassAliasControls` retains the full-old-boot countermodel
+and actual is_a? result (§F36). This is an identity prerequisite, not complete ancestry publication.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -307,6 +311,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/MainSite*.lean`, `Denote/Typed/MainReturn.lean`, `InstanceCall.lean`, `MainSiteControls.lean` | Retained top-level world, full caller restoration and instance-call composition, with absence controls |
 | `Denote/Typed/ClassReturnState.lean`, `ClassRun.lean`, `ClassReturnControls.lean` | Fresh-class body execution and full exit conformance, retaining outgoing tables while restoring caller scope |
 | `Denote/Sem/ClassNew.lean`, `ClassNewEntry.lean`, `Denote/Typed/ClassCtorControls.lean` | Boot-checked root constructor dispatch, fresh inheritance, and wrong-builtin/prelude controls |
+| `Denote/Sem/ConstLive.lean`, `ClassIdentity.lean`, `Denote/Typed/ClassAliasControls.lean` | Live global references, fresh-name uniqueness, and the dangling-alias countermodel |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |
