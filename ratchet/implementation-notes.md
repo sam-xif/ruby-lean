@@ -9799,3 +9799,31 @@ both halves of what constrains them now have a name.
   proofs do not add a DJudge rule or raise checker reach. Targeted builds are axiom-clean.
 - Full quiet ratchet GREEN: fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt,
   46 worked theorems, 252 agree / 0 disagree. New constructor controls build below a second.
+
+## Clink 140 (2026-09-14) — class-parameterized constructor expressions
+
+- Generalize argument evaluation to the actual send site and a Framed-preserved predicate.
+  The existing implicit-call API is its True specialization; bounded recursive calls keep
+  their existing proof. `sendVia` preserves a first-order receiver through every argument,
+  retains earlier argument types, and consumes final-context dispatch at the evaluated values.
+  It grants no method signature or dispatch permission by itself.
+- `constClass` obtains the published identity from ClassesOk and uses ConstScopeOk to prove
+  the actual lexical read. `declared_constructor_run` derives allocation and code for arbitrary
+  published classes; `construct` composes arbitrary receiver/argument expressions with it.
+  Class, initializer, arity, parameter/return annotations, and output fields are parameters;
+  no Point module is imported by these production lemmas. Point's wrappers only instantiate
+  them. This route still requires plain allocation, required positional parameters, an
+  annotation-domain SemInitA body, and the existing caller/scope guards.
+- `RunSpec.thenSeq` shares real sequence-frame composition with the existing sequence rule.
+  `class_new_run` proves the complete class statement followed by new, with initialized Point
+  result and full caller conformance. Controls cover `new(a = 3, a)`, retained caller `a`, both
+  initialized fields, and allocation in an argument while retaining the receiver's identity.
+- Independent FlagBox control: full class/new proof with one Boolean parameter, a Boolean
+  initializer return, and no fields, using the same production API. Its body is proved for
+  every context, not the concrete call value; new still returns the instance. Production
+  lemmas must stay parameterized, with concrete classes confined to worked instantiations.
+- Getter dispatch/composition and initializer-body certificates remain. No class/constructor
+  DJudge rule or new validator acceptance is inferred from these semantic proofs.
+- New proofs are axiom-clean and build below a second. Full quiet ratchet GREEN:
+  fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
+  252 agree / 0 disagree.

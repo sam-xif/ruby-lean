@@ -77,6 +77,23 @@ theorem SemSeqCtxA.runSpec {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty} {es : List 
         .next (pushK [.seqK (toRubyList (e' :: es))] (evalFrom m e)) from rfl)
     exact seq_bind he hm (fun n v hn _ => ih n hn v)
 
+/-- Continue a state-specific first run with a context-indexed sequence tail. -/
+theorem RunSpec.thenSeq {κ₁ κ₂ : Ctx} {Γ₁ Γ₂ : Env} {I₁ I₂ σ τ : Ty}
+    {m : Machine} {e e' : Ratchet.Expr} {es : List Ratchet.Expr}
+    (h : RunSpec m (evalFrom m e) Γ₁ σ κ₁ I₁)
+    (ht : SemSeqCtxA κ₁ Γ₁ I₁ (e' :: es) τ κ₂ Γ₂ I₂) :
+    RunSpec m (evalFrom m (.seq (e :: e' :: es))) Γ₂ τ κ₂ I₂ := by
+  apply RunSpec.step (by rfl)
+    (show Interp.stepFn _ =
+      .next (pushK [.seqK (toRubyList (e' :: es))] (evalFrom m e)) from rfl)
+  apply h.bindSpec (seq_catchFree _)
+  intro a n hr
+  cases a with
+  | val v => exact (ht.runSpec n (hr.2.2 v rfl) v).rebase hr.1
+  | esc j =>
+    apply RunSpec.step (by rfl) (seq_escape _ n j)
+    exact RunSpec.answer ⟨hr.1, hr.2.1, fun _ hv => by cases hv⟩
+
 theorem SemSafeCtxA.sequence {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty}
     {es : List Ratchet.Expr} {τ : Ty} (h : SemSeqCtxA κ Γ I es τ κ' Γ' I') :
     SemSafeCtxA κ Γ I (.seq es) τ κ' Γ' I' := by
@@ -86,10 +103,7 @@ theorem SemSafeCtxA.sequence {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty}
     exact RunSpec.step (by rfl) (show Interp.stepFn _ = .next (evalFrom m e) from rfl)
       (he m hm)
   | @cons _ _ _ _ Γ₁ _ _ _ _ σ _ e e' es he ht =>
-    apply RunSpec.step (by rfl)
-      (show Interp.stepFn _ =
-        .next (pushK [.seqK (toRubyList (e' :: es))] (evalFrom m e)) from rfl)
-    exact seq_bind he hm (fun n v hn _ => ht.runSpec n hn v)
+    exact (he m hm).thenSeq ht
 
 /-- Two-expression convenience form; the list theorem owns the composition proof. -/
 theorem SemSafeCtxA.seq {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ σ τ : Ty}

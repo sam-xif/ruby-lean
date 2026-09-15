@@ -300,12 +300,23 @@ rows; StateOk interprets them and every heap/frame transport preserves them. Fre
 publication establishes the capability. `ConstructorRun` uses this weaker contract rather
 than an exact fresh-class ancestry list. `PointConstructor` derives constructor execution
 from published conformance and the initializer's annotation-domain proof; controls compose
-it after the actual class run, with no external allocator/code premise. Constructor/getter
-expression composition and body-certificate admission remain; no new checker acceptance.
+it after the actual class run, with no external allocator/code premise. `Send.sendVia` now
+composes receiver evaluation and arbitrary argument lists, preserving the receiver type and
+dispatching in the final context. `ClassConstant` reads declared class identity through the
+actual lexical resolver. `ConstructorResolve.declared_constructor_run` and
+`ConstructorExpr.construct` are parameterized by the class, initializer, parameter/return
+annotations, and resulting field shape. They derive code/allocation from conformance and
+require the full annotation-domain body proof. Point is a worked instance; the independent
+FlagBox control uses one Boolean parameter, a Boolean return, and no fields. Full class/new
+controls cover argument assignments, allocations, initialized fields, and retained caller
+locals. Getter dispatch/composition and body-certificate admission remain; no new acceptance.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
 Proofs use no `sorry`, `native_decide`, or new axioms.
+
+Keep production lemmas class-, body-, and annotation-parameterized. Point and other concrete
+programs are worked instantiations and regression controls, not the production interface.
 
 Before authoring a rule, find its state-transport lemma. **That lemma determines the
 premises and outgoing environment** (`Check.lean`, “Authoring a rule”). The composite
@@ -370,6 +381,8 @@ String membership needs a payload invariant. See
 | `Ratchet/DeclLookupFrame.lean`, `MemberFrame.lean`, `Denote/Sem/Member*.lean`, `Denote/Typed/Member*.lean` | Alias-aware definition guards, full installation conformance, and annotation-domain member/initializer definitions |
 | `Denote/Typed/ClassHeaderRun.lean`, `PointClass.lean`, `ConstructorLookup.lean`, `PointClassControls.lean` | Full annotated Point class execution, restored caller state, final-context body proofs, and conformance-derived constructor code |
 | `Denote/Sem/Allocator.lean`, `ClassAllocators.lean`, `Denote/Typed/PointConstructor.lean`, `PointConstructorControls.lean` | Persistent plain-allocation capabilities and annotation-checked construction from the published class state |
+| `Denote/Typed/Send.lean`, `ClassConstant.lean`, `PointConstructorExpr.lean`, `PointConstructorExprControls.lean` | Receiver/argument composition, declared class reads, and full class/new runs with argument effects |
+| `Denote/Typed/ConstructorResolve.lean`, `ConstructorExpr.lean`, `ConstructorGeneralControls.lean` | Class-parameterized annotation-checked constructor runs/expressions, independently exercised by FlagBox |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
 | `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |
