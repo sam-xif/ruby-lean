@@ -5,6 +5,7 @@ import Denote.Sem.SubclassMethods
 import Denote.Sem.SubclassBases
 import Denote.Sem.SubclassDeclared
 import Denote.Sem.SubclassNameEntry
+import Denote.Sem.SubclassSites
 import Denote.Sem.ClassNative
 import Denote.Typed.ClassEntry
 
@@ -259,6 +260,40 @@ theorem enter_declared_frame {κ : Ratchet.Ctx} {Γ : Ratchet.Env} {I : Ratchet.
     (by simpa only [howner] using hf) (by simpa only [howner] using hch.boot.2.2.2.2) site.live he
     (by simp only [howner, beq_self_eq_true, ite_true]) hn
 
+/-- Retained parent constants, hooks and dispatch facts establish the new lexical scope
+and class site; registration also preserves every previously declared site. -/
+theorem enter_declared_sites {κ : Ratchet.Ctx} {Γ : Ratchet.Env} {I : Ratchet.Ty}
+    {m : Machine} {c : Ratchet.Cls} {parent : ObjId} {name : String} {body : RubyCore.Expr}
+    (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
+    (hc : c ∈ κ.classes) (hp : classNamed? m.heap c.name = some parent)
+    (hf : constOwn m.heap Boot.objectId name = none) (hn : name.isEmpty = false) :
+    ∃ n, enterClassBody m name false (some parent) body = .next n ∧ ConstScopeOk n ∧
+      ClassScopeReady name n ∧ ClassSitesOk (Ratchet.classBodyCtx κ name) n.heap := by
+  have site := hm.classSites.at_class hc hp
+  obtain ⟨ep, he, hb, _⟩ := site.metaclass
+  have hch := hm.core.classReady.chains
+  have ready := hm.runtime hr
+  have hconst := fallback_of_instance site.constants
+  have hnames : NamesAt (Ratchet.nameFreeN κ) m.heap ep := by
+    simpa only [classOf, he] using site.classNames
+  refine ⟨machine m Boot.objectId m.currentFrame.cref name name parent ep body, ?_,
+    const_scope hch hm.sat ready.classLive site.live ready.cref hconst,
+    scope_ready hch hm.sat ready.classLive site.live he site.hook ready.cref ready.phase, ?_⟩
+  · simpa only [ready.owner] using enter_fresh (m := m) (q := name) (body := body)
+      (by simpa only [ready.owner] using hf)
+      (by simpa only [ready.owner] using hch.boot.2.2.2.2) site.live he
+      (by simp only [ready.owner, beq_self_eq_true, ite_true]) hn
+  · intro cn hcn
+    change cn ∈ κ.classes.map (·.name) ++ [name] at hcn
+    rcases List.mem_append.mp hcn with hcn | hcn
+    · obtain ⟨k, old⟩ := hm.classSites cn (List.mem_append_left _ hcn)
+      exact ⟨k, instanceSite_old old hch hm.sat ready.classLive hf⟩
+    · have heq := List.mem_singleton.mp hcn
+      subst cn
+      exact ⟨m.heap.objs.size, instanceSite hch hm.sat ready.classLive site.live he hb site.hook
+        hconst site.names hnames⟩
+
+#print axioms enter_declared_sites
 #print axioms enter_declared_frame
 #print axioms enter_declared_tables
 #print axioms enter_declared_core

@@ -430,6 +430,14 @@ the generic body frame and NameFreeOk at actual entry; default-superclass proofs
 An injected prelude-marked lambda preserves the old selected site/top-level facts but breaks
 the inherited body call; full conformance now excludes it (§F42). Constants, full sites and
 allocator/publication transport still precede inherited body/cache integration.
+`SubclassConstants`/`SubclassSites` now preserve inherited/lexical constant resolution,
+old class sites, and the fresh site's names, hook and metaclass readiness. Existing parent
+scope agreement supplies the missing-global fallback fact; no new invariant is needed.
+Default-superclass constant/site/scope proofs reuse them. `enter_declared_sites` composes
+actual entry with ConstScopeOk, ClassScopeReady and retained/new class sites. Controls read
+global constants through inherited methods and exclude nonglobal parent constants using
+existing conformance. Remaining entry assembly: main-site, constant-table and allocator
+transports; then new-header publication and inherited initializer/body-cache integration.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -521,6 +529,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/SubclassNames.lean`, `SubclassCore.lean`, `SubclassMethods.lean`, `Denote/Typed/SubclassCoreControls.lean` | Generic registration identity, core/payload and installed-code preservation; actual-entry, alias and inherited-initializer controls |
 | `Ratchet/SubclassGuards.lean`, `Denote/Sem/SubclassBases.lean`, `SubclassDeclared.lean`, `Denote/Typed/SubclassTableControls.lean` | Guarded builtin ancestry, old declaration/ordered-chain/own-selector transport, actual entry and multi-level inherited controls |
 | `Denote/Sem/SubclassFrame.lean`, `SubclassNameEntry.lean`, `Denote/Typed/SubclassNameControls.lean` | Generic body-frame/name transport, retained class-object dispatch exclusions and inherited-call countermodel (§F42) |
+| `Denote/Sem/SubclassConstants.lean`, `SubclassSites.lean`, `Denote/Typed/SubclassScopeControls.lean` | Generic constant/scope and old/new site preservation, actual entry, inherited reads and nonglobal-parent exclusion |
 | `Denote/Typed/InstanceDispatchControls.lean`, `PointProgram.lean`, `PointProgramControls.lean` | Interception controls and the complete semantic 061 proof (not checker admission) |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

@@ -10306,3 +10306,28 @@ both halves of what constrains them now have a name.
 - New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
   fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 161 (2026-09-15) — generic constant scope and class-site publication at entry
+
+- SubclassConstants preserves old constant reads away from the registered key and maps
+  the fresh class's inherited lookup to its actual parent. Parent instance/global scope
+  agreement implies that inherited fallback cannot reveal a globally absent constant.
+  Fresh lexical resolution checks Object before that fallback. This consumes existing
+  site facts, not a new invariant or a claim that superclass tables are empty.
+- SubclassSites preserves every old site, including both instance/class name exclusions,
+  and publishes the fresh site's empty front, names, constants, hook and MetaReady. Its
+  parent capabilities do not require an ordinary-parent front or a declared Object row,
+  so default-superclass creation uses the same proofs. ClassScopeReady is generic too.
+- `enter_declared_sites` derives parent capabilities from StateOk and composes actual
+  entry with ConstScopeOk, ClassScopeReady and ClassSitesOk at the new class-body context.
+  Existing default-superclass constant/site/scope lemmas now delegate to these transports.
+- Controls retain old sites, expose the executed new binding consistently, and return a
+  global Integer through both the class body and an inherited method. A parent-only SECRET
+  is inherited operationally but contradicts the existing site scope; a generic theorem
+  excludes that shape from StateOk. These model inputs do not admit casgn or certify bodies.
+- Main-site/constant-table/allocator transport remains before full entry assembly, then
+  new-header publication and inherited initializer/body-cache integration for 065. No rule,
+  acceptance, floor or full annotation-domain body requirement changes.
+- New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
+  fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
+  252 agree / 0 disagree.
