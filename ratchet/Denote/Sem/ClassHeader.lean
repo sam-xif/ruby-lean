@@ -1,3 +1,4 @@
+import Denote.Sem.ClassPublish
 import Ratchet.ClassHeader
 import Denote.Sem.ClassDeclared
 import Denote.Sem.ClassNewEntry
@@ -50,36 +51,7 @@ theorem StateOk_publish_header {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {nam
     (hown : ClassOwnNames (classHeader name :: κ.classes) m.heap)
     (hchain : ClassChains (classHeader name :: κ.classes) m.heap) :
     StateOk (classHeaderCtx κ name) Γ I m := by
-  obtain ⟨k, site⟩ := hm.classSites.of_scope hs
-  refine { hm with
-    classes := ?_
-    ownNames := hown
-    classChains := hchain
-    classSites := ?_
-    allocators := ?_
-    nested := ?_
-    declCls := hd }
-  · apply hm.classSites.recontext (κ' := classHeaderCtx κ name) _ (fun _ h => h)
-    intro cn hcn
-    change cn ∈ name :: (κ.classes.map (·.name) ++ κ.scope.runtimeClass.toList) at hcn
-    rcases List.mem_cons.mp hcn with rfl | hcn
-    · simp [classSiteNames, hs]
-    · exact hcn
-  · intro cn hcn
-    change cn ∈ name :: κ.pos.plainAlloc at hcn
-    rcases List.mem_cons.mp hcn with rfl | hcn
-    · exact ha
-    · exact hm.allocators cn hcn
-  · intro c hc
-    change c ∈ classHeader name :: κ.classes at hc
-    rcases List.mem_cons.mp hc with rfl | hc
-    · exact ⟨k, site.named, by simp [classHeader]⟩
-    · exact hm.classes c hc
-  · intro owner leaf c hc
-    have hne := unqualifiedClassB_ne_path hn owner leaf
-    change clsGet? (classHeader name :: κ.classes) (owner ++ "::" ++ leaf) = some c at hc
-    simp only [clsGet?, List.find?_cons, classHeader, beq_eq_false_iff_ne.mpr hne] at hc
-    exact hm.nested owner leaf c hc
+  exact StateOk_publish_empty_class (c := classHeader name) hm hs rfl rfl hn hd ha hown hchain
 
 #print axioms FreshClass.declared_header
 #print axioms StateOk_publish_header

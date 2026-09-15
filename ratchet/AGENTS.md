@@ -442,8 +442,14 @@ packages existing input facts from either main/Object or a declared parent; it a
 invariant. Default-superclass StateOk now delegates to this proof. `SubclassStateEntry`
 connects it to actual entry and the resolved-superclass continuation, including the
 non-module check. A checked, real-boot Carrier class run supplies full input state for Relay
-controls. New subclass-header publication and inherited initializer/body-cache integration
-remain before 065; entry alone neither certifies a body nor grants a callable signature.
+controls. `SubclassHeader` now publishes full conformance for the executed subclass header:
+plain allocation from the actual parent, constructor dispatch through its metaclass, and
+complete ordered/bidirectional ancestry. The static header guard frames old claims and
+checks the new chain against the known parent chain. Default classes reuse `ClassPublish`
+and the generic constructor-dispatch proof. `SubclassHeaderEntry` connects publication to
+actual entry; controls include checked-parent initialization, inherited arity and multi-level
+lookup. Full subclass-run composition and receiver-aware inherited initializer/body-cache
+integration remain before 065; header publication does not certify or cache a method body.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -537,6 +543,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/SubclassFrame.lean`, `SubclassNameEntry.lean`, `Denote/Typed/SubclassNameControls.lean` | Generic body-frame/name transport, retained class-object dispatch exclusions and inherited-call countermodel (§F42) |
 | `Denote/Sem/SubclassConstants.lean`, `SubclassSites.lean`, `Denote/Typed/SubclassScopeControls.lean` | Generic constant/scope and old/new site preservation, actual entry, inherited reads and nonglobal-parent exclusion |
 | `Denote/Sem/SubclassState.lean`, `SubclassMain.lean`, `SubclassTables.lean`, `SubclassGlobals.lean`, `Denote/Typed/SubclassStateEntry.lean`, `SubclassStateControls.lean` | Full generic entry conformance from existing parent capabilities; actual superclass step and boot-grounded parent/child controls |
+| `Ratchet/SubclassHeader.lean`, `Denote/Sem/SubclassHeader.lean`, `ClassPublish.lean`, `SubclassAllocator.lean`, `SubclassNewEntry.lean`, `SubclassNamedChain.lean`, `Denote/Typed/SubclassHeaderEntry.lean`, `SubclassHeaderControls.lean` | Executed subclass-header publication from actual parent capabilities, framed static chains, checked-parent controls and inherited constructor calls |
 | `Denote/Typed/InstanceDispatchControls.lean`, `PointProgram.lean`, `PointProgramControls.lean` | Interception controls and the complete semantic 061 proof (not checker admission) |
 | `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
 | `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |

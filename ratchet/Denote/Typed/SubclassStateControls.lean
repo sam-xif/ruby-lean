@@ -1,4 +1,5 @@
 import Denote.Typed.SubclassStateEntry
+import Denote.Typed.SubclassHeaderEntry
 import Denote.Typed.ClassHeaderRun
 import Denote.Typed.Bridge
 import Denote.Sanity
@@ -82,6 +83,23 @@ theorem boot_parent_child_step (hb : bootOkB = true) (body : RubyCore.Expr) :
       (stateOk_boot hb).core.classReady.chains.boot.2.2.2.2)
     (by decide) (by decide) (by decide)
 
+theorem boot_parent_child_header (hb : bootOkB = true) (body : RubyCore.Expr) :
+    ∃ n, Interp.enterClassBody parentMachine "Relay" false
+        (some bootMachine.heap.objs.size) body = .next n ∧
+      StateOk (subclassHeaderCtx (classBodyCtx parentCtx "Relay") "Relay" "Carrier") [] .ivar0 n := by
+  exact Subclass.enter_declared_header (c := classHeader "Carrier") (parent_state hb)
+    rfl rfl rfl tables (by decide) (by simp [parentCtx, parentBodyCtx, returnScopeCtx,
+      classHeaderCtx, classBodyCtx, ctx0, Ctx.classes])
+    (classNamed_freshClass ((stateOk_boot hb).runtime rfl).classLive
+      (stateOk_boot hb).core.classReady.chains.boot.2.2.2.2)
+    (by decide) (by decide) (by decide) (by decide) (by constructor <;> decide)
+    (by decide) (by decide) (by decide)
+
+-- Header publication grants ancestry and a plain allocator, not an initializer row.
+#guard (ctorGet? (subclassHeaderCtx parentCtx "Relay" "Carrier").classes "Relay").isNone
+#guard ancestors? (subclassHeaderCtx parentCtx "Relay" "Carrier").classes "Relay" ==
+  some ["Relay", "Carrier"]
+
 #guard subclassBaseFrameB parentCtx "Carrier"
 #guard freshClassNameB parentCtx "Relay"
 #guard !freshClassNameB parentCtx "Carrier"
@@ -91,4 +109,5 @@ theorem boot_parent_child_step (hb : bootOkB = true) (body : RubyCore.Expr) :
 #print axioms parent_state
 #print axioms boot_parent_child_state
 #print axioms boot_parent_child_step
+#print axioms boot_parent_child_header
 end Ratchet.Denote.Typed.SubclassStateControls

@@ -10354,3 +10354,32 @@ both halves of what constrains them now have a name.
 - New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
   fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
   252 agree / 0 disagree.
+
+## Clink 163 (2026-09-15) — publish an executed subclass header from its actual parent
+
+- SubclassAllocator derives plain allocation from the parent's capability; it does not
+  reuse Object's exact root chain. SubclassNewEntry follows the parent's metaclass for
+  Class#new dispatch, retaining native-shadow checks. SubclassNamedChain prepends the fresh
+  class to the parent's complete ordered and bidirectional name/id ancestry, including the
+  reverse-name obligations that rule out aliases omitted by a declaration.
+- SubclassHeaderFrame checks the known parent/new child chains and frames old table claims
+  using finite comparisons. Unknown parents, self-cycles and newly activated old chains
+  decline; no assumption about fuel-insensitive static walks is needed. The guard mentions
+  neither heap ids nor semantic judgments and introduces no body-acceptance route.
+- SubclassHeader publishes every StateOk field at the existing fresh lexical site, deriving
+  declared ancestry, empty own-name bounds and plain allocation. ClassPublish factors the
+  common empty-record publication, requiring both instance and singleton declaration lists
+  empty; default headers and constructor dispatch reuse it and the generic parent proof.
+  SubclassHeaderEntry composes actual entry with full publication.
+- Real-boot Carrier→Relay header control consumes the proved parent run. A second control
+  consumes FlagBox's checked Boolean initializer/class-run proof, then publishes FlagChild
+  from any resulting full state. Executable controls check inherited one-argument arity,
+  zero-argument ArgumentError, the instance result despite a Boolean initializer result,
+  and exact chains/own-name bounds through FlagLeaf. These calls are model probes, not a
+  claim that the checker now admits subclass bodies.
+- No rule/acceptance/floor changes. Full subclass-run composition and receiver-aware
+  inherited initializer/body-cache checking still precede 065. All method bodies remain
+  checked across their entire annotation domains, including uncalled methods.
+- New proofs and controls build in seconds, standard axioms only. Full quiet ratchet GREEN:
+  fragment 62, checker reach 64, 45 proved rules, 0 owed/exempt, 48 worked theorems,
+  252 agree / 0 disagree.
