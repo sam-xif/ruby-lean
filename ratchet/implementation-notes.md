@@ -9828,6 +9828,32 @@ both halves of what constrains them now have a name.
   fragment 55, checker reach 60, 31 proved rules, 0 owed/exempt, 46 worked theorems,
   252 agree / 0 disagree.
 
+## Clink 143 (2026-09-14) — annotation-checked initializer data certificates
+
+- Ordinary CheckedBody requires an unchanged field shape; it cannot certify initialization.
+  `InitJudge`/`InitJudgeSeq` instead mirror SemInitA's anchored contract: local reads, guarded
+  field writes, complete sequences, and result erasure for void/untyped annotations. The
+  first-order parameter/return and output-field requirements remain explicit. No class,
+  parameter count/type, field name, or body is fixed in the production relation or proof.
+- `checkInitializerBody` checks the full source body in the parameter annotation environment,
+  checks formal names/order and return compatibility, and computes the output fields. It has
+  no caller locals or values as inputs. `.any` erases only a successfully checked result;
+  an unsupported/bad suffix still rejects. Source/hint disagreement and exhaustion decline.
+- Refresh reconstructs annotations from the earlier checked artifact and rechecks in the
+  new context; it cannot cast a stale proof or accept new annotations from a replay hint.
+  Controls cover nullable-domain/wrong-return failures, alias-sensitive writes, renamed
+  classes, repeated field writes, missing locals/suffixes, and tampered hints.
+- Point's actual definition and complete class/new/getX proofs now use checked initializer
+  data at definition and after getter installation. FlagBox independently uses the same
+  checker and refresh with one Boolean parameter/return and no fields. The actual emitted
+  061 initializer was decoded from its rung JSON and checked, inferring both Integer fields.
+- This is a body-certificate prerequisite, not whole-program admission. Neither new family
+  is a DJudge premise yet; both must enter DFam/the registry before class rules consume them.
+  Getter/body-cache and class/constructor certificate integration remain next.
+- Generic soundness builds in 0.5s; concrete certificate/composition proofs in 1.4s or less,
+  standard axioms only. Full quiet ratchet GREEN: fragment 55, checker reach 60,
+  31 proved rules, 0 owed/exempt, 46 worked theorems, 252 agree / 0 disagree.
+
 ## Clink 141 (2026-09-14) — generic instance calls and the complete 061 semantic proof
 
 - Do not infer empty payload from `.inst`: the retained Proc#call countermodel disproves it.

@@ -3,6 +3,7 @@ import Denote.Typed.MemberDefine
 import Denote.Typed.InitBodyControls
 import Denote.Typed.Sequence
 import Denote.Typed.ConstructorLookup
+import Denote.Typed.InitChecked
 
 /-! The entire 061 class statement, with both method bodies proved from annotations.
 Its caller receives installed code and full state, not a constructor-call admission. -/
@@ -22,6 +23,16 @@ def body : Ratchet.Expr := .seq [.def' initDecl.name initDecl.params initDecl.bo
   .def' getter.name getter.params getter.body]
 def program : Ratchet.Expr := .class' "Point" none body
 
+def initBodyHint : Deriv := .seq [
+  .ivarAsgn "@x" (.var .lvar "x"), .ivarAsgn "@y" (.var .lvar "y")]
+def initHint : Deriv := .defDecl "initialize" pointInitParams .any initBodyHint
+
+def definitionInit : CheckedInitializer (initializerBodyCtx afterInit "Point") initDecl :=
+  (checkInitializerBody 80 (initializerBodyCtx afterInit "Point") initDecl initHint).get (by rfl)
+
+def finalInit : CheckedInitializer (initializerBodyCtx callerCtx "Point") initDecl :=
+  (refreshInitializerBody 80 (initializerBodyCtx callerCtx "Point") definitionInit initBodyHint).get (by rfl)
+
 private theorem scope_types {κ : Ctx} (hs : κ.selfTy = some (.clsOf "Point"))
     (hb : κ.blockTy = none) (hc : κ.consts = []) : ReframeFO κ .ivar0 := by
   refine ⟨rfl, ?_, ?_, ?_, ?_⟩
@@ -35,7 +46,7 @@ theorem body_sem : SemSafeCtxA entryCtx [] .ivar0 body .sym bodyCtx [] .ivar0 :=
       .sym afterInit [] .ivar0 :=
     SemSafeCtxA.initializerDecl (ps := pointInitParams) (Ib := pointInitSpine) (τ := .any)
       rfl rfl (by simp [pointInitParams, FirstOrder, isAliasTy]) rfl (by decide)
-      (point_initializer_sem rfl rfl rfl) rfl (by change header ∈ [header]; simp)
+      definitionInit.sem rfl (by change header ∈ [header]; simp)
       (scope_types rfl rfl rfl) (by simp) rfl (by decide) (by decide) (by decide) (by decide)
   have hg : SemSafeCtxA afterInit [] .ivar0 (.def' getter.name getter.params getter.body)
       .sym bodyCtx [] .ivar0 :=
@@ -59,7 +70,7 @@ This is an annotation-domain proof, not a cast of the earlier definition's conte
 theorem initializer_body :
     SemInitA (initializerBodyCtx callerCtx "Point") pointInitParams .ivar0 pointInitBody .any
       (initializerBodyCtx callerCtx "Point") pointInitParams pointInitSpine :=
-  point_initializer_sem rfl rfl rfl
+  finalInit.sem
 
 theorem getter_body :
     SemSafeCtxA (instanceBodyCtx callerCtx ⟨"Point", "Point", "getX"⟩ pointInitSpine)

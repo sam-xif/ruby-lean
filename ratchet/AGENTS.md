@@ -323,8 +323,13 @@ from the static name guard, for arbitrary contexts/classes. Fresh entry adds its
 name, and all heap/frame transports retain the bound. `ClassHeaderRun` consumes this guard;
 the complete Point and FlagBox proofs no longer assume physical freshness separately.
 `ClassFreshnessControls` retains a heap passing every previous boot check where an extra
-Integer constant makes class entry raise TypeError. Class/initializer certificate admission
-remains; no new checker acceptance is claimed.
+Integer constant makes class entry raise TypeError. `InitJudge`/`InitJudgeSeq` now express
+scoped field-changing body derivations, and `CheckInit` returns annotation-checked initializer
+artifacts with inferred output fields. `InitChecked` proves their anchored semantic contract
+for arbitrary classes/annotations. Point and FlagBox consume these data certificates at
+definition and call; refresh rechecks in the final context without replacing annotations.
+The actual emitted 061 initializer also checks. These two families are not yet DJudge
+premises: registry and class/cache integration remain; no new whole-program acceptance is claimed.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -364,6 +369,7 @@ String membership needs a payload invariant. See
 | `Denote/Typed/InstanceRead.lean`, `InstanceControls.lean`, `Denote/Sem/IvarMutation.lean` | Instance-read prerequisites, precise write facts, and the constructor framing counterexample (§F33) |
 | `Denote/Sem/InitGrow.lean`, `Denote/Typed/InitReturn.lean`, `InitControls.lean` | Preallocation-anchored preservation, caller-frame publication, and fresh two-field controls |
 | `Denote/Sem/WriteState.lean`, `Denote/Typed/InstanceWrite.lean`, `InitRun.lean`, `InitExpr.lean`, `InitBodyControls.lean` | Scoped initializer semantics, explicit typed write preservation, and the annotation-domain 061 body proof |
+| `Ratchet/InitJudge.lean`, `CheckInit.lean`, `InitCheckControls.lean`, `Denote/Typed/InitChecked.lean` | Scoped body derivations, annotation/data checking and refresh, rejection controls, and the generic anchored semantic proof |
 | `Ratchet/WriteTypes.lean`, `WriteControls.lean`, `Denote/Sem/WriteStable.lean`, `Denote/Typed/InitWrite.lean` | Executable write-preservation guards, their semantic proof, and alias/context controls |
 | `Denote/Sem/ClassReady.lean`, `Denote/Typed/ClassEntry.lean`, `ClassControls.lean` | Boot-checked class readiness, its preservation, and actual fresh-class entry/registration |
 | `Denote/Sem/ClassHeap.lean`, `DataPres.lean` | Old-data preservation and full caller framing across fresh class creation; shared first-order transport |

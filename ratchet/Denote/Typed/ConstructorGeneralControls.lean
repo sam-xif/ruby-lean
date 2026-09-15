@@ -4,6 +4,7 @@ import Denote.Typed.ClassHeaderRun
 import Denote.Typed.MemberDefine
 import Denote.Typed.InitExpr
 import Denote.Typed.Sequence
+import Denote.Typed.InitChecked
 import Denote.Sanity
 
 /-! A second class, independent of Point: one Boolean parameter, Boolean initializer
@@ -21,6 +22,13 @@ def callerCtx : Ctx := returnScopeCtx ctx0 bodyCtx
 def body : Ratchet.Expr := .def' init.name init.params init.body
 def program : Ratchet.Expr := .class' "FlagBox" none body
 
+private def hint : Deriv := .defDecl "initialize" params .bool (.var .lvar "flag")
+def definitionInit : CheckedInitializer (initializerBodyCtx bodyCtx "FlagBox") init :=
+  (checkInitializerBody 40 (initializerBodyCtx bodyCtx "FlagBox") init hint).get (by rfl)
+def finalInit : CheckedInitializer (initializerBodyCtx callerCtx "FlagBox") init :=
+  (refreshInitializerBody 40 (initializerBodyCtx callerCtx "FlagBox") definitionInit
+    (.var .lvar "flag")).get (by rfl)
+
 -- The body proof is generic in its whole context; no call value appears in it.
 theorem initializer_body {κ : Ctx} : SemInitA κ params .ivar0 init.body .bool κ params .ivar0 :=
   SemInitA.var rfl rfl
@@ -33,7 +41,7 @@ theorem body_sem : SemSafeCtxA entryCtx [] .ivar0 body .sym bodyCtx [] .ivar0 :=
     · intro x τ h; rw [constGet?_empty (κ := entryCtx) rfl x] at h; cases h
     · intro x τ h; cases h
   exact SemSafeCtxA.initializerDecl (ps := params) (Ib := .ivar0) (τ := .bool)
-    rfl rfl (by simp [params, FirstOrder, isAliasTy]) rfl rfl initializer_body rfl
+    rfl rfl (by simp [params, FirstOrder, isAliasTy]) rfl rfl definitionInit.sem rfl
     (by change header ∈ [header]; simp) ht (by simp) rfl
     (by decide) (by decide) (by decide) (by decide)
 
@@ -53,7 +61,7 @@ theorem new_sem : SemSafeCtxA callerCtx [] .ivar0 newExpr
   exact hr.construct (d := init) (ps := params) (.cons .truLit .nil rfl) rfl hc
     (by change init ∈ [init]; simp) rfl (by decide)
     (by change "FlagBox" ∈ ["FlagBox"]; simp) rfl
-    (by simp [params, FirstOrder, isAliasTy]) initializer_body
+    (by simp [params, FirstOrder, isAliasTy]) finalInit.sem
     (ReframeFO.empty rfl rfl rfl rfl) rfl rfl rfl rfl
     (fun x => (constGet?_empty (κ := initializerBodyCtx callerCtx "FlagBox") rfl x).trans
       (constGet?_empty rfl x).symm) (by simp) rfl
