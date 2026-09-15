@@ -155,7 +155,7 @@ class LeanSUT:
     ):
         root = Path(__file__).resolve().parents[2]
         self.harness_lib = Path(harness_lib) if harness_lib else root / "harness" / "desugar-dt" / "lib"
-        self.lean_bin = Path(lean_bin) if lean_bin else root / "lean" / ".lake" / "build" / "bin" / "rubycore"
+        self.lean_bin = Path(lean_bin) if lean_bin else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
         self.runner = runner or CRubyRunner()
 
     def run(self, source: str) -> Observation | Unsupported:

@@ -5,7 +5,7 @@
 > survey how **type preservation / soundness** is proved in the literature, so a
 > Ruby+Sorbet preservation theorem over our small-step semantics can borrow the right
 > machinery. §C connects both to the existing `Step` relation and metatheory PoC
-> (`../../lean/RubyCore/Proof/`).
+> (`../../ruby-lean/RubyCore/Proof/`).
 >
 > Evidence tags follow the house convention (`README.md`): **[V]** verified against CRuby,
 > **[D]** from documentation / the literature (Sorbet docs or a cited paper), **[?]** open
@@ -406,12 +406,12 @@ both the fully-static and fully-dynamic languages (Thms 1–2) [D: dagstuhl].
   casts §B.2; Typed Racket proof-theoretic rules §B.4) — expect to need these.
 - **Nominal representation of binders** (Isabelle nominal package, §B.4) — Lean 4 analogue:
   either de Bruijn or a locally-nameless encoding; our current model sidesteps this by
-  using string-keyed frames (`../../lean/RubyCore/`), which is fine for an executable
+  using string-keyed frames (`../../ruby-lean/RubyCore/`), which is fine for an executable
   interpreter but will need care in the relation.
 - **Executable model beside the proof** (PLT Redex + Isabelle §B.4; and Safe TS's
   simulation §B.3) — *this is precisely our architecture already*: the fuel interpreter and
   difftest SUT are the "Redex" half, the `inductive Step` + adequacy is the "Isabelle" half
-  (`../../lean/RubyCore/Proof/`). We are unusually well-positioned to run this workflow.
+  (`../../ruby-lean/RubyCore/Proof/`). We are unusually well-positioned to run this workflow.
 - **Semantic soundness / logical relations** (`Γ ⊨ e : τ`, §B.1) — the heavier hammer that
   can reason about encapsulated unsafe code; the right long-term tool for Ruby's reflective
   features, but not the place to start.
@@ -422,7 +422,7 @@ both the fully-static and fully-dynamic languages (Thms 1–2) [D: dagstuhl].
 
 ### C.1 What "preservation" even means here — pick the runtime statement
 
-The current metatheory PoC (`../../lean/RubyCore/Proof/`) has an `inductive Step` over an
+The current metatheory PoC (`../../ruby-lean/RubyCore/Proof/`) has an `inductive Step` over an
 untyped control-core fragment, and its only "preservation" so far is **heap monotonicity**
 (`Step.heap_monotone` — the heap only grows; ObjIds never reused). **There is no typing
 judgment yet.** Adding one is the whole task. The literature says the target should *not* be
@@ -483,7 +483,7 @@ Our central bet reshapes the proof:
 3. **`Σ`-typing + static preservation on L0** (§C.1 option 1) — add `Ty`, `TyEnv`,
    `StoreTy`, a `HasType` relation, and `⊢ m : τ` over the *current* control-core fragment,
    proving `Step` preserves it up to subtyping. Reuse `Step.heap_monotone` as the `Σ ⊆ Σ'`
-   lemma. This is the first real theorem and slots directly into `../../lean/RubyCore/Proof/`.
+   lemma. This is the first real theorem and slots directly into `../../ruby-lean/RubyCore/Proof/`.
 4. **Introduce `send` typing + method-table well-formedness**, then extend to `T.untyped`
    and the runtime-sig cast (§C.1 option 2), stealing FJ's stupid-cast / Typed-Racket
    proof-theoretic-rule trick (§B.2, §B.4) for intermediate typeability.

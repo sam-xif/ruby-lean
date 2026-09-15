@@ -685,7 +685,7 @@ differ on. Guarded by `tests/test_observation.py`.
 
 ## N-checker — the `check` vs. `srb` relation (`checker_relation.py`)
 
-Design notes for the checker difftest; the Lean-side notes are `../lean/implementation-notes.md`
+Design notes for the checker difftest; the Lean-side notes are `../ruby-ruby-lean/notes/model/implementation-notes.md`
 L87. Spec: `../docs/semantics/static-soundness-poc.md` §7.
 
 - **Unclassified srb codes default to *type-relevant*, and that is the whole safety property
@@ -1027,7 +1027,7 @@ records the evaluation order through Comparable's dispatch.
 
 The heads paid for themselves on the first run. **Every one was a wrong answer** — the class
 the ratchet cannot catch, in code that had been green for weeks. The fixes and their probe
-evidence are `lean/implementation-notes.md` **L120**; in brief:
+evidence are `ruby-lean/notes/model/implementation-notes.md` **L120**; in brief:
 
 1. `split` pushed `nil` for an unmatched capture group (`["", "1", "2", nil]` for
    `["", "1", "2"]`);

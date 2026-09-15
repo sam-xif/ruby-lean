@@ -31,7 +31,7 @@ from .checker_relation import CHECK_CELLS, PINNED_ZERO_CELLS, excluded, relate, 
 from .sorbet import FragmentChecker, SorbetStatic, StaticChecker, is_sorbet_runtime_error
 from .testcase import TestCase
 
-# Mirrors `typeErrorFamily` in lean/RubyCore/Proof/TypeSafety.lean. The Lean
+# Mirrors `typeErrorFamily` in ruby-lean/RubyCore/Proof/TypeSafety.lean. The Lean
 # version tests membership with `isA`, so it is closed under subclassing; here
 # the check is by class name, which agrees with it for the builtin classes the
 # corpus raises. Note NoMethodError < NameError but a *bare* NameError is
@@ -265,7 +265,7 @@ def render_markdown(results: list[CheckResult]) -> str:
         "## Theorem scope — what a soundness proof could be about",
         "",
         f"**{len(in_frag)}/{len(results)} in the Sorbet fragment** "
-        f"(`lean/RubyCore/Types/Fragment.lean`); intersected with what `srb` accepts, "
+        f"(`ruby-lean/RubyCore/Types/Fragment.lean`); intersected with what `srb` accepts, "
         f"**{len(scope)} are in scope** for a soundness claim.",
         "",
         "In scope: " + (", ".join(f"`{r.case.id}`" for r in scope) or "_none_"),

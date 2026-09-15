@@ -11,7 +11,7 @@
 > investigation, recorded so it is not reintroduced.
 >
 > **Reshaping order:** [`answer-typed-schema.md`](answer-typed-schema.md) is the work order
-> that turns §6/§10 into the shape `ratchet/` should have — seven layers, a delete list, a
+> that turns §6/§10 into the shape `ruby-lean/` should have — seven layers, a delete list, a
 > migration in commit-sized steps, and the two norms it adds (state the general theorem;
 > delete dead code). Point an agent at *that*, not at this file.
 >
@@ -30,7 +30,7 @@ looked unrelated. They are one fact:
 > **The semantic judgment reads only the `.value` arm of `RunResult`.**
 
 ```lean
--- ratchet/Denote/Sem/State.lean
+-- ruby-lean/Denote/Sem/State.lean
 def Evals (m : Machine) (e : Expr) (v : Value) (m') : Prop :=
   ∃ fuel, Interp.run fuel (evalFrom m e) = .value v m'
 ```
@@ -53,7 +53,7 @@ Five measurements, in the order they were taken. Each is an artifact in the tree
 
 ### 2.1 Stuck-freedom does not follow from the value axis **[M]**
 
-`SemJudge` (`ratchet/Denote/Sem/Judge.lean:171`) concludes about `v` and `m'` *given*
+`SemJudge` (`ruby-lean/Denote/Sem/Judge.lean:171`) concludes about `v` and `m'` *given*
 `Evals m e v m'`. Three of the 48 discharged rungs are discharged **because the run does
 not produce a value**: `regexpLit`'s `.unsupported` arm ("the obligation's hypothesis is
 unsatisfiable and the case costs nothing"), and `callNever`/`primNever`, "discharged by
@@ -71,7 +71,7 @@ Structurally: `SemJudge` has real *preservation* content (its conclusion re-esta
 
 ### 2.2 One rung of the second axis is cheap — `Judge.vasgn` **[M]**
 
-`ratchet/Denote/Rules/VasgnStuck.lean`, axiom-clean. Cost:
+`ruby-lean/Denote/Rules/VasgnStuck.lean`, axiom-clean. Cost:
 
 | component | code lines | scope |
 |---|---|---|
@@ -88,7 +88,7 @@ delivers** and therefore says nothing about the runs this axis is about.
 
 ### 2.3 At a back edge the two axes couple, and a side condition turns out false **[M]**
 
-`ratchet/Denote/Rules/WhileStuck2.lean` proves `Judge.while'` on the stuck axis **modulo
+`ruby-lean/Denote/Rules/WhileStuck2.lean` proves `Judge.while'` on the stuck axis **modulo
 two jump hypotheses**, by induction on *fuel*. Three results:
 
 - **The axes are coupled here.** Re-entering the loop needs the next iteration to start
@@ -107,7 +107,7 @@ two jump hypotheses**, by induction on *fuel*. Three results:
 
 ### 2.4 Iris's bind rule is unavailable, and it is provably unavailable **[M]**
 
-`lean/RubyCore/HCtx/Bind.lean` (own lib, off the default target). Four results:
+`ruby-lean/RubyCore/HCtx/Bind.lean` (own lib, off the default target). Four results:
 
 - **J36's `Language` instance cannot bind at all**: its `Val` is `ROutcome`, a
   *whole-program* answer carrying `(value, heap)`, and `wp_bind` needs `K (ofVal v)` to be
@@ -308,8 +308,8 @@ a context-carrying `SafeKont` anyway (§2.3 says the naive version is false).
 - **[?]** How much of the 48 survives mechanically? The obligations are *derived* from
   `Judge`'s constructors (`Denote/Sem/Obligations.lean`), so the restatement is one edit to
   the derivation — but the proofs are not derived, and that is where the cost is.
-- **[?]** Does the same restatement fix `lean/`'s `KontOk` cost, or is it orthogonal?
-  `lean/` types the continuation syntactically, one constructor per frame; an answer-typed
+- **[?]** Does the same restatement fix `ruby-lean/`'s `KontOk` cost, or is it orthogonal?
+  `ruby-lean/` types the continuation syntactically, one constructor per frame; an answer-typed
   `SafeKont` would need none.
 
 ---
@@ -327,9 +327,9 @@ Moggi, *Notions of Computation and Monads*; Plotkin & Pretnar, algebraic effects
 Thielecke, double-barrelled CPS; de Vilhena & Pottier, *A Separation Logic for Effect
 Handlers*, POPL 2021.
 
-Mechanised here **[M]**: `ratchet/Denote/Rules/VasgnStuck.lean`,
-`ratchet/Denote/Rules/WhileStuck.lean`, `ratchet/Denote/Rules/WhileStuck2.lean`,
-`lean/RubyCore/HCtx/Bind.lean`. All axiom-clean
+Mechanised here **[M]**: `ruby-lean/Denote/Rules/VasgnStuck.lean`,
+`ruby-lean/Denote/Rules/WhileStuck.lean`, `ruby-lean/Denote/Rules/WhileStuck2.lean`,
+`ruby-lean/RubyCore/HCtx/Bind.lean`. All axiom-clean
 (`propext`, `Classical.choice`, `Quot.sound`).
 
 ---
@@ -345,11 +345,11 @@ still consumed by the 48.
 
 | file | what it is |
 |---|---|
-| `ratchet/Denote/Sem/Answer.lean` | `Answer`, `answerPoint`, `runA`, `ARes.out`, and **`run_pushK`** |
-| `ratchet/Denote/Sem/SafeKont.lean` | `SafeKont`/`Delivers`/`HaltBlind`, `safe_pushK{,_le}`, the fuel arithmetic, `delivers_safeA` |
-| `ratchet/Denote/Sem/AnswerValue.lean` | `run_split_A` — `run_split` re-derived, to show the value axis survives |
-| `ratchet/Denote/Rules/VasgnAnswer.lean` | `SemStuckA.Judge.vasgn` — the control, same `Prop` as the old rung |
-| `ratchet/Denote/Rules/WhileAnswer.lean` | **`SemStuckA.Judge.while'`** — §2.3's wall, gone |
+| `ruby-lean/Denote/Sem/Answer.lean` | `Answer`, `answerPoint`, `runA`, `ARes.out`, and **`run_pushK`** |
+| `ruby-lean/Denote/Sem/SafeKont.lean` | `SafeKont`/`Delivers`/`HaltBlind`, `safe_pushK{,_le}`, the fuel arithmetic, `delivers_safeA` |
+| `ruby-lean/Denote/Sem/AnswerValue.lean` | `run_split_A` — `run_split` re-derived, to show the value axis survives |
+| `ruby-lean/Denote/Rules/VasgnAnswer.lean` | `SemStuckA.Judge.vasgn` — the control, same `Prop` as the old rung |
+| `ruby-lean/Denote/Rules/WhileAnswer.lean` | **`SemStuckA.Judge.while'`** — §2.3's wall, gone |
 
 ### 10.1 The master equation **[M]**
 

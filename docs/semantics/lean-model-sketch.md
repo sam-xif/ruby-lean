@@ -8,7 +8,7 @@
 > whose claims this file operationalizes).
 >
 > **Execution started (2026-07-07, same day):** the L0 slice of §3–§4 is implemented in
-> [`../../lean/`](../../lean/README.md) — `Machine`/`stepFn`/`run` + SUT executable,
+> [`../../ruby-lean/`](../../ruby-lean/README.md) — `Machine`/`stepFn`/`run` + SUT executable,
 > wired into the difftest engine (`--sut lean`). Deviations from this sketch so far:
 > the fuel interpreter landed *before* `inductive Step` (to meet the engine on day
 > one, §4's own argument); the heap uses a dense `Array Object` rather than AssocList;

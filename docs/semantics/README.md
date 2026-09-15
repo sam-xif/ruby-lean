@@ -24,7 +24,7 @@ module boundary) and from RIL (pipeline split, eval-order obligations as step-re
 seeds), what we reject (big-step, meta-level exceptions, maximal linearization), the
 `Config`/`Step`/fuel-interpreter skeleton, and the L0–L3 fragment ladder that plugs into
 the difftest engine as a SUT from day one. **Implementation begun:** the machine, fuel
-interpreter, and SUT executable live in [`../../lean/`](../../lean/README.md) (L0
+interpreter, and SUT executable live in [`../../ruby-lean/`](../../ruby-lean/README.md) (L0
 fragment, running as `--sut lean` in the difftest engine); the `inductive Step` relation
 is still to be authored against it.
 
@@ -64,7 +64,7 @@ names the **declaration table** (so §3's anticipated bridging lemma is unnecess
 `infer` rather than created, and the two rungs the measurements put **before C5** are R2
 (name-global `declaresName`) and an `Assn` atom for a **constant**. The work is governed
 by the `homebrew/PLAN.md` §4 norms (restated in §7) and **isolated in its own
-directories** (`lean/RubyCore/Cert/` + `Proof/Cert/` trusted with V-numbers, top-level
+directories** (`ruby-lean/RubyCore/Cert/` + `Proof/Cert/` trusted with V-numbers, top-level
 `certify/` untrusted with E-numbers; import-only dependence on the existing trees).
 
 **Design + BUILT through SF-T4 (extends the above):** [The slot frame](slot-frame.md) — local heap
@@ -155,10 +155,10 @@ both **stand** — the answer type is orthogonal to both. §6 prices the proposa
 it is a re-statement of the judgment layer, not a patch.
 
 **Control (work order, 2026-09-11):** [The answer-typed schema](answer-typed-schema.md) — the
-target shape for `ratchet/` and how to move it there, written to be handed to an agent. Seven
+target shape for `ruby-lean/` and how to move it there, written to be handed to an agent. Seven
 layers (certificate language → checker → `check_sound` → the answer-typed `SemJudgeA` →
 adequacy → `CtlOk`/`KontOk`/`Inv` → safety), each with a working four-rule prototype to read
-first (`ratchet/Denote/Proto/`, proved end to end). Carries an explicit **delete list** and a
+first (`ruby-lean/Denote/Proto/`, proved end to end). Carries an explicit **delete list** and a
 migration in commit-sized steps, including the one step where the semantic ladder is
 *restated* rather than climbed and how to report that honestly. Adds two norms to the standing
 set: **state the general version of every theorem** unless a named requirement prevents it (the

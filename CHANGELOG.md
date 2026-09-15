@@ -4,6 +4,32 @@ All notable changes to this project are documented here. Versions follow a
 simple "how finished is it" scale rather than semver: this is a research
 artifact, and `0.01` is the first cut of it that a stranger can build.
 
+## Unreleased
+
+**One Lean project.** `lean/` (the model, package `rubycore`) and `ratchet/` (the
+checker, package `ratchet`, which required the first by path) are now a single
+Lake package, `ruby-lean/`:
+
+* `ruby-lean/RubyCore/` (+ `prelude/`, `Main.lean`, `ConcolicMain.lean`) — the model;
+  `ruby-lean/Ratchet/`, `Semantics/`, `Denote/` (+ `corpus/`, the exe roots) — the checker.
+* One `lakefile.toml`, one `lean-toolchain`, one `lake-manifest.json`, one `lake build`.
+  The libraries and executable names are unchanged (`RubyCore`, `Ratchet`, `Semantics`,
+  `Denote`, `Metatheory`, `Judgment`, `HJudge`, `HCtx`; `rubycore`, `ratchetd`,
+  `semladder`, `denotereport`, `validate-one`, `rubycore-concolic`), and so are all
+  module names — no `import` in the project changed.
+* Working notes moved to `ruby-lean/notes/model/` and `ruby-lean/notes/ratchet/`
+  (see `ruby-lean/notes/README.md`); the model's probes moved to
+  `ruby-lean/scripts/probes/`; the two `scripts/` directories merged.
+* **`Ratchet/` still imports nothing from `RubyCore/`.** That was a package boundary
+  and is now `ruby-lean/scripts/check-isolation.sh`, run as stage 0a of
+  `run_typed_ratchet.sh`.
+* Consumers updated: `scripts/reproduce.sh`, `scripts/check-prereqs.sh`, `difftest`'s
+  `rubycore` path, `playground/server.py`.
+
+The gate is GREEN on the merged tree and `validateD_safe_boot` is unchanged and
+axiom-clean (`propext`, `Classical.choice`, `Quot.sound`). Paths in the 0.01 entry
+below are the ones that existed at 0.01.
+
 ## 0.01 — 2026-09-15
 
 First self-contained release. Extracted from the "Semantics Done Quick"

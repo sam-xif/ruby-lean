@@ -36,8 +36,8 @@ Two load-bearing ideas a new agent must internalize before touching anything:
 >   remaining 72 are the unsupportable/deferred set.
 > - **Lean model: 940/1304** tier-0 agree, **0 disagree** (`--sut lean` GREEN; was
 >   722 before the 2026-08-03 batch). Tier-1 (n=400, seed 7) 371 agree / 0 disagree;
->   tier-3 + regression replays clean. **`lean/README.md` §Fragment is the
->   authoritative list**; `lean/implementation-notes.md` L62–L73 is the build record.
+>   tier-3 + regression replays clean. **`ruby-lean/README.md` §Fragment is the
+>   authoritative list**; `ruby-lean/notes/model/implementation-notes.md` L62–L73 is the build record.
 > - **What the model now covers** beyond the L0–L2 core: a **prelude** (Ruby's core
 >   library written *in RubyCore* — Enumerable/Comparable/`Range#each`/Hash overrides
 >   — so a missing builtin costs a few lines of Ruby, not a new Lean rule); the
@@ -62,9 +62,9 @@ Two load-bearing ideas a new agent must internalize before touching anything:
 >   cases plus every user class with a custom `to_s`.
 > - **Metatheory: type safety as reachability, proved** — `invariant_sound` over the
 >   full `stepFn`, and T5 `class_hierarchy` proved type-safe **Direction B,
->   axiom-clean** (`lean/RubyCore/Proof/`, impl-notes L51–L57); re-verified against
+>   axiom-clean** (`ruby-lean/RubyCore/Proof/`, impl-notes L51–L57); re-verified against
 >   the new machine (L73), still axiom-clean.
-> - **Checkers built:** Phase-1 random witness search (`lean/RubyCore/Search/`, L58)
+> - **Checkers built:** Phase-1 random witness search (`ruby-lean/RubyCore/Search/`, L58)
 >   and a **concolic engine** (`concolic/`, 28 tests) that solves for witnesses random
 >   search cannot reach — with **the Lean model as its executor**.
 > - **Two traps before touching `stepFn`** (L73): a `partial def` or a
@@ -117,14 +117,14 @@ Two load-bearing ideas a new agent must internalize before touching anything:
   top-level `return` that bypasses the observation wrapper (6), un-parseable (5), plus
   documented gates (`__LINE__`/`__FILE__` reflection, backtick x-strings, flip-flop) and
   deferred `case/in` pattern matching + dynamic alias/undef names.
-- **Lean model: L0 + L1 + L2 (object model) implemented and difftesting** ([`lean/`](lean/README.md), per the
+- **Lean model: L0 + L1 + L2 (object model) implemented and difftesting** ([`ruby-lean/`](ruby-lean/README.md), per the
   sketch [`docs/semantics/lean-model-sketch.md`](docs/semantics/lean-model-sketch.md)):
   small-step machine (kont stack + frame store), fuel interpreter, Ruby-faithful
   repr/error-message layer, oracle-generated CRuby name tables for dispatch fidelity
   (unmodeled builtins gate as `Unsupported` instead of mis-dispatching), and the SUT
   executable wired into the difftest engine as `--sut lean` (source → desugar →
   RubyCore JSON → Lean → Observation). **L1 blocks/procs/lambdas now in the executable
-  stepper** (export v3; `lean/implementation-notes.md` L16): Proc as a heap object,
+  stepper** (export v3; `ruby-lean/notes/model/implementation-notes.md` L16): Proc as a heap object,
   frame-identity generative jump targets (`captured`/`home`/targeted `retJ`), `yield`/
   `block_given?`/`&blk`/block-pass/`&:sym`/`proc`/`lambda`/`->`/`Proc.new`/`Proc#call`,
   and proc-vs-lambda `next`/`break`/`return` with shared-scope locals. **Baseline: full
@@ -170,8 +170,8 @@ Start at [`docs/semantics/README.md`](docs/semantics/README.md) (reading order +
 | `linearization.md` | worked example of nontrivial desugaring: hoisting control-flow jumps out of operand position (`"#{next}"`) |
 | `co-semantics.md` | **framing (early draft, to grow):** Ruby + Rails as a *pair* of semantics at two altitudes joined by a refinement/bisimulation correspondence — structural `α` where macros define methods, observational `α` where `method_missing` does not; correspondences testable via `obs⁺` before the Lean model exists. §5: proof-goal shape (coupling invariant `Inv`, stuttering forward simulation — same machinery as `relating-language-and-substrate.md` — `escape` event for invariant-breaking programs, miniRails not real Rails in the proof). §6: everything hinges on `Inv` — clause taxonomy + validate it as an executable heap predicate against CRuby first |
 | `types-and-preservation.md` | **research artifact (to grow):** (A) formalization-oriented deep dive on **Sorbet** (type grammar, flow-sensitive narrowing, unsound-by-design stance + escape hatches, `# typed:` strictness levels, runtime `sig` enforcement as the gradual boundary via `T.untyped`); (B) broad survey of how **type preservation/soundness** is proved (Wright–Felleisen, Featherweight Java + "stupid casts", TypeScript/Safe-TypeScript + store typing `Σ`, DRuby/PRuby, Typed Racket occurrence typing, gradual-typing safety + blame theorem + gradual guarantee, Lean/Coq/Isabelle mechanization); (C) maps onto our `Step` — recommends a *runtime* three-outcome safety statement, reuses `Step.heap_monotone` as store typing, treats a sig-violating heap mutation as a type `escape` (cf. `co-semantics.md` §5.3); two cheapest steps (`obs⁺` gradual-guarantee probe, `srb`/`T.reveal_type` typing oracle) need no Lean. Verified via adversarial research pass; two refuted claims recorded as corrections (`T.cast` *is* runtime-checked; `T.let` isn't the only dual-checked assertion). §C.5: the discipline decision (extrinsic typing + store typing `Σ` over the machine) + Lean shape |
-| `certificate-language.md` | **design + §9 as built (C0–C4 done, 2026-08-25):** type-checking as **certificate replay** — the untrusted-emitter/trusted-validator pivot (back to `../type-safety-by-reachability.md` §4/§6). The `Cert` grammar (`theta`/`deltaRows`+provenance/`bodies`/`ledger`/`assumes`) reusing `Assn`/`Row`/`ASig` as the vocabulary; `validate` search-free; **`validate_sound` proved** as the composed program-level theorem through `invariant_sound`; design dimensions D1–D6; milestones **C0–C9** with gates, measured against the slice census + the **fourth ratchet** (bodies certified-by-replayed-certificate, now **11**). §9 records the corrections the build forced: what a certificate *is* is the **declaration table** (so §3's bridging lemma is unnecessary — `nominalOk` *is* `CtlOk`'s clause); `.fromDef` is unsound at `Machine.init p` and belongs to C9's heap phases; the kernel-replay cost is inherited from `infer`'s WF recursion, not created; and the two rungs the measurements name as **coming before C5** — R2 (name-global `declaresName`, now blocking three separate things) and an `Assn` atom for a **constant** (61% of the 85-`needed` census is class-object receivers, i.e. constant reads). Implementation: `lean/RubyCore/Cert/` + `Proof/Cert/` (trusted, **V1–V8**), `certify/` (untrusted, **E1–E16**) |
-| `judgment-layer.md` | **design + built through J35 (2026-08-27): the re-scoping of C-1** — state the invariant over an **inductive judgment** (`Judge`/`KJudge`/`MachineTyped`, transcribing `type-judgments.md` §6–§8 into Lean as the definition of record) instead of over `chk`. **Built:** machine typing + preservation over `Judge` (J20–J27), the derivation-certificate pipeline (J2/J28), and the **semantic judgment** `SemJudge` (J29/J30, `Proof/Judgment/Sem.lean`) — reachability-defined, `Judge`-free, with `judge_semJudge` as the fundamental lemma (adequacy of the syntactic system), `semJudge_sound` (type safety from a `SemJudge` however obtained — the extension point for out-of-fragment/Rails constructs), and `judge_result_vty` (terminating values inhabit the judged type, via the J29 answer-typed invariant); plus **semantic axioms (J31)**: user-specified semantic judgments as `Judge` leaves invoked from the `Deriv` certificate language (`Judge.semantic`/`Deriv.semantic`/`JCert.semAssumes`, `validateJ_certifies` conditional on one `EvalOkAt` obligation per claim), pilot end to end — `lambda { 1 }`, out of the syntactic fragment, obligation discharged by executing the semantics, certified from a data certificate (`Proof/Judgment/SemAxiom.lean`); and the **Rails pilot (J32–J35)**: claim *records* (claimed type + claimed **rows** + class-body gate), `define_method` made typing-visible (capture erasure for closed bodies + one-step composition, ratchet-verified), the invariant taught what a class body is (`inClassBody`, `self` = the definee; `NoHook` over `define_method`), and the goal program `class String; define_method(:shout) { 1 }; end; "a".shout` **type-checked at `.int`** — the obligation `semAxiomsOk_dm` discharged by executing the semantics, composed through both the hand derivation and a data certificate (`Proof/Judgment/Rails.lean`). Diagnosis: metatheory stated over a *function* is re-incurred at every checker rewrite (`infer.induct` → `chk.induct` → …); the relation is the churn-stable layer. Settles the **semantic type notion**: recursive knots tied by names into a table `D` (anonymous structural recursion is coinductive — refused); slots as heap-conformance invariants; responds-to sets indexed by boot phase; **unions + nil + narrowing** as the load-bearing grammar. Certificates become **derivations-as-data** checked by a constructor-mirroring local checker (`Deriv.check → Judge` is one easy induction); `chk` demoted to the coverage tier, `chk_table_ret` deliberately abandoned. Milestones **J0–J4** (`lean/RubyCore/Judgment/` + `Proof/Judgment/`, **J-numbers**); honest cost: preservation's content is unchanged, only its marginal cost structure improves. **The H-layer (J36, 2026-08-27, `lean/RubyCore/HJudge/`, `lake build HJudge`)**: iris-lean in the dependency graph (toolchain 4.32.2; sibling `mdd/ruby-sorbet`'s seat ported in-tree — `Language` instance over `stepFn`, `ownP` `stateIs`, WP walk tactics, `run_adequate_of_wp`), the semantic denotation `HTy` (the sibling's `STy` + `union` + the higher-order `sem` door; `HSub` = denotation inclusion; heap-generic intro lemmas via `self_mem_ancestors`), and **`HJudge` proved soundly type-safe on the SemJudge formula**: `HSemJudge` (= `SemJudge` with `VTy` → `τh.den`), the `vty_hden` bridge, four admission routes (`ofJudge`/`sem`/`wp`/`sub`), fundamental lemma `hJudge_semJudge`, `hJudge_sound`/`hJudge_result_den`, `run_lift_of_reaches` re-landing WP adequacy on `ReachableResult` — axiom-clean; worked ends past `Ty`'s reach (`true : TrueClass` in every environment; `(1).zero? : FalseClass` by concrete `rb_walk`; J35's `define_method` result as `is_a?` at the mutated final heap; `HTy.duck` decided at boot) |
+| `certificate-language.md` | **design + §9 as built (C0–C4 done, 2026-08-25):** type-checking as **certificate replay** — the untrusted-emitter/trusted-validator pivot (back to `../type-safety-by-reachability.md` §4/§6). The `Cert` grammar (`theta`/`deltaRows`+provenance/`bodies`/`ledger`/`assumes`) reusing `Assn`/`Row`/`ASig` as the vocabulary; `validate` search-free; **`validate_sound` proved** as the composed program-level theorem through `invariant_sound`; design dimensions D1–D6; milestones **C0–C9** with gates, measured against the slice census + the **fourth ratchet** (bodies certified-by-replayed-certificate, now **11**). §9 records the corrections the build forced: what a certificate *is* is the **declaration table** (so §3's bridging lemma is unnecessary — `nominalOk` *is* `CtlOk`'s clause); `.fromDef` is unsound at `Machine.init p` and belongs to C9's heap phases; the kernel-replay cost is inherited from `infer`'s WF recursion, not created; and the two rungs the measurements name as **coming before C5** — R2 (name-global `declaresName`, now blocking three separate things) and an `Assn` atom for a **constant** (61% of the 85-`needed` census is class-object receivers, i.e. constant reads). Implementation: `ruby-lean/RubyCore/Cert/` + `Proof/Cert/` (trusted, **V1–V8**), `certify/` (untrusted, **E1–E16**) |
+| `judgment-layer.md` | **design + built through J35 (2026-08-27): the re-scoping of C-1** — state the invariant over an **inductive judgment** (`Judge`/`KJudge`/`MachineTyped`, transcribing `type-judgments.md` §6–§8 into Lean as the definition of record) instead of over `chk`. **Built:** machine typing + preservation over `Judge` (J20–J27), the derivation-certificate pipeline (J2/J28), and the **semantic judgment** `SemJudge` (J29/J30, `Proof/Judgment/Sem.lean`) — reachability-defined, `Judge`-free, with `judge_semJudge` as the fundamental lemma (adequacy of the syntactic system), `semJudge_sound` (type safety from a `SemJudge` however obtained — the extension point for out-of-fragment/Rails constructs), and `judge_result_vty` (terminating values inhabit the judged type, via the J29 answer-typed invariant); plus **semantic axioms (J31)**: user-specified semantic judgments as `Judge` leaves invoked from the `Deriv` certificate language (`Judge.semantic`/`Deriv.semantic`/`JCert.semAssumes`, `validateJ_certifies` conditional on one `EvalOkAt` obligation per claim), pilot end to end — `lambda { 1 }`, out of the syntactic fragment, obligation discharged by executing the semantics, certified from a data certificate (`Proof/Judgment/SemAxiom.lean`); and the **Rails pilot (J32–J35)**: claim *records* (claimed type + claimed **rows** + class-body gate), `define_method` made typing-visible (capture erasure for closed bodies + one-step composition, ratchet-verified), the invariant taught what a class body is (`inClassBody`, `self` = the definee; `NoHook` over `define_method`), and the goal program `class String; define_method(:shout) { 1 }; end; "a".shout` **type-checked at `.int`** — the obligation `semAxiomsOk_dm` discharged by executing the semantics, composed through both the hand derivation and a data certificate (`Proof/Judgment/Rails.lean`). Diagnosis: metatheory stated over a *function* is re-incurred at every checker rewrite (`infer.induct` → `chk.induct` → …); the relation is the churn-stable layer. Settles the **semantic type notion**: recursive knots tied by names into a table `D` (anonymous structural recursion is coinductive — refused); slots as heap-conformance invariants; responds-to sets indexed by boot phase; **unions + nil + narrowing** as the load-bearing grammar. Certificates become **derivations-as-data** checked by a constructor-mirroring local checker (`Deriv.check → Judge` is one easy induction); `chk` demoted to the coverage tier, `chk_table_ret` deliberately abandoned. Milestones **J0–J4** (`ruby-lean/RubyCore/Judgment/` + `Proof/Judgment/`, **J-numbers**); honest cost: preservation's content is unchanged, only its marginal cost structure improves. **The H-layer (J36, 2026-08-27, `ruby-lean/RubyCore/HJudge/`, `lake build HJudge`)**: iris-lean in the dependency graph (toolchain 4.32.2; sibling `mdd/ruby-sorbet`'s seat ported in-tree — `Language` instance over `stepFn`, `ownP` `stateIs`, WP walk tactics, `run_adequate_of_wp`), the semantic denotation `HTy` (the sibling's `STy` + `union` + the higher-order `sem` door; `HSub` = denotation inclusion; heap-generic intro lemmas via `self_mem_ancestors`), and **`HJudge` proved soundly type-safe on the SemJudge formula**: `HSemJudge` (= `SemJudge` with `VTy` → `τh.den`), the `vty_hden` bridge, four admission routes (`ofJudge`/`sem`/`wp`/`sub`), fundamental lemma `hJudge_semJudge`, `hJudge_sound`/`hJudge_result_den`, `run_lift_of_reaches` re-landing WP adequacy on `ReachableResult` — axiom-clean; worked ends past `Ty`'s reach (`true : TrueClass` in every environment; `(1).zero? : FalseClass` by concrete `rb_walk`; J35's `define_method` result as `is_a?` at the mutated final heap; `HTy.duck` decided at boot) |
 | `typing-the-slice-milestones.md` | **plan (2026-08-30):** the machinery path from the measured baseline — *all six whole-file certificates carry zero rows*, `sem_assumes` = each file's `def self.x` count, so the accepts never look inside a body — to typed bodies. **M0** is the reordering finding: the slot frame (`slot-frame.md`) half-breaks this layer's own semantic-judgment discipline, because `SlotClaim.Holds` is a *single-state* predicate and `frameOkB` conflates it with a claim about the program text, so the property SF-T3 should prove is defined nowhere; fix is `SemFrame` (reachability-shaped like `SemJudge`, over intermediate states — a row is consumed at every dispatch) with `frameOkB` demoted to one of four admission routes. **M0a** is the cheap one found by censusing all eight files: the only AST head in the slice with no rung in any plan is `fwd` (argument forwarding), and it exists only because `class_sugar_strip.rb` expands `alias` into `def m(...) = n(...)` — no slice source contains `(...)`; the rule that falls out is *a strip transform may only emit heads that already have a rung, else gate*. Then **M1** metaclass hygiene (a module's eigenclass superclasses `Class`, not `Module`; `enterScopedClassBody` skips eager realization), **M2** qualified names pinning ids, **M3** `srows` (`slice-verdict.md` §4a rung 3 — designed, unbuilt), **M4** `self` at `.clsOf` inside a `defs` body (the J11 widening), **M5** the eigenclass-aware install walk (all 26 `opaque_` sites in the certificated files are `def self.x`), **M6** dropping name-globality (re-key + SF-T3), **M7** the bodies. Critical path M1→M2→M3→M4; ordering constraints M2-before-M5 (else a resolver can pick the wrong id — unsound) and M0-before-M6 (else a proof is replaced by a check). Interlocks with `homebrew/slice-inventory.md`, which prices the *judgments* this sequences the machinery for |
 | `type-judgments.md` | **spec (implementation catalog, to grow):** the typing layer's reference — every judgment form (`Ty`, `Sub` [= the `ancestors` walk], `Consistent`/`≲` [gradual boundary, non-transitive], `Join`, `mtype` [= store-typing mirror of `Heap.lookup`], `narrow` [occurrence typing], `HasType` [engine, one rule per `Expr` head, `send` is the whole game], `KontOk`/`ConfigTy` [type the machine state, not just exprs], `StoreOk` [`Δ ⊨ H`]); metatheorem statements (preservation up-to-subtyping / progress / gradual three-outcome safety); staging T1 (the exact fragment already in `Proof/Step.lean`) → T2 send → T3 gradual → T4 flow-sensitivity → T5+ generics. Companion to `types-and-preservation.md` (rationale). Extrinsic discipline: defined over the untyped syntax, reuses `Step.heap_monotone` as store growth |
 
@@ -212,7 +212,7 @@ the detection self-test), `lean`, and `sig-strip` (the gradual-guarantee probe).
 
 **The Sorbet corpus runs in the Lean model (2026-08-05).** `run --tier 4 --sut lean` is
 **14/18 agree, 0 disagree, 4 unsupported** (was 1 agree / 17 disagree). Two changes got it
-there: **`Module#method_added` now fires on `def`** (`lean/implementation-notes.md` L79 —
+there: **`Module#method_added` now fires on `def`** (`ruby-lean/notes/model/implementation-notes.md` L79 —
 a pre-existing fidelity gap, and the hook sorbet-runtime's `sig` is built on), and a **`T`
 prelude shim** (L80) carrying Sorbet's runtime half as ordinary RubyCore — the assertion
 family, the type constructors, and real **sig enforcement** via `alias_method` +
@@ -223,7 +223,7 @@ and `invariant_sound` apply to it with no new machinery. Still gated: `T::Struct
 `T::Enum` (structural, not annotations — they gate honestly rather than NameError).
 
 **Sorbet safety is stated and proved, both directions (2026-08-06).**
-`lean/RubyCore/Proof/SorbetSafety.lean` (L81) makes §C.1's three-outcome runtime statement
+`ruby-lean/RubyCore/Proof/SorbetSafety.lean` (L81) makes §C.1's three-outcome runtime statement
 a formal object by **reusing `TypeSafety.lean` with the bad state weakened** —
 `sorbetStuck := typeStuck ∧ ¬ isBlame`, blame being sorbet-runtime firing at a boundary,
 i.e. the type system working. Axiom-clean: `sorbet_invariant_sound` (Direction B) plus the
@@ -233,7 +233,7 @@ the weakening only removes outcomes, so existing certificates transfer.
 (the property is stated over that machine — over `Machine.init` there is no `T` at all and
 the theorem would be about nothing): `sig-basic/000` safe by value, **`sig-basic/001` safe
 by *blaming*** (the whole content of the weakening), `untyped-boundary/000` refuted.
-`lean/RubyCore/Types/Fragment.lean` (L82, `rubycore --fragment`) pins the *scope*
+`ruby-lean/RubyCore/Types/Fragment.lean` (L82, `rubycore --fragment`) pins the *scope*
 executably — 6/18 of the corpus in-fragment, 3 in scope once intersected with srb
 acceptance, and **no unsoundness witness is in the fragment** (guarded). Not claimed:
 "srb accepts P ⇒ P is Sorbet-safe" — that needs Sorbet's static judgment (`type-judgments.md`
@@ -258,16 +258,16 @@ load-bearing invariants, enhancement queue), and
 [`difftest/implementation-notes.md`](difftest/implementation-notes.md) for non-critical
 implementation choices (N1–N34, committed for rollback).
 
-### `lean/` — the Lean 4 model (runnable SUT)
+### `ruby-lean/RubyCore/` — the Lean 4 model (runnable SUT)
 The mechanization of artifacts 00–04 begun from the sketch. See
-[`lean/README.md`](lean/README.md) for layout, build (`lake build`, toolchain pinned),
+[`ruby-lean/README.md`](ruby-lean/README.md) for layout, build (`lake build`, toolchain pinned),
 the L0 fragment inventory, and the two fidelity policies (three-way lookup-miss split;
-`reprPure` gating); [`lean/HANDOFF.md`](lean/HANDOFF.md) for the fresh-context hand-off
+`reprPure` gating); [`ruby-lean/notes/model/HANDOFF.md`](ruby-lean/notes/model/HANDOFF.md) for the fresh-context hand-off
 (state, coverage assessment — 372/1304 bootstraptest
 cases, 0 disagree — and the ordered next steps: L1 blocks done, next L2 classes then
-`inductive Step`); [`lean/implementation-notes.md`](lean/implementation-notes.md) for
+`inductive Step`); [`ruby-lean/notes/model/implementation-notes.md`](ruby-lean/notes/model/implementation-notes.md) for
 revertable decisions (L1–L16). `RubyCore/CRubyNames.lean` is **generated** by
-`lean/scripts/gen_cruby_names.rb` against the pinned oracle. The harness↔Lean interface
+`ruby-lean/scripts/gen_cruby_names.rb` against the pinned oracle. The harness↔Lean interface
 is `harness/desugar-dt/lib/export.rb` (versioned RubyCore JSON; `bin/export-json`).
 
 `RubyCore/Cert/` + `RubyCore/Proof/Cert/` are the **certificate language**
@@ -278,7 +278,7 @@ split out into `Json.lean` because `Lean.Json.parse` does not reduce in the kern
 `Proof/Cert/Sound.lean` proves **`validate_sound`** — *this certificate, this program,
 therefore no reachable `typeStuck`, conditional only on the printed residue* — and
 `Proof/Cert/Ledger.lean` closes `discharge_sound`'s premise that L262 left open.
-Decisions: [`lean/RubyCore/Cert/implementation-notes.md`](lean/RubyCore/Cert/implementation-notes.md)
+Decisions: [`ruby-lean/RubyCore/Cert/implementation-notes.md`](ruby-lean/RubyCore/Cert/implementation-notes.md)
 (**V1–V8**).
 
 ### `certify/` — the untrusted certificate emitters (runnable)
@@ -311,9 +311,9 @@ move, because generation is not the bottleneck: three *schema* limits are (R2, n
 Phase 2 of the Direction-A witness finder: a **concolic search engine** (Python + z3)
 that *solves for* inputs driving a program to a **type-stuck** outcome. Finds
 `n == 123456789` behind a narrow guard in 2 iterations — the case Phase 1's random
-search (`lean/RubyCore/Search/Random.lean`) provably misses even at a 20x budget.
+search (`ruby-lean/RubyCore/Search/Random.lean`) provably misses even at a 20x budget.
 **The Lean semantics is the executor**: the `rubycore-concolic` exe
-(`lean/ConcolicMain.lean`) runs the real `stepFn` and supplies both the branch
+(`ruby-lean/ConcolicMain.lean`) runs the real `stepFn` and supplies both the branch
 decisions and the authoritative outcome, so the engine holds no method tables and
 no error classification of its own and cannot drift from the model (branch
 decisions are observable at the configuration level, so `stepFn` is untouched).
@@ -322,11 +322,12 @@ confirmed against CRuby and the plain `rubycore` observation path. See [`concoli
 run it and [`concolic/implementation-notes.md`](concolic/implementation-notes.md)
 for revertable decisions (K1–K8).
 
-### `ratchet/` — a certificate-checking ladder, restarted small (runnable, isolated)
-A **restart** of the type-checking work (2026-08-31), deliberately isolated from `lean/`,
-`certify/`, and the judgment layer (own `lakefile.toml`/`lean-toolchain`, no import of
-`RubyCore`). **`Expr`/`Ty` are ported verbatim** from the real model
-(`lean/RubyCore/Syntax.lean`/`Types/Ty.lean`) rather than invented, and every corpus program
+### `ruby-lean/Ratchet/` — a certificate-checking ladder, restarted small (runnable, isolated)
+A **restart** of the type-checking work (2026-08-31), deliberately isolated from the model,
+`certify/`, and the judgment layer (no import of `RubyCore`; it was its own Lake package
+until the merge into `ruby-lean/`, and is now kept honest by
+`ruby-lean/scripts/check-isolation.sh`). **`Expr`/`Ty` are ported verbatim** from the real model
+(`ruby-lean/RubyCore/Syntax.lean`/`Types/Ty.lean`) rather than invented, and every corpus program
 is **real Ruby run through the real desugarer** (`harness/desugar-dt/bin/export-json`), not a
 hand-authored AST — the certificate is a flat list of claims keyed on real `Expr` subterms by
 structural `==` (exactly why `Expr` derives `BEq` in the real model), not a parallel
@@ -348,29 +349,29 @@ metaprogramming, last on the ladder as intended**: `method_missing`, class reope
 `include`/`extend`/`prepend`. That reclassification pass turned up this ladder's one
 **cert language gap** so far: `Ty`'s arrow spine has no vararg/rest-arity constructor,
 so `def method_missing(name, *args)` (the idiomatic shape) has no honest claim at all —
-flagged explicitly (`ratchet/AGENTS.md` §Cert language gaps; `Main.lean` always prints
+flagged explicitly (`ruby-lean/AGENTS.md` §Cert language gaps; `Main.lean` always prints
 it) rather than silently left `false` forever. **The semantics is imported, not
-copied** (`ratchet/Semantics/Interp.lean`, 2026-08-31): a local Lake `require` on
+copied** (`ruby-lean/Semantics/Interp.lean`, 2026-08-31): a local Lake `require` on
 `../lean` pulls in the real `stepFn` and its whole dependency closure
 (`Heap`/`Machine`/`Builtins`/`CRubyNames`/the booted prelude, ~24k lines) rather than
 hand-porting it the way `Expr`/`Ty` were — kept in its own folder so `Ratchet/` (the
-checker) stays importing nothing from `lean/` while `Semantics/` deliberately does.
+checker) stays importing nothing from `ruby-lean/` while `Semantics/` deliberately does.
 Smoke-tested working end to end (`1 + "a"` really raises `TypeError`; `1/0` raises
 `ZeroDivisionError`, correctly *not* counted by `typeStuck`) but not yet wired into the
-corpus runner (no `expect_stuck` field yet). See `ratchet/AGENTS.md` §Frontier for the
+corpus runner (no `expect_stuck` field yet). See `ruby-lean/AGENTS.md` §Frontier for the
 full climb order (rebuild tiers 1-6 first, then environment merging across `if`
 branches, non-required params, blocks, then classes/modules/mixins, then the `Ty`
 extension, then wiring the semantics into the corpus). Every commit that extends `chk`
 for one more construct is meant to move a tier's fraction visibly, instead of growing
 by tackling another whole slice at once.
-See [`ratchet/AGENTS.md`](ratchet/AGENTS.md); run with `ratchet/scripts/run_ratchet.sh`.
+See [`ruby-lean/AGENTS.md`](ruby-lean/AGENTS.md); run with `ruby-lean/scripts/run_ratchet.sh`.
 
 ### `playground/` — visual step-through of the Lean stepper (runnable)
 A browser playground to write Ruby and step through its execution **in the Lean
 model** one `stepFn` transition at a time (control state, frame stack + live
 locals, continuation stack, stdout). Zero-dependency Python stdlib server
 (`server.py`) over the existing pipeline + a Lean `--trace` mode
-(`lean/RubyCore/Trace.lean`, a lossy non-gating tooling view). It also runs the
+(`ruby-lean/RubyCore/Trace.lean`, a lossy non-gating tooling view). It also runs the
 **static** queries on the same source without executing it: **Type-check
 (infer)** is `rubycore --check` (the nominal whole-program `infer`, with
 `--fragment`'s violations beside it, since `uncertified` is usually explained by
@@ -383,7 +384,7 @@ the three-line shape `Assn.explain` prints. Run: `cd lean && lake build`, then
 ### `spikes/` — quick experiments and proofs of concept (runnable)
 Throwaway-by-default measurements: a memo fixes a threshold, a spike measures it,
 the number lands in the owning doc's session log. **Nothing here is on a build
-target and nothing under `lean/RubyCore/` imports it** — Lean spikes are run with
+target and nothing under `ruby-lean/RubyCore/` imports it** — Lean spikes are run with
 `cd lean && lake env lean ../spikes/<dir>/<File>.lean`, and a spike that needs a
 library definition weakened copies it under a different name rather than editing
 it, so no theorem can come to depend on the weakening. See
@@ -464,14 +465,14 @@ root `README.md`/`.gitignore` are the base repo.
 - **When extending `desugar`:** add a rule + track it in `Desugar::RULES`, add a seed that
   exercises it (and an eval-order adversarial seed if it has a once-only/ordering
   obligation), keep the round-trip green (`bin/run`).
-- **When extending the Lean model (`lean/`):** work the same way as the desugar.
+- **When extending the Lean model (`ruby-lean/`):** work the same way as the desugar.
   - **Ratchet discipline (load-bearing):** after every change re-run `--sut lean` on tier-0
     (`cd difftest && uv run python -m difftest run --tier 0 --sut lean`), plus tier-1 fuzzing
     + regression replay at batch boundaries. **0 disagreements at every commit**, agreement
     only ever goes up; a new feature that would disagree must instead **gate `Unsupported`**
     (exit 3) — a partial model declares what it doesn't cover rather than guessing. `MODEL-BUG`
     (exit 1) is never acceptable in a commit. Verify new behavior against the CRuby oracle
-    (`harness/desugar-dt/bin/export-json <file> | lean/.lake/build/bin/rubycore`) with minimal
+    (`harness/desugar-dt/bin/export-json <file> | ruby-lean/.lake/build/bin/rubycore`) with minimal
     discriminating snippets before trusting it (`[V]`).
   - **Commit in small, logical increments** — one head / one coherent feature per commit,
     each with its own ratchet number in the message (`NNN->MMM, 0 disagree`), so any
@@ -510,10 +511,10 @@ root `README.md`/`.gitignore` are the base repo.
   splats, kwargs), tier-3 corpus across all categories, tiers 0/2, and eventually the Lean
   interpreter as a SUT. Verified end-to-end: identity SUT 200/200 agree; desugar SUT with
   `DESUGAR_BUG=1` yields a shrunk minimal disagreement.
-- **Lean model (begun; `lean/`):** grow the L0 fragment along the difftest
+- **Lean model (begun; `ruby-lean/`):** grow the L0 fragment along the difftest
   `Unsupported`-reason histogram (same ratchet discipline as the desugar: 0 disagree,
   agreement only goes up; baseline 372, was 295 pre-L1). Ordered plan in
-  [`lean/HANDOFF.md`](lean/HANDOFF.md): desugar M2 (biggest lever, 544 cases gate
+  [`ruby-lean/notes/model/HANDOFF.md`](ruby-lean/notes/model/HANDOFF.md): desugar M2 (biggest lever, 544 cases gate
   upstream) → L1 blocks/`yield` (done) → L2 class forms → `inductive Step` + adequacy
   theorems (PROJECT_PLAN §7); opportunistic: float shortest-roundtrip formatting,
   histogram-driven builtins, the sketch §5 export cross-check.

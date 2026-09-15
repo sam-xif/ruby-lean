@@ -31,7 +31,7 @@ result.value.accept(finder)
 # any multi-byte character before a `require` (an em dash in a header comment is
 # enough) therefore had the wrong span deleted -- `require "sorbet-runtime"\nclass`
 # came out as `relass`. Editing in binary makes the two agree. Found by
-# `ratchet/scripts/build_corpus.py` on the slice rungs; see `ratchet/found-issues.md`.
+# `ruby-lean/scripts/build_corpus.py` on the slice rungs; see `ruby-lean/notes/ratchet/found-issues.md`.
 out = src.dup.force_encoding(Encoding::BINARY)
 edits.sort_by! { |(s, _)| -s }
 edits.each { |(s, e)| out[s...e] = "" }

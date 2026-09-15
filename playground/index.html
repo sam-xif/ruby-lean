@@ -305,7 +305,7 @@
         one existing tool over the buffer -- the layout changed, not the pipeline. -->
    <div class="pane" id="pane-ratchet">
     <div class="rk-bar">
-      <select id="ratchetcorpus" title="ratchet/corpus/*.rb with sibling *.meta.json — the typed ladder"></select>
+      <select id="ratchetcorpus" title="ruby-lean/corpus/*.rb with sibling *.meta.json — the typed ladder"></select>
       <button class="ghost" id="ratchetcorpusload">Load rung</button>
       <button id="ratchetrunall" title="cascade every stage in order: srb · strip · desugar · emit · validateD">Run all ⏩</button>
       <span class="pill" id="ratchetexpect" title="the rung's recorded expect_validate — what the ladder says this rung should do">target —</span>
@@ -318,7 +318,7 @@
     <div class="rk-rail" id="ratchetrail">
       <div class="rk-stage sel" id="rail-sorbet" data-art="sorbet">
         <div class="n"><span>stage 0</span><span class="pill" id="pillratchetsorbet">—</span></div>
-        <div class="t">Sorbet <button class="rk-go ghost" id="ratchetsorbet" title="srb over the annotated source above, via ratchet/scripts/srb_sigs.py — the check a rung's expect_sorbet is recorded against">▸</button></div>
+        <div class="t">Sorbet <button class="rk-go ghost" id="ratchetsorbet" title="srb over the annotated source above, via ruby-lean/scripts/srb_sigs.py — the check a rung's expect_sorbet is recorded against">▸</button></div>
         <div class="s" id="sum-sorbet">the unstripped program</div>
       </div>
       <div class="rk-stage" id="rail-strip" data-art="strip">
@@ -1036,7 +1036,7 @@ $('slicevalidate').onclick = () => withBtn('slicevalidate','slicecertmsg','valid
 
 // ── Tab 3: the ratchet checker ────────────────────────────────────────────
 // Same run/diff idiom as tab 2's model/CRuby buttons, over a program-sized
-// buffer, plus a third tool: `../ratchet/`'s own checker.
+// buffer, plus a third tool: the ratchet's own checker (`../ruby-lean/Ratchet/`).
 async function ratchetBtn(id, msgId, label, fn) {
   $(id).disabled = true; $(msgId).textContent = label;
   $('ratcheterr').innerHTML = '';

@@ -1,10 +1,10 @@
-# The answer-typed schema — the target shape for `ratchet/`, and how to get there
+# The answer-typed schema — the target shape for `ruby-lean/`, and how to get there
 
 > **Status:** reshaping specification, 2026-09-11. This is a *work order*, not a findings
-> artifact: it says what `ratchet/` should look like and how to move it there. The design it
+> artifact: it says what `ruby-lean/` should look like and how to move it there. The design it
 > encodes is [`answer-typed-judgments.md`](answer-typed-judgments.md) (diagnosis §1–§5,
 > proposal §6, **built** §10); the shape below is that proposal generalised, plus everything
-> the prototype (`ratchet/Denote/Proto/`) learned by closing it end to end.
+> the prototype (`ruby-lean/Denote/Proto/`) learned by closing it end to end.
 >
 > Evidence tags as in [`README.md`](README.md): **[V]** verified here, **[M]** mechanised
 > here, **[D]** documentation/literature, **[?]** open, **[✗→]** a correction of a
@@ -14,7 +14,7 @@
 
 ## 0. How to use this document
 
-You are reshaping `ratchet/` to the schema in §3. Read in this order:
+You are reshaping `ruby-lean/` to the schema in §3. Read in this order:
 
 1. **§1 — the two norms specific to this work.** They override habit. Read them twice.
 2. **§2 — the standing norms.** Already written down elsewhere; they still bind.
@@ -92,13 +92,13 @@ Read these; they are not repeated here.
 |---|---|
 | [`certificate-language.md`](certificate-language.md) §7 | the seven working norms in force for trusted-code work: decision records, atomic commits, files under 1,000 lines and one concern each, ratchet discipline (**tier 0, 0 disagreements, at every commit**), **no `native_decide` on the checked path**, oracle-first, and directory isolation |
 | [`PROCEDURE-authoring-semantics.md`](PROCEDURE-authoring-semantics.md) §0 | the invariants every semantics artifact must hold |
-| `ratchet/AGENTS.md` §Claim-free | a rung carries no certificate the checker may believe; `validate` synthesizes or answers `false` |
-| `ratchet/AGENTS.md` §Isolation, §Architecture | why `Ratchet/` imports nothing from `../lean/`, and why `Semantics/` is the one deliberate exception |
-| `ratchet/AGENTS.md` §"What is deliberately not built here" | scope fences; check before widening any |
-| `ratchet/HANDOFF.md` §"The working rule this session paid for twice" | **write the layer's target down as a named `Prop` before proving the layer under it.** `FrameLocal.lean`'s 532 lines were proved for a target that was never stated, and the target turned out false |
+| `ruby-lean/AGENTS.md` §Claim-free | a rung carries no certificate the checker may believe; `validate` synthesizes or answers `false` |
+| `ruby-lean/AGENTS.md` §Isolation, §Architecture | why `Ratchet/` imports nothing from `../ruby-lean/`, and why `Semantics/` is the one deliberate exception |
+| `ruby-lean/AGENTS.md` §"What is deliberately not built here" | scope fences; check before widening any |
+| `ruby-lean/notes/ratchet/HANDOFF.md` §"The working rule this session paid for twice" | **write the layer's target down as a named `Prop` before proving the layer under it.** `FrameLocal.lean`'s 532 lines were proved for a target that was never stated, and the target turned out false |
 | `Denote/Sem/Obligations.lean` module docstring | obligations are *derived* from the inductive, never transcribed; and a rung counts only when its type is **defeq** to the derived obligation |
 | `Denote/Sanity.lean` | `#guard`-conditional theorems rather than `native_decide`, and why; also the vacuity check that a conformance witness exists |
-| `ratchet/found-issues.md` §F24 vs §F25 | **run the control.** A rejection is only a finding if the same program with the feature removed is *accepted*; otherwise you have measured an absence |
+| `ruby-lean/notes/ratchet/found-issues.md` §F24 vs §F25 | **run the control.** A rejection is only a finding if the same program with the feature removed is *accepted*; otherwise you have measured an absence |
 
 Two house conventions worth naming because this work will exercise them constantly: every
 top-level theorem gets a `#print axioms` line and must show only
@@ -286,7 +286,7 @@ that makes `SemJudgeA` the right *shape*, and prove it generally when `UncaughtI
 | `StateOk` and its whole lemma set (`StateOk_ext`, `StateOk_reCtl`, `StateOk_setLocal`, `MethodsExact.lookup`, …) | `Denote/Sem/State.lean`, `Denote/Sem/Frame.lean` | **unchanged by this work.** 1,633 lines you do not touch |
 | the obligation-derivation command and the ladder | `Denote/Sem/Obligations.lean`, `Denote/Ladder.lean` | one edit, §3.2 |
 | the whole worked prototype | `Denote/Proto/` | read it first; delete it last (§5) |
-| the frame rule and `done_inv` | `../lean/RubyCore/Proof/KontFrame*.lean`, `NotDone.lean` | in the other package, by import |
+| the frame rule and `done_inv` | `../ruby-lean/RubyCore/Proof/KontFrame*.lean`, `NotDone.lean` | in the other package, by import |
 
 ---
 
@@ -333,7 +333,7 @@ restated; read that step in full before starting it.
    `answer-typed-judgments.md` §8's third open question, now cheaply).
 
    **The ladder number will drop, and reporting it honestly is part of the step.**
-   `ratchet/AGENTS.md`'s "a rung once climbed never un-climbs" is a statement about `validate`
+   `ruby-lean/AGENTS.md`'s "a rung once climbed never un-climbs" is a statement about `validate`
    and the *syntactic* ladder; the semantic ladder's obligations are **derived from a
    definition**, so changing the definition restates them. That is a restatement, not a
    regression, and the commit must (a) record the pre-migration number, (b) report the new
@@ -370,7 +370,7 @@ restated; read that step in full before starting it.
 
 Run these; do not assert them.
 
-1. `lake build` green in `ratchet/` **and** `../lean/`; **no `sorry`** anywhere
+1. `lake build` green in `ruby-lean/` **and** `../ruby-lean/`; **no `sorry`** anywhere
    (`grep -rn sorry` over the changed files).
 2. Every top-level theorem has a `#print axioms` line showing only
    `propext`/`Classical.choice`/`Quot.sound`.

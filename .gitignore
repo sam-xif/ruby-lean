@@ -9,8 +9,8 @@ __pycache__/
 .uv-cache/
 
 # Derived artifacts
-# ratchet/build/ is regenerated from ratchet/corpus/*.rb by scripts/build_corpus.py
-ratchet/build/
+# ruby-lean/build/ is regenerated from ruby-lean/corpus/*.rb by scripts/build_corpus.py
+ruby-lean/build/
 difftest/reports/
 
 # OS

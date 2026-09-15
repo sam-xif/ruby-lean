@@ -5,13 +5,15 @@ reproduce every number. This file is the map for working *inside* it.
 
 ## Where the working record lives
 
-Each directory carries its own, and they are the real documentation — read the
-one for the directory you are about to touch **before** touching it.
+Each area carries its own, and they are the real documentation — read the one
+for what you are about to touch **before** touching it. The Lean work is one
+Lake package (`ruby-lean/`) with two layers in it, and the record is split the
+same way, under `ruby-lean/notes/`.
 
 | Directory | Read first | Then |
 |---|---|---|
-| `ratchet/` | [`ratchet/AGENTS.md`](ratchet/AGENTS.md) — current state, the proof boundary, the pipeline, the gate | `implementation-notes.md` (the chronological record), `found-issues.md` (open findings, §F-numbers), `HANDOFF.md` (the live resume point) |
-| `lean/` | [`lean/README.md`](lean/README.md) — layout, fragment, build | `implementation-notes.md`, `HANDOFF.md` |
+| `ruby-lean/` (the checker, `Ratchet/`+`Denote/`) | [`ruby-lean/AGENTS.md`](ruby-lean/AGENTS.md) — current state, the proof boundary, the pipeline, the gate | `notes/ratchet/implementation-notes.md` (the chronological record), `notes/ratchet/found-issues.md` (open findings, §F-numbers), `notes/ratchet/HANDOFF.md` (the live resume point) |
+| `ruby-lean/` (the model, `RubyCore/`) | [`ruby-lean/README.md`](ruby-lean/README.md) — layout, fragment, build | `notes/model/implementation-notes.md`, `notes/model/HANDOFF.md` |
 | `difftest/` | [`difftest/README.md`](difftest/README.md) | `HANDOFF.md` |
 | `playground/` | [`playground/README.md`](playground/README.md) | — |
 | `docs/` | [`docs/README.md`](docs/README.md) | `docs/semantics/` in reading order |
@@ -21,7 +23,7 @@ one for the directory you are about to touch **before** touching it.
 **The gate must be green before you commit.**
 
 ```sh
-cd ratchet && ./scripts/run_typed_ratchet.sh
+cd ruby-lean && ./scripts/run_typed_ratchet.sh
 ```
 
 Quiet mode is the default and is the right one; `--verbose` is for a failure
@@ -35,10 +37,12 @@ the fragment claiming something the bridge cannot back.
 
 ## Two boundaries not to blur
 
-1. **`Ratchet/` imports nothing from `lean/`.** The checker carries its own
+1. **`Ratchet/` imports nothing from `RubyCore/`.** The checker carries its own
    copied `Expr`/`Ty`. `Semantics/` is the single deliberate exception (it
    imports the real machine), and `Denote/` is the one library that imports
-   both — a denotation relates the two by definition.
+   both — a denotation relates the two by definition. Both layers share one Lake
+   package now, so the compiler no longer refuses that import;
+   `ruby-lean/scripts/check-isolation.sh` does, as the gate's first stage.
 2. **Only `validateD` is trusted.** Sorbet, the strip stack, the desugarer and
    the derivation emitter are all untrusted by construction: they can cost an
    accept, never produce an unsound one. Keep it that way — if a fix is tempting
@@ -46,11 +50,11 @@ the fragment claiming something the bridge cannot back.
 
 ## Proofs rot silently
 
-`lean/RubyCore/Proof/` is off the default build target, and that is the right
+`ruby-lean/RubyCore/Proof/` is off the default build target, and that is the right
 call for build times and the wrong one for drift. Run
 
 ```sh
-cd lean && ./scripts/check-proofs.sh      # builds the metatheory + `#print axioms`
+cd ruby-lean && ./scripts/check-proofs.sh      # builds the metatheory + `#print axioms`
 ```
 
 at batch boundaries. Three independent breaks once sat undetected for 24 commits

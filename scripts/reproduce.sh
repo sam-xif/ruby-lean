@@ -28,17 +28,17 @@ step() { echo; echo "── $* ──"; }
 step "0. prerequisites"
 "$ROOT/scripts/check-prereqs.sh"
 
-step "1. build the Lean model (lean/ — the rubycore SUT)"
-( cd "$ROOT/lean" && lake build )
-
-step "2. build the checker (ratchet/ — validateD and its proofs)"
-( cd "$ROOT/ratchet" && lake build )
+step "1-2. build the Lean project (ruby-lean/ — the rubycore SUT, and validateD with its proofs)"
+# One Lake package (`ruby-lean/`): the model (RubyCore/), the checker (Ratchet/), the
+# bridge to the real semantics (Semantics/) and the denotation that joins them
+# (Denote/) are four libraries in it, and `lake build` builds all of them.
+( cd "$ROOT/ruby-lean" && lake build )
 
 step "3. the typed ratchet gate (the headline numbers)"
 # Sorbet -> strip -> desugar -> emit -> validateD, over every corpus rung, plus
 # the negative controls, the CRuby/model agreement replay and the safety
 # cross-check. Prints GREEN or RED on its last line.
-( cd "$ROOT/ratchet" && ./scripts/run_typed_ratchet.sh )
+( cd "$ROOT/ruby-lean" && ./scripts/run_typed_ratchet.sh )
 
 if [[ $WITH_DIFFTEST == 1 ]]; then
   step "4. differential test: the Lean model vs CRuby over MRI's bootstraptest"
@@ -67,7 +67,7 @@ if [[ $WITH_PROOFS == 1 ]]; then
   # proofs, so this step exits non-zero. It is reported, not hidden — but it is
   # also not a failure of anything above it: the ratchet's own proofs and
   # `validateD_safe_boot` are on the default target and built in step 2.
-  ( cd "$ROOT/lean" && ./scripts/check-proofs.sh ) || {
+  ( cd "$ROOT/ruby-lean" && ./scripts/check-proofs.sh ) || {
     echo
     echo "step 5 FAILED — expected at 0.01, see README §Status and limits."
     echo "Steps 1-4 above are the reproduction; this one is a known-red target."

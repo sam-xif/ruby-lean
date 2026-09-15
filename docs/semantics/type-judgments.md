@@ -5,7 +5,7 @@
 > survey* live in `[types-and-preservation.md](types-and-preservation.md)` (read §C.5 there
 > first). It catalogs every judgment form we intend to implement, the rules for the
 > in-scope fragment, and the staging that maps them onto the existing untyped machine
-> (`../../lean/RubyCore/`) and its metatheory PoC (`../../lean/RubyCore/Proof/`).
+> (`../../ruby-lean/RubyCore/`) and its metatheory PoC (`../../ruby-lean/RubyCore/Proof/`).
 >
 > **Discipline (from §C.5):** *extrinsic* — the judgments below are defined *over the
 > existing untyped syntax/values*; nothing here changes the interpreter or `Step`. Types are
@@ -408,8 +408,8 @@ theorems only accrete). Tiers map onto the existing untyped fragments.
 | **T5+** | generics + variance, tuple/shape, `class`/`begin`/collections                                                   | artifacts 07–10                                                                               | full-fragment soundness                                |
 
 
-**Where it lives:** a new `../../lean/RubyCore/Types/` (grammar, `Sub`, `Δ`, `mtype`)
-imported by a `../../lean/RubyCore/Proof/Typing.lean` that adds `HasType`/`ConfigTy` beside
+**Where it lives:** a new `../../ruby-lean/RubyCore/Types/` (grammar, `Sub`, `Δ`, `mtype`)
+imported by a `../../ruby-lean/RubyCore/Proof/Typing.lean` that adds `HasType`/`ConfigTy` beside
 the existing `Step` and proves T1 preservation, reusing `Step.heap_monotone`.
 
 **No-Lean de-risking first** (mirrors the desugar-first discipline, §C.3): use

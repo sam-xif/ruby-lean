@@ -8,7 +8,7 @@ specification, and "typed" means "the bad-state set is unreachable."
 
 Status: **core metatheorem landed (2026-07-19); the checker engine is future work.**
 The Direction-B metatheorem of §4 (`invariant_sound`) and the Direction-A execution
-certificate of §3 are now proved in Lean — see `ruby/lean/RubyCore/Proof/TypeSafety.lean`
+certificate of §3 are now proved in Lean — see `ruby/ruby-lean/RubyCore/Proof/TypeSafety.lean`
 (and `implementation-notes.md` L51). The key implementation decision: they are formulated
 over the **full executable transition relation** `SmallStep m m' := stepFn m = .next m'`,
 not the partial control-core inductive `Step` — a subset relation reaches fewer states, so
@@ -259,13 +259,13 @@ free.
 Cheap de-risking runnable *before* all that:
 
 - ~~**`Plausible` witness demo (Direction A, shallow)**~~ — **DONE** (2026-07-28,
-  `lean/RubyCore/Search/Random.lean`, impl-notes L58). Finds `nil_dispatch`'s witness with
+  `ruby-lean/RubyCore/Search/Random.lean`, impl-notes L58). Finds `nil_dispatch`'s witness with
   automatic shrinking; the control program yields no false positive; and it *provably misses*
   a needle behind a narrow guard even at 20x budget — which motivated the next item.
 - ~~**Toy integer-only concolic stepper**~~ — **DONE** (2026-07-29, `ruby/concolic/`).
   Solves for that needle in 2 iterations. `typeStuck` is the bad-state predicate, so the
   "swap the predicate" thesis is demonstrated end to end. **The Lean semantics is the
-  executor** (`lean/ConcolicMain.lean` emits branch decisions + the authoritative outcome),
+  executor** (`ruby-lean/ConcolicMain.lean` emits branch decisions + the authoritative outcome),
   so the engine holds no method tables of its own; see `concolic/implementation-notes.md`
   K9 and the dataflow design in `ruby/docs/semantics/concolic-dataflow.md`.
 - **Object-model abstract domain, off-Lean:** boot programs under CRuby, dump method tables
@@ -300,7 +300,7 @@ real code.
 > Most of that arrived via a **prelude** — Ruby's core library written *in RubyCore*
 > — so §10.3's "the real work is builtin semantics" is now cheap work: a few lines
 > of Ruby per method, validated by the same ratchet
-> (`ruby/lean/implementation-notes.md` L62–L73).
+> (`ruby/ruby-ruby-lean/notes/model/implementation-notes.md` L62–L73).
 >
 > **The remaining gates are no longer a list of small builtins.** They are: the
 > string `eval` family (48, permanently out of scope), the **numeric tower**

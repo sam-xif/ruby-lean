@@ -13,10 +13,10 @@ bad()  { ok=1; printf '  %-10s MISSING — %s\n' "$1" "$2"; }
 echo "ruby-lean prerequisites"
 echo
 
-# 1. Lean, via elan. The toolchain itself is pinned per package in lean-toolchain
+# 1. Lean, via elan. The toolchain is pinned in ruby-lean/lean-toolchain
 #    (v4.32.2); elan reads that file and fetches it, so only elan must be present.
 if have lake && have elan; then
-  say "lean" "$(lake --version 2>/dev/null | head -1)  (pinned: $(cat lean/lean-toolchain))"
+  say "lean" "$(lake --version 2>/dev/null | head -1)  (pinned: $(cat ruby-lean/lean-toolchain))"
 else
   bad "lean" "install elan: curl https://elan.lean-lang.org/elan-init.sh -sSf | sh"
 fi

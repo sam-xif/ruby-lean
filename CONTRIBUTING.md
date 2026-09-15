@@ -44,6 +44,6 @@ GREEN with unclimbed rungs is the normal state. Ascent is ordinary work.
 
 ## Corpus rungs
 
-Rungs live in `ratchet/corpus/NNN-id.rb` (annotated, the source of truth) beside
+Rungs live in `ruby-lean/corpus/NNN-id.rb` (annotated, the source of truth) beside
 `NNN-id.meta.json` (what Sorbet and the checker are each expected to say).
-`ratchet/build/` is entirely derived — never edit it by hand.
+`ruby-lean/build/` is entirely derived — never edit it by hand.

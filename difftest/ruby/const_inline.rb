@@ -96,7 +96,7 @@ result.value.accept(rewriter)
 # Prism reports **byte** offsets and `String#[]` indexes by **characters**, so a file
 # with any multi-byte character before an edit had the wrong span replaced. Editing in
 # binary makes the two agree (see `difftest/ruby/require_strip.rb` for the case that
-# found it, and `ratchet/found-issues.md`).
+# found it, and `ruby-lean/notes/ratchet/found-issues.md`).
 out = src.dup.force_encoding(Encoding::BINARY)
 edits.sort_by! { |(s, _, _)| -s }
 edits.each { |(s, e, lit)| out[s...e] = lit }

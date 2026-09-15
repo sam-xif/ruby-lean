@@ -117,7 +117,7 @@ declares out-of-fragment programs instead of failing on them. Built-in SUTs:
 - `desugar` — adapter over `../harness/desugar-dt/` (desugar → render → CRuby);
   with `--inject-bug` its known-buggy `&&`/`||` desugar produces real
   disagreements, which is the engine's end-to-end detection self-test.
-- `lean` — **the Lean model** (`../lean/`): desugar → RubyCore JSON →
+- `lean` — **the Lean model** (`../ruby-lean/`): desugar → RubyCore JSON →
   `rubycore` binary (build it first: `cd ../lean && lake build`). Composes
   two fragment gates (desugar's and the model's L0); binary exit 3 =
   Unsupported, exit 1 = model bug (surfaced as `MODEL-BUG:` reasons, never
@@ -153,7 +153,7 @@ static verdict against runtime outcome. `srb` is an oracle, not truth — Sorbet
 by design, so acceptance is not a safety claim. The informative cells are off-diagonal:
 `unsoundness-witness` (srb accepted a program that reaches an uncaught
 NoMethodError/ArgumentError/TypeError — type-stuck in the sense of
-`lean/RubyCore/Proof/TypeSafety.lean`'s `typeErrorFamily`) and `conservative-rejection`
+`ruby-lean/RubyCore/Proof/TypeSafety.lean`'s `typeErrorFamily`) and `conservative-rejection`
 (srb rejected a program that runs fine — the DRuby false-positive family). Current
 standing: **4 witnesses, 2 conservative rejections, 0 declaration mismatches**. Exit 1 on
 a declaration mismatch only; witnesses are findings, not failures.

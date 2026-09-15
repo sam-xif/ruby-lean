@@ -464,7 +464,7 @@ into a `blk_of` helper. Round-trip: **818 agree / 0 disagree**, in-fragment ratc
 **752 → 792**, rule coverage 48/48 (seeds 24–26).
 
 **Why / caveat.** The `block` shape change is not backward compatible, so `Export::VERSION`
-is bumped **1 → 2**. The Lean SUT decoder (`ruby/lean/RubyCore/Syntax.lean`) still expects
+is bumped **1 → 2**. The Lean SUT decoder (`ruby/ruby-lean/RubyCore/Syntax.lean`) still expects
 v1 and will reject v2 with an "unsupported version" error until the L1 model lands — i.e.
 `--sut lean` is intentionally red between this desugar milestone and the model milestone.
 The round-trip harness (`bin/run`/`bin/coverage`) does not use the export and is fully green.

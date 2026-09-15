@@ -8,12 +8,12 @@ so you can compare the model's stdout against the oracle's.
 
 It's glue over pieces that already exist: the desugar harness and the Lean
 `rubycore` binary. The only model addition is a `--trace` mode
-(`lean/RubyCore/Trace.lean`) that emits every configuration as JSON instead of
+(`ruby-lean/RubyCore/Trace.lean`) that emits every configuration as JSON instead of
 just the final observation.
 
 ```
 Ruby source ──▶ harness/desugar-dt/bin/export-json ──▶ RubyCore JSON
-            ──▶ lean/.lake/build/bin/rubycore --trace ──▶ {steps, status, detail}
+            ──▶ ruby-lean/.lake/build/bin/rubycore --trace ──▶ {steps, status, detail}
             ──▶ browser UI (prev / next / ← → )
 ```
 
@@ -260,9 +260,9 @@ editor the whole window. It is a layout change only — the trace is kept, and
 
 ## Tab 3 — the typed ratchet checker
 
-This tab reads the current `ratchet/corpus/*.rb` files and their sibling
+This tab reads the current `ruby-lean/corpus/*.rb` files and their sibling
 `*.meta.json` records. It exposes the same live pipeline as
-`ratchet/scripts/run_typed_ratchet.sh`, one artifact at a time:
+`ruby-lean/scripts/run_typed_ratchet.sh`, one artifact at a time:
 
 ```
 annotated Ruby -+-> srb                    (stage 0, the unstripped program)
@@ -334,7 +334,7 @@ derivation, and names the fragment boundary that stopped the emitter.
 source in the left editor, as written. It is the one stage whose input is that
 editor rather than the stripped buffer, and necessarily so: stripping removes
 exactly what Sorbet reads, so running it downstream would answer a different
-question. It goes through `ratchet/scripts/srb_sigs.py`, not a second invocation
+question. It goes through `ruby-lean/scripts/srb_sigs.py`, not a second invocation
 of the binary, so `srb clean` here is the same `srb_clean` that
 `build_corpus.py`'s stage 1 records and a rung's `expect_sorbet` is checked
 against — a rung whose `.meta.json` says `"expect_sorbet": false` should show

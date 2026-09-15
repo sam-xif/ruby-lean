@@ -1,10 +1,10 @@
 # The judgment layer — semantic Ruby types, and making the relation the definition of record
 
 > **Status (2026-08-26, second update the same day): BUILT through J2, plus the
-> narrowing rung.** J0 landed as `lean/RubyCore/Judgment/` (J1–J17 in its
+> narrowing rung.** J0 landed as `ruby-lean/RubyCore/Judgment/` (J1–J17 in its
 > implementation-notes); the machine-typing spine, preservation, the composed
 > theorem, and the derivation-checker pipeline landed the same day as J18–J27
-> (`lean/RubyCore/Proof/Judgment/`). The headline theorems, all axiom-clean and in
+> (`ruby-lean/RubyCore/Proof/Judgment/`). The headline theorems, all axiom-clean and in
 > `check-proofs.sh`'s audit:
 >
 > * `judge_sound` / `judge_sound_cert` — a `Judge` derivation at a table sound for
@@ -97,7 +97,7 @@
 > Origin: a first-principles design conversation prompted by the observation that
 > the type-checking strand feels like wheel-spinning. The conclusion was a
 > **re-scoping of C-1** ([`certificate-language.md`](certificate-language.md)
-> §10.5–10.6, `lean/HANDOFF.md` C-1 entry): state the invariant over an inductive
+> §10.5–10.6, `ruby-lean/notes/model/HANDOFF.md` C-1 entry): state the invariant over an inductive
 > judgment rather than over `chk`. §0's diagnosis is now *measured*: the
 > preservation mountain was climbed in one day of rungs because inversion is
 > `cases`, the `sub` rule costs one slack-composition for every head at a stroke
@@ -635,7 +635,7 @@ Sized like the C-ladder: each rung is a commit series with a measurable exit.
 **Scorecard (2026-08-26): J0 ✓, J1 ✓ (`judge_sound_cert`, audited), J2 ✓
 (`validateJ_certifies` + JSON format + the `--certify-j` replay path, J28), J3 ✓ in substance (sends/`def` landed with J22/J23; the
 T2-shape is `egNarrow`, the T5-shape `egUserCall`), J4 open (needs the emitter
-arm — §1.7 slot 1 records the SMT-as-untrusted-emitter candidate for it).** The J-numbers continue in `lean/RubyCore/Judgment/implementation-notes.md`
+arm — §1.7 slot 1 records the SMT-as-untrusted-emitter candidate for it).** The J-numbers continue in `ruby-lean/RubyCore/Judgment/implementation-notes.md`
 (J18–J35; J29 the answer-typed invariant, J30 `SemJudge` + adequacy + result
 typing, J31 semantic axioms — user-supplied semantic judgments as `Judge` leaves,
 Deriv-invocable, pilot delivered).
@@ -671,8 +671,8 @@ only kernel-reduced trusted code is the local checker. Layout, per norm 7:
 
 | directory | contents | trust | decisions file |
 |---|---|---|---|
-| `lean/RubyCore/Judgment/` | `Judge.lean`, `Kont.lean`, `Machine.lean` (the relations), `Deriv.lean` (+ JSON codec), `Check.lean` (the local checker) | **trusted** (spec + checker) | `lean/RubyCore/Judgment/implementation-notes.md` (**J-numbers**) |
-| `lean/RubyCore/Proof/Judgment/` | `Preservation.lean`, `Progress.lean`, `Adequacy.lean` (`Deriv.check → Judge`), `Sound.lean` (the composed theorem) | **trusted** (the theorems) | same J-file |
+| `ruby-lean/RubyCore/Judgment/` | `Judge.lean`, `Kont.lean`, `Machine.lean` (the relations), `Deriv.lean` (+ JSON codec), `Check.lean` (the local checker) | **trusted** (spec + checker) | `ruby-lean/RubyCore/Judgment/implementation-notes.md` (**J-numbers**) |
+| `ruby-lean/RubyCore/Proof/Judgment/` | `Preservation.lean`, `Progress.lean`, `Adequacy.lean` (`Deriv.check → Judge`), `Sound.lean` (the composed theorem) | **trusted** (the theorems) | same J-file |
 | `certify/` | gains a derivation-emitting mode; everything stays untrusted | untrusted | E-numbers, as today |
 
 Same interaction rule: depend on `Types/`/`Proof/Static/` by import only; missing
@@ -715,7 +715,7 @@ validated two things this layer wanted: a **semantic type denotation** over the
 machine's own `isA` (`STy.den : Heap → Value → Prop`), and **iris-lean seated
 over `stepFn` unmodified** — a `Language` instance, whole-heap `ownP`
 ownership, WP proofs by machine walk, and adequacy landing on `Interp.run`.
-J36 brings both in-tree (`lean/RubyCore/HJudge/`, own lake target, toolchain
+J36 brings both in-tree (`ruby-lean/RubyCore/HJudge/`, own lake target, toolchain
 4.32.2 — the sibling's G0 fact, re-verified against SUT/Judgment/Metatheory)
 and composes them with §1–§8's spine rather than beside it:
 
@@ -750,4 +750,4 @@ and composes them with §1–§8's spine rather than beside it:
   concrete-boot walk lands only closed program-level facts.
 
 The J-numbers and named bills continue in
-`lean/RubyCore/Judgment/implementation-notes.md` (J36).
+`ruby-lean/RubyCore/Judgment/implementation-notes.md` (J36).

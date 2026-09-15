@@ -14,7 +14,7 @@ on `infer`, see `Types/LambdaArrow.lean`'s header for why). None of them execute
 anything, so none boots the prelude and none depends on model coverage.
 
 Run:  python3 server.py [port]      (default 8077)
-Needs: CRuby 4.0.5 (brew) + a built `rubycore` (cd ../lean && lake build).
+Needs: CRuby 4.0.5 (brew) + a built `rubycore` (cd ../ruby-lean && lake build).
 """
 from __future__ import annotations
 
@@ -29,8 +29,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent  # ruby/
 EXPORT_JSON = ROOT / "harness" / "desugar-dt" / "bin" / "export-json"
-RUBYCORE = ROOT / "lean" / ".lake" / "build" / "bin" / "rubycore"
-RATCHET_VALIDATE = ROOT / "ratchet" / ".lake" / "build" / "bin" / "validate-one"
+RUBYCORE = ROOT / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
+RATCHET_VALIDATE = ROOT / "ruby-lean" / ".lake" / "build" / "bin" / "validate-one"
 MAX_STEPS = "4000"
 # The desugar budget. It used to be 15s, which is a toy's budget: the linked
 # Homebrew slice is 2,151 lines and the slice explorer feeds it to the same first
@@ -60,7 +60,7 @@ def trace(source: str, window: dict | None = None) -> dict:
     small program — the Homebrew slice is 825,259 steps and a snapshot is ~1 KB,
     so the cap shows the first half-percent of its boot (`--trace-at`)."""
     if not RUBYCORE.exists():
-        return {"error": "setup", "message": f"rubycore not built at {RUBYCORE} — run `cd ../lean && lake build`"}
+        return {"error": "setup", "message": f"rubycore not built at {RUBYCORE} — run `cd ../ruby-lean && lake build`"}
     try:
         des = subprocess.run(
             [RUBY, str(EXPORT_JSON)], input=source,
@@ -221,7 +221,7 @@ def desugar(source: str) -> tuple[str | None, dict | None]:
     every query on this server; exit 3 is the desugar's own fragment gate."""
     if not RUBYCORE.exists():
         return None, {"error": "setup",
-                      "message": f"rubycore not built at {RUBYCORE} — run `cd ../lean && lake build`"}
+                      "message": f"rubycore not built at {RUBYCORE} — run `cd ../ruby-lean && lake build`"}
     try:
         des = subprocess.run([RUBY, str(EXPORT_JSON)], input=source,
                              capture_output=True, text=True, timeout=TIMEOUT)
@@ -282,7 +282,7 @@ def check(source: str) -> dict:
 
 def check_tl(source: str) -> dict:
     """`rubycore --check-tl` — the standalone typed-lambdas checker
-    (`docs/semantics/typed-lambdas-plan.md`, `lean/RubyCore/Types/LambdaArrow.lean`).
+    (`docs/semantics/typed-lambdas-plan.md`, `ruby-lean/RubyCore/Types/LambdaArrow.lean`).
 
     Deliberately a separate query from `check()`/`--check`, the way the two
     checkers are separate in the Lean tree: this one reads a `sig`-declared
@@ -298,7 +298,7 @@ def check_tl(source: str) -> dict:
     return lean_query(core, "--check-tl")
 
 
-CORPUS = ROOT / "ratchet" / "corpus"
+CORPUS = ROOT / "ruby-lean" / "corpus"
 
 
 def corpus_stems() -> list[str]:
@@ -350,7 +350,7 @@ def ratchet_sorbet(source: str) -> dict:
         rb = Path(td) / "playground.rb"
         rb.write_text(source)
         p = subprocess.run(
-            [sys.executable, str(ROOT / "ratchet/scripts/srb_sigs.py"), "--quiet", str(rb)],
+            [sys.executable, str(ROOT / "ruby-lean/scripts/srb_sigs.py"), "--quiet", str(rb)],
             capture_output=True, text=True, timeout=LONG)
         if p.returncode != 0:
             return {"error": "sorbet", "message": p.stderr.strip()[:2000] or f"exit {p.returncode}"}
@@ -377,7 +377,7 @@ def ratchet_derive(source: str) -> dict:
         rb = Path(td) / "playground.rb"
         rb.write_text(source)
         sigs = subprocess.run(
-            [sys.executable, str(ROOT / "ratchet/scripts/srb_sigs.py"), "--quiet", str(rb)],
+            [sys.executable, str(ROOT / "ruby-lean/scripts/srb_sigs.py"), "--quiet", str(rb)],
             capture_output=True, text=True, timeout=LONG)
         if sigs.returncode != 0:
             return {"error": "sorbet", "message": sigs.stderr.strip()[:2000]}
@@ -391,7 +391,7 @@ def ratchet_derive(source: str) -> dict:
         sp.write_text(sigs.stdout)
         ap.write_text(core)
         emit = subprocess.run(
-            [sys.executable, str(ROOT / "ratchet/scripts/emit_deriv.py"),
+            [sys.executable, str(ROOT / "ruby-lean/scripts/emit_deriv.py"),
              "--ast", str(ap), "--sigs", str(sp)],
             capture_output=True, text=True, timeout=LONG)
         if emit.returncode != 0:
@@ -409,7 +409,7 @@ def ratchet_derive(source: str) -> dict:
 def ratchet_validate(source: str, deriv) -> dict:
     """Check the displayed Deriv with the trusted `validateD` Bool."""
     if not RATCHET_VALIDATE.exists():
-        return {"error": "setup", "message": f"validate-one not built at {RATCHET_VALIDATE} — run `cd ../ratchet && lake build validate-one`"}
+        return {"error": "setup", "message": f"validate-one not built at {RATCHET_VALIDATE} — run `cd ../ruby-lean && lake build validate-one`"}
     stripped = strip_chain(source)
     if stripped.get("error"):
         return stripped

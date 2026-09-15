@@ -1,0 +1,159 @@
+name = "rubylean"
+version = "0.1.0"
+defaultTargets = ["rubycore", "Ratchet", "Semantics", "Denote", "ratchetd", "semladder"]
+
+# One package, four source layers, and the layering is the point:
+#
+#   RubyCore/   the executable model (the SUT) and its metatheory
+#   Ratchet/    the certificate checker — `Expr`/`Ty` as *copied text*, `Cert`, `validateD`
+#   Semantics/  the one import bridge back to the real `stepFn`
+#   Denote/     the denotation joining the two, and `validateD_safe_boot`
+#
+# `Ratchet/` must not import anything under `RubyCore/` (see AGENTS.md for why: the
+# checker is meant to be readable and re-implementable without the model in scope).
+# That used to be enforced by the checker living in its own Lake package; now that both
+# live here it is enforced by `scripts/check-isolation.sh`, which the typed-ratchet
+# gate runs as its first stage.
+
+# Property-based testing (QuickCheck-style, the SlimCheck successor), pinned to
+# the same toolchain as `lean-toolchain`. Used ONLY by the off-default-target
+# witness-finding harness `RubyCore/Search/Random.lean` (Phase 1 of the
+# Direction-A checker); the `RubyCore` lib and the `rubycore` exe never import
+# it, so the SUT is unaffected. See notes/model/implementation-notes.md L58.
+[[require]]
+name = "plausible"
+git = "https://github.com/leanprover-community/plausible"
+rev = "v4.32.0"
+
+# iris-lean (H-layer, judgment-layer.md J36): the Iris base logic + program
+# logic, seated over the RubyCore machine exactly as the sibling branch
+# `mdd/ruby-sorbet` does (`mdd/sorbet-lean/`, spike S1 — verdict GO). Used
+# ONLY by the `HJudge` lib (`RubyCore/HJudge/`); the `RubyCore` SUT lib, the
+# `Judgment` layer and the `Metatheory` gate never import it. Pin = the
+# sibling's measured-good pin (their G0/S1 evidence is at this rev).
+[[require]]
+name = "iris"
+git = "https://github.com/leanprover-community/iris-lean"
+rev = "34390a0133986385c62bf59a6eb01938945b48ec"
+subDir = "Iris"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The model (formerly the `lean/` package)
+# ─────────────────────────────────────────────────────────────────────────────
+
+[[lean_lib]]
+name = "RubyCore"
+
+[[lean_exe]]
+name = "rubycore"
+root = "Main"
+
+# Concolic trace executable (Direction-A search support): emits branch decisions
+# + the authoritative outcome classification from the real `stepFn`. Off the
+# default target, so `lake build` / the `rubycore` SUT are unaffected.
+[[lean_exe]]
+name = "rubycore-concolic"
+root = "ConcolicMain"
+
+# The metatheory (`RubyCore/Proof/`). **Not** in defaultTargets: it is slow and
+# nothing the SUT does depends on it, which is exactly why it rotted — three
+# independent breaks (L101, L103, L116) went unnoticed for 24 commits because a
+# green ratchet says nothing about the proofs (`PLAN.md` §4 norm 5). One target
+# so that checking them is a single command:
+#
+#     lake build Metatheory        # all 19 files
+#     scripts/check-proofs.sh      # the same, plus `#print axioms`
+[[lean_lib]]
+name = "Metatheory"
+srcDir = "."
+globs = ["RubyCore.Proof.+"]
+
+# The declarative judgment layer (`RubyCore/Judgment/`, judgment-layer.md J0) —
+# the definition of record the J-milestones' metatheory is stated over. Off the
+# default target for Metatheory's reason (nothing the SUT does depends on it):
+#
+#     lake build Judgment
+[[lean_lib]]
+name = "Judgment"
+srcDir = "."
+globs = ["RubyCore.Judgment.+"]
+
+# The H-layer (`RubyCore/HJudge/`, judgment-layer.md J36): the higher-order
+# semantic type denotation `HTy`, the judgment `HJudge` over it, and the
+# iris-lean seat (Language instance / ownP interp / WP walk / adequacy —
+# ported from `mdd/ruby-sorbet`'s `mdd/sorbet-lean/`, attributed per file)
+# that supplies its WP admission route. Off the default target: nothing the
+# SUT does depends on it, and it is the only lib that elaborates Iris.
+#
+#     lake build HJudge
+[[lean_lib]]
+name = "HJudge"
+srcDir = "."
+globs = ["RubyCore.HJudge.+"]
+
+# The bind-rule probe (`RubyCore/HCtx/`) — can iris-lean's `wp_bind` be had for
+# the RubyCore machine? Its own lib, off the default target, for `HJudge`'s
+# reason (nothing the SUT does depends on it, and it elaborates Iris). Kept
+# separate from `HJudge` so the second `Language` instance it needs cannot
+# collide with that one's (`Lang.lean`'s no-diamond discipline):
+#
+#     lake build HCtx
+[[lean_lib]]
+name = "HCtx"
+srcDir = "."
+globs = ["RubyCore.HCtx.+"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The checker and its denotation (formerly the `ratchet/` package)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# `Ratchet/` (the certificate checker: `Expr`/`Ty` ported as copied text, `Cert`,
+# `Validate`) is deliberately isolated from `RubyCore/`: no import of anything
+# under it. See `AGENTS.md`, and `scripts/check-isolation.sh` for the check.
+[[lean_lib]]
+name = "Ratchet"
+srcDir = "."
+globs = ["Ratchet.+"]
+
+# `Semantics/` is the one deliberate exception: the real semantics (`stepFn` and
+# its ~24k-line dependency closure) is *imported*, not hand-copied — see
+# `Semantics/Interp.lean`'s module docstring for why the boundary is drawn there.
+[[lean_lib]]
+name = "Semantics"
+srcDir = "."
+globs = ["Semantics.+"]
+
+# `Denote/` — the *semantic* denotation of `Ratchet.Ty` (`Ty -> Heap -> Value -> Prop`,
+# plus its computable `Bool` core). The one library that imports **both** `Ratchet/`'s
+# copied type language and `Semantics/`'s real machine, on purpose: a denotation is by
+# definition a statement relating the two. Maintained separately from the syntactic
+# judgment (`Ratchet/Judge.lean`), which it does not import and which does not import it.
+[[lean_lib]]
+name = "Denote"
+srcDir = "."
+globs = ["Denote.+"]
+
+# `Denote/Examples.lean`'s report, printed. The `#guard`s there are the real gate (they
+# fail the build); this is so the log shows *what* was checked.
+[[lean_exe]]
+name = "denotereport"
+root = "DenoteReport"
+
+# The semantic ratchet's report. Reads the `Judge` inductive's constructor list and the
+# `Sem.*` discharges out of the environment at elaboration time, so the exe itself is a
+# `println`. Separate from `ratchetd` so each ladder's headline number stays a statement
+# about exactly one thing — reach vs. justification.
+[[lean_exe]]
+name = "semladder"
+root = "SemLadder"
+
+# The typed ladder's runner: stage 5 of `scripts/build_corpus.py`'s pipeline, the only
+# trusted one. See `MainTyped.lean`.
+[[lean_exe]]
+name = "ratchetd"
+root = "MainTyped"
+
+# The playground's adapter around the same `validateD` the gate runs.
+[[lean_exe]]
+name = "validate-one"
+root = "MainValidateOne"

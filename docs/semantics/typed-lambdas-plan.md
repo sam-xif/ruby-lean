@@ -19,13 +19,13 @@ be consumed at a distant `call` send.
 **Representation facts that drive everything** (verify, don't trust):
 
 * A lambda is an ordinary heap object: `Object { klass := procId, payload := .proc c }`
-  where `Closure` (`lean/RubyCore/Heap.lean:132`) holds `params`, `locals`,
+  where `Closure` (`ruby-lean/RubyCore/Heap.lean:132`) holds `params`, `locals`,
   `body : Expr`, `captured : Nat` (a FrameId), `home : Nat`, `lam : Bool`.
 * Creation: `lambda { … }` arrives as a send with implicit receiver, name `"lambda"`,
   and a block literal; `reifyBlock … (mkLam := true)` allocates the object
-  (`lean/RubyCore/Interp/Send.lean:375–379`). Confirm during L0 that `->(){ }`
+  (`ruby-lean/RubyCore/Interp/Send.lean:375–379`). Confirm during L0 that `->(){ }`
   desugars to this same form.
-* Invocation: `callClosure` (`lean/RubyCore/Interp/Support.lean:418`) pushes a block
+* Invocation: `callClosure` (`ruby-lean/RubyCore/Interp/Support.lean:418`) pushes a block
   frame whose parent is the **captured** frame; free variables of the body resolve up
   that chain. Frames are never deallocated (the frame store only grows), so an escaped
   lambda's captured frame is always live.

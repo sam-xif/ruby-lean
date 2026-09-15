@@ -272,7 +272,7 @@ def unchecked_variant(source: str) -> str:
 @dataclass(frozen=True)
 class FragmentResult:
     """`rubycore --fragment`: is this program in the provable subset, and if
-    not, why (`lean/RubyCore/Types/Fragment.lean`)."""
+    not, why (`ruby-lean/RubyCore/Types/Fragment.lean`)."""
 
     in_fragment: bool
     violations: tuple[dict, ...]
@@ -294,7 +294,7 @@ class FragmentChecker:
                  runner: CRubyRunner | None = None):
         root = Path(__file__).resolve().parents[2]
         self.harness_lib = Path(harness_lib) if harness_lib else root / "harness" / "desugar-dt" / "lib"
-        self.lean_bin = Path(lean_bin) if lean_bin else root / "lean" / ".lake" / "build" / "bin" / "rubycore"
+        self.lean_bin = Path(lean_bin) if lean_bin else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
         self.runner = runner or CRubyRunner()
 
     def check(self, source: str) -> FragmentResult | None:
@@ -329,7 +329,7 @@ class FragmentChecker:
 @dataclass(frozen=True)
 class CheckResultLean:
     """`rubycore --check`: the static checker's answer
-    (`lean/RubyCore/Types/Core.lean`).
+    (`ruby-lean/RubyCore/Types/Core.lean`).
 
     Two readings, and the distinction is D12's:
 
@@ -367,7 +367,7 @@ class StaticChecker:
                  runner: CRubyRunner | None = None):
         root = Path(__file__).resolve().parents[2]
         self.harness_lib = Path(harness_lib) if harness_lib else root / "harness" / "desugar-dt" / "lib"
-        self.lean_bin = Path(lean_bin) if lean_bin else root / "lean" / ".lake" / "build" / "bin" / "rubycore"
+        self.lean_bin = Path(lean_bin) if lean_bin else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
         self.runner = runner or CRubyRunner()
 
     def check(self, source: str) -> CheckResultLean | None:
@@ -399,7 +399,7 @@ class StaticChecker:
 
 class SigReader:
     """Ask the Lean model which Sorbet signatures a program *declares*
-    (`rubycore --sigs`, `lean/RubyCore/Types/SigRead.lean`).
+    (`rubycore --sigs`, `ruby-lean/RubyCore/Types/SigRead.lean`).
 
     Static, like `FragmentChecker` and `StaticChecker`, and against the same
     binary — the reader is what a later typing layer will consume, so it must not
@@ -410,7 +410,7 @@ class SigReader:
                  runner: CRubyRunner | None = None):
         root = Path(__file__).resolve().parents[2]
         self.harness_lib = Path(harness_lib) if harness_lib else root / "harness" / "desugar-dt" / "lib"
-        self.lean_bin = Path(lean_bin) if lean_bin else root / "lean" / ".lake" / "build" / "bin" / "rubycore"
+        self.lean_bin = Path(lean_bin) if lean_bin else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
         self.runner = runner or CRubyRunner()
 
     def read(self, source: str) -> list[dict] | None:

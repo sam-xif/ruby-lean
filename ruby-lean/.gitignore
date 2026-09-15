@@ -1,0 +1,10 @@
+.lake/
+
+# Everything under build/ is derived by scripts/build_corpus.py from corpus/*.rb
+# (sigs, stripped source, AST, derivation). The .rb is the source of truth.
+build/
+
+# The W2a regex-oracle corpus, regenerated from the brew checkout by
+# `ruby scripts/rxcases.rb > cases.tsv` (7,418 cases; check the count — the script
+# silently skips files it cannot find). Generated, like difftest's two corpora.
+cases.tsv

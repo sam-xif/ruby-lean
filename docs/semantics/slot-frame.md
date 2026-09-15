@@ -294,12 +294,12 @@ rewrite.
 
 | file | contents |
 |---|---|
-| `lean/RubyCore/Types/SlotClaim.lean` | SF1/SF2 (`slotOf`, `SlotDefined`/`SlotEmpty`/`NoMM`), SF3/SF4 (`Spine`), SF5/SF6 (`SlotClaim`, `compose`, `composeAll`), the semantic `Holds` + kernel `holdsB` + `holdsB_iff`, SF7 (`row`), SF8 (`Install`, `Install.conflicts`, `framedB`) |
-| `lean/RubyCore/Types/SlotWalk.lean` | §5 step 2 — `InstallN`, `installsGo`/`installsOf` (fuel-bounded, **not** `partial`, so SF-T3 can reason about it), `InstallN.framedBy`, `framedProgB`, the name-keyed wire shape `SlotClaimN` + `resolve`, `bootResolver` |
-| `lean/RubyCore/Types/SlotClaimEg.lean` | §1's two measured blockers cleared, SF8's table in both polarities, the walk on syntax — all `#guard` |
-| `lean/RubyCore/Proof/Static/Frame.lean` | SF-T1, SF-T2, `holds_compose` (composition *is* conjunction), `row_lookupIn` (SF7 entails the resolution). Axiom-clean |
-| `lean/RubyCore/Judgment/Check.lean` | SF-T4's half: `JCert.footprint`, `frameOkB`, the new `validateJ` conjunct |
-| `lean/RubyCore/Proof/Judgment/Adequacy.lean` | `egEven`'s row as a slot claim, validating; rejected on a redefining program and on a wrong-owner footprint |
+| `ruby-lean/RubyCore/Types/SlotClaim.lean` | SF1/SF2 (`slotOf`, `SlotDefined`/`SlotEmpty`/`NoMM`), SF3/SF4 (`Spine`), SF5/SF6 (`SlotClaim`, `compose`, `composeAll`), the semantic `Holds` + kernel `holdsB` + `holdsB_iff`, SF7 (`row`), SF8 (`Install`, `Install.conflicts`, `framedB`) |
+| `ruby-lean/RubyCore/Types/SlotWalk.lean` | §5 step 2 — `InstallN`, `installsGo`/`installsOf` (fuel-bounded, **not** `partial`, so SF-T3 can reason about it), `InstallN.framedBy`, `framedProgB`, the name-keyed wire shape `SlotClaimN` + `resolve`, `bootResolver` |
+| `ruby-lean/RubyCore/Types/SlotClaimEg.lean` | §1's two measured blockers cleared, SF8's table in both polarities, the walk on syntax — all `#guard` |
+| `ruby-lean/RubyCore/Proof/Static/Frame.lean` | SF-T1, SF-T2, `holds_compose` (composition *is* conjunction), `row_lookupIn` (SF7 entails the resolution). Axiom-clean |
+| `ruby-lean/RubyCore/Judgment/Check.lean` | SF-T4's half: `JCert.footprint`, `frameOkB`, the new `validateJ` conjunct |
+| `ruby-lean/RubyCore/Proof/Judgment/Adequacy.lean` | `egEven`'s row as a slot claim, validating; rejected on a redefining program and on a wrong-owner footprint |
 
 **Two design changes made while building, both recorded in-file:**
 
@@ -340,7 +340,7 @@ rewrite.
 
 [`slot-frame-experiment.md`](slot-frame-experiment.md) E2 and E3 were run in
 `../../spikes/slot-frame/` (numbers and reproduction: `RESULTS.md` there; session
-log: `../../lean/HANDOFF-SF.md`). Nothing in `RubyCore/` changed — E3's weakened
+log: `../../ruby-ruby-lean/notes/model/HANDOFF-SF.md`). Nothing in `RubyCore/` changed — E3's weakened
 guard is a name-distinct local copy.
 
 * **E2 (V2, decidability) — pass.** 25 rows × the largest real slice AST

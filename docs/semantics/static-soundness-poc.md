@@ -511,7 +511,7 @@ now for trust rather than only for claim strength.
 
 ### 8.1 P0a as built — what the measurement said
 
-`lean/RubyCore/Types/Core.lean` (checker) + `lean/RubyCore/Proof/StaticSoundness.lean`
+`ruby-lean/RubyCore/Types/Core.lean` (checker) + `ruby-lean/RubyCore/Proof/StaticSoundness.lean`
 (proof). `check_sound` is proved and depends on `[propext, Classical.choice, Quot.sound]`
 and nothing else — the same baseline as `Proof/SorbetSafety.lean` [V].
 

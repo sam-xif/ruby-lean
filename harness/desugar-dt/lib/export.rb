@@ -3,7 +3,7 @@
 require "json"
 
 # Serialize a RubyCore S-expression to JSON for out-of-process consumers — the
-# Lean model (`ruby/lean/`) is the first. The interface is versioned so either
+# Lean model (`ruby/ruby-lean/`) is the first. The interface is versioned so either
 # side can reject a mismatch (lean-model-sketch.md §2.1, §5).
 #
 # Encoding: an S-expr node `[:head, ...]` becomes a JSON array whose first
@@ -17,7 +17,7 @@ module Export
   # v3 (2026-07-10): block passing (L1b) — block-capture params ride in the flat
   # param list as "&blk"/"&" strings (no encoding change), and the new `blockpass`
   # head (`[:blockpass, expr_or_nil]`) may occupy a send/super block slot. The Lean
-  # decoder (`ruby/lean/RubyCore/Syntax.lean`) must be updated to match before
+  # decoder (`ruby/ruby-lean/RubyCore/Syntax.lean`) must be updated to match before
   # `--sut lean` works again (L1 blocks + L1b block passing, model side).
   # v4 (2026-07-14): M2 params (C25) — the `def`/`defs`/`block` param slot is no longer a
   # flat [String]; it is a structured list of param nodes ([:preq,…], [:popt,name,default],

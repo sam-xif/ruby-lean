@@ -1,7 +1,7 @@
 # Memo — does the slot frame unlock value? A one-day experiment
 
 **2026-08-29.** Companion to [`slot-frame.md`](slot-frame.md) (the design, and §10
-for what is built) and [`../../lean/HANDOFF-SF.md`](../../lean/HANDOFF-SF.md)
+for what is built) and [`../../ruby-ruby-lean/notes/model/HANDOFF-SF.md`](../../ruby-ruby-lean/notes/model/HANDOFF-SF.md)
 (state and the unproved bridge). Neither is restated here; this memo is only the
 experiment.
 
@@ -175,7 +175,7 @@ honestly.
 
 Run in `../../spikes/slot-frame/`; raw numbers, tables and `run.sh` in
 [`../../spikes/slot-frame/RESULTS.md`](../../spikes/slot-frame/RESULTS.md),
-session log in `../../lean/HANDOFF-SF.md`, verdict in
+session log in `../../ruby-ruby-lean/notes/model/HANDOFF-SF.md`, verdict in
 [`slot-frame.md`](slot-frame.md) §10.
 
 * **E2 — pass.** 0.32 s at 25 rows × the largest real slice AST, `decide` only,

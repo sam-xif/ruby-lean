@@ -3,17 +3,18 @@
 **An executable semantics for Ruby in Lean 4 — and a typed fragment whose checker
 is backed by a proof.**
 
-Two artifacts live here, and the second is built on the first:
+Two artifacts live here, and the second is built on the first. Both are
+libraries of the one Lean project, [`ruby-lean/`](ruby-lean/README.md):
 
-1. **`lean/` — RubyCore.** A small-step machine plus fuel interpreter for a
-   substantial Ruby core, written in Lean 4 and validated *empirically* by
-   differential testing against CRuby: every program is run both ways and the
-   observations compared. It is not a paper semantics with an interpreter beside
-   it; the interpreter **is** the semantics.
-2. **`ratchet/` — the typed ladder.** A checker over Sorbet-annotated Ruby whose
-   single trusted output is one Lean `Bool`, and a theorem saying that when that
-   `Bool` is `true`, the program cannot get stuck on a type error *when run by the
-   semantics in `lean/`*.
+1. **`ruby-lean/RubyCore/` — RubyCore.** A small-step machine plus fuel
+   interpreter for a substantial Ruby core, written in Lean 4 and validated
+   *empirically* by differential testing against CRuby: every program is run both
+   ways and the observations compared. It is not a paper semantics with an
+   interpreter beside it; the interpreter **is** the semantics.
+2. **`ruby-lean/Ratchet/` + `ruby-lean/Denote/` — the typed ladder.** A checker
+   over Sorbet-annotated Ruby whose single trusted output is one Lean `Bool`, and
+   a theorem saying that when that `Bool` is `true`, the program cannot get stuck
+   on a type error *when run by the semantics in `RubyCore/`*.
 
 Plus **`playground/`**, a browser UI that steps a program through the real
 `stepFn` one transition at a time and runs the same source through CRuby beside
@@ -28,7 +29,7 @@ it.
 
 ## The claim, in one line
 
-From [`ratchet/Denote/Typed/Bridge.lean`](ratchet/Denote/Typed/Bridge.lean):
+From [`ruby-lean/Denote/Typed/Bridge.lean`](ruby-lean/Denote/Typed/Bridge.lean):
 
 ```lean
 theorem validateD_safe_boot {p : Ratchet.Expr} {d : Deriv}
@@ -36,7 +37,7 @@ theorem validateD_safe_boot {p : Ratchet.Expr} {d : Deriv}
     StuckFree bootMachine p
 ```
 
-where, from [`ratchet/Denote/Sem/State.lean`](ratchet/Denote/Sem/State.lean),
+where, from [`ruby-lean/Denote/Sem/State.lean`](ruby-lean/Denote/Sem/State.lean),
 
 ```lean
 def StuckFree (m : Machine) (e : Ratchet.Expr) : Prop :=
@@ -45,7 +46,7 @@ def StuckFree (m : Machine) (e : Ratchet.Expr) : Prop :=
 
 and `typeStuck` is the `NoMethodError` / `ArgumentError` / `TypeError` family,
 closed under subclassing, decided on the **real** machine's heap
-([`ratchet/Semantics/Interp.lean`](ratchet/Semantics/Interp.lean)).
+([`ruby-lean/Semantics/Interp.lean`](ruby-lean/Semantics/Interp.lean)).
 
 Read it as: *acceptance is the safety claim.* There is no gap between "the
 checker said yes" and "this program is type-safe under our semantics" that a
@@ -73,7 +74,7 @@ show up in that line, in the log, on every build.
 
 ## Where it stands today
 
-Printed by `ratchet/scripts/run_typed_ratchet.sh` on a clean checkout of this
+Printed by `ruby-lean/scripts/run_typed_ratchet.sh` on a clean checkout of this
 repository (v0.01, verified 2026-09-15):
 
 ```
@@ -87,7 +88,7 @@ RATCHET GREEN
 
 | Number | Means |
 |---|---|
-| **259 rungs** | annotated programs in `ratchet/corpus/` |
+| **259 rungs** | annotated programs in `ruby-lean/corpus/` |
 | **fragment 63** | rungs the certified judgment has rules for — each one's acceptance *is* its safety proof |
 | **reach 17** | the unbroken prefix from rung 001; rung 018 is correctly rejected |
 | **48 rules certified, 0 owed** | every rule in the judgment carries a semantic proof, so no rung is claimed on an unproved rule |
@@ -116,10 +117,10 @@ wrong without making a wrong answer possible:
 
 | Stage | Tool | Trusted? |
 |---|---|---|
-| 1. Sorbet signatures | `srb -p symbol-table` via `ratchet/scripts/srb_sigs.py` | no |
+| 1. Sorbet signatures | `srb -p symbol-table` via `ruby-lean/scripts/srb_sigs.py` | no |
 | 2. Annotation stripping | `difftest/ruby/*_strip.rb` | no |
 | 3. Desugar to RubyCore JSON | `harness/desugar-dt/bin/export-json` | no |
-| 4. Emit a derivation | `ratchet/scripts/emit_deriv.py` | no |
+| 4. Emit a derivation | `ruby-lean/scripts/emit_deriv.py` | no |
 | 5. **Check the derivation** | `validateD`, in Lean | **yes — only this** |
 
 Stages 1–4 *generate* a candidate certificate. Stage 5 *checks* it, and only its
@@ -157,19 +158,22 @@ unusual.
 ## Build
 
 ```sh
-cd lean    && lake build     # the model + the `rubycore` SUT binary
-cd ratchet && lake build     # the checker, its proofs, and the runners
+cd ruby-lean && lake build   # the model + the `rubycore` SUT binary,
+                             # the checker, its proofs, and the runners
 ```
 
-`ratchet/` depends on `lean/` through a **path** `require` (`../lean`), so the
-checker always speaks about whatever the model currently does — there is no
-second, driftable copy of the semantics. The first build fetches two Lean
-dependencies (`plausible`, `iris-lean`) into the manifest; neither is on the
-default target, and neither is needed for anything on this page.
+One Lake package, four libraries — `RubyCore` (the model), `Ratchet` (the
+checker), `Semantics` (the one import of the real machine) and `Denote` (the
+denotation that joins them). The checker therefore always speaks about whatever
+the model currently does: there is no second, driftable copy of the semantics,
+and `Ratchet/` still imports nothing from `RubyCore/` (enforced by
+`ruby-lean/scripts/check-isolation.sh`, which the gate runs first). The first
+build fetches two Lean dependencies (`plausible`, `iris-lean`) into the manifest;
+neither is on the default target, and neither is needed for anything on this page.
 
-On a cold cache expect a few minutes for `lean/` and on the order of half an
-hour for `ratchet/` — the bulk of it is elaborating `Denote/`, which is where
-the semantic proofs live. Incremental rebuilds are seconds.
+On a cold cache expect a few minutes for the model and on the order of half an
+hour for the rest — the bulk of it is elaborating `Denote/`, which is where the
+semantic proofs live. Incremental rebuilds are seconds.
 
 ## Reproduce
 
@@ -216,7 +220,7 @@ harness/desugar-dt/bin/harvest_bootstraptest /tmp/ruby-src/bootstraptest
 cd difftest && uv sync && uv run python -m difftest run --tier 0 --sut lean
 
 # run one program through the model by hand
-echo 'puts 1 + 2' | ruby harness/desugar-dt/bin/export-json | lean/.lake/build/bin/rubycore
+echo 'puts 1 + 2' | ruby harness/desugar-dt/bin/export-json | ruby-lean/.lake/build/bin/rubycore
 
 # the metatheory, and a re-check that the headline theorems are axiom-clean
 cd lean && ./scripts/check-proofs.sh
@@ -239,8 +243,9 @@ before the trusted check. See [`playground/README.md`](playground/README.md).
 
 | Path | What it is |
 |---|---|
-| [`lean/`](lean/README.md) | **RubyCore**: `Syntax`/`Heap`/`Machine`/`Builtins`/`Interp` (`stepFn` + `run fuel`), the Ruby-authored `prelude/`, the `rubycore` SUT binary, and `RubyCore/Proof/` (metatheory, incl. type-safety-by-reachability). Off-default targets: `Metatheory`, `Judgment`, `HJudge`. |
-| [`ratchet/`](ratchet/AGENTS.md) | The typed ladder: `Ratchet/` (the checker — its own copied `Expr`/`Ty`, `Deriv`, `validateD`; imports nothing from `lean/`), `Semantics/` (the real machine, imported), `Denote/` (the semantic denotation and the bridge — the one library that imports both), `corpus/` (annotated rungs), `scripts/` (the untrusted pipeline + the gate). |
+| [`ruby-lean/`](ruby-lean/README.md) | The Lean project — one Lake package, and everything below is a directory in it. Working notes live in `ruby-lean/notes/`; the agent-facing state is [`ruby-lean/AGENTS.md`](ruby-lean/AGENTS.md). |
+| `ruby-lean/RubyCore/` | **RubyCore**: `Syntax`/`Heap`/`Machine`/`Builtins`/`Interp` (`stepFn` + `run fuel`), the Ruby-authored `prelude/`, the `rubycore` SUT binary, and `RubyCore/Proof/` (metatheory, incl. type-safety-by-reachability). Off-default targets: `Metatheory`, `Judgment`, `HJudge`. |
+| `ruby-lean/Ratchet/`, `Semantics/`, `Denote/` | The typed ladder: `Ratchet/` (the checker — its own copied `Expr`/`Ty`, `Deriv`, `validateD`; imports nothing from `RubyCore/`), `Semantics/` (the real machine, imported), `Denote/` (the semantic denotation and the bridge — the one library that imports both). With `corpus/` (annotated rungs) and `scripts/` (the untrusted pipeline + the gate). |
 | [`difftest/`](difftest/README.md) | The differential engine: tiered generators, the CRuby oracle, `replay`, and the strip transforms the ratchet reuses. |
 | [`harness/desugar-dt/`](harness/desugar-dt/) | Ruby → RubyCore JSON (`export-json`), the front end for everything here. |
 | [`playground/`](playground/README.md) | The browser stepper and the live ratchet pipeline. |
@@ -258,29 +263,30 @@ Read these before quoting a number.
 * **The model is a model.** It agrees with CRuby wherever it answers (0
   disagreements over 1309 bootstraptest programs) but it declines 308 of them —
   roughly a quarter of the suite is outside its fragment. What is modeled, and
-  what is not, is listed in [`lean/README.md`](lean/README.md).
+  what is not, is listed in [`ruby-lean/README.md`](ruby-lean/README.md).
 * **Safety means one family.** `StuckFree` rules out reaching
   `NoMethodError`/`ArgumentError`/`TypeError`. It is not a claim about
   termination, about other exceptions, or about effects.
 * **Sorbet's verdict is not this repo's verdict.** `srb` clean with
   `validateD = false` is an ordinary, expected combination: Sorbet accepts many
   programs the certified fragment has no rules for yet.
-* **One metatheory file does not build.** `lean/`'s off-default `Metatheory`
+* **One metatheory file does not build.** The off-default `Metatheory`
   target currently fails in `RubyCore/Proof/Static/Preservation.lean` (three
   broken proofs), so `scripts/check-proofs.sh` — and therefore
   `scripts/reproduce.sh --with-proofs` — exits non-zero. This is drift, not a
   false claim: `Proof/` is off the default build target precisely because
   nothing the SUT or the ratchet does depends on it, which is also why it rots
   unnoticed. **Nothing on this page depends on it.** The headline theorem
-  `validateD_safe_boot` and every proof under `ratchet/Denote/` are on the
+  `validateD_safe_boot` and every proof under `ruby-lean/Denote/` are on the
   default target, build clean, and print their axioms on every build. (A related
   break in `Proof/Static/Iter.lean` was repaired for this release — see
   `CHANGELOG.md`.)
-* **`ratchet/build/` is derived.** It is regenerated from `corpus/*.rb` by the
+* **`ruby-lean/build/` is derived.** It is regenerated from `corpus/*.rb` by the
   pipeline; the annotated `.rb` is the source of truth.
 
-The per-directory `AGENTS.md` / `implementation-notes.md` / `found-issues.md`
-files are the working record: what was tried, what broke, and which stall points
+`ruby-lean/AGENTS.md` and the `ruby-lean/notes/` files (`implementation-notes.md`,
+`found-issues.md`, `HANDOFF.md`, per layer under `notes/model/` and
+`notes/ratchet/`) are the working record: what was tried, what broke, and which stall points
 cost days. They are kept deliberately — the negative results are half the
 content.
 

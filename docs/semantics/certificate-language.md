@@ -8,9 +8,9 @@
 > `inferFrag`. §10 is the account, §10.5 the price, §10.6 the re-ordered ladder.
 >
 > **Status (2026-08-25): C0–C4 built.** `validate` and the versioned JSON format are
-> in [`../../lean/RubyCore/Cert/`](../../lean/RubyCore/Cert/) (**V-numbers**), the
+> in [`../../ruby-lean/RubyCore/Cert/`](../../ruby-lean/RubyCore/Cert/) (**V-numbers**), the
 > proved `validate_sound` in
-> [`../../lean/RubyCore/Proof/Cert/`](../../lean/RubyCore/Proof/Cert/), the untrusted
+> [`../../ruby-lean/RubyCore/Proof/Cert/`](../../ruby-lean/RubyCore/Proof/Cert/), the untrusted
 > emitters in [`../../certify/`](../../certify/) (**E-numbers**). `rubycore --certify
 > FILE` is the entry point. §9 records what the ladder got right and what it got
 > wrong, per milestone; the ladder itself (§6) is left as written so the corrections
@@ -396,8 +396,8 @@ place where that failure mode is most expensive.
 
    | directory | contents | trust | decisions file |
    |---|---|---|---|
-   | `lean/RubyCore/Cert/` | `Format.lean` (the `Cert` grammar + JSON codec), `Validate.lean` (the checker), one file per later section (`Ledger.lean`, `Joins.lean`, …) | **trusted** (validator) / format shared | `lean/RubyCore/Cert/implementation-notes.md` (**V-numbers**) |
-   | `lean/RubyCore/Proof/Cert/` | `Sound.lean` (`validate_sound`), `Bridge.lean` (checking-mode → `FramesOk`/`CtlOk`), later per-section lemma files | **trusted** (the theorem) | same V-file |
+   | `ruby-lean/RubyCore/Cert/` | `Format.lean` (the `Cert` grammar + JSON codec), `Validate.lean` (the checker), one file per later section (`Ledger.lean`, `Joins.lean`, …) | **trusted** (validator) / format shared | `ruby-lean/RubyCore/Cert/implementation-notes.md` (**V-numbers**) |
+   | `ruby-lean/RubyCore/Proof/Cert/` | `Sound.lean` (`validate_sound`), `Bridge.lean` (checking-mode → `FramesOk`/`CtlOk`), later per-section lemma files | **trusted** (the theorem) | same V-file |
    | `certify/` (new top-level, sibling of `concolic/`) | the untrusted emitters: the `inferProgram` serializer driver, the `theta` solver (C3), RBI ingestion (C4), plus `certs/` fixtures and its own tests | **untrusted** | `certify/implementation-notes.md` (**E-numbers**) |
 
    The interaction rule: `Cert/` and `Proof/Cert/` depend on `Types/`/`Proof/Static/`
@@ -432,7 +432,7 @@ place where that failure mode is most expensive.
 
 Recorded per §7 norm 1, and per §6 C5's own instruction that a milestone whose bet
 does not pay *"goes in this file"*. The decision-level detail is in
-`lean/RubyCore/Cert/implementation-notes.md` (**V1–V8**) and
+`ruby-lean/RubyCore/Cert/implementation-notes.md` (**V1–V8**) and
 `certify/implementation-notes.md` (**E1–E16**); this section is the design-level
 account. Numbers are on the pinned checkout `homebrew/vendor/brew`, which reproduces
 L265's third ratchet exactly (112 defs / 17 accept / 7 pacc / 8 uncond / 85 needed /
@@ -667,14 +667,14 @@ the last of them.
 ## 10. The rebuild — `validate` without `infer`, and what it costs the theorem
 
 Recorded per §7 norm 1. Decision-level detail is in
-`lean/RubyCore/Cert/implementation-notes.md` (**V9–V17**); this section is the
+`ruby-lean/RubyCore/Cert/implementation-notes.md` (**V9–V17**); this section is the
 design-level account and it contains **three changes to this document's own
 architecture**, flagged as such.
 
 ### 10.1 What was rebuilt, and the measurement §6 C0 asked for
 
 `validate`'s sixth conjunct was `nominalOk`, i.e. `(infer (c.table p) [] p true …)`.
-It is now `chkOk`, over **`chk`** (`lean/RubyCore/Cert/Check.lean`): a new checker,
+It is now `chkOk`, over **`chk`** (`ruby-lean/RubyCore/Cert/Check.lean`): a new checker,
 in `Cert/` where §7 norm 7 puts this initiative's trusted code, that is
 
 * **structurally recursive on fuel** carried by the certificate (V9),

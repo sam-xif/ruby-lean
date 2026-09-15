@@ -3,7 +3,7 @@
 > **Status:** plan, second draft (2026-08-06). Nothing here is built. It supersedes nothing
 > proved: the whole-program runtime statement of
 > [`types-and-preservation.md`](types-and-preservation.md) §C.1 option 2 *is* proved
-> (`lean/RubyCore/Proof/SorbetSafety.lean`, L81); this is a **different, weaker, more
+> (`ruby-lean/RubyCore/Proof/SorbetSafety.lean`, L81); this is a **different, weaker, more
 > useful** property reusing most of the same machinery.
 >
 > **This draft corrects the first one in two places**, both marked **[✗→]** below: the
@@ -168,7 +168,7 @@ def TypedPortionSafeFrom (P : TypedPortion) (R : Rely) (m₀ : Machine) : Prop :
 ```
 
 **Frames already carry what attribution needs** [V]: `Frame.meth` and `Frame.defmod`
-(`lean/RubyCore/Machine.lean`). No model change is required to *state* the property.
+(`ruby-lean/RubyCore/Machine.lean`). No model change is required to *state* the property.
 
 Two definitional decisions:
 
@@ -288,7 +288,7 @@ This is a dynamic reading of R1/R2, and it gives:
   syntactic condition and the semantic one.
 
 Mechanism has precedent: the concolic engine already carries shadow values alongside
-concrete ones (`lean/RubyCore/Concolic/Shadow.lean`), so this is a second shadow field, not
+concrete ones (`ruby-lean/RubyCore/Concolic/Shadow.lean`), so this is a second shadow field, not
 new machinery. It is the project's standing move — run the property before proving it.
 
 ---
