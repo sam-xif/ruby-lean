@@ -44,7 +44,8 @@ corpus is written, with the rule each rung is waiting on.
 
 open Ratchet
 open Ratchet.Denote.Typed
-open Lean (Json)
+-- `Json` is this project's vendored copy of Lean's (`Json.lean`), at the root
+-- namespace, so there is nothing to open.
 
 /-- The recorded number of corpus rungs with an **end-to-end safety proof** at the real
 prelude-booted machine (`Denote/Typed/Safety.lean`). This is the number the ladder exists to

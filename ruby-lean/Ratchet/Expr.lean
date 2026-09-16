@@ -1,4 +1,4 @@
-import Lean.Data.Json
+import Json
 
 /-!
 `Expr`/`Param`/`KwEntry` and the JSON `Decode` namespace, **ported verbatim** from
@@ -154,7 +154,8 @@ deriving instance BEq for Expr, Param, KwEntry
 
 namespace Decode
 
-open Lean (Json)
+-- `Json` is this project's vendored copy of Lean's (`Json.lean`), at the root
+-- namespace, so there is nothing to open.
 
 abbrev M := Except String
 

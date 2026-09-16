@@ -6,7 +6,7 @@ decoder for the versioned harness↔Lean interface (`lib/export.rb`, v1).
 Decoding is positional per head; a head outside the known set is a decode
 error (the harness's `is_core?` should have rejected it upstream).
 -/
-import Lean.Data.Json
+import Json
 
 namespace RubyCore
 
@@ -205,7 +205,8 @@ end Interp
 
 namespace Decode
 
-open Lean (Json)
+-- `Json` is this project's vendored copy of Lean's (`Json.lean`), at the root
+-- namespace, so there is nothing to open.
 
 abbrev M := Except String
 

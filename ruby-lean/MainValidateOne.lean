@@ -3,7 +3,8 @@ import Ratchet.Rung
 /-! Small playground adapter: decode one program/Deriv pair and print validateD's Bool. -/
 
 open Ratchet
-open Lean (Json)
+-- `Json` is this project's vendored copy of Lean's (`Json.lean`), at the root
+-- namespace, so there is nothing to open.
 
 def main : IO UInt32 := do
   let stdin ← IO.getStdin

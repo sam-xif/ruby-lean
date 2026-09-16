@@ -20,7 +20,8 @@ own type language currently stops, not gaps this port introduced.
 
 namespace Ratchet
 
-open Lean (Json)
+-- `Json` is this project's vendored copy of Lean's (`Json.lean`), at the root
+-- namespace, so there is nothing to open.
 
 /-- The type language. No subtyping beyond `any`/`nilable` (`subTy` below): everything
 else is compared by equality. -/

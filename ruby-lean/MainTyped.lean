@@ -26,7 +26,8 @@ and because a rung that certifies out of order tells you nothing about the ones 
 -/
 
 open Ratchet
-open Lean (Json)
+-- `Json` is this project's vendored copy of Lean's (`Json.lean`), at the root
+-- namespace, so there is nothing to open.
 
 structure Row where
   rung : Rung

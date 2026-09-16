@@ -1,4 +1,4 @@
-import Lean.Data.Json
+import Json
 
 /-!
 Small hand-written JSON decode helpers, shared by every `ofJson?` in this
@@ -10,7 +10,8 @@ Lean's derive conventions.
 
 namespace Ratchet
 
-open Lean (Json)
+-- `Json` is this project's vendored copy of Lean's (`Json.lean`), at the root
+-- namespace, so there is nothing to open.
 
 /-- The JSON array at key `k`, still as raw `Json` values. -/
 def jArr (j : Json) (k : String) : Except String (List Json) := do

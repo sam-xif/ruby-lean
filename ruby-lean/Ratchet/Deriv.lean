@@ -47,7 +47,8 @@ exists here; see §"Not built" below. The remaining constructors mirror an exist
 
 namespace Ratchet
 
-open Lean (Json)
+-- `Json` is this project's vendored copy of Lean's (`Json.lean`), at the root
+-- namespace, so there is nothing to open.
 
 /-- One formal parameter of a declared signature: the name the body binds, and the type
 Sorbet declared for it. Names are carried because the body is checked in an environment

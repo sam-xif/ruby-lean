@@ -19,7 +19,8 @@ and `deriv` are `Option`, and `emitBlocked` carries the emitter's named reason.
 
 namespace Ratchet
 
-open Lean (Json)
+-- `Json` is this project's vendored copy of Lean's (`Json.lean`), at the root
+-- namespace, so there is nothing to open.
 
 /-- What happened to a rung on the way here. Every constructor except `ok` is a
 measurement: a stage that declined, with the reason it gave. -/

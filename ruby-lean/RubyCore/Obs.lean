@@ -4,11 +4,12 @@ obs = (stdout, result_repr = inspect(final value), exception = (class, msg)),
 heap projection deferred exactly as the engine's v1 does.
 -/
 import RubyCore.Interp
-import Lean.Data.Json
+import Json
 
 namespace RubyCore
 
-open Lean (Json)
+-- `Json` is this project's vendored copy of Lean's (`Json.lean`), at the root
+-- namespace, so there is nothing to open.
 
 inductive ObsResult where
   /-- A comparable observation (JSON matching Observation.to_json). -/

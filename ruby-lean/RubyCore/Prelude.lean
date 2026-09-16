@@ -1966,7 +1966,7 @@ def json : String := String.join [
     prelude that fails to decode is a build-time bug, and `Main` exits 1 on it
     rather than running with a missing core library. -/
 def program : Except String Expr :=
-  match Lean.Json.parse json with
+  match Json.parse json with
   | .error e => .error s!"prelude JSON parse: {e}"
   | .ok j => Decode.program j
 

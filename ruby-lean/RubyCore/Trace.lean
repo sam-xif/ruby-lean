@@ -9,7 +9,8 @@ import RubyCore.Interp
 namespace RubyCore
 namespace Trace
 
-open Lean (Json)
+-- `Json` is this project's vendored copy of Lean's (`Json.lean`), at the root
+-- namespace, so there is nothing to open.
 
 /-- Short, non-gating rendering of a value (bounded depth against cycles). -/
 partial def valBrief (h : Heap) : Nat → Value → String
