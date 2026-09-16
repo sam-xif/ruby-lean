@@ -167,9 +167,8 @@ checker), `Semantics` (the one import of the real machine) and `Denote` (the
 denotation that joins them). The checker therefore always speaks about whatever
 the model currently does: there is no second, driftable copy of the semantics,
 and `Ratchet/` still imports nothing from `RubyCore/` (enforced by
-`ruby-lean/scripts/check-isolation.sh`, which the gate runs first). The first
-build fetches two Lean dependencies (`plausible`, `iris-lean`) into the manifest;
-neither is on the default target, and neither is needed for anything on this page.
+`ruby-lean/scripts/check-isolation.sh`, which the gate runs first). There are **no
+external Lean dependencies**: the package builds from the toolchain alone.
 
 On a cold cache expect a few minutes for the model and on the order of half an
 hour for the rest — the bulk of it is elaborating `Denote/`, which is where the
@@ -191,8 +190,8 @@ scripts/reproduce.sh --with-proofs     # also: the metatheory + `#print axioms`
 The gate itself is the thing to run if you only run one:
 
 ```sh
-cd ratchet && ./scripts/run_typed_ratchet.sh          # quiet: the verdict + what's next
-cd ratchet && ./scripts/run_typed_ratchet.sh --verbose # every stage's output
+cd ruby-lean && ./scripts/run_typed_ratchet.sh          # quiet: the verdict + what's next
+cd ruby-lean && ./scripts/run_typed_ratchet.sh --verbose # every stage's output
 ```
 
 Its last line is **GREEN** or **RED**, and the distinction is the point:
@@ -223,13 +222,13 @@ cd difftest && uv sync && uv run python -m difftest run --tier 0 --sut lean
 echo 'puts 1 + 2' | ruby harness/desugar-dt/bin/export-json | ruby-lean/.lake/build/bin/rubycore
 
 # the metatheory, and a re-check that the headline theorems are axiom-clean
-cd lean && ./scripts/check-proofs.sh
+cd ruby-lean && ./scripts/check-proofs.sh
 ```
 
 ### The playground
 
 ```sh
-cd lean && lake build && cd ../ratchet && lake build validate-one   # once
+cd ruby-lean && lake build                                          # once
 cd ../playground && python3 server.py                               # http://localhost:8077
 ```
 
@@ -244,7 +243,7 @@ before the trusted check. See [`playground/README.md`](playground/README.md).
 | Path | What it is |
 |---|---|
 | [`ruby-lean/`](ruby-lean/README.md) | The Lean project — one Lake package, and everything below is a directory in it. Working notes live in `ruby-lean/notes/`; the agent-facing state is [`ruby-lean/AGENTS.md`](ruby-lean/AGENTS.md). |
-| `ruby-lean/RubyCore/` | **RubyCore**: `Syntax`/`Heap`/`Machine`/`Builtins`/`Interp` (`stepFn` + `run fuel`), the Ruby-authored `prelude/`, the `rubycore` SUT binary, and `RubyCore/Proof/` (metatheory, incl. type-safety-by-reachability). Off-default targets: `Metatheory`, `Judgment`, `HJudge`. |
+| `ruby-lean/RubyCore/` | **RubyCore**: `Syntax`/`Heap`/`Machine`/`Builtins`/`Interp` (`stepFn` + `run fuel`), the Ruby-authored `prelude/`, the `rubycore` SUT binary, and `RubyCore/Proof/` (metatheory, incl. type-safety-by-reachability — off-default target `Metatheory`, except the lemmas `Denote/` imports). |
 | `ruby-lean/Ratchet/`, `Semantics/`, `Denote/` | The typed ladder: `Ratchet/` (the checker — its own copied `Expr`/`Ty`, `Deriv`, `validateD`; imports nothing from `RubyCore/`), `Semantics/` (the real machine, imported), `Denote/` (the semantic denotation and the bridge — the one library that imports both). With `corpus/` (annotated rungs) and `scripts/` (the untrusted pipeline + the gate). |
 | [`difftest/`](difftest/README.md) | The differential engine: tiered generators, the CRuby oracle, `replay`, and the strip transforms the ratchet reuses. |
 | [`harness/desugar-dt/`](harness/desugar-dt/) | Ruby → RubyCore JSON (`export-json`), the front end for everything here. |
@@ -270,17 +269,20 @@ Read these before quoting a number.
 * **Sorbet's verdict is not this repo's verdict.** `srb` clean with
   `validateD = false` is an ordinary, expected combination: Sorbet accepts many
   programs the certified fragment has no rules for yet.
-* **One metatheory file does not build.** The off-default `Metatheory`
-  target currently fails in `RubyCore/Proof/Static/Preservation.lean` (three
-  broken proofs), so `scripts/check-proofs.sh` — and therefore
-  `scripts/reproduce.sh --with-proofs` — exits non-zero. This is drift, not a
-  false claim: `Proof/` is off the default build target precisely because
-  nothing the SUT or the ratchet does depends on it, which is also why it rots
-  unnoticed. **Nothing on this page depends on it.** The headline theorem
-  `validateD_safe_boot` and every proof under `ruby-lean/Denote/` are on the
-  default target, build clean, and print their axioms on every build. (A related
-  break in `Proof/Static/Iter.lean` was repaired for this release — see
-  `CHANGELOG.md`.)
+* **There was one type-checker of record, after four that were not.** `RubyCore/`
+  carried four earlier attempts at typing this model — a nominal static checker
+  (`infer`/`check`), a certificate language, an inductive `Judge` layer, and an
+  Iris-seated higher-order denotation. Each was superseded, none was the checker
+  the gate runs, and all four were removed along with the `rubycore` flags that
+  drove them. What survived is what the live checker imports: the class-freshness
+  and declaration-table lemmas under `Proof/Judgment/` and `Proof/Static/`. The
+  reading to take from that is about *cost*, not about soundness: the fragment
+  `validateD` covers is small because typing Ruby against a real semantics is
+  expensive, and this is what three of those attempts cost.
+* **The metatheory is off the default target.** `scripts/check-proofs.sh` builds
+  it and re-verifies `#print axioms`; it passes today. It is off the default
+  target because it is slow and nothing the SUT does depends on it — which is
+  also why it once rotted for 24 commits, and why that script exists.
 * **`ruby-lean/build/` is derived.** It is regenerated from `corpus/*.rb` by the
   pipeline; the annotated `.rb` is the source of truth.
 

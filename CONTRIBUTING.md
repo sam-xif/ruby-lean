@@ -16,7 +16,7 @@
 **The gate must be green before you commit:**
 
 ```sh
-cd ratchet && ./scripts/run_typed_ratchet.sh
+cd ruby-lean && ./scripts/run_typed_ratchet.sh
 ```
 
 RED means the certified fragment is claiming something the proofs cannot back —
@@ -37,7 +37,7 @@ GREEN with unclimbed rungs is the normal state. Ascent is ordinary work.
   is the one trade this design exists to refuse.
 * **Add the negative control with the positive one.** Every accept should come
   with the nearby program that must still be rejected, `#guard`ed at build time.
-* **Run the proofs at batch boundaries** — `cd lean && ./scripts/check-proofs.sh`.
+* **Run the proofs at batch boundaries** — `cd ruby-lean && ./scripts/check-proofs.sh`.
   The metatheory is off the default build target and will rot quietly otherwise.
 * **Write the finding down.** `found-issues.md` (§F-numbers) and
   `implementation-notes.md` are part of the deliverable, not overhead.

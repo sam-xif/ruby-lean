@@ -377,7 +377,7 @@ locals, continuation stack, stdout). Zero-dependency Python stdlib server
 `--fragment`'s violations beside it, since `uncertified` is usually explained by
 them) and **Per-body (inferOpen)** is `rubycore --assn` — the assertion-language
 report of `homebrew/assertion-language.md` §11, one verdict per method body, in
-the three-line shape `Assn.explain` prints. Run: `cd lean && lake build`, then
+the three-line shape `Assn.explain` prints. Run: `cd ruby-lean && lake build`, then
 `python3 playground/server.py`. See
 [`playground/README.md`](playground/README.md).
 
@@ -385,7 +385,7 @@ the three-line shape `Assn.explain` prints. Run: `cd lean && lake build`, then
 Throwaway-by-default measurements: a memo fixes a threshold, a spike measures it,
 the number lands in the owning doc's session log. **Nothing here is on a build
 target and nothing under `ruby-lean/RubyCore/` imports it** — Lean spikes are run with
-`cd lean && lake env lean ../spikes/<dir>/<File>.lean`, and a spike that needs a
+`cd ruby-lean && lake env lean ../spikes/<dir>/<File>.lean`, and a spike that needs a
 library definition weakened copies it under a different name rather than editing
 it, so no theorem can come to depend on the weakening. See
 [`spikes/README.md`](spikes/README.md).

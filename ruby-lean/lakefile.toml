@@ -1,6 +1,6 @@
 name = "rubylean"
 version = "0.1.0"
-defaultTargets = ["rubycore", "Ratchet", "Semantics", "Denote", "ratchetd", "semladder"]
+defaultTargets = ["Json", "rubycore", "Ratchet", "Semantics", "Denote", "ratchetd", "semladder"]
 
 # One package, four source layers, and the layering is the point:
 #
@@ -15,27 +15,19 @@ defaultTargets = ["rubycore", "Ratchet", "Semantics", "Denote", "ratchetd", "sem
 # live here it is enforced by `scripts/check-isolation.sh`, which the typed-ratchet
 # gate runs as its first stage.
 
-# Property-based testing (QuickCheck-style, the SlimCheck successor), pinned to
-# the same toolchain as `lean-toolchain`. Used ONLY by the off-default-target
-# witness-finding harness `RubyCore/Search/Random.lean` (Phase 1 of the
-# Direction-A checker); the `RubyCore` lib and the `rubycore` exe never import
-# it, so the SUT is unaffected. See notes/model/implementation-notes.md L58.
-[[require]]
-name = "plausible"
-git = "https://github.com/leanprover-community/plausible"
-rev = "v4.32.0"
+# ─────────────────────────────────────────────────────────────────────────────
+# The vendored JSON library
+# ─────────────────────────────────────────────────────────────────────────────
 
-# iris-lean (H-layer, judgment-layer.md J36): the Iris base logic + program
-# logic, seated over the RubyCore machine exactly as the sibling branch
-# `mdd/ruby-sorbet` does (`mdd/sorbet-lean/`, spike S1 — verdict GO). Used
-# ONLY by the `HJudge` lib (`RubyCore/HJudge/`); the `RubyCore` SUT lib, the
-# `Judgment` layer and the `Metatheory` gate never import it. Pin = the
-# sibling's measured-good pin (their G0/S1 evidence is at this rev).
-[[require]]
-name = "iris"
-git = "https://github.com/leanprover-community/iris-lean"
-rev = "34390a0133986385c62bf59a6eb01938945b48ec"
-subDir = "Iris"
+# `Json/` is Lean's own `Lean.Data.Json`, copied in at the root namespace. It is
+# infrastructure, not model and not checker, so both sides may import it without
+# `scripts/check-isolation.sh` having anything to say. See `Json.lean` for the
+# measurement that forced it: `import Lean.Data.Json` links all of `libLean`,
+# which is 97 of the 102 MB `rubycore` used to weigh.
+[[lean_lib]]
+name = "Json"
+srcDir = "."
+globs = ["Json", "Json.+"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # The model (formerly the `lean/` package)
@@ -48,60 +40,25 @@ name = "RubyCore"
 name = "rubycore"
 root = "Main"
 
-# Concolic trace executable (Direction-A search support): emits branch decisions
-# + the authoritative outcome classification from the real `stepFn`. Off the
-# default target, so `lake build` / the `rubycore` SUT are unaffected.
-[[lean_exe]]
-name = "rubycore-concolic"
-root = "ConcolicMain"
-
 # The metatheory (`RubyCore/Proof/`). **Not** in defaultTargets: it is slow and
 # nothing the SUT does depends on it, which is exactly why it rotted — three
 # independent breaks (L101, L103, L116) went unnoticed for 24 commits because a
 # green ratchet says nothing about the proofs (`PLAN.md` §4 norm 5). One target
 # so that checking them is a single command:
 #
-#     lake build Metatheory        # all 19 files
+#     lake build Metatheory        # every file under RubyCore/Proof/
 #     scripts/check-proofs.sh      # the same, plus `#print axioms`
+#
+# Note the part of it the *checker* depends on: `Denote/Sem/` imports
+# `Proof/Judgment/{ClsFresh,ModFresh}` (and through them `Proof/Static/Decls`,
+# `Proof/Static/Locals`, …), so those files are on the default target by way of
+# `Denote`, not off it. They are what survived when the pre-ratchet type-checking
+# layers were removed: class/module freshness and the declaration-table lemmas the
+# semantic denotation actually uses.
 [[lean_lib]]
 name = "Metatheory"
 srcDir = "."
 globs = ["RubyCore.Proof.+"]
-
-# The declarative judgment layer (`RubyCore/Judgment/`, judgment-layer.md J0) —
-# the definition of record the J-milestones' metatheory is stated over. Off the
-# default target for Metatheory's reason (nothing the SUT does depends on it):
-#
-#     lake build Judgment
-[[lean_lib]]
-name = "Judgment"
-srcDir = "."
-globs = ["RubyCore.Judgment.+"]
-
-# The H-layer (`RubyCore/HJudge/`, judgment-layer.md J36): the higher-order
-# semantic type denotation `HTy`, the judgment `HJudge` over it, and the
-# iris-lean seat (Language instance / ownP interp / WP walk / adequacy —
-# ported from `mdd/ruby-sorbet`'s `mdd/sorbet-lean/`, attributed per file)
-# that supplies its WP admission route. Off the default target: nothing the
-# SUT does depends on it, and it is the only lib that elaborates Iris.
-#
-#     lake build HJudge
-[[lean_lib]]
-name = "HJudge"
-srcDir = "."
-globs = ["RubyCore.HJudge.+"]
-
-# The bind-rule probe (`RubyCore/HCtx/`) — can iris-lean's `wp_bind` be had for
-# the RubyCore machine? Its own lib, off the default target, for `HJudge`'s
-# reason (nothing the SUT does depends on it, and it elaborates Iris). Kept
-# separate from `HJudge` so the second `Language` instance it needs cannot
-# collide with that one's (`Lang.lean`'s no-diamond discipline):
-#
-#     lake build HCtx
-[[lean_lib]]
-name = "HCtx"
-srcDir = "."
-globs = ["RubyCore.HCtx.+"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # The checker and its denotation (formerly the `ratchet/` package)

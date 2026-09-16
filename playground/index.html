@@ -189,7 +189,7 @@
     <button class="tab" id="tab-slice-btn" style="display:none">Homebrew slice explorer</button>
     <button class="tab" id="tab-ratchet-btn">Ratchet checker</button>
   </div>
-  <span class="hint" id="tabhint">write Ruby · Run · step with ← → · or type it: infer / inferOpen</span>
+  <span class="hint" id="tabhint">write Ruby · Run · step with ← → · or check it on the Ratchet tab</span>
   <span class="spacer"></span>
   <label class="toggle" title="the semantic step view — hide it to give the editor the whole window">
     <input type="checkbox" id="showsteps" checked> semantic steps
@@ -210,30 +210,10 @@
     <div id="errbox"></div>
     <h2>Desugared RubyCore (s-expression)</h2>
     <pre class="out sexpr" id="sexpr"></pre>
-    <h2>Static types — no execution, no prelude</h2>
-    <div class="row">
-      <button class="ghost" id="check" title="rubycore --check: the nominal whole-program `infer`">Type-check (infer)</button>
-      <button class="ghost" id="assn" title="rubycore --assn: the open front end `inferOpen`, one assertion per method body">Per-body (inferOpen)</button>
-      <label class="detail" title="also report the top-level program as Object#&lt;main&gt; (rubycore --assn-top); off by default because --assn's census is a consumed number"><input type="checkbox" id="assntop"> top level too</label>
-      <button class="ghost" id="assnprog" title="rubycore --assn-program: the open front end over the WHOLE program — one shared store, so a class's own defs cancel against its own bodies' requirements">Whole program (inferProgram)</button>
-      <span id="staticmsg" class="detail"></span>
-    </div>
-    <div id="verdictbox"></div>
-    <pre class="out assn" id="assnout"><span class="empty">— press “Per-body (inferOpen)”</span></pre>
-    <h2>Typed lambdas — a second, standalone checker</h2>
-    <div class="row">
-      <label class="detail">load
-        <select id="tlsample" title="difftest/ruby/lambda_comparator.rb and its three mutations">
-          <option value="base">comparator_for (accepted)</option>
-          <option value="mut_body">mutation: lambda body returns a String</option>
-          <option value="mut_arg">mutation: .call passed an Integer</option>
-          <option value="mut_pin">mutation: captured var reassigned after capture</option>
-        </select>
-      </label>
-      <button class="ghost" id="checktl" title="rubycore --check-tl: the standalone typed-lambdas checker (Types/LambdaArrow.lean) — reads a sig-declared T.proc.params(...).returns(...) type and checks a returned lambda literal against it, arity + body + pinning of captured locals">Typed lambdas (check-tl)</button>
-      <span id="tlmsg" class="detail"></span>
-    </div>
-    <div id="tlverdictbox"></div>
+    <!-- The static-type panes that were here drove `rubycore --check` / `--assn` /
+         `--assn-program` / `--check-tl`: the pre-ratchet type-checking iterations in
+         RubyCore/. Those layers were removed, and the checker of record is the
+         ratchet's `validateD` — tab 3, which runs the same pipeline the gate does. -->
     <h2>Model stdout (Lean stepper, at current step)</h2>
     <pre class="out" id="out"></pre>
     <h2>CRuby stdout (real Ruby)</h2>
@@ -288,15 +268,9 @@
     <h2>CRuby stdout</h2>
     <pre class="out tall" id="slicecrubyout"><span class="empty">— press “CRuby”</span></pre>
 
-    <div class="stage">
-      <h2>Type it — derivation certificate</h2>
-      <button class="ghost" id="slicederive" title="certify/jcert.rb: the untrusted J emitter. A wrong certificate costs a body, never a false accept.">Derive (jcert)</button>
-      <button class="ghost" id="slicevalidate" title="rubycore --certify-j: the trusted kernel Bool (validateJ_certifies)">Validate ✓</button>
-      <span id="slicecertmsg" class="detail"></span>
-    </div>
-    <textarea id="slicecert" class="cert" spellcheck="false" placeholder="the JCert JSON appears here — it is editable, and Validate checks whatever is in this box"></textarea>
-    <h2>Validation — <span class="detail">rubycore --certify-j</span></h2>
-    <pre class="out tall" id="slicevalout"><span class="empty">— derive a certificate, then validate it</span></pre>
+    <!-- The derive/validate stage that was here ran certify/jcert.rb into
+         `rubycore --certify-j` — the judgment-layer certificate route, removed with
+         the other pre-ratchet iterations. Tab 3 is the live certificate pipeline. -->
    </div>
 
    <!-- The live typed ratchet, laid out as the pipeline it is: a rail of five
@@ -558,246 +532,11 @@ function render() {
   $('detail').textContent = last && trace.detail ? `result: ${trace.detail}` : '';
 }
 
-// ── Static queries: `infer` (whole program) and `inferOpen` (per body) ────
-// Both are printers over the checker's own output, not second checkers. What
-// they may claim is bounded by what the flags claim: `--check`'s `reject` says
-// *this checker did not certify*, never *this program fails*, and an `unknown`
-// body carries the atom it wanted rather than nothing at all.
-//
-// The two panes are shown apart because they answer different questions, and
-// **neither reads a Sorbet `sig`**: `infer` types against `declsOf`, which
-// ignores the program, and `inferOpen` opens each parameter at a fresh variable.
-// So a `--check` reject is never explained by a missing `sig`, and the fragment
-// list printed beside it is context, not cause.
-
-// `⟨  ⟩` is `Row.render` of the empty row — an accept with no precondition.
-const EMPTY_ROW = s => !s || s.replace(/[⟨⟩\s]/g, '') === '';
-
-// One body, in the three-line shape of `Assn.explain`.
-function fmtBody(b) {
-  const head = `<span class="body">${esc(b.class)}#${esc(b.method)}</span>`;
-  const L = [];
-  if (b.status === 'accept') {
-    L.push(`${head}  <span class="ok">accept</span> : ${esc(b.type||'')}`);
-    if (b.open_params)
-      L.push(`  <span class="lbl">params:  </span> (` +
-        (b.params||[]).map(p => `${esc(p.name)} : ${esc(p.type)}`).join(', ') + `)`);
-    if (!EMPTY_ROW(b.requires))
-      L.push(`  <span class="lbl">requires:</span> ${esc(b.class)} ⊒ ${esc(b.requires)}`);
-    if (b.store && b.store !== 'emp')
-      L.push(`  <span class="lbl">and:     </span> ${esc(b.store)}`);
-  } else {
-    L.push(`${head}  <span class="no">unknown</span>`);
-    if (b.needed) L.push(`  <span class="lbl">needed:  </span> ${esc(b.needed)}`);
-    if (b.out_of_fragment)
-      L.push(`  <span class="lbl">out of fragment:</span> ${esc(b.out_of_fragment)}`);
-  }
-  return L.join('\n');
-}
-
-async function runAssn() {
-  $('assn').disabled = true; $('staticmsg').textContent = 'inferOpen…';
-  try {
-    const r = await fetch('/assn', {method:'POST', body: $('src').value,
-      headers: $('assntop').checked ? {'X-Assn-Top': '1'} : {}});
-    const d = await r.json();
-    if (d.error) {
-      $('assnout').innerHTML = `<span class="err-inline">[${d.error}] ${esc(d.message||'')}</span>`;
-      $('staticmsg').textContent = ''; return;
-    }
-    const bodies = d.bodies || [], c = d.census || {};
-    $('assnout').innerHTML = bodies.length
-      ? bodies.map(fmtBody).join('\n\n')
-      : '<span class="empty">— no method bodies in this program</span>';
-    // The census is the per-body gradient: `accepted` factors through the
-    // nominal judgement `check` uses, `accepted_params` through a body-only one,
-    // and the two are counted apart on purpose (see `acceptedOpenParams`).
-    $('staticmsg').innerHTML = bodies.length
-      ? `<span class="census">${c.total} bodies · ${c.accepted} accept` +
-        ` (${c.unconditional} unconditional) · ${c.accepted_params} accept/open-params` +
-        ` · ${c.blocked} blocked · ${c.out_of_fragment} out of fragment</span>`
-      : '';
-  } catch(e) {
-    $('assnout').innerHTML = `<span class="err-inline">${esc(String(e))}</span>`;
-  } finally { $('assn').disabled = false; }
-}
-
-// L263/L264. The third static query, and the one that accepts a program whose
-// declarations do not exist yet. Rendered as one block rather than a list because
-// the verdict *is* one thing: the assertion under which the whole program types.
-async function runAssnProgram() {
-  $('assnprog').disabled = true; $('staticmsg').textContent = 'inferProgram…';
-  try {
-    const r = await fetch('/assn-program', {method:'POST', body: $('src').value});
-    const d = await r.json();
-    if (d.error) {
-      $('assnout').innerHTML = `<span class="err-inline">[${d.error}] ${esc(d.message||'')}</span>`;
-      $('staticmsg').textContent = ''; return;
-    }
-    const L = [];
-    if (d.status === 'accept') {
-      L.push(`<span class="ok">accept</span> <span class="lbl">${esc(d.means||'')}</span>`);
-      L.push(`  <span class="lbl">type</span>    ${esc(d.type||'')}`);
-      L.push(`  <span class="lbl">under</span>   ${esc(d.assn||'')}`);
-      for (const c of (d.classes||[]))
-        L.push(`  <span class="lbl">class</span>   ${esc(c.class)}` +
-               ` — instance α${c.instance_var}` +
-               (c.class_object_var === null ? '' : `, class object α${c.class_object_var}`));
-      if ((d.consts_added||[]).length)
-        L.push(`  <span class="lbl">consts</span>  ${(d.consts_added).map(esc).join(', ')}`);
-    } else {
-      L.push(`<span class="no">unknown</span>`);
-      if (d.needed) L.push(`  <span class="lbl">needed</span>  ${esc(d.needed)}`);
-      if (d.out_of_fragment) L.push(`  <span class="lbl">stopped</span> ${esc(d.out_of_fragment)}`);
-    }
-    $('assnout').innerHTML = L.join('\n');
-    // No census: the whole-program verdict is one answer, not a gradient. That is
-    // exactly why `--assn`'s per-body count stays the ratchet.
-    $('staticmsg').innerHTML =
-      `<span class="census">whole program · ${esc(d.status)}</span>`;
-  } catch(e) {
-    $('assnout').innerHTML = `<span class="err-inline">${esc(String(e))}</span>`;
-  } finally { $('assnprog').disabled = false; }
-}
-
-async function runCheck() {
-  $('check').disabled = true; $('staticmsg').textContent = 'infer…';
-  try {
-    const r = await fetch('/check', {method:'POST', body: $('src').value});
-    const d = await r.json();
-    $('staticmsg').textContent = '';
-    if (d.error) {
-      $('verdictbox').innerHTML = `<div class="err">[${d.error}] ${esc(d.message||'')}</div>`;
-      return;
-    }
-    // `decision` is total (accept | reject); `basis` is the three-valued fact
-    // underneath it — `certified`, `refuted` (our rules refute) or `uncertified`
-    // (the fragment escaped). Printing the decision without the basis would let
-    // a reject read as a refutation.
-    const bits = [
-      `<span class="k">decision</span> ${esc(d.decision)}`,
-      `<span class="k">basis</span> ${esc(d.basis)}`,
-      `<span class="k">verdict</span> ${esc(d.verdict)}`];
-    if (d.type) bits.push(`<span class="k">type</span> <span class="ty">${esc(d.type)}</span>`);
-    const vs = (d.fragment && d.fragment.violations) || [];
-    const frag = (d.fragment && d.fragment.error)
-      ? `\n<span class="err-inline">[fragment] ${esc(d.fragment.message||'')}</span>`
-      : vs.length
-        ? `\n<span class="k">outside the Sorbet fragment (a separate query — not why this was rejected):</span>\n` +
-          vs.map(v => `  ${esc(v.kind)} ${esc(v.what)} — ${esc(v.reason)}`).join('\n')
-        : `\n<span class="k">fragment</span> in fragment`;
-    $('verdictbox').innerHTML =
-      `<div class="verdict ${esc(d.decision)}">${bits.join('   ')}${frag}</div>`;
-  } catch(e) {
-    $('verdictbox').innerHTML = `<div class="err">${esc(String(e))}</div>`;
-  } finally { $('check').disabled = false; }
-}
-
-// ── Typed lambdas: a second, standalone checker ───────────────────────────
-// `difftest/ruby/lambda_comparator.rb` + its three mutations
-// (`difftest/ruby/mutations/`), verbatim — same source the checker's own
-// difftest cases are. Not generated here: this is the actual committed
-// fixture, so what the panel shows is what the ratchet runs.
-const TL_SAMPLES = {
-  base: `# typed: true
-require "sorbet-runtime"
-extend T::Sig
-
-sig { returns(T.proc.params(a: String, b: String).returns(Integer)) }
-def comparator_for
-  tiebreak = 0
-  cmp = ->(a, b) { tiebreak }
-  cmp
-end
-
-def use_comparator
-  cmp = comparator_for
-  cmp.call("foo", "barbaz")
-end
-
-use_comparator`,
-  mut_body: `# typed: true
-require "sorbet-runtime"
-extend T::Sig
-
-sig { returns(T.proc.params(a: String, b: String).returns(Integer)) }
-def comparator_for
-  tiebreak = 0
-  cmp = ->(a, b) { "wrong" }
-  cmp
-end
-
-def use_comparator
-  cmp = comparator_for
-  cmp.call("foo", "barbaz")
-end
-
-use_comparator`,
-  mut_arg: `# typed: true
-require "sorbet-runtime"
-extend T::Sig
-
-sig { returns(T.proc.params(a: String, b: String).returns(Integer)) }
-def comparator_for
-  tiebreak = 0
-  cmp = ->(a, b) { tiebreak }
-  cmp
-end
-
-def use_comparator
-  cmp = comparator_for
-  cmp.call(1, "barbaz")
-end
-
-use_comparator`,
-  mut_pin: `# typed: true
-require "sorbet-runtime"
-extend T::Sig
-
-sig { returns(T.proc.params(a: String, b: String).returns(Integer)) }
-def comparator_for
-  tiebreak = 0
-  cmp = ->(a, b) { tiebreak }
-  tiebreak = "oops"
-  cmp
-end
-
-def use_comparator
-  cmp = comparator_for
-  cmp.call("foo", "barbaz")
-end
-
-use_comparator`,
-};
-
-$('tlsample').onchange = () => {
-  $('src').value = TL_SAMPLES[$('tlsample').value];
-  $('tlverdictbox').innerHTML = '';
-};
-
-async function runCheckTL() {
-  $('checktl').disabled = true; $('tlmsg').textContent = 'check-tl…';
-  try {
-    const r = await fetch('/check-tl', {method:'POST', body: $('src').value});
-    const d = await r.json();
-    $('tlmsg').textContent = '';
-    if (d.error) {
-      $('tlverdictbox').innerHTML = `<div class="err">[${d.error}] ${esc(d.message||'')}</div>`;
-      return;
-    }
-    // `--check-tl`'s verdict is total but two-valued, not three: `accept` (with
-    // the checked type) or `unknown` — there is no separate `reject` basis here,
-    // because this checker has no refutation pass, only a fragment/acceptance one.
-    const bits = d.decision === 'accept'
-      ? [`<span class="k">decision</span> accept`,
-         `<span class="k">type</span> <span class="ty">${esc(d.type||'')}</span>`]
-      : [`<span class="k">decision</span> unknown`];
-    $('tlverdictbox').innerHTML =
-      `<div class="verdict ${esc(d.decision)}">${bits.join('   ')}</div>`;
-  } catch(e) {
-    $('tlverdictbox').innerHTML = `<div class="err">${esc(String(e))}</div>`;
-  } finally { $('checktl').disabled = false; }
-}
+// The stepper's static-checker queries (`infer` / `inferOpen` / `inferProgram`
+// and the typed-lambdas checker) lived here. They printed `rubycore --check`,
+// `--assn`, `--assn-program` and `--check-tl`, the pre-ratchet type-checking
+// iterations; those layers were removed from RubyCore/ and these went with them.
+// The checker of record is tab 3's `validateD`.
 
 async function runRuby() {
   $('runruby').disabled = true;
@@ -819,10 +558,6 @@ function go(n){ if(!trace) return; i = n; render(); }
 $('run').onclick = run;
 $('runruby').onclick = runRuby;
 $('count').onclick = countSteps;
-$('check').onclick = runCheck;
-$('checktl').onclick = runCheckTL;
-$('assn').onclick = runAssn;
-$('assnprog').onclick = runAssnProgram;
 $('first').onclick = () => go(0);
 $('prev').onclick = () => go(i-1);
 $('next').onclick = () => go(i+1);
@@ -838,7 +573,7 @@ document.addEventListener('keydown', e => {
 // The step view is the same pane for both tabs; hiding it is a layout change
 // only (the trace is kept), which is what makes it safe to leave off.
 const HINTS = {
-  stepper: 'write Ruby · Run · step with ← → · or type it: infer / inferOpen',
+  stepper: 'write Ruby · Run · step with ← → · or check it on the Ratchet tab',
   slice:   'pick a slice file or link the whole slice · strip ▸ desugar ▸ run ▸ derive ▸ validate',
   ratchet: 'load annotated Ruby · strip signatures · desugar · inspect Deriv · run validateD, Lean, and CRuby',
 };
@@ -904,8 +639,6 @@ const resetStages = () => {
   $('slicemodelout').innerHTML = '<span class="empty">— press “Lean model”</span>';
   $('slicecrubyout').innerHTML = '<span class="empty">— press “CRuby”</span>';
   lastModelOut = null; lastCrubyOut = null;
-  $('slicecert').value = ''; $('slicecertmsg').textContent = '';
-  $('slicevalout').innerHTML = '<span class="empty">— derive a certificate, then validate it</span>';
 };
 
 $('sliceload').onclick = () => withBtn('sliceload','slicemsg','loading…', async () => {
@@ -989,50 +722,6 @@ $('slicestep').onclick = () => {
   return traceSource(srcText(), $('sliceat').value.trim(), $('slicefrom').value.trim(),
                      $('slicestep'), $('slicerunmsg'));
 };
-
-// Derive, then validate — two buttons, with the certificate visible and
-// editable in between. `jcert.rb` is untrusted by construction (a wrong
-// certificate dies at the kernel `Bool`), so its failures name the blocking
-// head rather than deciding anything.
-$('slicederive').onclick = () => withBtn('slicederive','slicecertmsg','deriving…', async () => {
-  const d = await post('/slice/derive', {source: srcText()});
-  if (d.error) {
-    $('slicecertmsg').innerHTML =
-      `<span class="err-inline">[${d.error}] ${esc(d.blocked||'')}</span>`;
-    $('slicevalout').innerHTML = `<span class="err-inline">${esc(d.message||'')}</span>`;
-    return;
-  }
-  $('slicecert').value = d.cert;
-  $('slicecertmsg').textContent =
-    `certificate: ${d.cert.length.toLocaleString()} B (untrusted — nothing is claimed until it validates)`;
-});
-
-$('slicevalidate').onclick = () => withBtn('slicevalidate','slicecertmsg','validating…', async () => {
-  const cert = $('slicecert').value.trim();
-  if (!cert) { $('slicecertmsg').textContent = 'no certificate in the box'; return; }
-  const d = await post('/slice/validate', {source: srcText(), cert});
-  if (d.error) {
-    $('slicecertmsg').innerHTML = `<span class="err-inline">[${d.error}]</span>`;
-    $('slicevalout').innerHTML = `<span class="err-inline">${esc(d.message||'')}</span>`;
-    return;
-  }
-  // `--certify-j` answers `accept` / `reject`, and on a reject says `why`
-  // (`certificate-undecodable`, `certificate-unreadable`, a failed claim). An
-  // accept also reports whether it was **unconditional** — a certificate that
-  // carries rows is an accept *relative to* those assumptions, and the pane says
-  // so rather than printing one word.
-  const r = d.report;
-  const ok = r && r.status === 'accept';
-  $('slicecertmsg').innerHTML = r
-    ? (ok ? `<span class="ok">accept</span>` +
-            (r.unconditional === false ? ' <span class="empty">— conditional: carries assumptions</span>'
-                                       : ' <span class="empty">— unconditional</span>')
-          : `<span class="err-inline">reject — ${esc(r.why||'')}</span>`)
-    : `exit ${d.returncode}`;
-  $('slicevalout').innerHTML =
-    (d.stdout ? esc(r ? JSON.stringify(r, null, 2) : d.stdout) : '<span class="empty">(no output)</span>') +
-    (d.stderr ? `\n<span class="err-inline">${esc(d.stderr)}</span>` : '');
-});
 
 // ── Tab 3: the ratchet checker ────────────────────────────────────────────
 // Same run/diff idiom as tab 2's model/CRuby buttons, over a program-sized

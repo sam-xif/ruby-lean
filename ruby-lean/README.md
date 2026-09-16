@@ -6,6 +6,7 @@ One Lake package (`rubylean`), four libraries, and the layering is the point:
 ruby-lean/
   RubyCore/     the executable model — `stepFn`, the heap, the builtins, the prelude
     Proof/      its metatheory (off the default target: `lake build Metatheory`)
+                — plus the lemmas `Denote/Sem/` imports, which are on it
   Ratchet/      the certificate checker — its own copied `Expr`/`Ty`, `Deriv`, `validateD`
   Semantics/    the one import bridge back to the real `stepFn` (a single file)
   Denote/       the denotation joining the two, and `validateD_safe_boot`
@@ -50,10 +51,10 @@ against it and the adequacy theorems proved after.
 | `RubyCore/PreludeBoot.lean` | the two-phase boot: run the prelude from H₀ (`preludeMode`), then the program under test on the resulting heap (`Machine.initOn`) |
 | `RubyCore/Interp.lean` | `stepFn` (one transition; helpers deliberately non-mutual) + `run fuel` (`outOfFuel` ≠ `stuck` from day one) |
 | `RubyCore/Obs.lean` | observation = (stdout, result inspect, exception (class, msg)) |
+| `RubyCore/Types/` | what is left of the type vocabulary the SUT still needs: `Ty.lean` (the type language), `Fragment.lean` (`--fragment`: is a program in the Sorbet fragment, with a reason per exclusion), `SigRead.lean` (`--sigs`: the signatures a program declares — stage 1 of the ratchet's pipeline), plus `Core.lean`/`Decls.lean`, the declaration table the surviving proofs are stated over. The checker built on top of these (`infer`/`inferOpen`/the certificate language) was removed — see §Metatheory. |
 | `Main.lean` | the SUT executable: RubyCore-JSON on stdin → Observation-JSON on stdout; **exit 3 = Unsupported** (reason on stderr), exit 1 = model bug |
-| `RubyCore/Proof/` | **metatheory** (off the default build target — build it with `lake build Metatheory`, or `scripts/check-proofs.sh` to also re-verify `#print axioms`; it had silently stopped compiling for 24 commits without either, L119): `Step.lean` (inductive control-core `Step` + `Step.sound`/`Step.deterministic`), `Adequacy.lean` (`Step.heap_monotone`, `Step.complete`, `Step.adequacy`), `TypeSafety.lean` (`invariant_sound` type-safety-by-reachability + Direction-A certificate), `Demo.lean` (worked reductions + type-safety demos). See §Metatheory. |
-| `RubyCore/Search/` | **witness finders** for type errors (off the default build target, dev-only `plausible` dep): `Random.lean` — Phase-1 random property-based search that *finds* counterexamples refuting `typeSafe?`, each certified via `Proof.runTypeStuck_unsafe`. See §Finding type errors. |
-| `ConcolicMain.lean` | the **`rubycore-concolic` exe** (off the default target): runs the real `stepFn` and emits the branch decisions taken + the authoritative outcome (incl. `typestuck`), so the concolic engine in `../concolic/` uses the semantics as its executor rather than a duplicate. Needs no `stepFn` instrumentation — branch decisions are observable at the configuration level. |
+| `RubyCore/Proof/` | **metatheory** (`lake build Metatheory`, or `scripts/check-proofs.sh` to also re-verify `#print axioms`; it had silently stopped compiling for 24 commits without either, L119): `Step.lean` (inductive control-core `Step` + `Step.sound`/`Step.deterministic`), `Adequacy.lean` (`Step.heap_monotone`, `Step.complete`, `Step.adequacy`), `TypeSafety.lean` (`invariant_sound` type-safety-by-reachability), `Demo.lean` (worked reductions + type-safety demos), the `KontFrame*`/`HeapFacts` continuation- and heap-framing lemmas, and — in `Proof/Judgment/` and `Proof/Static/` — the class-freshness and declaration-table lemmas **the live checker imports** (`Denote/Sem/{ClassHeap,ClassGrowth,SubclassHeap}`), which are therefore on the default target by way of `Denote`. See §Metatheory. |
+
 
 ## Build & run
 
@@ -206,8 +207,8 @@ numerics/strings, Enumerable→Array/Hash).
 
 The sketch and PROJECT_PLAN §7 name the **inductive `Step` relation** the
 definition of record, with `stepFn` its executable witness. `RubyCore/Proof/`
-realizes that programme in two layers (both off the default build target,
-axiom-clean; see `implementation-notes.md` L13–L15, L51):
+realizes that programme in two layers (axiom-clean; see
+`notes/model/implementation-notes.md` L13–L15, L51):
 
 1. **The inductive control-core `Step`** (`Step.lean`/`Adequacy.lean`) — an
    effect-light fragment (literals, local/ivar/global var + assign, `seq`, `if`,
@@ -252,38 +253,26 @@ proved type-safe via a hand-supplied inductive invariant. A relational dispatch
 `Step` (folding `invoke` as a trusted oracle) is the next extension, but
 `invariant_sound` does not depend on it (it ranges over `stepFn`).
 
-## Finding type errors (Direction A — witness search)
+## What was removed, and what the checker of record is
 
-The metatheory above *proves* safety; this is the complementary direction —
-**finding counterexamples** that refute it. `RubyCore/Search/` hosts the
-witness finders (off the default build target; `plausible` is a dev-only
-dependency the lib root and exe never import — `implementation-notes.md` L58).
+`RubyCore/` used to carry four successive attempts at *type-checking* on top of
+this model, each superseded by the next and none of them the checker of record:
 
-```sh
-lake build RubyCore.Search.Random     # Phase 1: random search, prints verdicts
-lake build rubycore-concolic          # Phase 2: the concolic executor + branch tracer
-```
-
-**Phase 1 — random (property-based) search** (`Random.lean`). Generates inputs,
-runs the semantics, and reports any input whose run ends in an uncaught
-type-family exception. Verified working:
-
-| Program | Result |
+| Layer | What it was |
 |---|---|
-| `nilDispatch` (`def f(x); x<5 ? 1 : nil; end; f(N).succ`) | `failed [n := 7]` — **witness found**, refutes `typeSafe?` |
-| `alwaysSafe` (`N.succ`) | `success` — no false positive |
-| `narrowNeedle` (stuck only at `N = 123456789`) | `success` — **missed**, even at 20× budget |
+| `Types/` + `Proof/Static/` | `infer`/`inferOpen`/`check` — a nominal static checker and its soundness theorem (`check_sound`), plus the assertion language |
+| `Cert/` + `Proof/Cert/` | type-checking as **certificate replay** (`validate`, `validate_sound`) |
+| `Judgment/` + `Proof/Judgment/` | the inductive `Judge` relation, derivations-as-data (`validateJ`) and the Rails pilot |
+| `HJudge/` + `HCtx/` | the Iris-seated higher-order denotation `HTy` (the only user of the `iris-lean` dependency) |
 
-The search is **untrusted**: a reported witness is replayed through the trusted
-`run`/`stepFn` and fed to the axiom-clean bridge `Proof.runTypeStuck_unsafe`,
-producing a real theorem (`nilDispatch_unsafe`). A bogus witness dies at replay,
-so the search needs no soundness argument — *the certificate is the trace*.
+They were removed, together with the `rubycore` flags that drove them
+(`--check`, `--check-tl`, `--assn`, `--assn-program`, `--certify`, `--certify-j`,
+`--census-j`), the `plausible`-dependent witness search in `Search/`, and the
+concolic exe whose consumer lives in another repository. What survives of them is
+listed in the `Proof/` row above: the lemmas `Denote/Sem/` actually imports.
 
-Two honest caveats, both first-class in the design:
-
-- A `success` verdict is **not** a safety proof — it means "no witness within
-  these bounds" (the `VERIFIED(k)`/UNKNOWN split of
-  `../../bounded-effect-checking.md` §3). Proving safety is Direction B.
-- Random search is **undirected**: `narrowNeedle` shows it cannot find a needle
-  behind a narrow guard. That is exactly the gap **Phase 2** (concolic execution:
-  concrete run + path condition + solver-flip) closes.
+**The checker of record is `validateD`** — `Ratchet/Check.lean`, with
+`validateD_safe_boot` in `Denote/Typed/Bridge.lean` as its safety theorem, run by
+`lake exe ratchetd` and gated by `scripts/run_typed_ratchet.sh`. The model's own
+metatheory above is a claim about the *semantics*, and nothing downstream of it
+depends on the removed layers.

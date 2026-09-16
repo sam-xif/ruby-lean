@@ -17,22 +17,18 @@ Ruby source ──▶ harness/desugar-dt/bin/export-json ──▶ RubyCore JSON
             ──▶ browser UI (prev / next / ← → )
 ```
 
-The same first hop feeds three **static** queries, which execute nothing:
+The same first hop feeds two **static** queries, which execute nothing:
 
 ```
-RubyCore JSON ──▶ rubycore --check        ──▶ decision / basis / verdict / type   (`infer`)
-              ──▶ rubycore --fragment     ──▶ why an `uncertified` is uncertified
-              ──▶ rubycore --assn         ──▶ one assertion per method body    (`inferOpen`)
-              ──▶ rubycore --assn-program ──▶ one assertion for the whole program
-                                                                            (`inferProgram`)
+RubyCore JSON ──▶ rubycore --fragment ──▶ in the modeled fragment? with a reason per exclusion
+              ──▶ rubycore --sigs     ──▶ the Sorbet signatures the program declares
 ```
 
 ## Run
 
 ```sh
-# 1. build the model once, and the ratchet tab's checker adapter
-cd ../lean && lake build && cd -
-cd ../ratchet && lake build validate-one && cd -
+# 1. build the model and the ratchet tab's checker adapter (one package)
+cd ../ruby-lean && lake build && cd -
 
 # 2. start the playground (needs CRuby 4.0.5 on PATH or $RUBY / brew)
 python3 server.py            # http://localhost:8077   (or: python3 server.py 9000)
@@ -89,116 +85,21 @@ the same program cannot be mistaken for each other.
 A breakpoint that never fires is not an error: the trace comes back with zero
 steps and a status saying how the program ended instead.
 
-## Typing it instead of running it
+## Typing it instead of running it *(removed)*
 
-Two buttons under **Static types** ask the checker about the same source. Neither
-executes anything, so neither boots the prelude and neither answer depends on
-model coverage — a program the stepper cannot run can still be typed, and a
-program that runs fine can still read `unknown`.
+The **Static types** and **Typed lambdas** panes that used to sit under the
+stepper are gone. They printed `rubycore --check` / `--assn` / `--assn-program` /
+`--check-tl` — the pre-ratchet type-checking iterations inside `RubyCore/`
+(`Types/`'s `infer`/`inferOpen`, the certificate language, the `Judge` layer and
+the Iris H-layer). Those layers were removed from the Lean project, their CLI
+flags with them, and the buttons with those.
 
-**Type-check (infer)** — `rubycore --check`, the nominal whole-program `infer`.
-It prints `decision` (total: `accept` or `reject`), the `basis` underneath it
-(`certified` · `refuted` · `uncertified`) and the inferred program type. The
-distinction is the whole point of showing both: a `reject` on basis
-`uncertified` says *the fragment escaped and this checker did not certify*, which
-is not the same claim as `refuted` (*our rules refute this program*) and neither
-is *the program fails*. `--fragment`'s list is printed in the same box, and it is
-**context, not cause**: neither checker reads a Sorbet `sig` at all. `declsOf`
-ignores the program (`declsOf _p := baseDecls`), so adding a full `sig` to a
-method changes no verdict — a one-parameter `def` with a `sig` is
-`in_fragment: true` and still `reject`/`uncertified`. What `infer` wants is a
-*declaration*, and the only rule that makes one is the `def` arm's `addRow`,
-which fires only for a **zero-parameter** `def` reopening a class in
-`reopenableClasses` at `top = false`. So a call to a user-defined method is
-`unknown` today whether or not it is typed.
+The checker of record is the ratchet's `validateD`, and **tab 3 runs it** —
+the same five stages the commit gate runs, with the derivation editable before
+the trusted check. `rubycore` still answers the two static queries that are not
+type judgments: `--fragment` (is this program in the modeled fragment, with a
+reason per exclusion) and `--sigs` (the Sorbet signatures the program declares).
 
-**Per-body (inferOpen)** — `rubycore --assn`, the open front end, one verdict per
-method body in the assertion language of `homebrew/assertion-language.md` §11.
-This is the per-body gradient a whole-program verdict cannot show: a file reads
-`unknown` under `--check` until the fragment covers all of it and then flips,
-whereas here each body reports separately and an `unknown` **carries the atom it
-wanted**.
-
-```
-Box#get  accept : α1
-  requires: Box ⊒ ⟨ value : () → α1 ⟩
-  and:      Box ⊒ ⟨ value : () → α1 ⟩
-
-Box#twice  accept : α2
-  params:   (n : α1)
-  and:      α1 ~ + : (α1) → α2
-
-Box#oops  unknown
-  needed:   Integer ~ frobnicate : () → _
-
-Box#h  unknown
-  out of fragment: hash
-```
-
-**top level too** adds `--assn-top`'s `Object#<main>` row. `bodyReports` walks
-into structure and reports `def`/`defs` only, so a program's straight-line code
-has no open verdict without it — and that code is usually the part whose type a
-reader thinks is obvious. It is off by default because `--assn`'s census is a
-consumed number (`homebrew/fragment-gap.py`'s third ratchet) and a row that is
-not a method body would move it.
-
-**Whole program (inferProgram)** — `rubycore --assn-program`, L263/L264. The third
-static query, and the difference from the other two is the point:
-
-* against **`--check`**, it accepts programs whose `def`s and `class`es have *no
-  declarations yet*, and answers what the types would have to be rather than
-  whether they are already known;
-* against **`--assn`**, the bodies share **one store**, so the requirement a
-  `vcall` in one body records is cancelled by the `def` beside it. A per-body pass
-  structurally cannot do that — it hands every body a fresh store at `{}`.
-
-```ruby
-class Version
-  def value; 1; end
-  def get; value; end
-end
-```
-
-```
-accept  types under these class obligations
-  type    Symbol
-  under   α3 = Integer
-  class   Version — instance α2, class object α1
-  consts  Version
-```
-
-`--check` says `reject / uncertified` on that same program. The obligation on
-`Version` closed **empty** — the class answers its own body — so the assertion is
-only the equality the cancellation owed.
-
-Two things it is honest about. An `accept` is the **weakest** verdict the tool
-prints (*types under these class obligations*, printed in `means`); only
-`--check`'s `accept` is licensed by `check_sound`. And it is **all-or-nothing**
-where `--assn` is a gradient: on a real slice file this reports the *first*
-construct that stopped the program, which is why `--assn`'s per-body census stays
-the ratchet and this stays the verdict.
-
-Where it stops is worth knowing, because it is one gap and not a list. `inferOpen`
-defers an unknown **receiver** — that is what open-self means — and cannot defer an
-unknown **argument**:
-
-```ruby
-def f(n)  n + 1  end   # accept : α2  and: α1 ~ + : (Integer) → α2
-def g(n)  1 + n  end   # unknown      needed: Integer ~ + : (α1) → _
-```
-
-`g` needs `α1 ≤ Integer`, an *upper bound on a variable*, which the assertion
-language deliberately does not have (`Types/Assn.lean`'s header, §6.5's deferred
-family). Everything else this program trips over is smaller: `Integer#to_s` and
-`String.===` are missing table rows, and `Object#<main>` reads
-`out of fragment: def` because `inferOpen` has no `def` arm.
-
-The census line beside the buttons counts `accept` and `accept/open-params`
-**apart**, and that is not cosmetic: an `accept` factors through a nominal
-judgement at the empty environment, one substitution from the judgement `--check`
-uses, while an open-params accept factors through a body-only judgement no `def`
-rule exists for (`infer`'s `def` arm still requires `params.isEmpty`). Merging
-them would report an accept rate the checker does not have.
 
 ## Tab 2 — the Homebrew slice explorer *(disabled in this repository)*
 
@@ -375,14 +276,10 @@ into it: that was the whole of the 052-simple-fun discrepancy.
   `--trace-at` matching the rendering rather than the machine is the same
   choice: a breakpoint that reads what you read cannot disagree with it.
 - `POST /trace` still takes a bare source body; it also takes
-  `{"source": …, "at": …, "from": …}`. `POST /steps`, `POST /check`,
-  `POST /assn` and `POST /assn-program` take a bare source body.
-- The static panes are **printers over the checker's output, not second
-  checkers** — the same rule `Trace.lean`'s renderings follow. The verdict text
-  mirrors `Assn.explain`; nothing here decides anything, and a rendering that
-  drifted would be a display bug rather than a soundness one.
-- `--assn` and `--assn-program` report against the **prelude-aware** declaration
-  table and `--check`
-  against `declsOf prog`. That asymmetry is `Main.lean`'s and deliberate (two
-  tables, each sound at the heap it describes), so the two panes can disagree
-  about a name like `T` without either being wrong.
+  `{"source": …, "at": …, "from": …}`. `POST /steps` takes a bare source body.
+  The `/check`, `/check-tl`, `/assn` and `/assn-program` routes were removed with
+  the checkers behind them; tab 3's `/ratchet/*` routes take JSON.
+- Every pane is a **printer over a tool's output, not a second implementation** —
+  the same rule `Trace.lean`'s renderings follow. Nothing in the browser decides
+  anything, so a rendering that drifted would be a display bug rather than a
+  soundness one.

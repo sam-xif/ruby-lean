@@ -4,14 +4,11 @@
 Pipeline per request:  Ruby source -> export-json (desugar) -> rubycore --trace
                        -> {steps, status, detail} JSON  ->  the browser UI.
 
-The static queries take the same first hop and a different flag: `--check` (the
-nominal `infer`, whole-program), `--assn` (the open front end `inferOpen`, one
-verdict per method body, in the assertion language), `--assn-program` (L263/L264:
-the open front end over the *whole* program, so a class's own `def`s cancel against
-its own bodies' requirements), and `--check-tl` (the standalone typed-lambdas
-checker, `docs/semantics/typed-lambdas-plan.md` — a *second* checker, not a flag
-on `infer`, see `Types/LambdaArrow.lean`'s header for why). None of them executes
-anything, so none boots the prelude and none depends on model coverage.
+The tab-3 pipeline takes the same first hop and then runs the ratchet's own
+stages (Sorbet -> strip -> desugar -> emit -> `validate-one`), which is the
+checker of record. The stepper's old static-checker buttons (`--check`,
+`--check-tl`, `--assn`, `--assn-program`) drove the pre-ratchet type-checking
+iterations in `RubyCore/`; those were removed, and so were they.
 
 Run:  python3 server.py [port]      (default 8077)
 Needs: CRuby 4.0.5 (brew) + a built `rubycore` (cd ../ruby-lean && lake build).
@@ -144,8 +141,6 @@ class Handler(BaseHTTPRequestHandler):
         "/slice/desugar":  lambda q: desugar_only(q.get("source", "")),
         "/slice/model":    lambda q: model_run(q.get("source", "")),
         "/slice/cruby":    lambda q: cruby_run(q.get("source", "")),
-        "/slice/derive":   lambda q: derive(q.get("source", "")),
-        "/slice/validate": lambda q: validate(q.get("source", ""), q.get("cert", "")),
         # ── Tab 3: the current typed ratchet pipeline.
         "/ratchet/strip":  lambda q: strip_chain(q.get("source", "")),
         "/ratchet/desugar": lambda q: desugar_only(q.get("source", "")),
@@ -169,8 +164,7 @@ class Handler(BaseHTTPRequestHandler):
             result = self.SLICE_ROUTES[self.path](q)
             self._send(200, json.dumps(result).encode("utf-8"), "application/json")
             return
-        if self.path not in ("/trace", "/run", "/steps", "/check", "/check-tl", "/assn",
-                             "/assn-program"):
+        if self.path not in ("/trace", "/run", "/steps"):
             self._send(404, b"not found", "text/plain")
             return
         # `/trace` takes either a bare source string (as it always has) or a JSON
@@ -186,14 +180,6 @@ class Handler(BaseHTTPRequestHandler):
             result = trace(source, window)
         elif self.path == "/steps":
             result = steps(source)
-        elif self.path == "/check":
-            result = check(source)
-        elif self.path == "/check-tl":
-            result = check_tl(source)
-        elif self.path == "/assn":
-            result = assn(source, top=self.headers.get("X-Assn-Top") == "1")
-        elif self.path == "/assn-program":
-            result = assn_program(source)
         else:
             result = run_ruby(source)
         self._send(200, json.dumps(result).encode("utf-8"), "application/json")
@@ -251,54 +237,6 @@ def lean_query(core_json: str, *flags: str) -> dict:
         return json.loads(lean.stdout)
     except ValueError as e:
         return {"error": "lean", "message": f"unparseable {' '.join(flags)} output: {e}"}
-
-
-def check(source: str) -> dict:
-    """`infer`, whole-program (`rubycore --check`), with the Sorbet-fragment
-    report beside it (`--fragment`).
-
-    The two are **independent queries and neither causes the other**, which is
-    worth stating because the pairing invites the opposite reading. A
-    `missing-sig` violation is *not* why `--check` says `uncertified`: `declsOf`
-    ignores the program entirely (`Types/Decls.lean`: `declsOf _p := baseDecls`),
-    so `infer` never reads a `sig` and adding one to a method changes no verdict —
-    a one-parameter `def` with a full `sig` is `in_fragment: true` and still
-    `reject`/`uncertified`. What `infer` actually wants is a *declaration*, and
-    the only rule that makes one is the `def` arm's `addRow`, which fires only for
-    a zero-parameter `def` reopening a class in `reopenableClasses` at
-    `top = false`. `--fragment` answers a different question — the scope a
-    soundness theorem could have — and is shown because it is the other half of
-    "what would it take", not because it is the cause."""
-    core, err = desugar(source)
-    if err:
-        return err
-    out = lean_query(core, "--check")
-    if out.get("error"):
-        return out
-    frag = lean_query(core, "--fragment")
-    out["fragment"] = frag
-    return out
-
-
-def check_tl(source: str) -> dict:
-    """`rubycore --check-tl` — the standalone typed-lambdas checker
-    (`docs/semantics/typed-lambdas-plan.md`, `ruby-lean/RubyCore/Types/LambdaArrow.lean`).
-
-    Deliberately a separate query from `check()`/`--check`, the way the two
-    checkers are separate in the Lean tree: this one reads a `sig`-declared
-    `T.proc.params(...).returns(...)` return type and checks a returned
-    lambda literal against it (arity, body, pinning of captured locals),
-    which `infer`/`--check` does not — `declsOf` ignores the program and no
-    `def` with parameters ever gets a row there. `--check-tl`'s own fragment
-    is a flat sequence of zero-arg top-level `def`s, each optionally
-    sig-preceded, plus a driver — narrower than `--check`'s, on purpose."""
-    core, err = desugar(source)
-    if err:
-        return err
-    return lean_query(core, "--check-tl")
-
-
-CORPUS = ROOT / "ruby-lean" / "corpus"
 
 
 def corpus_stems() -> list[str]:
@@ -430,45 +368,6 @@ def ratchet_validate(source: str, deriv) -> dict:
         return {"error": "validate", "message": f"unparseable validateD output: {exc}"}
 
 
-def assn(source: str, top: bool = False) -> dict:
-    """`inferOpen`, per method body (`rubycore --assn`) — the assertion-language
-    report of `homebrew/assertion-language.md` §11. Reports against the
-    *prelude-aware* declaration table, unlike `--check`; that asymmetry is
-    Main.lean's and is deliberate.
-
-    `inferOpen` reads no `sig` either — it opens each parameter at a fresh type
-    variable and reports what the body then requires — so this is already the
-    sig-free view of the program. `top` adds `--assn-top`'s `Object#<main>` row,
-    which is the only way to get an open verdict on a program's straight-line
-    code (`bodyReports` reports `def`/`defs` only)."""
-    core, err = desugar(source)
-    if err:
-        return err
-    return lean_query(core, "--assn", *(["--assn-top"] if top else []))
-
-
-def assn_program(source: str) -> dict:
-    """`inferProgram`, whole-program (`rubycore --assn-program`) — L263/L264.
-
-    The third static query, and what distinguishes it from the other two is worth
-    stating because they look adjacent. Against `--check`: this accepts programs
-    whose `def`s and `class`es have no declarations *yet*, and answers what the
-    types would have to be rather than whether they are already known. Against
-    `--assn`: the bodies share **one store**, so the requirement a `vcall` in one
-    body records is cancelled by the `def` beside it — which a per-body pass
-    structurally cannot do, since it hands every body a fresh store.
-
-    An `accept` here is the **weakest** verdict the tool prints — *types under
-    these class obligations* — and the JSON says so in `means`. It is also
-    all-or-nothing, where `--assn` is a gradient: on a real file this reports the
-    *first* construct that stopped the program, so `--assn`'s per-body census stays
-    the ratchet and this is the verdict."""
-    core, err = desugar(source)
-    if err:
-        return err
-    return lean_query(core, "--assn-program")
-
-
 # ── The Homebrew slice explorer (tab 2) ─────────────────────────────────────
 # Everything here is glue over tools that already exist and are the *same* tools
 # the ratchets run, never a second implementation:
@@ -479,13 +378,11 @@ def assn_program(source: str) -> dict:
 #   desugar   harness/desugar-dt/bin/export-json
 #   model     rubycore                                     (the observation record)
 #   cruby     $RUBY                                        (the oracle)
-#   derive    certify/jcert.rb                             (untrusted J emitter)
-#   validate  rubycore --certify-j                         (the trusted kernel Bool)
 #
-# The derive/validate split is deliberate and is the whole point of the pane:
-# `certify-file.sh` pipes one into the other, so a failure there is one word. Here
-# the certificate is a visible artifact between two buttons, and a `false` from
-# `--certify-j` is a fact about *that JSON*, which you can read.
+# The pane's derive/validate pair is gone: it drove `certify/jcert.rb` into
+# `rubycore --certify-j`, the judgment-layer certificate route, which was one of
+# the pre-ratchet type-checking iterations and was removed with them. The
+# certificate pipeline that is live is the ratchet's, on tab 3.
 
 LIB = ROOT / "homebrew" / "vendor" / "brew" / "Library" / "Homebrew"
 # `homebrew/fragment-gap.py`'s `SLICE`, copied rather than imported for the same
@@ -497,7 +394,6 @@ SLICE = [
 ]
 STRIP_CHAIN = ["sig_strip", "visibility_strip", "freeze_strip", "require_strip",
                "const_inline", "class_sugar_strip"]
-JCERT = ROOT / "certify" / "jcert.rb"
 BUILD_SLICE = ROOT / "homebrew" / "slice-driver" / "build.py"
 # The linked slice is 2,151 lines and the model runs it in 825,259 steps; 15s is
 # the toy budget, not this one.
@@ -614,59 +510,6 @@ def desugar_only(source: str) -> dict:
     except ValueError:
         ast = None
     return {"core": core, "ast": ast, "bytes": len(core)}
-
-
-def derive(source: str) -> dict:
-    """`certify/jcert.rb` — the untrusted emitter. Untrusted by construction: a
-    wrong certificate dies at `validateJ`'s kernel Bool, so a failure here costs
-    a body we did not certify and never a false accept. `jcert.rb` raises with
-    the blocking head named when the program leaves `MFrag`."""
-    core, err = desugar(source)
-    if err:
-        return err
-    import tempfile
-    with tempfile.NamedTemporaryFile("w", suffix=".ast.json", delete=False) as f:
-        f.write(core)
-        astpath = f.name
-    try:
-        p = subprocess.run([RUBY, str(JCERT), "--ast", astpath],
-                           capture_output=True, text=True, timeout=LONG)
-    except subprocess.TimeoutExpired:
-        return {"error": "timeout", "message": "jcert timed out"}
-    if p.returncode != 0:
-        # `jcert.rb` raises `JCert::Blocked` naming the head it could not emit;
-        # that name is the useful half of a Ruby backtrace, so it is lifted out.
-        err = p.stderr.strip()
-        head = err.splitlines()[0] if err else f"exit {p.returncode}"
-        if ": " in head:
-            head = head.split(": ", 1)[1]
-        return {"error": "derive", "blocked": head, "message": err[:2000] or head}
-    return {"cert": p.stdout, "core": core, "stderr": p.stderr.strip()[:2000]}
-
-
-def validate(source: str, cert: str) -> dict:
-    """`rubycore --certify-j` — the trusted side: one kernel `Bool`, the theorem
-    `validateJ_certifies`. The certificate is whatever the box holds, which is
-    the point of separating this from `derive`: an edited certificate is checked
-    exactly as an emitted one is."""
-    core, err = desugar(source)
-    if err:
-        return err
-    import tempfile
-    with tempfile.NamedTemporaryFile("w", suffix=".jcert.json", delete=False) as f:
-        f.write(cert)
-        certpath = f.name
-    try:
-        p = subprocess.run([str(RUBYCORE), "--certify-j", certpath], input=core,
-                           capture_output=True, text=True, timeout=LONG)
-    except subprocess.TimeoutExpired:
-        return {"error": "timeout", "message": "validation timed out"}
-    out = {"stdout": p.stdout, "stderr": p.stderr[:4000], "returncode": p.returncode}
-    try:
-        out["report"] = json.loads(p.stdout)
-    except ValueError:
-        pass
-    return out
 
 
 def main():

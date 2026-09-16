@@ -50,8 +50,9 @@ the fragment claiming something the bridge cannot back.
 
 ## Proofs rot silently
 
-`ruby-lean/RubyCore/Proof/` is off the default build target, and that is the right
-call for build times and the wrong one for drift. Run
+`ruby-lean/RubyCore/Proof/` is off the default build target — except the lemmas
+`Denote/Sem/` imports, which ride in on the checker's build. Off-target is the
+right call for build times and the wrong one for drift. Run
 
 ```sh
 cd ruby-lean && ./scripts/check-proofs.sh      # builds the metatheory + `#print axioms`

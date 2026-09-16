@@ -24,7 +24,8 @@ namespace Proof
 namespace SorbetConcrete
 
 open Interp
-open Lean (Json)
+-- `Json` is this project's vendored copy of Lean's (`Json.lean`), at the root
+-- namespace, so there is nothing to open.
 
 /-! ## Decidable drivers (prelude-booted) -/
 

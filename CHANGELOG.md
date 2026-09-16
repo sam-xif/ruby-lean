@@ -6,6 +6,36 @@ artifact, and `0.01` is the first cut of it that a stranger can build.
 
 ## Unreleased
 
+**The pre-ratchet type-checking layers are gone.** `RubyCore/` carried four
+successive attempts at typing the model, each superseded by the next, none of
+them the checker the gate runs. All four were removed (~28k lines):
+
+* `Types/` (`infer`/`inferOpen`/`check`, the assertion language) and
+  `Proof/Static/`'s soundness for it (`check_sound`, `denote_declAssn`, …).
+  `Types/{Ty,Fragment,SigRead,Core,Decls}.lean` stay: `--fragment` and `--sigs`
+  are live queries, and the declaration table is what the surviving proofs are
+  stated over.
+* `Cert/` + `Proof/Cert/` — certificate replay (`validate`, `validate_sound`).
+* `Judgment/` + `Proof/Judgment/` — the `Judge` inductive, `validateJ`, the Rails
+  pilot. `Judgment/{Judge,Frag,Sub}.lean` and eight files under `Proof/Judgment/`
+  stay: `Denote/Sem/` imports the class- and module-freshness lemmas.
+* `HJudge/` + `HCtx/` — the Iris-seated `HTy` denotation, the only user of the
+  `iris-lean` dependency.
+* With them: the `rubycore` flags `--check`, `--check-tl`, `--assn`,
+  `--assn-program`, `--certify`, `--certify-j`, `--census-j`; the playground
+  buttons and routes that drove them; `HeapCert.heapOkB` (F0's certificate for
+  the deleted `check_sound_withPrelude`) and its probe; `Search/Random.lean` and
+  the `plausible` dependency; `Concolic/Shadow.lean` and the `rubycore-concolic`
+  exe, whose consumer is not in this repository.
+
+The package now has **no external Lean dependencies** — the manifest is empty and
+`lake build` needs only the pinned toolchain. `scripts/check-proofs.sh` was
+rewritten around the theorems that remain (18 names, all axiom-clean) and **now
+passes**: the three broken proofs that made it a known-red target were in
+`Proof/Static/Preservation.lean`, which was one of the deleted files.
+
+`validateD_safe_boot` is untouched and the ratchet gate is GREEN.
+
 **One Lean project.** `lean/` (the model, package `rubycore`) and `ratchet/` (the
 checker, package `ratchet`, which required the first by path) are now a single
 Lake package, `ruby-lean/`:

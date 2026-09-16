@@ -1770,7 +1770,7 @@ empty continuation and *not* under `K` (`catch(:t) { x = begin; throw :t; rescue
 UncaughtThrowError; 1; end; … }`). Nothing here assumes either version.
 
 **Its `Builtins` half is proved, and `Interp/Support` and most of `Interp/Dispatch` with it**
-(clinks 52–53, `../ruby-lean/RubyCore/Proof/KontFrame.lean` + `KontFrameDispatch.lean` — the first
+(clinks 52–53, `RubyCore/Proof/KontFrame.lean` + `KontFrameDispatch.lean` — the first
 files this investigation adds outside `ruby-lean/`, because a theorem about `stepFn` belongs next
 to `stepFn`). That was the part the fifth stall point could not size: `grep` finds **zero**
 reads of `kont` in the whole 24k-line `Builtins/` directory, so the layer is transparent by
@@ -1984,7 +1984,7 @@ Whether a well-typed program can reach a `NoMethodError`/`ArgumentError`/`TypeEr
 ## Semantics status: **imported, and wired up for the covered fragment**
 
 `Semantics/Interp.lean` imports the real `stepFn` (and its whole dependency closure —
-`Heap`/`Machine`/`Builtins`/`CRubyNames`/the booted prelude) from `../ruby-lean/RubyCore/`
+`Heap`/`Machine`/`Builtins`/`CRubyNames`/the booted prelude) from `RubyCore/`
 via a local Lake `require`, and provides `Ratchet.Semantics.run`/`typeStuck`/
 `resultClassName`/`outcomeLabel` over it — see §Architecture and the file's own docstring
 for why this one piece is imported rather than copied, unlike `Expr`/`Ty`.
@@ -2010,7 +2010,7 @@ program, is an open call.
 The first version of this harness used a from-scratch, invented `Expr`/`Ty`/corpus —
 useful for proving the certificate-checking mechanism out quickly, but disconnected from
 real Ruby. This version **ports `Expr` and `Ty` verbatim from the real model**
-(`../ruby-lean/RubyCore/Syntax.lean`, `../ruby-lean/RubyCore/Types/Ty.lean` — see the provenance
+(`RubyCore/Syntax.lean`, `RubyCore/Types/Ty.lean` — see the provenance
 note at the top of `Ratchet/Expr.lean`/`Ratchet/Ty.lean` for exactly what was kept vs.
 trimmed) and sources every corpus program from **real Ruby run through the real
 desugarer** (`harness/desugar-dt/bin/export-json`), not hand-authored ASTs. The
@@ -2971,7 +2971,7 @@ The full climb, in roughly the order that costs least to unlock the most:
 15. **A demand on the *semantics*, not this checker: `super` with an explicit block.**
    `class Child < Base; def run; super { |x| x * 3 }; end; end` is ordinary Ruby that CRuby
    runs, but the difftest engine answers `sut_unsupported` — "zsuper with an explicit block" is
-   outside `../ruby-lean/RubyCore`'s fragment. It is therefore *not* in the corpus: a rung for it
+   outside `RubyCore/`'s fragment. It is therefore *not* in the corpus: a rung for it
    would attach a type to a program the model cannot execute, which is what
    `scripts/run_agreement.sh` exists to prevent. The first time the semantics rather than the
    checker was the binding constraint on a rung (clink 11).
@@ -3007,7 +3007,7 @@ everything below is about what its eventual design should and shouldn't include.
 that forces them (tier 3 and a declared-parameter type respectively). See
 `Ratchet/Judge.lean`'s module docstring.
 
-**No semantic soundness theorem.** `../ruby-lean/RubyCore/Proof/Cert/Sound.lean`'s
+**No semantic soundness theorem.** `RubyCore/Proof/Cert/Sound.lean`'s
 `validate_sound` is the model for what would come next — `validate c p = true → ∀ r,
 Reachable p r → ¬ typeStuck r`. `Ratchet/Proof/ChkSound.lean` proves only the *syntactic*
 half (`chk ⇒ Judge`); the semantic half needs the semantics in the statement (§Frontier

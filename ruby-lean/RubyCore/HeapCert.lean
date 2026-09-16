@@ -2,48 +2,35 @@ import RubyCore.Interp.Support
 import RubyCore.Types.Decls
 
 /-!
-# The heap certificate — `HeapOk` as a `Bool`
+# The heap certificate — decidable facts about the booted heap
 
-F0 (`homebrew/widening-the-fragment.md` §3/§4). `Proof/StaticSoundness.lean`'s
-invariant has two conjuncts that are facts about the heap alone — `TableOk` (the
-three tabulated `Integer` builtins still resolve, live, public, unshadowed, not
-`fromPrelude`) and `NoHook` (`Object` has no `method_added`). Static soundness at
-the **prelude-booted** heap needs them there, and they cannot be decided in the
-kernel: `Prelude.program` is `Lean.Json.parse Prelude.json` and `Lean.Json.parse`
-does not kernel-reduce even on the input `"1"` (measured), while L94 bans the
-`native_decide` escape.
+`Bool`-valued forms of the heap-shape predicates the proofs are stated over:
+`saturatedB` (the ancestor walk finishes before its fuel runs out), `noHookB`
+(`Object` has no `method_added`), `noShadowBeforeB`, `namesUniqueB`,
+`registeredBootB` and `classOkB` (every reopenable class name is bound, in
+`Object`'s **own** constant table, to a class object that is not a module).
 
-So they are decided by *running* this function, and
-`Proof/PreludeInv.heapOkB_sound` is the bridge: `heapOkB h = true → HeapOk h`.
-The hypothesis of `check_sound_withPrelude` is then one `Bool` about the machine
-actually in hand, which `scripts/probes/heapok_probe.lean` computes and
-`scripts/check-proofs.sh` fails on.
+They cannot be decided in the kernel: `Prelude.program` is
+`Lean.Json.parse Prelude.json` and `Lean.Json.parse` does not kernel-reduce even
+on the input `"1"` (measured), while L94 bans the `native_decide` escape. So they
+are decided by *running* them — `Denote/Sanity.lean`'s `#guard` for `saturatedB`,
+and `scripts/probes/` for the measurements `scripts/check-proofs.sh` reports.
 
-**This lives outside `Proof/` on purpose.** The alternative — defining it next to
-the soundness lemma — means the probe cannot see it (`Proof/` is off the default
-target, and an executable must not depend on the metatheory), so the probe would
-end up re-implementing the predicate and could silently drift from the one the
-theorem is about. One definition, two readers.
+**This lives outside `Proof/` on purpose.** The alternative — defining these next
+to the lemmas — means a probe (or the checker) cannot see them, so they would end
+up re-implemented and could silently drift from the ones the theorems are about.
+One definition, several readers.
 
-It is deliberately **not** wired into `Prelude.boot`: a prelude that redefined
-`Integer#+` would be a legitimate model change that breaks the *static* route
-only, and refusing to execute would be the wrong response to it. The check
-belongs where the proofs are checked.
+`heapOkB` used to live here too: the F0 certificate for the whole-heap hypothesis
+of the pre-ratchet static checker's `check_sound_withPrelude`. That checker and
+its soundness theorem were removed, and the certificate went with them — the
+clauses that still have consumers are the ones above.
 -/
 
 namespace RubyCore
 
 open Interp
 
-/-- Executable form of `Proof.Static.IntBuiltinResolves`
-    (`Proof/BuiltinConformance.lean`). Clause order matches that definition. -/
-def intResolvesB (h : Heap) (mname bid : String) : Bool :=
-  match lookup h (.int 0) mname with
-  | none => false
-  | some (owner, md) =>
-      (md.builtin == some bid) && !md.undefined && (md.visibility == .pub) &&
-        !md.fromPrelude &&
-        (crubyShadow h ((ancestors h Boot.integerId).takeWhile (· != owner)) mname).isNone
 
 /-- Executable form of `Proof.Saturated` (L144/L148): **the ancestor walk has
     finished before its fuel runs out**, one more unit of fuel changing nothing.
@@ -188,40 +175,5 @@ def classOkB (h : Heap) : Bool :=
               noShadowBeforeB h k))
       | none => false
     | _ => false
-
-/-- Executable form of `Proof.Static.HeapOk` — `TableOk`, `NoHook`, since L148
-    `Saturated`, and since L151 `LitClsOk`.
-
-    The last is the producer's clause: a string literal is typed `.cls "String"`, a
-    claim about a *name*, while the step allocates an object whose class is the *id*
-    `Boot.stringId`. Two conjuncts rather than one because `className` answers
-    `"Object"` at an id that is not a class, so the name alone would be satisfied by
-    an absent `String`. -/
-def heapOkB (h : Heap) : Bool :=
-  intResolvesB h "+" "Integer#+" && intResolvesB h "-" "Integer#-" &&
-    intResolvesB h "*" "Integer#*" &&
-    -- L152's nullary row. Resolution knows nothing about arity, so this is the same
-    -- `intResolvesB` at a fourth name.
-    intResolvesB h "zero?" "Integer#zero?" &&
-    noHookB h &&
-    saturatedB h &&
-    (h.classPayload? Boot.stringId).isSome &&
-    (className h Boot.stringId == "String") &&
-    -- L174's array-literal producer, folded into the same certificate for the same
-    -- reason: `LitClsOk` is one clause per *literal-allocating* rule, and each rule
-    -- claims a name where the step writes a boot id.
-    (h.classPayload? Boot.arrayId).isSome &&
-    (className h Boot.arrayId == "Array") &&
-    (h.classPayload? Boot.procId).isSome &&
-    (h.classPayload? Boot.hashId).isSome &&
-    -- J52's regexp-literal producer.
-    (h.classPayload? Boot.regexpId).isSome &&
-    (className h Boot.regexpId == "Regexp") &&
-    -- J53: `Object`'s eigenclass realized.
-    (h.classPayload? Boot.objectId).isSome &&
-    ((h.get Boot.objectId).eigen).isSome &&
-    -- L156's sixth conjunct, folded in for the same reason L148 folded `saturatedB`:
-    -- one certificate, decided once, rather than a second probe to keep in step.
-    classOkB h
 
 end RubyCore
