@@ -45,10 +45,19 @@ function ensureWorker() {
   return worker;
 }
 
+/**
+ * Resolve a module URL against the *document*, here on the main thread.
+ *
+ * This has to happen before the URL crosses into the worker: a worker resolves
+ * a relative URL against its own script URL, so handing it "wasm/ruby.wasm"
+ * from `js/worker.js` sends it looking for `js/wasm/ruby.wasm`.
+ */
+const moduleURL = (module) => new URL(`${WASM_BASE}${module}.wasm`, document.baseURI).href;
+
 /** Run one module. Rejects only on infrastructure failure, not on exit != 0. */
 function exec(module, args = [], stdin = "") {
   const id = ++seq;
-  ensureWorker().postMessage({ id, url: `${WASM_BASE}${module}.wasm`, args, stdin });
+  ensureWorker().postMessage({ id, url: moduleURL(module), args, stdin });
   return new Promise((resolve, reject) => {
     pending.set(id, (d) => (d.error ? reject(new Error(d.error)) : resolve(d)));
   });

@@ -71,6 +71,28 @@ real thing and says so.
 | `build.sh` | assembles `dist/` and `dist.tar.gz` |
 | `mkcorpus.py` | bakes all 259 rungs (metadata, source, recorded verdict) into one `corpus.json` |
 | `server.py` | the localhost fallback, nine matching routes |
+| `check.mjs` | drives the built `dist/` headlessly against the real modules |
+
+## Checking it
+
+```sh
+./build.sh && node --experimental-wasm-exnref check.mjs
+```
+
+Imports the real `backend.js` / `worker.js` / `wasi.js` out of `dist/` and runs
+all nine calls against the real wasm, including that a recorded Sorbet verdict
+is withdrawn once the buffer is edited. The node flag enables the standard wasm
+exception encoding; browsers need nothing.
+
+It stubs four browser globals, and stubs them *carefully*: `fetch` resolves
+through `new URL(u, base)` and the fake `Worker` checks each posted URL the way
+a real worker would resolve it — against its own script URL, not the document's.
+An earlier version string-munged paths instead and stayed green while the page
+was broken, because `backend.js` was handing the worker a relative wasm URL that
+resolved to `js/wasm/ruby.wasm`.
+
+It does not render anything, so `index.html`'s own script is unexercised: a
+green run means the pipeline works, not that the page looks right.
 
 ## Sizes
 
