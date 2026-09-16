@@ -3,118 +3,171 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ruby-lean — the typed ladder</title>
+<title>ruby-lean — type checking Ruby, with a proof</title>
 <style>
   :root {
-    --bg:#14171c; --panel:#1c2027; --panel2:#232833; --edge:#2e3542;
-    --fg:#e5e9f0; --dim:#8b95a7; --accent:#7aa2f7; --good:#9ece6a;
-    --warn:#e0af68; --bad:#f7768e; --mono:'SF Mono',ui-monospace,Menlo,Consolas,monospace;
+    --bg:#0f1216; --panel:#171b21; --panel2:#1f242c; --edge:#2a313b;
+    --edge2:#39424f; --fg:#e8ecf3; --dim:#8a94a6; --dimmer:#5d6675;
+    --accent:#7aa2f7; --good:#9ece6a; --warn:#e0af68;
+    --bad:#f7768e;
+    --mono:'SF Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;
+    --r:9px;
   }
   * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
   body { margin:0; background:var(--bg); color:var(--fg);
-    font:14px/1.5 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif; }
-  header { padding:10px 16px; border-bottom:1px solid var(--edge);
-    display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-  header h1 { font-size:15px; margin:0; font-weight:600; }
-  header .hint { color:var(--dim); font-size:12px; }
+    font:14px/1.6 var(--sans); -webkit-font-smoothing:antialiased; }
+  code { font-family:var(--mono); font-size:.92em; color:#b9c6de; }
+
+  /* ── header ─────────────────────────────────────────────────────────── */
+  header { padding:0 18px; height:52px; border-bottom:1px solid var(--edge);
+    display:flex; align-items:center; gap:12px;
+    background:linear-gradient(180deg,#151a20,#11151a); }
+  header h1 { font-size:14.5px; margin:0; font-weight:650; letter-spacing:-.01em; }
+  header h1 .slash { color:var(--dimmer); font-weight:400; margin:0 7px; }
+  header h1 .sub { color:var(--dim); font-weight:400; }
   .grow { flex:1; }
-  .wrap { display:grid; grid-template-columns:minmax(340px,5fr) 6fr;
-    height:calc(100vh - 48px); }
-  .left, .right { padding:14px 16px; overflow:auto; }
-  .right { border-left:1px solid var(--edge); }
-  textarea { width:100%; background:var(--panel); color:var(--fg);
-    border:1px solid var(--edge); border-radius:8px; padding:10px;
-    font-family:var(--mono); font-size:13px; resize:vertical; }
-  select, input { background:var(--panel2); color:var(--fg); border:1px solid var(--edge);
-    border-radius:6px; padding:5px 8px; font-size:12px; max-width:100%; }
-  button { background:var(--accent); color:#0b0e14; border:0; border-radius:6px;
-    padding:6px 13px; font-weight:600; cursor:pointer; font-size:13px; }
-  button:disabled { opacity:.4; cursor:default; }
-  button.ghost { background:var(--panel2); color:var(--fg); border:1px solid var(--edge); }
+
+  /* ── controls ───────────────────────────────────────────────────────── */
+  button { background:var(--accent); color:#0a0d12; border:0; border-radius:7px;
+    padding:6px 13px; font:600 12.5px/1.4 var(--sans); cursor:pointer;
+    transition:filter .12s ease, transform .06s ease; }
+  button:hover:not(:disabled) { filter:brightness(1.12); }
+  button:active:not(:disabled) { transform:translateY(1px); }
+  button:disabled { opacity:.38; cursor:default; }
+  button.ghost { background:var(--panel2); color:var(--fg);
+    border:1px solid var(--edge2); font-weight:500; }
+  button.ghost:hover:not(:disabled) { background:#262d37; border-color:#49535f; }
+  button.icon { padding:4px 9px; font-size:13px; line-height:1; }
+  select, input { background:var(--panel2); color:var(--fg);
+    border:1px solid var(--edge2); border-radius:7px; padding:6px 9px;
+    font:12.5px var(--sans); max-width:100%; }
+  input { font-family:var(--mono); font-size:12px; }
+  select:focus-visible, input:focus-visible, textarea:focus-visible,
+  button:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+  textarea { width:100%; background:#12161b; color:var(--fg);
+    border:1px solid var(--edge); border-radius:var(--r); padding:11px 12px;
+    font-family:var(--mono); font-size:12.5px; line-height:1.55; resize:vertical;
+    tab-size:2; }
+  textarea::placeholder { color:var(--dimmer); }
   .row { display:flex; gap:8px; align-items:center; margin:10px 0; flex-wrap:wrap; }
-  h2 { font-size:11px; text-transform:uppercase; letter-spacing:.08em;
-    color:var(--dim); margin:16px 0 6px; font-weight:600; }
+  label.field { display:inline-flex; align-items:center; gap:6px;
+    color:var(--dim); font-size:12px; }
+
+  /* ── layout ─────────────────────────────────────────────────────────── */
+  .wrap { display:grid; grid-template-columns:minmax(360px,5fr) 6fr;
+    height:calc(100vh - 52px); }
+  .left, .right { padding:16px 18px 28px; overflow:auto; }
+  .right { border-left:1px solid var(--edge); background:#12161b; }
+  h2 { font-size:10.5px; text-transform:uppercase; letter-spacing:.09em;
+    color:var(--dim); margin:18px 0 7px; font-weight:650; }
   h2:first-child { margin-top:0; }
-  pre.out { background:#0e1116; border:1px solid var(--edge); border-radius:6px;
-    padding:9px 11px; font-family:var(--mono); font-size:12px; white-space:pre-wrap;
-    word-break:break-word; min-height:20px; margin:0; color:#cdd6e6; overflow:auto; }
-  pre.tall { max-height:240px; }
-  pre.sexpr { white-space:pre; color:#a9b6d0; }
-  pre.sexpr .hd { color:var(--accent); } pre.sexpr .at { color:var(--warn); }
-  .empty { color:var(--dim); font-style:italic; font-size:12px; }
-  .pill { font-family:var(--mono); font-size:11px; padding:2px 8px; border-radius:999px;
-    background:var(--panel2); border:1px solid var(--edge); color:var(--dim); }
-  .pill.ok { color:var(--good); border-color:#33502f; }
-  .pill.no { color:var(--bad); border-color:#5a2f39; }
-  .pill.warn { color:var(--warn); border-color:#5a4a2a; }
-
-  /* the stage rail */
-  .rail { display:flex; flex-direction:column; gap:1px; background:var(--edge);
-    border:1px solid var(--edge); border-radius:8px; overflow:hidden; }
-  .stage { background:var(--panel); padding:8px 11px; display:grid;
-    grid-template-columns:18px 1fr auto; gap:10px; align-items:center; }
-  .stage .n { font-family:var(--mono); font-size:11px; color:var(--dim); }
-  .stage .t { font-size:13px; font-weight:600; }
-  .stage .d { grid-column:2/4; font-size:11.5px; color:var(--dim);
-    font-family:var(--mono); word-break:break-word; }
-  .stage.ok   { border-left:3px solid var(--good); }
-  .stage.warn { border-left:3px solid var(--warn); }
-  .stage.no   { border-left:3px solid var(--bad); }
-  .stage.idle { border-left:3px solid transparent; }
-  .stage.busy { border-left:3px solid var(--accent); }
-
-  .verdict { border-radius:8px; padding:11px 13px; font-family:var(--mono);
-    font-size:12.5px; line-height:1.7; border:1px solid var(--edge); background:var(--panel); }
-  .verdict.accept { border-color:#3f6b38; background:#182016; }
-  .verdict.unknown { border-color:#5a4a2a; background:#201c14; }
-  .verdict .k { color:var(--dim); display:inline-block; min-width:78px; }
-  .err { background:#241a1d; border:1px solid #5a2f39; color:#ffb3c0;
-    border-radius:7px; padding:9px 11px; font-family:var(--mono); font-size:12px;
-    margin:10px 0; white-space:pre-wrap; }
-  .note { color:var(--dim); font-size:11.5px; margin:6px 0 0; }
+  .hint { color:var(--dim); font-size:11.5px; font-weight:400;
+    text-transform:none; letter-spacing:0; }
+  .empty { color:var(--dimmer); font-style:italic; font-size:12px; }
   a { color:var(--accent); }
-  /* the stepper */
-  .stepbar input[type=range] { flex:1; accent-color:var(--accent); min-width:80px; }
-  .counter { font-family:var(--mono); color:var(--dim); font-size:12px; min-width:92px; }
-  .status { font-family:var(--mono); font-size:12px; padding:2px 7px; border-radius:5px; }
+
+  pre.out { background:#0b0e12; border:1px solid var(--edge); border-radius:var(--r);
+    padding:10px 12px; font-family:var(--mono); font-size:11.8px; line-height:1.55;
+    white-space:pre-wrap; word-break:break-word; min-height:22px; margin:0;
+    color:#c3cee2; overflow:auto; }
+  pre.tall { max-height:230px; }
+  pre.sexpr { white-space:pre; color:#9fb0cd; }
+  pre.sexpr .hd { color:var(--accent); } pre.sexpr .at { color:var(--warn); }
+
+  .pill { font-family:var(--mono); font-size:10.5px; padding:3px 9px;
+    border-radius:999px; background:var(--panel2); border:1px solid var(--edge2);
+    color:var(--dim); white-space:nowrap; }
+  .pill.ok { color:var(--good); border-color:#3a5730; background:#16200f; }
+  .pill.no { color:var(--bad); border-color:#5e323c; background:#201417; }
+  .pill.warn { color:var(--warn); border-color:#5d4c2c; background:#201a10; }
+
+  /* ── the stage rail ─────────────────────────────────────────────────── */
+  .rail { display:flex; flex-direction:column; gap:1px; background:var(--edge);
+    border:1px solid var(--edge); border-radius:var(--r); overflow:hidden; }
+  .stage { background:var(--panel); padding:9px 12px; display:grid;
+    grid-template-columns:16px 1fr auto; gap:11px; align-items:center;
+    transition:background .15s ease; }
+  .stage:hover { background:#1b2028; }
+  .stage .n { font-family:var(--mono); font-size:10.5px; color:var(--dimmer); }
+  .stage .t { font-size:12.5px; font-weight:600; }
+  .stage .d { grid-column:2/4; font-size:11.2px; color:var(--dim);
+    font-family:var(--mono); word-break:break-word; line-height:1.5; }
+  .stage.ok   { box-shadow:inset 3px 0 0 var(--good); }
+  .stage.warn { box-shadow:inset 3px 0 0 var(--warn); }
+  .stage.no   { box-shadow:inset 3px 0 0 var(--bad); }
+  .stage.busy { box-shadow:inset 3px 0 0 var(--accent); }
+  .stage.idle { box-shadow:inset 3px 0 0 transparent; }
+
+  /* ── verdict and errors ─────────────────────────────────────────────── */
+  .verdict { border-radius:var(--r); padding:12px 14px; font-family:var(--mono);
+    font-size:12.2px; line-height:1.75; border:1px solid var(--edge);
+    background:var(--panel); }
+  .verdict.accept { border-color:#3d6b36; background:#141d12; }
+  .verdict.unknown { border-color:#5d4c2c; background:#1e1a11; }
+  .verdict .k { color:var(--dim); display:inline-block; min-width:76px; }
+  .err { background:#1e1317; border:1px solid #5e323c; color:#ffb8c4;
+    border-radius:var(--r); padding:10px 12px; font-family:var(--mono);
+    font-size:11.8px; margin:10px 0; white-space:pre-wrap; }
+
+  /* ── the stepper ────────────────────────────────────────────────────── */
+  .stepbar input[type=range] { flex:1; accent-color:var(--accent); min-width:90px; }
+  .counter { font-family:var(--mono); color:var(--dim); font-size:11.5px;
+    min-width:92px; }
+  .status { font-family:var(--mono); font-size:11.5px; padding:2px 8px;
+    border-radius:5px; }
   .status.done { color:var(--good); } .status.uncaught,.status.stuck { color:var(--bad); }
   .status.unsupported,.status.step-cap { color:var(--warn); }
-  .ctl { font-family:var(--mono); font-size:14px; background:var(--panel2);
-    border:1px solid var(--edge); border-left:3px solid var(--accent);
-    border-radius:6px; padding:9px 11px; margin:6px 0 12px; word-break:break-word; }
-  .frame { background:var(--panel); border:1px solid var(--edge); border-radius:7px;
-    padding:7px 9px; margin-bottom:7px; }
-  .frame.top { border-color:var(--accent); }
+  .ctl { font-family:var(--mono); font-size:13.5px; background:var(--panel2);
+    border:1px solid var(--edge2); border-left:3px solid var(--accent);
+    border-radius:7px; padding:10px 12px; margin:8px 0 12px;
+    word-break:break-word; }
+  .frame { background:var(--panel); border:1px solid var(--edge);
+    border-radius:8px; padding:8px 10px; margin-bottom:7px; }
+  .frame.top { border-color:#3f5d8f; background:#161c26; }
   .frame .fh { display:flex; gap:7px; align-items:center; font-family:var(--mono);
-    font-size:11.5px; margin-bottom:4px; flex-wrap:wrap; }
-  .badge { font-size:10px; padding:1px 6px; border-radius:4px; background:var(--panel2);
-    color:var(--dim); }
+    font-size:11px; margin-bottom:5px; flex-wrap:wrap; }
+  .badge { font-size:10px; padding:1px 7px; border-radius:5px;
+    background:var(--panel2); color:var(--dim); border:1px solid var(--edge); }
   .badge.method { color:var(--accent); } .badge.block { color:var(--good); }
-  .locals { display:grid; grid-template-columns:auto 1fr; gap:2px 12px;
+  .locals { display:grid; grid-template-columns:auto 1fr; gap:3px 14px;
     font-family:var(--mono); font-size:11.5px; }
   .locals .k { color:var(--warn); } .locals .v { color:var(--fg); word-break:break-word; }
-  ol.konts { margin:0; padding-left:20px; font-family:var(--mono); font-size:11.5px;
-    color:var(--dim); }
+  ol.konts { margin:0; padding-left:19px; font-family:var(--mono); font-size:11.5px;
+    color:var(--dim); line-height:1.7; }
   ol.konts li:first-child { color:var(--fg); }
-  /* the stepper, as an overlay */
-  dialog#stepper { width:min(1100px, 94vw); max-height:88vh; padding:14px 18px 18px;
-    background:var(--bg); color:var(--fg); border:1px solid var(--edge);
-    border-radius:12px; box-shadow:0 24px 70px #000a; overflow:auto; }
-  dialog#stepper::backdrop { background:#000a; backdrop-filter:blur(2px); }
-  dialog#stepper .dhead { display:flex; align-items:baseline; gap:10px;
-    padding-bottom:10px; margin-bottom:4px; border-bottom:1px solid var(--edge);
+
+  /* ── overlays ───────────────────────────────────────────────────────── */
+  dialog { background:var(--bg); color:var(--fg); border:1px solid var(--edge2);
+    border-radius:14px; box-shadow:0 30px 80px #000c; padding:16px 20px 20px; }
+  dialog::backdrop { background:#000b; backdrop-filter:blur(3px); }
+  dialog .dhead { display:flex; align-items:baseline; gap:10px;
+    padding-bottom:11px; margin-bottom:6px; border-bottom:1px solid var(--edge);
     flex-wrap:wrap; }
-  dialog#stepper .dbody { display:grid; grid-template-columns:1fr 1fr; gap:0 22px;
+  dialog .dhead b { font-size:14px; }
+  #stepper { width:min(1120px,94vw); max-height:88vh; overflow:auto; }
+  #stepper .dbody { display:grid; grid-template-columns:1fr 1fr; gap:0 24px;
     align-items:start; }
-  @media (max-width:860px) { dialog#stepper .dbody { grid-template-columns:1fr; } }
+  @media (max-width:860px) { #stepper .dbody { grid-template-columns:1fr; } }
+
+  #about { width:min(680px,94vw); max-height:86vh; overflow:auto; line-height:1.65; }
+  #about h3 { font-size:12px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--accent); margin:20px 0 6px; font-weight:650; }
+  #about h3:first-of-type { margin-top:10px; }
+  #about p { margin:0 0 10px; color:#d3dae6; font-size:13.5px; }
+  #about ul { margin:0 0 10px; padding-left:20px; color:#d3dae6; font-size:13.5px; }
+  #about li { margin-bottom:5px; }
+  #about .caveat { border-left:3px solid var(--warn); background:#1c1810;
+    border-radius:0 8px 8px 0; padding:10px 13px; margin:14px 0 4px; font-size:13px; }
+  #about .caveat b { color:var(--warn); }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>ruby-lean</h1>
-  <span class="hint">annotated Ruby → <span style="font-family:var(--mono)">validateD</span>,
-    the one trusted Bool</span>
+  <h1>ruby-lean<span class="slash">/</span><span class="sub">type checking Ruby, with a proof</span></h1>
+  <button class="ghost icon" id="openabout" title="What is this?">&#9432;&nbsp; What is this?</button>
   <span class="grow"></span>
   <span class="pill" id="backendpill">—</span>
 </header>
@@ -125,7 +178,7 @@
     <div class="row">
       <select id="corpus" style="flex:1"></select>
       <button class="ghost" id="load">Load</button>
-      <button id="runall">Run all ⏩</button>
+      <button id="runall" title="run all five stages in order">Check it ⏩</button>
     </div>
     <div class="row">
       <span class="pill" id="target">target —</span>
@@ -133,42 +186,42 @@
     </div>
     <div id="err"></div>
 
-    <h2>Program <span class="hint" id="srcmsg">— annotated, with <code>sig</code>s</span></h2>
+    <h2>The program <span class="hint" id="srcmsg">— Ruby, with Sorbet type annotations. Editable.</span></h2>
     <textarea id="src" spellcheck="false" style="height:260px"
       placeholder="# typed: true&#10;extend T::Sig&#10;&#10;sig { params(x: Integer).returns(Integer) }&#10;def double(x)&#10;  x + x&#10;end&#10;&#10;double(21)"></textarea>
 
-    <h2>Stripped program <span class="hint" id="stripmsg"></span></h2>
+    <h2>Without the annotations <span class="hint" id="stripmsg">— what actually gets checked and run</span></h2>
     <textarea id="stripped" spellcheck="false" style="height:150px"
-      placeholder="the sig-stripped program appears here — this is what the derivation is about"></textarea>
+      placeholder="the program with its type annotations removed appears here"></textarea>
 
-    <h2>Deriv <span class="hint">— editable before <code>validateD</code> reads it</span></h2>
+    <h2>Certificate <span class="hint">— the proposed proof. Edit it and stage 4 will check what you wrote.</span></h2>
     <textarea id="deriv" spellcheck="false" style="height:220px"
-      placeholder="the emitted certificate appears here, and stays editable: change it and stage 4 will check what you changed"></textarea>
+      placeholder="a certificate is a proposed proof that the program type-checks. It is untrusted: stage 4 re-derives every type in it."></textarea>
   </div>
 
   <!-- ─────────────────────────────── right ────────────────────────────── -->
   <div class="right">
-    <h2>Stages</h2>
+    <h2>The pipeline <span class="hint">— press ▸ to run one, or “Check it” for all five</span></h2>
     <div class="rail" id="rail"></div>
 
-    <h2>Signatures <span class="hint" id="sigmsg"></span></h2>
-    <pre class="out tall" id="sigout"><span class="empty">— run stage 0</span></pre>
+    <h2>Declared types <span class="hint" id="sigmsg"></span></h2>
+    <pre class="out tall" id="sigout"><span class="empty">— run stage 0 to read the program's type annotations</span></pre>
 
-    <h2>RubyCore <span class="hint" id="coremsg"></span></h2>
-    <pre class="out sexpr tall" id="core"><span class="empty">— strip, then desugar</span></pre>
+    <h2>The program, desugared <span class="hint" id="coremsg">— the core form the model runs</span></h2>
+    <pre class="out sexpr tall" id="core"><span class="empty">— run stages 1 and 2</span></pre>
 
-    <h2>Verdict</h2>
-    <div id="verdict"><span class="empty">— derive, then run stage 4</span></div>
+    <h2>Verdict <span class="hint">— the one trusted answer on this page</span></h2>
+    <div id="verdict"><span class="empty">— run stages 3 and 4</span></div>
 
-    <h2>Run it <span class="hint">— the model beside the oracle</span></h2>
+    <h2>Run it <span class="hint">— the Lean model beside real CRuby. They should agree.</span></h2>
     <div class="row">
       <button class="ghost" id="model">Lean model ▶</button>
       <button class="ghost" id="cruby">CRuby ▶</button>
       <button class="ghost" id="openstep" title="walk the model one stepFn transition at a time">Step it ▶</button>
       <span class="pill" id="agree">—</span>
     </div>
-    <pre class="out tall" id="modelout"><span class="empty">— press “Lean model”</span></pre>
-    <pre class="out tall" id="crubyout" style="margin-top:8px"><span class="empty">— press “CRuby”</span></pre>
+    <pre class="out tall" id="modelout"><span class="empty">— press “Lean model” to run the program in the formal model</span></pre>
+    <pre class="out tall" id="crubyout" style="margin-top:8px"><span class="empty">— press “CRuby” to run the same program in real Ruby</span></pre>
 
 
   </div>
@@ -190,11 +243,11 @@ $("backendpill").title = BACKEND === "wasm"
 // Five stages, in the order the commit gate runs them. Stage 0 is the only one
 // that differs between backends, and it says so rather than hiding it.
 const STAGES = [
-  ["sigs",     "Signatures", "read the declared types"],
-  ["strip",    "Strip",      "sig · visibility · freeze · require · const_inline · class_sugar"],
-  ["desugar",  "Desugar",    "harness/desugar-dt → RubyCore JSON"],
-  ["derive",   "Derive",     "the untrusted emitter — a block is a coverage fact, not a verdict"],
-  ["validate", "validateD",  "the trusted Bool"],
+  ["sigs",     "Read the annotations", "what types the program declares"],
+  ["strip",    "Remove the annotations", "they are comments to the checker, not code it runs"],
+  ["desugar",  "Desugar",              "rewrite Ruby into the small core the model runs"],
+  ["derive",   "Propose a proof",      "untrusted: if it cannot, it says what stopped it"],
+  ["validate", "Check the proof",      "the trusted step — this is the one that counts"],
 ];
 let expect = null;
 
@@ -463,6 +516,11 @@ function renderStep() {
   $("tdetail").textContent = last && trace.detail ? `result: ${trace.detail}` : "";
 }
 
+const about = $("about");
+$("openabout").onclick = () => about.showModal();
+$("closeabout").onclick = () => about.close();
+about.addEventListener("click", (e) => { if (e.target === about) about.close(); });
+
 const dlg = $("stepper");
 $("openstep").onclick = () => {
   dlg.showModal();
@@ -489,17 +547,68 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight") { goto_(at + 1); e.preventDefault(); }
 });
 
+
+// The corpus descriptions are working notes, written for whoever is building
+// the ladder. Many open with the program itself ("class Point; def ...; end --
+// an ivar write in initialize"), many carry Markdown and file references, and
+// some are several paragraphs of argument. The program is already in the
+// editor, so none of that belongs in a menu.
+//
+// So the label is the program's own name, humanised, and prose is shown only
+// when a clean sentence can be had. A half-sentence starting "But NameError is
+// not..." is worse than nothing.
+const humanise = (stem) =>
+  stem.replace(/^(\d+)-/, "").replace(/-/g, " ");
+
+const numberOf = (stem) => (stem.match(/^(\d+)/) || [, ""])[1];
+
+const CODEY = /;\s*(def|end|class)\b|\bend;|::|=>|\w#\w/;
+
+function summarise(desc) {
+  if (!desc) return "";
+  let s = String(desc);
+  const dash = s.indexOf(" -- ");            // "<the code> -- <what it is about>"
+  if (dash !== -1) s = s.slice(dash + 4);
+  s = s.replace(/\*\*(.+?)\*\*/g, "$1")      // **bold**
+       .replace(/\*(.+?)\*/g, "$1")           // *emphasis*
+       .replace(/`([^`]+)`/g, "$1")           // `code`
+       .replace(/\(\s*(?:see\s+)?[\w/.-]+\.(?:md|lean|rb|py)[^)]*\)/gi, "")
+       .replace(/\b[\w/.-]+\.(?:md|lean|rb|py)\b/g, "")
+       .replace(/§\S+/g, "")
+       .replace(/[*`]/g, "")                  // any markup the passes above missed
+       .replace(/\s+/g, " ")
+       .trim();
+  // Take the first sentence that reads as a summary on its own.
+  for (const raw of s.split(/(?<=\.)\s+/)) {
+    const cand = raw.trim();
+    if (cand.length < 26 || cand.length > 240) continue;
+    if (CODEY.test(cand)) continue;
+    if (!/^[A-Za-z]/.test(cand)) continue;   // a fragment, not a sentence
+    if (/^(but|so|and|that|this|it|which|the same|fixed|found)\b/i.test(cand)) continue;
+    return cand.charAt(0).toUpperCase() + cand.slice(1);
+  }
+  return "";
+}
+
 // ── the corpus ─────────────────────────────────────────────────────────────
 let entries = {};
 async function loadCorpus() {
   const d = await call("corpus");
   if (d.error) return showErr(d);
   entries = Object.fromEntries((d.entries || []).map((e) => [e.file, e]));
-  $("corpus").innerHTML = (d.entries || []).map((e) =>
-    `<option value="${esc(e.file)}">${esc(e.file)} · tier ${e.tier}` +
-    `${e.expect_validate === false ? " · expect false" : ""} — ${esc((e.description || "").slice(0, 90))}</option>`
-  ).join("");
-  $("msg").textContent = `${(d.entries || []).length} rungs`;
+  const byTier = new Map();
+  for (const e of d.entries || []) {
+    const k = e.tier ?? "—";
+    if (!byTier.has(k)) byTier.set(k, []);
+    byTier.get(k).push(e);
+  }
+  $("corpus").innerHTML = [...byTier.entries()].map(([tier, es]) =>
+    `<optgroup label="Tier ${esc(tier)} — ${es.length} program${es.length === 1 ? "" : "s"}">` +
+    es.map((e) =>
+      `<option value="${esc(e.file)}">${esc(numberOf(e.file))} · ${esc(humanise(e.file))}` +
+      `${e.expect_validate === false ? "   (not expected to pass)" : ""}</option>`).join("") +
+    `</optgroup>`).join("");
+  $("msg").textContent = `${(d.entries || []).length} programs · pick one and press “Check it”`;
 }
 
 $("load").onclick = async () => {
@@ -521,7 +630,8 @@ $("load").onclick = async () => {
   const e = entries[$("corpus").value] || {};
   expect = e.expect_validate === undefined ? null : e.expect_validate;
   setTarget();
-  $("msg").textContent = e.description ? e.description.slice(0, 160) : "";
+  const blurb = summarise(e.description);
+  $("msg").textContent = blurb || humanise($("corpus").value);
 };
 
 // ── a small s-expression renderer for the RubyCore AST ─────────────────────
@@ -586,6 +696,56 @@ prewarm();
       <div class="hint" id="tdetail"></div>
     </div>
   </div>
+</dialog>
+
+<dialog id="about">
+  <div class="dhead">
+    <b>What is this?</b>
+    <span class="grow"></span>
+    <button class="ghost icon" id="closeabout" title="Esc">&#10005;</button>
+  </div>
+
+  <p>A collection of small Ruby programs carrying <b>type annotations</b> — Sorbet
+  <code>sig</code>s, the kind you would write in a real codebase — and a
+  <b>type checker written in Lean</b> that decides whether each one is safe.</p>
+
+  <p>What makes the checker unusual is that it has been <b>proved sound</b>. Not
+  tested until it seemed right: proved, as a theorem, for the fragment of Ruby it
+  covers.</p>
+
+  <h3>What a green result means</h3>
+  <p>When the checker answers <b>true</b>, that program <b>cannot raise a type
+  error</b> — no <code>NoMethodError</code>, no <code>TypeError</code>, no
+  <code>ArgumentError</code> — no matter how long it runs. That is a mathematical
+  guarantee, machine-checked, not a test result or a heuristic.</p>
+  <p>The guarantee is about an <b>executable model of Ruby</b>, also written in
+  Lean, which is where the second half of this page comes in.</p>
+
+  <h3>Why CRuby is here too</h3>
+  <p>A proof about a model is only worth what the model is worth. So real CRuby
+  runs beside it: press <b>Lean model</b> and <b>CRuby</b> on the same program and
+  compare. Every program in this collection is checked both ways, and they agree.
+  The model is not a paper description of Ruby with an interpreter next to it —
+  the interpreter <i>is</i> the semantics.</p>
+
+  <h3>Stepping the machine</h3>
+  <p><b>Step it</b> walks the model one transition at a time: what it is about to
+  evaluate, the call stack with live local variables, what is waiting to happen
+  next, and the output so far. This is the same machine the proof is about, not a
+  simplified illustration of it.</p>
+
+  <div class="caveat">
+    <b>This is a proof of concept.</b> Of the 259 programs here, the certified
+    fragment currently covers <b>63</b>. The rest are outside it — the checker
+    declines them rather than getting them wrong, and each one names what stopped
+    it. Blocks and rejections are honest answers about coverage, not failures of
+    the program.
+  </div>
+  <p style="margin-top:10px">The aim is to grow that fragment toward the whole
+  language, and to reach programs that are <b>nondeterministic</b> — that read
+  user input, so a single run proves nothing and only a proof over all runs will
+  do. Today the fragment is small, and everything it claims, it claims with a
+  proof behind it.</p>
 </dialog>
 
 </body>

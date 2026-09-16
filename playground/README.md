@@ -1,8 +1,19 @@
 # playground
 
-Load an annotated Ruby program, run the typed ladder's five stages over it, and
-see what `validateD` — the one trusted Bool — says. Edit the program, or edit
-the emitted certificate, and run it again.
+The user-facing front end. Pick one of 259 annotated Ruby programs, run the five
+stages over it, and see whether the Lean checker can prove it will never raise a
+type error. Edit the program, or edit the proposed proof, and check it again.
+
+The page is written for someone arriving with no context: **What is this?** in
+the header opens an overview covering what the checker proves, why CRuby runs
+beside it, what the stepper shows, and — stated plainly — that 63 of the 259
+programs are inside the certified fragment today and this is a proof of concept
+aimed at the whole language and at programs that read user input.
+
+Corpus descriptions are working notes written for whoever is building the
+ladder, so the menu does not show them raw: programs are listed by name and
+grouped by tier, and prose appears under the menu only when a clean sentence can
+be extracted from the note (48 of 259 have none, and show the name instead).
 
 ```
 annotated Ruby
