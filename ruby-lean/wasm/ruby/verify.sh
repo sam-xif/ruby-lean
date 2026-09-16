@@ -13,6 +13,12 @@
 #             `certify-file.sh` runs it. Compared byte for byte.
 #   oracle    the program itself, under CRuby. Compared on stdout, exit status
 #             *and* stderr.
+#   deriv     `read_sigs.rb` then `emit_deriv.rb`: the typed ladder's two
+#             untrusted stages. Compared byte for byte on the emitted Deriv.
+#
+# `deriv` checks the *port* -- the same Ruby, host versus wasm. Whether reading
+# signatures with Prism agrees with reading them out of Sorbet is a different
+# axis, and `scripts/cmp_sig_readers.py` is where that is measured.
 #
 # Everything is fed on **stdin**, which is how the page will do it -- there is
 # no writable filesystem in the packed module, and none in a browser tab. It
@@ -52,6 +58,24 @@ if [ "$ONLY" = all ] || [ "$ONLY" = strip ]; then
   [ "$a" = "$b" ] && echo "strip OK" || echo "strip DIFF $name"
 fi
 
+if [ "$ONLY" = all ] || [ "$ONLY" = deriv ]; then
+  a=$(ruby "$ROOT/ruby-lean/scripts/read_sigs.rb" < "$f" 2>&1)
+  b=$(w /opt/deriv/read_sigs.rb < "$f" 2>&1)
+  if [ "$a" = "$b" ]; then
+    ast="$ROOT/ruby-lean/build/$name.ast.json"
+    if [ -f "$ast" ]; then
+      payload=$(python3 -c 'import json,sys; print(json.dumps({"ast": json.load(open(sys.argv[1])), "sigs": json.loads(sys.argv[2])}))' "$ast" "$a")
+      da=$(printf '%s' "$payload" | ruby "$ROOT/ruby-lean/scripts/emit_deriv.rb" 2>&1)
+      db=$(printf '%s' "$payload" | w /opt/deriv/emit_deriv.rb 2>&1)
+      [ "$da" = "$db" ] && echo "deriv OK" || echo "deriv DIFF $name"
+    else
+      echo "deriv OK"
+    fi
+  else
+    echo "deriv DIFF $name"
+  fi
+fi
+
 if [ "$ONLY" = all ] || [ "$ONLY" = oracle ]; then
   # `error_highlight` annotates some exceptions with extra lines -- for an arity
   # mismatch, `caller:`/`callee:` locations. It is active on the host and not in
@@ -82,7 +106,7 @@ res="${TMPDIR:-/tmp}/rl-verify-results.txt"
 ls "$CORPUS"/*.rb | xargs -P "$JOBS" -n 1 "${TMPDIR:-/tmp}/rl-verify-one.sh" > "$res" 2>&1
 
 rc=0
-for job in desugar strip oracle; do
+for job in desugar strip deriv oracle; do
   ok=$(grep -c "^$job OK"   "$res" || true)
   bad=$(grep -c "^$job DIFF" "$res" || true)
   [ "$ok" = 0 ] && [ "$bad" = 0 ] && continue

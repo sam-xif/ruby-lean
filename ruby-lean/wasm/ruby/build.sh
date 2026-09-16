@@ -5,8 +5,8 @@
 #   wasm/ruby/build.sh        # -> wasm/out/ruby.wasm
 #
 # This is the *other half* of the playground's pipeline. `wasm/build.sh` gets
-# the Lean side into the browser; this gets the Ruby side, which is three
-# distinct jobs the page needs and which are all the same interpreter:
+# the Lean side into the browser; this gets the Ruby side, which is five
+# distinct jobs the page needs, all of them the same interpreter:
 #
 #   harness/desugar-dt/bin/export-json   Ruby source -> RubyCore JSON
 #   difftest/ruby/*_strip.rb             the six-stage strip chain
@@ -70,7 +70,7 @@ fi
 # Rebuilt from scratch each run, so a stale file cannot survive into the image.
 STAGE="$CACHE/stage"
 rm -rf "$STAGE"
-mkdir -p "$STAGE/usr/local/lib" "$STAGE/opt/desugar" "$STAGE/opt/strip"
+mkdir -p "$STAGE/usr/local/lib" "$STAGE/opt/desugar" "$STAGE/opt/strip" "$STAGE/opt/deriv"
 
 say "staging the guest filesystem"
 # Only `lib/ruby` is runtime. The distribution also ships `libruby-static.a`
@@ -82,6 +82,16 @@ cp -R "$ROOT/harness/desugar-dt/lib" "$ROOT/harness/desugar-dt/bin" "$STAGE/opt/
 for s in "${STRIP_CHAIN[@]}"; do
   cp "$ROOT/difftest/ruby/$s.rb" "$STAGE/opt/strip/"
 done
+
+# The typed ladder's untrusted stages, ported to Ruby so the page can re-derive
+# for a program the user has *edited* rather than only replay a stored rung.
+# `read_sigs.rb` replaces `srb_sigs.py`: Sorbet is C++ with no wasm port, and
+# shipping each rung's stored sigs.json would go stale the moment the buffer
+# changes. Reading signatures off the source is sound rather than a shortcut --
+# `Ratchet/Deriv.lean` re-derives every declared type, so a weaker reader costs
+# blocks and rejects, never a wrong accept. Sorbet's *verdict* is a different
+# thing and is not faked; `read_sigs.rb` reports `"verdict": "not-checked"`.
+cp "$PKG/scripts/emit_deriv.rb" "$PKG/scripts/read_sigs.rb" "$STAGE/opt/deriv/"
 
 # sorbet-runtime is pure Ruby and not a default gem, so it is not in the
 # distribution — but eleven corpus programs `require` it, and without it the
@@ -118,5 +128,8 @@ say "smoke test"
 printf 'a = 1\nputs a + 2\n' \
   | wasmtime "$OUT/ruby.wasm" /opt/desugar/bin/export-json \
   | head -c 70
+echo
+printf 'sig { returns(Integer) }\ndef f\n  1\nend\nf\n' \
+  | wasmtime "$OUT/ruby.wasm" /opt/deriv/read_sigs.rb | head -c 110
 echo
 say "done -- run wasm/ruby/verify.sh for the full differential"
