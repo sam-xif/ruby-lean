@@ -1,17 +1,26 @@
 #!/usr/bin/env python3
-"""Ruby-in-Lean stepper playground — zero-dependency stdlib HTTP server.
+"""The playground's localhost fallback: the same page, over the native binaries.
 
-Pipeline per request:  Ruby source -> export-json (desugar) -> rubycore --trace
-                       -> {steps, status, detail} JSON  ->  the browser UI.
+    python3 server.py [port]        # default 8077
 
-The tab-3 pipeline takes the same first hop and then runs the ratchet's own
-stages (Sorbet -> strip -> desugar -> emit -> `validate-one`), which is the
-checker of record. The stepper's old static-checker buttons (`--check`,
-`--check-tl`, `--assn`, `--assn-program`) drove the pre-ratchet type-checking
-iterations in `RubyCore/`; those were removed, and so were they.
+`build.sh` produces a static site that runs everything in the browser as wasm.
+This serves the identical `index.html` against `server.py` routes instead, so
+the two can be compared button for button -- the page picks its backend from
+`config.js` (absent here, so `server`) and `?backend=` overrides either way.
 
-Run:  python3 server.py [port]      (default 8077)
-Needs: CRuby 4.0.5 (brew) + a built `rubycore` (cd ../ruby-lean && lake build).
+Kept for three reasons. It is the reference the wasm build is checked against;
+it runs the real `srb` binary, which the browser cannot; and it needs no build
+of the wasm modules, so a fresh checkout has something that works.
+
+Needs CRuby 4.0.x on PATH (or $RUBY / brew) and a built `ruby-lean`:
+
+    cd ../ruby-lean && lake build
+
+Nine routes, matching `js/backend.js`'s nine calls exactly. The stepper, the
+static-query flags and the Homebrew slice explorer that used to live here are
+gone with the tabs they served.
+
+**Restart it after editing this file.** There is no reloader.
 """
 from __future__ import annotations
 
@@ -24,16 +33,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent  # ruby/
+ROOT = HERE.parent
 EXPORT_JSON = ROOT / "harness" / "desugar-dt" / "bin" / "export-json"
 RUBYCORE = ROOT / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
 RATCHET_VALIDATE = ROOT / "ruby-lean" / ".lake" / "build" / "bin" / "validate-one"
-MAX_STEPS = "4000"
-# The desugar budget. It used to be 15s, which is a toy's budget: the linked
-# Homebrew slice is 2,151 lines and the slice explorer feeds it to the same first
-# hop. `LONG` (below) is the budget for anything that *executes* the slice.
+CORPUS = ROOT / "ruby-lean" / "corpus"
 TIMEOUT = 120
-
+LONG = 300
+STRIP_CHAIN = ["sig_strip", "visibility_strip", "freeze_strip", "require_strip",
+               "const_inline", "class_sugar_strip"]
 
 def find_ruby() -> str:
     if os.environ.get("RUBY"):
@@ -49,157 +57,6 @@ def find_ruby() -> str:
 
 
 RUBY = find_ruby()
-
-
-def trace(source: str, window: dict | None = None) -> dict:
-    """`window` is the trace window: `{"at": SUBSTR}` or `{"from": N}`, both
-    optional. Without one the trace starts at step 0, which is only useful for a
-    small program — the Homebrew slice is 825,259 steps and a snapshot is ~1 KB,
-    so the cap shows the first half-percent of its boot (`--trace-at`)."""
-    if not RUBYCORE.exists():
-        return {"error": "setup", "message": f"rubycore not built at {RUBYCORE} — run `cd ../ruby-lean && lake build`"}
-    try:
-        des = subprocess.run(
-            [RUBY, str(EXPORT_JSON)], input=source,
-            capture_output=True, text=True, timeout=TIMEOUT,
-        )
-    except subprocess.TimeoutExpired:
-        return {"error": "timeout", "message": "desugar timed out"}
-    if des.returncode == 3:
-        return {"error": "desugar", "message": des.stderr.strip() or "out of desugar fragment"}
-    if des.returncode != 0:
-        return {"error": "desugar", "message": des.stderr.strip()[:500] or "desugar failed"}
-    # Desugar succeeded — keep the RubyCore AST for the s-expression pane, and
-    # attach it to every downstream outcome (even a Lean gate) so it stays
-    # visible whenever the program made it past the desugar.
-    ast = None
-    try:
-        ast = json.loads(des.stdout).get("ast")
-    except ValueError:
-        pass
-    argv = [str(RUBYCORE), "--trace", MAX_STEPS]
-    if window:
-        if window.get("at"):
-            argv += ["--trace-at", str(window["at"])]
-        elif window.get("from"):
-            argv += ["--trace-from", str(int(window["from"]))]
-    try:
-        lean = subprocess.run(
-            argv, input=des.stdout,
-            capture_output=True, text=True, timeout=LONG,
-        )
-    except subprocess.TimeoutExpired:
-        return {"error": "timeout", "message": "stepper timed out", "ast": ast}
-    if lean.returncode != 0:
-        return {"error": "lean", "message": lean.stderr.strip()[:500] or f"rubycore exit {lean.returncode}", "ast": ast}
-    try:
-        result = json.loads(lean.stdout)
-    except ValueError as e:
-        return {"error": "lean", "message": f"unparseable trace: {e}", "ast": ast}
-    result["ast"] = ast
-    return result
-
-
-def run_ruby(source: str) -> dict:
-    """Execute the source in real CRuby and capture stdout/stderr."""
-    try:
-        p = subprocess.run(
-            [RUBY], input=source, capture_output=True, text=True, timeout=TIMEOUT,
-        )
-    except subprocess.TimeoutExpired:
-        return {"error": "timeout", "message": f"ruby timed out after {TIMEOUT}s"}
-    return {"stdout": p.stdout, "stderr": p.stderr, "returncode": p.returncode}
-
-
-class Handler(BaseHTTPRequestHandler):
-    def log_message(self, *_):  # quiet
-        pass
-
-    def _send(self, code: int, body: bytes, ctype: str):
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def do_GET(self):
-        if self.path in ("/", "/index.html"):
-            self._send(200, (HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
-        elif self.path == "/slice/files":
-            self._send(200, json.dumps(slice_files()).encode(), "application/json")
-        elif self.path == "/ratchet/corpus":
-            self._send(200, json.dumps(ratchet_corpus()).encode(), "application/json")
-        else:
-            self._send(404, b"not found", "text/plain")
-
-    # The slice-explorer routes all take a JSON object; the original routes keep
-    # taking a bare source body, which is what the stepper has always sent.
-    SLICE_ROUTES = {
-        "/slice/source":   lambda q: slice_source(q.get("file", "")),
-        "/slice/link":     lambda q: slice_link(),
-        "/slice/strip":    lambda q: strip_chain(q.get("source", "")),
-        "/slice/desugar":  lambda q: desugar_only(q.get("source", "")),
-        "/slice/model":    lambda q: model_run(q.get("source", "")),
-        "/slice/cruby":    lambda q: cruby_run(q.get("source", "")),
-        # ── Tab 3: the current typed ratchet pipeline.
-        "/ratchet/strip":  lambda q: strip_chain(q.get("source", "")),
-        "/ratchet/desugar": lambda q: desugar_only(q.get("source", "")),
-        "/ratchet/sorbet": lambda q: ratchet_sorbet(q.get("source", "")),
-        "/ratchet/derive": lambda q: ratchet_derive(q.get("source", "")),
-        "/ratchet/validate": lambda q: ratchet_validate(q.get("source", ""), q.get("deriv")),
-        "/ratchet/model":  lambda q: model_run(q.get("source", "")),
-        "/ratchet/cruby":  lambda q: cruby_run(q.get("source", "")),
-        "/ratchet/corpus-source": lambda q: ratchet_corpus_source(q.get("file", "")),
-    }
-
-    def do_POST(self):
-        n = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(n).decode("utf-8")
-        if self.path in self.SLICE_ROUTES:
-            try:
-                q = json.loads(body or "{}")
-            except ValueError:
-                self._send(400, b"expected JSON", "text/plain")
-                return
-            result = self.SLICE_ROUTES[self.path](q)
-            self._send(200, json.dumps(result).encode("utf-8"), "application/json")
-            return
-        if self.path not in ("/trace", "/run", "/steps"):
-            self._send(404, b"not found", "text/plain")
-            return
-        # `/trace` takes either a bare source string (as it always has) or a JSON
-        # object `{"source": …, "at": …, "from": …}` carrying the window.
-        source, window = body, None
-        if self.path == "/trace" and body.lstrip().startswith("{"):
-            try:
-                req = json.loads(body)
-                source, window = req.get("source", ""), req
-            except ValueError:
-                pass
-        if self.path == "/trace":
-            result = trace(source, window)
-        elif self.path == "/steps":
-            result = steps(source)
-        else:
-            result = run_ruby(source)
-        self._send(200, json.dumps(result).encode("utf-8"), "application/json")
-
-
-def steps(source: str) -> dict:
-    """How many steps the program takes, with no snapshots — the number a window
-    is chosen against (`rubycore --steps`)."""
-    des = subprocess.run([RUBY, str(EXPORT_JSON)], input=source,
-                         capture_output=True, text=True, timeout=TIMEOUT)
-    if des.returncode != 0:
-        return {"error": "desugar", "message": des.stderr.strip()[:500]}
-    lean = subprocess.run([str(RUBYCORE), "--steps"], input=des.stdout,
-                          capture_output=True, text=True, timeout=LONG)
-    if lean.returncode != 0:
-        return {"error": "lean", "message": lean.stderr.strip()[:500]}
-    try:
-        return json.loads(lean.stdout)
-    except ValueError as e:
-        return {"error": "lean", "message": str(e)}
 
 
 def desugar(source: str) -> tuple[str | None, dict | None]:
@@ -221,57 +78,34 @@ def desugar(source: str) -> tuple[str | None, dict | None]:
     return des.stdout, None
 
 
-def lean_query(core_json: str, *flags: str) -> dict:
-    """One static `rubycore` query. Static means static: no prelude is booted and
-    nothing is executed, so a non-zero exit is a real harness error rather than a
-    program outcome."""
-    try:
-        lean = subprocess.run([str(RUBYCORE), *flags], input=core_json,
-                              capture_output=True, text=True, timeout=TIMEOUT)
-    except subprocess.TimeoutExpired:
-        return {"error": "timeout", "message": f"rubycore {' '.join(flags)} timed out"}
-    if lean.returncode != 0:
-        return {"error": "lean",
-                "message": lean.stderr.strip()[:500] or f"rubycore exit {lean.returncode}"}
-    try:
-        return json.loads(lean.stdout)
-    except ValueError as e:
-        return {"error": "lean", "message": f"unparseable {' '.join(flags)} output: {e}"}
-
-
-def corpus_stems() -> list[str]:
-    """Every rung's file stem (`060-fun-recursive-factorial`), sorted the way
-    `ratchet`'s own runner sorts them — filename order, which is tier order."""
-    if not CORPUS.is_dir():
-        return []
-    return sorted(p.name.removesuffix(".meta.json") for p in CORPUS.glob("*.meta.json"))
-
-
-def ratchet_corpus() -> dict:
-    """The live typed ladder's `*.meta.json` records."""
-    out = []
-    for stem in corpus_stems():
+def strip_chain(source: str) -> dict:
+    """`certify/certify-file.sh`'s strip chain, one Ruby filter at a time so a
+    failure names the transform that failed. Each transform is documented in
+    `difftest/ruby/`; stripping removes traps, never meaning."""
+    text = source
+    applied = []
+    for name in STRIP_CHAIN:
+        script = ROOT / "difftest" / "ruby" / f"{name}.rb"
         try:
-            entry = json.loads((CORPUS / f"{stem}.meta.json").read_text())
-        except ValueError:
-            continue
-        out.append({"file": stem, "id": entry.get("id"), "tier": entry.get("tier"),
-                    "description": entry.get("description"),
-                    "expect_validate": entry.get("expect_validate"),
-                    "expect_sorbet": entry.get("expect_sorbet")})
-    return {"root": str(CORPUS), "entries": out}
+            p = subprocess.run([RUBY, str(script)], input=text,
+                               capture_output=True, text=True, timeout=LONG)
+        except subprocess.TimeoutExpired:
+            return {"error": "strip", "message": f"{name} timed out", "applied": applied}
+        if p.returncode != 0:
+            return {"error": "strip",
+                    "message": f"{name}: {p.stderr.strip()[:500] or p.returncode}",
+                    "applied": applied}
+        text, _ = p.stdout, applied.append(name)
+    return {"source": text, "applied": applied}
 
 
-def ratchet_corpus_source(stem: str) -> dict:
-    """The rung's actual Ruby (`scripts/generate_corpus.py` commits a `.rb` beside
-    every `.json` — the `.json`'s `program` is that source already desugared, so this
-    reads the sibling file rather than round-tripping the AST back to text)."""
-    if stem not in corpus_stems():
-        return {"error": "input", "message": f"not a corpus rung: {stem}"}
-    p = CORPUS / f"{stem}.rb"
-    if not p.exists():
-        return {"error": "input", "message": f"missing: {p}"}
-    return {"file": stem, "source": p.read_text(errors="replace")}
+def scrub_sigs(report: dict, rb: Path) -> dict:
+    """The temp path leaks into srb's diagnostics; the file the user is looking at is the
+    editor, so say so rather than naming a directory that no longer exists."""
+    report["diagnostics"] = [line.replace(str(rb), "(editor)")
+                             for line in report.get("srb_diagnostics", [])]
+    report["file"] = "(editor)"
+    return report
 
 
 def ratchet_sorbet(source: str) -> dict:
@@ -297,15 +131,6 @@ def ratchet_sorbet(source: str) -> dict:
         except ValueError as exc:
             return {"error": "sorbet", "message": f"unparseable srb_sigs output: {exc}"}
         return scrub_sigs(report, rb)
-
-
-def scrub_sigs(report: dict, rb: Path) -> dict:
-    """The temp path leaks into srb's diagnostics; the file the user is looking at is the
-    editor, so say so rather than naming a directory that no longer exists."""
-    report["diagnostics"] = [line.replace(str(rb), "(editor)")
-                             for line in report.get("srb_diagnostics", [])]
-    report["file"] = "(editor)"
-    return report
 
 
 def ratchet_derive(source: str) -> dict:
@@ -400,76 +225,6 @@ BUILD_SLICE = ROOT / "homebrew" / "slice-driver" / "build.py"
 LONG = 900
 
 
-def slice_files() -> dict:
-    """The eight slice files, plus whether each is on disk. The vendored brew
-    checkout is the only root offered: a path the browser chose would be a file
-    read the server did not bound."""
-    out = []
-    for rel in SLICE:
-        p = LIB / rel
-        out.append({"file": rel, "exists": p.exists(),
-                    "lines": len(p.read_text(errors="replace").splitlines()) if p.exists() else 0})
-    return {"root": str(LIB), "files": out}
-
-
-def slice_source(rel: str) -> dict:
-    if rel not in SLICE:
-        return {"error": "input", "message": f"not a slice file: {rel}"}
-    p = LIB / rel
-    if not p.exists():
-        return {"error": "input", "message": f"missing: {p}"}
-    return {"file": rel, "source": p.read_text(errors="replace")}
-
-
-def slice_link() -> dict:
-    """The whole slice as one program: `slice-driver/build.py` — boot stubs +
-    `linker` over the three entries (which pulls all eight files, 8 spliced, 0
-    thunked, 0 cycles) + `driver.rb`, the CVE-matching main.
-
-    Two details are copied from `slice-driver/run.sh` rather than rediscovered:
-    it runs under `uv` from `ruby/difftest` (the boot stubs are imported from
-    `difftest/tiers/tier0/rspec_harvest.py`, whose package pulls in hypothesis),
-    and the brew root is passed **realpath'd** — the linker keys its node map on
-    the paths Prism reports, so a `..` in the argument is a `KeyError` three
-    frames down."""
-    if not BUILD_SLICE.exists():
-        return {"error": "setup", "message": f"no {BUILD_SLICE}"}
-    brew = os.path.realpath(str(LIB.parent.parent))
-    cwd = str(ROOT / "difftest")
-    argv = ([shutil.which("uv"), "run", "python"] if shutil.which("uv") else [sys.executable])
-    try:
-        p = subprocess.run(
-            argv + [str(BUILD_SLICE), "--brew", brew, "-o", "-"],
-            capture_output=True, text=True, timeout=LONG, cwd=cwd,
-        )
-    except subprocess.TimeoutExpired:
-        return {"error": "timeout", "message": "linker timed out"}
-    if p.returncode != 0:
-        return {"error": "linker", "message": p.stderr.strip()[-1500:] or f"exit {p.returncode}"}
-    return {"source": p.stdout, "report": p.stderr.strip()}
-
-
-def strip_chain(source: str) -> dict:
-    """`certify/certify-file.sh`'s strip chain, one Ruby filter at a time so a
-    failure names the transform that failed. Each transform is documented in
-    `difftest/ruby/`; stripping removes traps, never meaning."""
-    text = source
-    applied = []
-    for name in STRIP_CHAIN:
-        script = ROOT / "difftest" / "ruby" / f"{name}.rb"
-        try:
-            p = subprocess.run([RUBY, str(script)], input=text,
-                               capture_output=True, text=True, timeout=LONG)
-        except subprocess.TimeoutExpired:
-            return {"error": "strip", "message": f"{name} timed out", "applied": applied}
-        if p.returncode != 0:
-            return {"error": "strip",
-                    "message": f"{name}: {p.stderr.strip()[:500] or p.returncode}",
-                    "applied": applied}
-        text, _ = p.stdout, applied.append(name)
-    return {"source": text, "applied": applied}
-
-
 def model_run(source: str) -> dict:
     """`rubycore` with no flags — the observation record the difftest compares,
     not the stepper's rendering. Long timeout: this is the whole slice."""
@@ -512,12 +267,105 @@ def desugar_only(source: str) -> dict:
     return {"core": core, "ast": ast, "bytes": len(core)}
 
 
+def corpus_stems() -> list[str]:
+    """Every rung's file stem (`060-fun-recursive-factorial`), sorted the way
+    `ratchet`'s own runner sorts them — filename order, which is tier order."""
+    if not CORPUS.is_dir():
+        return []
+    return sorted(p.name.removesuffix(".meta.json") for p in CORPUS.glob("*.meta.json"))
+
+
+def ratchet_corpus() -> dict:
+    """The live typed ladder's `*.meta.json` records."""
+    out = []
+    for stem in corpus_stems():
+        try:
+            entry = json.loads((CORPUS / f"{stem}.meta.json").read_text())
+        except ValueError:
+            continue
+        out.append({"file": stem, "id": entry.get("id"), "tier": entry.get("tier"),
+                    "description": entry.get("description"),
+                    "expect_validate": entry.get("expect_validate"),
+                    "expect_sorbet": entry.get("expect_sorbet")})
+    return {"root": str(CORPUS), "entries": out}
+
+
+def ratchet_corpus_source(stem: str) -> dict:
+    """The rung's actual Ruby (`scripts/generate_corpus.py` commits a `.rb` beside
+    every `.json` — the `.json`'s `program` is that source already desugared, so this
+    reads the sibling file rather than round-tripping the AST back to text)."""
+    if stem not in corpus_stems():
+        return {"error": "input", "message": f"not a corpus rung: {stem}"}
+    p = CORPUS / f"{stem}.rb"
+    if not p.exists():
+        return {"error": "input", "message": f"missing: {p}"}
+    return {"file": stem, "source": p.read_text(errors="replace")}
+
+
+RUBY = find_ruby()
+
+# The nine calls in `js/backend.js`. Names match; the page does not know or care
+# which side of the seam it is talking to.
+ROUTES = {
+    "/ratchet/corpus-source": lambda q: ratchet_corpus_source(q.get("file", "")),
+    "/ratchet/strip":         lambda q: strip_chain(q.get("source", "")),
+    "/ratchet/desugar":       lambda q: desugar_only(q.get("source", "")),
+    "/ratchet/sorbet":        lambda q: ratchet_sorbet(q.get("source", "")),
+    "/ratchet/derive":        lambda q: ratchet_derive(q.get("source", "")),
+    "/ratchet/validate":      lambda q: ratchet_validate(q.get("source", ""), q.get("deriv")),
+    "/ratchet/model":         lambda q: model_run(q.get("source", "")),
+    "/ratchet/cruby":         lambda q: cruby_run(q.get("source", "")),
+}
+
+STATIC = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+          ".json": "application/json", ".wasm": "application/wasm"}
+
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *_):  # quiet
+        pass
+
+    def _send(self, code: int, body: bytes, ctype: str):
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        if path in ("/", "/index.html"):
+            return self._send(200, (HERE / "index.html").read_bytes(), STATIC[".html"])
+        if path == "/ratchet/corpus":
+            return self._send(200, json.dumps(ratchet_corpus()).encode(), STATIC[".json"])
+        # `index.html` is an ES module now, so its imports have to be served
+        # too. Resolved under HERE and refused if it escapes -- this is a
+        # localhost dev server, but path traversal is not worth being casual about.
+        rel = path.lstrip("/")
+        target = (HERE / rel).resolve()
+        if rel and HERE in target.parents and target.is_file() and target.suffix in STATIC:
+            return self._send(200, target.read_bytes(), STATIC[target.suffix])
+        self._send(404, b"not found", "text/plain")
+
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(n).decode("utf-8")
+        fn = ROUTES.get(self.path.split("?", 1)[0])
+        if fn is None:
+            return self._send(404, b"no such route", "text/plain")
+        try:
+            q = json.loads(body or "{}")
+        except ValueError:
+            return self._send(400, b"expected JSON", "text/plain")
+        self._send(200, json.dumps(fn(q)).encode("utf-8"), STATIC[".json"])
+
+
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8077
-    print(f"Ruby-in-Lean playground on http://localhost:{port}")
-    print(f"  ruby:     {RUBY}")
-    print(f"  rubycore: {RUBYCORE}  ({'built' if RUBYCORE.exists() else 'NOT BUILT'})")
-    print(f"  validate: {RATCHET_VALIDATE}  ({'built' if RATCHET_VALIDATE.exists() else 'NOT BUILT'})")
+    for name, p in (("rubycore", RUBYCORE), ("validate-one", RATCHET_VALIDATE)):
+        if not p.exists():
+            print(f"  note: {name} is not built ({p}) — `cd ../ruby-lean && lake build`")
+    print(f"playground on http://localhost:{port}   (ruby: {RUBY})")
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
 
 

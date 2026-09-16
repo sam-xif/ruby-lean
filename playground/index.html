@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ruby-in-Lean stepper</title>
+<title>ruby-lean — the typed ladder</title>
 <style>
   :root {
     --bg:#14171c; --panel:#1c2027; --panel2:#232833; --edge:#2e3542;
@@ -14,1034 +14,395 @@
   body { margin:0; background:var(--bg); color:var(--fg);
     font:14px/1.5 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif; }
   header { padding:10px 16px; border-bottom:1px solid var(--edge);
-    display:flex; align-items:center; gap:14px; }
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
   header h1 { font-size:15px; margin:0; font-weight:600; }
   header .hint { color:var(--dim); font-size:12px; }
-  .wrap { display:grid; grid-template-columns:minmax(320px,2fr) 3fr; gap:0;
-    height:calc(100vh - 47px); }
+  .grow { flex:1; }
+  .wrap { display:grid; grid-template-columns:minmax(340px,5fr) 6fr;
+    height:calc(100vh - 48px); }
   .left, .right { padding:14px 16px; overflow:auto; }
   .right { border-left:1px solid var(--edge); }
-  textarea { width:100%; height:230px; background:var(--panel); color:var(--fg);
+  textarea { width:100%; background:var(--panel); color:var(--fg);
     border:1px solid var(--edge); border-radius:8px; padding:10px;
     font-family:var(--mono); font-size:13px; resize:vertical; }
+  select, input { background:var(--panel2); color:var(--fg); border:1px solid var(--edge);
+    border-radius:6px; padding:5px 8px; font-size:12px; max-width:100%; }
   button { background:var(--accent); color:#0b0e14; border:0; border-radius:6px;
-    padding:7px 14px; font-weight:600; cursor:pointer; font-size:13px; }
+    padding:6px 13px; font-weight:600; cursor:pointer; font-size:13px; }
   button:disabled { opacity:.4; cursor:default; }
   button.ghost { background:var(--panel2); color:var(--fg); border:1px solid var(--edge); }
   .row { display:flex; gap:8px; align-items:center; margin:10px 0; flex-wrap:wrap; }
-  .status { font-family:var(--mono); font-size:12px; padding:3px 8px; border-radius:5px; }
-  .status.done { color:var(--good); } .status.uncaught,.status.stuck { color:var(--bad); }
-  .status.unsupported,.status.step-cap { color:var(--warn); }
-  .stepbar input[type=range] { flex:1; accent-color:var(--accent); }
-  .counter { font-family:var(--mono); color:var(--dim); min-width:96px; }
-  .ctl { font-family:var(--mono); font-size:15px; background:var(--panel2);
-    border:1px solid var(--edge); border-left:3px solid var(--accent);
-    border-radius:6px; padding:10px 12px; margin:6px 0 14px; word-break:break-word; }
   h2 { font-size:11px; text-transform:uppercase; letter-spacing:.08em;
-    color:var(--dim); margin:16px 0 6px; }
+    color:var(--dim); margin:16px 0 6px; font-weight:600; }
+  h2:first-child { margin-top:0; }
   pre.out { background:#0e1116; border:1px solid var(--edge); border-radius:6px;
-    padding:10px; font-family:var(--mono); font-size:13px; white-space:pre-wrap;
-    min-height:20px; margin:0; color:#cdd6e6; }
-  pre.sexpr { max-height:260px; overflow:auto; white-space:pre; color:#a9b6d0; }
+    padding:9px 11px; font-family:var(--mono); font-size:12px; white-space:pre-wrap;
+    word-break:break-word; min-height:20px; margin:0; color:#cdd6e6; overflow:auto; }
+  pre.tall { max-height:240px; }
+  pre.sexpr { white-space:pre; color:#a9b6d0; }
   pre.sexpr .hd { color:var(--accent); } pre.sexpr .at { color:var(--warn); }
-  .frame { background:var(--panel); border:1px solid var(--edge); border-radius:7px;
-    padding:8px 10px; margin-bottom:8px; }
-  .frame.top { border-color:var(--accent); }
-  .frame .fh { display:flex; gap:8px; align-items:center; font-family:var(--mono);
-    font-size:12px; margin-bottom:4px; }
-  .badge { font-size:10px; padding:1px 6px; border-radius:4px; background:var(--panel2);
-    color:var(--dim); }
-  .badge.method { color:var(--accent); } .badge.block { color:var(--good); }
-  .locals { display:grid; grid-template-columns:auto 1fr; gap:2px 12px;
-    font-family:var(--mono); font-size:12px; }
-  .locals .k { color:var(--warn); } .locals .v { color:var(--fg); word-break:break-word; }
   .empty { color:var(--dim); font-style:italic; font-size:12px; }
-  ol.konts { margin:0; padding-left:20px; font-family:var(--mono); font-size:12px;
-    color:var(--dim); }
-  ol.konts li:first-child { color:var(--fg); }
-  .err { color:var(--bad); font-family:var(--mono); font-size:13px; white-space:pre-wrap;
-    background:#1e1418; border:1px solid #4a2530; border-radius:6px; padding:10px; }
-  .detail { font-family:var(--mono); font-size:12px; color:var(--dim); }
-  pre.assn { max-height:340px; overflow:auto; white-space:pre; }
-  pre.assn .body { color:var(--accent); } pre.assn .ok { color:var(--good); }
-  pre.assn .no { color:var(--warn); } pre.assn .lbl { color:var(--dim); }
-  .verdict { font-family:var(--mono); font-size:13px; background:var(--panel2);
-    border:1px solid var(--edge); border-left:3px solid var(--dim);
-    border-radius:6px; padding:9px 11px; margin:0; }
-  .verdict.accept { border-left-color:var(--good); }
-  .verdict.reject, .verdict.unknown { border-left-color:var(--warn); }
-  .verdict .k { color:var(--dim); } .verdict .ty { color:var(--warn); }
-  .census { font-family:var(--mono); font-size:12px; color:var(--dim); }
-  .err-inline { color:var(--bad); }
-  .ok { color:var(--good); } .no { color:var(--warn); }
+  .pill { font-family:var(--mono); font-size:11px; padding:2px 8px; border-radius:999px;
+    background:var(--panel2); border:1px solid var(--edge); color:var(--dim); }
+  .pill.ok { color:var(--good); border-color:#33502f; }
+  .pill.no { color:var(--bad); border-color:#5a2f39; }
+  .pill.warn { color:var(--warn); border-color:#5a4a2a; }
 
-  /* ── tabs + the toggleable step view ─────────────────────────────────── */
-  .tabs { display:flex; gap:6px; margin-left:4px; }
-  .tab { background:transparent; color:var(--dim); border:1px solid transparent;
-    border-radius:6px; padding:5px 12px; font-weight:600; font-size:13px; cursor:pointer; }
-  .tab.on { background:var(--panel2); color:var(--fg); border-color:var(--edge); }
-  header .spacer { flex:1; }
-  header label.toggle { color:var(--dim); font-size:12px; display:flex; gap:6px;
-    align-items:center; cursor:pointer; }
-  /* One column when the step view is hidden — that is the screen real estate. */
-  .wrap.nosteps { grid-template-columns:1fr; }
-  .wrap.nosteps .right { display:none; }
-  .pane { display:none; }
-  .pane.on { display:block; }
-  select, input[type=text] { background:var(--panel); color:var(--fg);
-    border:1px solid var(--edge); border-radius:6px; padding:5px 8px;
-    font-family:var(--mono); font-size:12px; }
-  .stage { display:flex; gap:8px; align-items:center; flex-wrap:wrap;
-    margin:10px 0 4px; }
-  .stage h2 { margin:0; }
-  .pill { font-family:var(--mono); font-size:11px; padding:2px 7px; border-radius:10px;
-    background:var(--panel2); color:var(--dim); border:1px solid var(--edge); }
-  .pill.ok { color:var(--good); border-color:#33502b; }
-  .pill.no { color:var(--bad); border-color:#4a2530; }
-  .pill.warn { color:var(--warn); }
-  textarea.cert { height:150px; font-size:12px; }
-  pre.out.tall { max-height:300px; overflow:auto; }
+  /* the stage rail */
+  .rail { display:flex; flex-direction:column; gap:1px; background:var(--edge);
+    border:1px solid var(--edge); border-radius:8px; overflow:hidden; }
+  .stage { background:var(--panel); padding:8px 11px; display:grid;
+    grid-template-columns:18px 1fr auto; gap:10px; align-items:center; }
+  .stage .n { font-family:var(--mono); font-size:11px; color:var(--dim); }
+  .stage .t { font-size:13px; font-weight:600; }
+  .stage .d { grid-column:2/4; font-size:11.5px; color:var(--dim);
+    font-family:var(--mono); word-break:break-word; }
+  .stage.ok   { border-left:3px solid var(--good); }
+  .stage.warn { border-left:3px solid var(--warn); }
+  .stage.no   { border-left:3px solid var(--bad); }
+  .stage.idle { border-left:3px solid transparent; }
+  .stage.busy { border-left:3px solid var(--accent); }
 
-  /* ── Tab 3: the ratchet checker, laid out as its pipeline ───────────────
-     A rail of five stages across the top, source and the selected artifact
-     side by side under it, execution at the foot. The grid is `auto-fit` so
-     the same markup is two columns with the step view hidden and one column
-     with it shown -- the layout follows the width rather than the tab. */
-  /* `.on` is load-bearing here, not decoration: an id selector outranks `.pane`,
-     so a bare `#pane-ratchet { display:flex }` beats `.pane { display:none }` and
-     the pane renders under every tab. Scoping it to `.on` keeps the tab switch
-     the one thing that decides. */
-  #pane-ratchet.on { display:flex; flex-direction:column; gap:12px; }
-  .rk-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  .rk-bar select { flex:1 1 220px; min-width:0; max-width:680px; }
-
-  /* Five across when there is room, wrapping rather than truncating when there is
-     not -- at the width the step view leaves, five fixed columns squeeze the pills
-     down to `SRB C…` and the verdict stops being readable, which is the one thing
-     the rail exists to show. */
-  .rk-rail { display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
-    gap:6px; }
-  .rk-stage { background:var(--panel); border:1px solid var(--edge);
-    border-top:2px solid var(--edge); border-radius:8px; padding:6px 9px 7px;
-    cursor:pointer; min-width:0; display:flex; flex-direction:column; gap:2px; }
-  .rk-stage:hover { border-color:var(--accent); }
-  .rk-stage.sel { background:var(--panel2); }
-  .rk-stage .n { display:flex; justify-content:space-between; align-items:center;
-    gap:6px; font-family:var(--mono); font-size:10px; color:var(--dim);
-    text-transform:uppercase; letter-spacing:.07em; white-space:nowrap;
-    flex-wrap:wrap; }
-  /* Not uppercased: the pill carries `validateD=false`, and upper-casing it reads
-     as "VALIDATED", which is a different word and the wrong one. */
-  /* The pill wraps to its own line rather than eliding when the chip is narrow --
-     `validateD=fal…` is worse than a two-line chip, and stage 4's `· trusted` label
-     is the one that squeezes it. */
-  .rk-stage .n .pill { font-size:10px; padding:1px 6px;
-    text-transform:none; letter-spacing:0; white-space:nowrap; }
-  /* Pinned, because `.ok`/`.no` are global text-colour utilities and the chip wears
-     one as a state class -- without this the whole chip turns green or red and the
-     border-top stops being the thing that carries the verdict. */
-  .rk-stage .t { font-size:13px; font-weight:600; display:flex; align-items:center;
-    gap:6px; white-space:nowrap; color:var(--fg); }
-  .rk-stage .s { font-family:var(--mono); font-size:11px; color:var(--dim);
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  /* The top edge carries the verdict, so the rail reads as a row of lights. */
-  .rk-stage.ok   { border-top-color:var(--good); }
-  .rk-stage.no   { border-top-color:var(--bad); }
-  .rk-stage.warn { border-top-color:var(--warn); }
-  /* Stale = computed from a buffer that has since been edited. Showing it dimmed
-     rather than clearing it keeps the old artifact readable without letting it
-     pass for a statement about the text now on screen. */
-  .rk-stage.stale { opacity:.4; }
-  .rk-go { padding:0 6px; font-size:12px; line-height:1.6; font-weight:400; }
-
-  .rk-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(360px,1fr));
-    gap:12px; align-items:stretch; }
-  .rk-card { background:var(--panel); border:1px solid var(--edge); border-radius:8px;
-    padding:10px 12px; min-width:0; }
-  .rk-card > h2:first-child, .rk-art > h2:first-child { margin-top:0; }
-  /* The artifact card matches the editor beside it rather than shrinking to whatever
-     the selected stage happens to hold -- otherwise switching stages resizes the page. */
-  .rk-grid > .rk-card { display:flex; flex-direction:column; }
-  .rk-grid > .rk-card > .rk-art.on { flex:1; display:flex; flex-direction:column; }
-  .rk-art.on > textarea, .rk-art.on > pre.out { flex:1; }
-  .rk-art.on > pre.out { max-height:none; }
-  .rk-card textarea { height:320px; }
-  .rk-card textarea.cert { height:320px; }
-  .rk-card pre.out.tall { max-height:320px; }
-  .rk-art { display:none; } .rk-art.on { display:block; }
-  .rk-foot { display:flex; gap:8px; align-items:center; flex-wrap:wrap;
-    margin-bottom:4px; }
-  .rk-two { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
-    gap:0 12px; }
-  .rk-two pre.out.tall { max-height:200px; }
+  .verdict { border-radius:8px; padding:11px 13px; font-family:var(--mono);
+    font-size:12.5px; line-height:1.7; border:1px solid var(--edge); background:var(--panel); }
+  .verdict.accept { border-color:#3f6b38; background:#182016; }
+  .verdict.unknown { border-color:#5a4a2a; background:#201c14; }
+  .verdict .k { color:var(--dim); display:inline-block; min-width:78px; }
+  .err { background:#241a1d; border:1px solid #5a2f39; color:#ffb3c0;
+    border-radius:7px; padding:9px 11px; font-family:var(--mono); font-size:12px;
+    margin:10px 0; white-space:pre-wrap; }
+  .note { color:var(--dim); font-size:11.5px; margin:6px 0 0; }
+  a { color:var(--accent); }
 </style>
 </head>
 <body>
+
 <header>
-  <h1>Ruby → Lean</h1>
-  <div class="tabs">
-    <button class="tab on" id="tab-stepper-btn">Stepper</button>
-    <!-- Tab 2 is hidden in this repository: the Homebrew slice explorer drives the
-         vendored brew checkout plus `homebrew/`, `linker/` and `certify/`, none of
-         which was carried into the ruby-lean extraction. The pane and its wiring are
-         kept intact below so the page is one edit away from the full workspace --
-         delete the `display:none` to get it back. See playground/README.md. -->
-    <button class="tab" id="tab-slice-btn" style="display:none">Homebrew slice explorer</button>
-    <button class="tab" id="tab-ratchet-btn">Ratchet checker</button>
-  </div>
-  <span class="hint" id="tabhint">write Ruby · Run · step with ← → · or check it on the Ratchet tab</span>
-  <span class="spacer"></span>
-  <label class="toggle" title="the semantic step view — hide it to give the editor the whole window">
-    <input type="checkbox" id="showsteps" checked> semantic steps
-  </label>
+  <h1>ruby-lean</h1>
+  <span class="hint">annotated Ruby → <span style="font-family:var(--mono)">validateD</span>,
+    the one trusted Bool</span>
+  <span class="grow"></span>
+  <span class="pill" id="backendpill">—</span>
 </header>
-<div class="wrap" id="wrap">
+
+<div class="wrap">
+  <!-- ─────────────────────────────── left ─────────────────────────────── -->
   <div class="left">
-   <div class="pane on" id="pane-stepper">
-    <textarea id="src" spellcheck="false"></textarea>
     <div class="row">
-      <button id="run">Step in Lean ▶</button>
-      <button class="ghost" id="runruby">Run in CRuby ▶</button>
-      <button class="ghost" id="count" title="how many steps the whole program takes">count steps</button>
-      <label class="detail">start at <input id="at" size="18" placeholder="send .compare(" title="first step whose rendered control contains this text; blank = step 0"></label>
-      <label class="detail">or step <input id="from" size="8" placeholder="0" title="skip this many steps before the window"></label>
-      <span id="msg" class="detail"></span>
+      <select id="corpus" style="flex:1"></select>
+      <button class="ghost" id="load">Load</button>
+      <button id="runall">Run all ⏩</button>
     </div>
-    <div id="errbox"></div>
-    <h2>Desugared RubyCore (s-expression)</h2>
-    <pre class="out sexpr" id="sexpr"></pre>
-    <!-- The static-type panes that were here drove `rubycore --check` / `--assn` /
-         `--assn-program` / `--check-tl`: the pre-ratchet type-checking iterations in
-         RubyCore/. Those layers were removed, and the checker of record is the
-         ratchet's `validateD` — tab 3, which runs the same pipeline the gate does. -->
-    <h2>Model stdout (Lean stepper, at current step)</h2>
-    <pre class="out" id="out"></pre>
-    <h2>CRuby stdout (real Ruby)</h2>
-    <pre class="out" id="rubyout"><span class="empty">— press “Run in CRuby”</span></pre>
-   </div>
-
-   <!-- ── Tab 2: the Homebrew slice explorer ───────────────────────────────
-        One editable buffer and the pipeline that the ratchets already run over
-        these files, one stage at a time:
-
-          load / link ▸ strip ▸ desugar ▸ { Lean model | CRuby } ▸ derive ▸ validate
-
-        Nothing here is a second implementation. Each button is the tool named
-        beside it (`difftest/ruby/*_strip.rb`, `export-json`, `rubycore`,
-        `certify/jcert.rb`, `rubycore --certify-j`), run on whatever the buffer
-        holds — so an edit you make in the box is what every stage downstream
-        sees, which is the point of having an editor here at all.
-
-        `derive` and `validate` are two buttons rather than `certify-file.sh`'s
-        one pipe on purpose: the certificate is the artifact between them, it is
-        editable, and a `false` from the kernel is then a fact about a JSON you
-        can read. -->
-   <div class="pane" id="pane-slice">
     <div class="row">
-      <select id="slicefile" title="homebrew/PLAN.md §2's eight files, from the vendored brew checkout"></select>
-      <button class="ghost" id="sliceload">Load file</button>
-      <button class="ghost" id="slicelink" title="linker over the three entries + boot stubs + driver.rb (homebrew/slice-driver/build.py) — the whole slice as one program">Link whole slice</button>
-      <button class="ghost" id="slicestrip" title="certify-file.sh's chain: sig · visibility · freeze · require · const_inline · class_sugar">Strip ▸</button>
-      <span id="slicemsg" class="detail"></span>
+      <span class="pill" id="target">target —</span>
+      <span class="hint" id="msg"></span>
     </div>
-    <div id="sliceerr"></div>
-    <textarea id="slicesrc" spellcheck="false" style="height:320px"></textarea>
+    <div id="err"></div>
 
-    <div class="stage">
-      <h2>Run it</h2>
-      <button class="ghost" id="slicedesugar" title="harness/desugar-dt/bin/export-json">Desugar</button>
-      <button class="ghost" id="slicemodel" title="rubycore — the observation record the difftest compares, not the stepper's rendering">Lean model ▶</button>
-      <button class="ghost" id="slicecruby" title="the oracle">CRuby ▶</button>
-      <button class="ghost" id="slicestep" title="trace this buffer in the stepper pane — use the window, the linked slice is 825,259 steps">Step it ▶</button>
-      <label class="detail">start at <input id="sliceat" size="16" placeholder="send .compare("></label>
-      <label class="detail">or step <input id="slicefrom" size="7" placeholder="0"></label>
-      <span id="slicerunmsg" class="detail"></span>
-    </div>
-    <div class="row"><span class="pill" id="pilldesugar">desugar —</span>
-      <span class="pill" id="pillmodel">model —</span>
-      <span class="pill" id="pillcruby">CRuby —</span>
-      <span class="pill" id="pilldiff">agree —</span></div>
-    <h2>Desugared RubyCore (s-expression)</h2>
-    <pre class="out sexpr" id="slicesexpr"><span class="empty">— press “Desugar”</span></pre>
-    <h2>Lean model — observation record</h2>
-    <pre class="out tall" id="slicemodelout"><span class="empty">— press “Lean model”</span></pre>
-    <h2>CRuby stdout</h2>
-    <pre class="out tall" id="slicecrubyout"><span class="empty">— press “CRuby”</span></pre>
+    <h2>Program <span class="hint" id="srcmsg">— annotated, with <code>sig</code>s</span></h2>
+    <textarea id="src" spellcheck="false" style="height:260px"
+      placeholder="# typed: true&#10;extend T::Sig&#10;&#10;sig { params(x: Integer).returns(Integer) }&#10;def double(x)&#10;  x + x&#10;end&#10;&#10;double(21)"></textarea>
 
-    <!-- The derive/validate stage that was here ran certify/jcert.rb into
-         `rubycore --certify-j` — the judgment-layer certificate route, removed with
-         the other pre-ratchet iterations. Tab 3 is the live certificate pipeline. -->
-   </div>
+    <h2>Stripped program <span class="hint" id="stripmsg"></span></h2>
+    <textarea id="stripped" spellcheck="false" style="height:150px"
+      placeholder="the sig-stripped program appears here — this is what the derivation is about"></textarea>
 
-   <!-- The live typed ratchet, laid out as the pipeline it is: a rail of five
-        stages across the top, the source and the selected stage's artifact side by
-        side beneath it, execution and the verdict at the foot. Every stage is still
-        one existing tool over the buffer -- the layout changed, not the pipeline. -->
-   <div class="pane" id="pane-ratchet">
-    <div class="rk-bar">
-      <select id="ratchetcorpus" title="ruby-lean/corpus/*.rb with sibling *.meta.json — the typed ladder"></select>
-      <button class="ghost" id="ratchetcorpusload">Load rung</button>
-      <button id="ratchetrunall" title="cascade every stage in order: srb · strip · desugar · emit · validateD">Run all ⏩</button>
-      <span class="pill" id="ratchetexpect" title="the rung's recorded expect_validate — what the ladder says this rung should do">target —</span>
-      <span id="ratchetmsg" class="detail"></span>
-    </div>
-    <div id="ratcheterr"></div>
-
-    <!-- The rail. Each chip is a stage: click to show its artifact, ▸ to run it.
-         A chip greys out when the buffer it was computed from has since changed. -->
-    <div class="rk-rail" id="ratchetrail">
-      <div class="rk-stage sel" id="rail-sorbet" data-art="sorbet">
-        <div class="n"><span>stage 0</span><span class="pill" id="pillratchetsorbet">—</span></div>
-        <div class="t">Sorbet <button class="rk-go ghost" id="ratchetsorbet" title="srb over the annotated source above, via ruby-lean/scripts/srb_sigs.py — the check a rung's expect_sorbet is recorded against">▸</button></div>
-        <div class="s" id="sum-sorbet">the unstripped program</div>
-      </div>
-      <div class="rk-stage" id="rail-strip" data-art="strip">
-        <div class="n"><span>stage 1</span><span class="pill" id="pillratchetstrip">—</span></div>
-        <div class="t">Strip <button class="rk-go ghost" id="ratchetstrip" title="certify-file.sh's chain: sig · visibility · freeze · require · const_inline · class_sugar">▸</button></div>
-        <div class="s" id="sum-strip">signatures out</div>
-      </div>
-      <div class="rk-stage" id="rail-desugar" data-art="desugar">
-        <div class="n"><span>stage 2</span><span class="pill" id="pillratchetdesugar">—</span></div>
-        <div class="t">Desugar <button class="rk-go ghost" id="ratchetdesugar" title="harness/desugar-dt/bin/export-json">▸</button></div>
-        <div class="s" id="sum-desugar">to RubyCore</div>
-      </div>
-      <div class="rk-stage" id="rail-derive" data-art="derive">
-        <div class="n"><span>stage 3</span><span class="pill" id="pillratchetderive">—</span></div>
-        <div class="t">Derive <button class="rk-go ghost" id="ratchetderive" title="scripts/emit_deriv.py — untrusted; a block is a coverage fact, not a verdict">▸</button></div>
-        <div class="s" id="sum-derive">emit a Deriv</div>
-      </div>
-      <div class="rk-stage" id="rail-validate" data-art="validate">
-        <div class="n"><span>stage 4 · trusted</span><span class="pill" id="pillratchetcheck">—</span></div>
-        <div class="t">validateD <button class="rk-go ghost" id="ratchetvalidate" title="the trusted validateD Bool checks the displayed Deriv against the stripped program">▸</button></div>
-        <div class="s" id="sum-validate">the kernel Bool</div>
-      </div>
-    </div>
-
-    <div class="rk-grid">
-     <div class="rk-card">
-      <h2>Corpus Ruby — Sorbet annotated <span class="detail">· the input every stage reads</span></h2>
-      <textarea id="ratchetsrc" spellcheck="false"></textarea>
-     </div>
-
-     <div class="rk-card">
-      <!-- stage 0 -->
-      <div class="rk-art on" id="art-sorbet">
-        <h2>Sorbet — over the unstripped program <span class="detail" id="ratchetsorbetmsg"></span></h2>
-        <pre class="out tall" id="ratchetsorbetout"><span class="empty">— press ▸ on stage 0</span></pre>
-      </div>
-      <!-- stage 1 -->
-      <div class="rk-art" id="art-strip">
-        <h2>Stripped program <span class="detail" id="ratchetstripmsg"></span></h2>
-        <textarea id="ratchetstripped" spellcheck="false" placeholder="sig-stripped program appears here"></textarea>
-      </div>
-      <!-- stage 2 -->
-      <div class="rk-art" id="art-desugar">
-        <h2>RubyCore <span class="detail">· s-expression</span></h2>
-        <pre class="out sexpr tall" id="ratchetcore"><span class="empty">— strip, then desugar</span></pre>
-      </div>
-      <!-- stage 3 -->
-      <div class="rk-art" id="art-derive">
-        <h2>Deriv <span class="detail" id="ratchetderivemsg">· editable before stage 4 reads it</span></h2>
-        <textarea id="ratchetderiv" class="cert" spellcheck="false" placeholder="emitted Deriv JSON appears here and remains editable"></textarea>
-      </div>
-      <!-- stage 4 -->
-      <div class="rk-art" id="art-validate">
-        <h2>Validation — <span class="detail">validateD : Expr → Deriv → Bool</span></h2>
-        <div id="ratchetcheckbox"><span class="empty">— derive, then run stage 4</span></div>
-      </div>
-     </div>
-    </div>
-
-    <div class="rk-card">
-      <div class="rk-foot">
-        <h2 style="margin:0">Execution <span class="detail">· the stripped program, both ways</span></h2>
-        <button class="ghost" id="ratchetmodel" title="rubycore — run to completion, the observation record">Lean model ▶</button>
-        <button class="ghost" id="ratchetcruby" title="the oracle">CRuby ▶</button>
-        <button class="ghost" id="ratchetstep" title="trace this buffer in the stepper pane">Step it ▶</button>
-        <label class="detail">start at <input id="ratchetat" size="14" placeholder="send .compare("></label>
-        <label class="detail">or step <input id="ratchetfrom" size="6" placeholder="0"></label>
-        <span class="pill" id="pillratchetmodel">model —</span>
-        <span class="pill" id="pillratchetcruby">CRuby —</span>
-        <span class="pill" id="pillratchetdiff">agree —</span>
-        <span id="ratchetrunmsg" class="detail"></span>
-      </div>
-      <div class="rk-two">
-        <div>
-          <h2>Lean model — observation record</h2>
-          <pre class="out tall" id="ratchetmodelout"><span class="empty">— press “Lean model”</span></pre>
-        </div>
-        <div>
-          <h2>CRuby stdout</h2>
-          <pre class="out tall" id="ratchetcrubyout"><span class="empty">— press “CRuby”</span></pre>
-        </div>
-      </div>
-    </div>
-   </div>
+    <h2>Deriv <span class="hint">— editable before <code>validateD</code> reads it</span></h2>
+    <textarea id="deriv" spellcheck="false" style="height:220px"
+      placeholder="the emitted certificate appears here, and stays editable: change it and stage 4 will check what you changed"></textarea>
   </div>
+
+  <!-- ─────────────────────────────── right ────────────────────────────── -->
   <div class="right">
-    <div class="row stepbar">
-      <button class="ghost" id="first">⏮</button>
-      <button class="ghost" id="prev">◀</button>
-      <input type="range" id="slider" min="0" max="0" value="0">
-      <button class="ghost" id="next">▶</button>
-      <button class="ghost" id="last">⏭</button>
-      <span class="counter" id="counter">—</span>
-      <span id="status" class="status"></span>
+    <h2>Stages</h2>
+    <div class="rail" id="rail"></div>
+
+    <h2>Signatures <span class="hint" id="sigmsg"></span></h2>
+    <pre class="out tall" id="sigout"><span class="empty">— run stage 0</span></pre>
+
+    <h2>RubyCore <span class="hint" id="coremsg"></span></h2>
+    <pre class="out sexpr tall" id="core"><span class="empty">— strip, then desugar</span></pre>
+
+    <h2>Verdict</h2>
+    <div id="verdict"><span class="empty">— derive, then run stage 4</span></div>
+
+    <h2>Run it <span class="hint">— the model beside the oracle</span></h2>
+    <div class="row">
+      <button class="ghost" id="model">Lean model ▶</button>
+      <button class="ghost" id="cruby">CRuby ▶</button>
+      <span class="pill" id="agree">—</span>
     </div>
-    <h2>Control — next thing the machine does</h2>
-    <div class="ctl" id="ctl">Run a program to begin.</div>
-    <div id="excbox"></div>
-    <h2>Call stack (top frame first)</h2>
-    <div id="frames"></div>
-    <h2>Continuations (what happens after)</h2>
-    <ol class="konts" id="konts"></ol>
-    <div class="detail" id="detail"></div>
+    <pre class="out tall" id="modelout"><span class="empty">— press “Lean model”</span></pre>
+    <pre class="out tall" id="crubyout" style="margin-top:8px"><span class="empty">— press “CRuby”</span></pre>
   </div>
 </div>
-<script>
-const SAMPLE = `x = 2
-def square(n)
-  n * n
-end
 
-def each_pair(a, b)
-  yield a
-  yield b
-end
+<script type="module">
+import { call, BACKEND, prewarm } from "./js/backend.js";
 
-total = 0
-each_pair(square(x), 10) { |v| total = total + v }
-puts "total=#{total}"
-total`;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 
-const $ = id => document.getElementById(id);
-let trace = null, i = 0;
+$("backendpill").textContent = BACKEND === "wasm" ? "wasm · no server" : "server · localhost";
+$("backendpill").className = "pill " + (BACKEND === "wasm" ? "ok" : "");
+$("backendpill").title = BACKEND === "wasm"
+  ? "everything runs in this tab: ruby.wasm, rubycore.wasm, validate-one.wasm"
+  : "server.py is shelling out to the native binaries — add ?backend=wasm to switch";
 
-function esc(s){ return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+// ── the stage rail ─────────────────────────────────────────────────────────
+// Five stages, in the order the commit gate runs them. Stage 0 is the only one
+// that differs between backends, and it says so rather than hiding it.
+const STAGES = [
+  ["sigs",     "Signatures", "read the declared types"],
+  ["strip",    "Strip",      "sig · visibility · freeze · require · const_inline · class_sugar"],
+  ["desugar",  "Desugar",    "harness/desugar-dt → RubyCore JSON"],
+  ["derive",   "Derive",     "the untrusted emitter — a block is a coverage fact, not a verdict"],
+  ["validate", "validateD",  "the trusted Bool"],
+];
+let expect = null;
 
-// Plain-text inline form of a RubyCore node (JSON-array s-expr) — used only to
-// decide inline vs. multiline layout.
-function itext(n){
-  if (n === null) return 'nil';
-  if (Array.isArray(n)) return '(' + n.map(itext).join(' ') + ')';
-  return String(n);
+function drawRail() {
+  $("rail").innerHTML = STAGES.map(([k, t, d], i) => `
+    <div class="stage idle" id="st-${k}">
+      <span class="n">${i}</span><span class="t">${t}</span>
+      <button class="ghost" data-stage="${k}" style="padding:2px 9px">▸</button>
+      <span class="d" id="sd-${k}">${esc(d)}</span>
+    </div>`).join("");
+  for (const b of $("rail").querySelectorAll("button")) {
+    b.onclick = () => STEPS[b.dataset.stage]();
+  }
 }
-// Pretty-print the desugared AST as an s-expression (HTML: head + atoms tinted).
-function fmtSexpr(n){
-  if (n === null) return '<span class="at">nil</span>';
-  if (typeof n === 'number') return `<span class="at">${n}</span>`;
-  if (!Array.isArray(n)) return esc(String(n));            // strings: plain
-  const headHTML = c => (typeof c === 'string')
-    ? `<span class="hd">${esc(c)}</span>` : fmtSexpr(c);
-  if (itext(n).length <= 54)                               // fits on one line
-    return '(' + n.map((c, i) => i === 0 ? headHTML(c) : fmtSexpr(c)).join(' ') + ')';
-  const head = headHTML(n[0]);                             // else break children
-  const rest = n.slice(1).map(c =>
-    fmtSexpr(c).split('\n').map(l => '  ' + l).join('\n'));
-  return '(' + head + '\n' + rest.join('\n') + ')';
-}
+const mark = (k, cls, text) => {
+  $(`st-${k}`).className = `stage ${cls}`;
+  if (text !== undefined) $(`sd-${k}`).textContent = text;
+};
+const reset = () => STAGES.forEach(([k, , d]) => mark(k, "idle", d));
 
-async function countSteps() {
-  $('count').disabled = true; $('msg').textContent = 'counting…';
+function showErr(d) {
+  $("err").innerHTML = `<div class="err"><b>${esc(d.error)}</b>\n${esc(d.message || "")}</div>`;
+}
+const clearErr = () => ($("err").innerHTML = "");
+
+/** Run one stage with busy/err bookkeeping. Returns the response, or null. */
+async function stage(k, label, fn) {
+  clearErr();
+  mark(k, "busy", label);
   try {
-    const r = await fetch('/steps', {method:'POST', body: $('src').value});
-    const d = await r.json();
-    $('msg').textContent = d.error
-      ? `[${d.error}] ${d.message||''}`
-      : `${(d.steps||0).toLocaleString()} steps total — ${d.status}`;
-  } catch(e) { $('msg').textContent = String(e); }
-  finally { $('count').disabled = false; }
+    const d = await fn();
+    if (d && d.error) { mark(k, "no", `${d.error}: ${String(d.message || "").slice(0, 90)}`); showErr(d); return null; }
+    return d;
+  } catch (e) {
+    mark(k, "no", String(e.message || e));
+    showErr({ error: "page", message: String(e.message || e) });
+    return null;
+  }
 }
 
-// The stepper's trace, factored so both tabs can drive it: the slice explorer
-// steps its own buffer through the same `/trace` and the same right-hand pane.
-// One trace at a time — whichever tab ran last owns the step view, and the
-// counter says which step of which program you are looking at.
-async function traceSource(source, at, from, btn, msgEl) {
-  btn.disabled = true; msgEl.textContent = 'running…';
-  $('errbox').innerHTML = '';
-  try {
-    // A whole-program trace is only viable for a small program: the model runs
-    // the Homebrew slice in 825,259 steps, and the cap is 4,000. `at`/`from`
-    // pick the window; the server passes them to `rubycore --trace-at/--trace-from`.
-    const body = (at || from)
-      ? JSON.stringify({source, at: at || null, from: from ? Number(from) : null})
-      : source;
-    const r = await fetch('/trace', {method:'POST', body});
-    const d = await r.json();
-    $('sexpr').innerHTML = d.ast ? fmtSexpr(d.ast)
-      : '<span class="empty">— (desugar gated: nothing to run)</span>';
-    if (d.error) {
-      trace = null;
-      $('errbox').innerHTML = `<div class="err">[${d.error}] ${esc(d.message||'')}</div>`;
-      msgEl.textContent = `[${d.error}] ${d.message||''}`;
-      render();
-      return;
+// ── the buffer ─────────────────────────────────────────────────────────────
+// The stripped box is the input to everything downstream once it has content,
+// so an edit there is a first-class input rather than something to ignore.
+const program = () => $("stripped").value.trim() || $("src").value;
+
+// ── stages ─────────────────────────────────────────────────────────────────
+const STEPS = {
+  async sigs() {
+    const d = await stage("sigs", "reading…", () =>
+      call("sorbet", { source: $("src").value, file: $("corpus").value }));
+    if (!d) return null;
+    const lines = [];
+    if (d.reader === "sorbet") {
+      lines.push(`sorbet: ${d.srb_clean ? "clean" : "diagnostics"}`);
+    } else if (d.available) {
+      lines.push(`sorbet (recorded, program unmodified): ${d.srb_clean ? "clean" : "diagnostics"}`);
+    } else {
+      // Do not inherit the corpus's answer for a program that is no longer it.
+      lines.push("sorbet: not checked — Sorbet does not run in the browser" +
+        (d.unmodified === false ? ", and this program has been edited" : ""));
     }
-    trace = d; i = 0;
-    $('slider').max = Math.max(0, d.steps.length - 1);
-    const base = d.first_step || 0;
-    msgEl.textContent = d.steps.length
-      ? `${d.steps.length} steps` + (base ? ` from step ${base.toLocaleString()}` : '')
-      : `no steps in this window — ${d.status}: ${d.detail || ''}`;
-    render();
-  } catch(e) {
-    $('errbox').innerHTML = `<div class="err">${esc(String(e))}</div>`;
-  } finally { btn.disabled = false; }
-}
+    (d.diagnostics || []).forEach((x) => lines.push("  " + x));
+    lines.push("");
+    lines.push(`${(d.sigs || []).length} signature(s) read by ${d.reader}` +
+      ((d.dropped || []).length ? `, ${d.dropped.length} dropped` : ""));
+    (d.sigs || []).forEach((s) =>
+      lines.push(`  ${s.cls}#${s.name}(${(s.params || []).map((p) => `${p.name}: ${JSON.stringify(p.ty)}`).join(", ")}) -> ${JSON.stringify(s.ret)}`));
+    (d.dropped || []).forEach((x) => lines.push(`  dropped ${x.cls}#${x.name} — ${x.why}`));
+    $("sigout").textContent = lines.join("\n");
+    $("sigmsg").textContent = d.available || d.reader === "sorbet" ? "" : "· verdict unavailable";
+    mark("sigs", "ok", `${(d.sigs || []).length} signature(s), ${(d.dropped || []).length} dropped`);
+    return d;
+  },
 
-function run() {
-  return traceSource($('src').value, $('at').value.trim(), $('from').value.trim(),
-                     $('run'), $('msg'));
-}
+  async strip() {
+    const d = await stage("strip", "stripping…", () => call("strip", { source: $("src").value }));
+    if (!d) return null;
+    $("stripped").value = d.source;
+    $("stripmsg").textContent = `— ${d.applied.length} transforms`;
+    mark("strip", "ok", `${d.applied.length} transforms, ${d.source.split("\n").length} lines out`);
+    return d;
+  },
 
-function render() {
-  if (!trace) { $('ctl').textContent = '—'; $('frames').innerHTML=''; $('konts').innerHTML='';
-    $('out').textContent=''; $('counter').textContent='—'; $('status').textContent='';
-    $('detail').textContent=''; $('excbox').innerHTML=''; return; }
-  const steps = trace.steps;
-  i = Math.max(0, Math.min(i, steps.length - 1));
-  const s = steps[i] || {ctl:'',out:'',frames:[],konts:[],exc:''};
-  $('slider').value = i;
-  const base = trace.first_step || 0;
-  $('counter').textContent = base
-    ? `step ${(base + i).toLocaleString()} (${i} / ${steps.length - 1} in window)`
-    : `step ${i} / ${steps.length - 1}`;
-  $('ctl').textContent = s.ctl;
-  $('out').textContent = s.out;
-  $('excbox').innerHTML = s.exc ? `<h2>\$! (current exception)</h2><div class="ctl" style="border-left-color:var(--bad)">${esc(s.exc)}</div>` : '';
+  async desugar() {
+    const d = await stage("desugar", "desugaring…", () => call("desugar", { source: program() }));
+    if (!d) return null;
+    $("core").innerHTML = sexpr(d.ast);
+    mark("desugar", "ok", `${d.bytes} bytes of RubyCore JSON`);
+    return d;
+  },
 
-  $('frames').innerHTML = (s.frames||[]).map((f, idx) => {
-    const locals = (f.locals||[]).length
-      ? `<div class="locals">` + f.locals.map(l =>
-          `<span class="k">${esc(l.name)}</span><span class="v">${esc(l.val)}</span>`).join('') + `</div>`
-      : `<div class="empty">no locals</div>`;
-    const badges = [`<span class="badge ${f.kind}">${f.kind} #${f.id}</span>`,
-      f.blk ? `<span class="badge">${esc(f.blk)}</span>`:'',
-      f.lam ? `<span class="badge">${esc(f.lam)}</span>`:''].join('');
-    return `<div class="frame ${idx===0?'top':''}">
-      <div class="fh">${badges}<span class="badge">self ${esc(f.self)}</span></div>${locals}</div>`;
-  }).join('') || '<div class="empty">no frames</div>';
+  async derive() {
+    const d = await stage("derive", "emitting…", () => call("derive", { source: $("src").value }));
+    if (!d) return null;
+    if (d.stripped) { $("stripped").value = d.stripped; $("stripmsg").textContent = "— from stage 3"; }
+    if (d.core) $("core").innerHTML = sexpr(d.core.ast);
+    $("deriv").value = JSON.stringify(d.deriv || d.emit, null, 2);
+    // A block is a fact about the untrusted emitter's coverage, never a verdict
+    // on the program -- so `warn`, and the reason *is* the content.
+    mark("derive", d.deriv ? "ok" : "warn",
+      d.deriv ? `emitted, result ${JSON.stringify(d.ty)}` : `blocked — ${d.emit.why}`);
+    return d;
+  },
 
-  $('konts').innerHTML = (s.konts||[]).map(k => `<li>${esc(k)}</li>`).join('')
-    || '<li class="empty">empty — program will finish</li>';
+  async validate() {
+    let deriv;
+    try { deriv = JSON.parse($("deriv").value); }
+    catch (e) { showErr({ error: "input", message: `Deriv JSON: ${e.message}` }); return null; }
 
-  const last = i === steps.length - 1;
-  $('status').className = 'status ' + (last ? (trace.status||'') : '');
-  $('status').textContent = last ? trace.status : '';
-  $('detail').textContent = last && trace.detail ? `result: ${trace.detail}` : '';
-}
-
-// The stepper's static-checker queries (`infer` / `inferOpen` / `inferProgram`
-// and the typed-lambdas checker) lived here. They printed `rubycore --check`,
-// `--assn`, `--assn-program` and `--check-tl`, the pre-ratchet type-checking
-// iterations; those layers were removed from RubyCore/ and these went with them.
-// The checker of record is tab 3's `validateD`.
-
-async function runRuby() {
-  $('runruby').disabled = true;
-  $('rubyout').innerHTML = '<span class="empty">running in CRuby…</span>';
-  try {
-    const r = await fetch('/run', {method:'POST', body: $('src').value});
-    const d = await r.json();
-    if (d.error) { $('rubyout').innerHTML = `<span class="err-inline">[${d.error}] ${esc(d.message||'')}</span>`; return; }
-    let html = d.stdout ? esc(d.stdout) : '<span class="empty">(no stdout)</span>';
-    if (d.stderr) html += `\n<span class="err-inline">${esc(d.stderr)}</span>`;
-    if (d.returncode) html += `\n<span class="empty">exit ${d.returncode}</span>`;
-    $('rubyout').innerHTML = html;
-  } catch(e) {
-    $('rubyout').innerHTML = `<span class="err-inline">${esc(String(e))}</span>`;
-  } finally { $('runruby').disabled = false; }
-}
-
-function go(n){ if(!trace) return; i = n; render(); }
-$('run').onclick = run;
-$('runruby').onclick = runRuby;
-$('count').onclick = countSteps;
-$('first').onclick = () => go(0);
-$('prev').onclick = () => go(i-1);
-$('next').onclick = () => go(i+1);
-$('last').onclick = () => go(trace ? trace.steps.length-1 : 0);
-$('slider').oninput = e => go(+e.target.value);
-document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'TEXTAREA') return;
-  if (e.key === 'ArrowLeft') { go(i-1); e.preventDefault(); }
-  if (e.key === 'ArrowRight') { go(i+1); e.preventDefault(); }
-});
-
-// ── Tabs and the toggleable step view ────────────────────────────────────
-// The step view is the same pane for both tabs; hiding it is a layout change
-// only (the trace is kept), which is what makes it safe to leave off.
-const HINTS = {
-  stepper: 'write Ruby · Run · step with ← → · or check it on the Ratchet tab',
-  slice:   'pick a slice file or link the whole slice · strip ▸ desugar ▸ run ▸ derive ▸ validate',
-  ratchet: 'load annotated Ruby · strip signatures · desugar · inspect Deriv · run validateD, Lean, and CRuby',
-};
-function showTab(name) {
-  for (const n of ['stepper', 'slice', 'ratchet']) {
-    $('pane-' + n).classList.toggle('on', n === name);
-    $('tab-' + n + '-btn').classList.toggle('on', n === name);
-  }
-  $('tabhint').textContent = HINTS[name];
-}
-$('tab-stepper-btn').onclick = () => showTab('stepper');
-$('tab-slice-btn').onclick = () => showTab('slice');
-$('tab-ratchet-btn').onclick = () => showTab('ratchet');
-$('showsteps').onchange = e => $('wrap').classList.toggle('nosteps', !e.target.checked);
-
-// ── The Homebrew slice explorer ──────────────────────────────────────────
-// Every call here is one existing tool over the buffer's current text. The
-// buffer is the single source of truth: load or link fills it, strip rewrites
-// it, and every downstream stage reads it — so an edit is a first-class input
-// and not a thing the pipeline can silently ignore.
-// A non-JSON body means the server did not route this at all -- almost always a
-// `server.py` older than the page, still running from before an endpoint existed.
-// Reporting that beats letting `r.json()` fail on the 404's own text, which reads as
-// a syntax error in the answer rather than the absence of one.
-const post = (path, body) => fetch(path, {method:'POST', body: JSON.stringify(body)})
-  .then(async r => {
-    const text = await r.text();
-    try { return JSON.parse(text); }
-    catch (e) {
-      const why = r.status === 404
-        ? `no route for ${path} — restart server.py (it predates this endpoint)`
-        : `HTTP ${r.status}: ${text.slice(0, 200)}`;
-      return {error: 'server', message: why};
+    // Stage 3 blocked: the box holds the emitter's block report, not a
+    // certificate. Asking the kernel to decode it would report a decode failure
+    // as if it were a verdict. `Ratchet/Rung.lean` already answers this case.
+    if (deriv && typeof deriv.rule !== "string" && typeof deriv.status === "string") {
+      mark("validate", "warn", "validateD = false — no certificate to check");
+      setTarget(false);
+      $("verdict").innerHTML = `<div class="verdict unknown">` + [
+        `<span class="k">validateD</span> false`,
+        `<span class="k">why</span> stage 3 emitted no certificate — ${esc(deriv.why || deriv.status)}`,
+        `<span class="k">means</span> a blocked rung is not an accept, and a block is a`,
+        `<span class="k"></span> coverage fact about the emitter, not a verdict on the program.`,
+      ].join("<br>") + `</div>`;
+      return null;
     }
-  });
-const srcText = () => $('slicesrc').value;
-function sliceErr(d) {
-  $('sliceerr').innerHTML = `<div class="err">[${d.error}] ${esc(d.message||'')}</div>`;
-}
-function pill(id, text, cls) {
-  $(id).textContent = text;
-  $(id).className = 'pill' + (cls ? ' ' + cls : '');
-}
-async function withBtn(id, msgId, label, fn) {
-  $(id).disabled = true; $(msgId).textContent = label;
-  $('sliceerr').innerHTML = '';
-  try { await fn(); } catch(e) { $('sliceerr').innerHTML = `<div class="err">${esc(String(e))}</div>`; }
-  finally { $(id).disabled = false; }
-}
 
-async function loadFiles() {
-  const d = await (await fetch('/slice/files')).json();
-  $('slicefile').innerHTML =
-    d.files.map(f => `<option value="${esc(f.file)}"${f.exists?'':' disabled'}>` +
-      `${esc(f.file)} — ${f.lines} lines${f.exists?'':' (missing)'}</option>`).join('');
-  $('slicemsg').textContent = d.root;
-}
-
-const resetStages = () => {
-  for (const [id, l] of [['pilldesugar','desugar —'],['pillmodel','model —'],
-                         ['pillcruby','CRuby —'],['pilldiff','agree —']]) pill(id, l);
-  $('slicesexpr').innerHTML = '<span class="empty">— press “Desugar”</span>';
-  $('slicemodelout').innerHTML = '<span class="empty">— press “Lean model”</span>';
-  $('slicecrubyout').innerHTML = '<span class="empty">— press “CRuby”</span>';
-  lastModelOut = null; lastCrubyOut = null;
-};
-
-$('sliceload').onclick = () => withBtn('sliceload','slicemsg','loading…', async () => {
-  const d = await post('/slice/source', {file: $('slicefile').value});
-  if (d.error) return sliceErr(d);
-  $('slicesrc').value = d.source; resetStages();
-  $('slicemsg').textContent = `${d.file} — ${d.source.split('\n').length} lines (as vendored, unstripped)`;
-});
-
-// The linked program is the slice as the model actually eats it: boot stubs the
-// brew boot path would have supplied, the eight files with their `require`s
-// resolved by `linker`, and `driver.rb`'s main.
-$('slicelink').onclick = () => withBtn('slicelink','slicemsg','linking…', async () => {
-  const d = await post('/slice/link', {});
-  if (d.error) return sliceErr(d);
-  $('slicesrc').value = d.source; resetStages();
-  $('slicemsg').textContent =
-    `linked slice program — ${d.source.split('\n').length} lines` + (d.report ? ` · ${d.report}` : '');
-});
-
-$('slicestrip').onclick = () => withBtn('slicestrip','slicemsg','stripping…', async () => {
-  const d = await post('/slice/strip', {source: srcText()});
-  if (d.error) { sliceErr(d); $('slicemsg').textContent = `stopped after ${(d.applied||[]).join(' · ') || 'nothing'}`; return; }
-  $('slicesrc').value = d.source;
-  $('slicemsg').textContent = `stripped: ${d.applied.join(' · ')} — ${d.source.split('\n').length} lines`;
-});
-
-$('slicedesugar').onclick = () => withBtn('slicedesugar','slicerunmsg','desugaring…', async () => {
-  const d = await post('/slice/desugar', {source: srcText()});
-  if (d.error) { sliceErr(d); pill('pilldesugar', `desugar ${d.error}`, 'no'); return; }
-  $('slicesexpr').innerHTML = fmtSexpr(d.ast);
-  pill('pilldesugar', `desugar ok · ${d.bytes.toLocaleString()} B of RubyCore`, 'ok');
-  $('slicerunmsg').textContent = '';
-});
-
-// `rubycore` with no flags: the Ruby-faithful observation (`Obs.lean`), which is
-// what the difftest compares — deliberately not the stepper's lossy rendering.
-$('slicemodel').onclick = () => withBtn('slicemodel','slicerunmsg','running in the model…', async () => {
-  const d = await post('/slice/model', {source: srcText()});
-  if (d.error) {
-    sliceErr(d);
-    // A gate is not a disagreement, and it is not a pass either.
-    pill('pillmodel', `model ${d.error}`, d.error === 'gate' ? 'warn' : 'no');
-    return;
-  }
-  const L = [];
-  L.push(d.stdout ? esc(d.stdout) : '<span class="empty">(no stdout)</span>');
-  L.push(`<span class="empty">result: ${esc(String(d.result_repr))}</span>`);
-  if (d.exception) L.push(`<span class="err-inline">uncaught: ${esc(String(d.exception))}</span>`);
-  if (d.timed_out) L.push('<span class="err-inline">timed out</span>');
-  $('slicemodelout').innerHTML = L.join('\n');
-  pill('pillmodel', d.exception ? 'model uncaught' : 'model ok', d.exception ? 'warn' : 'ok');
-  lastModelOut = d.stdout; sliceDiff();
-  $('slicerunmsg').textContent = '';
-});
-
-$('slicecruby').onclick = () => withBtn('slicecruby','slicerunmsg','running in CRuby…', async () => {
-  const d = await post('/slice/cruby', {source: srcText()});
-  if (d.error) { sliceErr(d); pill('pillcruby', `CRuby ${d.error}`, 'no'); return; }
-  let html = d.stdout ? esc(d.stdout) : '<span class="empty">(no stdout)</span>';
-  if (d.stderr) html += `\n<span class="err-inline">${esc(d.stderr)}</span>`;
-  $('slicecrubyout').innerHTML = html + (d.returncode ? `\n<span class="empty">exit ${d.returncode}</span>` : '');
-  pill('pillcruby', d.returncode ? `CRuby exit ${d.returncode}` : 'CRuby ok', d.returncode ? 'warn' : 'ok');
-  lastCrubyOut = d.stdout; sliceDiff();
-  $('slicerunmsg').textContent = '';
-});
-
-// The comparison the whole exercise is for. Compares *stdout only*, which is
-// what `slice-driver/run.sh` diffs; the model's result and any exception are
-// printed beside it rather than folded in.
-let lastModelOut = null, lastCrubyOut = null;
-function sliceDiff() {
-  if (lastModelOut === null || lastCrubyOut === null) { pill('pilldiff', 'agree —'); return; }
-  const same = lastModelOut === lastCrubyOut;
-  pill('pilldiff', same ? 'agree — identical stdout' : 'DISAGREE on stdout', same ? 'ok' : 'no');
-}
-
-$('slicestep').onclick = () => {
-  if (!$('showsteps').checked) { $('showsteps').checked = true;
-    $('wrap').classList.remove('nosteps'); }
-  return traceSource(srcText(), $('sliceat').value.trim(), $('slicefrom').value.trim(),
-                     $('slicestep'), $('slicerunmsg'));
-};
-
-// ── Tab 3: the ratchet checker ────────────────────────────────────────────
-// Same run/diff idiom as tab 2's model/CRuby buttons, over a program-sized
-// buffer, plus a third tool: the ratchet's own checker (`../ruby-lean/Ratchet/`).
-async function ratchetBtn(id, msgId, label, fn) {
-  $(id).disabled = true; $(msgId).textContent = label;
-  $('ratcheterr').innerHTML = '';
-  try { await fn(); } catch(e) { $('ratcheterr').innerHTML = `<div class="err">${esc(String(e))}</div>`; }
-  finally { $(id).disabled = false; }
-}
-const ratchetText = () => $('ratchetstripped').value || $('ratchetsrc').value;
-function ratchetErr(d) {
-  $('ratcheterr').innerHTML = `<div class="err">[${d.error}] ${esc(d.message||'')}</div>`;
-}
-// ── The rail ──────────────────────────────────────────────────────────────
-// Five stages in pipeline order. `rkDone` is the only writer of a chip's verdict,
-// and finishing a stage marks every *later* one stale: an artifact computed from
-// an input that has since changed is still worth reading, but it is not a claim
-// about the text now on screen, and dimming it says so without discarding it.
-const RK_STAGES = ['sorbet','strip','desugar','derive','validate'];
-const RK_PILL = {sorbet:'pillratchetsorbet', strip:'pillratchetstrip',
-                 desugar:'pillratchetdesugar', derive:'pillratchetderive',
-                 validate:'pillratchetcheck'};
-
-function rkShow(key) {
-  for (const k of RK_STAGES) {
-    $('rail-' + k).classList.toggle('sel', k === key);
-    $('art-' + k).classList.toggle('on', k === key);
-  }
-}
-for (const k of RK_STAGES) {
-  // The ▸ inside a chip runs the stage; the rest of the chip selects its artifact.
-  $('rail-' + k).addEventListener('click', e => {
-    if (!e.target.closest('.rk-go')) rkShow(k);
-  });
-}
-// Staleness is per *buffer*, not per position in the rail. Each buffer carries a
-// version; a stage records the versions it read, and is stale when one of them has
-// moved since. Position would be wrong in both directions -- stage 3 re-runs srb on
-// its way to a `Deriv`, which must not stale the strip beside it, and editing the
-// stripped buffer must stale stage 4 without touching stage 0, which never reads it.
-const RK_BUF  = {src:'ratchetsrc', stripped:'ratchetstripped', deriv:'ratchetderiv'};
-const RK_DEPS = {sorbet:['src'], strip:['src'], desugar:['src','stripped'],
-                 derive:['src'], validate:['src','stripped','deriv']};
-let rkVer  = {src:0, stripped:0, deriv:0};
-let rkText = {src:null, stripped:null, deriv:null};
-let rkSeen = {};
-
-// A version moves only when the text actually differs -- stage 3 rewrites the
-// stripped buffer with (normally) the same bytes stage 1 put there, and a bump on
-// an identical write would stale stage 2 for no reason.
-function rkTouch(b) {
-  const cur = $(RK_BUF[b]).value;
-  if (cur === rkText[b]) return;
-  rkText[b] = cur; rkVer[b]++;
-}
-function rkPaint() {
-  for (const k of RK_STAGES) {
-    const seen = rkSeen[k];
-    $('rail-' + k).classList.toggle('stale',
-      !!seen && RK_DEPS[k].some(b => seen[b] !== rkVer[b]));
-  }
-}
-function rkSync() { for (const b in RK_BUF) rkTouch(b); rkPaint(); }
-function rkDone(key, cls, pillText, summary, show) {
-  const el = $('rail-' + key);
-  el.classList.remove('ok','no','warn');
-  if (cls) el.classList.add(cls);
-  pill(RK_PILL[key], pillText, cls === 'no' ? 'no' : cls);
-  $('sum-' + key).textContent = summary;
-  for (const b in RK_BUF) rkTouch(b);          // the stage may have written one
-  rkSeen[key] = Object.fromEntries(RK_DEPS[key].map(b => [b, rkVer[b]]));
-  rkPaint();
-  if (show) rkShow(key);
-}
-function rkReset() {
-  rkSeen = {};
-  for (const k of RK_STAGES) {
-    $('rail-' + k).classList.remove('stale','ok','no','warn');
-    pill(RK_PILL[k], '—');
-  }
-  ['the unstripped program','signatures out','to RubyCore','emit a Deriv','the kernel Bool']
-    .forEach((t, i) => { $('sum-' + RK_STAGES[i]).textContent = t; });
-  rkSync();
-}
-for (const b in RK_BUF) $(RK_BUF[b]).addEventListener('input', rkSync);
-
-// The rung's recorded `expect_validate`: what the ladder says this rung should do.
-// Kept beside the verdict because `validateD=false` is only a finding when the
-// target says true -- on a negative rung it IS the target.
-let rkExpect = null;
-function rkTarget(verdict) {
-  if (rkExpect === null || rkExpect === undefined) {
-    pill('ratchetexpect', 'target —'); return;
-  }
-  if (verdict === null) {
-    pill('ratchetexpect', `target validateD=${rkExpect}`); return;
-  }
-  const met = verdict === rkExpect;
-  pill('ratchetexpect', met ? `meets target (${rkExpect})` : `OFF TARGET — wanted ${rkExpect}`,
-       met ? 'ok' : 'no');
-}
-
-// Run all: the five stages in order, halting on a hard error. A red Sorbet is
-// not one -- a rung whose `expect_sorbet` is false is *supposed* to fail srb, and
-// the rest of the pipeline runs over it either way (build_corpus.py does the same).
-$('ratchetrunall').onclick = async () => {
-  const btn = $('ratchetrunall'), label = btn.textContent;
-  btn.disabled = true;
-  try {
-    for (const k of RK_STAGES) {
-      btn.textContent = `${k}…`;
-      await $('ratchet' + k).onclick();
-      if ($('ratcheterr').innerHTML) {
-        $('sum-' + k).textContent = 'stopped here';
-        $('rail-' + k).classList.add('no');
-        rkShow(k);
-        break;
-      }
+    const d = await stage("validate", "checking…", () =>
+      call("validate", { source: $("src").value, deriv }));
+    if (!d) return null;
+    const ok = d.validateD === true;
+    const met = expect === null ? null : ok === expect;
+    mark("validate", ok ? "ok" : "warn",
+      `validateD = ${ok}` + (met === null ? "" : met ? " · meets its target" : ` · off target, wanted ${expect}`));
+    setTarget(ok);
+    const L = [`<span class="k">validateD</span> ${ok}`];
+    if (met !== null) {
+      L.push(`<span class="k">target</span> expect_validate = ${expect} — ` +
+        (met ? "met" : `<span style="color:var(--bad)">NOT met</span>`));
     }
-  } finally { btn.disabled = false; btn.textContent = label; }
+    L.push(ok
+      ? `<span class="k">means</span> safe by <i>validateD_safe_boot</i>, one theorem over every accepted rung`
+      : `<span class="k">means</span> the checker declines this certificate — either the judgment has`
+      + `<br><span class="k"></span> no rule for it, or the Deriv is wrong. Not a claim that the program fails.`);
+    $("verdict").innerHTML = `<div class="verdict ${ok ? "accept" : "unknown"}">${L.join("<br>")}</div>`;
+    return d;
+  },
 };
 
-let lastRatchetModelOut = null, lastRatchetCrubyOut = null;
-function ratchetDiff() {
-  if (lastRatchetModelOut === null || lastRatchetCrubyOut === null) { pill('pillratchetdiff', 'agree —'); return; }
-  const same = lastRatchetModelOut === lastRatchetCrubyOut;
-  pill('pillratchetdiff', same ? 'agree — identical stdout' : 'DISAGREE on stdout', same ? 'ok' : 'no');
+function setTarget(got) {
+  const p = $("target");
+  if (expect === null) { p.textContent = "target —"; p.className = "pill"; return; }
+  if (got === undefined) { p.textContent = `target expect_validate=${expect}`; p.className = "pill"; return; }
+  p.textContent = `target expect_validate=${expect} · got ${got}`;
+  p.className = "pill " + (got === expect ? "ok" : "no");
 }
 
-$('ratchetmodel').onclick = () => ratchetBtn('ratchetmodel','ratchetrunmsg','running in the model…', async () => {
-  const d = await post('/ratchet/model', {source: ratchetText()});
-  if (d.error) {
-    ratchetErr(d);
-    pill('pillratchetmodel', `model ${d.error}`, d.error === 'gate' ? 'warn' : 'no');
-    return;
-  }
-  const L = [];
-  L.push(d.stdout ? esc(d.stdout) : '<span class="empty">(no stdout)</span>');
-  L.push(`<span class="empty">result: ${esc(String(d.result_repr))}</span>`);
-  if (d.exception) L.push(`<span class="err-inline">uncaught: ${esc(String(d.exception))}</span>`);
-  if (d.timed_out) L.push('<span class="err-inline">timed out</span>');
-  $('ratchetmodelout').innerHTML = L.join('\n');
-  pill('pillratchetmodel', d.exception ? 'model uncaught' : 'model ok', d.exception ? 'warn' : 'ok');
-  lastRatchetModelOut = d.stdout; ratchetDiff();
-  $('ratchetrunmsg').textContent = '';
-});
-
-$('ratchetcruby').onclick = () => ratchetBtn('ratchetcruby','ratchetrunmsg','running in CRuby…', async () => {
-  const d = await post('/ratchet/cruby', {source: ratchetText()});
-  if (d.error) { ratchetErr(d); pill('pillratchetcruby', `CRuby ${d.error}`, 'no'); return; }
-  let html = d.stdout ? esc(d.stdout) : '<span class="empty">(no stdout)</span>';
-  if (d.stderr) html += `\n<span class="err-inline">${esc(d.stderr)}</span>`;
-  $('ratchetcrubyout').innerHTML = html + (d.returncode ? `\n<span class="empty">exit ${d.returncode}</span>` : '');
-  pill('pillratchetcruby', d.returncode ? `CRuby exit ${d.returncode}` : 'CRuby ok', d.returncode ? 'warn' : 'ok');
-  lastRatchetCrubyOut = d.stdout; ratchetDiff();
-  $('ratchetrunmsg').textContent = '';
-});
-
-// Stage 0. The only stage whose input is the *top* editor: stripping removes exactly
-// what Sorbet reads, so asking this downstream would be a different question. `Derive`
-// runs the same `srb_sigs.py` on its way to a `Deriv`, so it refreshes this pill too
-// rather than leaving a stale verdict beside a fresh derivation.
-function showSorbet(r) {
-  const clean = r.srb_clean === true;
-  const diags = r.diagnostics || r.srb_diagnostics || [];
-  // `warn`, not `no`: a rung whose `expect_sorbet` is false is meant to fail srb,
-  // so red here would be a verdict the pane is not entitled to. The target chip
-  // is the thing that knows which was wanted.
-  rkDone('sorbet', clean ? 'ok' : 'warn', clean ? 'srb clean' : 'srb errors',
-         clean ? `${(r.sigs||[]).length} sig(s), no errors`
-               : `${diags.length} diagnostic line(s)`);
-  const head = clean
-    ? `<span class="k">no type errors</span>`
-    : `<span class="k">Sorbet rejects this program</span>`;
-  const sigs = `${(r.sigs||[]).length} signature(s) read` +
-    ((r.dropped||[]).length ? `, ${r.dropped.length} dropped` : '');
-  $('ratchetsorbetout').innerHTML =
-    [head, `<span class="empty">${esc(sigs)}</span>`, '',
-     ...(diags.length ? diags.map(esc) : ['<span class="empty">— no diagnostics</span>'])
-    ].join('\n');
-  return clean;
-}
-
-$('ratchetsorbet').onclick = () => ratchetBtn('ratchetsorbet','ratchetsorbetmsg','running srb…', async () => {
-  const d = await post('/ratchet/sorbet', {source: $('ratchetsrc').value});
-  if (d.error) {
-    ratchetErr(d);
-    rkDone('sorbet', 'no', `srb ${d.error}`, d.message ? String(d.message).slice(0,60) : 'errored');
-    $('ratchetsorbetout').innerHTML = '';
-    return;
-  }
-  const clean = showSorbet(d);
-  $('ratchetsorbetmsg').textContent = clean ? 'clean' : `${(d.diagnostics||[]).length} line(s) of diagnostics`;
-});
-
-$('ratchetstrip').onclick = () => ratchetBtn('ratchetstrip','ratchetstripmsg','stripping…', async () => {
-  const d = await post('/ratchet/strip', {source: $('ratchetsrc').value});
-  if (d.error) { rkDone('strip','no','strip failed', d.error); return ratchetErr(d); }
-  $('ratchetstripped').value = d.source;
-  $('ratchetstripmsg').textContent = `${d.applied.length} transforms applied`;
-  rkDone('strip', 'ok', `${d.applied.length} transforms`,
-         `${d.source.split('\n').length} line(s) out`);
-});
-
-$('ratchetdesugar').onclick = () => ratchetBtn('ratchetdesugar','ratchetrunmsg','desugaring…', async () => {
-  const d = await post('/ratchet/desugar', {source: ratchetText()});
-  if (d.error) { rkDone('desugar','no','desugar failed', d.error); return ratchetErr(d); }
-  $('ratchetcore').innerHTML = fmtSexpr(d.ast);
-  $('ratchetrunmsg').textContent = `${d.bytes} bytes of RubyCore JSON`;
-  rkDone('desugar', 'ok', 'desugared', `${d.bytes} bytes of RubyCore`);
-});
-
-$('ratchetderive').onclick = () => ratchetBtn('ratchetderive','ratchetderivemsg','running Sorbet and emitter…', async () => {
-  const d = await post('/ratchet/derive', {source: $('ratchetsrc').value});
-  if (d.error) { rkDone('derive','no','emitter failed', d.error); return ratchetErr(d); }
-  if (d.stripped) $('ratchetstripped').value = d.stripped;
-  $('ratchetderiv').value = d.deriv ? JSON.stringify(d.deriv, null, 2) : JSON.stringify(d.emit, null, 2);
-  if (d.sorbet) showSorbet(d.sorbet);
-  $('ratchetderivemsg').textContent = d.deriv ? `· emitted, result ${JSON.stringify(d.ty)}` : `· blocked`;
-  // A block is a coverage fact about the untrusted emitter, never a verdict on the
-  // program -- `warn`, and the reason is the summary, because the reason is the
-  // whole content (it names the fragment boundary that stopped it).
-  rkDone('derive', d.deriv ? 'ok' : 'warn', d.deriv ? 'emitted' : 'blocked',
-         d.deriv ? `result ${JSON.stringify(d.ty)}` : d.emit.why, true);
-});
-
-$('ratchetvalidate').onclick = () => ratchetBtn('ratchetvalidate','ratchetrunmsg','checking validateD…', async () => {
-  let deriv;
-  try { deriv = JSON.parse($('ratchetderiv').value); }
-  catch(e) { return ratchetErr({error:'input', message:`Deriv JSON: ${e}`}); }
-  // Stage 3 blocked: what is in the box is the emitter's block report, not a
-  // certificate. Posting it would ask the kernel to decode a `Deriv` that was never
-  // emitted and report the decode failure as if it were a verdict. The ladder
-  // already answers this case -- `Ratchet/Rung.lean`'s `verdict` is `false` for a
-  // rung with no derivation -- so say that, and say why it is not the same `false`.
-  if (deriv && typeof deriv.rule !== 'string' && typeof deriv.status === 'string') {
-    rkDone('validate', 'warn', 'validateD=false', 'no certificate to check', true);
-    rkTarget(false);
-    $('ratchetcheckbox').innerHTML = `<div class="verdict unknown">` + [
-      `<span class="k">validateD</span> false`,
-      `<span class="k">why</span> stage 3 emitted no certificate — ${esc(deriv.why || deriv.status)}`,
-      `<span class="k">means</span> a blocked rung is not an accept (Ratchet/Rung.lean's <span class="ty">verdict</span>),`,
-      `      and a block is a coverage fact about the untrusted emitter, not a verdict on the program.`,
-    ].join('<br>') + `</div>`;
-    $('ratchetrunmsg').textContent = '';
-    return;
-  }
-  const d = await post('/ratchet/validate', {source: $('ratchetsrc').value, deriv});
-  if (d.error) {
-    ratchetErr(d);
-    rkDone('validate', 'no', `validateD ${d.error}`, d.message ? String(d.message).slice(0,60) : 'errored');
-    $('ratchetcheckbox').innerHTML = '';
-    return;
-  }
-  const ok = d.validateD === true;
-  const met = rkExpect === null || rkExpect === undefined ? null : ok === rkExpect;
-  rkDone('validate', ok ? 'ok' : 'warn', `validateD=${ok}`,
-         met === null ? (ok ? 'in the fragment' : 'not in the fragment')
-                      : (met ? 'meets its target' : `off target — wanted ${rkExpect}`), true);
-  rkTarget(ok);
-  const L = [`<span class="k">validateD</span> ${esc(String(ok))}`];
-  if (met !== null) L.push(met
-    ? `<span class="k">target</span> expect_validate=${rkExpect} — met`
-    : `<span class="k">target</span> expect_validate=${rkExpect} — <span class="no">NOT met</span>`);
-  L.push(ok
-    ? `<span class="k">means</span> safe by validateD_safe_boot, one theorem over every accepted rung`
-    : `<span class="k">means</span> the checker declines this certificate — either the judgment has no
-rule for it, or the Deriv is wrong. Not a claim that the program fails.`);
-  $('ratchetcheckbox').innerHTML =
-    `<div class="verdict ${ok ? 'accept' : 'unknown'}">${L.join('<br>')}</div>`;
-  $('ratchetrunmsg').textContent = '';
-});
-
-// The live corpus is annotated `.rb` plus sibling `.meta.json`.
-let rkEntries = {};
-async function loadRatchetCorpus() {
-  const d = await (await fetch('/ratchet/corpus')).json();
-  rkEntries = Object.fromEntries((d.entries||[]).map(e => [e.file, e]));
-  $('ratchetcorpus').innerHTML = (d.entries||[]).map(e =>
-    `<option value="${esc(e.file)}">${esc(e.file)} (tier ${e.tier}` +
-    `${e.expect_validate === false ? ', expect false' : ''}) — ${esc(e.description||'')}</option>`
-  ).join('');
-}
-
-$('ratchetcorpusload').onclick = () => ratchetBtn('ratchetcorpusload','ratchetmsg','loading…', async () => {
-  const d = await post('/ratchet/corpus-source', {file: $('ratchetcorpus').value});
-  if (d.error) return ratchetErr(d);
-  $('ratchetsrc').value = d.source;
-  $('ratchetstripped').value = '';
-  $('ratchetderiv').value = '';
-  $('ratchetcore').innerHTML = '<span class="empty">— strip, then desugar</span>';
-  $('ratchetsorbetout').innerHTML = '<span class="empty">— press ▸ on stage 0</span>';
-  $('ratchetcheckbox').innerHTML = '<span class="empty">— derive, then run stage 4</span>';
-  rkReset(); rkShow('sorbet');
-  const e = rkEntries[$('ratchetcorpus').value] || {};
-  rkExpect = e.expect_validate;
-  rkTarget(null);
-  $('ratchetmsg').textContent =
-    `${d.file} — ${d.source.split('\n').length} line(s), tier ${e.tier ?? '?'}`;
-});
-
-// `traceSource` is the stepper's own driver (L302), shared across every tab: this
-// buffer's program traces into the same right-hand pane tab 1 and tab 2 already
-// step through.
-$('ratchetstep').onclick = () => {
-  if (!$('showsteps').checked) { $('showsteps').checked = true;
-    $('wrap').classList.remove('nosteps'); }
-  return traceSource(ratchetText(), $('ratchetat').value.trim(), $('ratchetfrom').value.trim(),
-                     $('ratchetstep'), $('ratchetrunmsg'));
+$("runall").onclick = async () => {
+  $("runall").disabled = true;
+  reset();
+  try {
+    for (const k of ["sigs", "strip", "desugar", "derive"]) {
+      if (!(await STEPS[k]())) return;
+    }
+    await STEPS.validate();
+  } finally { $("runall").disabled = false; }
 };
 
-$('ratchetsrc').value = `# typed: true\n1 + 2`;
+// ── run it ─────────────────────────────────────────────────────────────────
+let lastModel = null, lastCruby = null;
+function agree() {
+  const p = $("agree");
+  if (lastModel === null || lastCruby === null) { p.textContent = "—"; p.className = "pill"; return; }
+  const same = lastModel === lastCruby;
+  p.textContent = same ? "stdout agrees" : "stdout DIFFERS";
+  p.className = "pill " + (same ? "ok" : "no");
+}
 
-loadFiles();
-loadRatchetCorpus();
-showTab('stepper');
+$("model").onclick = async () => {
+  $("modelout").textContent = "running…";
+  const d = await call("model", { source: program() });
+  if (d.error) { $("modelout").textContent = `${d.error}: ${d.message}`; lastModel = null; return agree(); }
+  lastModel = d.stdout || "";
+  $("modelout").textContent =
+    `stdout:\n${d.stdout || "(none)"}\nresult: ${d.result_repr}` +
+    (d.exception ? `\nexception: ${JSON.stringify(d.exception)}` : "") +
+    (d.ms ? `\n\n[${d.ms} ms]` : "");
+  agree();
+};
 
-$('src').value = SAMPLE;
-run();
+$("cruby").onclick = async () => {
+  $("crubyout").textContent = "running…";
+  const d = await call("cruby", { source: program() });
+  if (d.error) { $("crubyout").textContent = `${d.error}: ${d.message}`; lastCruby = null; return agree(); }
+  lastCruby = d.stdout || "";
+  $("crubyout").textContent =
+    `stdout:\n${d.stdout || "(none)"}` + (d.stderr ? `\nstderr:\n${d.stderr}` : "") +
+    `\nexit: ${d.returncode}` + (d.ms ? `\n\n[${d.ms} ms]` : "");
+  agree();
+};
+
+// ── the corpus ─────────────────────────────────────────────────────────────
+let entries = {};
+async function loadCorpus() {
+  const d = await call("corpus");
+  if (d.error) return showErr(d);
+  entries = Object.fromEntries((d.entries || []).map((e) => [e.file, e]));
+  $("corpus").innerHTML = (d.entries || []).map((e) =>
+    `<option value="${esc(e.file)}">${esc(e.file)} · tier ${e.tier}` +
+    `${e.expect_validate === false ? " · expect false" : ""} — ${esc((e.description || "").slice(0, 90))}</option>`
+  ).join("");
+  $("msg").textContent = `${(d.entries || []).length} rungs`;
+}
+
+$("load").onclick = async () => {
+  const d = await call("corpus-source", { file: $("corpus").value });
+  if (d.error) return showErr(d);
+  $("src").value = d.source;
+  $("stripped").value = ""; $("deriv").value = "";
+  $("core").innerHTML = '<span class="empty">— strip, then desugar</span>';
+  $("sigout").innerHTML = '<span class="empty">— run stage 0</span>';
+  $("verdict").innerHTML = '<span class="empty">— derive, then run stage 4</span>';
+  $("stripmsg").textContent = ""; $("sigmsg").textContent = "";
+  lastModel = lastCruby = null; agree();
+  reset();
+  const e = entries[$("corpus").value] || {};
+  expect = e.expect_validate === undefined ? null : e.expect_validate;
+  setTarget();
+  $("msg").textContent = e.description ? e.description.slice(0, 160) : "";
+};
+
+// ── a small s-expression renderer for the RubyCore AST ─────────────────────
+function sexpr(node, depth = 0) {
+  if (node === null) return '<span class="at">nil</span>';
+  if (!Array.isArray(node)) return esc(JSON.stringify(node));
+  const head = `<span class="hd">${esc(String(node[0]))}</span>`;
+  const rest = node.slice(1);
+  const flat = rest.every((r) => !Array.isArray(r));
+  if (flat) return `(${head}${rest.length ? " " + rest.map((r) => esc(JSON.stringify(r))).join(" ") : ""})`;
+  const pad = "  ".repeat(depth + 1);
+  return `(${head}\n${rest.map((r) => pad + sexpr(r, depth + 1)).join("\n")})`;
+}
+
+// ── boot ───────────────────────────────────────────────────────────────────
+drawRail();
+reset();
+loadCorpus();
+prewarm();
 </script>
 </body>
 </html>

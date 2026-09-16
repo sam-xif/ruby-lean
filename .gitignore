@@ -12,6 +12,9 @@ __pycache__/
 # ruby-lean/build/ is regenerated from ruby-lean/corpus/*.rb by scripts/build_corpus.py
 ruby-lean/build/
 difftest/reports/
+# playground/build.sh output: the assembled static site and its archive.
+playground/dist/
+playground/dist.tar.gz
 
 # OS
 .DS_Store
