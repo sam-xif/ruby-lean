@@ -18,3 +18,7 @@ playground/dist.tar.gz
 
 # OS
 .DS_Store
+
+
+# my personal agent transcripts journal
+journal/
