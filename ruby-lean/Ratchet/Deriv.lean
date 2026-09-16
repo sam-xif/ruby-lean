@@ -119,7 +119,7 @@ end
 /-! ## Decoding
 
 The wire format is `JsonUtil.lean`'s: `{"rule": ..., <named fields>}`, hand-written on
-both sides so the emitter (`scripts/emit_deriv.py`, Python) never has to reverse-engineer
+both sides so the emitter (`scripts/emit_deriv.rb`, Ruby) never has to reverse-engineer
 a Lean derive convention. A field that is a type is `Ty`'s `{"tag": ...}` encoding. -/
 
 private def varKindOfJson? (j : Json) : Except String VarKind := do

@@ -13,7 +13,7 @@ One self-contained module doing the five Ruby jobs the playground needs:
 | strip chain | `difftest/ruby/*_strip.rb`, six stages | `ruby.wasm /opt/strip/<stage>.rb` |
 | CRuby oracle | the user's program | `ruby.wasm` with the source on stdin |
 | sig reading | `scripts/read_sigs.rb` (Prism, replaces `srb_sigs.py`) | `ruby.wasm /opt/deriv/read_sigs.rb` |
-| derivation | `scripts/emit_deriv.rb` (port of `emit_deriv.py`) | `ruby.wasm /opt/deriv/emit_deriv.rb` |
+| derivation | `scripts/emit_deriv.rb`, the emitter itself | `ruby.wasm /opt/deriv/emit_deriv.rb` |
 
 Everything reads stdin and writes stdout, like the Lean modules beside it, so
 the page needs one WASI runner rather than five integrations.
@@ -56,7 +56,8 @@ one program in the corpus.
 
 The page can re-derive for a program the user has **edited**, not only replay a
 stored rung. That needed the typed ladder's two untrusted stages in Ruby:
-`emit_deriv.rb` (a port of `emit_deriv.py`) and `read_sigs.rb` (a Prism reader
+`emit_deriv.rb` (then a port of a Python original, now the emitter of record
+for the commit gate too) and `read_sigs.rb` (a Prism reader
 standing in for `srb_sigs.py`, since Sorbet is C++ and has no wasm port).
 
 Shipping each rung's stored `sigs.json` instead would have worked only until the

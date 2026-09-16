@@ -5,8 +5,11 @@
 
 Compares two ways of getting to a `Deriv`, over every rung in `build/`:
 
-    reference   srb_sigs.py's stored sigs.json  ->  emit_deriv.py
+    reference   srb_sigs.py's stored sigs.json  ->  emit_deriv.rb
     candidate   read_sigs.rb (Prism, no Sorbet) ->  emit_deriv.rb
+
+Same emitter both sides, so the only variable is where the signatures came
+from. That is the question this is asking.
 
 and judges them where it matters -- by what `validateD` says about the
 derivation each produces, not by whether the two emitters printed the same
@@ -34,7 +37,7 @@ for astf in sorted(glob.glob("build/*.ast.json")):
     sigs_f, rb = f"build/{stem}.sigs.json", f"corpus/{stem}.rb"
     if not (os.path.exists(sigs_f) and os.path.exists(rb)): continue
     ast = json.load(open(astf))
-    ref = subprocess.run([sys.executable, "scripts/emit_deriv.py", "--ast", astf,
+    ref = subprocess.run(["ruby", "scripts/emit_deriv.rb", "--ast", astf,
         "--sigs", sigs_f], capture_output=True, text=True).stdout
     rs = subprocess.run(["ruby", "scripts/read_sigs.rb"], stdin=open(rb),
         capture_output=True, text=True).stdout

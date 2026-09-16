@@ -1,21 +1,24 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# emit_deriv.rb -- a Ruby port of `emit_deriv.py`, for the browser playground.
+# emit_deriv.rb -- the **untrusted** emitter: a sig-stripped AST + signatures,
+# out a `Deriv` (`Ratchet/Deriv.lean`).
 #
 #   emit_deriv.rb --ast build/NNN.ast.json --sigs build/NNN.sigs.json
 #   echo '{"ast": <ast>, "sigs": <sigs>}' | emit_deriv.rb
 #
 # The second form is the one the page uses: there is no filesystem in a wasm
-# module, so both inputs arrive as one JSON object on stdin. The first exists so
-# this can be diffed against the Python original on the host, which
-# `wasm/ruby/verify.sh` does over the whole corpus.
+# module, so both inputs arrive as one JSON object on stdin. The first is what
+# `scripts/build_corpus.py` calls.
 #
-# This is a **port, not a rewrite**. Rule order, block messages, the builtin
-# signature table and the shape of every emitted node follow `emit_deriv.py`
-# line for line; where the two languages differ (`zip` truncation, float
-# packing) the Python behaviour is the one reproduced, and it is commented.
-# Divergence here is not a difference of opinion, it is a bug.
+# Stage 4 of `scripts/build_corpus.py`'s five, and the only one that has to think.
+#
+# It began as a line-for-line port of a Python original, written so the browser
+# could derive without a Python runtime, and replaced it once the two were shown
+# to agree: byte-identical `emit` fields across all 259 rungs through the real
+# pipeline, and the gate unchanged at reach 65 / fragment 63 / RATCHET GREEN.
+# Two places where the languages differ are commented where they occur (`zip`
+# truncation, float packing); both reproduce the original's behaviour.
 #
 # Nothing here is trusted. `certificate-language.md` §1: generation owns
 # completeness, validation owns soundness. This file may **block** ("I cannot
@@ -474,7 +477,7 @@ def main(argv)
     puts JSON.generate({ "status" => "blocked", "why" => e.message })
     return 0
   rescue SystemStackError
-    # `emit_deriv.py` catches RecursionError here; same measurement.
+    # The Python original caught RecursionError here; same measurement.
     puts JSON.generate({ "status" => "blocked", "why" => "AST too deep" })
     return 0
   end

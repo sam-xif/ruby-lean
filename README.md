@@ -120,7 +120,7 @@ wrong without making a wrong answer possible:
 | 1. Sorbet signatures | `srb -p symbol-table` via `ruby-lean/scripts/srb_sigs.py` | no |
 | 2. Annotation stripping | `difftest/ruby/*_strip.rb` | no |
 | 3. Desugar to RubyCore JSON | `harness/desugar-dt/bin/export-json` | no |
-| 4. Emit a derivation | `ruby-lean/scripts/emit_deriv.py` | no |
+| 4. Emit a derivation | `ruby-lean/scripts/emit_deriv.rb` | no |
 | 5. **Check the derivation** | `validateD`, in Lean | **yes — only this** |
 
 Stages 1–4 *generate* a candidate certificate. Stage 5 *checks* it, and only its

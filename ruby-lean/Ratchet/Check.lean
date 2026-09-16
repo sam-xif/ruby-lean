@@ -22,7 +22,7 @@ program is the authority: `check` matches `e`, derives the type itself, and then
 the certificate agrees. A certificate that names a different literal, a different method, or a
 different join is rejected — not because soundness needs it (it does not; the derivation is
 about `e` either way) but because a checker that ignores its certificate is not checking one,
-and the whole pipeline downstream of `scripts/emit_deriv.py` would be unfalsifiable.
+and the whole pipeline downstream of `scripts/emit_deriv.rb` would be unfalsifiable.
 `Ratchet/DerivControls.lean` pins each of those rejections.
 
 ### Why fuel

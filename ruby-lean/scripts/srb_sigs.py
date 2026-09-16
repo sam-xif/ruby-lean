@@ -67,7 +67,7 @@ GROUND = {
 # models" (`Ratchet/Ty.lean`). A *user* class's instances are `Ty.inst name <spine>`,
 # and the spine is not in the signature -- it comes from the instantiation. So a bare
 # user-class name maps to `.cls`, which is a **known divergence**, recorded in
-# `emit_deriv.py`'s header as the gap it is rather than papered over here.
+# `emit_deriv.rb`'s header as the gap it is rather than papered over here.
 BUILTIN_CLS = {"String", "Regexp", "Array", "Hash", "Object", "Exception",
                "StandardError", "RuntimeError", "ArgumentError", "TypeError",
                "NameError", "NoMethodError", "ZeroDivisionError", "IndexError",

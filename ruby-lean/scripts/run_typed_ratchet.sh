@@ -5,7 +5,7 @@
 #     1. srb -p symbol-table   -> the signature manifest        ] untrusted
 #     2. the strip stack       -> the plain program             ] untrusted
 #     3. export-json           -> the AST                       ] untrusted
-#     4. emit_deriv.py         -> a `Deriv`, or a named block   ] untrusted
+#     4. emit_deriv.rb         -> a `Deriv`, or a named block   ] untrusted
 #     5. lake exe ratchetd     -> `validateD`'s Bool            ] TRUSTED, and only this
 #
 # ## GREEN and RED

@@ -154,7 +154,7 @@ def ratchet_derive(source: str) -> dict:
         sp.write_text(sigs.stdout)
         ap.write_text(core)
         emit = subprocess.run(
-            [sys.executable, str(ROOT / "ruby-lean/scripts/emit_deriv.py"),
+            [RUBY, str(ROOT / "ruby-lean/scripts/emit_deriv.rb"),
              "--ast", str(ap), "--sigs", str(sp)],
             capture_output=True, text=True, timeout=LONG)
         if emit.returncode != 0:

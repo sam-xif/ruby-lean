@@ -8,7 +8,7 @@ For each `corpus/NNN-id.rb` (Sorbet-annotated) and its `NNN-id.meta.json`:
   1. `srb` over the **annotated** source  -> the signature manifest, and srb's own verdict
   2. the strip stack (`sig_strip` first)  -> the plain program
   3. `export-json` over the stripped one  -> the AST the certificate is about
-  4. `emit_deriv.py`                      -> a `Deriv`, or a named block
+  4. `emit_deriv.rb`                      -> a `Deriv`, or a named block
 
 and writes one `build/NNN-id.rung.json` carrying all of it. Stage 5 -- the only trusted
 one -- is `lake exe ratchetd`, which reads these files and nothing else.
@@ -89,7 +89,7 @@ def build(base: str, corpus: str, outdir: str) -> dict:
         json.dump(sigs, fh, indent=1)
     with open(ap, "w") as fh:
         json.dump(rec["program"], fh)
-    d = subprocess.run([sys.executable, os.path.join(HERE, "emit_deriv.py"),
+    d = subprocess.run(["ruby", os.path.join(HERE, "emit_deriv.rb"),
                         "--ast", ap, "--sigs", sp], capture_output=True, text=True)
     if d.returncode != 0:
         rec["stage"] = "emit"
