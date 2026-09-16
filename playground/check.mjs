@@ -27,8 +27,9 @@
 // ## What it does not cover
 //
 // Rendering. Nothing here constructs a DOM, so `index.html`'s own script -- the
-// stage rail, the verdict box, the step view -- is unexercised. A green
-// run means the pipeline and its plumbing work, not that the page looks right.
+// stage rail, the verdict box, the step view -- is unexercised beyond the
+// static id check below. A green run means the pipeline and its plumbing work,
+// not that the page looks right.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -98,6 +99,25 @@ const ok = (name, cond, detail = "") => {
 const RUNG = process.argv[2] || "063-class-two-getters";
 
 console.log(`checking dist/ against the real modules (rung: ${RUNG})`);
+
+// ── the page's own wiring ───────────────────────────────────────────────────
+// Nothing here renders, so a `$("id")` pointing at an element that no longer
+// exists would sail through every check below. That is the failure mode of
+// moving markup around -- so at least confirm statically that every id the
+// script reaches for is in the document, and that every handler target exists.
+{
+  const html = fs.readFileSync(path.join(DIST, "index.html"), "utf8");
+  const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]));
+  const script = html.slice(html.indexOf('<script type="module">'));
+  const wanted = new Set([...script.matchAll(/\$\("([^"]+)"\)/g)].map((m) => m[1]));
+  const missing = [...wanted].filter((w) => !ids.has(w));
+  ok("every $(id) the script uses exists in the document", missing.length === 0,
+     missing.length ? `missing: ${missing.join(", ")}` : `${wanted.size} ids`);
+  // The overlay is a <dialog>; if that element or its controls went away the
+  // stepper would be unreachable from the page even though the calls work.
+  ok("stepper dialog is present and reachable",
+     /<dialog id="stepper"/.test(html) && ids.has("openstep") && ids.has("closestep"));
+}
 
 const corpus = await call("corpus");
 ok("corpus", Array.isArray(corpus.entries) && corpus.entries.length > 0,

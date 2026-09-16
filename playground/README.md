@@ -16,9 +16,10 @@ annotated Ruby
 Beside it, **Lean model ▶** and **CRuby ▶** run the same program through the
 model and through real CRuby, and say whether their stdout agrees.
 
-And **Step it** walks the model one `stepFn` transition at a time — the control
-state, the call/block frames with their live locals, the continuation stack and
-the accumulated stdout, with `←` / `→` to move. It is a *printer* over the real
+And **Step it ▶** opens an overlay that walks the model one `stepFn` transition
+at a time — the control state, the call/block frames with their live locals, the
+continuation stack and the accumulated stdout. `←` / `→` step while it is open,
+`Esc` or a click outside closes it. It is a *printer* over the real
 `stepFn` (`ruby-lean/RubyCore/Trace.lean` emits every configuration as JSON
 instead of one observation), not a second interpreter, so it has no fragment of
 its own: whatever the model runs, this shows.

@@ -96,6 +96,17 @@
   ol.konts { margin:0; padding-left:20px; font-family:var(--mono); font-size:11.5px;
     color:var(--dim); }
   ol.konts li:first-child { color:var(--fg); }
+  /* the stepper, as an overlay */
+  dialog#stepper { width:min(1100px, 94vw); max-height:88vh; padding:14px 18px 18px;
+    background:var(--bg); color:var(--fg); border:1px solid var(--edge);
+    border-radius:12px; box-shadow:0 24px 70px #000a; overflow:auto; }
+  dialog#stepper::backdrop { background:#000a; backdrop-filter:blur(2px); }
+  dialog#stepper .dhead { display:flex; align-items:baseline; gap:10px;
+    padding-bottom:10px; margin-bottom:4px; border-bottom:1px solid var(--edge);
+    flex-wrap:wrap; }
+  dialog#stepper .dbody { display:grid; grid-template-columns:1fr 1fr; gap:0 22px;
+    align-items:start; }
+  @media (max-width:860px) { dialog#stepper .dbody { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -153,37 +164,13 @@
     <div class="row">
       <button class="ghost" id="model">Lean model ▶</button>
       <button class="ghost" id="cruby">CRuby ▶</button>
+      <button class="ghost" id="openstep" title="walk the model one stepFn transition at a time">Step it ▶</button>
       <span class="pill" id="agree">—</span>
     </div>
     <pre class="out tall" id="modelout"><span class="empty">— press “Lean model”</span></pre>
     <pre class="out tall" id="crubyout" style="margin-top:8px"><span class="empty">— press “CRuby”</span></pre>
 
-    <h2>Step it <span class="hint">— one <code>stepFn</code> transition at a time</span></h2>
-    <div class="row">
-      <button class="ghost" id="step">Trace ▶</button>
-      <button class="ghost" id="count" title="how many steps does this program take?">count steps</button>
-      <label class="hint">start at <input id="at" size="12" placeholder="send .bump("></label>
-      <label class="hint">or step <input id="from" size="5" placeholder="0"></label>
-      <span class="hint" id="stepmsg"></span>
-    </div>
-    <div class="row stepbar">
-      <button class="ghost" id="first">⏮</button>
-      <button class="ghost" id="prev">◀</button>
-      <input type="range" id="slider" min="0" max="0" value="0">
-      <button class="ghost" id="next">▶</button>
-      <button class="ghost" id="last">⏭</button>
-      <span class="counter" id="counter">—</span>
-      <span class="status" id="tstatus"></span>
-    </div>
-    <div class="ctl" id="ctl">Trace a program to begin.</div>
-    <div id="excbox"></div>
-    <h2>Call stack <span class="hint">— top frame first</span></h2>
-    <div id="frames"><span class="empty">— no trace</span></div>
-    <h2>Continuations <span class="hint">— what happens after</span></h2>
-    <ol class="konts" id="konts"><li class="empty">— no trace</li></ol>
-    <h2>stdout so far</h2>
-    <pre class="out" id="tout"><span class="empty">—</span></pre>
-    <div class="hint" id="tdetail"></div>
+
   </div>
 </div>
 
@@ -416,7 +403,7 @@ $("step").onclick = async () => {
   $("stepmsg").textContent = "tracing…";
   try {
     const d = await call("trace", {
-      source: program(), max: 400,
+      source: program(), max: parseInt($("max").value, 10) || 400,
       at: $("at").value.trim(), from: parseInt($("from").value, 10) || 0,
     });
     if (d.error) { trace = null; $("stepmsg").textContent = ""; return showErr(d); }
@@ -476,13 +463,27 @@ function renderStep() {
   $("tdetail").textContent = last && trace.detail ? `result: ${trace.detail}` : "";
 }
 
+const dlg = $("stepper");
+$("openstep").onclick = () => {
+  dlg.showModal();
+  // Opening with nothing to show is a dead end; trace straight away the first time.
+  if (!trace) $("step").click();
+};
+$("closestep").onclick = () => dlg.close();
+// Click outside the panel closes it. `<dialog>` reports backdrop clicks as
+// clicks on the dialog itself, so the target check is the whole test.
+dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
+
 const goto_ = (n) => { if (trace) { at = n; renderStep(); } };
 $("first").onclick = () => goto_(0);
 $("prev").onclick = () => goto_(at - 1);
 $("next").onclick = () => goto_(at + 1);
 $("last").onclick = () => goto_(trace ? trace.steps.length - 1 : 0);
 $("slider").oninput = (e) => goto_(+e.target.value);
+// Arrows step, but only while the overlay is up -- otherwise they would fight
+// the page's own text fields. Esc is `<dialog>`'s own and needs no handler.
 document.addEventListener("keydown", (e) => {
+  if (!dlg.open) return;
   if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
   if (e.key === "ArrowLeft") { goto_(at - 1); e.preventDefault(); }
   if (e.key === "ArrowRight") { goto_(at + 1); e.preventDefault(); }
@@ -541,5 +542,51 @@ reset();
 loadCorpus();
 prewarm();
 </script>
+<dialog id="stepper">
+  <div class="dhead">
+    <b>Step it</b>
+    <span class="hint">one <code>stepFn</code> transition at a time — a printer over the
+      real machine, so whatever the model runs, this shows</span>
+    <span class="grow"></span>
+    <span class="hint" id="stepmsg"></span>
+    <button class="ghost" id="closestep" title="Esc">✕</button>
+  </div>
+
+  <div class="row">
+    <button class="ghost" id="step">Trace ▶</button>
+    <button class="ghost" id="count" title="how many steps does this program take?">count steps</button>
+    <label class="hint">start at <input id="at" size="14" placeholder="send .bump("></label>
+    <label class="hint">or step <input id="from" size="6" placeholder="0"></label>
+    <label class="hint">window <input id="max" size="5" value="400"></label>
+  </div>
+
+  <div class="row stepbar">
+    <button class="ghost" id="first">⏮</button>
+    <button class="ghost" id="prev">◀</button>
+    <input type="range" id="slider" min="0" max="0" value="0">
+    <button class="ghost" id="next">▶</button>
+    <button class="ghost" id="last">⏭</button>
+    <span class="counter" id="counter">—</span>
+    <span class="status" id="tstatus"></span>
+  </div>
+
+  <div class="ctl" id="ctl">Trace a program to begin.</div>
+  <div id="excbox"></div>
+
+  <div class="dbody">
+    <div>
+      <h2>Call stack <span class="hint">— top frame first</span></h2>
+      <div id="frames"><span class="empty">— no trace</span></div>
+    </div>
+    <div>
+      <h2>Continuations <span class="hint">— what happens after</span></h2>
+      <ol class="konts" id="konts"><li class="empty">— no trace</li></ol>
+      <h2>stdout so far</h2>
+      <pre class="out" id="tout"><span class="empty">—</span></pre>
+      <div class="hint" id="tdetail"></div>
+    </div>
+  </div>
+</dialog>
+
 </body>
 </html>
