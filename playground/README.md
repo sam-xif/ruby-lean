@@ -16,6 +16,19 @@ annotated Ruby
 Beside it, **Lean model ▶** and **CRuby ▶** run the same program through the
 model and through real CRuby, and say whether their stdout agrees.
 
+And **Step it** walks the model one `stepFn` transition at a time — the control
+state, the call/block frames with their live locals, the continuation stack and
+the accumulated stdout, with `←` / `→` to move. It is a *printer* over the real
+`stepFn` (`ruby-lean/RubyCore/Trace.lean` emits every configuration as JSON
+instead of one observation), not a second interpreter, so it has no fragment of
+its own: whatever the model runs, this shows.
+
+A whole-program trace is only viable for a toy, so the window controls matter —
+**count steps** says how long the program is, **start at** takes a substring of
+the rendered control (`send .bump(`) and stops at the first step containing it,
+and **or step** jumps to an index. On anything real those are the difference
+between a usable view and four thousand steps of prelude boot.
+
 ## Two ways to run it
 
 Same `index.html` both times. The only difference is who executes the stages.
@@ -67,10 +80,10 @@ real thing and says so.
 | `index.html` | the page: five stages, two run buttons, no tabs |
 | `js/wasi.js` | a WASI preview1 shim, sized to these five jobs. No filesystem — `ruby.wasm` carries its own via wasi-vfs |
 | `js/worker.js` | runs the modules off the main thread and caches compiled ones |
-| `js/backend.js` | the seam: nine calls, answered by wasm or by `server.py` |
+| `js/backend.js` | the seam: eleven calls, answered by wasm or by `server.py` |
 | `build.sh` | assembles `dist/` and `dist.tar.gz` |
 | `mkcorpus.py` | bakes all 259 rungs (metadata, source, recorded verdict) into one `corpus.json` |
-| `server.py` | the localhost fallback, nine matching routes |
+| `server.py` | the localhost fallback, eleven matching routes |
 | `check.mjs` | drives the built `dist/` headlessly against the real modules |
 
 ## Checking it
@@ -80,8 +93,8 @@ real thing and says so.
 ```
 
 Imports the real `backend.js` / `worker.js` / `wasi.js` out of `dist/` and runs
-all nine calls against the real wasm, including that a recorded Sorbet verdict
-is withdrawn once the buffer is edited. The node flag enables the standard wasm
+all eleven calls against the real wasm — including the trace window controls,
+and that a recorded Sorbet verdict is withdrawn once the buffer is edited. The node flag enables the standard wasm
 exception encoding; browsers need nothing.
 
 It stubs four browser globals, and stubs them *carefully*: `fetch` resolves

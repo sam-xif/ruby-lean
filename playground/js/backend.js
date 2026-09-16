@@ -1,6 +1,6 @@
 // The one seam between the page and whatever is executing the pipeline.
 //
-// Two backends answer the same nine calls:
+// Two backends answer the same eleven calls:
 //
 //   wasm    the modules in `wasm/`, run in a worker. No server. This is what
 //           GitHub Pages serves.
@@ -198,6 +198,33 @@ const wasmBackend = {
     return { ...json(r.stdout, "rubycore"), ms: r.ms };
   },
 
+  // The stepper. `RubyCore/Trace.lean` emits every configuration as JSON
+  // instead of a single observation; the window controls exist because a whole
+  // program trace is only viable for a toy (the linked Homebrew slice is
+  // 825,259 steps and a snapshot is about a kilobyte).
+  async trace({ source, max = 400, at = "", from = 0 }) {
+    const des = await desugar(source);
+    if (des.error) return des;
+    const args = ["--trace", String(max)];
+    if (at) args.push("--trace-at", at);
+    else if (from) args.push("--trace-from", String(from));
+    const r = await exec("rubycore", args, des.core);
+    if (r.exitCode !== 0) {
+      return { error: "lean", message: r.stderr.trim().slice(0, 1000) || `exit ${r.exitCode}` };
+    }
+    return { ...json(r.stdout, "trace"), ast: json(des.core, "desugar").ast, ms: r.ms };
+  },
+
+  async steps({ source }) {
+    const des = await desugar(source);
+    if (des.error) return des;
+    const r = await exec("rubycore", ["--steps"], des.core);
+    if (r.exitCode !== 0) {
+      return { error: "lean", message: r.stderr.trim().slice(0, 1000) || `exit ${r.exitCode}` };
+    }
+    return { ...json(r.stdout, "steps"), ms: r.ms };
+  },
+
   async cruby({ source }) {
     const r = await exec("ruby", [], source);
     return { stdout: r.stdout, stderr: r.stderr, returncode: r.exitCode, ms: r.ms };
@@ -227,6 +254,8 @@ const serverBackend = {
   derive: (b) => post("/ratchet/derive", b),
   validate: (b) => post("/ratchet/validate", b),
   model: (b) => post("/ratchet/model", b),
+  trace: (b) => post("/ratchet/trace", b),
+  steps: (b) => post("/ratchet/steps", b),
   cruby: (b) => post("/ratchet/cruby", b),
 };
 

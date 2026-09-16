@@ -16,9 +16,9 @@ Needs CRuby 4.0.x on PATH (or $RUBY / brew) and a built `ruby-lean`:
 
     cd ../ruby-lean && lake build
 
-Nine routes, matching `js/backend.js`'s nine calls exactly. The stepper, the
+Eleven routes, matching `js/backend.js`'s eleven calls exactly. The
 static-query flags and the Homebrew slice explorer that used to live here are
-gone with the tabs they served.
+gone; the stepper is back, because the trace is the semantics made visible.
 
 **Restart it after editing this file.** There is no reloader.
 """
@@ -54,6 +54,53 @@ def find_ruby() -> str:
     except Exception:
         pass
     return shutil.which("ruby") or "ruby"
+
+
+def trace_run(source: str, cap, at: str, frm) -> dict:
+    """`rubycore --trace` — `RubyCore/Trace.lean` emits every configuration as
+    JSON instead of a single observation. The window controls are not a
+    nicety: a whole-program trace is only viable for a toy."""
+    core, err = desugar(source)
+    if err:
+        return err
+    argv = [str(RUBYCORE), "--trace", str(int(cap))]
+    if at:
+        argv += ["--trace-at", str(at)]
+    elif frm:
+        argv += ["--trace-from", str(int(frm))]
+    try:
+        lean = subprocess.run(argv, input=core, capture_output=True, text=True, timeout=LONG)
+    except subprocess.TimeoutExpired:
+        return {"error": "timeout", "message": f"trace timed out after {LONG}s"}
+    if lean.returncode != 0:
+        return {"error": "lean", "message": lean.stderr.strip()[:1000] or f"exit {lean.returncode}"}
+    try:
+        out = json.loads(lean.stdout)
+    except ValueError as e:
+        return {"error": "lean", "message": f"unparseable trace: {e}"}
+    try:
+        out["ast"] = json.loads(core).get("ast")
+    except ValueError:
+        pass
+    return out
+
+
+def steps_run(source: str) -> dict:
+    """How long is this program? The number a trace window is chosen against."""
+    core, err = desugar(source)
+    if err:
+        return err
+    try:
+        lean = subprocess.run([str(RUBYCORE), "--steps"], input=core,
+                              capture_output=True, text=True, timeout=LONG)
+    except subprocess.TimeoutExpired:
+        return {"error": "timeout", "message": f"step count timed out after {LONG}s"}
+    if lean.returncode != 0:
+        return {"error": "lean", "message": lean.stderr.strip()[:1000] or f"exit {lean.returncode}"}
+    try:
+        return json.loads(lean.stdout)
+    except ValueError as e:
+        return {"error": "lean", "message": f"unparseable step count: {e}"}
 
 
 RUBY = find_ruby()
@@ -314,6 +361,9 @@ ROUTES = {
     "/ratchet/derive":        lambda q: ratchet_derive(q.get("source", "")),
     "/ratchet/validate":      lambda q: ratchet_validate(q.get("source", ""), q.get("deriv")),
     "/ratchet/model":         lambda q: model_run(q.get("source", "")),
+    "/ratchet/trace":         lambda q: trace_run(q.get("source", ""), q.get("max", 400),
+                                                  q.get("at", ""), q.get("from", 0)),
+    "/ratchet/steps":         lambda q: steps_run(q.get("source", "")),
     "/ratchet/cruby":         lambda q: cruby_run(q.get("source", "")),
 }
 

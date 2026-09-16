@@ -7,7 +7,7 @@
 // compiled with and which Chrome, Firefox and Safari have shipped.)
 //
 // This imports the *actual* `backend.js`, `worker.js` and `wasi.js` out of
-// `dist/` and runs all nine calls against the real modules. It is not a mock of
+// `dist/` and runs all eleven calls against the real modules. It is not a mock of
 // the pipeline; the only things stubbed are the four browser globals the code
 // touches.
 //
@@ -27,7 +27,7 @@
 // ## What it does not cover
 //
 // Rendering. Nothing here constructs a DOM, so `index.html`'s own script -- the
-// stage rail, the verdict box, the s-expression view -- is unexercised. A green
+// stage rail, the verdict box, the step view -- is unexercised. A green
 // run means the pipeline and its plumbing work, not that the page looks right.
 
 import fs from "node:fs";
@@ -130,6 +130,27 @@ const cruby = await call("cruby", { source: st.source });
 ok("model", !model.error, `result ${model.result_repr}`);
 ok("cruby", !cruby.error, `exit ${cruby.returncode}`);
 ok("model and oracle agree on stdout", (model.stdout ?? null) === (cruby.stdout ?? null));
+
+// The stepper: `RubyCore/Trace.lean` emitting every configuration, which is the
+// same `stepFn` the differential tests run against CRuby.
+const steps = await call("steps", { source: st.source });
+ok("step count", typeof steps.steps === "number", `${steps.steps} steps, ${steps.status}`);
+
+const tr = await call("trace", { source: st.source, max: 400 });
+ok("trace", Array.isArray(tr.steps) && tr.steps.length > 0, `${tr.steps?.length} snapshots`);
+const snap = tr.steps?.[0] ?? {};
+ok("snapshot shape",
+   typeof snap.ctl === "string" && Array.isArray(snap.frames) && Array.isArray(snap.konts),
+   `ctl=${JSON.stringify(snap.ctl)}`);
+ok("frames carry locals and self",
+   snap.frames.length > 0 && "self" in snap.frames[0] && "locals" in snap.frames[0]);
+
+// The window controls, which are what make a trace usable on anything real.
+const win = await call("trace", { source: st.source, max: 3, from: 10 });
+ok("--trace-from", win.first_step === 10, `first_step=${win.first_step}`);
+const atRun = await call("trace", { source: st.source, max: 3, at: "send ." });
+ok("--trace-at", (atRun.steps?.[0]?.ctl || "").includes("send ."),
+   `first_step=${atRun.first_step} ctl=${JSON.stringify(atRun.steps?.[0]?.ctl)}`);
 
 // The obligation from the Sorbet substitution: a recorded verdict is true of the
 // rung as stored and of nothing else, so an edit must withdraw it.

@@ -73,6 +73,29 @@
     margin:10px 0; white-space:pre-wrap; }
   .note { color:var(--dim); font-size:11.5px; margin:6px 0 0; }
   a { color:var(--accent); }
+  /* the stepper */
+  .stepbar input[type=range] { flex:1; accent-color:var(--accent); min-width:80px; }
+  .counter { font-family:var(--mono); color:var(--dim); font-size:12px; min-width:92px; }
+  .status { font-family:var(--mono); font-size:12px; padding:2px 7px; border-radius:5px; }
+  .status.done { color:var(--good); } .status.uncaught,.status.stuck { color:var(--bad); }
+  .status.unsupported,.status.step-cap { color:var(--warn); }
+  .ctl { font-family:var(--mono); font-size:14px; background:var(--panel2);
+    border:1px solid var(--edge); border-left:3px solid var(--accent);
+    border-radius:6px; padding:9px 11px; margin:6px 0 12px; word-break:break-word; }
+  .frame { background:var(--panel); border:1px solid var(--edge); border-radius:7px;
+    padding:7px 9px; margin-bottom:7px; }
+  .frame.top { border-color:var(--accent); }
+  .frame .fh { display:flex; gap:7px; align-items:center; font-family:var(--mono);
+    font-size:11.5px; margin-bottom:4px; flex-wrap:wrap; }
+  .badge { font-size:10px; padding:1px 6px; border-radius:4px; background:var(--panel2);
+    color:var(--dim); }
+  .badge.method { color:var(--accent); } .badge.block { color:var(--good); }
+  .locals { display:grid; grid-template-columns:auto 1fr; gap:2px 12px;
+    font-family:var(--mono); font-size:11.5px; }
+  .locals .k { color:var(--warn); } .locals .v { color:var(--fg); word-break:break-word; }
+  ol.konts { margin:0; padding-left:20px; font-family:var(--mono); font-size:11.5px;
+    color:var(--dim); }
+  ol.konts li:first-child { color:var(--fg); }
 </style>
 </head>
 <body>
@@ -134,6 +157,33 @@
     </div>
     <pre class="out tall" id="modelout"><span class="empty">— press “Lean model”</span></pre>
     <pre class="out tall" id="crubyout" style="margin-top:8px"><span class="empty">— press “CRuby”</span></pre>
+
+    <h2>Step it <span class="hint">— one <code>stepFn</code> transition at a time</span></h2>
+    <div class="row">
+      <button class="ghost" id="step">Trace ▶</button>
+      <button class="ghost" id="count" title="how many steps does this program take?">count steps</button>
+      <label class="hint">start at <input id="at" size="12" placeholder="send .bump("></label>
+      <label class="hint">or step <input id="from" size="5" placeholder="0"></label>
+      <span class="hint" id="stepmsg"></span>
+    </div>
+    <div class="row stepbar">
+      <button class="ghost" id="first">⏮</button>
+      <button class="ghost" id="prev">◀</button>
+      <input type="range" id="slider" min="0" max="0" value="0">
+      <button class="ghost" id="next">▶</button>
+      <button class="ghost" id="last">⏭</button>
+      <span class="counter" id="counter">—</span>
+      <span class="status" id="tstatus"></span>
+    </div>
+    <div class="ctl" id="ctl">Trace a program to begin.</div>
+    <div id="excbox"></div>
+    <h2>Call stack <span class="hint">— top frame first</span></h2>
+    <div id="frames"><span class="empty">— no trace</span></div>
+    <h2>Continuations <span class="hint">— what happens after</span></h2>
+    <ol class="konts" id="konts"><li class="empty">— no trace</li></ol>
+    <h2>stdout so far</h2>
+    <pre class="out" id="tout"><span class="empty">—</span></pre>
+    <div class="hint" id="tdetail"></div>
   </div>
 </div>
 
@@ -356,6 +406,88 @@ $("cruby").onclick = async () => {
   agree();
 };
 
+// ── the stepper ────────────────────────────────────────────────────────────
+// The trace is a *printer* over the real `stepFn` — not a second interpreter —
+// so it has no fragment of its own: whatever the model runs, this shows.
+let trace = null, at = 0;
+
+$("step").onclick = async () => {
+  $("step").disabled = true;
+  $("stepmsg").textContent = "tracing…";
+  try {
+    const d = await call("trace", {
+      source: program(), max: 400,
+      at: $("at").value.trim(), from: parseInt($("from").value, 10) || 0,
+    });
+    if (d.error) { trace = null; $("stepmsg").textContent = ""; return showErr(d); }
+    trace = d; at = 0;
+    if (!trace.steps || !trace.steps.length) {
+      // A window that matched nothing is not an error: the program ended some
+      // other way, and the status says how.
+      $("stepmsg").textContent = `no steps in window — ${d.status}`;
+      $("ctl").textContent = d.detail || d.status;
+      return;
+    }
+    $("slider").max = trace.steps.length - 1;
+    $("stepmsg").textContent = d.ms ? `${d.ms} ms` : "";
+    renderStep();
+  } finally { $("step").disabled = false; }
+};
+
+$("count").onclick = async () => {
+  $("stepmsg").textContent = "counting…";
+  const d = await call("steps", { source: program() });
+  if (d.error) { $("stepmsg").textContent = ""; return showErr(d); }
+  $("stepmsg").textContent = `${d.steps.toLocaleString()} steps · ${d.status}`;
+};
+
+function renderStep() {
+  if (!trace || !trace.steps.length) return;
+  at = Math.max(0, Math.min(at, trace.steps.length - 1));
+  const s = trace.steps[at];
+  $("slider").value = at;
+  const base = trace.first_step || 0;
+  $("counter").textContent = base
+    ? `step ${(base + at).toLocaleString()} (${at}/${trace.steps.length - 1} in window)`
+    : `step ${at} / ${trace.steps.length - 1}`;
+  $("ctl").textContent = s.ctl;
+  $("tout").textContent = s.out || "";
+  $("excbox").innerHTML = s.exc
+    ? `<div class="ctl" style="border-left-color:var(--bad)">$! ${esc(s.exc)}</div>` : "";
+
+  $("frames").innerHTML = (s.frames || []).map((f, i) => {
+    const locals = (f.locals || []).length
+      ? `<div class="locals">` + f.locals.map((l) =>
+          `<span class="k">${esc(l.name)}</span><span class="v">${esc(l.val)}</span>`).join("") + `</div>`
+      : `<div class="empty">no locals</div>`;
+    const badges = [`<span class="badge ${f.kind}">${esc(f.kind)} #${esc(f.id)}</span>`,
+      f.blk ? `<span class="badge">${esc(f.blk)}</span>` : "",
+      f.lam ? `<span class="badge">${esc(f.lam)}</span>` : ""].join("");
+    return `<div class="frame ${i === 0 ? "top" : ""}">` +
+      `<div class="fh">${badges}<span class="badge">self ${esc(f.self)}</span></div>${locals}</div>`;
+  }).join("") || '<span class="empty">no frames</span>';
+
+  $("konts").innerHTML = (s.konts || []).map((k) => `<li>${esc(k)}</li>`).join("")
+    || '<li class="empty">empty — the program will finish</li>';
+
+  const last = at === trace.steps.length - 1;
+  $("tstatus").className = "status " + (last ? trace.status || "" : "");
+  $("tstatus").textContent = last ? trace.status : "";
+  $("tdetail").textContent = last && trace.detail ? `result: ${trace.detail}` : "";
+}
+
+const goto_ = (n) => { if (trace) { at = n; renderStep(); } };
+$("first").onclick = () => goto_(0);
+$("prev").onclick = () => goto_(at - 1);
+$("next").onclick = () => goto_(at + 1);
+$("last").onclick = () => goto_(trace ? trace.steps.length - 1 : 0);
+$("slider").oninput = (e) => goto_(+e.target.value);
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT") return;
+  if (e.key === "ArrowLeft") { goto_(at - 1); e.preventDefault(); }
+  if (e.key === "ArrowRight") { goto_(at + 1); e.preventDefault(); }
+});
+
 // ── the corpus ─────────────────────────────────────────────────────────────
 let entries = {};
 async function loadCorpus() {
@@ -379,6 +511,11 @@ $("load").onclick = async () => {
   $("verdict").innerHTML = '<span class="empty">— derive, then run stage 4</span>';
   $("stripmsg").textContent = ""; $("sigmsg").textContent = "";
   lastModel = lastCruby = null; agree();
+  trace = null; $("ctl").textContent = "Trace a program to begin.";
+  $("frames").innerHTML = '<span class="empty">— no trace</span>';
+  $("konts").innerHTML = '<li class="empty">— no trace</li>';
+  $("tout").textContent = ""; $("counter").textContent = "—";
+  $("tstatus").textContent = ""; $("tdetail").textContent = ""; $("stepmsg").textContent = "";
   reset();
   const e = entries[$("corpus").value] || {};
   expect = e.expect_validate === undefined ? null : e.expect_validate;
