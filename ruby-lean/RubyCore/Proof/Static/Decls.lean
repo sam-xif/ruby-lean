@@ -1700,7 +1700,7 @@ harder in two places, and to need one thing `DeclsOk_addRow` did not.
 
 Kept here rather than in `RubyCore/Cert/` because every one of these is a fact
 about `addRow`/`declFor`/`DeclsOk`, i.e. about the existing machinery
-(`docs/semantics/certificate-language.md` §7 norm 7). The `nomTy` half of the
+(the certificate-language norms, norm 7). The `nomTy` half of the
 bridge — *the singleton is `nomTy c`* — lives in `Types/Assn.lean`, where both
 functions are in scope. -/
 
@@ -2813,7 +2813,7 @@ def NamesUnique (h : Heap) : Prop :=
     cpj.name = cpk.name → cpj.name.data.head? ≠ some '#' → j = k
 
 /-- **A program class's (qualified) name pins an id** (M2,
-    `docs/semantics/typing-the-slice-milestones.md` §4): the corollary of
+    milestone **M2**): the corollary of
     `NamesUnique` stated over `className` rather than the raw payload, which is
     the form a certificate-declared name (`Outer::Inner`, never `#<Class:…>`)
     is read at. `Decls.supers`' docstring names the general problem this closes:

@@ -1,6 +1,6 @@
 /-
 Concrete type-safety of the `q_learning_extended` demo, by EXECUTION
-(Direction A of `type-safety-by-reachability.md` §3).
+(Direction A of `AGENTS.md` §Type safety as reachability §3).
 
 This file leverages `run_value_type_safe`: a run that terminates in a value
 reaches a non-type-stuck outcome.  We discharge its hypothesis

@@ -10,8 +10,8 @@ exactly that reason. What *is* computable is the **refutation**: pick some argum
 proc, look at what came back. If the result is outside the codomain, the arrow is false, and
 the argument tuple is the counterexample.
 
-That is the same shape as the rest of this project's checking story — `../bounded-effect-checking.md`'s
-bounded model checker and `../type-safety-by-reachability.md`'s witness-finding direction both
+That is the same shape as the rest of this project's checking story — the bounded-effect-checking note's
+bounded model checker and `AGENTS.md` §Type safety as reachability's witness-finding direction both
 run the semantics to *find* a bad state rather than to prove there is none — applied to
 arrows. `arrowCheck` is therefore stated and proved in the only direction that is honest:
 
@@ -91,7 +91,7 @@ theorem arrowCheck_of_arrowFlat {fuel : Nat} {ps : List Ty} {r : Ty} {m : Machin
 
 /-- **The usable direction**: a failed check refutes the arrow. The `samples` list that
 produced the `false` *is* the counterexample — which sample failed is read off by re-running
-`arrowSample`, exactly as `../type-safety-by-reachability.md`'s witness direction reads its
+`arrowSample`, exactly as `AGENTS.md` §Type safety as reachability's witness direction reads its
 trace off the run that found it. -/
 theorem not_arrowFlat_of_arrowCheck_false {fuel : Nat} {ps : List Ty} {r : Ty} {m : Machine}
     {f : Value} {samples : List (List Value)} (hr : FirstOrder r = true)

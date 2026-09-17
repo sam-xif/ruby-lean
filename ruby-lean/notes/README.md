@@ -20,5 +20,13 @@ this one. **Backticked paths inside them are relative to the package root**
 paths inside the historical narrative were not, so a sentence about "this
 package" in an old entry may mean the checker's package as it then was.
 
+These files also cite the design documents that used to live in a central
+`docs/` directory, by bare filename (`static-soundness-poc.md`,
+`certificate-language.md`, `slot-frame.md`, …). That directory is gone: what was
+still true was folded into the localized READMEs, and the rest was deleted.
+[`../AGENTS.md`](../AGENTS.md) §*Superseded design notes* is the index — one line
+per document on what it was — and the full text is in the git history.
+
 The current state, not the history, is in [`../AGENTS.md`](../AGENTS.md) (the
-checker) and [`../README.md`](../README.md) (the model and the layout).
+checker), [`../README.md`](../README.md) (the model's layout and build) and
+[`../RubyCore/README.md`](../RubyCore/README.md) (the semantics itself).

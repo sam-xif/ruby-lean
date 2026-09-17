@@ -3,7 +3,7 @@ import RubyCore.Heap
 /-!
 # Heap facts for `TableOk` under `defineMethod`
 
-`docs/semantics/static-soundness-poc.md` §8.3. P1b's remaining obligation: a
+P1b's remaining obligation: a
 user `def` mutates the method table (`Interp.lean:2615`), so `Inv`'s `TableOk`
 conjunct — "the tabulated `Integer` builtins still resolve" — has to survive it.
 

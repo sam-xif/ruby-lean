@@ -4,7 +4,7 @@
 > `bootstraptest/` corpus (prong 1) as the coverage target. Data-driven: expansion is
 > prioritized by measured blocker impact, not guesswork.
 >
-> References: `../../docs/semantics/06-desugaring-and-its-testing.md` (§4 corpus, §5
+> References: [`README.md`](README.md) §The method (§06 §4 corpus, §06 §5
 > coverage, §7 exit criterion), `PROCEDURE-authoring-semantics.md`, `implementation-choices.md`.
 
 ## 1. Reframe the target: "100% of the *in-scope* subset"
@@ -12,7 +12,7 @@
 Literal 100% of bootstraptest is neither achievable nor desirable: the suite deliberately
 exercises VM internals (`eval` of strings, threads/`Ractor`/GC, `ObjectSpace`, backtick
 shell-out, flip-flops, `__method__`/backrefs) that are **out of scope by design**
-(PROJECT_PLAN §4, artifact 00 §6). So the target is:
+(`RubyCore/README.md` 00 §6, artifact 00 §6). So the target is:
 
 ```
   coverage  =  (in-fragment AND round-trip-agree)  /  (harvested_total − explicitly_out_of_scope)

@@ -44,7 +44,7 @@ if [[ $WITH_DIFFTEST == 1 ]]; then
   step "4. differential test: the Lean model vs CRuby over MRI's bootstraptest"
   # The corpus is *harvested*, not vendored: MRI's bootstraptest suite is not part
   # of an installed Ruby and is not ours to ship. One sparse clone gets it.
-  CORPUS="$ROOT/harness/desugar-dt/corpus/bootstraptest"
+  CORPUS="$ROOT/desugar-dt/corpus/bootstraptest"
   if [[ ! -d "$CORPUS" ]]; then
     RUBY_SRC="${RUBY_SRC:-/tmp/ruby-src}"
     echo "no bootstraptest corpus yet — harvesting it into ${CORPUS}"
@@ -53,7 +53,7 @@ if [[ $WITH_DIFFTEST == 1 ]]; then
       git clone --depth 1 --filter=blob:none --sparse https://github.com/ruby/ruby "$RUBY_SRC"
       ( cd "$RUBY_SRC" && git sparse-checkout set bootstraptest )
     fi
-    "$ROOT/harness/desugar-dt/bin/harvest_bootstraptest" "$RUBY_SRC/bootstraptest"
+    "$ROOT/desugar-dt/bin/harvest_bootstraptest" "$RUBY_SRC/bootstraptest"
   fi
   ( cd "$ROOT/difftest" && uv sync --quiet && uv run python -m difftest run --tier 0 --sut lean )
 fi

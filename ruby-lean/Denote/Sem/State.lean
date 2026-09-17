@@ -41,7 +41,7 @@ model's own iteration discipline.
 is stated over `.value` outcomes only: `Ty` has no totality or effect discipline, and
 `Ty.never` — the type of an expression that *does not return* — is defined by exactly this
 asymmetry. Ruling out the type-stuck outcomes is a **different theorem** on a different axis
-(`../type-safety-by-reachability.md`, and `Semantics/Interp.lean`'s `typeStuck`), and mixing
+(`AGENTS.md` §Type safety as reachability, and `Semantics/Interp.lean`'s `typeStuck`), and mixing
 the two into one obligation would make every rung carry both burdens at once. `StuckFree`
 below states that axis so it is on file rather than implied, and nothing in the ladder uses
 it yet.
@@ -91,7 +91,7 @@ def Evals (m : Machine) (e : Ratchet.Expr) (v : Value) (m' : Machine) : Prop :=
 
 /-- **The other axis, stated and unused.** Evaluating `e` from `m` never lands on a type-stuck
 outcome — the `NoMethodError`/`ArgumentError`/`TypeError` family `Semantics/Interp.lean`'s
-`typeStuck` names. This is what `../type-safety-by-reachability.md` is about, and it is
+`typeStuck` names. This is what `AGENTS.md` §Type safety as reachability is about, and it is
 deliberately *not* part of `SemJudge`: a rung that had to prove both value-typing and
 stuck-freedom would be two rungs wearing one number. Kept here so the second axis is on file
 with the first, and so the eventual composed statement has a name to compose. -/

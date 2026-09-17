@@ -10,7 +10,7 @@ import Ratchet.InheritanceControls
 /-!
 Negative controls for `validateD`.
 
-`answer-typed-schema.md` §8.10 asks for these from day one, and the reason is blunt: **a
+`AGENTS.md` §The answer-typed design §8.10 asks for these from day one, and the reason is blunt: **a
 checker that accepts everything satisfies its soundness statement just as well.** `check`
 now returns the derivation (`Ratchet/Check.lean` §3), so "sound" is not the question these
 controls answer — the typechecker answered it. What they answer is the other two:
@@ -19,7 +19,7 @@ controls answer — the typechecker answered it. What they answer is the other t
   wrong claimed type)
 * is the **typing** real? (§4 — the control that flipped)
 
-`#guard`, not `native_decide`: `certificate-language.md` §7 norm 5 forbids the latter on
+`#guard`, not `native_decide`: the certificate-language note §7 norm 5 forbids the latter on
 anything the checker's answer depends on.
 -/
 

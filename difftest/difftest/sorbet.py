@@ -1,8 +1,7 @@
 """The Sorbet toolchain: static checker (`srb tc`) and runtime (`sorbet-runtime`).
 
 Sorbet has *two* halves, and the whole point of the Sorbet difftest work is
-that they are separate objects of study (`../docs/semantics/types-and-preservation.md`
-§A.3/§A.5):
+that they are separate objects of study (`../ruby-lean/AGENTS.md` §Sorbet §A.3/§A.5):
 
 - **static** — `srb tc` accepts or rejects a program. Sorbet is unsound by
   design, so acceptance is *not* a safety claim; this module exposes it as an
@@ -293,7 +292,7 @@ class FragmentChecker:
     def __init__(self, harness_lib: Path | None = None, lean_bin: Path | None = None,
                  runner: CRubyRunner | None = None):
         root = Path(__file__).resolve().parents[2]
-        self.harness_lib = Path(harness_lib) if harness_lib else root / "harness" / "desugar-dt" / "lib"
+        self.harness_lib = Path(harness_lib) if harness_lib else root / "desugar-dt" / "lib"
         self.lean_bin = Path(lean_bin) if lean_bin else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
         self.runner = runner or CRubyRunner()
 
@@ -366,7 +365,7 @@ class StaticChecker:
     def __init__(self, harness_lib: Path | None = None, lean_bin: Path | None = None,
                  runner: CRubyRunner | None = None):
         root = Path(__file__).resolve().parents[2]
-        self.harness_lib = Path(harness_lib) if harness_lib else root / "harness" / "desugar-dt" / "lib"
+        self.harness_lib = Path(harness_lib) if harness_lib else root / "desugar-dt" / "lib"
         self.lean_bin = Path(lean_bin) if lean_bin else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
         self.runner = runner or CRubyRunner()
 
@@ -409,7 +408,7 @@ class SigReader:
     def __init__(self, harness_lib: Path | None = None, lean_bin: Path | None = None,
                  runner: CRubyRunner | None = None):
         root = Path(__file__).resolve().parents[2]
-        self.harness_lib = Path(harness_lib) if harness_lib else root / "harness" / "desugar-dt" / "lib"
+        self.harness_lib = Path(harness_lib) if harness_lib else root / "desugar-dt" / "lib"
         self.lean_bin = Path(lean_bin) if lean_bin else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
         self.runner = runner or CRubyRunner()
 
@@ -470,7 +469,7 @@ print Export.json(core)
 # class. It is more robust, but it *changes the program's semantics* — a program
 # under test may itself `rescue TypeError`, and the corpus deliberately contains
 # such programs (a locally-rescued sig violation is a type-safe program, exactly
-# the `raised != stuck` point of type-safety-by-reachability.md §2). Classifying
+# the `raised != stuck` point of `../ruby-lean/AGENTS.md` §Type safety as reachability §2). Classifying
 # after the fact leaves the observed behavior untouched.
 _SIG_ERROR_PATTERNS = (
     "Parameter '",            # CallValidation: argument type check

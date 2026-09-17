@@ -19,7 +19,7 @@ Reproduce any `MODEL`/`DISAGREE` line with:
 
 ```sh
 ruby X.rb                                                    # the oracle
-harness/desugar-dt/bin/export-json X.rb | ruby-lean/.lake/build/bin/rubycore   # the model
+desugar-dt/bin/export-json X.rb | ruby-lean/.lake/build/bin/rubycore   # the model
 ```
 
 ---

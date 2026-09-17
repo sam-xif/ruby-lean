@@ -1,6 +1,6 @@
 /-
 Concrete T5 (`class_hierarchy`) type-safety verdicts, by EXECUTION (Direction A
-of `type-safety-by-reachability.md` §3). Companion to the readable sources in
+of `AGENTS.md` §Type safety as reachability §3). Companion to the readable sources in
 `type-safety-demos/t5_safe.rb` / `t5_buggy.rb`.
 
 Both are terminating, so the run itself is the certificate:

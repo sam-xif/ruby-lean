@@ -1,6 +1,6 @@
 /-
 Type safety as reachability — the metatheory that turns the executable
-semantics into a *type-safety checker* (`type-safety-by-reachability.md` §4,
+semantics into a *type-safety checker* (`AGENTS.md` §Type safety as reachability §4,
 Direction B). "Typed" is not a separate system: a program is type-safe iff the
 set of **type-stuck outcomes** is unreachable from `Machine.init` under the
 machine's own transition relation.
@@ -27,7 +27,7 @@ This file authors, over the semantics itself:
      (progress-to-not-stuck) proves *no reachable outcome is type-stuck*, for
      all inputs and unbounded fuel.  Proved once; per program the (untrusted)
      search engine supplies `I` and the (trusted, tiny) validator re-checks the
-     three local conditions.  See `type-safety-by-reachability.md` §4.
+     three local conditions.  See `AGENTS.md` §Type safety as reachability §4.
   4. `Step.subset_smallStep` — the bridge: the control-core inductive `Step` is
      a sub-relation of `SmallStep` (this is exactly `Step.sound`), so any
      relational reasoning done via `Step`'s constructors transfers to the
@@ -55,9 +55,9 @@ namespace Proof
 
 open Interp
 
-/-! ## 1. The bad-state predicate (`type-safety-by-reachability.md` §2) -/
+/-! ## 1. The bad-state predicate (`AGENTS.md` §Type safety as reachability §2) -/
 
-/-- The type-error exception family (`type-safety-by-reachability.md` §2):
+/-- The type-error exception family (`AGENTS.md` §Type safety as reachability §2):
     NoMethodError, ArgumentError, TypeError.  Membership is tested with `isA`,
     so the family is automatically **closed under subclassing** (a user
     `class MyTypeError < TypeError` still counts). -/
@@ -72,7 +72,7 @@ def typeErrorFamily : List ObjId :=
 def isTypeError (h : Heap) (exc : Value) : Prop :=
   ∃ k ∈ typeErrorFamily, isA h exc k = true
 
-/-- **The bad state as a terminal outcome** (`type-safety-by-reachability.md`
+/-- **The bad state as a terminal outcome** (`AGENTS.md` §Type safety as reachability
     §2, "raised ≠ stuck"): a run is *type-stuck* only when a type-family
     exception **escapes to the toplevel** (`uncaught`).  A `NoMethodError` that a
     `rescue` catches is a transient `raiseJ` that never becomes an `uncaught`
@@ -116,7 +116,7 @@ theorem Reaches.head {m₁ m₂ m₃ : Machine}
 def ReachableResult (m₀ : Machine) (r : StepResult) : Prop :=
   ∃ m, Reaches m₀ m ∧ stepFn m = r
 
-/-! ## 3. The metatheorem (`type-safety-by-reachability.md` §4, Direction B) -/
+/-! ## 3. The metatheorem (`AGENTS.md` §Type safety as reachability §4, Direction B) -/
 
 /-- An invariant holds at every config reachable from a config where it holds —
     the preservation step lifted along the RT-closure. -/
@@ -135,7 +135,7 @@ theorem invariant_reaches {I : Machine → Prop}
       Safety:       `∀ m, I m → ¬ aboutToTypeStick m`       (progress)
 
     proves **no reachable outcome is type-stuck** — for all inputs, unbounded
-    fuel.  This is the one-time metatheorem of `type-safety-by-reachability.md`
+    fuel.  This is the one-time metatheorem of `AGENTS.md` §Type safety as reachability
     §4: it says nothing about any checker.  Per program, an untrusted engine
     emits some concrete `I`; the trusted validator only re-checks
     `init`/`cons`/`safe` for that `I`, and this theorem does the rest.

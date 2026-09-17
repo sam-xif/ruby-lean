@@ -5,7 +5,7 @@ harness: it reads as evidence. These tests are the guard on the guard — each
 one drives `relate` into a cell and, for the three pinned zeros, asserts the
 cell is reachable at all.
 
-Spec: `../docs/semantics/static-soundness-poc.md` §7.
+Spec: `difftest/checker_relation.py`'s module docstring.
 """
 
 from dataclasses import dataclass

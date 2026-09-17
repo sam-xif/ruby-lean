@@ -12,11 +12,18 @@ same way, under `ruby-lean/notes/`.
 
 | Directory | Read first | Then |
 |---|---|---|
-| `ruby-lean/` (the checker, `Ratchet/`+`Denote/`) | [`ruby-lean/AGENTS.md`](ruby-lean/AGENTS.md) — current state, the proof boundary, the pipeline, the gate | `notes/ratchet/implementation-notes.md` (the chronological record), `notes/ratchet/found-issues.md` (open findings, §F-numbers), `notes/ratchet/HANDOFF.md` (the live resume point) |
-| `ruby-lean/` (the model, `RubyCore/`) | [`ruby-lean/README.md`](ruby-lean/README.md) — layout, fragment, build | `notes/model/implementation-notes.md`, `notes/model/HANDOFF.md` |
-| `difftest/` | [`difftest/README.md`](difftest/README.md) | `HANDOFF.md` |
+| `ruby-lean/` (the checker, `Ratchet/`+`Denote/`) | [`ruby-lean/AGENTS.md`](ruby-lean/AGENTS.md) — current state, the proof boundary, the pipeline, the gate; then its *Design record* for the Sorbet, reachability and answer-typed background the code cites | `notes/ratchet/implementation-notes.md` (the chronological record), `notes/ratchet/found-issues.md` (open findings, §F-numbers), `notes/ratchet/HANDOFF.md` (the live resume point) |
+| `ruby-lean/` (the model, `RubyCore/`) | [`ruby-lean/README.md`](ruby-lean/README.md) — layout, fragment, build | [`ruby-lean/RubyCore/README.md`](ruby-lean/RubyCore/README.md) — **the semantics itself**, and what code comments mean by *"artifact NN §M"*; then `notes/model/implementation-notes.md`, `notes/model/HANDOFF.md` |
+| `desugar-dt/` | [`desugar-dt/README.md`](desugar-dt/README.md) — the front end, the round-trip method (artifact 06), linearization | `implementation-choices.md` (C-numbers, cited from the code) |
+| `difftest/` | [`difftest/README.md`](difftest/README.md) — the engine, and the methodology (artifact 05) | `HANDOFF.md`, `implementation-notes.md` (N-numbers) |
 | `playground/` | [`playground/README.md`](playground/README.md) | — |
-| `docs/` | [`docs/README.md`](docs/README.md) | `docs/semantics/` in reading order |
+| `paper/` | [`paper/README.md`](paper/README.md) | — |
+
+There is no central `docs/` directory. Each document lives next to the code it is
+about, and the cross-references the sources use (*"artifact 02 §3"*,
+*"types-and-preservation §A.5"*) resolve into those files — see
+`ruby-lean/AGENTS.md` §*Superseded design notes* for the map, including which
+design documents were deleted and what they were.
 
 ## The one norm that matters
 

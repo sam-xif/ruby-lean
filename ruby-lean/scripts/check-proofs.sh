@@ -81,7 +81,7 @@ import RubyCore.Proof.Judgment.TableRet
 #print axioms RubyCore.Proof.invariant_sound
 #print axioms RubyCore.Proof.invariant_result_sound
 #print axioms RubyCore.Proof.invariant_sound_from
--- The same statement narrowed to the Sorbet blame family (`typed-portion-safety.md`).
+-- The same statement narrowed to the Sorbet blame family (the typed-portion-safety note).
 #print axioms RubyCore.Proof.sorbet_invariant_sound
 -- A worked end: the T5 dispatch loop runs type-safe at the booted heap.
 #print axioms RubyCore.Proof.T5Loop.t5_loop_type_safe

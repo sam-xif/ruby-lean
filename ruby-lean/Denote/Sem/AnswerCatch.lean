@@ -55,7 +55,7 @@ what the handler does with it.
 
 **The one-line answer**: `CatchFree` is a condition on the *step relation*, `JumpOpaque` was
 a condition on the *answer*, and only the second kind is what answer-typing eliminates.
-`../../../docs/semantics/answer-typed-judgments.md` §7 predicted exactly this and it holds.
+`../../AGENTS.md` §The answer-typed design §7 predicted exactly this and it holds.
 
 The two are independent, and §Quadrant below exhibits the corner that matters:
 `not_jumpOpaque_definedGuardK` together with `catchFree_definedGuardK` is a handler

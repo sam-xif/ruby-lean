@@ -1,5 +1,5 @@
 """Tier-3 prompt templates: one per semantic corner, drawn from the domains of
-docs/semantics/00-04 (dispatch, blocks/jumps, eval order, exceptions,
+../ruby-lean/RubyCore/README.md artifacts 00–04 (dispatch, blocks/jumps, eval order, exceptions,
 namespaces, kwargs separation, metaprogramming-as-heap-mutation)."""
 
 from __future__ import annotations

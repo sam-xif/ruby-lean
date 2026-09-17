@@ -5,7 +5,7 @@ import Ratchet.JsonUtil
 /-!
 # `Deriv` — the certificate language, and the stub that checks one
 
-`../docs/semantics/answer-typed-schema.md` §3.4: layer 1 of the seven, the thing an
+`../AGENTS.md` §The answer-typed design §3.4: layer 1 of the seven, the thing an
 **untrusted** emitter writes and the kernel reads. This file is that layer plus a
 deliberately incomplete layer 2 (`validateD`), which is where this commit stops.
 
@@ -60,7 +60,7 @@ mutual
 /-- A derivation. One constructor per rule; a field for every choice the rule leaves open
 (a join type, a declared signature) and nothing for what the syntax already determines.
 
-The split is `answer-typed-schema.md` §3.4's: a hint is a **tag** where the rule is
+The split is `AGENTS.md` §The answer-typed design §3.4's: a hint is a **tag** where the rule is
 syntax-directed and **load-bearing** where it is not. `intLit` carries the literal only so
 the shape check can see it is about the right literal; `if'` carries its join because two
 branches of different type have no inferable one. -/

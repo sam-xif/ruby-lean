@@ -2,7 +2,7 @@
 The actual T5 (`class_hierarchy`) Direction-B proof: a **user-defined method**
 dispatched in an **unbounded loop** is type-safe, by an inductive object-model
 invariant — axiom-clean, without running the program
-(`type-safety-by-reachability.md` §4, §9.1).
+(`AGENTS.md` §Type safety as reachability §4, §9.1).
 
 Program (the loop, entered with class `A` defined and `x` an `A`-instance):
 

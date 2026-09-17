@@ -25,11 +25,11 @@
 > export **v3**), and `implementation-notes.md` (L1–L19) first. This doc is the single
 > task: **migrate the Lean decoder + stepper from export v3 to v4** so the difftest SUT
 > runs again. The desugar side is done — it now emits v4 (852→**1227/1299** bootstraptest
-> in-fragment, 0 disagree; see `../harness/desugar-dt/implementation-choices.md` C25–C29).
+> in-fragment, 0 disagree; see `../desugar-dt/implementation-choices.md` C25–C29).
 
 ## Why it's red
 
-`../harness/desugar-dt/lib/export.rb` bumped `VERSION` 3→4. The Lean decoder
+`../desugar-dt/lib/export.rb` bumped `VERSION` 3→4. The Lean decoder
 (`RubyCore/Syntax.lean`) hard-gates on v3, so **every** program now fails to decode:
 
 ```
@@ -45,7 +45,7 @@ new-forms** migration. Two things changed in the wire format:
 
 v3 carried `def`/`defs`/`block`/lambda params as a flat list of sigil-prefixed strings:
 required = `"a"`, rest = `"*a"` (or `"*"`), block-capture = `"&blk"` (or `"&"`). v4 carries
-a list of **param nodes** (see `RubyCore::PARAM_HEADS` in `../harness/desugar-dt/lib/rubycore.rb`):
+a list of **param nodes** (see `RubyCore::PARAM_HEADS` in `../desugar-dt/lib/rubycore.rb`):
 
 | v4 param node | surface | was in v3 |
 |---|---|---|
@@ -130,7 +130,7 @@ ratchet + adversarial seed:
 
 - **`popt` optional defaults** — evaluate **lazily, left-to-right, in the callee frame, only
   for omitted args, at call time**; a later default may read an earlier param. This is the
-  eval-order obligation `../harness/desugar-dt/corpus/seeds/31_param_defaults_eval_order.rb`
+  eval-order obligation `../desugar-dt/corpus/seeds/31_param_defaults_eval_order.rb`
   pins on the desugar side — mirror it as a Lean check.
 - **`pkey` / `pkwrest` keywords** — match keyword args by name, `ArgumentError` on a missing
   required keyword, collect leftovers into `**kwrest`; requires the call site to pass the
@@ -158,7 +158,7 @@ Adversarial parity seeds already exist on the desugar side (`30_params`, `31_*`,
 ## Validation each step
 
 ```
-cd ../harness/desugar-dt && $RUBY bin/export-json <FILE>   # inspect the v4 JSON the model sees
+cd ../desugar-dt && $RUBY bin/export-json <FILE>   # inspect the v4 JSON the model sees
 cd lean && lake build && python3 playground/server.py       # step through in the model
 cd ../difftest && uv run python -m difftest run --tier 0 --sut lean   # ratchet: 0 disagree, agreement up
 ```

@@ -1,7 +1,6 @@
 """The relation between our static checker and `srb` — and its pinned zeros.
 
-`docs/semantics/static-soundness-poc.md` §7. Soundness of `accept` is *proved*
-(`Proof/StaticSoundness.check_sound`), so difftesting does not test it. What the
+Soundness of `accept` was *proved*, so difftesting does not test it. What the
 comparison buys is **relevance**: evidence that `check` formalizes *Sorbet*
 rather than a type system we invented.
 
@@ -25,7 +24,7 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 
 # Codes deliberately NOT treated as type errors. Each entry was found by
-# measurement over the bootstraptest corpus, not anticipated; see §7.1. Adding
+# measurement over the bootstraptest corpus, not anticipated. Adding
 # to this list is a real decision — it narrows what the accept zero can catch —
 # so each needs a reason recorded here.
 EXCLUDED_CODES: dict[int, str] = {

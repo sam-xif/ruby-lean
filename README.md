@@ -119,7 +119,7 @@ wrong without making a wrong answer possible:
 |---|---|---|
 | 1. Sorbet signatures | `srb -p symbol-table` via `ruby-lean/scripts/srb_sigs.py` | no |
 | 2. Annotation stripping | `difftest/ruby/*_strip.rb` | no |
-| 3. Desugar to RubyCore JSON | `harness/desugar-dt/bin/export-json` | no |
+| 3. Desugar to RubyCore JSON | `desugar-dt/bin/export-json` | no |
 | 4. Emit a derivation | `ruby-lean/scripts/emit_deriv.rb` | no |
 | 5. **Check the derivation** | `validateD`, in Lean | **yes — only this** |
 
@@ -215,11 +215,11 @@ Other reproductions, each a single command:
 # The corpus is harvested, not vendored — one sparse clone, once:
 git clone --depth 1 --filter=blob:none --sparse https://github.com/ruby/ruby /tmp/ruby-src
 (cd /tmp/ruby-src && git sparse-checkout set bootstraptest)
-harness/desugar-dt/bin/harvest_bootstraptest /tmp/ruby-src/bootstraptest
+desugar-dt/bin/harvest_bootstraptest /tmp/ruby-src/bootstraptest
 cd difftest && uv sync && uv run python -m difftest run --tier 0 --sut lean
 
 # run one program through the model by hand
-echo 'puts 1 + 2' | ruby harness/desugar-dt/bin/export-json | ruby-lean/.lake/build/bin/rubycore
+echo 'puts 1 + 2' | ruby desugar-dt/bin/export-json | ruby-lean/.lake/build/bin/rubycore
 
 # the metatheory, and a re-check that the headline theorems are axiom-clean
 cd ruby-lean && ./scripts/check-proofs.sh
@@ -243,12 +243,76 @@ before the trusted check. See [`playground/README.md`](playground/README.md).
 | Path | What it is |
 |---|---|
 | [`ruby-lean/`](ruby-lean/README.md) | The Lean project — one Lake package, and everything below is a directory in it. Working notes live in `ruby-lean/notes/`; the agent-facing state is [`ruby-lean/AGENTS.md`](ruby-lean/AGENTS.md). |
-| `ruby-lean/RubyCore/` | **RubyCore**: `Syntax`/`Heap`/`Machine`/`Builtins`/`Interp` (`stepFn` + `run fuel`), the Ruby-authored `prelude/`, the `rubycore` SUT binary, and `RubyCore/Proof/` (metatheory, incl. type-safety-by-reachability — off-default target `Metatheory`, except the lemmas `Denote/` imports). |
+| [`ruby-lean/RubyCore/`](ruby-lean/RubyCore/README.md) | **RubyCore**: `Syntax`/`Heap`/`Machine`/`Builtins`/`Interp` (`stepFn` + `run fuel`), the Ruby-authored `prelude/`, the `rubycore` SUT binary, and `RubyCore/Proof/` (metatheory, incl. type-safety-by-reachability — off-default target `Metatheory`, except the lemmas `Denote/` imports). Its `README.md` is **the written semantics**: the configuration, the object model, the one dispatch rule, scope and constants, and the unwinding model. |
 | `ruby-lean/Ratchet/`, `Semantics/`, `Denote/` | The typed ladder: `Ratchet/` (the checker — its own copied `Expr`/`Ty`, `Deriv`, `validateD`; imports nothing from `RubyCore/`), `Semantics/` (the real machine, imported), `Denote/` (the semantic denotation and the bridge — the one library that imports both). With `corpus/` (annotated rungs) and `scripts/` (the untrusted pipeline + the gate). |
 | [`difftest/`](difftest/README.md) | The differential engine: tiered generators, the CRuby oracle, `replay`, and the strip transforms the ratchet reuses. |
-| [`harness/desugar-dt/`](harness/desugar-dt/) | Ruby → RubyCore JSON (`export-json`), the front end for everything here. |
+| [`desugar-dt/`](desugar-dt/README.md) | Ruby → RubyCore JSON (`export-json`), the front end for everything here — and the harness that validates it against CRuby with no model in the loop. |
 | [`playground/`](playground/README.md) | The browser stepper and the live ratchet pipeline. |
-| [`docs/`](docs/) | The written semantics and the design record — see [`docs/README.md`](docs/README.md). |
+| [`paper/`](paper/README.md) | Working draft of the paper. |
+
+Each of those carries its own `README.md`, and where there is agent-facing state
+an `AGENTS.md` beside it. There is no central docs directory: the written
+semantics lives next to the machine it describes, the two testing methodologies
+next to the engines that run them, and the checker's design record in
+[`ruby-lean/AGENTS.md`](ruby-lean/AGENTS.md).
+
+## What a partial semantics is for
+
+A semantics of Ruby proves nothing with certainty about a real execution unless
+the interpreter, the machine code it JITs to, the OS and ultimately the hardware
+are verified too. So why formalize one layer?
+
+Because **adversarial robustness is a different game from deductive certainty.**
+What matters is where an adversary's artifact lives and which interfaces its
+effects must flow through. If the threat is code written or modified by an AI,
+the adversary is *confined to the layer the semantics models* — it does not get
+to write C, every trick must be expressible in Ruby surface syntax, and a
+faithful Ruby semantics characterizes that entire action space. The unverified
+interpreter underneath is *shared trusted substrate*: defender and adversary
+stand on it equally. Assumptions don't invalidate a guarantee, they **localize
+the attack surface**.
+
+Three things a partial model buys, in increasing ambition:
+
+* **Semantic diff review.** For a proposed change, emit the *derivation-level*
+  delta — "this diff makes `save` resolve through a new module, here is the
+  rule-by-rule trace." Metaprogramming-based obfuscation is the natural
+  adversarial move in Ruby, and it is exactly what a heap-mutation dispatch model
+  makes legible: a backdoor *is* a heap delta, visible even when the textual diff
+  looks inert.
+* **Regression suites derived from meaning, not sampled.** Given `P` and a
+  proposed `P′`, check `obs(P) = obs(P′)` up to bounds or produce a **witness
+  input** where they diverge. The suite is the accumulated witnesses — robust in
+  a way sampled tests are not, because it is derived from the semantics of the
+  diff rather than drawn from a distribution the adversary can predict.
+* **Certificates.** "Within these bounds, this program never reaches a type-stuck
+  state / never opens a socket." The checker in `Ratchet/` is the first of these,
+  and the narrowest.
+
+The structural point is that the fuel interpreter and the step relation serve
+different verbs. **Bounded checking** always terminates and yields verdicts of
+the form "no witness within this frontier" — the automation floor, because an
+adversary can always contrive code that defeats invariant synthesis. **Unbounded
+proof** by induction over the relation covers executions of every length, and
+relocates the undecidable part into *finding the invariant*. Proof-carrying code
+dissolves the tension: demand that a submitted diff arrive with a machine-checked
+proof, and the capable, untrusted submitter bears the undecidable burden while
+the defender's checker is Lean's kernel. The economics that killed PCC in the
+1990s — proof authoring was brutally expensive for humans — are exactly what
+capable AI reverses.
+
+`Ratchet/` is the smallest real instance of this shape: untrusted generation,
+one trusted `Bool`, and a theorem that licenses it. See
+[`ruby-lean/AGENTS.md`](ruby-lean/AGENTS.md) §Type safety as reachability for the
+idea underneath it, and what is and is not built.
+
+What this is honestly *not*: model fidelity is empirical and finite, so proofs do
+not shrink the gap to CRuby — they make it the *only* gap, which is why the
+differential ratchet is the permanent foundation rather than scaffolding. The
+induction recipe covers safety only. And attacks below the layer — the
+interpreter's supply chain, the hardware — are out of scope by design: the job is
+to force an adversary out of the cheap, deniable layer into expensive,
+conspicuous ones.
 
 ## Status and limits
 

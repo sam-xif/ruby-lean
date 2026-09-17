@@ -5,7 +5,7 @@ import RubyCore.Proof.Judgment.TableRet
 /-!
 # Machine typing over `Judge` (J20) — `KontOkJ`, `CtlOkJ`, `InvJ`
 
-`judgment-layer.md` §3, built: `CtlOk`/`KontOk`/`Inv` (Proof/Static/Konts.lean)
+the judgment-layer note §3, built: `CtlOk`/`KontOk`/`Inv` (Proof/Static/Konts.lean)
 transliterated onto the declarative judgment. The shape is the old spine's shape —
 one constructor per admitted continuation, subsumption slack (`SubJ` + `SubEnv`)
 outside the stored judgment, the invariant existential over the table, context, and

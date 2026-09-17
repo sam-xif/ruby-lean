@@ -4,9 +4,9 @@ This file records non-critical decisions made while building the harness, so any
 can be revisited/reverted. It is committed to git on every update (per project request)
 to preserve a rollback trail.
 
-Design reference: `../../docs/semantics/06-desugaring-and-its-testing.md` (the oracle,
+Design reference: [`README.md`](README.md) §The method (the oracle,
 the evaluation-order trace, the three-pronged corpus, the exit criterion) and
-`../../docs/semantics/05-differential-testing.md` (observation normalization).
+`../difftest/README.md` §Methodology (observation normalization).
 
 ---
 
@@ -146,7 +146,7 @@ block forms of `*_eval` remain in-fragment (ordinary sends with a block).
 **Why.** `eval` of an arbitrary string smuggles out-of-fragment code past the syntactic
 gate (found in testing: `eval "while true; return; end …"` — a top-level `return` that
 also terminated the observation wrapper before it recorded anything). Rejecting string
-`eval` matches the documented scope (artifact 00 §6, PROJECT_PLAN §4: "`eval` of
+`eval` matches the documented scope (artifact 00 §6, `RubyCore/README.md` 00 §6: "`eval` of
 arbitrary strings — support only where it desugars to modeled constructs").
 
 ## C11 — `stmts` tolerates non-`StatementsNode` bodies
@@ -300,7 +300,7 @@ build as dead code); linearization is the source-level analogue. This removes th
 RubyCore head** (uses `seq` + existing forms, per C12), and generalizes: the same
 `definitely_jumps?`-driven hoisting will serve future order-sensitive desugarings. Fully
 documented — including the verified legal/illegal operand-position table — in
-`../../docs/semantics/linearization.md`.
+[`README.md`](README.md) §Linearization.
 
 **Result:** bootstraptest gate coverage 403 → **406** (+3), all agree, 0 harness-errors.
 

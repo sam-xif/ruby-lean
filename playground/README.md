@@ -19,7 +19,7 @@ be extracted from the note (48 of 259 have none, and show the name instead).
 annotated Ruby
   ├─ 0  signatures   read the declared types
   ├─ 1  strip        sig · visibility · freeze · require · const_inline · class_sugar
-  ├─ 2  desugar      harness/desugar-dt → RubyCore JSON
+  ├─ 2  desugar      desugar-dt → RubyCore JSON
   ├─ 3  derive       the untrusted emitter → a Deriv
   └─ 4  validateD    the trusted Bool                      ← the only claim
 ```

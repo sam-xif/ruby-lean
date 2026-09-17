@@ -1,5 +1,5 @@
 /-
-The difftest SUT executable (lean-model-sketch §4): RubyCore-JSON on stdin →
+The difftest SUT executable (`RubyCore/README.md` §Mechanization): RubyCore-JSON on stdin →
 Observation-JSON on stdout.
 
 Exit codes (mirroring the desugar SUT adapter contract):

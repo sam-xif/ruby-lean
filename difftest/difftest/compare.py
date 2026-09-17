@@ -85,7 +85,7 @@ def gradual_guarantee_compare(
     relation** between two *programs*: the control runs the precise (annotated)
     program `e`, the SUT runs the less precise (sig-stripped) `e'`, with
     `e ⊑ e'`. The gradual guarantee (Siek, Vitousek, Cimini & Boyland, SNAPL
-    2015; ../docs/semantics/types-and-preservation.md §B.5) predicts that
+    2015; `../ruby-lean/AGENTS.md` §Sorbet §B.5) predicts that
     changing only the *precision* of annotations does not change behavior,
     except that the more precise program may **trap more errors**.
 
@@ -93,7 +93,7 @@ def gradual_guarantee_compare(
     "the precise run raised a sorbet-runtime TypeError" is wrong: a program may
     *rescue* its own sig violation (`sig-basic/002` does, and such a program is
     type-safe precisely because the raise never escapes —
-    `type-safety-by-reachability.md` §2, "raised != stuck"). Then the two
+    `../ruby-lean/AGENTS.md` §Type safety as reachability §2, "raised != stuck"). Then the two
     variants differ only in stdout, with no exception anywhere to key off. The
     published theorem does not cover this case at all: it is stated over a
     calculus whose blame outcomes cannot be caught and observed.

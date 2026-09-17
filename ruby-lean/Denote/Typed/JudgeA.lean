@@ -7,7 +7,7 @@ import Denote.Sanity
 /-!
 # `Denote/Typed/JudgeA.lean` — the answer-typed semantic judgment for `DJudge`, and its obligations
 
-`../docs/semantics/answer-typed-schema.md` §3.1, at `Ratchet/Check.lean`'s index shape. This
+`../../AGENTS.md` §The answer-typed design §3.1, at `Ratchet/Check.lean`'s index shape. This
 is the semantic reading the typed ladder's rules are proved against, and it is **not**
 `Denote/Sem/Judge.lean`'s `SemJudge`. Two differences, and they are the reason the 48 existing
 obligations are not reusable here:
@@ -38,7 +38,7 @@ instead and is whole-derivation.
 `evalFrom m e` is `{ m with ctl := .eval (toRuby e), kont := [] }` — it **empties the
 continuation**. So every obligation here is about a run from an empty continuation, which is
 why the `CatchFree` side condition `run_pushK` needs is free for the frames a rule pushes
-(`answer-typed-schema.md` §9.2 warns that `safe_pushK` is a per-rule tool and cannot be a
+(`AGENTS.md` §The answer-typed design §9.2 warns that `safe_pushK` is a per-rule tool and cannot be a
 whole-machine invariant; at an empty base kont the warning does not bite).
 
 ## What is taken from the old checker, and it is not the checker
@@ -116,7 +116,7 @@ def SemJudgeA (Γ : Env) (e : Ratchet.Expr) (τ : Ty) (Γ' : Env) : Prop :=
 `SemJudgeA` is a statement about runs that reach an **answer**. That is not safety, and the
 gap is real: a run can halt `.uncaught` — the one type-stuck outcome — which `runA` reports as
 `.halt`, not `.ans`. Closing that gap by *derivation* needs `UncaughtInv`
-(`answer-typed-schema.md` §7), which does not exist. So safety is a **second obligation
+(`AGENTS.md` §The answer-typed design §7), which does not exist. So safety is a **second obligation
 carried by the same clink**.
 
 **The shape of that obligation is the whole content of this section**, because the obvious

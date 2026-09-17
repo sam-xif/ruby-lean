@@ -8,7 +8,7 @@
 ## Where things stand (resume point)
 
 - **Branch:** `sam-xif-investigation`. **Oracle:** CRuby 4.0.5 via `$(brew --prefix ruby)/bin/ruby`.
-- **Harness:** `sam-xif/ruby/harness/desugar-dt/`. Run: `RUBY=$(brew --prefix ruby)/bin/ruby`,
+- **Harness:** `sam-xif/ruby/desugar-dt/`. Run: `RUBY=$(brew --prefix ruby)/bin/ruby`,
   then `$RUBY bin/run` (round-trip over `corpus/`), `$RUBY bin/coverage` (fragment % +
   blocker histogram + ratchet), `$RUBY bin/desugar FILE` (inspect one program).
 - **Corpus:** `corpus/seeds/` (committed) + `corpus/bootstraptest/` (gitignored; regenerate

@@ -4,7 +4,7 @@ require "json"
 
 # Serialize a RubyCore S-expression to JSON for out-of-process consumers — the
 # Lean model (`ruby/ruby-lean/`) is the first. The interface is versioned so either
-# side can reject a mismatch (lean-model-sketch.md §2.1, §5).
+# side can reject a mismatch (`../ruby-lean/RubyCore/README.md` §Mechanization, §5).
 #
 # Encoding: an S-expr node `[:head, ...]` becomes a JSON array whose first
 # element is the head as a string; Symbols anywhere (heads, var kinds, rescue

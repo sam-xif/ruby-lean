@@ -318,7 +318,7 @@ def runCollections (bid : String) (recv : Value) (args : List Value) (m : Machin
     -- has already resolved `Hash#[]=`, so the receiver is a Hash: a wrong arity
     -- is an `ArgumentError`, not an unmodeled case. This matters beyond fidelity
     -- — ArgumentError is in `typeErrorFamily`, so gating here made a *reachable
-    -- type-stuck outcome* invisible to the checker (druby-reproduction-plan.md
+    -- type-stuck outcome* invisible to the checker (the DRuby-reproduction plan
     -- §4; the hashslice call site `h['a','b'] = 3, 4` is exactly this shape).
     | _, _ => .err Boot.argumentErrorId
         s!"wrong number of arguments (given {args.length}, expected 2)" m

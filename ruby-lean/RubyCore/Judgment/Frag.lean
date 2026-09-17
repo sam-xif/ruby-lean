@@ -3,7 +3,7 @@ import RubyCore.Judgment.Judge
 /-!
 # `MFrag` — the machine-typed fragment gate (J20, J31)
 
-`Judge` covers all 47 heads; the machine-typing invariant (`judgment-layer.md` §3)
+`Judge` covers all 47 heads; the machine-typing invariant (the judgment-layer note §3)
 does not, and the boundary has to be *syntactic*: the invariant's eval arm
 quantifies existentially over derivations, so inversion at a head surfaces **every**
 rule whose conclusion matches — a head admitted into machine typing drags in all its

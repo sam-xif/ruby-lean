@@ -1,5 +1,5 @@
 /-
-Run-certificate bridges (Direction A of `type-safety-by-reachability.md` §3):
+Run-certificate bridges (Direction A of `AGENTS.md` §Type safety as reachability §3):
 turn a *decidable boolean* about a program's concrete run into a type-safety
 verdict (or its refutation). These bridges are **axiom-clean**; the boolean they
 consume is discharged per program by `native_decide` in a separate, opt-in file

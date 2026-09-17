@@ -4,7 +4,7 @@
 > engine without re-deriving anything. Read [`README.md`](README.md) first (how
 > to run, the SUT contract), then this file (state, design decisions, next
 > steps). Style follows the harness hand-off notes
-> (`../harness/desugar-dt/M2-params-yield-plan.md`).
+> (`../desugar-dt/M2-params-yield-plan.md`).
 
 ## Where things stand (resume point)
 
@@ -25,7 +25,7 @@
     (`claude-opus-4-8`), validation gate (parse / terminate / deterministic
     double-run), persisted replayable corpus `corpus/tier3/`.
   - SUTs: `stub` (Lean placeholder), `identity` (smoke), `desugar` (adapter
-    over `../harness/desugar-dt/`; `--inject-bug` = detection self-test).
+    over `../desugar-dt/`; `--inject-bug` = detection self-test).
   - Evidence: identity 200/200 agree; healthy desugar 150/150 agree (all
     in-fragment); injected `&&` bug found and minimized; tier-3 corpus (68
     cases, all 7 categories) replays 68/68 agree vs identity and 31 agree /
@@ -85,7 +85,7 @@ sampling toward never-yet-disagreeing cases (currently uniform).
    look healthy.
 2. **Grow the tier-1 vocabulary** toward the semantics core: method calls with
    splats, kwargs (mind the Ruby-3 separation trap — see
-   `../harness/desugar-dt/M2-params-yield-plan.md`), classes + ivars +
+   `../desugar-dt/M2-params-yield-plan.md`), classes + ivars +
    dispatch (`class`/`def`/`new`), `begin/ensure`, proc/lambda. Each new form
    must preserve the termination + scope invariants above.
 3. **Generator-health metrics in the report:** parse rate, exclusion rate,
@@ -110,10 +110,10 @@ sampling toward never-yet-disagreeing cases (currently uniform).
 ## How this fits the overall plan
 
 The engine is the standing realization of prongs 2+3 of
-[`../docs/semantics/06-desugaring-and-its-testing.md`](../docs/semantics/06-desugaring-and-its-testing.md)
-and the harness half of [`../docs/semantics/05-differential-testing.md`](../docs/semantics/05-differential-testing.md).
+[`../desugar-dt/README.md`](../desugar-dt/README.md) §The method (artifact 06)
+and the harness half of [`README.md`](README.md) §Methodology (artifact 05).
 The sequence remains: grow the desugar fragment (next batch: **M2 params +
-yield**, plan in `../harness/desugar-dt/M2-params-yield-plan.md`) → meet the
+yield**, plan in `../desugar-dt/M2-params-yield-plan.md`) → meet the
 desugar exit criterion (06 §7) → build the Lean model (artifacts 01–02 →
 `inductive Step` + fuel interpreter) → **wire it in as a SUT here** (claim C1
 of 05 §1). The `desugar` SUT meanwhile gives the engine a real consumer: every

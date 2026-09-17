@@ -4,7 +4,7 @@ import RubyCore.Judgment.Sub
 /-!
 # `VTy` — the value judgment of the machine-typing layer (J19)
 
-`judgment-layer.md` §3's machine typing is authored over `Judge`, whose type language
+the judgment-layer note §3's machine typing is authored over `Judge`, whose type language
 includes unions (L269) — and `ValueTy` is `subTy`-up-closed, so `ValueTy h v (.union
 a b)` is *uninhabited* (`subTy` compares a union by equality and `valueTy?` never
 answers one). This is the union disjunction arm J14 named as "the J1 obligation", paid

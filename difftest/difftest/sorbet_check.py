@@ -7,12 +7,12 @@ outcome, and in particular its off-diagonal cells:
 
   static clean + uncaught type-family error  ->  UNSOUNDNESS WITNESS. Sorbet
       accepted a program that reaches a type-stuck outcome in exactly the sense
-      the reachability checker means (`type-safety-by-reachability.md` §2:
+      the reachability checker means (`../ruby-lean/AGENTS.md` §Type safety as reachability §2:
       NoMethodError / ArgumentError / TypeError escaping to toplevel). These
       are the seeds of the unsoundness catalogue.
   static errors + terminates normally        ->  CONSERVATIVE REJECTION. The
       program is safe on this run and Sorbet rejected it anyway — the DRuby
-      false-positive family (§9.3 of type-safety-by-reachability.md), and the
+      false-positive family (§9.3 of `../ruby-lean/AGENTS.md` §Type safety as reachability), and the
       thing a semantics-driven checker claims to avoid by construction.
 
 The command doubles as the corpus's integrity gate: each sidecar *declares*
@@ -204,12 +204,12 @@ def render_markdown(results: list[CheckResult]) -> str:
         "> `accepted-and-safe`. Catching those needs behavior compared against a",
         "> *declared* type discipline rather than against the presence of an",
         "> exception: the annotation-conformance check of",
-        "> `type-safety-by-reachability.md` §5, which is what the Lean typing layer",
+        "> `../ruby-lean/AGENTS.md` §Type safety as reachability §5, which is what the Lean typing layer",
         "> is for. Until it exists, this report undercounts the catalogue.",
         "",
     ]
 
-    # ---- the checker relation (static-soundness-poc.md §7) ----
+    # ---- the checker relation (the static-soundness POC note §7) ----
     by_check: dict[str, list[CheckResult]] = {}
     for r in results:
         by_check.setdefault(r.check_cell, []).append(r)

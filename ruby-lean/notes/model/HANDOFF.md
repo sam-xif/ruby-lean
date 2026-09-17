@@ -50,7 +50,7 @@ state, the coverage assessment, and what happens next.
 
 Built and green: the L0 slice of `../docs/semantics/lean-model-sketch.md` §3–4
 runs as a difftest SUT (`--sut lean`). Pipeline: Ruby source → desugar
-(`../harness/desugar-dt/`) → RubyCore JSON (`lib/export.rb`, versioned) →
+(`../desugar-dt/`) → RubyCore JSON (`lib/export.rb`, versioned) →
 `rubycore` binary → Observation JSON. Two fragment gates compose (desugar's
 and the model's); binary exit 3 = Unsupported, exit 1 = model bug
 (`MODEL-BUG:` prefix in the engine — never silently absorbed).
@@ -119,7 +119,7 @@ disagreement — preserve them as the fragment grows.
 
 1. **Desugar M2 (params + `yield`) — upstream, biggest lever.** 544/1304
    cases never reach Lean. Plan already written:
-   `../harness/desugar-dt/M2-params-yield-plan.md` (migrate the flat
+   `../desugar-dt/M2-params-yield-plan.md` (migrate the flat
    `[String]` param slot to structured param nodes). The Lean `parseParams`
    ("*"-prefix convention) must migrate in lockstep — the export is
    versioned (`Export::VERSION`), so bump it when the shape changes.

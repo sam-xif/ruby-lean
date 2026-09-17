@@ -3,7 +3,7 @@ import Denote.Sem.Answer
 /-!
 # `Denote/Sem/SafeKont.lean` — the continuation obligation, answer-indexed
 
-**Design**: `../../../docs/semantics/answer-typed-judgments.md` §6, second bullet — "`SafeKont
+**Design**: `../../AGENTS.md` §The answer-typed design §6, second bullet — "`SafeKont
 K` becomes indexed by `Answer`. The escape case is a *clause* rather than a missing
 hypothesis, and it can carry `StateOk` — which is precisely what made `JumpStuckFree` false."
 

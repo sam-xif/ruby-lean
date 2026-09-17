@@ -3,7 +3,7 @@ Concrete Sorbet-safety certificates: the machinery of `SorbetSafety.lean` applie
 to real programs from `difftest/corpus/sorbet/`, whose behavior is pinned against
 the actual `sorbet-runtime` gem by the difftest ratchet.
 
-These are **Direction A** (`type-safety-by-reachability.md` §3): the certificate
+These are **Direction A** (`AGENTS.md` §Type safety as reachability §3): the certificate
 is the trace. No invariant, no SMT — run the trusted stepper and read the
 outcome. What is new here relative to `T5Concrete.lean` is the middle case: a
 run that ends in **blame** is a *pass*, because sorbet-runtime raising at a sig
@@ -13,7 +13,7 @@ Every run starts from the **prelude-booted** heap, because sig enforcement lives
 in the `T` shim (L80). `native_decide` carries the concrete executions, as in
 `T5Concrete.lean`; the metatheorems in `SorbetSafety.lean` stay axiom-clean.
 
-JSON literals are `harness/desugar-dt/bin/export-json` output for the named
+JSON literals are `desugar-dt/bin/export-json` output for the named
 corpus sources — regenerate them if those sources change.
 -/
 import RubyCore.Proof.SorbetSafety

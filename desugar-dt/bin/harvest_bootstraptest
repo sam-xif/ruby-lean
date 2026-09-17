@@ -34,7 +34,7 @@ out_dir = File.expand_path("../corpus/bootstraptest", __dir__)
 FileUtils.mkdir_p(out_dir)
 
 ASSERTS = %w[assert_equal assert_normal_exit assert_finish assert_not_equal].freeze
-# out-of-fragment / non-deterministic markers to skip (artifact 06 §4, PROJECT_PLAN §4)
+# out-of-fragment / non-deterministic markers to skip (artifact 06 §4, `RubyCore/README.md` 00 §6)
 SKIP = /\b(Thread|Ractor|Fiber|ObjectSpace|GC|Process|fork|Mutex|require|require_relative|__FILE__|rand|Time|Signal|trap|at_exit|ENV|sleep)\b/.freeze
 
 # Extract a string literal argument's content, if it is a plain string literal.

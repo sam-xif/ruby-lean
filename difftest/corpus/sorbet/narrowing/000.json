@@ -5,5 +5,5 @@
   "sigil": "strict",
   "static_expect": "clean",
   "runtime_expect": "value",
-  "doc_ref": "types-and-preservation.md A.2"
+  "doc_ref": "ruby-lean/AGENTS.md §Sorbet §A.2"
 }

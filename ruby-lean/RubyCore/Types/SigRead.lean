@@ -4,14 +4,14 @@ import RubyCore.Types.Ty
 /-!
 # P1a — reading Sorbet signatures off the AST
 
-`docs/semantics/static-soundness-poc.md` §8.3. Sorbet adds no syntax: a `sig` is
+Sorbet adds no syntax: a `sig` is
 an ordinary send with a block, and a type is an ordinary expression, so the
 desugarer needs no special support and the declared types survive as data [V].
 This file recovers them.
 
 ## What this is *not* yet wired to
 
-It does **not** feed `check`'s `accept`. §8.3 measured why: a sig'd call costs
+It does **not** feed `check`'s `accept`. Measured why: a sig'd call costs
 ~256 extra steps of `T`-shim execution, and `Inv` works by *restriction*, so the
 machine leaves any small fragment the instant `sig` is evaluated. Reading a
 declared type is a static question and is unblocked; concluding safety about a

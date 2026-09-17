@@ -10,8 +10,8 @@ rather than a paragraph of prose.
 Two criteria carve it out. Both are principled; neither is "whatever we happen
 to model" (that is the separate, already-existing `.unsupported` gate).
 
-**(1) Every static-unsound construct must be runtime-checked.** This is §A.3 of
-`../../docs/semantics/types-and-preservation.md` read as a specification:
+**(1) Every static-unsound construct must be runtime-checked.** This is
+`../../AGENTS.md` §Sorbet §A.3 read as a specification:
 "`T.unsafe` is the one form with no runtime check; everything else that is
 static-unsound is at least runtime-checked." So `T.cast`/`T.let`/`T.must`/
 `T.bind`/`T.assert_type!` are all **admitted** — they are trusted statically but

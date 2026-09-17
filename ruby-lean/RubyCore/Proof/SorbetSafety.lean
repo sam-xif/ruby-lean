@@ -1,7 +1,7 @@
 /-
 **Sorbet safety**: the three-outcome runtime statement, as a formal object.
 
-`../../docs/semantics/types-and-preservation.md` §C.1 argues that the honest
+`../../AGENTS.md` §Sorbet §C.1 argues that the honest
 soundness target for Sorbet is not a static subject-reduction theorem — the
 static half is unsound by design — but the *runtime* three-outcome statement
 (§B.5, the gradual-typing shape):
@@ -13,7 +13,7 @@ This file makes "or blames" a formal object and proves the two directions of
 the reachability machinery for it, reusing `TypeSafety.lean` unchanged. It is
 deliberately the *same* development with **the bad-state predicate weakened**:
 `typeStuck` minus the outcomes that are Sorbet's runtime enforcement doing its
-job. That is the running thesis of `type-safety-by-reachability.md` — one
+job. That is the running thesis of `../../AGENTS.md` §Type safety as reachability — one
 engine, one metatheorem, a swappable bad state — applied once more.
 
 ## What is and is not proved here
@@ -121,7 +121,7 @@ theorem typeSafe_sorbetSafe {m₀ : Machine}
     SorbetSafeFrom m₀ :=
   fun r hr hs => h r hr (sorbetStuck_typeStuck hs)
 
-/-! ## 3. Direction B — the metatheorem (`type-safety-by-reachability.md` §4)
+/-! ## 3. Direction B — the metatheorem (`AGENTS.md` §Type safety as reachability §4)
 
     Identical in shape to `invariant_sound`, over the weakened bad state: an
     untrusted engine supplies a concrete inductive invariant `I` per program and

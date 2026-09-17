@@ -30,7 +30,7 @@ RUBY = os.path.dirname(ROOT)                 # ruby/
 STRIPS = [os.path.join(RUBY, "difftest", "ruby", s) for s in
           ("sig_strip.rb", "visibility_strip.rb", "freeze_strip.rb",
            "require_strip.rb", "const_inline.rb", "class_sugar_strip.rb")]
-EXPORT = os.path.join(RUBY, "harness", "desugar-dt", "bin", "export-json")
+EXPORT = os.path.join(RUBY, "desugar-dt", "bin", "export-json")
 
 
 def strip(src: str) -> str:

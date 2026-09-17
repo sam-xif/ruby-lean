@@ -1081,7 +1081,7 @@ inside an array, an object, or a Proc. A denotation that recurses closes all thr
 - **`Denote/ArrowCheck.lean`** — the arrow's computable half, stated in the only sound
   direction: a true arrow passes every sample (`arrowCheck_of_arrowFlat`), so **a failing
   sample refutes the arrow** and is the counterexample. Same move as
-  `../bounded-effect-checking.md`'s bounded search and `../type-safety-by-reachability.md`'s
+  the bounded-effect-checking note's bounded search and `AGENTS.md` §Type safety as reachability's
   witness direction, applied to arrows.
 - **`Denote/Sanity.lean`** — **the ladder is not vacuous.** Every obligation begins
   `∀ m, StateOk κ Γ I m → …`, so an unsatisfiable `StateOk` would make all 83 vacuously true —
@@ -1224,7 +1224,7 @@ JudgeC R |>.judge κ Γ I e τ κ' Γ' I' := ∀ F : Fam, Closed R F → F.judge
   rules remain", which under the old framing was a permanent red light.
 * **Restating the semantic reading is a new registry, not a rewrite.** `Clink` is
   parameterised by both families (`Clink (S T : Fam)`), so the answer-typed migration
-  (`answer-typed-schema.md` §3.1, `SemJudge` → `SemJudgeA`) changes the *target* and leaves the
+  (`AGENTS.md` §The answer-typed design §3.1, `SemJudge` → `SemJudgeA`) changes the *target* and leaves the
   mechanism alone — and it makes the cost per-rule and honest: a clink whose `sem` field does
   not carry over stops building, by name, instead of a report continuing to say "48
   discharged" about a superseded statement.
@@ -1278,12 +1278,10 @@ one line for any registry).
 > replaced by a single **answer-typed** judgment plus an inductive invariant, because
 > `SemJudge` has no progress content at all and that is now proved, not argued
 > (`Denote/Sem/NoProgress.lean`'s `not_semJudgeImpliesStuckFree`). The work order is
-> **[`../docs/semantics/answer-typed-schema.md`](../docs/semantics/answer-typed-schema.md)** —
-> seven layers, an explicit delete list, and a migration that says where the ladder gets
-> *restated* rather than climbed. The diagnosis and the built decomposition layer are
-> `../docs/semantics/answer-typed-judgments.md` §1–§5 and §10; the worked end-to-end
-> prototype is `Denote/Proto/`. **Read the schema before touching anything under
-> `Denote/Sem/`.**
+> **[§The answer-typed design](#the-answer-typed-design)**, below — seven layers, an
+> explicit delete list, and a migration that says where the ladder gets *restated*
+> rather than climbed. **This has since landed**; the section is the distilled work
+> order, and the worked prototype was `Denote/Proto/`.
 
 > **EMERGENCY EXIT INVOKED (clink 64).** The ladder counts **one rule at a time**; 26 of the 35
 > remaining rules come out **together**, at the end of a layer that is several sessions long, and
@@ -1978,7 +1976,7 @@ Three consequences, and they are the reason it is done this way:
 
 **Not on this ladder: stuck-freedom.** `SemJudge` is partial correctness about the *value*.
 Whether a well-typed program can reach a `NoMethodError`/`ArgumentError`/`TypeError` — the
-`../type-safety-by-reachability.md` property — is a second axis, stated (`StuckFree`,
+`AGENTS.md` §Type safety as reachability property — is a second axis, stated (`StuckFree`,
 `StuckFreeTarget`) and deliberately uncounted: one number should mean one thing.
 
 ## Semantics status: **imported, and wired up for the covered fragment**
@@ -2013,7 +2011,7 @@ real Ruby. This version **ports `Expr` and `Ty` verbatim from the real model**
 (`RubyCore/Syntax.lean`, `RubyCore/Types/Ty.lean` — see the provenance
 note at the top of `Ratchet/Expr.lean`/`Ratchet/Ty.lean` for exactly what was kept vs.
 trimmed) and sources every corpus program from **real Ruby run through the real
-desugarer** (`harness/desugar-dt/bin/export-json`), not hand-authored ASTs. The
+desugarer** (`desugar-dt/bin/export-json`), not hand-authored ASTs. The
 semantics (`stepFn`/the interpreter) was initially left out entirely; it is now
 imported (not ported — see §Semantics status) but not yet wired into the corpus.
 
@@ -3024,3 +3022,326 @@ actually needs it — not preemptively.
 written from scratch against the ported `Expr`/`Ty`, not a copy or a wrapper of the real
 project's own checker. The point of the restart is to have *our own* small checker whose
 coverage is visible and growable one rung at a time.
+
+---
+
+# Design record
+
+The four design documents this layer was built from, distilled to what still
+bears weight. Code comments cite them by their original section numbers
+(*"answer-typed-schema §3.1"*, *"types-and-preservation §A.5"*,
+*"type-safety-by-reachability §4"*); that addressing is preserved below.
+
+## Type safety as reachability
+
+The idea underneath the whole ladder. Treat a program as "type-checked" iff **no
+execution path reaches a type error**. No new type system — the semantics *is* the
+specification, and "typed" means the bad-state set is unreachable. A conventional
+type system is a conservative, compositional over-approximation of exactly this
+property; the proposal is to attack the property directly instead.
+
+That trade is the point. Ruby's dispatch is heap-dependent — metaprogramming
+mutates method tables — so a compositional type system must either punt
+(Sorbet/RBS gradual) or lie; a semantics-driven checker reasons against the real
+booted heap.
+
+**§2 — the bad-state predicate.** `typeStuck` is the
+`NoMethodError`/`ArgumentError`/`TypeError` family, closed under subclassing,
+decided on the real machine's heap. The load-bearing subtlety is **raised ≠
+stuck**: a program that raises a type error *and rescues it* terminates in a
+value and is type-**safe**. Only an outcome that escapes uncaught is a bad state.
+And the **frontier is first-class** — a verdict always reports the bounds it
+holds within.
+
+**§4 — Direction B: verification, certifying rather than trusted.** An untrusted
+engine *discovers* an inductive invariant `I : Machine → Prop`; a small verified
+validator discharges three local conditions against the real relation:
+
+```
+Initiation:   I (Machine.init program)
+Consecution:  ∀ m m', I m → Step m m' → I m'
+Safety:       ∀ m, I m → ¬ aboutToTypeStick m
+```
+
+and a one-time metatheorem turns *any* such `I` into a guarantee:
+
+```lean
+theorem invariant_sound (I : Machine → Prop)
+    (init : I (Machine.init program))
+    (cons : ∀ m m', I m → Step m m' → I m')
+    (safe : ∀ m, I m → ¬ aboutToTypeStick m) :
+    ∀ r, Reachable (Machine.init program) r → ¬ typeStuck r
+```
+
+It says nothing about any checker — it is pure metatheory, a short induction on
+the reflexive-transitive closure. **The engine is never proved correct; the rule
+that makes its output trustworthy is proved once, and the engine is demoted to
+untrusted.** Finding `I` is undecidable and heuristic (outside); checking it is
+decidable and local (inside). That asymmetry is the same one the whole pipeline
+runs on.
+
+**Built:** `RubyCore/Proof/TypeSafety.lean` proves `invariant_sound` as stated,
+formulated over the **full** executable relation `SmallStep m m' := stepFn m =
+.next m'`, not the partial inductive `Step`. That matters: a subset relation
+reaches fewer states, so safety over it would not transfer. Ranging over `stepFn`
+is why the theorem already covers dispatch, classes and blocks.
+
+**Not built:** the consumer — a per-program engine that discovers a concrete `I`
+whose Consecution is dischargeable. The checkability constraint shapes the
+abstract domain: `cons` and `safe` quantify over all states, so `I` cannot be an
+arbitrary Lean `Prop`. For Ruby the domain **must track the object model** —
+which methods each reachable receiver responds to, ancestor chains, arities —
+because "receiver responds to `m`" is a *heap* fact mutated by
+`prepend`/`define_method`/reopening. Consecution becomes *every step preserves
+"every reachable receiver responds, at the right arity, to every method sent to
+it"*, and that is checkable only if the domain is chosen to keep it so.
+
+**§3 — Direction A: witness generation.** The dual, and it needs no proof at all: the
+certificate *is* the trace. Replay it through `stepFn` and observe the outcome;
+a witness that replays in-model but not in CRuby is a **model bug**, routed to the
+difftest ratchet. Not built either.
+
+**§5 — annotations are a *separate* check.** The reachability property is
+annotation-free — it is the ground truth of "does this program ever hit a type
+error". A declared type is then checked as **conformance** against the same
+semantics, and kept fully decoupled: the two verdicts answer different questions
+and are allowed to disagree. Not built; it is what would close the blind spot
+`difftest sorbet check` reports (a quiet hole that lets a wrong-typed value
+through raises no exception, so an error-shaped oracle cannot see it).
+
+**§9 — the candidate corpus** was a tiered plan (hand-written toys → a stdlib
+bridge → the DRuby featured corpus), gated on model coverage: the measured
+blocker was always the builtin surface, which is why `prelude/prelude.rb` grew.
+Superseded in practice by the corpus in `corpus/`.
+
+`Denote/Sem/Invariant.lean` is this argument's ratchet-side shape.
+
+## Sorbet, as an object of study
+
+Sorbet is stage 1 of the pipeline and is **untrusted**, so what matters is not
+that it is right but what it *means* — and the following facts are load-bearing
+for `RubyCore/Types/Fragment.lean`, the prelude's `sig` handling, and difftest
+tier 4.
+
+**§A.1 — the grammar.** A nominal subtype lattice over Ruby's class graph, plus
+unions (`T.any`), intersections, `T.untyped`, and `T.nilable(τ)` which is
+*literally* `T.any(NilClass, τ)` — nilable and boolean are not primitive
+constructors, just unions. Absence of a signature is **not an error**: an
+unannotated method takes and returns `T.untyped`.
+
+**§A.2 — flow-sensitive (occurrence) typing.** A `T.nilable(String)` is `String`
+in the truthy branch. Narrowing works on locals, not on method calls (assign to a
+temporary first), it is reset by any assignment, and if a user overrides `is_a?`
+the analysis is **unsound**.
+
+**§A.3 — unsound by design, with escape hatches.** The distinction that is
+routinely stated wrongly:
+
+| Form | Static | Runtime |
+|---|---|---|
+| `T.let(e, τ)` | checked | checked |
+| `T.cast(e, τ)` | **trusted, not proved** | **checked** — raises `TypeError` |
+| `T.must(e)` | narrows away `nil` | checked |
+| `T.unsafe(e)` | disables checks | **none** |
+| `T.bind(self, τ)` | trusted | checked |
+
+`T.unsafe` is the one form with *no* runtime backstop. The others are dual-checked
+or runtime-checked.
+
+**§A.4 — strictness levels** are per-file: `ignore` → `false` → `true` →
+`strict` → `strong` (no `T.untyped` values at all).
+
+**§A.5 — the gradual boundary is runtime `sig` enforcement.** Adding a `sig`
+*wraps* the method beneath it in one that validates arguments, calls the original,
+and validates the return. Checks are on by default and configurable per-sig
+(`.checked(:always | :tests | :never)`). **This wrapping is exactly a
+method-boundary contract** — "guarded" enforcement in the gradual-typing sense —
+and it maps directly onto the object model: *a `sig` is heap mutation that
+replaces a method-table entry with a checking wrapper* (RubyCore/README.md
+artifact 02 §6). Caveat: **generics are erased at runtime**, validated statically
+only, so no runtime-preservation argument may lean on them.
+
+**§B.5 — the gradual guarantee** (changing only annotation *precision* must not
+change behavior except by trapping more errors) is what `--sut sig-strip` tests as
+a metamorphic relation.
+
+**§C.1 — what "preservation" means here.** The honest statement is a *runtime*
+three-outcome one over the machine, not a static progress-and-preservation pair:
+Ruby programs legitimately raise, diverge and gate, so the bad-state predicate is
+`typeStuck` and there is no progress obligation in the usual sense.
+
+**§C.2** — the everything-is-a-send angle, above. **§C.3** — the two cheapest
+probes, both built and both needing no Lean: the gradual-guarantee `obs⁺` probe
+(`--sut sig-strip`) and `srb`/`T.reveal_type` as a typing oracle
+(`difftest sorbet check`). **§C.5** — the discipline decision: **extrinsic typing
+with store typing `Σ` over the machine**, reusing the already-proven monotone heap
+as `Σ`.
+
+And the standing caution: **`srb` is an oracle, not truth.** Sorbet is unsound by
+design, so its acceptance is not a safety claim, and `srb` clean with
+`validateD = false` is an ordinary, expected combination.
+
+## The answer-typed design
+
+The work order that produced `Denote/Sem/{Answer,SafeKont,AnswerCatch}.lean`,
+`Denote/Typed/JudgeA.lean` and `Ratchet/Deriv.lean`. It has landed; this is kept
+because the code cites it and because the diagnosis is worth not re-deriving.
+
+### The diagnosis, in one line
+
+Four obstructions were hit in one investigation, in four layers, and looked
+unrelated. They were one fact:
+
+> **The semantic judgment read only the `.value` arm of `RunResult`.**
+
+`Interp.run` answers five ways — `.value`, `.uncaught`, `.unsupported`,
+`.outOfFuel`, `.stuck`. The old `Evals` kept one and discarded the rest, and every
+rule's obligation was an implication with `Evals` on the **left**. So a program
+that escapes satisfied every obligation *vacuously*, and every attempt to reason
+compositionally about escape had to reintroduce by hand, per continuation, the
+information that projection threw away.
+
+What was measured on the way: stuck-freedom does **not** follow from the value
+axis; `Judge.while'` was provable only modulo two jump conditions, one of which is
+**false**; Iris's `wp_bind` is **provably unavailable** for this machine; and a
+49-continuation census showed Ruby's void-value rule exempts five of the seven
+jump constructors and *neither* of the two that ordinary code produces — there is
+no jump-free sub-language to retreat into.
+
+The literature answers this uniformly: **an escape belongs to the answer, not to
+the step** (Essence-of-Ruby's `r ::= v | [v]^t | wrong`, λ_JS, Wright–Felleisen,
+CakeML's `Rval | Rerr`, monadic and algebraic effects, double-barrelled CPS,
+Hazel's protocols). RubyCore already had that answer type at the *run* level and
+dropped it at the *judgment* level. That was the whole diagnosis — three quarters
+of the design was already in place: the state form (`Ctl.jump`), generativity as
+`FrameId`s, and `RunResult` itself.
+
+**Both of the mechanization's original rejections still stand.** Big-step is still
+rejected, and the mechanized form of an answer type is CakeML's *fuel-indexed
+functional* big-step, which is what `Interp.run` already is. Generative exceptions
+as the mechanism are still rejected. The answer type is orthogonal to both axes.
+
+### §6 — the proposal
+
+```lean
+inductive Answer
+  | val (v : Value)         -- the run returned
+  | esc (j : Jump)          -- the run escaped, and this is the escape
+  | gate (reason : String)  -- `.unsupported` — outside the modelled fragment
+```
+
+- **`SafeKont K` becomes indexed by `Answer`.** The escape case is a *clause*
+  rather than a missing hypothesis, and it can carry `StateOk` — which is
+  precisely what made `JumpStuckFree` false.
+- **Decomposition becomes total case analysis**, not one lemma per axis with a
+  per-continuation side condition.
+- **`CatchFree`/`JumpOpaque` stop being ad hoc**: they become the statement of
+  *which tags a continuation intercepts* — Essence's `handle t`, a protocol in its
+  simplest form.
+- **Stuck-freedom and value typing stop being two ladders.** `¬ typeStuck` is a
+  property of the `esc` arm, `denM τ` of the `val` arm: one obligation, two
+  clauses.
+
+The price was stated plainly up front and paid: every obligation changed shape,
+trivially for leaf reads and as real work for the call and declaration families.
+A re-statement of the judgment layer, not a patch.
+
+### §7 — what it does not buy
+
+- **Not Iris's `wp_bind`.** `Language.Context` is a claim about the *machine's*
+  step relation, which genuinely does disturb contexts; `ctx_law3_fails_raise`
+  stands regardless. The Iris seat stays useful for what it was built for —
+  adequacy.
+- **Not divergence handling** — that was already free: `typeStuck .outOfFuel =
+  false` and safety properties are prefix-closed, so `∀ fuel` catches every real
+  stuck outcome without needing termination.
+- **Not reachability.** `while true; end; 1 + "s"` is genuinely safe and the
+  checker says `false`. `difftest/checker_relation.py` deliberately excludes that
+  as "a reachability opinion, not a type one".
+
+### §3.1 — the keystone: `SemJudgeA`
+
+The answer-typed judgment, at `Ratchet/Check.lean`'s index shape. The hypothesis
+is an **answer** rather than a value, which is the whole point: an escaping run no
+longer satisfies the obligation vacuously. It is deliberately *not*
+`Denote/Sem/Judge.lean`'s `SemJudge`, and that is why the 48 obligations proved
+against the latter were not reusable.
+
+### §3.3 — the invariant: `CtlOk`, `KontOk`, `Inv`
+
+Four things fix `KontOk`, all measured:
+
+1. **36 constructors, not 15** — `probes/kont_census.lean` walks every corpus
+   program under the real `stepFn`; restricting to the judged fragment removes
+   *nothing*, because the send spine reaches most of the frame set on its own.
+2. **Two clauses per frame**, value and escape. The escape clause is where the
+   previously unconsumable premises get consumed.
+3. **Indexed by the answer type** the *empty* continuation accepts. Discovered the
+   hard way: with `nil` accepting anything, the invariant proves **safety while
+   proving nothing about types**, because `∃ τ` forgets what the certificate
+   claimed. This is Wright–Felleisen's context typing `E : τ ⇒ τ_ans`.
+4. **Indexed by the live `catch` tags** — `CatchFree K` is exactly "`K` intercepts
+   nothing", the empty protocol.
+
+`CtlOk` also carries the **image condition**: the machine holds `RubyCore.Expr`
+and the judgment is over `Ratchet.Expr`, so `preserved` owes "an `Inv` machine
+never steps out of `toRuby`'s image". No `SemJudge` obligation ever had to say
+this.
+
+### §3.4 — the certificate and its checker
+
+`Deriv` mirrors the judgment's constructors and is **derived from the inductive**
+rather than hand-written: hand-transcribing constructors is one chance per
+constructor to let a certificate mean something the rule does not.
+
+**Where hints carry information and where they do not** is the design question. A
+hint is a *tag* wherever the rule is syntax-directed (a literal's type, a
+variable's from `Γ`, an assignment's from its right-hand side) and **load-bearing**
+wherever it is not — `break` types at any `τ`, so the hint must carry it and no
+checker can infer it. Same at `raise`, at the `.never` family, and at every join.
+That is the general reason a certificate language exists at all.
+
+### Named gaps — do not rediscover these
+
+| Gap | Blocks |
+|---|---|
+| **`UncaughtInv`** — the converse of `done_inv`, and it does not exist (`RubyCore/Proof/NotDone.lean` has the one and not the other) | the general right route from the judgment to safety; belongs next to `done_inv` |
+| **The protocol-indexed frame rule** — today's `stepFn_frame` is its `T = []` instance. Needs an ambient-tag parameter on `stepFn`: an interface change, behavior-preserving, difftest-checkable for exactly that reason | `KontOk` at a machine inside a `catch`. Relocating the tag set into a `Machine` field does **not** substitute — the non-locality is semantic, not representational |
+| **`catchK` is reached by no corpus rung** | the tag index would be built untested. **Add a `catch`/`throw` rung before writing the constructor** |
+| **6 of the 36 frames correspond to no judgment premise** — `frameK`, `blkFrameK`, `iterK`, `newK`, `methodAddedK`, `blkCoerceK`, all from the dispatch spine | these are the **call boundary**: a `frameK` means you are inside a callee whose typing is a *different* derivation, so `KontOk` needs a **stack** of descriptions, not a position in one |
+
+### Two norms this work added to the standing set
+
+**Norm A — state the general version of every theorem** unless a named
+requirement prevents it. The prototype's adequacy was written at `Γ = []` and was
+useless for the only job adequacy has; generalizing it changed no proof.
+
+**Norm B — do not be married to existing code; delete dead code liberally**,
+distinguishing *superseded* (delete) from *refuted* (keep the counterexample, keep
+its `#guard`s). Measurements, findings and every `not_*` refutation stay.
+
+## Superseded design notes — where the citations point
+
+Docstrings across `RubyCore/`, `Ratchet/`, `Denote/` and the difftest engine cite
+design documents by bare filename. The ones still live were folded into the files
+above; the rest described work that has since been **superseded or removed**, and
+were deleted rather than carried as stale prose. They remain in full in the git
+history (`git log --follow -- docs/semantics/<name>`), and this is the index of
+what each one was, so a citation is readable without fetching it.
+
+| Cited as | What it was |
+|---|---|
+| `AGENTS.md` §Type safety as reachability | → §Type safety as reachability, above (§2 bad state, §3 Direction A, §4 Direction B, §9 corpus) |
+| `AGENTS.md` §Sorbet | → §Sorbet, as an object of study, above (§A Sorbet, §B the soundness survey, §C the mapping onto this machine) |
+| `AGENTS.md` §The answer-typed design, `AGENTS.md` §The answer-typed design | → §The answer-typed design, above |
+| `RubyCore/README.md` §Mechanization | → `RubyCore/README.md` §Mechanization |
+| artifacts `00`–`04`, `linearization.md` | → `RubyCore/README.md`; `05` → `../difftest/README.md`; `06` → `../desugar-dt/README.md` |
+| `PROJECT_PLAN.md` | the original project plan: motivation, prior-art survey, scope and phasing. §4 (what is modeled, and the exclusions) is `RubyCore/README.md` 00 §6; §7 (the relation, not the interpreter, is the definition of record) is its §Mechanization |
+| the static-soundness POC note | the first end-to-end soundness POC: a total `check : Expr → Verdict` with `check_sound` over the *fully-typed* fragment, `I ≡ InFragment ∧ WellTyped`, and the builtin signature table it forced. Its §7 is the **checker difftest**, which survives as `difftest/checker_relation.py` |
+| the typed-portion-safety note | the plan for "a type error never occurs inside typed code" — the blame-theorem shape. Its finding stands: four verified channels carry untyped data into typed code, one of which (alias + mutate) shows *no entry check, however deep, suffices*, so the required condition is a property of the **heap over time**, not of the call graph |
+| the certificate-language note | type-checking as certificate replay, and the norms (untrusted generation, one trusted checker, `#guard` not `native_decide`, agreement counts must not move). Superseded by `Ratchet/Deriv.lean` + `validateD`; the norms stand |
+| the judgment-layer note | the J-milestones: state the invariant over an **inductive judgment** rather than over a checker function, because metatheory stated over a *function* is re-incurred at every checker rewrite. Superseded by `Denote/Typed/`; the diagnosis stands |
+| `type-judgments.md` | the implementation catalog for the judgment forms (`Ty`, `Sub`, `Consistent`, `Join`, `mtype`, `narrow`, `HasType`, `KontOk`) |
+| `slot-frame.md`, `slot-frame-experiment.md`, the typing-the-slice milestone plan | the slot-frame resource algebra and the milestone plan (M0–M7) for typing the Homebrew slice. The slice is not in this repository; the tripwires it produced are corpus rungs and regressions |
+| `concolic-dataflow.md`, `search-and-proof.md`, the bounded-effect-checking note, the DRuby-reproduction plan | the unbuilt engine line of work: symbolic shadow machine, the concrete↔symbolic spectrum, a commit-time bounded model checker, and a bug-finding campaign against DRuby's corpus. None built; the sketch of what the engine would be is §Type safety as reachability |
+| `lemma-library.md`, `co-semantics.md`, `user-stories.md` | the lemma-library plan, Rails-as-a-second-semantics, and what a *partial* semantics buys an end user (the last is summarized in the root `README.md`) |

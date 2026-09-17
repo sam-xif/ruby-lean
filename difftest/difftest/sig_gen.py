@@ -1,6 +1,6 @@
 """Type-directed generation of Sorbet-annotated Ruby.
 
-`docs/semantics/static-soundness-poc.md` §7. `fragment_fuzz.py` generates plain
+Part of the checker difftest (see `checker_relation.py`). `fragment_fuzz.py` generates plain
 Ruby inside the P0 checker fragment; this generates *annotated* programs, and it
 does so **type-first**: a term is built downward from the type it must have, so
 well-typedness is a property of the construction rather than something checked
@@ -34,7 +34,7 @@ is diagnosable and cannot corrupt the check-vs-`srb` zeros.
 independently: at `# typed: strict` every unsig'd method draws 7017, so partial
 coverage requires `# typed: true` [V, srb 0.6.13405]. Partial coverage is the
 interesting setting — it is the partially-typed population
-`typed-portion-safety.md` §7's M0 wanted to measure and had no corpus for.
+the typed-portion-safety note §7's M0 wanted to measure and had no corpus for.
 
 Note also that calls to an unsig'd method are `T.untyped` to Sorbet, so they
 cannot produce a type error. That is the gradual boundary doing exactly what it

@@ -113,9 +113,9 @@ way to build one, and it computes `form` from the `Judge` constructor rather tha
 hand-written one — so `syn` is the constructor, `sem` is a proof of the derived obligation,
 and neither can be about a different rule than the other.
 
-**Parameterised by both families, deliberately** (Norm A, `answer-typed-schema.md` §1). The
+**Parameterised by both families, deliberately** (Norm A, `AGENTS.md` §The answer-typed design §1). The
 committed registry is `Clink synFam semFam`, but the semantic reading is *going* to be
-restated — `answer-typed-schema.md` §3.1 replaces `SemJudge` with the answer-typed
+restated — `AGENTS.md` §The answer-typed design §3.1 replaces `SemJudge` with the answer-typed
 `SemJudgeA` — and when it is, the restatement is a **new registry at a new target family**,
 not a rewrite of this file. What that costs is then visible and per-rule: every clink whose
 `sem` field does not carry over stops building, by name, instead of a report continuing to

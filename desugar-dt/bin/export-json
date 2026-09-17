@@ -2,7 +2,7 @@
 # frozen_string_literal: true
 
 # Desugar Ruby source (stdin or file arg) and print the RubyCore AST as JSON.
-# This is the harness↔Lean interface (lean-model-sketch.md §2.1).
+# This is the harness↔Lean interface (`../ruby-lean/RubyCore/README.md` §Mechanization).
 #
 #   bin/export-json < prog.rb
 #   bin/export-json prog.rb

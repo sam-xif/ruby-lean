@@ -1,5 +1,5 @@
 /-
-The executable step function (lean-model-sketch §3): `stepFn` is one
+The executable step function (`RubyCore/README.md` §Mechanization): `stepFn` is one
 small-step transition of the machine; `run` iterates it under fuel.
 
 The inductive `Step : Config → Config → Prop` (the definition of record)

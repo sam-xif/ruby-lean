@@ -5,8 +5,8 @@
 > prong 2). Prong 1 (bootstraptest) and the hand-written adversarial seeds (prong 3 seed)
 > already run; see [`README.md`](README.md).
 >
-> References: `../../docs/semantics/06-desugaring-and-its-testing.md` (the desugar-first
-> method), `../../docs/semantics/05-differential-testing.md` §4.1 (generation), and the
+> References: [`README.md`](README.md) §The method (the desugar-first
+> method), `../difftest/README.md` §Methodology (artifact 05 §4, generation), and the
 > papers in `../../ruby_papers/` — Csmith (PLDI'11) and Superion (ICSE'19).
 
 ## 0. Goal

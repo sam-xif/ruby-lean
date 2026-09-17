@@ -2494,7 +2494,7 @@ end
 #
 # Sorbet's *runtime* half, modeled the way this project models everything else:
 # as ordinary RubyCore code performing heap mutation, not as new Lean rules
-# (`../../docs/semantics/types-and-preservation.md` §A.5, §C.2 — "a `sig` is heap
+# (`../AGENTS.md` §Sorbet §A.5, §C.2 — "a `sig` is heap
 # mutation that replaces a method-table entry with a checking wrapper").
 #
 # Why it belongs in the model at all: the honest soundness statement for Sorbet

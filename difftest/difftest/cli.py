@@ -293,7 +293,7 @@ def cmd_sorbet(args) -> int:
     summary = run_check(cases, out_dir, timeout=args.timeout)
     _print_summary(summary, out_dir)
     # Exit 1 on a *declaration mismatch* or a **pinned-zero violation** of the
-    # checker relation (static-soundness-poc.md §7). Unsoundness witnesses stay
+    # checker relation (the static-soundness POC note §7). Unsoundness witnesses stay
     # findings, not failures — the corpus exists to collect them — but a program
     # where `check` and `srb` genuinely disagree is a bug in one of them, and
     # the whole point of the zeros is that they are not negotiable.
@@ -509,7 +509,7 @@ def main(argv=None) -> int:
     p_checker = sub.add_parser(
         "checker",
         help="fuzz the P0 checker fragment and relate `check` to srb "
-             "(static-soundness-poc.md §7)",
+             "(the static-soundness POC note §7)",
     )
     p_checker.add_argument("subcommand",
                            choices=["fuzz", "siggen", "sample", "sigread"])

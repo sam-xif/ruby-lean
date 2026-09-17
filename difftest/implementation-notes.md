@@ -1,6 +1,6 @@
 # difftest — implementation notes (non-critical choices, for rollback)
 
-Same convention as the harness's `../harness/desugar-dt/implementation-choices.md`:
+Same convention as the harness's `../desugar-dt/implementation-choices.md`:
 every non-obvious implementation choice gets a numbered entry here and this file is
 committed on each change, so any decision can be found and reverted. Load-bearing
 *design* decisions live in [`HANDOFF.md`](HANDOFF.md); these are the smaller calls.
@@ -10,7 +10,7 @@ committed on each change, so any decision can be found and reverted. Load-bearin
 Tier 0 was originally sketched as "conformance suites from other languages,
 AI-translated to Ruby". MRI's own `bootstraptest/` is a strictly cheaper first
 occupant: already Ruby, already self-contained single-file programs, harvester
-already exists (`../harness/desugar-dt/bin/harvest_bootstraptest`), no
+already exists (`../desugar-dt/bin/harvest_bootstraptest`), no
 translation or licensing questions. Translated foreign suites remain a future
 tier-0 source, not a separate tier. (Refocus decision of 2026-07-07: corpora
 covering the language's real distribution come before splicing/mutation.)
@@ -33,7 +33,7 @@ order.
 ## N4 — The bootstraptest corpus stays unvendored (gitignored in the harness)
 
 The difftest source points at the harness's harvested copy
-(`../harness/desugar-dt/corpus/bootstraptest/`) and raises with the harvest
+(`../desugar-dt/corpus/bootstraptest/`) and raises with the harvest
 recipe when it is missing, rather than vendoring ~1300 upstream-derived files
 into this repo.
 
@@ -501,7 +501,7 @@ The object of study for the Sorbet work is the *type system*, not the language, 
 `corpus/sorbet/` is organized by which part of Sorbet's design a program probes —
 `sig-basic`, `narrowing`, `assertions`, `untyped-boundary`, `escape-hatches`,
 `structs-enums`, `generics` — mirroring §A of
-[`../docs/semantics/types-and-preservation.md`](../docs/semantics/types-and-preservation.md).
+[`../ruby-lean/AGENTS.md`](../ruby-lean/AGENTS.md) §Sorbet.
 That is a different axis from tier 3's (dispatch, blocks/jumps, eval-order, …), which is
 organized by Ruby construct, and both are right for their purpose.
 

@@ -2,7 +2,7 @@
 
 Tier 0 is the conformance-corpus tier. Its first source is MRI's own
 bootstraptest suite, as harvested by the desugar harness
-(`../harness/desugar-dt/bin/harvest_bootstraptest`) — no translation needed,
+(`../desugar-dt/bin/harvest_bootstraptest`) — no translation needed,
 the harvested cases are already self-contained single-file Ruby. Validity is
 enforced at run time by the existing control gate in `run_case` (parse check,
 timeout, determinism double-run), so unusable cases are excluded with reasons
@@ -19,14 +19,14 @@ from .testcase import TestCase
 
 BASE = Path(__file__).resolve().parents[1]  # ruby/difftest/
 BOOTSTRAPTEST_DIR = (
-    BASE.parent / "harness" / "desugar-dt" / "corpus" / "bootstraptest"
+    BASE.parent / "desugar-dt" / "corpus" / "bootstraptest"
 )
 
 SORBET_DIR = BASE / "corpus" / "sorbet"
 
 # The Sorbet corpus is organized by *which part of Sorbet's design* a program
 # probes, not by Ruby construct — the taxonomy is the one in
-# `../docs/semantics/types-and-preservation.md` §A, because the object of study
+# `../ruby-lean/AGENTS.md` §Sorbet §A, because the object of study
 # is the type system, not the language.
 SORBET_CATEGORIES = {
     "sig-basic": "plain sigs; both halves quiet, or both firing on one defect (§A.5)",
@@ -41,7 +41,7 @@ SORBET_CATEGORIES = {
     "p0-fragment": (
         "plain Ruby inside the P0 static-checker fragment; exercises the "
         "check-vs-srb relation and its pinned zeros "
-        "(static-soundness-poc.md §7)"
+        "(the static-soundness POC note §7)"
     ),
     "generics": "runtime-erased generics — statically checked, no runtime backstop (§A.6)",
 }
@@ -60,7 +60,7 @@ HARVEST_RECIPE = """\
 The bootstraptest corpus is harvested on demand (not vendored). To fetch it:
   git clone --depth 1 --filter=blob:none --sparse https://github.com/ruby/ruby /tmp/ruby
   (cd /tmp/ruby && git sparse-checkout set bootstraptest)
-  ../harness/desugar-dt/bin/harvest_bootstraptest /tmp/ruby/bootstraptest"""
+  ../desugar-dt/bin/harvest_bootstraptest /tmp/ruby/bootstraptest"""
 
 
 def load_corpus_cases(corpus: Path, default_tier: int = -1) -> list[TestCase]:

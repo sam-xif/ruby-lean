@@ -145,7 +145,7 @@ inductive Ty where
       What it buys is the relation and its inversions, which the iterator rung needs
       before it can type a block body. -/
   | arrayOf (elem : Ty)
-  /-- **A union** (L269, `judgment-layer.md` §1.4) — a value of `σ` or of `τ`.
+  /-- **A union** (L269, the judgment-layer note §1.4) — a value of `σ` or of `τ`.
 
       **Inert on the checker path, by design.** Nothing in `infer`/`chk` constructs
       one, `subTy` compares it by equality (the catch-all arm), `tyClassNames`

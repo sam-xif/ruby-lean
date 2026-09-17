@@ -4,14 +4,14 @@ import RubyCore.Proof.HeapFacts
 /-!
 # RBI-conformance for the builtins the typed fragment calls
 
-`docs/semantics/static-soundness-poc.md` §5. Every entry of
-`Types/Decls.lean`'s `baseDecls` is a **claim about the model's own
+Every entry of `Types/Decls.lean`'s `baseDecls` is a **claim about the model's own
 implementation**, and this file discharges those claims: for each declared
 signature, the interpreter's dispatch really does produce a value of the
 declared type, in one step, without raising.
 
-This is the obligation `typed-portion-safety.md` §6 names, arriving early
-(§8.1(3) of the POC doc explains why it slipped from P0a to P0b). Our setting
+This is the RBI-conformance obligation, arriving at step one: `1 + 2` is a
+send, so the typed fragment needs a builtin signature table before it needs
+anything else. Our setting
 is better off than Sorbet's: Sorbet trusts its RBIs with no runtime backstop,
 whereas here the model *defines* the builtin, so conformance is a theorem.
 
@@ -21,7 +21,7 @@ whereas here the model *defines* the builtin, so conformance is a theorem.
 the method table still resolves the name to the builtin, publicly, unshadowed.
 It is a hypothesis rather than a lemma because it is false in general: a program
 may reopen `Integer` and redefine `+`. The fragment forbids that
-(`static-soundness-poc.md` §6, "no class reopening"), and discharging the
+(the static-soundness POC note §6, "no class reopening"), and discharging the
 hypothesis for the concrete booted heap is a separate, `native_decide`-shaped
 job that must stay out of this file so the metatheorems keep their axiom
 baseline — the same split `SorbetConcrete.lean` uses (L81).

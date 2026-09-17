@@ -29,10 +29,11 @@ read [`AGENTS.md`](AGENTS.md). The rest of this file is the **model**.
 
 ## The model
 
-The mechanization begun from [`../docs/semantics/lean-model-sketch.md`](../docs/semantics/lean-model-sketch.md):
+The mechanization begun from the design sketch now distilled into
+[`RubyCore/README.md`](RubyCore/README.md) §Mechanization:
 a small-step machine over RubyCore with a fuel interpreter, packaged as a
 difftest **SUT** from day one. The inductive `Step` relation (the definition
-of record, PROJECT_PLAN §7) is not yet authored — `stepFn` comes first so the
+of record, `RubyCore/README.md` §Mechanization) is not yet authored — `stepFn` comes first so the
 model meets the differential engine immediately; `Step` will be written
 against it and the adequacy theorems proved after.
 
@@ -60,7 +61,7 @@ against it and the adequacy theorems proved after.
 
 ```sh
 cd ruby-lean && lake build         # toolchain pinned in lean-toolchain
-echo 'puts 1 + 2' | "$(brew --prefix ruby)/bin/ruby" ../harness/desugar-dt/bin/export-json \
+echo 'puts 1 + 2' | "$(brew --prefix ruby)/bin/ruby" ../desugar-dt/bin/export-json \
   | ./.lake/build/bin/rubycore
 ```
 
@@ -205,7 +206,7 @@ numerics/strings, Enumerable→Array/Hash).
 
 ## Metatheory
 
-The sketch and PROJECT_PLAN §7 name the **inductive `Step` relation** the
+[`RubyCore/README.md`](RubyCore/README.md) §Mechanization names the **inductive `Step` relation** the
 definition of record, with `stepFn` its executable witness. `RubyCore/Proof/`
 realizes that programme in two layers (axiom-clean; see
 `notes/model/implementation-notes.md` L13–L15, L51):
@@ -217,7 +218,8 @@ realizes that programme in two layers (axiom-clean; see
    idiomatic relational view; bridged to the full relation by
    `Step.subset_smallStep`.
 2. **Type safety as reachability** (`TypeSafety.lean`) — the `invariant_sound`
-   progress/preservation metatheorem of `type-safety-by-reachability.md` §4,
+   progress/preservation metatheorem of [`AGENTS.md`](AGENTS.md)
+   §Type safety as reachability §4,
    proved over the *full* transition relation `SmallStep m m' := stepFn m =
    .next m'` (so it covers dispatch/classes/blocks — real programs, not just the
    control core), plus the Direction-A execution certificate

@@ -16,7 +16,7 @@
 # Fails loudly (non-zero exit, nothing on stdout) if the prelude is out of the
 # desugar fragment — a prelude that silently half-loads would be a coverage hole.
 
-lib = File.expand_path("../../harness/desugar-dt/lib", __dir__)
+lib = File.expand_path("../../desugar-dt/lib", __dir__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 require "desugar"
 require "export"

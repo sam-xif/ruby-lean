@@ -189,7 +189,7 @@ class Desugar
   end
 
   # call families that smuggle arbitrary source past the fragment gate. `eval` of a
-  # string is explicitly out of scope (artifact 00 §6, PROJECT_PLAN §4); the block forms
+  # string is explicitly out of scope (artifact 00 §6, `RubyCore/README.md` 00 §6); the block forms
   # of *_eval are fine and handled as ordinary sends with a block.
   EVAL_STRINGISH = %w[instance_eval class_eval module_eval].freeze
 

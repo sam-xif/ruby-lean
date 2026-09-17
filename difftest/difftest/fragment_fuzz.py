@@ -1,8 +1,8 @@
 """Random programs inside the P0 checker fragment, and the relation over them.
 
-`docs/semantics/static-soundness-poc.md` §7. Mining the bootstraptest corpus
-gave 21 accepts and **zero** rejects (§7.1), so the dangerous verdict has no
-natural population and has to be generated.
+Part of the checker difftest (see `checker_relation.py`). Mining the
+bootstraptest corpus gave 21 accepts and **zero** rejects, so the dangerous
+verdict has no natural population and has to be generated.
 
 ## Why source, not `Expr`
 

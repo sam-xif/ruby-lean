@@ -95,7 +95,7 @@ monorepo with full per-file commit history preserved (841 commits).
   install what is missing.
 * `scripts/reproduce.sh` — build and gate in order, with optional difftest and
   metatheory passes.
-* `docs/README.md` — a reading order for the design record.
+* A reading order for the design record.
 * Apache-2.0 `LICENSE` and `NOTICE`.
 
 **Fixed**

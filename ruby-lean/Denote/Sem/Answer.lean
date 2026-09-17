@@ -4,7 +4,7 @@ import Denote.Sem.Decompose
 # `Denote/Sem/Answer.lean` — the answer type, and the one equation that replaces the ladder's
 two decompositions
 
-**Design**: `../../../docs/semantics/answer-typed-judgments.md` §6. This file is that
+**Design**: `../../AGENTS.md` §The answer-typed design §6. This file is that
 proposal's first half, built: `Answer`, the answer-producing run `runA`, and the master
 equation `run_pushK`.
 

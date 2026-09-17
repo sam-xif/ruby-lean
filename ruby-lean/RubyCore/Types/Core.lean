@@ -3,7 +3,7 @@ import RubyCore.Types.Decls
 /-!
 # P0 of the static-soundness POC — the type language and the checker
 
-`docs/semantics/static-soundness-poc.md` §8. This is deliberately the smallest
+This is deliberately the smallest
 type layer that exercises the whole architecture: three ground types, no
 subtyping, no user classes, no `send`. Its purpose is not coverage — it is to
 measure the cost of typing the machine's **continuation stack** before P1 fixes
@@ -11,7 +11,7 @@ a larger scope.
 
 The checker is an **executable inference function**, and the typing judgment is
 *defined by it* (`infer Γ e = some (τ, Γ')`). That is the certifying-checker
-shape of the POC doc §2: no separate `Prop` to keep in sync, and no completeness
+shape: no separate `Prop` to keep in sync, and no completeness
 proof owed — `none` simply means `unknown`.
 
 Inference is **flow-sensitive** in the environment (Ruby locals are assigned,
@@ -30,7 +30,7 @@ namespace RubyCore.Types
 
 /-! ## The refutation pass
 
-`static-soundness-poc.md` §2.2 deferred a `reject` verdict; this supplies it, as
+the static-soundness POC note §2.2 deferred a `reject` verdict; this supplies it, as
 a **second pass independent of `infer`**. The separation is deliberate: `infer`'s
 `none` conflates "outside the fragment" with "ill-typed", and threading a third
 value through it would touch every `KontOk` constructor and every case of the
@@ -39,7 +39,7 @@ by anything here.
 
 **What `reject` claims.** Only that *our rules refute the program* — not that it
 will fail at runtime. `if false then 1 + nil else 0 end` is rejected and is
-perfectly safe. That asymmetry is inherent (`typed-portion-safety.md` §8.1) and
+perfectly safe. That asymmetry is inherent (the typed-portion-safety note §8.1) and
 is why the guard on `reject` is a difftest direction — `reject ⇒ srb rejects` —
 rather than a Lean theorem. Verified for the cases below [V].
 
@@ -1394,7 +1394,7 @@ example : check (.send (some (.int 1)) "+" [.tru] none) = .reject := by
 
 /-- **Rejected, and perfectly safe.** `if false then 1 + nil else 0 end` runs to
     `0`. `reject` claims our rules refute the program, *not* that it fails —
-    the asymmetry of `typed-portion-safety.md` §8.1. srb rejects this too, but
+    the asymmetry of the typed-portion-safety note §8.1. srb rejects this too, but
     for a different reason (7006 unreachable, not 7002), which is worth
     remembering when the difftest starts comparing diagnostics [V]. -/
 example :

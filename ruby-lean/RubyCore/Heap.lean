@@ -1,6 +1,6 @@
 /-
 Values, objects, the heap, and the pure object-model operations
-(artifacts 01–02). Per lean-model-sketch.md §1.3, the step relation touches
+(artifacts 01–02). Per `RubyCore/README.md` §Mechanization, the step relation touches
 the heap only through the functions defined here; they get their own lemmas
 later.
 

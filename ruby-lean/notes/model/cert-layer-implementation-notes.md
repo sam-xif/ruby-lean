@@ -1,8 +1,8 @@
 # `RubyCore/Cert/` — implementation notes (**V-numbers**)
 
 The certificate language: format, validator, and (in `RubyCore/Proof/Cert/`) the
-`validate_sound` theorem. Design artifact:
-[`../../../docs/semantics/certificate-language.md`](../../../docs/semantics/certificate-language.md).
+`validate_sound` theorem. Design artifact: the certificate-language note (deleted; see
+[`../../AGENTS.md`](../../AGENTS.md) §Superseded design notes).
 Working norms: that document's §7, which restates `homebrew/PLAN.md` §4 — in
 particular **norm 1**, which is why this file exists: every non-trivial decision is
 recorded here, numbered and committed, including the ones that look obvious.

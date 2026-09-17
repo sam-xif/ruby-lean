@@ -10,8 +10,7 @@ method owners, and absence-of-annotation all in one pass). Two differences, both
   other one does not, and no `Ty.any` inference (see `Ratchet/Ty.lean`: `.any` is
   "only usable as a declared parameter type", which is exactly this file's output).
 
-Nothing here is trusted. `../docs/semantics/certificate-language.md` §1: generation owns
-completeness, validation owns soundness. A signature read wrong costs a body that fails
+Nothing here is trusted: generation owns completeness, validation owns soundness. A signature read wrong costs a body that fails
 to certify, never a wrong accept -- and `Ratchet/Deriv.lean`'s header says where that
 argument bottoms out.
 

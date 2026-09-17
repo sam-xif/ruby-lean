@@ -1,7 +1,7 @@
 # sig_strip — make a Sorbet-annotated program *less precise*, byte-for-byte.
 #
 # This is the `e ⊑ e'` transform of the gradual guarantee (Siek/Vitousek/Cimini/
-# Boyland; ../docs/semantics/types-and-preservation.md §B.5 and §C.3 step 1):
+# Boyland; ../../ruby-lean/AGENTS.md §Sorbet §B.5 and §C.3 step 1):
 # strip the annotations, change nothing else. The guarantee predicts that the
 # stripped program behaves identically *except* that it traps fewer errors, so
 # any other difference is either a Sorbet-runtime bug or a defect in our

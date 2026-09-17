@@ -11,7 +11,7 @@ to be excluded (`Semantics.typeStuck`) is a property of a *reachable machine*, a
 is a property of an *expression evaluated from a machine with an empty continuation*. Those are
 different quantifiers, and the gap between them is the continuation.
 
-`../type-safety-by-reachability.md` §4 is the plan; `RubyCore/Proof/`'s `invariant_sound`
+`AGENTS.md` §Type safety as reachability §4 is the plan; `RubyCore/Proof/`'s `invariant_sound`
 is the same argument already carried out over a hand-built invariant, next to `stepFn`. This
 file is that argument's **ratchet-side shape**: the reduction proved, and the invariant's
 three components written down as named definitions so the remaining work has a target rather
@@ -31,7 +31,7 @@ from exactly those two. Note what is *not* an obligation: **progress in the usua
 Ruby programs legitimately raise, diverge and gate; the bad-state predicate is `typeStuck`,
 not "cannot step", so the second obligation is a *bad-step exclusion* rather than "some step
 exists". That is the whole point of the reachability framing and it is why divergence is free
-(`../../../docs/semantics/answer-typed-judgments.md` §7).
+(`../../AGENTS.md` §The answer-typed design §7).
 
 ## §2 The invariant — three components, of which two exist
 
@@ -72,7 +72,7 @@ invariant must describe the continuation *syntactically*.
 Which is the second fixed point of the design, and it is not an implementation detail: if
 `KontOk` records the set of tags handled below a point, then `hasCatcher`'s whole-stack read
 becomes a *local* question about the index, and `CatchFree` stops being needed at all. That
-index is Ueno et al.'s exception context `T` (`answer-typed-judgments.md` §3.1) and Hazel's
+index is Ueno et al.'s exception context `T` (`AGENTS.md` §The answer-typed design §3.1) and Hazel's
 protocol (§3.2) — so the design lands exactly where the literature said it would, arrived at
 from the opposite direction.
 

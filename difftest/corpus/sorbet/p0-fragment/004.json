@@ -6,5 +6,5 @@
   "static_expect": "clean",
   "runtime_expect": "value",
   "check_expect": "unknown",
-  "doc_ref": "static-soundness-poc.md 2.2"
+  "doc_ref": "static-soundness POC note §2.2"
 }

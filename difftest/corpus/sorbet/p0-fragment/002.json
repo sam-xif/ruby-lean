@@ -6,5 +6,5 @@
   "static_expect": "errors",
   "runtime_expect": "ruby_error",
   "check_expect": "reject",
-  "doc_ref": "static-soundness-poc.md 7"
+  "doc_ref": "static-soundness POC note §7"
 }

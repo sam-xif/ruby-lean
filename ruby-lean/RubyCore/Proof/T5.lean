@@ -1,6 +1,6 @@
 /-
 T5 (`class_hierarchy`) — the object-model dispatch invariant, calibration toy of
-`type-safety-by-reachability.md` §9.1. The smallest setting where "prove
+`AGENTS.md` §Type safety as reachability §9. The smallest setting where "prove
 type-safe" *requires* an invariant over the object model (which receivers
 respond to a method), i.e. a store-typing clause rather than a value shape.
 
@@ -59,7 +59,7 @@ set_option maxHeartbeats 1000000 in
     The step lands in the method activation (`enterUserMethod` → `.eval body`),
     i.e. it does NOT take the `dispatchMiss` → `NoMethodError` branch. This is
     the "receiver responds to `m`" store-typing clause of
-    `type-safety-by-reachability.md` §4.2, discharged over the real interpreter.
+    `AGENTS.md` §Type safety as reachability §4, discharged over the real interpreter.
 
     The heartbeat raise is `enterUserMethod`'s: unfolding it reaches `destructureBind`, which
     is now a structural recursion on a `destrDepth` fuel rather than a `partial def` (so that

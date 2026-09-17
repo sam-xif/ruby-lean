@@ -8,7 +8,7 @@
 # the Lean side into the browser; this gets the Ruby side, which is five
 # distinct jobs the page needs, all of them the same interpreter:
 #
-#   harness/desugar-dt/bin/export-json   Ruby source -> RubyCore JSON
+#   desugar-dt/bin/export-json   Ruby source -> RubyCore JSON
 #   difftest/ruby/*_strip.rb             the six-stage strip chain
 #   the program itself                   the CRuby oracle, "Run in CRuby"
 #
@@ -78,7 +78,7 @@ say "staging the guest filesystem"
 # packing that would put the interpreter inside its own filesystem.
 cp -R "$DIST/usr/local/lib/ruby" "$STAGE/usr/local/lib/"
 
-cp -R "$ROOT/harness/desugar-dt/lib" "$ROOT/harness/desugar-dt/bin" "$STAGE/opt/desugar/"
+cp -R "$ROOT/desugar-dt/lib" "$ROOT/desugar-dt/bin" "$STAGE/opt/desugar/"
 for s in "${STRIP_CHAIN[@]}"; do
   cp "$ROOT/difftest/ruby/$s.rb" "$STAGE/opt/strip/"
 done

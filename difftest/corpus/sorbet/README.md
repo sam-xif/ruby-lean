@@ -2,7 +2,7 @@
 
 Hand-written Sorbet-annotated programs, one specific probe each. The taxonomy is by
 **which part of Sorbet's design** a program exercises (§A of
-[`../../../docs/semantics/types-and-preservation.md`](../../../docs/semantics/types-and-preservation.md)),
+[`../../../ruby-lean/AGENTS.md`](../../../ruby-lean/AGENTS.md) §Sorbet),
 not by Ruby construct — the object of study is the type system.
 
 | Category | Probes |
@@ -27,7 +27,7 @@ Every `NNN.rb` has an `NNN.json` declaring what *both halves* of Sorbet do with 
   "sigil": "true",
   "static_expect": "clean",          // clean | errors                  (srb tc)
   "runtime_expect": "ruby_error",    // value | sorbet_error | ruby_error (CRuby)
-  "doc_ref": "types-and-preservation.md A.5"
+  "doc_ref": "ruby-lean/AGENTS.md §Sorbet §A.5"
 }
 ```
 

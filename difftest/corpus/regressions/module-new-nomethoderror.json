@@ -3,5 +3,5 @@
   "filed_by": "hand, M1",
   "arm": "probe",
   "case_id": "module-new-nomethoderror",
-  "note": "Filed as the M1 (docs/semantics/typing-the-slice-milestones.md) tripwire for Module#new: with the eigenclass wired to the wrong superclass (Class instead of Module), `new` resolves through Class#new and answers wrongly instead of raising. Measured agree once M1's eigenclassOf fix landed -- Module itself carries no `new` in the boot method tables, so the corrected chain (bottoming at Module rather than Class) now fails to resolve it exactly as CRuby does. Declared fixed rather than open since the harness observed agree, not sut_unsupported: this needed no separate Module#new builtin."
+  "note": "Filed as the M1 (the typing-the-slice milestone plan) tripwire for Module#new: with the eigenclass wired to the wrong superclass (Class instead of Module), `new` resolves through Class#new and answers wrongly instead of raising. Measured agree once M1's eigenclassOf fix landed -- Module itself carries no `new` in the boot method tables, so the corrected chain (bottoming at Module rather than Class) now fails to resolve it exactly as CRuby does. Declared fixed rather than open since the harness observed agree, not sut_unsupported: this needed no separate Module#new builtin."
 }

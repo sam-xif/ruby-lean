@@ -1,5 +1,5 @@
 /-
-The machine configuration (artifact 00 §2, lean-model-sketch §3): an explicit
+The machine configuration (artifact 00 §2, `RubyCore/README.md` §Mechanization): an explicit
 control state, a continuation (kont) stack, a frame *store* addressed by
 FrameId with the activation stack as a list of ids (sketch §1.2 — Essence's
 variable store and generative-jump-tag store unified), the heap, and the

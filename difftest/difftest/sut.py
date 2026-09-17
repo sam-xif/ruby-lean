@@ -94,7 +94,7 @@ class DesugarRoundtripSUT:
         runner: CRubyRunner | None = None,
         inject_bug: bool = False,
     ):
-        default = Path(__file__).resolve().parents[2] / "harness" / "desugar-dt" / "lib"
+        default = Path(__file__).resolve().parents[2] / "desugar-dt" / "lib"
         self.harness_lib = Path(harness_lib) if harness_lib else default
         self.runner = runner or CRubyRunner()
         self.inject_bug = inject_bug
@@ -154,7 +154,7 @@ class LeanSUT:
         runner: CRubyRunner | None = None,
     ):
         root = Path(__file__).resolve().parents[2]
-        self.harness_lib = Path(harness_lib) if harness_lib else root / "harness" / "desugar-dt" / "lib"
+        self.harness_lib = Path(harness_lib) if harness_lib else root / "desugar-dt" / "lib"
         self.lean_bin = Path(lean_bin) if lean_bin else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
         self.runner = runner or CRubyRunner()
 
@@ -200,7 +200,7 @@ class SigStripSUT:
     the two are related by the gradual guarantee rather than by equality, so it
     carries its own comparator (the `compare` attribute `runner.run_case`
     honors). See `compare.gradual_guarantee_compare` and
-    `../docs/semantics/types-and-preservation.md` §C.3 step 1: this is the
+    `../ruby-lean/AGENTS.md` §Sorbet §C.3 step 1: this is the
     cheapest real check on Sorbet's runtime semantics, and it needs no Lean.
     """
 

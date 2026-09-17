@@ -20,7 +20,7 @@
 # Two places where the languages differ are commented where they occur (`zip`
 # truncation, float packing); both reproduce the original's behaviour.
 #
-# Nothing here is trusted. `certificate-language.md` §1: generation owns
+# Nothing here is trusted. the certificate-language note §1: generation owns
 # completeness, validation owns soundness. This file may **block** ("I cannot
 # build a derivation for this") and it may propose a derivation the checker then
 # rejects. It cannot cause a wrong accept, because `validateD` re-derives every

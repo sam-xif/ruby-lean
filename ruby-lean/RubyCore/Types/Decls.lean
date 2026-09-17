@@ -203,7 +203,7 @@ structure Decls where
       table plus `declOf?` on the parent's rows — needs a heap clause tying a *name* to
       a chain position, and `ClassOk`'s own uniqueness clause covers only
       `readableClasses` (the fixed boot names `.const` can read), not program classes.
-      **M2** (`docs/semantics/typing-the-slice-milestones.md`) closes the general case:
+      **M2** closes the general case:
       `NamesUnique` (`Proof/Static/Decls.lean`) is already the unrestricted clause, and
       `className_inj_of_namesUnique` is its corollary stated over `className` — so a
       *qualified* program name (`Outer::Inner`) does pin an id, given `NamesUnique h`.
@@ -997,7 +997,7 @@ def addRow (D : Decls) (cls name : String) (d : MethodDecl) : Decls :=
 
 /-! ## The base table
 
-`static-soundness-poc.md` §5's builtin signatures, as declarations. Every entry
+the static-soundness POC note §5's builtin signatures, as declarations. Every entry
 is a **proof obligation** — `Proof/Static/Decls.lean`'s `DeclsOk` is what the
 invariant carries, and `tableOk_declsOk` is the proof for these three. Entries
 whose conformance is not proved may not appear; the notable absences and their

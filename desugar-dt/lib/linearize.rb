@@ -7,7 +7,7 @@
 # if/while body, an if/ternary/case branch) — even when the enclosing `if` is itself an
 # operand — but REJECTS a jump in OPERAND position (send receiver/arg, array/hash element,
 # assignment RHS, if/while condition): `(next).to_s` and `foo(next)` are SyntaxErrors,
-# while `(if c then next else 5 end).to_s` is fine. See docs/semantics/linearization.md.
+# while `(if c then next else 5 end).to_s` is fine. See README.md §Linearization.
 #
 # Key consequence: we only ever hoist an operand that NEVER yields a value
 # (`definitely_jumps?`), so **no temporaries are needed** — we evaluate the operands up to

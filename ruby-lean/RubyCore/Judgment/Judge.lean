@@ -4,11 +4,11 @@ import RubyCore.Regex.Parse
 /-!
 # `Judge` — the declarative typing judgment (the definition of record)
 
-`docs/semantics/judgment-layer.md` **J0**: the flow-sensitive expression typing as an
+The judgment layer's **J0**: the flow-sensitive expression typing as an
 **inductive `Prop`**, mirroring how `Step m m'` renders `stepFn`. This is the layer the
 metatheory is meant to be stated over — `chk`/`infer` become decision procedures to be
-related to it by one-directional lemmas, never the other way around (§0 of the design
-artifact: metatheory stated over a *function* is re-incurred at every checker rewrite).
+related to it by one-directional lemmas, never the other way around. The diagnosis
+behind that: metatheory stated over a *function* is re-incurred at every checker rewrite.
 
 ## Reading the judgment
 
