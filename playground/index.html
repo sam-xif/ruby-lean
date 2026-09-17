@@ -160,6 +160,7 @@
      rule above would strip the top margin from. It is not first on the page. */
   .adv h2:first-child { margin-top:18px; }
   #advtoggle { display:none; }
+  .narrownote { display:none; }
 
   /* ── narrow screens ─────────────────────────────────────────────────── */
   /* Two independently scrolling panes do not survive a phone, so the columns
@@ -182,6 +183,11 @@
     .adv { display:none; }
     body.showadv .adv { display:block; }
     #advtoggle { display:inline-block; }
+    .narrownote { display:block; margin:0 0 12px; padding:9px 12px;
+      border:1px solid var(--edge); border-left:3px solid var(--accent);
+      border-radius:0 8px 8px 0; background:var(--panel);
+      color:var(--dim); font-size:12px; line-height:1.55; }
+    .narrownote b { color:var(--warn); font-weight:600; }
 
     /* A <select> is as wide as its widest <option>, and 259 corpus names are
        wider than a phone. Without an explicit width that min-content size grows
@@ -229,6 +235,10 @@
 <div class="wrap">
   <!-- ─────────────────────────────── left ─────────────────────────────── -->
   <div class="left">
+    <p class="narrownote">This page runs large WebAssembly modules in your
+      browser — real Ruby and the Lean checker, compiled to wasm.
+      <b>It does not work in Safari.</b> Chrome on a phone does, but for best
+      results use Chrome on your desktop.</p>
     <div class="row">
       <select id="corpus"></select>
       <button class="ghost" id="load">Load</button>
