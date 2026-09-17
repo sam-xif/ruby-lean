@@ -14,8 +14,8 @@ same way, under `ruby-lean/notes/`.
 |---|---|---|
 | `ruby-lean/` (the checker, `Ratchet/`+`Denote/`) | [`ruby-lean/AGENTS.md`](ruby-lean/AGENTS.md) — current state, the proof boundary, the pipeline, the gate; then its *Design record* for the Sorbet, reachability and answer-typed background the code cites | `notes/ratchet/implementation-notes.md` (the chronological record), `notes/ratchet/found-issues.md` (open findings, §F-numbers), `notes/ratchet/HANDOFF.md` (the live resume point) |
 | `ruby-lean/` (the model, `RubyCore/`) | [`ruby-lean/README.md`](ruby-lean/README.md) — layout, fragment, build | [`ruby-lean/RubyCore/README.md`](ruby-lean/RubyCore/README.md) — **the semantics itself**, and what code comments mean by *"artifact NN §M"*; then `notes/model/implementation-notes.md`, `notes/model/HANDOFF.md` |
-| `desugar-dt/` | [`desugar-dt/README.md`](desugar-dt/README.md) — the front end, the round-trip method (artifact 06), linearization | `implementation-choices.md` (C-numbers, cited from the code) |
-| `difftest/` | [`difftest/README.md`](difftest/README.md) — the engine, and the methodology (artifact 05) | `HANDOFF.md`, `implementation-notes.md` (N-numbers) |
+| `desugar-dt/` | [`desugar-dt/README.md`](desugar-dt/README.md) — the front end, how the fragment grows, the round-trip method (artifact 06), linearization | `implementation-choices.md` (C-numbers, cited from the code) |
+| `difftest/` | [`difftest/README.md`](difftest/README.md) — the engine, its invariants, and the methodology (artifact 05) | `implementation-notes.md` (N-numbers, cited from the code) |
 | `playground/` | [`playground/README.md`](playground/README.md) | — |
 | `paper/` | [`paper/README.md`](paper/README.md) | — |
 

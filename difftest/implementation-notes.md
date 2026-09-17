@@ -3,7 +3,8 @@
 Same convention as the harness's `../desugar-dt/implementation-choices.md`:
 every non-obvious implementation choice gets a numbered entry here and this file is
 committed on each change, so any decision can be found and reverted. Load-bearing
-*design* decisions live in [`HANDOFF.md`](HANDOFF.md); these are the smaller calls.
+*design* decisions live in [`README.md`](README.md) §Invariants; these are the
+smaller calls.
 
 ## N1 — Tier 0 is repurposed as the conformance-corpus tier; bootstraptest is its first source
 
@@ -146,7 +147,7 @@ object model (the desugar M3 core and the Lean L2 fragment) went unexercised by
 fuzzing. Added three AST nodes to the *shared* `tiers/tier1` grammar so both tier 1
 and tier 1.5 (which is `tier1.programs().map(probe)` — N11) get them for free:
 `ClassDef` (name + ivars + instance methods), `New` (`C.new(...)`), `MethodCall`
-(`recv.m(...)`), plus `IvarRead` (`@x`). Scope-awareness (prong2-design §3) is
+(`recv.m(...)`), plus `IvarRead` (`@x`). Scope-awareness (the prong-2 design, `../desugar-dt/README.md` §The method) is
 preserved by extending `Env` with `classes`/`instances`/`ivars` so `.new`
 arg-counts and receiver methods resolve and dispatch actually fires.
 
@@ -176,7 +177,7 @@ programs round-trip fully in-fragment through the harness).
 Closed the four biggest generative-coverage gaps (tier 1 owns the grammar; tier 1.5
 inherits every node via `.map(probe)` — N11). All additions preserve the two
 load-bearing invariants: **termination-by-construction** (HANDOFF invariant 4) and
-**scope-awareness** (prong2-design §3, so dispatch fires instead of dying on
+**scope-awareness** (the prong-2 design, `../desugar-dt/README.md` §The method, so dispatch fires instead of dying on
 NameError). New pure-leaf nodes were registered in the tier-1.5 probe `_LEAVES`
 (`BlockGiven`, `ConstRead`); every other new node is handled by the probe's generic
 dataclass walk.

@@ -377,8 +377,8 @@ theorem MFrag.claimed_of_fragHead_false {A : SemAxioms} {e : Expr}
 
 /-! ## Claim membership, decidably (J31)
 
-`Float` is opaque, so `Expr` has no derivable `DecidableEq` (the V15 note at the
-`BEq` instance), and the derived `BEq` is *unsound for propositional equality* at
+`Float` is opaque, so `Expr` has no derivable `DecidableEq` (see the note at
+`Syntax.lean`'s `BEq` instance), and the derived `BEq` is *unsound for propositional equality* at
 `.flt` (`-0.0 == 0.0`). The checker therefore decides claim membership with a
 **float-refusing structural equality**: sound (`= true → =`, the only direction
 the soundness proofs need), complete except at `.flt` fields — and a claim with a

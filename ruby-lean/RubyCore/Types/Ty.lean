@@ -176,7 +176,7 @@ inductive Ty where
       *nested* inductive, and both derive handlers and the kernel refuse it —
       `deriving DecidableEq` has no nested handler (measured at this build), and
       the repo already learned that nested-derived equality does not
-      kernel-reduce (V15's `exprEq`-on-fuel exists for exactly that reason). The
+      kernel-reduce (`exprEq`-on-fuel exists for exactly that reason). The
       spine keeps `Ty` simple-recursive, so `==` stays structural and `chk`'s
       `decide`s keep reducing (norm 5). The cost: a malformed spine
       (`arrowCons A .int`) is representable — it is garbage no rule constructs

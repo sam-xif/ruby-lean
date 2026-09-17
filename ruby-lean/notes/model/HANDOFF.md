@@ -42,7 +42,7 @@
 >   proofs (`lake build RubyCore.Proof.T5Loop …`) as part of a batch.
 
 Fresh-context hand-off for the Lean interpreter work begun 2026-07-07 (mirrors
-`../difftest/HANDOFF.md` in role). Read `README.md` first for layout/build;
+Read `README.md` first for layout/build;
 `implementation-notes.md` (L1–L12) for revertable decisions; this file for
 state, the coverage assessment, and what happens next.
 
@@ -119,7 +119,7 @@ disagreement — preserve them as the fragment grows.
 
 1. **Desugar M2 (params + `yield`) — upstream, biggest lever.** 544/1304
    cases never reach Lean. Plan already written:
-   `../desugar-dt/M2-params-yield-plan.md` (migrate the flat
+   the desugarer's M2 params+yield batch, since landed (migrate the flat
    `[String]` param slot to structured param nodes). The Lean `parseParams`
    ("*"-prefix convention) must migrate in lockstep — the export is
    versioned (`Export::VERSION`), so bump it when the shape changes.

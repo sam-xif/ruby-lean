@@ -85,10 +85,54 @@ program **out-of-fragment** (skipped with a reason) rather than failing.
 Measured coverage of the bootstraptest corpus is **1227 of 1299 parseable
 programs in fragment** (`coverage-baseline.json`; `bin/coverage` recomputes it and
 ratchets against that baseline). The remaining 72 are the unsupportable and
-deliberately-deferred set. Grow the fragment by adding rules — don't try to handle
-all of Ruby at once (`implementation-choices.md` C3), and prefer desugaring over
-adding a node (C12). The prioritized expansion plan is in
-[`fragment-expansion-strategy.md`](fragment-expansion-strategy.md).
+deliberately-deferred set.
+
+### Growing it
+
+Expansion is a **measure → expand → re-measure** loop, which is why `bin/coverage`
+exists and is first-class. It reports fragment coverage, a **blocker histogram**
+(per unsupported Prism node type, how many programs it blocks — the *full* profile
+per program, not just the first blocker `desugar` trips on, because the
+first-blocker view undercounts), and a **ratchet** against a committed baseline
+that may only go up.
+
+Two framing rules:
+
+- **"In fragment" is not the goal — "in fragment *and* agrees" is.** Expect some
+  newly-admitted programs to disagree on admission: that is the payoff, a real
+  `desugar`/`render` bug the growth exposed.
+- **The out-of-scope list is a deliverable**, in `implementation-choices.md`, one
+  line of justification per entry. Literal 100% of bootstraptest is neither
+  achievable nor desirable — the suite deliberately exercises VM internals that
+  are out of scope by design — so the honest headline is *"100% of in-scope
+  bootstraptest, N programs explicitly excluded (listed)"*, never a bare 100%.
+
+Every feature is first **classified**, because where the work goes differs by kind:
+
+| Kind | What it costs | Owes the model |
+|---|---|---|
+| **desugaring** | a rewrite in `lib/desugar.rb` + a rule in `Desugar::RULES`; **no new node** | nothing |
+| **new core node** | `RubyCore::HEADS` + `explain`, a `render_core` case, the `desugar` mapping | a `Step` rule later — it is part of the model, not sugar |
+| **out of scope** | raise `Unsupported` with a reason, add the justified entry | nothing, ever |
+
+Then: implement, **seed it** (and if it carries an evaluation-order or once-only
+obligation — op-assign receiver-once, multi-assign order, `case` subject-once,
+`for`'s leaking index, splat evaluation — add a *trace-augmented* seed, because
+value-only checks miss exactly these), keep `bin/run` green, re-measure, ratchet,
+commit with an `implementation-choices.md` entry for any scope decision.
+
+Guardrails: coverage is monotone; no silent caps — every uncovered program is a
+tracked bug, a pending batch item, or an enumerated exclusion; one adversarial
+seed per ordering obligation; and **batch, then re-measure** — never plan more
+than one batch ahead on stale numbers, because the blocker distribution shifts as
+programs unlock to their *next* blocker. Don't try to handle all of Ruby at once
+(`implementation-choices.md` C3), and prefer desugaring over adding a node (C12).
+
+The measured order the histogram produced, for the record: values and statements
+first (self-contained, no class/def machinery), then method and block shapes, then
+**classes and exceptions — the single biggest unlock**, because bootstraptest is
+class-heavy; then control-flow sugar, then long-tail triage moving each remainder
+to either a rule or the exclusion list.
 
 ---
 
@@ -186,11 +230,22 @@ bespoke harness and a bundled library. Neither is part of the language, and thei
 example bodies are coupled to `describe`/`before`/`let` setup, so they are not
 self-contained. Deferred, and the frameworks stay out of the model.
 
-**Prong 2 — grammar-aware fuzzing.** Superion-style: seeds are prong-1 programs
-plus the desugaring examples; mutation is AST-subtree splicing; and generation is
-**scope-aware** (an environment threads through, so only bound names are
-referenced) to defeat shallowness. Realized in the difftest engine as tier 1;
-feasibility and design are in [`prong2-design.md`](prong2-design.md).
+**Prong 2 — grammar-aware fuzzing.** Built, as the difftest engine's
+[tier 1](../difftest/README.md). Two findings from designing it are worth keeping.
+First, the approach chosen was *generate a surface AST and render it to Ruby text*
+rather than Superion's splice-a-parsed-tree, because **Prism has no unparser** and
+`render_core` handles only RubyCore, i.e. post-desugar — so mutation of scraped
+Ruby stayed deferred while generation did not. Second, generation is
+**scope-aware**: an environment threads through so only bound names are
+referenced, which is the single highest-leverage feature, because a naive
+generator produces valid-but-shallow programs that die at line 1 with `NameError`
+and never reach nested sugar.
+
+Its honest ceiling, stated when it was designed and still true: prong 2 excels at
+breadth and at rule *combinations*, and shakes out crashes on valid-but-weird
+trees — but because `desugar` is mostly structural, the subtle semantic
+obligations (once-only evaluation, ordering) are better hit by prong 3. It
+complements prong 3 rather than replacing it.
 
 **Prong 3 — adversarial targeted examples.** Programs written deliberately to
 stress each rule's semantic obligation, each using the evaluation-order trace.

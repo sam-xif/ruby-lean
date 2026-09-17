@@ -6,8 +6,8 @@ separately and cite each other by clink/L-number, not by date:
 | Path | What it records |
 |---|---|
 | [`model/implementation-notes.md`](model/implementation-notes.md) | The model (`RubyCore/`): the chronological L-numbered record — what was tried, what broke, what it cost. |
-| [`model/HANDOFF.md`](model/HANDOFF.md), [`model/HANDOFF-SF.md`](model/HANDOFF-SF.md) | The model's live resume points (the second is the slot-frame line of work). |
-| [`model/v4-migration-handoff.md`](model/v4-migration-handoff.md) | The Lean 4 toolchain migration. |
+| [`model/HANDOFF.md`](model/HANDOFF.md) | The model's live resume point. |
+| [`model/judgment-layer-implementation-notes.md`](model/judgment-layer-implementation-notes.md) | `RubyCore/Judgment/`: the J-numbered record, cited from that code and from `RubyCore/Proof/Judgment/`. |
 | [`ratchet/implementation-notes.md`](ratchet/implementation-notes.md) | The checker (`Ratchet/`, `Semantics/`, `Denote/`): the clink-numbered record. |
 | [`ratchet/found-issues.md`](ratchet/found-issues.md) | Open findings, §F-numbers — cited from live code. |
 | [`ratchet/HANDOFF.md`](ratchet/HANDOFF.md) | The checker's live resume point. |

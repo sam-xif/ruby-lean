@@ -183,7 +183,7 @@ bug that a value-only oracle would miss.
 ## C12 — RubyCore node-addition policy (keep the core small)
 
 **Decision.** Expanding `RubyCore::HEADS` is treated as a **red flag**. When growing the
-fragment (see `fragment-expansion-strategy.md`), a surface feature is handled by, in
+fragment (see `README.md` §Growing it), a surface feature is handled by, in
 order of preference:
 
 1. **Desugaring to `send` + existing RubyCore forms** — the default. The project bet is
@@ -349,7 +349,7 @@ intra-method blockers (optional/keyword params, `yield`, `case`) into this batch
 `class_node` (280 of them) almost always has a class *body* full of methods that then
 re-block on a secondary construct (`yield`, optional params, `case`, `begin`). So admitting
 classes does **not** convert all ~280+121(`begin`) programs — many fall to a secondary
-blocker. `fragment-expansion-strategy.md`'s "~84% after M3" assumed M2's full params were
+blocker. The expansion plan's "~84% after M3" assumed M2's full params were
 already in; they are not. Shipping the core and re-measuring keeps the one-batch-per-ratchet
 discipline (each ratchet step is attributable) and produces an honest next-blocker signal.
 

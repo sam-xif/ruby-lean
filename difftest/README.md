@@ -4,8 +4,8 @@ A multi-tier engine that generates Ruby test programs, runs each under **CRuby
 (the control)** and an arbitrary **system under test (SUT)** — eventually the
 in-Lean semantics — and reports where they differ. The methodology — what is being claimed, what is
 observed, and how a disagreement is triaged — is [below](#methodology); tier-1
-design realizes [`../desugar-dt/prong2-design.md`](../desugar-dt/prong2-design.md).
-Picking this up fresh? Read [`HANDOFF.md`](HANDOFF.md).
+design realizes prong 2 of [`../desugar-dt/README.md`](../desugar-dt/README.md)
+§The method. Read [Invariants](#invariants) before extending the generators.
 
 ## Setup
 
@@ -179,11 +179,44 @@ licensed weakenings (`agree_weakened`), 3 gated, 0 violations**.
   implementation-notes **N34** — do not add the `sorbet` arm to a mixed campaign against
   `--sut lean` until that is fixed.
 
+## Invariants
+
+Six decisions the engine rests on. Changing any of them silently will produce an
+engine that still runs and no longer means anything.
+
+1. **The SUT protocol is the decoupling point.** `run(source) -> Observation |
+   Unsupported`, and `Unsupported(reason)` is a *fragment gate*, not a failure —
+   partial models are first-class. Nothing else in the engine may know what the
+   SUT is.
+2. **Every exclusion carries a reason** — parse error, timeout, nondeterministic,
+   out-of-fragment. The project's *no silent caps* rule.
+3. **Deterministic errors are valid oracle cases.** Identical exceptions count as
+   agreement, and no attempt is made to generate only "valid" programs. This is
+   why Csmith's central difficulty does not transfer.
+4. **Tier 1 terminates by construction.** Loops exist only in bounded counter
+   form, and loop counters are `frozen` in the generation `Env` — both plain and
+   op-assign reassignment are excluded, since either can livelock the counter, and
+   a nested loop must draw a *free* loop variable (`strategies.py`). Preserve
+   these when extending the AST.
+5. **The tier-3 corpus is committed.** Generation costs money; replay is free. The
+   `.json` sidecar records category, description, model and response id.
+6. **Hypothesis is the tier-1 engine specifically for its shrinker.** Any redesign
+   of the campaign loop must keep a path to minimized reproducers.
+
 ## Deferred (deliberately)
 
-Tier 0/2 generators; heap projection in `obs`; three-way triangulation
-(TruffleRuby/JRuby); coverage-guided generation steering; Batches API bulk
-tier-3 generation; parallel oracle execution.
+Tier 2 (mutation) — the tier-1 AST and renderer make subtree splicing nearly free
+*for generated* programs, but mutating *scraped* Ruby needs a Prism→surface-AST
+importer, which wants designing first. Delta-debugging corpus-case disagreements
+through CRuby (artifact 05 §5), and weighting corpus sampling toward
+never-yet-disagreeing cases (currently uniform). More tier-0 sources — `ruby/spec`
+would need per-example assertions converted to prints. Generator-health metrics in
+the report (parse rate, exclusion rate, AST-kind histogram), which would make
+vocabulary growth measurable. Coverage-guided steering (artifact 05 §7). Parallel
+oracle execution — oracle runs dominate wall-clock at ~4 subprocess calls per case.
+Three-way triangulation (TruffleRuby/JRuby), worth it only once a real SUT
+disagrees. Heap projection in `obs` (artifact 05 §3), deferred until ivar-level
+comparison is meaningful.
 
 ---
 

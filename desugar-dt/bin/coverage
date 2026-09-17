@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Fragment-coverage measurement + ratchet (fragment-expansion-strategy.md §2).
+# Fragment-coverage measurement + ratchet (README.md §Growing it).
 #
 # Runs the desugar GATE only (no CRuby subprocesses — fast) over a corpus and reports:
 #   - fragment coverage  = in-fragment / (parseable - explicitly-excluded)

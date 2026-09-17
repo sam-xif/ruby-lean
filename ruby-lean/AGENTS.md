@@ -3345,3 +3345,12 @@ what each one was, so a citation is readable without fetching it.
 | `slot-frame.md`, `slot-frame-experiment.md`, the typing-the-slice milestone plan | the slot-frame resource algebra and the milestone plan (M0–M7) for typing the Homebrew slice. The slice is not in this repository; the tripwires it produced are corpus rungs and regressions |
 | `concolic-dataflow.md`, `search-and-proof.md`, the bounded-effect-checking note, the DRuby-reproduction plan | the unbuilt engine line of work: symbolic shadow machine, the concrete↔symbolic spectrum, a commit-time bounded model checker, and a bug-finding campaign against DRuby's corpus. None built; the sketch of what the engine would be is §Type safety as reachability |
 | `lemma-library.md`, `co-semantics.md`, `user-stories.md` | the lemma-library plan, Rails-as-a-second-semantics, and what a *partial* semantics buys an end user (the last is summarized in the root `README.md`) |
+
+Four working-notes files went the same way, because the code they recorded was
+removed rather than superseded in place: `notes/model/cert-layer-implementation-notes.md`
+(the V-numbers for `RubyCore/Cert/` and `Proof/Cert/`), `notes/model/HANDOFF-SF.md`
+(the slot-frame resume point), `notes/model/v4-migration-handoff.md` (a toolchain
+migration completed at a tier-0 baseline three batches behind the current one), and
+`Ratchet/implementation-notes.md`, which held a single clink orphaned by the package
+merge — that one was **merged into `notes/ratchet/implementation-notes.md`** rather
+than dropped, so the clink series is now gap-free.
