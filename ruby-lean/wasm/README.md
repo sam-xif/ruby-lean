@@ -59,6 +59,13 @@ runs off the end and reads object fields from an object that has none. The
 model reached it through `charSlice`, which is `String.mk ((s.toList.drop a).take (b - a))`
 and nothing else.
 
+`repro-upstream-bug.sh` reduces this to a self-contained demonstration: in a
+throwaway scratch directory it builds three `wasm32-wasip1` executables from one
+compile of the program, the stdlib and 25 of the 26 runtime translation units,
+differing only in which `object.o` is linked -- upstream, upstream with the
+runtime's `assert`s armed, and fixed -- and runs all three under `wasmtime`
+beside the native build. About 90 seconds cold, ten on a re-run.
+
 Patch 7 is a one-line fix and the only one of the seven that is a defect rather
 than a porting accommodation. It is worth reporting upstream; wasm32 is
 plausibly the first 32-bit target anyone has run this code on in a long time.

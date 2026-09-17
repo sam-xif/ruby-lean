@@ -42,7 +42,7 @@
   button.icon { padding:4px 9px; font-size:13px; line-height:1; }
   select, input { background:var(--panel2); color:var(--fg);
     border:1px solid var(--edge2); border-radius:7px; padding:6px 9px;
-    font:12.5px var(--sans); max-width:100%; }
+    font:12.5px var(--sans); max-width:100%; min-width:0; }
   input { font-family:var(--mono); font-size:12px; }
   select:focus-visible, input:focus-visible, textarea:focus-visible,
   button:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
@@ -51,6 +51,8 @@
     font-family:var(--mono); font-size:12.5px; line-height:1.55; resize:vertical;
     tab-size:2; }
   textarea::placeholder { color:var(--dimmer); }
+  #src { height:260px; } #stripped { height:150px; } #deriv { height:220px; }
+  #corpus { flex:1; }
   .row { display:flex; gap:8px; align-items:center; margin:10px 0; flex-wrap:wrap; }
   label.field { display:inline-flex; align-items:center; gap:6px;
     color:var(--dim); font-size:12px; }
@@ -109,7 +111,10 @@
   .verdict .k { color:var(--dim); display:inline-block; min-width:76px; }
   .err { background:#1e1317; border:1px solid #5e323c; color:#ffb8c4;
     border-radius:var(--r); padding:10px 12px; font-family:var(--mono);
-    font-size:11.8px; margin:10px 0; white-space:pre-wrap; }
+    font-size:11.8px; margin:10px 0; white-space:pre-wrap;
+    /* Backend messages are long unbroken strings; pre-wrap alone only breaks at
+       whitespace, and one of them widens the whole page. */
+    overflow-wrap:anywhere; }
 
   /* ── the stepper ────────────────────────────────────────────────────── */
   .stepbar input[type=range] { flex:1; accent-color:var(--accent); min-width:90px; }
@@ -151,6 +156,54 @@
     align-items:start; }
   @media (max-width:860px) { #stepper .dbody { grid-template-columns:1fr; } }
 
+  /* Wrapping a pair of panels in .adv makes its <h2> a first-child, which the
+     rule above would strip the top margin from. It is not first on the page. */
+  .adv h2:first-child { margin-top:18px; }
+  #advtoggle { display:none; }
+
+  /* ── narrow screens ─────────────────────────────────────────────────── */
+  /* Two independently scrolling panes do not survive a phone, so the columns
+     become one document and the page itself is the scroller. The intermediate
+     stages fold away behind "More detail": what is left is the program, the
+     pipeline, the verdict, and the two runs. */
+  @media (max-width:760px) {
+    header { height:auto; min-height:52px; padding:9px 13px; flex-wrap:wrap;
+      row-gap:8px; column-gap:10px; }
+    header h1 { flex:1 1 100%; font-size:13.5px; }
+    header h1 .slash { display:none; }
+    header h1 .sub { display:block; font-size:12.5px; }
+
+    .wrap { grid-template-columns:1fr; height:auto; }
+    .left, .right { padding:14px 13px 22px; overflow:visible; }
+    .right { border-left:0; border-top:1px solid var(--edge); }
+
+    #src { height:210px; } #stripped { height:130px; } #deriv { height:170px; }
+
+    .adv { display:none; }
+    body.showadv .adv { display:block; }
+    #advtoggle { display:inline-block; }
+
+    /* A <select> is as wide as its widest <option>, and 259 corpus names are
+       wider than a phone. Without an explicit width that min-content size grows
+       the layout viewport itself -- the whole page lays out at ~480px and the
+       right edge is cut off -- so this line is load-bearing, not cosmetic. */
+    #corpus { flex:1 1 100%; width:100%; }
+    .stage { grid-template-columns:14px 1fr auto; gap:6px 9px; padding:9px 10px; }
+    .stage .t { font-size:12px; }
+    .counter { min-width:0; }
+    .locals { grid-template-columns:1fr; gap:2px; }
+
+    dialog { padding:13px 14px 18px; border-radius:12px; }
+    /* Keep the close button on the title's line and push the subtitle below it,
+       rather than letting the spacer strand the ✕ on a line of its own. */
+    dialog .dhead { align-items:center; }
+    dialog .dhead b { flex:1; }
+    dialog .dhead .grow { display:none; }
+    dialog .dhead .hint { flex:1 1 100%; order:3; }
+    #about, #stepper { width:96vw; max-height:92vh; }
+    #about p, #about ul { font-size:13px; }
+  }
+
   #about { width:min(680px,94vw); max-height:86vh; overflow:auto; line-height:1.65; }
   #about h3 { font-size:12px; text-transform:uppercase; letter-spacing:.08em;
     color:var(--accent); margin:20px 0 6px; font-weight:650; }
@@ -168,6 +221,7 @@
 <header>
   <h1>ruby-lean<span class="slash">/</span><span class="sub">type checking Ruby, with a proof</span></h1>
   <button class="ghost icon" id="openabout" title="What is this?">&#9432;&nbsp; What is this?</button>
+  <button class="ghost icon" id="advtoggle" title="show the intermediate stages">&#183;&#183;&#183;&nbsp; More detail</button>
   <span class="grow"></span>
   <span class="pill" id="backendpill">—</span>
 </header>
@@ -176,7 +230,7 @@
   <!-- ─────────────────────────────── left ─────────────────────────────── -->
   <div class="left">
     <div class="row">
-      <select id="corpus" style="flex:1"></select>
+      <select id="corpus"></select>
       <button class="ghost" id="load">Load</button>
       <button id="runall" title="run all five stages in order">Check it ⏩</button>
     </div>
@@ -187,16 +241,20 @@
     <div id="err"></div>
 
     <h2>The program <span class="hint" id="srcmsg">— Ruby, with Sorbet type annotations. Editable.</span></h2>
-    <textarea id="src" spellcheck="false" style="height:260px"
+    <textarea id="src" spellcheck="false"
       placeholder="# typed: true&#10;extend T::Sig&#10;&#10;sig { params(x: Integer).returns(Integer) }&#10;def double(x)&#10;  x + x&#10;end&#10;&#10;double(21)"></textarea>
 
+    <div class="adv">
     <h2>Without the annotations <span class="hint" id="stripmsg">— what actually gets checked and run</span></h2>
-    <textarea id="stripped" spellcheck="false" style="height:150px"
+    <textarea id="stripped" spellcheck="false"
       placeholder="the program with its type annotations removed appears here"></textarea>
+    </div>
 
+    <div class="adv">
     <h2>Certificate <span class="hint">— the proposed proof. Edit it and stage 4 will check what you wrote.</span></h2>
-    <textarea id="deriv" spellcheck="false" style="height:220px"
+    <textarea id="deriv" spellcheck="false"
       placeholder="a certificate is a proposed proof that the program type-checks. It is untrusted: stage 4 re-derives every type in it."></textarea>
+    </div>
   </div>
 
   <!-- ─────────────────────────────── right ────────────────────────────── -->
@@ -204,11 +262,13 @@
     <h2>The pipeline <span class="hint">— press ▸ to run one, or “Check it” for all five</span></h2>
     <div class="rail" id="rail"></div>
 
+    <div class="adv">
     <h2>Declared types <span class="hint" id="sigmsg"></span></h2>
     <pre class="out tall" id="sigout"><span class="empty">— run stage 0 to read the program's type annotations</span></pre>
 
     <h2>The program, desugared <span class="hint" id="coremsg">— the core form the model runs</span></h2>
     <pre class="out sexpr tall" id="core"><span class="empty">— run stages 1 and 2</span></pre>
+    </div>
 
     <h2>Verdict <span class="hint">— the one trusted answer on this page</span></h2>
     <div id="verdict"><span class="empty">— run stages 3 and 4</span></div>
@@ -516,10 +576,31 @@ function renderStep() {
   $("tdetail").textContent = last && trace.detail ? `result: ${trace.detail}` : "";
 }
 
+// On a phone the intermediate panels start folded; the button is display:none
+// above the breakpoint, where they are always shown.
+$("advtoggle").onclick = () => {
+  const on = document.body.classList.toggle("showadv");
+  $("advtoggle").innerHTML = on ? "\u00b7\u00b7\u00b7&nbsp; Less detail"
+                                : "\u00b7\u00b7\u00b7&nbsp; More detail";
+};
+
 const about = $("about");
 $("openabout").onclick = () => about.showModal();
 $("closeabout").onclick = () => about.close();
-about.addEventListener("click", (e) => { if (e.target === about) about.close(); });
+// Click outside the panel closes it. `<dialog>` reports a backdrop click as a
+// click on the dialog itself -- but so is a click on the dialog's own padding,
+// so identity alone closes on clicks that are plainly inside. Both tests
+// together are the whole condition: the event has to name the dialog *and* land
+// outside its box. Neither half is enough. Dropping the identity test would
+// make a programmatic `el.click()` on a button inside -- which bubbles up
+// carrying coordinates 0,0 -- read as a click on the backdrop.
+const clickedOutside = (d, e) => {
+  if (e.target !== d) return false;
+  const r = d.getBoundingClientRect();
+  return e.clientY < r.top || e.clientY > r.bottom
+      || e.clientX < r.left || e.clientX > r.right;
+};
+about.addEventListener("click", (e) => { if (clickedOutside(about, e)) about.close(); });
 
 const dlg = $("stepper");
 $("openstep").onclick = () => {
@@ -528,9 +609,7 @@ $("openstep").onclick = () => {
   if (!trace) $("step").click();
 };
 $("closestep").onclick = () => dlg.close();
-// Click outside the panel closes it. `<dialog>` reports backdrop clicks as
-// clicks on the dialog itself, so the target check is the whole test.
-dlg.addEventListener("click", (e) => { if (e.target === dlg) dlg.close(); });
+dlg.addEventListener("click", (e) => { if (clickedOutside(dlg, e)) dlg.close(); });
 
 const goto_ = (n) => { if (trace) { at = n; renderStep(); } };
 $("first").onclick = () => goto_(0);
@@ -713,6 +792,23 @@ prewarm();
   tested until it seemed right: proved, as a theorem, for the fragment of Ruby it
   covers.</p>
 
+  <h3>Why?</h3>
+  <p>Production software is littered with bugs and security vulnerabilities.
+  AI has proven very good at exploiting them in <a href="https://www.elttam.com/blog/ruby-4-0-universal-rce-deserialization-gadget-chain">Ruby</a>
+  as well as in other languages and software.</p>
+
+  <p>As exploit grows cheaper, we must find ways to increase its cost. 
+  A guarantee of non-exploitability of software makes this cost approach infinity, 
+  but it requires a <i>formal model</i> of the system. 
+  Here, we present such a model for Ruby,
+  and we demonstrate that it's useful for proofs with the accompanying type safety result.
+  </p>
+
+  <h3>How?</h3>
+  <p>This work was steered closely by me, Sam, but heavily augmented by frontier LLMs, and accomplished with
+  a small fraction of the time and effort that would be required to produce this normally. 
+  This is a promising sign that a future of true high-assurance software engineering is not far off.</p>
+
   <h3>What a green result means</h3>
   <p>When the checker answers <b>true</b>, that program <b>cannot raise a type
   error</b> — no <code>NoMethodError</code>, no <code>TypeError</code>, no
@@ -722,7 +818,7 @@ prewarm();
   Lean, which is where the second half of this page comes in.</p>
 
   <h3>Why CRuby is here too</h3>
-  <p>A proof about a model is only worth what the model is worth. So real CRuby
+  <p>A proof about a model is as good as the model's faithfulness. So real CRuby
   runs beside it: press <b>Lean model</b> and <b>CRuby</b> on the same program and
   compare. Every program in this collection is checked both ways, and they agree.
   The model is not a paper description of Ruby with an interpreter next to it —
@@ -742,10 +838,9 @@ prewarm();
     the program.
   </div>
   <p style="margin-top:10px">The aim is to grow that fragment toward the whole
-  language, and to reach programs that are <b>nondeterministic</b> — that read
-  user input, so a single run proves nothing and only a proof over all runs will
-  do. Today the fragment is small, and everything it claims, it claims with a
-  proof behind it.</p>
+  language and type system, and to leverage it to reason about industrial-scale 
+  Ruby programs. Eventually, we can replicate this for every other piece of software.
+  Today the fragment is small, but with a powerful proof behind it.</p>
 </dialog>
 
 </body>
