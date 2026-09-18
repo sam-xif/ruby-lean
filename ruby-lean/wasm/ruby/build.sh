@@ -88,7 +88,7 @@ done
 # `read_sigs.rb` replaces `srb_sigs.py`: Sorbet is C++ with no wasm port, and
 # shipping each rung's stored sigs.json would go stale the moment the buffer
 # changes. Reading signatures off the source is sound rather than a shortcut --
-# `Ratchet/Deriv.lean` re-derives every declared type, so a weaker reader costs
+# `Ratchet/Check/Deriv.lean` re-derives every declared type, so a weaker reader costs
 # blocks and rejects, never a wrong accept. Sorbet's *verdict* is a different
 # thing and is not faked; `read_sigs.rb` reports `"verdict": "not-checked"`.
 cp "$PKG/scripts/emit_deriv.rb" "$PKG/scripts/read_sigs.rb" "$STAGE/opt/deriv/"

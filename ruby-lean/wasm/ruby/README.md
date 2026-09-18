@@ -66,7 +66,7 @@ change a `sig` and it proposes the *old* declared type, so `validateD` rejects
 the program the user just fixed.
 
 Reading signatures off the source is sound rather than a shortcut, and the
-argument is `Ratchet/Deriv.lean`'s, not ours:
+argument is `Ratchet/Check/Deriv.lean`'s, not ours:
 
 > a declared type cannot produce a wrong accept: it arrives as a field of
 > `Deriv.defDecl`, and the checker re-checks the body at exactly that type. A

@@ -15,7 +15,7 @@ separately and cite each other by clink/L-number, not by date:
 
 These files predate the merge of the `lean/` and `ratchet/` Lake packages into
 this one. **Backticked paths inside them are relative to the package root**
-(`ruby-lean/`) — `Denote/Typed/Bridge.lean`, `scripts/build_corpus.py`,
+(`ruby-lean/`) — `Denote/Bridge.lean`, `scripts/build_corpus.py`,
 `RubyCore/Interp.lean`. Paths that named the old package layout were rewritten;
 paths inside the historical narrative were not, so a sentence about "this
 package" in an old entry may mean the checker's package as it then was.

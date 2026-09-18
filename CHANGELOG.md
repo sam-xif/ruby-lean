@@ -6,6 +6,38 @@ artifact, and `0.01` is the first cut of it that a stranger can build.
 
 ## Unreleased
 
+**`Ratchet/` and `Denote/` are reorganized by what a file *says*.** No namespaces, theorem
+names or proofs changed — the four-library boundary (`RubyCore/` → `Ratchet/` +
+`Semantics/` → `Denote/`) and its isolation check are untouched, and every gate number is
+identical (reach 65, fragment 63, 252 agree / 0 disagree, 48 rules certified, 0 owed). What
+changed is where things live, one level down.
+
+* **`Ratchet/`** → `Lang/` (the copied `Expr`/`Ty`), `Static/` (the vocabulary both sides are
+  stated over), `Judgment/` (`DJudge`, `InitJudge`, and only these), `Guards/` (the decidable
+  side conditions), `Check/` (`validateD` and its caches), `Controls/`.
+* **`Ratchet/Judge.lean` is gone, and it had carried no judgment since clink 68** — 3,591
+  lines of tables, contexts and narrowing under the name of a deleted inductive, imported by
+  `Denote/Sem/` so the import graph read *"the semantics depends on the legacy judgment"*.
+  Split at its own section boundaries into fourteen files under `Ratchet/Static/`
+  (`Predicates`, `DefTable`, `Purity`, `Lookup`, `Classes`, `Ancestors`, `Nested`, `ExprEq`,
+  `Closures`, `Ctx`, `Iterators`, `Capture`, `Narrow`, `Kept`), plus `All.lean` for consumers
+  that want the whole vocabulary. The historical header is kept in `Ratchet/Static/README.md`.
+* **`Denote/` is three named tiers** where it had one named directory: `Ty/` (what a `Ty`
+  means), `Sem/` (the `StateOk` invariant and its transports, now in six pockets — `Core/`,
+  `Heap/`, `Names/`, `Class/`, `Subclass/`, `Instance/`), and `Judgment/` + `Rules/` (the
+  semantic judgment and the per-rule obligations, by feature). The old flat `Denote/Typed/`
+  (172 files) is gone; `Controls/` (63) and `Examples/` (11) are separated from the proofs.
+  `Denote/Sanity.lean` → `Denote/Sem/Core/Boot.lean` (it is the boot gate, not a sanity note)
+  and `Denote/Typed/Clink.lean` → `Denote/Clink/Registry.lean`, beside the mechanism it
+  instantiates.
+* **The controls are no longer kept alive by an import chain.** `ClassControls.lean` imported
+  fifty-one of its siblings and `Safety.lean` seven more, so a control's import list mixed
+  "what I need" with "who I keep alive", and dropping one from the commit-time gate was a
+  one-line deletion in a file edited for other reasons. Those 58 imports are removed; the list
+  is `Denote/Controls/All.lean`, which `scripts/run_typed_ratchet.sh` names as a build target.
+* New `Ratchet/README.md`, `Denote/README.md`, `Ratchet/Static/README.md`, and an
+  `AGENTS.md` §Layout section.
+
 **The pre-ratchet type-checking layers are gone.** `RubyCore/` carried four
 successive attempts at typing the model, each superseded by the next, none of
 them the checker the gate runs. All four were removed (~28k lines):

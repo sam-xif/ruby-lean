@@ -1,6 +1,6 @@
-import Denote.Typed.RuleAudit
-import Denote.Typed.Bridge
-import Ratchet.Rung
+import Denote.RuleAudit
+import Denote.Bridge
+import Ratchet.Check.Rung
 
 /-!
 # `semladder` — the clink registry's report
@@ -8,7 +8,7 @@ import Ratchet.Rung
 Two ratchets run in this package and neither substitutes for the other:
 
 * **`ratchet`/`ratchetd`** — *reach*: how many corpus programs the checker types.
-* **`semladder`** — the **certified judgment**: which of `Ratchet/Judge.lean`'s rules are in
+* **`semladder`** — the **certified judgment**: which of `Ratchet/Static/`'s rules are in
   `JudgeC clinks`, i.e. which have a semantic proof attached as a `Clink.sem` field.
 
 **What changed, 2026-09-11.** This used to print *48 of 83 rules discharged* — a numerator of
@@ -48,7 +48,7 @@ open Ratchet.Denote.Typed
 -- namespace, so there is nothing to open.
 
 /-- The recorded number of corpus rungs with an **end-to-end safety proof** at the real
-prelude-booted machine (`Denote/Typed/Safety.lean`). This is the number the ladder exists to
+prelude-booted machine (`Denote/Safety.lean`). This is the number the ladder exists to
 grow: `StuckFree bootMachine <program>`, at every fuel, with every hypothesis discharged. A
 drop means a theorem was deleted. -/
 def safeRungFloor : Nat := 49
@@ -60,7 +60,7 @@ drop means a proof was deleted or broken. -/
 def clinkFloor : Nat := 48
 
 /-- The recorded size of **the certified fragment**: corpus rungs `validateD` accepts, each
-safe by `validateD_safe_boot` (`Denote/Typed/Bridge.lean`). This is the number the ladder
+safe by `validateD_safe_boot` (`Denote/Bridge.lean`). This is the number the ladder
 exists to grow, and the one that means "climbed" now that acceptance and safety are the same
 fact. It only ever rises: a rung the checker accepted once is a rung it should still accept,
 so a drop is a rule weakened or a corpus rung changed. -/
@@ -73,7 +73,7 @@ def goalLimit : Nat := 20
 
 /-! ## The cross-check: the safety proof is about the **corpus's own** programs
 
-`Denote/Typed/Safety.lean`'s theorems name their rung in a docstring — `corpus/004-str-lit.rb`
+`Denote/Safety.lean`'s theorems name their rung in a docstring — `corpus/004-str-lit.rb`
 — and until now that was prose. This reads the rung the pipeline actually built and compares
 its **sig-stripped program** against the `Expr` the theorem is about. A theorem proved about
 `.str "hello"` while `corpus/004-str-lit.rb` says something else is the one way the safety
@@ -139,7 +139,7 @@ def pad (w : Nat) (s : String) : String :=
 
 /-! ### Classifying a rung, after the bridge
 
-Before `Denote/Typed/Bridge.lean` this function asked "does a *per-rung safety theorem* exist
+Before `Denote/Bridge.lean` this function asked "does a *per-rung safety theorem* exist
 for it", and a rung the checker accepted without one was `STARTED, INCOMPLETE` (§F32). That
 question is now answered once, for every rung at once, by
 
@@ -231,7 +231,7 @@ def main (args : List String) : IO UInt32 := do
   say s!"  DJudge   {dn} registered   {dUnregisteredRules.length} not in the judgment"
   say s!"  registered: {String.intercalate ", " dRegisteredRules}"
   say s!"  owed:       {String.intercalate ", " dUnregisteredRules} \
-(`runA_pushK` is proved; see Denote/Typed/JudgeA.lean §4 for what each still needs)"
+(`runA_pushK` is proved; see Denote/Judgment/JudgeA.lean §4 for what each still needs)"
   if !dFamBlockedRules.isEmpty then
     say s!"  of those, owed TWICE: {String.intercalate ", " dFamBlockedRules} \
 -- their premises reach {String.intercalate ", " dCompanionRules},"
@@ -252,13 +252,13 @@ def main (args : List String) : IO UInt32 := do
   say s!"  {safeRungs.length} corpus rungs proved `StuckFree bootMachine <program>`, \
 at every fuel:"
   say s!"    {String.intercalate ", " (safeRungs.map (·.1))}"
-  say "  Each is one theorem in Denote/Typed/Safety.lean with every hypothesis"
+  say "  Each is one theorem in Denote/Safety.lean with every hypothesis"
   say "  discharged (`stateOk_boot`, conditional on the `bootOkB` build gate), and"
   say "  `#print axioms` showing only propext/Classical.choice/Quot.sound."
   say ""
   say s!"  rules exercised by those rungs: \
 {String.intercalate ", " (dRegisteredRules.filter (fun r => rulesExercised.contains r))}"
-  say "  (read off the proof terms, not off the programs -- Denote/Typed/RuleAudit.lean)"
+  say "  (read off the proof terms, not off the programs -- Denote/RuleAudit.lean)"
   if !unexercised.isEmpty then
     say s!"  registered but NOT exercised end to end: \
 {String.intercalate ", " unexercised} ({unexercised.length} of a ceiling of \
@@ -303,7 +303,7 @@ at every fuel:"
       IO.println s!"  {dn} rules certified, {dUnregisteredRules.length} owed -- \
 every rule in the judgment is proved, so `djudge_certified` covers the whole"
       IO.println "    judgment and `validateD` accepting a rung IS that rung's safety proof"
-      IO.println s!"    (Denote/Typed/Bridge.lean). {safeRungs.length} rungs additionally have \
+      IO.println s!"    (Denote/Bridge.lean). {safeRungs.length} rungs additionally have \
 a worked theorem, cross-checked."
       if !unexercised.isEmpty then
         IO.println s!"  {unexercised.length}/{unexercisedCeiling} certified rules EXEMPT from \
@@ -317,14 +317,14 @@ end-to-end exercise: {String.intercalate ", " unexercised} (§F30)."
       IO.println "    validateD_safe_boot : validateD p d = true → bootOkB = true →"
       IO.println "                          StuckFree bootMachine p"
       IO.println ""
-      IO.println "  composed in Denote/Typed/Bridge.lean from `validateD_typed` (the checker"
+      IO.println "  composed in Denote/Bridge.lean from `validateD_typed` (the checker"
       IO.println "  returns a DJudge derivation), `djudge_certified` (the bridge: every"
       IO.println "  syntactic derivation is a certified one, because every rule has a clink)"
       IO.println "  and `dregistry_safe`. So there is no per-rung obligation left to owe, and"
       IO.println "  no gap between what the checker accepts and what is proved safe."
       IO.println ""
       IO.println s!"  {safeRungs.length} rungs additionally carry a worked theorem in"
-      IO.println "  Denote/Typed/CorpusSafety.lean, cross-checked against the corpus above."
+      IO.println "  Denote/Examples/CorpusSafety.lean, cross-checked against the corpus above."
       IO.println "  Those are examples and regression, no longer the coverage story."
       IO.println ""
       IO.println "=== OUTSIDE THE FRAGMENT, in corpus rung order ==="
@@ -377,7 +377,7 @@ end-to-end exercise: {String.intercalate ", " unexercised} (§F30)."
     IO.println s!"    {String.intercalate ", " dUnregisteredRules}"
     IO.println "  `validateD` accepts programs those rules derive, and `validateD_safe_boot`"
     IO.println "  cannot speak for them, so the fragment is claiming rungs it cannot back."
-    IO.println "  Prove them (Denote/Typed/JudgeA.lean) and register them, or remove the rule."
+    IO.println "  Prove them (Denote/Judgment/JudgeA.lean) and register them, or remove the rule."
     return 1
   if unexercised.length > unexercisedCeiling then
     IO.println ""

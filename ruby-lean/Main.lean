@@ -12,7 +12,7 @@ Besides running a program, it answers three *static* queries over the same AST â
 queries it used to carry (`--check`, `--check-tl`, `--assn`, `--assn-program`,
 `--certify`, `--certify-j`, `--census-j`) were the pre-ratchet type-checking
 iterations and were removed with them; the checker of record is `validateD`
-(`Ratchet/Check.lean`, `lake exe ratchetd`).
+(`Ratchet/Check/Check.lean`, `lake exe ratchetd`).
 -/
 import RubyCore.Obs
 import RubyCore.Types.Fragment

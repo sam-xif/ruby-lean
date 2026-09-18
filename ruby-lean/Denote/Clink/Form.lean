@@ -16,7 +16,7 @@ replaced one *constant* with another to derive `Obl.<Family>.<rule>` from
 third transcription of the rule.
 
 Parameterised by the family record and its field table, so any judgment can use it:
-`Denote/Typed/Clink.lean` supplies `DFam` and a one-row table.
+`Denote/Clink/Registry.lean` supplies `DFam` and a one-row table.
 -/
 
 set_option autoImplicit false

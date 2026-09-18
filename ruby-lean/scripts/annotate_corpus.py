@@ -3,7 +3,7 @@
 
 Idempotent: re-running it over an annotated corpus changes nothing. The table below is
 the hand work, and it is the *point* of the exercise rather than a preliminary to it --
-`Ratchet/Deriv.lean`'s header says why the declared type cannot be inferred here and
+`Ratchet/Check/Deriv.lean`'s header says why the declared type cannot be inferred here and
 cannot be trusted there. Types are written to say what the rung means, not to make
 Sorbet quiet: `054-fun-body-mismatch` declares `Integer` for a body that adds `true`,
 and Sorbet rejecting that is the rung's content (`expect_sorbet: false` in its meta).

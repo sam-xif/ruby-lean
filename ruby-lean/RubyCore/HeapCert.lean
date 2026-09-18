@@ -13,7 +13,7 @@ import RubyCore.Types.Decls
 They cannot be decided in the kernel: `Prelude.program` is
 `Lean.Json.parse Prelude.json` and `Lean.Json.parse` does not kernel-reduce even
 on the input `"1"` (measured), while L94 bans the `native_decide` escape. So they
-are decided by *running* them — `Denote/Sanity.lean`'s `#guard` for `saturatedB`,
+are decided by *running* them — `Denote/Sem/Core/Boot.lean`'s `#guard` for `saturatedB`,
 and `scripts/probes/` for the measurements `scripts/check-proofs.sh` reports.
 
 **This lives outside `Proof/` on purpose.** The alternative — defining these next

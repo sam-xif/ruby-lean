@@ -18,7 +18,7 @@
 #
 # ## Why reading the source is legitimate, not a shortcut
 #
-# `Ratchet/Deriv.lean`: "a declared type cannot produce a wrong accept: it
+# `Ratchet/Check/Deriv.lean`: "a declared type cannot produce a wrong accept: it
 # arrives as a field of `Deriv.defDecl`, and the checker re-checks the body at
 # exactly that type. A wrong signature produces a body that fails to certify."
 # Signatures are certificate *data*, re-derived on the other side. So a reader
@@ -47,7 +47,7 @@ require "prism"
 require "json"
 
 # --------------------------------------------------------------------------
-# The type mapping, into `Ratchet/Ty.lean`'s grammar  (srb_sigs.py's `to_ty`)
+# The type mapping, into `Ratchet/Lang/Ty.lean`'s grammar  (srb_sigs.py's `to_ty`)
 # --------------------------------------------------------------------------
 
 GROUND = {

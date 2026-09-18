@@ -5,13 +5,13 @@ A vendored, retargeted copy of `../sorbet-cert/srb_sigs.py` (that PoC's reader, 
 header documents *why* the symbol table rather than the `sig` source text: resolved sigs,
 method owners, and absence-of-annotation all in one pass). Two differences, both forced:
 
-* the wire encoding is `Ratchet/Ty.lean`'s `{"tag": ...}`, not `RubyCore`'s `{"k": ...}`;
+* the wire encoding is `Ratchet/Lang/Ty.lean`'s `{"tag": ...}`, not `RubyCore`'s `{"k": ...}`;
 * the type grammar is this package's `Ty`, which has `hashOf`/`inst`/`never` that the
-  other one does not, and no `Ty.any` inference (see `Ratchet/Ty.lean`: `.any` is
+  other one does not, and no `Ty.any` inference (see `Ratchet/Lang/Ty.lean`: `.any` is
   "only usable as a declared parameter type", which is exactly this file's output).
 
 Nothing here is trusted: generation owns completeness, validation owns soundness. A signature read wrong costs a body that fails
-to certify, never a wrong accept -- and `Ratchet/Deriv.lean`'s header says where that
+to certify, never a wrong accept -- and `Ratchet/Check/Deriv.lean`'s header says where that
 argument bottoms out.
 
 **`T.untyped` maps to no claim at all** (not to `Ty.any`), so an unannotated parameter
@@ -49,7 +49,7 @@ def find_sorbet() -> str:
 
 
 # --------------------------------------------------------------------------
-# The type mapping, into `Ratchet/Ty.lean`'s grammar
+# The type mapping, into `Ratchet/Lang/Ty.lean`'s grammar
 # --------------------------------------------------------------------------
 
 GROUND = {
@@ -63,7 +63,7 @@ GROUND = {
 }
 
 # `Ty.cls` is for the builtin classes, "whose instances have no ivars this checker
-# models" (`Ratchet/Ty.lean`). A *user* class's instances are `Ty.inst name <spine>`,
+# models" (`Ratchet/Lang/Ty.lean`). A *user* class's instances are `Ty.inst name <spine>`,
 # and the spine is not in the signature -- it comes from the instantiation. So a bare
 # user-class name maps to `.cls`, which is a **known divergence**, recorded in
 # `emit_deriv.rb`'s header as the gap it is rather than papered over here.
@@ -105,7 +105,7 @@ def to_ty(s: str, untyped: str = "exclude") -> dict | None:
     if s in ("T.noreturn", "T.absurd"):
         return {"tag": "never"}
     # A `.void` return: "a value the caller may not use". `Ty.any` is the same reading
-    # on the declaration side -- `Ratchet/Ty.lean` calls it "some value, of a type the
+    # on the declaration side -- `Ratchet/Lang/Ty.lean` calls it "some value, of a type the
     # checker does not pin ... only usable as a declared parameter type" -- and nothing
     # propagates it, because `.any` has no `PrimSig` row: the first send to a `.void`
     # result blocks. Mapping it to `nilT` would be a lie (a `.void` method returns its

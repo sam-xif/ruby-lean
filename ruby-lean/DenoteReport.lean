@@ -1,7 +1,7 @@
-import Denote.Examples
+import Denote.Ty.Examples
 
 /-!
-`Denote/Examples.lean`'s human-readable half. The `#guard`s in that file are the gate — they
+`Denote/Ty/Examples.lean`'s human-readable half. The `#guard`s in that file are the gate — they
 fail the *build*; this exe prints the same checks as a table so a reader of the log can see
 what the denotation and the semantics agreed about, rather than only that they agreed.
 -/

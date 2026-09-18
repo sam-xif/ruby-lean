@@ -27,12 +27,12 @@ mind while working:
 
 * **You cannot make an obligation easier.** If a rung will not close, the options are: prove
   it, fix a `StateOk` component, fix a `SemJudge*` definition, or fix the *rule* in
-  `Ratchet/Judge.lean`. Editing the obligation is not on the list, because there is nothing to
+  `Ratchet/Static/`. Editing the obligation is not on the list, because there is nothing to
   edit.
 * **A rung claimed under the right name with the wrong statement does not count.** The ladder
   checks `isDefEq (type of Sem.X) Obl.X`. Verified: a `Sem.Judge.intLit : True` is not counted,
   a `Sem.Judge.fltLit : Obl.Judge.fltLit` is.
-* **The denominator is live.** Add a rule to `Ratchet/Judge.lean` and 83 becomes 84 on the next
+* **The denominator is live.** Add a rule to `Ratchet/Static/` and 83 becomes 84 on the next
   build, with the new rule listed as undischarged. This is the opposite of the corpus norm
   ("a ratchet whose number depends on a live sample is not a ratchet") and for the opposite
   reason: the rule set is not a sample of the specification, it *is* the specification, so a
@@ -128,18 +128,18 @@ by `h.objs.size + 1`** (a `partial def` would be opaque to the kernel, `RubyCore
 L73), so pushing an object moves the *fuel* and the walk at `m` and the walk at `m'` are two
 different computations. `RubyCore/Proof/AncestorsGrow.lean` had already solved exactly this —
 `Saturated` ("one more unit of fuel changes nothing") plus `ancestors_congr_grow` — so it is
-**imported**. That makes `Denote/Ext.lean` the first file in the package to depend on
+**imported**. That makes `Denote/Ty/Ext.lean` the first file in the package to depend on
 `RubyCore.Proof.*` rather than only on the interpreter; the argument is
 `Semantics/Interp.lean`'s, one layer up (a second copy of a proof about the same `stepFn` is a
 second thing to drift).
 
 **(2) was fixed in the definition, not worked around.** The arrow is the *only* arm of `denM`
 that does not survive an allocation, so the arrow is what changed: both arrow arms — and
-`AsmsOk`, which has the same shape — now read `∀ m₂, Ext m m₂ → …`. `Ext` (`Denote/Ext.lean`)
+`AsmsOk`, which has the same shape — now read `∀ m₂, Ext m m₂ → …`. `Ext` (`Denote/Ty/Ext.lean`)
 is the "coarser seed" this section previously said any such fix would need: same frames, same
 stack, a heap that only grew. It is reflexive and transitive, so `Ext.refl` recovers the
 unquantified reading (the change is a **strengthening** of `denM`, not a weakening) and
-`Ext.trans` makes the arm monotone *by construction* — `denM_ext` (`Denote/Grow.lean`)
+`Ext.trans` makes the arm monotone *by construction* — `denM_ext` (`Denote/Ty/Grow.lean`)
 re-derives nothing about runs. And it reads neither `ctl` nor `kont`, which is precisely what
 `Reaches` could not do; `denM_ctl` survives unchanged (`Ext_reCtl`).
 
@@ -154,7 +154,7 @@ single case `BasicObject`. Worth recording what was *not* needed: no heap-closed
 value-boundedness invariant, because `default.payload` is `.none`, which makes
 `arrayOf`/`hashOf`/`clos` vacuous at a dangling reference rather than in need of transport.
 
-**Downstream, as predicted:** `Denote/Den.lean`, `Arrow.lean` (`ArrowFlat` stays, `ArrowExt`
+**Downstream, as predicted:** `Denote/Ty/Den.lean`, `Arrow.lean` (`ArrowFlat` stays, `ArrowExt`
 is the quantified form, `denM_arrowOf` restated), `Rules/Core.lean` (`StateOk_reCtl` is now a
 three-line corollary of `StateOk_ext` rather than a second component-by-component induction).
 `DenB.lean` needed no change — it already answered `false` on both arrow arms — and the 31
@@ -183,7 +183,7 @@ Two things about *how* it was found are the point of this ladder existing:
   claims to leave the rest of `Γ` alone and does not.
 
 Per the working procedure above, the rule was **not worked around**. It was *fixed*, in clink
-46: `killClosOver`/`killClosOverSpine` (`Ratchet/Ty.lean`) widen every binding and ivar-spine
+46: `killClosOver`/`killClosOverSpine` (`Ratchet/Lang/Ty.lean`) widen every binding and ivar-spine
 entry whose type records a stale capture of the assigned name, and a `capStale x τ τ = false`
 `autoParam` premise covers the half that cannot be widened (`x = lambda { x }`, where the
 stale record is in the type being bound). Three corpus rungs and two `CheckRungs` controls pin
@@ -265,7 +265,7 @@ let matched := fun (tag : Value) =>
 `throw` with no matching `catchK` anywhere on the stack raises `UncaughtThrowError` **at the
 throw site** — deliberately, so an enclosing `rescue` sees it — and with one, it jumps. So a
 state whose own `kont` has no matching tag steps differently under a `K` that supplies one.
-`Denote/Sem/Frame.lean`'s **`not_KontFrame`** is that counterexample, at the smallest machine
+`Denote/Sem/Core/Frame.lean`'s **`not_KontFrame`** is that counterexample, at the smallest machine
 that reaches the dispatch (a value in flight, one `argsK` delivering it to an implicit-self
 `throw`, an empty heap so the walk misses and reaches `tryReflect`). Conditional on two
 `#guard`ed `Bool`s, because `Interp.invoke` is well-founded-recursive and therefore not
@@ -759,7 +759,7 @@ which is a `killClosOver`-style widening keyed on declarations rather than on as
 
 Two reasons this is filed as a prediction rather than a §F entry, both checked:
 
-* the checker does not **infer** an arrow anywhere (`Denote/Arrow.lean`: `ArrowStable` "is not
+* the checker does not **infer** an arrow anywhere (`Denote/Ty/Arrow.lean`: `ArrowStable` "is not
   what the checker infers today"), so a `Γ` carrying one is a conformance shape rather than a
   reachable judgment — the exposure is vacuity, not a wrong answer; and
 * `AsmsOk`'s rows are the checker's recursion device and are *discharged* by the same rule that
@@ -832,7 +832,7 @@ and `if'` is not the cheapest remaining rung — there is no cheapest remaining 
 ## The fifth stall point — **cleared** (clink 54)
 
 `RubyCore.Proof.stepFn_frame` is `KontFrameCatchFree`'s statement, proved over the whole of
-`stepFn` and axiom-clean; `Denote/Sem/Decompose.lean`'s `run_split` is the decomposition
+`stepFn` and axiom-clean; `Denote/Sem/Core/Decompose.lean`'s `run_split` is the decomposition
 `EvalsDecompose` was stating. `Judge.vasgn` is the first rung to spend them. See
 `implementation-notes.md` clink 54 for the chain, the six tools that generalised out of it, and
 the two facts the wall's own statement did not predict (`unwind`'s `retJ` arm *steps* at an
@@ -890,7 +890,7 @@ and independent.
 
 `Judge.if'`/`ifNoElse` type their branches at `narrowEnvs κ.classes c Γc` and
 `narrowSpine κ.classes c Ic`, so using a branch premise needs `StateOk` at the *narrowed*
-environment. Nothing on file establishes that, and `Denote/Sem/State.lean` L52 already says so
+environment. Nothing on file establishes that, and `Denote/Sem/Core/State.lean` L52 already says so
 ("what a proof of `Judge.narrowEnvs`' soundness will have to consume", and `EnvOk`'s identity
 conjunct was put there for it).
 
@@ -901,7 +901,7 @@ What it needs, in the order the effort falls:
   about it. These are `denM` facts and need no run.
 
   **Four are done** (clink 56, `Denote/Sem/Narrow.lean`, axiom-clean), and they cost two
-  corrections in `Ratchet/Ty.lean`, both in the same direction: *a `.never` catch-all is a
+  corrections in `Ratchet/Lang/Ty.lean`, both in the same direction: *a `.never` catch-all is a
   claim, not a default*. `falsyTy`/`isNilTy` answered `.never` — "this branch cannot run" — at
   the **alias** arm (`.sameAs y ρ` denotes exactly `ρ`, so `.sameAs y .nilT` has a falsy value)
   and at the **nominal** arms (`nil` and `false` descend from `Object`, `Kernel`,
@@ -1112,7 +1112,7 @@ let cl : Closure :=
 `0` into the heap and the seal at `b = 0` is gone. `Denote/Sem/StepLocal.lean`'s
 **`not_BuiltinsSeal`** is the refutation, at the smallest machine where the seal says anything
 (two frames, neither capturing, the caller `0` sealed off behind the frame that is running, an
-empty heap), conditional on one `#guard`ed `Bool` for `Denote/Sanity.lean`'s reason.
+empty heap), conditional on one `#guard`ed `Bool` for `Denote/Sem/Core/Boot.lean`'s reason.
 
 `b = 0` is not an edge case. It is the **toplevel frame**, which is the frame every toplevel
 narrowing rung is about.
@@ -1260,9 +1260,9 @@ Three honest caveats, because this is an enumeration of *writers* and not a proo
 * It establishes that **no arm is blocked in principle**. The per-arm walk over `stepFn` — the
   thing `FrameLocal.lean` did for `LocalsSame` — is still the work.
 * The new clause needs the "installed anywhere in the heap" quantifier, which is
-  `MethodsExact`'s shape (`Denote/Sem/Frame.lean`), and like it should be **measured at the
+  `MethodsExact`'s shape (`Denote/Sem/Core/Frame.lean`), and like it should be **measured at the
   booted machine** before it is written down — the prelude is a large body of installed methods
-  and `Denote/Sanity.lean` is where that check belongs.
+  and `Denote/Sem/Core/Boot.lean` is where that check belongs.
 * The `Option` change ripples into `md.capturedFrame := cl.captured` (no longer `some`), and it
   changes the *machine*, so the difftest and all 47 rungs need re-verification.
 
@@ -1280,7 +1280,7 @@ Three honest caveats, because this is an enumeration of *writers* and not a proo
 > * `Sealed.clos` and `FramesWF.clos` are now quantified — `∀ p, cl.captured = some p → …` —
 >   matching the shape their `Frame` clauses already had. A capture-free closure discharges
 >   them **vacuously** instead of being a claim about frame `0`. This is the repair.
-> * `Denote/Apply.lean`'s `closLocal` goes through a new `frameLocal?`, which answers `.nil`
+> * `Denote/Ty/Apply.lean`'s `closLocal` goes through a new `frameLocal?`, which answers `.nil`
 >   for `none`. `getD 0` would have been wrong here and nowhere else: `callClosure` pushes the
 >   block frame with `captured := none`, so the *body's* walk stops at its own activation,
 >   and a denotation reading frame `0`'s locals would have described a program the machine

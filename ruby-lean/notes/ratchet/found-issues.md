@@ -454,7 +454,7 @@ environment holds `f : clos idx {x: Integer}` while `x` holds a `String`, and
 `Judge.closCall` — which judges the body in `spineToEnv cap` — types `f.call` as `Integer`.
 
 `capIntact` is not this. It stops a *block body* from retyping a captured local
-(`Ratchet/Judge.lean` L2067 and its docstring); nothing stops ordinary code **after the
+(`Ratchet/Static/` L2067 and its docstring); nothing stops ordinary code **after the
 literal** from doing it, and that is the case here.
 
 **Why the semantic ladder names the rule and the corpus did not.** 232 corpus programs agree
@@ -469,7 +469,7 @@ failed because the rule is not true of `stepFn`.
 
 ### The fix (clink 46)
 
-Two functions and one premise, all in `Ratchet/Ty.lean` §Stale closure captures and the two
+Two functions and one premise, all in `Ratchet/Lang/Ty.lean` §Stale closure captures and the two
 rules that use them.
 
 * **`killClosOver` / `killClosOverSpine`** widen to `.any` every binding — and every ivar-spine
@@ -508,7 +508,7 @@ program: both report `rejected (sound: really type-stuck)`. Numbers after: **235
 
 **Closed in clink 47: the `Ctx` fields.** `selfTy`, `blockTy` and `consts` can each carry a
 frame-sensitive type, and `Ctx` is an *input* to every rule — no rule rewrites it, so no rule
-can widen them. They became a fourth guard, `capStaleCtx` (`Ratchet/Judge.lean`), premised on
+can widen them. They became a fourth guard, `capStaleCtx` (`Ratchet/Static/`), premised on
 `vasgn`/`vasgnAlias` the same `autoParam` way. It is sound rather than precise: a method frame
 captures nothing, so an assignment inside a method body cannot reach the frame `blockTy`'s
 closure captured, but the premise refuses the case where the two merely share a *name*. A
@@ -748,8 +748,8 @@ program executes here at all. The day it is modeled, the premise wants `κ.closu
 `envSet (killClosOver (killAliasesTo Γ' x) x τ) x τ`. Nothing in the rule constrains `τ`.
 
 **Why that is unsound.** `Ty.sameAs y σ` means *this binding holds the same value as `y`* — a
-fact about a binding, which is why `denM` ignores it (`Denote/Den.lean`: `denM (.sameAs _ τ) =
-denM τ`) and `EnvOk` is where it acquires meaning (`Denote/Sem/State.lean`: an entry
+fact about a binding, which is why `denM` ignores it (`Denote/Ty/Den.lean`: `denM (.sameAs _ τ) =
+denM τ`) and `EnvOk` is where it acquires meaning (`Denote/Sem/Core/State.lean`: an entry
 `x : sameAs y ρ` requires `m.getLocal x = m.getLocal y`). So if `τ` is an alias type, the
 premise `SemJudge κ Γ I e τ Γ' I'` carries **no information about `y`** — it is exactly the
 premise for `stripAlias τ` — while the conclusion claims `x` and `y` now hold the same value.
@@ -1135,7 +1135,7 @@ which `superCall`/`zsuperCall` thread *exactly* — and `joinT` of two `.inst`s 
 an upcast, so there is no subsumption anywhere. The denotation was strictly weaker than the
 judgment, and every dispatch rule was quietly relying on the difference.
 
-**The change.** `Denote/Val.lean` gained `isExactInst`, and `denM`'s `.inst` arm uses it:
+**The change.** `Denote/Ty/Val.lean` gained `isExactInst`, and `denM`'s `.inst` arm uses it:
 
 ```
 isExactInst h v n = match classNamed? h name, v with
@@ -1385,7 +1385,7 @@ the corpus has:
   (`@x = 1` in a class whose `selfTy` says `@x : Integer`) and rejects only the case that is
   actually wrong.
 * **Agreement at the top-level entry of `I'` too** rejects type-changing reassignment —
-  `if flag then @v = 1 else @v = "s" end`, the program that put `joinIvars` in `Ratchet/Ty.lean`.
+  `if flag then @v = 1 else @v = "s" end`, the program that put `joinIvars` in `Ratchet/Lang/Ty.lean`.
   So `ivarAgreeIvars` exempts `I'`'s own `@x` entry, which is sound because `ivarSet` replaces
   it: its old type is never read after the write.
 
@@ -1619,7 +1619,7 @@ in the semantic layer too: `Judge.defStmt`'s obligation
 landed at the same time — §10.1 argues the two have to arrive together or the seed is a
 regression.
 
-* `Neg` (`Ratchet/Judge.lean`) is a component of `Ctx` in its own right, seeded once by
+* `Neg` (`Ratchet/Static/`) is a component of `Ctx` in its own right, seeded once by
   `Ctx.withBlocks` alongside the block table and never changed afterwards.
 * `negEmit` walks **every expression position** — the point of the whole thing — carrying the
   lexical *cref* down, so `class C; def a; def b; end; end; end` puts `b` on `C`'s chain and a
@@ -1647,7 +1647,7 @@ refused, and `checkrungs` confirms the real semantics takes each of them to an u
 **What is not yet keyed.** `Judge.isAQuery`/`caseEqQuery`/`classOf`/`clsToS` ask `nameFreeN`
 (whole-program, name-global) rather than `portFree` at the receiver's port, even though the
 seed materialises the keyed fact and `tyPorts?` computes the port. The blocker is on the
-*semantic* side, not the syntactic one: `QueryOk`/`ClsQueryOk` (`Denote/Sem/State.lean`) are
+*semantic* side, not the syntactic one: `QueryOk`/`ClsQueryOk` (`Denote/Sem/Core/State.lean`) are
 quantified over **class ids** with a name-global antecedent, so a keyed premise has nothing to
 discharge them with. Keying them needs a "this `Port` denotes this class id" relation, which is
 a `denM`-level change and belongs with the semantic layer rather than with the seed. Nothing on
@@ -1750,7 +1750,7 @@ constAsgnOk ctx0 "StandardError" .int      =  false   -- refused (excName?)
 Array Hash`). **`Regexp` is not one of them, and `Judge.regexpLit` concludes `.cls "Regexp"`.**
 
 **Why the obligation is false.** `denM (.cls n) m v` is `isAName m.heap v n`, which resolves
-`n` through `classNamed?` → `constLookup` → the toplevel constant table (`Denote/Val.lean`).
+`n` through `classNamed?` → `constLookup` → the toplevel constant table (`Denote/Ty/Val.lean`).
 So take
 
 ```
@@ -2037,7 +2037,7 @@ documented: `Denote/Sem/NoProgress.lean`.
 
 Three places already record the gap and none of them claims the implication:
 `Denote/Adequacy.lean`'s `StuckFreeTarget` is annotated "Not implied by `AdequacyTarget`";
-`Denote/Sem/Judge.lean`'s choice 1 and `Denote/Sem/State.lean`'s `Evals` docstring both say
+`Denote/Sem/Judge.lean`'s choice 1 and `Denote/Sem/Core/State.lean`'s `Evals` docstring both say
 partial correctness is deliberate; `../docs/semantics/answer-typed-judgments.md` §2.1 states
 it as the diagnosis ("no progress content at all"). So there was no false theorem *asserted* —
 but there was no refutation either, and this package's rule is that a named `Prop` is one that
@@ -2067,14 +2067,14 @@ simultaneously.
 stuck — does not work, because `StateOk ctx0 [] .ivar0 m` does **not** entail that `m` lacks an
 `Integer#foo`: `MethodsExact` permits any method marked `fromPrelude`, and `NameFreeOk`
 sharpens that to "absent" only on the fixed list of names the rules reason from, which does not
-include `"foo"` (`Denote/Sem/Frame.lean` §2 — `StateOk` is a lower bound plus *partial*
+include `"foo"` (`Denote/Sem/Core/Frame.lean` §2 — `StateOk` is a lower bound plus *partial*
 exactness). Routing the vacuity through a `break` sidesteps the heap entirely. So the cost of
 `StateOk`'s partial exactness is measurable here too: it makes the refutation harder, not the
 theorem truer.
 
 ### What would prove type safety instead **[M, skeleton]**
 
-`Denote/Sem/Invariant.lean`. The answer is not a better `SemJudge` — `typeStuck` is a property
+`Denote/Sem/Core/Invariant.lean`. The answer is not a better `SemJudge` — `typeStuck` is a property
 of a *reachable machine* and `SemJudge` is a property of an expression run from an **empty
 continuation**, so the gap is the continuation, and closing it needs an invariant over whole
 configurations.
@@ -2090,7 +2090,7 @@ configurations.
 * **Two things fix `KontOk`'s shape.** It *cannot* be `SafeKont`: `safe_pushK` requires
   `CatchFree m.kont`, and a reachable machine can have a `catchK`, so the answer-typed
   decomposition is a per-rule tool and not a whole-machine invariant (§F26's companion finding
-  lives in `Denote/Sem/AnswerCatch.lean`). And therefore `KontOk` must carry the **live
+  lives in `Denote/Sem/Core/AnswerCatch.lean`). And therefore `KontOk` must carry the **live
   `catch` tags** as an index, at which point `hasCatcher`'s whole-stack read becomes local and
   `CatchFree` is not needed at all. That index is Ueno et al.'s exception context `T` and
   Hazel's protocol — the design lands where the literature said, arrived at backwards.
@@ -2174,20 +2174,20 @@ trusted by nothing and therefore checked by nothing — except this.
 
 ## §F29 — the answer-typed obligation recovered a missing premise on a rule authored hours earlier *(fixed; §F5 found a second time, the same way)*
 
-`Ratchet/Check.lean`'s `DJudge.var` was written as
+`Ratchet/Check/Check.lean`'s `DJudge.var` was written as
 
 ```lean
 | var : envGet? Γ x = some τ → DJudge Γ (.var .lvar x) τ Γ
 ```
 
-and its answer-typed obligation (`Denote/Typed/JudgeA.lean`'s `SemA.var`) **does not close**.
+and its answer-typed obligation (`Denote/Judgment/JudgeA.lean`'s `SemA.var`) **does not close**.
 
 **Why.** `StateOk`'s environment component supplies `denM (stripAlias τ) m v` — the *stripped*
 type. At a binding whose type is a `Ty.sameAs y σ` (tier 12's alias, recorded for the
 desugarer's `&&`/`case` temporaries) the conclusion `denM τ` therefore claims strictly more
 than conformance gives: it claims `x` and `y` hold the same value, which reading `x` does not
 establish. The fix is the premise the old judgment already had — `isAliasTy τ = false` — and
-`Ratchet/Judge.lean`'s `Judge.var` carries it for exactly this reason, recorded there as §F5.
+`Ratchet/Static/`'s `Judge.var` carries it for exactly this reason, recorded there as §F5.
 
 **What is worth recording is not the premise, it is how it surfaced.** No `DJudge` rule
 *produces* a `sameAs` type, so no environment the checker can reach has one, so no corpus rung
@@ -2230,7 +2230,7 @@ the safety proof covers reads a local.
 
 **Why no rung can fix this today.** A program that reads a local has to bind it first, so the
 smallest witness is `x = 1; x` — which needs `vasgn` **and** `seq`, both unregistered and both
-behind `RunAPushK` (`Denote/Typed/JudgeA.lean` §4). And there is no single-expression
+behind `RunAPushK` (`Denote/Judgment/JudgeA.lean` §4). And there is no single-expression
 alternative: a bare name that is *not* a local desugars to `Expr.vcall`, which has no `DJudge`
 rule at all (deliberately — `vcall` is an implicit-self send whose miss is `NameError`, and
 `NameError` is outside the type-error family). So `var` is genuinely unreachable end to end
@@ -2240,7 +2240,7 @@ automatically.
 **Why this is worth a finding rather than a silent gap.** "8 rules registered, 8 rungs proved
 safe" reads as though the two numbers cover each other. They do not, and nothing in the ladder
 said so until the gate was written. The residue is now named in three places that a reader
-cannot miss: `unexercised` in `Denote/Typed/Safety.lean` (frozen by name, with a `#guard` that
+cannot miss: `unexercised` in `Denote/Safety.lean` (frozen by name, with a `#guard` that
 fails if anything *else* joins it), the `lake exe semladder` report, and
 `scripts/run_typed_ratchet.sh`'s step 4.
 
@@ -2268,7 +2268,7 @@ A gate with a hand-editable exemption list is a gate whose real bound is the exe
 
 Three things were added in response, and only the first is about this finding:
 
-1. **`unexercisedCeiling`** (`Denote/Typed/Safety.lean`), ratcheted downward the way
+1. **`unexercisedCeiling`** (`Denote/Safety.lean`), ratcheted downward the way
    `safeRungFloor` and `clinkFloor` ratchet upward, with a `#guard` at build time and a
    `COVERAGE HATCH WIDENED` exit in `lake exe semladder`. Widening the hatch is still allowed
    — it has to be, `var` really is unreachable — but it now moves a number a reviewer sees.
@@ -2276,12 +2276,12 @@ Three things were added in response, and only the first is about this finding:
    rules and has no safety theorem is now red. This finding's converse, and the one that will
    bite when `seq` lands: registering one composite rule makes a pile of corpus rungs provable
    in a single commit, and nothing was asking for their theorems.
-3. **`Denote/Typed/RuleAudit.lean`**, which is about the word *`rulesExercised`* in the
+3. **`Denote/RuleAudit.lean`**, which is about the word *`rulesExercised`* in the
    control quoted above. That set was computed from the programs' `Expr` heads via a
    hand-written head→rule table, exact only if each head admits exactly one `DJudge` rule —
    asserted in prose, checked nowhere. It is now computed a second way, off the **proof
    terms**, and the two are required to agree per rung. Verified by perturbation: swapping two
-   entries in the table leaves `Denote/Typed/Safety.lean` building clean and every
+   entries in the table leaves `Denote/Safety.lean` building clean and every
    pre-existing guard green, and only the new cross-check catches it.
 
 The residue itself is unchanged: `var` and `vasgn` are proved, in the judgment, and not
@@ -2315,7 +2315,7 @@ inductive a constructor *concludes* about — and refused anything that was not 
 refuses `DJudgeSeq.cons`, which nobody would ever type. The rules that actually reach the
 companions are `DJudge.seq` and `DJudge.prim`, which conclude about `DJudge` like every other
 rule and mention the companions only in their **premises**. The check was on the wrong end of
-the arrow. `Denote/Typed/Clink.lean`'s header said the list rules were "refused by name rather
+the arrow. `Denote/Clink/Registry.lean`'s header said the list rules were "refused by name rather
 than by omission", and the two rules that mattered were refused by neither.
 
 **Why it had not fired.** Both rules are unregistered for an unrelated reason — no
@@ -2331,7 +2331,7 @@ inventing a statement nothing consumes still holds:
 * `registerDClink` reads the constructor's **premises** and refuses any rule reaching a
   judgment inductive `DFam` carries no field for, *before* asking whether a proof exists — so
   the failure names the real problem rather than sending someone off to write the wrong
-  theorem. Captured in `Denote/Typed/Controls.lean` for both `seq` and `prim`.
+  theorem. Captured in `Denote/Clink/Controls.lean` for both `seq` and `prim`.
 * `dFamBlockedRules` and `dCompanionRules` are generated alongside the two existing columns,
   and `lake exe semladder` prints *owed TWICE: seq, prim*. Three owed rules were never three
   units of the same work; the report said they were.
@@ -2393,7 +2393,7 @@ reports. The remedies are named and they are not equivalent:
 **First** by the remedy the entry named: `seq`, `prim` and `if'` were proved and registered
 (clink 74), so the certified-and-unproved rungs became proved. That closes the instance.
 
-**Then** by a remedy that was not on the list. `Denote/Typed/Bridge.lean` proves
+**Then** by a remedy that was not on the list. `Denote/Bridge.lean` proves
 
     djudge_certified : DJudge Γ e τ Γ' → (DJudgeC dclinks).judge Γ e τ Γ'
 
@@ -2436,8 +2436,8 @@ every first-order type/value, not just source bindings. A fresh `Point` with uns
 inhabits `.inst "Point" (.ivarCons "@x" .nilT .ivar0)`. After `@x = 1`, it does not. Thus even
 an initializer with no caller-local aliases cannot satisfy the current body contract.
 
-`Denote/Sem/IvarMutation.lean` proves `nil_ivar_write_not_framed` for an arbitrary live
-receiver. `Denote/Typed/InstanceControls.lean` instantiates it on a small heap and proves the
+`Denote/Sem/Heap/IvarMutation.lean` proves `nil_ivar_write_not_framed` for an arbitrary live
+receiver. `Denote/Controls/InstanceControls.lean` instantiates it on a small heap and proves the
 actual `stepFn` assignment transition. This is not a claim of boot conformance for that
 heap. The generic obstruction applies wherever those receiver facts hold.
 

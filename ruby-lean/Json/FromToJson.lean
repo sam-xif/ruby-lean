@@ -9,12 +9,12 @@ Those are the `Lean.Name` / `Lean.NameMap` / `System.FilePath` instances, the
 `deriving FromJson` support, which takes `Array Lean.Name`). Nothing in this
 project decodes any of those types, and this project does not `deriving
 FromJson` -- every `ofJson?` here is hand-written, on purpose
-(`Ratchet/JsonUtil.lean`'s header says why). Each cut is marked in place.
+(`Ratchet/Lang/JsonUtil.lean`'s header says why). Each cut is marked in place.
 
 Upstream's `FromToJson/Extra.lean` is not vendored either: it is instances for
 `Std` containers that nothing here converts.
 
-The file is present for one declaration. `Ratchet/Ty.lean` calls
+The file is present for one declaration. `Ratchet/Lang/Ty.lean` calls
 `j.getObjValAs? String k`, which lives here rather than in `Basic.lean`, and its
 decode-a-missing-key-as-`null` behaviour is load-bearing for `Ty.ofJson?`.
 

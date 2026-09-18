@@ -7,7 +7,7 @@ record is [`notes/ratchet/`](notes/), the model's is `notes/model/`.
 ## Current state (2026-09-15)
 
 The typed/safe gap is closed **by a theorem, not rung by rung**.
-[`Denote/Typed/Bridge.lean`](Denote/Typed/Bridge.lean) proves
+[`Denote/Bridge.lean`](Denote/Bridge.lean) proves
 
     validateD_safe_boot : validateD p d = true → bootOkB = true → StuckFree bootMachine p
 
@@ -30,6 +30,50 @@ from each proof term. It must pass before committing. Use quiet mode; `--verbose
 for a failure whose captured error is insufficient. In a sandbox with a protected uv cache,
 set `UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache`.
 
+## Layout
+
+Both libraries are split by **what kind of thing a file says**, and the delineation is the
+point — it is what makes "where does this belong" answerable without reading the file.
+
+```
+Ratchet/     the syntactic side; imports nothing from RubyCore/ or Denote/
+  Lang/        Expr, Ty -- the copied language
+  Static/      the static vocabulary both sides are stated over (Ratchet/Static/README.md)
+  Judgment/    DJudge, InitJudge -- the syntactic judgments, and only these
+  Guards/      the decidable side conditions a rule's premises are written in
+  Check/       validateD, Deriv, the checked-body and receiver caches
+  Controls/    what the checker must refuse
+
+Denote/      the semantic side; the one library that sees both Ratchet/ and Semantics/
+  Ty/          tier 1 -- what a `Ty` means over a real heap and value
+  Sem/         tier 2 -- StateOk and its transport lemmas, in six pockets:
+                 Core/ Heap/ Names/ Class/ Subclass/ Instance/
+  Judgment/    tier 3 -- SemSafeCtxA and its composition/run/fuel contracts
+  Rules/       one file per rule's obligation, grouped by feature
+  Clink/       the registry: a rule enters the judgment only with its proof attached
+  Controls/    negative controls; All.lean is the list this gate builds
+  Examples/    worked instantiations and CorpusSafety's concrete theorems
+  Bridge.lean  djudge_certified and validateD_safe_boot
+```
+
+Read [`Ratchet/README.md`](Ratchet/README.md) and [`Denote/README.md`](Denote/README.md)
+for what each directory holds and what is deliberately *not* in it. The three-tier stack
+under `Denote/` is strict: a `Sem/` file says what it means for a **machine** to conform to a
+`Ctx`; a `Rules/` file says what a **rule** owes; neither is a syntactic judgment.
+
+Two things this arrangement is defending against, both of which had already happened:
+
+* **A file whose name had stopped being true.** `Ratchet/Judge.lean` carried no judgment —
+  `inductive Judge` was deleted in clink 68 and 3,591 lines of tables, contexts and narrowing
+  stayed behind under its name, imported by `Denote/Sem/` so the graph read *"the semantics
+  depends on the legacy judgment"*. It is now `Ratchet/Static/`, split at its own section
+  boundaries.
+* **A gate kept alive by an import list.** The 63 negative controls were reached by
+  `ClassControls.lean` importing fifty-one of its siblings, so a control's imports mixed "what
+  I need" with "who I keep alive" and dropping one from the gate was a one-line deletion in a
+  file edited for other reasons. The list is now `Denote/Controls/All.lean`, named by this
+  gate.
+
 ## The pipeline
 
 Annotated `corpus/NNN-id.rb` → Sorbet signatures → annotation stripping → RubyCore JSON →
@@ -40,9 +84,9 @@ coverage gaps. [`MainTyped.lean`](MainTyped.lean) reports checker reach;
 
 ## The proof boundary
 
-[`Ratchet/DJudge.lean`](Ratchet/DJudge.lean) defines `DJudge`, its three list companions,
+[`Ratchet/Judgment/DJudge.lean`](Ratchet/Judgment/DJudge.lean) defines `DJudge`, its three list companions,
 `DJudgeRec`/`DJudgeRecAll`, and sixteen `DPrim` rows; `InitJudge.lean` supplies the scoped
-initializer pair. [`Denote/Typed/Clink.lean`](Denote/Typed/Clink.lean) derives each constructor's
+initializer pair. [`Denote/Clink/Registry.lean`](Denote/Clink/Registry.lean) derives each constructor's
 semantic obligation and registers only proved rules. **All eight judgments are fields of
 `DFam`**: no raw syntactic premise may bypass the registry. `djudge_certified` uses the six-family
 mutual recursor and the initializer pair's independent registry bridge.
@@ -54,8 +98,8 @@ backend reuses the bridge unchanged instead of forcing a rewrite of `check`.
 
 The semantic target is now `SemSafeCtxA`, with full incoming/outgoing context, locals, and
 ivar indices. Its top-level specialization is equivalent to `SemSafeA = SemJudgeA ∧ SafeUnder`:
-answer correctness and safety under a typed continuation. [`Compose.lean`](Denote/Typed/Compose.lean) proves the
-continuation lifting; [`Run.lean`](Denote/Typed/Run.lean) exposes the same contract at
+answer correctness and safety under a typed continuation. [`Compose.lean`](Denote/Judgment/Compose.lean) proves the
+continuation lifting; [`Run.lean`](Denote/Judgment/Run.lean) exposes the same contract at
 machine entries used by sequence and argument frames. Safety holds at every fuel.
 `Context.lean` generalizes that run contract to distinct incoming/outgoing `Ctx`, local
 environments, and ivar spines, with an equivalence to the existing fragment's target and
@@ -142,7 +186,7 @@ actual write, with explicit obligations for value-sensitive conformance. The com
 initializer has a semantic body proof from its Integer parameter environment in
 `InitBodyControls.lean`, with `.any` return and the initialized self type. Syntactic body
 families, certificate checking, class installation, and constructor dispatch remain gated.
-`Ratchet/WriteTypes.lean` now makes the write obligations executable: `IvarStable` and
+`Ratchet/Guards/WriteTypes.lean` now makes the write obligations executable: `IvarStable` and
 `writeTypesB`, proved sufficient in `WriteStable.lean`/`InitWrite.lean`. The Point body uses
 that generic guard, with controls for nested aliases and every value-sensitive context field;
 it no longer relies on an Integer-only preservation lemma.
@@ -523,99 +567,99 @@ String membership needs a payload invariant. See
 
 | Path | Role |
 |---|---|
-| `Ratchet/Ty.lean`, `Expr.lean`, `Deriv.lean` | Types, syntax, and certificate data |
-| `Ratchet/CtxEq.lean` | Sound conservative syntax/context comparison for branch compatibility |
-| `Ratchet/DJudge.lean`, `InitJudge.lean`, `Check.lean`, `DerivControls.lean` | Eight judgment families, derivation-returning checker, and negative controls |
-| `Ratchet/Check.lean`, `MethodControls.lean`, `Denote/Typed/MethodChecked.lean` | Cached annotation/body proofs, end-to-end controls, and the method-entry contract |
-| `Ratchet/BodyCache.lean`, `ClassCheckControls.lean` | Receiver/owner-indexed checked bodies, exact lookup/branch annotations, and whole-class definition/call controls |
-| `Ratchet/MemberRoute.lean`, `ReceiverCache.lean`, `ReceiverCacheControls.lean`, `Denote/Typed/ReceiverCache.lean`, `ReceiverCacheControls.lean` | Proved first-owner lookup, complete full-domain receiver-cache replay, checked inherited dispatch consumers, and uncalled-body invalidation controls |
-| `Ratchet/MemberCallControls.lean`, `Denote/Typed/RectDerivations.lean` | Cached annotation-checked method-to-method calls, negative controls, and independently audited whole 064 |
-| `Denote/Typed/JudgeA.lean` | Semantic judgment, continuation typing, literal/local rules |
-| `Denote/Typed/Sequence.lean`, `Branch*.lean`, `BareName.lean` | Sequence, conditional, and bare-name obligations |
-| `Denote/Typed/Array.lean` | First-order array evaluation, retention, and allocation |
-| `Denote/Typed/Context.lean` | Context-indexed contract, specialization, literals, assignment, and frame composition |
-| `Denote/Typed/MethodEntry.lean` | Required-positional method entry and annotated parameter-environment conformance |
-| `Denote/Sem/FramePres.lean`, `Denote/Typed/MethodReturn.lean` | Caller isolation, local restoration, and method-continuation composition |
-| `Denote/Sem/Reframe.lean`, `Denote/Typed/MethodState.lean` | Full frame-switch conformance and post-dispatch calls from annotated body proofs |
-| `Denote/Typed/MethodDispatch.lean` | Actual definition/lookup/dispatch equalities and call safety from annotated bodies |
-| `Denote/Typed/MethodLookup.lean` | Actual dispatched code recovered from `DefsOk`, then applied using a checked body |
-| `Ratchet/MethodCtx.lean`, `Denote/Typed/MethodDefine.lean` | Definition-site contexts and the annotation-checked definition obligation |
-| `Denote/Typed/MethodArgs.lean`, `MethodCall.lean`, `MethodResolve.lean` | Argument retention, call obligation, and semantic installed-body application |
-| `Denote/Typed/MethodRuleControls.lean`, `MethodDerivations.lean` | Full definition + call, validator acceptance, and the proof-term-audited 052 example |
-| `Denote/Typed/BoundedRun.lean`, `BoundedMethod.lean`, `BoundedCall.lean`, `BoundedControls.lean` | Fuel-indexed contracts, guarded actual dispatch, and recursive semantic controls |
-| `Denote/Typed/Recursive.lean`, `RecursiveDerivations.lean`, `Ratchet/RecursiveControls.lean` | Scoped recursive semantics, worked 060 proof, and annotation/call controls |
-| `Denote/Typed/InstanceRead.lean`, `InstanceControls.lean`, `Denote/Sem/IvarMutation.lean` | Instance-read prerequisites, precise write facts, and the constructor framing counterexample (§F33) |
-| `Denote/Sem/InitGrow.lean`, `Denote/Typed/InitReturn.lean`, `InitControls.lean` | Preallocation-anchored preservation, caller-frame publication, and fresh two-field controls |
-| `Denote/Sem/WriteState.lean`, `Denote/Typed/InstanceWrite.lean`, `InitRun.lean`, `InitExpr.lean`, `InitBodyControls.lean` | Scoped initializer semantics, explicit typed write preservation, and the annotation-domain 061 body proof |
-| `Ratchet/InitJudge.lean`, `CheckInit.lean`, `InitCheckControls.lean`, `Denote/Typed/InitChecked.lean` | Scoped body derivations, annotation/data checking and refresh, rejection controls, and the generic anchored semantic proof |
-| `Ratchet/WriteTypes.lean`, `WriteControls.lean`, `Denote/Sem/WriteStable.lean`, `Denote/Typed/InitWrite.lean` | Executable write-preservation guards, their semantic proof, and alias/context controls |
-| `Denote/Sem/ClassReady.lean`, `Denote/Typed/ClassEntry.lean`, `ClassControls.lean` | Boot-checked class readiness, its preservation, and actual fresh-class entry/registration |
-| `Denote/Sem/ClassHeap.lean`, `DataPres.lean` | Old-data preservation and full caller framing across fresh class creation; shared first-order transport |
-| `Denote/Sem/ClassDispatch.lean`, `ClassQueries.lean`, `Denote/Typed/ClassQueryControls.lean` | Fresh-class dispatch/query preservation, direct-Class invariant, and countermodels |
-| `Denote/Sem/ClassCore.lean`, `ClassMethods.lean`, `Denote/Typed/ClassCoreControls.lean` | Core/payload and installed-method preservation through actual class entry |
-| `Denote/Sem/ClassFrame.lean`, `ClassConstants.lean`, `Denote/Typed/ClassReturn.lean`, `ClassFrameControls.lean` | Fresh body scope, constant resolution, caller restoration, and scope controls |
-| `Denote/Sem/BuiltinBases.lean`, `ClassBases.lean`, `Denote/Typed/ClassBaseControls.lean` | Builtin ancestry preservation, metaclass separation, and dangling-alias controls |
-| `Denote/Sem/ClassNames.lean`, `Denote/Typed/ClassNameControls.lean` | Receiver-sensitive absence facts and the hidden-metaclass countermodel |
-| `Denote/Sem/ClassDeclared.lean`, `Denote/Typed/ClassDeclaredControls.lean` | Existing declarations, constructor lookup, and inherited-initializer control |
-| `Ratchet/ClassCtx.lean`, `Denote/Sem/ClassTables.lean`, `ClassNative.lean`, `ClassState.lean`, `Denote/Typed/ClassStateControls.lean` | Full fresh class-entry conformance, explicit table frame, executable native guard, and activation countermodels |
-| `Denote/Sem/MethodCode.lean`, `Denote/Typed/InstanceInstall.lean`, `InstanceCodeControls.lean` | Ordinary class-method metadata, actual def installation, and call-through countermodels |
-| `Denote/Sem/InstanceTable.lean`, `Denote/Typed/InstancePublish.lean`, `InstanceTableControls.lean` | Installed-member publication, owner-sensitive preservation, and alias countermodel |
-| `Denote/Sem/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
-| `Denote/Sem/ClassScope.lean`, `ClassScopeEntry.lean`, `Denote/Typed/ClassScopeControls.lean` | Lexical class-world request, actual entry, transports, and full-state privacy counterexample |
-| `Denote/Typed/InstanceEntry.lean`, `InstanceSpineControls.lean` | Open receiver fields at method entry, completeness counterexample, and getter proof |
-| `Denote/Typed/InstanceResolve.lean`, `InstanceResolveControls.lean` | Installed instance lookup, explicit dispatch, frame facts, and interception controls |
-| `Denote/Sem/InstanceSite.lean`, `InstanceSiteEntry.lean`, `Denote/Typed/InstanceState.lean`, `InstanceStateControls.lean` | Heap-only class sites, fresh-site proof, full annotated body entry, and lookup/annotation controls |
-| `Denote/Sem/InstanceSiteWrite.lean`, `Denote/Typed/InstanceSitePublish.lean`, `InstanceSiteWriteControls.lean` | Site preservation under definitions/field writes, actual-step publication, and reservation/hook controls |
-| `Denote/Sem/InstanceSiteClass.lean`, `Denote/Typed/InstanceCallEntry.lean`, `ClassSitesControls.lean` | Persistent sites across fresh classes, conformance-driven checked call entry, and constant/rebinding controls |
-| `Denote/Sem/FieldsPres.lean`, `Denote/Typed/InstanceReturn.lean`, `InstanceReturnControls.lean` | Retained field types, different-self caller-spine restoration, and full-state eigenclass countermodel |
-| `Denote/Sem/MainSite*.lean`, `Denote/Typed/MainReturn.lean`, `InstanceCall.lean`, `MainSiteControls.lean` | Retained top-level world, full caller restoration and instance-call composition, with absence controls |
-| `Denote/Typed/ClassReturnState.lean`, `ClassRun.lean`, `ClassReturnControls.lean` | Fresh-class body execution and full exit conformance, retaining outgoing tables while restoring caller scope |
-| `Denote/Sem/ClassNew.lean`, `ClassNewEntry.lean`, `Denote/Typed/ClassCtorControls.lean` | Boot-checked root constructor dispatch, fresh inheritance, and wrong-builtin/prelude controls |
-| `Denote/Sem/ConstLive.lean`, `ClassIdentity.lean`, `Denote/Typed/ClassAliasControls.lean` | Live global references, fresh-name uniqueness, and the dangling-alias countermodel |
-| `Denote/Sem/ClassShape.lean`, `Denote/Typed/ClassRootControls.lean` | Fresh ordinary-allocation prerequisites and the main-versus-Object chain countermodel |
-| `Denote/Typed/ConstructorEntry.lean`, `ConstructorState.lean`, `ConstructorControls.lean` | Actual allocation/initializer binding, full annotated fresh entry, and Point-body application |
-| `Denote/Typed/ConstructorReturn.lean`, `ConstructorRun.lean`, `ConstructorRunControls.lean` | Initialized result typing, restored caller conformance, and full new/initialize/return contract |
-| `Denote/Sem/RootNames.lean`, `ClassRootNames.lean`, `Denote/Typed/ClassRootNameControls.lean` | Canonical root bindings, complete fresh named ancestry, and redirected-Kernel countermodel |
-| `Ratchet/ClassHeader.lean`, `Denote/Sem/ClassHeader.lean`, `Denote/Typed/ClassHeaderControls.lean` | Guarded pending-header publication, full entry conformance, and inherited-initializer control |
-| `Ratchet/GlobalConsts.lean`, `Denote/Sem/GlobalConsts.lean`, `ClassGlobalConsts.lean`, `ClassFreshness.lean`, `Denote/Typed/ClassFreshnessControls.lean` | Boot-checked global-name bound, transport, generic static freshness, and occupied-name countermodel |
-| `Ratchet/NativeGuards.lean`, `ClassGuards.lean`, `Denote/Sem/NativeGuards.lean`, `ClassGuards.lean`, `Denote/Typed/ClassRules.lean`, `ClassRuleControls.lean` | Pure rule guards, proved native-metadata coverage/frame interpretation, constructor-ready semantic interfaces, and multiclass controls |
-| `Ratchet/DeclLookupFrame.lean`, `MemberFrame.lean`, `Denote/Sem/Member*.lean`, `Denote/Typed/Member*.lean` | Alias-aware definition guards, full installation conformance, and annotation-domain member/initializer definitions |
-| `Denote/Typed/ClassHeaderRun.lean`, `PointClass.lean`, `ConstructorLookup.lean`, `PointClassControls.lean` | Full annotated Point class execution, restored caller state, final-context body proofs, and conformance-derived constructor code |
-| `Denote/Sem/Allocator.lean`, `ClassAllocators.lean`, `Denote/Typed/PointConstructor.lean`, `PointConstructorControls.lean` | Persistent plain-allocation capabilities and annotation-checked construction from the published class state |
-| `Denote/Typed/Send.lean`, `ClassConstant.lean`, `PointConstructorExpr.lean`, `PointConstructorExprControls.lean` | Receiver/argument composition, declared class reads, and full class/new runs with argument effects |
-| `Denote/Typed/ConstructorResolve.lean`, `ConstructorExpr.lean`, `ConstructorGeneralControls.lean` | Class-parameterized annotation-checked constructor runs/expressions, independently exercised by FlagBox |
-| `Denote/Sem/DispatchName.lean`, `Denote/Typed/InstanceDispatch.lean`, `InstanceRun.lean`, `InstanceExpr.lean` | Payload-or-name dispatch, full annotation-domain instance calls, and receiver/argument composition for arbitrary classes |
-| `Ratchet/CallWorld.lean`, `Denote/Sem/FramedNames.lean`, `Denote/Typed/InstanceCallerReturn.lean`, `CallWorld.lean`, `InstanceImplicit.lean`, `InstanceCallerControls.lean` | Existing-context caller worlds, cross-class restoration, all ordinary call sites, and independent annotation/body controls |
-| `Denote/Typed/InstanceResolvedRun.lean`, `InheritedCallControls.lean` | Receiver/lexical-owner-separated annotated calls, real inherited controls, and full-state hidden-override witness (§F39) |
-| `Ratchet/OwnNames.lean`, `Denote/Sem/OwnNames*.lean`, `ClassOwnNames.lean`, `OwnLookup.lean`, `Denote/Typed/OwnNamesControls.lean` | StateOk's owner-local absence, retained-record union, alias-aware publication, ordered inherited lookup, and unnamed-ancestor control |
-| `Denote/Sem/NamedChain.lean`, `ClassChains*.lean`, `InheritedLookup.lean`, `Denote/Typed/InheritedRun.lean` | Complete physical-chain conformance, transports, and inherited calls consuming annotated bodies at separate receiver/owner contexts |
-| `Denote/Sem/SubclassHeap.lean`, `SubclassChains.lean`, `Denote/Typed/SubclassEntry.lean`, `SubclassEntryControls.lean` | Parent-parameterized actual entry and ancestry; cached/uncached metaclass and inherited-call controls |
-| `Denote/Sem/ClassGrowth.lean`, `SubclassReady.lean` | Generic fresh-edge/walk contracts, subclass readiness/liveness/saturation, and shared default-superclass specialization |
-| `Denote/Sem/MetaReady.lean`, `MetaReadyClass.lean` | Retained class-site metaclass facts, generic transports/publication, and conformance-derived cached-parent entry (§F41) |
-| `Denote/Sem/ClassData.lean`, `SubclassData.lean`, `Denote/Typed/SubclassDataControls.lean` | Generic first-order/field preservation through subclass entry and caller framing, with nested-data and dangling-reference controls |
-| `Denote/Sem/SubclassDispatch.lean`, `SubclassQueries.lean`, `Denote/Typed/SubclassDispatchControls.lean` | Shared class/metaclass source mapping, guarded query/primitive transport, actual entry and inherited-dispatch controls |
-| `Denote/Sem/SubclassNames.lean`, `SubclassCore.lean`, `SubclassMethods.lean`, `Denote/Typed/SubclassCoreControls.lean` | Generic registration identity, core/payload and installed-code preservation; actual-entry, alias and inherited-initializer controls |
-| `Ratchet/SubclassGuards.lean`, `Denote/Sem/SubclassBases.lean`, `SubclassDeclared.lean`, `Denote/Typed/SubclassTableControls.lean` | Guarded builtin ancestry, old declaration/ordered-chain/own-selector transport, actual entry and multi-level inherited controls |
-| `Denote/Sem/SubclassFrame.lean`, `SubclassNameEntry.lean`, `Denote/Typed/SubclassNameControls.lean` | Generic body-frame/name transport, retained class-object dispatch exclusions and inherited-call countermodel (§F42) |
-| `Denote/Sem/SubclassConstants.lean`, `SubclassSites.lean`, `Denote/Typed/SubclassScopeControls.lean` | Generic constant/scope and old/new site preservation, actual entry, inherited reads and nonglobal-parent exclusion |
-| `Denote/Sem/SubclassState.lean`, `SubclassMain.lean`, `SubclassTables.lean`, `SubclassGlobals.lean`, `Denote/Typed/SubclassStateEntry.lean`, `SubclassStateControls.lean` | Full generic entry conformance from existing parent capabilities; actual superclass step and boot-grounded parent/child controls |
-| `Ratchet/SubclassHeader.lean`, `Denote/Sem/SubclassHeader.lean`, `ClassPublish.lean`, `SubclassAllocator.lean`, `SubclassNewEntry.lean`, `SubclassNamedChain.lean`, `Denote/Typed/SubclassHeaderEntry.lean`, `SubclassHeaderControls.lean` | Executed subclass-header publication from actual parent capabilities, framed static chains, checked-parent controls and inherited constructor calls |
-| `Denote/Typed/ClassActivation.lean`, `SubclassBodyRun.lean`, `SubclassRun.lean`, `SubclassExpr.lean`, `SubclassRule.lean`, `SubclassRunControls.lean`, `Ratchet/SubclassRule.lean` | Shared caller restoration; full checked subclass execution with superclass context/local threading and multilevel controls; semantic rule awaits inherited body-cache admission |
-| `Denote/Typed/InheritedConstructor.lean`, `InheritedConstructorExpr.lean`, `InheritedConstructorControls.lean` | Class/owner-generic inherited initialization through full annotated entry, execution and return; replayed Boolean body and real class/new controls |
-| `Denote/Typed/InstanceDispatchControls.lean`, `PointProgram.lean`, `PointProgramControls.lean` | Interception controls and the complete semantic 061 proof (not checker admission) |
-| `Denote/Sem/MethodHeap.lean`, `Denote/Sem/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
-| `Denote/Typed/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
-| `Denote/Typed/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |
-| `Denote/Typed/HashIndex.lean` | Hash dispatch, lookup, nil defaults, and default-value counterexample |
-| `Denote/Typed/Primitive*.lean` | Primitive dispatch, allocation, argument composition, regression controls |
-| `Denote/Sem/PrimHeap.lean`, `Denote/JoinState.lean` | Primitive heap invariants and sound binding joins |
-| `Ratchet/InheritanceControls.lean`, `Denote/Typed/InheritedRules.lean`, `InheritanceDerivations.lean`, `Denote/Sem/NativePrefix.lean` | Generic inherited-rule admission, proved native-prefix guard, full-domain negative controls and independently audited whole 065 |
-| `Denote/Sem/RootLookup.lean`, `Denote/Typed/DefaultAllocation.lean`, `DefaultConstructor.lean`, `DefaultConstructorControls.lean` | Generic root-tail lookup and default allocation/dispatch, checked class controls, and full-state root-initializer omission (§F43) |
-| `Ratchet/RootInit.lean`, `Denote/Sem/RootInit.lean`, `RootInitWrite.lean`, `Denote/Typed/RootInitControls.lean` | Top-level-table-indexed root initializer conformance, generic write/extension transports, and full-old-state exclusion controls (§F43 closed) |
-| `Denote/Typed/Derivations.lean`, `ClassDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 49 concrete safety proofs |
-| `Denote/Typed/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
-| `Denote/Typed/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |
-| `Denote/Sanity.lean` | Executable boot conformance gate and its kernel soundness theorem |
+| `Ratchet/Lang/Ty.lean`, `Expr.lean`, `Deriv.lean` | Types, syntax, and certificate data |
+| `Ratchet/Static/CtxEq.lean` | Sound conservative syntax/context comparison for branch compatibility |
+| `Ratchet/Judgment/DJudge.lean`, `InitJudge.lean`, `Check.lean`, `DerivControls.lean` | Eight judgment families, derivation-returning checker, and negative controls |
+| `Ratchet/Check/Check.lean`, `MethodControls.lean`, `Denote/Rules/Method/MethodChecked.lean` | Cached annotation/body proofs, end-to-end controls, and the method-entry contract |
+| `Ratchet/Check/BodyCache.lean`, `ClassCheckControls.lean` | Receiver/owner-indexed checked bodies, exact lookup/branch annotations, and whole-class definition/call controls |
+| `Ratchet/Guards/MemberRoute.lean`, `ReceiverCache.lean`, `ReceiverCacheControls.lean`, `Denote/Rules/Instance/ReceiverCache.lean`, `ReceiverCacheControls.lean` | Proved first-owner lookup, complete full-domain receiver-cache replay, checked inherited dispatch consumers, and uncalled-body invalidation controls |
+| `Ratchet/Controls/MemberCallControls.lean`, `Denote/Examples/RectDerivations.lean` | Cached annotation-checked method-to-method calls, negative controls, and independently audited whole 064 |
+| `Denote/Judgment/JudgeA.lean` | Semantic judgment, continuation typing, literal/local rules |
+| `Denote/Rules/Expr/Sequence.lean`, `Branch*.lean`, `BareName.lean` | Sequence, conditional, and bare-name obligations |
+| `Denote/Rules/Expr/Array.lean` | First-order array evaluation, retention, and allocation |
+| `Denote/Judgment/Context.lean` | Context-indexed contract, specialization, literals, assignment, and frame composition |
+| `Denote/Rules/Method/MethodEntry.lean` | Required-positional method entry and annotated parameter-environment conformance |
+| `Denote/Sem/Core/FramePres.lean`, `Denote/Rules/Method/MethodReturn.lean` | Caller isolation, local restoration, and method-continuation composition |
+| `Denote/Sem/Core/Reframe.lean`, `Denote/Rules/Method/MethodState.lean` | Full frame-switch conformance and post-dispatch calls from annotated body proofs |
+| `Denote/Rules/Method/MethodDispatch.lean` | Actual definition/lookup/dispatch equalities and call safety from annotated bodies |
+| `Denote/Rules/Method/MethodLookup.lean` | Actual dispatched code recovered from `DefsOk`, then applied using a checked body |
+| `Ratchet/Guards/MethodCtx.lean`, `Denote/Rules/Method/MethodDefine.lean` | Definition-site contexts and the annotation-checked definition obligation |
+| `Denote/Rules/Method/MethodArgs.lean`, `MethodCall.lean`, `MethodResolve.lean` | Argument retention, call obligation, and semantic installed-body application |
+| `Denote/Controls/MethodRuleControls.lean`, `MethodDerivations.lean` | Full definition + call, validator acceptance, and the proof-term-audited 052 example |
+| `Denote/Judgment/BoundedRun.lean`, `BoundedMethod.lean`, `BoundedCall.lean`, `BoundedControls.lean` | Fuel-indexed contracts, guarded actual dispatch, and recursive semantic controls |
+| `Denote/Rules/Bounded/Recursive.lean`, `RecursiveDerivations.lean`, `Ratchet/Controls/RecursiveControls.lean` | Scoped recursive semantics, worked 060 proof, and annotation/call controls |
+| `Denote/Rules/Instance/InstanceRead.lean`, `InstanceControls.lean`, `Denote/Sem/Heap/IvarMutation.lean` | Instance-read prerequisites, precise write facts, and the constructor framing counterexample (§F33) |
+| `Denote/Sem/Heap/InitGrow.lean`, `Denote/Rules/Init/InitReturn.lean`, `InitControls.lean` | Preallocation-anchored preservation, caller-frame publication, and fresh two-field controls |
+| `Denote/Sem/Heap/WriteState.lean`, `Denote/Rules/Instance/InstanceWrite.lean`, `InitRun.lean`, `InitExpr.lean`, `InitBodyControls.lean` | Scoped initializer semantics, explicit typed write preservation, and the annotation-domain 061 body proof |
+| `Ratchet/Judgment/InitJudge.lean`, `CheckInit.lean`, `InitCheckControls.lean`, `Denote/Rules/Init/InitChecked.lean` | Scoped body derivations, annotation/data checking and refresh, rejection controls, and the generic anchored semantic proof |
+| `Ratchet/Guards/WriteTypes.lean`, `WriteControls.lean`, `Denote/Sem/Heap/WriteStable.lean`, `Denote/Rules/Init/InitWrite.lean` | Executable write-preservation guards, their semantic proof, and alias/context controls |
+| `Denote/Sem/Class/ClassReady.lean`, `Denote/Rules/Class/ClassEntry.lean`, `ClassControls.lean` | Boot-checked class readiness, its preservation, and actual fresh-class entry/registration |
+| `Denote/Sem/Class/ClassHeap.lean`, `DataPres.lean` | Old-data preservation and full caller framing across fresh class creation; shared first-order transport |
+| `Denote/Sem/Class/ClassDispatch.lean`, `ClassQueries.lean`, `Denote/Controls/ClassQueryControls.lean` | Fresh-class dispatch/query preservation, direct-Class invariant, and countermodels |
+| `Denote/Sem/Class/ClassCore.lean`, `ClassMethods.lean`, `Denote/Controls/ClassCoreControls.lean` | Core/payload and installed-method preservation through actual class entry |
+| `Denote/Sem/Class/ClassFrame.lean`, `ClassConstants.lean`, `Denote/Rules/Class/ClassReturn.lean`, `ClassFrameControls.lean` | Fresh body scope, constant resolution, caller restoration, and scope controls |
+| `Denote/Sem/Class/BuiltinBases.lean`, `ClassBases.lean`, `Denote/Controls/ClassBaseControls.lean` | Builtin ancestry preservation, metaclass separation, and dangling-alias controls |
+| `Denote/Sem/Class/ClassNames.lean`, `Denote/Controls/ClassNameControls.lean` | Receiver-sensitive absence facts and the hidden-metaclass countermodel |
+| `Denote/Sem/Class/ClassDeclared.lean`, `Denote/Controls/ClassDeclaredControls.lean` | Existing declarations, constructor lookup, and inherited-initializer control |
+| `Ratchet/Guards/ClassCtx.lean`, `Denote/Sem/Class/ClassTables.lean`, `ClassNative.lean`, `ClassState.lean`, `Denote/Controls/ClassStateControls.lean` | Full fresh class-entry conformance, explicit table frame, executable native guard, and activation countermodels |
+| `Denote/Sem/Instance/MethodCode.lean`, `Denote/Rules/Instance/InstanceInstall.lean`, `InstanceCodeControls.lean` | Ordinary class-method metadata, actual def installation, and call-through countermodels |
+| `Denote/Sem/Instance/InstanceTable.lean`, `Denote/Rules/Instance/InstancePublish.lean`, `InstanceTableControls.lean` | Installed-member publication, owner-sensitive preservation, and alias countermodel |
+| `Denote/Sem/Core/Ready.lean` | Context-requested runtime world, boot check, and allocation/frame transport |
+| `Denote/Sem/Class/ClassScope.lean`, `ClassScopeEntry.lean`, `Denote/Controls/ClassScopeControls.lean` | Lexical class-world request, actual entry, transports, and full-state privacy counterexample |
+| `Denote/Rules/Instance/InstanceEntry.lean`, `InstanceSpineControls.lean` | Open receiver fields at method entry, completeness counterexample, and getter proof |
+| `Denote/Rules/Instance/InstanceResolve.lean`, `InstanceResolveControls.lean` | Installed instance lookup, explicit dispatch, frame facts, and interception controls |
+| `Denote/Sem/Instance/InstanceSite.lean`, `InstanceSiteEntry.lean`, `Denote/Rules/Instance/InstanceState.lean`, `InstanceStateControls.lean` | Heap-only class sites, fresh-site proof, full annotated body entry, and lookup/annotation controls |
+| `Denote/Sem/Instance/InstanceSiteWrite.lean`, `Denote/Rules/Instance/InstanceSitePublish.lean`, `InstanceSiteWriteControls.lean` | Site preservation under definitions/field writes, actual-step publication, and reservation/hook controls |
+| `Denote/Sem/Instance/InstanceSiteClass.lean`, `Denote/Rules/Instance/InstanceCallEntry.lean`, `ClassSitesControls.lean` | Persistent sites across fresh classes, conformance-driven checked call entry, and constant/rebinding controls |
+| `Denote/Sem/Core/FieldsPres.lean`, `Denote/Rules/Instance/InstanceReturn.lean`, `InstanceReturnControls.lean` | Retained field types, different-self caller-spine restoration, and full-state eigenclass countermodel |
+| `Denote/Sem/Instance/MainSite*.lean`, `Denote/Rules/Instance/MainReturn.lean`, `InstanceCall.lean`, `MainSiteControls.lean` | Retained top-level world, full caller restoration and instance-call composition, with absence controls |
+| `Denote/Rules/Class/ClassReturnState.lean`, `ClassRun.lean`, `ClassReturnControls.lean` | Fresh-class body execution and full exit conformance, retaining outgoing tables while restoring caller scope |
+| `Denote/Sem/Class/ClassNew.lean`, `ClassNewEntry.lean`, `Denote/Controls/ClassCtorControls.lean` | Boot-checked root constructor dispatch, fresh inheritance, and wrong-builtin/prelude controls |
+| `Denote/Sem/Names/ConstLive.lean`, `ClassIdentity.lean`, `Denote/Controls/ClassAliasControls.lean` | Live global references, fresh-name uniqueness, and the dangling-alias countermodel |
+| `Denote/Sem/Class/ClassShape.lean`, `Denote/Controls/ClassRootControls.lean` | Fresh ordinary-allocation prerequisites and the main-versus-Object chain countermodel |
+| `Denote/Rules/Constructor/ConstructorEntry.lean`, `ConstructorState.lean`, `ConstructorControls.lean` | Actual allocation/initializer binding, full annotated fresh entry, and Point-body application |
+| `Denote/Rules/Constructor/ConstructorReturn.lean`, `ConstructorRun.lean`, `ConstructorRunControls.lean` | Initialized result typing, restored caller conformance, and full new/initialize/return contract |
+| `Denote/Sem/Names/RootNames.lean`, `ClassRootNames.lean`, `Denote/Controls/ClassRootNameControls.lean` | Canonical root bindings, complete fresh named ancestry, and redirected-Kernel countermodel |
+| `Ratchet/Guards/ClassHeader.lean`, `Denote/Sem/Class/ClassHeader.lean`, `Denote/Controls/ClassHeaderControls.lean` | Guarded pending-header publication, full entry conformance, and inherited-initializer control |
+| `Ratchet/Guards/GlobalConsts.lean`, `Denote/Sem/Names/GlobalConsts.lean`, `ClassGlobalConsts.lean`, `ClassFreshness.lean`, `Denote/Controls/ClassFreshnessControls.lean` | Boot-checked global-name bound, transport, generic static freshness, and occupied-name countermodel |
+| `Ratchet/Guards/NativeGuards.lean`, `ClassGuards.lean`, `Denote/Sem/Names/NativeGuards.lean`, `ClassGuards.lean`, `Denote/Rules/Class/ClassRules.lean`, `ClassRuleControls.lean` | Pure rule guards, proved native-metadata coverage/frame interpretation, constructor-ready semantic interfaces, and multiclass controls |
+| `Ratchet/Guards/DeclLookupFrame.lean`, `MemberFrame.lean`, `Denote/Sem/Names/Member*.lean`, `Denote/Rules/Instance/Member*.lean` | Alias-aware definition guards, full installation conformance, and annotation-domain member/initializer definitions |
+| `Denote/Rules/Class/ClassHeaderRun.lean`, `PointClass.lean`, `ConstructorLookup.lean`, `PointClassControls.lean` | Full annotated Point class execution, restored caller state, final-context body proofs, and conformance-derived constructor code |
+| `Denote/Sem/Heap/Allocator.lean`, `ClassAllocators.lean`, `Denote/Examples/PointConstructor.lean`, `PointConstructorControls.lean` | Persistent plain-allocation capabilities and annotation-checked construction from the published class state |
+| `Denote/Rules/Expr/Send.lean`, `ClassConstant.lean`, `PointConstructorExpr.lean`, `PointConstructorExprControls.lean` | Receiver/argument composition, declared class reads, and full class/new runs with argument effects |
+| `Denote/Rules/Constructor/ConstructorResolve.lean`, `ConstructorExpr.lean`, `ConstructorGeneralControls.lean` | Class-parameterized annotation-checked constructor runs/expressions, independently exercised by FlagBox |
+| `Denote/Sem/Names/DispatchName.lean`, `Denote/Rules/Instance/InstanceDispatch.lean`, `InstanceRun.lean`, `InstanceExpr.lean` | Payload-or-name dispatch, full annotation-domain instance calls, and receiver/argument composition for arbitrary classes |
+| `Ratchet/Guards/CallWorld.lean`, `Denote/Sem/Core/FramedNames.lean`, `Denote/Rules/Instance/InstanceCallerReturn.lean`, `CallWorld.lean`, `InstanceImplicit.lean`, `InstanceCallerControls.lean` | Existing-context caller worlds, cross-class restoration, all ordinary call sites, and independent annotation/body controls |
+| `Denote/Rules/Instance/InstanceResolvedRun.lean`, `InheritedCallControls.lean` | Receiver/lexical-owner-separated annotated calls, real inherited controls, and full-state hidden-override witness (§F39) |
+| `Ratchet/Guards/OwnNames.lean`, `Denote/Sem/Names/OwnNames*.lean`, `ClassOwnNames.lean`, `OwnLookup.lean`, `Denote/Controls/OwnNamesControls.lean` | StateOk's owner-local absence, retained-record union, alias-aware publication, ordered inherited lookup, and unnamed-ancestor control |
+| `Denote/Sem/Names/NamedChain.lean`, `ClassChains*.lean`, `InheritedLookup.lean`, `Denote/Rules/Inherited/InheritedRun.lean` | Complete physical-chain conformance, transports, and inherited calls consuming annotated bodies at separate receiver/owner contexts |
+| `Denote/Sem/Subclass/SubclassHeap.lean`, `SubclassChains.lean`, `Denote/Rules/Subclass/SubclassEntry.lean`, `SubclassEntryControls.lean` | Parent-parameterized actual entry and ancestry; cached/uncached metaclass and inherited-call controls |
+| `Denote/Sem/Class/ClassGrowth.lean`, `SubclassReady.lean` | Generic fresh-edge/walk contracts, subclass readiness/liveness/saturation, and shared default-superclass specialization |
+| `Denote/Sem/Subclass/MetaReady.lean`, `MetaReadyClass.lean` | Retained class-site metaclass facts, generic transports/publication, and conformance-derived cached-parent entry (§F41) |
+| `Denote/Sem/Class/ClassData.lean`, `SubclassData.lean`, `Denote/Controls/SubclassDataControls.lean` | Generic first-order/field preservation through subclass entry and caller framing, with nested-data and dangling-reference controls |
+| `Denote/Sem/Subclass/SubclassDispatch.lean`, `SubclassQueries.lean`, `Denote/Controls/SubclassDispatchControls.lean` | Shared class/metaclass source mapping, guarded query/primitive transport, actual entry and inherited-dispatch controls |
+| `Denote/Sem/Subclass/SubclassNames.lean`, `SubclassCore.lean`, `SubclassMethods.lean`, `Denote/Controls/SubclassCoreControls.lean` | Generic registration identity, core/payload and installed-code preservation; actual-entry, alias and inherited-initializer controls |
+| `Ratchet/Guards/SubclassGuards.lean`, `Denote/Sem/Subclass/SubclassBases.lean`, `SubclassDeclared.lean`, `Denote/Controls/SubclassTableControls.lean` | Guarded builtin ancestry, old declaration/ordered-chain/own-selector transport, actual entry and multi-level inherited controls |
+| `Denote/Sem/Subclass/SubclassFrame.lean`, `SubclassNameEntry.lean`, `Denote/Controls/SubclassNameControls.lean` | Generic body-frame/name transport, retained class-object dispatch exclusions and inherited-call countermodel (§F42) |
+| `Denote/Sem/Subclass/SubclassConstants.lean`, `SubclassSites.lean`, `Denote/Controls/SubclassScopeControls.lean` | Generic constant/scope and old/new site preservation, actual entry, inherited reads and nonglobal-parent exclusion |
+| `Denote/Sem/Subclass/SubclassState.lean`, `SubclassMain.lean`, `SubclassTables.lean`, `SubclassGlobals.lean`, `Denote/Rules/Subclass/SubclassStateEntry.lean`, `SubclassStateControls.lean` | Full generic entry conformance from existing parent capabilities; actual superclass step and boot-grounded parent/child controls |
+| `Ratchet/Guards/SubclassHeader.lean`, `Denote/Sem/Subclass/SubclassHeader.lean`, `ClassPublish.lean`, `SubclassAllocator.lean`, `SubclassNewEntry.lean`, `SubclassNamedChain.lean`, `Denote/Rules/Subclass/SubclassHeaderEntry.lean`, `SubclassHeaderControls.lean` | Executed subclass-header publication from actual parent capabilities, framed static chains, checked-parent controls and inherited constructor calls |
+| `Denote/Rules/Class/ClassActivation.lean`, `SubclassBodyRun.lean`, `SubclassRun.lean`, `SubclassExpr.lean`, `SubclassRule.lean`, `SubclassRunControls.lean`, `Ratchet/Guards/SubclassRule.lean` | Shared caller restoration; full checked subclass execution with superclass context/local threading and multilevel controls; semantic rule awaits inherited body-cache admission |
+| `Denote/Rules/Inherited/InheritedConstructor.lean`, `InheritedConstructorExpr.lean`, `InheritedConstructorControls.lean` | Class/owner-generic inherited initialization through full annotated entry, execution and return; replayed Boolean body and real class/new controls |
+| `Denote/Controls/InstanceDispatchControls.lean`, `PointProgram.lean`, `PointProgramControls.lean` | Interception controls and the complete semantic 061 proof (not checker admission) |
+| `Denote/Sem/Instance/MethodHeap.lean`, `Denote/Sem/Instance/MethodInstall.lean` | First-order type preservation, name reservation, and full top-level installation conformance |
+| `Denote/Rules/Expr/ArrayIndex.lean` | Array dispatch, integer indexing, bounds, and payload-class counterexample |
+| `Denote/Rules/Expr/Hash.lean` | Interleaved key/value evaluation, duplicate keys, and allocation |
+| `Denote/Rules/Expr/HashIndex.lean` | Hash dispatch, lookup, nil defaults, and default-value counterexample |
+| `Denote/Rules/Primitive/Primitive*.lean` | Primitive dispatch, allocation, argument composition, regression controls |
+| `Denote/Sem/Heap/PrimHeap.lean`, `Denote/Sem/Core/JoinState.lean` | Primitive heap invariants and sound binding joins |
+| `Ratchet/Controls/InheritanceControls.lean`, `Denote/Rules/Inherited/InheritedRules.lean`, `InheritanceDerivations.lean`, `Denote/Sem/Names/NativePrefix.lean` | Generic inherited-rule admission, proved native-prefix guard, full-domain negative controls and independently audited whole 065 |
+| `Denote/Sem/Names/RootLookup.lean`, `Denote/Rules/Constructor/DefaultAllocation.lean`, `DefaultConstructor.lean`, `DefaultConstructorControls.lean` | Generic root-tail lookup and default allocation/dispatch, checked class controls, and full-state root-initializer omission (§F43) |
+| `Ratchet/Guards/RootInit.lean`, `Denote/Sem/Names/RootInit.lean`, `RootInitWrite.lean`, `Denote/Controls/RootInitControls.lean` | Top-level-table-indexed root initializer conformance, generic write/extension transports, and full-old-state exclusion controls (§F43 closed) |
+| `Denote/Examples/Derivations.lean`, `ClassDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 49 concrete safety proofs |
+| `Denote/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
+| `Denote/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |
+| `Denote/Sem/Core/Boot.lean` | Executable boot conformance gate and its kernel soundness theorem |
 | `scripts/run_typed_ratchet.sh` | Full pre-commit gate |
 
 The material below is historical: it describes the deleted pre-answer-typed judgment.
@@ -756,7 +800,7 @@ f.call + 1        # CRuby: TypeError.  validate, before clink 46: true, type Int
 exist to make impossible. `capIntact` is a different guard: it stops a block *body* from
 retyping a captured local, not ordinary code after the literal.
 
-**The fix is two functions and one premise** (`Ratchet/Ty.lean` §Stale closure captures).
+**The fix is two functions and one premise** (`Ratchet/Lang/Ty.lean` §Stale closure captures).
 `killClosOver`/`killClosOverSpine` widen to `.any` every binding — and every ivar-spine entry —
 whose type records a capture of the assigned name at a *different* type, and `vasgn`/
 `vasgnAlias` apply them beside `killAliasesTo`. Both are the **identity on a closure-free
@@ -907,7 +951,7 @@ branch environments in clink 3, captured locals here): **a callee may not retype
 caller can still see.**
 
 What is different from the pre-restart version this replaced: the checker is no longer
-the specification. `Ratchet/Judge.lean` is — a hand-authored typing judgment with one
+the specification. `Ratchet/Static/` is — a hand-authored typing judgment with one
 constructor per rule — and every rung in the covered fragment has a **derivation term**
 on file in `Ratchet/Rungs.lean` that Lean's kernel checks, plus
 `Ratchet/Proof/ChkSound.lean`'s `chk_sound : chk e = some τ → Judge e τ` tying the
@@ -1033,57 +1077,57 @@ not attach a type to a program the model cannot execute.
 
 ## Semantic denotation status (`Denote/`): **built, first-order fragment proved, arrow specified**
 
-**A detour from the ladder, and it moves no rungs.** `Ratchet/Judge.lean` says what the
+**A detour from the ladder, and it moves no rungs.** `Ratchet/Static/` says what the
 checker *derives*; `Denote/` says what a `Ty` **means** — a predicate over the real
 `RubyCore` heap and values, so that "why is `Judge` right?" becomes a question with a
 statable answer instead of a docstring. Maintained separately from the syntactic judgment:
-`Denote/` imports `Ratchet/Ty.lean` and `Semantics/`, imports no `Judge`, and nothing else
+`Denote/` imports `Ratchet/Lang/Ty.lean` and `Semantics/`, imports no `Judge`, and nothing else
 in the package imports it. Its own design record is [`Denote/notes.md`](Denote/notes.md).
 
 It generalises `CheckRungs.lean`'s `expectedClasses` — a `Ty → List String` reading a type as
 "the class names its values can have", whose docstrings say three times that it cannot look
 inside an array, an object, or a Proc. A denotation that recurses closes all three.
 
-- **`Denote/Val.lean`** — the probes: immediate shape, nominal-through-the-heap
+- **`Denote/Ty/Val.lean`** — the probes: immediate shape, nominal-through-the-heap
   (`classNamed?`/`isAName`, so `.cls "Foo"` is the machine's own `is_a?` at the *current*
   heap and a class the program has not defined yet has no instances), payload projections.
-- **`Denote/Apply.lean`** — `applyIn`: how you *call* a Proc value from inside a proposition.
+- **`Denote/Ty/Apply.lean`** — `applyIn`: how you *call* a Proc value from inside a proposition.
   Values are not syntax, so it pre-binds them as locals in a pushed frame and evaluates
   `__den_f.call(__den_a0, …)`. Plus `Returns`, `Reaches` (the reflexive-transitive closure of
   `Interp.stepFn`), and the closure-scope readers `frameLocal`/`closSelf`/`closLocal`.
-- **`Denote/Den.lean`** — the master `denM : Ty → Machine → Value → Prop` (mutual with the
+- **`Denote/Ty/Den.lean`** — the master `denM : Ty → Machine → Value → Prop` (mutual with the
   arrow-spine walk `denApp` and the binding-spine walk `denSpine`), the heap-only view
   `den : Ty → Heap → Value → Prop`, `FirstOrder`, and **`denM_heap_only`**: the machine
   argument is irrelevant for every arrow-free/`clos`-free type, so the brief's
   `Ty → Heap → Value` signature is met exactly where it is meaningful. Every `Ty`
   constructor has an arm, `sameAs`/`ivar0`/`never` included.
-- **`Denote/DenB.lean`** — the computable core `denB : Ty → Heap → Value → Bool`, plus
+- **`Denote/Ty/DenB.lean`** — the computable core `denB : Ty → Heap → Value → Bool`, plus
   `closB` (machine-indexed, because `clos` *is* decidable once you have frames).
   `denB_sound` at every type; `denB_iff` (an `↔`) on `FirstOrder`.
-- **`Denote/Ext.lean`** — **`Ext`**, "the same machine, later, having allocated" (same frames,
+- **`Denote/Ty/Ext.lean`** — **`Ext`**, "the same machine, later, having allocated" (same frames,
   same stack, a heap that only grew), plus one lemma per probe across it. This is what makes
   the denotation usable by a rule that allocates; see §Semantic ratchet status. The first file
   here to import `RubyCore.Proof.*`.
-- **`Denote/Grow.lean`** — **`denM_ext`**: a type's meaning survives an allocation. One
+- **`Denote/Ty/Grow.lean`** — **`denM_ext`**: a type's meaning survives an allocation. One
   induction, and the arrow case is free because `denM`'s arrow arm was defined to quantify
   over `Later`-futures.
-- **`Denote/Local.lean`** — the other machine change: **`Machine.setLocal`**. `denM_setLocal`
+- **`Denote/Ty/Local.lean`** — the other machine change: **`Machine.setLocal`**. `denM_setLocal`
   is the transport, and unlike `denM_ext` it has a **side condition** — `capStale`, the same
   function `Judge.vasgn` widens bindings with. Also the `setLocal`/`getLocal` lockstep
   (`getLocal_setLocal_self`: the value `x` names after the write is the value written, which
   is why `setLocal.owner` and `getLocal.go` have to be shown to stop at the same frame).
-- **`Denote/Arrow.lean`** — `ArrowFlat` (the uncurried arrow), `ArrowExt` (it at every
+- **`Denote/Ty/Arrow.lean`** — `ArrowFlat` (the uncurried arrow), `ArrowExt` (it at every
   `Ext`-future, which is what `denM`'s arrow arms actually say) and `denM_arrowOf` proving the
   latter equals the spine denotation; `ArrowStable` (the arrow at every *reachable* machine —
   the honest target for a call-it-later arrow, stronger than both, and not what the checker
   infers today); `ClosArrow`, the shape of the bridge a `Judge.closCall` soundness proof would
   need.
-- **`Denote/ArrowCheck.lean`** — the arrow's computable half, stated in the only sound
+- **`Denote/Ty/ArrowCheck.lean`** — the arrow's computable half, stated in the only sound
   direction: a true arrow passes every sample (`arrowCheck_of_arrowFlat`), so **a failing
   sample refutes the arrow** and is the counterexample. Same move as
   the bounded-effect-checking note's bounded search and `AGENTS.md` §Type safety as reachability's
   witness direction, applied to arrows.
-- **`Denote/Sanity.lean`** — **the ladder is not vacuous.** Every obligation begins
+- **`Denote/Sem/Core/Boot.lean`** — **the ladder is not vacuous.** Every obligation begins
   `∀ m, StateOk κ Γ I m → …`, so an unsatisfiable `StateOk` would make all 83 vacuously true —
   a live risk from the moment `strLit` added two components that are claims about the *heap*.
   `stateOk_boot` exhibits the model: `StateOk ctx0 [] .ivar0` at the **real prelude-booted
@@ -1092,7 +1136,7 @@ inside an array, an object, or a Proc. A denotation that recurses closes all thr
   reduction of that is not on the table; the `Bool` is a `#guard`, i.e. a build gate, and
   `native_decide` was rejected for the axiom it costs. Verified against a decoy (a misspelt
   class name fails the guard).
-- **`Denote/Examples.lean`** — **33 `#guard`s that run real programs under the real `stepFn`
+- **`Denote/Ty/Examples.lean`** — **33 `#guard`s that run real programs under the real `stepFn`
   from the real prelude-booted heap** and ask the denotation about the value produced. The
   build is the gate: if the denotation and the semantics disagree, `lake build Denote` fails.
   They cover what `expectedClasses` could not — `[1,2,3] : arrayOf int` but not
@@ -1108,7 +1152,7 @@ ends with its own `#print axioms`, as `Ratchet/Proof/ChkSound.lean` does.
 soundness, no narrowing soundness — each now *statable*, which is the point of having built
 this first. The one item on that list that has since been **taken up** is `Judge` soundness:
 `Denote/notes.md` parked it because it needs an evaluation relation for `Ratchet.Expr` while
-the only executable one is over `RubyCore.Expr`. `Denote/Sem/Trans.lean` supplies the
+the only executable one is over `RubyCore.Expr`. `Denote/Sem/Core/Trans.lean` supplies the
 translation and §Semantic ratchet status is the ladder that climbs it.
 
 ## [`notes/ratchet/context-splitting.md`](notes/ratchet/context-splitting.md) — the `Ctx` redesign *(**built, steps 1–5**)*
@@ -1186,7 +1230,7 @@ A rule is written **once**, with the judgment family abstracted — `form : Fam 
 
 This is `Denote/Sem/Obligations.lean`'s substitution reified: that file derived
 `Obl.<Family>.<rule>` by replacing one constant with another inside the constructor's type;
-`Denote/Clink/Derive.lean` replaces it with a *projection of a parameter*, which is the same
+`Denote/Clink/Form.lean` replaces it with a *projection of a parameter*, which is the same
 operation made first-class. `register_clink Judge.vasgn` reads the constructor, derives
 `form`, demands `Sem.Judge.vasgn`, and declares the clink — so `syn` and `sem` are each
 kernel-checked against a statement neither of them chose.
@@ -1241,7 +1285,7 @@ CLINK RATCHET OK (48 registered, all proved by construction; 35 rules not in the
 ```
 
 The right column is **coverage**: what `JudgeC` cannot type. It matters because
-`Ratchet/Validate.lean` and `Ratchet/Deriv.lean` still target `Judge`, so it bounds what can
+`Ratchet/Validate.lean` and `Ratchet/Check/Deriv.lean` still target `Judge`, so it bounds what can
 be certified *soundly* — and that, not a fraction, is the thing to reduce.
 `Denote/Adequacy.lean` now says exactly what targeting `Judge` assumes
 (`semJudge_of_judge_of_adequate`), which is how the assumption became visible.
@@ -1249,15 +1293,20 @@ be certified *soundly* — and that, not a fraction, is the thing to reduce.
 ### Layout
 
 ```
-Denote/Clink/Spec.lean      Fam, synFam/semFam, RuleF, Clink, Closed, JudgeC, the 10
-                            unconditional soundness/admissibility theorems
-Denote/Clink/Derive.lean    register_clink: the constructor -> form -> the clink, and the
-                            refusal when there is no proof
-Denote/Clink/Registry.lean  build_clink_registry, `clinks`, registry_sound/_syn, the report,
-                            the growth gate + legacyUnclinked
+Denote/Clink/Spec.lean      RuleF, Clink, Closed, and the unconditional soundness theorems
+Denote/Clink/Form.lean      ruleForm: the constructor -> form, parameterised by the family
+                            record so any judgment can use it
+Denote/Clink/Registry.lean  DFam, register_dclink (and the refusal when there is no proof),
+                            `dclinks`, DJudgeC, dregistry_sound/_safe, the report, the
+                            growth gate + the fam-blocked list
 Denote/Clink/Controls.lean  worked derivations, the captured refusal, the two `rfl`s that
                             pin what the field types are, the positive control
 ```
+
+The names above are the current ones. `Derive.lean` is `Form.lean`, and the registry is the
+`DJudge` one — it moved here from `Denote/Typed/Clink.lean` when `Denote/` was reorganized
+into its three tiers, so the mechanism and its one instance are in the same place. The
+per-family layout is [`Denote/README.md`](Denote/README.md).
 
 **Deleted, and what replaced it:** `Denote/Ladder.lean` (the 48/83 report and its `isDefEq`
 check — the check is now `Clink.sem`'s type, enforced at declaration instead of counted in a
@@ -1412,7 +1461,7 @@ one line for any registry).
 
 **A second ladder, parallel to the first, measuring the other thing.** `run_ratchet.sh`
 measures *reach*: how many corpus programs `validate` types (177 of 249). This measures
-*justification*: how many of `Ratchet/Judge.lean`'s **rules** have been discharged as a proof
+*justification*: how many of `Ratchet/Static/`'s **rules** have been discharged as a proof
 obligation over the semantic denotation, proved from the real `stepFn`. A program can climb
 the first ladder with none of the second done — which is exactly the gap `Denote/notes.md` was
 written to describe, and this is the answer to it.
@@ -1449,7 +1498,7 @@ Discharged so far, all axiom-clean:
 * **`Judge.vasgn`** (clink 54, `Denote/Rules/Vasgn.lean`) — the **first compound rung**, and
   the one the fifth stall point was measured on. It is short, because everything hard is
   elsewhere: `RubyCore.Proof.stepFn_frame` (the interpreter's frame rule, over the whole of
-  `stepFn`, axiom-clean) and `Denote/Sem/Decompose.lean`'s **`run_split`** (a run under an
+  `stepFn`, axiom-clean) and `Denote/Sem/Core/Decompose.lean`'s **`run_split`** (a run under an
   appended continuation splits at the state that delivers the inner run's value to it). The
   attempt also produced `notes/ratchet/found-issues.md` **§F5** — `Judge.vasgn` recorded the right-hand
   side's type verbatim, and an *alias* type recorded that way claims something about a second
@@ -1519,7 +1568,7 @@ Discharged so far, all axiom-clean:
   instance — the one place the judgment uses subsumption — and `PrimSig`'s `excMessage` row
   dispatched on the supertype). Fixed by `mixinFreeChain`, `narrowNameOk` and
   `primDispatchOk` respectively, all precision-preserving on the corpus (mismatches stayed at
-  35). `Ratchet/Ty.lean`'s `falsyTy`/`isNilTy` were corrected in the same pass, in the same
+  35). `Ratchet/Lang/Ty.lean`'s `falsyTy`/`isNilTy` were corrected in the same pass, in the same
   direction: **a `.never` catch-all is a claim, not a default**.
 * **`Judge.newInstNoInit`** (clink 57, `Denote/Rules/NewInst.lean`) — `C.new` for a class with
   no `initialize`, and the first rung that allocates through a class the *program* declared. Its
@@ -1680,9 +1729,9 @@ Discharged so far, all axiom-clean:
   judgment redesign the declaration family needs.
 * **`JudgeRescues.cons`** (clink 48), the one `cons` rule in the family that the wall does not
   block: `JudgeRescues` threads no outgoing state, so its premise is about the same run its
-  conclusion is. It is the first consumer of **`Denote/Join.lean`** — "a join is an upper
+  conclusion is. It is the first consumer of **`Denote/Ty/Join.lean`** — "a join is an upper
   bound" (`denM_joinT_left`/`_right`), which `if'`, `ifNoElse`, `arrayLit`, `hashLit` and
-  `while'` will all need, and which carries the `LawfulBEq Ty` instance `Ratchet/Ty.lean`'s
+  `while'` will all need, and which carries the `LawfulBEq Ty` instance `Ratchet/Lang/Ty.lean`'s
   `deriving` clause does not provide.
 * **The six companion base cases** — `JudgeAll`/`JudgeKw`/`JudgePairs`/`JudgeRescues`/
   `JudgeConsts`/`JudgeNested` at the empty list (`Denote/Rules/Nil.lean`; each is first in its
@@ -1739,11 +1788,11 @@ rule by a `nameFree κ "method_missing"` premise.
 shadowing a captured local is a duplicate key **by design** and `validate` really does answer
 `<closure#1>{x: String, x: Integer}`. `Obl.Judge.lambdaLit` was therefore false, and `EnvOk`
 at any binding of such a closure was *unsatisfiable* — vacuity, the failure mode
-`Denote/Sanity.lean` exists to police, and the third time a component keyed differently from
+`Denote/Sem/Core/Boot.lean` exists to police, and the third time a component keyed differently from
 its lookup has produced it. `denSpineFrom` carries the keys already bound and skips a shadowed
 entry; two new `Examples.lean` guards pin it against the real semantics.
 
-**The frame lemma** (clink 51, [`Denote/Sem/Frame.lean`](Denote/Sem/Frame.lean)) — *`StateOk`
+**The frame lemma** (clink 51, [`Denote/Sem/Core/Frame.lean`](Denote/Sem/Core/Frame.lean)) — *`StateOk`
 describes the whole state of the world, and nothing more*, which is two claims and they are
 worth keeping apart. The **conformance** frame rule (`frameOnly`/`StateOk_frame`: `ctl` and
 `kont` are the whole frame, and a change confined to it cannot disturb the description) was
@@ -1756,7 +1805,7 @@ every method installed anywhere is an axiomatized builtin, a prelude definition,
 the receiver's chain because the heap-global form is false (the prelude defines `T.proc`, a
 singleton method off every ordinary chain); and `SelfLive` closes the gap both need — nothing
 had said `self` is a real object, and `Heap.get` is total. `StateOk` is now **twenty**
-components and `Denote/Sanity.lean` still exhibits a model of all of them, so the upper bound
+components and `Denote/Sem/Core/Boot.lean` still exhibits a model of all of them, so the upper bound
 cost no vacuity. The **interpreter's** frame rule (`KontFrame`/`EvalsDecompose`) is *stated, not
 proved* — and in clink 52 it was **refuted**: `not_KontFrame` exhibits the machine, because
 `stepFn` has one reader of the continuation below the head (`throw` scans the whole stack for a
@@ -1817,17 +1866,17 @@ plus two new `StateOk` components. A string literal allocates, so it is the firs
 post-machine differs from its pre-machine in the *heap*, and `denM`'s **arrow** arm is the one
 part of a type's meaning that does not survive that (it quantifies over runs, and a run from
 an extended heap allocates at shifted ids). Fixed where the problem is: both arrow arms — and
-`AsmsOk`, same shape — now quantify over `∀ m₂, Ext m m₂`. **`Ext`** (`Denote/Ext.lean`: same
+`AsmsOk`, same shape — now quantify over `∀ m₂, Ext m m₂`. **`Ext`** (`Denote/Ty/Ext.lean`: same
 frames, same stack, a heap that only grew) is the "coarser seed" clink 44 said any such fix
 would need — reflexive and transitive, so the arm is monotone by construction (`Ext.refl`
 recovers the old reading, making this a strengthening), and blind to `ctl`/`kont`, which is
 exactly what a `Reaches`-indexed arrow could not be. It is weaker than `ArrowStable` (stable
 under allocation, not under execution) and that gap is recorded. `denM_ext`
-(`Denote/Grow.lean`) transports a type's meaning across an `Ext`; `StateOk_ext`
-(`Denote/Sem/State.lean`) transports conformance, and `StateOk_reCtl` is now a corollary of it.
+(`Denote/Ty/Grow.lean`) transports a type's meaning across an `Ext`; `StateOk_ext`
+(`Denote/Sem/Core/State.lean`) transports conformance, and `StateOk_reCtl` is now a corollary of it.
 `StateOk` gained **`HeapSaturated`** and **`CoreOk`** — the first *imported* from the model's
 own metatheory (`RubyCore/Proof/AncestorsGrow.lean`: `ancestors` is fuel-bounded by
-`objs.size + 1`, so a push moves the **fuel**), which makes `Denote/Ext.lean` the first file
+`objs.size + 1`, so a push moves the **fuel**), which makes `Denote/Ty/Ext.lean` the first file
 here to depend on `RubyCore.Proof.*`. The surprise on the way: `Heap.get` is **total**, so
 `.ref n` at a heap of size `n` is a dangling reference reading as a bare `BasicObject` — which
 is why `Ext` carries two fresh-id clauses, and why no value-boundedness invariant was needed.
@@ -1857,13 +1906,13 @@ have caught it is `run_agreement.sh`, which never saw the program. The checker n
 `Judge.vasgn`'s twin — `__dt_t1 = x`, right-hand side a `.var` — is the first rule on the
 ladder that **writes** to the frames, and its proof is where `capStale` earns its keep: the
 function `Judge.vasgn` uses to decide which bindings to widen is the *side condition* of
-`denM_setLocal` (`Denote/Local.lean`), the transport of a type's meaning across a rebinding.
+`denM_setLocal` (`Denote/Ty/Local.lean`), the transport of a type's meaning across a rebinding.
 The checker's guard and the semantic transport are one predicate, which is what it means for
 the fix to be the right one rather than one that happens to reject the counterexample.
 
 Three definitions moved to make it close, each a correction rather than a convenience:
 
-* **`Later`** (`Denote/Ext.lean`) is now what the **arrow** and **`AsmsOk`** quantify over —
+* **`Later`** (`Denote/Ty/Ext.lean`) is now what the **arrow** and **`AsmsOk`** quantify over —
   heap grew, frames *rebound*, no frame pushed or popped — because `Ext` pins the frame array
   and an assignment does not. `denM`'s `clos` arm deliberately does **not** get the quantifier:
   it reads `Machine.frames` and must not be monotone under a rebinding, since that is the fact
@@ -1944,13 +1993,13 @@ Three consequences, and they are the reason it is done this way:
   a declaration `Sem.<Family>.<rule>` exists **and** its type is defeq to the derived
   obligation. Verified against a decoy.
 
-- **`Denote/Sem/Trans.lean`** — `toRuby : Ratchet.Expr → RubyCore.Expr`, 48 arms, no default
+- **`Denote/Sem/Core/Trans.lean`** — `toRuby : Ratchet.Expr → RubyCore.Expr`, 48 arms, no default
   case. This is what makes any of it possible: `Denote/notes.md` recorded "no `Judge` soundness
   theorem, because it needs an evaluation relation for `Ratchet.Expr` and the only executable
   one is over `RubyCore.Expr`". The copy stays (§Isolation is why); it gets a function across
-  instead. Also closes `Denote/Den.lean`'s stated `Ty.clos` `idx` gap — `closTblOk` can now
+  instead. Also closes `Denote/Ty/Den.lean`'s stated `Ty.clos` `idx` gap — `closTblOk` can now
   compare a live Proc's body against the table entry.
-- **`Denote/Sem/State.lean`** — `Evals` (evaluate one expression with an empty continuation,
+- **`Denote/Sem/Core/State.lean`** — `Evals` (evaluate one expression with an empty continuation,
   so its value is the run's result), **`StateOk`** — thirteen conformance components, one per
   `Ctx` field, the threaded `Γ` and `I`, and the two heap facts `strLit` forced
   (`HeapSaturated`, `CoreOk`) — and **`StateOk_ext`**, which transports all thirteen across an
@@ -2009,7 +2058,7 @@ The first version of this harness used a from-scratch, invented `Expr`/`Ty`/corp
 useful for proving the certificate-checking mechanism out quickly, but disconnected from
 real Ruby. This version **ports `Expr` and `Ty` verbatim from the real model**
 (`RubyCore/Syntax.lean`, `RubyCore/Types/Ty.lean` — see the provenance
-note at the top of `Ratchet/Expr.lean`/`Ratchet/Ty.lean` for exactly what was kept vs.
+note at the top of `Ratchet/Lang/Expr.lean`/`Ratchet/Lang/Ty.lean` for exactly what was kept vs.
 trimmed) and sources every corpus program from **real Ruby run through the real
 desugarer** (`desugar-dt/bin/export-json`), not hand-authored ASTs. The
 semantics (`stepFn`/the interpreter) was initially left out entirely; it is now
@@ -2174,7 +2223,7 @@ rung 13 — no rule was written speculatively for a rung not yet reached.
 Four artifacts, in dependency order, each answering a different way the exercise could
 have produced confident nonsense:
 
-1. **`Ratchet/Judge.lean` — the judgment.** `Judge : Cert → Expr → Ty → Prop` with one
+1. **`Ratchet/Static/` — the judgment.** `Judge : Cert → Expr → Ty → Prop` with one
    constructor per literal, one `prim` rule for an explicit-receiver block-less `send`,
    and `PrimSig`, the primitive signature table *as a relation* (five rows: `Integer`
    `+ - * /`, `String#+`). Read as a spec, each constructor is a one-line, checkable
@@ -2265,9 +2314,9 @@ real `RubyCore.Interp` directly, because hand-copying `stepFn`'s ~24k-line depen
 closure the way `Expr`/`Ty` were copied would trade a small, auditable diff for an
 enormous, unmaintainable one. `Ratchet/` does not import `Semantics/` (or vice versa) — see
 §Architecture for exactly where the line is drawn. **`Denote/` is the one library that
-imports both** (`Ratchet/Ty.lean` + `Semantics/Interp.lean`), because a denotation is by
+imports both** (`Ratchet/Lang/Ty.lean` + `Semantics/Interp.lean`), because a denotation is by
 definition a statement relating the two languages; `Denote/` proper imports no `Judge` and no
-`Ratchet/Expr.lean`; `Denote/Sem/` does import both, because the semantic judgment is a claim
+`Ratchet/Lang/Expr.lean`; `Denote/Sem/` does import both, because the semantic judgment is a claim
 *about* `Judge`'s rules and its obligations are derived from that inductive
 (§Semantic ratchet status). Nothing outside `Denote/` imports any of it.
 
@@ -2283,18 +2332,18 @@ model — the bridge is meant to stay one file.
 
 ## Architecture
 
-- **`Ratchet/Expr.lean`** — `Expr`/`Param`/`KwEntry`/`VarKind`/`TargetKind`, ported
+- **`Ratchet/Lang/Expr.lean`** — `Expr`/`Param`/`KwEntry`/`VarKind`/`TargetKind`, ported
   verbatim from `RubyCore/Syntax.lean`, plus its `Decode` namespace: the real
   `Export::VERSION` 4/5 JSON wire-format decoder. This is the *only* decoder in this
   package for program syntax.
-- **`Ratchet/Ty.lean`** — the `Ty` inductive ported verbatim from `RubyCore/Types/Ty.lean`
+- **`Ratchet/Lang/Ty.lean`** — the `Ty` inductive ported verbatim from `RubyCore/Types/Ty.lean`
   (`int`/`bool`/`nilT`/`sym`/`cls`/`any`/`clsOf`/`nilable`/`float`/`arrayOf`/`union`/
   `arrow0`/`arrowCons`), plus the pure helpers (`arrowOf`/`arrowParts?`/`subTy`/`subTys`/
   `joinTy`/`mkNilable`/`Env`/`envGet?`/`envSet`). **Not ported**: the metatheory around
   them (`subTy_trans`, `SubEnv`/`subEnvB` and their proofs, lambda-capture pinning,
   `FrameCtx`) — no soundness theorem needs them yet (see the file's own docstring for
   the rationale, and §What is deliberately not built here below).
-- **`Ratchet/Judge.lean`** — `Judge : Expr → Ty → Prop` (mutual with `JudgeAll`
+- **`Ratchet/Static/`** — `Judge : Expr → Ty → Prop` (mutual with `JudgeAll`
   over an argument list) and `PrimSig`, the primitive-signature table as a relation. The
   **specification**: what `validate` is deciding, one human-checkable constructor at a
   time. Covers rungs 1–13 and nothing else, on purpose — see §2026-08-31 (evening).
@@ -2359,7 +2408,7 @@ model — the bridge is meant to stay one file.
   semantics produced. Also runs the seven `PrimSig` negative controls. `expectedClasses`
   here is the only place in the package that gives a `Ty` an extensional reading —
   `Semantics/` returns a class-name `String` precisely so it never needs to know about
-  `Ratchet/Ty.lean`.
+  `Ratchet/Lang/Ty.lean`.
 - **`Semantics/Interp.lean`** — `Ratchet.Semantics.run`/`typeStuck`/`resultClassName`/
   `outcomeLabel`, over the real, **imported** (not copied) `RubyCore.Interp.stepFn` and
   its full dependency closure — see §Semantics status. The one place this package's
@@ -3003,7 +3052,7 @@ everything below is about what its eventual design should and shouldn't include.
 
 **No `Env` in `Judge`, and no subsumption rule** — both deliberate, both due at the rung
 that forces them (tier 3 and a declared-parameter type respectively). See
-`Ratchet/Judge.lean`'s module docstring.
+`Ratchet/Static/`'s module docstring.
 
 **No semantic soundness theorem.** `RubyCore/Proof/Cert/Sound.lean`'s
 `validate_sound` is the model for what would come next — `validate c p = true → ∀ r,
@@ -3114,7 +3163,7 @@ bridge → the DRuby featured corpus), gated on model coverage: the measured
 blocker was always the builtin surface, which is why `prelude/prelude.rb` grew.
 Superseded in practice by the corpus in `corpus/`.
 
-`Denote/Sem/Invariant.lean` is this argument's ratchet-side shape.
+`Denote/Sem/Core/Invariant.lean` is this argument's ratchet-side shape.
 
 ## Sorbet, as an object of study
 
@@ -3184,7 +3233,7 @@ design, so its acceptance is not a safety claim, and `srb` clean with
 ## The answer-typed design
 
 The work order that produced `Denote/Sem/{Answer,SafeKont,AnswerCatch}.lean`,
-`Denote/Typed/JudgeA.lean` and `Ratchet/Deriv.lean`. It has landed; this is kept
+`Denote/Judgment/JudgeA.lean` and `Ratchet/Check/Deriv.lean`. It has landed; this is kept
 because the code cites it and because the diagnosis is worth not re-deriving.
 
 ### The diagnosis, in one line
@@ -3261,7 +3310,7 @@ A re-statement of the judgment layer, not a patch.
 
 ### §3.1 — the keystone: `SemJudgeA`
 
-The answer-typed judgment, at `Ratchet/Check.lean`'s index shape. The hypothesis
+The answer-typed judgment, at `Ratchet/Check/Check.lean`'s index shape. The hypothesis
 is an **answer** rather than a value, which is the whole point: an escaping run no
 longer satisfies the obligation vacuously. It is deliberately *not*
 `Denote/Sem/Judge.lean`'s `SemJudge`, and that is why the 48 obligations proved
@@ -3339,7 +3388,7 @@ what each one was, so a citation is readable without fetching it.
 | `PROJECT_PLAN.md` | the original project plan: motivation, prior-art survey, scope and phasing. §4 (what is modeled, and the exclusions) is `RubyCore/README.md` 00 §6; §7 (the relation, not the interpreter, is the definition of record) is its §Mechanization |
 | the static-soundness POC note | the first end-to-end soundness POC: a total `check : Expr → Verdict` with `check_sound` over the *fully-typed* fragment, `I ≡ InFragment ∧ WellTyped`, and the builtin signature table it forced. Its §7 is the **checker difftest**, which survives as `difftest/checker_relation.py` |
 | the typed-portion-safety note | the plan for "a type error never occurs inside typed code" — the blame-theorem shape. Its finding stands: four verified channels carry untyped data into typed code, one of which (alias + mutate) shows *no entry check, however deep, suffices*, so the required condition is a property of the **heap over time**, not of the call graph |
-| the certificate-language note | type-checking as certificate replay, and the norms (untrusted generation, one trusted checker, `#guard` not `native_decide`, agreement counts must not move). Superseded by `Ratchet/Deriv.lean` + `validateD`; the norms stand |
+| the certificate-language note | type-checking as certificate replay, and the norms (untrusted generation, one trusted checker, `#guard` not `native_decide`, agreement counts must not move). Superseded by `Ratchet/Check/Deriv.lean` + `validateD`; the norms stand |
 | the judgment-layer note | the J-milestones: state the invariant over an **inductive judgment** rather than over a checker function, because metatheory stated over a *function* is re-incurred at every checker rewrite. Superseded by `Denote/Typed/`; the diagnosis stands |
 | `type-judgments.md` | the implementation catalog for the judgment forms (`Ty`, `Sub`, `Consistent`, `Join`, `mtype`, `narrow`, `HasType`, `KontOk`) |
 | `slot-frame.md`, `slot-frame-experiment.md`, the typing-the-slice milestone plan | the slot-frame resource algebra and the milestone plan (M0–M7) for typing the Homebrew slice. The slice is not in this repository; the tripwires it produced are corpus rungs and regressions |

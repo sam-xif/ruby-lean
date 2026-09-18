@@ -1,4 +1,4 @@
-import Ratchet.Rung
+import Ratchet.Check.Rung
 
 /-! Small playground adapter: decode one program/Deriv pair and print validateD's Bool. -/
 

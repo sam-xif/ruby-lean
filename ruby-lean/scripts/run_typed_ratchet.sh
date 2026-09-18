@@ -26,7 +26,7 @@
 #   that errored.
 #
 # **A rung is climbed when `validateD` accepts it** -- and that is the *whole* safety claim,
-# because `Denote/Typed/Bridge.lean` proves
+# because `Denote/Bridge.lean` proves
 #
 #     validateD_safe_boot : validateD p d = true → bootOkB = true → StuckFree bootMachine p
 #
@@ -58,7 +58,7 @@
 #   0a. **The layering check** (`scripts/check-isolation.sh`): `Ratchet/` must not import
 #      `RubyCore/`. That used to be a package boundary; since the merge into one Lake
 #      package (`ruby-lean/`) it is this script, and it runs before anything is built.
-#   0b. **The negative controls** (`Ratchet/DerivControls.lean`, `Denote/Typed/Controls.lean`,
+#   0b. **The negative controls** (`Ratchet/Controls/DerivControls.lean`, `Denote/Clink/Controls.lean`,
 #      `#guard`ed at build time): a checker that accepts everything would pass every rung
 #      below, so the controls are checked before any count is reported.
 #   1. **Stages 1-4** over every rung, into `build/`.
@@ -68,12 +68,12 @@
 #   3. **The report** (`lake exe ratchetd`), whose exit code is non-zero on a moved Sorbet
 #      verdict, a new upstream failure, or a drop in ladder reach.
 #   4. **The safety proof, cross-checked against the corpus** (`lake exe semladder`). The
-#      end-to-end theorems in `Denote/Typed/Safety.lean` name their rung in a docstring; this
+#      end-to-end theorems in `Denote/Safety.lean` name their rung in a docstring; this
 #      reads the rung the pipeline actually built and compares its sig-stripped program
 #      against the `Expr` each theorem is about, so "rung 004 is proved safe" cannot be true
 #      of a theorem and false of the ladder. It also reports which registered rules those
 #      rungs **exercise** -- read off the proof terms, not guessed from the programs
-#      (`Denote/Typed/RuleAudit.lean`) -- and names the ones they do not (today: `var` and
+#      (`Denote/RuleAudit.lean`) -- and names the ones they do not (today: `var` and
 #      `vasgn`, structurally; see `found-issues.md` §F30).
 #
 #      Four ways it goes non-zero, beyond a moved floor:
@@ -83,7 +83,7 @@
 #        * the `unexercised` exemption list grew past its ceiling (`COVERAGE HATCH WIDENED`);
 #        * a rung count or the registry size fell below its floor.
 #
-# `validateD` types (`Ratchet/Check.lean`); a `true` means a `DJudge` derivation exists.
+# `validateD` types (`Ratchet/Check/Check.lean`); a `true` means a `DJudge` derivation exists.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 RATCHET_DIR="$PWD"   # ruby-lean/, the Lake package root
@@ -155,11 +155,14 @@ stage "layering: the checker does not see the model" \
 
 stage "build: the negative controls and the proofs" \
   "A Lean source does not compile, or a #guard/#guard_msgs control failed. These are the gates
-  that cannot be skipped -- the coverage cross-check (Denote/Typed/RuleAudit.lean), the
-  registration refusals (Denote/Typed/Controls.lean), and the safety theorems themselves.
+  that cannot be skipped -- the coverage cross-check (Denote/RuleAudit.lean), the
+  registration refusals (Denote/Clink/Controls.lean), and the safety theorems themselves.
+  Denote.Controls.All names every negative control explicitly. That list used to be
+  reached by ClassControls.lean importing fifty-one of its siblings, so dropping a control
+  from this gate was a one-line deletion in a file edited for other reasons.
   validate-one is not a gate here -- it is the playground's adapter around the same
   validateD, built alongside ratchetd so the two cannot answer differently." \
-  -- lake build Ratchet.DerivControls Denote.Typed.Safety Denote.Typed.RuleAudit \
+  -- lake build Ratchet.Controls.DerivControls Denote.Controls.All Denote.Safety Denote.RuleAudit \
                 ratchetd semladder validate-one
 
 stage "stages 1-4: sorbet -> strip -> desugar -> emit" \

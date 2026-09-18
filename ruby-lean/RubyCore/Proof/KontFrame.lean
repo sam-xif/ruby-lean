@@ -4,7 +4,7 @@ import RubyCore.Proof.FrameAttr
 /-!
 # `RubyCore/Proof/KontFrame.lean` — `stepFn` is local in the continuation tail
 
-The theorem `Denote/Sem/Frame.lean` names as `KontFrameCatchFree` and the ~40 rungs
+The theorem `Denote/Sem/Core/Frame.lean` names as `KontFrameCatchFree` and the ~40 rungs
 behind the ratchet's fifth stall point consume: a step from a machine with more continuation
 behind it is the same step with more continuation behind it.
 
@@ -1384,7 +1384,7 @@ and that is where the 24k lines actually are"*. It is:
 expand. The first `frame_hof` was written recursively and silently failed on every nested case;
 as a `repeat'` fixpoint it handles the nesting for free.
 
-What this does *not* buy is a rung. `KontFrameCatchFree` (`Denote/Sem/Frame.lean`)
+What this does *not* buy is a rung. `KontFrameCatchFree` (`Denote/Sem/Core/Frame.lean`)
 needs the rest of `Interp` too: `applyKont` and `unwind`, whose statements are **conditional**
 (`kont = []` is the pass-through point); `CatchFree` threaded through the `throw` arm the
 refutation found; the `Send`/`Dispatch`/`Reflect` helpers; and one `partial def`

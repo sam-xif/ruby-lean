@@ -2,7 +2,7 @@
 # frozen_string_literal: true
 
 # emit_deriv.rb -- the **untrusted** emitter: a sig-stripped AST + signatures,
-# out a `Deriv` (`Ratchet/Deriv.lean`).
+# out a `Deriv` (`Ratchet/Check/Deriv.lean`).
 #
 #   emit_deriv.rb --ast build/NNN.ast.json --sigs build/NNN.sigs.json
 #   echo '{"ast": <ast>, "sigs": <sigs>}' | emit_deriv.rb
@@ -30,7 +30,7 @@
 require "json"
 
 # --------------------------------------------------------------------------
-# `Ty` constructors, in `Ratchet/Ty.lean`'s wire encoding
+# `Ty` constructors, in `Ratchet/Lang/Ty.lean`'s wire encoding
 # --------------------------------------------------------------------------
 
 INT   = { "tag" => "int" }.freeze
@@ -79,7 +79,7 @@ class Blocked < StandardError; end
 # The builtin signature table
 # --------------------------------------------------------------------------
 #
-# A **subset** of `Ratchet/Judge.lean`'s `PrimSig`, here only so the emitter can
+# A **subset** of `Ratchet/Static/`'s `PrimSig`, here only so the emitter can
 # propose a `Deriv.prim`'s result type. It is not the authority: `check`
 # re-derives the row from `PrimSig` itself, so a row missing here costs a block
 # and a row wrong here costs a reject.
@@ -167,7 +167,7 @@ class Emitter
 
   # A declared `Ty.cls C` for a *user* class C, recovered as `Ty.inst C <spine>`.
   # The known gap: a signature says `Point` and carries no ivar spine, but
-  # `Ratchet/Ty.lean` types an instance as `.inst name <spine>`. Where the class
+  # `Ratchet/Lang/Ty.lean` types an instance as `.inst name <spine>`. Where the class
   # body has been seen the spine is known; where it has not, the `.cls` stays
   # and the first method call on it blocks.
   def as_inst(t)

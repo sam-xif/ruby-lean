@@ -60,7 +60,7 @@ complement of what one particular reconstruction happened to record.
 
 Both worked around *in `Ratchet/`*, with the reason written down at the time:
 
-* **`capStaleCtx`** (`Ratchet/Judge.lean`) — "`Ctx` is an **input** to every rule: no rule
+* **`capStaleCtx`** (`Ratchet/Static/`) — "`Ctx` is an **input** to every rule: no rule
   rewrites it, so no rule can widen them. So they become a *premise* instead." That is the
   absence of `κ'` named explicitly, and paid for with a conservative premise on three fields.
   Its own docstring then names the alternative: "a `StateOk` component stating frame-chain
@@ -259,7 +259,7 @@ context that contains at least those and stays `Coherent`. Then the frame rule o
 available for free because `PosOk`/`NegOk` are antitone (§2.1, §3).
 
 **The evidence that this is the right reading is that half of it is already true.** Counting
-`Ratchet/Judge.lean`'s table premises:
+`Ratchet/Static/`'s table premises:
 
 | kind | form | count | local? |
 |---|---|---|---|
@@ -365,14 +365,14 @@ boot heap: every object has those, so no `(inst c, n)` with `n ∈ objectMethodN
 in `noMethod` — **and no `(cls c, n)` either**, since a class object is an object and the
 metaclass tail of §4.6 reaches `Object` too. Its own docstring already says "completeness is the soundness condition" — which
 is precisely the hazard of a negative fact carried as a table, and an argument for deriving the
-seed from `Denote/Sanity.lean`'s measured boot heap rather than maintaining the list by hand.
+seed from `Denote/Sem/Core/Boot.lean`'s measured boot heap rather than maintaining the list by hand.
 
 ### 4.6 The key is a **receiver port**, not a class — instances, class objects, and eigenclasses
 
 `(class, name)` is not enough, because Ruby has more than one lookup relation and the checker
 already implements two of them plus a coarse belt for a third.
 
-**Two ports.** They are the two walks `Ratchet/Judge.lean` already has:
+**Two ports.** They are the two walks `Ratchet/Static/` already has:
 
 | port | chain | the walk | consumed by |
 |---|---|---|---|
@@ -403,7 +403,7 @@ tail. It is also the mechanism behind §10.1's claim that the keying pays for th
 `(inst Pathname, "to_s")` nor the metaclass tail.
 
 **Object eigenclasses need no third port**, and the reason is already in the denotation.
-`Denote/Val.lean`'s `isExactInst` requires
+`Denote/Ty/Val.lean`'s `isExactInst` requires
 
 ```lean
 o < h.objs.size && (h.get o).eigen.isNone && (h.get o).klass == k
@@ -579,12 +579,12 @@ premise* precisely so "the elaborator resolves them from the sub-derivation rath
 unifying structurally in the wrong direction". Expect every threaded rule to need `κ' = κ` in
 that same style, and budget for the elaboration to be the fiddly part rather than the proofs.
 
-Touched: `Ratchet/Judge.lean`, `Ratchet/Validate.lean`, `Ratchet/Proof/ChkSound.lean`,
+Touched: `Ratchet/Static/`, `Ratchet/Validate.lean`, `Ratchet/Proof/ChkSound.lean`,
 `Ratchet/Rungs.lean`, `CheckRungs.lean`, and every file under `Denote/Rules/`. Gates that must
 hold throughout: `run_ratchet.sh` at 178/254, `run_check_rungs.sh` at 177/177 + 145/145 (both
 will move at step 1, by the new corpus witnesses and by programs the fix now refuses — that
 movement is the deliverable and should be recorded, not avoided), `semladder`'s denominator at
-83, `Denote/Examples.lean` green, no `sorry`.
+83, `Denote/Ty/Examples.lean` green, no `sorry`.
 
 ---
 

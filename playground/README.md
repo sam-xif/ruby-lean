@@ -75,7 +75,7 @@ and `?backend=server` override either, which is how you compare them.
 
 **Sorbet.** It is a C++ binary with no wasm port. `read_sigs.rb` reads the
 declared types off the source with Prism instead, which is sound rather than a
-shortcut — `Ratchet/Deriv.lean` re-derives every declared type, so a weaker
+shortcut — `Ratchet/Check/Deriv.lean` re-derives every declared type, so a weaker
 reader costs blocks and rejects and never a wrong accept.
 (`ruby-lean/scripts/cmp_sig_readers.py` measures it: the same 63 rungs accepted
 either way.)

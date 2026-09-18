@@ -8,8 +8,23 @@ ruby-lean/
     Proof/      its metatheory (off the default target: `lake build Metatheory`)
                 — plus the lemmas `Denote/Sem/` imports, which are on it
   Ratchet/      the certificate checker — its own copied `Expr`/`Ty`, `Deriv`, `validateD`
+    Lang/       the copied language: `Expr`, `Ty` (nothing here is a judgment)
+    Static/     the static vocabulary both sides are stated over — tables, `Ctx`, narrowing
+    Judgment/   the syntactic judgments, and only these: `DJudge`, `InitJudge`
+    Guards/     the decidable side conditions a rule's premises are written in
+    Check/      the executable checker — `Deriv`, `validateD`, the caches
+    Controls/   negative controls
   Semantics/    the one import bridge back to the real `stepFn` (a single file)
   Denote/       the denotation joining the two, and `validateD_safe_boot`
+    Ty/         tier 1 — what a `Ty` *means*: `den`/`denB`, arrows, heap growth, joins
+    Sem/        tier 2 — the `StateOk` invariant and its transport lemmas, in pockets:
+                Core/ Heap/ Names/ Class/ Subclass/ Instance/
+    Judgment/   tier 3 — the semantic judgment `SemSafeCtxA` and its composition contracts
+    Rules/      the per-rule semantic obligations, by feature (Expr/ Method/ Class/ …)
+    Clink/      the registry: a rule enters the judgment only with its proof attached
+    Controls/   negative controls (`All.lean` is the list the gate builds)
+    Examples/   worked derivations and the concrete corpus safety theorems
+    Bridge.lean `djudge_certified` and `validateD_safe_boot` — the headline theorem
   corpus/       the annotated rungs (the ladder's source of truth)
   build/        derived from corpus/ by scripts/build_corpus.py — never edited
   prelude/      the core library modeled *in Ruby*
@@ -23,6 +38,13 @@ scope; `Semantics/` is the single deliberate exception and `Denote/` is the one
 library that sees both. That used to be a package boundary — the two were
 separate Lake packages, `lean/` and `ratchet/` — and since the merge it is
 `scripts/check-isolation.sh`, which `scripts/run_typed_ratchet.sh` runs first.
+
+The three tiers under `Denote/` are a strict stack — `Ty/` → `Sem/` → `Judgment/`
+and `Rules/` — and the delineation is the point: a file under `Sem/` says what it
+means for a *machine* to conform to a `Ctx`, a file under `Rules/` says what a
+*rule* owes, and neither is a syntactic judgment. Those live under `Ratchet/`,
+which cannot see `Denote/` at all. See [`Ratchet/README.md`](Ratchet/README.md)
+and [`Denote/README.md`](Denote/README.md).
 
 For the checker's current state, the proof boundary, the pipeline and the gate,
 read [`AGENTS.md`](AGENTS.md). The rest of this file is the **model**.
@@ -273,8 +295,8 @@ They were removed, together with the `rubycore` flags that drove them
 concolic exe whose consumer lives in another repository. What survives of them is
 listed in the `Proof/` row above: the lemmas `Denote/Sem/` actually imports.
 
-**The checker of record is `validateD`** — `Ratchet/Check.lean`, with
-`validateD_safe_boot` in `Denote/Typed/Bridge.lean` as its safety theorem, run by
+**The checker of record is `validateD`** — `Ratchet/Check/Check.lean`, with
+`validateD_safe_boot` in `Denote/Bridge.lean` as its safety theorem, run by
 `lake exe ratchetd` and gated by `scripts/run_typed_ratchet.sh`. The model's own
 metatheory above is a claim about the *semantics*, and nothing downstream of it
 depends on the removed layers.

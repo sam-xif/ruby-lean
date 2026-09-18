@@ -14,7 +14,7 @@ from. That is the question this is asking.
 and judges them where it matters -- by what `validateD` says about the
 derivation each produces, not by whether the two emitters printed the same
 bytes. A weaker reader is allowed to block earlier or propose something the
-checker then rejects (`Ratchet/Deriv.lean`: every declared type is re-derived,
+checker then rejects (`Ratchet/Check/Deriv.lean`: every declared type is re-derived,
 so a wrong signature costs a failed certification, never a wrong accept). What
 it may not do is change which rungs are **accepted**.
 

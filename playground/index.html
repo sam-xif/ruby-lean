@@ -429,7 +429,7 @@ const STEPS = {
 
     // Stage 3 blocked: the box holds the emitter's block report, not a
     // certificate. Asking the kernel to decode it would report a decode failure
-    // as if it were a verdict. `Ratchet/Rung.lean` already answers this case.
+    // as if it were a verdict. `Ratchet/Check/Rung.lean` already answers this case.
     if (deriv && typeof deriv.rule !== "string" && typeof deriv.status === "string") {
       mark("validate", "warn", "validateD = false — no certificate to check");
       setTarget(false);

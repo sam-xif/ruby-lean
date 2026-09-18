@@ -1,4 +1,4 @@
-import Denote.Sem.Framed
+import Denote.Sem.Core.Framed
 
 /-!
 # `Denote/Clink/Spec.lean` — a rule is one object with two readings, and the semantic one carries its proof
@@ -30,7 +30,7 @@ A rule is written **once**, with the judgment family abstracted:
 form : Fam → Prop
 ```
 
-`Fam` is the eight-member family of `Ratchet/Judge.lean` as a *record of predicates*, so a
+`Fam` is the eight-member family of `Ratchet/Static/` as a *record of predicates*, so a
 rule's premises and conclusion are stated against a parameter rather than against a
 particular relation. Instantiating that one `form` twice gives the two readings, and they
 cannot drift because there is only one of them:
@@ -92,17 +92,17 @@ open RubyCore Ratchet
 
 A judgment's relations, bundled as a **record of predicates**, so that a rule's premises and
 conclusion can be stated against a parameter rather than against a particular relation. The
-record itself is supplied by whoever is registering rules — `Denote/Typed/Clink.lean`'s
+record itself is supplied by whoever is registering rules — `Denote/Clink/Registry.lean`'s
 `DFam` is the one instance today — and everything in this file is generic in it.
 
 The instance that used to live here was `Fam`, the eight-member record mirroring
-`Ratchet/Judge.lean`'s mutual family, together with `JudgeC` and sixteen soundness theorems
+`Ratchet/Static/`'s mutual family, together with `JudgeC` and sixteen soundness theorems
 over it. It went with that judgment (clink 68). What is left is the mechanism, which was
 always the part worth having. -/
 
 /-- A rule, with the judgment abstracted. Both readings are instantiations of one of these.
 
-Generic in the family **record type**: `Denote/Typed/Clink.lean`'s `DFam` is the instance, and
+Generic in the family **record type**: `Denote/Clink/Registry.lean`'s `DFam` is the instance, and
 `Clink`/`Closed` below never mention it. -/
 abbrev RuleF (F : Type) := F → Prop
 
@@ -153,7 +153,7 @@ theorem closed_source (R : List (Clink S T)) : Closed R S := fun c _ => c.syn
 `JudgeC R` — the least family closed under `R`, written impredicatively as
 `∀ F, Closed R F → F.judge …` — has to *construct* a family record, so it is the one part of
 the mechanism that cannot be generic in the record type. Each judgment defines its own; it is
-three lines. `Denote/Typed/Clink.lean` §3 is the instance, with its one-line soundness
+three lines. `Denote/Clink/Registry.lean` §3 is the instance, with its one-line soundness
 theorem, and reading it is the fastest way to see what `Closed` buys:
 
 ```lean
@@ -173,6 +173,6 @@ would have nothing to apply, which is the sense in which growth is sound by cons
 No generic closure lemma exists and there cannot be one: a Horn rule mentions the judgment
 **contravariantly** in its premises, so `c.form` is not monotone in `F` and `Closed R (JudgeC R)`
 has no proof uniform in `c`. It is not needed — see the worked derivations in
-`Denote/Typed/Clink.lean` §5. -/
+`Denote/Clink/Registry.lean` §5. -/
 
 end Ratchet.Denote

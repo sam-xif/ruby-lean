@@ -84,13 +84,13 @@ globs = ["Semantics.+"]
 # plus its computable `Bool` core). The one library that imports **both** `Ratchet/`'s
 # copied type language and `Semantics/`'s real machine, on purpose: a denotation is by
 # definition a statement relating the two. Maintained separately from the syntactic
-# judgment (`Ratchet/Judge.lean`), which it does not import and which does not import it.
+# judgment (`Ratchet/Static/`), which it does not import and which does not import it.
 [[lean_lib]]
 name = "Denote"
 srcDir = "."
 globs = ["Denote.+"]
 
-# `Denote/Examples.lean`'s report, printed. The `#guard`s there are the real gate (they
+# `Denote/Ty/Examples.lean`'s report, printed. The `#guard`s there are the real gate (they
 # fail the build); this is so the log shows *what* was checked.
 [[lean_exe]]
 name = "denotereport"

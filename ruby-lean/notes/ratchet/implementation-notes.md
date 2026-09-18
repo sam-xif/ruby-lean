@@ -3832,7 +3832,7 @@ soundness itself, which needs an evaluation relation for `Ratchet.Expr` while th
 executable one is over `RubyCore.Expr`; `subTy` soundness; narrowing soundness. All three are
 now *statable*, which is the whole return on this detour.
 
-**The gate.** `Denote/Examples.lean` is 31 `#guard`s that run real programs under the real
+**The gate.** `Denote/Ty/Examples.lean` is 31 `#guard`s that run real programs under the real
 `stepFn` from the real prelude-booted heap and ask the denotation about the value produced —
 so `lake build Denote` fails if the two ever disagree. They deliberately exercise the three
 things `expectedClasses` cannot: element types (`[1,2,3] : arrayOf int` yes,
@@ -3886,7 +3886,7 @@ which is a property the derivation *has*:
    specification, and a committed copy of a specification is how drift starts.
 2. **An obligation cannot be weakened**, because there is nothing to edit. A rung that will
    not close leaves exactly three moves: prove it, fix a `StateOk`/`SemJudge` definition, or
-   fix the rule in `Ratchet/Judge.lean`.
+   fix the rule in `Ratchet/Static/`.
 3. **The premises stay.** Nothing substitutes `PrimSig`/`EqSafe`/`NarrowCond` — they are the
    rule's hypotheses. So `Obl.Judge.prim` quantifies over the whole `PrimSig` relation, and
    discharging it means justifying ~90 rows of builtin behaviour from the semantics. That is
@@ -3904,7 +3904,7 @@ obligation**. Checked against a decoy — a `Sem.Judge.intLit : True` is not cou
 executable one is over `RubyCore.Expr`". The obvious fix is to delete one copy, and it is the
 wrong trade: `Ratchet/` importing nothing from `RubyCore/` is what makes a divergence
 a **deliberate fork to notice** instead of a build error to paper over, and that isolation is
-why this restart exists at all. So `Denote/Sem/Trans.lean` is `toRuby`, 48 arms, **no default
+why this restart exists at all. So `Denote/Sem/Core/Trans.lean` is `toRuby`, 48 arms, **no default
 case** — a constructor added on either side breaks the build. Side effect worth naming: it
 closes clink 42's stated `Ty.clos` `idx` gap, because a live Proc's `RubyCore.Closure.body`
 and a table entry's `Ratchet.Expr` body are now comparable (`closTblOk`).
@@ -4012,10 +4012,10 @@ rule concluding a builtin class type will want it. And `denM` does not survive a
 extension: transporting an arbitrary `τ` across the push hits the arrow arm, which quantifies
 over *runs*, and a run from the extended heap allocates at shifted object ids, so it is not the
 run from the unextended one. `AsmsOk` has the same shape. The tempting fix — quantify the arrow
-over reachable machines, as `Denote/Arrow.lean`'s `ArrowStable` already does — **conflicts with
+over reachable machines, as `Denote/Ty/Arrow.lean`'s `ArrowStable` already does — **conflicts with
 `denM_ctl`**, because the machines reachable from `m` are not those reachable from `m` with its
 control word rewritten; any reachability-indexed arrow has to be seeded by something coarser.
-That is a `Denote/Den.lean` change with `DenB`, `Arrow.lean` and the 31 `Examples.lean` guards
+That is a `Denote/Ty/Den.lean` change with `DenB`, `Arrow.lean` and the 31 `Examples.lean` guards
 downstream of it, so it is its own clink rather than a detour inside this one. The rung is left
 undischarged and visible on the ladder, which is the behaviour clink 43 designed for: a rung
 that will not close is information about a definition, not a thing to work around.
@@ -4026,7 +4026,7 @@ that will not close is information about a definition, not a thing to work aroun
 `run_check_rungs.sh` still read 177/232, 177/177 and 140/140), and **9 of 83 `Judge` rules
 discharged**. New: `Denote/Rules/Core.lean` (the two shared lemmas plus their supporting
 `rfl`/induction helpers), `Denote/Rules/Lit.lean` (the nine rungs), `Denote/Rules.lean` (the
-import list). `Denote/Examples.lean`'s 31 `#guard`s green. Axiom-clean throughout — every new
+import list). `Denote/Ty/Examples.lean`'s 31 `#guard`s green. Axiom-clean throughout — every new
 file ends in its own `#print axioms`, and each reports only `propext`/`Classical.choice`/
 `Quot.sound`.
 
@@ -4037,7 +4037,7 @@ file ends in its own `#print axioms`, and each reports only `propext`/`Classical
 Seven rungs — `Judge.strLit` and the six companion base cases — and one **soundness bug in
 the checker**, found by reading an obligation rather than by searching for a witness. The
 ladder reads **16 of 83**.
-`Ratchet/` untouched (177/232, 177/177 + 140/140); `Denote/Examples.lean`'s 31 `#guard`s green;
+`Ratchet/` untouched (177/232, 177/177 + 140/140); `Denote/Ty/Examples.lean`'s 31 `#guard`s green;
 axiom-clean, no `sorry`.
 
 Clink 44 left `strLit` undischarged with its reason written out (§The fourth stall point): a
@@ -4060,17 +4060,17 @@ so it is not the run from the heap without it. Three options were on the table.
 * *Quantify the arrow arm.* Taken. `denM`'s two arrow arms and `AsmsOk` now read
   `∀ m₂, Ext m m₂ → …`.
 
-`Ext` (`Denote/Ext.lean`) is deliberately **not** `Reaches`. Clink 44 recorded that seeding the
+`Ext` (`Denote/Ty/Ext.lean`) is deliberately **not** `Reaches`. Clink 44 recorded that seeding the
 arrow with reachability conflicts with `denM_ctl` (the machines reachable from `m` are not
 those reachable from `m` with its control word rewritten) and that any fix needs something
 coarser. `Ext m m₂` — same frames, same stack, a heap that only grew — is that: it reads
 neither `ctl` nor `kont`, so `denM_ctl` survives verbatim (`Ext_reCtl`), and it is reflexive
 and transitive, so `Ext.refl` recovers the old reading (the change **strengthens** `denM`) and
-`Ext.trans` makes the arm monotone by construction. `denM_ext` (`Denote/Grow.lean`) therefore
+`Ext.trans` makes the arm monotone by construction. `denM_ext` (`Denote/Ty/Grow.lean`) therefore
 re-derives nothing at all about runs — the arrow case is two projections.
 
 The price is stated rather than hidden: `Ext` pins the frame array, so the arrow this seeds is
-stable under *allocation*, which is strictly weaker than `Denote/Arrow.lean`'s `ArrowStable`
+stable under *allocation*, which is strictly weaker than `Denote/Ty/Arrow.lean`'s `ArrowStable`
 (stable under *execution*). A call rung will want the stronger one, and the pinning is what
 keeps the `clos` arm's captured-scope read (`closLocal m cl`, a `Machine.frames` index) a
 rewrite rather than a second transport problem.
@@ -4083,7 +4083,7 @@ are two different computations. `RubyCore/Proof/AncestorsGrow.lean` had already 
 this, for exactly this reason, with `Saturated` ("one more unit of fuel changes nothing") and
 `ancestors_congr_grow`. Re-deriving it here would be a second copy of a proof about the same
 `stepFn`, which is the thing `Semantics/Interp.lean`'s module docstring argues against one
-layer down. So `Denote/Ext.lean` is the **first file in the package to import
+layer down. So `Denote/Ty/Ext.lean` is the **first file in the package to import
 `RubyCore.Proof.*`** — the model's metatheory, not just its interpreter — and the isolation
 boundary that moves is the one that was already deliberately open (`Semantics/ → ../lean`),
 not `Ratchet/`'s.
@@ -4156,14 +4156,14 @@ about the heap.** Every obligation begins `∀ m, StateOk κ Γ I m → …`. Wh
 eleven components read off `Ctx`, "is it satisfiable" was a theoretical question; adding
 `HeapSaturated` and `CoreOk` made it a real one, since a false heap fact would make all 83
 obligations vacuously true and the ladder would keep climbing while measuring nothing.
-`Denote/Sanity.lean`'s `stateOk_boot` is the witness: `StateOk ctx0 [] .ivar0` at the **real
+`Denote/Sem/Core/Boot.lean`'s `stateOk_boot` is the witness: `StateOk ctx0 [] .ivar0` at the **real
 prelude-booted machine**, axiom-clean.
 
 It is stated **conditionally on one `Bool`** rather than `decide`d, and the reason is
 structural: the booted heap is the output of `Interp.run 200_000` over the whole prelude
 (`RubyCore/PreludeBoot.lean`), so kernel reduction of it is not on the table. `native_decide`
 would buy a theorem for the price of `Lean.ofReduceBool`, which this package does not spend.
-So `bootOkB` is a `#guard` — the same status `Denote/Examples.lean`'s 31 guards have, and the
+So `bootOkB` is a `#guard` — the same status `Denote/Ty/Examples.lean`'s 31 guards have, and the
 same trade `RubyCore/Proof/AncestorsGrow.lean` argues for `saturatedB` ("a hypothesis the
 harness can check beats an `axiom`, and beats a proof nobody has finished"). Verified against
 a decoy, as the ladder's `isDefEq` gate was: misspelling `"String"` in `coreOkB` fails the
@@ -4230,11 +4230,11 @@ corpus should gain.
 
 **177 rungs of 232**, unchanged (`Ratchet/` untouched; `run_ratchet.sh` and
 `run_check_rungs.sh` still read 177/232, 177/177 and 140/140), and **16 of 83 `Judge` rules
-discharged** — the ten above plus the six companion base cases. New: `Denote/Ext.lean`,
-`Denote/Grow.lean`, `Denote/Rules/Alloc.lean`, `Denote/Rules/Nil.lean`,
-`Denote/Sanity.lean`. Modified:
-`Denote/Den.lean`, `Denote/Arrow.lean`, `Denote/Sem/State.lean`, `Denote/Rules/Core.lean`,
-`Denote/Rules/Lit.lean`, `Denote/Rules.lean`. `Denote/Examples.lean`'s 31 `#guard`s green.
+discharged** — the ten above plus the six companion base cases. New: `Denote/Ty/Ext.lean`,
+`Denote/Ty/Grow.lean`, `Denote/Rules/Alloc.lean`, `Denote/Rules/Nil.lean`,
+`Denote/Sem/Core/Boot.lean`. Modified:
+`Denote/Ty/Den.lean`, `Denote/Ty/Arrow.lean`, `Denote/Sem/Core/State.lean`, `Denote/Rules/Core.lean`,
+`Denote/Rules/Lit.lean`, `Denote/Rules.lean`. `Denote/Ty/Examples.lean`'s 31 `#guard`s green.
 Axiom-clean throughout — every new file ends in its own `#print axioms`, and each reports only
 `propext`/`Classical.choice`/`Quot.sound`.
 
@@ -4316,7 +4316,7 @@ neighbouring negative.
 
 They are **appended out of position** — tier 9 rungs at 233/234/235 — because the corpus
 numbers by list position and `corpus/042`, `corpus/135` and `corpus/136` are cited by number
-in `AGENTS.md`, `Ratchet/Judge.lean`, `Ratchet/Ty.lean`, `Ratchet/Rungs.lean`,
+in `AGENTS.md`, `Ratchet/Static/`, `Ratchet/Lang/Ty.lean`, `Ratchet/Rungs.lean`,
 `CheckRungs.lean` and here. Inserting in place would renumber ~125 rungs and invalidate every
 one of those references; the tier field is what the report groups by, so position is cosmetic.
 The reasoning is a comment in `scripts/generate_corpus.py` so the next person does not
@@ -4341,8 +4341,8 @@ a ratchet whose *soundness evidence* depends on a live sample is not soundness e
 permanent negatives**, **142/142** `CheckRungs` controls, **177/177** hand derivations
 unchanged and unedited, **235/235** corpus agreement, and **16 of 83 `Judge` rules discharged**
 (unchanged; `Judge.vasgn`'s obligation is now true but still needs the continuation lemma).
-Modified: `Ratchet/Ty.lean` (`capStale`, `killClosOver`, `killClosOverSpine`),
-`Ratchet/Judge.lean` (`vasgn`, `vasgnAlias`), `Ratchet/Validate.lean`,
+Modified: `Ratchet/Lang/Ty.lean` (`capStale`, `killClosOver`, `killClosOverSpine`),
+`Ratchet/Static/` (`vasgn`, `vasgnAlias`), `Ratchet/Validate.lean`,
 `Ratchet/Proof/ChkSound.lean`, `CheckRungs.lean`, `scripts/generate_corpus.py`. New:
 `corpus/233`, `corpus/234`, `corpus/235`. Axiom-clean; no `sorry`.
 
@@ -4356,7 +4356,7 @@ the fix stops being a patch that rejects a counterexample and becomes the thing 
 asks for.
 
 **The one sentence.** `capStale`, the function `Judge.vasgn` uses to decide which bindings to
-widen, is the **side condition of `denM_setLocal`** (`Denote/Local.lean`) — the transport of a
+widen, is the **side condition of `denM_setLocal`** (`Denote/Ty/Local.lean`) — the transport of a
 type's meaning across a rebinding. Checker guard and semantic transport are one predicate. A
 fix that had been merely *sufficient to reject the program* would have shown up here as a
 transport that needed some other hypothesis.
@@ -4391,7 +4391,7 @@ and moving it once is cheaper than moving it and also coarsening `capStale`.
 array they answer `nil` and the default frame, and `setLocal` is a no-op. That is not an error
 state, it is a machine where `Γ` describes bindings that do not exist — and where
 "the value `x` names after `x = e` is the value assigned" is **false**. One inequality, and
-`Denote/Sanity.lean`'s guard checks it at the booted machine along with the other two.
+`Denote/Sem/Core/Boot.lean`'s guard checks it at the booted machine along with the other two.
 
 **3. `EnvOk`'s identity conjunct is `Value` equality, not `Value.identEq` — and the difference
 is a model bug.** The first reading used the model's own `equal?`, on the argument that
@@ -4405,7 +4405,7 @@ quirk is now a `found-issues.md` §F1 entry of its own and the denotation does n
 
 ### What the machine lemmas cost
 
-`Denote/Local.lean` is the file, and the only part that is not bookkeeping is the **lockstep**.
+`Denote/Ty/Local.lean` is the file, and the only part that is not bookkeeping is the **lockstep**.
 `setLocal` writes to the first frame on the current frame's captured chain that binds `x`, or
 to the current frame; `getLocal` reads by walking the same chain. Everything else in the file
 falls out of "`setLocal` is one `Array.set!` at an index no lemma needs to name" — the target
@@ -4443,13 +4443,13 @@ definition was wrong there.
 **178 rungs of 235** and **17 of 83 `Judge` rules discharged** (`Judge.vasgnAlias`). Corpus
 agreement **235/235**, hand derivations **177/177**, negative controls **142/142** — all
 unchanged, and `Ratchet/Rungs.lean` was again not edited: `capStaleCtx` is an `autoParam` and
-the two new `Ty` functions are the identity on everything on file. New: `Denote/Local.lean`,
-`Denote/Rules/Asgn.lean`. Modified: `Ratchet/Ty.lean` (`deAlias`, `killAliasTy`, `capStale`'s
-spine clause), `Ratchet/Judge.lean` (`capStaleCtx` + the premise), `Ratchet/Validate.lean`,
-`Ratchet/Proof/ChkSound.lean`, `Denote/Ext.lean` (`Later`), `Denote/Den.lean`,
-`Denote/Arrow.lean`, `Denote/Grow.lean`, `Denote/Rules/Core.lean` (`evals_four`),
-`Denote/Sem/State.lean` (`FrameInRange`, `EnvOk`, `AsmsOk`, `StateOk_setLocal`),
-`Denote/Sanity.lean`. Axiom-clean; no `sorry`; `Denote/Examples.lean`'s 31 `#guard`s green.
+the two new `Ty` functions are the identity on everything on file. New: `Denote/Ty/Local.lean`,
+`Denote/Rules/Asgn.lean`. Modified: `Ratchet/Lang/Ty.lean` (`deAlias`, `killAliasTy`, `capStale`'s
+spine clause), `Ratchet/Static/` (`capStaleCtx` + the premise), `Ratchet/Validate.lean`,
+`Ratchet/Proof/ChkSound.lean`, `Denote/Ty/Ext.lean` (`Later`), `Denote/Ty/Den.lean`,
+`Denote/Ty/Arrow.lean`, `Denote/Ty/Grow.lean`, `Denote/Rules/Core.lean` (`evals_four`),
+`Denote/Sem/Core/State.lean` (`FrameInRange`, `EnvOk`, `AsmsOk`, `StateOk_setLocal`),
+`Denote/Sem/Core/Boot.lean`. Axiom-clean; no `sorry`; `Denote/Ty/Examples.lean`'s 31 `#guard`s green.
 
 ## Clink 48 (2026-09-01) — seven more rungs, and two stall points that are about the *shape* of the judgment. **178 rungs / 235, 24 of 83 rules**
 
@@ -4496,7 +4496,7 @@ complete.
 
 **1. `SelfSpineOk` now says the spine is *complete*.** `Judge.ivarRead` types `@x` as
 `(ivarGet? I x).getD .nilT`, so at a spine silent about `@x` it claims `@x : Nil`. The old
-component was `denSpine I m (ivarOf …)` — a **lower** bound, and `Denote/Den.lean` says so of
+component was `denSpine I m (ivarOf …)` — a **lower** bound, and `Denote/Ty/Den.lean` says so of
 `denM`'s `inst` arm in as many words ("ivars the type does not mention are unconstrained") —
 so a conformant machine could hold `@x = 7` at `I = .ivar0` and the rule would be false of the
 semantics. The second conjunct (`ivarGet? I x = none → ivarOf … x = .nil`) is exactly the
@@ -4512,7 +4512,7 @@ the spine is complete"*. Two decisions inside it that were **not** forced:
 
 Cost: `StateOk_ext`/`StateOk_setLocal` each gained a line (the second needs
 `ivarGet?_killClosOverSpine_none` — widening a spine does not change which names it mentions),
-and `Denote/Sanity.lean`'s boot `Bool` gained a fourth frame clause (`selfIvarsEmptyB`: the
+and `Denote/Sem/Core/Boot.lean`'s boot `Bool` gained a fourth frame clause (`selfIvarsEmptyB`: the
 toplevel `self` carries no ivars). That clause is **measured, not assumed** — the prelude runs
 before that machine exists and could have set an ivar on `main`; the `#guard` says it did not.
 
@@ -4520,7 +4520,7 @@ before that machine exists and could have set an ivar on `main`; the `#guard` sa
 growth that structure's docstring predicted for every rule concluding a builtin class type.
 `coreOkB` measures all seven clauses at the booted heap.
 
-**3. `Denote/Join.lean` is new, and it carries `LawfulBEq Ty`.** Two theorems the ladder will
+**3. `Denote/Ty/Join.lean` is new, and it carries `LawfulBEq Ty`.** Two theorems the ladder will
 spend repeatedly — `denM_joinT_left`/`denM_joinT_right`, "a join is an upper bound" — plus the
 union plumbing they need (`unionMems`/`dedupTys`/`unionOf` against `denM`, three small
 inductions). The reason it is a file rather than three lines in a rung: six rules consume
@@ -4529,7 +4529,7 @@ them needs the same fact, which is about the *type language* and not about any r
 
 The `LawfulBEq Ty` instance is the part worth recording. `joinT`/`joinTy` are written with
 `==` guards, and reading a guard as an **equation** is what a proof about them needs —
-`Ratchet/Ty.lean` derives `BEq` **without** `LawfulBEq`, and `Ratchet/` may not be edited from
+`Ratchet/Lang/Ty.lean` derives `BEq` **without** `LawfulBEq`, and `Ratchet/` may not be edited from
 this side of the isolation boundary. So it is proved here, once, by structural induction over
 the twenty constructors (mismatched pairs close by `Bool.noConfusion`, matching pairs by the
 defeq cast to the field-wise `&&`). It is not a claim about the checker; it is the missing half
@@ -4555,7 +4555,7 @@ $ export-json <that program, then `foo`> | ratchet --stdin
 Two defects are tangled, and only the first is fixable inside `State.lean`: (1)
 `DefsOk`/`ClassesOk` quantify over the *whole* table while the checker only consults the first
 match, which makes `StateOk` unsatisfiable after any redefinition — a **vacuity** risk of the
-kind `Denote/Sanity.lean` exists to police; (2) `κ` is not threaded through the judgment, and
+kind `Denote/Sem/Core/Boot.lean` exists to police; (2) `κ` is not threaded through the judgment, and
 fixing (1) does not help, because the live entry is still the stale one. The conclusion would
 have to be at `κ.afterStmt e τ` — expressible for `SemJudge`, **not** expressible for
 `SemJudgeSeq`, whose accumulated context is a fold over statement types its signature does not
@@ -4665,14 +4665,14 @@ both committed numbers. The regression to add with it is the program above, as a
 **24 of 83 `Judge` rules discharged** (`selfExpr`, `ivarRead`, `regexpLit`, `JudgeSeq.last`,
 `JudgeRescues.cons`, `JudgeConsts.cons`, `JudgeNested.cons`), three companion families
 complete. Corpus agreement **235/235**, hand derivations **177/177**, negative controls
-**142/142** — unchanged, and `Ratchet/` was not edited at all. New: `Denote/Join.lean`,
+**142/142** — unchanged, and `Ratchet/` was not edited at all. New: `Denote/Ty/Join.lean`,
 `Denote/Rules/Read.lean`, `Denote/Rules/Regexp.lean`, `Denote/Rules/Seq.lean`,
-`Denote/Rules/Cls.lean`, `Denote/Rules/Rescue.lean`. Modified: `Denote/Sem/State.lean`
-(`SelfSpineOk`, `CoreOk`, `ivarGet?_killClosOverSpine_none`), `Denote/Sanity.lean`
+`Denote/Rules/Cls.lean`, `Denote/Rules/Rescue.lean`. Modified: `Denote/Sem/Core/State.lean`
+(`SelfSpineOk`, `CoreOk`, `ivarGet?_killClosOverSpine_none`), `Denote/Sem/Core/Boot.lean`
 (`selfIvarsEmptyB`, seven-clause `coreOkB`), `Denote/Rules.lean`, `Denote/Rules/Nil.lean` (the
 corrected claim), `Denote/Sem/notes.md` (stall points six and seven), `found-issues.md`
 (§A5, §F2, §F3), `AGENTS.md`. Axiom-clean
-throughout; no `sorry`; `Denote/Examples.lean`'s 31 `#guard`s green.
+throughout; no `sorry`; `Denote/Ty/Examples.lean`'s 31 `#guard`s green.
 
 ## Clink 49 (2026-09-01) — the two soundness bugs fixed, and the model taught to shadow. **178 rungs / 238, 24 of 83 rules**
 
@@ -4787,12 +4787,12 @@ two `Judge` changes are premises and a lookup filter, and `Obl.Judge.lambdaLit` 
 with it). Corpus agreement **238/238**, hand derivations **177/177**, negative controls
 **144/144**, mismatches **35** (34 + the new climb target), permanent negatives **23**.
 Tier-0 model difftest **0 disagreements**, verdict-identical before and after the `finishSend`
-change. Modified: `Ratchet/Judge.lean` (`declFree`, `defDeclared?`, the two filtered lookups,
+change. Modified: `Ratchet/Static/` (`declFree`, `defDeclared?`, the two filtered lookups,
 `nameFree`, `lambdaLit`'s premise, `bareName`'s premise), `Ratchet/Validate.lean`,
 `Ratchet/Proof/ChkSound.lean` (one case), `CheckRungs.lean` (two controls),
 `scripts/generate_corpus.py` + `corpus/` (three rungs), `RubyCore/Interp/Send.lean`,
 `found-issues.md` (§A5/§F2/§F3 marked fixed, each with its fix), `Denote/Sem/notes.md`,
-`AGENTS.md`. Axiom-clean; no `sorry`; `Denote/Examples.lean`'s 31 `#guard`s green.
+`AGENTS.md`. Axiom-clean; no `sorry`; `Denote/Ty/Examples.lean`'s 31 `#guard`s green.
 
 ## Clink 50 (2026-09-02) — the four `.const` rungs, and the wall measured rather than estimated. **178 rungs / 238, 28 of 83 rules**
 
@@ -4823,7 +4823,7 @@ differ at `class A; class Foo; end; end`. Nothing in `Ctx` records where the fra
 standing, so nothing in `StateOk` made the two values the same and none of the three rules'
 obligations was derivable — stall point (1), a missing component.
 
-**`ConstScopeOk`** (`Denote/Sem/State.lean`) is that component: `∀ n, constResolveAt m n =
+**`ConstScopeOk`** (`Denote/Sem/Core/State.lean`) is that component: `∀ n, constResolveAt m n =
 constLookup m.heap n`, with `constResolveAt` the machine's own resolution transcribed from
 `evalExpr` so a rung can rewrite with it.
 
@@ -4848,7 +4848,7 @@ inside a class body that shadows a toplevel constant is **not conformant**, so t
 obligations say nothing there. That is the honest scope of the rules as written — none of them
 has a premise about the frame, and each concludes about the *toplevel* name.
 
-`Denote/Sanity.lean` proves it at the real booted machine from a new decidable clause,
+`Denote/Sem/Core/Boot.lean` proves it at the real booted machine from a new decidable clause,
 `topScopeB`: `cref = [Object]`, `defmod = Object`, and every *other* ancestor of `Object` owns
 no constants. The third is the one that is not obvious and is why the proof is not a one-liner
 — `constLookupFrom` walks `ancestors h Object = [Object, Kernel, BasicObject]`, so it can
@@ -4865,7 +4865,7 @@ stall point had already named for `DefsOk`/`ClassesOk`: the component quantified
 declared in `class A` — and the old component asked for `constLookup m.heap (stripColons p)`,
 i.e. a toplevel constant literally spelled `A::X`. No heap has one. So the component was
 *unsatisfiable* at any context with a nested constant (vacuity, not falsity — precisely the
-failure mode `Denote/Sanity.lean` exists to police), and at the same time it said nothing
+failure mode `Denote/Sem/Core/Boot.lean` exists to police), and at the same time it said nothing
 about the name `constGet?` consults when the rule fires.
 
 `ConstsOk` now reads `∀ n τ, constGet? κ n = some τ → ∃ v, constResolveAt m n = some v ∧
@@ -4926,20 +4926,20 @@ fifth stall point's machinery arriving early.
 **178 rungs of 238**, **28 of 83 `Judge` rules** (24 → 28: `constCls`, `constBuiltin`,
 `constExc`, `constEnv`). Corpus agreement unchanged at **238/238** (nothing under `Ratchet/`
 or `corpus/` was touched), hand derivations **177/177**, negative controls **144/144**,
-mismatches **35**, permanent negatives **23**. Modified: `Denote/Sem/State.lean`
+mismatches **35**, permanent negatives **23**. Modified: `Denote/Sem/Core/State.lean`
 (`constResolveAt`, `ConstScopeOk` + its two transports, `coreClsNames`, `CoreOk.coreNamed`,
 `ConstsOk` restated over `constGet?`, `constGet?_entry`/`findSome?_entry`, the `StateOk` field
-and both transports), `Denote/Local.lean` (`setAt_cref`/`setAt_defmod` and their
-`currentFrame_setLocal_*` corollaries), `Denote/Sanity.lean` (`topScopeB`, `constOwn_object`,
+and both transports), `Denote/Ty/Local.lean` (`setAt_cref`/`setAt_defmod` and their
+`currentFrame_setLocal_*` corollaries), `Denote/Sem/Core/Boot.lean` (`topScopeB`, `constOwn_object`,
 `firstM_none`, `constScope_of_topScope`, `coreOkB`'s eighth clause), `Denote/Rules/Const.lean`
 (new), `Denote/Rules.lean`, `Denote/Sem/notes.md`, `AGENTS.md`. Axiom-clean
-(`propext`/`Classical.choice`/`Quot.sound` only); no `sorry`; `Denote/Examples.lean`'s 31
-`#guard`s green; `Denote/Sanity.lean`'s `bootOkB` guard green with the two new clauses.
+(`propext`/`Classical.choice`/`Quot.sound` only); no `sorry`; `Denote/Ty/Examples.lean`'s 31
+`#guard`s green; `Denote/Sem/Core/Boot.lean`'s `bootOkB` guard green with the two new clauses.
 
 ## Clink 51 (2026-09-02) — the frame lemma: `StateOk` describes the whole world, and nothing more. **178 rungs / 238, 28 of 83 rules**
 
 No rung climbed. What landed is the thing three stalled rungs were all asking for, and
-separating its two halves is the whole content: `Denote/Sem/Frame.lean`.
+separating its two halves is the whole content: `Denote/Sem/Core/Frame.lean`.
 
 ### The diagnosis
 
@@ -5000,7 +5000,7 @@ the record: the toplevel chain carries ~40 prelude-written methods (`tap`, `form
 *Not forced:* the `declaresName` escape is kept in `NameFreeOk` too. Dropping it would be
 simpler and is wrong — a program that really does `def lambda` would then make `StateOk`
 **unsatisfiable** rather than making the rule inapplicable, i.e. vacuity in place of falsity,
-which is the failure mode `Denote/Sanity.lean` exists to police. With the escape, such a
+which is the failure mode `Denote/Sem/Core/Boot.lean` exists to police. With the escape, such a
 program is perfectly conformant and it is `nameFree`'s premise that fails.
 
 **`SelfLive m`** was forced by `NameFreeOk`'s transport and closes a gap nothing had named:
@@ -5033,7 +5033,7 @@ so the target has a name; the measured cost and the one `partial def` blocking i
   Proc) — and neither rule has argument expressions, so neither needs `KontFrame`.
 * **Sixth stall point item (1): resolved.** Under exactness a stale declaration table makes
   `StateOk` **false** at the post-machine rather than unsatisfiable at the pre-machine. That is
-  the honest failure and the one `Denote/Sanity.lean` can see.
+  the honest failure and the one `Denote/Sem/Core/Boot.lean` can see.
 * **Sixth stall point item (2): untouched.** `Judge.defStmt` concludes at the *incoming* `κ`
   and no component can make that true; the fix is `κ` threaded through `Judge`'s signature.
 * **Fifth stall point: untouched.** Stating it as a frame rule does not reduce its proof.
@@ -5044,14 +5044,14 @@ so the target has a name; the measured cost and the one `partial def` blocking i
 agreement unchanged at **238/238** (nothing under `Ratchet/` or `corpus/` touched), hand
 derivations **177/177**, negative controls **144/144**, mismatches **35**, permanent negatives
 **23**. `StateOk` grew from fourteen components to **seventeen** (`exact`, `nameFree`,
-`selfLive`), and `Denote/Sanity.lean` still exhibits a model of all seventeen at the real
+`selfLive`), and `Denote/Sem/Core/Boot.lean` still exhibits a model of all seventeen at the real
 booted machine — an upper bound that did not cost vacuity, which was the risk. Modified:
-`Denote/Sem/Frame.lean` (new), `Denote/Sem/State.lean` (`declaresName`, `MethodsExact`,
+`Denote/Sem/Core/Frame.lean` (new), `Denote/Sem/Core/State.lean` (`declaresName`, `MethodsExact`,
 `shadowableNames`, `NameFreeOk`, `SelfLive`, `classOf_self_ext`, three `StateOk` fields and
-both transports), `Denote/Sanity.lean` (`methodsExactB`, `nameFreeB`, `selfLiveB`,
+both transports), `Denote/Sem/Core/Boot.lean` (`methodsExactB`, `nameFreeB`, `selfLiveB`,
 `classPayload?_oob` and their soundness lemmas, `bootOkB`'s three new conjuncts),
 `Denote/Rules.lean`, `Denote/Sem/notes.md`, `AGENTS.md`. Axiom-clean; no `sorry`;
-`Denote/Examples.lean`'s 31 `#guard`s green; `bootOkB` green with seven clauses.
+`Denote/Ty/Examples.lean`'s 31 `#guard`s green; `bootOkB` green with seven clauses.
 
 ## Clink 52 (2026-09-02) — the two rules that reason from absence, and the spine that is a lookup. **178 rungs / 239, 30 of 83 rules**
 
@@ -5171,7 +5171,7 @@ g          # validate: <closure#1>{x: String, x: Integer} -- and it is right
 first "so they shadow a captured name of the same spelling". So the old reading made
 `Obl.Judge.lambdaLit` **false**, and — worse — made `EnvOk` false at any environment binding
 such a `g`, i.e. `StateOk` *unsatisfiable* there. That is vacuity rather than falsity, the
-failure mode `Denote/Sanity.lean` exists to police, and the third time (after the sixth and
+failure mode `Denote/Sem/Core/Boot.lean` exists to police, and the third time (after the sixth and
 eighth) that a component keyed differently from its lookup has produced it.
 
 **The fix is `denSpineFrom seen`**: the accumulator carries the keys already bound and skips an
@@ -5204,7 +5204,7 @@ rescued by a right second one.
 * **`FrameInRange` gains `m.stack ≠ []`**: its docstring claimed it since clink 47.
 * **`CoreOk.procBasic`**: one more boot fact, spent by `ext_push`.
 * **`StateOk` gains `bareFree`/`missFree`**: seventeen components → **twenty**, and
-  `Denote/Sanity.lean` still exhibits a model of all twenty at the real booted machine, so
+  `Denote/Sem/Core/Boot.lean` still exhibits a model of all twenty at the real booted machine, so
   neither upper bound cost vacuity. `missFreeB` is checked in the component's own form
   (`none`, or a builtin behind it) rather than in the stronger "absent" form, because here the
   two are *not* interchangeable: `BasicObject#method_missing` is a real builtin, and demanding
@@ -5216,12 +5216,12 @@ rescued by a right second one.
 **178 rungs of 239** (one corpus rung added: the §F4 regression), **30 of 83 `Judge` rules**.
 Corpus agreement **239/239, 0 disagreements** (the new rung included, CRuby vs the Lean
 semantics), hand derivations **177/177**, negative controls **145/145** (one added),
-mismatches **35**, permanent negatives **23**. `Denote/Examples.lean` is at **33** `#guard`s
+mismatches **35**, permanent negatives **23**. `Denote/Ty/Examples.lean` is at **33** `#guard`s
 and `bootOkB` at eight clauses, both green. Modified: `Denote/Rules/Bare.lean` (new),
-`Denote/Rules/Lambda.lean` (new), `Denote/Den.lean`, `Denote/DenB.lean`, `Denote/Grow.lean`,
-`Denote/Local.lean`, `Denote/Sem/State.lean`, `Denote/Rules/Core.lean`,
-`Denote/Rules/Read.lean`, `Denote/Sanity.lean`, `Denote/Examples.lean`, `Denote/Rules.lean`,
-`Ratchet/Judge.lean`, `Ratchet/Validate.lean`, `Ratchet/Proof/ChkSound.lean`,
+`Denote/Rules/Lambda.lean` (new), `Denote/Ty/Den.lean`, `Denote/Ty/DenB.lean`, `Denote/Ty/Grow.lean`,
+`Denote/Ty/Local.lean`, `Denote/Sem/Core/State.lean`, `Denote/Rules/Core.lean`,
+`Denote/Rules/Read.lean`, `Denote/Sem/Core/Boot.lean`, `Denote/Ty/Examples.lean`, `Denote/Rules.lean`,
+`Ratchet/Static/`, `Ratchet/Validate.lean`, `Ratchet/Proof/ChkSound.lean`,
 `CheckRungs.lean`, `scripts/generate_corpus.py`, `corpus/239-*`, `found-issues.md`,
 `Denote/Sem/notes.md`, `AGENTS.md`, and `RubyCore/Proof/KontFrame.lean` (new — the
 first file this investigation adds *outside* `ruby-lean/`, because a theorem about `stepFn`
@@ -5240,14 +5240,14 @@ let matched := fun (tag : Value) =>
   m.kont.any fun k => match k with | .catchK t => t.identEq tag | _ => false
 ```
 
-`not_KontFrame` (`Denote/Sem/Frame.lean`) exhibits it at the smallest machine that reaches the
+`not_KontFrame` (`Denote/Sem/Core/Frame.lean`) exhibits it at the smallest machine that reaches the
 dispatch: a value in flight, one `argsK` delivering it to an implicit-self `throw`, and an
 **empty heap** so `lookup` misses and `dispatchMiss` reaches `tryReflect`. Under the empty tail
 the step raises `UncaughtThrowError` *at the throw site* (deliberate — an enclosing `rescue`
 must see it); under one `catchK` with the matching tag it jumps. Conditional on two `#guard`ed
 `Bool`s rather than `decide`d, because `Interp.invoke` is well-founded-recursive and therefore
 not `rfl`-reducible, and `native_decide` costs an axiom this package does not spend — the same
-trade `Denote/Sanity.lean`'s `bootOkB` makes, for the same reason.
+trade `Denote/Sem/Core/Boot.lean`'s `bootOkB` makes, for the same reason.
 
 **`EvalsDecompose` is false too, and that half is sharper**, because it is *not* rescued by
 "the sub-run must return": a sub-run can return under the empty continuation and not under `K`.
@@ -5350,7 +5350,7 @@ given a structural recursion in `RubyCore` before anything about it is provable 
 Of the 53 rules remaining, the attempted-and-reachable set is now **empty**: every one sits
 behind the fifth, the sixth's item (2), or the seventh, and each of those is a clink-sized (or
 larger) design decision rather than a proof a rung can carry. The sixth's fix in particular is
-a change to `Ratchet/Judge.lean`'s *signature* — out of bounds under this clink's "do not
+a change to `Ratchet/Static/`'s *signature* — out of bounds under this clink's "do not
 modify `Ratchet/`" constraint, and a rewrite of every derivation on file even without it.
 
 ## Clink 53 (2026-09-02) — the seventh stall point, and three rungs that were never behind the wall. **178 rungs / 239, 33 of 83 rules**
@@ -5429,7 +5429,7 @@ now `JudgeAll.nil`'s shape exactly instead of a `ks ++ vs = []` split.
 
 **178 rungs of 239**, **33 of 83 `Judge` rules**. Corpus agreement **239/239** (nothing under
 `Ratchet/` or `corpus/` touched), hand derivations **177/177**, negative controls **145/145**,
-mismatches **35**, permanent negatives **23**. `Denote/Examples.lean`'s 33 `#guard`s green,
+mismatches **35**, permanent negatives **23**. `Denote/Ty/Examples.lean`'s 33 `#guard`s green,
 `bootOkB` green. Modified: `Denote/Rules/Args.lean` (new), `Denote/Sem/Judge.lean`
 (`DenAllAt`, `pairExprs`, `DenPairsAt`, and the three restated companions),
 `Denote/Rules/Nil.lean`, `Denote/Rules.lean`, `Denote/Sem/notes.md`, `AGENTS.md`. Axiom-clean;
@@ -5553,11 +5553,11 @@ gated "most compound rungs" since clink 48 and was refuted-then-repaired in clin
 
 * **`RubyCore.Proof.stepFn_frame`** — the interpreter's frame rule, `KontFrameCatchFree`'s
   statement, over the *whole* of `stepFn`. Axiom-clean, and so is every lemma under it.
-* **`Ratchet.Denote.run_split`** (`Denote/Sem/Decompose.lean`) — the run-level decomposition
+* **`Ratchet.Denote.run_split`** (`Denote/Sem/Core/Decompose.lean`) — the run-level decomposition
   `EvalsDecompose` was stating: a run under an appended continuation `K` splits at the state
   that delivers the inner run's value to `K`.
 
-`Denote/Sem/Frame.lean` keeps both `def`s as the statements of record, now pointing at the
+`Denote/Sem/Core/Frame.lean` keeps both `def`s as the statements of record, now pointing at the
 proofs; nothing there was deleted, because what it records is *what the wall was*.
 
 ### The chain, and its real shape
@@ -5749,7 +5749,7 @@ lemma (`vasgn_close`), parametric in the written value, and applies either way.
 
 ### And one component added on the way out
 
-**`ConstPathsOk`** (`Denote/Sem/State.lean`): `ConstsOk` is about *lexical* resolution, which
+**`ConstPathsOk`** (`Denote/Sem/Core/State.lean`): `ConstsOk` is about *lexical* resolution, which
 is what the `Judge.const` family consumes; `Judge.constPath` asks about the **keyed** entry
 `constKeyIn owner n` against what the interpreter finds inside the class named `owner`, and
 nothing related the two. Its `setLocal` transport needs exactly `capStaleCtx`'s third
@@ -5777,7 +5777,7 @@ more — they are behind something else: **narrowing soundness**. Their branch p
 `narrowEnvs κ.classes c Γc` and `narrowSpine κ.classes c Ic`, so using them needs `StateOk` at
 the *narrowed* environment, which is a fact about `refineOne` and `narrowCond?` that nothing on
 file establishes: *if the run of `c` returned truthy, the tested local's value is in the
-refined type*. `Denote/Sem/State.lean` L52 predicted this ("what a proof of `Judge.narrowEnvs`'
+refined type*. `Denote/Sem/Core/State.lean` L52 predicted this ("what a proof of `Judge.narrowEnvs`'
 soundness will have to consume") and `EnvOk`'s identity conjunct was put there for it. It needs
 the run of a concrete builtin dispatch (`x.is_a?(C)`) inverted, which is the same thing the
 `callAsm` family will need, so it is not a detour.
@@ -5831,7 +5831,7 @@ builds an `Ext` for `StateOk_ext`, and an `Ext` pins `classPayload?` outright.
 
 ### The component, and the measurement that shaped it
 
-**`ClsQueryOk`** (`Denote/Sem/State.lean`) is `QueryOk` at a **class-object** receiver: the same
+**`ClsQueryOk`** (`Denote/Sem/Core/State.lean`) is `QueryOk` at a **class-object** receiver: the same
 five facts (the resolved method is the expected builtin, not undefined, public, not a prelude
 twin, unshadowed) plus the same `method_missing` clause, but indexed by the object rather than
 by its class, because `classOf` of a class object is its eigenclass. Two rows, both measured at
@@ -5925,7 +5925,7 @@ sentence:
   `PrimSig` dispatches on the supertype) and **§F12** (the `.inst` arm should never have been
   is-a at all).
 
-Two of the four lemmas also needed `Ratchet/Ty.lean` fixed before they were true, and both
+Two of the four lemmas also needed `Ratchet/Lang/Ty.lean` fixed before they were true, and both
 fixes are in the same direction: **a `.never` catch-all is a claim, not a default.**
 `falsyTy`/`isNilTy` answered `.never` — "this branch cannot run" — for the alias arm (an alias
 denotes its payload, so `.sameAs y .nilT` has a falsy value) and for the nominal arms (`nil` and
@@ -6104,7 +6104,7 @@ to write that sentence down:
   chain, and the `.inst` lemma needs "the value's ancestors are its class's ancestors"
   exactly. A rule concluding `.inst` allocates a fresh object, which has none.
 
-`Ratchet/Ty.lean`'s `builtinAncestors` also **lost its `.arrayOf`/`.hashOf` rows**, and the
+`Ratchet/Lang/Ty.lean`'s `builtinAncestors` also **lost its `.arrayOf`/`.hashOf` rows**, and the
 reason is a denotation fact rather than a table gap: those arms read the *payload*
 (`arrElems?`/`hshEntries?`) and say nothing about the object's class, so a negative `is_a?`
 answer about them is a claim the judgment cannot make. Dropping them costs precision in one
@@ -6319,7 +6319,7 @@ Two more structural notes:
 * the theorem is a **conjunction** — the value reading and the spine walk — because `.inst`'s
   second half and `.clos`'s captured scope are spine walks whose entries are types, and a
   spine entry's type may itself be an `.inst`. One induction over `Ty` carries both, the shape
-  `Denote/Den.lean`'s own `FirstOrder` proof uses;
+  `Denote/Ty/Den.lean`'s own `FirstOrder` proof uses;
 * the spine half is parameterised over **two readers** related by "same, or this is the name
   that moved", which covers `.inst` (two heaps, differing at `@x` and only for `self`) and
   `.clos` (`closLocal`, a `frames` reader, differing nowhere) in one arm each.
@@ -6344,7 +6344,7 @@ The fix, `ivarAsgnOk`, checks **agreement** at six places — `Γ'`, `τ` itself
 `κ.blockTy`, `κ.consts`, and now `I'`. Both weaker readings were tried and both are wrong:
 *absence* rejects every in-method assignment, and agreement at `I'`'s **own** `@x` entry
 rejects type-changing reassignment (`if flag then @v = 1 else @v = "s" end`, the program that
-put `joinIvars` in `Ratchet/Ty.lean`). `ivarAgreeIvars` exempts that one entry, soundly,
+put `joinIvars` in `Ratchet/Lang/Ty.lean`). `ivarAgreeIvars` exempts that one entry, soundly,
 because `ivarSet` replaces it.
 
 Arrows are waved through unexamined, and that is `Later`'s doing: an arrow's denotation is
@@ -6463,7 +6463,7 @@ a new direction, and it moves `casgn`/`cpathAsgn` into the declaration-family re
 
 Corpus **250/250** agreement, 0 disagreements (the corpus grew by §F18's witness);
 expect_validate mismatches **35**, unchanged through both guards; 177/177 hand derivations;
-145/145 negative controls; `Denote/Examples.lean` green; no `sorry`, no new axioms. Nothing
+145/145 negative controls; `Denote/Ty/Examples.lean` green; no `sorry`, no new axioms. Nothing
 under `ruby/ruby-lean/` changed.
 
 
@@ -6488,13 +6488,13 @@ that field. So a builtin call drops a closure over frame `0` into the heap and t
 
 `not_BuiltinsSeal` is the proof, at the smallest machine where the seal says anything (two
 frames, neither capturing, the caller `0` sealed off behind the frame that is running, an empty
-heap), conditional on one `#guard`ed `Bool` — `Denote/Sanity.lean`'s trade, for its reason.
+heap), conditional on one `#guard`ed `Bool` — `Denote/Sem/Core/Boot.lean`'s trade, for its reason.
 Axiom-clean.
 
 **Decisions that were not forced, and what was rejected.**
 
 * **Stated and refuted rather than patched.** The alternative was to add a hypothesis at
-  `Sealed.alloc`'s call site and move on. Rejected for `Denote/Sem/Frame.lean`'s reason: the
+  `Sealed.alloc`'s call site and move on. Rejected for `Denote/Sem/Core/Frame.lean`'s reason: the
   claim is false at a machine the seal really holds at, so no premise over `(b, m)` excludes it,
   and a hypothesis would have hidden that.
 * **The model was not changed.** `captured := 0` is inert — the closure's body is
@@ -6550,7 +6550,7 @@ four rules and `closCall` could not tell a lambda from a proc.
 * **A refusal at `lambdaLit`, not a field on `Clos`.** The precise fix is to record `lam` on
   `Clos` and make `bodyResult` conditional at all four sites. Rejected on blast radius: `Clos`
   is what `closIdx?` matches on (by syntax, so the field would have to join the key), what
-  `Denote/Sem/State.lean`'s `closTblOk` compares, and what `collectBlocks` builds — and the
+  `Denote/Sem/Core/State.lean`'s `closTblOk` compares, and what `collectBlocks` builds — and the
   precision it buys is `proc { return e }`, which is a program nobody should write. `procRetOk`
   is one `Bool` on the one rule that can see `m`, and a `proc` whose body is exactly `return e`
   now gets **no type**.
@@ -6679,7 +6679,7 @@ families complete, denominator still 83). Syntactic ratchet **178 of 254** rungs
 well-typed — the corpus grew by §F19's four witnesses, all four correctly refused — with
 expect_validate mismatches at **35**, unchanged, and 254/254 CRuby agreement with 0
 disagreements. 177/177 hand derivations and 145/145 negative controls (`checkrungs`);
-`Denote/Examples.lean` green; no `sorry`, no new axioms. `Ratchet/Judge.lean`,
+`Denote/Ty/Examples.lean` green; no `sorry`, no new axioms. `Ratchet/Static/`,
 `Ratchet/Validate.lean` and `Ratchet/Proof/ChkSound.lean` changed for §F19 and for nothing
 else; nothing under `slice/` or `ruby/ruby-lean/` was touched.
 
@@ -6725,9 +6725,9 @@ choice, and `.getD 0` was the cheap answer at all three. It is right at two and 
   read before, so the two `none` closures see exactly the `self` they saw, and the *only*
   behavioural change is that the pushed block frame's own `captured` is now `none` instead of
   `some 0`. Unobservable: the body's free names are its own parameters.
-* `Denote/Apply.lean`'s `closSelf` mirrors that line, so it **keeps `getD 0` too** — a
+* `Denote/Ty/Apply.lean`'s `closSelf` mirrors that line, so it **keeps `getD 0` too** — a
   denotation that disagreed with `callClosure` here would be describing a different call.
-* `Denote/Apply.lean`'s `closLocal` **does not**, and this is the one that would have been a
+* `Denote/Ty/Apply.lean`'s `closLocal` **does not**, and this is the one that would have been a
   silent bug. It is the closure's captured-*locals* reader, and the block frame `callClosure`
   pushes carries `captured := none`, so the body's walk stops at its own activation and every
   free name reads `nil`. `getD 0` would have had the denotation reading the toplevel's locals
@@ -6910,7 +6910,7 @@ behind one of four unbuilt layers, and no layer is smaller than a clink. Syntact
 well-typed, unchanged, expect_validate mismatches **35**, unchanged. Because L266 changes the
 *machine*, everything downstream was re-verified rather than assumed: difftest tier 0 **1304
 ran, 992 agree, 0 disagree**; corpus agreement **254/254**; `checkrungs` **177/177 hand
-derivations + 145/145 negative controls**; `Denote/Examples.lean`'s `#guard`s green; `lake
+derivations + 145/145 negative controls**; `Denote/Ty/Examples.lean`'s `#guard`s green; `lake
 build` clean in both packages; no `sorry`, and every `#print axioms` a subset of
 `propext`/`Classical.choice`/`Quot.sound`. **Nothing under `Ratchet/` was touched.** Changed:
 `ruby/ruby-lean/RubyCore/{Heap,Interp/Support,Interp/Reflect,Builtins/Strings}.lean` and six files
@@ -6933,7 +6933,7 @@ churn of 277 KB of rules is worth recording as a technique: **`@[reducible] def 
 (κ) := κ.pos.classes`** and eight siblings. Dot notation resolves `κ.classes` to the def, and
 reducibility keeps every `by rfl` premise and every `simp` in the proofs working unchanged. So
 only the *writers* moved — sixteen `{ κ with … }` sites, replaced by four named updaters
-(`pushAsm`, `withFrame`, `withBlockTy`, `withClosures`). Six `simp` calls in `Denote/Sanity.lean`
+(`pushAsm`, `withFrame`, `withBlockTy`, `withClosures`). Six `simp` calls in `Denote/Sem/Core/Boot.lean`
 needed the accessor name added to their lemma list; that was the whole downstream cost.
 
 ### Step 1 — the `Neg` seed, and §F20 closed
@@ -7039,7 +7039,7 @@ Syntactic ratchet **178 of 254**, unchanged tier for tier; `expect_validate` mis
 unchanged. Corpus agreement **254/254, 0 disagreements**. `checkrungs` **177/177 hand
 derivations + 148/148 negative controls** (three new, one per §F20 shape, each confirmed
 genuinely type-stuck by the real semantics). Semantic ratchet **48 of 83** (`JudgeSeq` 4/4).
-`Denote/Examples.lean` green, `lake build` clean, no `sorry`, every `#print axioms` a subset of
+`Denote/Ty/Examples.lean` green, `lake build` clean, no `sorry`, every `#print axioms` a subset of
 `propext`/`Classical.choice`/`Quot.sound`. Changed: `Ratchet/{Judge,Validate,Rungs,
 Proof/ChkSound}.lean`, `CheckRungs.lean`, `Denote/{Adequacy,Sanity,Rules}.lean`,
 `Denote/Sem/{Judge,State,Frame,Narrow,NarrowState}.lean`, a new `Denote/Sem/Down.lean`, and
@@ -7607,7 +7607,7 @@ Semantic ratchet **48 of 83**, unmoved, denominator still 83 (a premise is not a
 ratchet **178 of 259** — the two new rungs are permanent negatives, so the climbed count is
 unchanged and the denominator grew by the two witnesses; `expect_validate` mismatches **35**,
 unchanged; corpus agreement **256/256**; `checkrungs` **177/177 + 148/148**. `lake build` clean,
-no `sorry`, axiom-clean. Changed: `Ratchet/Judge.lean` (`nxtFree`/`asgnFree`/`nxtPrefixOk` and the
+no `sorry`, axiom-clean. Changed: `Ratchet/Static/` (`nxtFree`/`asgnFree`/`nxtPrefixOk` and the
 two premises), `Ratchet/Validate.lean` (the two guards), `Ratchet/Proof/ChkSound.lean` (two arms),
 `scripts/generate_corpus.py` + `corpus/` (four witnesses: §F23's two, which the fix now rejects,
 §F24's two and §F25's one, which were already rejected), `found-issues.md` (§F23, §F24, §F25),
@@ -7808,7 +7808,7 @@ column acquired its meaning.
 
 It does not prove a single new rule, and the registry is the same 48. The reach of the
 *checker* is unchanged and still bounded by `Judge`: `Ratchet/Validate.lean` and
-`Ratchet/Deriv.lean` both target the authoring surface, so the next piece of work is to point
+`Ratchet/Check/Deriv.lean` both target the authoring surface, so the next piece of work is to point
 the certificate checker at `JudgeC clinks` — at which point the 35 uncovered rules become a
 reach limit that is visible in the corpus number instead of an assumption in a docstring.
 
@@ -7861,7 +7861,7 @@ Worth being precise about why, since soundness does not require it: `DJudge Γ (
 holds whatever the certificate says, so accepting a certificate that claims `intLit 5` for the
 program `1` would be *sound* and would mean the certificate was never read. A checker that
 ignores its certificate makes the whole pipeline downstream of `scripts/emit_deriv.py`
-unfalsifiable. `Ratchet/DerivControls.lean` has 16 `#guard`s for exactly this, in five shapes:
+unfalsifiable. `Ratchet/Controls/DerivControls.lean` has 16 `#guard`s for exactly this, in five shapes:
 wrong program, wrong depth (both directions), wrong rule, wrong claimed result type, wrong
 claimed receiver type.
 
@@ -7903,14 +7903,14 @@ non-zero if it drops.
 
 ### Deleted
 
-`Ratchet/Deriv.lean`'s `derivShapeOk`/`paramNamesMatch`/`supMatch` — the shape-check stub.
+`Ratchet/Check/Deriv.lean`'s `derivShapeOk`/`paramNamesMatch`/`supMatch` — the shape-check stub.
 Replaced by `check`, which subsumes it: dispatching on the expression *is* the
 about-this-program property, and the controls that pinned it are unchanged.
 
 ### Not done
 
 No semantic proof for any `DJudge` rule, so nothing here is a `Clink` and the reach number is
-coverage of the checker rather than justification. `Ratchet/Check.lean` §5 is the owed list,
+coverage of the checker rather than justification. `Ratchet/Check/Check.lean` §5 is the owed list,
 ordered by cost — literals/`var`/`vasgn`/`seq` are a reconciliation of index shapes with
 `Obl.Judge.*` (already proved), `if'` needs join soundness under `denM`, `prim` needs one
 conformance fact per row. §6 states the condition under which `Judge.lean`/`Validate.lean`
@@ -7928,7 +7928,7 @@ Asked, after clink 66, whether any clinks had actually been achieved. The honest
 
 `Denote/Clink/Registry.lean`'s growth gate ranges over `familyCtors` — `Ratchet.Judge`'s
 eight-member mutual family. It has no opinion about any *other* judgment. So clink 66
-authored twelve brand-new unproved rules in `Ratchet/Check.lean` and nothing went red, one
+authored twelve brand-new unproved rules in `Ratchet/Check/Check.lean` and nothing went red, one
 commit after building a gate whose entire purpose is "a rule enters only with its proof".
 Not a violation of the letter; squarely one of the spirit, and the kind of hole that is
 invisible until someone asks.
@@ -7996,7 +7996,7 @@ movement** (reach 18 before and after).
 
 `Clink` is now generic in the family **record type** (`{F : Type} (S T : F)`), and
 `register_clink`'s form derivation takes the family constant and field table as parameters.
-So `Denote/Typed/Clink.lean` supplies a one-member `DFam` and reuses `Clink`, `Closed`,
+So `Denote/Clink/Registry.lean` supplies a one-member `DFam` and reuses `Clink`, `Closed`,
 `closed_target`/`closed_source` and `ruleForm` unchanged rather than copying them. `DFam` has
 one member on purpose: `DJudgeAll`/`DJudgeSeq` join when a rule concluding about them acquires
 a proof, which needs an answer-typed reading of a *list* evaluation that nothing yet consumes,
@@ -8007,7 +8007,7 @@ discharge.
 
 Reach is still 18 rungs, and now says two different things over its length: rungs **001–008**
 are derivable in the certified typed judgment (`DJudgeC dclinks`), so `dregistry_sound` makes
-them an answer-typed safety claim; rungs **009–018** are checked by `Ratchet/Check.lean` and
+them an answer-typed safety claim; rungs **009–018** are checked by `Ratchet/Check/Check.lean` and
 are coverage of the checker only, because `prim`, `seq`, `vasgn` and `if'` are unregistered.
 The two halves of the ladder now differ in kind, which is the first time that has been true
 and is the right shape for it to have.
@@ -8027,10 +8027,10 @@ every stage.
 way because "delete what is unreachable" would have been wrong in **both** directions, and
 the two mistakes it would have made are the interesting part.
 
-**It would have deleted things the next rung needs.** `Denote/Join.lean` and
-`Denote/JoinState.lean` were unreachable — and they are `denM_joinT_left`/`_right` plus the
+**It would have deleted things the next rung needs.** `Denote/Ty/Join.lean` and
+`Denote/Sem/Core/JoinState.lean` were unreachable — and they are `denM_joinT_left`/`_right` plus the
 environment/spine join, i.e. *exactly* the join soundness `DJudge.if'`'s obligation needs.
-`Ratchet/Check.lean` §5 had said that fact was "stated nowhere yet". It was proved, in a file
+`Ratchet/Check/Check.lean` §5 had said that fact was "stated nowhere yet". It was proved, in a file
 the sweep was about to remove. Finding it is what corrected the owed list, and it is the
 strongest argument for reading a file before deleting it: `answer-typed-schema.md`'s own
 advice, applied to a deletion rather than to a proof.
@@ -8040,7 +8040,7 @@ lemmas the typed layer borrowed) and is the *value-shaped* judgment whose vacuit
 reason for the restatement. Leaving it available would let a future rule acquire a proof of
 the weaker statement and register, which is the one failure mode the clink discipline exists
 to prevent. So it is deleted rather than deprecated, and `Denote/Sem/Judge.lean` is renamed
-`Denote/Sem/Framed.lean` after the one thing in it the new judgment reuses.
+`Denote/Sem/Core/Framed.lean` after the one thing in it the new judgment reuses.
 
 ### Four severings, in dependency order
 
@@ -8048,18 +8048,18 @@ Each was a one-identifier problem hiding behind a large file, which is worth rec
 the files looked entangled and were not:
 
 1. **`ctx0`** was the only thing anything outside `Ratchet/Validate.lean` used from it — one
-   line, moved next to `Ctx` in `Ratchet/Judge.lean`. 1,196 lines of `chk` then deleted
+   line, moved next to `Ctx` in `Ratchet/Static/`. 1,196 lines of `chk` then deleted
    outright.
 2. **Three `stepFn` facts** (`stepFn_var`, `stepFn_str`, `strObj`) were the only reason
-   `Denote/Typed/JudgeA.lean` imported `Denote/Rules/Lit.lean` and therefore the entire
+   `Denote/Judgment/JudgeA.lean` imported `Denote/Rules/Lit.lean` and therefore the entire
    48-obligation tree. Moved into `JudgeA.lean` §1a; `Denote/Rules/` deleted whole.
    `Denote/Rules/{Core,Alloc}.lean` were not rules at all (transport lemmas and `ext_push`)
    and are now `Denote/Sem/{Transport,Alloc}.lean`.
-3. **`ruleForm`** was the only thing `Denote/Typed/Clink.lean` used from
+3. **`ruleForm`** was the only thing `Denote/Clink/Registry.lean` used from
    `Denote/Clink/Derive.lean`, which pulled in `Obligations.lean` and the `Fam` registry. Moved
    to `Denote/Clink/Form.lean`; `Spec.lean` keeps the mechanism and loses `Fam`/`JudgeC`/16
    theorems.
-4. **`InvInit`** was the one declaration in `Denote/Sem/Invariant.lean` §1 that named `Judge`.
+4. **`InvInit`** was the one declaration in `Denote/Sem/Core/Invariant.lean` §1 that named `Judge`.
    Generalising it to take *what "accepted" means* as a parameter (Norm A) cost no proof
    change and severed the file from any judgment — so the safety reduction, which is layer 7
    and proved for an abstract `Inv`, survives intact and is immediately usable against
@@ -8070,10 +8070,10 @@ the files looked entangled and were not:
 | deleted | lines | replaced by |
 |---|---|---|
 | `corpus-untyped/` + `slice/` | 518 files | `corpus/` (annotated), derived at build time |
-| `Rungs.lean` + `ChkSound.lean` + `CheckRungs.lean` + `Main.lean` | ~7,500 | `Ratchet/Check.lean` (409), whose checker returns the derivation |
+| `Rungs.lean` + `ChkSound.lean` + `CheckRungs.lean` + `Main.lean` | ~7,500 | `Ratchet/Check/Check.lean` (409), whose checker returns the derivation |
 | `Validate.lean` (`chk`) | 1,196 | the same |
 | `Judge`'s 83 rules and their threading lemma | ~1,750 | `DJudge`'s 12 |
-| `Denote/Rules/` (48 obligations) + `Obligations.lean` | ~6,000 | `Denote/Typed/JudgeA.lean`'s 8, answer-typed |
+| `Denote/Rules/` (48 obligations) + `Obligations.lean` | ~6,000 | `Denote/Judgment/JudgeA.lean`'s 8, answer-typed |
 | `Denote/Sem/{Step*,BuiltinsCap*,Locals,Mut,Narrow*,Query,Send,Down,FrameLocal}` | ~8,600 | nothing yet; this was the layer push the EMERGENCY EXIT was about |
 | `Denote/Proto/` | 1,009 | `Denote/Typed/`, which is the real thing at 8 rules |
 | `SemJudge` + companions | ~200 | `SemJudgeA` |
@@ -8147,7 +8147,7 @@ the incoming environment, and the type is what the other half is for.
 
 ### Where it can be watched
 
-`Denote/Typed/Safety.lean`, one theorem per certified corpus rung, at the **real
+`Denote/Safety.lean`, one theorem per certified corpus rung, at the **real
 prelude-booted machine** the difftest SUT runs:
 
 ```lean
@@ -8159,7 +8159,7 @@ Eight of them — rungs 001–008, the corpus's own programs — each axiom-clea
 one remaining hypothesis discharged by `stateOk_boot`. That hypothesis is conditional on one
 `Bool` (`bootOkB`) rather than `decide`d, because the booted heap is the output of
 `Interp.run 200_000` over the whole prelude; the `Bool` is a build gate in
-`Denote/Sanity.lean` and `native_decide` was rejected for the axiom it costs.
+`Denote/Sem/Core/Boot.lean` and `native_decide` was rejected for the axiom it costs.
 
 `lake exe semladder` prints the list and `safeRungFloor` ratchets the count. `004-str-lit` is
 the interesting one of the eight: it is the only rung here whose evaluation **allocates**, so
@@ -8168,7 +8168,7 @@ step — which is the shape every allocating rule will reuse.
 
 ### What is still coverage rather than safety
 
-Rungs 009–018 are checked by `Ratchet/Check.lean` and have no safety theorem, because `prim`,
+Rungs 009–018 are checked by `Ratchet/Check/Check.lean` and have no safety theorem, because `prim`,
 `seq`, `vasgn` and `if'` are unregistered. All four are behind `RunAPushK`, and `semladder`
 now prints two numbers side by side so that gap is a line in the report rather than a
 footnote in a file.
@@ -8305,7 +8305,7 @@ invariant, with one case per rule — and those cases are exactly the `Clink.sem
 registry design and the invariant design are the same design seen twice; realising that is
 what made the field's shape obvious once the weak version was written down.
 
-`Denote/Sem/Invariant.lean` §1 stays for the monolithic form (`SafetyObligations`,
+`Denote/Sem/Core/Invariant.lean` §1 stays for the monolithic form (`SafetyObligations`,
 `safety_of_invariant`, and `InvInit` parameterised by what "accepted" means), which is still
 the right thing if a concrete `Inv` is ever wanted for a non-registry judgment.
 
@@ -8344,7 +8344,7 @@ done; the second one has a caveat that is the interesting part.
 ### The lemma that was gating four rules
 
 `runA_pushK : runA fuel (pushK K m) = resOutA K (runA fuel m)`, for `CatchFree K`. Proved, in
-`Denote/Sem/Answer.lean` next to `run_pushK`, because it is the same induction one level up —
+`Denote/Sem/Core/Answer.lean` next to `run_pushK`, because it is the same induction one level up —
 `Interp.run` becomes `runA`, `ARes.out` becomes `resOutA`, and the five outcomes are accounted
 for the same way. It was stated as a named `Prop` (`RunAPushK`) in clink 70 and is now the
 theorem; the `Prop` is deleted rather than kept beside it.
@@ -8386,7 +8386,7 @@ quantifies over every environment a conformant machine can have. Reach 18 before
 `DInv τa m` is now defined as a predicate on machines — two arms, `eval` and `value`, no
 `jump` arm because no registered rule produces one — with `dInv_safe` and `dInv_init` proved
 and `StuckFree` derived as `dInv_safe (dInv_init hj hm)`. That is the factoring
-`Denote/Sem/Invariant.lean` uses, so the object a reader looks for now exists.
+`Denote/Sem/Core/Invariant.lean` uses, so the object a reader looks for now exists.
 
 **`preserved` is not proved, and cannot be by the route that file anticipates.** The eval arm
 carries a `DJudgeC` derivation; `DJudgeC` is Church-encoded; showing the *successor* is judged
@@ -8412,7 +8412,7 @@ bare assignment (`029-simple-assign` is `x = 5; x + 1`, a `seq`), so neither rul
 by an end-to-end safety theorem until `seq` lands. The coverage gate said so without being
 asked, which is what it is for. `seq` unlocks both, plus rungs 029–034.
 
-The refusal control in `Denote/Typed/Controls.lean` moved from `vasgn` to `if'`, because
+The refusal control in `Denote/Clink/Controls.lean` moved from `vasgn` to `if'`, because
 `vasgn` now has a proof and the control has to name a rule that does not. That is the control
 doing its job.
 
@@ -8423,7 +8423,7 @@ doing its job.
 Not a proof. `found-issues.md` §F29 had recorded the same failure at two rules — `var` and
 `vasgn` — and the project's own threshold for turning a finding into a norm is "paid for
 twice" (`HANDOFF.md`'s other working rule cites `FrameLocal.lean` and `not_KontFrame`). So it
-is stated, in `Ratchet/Check.lean` §Authoring a rule, next to the constructors it is about.
+is stated, in `Ratchet/Check/Check.lean` §Authoring a rule, next to the constructors it is about.
 
 **The rule.** Before writing a `DJudge` constructor, find the `Denote/Sem/` lemma that
 transports `StateOk` across the machine change the rule makes — `StateOk_reCtl` for
@@ -8458,7 +8458,7 @@ invalidates any other binding whose type captured it. The nearer-true version (m
 constraining how the environment may evolve buys less than keeping it open and letting the
 obligation force soundness case by case. Recorded here so the idea is not re-proposed as new.
 
-Cross-referenced from `Denote/Typed/JudgeA.lean` §3a (where the obligation refuses),
+Cross-referenced from `Denote/Judgment/JudgeA.lean` §3a (where the obligation refuses),
 `HANDOFF.md` (now "two working rules") and `AGENTS.md` §F29's paragraph. One statement, three
 pointers — not four copies.
 

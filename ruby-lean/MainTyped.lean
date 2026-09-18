@@ -1,4 +1,4 @@
-import Ratchet.Rung
+import Ratchet.Check.Rung
 
 /-!
 `lake exe ratchetd` -- the typed ratchet's report.
@@ -11,7 +11,7 @@ derivation is checked, never trusted.
     scripts/build_corpus.py      # stages 1-4, into build/
     lake exe ratchetd build      # stage 5
 
-**`validateD` types.** `Ratchet/Check.lean`'s `check` matches the program, derives the type
+**`validateD` types.** `Ratchet/Check/Check.lean`'s `check` matches the program, derives the type
 itself, compares every `Ty` the certificate claims, and **returns the `DJudge` derivation** —
 so a `true` below is "there is a derivation of this program in the certified judgment", with
 no theorem in between (the checker's *type* is the syntactic soundness statement).

@@ -51,7 +51,7 @@ theorem foldOptM_frame {α : Type} (K : List Kont) (f : Option Machine → α �
 decides whether the throw has a catcher, and CRuby raises `UncaughtThrowError` at the throw
 site when it does not. So `reflectThrow (pushK K m) ≠ frameR K (reflectThrow m)` in general:
 a `catchK` inside `K` turns a raise into a jump. This is the same fact the ratchet's
-`Denote/Sem/Frame.lean` records as the refutation of an unconditional `KontFrame`, met here
+`Denote/Sem/Core/Frame.lean` records as the refutation of an unconditional `KontFrame`, met here
 from the other side, and the repair is the same — the continuation being pushed has to be
 catch-free. Every lemma above `reflectThrow` therefore carries the hypothesis, up to
 `stepFn`; it is not an artefact of the proof. -/

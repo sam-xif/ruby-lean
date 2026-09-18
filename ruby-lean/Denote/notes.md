@@ -7,7 +7,7 @@ separately from the ratchet's rung count and does not move it.
 
 ## Why a separate folder at all
 
-`Ratchet/Judge.lean` is a **syntactic** judgment: `Judge : Expr → Ty → Prop`, one
+`Ratchet/Static/` is a **syntactic** judgment: `Judge : Expr → Ty → Prop`, one
 human-checkable constructor per rule, and `Ratchet/Validate.lean` decides its fragment. What
 it is *not* is an explanation of what a `Ty` means. Every soundness argument in
 `Ratchet/Proof/ChkSound.lean` is therefore syntactic: `validate_sound_syntactic` says `chk`
@@ -19,7 +19,7 @@ A denotation makes the question answerable. It also has a different shape from a
 it recurses on `Ty`, not on `Expr`; it mentions `Heap`/`Value`/`Machine`, which `Ratchet/`
 deliberately does not import; and it is not a checker, so its ratchet is theorems and
 `#guard`s rather than rungs. Three reasons for a folder rather than a file, and the
-dependency arrow makes it four: `Denote/` imports `Ratchet/Ty.lean` **and** `Semantics/`,
+dependency arrow makes it four: `Denote/` imports `Ratchet/Lang/Ty.lean` **and** `Semantics/`,
 which nothing else in the package does.
 
 ## The two-language boundary
@@ -30,11 +30,11 @@ and its docstring says so). The arrow points one way in both:
 ```
 Ratchet/  ──copied text──▶  (nothing)
 Semantics/  ──imports──▶  RubyCore/
-Denote/  ──imports──▶  Ratchet/Ty.lean  +  Semantics/Interp.lean
+Denote/  ──imports──▶  Ratchet/Lang/Ty.lean  +  Semantics/Interp.lean
 ```
 
-`Denote/` imports `Ratchet/Ty.lean` and nothing else from `Ratchet/` — **not**
-`Ratchet/Expr.lean`. That is deliberate and it is the reason `Ty.clos`'s `idx` field has no
+`Denote/` imports `Ratchet/Lang/Ty.lean` and nothing else from `Ratchet/` — **not**
+`Ratchet/Lang/Expr.lean`. That is deliberate and it is the reason `Ty.clos`'s `idx` field has no
 denotation: `idx` indexes the checker's table of `Ratchet.Expr` block literals, and
 `Ratchet.Expr` and `RubyCore.Expr` are two separately-copied inductives with no coercion
 between them. Comparing a heap `Closure.body : RubyCore.Expr` against a table entry's
@@ -112,7 +112,7 @@ arrow-inferring rule must meet, not as something claimed.
 
 ## Why `denB` gives up on the arrow, permanently
 
-`Denote/DenB.lean`'s `denB : Ty → Heap → Value → Bool` answers `false` on both arrow arms.
+`Denote/Ty/DenB.lean`'s `denB : Ty → Heap → Value → Bool` answers `false` on both arrow arms.
 That is not a stub: the arrow is a universally quantified statement over every value in the
 domain and every fuel, and no `Bool` decides it. `denB` is therefore **one-sided** — a `true`
 is a real membership fact at every type (`denB_sound`, proved by its own induction because
@@ -128,7 +128,7 @@ uses of the spine.
 
 ## Refuting instead of proving
 
-`Denote/ArrowCheck.lean` is the arrow's computable half, and it is stated in the only direction
+`Denote/Ty/ArrowCheck.lean` is the arrow's computable half, and it is stated in the only direction
 that survives contact with the undecidability: **a true arrow passes every sample**
 (`arrowCheck_of_arrowFlat`), so a failing sample refutes the arrow
 (`not_arrowFlat_of_arrowCheck_false`) and the sample is the counterexample. There is
@@ -153,7 +153,7 @@ obvious mistake:
 * `HTy` is its own grammar, designed to be denoted. `Denote/` denotes **`Ratchet.Ty`** — the
   grammar the ratchet's checker actually infers, spine constructors, `sameAs` alias, `.never`
   sentinel in `clos` and all. Nothing is redesigned to be easier to denote; where the type
-  language is awkward the denotation says so (§Two stated gaps in `Denote/Den.lean`).
+  language is awkward the denotation says so (§Two stated gaps in `Denote/Ty/Den.lean`).
 * `HTy.den` is `Prop`-only and `sem` costs it `DecidableEq`/`Repr`/JSON by construction.
   `Denote/` carries a computable core (`denB`/`closB`) with an `↔` on the first-order fragment,
   because the ratchet's whole method is executable checks that can be `#guard`ed against real
@@ -175,15 +175,15 @@ precisely a `Heap`-and-frames-indexed predicate, i.e. what `sem` was left open f
   used to read: "`Denote/` imports no `Judge` and states no `Judge e τ → ∀ …, den τ …`,
   because that theorem needs an evaluation relation for `Ratchet.Expr` and the only executable
   one in reach is over `RubyCore.Expr` (§The two-language boundary)." The missing piece was
-  the translation, and `Denote/Sem/Trans.lean` is it — 48 arms, no default case, and it closes
+  the translation, and `Denote/Sem/Core/Trans.lean` is it — 48 arms, no default case, and it closes
   the `Ty.clos` `idx` gap in §The two-language boundary as a side effect. `Denote/Sem/` is the
   parallel judgment built on top: `SemJudge` with `Judge`'s exact signature, 83 obligations
   *derived* from the inductive rather than transcribed, and a ladder that counts them. Nothing
-  discharged yet. `ClosArrow` (`Denote/Arrow.lean`) is still the shape of the bridge a
+  discharged yet. `ClosArrow` (`Denote/Ty/Arrow.lean`) is still the shape of the bridge a
   `Judge.closCall` rung will need.
 * **No `subTy` soundness.** `subTy σ τ → den σ ⊆ den τ` is the obvious next theorem and is
   not proved here; the denotation exists first so that it *can* be.
-* **No narrowing soundness.** `truthyTy`/`falsyTy`/`isNilTy`/`nonNilTy` (`Ratchet/Ty.lean`,
+* **No narrowing soundness.** `truthyTy`/`falsyTy`/`isNilTy`/`nonNilTy` (`Ratchet/Lang/Ty.lean`,
   tier 12) each make a claim about Ruby's truth values that is now *statable* —
   e.g. `den (truthyTy τ) h v ↔ (den τ h v ∧ v.truthy)`. Statable, not stated.
 * **No fuel-free execution.** Everything goes through `Interp.run`'s fuel loop, so

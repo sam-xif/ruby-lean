@@ -83,10 +83,10 @@
 lines, from 110 files and ~42k. `AGENTS.md` §What was deleted lists it with reasons, and
 everything from `AGENTS.md` §LEGACY onward is history for a judgment that no longer exists.
 
-`Ratchet/Check.lean`'s `check` **returns the derivation**, so its type is the soundness
+`Ratchet/Check/Check.lean`'s `check` **returns the derivation**, so its type is the soundness
 statement and the Lean typechecker is the oracle. Rungs **001-008** are derivable in the
 certified judgment (`DJudgeC dclinks`) and each has an **end-to-end safety theorem** in
-`Denote/Typed/Safety.lean` — `StuckFree bootMachine <program>`, at every fuel, at the real
+`Denote/Safety.lean` — `StuckFree bootMachine <program>`, at every fuel, at the real
 booted machine. Rungs 009-018 are checker coverage only.
 
 Safety cannot go stale: it is a **field of the clink target** (`SemSafeA = SemJudgeA ∧
@@ -103,9 +103,9 @@ run: `var` is proved and registered, and no covered rung reads a local.
 
 The four owed rules (`vasgn`, `seq`, `prim`, `if'`) are all behind **`RunAPushK`** -- the
 answer-level counterpart of `run_pushK`, stated as a named `Prop` in
-`Denote/Typed/JudgeA.lean` §4 and unproved. Read that section before starting: it prices what
+`Denote/Judgment/JudgeA.lean` §4 and unproved. Read that section before starting: it prices what
 each of the four needs *besides* the lemma, and three of them need nothing (`if'`'s join
-soundness is already proved, in `Denote/Join.lean`).
+soundness is already proved, in `Denote/Ty/Join.lean`).
 
 ## The resume point, in one paragraph
 
@@ -175,7 +175,7 @@ point's third subsection).
 discharge each other, with no writer left over — the control state does not have
 to enter the invariant after all. Not a proof: it says no arm is blocked in
 principle, and the per-arm `stepFn` walk is still the work. Measure the new
-clause at the booted machine (`Denote/Sanity.lean`, `MethodsExact`'s shape)
+clause at the booted machine (`Denote/Sem/Core/Boot.lean`, `MethodsExact`'s shape)
 before writing it down.
 
 ## DONE (2026-09-08, L266) — and one thing it does **not** cover
@@ -281,5 +281,5 @@ were both authored without doing this and both obligations refused to close
 (`found-issues.md` §F29). It is a rule of thumb, not a checked invariant: the
 stronger version — *never re-type an existing entry* — is false for Ruby
 (`031-reassign-different-type` is `x = 1; x = true; x`). Full statement, with why
-it makes the **next** rule's proof simpler, in `Ratchet/Check.lean`
+it makes the **next** rule's proof simpler, in `Ratchet/Check/Check.lean`
 §Authoring a rule.

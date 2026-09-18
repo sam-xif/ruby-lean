@@ -5,7 +5,7 @@ import RubyCore.PreludeBoot
 The real semantics — **imported**, not copied, from `RubyCore/`. It used to be imported
 across a Lake `require` (the checker was its own package); the two are one package now
 and the import is an ordinary one. This is the whole reason importing was worth it over
-hand-porting the way `Ratchet/Expr.lean`/`Ty.lean` did:
+hand-porting the way `Ratchet/Lang/Expr.lean`/`Ty.lean` did:
 `stepFn`'s own dependency closure (`Heap`/`Machine`/`Builtins`/`Builtins/*`/
 `CRubyNames`/`Interp/{Dispatch,Kont,Reflect,Send,Support}`) is on the order of 24k
 lines, versus the ~450/~700 lines `Syntax.lean`/`Types/Ty.lean` were. Hand-copying that
