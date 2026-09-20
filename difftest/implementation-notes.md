@@ -1479,3 +1479,45 @@ the return, this is where to look.
 
 Re-harvested (355 harvested, 4 skipped, unchanged) and re-run: slice **351 agree, 0 disagree**, 1
 gated, 3 `control_invalid` — the baseline exactly. tier-4 25/0, tier-0 992/0.
+
+## N49 — the control wrapper had no `__as_string`, so the `desugar` SUT was unrunnable
+
+`desugar-dt` C38 gave interpolation's cold arm a **call** — `t.__as_string` — and put the one-method
+support layer in `Observe::WRAPPER`, "so both sides see it and neither can be advantaged by it."
+The difftest control wrapper (`control.py:_WRAPPER`) never got the same treatment. It is the thing
+that runs *both* the control program and the `desugar` SUT's rendered core, and it defined no
+`__as_string`, so every rendered program whose interpolation took the non-String arm died with
+`NoMethodError: undefined method '__as_string'`. One line reproduces it:
+
+```
+puts "x#{1}"
+control: stdout 'x1\n'    sut: NoMethodError undefined method '__as_string' for an instance of Integer
+```
+
+The failure mode is the bad kind, for the same reason N47's was. It presents as a **DISAGREE**, not
+as a harness error — the engine's loudest possible verdict, pointing at the desugarer. A tier-1.5
+campaign came back 58 disagreements in 108 cases and auto-filed a 300-line "minimized reproducer"
+against a front end that was not wrong about anything. Only the *interpolation-of-a-String* cases
+agreed, which is why the failure looked data-dependent rather than structural.
+
+`_WRAPPER` now prepends `_SUPPORT`, a verbatim copy of `Observe::SUPPORT`. Placement follows the
+existing rule (N36, L112): shared runtime support lives in the wrapper both executors go through,
+not in one side's prelude. The `lean` SUT was never affected — the model's own prelude defines
+`__as_string` — which is why the recent report directories are all `-lean` and this sat unnoticed.
+
+After the fix, `desugar`: tier 0 **1232 agree, 0 disagree** (71 gated, 5 `control_invalid`, 1
+`harness_error`), tier 1 500/0, tier 1.5 300/0, tier 3 68/0 (2 gated), tier 4 28/0.
+
+**Two things this run turned up and did not fix.**
+
+- `--inject-bug` **does not detect anything on tier 1**, which is the command the README documents
+  as the engine's end-to-end detection self-test. The flag is plumbed correctly and the SUT really
+  does double-evaluate (`t(nil) && 5` prints its marker twice), but tier-1's `&&`/`||` operands are
+  effect-free — `(x && [ix0, x, ix0])`, `(nil && m1())` — so the second evaluation is unobservable:
+  300/300 agree. On **tier 1.5**, whose operands are `__t(…)` probes, it fires immediately (97
+  disagreements). The self-test recipe should be `--tier 1.5 --inject-bug`.
+- `corpus/regressions/sorbet-hash-gate.rb` disagrees under `desugar` only in a line number:
+  `Caller: <program>:40` vs `:18`. `render_core` emits one line, so every sorbet-runtime message
+  that embeds a source location differs by construction. `_scrub_program_path` quotients out the
+  harness's own temp path for exactly this reason; whether to extend it to line numbers is a real
+  oracle-weakening decision (it would hide a genuine "raised from the wrong place") and is left open.

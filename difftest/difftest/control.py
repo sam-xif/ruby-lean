@@ -24,9 +24,28 @@ from .observation import Observation
 
 SENTINEL = "\n__DIFFTEST_OBS__"
 
+# RubyCore's runtime support layer, verbatim from `desugar-dt/lib/observe.rb`
+# (`Observe::SUPPORT`, C38): the cold arm of interpolation lowers to a call to
+# `__as_string`, a name plain CRuby does not have. It lives in the *wrapper*, so
+# the control and every SUT see one definition and neither side is advantaged —
+# the same placement rule the harness uses for its stub set (N36, L112). Without
+# it, every `desugar`-SUT case whose interpolation takes the non-String arm dies
+# with NoMethodError, which is a harness gap, not a disagreement.
+_SUPPORT = """\
+class Object
+  def __as_string
+    return self if String === self
+
+    s = to_s
+    String === s ? s : Object.instance_method(:to_s).bind(self).call
+  end
+end
+"""
+
 _WRAPPER = """\
 require "stringio"
 require "json"
+{support}
 __difftest_real_stdout = STDOUT.dup
 $stdout = StringIO.new
 __difftest_exc = nil
@@ -114,7 +133,9 @@ class CRubyRunner:
         return None if proc.returncode == 0 else proc.stderr.strip()
 
     def run(self, source: str) -> Observation:
-        wrapped = _WRAPPER.format(program=source, sentinel=json.dumps(SENTINEL))
+        wrapped = _WRAPPER.format(
+            program=source, sentinel=json.dumps(SENTINEL), support=_SUPPORT
+        )
         with tempfile.NamedTemporaryFile("w", suffix=".rb", delete=False) as f:
             f.write(wrapped)
             path = f.name
