@@ -230,15 +230,17 @@ def AsmsOk (Δ : AsmTable) (m : Machine) : Prop :=
   ∀ a ∈ Δ, ∀ m₂, Later m m₂ → ∀ (args : List Value), DenAll a.argTys m₂ args →
     ∀ v m', SendReturns m₂ a.name args v m' → denM a.ret m' v
 
-/-- The running frame is the one `Ctx.frame` describes: same method name, and `self`'s class
-is the recorded receiver class. `none` means "outside any method body", i.e. the frame is a
-toplevel or class-body frame. -/
+/-- The running frame is the method activation `Ctx.frame` describes: same method name,
+nominal receiver class, and method kind. A block can copy the name and receiver while
+`methodFrameOf` follows its `home`, so those two facts alone do not identify the activation.
+`none` means outside a method activation. -/
 def FrameOk (fr : Option Ratchet.Frame) (m : Machine) : Prop :=
   match fr with
   | none => m.currentFrame.kind ≠ .method
   | some f =>
       m.currentFrame.meth = f.methName ∧
-      isAName m.heap m.currentFrame.self f.recvClass = true
+      isAName m.heap m.currentFrame.self f.recvClass = true ∧
+      m.currentFrame.kind = .method
 
 /-- `self`'s type. `none` is top level, where `Judge` declines to type `self'` at all. -/
 def SelfTyOk (σ? : Option Ty) (m : Machine) : Prop :=
@@ -1185,7 +1187,8 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     | some f =>
       rw [hf] at h2
       exact ⟨by rw [he.currentFrame_eq]; exact h2.1,
-             by rw [he.currentFrame_eq]; exact he.isAName_mono h2.2⟩
+             by rw [he.currentFrame_eq]; exact he.isAName_mono h2.2.1,
+             by rw [he.currentFrame_eq]; exact h2.2.2⟩
   closures := trivial
   blockTy := by
     have h2 := h.blockTy
@@ -1568,7 +1571,8 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
         | some f =>
           rw [hf] at h2
           exact ⟨by rw [currentFrame_setLocal_meth]; exact h2.1,
-                 by rw [currentFrame_setLocal_self]; exact h2.2⟩
+                 by rw [currentFrame_setLocal_self]; exact h2.2.1,
+                 by rw [currentFrame_setLocal_kind]; exact h2.2.2⟩
       closures := trivial
       blockTy := by
         have h2 := h.blockTy

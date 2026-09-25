@@ -79,11 +79,12 @@ theorem method_pop_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m n : Machine}
     | some fr' =>
       change (popMethodFrame n).currentFrame.meth = fr'.methName ∧ _
       have hf' : m.currentFrame.meth = fr'.methName ∧
-          isAName m.heap m.currentFrame.self fr'.recvClass = true := by
+          isAName m.heap m.currentFrame.self fr'.recvClass = true ∧
+          m.currentFrame.kind = .method := by
         simpa only [FrameOk, hx] using hfm
-      refine ⟨by rw [hpop]; exact hf'.1, ?_⟩
+      refine ⟨by rw [hpop]; exact hf'.1, ?_, by rw [hpop]; exact hf'.2.2⟩
       rw [hpop]
-      exact hp.nominal _ _ hf'.2
+      exact hp.nominal _ _ hf'.2.1
   have hout := StateOk_reframe hn htypes ha (n := popMethodFrame n) (fr := κ.frame) rfl
     (congrArg FrameScope.self hscope) (congrArg FrameScope.blk hscope)
     (congrArg FrameScope.cref hscope) (congrArg FrameScope.defmod hscope)

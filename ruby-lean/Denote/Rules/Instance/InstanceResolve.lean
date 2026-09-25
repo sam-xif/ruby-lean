@@ -47,7 +47,7 @@ theorem instance_required_frame_at {m : Machine} {recv : Value} {cn ownerCn name
   have hco := exactInst_classOf hv.1 hk
   obtain ⟨rest, ha⟩ := classFrontB_sound hf
   simp only [FrameOk, currentFrame_pushMethodFrame, requiredFrame, hc.superName, Option.getD_none]
-  refine ⟨trivial, ?_⟩
+  refine ⟨trivial, ?_, trivial⟩
   change isAName m.heap recv cn = true
   simp only [isAName, hk, isA, hco, ha, List.contains_cons, beq_self_eq_true, Bool.true_or]
 

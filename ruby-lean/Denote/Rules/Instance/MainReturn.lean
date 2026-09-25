@@ -90,10 +90,12 @@ theorem restore_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mach
     | none => simpa only [FrameOk, hf, hpop] using hm.frame
     | some fr =>
       have hold : m.currentFrame.meth = fr.methName ∧
-          isAName m.heap m.currentFrame.self fr.recvClass = true := by
+          isAName m.heap m.currentFrame.self fr.recvClass = true ∧
+          m.currentFrame.kind = .method := by
         simpa only [FrameOk, hf] using hm.frame
       exact ⟨by rw [hpop]; exact hold.1,
-        by rw [hpop]; exact hp.nominal _ _ hold.2⟩
+        by rw [hpop]; exact hp.nominal _ _ hold.2.1,
+        by rw [hpop]; exact hold.2.2⟩
   · change BlockTyOk κ.blockTy (popMethodFrame n)
     cases hb : κ.blockTy with
     | none => simpa only [BlockTyOk, hb, hpop] using hm.blockTy

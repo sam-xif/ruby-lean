@@ -10690,3 +10690,15 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 65, checker reach 66, 49 rules, 0 owed/exempt,
   50 worked theorems, 252 agree / 0 disagree. Metatheory and axiom audit pass. New
   production proofs build in under a second; the controls take about three seconds.
+
+## Clink 173 (2026-09-25) — retain method activation in conformance
+
+- FrameOk's present arm now requires method kind. The clink-172 block witness still
+  satisfies the old name/receiver pair but fails this strengthened contract; its home
+  activation has no method name and super gates. No admitted program was implicated.
+- All existing method entries establish the kind, and heap/local transports and caller
+  restoration retain it. declared_super_dispatch now derives activation from full StateOk
+  instead of taking a non-block premise. Nested initializer field transport remains next.
+- No new typing judgment, admission or floor change.
+- Full quiet ratchet GREEN: fragment 65, checker reach 66, 49 rules, 0 owed/exempt,
+  50 worked theorems, 252 agree / 0 disagree. Metatheory and axiom audit pass.

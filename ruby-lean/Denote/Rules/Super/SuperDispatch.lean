@@ -3,7 +3,7 @@ import Denote.Rules.Instance.InstanceResolve
 
 /-! The actual super dispatch enters the parent body on the existing receiver. This
 establishes lookup and parameter binding only; nested initializer return still needs its
-anchored field-preservation contract. Non-block activation is an explicit obligation. -/
+anchored field-preservation contract. Full conformance identifies the method activation. -/
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
@@ -40,15 +40,14 @@ theorem doSuper_required {m : Machine} {name : String} {owner : ObjId} {md : Met
   rw [doSuper_user hs hk hn hne hl hb]
   exact enterUserMethod_required _ _ _ _ _ _ hp hcap hdecl ha
 
-/-- Full conformance supplies receiver identity, lexical owner and code. Activation kind
-remains explicit until it is retained by the frame invariant. -/
+/-- Full conformance supplies receiver identity, lexical owner, method activation and code. -/
 theorem declared_super_dispatch {κ : Ctx} {Γ : Env} {I fields : Ty} {m : Machine}
     {receiver : Cls} {current owner : String} {d : Defn} {args : List Value} {blk : Option Value}
     (hm : StateOk κ Γ I m) (hr : receiver ∈ κ.classes)
     (hf : κ.frame = some ⟨receiver.name, current, d.name⟩)
     (hc : κ.scope.runtimeClass = some current)
     (ht : κ.selfTy = some (.inst receiver.name fields))
-    (hk : m.currentFrame.kind ≠ .block) (hn : d.name ≠ "")
+    (hn : d.name ≠ "")
     (route : SuperRoute κ.classes receiver.name current owner d) :
     ∃ k md, classNamed? m.heap owner = some k ∧ md.params = toRubyParams d.params ∧
       md.body = toRuby d.body ∧ InstanceMethodCode k d.name md ∧
@@ -64,6 +63,11 @@ theorem declared_super_dispatch {κ : Ctx} {Γ : Env} {I fields : Ty} {m : Machi
     have h := hm.frame
     simp only [FrameOk, hf] at h
     exact h.1
+  have hk : m.currentFrame.kind ≠ .block := by
+    have h := hm.frame
+    simp only [FrameOk, hf] at h
+    rw [h.2.2]
+    decide
   refine ⟨k, md, hkn, hp, hb, code, ?_⟩
   exact doSuper_user hm.frameInRange.1 hk hname hn
     (by simpa only [hco, scope.owner] using hl) code.builtin

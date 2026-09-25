@@ -560,9 +560,11 @@ no exemptions. Next frontier: 067 needs super dispatch; inherited implicit calls
 owner; `SuperLookup` derives actual superFound/code from full conformance and ordered
 chains. `SuperDispatch` proves the real parent entry on the same receiver. Controls cover
 inherited current bodies, empty intermediate owners and rejected skipped overrides. A
-block-frame witness shows FrameOk alone does not identify methodFrameOf; activation kind
-remains explicit. Nested initializer entry/return, argument composition and full-domain
-super-body checking still precede 067. No new admission or floor changes in this layer.
+block-frame witness pins why names and receiver classes alone do not identify methodFrameOf.
+FrameOk now retains method kind through entry, transport and caller restoration; full
+conformance discharges the activation premise. Nested initializer entry/return, argument
+composition and full-domain super-body checking still precede 067. No new admission or
+floor changes in this layer.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.

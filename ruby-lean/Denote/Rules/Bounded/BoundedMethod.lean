@@ -88,7 +88,7 @@ theorem top_method_runSpecAt {N : Nat} {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m 
       (constGet?_empty hc x).symm)
     (by
       simp only [FrameOk, currentFrame_pushMethodFrame, requiredFrame, hcode.superName, Option.getD_none]
-      exact ⟨trivial, by rw [ready.self]; exact ready.object⟩)
+      exact ⟨trivial, by rw [ready.self]; exact ready.object, trivial⟩)
     hbody
   refine ⟨next, ?_, hr⟩
   rw [ready.self] at he ⊢

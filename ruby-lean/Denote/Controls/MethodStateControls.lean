@@ -27,7 +27,7 @@ theorem identity_after_dispatch (hb : bootOkB = true) (v : Int) :
     rw [constGet?_empty (κ := ctx0.withFrame _) rfl,
       constGet?_empty (κ := ctx0) rfl]
   · simp only [FrameOk, currentFrame_pushMethodFrame]
-    refine ⟨rfl, ?_⟩
+    refine ⟨rfl, ?_, rfl⟩
     change isAName bootMachine.heap bootMachine.currentFrame.self "Object" = true
     rw [ready.self]
     exact ready.object

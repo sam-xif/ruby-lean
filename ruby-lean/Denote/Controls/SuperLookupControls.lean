@@ -90,11 +90,14 @@ theorem after_definitions (hb : bootOkB = true) {fuel rest : Nat} {v : Value} {m
     | none => false
   | _ => false
 
--- The current FrameOk records a name and nominal receiver but permits a block frame.
--- methodFrameOf follows home there, so treating currentFrame as its activation is false.
+-- A name and nominal receiver alone permit a block frame; methodFrameOf follows home.
+-- The strengthened FrameOk excludes this counterexample.
 def blockActivation : Machine := pushMethodFrame (Machine.init .nil)
   { self := .ref Boot.mainId, defmod := Boot.objectId, kind := .block, home := 0, meth := "echo" }
-example : FrameOk (some ⟨"Object", "Object", "echo"⟩) blockActivation := by
+example : blockActivation.currentFrame.meth = "echo" ∧
+    isAName blockActivation.heap blockActivation.currentFrame.self "Object" = true := by
+  decide +kernel
+example : ¬ FrameOk (some ⟨"Object", "Object", "echo"⟩) blockActivation := by
   unfold FrameOk
   decide +kernel
 #guard blockActivation.currentFrame.meth == "echo"
