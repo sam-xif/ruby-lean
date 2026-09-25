@@ -30,11 +30,11 @@ from each proof term. It must pass before committing. Use quiet mode; `--verbose
 for a failure whose captured error is insufficient. In a sandbox with a protected uv cache,
 set `UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache`.
 
-Clinks 189–194 prove full StateOk through the actual fresh module step and empty-header
-publication, preserving earlier declarations without granting a module allocator. CoreOk
-retains Module ancestry (§F46); StateCore retains its name/hook/constant-fallback capabilities
-(§F47), and class queries retain the direct Module source (§F48). Body execution/return
-composition and checking remain before module admission. See HANDOFF.
+Clinks 189–195 prove fresh module entry/header/body/return with full conformance and caller
+restoration, preserving declarations without granting a module allocator. CoreOk retains
+Module ancestry (§F46); StateCore retains its name/hook/constant-fallback capabilities (§F47),
+and class queries retain the direct Module source (§F48). SemSafeCtxA.moduleDecl and a whole
+singleton-call pilot are proved; judgment/checker/emitter integration remains. See HANDOFF.
 
 ## Layout
 

@@ -11193,3 +11193,26 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
   56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
   New proofs and controls build in seconds; no proof approached five minutes.
+
+## Clink 195 (2026-09-25) — checked module execution restores the caller
+
+- ModuleBodyRun supplies module allocation's Framed proof to ClassActivation.runSpec,
+  reusing the actual freshModFrame/frameK path. It restores caller locals/self/spine and
+  retains outgoing declarations and heap effects. ModuleRun composes the real module step,
+  empty-header publication and the checked body. SemSafeCtxA.moduleDecl exposes only a
+  body premise plus moduleRuleB's syntax/type guards; no allocator/new guard is borrowed.
+- Sorbet 0.6.13405 accepts fresh modules with separate locals and an unannotated singleton;
+  it rejects reading an outer local and an uncalled Integer singleton body declared String.
+  It reveals NilClass for `answer = module Marker; 7; end`, whereas CRuby 4.0.5 and the model
+  return 7. The semantic rule's docstring cites this measurement and retains the proved body
+  result. Sorbet's result and untyped methods remain untrusted inputs.
+- ModuleRuleControls proves the whole renamed 077 declaration/call pattern for every
+  Integer method result, with one body proof reused at installation and call. Its boot safety
+  theorem is at every fuel. Separate-local conformance is proved for arbitrary caller/body
+  Integers; VM controls confirm the actual result and caller restoration. Freshness,
+  behavioral-result and allocator controls remain negative.
+- No DJudge/registry/checker/emitter admission yet. Next: moduleDecl integration and an
+  unannotated-method proposal policy that still checks complete parameter domains.
+- Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
+  56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  New proofs and controls build in seconds; none approached five minutes.

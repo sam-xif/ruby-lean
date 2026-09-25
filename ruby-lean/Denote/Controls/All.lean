@@ -4,6 +4,7 @@ import Denote.Controls.ModuleDataControls
 import Denote.Controls.ModuleHeaderControls
 import Denote.Controls.ModuleCoreControls
 import Denote.Controls.ModuleStateControls
+import Denote.Controls.ModuleRuleControls
 import Denote.Controls.ClassAliasControls
 import Denote.Controls.ClassBaseControls
 import Denote.Controls.ClassControls

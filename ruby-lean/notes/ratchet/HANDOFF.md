@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 194)
+# Current resume point (2026-09-25, clink 195)
 
 076 is admitted through validateD: fragment 71, checker reach 76, 59 registered rules,
 56 worked theorems, no exemptions. Next frontier: 077-module-basic, `module M; def self.foo;
@@ -15,7 +15,7 @@ moduleHeaderCtx adds metadata without allocator permission. Sem/Module/ModuleHea
 publishes real fresh metadata after earlier classes/modules, gated by moduleHeaderFrameB
 so publication cannot activate previously unknown ancestry or dispatch claims.
 
-Next: module body execution/return composition, then singleton checking/emission.
+Next: register moduleDecl in the judgment/checker, then module/singleton emission.
 ModuleCore/Constants/Names preserve CoreOk, payload shapes, root names and lexical constants;
 ModuleMethods/Dispatch/Declared preserve installed code, native prefixes and all earlier
 declaration rows. ModuleSites preserves all older sites and establishes the fresh module's
@@ -27,6 +27,11 @@ The scope alias moduleBodyCtx reuses classBodyCtx's lexical activation only. It 
 runtimeMain, no frame/assumptions, table/native framing, fresh unqualified name and the
 header frame; it does not certify the arbitrary body. ModuleStateControls instantiates it
 from boot for every body. ClassQuerySite now retains direct Module as well as Class (§F48).
+ModuleBodyRun reuses ClassActivation's real frame continuation and restores the caller;
+ModuleRun composes entry/header/body/return. SemSafeCtxA.moduleDecl consumes a checked body
+and moduleRuleB, with only syntactic guards. ModuleRuleControls proves the whole renamed
+077 pattern for every Integer body result, plus separate locals for arbitrary Integers.
+This is a semantic pilot; DJudge, the registry and emitter do not yet admit modules.
 StateCore now retains ModuleBase (names, quiet definition hook and ConstFallback at Module),
 checked at boot and preserved through every current transport. This closes §F47 and supplies
 the fresh site's singleton guarantees. ModuleCoreControls keeps the CoreOk+saturation
@@ -35,6 +40,10 @@ countermodel and proves generic exclusion from full StateOk; CoreOk alone remain
 No module judgment/emitter admission yet. Sorbet 0.6.13405 reports M.foo as T.untyped and even
 accepts treating its Integer result as String without a signature; the manifest drops it.
 Future unannotated-method handling must still check the body over its entire parameter domain.
+Sorbet 0.6.13405 reports NilClass for a module expression whose final body value is 7;
+CRuby 4.0.5 and the model return 7. moduleDecl retains the proved body result. The same
+Sorbet rejects accessing an outer local from a module and rejects an uncalled singleton
+body returning Integer under a String signature (clink 195).
 The module controls execute 077, inspect the actual entry frame, preserve old singleton calls
 after another module, and test nested data, fresh-name overwrite and selected-contract witnesses.
 
@@ -66,7 +75,7 @@ calls consume exact context/code artifacts. Inherited singletons remain open, an
 self.new still has only its semantic proof. Nominal conversion only forgets information;
 it cannot recover exact receivers or initialized fields from a nominal annotation.
 
-See clinks 177–194 and AGENTS.md. Older text below is historical.
+See clinks 177–195 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 
