@@ -13,7 +13,8 @@ private def setup : Ratchet.Expr := .seq [
 
 private def sitesB (h : Heap) (k : ObjId) : Bool :=
   classFrontB h k && definitionHookQuietB h k && metaReadyB h k &&
-    namesAtB (nameFreeN ctx0) h k && namesAtB (nameFreeN ctx0) h (classOf h (.ref k))
+    namesAtB (nameFreeN ctx0) h k && namesAtB (nameFreeN ctx0) h (classOf h (.ref k)) &&
+    classFrontB h (classOf h (.ref k))
 
 #guard match Interp.run 150 (evalFrom bootMachine setup) with
   | .value _ m => match classNamed? m.heap "ScopeBase" with

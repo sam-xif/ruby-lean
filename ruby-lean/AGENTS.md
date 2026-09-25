@@ -583,11 +583,12 @@ independent derivation. Fragment 67, checker reach 72, 53 rules, 52 worked theor
 073's singleton factory method; inherited implicit calls remain open.
 `SingletonInstall` now proves the actual def-self step from full incoming conformance,
 including the installed own row and frame/data preservation. `SingletonMethodCode` separates
-the eigenclass dispatch owner from lexical cref. `SingletonDispatch` proves actual required
-argument entry with explicit metaclass frontness. A prepended-module witness passes
-MetaReady yet wins lookup over the own row, so that premise cannot be dropped. Persistent
+the eigenclass dispatch owner from lexical cref. `InstanceSiteAt` retains metaclass
+frontness through fresh entry and every site transport. `SingletonDispatch` derives actual
+lookup and required entry from full StateOk. A prepended-module witness passes MetaReady
+but violates this stronger site contract. Persistent
 singleton code/table facts, activation scope and annotation-domain admission remain before
-073; no rule or floor changes in this prerequisite. See clink 177.
+073; no rule or floor changes in these prerequisites. See clinks 177–178.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -697,7 +698,7 @@ String membership needs a payload invariant. See
 | `Ratchet/Guards/RootInit.lean`, `Denote/Sem/Names/RootInit.lean`, `RootInitWrite.lean`, `Denote/Controls/RootInitControls.lean` | Top-level-table-indexed root initializer conformance, generic write/extension transports, and full-old-state exclusion controls (§F43 closed) |
 | `Denote/Rules/Super/SuperArgs.lean`, `SuperExpr.lean`, `Ratchet/Guards/SuperInit.lean`, `SuperCheckControls.lean` | Scoped explicit super admission, full-domain parent replay and ordered argument effects |
 | `Ratchet/Guards/NilFields.lean`, `Ratchet/Check/FieldHints.lean`, `Denote/Controls/NilFieldControls.lean` | Explicit nil fields proved by default allocation; receiver-aware field candidates and open-field controls |
-| `Denote/Sem/Singleton/SingletonCode.lean`, `Denote/Rules/Singleton/SingletonInstall.lean`, `SingletonDispatch.lean`, `SingletonInstallControls.lean` | Distinct dispatch/lexical owners, real cached singleton installation and conditional required entry; prepend counterexample |
+| `Denote/Sem/Singleton/SingletonCode.lean`, `Denote/Rules/Singleton/SingletonInstall.lean`, `SingletonDispatch.lean`, `SingletonInstallControls.lean` | Distinct dispatch/lexical owners, cached singleton installation and conformance-derived lookup/required entry; prepend counterexample |
 | `Denote/Examples/Derivations.lean`, `ClassDerivations.lean`, `SuperDerivations.lean`, `NilFieldDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 52 concrete safety proofs |
 | `Denote/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |

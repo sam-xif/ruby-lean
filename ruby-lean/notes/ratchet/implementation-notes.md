@@ -10807,3 +10807,19 @@ both halves of what constrains them now have a name.
   No floor or registry change in this prerequisite.
 - Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
   52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+
+## Clink 178 (2026-09-25) — retained singleton lookup precedence
+
+- InstanceSiteAt now retains metaclass frontness separately from MetaReady. Fresh class/
+  subclass entry establishes it; recontextualization, heap growth, method writes and ivar
+  writes preserve it. The real prepended-module counterexample from clink 177 violates
+  this stronger contract. Cached/rooted eigenclasses alone still do not justify lookup.
+- scoped_singleton_required derives the installed lookup and actual required-argument
+  entry from full incoming StateOk, without an external physical-front premise. The
+  boot-grounded control consumes this theorem; subclass controls check the retained fact.
+  Body safety and outgoing singleton table conformance remain separate obligations.
+- No typing judgment, admission or floor change. Next: persistent singleton code/table
+  conformance, distinct activation owner/scope, constructor calls and body-cache integration.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
+  the singleton dispatch proof and its control build in under a second each.

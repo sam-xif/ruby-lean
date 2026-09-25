@@ -75,6 +75,9 @@ structure InstanceSiteAt (free : String → Bool) (cn : String) (k : ObjId) (h :
   /-- Retain class-object dispatch separately: subclass-body self inherits this chain,
   not the instance chain. Prelude code alone is not an absence proof. -/
   classNames : NamesAt free h (classOf h (.ref k))
+  /-- Own singleton methods precede inherited entries. Cached/rooted eigenclasses alone
+  do not rule out prepends; fresh creation establishes this separate lookup fact. -/
+  metaFront : classFrontB h (classOf h (.ref k)) = true
 
 /-- Only negative-name information affects a site's meaning, not the caller's scope. -/
 abbrev InstanceSite (κ : Ctx) := InstanceSiteAt (nameFreeN κ)
@@ -103,7 +106,7 @@ theorem InstanceSite.recontext {κ κ' : Ctx} {cn : String} {k : ObjId} {h : Hea
     (site : InstanceSite κ cn k h)
     (hn : ∀ n, nameFreeN κ n = false → nameFreeN κ' n = false) : InstanceSite κ' cn k h := by
   exact ⟨site.named, site.front, site.hook, site.constants, site.names.recontext hn,
-    site.metaclass, site.classNames.recontext hn⟩
+    site.metaclass, site.classNames.recontext hn, site.metaFront⟩
 
 /-- Scope-independent, so the same site survives a frame change or an allocation.
 This does not claim that method installation or class mutation preserves it. -/
@@ -123,7 +126,7 @@ theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
       | nil => rfl
       | cons j ks ih => simp only [lookup.go, he.payload, ih]
     simp only [lookup, classOf, he.get k hl, he.ancestors, hg]
-  refine ⟨?_, ?_, ?_, ?_, ?_, h.metaclass.ext he hl, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, h.metaclass.ext he hl, ?_, ?_⟩
   · simpa only [he.classNamed?_eq] using h.named
   · simpa only [classFrontB, he.payload] using h.front
   · simpa only [definitionHookQuietB, hlk] using h.hook
@@ -136,6 +139,11 @@ theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
     rw [show classOf n.heap (.ref k) = classOf m.heap (.ref k) from by
       simp only [classOf, he.get k hl], hm] at hmd
     exact h.classNames name hn owner md hmd
+  · simpa only [classOf, he.get k hl, classFrontB, he.payload] using h.metaFront
+
+theorem InstanceSite.eigen_front {κ : Ctx} {cn : String} {k e : ObjId} {h : Heap}
+    (site : InstanceSite κ cn k h) (he : (h.get k).eigen = some e) : classFrontB h e = true := by
+  simpa only [classOf, he] using site.metaFront
 
 /-- Installed classes persist after leaving a scope. The pending lexical class requests
 its site before a method/constructor record has been published. No new Ctx field is needed. -/

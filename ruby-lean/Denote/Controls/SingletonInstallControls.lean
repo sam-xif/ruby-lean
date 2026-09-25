@@ -24,7 +24,8 @@ theorem checked_scope_install (hb : bootOkB = true)
       Interp.stepFn m = .next (Interp.withCtl (installSingleton m owner "copy"
         [.req "value"] (.var .lvar "value")) (.value (.sym "copy"))) ∧
       SingletonMethodCode lexical owner (definedSingleton m owner [.req "value"] (.var .lvar "value")) ∧
-      Framed m (installSingleton m owner "copy" [.req "value"] (.var .lvar "value")) := by
+      lookup (installSingleton m owner "copy" [.req "value"] (.var .lvar "value")).heap (.ref lexical) "copy" =
+        some (owner, definedSingleton m owner [.req "value"] (.var .lvar "value")) := by
   obtain ⟨m, hs, hm⟩ := boot_class_state (name := "Factory") (body := body) hb
     (by decide) hn (by decide)
   obtain ⟨ep, he, hstep⟩ := stepFn_class_fresh (body := body) (stateOk_boot hb) rfl hn (by decide)
@@ -32,15 +33,18 @@ theorem checked_scope_install (hb : bootOkB = true)
     rw [hstep] at hs
     cases hs
     rfl
-  obtain ⟨lexical, owner, _, _, _, hinstall, hcode, hframe, _⟩ :=
-    scoped_singleton_install hm rfl rfl hctl
-  exact ⟨m, lexical, owner, hs, hm, hinstall, hcode, hframe⟩
+  obtain ⟨lexical, owner, _, hinstall, hcode, hlookup, _⟩ :=
+    scoped_singleton_required (names := ["value"]) (args := [.int 7]) (site := .explicit)
+      hm rfl rfl hctl (directSendNameB_sound (by decide)) rfl
+  exact ⟨m, lexical, owner, hs, hm, hinstall, hcode, hlookup⟩
 
 #guard (constOwn bootMachine.heap Boot.objectId "Factory").isNone
 #guard singletonMethodCodeB k e md
 #guard !ordinaryMethodCodeB k [k, Boot.objectId] md
 #guard !instanceMethodCodeB e "copy" md
-#guard installed.heap.objs.size == entry.heap.objs.size
+#guard installed.heap.objs.size == entry.heap.objs.size &&
+  classFrontB entry.heap (classOf entry.heap (.ref k)) &&
+  classFrontB installed.heap (classOf installed.heap (.ref k))
 #guard (requiredFrame (.ref k) "copy" md ["value"] [.int 7]).defmod == e
 #guard (requiredFrame (.ref k) "copy" md ["value"] [.int 7]).cref == [k, Boot.objectId]
 #guard match Interp.run 160 (evalFrom bootMachine (.seq [program,
@@ -48,7 +52,7 @@ theorem checked_scope_install (hb : bootOkB = true)
   | .value (.int 7) _ => true
   | _ => false
 
--- Cached/rooted metaclasses may have prepends: an owned installed row need not win lookup.
+-- Cached/rooted metaclasses may have prepends. The stronger site contract rejects this.
 def prepended : Ratchet.Expr := .seq [
   .module' "Cloak" (.def' "origin" [] (.int 99)),
   .class' "Factory" none (.seq [
