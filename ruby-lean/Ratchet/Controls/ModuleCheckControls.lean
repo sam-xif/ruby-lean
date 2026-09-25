@@ -41,4 +41,20 @@ def callHint (name : String) (ret : Ty := .int) : Deriv :=
     .moduleDecl "Value" (.vasgn .lvar "keep" (.intLit 7)), .var .lvar "keep"])
 #guard !validateD (.seq [.vasgn .lvar "keep" (.int 3), .module' "Value" (.var .lvar "keep")])
   (.seq [.vasgn .lvar "keep" (.intLit 3), .moduleDecl "Value" (.var .lvar "keep")])
+-- Proposals must cover the whole parameter domain, even with a String at the call.
+def greet : Expr := .module' "Greeter" (.defs .self' "hello" [.req "name"]
+  (.send (some (.str "hi ")) "+" [.var .lvar "name"] none))
+def greetHint (input : Ty := .cls "String") : Deriv := .moduleDecl "Greeter"
+  (.defDecl "hello" [("name", input)] (.cls "String")
+    (.prim (.strLit "hi ") "+" [.var .lvar "name"] (.cls "String") (.cls "String")))
+def greeting : Expr := .seq [greet, .send (some (.const "Greeter")) "hello" [.str "sam"] none]
+def greetingHint (input : Ty := .cls "String") : Deriv := .seq [greetHint input,
+  .callSingleton (.constCls "Greeter") "hello" [.strLit "sam"] (.cls "String")]
+#guard validateD greet greetHint
+#guard validateD greeting greetingHint
+#guard !validateD greet (greetHint (.nilable (.cls "String")))
+#guard !validateD greeting (greetingHint (.nilable (.cls "String")))
+#guard !validateD greeting (greetingHint .any)
+#guard !validateD (.seq [greet, .send (some (.const "Greeter")) "hello" [.int 7] none])
+  (.seq [greetHint, .callSingleton (.constCls "Greeter") "hello" [.intLit 7] (.cls "String")])
 end Ratchet.ModuleCheckControls

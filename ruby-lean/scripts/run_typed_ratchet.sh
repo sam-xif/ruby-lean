@@ -165,6 +165,11 @@ stage "build: the negative controls and the proofs" \
   -- lake build Ratchet.Controls.DerivControls Denote.Controls.All Denote.Safety Denote.RuleAudit \
                 ratchetd semladder validate-one
 
+stage "body inference: annotation and domain controls" \
+  "Missing-signature proposals changed with a call argument, replaced declared types,
+  or failed their positive/negative pipeline controls." \
+  -- python3 scripts/check_body_inference.py
+
 stage "stages 1-4: sorbet -> strip -> desugar -> emit" \
   "The untrusted pipeline errored building build/*.rung.json. Usually srb is missing or a
   strip transform hit a construct it cannot handle; a rung that merely falls outside the

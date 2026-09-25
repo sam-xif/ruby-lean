@@ -12,6 +12,7 @@ import Denote.Examples.ScalarWriteDerivations
 import Denote.Examples.TopClassDerivations
 import Denote.Examples.SelfResultDerivations
 import Denote.Examples.ModuleDerivations
+import Denote.Examples.ModuleParamDerivations
 
 /-! Concrete corpus programs and their derivations. `SemLadder` compares each program
 against the current stripped corpus; `RuleAudit` reads the clinks from these proofs. -/
@@ -356,7 +357,8 @@ def safeRungs : List (String × Ratchet.Expr) :=
    ("074-class-setter-method", program_074_class_setter_method),
    ("075-class-instance-as-fun-arg", program_075_class_instance_as_fun_arg),
    ("076-class-self-returning-method", program_076_class_self_returning_method),
-   ("077-module-basic", program_077_module_basic)]
+   ("077-module-basic", program_077_module_basic),
+   ("078-module-method-with-arg", program_078_module_method_with_arg)]
 
 theorem safeRungs_safe (hb : bootOkB = true) :
     ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
@@ -364,7 +366,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   simp only [safeRungs, List.mem_cons, List.not_mem_nil, or_false] at hq
   rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
     | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
-    | rfl
+    | rfl | rfl
   · exact safe_001_int_lit hb
   · exact safe_002_bool_true hb
   · exact safe_003_bool_false hb
@@ -422,6 +424,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   · exact safe_075_class_instance_as_fun_arg hb
   · exact safe_076_class_self_returning_method hb
   · exact safe_077_module_basic hb
+  · exact safe_078_module_method_with_arg hb
 
 #print axioms safeRungs_safe
 end Ratchet.Denote.Typed

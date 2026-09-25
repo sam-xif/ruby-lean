@@ -184,7 +184,12 @@ def parse(text: str, target: str, untyped: str) -> tuple[list, list]:
             dropped.append({**common, "why": entry["owner_dropped"]})
             return
         if entry["raw_ret"] is None:
-            dropped.append({**common, "why": "no declared return type"})
+            # A malformed sig can retain parameter annotations. Do not let the
+            # emitter's missing-signature inference replace those declarations.
+            why = "no declared return type"
+            if any(ty is not None for _, ty in entry["args"]):
+                why += " (parameters are annotated)"
+            dropped.append({**common, "why": why})
             return
         ret = to_ty(entry["raw_ret"], untyped)
         if ret is None:

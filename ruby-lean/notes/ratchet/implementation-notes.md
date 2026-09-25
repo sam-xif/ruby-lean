@@ -11243,3 +11243,30 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree, all floors and coverage checks pass.
   Metatheory and standard-axiom audit pass. New proofs/controls build in a few seconds;
   shared rebuilds remain below five minutes.
+
+## Clink 197 (2026-09-25) — infer scalar domains, then check whole singleton bodies
+
+- The untrusted emitter now proposes required-parameter signatures for missing singleton
+  annotations. It searches Integer/String/Boolean/Float/Symbol/nil tuples, in that order,
+  with a 4096-attempt bound. Each trial owns separate mutable emitter state; known callee
+  signatures constrain arguments inside its body. It publishes only after walking the
+  complete body. Caller values/types never select the proposal. Ambiguous bodies get one
+  deterministic signature; polymorphism, richer domains and the bound remain completeness
+  limits. Zero-argument failures retain their original diagnostic.
+- The existing checker is unchanged: definitions check the whole proposed domain, including
+  uncalled bodies, and calls require the checked signature. ModuleParamDerivations proves
+  all of 078 for every String argument, independently of the emitter. Nullable/any parameter
+  proposals fail even with a String at the call; wrong-domain calls also fail.
+- Sorbet 0.6.13405 leaves `"hi " + value`'s unannotated method result T.untyped and accepts an
+  Integer argument; CRuby raises TypeError and validateD rejects the call. A further probe
+  found that a malformed sig missing its return can retain declared parameter types. The
+  manifest now distinguishes that case, so inference cannot silently replace those types.
+  Unsupported declared signatures, including explicit T.untyped, remain declined.
+- check_body_inference.py is a new quiet-gate stage: renamed local aliases, callee constraints,
+  wrong-domain calls, conflicting uncalled uses, explicit untyped and partial annotations.
+  It also requires identical declaration proposals under changed caller values/types.
+- Newly admitted: 078, 081, 086. Fragment 79, checker reach 79, 60 rules, 58 worked theorems,
+  no owed/exempt rules. Next: 080's implicit singleton call; 084 separately lacks DPrim's `>`.
+- Full quiet ratchet GREEN, including the new pipeline controls: 252 agree / 0 disagree.
+  Metatheory and standard-axiom audit pass. The new proof and checker controls build in
+  under a second; no proof approached five minutes.

@@ -16,9 +16,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 76 rungs, reach 17**, **60 registered rules** (38 expressions + 22 companions),
-**0 owed**, **0 exempt**. Checker reach is 77; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 57 rungs additionally carry a
+**Fragment 79 rungs, reach 17**, **60 registered rules** (38 expressions + 22 companions),
+**0 owed**, **0 exempt**. Checker reach is 79; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 58 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -36,7 +36,9 @@ Module ancestry (§F46); StateCore retains its name/hook/constant-fallback capab
 and class queries retain the direct Module source (§F48). SemSafeCtxA.moduleDecl and a whole
 singleton-call pilot are proved. Clink 196 registers moduleDecl and checks/emits fresh
 modules; complete zero-argument singleton bodies supply untrusted return proposals. Rungs
-077/079/082/083/085 are admitted. Next: 078, unannotated parameter domains. See HANDOFF.
+077/079/082/083/085 are admitted. Clink 197 adds body-directed scalar parameter proposals,
+checked over complete domains, admitting 078/081/086. Next: 080, implicit singleton calls.
+084 also needs a certified greater-than primitive. See HANDOFF.
 
 ## Layout
 

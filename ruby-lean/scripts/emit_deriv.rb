@@ -149,6 +149,7 @@ class Emitter
     @self_cls = nil
     @current_method = nil
     @singleton = false
+    @inferring = false
   end
 
   # -- helpers ------------------------------------------------------------
@@ -344,12 +345,14 @@ class Emitter
     end
     if tr["tag"] == "clsOf"
       sig = sig_for("<Class:#{tr['name']}>", m)
+      check_inferred_args(sig, targs)
       result = as_inst(sig["ret"])
       return [{ "rule" => "callSingleton", "recv" => dr, "name" => m, "args" => dargs,
                 "ret" => result }, result]
     end
     if tr["tag"] == "inst"
       sig = sig_for(tr["name"], m)
+      check_inferred_args(sig, targs)
       result = as_inst(sig["ret"])
       return [{ "rule" => "callMethodSig", "recv" => dr, "name" => m, "args" => dargs,
                 "ret" => result }, result]
@@ -362,9 +365,10 @@ class Emitter
       deriv, ty = new_inst(@self_cls, args)
       return [deriv.merge("rule" => "newImplicit"), ty]
     end
-    dargs, = go_all(args)
+    dargs, targs = go_all(args)
     owner = @self_cls || "Object"
     sig = sig_for(owner, m)
+    check_inferred_args(sig, targs)
     result = as_inst(sig["ret"])
     [{ "rule" => "callSig", "name" => m, "args" => dargs, "ret" => result }, result]
   end
@@ -400,12 +404,12 @@ class Emitter
     params = n[2]
     body = n[3]
     owner = @singleton ? "<Class:#{@self_cls}>" : (@self_cls || "Object")
-    # Sorbet drops these as untyped (clink 196). Propose a result from the whole
-    # zero-argument body; Lean checks it at definition time, including uncalled code.
-    # Never replace an unsupported declared signature or infer from call arguments.
-    infer = @singleton && params.empty? && !@sigs.key?([owner, name]) &&
-            @dropped[[owner, name]] == "no declared return type"
-    sig = infer ? { "params" => [] } : sig_for(owner, name)
+    # Missing annotations permit proposals; unsupported declared types do not.
+    if @singleton && !@sigs.key?([owner, name]) &&
+       @dropped[[owner, name]] == "no declared return type"
+      return infer_definition(owner, name, params, body)
+    end
+    sig = sig_for(owner, name)
     if sig["params"].length != params.length
       raise Blocked, "#{owner}##{name}: sig declares #{sig["params"].length} params, " \
                      "the def has #{params.length}"
@@ -424,15 +428,56 @@ class Emitter
     outer_method = @current_method
     @current_method = name
     @env = sps.to_h { |p| [p["name"], p["ty"]] }
-    dbody, body_ty = go(body)
-    if infer
-      sig = { "params" => [], "ret" => body_ty }
-      @sigs[[owner, name]] = sig
-    end
+    dbody, = go(body)
     @env = outer_env
     @current_method = outer_method
     [{ "rule" => "defDecl", "name" => name, "params" => sps, "ret" => sig["ret"],
        "body" => dbody }, SYM]
+  end
+
+  # Clink 197: search complete scalar domains, never call values. Integer-first
+  # is a deterministic default for ambiguous bodies (e.g. a + b). The bound costs
+  # completeness only; every emitted candidate still needs Lean's whole-body proof.
+  def infer_definition(owner, name, params, body)
+    unless params.all? { |p| p[0] == "preq" }
+      raise Blocked, "#{owner}##{name}: inference requires positional parameters"
+    end
+
+    choices = [INT, STR, BOOL, FLOAT, SYM, NIL_T]
+    choices.repeated_permutation(params.length).each_with_index do |types, attempt|
+      raise Blocked, "#{owner}##{name}: scalar domain search exhausted" if attempt >= 4096
+
+      # Body walks can change locals, fields and declaration tables. Failed trials
+      # must not publish those changes into the next candidate or the outer scope.
+      trial = dup
+      instance_variables.each do |field|
+        value = instance_variable_get(field)
+        trial.instance_variable_set(field, value.dup) if value.is_a?(Hash) || value.is_a?(Array)
+      end
+      sps = params.zip(types).map { |p, ty| { "name" => p[1], "ty" => ty } }
+      trial.instance_variable_set(:@env, sps.to_h { |p| [p["name"], p["ty"]] })
+      trial.instance_variable_set(:@current_method, name)
+      trial.instance_variable_set(:@inferring, true)
+      begin
+        dbody, ret = trial.go(body)
+      rescue Blocked
+        raise if params.empty?
+        next
+      end
+      @sigs[[owner, name]] = { "params" => sps, "ret" => ret }
+      return [{ "rule" => "defDecl", "name" => name, "params" => sps, "ret" => ret,
+                "body" => dbody }, SYM]
+    end
+    raise Blocked, "#{owner}##{name}: no scalar parameter domain for the complete body"
+  end
+
+  # Calls inside an inferred body constrain its parameter proposal. The checker
+  # remains authoritative; this only avoids selecting a known-mismatching candidate.
+  def check_inferred_args(sig, types)
+    return unless @inferring
+    return if types == sig["params"].map { |p| as_inst(p["ty"]) }
+
+    raise Blocked, "inferred body arguments disagree with the callee signature"
   end
 
   def n_super(n)

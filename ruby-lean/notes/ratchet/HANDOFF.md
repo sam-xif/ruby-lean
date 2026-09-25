@@ -1,11 +1,26 @@
-# Current resume point (2026-09-25, clink 196)
+# Current resume point (2026-09-25, clink 197)
 
-077/079/082/083/085 are admitted through validateD: fragment 76, checker reach 77,
-60 registered rules (38 expressions + 22 companions), 57 worked theorems, no exemptions.
-The prefix remains 17; 018 is correctly rejected. Next frontier: 078-module-method-with-arg,
-`module Greeter; def self.hello(name); "hi " + name; end; end; Greeter.hello("sam")`.
-Sorbet leaves its parameter/result untyped. Proposals must check a complete parameter domain,
-never specialize the body to a particular call value. Implicit singleton calls (080) also remain.
+078/081/086 are newly admitted through validateD: fragment 79, checker reach 79,
+60 registered rules (38 expressions + 22 companions), 58 worked theorems, no exemptions.
+The prefix remains 17; 018 is correctly rejected. Next frontier: 080-module-method-calls-method,
+`module M; def self.value; 21; end; def self.describe; value * 2; end; end; M.describe`.
+The emitter's implicit_send still resolves ordinary methods and the checker has no implicit
+singleton call route. 084 now emits a valid-looking candidate but lacks a certified `>` row.
+
+Clink 197 extends the untrusted missing-signature proposal policy to required scalar
+parameters. infer_definition tries complete domains in deterministic order (Integer, String,
+Boolean, Float, Symbol, nil), bounded at 4096 tuples. Each attempt has separate emitter state;
+known callee signatures constrain calls inside the body. The complete body determines its
+return proposal before later calls. Neither call values nor caller argument types select a
+candidate. Unsupported declared signatures remain declined. Ambiguous bodies get one scalar
+signature; polymorphism, richer domains and search beyond the bound remain completeness gaps.
+
+ModuleParamDerivations independently proves all of 078 for every String argument. The body
+proof quantifies over the whole String domain before the argument is introduced. Controls
+reject nullable/any proposals even with a String call, wrong-domain calls and uncalled bad
+bodies. Source probes cover local aliases, typed callee dependencies, conflicting uses and
+explicit T.untyped annotations. Sorbet 0.6.13405 leaves the result T.untyped and accepts an
+Integer argument to `"hi " + value`; CRuby raises TypeError, and validateD rejects that call.
 
 moduleDecl now joins DJudge, the registry, bridge, Deriv decoder and checker. It checks the
 body with separate locals and an empty module header, then refreshes cached bodies after
@@ -14,12 +29,6 @@ independently proves the whole 077 program for every Integer result; CorpusSafet
 cross-check its concrete program and rule set. ModuleCheckControls covers forged names/results,
 uncalled bad bodies, arity, reopening, allocator/subclass rejection, separate locals and old
 singleton calls after another module. Same-selector singleton declarations remain restricted.
-
-The emitter proposes signatures only for zero-argument singleton methods explicitly dropped
-as `no declared return type`. It checks/emits the entire body before retaining its result
-proposal for later calls. Unsupported declared signatures are not replaced. Modules have a
-separate scope and no instance-allocation proposal. Renamed String bodies and negative emitter
-probes cover annotation distinctions, parameters, bad uncalled bodies and allocation.
 
 Clinks 189–195 prove fresh module entry/header/body/return with full StateOk and caller
 restoration. CoreOk retains Module ancestry (§F46); StateCore retains ModuleBase name/hook/
@@ -61,7 +70,7 @@ calls consume exact context/code artifacts. Inherited singletons remain open, an
 self.new still has only its semantic proof. Nominal conversion only forgets information;
 it cannot recover exact receivers or initialized fields from a nominal annotation.
 
-See clinks 177–196 and AGENTS.md. Older text below is historical.
+See clinks 177–197 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 
