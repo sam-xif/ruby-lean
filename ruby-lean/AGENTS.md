@@ -562,9 +562,13 @@ chains. `SuperDispatch` proves the real parent entry on the same receiver. Contr
 inherited current bodies, empty intermediate owners and rejected skipped overrides. A
 block-frame witness pins why names and receiver classes alone do not identify methodFrameOf.
 FrameOk now retains method kind through entry, transport and caller restoration; full
-conformance discharges the activation premise. Nested initializer entry/return, argument
-composition and full-domain super-body checking still precede 067. No new admission or
-floor changes in this layer.
+conformance discharges the activation premise. `SuperState`/`SuperRun` now prove nested
+initializer entry and real parent return on the same fresh receiver. InitFrame retains
+relative IvarStable-type preservation as well as the outer allocation anchor: child locals
+survive, but its receiver takes the parent's output spine. Checked-declaration controls
+exercise arbitrary Integer arguments and a changed field snapshot. Argument composition
+and full-domain super-body cache/checker integration still precede 067. No new admission
+or floor changes in this layer.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.

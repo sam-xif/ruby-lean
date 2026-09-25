@@ -1,5 +1,6 @@
 import Denote.Judgment.Context
 import Denote.Sem.Heap.InitGrow
+import Denote.Sem.Heap.WriteStable
 
 /-! The initializer's scoped answer contract. Old callers are anchored before allocation;
 the running receiver is fresh and writable. Every value answer carries full conformance.
@@ -22,6 +23,7 @@ structure InitFrame (anchor : Heap) (m n : Machine) : Prop where
   growth : InitGrow anchor n.heap
   stack : n.stack = m.stack
   frames : FramePres m n
+  stable : IvarTypePres m n
 
 def InitResultOk (anchor : Heap) (origin : Machine) (Γ : Env) (τ : Ty)
     (a : Answer) (n : Machine) (κ : Ctx) (I : Ty) : Prop :=
@@ -42,15 +44,15 @@ theorem InitState.reCtl {anchor : Heap} {κ : Ctx} {Γ : Env} {I : Ty} {m : Mach
   ⟨StateOk_reCtl h.typed c ks, h.growth, h.fresh⟩
 
 theorem InitFrame.refl {anchor : Heap} {m : Machine} (hg : InitGrow anchor m.heap) :
-    InitFrame anchor m m := ⟨hg, rfl, .refl m⟩
+    InitFrame anchor m m := ⟨hg, rfl, .refl m, .refl m⟩
 
 theorem InitFrame.reCtl {anchor : Heap} {m n : Machine} (h : InitFrame anchor m n)
     (c : Ctl) (ks : List Kont) : InitFrame anchor m (reCtl n c ks) :=
-  ⟨h.growth, h.stack, h.frames.trans (.of_eq rfl rfl) h.stack⟩
+  ⟨h.growth, h.stack, h.frames.trans (.of_eq rfl rfl) h.stack, h.stable.reheap rfl rfl⟩
 
 theorem InitFrame.trans {anchor : Heap} {m n p : Machine}
     (h : InitFrame anchor m n) (h' : InitFrame anchor n p) : InitFrame anchor m p :=
-  ⟨h'.growth, h'.stack.trans h.stack, h.frames.trans h'.frames h.stack⟩
+  ⟨h'.growth, h'.stack.trans h.stack, h.frames.trans h'.frames h.stack, h.stable.trans h'.stable⟩
 
 theorem InitRunSpec.rebase {anchor : Heap} {origin middle start : Machine}
     {κ : Ctx} {Γ : Env} {τ I : Ty} (h : InitRunSpec anchor middle start Γ τ κ I)
@@ -90,6 +92,20 @@ theorem InitRunSpec.answer {anchor : Heap} {origin m : Machine} {κ : Ctx}
       | val v => exact denM_deliverA.mpr h.2.1
       | esc j => exact h.2.1
     · intro v hv; exact (h.2.2 v hv).reCtl _ _
+
+theorem InitRunSpec.unsupported {anchor : Heap} {origin start : Machine} {Γ : Env}
+    {τ I : Ty} {κ : Ctx} {msg : String}
+    (ha : answerPoint start = none) (hs : Interp.stepFn start = .unsupported msg) :
+    InitRunSpec anchor origin start Γ τ κ I := by
+  constructor
+  · intro fuel
+    cases fuel with
+    | zero => rfl
+    | succ f => rw [run_succ, hs]; rfl
+  · intro fuel a m rest hr
+    cases fuel with
+    | zero => rw [runA_zero ha] at hr; cases hr
+    | succ f => rw [runA_succ ha, hs] at hr; cases hr
 
 theorem InitRunSpec.bindSpec {anchor : Heap} {m origin : Machine} {e : Ratchet.Expr}
     {κ₁ κ₂ : Ctx} {Γ₁ Γ₂ : Env} {I₁ I₂ σ τ : Ty}

@@ -10702,3 +10702,29 @@ both halves of what constrains them now have a name.
 - No new typing judgment, admission or floor change.
 - Full quiet ratchet GREEN: fragment 65, checker reach 66, 49 rules, 0 owed/exempt,
   50 worked theorems, 252 agree / 0 disagree. Metatheory and axiom audit pass.
+
+## Clink 174 (2026-09-25) — nested initializer entry and parent return
+
+- InitFrame now also retains IvarTypePres relative to body entry. The outer InitGrow
+  anchor protects preallocation objects, but says too little about child locals referring
+  to newer objects. The existing IvarStable predicate supplies the exact preservation
+  domain; writes and sequential composition establish it. Field snapshots stay excluded.
+- InitNestedReturn restores saved frames and stable locals within the same anchor.
+  SuperState establishes full parent-entry conformance without allocating or erasing
+  existing fields. Parent return restores child scope/locals and takes the outgoing field
+  spine, rather than claiming the old shape survived. Receiver freshness remains anchored.
+- SuperRun composes full-state checked lookup, arbitrary required arguments, the complete
+  annotated parent-body proof and actual frameK return. Escapes follow the existing real
+  method-boundary behavior. No physical lookup or call-site-specialized body is assumed.
+- SuperInitControls derives entry from checked Polygon/Wedge declarations and allocation,
+  then proves nested execution for arbitrary Integer arguments. Actual execution preserves
+  the receiver, heap size and child local while changing @sides from nil to Integer; the
+  old snapshot consequently fails denB. This is a semantic pilot, not super admission.
+- Hide the control's generated checked context from elaborator unfolding; kernel-checked
+  projection facts remain explicit. This removes repeated certificate reduction without
+  raising heartbeat limits. New production proofs build in under a second each.
+- No new typing judgment or floor change. Next: initializer literals/argument composition
+  and receiver/owner-aware super body replay, checker/emitter/registry integration.
+- Full quiet ratchet GREEN: fragment 65, checker reach 66, 49 rules, 0 owed/exempt,
+  50 worked theorems, 252 agree / 0 disagree. Metatheory and axiom audit pass; the
+  combined checked-declaration control builds in about four seconds.

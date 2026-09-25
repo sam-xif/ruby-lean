@@ -71,5 +71,31 @@ theorem denM_writeStable {m : Machine} {x : String} {v w : Value} {τ : Ty}
     (ht : IvarStable τ = true) (h : denM τ m w) : denM τ (Interp.bindIvar m x v) w :=
   ((denM_writeStable_aux m x v τ ht).1 w).mp h
 
+theorem ivarStable_firstOrder {τ : Ty} (h : IvarStable τ = true) : FirstOrder τ = true := by
+  induction τ with
+  | inst cn I ih => cases I <;> simp_all [IvarStable, FirstOrder]
+  | _ => simp_all [IvarStable, FirstOrder, Bool.and_eq_true]
+
+/-- The relative data contract of initialization, including objects allocated after the
+outer heap anchor. Field snapshots may change; types admitted by IvarStable survive. -/
+def IvarTypePres (m n : Machine) : Prop :=
+  ∀ τ, IvarStable τ = true → ∀ v, denM τ m v → denM τ n v
+
+theorem IvarTypePres.refl (m : Machine) : IvarTypePres m m := fun _ _ _ h => h
+
+theorem IvarTypePres.trans {m n p : Machine} (h : IvarTypePres m n)
+    (h' : IvarTypePres n p) : IvarTypePres m p :=
+  fun τ ht v hv => h' τ ht v (h τ ht v hv)
+
+theorem IvarTypePres.reheap {m n m' n' : Machine} (h : IvarTypePres m n)
+    (hm : m'.heap = m.heap) (hn : n'.heap = n.heap) : IvarTypePres m' n' := by
+  intro τ ht v hv
+  have hf := ivarStable_firstOrder ht
+  exact (denM_heap_only hf hn).mpr (h τ ht v ((denM_heap_only hf hm).mp hv))
+
+theorem IvarTypePres.bindIvar (m : Machine) (x : String) (v : Value) :
+    IvarTypePres m (Interp.bindIvar m x v) := fun _ ht _ hv => denM_writeStable ht hv
+
 #print axioms denM_writeStable
+#print axioms IvarTypePres.reheap
 end Ratchet.Denote

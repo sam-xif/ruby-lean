@@ -1,11 +1,15 @@
-# Current resume point (2026-09-25, clink 173)
+# Current resume point (2026-09-25, clink 174)
 
 Fragment 65, checker reach 66, 49 rules, 50 worked theorems. Default new admits 066/069.
 For 067, SuperRoute/SuperLookup/SuperDispatch prove checked parent lookup and actual entry.
 FrameOk now retains method kind, so full conformance discharges super's activation premise.
-Next: compose nested initializer entry/return on the same fresh receiver, arguments and
-receiver/owner body-cache replay. No super typing rule yet. See implementation-notes.md
-clinks 170–173 and AGENTS.md's current state. The older handoff below is historical.
+SuperState/SuperRun now compose checked parent lookup, annotation-domain entry, and real
+frameK return on the same fresh receiver. InitFrame additionally retains IvarStable types;
+return restores child locals while taking the parent's output spine. SuperInitControls starts
+from checked declarations and allocation, with arbitrary Integers and a field-snapshot witness.
+Next: initializer literal/argument composition and receiver/owner super-body cache/checker
+integration. No super typing rule yet. See implementation-notes.md clinks 170–174 and
+AGENTS.md's current state. The older handoff below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 
