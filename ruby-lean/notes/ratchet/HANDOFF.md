@@ -1,39 +1,27 @@
-# Current resume point (2026-09-25, clink 184)
+# Current resume point (2026-09-25, clink 185)
 
-Fragment 67, checker reach 72, 53 rules, 52 worked theorems. For 073, SingletonInstall
-derives the real def-self step and installed own code from full incoming class scope.
-SingletonMethodCode distinguishes eigenclass dispatch owner from lexical class cref.
-InstanceSite retains metaclass frontness and a leaf owner (no eigenclass of its own).
-ClassesOk now retains exact singleton code, cached owners and lexical metadata. Heap/frame
-transports and ordinary definitions preserve those rows; actual singleton installation
-publishes them, and retained tables recover lookup. Same-named instance/singleton methods
-remain distinct. Prepend and self-alias witnesses justify the two site facts.
-SingletonState now proves full outgoing StateOk from input guards. Real-boot controls compose
-that step with an ordinary same-selector definition and recover the original singleton code.
-ConstFallback now pins metaclass fallback at boot and every class site; all transports
-preserve it. Recorded singleton code establishes constant scope for the real required frame.
-Framed now preserves cached eigen pointers on live old objects. SingletonScopeAt separates
-class-valued self/lexical cref from cached defmod; required entry establishes it, and nested
-return restores it even across heap growth. Post-body class sites recover constant scope.
-Frame now distinguishes instance/class-object receivers. runtimeSingleton retains physical
-singleton scope separately from runtimeClass; all state transports preserve it. Full required
-entry and return are proved. CallWorld includes singleton callers, and resolved_singleton_run
-executes a checked body through real send/entry/return. Boot-backed controls cover every
-Integer argument and nested singleton calls with caller restoration.
-Constructors now restore singleton callers as well; implicit new retains class-valued self
-across arguments. singletonDecl/singletonCall compose definition and actual dispatch with
-full-domain body premises. FactoryConstructorControls proves all-fuel boot safety for the
-complete, pipeline-matched 073 program, plus construction for arbitrary Integer arguments.
-Next: register singleton definition/call and implicit-new judgments, then annotation-domain
-body caches and checker/emitter integration. 073 is not admitted yet. Sorbet accepts implicit
-new and self.new, reveals T.attached_class inside the factory, and rejects wrong constructor
-types/arity and an uncalled factory returning String against Point. Own class receivers only;
-inherited singleton behavior remains open. No rule/floor change. See clinks 176–184 and
-AGENTS.md. Older text is historical.
+073 is admitted through validateD: fragment 68, checker reach 73, 57 registered rules,
+53 worked theorems, no exemptions. The next frontier is 074-class-setter-method:
+Box#grow updates @size from Integer to Integer. Its field read/arithmetic already have
+rules; ordinary instance ivar writes still need a sound state/frame transport and admission.
 
-Singleton bodies use an open class-object ivar spine. Ordinary instanceBodyCtx resets the
-frame mode and singleton runtime scope; super's frame guard requires the instance mode.
-The untrusted pipeline still rejects AST defs, and no singleton typing rule is registered yet.
+Singleton prerequisites (clinks 177–184) retain executed code, cached eigenclass identity,
+constant fallback and full singleton scope through calls. Constructors restore singleton
+callers, including implicit new. Clink 185 registers singletonDef, callSingleton, newImplicit
+and same-class instanceType; their docstrings cite measured Sorbet behavior. Only own
+singleton methods are admitted; inherited singleton receiver/lexical-owner separation stays
+open. Explicit self.new has a semantic proof but no new checker route yet.
+
+SingletonCache retains annotation-domain body proofs, exact code and singleton context.
+Definitions and later table changes recheck every body; calls consume artifacts. Branches
+compare annotations, and completeness checks each own singleton row. Nominal result
+conversion only forgets information; it cannot recover exact receivers or initialized fields.
+The emitter preserves <Class:C> signatures separately from ordinary C methods. Whole 073
+has an independent constructor-wise FactoryDerivations proof, audited against the generated
+program and registered rule set. annotationRules records its erased return annotation's
+conversion rule; exact per-rung proof-extraction equality still gates coverage.
+
+See clinks 177–185 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 

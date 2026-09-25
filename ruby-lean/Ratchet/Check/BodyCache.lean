@@ -29,6 +29,9 @@ structure CachedMember extends CachedBody where
   owner : String
   receiver : String
 
+structure CachedSingleton extends CachedBody where
+  owner : String
+
 structure CachedInitializer where
   ctx : Ctx
   owner : String
@@ -41,6 +44,7 @@ structure CheckedCache where
   top : BodyCache := []
   members : List CachedMember := []
   initializers : List CachedInitializer := []
+  singletons : List CachedSingleton := []
 
 /-- Retain definition annotations for parent replay, independent of receiver-specific
 cached output fields. Each super use rechecks the actual selected code in its new context. -/
@@ -51,6 +55,8 @@ def initializerSources (cache : CheckedCache) : List InitializerSource :=
 /-- Equal code tables alone do not pin annotations. Branches must also agree on cached
 signatures, rather than silently selecting one branch's declared parameter/field types. -/
 def cacheSignaturesB (a b : CheckedCache) : Bool :=
+  (a.singletons.map fun c => (c.owner, c.decl.name, c.body.params, c.body.ret)) ==
+    (b.singletons.map fun c => (c.owner, c.decl.name, c.body.params, c.body.ret)) &&
   (a.top.map fun c => (c.decl.name, c.body.params, c.body.ret, c.spine)) ==
     (b.top.map fun c => (c.decl.name, c.body.params, c.body.ret, c.spine)) &&
   (a.members.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.spine)) ==

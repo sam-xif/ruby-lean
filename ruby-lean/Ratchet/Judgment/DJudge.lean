@@ -8,6 +8,7 @@ import Ratchet.Guards.RootInit
 import Ratchet.Guards.NilFields
 import Ratchet.Guards.MemberRoute
 import Ratchet.Static.NativeInstanceNames
+import Ratchet.Guards.SingletonGuards
 
 /-!
 # `Ratchet/Judgment/DJudge.lean` — the answer-typed judgment
@@ -442,6 +443,47 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       nilFieldsB J = true →
       DJudge Γ (.send (some recv) "new" args none) (.inst c.name J) Γ₂ κ I κ₂ I₂
 
+
+  /-- Sorbet 0.6.13405 checks even an uncalled def-self against its declared return type:
+  073 with a String factory result is rejected (clink 184). -/
+  | singletonDef {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {c : Cls} {d : Defn} {ps : List SigParam} :
+      d.params = ps.map (fun p => Param.req p.1) →
+      (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) → FirstOrder τ = true →
+      DJudge ps d.body τ Γb (singletonBodyCtx (singletonDeclCtx κ c d) c.name d.name) .ivar0
+        (singletonBodyCtx (singletonDeclCtx κ c d) c.name d.name) .ivar0 →
+      c ∈ κ.classes → singletonRuleB κ Γ I c d = true →
+      DJudge Γ (.defs .self' d.name d.params d.body) .sym Γ κ I (singletonDeclCtx κ c d) I
+  /-- Sorbet accepts Point.origin and rejects Point.origin(1) (clink 177). Only own
+  singleton code is admitted; the body uses its entire declared parameter domain. -/
+  | callSingleton {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb : Env} {I I₁ I₂ τ : Ty}
+      {c : Cls} {d : Defn} {ps : List SigParam} {recv : Expr} {args : List Expr} :
+      DJudge Γ recv (.clsOf c.name) Γ₁ κ I κ₁ I₁ →
+      DJudgeAll Γ₁ args (ps.map (·.2)) Γ₂ κ₁ I₁ κ₂ I₂ →
+      c ∈ κ₂.classes → d ∈ c.smethods → directCallNameB d.name = true →
+      d.params = ps.map (fun p => Param.req p.1) →
+      (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) → FirstOrder τ = true →
+      DJudge ps d.body τ Γb (singletonBodyCtx κ₂ c.name d.name) .ivar0
+        (singletonBodyCtx κ₂ c.name d.name) .ivar0 → instanceCallB κ₂ Γ₂ I₂ = true →
+      DJudge Γ (.send (some recv) d.name args none) τ Γ₂ κ I κ₂ I₂
+  /-- Sorbet accepts 073's implicit new, reveals T.attached_class, and rejects wrong
+  initializer argument types/arity (clink 184). This rule fixes an own class receiver. -/
+  | newImplicit {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' Ib τ : Ty}
+      {c : Cls} {d : Defn} {ps : List SigParam} {args : List Expr} :
+      κ.selfTy = some (.clsOf c.name) →
+      DJudgeAll Γ args (ps.map (·.2)) Γ' κ I κ' I' → c ∈ κ'.classes → d ∈ c.methods →
+      d.name = "initialize" → smroGet? κ'.classes c.name "new" = none → c.name ∈ κ'.pos.plainAlloc →
+      d.params = ps.map (fun p => Param.req p.1) →
+      (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) →
+      FirstOrder τ = true → FirstOrder Ib = true →
+      InitJudge (initializerBodyCtx κ' c.name) ps .ivar0 d.body τ (initializerBodyCtx κ' c.name) Γb Ib →
+      instanceCallB κ' Γ' I' = true →
+      DJudge Γ (.send none "new" args none) (.inst c.name Ib) Γ' κ I κ' I'
+  /-- Sorbet accepts the freshly constructed Point as returns(Point) in 073 (clink 184).
+  Forget exact receiver/field information only toward the same nominal class. -/
+  | instanceType {κ κ' : Ctx} {Γ Γ' : Env} {I I' fields : Ty} {c : Cls} {e : Expr} :
+      DJudge Γ e (.inst c.name fields) Γ' κ I κ' I' → c ∈ κ'.classes →
+      DJudge Γ e (.cls c.name) Γ' κ I κ' I'
+
 inductive DJudgeAll : Env → List Expr → List Ty → Env → (κ : optParam Ctx ctx0) →
     (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
   | nil {κ : Ctx} {Γ : Env} {I : Ty} : DJudgeAll Γ [] [] Γ κ I
@@ -506,6 +548,15 @@ end
 
 theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ : Ty}
     (h : DJudge Γ e τ Γ' κ I κ' I') :
-    plainArgB e = true := by cases h <;> first | rfl | assumption
+    plainArgB e = true := by
+  refine DJudge.rec
+    (motive_1 := fun _ e _ _ _ _ _ _ _ => plainArgB e = true)
+    (motive_2 := fun _ _ _ _ _ _ _ _ _ => True)
+    (motive_3 := fun _ _ _ _ _ _ _ _ _ => True)
+    (motive_4 := fun _ _ _ _ _ _ _ _ _ _ => True)
+    (motive_5 := fun _ _ _ _ _ _ _ _ => True)
+    (motive_6 := fun _ _ _ _ _ _ _ _ => True)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+  all_goals (try intros) <;> first | rfl | trivial | assumption
 
 end Ratchet

@@ -147,6 +147,7 @@ class Emitter
     @supers = {}       # class name -> superclass name
     @self_cls = nil
     @current_method = nil
+    @singleton = false
   end
 
   # -- helpers ------------------------------------------------------------
@@ -213,6 +214,8 @@ class Emitter
 
   def n_self(_n)
     raise Blocked, "`self` outside a class body" if @self_cls.nil?
+
+    return [{ "rule" => "selfExpr" }, { "tag" => "clsOf", "name" => @self_cls }] if @singleton
 
     [{ "rule" => "selfExpr" },
      { "tag" => "inst", "name" => @self_cls, "ivars" => spine(@ivars.to_a) }]
@@ -340,6 +343,11 @@ class Emitter
       return [{ "rule" => "prim", "recv" => dr, "method" => m, "args" => dargs,
                 "recvTy" => tr, "retTy" => ret }, ret]
     end
+    if tr["tag"] == "clsOf"
+      sig = sig_for("<Class:#{tr['name']}>", m)
+      return [{ "rule" => "callSingleton", "recv" => dr, "name" => m, "args" => dargs,
+                "ret" => sig["ret"] }, sig["ret"]]
+    end
     if tr["tag"] == "inst"
       sig = sig_for(tr["name"], m)
       return [{ "rule" => "callMethodSig", "recv" => dr, "name" => m, "args" => dargs,
@@ -349,6 +357,10 @@ class Emitter
   end
 
   def implicit_send(m, args)
+    if @singleton && m == "new"
+      deriv, ty = new_inst(@self_cls, args)
+      return [deriv.merge("rule" => "newImplicit"), ty]
+    end
     dargs, = go_all(args)
     owner = @self_cls || "Object"
     sig = sig_for(owner, m)
@@ -357,11 +369,25 @@ class Emitter
 
   def new_inst(name, args)
     dargs, = go_all(args)
-    ivars = @cls_ivars[name]
+    ivars = @cls_ivars[name] || (name == @self_cls ? @ivars.to_a : nil)
     raise Blocked, "`#{name}.new` before `class #{name}` is defined" if ivars.nil?
 
     ty = { "tag" => "inst", "name" => name, "ivars" => spine(ivars) }
     [{ "rule" => "newInst", "cls" => name, "args" => dargs, "ty" => ty }, ty]
+  end
+
+  # Own singleton signatures remain distinct from ordinary methods of the same name.
+  def n_defs(n)
+    raise Blocked, "singleton receiver other than self" unless n[1] == ["self"]
+
+    outer_singleton, outer_ivars = @singleton, @ivars
+    @singleton = true
+    # Constructor fields belong to instances, never to the class object's self.
+    @cls_ivars[@self_cls] = @ivars.to_a
+    @ivars = {}
+    result = n_def(["def", n[2], n[3], n[4]])
+    @singleton, @ivars = outer_singleton, outer_ivars
+    result
   end
 
   # declarations
@@ -369,7 +395,7 @@ class Emitter
     name = n[1]
     params = n[2]
     body = n[3]
-    owner = @self_cls || "Object"
+    owner = @singleton ? "<Class:#{@self_cls}>" : (@self_cls || "Object")
     sig = sig_for(owner, name)
     if sig["params"].length != params.length
       raise Blocked, "#{owner}##{name}: sig declares #{sig["params"].length} params, " \

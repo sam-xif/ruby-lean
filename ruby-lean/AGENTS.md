@@ -16,9 +16,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 67 rungs, reach 17**, **53 registered rules** (31 expressions + 22 companions),
-**0 owed**, **0 exempt**. Checker reach is 72; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 52 rungs additionally carry a
+**Fragment 68 rungs, reach 17**, **57 registered rules** (35 expressions + 22 companions),
+**0 owed**, **0 exempt**. Checker reach is 73; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 53 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -603,9 +603,13 @@ scope separately from runtimeClass. Full entry/return conformance and real singl
 execution are proved; annotation-checked controls cover all Integer arguments and nested
 singleton calls. Constructors now restore singleton callers and retain implicit class self
 across arguments. Full-domain singleton definition/call contracts compose with construction
-into boot safety for the exact generated 073 program (FactoryConstructorControls). Registering
-these judgments and annotation-domain checker/emitter integration remain before admission;
-no rule or floor changes in these prerequisites. See clinks 177–184.
+into boot safety for the exact generated 073 program (FactoryConstructorControls).
+073 is now admitted: singletonDef, callSingleton, newImplicit and instanceType are registered,
+with annotation-domain singleton caches and emitter integration. The same-class nominal
+result conversion forgets exact fields/receiver information; it never recovers it. Independent
+FactoryDerivations exercises all four rules, with the return annotation's conversion separately
+predicted because stripped syntax omits it. Fragment 68, checker reach 73, 57 rules, 53 worked
+theorems, no exemptions. Next: 074's ordinary instance-field update. See clinks 177–185.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.

@@ -10953,3 +10953,31 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
   52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
   all new proofs build in roughly one second each, below the five-minute limit.
+
+## Clink 185 (2026-09-25) — admit the singleton factory
+
+- Register singletonDef, callSingleton, newImplicit and instanceType, with the measured
+  Sorbet behavior from clinks 177/184 cited on each judgment. The first three consume the
+  full definition/dispatch/constructor proofs; the fourth forgets exact fields/receiver
+  information toward the same nominal class. Class-site frontness justifies its is-a fact.
+  No nominal annotation can recover exact receiver or field claims in the reverse direction.
+- Singleton body artifacts retain owner, code, parameter/return annotations and exact scope.
+  Definitions check every body, including uncalled ones; refresh replays original annotations
+  after table changes, oldest first, after initializer/member refresh. Calls consume those
+  artifacts. Branch compatibility includes singleton annotations; completeness checks own
+  declared singleton rows. Inherited singleton lookup remains outside these contracts.
+- The signature reader retains flat singleton owners as <Class:C>, distinct from C's
+  instance methods. The emitter emits defs, own class calls and implicit new with separate
+  class-self/instance-field state. checkMethodBody now accepts a proved same-class nominal
+  result conversion as well as equality; signatures themselves remain unchanged.
+- Whole 073 now passes validateD. FactoryDerivations independently constructs its certified
+  derivation; RuleAudit extracts all four new rules from that proof. The stripped AST omits
+  return annotations, so annotationRules separately predicts instanceType for 073. Per-rung
+  equality with proof extraction and the zero-exemption coverage gate remain mandatory.
+- Controls cover renamed classes, full parameter domains, uncalled bad results, wrong
+  constructor types/arity/field hints, wrong factory calls, same-named ordinary/singleton
+  methods, invalidated primitive guards, stale/missing caches and branch annotations.
+  Next frontier: 074's ordinary instance-field update. No model semantics changed.
+- Full quiet ratchet GREEN: fragment 68, checker reach 73, 57 rules, 0 owed/exempt,
+  53 worked theorems, 252 agree / 0 disagree. Floors raised accordingly. Metatheory and
+  standard-axiom audit pass; new proofs build in seconds, none near five minutes.

@@ -156,8 +156,9 @@ namespace Ratchet.Denote.Typed
 
 /-! ## §3 The cross-check: the predictor and the proof agree, per rung
 
-This is the gate the module exists for. `rulesUsed` (syntactic, `Safety.lean` §4) and
-`rulesFromProofs` (read off the proof term) are two independent answers to the same question,
+This is the gate the module exists for. `rulesUsedFor` (syntax plus recorded return
+annotation conversions, `Safety.lean` §4) and `rulesFromProofs` (read off the proof term)
+are two independent answers to the same question,
 and they must match on every rung. A disagreement means one of two things, both worth a red
 build: the head→rule table drifted from `DJudge`, or a rung's proof used a different rule than
 its program's shape implies. -/
@@ -176,7 +177,7 @@ def sameRules (a b : List String) : Bool :=
   a.all (b.contains ·) && b.all (a.contains ·)
 
 -- **The cross-check.** Every rung's predicted rule set equals the set its proof uses.
-#guard safeRungs.all fun q => sameRules (rulesUsed q.2) (proofRules (rungThmName q.1))
+#guard safeRungs.all fun q => sameRules (rulesUsedFor q) (proofRules (rungThmName q.1))
 
 -- …and the table covers every rung, so the guard above cannot pass by looking nothing up.
 #guard rulesFromProofs.length == safeRungs.length

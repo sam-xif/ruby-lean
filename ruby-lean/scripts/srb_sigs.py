@@ -213,8 +213,8 @@ def parse(text: str, target: str, untyped: str) -> tuple[list, list]:
             if name in SYNTHETIC:
                 continue
             why = None
-            if owner.startswith("<Class:"):
-                why = "singleton method (def self.x) -- outside the fragment"
+            if owner.startswith("<Class:") and not re.fullmatch(r"<Class:[A-Z]\w*>", owner):
+                why = f"unsupported singleton owner {owner}"
             elif "::" in owner:
                 why = f"namespaced owner {owner} -- Ty.cls carries flat names here"
             cur = {"owner": owner.split("::")[-1] if why is None else owner,

@@ -1,4 +1,4 @@
-import Ratchet.Check.ReceiverCache
+import Ratchet.Check.SingletonCache
 
 set_option autoImplicit false
 namespace Ratchet
@@ -40,6 +40,21 @@ structure Certified (Γ : Env) (e : Expr) (κ : Ctx := ctx0) (I : Ty := .ivar0) 
   spine : Ty
   judged : DJudge Γ e ty out κ I ctx spine
   cache : CheckedCache := {}
+
+/-- Only a proved same-class instance-to-nominal conversion supplements exact returns.
+No field information is invented from a nominal annotation. -/
+def checkResult {Γ : Env} {e : Expr} {κ : Ctx} {I : Ty}
+    (c : Certified Γ e κ I) (ret : Ty) : Option (Certified Γ e κ I) := do
+  if c.ty == ret then some c else
+  match ht : c.ty, ret with
+  | .inst cn fields, .cls name => do
+    if cn != name then none else do
+    let f ← findClass cn c.ctx.classes
+    some ⟨.cls cn, c.out, c.ctx, c.spine, by
+      simpa only [f.nameOk] using
+        (DJudge.instanceType (c := f.cls) (fields := fields)
+          (by simpa only [ht, f.nameOk] using c.judged) f.member), c.cache⟩
+  | _, _ => none
 
 structure CertifiedAll (Γ : Env) (es : List Expr) (κ : Ctx := ctx0) (I : Ty := .ivar0) where
   tys : List Ty
@@ -199,6 +214,50 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
           else none
       else none
       else none
+    | .send none "new" args none, .newImplicit name ds ty => do
+      let a ← checkAll n Γ args ds κ I cache
+      let f ← findClass name a.ctx.classes
+      if hs : κ.selfTy = some (.clsOf f.cls.name) then do
+      let c ← findInitializer a.ctx f.cls a.cache.initializers
+      if ht : a.tys = c.body.params.map (·.2) then do
+      if ty != .inst name c.body.fields then none else do
+      if hn : smroGet? a.ctx.classes f.cls.name "new" = none then do
+      if hp : f.cls.name ∈ a.ctx.pos.plainAlloc then do
+      if hg : instanceCallB a.ctx a.out a.spine = true then
+        some ⟨.inst name c.body.fields, a.out, a.ctx, a.spine, by
+          simpa only [f.nameOk] using
+            (DJudge.newImplicit hs (by simpa only [ht] using a.judged) f.member c.installed
+              c.nameOk hn hp c.body.paramShape c.body.paramsFO c.body.returnFO c.body.fieldsFO
+              c.body.judged hg), a.cache⟩
+      else none
+      else none
+      else none
+      else none
+      else none
+    | .send (some recv) name args none, .callSingleton dr claimed ds ret => do
+      if name != claimed then none else do
+      let r ← check n Γ recv dr κ I cache
+      match hrty : r.ty with
+      | .clsOf cn => do
+        let a ← checkAll n r.out args ds r.ctx r.spine r.cache
+        let f ← findClass cn a.ctx.classes
+        let c ← findSingleton a.ctx f.cls name a.cache.singletons
+        if ht : a.tys = c.body.params.map (·.2) then do
+        if c.body.ret != ret then none else do
+        if hn : directCallNameB c.decl.name = true then do
+        if hg : instanceCallB a.ctx a.out a.spine = true then
+          some ⟨c.body.ret, a.out, a.ctx, a.spine, by
+            simpa only [c.nameOk] using
+              (DJudge.callSingleton (by simpa only [hrty, f.nameOk] using r.judged)
+                (by simpa only [ht] using a.judged) f.member c.installed hn
+                c.body.paramShape c.body.paramsFO c.body.returnFO c.body.judged hg), a.cache⟩
+        else none
+        else none
+        else none
+      | _ => none
+    | .defs .self' name params body, .defDecl claimed ps ret db => do
+      let some cn := κ.scope.runtimeClass | none
+      checkSingletonDefinition n κ Γ I cn ⟨name, params, body⟩ (.defDecl claimed ps ret db) cache
     | .send (some recv) name args none, .callMethodSig dr claimed ds ret => do
       if name != claimed then none else do
       let r ← check n Γ recv dr κ I cache
@@ -448,8 +507,8 @@ def checkSeq (fuel : Nat) (Γ : Env) (es : List Expr) (ds : List Deriv)
     | _, _ => none
 
 /-- Check the declaration's body in its annotation environment. Caller locals and
-argument values are deliberately not inputs. Return compatibility is exact for now;
-subtyping needs a proved denotation-inclusion rule, not the legacy unchecked `subTy`. -/
+argument values are deliberately not inputs. Return compatibility is equality or the
+proved same-class instance-to-nominal conversion; annotations themselves stay unchanged. -/
 def checkMethodBody (fuel : Nat) (κ : Ctx) (I : Ty) (decl : Defn) (d : Deriv)
     (cache : CheckedCache := {}) : Option (CheckedBody κ I decl) :=
   match fuel with
@@ -469,6 +528,7 @@ def checkMethodBody (fuel : Nat) (κ : Ctx) (I : Ty) (decl : Defn) (d : Deriv)
                     (by simpa only [hret] using r.judged), cache⟩
               else none
             else none
+          let c ← checkResult c ret
           if hret : c.ty = ret then do
             let ⟨hctx⟩ ← ctxEq? c.ctx κ
             if hspine : c.spine = I then
@@ -516,6 +576,28 @@ def checkMemberDefinition (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (cn : Stri
           .memberDef body.paramShape body.paramsFO body.returnFO hf body.judged hn f.member hg,
           complete⟩
         else none
+      else none
+    else none
+
+/-- Def-self uses annotations alone, including when the method is never called. -/
+def checkSingletonDefinition (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (cn : String)
+    (d : Defn) (hint : Deriv) (cache : CheckedCache) :
+    Option (Certified Γ (.defs .self' d.name d.params d.body) κ I) :=
+  match fuel with
+  | 0 => none
+  | n + 1 => do
+    let f ← findClass cn κ.classes
+    if hg : singletonRuleB κ Γ I f.cls d = true then do
+      let next := singletonDeclCtx κ f.cls d
+      let .defDecl _ _ _ db := hint | none
+      let fresh ← refreshClassBodies n next cache
+      let bctx := singletonBodyCtx next f.cls.name d.name
+      let body ← checkMethodBody n bctx .ivar0 d hint fresh
+      let complete := { fresh with singletons :=
+        ⟨⟨bctx, .ivar0, d, body, db⟩, f.cls.name⟩ :: fresh.singletons }
+      if receiverCacheCompleteB next complete && singletonCacheCompleteB next complete then
+        some ⟨.sym, Γ, next, I,
+          .singletonDef body.paramShape body.paramsFO body.returnFO body.judged f.member hg, complete⟩
       else none
     else none
 
@@ -688,6 +770,22 @@ def refreshMembers (fuel : Nat) (κ : Ctx) (base : CheckedCache) (cache : List C
         (κ.classes.map (·.name)).eraseDups
       some (bodies ++ tail)
 
+/-- Oldest own singleton first; replay keeps the original annotations at the new tables. -/
+def refreshSingletons (fuel : Nat) (κ : Ctx) (base : CheckedCache) (cache : List CachedSingleton) :
+    Option (List CachedSingleton) :=
+  match fuel with
+  | 0 => none
+  | n + 1 => match cache with
+    | [] => some []
+    | c :: cs => do
+      let tail ← refreshSingletons n κ base cs
+      let f ← findClass c.owner κ.classes
+      let _ ← defnMem? c.decl f.cls.smethods
+      let bctx := singletonBodyCtx κ c.owner c.decl.name
+      let body ← checkMethodBody n bctx .ivar0 c.decl
+        (.defDecl c.decl.name c.body.params c.body.ret c.deriv) { base with singletons := tail }
+      some (⟨⟨bctx, .ivar0, c.decl, body, c.deriv⟩, c.owner⟩ :: tail)
+
 /-- Class bodies cannot call top-level methods. Keep those artifacts until class exit,
 where refreshBodies rechecks them in the restored caller scope, even if never called. -/
 def refreshClassBodies (fuel : Nat) (κ : Ctx) (cache : CheckedCache) : Option CheckedCache :=
@@ -696,7 +794,9 @@ def refreshClassBodies (fuel : Nat) (κ : Ctx) (cache : CheckedCache) : Option C
   | n + 1 => do
     let is ← refreshInitializers n κ (cache.initializers.filter fun c => c.receiver == c.owner) (initializerSources cache)
     let ms ← refreshMembers n κ { cache with initializers := is } (cache.members.filter fun c => c.receiver == c.owner)
-    some { cache with initializers := is, members := ms }
+    let base := { cache with initializers := is, members := ms }
+    let ss ← refreshSingletons n κ base cache.singletons
+    some { base with singletons := ss }
 
 def refreshBodies (fuel : Nat) (κ : Ctx) (I : Ty) (cache : CheckedCache) : Option CheckedCache :=
   match fuel with
@@ -705,7 +805,7 @@ def refreshBodies (fuel : Nat) (κ : Ctx) (I : Ty) (cache : CheckedCache) : Opti
     let base ← refreshClassBodies n κ cache
     let ts ← refreshTopBodies n κ I base cache.top
     let complete := { base with top := ts }
-    if receiverCacheCompleteB κ complete then some complete else none
+    if receiverCacheCompleteB κ complete && singletonCacheCompleteB κ complete then some complete else none
 end
 
 /-! ## §4 The entry point

@@ -143,6 +143,7 @@ def explicitSendRule (C : CTable) (recv : Ratchet.Expr) (name : String) : String
       else if inheritedSelectorB C cn "initialize" then "newInherited" else "newInst"
     | _ => "newInst"
   else match recv with
+  | .const _ => "callSingleton"
   | .send (some (.const cn)) "new" _ none =>
     if inheritedSelectorB C cn name then "callInherited" else "callMethodSig"
   | .send _ "new" _ none => "callMethodSig"
@@ -169,6 +170,7 @@ def rulesUsedAt (C : CTable) : Ratchet.Expr → List String
   | .class' _ (some super) body => "subclassDecl" :: (rulesUsedAt C super ++ classRulesAt C body)
   | .def' name _ body => "defDecl" ::
     (if hasSelfCall name body then "recursive" :: scopedRules name body else rulesUsedAt C body)
+  | .send none "new" args none => "newImplicit" :: rulesUsedArgsAt C args
   | .send none _ args none => "callSig" :: rulesUsedArgsAt C args
   | .if' c t (some e) => "if'" :: (rulesUsedAt C c ++ rulesUsedAt C t ++ rulesUsedAt C e)
   | .if' c t none => "ifNoElse" :: (rulesUsedAt C c ++ rulesUsedAt C t)
@@ -192,6 +194,7 @@ def rulesUsedPairsAt (C : CTable) : List (Ratchet.Expr × Ratchet.Expr) → List
 def classRulesAt (C : CTable) : Ratchet.Expr → List String
   | .def' "initialize" _ body => "initDef" :: "InitJudge.ignoreResult" :: initRules body
   | .def' _ _ body => "memberDef" :: rulesUsedAt C body
+  | .defs .self' _ _ body => "singletonDef" :: rulesUsedAt C body
   | .seq es => "seq" :: classSeqRulesAt C es
   | .nil => ["nilLit"]
   | _ => ["?"]
@@ -206,7 +209,15 @@ def rulesUsed (e : Ratchet.Expr) : List String := rulesUsedAt (syntaxClasses e) 
 
 def rulesUsedAll (es : List Ratchet.Expr) : List String := es.flatMap rulesUsed
 
-def rulesPredicted : List String := rulesUsedAll (safeRungs.map (·.2))
+/-- Return annotations are absent from the stripped AST. Record their extra conversion
+rule independently of proof extraction; RuleAudit checks exact equality per rung. -/
+def annotationRules : List (String × List String) :=
+  [("073-class-factory-method", ["instanceType"])]
+
+def rulesUsedFor (q : String × Ratchet.Expr) : List String :=
+  rulesUsed q.2 ++ ((annotationRules.find? (·.1 == q.1)).map (·.2)).getD []
+
+def rulesPredicted : List String := safeRungs.flatMap rulesUsedFor
 
 /-- All registered rules now occur in corpus safety proofs. The ceiling only decreases. -/
 def unexercised : List String := []

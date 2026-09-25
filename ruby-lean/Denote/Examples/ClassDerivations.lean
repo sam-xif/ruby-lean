@@ -7,7 +7,7 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote PointClass
 
-private theorem init_deriv {κ : Ctx} {cn : String}
+theorem point_init_deriv {κ : Ctx} {cn : String}
     (hs : κ.selfTy = some (.inst cn .ivar0)) (hb : κ.blockTy = none) (hc : κ.consts = []) :
     (DJudgeC dclinks).init κ pointInitParams .ivar0 pointInitBody .any κ pointInitParams pointInitSpine := by
   intro F hF
@@ -34,7 +34,7 @@ private theorem class_deriv :
     @hF DClink.initDef (by simp [dclinks]) entryCtx [] pointInitParams .ivar0 pointInitSpine .any
       header initDecl pointInitParams rfl rfl
       (by simp [pointInitParams, FirstOrder, isAliasTy]) rfl (by decide)
-      (init_deriv rfl rfl rfl F hF) (by change header ∈ [header]; simp) (by decide)
+      (point_init_deriv rfl rfl rfl F hF) (by change header ∈ [header]; simp) (by decide)
   have hg : F.judge [] (.def' getter.name getter.params getter.body)
       .sym [] afterInit .ivar0 bodyCtx .ivar0 :=
     @hF DClink.memberDef (by simp [dclinks]) afterInit [] [] .ivar0 pointInitSpine .int
@@ -63,7 +63,7 @@ private theorem new_deriv (x y : Int) :
     (by change classWithMethod initClass getter ∈ [classWithMethod initClass getter, initClass, header]; simp)
     (by change initDecl ∈ [getter, initDecl]; simp) rfl (by decide)
     (by change "Point" ∈ ["Point"]; simp) rfl (by simp [pointInitParams, FirstOrder, isAliasTy])
-    rfl (by decide) (init_deriv rfl rfl rfl F hF) (by decide)
+    rfl (by decide) (point_init_deriv rfl rfl rfl F hF) (by decide)
 
 def program_061_class_basic : Ratchet.Expr := fullProgram 1 2
 

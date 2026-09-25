@@ -109,6 +109,10 @@ inductive Deriv where
   | classDecl (name : String) (sup : Option String) (body : Deriv)
   /-- `Judge.newInst`. `ty` is the instance type the emitter claims, ivar spine included. -/
   | newInst (cls : String) (args : List Deriv) (ty : Ty)
+  /-- Implicit construction from class-valued self; owner and fields are rechecked. -/
+  | newImplicit (cls : String) (args : List Deriv) (ty : Ty)
+  /-- An own singleton call, separate from the ordinary instance table. -/
+  | callSingleton (recv : Deriv) (name : String) (args : List Deriv) (ret : Ty)
   /-- `Judge.ivarRead`. -/
   | ivarRead (name : String) (ty : Ty)
   /-- `Judge.ivarAsgn`. -/
@@ -169,6 +173,8 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
   | "classDecl" =>
     return .classDecl (← name "name") (← jOpt j "super" (·.getStr?)) (← kid "body")
   | "newInst" => return .newInst (← name "cls") (← kids "args") (← ty "ty")
+  | "newImplicit" => return .newImplicit (← name "cls") (← kids "args") (← ty "ty")
+  | "callSingleton" => return .callSingleton (← kid "recv") (← name "name") (← kids "args") (← ty "ret")
   | "ivarRead" => return .ivarRead (← name "name") (← ty "ty")
   | "ivarAsgn" => return .ivarAsgn (← name "name") (← kid "value")
   | "constCls" => return .constCls (← name "name")
