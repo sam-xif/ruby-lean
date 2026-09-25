@@ -136,7 +136,7 @@ def inheritedSelectorB (C : CTable) (cn name : String) : Bool :=
   ((ancestors? C cn).bind fun ns => searchMro C ns name).any (fun (owner, _) => owner != cn)
 
 /-- Predict using the extracted declarations, without any fixed class or method name. -/
-def explicitSendRule (C : CTable) (recv : Ratchet.Expr) (name : String) : String :=
+def explicitSendRule (C : CTable) (Γ : Env) (recv : Ratchet.Expr) (name : String) : String :=
   if name == "new" then
     match recv with
     | .const cn => if noDeclaredSelectorB C cn "initialize" then "newDefault"
@@ -147,10 +147,13 @@ def explicitSendRule (C : CTable) (recv : Ratchet.Expr) (name : String) : String
   | .send (some (.const cn)) "new" _ none =>
     if inheritedSelectorB C cn name then "callInherited" else "callMethodSig"
   | .send _ "new" _ none => "callMethodSig"
+  | .var .lvar x => match envGet? Γ x with
+    | some (.inst cn _) => if inheritedSelectorB C cn name then "callInherited" else "callMethodSig"
+    | _ => "prim"
   | _ => "prim"
 
 mutual
-def rulesUsedAt (C : CTable) : Ratchet.Expr → List String
+def rulesUsedAt (C : CTable) (domains : List (String × Env)) (Γ : Env) : Ratchet.Expr → List String
   | .int _ => ["intLit"]
   | .flt _ => ["fltLit"]
   | .str _ => ["strLit"]
@@ -163,50 +166,51 @@ def rulesUsedAt (C : CTable) : Ratchet.Expr → List String
   | .var .lvar _ => ["var"]
   | .var .ivar _ => ["ivarRead"]
   | .const _ => ["constClass"]
-  | .vasgn .lvar _ e => "vasgn" :: rulesUsedAt C e
-  | .vasgn .ivar _ e => "scalarIvarAsgn" :: rulesUsedAt C e
-  | .seq es => "seq" :: rulesUsedSeqAt C es
-  | .send (some r) name args none => explicitSendRule C r name :: (rulesUsedAt C r ++ rulesUsedArgsAt C args)
-  | .class' _ none body => "classDecl" :: classRulesAt C body
-  | .class' _ (some super) body => "subclassDecl" :: (rulesUsedAt C super ++ classRulesAt C body)
+  | .vasgn .lvar _ e => "vasgn" :: rulesUsedAt C domains Γ e
+  | .vasgn .ivar _ e => "scalarIvarAsgn" :: rulesUsedAt C domains Γ e
+  | .seq es => "seq" :: rulesUsedSeqAt C domains Γ es
+  | .send (some r) name args none => explicitSendRule C Γ r name :: (rulesUsedAt C domains Γ r ++ rulesUsedArgsAt C domains Γ args)
+  | .class' _ none body => "classDecl" :: classRulesAt C domains body
+  | .class' _ (some super) body => "subclassDecl" :: (rulesUsedAt C domains Γ super ++ classRulesAt C domains body)
   | .def' name _ body => "defDecl" ::
-    (if hasSelfCall name body then "recursive" :: scopedRules name body else rulesUsedAt C body)
-  | .send none "new" args none => "newImplicit" :: rulesUsedArgsAt C args
-  | .send none _ args none => "callSig" :: rulesUsedArgsAt C args
-  | .if' c t (some e) => "if'" :: (rulesUsedAt C c ++ rulesUsedAt C t ++ rulesUsedAt C e)
-  | .if' c t none => "ifNoElse" :: (rulesUsedAt C c ++ rulesUsedAt C t)
-  | .array es => "arrayLit" :: rulesUsedArgsAt C es
-  | .hash ps => "hashLit" :: rulesUsedPairsAt C ps
+    (if hasSelfCall name body then "recursive" :: scopedRules name body else
+      rulesUsedAt C domains (((domains.find? (·.1 == name)).map (·.2)).getD []) body)
+  | .send none "new" args none => "newImplicit" :: rulesUsedArgsAt C domains Γ args
+  | .send none _ args none => "callSig" :: rulesUsedArgsAt C domains Γ args
+  | .if' c t (some e) => "if'" :: (rulesUsedAt C domains Γ c ++ rulesUsedAt C domains Γ t ++ rulesUsedAt C domains Γ e)
+  | .if' c t none => "ifNoElse" :: (rulesUsedAt C domains Γ c ++ rulesUsedAt C domains Γ t)
+  | .array es => "arrayLit" :: rulesUsedArgsAt C domains Γ es
+  | .hash ps => "hashLit" :: rulesUsedPairsAt C domains Γ ps
   | _ => ["?"]
 
-def rulesUsedSeqAt (C : CTable) : List Ratchet.Expr → List String
+def rulesUsedSeqAt (C : CTable) (domains : List (String × Env)) (Γ : Env) : List Ratchet.Expr → List String
   | [] => ["?"]
-  | [e] => "DJudgeSeq.last" :: rulesUsedAt C e
-  | e :: e' :: es => "DJudgeSeq.cons" :: (rulesUsedAt C e ++ rulesUsedSeqAt C (e' :: es))
+  | [e] => "DJudgeSeq.last" :: rulesUsedAt C domains Γ e
+  | e :: e' :: es => "DJudgeSeq.cons" :: (rulesUsedAt C domains Γ e ++ rulesUsedSeqAt C domains Γ (e' :: es))
 
-def rulesUsedArgsAt (C : CTable) : List Ratchet.Expr → List String
+def rulesUsedArgsAt (C : CTable) (domains : List (String × Env)) (Γ : Env) : List Ratchet.Expr → List String
   | [] => ["DJudgeAll.nil"]
-  | e :: es => "DJudgeAll.cons" :: (rulesUsedAt C e ++ rulesUsedArgsAt C es)
+  | e :: es => "DJudgeAll.cons" :: (rulesUsedAt C domains Γ e ++ rulesUsedArgsAt C domains Γ es)
 
-def rulesUsedPairsAt (C : CTable) : List (Ratchet.Expr × Ratchet.Expr) → List String
+def rulesUsedPairsAt (C : CTable) (domains : List (String × Env)) (Γ : Env) : List (Ratchet.Expr × Ratchet.Expr) → List String
   | [] => ["DJudgePairs.nil"]
-  | (k, v) :: ps => "DJudgePairs.cons" :: (rulesUsedAt C k ++ rulesUsedAt C v ++ rulesUsedPairsAt C ps)
+  | (k, v) :: ps => "DJudgePairs.cons" :: (rulesUsedAt C domains Γ k ++ rulesUsedAt C domains Γ v ++ rulesUsedPairsAt C domains Γ ps)
 
-def classRulesAt (C : CTable) : Ratchet.Expr → List String
+def classRulesAt (C : CTable) (domains : List (String × Env)) : Ratchet.Expr → List String
   | .def' "initialize" _ body => "initDef" :: "InitJudge.ignoreResult" :: initRules body
-  | .def' _ _ body => "memberDef" :: rulesUsedAt C body
-  | .defs .self' _ _ body => "singletonDef" :: rulesUsedAt C body
-  | .seq es => "seq" :: classSeqRulesAt C es
+  | .def' _ _ body => "memberDef" :: rulesUsedAt C domains [] body
+  | .defs .self' _ _ body => "singletonDef" :: rulesUsedAt C domains [] body
+  | .seq es => "seq" :: classSeqRulesAt C domains es
   | .nil => ["nilLit"]
   | _ => ["?"]
 
-def classSeqRulesAt (C : CTable) : List Ratchet.Expr → List String
+def classSeqRulesAt (C : CTable) (domains : List (String × Env)) : List Ratchet.Expr → List String
   | [] => ["?"]
-  | [e] => "DJudgeSeq.last" :: classRulesAt C e
-  | e :: e' :: es => "DJudgeSeq.cons" :: (classRulesAt C e ++ classSeqRulesAt C (e' :: es))
+  | [e] => "DJudgeSeq.last" :: classRulesAt C domains e
+  | e :: e' :: es => "DJudgeSeq.cons" :: (classRulesAt C domains e ++ classSeqRulesAt C domains (e' :: es))
 end
 
-def rulesUsed (e : Ratchet.Expr) : List String := rulesUsedAt (syntaxClasses e) e
+def rulesUsed (e : Ratchet.Expr) : List String := rulesUsedAt (syntaxClasses e) [] [] e
 
 def rulesUsedAll (es : List Ratchet.Expr) : List String := es.flatMap rulesUsed
 
@@ -215,8 +219,14 @@ rule independently of proof extraction; RuleAudit checks exact equality per rung
 def annotationRules : List (String × List String) :=
   [("073-class-factory-method", ["instanceType"])]
 
+/-- Parameter annotations are also erased. Scope them to the top-level method name;
+receiver domains distinguish instance dispatch from a primitive send on a local. -/
+def annotationDomains : List (String × List (String × Env)) :=
+  [("075-class-instance-as-fun-arg", [("describe", [("p", .inst "Point" (.ivarCons "@x" .int .ivar0))])])]
+
 def rulesUsedFor (q : String × Ratchet.Expr) : List String :=
-  rulesUsed q.2 ++ ((annotationRules.find? (·.1 == q.1)).map (·.2)).getD []
+  let domains := ((annotationDomains.find? (·.1 == q.1)).map (·.2)).getD []
+  rulesUsedAt (syntaxClasses q.2) domains [] q.2 ++ ((annotationRules.find? (·.1 == q.1)).map (·.2)).getD []
 
 def rulesPredicted : List String := safeRungs.flatMap rulesUsedFor
 

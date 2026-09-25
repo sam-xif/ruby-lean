@@ -156,7 +156,7 @@ namespace Ratchet.Denote.Typed
 
 /-! ## §3 The cross-check: the predictor and the proof agree, per rung
 
-This is the gate the module exists for. `rulesUsedFor` (syntax plus recorded return
+This is the gate the module exists for. `rulesUsedFor` (syntax plus recorded parameter domains and return
 annotation conversions, `Safety.lean` §4) and `rulesFromProofs` (read off the proof term)
 are two independent answers to the same question,
 and they must match on every rung. A disagreement means one of two things, both worth a red

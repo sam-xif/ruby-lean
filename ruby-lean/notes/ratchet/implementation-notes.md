@@ -11007,3 +11007,31 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 69, checker reach 74, 58 rules, 0 owed/exempt,
   54 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
   new proofs build in seconds, none near five minutes. Floors raised accordingly.
+
+## Clink 187 (2026-09-25) — top-level definitions after classes
+
+- Sorbet 0.6.13405 accepts 075 and a renamed class/method variant. It rejects an unguarded
+  nullable Point receiver despite the sole non-nil call, and an uncalled Boolean-return
+  annotation on the Integer getter. The generalized defDecl docstring cites these probes.
+- Replace the empty-class premise with topDeclClassesB. For nonempty tables it requires
+  non-root class names and excludes new, whose allocator lookup needs further transport.
+  RootNames.only proves separation from Object by heap identity, not merely source spelling.
+  Existing ordinary rows and own selectors survive at other owners; singleton rows survive
+  because Object has a cached eigenclass whereas singleton row owners are leaves.
+- TopMethodInstall derives full StateOk through actual installation, reusing the empty-table
+  proof and unchanged shared transports. Definition admission still refreshes every cached
+  class/top-level body; defining + after an uncalled arithmetic member is rejected. Same-named
+  top-level and instance methods are accepted without confusing their code or signatures.
+- No emitter change: its existing known-class parameter mapping supplies initialized inst
+  domains. The checker requires those fields at calls and checks bodies over the entire
+  domain. Nominal-only/empty-field/nullable annotations cannot borrow a caller's field facts.
+  TopClassDerivations independently certifies whole 075 for every Integer, with a real runtime
+  result control; the rule audit still checks the exact extracted set. Next: 076's nominal
+  result discards self's initialized-instance refinement; recovery needs a proved contract.
+- Rule prediction now carries separately recorded top-level parameter domains, since stripped
+  syntax cannot distinguish p.getX from a primitive send. Scope the domain by method name;
+  per-rung set equality against independent proof extraction remains mandatory, with no exemption.
+- Full quiet ratchet GREEN: fragment 70, checker reach 75, 58 rules, 0 owed/exempt,
+  55 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  New production proof builds in 0.2s, whole-program derivation in 0.9s; no proof exceeded
+  five minutes. Floors raised; no model or emitter changes.

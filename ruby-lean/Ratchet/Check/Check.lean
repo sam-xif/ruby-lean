@@ -407,7 +407,7 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
         checkMemberDefinition n κ Γ I cn ⟨name, formals, body⟩ (.defDecl name' ps ret db) cache
       else do
       if hm : κ.scope.runtimeMain = true then do
-      if hc : κ.classes.isEmpty = true then do
+      if hc : topDeclClassesB κ name = true then do
       if hs : κ.selfTy = none then do
       if hb : κ.blockTy = none then do
       if hco : κ.consts = [] then do
@@ -422,7 +422,7 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
         let c ← checkMethodBody n (topBodyCtx κ decl) I decl (.defDecl name' ps ret db) fresh
         some ⟨.sym, Γ, topDeclCtx κ decl, I,
           .defDecl c.paramShape c.paramsFO c.returnFO c.judged hm
-            (List.isEmpty_iff.mp hc) hs hb hco ha hi (List.all_eq_true.mp hg)
+            hc hs hb hco ha hi (List.all_eq_true.mp hg)
             (by simpa only [List.all_eq_true, bne_iff_ne] using hf) hmiss hquiet,
           { fresh with top := ⟨topBodyCtx κ decl, I, decl, c, db⟩ :: fresh.top }⟩
       else none

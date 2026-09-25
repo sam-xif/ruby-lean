@@ -1,10 +1,17 @@
-# Current resume point (2026-09-25, clink 186)
+# Current resume point (2026-09-25, clink 187)
 
-074 is admitted through validateD: fragment 69, checker reach 74, 58 registered rules,
-54 worked theorems, no exemptions. Next frontier: 075-class-instance-as-fun-arg. Point is
-followed by top-level describe(p: Point), which calls p.getX, then describe(Point.new(5)).
-Top-level definition admission currently requires empty class tables; its state transport
-and annotation-domain receiver handling need inspection before broadening that guard.
+075 is admitted through validateD: fragment 70, checker reach 75, 58 registered rules,
+55 worked theorems, no exemptions. Next frontier: 076-class-self-returning-method.
+Point.new(7).myself.getX loses the initialized-instance refinement at myself's Point result
+annotation. A nominal result alone cannot recover exact receiver/field facts; investigate
+retaining a proved body-result refinement alongside the declared signature.
+
+defDecl now uses topDeclClassesB: either no classes, or non-root class names and a selector
+other than new. TopMethodInstall preserves existing code, singleton rows, own selectors,
+and allocator facts through the real Object write; RootNames excludes hidden root aliases.
+The existing emitter maps known initialized-class parameter annotations to inst field domains;
+075's proof checks that entire domain, never a particular argument. Nominal-only, empty-field
+and nullable receiver controls still decline. No emitter or model change was needed.
 
 scalarIvarAsgn replaces an existing Integer/Float/Symbol/nil field while preserving its
 spine. ScalarPres proves universal first-order preservation across nested aliases; ScalarState
@@ -19,7 +26,7 @@ calls consume exact context/code artifacts. Inherited singletons remain open, an
 self.new still has only its semantic proof. Nominal conversion only forgets information;
 it cannot recover exact receivers or initialized fields from a nominal annotation.
 
-See clinks 177–186 and AGENTS.md. Older text below is historical.
+See clinks 177–187 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 

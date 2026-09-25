@@ -1,5 +1,5 @@
 import Ratchet.Guards.MethodCtx
-import Denote.Sem.Instance.MethodInstall
+import Denote.Sem.Instance.TopMethodInstall
 import Denote.Rules.Method.MethodDispatch
 
 /-! The annotation-checked definition rule's semantic obligation. Defining a method does
@@ -15,7 +15,7 @@ theorem SemSafeCtxA.defDecl {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {d : Defn} {ps
     (_hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (_hret : FirstOrder τ = true)
     (_hbody : SemSafeCtxA (topBodyCtx κ d) ps I d.body τ (topBodyCtx κ d) Γb I)
-    (hruntime : κ.scope.runtimeMain = true) (hclasses : κ.classes = [])
+    (hruntime : κ.scope.runtimeMain = true) (hclasses : topDeclClassesB κ d.name = true)
     (hself : κ.selfTy = none) (hblock : κ.blockTy = none) (hconst : κ.consts = [])
     (hasms : κ.asms = []) (hI : FirstOrder I = true)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
@@ -32,7 +32,7 @@ theorem SemSafeCtxA.defDecl {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {d : Defn} {ps
     change (!κ.negUnpinned && !(d.name :: κ.declared).contains d.name) = false
     simp
   have hn : StateOk (topDeclCtx κ d) Γ I n := by
-    have hh := StateOk_defineTopMethod (d := d) (md := md) hreserved
+    have hh := StateOk_defineTopMethod_classes (d := d) (md := md) hreserved
       (ReframeFO.empty hI hself hblock hconst) hΓ hasms hclasses hname hmiss hquiet
       ready.classLive hfresh rfl rfl rfl (definedMethod_code ready.owner ready.cref ready.phase)
     simpa only [topDeclCtx, reserveNameCtx, Ctx.defs, n, installMethod, ready.owner, md] using hh

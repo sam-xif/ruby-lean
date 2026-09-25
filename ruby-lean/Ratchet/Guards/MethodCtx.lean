@@ -4,6 +4,12 @@ import Ratchet.Static.All
 negative information only; `topDeclCtx` additionally records the installed definition. -/
 namespace Ratchet
 
+/-- Existing declared owners must be separate from Object. `new` needs additional
+allocator-lookup transport when there are declared classes. -/
+def topDeclClassesB (κ : Ctx) (name : String) : Bool :=
+  κ.classes.isEmpty || (name != "new" &&
+    κ.classes.all (fun c => !rootAncestors.contains c.name))
+
 def reserveNameCtx (κ : Ctx) (name : String) : Ctx :=
   { κ with neg := { κ.neg with declared := name :: κ.declared } }
 

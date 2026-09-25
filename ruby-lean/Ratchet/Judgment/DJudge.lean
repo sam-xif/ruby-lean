@@ -311,12 +311,14 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
   | hashLit {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty} {ps : List (Expr × Expr)} {ks vs : List Ty} :
       DJudgePairs Γ ps ks vs Γ' κ I κ' I' → FirstOrder (elemTy ks) = true →
       FirstOrder (elemTy vs) = true → DJudge Γ (.hash ps) (.hashOf (elemTy ks) (elemTy vs)) Γ' κ I κ' I'
-  /-- The body is required at its annotations, including for uncalled definitions. -/
+  /-- The body is required at its annotations, including for uncalled definitions.
+  Sorbet 0.6.13405 accepts 075's definition after Point and renamed variants, but rejects
+  an unguarded nullable Point receiver and an uncalled wrong return (clink 187). -/
   | defDecl {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {d : Defn} {ps : List SigParam} :
       d.params = ps.map (fun p => Param.req p.1) →
       (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) → FirstOrder τ = true →
       DJudge ps d.body τ Γb (topBodyCtx κ d) I (topBodyCtx κ d) I →
-      κ.scope.runtimeMain = true → κ.classes = [] → κ.selfTy = none → κ.blockTy = none →
+      κ.scope.runtimeMain = true → topDeclClassesB κ d.name = true → κ.selfTy = none → κ.blockTy = none →
       κ.consts = [] → κ.asms = [] → FirstOrder I = true →
       (∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) →
       (∀ old ∈ κ.defs, old.name ≠ d.name) → "method_missing" ≠ d.name → "method_added" ≠ d.name →
