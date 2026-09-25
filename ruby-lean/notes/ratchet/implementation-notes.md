@@ -10663,3 +10663,30 @@ both halves of what constrains them now have a name.
   50 worked theorems. Raised all four floors; 067 remains gated on super dispatch.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree, 0 owed/exempt. Metatheory and
   axiom audit pass; the new semantic and worked proofs build in under a second each.
+
+## Clink 172 (2026-09-25) — checked super routes and actual parent dispatch
+
+- SuperRoute splits the declared chain before the current defining owner, between it and
+  the target, and after the target. Only the intervening owners need selector absence;
+  ordinary MemberRoute would incorrectly reject the current owner's override. Every retained
+  record still contributes to absence. Missing/cyclic chains and backwards targets reject.
+- SuperLookup derives actual superFound and installed code from full conformance. Physical
+  ancestors are duplicate-free by their real fold; this identifies the current owner's
+  first occurrence without assuming distinct class-name resolutions. No physical lookup
+  equality, class name, annotation domain or body is fixed in the production theorem.
+- SuperDispatch proves real user dispatch and required-parameter binding on the existing
+  receiver. It needs neither ordinary-send native-shadow nor public-visibility guards:
+  doSuper directly consumes superFound. Body safety and initializer return are still owed.
+- Checked Depot/Gap/Relay/Satellite controls recover the parent's code through an empty
+  intermediate owner, then execute super from an inherited method on the same instance.
+  Controls reject skipped overrides, hidden older rows, wrong/current/missing owners and
+  cycles. FrameOk alone also accepts a block frame whose methodFrameOf follows another
+  activation. This is a local invariant omission, not an admitted unsafe program; keep
+  non-block activation explicit until the retained frame contract closes it.
+- Sorbet 0.6.13405 accepts 067 and rejects super("three") and super() against Shape's
+  Integer parameter. No new typing judgment yet. Remaining work: activation conformance,
+  nested initializer entry/return with anchored fields, argument composition and full-domain
+  super-body cache/checker/emitter integration. No admission or floor change.
+- Full quiet ratchet GREEN: fragment 65, checker reach 66, 49 rules, 0 owed/exempt,
+  50 worked theorems, 252 agree / 0 disagree. Metatheory and axiom audit pass. New
+  production proofs build in under a second; the controls take about three seconds.

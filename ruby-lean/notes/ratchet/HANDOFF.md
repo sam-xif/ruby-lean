@@ -1,3 +1,12 @@
+# Current resume point (2026-09-25, clink 172)
+
+Fragment 65, checker reach 66, 49 rules, 50 worked theorems. Default new admits 066/069.
+For 067, SuperRoute/SuperLookup/SuperDispatch prove checked parent lookup and actual entry.
+Next: retain non-block method activation (SuperLookupControls pins FrameOk's omission),
+then compose nested initializer entry/return on the same fresh receiver, arguments and
+receiver/owner body-cache replay. No super typing rule yet. See implementation-notes.md
+clinks 170–172 and AGENTS.md's current state. The older handoff below is historical.
+
 # ratchet — hand-off note (2026-09-10)
 
 > **EMERGENCY EXIT INVOKED, clink 64** — see `implementation-notes.md` §EMERGENCY EXIT for the

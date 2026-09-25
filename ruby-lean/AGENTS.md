@@ -556,6 +556,13 @@ zero-argument checks. Its docstring records the observed Sorbet basis. The exist
 hint now admits 066 and 069; a String-parameterized whole-066 derivation exercises the new
 clink and the exact rule audit. Fragment 65, checker reach 66, 49 rules, 50 worked theorems,
 no exemptions. Next frontier: 067 needs super dispatch; inherited implicit calls remain open.
+`SuperRoute` now distinguishes the current defining owner from the receiver and parent
+owner; `SuperLookup` derives actual superFound/code from full conformance and ordered
+chains. `SuperDispatch` proves the real parent entry on the same receiver. Controls cover
+inherited current bodies, empty intermediate owners and rejected skipped overrides. A
+block-frame witness shows FrameOk alone does not identify methodFrameOf; activation kind
+remains explicit. Nested initializer entry/return, argument composition and full-domain
+super-body checking still precede 067. No new admission or floor changes in this layer.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.

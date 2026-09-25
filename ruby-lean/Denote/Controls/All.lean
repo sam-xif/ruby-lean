@@ -60,6 +60,7 @@ import Denote.Controls.SubclassRunControls
 import Denote.Controls.SubclassScopeControls
 import Denote.Controls.SubclassStateControls
 import Denote.Controls.SubclassTableControls
+import Denote.Controls.SuperLookupControls
 import Denote.Clink.Controls
 
 /-!
