@@ -107,6 +107,8 @@ inductive Deriv where
   | callMethodSig (recv : Deriv) (name : String) (args : List Deriv) (ret : Ty)
   /-- `Judge.classStmt`. -/
   | classDecl (name : String) (sup : Option String) (body : Deriv)
+  /-- A fresh module with a checked body and separate locals. -/
+  | moduleDecl (name : String) (body : Deriv)
   /-- `Judge.newInst`. `ty` is the instance type the emitter claims, ivar spine included. -/
   | newInst (cls : String) (args : List Deriv) (ty : Ty)
   /-- Implicit construction from class-valued self; owner and fields are rechecked. -/
@@ -172,6 +174,7 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
     return .callMethodSig (← kid "recv") (← name "name") (← kids "args") (← ty "ret")
   | "classDecl" =>
     return .classDecl (← name "name") (← jOpt j "super" (·.getStr?)) (← kid "body")
+  | "moduleDecl" => return .moduleDecl (← name "name") (← kid "body")
   | "newInst" => return .newInst (← name "cls") (← kids "args") (← ty "ty")
   | "newImplicit" => return .newImplicit (← name "cls") (← kids "args") (← ty "ty")
   | "callSingleton" => return .callSingleton (← kid "recv") (← name "name") (← kids "args") (← ty "ret")

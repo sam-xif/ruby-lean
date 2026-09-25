@@ -162,6 +162,13 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
         let fresh ← refreshBodies n (returnScopeCtx κ c.ctx) I c.cache
         some ⟨c.ty, Γ, returnScopeCtx κ c.ctx, I, .classDecl c.judged hg, fresh⟩
       else none
+    | .module' name body, .moduleDecl claimed db => do
+      if name != claimed then none else do
+      let c ← check n [] body db (moduleHeaderCtx (moduleBodyCtx κ name) name) .ivar0 cache
+      if hg : moduleRuleB κ c.ctx Γ I c.ty name = true then do
+        let fresh ← refreshBodies n (returnScopeCtx κ c.ctx) I c.cache
+        some ⟨c.ty, Γ, returnScopeCtx κ c.ctx, I, .moduleDecl c.judged hg, fresh⟩
+      else none
     | .class' name (some super) body, .classDecl claimed (some parent) db => do
       if name != claimed then none else do
       let s ← check n Γ super (.constCls parent) κ I cache

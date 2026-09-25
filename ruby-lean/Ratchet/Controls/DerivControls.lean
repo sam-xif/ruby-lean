@@ -7,6 +7,7 @@ import Ratchet.Controls.MemberCallControls
 import Ratchet.Controls.ReceiverCacheControls
 import Ratchet.Controls.InheritanceControls
 import Ratchet.Controls.SingletonCheckControls
+import Ratchet.Controls.ModuleCheckControls
 import Ratchet.Controls.ScalarWriteControls
 import Ratchet.Controls.TopClassControls
 import Ratchet.Controls.ResultControls

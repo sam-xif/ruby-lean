@@ -144,6 +144,7 @@ class Emitter
     @env = {}          # locals
     @ivars = {}        # the current self's ivars
     @cls_ivars = {}    # class name -> [[ivar, ty], ...]
+    @modules = []     # no instance allocation proposals for modules
     @supers = {}       # class name -> superclass name
     @self_cls = nil
     @current_method = nil
@@ -369,6 +370,8 @@ class Emitter
   end
 
   def new_inst(name, args)
+    raise Blocked, "module #{name} has no allocator" if @modules.include?(name)
+
     dargs, = go_all(args)
     ivars = @cls_ivars[name] || (name == @self_cls ? @ivars.to_a : nil)
     raise Blocked, "`#{name}.new` before `class #{name}` is defined" if ivars.nil?
@@ -384,7 +387,7 @@ class Emitter
     outer_singleton, outer_ivars = @singleton, @ivars
     @singleton = true
     # Constructor fields belong to instances, never to the class object's self.
-    @cls_ivars[@self_cls] = @ivars.to_a
+    @cls_ivars[@self_cls] = @ivars.to_a unless @modules.include?(@self_cls)
     @ivars = {}
     result = n_def(["def", n[2], n[3], n[4]])
     @singleton, @ivars = outer_singleton, outer_ivars
@@ -397,7 +400,12 @@ class Emitter
     params = n[2]
     body = n[3]
     owner = @singleton ? "<Class:#{@self_cls}>" : (@self_cls || "Object")
-    sig = sig_for(owner, name)
+    # Sorbet drops these as untyped (clink 196). Propose a result from the whole
+    # zero-argument body; Lean checks it at definition time, including uncalled code.
+    # Never replace an unsupported declared signature or infer from call arguments.
+    infer = @singleton && params.empty? && !@sigs.key?([owner, name]) &&
+            @dropped[[owner, name]] == "no declared return type"
+    sig = infer ? { "params" => [] } : sig_for(owner, name)
     if sig["params"].length != params.length
       raise Blocked, "#{owner}##{name}: sig declares #{sig["params"].length} params, " \
                      "the def has #{params.length}"
@@ -416,7 +424,11 @@ class Emitter
     outer_method = @current_method
     @current_method = name
     @env = sps.to_h { |p| [p["name"], p["ty"]] }
-    dbody, = go(body)
+    dbody, body_ty = go(body)
+    if infer
+      sig = { "params" => [], "ret" => body_ty }
+      @sigs[[owner, name]] = sig
+    end
     @env = outer_env
     @current_method = outer_method
     [{ "rule" => "defDecl", "name" => name, "params" => sps, "ret" => sig["ret"],
@@ -436,6 +448,16 @@ class Emitter
 
     (@cls_ivars[parent] || []).each { |name, ty| @ivars[name] = ty }
     [{ "rule" => "superInit", "args" => ds }, sig["ret"]]
+  end
+
+  def n_module(n)
+    name, body = n[1], n[2]
+    @modules << name
+    outer_cls, outer_ivars, outer_env = @self_cls, @ivars, @env
+    @self_cls, @ivars, @env = name, {}, {}
+    dbody, body_ty = go(body)
+    @self_cls, @ivars, @env = outer_cls, outer_ivars, outer_env
+    [{ "rule" => "moduleDecl", "name" => name, "body" => dbody }, body_ty]
   end
 
   def n_class(n)

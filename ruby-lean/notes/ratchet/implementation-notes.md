@@ -11216,3 +11216,30 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
   56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
   New proofs and controls build in seconds; none approached five minutes.
+
+## Clink 196 (2026-09-25) — admit fresh modules and checked zero-argument singletons
+
+- moduleDecl now joins DJudge/Deriv/check/registry/bridge, using clink 195's proved
+  moduleRuleB contract unchanged. The body starts with separate locals and module metadata;
+  exit refreshes cached bodies in the restored caller scope. No module allocator is granted.
+  The judgment docstring cites the measured Sorbet scope behavior and keeps the real body
+  result despite Sorbet's NilClass report for module expressions.
+- The emitter proposes a return type from a complete zero-argument singleton body only
+  when the manifest explicitly drops it as `no declared return type`. It never replaces
+  unsupported declared types or infers from call arguments. The proposal uses the existing
+  defDecl path: Lean checks every body before publishing it, including uncalled methods,
+  and calls consume those checked artifacts. Module emission isolates locals/ivars and
+  avoids instance-allocation proposals. Parameter inference and implicit singleton calls remain.
+- ModuleDerivations independently derives all of 077 for every Integer result. Its concrete
+  safety theorem joins CorpusSafety and the independent rule predictor/audit. Controls reject
+  forged names/results, an uncalled bad body, extra arguments, reopening, module allocation
+  and module subclassing; positives retain caller locals and old singleton calls after another
+  module. The existing same-selector freshness restriction still applies across modules.
+- Source-to-validateD probes accept a renamed String singleton and reject an uncalled Integer
+  body annotated String and an extra call argument. Emitter probes also retain rejection of
+  explicit T.untyped signatures, unannotated parameters, bad uncalled bodies and module new.
+- Newly admitted: 077, 079, 082, 083, 085. Fragment 76, checker reach 77, 60 registered rules,
+  57 worked theorems, 0 owed/exempt. Next frontier: 078's unannotated parameter domain.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree, all floors and coverage checks pass.
+  Metatheory and standard-axiom audit pass. New proofs/controls build in a few seconds;
+  shared rebuilds remain below five minutes.

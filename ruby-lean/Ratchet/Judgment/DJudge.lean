@@ -3,6 +3,7 @@ import Ratchet.Static.CtxEq
 import Ratchet.Guards.MethodCtx
 import Ratchet.Judgment.InitJudge
 import Ratchet.Guards.ClassGuards
+import Ratchet.Guards.ModuleGuards
 import Ratchet.Guards.SubclassRule
 import Ratchet.Guards.RootInit
 import Ratchet.Guards.NilFields
@@ -349,6 +350,13 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       DJudge [] body τ Γb (classHeaderCtx (classBodyCtx κ name) name) .ivar0 κb Ib →
       classRuleB κ κb Γ I τ name = true →
       DJudge Γ (.class' name none body) τ Γ κ I (returnScopeCtx κ κb) I
+  /-- Sorbet 0.6.13405 accepts fresh modules with separate locals and rejects an
+      outer-local read (clink 195). It reports NilClass for a body ending in 7;
+      CRuby 4.0.5 returns 7, so this rule retains the checked body's result. -/
+  | moduleDecl {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {name : String} {body : Expr} :
+      DJudge [] body τ Γb (moduleHeaderCtx (moduleBodyCtx κ name) name) .ivar0 κb Ib →
+      moduleRuleB κ κb Γ I τ name = true →
+      DJudge Γ (.module' name body) τ Γ κ I (returnScopeCtx κ κb) I
   /-- Every member body is checked at its parameter/return annotations, even if uncalled. -/
   | memberDef {κ : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {c : Cls} {d : Defn} {ps : List SigParam} :
       d.params = ps.map (fun p => Param.req p.1) →
@@ -573,7 +581,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_4 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_5 := fun _ _ _ _ _ _ _ _ => True)
     (motive_6 := fun _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first | rfl | trivial | assumption
 
 end Ratchet

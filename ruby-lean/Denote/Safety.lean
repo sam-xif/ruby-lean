@@ -188,6 +188,7 @@ def rulesUsedAt (C : CTable) (ann : RuleAnnotations) (Γ : Env) : Ratchet.Expr �
   | .seq es => "seq" :: rulesUsedSeqAt C ann Γ es
   | .send (some r) name args none => explicitSendRule C ann Γ r name :: (rulesUsedAt C ann Γ r ++ rulesUsedArgsAt C ann Γ args)
   | .class' _ none body => "classDecl" :: classRulesAt C ann body
+  | .module' _ body => "moduleDecl" :: classRulesAt C ann body
   | .class' _ (some super) body => "subclassDecl" :: (rulesUsedAt C ann Γ super ++ classRulesAt C ann body)
   | .def' name _ body => "defDecl" ::
     (if hasSelfCall name body then "recursive" :: scopedRules name body else

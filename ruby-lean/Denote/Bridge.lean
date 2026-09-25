@@ -63,7 +63,7 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
     (motive_5 := fun κ I s Γ e τ Γ' _ => F.recBody κ I s Γ e τ Γ')
     (motive_6 := fun κ I s Γ es tys Γ' _ => F.recArgs κ I s Γ es tys Γ')
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals intros
   · apply hF DClink.intLit (by simp [dclinks]) <;> assumption
   · apply hF DClink.fltLit (by simp [dclinks]) <;> assumption
@@ -89,6 +89,7 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
   · exact hF DClink.ivarRead (by simp [dclinks])
   · apply hF DClink.constClass (by simp [dclinks]) <;> assumption
   · apply hF DClink.classDecl (by simp [dclinks]) <;> assumption
+  · apply hF DClink.moduleDecl (by simp [dclinks]) <;> assumption
   · rename_i κd Γd Γb Id Ib τd c d ps hp hps hret hself hb hn hc hg ihb
     exact hF DClink.memberDef (by simp [dclinks]) hp hps hret hself ihb hn hc hg
   · rename_i κd Γd Γb Id Ib τd c d ps hn hp hps hret hout hb hc hg
