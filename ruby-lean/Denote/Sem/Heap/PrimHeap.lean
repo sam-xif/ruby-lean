@@ -10,7 +10,8 @@ open RubyCore
 def primitiveMethods : List (ObjId × String × String) :=
   [(Boot.integerId, "+", "Integer#+"), (Boot.integerId, "-", "Integer#-"),
    (Boot.integerId, "*", "Integer#*"), (Boot.integerId, "/", "Integer#/"),
-   (Boot.integerId, "<", "Integer#<"), (Boot.integerId, "to_s", "Integer#to_s"),
+   (Boot.integerId, "<", "Integer#<"), (Boot.integerId, ">", "Integer#>"),
+   (Boot.integerId, "to_s", "Integer#to_s"),
    (Boot.integerId, "==", "Integer#=="),
    (Boot.integerId, "zero?", "Integer#zero?"),
    (Boot.integerId, "<=", "Integer#<="), (Boot.integerId, ">=", "Integer#>="),

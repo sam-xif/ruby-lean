@@ -11296,3 +11296,20 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree, all floors and rule-coverage checks
   pass. Metatheory and standard-axiom audit pass. New semantic proofs build in about half
   a second, the whole-program derivation in 1.5s; no proof approached five minutes.
+
+## Clink 199 (2026-09-25) — certified Integer greater-than
+
+- DPrim.intGt and dprim? admit Integer > Integer at Boolean. Sorbet 0.6.13405 reports
+  T::Boolean for the annotated comparison and rejects String or missing arguments;
+  the judgment docstring records the measurement. Other numeric domains stay outside.
+- primitiveMethods now pins the actual Integer#> builtin. primitive_builtin recovers
+  that dispatch, evaluates the comparison and preserves full conformance. Existing
+  class/module/method transports preserve the extended table without new hypotheses.
+- ModuleCompareDerivations independently proves the whole 084 program for every Integer
+  argument. Controls cover both signs, equality, large Integers, receiver/argument order,
+  wrong domains/arity/result and replacement of the builtin with a user method.
+- Newly admitted: 084. Fragment 81, checker reach 86, 61 rules, 60 worked theorems,
+  0 owed/exempt. No emitter change. Next: 087's lambda creation and call.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom
+  audit pass. The primitive proof built in 14s, the whole-program derivation in 5.3s;
+  no proof approached five minutes.

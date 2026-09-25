@@ -13,6 +13,7 @@ import Denote.Examples.TopClassDerivations
 import Denote.Examples.SelfResultDerivations
 import Denote.Examples.ModuleDerivations
 import Denote.Examples.ModuleParamDerivations
+import Denote.Examples.ModuleCompareDerivations
 import Denote.Examples.SingletonImplicitDerivations
 
 /-! Concrete corpus programs and their derivations. `SemLadder` compares each program
@@ -360,7 +361,8 @@ def safeRungs : List (String × Ratchet.Expr) :=
    ("076-class-self-returning-method", program_076_class_self_returning_method),
    ("077-module-basic", program_077_module_basic),
    ("078-module-method-with-arg", program_078_module_method_with_arg),
-   ("080-module-method-calls-method", program_080_module_method_calls_method)]
+   ("080-module-method-calls-method", program_080_module_method_calls_method),
+   ("084-module-boolean-method", program_084_module_boolean_method)]
 
 theorem safeRungs_safe (hb : bootOkB = true) :
     ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
@@ -368,7 +370,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   simp only [safeRungs, List.mem_cons, List.not_mem_nil, or_false] at hq
   rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
     | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
-    | rfl | rfl | rfl
+    | rfl | rfl | rfl | rfl
   · exact safe_001_int_lit hb
   · exact safe_002_bool_true hb
   · exact safe_003_bool_false hb
@@ -428,6 +430,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   · exact safe_077_module_basic hb
   · exact safe_078_module_method_with_arg hb
   · exact safe_080_module_method_calls_method hb
+  · exact safe_084_module_boolean_method hb
 
 #print axioms safeRungs_safe
 end Ratchet.Denote.Typed

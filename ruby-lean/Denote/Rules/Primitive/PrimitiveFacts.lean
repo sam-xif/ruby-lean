@@ -61,6 +61,8 @@ theorem int_div_run (m : Machine) (x y : Int) :
        else .ok (.int (Int.fdiv x y)) m) := by rfl
 theorem int_lt_run (m : Machine) (x y : Int) :
     Builtins.run "Integer#<" (.int x) [.int y] m = .ok (.bool (compare x y == .lt)) m := by rfl
+theorem int_gt_run (m : Machine) (x y : Int) :
+    Builtins.run "Integer#>" (.int x) [.int y] m = .ok (.bool (compare x y == .gt)) m := by rfl
 theorem bool_not_run (m : Machine) (x : Bool) :
     Builtins.run "Object#!" (.bool x) [] m = .ok (.bool (!x)) m := by cases x <;> rfl
 

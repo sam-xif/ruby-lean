@@ -18,7 +18,7 @@ import Ratchet.Guards.ScalarWrite
 
 The syntax/type substrate is independent of `Denote/`. `Deriv` holds untrusted hints;
 `Check.lean` returns a `DJudge` proof after checking those hints against the program.
-This file owns sixteen primitive rows and six mutual judgment families. Scoped recursive
+This file owns seventeen primitive rows and six mutual judgment families. Scoped recursive
 bodies reuse ordinary proofs for closed subtrees; their self-call hypothesis is discharged
 by the semantic `recursive` rule, never installed as an unchecked body.
 
@@ -93,7 +93,7 @@ namespace Ratchet
 /-! ## §1 The primitive table
 
 The rules for sends this fragment can type, as an inductive (`DPrim`) with a decision
-procedure (`dprim?`) and a soundness lemma between them. Sixteen rows.
+procedure (`dprim?`) and a soundness lemma between them. Seventeen rows.
 
 The table grows with proved builtin obligations. `Judge.lean`'s `PrimSig` has ~90 rows and `Denote/`'s
 `Sem.Judge.prim` — the obligation that every one of them is true of CRuby — is one of the 35
@@ -116,6 +116,9 @@ inductive DPrim : Ty → String → List Ty → Ty → Prop
   | intDiv : DPrim .int "/" [.int] .int
   /-- `Integer#<`; `<=` and `>=` also have rows below. -/
   | intLt : DPrim .int "<" [.int] .bool
+  /-- Sorbet 0.6.13405 gives Integer > Integer T::Boolean and rejects String or
+      missing arguments (clink 199). This row checks the complete Integer domain. -/
+  | intGt : DPrim .int ">" [.int] .bool
   /-- Decimal conversion allocates a String; optional radix arguments are separate rows. -/
   | intToS : DPrim .int "to_s" [] (.cls "String")
   /-- Conformance excludes the reverse call to a program-defined `==` on the argument. -/
@@ -147,6 +150,7 @@ def dprim? : Ty → String → List Ty → Option Ty
   | .int, "*", [.int] => some .int
   | .int, "/", [.int] => some .int
   | .int, "<", [.int] => some .bool
+  | .int, ">", [.int] => some .bool
   | .int, "to_s", [] => some (.cls "String")
   | .int, "==", [_] => some .bool
   | .int, "zero?", [] => some .bool
@@ -169,6 +173,7 @@ theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
   · rw [Option.some.injEq] at h; subst h; exact .intMul
   · rw [Option.some.injEq] at h; subst h; exact .intDiv
   · rw [Option.some.injEq] at h; subst h; exact .intLt
+  · rw [Option.some.injEq] at h; subst h; exact .intGt
   · rw [Option.some.injEq] at h; subst h; exact .intToS
   · rw [Option.some.injEq] at h; subst h; exact .intEq
   · rw [Option.some.injEq] at h; subst h; exact .intZero

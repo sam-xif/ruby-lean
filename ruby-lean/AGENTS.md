@@ -16,9 +16,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 80 rungs, reach 17**, **61 registered rules** (39 expressions + 22 companions),
-**0 owed**, **0 exempt**. Checker reach is 83; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 59 rungs additionally carry a
+**Fragment 81 rungs, reach 17**, **61 registered rules** (39 expressions + 22 companions),
+**0 owed**, **0 exempt**. Checker reach is 86; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 60 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -39,7 +39,8 @@ modules; complete zero-argument singleton bodies supply untrusted return proposa
 077/079/082/083/085 are admitted. Clink 197 adds body-directed scalar parameter proposals,
 checked over complete domains, admitting 078/081/086. Clink 198 admits 080 through checked
 implicit singleton dispatch, preserving bare/parenthesized call sites and the full caller.
-Next: 084, a certified greater-than primitive. See HANDOFF.
+Clink 199 certifies Integer `>` with actual builtin dispatch, admitting 084.
+Next: 087, zero-argument lambda creation/call. See HANDOFF.
 
 ## Layout
 
@@ -96,7 +97,7 @@ coverage gaps. [`MainTyped.lean`](MainTyped.lean) reports checker reach;
 ## The proof boundary
 
 [`Ratchet/Judgment/DJudge.lean`](Ratchet/Judgment/DJudge.lean) defines `DJudge`, its three list companions,
-`DJudgeRec`/`DJudgeRecAll`, and sixteen `DPrim` rows; `InitJudge.lean` supplies the scoped
+`DJudgeRec`/`DJudgeRecAll`, and seventeen `DPrim` rows; `InitJudge.lean` supplies the scoped
 initializer expression, sequence and argument judgments. [`Denote/Clink/Registry.lean`](Denote/Clink/Registry.lean) derives each constructor's
 semantic obligation and registers only proved rules. **All nine judgments are fields of
 `DFam`**: no raw syntactic premise may bypass the registry. `djudge_certified` uses the six-family
@@ -131,7 +132,7 @@ types and full conformance through fresh top-level definitions; reserving a name
 absence facts but grants no callable entry. A real-boot definition-step + installed-call
 pilot now handles `add(x, y)` for every pair of Integers, consuming a body proof from the
 annotations alone. `Primitive.lean` threads distinct incoming/outgoing contexts and ivar
-spines through receiver/argument evaluation; all 16 rows require dispatch guards at the
+spines through receiver/argument evaluation; all 17 rows require dispatch guards at the
 final context. The existing `SemA.prim` is its top-level specialization. Literals, sequences,
 and both conditional forms are also context-general; branches require matching outgoing
 contexts/spines while joining local/result types. Arrays and interleaved hash pairs thread

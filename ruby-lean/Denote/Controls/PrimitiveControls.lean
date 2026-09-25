@@ -36,5 +36,37 @@ example (hb : bootOkB = true) : StuckFree bootMachine
 #guard !plainArgB (.kwargs [])
 #guard !plainArgB .fwd
 
+-- Both signs, equality and values beyond machine-word range use real Integer dispatch.
+example (hb : bootOkB = true) (x y : Int) : StuckFree bootMachine
+    (.send (some (.int x)) ">" [.int y] none) :=
+  (SemA.prim SemA.intLit (.cons SemA.intLit .nil rfl) .intGt).closed (stateOk_boot hb)
+
+#guard ([(-2, -1, false), (-1, -2, true), (0, 0, false),
+    (1000000000000000000000000, 999999999999999999999999, true)] : List (Int × Int × Bool)).all
+  fun (x, y, expected) => match Interp.run 100 (evalFrom bootMachine
+    (.send (some (.int x)) ">" [.int y] none)) with
+  | .value (.bool b) _ => b == expected
+  | _ => false
+
+-- Receiver evaluation precedes argument evaluation; both writes reach the caller.
+#guard match Interp.run 100 (evalFrom bootMachine
+    (.send (some (.vasgn .lvar "x" (.int 2))) ">" [.vasgn .lvar "x" (.int 1)] none)) with
+  | .value (.bool true) m => match m.getLocal "x" with
+    | .int 1 => true
+    | _ => false
+  | _ => false
+
+private def replacedGreaterThan : Machine :=
+  let h := defineMethod bootMachine.heap Boot.integerId ">"
+    { owner := Boot.integerId, params := [.req "other"], body := .nil }
+  { bootMachine with heap := h }
+
+-- A well-shaped user method cannot substitute for the certified builtin.
+#guard !primitiveDispatchB replacedGreaterThan.heap (nameFreeN ctx0)
+#guard match Interp.run 100 (evalFrom replacedGreaterThan
+    (.send (some (.int 1)) ">" [.int 0] none)) with
+  | .value .nil _ => true
+  | _ => false
+
 #print axioms malformedString_rejected
 end Ratchet.Denote.Typed

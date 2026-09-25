@@ -1,10 +1,17 @@
-# Current resume point (2026-09-25, clink 198)
+# Current resume point (2026-09-25, clink 199)
 
-080 is newly admitted through validateD: fragment 80, checker reach 83,
-61 registered rules (39 expressions + 22 companions), 59 worked theorems, no exemptions.
-The prefix remains 17; 018 is correctly rejected. Next frontier: 084-module-boolean-method,
-`module M; def self.positive?(n); n > 0; end; end; M.positive?(5)`. The emitter already
-proposes Integer -> Boolean; DPrim/dprim? lack `>` despite the broader PrimSig/emitter table.
+084 is newly admitted through validateD: fragment 81, checker reach 86,
+61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
+The prefix remains 17; 018 is correctly rejected. Next frontier: 087-lambda-zero-arity,
+`f = lambda { 1 }; f.call`. The emitter currently declines block arguments; creation,
+closure conformance and calls need semantic contracts before admitting a new judgment.
+
+DPrim.intGt checks Integer > Integer at Boolean. primitiveMethods now pins Integer#>
+in StateOk; the proof uses real dispatch and preserves the full machine contract.
+ModuleCompareDerivations proves the whole 084 program for every Integer argument.
+Controls cover signs, equality, large values, argument order, wrong type/arity/result,
+and a replaced Integer#> method. Sorbet 0.6.13405 reports Boolean for the annotated
+Integer comparison and rejects String or missing arguments. No emitter change was needed.
 
 ImplicitCallShape is a syntax guard for bare calls and receiver-less sends, not a body
 judgment. SingletonLookupRun recovers real own-table dispatch from class-ref conformance;
@@ -85,7 +92,7 @@ calls consume exact context/code artifacts. Inherited singletons remain open, an
 self.new still has only its semantic proof. Nominal conversion only forgets information;
 it cannot recover exact receivers or initialized fields from a nominal annotation.
 
-See clinks 177–198 and AGENTS.md. Older text below is historical.
+See clinks 177–199 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 

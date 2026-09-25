@@ -84,6 +84,16 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
       (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
       int_lt_run]
     exact stepSpec_value hm hk (by simp [denM, isBoolV])
+  | intGt =>
+    cases ha
+    rename_i v vs hv hs
+    cases hs
+    obtain ⟨x, rfl⟩ := int_value hr
+    obtain ⟨y, rfl⟩ := int_value hv
+    rw [primitive_invoke (bid := "Integer#>") (k := Boot.integerId) hm
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
+      int_gt_run]
+    exact stepSpec_value hm hk (by simp [denM, isBoolV])
   | intToS =>
     cases ha
     obtain ⟨x, rfl⟩ := int_value hr
