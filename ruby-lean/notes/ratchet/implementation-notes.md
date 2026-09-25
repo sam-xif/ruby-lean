@@ -11149,3 +11149,23 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
   56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
   New proofs and controls build in seconds; none crossed five minutes.
+
+## Clink 193 (2026-09-25) — retain Module dispatch capabilities and publish its sites
+
+- StateCore retains ModuleBase independently of the current receiver and Class ancestry:
+  reserved-name behavior, a quiet method_added hook, and constant fallback at Module.
+  Boot checks it; extension, local/frame changes, method installation, name reservation,
+  ivar writes and class/subclass/module allocation preserve it. Method installation uses
+  the existing name reservation and hook-exclusion premises; no new typing judgment.
+- ModuleSites preserves every old InstanceSite and proves the fresh module's complete site:
+  empty own dispatch/constants, frontness, hook, rooted/leaf metaclass and singleton names/
+  fallback. ModuleNameEntry proves the body's NameFreeOk from its Module dispatch chain.
+  module_entry_sites ties these and ClassScopeReady to the actual step, without assuming
+  an ordinary-class payload or granting an allocator.
+- §F47 is closed by the retained fallback and generic hidden_module_not_state exclusion.
+  The CoreOk-only witness stays executable. Controls also reject unreserved Module code
+  and a nonquiet hook, allow the name after reservation, and inspect a real fresh module
+  site's lookup facts. Full body-state assembly, checking and emission remain; 077 is open.
+- Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
+  56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  New proofs take under a second; the longest shared rebuild takes 42s, below five minutes.

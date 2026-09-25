@@ -48,6 +48,7 @@ theorem singleton_enter_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
   refine {
     runtime := by intro h; cases h
     mainSite := hm.mainSite
+    moduleBase := hm.moduleBase
     allocators := hm.allocators
     globalConsts := hm.globalConsts
     classRuntime := by intro q h; cases h

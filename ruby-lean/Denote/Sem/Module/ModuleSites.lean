@@ -1,15 +1,14 @@
-import Denote.Sem.Subclass.SubclassConstants
-import Denote.Sem.Subclass.SubclassDispatch
-import Denote.Sem.Subclass.MetaReadyClass
+import Denote.Sem.Module.ModuleConstants
+import Denote.Sem.Module.ModuleDispatch
 
-/-! Fresh subclass registration preserves old sites and publishes the new site's empty
-table, inherited names/hook and constant scope. All superclass/metaclass ids are arbitrary. -/
+/-! Module creation preserves old sites and publishes its empty own table plus the
+singleton capabilities retained at Module. No ordinary-class ancestry is assumed. -/
 set_option autoImplicit false
-namespace Ratchet.Denote.Subclass
+namespace Ratchet.Denote.FreshModule
 open RubyCore Ratchet RubyCore.Proof RubyCore.Proof.Judgment
 
-variable {h : Heap} {name q : String} {parent eParent : ObjId}
-local notation "h₁" => heap h Boot.objectId name q parent eParent
+variable {h : Heap} {name : String}
+local notation "h₁" => freshModHeap h Boot.objectId name name
 
 theorem moduleBase {κ : Ctx} (hp : ModuleBase κ h) (hc : ChainsIn h) (hs : Saturated h)
     (ho : (h.classPayload? Boot.objectId).isSome = true) : ModuleBase κ h₁ :=
@@ -17,7 +16,7 @@ theorem moduleBase {κ : Ctx} (hp : ModuleBase κ h) (hc : ChainsIn h) (hs : Sat
 
 theorem classFront_old {k : ObjId} (hk : k < h.objs.size) : classFrontB h₁ k = classFrontB h k := by
   unfold classFrontB
-  rw [grow.payloadOld (by rwa [hmid_size])]
+  rw [clsGrow_hmid_fresh.payloadOld (by rwa [hmid_size])]
   have hh := congrArg (fun s => s.any (fun shape => shape.1.isEmpty))
     (shape_constSetIn h Boot.objectId k name (.ref h.objs.size))
   simpa only [Option.any_map, Function.comp_def, clsShape] using hh
@@ -37,16 +36,17 @@ theorem instance_constants_old {κ : Ctx} {cn : String} {k : ObjId}
       cases hv : constOwn h k name with
       | none => rfl
       | some v => simp only [List.firstM, hv] at hcst; cases hcst
-    have hreg := const_own_self (name := name) (q := q) (parent := parent) (eParent := eParent) ho
+    have hreg := const_self (name := name) ho
+    rw [const_eq_own] at hreg
     rw [instanceConstResolve, const_eq_own, hreg]
     by_cases hko : k = Boot.objectId
     · subst k
       simp only [List.firstM, hreg]; rfl
     · have hnone : constOwn h₁ k name = none := by
-        rw [constOwn_old hk, constOwn_constSetIn_ne h Boot.objectId k name name _ (Or.inl hko), hold]
+        rw [constOwn_old_fresh hc.boot.2.2.2.2 hk, constOwn_constSetIn_ne h Boot.objectId k name name _ (Or.inl hko), hold]
       simp only [List.firstM, hnone, hreg]; rfl
-  · simpa only [instanceConstResolve, List.firstM, const_own_old_other hk he,
-      const_own_old_other hc.boot.2.2.2.2 he, const_from_old_other hc hs hk he,
+  · simpa only [instanceConstResolve, List.firstM, const_own_old_other hc.boot.2.2.2.2 hk he,
+      const_own_old_other hc.boot.2.2.2.2 hc.boot.2.2.2.2 he, const_from_old_other hc hs hk he,
       const_other hc.boot.2.2.2.2 he] using site.constants n
 
 theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
@@ -57,7 +57,7 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
   have hl : lookup h₁ (.ref k) "method_added" = lookup h (.ref k) "method_added" := by
     rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hk, method_old hc hs (ClsGrow.classOf_lt hc hk)]
   refine ⟨named hc.boot.2.2.2.2 hn site.named, ?_, ?_,
-    instance_constants_old site hc hs ho hn, ?_, site.metaclass.subclass_old hc hs hk, ?_, ?_, ?_, ?_⟩
+    instance_constants_old site hc hs ho hn, ?_, meta_old site.metaclass hc hs hk, ?_, ?_, ?_, ?_⟩
   · simpa only [classFront_old hk] using site.front
   · simpa only [definitionHookQuietB, hl] using site.hook
   · intro n hn owner md hm
@@ -71,59 +71,49 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
   · rw [classOf_old hk]
     exact fallback_old hc hs ho (ClsGrow.classOf_lt hc hk) site.metaConstants
 
-theorem hook_quiet (hc : ChainsIn h) (hs : Saturated h)
-    (hl : parent < h.objs.size) (he : (h.get parent).eigen = some eParent)
-    (hh : definitionHookQuietB h parent = true) : definitionHookQuietB h₁ h.objs.size = true := by
+theorem hook_quiet {κ : Ctx} (hp : ModuleBase κ h) (hc : ChainsIn h) (hs : Saturated h) :
+    definitionHookQuietB h₁ h.objs.size = true := by
   unfold definitionHookQuietB
-  rw [lookup_eq_methodOn, classOf_class, method_eigen hc hs (hc.eigen parent hl eParent he)]
-  simp only [definitionHookQuietB, lookup_eq_methodOn, classOf, he] at hh
-  cases hm : Interp.methodOn h eParent "method_added" with
+  rw [lookup_eq_methodOn, classOf_fresh_k, method_eigen hc hs]
+  have hh := hp.hook
+  unfold moduleHookQuietB at hh
+  cases hm : Interp.methodOn h Boot.moduleId "method_added" with
   | none => rfl
   | some pair => obtain ⟨owner, md⟩ := pair; rw [hm] at hh; exact hh
 
-/-- Only the inherited parent capabilities are needed; no parent front/own-table shape
-is assumed. This also covers Object-based creation without manufacturing an Object row. -/
-theorem instanceSite {κ : Ctx} (hc : ChainsIn h) (hs : Saturated h)
+theorem instanceSite {κ : Ctx} (hp : ModuleBase κ h) (hc : ChainsIn h) (hs : Saturated h)
     (ho : (h.classPayload? Boot.objectId).isSome = true)
-    (hl : parent < h.objs.size) (he : (h.get parent).eigen = some eParent)
-    (hb : (ancestors h eParent).contains Boot.basicObjectId = true)
-    (hh : definitionHookQuietB h parent = true)
-    (hconst : ∀ cn, (constLookup h cn).orElse (fun _ => constLookupFrom h parent cn) = constLookup h cn)
-    (hinst : NamesAt (nameFreeN κ) h parent) (hcls : NamesAt (nameFreeN κ) h eParent)
-    (hmeta : ConstFallback h eParent) :
+    (hb : (ancestors h Boot.moduleId).contains Boot.basicObjectId = true) :
     InstanceSite κ name h.objs.size h₁ := by
-  have hel := hc.eigen parent hl eParent he
-  refine ⟨named_fresh ho, ?_, hook_quiet hc hs hl he hh,
-    instance_constants_fresh hc hs ho hl hconst, ?_, meta_fresh hc hs hel hb, ?_, ?_, ?_, ?_⟩
-  · simp only [classFrontB, Heap.classPayload?, get_class, classObjE]; rfl
+  refine ⟨named_new hc.boot.2.2.2.2 ho, ?_, hook_quiet hp hc hs,
+    instance_constants_fresh, ?_, meta_fresh hc hs hb, ?_, ?_, ?_, ?_⟩
+  · simp only [classFrontB, freshModHeap_cp_k]; rfl
+  · intro n _ owner md hm
+    rw [method_fresh] at hm; cases hm
   · intro n hn owner md hm
-    rw [method_class hc hs hl] at hm
-    exact hinst n hn owner md hm
-  · intro n hn owner md hm
-    rw [classOf_class, method_eigen hc hs hel] at hm
-    exact hcls n hn owner md hm
-  · simp only [classOf_class, classFrontB, Heap.classPayload?, get_eigen, eigObjC]; rfl
-  · simp only [classOf_class, get_eigen, eigObjC]
-  · rw [classOf_class]
-    exact fallback_fresh_meta hc hs ho hel hmeta
+    rw [classOf_fresh_k, method_eigen hc hs] at hm
+    exact hp.names n hn owner md hm
+  · simp only [classOf_fresh_k, classFrontB, freshModHeap_cp_e]; rfl
+  · simp only [classOf_fresh_k, freshModHeap_get_e, eigObj]
+  · rw [classOf_fresh_k]
+    exact fallback_fresh_meta hc hs ho hp.constants
 
-theorem scope_ready {m : Machine} {body : RubyCore.Expr}
-    (hc : ChainsIn m.heap) (hs : Saturated m.heap)
+theorem scope_ready {κ : Ctx} {m : Machine} {body : RubyCore.Expr}
+    (hp : ModuleBase κ m.heap) (hc : ChainsIn m.heap) (hs : Saturated m.heap)
     (ho : (m.heap.classPayload? Boot.objectId).isSome = true)
-    (hl : parent < m.heap.objs.size) (he : (m.heap.get parent).eigen = some eParent)
-    (hh : definitionHookQuietB m.heap parent = true)
     (hcref : m.currentFrame.cref = [Boot.objectId]) (hphase : m.preludeMode = false) :
-    ClassScopeReady name (machine m Boot.objectId m.currentFrame.cref name q parent eParent body) := by
-  refine ⟨m.heap.objs.size, named_fresh ho, ?_, ?_, ?_, ?_, hphase, ?_, hook_quiet hc hs hl he hh⟩
-  · change m.heap.objs.size < (heap m.heap Boot.objectId name q parent eParent).objs.size
-    rw [size]; omega
+    ClassScopeReady name (freshModMachine m Boot.objectId m.currentFrame.cref name name body) := by
+  refine ⟨m.heap.objs.size, named_new hc.boot.2.2.2.2 ho, ?_, ?_, ?_, ?_, hphase, ?_,
+    hook_quiet hp hc hs⟩
+  · change m.heap.objs.size < (freshModHeap m.heap Boot.objectId name name).objs.size
+    rw [freshModHeap_size]; omega
   · rw [current_frame]; rfl
   · rw [current_frame]; simpa only [freshModFrame] using congrArg (m.heap.objs.size :: ·) hcref
   · rw [current_frame]; rfl
   · simp only [defaultDefVis, current_frame, freshModFrame]; rfl
 
-#print axioms scope_ready
+#print axioms moduleBase
 #print axioms instanceSite_old
-#print axioms hook_quiet
 #print axioms instanceSite
-end Ratchet.Denote.Subclass
+#print axioms scope_ready
+end Ratchet.Denote.FreshModule

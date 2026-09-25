@@ -65,6 +65,7 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
   exact {
     runtime := by intro h; cases h
     mainSite := fun hr => mainSite (hm.mainSite hr) hc hm.sat hd
+    moduleBase := moduleBase hm.moduleBase hc hm.sat hmain.classLive
     allocators := allocators hc hm.sat hn hm.allocators
     globalConsts := globalConsts ho hm.globalConsts
     singletonRuntime := by intro cn h; cases h

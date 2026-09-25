@@ -2671,7 +2671,7 @@ own chain is [k], and ordinary-class ancestry/allocator claims require isModule=
 
 ## F47 — CoreOk does not retain Module singleton constant fallback (2026-09-25)
 
-**Open extension boundary; CoreOk-only countermodel, not full-StateOk, a reachable program
+**Closed by Clink 193; CoreOk-only countermodel, not full-StateOk, a reachable program
 or an accepted unsafe program.** ModuleCoreControls changes Class's parent to Object and
 places Hidden = 99 in Module. CoreOk and saturation still hold: Object's retained metaclass
 fallback bypasses Module. Actual fresh module entry preserves CoreOk and its lexical body
@@ -2680,5 +2680,7 @@ Module ancestry. ConstFallback at Module and the new eigenclass both fail.
 
 ModuleConstants proves the module's own lexical constant scope unconditionally, but its
 fallback_fresh_meta requires ConstFallback at Module explicitly. Deriving that premise from
-CoreOk alone is false. Full module-site conformance must derive it from stronger retained
-facts or carry the missing capability through every transport, as §F44 does for class sites.
+CoreOk alone is false. StateCore now retains ModuleBase: constant fallback, reserved-name
+behavior and a quiet definition hook at Module's dispatch chain. Boot checks it and every
+current transport preserves it. hidden_module_not_state excludes the bad fallback generically;
+fresh module-site publication derives its singleton guarantees from this retained capability.

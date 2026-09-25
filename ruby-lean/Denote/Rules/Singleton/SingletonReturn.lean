@@ -32,6 +32,7 @@ theorem restore_singleton_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n :
   refine {
     runtime := by intro hh; change κ.scope.runtimeMain = true at hh; rw [hr] at hh; cases hh
     mainSite := hn.mainSite
+    moduleBase := hn.moduleBase
     allocators := hn.allocators
     globalConsts := hn.globalConsts
     classRuntime := by

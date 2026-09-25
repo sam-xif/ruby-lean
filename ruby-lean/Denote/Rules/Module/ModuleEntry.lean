@@ -2,6 +2,8 @@ import Denote.Judgment.JudgeA
 import Denote.Sem.Module.ModuleFrame
 import Denote.Sem.Module.ModuleCore
 import Denote.Sem.Module.ModuleDeclared
+import Denote.Sem.Module.ModuleSites
+import Denote.Sem.Module.ModuleNameEntry
 
 /-! Actual module entry and preservation of old data. This does not yet publish a module
 header in StateOk or justify checking its body in a module scope. -/
@@ -79,9 +81,28 @@ theorem module_entry_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     FreshModule.ownNames hc.chains.boot.2.2.2.2 hn hm.classes hm.ownNames,
     FreshModule.classChains hc hm.sat hn hm.classes hm.classChains⟩
 
+theorem module_entry_sites {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    {name : String} {body : Ratchet.Expr} (hm : StateOk κ Γ I m)
+    (hr : κ.scope.runtimeMain = true)
+    (hn : constOwn m.heap Boot.objectId name = none) (hne : name.isEmpty = false) :
+    ∃ n, stepFn (evalFrom m (.module' name body)) = .next n ∧ ModuleBase κ n.heap ∧
+      ClassScopeReady name n ∧ NameFreeOk κ n ∧
+      InstanceSite κ name m.heap.objs.size n.heap ∧ ClassSitesOk κ n.heap := by
+  have hc := hm.core.classReady.chains
+  have ready := hm.runtime hr
+  refine ⟨_, stepFn_module_fresh hm hr hn hne,
+    FreshModule.moduleBase hm.moduleBase hc hm.sat ready.classLive,
+    FreshModule.scope_ready hm.moduleBase hc hm.sat ready.classLive ready.cref ready.phase,
+    FreshModule.nameFree hc hm.sat hm.moduleBase hm.nameFree,
+    FreshModule.instanceSite hm.moduleBase hc hm.sat ready.classLive hm.core.moduleBasic, ?_⟩
+  intro cn hcn
+  obtain ⟨k, site⟩ := hm.classSites cn hcn
+  exact ⟨k, FreshModule.instanceSite_old site hc hm.sat ready.classLive hn⟩
+
 #print axioms stepFn_module_fresh
 #print axioms module_entry_data
 #print axioms module_entry_ready
 #print axioms module_entry_core
 #print axioms module_entry_tables
+#print axioms module_entry_sites
 end Ratchet.Denote

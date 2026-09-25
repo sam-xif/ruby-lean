@@ -80,6 +80,7 @@ theorem super_initializer_pop_state {anchor : Heap} {κ κb : Ctx} {Γ Γb : Env
   · refine {
       runtime := by intro hh; change κ.scope.runtimeMain = true at hh; rw [hr] at hh; cases hh
       mainSite := hn.typed.mainSite
+      moduleBase := hn.typed.moduleBase
       allocators := hn.typed.allocators
       globalConsts := hn.typed.globalConsts
       classRuntime := by

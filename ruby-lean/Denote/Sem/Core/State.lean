@@ -15,6 +15,7 @@ import Denote.Sem.Names.GlobalConsts
 import Denote.Sem.Names.OwnNames
 import Denote.Sem.Class.ClassChains
 import Denote.Sem.Names.RootInit
+import Denote.Sem.Module.ModuleBase
 
 /-!
 # `Denote/Sem/Core/State.lean` — evaluation, and what it means for a machine to *match* a
@@ -1052,6 +1053,7 @@ owner-local bound. Kept separate so the previous contract's countermodel remains
 structure StateCore (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   runtime : RuntimeOk κ m
   mainSite : κ.pos.mainWorld = true → MainSite κ m.heap
+  moduleBase : ModuleBase κ m.heap
   classRuntime : ClassRuntimeOk κ m
   singletonRuntime : SingletonRuntimeOk κ m
   classSites : ClassSitesOk κ m.heap
@@ -1159,6 +1161,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     StateOk κ Γ I m₂ where
   runtime := fun hr => (h.runtime hr).ext he hphase
   mainSite := fun hr => (h.mainSite hr).ext he
+  moduleBase := h.moduleBase.ext he
   classRuntime := fun cn hr => (h.classRuntime cn hr).ext he hphase
   singletonRuntime := fun cn hr => (h.singletonRuntime cn hr).ext he hphase
   classSites := h.classSites.ext he
@@ -1527,6 +1530,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
   exact
     { runtime := fun hr => (h.runtime hr).setLocal x w
       mainSite := by simpa only [setLocal_heap] using h.mainSite
+      moduleBase := by simpa only [setLocal_heap] using h.moduleBase
       classRuntime := fun cn hr => (h.classRuntime cn hr).setLocal x w
       singletonRuntime := fun cn hr => (h.singletonRuntime cn hr).setLocal x w
       classSites := by simpa only [setLocal_heap] using h.classSites

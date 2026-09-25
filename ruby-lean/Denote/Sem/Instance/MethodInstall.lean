@@ -105,6 +105,17 @@ theorem MainSite.methodWrite {κ : Ctx} {h : Heap} {cls : ObjId} {name : String}
     · intro owner
       rw [Proof.classOf_defineMethod, Proof.ancestors_defineMethod, crubyShadow_defineMethod]
 
+theorem ModuleBase.methodWrite {κ : Ctx} {h : Heap} {cls : ObjId} {name : String} {md : MethodDef}
+    (hp : ModuleBase κ h) (hn : nameFreeN κ name = false) (hq : "method_added" ≠ name) :
+    ModuleBase κ (defineMethod h cls name md) := by
+  refine ⟨?_, ?_, hp.constants.methodWrite⟩
+  · intro n hmem owner found hl
+    by_cases he : n = name
+    · exact Or.inr (Or.inr (he ▸ hn))
+    · rw [methodOn_defineMethod _ _ _ _ _ _ he] at hl
+      exact hp.names n hmem owner found hl
+  · simpa only [moduleHookQuietB, methodOn_defineMethod _ _ _ _ _ _ hq] using hp.hook
+
 theorem ClassScopeReady.methodWrite {cn : String} {m : Machine}
     (h : ClassScopeReady cn m) (cls : ObjId) (name : String) (md : MethodDef)
     (hq : "method_added" ≠ name) :
@@ -167,6 +178,7 @@ theorem StateCore_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine
   refine {
     runtime := fun hr => (hm.runtime hr).methodWrite cls name md hquiet
     mainSite := fun hr => (hm.mainSite hr).methodWrite hn hmiss hquiet
+    moduleBase := hm.moduleBase.methodWrite hn hquiet
     classRuntime := fun cn hr => (hm.classRuntime cn hr).methodWrite cls name md hquiet
     singletonRuntime := by
       intro cn hr
@@ -387,6 +399,7 @@ theorem StateOk_reserveName {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     | true => have he := hfree x hn; rw [hx] at he; cases he
   refine { hm with
     mainSite := fun hr => (hm.mainSite hr).recontext hneg
+    moduleBase := hm.moduleBase.recontext hneg
     classSites := hm.classSites.recontext (fun _ hc => hc) hneg
     primitiveDispatch := ?_
     exact := fun k cp hp n md hmem =>

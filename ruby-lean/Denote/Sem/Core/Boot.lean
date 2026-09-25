@@ -541,16 +541,18 @@ def bootStateBaseB (m : Machine) : Bool :=
     && hashPayloadB m.heap && mainReadyB m
     && newDispatchB m.heap (classOf m.heap (.ref Boot.objectId))
     && globalConstsOkB Ratchet.ctx0.pos.globalConsts m.heap
+    && moduleBaseB (nameFreeN Ratchet.ctx0) m.heap
 
 def bootStateB (m : Machine) : Bool := bootStateBaseB m && rootInitOkB Ratchet.ctx0.defs m.heap
 
 def bootOkB : Bool := bootStateB bootMachine
 
-/-- The previous empty-context gate supplies every StateCore field. Keeping this factored
-preserves the full-old-state countermodel when new conformance fields are added. -/
+/-- The shared empty-context gate supplies every StateCore field. Keeping rootInit
+separate preserves its historical full-state countermodel (§F43). -/
 theorem stateCore_of_bootStateBaseB {m : Machine} (hb : bootStateBaseB m = true) :
     StateCore Ratchet.ctx0 [] .ivar0 m := by
   simp only [bootStateBaseB, Bool.and_eq_true] at hb
+  obtain ⟨hb, hmodule⟩ := hb
   obtain ⟨hb, hglobals⟩ := hb
   obtain ⟨hb, hnew⟩ := hb
   obtain ⟨hb, hready⟩ := hb
@@ -561,6 +563,7 @@ theorem stateCore_of_bootStateBaseB {m : Machine} (hb : bootStateBaseB m = true)
     hsl⟩, hle⟩, hq⟩, hcq⟩, hbc⟩, hnq⟩ := hb
   exact
     { runtime := fun _ => mainReadyB_sound hready
+      moduleBase := moduleBaseB_sound hmodule
       mainSite := fun _ => mainSite_of_scope (mainReadyB_sound hready)
         (nameFreeB_sound hnf _) (bareNameFreeB_sound hnf _) (missFreeB_sound hmf _) rfl
         (constScope_of_topScope htop) (fun _ => newDispatchB_sound hnew)

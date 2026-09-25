@@ -36,6 +36,7 @@ theorem restore_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mach
   refine {
     runtime := fun _ => ready
     mainSite := fun _ => site
+    moduleBase := hn.moduleBase
     allocators := hn.allocators
     globalConsts := hn.globalConsts
     classRuntime := by

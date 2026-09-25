@@ -36,6 +36,7 @@ theorem instance_enter_state_at {κ : Ctx} {Γ : Env} {I Ib : Ty} {m : Machine}
   refine {
     runtime := by intro h; cases h
     mainSite := hm.mainSite
+    moduleBase := hm.moduleBase
     allocators := hm.allocators
     globalConsts := hm.globalConsts
     singletonRuntime := by intro cn h; cases h

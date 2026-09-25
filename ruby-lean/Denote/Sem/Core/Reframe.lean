@@ -69,6 +69,7 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
   refine {
     runtime := fun hr => (h.runtime hr).reframe hh hs hd hc hcap hphase
     mainSite := fun hr => by rw [hh]; exact h.mainSite hr
+    moduleBase := by rw [hh]; exact h.moduleBase
     allocators := by rw [hh]; exact h.allocators
     globalConsts := by rw [hh]; exact h.globalConsts
     classRuntime := by

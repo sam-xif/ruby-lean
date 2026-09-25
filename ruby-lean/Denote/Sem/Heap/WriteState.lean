@@ -65,6 +65,7 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
   refine {
     runtime := ?_
     mainSite := fun hr => (h.mainSite hr).ivarOnly hw
+    moduleBase := h.moduleBase.ivarOnly hw
     classSites := h.classSites.ivarOnly hw
     allocators := h.allocators.ivarOnly hw
     globalConsts := h.globalConsts.ivarOnly hw
