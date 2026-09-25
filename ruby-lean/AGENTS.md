@@ -30,6 +30,10 @@ from each proof term. It must pass before committing. Use quiet mode; `--verbose
 for a failure whose captured error is insufficient. In a sandbox with a protected uv cache,
 set `UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache`.
 
+Clink 189 prepares 077 with real module-allocation/data-preservation proofs. No module
+admission yet: DeclClassOk is ordinary-class-only, and Module ancestry needs a retained
+contract (§F46). See the live HANDOFF before extending this boundary.
+
 ## Layout
 
 Both libraries are split by **what kind of thing a file says**, and the delineation is the

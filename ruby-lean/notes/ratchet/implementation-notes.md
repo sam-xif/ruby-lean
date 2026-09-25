@@ -11060,3 +11060,27 @@ both halves of what constrains them now have a name.
   56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
   new builds take seconds, none near five minutes. Floors raised. Next: 077's module scope
   and singleton methods, including the unannotated-method manifest boundary.
+
+## Clink 189 (2026-09-25) — fresh module allocation preserves old data
+
+- ModuleData uses the real freshModHeap and the shared dataPres_of_class_growth theorem:
+  old names, nested first-order data, exact-instance fields and balanced caller framing
+  survive fresh top-level module allocation. ModuleEntry proves the actual stepFn successor
+  from runtimeMain. Only operational facts are reused from the model's old judgment library.
+- Module's BasicObject ancestry is explicit, not derived from ClassReady. A synthetic heap
+  with Class inheriting Object and Module parentless passes ClassReady and saturation, yet
+  allocation destroys a dangling reference's BasicObject membership (§F46). This is a
+  selected-contract witness, not full StateOk or reachable Ruby. Admission must retain the
+  missing premise. Fresh-name overwrite separately refutes dropping the freshness premise.
+- The real module has isModule=true and own chain [k]; its value dispatches through a new
+  eigenclass inheriting Module. module_not_declared_class proves the current DeclClassOk
+  cannot publish that header. Do not reuse ordinary-class constructor/ancestry claims.
+  Controls execute 077's singleton call, inspect the actual frame and preserve nested data.
+- Sorbet 0.6.13405 reveals unannotated M.foo as T.untyped and accepts T.let(M.foo, String)
+  even when its body is 1; adding a String return annotation rejects that body. No typing
+  rule or emitter change here. Future unannotated-method admission needs a checked body
+  contract; observed call arguments and Sorbet's untyped result are not such a contract.
+- Next: module-specific conformance/header and body scope, then singleton checking/emission.
+  077 remains outside the certified fragment. New proofs and controls build under a second;
+  only standard axioms. Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules,
+  0 owed/exempt, 56 worked theorems, 252 agree / 0 disagree. Metatheory audit passes.

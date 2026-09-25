@@ -1,10 +1,18 @@
-# Current resume point (2026-09-25, clink 188)
+# Current resume point (2026-09-25, clink 189)
 
 076 is admitted through validateD: fragment 71, checker reach 76, 59 registered rules,
 56 worked theorems, no exemptions. Next frontier: 077-module-basic, `module M; def self.foo;
-1; end; end; M.foo`. The emitter blocks module nodes. Inspect the real module allocation,
-scope and singleton lookup contracts, plus Sorbet's unannotated-method manifest, before
-adapting class machinery; module and ordinary class payload facts are not interchangeable.
+1; end; end; M.foo`. ModuleData/ModuleEntry now prove real fresh allocation and old first-order
+data/framing preservation. Module BasicObject ancestry is explicit: ClassReady + saturation
+do not imply it (ModuleDataControls, §F46). Next establish module conformance/header and body
+scope. DeclClassOk currently requires isModule=false and ordinary root ancestry; a real
+module has isModule=true and own chain [k]. Its eigenclass inherits Module.
+
+No module judgment/emitter admission yet. Sorbet 0.6.13405 reports M.foo as T.untyped and even
+accepts treating its Integer result as String without a signature; the manifest drops it.
+Future unannotated-method handling must still check the body over its entire parameter domain.
+The module controls execute 077, inspect the actual entry frame, and test nested data,
+fresh-name overwrite and an unrooted-Module selected-contract countermodel.
 
 selfRead consumes incoming selfTy conformance. CheckedBody keeps its declared result proof
 and an optional CheckedResult from the body before nominal widening. resultAt selects only
@@ -34,7 +42,7 @@ calls consume exact context/code artifacts. Inherited singletons remain open, an
 self.new still has only its semantic proof. Nominal conversion only forgets information;
 it cannot recover exact receivers or initialized fields from a nominal annotation.
 
-See clinks 177–188 and AGENTS.md. Older text below is historical.
+See clinks 177–189 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 
