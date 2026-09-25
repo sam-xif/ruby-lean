@@ -2,7 +2,7 @@ import Denote.Rules.Constructor.DefaultAllocation
 import Denote.Sem.Names.RootLookup
 
 /-! The real default-constructor dispatch. Full conformance and the existing def table
-derive root absence; positive new lookup remains a separate dispatch obligation. -/
+derive both root absence and positive builtin new lookup. -/
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
@@ -50,20 +50,20 @@ theorem default_constructor_resolved {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine
   exact newImpl_default_step hm hc hn hk
 
 /-- Both the declared prefix and root table are checked. Root absence follows from full
-conformance; positive new lookup is still explicit before checker admission. -/
+conformance, including the retained positive builtin new lookup. -/
 theorem declared_default_constructor {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
-    {c : Cls} {k owner : ObjId} {md : MethodDef}
+    {c : Cls} {k : ObjId}
     (hm : StateOk κ Γ I m) (hc : c ∈ κ.classes) (hn : classNamed? m.heap c.name = some k)
     (halloc : c.name ∈ κ.pos.plainAlloc) (hnew : smroGet? κ.classes c.name "new" = none)
     (hprefix : noDeclaredSelectorB κ.classes c.name "initialize" = true)
     (hroot : rootInitFreeB κ.defs = true)
-    (hl : Interp.methodOn m.heap (classOf m.heap (.ref k)) "new" = some (owner, md))
     (hk : m.kont = []) :
     StepSpec m Γ (.inst c.name .ivar0) (Interp.finishSend m (.ref k) .explicit "new" [] .none) κ I := by
   obtain ⟨j, hj, hp⟩ := hm.allocators c.name halloc
   have he : j = k := Option.some.inj (hj.symm.trans hn)
   subst j
   have hd := (hm.declCls c hc k hn).2.2.2.2.1 hnew
+  obtain ⟨owner, md, hl⟩ := hd.2
   exact default_constructor_resolved hm hp hn ⟨hd.1, hd.2⟩ hl
     (hm.userInit_none hc hn hprefix hroot) hk
 

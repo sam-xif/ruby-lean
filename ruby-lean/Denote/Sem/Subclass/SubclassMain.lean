@@ -58,7 +58,6 @@ theorem mainSite {κ : Ctx} {h : Heap} {name q : String} {parent eParent : ObjId
     have hl := Proof.ClsGrow.classOf_lt hc hc.boot.2.2.2.2
     apply (site.newDispatch hf).transport
     · rw [hco, method_old hc hs hl]
-    · rw [hco, method_old hc hs hl]
     · intro owner; rw [hco, shadow_before_old hc hs hl]
 
 #print axioms mainSite

@@ -28,10 +28,9 @@ theorem after_checked_definitions (hb : bootOkB = true) {fuel rest : Nat} {v : V
   exact ((hs bootMachine (stateOk_boot hb)).2 fuel (.val v) m rest hr).2.2 v rfl
 
 theorem default_after_definitions (hb : bootOkB = true) {fuel rest : Nat} {v : Value} {m : Machine}
-    {k owner : ObjId} {md : MethodDef}
+    {k : ObjId}
     (hr : runA fuel (evalFrom bootMachine definitions) = .ans (.val v) m rest)
     (hn : classNamed? m.heap "Satellite" = some k)
-    (hnew : Interp.methodOn m.heap (classOf m.heap (.ref k)) "new" = some (owner, md))
     (hk : m.kont = []) :
     StepSpec m [] (.inst "Satellite" .ivar0)
       (Interp.finishSend m (.ref k) .explicit "new" [] .none) checked.ctx .ivar0 := by
@@ -40,7 +39,7 @@ theorem default_after_definitions (hb : bootOkB = true) {fuel rest : Nat} {v : V
     have he : f.cls = childClass := clsEqB_sound _ _ (by decide +kernel)
     exact he ▸ f.member
   exact declared_default_constructor (after_checked_definitions hb hr) hc hn
-    (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel) hnew hk
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel) hk
 
 #guard validateD definitions hint
 #guard noDeclaredSelectorB checked.ctx.classes "Satellite" "initialize"

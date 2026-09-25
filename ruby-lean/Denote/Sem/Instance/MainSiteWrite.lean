@@ -33,7 +33,6 @@ theorem MainSite.ivarOnly {κ : Ctx} {h h' : Heap} (site : MainSite κ h)
   · intro hf
     apply (site.newDispatch hf).transport
     · simp only [hi.classOf_eq, hm]
-    · simp only [hi.classOf_eq, hm]
     · intro owner
       simp only [hi.classOf_eq, hi.ancestors_eq, Interp.crubyShadow, className, hi.classPayload]
 

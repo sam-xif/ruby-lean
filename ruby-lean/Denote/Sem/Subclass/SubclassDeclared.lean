@@ -48,9 +48,7 @@ theorem declared (hc : ChainsIn m.heap) (hs : Saturated m.heap)
       refine ⟨hb, hu, hv, hpre, ?_⟩
       rw [hh, classOf_old hjl, shadow_before_old hc hs hcl]
       exact hshadow
-    · intro hm owner md hf
-      rw [hh, classOf_old hjl, method_old hc hs hcl] at hm hf
-      exact hmiss hm owner md hf
+    · simpa only [hh, classOf_old hjl, method_old hc hs hcl] using hmiss
   · intro ch hch hmix
     obtain ⟨hpos, hneg⟩ := hchain ch hch hmix
     refine ⟨?_, ?_⟩

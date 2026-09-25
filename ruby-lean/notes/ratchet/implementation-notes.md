@@ -10625,3 +10625,20 @@ both halves of what constrains them now have a name.
   proofs build in seconds with standard axioms only.
 - Full quiet ratchet GREEN: fragment 63, checker reach 65, 48 proved rules, 0 owed/exempt,
   49 worked theorems, 252 agree / 0 disagree.
+
+## Clink 170 (2026-09-25) — retain successful default-new lookup
+
+- NewDispatch and declared-class conformance now retain a successful new lookup, alongside
+  its builtin/visibility/native-shadow metadata. The boot check rejects absence. Existing
+  heap, method, class and subclass transports preserve the positive fact; no new Ctx flag.
+  The obsolete method_missing transport premise is removed.
+- Removing Class#new satisfied the old conditional dispatch clauses yet makes a fresh
+  class's default new gate as unmodeled Class#new. ClassCtorControls pins both observations and
+  rejection by the strengthened boot check. Initialized construction is unchanged.
+- declared_default_constructor now derives successful lookup from full conformance; its
+  annotation-checked Depot/Satellite control no longer assumes physical new lookup.
+- Sorbet 0.6.13405 accepts corpus 066, reveals Dog.new as Dog, and rejects Dog.new(1)
+  with expected arity zero. These observations ground the upcoming default-new judgment.
+  No rule or floor changes in this prerequisite.
+- Full quiet ratchet GREEN: fragment 63, checker reach 65, 48 rules, 0 owed/exempt,
+  49 worked theorems, 252 agree / 0 disagree. Metatheory and axiom audit pass.

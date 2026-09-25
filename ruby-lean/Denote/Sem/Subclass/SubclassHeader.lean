@@ -40,7 +40,7 @@ theorem declared_header (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = tr
     have dispatch := new_dispatch (d := Boot.objectId) (name := name) ready.chains hm.sat ha.live he hne hq newDispatch
     rw [← hh] at shape dispatch
     refine ⟨shape.rooted, shape.notClass, shape.notModule, shape.module,
-      fun _ => ⟨dispatch.found, dispatch.missing⟩, ?_⟩
+      fun _ => ⟨dispatch.found, dispatch.present⟩, ?_⟩
     intro ch hch hmix
     change ancestors? (subclassHeader name c.name :: κ.classes) name = some ch at hch
     rw [hchild] at hch

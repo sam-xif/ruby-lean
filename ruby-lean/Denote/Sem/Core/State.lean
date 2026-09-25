@@ -956,9 +956,7 @@ def DeclClassOk (κ : Ctx) (m : Machine) : Prop :=
           Interp.crubyShadow m.heap
             ((ancestors m.heap (classOf m.heap (.ref k))).takeWhile (fun x => x != owner))
             "new" = none) ∧
-      (Interp.methodOn m.heap (classOf m.heap (.ref k)) "new" = none →
-        ∀ o₂ md, Interp.methodOn m.heap (classOf m.heap (.ref k)) "method_missing"
-          = some (o₂, md) → md.builtin.isSome = true)) ∧
+      (∃ owner md, Interp.methodOn m.heap (classOf m.heap (.ref k)) "new" = some (owner, md))) ∧
     -- **the declared chain is the machine's chain**, in both directions, and it is what
     -- narrowing's `isATy`/`notATy` spend at an `.inst n` type. `BaseChainsOk` is the same
     -- claim for the *builtin* rows; this is the declared one, and it needs no
@@ -999,9 +997,7 @@ theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : Dec
       refine ⟨hb, hu, hv, hp, ?_⟩
       simp only [hco, Interp.crubyShadow, className, he.payload, he.ancestors] at hsh ⊢
       exact hsh
-    · intro hnone o₂ md hfound
-      rw [hm] at hnone hfound
-      exact h2 hnone o₂ md hfound
+    · simpa only [hm] using h2
   · intro ch hch hmf
     obtain ⟨h1, h2⟩ := hchain ch hch hmf
     refine ⟨fun cn hcnm => ?_, fun cn j hj hanc => ?_⟩

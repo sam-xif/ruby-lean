@@ -26,8 +26,7 @@ theorem new_dispatch {h : Heap} {d parent eParent : ObjId} {name q : String}
     rw [classOf_class]
     apply shadow_before_source hc hs hp hel hne hn.1 hn.2
     simpa only [source, if_neg (Nat.succ_ne_self _), ite_true, classOf, he] using hshadow
-  · intro hl owner md hmd
-    exact hd.missing ((hm "new").symm ▸ hl) owner md ((hm "method_missing").symm ▸ hmd)
+  · simpa only [hm] using hd.present
 
 #print axioms new_dispatch
 end Ratchet.Denote.Subclass

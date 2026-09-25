@@ -547,8 +547,11 @@ top-level initialize still requires its full annotated body proof and disables t
 absence guard. The old-state countermodel remains checked via `bootStateBaseB`; the current
 gate excludes effective hidden Object and Kernel initializers. `StateOk.userInit_none` now derives
 actual initializer absence from the declared-prefix and root-table guards for any class.
-Default-constructor admission still needs a complete new-dispatch contract and checker
-integration. No rule, acceptance or floor changes yet.
+NewDispatch and declared-class conformance now retain positive builtin new lookup; the
+boot gate checks it, and all existing transports preserve it. Removing Class#new passes
+the previous conditional clauses but gates as unmodeled, pinned in ClassCtorControls.
+The default-constructor theorem now derives lookup from full conformance. Expression/rule
+and checker integration remain before 066. No rule, acceptance or floor changes yet.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.

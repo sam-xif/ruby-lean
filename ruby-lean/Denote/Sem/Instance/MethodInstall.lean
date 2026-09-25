@@ -102,7 +102,6 @@ theorem MainSite.methodWrite {κ : Ctx} {h : Heap} {cls : ObjId} {name : String}
   · intro hf
     apply (site.newDispatch hf).transport
     · rw [Proof.classOf_defineMethod, methodOn_defineMethod _ _ _ _ _ _ (hne "new" hf)]
-    · rw [Proof.classOf_defineMethod, methodOn_defineMethod _ _ _ _ _ _ hm]
     · intro owner
       rw [Proof.classOf_defineMethod, Proof.ancestors_defineMethod, crubyShadow_defineMethod]
 

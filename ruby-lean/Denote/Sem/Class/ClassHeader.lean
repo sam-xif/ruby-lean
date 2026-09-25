@@ -32,7 +32,7 @@ theorem FreshClass.declared_header {κ : Ctx} {m n : Machine} {name : String} {e
     have chain := named_chain (name := name) (e := e) hc hs hr ho hn
     rw [← hh] at shape dispatch chain
     refine ⟨shape.rooted, shape.notClass, shape.notModule, shape.module,
-      fun _ => ⟨dispatch.found, dispatch.missing⟩, ?_⟩
+      fun _ => ⟨dispatch.found, dispatch.present⟩, ?_⟩
     intro ch hch _
     change ancestors? (classHeader name :: κ.classes) name = some ch at hch
     rw [classHeader_ancestors] at hch

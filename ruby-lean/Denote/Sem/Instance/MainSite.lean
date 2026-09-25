@@ -81,7 +81,6 @@ theorem MainSite.ext {κ : Ctx} {m n : Machine} (site : MainSite κ m.heap) (he 
     simp only [classOf, he.get Boot.objectId (lt_size_of_classPayload site.ready.classLive)]
   apply (site.newDispatch hf).transport
   · simp only [Interp.methodOn, hc, he.payload, he.ancestors]
-  · simp only [Interp.methodOn, hc, he.payload, he.ancestors]
   · intro owner; simp only [hc, he.ancestors, Interp.crubyShadow, className, he.payload]
 
 #print axioms MainSite.ext
