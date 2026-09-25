@@ -1,5 +1,5 @@
 import Ratchet.Guards.ClassCtx
-import Denote.Sem.Instance.MethodInstall
+import Denote.Sem.Singleton.SingletonRowsWrite
 
 /-! Publish an actually installed instance method. Preserve old records at other owners,
 and at this owner only when their method names are untouched. Names may alias one owner. -/
@@ -24,23 +24,24 @@ theorem ownMethod_defineMethod_other {h : Heap} {cls k : ObjId} {name mn : Strin
   simp only [Heap.classPayload?, heap_get_defineMethod_ne hk]
 
 theorem ClassesOk_empty_class {c : Cls} {m : Machine} {k : ObjId}
-    (hk : classNamed? m.heap c.name = some k) (he : c.methods = []) : ClassesOk [c] m := by
+    (hk : classNamed? m.heap c.name = some k) (he : c.methods = [])
+    (hs : c.smethods = []) : ClassesOk [c] m := by
   intro old hold
   have ho := List.mem_singleton.mp hold
   subst old
-  refine ⟨k, hk, ?_⟩
-  intro d hd; rw [he] at hd; cases hd
+  exact ⟨k, hk, by simp [he], by simp [SingletonRows, hs]⟩
 
 /-- A same-name method at a different *heap owner* is untouched. Comparing class names
 alone is insufficient because two names can denote the same class object. -/
 theorem ClassesOk_methodWrite_old {C : CTable} {m : Machine} {cls : ObjId}
     {name : String} {md : MethodDef} (hp : ClassesOk C m)
+    (hw : (m.heap.get cls).eigen.isSome = true)
     (hs : ∀ c ∈ C, classNamed? m.heap c.name = some cls →
       ∀ d ∈ c.methods, d.name ≠ name) :
     ClassesOk C { m with heap := defineMethod m.heap cls name md } := by
   intro c hc
-  obtain ⟨k, hk, hmethods⟩ := hp c hc
-  refine ⟨k, by rw [classNamed?_defineMethod]; exact hk, ?_⟩
+  obtain ⟨k, hk, hmethods, hsingle⟩ := hp c hc
+  refine ⟨k, by rw [classNamed?_defineMethod]; exact hk, ?_, hsingle.ordinaryWrite hw⟩
   intro d hd
   obtain ⟨prev, hfind, hrest⟩ := hmethods d hd
   refine ⟨prev, ?_, hrest⟩
@@ -54,15 +55,16 @@ theorem ClassesOk_methodWrite_old {C : CTable} {m : Machine} {cls : ObjId}
 theorem ClassesOk_publish_instance {C : CTable} {c : Cls} {d : Defn} {m : Machine}
     {cls : ObjId} {md : MethodDef} (hC : ClassesOk C m) (hc : ClassesOk [c] m)
     (hk : classNamed? m.heap c.name = some cls)
+    (hw : (m.heap.get cls).eigen.isSome = true)
     (hf : ∀ old ∈ c.methods, old.name ≠ d.name)
     (hs : ∀ old ∈ C, classNamed? m.heap old.name = some cls →
       ∀ method ∈ old.methods, method.name ≠ d.name)
     (hp : md.params = toRubyParams d.params) (hb : md.body = toRuby d.body)
     (hu : md.undefined = false) (hcode : InstanceMethodCode cls d.name md) :
     ClassesOk (classWithMethod c d :: C) { m with heap := defineMethod m.heap cls d.name md } := by
-  have hCold := ClassesOk_methodWrite_old (md := md) hC hs
+  have hCold := ClassesOk_methodWrite_old (md := md) hC hw hs
   have htarget : ClassesOk [c] { m with heap := defineMethod m.heap cls d.name md } :=
-    ClassesOk_methodWrite_old hc (by
+    ClassesOk_methodWrite_old hc hw (by
       intro old ho _ method hm
       have he := List.mem_singleton.mp ho
       subst old
@@ -70,11 +72,11 @@ theorem ClassesOk_publish_instance {C : CTable} {c : Cls} {d : Defn} {m : Machin
   intro old ho
   rcases List.mem_cons.mp ho with he | ho
   · subst old
-    obtain ⟨k, hk', hm⟩ := htarget c (List.mem_singleton_self _)
+    obtain ⟨k, hk', hm, hsingle⟩ := htarget c (List.mem_singleton_self _)
     rw [classNamed?_defineMethod, hk] at hk'
     have he : cls = k := Option.some.inj hk'
     subst k
-    refine ⟨cls, by rw [classNamed?_defineMethod]; exact hk, ?_⟩
+    refine ⟨cls, by rw [classNamed?_defineMethod]; exact hk, ?_, hsingle⟩
     intro method hmeth
     rcases List.mem_cons.mp hmeth with he | hmeth
     · subst method
@@ -114,9 +116,11 @@ theorem StateOk_publish_instance {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     StateOk (instanceDeclCtx κ c d) Γ I { m with heap := defineMethod m.heap cls d.name md } := by
   have hr : ReframeFO (reserveNameCtx κ d.name) I :=
     ⟨ht.spine, ht.self, ht.block, ht.consts, ht.paths⟩
+  obtain ⟨e, he, _, _⟩ := hsite.metaclass
+  have hw : (m.heap.get cls).eigen.isSome = true := by rw [he]; rfl
   exact StateOk_methodWrite_tables (StateOk_reserveName hm d.name) hr hΓ ha
     (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hmiss hquiet
-    (ClassesOk_publish_instance hm.classes hc hk hf hs hp hb hu hcode)
+    (ClassesOk_publish_instance hm.classes hc hk hw hf hs hp hb hu hcode)
     (hm.classSites.publish_instance hsite hquiet)
     (DefsOk_methodWrite_other hm.defs hobj) hnested hdecl hown hchain hroot
 

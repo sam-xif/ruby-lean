@@ -67,7 +67,7 @@ theorem classesOk_methodOn_after_prefix {C : CTable} {m : Machine} {c : Cls} {d 
       Interp.methodOn m.heap r d.name = some (k, md) ∧
       md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧
       md.undefined = false ∧ InstanceMethodCode k d.name md := by
-  obtain ⟨k, hk, hmethods⟩ := hc c hclass
+  obtain ⟨k, hk, hmethods, _⟩ := hc c hclass
   obtain ⟨md, hm, hparams, hbody, hu, hcode⟩ := hmethods d hd
   obtain ⟨pre, rest, ha, hn⟩ := hchain k hk
   exact ⟨k, md, hk, methodOn_after_prefix hp ha hn hm, hparams, hbody, hu, hcode⟩

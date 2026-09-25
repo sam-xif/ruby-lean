@@ -10823,3 +10823,27 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
   52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
   the singleton dispatch proof and its control build in under a second each.
+
+## Clink 179 (2026-09-25) — persistent singleton code records
+
+- ClassesOk now interprets smethods as executed code: cached owner, exact parameters/body,
+  definedness and SingletonMethodCode. SingletonRows has no body-safety claim. Existing
+  allocation, subclass, frame and ivar transports retain the rows; empty publication
+  requires both method tables empty. No new Ctx table or typing judgment.
+- A class site's metaclass is now a leaf (has no eigenclass itself). Fresh entry establishes
+  this and all site transports preserve it. A modified real heap can point a class's eigen
+  pointer back to itself while passing MetaReady and frontness. The leaf fact excludes this
+  alias and separates every singleton owner from ordinary owners with cached metaclasses.
+  Ordinary writes therefore retain same-named singleton rows, without a global name ban.
+- SingletonTable preserves ordinary rows, protects old singleton rows at the physical
+  written owner, and publishes the new code. scoped_singleton_publish uses full incoming
+  StateOk and a sufficient singleton-name freshness premise. Retained code plus class sites
+  recovers actual lookup after intervening evaluation. Full outgoing StateOk publication
+  and activation/body safety remain separate, before checker/emitter admission.
+- Controls prove real-boot publication and reject a forged Boolean body for installed
+  Integer code. Actual execution distinguishes same-named singleton/instance methods
+  after an ordinary definition. The self-alias witness fails the new owner contract.
+  No admission or floor change; next: outgoing publication and singleton activation.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  New publication proofs and controls build in under one second each.

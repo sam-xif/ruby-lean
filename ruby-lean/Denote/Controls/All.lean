@@ -65,6 +65,7 @@ import Denote.Controls.SuperInitControls
 import Denote.Controls.SuperCheckControls
 import Denote.Controls.NilFieldControls
 import Denote.Controls.SingletonInstallControls
+import Denote.Controls.SingletonTableControls
 import Denote.Clink.Controls
 
 /-!

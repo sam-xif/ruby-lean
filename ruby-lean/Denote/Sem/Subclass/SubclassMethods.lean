@@ -37,12 +37,14 @@ theorem classes (ho : Boot.objectId < m.heap.objs.size) (hn : constOwn m.heap Bo
     (hh : n.heap = heap m.heap Boot.objectId name q parent eParent) {C : CTable}
     (hp : ClassesOk C m) : ClassesOk C n := by
   intro c hc
-  obtain ⟨k, hk, hmethods⟩ := hp c hc
-  refine ⟨k, ?_, ?_⟩
+  obtain ⟨k, hk, hmethods, hsingle⟩ := hp c hc
+  refine ⟨k, ?_, ?_, ?_⟩
   · rw [hh]; exact named ho hn hk
   · intro d hd
     obtain ⟨md, hm, hrest⟩ := hmethods d hd
     exact ⟨md, by rw [hh, own_code]; exact hm, hrest⟩
+  · rw [hh]
+    exact hsingle.transport (named_live hk) (fun o ho => (fields ho).2.2.1) own_code
 
 theorem defs (hh : n.heap = heap m.heap Boot.objectId name q parent eParent) {D : DefTable}
     (hp : DefsOk D m) : DefsOk D n := by

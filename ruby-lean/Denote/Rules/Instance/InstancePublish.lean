@@ -9,6 +9,7 @@ open RubyCore Ratchet Ratchet.Denote
 
 theorem step_instance_publish {C : CTable} {c : Cls} {d : Defn} {m : Machine} {cls : ObjId}
     (hC : ClassesOk C m) (hc : ClassesOk [c] m) (hk : classNamed? m.heap c.name = some cls)
+    (hw : (m.heap.get cls).eigen.isSome = true)
     (hf : ∀ old ∈ c.methods, old.name ≠ d.name)
     (hs : ∀ old ∈ C, classNamed? m.heap old.name = some cls →
       ∀ method ∈ old.methods, method.name ≠ d.name)
@@ -24,7 +25,7 @@ theorem step_instance_publish {C : CTable} {c : Cls} {d : Defn} {m : Machine} {c
     (body := toRuby d.body) ho hcref hkind hv hp
   unfold installMethod
   rw [ho]
-  exact ClassesOk_publish_instance hC hc hk hf hs rfl rfl rfl hcode
+  exact ClassesOk_publish_instance hC hc hk hw hf hs rfl rfl rfl hcode
 
 #print axioms step_instance_publish
 

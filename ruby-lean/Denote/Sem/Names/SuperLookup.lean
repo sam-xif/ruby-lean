@@ -83,7 +83,7 @@ theorem declared_super_code {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
       Interp.superFound m.heap r currentId d.name = some (k, md) ∧
       md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧
       md.undefined = false ∧ InstanceMethodCode k d.name md := by
-  obtain ⟨k, hk, methods⟩ := hm.classes route.cls route.member
+  obtain ⟨k, hk, methods, _⟩ := hm.classes route.cls route.member
   obtain ⟨md, hmd, hp, hb, hu, code⟩ := methods d route.installed
   obtain ⟨before, j, tail, hchain, _, hj, htail⟩ := hm.classChains.before_owner hrc hr route.chain
   have he : j = currentId := Option.some.inj (hj.symm.trans hc)

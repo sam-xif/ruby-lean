@@ -78,11 +78,11 @@ theorem unrecorded_shadow_preserves_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Ma
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (ha : κ.asms = [])
     (hn : nameFreeN κ name = false) (hnew : "new" ≠ name)
     (hmiss : "method_missing" ≠ name) (hquiet : "method_added" ≠ name)
-    (hc : cls ≠ Boot.objectId)
+    (hc : cls ≠ Boot.objectId) (hw : (m.heap.get cls).eigen.isSome = true)
     (hrows : ∀ c ∈ κ.classes, classNamed? m.heap c.name = some cls →
       ∀ d ∈ c.methods, d.name ≠ name) :
     StateCore κ Γ I { m with heap := defineMethod m.heap cls name md } :=
-  StateCore_methodWrite hm.toStateCore ht hΓ ha hn hmiss hquiet (ClassesOk_methodWrite_old hm.classes hrows)
+  StateCore_methodWrite hm.toStateCore ht hΓ ha hn hmiss hquiet (ClassesOk_methodWrite_old hm.classes hw hrows)
     (DefsOk_methodWrite_other hm.defs hc) (hm.declCls.methodWrite hnew hmiss)
 
 private def sourceDecl : Defn := ⟨"answer", [], .int 1⟩
@@ -122,9 +122,11 @@ theorem full_state_unrecorded_shadow (hb : bootOkB = true) :
   obtain ⟨k, site⟩ := hm.classSites.of_class
     (show classHeader "Child" ∈ childCtx.classes from by change _ ∈ [_]; simp)
   have hc : k ≠ Boot.objectId := declared_not_object hm site.named (by decide)
+  obtain ⟨e, he, _, _⟩ := site.metaclass
+  have hw : (m.heap.get k).eigen.isSome = true := by rw [he]; rfl
   have hn := unrecorded_shadow_preserves_state (name := "answer") (md := badMethod k) hm
     (reframeTypesB_sound (by decide)) (by simp) rfl (by decide)
-    (by decide) (by decide) (by decide) hc (by
+    (by decide) (by decide) (by decide) hc hw (by
       intro c hc _ d hd
       have he : c = classHeader "Child" := by simpa [childCtx, classHeaderCtx, Ctx.classes,
         classBodyCtx, sourceCtx, topDeclCtx, ctx0] using hc

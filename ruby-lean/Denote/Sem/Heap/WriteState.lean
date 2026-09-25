@@ -89,7 +89,7 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     frameInRange := by simpa only [FrameInRange, bindIvar_stack, bindIvar_frames] using h.frameInRange
     env := he
     selfSpine := hi
-    classes := by simpa only [ClassesOk, hn, hw.classPayload] using h.classes
+    classes := by simpa only [ClassesOk, SingletonRows, ownCode, hn, hw.classPayload, hw.eigen] using h.classes
     ownNames := by simpa only [ClassOwnNames, ownMethods, hn, hw.classPayload] using h.ownNames
     classChains := h.classChains.heap hn hw.ancestors_eq
     rootInit := h.rootInit.transport id (hmethod _ _)

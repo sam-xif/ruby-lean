@@ -31,7 +31,7 @@ theorem declared_constructor_code {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
       NewDispatch m.heap (classOf m.heap (.ref k)) ∧
       md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧
       InstanceMethodCode k "initialize" md ∧ Interp.userInit? m.heap k = some md := by
-  obtain ⟨k, hk, hmethods⟩ := hm.classes c hc
+  obtain ⟨k, hk, hmethods, _⟩ := hm.classes c hc
   obtain ⟨j, site⟩ := hm.classSites.of_class hc
   have he : j = k := Option.some.inj (site.named.symm.trans hk)
   subst j

@@ -586,9 +586,13 @@ including the installed own row and frame/data preservation. `SingletonMethodCod
 the eigenclass dispatch owner from lexical cref. `InstanceSiteAt` retains metaclass
 frontness through fresh entry and every site transport. `SingletonDispatch` derives actual
 lookup and required entry from full StateOk. A prepended-module witness passes MetaReady
-but violates this stronger site contract. Persistent
-singleton code/table facts, activation scope and annotation-domain admission remain before
-073; no rule or floor changes in these prerequisites. See clinks 177–178.
+but violates this stronger site contract. Class sites also retain leaf metaclasses, which
+separate singleton owners from ordinary cached class owners. `ClassesOk` now records exact
+singleton code and preserves it through heap/frame changes and ordinary definitions;
+`SingletonPublish` connects actual installation to those records and recovers retained
+lookup. A self-alias witness motivates owner separation. Full outgoing state publication,
+activation scope and annotation-domain admission remain before 073; no rule or floor changes
+in these prerequisites. See clinks 177–179.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -699,6 +703,7 @@ String membership needs a payload invariant. See
 | `Denote/Rules/Super/SuperArgs.lean`, `SuperExpr.lean`, `Ratchet/Guards/SuperInit.lean`, `SuperCheckControls.lean` | Scoped explicit super admission, full-domain parent replay and ordered argument effects |
 | `Ratchet/Guards/NilFields.lean`, `Ratchet/Check/FieldHints.lean`, `Denote/Controls/NilFieldControls.lean` | Explicit nil fields proved by default allocation; receiver-aware field candidates and open-field controls |
 | `Denote/Sem/Singleton/SingletonCode.lean`, `Denote/Rules/Singleton/SingletonInstall.lean`, `SingletonDispatch.lean`, `SingletonInstallControls.lean` | Distinct dispatch/lexical owners, cached singleton installation and conformance-derived lookup/required entry; prepend counterexample |
+| `Denote/Sem/Singleton/SingletonRows.lean`, `SingletonRowsWrite.lean`, `SingletonTable.lean`, `Denote/Rules/Singleton/SingletonPublish.lean`, `SingletonTableControls.lean` | Persistent singleton code in ClassesOk, namespace separation, actual publication and retained lookup; alias/forged-body controls |
 | `Denote/Examples/Derivations.lean`, `ClassDerivations.lean`, `SuperDerivations.lean`, `NilFieldDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 52 concrete safety proofs |
 | `Denote/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |

@@ -31,7 +31,7 @@ theorem classesOk_lookup {C : CTable} {m : Machine} {c : Cls} {d : Defn}
       lookup m.heap recv d.name = some (k, md) ∧
       md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧
       md.undefined = false ∧ InstanceMethodCode k d.name md := by
-  obtain ⟨k, hk, hm⟩ := hm c hc
+  obtain ⟨k, hk, hm, _⟩ := hm c hc
   obtain ⟨md, hm, hp, hb, hu, hcode⟩ := hm d hd
   rw [denM] at hv
   obtain ⟨rest, hrest⟩ := classFrontB_sound (hf k hk)

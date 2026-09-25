@@ -6,7 +6,7 @@ import Denote.Sem.Core.Ready
 import Denote.Sem.Class.ClassScope
 import Denote.Sem.Class.ClassReady
 import Denote.Sem.Names.RootNames
-import Denote.Sem.Instance.MethodCode
+import Denote.Sem.Singleton.SingletonRows
 import Denote.Sem.Instance.InstanceSite
 import Denote.Sem.Instance.MainSite
 import Denote.Sem.Heap.Allocator
@@ -186,13 +186,14 @@ def closTblOk (K : ClosTable) (idx : Nat) (m : Machine) (f : Value) : Prop :=
 
 /-- Each positive class exists, and its instance methods are installed with the recorded
 syntax and ordinary top-level-class metadata. Superclass/constructor facts live in
-DeclClassOk; singleton methods and nested lexical scopes are not covered by this component. -/
+DeclClassOk. Singleton records pin their distinct dispatch/lexical owners; nested lexical
+scopes are not covered by this component. -/
 def ClassesOk (C : CTable) (m : Machine) : Prop :=
   ∀ c ∈ C, ∃ k, classNamed? m.heap c.name = some k ∧
     (∀ d ∈ c.methods, ∃ md, (m.heap.classPayload? k).bind
         (fun cp => (cp.methods.find? (·.1 == d.name)).map (·.2)) = some md ∧
       md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧ md.undefined = false ∧
-      InstanceMethodCode k d.name md)
+      InstanceMethodCode k d.name md) ∧ SingletonRows c.smethods k m.heap
 
 /-- The top-level `def` table describes ordinary methods installed on `Object`, and *only* the ones a
 preceding statement performed — which is the whole soundness content of `DefTable`'s
@@ -1167,11 +1168,16 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
   rootInit := h.rootInit.ext he
   classes := by
     intro c hc
-    obtain ⟨k, hk, hm⟩ := h.classes c hc
-    refine ⟨k, by rw [he.classNamed?_eq]; exact hk, ?_⟩
-    intro d hd
-    obtain ⟨md, h1, h2⟩ := hm d hd
-    exact ⟨md, by rw [he.payload]; exact h1, h2⟩
+    obtain ⟨k, hk, hm, hs⟩ := h.classes c hc
+    refine ⟨k, by rw [he.classNamed?_eq]; exact hk, ?_, ?_⟩
+    · intro d hd
+      obtain ⟨md, h1, h2⟩ := hm d hd
+      exact ⟨md, by rw [he.payload]; exact h1, h2⟩
+    · obtain ⟨j, site⟩ := h.classSites.of_class hc
+      have hj : j = k := Option.some.inj (site.named.symm.trans hk)
+      subst j
+      exact hs.transport site.live (fun o ho => by rw [he.get o ho])
+        (fun e name => by simp only [ownCode, he.payload])
   defs := by
     intro d hd
     obtain ⟨md, h1, h2⟩ := h.defs d hd

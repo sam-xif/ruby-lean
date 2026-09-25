@@ -1,15 +1,17 @@
-# Current resume point (2026-09-25, clink 178)
+# Current resume point (2026-09-25, clink 179)
 
 Fragment 67, checker reach 72, 53 rules, 52 worked theorems. For 073, SingletonInstall
 derives the real def-self step and installed own code from full incoming class scope.
 SingletonMethodCode distinguishes eigenclass dispatch owner from lexical class cref.
-InstanceSite now retains metaclass frontness; fresh entry establishes it and all site
-transports preserve it. SingletonDispatch derives actual lookup/required entry from full
-StateOk. The prepended-module counterexample passes MetaReady but fails this stronger site.
-Next: retain singleton code/table conformance, then
-handle the distinct activation owner/scope, constructor calls and annotation-domain checker/
-emitter integration. 073 is not admitted yet. Sorbet accepts it and rejects wrong factory
-result, constructor argument and factory arity. No rule/floor change. See clinks 176–178
+InstanceSite retains metaclass frontness and a leaf owner (no eigenclass of its own).
+ClassesOk now retains exact singleton code, cached owners and lexical metadata. Heap/frame
+transports and ordinary definitions preserve those rows; actual singleton installation
+publishes them, and retained tables recover lookup. Same-named instance/singleton methods
+remain distinct. Prepend and self-alias witnesses justify the two site facts.
+Next: full outgoing state publication, then the distinct activation owner/scope,
+constructor calls and annotation-domain checker/emitter integration. 073 is not admitted
+yet. Sorbet accepts it and rejects wrong factory
+result, constructor argument and factory arity. No rule/floor change. See clinks 176–179
 and AGENTS.md. Older text is historical.
 
 # ratchet — hand-off note (2026-09-10)
