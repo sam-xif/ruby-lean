@@ -39,7 +39,7 @@ theorem default_after_definitions (hb : bootOkB = true) {fuel rest : Nat} {v : V
     have he : f.cls = childClass := clsEqB_sound _ _ (by decide +kernel)
     exact he ▸ f.member
   exact declared_default_constructor (after_checked_definitions hb hr) hc hn
-    (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel) hk
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel) hk rfl
 
 #guard validateD definitions hint
 #guard noDeclaredSelectorB checked.ctx.classes "Satellite" "initialize"

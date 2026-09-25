@@ -10758,3 +10758,27 @@ both halves of what constrains them now have a name.
   symbolic Integer; heartbeat limits are unchanged. New semantic proofs build in under
   a second each, the worked proof in about 1.5 seconds. Full quiet ratchet GREEN:
   252 agree / 0 disagree, 0 owed/exempt. Metatheory and standard-axiom audit pass.
+
+## Clink 176 (2026-09-25) — explicit nil fields from default allocation
+
+- Sorbet 0.6.13405 accepts 070's NilClass getter, but reveals the unset @secret as
+  T.untyped. It also accepts an Integer return annotation and @secret + 1. Record this
+  distinction in newDefault's docstring: the nil fact needs a semantic proof. The clink-122
+  open-instance counterexample still forbids treating every unlisted field as nil.
+- Default allocation now proves any finite nil-only field spine, checked by nilFieldsB.
+  The same dispatch/absence proofs carry that spine into newDefault; its empty-spine case
+  is unchanged. Ordinary method entry stays open and reads explicit nil fields through the
+  existing ivarRead rule. No new type constructor, judgment family or registered rule.
+- FieldHints collects receiver-body reads across declared ancestors and retained records,
+  deduplicated and sorted. These are candidate fields, not trusted absence facts: allocation
+  proves every nil entry, every body is checked under that spine, and calls require the
+  matching receiver type. Unsupported scan heads can only cost completeness. Initializer
+  bodies retain their inferred fields. The emitter mirrors the default-field choice.
+- Whole 070 has an independent Church derivation for any field name and executes to nil.
+  Controls reject forged non-nil/omitted fields, false uncalled return annotations and
+  writes that would invalidate the receiver's nil facts. Inherited getters with additional
+  child fields validate and execute; open omitted fields still type only at any.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Raised the fragment, reach and worked floors.
+  Metatheory and standard-axiom audit pass; allocation and worked proofs build below one
+  second, controls in about two seconds. Next frontier: 073's singleton factory method.

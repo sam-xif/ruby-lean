@@ -428,6 +428,13 @@ class Emitter
     # A subclass starts from its parent's ivars: `class Dog < Animal; end` has
     # `Animal`'s, and `Dog.new("Rex").speak` reads one.
     @ivars = supname ? (@cls_ivars[supname] || []).to_h : {}
+    # Fresh default allocation proves these explicit nil fields. Ordinary open
+    # instance annotations still cannot treat every omitted field as nil.
+    unless initializer_declared?(name)
+      stmts = body[0] == "seq" ? body[1..] : [body]
+      reads = stmts.select { |st| st[0] == "def" }.flat_map { |st| field_reads(st[3]) }
+      @ivars = (@ivars.keys + reads).uniq.sort.to_h { |x| [x, NIL_T] }
+    end
     # `initialize` first, so the ivar spine exists before any other method body
     # reads an ivar. One pass, in source order, is not enough for that.
     seed_ivars(name, body)
@@ -474,6 +481,27 @@ class Emitter
       end
     end
     nil
+  end
+
+  def initializer_declared?(name)
+    seen = {}
+    while name
+      raise Blocked, "cyclic superclass chain" if seen[name]
+
+      seen[name] = true
+      return true if @sigs.key?([name, "initialize"]) || @dropped.key?([name, "initialize"])
+
+      name = @supers[name]
+    end
+    false
+  end
+
+  def field_reads(node)
+    return [] unless node.is_a?(Array)
+    return [node[2]] if node[0] == "var" && node[1] == "ivar"
+    return [] if %w[def defs class module sclass scoped_class scoped_module].include?(node[0])
+
+    node.flat_map { |child| child.is_a?(Array) ? field_reads(child) : [] }
   end
 end
 

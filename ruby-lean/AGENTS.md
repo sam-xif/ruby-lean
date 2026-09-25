@@ -16,9 +16,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 66 rungs, reach 17**, **53 registered rules** (31 expressions + 22 companions),
-**0 owed**, **0 exempt**. Checker reach is 69; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 51 rungs additionally carry a
+**Fragment 67 rungs, reach 17**, **53 registered rules** (31 expressions + 22 companions),
+**0 owed**, **0 exempt**. Checker reach is 72; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 52 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -574,7 +574,13 @@ fields, receiver and defining owner; the super hint supplies only argument deriv
 An independent Integer-parameterized whole-067 derivation exercises all four new rules.
 Controls cover bad uncalled overrides, inherited super bodies and ordered argument writes.
 Fragment 66, checker reach 69, 53 rules, 51 worked theorems, no exemptions. The next
-frontier is 070's unset ivar read; inherited implicit calls remain open.
+frontier was 070's unset ivar read. Default allocation now proves explicit finite nil field
+facts. Receiver-body reads suggest a sorted field spine; allocation and full-domain body
+checks justify it. Open instance annotations stay open, and the clink-122 counterexample
+still applies. Sorbet accepts 070 but reveals its unset read as T.untyped, so nil follows
+from the proved allocator rather than that annotation. Whole 070 has a field-parameterized
+independent derivation. Fragment 67, checker reach 72, 53 rules, 52 worked theorems. Next:
+073's singleton factory method; inherited implicit calls remain open.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -683,7 +689,8 @@ String membership needs a payload invariant. See
 | `Denote/Sem/Names/RootLookup.lean`, `Denote/Rules/Constructor/DefaultAllocation.lean`, `DefaultConstructor.lean`, `DefaultConstructorControls.lean` | Generic root-tail lookup and default allocation/dispatch, checked class controls, and full-state root-initializer omission (§F43) |
 | `Ratchet/Guards/RootInit.lean`, `Denote/Sem/Names/RootInit.lean`, `RootInitWrite.lean`, `Denote/Controls/RootInitControls.lean` | Top-level-table-indexed root initializer conformance, generic write/extension transports, and full-old-state exclusion controls (§F43 closed) |
 | `Denote/Rules/Super/SuperArgs.lean`, `SuperExpr.lean`, `Ratchet/Guards/SuperInit.lean`, `SuperCheckControls.lean` | Scoped explicit super admission, full-domain parent replay and ordered argument effects |
-| `Denote/Examples/Derivations.lean`, `ClassDerivations.lean`, `SuperDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 51 concrete safety proofs |
+| `Ratchet/Guards/NilFields.lean`, `Ratchet/Check/FieldHints.lean`, `Denote/Controls/NilFieldControls.lean` | Explicit nil fields proved by default allocation; receiver-aware field candidates and open-field controls |
+| `Denote/Examples/Derivations.lean`, `ClassDerivations.lean`, `SuperDerivations.lean`, `NilFieldDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 52 concrete safety proofs |
 | `Denote/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |
 | `Denote/Sem/Core/Boot.lean` | Executable boot conformance gate and its kernel soundness theorem |

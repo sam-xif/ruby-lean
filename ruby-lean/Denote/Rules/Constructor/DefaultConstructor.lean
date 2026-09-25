@@ -34,38 +34,38 @@ theorem class_new_builtin (m : Machine) (k : ObjId) (hc : PlainAllocator m.heap 
     Bool.false_and, Bool.false_eq_true, ↓reduceIte]
   rfl
 
-theorem default_constructor_resolved {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+theorem default_constructor_resolved {κ : Ctx} {Γ : Env} {I J : Ty} {m : Machine}
     {k owner : ObjId} {md : MethodDef} {cn : String}
     (hm : StateOk κ Γ I m) (hc : PlainAllocator m.heap k) (hn : classNamed? m.heap cn = some k)
     (hd : NewDispatch m.heap (classOf m.heap (.ref k)))
     (hl : Interp.methodOn m.heap (classOf m.heap (.ref k)) "new" = some (owner, md))
-    (hi : Interp.userInit? m.heap k = none) (hk : m.kont = []) :
-    StepSpec m Γ (.inst cn .ivar0) (Interp.finishSend m (.ref k) .explicit "new" [] .none) κ I := by
+    (hi : Interp.userInit? m.heap k = none) (hk : m.kont = []) (hj : nilFieldsB J = true) :
+    StepSpec m Γ (.inst cn J) (Interp.finishSend m (.ref k) .explicit "new" [] .none) κ I := by
   obtain ⟨hb, hu, hv, hp, hs⟩ := hd.found owner md hl
   rw [finishSend_no_initializer hc hi,
     invokeDispatch_builtin (by simpa only [lookup_eq_methodOn] using hl) hb hu hv hp hs
       (by rfl) (by rfl)]
-  change StepSpec m Γ (.inst cn .ivar0) (builtinStep (Builtins.run "Class#new" (.ref k) [] m)) κ I
+  change StepSpec m Γ (.inst cn J) (builtinStep (Builtins.run "Class#new" (.ref k) [] m)) κ I
   rw [class_new_builtin m k hc]
-  exact newImpl_default_step hm hc hn hk
+  exact newImpl_default_step hm hc hn hk hj
 
 /-- Both the declared prefix and root table are checked. Root absence follows from full
 conformance, including the retained positive builtin new lookup. -/
-theorem declared_default_constructor {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+theorem declared_default_constructor {κ : Ctx} {Γ : Env} {I J : Ty} {m : Machine}
     {c : Cls} {k : ObjId}
     (hm : StateOk κ Γ I m) (hc : c ∈ κ.classes) (hn : classNamed? m.heap c.name = some k)
     (halloc : c.name ∈ κ.pos.plainAlloc) (hnew : smroGet? κ.classes c.name "new" = none)
     (hprefix : noDeclaredSelectorB κ.classes c.name "initialize" = true)
     (hroot : rootInitFreeB κ.defs = true)
-    (hk : m.kont = []) :
-    StepSpec m Γ (.inst c.name .ivar0) (Interp.finishSend m (.ref k) .explicit "new" [] .none) κ I := by
-  obtain ⟨j, hj, hp⟩ := hm.allocators c.name halloc
-  have he : j = k := Option.some.inj (hj.symm.trans hn)
+    (hk : m.kont = []) (hj : nilFieldsB J = true) :
+    StepSpec m Γ (.inst c.name J) (Interp.finishSend m (.ref k) .explicit "new" [] .none) κ I := by
+  obtain ⟨j, hjn, hp⟩ := hm.allocators c.name halloc
+  have he : j = k := Option.some.inj (hjn.symm.trans hn)
   subst j
   have hd := (hm.declCls c hc k hn).2.2.2.2.1 hnew
   obtain ⟨owner, md, hl⟩ := hd.2
   exact default_constructor_resolved hm hp hn ⟨hd.1, hd.2⟩ hl
-    (hm.userInit_none hc hn hprefix hroot) hk
+    (hm.userInit_none hc hn hprefix hroot) hk hj
 
 #print axioms default_constructor_resolved
 #print axioms declared_default_constructor

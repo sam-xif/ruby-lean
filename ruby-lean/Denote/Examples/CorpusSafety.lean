@@ -6,6 +6,7 @@ import Denote.Examples.RectDerivations
 import Denote.Examples.InheritanceDerivations
 import Denote.Examples.DefaultDerivations
 import Denote.Examples.SuperDerivations
+import Denote.Examples.NilFieldDerivations
 
 /-! Concrete corpus programs and their derivations. `SemLadder` compares each program
 against the current stripped corpus; `RuleAudit` reads the clinks from these proofs. -/
@@ -344,14 +345,15 @@ def safeRungs : List (String × Ratchet.Expr) :=
    ("064-class-method-calls-method", program_064_class_method_calls_method),
    ("065-class-inheritance-field", program_065_class_inheritance_field),
    ("066-class-inheritance-override", program_066_class_inheritance_override),
-   ("067-class-super-call", program_067_class_super_call)]
+   ("067-class-super-call", program_067_class_super_call),
+   ("070-class-ivar-lazy-nil", program_070_class_ivar_lazy_nil)]
 
 theorem safeRungs_safe (hb : bootOkB = true) :
     ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
   intro q hq
   simp only [safeRungs, List.mem_cons, List.not_mem_nil, or_false] at hq
   rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
-    | rfl | rfl | rfl | rfl | rfl
+    | rfl | rfl | rfl | rfl | rfl | rfl
   · exact safe_001_int_lit hb
   · exact safe_002_bool_true hb
   · exact safe_003_bool_false hb
@@ -403,6 +405,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   · exact safe_065_class_inheritance_field hb
   · exact safe_066_class_inheritance_override hb
   · exact safe_067_class_super_call hb
+  · exact safe_070_class_ivar_lazy_nil hb
 
 #print axioms safeRungs_safe
 end Ratchet.Denote.Typed

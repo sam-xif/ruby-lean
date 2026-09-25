@@ -54,10 +54,10 @@ theorem full_deriv (s : String) :
     change child s ∈ [child s, childHeader, base, baseHeader]; simp
   have hn : F.judge [] newExpr (.inst "Dog" .ivar0) [] (callerCtx s) .ivar0 :=
     @hF DClink.newDefault (by simp [dclinks]) (callerCtx s) (callerCtx s) (callerCtx s)
-      [] [] [] .ivar0 .ivar0 .ivar0 (child s) (.const "Dog") []
+      [] [] [] .ivar0 .ivar0 .ivar0 .ivar0 (child s) (.const "Dog") []
       (@hF DClink.constClass (by simp [dclinks]) (callerCtx s) [] .ivar0 (child s) hc)
       (hF DClink.DJudgeAll.nil (by simp [dclinks])) rfl hc (by exact of_decide_eq_true rfl)
-      (by change "Dog" ∈ ["Dog", "Animal"]; simp) (by exact of_decide_eq_true rfl) (by exact of_decide_eq_true rfl)
+      (by change "Dog" ∈ ["Dog", "Animal"]; simp) (by exact of_decide_eq_true rfl) (by exact of_decide_eq_true rfl) rfl
   have hg : F.judge [] callExpr (.cls "String") [] (callerCtx s) .ivar0 :=
     @hF DClink.callMethodSig (by simp [dclinks]) (callerCtx s) (callerCtx s) (callerCtx s)
       [] [] [] [] .ivar0 .ivar0 .ivar0 .ivar0 (.cls "String") (child s) (speak s) [] newExpr []

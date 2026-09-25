@@ -1,4 +1,5 @@
 import Ratchet.Check.BodyCache
+import Ratchet.Check.FieldHints
 
 /-! Receiver-aware cached bodies carry both an actual static lookup route and a proof
 in the exact receiver/owner context. A parent-body proof cannot be cast to a child. -/
@@ -59,10 +60,10 @@ def findMemberAt (κ : Ctx) (c : Cls) (name : String) : List CachedMember → Op
     found.orElse (fun _ => findMemberAt κ c name bs)
 
 def receiverFields (κ : Ctx) (c : Cls) (cache : CheckedCache) : Ty :=
-  ((findInitializerAt κ c cache.initializers).map (·.body.fields)).getD .ivar0
+  ((findInitializerAt κ c cache.initializers).map (·.body.fields)).getD (defaultReceiverFields κ c.name)
 
-/-- Completeness is checked over declared selectors, not merely over entries the cache
-happens to contain. No initializer still means no constructor admission. -/
+/-- Completeness is checked over declared selectors, not merely over cached entries.
+Every declared initializer needs a body; default allocation separately proves absence. -/
 def receiverCacheCompleteB (κ : Ctx) (cache : CheckedCache) : Bool :=
   (κ.classes.map (·.name)).eraseDups.all fun cn =>
     match findClass cn κ.classes, ancestors? κ.classes cn with

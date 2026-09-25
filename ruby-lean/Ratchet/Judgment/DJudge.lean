@@ -5,6 +5,7 @@ import Ratchet.Judgment.InitJudge
 import Ratchet.Guards.ClassGuards
 import Ratchet.Guards.SubclassRule
 import Ratchet.Guards.RootInit
+import Ratchet.Guards.NilFields
 import Ratchet.Guards.MemberRoute
 import Ratchet.Static.NativeInstanceNames
 
@@ -428,15 +429,18 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
   /-- Sorbet 0.6.13405 accepts corpus 066's Dog.new at Dog and rejects Dog.new(1)
   (expected arity zero). Default construction has no initializer body; the declared
   ancestor chain and top-level table must both rule out a user initialize. The real
-  allocator preserves the caller and yields an exact-class instance with empty fields. -/
-  | newDefault {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty}
+  allocator preserves the caller. Sorbet also accepts 070's NilClass getter, while revealing
+  its unset ivar as T.untyped (0.6.13405); explicit nil field facts here follow from the
+  proved empty allocation, never from that untyped read or an open instance annotation. -/
+  | newDefault {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ J : Ty}
       {c : Cls} {recv : Expr} {args : List Expr} :
       DJudge Γ recv (.clsOf c.name) Γ₁ κ I κ₁ I₁ →
       DJudgeAll Γ₁ args [] Γ₂ κ₁ I₁ κ₂ I₂ →
       explicitReceiverB recv = true → c ∈ κ₂.classes →
       smroGet? κ₂.classes c.name "new" = none → c.name ∈ κ₂.pos.plainAlloc →
       noDeclaredSelectorB κ₂.classes c.name "initialize" = true → rootInitFreeB κ₂.defs = true →
-      DJudge Γ (.send (some recv) "new" args none) (.inst c.name .ivar0) Γ₂ κ I κ₂ I₂
+      nilFieldsB J = true →
+      DJudge Γ (.send (some recv) "new" args none) (.inst c.name J) Γ₂ κ I κ₂ I₂
 
 inductive DJudgeAll : Env → List Expr → List Ty → Env → (κ : optParam Ctx ctx0) →
     (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop

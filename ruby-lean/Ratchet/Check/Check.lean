@@ -167,11 +167,14 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
           simpa only [start.nameOk, f.nameOk] using (DJudge.constClass (Γ := Γ) (I := I) start.member)
         if hd : noDeclaredSelectorB a.ctx.classes f.cls.name "initialize" = true then do
           if ht : a.tys = [] then do
-          if ty != .inst name .ivar0 then none else do
+          let fields := defaultReceiverFields a.ctx f.cls.name
+          if ty != .inst name fields then none else do
+          if hf : nilFieldsB fields = true then do
           if hroot : rootInitFreeB a.ctx.defs = true then
-            some ⟨.inst name .ivar0, a.out, a.ctx, a.spine, by
+            some ⟨.inst name fields, a.out, a.ctx, a.spine, by
               simpa only [f.nameOk] using
-                (DJudge.newDefault hr (by simpa only [ht] using a.judged) rfl f.member hn hp hd hroot), a.cache⟩
+                (DJudge.newDefault hr (by simpa only [ht] using a.judged) rfl f.member hn hp hd hroot hf), a.cache⟩
+          else none
           else none
           else none
         else do

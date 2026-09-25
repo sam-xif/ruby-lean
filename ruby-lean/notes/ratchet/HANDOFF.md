@@ -1,14 +1,15 @@
-# Current resume point (2026-09-25, clink 175)
+# Current resume point (2026-09-25, clink 176)
 
-Fragment 66, checker reach 69, 53 rules, 51 worked theorems. Explicit initializer super
-admits 067. SuperArgs/SuperExpr compose arbitrary positional arguments, full-domain parent
-entry and real frameK return. InitJudgeAll is the ninth registered judgment family.
-The checker replays retained parent annotations at the actual incoming fields and receiver/
-owner; hints contain only argument derivations. SuperCheckControls covers inherited bodies,
-bad uncalled overrides and argument writes; SuperDerivations independently proves whole 067
-for arbitrary Integers. Next: 070-class-ivar-lazy-nil needs an unset ivar read. Inherited
-implicit calls remain open. See implementation-notes.md clinks 170–175 and AGENTS.md's
-current state. The older handoff below is historical.
+Fragment 67, checker reach 72, 53 rules, 52 worked theorems. Default allocation proves
+arbitrary finite nil-only field spines, admitting 070. FieldHints collects receiver-body
+reads across the declared chain; nilFieldsB and the allocator justify the facts, and every
+member body still checks at its complete annotation domain. Open instance annotations stay
+open. Sorbet reveals the unset read as T.untyped and even accepts a false Integer return;
+the checker rejects that annotation. NilFieldDerivations independently proves whole 070 for
+any field name. Controls include inherited getters with additional child fields and writes
+that would invalidate nil facts. Next: 073-class-factory-method needs singleton definition
+and dispatch (Point.origin calls new). Inherited implicit calls remain open. See
+implementation-notes.md clinks 175–176 and AGENTS.md's current state. Older text is historical.
 
 # ratchet — hand-off note (2026-09-10)
 
