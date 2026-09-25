@@ -1,6 +1,6 @@
 """Tier-1 generation environment: the name pools, and the scope record.
 
-The single highest-leverage design feature (the prong-2 design, `../desugar-dt/README.md` §The method) lives here: an
+The single highest-leverage design feature (the prong-2 design, `docs/front-end/method.md` 06 §4) lives here: an
 `Env` of bound locals, defined methods, classes and modules threads through
 top-down generation, so generated programs reference names that resolve and
 method dispatch actually fires — instead of every program dying at line 1 with

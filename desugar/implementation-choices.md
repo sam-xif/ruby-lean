@@ -4,9 +4,9 @@ This file records non-critical decisions made while building the harness, so any
 can be revisited/reverted. It is committed to git on every update (per project request)
 to preserve a rollback trail.
 
-Design reference: [`README.md`](README.md) §The method (the oracle,
+Design reference: [`../docs/front-end/method.md`](../docs/front-end/method.md) (the oracle,
 the evaluation-order trace, the three-pronged corpus, the exit criterion) and
-`../difftest/README.md` §Methodology (observation normalization).
+[`../docs/testing/methodology.md`](../docs/testing/methodology.md) (observation normalization).
 
 ---
 
@@ -300,7 +300,7 @@ build as dead code); linearization is the source-level analogue. This removes th
 RubyCore head** (uses `seq` + existing forms, per C12), and generalizes: the same
 `definitely_jumps?`-driven hoisting will serve future order-sensitive desugarings. Fully
 documented — including the verified legal/illegal operand-position table — in
-[`README.md`](README.md) §Linearization.
+[`../docs/front-end/linearization.md`](../docs/front-end/linearization.md).
 
 **Result:** bootstraptest gate coverage 403 → **406** (+3), all agree, 0 harness-errors.
 

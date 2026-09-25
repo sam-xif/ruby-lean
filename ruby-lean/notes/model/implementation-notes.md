@@ -1,7 +1,7 @@
 # Lean model — implementation notes (decisions L1–L12)
 
 Non-critical choices, recorded for rollback per the workspace convention
-(cf. `../desugar-dt/implementation-choices.md` C1–C20,
+(cf. `../desugar/implementation-choices.md` C1–C20,
 `../difftest/implementation-notes.md` N1–N8). Load-bearing *semantics*
 decisions live in the sketch and README, not here.
 
@@ -260,7 +260,7 @@ decisions live in the sketch and README, not here.
 
 - **L20 — export v4 decoder unblock via legacy param lowering (Phase 0).**
   The desugar side bumped `Export::VERSION` 3→4 (structured param nodes +
-  additive heads; `../desugar-dt/implementation-choices.md` C25–C29),
+  additive heads; `../desugar/implementation-choices.md` C25–C29),
   which the v3-gated decoder rejected outright — `--sut lean` was fully red.
   This entry restores the SUT with **zero new stepper semantics**, so it can't
   regress the modeled fragment; the real param-binding work is Phase 2.
@@ -1029,7 +1029,7 @@ gated. The fix is a stepper-level mechanism, not a builtin.
   dated "current snapshot" block now fronts `HANDOFF.md` and `ruby/AGENTS.md`.
   **Audit method, repeatable — prefer it over reading prose:**
   1. *Feature probe:* write a one-line snippet per feature, run
-     `desugar-dt/bin/export-json f.rb | ruby-lean/.lake/build/bin/rubycore`, and read
+     `desugar/bin/export-json f.rb | ruby-lean/.lake/build/bin/rubycore`, and read
      exit 0 (works) vs exit 3 + the gate reason. Fast, unambiguous, and it catches exactly
      this kind of drift.
   2. *Prioritize by measurement, not by prose:* `cd difftest && uv run python -m difftest
@@ -12876,7 +12876,7 @@ lambda — proc types, not the block rule).
 `severity&.to_s&.upcase || "UNKNOWN"`. Measured first, before any code:
 
 ```
-$ desugar-dt/bin/export-json  # def f(x) = x&.to_s
+$ desugar/bin/export-json  # def f(x) = x&.to_s
 ["seq",["vasgn","local","__dt_t1",["var","local","x"]],
        ["if",["send",["var","local","__dt_t1"],"nil?",[],null],["nil"],
              ["send",["var","local","__dt_t1"],"to_s",[],null]]]

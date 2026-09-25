@@ -1,6 +1,6 @@
 /-
 RubyCore abstract syntax (artifact 00 §4), mirroring the harness's S-expr node
-set (`desugar-dt/lib/rubycore.rb` HEADS) one-for-one, plus the JSON
+set (`desugar/lib/rubycore.rb` HEADS) one-for-one, plus the JSON
 decoder for the versioned harness↔Lean interface (`lib/export.rb`, v1).
 
 Decoding is positional per head; a head outside the known set is a decode

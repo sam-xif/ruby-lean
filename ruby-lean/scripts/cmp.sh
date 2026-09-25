@@ -8,7 +8,7 @@ RUBY="$(brew --prefix ruby)/bin/ruby"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 if [ "$1" = "-f" ]; then SRC="$2"; else SRC=/tmp/cmp_$$.rb; printf '%s\n' "$1" > "$SRC"; fi
 CR=$("$RUBY" "$SRC" 2>&1)
-LN=$("$RUBY" "$HERE/../desugar-dt/bin/export-json" "$SRC" 2>&1 | "$HERE/.lake/build/bin/rubycore" 2>&1)
+LN=$("$RUBY" "$HERE/../desugar/bin/export-json" "$SRC" 2>&1 | "$HERE/.lake/build/bin/rubycore" 2>&1)
 if [ "${LN:0:1}" != "{" ]; then
   echo "GATE   $LN"
 else

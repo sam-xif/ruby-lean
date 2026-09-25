@@ -15,7 +15,7 @@ Where this file and the code disagree, **the code is what runs.** `Interp.lean`'
 verified against CRuby 4.0.5, **[D]** from documentation / ISO 30170, **[?]** open,
 to be pinned by differential testing.
 
-For layout, build, and the current fragment, see [`../README.md`](../README.md).
+For layout and build, see [`../README.md`](../README.md); for the current fragment, [`../../docs/model/fragment.md`](../../docs/model/fragment.md).
 
 ---
 
@@ -86,7 +86,7 @@ Auxiliary judgments defined by later artifacts:
 ### 00 §4 — Abstract syntax
 
 Surface Ruby desugars into this core (`Syntax.lean` mirrors it 1:1, and the
-desugarer's `HEADS` set in `desugar-dt/lib/rubycore.rb` mirrors that):
+desugarer's `HEADS` set in `desugar/lib/rubycore.rb` mirrors that):
 
 ```
 Expr e ::= lit ℓ | self | array [e…] | hash [(e ⇒ e)…]
@@ -116,7 +116,7 @@ dispatch boundary.
 ### 00 §5 — Desugarings
 
 Applied before evaluation, by the Ruby-side front end in
-[`../../desugar-dt/`](../../desugar-dt/README.md), which is separately
+[`../../desugar/`](../../desugar/README.md), which is separately
 differential-tested against CRuby. Representative set:
 
 | Surface | Desugars to |
@@ -139,7 +139,7 @@ hoist: if an operand *definitely jumps* (never yields a value), replace the whol
 compound with the sequence of operands up to and including it and drop the
 unreachable remainder. No temporaries are needed, precisely because a jump has no
 value to bind. Details and the worked cases are in
-[`../../desugar-dt/README.md`](../../desugar-dt/README.md) §*Linearization*.
+[`../../docs/front-end/linearization.md`](../../docs/front-end/linearization.md).
 
 ### 00 §6 — Deliberately excluded
 
@@ -703,8 +703,9 @@ check itself is deferred.
 
 | Topic | Read |
 |---|---|
-| Layout, build, the current fragment, the metatheory | [`../README.md`](../README.md) |
+| Layout and build | [`../README.md`](../README.md) |
+| The current fragment, the metatheory | [`../../docs/model/fragment.md`](../../docs/model/fragment.md), [`../../docs/model/metatheory.md`](../../docs/model/metatheory.md) |
 | The checker over this model, and the gate | [`../AGENTS.md`](../AGENTS.md) |
-| Front end: `desugar : Surface → RubyCore`, and artifact 06 | [`../../desugar-dt/README.md`](../../desugar-dt/README.md) |
-| Differential-testing methodology, and artifact 05 | [`../../difftest/README.md`](../../difftest/README.md) |
+| Front end: `desugar : Surface → RubyCore` | [`../../desugar/README.md`](../../desugar/README.md); artifact 06 is [`../../docs/front-end/method.md`](../../docs/front-end/method.md) |
+| Differential-testing methodology, and artifact 05 | [`../../docs/testing/methodology.md`](../../docs/testing/methodology.md) |
 | The chronological record — what was tried and what it cost | [`../notes/`](../notes/README.md) |

@@ -13,17 +13,19 @@ same way, under `ruby-lean/notes/`.
 | Directory | Read first | Then |
 |---|---|---|
 | `ruby-lean/` (the checker, `Ratchet/`+`Denote/`) | [`ruby-lean/AGENTS.md`](ruby-lean/AGENTS.md) — current state, the proof boundary, the pipeline, the gate; then its *Design record* for the Sorbet, reachability and answer-typed background the code cites | `notes/ratchet/implementation-notes.md` (the chronological record), `notes/ratchet/found-issues.md` (open findings, §F-numbers), `notes/ratchet/HANDOFF.md` (the live resume point) |
-| `ruby-lean/` (the model, `RubyCore/`) | [`ruby-lean/README.md`](ruby-lean/README.md) — layout, fragment, build | [`ruby-lean/RubyCore/README.md`](ruby-lean/RubyCore/README.md) — **the semantics itself**, and what code comments mean by *"artifact NN §M"*; then `notes/model/implementation-notes.md`, `notes/model/HANDOFF.md` |
-| `desugar-dt/` | [`desugar-dt/README.md`](desugar-dt/README.md) — the front end, how the fragment grows, the round-trip method (artifact 06), linearization | `implementation-choices.md` (C-numbers, cited from the code) |
-| `difftest/` | [`difftest/README.md`](difftest/README.md) — the engine, its invariants, and the methodology (artifact 05) | `implementation-notes.md` (N-numbers, cited from the code) |
-| `playground/` | [`playground/README.md`](playground/README.md) | — |
+| `ruby-lean/` (the model, `RubyCore/`) | [`ruby-lean/README.md`](ruby-lean/README.md) — layout, build; then [`docs/model/`](docs/model/fragment.md) for the fragment and metatheory | [`ruby-lean/RubyCore/README.md`](ruby-lean/RubyCore/README.md) — **the semantics itself**, and what code comments mean by *"artifact NN §M"*; then `notes/model/implementation-notes.md`, `notes/model/HANDOFF.md` |
+| `desugar/` | [`desugar/README.md`](desugar/README.md); then [`docs/front-end/`](docs/front-end/method.md) — the round-trip method (artifact 06), how the fragment grows, linearization | `implementation-choices.md` (C-numbers, cited from the code) |
+| `difftest/` | [`difftest/README.md`](difftest/README.md); then [`docs/testing/`](docs/testing/engine.md) — the engine, its invariants, and the methodology (artifact 05) | `implementation-notes.md` (N-numbers, cited from the code) |
+| `playground/` | [`playground/README.md`](playground/README.md) | [`docs/playground.md`](docs/playground.md) |
 | `paper/` | [`paper/README.md`](paper/README.md) | — |
 
-There is no central `docs/` directory. Each document lives next to the code it is
-about, and the cross-references the sources use (*"artifact 02 §3"*,
-*"types-and-preservation §A.5"*) resolve into those files — see
-`ruby-lean/AGENTS.md` §*Superseded design notes* for the map, including which
-design documents were deleted and what they were.
+READMEs are short orientation pages. The longer design and methodology material
+lives in `docs/`, an MkDocs site (see [`docs/index.md`](docs/index.md) for how to
+build it). The written semantics (`ruby-lean/RubyCore/README.md`) and the working
+notes stay next to their code. The cross-references the sources use
+(*"artifact 02 §3"*, *"artifact 06 §4"*, *"types-and-preservation §A.5"*) resolve
+into those files — see `ruby-lean/AGENTS.md` §*Superseded design notes* for the
+map, including which design documents were deleted and what they were.
 
 ## The one norm that matters
 

@@ -1,35 +1,26 @@
 # ruby-lean
 
-**An executable semantics for Ruby in Lean 4 — and a typed fragment whose checker
-is backed by a proof.**
+An executable semantics for a large core of Ruby, written in Lean 4, and a type
+checker for a small typed fragment whose "yes" is backed by a proof.
 
-Two artifacts live here, and the second is built on the first. Both are
-libraries of the one Lean project, [`ruby-lean/`](ruby-lean/README.md):
+- **The model** (`ruby-lean/RubyCore/`) is a small-step interpreter for Ruby. It is
+  tested by running the same programs through it and through CRuby and comparing
+  the output. The interpreter is the semantics; there is no separate paper
+  definition.
+- **The checker** (`ruby-lean/Ratchet/` and `ruby-lean/Denote/`) takes
+  Sorbet-annotated Ruby and returns one Lean `Bool`. A theorem says that when it
+  returns `true`, the program cannot hit a type error (`NoMethodError`,
+  `ArgumentError`, `TypeError`) when run by the model.
+- **The playground** (`playground/`) is a browser UI that runs a program through
+  every stage, steps the model one transition at a time, and runs CRuby beside it.
 
-1. **`ruby-lean/RubyCore/` — RubyCore.** A small-step machine plus fuel
-   interpreter for a substantial Ruby core, written in Lean 4 and validated
-   *empirically* by differential testing against CRuby: every program is run both
-   ways and the observations compared. It is not a paper semantics with an
-   interpreter beside it; the interpreter **is** the semantics.
-2. **`ruby-lean/Ratchet/` + `ruby-lean/Denote/` — the typed ladder.** A checker
-   over Sorbet-annotated Ruby whose single trusted output is one Lean `Bool`, and
-   a theorem saying that when that `Bool` is `true`, the program cannot get stuck
-   on a type error *when run by the semantics in `RubyCore/`*.
+> **Version 0.01.** The theorems are proved and the results are reproducible, but
+> the typed fragment is small. Read [Limits](#limits) before treating any number as
+> a claim about Ruby in general.
 
-Plus **`playground/`**, a browser UI that steps a program through the real
-`stepFn` one transition at a time and runs the same source through CRuby beside
-it.
+## The main theorem
 
-> **Version 0.01.** First extracted, self-contained cut of this work. The
-> theorems below are proved and the gate below is reproducible; the *fragment*
-> they cover is small and growing. See [Status and limits](#status-and-limits)
-> before reading any number as a claim about Ruby at large.
-
----
-
-## The claim, in one line
-
-From [`ruby-lean/Denote/Typed/Bridge.lean`](ruby-lean/Denote/Typed/Bridge.lean):
+From [`ruby-lean/Denote/Bridge.lean`](ruby-lean/Denote/Bridge.lean):
 
 ```lean
 theorem validateD_safe_boot {p : Ratchet.Expr} {d : Deriv}
@@ -37,339 +28,145 @@ theorem validateD_safe_boot {p : Ratchet.Expr} {d : Deriv}
     StuckFree bootMachine p
 ```
 
-where, from [`ruby-lean/Denote/Sem/State.lean`](ruby-lean/Denote/Sem/State.lean),
+`StuckFree` means that for any amount of fuel, running `p` on the model never
+ends in a `NoMethodError`, `ArgumentError` or `TypeError` (or a subclass). So if
+the checker accepts a program, that program is type-safe under the model, with no
+further argument needed. The build prints `#print axioms` for this theorem, and
+it uses only Lean's three standard axioms.
 
-```lean
-def StuckFree (m : Machine) (e : Ratchet.Expr) : Prop :=
-  ∀ fuel, Semantics.typeStuck (Interp.run fuel (evalFrom m e)) = false
-```
+Two things keep this from being an empty statement:
 
-and `typeStuck` is the `NoMethodError` / `ArgumentError` / `TypeError` family,
-closed under subclassing, decided on the **real** machine's heap
-([`ruby-lean/Semantics/Interp.lean`](ruby-lean/Semantics/Interp.lean)).
+- The model it talks about is the same one that is tested against CRuby.
+- The checker has negative controls that run at build time. A checker that
+  accepted everything would fail the build.
 
-Read it as: *acceptance is the safety claim.* There is no gap between "the
-checker said yes" and "this program is type-safe under our semantics" that a
-human has to bridge — the composition is proved, and the proof is **axiom-clean**
-(nothing beyond Lean's own three axioms). Two properties make that statement
-worth something rather than vacuous:
+## What you have to trust
 
-* the semantics it quantifies over is the same `stepFn` the differential tests
-  run against CRuby — it is a statement about a model that has been *attacked*,
-  not one invented to make the theorem easy; and
-* the checker is gated by **negative controls** that are `#guard`ed at build
-  time, so a checker that accepted everything would fail the build rather than
-  pass every rung.
-
-"Axiom-clean" is checked by the build itself, not asserted here — `Bridge.lean`
-ends in `#print axioms`, so `lake build` prints
-
-```
-'Ratchet.Denote.Typed.validateD_safe_boot' depends on axioms:
-  [propext, Classical.choice, Quot.sound]
-```
-
-and nothing else. Those three are Lean's own; a `sorry` or a new axiom would
-show up in that line, in the log, on every build.
-
-## Where it stands today
-
-Printed by `ruby-lean/scripts/run_typed_ratchet.sh` on a clean checkout of this
-repository (v0.01, verified 2026-09-15):
-
-```
-pipeline: reach 65 rungs · 252 agree, 0 disagree
-
-259 rungs · fragment 63 (reach 17) · 196 outside
-  48 rules certified, 0 owed
-
-RATCHET GREEN
-```
-
-| Number | Means |
-|---|---|
-| **259 rungs** | annotated programs in `ruby-lean/corpus/` |
-| **fragment 63** | rungs the certified judgment has rules for — each one's acceptance *is* its safety proof |
-| **reach 17** | the unbroken prefix from rung 001; rung 018 is correctly rejected |
-| **48 rules certified, 0 owed** | every rule in the judgment carries a semantic proof, so no rung is claimed on an unproved rule |
-| **196 outside** | declined, not mis-certified. The gate prints what each one hit: 42 block arguments, 21 `module`, 8 `casgn`, … — that list is the to-do |
-| **252 agree, 0 disagree** | the Lean model and CRuby produce identical observations on every stripped program the certificates are about |
-
-`GREEN` is the verdict, and it says *nothing is started and incomplete* — not
-that the ladder is finished. Unclimbed rungs are green because nothing claims
-them.
-
-And the model itself, against MRI's own `bootstraptest` suite
-(`scripts/reproduce.sh --with-difftest`, same checkout, same day):
-
-```
-1309 programs ran · 995 agree · 0 disagreements · 308 unsupported
-```
-
-`unsupported` is the model declining to guess — a construct outside its
-fragment, reported rather than approximated. **Zero disagreements** is the
-number that matters: nowhere does the model claim an answer CRuby contradicts.
-
-## What is trusted, and what is not
-
-The pipeline is deliberately lopsided. Four of its five stages can be arbitrarily
-wrong without making a wrong answer possible:
+Only the last stage. The first four produce a candidate proof; the fifth checks it.
 
 | Stage | Tool | Trusted? |
 |---|---|---|
-| 1. Sorbet signatures | `srb -p symbol-table` via `ruby-lean/scripts/srb_sigs.py` | no |
-| 2. Annotation stripping | `difftest/ruby/*_strip.rb` | no |
-| 3. Desugar to RubyCore JSON | `desugar-dt/bin/export-json` | no |
+| 1. Read Sorbet signatures | `ruby-lean/scripts/srb_sigs.py` | no |
+| 2. Strip annotations | `difftest/ruby/*_strip.rb` | no |
+| 3. Desugar to RubyCore JSON | `desugar/bin/export-json` | no |
 | 4. Emit a derivation | `ruby-lean/scripts/emit_deriv.rb` | no |
-| 5. **Check the derivation** | `validateD`, in Lean | **yes — only this** |
+| 5. **Check the derivation** | `validateD`, in Lean | **yes** |
 
-Stages 1–4 *generate* a candidate certificate. Stage 5 *checks* it, and only its
-`true` is licensed by the theorem above. A bug upstream costs you an accept you
-could have had (a false *reject*), never an unsound one.
+A bug in stages 1–4 can cause a correct program to be rejected. It cannot cause a
+wrong program to be accepted.
 
-## Install
+## Getting started
 
-Five external tools, all off-the-shelf.
+Install Lean (via elan), CRuby 4.0.x, Sorbet and uv:
 
 ```sh
-# Lean (the toolchain version itself is pinned by */lean-toolchain — elan fetches it)
 curl https://elan.lean-lang.org/elan-init.sh -sSf | sh
-
-# CRuby — the differential-testing oracle (validated against 4.0.x)
-brew install ruby
-
-# Sorbet — stage 1 of the typed pipeline
+brew install ruby uv
 gem install sorbet sorbet-runtime
-
-# uv — runs the difftest engine
-brew install uv        # or: curl -LsSf https://astral.sh/uv/install.sh | sh
+scripts/check-prereqs.sh      # confirms everything is found
 ```
 
-Then check all five at once:
+Build and run the gate:
 
 ```sh
-scripts/check-prereqs.sh
+cd ruby-lean && lake build                  # a few minutes for the model, ~30 min cold for the proofs
+./scripts/run_typed_ratchet.sh              # ends in RATCHET GREEN or RED
 ```
 
-It prints what it found, and for anything missing, the command that installs it.
-`$RUBY` and `$SORBET` override the auto-discovery if you keep them somewhere
-unusual.
-
-## Build
+Run one program through the model:
 
 ```sh
-cd ruby-lean && lake build   # the model + the `rubycore` SUT binary,
-                             # the checker, its proofs, and the runners
+echo 'puts 1 + 2' | ruby desugar/bin/export-json | ruby-lean/.lake/build/bin/rubycore
 ```
 
-One Lake package, four libraries — `RubyCore` (the model), `Ratchet` (the
-checker), `Semantics` (the one import of the real machine) and `Denote` (the
-denotation that joins them). The checker therefore always speaks about whatever
-the model currently does: there is no second, driftable copy of the semantics,
-and `Ratchet/` still imports nothing from `RubyCore/` (enforced by
-`ruby-lean/scripts/check-isolation.sh`, which the gate runs first). There are **no
-external Lean dependencies**: the package builds from the toolchain alone.
-
-On a cold cache expect a few minutes for the model and on the order of half an
-hour for the rest — the bulk of it is elaborating `Denote/`, which is where the
-semantic proofs live. Incremental rebuilds are seconds.
-
-## Reproduce
-
-One command runs the whole thing in order and stops at the first failure:
+Open the playground at http://localhost:8077:
 
 ```sh
-scripts/reproduce.sh                   # build + the typed ratchet gate
-scripts/reproduce.sh --with-difftest   # also: model vs CRuby over MRI's bootstraptest
-                                       #   (harvests the corpus on first run: one sparse
-                                       #    clone of ruby/ruby into $RUBY_SRC or /tmp)
-scripts/reproduce.sh --with-proofs     # also: the metatheory + `#print axioms`
-                                       #   (known red — see Status and limits)
+cd playground && python3 server.py
 ```
 
-The gate itself is the thing to run if you only run one:
+[Reproducing the results](docs/reproducing.md) has every command behind the
+numbers below, including the comparison against CRuby's own test suite.
 
-```sh
-cd ruby-lean && ./scripts/run_typed_ratchet.sh          # quiet: the verdict + what's next
-cd ruby-lean && ./scripts/run_typed_ratchet.sh --verbose # every stage's output
-```
+## Current numbers
 
-Its last line is **GREEN** or **RED**, and the distinction is the point:
+From a clean checkout of v0.01 (2026-09-15):
 
-* **GREEN** — nothing is started and incomplete. Every registered rule has a
-  semantic proof, every floor holds, the model agrees with CRuby on every
-  stripped program, and reach has not dropped. Rungs nobody has climbed yet are
-  GREEN: they are not *claimed*.
-* **RED** — the fragment is claiming something the bridge cannot back: a rule
-  with no semantic proof, a worked theorem about the wrong program, a shrunk
-  fragment, a moved floor.
+- **Checker:** 63 of the 259 annotated programs in `ruby-lean/corpus/` are in the
+  certified fragment. All 48 typing rules have semantic proofs. The other 196 are
+  declined, not wrongly accepted.
+- **Model:** on 1309 programs from MRI's `bootstraptest` suite, 995 agree with
+  CRuby, 0 disagree, and 308 use something the model does not support yet and
+  are reported as unsupported.
 
-Useful knobs: `RATCHET_SKIP_AGREEMENT=1` skips the CRuby replay (fastest useful
-run); in a sandbox with a protected uv cache, set
-`UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache`.
-
-Other reproductions, each a single command:
-
-```sh
-# the model against MRI's bootstraptest corpus, through the difftest engine.
-# The corpus is harvested, not vendored — one sparse clone, once:
-git clone --depth 1 --filter=blob:none --sparse https://github.com/ruby/ruby /tmp/ruby-src
-(cd /tmp/ruby-src && git sparse-checkout set bootstraptest)
-desugar-dt/bin/harvest_bootstraptest /tmp/ruby-src/bootstraptest
-cd difftest && uv sync && uv run python -m difftest run --tier 0 --sut lean
-
-# run one program through the model by hand
-echo 'puts 1 + 2' | ruby desugar-dt/bin/export-json | ruby-lean/.lake/build/bin/rubycore
-
-# the metatheory, and a re-check that the headline theorems are axiom-clean
-cd ruby-lean && ./scripts/check-proofs.sh
-```
-
-### The playground
-
-```sh
-cd ruby-lean && lake build                                          # once
-cd ../playground && python3 server.py                               # http://localhost:8077
-```
-
-Python stdlib only — no dependencies. Tab 1 steps a program through `stepFn`
-(with a step window, and breakpoints that match the rendered control) and runs
-the same source in CRuby for comparison; tab 3 drives the five ratchet stages
-over any corpus rung, one artifact at a time, with the derivation editable
-before the trusted check. See [`playground/README.md`](playground/README.md).
-
-## Layout
+## Repository layout
 
 | Path | What it is |
 |---|---|
-| [`ruby-lean/`](ruby-lean/README.md) | The Lean project — one Lake package, and everything below is a directory in it. Working notes live in `ruby-lean/notes/`; the agent-facing state is [`ruby-lean/AGENTS.md`](ruby-lean/AGENTS.md). |
-| [`ruby-lean/RubyCore/`](ruby-lean/RubyCore/README.md) | **RubyCore**: `Syntax`/`Heap`/`Machine`/`Builtins`/`Interp` (`stepFn` + `run fuel`), the Ruby-authored `prelude/`, the `rubycore` SUT binary, and `RubyCore/Proof/` (metatheory, incl. type-safety-by-reachability — off-default target `Metatheory`, except the lemmas `Denote/` imports). Its `README.md` is **the written semantics**: the configuration, the object model, the one dispatch rule, scope and constants, and the unwinding model. |
-| `ruby-lean/Ratchet/`, `Semantics/`, `Denote/` | The typed ladder: `Ratchet/` (the checker — its own copied `Expr`/`Ty`, `Deriv`, `validateD`; imports nothing from `RubyCore/`), `Semantics/` (the real machine, imported), `Denote/` (the semantic denotation and the bridge — the one library that imports both). With `corpus/` (annotated rungs) and `scripts/` (the untrusted pipeline + the gate). |
-| [`difftest/`](difftest/README.md) | The differential engine: tiered generators, the CRuby oracle, `replay`, and the strip transforms the ratchet reuses. |
-| [`desugar-dt/`](desugar-dt/README.md) | Ruby → RubyCore JSON (`export-json`), the front end for everything here — and the harness that validates it against CRuby with no model in the loop. |
-| [`playground/`](playground/README.md) | The browser stepper and the live ratchet pipeline. |
-| [`paper/`](paper/README.md) | Working draft of the paper. |
+| [`ruby-lean/`](ruby-lean/README.md) | The Lean project: the model, the checker, the proofs, the annotated corpus and the gate |
+| [`desugar/`](desugar/README.md) | Ruby source → RubyCore JSON, and the harness that tests that translation against CRuby |
+| [`difftest/`](difftest/README.md) | The differential testing engine: program generators, CRuby as the oracle, reports |
+| [`playground/`](playground/README.md) | The browser UI |
+| [`paper/`](paper/README.md) | Draft paper |
+| [`docs/`](docs/index.md) | Longer documentation: design, methodology, what the model supports. Builds as a site with MkDocs |
 
-Each of those carries its own `README.md`, and where there is agent-facing state
-an `AGENTS.md` beside it. There is no central docs directory: the written
-semantics lives next to the machine it describes, the two testing methodologies
-next to the engines that run them, and the checker's design record in
-[`ruby-lean/AGENTS.md`](ruby-lean/AGENTS.md).
+If you want to change something, read [`CONTRIBUTING.md`](CONTRIBUTING.md) and
+[`AGENTS.md`](AGENTS.md) first.
 
-## What a partial semantics is for
+## Limits
 
-A semantics of Ruby proves nothing with certainty about a real execution unless
-the interpreter, the machine code it JITs to, the OS and ultimately the hardware
-are verified too. So why formalize one layer?
+- **The typed fragment is small.** The checker accepts 63 of 259 corpus programs.
+  Block arguments, `module`, constant assignment and regexp literals are not
+  supported yet. Unsupported programs are rejected, not accepted wrongly.
+- **The model is incomplete.** It never disagrees with CRuby on the bootstraptest
+  suite, but it declines about a quarter of it.
+- **"Safe" means one kind of error.** The theorem rules out `NoMethodError`,
+  `ArgumentError` and `TypeError`. It says nothing about termination, other
+  exceptions, or side effects.
+- **Sorbet accepting a program is not the same as this checker accepting it.**
+  Sorbet accepts many programs the checker has no rules for yet.
+- **Typing Ruby against a real semantics is expensive.** There were four earlier
+  attempts at a checker in `RubyCore/` before this one. All were removed; only
+  some of their lemmas survive. See [Metatheory](docs/model/metatheory.md).
+- **The model's own metatheory is off the default build.** Run
+  `ruby-lean/scripts/check-proofs.sh` to build it. It once broke for 24 commits
+  without anyone noticing, which is why that script exists.
 
-Because **adversarial robustness is a different game from deductive certainty.**
-What matters is where an adversary's artifact lives and which interfaces its
-effects must flow through. If the threat is code written or modified by an AI,
-the adversary is *confined to the layer the semantics models* — it does not get
-to write C, every trick must be expressible in Ruby surface syntax, and a
-faithful Ruby semantics characterizes that entire action space. The unverified
-interpreter underneath is *shared trusted substrate*: defender and adversary
-stand on it equally. Assumptions don't invalidate a guarantee, they **localize
-the attack surface**.
+## Why model only part of the stack
 
-Three things a partial model buys, in increasing ambition:
+A Ruby semantics can't prove anything certain about a real execution unless the
+interpreter, compiler, OS and hardware underneath are also verified. It is still
+useful when the question is about code someone else wrote, for example code
+written or changed by an AI. That code can only do what Ruby lets it do, so a
+faithful model of Ruby covers everything it can do. The interpreter underneath is
+shared by everyone and is not the part under review.
 
-* **Semantic diff review.** For a proposed change, emit the *derivation-level*
-  delta — "this diff makes `save` resolve through a new module, here is the
-  rule-by-rule trace." Metaprogramming-based obfuscation is the natural
-  adversarial move in Ruby, and it is exactly what a heap-mutation dispatch model
-  makes legible: a backdoor *is* a heap delta, visible even when the textual diff
-  looks inert.
-* **Regression suites derived from meaning, not sampled.** Given `P` and a
-  proposed `P′`, check `obs(P) = obs(P′)` up to bounds or produce a **witness
-  input** where they diverge. The suite is the accumulated witnesses — robust in
-  a way sampled tests are not, because it is derived from the semantics of the
-  diff rather than drawn from a distribution the adversary can predict.
-* **Certificates.** "Within these bounds, this program never reaches a type-stuck
-  state / never opens a socket." The checker in `Ratchet/` is the first of these,
-  and the narrowest.
+What a partial model can be used for:
 
-The structural point is that the fuel interpreter and the step relation serve
-different verbs. **Bounded checking** always terminates and yields verdicts of
-the form "no witness within this frontier" — the automation floor, because an
-adversary can always contrive code that defeats invariant synthesis. **Unbounded
-proof** by induction over the relation covers executions of every length, and
-relocates the undecidable part into *finding the invariant*. Proof-carrying code
-dissolves the tension: demand that a submitted diff arrive with a machine-checked
-proof, and the capable, untrusted submitter bears the undecidable burden while
-the defender's checker is Lean's kernel. The economics that killed PCC in the
-1990s — proof authoring was brutally expensive for humans — are exactly what
-capable AI reverses.
+- **Reviewing changes by meaning.** Show how a diff changes method lookup or the
+  heap, which exposes metaprogramming tricks that look harmless in a text diff.
+- **Tests derived from the semantics.** For a program and a proposed change,
+  check that they behave the same up to some bound, or find an input where they
+  differ.
+- **Certificates.** Claims like "this program never hits a type error". The
+  checker here is the first and narrowest example.
 
-`Ratchet/` is the smallest real instance of this shape: untrusted generation,
-one trusted `Bool`, and a theorem that licenses it. See
-[`ruby-lean/AGENTS.md`](ruby-lean/AGENTS.md) §Type safety as reachability for the
-idea underneath it, and what is and is not built.
+Bounded checking always finishes but only covers executions up to the bound.
+Proofs cover every execution but need someone to find an invariant. If the
+person submitting a change has to supply the proof, and the reviewer only runs a
+small trusted checker, the hard part falls on the submitter. That used to be too
+expensive for humans to be practical; capable AI makes it cheaper.
 
-What this is honestly *not*: model fidelity is empirical and finite, so proofs do
-not shrink the gap to CRuby — they make it the *only* gap, which is why the
-differential ratchet is the permanent foundation rather than scaffolding. The
-induction recipe covers safety only. And attacks below the layer — the
-interpreter's supply chain, the hardware — are out of scope by design: the job is
-to force an adversary out of the cheap, deniable layer into expensive,
-conspicuous ones.
+This does not close the gap between the model and CRuby. Proofs make that gap
+the only one, which is why the differential tests are permanent. Attacks below
+Ruby (the interpreter's supply chain, the hardware) are out of scope.
 
-## Status and limits
+## History
 
-Read these before quoting a number.
-
-* **The fragment is small.** `validateD` accepts a *prefix* of the corpus, not
-  Ruby: 63 of 259 rungs today, and block arguments, `module`, constant
-  assignment (`casgn`) and regexp literals are all still outside it. Everything
-  outside is *declined*, not mis-certified — which is the design, but it means "certified type-safe" here
-  is a claim about a slice.
-* **The model is a model.** It agrees with CRuby wherever it answers (0
-  disagreements over 1309 bootstraptest programs) but it declines 308 of them —
-  roughly a quarter of the suite is outside its fragment. What is modeled, and
-  what is not, is listed in [`ruby-lean/README.md`](ruby-lean/README.md).
-* **Safety means one family.** `StuckFree` rules out reaching
-  `NoMethodError`/`ArgumentError`/`TypeError`. It is not a claim about
-  termination, about other exceptions, or about effects.
-* **Sorbet's verdict is not this repo's verdict.** `srb` clean with
-  `validateD = false` is an ordinary, expected combination: Sorbet accepts many
-  programs the certified fragment has no rules for yet.
-* **There was one type-checker of record, after four that were not.** `RubyCore/`
-  carried four earlier attempts at typing this model — a nominal static checker
-  (`infer`/`check`), a certificate language, an inductive `Judge` layer, and an
-  Iris-seated higher-order denotation. Each was superseded, none was the checker
-  the gate runs, and all four were removed along with the `rubycore` flags that
-  drove them. What survived is what the live checker imports: the class-freshness
-  and declaration-table lemmas under `Proof/Judgment/` and `Proof/Static/`. The
-  reading to take from that is about *cost*, not about soundness: the fragment
-  `validateD` covers is small because typing Ruby against a real semantics is
-  expensive, and this is what three of those attempts cost.
-* **The metatheory is off the default target.** `scripts/check-proofs.sh` builds
-  it and re-verifies `#print axioms`; it passes today. It is off the default
-  target because it is slow and nothing the SUT does depends on it — which is
-  also why it once rotted for 24 commits, and why that script exists.
-* **`ruby-lean/build/` is derived.** It is regenerated from `corpus/*.rb` by the
-  pipeline; the annotated `.rb` is the source of truth.
-
-`ruby-lean/AGENTS.md` and the `ruby-lean/notes/` files (`implementation-notes.md`,
-`found-issues.md`, `HANDOFF.md`, per layer under `notes/model/` and
-`notes/ratchet/`) are the working record: what was tried, what broke, and which stall points
-cost days. They are kept deliberately — the negative results are half the
-content.
-
-## Provenance and history
-
-This repository is a subtree extraction from the "Semantics Done Quick"
-monorepo, taken with `git-filter-repo` so that **the full commit history of
-every file is preserved** — 841 commits, from the first differential-test engine
-through the current typed ladder. `git log --follow` works across the move.
-
-Paths were rewritten (`sam-xif/ruby/X` → `X`); sibling investigations that this
-work does not depend on (the POSIX investigation, the Homebrew slice explorer's
-backing tools, exploratory spikes, the session journals) were left behind. Some
-historical notes in `*-notes.md` therefore reference directories that are not
-here; the code, the proofs, the corpus and the gate are complete and
-self-contained.
+This repository was extracted from a larger monorepo with `git-filter-repo`, so
+the full history of every file is kept (841 commits). Some older notes mention
+directories that were left behind; the code, proofs, corpus and gate are complete.
 
 ## License
 
-Apache License 2.0 — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+Apache License 2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).

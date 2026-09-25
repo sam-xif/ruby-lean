@@ -34,7 +34,7 @@
 >   `reprPure` flag (L7) and every `puts` in every program would gate. Making
 >   `p`/`puts`/interpolation dispatch `to_s`/`inspect` (moving them into the prelude
 >   over a printing primitive) retires that flag and unlocks ~59 cases plus every
->   user class with a custom `to_s`. See `README.md` §Fragment.
+>   user class with a custom `to_s`. See `../docs/model/fragment.md` §Fragment.
 > - **Two traps to know before touching the step function** (L73): a `partial def`
 >   or a `String.endsWith`/`startsWith` on the dispatch path is **not
 >   kernel-reducible** and silently breaks every `Proof/` file while the difftest
@@ -50,7 +50,7 @@ state, the coverage assessment, and what happens next.
 
 Built and green: the L0 slice of `../docs/semantics/lean-model-sketch.md` §3–4
 runs as a difftest SUT (`--sut lean`). Pipeline: Ruby source → desugar
-(`../desugar-dt/`) → RubyCore JSON (`lib/export.rb`, versioned) →
+(`../desugar/`) → RubyCore JSON (`lib/export.rb`, versioned) →
 `rubycore` binary → Observation JSON. Two fragment gates compose (desugar's
 and the model's); binary exit 3 = Unsupported, exit 1 = model bug
 (`MODEL-BUG:` prefix in the engine — never silently absorbed).
@@ -141,7 +141,7 @@ disagreement — preserve them as the fragment grows.
    deliberately non-mutual single transitions, so rule extraction is
    mechanical), then `step_deterministic` and `stepFn` soundness/completeness.
    **A proof-of-concept slice of this is now done** (`RubyCore/Proof/`, off the
-   default target; README §Metatheory, implementation-notes L13–L15): an
+   default target; `../docs/model/metatheory.md`, implementation-notes L13–L15): an
    inductive `Step` over an effect-light control-core fragment with
    `Step.sound`, `Step.complete`, `Step.adequacy` (function–relation adequacy
    on the fragment), `Step.deterministic`, and a `Step.heap_monotone`

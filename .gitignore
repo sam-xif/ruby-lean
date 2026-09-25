@@ -22,3 +22,6 @@ playground/dist.tar.gz
 
 # my personal agent transcripts journal
 journal/
+
+# mkdocs output
+site/

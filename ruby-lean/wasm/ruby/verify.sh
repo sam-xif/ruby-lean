@@ -46,7 +46,7 @@ w() { wasmtime "$RUBY_WASM" "$@"; }
 CHAIN="sig_strip visibility_strip freeze_strip require_strip const_inline class_sugar_strip"
 
 if [ "$ONLY" = all ] || [ "$ONLY" = desugar ]; then
-  a=$(ruby "$ROOT/desugar-dt/bin/export-json" < "$f" 2>&1; echo "rc=$?")
+  a=$(ruby "$ROOT/desugar/bin/export-json" < "$f" 2>&1; echo "rc=$?")
   b=$(w /opt/desugar/bin/export-json < "$f" 2>&1; echo "rc=$?")
   [ "$a" = "$b" ] && echo "desugar OK" || echo "desugar DIFF $name"
 fi

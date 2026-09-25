@@ -2,7 +2,7 @@
 
 Tier 0 is the conformance-corpus tier. Its first source is MRI's own
 bootstraptest suite, as harvested by the desugar harness
-(`../desugar-dt/bin/harvest_bootstraptest`) — no translation needed,
+(`../desugar/bin/harvest_bootstraptest`) — no translation needed,
 the harvested cases are already self-contained single-file Ruby. Validity is
 enforced at run time by the existing control gate in `run_case` (parse check,
 timeout, determinism double-run), so unusable cases are excluded with reasons
@@ -19,7 +19,7 @@ from .testcase import TestCase
 
 BASE = Path(__file__).resolve().parents[1]  # ruby/difftest/
 BOOTSTRAPTEST_DIR = (
-    BASE.parent / "desugar-dt" / "corpus" / "bootstraptest"
+    BASE.parent / "desugar" / "corpus" / "bootstraptest"
 )
 
 SORBET_DIR = BASE / "corpus" / "sorbet"
@@ -60,7 +60,7 @@ HARVEST_RECIPE = """\
 The bootstraptest corpus is harvested on demand (not vendored). To fetch it:
   git clone --depth 1 --filter=blob:none --sparse https://github.com/ruby/ruby /tmp/ruby
   (cd /tmp/ruby && git sparse-checkout set bootstraptest)
-  ../desugar-dt/bin/harvest_bootstraptest /tmp/ruby/bootstraptest"""
+  ../desugar/bin/harvest_bootstraptest /tmp/ruby/bootstraptest"""
 
 
 def load_corpus_cases(corpus: Path, default_tier: int = -1) -> list[TestCase]:

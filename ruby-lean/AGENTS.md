@@ -2060,7 +2060,7 @@ real Ruby. This version **ports `Expr` and `Ty` verbatim from the real model**
 (`RubyCore/Syntax.lean`, `RubyCore/Types/Ty.lean` — see the provenance
 note at the top of `Ratchet/Lang/Expr.lean`/`Ratchet/Lang/Ty.lean` for exactly what was kept vs.
 trimmed) and sources every corpus program from **real Ruby run through the real
-desugarer** (`desugar-dt/bin/export-json`), not hand-authored ASTs. The
+desugarer** (`desugar/bin/export-json`), not hand-authored ASTs. The
 semantics (`stepFn`/the interpreter) was initially left out entirely; it is now
 imported (not ported — see §Semantics status) but not yet wired into the corpus.
 
@@ -3384,7 +3384,7 @@ what each one was, so a citation is readable without fetching it.
 | `AGENTS.md` §Sorbet | → §Sorbet, as an object of study, above (§A Sorbet, §B the soundness survey, §C the mapping onto this machine) |
 | `AGENTS.md` §The answer-typed design, `AGENTS.md` §The answer-typed design | → §The answer-typed design, above |
 | `RubyCore/README.md` §Mechanization | → `RubyCore/README.md` §Mechanization |
-| artifacts `00`–`04`, `linearization.md` | → `RubyCore/README.md`; `05` → `../difftest/README.md`; `06` → `../desugar-dt/README.md` |
+| artifacts `00`–`04`, `linearization.md` | `00`–`04` → `RubyCore/README.md`; `05` → `../docs/testing/methodology.md`; `06` and `linearization.md` → `../docs/front-end/` |
 | `PROJECT_PLAN.md` | the original project plan: motivation, prior-art survey, scope and phasing. §4 (what is modeled, and the exclusions) is `RubyCore/README.md` 00 §6; §7 (the relation, not the interpreter, is the definition of record) is its §Mechanization |
 | the static-soundness POC note | the first end-to-end soundness POC: a total `check : Expr → Verdict` with `check_sound` over the *fully-typed* fragment, `I ≡ InFragment ∧ WellTyped`, and the builtin signature table it forced. Its §7 is the **checker difftest**, which survives as `difftest/checker_relation.py` |
 | the typed-portion-safety note | the plan for "a type error never occurs inside typed code" — the blame-theorem shape. Its finding stands: four verified channels carry untyped data into typed code, one of which (alias + mutate) shows *no entry check, however deep, suffices*, so the required condition is a property of the **heap over time**, not of the call graph |
