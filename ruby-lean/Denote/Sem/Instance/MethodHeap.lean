@@ -260,6 +260,7 @@ theorem CoreOk.defineMethod {h : Heap} {cls : ObjId} {name : String}
   rootNames := hc.rootNames.defineMethod
   metaConstants := by simpa only [Proof.classOf_defineMethod] using hc.metaConstants.methodWrite
   basicSelf := by simpa only [Proof.ancestors_defineMethod] using hc.basicSelf
+  moduleBasic := by simpa only [Proof.ancestors_defineMethod] using hc.moduleBasic
   stringNamed := by simpa only [classNamed?_defineMethod] using hc.stringNamed
   stringSelf := by simpa only [Proof.ancestors_defineMethod] using hc.stringSelf
   stringBasic := by simpa only [Proof.ancestors_defineMethod] using hc.stringBasic

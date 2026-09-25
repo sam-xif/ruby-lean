@@ -153,6 +153,7 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
       h.core.rootNames.ivarOnly hw,
       by simpa only [hw.classOf_eq] using h.core.metaConstants.ivarOnly hw,
       by simpa only [hw.ancestors_eq] using h.core.basicSelf,
+      by simpa only [hw.ancestors_eq] using h.core.moduleBasic,
       by simpa only [hn] using h.core.stringNamed,
       by simpa only [hw.ancestors_eq] using h.core.stringSelf,
       by simpa only [hw.ancestors_eq] using h.core.stringBasic,

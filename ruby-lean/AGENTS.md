@@ -30,9 +30,9 @@ from each proof term. It must pass before committing. Use quiet mode; `--verbose
 for a failure whose captured error is insufficient. In a sandbox with a protected uv cache,
 set `UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache`.
 
-Clink 189 prepares 077 with real module-allocation/data-preservation proofs. No module
-admission yet: DeclClassOk is ordinary-class-only, and Module ancestry needs a retained
-contract (§F46). See the live HANDOFF before extending this boundary.
+Clinks 189–190 prepare 077 with real module-allocation/data/frame proofs. CoreOk now retains
+Module ancestry (§F46). No module admission yet: DeclClassOk/ClassChains remain ordinary-class
+contracts; header publication and body scope are next. See the live HANDOFF.
 
 ## Layout
 

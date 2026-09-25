@@ -11084,3 +11084,22 @@ both halves of what constrains them now have a name.
   077 remains outside the certified fragment. New proofs and controls build under a second;
   only standard axioms. Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules,
   0 owed/exempt, 56 worked theorems, 252 agree / 0 disagree. Metatheory audit passes.
+
+## Clink 190 (2026-09-25) — retain Module ancestry and establish its entry frame
+
+- CoreOk now retains Module's BasicObject ancestry separately from ClassReady. coreDataB
+  checks it at boot; heap extension, method installation, subclass allocation and ivar
+  mutation preserve it. Module entry and balanced framing derive the premise from StateOk.
+  The §F46 witness still passes ClassReady and saturation but fails coreOkB; a generic
+  theorem excludes every unrooted-Module heap from full conformance.
+- ModuleReady preserves ClassReady and old metaclass sites and establishes the fresh
+  metaclass through Module, with builtin-base separation. ModuleFrame proves the actual
+  fresh frame's empty locals/ivars, self type, liveness, uncaptured status and saved caller
+  frames. module_entry_ready combines the real step with readiness and saturation.
+- Controls check readiness on the real singleton-call path and execute a body that writes
+  its own local while restoring the caller's previous value. No new typing rule, emitter
+  policy or declaration-table claim. Next: module-specific header/ancestry publication and
+  body-scope dispatch/constant contracts; ordinary DeclClassOk remains inapplicable.
+- Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
+  56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  The longest rebuilt module takes 39s; new entry proofs take seconds, none near five minutes.

@@ -4,7 +4,7 @@ import RubyCore.Proof.Judgment.ModFresh
 
 /-! First-order data across actual fresh top-level module allocation. The model's heap
 composite is reused only for its operational facts, without an older typing judgment.
-Module ancestry is an explicit premise: ordinary ClassReady does not retain it. -/
+Module ancestry is an explicit heap premise, retained separately by CoreOk. -/
 set_option autoImplicit false
 namespace Ratchet.Denote.FreshModule
 open RubyCore Ratchet RubyCore.Proof RubyCore.Proof.Judgment
@@ -96,12 +96,11 @@ theorem dataPres (hc : ClassReady h) (hs : Saturated h)
 /-- Caller framing after balancing the module-body frame; the body itself is not run here. -/
 theorem framed {κ : Ctx} {Γ : Env} {I : Ty} {m n : Machine}
     (hm : StateOk κ Γ I m) (hf : constOwn m.heap Boot.objectId name = none)
-    (hmod : (ancestors m.heap Boot.moduleId).contains Boot.basicObjectId = true)
     (hh : n.heap = freshModHeap m.heap Boot.objectId name name)
     (hs : n.stack = m.stack) (hfr : FramePres m n) : Framed m n := by
   have hd : DataPres m.heap n.heap := by
     rw [hh]
-    exact dataPres hm.core.classReady hm.sat hm.core.basicSelf hf hmod
+    exact dataPres hm.core.classReady hm.sat hm.core.basicSelf hf hm.core.moduleBasic
   exact ⟨hs, fun k hk => by rw [hh]; exact classPayload_live hk,
     hd.nominal, fun _ ht _ hv => hd.denM ht hv, hfr,
     .of_unchanged (by rw [hh, freshModHeap_size]; exact Nat.le_add_right _ _)

@@ -2657,13 +2657,14 @@ or effect/ownership accounting; accepting it under the present universal framing
 
 ## F46 — class readiness does not retain Module ancestry (2026-09-25)
 
-**Extension boundary, not an accepted unsafe program.** ModuleDataControls builds a heap
+**Closed by Clink 190; extension boundary, not an accepted unsafe program.** ModuleDataControls builds a heap
 where Class inherits Object and Module has no parent. ClassReady and saturation hold,
 but fresh module allocation changes a dangling reference's dispatch chain to an eigenclass
 inheriting the unrooted Module. It loses BasicObject membership. This witnesses only the
 selected contracts, not full StateOk or reachability.
 
-Clink 189's data/frame preservation therefore takes Module's BasicObject ancestry explicitly.
-Module declaration admission still needs to retain or derive that premise in conformance;
-ordinary class readiness alone cannot discharge it. The module's own chain is [k], so the
+CoreOk now retains Module's BasicObject ancestry, checked at boot and preserved through
+all current transports. Entry/frame preservation derives it from StateOk; the generic
+unrooted_module_not_state theorem excludes the countermodel. ClassReady alone still cannot
+discharge it. The module's own chain is [k], so the
 ordinary DeclClassOk ancestry and isModule=false clauses also cannot describe a module.

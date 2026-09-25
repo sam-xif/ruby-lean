@@ -520,6 +520,8 @@ structure CoreOk (h : Heap) : Prop where
   metaConstants : ConstFallback h (classOf h (.ref Boot.objectId))
   /-- `BasicObject` has no superclass and no mixins, so its ancestor list is just itself. -/
   basicSelf : ancestors h Boot.basicObjectId = [Boot.basicObjectId]
+  /-- Fresh module values dispatch through Module, independently of Class ancestry (§F46). -/
+  moduleBasic : (ancestors h Boot.moduleId).contains Boot.basicObjectId = true
   /-- The name `String` resolves to the boot `String` class. -/
   stringNamed : classNamed? h "String" = some Boot.stringId
   /-- `String` is a `String` … -/
@@ -563,6 +565,7 @@ theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m
     simpa only [classOf, he.get Boot.objectId hc.classReady.chains.boot.2.2.2.2]
       using hc.metaConstants.ext he
   basicSelf := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.basicSelf
+  moduleBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.moduleBasic
   stringNamed := by subst hm; subst hm₂; rw [he.classNamed?_eq]; exact hc.stringNamed
   stringSelf := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.stringSelf
   stringBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.stringBasic
