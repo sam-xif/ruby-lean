@@ -76,6 +76,10 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
       obtain ⟨k, hk⟩ := h.classRuntime cn hr
       exact ⟨k, hk.reframe hh hd hc hcap hphase
         ((hvis (by rw [hr]; simp)).trans hk.visibility.symm)⟩
+    singletonRuntime := by
+      intro cn hr
+      obtain ⟨k, e, scope⟩ := h.singletonRuntime cn hr
+      exact ⟨k, e, scope.reframe hh hs hd hc hcap hphase⟩
     classSites := by
       rw [hh]
       exact h.classSites.recontext (fun _ hc => hc) (fun _ hn => hn)

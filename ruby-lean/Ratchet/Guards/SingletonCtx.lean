@@ -4,6 +4,17 @@ import Ratchet.Guards.ClassHeader
 set_option autoImplicit false
 namespace Ratchet
 
+/-- Singleton bodies retain lexical class constants and an open class-object ivar record. -/
+def singletonBodyCtx (κ : Ctx) (cn name : String) : Ctx :=
+  { κ with scope := { κ.scope with
+      frame := some ⟨cn, cn, name, true⟩
+      blockTy := none
+      selfTy := some (.clsOf cn)
+      runtimeMain := false
+      runtimeClass := none
+      runtimeSingleton := some cn
+      closedIvars := false } }
+
 def classWithSingleton (c : Cls) (d : Defn) : Cls := { c with smethods := d :: c.smethods }
 
 def singletonDeclCtx (κ : Ctx) (c : Cls) (d : Defn) : Ctx :=

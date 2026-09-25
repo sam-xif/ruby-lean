@@ -52,7 +52,7 @@ theorem declared_super_initializer_runSpec {anchor : Heap} {κ κb : Ctx} {Γ Γ
     {ps : List SigParam} {args : List Value}
     (hm : InitState anchor κ Γ I m) (ht : ReframeFO κ I) (ha : κ.asms = [])
     (hout : ReframeFO (returnScopeCtx κ κb) Ib) (hr : receiver ∈ κ.classes)
-    (hf : κ.frame = some ⟨receiver.name, current, d.name⟩)
+    (hf : κ.frame = some ⟨receiver.name, current, d.name, false⟩)
     (hc : κ.scope.runtimeClass = some current) (hmain : κ.scope.runtimeMain = false)
     (hself : κ.selfTy = some (.inst receiver.name .ivar0)) (hblock : κ.blockTy = none)
     (hclosed : κ.scope.closedIvars = true) (hclosed' : κb.scope.closedIvars = true)

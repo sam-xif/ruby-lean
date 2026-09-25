@@ -76,9 +76,9 @@ theorem initializer_body :
   finalInit.sem
 
 theorem getter_body :
-    SemSafeCtxA (instanceBodyCtx callerCtx ⟨"Point", "Point", "getX"⟩ pointInitSpine)
+    SemSafeCtxA (instanceBodyCtx callerCtx ⟨"Point", "Point", "getX", false⟩ pointInitSpine)
       [] pointInitSpine getter.body .int
-      (instanceBodyCtx callerCtx ⟨"Point", "Point", "getX"⟩ pointInitSpine) [] pointInitSpine :=
+      (instanceBodyCtx callerCtx ⟨"Point", "Point", "getX", false⟩ pointInitSpine) [] pointInitSpine :=
   SemSafeCtxA.ivarRead
 
 theorem constructor_code {Γ : Env} {I : Ty} {m : Machine} (hm : StateOk callerCtx Γ I m) :

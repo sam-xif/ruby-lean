@@ -11,6 +11,6 @@ def topDeclCtx (κ : Ctx) (d : Defn) : Ctx :=
   { reserveNameCtx κ d.name with pos := { κ.pos with defs := d :: κ.defs } }
 
 def topBodyCtx (κ : Ctx) (d : Defn) : Ctx :=
-  (topDeclCtx κ d).withFrame (some ⟨"Object", "Object", d.name⟩)
+  (topDeclCtx κ d).withFrame (some ⟨"Object", "Object", d.name, false⟩)
 
 end Ratchet

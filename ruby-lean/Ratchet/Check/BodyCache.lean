@@ -61,7 +61,7 @@ def cacheSignaturesB (a b : CheckedCache) : Bool :=
 structure CallableBody (κ : Ctx) (I : Ty) (name : String) where
   decl : Defn
   nameOk : decl.name = name
-  body : CheckedBody (κ.withFrame (some ⟨"Object", "Object", decl.name⟩)) I decl
+  body : CheckedBody (κ.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I decl
   installed : decl ∈ κ.defs
 
 def findBody (κ : Ctx) (I : Ty) (name : String) : BodyCache → Option (CallableBody κ I name)
@@ -69,7 +69,7 @@ def findBody (κ : Ctx) (I : Ty) (name : String) : BodyCache → Option (Callabl
   | c :: cs =>
     let found : Option (CallableBody κ I name) := do
       if hn : c.decl.name = name then do
-        let ⟨hc⟩ ← ctxEq? c.ctx (κ.withFrame (some ⟨"Object", "Object", c.decl.name⟩))
+        let ⟨hc⟩ ← ctxEq? c.ctx (κ.withFrame (some ⟨"Object", "Object", c.decl.name, false⟩))
         if hi : c.spine = I then do
           let ⟨hd⟩ ← defnMem? c.decl κ.defs
           some ⟨c.decl, hn, by simpa only [hc, hi] using c.body, hd⟩
@@ -101,7 +101,7 @@ structure CallableMember (κ : Ctx) (c : Cls) (name : String) where
   installed : decl ∈ c.methods
   fields : Ty
   fieldsFO : FirstOrder fields = true
-  body : CheckedBody (instanceBodyCtx κ ⟨c.name, c.name, decl.name⟩ fields) fields decl
+  body : CheckedBody (instanceBodyCtx κ ⟨c.name, c.name, decl.name, false⟩ fields) fields decl
 
 def findMember (κ : Ctx) (c : Cls) (name : String) : List CachedMember → Option (CallableMember κ c name)
   | [] => none
@@ -110,7 +110,7 @@ def findMember (κ : Ctx) (c : Cls) (name : String) : List CachedMember → Opti
       if b.owner != c.name || b.receiver != c.name then none else do
       if hn : b.decl.name = name then do
       if hf : FirstOrder b.spine = true then do
-        let ⟨hc⟩ ← ctxEq? b.ctx (instanceBodyCtx κ ⟨c.name, c.name, b.decl.name⟩ b.spine)
+        let ⟨hc⟩ ← ctxEq? b.ctx (instanceBodyCtx κ ⟨c.name, c.name, b.decl.name, false⟩ b.spine)
         let ⟨hd⟩ ← defnMem? b.decl c.methods
         some ⟨b.decl, hn, hd, b.spine, hf, by simpa only [hc] using b.body⟩
       else none

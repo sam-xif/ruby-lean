@@ -58,9 +58,9 @@ theorem boot_new (hb : bootOkB = true) :
     (.cons child_sem (.last new_sem))
 
 theorem getter_body : SemSafeCtxA
-    (instanceBodyCtx callerCtx ⟨child.name, get.owner, get.decl.name⟩ get.fields)
+    (instanceBodyCtx callerCtx ⟨child.name, get.owner, get.decl.name, false⟩ get.fields)
     get.body.params get.fields get.decl.body get.body.ret
-    (instanceBodyCtx callerCtx ⟨child.name, get.owner, get.decl.name⟩ get.fields)
+    (instanceBodyCtx callerCtx ⟨child.name, get.owner, get.decl.name, false⟩ get.fields)
     get.body.out get.fields := djudge_context get.body.judged
 
 theorem getter_returns_string : get.body.ret = .cls "String" := by decide +kernel

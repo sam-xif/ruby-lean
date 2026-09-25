@@ -506,7 +506,7 @@ def checkMemberDefinition (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (cn : Stri
       let fresh ← refreshClassBodies n next cache
       let fields := receiverFields next (classWithMethod f.cls d) fresh
       if hf : FirstOrder fields = true then do
-        let bctx := instanceBodyCtx next ⟨f.cls.name, f.cls.name, d.name⟩ fields
+        let bctx := instanceBodyCtx next ⟨f.cls.name, f.cls.name, d.name, false⟩ fields
         let body ← checkMethodBody n bctx fields d hint fresh
         let variants ← refreshMemberReceivers n next fresh
           ⟨⟨bctx, fields, d, body, db⟩, f.cls.name, f.cls.name⟩ (next.classes.map (·.name)).eraseDups
@@ -566,7 +566,7 @@ def checkRec (fuel : Nat) (κ : Ctx) (I : Ty) (s : RecScope) (Γ : Env)
         if hps : s.params.all (fun p => FirstOrder p.2 && !isAliasTy p.2) = true then do
         if hr : FirstOrder s.ret = true then do
         let ⟨hd⟩ ← defnMem? s.decl κ.defs
-        let ⟨hframe⟩ ← ctxEq? (κ.withFrame (some ⟨"Object", "Object", s.decl.name⟩)) κ
+        let ⟨hframe⟩ ← ctxEq? (κ.withFrame (some ⟨"Object", "Object", s.decl.name, false⟩)) κ
         if hm : κ.scope.runtimeMain = true then do
         if hs : κ.selfTy = none then do
         if hb : κ.blockTy = none then do
@@ -618,7 +618,7 @@ def refreshTopBodies (fuel : Nat) (κ : Ctx) (I : Ty) (base : CheckedCache)
     | [] => some []
     | c :: cs => do
       let fresh ← refreshTopBodies n κ I base cs
-      let bodyCtx := κ.withFrame (some ⟨"Object", "Object", c.decl.name⟩)
+      let bodyCtx := κ.withFrame (some ⟨"Object", "Object", c.decl.name, false⟩)
       let body ← checkMethodBody n bodyCtx I c.decl
         (.defDecl c.decl.name c.body.params c.body.ret c.deriv) { base with top := fresh }
       some (⟨bodyCtx, I, c.decl, body, c.deriv⟩ :: fresh)
@@ -668,7 +668,7 @@ def refreshMemberReceivers (fuel : Nat) (κ : Ctx) (base : CheckedCache) (c : Ca
       | some _ => do
         let f ← findClass cn κ.classes
         let fields := receiverFields κ f.cls base
-        let ctx := instanceBodyCtx κ ⟨cn, c.owner, c.decl.name⟩ fields
+        let ctx := instanceBodyCtx κ ⟨cn, c.owner, c.decl.name, false⟩ fields
         let body ← checkMethodBody n ctx fields c.decl
           (.defDecl c.decl.name c.body.params c.body.ret c.deriv) base
         some (⟨⟨ctx, fields, c.decl, body, c.deriv⟩, c.owner, cn⟩ :: tail)

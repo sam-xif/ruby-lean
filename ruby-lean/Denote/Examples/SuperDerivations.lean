@@ -51,7 +51,7 @@ private theorem parent_deriv :
     @hF DClink.memberDef (by simp [dclinks]) afterInit [] [] .ivar0 fields .int
       initClass speak [] rfl (by simp) rfl rfl
       (@hF DClink.ivarRead (by simp [dclinks])
-        (instanceBodyCtx bodyCtx ⟨"Shape", "Shape", "sides"⟩ fields) [] fields "@sides") (by decide)
+        (instanceBodyCtx bodyCtx ⟨"Shape", "Shape", "sides", false⟩ fields) [] fields "@sides") (by decide)
       (by change initClass ∈ [initClass, header]; simp) (by decide)
   exact hF DClink.classDecl (by simp [dclinks])
     (hF DClink.seq (by simp [dclinks])
@@ -118,7 +118,7 @@ theorem full_deriv (n : Int) :
       (by exact of_decide_eq_true rfl) (by exact of_decide_eq_true rfl) (by exact of_decide_eq_true rfl)
       rfl (by simp) rfl rfl
       (@hF DClink.ivarRead (by simp [dclinks])
-        (instanceBodyCtx (callerCtx n) ⟨"Triangle", "Shape", "sides"⟩ fields) [] fields "@sides")
+        (instanceBodyCtx (callerCtx n) ⟨"Triangle", "Shape", "sides", false⟩ fields) [] fields "@sides")
       (by exact of_decide_eq_true rfl)
   exact hF DClink.seq (by simp [dclinks])
     (hF DClink.DJudgeSeq.cons (by simp [dclinks]) (parent_deriv F hF)

@@ -21,7 +21,7 @@ def useHint (cn : String := "Box") (I : Ty := fields "@secret") : Deriv :=
 #guard !validateD (program "@secret")
   (.seq [declHint, useHint "Box" (.ivarCons "@secret" .int .ivar0)])
 
-def openCtx : Ctx := instanceBodyCtx ctx0 ⟨"Box", "Box", "reveal"⟩ .ivar0
+def openCtx : Ctx := instanceBodyCtx ctx0 ⟨"Box", "Box", "reveal", false⟩ .ivar0
 #guard !(check fuelD [] (.var .ivar "@secret") (.ivarRead "@secret" .nilT) openCtx).isSome
 #guard (check fuelD [] (.var .ivar "@secret") (.ivarRead "@secret" .any) openCtx).isSome
 #guard nilFieldsB (nilFields ["@a", "@b", "@a"])

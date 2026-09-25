@@ -42,11 +42,11 @@ theorem instance_required_frame_at {m : Machine} {recv : Value} {cn ownerCn name
     {r k : ObjId} {md : MethodDef} {I : Ty} (names : List String) (args : List Value)
     (hk : classNamed? m.heap cn = some r) (hv : denM (.inst cn I) m recv)
     (hf : classFrontB m.heap r = true) (hc : InstanceMethodCode k name md) :
-    FrameOk (some ⟨cn, ownerCn, name⟩) (pushMethodFrame m (requiredFrame recv name md names args)) := by
+    FrameOk (some ⟨cn, ownerCn, name, false⟩) (pushMethodFrame m (requiredFrame recv name md names args)) := by
   rw [denM] at hv
   have hco := exactInst_classOf hv.1 hk
   obtain ⟨rest, ha⟩ := classFrontB_sound hf
-  simp only [FrameOk, currentFrame_pushMethodFrame, requiredFrame, hc.superName, Option.getD_none]
+  simp only [FrameOk, Frame.recvTy, Bool.false_eq_true, ↓reduceIte, denM, currentFrame_pushMethodFrame, requiredFrame, hc.superName, Option.getD_none]
   refine ⟨trivial, ?_, trivial⟩
   change isAName m.heap recv cn = true
   simp only [isAName, hk, isA, hco, ha, List.contains_cons, beq_self_eq_true, Bool.true_or]
@@ -55,7 +55,7 @@ theorem instance_required_frame {m : Machine} {recv : Value} {cn name : String}
     {k : ObjId} {md : MethodDef} {I : Ty} (names : List String) (args : List Value)
     (hk : classNamed? m.heap cn = some k) (hv : denM (.inst cn I) m recv)
     (hf : classFrontB m.heap k = true) (hc : InstanceMethodCode k name md) :
-    FrameOk (some ⟨cn, cn, name⟩) (pushMethodFrame m (requiredFrame recv name md names args)) :=
+    FrameOk (some ⟨cn, cn, name, false⟩) (pushMethodFrame m (requiredFrame recv name md names args)) :=
   instance_required_frame_at names args hk hv hf hc
 
 theorem instance_required_live {m : Machine} {recv : Value} {cn name : String}

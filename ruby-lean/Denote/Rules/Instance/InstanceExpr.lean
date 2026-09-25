@@ -18,11 +18,11 @@ theorem SemSafeCtxA.instanceCall_at {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb :
     (hparams : d.params = ps.map (fun p => Ratchet.Param.req p.1))
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (hτ : FirstOrder τ = true) (hIb : FirstOrder Ib = true)
-    (hbody : SemSafeCtxA (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name⟩ Ib) ps Ib d.body τ
-      (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name⟩ Ib) Γb Ib)
+    (hbody : SemSafeCtxA (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name, false⟩ Ib) ps Ib d.body τ
+      (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name, false⟩ Ib) Γb Ib)
     (ht : ReframeFO κ₂ I₂) (ha : κ₂.asms = [])
     (hw : CallWorld κ₂)
-    (hconst : ∀ x, constGet? (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name⟩ Ib) x = constGet? κ₂ x)
+    (hconst : ∀ x, constGet? (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name, false⟩ Ib) x = constGet? κ₂ x)
     (hΓ : ∀ p ∈ Γ₂, FirstOrder (stripAlias p.2) = true) :
     SemSafeCtxA κ Γ I (.send (some recv) d.name args none) τ κ₂ Γ₂ I₂ := by
   apply hrecv.sendVia hargs hsite hIb (by
@@ -46,12 +46,12 @@ theorem SemSafeCtxA.instanceCall {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb : En
     (hparams : d.params = ps.map (fun p => Ratchet.Param.req p.1))
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (hτ : FirstOrder τ = true) (hIb : FirstOrder Ib = true)
-    (hbody : SemSafeCtxA (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name⟩ Ib) ps Ib d.body τ
-      (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name⟩ Ib) Γb Ib)
+    (hbody : SemSafeCtxA (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name, false⟩ Ib) ps Ib d.body τ
+      (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name, false⟩ Ib) Γb Ib)
     (ht : ReframeFO κ₂ I₂) (ha : κ₂.asms = [])
     (hr : κ₂.scope.runtimeMain = true) (hw : κ₂.pos.mainWorld = true)
     (hcl : κ₂.scope.runtimeClass = none)
-    (hconst : ∀ x, constGet? (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name⟩ Ib) x = constGet? κ₂ x)
+    (hconst : ∀ x, constGet? (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name, false⟩ Ib) x = constGet? κ₂ x)
     (hΓ : ∀ p ∈ Γ₂, FirstOrder (stripAlias p.2) = true) :
     SemSafeCtxA κ Γ I (.send (some recv) d.name args none) τ κ₂ Γ₂ I₂ :=
   hrecv.instanceCall_at hargs hsite hc hd hn hname hparams hps hτ hIb hbody ht ha

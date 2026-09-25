@@ -168,6 +168,13 @@ theorem StateCore_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine
     runtime := fun hr => (hm.runtime hr).methodWrite cls name md hquiet
     mainSite := fun hr => (hm.mainSite hr).methodWrite hn hmiss hquiet
     classRuntime := fun cn hr => (hm.classRuntime cn hr).methodWrite cls name md hquiet
+    singletonRuntime := by
+      intro cn hr
+      obtain ⟨k, e, scope⟩ := hm.singletonRuntime cn hr
+      exact ⟨k, e, ⟨by simpa only [classNamed?_defineMethod] using scope.named,
+        by simpa only [Proof.objs_size_defineMethod] using scope.live,
+        by rw [Proof.get_defineMethod_eigen]; exact scope.cached,
+        scope.self, scope.owner, scope.cref, scope.captured, scope.phase⟩⟩
     classSites := hsites
     allocators := hm.allocators.defineMethod
     globalConsts := hm.globalConsts.defineMethod
@@ -220,7 +227,10 @@ theorem StateCore_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine
   · change FrameOk κ.frame n
     cases hf : κ.frame with
     | none => simpa only [FrameOk, hf, hcf] using hm.frame
-    | some fr => simpa only [FrameOk, hf, hcf, n, isAName_defineMethod] using hm.frame
+    | some fr =>
+      have hold := hm.frame
+      rw [hf] at hold
+      exact ⟨hold.1, hden fr.recvTy (by unfold Frame.recvTy; split <;> rfl) _ hold.2.1, hold.2.2⟩
   · change BlockTyOk κ.blockTy n
     cases hb : κ.blockTy with
     | none => simpa only [BlockTyOk, hb, hcf] using hm.blockTy

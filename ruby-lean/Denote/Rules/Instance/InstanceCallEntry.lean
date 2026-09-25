@@ -10,19 +10,19 @@ open RubyCore Ratchet Ratchet.Denote
 
 theorem checked_instance_entry {κ : Ctx} {Γ : Env} {I Ib : Ty} {m : Machine}
     {c : Cls} {d : Defn} {recv : Value} {args : List Value}
-    (body : CheckedBody (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) Ib d)
+    (body : CheckedBody (instanceBodyCtx κ ⟨c.name, c.name, d.name, false⟩ Ib) Ib d)
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I) (ha : κ.asms = [])
     (hc : c ∈ κ.classes) (hd : d ∈ c.methods)
     (hr : κ.scope.runtimeMain = true ∨ κ.scope.runtimeClass ≠ none)
     (hi : FirstOrder Ib = true) (hv : denM (.inst c.name Ib) m recv)
     (hlen : args.length = body.params.length) (hargs : DenAll (body.params.map (·.2)) m args)
-    (hk : ∀ x, constGet? (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) x = constGet? κ x)
+    (hk : ∀ x, constGet? (instanceBodyCtx κ ⟨c.name, c.name, d.name, false⟩ Ib) x = constGet? κ x)
     (hp : ∀ o, recv = .ref o → (m.heap.get o).payload = .none) (hn : d.name ≠ "initialize") :
     ∃ n, Interp.finishSend m recv .explicit d.name args .none = .next n ∧
       n.ctl = .eval (toRuby d.body) ∧
-      StateOk (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) body.params Ib n ∧
+      StateOk (instanceBodyCtx κ ⟨c.name, c.name, d.name, false⟩ Ib) body.params Ib n ∧
       RunSpec n (evalFrom n d.body) body.out body.ret
-        (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) Ib := by
+        (instanceBodyCtx κ ⟨c.name, c.name, d.name, false⟩ Ib) Ib := by
   obtain ⟨k, site⟩ := hm.classSites.of_class hc
   have hfront (j : ObjId) (hj : classNamed? m.heap c.name = some j) : classFrontB m.heap j = true := by
     have he : k = j := Option.some.inj (site.named.symm.trans hj)

@@ -72,8 +72,8 @@ theorem SemSafeCtxAt.callSig {N : Nat} {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' �
     (hparams : decl.params = ps.map (fun p => Ratchet.Param.req p.1))
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (hτ : FirstOrder τ = true)
-    (hbody : SemSafeCtxAt N (κ'.withFrame (some ⟨"Object", "Object", decl.name⟩)) ps I' decl.body τ
-      (κ'.withFrame (some ⟨"Object", "Object", decl.name⟩)) Γb I')
+    (hbody : SemSafeCtxAt N (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) ps I' decl.body τ
+      (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) Γb I')
     (hargs : SemAllCtxAt N κ Γ I args (ps.map (·.2)) κ' Γ' I')
     (hd : decl ∈ κ'.defs)
     (hstart : κ.scope.runtimeMain = true) (hruntime : κ'.scope.runtimeMain = true)

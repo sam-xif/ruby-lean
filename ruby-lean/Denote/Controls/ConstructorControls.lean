@@ -38,7 +38,7 @@ theorem point_constructor_body {m : Machine} {k : ObjId} {md : MethodDef}
     (point_initializer_sem rfl rfl rfl)
 
 #guard initCtx.scope.closedIvars
-#guard !(instanceBodyCtx callerCtx ⟨"Point", "Point", "initialize"⟩ .ivar0).scope.closedIvars
+#guard !(instanceBodyCtx callerCtx ⟨"Point", "Point", "initialize", false⟩ .ivar0).scope.closedIvars
 
 -- Actual class definition, initializer invocation, caller return, and getter invocation.
 #guard match Interp.run 300 (evalFrom bootMachine (.seq [pointClass, pointGet [.int 1, .int 2]])) with

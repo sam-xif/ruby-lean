@@ -38,8 +38,8 @@ theorem top_method_runSpec {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : Machine} {
     (hparams : decl.params = ps.map (fun p => Ratchet.Param.req p.1))
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (hτ : FirstOrder τ = true)
-    (hbody : SemSafeCtxA (κ.withFrame (some ⟨"Object", "Object", decl.name⟩)) ps I decl.body τ
-      (κ.withFrame (some ⟨"Object", "Object", decl.name⟩)) Γb I)
+    (hbody : SemSafeCtxA (κ.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) ps I decl.body τ
+      (κ.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) Γb I)
     (hm : StateOk κ Γ I m) (hd : decl ∈ κ.defs)
     (ht : ReframeFO κ I) (ha : κ.asms = []) (hc : κ.consts = [])
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
@@ -52,15 +52,15 @@ theorem top_method_runSpec {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : Machine} {
   have hblk : m.currentFrame.blk = none := by simpa only [BlockTyOk, hblock] using hm.blockTy
   obtain ⟨md, hl, hp, hb, hu, hcode⟩ := defsOk_lookup hm.defs hd ready.chain
   obtain ⟨next, he, hr⟩ := required_method_runSpec (name := decl.name)
-    (fr := some ⟨"Object", "Object", decl.name⟩)
+    (fr := some ⟨"Object", "Object", decl.name, false⟩)
     hm ht ha hkont (hp.trans (by rw [hparams]; exact toRubyParams_required ps))
     hcode.captured hcode.declared hb hlen hargs hps hτ hΓ
     (by simp [frameScope, requiredFrame, hcode.owner, hcode.cref,
       ready.owner, ready.cref, ready.captured, hblk])
-    (fun x => (constGet?_empty (κ := κ.withFrame (some ⟨"Object", "Object", decl.name⟩)) hc x).trans
+    (fun x => (constGet?_empty (κ := κ.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) hc x).trans
       (constGet?_empty hc x).symm)
     (by
-      simp only [FrameOk, currentFrame_pushMethodFrame, requiredFrame, hcode.superName, Option.getD_none]
+      simp only [FrameOk, Frame.recvTy, Bool.false_eq_true, ↓reduceIte, denM, currentFrame_pushMethodFrame, requiredFrame, hcode.superName, Option.getD_none]
       exact ⟨trivial, by rw [ready.self]; exact ready.object, trivial⟩)
     hbody
   refine ⟨next, ?_, hr⟩

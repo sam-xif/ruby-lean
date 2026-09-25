@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 182)
+# Current resume point (2026-09-25, clink 183)
 
 Fragment 67, checker reach 72, 53 rules, 52 worked theorems. For 073, SingletonInstall
 derives the real def-self step and installed own code from full incoming class scope.
@@ -15,14 +15,19 @@ preserve it. Recorded singleton code establishes constant scope for the real req
 Framed now preserves cached eigen pointers on live old objects. SingletonScopeAt separates
 class-valued self/lexical cref from cached defmod; required entry establishes it, and nested
 return restores it even across heap growth. Post-body class sites recover constant scope.
-Next: the distinct activation frame/self contract and full entry/return conformance,
-constructor calls and annotation-domain checker/emitter integration. 073 is not admitted
+Frame now distinguishes instance/class-object receivers. runtimeSingleton retains physical
+singleton scope separately from runtimeClass; all state transports preserve it. Full required
+entry and return are proved. CallWorld includes singleton callers, and resolved_singleton_run
+executes a checked body through real send/entry/return. Boot-backed controls cover every
+Integer argument and nested singleton calls with caller restoration.
+Next: constructor calls from singleton self and annotation-domain checker/emitter integration. 073 is not admitted
 yet. Sorbet accepts it and rejects wrong factory
-result, constructor argument and factory arity. No rule/floor change. See clinks 176–182
+result, constructor argument and factory arity. No rule/floor change. See clinks 176–183
 and AGENTS.md. Older text is historical.
 
-FrameOk still describes ordinary instance receivers; ClassRuntimeOk still identifies
-defmod with the lexical class. SingletonScopeAt is physical scope, not full StateOk.
+Singleton bodies use an open class-object ivar spine. Ordinary instanceBodyCtx resets the
+frame mode and singleton runtime scope; super's frame guard requires the instance mode.
+The untrusted pipeline still rejects AST defs, and no singleton typing rule is registered yet.
 
 # ratchet — hand-off note (2026-09-10)
 

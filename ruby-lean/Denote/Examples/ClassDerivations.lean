@@ -40,7 +40,7 @@ private theorem class_deriv :
     @hF DClink.memberDef (by simp [dclinks]) afterInit [] [] .ivar0 pointInitSpine .int
       initClass getter [] rfl (by simp) rfl (by decide)
       (@hF DClink.ivarRead (by simp [dclinks])
-        (instanceBodyCtx bodyCtx ⟨"Point", "Point", "getX"⟩ pointInitSpine) [] pointInitSpine "@x") (by decide)
+        (instanceBodyCtx bodyCtx ⟨"Point", "Point", "getX", false⟩ pointInitSpine) [] pointInitSpine "@x") (by decide)
       (by change initClass ∈ [initClass, header]; simp) (by decide)
   exact hF DClink.classDecl (by simp [dclinks])
     (hF DClink.seq (by simp [dclinks])
@@ -79,7 +79,7 @@ theorem derivD_class_basic (x y : Int) :
       (by change getter ∈ [getter, initDecl]; simp) (by decide) (by decide)
       rfl (by simp) rfl (by decide)
       (@hF DClink.ivarRead (by simp [dclinks])
-        (instanceBodyCtx callerCtx ⟨"Point", "Point", "getX"⟩ pointInitSpine) [] pointInitSpine "@x") (by decide)
+        (instanceBodyCtx callerCtx ⟨"Point", "Point", "getX", false⟩ pointInitSpine) [] pointInitSpine "@x") (by decide)
   exact hF DClink.seq (by simp [dclinks])
     (hF DClink.DJudgeSeq.cons (by simp [dclinks]) (class_deriv F hF)
       (hF DClink.DJudgeSeq.last (by simp [dclinks]) hg))

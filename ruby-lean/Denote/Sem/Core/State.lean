@@ -7,6 +7,7 @@ import Denote.Sem.Class.ClassScope
 import Denote.Sem.Class.ClassReady
 import Denote.Sem.Names.RootNames
 import Denote.Sem.Singleton.SingletonRows
+import Denote.Sem.Singleton.SingletonActivation
 import Denote.Sem.Instance.InstanceSite
 import Denote.Sem.Instance.MainSite
 import Denote.Sem.Heap.Allocator
@@ -232,7 +233,7 @@ def AsmsOk (Δ : AsmTable) (m : Machine) : Prop :=
     ∀ v m', SendReturns m₂ a.name args v m' → denM a.ret m' v
 
 /-- The running frame is the method activation `Ctx.frame` describes: same method name,
-nominal receiver class, and method kind. A block can copy the name and receiver while
+receiver mode (instance or class object), and method kind. A block can copy the name and receiver while
 `methodFrameOf` follows its `home`, so those two facts alone do not identify the activation.
 `none` means outside a method activation. -/
 def FrameOk (fr : Option Ratchet.Frame) (m : Machine) : Prop :=
@@ -240,8 +241,17 @@ def FrameOk (fr : Option Ratchet.Frame) (m : Machine) : Prop :=
   | none => m.currentFrame.kind ≠ .method
   | some f =>
       m.currentFrame.meth = f.methName ∧
-      isAName m.heap m.currentFrame.self f.recvClass = true ∧
+      denM f.recvTy m m.currentFrame.self ∧
       m.currentFrame.kind = .method
+
+theorem SingletonScopeAt.not_instance {cn recv : String} {k e : ObjId} {m : Machine}
+    {I : Ty} (scope : SingletonScopeAt cn k e m)
+    (hv : denM (.inst recv I) m m.currentFrame.self) : False := by
+  rw [denM] at hv
+  have hx := hv.1
+  rw [scope.self] at hx
+  simp only [isExactInst] at hx
+  cases hn : classNamed? m.heap recv <;> simp [hn, scope.cached] at hx
 
 /-- `self`'s type. `none` is top level, where `Judge` declines to type `self'` at all. -/
 def SelfTyOk (σ? : Option Ty) (m : Machine) : Prop :=
@@ -1039,6 +1049,7 @@ structure StateCore (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   runtime : RuntimeOk κ m
   mainSite : κ.pos.mainWorld = true → MainSite κ m.heap
   classRuntime : ClassRuntimeOk κ m
+  singletonRuntime : SingletonRuntimeOk κ m
   classSites : ClassSitesOk κ m.heap
   allocators : AllocatorsOk κ.pos.plainAlloc m.heap
   globalConsts : GlobalConstsOk κ.pos.globalConsts m.heap
@@ -1138,6 +1149,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
   runtime := fun hr => (h.runtime hr).ext he hphase
   mainSite := fun hr => (h.mainSite hr).ext he
   classRuntime := fun cn hr => (h.classRuntime cn hr).ext he hphase
+  singletonRuntime := fun cn hr => (h.singletonRuntime cn hr).ext he hphase
   classSites := h.classSites.ext he
   allocators := h.allocators.ext he
   globalConsts := h.globalConsts.ext he
@@ -1198,7 +1210,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     | some f =>
       rw [hf] at h2
       exact ⟨by rw [he.currentFrame_eq]; exact h2.1,
-             by rw [he.currentFrame_eq]; exact he.isAName_mono h2.2.1,
+             by rw [he.currentFrame_eq]; exact denM_ext he h2.2.1,
              by rw [he.currentFrame_eq]; exact h2.2.2⟩
   closures := trivial
   blockTy := by
@@ -1505,6 +1517,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
     { runtime := fun hr => (h.runtime hr).setLocal x w
       mainSite := by simpa only [setLocal_heap] using h.mainSite
       classRuntime := fun cn hr => (h.classRuntime cn hr).setLocal x w
+      singletonRuntime := fun cn hr => (h.singletonRuntime cn hr).setLocal x w
       classSites := by simpa only [setLocal_heap] using h.classSites
       allocators := by simpa only [setLocal_heap] using h.allocators
       globalConsts := by simpa only [setLocal_heap] using h.globalConsts
@@ -1582,7 +1595,10 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
         | some f =>
           rw [hf] at h2
           exact ⟨by rw [currentFrame_setLocal_meth]; exact h2.1,
-                 by rw [currentFrame_setLocal_self]; exact h2.2.1,
+                 by
+                   rw [currentFrame_setLocal_self]
+                   exact (denM_heap_only (m₁ := m) (m₂ := m.setLocal x w)
+                     (by unfold Frame.recvTy; split <;> rfl) (setLocal_heap ..).symm).mp h2.2.1,
                  by rw [currentFrame_setLocal_kind]; exact h2.2.2⟩
       closures := trivial
       blockTy := by

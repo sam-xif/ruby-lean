@@ -12,8 +12,8 @@ theorem declared_inherited_run {κ : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m : Mac
     {recv : Value} {args : List Value} {ps : List SigParam}
     (hparams : d.params = ps.map (fun p => Ratchet.Param.req p.1))
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) (hτ : FirstOrder τ = true)
-    (body : SemSafeCtxA (instanceBodyCtx κ ⟨receiver.name, owner.name, d.name⟩ Ib) ps Ib d.body τ
-      (instanceBodyCtx κ ⟨receiver.name, owner.name, d.name⟩ Ib) Γb Ib)
+    (body : SemSafeCtxA (instanceBodyCtx κ ⟨receiver.name, owner.name, d.name, false⟩ Ib) ps Ib d.body τ
+      (instanceBodyCtx κ ⟨receiver.name, owner.name, d.name, false⟩ Ib) Γb Ib)
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I) (ha : κ.asms = [])
     (hrc : receiver ∈ κ.classes) (hoc : owner ∈ κ.classes) (hd : d ∈ owner.methods)
     (hchain : ancestors? κ.classes receiver.name = some (pre ++ owner.name :: post))
@@ -21,7 +21,7 @@ theorem declared_inherited_run {κ : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m : Mac
     (hw : CallWorld κ) (hkont : m.kont = [])
     (hi : FirstOrder Ib = true) (hv : denM (.inst receiver.name Ib) m recv)
     (hlen : args.length = ps.length) (hargs : DenAll (ps.map (·.2)) m args)
-    (hk : ∀ x, constGet? (instanceBodyCtx κ ⟨receiver.name, owner.name, d.name⟩ Ib) x = constGet? κ x)
+    (hk : ∀ x, constGet? (instanceBodyCtx κ ⟨receiver.name, owner.name, d.name, false⟩ Ib) x = constGet? κ x)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
     (hp : ∀ o, recv = .ref o → (m.heap.get o).payload = .none ∨ DirectSendName d.name)
     (hn : d.name ≠ "initialize")
@@ -39,7 +39,7 @@ theorem declared_inherited_run {κ : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m : Mac
   have hco := exactInst_classOf hnom recvSite.named
   have hlookup : lookup m.heap recv d.name = some (k, md) := by
     rw [lookup_eq_methodOn, hco]; exact hl
-  exact resolved_instance_run (fr := ⟨receiver.name, owner.name, d.name⟩)
+  exact resolved_instance_run (fr := ⟨receiver.name, owner.name, d.name, false⟩)
     (hparam.trans (by rw [hparams]; exact toRubyParams_required ps)) hbody hps hτ body
     hm ht ha recvSite ownerSite hw hkont code hu hlookup hi hv hlen hargs hk hΓ hp hn
     (hshadow k ownerSite.named)

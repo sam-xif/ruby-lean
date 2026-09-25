@@ -11,7 +11,7 @@ open RubyCore Ratchet Ratchet.Denote
 All physical-frame facts now come from conformance at the requested runtime scope. -/
 theorem checked_top_call {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {decl : Defn}
     {args : List Value}
-    (c : CheckedBody (κ.withFrame (some ⟨"Object", "Object", decl.name⟩)) I decl)
+    (c : CheckedBody (κ.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I decl)
     (hm : StateOk κ Γ I m) (hd : decl ∈ κ.defs)
     (ht : ReframeFO κ I) (ha : κ.asms = []) (hc : κ.consts = [])
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)

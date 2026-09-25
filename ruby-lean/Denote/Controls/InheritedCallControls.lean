@@ -17,7 +17,7 @@ open RubyCore Ratchet Ratchet.Denote
 
 private def labelFields : Ty := .ivarCons "@label" (.cls "String") .ivar0
 private def echo : Defn := ⟨"echo", [.req "flag"], .var .lvar "flag"⟩
-private def echoCtx (κ : Ctx) : Ctx := instanceBodyCtx κ ⟨"Satellite", "Depot", "echo"⟩ labelFields
+private def echoCtx (κ : Ctx) : Ctx := instanceBodyCtx κ ⟨"Satellite", "Depot", "echo", false⟩ labelFields
 private def echoParams : Env := [("flag", .bool)]
 
 -- Full annotation-domain checking still precedes a call, including unused bodies.
@@ -44,7 +44,7 @@ theorem inherited_echo_run {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {r k : O
       ((ancestors m.heap (classOf m.heap recv)).takeWhile (· != k)) "echo" = none) (b : Bool) :
     ∃ n, Interp.finishSend m recv .explicit "echo" [.bool b] .none = .next n ∧
       RunSpec m n Γ .bool κ I :=
-  resolved_instance_run (fr := ⟨"Satellite", "Depot", "echo"⟩) (e := echo.body)
+  resolved_instance_run (fr := ⟨"Satellite", "Depot", "echo", false⟩) (e := echo.body)
     (ps := echoParams) (Γb := echoParams)
     hp hb (by simp [echoParams, FirstOrder, isAliasTy]) rfl (SemSafeCtxA.var rfl rfl)
     hm ht ha rs os hw hkont code hu hl rfl hv rfl (by simp [echoParams, DenAll, denM, isBoolV]) hk hΓ

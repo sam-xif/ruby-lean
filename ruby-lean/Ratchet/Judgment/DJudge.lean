@@ -325,8 +325,8 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       {ps : List SigParam} {args : List Expr} :
       decl.params = ps.map (fun p => Param.req p.1) →
       (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) → FirstOrder τ = true →
-      DJudge ps decl.body τ Γb (κ'.withFrame (some ⟨"Object", "Object", decl.name⟩)) I'
-        (κ'.withFrame (some ⟨"Object", "Object", decl.name⟩)) I' →
+      DJudge ps decl.body τ Γb (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I'
+        (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I' →
       DJudgeAll Γ args (ps.map (·.2)) Γ' κ I κ' I' → decl ∈ κ'.defs →
       κ.scope.runtimeMain = true → κ'.scope.runtimeMain = true → κ'.selfTy = none →
       κ'.blockTy = none → κ'.consts = [] → κ'.asms = [] → FirstOrder I' = true →
@@ -352,8 +352,8 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       d.params = ps.map (fun p => Param.req p.1) →
       (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) →
       FirstOrder τ = true → FirstOrder Ib = true →
-      DJudge ps d.body τ Γb (instanceBodyCtx (instanceDeclCtx κ c d) ⟨c.name, c.name, d.name⟩ Ib) Ib
-        (instanceBodyCtx (instanceDeclCtx κ c d) ⟨c.name, c.name, d.name⟩ Ib) Ib →
+      DJudge ps d.body τ Γb (instanceBodyCtx (instanceDeclCtx κ c d) ⟨c.name, c.name, d.name, false⟩ Ib) Ib
+        (instanceBodyCtx (instanceDeclCtx κ c d) ⟨c.name, c.name, d.name, false⟩ Ib) Ib →
       d.name ≠ "initialize" → c ∈ κ.classes → memberRuleB κ Γ I c d = true →
       DJudge Γ (.def' d.name d.params d.body) .sym Γ κ I (instanceDeclCtx κ c d) I
   | initDef {κ : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {c : Cls} {d : Defn} {ps : List SigParam} :
@@ -384,15 +384,15 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       directCallNameB d.name = true → d.params = ps.map (fun p => Param.req p.1) →
       (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) →
       FirstOrder τ = true → FirstOrder Ib = true →
-      DJudge ps d.body τ Γb (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name⟩ Ib) Ib
-        (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name⟩ Ib) Ib →
+      DJudge ps d.body τ Γb (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name, false⟩ Ib) Ib
+        (instanceBodyCtx κ₂ ⟨c.name, c.name, d.name, false⟩ Ib) Ib →
       instanceCallB κ₂ Γ₂ I₂ = true → DJudge Γ (.send (some recv) d.name args none) τ Γ₂ κ I κ₂ I₂
   | vcallMethodSig {κ : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {c : Cls} {d : Defn} :
       κ.selfTy = some (.inst c.name Ib) → c ∈ κ.classes → d ∈ c.methods →
       d.name ≠ "initialize" → directCallNameB d.name = true → d.params = [] →
       FirstOrder τ = true → FirstOrder Ib = true →
-      DJudge [] d.body τ Γb (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) Ib
-        (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) Ib →
+      DJudge [] d.body τ Γb (instanceBodyCtx κ ⟨c.name, c.name, d.name, false⟩ Ib) Ib
+        (instanceBodyCtx κ ⟨c.name, c.name, d.name, false⟩ Ib) Ib →
       instanceCallB κ Γ I = true → DJudge Γ (.vcall d.name) τ Γ κ I
 
   | subclassDecl {κ κ₁ κb : Ctx} {Γ Γ₁ Γb : Env} {I I₁ Ib τ : Ty}
@@ -422,8 +422,8 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       d.params = ps.map (fun p => Param.req p.1) →
       (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) →
       FirstOrder τ = true → FirstOrder Ib = true →
-      DJudge ps d.body τ Γb (instanceBodyCtx κ₂ ⟨c.name, owner, d.name⟩ Ib) Ib
-        (instanceBodyCtx κ₂ ⟨c.name, owner, d.name⟩ Ib) Ib → instanceCallB κ₂ Γ₂ I₂ = true →
+      DJudge ps d.body τ Γb (instanceBodyCtx κ₂ ⟨c.name, owner, d.name, false⟩ Ib) Ib
+        (instanceBodyCtx κ₂ ⟨c.name, owner, d.name, false⟩ Ib) Ib → instanceCallB κ₂ Γ₂ I₂ = true →
       DJudge Γ (.send (some recv) d.name args none) τ Γ₂ κ I κ₂ I₂
 
   /-- Sorbet 0.6.13405 accepts corpus 066's Dog.new at Dog and rejects Dog.new(1)
@@ -490,7 +490,7 @@ inductive DJudgeRec : Ctx → Ty → RecScope → Env → Expr → Ty → Env �
       s.decl.params = s.params.map (fun p => Param.req p.1) →
       (∀ p ∈ s.params, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) →
       FirstOrder s.ret = true → s.decl ∈ κ.defs →
-      κ.withFrame (some ⟨"Object", "Object", s.decl.name⟩) = κ →
+      κ.withFrame (some ⟨"Object", "Object", s.decl.name, false⟩) = κ →
       κ.scope.runtimeMain = true → κ.selfTy = none → κ.blockTy = none →
       κ.consts = [] → κ.asms = [] → FirstOrder I = true →
       (∀ p ∈ Γ', FirstOrder (stripAlias p.2) = true) →

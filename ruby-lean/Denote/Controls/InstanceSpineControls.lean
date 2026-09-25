@@ -56,7 +56,7 @@ theorem boot_extra_open_state (hb : bootOkB = true) :
 #print axioms open_instance_not_complete
 #print axioms boot_extra_open_state
 
-private def getterCtx (I : Ty) : Ctx := instanceBodyCtx ctx0 ⟨"Point", "Point", "getX"⟩ I
+private def getterCtx (I : Ty) : Ctx := instanceBodyCtx ctx0 ⟨"Point", "Point", "getX", false⟩ I
 #guard (getterCtx .ivar0).ivarReadTy .ivar0 "@extra" == .any
 #guard (classBodyCtx ctx0 "Point").ivarReadTy .ivar0 "@extra" == .nilT
 #guard (getterCtx (.ivarCons "@x" .int .ivar0)).ivarReadTy (.ivarCons "@x" .int .ivar0) "@x" == .int
@@ -64,9 +64,9 @@ private def getterCtx (I : Ty) : Ctx := instanceBodyCtx ctx0 ⟨"Point", "Point"
 
 -- The annotated getter still has its Integer body proof on an open receiver.
 example {κ : Ctx} {Γ : Env} :
-    SemSafeCtxA (instanceBodyCtx κ ⟨"Point", "Point", "getX"⟩ (.ivarCons "@x" .int .ivar0))
+    SemSafeCtxA (instanceBodyCtx κ ⟨"Point", "Point", "getX", false⟩ (.ivarCons "@x" .int .ivar0))
       Γ (.ivarCons "@x" .int .ivar0) (.var .ivar "@x") .int
-      (instanceBodyCtx κ ⟨"Point", "Point", "getX"⟩ (.ivarCons "@x" .int .ivar0))
+      (instanceBodyCtx κ ⟨"Point", "Point", "getX", false⟩ (.ivarCons "@x" .int .ivar0))
       Γ (.ivarCons "@x" .int .ivar0) := SemSafeCtxA.ivarRead
 
 example {κ : Ctx} {Γ : Env} (hc : κ.scope.closedIvars = false) :

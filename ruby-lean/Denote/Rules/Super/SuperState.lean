@@ -88,6 +88,10 @@ theorem super_initializer_pop_state {anchor : Heap} {κ κb : Ctx} {Γ Γb : Env
         have he : ownerName = cn := Option.some.inj (hcl.symm.trans hcn)
         subst cn
         exact ⟨k, ready⟩
+      singletonRuntime := by
+        intro cn hr
+        obtain ⟨_, _, scope⟩ := hm.typed.singletonRuntime cn hr
+        exact False.elim (scope.not_instance (by simpa only [SelfTyOk, hself] using hm.typed.selfTy))
       classSites := by
         intro cn hcn
         apply hn.typed.classSites cn
@@ -151,8 +155,7 @@ theorem super_initializer_pop_state {anchor : Heap} {κ κb : Ctx} {Γ Γb : Env
         exact ⟨by rw [hpop]; exact hold.1,
           by
             rw [hpop]
-            simpa only [denM] using hp.stable (.cls fr.recvClass) rfl m.currentFrame.self
-              (by simpa only [denM] using hold.2.1),
+            simpa only [denM] using hp.stable fr.recvTy (by unfold Frame.recvTy; split <;> rfl) m.currentFrame.self hold.2.1,
           by rw [hpop]; exact hold.2.2⟩
     · intro x τ hx
       obtain ⟨v, hw, hd⟩ := hn.typed.consts x τ (by rwa [hk])

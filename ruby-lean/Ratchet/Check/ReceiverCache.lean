@@ -32,14 +32,14 @@ structure CallableMemberAt (κ : Ctx) (c : Cls) (name : String) where
   route : MemberRoute κ.classes c.name owner decl
   fields : Ty
   fieldsFO : FirstOrder fields = true
-  body : CheckedBody (instanceBodyCtx κ ⟨c.name, owner, decl.name⟩ fields) fields decl
+  body : CheckedBody (instanceBodyCtx κ ⟨c.name, owner, decl.name, false⟩ fields) fields decl
 
 /-- Equal receiver/owner names recover the existing own-method rule, with all annotation
 indices retained. Eliminate the record before equality to respect its dependent body. -/
 theorem CallableMemberAt.own_judged {κ : Ctx} {c : Cls} {name : String}
     (b : CallableMemberAt κ c name) (ho : b.owner = c.name) :
     DJudge b.body.params b.decl.body b.body.ret b.body.out
-      (instanceBodyCtx κ ⟨c.name, c.name, b.decl.name⟩ b.fields) b.fields := by
+      (instanceBodyCtx κ ⟨c.name, c.name, b.decl.name, false⟩ b.fields) b.fields := by
   rcases b with ⟨owner, decl, hn, route, fields, hf, body⟩
   dsimp at ho ⊢
   subst owner
@@ -53,7 +53,7 @@ def findMemberAt (κ : Ctx) (c : Cls) (name : String) : List CachedMember → Op
       if hn : b.decl.name = name then do
       if hf : FirstOrder b.spine = true then do
         let route ← memberRoute? κ.classes c.name b.owner b.decl
-        let ⟨hc⟩ ← ctxEq? b.ctx (instanceBodyCtx κ ⟨c.name, b.owner, b.decl.name⟩ b.spine)
+        let ⟨hc⟩ ← ctxEq? b.ctx (instanceBodyCtx κ ⟨c.name, b.owner, b.decl.name, false⟩ b.spine)
         some ⟨b.owner, b.decl, hn, route, b.spine, hf, by simpa only [hc] using b.body⟩
       else none
       else none

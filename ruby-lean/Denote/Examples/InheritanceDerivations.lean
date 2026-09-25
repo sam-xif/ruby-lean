@@ -47,7 +47,7 @@ private theorem parent_deriv :
     @hF DClink.memberDef (by simp [dclinks]) afterInit [] [] .ivar0 fields (.cls "String")
       initClass speak [] rfl (by simp) rfl rfl
       (@hF DClink.ivarRead (by simp [dclinks])
-        (instanceBodyCtx bodyCtx ⟨"Animal", "Animal", "speak"⟩ fields) [] fields "@name") (by decide)
+        (instanceBodyCtx bodyCtx ⟨"Animal", "Animal", "speak", false⟩ fields) [] fields "@name") (by decide)
       (by change initClass ∈ [initClass, header]; simp) (by decide)
   exact hF DClink.classDecl (by simp [dclinks])
     (hF DClink.seq (by simp [dclinks])
@@ -94,7 +94,7 @@ theorem full_deriv (s : String) :
       (by change child ∈ [child, parent, initClass, header]; simp) speakRoute
       (by decide) (by decide) (by decide +kernel) rfl (by simp) rfl rfl
       (@hF DClink.ivarRead (by simp [dclinks])
-        (instanceBodyCtx callerCtx ⟨"Dog", "Animal", "speak"⟩ fields) [] fields "@name") (by decide)
+        (instanceBodyCtx callerCtx ⟨"Dog", "Animal", "speak", false⟩ fields) [] fields "@name") (by decide)
   exact hF DClink.seq (by simp [dclinks])
     (hF DClink.DJudgeSeq.cons (by simp [dclinks]) (parent_deriv F hF)
       (hF DClink.DJudgeSeq.cons (by simp [dclinks]) (child_deriv F hF)

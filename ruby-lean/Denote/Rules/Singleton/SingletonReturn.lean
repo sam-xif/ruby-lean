@@ -1,38 +1,27 @@
-import Denote.Sem.Singleton.SingletonScope
-import Denote.Rules.Instance.InstanceState
-import Denote.Sem.Core.FramedNames
+import Denote.Rules.Singleton.SingletonEntry
+import Denote.Rules.Instance.InstanceCallerReturn
 
-/-! Restore an instance caller, independently of the callee's receiver and lexical class.
-Post-call sites supply heap facts; saved frames and first-order framing supply caller data. -/
+/-! Restore a singleton caller from saved frame data and the callee's outgoing heap facts. -/
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
-theorem restore_instance_state {κ κb : Ctx} {Γ Γb : Env} {I Ib Is : Ty} {m n : Machine}
-    {ownerName recvName : String}
+theorem restore_singleton_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Machine}
+    {cn : String}
     (hm : StateOk κ Γ I m) (ht : ReframeFO (returnScopeCtx κ κb) I) (ha : κ.asms = [])
-    (hr : κ.scope.runtimeMain = false) (hcl : κ.scope.runtimeClass = some ownerName)
-    (hself : κ.selfTy = some (.inst recvName Is))
-    (ho : ownerName ∈ κb.classes.map (·.name)) (hv : recvName ∈ κb.classes.map (·.name))
+    (hr : κ.scope.runtimeMain = false) (hcl : κ.scope.runtimeClass = none)
+    (hsg : κ.scope.runtimeSingleton = some cn) (hself : κ.selfTy = some (.clsOf cn))
+    (ho : cn ∈ κb.classes.map (·.name))
     (hk : ∀ x, constGet? κb x = constGet? (returnScopeCtx κ κb) x)
     (hp : Framed m (popMethodFrame n)) (hpop : (popMethodFrame n).currentFrame = m.currentFrame)
     (he : EnvOk Γ (popMethodFrame n)) (hphase : n.preludeMode = false)
     (hn : StateOk κb Γb Ib n) : StateOk (returnScopeCtx κ κb) Γ I (popMethodFrame n) := by
-  obtain ⟨oldk, old⟩ := hm.classRuntime ownerName hcl
-  obtain ⟨k, site⟩ := hn.classSites ownerName (List.mem_append_left _ ho)
+  obtain ⟨oldk, e, old⟩ := hm.singletonRuntime cn hsg
+  obtain ⟨k, site⟩ := hn.classSites cn (List.mem_append_left _ ho)
   have hid : oldk = k := Option.some.inj ((hp.classNamed old.named).symm.trans site.named)
   subst oldk
-  have ready : ClassScopeAt ownerName k (popMethodFrame n) := {
-    named := site.named
-    live := site.live
-    owner := (congrArg RubyCore.Frame.defmod hpop).trans old.owner
-    cref := (congrArg RubyCore.Frame.cref hpop).trans old.cref
-    captured := (congrArg RubyCore.Frame.captured hpop).trans old.captured
-    phase := hphase
-    visibility := by simpa only [defaultDefVis, hpop] using old.visibility
-    hook := site.hook }
-  have hscope : ConstScopeOk (popMethodFrame n) :=
-    InstanceSite.constScope (m := popMethodFrame n) site ready.cref ready.owner
+  have ready := old.framed hp hm.frameInRange.1 hphase
+  have hscope : ConstScopeOk (popMethodFrame n) := ready.constScope site
   have hden (τ : Ty) (hτ : FirstOrder τ = true) (v : Value) :
       denM τ n v → denM τ (popMethodFrame n) v :=
     (denM_heap_only (m₁ := n) (m₂ := popMethodFrame n) hτ rfl).mp
@@ -46,25 +35,21 @@ theorem restore_instance_state {κ κb : Ctx} {Γ Γb : Env} {I Ib Is : Ty} {m n
     allocators := hn.allocators
     globalConsts := hn.globalConsts
     classRuntime := by
-      intro cn hcn
-      change κ.scope.runtimeClass = some cn at hcn
-      have hn : ownerName = cn := Option.some.inj (hcl.symm.trans hcn)
-      subst cn
-      exact ⟨k, ready⟩
+      intro q hq
+      change κ.scope.runtimeClass = some q at hq
+      rw [hcl] at hq; cases hq
     singletonRuntime := by
-      intro cn hr
-      obtain ⟨k, e, scope⟩ := hm.singletonRuntime cn hr
-      exact ⟨k, e, scope.framed hp hm.frameInRange.1 hphase⟩
+      intro q hq
+      change κ.scope.runtimeSingleton = some q at hq
+      have heq : cn = q := Option.some.inj (hsg.symm.trans hq)
+      subst q
+      exact ⟨k, e, ready⟩
     classSites := by
-      intro cn hcn
-      apply hn.classSites cn
+      intro q hq
+      apply hn.classSites q
       apply List.mem_append_left
-      change cn ∈ κb.classes.map (·.name)
-      change cn ∈ κb.classes.map (·.name) ++ κ.scope.runtimeClass.toList at hcn
-      rcases List.mem_append.mp hcn with hcn | hcn
-      · exact hcn
-      · have he : cn = ownerName := by simpa only [hcl, Option.toList_some, List.mem_singleton] using hcn
-        exact he ▸ ho
+      change q ∈ κb.classes.map (·.name) ++ κ.scope.runtimeClass.toList at hq
+      simpa only [hcl, Option.toList_none, List.append_nil] using hq
     sat := hn.sat
     primitiveDispatch := hn.primitiveDispatch
     primitiveErrors := hn.primitiveErrors
@@ -117,30 +102,26 @@ theorem restore_instance_state {κ κb : Ctx} {Γ Γb : Env} {I Ib Is : Ty} {m n
     change j ∈ classOf (popMethodFrame n).heap (popMethodFrame n).currentFrame.self :: _ at hmem
     rcases List.mem_cons.mp hmem with hj | hj
     · subst j
-      obtain ⟨r, rsite⟩ := hn.classSites recvName (List.mem_append_left _ hv)
-      have hd : denM (.inst recvName Is) (popMethodFrame n) (popMethodFrame n).currentFrame.self := by
-        simpa only [SelfTyOk, hself] using hself'
-      rw [denM] at hd
-      have hco := exactInst_classOf hd.1 rsite.named
-      exact rsite.names name hb owner md (by rwa [hco] at hl)
+      rw [ready.self] at hl
+      exact site.classNames name hb owner md hl
     · exact hn.nameFree name hb j (List.mem_cons_of_mem _ hj) owner md hl
 
-theorem instance_pop_instance_state {κ : Ctx} {Γ Γb : Env} {I Ib Is : Ty} {m n : Machine}
-    {f : RubyCore.Frame} {fr : Ratchet.Frame} {ownerName recvName : String}
+
+theorem instance_pop_singleton_state {κ : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Machine}
+    {f : RubyCore.Frame} {fr : Ratchet.Frame} {cn : String}
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I) (ha : κ.asms = [])
-    (hr : κ.scope.runtimeMain = false) (hcl : κ.scope.runtimeClass = some ownerName)
-    (hself : κ.selfTy = some (.inst recvName Is))
-    (ho : ownerName ∈ κ.classes.map (·.name)) (hv : recvName ∈ κ.classes.map (·.name))
-    (hu : RootUncaptured m) (hc : f.captured = none)
+    (hr : κ.scope.runtimeMain = false) (hcl : κ.scope.runtimeClass = none)
+    (hsg : κ.scope.runtimeSingleton = some cn) (hs : κ.selfTy = some (.clsOf cn))
+    (ho : cn ∈ κ.classes.map (·.name)) (hu : RootUncaptured m) (hc : f.captured = none)
     (hk : ∀ x, constGet? (instanceBodyCtx κ fr Ib) x = constGet? κ x)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
     (h : Framed (pushMethodFrame m f) n)
     (hn : StateOk (instanceBodyCtx κ fr Ib) Γb Ib n) : StateOk κ Γ I (popMethodFrame n) := by
   obtain ⟨_, scope⟩ := hn.classRuntime fr.defClass rfl
-  exact restore_instance_state (κb := instanceBodyCtx κ fr Ib) hm ht ha hr hcl hself ho hv hk
+  exact restore_singleton_state (κb := instanceBodyCtx κ fr Ib) hm ht ha hr hcl hsg hs ho hk
     (method_pop_framed hm.frameInRange.2 hc h) (method_pop_currentFrame hm.frameInRange hc h)
     (method_pop_envOk hm.frameInRange.2 hu hc h hm.env hΓ) scope.phase hn
 
-#print axioms restore_instance_state
-#print axioms instance_pop_instance_state
+#print axioms restore_singleton_state
+#print axioms instance_pop_singleton_state
 end Ratchet.Denote.Typed

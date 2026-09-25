@@ -7,6 +7,19 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
+theorem finishSend_singleton {m : Machine} {k e : ObjId} {name : String}
+    {md : MethodDef} {args : List Value} {site : SendSite}
+    (he : (m.heap.get k).eigen = some e) (hf : classFrontB m.heap e = true)
+    (hl : lookup m.heap (.ref k) name = some (e, md)) (code : SingletonMethodCode k e md)
+    (hu : md.undefined = false) (hn : DirectSendName name) :
+    Interp.finishSend m (.ref k) site name args .none =
+      Interp.enterUserMethod m (.ref k) name md args none := by
+  apply invoke_direct_userMethod hn hl code.builtin hu code.fromPrelude
+  · simp [Interp.visError?, code.visibility]
+  · obtain ⟨rest, ha⟩ := classFrontB_sound hf
+    simp [classOf, he, ha, Interp.crubyShadow]
+    rfl
+
 theorem finishSend_singleton_installed {m : Machine} {k e : ObjId} {name : String}
     {ps : List RubyCore.Param} {body : RubyCore.Expr} {args : List Value} {site : SendSite}
     (he : (m.heap.get k).eigen = some e) (hf : classFrontB m.heap e = true)
@@ -61,6 +74,7 @@ theorem scoped_singleton_required {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {
   exact ⟨k, e, hk, hs, hcode, installSingleton_lookup he hf,
     singleton_installed_required he hf hcode.fromPrelude hn ha⟩
 
+#print axioms finishSend_singleton
 #print axioms finishSend_singleton_installed
 #print axioms singleton_installed_required
 #print axioms scoped_singleton_required

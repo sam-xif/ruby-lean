@@ -97,9 +97,10 @@ def blockActivation : Machine := pushMethodFrame (Machine.init .nil)
 example : blockActivation.currentFrame.meth = "echo" ∧
     isAName blockActivation.heap blockActivation.currentFrame.self "Object" = true := by
   decide +kernel
-example : ¬ FrameOk (some ⟨"Object", "Object", "echo"⟩) blockActivation := by
-  unfold FrameOk
-  decide +kernel
+example : ¬ FrameOk (some ⟨"Object", "Object", "echo", false⟩) blockActivation := by
+  intro hf
+  have hk := hf.2.2
+  simp [blockActivation, currentFrame_pushMethodFrame] at hk
 #guard blockActivation.currentFrame.meth == "echo"
 #guard (blockActivation.frames.getD (Interp.methodFrameOf blockActivation) default).meth == ""
 #guard match Interp.doSuper blockActivation [] none with

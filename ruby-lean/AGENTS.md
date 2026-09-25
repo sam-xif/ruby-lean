@@ -597,9 +597,12 @@ now constrains metaclass inheritance lookup separately from lexical lookup; boot
 and all transports retain it. Stored singleton code proves the real frame's constant scope.
 A hidden-metaclass constant witness motivates the contract (§F44). Framed now pins cached
 eigen pointers of old live objects. SingletonScopeAt separates class self/cref from cached
-defmod; required entry and nested return establish and restore this physical scope. Full
-activation/return conformance and annotation-domain admission remain before 073; no rule or
-floor changes in these prerequisites. See clinks 177–182.
+defmod; required entry and nested return establish and restore this physical scope. Frame
+now distinguishes instance/class-object receivers, and runtimeSingleton retains the latter's
+scope separately from runtimeClass. Full entry/return conformance and real singleton send
+execution are proved; annotation-checked controls cover all Integer arguments and nested
+singleton calls. Constructor self calls and checker/emitter admission remain before 073;
+no rule or floor changes in these prerequisites. See clinks 177–183.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.

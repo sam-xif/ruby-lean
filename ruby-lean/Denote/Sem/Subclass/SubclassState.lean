@@ -67,6 +67,7 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
     mainSite := fun hr => mainSite (hm.mainSite hr) hc hm.sat hd
     allocators := allocators hc hm.sat hn hm.allocators
     globalConsts := globalConsts ho hm.globalConsts
+    singletonRuntime := by intro cn h; cases h
     classRuntime := by
       intro cn hr
       change some name = some cn at hr

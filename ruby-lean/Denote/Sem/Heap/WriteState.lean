@@ -79,6 +79,16 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
         hphase.trans hk.phase,
         by simpa only [defaultDefVis, bindIvar_currentFrame] using hk.visibility,
         by simpa only [definitionHookQuietB, hw.lookup_eq] using hk.hook⟩⟩
+    singletonRuntime := by
+      intro cn hr
+      obtain ⟨k, e, scope⟩ := h.singletonRuntime cn hr
+      exact ⟨k, e, ⟨by simpa only [hn] using scope.named,
+        by simpa only [hw.size] using scope.live,
+        by rw [hw.eigen]; exact scope.cached,
+        by simpa only [bindIvar_currentFrame] using scope.self,
+        by simpa only [bindIvar_currentFrame] using scope.owner,
+        by simpa only [bindIvar_currentFrame] using scope.cref,
+        by simpa only [bindIvar_currentFrame] using scope.captured, hphase.trans scope.phase⟩⟩
     sat := ?_
     primitiveDispatch := by simpa only [primitiveDispatchB, hmethod, hw.ancestors_eq, hshadow] using h.primitiveDispatch
     primitiveErrors := by simpa only [primitiveErrorsB, herr] using h.primitiveErrors
@@ -96,7 +106,13 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     defs := by simpa only [DefsOk, hw.classPayload] using h.defs
     asms := fun a ha n hl args hargs w n' hr =>
       h.asms a ha n ((bindIvar_later m x v).trans hl) args hargs w n' hr
-    frame := by simpa only [FrameOk, bindIvar_currentFrame, ha] using h.frame
+    frame := by
+      cases hf : κ.frame with
+      | none => simpa only [FrameOk, hf, bindIvar_currentFrame] using h.frame
+      | some f =>
+        cases hs : f.singleton <;>
+          simpa only [FrameOk, hf, Frame.recvTy, hs, Bool.false_eq_true, ↓reduceIte,
+            denM, bindIvar_currentFrame, ha, isClassRefNamed, hn] using h.frame
     closures := trivial
     blockTy := hb
     selfTy := hs

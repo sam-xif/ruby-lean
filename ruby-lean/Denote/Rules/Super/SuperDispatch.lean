@@ -44,7 +44,7 @@ theorem doSuper_required {m : Machine} {name : String} {owner : ObjId} {md : Met
 theorem declared_super_dispatch {κ : Ctx} {Γ : Env} {I fields : Ty} {m : Machine}
     {receiver : Cls} {current owner : String} {d : Defn} {args : List Value} {blk : Option Value}
     (hm : StateOk κ Γ I m) (hr : receiver ∈ κ.classes)
-    (hf : κ.frame = some ⟨receiver.name, current, d.name⟩)
+    (hf : κ.frame = some ⟨receiver.name, current, d.name, false⟩)
     (hc : κ.scope.runtimeClass = some current)
     (ht : κ.selfTy = some (.inst receiver.name fields))
     (hn : d.name ≠ "")

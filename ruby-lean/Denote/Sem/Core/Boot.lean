@@ -562,6 +562,7 @@ theorem stateCore_of_bootStateBaseB {m : Machine} (hb : bootStateBaseB m = true)
       mainSite := fun _ => mainSite_of_scope (mainReadyB_sound hready)
         (nameFreeB_sound hnf _) (bareNameFreeB_sound hnf _) (missFreeB_sound hmf _) rfl
         (constScope_of_topScope htop) (fun _ => newDispatchB_sound hnew)
+      singletonRuntime := by intro cn h; cases h
       classRuntime := by intro cn h; cases h
       classSites := by intro cn h; cases h
       allocators := by intro cn h; cases h

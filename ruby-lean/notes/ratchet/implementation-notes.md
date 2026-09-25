@@ -10908,3 +10908,24 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
   52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
   the new scope/entry proofs and controls build in under one second each.
+
+## Clink 183 (2026-09-25) — full singleton activation and call boundary
+
+- Frame distinguishes nominal instance receivers from named class objects; recvTy interprets
+  the flag through existing denotations. All old frames remain instance mode. Context equality
+  compares the flag, and the ordinary super guard rejects singleton mode. instanceBodyCtx
+  explicitly resets that mode, so generic ordinary-call helpers cannot inherit it accidentally.
+- runtimeSingleton retains SingletonScopeAt separately from runtimeClass. State transports
+  cover it; class/instance entry clears it. Singleton entry uses class-valued self, lexical
+  class constants and cached eigenclass defmod. Its ivar spine stays open: a class object is
+  not a freshly allocated plain instance. Exact-instance initializer states exclude this scope.
+- singleton_enter_state proves full conformance at the real required frame. Return retains
+  caller locals, self, scope and heap facts. CallWorld now supports singleton callers;
+  resolved_singleton_run composes actual dispatch, checked body execution and full return.
+  Controls connect real boot publication to entry for every Integer argument, reject wrong
+  parameter/result annotations, and execute a nested singleton call with caller restoration.
+- No new typing judgment or admission yet. Next: constructor calls from singleton self,
+  then singleton definition/call rules, annotation-domain caches and emitter integration for 073.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  New boundary proofs build in roughly one second each; no proof exceeded five minutes.

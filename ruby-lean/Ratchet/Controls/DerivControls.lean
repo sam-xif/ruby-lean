@@ -296,7 +296,7 @@ def ctlMethodCtx : Ctx :=
   { ctx0 with
     pos := { ctx0.pos with defs := [⟨"annotation_probe", [.req "x"], ctlAnnotationBody⟩] }
     neg := { ctx0.neg with declared := ["annotation_probe"] }
-    scope := { ctx0.scope with frame := some ⟨"Object", "Object", "annotation_probe"⟩ } }
+    scope := { ctx0.scope with frame := some ⟨"Object", "Object", "annotation_probe", false⟩ } }
 
 #guard (check 100 [("x", .int)] ctlAnnotationBody ctlAnnotationBodyCert ctlMethodCtx).isSome
 #guard (check 100 [("x", .nilable .int)] ctlAnnotationBody ctlAnnotationBodyCert ctlMethodCtx).isNone

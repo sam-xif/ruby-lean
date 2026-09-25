@@ -7,16 +7,16 @@ set_option autoImplicit false
 namespace Ratchet
 
 def frameIsB (κ : Ctx) (recv owner name : String) : Bool :=
-  κ.frame.any fun f => f.recvClass == recv && f.defClass == owner && f.methName == name
+  κ.frame.any fun f => f.recvClass == recv && f.defClass == owner && f.methName == name && !f.singleton
 
 theorem frameIsB_sound {κ : Ctx} {recv owner name : String} (h : frameIsB κ recv owner name = true) :
-    κ.frame = some ⟨recv, owner, name⟩ := by
+    κ.frame = some ⟨recv, owner, name, false⟩ := by
   cases hf : κ.frame with
   | none => simp [frameIsB, hf] at h
   | some f =>
-    rcases f with ⟨r, o, n⟩
-    simp only [frameIsB, hf, Option.any_some, Bool.and_eq_true, beq_iff_eq] at h
-    rcases h with ⟨⟨rfl, rfl⟩, rfl⟩
+    rcases f with ⟨r, o, n, singleton⟩
+    simp only [frameIsB, hf, Option.any_some, Bool.and_eq_true, beq_iff_eq, Bool.not_eq_true'] at h
+    rcases h with ⟨⟨⟨rfl, rfl⟩, rfl⟩, rfl⟩
     rfl
 
 def superInitB (κ : Ctx) (Γ : Env) (I Ib : Ty) (c : Cls) (current : String)
@@ -32,7 +32,7 @@ def superInitB (κ : Ctx) (Γ : Env) (I Ib : Ty) (c : Cls) (current : String)
 
 structure SuperInitReady (κ : Ctx) (Γ : Env) (I Ib : Ty) (c : Cls) (current : String)
     (d : Defn) (ps : List (String × Ty)) (τ : Ty) : Prop where
-  frame : κ.frame = some ⟨c.name, current, d.name⟩
+  frame : κ.frame = some ⟨c.name, current, d.name, false⟩
   input : reframeTypesB κ I = true
   output : reframeTypesB κ Ib = true
   locals : ∀ p ∈ Γ, IvarStable (stripAlias p.2) = true

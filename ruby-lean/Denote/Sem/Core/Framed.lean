@@ -159,6 +159,16 @@ theorem Framed.of_heap_stack {m m' : Machine} (hh : m'.heap = m.heap)
     fun _ ht _ h => (denM_heap_only ht hh.symm).mp h, hf, .of_heap_eq hh,
     fun _ _ _ he => by rw [hh]; exact he⟩
 
+/-- Saved method identity and receiver mode survive a return to the same caller frame. -/
+theorem Framed.frameOk {m n : Machine} {fr : Option Ratchet.Frame} (h : Framed m n)
+    (hf : FrameOk fr m) (hc : n.currentFrame = m.currentFrame) : FrameOk fr n := by
+  cases fr with
+  | none => simpa only [FrameOk, hc] using hf
+  | some f =>
+    exact ⟨by rw [hc]; exact hf.1,
+      by rw [hc]; exact h.firstOrder f.recvTy (by unfold Frame.recvTy; split <;> rfl) _ hf.2.1,
+      by rw [hc]; exact hf.2.2⟩
+
 /-- Recover a retained receiver's fields, including completeness when requested.
 Liveness concerns the incoming receiver, not the callee's potentially different self. -/
 theorem Framed.selfSpine {m n : Machine} {I : Ty} {closed : Bool} (h : Framed m n)

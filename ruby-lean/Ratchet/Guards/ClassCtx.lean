@@ -17,6 +17,7 @@ def classBodyCtx (κ : Ctx) (name : String) : Ctx :=
       selfTy := some (.clsOf name)
       runtimeMain := false
       runtimeClass := some name
+      runtimeSingleton := none
       closedIvars := true } }
 
 /-- Freshness is a static absence test backed by the interpreted global-name bound. -/
@@ -39,17 +40,18 @@ theorem classHeader_ancestors (C : CTable) (name : String) :
 knew a complete shape. Method bodies do not silently recover that erased information. -/
 def instanceBodyCtx (κ : Ctx) (fr : Frame) (I : Ty) : Ctx :=
   { κ with scope := { κ.scope with
-      frame := some fr
+      frame := some { fr with singleton := false }
       blockTy := none
       selfTy := some (.inst fr.recvClass I)
       runtimeMain := false
       runtimeClass := some fr.defClass
+      runtimeSingleton := none
       closedIvars := false } }
 
 /-- Initializer entry has a freshly allocated receiver with a complete empty field set.
 This stronger scope is established by allocation, not by an open instance annotation. -/
 def initializerBodyCtxAt (κ : Ctx) (receiver owner : String) : Ctx :=
-  let body := instanceBodyCtx κ ⟨receiver, owner, "initialize"⟩ .ivar0
+  let body := instanceBodyCtx κ ⟨receiver, owner, "initialize", false⟩ .ivar0
   { body with scope := { body.scope with closedIvars := true } }
 
 /-- Own initializers specialize the receiver/lexical-owner split. -/

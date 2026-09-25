@@ -40,6 +40,7 @@ theorem checked_scope_install (hb : bootOkB = true)
 
 #guard (constOwn bootMachine.heap Boot.objectId "Factory").isNone
 #guard singletonMethodCodeB k e md
+#guard isClassRefNamed entry.heap (.ref k) "Factory" && !isAName entry.heap (.ref k) "Factory"
 #guard !ordinaryMethodCodeB k [k, Boot.objectId] md
 #guard !instanceMethodCodeB e "copy" md
 #guard installed.heap.objs.size == entry.heap.objs.size &&

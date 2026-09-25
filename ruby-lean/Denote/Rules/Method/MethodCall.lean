@@ -13,8 +13,8 @@ theorem SemSafeCtxA.callSig {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' τ : Ty}
     (hparams : decl.params = ps.map (fun p => Ratchet.Param.req p.1))
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (hτ : FirstOrder τ = true)
-    (hbody : SemSafeCtxA (κ'.withFrame (some ⟨"Object", "Object", decl.name⟩)) ps I' decl.body τ
-      (κ'.withFrame (some ⟨"Object", "Object", decl.name⟩)) Γb I')
+    (hbody : SemSafeCtxA (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) ps I' decl.body τ
+      (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) Γb I')
     (hargs : SemAllCtxA κ Γ I args (ps.map (·.2)) κ' Γ' I')
     (hd : decl ∈ κ'.defs)
     (hstart : κ.scope.runtimeMain = true) (hruntime : κ'.scope.runtimeMain = true)

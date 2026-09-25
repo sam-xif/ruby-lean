@@ -1,3 +1,4 @@
+import Denote.Sem.Singleton.SingletonScope
 import Denote.Rules.Instance.InstanceReturn
 import Ratchet.Guards.ClassCtx
 
@@ -41,6 +42,10 @@ theorem restore_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mach
       intro cn hcn
       change κ.scope.runtimeClass = some cn at hcn
       rw [hcl] at hcn; cases hcn
+    singletonRuntime := by
+      intro cn hr
+      obtain ⟨k, e, scope⟩ := hm.singletonRuntime cn hr
+      exact ⟨k, e, scope.framed hp hm.frameInRange.1 hphase⟩
     classSites := by
       intro cn hcn
       apply hn.classSites cn
@@ -85,17 +90,7 @@ theorem restore_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mach
     baseChains := hn.baseChains
     nilQuery := hn.nilQuery
     selfLive := fun o ho => Nat.lt_of_lt_of_le (hm.selfLive o (by rwa [hpop] at ho)) hp.fields.size }
-  · change FrameOk κ.frame (popMethodFrame n)
-    cases hf : κ.frame with
-    | none => simpa only [FrameOk, hf, hpop] using hm.frame
-    | some fr =>
-      have hold : m.currentFrame.meth = fr.methName ∧
-          isAName m.heap m.currentFrame.self fr.recvClass = true ∧
-          m.currentFrame.kind = .method := by
-        simpa only [FrameOk, hf] using hm.frame
-      exact ⟨by rw [hpop]; exact hold.1,
-        by rw [hpop]; exact hp.nominal _ _ hold.2.1,
-        by rw [hpop]; exact hold.2.2⟩
+  · exact hp.frameOk hm.frame hpop
   · change BlockTyOk κ.blockTy (popMethodFrame n)
     cases hb : κ.blockTy with
     | none => simpa only [BlockTyOk, hb, hpop] using hm.blockTy
