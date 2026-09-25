@@ -10847,3 +10847,24 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
   52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
   New publication proofs and controls build in under one second each.
+
+## Clink 180 (2026-09-25) — full singleton definition-state publication
+
+- singletonDeclCtx publishes one executed singleton row and reserves its selector.
+  singletonFreshB checks only singleton tables, leaving same-named instance methods legal;
+  the existing declaration-frame guard rejects stale snapshots that change ancestry or
+  activate constructor claims. Neither guard certifies a method body.
+- SingletonContext transports sites, ordinary selector bounds, ancestry, nested constants
+  and constructor facts. SingletonState derives full outgoing StateOk through the actual
+  def-self step from incoming conformance and these guards, without outgoing heap premises.
+  Leaf ownership separates Object's def table. This transport excludes new, method_missing,
+  method_added and initialize; the last exclusion preserves root initialization by name.
+- Boot controls prove entry plus the actual singleton definition, then a same-selector
+  ordinary definition under full conformance. Lookup recovers the original singleton code.
+  Controls reject duplicate singleton selectors and stale superclass snapshots.
+- No new judgment or admission. Next: singleton activation must represent its class-valued
+  self and eigenclass defmod separately from lexical cref; constant fallback through that
+  eigenclass also needs a retained contract. Then constructor/body checking and integration.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
+  all new proofs and controls build in under one second each.

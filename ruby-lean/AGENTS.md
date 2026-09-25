@@ -590,9 +590,11 @@ but violates this stronger site contract. Class sites also retain leaf metaclass
 separate singleton owners from ordinary cached class owners. `ClassesOk` now records exact
 singleton code and preserves it through heap/frame changes and ordinary definitions;
 `SingletonPublish` connects actual installation to those records and recovers retained
-lookup. A self-alias witness motivates owner separation. Full outgoing state publication,
-activation scope and annotation-domain admission remain before 073; no rule or floor changes
-in these prerequisites. See clinks 177–179.
+lookup. A self-alias witness motivates owner separation. `SingletonState` derives full
+outgoing conformance from input guards; controls compose a real boot definition with a
+same-selector ordinary definition and recover the retained singleton code. Activation scope,
+constant fallback and annotation-domain admission remain before 073; no rule or floor changes
+in these prerequisites. See clinks 177–180.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -704,6 +706,7 @@ String membership needs a payload invariant. See
 | `Ratchet/Guards/NilFields.lean`, `Ratchet/Check/FieldHints.lean`, `Denote/Controls/NilFieldControls.lean` | Explicit nil fields proved by default allocation; receiver-aware field candidates and open-field controls |
 | `Denote/Sem/Singleton/SingletonCode.lean`, `Denote/Rules/Singleton/SingletonInstall.lean`, `SingletonDispatch.lean`, `SingletonInstallControls.lean` | Distinct dispatch/lexical owners, cached singleton installation and conformance-derived lookup/required entry; prepend counterexample |
 | `Denote/Sem/Singleton/SingletonRows.lean`, `SingletonRowsWrite.lean`, `SingletonTable.lean`, `Denote/Rules/Singleton/SingletonPublish.lean`, `SingletonTableControls.lean` | Persistent singleton code in ClassesOk, namespace separation, actual publication and retained lookup; alias/forged-body controls |
+| `Ratchet/Guards/SingletonCtx.lean`, `Denote/Sem/Singleton/SingletonContext.lean`, `Denote/Rules/Singleton/SingletonState.lean`, `SingletonStateControls.lean` | Full singleton definition-state publication from input guards; boot/same-selector/stale-snapshot controls |
 | `Denote/Examples/Derivations.lean`, `ClassDerivations.lean`, `SuperDerivations.lean`, `NilFieldDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 52 concrete safety proofs |
 | `Denote/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |

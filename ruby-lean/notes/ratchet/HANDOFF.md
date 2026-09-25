@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 179)
+# Current resume point (2026-09-25, clink 180)
 
 Fragment 67, checker reach 72, 53 rules, 52 worked theorems. For 073, SingletonInstall
 derives the real def-self step and installed own code from full incoming class scope.
@@ -8,10 +8,12 @@ ClassesOk now retains exact singleton code, cached owners and lexical metadata. 
 transports and ordinary definitions preserve those rows; actual singleton installation
 publishes them, and retained tables recover lookup. Same-named instance/singleton methods
 remain distinct. Prepend and self-alias witnesses justify the two site facts.
-Next: full outgoing state publication, then the distinct activation owner/scope,
+SingletonState now proves full outgoing StateOk from input guards. Real-boot controls compose
+that step with an ordinary same-selector definition and recover the original singleton code.
+Next: the distinct activation owner/scope (including constant fallback),
 constructor calls and annotation-domain checker/emitter integration. 073 is not admitted
 yet. Sorbet accepts it and rejects wrong factory
-result, constructor argument and factory arity. No rule/floor change. See clinks 176–179
+result, constructor argument and factory arity. No rule/floor change. See clinks 176–180
 and AGENTS.md. Older text is historical.
 
 # ratchet — hand-off note (2026-09-10)
