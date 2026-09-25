@@ -1,15 +1,15 @@
-# Current resume point (2026-09-25, clink 176)
+# Current resume point (2026-09-25, clink 177)
 
-Fragment 67, checker reach 72, 53 rules, 52 worked theorems. Default allocation proves
-arbitrary finite nil-only field spines, admitting 070. FieldHints collects receiver-body
-reads across the declared chain; nilFieldsB and the allocator justify the facts, and every
-member body still checks at its complete annotation domain. Open instance annotations stay
-open. Sorbet reveals the unset read as T.untyped and even accepts a false Integer return;
-the checker rejects that annotation. NilFieldDerivations independently proves whole 070 for
-any field name. Controls include inherited getters with additional child fields and writes
-that would invalidate nil facts. Next: 073-class-factory-method needs singleton definition
-and dispatch (Point.origin calls new). Inherited implicit calls remain open. See
-implementation-notes.md clinks 175–176 and AGENTS.md's current state. Older text is historical.
+Fragment 67, checker reach 72, 53 rules, 52 worked theorems. For 073, SingletonInstall
+derives the real def-self step and installed own code from full incoming class scope.
+SingletonMethodCode distinguishes eigenclass dispatch owner from lexical class cref.
+SingletonDispatch proves lookup/required entry with explicit metaclass frontness. A real
+prepended-module witness passes MetaReady yet shadows the own method (returns 99 vs 7).
+Next: retain singleton code/table conformance and sufficient metaclass lookup facts, then
+handle the distinct activation owner/scope, constructor calls and annotation-domain checker/
+emitter integration. 073 is not admitted yet. Sorbet accepts it and rejects wrong factory
+result, constructor argument and factory arity. No rule/floor change. See clinks 176–177
+and AGENTS.md. Older text is historical.
 
 # ratchet — hand-off note (2026-09-10)
 

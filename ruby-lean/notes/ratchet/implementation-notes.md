@@ -10782,3 +10782,28 @@ both halves of what constrains them now have a name.
   52 worked theorems, 252 agree / 0 disagree. Raised the fragment, reach and worked floors.
   Metatheory and standard-axiom audit pass; allocation and worked proofs build below one
   second, controls in about two seconds. Next frontier: 073's singleton factory method.
+
+## Clink 177 (2026-09-25) — actual singleton installation and dispatch
+
+- Sorbet 0.6.13405 accepts 073, reveals Point.origin as Point, and rejects a String factory
+  result, a String constructor argument, and Point.origin(1). No new typing judgment yet.
+- SingletonMethodCode separates dispatch owner (eigenclass) from lexical cref (class,
+  Object). The actual def-self step already composes receiver evaluation in the model.
+  SingletonInstall derives its cached eigenclass from full incoming class-site conformance,
+  proves the installed own row and preserves frames/first-order data. Rootedness plus
+  CoreOk establishes the eigenclass payload; no outgoing StateOk is assumed or claimed.
+- SingletonDispatch proves actual lookup and required-argument entry for arbitrary names,
+  parameters, bodies and values. The direct-name guard excludes interpreter interceptions;
+  eigenclass frontness is still an explicit premise. Neither an installed row nor cached
+  MetaReady proves it: a real prepended singleton module passes MetaReady and returns 99
+  instead of the newly installed own method's 7. This is a missing future contract, not an
+  admitted unsafe program.
+- A boot-grounded class-scope control derives installation from full conformance. Execution
+  checks the method result, unchanged heap size, eigenclass owner and lexical cref, and
+  rejects both ordinary-owner metadata substitutions. All new builds take under a second.
+- Next: persistent singleton code/table conformance and sufficient metaclass lookup facts;
+  singleton activation must keep dispatch owner distinct from lexical class scope. Then
+  constructor calls, annotation-domain body checking and checker/emitter admission for 073.
+  No floor or registry change in this prerequisite.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
