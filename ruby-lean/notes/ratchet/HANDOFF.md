@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 183)
+# Current resume point (2026-09-25, clink 184)
 
 Fragment 67, checker reach 72, 53 rules, 52 worked theorems. For 073, SingletonInstall
 derives the real def-self step and installed own code from full incoming class scope.
@@ -20,10 +20,16 @@ singleton scope separately from runtimeClass; all state transports preserve it. 
 entry and return are proved. CallWorld includes singleton callers, and resolved_singleton_run
 executes a checked body through real send/entry/return. Boot-backed controls cover every
 Integer argument and nested singleton calls with caller restoration.
-Next: constructor calls from singleton self and annotation-domain checker/emitter integration. 073 is not admitted
-yet. Sorbet accepts it and rejects wrong factory
-result, constructor argument and factory arity. No rule/floor change. See clinks 176–183
-and AGENTS.md. Older text is historical.
+Constructors now restore singleton callers as well; implicit new retains class-valued self
+across arguments. singletonDecl/singletonCall compose definition and actual dispatch with
+full-domain body premises. FactoryConstructorControls proves all-fuel boot safety for the
+complete, pipeline-matched 073 program, plus construction for arbitrary Integer arguments.
+Next: register singleton definition/call and implicit-new judgments, then annotation-domain
+body caches and checker/emitter integration. 073 is not admitted yet. Sorbet accepts implicit
+new and self.new, reveals T.attached_class inside the factory, and rejects wrong constructor
+types/arity and an uncalled factory returning String against Point. Own class receivers only;
+inherited singleton behavior remains open. No rule/floor change. See clinks 176–184 and
+AGENTS.md. Older text is historical.
 
 Singleton bodies use an open class-object ivar spine. Ordinary instanceBodyCtx resets the
 frame mode and singleton runtime scope; super's frame guard requires the instance mode.

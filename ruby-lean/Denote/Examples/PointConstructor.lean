@@ -23,7 +23,7 @@ theorem constructor_runValues {Γ : Env} {I : Ty} {m : Machine} {args : List Val
     (by change classWithMethod initClass getter ∈ [classWithMethod initClass getter, initClass, header]; simp)
     (by change initDecl ∈ [getter, initDecl]; simp) rfl (by decide)
     (by change "Point" ∈ ["Point"]; simp) rfl (by simp [pointInitParams, FirstOrder, isAliasTy])
-    initializer_body (ReframeFO.empty hI rfl rfl rfl) rfl rfl rfl rfl initializer_consts
+    initializer_body (ReframeFO.empty hI rfl rfl rfl) rfl (.main rfl rfl rfl) initializer_consts
     hΓ (by decide) hkont hargs
 
 theorem constructor_run {Γ : Env} {I : Ty} {m : Machine}

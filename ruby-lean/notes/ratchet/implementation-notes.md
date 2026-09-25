@@ -10929,3 +10929,27 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
   52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
   New boundary proofs build in roughly one second each; no proof exceeded five minutes.
+
+## Clink 184 (2026-09-25) — complete factory semantics
+
+- Sorbet 0.6.13405 accepts implicit new and self.new in 073, reveals T.attached_class
+  inside the factory, and rejects wrong initializer types/arity and an uncalled factory
+  returning String against returns(Point). The new semantic contracts cover own singleton
+  methods on an exact named class; inherited attached-class behavior remains separate.
+- Constructors now restore main, instance or singleton callers through CallWorld. Its
+  class-membership check uses outgoing tables, which must retain the saved caller's class.
+  All send sites share the same allocator/initializer proof. Implicit construction retains
+  class-valued self across argument evaluation and recovers the declared allocator afterward.
+  The registered newInst rule keeps its existing main-only interface.
+- singletonDecl requires a full annotated-domain body proof even for uncalled definitions;
+  singletonCall recovers executed own code and checks its body over the full parameter domain.
+  FactoryConstructorControls composes these with implicit construction into all-fuel safety
+  for the complete 073 program from boot. Its expression matches the pipeline's generated
+  program exactly; execution returns a Point with both Integer fields. Constructor controls
+  cover every pair of Integer arguments and both implicit and explicit-self syntax.
+- No new registered judgment or admission. Next: singleton definition/call and implicit-new
+  judgments, annotation-domain body caches, registry/bridge and emitter integration. The
+  pipeline still rejects defs; fragment/rule/worked-theorem floors are unchanged.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
+  all new proofs build in roughly one second each, below the five-minute limit.

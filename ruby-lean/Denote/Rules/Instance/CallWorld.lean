@@ -8,21 +8,42 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
-theorem call_world_phase {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
-    (hm : StateOk κ Γ I m) (hw : CallWorld κ) : m.preludeMode = false := by
+theorem call_world_phase_scope {κ κb : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    (hm : StateOk κ Γ I m) (hw : CallWorld (returnScopeCtx κ κb)) : m.preludeMode = false := by
   cases hw with
   | main hr _ _ => exact (hm.runtime hr).phase
   | inst _ ho _ _ _ => obtain ⟨_, hs⟩ := hm.classRuntime _ ho; exact hs.phase
   | singleton _ _ ho _ _ => obtain ⟨_, _, hs⟩ := hm.singletonRuntime _ ho; exact hs.phase
 
-theorem call_world_uncaptured {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
-    (hm : StateOk κ Γ I m) (hw : CallWorld κ) : RootUncaptured m := by
+theorem call_world_phase {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    (hm : StateOk κ Γ I m) (hw : CallWorld κ) : m.preludeMode = false :=
+  call_world_phase_scope (κb := κ) hm hw
+
+theorem call_world_uncaptured_scope {κ κb : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    (hm : StateOk κ Γ I m) (hw : CallWorld (returnScopeCtx κ κb)) : RootUncaptured m := by
   unfold RootUncaptured
   rw [rootFrame_eq_currentFrame hm.frameInRange.1]
   cases hw with
   | main hr _ _ => exact (hm.runtime hr).captured
   | inst _ ho _ _ _ => obtain ⟨_, hs⟩ := hm.classRuntime _ ho; exact hs.captured
   | singleton _ _ ho _ _ => obtain ⟨_, _, hs⟩ := hm.singletonRuntime _ ho; exact hs.captured
+
+theorem call_world_uncaptured {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    (hm : StateOk κ Γ I m) (hw : CallWorld κ) : RootUncaptured m :=
+  call_world_uncaptured_scope (κb := κ) hm hw
+
+/-- Outgoing tables retain the classes needed by the saved caller's scope. -/
+theorem call_world_restore_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Machine}
+    (hm : StateOk κ Γ I m) (ht : ReframeFO (returnScopeCtx κ κb) I) (ha : κ.asms = [])
+    (hw : CallWorld (returnScopeCtx κ κb))
+    (hk : ∀ x, constGet? κb x = constGet? (returnScopeCtx κ κb) x)
+    (hp : Framed m (popMethodFrame n)) (hpop : (popMethodFrame n).currentFrame = m.currentFrame)
+    (he : EnvOk Γ (popMethodFrame n)) (hphase : n.preludeMode = false)
+    (hn : StateOk κb Γb Ib n) : StateOk (returnScopeCtx κ κb) Γ I (popMethodFrame n) := by
+  cases hw with
+  | main hr hw hcl => exact restore_main_state hm ht ha hr hw hcl hk hp hpop he hphase hn
+  | inst hr hcl hs ho hv => exact restore_instance_state hm ht ha hr hcl hs ho hv hk hp hpop he hphase hn
+  | singleton hr hcl hsg hs ho => exact restore_singleton_state hm ht ha hr hcl hsg hs ho hk hp hpop he hphase hn
 
 theorem call_world_pop_state {κ : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Machine}
     {f : RubyCore.Frame} {fr : Ratchet.Frame}

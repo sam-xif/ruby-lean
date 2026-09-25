@@ -1,6 +1,6 @@
 import Denote.Rules.Constructor.ConstructorState
 import Denote.Rules.Init.InitReturn
-import Denote.Rules.Instance.MainReturn
+import Denote.Rules.Instance.CallWorld
 
 /-! Publish the initialized receiver while restoring the original caller. Heap growth
 is anchored before allocation; frame isolation is measured at initializer entry. -/
@@ -74,24 +74,20 @@ theorem constructor_result {κb : Ctx} {Γb : Env} {Ib : Ty} {m n : Machine}
   rw [constructor_body_self h] at hinst
   exact (denM_heap_only (τ := .inst cn Ib) (m₁ := n) (m₂ := popMethodFrame n) hi rfl).mp hinst
 
-theorem constructor_pop_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Machine}
+theorem constructor_pop_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Machine}
     {cn : String} {k : ObjId} {md : MethodDef} {ps : List SigParam} {args : List Value}
     (hm : StateOk κ Γ I m) (ht : ReframeFO (returnScopeCtx κ κb) I) (ha : κ.asms = [])
-    (hr : κ.scope.runtimeMain = true) (hw : κb.pos.mainWorld = true)
-    (hcl : κ.scope.runtimeClass = none) (hq : κb.scope.runtimeClass = some cn)
+    (hw : CallWorld (returnScopeCtx κ κb)) (hq : κb.scope.runtimeClass = some cn)
     (hk : ∀ x, constGet? κb x = constGet? (returnScopeCtx κ κb) x)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
     (h : InitFrame m.heap (constructorFrame m k md ps args) n)
     (hn : StateOk κb Γb Ib n) : StateOk (returnScopeCtx κ κb) Γ I (popMethodFrame n) := by
-  have hu : RootUncaptured m := by
-    unfold RootUncaptured
-    rw [rootFrame_eq_currentFrame hm.frameInRange.1]
-    exact (hm.runtime hr).captured
+  have hu := call_world_uncaptured_scope hm hw
   obtain ⟨_, scope⟩ := hn.classRuntime cn hq
-  exact restore_main_state hm ht ha hr hw hcl hk (constructor_pop_framed hm.frameInRange h)
+  exact call_world_restore_state hm ht ha hw hk (constructor_pop_framed hm.frameInRange h)
     (constructor_pop_currentFrame hm.frameInRange h) (constructor_pop_env hm.frameInRange hu hm.env hΓ h)
     scope.phase hn
 
 #print axioms constructor_result
-#print axioms constructor_pop_main_state
+#print axioms constructor_pop_state
 end Ratchet.Denote.Typed

@@ -11,10 +11,10 @@ open RubyCore Ratchet Ratchet.Denote
 def ctorAllocated (m : Machine) (k : ObjId) : Machine :=
   { m with heap := pushHeap m.heap { klass := k }, kont := .newK (.ref m.heap.objs.size) :: m.kont }
 
-theorem finishSend_constructor {m : Machine} {k : ObjId} {md : MethodDef} {args : List Value}
+theorem finishSend_constructor {m : Machine} {k : ObjId} {md : MethodDef} {args : List Value} {site : SendSite}
     (hc : PlainAllocator m.heap k) (hd : NewDispatch m.heap (classOf m.heap (.ref k)))
     (hi : Interp.userInit? m.heap k = some md) :
-    Interp.finishSend m (.ref k) .explicit "new" args .none =
+    Interp.finishSend m (.ref k) site "new" args .none =
       Interp.enterUserMethod (ctorAllocated m k) (.ref m.heap.objs.size) "initialize" md args none := by
   obtain ⟨cp, hp, hm⟩ := hc.payload
   simp only [Interp.finishSend]
@@ -40,12 +40,12 @@ theorem finishSend_constructor {m : Machine} {k : ObjId} {md : MethodDef} {args 
   · simp only [↓reduceIte, hi, hc.noCore, hc.noPayload]; rfl
 
 theorem constructor_required_entry {m : Machine} {k : ObjId} {md : MethodDef}
-    {args : List Value} {names : List String}
+    {args : List Value} {names : List String} {site : SendSite}
     (hc : PlainAllocator m.heap k) (hd : NewDispatch m.heap (classOf m.heap (.ref k)))
     (hi : Interp.userInit? m.heap k = some md)
     (hp : md.params = names.map RubyCore.Param.req) (hcap : md.capturedFrame = none)
     (hdecl : md.declared = []) (ha : args.length = names.length) :
-    Interp.finishSend m (.ref k) .explicit "new" args .none =
+    Interp.finishSend m (.ref k) site "new" args .none =
       .next (Interp.withKont
         (pushMethodFrame (ctorAllocated m k)
           (requiredFrame (.ref m.heap.objs.size) "initialize" md names args))

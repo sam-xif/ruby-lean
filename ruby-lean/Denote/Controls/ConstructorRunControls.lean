@@ -25,7 +25,7 @@ theorem point_constructor_run {m : Machine} {Γ : Env} {k : ObjId} {md : MethodD
     (ReframeFO.empty rfl rfl rfl rfl) rfl
     (ReframeFO.empty rfl rfl rfl rfl) (hc.plain hmath) site hd code hi hp hb rfl
     (by simp [pointInitParams, DenAll, denM, isIntV])
-    (by simp [pointInitParams, FirstOrder, isAliasTy]) hconst rfl rfl rfl rfl hconst hΓ rfl rfl hkont
+    (by simp [pointInitParams, FirstOrder, isAliasTy]) hconst (.main rfl rfl rfl) rfl hconst hΓ rfl rfl hkont
     (point_initializer_sem rfl rfl rfl)
 
 private def pointClass : Ratchet.Expr := .class' "Point" none (.seq [

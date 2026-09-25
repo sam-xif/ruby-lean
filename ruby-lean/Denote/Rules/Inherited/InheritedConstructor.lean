@@ -44,10 +44,10 @@ theorem declared_inherited_constructor_run {κ : Ctx} {Γ Γb : Env} {I Ib τ : 
   subst j
   have hparam : md.params = (ps.map (·.1)).map RubyCore.Param.req :=
     hp.trans (by rw [hparams]; exact toRubyParams_required ps)
-  obtain ⟨n, hs, hrun⟩ := constructor_runSpec_at
+  obtain ⟨n, hs, hrun⟩ := constructor_runSpec_at (sendSite := .explicit)
     (κb := initializerBodyCtxAt κ receiver.name owner.name)
     hm ht ha ht alloc site ownerSite ⟨dispatch.1, dispatch.2⟩ code hi hparam hb
-    (by simpa using denAll_length hargs) hargs hps hconst hr hw hcl rfl hconst hΓ rfl hIb hkont hbody
+    (by simpa using denAll_length hargs) hargs hps hconst (.main hr hw hcl) rfl hconst hΓ rfl hIb hkont hbody
   exact ⟨r, n, site.named, hs, hrun⟩
 
 #print axioms declared_inherited_constructor_run

@@ -74,7 +74,7 @@ theorem SemSafeCtxA.newInst {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb : Env} {I
   simp only [mainCallB, Bool.and_eq_true, decide_eq_true_eq] at hg
   obtain ⟨⟨ht, hΓ⟩, hasms, hmain, hw, hcl, hco⟩ := hg
   exact hr.construct ha (explicitReceiverB_sound hs) hc hd hn hnew halloc hp hps hb
-    (reframeTypesB_sound ht) hasms hmain hw hcl
+    (reframeTypesB_sound ht) hasms (.main hmain hw hcl)
     (fun x => (constGet?_empty (κ := initializerBodyCtx κ₂ c.name) hco x).trans
       (constGet?_empty hco x).symm)
     (List.all_eq_true.mp hΓ) hout
