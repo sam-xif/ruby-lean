@@ -295,6 +295,21 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
         else none
         else none
       | _ => none
+    | .vasgn .ivar x ev, .ivarAsgn claimed dv => do
+      if x != claimed then none else do
+      let c ← check n Γ ev dv κ I cache
+      let some (.inst cn _) := c.ctx.selfTy | none
+      if hs : c.ctx.selfTy = some (.inst cn c.spine) then do
+      if hx : ivarGet? c.spine x = some c.ty then do
+      if hρ : scalarWriteB c.ty = true then do
+      if ht : reframeTypesB c.ctx c.spine = true then do
+      if hg : localTypesB c.out = true then
+        some ⟨c.ty, c.out, c.ctx, c.spine, .scalarIvarAsgn c.judged hs hx hρ ht hg, c.cache⟩
+      else none
+      else none
+      else none
+      else none
+      else none
     | .vasgn .lvar x ev, .vasgn .lvar x' dv =>
       if x == x' then
         match check n Γ ev dv κ I cache with

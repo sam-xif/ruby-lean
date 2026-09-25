@@ -1,3 +1,4 @@
+import Denote.Controls.ScalarWriteControls
 import Denote.Controls.BoundedControls
 import Denote.Controls.ClassAliasControls
 import Denote.Controls.ClassBaseControls

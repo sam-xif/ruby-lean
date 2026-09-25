@@ -16,9 +16,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 68 rungs, reach 17**, **57 registered rules** (35 expressions + 22 companions),
-**0 owed**, **0 exempt**. Checker reach is 73; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 53 rungs additionally carry a
+**Fragment 69 rungs, reach 17**, **58 registered rules** (36 expressions + 22 companions),
+**0 owed**, **0 exempt**. Checker reach is 74; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 54 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -608,8 +608,12 @@ into boot safety for the exact generated 073 program (FactoryConstructorControls
 with annotation-domain singleton caches and emitter integration. The same-class nominal
 result conversion forgets exact fields/receiver information; it never recovers it. Independent
 FactoryDerivations exercises all four rules, with the return annotation's conversion separately
-predicted because stripped syntax omits it. Fragment 68, checker reach 73, 57 rules, 53 worked
-theorems, no exemptions. Next: 074's ordinary instance-field update. See clinks 177–185.
+predicted because stripped syntax omits it. 074 now admits scalar field replacement through
+scalarIvarAsgn: Integer/Float/Symbol/nil observations survive across all nested aliases.
+Boolean needs a weaker framing contract (§F45); no consumer was weakened. FrozenError ancestry
+is checked by primitiveErrorsB, and the real frozen assignment path is covered. Fragment 69,
+checker reach 74, 58 rules, 54 worked theorems, no exemptions. Next: 075's top-level method
+after a class declaration and instance argument. See clinks 177–186.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.

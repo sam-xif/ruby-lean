@@ -164,6 +164,7 @@ def rulesUsedAt (C : CTable) : Ratchet.Expr → List String
   | .var .ivar _ => ["ivarRead"]
   | .const _ => ["constClass"]
   | .vasgn .lvar _ e => "vasgn" :: rulesUsedAt C e
+  | .vasgn .ivar _ e => "scalarIvarAsgn" :: rulesUsedAt C e
   | .seq es => "seq" :: rulesUsedSeqAt C es
   | .send (some r) name args none => explicitSendRule C r name :: (rulesUsedAt C r ++ rulesUsedArgsAt C args)
   | .class' _ none body => "classDecl" :: classRulesAt C body

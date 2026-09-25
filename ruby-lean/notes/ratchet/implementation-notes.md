@@ -10981,3 +10981,29 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 68, checker reach 73, 57 rules, 0 owed/exempt,
   53 worked theorems, 252 agree / 0 disagree. Floors raised accordingly. Metatheory and
   standard-axiom audit pass; new proofs build in seconds, none near five minutes.
+
+## Clink 186 (2026-09-25) — admit ordinary scalar field updates
+
+- Sorbet 0.6.13405 accepts 074 and Float, Symbol, NilClass and Boolean replacements.
+  It rejects String assigned to the Integer field and nullable Integer arithmetic even
+  when the only call supplies an Integer. scalarIvarAsgn cites these measurements.
+- ScalarEq permits identity and Integer/Float/Symbol replacement. Simultaneous induction
+  over value and field types proves full first-order preservation across an ivar-only heap
+  change, including aliases nested in instances, arrays and hashes. Framed and StateOk then
+  preserve the existing field spine. The guard requires that exact scalar domain before
+  and after RHS evaluation; this is replacement, not initialization or type-changing mutation.
+- Boolean is deliberately excluded: true → false can destroy a retained TrueClass field
+  observation despite preserving Boolean (§F45). Nil replacement is identity. No framing
+  consumer or alias invariant was weakened. Three basic write/local facts moved from Rules
+  to IvarMutation so the new heap/state proofs keep the tier boundary.
+- Ordinary receivers may be frozen. primitiveErrorsB now checks FrozenError ancestry at
+  boot and through every transport; the real assignment either writes or raises that
+  non-type exception (or propagates inspection's unsupported result). No model change.
+- Register the rule and checker arm, retaining annotation-domain member refresh. Whole
+  074 has an independent certified derivation for every initial Integer. Controls exercise
+  two aliases plus an array, renamed classes and scalar kinds, reject domain/field/hint
+  changes, and execute the real frozen-receiver path. Next: 075, a top-level method declared
+  after Point that receives and calls a Point instance.
+- Full quiet ratchet GREEN: fragment 69, checker reach 74, 58 rules, 0 owed/exempt,
+  54 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
+  new proofs build in seconds, none near five minutes. Floors raised accordingly.

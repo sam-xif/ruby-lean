@@ -28,7 +28,7 @@ def primitiveDispatchB (h : Heap) (free : String → Bool) : Bool :=
       md.builtin == some bid && !md.undefined && md.visibility == .pub && !md.fromPrelude &&
         (Interp.crubyShadow h ((ancestors h k).takeWhile (fun x => x != owner)) name).isNone
 
-def primitiveErrorClasses : List ObjId := [Boot.zeroDivisionErrorId, Boot.nameErrorId]
+def primitiveErrorClasses : List ObjId := [Boot.zeroDivisionErrorId, Boot.nameErrorId, Boot.frozenErrorId]
 
 def primitiveErrorB (h : Heap) (cls : ObjId) : Bool :=
   (ancestors h cls).contains Boot.basicObjectId &&

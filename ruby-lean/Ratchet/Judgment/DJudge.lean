@@ -9,6 +9,7 @@ import Ratchet.Guards.NilFields
 import Ratchet.Guards.MemberRoute
 import Ratchet.Static.NativeInstanceNames
 import Ratchet.Guards.SingletonGuards
+import Ratchet.Guards.ScalarWrite
 
 /-!
 # `Ratchet/Judgment/DJudge.lean` — the answer-typed judgment
@@ -484,6 +485,16 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       DJudge Γ e (.inst c.name fields) Γ' κ I κ' I' → c ∈ κ'.classes →
       DJudge Γ e (.cls c.name) Γ' κ I κ' I'
 
+
+  /-- Sorbet 0.6.13405 accepts 074's Integer replacement and Float/Symbol variants;
+  String replacement and nullable Integer arithmetic are rejected (clink 186).
+  Boolean is not homogeneous for retained nominal types: TrueClass observes its value. -/
+  | scalarIvarAsgn {κ κ' : Ctx} {Γ Γ' : Env} {I I' ρ : Ty} {cn x : String} {e : Expr} :
+      DJudge Γ e ρ Γ' κ I κ' I' → κ'.selfTy = some (.inst cn I') →
+      ivarGet? I' x = some ρ → scalarWriteB ρ = true →
+      reframeTypesB κ' I' = true → localTypesB Γ' = true →
+      DJudge Γ (.vasgn .ivar x e) ρ Γ' κ I κ' I'
+
 inductive DJudgeAll : Env → List Expr → List Ty → Env → (κ : optParam Ctx ctx0) →
     (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
   | nil {κ : Ctx} {Γ : Env} {I : Ty} : DJudgeAll Γ [] [] Γ κ I
@@ -556,7 +567,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_4 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_5 := fun _ _ _ _ _ _ _ _ => True)
     (motive_6 := fun _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first | rfl | trivial | assumption
 
 end Ratchet

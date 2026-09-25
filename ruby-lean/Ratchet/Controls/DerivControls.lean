@@ -7,6 +7,7 @@ import Ratchet.Controls.MemberCallControls
 import Ratchet.Controls.ReceiverCacheControls
 import Ratchet.Controls.InheritanceControls
 import Ratchet.Controls.SingletonCheckControls
+import Ratchet.Controls.ScalarWriteControls
 
 /-!
 Negative controls for `validateD`.

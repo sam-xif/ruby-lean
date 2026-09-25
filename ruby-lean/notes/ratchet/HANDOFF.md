@@ -1,27 +1,25 @@
-# Current resume point (2026-09-25, clink 185)
+# Current resume point (2026-09-25, clink 186)
 
-073 is admitted through validateD: fragment 68, checker reach 73, 57 registered rules,
-53 worked theorems, no exemptions. The next frontier is 074-class-setter-method:
-Box#grow updates @size from Integer to Integer. Its field read/arithmetic already have
-rules; ordinary instance ivar writes still need a sound state/frame transport and admission.
+074 is admitted through validateD: fragment 69, checker reach 74, 58 registered rules,
+54 worked theorems, no exemptions. Next frontier: 075-class-instance-as-fun-arg. Point is
+followed by top-level describe(p: Point), which calls p.getX, then describe(Point.new(5)).
+Top-level definition admission currently requires empty class tables; its state transport
+and annotation-domain receiver handling need inspection before broadening that guard.
 
-Singleton prerequisites (clinks 177–184) retain executed code, cached eigenclass identity,
-constant fallback and full singleton scope through calls. Constructors restore singleton
-callers, including implicit new. Clink 185 registers singletonDef, callSingleton, newImplicit
-and same-class instanceType; their docstrings cite measured Sorbet behavior. Only own
-singleton methods are admitted; inherited singleton receiver/lexical-owner separation stays
-open. Explicit self.new has a semantic proof but no new checker route yet.
+scalarIvarAsgn replaces an existing Integer/Float/Symbol/nil field while preserving its
+spine. ScalarPres proves universal first-order preservation across nested aliases; ScalarState
+restores full conformance. It does not weaken Framed. Boolean replacement fails that contract
+because TrueClass observes true versus false (§F45). FrozenError ancestry is now checked
+by primitiveErrorsB; the actual frozen assignment path safely raises it. ScalarWriteDerivations
+covers every initial Integer, and controls cover aliases, bad annotations and frozen receivers.
 
-SingletonCache retains annotation-domain body proofs, exact code and singleton context.
-Definitions and later table changes recheck every body; calls consume artifacts. Branches
-compare annotations, and completeness checks each own singleton row. Nominal result
-conversion only forgets information; it cannot recover exact receivers or initialized fields.
-The emitter preserves <Class:C> signatures separately from ordinary C methods. Whole 073
-has an independent constructor-wise FactoryDerivations proof, audited against the generated
-program and registered rule set. annotationRules records its erased return annotation's
-conversion rule; exact per-rung proof-extraction equality still gates coverage.
+073 remains admitted with own singleton definitions/calls, implicit new and same-class
+nominal result conversion. SingletonCache rechecks full annotated bodies after table changes;
+calls consume exact context/code artifacts. Inherited singletons remain open, and explicit
+self.new still has only its semantic proof. Nominal conversion only forgets information;
+it cannot recover exact receivers or initialized fields from a nominal annotation.
 
-See clinks 177–185 and AGENTS.md. Older text below is historical.
+See clinks 177–186 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 

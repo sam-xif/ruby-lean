@@ -51,20 +51,20 @@ open Ratchet.Denote.Typed
 prelude-booted machine (`Denote/Safety.lean`). This is the number the ladder exists to
 grow: `StuckFree bootMachine <program>`, at every fuel, with every hypothesis discharged. A
 drop means a theorem was deleted. -/
-def safeRungFloor : Nat := 53
+def safeRungFloor : Nat := 54
 
 /-- The recorded size of the registry. **A clink once registered never unregisters**
 (`AGENTS.md`), and this number is sound to ratchet on: a clink cannot be registered
 without its proof, so the count is a count of proofs. Raise it when the registry grows; a
 drop means a proof was deleted or broken. -/
-def clinkFloor : Nat := 57
+def clinkFloor : Nat := 58
 
 /-- The recorded size of **the certified fragment**: corpus rungs `validateD` accepts, each
 safe by `validateD_safe_boot` (`Denote/Bridge.lean`). This is the number the ladder
 exists to grow, and the one that means "climbed" now that acceptance and safety are the same
 fact. It only ever rises: a rung the checker accepted once is a rung it should still accept,
 so a drop is a rule weakened or a corpus rung changed. -/
-def fragmentFloor : Nat := 68
+def fragmentFloor : Nat := 69
 
 /-- How many unmet goals the **quiet** report prints before truncating. The full list is
 `--verbose`; this is the number that keeps a commit-time gate readable, since the list is 251

@@ -2643,3 +2643,14 @@ ConstFallback now constrains that second lookup phase. CoreOk checks Object's me
 at boot; every class site retains the inherited fact through all transports. Singleton
 constant scope follows from lexical agreement plus this fallback bound. The generic
 hidden_meta_not_site theorem excludes the bad shape. Singleton body admission remains gated.
+
+## F45 — Boolean replacement is not universally type-preserving (2026-09-25)
+
+**Extension boundary, not an accepted unsafe program.** Sorbet accepts replacing a Boolean
+field with false. Framed.fields also retains nominal observations: true has type TrueClass,
+false does not. ScalarWriteControls.bool_write_not_framed proves the obstruction for any
+live receiver with those facts; VM guards verify the nominal distinction at real boot.
+
+Clink 186 admits Integer/Float/Symbol/nil replacement, whose entire first-order observations
+survive, including nested aliases. The Boolean case needs a weaker retained-type contract
+or effect/ownership accounting; accepting it under the present universal framing is false.

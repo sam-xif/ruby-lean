@@ -79,6 +79,46 @@ theorem ivarOf_bindIvar_other {m : Machine} {o : ObjId} {x : String} {v w : Valu
   rename_i k
   simp only [ivarOf, bindIvar_get_other (k := k) hs (by intro h; subst k; exact hw rfl)]
 
+theorem ivarOf_bindIvar_ne {m : Machine} {o : ObjId} {x y : String} {v : Value}
+    (hs : m.currentFrame.self = .ref o) (ho : o < m.heap.objs.size) (hne : y ≠ x) :
+    ivarOf (Interp.bindIvar m x v).heap (.ref o) y = ivarOf m.heap (.ref o) y := by
+  simp only [ivarOf, bindIvar_get_self hs ho]
+  have hp (p : String × Value) :
+      decide ((p.1 != x) = true ∧ (p.1 == y) = true) = (p.1 == y) := by
+    by_cases hy : p.1 = y <;> simp_all
+  simp only [List.find?_cons, beq_eq_false_iff_ne.mpr (Ne.symm hne), List.find?_filter, hp]
+
+theorem getLocal_bindIvar (m : Machine) (x : String) (v : Value) (y : String) :
+    (Interp.bindIvar m x v).getLocal y = m.getLocal y := by
+  have hg : ∀ fuel fid, Machine.getLocal.go (Interp.bindIvar m x v) y fid fuel =
+      Machine.getLocal.go m y fid fuel := by
+    intro fuel
+    induction fuel with
+    | zero => intro fid; rfl
+    | succ f ih =>
+      intro fid
+      simp only [Machine.getLocal.go, bindIvar_frames]
+      split
+      · rfl
+      · split
+        · exact ih _
+        · rfl
+  simp only [Machine.getLocal, bindIvar_stack, bindIvar_frames, hg]
+
+theorem env_bindIvar {m : Machine} {Γ : Env} {x : String} {v : Value}
+    (he : EnvOk Γ m)
+    (hkeep : ∀ y τ, envGet? Γ y = some τ →
+      denM (stripAlias τ) (Interp.bindIvar m x v) (m.getLocal y)) :
+    EnvOk Γ (Interp.bindIvar m x v) := by
+  refine ⟨?_, ?_⟩
+  · intro y τ hy
+    refine ⟨by rw [getLocal_bindIvar]; exact hkeep y τ hy, ?_⟩
+    intro z σ hz
+    simp only [getLocal_bindIvar]
+    exact (he.1 y τ hy).2 z σ hz
+  · intro y hy
+    rw [getLocal_bindIvar]; exact he.2 y hy
+
 /-- This is the real successful assignment transition, not a replacement execution model. -/
 theorem stepFn_ivarWrite {m : Machine} {o : ObjId} {x : String} {v : Value} {rest : List Kont}
     (hs : m.currentFrame.self = .ref o) (hf : (m.heap.get o).frozen = false) :
