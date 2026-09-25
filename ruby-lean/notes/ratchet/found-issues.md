@@ -2698,3 +2698,20 @@ Boot checks both bases and every current transport preserves them. The generic
 hidden_module_query_not_state theorem excludes the incompatible Module row. Module query
 transport maps the fresh eigenclass to that retained source and keeps native-prefix guards;
 the parentless module head has no methods. Full module-body entry now derives all queries.
+
+## F49 — legacy closure predicates do not justify callable admission (2026-09-25)
+
+**Open; outside the admitted judgment.** denM(.clos idx cap self) drops idx and
+ClosuresOk is True, despite State.lean's historical introduction claiming it closes that
+gap. ClosureLiteralControls.reified_unindexed proves that any code inhabits every index
+with an empty capture spine; wrong_body_not_table proves the missing code relation.
+reified_table shows that even closTblOk omits lambda mode and block locals. Runtime
+controls distinguish missing-argument lambda/proc calls and show a block-local replacing
+an otherwise well-typed captured Integer with nil. CRuby reproduces both distinctions.
+
+Clink 200's literal result retains the complete real Closure, including params, locals,
+body, captured frame, return home and lambda mode, with full StateOk and Framed. A callable
+value contract must retain the relevant facts through binding/evaluation before a body
+proof can justify a call. Captured writes also need a return contract: FramePres.isolated
+explicitly does not promise isolation for a captured activation. No unsafe program is
+accepted and no callable rule is registered on the old predicates.

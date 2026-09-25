@@ -1,10 +1,26 @@
-# Current resume point (2026-09-25, clink 199)
+# Current resume point (2026-09-25, clink 200)
 
 084 is newly admitted through validateD: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
 The prefix remains 17; 018 is correctly rejected. Next frontier: 087-lambda-zero-arity,
-`f = lambda { 1 }; f.call`. The emitter currently declines block arguments; creation,
-closure conformance and calls need semantic contracts before admitting a new judgment.
+`f = lambda { 1 }; f.call`. The emitter currently declines block arguments.
+
+Clink 200 proves actual lambda/proc creation for arbitrary parameters, block locals and
+bodies. Sem/Closure/Reify retains the complete Closure and proves Ext, StateOk, capture
+reads and creation self. Rules/Closure/Literal consumes name freedom at real lookup,
+proves the source step, exact result metadata and all-fuel creation safety. Both files
+ride the gate through ClosureLiteralControls. No callable judgment is admitted yet.
+
+Next: connect code identity and capture metadata to a callable value contract, then
+prove callClosure activation/body/return. The old denM(.clos idx ...) drops idx;
+ClosuresOk is True; closTblOk is unused and omits lambda mode and block locals (§F49).
+The controls prove these omissions and exercise arity, local shadowing, changed captures
+and a shadowed lambda selector. Do not infer body identity from the old denotation.
+FramePres.isolated applies only to uncaptured activations, so closure return must also
+account for writes through the captured frame rather than assume caller isolation.
+Sorbet 0.6.13405 infers T.proc.returns(Integer) for lambda { 1 }, rejects an extra call
+argument, but accepts the changed-capture TypeError probe. CRuby agrees with the model
+on that probe and on the arity/block-local distinctions.
 
 DPrim.intGt checks Integer > Integer at Boolean. primitiveMethods now pins Integer#>
 in StateOk; the proof uses real dispatch and preserves the full machine contract.
@@ -92,7 +108,7 @@ calls consume exact context/code artifacts. Inherited singletons remain open, an
 self.new still has only its semantic proof. Nominal conversion only forgets information;
 it cannot recover exact receivers or initialized fields from a nominal annotation.
 
-See clinks 177–199 and AGENTS.md. Older text below is historical.
+See clinks 177–200 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 

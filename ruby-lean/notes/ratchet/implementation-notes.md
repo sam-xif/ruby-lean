@@ -11313,3 +11313,23 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom
   audit pass. The primitive proof built in 14s, the whole-program derivation in 5.3s;
   no proof approached five minutes.
+
+## Clink 200 (2026-09-25) — exact lambda/proc literal creation
+
+- Sem/Closure/Reify mirrors the real allocator by rfl, then proves Ext and full StateOk
+  for arbitrary parameters, block locals, body and lambda mode. Capture reads agree with
+  the creation frame, and creation self is retained. No environment snapshot is invented.
+- Rules/Closure/Literal consumes NameFreeOk at actual lookup, proves the source step and
+  an exact fresh-closure result with StateOk/Framed, plus all-fuel creation safety.
+  Creation does not evaluate the body. Callable typing remains gated on §F49.
+- Controls prove that the old denM drops code identity and closTblOk omits mode/locals.
+  Model and CRuby probes distinguish proc/lambda arity, block-local nil shadowing and
+  changed captures; a user-defined lambda selector executes its own body. The new control
+  file is included by Controls.All, keeping all new proofs on the quiet gate.
+- Sorbet 0.6.13405 infers T.proc.returns(Integer) for lambda { 1 } and Integer for its call,
+  and rejects an extra argument. It accepts the captured Integer later changed to String;
+  CRuby and the model raise TypeError. No new type judgment or emitter policy yet.
+- Fragment/reach stay 81/86, 61 registered rules, 60 worked theorems, 0 owed/exempt.
+  Next: a callable value contract retaining code/capture facts, then activation and return.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New proofs and controls each build in under a second; no five-minute proof.

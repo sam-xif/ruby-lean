@@ -1,4 +1,5 @@
 import Denote.Controls.ScalarWriteControls
+import Denote.Controls.ClosureLiteralControls
 import Denote.Controls.BoundedControls
 import Denote.Controls.ModuleDataControls
 import Denote.Controls.ModuleHeaderControls
