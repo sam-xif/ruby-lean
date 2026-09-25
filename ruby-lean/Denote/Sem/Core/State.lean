@@ -790,10 +790,11 @@ def QueryOk (κ : Ctx) (m : Machine) : Prop :=
 def clsQueryBuiltins : List (String × String) :=
   [("===", "Module#==="), ("to_s", "Module#to_s")]
 
-/-- Existing class-object dispatch sites, plus Class itself: a fresh eigenclass has no
-eigenclass of its own and dispatches directly there. Existing receivers need not expose it. -/
+/-- Existing class-object sites and the direct Class/Module paths introduced by fresh
+eigenclasses. Existing receivers need not expose either inherited dispatch source. -/
 def ClassQuerySite (h : Heap) (k : ObjId) : Prop :=
-  k = Boot.classId ∨ ∃ o, (h.classPayload? o).isSome = true ∧ classOf h (.ref o) = k
+  k = Boot.classId ∨ k = Boot.moduleId ∨
+    ∃ o, (h.classPayload? o).isSome = true ∧ classOf h (.ref o) = k
 
 def ClsQueryOk (κ : Ctx) (m : Machine) : Prop :=
   ∀ mname bid, (mname, bid) ∈ clsQueryBuiltins → nameFreeN κ mname = true → ∀ k,
@@ -829,12 +830,13 @@ theorem ClsQueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : ClsQ
     ClsQueryOk κ m₂ := by
   intro mname bid hmem hfree k hp
   have hs : ClassQuerySite m.heap k := by
-    rcases hp with hk | ⟨o, ho, hco⟩
+    rcases hp with hk | hk | ⟨o, ho, hco⟩
     · exact Or.inl hk
+    · exact Or.inr (Or.inl hk)
     · rw [he.payload] at ho
       have hlt := lt_size_of_classPayload ho
       simp only [classOf, he.get o hlt] at hco
-      exact Or.inr ⟨o, ho, hco⟩
+      exact Or.inr (Or.inr ⟨o, ho, hco⟩)
   have hm : ∀ n, Interp.methodOn m₂.heap k n = Interp.methodOn m.heap k n := by
     intro n; simp only [Interp.methodOn, he.payload, he.ancestors]
   obtain ⟨h1, h2⟩ := h mname bid hmem hfree k hs

@@ -7,6 +7,9 @@ namespace Ratchet
 
 def moduleHeader (name : String) : Cls := { classHeader name with isModule := true }
 
+/-- Class and module bodies share lexical activation; neither scope grants allocation. -/
+abbrev moduleBodyCtx (κ : Ctx) (name : String) : Ctx := classBodyCtx κ name
+
 def moduleHeaderCtx (κ : Ctx) (name : String) : Ctx :=
   { κ with pos := { κ.pos with classes := moduleHeader name :: κ.classes } }
 

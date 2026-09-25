@@ -16,18 +16,19 @@ local notation "h₁" => heap h d name q parent eParent
 theorem class_site_source (hc : ChainsIn h) (hp : (h.classPayload? parent).isSome = true)
     (he : (h.get parent).eigen = some eParent) {k : ObjId} (hk : ClassQuerySite h₁ k) :
     ClassQuerySite h (source h parent eParent k) := by
-  rcases hk with hk | ⟨o, hp', hco⟩
+  rcases hk with hk | hk | ⟨o, hp', hco⟩
   · subst k; rw [source_old hc.boot.1]; exact Or.inl rfl
+  · subst k; rw [source_old hc.boot.2.1]; exact Or.inr (Or.inl rfl)
   · subst k
     by_cases hl : o < h.objs.size
     · have hp₀ : (h.classPayload? o).isSome = true := by rwa [classPayload_old_isSome hl] at hp'
       rw [classOf_old hl, source_old (ClsGrow.classOf_lt hc hl)]
-      exact Or.inr ⟨o, hp₀, rfl⟩
+      exact Or.inr (Or.inr ⟨o, hp₀, rfl⟩)
     · by_cases hok : o = h.objs.size
       · subst o
         rw [classOf_class]
         simp only [source, if_neg (Nat.succ_ne_self _), ite_true]
-        exact Or.inr ⟨parent, hp, by simp only [classOf, he]⟩
+        exact Or.inr (Or.inr ⟨parent, hp, by simp only [classOf, he]⟩)
       · by_cases hoe : o = h.objs.size + 1
         · subst o
           rw [classOf_eigen, source_old hc.boot.1]

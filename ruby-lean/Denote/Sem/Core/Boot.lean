@@ -279,9 +279,10 @@ def clsQueryAtB (m : Machine) (k : ObjId) : Bool :=
                 ((RubyCore.ancestors m.heap k).takeWhile
                   (fun x => x != owner)) p.1).isNone)
 
-/-- Check existing class receivers and the direct Class path used by fresh eigenclasses. -/
+/-- Check existing class receivers and both direct bases used by fresh eigenclasses. -/
 def clsQueryOkB (m : Machine) : Bool :=
-  clsQueryAtB m Boot.classId && (List.range m.heap.objs.size).all (fun o =>
+  clsQueryAtB m Boot.classId && clsQueryAtB m Boot.moduleId &&
+    (List.range m.heap.objs.size).all (fun o =>
     !(m.heap.classPayload? o).isSome || clsQueryAtB m (classOf m.heap (.ref o)))
 
 /-- **`BaseChainsOk` as one `Bool`.** Three computations per row: every name in the row
@@ -380,10 +381,11 @@ theorem clsQueryOkB_sound {m : Machine} (hb : clsQueryOkB m = true) (κ : Ratche
     Ratchet.Denote.ClsQueryOk κ m := by
   intro mname bid hmem _ k hp
   simp only [clsQueryOkB, Bool.and_eq_true] at hb
-  obtain ⟨hclass, hobjects⟩ := hb
+  obtain ⟨⟨hclass, hmodule⟩, hobjects⟩ := hb
   have hrow : clsQueryAtB m k = true := by
-    rcases hp with hk | ⟨o, ho, hco⟩
+    rcases hp with hk | hk | ⟨o, ho, hco⟩
     · subst k; exact hclass
+    · subst k; exact hmodule
     · have hlt := Ratchet.Denote.lt_size_of_classPayload ho
       have hr := List.all_eq_true.mp hobjects o (by simpa using hlt)
       simpa only [ho, Bool.not_true, Bool.false_or, hco] using hr

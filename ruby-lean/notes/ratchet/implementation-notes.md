@@ -11169,3 +11169,27 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
   56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
   New proofs take under a second; the longest shared rebuild takes 42s, below five minutes.
+
+## Clink 194 (2026-09-25) — full conformance through real module entry
+
+- ModuleTables/Globals/Main preserve first-order constant paths, nested declarations,
+  existing allocator capabilities and the retained main receiver. ModuleBases preserves
+  builtin ancestry: the fresh module is parentless, and its eigenclass inherits Module,
+  which is distinct from every builtin data base. No allocator is granted to the module.
+- ModuleQueryDispatch maps the empty head to its previously absent id and the eigenclass
+  to Module; old dispatch and guarded native prefixes survive. ClassQuerySite now retains
+  direct Module as well as Class. Boot and all transports check/preserve both. The §F48
+  control passes the previous selected query checks but exposes a hidden nil-returning
+  Module#to_s after actual entry; the new contract excludes it generically.
+- ModuleState assembles full StateOk. moduleBodyCtx aliases the shared lexical activation,
+  without ordinary-class ancestry or allocation. ModuleHeader publishes only the executed
+  empty module record, preserving prior rows under the existing table frame. module_entry_state
+  connects full conformance and publication to the real interpreter step, with explicit
+  freshness, table/native guards and unqualified-name premises.
+- ModuleStateControls instantiates entry from boot for every body, checks real to_s/===,
+  and verifies that header publication grants no allocator. Entry alone does not certify
+  the arbitrary body. Body execution/return composition and singleton checking/emission
+  remain; no new typing rule and 077 is still outside the certified fragment.
+- Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
+  56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  New proofs and controls build in seconds; no proof approached five minutes.

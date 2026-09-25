@@ -1,6 +1,7 @@
 import Ratchet.Guards.ModuleHeader
 import Denote.Sem.Module.ModuleReady
 import Denote.Sem.Module.ModuleDeclared
+import Denote.Sem.Class.ClassPublish
 
 /-! Publish a fresh module's kind and ordered ancestry while preserving earlier rows.
 The table frame forbids activating previously unknown ancestry or dispatch claims. -/
@@ -71,4 +72,64 @@ theorem declared_header {κ : Ctx} {m : Machine} (hc : ClassReady m.heap)
 
 #print axioms classChains_header
 #print axioms declared_header
+
+theorem ownNames_header {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
+    (hn : constOwn m.heap Boot.objectId name = none) :
+    ClassOwnNames (moduleHeader name :: κ.classes) (freshModHeap m.heap Boot.objectId name name) := by
+  apply (ownNames hm.core.classReady.chains.boot.2.2.2.2 hn hm.classes hm.ownNames).cons_empty
+  intro k hk
+  have he := (named_new (name := name) hm.core.classReady.chains.boot.2.2.2.2
+    (hm.runtime hr).classLive).symm.trans hk
+  have heq := Option.some.inj he
+  subst k
+  simp only [ownMethods, freshModHeap_cp_k, Option.map_some, Option.getD_some]
+
+/-- Publish an executed empty module record without an allocator capability. -/
+theorem publish_empty {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    (hm : StateOk κ Γ I m) (hs : κ.scope.runtimeClass = some name)
+    (hn : unqualifiedClassB name = true)
+    (hd : DeclClassOk (moduleHeaderCtx κ name) m)
+    (hown : ClassOwnNames (moduleHeader name :: κ.classes) m.heap)
+    (hchain : ClassChains (moduleHeader name :: κ.classes) m.heap) :
+    StateOk (moduleHeaderCtx κ name) Γ I m := by
+  obtain ⟨k, site⟩ := hm.classSites.of_scope hs
+  refine { hm with
+    classes := ?_
+    ownNames := hown
+    classChains := hchain
+    classSites := ?_
+    nested := ?_
+    declCls := hd }
+  · apply hm.classSites.recontext (κ' := moduleHeaderCtx κ name) _ (fun _ h => h)
+    intro cn hcn
+    change cn ∈ name :: (κ.classes.map (·.name) ++ κ.scope.runtimeClass.toList) at hcn
+    rcases List.mem_cons.mp hcn with rfl | hcn
+    · simp [classSiteNames, hs]
+    · exact hcn
+  · intro old hold
+    rcases List.mem_cons.mp hold with rfl | hold
+    · exact ⟨k, site.named, by simp [moduleHeader, classHeader], by simp [SingletonRows, moduleHeader, classHeader]⟩
+    · exact hm.classes old hold
+  · intro owner leaf old hold
+    have hne := unqualifiedClassB_ne_path hn owner leaf
+    change clsGet? (moduleHeader name :: κ.classes) (owner ++ "::" ++ leaf) = some old at hold
+    simp only [clsGet?, List.find?_cons, moduleHeader, classHeader, beq_eq_false_iff_ne.mpr hne] at hold
+    exact hm.nested owner leaf old hold
+
+theorem publish_header {κ : Ctx} {Γ : Env} {I : Ty} {m n : Machine}
+    (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
+    (hs : StateOk (moduleBodyCtx κ name) [] .ivar0 n)
+    (hn : constOwn m.heap Boot.objectId name = none) (ht : ModuleHeaderFrame κ.classes name)
+    (hp : unqualifiedClassB name = true) (hh : n.heap = freshModHeap m.heap Boot.objectId name name) :
+    StateOk (moduleHeaderCtx (moduleBodyCtx κ name) name) [] .ivar0 n := by
+  apply publish_empty hs rfl hp
+  · change DeclClassOk (moduleHeaderCtx κ name) n
+    simpa only [DeclClassOk, hh] using declared_header hm.core.classReady hm.sat
+      (hm.runtime hr).classLive hn hm.classes hm.declCls ht
+  · rw [hh]; exact ownNames_header (κ := κ) hm hr hn
+  · rw [hh]; exact classChains_header hm.core.classReady hm.sat (hm.runtime hr).classLive
+      hn hm.classes hm.classChains ht
+
+#print axioms publish_header
 end Ratchet.Denote.FreshModule

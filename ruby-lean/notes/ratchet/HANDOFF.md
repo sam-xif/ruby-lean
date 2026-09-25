@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 193)
+# Current resume point (2026-09-25, clink 194)
 
 076 is admitted through validateD: fragment 71, checker reach 76, 59 registered rules,
 56 worked theorems, no exemptions. Next frontier: 077-module-basic, `module M; def self.foo;
@@ -15,13 +15,18 @@ moduleHeaderCtx adds metadata without allocator permission. Sem/Module/ModuleHea
 publishes real fresh metadata after earlier classes/modules, gated by moduleHeaderFrameB
 so publication cannot activate previously unknown ancestry or dispatch claims.
 
-Next: full module StateOk and body-scope dispatch/constants, then singleton checking/emission.
+Next: module body execution/return composition, then singleton checking/emission.
 ModuleCore/Constants/Names preserve CoreOk, payload shapes, root names and lexical constants;
 ModuleMethods/Dispatch/Declared preserve installed code, native prefixes and all earlier
 declaration rows. ModuleSites preserves all older sites and establishes the fresh module's
 InstanceSite and ClassScopeReady; ModuleNameEntry supplies actual body NameFreeOk.
-ModuleEntry connects these to the real successor. Remaining: query/global/constant-path,
-allocator and main-site transports, then full body-state assembly and header publication.
+ModuleState now assembles full StateOk, including query/global/constant-path, allocator and
+main-site transports. ModuleHeader publishes the executed empty record without an allocator;
+Rules/Module/ModuleStateEntry.module_entry_state connects that full state to the actual step.
+The scope alias moduleBodyCtx reuses classBodyCtx's lexical activation only. It requires
+runtimeMain, no frame/assumptions, table/native framing, fresh unqualified name and the
+header frame; it does not certify the arbitrary body. ModuleStateControls instantiates it
+from boot for every body. ClassQuerySite now retains direct Module as well as Class (§F48).
 StateCore now retains ModuleBase (names, quiet definition hook and ConstFallback at Module),
 checked at boot and preserved through every current transport. This closes §F47 and supplies
 the fresh site's singleton guarantees. ModuleCoreControls keeps the CoreOk+saturation
@@ -61,7 +66,7 @@ calls consume exact context/code artifacts. Inherited singletons remain open, an
 self.new still has only its semantic proof. Nominal conversion only forgets information;
 it cannot recover exact receivers or initialized fields from a nominal annotation.
 
-See clinks 177–193 and AGENTS.md. Older text below is historical.
+See clinks 177–194 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 

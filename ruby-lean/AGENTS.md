@@ -30,11 +30,11 @@ from each proof term. It must pass before committing. Use quiet mode; `--verbose
 for a failure whose captured error is insufficient. In a sandbox with a protected uv cache,
 set `UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache`.
 
-Clinks 189–193 prepare 077 with real module-allocation/data/frame, core, header and site proofs,
-including preservation of earlier declarations. CoreOk retains Module ancestry (§F46);
-DeclClassOk/ClassChains distinguish modules from ordinary classes. StateCore now retains
-Module's name/hook/constant-fallback capabilities (§F47), checked at boot and transported.
-Full body-state conformance and checking remain before module admission. See HANDOFF.
+Clinks 189–194 prove full StateOk through the actual fresh module step and empty-header
+publication, preserving earlier declarations without granting a module allocator. CoreOk
+retains Module ancestry (§F46); StateCore retains its name/hook/constant-fallback capabilities
+(§F47), and class queries retain the direct Module source (§F48). Body execution/return
+composition and checking remain before module admission. See HANDOFF.
 
 ## Layout
 

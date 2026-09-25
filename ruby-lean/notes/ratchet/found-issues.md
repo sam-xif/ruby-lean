@@ -2684,3 +2684,17 @@ CoreOk alone is false. StateCore now retains ModuleBase: constant fallback, rese
 behavior and a quiet definition hook at Module's dispatch chain. Boot checks it and every
 current transport preserves it. hidden_module_not_state excludes the bad fallback generically;
 fresh module-site publication derives its singleton guarantees from this retained capability.
+
+## F48 — existing class-query sites need not expose Module dispatch (2026-09-25)
+
+**Closed by Clink 194; selected-contract countermodel, not full-old-StateOk, reachability
+or an accepted unsafe program.** ModuleStateControls routes old class objects through Class,
+makes Class inherit Object, supplies clean direct Class query builtins, and hides a user
+to_s returning nil in Module. ClassReady, saturation, direct Class and every old class-object
+query check pass. Real fresh module entry inherits the hidden Module row; its to_s returns nil.
+
+ClassQuerySite now includes direct Module alongside direct Class and existing receivers.
+Boot checks both bases and every current transport preserves them. The generic
+hidden_module_query_not_state theorem excludes the incompatible Module row. Module query
+transport maps the fresh eigenclass to that retained source and keeps native-prefix guards;
+the parentless module head has no methods. Full module-body entry now derives all queries.
