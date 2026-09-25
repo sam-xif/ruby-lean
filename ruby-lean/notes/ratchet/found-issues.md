@@ -2668,3 +2668,17 @@ all current transports. Entry/frame preservation derives it from StateOk; the ge
 unrooted_module_not_state theorem excludes the countermodel. ClassReady alone still cannot
 discharge it. Clink 191 separately makes declaration conformance kind-sensitive: a module's
 own chain is [k], and ordinary-class ancestry/allocator claims require isModule=false.
+
+## F47 — CoreOk does not retain Module singleton constant fallback (2026-09-25)
+
+**Open extension boundary; CoreOk-only countermodel, not full-StateOk, a reachable program
+or an accepted unsafe program.** ModuleCoreControls changes Class's parent to Object and
+places Hidden = 99 in Module. CoreOk and saturation still hold: Object's retained metaclass
+fallback bypasses Module. Actual fresh module entry preserves CoreOk and its lexical body
+cannot resolve Hidden, yet its singleton method returns 99 through the new eigenclass's
+Module ancestry. ConstFallback at Module and the new eigenclass both fail.
+
+ModuleConstants proves the module's own lexical constant scope unconditionally, but its
+fallback_fresh_meta requires ConstFallback at Module explicitly. Deriving that premise from
+CoreOk alone is false. Full module-site conformance must derive it from stronger retained
+facts or carry the missing capability through every transport, as §F44 does for class sites.

@@ -1,5 +1,7 @@
 import Denote.Judgment.JudgeA
 import Denote.Sem.Module.ModuleFrame
+import Denote.Sem.Module.ModuleCore
+import Denote.Sem.Module.ModuleDeclared
 
 /-! Actual module entry and preservation of old data. This does not yet publish a module
 header in StateOk or justify checking its body in a module scope. -/
@@ -48,7 +50,38 @@ theorem module_entry_ready {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     FreshModule.meta_fresh hm.core.classReady.chains hm.sat hm.core.moduleBasic, ?_⟩
   exact FreshModule.self_type (hm.runtime hr).classLive
 
+theorem module_entry_core {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    {name : String} {body : Ratchet.Expr} (hm : StateOk κ Γ I m)
+    (hr : κ.scope.runtimeMain = true)
+    (hn : constOwn m.heap Boot.objectId name = none) (hne : name.isEmpty = false) :
+    ∃ n, stepFn (evalFrom m (.module' name body)) = .next n ∧ CoreOk n.heap ∧
+      StringPayloadOk n.heap ∧ ArrayPayloadOk n.heap ∧ HashPayloadOk n.heap ∧ ConstScopeOk n :=
+  ⟨_, stepFn_module_fresh hm hr hn hne,
+    FreshModule.core hm.core hm.sat (hm.runtime hr).classLive hn,
+    FreshModule.stringPayload hm.core.classReady.chains hm.stringPayload,
+    FreshModule.arrayPayload hm.arrayPayload, FreshModule.hashPayload hm.hashPayload,
+    FreshModule.const_scope (hm.runtime hr).cref⟩
+
+theorem module_entry_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    {name : String} {body : Ratchet.Expr} (hm : StateOk κ Γ I m)
+    (hr : κ.scope.runtimeMain = true)
+    (hn : constOwn m.heap Boot.objectId name = none) (hne : name.isEmpty = false) :
+    ∃ n, stepFn (evalFrom m (.module' name body)) = .next n ∧ ClassesOk κ.classes n ∧
+      DefsOk κ.defs n ∧ MethodsExact κ n ∧ DeclClassOk κ n ∧
+      ClassOwnNames κ.classes n.heap ∧ ClassChains κ.classes n.heap := by
+  let n := freshModMachine (evalFrom m (.module' name body)) Boot.objectId
+    m.currentFrame.cref name name (toRuby body)
+  have hc := hm.core.classReady
+  exact ⟨n, stepFn_module_fresh hm hr hn hne,
+    FreshModule.classes hc.chains.boot.2.2.2.2 hn rfl hm.classes,
+    FreshModule.defs rfl hm.defs, FreshModule.methodsExact rfl hm.exact,
+    FreshModule.declared hc.chains hm.sat (hm.runtime hr).classLive hn rfl hm.classes hm.declCls,
+    FreshModule.ownNames hc.chains.boot.2.2.2.2 hn hm.classes hm.ownNames,
+    FreshModule.classChains hc hm.sat hn hm.classes hm.classChains⟩
+
 #print axioms stepFn_module_fresh
 #print axioms module_entry_data
 #print axioms module_entry_ready
+#print axioms module_entry_core
+#print axioms module_entry_tables
 end Ratchet.Denote

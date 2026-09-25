@@ -11126,3 +11126,26 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
   56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
   Header proofs build in seconds; no individual proof crossed five minutes.
+
+## Clink 192 (2026-09-25) — preserve core and existing tables at module entry
+
+- ModuleNames/Constants/Core preserve root names, CoreOk, payload shapes and old constant
+  fallback through the real freshModHeap. A module's own chain is just itself, so its empty
+  lexical scope agrees with global lookup without a parent-constant premise. Old-id bounds
+  keep reverse name transport honest when dangling references become fresh allocations.
+- ModuleMethods/Dispatch/Declared preserve installed ordinary/singleton code, native prefixes,
+  declaration kinds, constructor contracts, own selectors and ordered ancestry. Header
+  publication now permits earlier class/module rows under moduleHeaderFrameB; it reuses
+  DeclLookupFrame to prevent activating previously unknown ancestry/dispatch claims.
+  ModuleEntry connects core, payload, lexical-scope and old-table facts to the actual step.
+- Controls execute a module after a class and another module, read String in its body,
+  then call both earlier singleton methods. A CoreOk+saturation countermodel (§F47) shows
+  that Module's singleton constant fallback needs a separate premise: Class can bypass
+  Module while a new module's eigenclass inherits it and exposes a hidden constant. This
+  is a selected-contract witness only. fallback_fresh_meta retains that explicit premise.
+- No new typing rule or emitter policy; 077 remains outside the certified fragment. Query,
+  allocator and site transports, new-site names/hooks/fallback and full body-state assembly
+  remain before singleton checking/emission.
+- Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
+  56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  New proofs and controls build in seconds; none crossed five minutes.

@@ -18,11 +18,19 @@ theorem fields {o : ObjId} (ho : o < h.objs.size) :
   rw [freshModHeap_get_old ho]
   exact get_constSetIn_fields h Boot.objectId name _ o
 
-theorem classPayload_live {k : ObjId} (hk : (h.classPayload? k).isSome = true) :
-    ((h₁).classPayload? k).isSome = true := by
+theorem classPayload_old_isSome {k : ObjId} (hk : k < h.objs.size) :
+    ((h₁).classPayload? k).isSome = (h.classPayload? k).isSome := by
   unfold Heap.classPayload?
-  rw [freshModHeap_get_old (lt_size_of_classPayload hk)]
-  exact (classPayload?_isSome_constSetIn h Boot.objectId k name _).trans hk
+  rw [freshModHeap_get_old hk]
+  exact classPayload?_isSome_constSetIn h Boot.objectId k name _
+
+theorem classPayload_live {k : ObjId} (hk : (h.classPayload? k).isSome = true) :
+    ((h₁).classPayload? k).isSome = true :=
+  (classPayload_old_isSome (lt_size_of_classPayload hk)).trans hk
+
+theorem classOf_old {o : ObjId} (ho : o < h.objs.size) :
+    classOf h₁ (.ref o) = classOf h (.ref o) := by
+  simp only [classOf, (fields ho).2.1, (fields ho).2.2.1]
 
 theorem get_old_nonclass {o : ObjId} (ho : o < h.objs.size)
     (hp : h.classPayload? o = none) : (h₁).get o = h.get o := by
@@ -30,6 +38,21 @@ theorem get_old_nonclass {o : ObjId} (ho : o < h.objs.size)
   by_cases he : o = Boot.objectId
   · subst o; simp only [hmidOf, constSetIn, hp]
   · exact Static.get_constSetIn_ne h Boot.objectId o name _ he
+
+/-- No non-class payload is created or changed, including beyond the old heap. -/
+theorem get_nonclass {o : ObjId} (hp : (h₁).classPayload? o = none) : (h₁).get o = h.get o := by
+  by_cases hl : o < h.objs.size
+  · have hp₀ : h.classPayload? o = none := by
+      have hh := classPayload_old_isSome (name := name) hl
+      rw [hp] at hh
+      cases he : h.classPayload? o <;> simp_all
+    exact get_old_nonclass hl hp₀
+  · by_cases hk : o = h.objs.size
+    · subst o; rw [freshModHeap_cp_k] at hp; cases hp
+    · by_cases he : o = h.objs.size + 1
+      · subst o; rw [freshModHeap_cp_e] at hp; cases hp
+      · have hout := Nat.le_of_not_lt (not_lt_add_two hl hk he)
+        rw [get_oob h (Nat.le_of_not_lt hl), get_oob _ (by rw [freshModHeap_size]; exact hout)]
 
 theorem const_eq_own (g : Heap) (cn : String) :
     constLookup g cn = constOwn g Boot.objectId cn := by

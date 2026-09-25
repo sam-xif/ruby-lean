@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 191)
+# Current resume point (2026-09-25, clink 192)
 
 076 is admitted through validateD: fragment 71, checker reach 76, 59 registered rules,
 56 worked theorems, no exemptions. Next frontier: 077-module-basic, `module M; def self.foo;
@@ -11,19 +11,26 @@ saved caller facts. module_entry_ready connects those facts to the actual step.
 DeclClassOk now pins each record's real kind; ordinary ancestry/new require isModule=false.
 ClassChains/isAAnswer use Cls.rootTail (empty for modules). Constructors derive the ordinary
 kind from PlainAllocator; root lookup/subclass step proofs require it explicitly.
-moduleHeaderCtx adds metadata without allocator permission. Sem/Module/ModuleHeader proves
-real fresh module metadata and ordered ancestry from an empty declaration table.
+moduleHeaderCtx adds metadata without allocator permission. Sem/Module/ModuleHeader now
+publishes real fresh metadata after earlier classes/modules, gated by moduleHeaderFrameB
+so publication cannot activate previously unknown ancestry or dispatch claims.
 
 Next: full module StateOk and body-scope dispatch/constants, then singleton checking/emission.
-The body frame and metadata exist separately; full core/query/name/table/site transports
-through module allocation still need assembly. Existing-row transport is needed before
-relaxing the empty declaration-table premise. No module typing rule or emitter admission yet.
+ModuleCore/Constants/Names preserve CoreOk, payload shapes, root names and lexical constants;
+ModuleMethods/Dispatch/Declared preserve installed code, native prefixes and all earlier
+declaration rows. ModuleEntry connects these to the real successor. Remaining: query/global/
+constant-path, allocator and site transports, fresh module names/hooks, then body-state assembly.
+ModuleConstants.fallback_fresh_meta explicitly requires ConstFallback h Boot.moduleId:
+CoreOk alone cannot supply it (§F47). ModuleCoreControls keeps a CoreOk+saturation heap where
+Class bypasses Module and a hidden Module constant appears only inside the singleton method.
+This is not a full-StateOk or reachable-program witness. Investigate retained Module site
+capabilities before assembling the fresh site; ordinary instance and class-object dispatch differ.
 
 No module judgment/emitter admission yet. Sorbet 0.6.13405 reports M.foo as T.untyped and even
 accepts treating its Integer result as String without a signature; the manifest drops it.
 Future unannotated-method handling must still check the body over its entire parameter domain.
-The module controls execute 077, inspect the actual entry frame, and test nested data,
-fresh-name overwrite and an unrooted-Module selected-contract countermodel.
+The module controls execute 077, inspect the actual entry frame, preserve old singleton calls
+after another module, and test nested data, fresh-name overwrite and selected-contract witnesses.
 
 selfRead consumes incoming selfTy conformance. CheckedBody keeps its declared result proof
 and an optional CheckedResult from the body before nominal widening. resultAt selects only
@@ -53,7 +60,7 @@ calls consume exact context/code artifacts. Inherited singletons remain open, an
 self.new still has only its semantic proof. Nominal conversion only forgets information;
 it cannot recover exact receivers or initialized fields from a nominal annotation.
 
-See clinks 177–191 and AGENTS.md. Older text below is historical.
+See clinks 177–192 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 

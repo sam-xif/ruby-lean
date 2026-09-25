@@ -10,13 +10,15 @@ open RubyCore Ratchet Ratchet.Denote
 
 theorem module_header {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     {name : String} {body : Ratchet.Expr} (hm : StateOk κ Γ I m)
-    (hr : κ.scope.runtimeMain = true) (ht : κ.classes = [])
+    (hr : κ.scope.runtimeMain = true) (ht : moduleHeaderFrameB κ.classes name = true)
     (hn : constOwn m.heap Boot.objectId name = none) (hne : name.isEmpty = false) :
     ∃ n, Interp.stepFn (evalFrom m (.module' name body)) = .next n ∧
-      DeclClassOk (moduleHeaderCtx κ name) n ∧ ClassChains [moduleHeader name] n.heap :=
+      DeclClassOk (moduleHeaderCtx κ name) n ∧ ClassChains (moduleHeader name :: κ.classes) n.heap :=
   ⟨_, stepFn_module_fresh hm hr hn hne,
-    FreshModule.declared_header hm.core.classReady (hm.runtime hr).classLive ht,
-    FreshModule.classChains_header (hm.runtime hr).classLive⟩
+    FreshModule.declared_header hm.core.classReady hm.sat (hm.runtime hr).classLive hn
+      hm.classes hm.declCls (moduleHeaderFrameB_sound ht),
+    FreshModule.classChains_header hm.core.classReady hm.sat (hm.runtime hr).classLive hn
+      hm.classes hm.classChains (moduleHeaderFrameB_sound ht)⟩
 
 theorem class_not_module_header {κ : Ctx} {m : Machine} {name : String} {k : ObjId}
     (hn : classNamed? m.heap name = some k)
