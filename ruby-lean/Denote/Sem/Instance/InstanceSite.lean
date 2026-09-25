@@ -1,6 +1,7 @@
 import Denote.Sem.Core.Ready
 import Denote.Ty.Ext
 import Denote.Sem.Subclass.MetaReady
+import Denote.Sem.Names.ConstFallback
 
 /-! Heap facts needed when an ordinary instance call changes self and lexical scope.
 These are obligations to publish with the class, not consequences of a method signature.
@@ -80,6 +81,8 @@ structure InstanceSiteAt (free : String → Bool) (cn : String) (k : ObjId) (h :
   metaFront : classFrontB h (classOf h (.ref k)) = true
   /-- The cached singleton owner is distinct from every class with a cached metaclass. -/
   metaLeaf : (h.get (classOf h (.ref k))).eigen = none
+  /-- Singleton method inheritance lookup cannot reveal an absent global constant. -/
+  metaConstants : ConstFallback h (classOf h (.ref k))
 
 /-- Only negative-name information affects a site's meaning, not the caller's scope. -/
 abbrev InstanceSite (κ : Ctx) := InstanceSiteAt (nameFreeN κ)
@@ -108,7 +111,7 @@ theorem InstanceSite.recontext {κ κ' : Ctx} {cn : String} {k : ObjId} {h : Hea
     (site : InstanceSite κ cn k h)
     (hn : ∀ n, nameFreeN κ n = false → nameFreeN κ' n = false) : InstanceSite κ' cn k h := by
   exact ⟨site.named, site.front, site.hook, site.constants, site.names.recontext hn,
-    site.metaclass, site.classNames.recontext hn, site.metaFront, site.metaLeaf⟩
+    site.metaclass, site.classNames.recontext hn, site.metaFront, site.metaLeaf, site.metaConstants⟩
 
 /-- Scope-independent, so the same site survives a frame change or an allocation.
 This does not claim that method installation or class mutation preserves it. -/
@@ -128,7 +131,7 @@ theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
       | nil => rfl
       | cons j ks ih => simp only [lookup.go, he.payload, ih]
     simp only [lookup, classOf, he.get k hl, he.ancestors, hg]
-  refine ⟨?_, ?_, ?_, ?_, ?_, h.metaclass.ext he hl, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, h.metaclass.ext he hl, ?_, ?_, ?_, ?_⟩
   · simpa only [he.classNamed?_eq] using h.named
   · simpa only [classFrontB, he.payload] using h.front
   · simpa only [definitionHookQuietB, hlk] using h.hook
@@ -150,6 +153,7 @@ theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
       rw [hco] at hf
       cases hp : m.heap.classPayload? e <;> simp_all [classFrontB]
     simpa only [classOf, he.get k hl, hke, he.get e hel] using h.metaLeaf
+  · simpa only [classOf, he.get k hl] using h.metaConstants.ext he
 
 theorem InstanceSite.eigen_front {κ : Ctx} {cn : String} {k e : ObjId} {h : Heap}
     (site : InstanceSite κ cn k h) (he : (h.get k).eigen = some e) : classFrontB h e = true := by

@@ -10868,3 +10868,26 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
   52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
   all new proofs and controls build in under one second each.
+
+## Clink 181 (2026-09-25) — singleton constant fallback
+
+- A singleton method keeps lexical cref [class, Object] but uses its eigenclass as defmod.
+  Ordinary constant agreement does not constrain that fallback. Injecting IOError = 99
+  into a real fresh metaclass leaves readiness/frontness/leafness and the selected ordinary
+  constant lookup intact, while actual singleton-frame lookup returns 99 (§F44).
+- ConstFallback rules out inherited bindings absent globally. Its Bool checks names across
+  the actual ancestor tables; values may differ because an existing global binding wins
+  before fallback. CoreOk retains Object's metaclass fallback, checked at real boot, and
+  InstanceSite retains each declared class's. Fresh entry inherits the parent's contract;
+  global registration, allocation, method writes and ivar writes preserve it. ClassReady
+  stays a lower-level readiness contract, including for arbitrary registration namespaces.
+- InstanceSite.singleton_constScope derives both constant phases for an actual singleton
+  activation. A control consumes retained singleton code from full StateOk to establish
+  scope for its required frame; another generically excludes the hidden-constant shape.
+  Subclass controls check the new site fact across actual multilevel entry.
+- No judgment or admission. Next: class-valued frame/self, distinct runtime owner/lexical
+  scope, and full singleton entry/return. Return must account for cached-owner identity;
+  existing Framed does not expose eigen-pointer preservation.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  New fallback/scope proofs and controls build in under one second each.

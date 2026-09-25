@@ -2630,3 +2630,16 @@ method remains harmless to this contract: the invariant constrains effective loo
 `StateOk.userInit_none` derives actual initializer absence for arbitrary declared classes.
 The checker still gates default construction pending the new-dispatch contract/integration;
 this was a refuted proposed premise, not a regression in accepted programs.
+
+## F44 — ordinary constant scope does not constrain singleton fallback (2026-09-25)
+
+**Closed by Clink 181; selected-contract witness, not full-old-StateOk or an accepted
+unsafe program.** SingletonScopeControls injects IOError = 99 into a real fresh class's
+metaclass. Cached/rooted readiness, frontness, leafness and the selected ordinary/global
+constant lookups still pass. A real method frame with lexical cref [class, Object] and
+eigenclass defmod returns 99 for that constant while the global lookup is absent.
+
+ConstFallback now constrains that second lookup phase. CoreOk checks Object's metaclass
+at boot; every class site retains the inherited fact through all transports. Singleton
+constant scope follows from lexical agreement plus this fallback bound. The generic
+hidden_meta_not_site theorem excludes the bad shape. Singleton body admission remains gated.

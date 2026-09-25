@@ -1,5 +1,6 @@
 import Denote.Sem.Subclass.SubclassNames
 import Denote.Sem.Subclass.SubclassQueries
+import Denote.Sem.Subclass.SubclassConstants
 
 /-! Core names and payload conformance through fresh subclass registration. No old object
 equality is assumed for the namespace owner, whose constant table changes. -/
@@ -52,6 +53,9 @@ theorem core (hc : CoreOk h) (hs : Saturated h)
   refine {
     classReady := hc.classReady.subclass hs hp he
     rootNames := rootNames hc.rootNames hc.classReady.constRefs ho hn
+    metaConstants := by
+      rw [classOf_old hch.boot.2.2.2.2]
+      exact fallback_old hch hs ho (ClsGrow.classOf_lt hch hch.boot.2.2.2.2) hc.metaConstants
     basicSelf := ?_
     stringNamed := named hch.boot.2.2.2.2 hn hc.stringNamed
     stringSelf := ?_

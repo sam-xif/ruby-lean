@@ -507,6 +507,7 @@ a table so that a rung cites the clause it needs and an unused clause is visible
 structure CoreOk (h : Heap) : Prop where
   classReady : ClassReady h
   rootNames : RootNames h
+  metaConstants : ConstFallback h (classOf h (.ref Boot.objectId))
   /-- `BasicObject` has no superclass and no mixins, so its ancestor list is just itself. -/
   basicSelf : ancestors h Boot.basicObjectId = [Boot.basicObjectId]
   /-- The name `String` resolves to the boot `String` class. -/
@@ -547,6 +548,10 @@ theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m
     (he : Ext m m₂) (hc : CoreOk h) : CoreOk h' where
   classReady := by subst hm; subst hm₂; exact hc.classReady.ext he
   rootNames := by subst hm; subst hm₂; exact hc.rootNames.ext he
+  metaConstants := by
+    subst hm; subst hm₂
+    simpa only [classOf, he.get Boot.objectId hc.classReady.chains.boot.2.2.2.2]
+      using hc.metaConstants.ext he
   basicSelf := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.basicSelf
   stringNamed := by subst hm; subst hm₂; rw [he.classNamed?_eq]; exact hc.stringNamed
   stringSelf := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.stringSelf

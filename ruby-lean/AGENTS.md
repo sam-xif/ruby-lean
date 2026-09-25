@@ -592,9 +592,12 @@ singleton code and preserves it through heap/frame changes and ordinary definiti
 `SingletonPublish` connects actual installation to those records and recovers retained
 lookup. A self-alias witness motivates owner separation. `SingletonState` derives full
 outgoing conformance from input guards; controls compose a real boot definition with a
-same-selector ordinary definition and recover the retained singleton code. Activation scope,
-constant fallback and annotation-domain admission remain before 073; no rule or floor changes
-in these prerequisites. See clinks 177–180.
+same-selector ordinary definition and recover the retained singleton code. `ConstFallback`
+now constrains metaclass inheritance lookup separately from lexical lookup; boot, class sites
+and all transports retain it. Stored singleton code proves the real frame's constant scope.
+A hidden-metaclass constant witness motivates the contract (§F44). Full activation/return
+and annotation-domain admission remain before 073; no rule or floor changes in these
+prerequisites. See clinks 177–181.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -707,6 +710,7 @@ String membership needs a payload invariant. See
 | `Denote/Sem/Singleton/SingletonCode.lean`, `Denote/Rules/Singleton/SingletonInstall.lean`, `SingletonDispatch.lean`, `SingletonInstallControls.lean` | Distinct dispatch/lexical owners, cached singleton installation and conformance-derived lookup/required entry; prepend counterexample |
 | `Denote/Sem/Singleton/SingletonRows.lean`, `SingletonRowsWrite.lean`, `SingletonTable.lean`, `Denote/Rules/Singleton/SingletonPublish.lean`, `SingletonTableControls.lean` | Persistent singleton code in ClassesOk, namespace separation, actual publication and retained lookup; alias/forged-body controls |
 | `Ratchet/Guards/SingletonCtx.lean`, `Denote/Sem/Singleton/SingletonContext.lean`, `Denote/Rules/Singleton/SingletonState.lean`, `SingletonStateControls.lean` | Full singleton definition-state publication from input guards; boot/same-selector/stale-snapshot controls |
+| `Denote/Sem/Names/ConstFallback.lean`, `Denote/Sem/Singleton/SingletonScope.lean`, `SingletonScopeControls.lean` | Retained metaclass constant fallback and actual singleton-frame scope; hidden-constant witness (§F44) |
 | `Denote/Examples/Derivations.lean`, `ClassDerivations.lean`, `SuperDerivations.lean`, `NilFieldDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 52 concrete safety proofs |
 | `Denote/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |

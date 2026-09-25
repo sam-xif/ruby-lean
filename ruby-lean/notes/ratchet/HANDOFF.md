@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 180)
+# Current resume point (2026-09-25, clink 181)
 
 Fragment 67, checker reach 72, 53 rules, 52 worked theorems. For 073, SingletonInstall
 derives the real def-self step and installed own code from full incoming class scope.
@@ -10,11 +10,17 @@ publishes them, and retained tables recover lookup. Same-named instance/singleto
 remain distinct. Prepend and self-alias witnesses justify the two site facts.
 SingletonState now proves full outgoing StateOk from input guards. Real-boot controls compose
 that step with an ordinary same-selector definition and recover the original singleton code.
-Next: the distinct activation owner/scope (including constant fallback),
+ConstFallback now pins metaclass fallback at boot and every class site; all transports
+preserve it. Recorded singleton code establishes constant scope for the real required frame.
+Next: the distinct activation frame/self contract and full entry/return conformance,
 constructor calls and annotation-domain checker/emitter integration. 073 is not admitted
 yet. Sorbet accepts it and rejects wrong factory
-result, constructor argument and factory arity. No rule/floor change. See clinks 176–180
+result, constructor argument and factory arity. No rule/floor change. See clinks 176–181
 and AGENTS.md. Older text is historical.
+
+For singleton return, check cached-owner identity: Framed preserves names and field types,
+but does not yet expose preservation of eigen pointers. FrameOk still describes ordinary
+instance receivers; ClassRuntimeOk still identifies defmod with the lexical class.
 
 # ratchet — hand-off note (2026-09-10)
 

@@ -53,7 +53,7 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
   have hl : lookup h₁ (.ref k) "method_added" = lookup h (.ref k) "method_added" := by
     rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hk, method_old hc hs (ClsGrow.classOf_lt hc hk)]
   refine ⟨named hc.boot.2.2.2.2 hn site.named, ?_, ?_,
-    instance_constants_old site hc hs ho hn, ?_, site.metaclass.subclass_old hc hs hk, ?_, ?_, ?_⟩
+    instance_constants_old site hc hs ho hn, ?_, site.metaclass.subclass_old hc hs hk, ?_, ?_, ?_, ?_⟩
   · simpa only [classFront_old hk] using site.front
   · simpa only [definitionHookQuietB, hl] using site.hook
   · intro n hn owner md hm
@@ -64,6 +64,8 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
     exact site.classNames n hn owner md hm
   · simpa only [classOf_old hk, classFront_old (ClsGrow.classOf_lt hc hk)] using site.metaFront
   · simpa only [classOf_old hk, (fields (ClsGrow.classOf_lt hc hk)).2.2.1] using site.metaLeaf
+  · rw [classOf_old hk]
+    exact fallback_old hc hs ho (ClsGrow.classOf_lt hc hk) site.metaConstants
 
 theorem hook_quiet (hc : ChainsIn h) (hs : Saturated h)
     (hl : parent < h.objs.size) (he : (h.get parent).eigen = some eParent)
@@ -83,11 +85,12 @@ theorem instanceSite {κ : Ctx} (hc : ChainsIn h) (hs : Saturated h)
     (hb : (ancestors h eParent).contains Boot.basicObjectId = true)
     (hh : definitionHookQuietB h parent = true)
     (hconst : ∀ cn, (constLookup h cn).orElse (fun _ => constLookupFrom h parent cn) = constLookup h cn)
-    (hinst : NamesAt (nameFreeN κ) h parent) (hcls : NamesAt (nameFreeN κ) h eParent) :
+    (hinst : NamesAt (nameFreeN κ) h parent) (hcls : NamesAt (nameFreeN κ) h eParent)
+    (hmeta : ConstFallback h eParent) :
     InstanceSite κ name h.objs.size h₁ := by
   have hel := hc.eigen parent hl eParent he
   refine ⟨named_fresh ho, ?_, hook_quiet hc hs hl he hh,
-    instance_constants_fresh hc hs ho hl hconst, ?_, meta_fresh hc hs hel hb, ?_, ?_, ?_⟩
+    instance_constants_fresh hc hs ho hl hconst, ?_, meta_fresh hc hs hel hb, ?_, ?_, ?_, ?_⟩
   · simp only [classFrontB, Heap.classPayload?, get_class, classObjE]; rfl
   · intro n hn owner md hm
     rw [method_class hc hs hl] at hm
@@ -97,6 +100,8 @@ theorem instanceSite {κ : Ctx} (hc : ChainsIn h) (hs : Saturated h)
     exact hcls n hn owner md hm
   · simp only [classOf_class, classFrontB, Heap.classPayload?, get_eigen, eigObjC]; rfl
   · simp only [classOf_class, get_eigen, eigObjC]
+  · rw [classOf_class]
+    exact fallback_fresh_meta hc hs ho hel hmeta
 
 theorem scope_ready {m : Machine} {body : RubyCore.Expr}
     (hc : ChainsIn m.heap) (hs : Saturated m.heap)
