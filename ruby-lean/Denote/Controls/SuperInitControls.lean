@@ -70,7 +70,7 @@ theorem after_definitions (hb : bootOkB = true) {fuel rest : Nat} {result : Valu
     unfold baseCtx
     exact ((hs bootMachine (stateOk_boot hb)).2 fuel (.val result) m rest hr).2.2 result rfl
   obtain ⟨k, md, site, _, _, _, code, _⟩ := declared_constructor_code hm child_mem
-    (d := childInit) (by change childInit ∈ [childInit]; simp) rfl (by decide +kernel)
+    (d := childInit) (by change childInit ∈ [childInit]; simp) rfl (by decide +kernel) rfl
   obtain ⟨j, hj, alloc⟩ := hm.allocators "Wedge" (by decide +kernel)
   have he : j = k := Option.some.inj (hj.symm.trans site.named)
   subst j

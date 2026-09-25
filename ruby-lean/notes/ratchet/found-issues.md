@@ -2666,5 +2666,5 @@ selected contracts, not full StateOk or reachability.
 CoreOk now retains Module's BasicObject ancestry, checked at boot and preserved through
 all current transports. Entry/frame preservation derives it from StateOk; the generic
 unrooted_module_not_state theorem excludes the countermodel. ClassReady alone still cannot
-discharge it. The module's own chain is [k], so the
-ordinary DeclClassOk ancestry and isModule=false clauses also cannot describe a module.
+discharge it. Clink 191 separately makes declaration conformance kind-sensitive: a module's
+own chain is [k], and ordinary-class ancestry/allocator claims require isModule=false.

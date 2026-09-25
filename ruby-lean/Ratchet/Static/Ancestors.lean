@@ -28,9 +28,17 @@ That argument is load-bearing and fragile in a specific way: whichever tier give
 `include` a rule (tier 10) must revisit `isAAnswer`, because at that moment a class in the
 table can have an ancestor the chain does not name. -/
 
-/-- Names every object's chain ends with, and the reason `isANo` has to exclude them: `n`'s
-declared chain stops at a class with no `super?`, whose real superclass is `Object`. -/
+/-- The implicit tail of an ordinary declared class: a class with no explicit `super?`
+inherits Object. Modules have no such tail; see `Cls.rootTail`. -/
 def rootAncestors : List String := ["Object", "Kernel", "BasicObject"]
+
+/-- A module's own instance chain has no implicit Object tail. Its singleton dispatch
+through Module is a separate chain, not part of this declared ancestry. -/
+def Cls.rootTail (c : Cls) : List String := if c.isModule then [] else rootAncestors
+
+theorem Cls.chain_subset (c : Cls) {ns : List String} {n : String}
+    (hn : n ∈ ns ++ c.rootTail) : n ∈ ns ++ rootAncestors := by
+  cases hm : c.isModule <;> simp_all [Cls.rootTail]
 
 /-- The ancestors contributed by a list of included modules — **one level only**, and `none`
 if any of them mixes something in or has a superclass of its own.
@@ -118,6 +126,10 @@ def mixinFreeChain (C : CTable) (ch : List String) : Bool :=
     | none => true
     | some c => c.includes.isEmpty && c.prepends.isEmpty)
 
+theorem mixinFreeChain_rootTail (c : Cls) {C : CTable}
+    (hc : mixinFreeChain C rootAncestors = true) : mixinFreeChain C c.rootTail = true := by
+  cases hm : c.isModule <;> simp_all [Cls.rootTail, mixinFreeChain]
+
 /-- **Does any declared class descend from `n`?** — and the answer `isAAnswer` needs is "no".
 
 The second half of §F9's guard, and it is about a different direction of the same gap.
@@ -155,11 +167,11 @@ declared class whose chain leaves the table.
 Not defined on `.union`/`.nilable`: those are not a single class, and treating them here
 would hide the fact that a union's answer is per-member. `isATy`/`notATy` decompose them. -/
 def isAAnswer (C W : CTable) (cn : String) : Ty → Option Bool
-  | .inst n _ => (ancestors? C n).bind (fun ch =>
-      if (ch ++ rootAncestors).contains cn then some true
-      -- `ancestors?` checked the *declared* chain's mixins; `rootAncestors` is appended
-      -- blindly, so `class Object; include M; end` is the case this guard covers
-      else if mixinFreeChain W rootAncestors then some false else none)
+  | .inst n _ => (clsGet? C n).bind (fun c => (ancestors? C n).bind (fun ch =>
+      if (ch ++ c.rootTail).contains cn then some true
+      -- `ancestors?` checked declared mixins; the ordinary class's implicit root tail
+      -- also needs its mixin guard. A module contributes no implicit root tail.
+      else if mixinFreeChain W c.rootTail then some false else none))
   -- **§F9**: the builtin chain is a *static table*, and `class Integer; include M; end` really
   -- does make `5.is_a?(M)` true; and the type denotes **is-a**, so a declared subclass's
   -- instance is one of its values. So *neither* answer is available at a context that has

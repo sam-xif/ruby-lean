@@ -62,10 +62,11 @@ theorem declared_default_constructor {κ : Ctx} {Γ : Env} {I J : Ty} {m : Machi
   obtain ⟨j, hjn, hp⟩ := hm.allocators c.name halloc
   have he : j = k := Option.some.inj (hjn.symm.trans hn)
   subst j
-  have hd := (hm.declCls c hc k hn).2.2.2.2.1 hnew
+  have hkind := hm.ordinary_decl hc halloc
+  have hd := (hm.declCls c hc k hn).2.2.2.2.1 hkind hnew
   obtain ⟨owner, md, hl⟩ := hd.2
   exact default_constructor_resolved hm hp hn ⟨hd.1, hd.2⟩ hl
-    (hm.userInit_none hc hn hprefix hroot) hk hj
+    (hm.userInit_none hc hn hkind hprefix hroot) hk hj
 
 #print axioms default_constructor_resolved
 #print axioms declared_default_constructor

@@ -25,7 +25,8 @@ theorem declared_constructor_run {κ : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m : M
     ∃ k n, classNamed? m.heap c.name = some k ∧
       Interp.finishSend m (.ref k) sendSite "new" args .none = .next n ∧
       RunSpec m n Γ (.inst c.name Ib) κ I := by
-  obtain ⟨k, md, site, dispatch, hp, hb, code, hi⟩ := declared_constructor_code hm hc hd hn hnew
+  obtain ⟨k, md, site, dispatch, hp, hb, code, hi⟩ :=
+    declared_constructor_code hm hc hd hn hnew (hm.ordinary_decl hc halloc)
   obtain ⟨j, hj, alloc⟩ := hm.allocators c.name halloc
   have he : j = k := Option.some.inj (hj.symm.trans site.named)
   subst j

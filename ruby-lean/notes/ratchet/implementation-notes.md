@@ -11103,3 +11103,26 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
   56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
   The longest rebuilt module takes 39s; new entry proofs take seconds, none near five minutes.
+
+## Clink 191 (2026-09-25) — distinguish module and class declaration contracts
+
+- DeclClassOk pins the physical isModule flag to the declared record. BasicObject instance
+  ancestry and builtin-new dispatch now require an ordinary-class record. ClassChains and
+  isAAnswer use Cls.rootTail: ordinary classes append Object/Kernel/BasicObject; modules
+  append nothing. The mixin guard follows that same tail. No new typing judgment.
+- Constructors derive the ordinary kind from retained PlainAllocator evidence; root lookup
+  and subclass continuation lemmas require it explicitly. Inherited/super lookup preserves
+  the actual tail. Existing name-separation guards remain conservative via chain_subset.
+  All class/subclass/member/singleton transports retain the declared kind.
+- moduleHeaderCtx grants no allocator. FreshModule proves kind and exact named ancestry for
+  a real fresh module from an empty declaration table, plus the no-hidden-alias fact needed
+  for reverse ancestry. This is metadata publication only: full StateOk, body scope and
+  singleton checking/emission remain ahead. Existing-row module allocation transport is
+  also still needed for declarations after classes or other modules.
+- CRuby reports [Marker] for a module and [Capsule, Object, Kernel, BasicObject] for a class;
+  Marker.new raises NoMethodError. Sorbet 0.6.13405 accepts the 077 singleton call and rejects
+  both M.new and class C < M. Controls prove an ordinary payload cannot satisfy a module
+  header, check both wrong-kind ancestry descriptions, and execute the failed allocator.
+- Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
+  56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  Header proofs build in seconds; no individual proof crossed five minutes.

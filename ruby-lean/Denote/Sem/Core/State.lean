@@ -956,8 +956,9 @@ theorem NilQueryOk.setLocal {κ : Ctx} {m : Machine} (x : String) (w : Value)
   simp only [setLocal_heap]
   exact h hfree k
 
-/-- Class-header conformance, separate from installed method code (`ClassesOk`) and body
-proofs. Pins ordinary class status, guarded builtin `new` dispatch, and named ancestry.
+/-- Header conformance, separate from installed method code (`ClassesOk`) and body
+proofs. Pins the declared module/class kind and its named ancestry. Only ordinary classes
+owe BasicObject ancestry and guarded builtin `new` dispatch.
 The dispatch guard permits declared singleton overrides; Range/Struct's prelude constructors
 are why this is not a universal class-object query invariant.
 
@@ -967,10 +968,10 @@ body proof, or an explicit `userInit? = none` premise for a future default alloc
 Publishing a pending header grants neither route. -/
 def DeclClassOk (κ : Ctx) (m : Machine) : Prop :=
   ∀ c ∈ κ.classes, ∀ k, classNamed? m.heap c.name = some k →
-    (ancestors m.heap k).contains Boot.basicObjectId = true ∧
+    (c.isModule = false → (ancestors m.heap k).contains Boot.basicObjectId = true) ∧
     k ≠ Boot.classId ∧ k ≠ Boot.moduleId ∧
-    (m.heap.classPayload? k).map (·.isModule) = some false ∧
-    (Ratchet.smroGet? κ.classes c.name "new" = none →
+    (m.heap.classPayload? k).map (·.isModule) = some c.isModule ∧
+    (c.isModule = false → Ratchet.smroGet? κ.classes c.name "new" = none →
       (∀ owner md, Interp.methodOn m.heap (classOf m.heap (.ref k)) "new" = some (owner, md) →
           md.builtin = some "Class#new" ∧ md.undefined = false ∧ md.visibility = .pub ∧
           md.fromPrelude = false ∧
@@ -983,11 +984,11 @@ def DeclClassOk (κ : Ctx) (m : Machine) : Prop :=
     -- claim for the *builtin* rows; this is the declared one, and it needs no
     -- no-subclasses clause because `.inst` denotes the class **exactly** (§F12).
     (∀ ch, Ratchet.ancestors? κ.classes c.name = some ch →
-      Ratchet.mixinFreeChain κ.wholeCls Ratchet.rootAncestors = true →
-      (∀ cn ∈ ch ++ Ratchet.rootAncestors, ∃ j, classNamed? m.heap cn = some j ∧
+      Ratchet.mixinFreeChain κ.wholeCls c.rootTail = true →
+      (∀ cn ∈ ch ++ c.rootTail, ∃ j, classNamed? m.heap cn = some j ∧
           (ancestors m.heap k).contains j = true) ∧
       (∀ cn j, classNamed? m.heap cn = some j → (ancestors m.heap k).contains j = true →
-          cn ∈ ch ++ Ratchet.rootAncestors))
+          cn ∈ ch ++ c.rootTail))
 
 theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : DeclClassOk κ m) :
     DeclClassOk κ m₂ := by
@@ -1009,8 +1010,8 @@ theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : Dec
     intro n; simp only [hco, Interp.methodOn, he.payload, he.ancestors]
   refine ⟨by rw [he.ancestors]; exact hroot, hcls, hmod, by rw [he.payload]; exact hism,
     ?_, ?_⟩
-  · intro hsm
-    obtain ⟨h1, h2⟩ := hnew hsm
+  · intro hkind hsm
+    obtain ⟨h1, h2⟩ := hnew hkind hsm
     refine ⟨?_, ?_⟩
     · intro owner md hfound
       rw [hm] at hfound
@@ -1095,6 +1096,13 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop extends St
   ownNames : ClassOwnNames κ.classes m.heap
   classChains : ClassChains κ.classes m.heap
   rootInit : RootInitOk κ.defs m.heap
+
+/-- A retained allocator identifies an ordinary class, including its static record kind. -/
+theorem StateOk.ordinary_decl {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Cls}
+    (hm : StateOk κ Γ I m) (hc : c ∈ κ.classes) (ha : c.name ∈ κ.pos.plainAlloc) :
+    c.isModule = false := by
+  obtain ⟨k, hk, hp⟩ := hm.allocators c.name ha
+  exact Option.some.inj ((hm.declCls c hc k hk).2.2.2.1.symm.trans hp.module)
 
 /-! ## Conformance survives an allocation
 

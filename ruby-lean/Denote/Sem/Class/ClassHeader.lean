@@ -31,15 +31,15 @@ theorem FreshClass.declared_header {κ : Ctx} {m n : Machine} {name : String} {e
     have dispatch := new_dispatch hc.chains hs he hne hq hd
     have chain := named_chain (name := name) (e := e) hc hs hr ho hn
     rw [← hh] at shape dispatch chain
-    refine ⟨shape.rooted, shape.notClass, shape.notModule, shape.module,
-      fun _ => ⟨dispatch.found, dispatch.present⟩, ?_⟩
+    refine ⟨fun _ => shape.rooted, shape.notClass, shape.notModule, shape.module,
+      fun _ _ => ⟨dispatch.found, dispatch.present⟩, ?_⟩
     intro ch hch _
     change ancestors? (classHeader name :: κ.classes) name = some ch at hch
     rw [classHeader_ancestors] at hch
     cases hch
     exact chain
   · obtain ⟨hroot, hcls, hmod, hism, hnew, hchain⟩ := old c hmem k hk
-    exact ⟨hroot, hcls, hmod, hism, fun hn => hnew (ht.newMiss c hmem hn),
+    exact ⟨hroot, hcls, hmod, hism, fun hk hn => hnew hk (ht.newMiss c hmem hn),
       fun ch hch hmix => hchain ch (ht.chain c hmem ch hch) hmix⟩
 
 /-- Ghost publication at the existing lexical class site. All unchanged state components

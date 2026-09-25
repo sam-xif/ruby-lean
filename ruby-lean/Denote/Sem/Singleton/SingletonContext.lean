@@ -31,10 +31,10 @@ theorem DeclClassOk.publish_singleton {κ : Ctx} {m : Machine} {c : Cls} {d : De
   change old ∈ classWithSingleton c d :: κ.classes at hold
   rcases List.mem_cons.mp hold with rfl | hold
   · obtain ⟨hr, hcl, hm, hi, hn, ha⟩ := hp c hc k hk
-    exact ⟨hr, hcl, hm, hi, fun h => hn (ht.newMiss c hc h),
+    exact ⟨hr, hcl, hm, hi, fun hk h => hn hk (ht.newMiss c hc h),
       fun ch hch hmix => ha ch (ht.chain c hc ch hch) hmix⟩
   · obtain ⟨hr, hcl, hm, hi, hn, ha⟩ := hp old hold k hk
-    exact ⟨hr, hcl, hm, hi, fun h => hn (ht.newMiss old hold h),
+    exact ⟨hr, hcl, hm, hi, fun hk h => hn hk (ht.newMiss old hold h),
       fun ch hch hmix => ha ch (ht.chain old hold ch hch) hmix⟩
 
 theorem NestedClassesOk.publish_singleton {C : CTable} {m : Machine} {c : Cls} {d : Defn}

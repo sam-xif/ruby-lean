@@ -88,7 +88,7 @@ theorem constructor_code {Γ : Env} {I : Ty} {m : Machine} (hm : StateOk callerC
       InstanceMethodCode k "initialize" md ∧ Interp.userInit? m.heap k = some md :=
   declared_constructor_code (c := classWithMethod initClass getter) (d := initDecl) hm
     (by change classWithMethod initClass getter ∈ [classWithMethod initClass getter, initClass, header]; simp)
-    (by change initDecl ∈ [getter, initDecl]; simp) rfl (by decide)
+    (by change initDecl ∈ [getter, initDecl]; simp) rfl (by decide) rfl
 
 #print axioms body_sem
 #print axioms runSpec

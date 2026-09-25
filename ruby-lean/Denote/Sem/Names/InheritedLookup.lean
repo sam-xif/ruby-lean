@@ -12,9 +12,9 @@ theorem ClassChains.before_owner {C : CTable} {h : Heap} {c : Cls} {r : ObjId}
     (hc : c ∈ C) (hr : classNamed? h c.name = some r)
     (ha : ancestors? C c.name = some (pre ++ owner :: post)) :
     ∃ before k after, ancestors h r = before ++ k :: after ∧ NamedChain h pre before ∧
-      classNamed? h owner = some k ∧ NamedChain h (post ++ rootAncestors) after := by
+      classNamed? h owner = some k ∧ NamedChain h (post ++ c.rootTail) after := by
   have hs := hp c hc r hr _ ha
-  have hs' : NamedChain h (pre ++ owner :: (post ++ rootAncestors)) (ancestors h r) := by
+  have hs' : NamedChain h (pre ++ owner :: (post ++ c.rootTail)) (ancestors h r) := by
     simpa only [List.append_assoc, List.cons_append] using hs
   exact hs'.split
 

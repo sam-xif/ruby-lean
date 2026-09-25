@@ -26,7 +26,8 @@ theorem methodOn_own_first {h : Heap} {k : ObjId} {rest : List ObjId} {name : St
 
 theorem declared_constructor_code {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     {c : Cls} {d : Defn} (hm : StateOk κ Γ I m) (hc : c ∈ κ.classes) (hd : d ∈ c.methods)
-    (hn : d.name = "initialize") (hnew : smroGet? κ.classes c.name "new" = none) :
+    (hn : d.name = "initialize") (hnew : smroGet? κ.classes c.name "new" = none)
+    (hkind : c.isModule = false) :
     ∃ k md, InstanceSite κ c.name k m.heap ∧
       NewDispatch m.heap (classOf m.heap (.ref k)) ∧
       md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧
@@ -39,7 +40,7 @@ theorem declared_constructor_code {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
   obtain ⟨rest, hrest⟩ := classFrontB_sound site.front
   have hlookup := methodOn_own_first hrest hfind
   rw [hn] at hlookup code
-  have hdispatch := (hm.declCls c hc k hk).2.2.2.2.1 hnew
+  have hdispatch := (hm.declCls c hc k hk).2.2.2.2.1 hkind hnew
   exact ⟨k, md, site, ⟨hdispatch.1, hdispatch.2⟩, hp, hb, code,
     by simp [Interp.userInit?, hlookup, code.builtin]⟩
 

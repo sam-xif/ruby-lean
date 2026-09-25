@@ -19,8 +19,8 @@ theorem classApartB_ne {κ : Ctx} {m : Machine} {c : Cls} {dn : String} {k j : O
   | some ch =>
     have hnot : dn ∉ ch ++ rootAncestors := by simpa [hch] using ha
     obtain ⟨rest, hrest⟩ := classFrontB_sound hfront
-    have hm := (hd c hc k hk).2.2.2.2.2 ch hch hmix
-    exact hnot (hm.2 dn k hj (by simp [hrest]))
+    have hm := (hd c hc k hk).2.2.2.2.2 ch hch (mixinFreeChain_rootTail c hmix)
+    exact hnot (c.chain_subset (hm.2 dn k hj (by simp [hrest])))
 
 theorem memberFreshB_sound {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     {c : Cls} {d : Defn} {k : ObjId} (hm : StateOk κ Γ I m)

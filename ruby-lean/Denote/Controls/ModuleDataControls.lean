@@ -16,13 +16,14 @@ theorem entry_keeps_type {κ : Ctx} {Γ : Env} {I τ : Ty} {m : Machine}
   obtain ⟨n, hs, hd⟩ := module_entry_data hm hr hf hn
   exact ⟨n, hs, hd.denM ht hv⟩
 
-/-- The current ordinary-class contract cannot be reused for a module header. -/
+/-- An ordinary class record cannot describe a module payload. -/
 theorem module_not_declared_class {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     {c : Cls} {k : ObjId} (hc : c ∈ κ.classes) (hn : classNamed? m.heap c.name = some k)
+    (hkind : c.isModule = false)
     (hp : (m.heap.classPayload? k).map (·.isModule) = some true) : ¬ StateOk κ Γ I m := by
   intro hm
   have hc := (hm.declCls c hc k hn).2.2.2.1
-  rw [hp] at hc; cases hc
+  rw [hp, hkind] at hc; cases hc
 
 #guard (ancestors bootMachine.heap Boot.moduleId).contains Boot.basicObjectId
 

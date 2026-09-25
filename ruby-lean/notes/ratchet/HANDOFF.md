@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 190)
+# Current resume point (2026-09-25, clink 191)
 
 076 is admitted through validateD: fragment 71, checker reach 76, 59 registered rules,
 56 worked theorems, no exemptions. Next frontier: 077-module-basic, `module M; def self.foo;
@@ -8,10 +8,16 @@ data/framing preservation from StateOk. ModuleReady preserves readiness and esta
 fresh metaclass; ModuleFrame supplies the real body's initial frame/self/locals/ivars and
 saved caller facts. module_entry_ready connects those facts to the actual step.
 
-Next: module conformance/header and body-scope dispatch/constants. DeclClassOk and ClassChains
-still append ordinary root ancestry, and DeclClassOk requires isModule=false. A real module
-has isModule=true, own chain [k], and an eigenclass inheriting Module. Neither ordinary
-constructors nor the ordinary instance chain may be granted by module publication.
+DeclClassOk now pins each record's real kind; ordinary ancestry/new require isModule=false.
+ClassChains/isAAnswer use Cls.rootTail (empty for modules). Constructors derive the ordinary
+kind from PlainAllocator; root lookup/subclass step proofs require it explicitly.
+moduleHeaderCtx adds metadata without allocator permission. Sem/Module/ModuleHeader proves
+real fresh module metadata and ordered ancestry from an empty declaration table.
+
+Next: full module StateOk and body-scope dispatch/constants, then singleton checking/emission.
+The body frame and metadata exist separately; full core/query/name/table/site transports
+through module allocation still need assembly. Existing-row transport is needed before
+relaxing the empty declaration-table premise. No module typing rule or emitter admission yet.
 
 No module judgment/emitter admission yet. Sorbet 0.6.13405 reports M.foo as T.untyped and even
 accepts treating its Integer result as String without a signature; the manifest drops it.
@@ -47,7 +53,7 @@ calls consume exact context/code artifacts. Inherited singletons remain open, an
 self.new still has only its semantic proof. Nominal conversion only forgets information;
 it cannot recover exact receivers or initialized fields from a nominal annotation.
 
-See clinks 177–190 and AGENTS.md. Older text below is historical.
+See clinks 177–191 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 

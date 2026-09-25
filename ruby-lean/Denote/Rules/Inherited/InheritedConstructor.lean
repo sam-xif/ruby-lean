@@ -38,7 +38,7 @@ theorem declared_inherited_constructor_run {κ : Ctx} {Γ Γb : Env} {I Ib τ : 
   rw [hn] at hl code
   have hi : Interp.userInit? m.heap r = some md := by
     simp [Interp.userInit?, hl, code.builtin]
-  have dispatch := (hm.declCls receiver hrc r site.named).2.2.2.2.1 hnew
+  have dispatch := (hm.declCls receiver hrc r site.named).2.2.2.2.1 (hm.ordinary_decl hrc halloc) hnew
   obtain ⟨j, hj, alloc⟩ := hm.allocators receiver.name halloc
   have he : j = r := Option.some.inj (hj.symm.trans site.named)
   subst j

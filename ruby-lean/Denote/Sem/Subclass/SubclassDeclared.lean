@@ -39,8 +39,8 @@ theorem declared (hc : ChainsIn m.heap) (hs : Saturated m.heap)
   refine ⟨?_, hcls, hmod, ?_, ?_, ?_⟩
   · rw [hh, ancestors_old hc hs hjl]; exact hroot
   · rw [hh, module_old hjl]; exact hism
-  · intro hnone
-    obtain ⟨hfound, hmiss⟩ := hnew hnone
+  · intro hkind hnone
+    obtain ⟨hfound, hmiss⟩ := hnew hkind hnone
     refine ⟨?_, ?_⟩
     · intro owner md hm
       rw [hh, classOf_old hjl, method_old hc hs hcl] at hm

@@ -88,7 +88,7 @@ theorem declared_super_code {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
   obtain ⟨before, j, tail, hchain, _, hj, htail⟩ := hm.classChains.before_owner hrc hr route.chain
   have he : j = currentId := Option.some.inj (hj.symm.trans hc)
   subst j
-  have ht : NamedChain m.heap (route.between ++ route.cls.name :: (route.after ++ rootAncestors)) tail := by
+  have ht : NamedChain m.heap (route.between ++ route.cls.name :: (route.after ++ receiver.rootTail)) tail := by
     simpa only [List.append_assoc, List.cons_append] using htail
   obtain ⟨between, j, after, he, hbetween, hj, _⟩ := ht.split
   have hkj : j = k := Option.some.inj (hj.symm.trans hk)

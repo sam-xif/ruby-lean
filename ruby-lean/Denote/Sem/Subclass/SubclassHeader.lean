@@ -25,8 +25,9 @@ theorem declared_header (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = tr
   have ho := (hm.runtime hr).classLive
   have old := declared ready.chains hm.sat ho hn hh hm.classes hm.declCls
   have parentDecl := hm.declCls c hc parent hp
+  have hkind : c.isModule = false := Option.some.inj (parentDecl.2.2.2.1.symm.trans ha.module)
   have newDispatch : NewDispatch m.heap (classOf m.heap (.ref parent)) := ⟨
-    (parentDecl.2.2.2.2.1 hnew).1, (parentDecl.2.2.2.2.1 hnew).2⟩
+    (parentDecl.2.2.2.2.1 hkind hnew).1, (parentDecl.2.2.2.2.1 hkind hnew).2⟩
   obtain ⟨ns, hparent, hchild⟩ := ht.chain
   intro record hrecord k hk
   change record ∈ subclassHeader name c.name :: κ.classes at hrecord
@@ -39,17 +40,19 @@ theorem declared_header (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = tr
     have shape := plain (d := Boot.objectId) (name := name) (q := name) (eParent := eParent) hm.core hm.sat ha
     have dispatch := new_dispatch (d := Boot.objectId) (name := name) ready.chains hm.sat ha.live he hne hq newDispatch
     rw [← hh] at shape dispatch
-    refine ⟨shape.rooted, shape.notClass, shape.notModule, shape.module,
-      fun _ => ⟨dispatch.found, dispatch.present⟩, ?_⟩
+    refine ⟨fun _ => shape.rooted, shape.notClass, shape.notModule, shape.module,
+      fun _ _ => ⟨dispatch.found, dispatch.present⟩, ?_⟩
     intro ch hch hmix
     change ancestors? (subclassHeader name c.name :: κ.classes) name = some ch at hch
     rw [hchild] at hch
     cases hch
-    obtain ⟨hpos, hneg⟩ := parentDecl.2.2.2.2.2 ns hparent hmix
-    simpa only [hh, List.cons_append] using named_chain (name := name) (q := name) (eParent := eParent)
+    obtain ⟨hpos, hneg⟩ := parentDecl.2.2.2.2.2 ns hparent (mixinFreeChain_rootTail c hmix)
+    simp only [Cls.rootTail, hkind, Bool.false_eq_true, ite_false] at hpos hneg
+    simpa only [hh, List.cons_append, Cls.rootTail, subclassHeader, classHeader,
+      Bool.false_eq_true, ite_false] using named_chain (name := name) (q := name) (eParent := eParent)
       ready hm.sat ho hn ha.live hpos hneg
   · obtain ⟨hroot, hcls, hmod, hism, hnew, hchain⟩ := old record hrecord k hk
-    exact ⟨hroot, hcls, hmod, hism, fun hn => hnew (ht.old.newMiss record hrecord hn),
+    exact ⟨hroot, hcls, hmod, hism, fun hk hn => hnew hk (ht.old.newMiss record hrecord hn),
       fun ch hch hmix => hchain ch (ht.old.chain record hrecord ch hch) hmix⟩
 
 theorem ownNames_header (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
@@ -66,6 +69,7 @@ theorem ownNames_header (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = tr
 
 theorem classChains_header (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
     (hc : c ∈ κ.classes) (hp : classNamed? m.heap c.name = some parent)
+    (hkind : c.isModule = false)
     (hn : constOwn m.heap Boot.objectId name = none)
     (ht : SubclassHeaderFrame κ.classes name c.name) :
     ClassChains (subclassHeader name c.name :: κ.classes)
@@ -84,8 +88,10 @@ theorem classChains_header (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain =
     change ancestors? (subclassHeader name c.name :: κ.classes) name = some ch at hch
     rw [hchild] at hch
     cases hch
-    exact ordered_chain ready.chains hm.sat (hm.runtime hr).classLive hn (named_live hp)
-      (hm.classChains c hc parent hp ns hparent)
+    change NamedChain _ (name :: (ns ++ rootAncestors)) _
+    apply ordered_chain ready.chains hm.sat (hm.runtime hr).classLive hn (named_live hp)
+    simpa only [Cls.rootTail, hkind, Bool.false_eq_true, ite_false] using
+      hm.classChains c hc parent hp ns hparent
   · exact old record hrecord k hk ch (ht.old.chain record hrecord ch hch)
 
 theorem publish_header (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
@@ -106,7 +112,7 @@ theorem publish_header (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = tru
     · rw [hh]; exact named_fresh (hm.runtime hr).classLive
     · rw [hh]; exact plain hm.core hm.sat ha
   · rw [hh]; exact ownNames_header (κ := κ) hm hr hn
-  · rw [hh]; exact classChains_header (κ := κ) hm hr hc hp hn ht
+  · rw [hh]; exact classChains_header (κ := κ) hm hr hc hp (hm.ordinary_decl hc halloc) hn ht
 
 #print axioms declared_header
 #print axioms ownNames_header

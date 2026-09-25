@@ -10,11 +10,11 @@ open RubyCore Ratchet
 
 def ClassChains (C : CTable) (h : Heap) : Prop :=
   ∀ c ∈ C, ∀ k, classNamed? h c.name = some k → ∀ ns,
-    ancestors? C c.name = some ns → NamedChain h (ns ++ rootAncestors) (ancestors h k)
+    ancestors? C c.name = some ns → NamedChain h (ns ++ c.rootTail) (ancestors h k)
 
 def classChainsB (C : CTable) (h : Heap) : Bool :=
   C.all fun c => (classNamed? h c.name).all fun k =>
-    (ancestors? C c.name).all fun ns => namedChainB h (ns ++ rootAncestors) (ancestors h k)
+    (ancestors? C c.name).all fun ns => namedChainB h (ns ++ c.rootTail) (ancestors h k)
 
 theorem classChainsB_sound {C : CTable} {h : Heap} (hp : classChainsB C h = true) :
     ClassChains C h := by
@@ -29,8 +29,9 @@ theorem ClassChains.empty (h : Heap) : ClassChains [] h := by
 theorem ClassChains.owner_named {C : CTable} {h : Heap} {c : Cls} {k owner : ObjId}
     {ns : List String} (hp : ClassChains C h) (hc : c ∈ C)
     (hk : classNamed? h c.name = some k) (hn : ancestors? C c.name = some ns)
-    (ho : owner ∈ ancestors h k) : ∃ cn ∈ ns ++ rootAncestors, classNamed? h cn = some owner :=
-  (hp c hc k hk ns hn).cover ho
+    (ho : owner ∈ ancestors h k) : ∃ cn ∈ ns ++ rootAncestors, classNamed? h cn = some owner := by
+  obtain ⟨cn, hcn, he⟩ := (hp c hc k hk ns hn).cover ho
+  exact ⟨cn, c.chain_subset hcn, he⟩
 
 theorem ClassChains.heap {C : CTable} {h h' : Heap} (hp : ClassChains C h)
     (hn : ∀ cn, classNamed? h' cn = classNamed? h cn)

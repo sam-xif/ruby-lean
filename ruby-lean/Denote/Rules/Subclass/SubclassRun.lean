@@ -39,6 +39,7 @@ theorem resolved_runSpec {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m : Machi
     (subclassHeaderFrameB_sound hframe) hplain rfl
   have hrun := body_runSpec hstart ht ha hr hw hcl rfl hq hk hΓ hτ hc hp hn he (hb entry hheader)
   have hmod := (hm.declCls c hc parent hp).2.2.2.1
+  rw [hm.ordinary_decl hc halloc] at hmod
   obtain ⟨cp, hcp, hfalse⟩ : ∃ cp, m.heap.classPayload? parent = some cp ∧ cp.isModule = false := by
     cases he : m.heap.classPayload? parent with
     | none => simp only [he, Option.map_none, reduceCtorEq] at hmod
