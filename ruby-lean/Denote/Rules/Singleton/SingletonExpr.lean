@@ -1,4 +1,4 @@
-import Denote.Rules.Singleton.SingletonRun
+import Denote.Rules.Singleton.SingletonLookupRun
 import Denote.Rules.Expr.Send
 
 /-! Own singleton calls recover exact executed code from conformance and check the body
@@ -29,20 +29,10 @@ theorem SemSafeCtxA.singletonCall {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb : E
     obtain ⟨p, hp, rfl⟩ := List.mem_map.mp ht
     exact (hps p hp).1)
   intro m hm hk recv hv args hargs
-  obtain ⟨k, hn, _, rows⟩ := hm.classes c hc
-  obtain ⟨e, md, he, _, row, hp, hb, hu, code⟩ := rows d hd
-  have classSite := hm.classSites.at_class hc hn
-  obtain ⟨tail, hchain⟩ := classFrontB_sound (classSite.eigen_front he)
-  have hl : lookup m.heap (.ref k) d.name = some (e, md) :=
-    lookup_own_first (by simpa only [classOf, he] using hchain) row
-  have hr : recv = .ref k := by cases recv <;> simp_all [denM, isClassRefNamed]
-  have hp' : md.params = (ps.map (·.1)).map RubyCore.Param.req :=
-    hp.trans (by rw [hparams]; exact toRubyParams_required ps)
-  obtain ⟨n, hs, hrun⟩ := resolved_singleton_run (site := site) hp' hb hps hτ hbody hm
-    ht ha classSite he hw hk code hu hl
-    (by simpa using denAll_length hargs) hargs hconst hΓ hname
-  rw [hr, hs]
-  exact hrun
+  obtain ⟨next, hs, hr⟩ := declared_singleton_run hm hv hc hd hname hparams hps hτ hbody
+    ht ha hw hk hargs hconst hΓ
+  rw [hs]
+  exact hr
 
 #print axioms SemSafeCtxA.singletonCall
 end Ratchet.Denote.Typed

@@ -1,5 +1,6 @@
 import Denote.Rules.Singleton.SingletonDefine
 import Denote.Rules.Singleton.SingletonExpr
+import Denote.Rules.Singleton.SingletonImplicit
 import Denote.Rules.Constructor.ConstructorImplicit
 import Denote.Sem.Class.ClassGuards
 import Denote.Sem.Names.NativeGuards
@@ -37,6 +38,23 @@ theorem SemSafeCtxA.callSingleton {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb : E
   exact hr.singletonCall ha rfl hc hd (directCallNameB_sound hn) hp hps hret hb
     (reframeTypesB_sound ht) hasms (callWorldB_sound hw)
     (fun x => (constGet?_empty (κ := singletonBodyCtx κ₂ c.name d.name) hco x).trans
+      (constGet?_empty hco x).symm) (List.all_eq_true.mp hΓ)
+
+theorem SemSafeCtxA.callSingletonImplicit {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' τ : Ty}
+    {c : Cls} {d : Defn} {ps : List SigParam} {args : List Ratchet.Expr} {call : Ratchet.Expr}
+    (hshape : ImplicitCallShape call d.name args) (hself : κ.selfTy = some (.clsOf c.name))
+    (hargs : SemAllCtxA κ Γ I args (ps.map (·.2)) κ' Γ' I')
+    (hc : c ∈ κ'.classes) (hd : d ∈ c.smethods) (hn : directCallNameB d.name = true)
+    (hp : d.params = ps.map (fun p => Ratchet.Param.req p.1))
+    (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) (hτ : FirstOrder τ = true)
+    (hb : SemSafeCtxA (singletonBodyCtx κ' c.name d.name) ps .ivar0 d.body τ
+      (singletonBodyCtx κ' c.name d.name) Γb .ivar0) (hg : instanceCallB κ' Γ' I' = true) :
+    SemSafeCtxA κ Γ I call τ κ' Γ' I' := by
+  simp only [instanceCallB, Bool.and_eq_true, decide_eq_true_eq] at hg
+  obtain ⟨⟨⟨ht, hΓ⟩, hw⟩, hasms, hco⟩ := hg
+  exact SemSafeCtxA.singletonImplicit hshape hself hargs hc hd (directCallNameB_sound hn)
+    hp hps hτ hb (reframeTypesB_sound ht) hasms (callWorldB_sound hw)
+    (fun x => (constGet?_empty (κ := singletonBodyCtx κ' c.name d.name) hco x).trans
       (constGet?_empty hco x).symm) (List.all_eq_true.mp hΓ)
 
 theorem SemSafeCtxA.newImplicit {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' Ib τ : Ty}
@@ -77,6 +95,7 @@ theorem SemSafeCtxA.instanceType {κ κ' : Ctx} {Γ Γ' : Env} {I I' fields : Ty
 
 #print axioms SemSafeCtxA.singletonDef
 #print axioms SemSafeCtxA.callSingleton
+#print axioms SemSafeCtxA.callSingletonImplicit
 #print axioms SemSafeCtxA.newImplicit
 #print axioms SemSafeCtxA.instanceType
 end Ratchet.Denote.Typed

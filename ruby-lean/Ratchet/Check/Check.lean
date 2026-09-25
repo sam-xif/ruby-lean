@@ -136,6 +136,8 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
         else none
         else none
         else none
+      | some (.clsOf _) =>
+        checkImplicitSingleton n Γ (.vcall name) name [] [] ret .vcall κ I cache
       | _ => none
     | .self', .selfExpr => do
       match hs : κ.selfTy with
@@ -449,33 +451,64 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
       else none
     | .send none name args none, .callSig name' ds ret => do
       if name != name' then none else do
+      match κ.selfTy with
+      | some (.clsOf _) =>
+        checkImplicitSingleton n Γ (.send none name args none) name args ds ret .send κ I cache
+      | _ => do
+        let a ← checkAll n Γ args ds κ I cache
+        let c ← findBody a.ctx a.spine name a.cache.top
+        if ht : a.tys = c.body.params.map (·.2) then do
+        let result ← c.body.resultAt ret
+        if hstart : κ.scope.runtimeMain = true then do
+        if hm : a.ctx.scope.runtimeMain = true then do
+        if hs : a.ctx.selfTy = none then do
+        if hb : a.ctx.blockTy = none then do
+        if hco : a.ctx.consts = [] then do
+        if ha : a.ctx.asms = [] then do
+        if hi : FirstOrder a.spine = true then do
+        if hg : a.out.all (fun p => FirstOrder (stripAlias p.2)) = true then
+          some ⟨ret, a.out, a.ctx, a.spine, by
+            simpa only [c.nameOk] using
+              (DJudge.callSig c.body.paramShape c.body.paramsFO result.firstOrder result.judged
+                (by simpa only [ht] using a.judged) c.installed hstart hm hs hb hco ha hi
+                (List.all_eq_true.mp hg)), a.cache⟩
+        else none
+        else none
+        else none
+        else none
+        else none
+        else none
+        else none
+        else none
+        else none
+    | _, _ => none
+
+/-- Reuse only an exact-context checked own singleton body. The syntax guard keeps
+bare calls distinct from implicit sends while both retain the incoming self receiver. -/
+def checkImplicitSingleton (fuel : Nat) (Γ : Env) (call : Expr) (name : String)
+    (args : List Expr) (ds : List Deriv) (ret : Ty) (shape : ImplicitCallShape call name args)
+    (κ : Ctx) (I : Ty) (cache : CheckedCache) : Option (Certified Γ call κ I) :=
+  match fuel with
+  | 0 => none
+  | n + 1 => do
+    match hs : κ.selfTy with
+    | some (.clsOf cn) => do
       let a ← checkAll n Γ args ds κ I cache
-      let c ← findBody a.ctx a.spine name a.cache.top
+      let f ← findClass cn a.ctx.classes
+      let c ← findSingleton a.ctx f.cls name a.cache.singletons
       if ht : a.tys = c.body.params.map (·.2) then do
       let result ← c.body.resultAt ret
-      if hstart : κ.scope.runtimeMain = true then do
-      if hm : a.ctx.scope.runtimeMain = true then do
-      if hs : a.ctx.selfTy = none then do
-      if hb : a.ctx.blockTy = none then do
-      if hco : a.ctx.consts = [] then do
-      if ha : a.ctx.asms = [] then do
-      if hi : FirstOrder a.spine = true then do
-      if hg : a.out.all (fun p => FirstOrder (stripAlias p.2)) = true then
-        some ⟨ret, a.out, a.ctx, a.spine, by
-          simpa only [c.nameOk] using
-            (DJudge.callSig c.body.paramShape c.body.paramsFO result.firstOrder result.judged
-              (by simpa only [ht] using a.judged) c.installed hstart hm hs hb hco ha hi
-              (List.all_eq_true.mp hg)), a.cache⟩
+      if hn : directCallNameB c.decl.name = true then do
+      if hg : instanceCallB a.ctx a.out a.spine = true then
+        some ⟨ret, a.out, a.ctx, a.spine,
+          DJudge.callSingletonImplicit (by simpa only [c.nameOk] using shape)
+            (by simpa only [f.nameOk] using hs) (by simpa only [ht] using a.judged)
+            f.member c.installed hn c.body.paramShape c.body.paramsFO
+            result.firstOrder result.judged hg, a.cache⟩
       else none
       else none
       else none
-      else none
-      else none
-      else none
-      else none
-      else none
-      else none
-    | _, _ => none
+    | _ => none
 
 def checkAll (fuel : Nat) (Γ : Env) (es : List Expr) (ds : List Deriv)
     (κ : Ctx := ctx0) (I : Ty := .ivar0) (cache : CheckedCache := {}) : Option (CertifiedAll Γ es κ I) :=

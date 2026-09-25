@@ -321,7 +321,7 @@ class Emitter
 
   # sends
   def n_vcall(n)
-    return [{ "rule" => "bareName", "name" => "x" }, { "tag" => "any" }] if n[1] == "x"
+    return [{ "rule" => "bareName", "name" => "x" }, { "tag" => "any" }] if n[1] == "x" && @self_cls.nil?
 
     implicit_send(n[1], [])
   end
@@ -366,7 +366,7 @@ class Emitter
       return [deriv.merge("rule" => "newImplicit"), ty]
     end
     dargs, targs = go_all(args)
-    owner = @self_cls || "Object"
+    owner = @singleton ? "<Class:#{@self_cls}>" : (@self_cls || "Object")
     sig = sig_for(owner, m)
     check_inferred_args(sig, targs)
     result = as_inst(sig["ret"])

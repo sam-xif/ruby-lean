@@ -10,6 +10,7 @@ import Ratchet.Guards.NilFields
 import Ratchet.Guards.MemberRoute
 import Ratchet.Static.NativeInstanceNames
 import Ratchet.Guards.SingletonGuards
+import Ratchet.Guards.ImplicitCall
 import Ratchet.Guards.ScalarWrite
 
 /-!
@@ -474,6 +475,19 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       DJudge ps d.body τ Γb (singletonBodyCtx κ₂ c.name d.name) .ivar0
         (singletonBodyCtx κ₂ c.name d.name) .ivar0 → instanceCallB κ₂ Γ₂ I₂ = true →
       DJudge Γ (.send (some recv) d.name args none) τ Γ₂ κ I κ₂ I₂
+  /-- Sorbet 0.6.13405 accepts both `value` and `value()` inside a singleton body
+      and rejects a bare call when value requires an argument (clink 198). Class-valued
+      self and checked own singleton code justify both spellings, at their real call sites. -/
+  | callSingletonImplicit {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' τ : Ty}
+      {c : Cls} {d : Defn} {ps : List SigParam} {args : List Expr} {call : Expr} :
+      ImplicitCallShape call d.name args → κ.selfTy = some (.clsOf c.name) →
+      DJudgeAll Γ args (ps.map (·.2)) Γ' κ I κ' I' →
+      c ∈ κ'.classes → d ∈ c.smethods → directCallNameB d.name = true →
+      d.params = ps.map (fun p => Param.req p.1) →
+      (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) → FirstOrder τ = true →
+      DJudge ps d.body τ Γb (singletonBodyCtx κ' c.name d.name) .ivar0
+        (singletonBodyCtx κ' c.name d.name) .ivar0 → instanceCallB κ' Γ' I' = true →
+      DJudge Γ call τ Γ' κ I κ' I'
   /-- Sorbet accepts 073's implicit new, reveals T.attached_class, and rejects wrong
   initializer argument types/arity (clink 184). This rule fixes an own class receiver. -/
   | newImplicit {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' Ib τ : Ty}
@@ -581,7 +595,8 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_4 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_5 := fun _ _ _ _ _ _ _ _ => True)
     (motive_6 := fun _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
-  all_goals (try intros) <;> first | rfl | trivial | assumption
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+  all_goals (try intros) <;> first
+    | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 
 end Ratchet

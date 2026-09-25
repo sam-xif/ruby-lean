@@ -46,6 +46,20 @@ module Welcome
 end
 Welcome.relay("reader")
 ''', "ok", True),
+        ("implicit_spellings", '''# typed: true
+module Welcome
+  def self.x; 21; end
+  def self.describe; x + x(); end
+end
+Welcome.describe
+''', "ok", True),
+        ("implicit_arguments", '''# typed: true
+module Welcome
+  def self.increment(input); input + 1; end
+  def self.relay(value); increment(value); end
+end
+Welcome.relay(7)
+''', "ok", True),
     ]
     emitted = {}
     with tempfile.TemporaryDirectory(prefix="ruby-body-inference-") as directory:

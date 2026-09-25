@@ -139,6 +139,8 @@ def inheritedSelectorB (C : CTable) (cn name : String) : Bool :=
 structure RuleAnnotations where
   params : List (String × Env) := []
   results : List ((String × String) × String) := []
+  /-- Syntactic body scope; no receiver type is inferred from a method name. -/
+  singletonBody : Bool := false
 
 /-- Follow receiver-producing syntax and declared result classes. This predicts a dispatch
 rule; the checker separately requires exact initialized-instance evidence. -/
@@ -177,8 +179,8 @@ def rulesUsedAt (C : CTable) (ann : RuleAnnotations) (Γ : Env) : Ratchet.Expr �
   | .tru => ["truLit"]
   | .fls => ["flsLit"]
   | .nil => ["nilLit"]
-  | .vcall "x" => ["bareName"]
-  | .vcall _ => ["vcallMethodSig"]
+  | .vcall name => if ann.singletonBody then ["callSingletonImplicit", "DJudgeAll.nil"]
+      else if name == "x" then ["bareName"] else ["vcallMethodSig"]
   | .self' => ["selfRead"]
   | .var .lvar _ => ["var"]
   | .var .ivar _ => ["ivarRead"]
@@ -194,7 +196,8 @@ def rulesUsedAt (C : CTable) (ann : RuleAnnotations) (Γ : Env) : Ratchet.Expr �
     (if hasSelfCall name body then "recursive" :: scopedRules name body else
       rulesUsedAt C ann (((ann.params.find? (·.1 == name)).map (·.2)).getD []) body)
   | .send none "new" args none => "newImplicit" :: rulesUsedArgsAt C ann Γ args
-  | .send none _ args none => "callSig" :: rulesUsedArgsAt C ann Γ args
+  | .send none _ args none => (if ann.singletonBody then "callSingletonImplicit" else "callSig") ::
+      rulesUsedArgsAt C ann Γ args
   | .if' c t (some e) => "if'" :: (rulesUsedAt C ann Γ c ++ rulesUsedAt C ann Γ t ++ rulesUsedAt C ann Γ e)
   | .if' c t none => "ifNoElse" :: (rulesUsedAt C ann Γ c ++ rulesUsedAt C ann Γ t)
   | .array es => "arrayLit" :: rulesUsedArgsAt C ann Γ es
@@ -217,7 +220,7 @@ def rulesUsedPairsAt (C : CTable) (ann : RuleAnnotations) (Γ : Env) : List (Rat
 def classRulesAt (C : CTable) (ann : RuleAnnotations) : Ratchet.Expr → List String
   | .def' "initialize" _ body => "initDef" :: "InitJudge.ignoreResult" :: initRules body
   | .def' _ _ body => "memberDef" :: rulesUsedAt C ann [] body
-  | .defs .self' _ _ body => "singletonDef" :: rulesUsedAt C ann [] body
+  | .defs .self' _ _ body => "singletonDef" :: rulesUsedAt C { ann with singletonBody := true } [] body
   | .seq es => "seq" :: classSeqRulesAt C ann es
   | .nil => ["nilLit"]
   | _ => ["?"]

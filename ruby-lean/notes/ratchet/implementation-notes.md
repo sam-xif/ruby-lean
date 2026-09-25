@@ -11270,3 +11270,29 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN, including the new pipeline controls: 252 agree / 0 disagree.
   Metatheory and standard-axiom audit pass. The new proof and checker controls build in
   under a second; no proof approached five minutes.
+
+## Clink 198 (2026-09-25) — checked implicit singleton dispatch
+
+- ImplicitCallShape distinguishes bare calls from receiver-less sends using syntax only.
+  SingletonLookupRun recovers own-table code and dispatch from class-valued conformance;
+  explicit calls now share that helper. SingletonImplicit retains self across argument
+  evaluation, uses the real vcall/implicit site, and restores the full caller through the
+  existing singleton run contract. One callSingletonImplicit clink covers both spellings.
+- Sorbet 0.6.13405 accepts `value + value()` inside a singleton body and rejects a bare
+  call to a method requiring an Integer argument. The judgment docstring cites this probe.
+  It requires class-valued self, checked own singleton code and the complete parameter
+  domain. No inherited receiver/owner conflation or recursive body assumption is introduced.
+- checkImplicitSingleton consumes exact-context cached body artifacts. Existing callSig
+  hints suffice; the source syntax selects the dispatch site. The emitter resolves the
+  singleton signature table and reserves its main-only bare-x rule for the main scope.
+  Refresh checks dependent singleton bodies through the same route.
+- SingletonImplicitDerivations independently proves 080 for every Integer returned by value.
+  The rule predictor tracks singleton body scope; RuleAudit still checks its predictions
+  against proof terms. Controls cover bare/parenthesized calls, arguments, wrong arity,
+  result/domain forgery, different receivers, variable reads and instance/singleton selector
+  collisions. The pipeline stage also exercises renamed x calls and inferred arguments.
+- Newly admitted: 080. Fragment 80, checker reach 83, 61 rules, 59 worked theorems,
+  0 owed/exempt. Next: 084's missing DPrim/dprim? greater-than case.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree, all floors and rule-coverage checks
+  pass. Metatheory and standard-axiom audit pass. New semantic proofs build in about half
+  a second, the whole-program derivation in 1.5s; no proof approached five minutes.

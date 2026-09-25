@@ -1,11 +1,26 @@
-# Current resume point (2026-09-25, clink 197)
+# Current resume point (2026-09-25, clink 198)
 
-078/081/086 are newly admitted through validateD: fragment 79, checker reach 79,
-60 registered rules (38 expressions + 22 companions), 58 worked theorems, no exemptions.
-The prefix remains 17; 018 is correctly rejected. Next frontier: 080-module-method-calls-method,
-`module M; def self.value; 21; end; def self.describe; value * 2; end; end; M.describe`.
-The emitter's implicit_send still resolves ordinary methods and the checker has no implicit
-singleton call route. 084 now emits a valid-looking candidate but lacks a certified `>` row.
+080 is newly admitted through validateD: fragment 80, checker reach 83,
+61 registered rules (39 expressions + 22 companions), 59 worked theorems, no exemptions.
+The prefix remains 17; 018 is correctly rejected. Next frontier: 084-module-boolean-method,
+`module M; def self.positive?(n); n > 0; end; end; M.positive?(5)`. The emitter already
+proposes Integer -> Boolean; DPrim/dprim? lack `>` despite the broader PrimSig/emitter table.
+
+ImplicitCallShape is a syntax guard for bare calls and receiver-less sends, not a body
+judgment. SingletonLookupRun recovers real own-table dispatch from class-ref conformance;
+SingletonImplicit retains self across arguments and preserves the actual vcall/implicit site.
+callSingletonImplicit registers that semantic contract. checkImplicitSingleton consumes exact
+context/code body artifacts, including at refresh; it never substitutes an instance method or
+a different receiver's singleton. The emitter resolves implicit singleton signatures separately
+and routes `x` through lookup inside class scopes rather than the main-only missing-name rule.
+
+SingletonImplicitDerivations independently proves 080 for every Integer value result. RuleAudit
+now carries syntactic singleton-body scope through its prediction, independently of extraction.
+Controls cover both spellings, arguments, wrong arity/results/domains, another receiver's code,
+local-read confusion and same-named instance/singleton rows. Pipeline controls additionally
+exercise renamed `x` calls and inferred arguments. Sorbet 0.6.13405 accepts bare and parenthesized
+calls in singleton bodies and rejects a bare call to a required-argument method (clink 198).
+Inherited singleton lookup and recursive singleton body assumptions remain outside this rule.
 
 Clink 197 extends the untrusted missing-signature proposal policy to required scalar
 parameters. infer_definition tries complete domains in deterministic order (Integer, String,
@@ -70,7 +85,7 @@ calls consume exact context/code artifacts. Inherited singletons remain open, an
 self.new still has only its semantic proof. Nominal conversion only forgets information;
 it cannot recover exact receivers or initialized fields from a nominal annotation.
 
-See clinks 177–197 and AGENTS.md. Older text below is historical.
+See clinks 177–198 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 

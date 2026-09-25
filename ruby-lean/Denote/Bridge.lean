@@ -63,7 +63,7 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
     (motive_5 := fun κ I s Γ e τ Γ' _ => F.recBody κ I s Γ e τ Γ')
     (motive_6 := fun κ I s Γ es tys Γ' _ => F.recArgs κ I s Γ es tys Γ')
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals intros
   · apply hF DClink.intLit (by simp [dclinks]) <;> assumption
   · apply hF DClink.fltLit (by simp [dclinks]) <;> assumption
@@ -110,6 +110,7 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
   · apply hF DClink.newDefault (by simp [dclinks]) <;> assumption
   · apply hF DClink.singletonDef (by simp [dclinks]) <;> assumption
   · apply hF DClink.callSingleton (by simp [dclinks]) <;> assumption
+  · apply hF DClink.callSingletonImplicit (by simp [dclinks]) <;> assumption
   · rename_i κd κ' Γd Γ' Γb Id I' Ib τd c d ps args hs ha hc hd hn hnew halloc hp hps hret hout hb hg iha
     exact hF DClink.newImplicit (by simp [dclinks]) hs iha hc hd hn hnew halloc hp hps
       hret hout (initJudge_certified hb F hF) hg
