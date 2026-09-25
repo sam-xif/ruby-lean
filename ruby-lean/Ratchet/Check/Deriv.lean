@@ -100,6 +100,8 @@ inductive Deriv where
   | defDecl (name : String) (params : List SigParam) (ret : Ty) (body : Deriv)
   /-- An implicit-self call to a method declared by a `defDecl`. -/
   | callSig (name : String) (args : List Deriv) (ret : Ty)
+  /-- Explicit initializer super; parent code and annotations come from retained sources. -/
+  | superInit (args : List Deriv)
   /-- An explicit-receiver call to a method declared by a `defDecl` on the receiver's
       class. -/
   | callMethodSig (recv : Deriv) (name : String) (args : List Deriv) (ret : Ty)
@@ -161,6 +163,7 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
       return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))
     return .defDecl (← name "name") ps (← ty "ret") (← kid "body")
   | "callSig" => return .callSig (← name "name") (← kids "args") (← ty "ret")
+  | "superInit" => return .superInit (← kids "args")
   | "callMethodSig" =>
     return .callMethodSig (← kid "recv") (← name "name") (← kids "args") (← ty "ret")
   | "classDecl" =>

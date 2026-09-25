@@ -90,15 +90,21 @@ end
 ignoreResult at the definition; RuleAudit independently checks this against the proof. -/
 mutual
 def initRules : Ratchet.Expr → List String
+  | .int _ => ["InitJudge.intLit"]
   | .var .lvar _ => ["InitJudge.var"]
   | .vasgn .ivar _ e => "InitJudge.ivarAsgn" :: initRules e
   | .seq es => "InitJudge.seq" :: initSeqRules es
+  | .super' es none => "InitJudge.superInit" :: initArgRules es
   | _ => ["?"]
 
 def initSeqRules : List Ratchet.Expr → List String
   | [] => ["?"]
   | [e] => "InitJudgeSeq.last" :: initRules e
   | e :: e' :: es => "InitJudgeSeq.cons" :: (initRules e ++ initSeqRules (e' :: es))
+
+def initArgRules : List Ratchet.Expr → List String
+  | [] => ["InitJudgeAll.nil"]
+  | e :: es => "InitJudgeAll.cons" :: (initRules e ++ initArgRules es)
 end
 
 /-! Syntax-only class summary for predicting own versus inherited dispatch. It is not a

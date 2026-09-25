@@ -8,6 +8,12 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
+theorem SemInitA.intLit {κ : Ctx} {Γ : Env} {I : Ty} {n : Int} :
+    SemInitA κ Γ I (.int n) .int κ Γ I := by
+  intro anchor m hm
+  apply InitRunSpec.step (by rfl) (show Interp.stepFn _ = .next (deliverA (.val (.int n)) m []) from rfl)
+  exact InitRunSpec.answer ⟨.refl hm.growth, by simp [AnsOk, denM, isIntV], fun _ _ => hm⟩
+
 theorem SemInitA.var {κ : Ctx} {Γ : Env} {I τ : Ty} {x : String}
     (hx : envGet? Γ x = some τ) (ha : isAliasTy τ = false) :
     SemInitA κ Γ I (.var .lvar x) τ κ Γ I := by

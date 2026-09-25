@@ -492,7 +492,7 @@ def checkMemberDefinition (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (cn : Stri
     let next := instanceDeclCtx κ f.cls d
     let .defDecl _ _ _ db := hint | none
     if hn : d.name = "initialize" then do
-      let body ← checkInitializerBody n (initializerBodyCtx next f.cls.name) d hint
+      let body ← checkInitializerBody n (initializerBodyCtx next f.cls.name) d hint (initializerSources cache)
       let fresh ← refreshClassBodies n next { cache with initializers :=
         ⟨initializerBodyCtx next f.cls.name, f.cls.name, f.cls.name, d, body, db⟩ :: cache.initializers }
       if receiverCacheCompleteB next fresh then
@@ -622,23 +622,25 @@ def refreshTopBodies (fuel : Nat) (κ : Ctx) (I : Ty) (base : CheckedCache)
 
 /-- Rebuild a source initializer at every receiver where ordered lookup selects it.
 An inapplicable owner is skipped; every applicable replay failure propagates. -/
-def refreshInitializerReceivers (fuel : Nat) (κ : Ctx) (c : CachedInitializer) (names : List String) :
+def refreshInitializerReceivers (fuel : Nat) (κ : Ctx) (c : CachedInitializer) (names : List String)
+    (sources : List InitializerSource := []) :
     Option (List CachedInitializer) :=
   match fuel with
   | 0 => none
   | n + 1 => match names with
     | [] => some []
     | cn :: names => do
-      let tail ← refreshInitializerReceivers n κ c names
+      let tail ← refreshInitializerReceivers n κ c names sources
       match memberRoute? κ.classes cn c.owner c.decl with
       | none => some tail
       | some _ => do
         let ctx := initializerBodyCtxAt κ cn c.owner
-        let body ← refreshInitializerBody n ctx c.body c.deriv
+        let body ← refreshInitializerBody n ctx c.body c.deriv sources
         some (⟨ctx, c.owner, cn, c.decl, body, c.deriv⟩ :: tail)
 
 /-- Initializers for every receiver precede members: their proved fields type self. -/
-def refreshInitializers (fuel : Nat) (κ : Ctx) (cache : List CachedInitializer) :
+def refreshInitializers (fuel : Nat) (κ : Ctx) (cache : List CachedInitializer)
+    (sources : List InitializerSource := []) :
     Option (List CachedInitializer) :=
   match fuel with
   | 0 => none
@@ -646,8 +648,8 @@ def refreshInitializers (fuel : Nat) (κ : Ctx) (cache : List CachedInitializer)
     | [] => some []
     | c :: cs => do
       let _ ← memberRoute? κ.classes c.owner c.owner c.decl
-      let bodies ← refreshInitializerReceivers n κ c (κ.classes.map (·.name)).eraseDups
-      let tail ← refreshInitializers n κ cs
+      let bodies ← refreshInitializerReceivers n κ c (κ.classes.map (·.name)).eraseDups sources
+      let tail ← refreshInitializers n κ cs sources
       some (bodies ++ tail)
 
 def refreshMemberReceivers (fuel : Nat) (κ : Ctx) (base : CheckedCache) (c : CachedMember)
@@ -689,7 +691,7 @@ def refreshClassBodies (fuel : Nat) (κ : Ctx) (cache : CheckedCache) : Option C
   match fuel with
   | 0 => none
   | n + 1 => do
-    let is ← refreshInitializers n κ (cache.initializers.filter fun c => c.receiver == c.owner)
+    let is ← refreshInitializers n κ (cache.initializers.filter fun c => c.receiver == c.owner) (initializerSources cache)
     let ms ← refreshMembers n κ { cache with initializers := is } (cache.members.filter fun c => c.receiver == c.owner)
     some { cache with initializers := is, members := ms }
 

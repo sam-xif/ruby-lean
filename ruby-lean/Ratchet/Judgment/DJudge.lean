@@ -205,12 +205,6 @@ so the rule and the conformance lemma agree by construction rather than by a rew
 def envAfter (Γ : Env) (x : String) (σ : Ty) : Env :=
   envSet (killClosOver (killAliasesTo Γ x) x σ) x σ
 
-/-- Argument-list syntax is interpreted specially by `startArgs`, rather than evaluated
-as an ordinary expression. A semantic argument premise must exclude those heads. -/
-def plainArgB : Expr → Bool
-  | .splat _ | .kwargs _ | .fwd => false
-  | _ => true
-
 /-! ## §2 The judgment
 
 `DJudge Γ e τ Γ' κ I κ' I'`: expression `e` transforms the incoming state index into the

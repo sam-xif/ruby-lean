@@ -1,15 +1,14 @@
-# Current resume point (2026-09-25, clink 174)
+# Current resume point (2026-09-25, clink 175)
 
-Fragment 65, checker reach 66, 49 rules, 50 worked theorems. Default new admits 066/069.
-For 067, SuperRoute/SuperLookup/SuperDispatch prove checked parent lookup and actual entry.
-FrameOk now retains method kind, so full conformance discharges super's activation premise.
-SuperState/SuperRun now compose checked parent lookup, annotation-domain entry, and real
-frameK return on the same fresh receiver. InitFrame additionally retains IvarStable types;
-return restores child locals while taking the parent's output spine. SuperInitControls starts
-from checked declarations and allocation, with arbitrary Integers and a field-snapshot witness.
-Next: initializer literal/argument composition and receiver/owner super-body cache/checker
-integration. No super typing rule yet. See implementation-notes.md clinks 170–174 and
-AGENTS.md's current state. The older handoff below is historical.
+Fragment 66, checker reach 69, 53 rules, 51 worked theorems. Explicit initializer super
+admits 067. SuperArgs/SuperExpr compose arbitrary positional arguments, full-domain parent
+entry and real frameK return. InitJudgeAll is the ninth registered judgment family.
+The checker replays retained parent annotations at the actual incoming fields and receiver/
+owner; hints contain only argument derivations. SuperCheckControls covers inherited bodies,
+bad uncalled overrides and argument writes; SuperDerivations independently proves whole 067
+for arbitrary Integers. Next: 070-class-ivar-lazy-nil needs an unset ivar read. Inherited
+implicit calls remain open. See implementation-notes.md clinks 170–175 and AGENTS.md's
+current state. The older handoff below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 

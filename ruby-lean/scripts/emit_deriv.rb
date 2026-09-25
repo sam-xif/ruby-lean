@@ -146,6 +146,7 @@ class Emitter
     @cls_ivars = {}    # class name -> [[ivar, ty], ...]
     @supers = {}       # class name -> superclass name
     @self_cls = nil
+    @current_method = nil
   end
 
   # -- helpers ------------------------------------------------------------
@@ -385,11 +386,29 @@ class Emitter
     end
 
     outer_env = @env
+    outer_method = @current_method
+    @current_method = name
     @env = sps.to_h { |p| [p["name"], p["ty"]] }
     dbody, = go(body)
     @env = outer_env
+    @current_method = outer_method
     [{ "rule" => "defDecl", "name" => name, "params" => sps, "ret" => sig["ret"],
        "body" => dbody }, SYM]
+  end
+
+  def n_super(n)
+    raise Blocked, "super outside an initializer is outside the fragment" unless @current_method == "initialize"
+    raise Blocked, "a block argument is outside the fragment" if n[2]
+
+    parent = @supers[@self_cls]
+    raise Blocked, "super has no declared parent" unless parent
+
+    sig = sig_for(parent, "initialize")
+    ds, ts = go_all(n[1])
+    raise Blocked, "super arity disagrees with the parent annotation" unless ts.length == sig["params"].length
+
+    (@cls_ivars[parent] || []).each { |name, ty| @ivars[name] = ty }
+    [{ "rule" => "superInit", "args" => ds }, sig["ret"]]
   end
 
   def n_class(n)

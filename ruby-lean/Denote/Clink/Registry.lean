@@ -19,8 +19,8 @@ import Denote.Clink.Form
 
 /-! The registry carries ordinary expressions/lists and scoped recursive bodies/arguments.
 Every constructor registers only with a proof of its constructor-derived semantic form.
-`ruleForm` replaces all eight judgment heads with family projections; a premise reaching
-an uncarried judgment is refused before registration. All 49 constructors are proved.
+`ruleForm` replaces all nine judgment heads with family projections; a premise reaching
+an uncarried judgment is refused before registration. All 53 constructors are proved.
 `DJudgeC` is their Church encoding, with unconditional semantic and safety interpretations. -/
 
 set_option autoImplicit false
@@ -33,7 +33,7 @@ open RubyCore Ratchet Ratchet.Denote
 
 /-! ## §1 The family -/
 
-/-- All eight syntactic families, including recursive and fresh-initializer premises. -/
+/-- All nine syntactic families, including recursive and fresh-initializer premises. -/
 structure DFam where
   judge : Env → Ratchet.Expr → Ty → Env → (κ : optParam Ctx ctx0) →
     (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
@@ -47,6 +47,7 @@ structure DFam where
   recArgs : Ctx → Ty → RecScope → Env → List Ratchet.Expr → List Ty → Env → Prop
   init : Ctx → Env → Ty → Ratchet.Expr → Ty → Ctx → Env → Ty → Prop
   initSeq : Ctx → Env → Ty → List Ratchet.Expr → Ty → Ctx → Env → Ty → Prop
+  initAll : Ctx → Env → Ty → List Ratchet.Expr → List Ty → Ctx → Env → Ty → Prop
 
 /-- The syntactic reading: `Ratchet/Judgment/DJudge.lean`'s own relations. -/
 def dsynFam : DFam where
@@ -58,6 +59,7 @@ def dsynFam : DFam where
   recArgs := DJudgeRecAll
   init := InitJudge
   initSeq := InitJudgeSeq
+  initAll := InitJudgeAll
 
 /-- The context-indexed run contract: safety at every fuel, typed answers, and full outgoing
 conformance. At top level it is equivalent to `SemSafeA`, including `SafeUnder`. -/
@@ -70,6 +72,7 @@ def dsemFam : DFam where
   recArgs := SemRecAll
   init := SemInitA
   initSeq := SemInitSeqA
+  initAll := SemInitAllA
 
 /-! ## §2 Registration
 
@@ -84,12 +87,13 @@ def dFamField : List (Name × Name) := [(``Ratchet.DJudge, ``DFam.judge),
   (``Ratchet.DJudgeAll, ``DFam.all), (``Ratchet.DJudgeSeq, ``DFam.seq),
   (``Ratchet.DJudgePairs, ``DFam.pairs), (``Ratchet.DJudgeRec, ``DFam.recBody),
   (``Ratchet.DJudgeRecAll, ``DFam.recArgs), (``Ratchet.InitJudge, ``DFam.init),
-  (``Ratchet.InitJudgeSeq, ``DFam.initSeq)]
+  (``Ratchet.InitJudgeSeq, ``DFam.initSeq), (``Ratchet.InitJudgeAll, ``DFam.initAll)]
 
-/-- The eight judgment inductives. Frozen so a new family cannot bypass registration. -/
+/-- The nine judgment inductives. Frozen so a new family cannot bypass registration. -/
 def dJudgmentInductives : List Name :=
   [``Ratchet.DJudge, ``Ratchet.DJudgeAll, ``Ratchet.DJudgeSeq, ``Ratchet.DJudgePairs,
-    ``Ratchet.DJudgeRec, ``Ratchet.DJudgeRecAll, ``Ratchet.InitJudge, ``Ratchet.InitJudgeSeq]
+    ``Ratchet.DJudgeRec, ``Ratchet.DJudgeRecAll, ``Ratchet.InitJudge, ``Ratchet.InitJudgeSeq,
+    ``Ratchet.InitJudgeAll]
 
 /-- Judgment inductives `DFam` does **not** carry a field for. A rule whose premises reach
 one of these cannot be registered: see `registerDClink`. -/
@@ -216,6 +220,7 @@ def DJudgeC (R : List (Clink dsynFam dsemFam)) : DFam where
   recArgs κ I s Γ es tys Γ' := ∀ F : DFam, Closed R F → F.recArgs κ I s Γ es tys Γ'
   init κ Γ I e τ κ' Γ' I' := ∀ F : DFam, Closed R F → F.init κ Γ I e τ κ' Γ' I'
   initSeq κ Γ I es τ κ' Γ' I' := ∀ F : DFam, Closed R F → F.initSeq κ Γ I es τ κ' Γ' I'
+  initAll κ Γ I es tys κ' Γ' I' := ∀ F : DFam, Closed R F → F.initAll κ Γ I es tys κ' Γ' I'
 
 /-- A derivation in the certified judgment, built the way `Denote/Clink/Spec.lean` §4
 describes: you are *handed* the rules (`hF c hc`) and never mention closure. Premise-free,
@@ -375,8 +380,8 @@ def dCompanionRules : List String :=
 -- The registry and its report agree about its size.
 #guard dclinks.length == dRegisteredRules.length
 
--- Thirty expression rules and eighteen companions; an unproved rule fails the gate.
-#guard dRegisteredRules.length == 49
+-- Thirty-one expression rules and twenty-two companions; an unproved rule fails the gate.
+#guard dRegisteredRules.length == 53
 #guard dUnregisteredRules == []
 
 -- Every judgment premise is represented in the semantic family.
@@ -387,8 +392,8 @@ def dCompanionRules : List String :=
 #guard dCompanionRules == ["DJudgeAll.nil", "DJudgeAll.cons", "DJudgeSeq.last", "DJudgeSeq.cons",
   "DJudgePairs.nil", "DJudgePairs.cons", "DJudgeRec.embed", "DJudgeRec.prim", "DJudgeRec.if'",
   "DJudgeRec.selfCall", "DJudgeRecAll.nil", "DJudgeRecAll.cons",
-  "InitJudge.var", "InitJudge.ivarAsgn", "InitJudge.seq", "InitJudge.ignoreResult",
-  "InitJudgeSeq.last", "InitJudgeSeq.cons"]
+  "InitJudge.intLit", "InitJudge.var", "InitJudge.ivarAsgn", "InitJudge.seq", "InitJudge.ignoreResult",
+  "InitJudge.superInit", "InitJudgeSeq.last", "InitJudgeSeq.cons", "InitJudgeAll.nil", "InitJudgeAll.cons"]
 
 -- Every family-blocked rule is unregistered, which `registerDClink` enforces and this states.
 #guard dFamBlockedRules.all (fun r => dUnregisteredRules.contains r)

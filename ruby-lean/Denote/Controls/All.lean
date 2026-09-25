@@ -62,6 +62,7 @@ import Denote.Controls.SubclassStateControls
 import Denote.Controls.SubclassTableControls
 import Denote.Controls.SuperLookupControls
 import Denote.Controls.SuperInitControls
+import Denote.Controls.SuperCheckControls
 import Denote.Clink.Controls
 
 /-!

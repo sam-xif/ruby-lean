@@ -42,6 +42,12 @@ structure CheckedCache where
   members : List CachedMember := []
   initializers : List CachedInitializer := []
 
+/-- Retain definition annotations for parent replay, independent of receiver-specific
+cached output fields. Each super use rechecks the actual selected code in its new context. -/
+def initializerSources (cache : CheckedCache) : List InitializerSource :=
+  (cache.initializers.filter fun c => c.receiver == c.owner).map fun c =>
+    ⟨c.owner, c.decl, c.body.params, c.body.ret, c.deriv⟩
+
 /-- Equal code tables alone do not pin annotations. Branches must also agree on cached
 signatures, rather than silently selecting one branch's declared parameter/field types. -/
 def cacheSignaturesB (a b : CheckedCache) : Bool :=

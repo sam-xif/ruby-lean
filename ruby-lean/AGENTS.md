@@ -16,9 +16,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 65 rungs, reach 17**, **49 registered rules** (31 expressions + 18 companions),
-**0 owed**, **0 exempt**. Checker reach is 66; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 50 rungs additionally carry a
+**Fragment 66 rungs, reach 17**, **53 registered rules** (31 expressions + 22 companions),
+**0 owed**, **0 exempt**. Checker reach is 69; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 51 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -86,10 +86,10 @@ coverage gaps. [`MainTyped.lean`](MainTyped.lean) reports checker reach;
 
 [`Ratchet/Judgment/DJudge.lean`](Ratchet/Judgment/DJudge.lean) defines `DJudge`, its three list companions,
 `DJudgeRec`/`DJudgeRecAll`, and sixteen `DPrim` rows; `InitJudge.lean` supplies the scoped
-initializer pair. [`Denote/Clink/Registry.lean`](Denote/Clink/Registry.lean) derives each constructor's
-semantic obligation and registers only proved rules. **All eight judgments are fields of
+initializer expression, sequence and argument judgments. [`Denote/Clink/Registry.lean`](Denote/Clink/Registry.lean) derives each constructor's
+semantic obligation and registers only proved rules. **All nine judgments are fields of
 `DFam`**: no raw syntactic premise may bypass the registry. `djudge_certified` uses the six-family
-mutual recursor and the initializer pair's independent registry bridge.
+mutual recursor and the initializer families' independent registry bridge.
 
 The bridge deliberately runs *from* the syntactic judgment *to* `DJudgeC`, rather than the
 checker returning a `DJudgeC` derivation: `Ratchet/` stays ignorant of `Denote/`, and
@@ -566,9 +566,15 @@ conformance discharges the activation premise. `SuperState`/`SuperRun` now prove
 initializer entry and real parent return on the same fresh receiver. InitFrame retains
 relative IvarStable-type preservation as well as the outer allocation anchor: child locals
 survive, but its receiver takes the parent's output spine. Checked-declaration controls
-exercise arbitrary Integer arguments and a changed field snapshot. Argument composition
-and full-domain super-body cache/checker integration still precede 067. No new admission
-or floor changes in this layer.
+exercise arbitrary Integer arguments and a changed field snapshot. `SuperArgs` composes
+arbitrary required positional arguments, retaining earlier values through later writes.
+`InitJudge.superInit` and `intLit`, plus the registered `InitJudgeAll` family, now admit 067.
+Parent replay uses retained annotations and checks the full body at the actual incoming
+fields, receiver and defining owner; the super hint supplies only argument derivations.
+An independent Integer-parameterized whole-067 derivation exercises all four new rules.
+Controls cover bad uncalled overrides, inherited super bodies and ordered argument writes.
+Fragment 66, checker reach 69, 53 rules, 51 worked theorems, no exemptions. The next
+frontier is 070's unset ivar read; inherited implicit calls remain open.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -676,7 +682,8 @@ String membership needs a payload invariant. See
 | `Ratchet/Controls/InheritanceControls.lean`, `Denote/Rules/Inherited/InheritedRules.lean`, `InheritanceDerivations.lean`, `Denote/Sem/Names/NativePrefix.lean` | Generic inherited-rule admission, proved native-prefix guard, full-domain negative controls and independently audited whole 065 |
 | `Denote/Sem/Names/RootLookup.lean`, `Denote/Rules/Constructor/DefaultAllocation.lean`, `DefaultConstructor.lean`, `DefaultConstructorControls.lean` | Generic root-tail lookup and default allocation/dispatch, checked class controls, and full-state root-initializer omission (§F43) |
 | `Ratchet/Guards/RootInit.lean`, `Denote/Sem/Names/RootInit.lean`, `RootInitWrite.lean`, `Denote/Controls/RootInitControls.lean` | Top-level-table-indexed root initializer conformance, generic write/extension transports, and full-old-state exclusion controls (§F43 closed) |
-| `Denote/Examples/Derivations.lean`, `ClassDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 49 concrete safety proofs |
+| `Denote/Rules/Super/SuperArgs.lean`, `SuperExpr.lean`, `Ratchet/Guards/SuperInit.lean`, `SuperCheckControls.lean` | Scoped explicit super admission, full-domain parent replay and ordered argument effects |
+| `Denote/Examples/Derivations.lean`, `ClassDerivations.lean`, `SuperDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 51 concrete safety proofs |
 | `Denote/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |
 | `Denote/Sem/Core/Boot.lean` | Executable boot conformance gate and its kernel soundness theorem |

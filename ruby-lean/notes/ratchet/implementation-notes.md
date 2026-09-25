@@ -10728,3 +10728,33 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 65, checker reach 66, 49 rules, 0 owed/exempt,
   50 worked theorems, 252 agree / 0 disagree. Metatheory and axiom audit pass; the
   combined checked-declaration control builds in about four seconds.
+
+## Clink 175 (2026-09-25) — certified initializer super
+
+- Sorbet 0.6.13405 again accepts 067 and rejects super("three") and super() against
+  Shape#initialize(Integer). InitJudge.intLit/superInit cite this basis. InitJudgeAll
+  supplies required positional arguments as the ninth registered family; all three scoped
+  initializer judgments cross the registry bridge, with no raw syntactic premise bypass.
+- SuperArgs evaluates arbitrary-length arguments left to right, transporting accumulated
+  IvarStable values through subsequent writes. SuperExpr composes this with checked parent
+  entry/return and derives absence of a forwarded block from full activation conformance.
+  The shared plainArgB guard is moved unchanged out of DJudge.
+- Parent replay metadata retains previously checked annotations, code and body hints,
+  independently of receiver-specific cached fields. Each super checks the actual route
+  after the current defining owner and freshly checks the full parent annotation domain
+  at the argument evaluation's outgoing fields. It preserves existing child fields and
+  locals. Whole-cache refresh supplies the complete source catalog, including when a
+  further subclass inherits a super body. Fuel bounds recursive replay.
+- The super hint supplies only argument derivations. The emitter tracks the current
+  initializer and parent signature/fields; all its claims remain checked. Negative controls
+  cover bad uncalled overrides, type/arity/hint mismatches, missing parents and unsupported
+  argument forms. Positive controls cover inherited super, preexisting fields, argument
+  writes and a two-argument order witness that executes to Integer 2.
+- Whole 067 has an independent Church derivation for arbitrary Integer arguments; its
+  concrete corpus instance executes to 3. The exact rule audit exercises all four new
+  constructors. Measured fragment 66, checker reach 69, 53 rules, 51 worked theorems;
+  all four floors raised, no exemptions. Next frontier: 070's unset ivar read.
+- The worked derivation uses maxRecDepth 2048 for finite guard normalization with a
+  symbolic Integer; heartbeat limits are unchanged. New semantic proofs build in under
+  a second each, the worked proof in about 1.5 seconds. Full quiet ratchet GREEN:
+  252 agree / 0 disagree, 0 owed/exempt. Metatheory and standard-axiom audit pass.

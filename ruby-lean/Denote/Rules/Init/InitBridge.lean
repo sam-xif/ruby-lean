@@ -12,13 +12,18 @@ theorem initJudge_certified {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {e : Ra
   refine InitJudge.rec
     (motive_1 := fun κ Γ I e τ κ' Γ' I' _ => F.init κ Γ I e τ κ' Γ' I')
     (motive_2 := fun κ Γ I es τ κ' Γ' I' _ => F.initSeq κ Γ I es τ κ' Γ' I')
-    ?_ ?_ ?_ ?_ ?_ ?_ h
+    (motive_3 := fun κ Γ I es tys κ' Γ' I' _ => F.initAll κ Γ I es tys κ' Γ' I')
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+  · intros; apply hF DClink.InitJudge.intLit (by simp [dclinks])
   · intros; apply hF DClink.InitJudge.var (by simp [dclinks]) <;> assumption
   · intros; apply hF DClink.InitJudge.ivarAsgn (by simp [dclinks]) <;> assumption
   · intros; apply hF DClink.InitJudge.seq (by simp [dclinks]) <;> assumption
   · intros; apply hF DClink.InitJudge.ignoreResult (by simp [dclinks]) <;> assumption
+  · intros; apply hF DClink.InitJudge.superInit (by simp [dclinks]) <;> assumption
   · intros; apply hF DClink.InitJudgeSeq.last (by simp [dclinks]) <;> assumption
   · intros; apply hF DClink.InitJudgeSeq.cons (by simp [dclinks]) <;> assumption
+  · intros; apply hF DClink.InitJudgeAll.nil (by simp [dclinks])
+  · intros; apply hF DClink.InitJudgeAll.cons (by simp [dclinks]) <;> assumption
 
 #print axioms initJudge_certified
 end Ratchet.Denote.Typed
