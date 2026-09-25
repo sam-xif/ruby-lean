@@ -89,8 +89,8 @@ def nativeProgramHint (receiver : String) : Deriv :=
 #guard validateD (nativeProgram "Store") (nativeProgramHint "Store")
 #guard !validateD (nativeProgram "Branch") (nativeProgramHint "Branch")
 
--- No initializer row does not mean a proved zero-argument allocator (frontier 066).
-#guard !validateD (.seq [.class' "Base" none .nil, child "Child" "Base",
+-- Proved default allocation checks both the declared chain and root absence.
+#guard validateD (.seq [.class' "Base" none .nil, child "Child" "Base",
   .send (some (.const "Child")) "new" [] none])
   (.seq [.classDecl "Base" none .nilLit, childHint "Child" "Base",
     .newInst "Child" [] (.inst "Child" .ivar0)])

@@ -73,14 +73,14 @@ def badInit : Expr := .class' "Broken" none (.def' "initialize" [.req "value"]
 #guard !validateD (cls "Counter" [.def' "unused" [] (.var .lvar "caller")])
   (clsHint "Counter" .int [.defDecl "unused" [] .int (.var .lvar "caller")])
 
--- Wrong arguments/arity/claimed field shape, wrong names, unsupported default allocator.
+-- Wrong arguments/arity/claimed field shape, wrong names; default allocation is now admitted.
 #guard !validateD (full "Packet" .tru) (fullHint "Packet" .int .truLit)
 #guard !validateD (.seq [cls "Packet", .send (some (.const "Packet")) "new" [] none])
   (.seq [clsHint "Packet" .int, .newInst "Packet" [] (.inst "Packet" (fields .int))])
 #guard !validateD (.seq [cls "Packet", newExpr "Packet" (.int 1)])
   (.seq [clsHint "Packet" .int, .newInst "Packet" [.intLit 1] (.inst "Packet" (fields .bool))])
 #guard !validateD (cls "Packet") (clsHint "Other" .int)
-#guard !validateD (.seq [.class' "EmptyBox" none (.int 1), .send (some (.const "EmptyBox")) "new" [] none])
+#guard validateD (.seq [.class' "EmptyBox" none (.int 1), .send (some (.const "EmptyBox")) "new" [] none])
   (.seq [.classDecl "EmptyBox" none (.intLit 1), .newInst "EmptyBox" [] (.inst "EmptyBox" .ivar0)])
 #guard (check 0 [] (cls "Packet") (clsHint "Packet" .int)).isNone
 

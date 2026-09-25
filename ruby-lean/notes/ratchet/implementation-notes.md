@@ -10642,3 +10642,24 @@ both halves of what constrains them now have a name.
   No rule or floor changes in this prerequisite.
 - Full quiet ratchet GREEN: fragment 63, checker reach 65, 48 rules, 0 owed/exempt,
   49 worked theorems, 252 agree / 0 disagree. Metatheory and axiom audit pass.
+
+## Clink 171 (2026-09-25) — certified default construction
+
+- newDefault follows the measured Sorbet zero-argument/default-instance behavior (clink
+  170), cited in its judgment docstring. Its generic semantic proof composes receiver and
+  argument evaluation with the real allocator. Empty argument types force zero runtime
+  arguments; allocation preserves all caller indices without a method-entry frame guard.
+- The checker selects this route only after proving initializer absence through the entire
+  declared chain and the top-level table. Missing cached initializer proofs never select
+  it. Initialized routes still consume full annotation-domain body proofs. The existing
+  newInst hint/schema/emitter already supplies the receiver, arguments and field claim.
+- Controls cover own/inherited default calls, extra arguments, forged fields and class
+  names, unknown classes, bad uncalled bodies, top-level initialize and an unrelated class's
+  initializer. Existing unsupported-default controls become positive regressions.
+- Whole 066 has an independent Church derivation, parameterized by the override String,
+  and executes to "Woof". Rule prediction selects default/own/inherited initialization from
+  declarations; the audit checks the exact proof-term rule set. No exemptions.
+- Measured 066 and 069 newly admitted: fragment 65, checker reach 66, 49 rules and
+  50 worked theorems. Raised all four floors; 067 remains gated on super dispatch.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree, 0 owed/exempt. Metatheory and
+  axiom audit pass; the new semantic and worked proofs build in under a second each.

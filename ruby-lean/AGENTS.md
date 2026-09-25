@@ -4,7 +4,7 @@ Three of the four libraries of the `ruby-lean` Lake package; the fourth is the m
 they are about (`RubyCore/`, described in [`README.md`](README.md)). The chronological
 record is [`notes/ratchet/`](notes/), the model's is `notes/model/`.
 
-## Current state (2026-09-15)
+## Current state (2026-09-25)
 
 The typed/safe gap is closed **by a theorem, not rung by rung**.
 [`Denote/Bridge.lean`](Denote/Bridge.lean) proves
@@ -16,9 +16,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 63 rungs, reach 17**, **48 registered rules** (30 expressions + 18 companions),
-**0 owed**, **0 exempt**. Checker reach is 65; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 49 rungs additionally carry a
+**Fragment 65 rungs, reach 17**, **49 registered rules** (31 expressions + 18 companions),
+**0 owed**, **0 exempt**. Checker reach is 66; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 50 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -550,8 +550,12 @@ actual initializer absence from the declared-prefix and root-table guards for an
 NewDispatch and declared-class conformance now retain positive builtin new lookup; the
 boot gate checks it, and all existing transports preserve it. Removing Class#new passes
 the previous conditional clauses but gates as unmodeled, pinned in ClassCtorControls.
-The default-constructor theorem now derives lookup from full conformance. Expression/rule
-and checker integration remain before 066. No rule, acceptance or floor changes yet.
+The default-constructor theorem now derives lookup from full conformance. `newDefault`
+composes it through receiver/argument evaluation, with declared-chain/root absence and
+zero-argument checks. Its docstring records the observed Sorbet basis. The existing emitter
+hint now admits 066 and 069; a String-parameterized whole-066 derivation exercises the new
+clink and the exact rule audit. Fragment 65, checker reach 66, 49 rules, 50 worked theorems,
+no exemptions. Next frontier: 067 needs super dispatch; inherited implicit calls remain open.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.

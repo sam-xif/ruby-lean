@@ -133,7 +133,8 @@ def inheritedSelectorB (C : CTable) (cn name : String) : Bool :=
 def explicitSendRule (C : CTable) (recv : Ratchet.Expr) (name : String) : String :=
   if name == "new" then
     match recv with
-    | .const cn => if inheritedSelectorB C cn "initialize" then "newInherited" else "newInst"
+    | .const cn => if noDeclaredSelectorB C cn "initialize" then "newDefault"
+      else if inheritedSelectorB C cn "initialize" then "newInherited" else "newInst"
     | _ => "newInst"
   else match recv with
   | .send (some (.const cn)) "new" _ none =>

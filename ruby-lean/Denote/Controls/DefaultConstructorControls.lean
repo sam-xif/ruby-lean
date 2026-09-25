@@ -3,7 +3,7 @@ import Denote.Bridge
 import Denote.Rules.Constructor.ConstructorLookup
 
 /-! Annotation-checked classes feeding default allocation, and the full-state root
-initializer omission witness. These controls do not admit a new checker rule. -/
+initializer omission witness. Both own and inherited default construction are checked. -/
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed.DefaultConstructorControls
 open RubyCore Ratchet Ratchet.Denote
@@ -54,9 +54,35 @@ theorem default_after_definitions (hb : bootOkB = true) {fuel rest : Nat} {v : V
 #guard match Interp.run 160 (evalFrom bootMachine (.seq [definitions, newExpr [.int 1]])) with
   | .uncaught exc m => isAName m.heap exc "ArgumentError"
   | _ => false
--- Positive new dispatch and rule integration still precede checker admission.
-#guard !validateD (.seq [definitions, newExpr []])
+-- Default allocation now carries a registered semantic rule.
+#guard validateD (.seq [definitions, newExpr []])
   (.seq [hint, .newInst "Satellite" [] (.inst "Satellite" .ivar0)])
+
+def newHint (name : String := "Satellite") (args : List Deriv := []) (fields : Ty := .ivar0) : Deriv :=
+  .newInst name args (.inst name fields)
+#guard validateD (.seq [definitions, useExpr])
+  (.seq [hint, .callMethodSig (newHint) "answer" [] (.cls "String")])
+#guard validateD (.seq [definitions, .send (some (.const "Depot")) "new" [] none])
+  (.seq [hint, newHint "Depot"])
+#guard !validateD (.seq [definitions, newExpr [.int 1]]) (.seq [hint, newHint "Satellite" [.intLit 1]])
+#guard !validateD (.seq [definitions, newExpr []])
+  (.seq [hint, newHint "Satellite" [] (.ivarCons "@fake" .int .ivar0)])
+#guard !validateD (.seq [definitions, newExpr []]) (.seq [hint, newHint "Depot"])
+#guard !validateD (newExpr []) (newHint)
+
+-- A bad uncalled body remains fatal even when construction needs no initializer body.
+#guard !validateD (.seq [base, .send (some (.const "Depot")) "new" [] none])
+  (.seq [.classDecl "Depot" none (.defDecl "answer" [] .int (.strLit "ready")), newHint "Depot"])
+
+-- A different class's initializer reserves the global name without changing root lookup.
+def unrelatedInit : Ratchet.Expr := .class' "Other" none (.def' "initialize" [.req "x"] (.var .lvar "x"))
+def unrelatedHint : Deriv := .classDecl "Other" none (.defDecl "initialize" [("x", .int)] .int (.var .lvar "x"))
+#guard validateD (.seq [unrelatedInit, definitions, newExpr []])
+  (.seq [unrelatedHint, hint, newHint])
+-- A real top-level initializer disables the default route, including inherited default new.
+#guard !validateD (.seq [.def' "initialize" [.req "x"] (.var .lvar "x"), definitions, newExpr []])
+  (.seq [.defDecl "initialize" [("x", .int)] .int (.var .lvar "x"), hint, newHint])
+
 
 def hiddenInit : MethodDef :=
   { owner := Boot.objectId, params := [.req "x"], body := .var .lvar "x",
