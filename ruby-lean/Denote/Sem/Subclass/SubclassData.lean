@@ -115,7 +115,8 @@ theorem framed {κ : Ctx} {Γ : Env} {I : Ty} {m n : Machine} {c : Cls}
     hd.nominal, fun _ ht _ hv => hd.denM ht hv, hfr,
     .of_unchanged (by rw [hh, size]; exact Nat.le_add_right _ _)
       (fun o ho => by funext x; simp only [hh, ivarOf, (fields ho).1])
-      (fun _ ht _ hv => hd.denM ht hv)⟩
+      (fun _ ht _ hv => hd.denM ht hv),
+    fun o ho e he => by rw [hh, (fields ho).2.2.1]; exact he⟩
 
 #print axioms dataPres
 #print axioms framed

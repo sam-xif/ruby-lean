@@ -595,9 +595,11 @@ outgoing conformance from input guards; controls compose a real boot definition 
 same-selector ordinary definition and recover the retained singleton code. `ConstFallback`
 now constrains metaclass inheritance lookup separately from lexical lookup; boot, class sites
 and all transports retain it. Stored singleton code proves the real frame's constant scope.
-A hidden-metaclass constant witness motivates the contract (§F44). Full activation/return
-and annotation-domain admission remain before 073; no rule or floor changes in these
-prerequisites. See clinks 177–181.
+A hidden-metaclass constant witness motivates the contract (§F44). Framed now pins cached
+eigen pointers of old live objects. SingletonScopeAt separates class self/cref from cached
+defmod; required entry and nested return establish and restore this physical scope. Full
+activation/return conformance and annotation-domain admission remain before 073; no rule or
+floor changes in these prerequisites. See clinks 177–182.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.

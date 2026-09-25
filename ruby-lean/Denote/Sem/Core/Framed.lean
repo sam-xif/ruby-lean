@@ -135,22 +135,29 @@ structure Framed (m m' : Machine) : Prop where
   frames : FramePres m m'
   /-- Saved receivers retain field types even when `Ty.inst` cannot describe them. -/
   fields : FieldsPres m m'
+  /-- A saved singleton activation retains an already cached dispatch owner. This permits
+      future allocation of a previously absent eigenclass; it pins only existing caches. -/
+  cachedEigen : ∀ o, o < m.heap.objs.size → ∀ e, (m.heap.get o).eigen = some e →
+    (m'.heap.get o).eigen = some e
 
 theorem Framed.refl (m : Machine) : Framed m m :=
-  ⟨rfl, fun _ h => h, fun _ _ h => h, fun _ _ _ h => h, .refl m, .refl m⟩
+  ⟨rfl, fun _ h => h, fun _ _ h => h, fun _ _ _ h => h, .refl m, .refl m, fun _ _ _ h => h⟩
 
 theorem Framed.trans {m₁ m₂ m₃ : Machine} (h₁ : Framed m₁ m₂) (h₂ : Framed m₂ m₃) :
     Framed m₁ m₃ :=
   ⟨by rw [h₂.stack, h₁.stack], fun k h => h₂.cls k (h₁.cls k h),
     fun v n h => h₂.nominal v n (h₁.nominal v n h),
     fun τ ht v h => h₂.firstOrder τ ht v (h₁.firstOrder τ ht v h),
-    h₁.frames.trans h₂.frames h₁.stack, h₁.fields.trans h₂.fields⟩
+    h₁.frames.trans h₂.frames h₁.stack, h₁.fields.trans h₂.fields,
+    fun o ho e he => h₂.cachedEigen o (Nat.lt_of_lt_of_le ho h₁.fields.size) e
+      (h₁.cachedEigen o ho e he)⟩
 
 /-- Equal heaps/stacks do not imply frame preservation; callers must supply it explicitly. -/
 theorem Framed.of_heap_stack {m m' : Machine} (hh : m'.heap = m.heap)
     (hs : m'.stack = m.stack) (hf : FramePres m m') : Framed m m' :=
   ⟨hs, fun k h => by rw [hh]; exact h, fun v n h => by rw [hh]; exact h,
-    fun _ ht _ h => (denM_heap_only ht hh.symm).mp h, hf, .of_heap_eq hh⟩
+    fun _ ht _ h => (denM_heap_only ht hh.symm).mp h, hf, .of_heap_eq hh,
+    fun _ _ _ he => by rw [hh]; exact he⟩
 
 /-- Recover a retained receiver's fields, including completeness when requested.
 Liveness concerns the incoming receiver, not the callee's potentially different self. -/

@@ -174,7 +174,8 @@ theorem Framed_defineMethod (m : Machine) (cls : ObjId) (name : String) (md : Me
    fun τ ht v hv => (denM_defineMethod ht rfl).mp hv, FramePres.of_eq rfl rfl,
    .of_unchanged (by simp only [Proof.objs_size_defineMethod]; exact Nat.le_refl _)
      (fun _ _ => ivarOf_defineMethod m.heap cls name md _)
-     (fun _ ht _ hv => (denM_defineMethod ht rfl).mp hv)⟩
+     (fun _ ht _ hv => (denM_defineMethod ht rfl).mp hv),
+   fun _ _ _ he => by rw [Proof.get_defineMethod_eigen]; exact he⟩
 
 theorem methodOn_eq_go (h : Heap) (k : ObjId) (name : String) :
     Interp.methodOn h k name = lookup.go h name (ancestors h k) := by

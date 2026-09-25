@@ -10891,3 +10891,20 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
   52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
   New fallback/scope proofs and controls build in under one second each.
+
+## Clink 182 (2026-09-25) — retain singleton scope across nested calls
+
+- Framed now pins existing cached eigen pointers on live incoming objects. It permits
+  allocating a previously absent eigenclass. Equal heaps, allocation/initialization,
+  ordinary/singleton method writes and fresh class/subclass publication prove the field;
+  composition and method return preserve it. Names and ivar types alone did not expose it.
+- SingletonScopeAt records class-valued self, lexical cref and the distinct cached defmod.
+  Stored code establishes it at required entry. Framing restores it after a nested call,
+  using the nonempty stack and post-callee phase facts; post-body class sites then recover
+  constant scope. Controls compose retained code, entry and arbitrary framed nested return.
+- This is physical scope, not full StateOk. Next: represent singleton frame/self and runtime
+  scope in the static context, prove full entry/return, then constructors/body admission.
+  No new typing judgment, rule or floor change; 073 remains unadmitted.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
+  the new scope/entry proofs and controls build in under one second each.

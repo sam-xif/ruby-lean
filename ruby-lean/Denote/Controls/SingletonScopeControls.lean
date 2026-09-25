@@ -1,4 +1,4 @@
-import Denote.Sem.Singleton.SingletonScope
+import Denote.Rules.Singleton.SingletonEntry
 import Denote.Controls.SingletonInstallControls
 
 /-! Metaclass constant fallback is independent of ordinary lexical-class agreement. -/
@@ -25,20 +25,32 @@ private def activation : Machine :=
 
 theorem recorded_scope {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Cls} {d : Defn}
     (hm : StateOk κ Γ I m) (hc : c ∈ κ.classes) (hd : d ∈ c.smethods)
+    (hp : m.preludeMode = false)
     (names : List String) (args : List Value) :
     ∃ k e md, classNamed? m.heap c.name = some k ∧ SingletonMethodCode k e md ∧
+      SingletonScopeAt c.name k e
+        (pushMethodFrame m (requiredFrame (.ref k) d.name md names args)) ∧
       ConstScopeOk (pushMethodFrame m (requiredFrame (.ref k) d.name md names args)) := by
   obtain ⟨k, hk, _, rows⟩ := hm.classes c hc
   obtain ⟨e, md, he, _, _, _, _, _, code⟩ := rows d hd
-  refine ⟨k, e, md, hk, code, ?_⟩
-  apply InstanceSite.singleton_constScope
-    (m := pushMethodFrame m (requiredFrame (.ref k) d.name md names args))
-    (hm.classSites.at_class hc hk)
-  · rw [currentFrame_pushMethodFrame]
-    exact code.cref
-  · rw [currentFrame_pushMethodFrame]
-    change md.owner = classOf m.heap (.ref k)
-    simp only [code.owner, classOf, he]
+  have site := hm.classSites.at_class hc hk
+  have scope := singleton_required_scope (name := d.name) names args hk site.live he code hp
+  exact ⟨k, e, md, hk, code, scope, scope.constScope site⟩
+
+-- A caller can resume after a nested body that allocates or changes method tables.
+-- Post-body sites justify constants; cached-owner identity must come from framing.
+theorem nested_return {κ : Ctx} {cn name : String} {k e : ObjId} {m n : Machine}
+    {md : MethodDef} {f : RubyCore.Frame} (names : List String) (args : List Value)
+    (site : InstanceSite κ cn k m.heap) (he : (m.heap.get k).eigen = some e)
+    (code : SingletonMethodCode k e md) (hp : m.preludeMode = false)
+    (hc : f.captured = none)
+    (h : Framed (pushMethodFrame
+      (pushMethodFrame m (requiredFrame (.ref k) name md names args)) f) n)
+    (hn : n.preludeMode = false) (post : InstanceSite κ cn k n.heap) :
+    SingletonScopeAt cn k e (popMethodFrame n) ∧ ConstScopeOk (popMethodFrame n) := by
+  have scope := singleton_required_scope (name := name) names args site.named site.live he code hp
+  have restored := singleton_pop_scope scope (by simp [FrameInRange, pushMethodFrame]) hc h hn
+  exact ⟨restored, restored.constScope post⟩
 
 theorem hidden_meta_not_site {κ : Ctx} {h : Heap} {cn name : String} {k owner : ObjId} {v : Value}
     (he : classOf h (.ref k) = owner) (hn : constLookup h name = none)
@@ -50,5 +62,6 @@ theorem hidden_meta_not_site {κ : Ctx} {h : Heap} {cn name : String} {k owner :
 
 #print axioms hidden_meta_not_site
 #print axioms recorded_scope
+#print axioms nested_return
 
 end Ratchet.Denote.Typed.SingletonScopeControls
