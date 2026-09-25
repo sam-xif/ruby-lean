@@ -167,11 +167,9 @@ class Emitter
     raise Blocked, "no signature for #{owner}##{name}"
   end
 
-  # A declared `Ty.cls C` for a *user* class C, recovered as `Ty.inst C <spine>`.
-  # The known gap: a signature says `Point` and carries no ivar spine, but
-  # `Ratchet/Lang/Ty.lean` types an instance as `.inst name <spine>`. Where the class
-  # body has been seen the spine is known; where it has not, the `.cls` stays
-  # and the first method call on it blocks.
+  # Propose a known initialized-instance domain for a user-class annotation.
+  # At calls this is only a result hint: the checker must have retained a body
+  # proof of those fields. The nominal annotation alone cannot establish them.
   def as_inst(t)
     if t["tag"] == "cls" && @cls_ivars.key?(t["name"])
       { "tag" => "inst", "name" => t["name"], "ivars" => spine(@cls_ivars[t["name"]]) }
@@ -345,13 +343,15 @@ class Emitter
     end
     if tr["tag"] == "clsOf"
       sig = sig_for("<Class:#{tr['name']}>", m)
+      result = as_inst(sig["ret"])
       return [{ "rule" => "callSingleton", "recv" => dr, "name" => m, "args" => dargs,
-                "ret" => sig["ret"] }, sig["ret"]]
+                "ret" => result }, result]
     end
     if tr["tag"] == "inst"
       sig = sig_for(tr["name"], m)
+      result = as_inst(sig["ret"])
       return [{ "rule" => "callMethodSig", "recv" => dr, "name" => m, "args" => dargs,
-                "ret" => sig["ret"] }, sig["ret"]]
+                "ret" => result }, result]
     end
     raise Blocked, "no builtin signature for #{tr["tag"]}##{m}/#{targs.length}"
   end
@@ -364,7 +364,8 @@ class Emitter
     dargs, = go_all(args)
     owner = @self_cls || "Object"
     sig = sig_for(owner, m)
-    [{ "rule" => "callSig", "name" => m, "args" => dargs, "ret" => sig["ret"] }, sig["ret"]]
+    result = as_inst(sig["ret"])
+    [{ "rule" => "callSig", "name" => m, "args" => dargs, "ret" => result }, result]
   end
 
   def new_inst(name, args)

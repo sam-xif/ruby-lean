@@ -16,9 +16,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 70 rungs, reach 17**, **58 registered rules** (36 expressions + 22 companions),
-**0 owed**, **0 exempt**. Checker reach is 75; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 55 rungs additionally carry a
+**Fragment 71 rungs, reach 17**, **59 registered rules** (37 expressions + 22 companions),
+**0 owed**, **0 exempt**. Checker reach is 76; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 56 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -613,9 +613,10 @@ scalarIvarAsgn: Integer/Float/Symbol/nil observations survive across all nested 
 Boolean needs a weaker framing contract (§F45); no consumer was weakened. FrozenError ancestry
 is checked by primitiveErrorsB, and the real frozen assignment path is covered. 075 generalizes
 defDecl to declared classes separated from Object, retaining installed ordinary/singleton
-rows and full body-cache refresh. Fragment 70, checker reach 75, 58 rules, 55 worked theorems,
-no exemptions. Next: 076's self-returning method loses the initialized-instance refinement at
-its nominal result annotation. See clinks 177–187.
+rows and full body-cache refresh. 076 registers selfRead and retains a separately proved body
+result beside the declared return annotation. Calls can select either proved result, including
+initialized fields, without recovering them from a nominal type. Fragment 71, checker reach 76,
+59 rules, 56 worked theorems, no exemptions. Next: 077's module declaration. See clinks 177–188.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.

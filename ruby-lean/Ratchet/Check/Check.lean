@@ -121,22 +121,26 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
         let c ← findMember κ f.cls name cache.members
         if hf : fields = c.fields then do
         if hp : c.body.params = [] then do
-        if c.body.ret != ret then none else do
+        let result ← c.body.resultAt ret
         if hn : c.decl.name ≠ "initialize" then do
         if hd : directCallNameB c.decl.name = true then do
         if hg : instanceCallB κ Γ I = true then
-          some ⟨c.body.ret, Γ, κ, I, by
+          some ⟨ret, Γ, κ, I, by
             simpa only [c.nameOk] using
               (DJudge.vcallMethodSig (Γ := Γ) (I := I)
                 (by simpa only [f.nameOk, hf] using hs) f.member c.installed hn hd
                 (by simpa only [hp, List.map_nil] using c.body.paramShape)
-                c.body.returnFO c.fieldsFO (by simpa only [hp] using c.body.judged) hg), cache⟩
+                result.firstOrder c.fieldsFO (by simpa only [hp] using result.judged) hg), cache⟩
         else none
         else none
         else none
         else none
         else none
       | _ => none
+    | .self', .selfExpr => do
+      match hs : κ.selfTy with
+      | some τ => some ⟨τ, Γ, κ, I, .selfRead hs, cache⟩
+      | none => none
     | .var .lvar x, .var .lvar x' =>
       if x == x' then
         match hg : envGet? Γ x with
@@ -243,14 +247,14 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
         let f ← findClass cn a.ctx.classes
         let c ← findSingleton a.ctx f.cls name a.cache.singletons
         if ht : a.tys = c.body.params.map (·.2) then do
-        if c.body.ret != ret then none else do
+        let result ← c.body.resultAt ret
         if hn : directCallNameB c.decl.name = true then do
         if hg : instanceCallB a.ctx a.out a.spine = true then
-          some ⟨c.body.ret, a.out, a.ctx, a.spine, by
+          some ⟨ret, a.out, a.ctx, a.spine, by
             simpa only [c.nameOk] using
               (DJudge.callSingleton (by simpa only [hrty, f.nameOk] using r.judged)
                 (by simpa only [ht] using a.judged) f.member c.installed hn
-                c.body.paramShape c.body.paramsFO c.body.returnFO c.body.judged hg), a.cache⟩
+                c.body.paramShape c.body.paramsFO result.firstOrder result.judged hg), a.cache⟩
         else none
         else none
         else none
@@ -268,7 +272,7 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
         let c ← findMemberAt a.ctx f.cls name a.cache.members
         if hf : fields = c.fields then do
         if ht : a.tys = c.body.params.map (·.2) then do
-        if c.body.ret != ret then none else do
+        let result ← c.body.resultAt ret
         if hs : explicitReceiverB recv = true then do
         if hn : c.decl.name ≠ "initialize" then do
         if hd : directCallNameB c.decl.name = true then do
@@ -277,16 +281,16 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
             simpa only [hrty, hf, f.nameOk] using r.judged
           if ho : c.owner = f.cls.name then do
             let ⟨hm⟩ ← defnMem? c.decl f.cls.methods
-            some ⟨c.body.ret, a.out, a.ctx, a.spine, by
+            some ⟨ret, a.out, a.ctx, a.spine, by
               simpa only [c.nameOk] using
                 (DJudge.callMethodSig hr (by simpa only [ht] using a.judged) hs f.member hm
-                  hn hd c.body.paramShape c.body.paramsFO c.body.returnFO c.fieldsFO
-                  (c.own_judged ho) hg), a.cache⟩
+                  hn hd c.body.paramShape c.body.paramsFO result.firstOrder c.fieldsFO
+                  (c.own_judged ho result.judged) hg), a.cache⟩
           else if hnative : nativeInstanceFreeB c.decl.name = true then
-            some ⟨c.body.ret, a.out, a.ctx, a.spine, by
+            some ⟨ret, a.out, a.ctx, a.spine, by
               simpa only [c.nameOk] using
                 (DJudge.callInherited hr (by simpa only [ht] using a.judged) hs f.member c.route
-                  hn hd hnative c.body.paramShape c.body.paramsFO c.body.returnFO c.fieldsFO c.body.judged hg), a.cache⟩
+                  hn hd hnative c.body.paramShape c.body.paramsFO result.firstOrder c.fieldsFO result.judged hg), a.cache⟩
           else none
         else none
         else none
@@ -441,7 +445,7 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
       let a ← checkAll n Γ args ds κ I cache
       let c ← findBody a.ctx a.spine name a.cache.top
       if ht : a.tys = c.body.params.map (·.2) then do
-      if hr : c.body.ret = ret then do
+      let result ← c.body.resultAt ret
       if hstart : κ.scope.runtimeMain = true then do
       if hm : a.ctx.scope.runtimeMain = true then do
       if hs : a.ctx.selfTy = none then do
@@ -450,12 +454,11 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
       if ha : a.ctx.asms = [] then do
       if hi : FirstOrder a.spine = true then do
       if hg : a.out.all (fun p => FirstOrder (stripAlias p.2)) = true then
-        some ⟨c.body.ret, a.out, a.ctx, a.spine, by
+        some ⟨ret, a.out, a.ctx, a.spine, by
           simpa only [c.nameOk] using
-            (DJudge.callSig c.body.paramShape c.body.paramsFO c.body.returnFO c.body.judged
+            (DJudge.callSig c.body.paramShape c.body.paramsFO result.firstOrder result.judged
               (by simpa only [ht] using a.judged) c.installed hstart hm hs hb hco ha hi
               (List.all_eq_true.mp hg)), a.cache⟩
-      else none
       else none
       else none
       else none
@@ -543,13 +546,21 @@ def checkMethodBody (fuel : Nat) (κ : Ctx) (I : Ty) (decl : Defn) (d : Deriv)
                     (by simpa only [hret] using r.judged), cache⟩
               else none
             else none
+          let raw := c
+          let refined : Option ((ty : Ty) × CheckedResult κ I decl ps ty) := do
+            if hfo : FirstOrder raw.ty = true then do
+              let ⟨hc⟩ ← ctxEq? raw.ctx κ
+              if hi : raw.spine = I then
+                some ⟨raw.ty, raw.out, hfo, by simpa only [hc, hi] using raw.judged⟩
+              else none
+            else none
           let c ← checkResult c ret
           if hret : c.ty = ret then do
             let ⟨hctx⟩ ← ctxEq? c.ctx κ
             if hspine : c.spine = I then
               some ⟨ps, ret, c.out, paramEqAll_sound hp,
                 by simpa only [List.all_eq_true, Bool.and_eq_true, Bool.not_eq_true'] using ht,
-                hr, by simpa only [hret, hctx, hspine] using c.judged⟩
+                hr, by simpa only [hret, hctx, hspine] using c.judged, refined⟩
             else none
           else none
         else none

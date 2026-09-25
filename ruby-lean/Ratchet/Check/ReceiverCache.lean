@@ -36,14 +36,16 @@ structure CallableMemberAt (κ : Ctx) (c : Cls) (name : String) where
 
 /-- Equal receiver/owner names recover the existing own-method rule, with all annotation
 indices retained. Eliminate the record before equality to respect its dependent body. -/
-theorem CallableMemberAt.own_judged {κ : Ctx} {c : Cls} {name : String}
-    (b : CallableMemberAt κ c name) (ho : b.owner = c.name) :
-    DJudge b.body.params b.decl.body b.body.ret b.body.out
+theorem CallableMemberAt.own_judged {κ : Ctx} {c : Cls} {name : String} {τ : Ty} {Γb : Env}
+    (b : CallableMemberAt κ c name) (ho : b.owner = c.name)
+    (hb : DJudge b.body.params b.decl.body τ Γb
+      (instanceBodyCtx κ ⟨c.name, b.owner, b.decl.name, false⟩ b.fields) b.fields) :
+    DJudge b.body.params b.decl.body τ Γb
       (instanceBodyCtx κ ⟨c.name, c.name, b.decl.name, false⟩ b.fields) b.fields := by
   rcases b with ⟨owner, decl, hn, route, fields, hf, body⟩
   dsimp at ho ⊢
   subst owner
-  exact body.judged
+  exact hb
 
 def findMemberAt (κ : Ctx) (c : Cls) (name : String) : List CachedMember → Option (CallableMemberAt κ c name)
   | [] => none

@@ -63,7 +63,7 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
     (motive_5 := fun κ I s Γ e τ Γ' _ => F.recBody κ I s Γ e τ Γ')
     (motive_6 := fun κ I s Γ es tys Γ' _ => F.recArgs κ I s Γ es tys Γ')
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals intros
   · apply hF DClink.intLit (by simp [dclinks]) <;> assumption
   · apply hF DClink.fltLit (by simp [dclinks]) <;> assumption
@@ -114,6 +114,7 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
       hret hout (initJudge_certified hb F hF) hg
   · apply hF DClink.instanceType (by simp [dclinks]) <;> assumption
   · apply hF DClink.scalarIvarAsgn (by simp [dclinks]) <;> assumption
+  · apply hF DClink.selfRead (by simp [dclinks]) <;> assumption
   · apply hF DClink.DJudgeAll.nil (by simp [dclinks]) <;> assumption
   · apply hF DClink.DJudgeAll.cons (by simp [dclinks]) <;> assumption
   · apply hF DClink.DJudgeSeq.last (by simp [dclinks]) <;> assumption

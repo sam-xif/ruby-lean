@@ -1,10 +1,18 @@
-# Current resume point (2026-09-25, clink 187)
+# Current resume point (2026-09-25, clink 188)
 
-075 is admitted through validateD: fragment 70, checker reach 75, 58 registered rules,
-55 worked theorems, no exemptions. Next frontier: 076-class-self-returning-method.
-Point.new(7).myself.getX loses the initialized-instance refinement at myself's Point result
-annotation. A nominal result alone cannot recover exact receiver/field facts; investigate
-retaining a proved body-result refinement alongside the declared signature.
+076 is admitted through validateD: fragment 71, checker reach 76, 59 registered rules,
+56 worked theorems, no exemptions. Next frontier: 077-module-basic, `module M; def self.foo;
+1; end; end; M.foo`. The emitter blocks module nodes. Inspect the real module allocation,
+scope and singleton lookup contracts, plus Sorbet's unannotated-method manifest, before
+adapting class machinery; module and ordinary class payload facts are not interchangeable.
+
+selfRead consumes incoming selfTy conformance. CheckedBody keeps its declared result proof
+and an optional CheckedResult from the body before nominal widening. resultAt selects only
+one of those proofs; all call routes consume it without rechecking bodies at argument values.
+Refresh still uses original annotations, and branch signatures also compare refined types.
+The emitter proposes known initialized-instance result hints, which cannot pass on nominal
+evidence alone. SelfResultDerivations independently proves 076 for every Integer. Rule prediction
+now records erased result class annotations as well as scoped parameter domains.
 
 defDecl now uses topDeclClassesB: either no classes, or non-root class names and a selector
 other than new. TopMethodInstall preserves existing code, singleton rows, own selectors,
@@ -26,7 +34,7 @@ calls consume exact context/code artifacts. Inherited singletons remain open, an
 self.new still has only its semantic proof. Nominal conversion only forgets information;
 it cannot recover exact receivers or initialized fields from a nominal annotation.
 
-See clinks 177–187 and AGENTS.md. Older text below is historical.
+See clinks 177–188 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 

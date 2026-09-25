@@ -7,6 +7,13 @@ neither cached signatures nor a receiver's call-site shape can stand in for a bo
 set_option autoImplicit false
 namespace Ratchet
 
+/-- A result checked over the entire parameter domain, with its own outgoing locals.
+This proof can retain information that the declared return annotation forgets. -/
+structure CheckedResult (κ : Ctx) (I : Ty) (decl : Defn) (params : List SigParam) (ty : Ty) where
+  out : Env
+  firstOrder : FirstOrder ty = true
+  judged : DJudge params decl.body ty out κ I κ I
+
 structure CheckedBody (κ : Ctx) (I : Ty) (decl : Defn) where
   params : List SigParam
   ret : Ty
@@ -15,6 +22,16 @@ structure CheckedBody (κ : Ctx) (I : Ty) (decl : Defn) where
   paramsFO : ∀ p ∈ params, FirstOrder p.2 = true ∧ isAliasTy p.2 = false
   returnFO : FirstOrder ret = true
   judged : DJudge params decl.body ret out κ I κ I
+  refined : Option ((ty : Ty) × CheckedResult κ I decl params ty) := none
+
+/-- Call hints choose only between two body proofs; a nominal annotation grants no fields. -/
+def CheckedBody.resultAt {κ : Ctx} {I : Ty} {decl : Defn}
+    (b : CheckedBody κ I decl) (ty : Ty) : Option (CheckedResult κ I decl b.params ty) := do
+  if he : b.ret = ty then
+    some ⟨b.out, he ▸ b.returnFO, he ▸ b.judged⟩
+  else do
+    let ⟨actual, result⟩ ← b.refined
+    if he : actual = ty then some (he ▸ result) else none
 
 structure CachedBody where
   ctx : Ctx
@@ -55,12 +72,12 @@ def initializerSources (cache : CheckedCache) : List InitializerSource :=
 /-- Equal code tables alone do not pin annotations. Branches must also agree on cached
 signatures, rather than silently selecting one branch's declared parameter/field types. -/
 def cacheSignaturesB (a b : CheckedCache) : Bool :=
-  (a.singletons.map fun c => (c.owner, c.decl.name, c.body.params, c.body.ret)) ==
-    (b.singletons.map fun c => (c.owner, c.decl.name, c.body.params, c.body.ret)) &&
-  (a.top.map fun c => (c.decl.name, c.body.params, c.body.ret, c.spine)) ==
-    (b.top.map fun c => (c.decl.name, c.body.params, c.body.ret, c.spine)) &&
-  (a.members.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.spine)) ==
-    (b.members.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.spine)) &&
+  (a.singletons.map fun c => (c.owner, c.decl.name, c.body.params, c.body.ret, c.body.refined.map (·.1))) ==
+    (b.singletons.map fun c => (c.owner, c.decl.name, c.body.params, c.body.ret, c.body.refined.map (·.1))) &&
+  (a.top.map fun c => (c.decl.name, c.body.params, c.body.ret, c.spine, c.body.refined.map (·.1))) ==
+    (b.top.map fun c => (c.decl.name, c.body.params, c.body.ret, c.spine, c.body.refined.map (·.1))) &&
+  (a.members.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.spine, c.body.refined.map (·.1))) ==
+    (b.members.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.spine, c.body.refined.map (·.1))) &&
   (a.initializers.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.body.fields)) ==
     (b.initializers.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.body.fields))
 

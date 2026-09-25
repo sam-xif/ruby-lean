@@ -71,10 +71,8 @@ flexibility, with the obligation as the forcing function.
 
 ## What is deliberately not in the judgment yet
 
-`DJudge` has eighteen rules (plus six in the three list companions). Everything else a `Deriv` can express —
-`callMethodSig`, `classDecl`, `newInst`, `ivarRead`, `ivarAsgn`, `constCls`,
-`selfExpr` — answers `none`, by name, in `check`'s last arms. They join a rule at
-a time, and each one joining is a rung.
+An untrusted `Deriv` hint is accepted only through a proved constructor below.
+Unsupported hints still answer `none`; the registry checks every constructor's semantics.
 
 `DJudge` now carries distinct incoming/outgoing contexts and ivar spines, as do all three
 companions. Guards and state transitions are copied from the context-general semantic
@@ -497,6 +495,12 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       reframeTypesB κ' I' = true → localTypesB Γ' = true →
       DJudge Γ (.vasgn .ivar x e) ρ Γ' κ I κ' I'
 
+  /-- Sorbet 0.6.13405 accepts 076's self result and renamed variants, and rejects a
+  self body declared Integer or a Boolean body declared Point (clink 188).
+  The result comes from incoming self conformance, never from the return annotation. -/
+  | selfRead {κ : Ctx} {Γ : Env} {I τ : Ty} :
+      κ.selfTy = some τ → DJudge Γ .self' τ Γ κ I
+
 inductive DJudgeAll : Env → List Expr → List Ty → Env → (κ : optParam Ctx ctx0) →
     (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
   | nil {κ : Ctx} {Γ : Env} {I : Ty} : DJudgeAll Γ [] [] Γ κ I
@@ -569,7 +573,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_4 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_5 := fun _ _ _ _ _ _ _ _ => True)
     (motive_6 := fun _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first | rfl | trivial | assumption
 
 end Ratchet

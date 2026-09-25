@@ -11035,3 +11035,28 @@ both halves of what constrains them now have a name.
   55 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
   New production proof builds in 0.2s, whole-program derivation in 0.9s; no proof exceeded
   five minutes. Floors raised; no model or emitter changes.
+
+## Clink 188 (2026-09-25) — retain proved method results and admit self
+
+- Sorbet 0.6.13405 accepts 076, renamed variants and returning a fresh Point instead of self.
+  It rejects an uncalled self body declared Integer and a Boolean body declared Point.
+  Register selfRead against the existing full-conformance semantic proof; its docstring cites
+  these measurements. The result type comes from selfTy, never the method annotation.
+- CheckedBody retains both its original annotation proof and an optional first-order
+  CheckedResult from the body before nominal widening. Each result carries its own outgoing
+  locals and exact context/spine proof. resultAt accepts only a requested type with that proof.
+  All explicit, implicit, inherited, singleton and top-level calls use the selected proof;
+  definition and refresh still use the original annotations over the full parameter domain.
+- Branch cache signatures include retained result types. No nominal-to-instance cast exists:
+  an opaque nominal parameter stays nominal. Existing instanceType only forgets information.
+  The emitter may propose a known initialized-instance result; missing body evidence rejects
+  that hint. Constructor/parameter annotation policies are unchanged.
+- Controls cover renamed classes, Boolean fields, self through a local alias, both result
+  choices, wrong annotations/fields, opaque nominal results, and singleton/top-level/implicit
+  result selection. Independent SelfResultDerivations certifies whole 076 at every Integer;
+  execution returns 7. Rule prediction follows separately recorded result class annotations
+  for chained dispatch, with exact per-rung proof extraction and no exemptions.
+- Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
+  56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
+  new builds take seconds, none near five minutes. Floors raised. Next: 077's module scope
+  and singleton methods, including the unannotated-method manifest boundary.
