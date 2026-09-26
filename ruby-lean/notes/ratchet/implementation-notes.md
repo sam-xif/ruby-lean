@@ -11664,3 +11664,32 @@ both halves of what constrains them now have a name.
   and checker integration are next. No proof approached five minutes.
 - Full quiet gate GREEN; metatheory and standard-axiom audit pass. Admission and
   registered-rule counts are unchanged.
+
+## Clink 217 (2026-09-26) — admit stored zero-argument lambdas through validateD
+
+- DFlow/DFlowSeq join DJudge's mutual family. DJudge.flow starts with unknown facts;
+  embed forgets ordinary effects. All eleven registry families are abstracted, and
+  the eight-family bridge carries every body/sequence premise through registered rules.
+  The new judgment docstrings cite the measured Sorbet Proc inference (clink 200).
+- Check/FlowCheck builds derivations while threading actual types, contexts, spines,
+  local origins and bound slots. An ordinary-checker callback uses smaller outer fuel:
+  stored code can be larger than its call expression without compromising termination.
+  Certified records moved out of Check.lean to keep both files below 1000 lines.
+- Literal hints contain no trusted code/type. The checker reconstructs ClosureCode
+  from source. Call hints supply a body derivation and claimed result, both checked
+  against that exact body at live local types. Native name freedom and all entry/pop
+  guards are checked; no bare code equality implies current capture or dispatch.
+- The emitter retains an internal source-body descriptor and wraps block-containing
+  candidates in flow. It re-emits bodies at calls; closure-valued results are declined
+  before that internal descriptor could escape into a wire-format type annotation.
+  Parameters, block locals, non-lambda calls and higher-order results remain outside.
+- Controls accept renamed/literal variants, copied lambdas and safe live bindings;
+  they reject forged body/return hints, wrong arity, wrong mode, unknown effects,
+  overwritten receivers, untracked origins, reserved call and nil arithmetic captures.
+- 087 has a registry-derived whole-source safety theorem. Existing 006/031 proofs
+  exercise the remaining flow companions; their coverage predictor records the chosen
+  flow interpretation and is checked against the actual proof terms by RuleAudit.
+  Counts: fragment 82, checker reach 87, 72 rules (40 + 32), 61 worked, zero exemptions.
+- Full quiet gate GREEN, including CRuby agreement; metatheory and standard-axiom
+  audit pass. The longest rebuilt existing rule took 36 seconds; new checker/proof
+  modules built in under two seconds. No limits, axioms or native_decide were added.

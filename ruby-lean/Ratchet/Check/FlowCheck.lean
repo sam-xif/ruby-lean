@@ -1,0 +1,131 @@
+import Ratchet.Check.Certified
+
+/-! Proof-producing local-flow checking. The ordinary checker is a callback at
+strictly smaller fuel, including when the stored body is larger than the call. -/
+set_option autoImplicit false
+namespace Ratchet
+
+structure CertifiedFlow (κ : Ctx) (Γ : Env) (I : Ty) (incoming : LocalFacts) (e : Expr) where
+  ty : Ty
+  current : Bool
+  ctx : Ctx
+  out : Env
+  spine : Ty
+  facts : LocalFacts
+  judged : DFlow κ Γ I incoming e ty current ctx out spine facts
+  cache : CheckedCache := {}
+
+structure CertifiedFlowSeq (κ : Ctx) (Γ : Env) (I : Ty) (incoming : LocalFacts) (es : List Expr) where
+  ty : Ty
+  current : Bool
+  ctx : Ctx
+  out : Env
+  spine : Ty
+  facts : LocalFacts
+  judged : DFlowSeq κ Γ I incoming es ty current ctx out spine facts
+  cache : CheckedCache := {}
+
+abbrev OrdinaryCheck := (Γ : Env) → (e : Expr) → Deriv → (κ : Ctx) → (I : Ty) →
+  CheckedCache → Option (Certified Γ e κ I)
+
+mutual
+def checkFlow (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I : Ty)
+    (facts : LocalFacts) (e : Expr) (d : Deriv) (cache : CheckedCache) :
+    Option (CertifiedFlow κ Γ I facts e) :=
+  match fuel with
+  | 0 => none
+  | n + 1 =>
+    match e, d with
+    | .int k, .intLit k' =>
+      if k == k' then some ⟨.int, false, κ, Γ, I, facts, .intLit facts k, cache⟩ else none
+    | .nil, .nilLit => some ⟨.nilT, false, κ, Γ, I, facts, .nilLit facts, cache⟩
+    | .var .lvar x, .var .lvar y => do
+      if x != y then none else do
+      match hx : envGet? Γ x with
+      | none => none
+      | some τ =>
+        if ha : isAliasTy τ = false then
+          some ⟨τ, facts.currentProcs.contains x, κ, Γ, I, facts, .var facts hx ha, cache⟩
+        else none
+    | .send none name [] (some (.block ps ls body)), .closureLiteral => do
+      let lam ← if name == "lambda" then some true else if name == "proc" then some false else none
+      if hn : name = (if lam then "lambda" else "proc") then do
+      if hs : (paramEqAll ps ps && exprEq body body) = true then do
+      let code : ClosureCode := ⟨ps, ls, body, lam, hs⟩
+      if hf : nameFreeN κ (if lam then "lambda" else "proc") = true then
+        some ⟨.clos code (envToSpine Γ) (κ.selfTy.getD .never), true, κ, Γ, I, facts,
+          by simpa only [hn] using DFlow.closureLiteral (κ := κ) (Γ := Γ) (I := I) facts code hf, cache⟩
+      else none
+      else none
+      else none
+    | .vasgn .lvar x e, .vasgn .lvar y d => do
+      if x != y then none else do
+      let c ← checkFlow n ordinary κ Γ I facts e d cache
+      if hc : capStale x c.ty c.ty = false then do
+      if ha : isAliasTy c.ty = false then do
+      if hk : capStaleCtx x c.ty c.ctx = false then do
+      if hm : c.ctx.scope.runtimeMain = true then
+        some ⟨c.ty, c.current, c.ctx, envAfter c.out x c.ty, killClosOverSpine c.spine x c.ty,
+          c.facts.write x c.current, .vasgn c.judged hc ha hk hm, c.cache⟩
+      else none
+      else none
+      else none
+      else none
+    | .seq es, .seq ds => do
+      let c ← checkFlowSeq n ordinary κ Γ I facts es ds cache
+      some ⟨c.ty, c.current, c.ctx, c.out, c.spine, c.facts, .sequence c.judged, c.cache⟩
+    | .send (some (.var .lvar name)) "call" [] none, .closureCall body ret => do
+      match hv : envGet? Γ name with
+      | some (.clos code cap selfT) => do
+        if hc : closureMainB κ I = true then do
+        if ha : activationEnvB Γ = true then do
+        if ht : FirstOrder ret = true then do
+        if hx : name ∈ facts.currentProcs then do
+        if hf : nameFreeN κ "call" = true then do
+        if hp : code.params.isEmpty = true then do
+        if hl : code.locals = [] then do
+        if hm : code.lam = true then do
+          let c ← ordinary Γ code.body body (closureBodyCtx κ) I cache
+          if hr : c.ty = ret then do
+          let ⟨hκ⟩ ← ctxEq? c.ctx (closureBodyCtx κ)
+          if hi : c.spine = I then do
+          if hb : activationEnvB c.out = true then do
+          match hn : facts.captureNames? c.out with
+          | none => none
+          | some names =>
+            some ⟨ret, false, κ, captureEnv names c.out, I, .unknown,
+              .call name hc ha hb ht hn hx hv hf (List.isEmpty_iff.mp hp) hl hm
+                (by simpa only [hr, hκ, hi] using c.judged), cache⟩
+          else none
+          else none
+          else none
+        else none
+        else none
+        else none
+        else none
+        else none
+        else none
+        else none
+        else none
+      | _ => none
+    | e, d => do
+      let c ← ordinary Γ e d κ I cache
+      some ⟨c.ty, false, c.ctx, c.out, c.spine, .unknown, .embed facts c.judged, c.cache⟩
+
+def checkFlowSeq (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I : Ty)
+    (facts : LocalFacts) (es : List Expr) (ds : List Deriv) (cache : CheckedCache) :
+    Option (CertifiedFlowSeq κ Γ I facts es) :=
+  match fuel with
+  | 0 => none
+  | n + 1 =>
+    match es, ds with
+    | [e], [d] => do
+      let c ← checkFlow n ordinary κ Γ I facts e d cache
+      some ⟨c.ty, c.current, c.ctx, c.out, c.spine, c.facts, .last c.judged, c.cache⟩
+    | e :: e' :: es, d :: d' :: ds => do
+      let c ← checkFlow n ordinary κ Γ I facts e d cache
+      let t ← checkFlowSeq n ordinary c.ctx c.out c.spine c.facts (e' :: es) (d' :: ds) c.cache
+      some ⟨t.ty, t.current, t.ctx, t.out, t.spine, t.facts, .cons c.judged t.judged, t.cache⟩
+    | _, _ => none
+end
+end Ratchet

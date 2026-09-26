@@ -49,7 +49,7 @@ namespace Ratchet.Denote.Typed
 
 open RubyCore Ratchet Ratchet.Denote
 
-/-! ## §1 Six-family mutual induction, using the initializer pair's registry bridge -/
+/-! ## §1 Eight-family mutual induction, using the initializer registry bridge -/
 
 /-- **Every syntactic derivation is a certified one.** The registry covers `DJudge`, so the
 judgment `check` returns lands in the judgment `dregistry_safe` consumes. -/
@@ -63,8 +63,13 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
     (motive_4 := fun Γ ps ks vs Γ' κ I κ' I' _ => F.pairs Γ ps ks vs Γ' κ I κ' I')
     (motive_5 := fun κ I s Γ e τ Γ' _ => F.recBody κ I s Γ e τ Γ')
     (motive_6 := fun κ I s Γ es tys Γ' _ => F.recArgs κ I s Γ es tys Γ')
+    (motive_7 := fun κ Γ I facts e τ current κ' Γ' I' out _ =>
+      F.flow κ Γ I facts e τ current κ' Γ' I' out)
+    (motive_8 := fun κ Γ I facts es τ current κ' Γ' I' out _ =>
+      F.flowSeq κ Γ I facts es τ current κ' Γ' I' out)
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals intros
   · apply hF DClink.intLit (by simp [dclinks]) <;> assumption
   · apply hF DClink.fltLit (by simp [dclinks]) <;> assumption
@@ -118,6 +123,7 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
   · apply hF DClink.instanceType (by simp [dclinks]) <;> assumption
   · apply hF DClink.scalarIvarAsgn (by simp [dclinks]) <;> assumption
   · apply hF DClink.selfRead (by simp [dclinks]) <;> assumption
+  · apply hF DClink.flow (by simp [dclinks]) <;> assumption
   · apply hF DClink.DJudgeAll.nil (by simp [dclinks]) <;> assumption
   · apply hF DClink.DJudgeAll.cons (by simp [dclinks]) <;> assumption
   · apply hF DClink.DJudgeSeq.last (by simp [dclinks]) <;> assumption
@@ -130,6 +136,16 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
   · apply hF DClink.DJudgeRec.selfCall (by simp [dclinks]) <;> assumption
   · apply hF DClink.DJudgeRecAll.nil (by simp [dclinks]) <;> assumption
   · apply hF DClink.DJudgeRecAll.cons (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DFlow.embed (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DFlow.intLit (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DFlow.nilLit (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DFlow.var (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DFlow.closureLiteral (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DFlow.vasgn (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DFlow.sequence (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DFlow.call (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DFlowSeq.last (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DFlowSeq.cons (by simp [dclinks]) <;> assumption
 
 /-- Fundamental lemma at arbitrary method contexts, not just the top-level specialization. -/
 theorem djudge_context {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}

@@ -2701,7 +2701,7 @@ the parentless module head has no methods. Full module-body entry now derives al
 
 ## F49 — legacy closure predicates do not justify callable admission (2026-09-25)
 
-**Code identity/persistence fixed by clinks 201/205; activation/return remain outside admission.**
+**Stored zero-argument lambdas admitted by clink 217; general arity/shadowing remains open.**
 The former denM(.clos idx cap self) dropped idx and ClosuresOk was True. Clink 200's
 reified_unindexed witness survives under the explicit LegacyIndexDen predicate.
 wrong_body_not_table records the missing code relation; reified_table shows that even
@@ -2775,6 +2775,15 @@ Concrete allocation/assignment provides capture identity; the body contract pres
 exact type. This closes the pilot's semantic composition, not general callable admission.
 Static activation/slot facts and overlapping entry shadowing remain; see also §F51.
 
+Clinks 214–217 supply tracked current captures, physical/known-bound slots and native
+dispatch through full source evaluation. DFlow/DFlowSeq and their registry proofs now
+admit 087 through validateD. Calls check the exact stored body at live local types and
+project its result through proved slot ownership. Copies survive an overwrite of the
+source binding; ordinary effects conservatively forget facts. Entry is restricted to
+zero-argument lambdas with no block locals, an uncaptured main caller, activation-stable
+types and first-order results. General parameters, block locals, non-current captures
+and preserving origins across body effects need further transport proofs.
+
 ## F50 — the body answer contract is too weak for block return (2026-09-25)
 
 **Resolved for the admitted fragment by clink 203; typed jump rules remain future work.**
@@ -2800,7 +2809,7 @@ rule or accepted program changed; captured activation/restoration remain §F49.
 
 ## F51 — Proc call interception ignores user overrides (2026-09-26)
 
-**Resolved by clink 213 / model L272; no callable checker rule is admitted.** The former
+**Resolved by clink 213 / model L272; checker admission follows in clink 217.** The former
 `Interp.invoke` dispatched Proc payloads directly for call/()/[]/yield, before method lookup. Measured with
 CRuby 4.0.5 and the current rubycore binary:
 
@@ -2816,7 +2825,8 @@ Aliases, overrides and super retain their normal semantics. Visibility edits all
 markers. Undef tombstones go directly to method_missing, and super rejects tombstones.
 ClosureCallControls now expects 7; the persisted proc-call-dispatch regression covers the
 full matrix. Call consumes ProcCallReady and the receiver's actual dispatch class; neither
-is inferred from the payload type. Its boot Boolean is checked separately from bootOkB.
+is inferred from the payload type. Clink 215 folds native readiness into guarded
+primitiveDispatchB and bootOkB; StateOk supplies it only while the call selector is free.
 
 ## F52 — case equality loses its identity shortcut (2026-09-26)
 

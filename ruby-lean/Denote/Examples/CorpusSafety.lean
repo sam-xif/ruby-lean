@@ -15,6 +15,7 @@ import Denote.Examples.ModuleDerivations
 import Denote.Examples.ModuleParamDerivations
 import Denote.Examples.ModuleCompareDerivations
 import Denote.Examples.SingletonImplicitDerivations
+import Denote.Examples.FlowDerivations
 
 /-! Concrete corpus programs and their derivations. `SemLadder` compares each program
 against the current stripped corpus; `RuleAudit` reads the clinks from these proofs. -/
@@ -57,7 +58,7 @@ def program_006_nil_lit : Ratchet.Expr :=
   .nil
 
 theorem safe_006_nil_lit (hb : bootOkB = true) : StuckFree bootMachine program_006_nil_lit :=
-  dregistry_safe (derivD_nilLit) (stateOk_boot hb)
+  dregistry_safe derivD_flowNil (stateOk_boot hb)
 
 def program_007_flt_lit : Ratchet.Expr :=
   .flt (1.5 : Float).toBits
@@ -197,7 +198,7 @@ def program_031_reassign_different_type : Ratchet.Expr :=
   .seq [.vasgn .lvar "x" (.int (1)), .vasgn .lvar "x" (.tru), .var .lvar "x"]
 
 theorem safe_031_reassign_different_type (hb : bootOkB = true) : StuckFree bootMachine program_031_reassign_different_type :=
-  dregistry_safe (derivD_seq (derivD_seqCons (derivD_vasgn (derivD_intLit) rfl rfl) (derivD_seqCons (derivD_vasgn (derivD_truLit) rfl rfl) (derivD_seqLast (derivD_var rfl rfl))))) (stateOk_boot hb)
+  dregistry_safe derivD_flowReassign (stateOk_boot hb)
 
 def program_032_bare_undeclared_var : Ratchet.Expr := .vcall "x"
 
@@ -362,7 +363,8 @@ def safeRungs : List (String × Ratchet.Expr) :=
    ("077-module-basic", program_077_module_basic),
    ("078-module-method-with-arg", program_078_module_method_with_arg),
    ("080-module-method-calls-method", program_080_module_method_calls_method),
-   ("084-module-boolean-method", program_084_module_boolean_method)]
+   ("084-module-boolean-method", program_084_module_boolean_method),
+   ("087-lambda-zero-arity", program_087_lambda_zero_arity)]
 
 theorem safeRungs_safe (hb : bootOkB = true) :
     ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
@@ -370,7 +372,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   simp only [safeRungs, List.mem_cons, List.not_mem_nil, or_false] at hq
   rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
     | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
-    | rfl | rfl | rfl | rfl
+    | rfl | rfl | rfl | rfl | rfl
   · exact safe_001_int_lit hb
   · exact safe_002_bool_true hb
   · exact safe_003_bool_false hb
@@ -431,6 +433,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   · exact safe_078_module_method_with_arg hb
   · exact safe_080_module_method_calls_method hb
   · exact safe_084_module_boolean_method hb
+  · exact safe_087_lambda_zero_arity hb
 
 #print axioms safeRungs_safe
 end Ratchet.Denote.Typed

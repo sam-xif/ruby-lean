@@ -19,11 +19,12 @@ import Denote.Rules.Constructor.DefaultConstructorExpr
 import Denote.Rules.Singleton.SingletonRules
 import Denote.Rules.Instance.ScalarWrite
 import Denote.Clink.Form
+import Denote.Judgment.FlowRules
 
 /-! The registry carries ordinary expressions/lists and scoped recursive bodies/arguments.
 Every constructor registers only with a proof of its constructor-derived semantic form.
-`ruleForm` replaces all nine judgment heads with family projections; a premise reaching
-an uncarried judgment is refused before registration. All 61 constructors are proved.
+`ruleForm` replaces all eleven judgment heads with family projections; a premise reaching
+an uncarried judgment is refused before registration. All 72 constructors are proved.
 `DJudgeC` is their Church encoding, with unconditional semantic and safety interpretations. -/
 
 set_option autoImplicit false
@@ -36,7 +37,7 @@ open RubyCore Ratchet Ratchet.Denote
 
 /-! ## §1 The family -/
 
-/-- All nine syntactic families, including recursive and fresh-initializer premises. -/
+/-- All eleven syntactic families, including local-flow and fresh-initializer premises. -/
 structure DFam where
   judge : Env → Ratchet.Expr → Ty → Env → (κ : optParam Ctx ctx0) →
     (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
@@ -51,6 +52,8 @@ structure DFam where
   init : Ctx → Env → Ty → Ratchet.Expr → Ty → Ctx → Env → Ty → Prop
   initSeq : Ctx → Env → Ty → List Ratchet.Expr → Ty → Ctx → Env → Ty → Prop
   initAll : Ctx → Env → Ty → List Ratchet.Expr → List Ty → Ctx → Env → Ty → Prop
+  flow : Ctx → Env → Ty → LocalFacts → Ratchet.Expr → Ty → Bool → Ctx → Env → Ty → LocalFacts → Prop
+  flowSeq : Ctx → Env → Ty → LocalFacts → List Ratchet.Expr → Ty → Bool → Ctx → Env → Ty → LocalFacts → Prop
 
 /-- The syntactic reading: `Ratchet/Judgment/DJudge.lean`'s own relations. -/
 def dsynFam : DFam where
@@ -63,6 +66,8 @@ def dsynFam : DFam where
   init := InitJudge
   initSeq := InitJudgeSeq
   initAll := InitJudgeAll
+  flow := DFlow
+  flowSeq := DFlowSeq
 
 /-- The context-indexed run contract: safety at every fuel, typed answers, and full outgoing
 conformance. At top level it is equivalent to `SemSafeA`, including `SafeUnder`. -/
@@ -76,6 +81,8 @@ def dsemFam : DFam where
   init := SemInitA
   initSeq := SemInitSeqA
   initAll := SemInitAllA
+  flow := SemFlow
+  flowSeq := SemFlowSeq
 
 /-! ## §2 Registration
 
@@ -90,13 +97,14 @@ def dFamField : List (Name × Name) := [(``Ratchet.DJudge, ``DFam.judge),
   (``Ratchet.DJudgeAll, ``DFam.all), (``Ratchet.DJudgeSeq, ``DFam.seq),
   (``Ratchet.DJudgePairs, ``DFam.pairs), (``Ratchet.DJudgeRec, ``DFam.recBody),
   (``Ratchet.DJudgeRecAll, ``DFam.recArgs), (``Ratchet.InitJudge, ``DFam.init),
-  (``Ratchet.InitJudgeSeq, ``DFam.initSeq), (``Ratchet.InitJudgeAll, ``DFam.initAll)]
+  (``Ratchet.InitJudgeSeq, ``DFam.initSeq), (``Ratchet.InitJudgeAll, ``DFam.initAll),
+  (``Ratchet.DFlow, ``DFam.flow), (``Ratchet.DFlowSeq, ``DFam.flowSeq)]
 
-/-- The nine judgment inductives. Frozen so a new family cannot bypass registration. -/
+/-- The judgment inductives. Frozen so a new family cannot bypass registration. -/
 def dJudgmentInductives : List Name :=
   [``Ratchet.DJudge, ``Ratchet.DJudgeAll, ``Ratchet.DJudgeSeq, ``Ratchet.DJudgePairs,
     ``Ratchet.DJudgeRec, ``Ratchet.DJudgeRecAll, ``Ratchet.InitJudge, ``Ratchet.InitJudgeSeq,
-    ``Ratchet.InitJudgeAll]
+    ``Ratchet.InitJudgeAll, ``Ratchet.DFlow, ``Ratchet.DFlowSeq]
 
 /-- Judgment inductives `DFam` does **not** carry a field for. A rule whose premises reach
 one of these cannot be registered: see `registerDClink`. -/
@@ -224,6 +232,10 @@ def DJudgeC (R : List (Clink dsynFam dsemFam)) : DFam where
   init κ Γ I e τ κ' Γ' I' := ∀ F : DFam, Closed R F → F.init κ Γ I e τ κ' Γ' I'
   initSeq κ Γ I es τ κ' Γ' I' := ∀ F : DFam, Closed R F → F.initSeq κ Γ I es τ κ' Γ' I'
   initAll κ Γ I es tys κ' Γ' I' := ∀ F : DFam, Closed R F → F.initAll κ Γ I es tys κ' Γ' I'
+  flow κ Γ I facts e τ current κ' Γ' I' out :=
+    ∀ F : DFam, Closed R F → F.flow κ Γ I facts e τ current κ' Γ' I' out
+  flowSeq κ Γ I facts es τ current κ' Γ' I' out :=
+    ∀ F : DFam, Closed R F → F.flowSeq κ Γ I facts es τ current κ' Γ' I' out
 
 /-- A derivation in the certified judgment, built the way `Denote/Clink/Spec.lean` §4
 describes: you are *handed* the rules (`hF c hc`) and never mention closure. Premise-free,
@@ -383,8 +395,8 @@ def dCompanionRules : List String :=
 -- The registry and its report agree about its size.
 #guard dclinks.length == dRegisteredRules.length
 
--- Thirty-nine expression rules and twenty-two companions; an unproved rule fails the gate.
-#guard dRegisteredRules.length == 61
+-- Forty expression rules and thirty-two companions; an unproved rule fails the gate.
+#guard dRegisteredRules.length == 72
 #guard dUnregisteredRules == []
 
 -- Every judgment premise is represented in the semantic family.
@@ -396,7 +408,9 @@ def dCompanionRules : List String :=
   "DJudgePairs.nil", "DJudgePairs.cons", "DJudgeRec.embed", "DJudgeRec.prim", "DJudgeRec.if'",
   "DJudgeRec.selfCall", "DJudgeRecAll.nil", "DJudgeRecAll.cons",
   "InitJudge.intLit", "InitJudge.var", "InitJudge.ivarAsgn", "InitJudge.seq", "InitJudge.ignoreResult",
-  "InitJudge.superInit", "InitJudgeSeq.last", "InitJudgeSeq.cons", "InitJudgeAll.nil", "InitJudgeAll.cons"]
+  "InitJudge.superInit", "InitJudgeSeq.last", "InitJudgeSeq.cons", "InitJudgeAll.nil", "InitJudgeAll.cons",
+  "DFlow.embed", "DFlow.intLit", "DFlow.nilLit", "DFlow.var", "DFlow.closureLiteral", "DFlow.vasgn",
+  "DFlow.sequence", "DFlow.call", "DFlowSeq.last", "DFlowSeq.cons"]
 
 -- Every family-blocked rule is unregistered, which `registerDClink` enforces and this states.
 #guard dFamBlockedRules.all (fun r => dUnregisteredRules.contains r)

@@ -72,6 +72,12 @@ inductive Deriv where
   | truLit
   | flsLit
   | nilLit
+  /-- Opt into the effect-indexed local-flow judgment. -/
+  | flow (d : Deriv)
+  /-- Code is reconstructed from the source block, never supplied by the certificate. -/
+  | closureLiteral
+  /-- The stored source body is rechecked at the call's live local types. -/
+  | closureCall (body : Deriv) (ret : Ty)
   /-- A bare-name miss from the explicitly supported absence table. -/
   | bareName (name : String)
   | selfExpr
@@ -152,6 +158,9 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
   | "truLit" => return .truLit
   | "flsLit" => return .flsLit
   | "nilLit" => return .nilLit
+  | "flow" => return .flow (← kid "body")
+  | "closureLiteral" => return .closureLiteral
+  | "closureCall" => return .closureCall (← kid "body") (← ty "ret")
   | "bareName" => return .bareName (← name "name")
   | "selfExpr" => return .selfExpr
   | "var" => return .var (← varKindOfJson? (← j.getObjVal? "kind")) (← name "name")

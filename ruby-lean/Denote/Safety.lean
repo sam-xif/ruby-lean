@@ -46,6 +46,35 @@ def plainRulesPairs : List (Ratchet.Expr × Ratchet.Expr) → List String
   | (k, v) :: ps => "DJudgePairs.cons" :: (plainRules k ++ plainRules v ++ plainRulesPairs ps)
 end
 
+/-- Code known syntactically to the worked flow predictor. This is coverage data,
+never a typing premise; the proof-term audit independently checks every rule used. -/
+def flowBodies (bodies : List (String × Ratchet.Expr)) : Ratchet.Expr → List (String × Ratchet.Expr)
+  | .vasgn .lvar x (.send none "lambda" [] (some (.block _ _ body))) =>
+      (x, body) :: bodies.filter (·.1 != x)
+  | .vasgn .lvar x _ => bodies.filter (·.1 != x)
+  | _ => bodies
+
+mutual
+def flowRules (bodies : List (String × Ratchet.Expr)) : Ratchet.Expr → List String
+  | .int _ => ["DFlow.intLit"]
+  | .nil => ["DFlow.nilLit"]
+  | .var .lvar _ => ["DFlow.var"]
+  | .vasgn .lvar _ e => "DFlow.vasgn" :: flowRules bodies e
+  | .seq es => "DFlow.sequence" :: flowSeqRules bodies es
+  | .send none "lambda" [] (some (.block _ _ _)) => ["DFlow.closureLiteral"]
+  | .send (some (.var .lvar x)) "call" [] none =>
+      "DFlow.call" :: match bodies.lookup x with
+        | some body => plainRules body
+        | none => ["?"]
+  | e => "DFlow.embed" :: plainRules e
+
+def flowSeqRules (bodies : List (String × Ratchet.Expr)) : List Ratchet.Expr → List String
+  | [] => ["?"]
+  | [e] => "DFlowSeq.last" :: flowRules bodies e
+  | e :: e' :: es => "DFlowSeq.cons" ::
+      (flowRules bodies e ++ flowSeqRules (flowBodies bodies e) (e' :: es))
+end
+
 mutual
 def hasSelfCall (name : String) : Ratchet.Expr → Bool
   | .send recv m args none =>
@@ -249,6 +278,10 @@ def annotationHints : List (String × RuleAnnotations) :=
    ("076-class-self-returning-method", { results := [(("Point", "myself"), "Point")] })]
 
 def rulesUsedFor (q : String × Ratchet.Expr) : List String :=
+  -- These worked proofs exercise the flow interpretation of otherwise shared syntax.
+  if ["006-nil-lit", "031-reassign-different-type", "087-lambda-zero-arity"].contains q.1 then
+    "flow" :: flowRules [] q.2
+  else
   let ann := ((annotationHints.find? (·.1 == q.1)).map (·.2)).getD {}
   rulesUsedAt (syntaxClasses q.2) ann [] q.2 ++ ((annotationRules.find? (·.1 == q.1)).map (·.2)).getD []
 

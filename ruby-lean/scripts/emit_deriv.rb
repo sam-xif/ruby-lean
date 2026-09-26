@@ -150,6 +150,17 @@ class Emitter
     @current_method = nil
     @singleton = false
     @inferring = false
+    @uses_flow = false
+  end
+
+  attr_reader :uses_flow
+
+  def closure_type?(ty)
+    case ty
+    when Hash then ty["tag"] == "closureCode" || ty.values.any? { |value| closure_type?(value) }
+    when Array then ty.any? { |value| closure_type?(value) }
+    else false
+    end
   end
 
   # -- helpers ------------------------------------------------------------
@@ -330,12 +341,31 @@ class Emitter
     recv = n[1]
     m = n[2]
     args = n[3]
+    if recv.nil? && m == "lambda" && args.empty? && n[4]
+      block = n[4]
+      unless block[0] == "block" && block[1].empty? && block[2].empty? &&
+          (block.length == 4 || block[3].empty?)
+        raise Blocked, "lambda parameters and block locals are outside the callable fragment"
+      end
+      @uses_flow = true
+      # Emitter-only code descriptor. The checker reconstructs its own closure type
+      # from the source and rechecks this body at the call's live local environment.
+      return [{ "rule" => "closureLiteral" }, { "tag" => "closureCode", "body" => block[-1] }]
+    end
     raise Blocked, "a block argument is outside the fragment" unless n[4].nil?
     return implicit_send(m, args) if recv.nil?
     # `C.new(...)`
     return new_inst(recv[1], args) if m == "new" && recv[0] == "const"
 
     dr, tr = go(recv)
+    if tr["tag"] == "closureCode"
+      unless recv[0] == "var" && recv[1] == "local" && m == "call" && args.empty?
+        raise Blocked, "only a stored zero-argument lambda call is in the callable fragment"
+      end
+      body, ret = go(tr["body"])
+      raise Blocked, "closure-valued call results are outside the fragment" if closure_type?(ret)
+      return [{ "rule" => "closureCall", "body" => body, "ret" => ret }, ret]
+    end
     tr = as_inst(tr)
     dargs, targs = go_all(args)
     ret = prim_ret(tr, m, targs)
@@ -614,6 +644,8 @@ def main(argv)
   em = Emitter.new(sigs)
   begin
     deriv, ty = em.go(ast["ast"])
+    raise Blocked, "closure-valued program results are outside the fragment" if em.closure_type?(ty)
+    deriv = { "rule" => "flow", "body" => deriv } if em.uses_flow
   rescue Blocked => e
     puts JSON.generate({ "status" => "blocked", "why" => e.message })
     return 0

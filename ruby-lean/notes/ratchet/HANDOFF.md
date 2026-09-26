@@ -1,9 +1,22 @@
-# Current resume point (2026-09-26, clink 216)
+# Current resume point (2026-09-26, clink 217)
 
-Latest admission remains 084: fragment 81, checker reach 86,
-61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
-The prefix remains 17; 018 is correctly rejected. Next frontier: 087-lambda-zero-arity,
-`f = lambda { 1 }; f.call`. The emitter currently declines block arguments.
+Latest admission is 087: fragment 82, checker reach 87,
+72 registered rules (40 expressions + 32 companions), 61 worked theorems, no exemptions.
+The prefix remains 17; 018 is correctly rejected. Next frontier: 088-lambda-stabby-one-param,
+`f = ->(x) { x + 1 }; f.call(2)`. Zero-argument stored lambdas now pass the complete pipeline.
+
+Clink 217 adds DFlow/DFlowSeq to DJudge's mutual family and every registry interpretation.
+The eight-family bridge proves all flow rules, including ordinary body premises. Check/FlowCheck
+builds their proofs and calls the ordinary checker with smaller fuel for stored bodies;
+Deriv.flow starts with unknown facts. The untrusted emitter proposes literal/call hints,
+and call-time checking rederives types from exact source code at live caller bindings.
+ClosureCheckControls covers body/return mismatches, arity/locals, copied/overwritten bindings,
+unknown effects, forged origins, selector reservation and changed live capture types.
+FlowDerivations adds 087's worked proof and exercises all flow companions through 006/031.
+RuleAudit checks the corresponding syntax predictions against proof terms. Limits remain:
+zero arguments, no block locals, main caller, activation-stable environments, first-order
+results, and origins forgotten after ordinary effects/calls. General arity/return ownership
+is next; do not weaken these guards to rescue an emitter candidate.
 
 Clink 216 supplies the compositional semantic contract for local-flow checking.
 RunWith carries a value postcondition through actual continuations; SemFlow threads
@@ -13,8 +26,7 @@ unknown complete slot layout no longer prevents calls whose output names are all
 FlowCall checks activation-stable types, main scope, native lookup, current capture,
 and a body proof at live types; return projection is explicit and forgets origin facts.
 ClosureFlowControls proves both stored call and copy/overwrite/call from unknown slots.
-Next: add mutually recursive DFlow/DFlowSeq to DJudge and every registry interpretation,
-then proof-producing checking, emitter hints, and 087 admission. No syntax rule yet.
+This supplied the contracts used by clink 217's judgment and checker integration.
 
 Clink 200 proves actual lambda/proc creation for arbitrary parameters, block locals and
 bodies. Sem/Closure/Reify retains the complete Closure and proves Ext, StateOk, capture

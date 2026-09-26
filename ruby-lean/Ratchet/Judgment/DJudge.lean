@@ -12,13 +12,14 @@ import Ratchet.Static.NativeInstanceNames
 import Ratchet.Guards.SingletonGuards
 import Ratchet.Guards.ImplicitCall
 import Ratchet.Guards.ScalarWrite
+import Ratchet.Guards.ClosureFlow
 
 /-!
 # `Ratchet/Judgment/DJudge.lean` — the answer-typed judgment
 
 The syntax/type substrate is independent of `Denote/`. `Deriv` holds untrusted hints;
 `Check.lean` returns a `DJudge` proof after checking those hints against the program.
-This file owns seventeen primitive rows and six mutual judgment families. Scoped recursive
+This file owns seventeen primitive rows and eight mutual judgment families. Scoped recursive
 bodies reuse ordinary proofs for closed subtrees; their self-call hypothesis is discharged
 by the semantic `recursive` rule, never installed as an unchecked body.
 
@@ -528,6 +529,13 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
   | selfRead {κ : Ctx} {Γ : Env} {I τ : Ty} :
       κ.selfTy = some τ → DJudge Γ .self' τ Γ κ I
 
+  /-- Enter local-flow checking without assumptions about hidden slots or closure origins.
+  Sorbet 0.6.13405 infers `T.proc.returns(Integer)` for `f = lambda { 1 }; f.call`
+  and rejects an extra argument. The flow family records the additional model facts. -/
+  | flow {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {e : Expr}
+      {current : Bool} {out : LocalFacts} :
+      DFlow κ Γ I .unknown e τ current κ' Γ' I' out → DJudge Γ e τ Γ' κ I κ' I'
+
 inductive DJudgeAll : Env → List Expr → List Ty → Env → (κ : optParam Ctx ctx0) →
     (I : optParam Ty .ivar0) → optParam Ctx κ → optParam Ty I → Prop
   | nil {κ : Ctx} {Γ : Env} {I : Ty} : DJudgeAll Γ [] [] Γ κ I
@@ -588,6 +596,61 @@ inductive DJudgeRecAll : Ctx → Ty → RecScope → Env → List Expr → List 
       {e : Expr} {es : List Expr} {τ : Ty} {tys : List Ty} :
       DJudgeRec κ I s Γ e τ Γ₁ → DJudgeRecAll κ I s Γ₁ es tys Γ₂ → plainArgB e = true →
       DJudgeRecAll κ I s Γ (e :: es) (τ :: tys) Γ₂
+
+/-- Sorbet's inferred Proc type motivates retaining the literal's exact code. A call
+checks that code at live capture types: Sorbet accepts some changed-capture errors
+(clink 200), so creation-time typing alone cannot justify model safety. Ordinary
+expressions may be embedded, conservatively forgetting origin and slot facts. -/
+inductive DFlow : Ctx → Env → Ty → LocalFacts → Expr → Ty → Bool →
+    Ctx → Env → Ty → LocalFacts → Prop
+  | embed {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {e : Expr} (facts : LocalFacts) :
+      DJudge Γ e τ Γ' κ I κ' I' → DFlow κ Γ I facts e τ false κ' Γ' I' .unknown
+  | intLit {κ : Ctx} {Γ : Env} {I : Ty} (facts : LocalFacts) (n : Int) :
+      DFlow κ Γ I facts (.int n) .int false κ Γ I facts
+  | nilLit {κ : Ctx} {Γ : Env} {I : Ty} (facts : LocalFacts) :
+      DFlow κ Γ I facts .nil .nilT false κ Γ I facts
+  | var {κ : Ctx} {Γ : Env} {I τ : Ty} {x : String} (facts : LocalFacts) :
+      envGet? Γ x = some τ → isAliasTy τ = false →
+      DFlow κ Γ I facts (.var .lvar x) τ (facts.currentProcs.contains x) κ Γ I facts
+  | closureLiteral {κ : Ctx} {Γ : Env} {I : Ty} (facts : LocalFacts) (code : ClosureCode) :
+      nameFreeN κ (if code.lam then "lambda" else "proc") = true →
+      DFlow κ Γ I facts (.send none (if code.lam then "lambda" else "proc") []
+        (some (.block code.params code.locals code.body)))
+        (.clos code (envToSpine Γ) (κ.selfTy.getD .never)) true κ Γ I facts
+  | vasgn {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {facts out : LocalFacts}
+      {e : Expr} {x : String} {current : Bool} :
+      DFlow κ Γ I facts e τ current κ' Γ' I' out →
+      capStale x τ τ = false → isAliasTy τ = false → capStaleCtx x τ κ' = false →
+      κ'.scope.runtimeMain = true →
+      DFlow κ Γ I facts (.vasgn .lvar x e) τ current κ' (envAfter Γ' x τ)
+        (killClosOverSpine I' x τ) (out.write x current)
+  | sequence {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty}
+      {facts out : LocalFacts} {current : Bool} {es : List Expr} :
+      DFlowSeq κ Γ I facts es τ current κ' Γ' I' out →
+      DFlow κ Γ I facts (.seq es) τ current κ' Γ' I' out
+  | call {κ : Ctx} {Γ Γb : Env} {I τ cap selfT : Ty}
+      {facts : LocalFacts} {names : List String} {code : ClosureCode} (name : String) :
+      closureMainB κ I = true → activationEnvB Γ = true → activationEnvB Γb = true →
+      FirstOrder τ = true → facts.captureNames? Γb = some names → name ∈ facts.currentProcs →
+      envGet? Γ name = some (.clos code cap selfT) → nameFreeN κ "call" = true →
+      code.params = [] → code.locals = [] → code.lam = true →
+      DJudge Γ code.body τ Γb (closureBodyCtx κ) I (closureBodyCtx κ) I →
+      DFlow κ Γ I facts (.send (some (.var .lvar name)) "call" [] none) τ false
+        κ (captureEnv names Γb) I .unknown
+
+/-- Sorbet's stored-lambda example (clink 200) uses the local established by the
+preceding statement. This companion threads the proved model facts in that order. -/
+inductive DFlowSeq : Ctx → Env → Ty → LocalFacts → List Expr → Ty → Bool →
+    Ctx → Env → Ty → LocalFacts → Prop
+  | last {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {facts out : LocalFacts}
+      {e : Expr} {current : Bool} :
+      DFlow κ Γ I facts e τ current κ' Γ' I' out →
+      DFlowSeq κ Γ I facts [e] τ current κ' Γ' I' out
+  | cons {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ σ τ : Ty} {f f₁ f₂ : LocalFacts}
+      {e e' : Expr} {es : List Expr} {c c' : Bool} :
+      DFlow κ Γ I f e σ c κ₁ Γ₁ I₁ f₁ →
+      DFlowSeq κ₁ Γ₁ I₁ f₁ (e' :: es) τ c' κ₂ Γ₂ I₂ f₂ →
+      DFlowSeq κ Γ I f (e :: e' :: es) τ c' κ₂ Γ₂ I₂ f₂
 end
 
 theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ : Ty}
@@ -600,7 +663,9 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_4 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_5 := fun _ _ _ _ _ _ _ _ => True)
     (motive_6 := fun _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    (motive_7 := fun _ _ _ _ e _ _ _ _ _ _ _ => plainArgB e = true)
+    (motive_8 := fun _ _ _ _ _ _ _ _ _ _ _ _ => True)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 
