@@ -5,6 +5,7 @@ import Denote.Rules.Expr.Send
 import Denote.Rules.Expr.Array
 import Denote.Sem.Closure.Reify
 import Denote.Examples.YieldBody
+import Denote.Rules.Method.BodyBridge
 
 /-! General source rules type assignments around repeated yields. The method and block
 both write total, but the block captures the outer caller and skips the method's local. -/
@@ -39,42 +40,80 @@ private def formattedBody : Ratchet.Expr :=
 private def arrayBody : Ratchet.Expr := .send (some (.array [.int 10, .int 20])) "[]" [.yield' [.int 1]] none
 private def divideBody : Ratchet.Expr := .send (some (.yield' [.int 0])) "/" [.yield' [.int 0]] none
 
-/-- No special twice/mixed rule: ordinary expressions, assignment, yield and sequence
-construct this body proof. Each later callback receives the restored activation invariant. -/
+private theorem yield_int {Γ : Env} {fr : Ratchet.Frame} (n : Int) (ht : activationReturnB Γ = true) :
+    DMethod ctx0 .ivar0 fr [.int] .int Γ (.yield' [.int n]) .int Γ :=
+  .yieldOne (.ordinary fun _ => .intLit) ht rfl
+
+/-- The definition-side derivations mention no callback code, parameter names or captures.
+Every ordinary premise is checked for all codes before any actual callback is supplied. -/
+theorem mixed_syntax (fr : Ratchet.Frame) :
+    DMethod ctx0 .ivar0 fr [.int] .int [] mixedBody .int [("total", .int), ("result", .int)] := by
+  have h0 : DMethod ctx0 .ivar0 fr [.int] .int [] (.vasgn .lvar "total" .nil) .nilT [("total", .nilT)] :=
+    .vasgn (.ordinary fun _ => .nilLit) rfl rfl (fun _ => rfl) rfl
+  have h1 : DMethod ctx0 .ivar0 fr [.int] .int [("total", .nilT)] (.vasgn .lvar "total" (.yield' [.int 1]))
+      .int [("total", .int)] := .vasgn (yield_int 1 rfl) rfl rfl (fun _ => rfl) rfl
+  have h2 : DMethod ctx0 .ivar0 fr [.int] .int [("total", .int)] (.vasgn .lvar "result" (.yield' [.int 2]))
+      .int [("total", .int), ("result", .int)] := .vasgn (yield_int 2 rfl) rfl rfl (fun _ => rfl) rfl
+  exact .sequence (.cons h0 (.cons h1 (.cons h2 (.last (.ordinary fun _ =>
+    .prim (.var rfl rfl) (.cons (.var rfl rfl) .nil rfl) .intAdd rfl (by intro h; cases h))))))
+
+theorem nested_syntax (fr : Ratchet.Frame) :
+    DMethod ctx0 .ivar0 fr [.int] .int [] nestedBody .int [("total", .int)] :=
+  .yieldOne (.vasgn (yield_int 1 rfl) rfl rfl (fun _ => rfl) rfl) rfl rfl
+
+theorem twice_syntax (fr : Ratchet.Frame) : DMethod ctx0 .ivar0 fr [.int] .int [] YieldBody.twice .int [] :=
+  .prim (yield_int 1 rfl) (.cons (yield_int 2 rfl) .nil rfl) .intAdd rfl (by intro h; cases h)
+
+theorem formatted_syntax (fr : Ratchet.Frame) : DMethod ctx0 .ivar0 fr [.int] .int [] formattedBody .int [] :=
+  .prim (.prim (yield_int 1 rfl) .nil .intToS rfl (by intro h; cases h))
+    .nil .strLength rfl (by intro; rfl)
+
+theorem array_syntax (fr : Ratchet.Frame) : DMethod ctx0 .ivar0 fr [.int] .int [] arrayBody (.nilable .int) [] :=
+  .prim (.ordinary fun _ => .arrayLit (.cons .intLit (.cons .intLit .nil rfl) rfl) rfl)
+    (.cons (yield_int 1 rfl) .nil rfl) (.arrayIndex rfl) rfl (by intro h; cases h)
+
+theorem divide_syntax (fr : Ratchet.Frame) : DMethod ctx0 .ivar0 fr [.int] .int [] divideBody .int [] :=
+  .prim (yield_int 0 rfl) (.cons (yield_int 0 rfl) .nil rfl) .intDiv rfl (by intro h; cases h)
+
 theorem judged (fr : Ratchet.Frame) :
-    SemMethod callback fr [] mixedBody .int [("total", .int), ("result", .int)] := by
-  have h0 : SemMethod callback fr [] (.vasgn .lvar "total" .nil) .nilT [("total", .nilT)] :=
-    (SemMethod.ordinary SemSafeCtxA.nilLit).vasgn rfl rfl rfl rfl
-  have h1 : SemMethod callback fr [("total", .nilT)] (.vasgn .lvar "total" (.yield' [.int 1]))
-      .int [("total", .int)] := (SemMethod.yieldInt rfl rfl 1).vasgn rfl rfl rfl rfl
-  have h2 : SemMethod callback fr [("total", .int)] (.vasgn .lvar "result" (.yield' [.int 2]))
-      .int [("total", .int), ("result", .int)] := (SemMethod.yieldInt rfl rfl 2).vasgn rfl rfl rfl rfl
-  exact SemMethod.sequence (.cons h0 (.cons h1 (.cons h2 (.last (SemMethod.ordinary
-    ((SemSafeCtxA.var rfl rfl).prim (.cons (SemSafeCtxA.var rfl rfl) .nil rfl)
-      .intAdd rfl (by intro h; cases h)))))))
+    SemMethod callback fr [] mixedBody .int [("total", .int), ("result", .int)] :=
+  dmethod_context (mixed_syntax fr) callback rfl rfl
 
 theorem nested_judged (fr : Ratchet.Frame) :
     SemMethod callback fr [] nestedBody .int [("total", .int)] :=
-  ((SemMethod.yieldInt rfl rfl 1).vasgn rfl rfl rfl rfl).yieldOne rfl rfl trivial
+  dmethod_context (nested_syntax fr) callback rfl rfl
 
 /-- Rung 094's actual body now follows from general source rules. -/
 theorem twice_judged (fr : Ratchet.Frame) : SemMethod callback fr [] YieldBody.twice .int [] :=
-  (SemMethod.yieldInt rfl rfl 1).prim (.cons (SemMethod.yieldInt rfl rfl 2) .nil rfl)
-    .intAdd rfl (by intro h; cases h)
+  dmethod_context (twice_syntax fr) callback rfl rfl
 
 theorem formatted_judged (fr : Ratchet.Frame) : SemMethod callback fr [] formattedBody .int [] :=
-  ((SemMethod.yieldInt rfl rfl 1).prim .nil .intToS rfl (by intro h; cases h)).prim
-    .nil .strLength rfl (by intro; rfl)
+  dmethod_context (formatted_syntax fr) callback rfl rfl
 
 /-- The allocated array is saved while the index expression invokes a captured write. -/
 theorem array_judged (fr : Ratchet.Frame) : SemMethod callback fr [] arrayBody (.nilable .int) [] :=
-  (SemMethod.ordinary (SemSafeCtxA.arrayLit
-    (.cons SemSafeCtxA.intLit (.cons SemSafeCtxA.intLit .nil rfl) rfl) rfl)).prim
-    (.cons (SemMethod.yieldInt rfl rfl 1) .nil rfl) (.arrayIndex rfl) rfl (by intro h; cases h)
+  dmethod_context (array_syntax fr) callback rfl rfl
 
 theorem divide_judged (fr : Ratchet.Frame) : SemMethod callback fr [] divideBody .int [] :=
-  (SemMethod.yieldInt rfl rfl 0).prim (.cons (SemMethod.yieldInt rfl rfl 0) .nil rfl)
-    .intDiv rfl (by intro h; cases h)
+  dmethod_context (divide_syntax fr) callback rfl rfl
+
+private def renamed : CheckedCallback ctx0 [] .ivar0 where
+  code := ⟨[.req "argument"], [], .var .lvar "argument", false, rfl⟩
+  params := [("argument", .int)]
+  ret := .int
+  names := []
+  out := [("argument", .int)]
+  required := rfl
+  main := rfl
+  returnFO := rfl
+  inputTypes := rfl
+  outputTypes := rfl
+  fixed := rfl
+  body := SemSafeCtxA.var rfl rfl
+
+/-- The same syntactic proof instantiates at different code, names and capture environments. -/
+theorem renamed_judged (fr : Ratchet.Frame) : SemMethod renamed fr [] YieldBody.twice .int [] :=
+  dmethod_context (twice_syntax fr) renamed rfl rfl
 
 private def allocated (m : Machine) : Machine := reifiedMachine m [.req "x"] [] (toRuby writeBody) false
 private def method (m : Machine) (body : Ratchet.Expr) : MethodDef :=
@@ -145,6 +184,7 @@ theorem divide_from_boot (hb : bootOkB = true) (initial : Int) :
   call_boot (divide_judged _) rfl hb initial
 
 #print axioms judged
+#print axioms renamed_judged
 #print axioms from_boot
 #print axioms nested_from_boot
 #print axioms twice_from_boot

@@ -2880,7 +2880,7 @@ registers the rule and admits map blocks through validateD.
 
 ## F55 — Ordinary-method isolation cannot describe a captured write through yield
 
-**Semantic source rules proved through clink 235; syntactic judgment/admission remain open.**
+**Syntactic body judgment proved in clink 236; definition checking/admission remain open.**
 `def twice; saved = 7; result = yield(1) + yield(2); p saved; result; end;
 total = 0; p twice { |x| total = total + x }; p total` prints 7, 4, 3 under both
 CRuby 4.0.5 and the model. The runtime already handles this captured write correctly.
@@ -2927,3 +2927,9 @@ Clink 235 covers those primitive sends and flat source sequences. The exact 094 
 follows from general SemMethod rules, including saved-receiver transport across the second
 callback. Boot controls exercise string allocation, array retention and non-type-error escape.
 Syntactic method-body/definition checking, installation/dispatch and &b admission remain.
+
+Clink 236 stages the signature-indexed DMethod families and proves their bridge to any
+matching checked callback. Ordinary premises must hold for every code; callback argument
+names and captured environments are not definition-side indices. All six body/boot controls
+now use this bridge. Registry registration waits for whole-program corpus coverage; raw
+uses are explicitly refused. Executable definition checking and source-call admission remain.

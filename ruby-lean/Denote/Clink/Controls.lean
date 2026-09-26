@@ -132,7 +132,7 @@ theorem derivD_var_sem {Γ : Env} {x : String} {τ : Ty} (hget : envGet? Γ x = 
 
 /-! ### The family boundary remains enforced
 
-All judgment constructors now have proofs. A constructor outside the family is still
+All active judgment constructors have proofs. A constructor outside the family is still
 refused; the sequence and argument forms below also check that their premises are semantic
 family projections, rather than raw syntactic derivations. -/
 
@@ -141,6 +141,12 @@ The list companions join when a rule concluding about them acquires a proof (Den
 -/
 #guard_msgs in
 register_dclink DPrim.intAdd
+
+/-- error: register_dclink: Ratchet.DMethod.yieldOne belongs to Ratchet.DMethod, which is not in DFam.
+The list companions join when a rule concluding about them acquires a proof (Denote/Clink/Registry.lean, header).
+-/
+#guard_msgs in
+register_dclink DMethod.yieldOne
 
 example : DClink.seq.form dsemFam =
     (∀ {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty} {es : List Ratchet.Expr} {τ : Ty},
@@ -152,7 +158,7 @@ example : DClink.DJudgeAll.cons.form dsemFam =
       SemSafeCtxA κ Γ I e τ κ₁ Γ₁ I₁ → SemAllCtxA κ₁ Γ₁ I₁ es tys κ₂ Γ₂ I₂ → plainArgB e = true →
         SemAllCtxA κ Γ I (e :: es) (τ :: tys) κ₂ Γ₂ I₂) := rfl
 
-#guard dUncarriedJudgments.isEmpty
+#guard dUncarriedJudgments == [``Ratchet.DMethod, ``Ratchet.DMethodAll, ``Ratchet.DMethodSeq]
 
 example : DClink.DJudgePairs.cons.form dsemFam =
     (∀ {κ κk κv κ' : Ctx} {Γ Γk Γv Γ' : Env} {I Ik Iv I' σ τ : Ty}

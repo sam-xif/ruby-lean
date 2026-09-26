@@ -12162,3 +12162,27 @@ both halves of what constrains them now have a name.
 - Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
   zero owed/exempt, 252 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
   build under a second, controls about five; no resource limit was raised.
+
+## Clink 236 (2026-09-26) — prove callback-independent method-body typing
+
+- DMethod and its two list companions cover the clink 235 source rules. Indices contain
+  the block's argument/result types, not its code, parameter names or captures: definitions
+  must be checked before a call supplies these. Ordinary premises quantify over all codes;
+  assignment guards do too. No concrete callback can stand in for that quantification.
+- BodyBridge proves all nine constructors by mutual induction, sending every ordinary
+  premise through djudge_context. SemMethodBody supplies the same source proof for any
+  matching CheckedCallback, retaining its actual body safety/capture fixed point.
+- Mandatory controls now derive all six bodies syntactically, then cross this bridge
+  before real allocation/entry/return from boot. The same twice derivation also works with
+  different callback code, parameter name and captures. Sorbet 0.6.13405 accepts the uncalled
+  annotated bodies and renamed parameter, and rejects the uncalled String operand (7002).
+- Executable definition checking, installation/dispatch and &b admission remain. DMethod
+  stays a separate mutual group until DJudge definition/call constructors depend on it;
+  then move it into that mutual group and add all three DFam fields/bridges.
+- Registration was attempted, but the gate correctly refused nine rules without worked
+  whole-program corpus coverage. Keep them staged until source admission supplies it;
+  the zero unexercised ceiling is unchanged. dUncarriedJudgments explicitly includes them
+  and a negative registration control pins refusal. No rule/floor/model change is claimed.
+- Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
+  zero owed/exempt, 252 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
+  build under a second, controls about five; no resource limits were raised.

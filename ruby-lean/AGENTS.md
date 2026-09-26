@@ -158,6 +158,11 @@ receivers through MethodEffects and restoring both states after dispatch. Flat s
 and argument companions match source ASTs. The exact 094 body now uses general source
 rules; boot controls cover allocation, saved arrays and escaping division errors. Syntactic
 body/definition checking, dispatch and &b admission remain; floors are unchanged.
+Clink 236 stages DMethod and its list companions, indexed by the block signature rather
+than callback code/captures. Ordinary premises quantify over all codes and cross the existing
+registry. BodyBridge interprets every derivation at any matching CheckedCallback; all method
+boot controls use it. Registration awaits whole-program corpus coverage; raw uses are refused
+by the registry. Definition checking, installation/dispatch and &b admission remain.
 
 ## Layout
 

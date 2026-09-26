@@ -1,4 +1,30 @@
-# Current resume point (2026-09-26, clink 235 / model L274)
+# Current resume point (2026-09-26, clink 236 / model L274)
+
+Clink 236 stages DMethod/DMethodAll/DMethodSeq: ordinary, assignment, flat sequence,
+primitive send and one-argument yield, plus list companions. The signature uses argument
+types and return type, with no callback code, local parameter names or captured environment.
+Ordinary premises quantify over every callback code; BodyBridge interprets them through
+djudge_context and proves all nine new constructors semantically by mutual induction.
+SemMethodBody instantiates a derivation at any matching CheckedCallback; a bare arrow
+still supplies no safety proof. Registry remains 77 rules (40 expressions + 37 companions).
+
+MethodTypingControls derives all six source bodies syntactically and takes their boot
+proofs through this bridge. The same twice derivation also admits a callback with different
+code, parameter name and captures. Sorbet 0.6.13405 accepts the uncalled annotated bodies
+and rejects the uncalled String-operand body (7002); a renamed block parameter is accepted.
+New modules build under a second; controls about five seconds, standard axioms only.
+Full quiet gate GREEN: unchanged fragment 89 / checker reach 93, 77 rules, 68 worked,
+zero owed/exempt, 252 agree / 0 disagree. Metatheory/axiom audit PASS. No live builds.
+
+The first gate refused registration because these rules have no worked whole-program corpus
+witness yet. Keep the zero unexercised ceiling. Registry's dUncarriedJudgments names all three
+staged families, preventing a raw premise from bypassing DFam; a negative control pins this.
+Next: executable definition-body checking, installation/dispatch and &b binding, then complete
+source admission. Move DMethod into DJudge's mutual group when definition/call constructors
+depend on it, add all three DFam fields and certify them with whole-program coverage.
+No new validateD acceptance yet.
+
+Previous foundation (clink 235):
 
 Clink 235 adds SemMethod.prim for every existing DPrim row, allowing yielding receivers and
 arguments. BodyPrimitive derives receiver-type retention from MethodEffects.firstOrder,

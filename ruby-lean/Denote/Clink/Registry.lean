@@ -20,6 +20,7 @@ import Denote.Rules.Singleton.SingletonRules
 import Denote.Rules.Instance.ScalarWrite
 import Denote.Clink.Form
 import Denote.Judgment.FlowRules
+import Ratchet.Judgment.DMethod
 
 /-! The registry carries ordinary expressions/lists and scoped recursive bodies/arguments.
 Every constructor registers only with a proof of its constructor-derived semantic form.
@@ -112,7 +113,10 @@ def dJudgmentInductives : List Name :=
 /-- Judgment inductives `DFam` does **not** carry a field for. A rule whose premises reach
 one of these cannot be registered: see `registerDClink`. -/
 def dUncarriedJudgments : List Name :=
-  dJudgmentInductives.filter fun n => !dFamField.any (fun (ind, _) => ind == n)
+  -- Staged method families have semantic proofs but no whole-program corpus witness yet.
+  -- Keep them outside the active registry while rejecting raw premises that reach them.
+  [``Ratchet.DMethod, ``Ratchet.DMethodAll, ``Ratchet.DMethodSeq] ++
+    dJudgmentInductives.filter fun n => !dFamField.any (fun (ind, _) => ind == n)
 
 def dclinkTy : Lean.Expr :=
   mkApp3 (mkConst ``Clink) (mkConst ``DFam) (mkConst ``dsynFam) (mkConst ``dsemFam)
