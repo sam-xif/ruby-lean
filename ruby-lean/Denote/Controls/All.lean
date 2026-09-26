@@ -70,6 +70,7 @@ import Denote.Controls.YieldMethodControls
 import Denote.Controls.MethodEffectsControls
 import Denote.Controls.MethodBodyControls
 import Denote.Controls.MethodTypingControls
+import Ratchet.Controls.CallbackBodyCheckControls
 import Denote.Controls.OwnNamesControls
 import Denote.Controls.PointClassControls
 import Denote.Controls.PointConstructorControls

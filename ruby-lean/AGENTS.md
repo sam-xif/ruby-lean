@@ -163,6 +163,11 @@ than callback code/captures. Ordinary premises quantify over all codes and cross
 registry. BodyBridge interprets every derivation at any matching CheckedCallback; all method
 boot controls use it. Registration awaits whole-program corpus coverage; raw uses are refused
 by the registry. Definition checking, installation/dispatch and &b admission remain.
+Clink 237 adds executable callback-body checking and untrusted defBlock/yield hints.
+Successful checks carry DMethod proofs at the entire declared domains, independently of
+callers. Optional ordinary proofs remain quantified over all callback codes. Checked
+declarations now feed real zero-positional entry and all six boot controls. Installation/
+lookup, source calls, &b binding and whole-program admission remain; floors are unchanged.
 
 ## Layout
 

@@ -110,6 +110,10 @@ inductive Deriv where
       checked once, at `params -> ret`, and the method is registered at that signature.
       No `Judge` rule yet (see the header). -/
   | defDecl (name : String) (params : List SigParam) (ret : Ty) (body : Deriv)
+  /-- Block signatures are untrusted definition-side hints, checked before any call. -/
+  | defBlock (name : String) (params : List SigParam) (blockArgs : List Ty) (blockRet ret : Ty) (body : Deriv)
+  /-- Yield arguments are checked against the surrounding method's block signature. -/
+  | yieldArgs (args : List Deriv)
   /-- An implicit-self call to a method declared by a `defDecl`. -/
   | callSig (name : String) (args : List Deriv) (ret : Ty)
   /-- Explicit initializer super; parent code and annotations come from retained sources. -/
@@ -187,6 +191,12 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
     let ps ← jList j "params" (fun p => do
       return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))
     return .defDecl (← name "name") ps (← ty "ret") (← kid "body")
+  | "defBlock" =>
+    let ps ← jList j "params" (fun p => do
+      return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))
+    return .defBlock (← name "name") ps (← jList j "blockArgs" Ty.ofJson?)
+      (← ty "blockRet") (← ty "ret") (← kid "body")
+  | "yield" => return .yieldArgs (← kids "args")
   | "callSig" => return .callSig (← name "name") (← kids "args") (← ty "ret")
   | "superInit" => return .superInit (← kids "args")
   | "callMethodSig" =>

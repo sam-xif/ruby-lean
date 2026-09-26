@@ -12186,3 +12186,29 @@ both halves of what constrains them now have a name.
 - Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
   zero owed/exempt, 252 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
   build under a second, controls about five; no resource limits were raised.
+
+## Clink 237 (2026-09-26) — check complete callback-capable method bodies
+
+- CheckCallbackBody returns derivations, not unchecked type results. defBlock/yieldArgs
+  wire hints contain proposed signatures/subcertificates; source literals, names, arity,
+  parameter shape and primitive types are checked independently. CheckedCallbackBody checks
+  the complete body at declared positional/block domains and exact first-order return type.
+  Call arguments and captured environments cannot specialize or repair that check.
+- CertifiedMethod and list companions optionally retain universally code-quantified ordinary
+  proofs. These reuse existing array typing only when all children are ordinary; yielding
+  array elements remain unsupported. Assignment checks the existing context/spine guards.
+  callback_capStale proves that the default-code decision holds for every actual block;
+  it does not use a dummy callback's body as evidence for the real one.
+- BodyChecked derives semantic body safety and actual zero-positional entry from a checked
+  artifact, retaining all metadata/capture checks. All six boot controls now consume artifacts
+  produced by the executable checker. No manually chosen body proof supplies those calls.
+- Mandatory negative controls cover forged literal/name/type/signature hints, wrong parameter
+  domains, arity/plainness, fuel, ordinary fallback and unsupported &b entry. Sorbet 0.6.13405
+  accepts uncalled `yield(value)` at Integer and rejects T.nilable(Integer) (7002); the checker
+  makes the same body-domain decision. The new hints decode but validateD still declines them.
+- Installation/lookup, source-call composition, &b binding and whole-program admission remain.
+  No runtime, registered-rule or floor changes; staged families remain blocked as raw premises.
+- Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
+  zero owed/exempt, 252 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New checker,
+  controls and entry modules build under a second; six boot proofs about five seconds.
+  No resource limits were raised.

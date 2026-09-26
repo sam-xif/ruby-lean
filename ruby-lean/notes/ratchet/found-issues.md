@@ -2880,7 +2880,7 @@ registers the rule and admits map blocks through validateD.
 
 ## F55 — Ordinary-method isolation cannot describe a captured write through yield
 
-**Syntactic body judgment proved in clink 236; definition checking/admission remain open.**
+**Definition-body checker proved through clink 237; installation/call admission remain open.**
 `def twice; saved = 7; result = yield(1) + yield(2); p saved; result; end;
 total = 0; p twice { |x| total = total + x }; p total` prints 7, 4, 3 under both
 CRuby 4.0.5 and the model. The runtime already handles this captured write correctly.
@@ -2933,3 +2933,8 @@ matching checked callback. Ordinary premises must hold for every code; callback 
 names and captured environments are not definition-side indices. All six body/boot controls
 now use this bridge. Registry registration waits for whole-program corpus coverage; raw
 uses are explicitly refused. Executable definition checking and source-call admission remain.
+
+Clink 237 checks complete declaration bodies at proposed positional/block/result domains,
+independently of callers. Successful results carry DMethod proofs and supply actual method
+entry/return in all six boot controls. Forged hints and a nilable yield-argument domain are
+rejected. Installation/lookup, source-call composition and explicit &b binding remain.

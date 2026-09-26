@@ -1,4 +1,33 @@
-# Current resume point (2026-09-26, clink 236 / model L274)
+# Current resume point (2026-09-26, clink 237 / model L274)
+
+Clink 237 adds CheckCallbackBody with proof-producing expression/list/sequence checking.
+Deriv.defBlock carries proposed positional/block/result signatures; yieldArgs carries only
+argument certificates. Every literal, name, arity and primitive type claim is rechecked.
+CheckedCallbackBody pins the complete declaration at its required-positional input domain,
+block signature and result. No caller locals or argument values enter definition checking.
+
+CertifiedMethod optionally retains an ordinary DJudge proof for every callback code. This
+allows existing array typing when all elements are ordinary; a yielding element has no such
+proof and is declined. Assignment's default-code decision is justified by callback_capStale,
+which proves that guard independent of the code. All other context/spine guards remain.
+
+BodyChecked interprets a checked artifact and proves its actual zero-positional method entry.
+All six MethodTypingControls boot proofs now consume executable-checker artifacts, including
+repeated/nested captured writes, string allocation, saved arrays and division escapes.
+Mandatory CallbackBodyCheckControls pins forged hints/signatures, whole-domain rejection,
+fuel/arity/plainness, wire decoding and unchanged top-level rejection. Sorbet 0.6.13405 accepts
+uncalled `yield(value)` at Integer and rejects a nilable domain (7002). New modules build
+under a second; boot controls about five seconds, standard axioms only.
+Full quiet gate GREEN: unchanged fragment 89 / checker reach 93, 77 rules, 68 worked,
+zero owed/exempt, 252 agree / 0 disagree. Metatheory/axiom audit PASS. No live builds.
+
+Next: definition installation/lookup and source calls with implicit blocks (094), then &b
+binding/admission. checkCallbackBody currently requires positional-only definition syntax;
+an explicit &b is rejected. The six entry proofs still begin after dispatch, with actual
+block allocation. DMethod remains staged: retain the zero unexercised ceiling and add it to
+DJudge's mutual group/DFam only with whole-program coverage. No new validateD acceptance yet.
+
+Previous foundation (clink 236):
 
 Clink 236 stages DMethod/DMethodAll/DMethodSeq: ordinary, assignment, flat sequence,
 primitive send and one-argument yield, plus list companions. The signature uses argument

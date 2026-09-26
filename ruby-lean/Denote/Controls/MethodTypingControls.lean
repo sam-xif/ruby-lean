@@ -6,6 +6,8 @@ import Denote.Rules.Expr.Array
 import Denote.Sem.Closure.Reify
 import Denote.Examples.YieldBody
 import Denote.Rules.Method.BodyBridge
+import Denote.Rules.Method.BodyChecked
+import Ratchet.Controls.CallbackBodyCheckControls
 
 /-! General source rules type assignments around repeated yields. The method and block
 both write total, but the block captures the outer caller and skips the method's local. -/
@@ -123,25 +125,43 @@ private def callStep (m : Machine) (body : Ratchet.Expr) : StepResult :=
   Interp.enterUserMethod entry entry.currentFrame.self "mixed" (method entry body) []
     (some (.ref m.heap.objs.size))
 
-theorem call {m : Machine} {body : Ratchet.Expr} {Γm : Env} {τ : Ty}
-    (hbody : SemMethod callback ⟨"Object", "Object", "mixed", false⟩ [] body τ Γm) (hτ : FirstOrder τ = true)
+private def declaration (body : Ratchet.Expr) : Defn := ⟨"mixed", [], body⟩
+private def checkBody (body : Ratchet.Expr) (hint : Deriv) (ret : Ty := .int) :=
+  checkCallbackBody 40 ctx0 .ivar0 (declaration body) (.defBlock "mixed" [] [.int] .int ret hint)
+private def mixedChecked := (checkBody mixedBody CallbackBodyCheckControls.mixedHint).get (by decide)
+private def twiceChecked := (checkBody YieldBody.twice CallbackBodyCheckControls.twiceHint).get (by decide)
+private def nestedChecked := (checkBody nestedBody
+  (.yieldArgs [.vasgn .lvar "total" (.yieldArgs [.intLit 1])])).get (by decide)
+private def formattedChecked := (checkBody formattedBody
+  (.prim (.prim (.yieldArgs [.intLit 1]) "to_s" [] .int (.cls "String"))
+    "length" [] (.cls "String") .int)).get (by decide)
+private def arrayChecked := (checkBody arrayBody
+  (.prim (.arrayLit [.intLit 10, .intLit 20] .int) "[]" [.yieldArgs [.intLit 1]]
+    (.arrayOf .int) (.nilable .int)) (.nilable .int)).get (by decide)
+private def divideChecked := (checkBody divideBody
+  (.prim (.yieldArgs [.intLit 0]) "/" [.yieldArgs [.intLit 0]] .int .int)).get (by decide)
+
+theorem call {m : Machine} {body : Ratchet.Expr}
+    (c : CheckedCallbackBody ctx0 .ivar0 (declaration body))
+    (hp : c.params = []) (hargs : c.blockArgs = [.int]) (hret : c.blockRet = .int)
     (hm : StateOk ctx0 [("total", .int)] .ivar0 m)
     (hk : m.kont = []) (hd : CaptureSlots ["total"] [("total", .int)] m) :
-    StepSpec m [("total", .int)] τ (callStep m body) ctx0 .ivar0 := by
-  have h := SemMethod.call0 (cb := callback) (md := method (allocated m) body) (o := m.heap.objs.size)
+    StepSpec m [("total", .int)] c.ret (callStep m body) ctx0 .ivar0 := by
+  have h := checked_callback_call0 c (cb := callback) hp hargs.symm hret.symm
+    (md := method (allocated m) body) (o := m.heap.objs.size)
     (cl := reifiedClosure m [.req "x"] [] (toRuby writeBody) false)
-    hbody
-    (reified_state hm [.req "x"] [] (toRuby writeBody) false) hk hτ rfl rfl rfl rfl rfl rfl rfl rfl
+    (reified_state hm [.req "x"] [] (toRuby writeBody) false) hk rfl rfl rfl rfl rfl rfl rfl rfl
     hd (by simp only [reifiedMachine, pushHeap_get_self]) ⟨rfl, rfl, rfl, rfl⟩
   exact h.rebase (.of_ext (reified_ext hm [.req "x"] [] (toRuby writeBody) false))
 
-private theorem call_boot {body : Ratchet.Expr} {Γm : Env} {τ : Ty}
-    (hbody : SemMethod callback ⟨"Object", "Object", "mixed", false⟩ [] body τ Γm) (hτ : FirstOrder τ = true)
+private theorem call_boot {body : Ratchet.Expr}
+    (c : CheckedCallbackBody ctx0 .ivar0 (declaration body))
+    (hp : c.params = []) (hargs : c.blockArgs = [.int]) (hret : c.blockRet = .int)
     (hb : bootOkB = true) (initial : Int) :
     let m := bootMachine.setLocal "total" (.int initial)
-    StepSpec m [("total", .int)] τ (callStep m body) ctx0 .ivar0 := by
+    StepSpec m [("total", .int)] c.ret (callStep m body) ctx0 .ivar0 := by
   have hm := stateOk_boot hb
-  apply call hbody hτ
+  apply call c hp hargs hret
     (StateOk_setLocal (ρ := .int) hm (by simp [stripAlias, denM, isIntV])
       rfl rfl rfl (by intro y σ h; cases h)) bootMachine_kont
   intro x τ hx
@@ -155,33 +175,33 @@ private theorem call_boot {body : Ratchet.Expr} {Γm : Env} {τ : Ty}
 theorem from_boot (hb : bootOkB = true) (initial : Int) :
     let m := bootMachine.setLocal "total" (.int initial)
     StepSpec m [("total", .int)] .int (callStep m mixedBody) ctx0 .ivar0 :=
-  call_boot (judged _) rfl hb initial
+  call_boot mixedChecked rfl rfl rfl hb initial
 
 theorem nested_from_boot (hb : bootOkB = true) (initial : Int) :
     let m := bootMachine.setLocal "total" (.int initial)
     StepSpec m [("total", .int)] .int (callStep m nestedBody) ctx0 .ivar0 :=
-  call_boot (nested_judged _) rfl hb initial
+  call_boot nestedChecked rfl rfl rfl hb initial
 
 theorem twice_from_boot (hb : bootOkB = true) (initial : Int) :
     let m := bootMachine.setLocal "total" (.int initial)
     StepSpec m [("total", .int)] .int (callStep m YieldBody.twice) ctx0 .ivar0 :=
-  call_boot (twice_judged _) rfl hb initial
+  call_boot twiceChecked rfl rfl rfl hb initial
 
 theorem formatted_from_boot (hb : bootOkB = true) (initial : Int) :
     let m := bootMachine.setLocal "total" (.int initial)
     StepSpec m [("total", .int)] .int (callStep m formattedBody) ctx0 .ivar0 :=
-  call_boot (formatted_judged _) rfl hb initial
+  call_boot formattedChecked rfl rfl rfl hb initial
 
 theorem array_from_boot (hb : bootOkB = true) (initial : Int) :
     let m := bootMachine.setLocal "total" (.int initial)
     StepSpec m [("total", .int)] (.nilable .int) (callStep m arrayBody) ctx0 .ivar0 :=
-  call_boot (array_judged _) rfl hb initial
+  call_boot arrayChecked rfl rfl rfl hb initial
 
 /-- At initial=0 this raises ZeroDivisionError; that remains a typed escape. -/
 theorem divide_from_boot (hb : bootOkB = true) (initial : Int) :
     let m := bootMachine.setLocal "total" (.int initial)
     StepSpec m [("total", .int)] .int (callStep m divideBody) ctx0 .ivar0 :=
-  call_boot (divide_judged _) rfl hb initial
+  call_boot divideChecked rfl rfl rfl hb initial
 
 #print axioms judged
 #print axioms renamed_judged
