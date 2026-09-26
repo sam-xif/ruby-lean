@@ -2730,6 +2730,13 @@ These facts are not yet furnished by Ty.clos. A stored closure binding is itself
 and cannot be silently omitted from the complete captured environment. Caller restoration
 and behavioral-value transport remain open.
 
+Clink 206 separates entry's complete environment proof from type transport and proves
+current-capture entry with explicit transport for every binding. The stored-lambda pilot
+retains f at its exact closure type, including at real boot entry. A new control shows why
+transport cannot follow from equal heaps/code alone: a dangling capture starts reading
+newly allocated locals after a frame push. General capture identity/liveness/environment
+tracking and caller restoration remain outside callable admission.
+
 ## F50 — the body answer contract is too weak for block return (2026-09-25)
 
 **Resolved for the admitted fragment by clink 203; typed jump rules remain future work.**

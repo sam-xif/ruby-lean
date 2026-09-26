@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 205)
+# Current resume point (2026-09-25, clink 206)
 
 Latest admission remains 084: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
@@ -53,14 +53,25 @@ transports a full closure denotation given first-order capture/self types and un
 reads. An empty capture/self contract needs only ProcPres. ProcPresControls rejects code
 replacement and shows that captured writes can invalidate typing despite retained payloads.
 
-Next: discharge caller restoration through captured writes and transport behavioral values.
+Clink 206 adds requiredClosureFrame_envOk_of_transport and requiredClosureFrame_state_of_env;
+the old first-order APIs remain wrappers. Rules/Closure/Current derives complete capture
+facts from the caller when cl.captured is its current uncaptured activation. Parameters,
+block locals and all captured bindings must be non-alias and carry explicit type transport.
+ClosureStoredControls proves actual allocation/assignment, payload lookup and full entry
+for any supported zero-argument lambda body, retaining f at its exact closure type. The
+boot Integer instance is non-vacuous under bootOkB. A dangling-capture control shows that
+equal heaps/code do not transport arbitrary closure types across a frame push.
+
+Next: discharge caller restoration through captured writes and track capture identity.
 Entry now has full conformance under the named scope/liveness/environment premises, but
-Ty.clos does not yet supply those premises. A stored f itself is higher-order; the complete
-captured environment cannot simply omit it, even for lambda { 1 }. EnvOk.capture is one-way:
+Ty.clos does not yet supply those premises. The stored-f pilot retains its higher-order
+binding using ProcPres.empty_capture_den. General capture types still need transport.
+EnvOk.capture is one-way:
 its lower-bound spine does not supply EnvOk's absence clause for unmentioned names.
 Framed.procs now retains a saved Proc's descriptor across argument evaluation;
 Framed.firstOrder still excludes clos, and FieldsPres carries only first-order ivar facts.
-The missing contract concerns captured values and complete environment transport.
+Current-capture environments now have an entry contract; arbitrary captures still need
+complete-environment and captured-value transport facts, not only a lower-bound spine.
 FramePres.isolated applies only to uncaptured activations; do not assume caller isolation.
 The unused ClosuresOk/closTblOk table machinery remains legacy, with F49's counterexamples
 retained explicitly. The old index-free denotation is now named LegacyIndexDen in controls.

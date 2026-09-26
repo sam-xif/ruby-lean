@@ -56,6 +56,11 @@ transport and caller restoration still precede callable admission.
 Clink 205 adds ProcPres to Framed: every certified evaluation preserves existing Proc
 payloads, including saved receiver code. Full closure-type transport separately requires
 stable captured reads/self; controls distinguish descriptor retention from capture typing.
+Clink 206 separates complete environment binding from type transport at closure entry.
+Current-capture entry now accepts closure-valued locals with proved transport; the stored
+zero-argument lambda pilot includes f at its exact type. A dangling-capture control refutes
+unconditional transport across a frame push. Caller restoration and capture identity tracking
+remain before admission.
 Next: 087, zero-argument lambda creation/call. See HANDOFF.
 
 ## Layout

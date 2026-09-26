@@ -11436,3 +11436,22 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
   pass. New transport and control proofs build in under a second; the bridge in 1.1s.
   No individual proof approached five minutes.
+
+## Clink 206 (2026-09-25) — complete entry with stored closure values
+
+- Environment separates complete binding from per-type frame transport; its old first-order
+  theorem remains a wrapper. State similarly consumes an independently proved EnvOk.
+  Current derives capture scope/liveness/complete reads from an uncaptured caller, preserving
+  parameter/block-local precedence and requiring non-alias types with explicit transport.
+- ClosureStoredControls constructs allocation/assignment and proves payload lookup plus full
+  entry for any supported zero-argument lambda body. The complete environment includes f
+  at its exact closure type; ProcPres transports its empty capture/self claims. A boot
+  Integer-body instance supplies the caller. This proves entry, not body or call safety.
+- A dangling-capture control refutes arbitrary type transport across an unchanged-heap frame
+  push: the newly allocated frame changes a previously nil captured read. Explicit transport
+  remains necessary even when Proc descriptors are retained (§F49).
+- No new judgment or emitter policy. Counts stay fragment 81 / checker reach 86, 61 rules,
+  60 worked theorems, 0 owed/exempt. Next: caller restoration and capture identity tracking.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New entry/transport/control proofs build in about one second or less; no individual
+  proof approached five minutes.

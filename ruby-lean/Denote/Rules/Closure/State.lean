@@ -8,6 +8,27 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
+/-- Full state transport consumes a separately proved complete body environment. This
+allows closure-valued captures when their frame transport has been established. -/
+theorem requiredClosureFrame_state_of_env {κ : Ctx} {Γ Γb : Env} {I : Ty}
+    {m : Machine} {cl : Closure} {ps : List SigParam} {args : List Value}
+    (hm : StateOk κ Γ I m) (ht : ReframeFO κ I) (ha : κ.asms = [])
+    (hscope : ClosureScopeEq m cl)
+    (henv : EnvOk Γb (pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)))
+    (hk : ∀ x, constGet? (κ.withFrame none) x = constGet? κ x) :
+    StateOk (κ.withoutRuntimeScope.withFrame none) Γb I
+      (pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) := by
+  apply StateOk_captured_reframe
+    (n := pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) hm ht ha rfl
+  · simpa only [currentFrame_pushMethodFrame, requiredClosureFrame, Option.getD_none] using hscope.self
+  · simpa only [currentFrame_pushMethodFrame, requiredClosureFrame] using hscope.block
+  · simpa only [currentFrame_pushMethodFrame, requiredClosureFrame] using hscope.cref
+  · simpa only [currentFrame_pushMethodFrame, requiredClosureFrame, Option.getD_none] using hscope.owner
+  · exact hk
+  · simp [FrameInRange, pushMethodFrame]
+  · exact henv
+  · simp [FrameOk, currentFrame_pushMethodFrame, requiredClosureFrame]
+
 theorem requiredClosureFrame_state {κ : Ctx} {Γ cap : Env} {I : Ty}
     {m : Machine} {cl : Closure} {ps : List SigParam} {args : List Value}
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I) (ha : κ.asms = [])
@@ -19,17 +40,9 @@ theorem requiredClosureFrame_state {κ : Ctx} {Γ cap : Env} {I : Ty}
       FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (hk : ∀ x, constGet? (κ.withFrame none) x = constGet? κ x) :
     StateOk (κ.withoutRuntimeScope.withFrame none) (ps ++ blockLocals cl.locals ++ cap) I
-      (pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) := by
-  apply StateOk_captured_reframe
-    (n := pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) hm ht ha rfl
-  · simpa only [currentFrame_pushMethodFrame, requiredClosureFrame, Option.getD_none] using hscope.self
-  · simpa only [currentFrame_pushMethodFrame, requiredClosureFrame] using hscope.block
-  · simpa only [currentFrame_pushMethodFrame, requiredClosureFrame] using hscope.cref
-  · simpa only [currentFrame_pushMethodFrame, requiredClosureFrame, Option.getD_none] using hscope.owner
-  · exact hk
-  · simp [FrameInRange, pushMethodFrame]
-  · exact requiredClosureFrame_envOk hargs hlive hcap habs htypes
-  · simp [FrameOk, currentFrame_pushMethodFrame, requiredClosureFrame]
+      (pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) :=
+  requiredClosureFrame_state_of_env hm ht ha hscope
+    (requiredClosureFrame_envOk hargs hlive hcap habs htypes) hk
 
 /-- The full state proof is attached to callClosure's actual next machine, including
 its block continuation. Exact arity and lambda mode select this entry path. -/
@@ -52,5 +65,6 @@ theorem callClosure_required_state {κ : Ctx} {Γ cap : Env} {I : Ty}
   exact StateOk_reCtl (requiredClosureFrame_state hm ht ha hscope hlive hargs hcap habs htypes hk) _ _
 
 #print axioms requiredClosureFrame_state
+#print axioms requiredClosureFrame_state_of_env
 #print axioms callClosure_required_state
 end Ratchet.Denote.Typed
