@@ -80,8 +80,8 @@ def savedChecked := (check savedBody savedHint).get (by decide)
   (hint (callHint "b" 5))).isNone
 #guard (checkBoundCallbackBody 0 ctx0 .ivar0 (decl (call "b" 5)) (hint (callHint "b" 5))).isNone
 
--- The staged body family does not itself grant validateD admission.
-#guard !(validateD (.def' "run" [.block (some "b")] (call "b" 5)) (hint (callHint "b" 5)))
+-- Complete explicit-block definitions now cross the shared registry.
+#guard validateD (.def' "run" [.block (some "b")] (call "b" 5)) (hint (callHint "b" 5))
 private def wire := "{\"rule\":\"callbackCall\",\"recv\":{\"rule\":\"var\",\"kind\":\"lvar\",\"name\":\"b\"},\"args\":[{\"rule\":\"intLit\",\"n\":5}]}"
 #guard ((Json.parse wire).bind Deriv.ofJson?).isOk
 

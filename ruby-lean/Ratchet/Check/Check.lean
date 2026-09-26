@@ -374,6 +374,14 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
       if hquiet : "method_added" ≠ name then do
         let decl : Defn := ⟨name, formals, body⟩
         let fresh ← refreshBodies n (topDeclCtx κ decl) I cache
+        match checkBoundCallbackBody n (topDeclCtx κ decl) I decl (.defBlock name' ps bs br ret db) with
+        | some c =>
+          some ⟨.sym, Γ, topDeclCtx κ decl, I,
+            .defBoundBlock c.paramShape c.blockArgsFO c.blockReturnFO c.returnFO c.judged hm
+              hc hs hb hco ha hi (List.all_eq_true.mp hg)
+              (by simpa only [List.all_eq_true, bne_iff_ne] using hf) hmiss hquiet,
+            { fresh with boundCallbacks := ⟨topDeclCtx κ decl, I, decl, c, db⟩ :: fresh.boundCallbacks }⟩
+        | none => do
         let c ← checkCallbackBody n (topDeclCtx κ decl) I decl (.defBlock name' ps bs br ret db)
         some ⟨.sym, Γ, topDeclCtx κ decl, I,
           .defBlock c.paramShape c.paramsFO c.blockArgsFO c.blockReturnFO c.returnFO c.judged hm
@@ -848,7 +856,8 @@ def refreshBodies (fuel : Nat) (κ : Ctx) (I : Ty) (cache : CheckedCache) : Opti
     let base ← refreshClassBodies n κ cache
     let ts ← refreshTopBodies n κ I base cache.top
     let callbacks ← refreshCallbackBodies n κ I cache.callbacks
-    let complete := { base with top := ts, callbacks := callbacks }
+    let boundCallbacks ← refreshBoundCallbackBodies n κ I cache.boundCallbacks
+    let complete := { base with top := ts, callbacks := callbacks, boundCallbacks := boundCallbacks }
     if receiverCacheCompleteB κ complete && singletonCacheCompleteB κ complete then some complete else none
 end
 

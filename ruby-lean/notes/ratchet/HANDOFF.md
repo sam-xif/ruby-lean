@@ -1,4 +1,42 @@
-# Current resume point (2026-09-26, clink 243 / model L274)
+# Current resume point (2026-09-26, clink 244 / model L274)
+
+Explicit named-&b source calls now pass validateD, admitting 095, 157 and new 261.
+DMethodFlow/Seq join DJudge's mutual
+group; DFam has seventeen fields and the shared Certify script covers fourteen mutual
+families. The new source rules interpret every body premise through that same registry.
+Semantic families/rules moved to Judgment/MethodFlowRules, avoiding a bridge import cycle.
+
+BoundCallbackCache retains all-code body certificates and rechecks every declaration after
+context changes. Source blocks get parameter types only from those checked signatures;
+actual body/result/capture checks are unchanged. Branch cache equality includes explicit
+block domains/results. srb_sigs now preserves named block signatures separately from value
+types; the emitter uses those declarations and never chooses them from a callback call.
+
+The checker falls back to existing DMethod rules only when every local type is fixed and
+code-independent, with first-order output guards and conservative alias loss. New corpus 261
+copies b, clears b, calls the copy, clears it, then yields: the live method-frame block remains
+available, and both invocations write a captured Integer. Together with 095 it supplies real
+whole-corpus coverage for all eleven new rules. No coverage exemption was added.
+
+Mandatory controls cover successful aliases/overrides, forged children/domains, wrong arity,
+hidden captured retyping, missing/stale caches and context refresh. All 53 pipeline controls
+pass, including uncalled wrong domains and unchanged definition hints across different actual
+callbacks. No model defect or runtime change was required.
+Sorbet 0.6.13405 rejects 261's final yield after b=nil (7003), equating it with a call on
+the overwritten local. CRuby 4.0.5 and the model retain the method-frame block and agree on
+total=12. The new rung records that measured Sorbet rejection, like the implicit-yield rungs.
+
+Next: rung 096 (symbol-to-Proc block passing), then 097 (stored lambda block passing).
+Measure the actual model/CRuby/Sorbet path before adding a judgment. Current named-&b admission
+is a lone named block formal with zero positional method arguments and one-argument callback
+calls; primitive/yield fallback requires no remaining symbolic callback-valued locals.
+
+Full quiet gate GREEN: fragment 94/261, checker reach 95, 99 rules (42 expression + 57
+companion), 72 worked proofs, zero owed/exempt, 254 agree / 0 disagree. Metatheory and
+standard-axiom audit PASS. Floors raised. Logs: /private/tmp/ratchet-boundadmit-{gate,audit}.log.
+No live builds. New proof modules build under a second; RuleAudit takes 25 seconds.
+
+Previous foundation (clink 243):
 
 FlowDefine/FlowDispatch/FlowSource now compose the all-code explicit-block body certificate
 with real source installation, DefsOk lookup, literal block allocation, &b entry and return.

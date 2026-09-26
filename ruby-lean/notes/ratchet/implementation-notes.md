@@ -12376,3 +12376,37 @@ both halves of what constrains them now have a name.
 - Full quiet gate GREEN: fragment 91/260, checker reach 94, 88 rules, 70 worked,
   zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
   build under a second; no resource limit was raised.
+
+## Clink 244 (2026-09-26) — admit explicit-block source programs
+
+- DMethodFlow/Seq join the mutual judgment. The registry carries seventeen families, with
+  one shared fourteen-family induction for ordinary, implicit-block and alias-aware bridges.
+  defBoundBlock/callBoundBlock interpret both method and actual callback premises through
+  that registry. Semantic family definitions moved out of FlowBridge to avoid import cycles.
+- BoundCallbackCache keeps complete all-code proofs and exact code/context/spine/signatures.
+  Every changed context rechecks the saved definitions, even uncalled ones; branch equality
+  includes explicit block domains/results. Call hints cannot replace the cached signature.
+- srb_sigs retains named Proc argument/result domains separately from value types, declining
+  unsupported components. Explicit-block emission uses those declared domains; only implicit
+  blocks retain the previous definition-only proposal search. The emitter's suppliedCallback
+  descriptor contains no actual code/captures; Lean reconstructs all identity/type evidence.
+- MethodLocalEnv.fixedB proves code-independent instantiation. The checker can then reuse
+  DMethod checking, retaining exact outgoing types with first-order guards and dropping alias
+  facts. This admits yield after clearing local block aliases without pretending the method
+  frame's block was cleared. No default callback body is used as a proof substitute.
+- New corpus 261 copies b, clears b, calls the copy, clears it and yields; both calls write a
+  captured Integer. Together with 095 it exercises every new constructor. Worked arbitrary-
+  family proofs and independent syntax prediction agree; the exemption ceiling stays zero.
+  The same general path also admits existing 157 (b.call(2) with an Integer multiplication block).
+- Full source controls cover aliases/overrides, forged hints/domains, arity, hidden captured
+  retyping, missing/stale caches, signature disagreement and definition refresh. All 53 pipeline
+  controls pass, including uncalled String-domain rejection and identical definition hints
+  under different actual callbacks. Source/model behavior is unchanged; no runtime fix needed.
+- Sorbet 0.6.13405 rejects 261's yield after b=nil (7003); it treats the yield as a call on
+  the overwritten block local. CRuby 4.0.5/model agree on total=12 through the retained
+  method-frame block. The new corpus expectation records this measured rejection. The first
+  full gate caught the initially incorrect expect_sorbet=true; no existing baseline moved.
+- Full quiet gate GREEN: fragment 94/261 (095/157/261 newly admitted), checker reach 95,
+  99 rules (42 expressions + 57 companions), 72 worked proofs, zero owed/exempt,
+  254 agree / 0 disagree. Metatheory/standard-axiom audit PASS; floors raised. New modules
+  build under a second, RuleAudit in 25; no proof exceeded five minutes or raised a limit.

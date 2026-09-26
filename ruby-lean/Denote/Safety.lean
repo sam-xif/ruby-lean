@@ -65,8 +65,26 @@ def methodArgRules : List Ratchet.Expr → List String
   | e :: es => "DMethodAll.cons" :: (methodRules e ++ methodArgRules es)
 end
 
-def flowMethods (methods : List (String × Ratchet.Expr)) : Ratchet.Expr → List (String × Ratchet.Expr)
-  | .def' name _ body => (name, body) :: methods.filter (·.1 != name)
+mutual
+def boundMethodRules : Ratchet.Expr → List String
+  | .int _ => ["DMethodFlow.intLit"]
+  | .nil => ["DMethodFlow.nilLit"]
+  | .var .lvar _ => ["DMethodFlow.var"]
+  | .vasgn .lvar _ e => "DMethodFlow.vasgn" :: boundMethodRules e
+  | .seq es => "DMethodFlow.sequence" :: boundMethodSeqRules es
+  | .send (some r) name [arg] none =>
+      if procCallNameB name then "DMethodFlow.call" :: (boundMethodRules r ++ boundMethodRules arg)
+      else "DMethodFlow.embed" :: methodRules (.send (some r) name [arg] none)
+  | e => "DMethodFlow.embed" :: methodRules e
+
+def boundMethodSeqRules : List Ratchet.Expr → List String
+  | [] => ["?"]
+  | [e] => "DMethodFlowSeq.last" :: boundMethodRules e
+  | e :: e' :: es => "DMethodFlowSeq.cons" :: (boundMethodRules e ++ boundMethodSeqRules (e' :: es))
+end
+
+def flowMethods (methods : List (String × (Bool × Ratchet.Expr))) : Ratchet.Expr → List (String × (Bool × Ratchet.Expr))
+  | .def' name ps body => (name, (ps.any (fun p => match p with | .block _ => true | _ => false), body)) :: methods.filter (·.1 != name)
   | _ => methods
 
 /-- Code known syntactically to the worked flow predictor. This is coverage data,
@@ -81,7 +99,7 @@ def flowBodies (bodies : List (String × (Bool × Ratchet.Expr))) :
   | _ => bodies
 
 mutual
-def flowRules (bodies : List (String × (Bool × Ratchet.Expr))) (methods : List (String × Ratchet.Expr)) : Ratchet.Expr → List String
+def flowRules (bodies : List (String × (Bool × Ratchet.Expr))) (methods : List (String × (Bool × Ratchet.Expr))) : Ratchet.Expr → List String
   | .int _ => ["DFlow.intLit"]
   | .nil => ["DFlow.nilLit"]
   | .var .lvar _ => ["DFlow.var"]
@@ -109,20 +127,22 @@ def flowRules (bodies : List (String × (Bool × Ratchet.Expr))) (methods : List
           | some (_, body) => plainRules body
           | none => ["?"]
         | _ => ["?"])
+  | .def' _ [.block (some _)] body => ["DFlow.embed", "defBoundBlock"] ++ boundMethodRules body
   | .def' _ _ body => ["DFlow.embed", "defBlock"] ++ methodRules body
   | .send none name [] (some (.block _ _ body)) =>
       match methods.lookup name with
-      | some method => "DFlow.callBlock" :: (methodRules method ++ plainRules body)
+      | some (false, method) => "DFlow.callBlock" :: (methodRules method ++ plainRules body)
+      | some (true, method) => "DFlow.callBoundBlock" :: (boundMethodRules method ++ plainRules body)
       | none => ["?"]
   | e => "DFlow.embed" :: plainRules e
 
-def flowSeqRules (bodies : List (String × (Bool × Ratchet.Expr))) (methods : List (String × Ratchet.Expr)) : List Ratchet.Expr → List String
+def flowSeqRules (bodies : List (String × (Bool × Ratchet.Expr))) (methods : List (String × (Bool × Ratchet.Expr))) : List Ratchet.Expr → List String
   | [] => ["?"]
   | [e] => "DFlowSeq.last" :: flowRules bodies methods e
   | e :: e' :: es => "DFlowSeq.cons" ::
       (flowRules bodies methods e ++ flowSeqRules (flowBodies bodies e) (flowMethods methods e) (e' :: es))
 
-def flowArgsRules (bodies : List (String × (Bool × Ratchet.Expr))) (methods : List (String × Ratchet.Expr)) : List Ratchet.Expr → List String
+def flowArgsRules (bodies : List (String × (Bool × Ratchet.Expr))) (methods : List (String × (Bool × Ratchet.Expr))) : List Ratchet.Expr → List String
   | [] => ["DFlowAll.nil"]
   | e :: es => "DFlowAll.cons" :: (flowRules bodies methods e ++ flowArgsRules (flowBodies bodies e) (flowMethods methods e) es)
 end
@@ -334,7 +354,8 @@ def rulesUsedFor (q : String × Ratchet.Expr) : List String :=
   if ["006-nil-lit", "031-reassign-different-type", "087-lambda-zero-arity",
       "088-lambda-stabby-one-param", "098-lambda-closure-capture", "089-proc-basic", "090-proc-bracket-call",
       "091-block-each-int", "092-block-map-to-s", "093-block-doend-with-block-local",
-      "094-yield-arith", "260-yield-local-and-captured-write"].contains q.1 then
+      "094-yield-arith", "260-yield-local-and-captured-write", "095-block-param-ampersand",
+      "261-bound-block-alias-and-yield"].contains q.1 then
     "flow" :: flowRules [] [] q.2
   else
   let ann := ((annotationHints.find? (·.1 == q.1)).map (·.2)).getD {}

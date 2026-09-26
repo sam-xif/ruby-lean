@@ -1,5 +1,5 @@
 import Denote.Rules.Method.FlowDispatch
-import Denote.Rules.Method.FlowBridge
+import Denote.Judgment.MethodFlowRules
 import Denote.Rules.Closure.FlowCall
 
 /-! Uniform &b bodies compose with actual literal block code and capture ownership.

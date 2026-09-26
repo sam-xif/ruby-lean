@@ -1,3 +1,4 @@
+import Ratchet.Static.CallbackFacts
 import Ratchet.Check.Deriv
 import Ratchet.Static.CtxEq
 import Ratchet.Guards.MethodCtx
@@ -338,6 +339,19 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       bs.all (fun σ => FirstOrder σ && !isAliasTy σ) = true →
       FirstOrder br = true → FirstOrder τ = true →
       DMethod (topDeclCtx κ d) I ⟨"Object", "Object", d.name, false⟩ bs br ps d.body τ Γm →
+      κ.scope.runtimeMain = true → topDeclClassesB κ d.name = true →
+      κ.selfTy = none → κ.blockTy = none → κ.consts = [] → κ.asms = [] → FirstOrder I = true →
+      (∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) →
+      (∀ old ∈ κ.defs, old.name ≠ d.name) → "method_missing" ≠ d.name → "method_added" ≠ d.name →
+      DJudge Γ (.def' d.name d.params d.body) .sym Γ κ I (topDeclCtx κ d) I
+  /-- Sorbet 0.6.13405 checks named-&b bodies over the full declared Proc domain,
+  even uncalled (clinks 242–243). Actual callback code is universally quantified. -/
+  | defBoundBlock {κ : Ctx} {Γ : Env} {I τ br : Ty} {d : Defn}
+      {localName : String} {bs : List Ty} {callback : Bool} {Γm : ClosureCode → Env} {out : CallbackFacts} :
+      d.params = [.block (some localName)] →
+      bs.all (fun σ => FirstOrder σ && !isAliasTy σ) = true → FirstOrder br = true → FirstOrder τ = true →
+      (∀ code, DMethodFlow (topDeclCtx κ d) I ⟨"Object", "Object", d.name, false⟩ bs br
+        [(localName, .clos code .ivar0 .never)] ⟨[localName]⟩ d.body τ callback (Γm code) out) →
       κ.scope.runtimeMain = true → topDeclClassesB κ d.name = true →
       κ.selfTy = none → κ.blockTy = none → κ.consts = [] → κ.asms = [] → FirstOrder I = true →
       (∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) →
@@ -718,6 +732,22 @@ inductive DFlow : Ctx → Env → Ty → LocalFacts → Expr → Ty → Bool →
       DFlow κ Γ I facts (.send none decl.name []
         (some (.block (ps.map (fun p => Param.req p.1)) locals body))) τ false κ Γ I .unknown
 
+  /-- Sorbet 0.6.13405 accepts named-&b calls with renamed block parameters and
+  stable captures (clink 243). Both the uniform method and actual block are checked. -/
+  | callBoundBlock {κ : Ctx} {Γ Γb : Env} {I τ br : Ty} {decl : Defn}
+      {facts : LocalFacts} {ps : List SigParam} {locals names : List String} {body : Expr}
+      {localName : String} {callback : Bool} {Γm : ClosureCode → Env} {out : CallbackFacts} :
+      (∀ code, DMethodFlow κ I ⟨"Object", "Object", decl.name, false⟩ (ps.map (·.2)) br
+        [(localName, .clos code .ivar0 .never)] ⟨[localName]⟩ decl.body τ callback (Γm code) out) →
+      decl.params = [.block (some localName)] → decl ∈ κ.defs → FirstOrder τ = true → FirstOrder br = true →
+      closureMainB κ I = true → activationEnvB (ps ++ blockLocals locals ++ Γ) = true →
+      activationReturnB Γb = true → closureReturnEnv (ps.map (·.1) ++ locals) names Γ Γb = Γ →
+      facts.captureNames? (withoutNames (ps.map (·.1) ++ locals) Γb) = some names →
+      (paramEqAll (ps.map (fun p => Param.req p.1)) (ps.map (fun p => Param.req p.1)) && exprEq body body) = true →
+      DJudge (ps ++ blockLocals locals ++ Γ) body br Γb (closureBodyCtx κ) I (closureBodyCtx κ) I →
+      DFlow κ Γ I facts (.send none decl.name []
+        (some (.block (ps.map (fun p => Param.req p.1)) locals body))) τ false κ Γ I .unknown
+
 /-- Sorbet's stored-lambda example (clink 200) uses the local established by the
 preceding statement. This companion threads the proved model facts in that order. -/
 inductive DFlowSeq : Ctx → Env → Ty → LocalFacts → List Expr → Ty → Bool →
@@ -790,6 +820,57 @@ inductive DMethodSeq : Ctx → Ty → Frame → List Ty → Ty → Env → List 
       {Γ Γ₁ Γ₂ : Env} {e e' : Expr} {es : List Expr} :
       DMethod κ I fr ps ret Γ e σ Γ₁ → DMethodSeq κ I fr ps ret Γ₁ (e' :: es) τ Γ₂ →
       DMethodSeq κ I fr ps ret Γ (e :: e' :: es) τ Γ₂
+/-- Sorbet 0.6.13405 accepts copying &b, clearing the original, restoring it from
+the copy and repeated calls (clinks 240–242); a call after a nil overwrite fails 7003.
+Receiver identity is a proved flow fact, separate from its value type and signature. -/
+inductive DMethodFlow : Ctx → Ty → Frame → List Ty → Ty → Env → CallbackFacts →
+    Expr → Ty → Bool → Env → CallbackFacts → Prop
+  | embed {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret τ : Ty}
+      {Γ Γ' : Env} {facts : CallbackFacts} {e : Expr} :
+      DMethod κ I fr ps ret Γ e τ Γ' →
+      DMethodFlow κ I fr ps ret Γ facts e τ false Γ' .empty
+  | intLit {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret : Ty}
+      {Γ : Env} {facts : CallbackFacts} {n : Int} :
+      DMethodFlow κ I fr ps ret Γ facts (.int n) .int false Γ facts
+  | nilLit {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret : Ty}
+      {Γ : Env} {facts : CallbackFacts} :
+      DMethodFlow κ I fr ps ret Γ facts .nil .nilT false Γ facts
+  | var {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret τ : Ty}
+      {Γ : Env} {facts : CallbackFacts} {x : String} :
+      envGet? Γ x = some τ → isAliasTy τ = false →
+      DMethodFlow κ I fr ps ret Γ facts (.var .lvar x) τ (facts.aliases.contains x) Γ facts
+  | vasgn {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret τ : Ty}
+      {Γ Γ' : Env} {facts out : CallbackFacts} {e : Expr} {x : String} {callback : Bool} :
+      DMethodFlow κ I fr ps ret Γ facts e τ callback Γ' out →
+      capStale x τ τ = false → isAliasTy τ = false →
+      (∀ code, capStaleCtx x τ (callbackMethodCtx κ fr code) = false) →
+      killClosOverSpine I x τ = I →
+      DMethodFlow κ I fr ps ret Γ facts (.vasgn .lvar x e) τ callback (envAfter Γ' x τ)
+        (out.write x callback)
+  | sequence {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret τ : Ty}
+      {Γ Γ' : Env} {facts out : CallbackFacts} {es : List Expr} {callback : Bool} :
+      DMethodFlowSeq κ I fr ps ret Γ facts es τ callback Γ' out →
+      DMethodFlow κ I fr ps ret Γ facts (.seq es) τ callback Γ' out
+  | call {κ : Ctx} {I : Ty} {fr : Frame} {σ τ ret : Ty} {Γ Γ₁ Γ₂ : Env}
+      {facts mid out : CallbackFacts} {recv arg : Expr} {name : String} {callback : Bool} :
+      DMethodFlow κ I fr [σ] ret Γ facts recv τ true Γ₁ mid →
+      DMethodFlow κ I fr [σ] ret Γ₁ mid arg σ callback Γ₂ out →
+      activationReturnB Γ₂ = true → plainArgB arg = true → nameFreeN κ name = true →
+      procCallNameB name = true →
+      DMethodFlow κ I fr [σ] ret Γ facts (.send (some recv) name [arg] none) ret false Γ₂ out
+
+/-- Source-order sequencing retains both type and identity updates. -/
+inductive DMethodFlowSeq : Ctx → Ty → Frame → List Ty → Ty → Env → CallbackFacts →
+    List Expr → Ty → Bool → Env → CallbackFacts → Prop
+  | last {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret τ : Ty}
+      {Γ Γ' : Env} {facts out : CallbackFacts} {e : Expr} {callback : Bool} :
+      DMethodFlow κ I fr ps ret Γ facts e τ callback Γ' out →
+      DMethodFlowSeq κ I fr ps ret Γ facts [e] τ callback Γ' out
+  | cons {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret σ τ : Ty}
+      {Γ Γ₁ Γ₂ : Env} {facts mid out : CallbackFacts} {e e' : Expr} {es : List Expr} {c c' : Bool} :
+      DMethodFlow κ I fr ps ret Γ facts e σ c Γ₁ mid →
+      DMethodFlowSeq κ I fr ps ret Γ₁ mid (e' :: es) τ c' Γ₂ out →
+      DMethodFlowSeq κ I fr ps ret Γ facts (e :: e' :: es) τ c' Γ₂ out
 end
 
 theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ : Ty}
@@ -808,7 +889,9 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_10 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_11 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_12 := fun _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    (motive_13 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
+    (motive_14 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 

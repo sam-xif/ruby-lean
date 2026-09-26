@@ -49,7 +49,7 @@ namespace Ratchet.Denote.Typed
 
 open RubyCore Ratchet Ratchet.Denote
 
-/-! ## §1 Twelve-family mutual induction, using the initializer registry bridge -/
+/-! ## §1 Fourteen-family mutual induction, using the initializer registry bridge -/
 
 /-- **Every syntactic derivation is a certified one.** The registry covers `DJudge`, so the
 judgment `check` returns lands in the judgment `dregistry_safe` consumes. -/
@@ -219,4 +219,14 @@ theorem validateD_safe_run {p : Ratchet.Expr} {d : Deriv} (h : validateD p d = t
 #print axioms validateD_safe_boot
 #print axioms validateD_safe_run
 
+end Ratchet.Denote.Typed
+
+namespace Ratchet.Denote.Typed
+theorem dmethodFlow_certified {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret τ : Ty}
+    {Γ Γ' : Env} {facts out : CallbackFacts} {e : Ratchet.Expr} {callback : Bool}
+    (h : DMethodFlow κ I fr ps ret Γ facts e τ callback Γ' out) :
+    (DJudgeC dclinks).methodFlow κ I fr ps ret Γ facts e τ callback Γ' out := by
+  intro F hF
+  certify_djudgments DMethodFlow.rec h F hF
+#print axioms dmethodFlow_certified
 end Ratchet.Denote.Typed

@@ -2880,7 +2880,7 @@ registers the rule and admits map blocks through validateD.
 
 ## F55 — Ordinary-method isolation cannot describe a captured write through yield
 
-**Implicit-block source admission resolved by clink 239; explicit &b admission remains open.**
+**Resolved for implicit blocks (clink 239) and lone named-&b methods (clink 244).**
 Clink 240 proves actual &b entry, saved-receiver native call/[] dispatch and full return.
 The receiver must be the checked callback and retain native Proc class, separately from its
 code-only type. Arguments may overwrite the source local or invoke the callback again.
@@ -2890,8 +2890,11 @@ preserves active-method aliases. Uniform body and real boot-entry proofs cover r
 captured writes. Clink 242 adds executable whole-definition checking with symbolic callback
 types and all-code DMethodFlow certificates. Actual callbacks instantiate these proofs only
 at entry. Clink 243 proves whole-source definition/lookup/allocation/return, including exact
-095 and alias-bearing captured-write programs from boot. Registry/cache/emitter admission
-remains. Measured runtime behavior agrees and exposes no new model defect; Sorbet's special
+095 and alias-bearing captured-write programs from boot. Clink 244 registers both method-flow
+families and source rules, retains declared block signatures, rechecks cached all-code bodies,
+and admits 095/157/261 with complete rule coverage. Ordinary positional method arguments and
+broader callback effects remain fragment extensions. Measured runtime behavior agrees and
+exposes no new model defect; Sorbet's special
 new rule still declines a user override that the model correctly dispatches (7035).
 `def twice; saved = 7; result = yield(1) + yield(2); p saved; result; end;
 total = 0; p twice { |x| total = total + x }; p total` prints 7, 4, 3 under both

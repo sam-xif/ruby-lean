@@ -16,9 +16,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 91 rungs, reach 17**, **88 registered rules** (41 expressions + 47 companions),
-**0 owed**, **0 exempt**. Checker reach is 94; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **253 agree, 0 disagreements**. 70 rungs additionally carry a
+**Fragment 94 rungs, reach 17**, **99 registered rules** (42 expressions + 57 companions),
+**0 owed**, **0 exempt**. Checker reach is 95; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **254 agree, 0 disagreements**. 72 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -197,6 +197,12 @@ Clink 243 proves whole-source named-&b definition/lookup/literal-block dispatch 
 Mandatory boot controls match exact 095 and cover copied/restored aliases, receiver sequences,
 saved receivers, captured writes and lambda/proc/new overrides. Runtime agreement holds;
 mutual registry/cache/emitter integration remains before admission. Counts/floors are unchanged.
+Clink 244 registers DMethodFlow/Seq and named-&b definition/call rules through the shared
+fourteen-family bridge. Explicit block signatures are retained from Sorbet; cached bodies
+quantify over all callback codes and recheck after context changes. Rungs 095/157 and new 261
+(copied block, overwritten aliases, then yield with captured writes) are admitted. A proved
+fixed-environment fallback uses existing method rules after local callback types disappear.
+Every new rule has whole-corpus coverage; no runtime change was needed. Next rung: 096.
 
 ## Layout
 

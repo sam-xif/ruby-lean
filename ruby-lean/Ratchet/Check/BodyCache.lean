@@ -2,6 +2,7 @@ import Ratchet.Judgment.DJudge
 import Ratchet.Check.CheckInit
 import Ratchet.Guards.MemberRoute
 import Ratchet.Check.MethodCertificate
+import Ratchet.Check.MethodFlowCertificate
 
 /-! Annotation-checked body artifacts. Lookup proves code membership and exact context;
 neither cached signatures nor a receiver's call-site shape can stand in for a body proof. -/
@@ -65,12 +66,20 @@ structure CachedCallback where
   body : CheckedCallbackBody ctx spine decl
   deriv : Deriv
 
+structure CachedBoundCallback where
+  ctx : Ctx
+  spine : Ty
+  decl : Defn
+  body : CheckedBoundCallbackBody ctx spine decl
+  deriv : Deriv
+
 structure CheckedCache where
   top : BodyCache := []
   members : List CachedMember := []
   initializers : List CachedInitializer := []
   singletons : List CachedSingleton := []
   callbacks : List CachedCallback := []
+  boundCallbacks : List CachedBoundCallback := []
 
 /-- Retain definition annotations for parent replay, independent of receiver-specific
 cached output fields. Each super use rechecks the actual selected code in its new context. -/
@@ -81,6 +90,8 @@ def initializerSources (cache : CheckedCache) : List InitializerSource :=
 /-- Equal code tables alone do not pin annotations. Branches must also agree on cached
 signatures, rather than silently selecting one branch's declared parameter/field types. -/
 def cacheSignaturesB (a b : CheckedCache) : Bool :=
+  (a.boundCallbacks.map fun c => (c.decl.name, c.body.localName, c.body.blockArgs, c.body.blockRet, c.body.ret, c.spine)) ==
+    (b.boundCallbacks.map fun c => (c.decl.name, c.body.localName, c.body.blockArgs, c.body.blockRet, c.body.ret, c.spine)) &&
   (a.callbacks.map fun c => (c.decl.name, c.body.params, c.body.blockArgs, c.body.blockRet, c.body.ret, c.spine)) ==
     (b.callbacks.map fun c => (c.decl.name, c.body.params, c.body.blockArgs, c.body.blockRet, c.body.ret, c.spine)) &&
   (a.singletons.map fun c => (c.owner, c.decl.name, c.body.params, c.body.ret, c.body.refined.map (·.1))) ==

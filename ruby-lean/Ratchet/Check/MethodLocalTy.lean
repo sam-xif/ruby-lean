@@ -60,6 +60,29 @@ def MethodLocalEnv.instantiate (Γ : MethodLocalEnv) (code : ClosureCode) : Env 
 
 def MethodLocalEnv.validB (Γ : MethodLocalEnv) : Bool := Γ.all (fun p => p.2.validB)
 
+def MethodLocalEnv.fixedB (Γ : MethodLocalEnv) : Bool :=
+  Γ.all (fun p => match p.2 with | .fixed _ => true | .callback => false)
+
+theorem MethodLocalEnv.fixed_instantiate {Γ : MethodLocalEnv} (h : Γ.fixedB = true)
+    (code : ClosureCode) : Γ.instantiate code = Γ.instantiate default := by
+  induction Γ with
+  | nil => rfl
+  | cons p Γ ih =>
+    simp only [fixedB, List.all_cons, Bool.and_eq_true] at h
+    cases ht : p.2 with
+    | callback => simp [ht] at h
+    | fixed τ =>
+      change (p.1, p.2.instantiate code) :: MethodLocalEnv.instantiate Γ code =
+        (p.1, p.2.instantiate default) :: MethodLocalEnv.instantiate Γ default
+      rw [ih h.2]
+      simp only [ht, MethodLocalTy.instantiate]
+
+def MethodLocalEnv.ofEnv (Γ : Env) : MethodLocalEnv := Γ.map (fun p => (p.1, .fixed p.2))
+
+theorem MethodLocalEnv.instantiate_ofEnv (Γ : Env) (code : ClosureCode) :
+    (ofEnv Γ).instantiate code = Γ := by
+  simp [ofEnv, instantiate, Function.comp_def, MethodLocalTy.instantiate]
+
 def MethodLocalEnv.get? (Γ : MethodLocalEnv) (x : String) : Option MethodLocalTy :=
   (Γ.find? (·.1 == x)).map (·.2)
 

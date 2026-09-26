@@ -1,5 +1,5 @@
 import Denote.Rules.Method.MethodDefine
-import Denote.Rules.Method.FlowBridge
+import Denote.Judgment.MethodFlowRules
 
 /-! A named-&b definition requires its all-code signature-domain body proof before
 installation, even if uncalled. Installation itself uses the existing real transition. -/

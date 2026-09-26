@@ -1,5 +1,5 @@
 import Ratchet.Check.Certified
-import Ratchet.Check.CallbackCache
+import Ratchet.Check.BoundCallbackCache
 
 /-! Proof-producing local-flow checking. The ordinary checker is a callback at
 strictly smaller fuel, including when the stored body is larger than the call. -/
@@ -48,6 +48,40 @@ def requiredFlowParams? (ps : List Param) (ts : List Ty) :
     let ⟨qs, hp, ht⟩ ← requiredFlowParams? ps ts
     some ⟨(x, t) :: qs, by simp only [List.map_cons, hp], by simp only [List.map_cons, ht]⟩
   | _, _ => none
+
+def checkBoundBlockCall (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I : Ty)
+    (facts : LocalFacts) (name : String) (formals : List Param) (locals : List String)
+    (body : Expr) (db : Deriv) (ret : Ty) (cache : CheckedCache) :
+    Option (CertifiedFlow κ Γ I facts (.send none name [] (some (.block formals locals body)))) := do
+  let c ← findBoundCallback κ I name cache.boundCallbacks
+  if hr : c.body.ret = ret then do
+  let ⟨ps, hparams, htypes⟩ ← requiredFlowParams? formals c.body.blockArgs
+  if hs : (paramEqAll (ps.map (fun p => Param.req p.1)) (ps.map (fun p => Param.req p.1)) && exprEq body body) = true then do
+  if hm : closureMainB κ I = true then do
+  if hin : activationEnvB (ps ++ blockLocals locals ++ Γ) = true then do
+  let b ← ordinary (ps ++ blockLocals locals ++ Γ) body db (closureBodyCtx κ) I cache
+  let ⟨hbctx⟩ ← ctxEq? b.ctx (closureBodyCtx κ)
+  if hbi : b.spine = I then do
+  if hbr : b.ty = c.body.blockRet then do
+  if hout : activationReturnB b.out = true then do
+  match hn : facts.captureNames? (withoutNames (ps.map (·.1) ++ locals) b.out) with
+  | none => none
+  | some names =>
+    if hfix : closureReturnEnv (ps.map (·.1) ++ locals) names Γ b.out = Γ then
+      some ⟨ret, false, κ, Γ, I, .unknown, by
+        have hj := DFlow.callBoundBlock (facts := facts)
+          (by simpa only [htypes] using c.body.judged)
+          c.body.paramShape c.installed c.body.returnFO c.body.blockReturnFO hm hin hout hfix hn hs
+          (by simpa only [hbctx, hbi, hbr] using b.judged)
+        simpa only [c.nameOk, hparams, hr] using hj, cache⟩
+    else none
+  else none
+  else none
+  else none
+  else none
+  else none
+  else none
+  else none
 
 mutual
 def checkFlow (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I : Ty)
@@ -231,6 +265,9 @@ def checkFlow (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I :
       else none
     | .send none name [] (some (.block formals locals body)), .callBlock claimed db ret => do
       if name != claimed then none else do
+      match checkBoundBlockCall ordinary κ Γ I facts name formals locals body db ret cache with
+      | some c => some c
+      | none => do
       let c ← findCallback κ I name cache.callbacks
       if hp : c.body.params = [] then do
       if hr : c.body.ret = ret then do

@@ -1,4 +1,5 @@
 import Ratchet.Check.MethodFlowCertificate
+import Ratchet.Check.CheckCallbackBody
 
 /-! Definition-side method flow checking. No actual callback code, argument value or
 capture environment is an input. Every successful result carries an all-code derivation. -/
@@ -73,7 +74,17 @@ def checkMethodFlowExpr (fuel : Nat) (κ : Ctx) (I : Ty) (fr : Frame) (ps : List
         else none
         else none
       | _ => none
-    | _, _ => none
+    | _, _ => do
+      if hf : Γ.fixedB = true then do
+        let c ← checkCallbackExpr n κ I fr ps ret (Γ.instantiate default) e d
+        if ht : MethodLocalTy.validB (.fixed c.ty) = true then do
+        if ho : (MethodLocalEnv.ofEnv c.out).validB = true then
+          some ⟨.fixed c.ty, .ofEnv c.out, false, .empty, ht, ho, fun code => by
+            rw [MethodLocalEnv.fixed_instantiate hf, MethodLocalEnv.instantiate_ofEnv]
+            exact .embed c.judged⟩
+        else none
+        else none
+      else none
     else none
     else none
     else none

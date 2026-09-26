@@ -1,0 +1,11 @@
+{
+  "id": "bound-block-alias-and-yield",
+  "tier": 9,
+  "description": "Copy the supplied block, overwrite the original, call the copy, then clear it and yield through the method frame; both invocations update a captured Integer.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true,
+  "sorbet_note": "Sorbet 0.6.13405 treats yield after b=nil as a call on NilClass (7003). CRuby 4.0.5 and the model retain the method-frame block and both invocations update total to 12."
+}

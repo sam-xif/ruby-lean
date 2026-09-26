@@ -26,8 +26,27 @@ end
 '''
 
 
+def bound_source(body="b.call(5)", domain="Integer", call="run { |x| x + 1 }"):
+    return f'''# typed: true
+extend T::Sig
+sig {{ params(b: T.proc.params(x: {domain}).returns(Integer)).returns(Integer) }}
+def run(&b)
+  {body}
+end
+{call}
+'''
+
+
 def main():
     cases = [
+        ("bound_direct", bound_source(), "ok", True),
+        ("bound_saved", bound_source("b.call((b = nil; 5))"), "ok", True),
+        ("bound_copied", bound_source("copy = b; b = nil; copy.call(5); copy = nil; yield(7)"), "ok", True),
+        ("bound_bad_uncalled_domain", bound_source(domain="String", call=""), "blocked", False),
+        ("bound_bad_called_domain", bound_source(domain="String"), "blocked", False),
+        ("bound_overwritten", bound_source("b = nil; b.call(5)"), "blocked", False),
+        ("bound_bad_result", bound_source(call='run { |x| "wrong" }'), "blocked", False),
+        ("bound_different_callback", bound_source(call="run { |renamed| renamed * 2 }"), "ok", True),
         ("alias", source('saved = input; "greetings " + saved'), "ok", True),
         ("wrong_domain", source('saved = input; "greetings " + saved', "7"), "ok", False),
         ("uncalled_conflict", source('1 + input; "hello " + input', None), "blocked", False),
@@ -224,6 +243,7 @@ item + 1
             assert accepted == expected, (name, accepted, expected)
     # Changing the caller's value/type cannot change the method's proposed domain.
     assert emitted["alias"]["stmts"][0] == emitted["wrong_domain"]["stmts"][0]
+    assert emitted["bound_direct"]["body"]["stmts"][0] == emitted["bound_different_callback"]["body"]["stmts"][0]
     print(f"Body inference and block flow: {len(cases)} pipeline controls and caller independence passed")
 
 

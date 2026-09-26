@@ -1,3 +1,4 @@
+import Denote.Examples.BoundCallbackDerivations
 import Denote.Examples.Derivations
 import Denote.Examples.MethodDerivations
 import Denote.Examples.RecursiveDerivations
@@ -378,7 +379,9 @@ def safeRungs : List (String × Ratchet.Expr) :=
    ("092-block-map-to-s", program_092_block_map_to_s),
    ("093-block-doend-with-block-local", program_093_block_doend_with_block_local),
    ("094-yield-arith", program_094_yield_arith),
-   ("260-yield-local-and-captured-write", program_260_yield_local_and_captured_write)]
+   ("260-yield-local-and-captured-write", program_260_yield_local_and_captured_write),
+   ("095-block-param-ampersand", program_095_block_param_ampersand),
+   ("261-bound-block-alias-and-yield", program_261_bound_block_alias_and_yield)]
 
 theorem safeRungs_safe (hb : bootOkB = true) :
     ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
@@ -387,7 +390,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
     | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
     | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
-    | rfl | rfl | rfl | rfl
+    | rfl | rfl | rfl | rfl | rfl | rfl
   · exact safe_001_int_lit hb
   · exact safe_002_bool_true hb
   · exact safe_003_bool_false hb
@@ -458,6 +461,8 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   · exact safe_093_block_doend_with_block_local hb
   · exact safe_094_yield_arith hb
   · exact safe_260_yield_local_and_captured_write hb
+  · exact safe_095_block_param_ampersand hb
+  · exact safe_261_bound_block_alias_and_yield hb
 
 #print axioms safeRungs_safe
 end Ratchet.Denote.Typed

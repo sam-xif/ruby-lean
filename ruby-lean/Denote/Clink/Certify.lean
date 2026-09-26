@@ -22,7 +22,9 @@ macro "certify_djudgments" rec:ident h:ident F:ident hF:ident : tactic => `(tact
     (motive_10 := fun κ I fr ps ret Γ e τ Γ' _ => ($F).method κ I fr ps ret Γ e τ Γ')
     (motive_11 := fun κ I fr ps ret Γ es tys Γ' _ => ($F).methodAll κ I fr ps ret Γ es tys Γ')
     (motive_12 := fun κ I fr ps ret Γ es τ Γ' _ => ($F).methodSeq κ I fr ps ret Γ es τ Γ')
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
+    (motive_13 := fun κ I fr ps ret Γ facts e τ c Γ' out _ => ($F).methodFlow κ I fr ps ret Γ facts e τ c Γ' out)
+    (motive_14 := fun κ I fr ps ret Γ facts es τ c Γ' out _ => ($F).methodFlowSeq κ I fr ps ret Γ facts es τ c Γ' out)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ $h
   all_goals intros
@@ -47,6 +49,9 @@ macro "certify_djudgments" rec:ident h:ident F:ident hF:ident : tactic => `(tact
       hm hc hs hbl hco ha hi hg hf hmiss hquiet
   · rename_i κd Γd Γm Id τd brd d ps bs hp hps hbs hbr ht hb hm hc hs hbl hco ha hi hg hf hmiss hquiet ihb
     exact $hF DClink.defBlock (by simp [dclinks]) hp hps hbs hbr ht ihb
+      hm hc hs hbl hco ha hi hg hf hmiss hquiet
+  · rename_i κd Γd Id τd brd d localName bs callback Γm out hp hbs hbr ht hb hm hc hs hbl hco ha hi hg hf hmiss hquiet ihb
+    exact $hF DClink.defBoundBlock (by simp [dclinks]) hp hbs hbr ht ihb
       hm hc hs hbl hco ha hi hg hf hmiss hquiet
   · apply $hF DClink.callSig (by simp [dclinks]) <;> assumption
   · apply $hF DClink.recursive (by simp [dclinks]) <;> assumption
@@ -106,6 +111,7 @@ macro "certify_djudgments" rec:ident h:ident F:ident hF:ident : tactic => `(tact
   · apply $hF DClink.DFlow.each (by simp [dclinks]) <;> assumption
   · apply $hF DClink.DFlow.map (by simp [dclinks]) <;> assumption
   · apply $hF DClink.DFlow.callBlock (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.DFlow.callBoundBlock (by simp [dclinks]) <;> assumption
   · apply $hF DClink.DFlowSeq.last (by simp [dclinks]) <;> assumption
   · apply $hF DClink.DFlowSeq.cons (by simp [dclinks]) <;> assumption
   · apply $hF DClink.DFlowAll.nil (by simp [dclinks]) <;> assumption
@@ -119,5 +125,14 @@ macro "certify_djudgments" rec:ident h:ident F:ident hF:ident : tactic => `(tact
   · apply $hF DClink.DMethodAll.cons (by simp [dclinks]) <;> assumption
   · apply $hF DClink.DMethodSeq.last (by simp [dclinks]) <;> assumption
   · apply $hF DClink.DMethodSeq.cons (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.DMethodFlow.embed (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.DMethodFlow.intLit (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.DMethodFlow.nilLit (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.DMethodFlow.var (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.DMethodFlow.vasgn (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.DMethodFlow.sequence (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.DMethodFlow.call (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.DMethodFlowSeq.last (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.DMethodFlowSeq.cons (by simp [dclinks]) <;> assumption
 ))
 end Ratchet.Denote.Typed

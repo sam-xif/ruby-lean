@@ -159,7 +159,7 @@ class Emitter
 
   def closure_type?(ty)
     case ty
-    when Hash then ty["tag"] == "closureCode" || ty.values.any? { |value| closure_type?(value) }
+    when Hash then %w[closureCode suppliedCallback].include?(ty["tag"]) || ty.values.any? { |value| closure_type?(value) }
     when Array then ty.any? { |value| closure_type?(value) }
     else false
     end
@@ -365,6 +365,13 @@ class Emitter
     return new_inst(recv[1], args) if m == "new" && recv[0] == "const"
 
     dr, tr = go(recv)
+    if tr["tag"] == "suppliedCallback"
+      raise Blocked, "bound block requires call or []" unless %w[call []].include?(m)
+      ds, ts = go_all(args)
+      raise Blocked, "bound block arguments disagree with its declared domain" unless ts == @yield_signature[0]
+
+      return [{ "rule" => "callbackCall", "recv" => dr, "args" => ds }, @yield_signature[1]]
+    end
     if tr["tag"] == "closureCode"
       raise Blocked, "only call and bracket closure calls are in the callable fragment" unless %w[call []].include?(m)
       raise Blocked, "closure arity mismatch" unless args.length == tr["params"].length
@@ -487,6 +494,13 @@ class Emitter
       return infer_definition(owner, name, params, body)
     end
     sig = sig_for(owner, name)
+    if @self_cls.nil? && !@singleton && params.length == 1 && params[0][0] == "pblock" && params[0][1]
+      block = sig["block"]
+      raise Blocked, "#{name}: missing declared block signature" unless block && block["name"] == params[0][1]
+      raise Blocked, "#{name}: unexpected positional signature" unless sig["params"].empty?
+
+      return callback_definition(name, [], sig["ret"], body, block)
+    end
     if sig["params"].length != params.length
       raise Blocked, "#{owner}##{name}: sig declares #{sig["params"].length} params, " \
                      "the def has #{params.length}"
@@ -526,17 +540,21 @@ class Emitter
 
   # Only definition syntax and declared positional/result domains inform these
   # proposals. Actual callback code and capture types are checked later, at calls.
-  def callback_definition(name, params, ret, body)
-    [INT, STR, BOOL, FLOAT, SYM, NIL_T].each do |block_ret|
+  def callback_definition(name, params, ret, body, declared_block = nil)
+    results = declared_block ? [declared_block["ret"]] : [INT, STR, BOOL, FLOAT, SYM, NIL_T]
+    results.each do |block_ret|
       trial = dup
       instance_variables.each do |field|
         value = instance_variable_get(field)
         trial.instance_variable_set(field, value.dup) if value.is_a?(Hash) || value.is_a?(Array)
       end
       trial.instance_variable_set(:@env, params.to_h { |p| [p["name"], p["ty"]] })
+      if declared_block
+        trial.instance_variable_get(:@env)[declared_block["name"]] = { "tag" => "suppliedCallback" }
+      end
       trial.instance_variable_set(:@current_method, name)
       trial.instance_variable_set(:@inferring, true)
-      trial.instance_variable_set(:@yield_signature, [nil, block_ret])
+      trial.instance_variable_set(:@yield_signature, [declared_block&.fetch("args"), block_ret])
       begin
         dbody, result = trial.go(body)
         next unless result == ret
