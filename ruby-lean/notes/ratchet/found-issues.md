@@ -2884,8 +2884,11 @@ registers the rule and admits map blocks through validateD.
 Clink 240 proves actual &b entry, saved-receiver native call/[] dispatch and full return.
 The receiver must be the checked callback and retain native Proc class, separately from its
 code-only type. Arguments may overwrite the source local or invoke the callback again.
-Binding identity tracking through general method bodies and checker admission remain;
-measured Sorbet/CRuby/model behavior agrees and exposes no new runtime defect.
+Clink 241 supplies semantic binding tracking through assignment, flat sequence and calls
+from general receiver expressions. Copies survive overwriting the original; callback return
+preserves active-method aliases. Uniform body and real boot-entry proofs cover repeated
+captured writes. Syntactic checking/definition/source admission remain; measured
+Sorbet/CRuby/model behavior agrees and exposes no new runtime defect.
 `def twice; saved = 7; result = yield(1) + yield(2); p saved; result; end;
 total = 0; p twice { |x| total = total + x }; p total` prints 7, 4, 3 under both
 CRuby 4.0.5 and the model. The runtime already handles this captured write correctly.

@@ -74,6 +74,7 @@ import Ratchet.Controls.CallbackBodyCheckControls
 import Ratchet.Controls.CallbackCallControls
 import Denote.Controls.CallbackSourceControls
 import Denote.Controls.BoundCallbackControls
+import Denote.Controls.CallbackAliasControls
 import Denote.Controls.OwnNamesControls
 import Denote.Controls.PointClassControls
 import Denote.Controls.PointConstructorControls

@@ -23,7 +23,7 @@ theorem MethodCallbackReceiver.after {κ : Ctx} {Γ Γm : Env} {I : Ty}
   exact ⟨(congrArg FrameScope.blk (h.scope hm.method.frameInRange)).trans hr.block,
     (h.procs.dispatch (.ref o) cl (by simp only [procClosure?, hp])).trans hr.klass⟩
 
-private theorem callback_invoke {κ : Ctx} {Γ Γm : Env} {I σ : Ty}
+theorem callback_invokeWith {κ : Ctx} {Γ Γm : Env} {I σ : Ty}
     {cb : CheckedCallback κ Γ I} {fr : Ratchet.Frame} {origin m start : Machine}
     {recv v : Value} {name param : String} {site : SendSite}
     (hm : MethodActivation cb fr Γm origin m) (hr : MethodCallbackReceiver m recv)
@@ -32,7 +32,8 @@ private theorem callback_invoke {κ : Ctx} {Γ Γm : Env} {I σ : Ty}
     (hname : procCallNameB name = true) (hk : m.kont = [])
     (hap : answerPoint start = none)
     (hs : Interp.stepFn start = Interp.invoke m recv site name [v] none []) :
-    MethodRunSpec m start Γ Γm cb.ret κ (callbackMethodCtx κ fr cb.code) I I := by
+    MethodRunWith m start Γ Γm cb.ret κ (callbackMethodCtx κ fr cb.code) I I
+      (fun _ n => CallbackFramed m n) := by
   obtain ⟨o, cl, hblk, hproc, hcode, hc⟩ := hm.callback
   have hrecv : recv = .ref o := Option.some.inj (hr.block.symm.trans hblk)
   have hpay : procClosure? m.heap recv = some cl := by
@@ -52,9 +53,9 @@ private theorem callback_invoke {κ : Ctx} {Γ Γm : Env} {I σ : Ty}
   rw [invoke_proc_dispatch hpay (hm.method.procDispatch hfree hname) hname hr.klass [v] site] at hs
   rw [callClosure_required m cl (cb.params.map (·.1)) [v] _ none none hparams
     (by simpa only [List.length_map] using hlen), hcode.2.2.1] at hs
-  apply MethodRunSpec.step hap (by
+  apply MethodRunWith.step hap (by
     simpa only [Interp.withKont, pushMethodFrame, hk] using hs)
-  exact checked_callback_method_run hc hm.method hm.scope hm.distinct hlen hargs
+  exact checked_callback_method_runWith hc hm.method hm.scope hm.distinct hlen hargs
       cb.main cb.returnFO (by simpa only [hcode.2.1] using cb.inputTypes) cb.outputTypes ht
       (by simpa only [hcode.2.1] using cb.fixed) (by simpa only [hcode.2.1] using cb.body)
 
@@ -74,11 +75,11 @@ theorem saved_callback_call_run {κ : Ctx} {Γ Γm Γm' : Env} {I σ : Ty}
   | val v =>
     have active := hm.after hn
     have saved := hr.after hm hn.1
-    have h := callback_invoke (m := deliverA (.val v) n [])
+    have h := callback_invokeWith (m := deliverA (.val v) n [])
       (active.reCtl (.value v) []) ⟨saved.block, saved.klass⟩ hp
       (denM_deliverA.mpr hn.2.1) ht hfree hname rfl
       (start := deliverA (.val v) n [.argsK recv site name [] [] .none]) (by rfl) (by rfl)
-    exact h.rebase (hn.1.trans (.ordinary (Framed_reCtl _ _ _)))
+    exact h.erase.rebase (hn.1.trans (.ordinary (Framed_reCtl _ _ _)))
   | esc j =>
     apply MethodRunSpec.step (next := deliverA (.esc j) n []) (by rfl) (by cases j <;> rfl)
     apply MethodRunSpec.answer (a := .esc j) (n := n)

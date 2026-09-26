@@ -183,6 +183,11 @@ conformance. Mandatory boot controls include overwriting b during argument evalu
 a yielding argument, with stable captured writes. A prior nil overwrite loses receiver
 identity. Code-only closure types alone do not justify calls; binding tracking and checker
 admission of 095 remain. CRuby/Sorbet probes expose no new runtime defect; floors are unchanged.
+Clink 241 adds SemMethodFlow with proved callback-alias inputs/results and assignment,
+flat sequence and general receiver-call rules. Callback return retains aliases, and local
+writes remove only the overwritten alias. Uniform body/boot controls cover copy, restore,
+receiver sequences and argument writes with repeated captured writes. Syntactic method
+checking and source admission remain; no new rule, floor or runtime change is claimed.
 
 ## Layout
 

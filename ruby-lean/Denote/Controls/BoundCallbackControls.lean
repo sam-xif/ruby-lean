@@ -12,7 +12,7 @@ open RubyCore Ratchet Ratchet.Denote
 
 private def writeBody : Ratchet.Expr := .vasgn .lvar "total"
   (.send (some (.var .lvar "total")) "+" [.var .lvar "x"] none)
-private def callback : CheckedCallback ctx0 [("total", .int)] .ivar0 where
+def callback : CheckedCallback ctx0 [("total", .int)] .ivar0 where
   code := ⟨[.req "x"], [], writeBody, false, rfl⟩
   params := [("x", .int)]
   ret := .int

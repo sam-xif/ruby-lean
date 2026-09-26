@@ -12296,3 +12296,31 @@ both halves of what constrains them now have a name.
 - Full quiet gate GREEN: fragment 91/260, checker reach 94, 88 rules, 70 worked proofs,
   zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New proof
   modules and boot controls build under a second; no resource limit was raised.
+
+## Clink 241 (2026-09-26) — method-local callback alias flow
+
+- CallbackFacts records local aliases of the actual supplied block, not just code or
+  current-frame capture origins. Its proved write/copy transfer invalidates only the target;
+  other aliases survive. CallbackFactsOk.callback uses the unchanged uncaptured method frame
+  plus ProcPres to retain identities and native class across captured caller writes.
+- MethodRunWith adds a value postcondition while retaining all of MethodResultOk. The shared
+  checked-callback proof and callback_invokeWith expose CallbackFramed; the earlier run
+  interfaces erase this extra evidence. No scope, frame, environment or dispatch premise
+  is weakened. Escapes retain their prior obligations and have no value-alias obligation.
+- SemMethodFlow threads alias facts and a result-identity flag through leaves, assignment,
+  flat sequence and calls from arbitrary receiver expressions. FlowCall saves the evaluated
+  receiver, then permits argument writes/callback effects, and preserves the argument's
+  outgoing aliases after the actual callback. FlowEntry supplies &b's initial alias and
+  composes a general body with actual method entry/return. Arbitrary SemMethod embedding
+  safely drops aliases; preserving them needs an operation-specific proof.
+- Mandatory CallbackAliasControls proves four bodies uniformly over every matching checked
+  callback, then instantiates real boot calls with captured writes for every initial Integer:
+  copy=b;b=nil;copy.call(5);copy.call(7), restoring b from copy, a receiver sequence returning
+  copy, and b.call((copy=nil;5)) followed by b.call(7). Full conformance excludes a claimed
+  callback alias at a nil-typed local. These are semantic proofs, not checker acceptance.
+- Sorbet 0.6.13405 accepts all four typed probes; CRuby 4.0.5/model agree on
+  12/12/5/5/5/5/12/12 with a captured total initially zero. No new model defect. Definition-side
+  syntactic checking/registry/cache/emitter/source integration remain before 095 admission.
+- Full quiet gate GREEN: unchanged fragment 91/260, checker reach 94, 88 rules, 70 worked,
+  zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
+  build under a second; no resource limit was raised.

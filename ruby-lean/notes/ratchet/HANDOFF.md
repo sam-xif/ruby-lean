@@ -1,4 +1,36 @@
-# Current resume point (2026-09-26, clink 240 / model L274)
+# Current resume point (2026-09-26, clink 241 / model L274)
+
+SemMethodFlow now threads CallbackFacts (method locals equal to the actual supplied block)
+and a result-identity flag separately from Env. Scalar/variable leaves, assignment, flat
+sequence and general receiver call/[] are proved. Assignment removes only its target's old
+fact and records the result's proved identity. A fallback from arbitrary SemMethod drops
+all aliases; its output closure types alone cannot recover identity.
+
+MethodRunWith carries these facts without weakening MethodResultOk. The shared checked
+callback and native invoke proofs now expose CallbackFramed as a value postcondition, so
+callbacks preserve method aliases even while writing the captured caller. FlowCall saves
+receiver identity before a flow-typed argument and retains the argument's outgoing aliases
+after callback return. FlowEntry supplies the singleton &b alias at real enterUserMethod.
+
+Mandatory CallbackAliasControls proves copy→wipe→repeated calls, restoring b from its copy,
+an arbitrary receiver sequence returning the copy, and overwriting a copy inside an argument.
+Body proofs quantify over every matching CheckedCallback; boot instantiations perform stable
+captured writes for every initial Integer. A nil-typed local cannot satisfy the alias contract.
+Sorbet 0.6.13405 accepts all four probes; CRuby 4.0.5/model agree on 12/12/5/5/5/5/12/12.
+All new modules build under a second with standard axioms. No model change was needed.
+
+Next: connect these flow facts to definition-side syntactic method checking and the registry,
+then cache/emitter/source admission of 095. Keep complete declared-domain checking independent
+of actual callbacks. Explicit entry's Env contains cb.code; the new uniform semantic body
+controls demonstrate code independence but are not an executable definition checker. Existing
+SemMethod yield/primitive rules remain available through the conservative embed; preserving
+aliases across those operations needs the corresponding postcondition proof. No floor changes.
+
+Full quiet gate GREEN: unchanged fragment 91/260, checker reach 94, 88 rules, 70 worked,
+zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. Logs:
+/private/tmp/ratchet-callbackalias-{gate,audit}.log. No live builds.
+
+Previous foundation (clink 240):
 
 Explicit &b entry and actual call/[] execution now have semantic proofs. BodyBoundCall
 tracks MethodCallbackReceiver (the actual frame block plus native Proc class) through
