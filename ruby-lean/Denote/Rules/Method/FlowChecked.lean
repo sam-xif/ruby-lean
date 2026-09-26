@@ -8,13 +8,20 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
+theorem checked_bound_callback_body_uniform {κ : Ctx} {I : Ty} {decl : Defn}
+    (c : CheckedBoundCallbackBody κ I decl) :
+    ∀ code, SemMethodFlowBody κ I ⟨"Object", "Object", decl.name, false⟩ c.blockArgs c.blockRet
+      [(c.localName, .clos code .ivar0 .never)] ⟨[c.localName]⟩ decl.body c.ret c.callback
+      (c.out.instantiate code) c.outFacts :=
+  fun code => dmethodFlow_context (c.judged code)
+
 theorem checked_bound_callback_body_context {κ : Ctx} {I : Ty} {decl : Defn}
     (c : CheckedBoundCallbackBody κ I decl) {Γ : Env} (cb : CheckedCallback κ Γ I)
     (hp : cb.params.map (·.2) = c.blockArgs) (hr : cb.ret = c.blockRet) :
     SemMethodFlow cb ⟨"Object", "Object", decl.name, false⟩
       [(c.localName, .clos cb.code .ivar0 .never)] ⟨[c.localName]⟩ decl.body c.ret c.callback
       (c.out.instantiate cb.code) c.outFacts :=
-  dmethodFlow_context (c.judged cb.code) cb hp hr
+  checked_bound_callback_body_uniform c cb.code cb hp hr
 
 theorem checked_bound_callback_call {κ : Ctx} {Γ : Env} {I : Ty} {decl : Defn}
     (c : CheckedBoundCallbackBody κ I decl) {cb : CheckedCallback κ Γ I}
@@ -33,6 +40,7 @@ theorem checked_bound_callback_call {κ : Ctx} {Γ : Env} {I : Ty} {decl : Defn}
   have hmd : md.params = [.block (some c.localName)] := by rw [hp, c.paramShape]; rfl
   exact hb.callBound hm hk c.returnFO hmd he howner hcref hsuper hcapture hdeclared hc hd hproc hcode hclass
 
+#print axioms checked_bound_callback_body_uniform
 #print axioms checked_bound_callback_body_context
 #print axioms checked_bound_callback_call
 end Ratchet.Denote.Typed

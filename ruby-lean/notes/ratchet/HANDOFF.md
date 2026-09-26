@@ -1,4 +1,32 @@
-# Current resume point (2026-09-26, clink 242 / model L274)
+# Current resume point (2026-09-26, clink 243 / model L274)
+
+FlowDefine/FlowDispatch/FlowSource now compose the all-code explicit-block body certificate
+with real source installation, DefsOk lookup, literal block allocation, &b entry and return.
+Allocation proves native Proc class separately from payload/code; the shared finishSend proof
+handles lambda/proc/new overrides and re-establishes lookup after allocation for new.
+Source calls recover capture slots from LocalFacts and restore full caller conformance.
+
+Mandatory BoundSourceControls proves exact 095 from boot plus lambda/proc/new overrides.
+Four further whole-source proofs cover copied/restored aliases, receiver sequences and saved
+receivers, with captured writes for every initial Integer and a renamed callback parameter.
+The 095 proof's Expr matches the pipeline AST. CRuby 4.0.5/model agree on 6/6/6/6 and
+12/12, 5/5, 5/5, 12/12. Sorbet 0.6.13405 accepts all except its special new call (7035).
+No new runtime defect or model change. These are semantic source proofs, not validateD admission.
+
+Next: join DMethodFlow/Seq to the mutual judgment/registry, add source definition/call rules,
+cache complete explicit-block certificates, and emit/check 095. Keep definition checking
+independent of actual callback code/captures, context-refresh checks and zero coverage exemptions.
+Every new rule needs real whole-corpus coverage, including alias/sequence/nil/write paths;
+the staged embed constructor has no executable path yet. Preserve existing implicit blocks.
+Before registry imports, move the semantic family definitions out of FlowBridge to an acyclic
+Judgment module; FlowDefine/FlowSource currently import that staged bridge. Mirror BodyCallRule
+for the source-call constructor so both body premises cross the shared registry family.
+
+Full quiet gate GREEN: unchanged fragment 91/260, checker reach 94, 88 rules, 70 worked,
+zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. Logs:
+/private/tmp/ratchet-boundsource-{gate,audit}.log. New modules build under a second; no live builds.
+
+Previous foundation (clink 242):
 
 checkBoundCallbackBody now checks lone named-&b definitions without actual callback code,
 captures or call values. MethodLocalTy keeps fixed first-order types and an opaque callback

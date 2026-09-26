@@ -193,6 +193,10 @@ retain the opaque block code; every successful certificate proves its body for a
 Staged DMethodFlow interprets through the proved alias semantics. Mandatory controls cover
 forged hints, declared domains and real captured-write boot calls. Registry/cache/emitter
 and whole-source integration remain before 095 admission; counts and floors are unchanged.
+Clink 243 proves whole-source named-&b definition/lookup/literal-block dispatch and return.
+Mandatory boot controls match exact 095 and cover copied/restored aliases, receiver sequences,
+saved receivers, captured writes and lambda/proc/new overrides. Runtime agreement holds;
+mutual registry/cache/emitter integration remains before admission. Counts/floors are unchanged.
 
 ## Layout
 

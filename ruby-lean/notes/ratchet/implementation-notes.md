@@ -12352,3 +12352,27 @@ both halves of what constrains them now have a name.
 - Full quiet gate GREEN: fragment 91/260, checker reach 94, 88 rules, 70 worked,
   zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
   build under a second with no resource-limit changes.
+
+## Clink 243 (2026-09-26) — whole-source explicit-block execution
+
+- FlowDispatch resolves the installed definition through DefsOk and uses real &b entry.
+  Literal block allocation proves native Proc class separately from its code/payload; code
+  typing alone would miss singleton overrides. The shared finishSend_main_userBlock proof
+  handles lambda/proc/new interception, including post-allocation lookup for new.
+- FlowDefine requires the complete all-code signature-domain proof even for uncalled methods.
+  FlowSource instantiates it only at the actual allocated callback code, recovers physical
+  capture slots from LocalFacts and restores full caller conformance after method return.
+  Outgoing source facts conservatively become unknown. No runtime shortcut or guard weakening.
+- Mandatory BoundSourceControls proves exact 095 and lambda/proc/new overrides from boot.
+  Four whole-source captured-write proofs cover copied/restored aliases, receiver sequences
+  and saved receivers for every initial Integer, with a renamed callback parameter. The 095
+  proof's Expr is checked against the pipeline AST by /private/tmp/ratchet-boundsource-match.lean.
+- CRuby 4.0.5/model probes agree on 6/6/6/6 for direct/overrides and 12/12, 5/5, 5/5, 12/12
+  for the four captured-write sources. Sorbet 0.6.13405 accepts all except new (7035), whose
+  constructor special case differs from runtime lookup. Probe driver:
+  /private/tmp/ratchet-boundsource-probes.py. No model defect or runtime change was needed.
+- These staged semantic source proofs do not grant checker admission. Mutual registry,
+  cache/emitter integration and whole-corpus rule coverage remain; counts/floors are unchanged.
+- Full quiet gate GREEN: fragment 91/260, checker reach 94, 88 rules, 70 worked,
+  zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
+  build under a second; no resource limit was raised.

@@ -76,6 +76,7 @@ import Denote.Controls.CallbackSourceControls
 import Denote.Controls.BoundCallbackControls
 import Denote.Controls.CallbackAliasControls
 import Denote.Controls.BoundBodyControls
+import Denote.Controls.BoundSourceControls
 import Denote.Controls.OwnNamesControls
 import Denote.Controls.PointClassControls
 import Denote.Controls.PointConstructorControls

@@ -2889,8 +2889,10 @@ from general receiver expressions. Copies survive overwriting the original; call
 preserves active-method aliases. Uniform body and real boot-entry proofs cover repeated
 captured writes. Clink 242 adds executable whole-definition checking with symbolic callback
 types and all-code DMethodFlow certificates. Actual callbacks instantiate these proofs only
-at entry. Registry/cache/emitter and whole-source admission remain; measured Sorbet/CRuby/model
-behavior agrees and exposes no new runtime defect.
+at entry. Clink 243 proves whole-source definition/lookup/allocation/return, including exact
+095 and alias-bearing captured-write programs from boot. Registry/cache/emitter admission
+remains. Measured runtime behavior agrees and exposes no new model defect; Sorbet's special
+new rule still declines a user override that the model correctly dispatches (7035).
 `def twice; saved = 7; result = yield(1) + yield(2); p saved; result; end;
 total = 0; p twice { |x| total = total + x }; p total` prints 7, 4, 3 under both
 CRuby 4.0.5 and the model. The runtime already handles this captured write correctly.
