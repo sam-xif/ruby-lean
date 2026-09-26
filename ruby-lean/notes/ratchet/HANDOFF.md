@@ -1,4 +1,4 @@
-# Current resume point (2026-09-26, clink 218)
+# Current resume point (2026-09-26, clink 219)
 
 Latest admission is 087: fragment 82, checker reach 87,
 72 registered rules (40 expressions + 32 companions), 61 worked theorems, no exemptions.
@@ -6,14 +6,23 @@ The prefix remains 17; 018 is correctly rejected. Next frontier: 088-lambda-stab
 `->(x) { x + 1 }.call(2)`. This is an immediate receiver, not a stored local.
 Zero-argument stored lambdas pass the complete pipeline.
 
+Clink 219 computes closureReturnEnv from preserved caller types under parameter/block-local
+names and projected body types elsewhere. Both parts erase aliases; withoutNames removes
+all shadowed entries before capture ownership is classified. ReturnEnv proves full EnvOk,
+including omitted nil slots; ReturnState attaches it to the actual block continuation.
+ClosureReturnEnvControls combines a hidden nil caller slot, a changed capture, and an alias
+to a disappearing body local, and rejects returning the parameter's type for the caller.
+Next: evaluate general receivers/arguments while retaining exact Proc dispatch and local
+facts, then assemble required-parameter calls. Admission counts remain unchanged.
+
 Clink 218 adds FramePres.shadows: an initially bound active name protects the value
 of every saved same-named slot. BindingsPres makes it compose; local writes prove it,
 and ordinary/constructor/current-closure returns retain it. djudge_shadows exposes it
 for every certified answer. ShadowReturn proves a parameter/block-local name recovers
 the caller's original value, including a hidden nil slot. ClosureShadowControls refutes
 using slot/owner preservation alone and allows a different captured name to change.
-Next: merge preserved caller types under shadowed names with projected body types for
-other names; then general receiver/argument evaluation and required-parameter calls.
+Clink 219 supplies the merged return environment; general receiver/argument evaluation
+and required-parameter calls remain next.
 087's no-shadow projection remains intact; no new callable shape is admitted yet.
 Sorbet 0.6.13405 infers untyped parameter/result for `->(x) { x + 1 }`, rejects wrong
 arity, and accepts a String argument. The body must be checked at actual argument types.

@@ -41,4 +41,14 @@ def captureEnv (names : List String) : Env → Env
   | [] => []
   | (x, τ) :: Γ => if names.contains x then (x, deAlias τ) :: captureEnv names Γ else captureEnv names Γ
 
+/-- Discard all bindings hidden by parameter/block-local names, including duplicates. -/
+def withoutNames (names : List String) : Env → Env
+  | [] => []
+  | (x, τ) :: Γ => if names.contains x then withoutNames names Γ else (x, τ) :: withoutNames names Γ
+
+/-- Shadowed names recover caller types; other names use the body's outgoing capture
+types. Alias identities are erased on both sides of the frame boundary. -/
+def closureReturnEnv (shadow names : List String) (caller body : Env) : Env :=
+  captureEnv shadow caller ++ captureEnv names (withoutNames shadow body)
+
 end Ratchet

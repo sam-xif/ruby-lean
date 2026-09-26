@@ -11722,3 +11722,19 @@ both halves of what constrains them now have a name.
   rule. Admitting escaped captures will require effects on hidden caller bindings.
 - Full quiet gate GREEN; metatheory and standard-axiom audit pass. No individual proof
   approached five minutes, and no limits or axioms were added. Counts remain 82/87.
+
+## Clink 219 (2026-09-26) — merge caller and body environments on block return
+
+- closureReturnEnv retains incoming caller types under parameter/block-local names
+  and outgoing body types for other caller-owned names. Both projections erase aliases:
+  a returned capture may alias a body local whose slot disappears. withoutNames removes
+  every shadowed occurrence before ownership classification, including duplicate entries.
+- ReturnEnv proves complete EnvOk after popping the real captured frame. An unmentioned
+  shadowed caller slot remains nil; unshadowed bound names use the body's final read;
+  absent caller slots remain absent. Value-type transport is explicit for both inputs.
+  ReturnState attaches this environment to full StateOk through the block continuation.
+- Controls combine a parameter hiding an omitted nil caller slot, a capture updated from
+  1 to 7, and an alias to a new body local. Returning the parameter's Integer type for
+  the caller's nil slot is refuted. No runtime, judgment or emitter change; counts 82/87.
+- Full quiet gate GREEN, including CRuby agreement; metatheory and standard-axiom audit
+  pass. The new controls built in four seconds; no proof approached five minutes.
