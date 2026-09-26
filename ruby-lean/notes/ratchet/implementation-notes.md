@@ -11896,3 +11896,28 @@ both halves of what constrains them now have a name.
   an active iterator, and its initial caller StateOk includes the retained iterator frame.
 - Full quiet gate GREEN, including CRuby agreement; metatheory and standard-axiom audit
   pass. No new axioms, resource-limit increases or proof builds over five minutes.
+
+## Clink 226 (2026-09-26) — certify actual attached each source evaluation
+
+- primitiveDispatchB now combines the existing native builtin/Proc table with guarded
+  Array#each lookup absence. Native each lives on the miss path, so an override or undef
+  tombstone must withdraw its capability. ArrayPayloadOk supplies the dispatch class.
+  Heap extension, ivar writes, method installation, name reservation and class/module proofs preserve
+  the new conjunct. Reserved each names impose no native claim; no runtime change.
+- Iterator.Start restores full StateOk at the caller projection after the real inert
+  activation push. The extra frame remains in the store. Local reads/aliases are unchanged;
+  activation-stable types transport across that allocation without banning code-only
+  closure values. typed_each_start rebases the loop result to the original caller.
+- Iterator.Dispatch reduces actual invoke through lookup, dispatchMiss and tryIterator
+  to the live loop. Iterator.FlowEach composes actual block reification and arbitrary
+  receiver evaluation, consuming its final LocalFacts for capture ownership. SemFlow.each
+  checks the exact body and outgoing-environment fixed point from clink 225. The discarded
+  body value does not constrain the receiver result; final origin facts are dropped.
+- TypedEachControls.source/source_boot prove the exact 091 program for all fuel.
+  EachDispatchControls rejects direct/inherited overrides and undef while retaining
+  Array payload conformance; a real override call returns 7 instead of entering the loop.
+  Both source and dispatch controls ride Controls.All. No judgment/checker/emitter or
+  floor change (86/90); registry integration is the next ascent step.
+- Full quiet gate GREEN, including CRuby agreement; metatheory and standard-axiom audit
+  pass. The first gate exposed the old list-only reservation proof; it now weakens both
+  dispatch conjuncts. No new axioms, resource-limit increases or proof builds over five minutes.

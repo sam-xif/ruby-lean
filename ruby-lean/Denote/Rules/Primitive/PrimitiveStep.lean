@@ -14,6 +14,14 @@ def StepSpec (origin : Machine) (Γ : Env) (τ : Ty) (step : StepResult)
   | .unsupported _ => True
   | _ => False
 
+theorem StepSpec.rebase {origin middle : Machine} {Γ : Env} {τ I : Ty} {κ : Ctx}
+    {step : StepResult} (h : StepSpec middle Γ τ step κ I) (hf : Framed origin middle) :
+    StepSpec origin Γ τ step κ I := by
+  cases step with
+  | next n => exact RunSpec.rebase h hf
+  | unsupported _ => trivial
+  | done _ _ | uncaught _ _ | stuck _ => exact h
+
 theorem RunSpec.of_stepSpec {origin start : Machine} {Γ : Env} {τ : Ty} {κ : Ctx} {I : Ty}
     (ha : answerPoint start = none) (h : StepSpec origin Γ τ (Interp.stepFn start) κ I) :
     RunSpec origin start Γ τ κ I := by

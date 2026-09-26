@@ -217,12 +217,18 @@ theorem primitiveDispatchB_defineMethod {h : Heap} {cls : ObjId} {name : String}
     primitiveDispatchB (defineMethod h cls name md) free = primitiveDispatchB h free := by
   unfold primitiveDispatchB
   congr 1
-  funext row
-  obtain ⟨k, n, bid⟩ := row
-  by_cases he : n = name
-  · subst n; simp [hn]
-  · simp only [methodOn_defineMethod h cls k name n md he,
-      Proof.ancestors_defineMethod, crubyShadow_defineMethod]
+  · unfold nativeDispatchB
+    congr 1
+    funext row
+    obtain ⟨k, n, bid⟩ := row
+    by_cases he : n = name
+    · subst n; simp [hn]
+    · simp only [methodOn_defineMethod h cls k name n md he,
+        Proof.ancestors_defineMethod, crubyShadow_defineMethod]
+  · unfold eachDispatchB
+    by_cases he : "each" = name
+    · subst name; simp [hn]
+    · rw [methodOn_defineMethod h cls Boot.arrayId name "each" md he]
 
 theorem primitiveErrorsB_defineMethod (h : Heap) (cls : ObjId) (name : String) (md : MethodDef) :
     primitiveErrorsB (defineMethod h cls name md) = primitiveErrorsB h := by

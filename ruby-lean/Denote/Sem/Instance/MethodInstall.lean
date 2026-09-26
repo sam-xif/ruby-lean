@@ -411,17 +411,24 @@ theorem StateOk_reserveName {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     query := fun n bid hn hf => hm.query n bid hn (hfree n hf)
     clsQuery := fun n bid hn hf => hm.clsQuery n bid hn (hfree n hf)
     nilQuery := fun hf => hm.nilQuery (hfree _ hf) }
-  apply List.all_eq_true.mpr
-  intro row hr
-  obtain ⟨k, x, bid⟩ := row
-  have hp := List.all_eq_true.mp hm.primitiveDispatch (k, x, bid) hr
-  by_cases hf : nameFreeN κ' x = true
-  · have ho := hfree x hf
-    simp only [κ'] at hf
-    simpa only [hf, ho, Bool.not_true, Bool.false_or] using hp
-  · have hn : nameFreeN κ' x = false := Bool.eq_false_iff.mpr hf
-    simp only [κ'] at hn
-    simp only [hn, Bool.not_false, Bool.true_or]
+  have hd := hm.primitiveDispatch
+  simp only [primitiveDispatchB, Bool.and_eq_true] at hd ⊢
+  constructor
+  · apply List.all_eq_true.mpr
+    intro row hr
+    obtain ⟨k, x, bid⟩ := row
+    have hp := List.all_eq_true.mp hd.1 (k, x, bid) hr
+    by_cases hf : nameFreeN κ' x = true
+    · have ho := hfree x hf
+      simp only [κ'] at hf
+      simpa only [hf, ho, Bool.not_true, Bool.false_or] using hp
+    · have hn : nameFreeN κ' x = false := Bool.eq_false_iff.mpr hf
+      simp only [κ'] at hn
+      simp only [hn, Bool.not_false, Bool.true_or]
+  · change eachDispatchB m.heap (nameFreeN κ') = true
+    by_cases hf : nameFreeN κ' "each" = true
+    · simpa only [eachDispatchB, hf, hfree _ hf, Bool.not_true, Bool.false_or] using hd.2
+    · simp only [eachDispatchB, Bool.eq_false_iff.mpr hf, Bool.not_false, Bool.true_or]
 
 #print axioms MethodsExact_defineMethod
 #print axioms DefsOk_defineMethod

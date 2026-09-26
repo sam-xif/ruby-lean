@@ -38,17 +38,22 @@ theorem class_site_source (hc : ChainsIn h) (hp : (h.classPayload? parent).isSom
 
 theorem primitiveDispatch (hc : ChainsIn h) (hs : Saturated h) (free : String → Bool) :
     primitiveDispatchB h₁ free = primitiveDispatchB h free := by
-  apply Bool.eq_iff_iff.mpr
-  simp only [primitiveDispatchB, List.all_eq_true]
-  apply forall_congr'
-  intro p
-  apply imp_congr_right
-  intro hp
-  rcases p with ⟨k, mn, bid⟩
-  have hbound : k ≤ Boot.procId := of_decide_eq_true (List.all_eq_true.mp
-    (by decide : dispatchMethods.all (fun p => decide (p.1 ≤ Boot.procId)) = true) _ hp)
-  have hk := Nat.lt_of_le_of_lt hbound hc.boot.2.2.2.1
-  simp only [method_old hc hs hk, shadow_before_old hc hs hk]
+  unfold primitiveDispatchB
+  congr 1
+  · apply Bool.eq_iff_iff.mpr
+    simp only [nativeDispatchB, List.all_eq_true]
+    apply forall_congr'
+    intro p
+    apply imp_congr_right
+    intro hp
+    rcases p with ⟨k, mn, bid⟩
+    have hbound : k ≤ Boot.procId := of_decide_eq_true (List.all_eq_true.mp
+      (by decide : dispatchMethods.all (fun p => decide (p.1 ≤ Boot.procId)) = true) _ hp)
+    have hk := Nat.lt_of_le_of_lt hbound hc.boot.2.2.2.1
+    simp only [method_old hc hs hk, shadow_before_old hc hs hk]
+  · have hk : Boot.arrayId < h.objs.size :=
+      Nat.lt_of_le_of_lt (by decide : Boot.arrayId ≤ Boot.procId) hc.boot.2.2.2.1
+    simp only [eachDispatchB, method_old hc hs hk]
 
 theorem primitiveErrors (hc : ChainsIn h) (hs : Saturated h) : primitiveErrorsB h₁ = primitiveErrorsB h := by
   apply Bool.eq_iff_iff.mpr

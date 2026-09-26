@@ -1,11 +1,30 @@
-# Current resume point (2026-09-26, clink 225 / model L273)
+# Current resume point (2026-09-26, clink 226 / model L273)
 
 Latest admissions: 089 and 090. Fragment 86, checker reach 90,
 75 registered rules (40 expressions + 35 companions), 65 worked theorems, no exemptions.
 The safe prefix remains 17; 018 is correctly rejected. Next frontier: 091-block-each-int,
-`[1, 2, 3].each { |x| x + 1 }`, followed by map (092/093). These need actual attached-block
-dispatch/iteration and caller-state composition; current closure calls supply useful entry,
-body and return contracts but do not type iterator sends. Measure Sorbet before new rules.
+`[1, 2, 3].each { |x| x + 1 }`, followed by map (092/093). The each source proof is complete;
+its registry/checker/emitter admission is next. Measure Sorbet before new rules.
+
+Clink 226 proves the complete attached each source through SemFlow.each in
+Rules/Iterator/FlowEach. TypedEachControls.source/source_boot instantiate the exact 091
+program with all-fuel safety and full output conformance. StateOk's primitiveDispatchB
+now combines nativeDispatchB (the old builtin/Proc rows) with eachDispatchB: when each is
+free, Array lookup must miss. ArrayPayloadOk already fixes the dispatch class. Overrides,
+inherited overrides and undef tombstones fail the new guard; reserving each withdraws it.
+All heap/context producers retain this capability, including fresh classes/modules,
+method installation and name reservation. Start proves caller conformance after allocating the inert iterator;
+Dispatch reduces actual invoke to startIter; FlowEach reifies the attached block and uses
+the receiver's final LocalFacts to classify captures. No extra loop/return premise remains.
+
+Next: add a DFlow each constructor with the premises of SemFlow.each, wire all DFam/registry
+cases, a checked derivation hint, checker body rechecking and untrusted emission. Register a
+worked derivation of 091 and raise measured floors only after acceptance. The semantic rule
+requires one required parameter, first-order elements, the existing main-scope guard,
+activation-stable/nonalias entry types, activation-stable outputs, and a closureReturnEnv
+fixed point. Capture ownership uses fr.captureNames? on withoutNames shadow Γb; capture
+facts come from receiver evaluation. Output facts are unknown. Do not replace the guarded
+native miss with a payload-only or name-provenance assertion.
 
 Clink 224 measured Sorbet's each contract: Integer parameter, original Array[Integer]
 result despite a String body, captured type changes rejected. Zero parameters are accepted
@@ -23,12 +42,10 @@ parameter values, captured writes, fresh body locals and alias erasure. Escapes 
 caller framing without requiring a value-state postcondition. Controls instantiate the
 Integer arithmetic body and a hidden nil caller slot, and reject changed capture types.
 
-Next: establish typed_each_step's initial caller/receiver facts from the actual native
-each dispatch, then compose receiver evaluation and attached-block reification. Native
-lookup-miss readiness must be guarded in StateOk before source/checker admission. Merely
-knowing an Array payload does not exclude a user override. An initial pushed iterator
-leaves an extra frame in the store even after pop; StateOk/denotation transport must account
-for it. No StateOk is required or valid in general on the inert iterator itself.
+Clink 226 establishes typed_each_step's initial facts through actual dispatch and source
+composition. An initial pushed iterator leaves an extra frame in the store even after pop;
+iterator_push_caller_state accounts for it, including code-only closure-valued locals.
+No StateOk is required or valid in general on the inert iterator itself.
 
 §F53 exposed a model defect before rule admission: each snapshotted its arguments. L273
 adds IterKind.arrayEach o index and reads the live payload/length after every yield.
@@ -41,8 +58,7 @@ Iterator.FrameReturn supplies caller Framed/metadata after both pops. Do not imp
 Framed on the intermediate iterator activation: IteratorFrameControls refutes its isolation
 clause with an ordinary captured write. The relevant caller is popMethodFrame m, with the
 iterator frame retained in the store; its id need not be fresh on later iterations.
-Next: native lookup-miss readiness for Array#each, source composition and
-registry/checker/emitter integration. Current formal loop uses one required
+Next: registry/checker/emitter integration. Current formal loop uses one required
 parameter; Sorbet's zero/additional parameter shapes need binding proofs too.
 
 Clink 223 generalizes callClosure_required to both modes: exact required arity prevents

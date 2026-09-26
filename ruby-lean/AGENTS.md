@@ -114,6 +114,10 @@ Clink 225 derives that loop contract from a checked body and ordinary caller Sta
 Entry captures below the iterator; return restores full caller conformance after both
 pops, preserving hidden parameter names and captured writes. A fixed outgoing environment
 keeps caller types stable across iterations. Native dispatch/source composition remain.
+Clink 226 guards native each's lookup miss in StateOk and preserves it across heap,
+method, class and module changes. SemFlow.each composes receiver evaluation, actual block
+allocation, dispatch and the live loop. The exact 091 source has an all-fuel boot proof;
+registry/checker/emitter admission remains next.
 
 ## Layout
 

@@ -91,7 +91,8 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
         by simpa only [bindIvar_currentFrame] using scope.cref,
         by simpa only [bindIvar_currentFrame] using scope.captured, hphase.trans scope.phase⟩⟩
     sat := ?_
-    primitiveDispatch := by simpa only [primitiveDispatchB, hmethod, hw.ancestors_eq, hshadow] using h.primitiveDispatch
+    primitiveDispatch := by simpa only [primitiveDispatchB, nativeDispatchB, eachDispatchB,
+      hmethod, hw.ancestors_eq, hshadow] using h.primitiveDispatch
     primitiveErrors := by simpa only [primitiveErrorsB, herr] using h.primitiveErrors
     stringPayload := by simpa only [StringPayloadOk, hw.classOf_eq, hw.payload] using h.stringPayload
     arrayPayload := by simpa only [ArrayPayloadOk, hw.classOf_eq, hw.payload] using h.arrayPayload
