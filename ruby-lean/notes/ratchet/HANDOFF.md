@@ -1,9 +1,24 @@
-# Current resume point (2026-09-26, clink 217)
+# Current resume point (2026-09-26, clink 218)
 
 Latest admission is 087: fragment 82, checker reach 87,
 72 registered rules (40 expressions + 32 companions), 61 worked theorems, no exemptions.
 The prefix remains 17; 018 is correctly rejected. Next frontier: 088-lambda-stabby-one-param,
-`f = ->(x) { x + 1 }; f.call(2)`. Zero-argument stored lambdas now pass the complete pipeline.
+`->(x) { x + 1 }.call(2)`. This is an immediate receiver, not a stored local.
+Zero-argument stored lambdas pass the complete pipeline.
+
+Clink 218 adds FramePres.shadows: an initially bound active name protects the value
+of every saved same-named slot. BindingsPres makes it compose; local writes prove it,
+and ordinary/constructor/current-closure returns retain it. djudge_shadows exposes it
+for every certified answer. ShadowReturn proves a parameter/block-local name recovers
+the caller's original value, including a hidden nil slot. ClosureShadowControls refutes
+using slot/owner preservation alone and allows a different captured name to change.
+Next: merge preserved caller types under shadowed names with projected body types for
+other names; then general receiver/argument evaluation and required-parameter calls.
+087's no-shadow projection remains intact; no new callable shape is admitted yet.
+Sorbet 0.6.13405 infers untyped parameter/result for `->(x) { x + 1 }`, rejects wrong
+arity, and accepts a String argument. The body must be checked at actual argument types.
+ShadowPres does not apply to arbitrary Ruby: an older escaped closure can write a hidden
+caller slot. The measured witness and the future effect obligation are in clink 218's notes.
 
 Clink 217 adds DFlow/DFlowSeq to DJudge's mutual family and every registry interpretation.
 The eight-family bridge proves all flow rules, including ordinary body premises. Check/FlowCheck

@@ -11693,3 +11693,32 @@ both halves of what constrains them now have a name.
 - Full quiet gate GREEN, including CRuby agreement; metatheory and standard-axiom
   audit pass. The longest rebuilt existing rule took 36 seconds; new checker/proof
   modules built in under two seconds. No limits, axioms or native_decide were added.
+
+## Clink 218 (2026-09-26) — preserve caller values hidden by block parameters
+
+- 088's actual source is an immediate one-argument lambda call. Its parameter shadows
+  any caller slot of the same name, including an unmentioned nil slot. Copying the body
+  environment on return would give that caller slot the parameter's type incorrectly.
+- ShadowPres records the needed value preservation: any name already bound at entry
+  to the active frame protects every saved same-named slot. This needs no capture-fuel
+  argument. BindingsPres retains the active binding, so the property composes through
+  Framed; setLocal writes only the active owner for that name or leaves the name alone.
+- FramePres carries the property for all certified expressions, ordinary and initializer
+  returns, and current-capture closure returns. djudge_shadows exposes the contract.
+  ShadowReturn proves the popped caller reads its original value under a shadowed name.
+- Controls show identical slot domains and lookup owners can still admit hidden-value
+  damage. The new property rejects it; actual parameter reassignment preserves caller x
+  while an assignment to unshadowed captured y still changes y. No runtime change.
+- General return typing must merge preserved caller types for shadowed names with
+  projected body types elsewhere. Required-parameter receiver/argument checking follows;
+  no new judgment or emitter policy is installed, and admission counts remain unchanged.
+- Sorbet 0.6.13405 reports `T.proc.params(arg0: T.untyped).returns(T.untyped)` for
+  `f = ->(x) { x + 1 }` and T.untyped for `f.call(2)`. It rejects zero/two arguments
+  but reports no error for `f.call('x')`. A future callable rule must check the body
+  at actual argument types; Sorbet's inferred result is not a model safety premise.
+- ShadowPres is a certified-fragment contract, not a universal Ruby invariant:
+  `x = 1; f = -> { x = 2 }; ->(x) { f.call }.call(3); puts x` prints 2 under CRuby
+  and the model. Calling that older capture is already outside our current-origin
+  rule. Admitting escaped captures will require effects on hidden caller bindings.
+- Full quiet gate GREEN; metatheory and standard-axiom audit pass. No individual proof
+  approached five minutes, and no limits or axioms were added. Counts remain 82/87.

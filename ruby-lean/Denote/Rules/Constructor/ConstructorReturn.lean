@@ -25,7 +25,8 @@ theorem constructor_frame_pres {m n : Machine} {k : ObjId} {md : MethodDef}
       h.stack
     · simp [pushMethodFrame, Array.getD_eq_getD_getElem?, requiredFrame]
     · rw [h.frames.rootCaptured]
-      simp [constructorFrame, pushMethodFrame, Array.getD_eq_getD_getElem?, requiredFrame]⟩
+      simp [constructorFrame, pushMethodFrame, Array.getD_eq_getD_getElem?, requiredFrame],
+    h.frames.shadows⟩
 
 theorem constructor_pop_framed {m n : Machine} {k : ObjId} {md : MethodDef}
     {ps : List SigParam} {args : List Value} (hl : FrameInRange m)

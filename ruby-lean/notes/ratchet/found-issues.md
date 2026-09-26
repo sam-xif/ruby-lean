@@ -2784,6 +2784,12 @@ zero-argument lambdas with no block locals, an uncaptured main caller, activatio
 types and first-order results. General parameters, block locals, non-current captures
 and preserving origins across body effects need further transport proofs.
 
+Clink 218 supplies the missing value contract for shadowing: FramePres.shadows protects
+saved same-named values when the active name was already bound. Parameter reassignment
+may change the active value and other captures; ShadowReturn still recovers the caller's
+original shadowed value. Return-environment merging and argument/receiver evaluation
+remain before general required-parameter admission.
+
 ## F50 — the body answer contract is too weak for block return (2026-09-25)
 
 **Resolved for the admitted fragment by clink 203; typed jump rules remain future work.**

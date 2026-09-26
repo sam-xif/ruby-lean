@@ -195,6 +195,14 @@ theorem djudge_owners {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Exp
     OwnersPres m n :=
   (((djudge_context h) m hm).2 fuel a n rest hr).1.frames.owners
 
+/-- An initially bound active local protects every saved same-named slot, even when
+the active frame captures its caller. Parameter types therefore cannot overwrite caller types. -/
+theorem djudge_shadows {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
+    (h : DJudge Γ e τ Γ' κ I κ' I') {m n : Machine} (hm : StateOk κ Γ I m)
+    {fuel rest : Nat} {a : Answer} (hr : runA fuel (evalFrom m e) = .ans a n rest) :
+    ShadowPres m n :=
+  (((djudge_context h) m hm).2 fuel a n rest hr).1.frames.shadows
+
 /-- Every checked value state retains native Proc dispatch while call is unreserved.
 A declaration that reserves the selector removes this capability instead of carrying
 an assumption about the old method table past a possible write. -/
@@ -275,6 +283,7 @@ theorem validateD_safe_run {p : Ratchet.Expr} {d : Deriv} (h : validateD p d = t
 #print axioms djudge_phase
 #print axioms djudge_bindings
 #print axioms djudge_owners
+#print axioms djudge_shadows
 #print axioms djudge_proc_call
 #print axioms certified_context
 #print axioms validateD_safe

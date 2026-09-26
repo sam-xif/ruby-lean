@@ -62,7 +62,7 @@ theorem closure_frame_pop {m n : Machine} {f : RubyCore.Frame}
     FramePres m (popMethodFrame n) := by
   have hs : (popMethodFrame n).stack = m.stack := by simp [popMethodFrame, hb, pushMethodFrame]
   have hf := closure_saved_frames hl hu hc h
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, .of_frames hf⟩
   · have hh := h.size
     simp only [pushMethodFrame, Array.size_push] at hh
     exact Nat.le_trans (Nat.le_succ _) hh

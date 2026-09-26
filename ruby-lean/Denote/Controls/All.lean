@@ -12,6 +12,7 @@ import Denote.Controls.ClosureStoredReturnControls
 import Denote.Controls.ClosureCallControls
 import Denote.Controls.ClosureTrackingControls
 import Denote.Controls.ClosureFlowControls
+import Denote.Controls.ClosureShadowControls
 import Denote.Controls.ClosureReturnStateControls
 import Denote.Controls.BoundedControls
 import Denote.Controls.ModuleDataControls
