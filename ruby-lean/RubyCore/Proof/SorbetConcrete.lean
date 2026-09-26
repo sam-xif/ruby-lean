@@ -13,7 +13,7 @@ Every run starts from the **prelude-booted** heap, because sig enforcement lives
 in the `T` shim (L80). `native_decide` carries the concrete executions, as in
 `T5Concrete.lean`; the metatheorems in `SorbetSafety.lean` stay axiom-clean.
 
-JSON literals are `desugar-dt/bin/export-json` output for the named
+JSON literals are `desugar/bin/export-json` output for the named
 corpus sources — regenerate them if those sources change.
 -/
 import RubyCore.Proof.SorbetSafety

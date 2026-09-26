@@ -102,6 +102,17 @@
   .stage.busy { box-shadow:inset 3px 0 0 var(--accent); }
   .stage.idle { box-shadow:inset 3px 0 0 transparent; }
 
+  /* ── staleness ──────────────────────────────────────────────────────── */
+  /* A result computed from an earlier version of its input stays on screen,
+     dimmed, until something recomputes or clears it. */
+  .stage.stale .t, .stage.stale .d { opacity:.5; }
+  .stage.stale .t::after { content:" · stale"; color:var(--warn); font-weight:500; }
+  textarea.stale, pre.out.stale, #verdict.stale, .ctl.stale, #frames.stale,
+  ol.konts.stale { opacity:.5; transition:opacity .15s ease; }
+  textarea.stale, pre.out.stale { border-style:dashed; border-color:#5d4c2c; }
+  h2 .pill.warn { text-transform:none; letter-spacing:0; font-weight:500;
+    margin-left:6px; }
+
   /* ── verdict and errors ─────────────────────────────────────────────── */
   .verdict { border-radius:var(--r); padding:12px 14px; font-family:var(--mono);
     font-size:12.2px; line-height:1.75; border:1px solid var(--edge);
@@ -250,18 +261,21 @@
     </div>
     <div id="err"></div>
 
-    <h2>The program <span class="hint" id="srcmsg">— Ruby, with Sorbet type annotations. Editable.</span></h2>
+    <h2>The program <span class="hint" id="srcmsg">— Ruby, with Sorbet type annotations. Editable.</span><span class="pill warn" id="flag-src" hidden
+      title="Results on screen were computed from an earlier version of this program. Lean model ▶ and CRuby ▶ will strip and desugar it again first.">edited since the results shown</span></h2>
     <textarea id="src" spellcheck="false"
       placeholder="# typed: true&#10;extend T::Sig&#10;&#10;sig { params(x: Integer).returns(Integer) }&#10;def double(x)&#10;  x + x&#10;end&#10;&#10;double(21)"></textarea>
 
     <div class="adv">
-    <h2>Without the annotations <span class="hint" id="stripmsg">— what actually gets checked and run</span></h2>
+    <h2>Without the annotations <span class="hint" id="stripmsg">— what actually gets checked and run</span><span class="pill warn" id="flag-stripped" hidden
+      title="The desugared program or a run on screen was computed from an earlier version of this box. Lean model ▶ and CRuby ▶ will desugar it again first.">edited since the results shown</span></h2>
     <textarea id="stripped" spellcheck="false"
       placeholder="the program with its type annotations removed appears here"></textarea>
     </div>
 
     <div class="adv">
-    <h2>Certificate <span class="hint">— the proposed proof. Edit it and stage 4 will check what you wrote.</span></h2>
+    <h2>Certificate <span class="hint">— the proposed proof. Edit it and stage 4 will check what you wrote.</span><span class="pill warn" id="flag-deriv" hidden
+      title="The verdict on screen is for an earlier version of this certificate. Run stage 4 to check what is here now.">edited since the verdict</span></h2>
     <textarea id="deriv" spellcheck="false"
       placeholder="a certificate is a proposed proof that the program type-checks. It is untrusted: stage 4 re-derives every type in it."></textarea>
     </div>
@@ -335,6 +349,7 @@ function drawRail() {
 const mark = (k, cls, text) => {
   $(`st-${k}`).className = `stage ${cls}`;
   if (text !== undefined) $(`sd-${k}`).textContent = text;
+  refreshStale();
 };
 const reset = () => STAGES.forEach(([k, , d]) => mark(k, "idle", d));
 
@@ -346,10 +361,14 @@ const clearErr = () => ($("err").innerHTML = "");
 /** Run one stage with busy/err bookkeeping. Returns the response, or null. */
 async function stage(k, label, fn) {
   clearErr();
+  // The input is read before the await: an edit made while the stage runs
+  // leaves its result stale, which is what it is.
+  const from = INPUTS[k]();
   mark(k, "busy", label);
   try {
     const d = await fn();
     if (d && d.error) { mark(k, "no", `${d.error}: ${String(d.message || "").slice(0, 90)}`); showErr(d); return null; }
+    shownFrom[k] = from;
     return d;
   } catch (e) {
     mark(k, "no", String(e.message || e));
@@ -362,6 +381,103 @@ async function stage(k, label, fn) {
 // The stripped box is the input to everything downstream once it has content,
 // so an edit there is a first-class input rather than something to ignore.
 const program = () => $("stripped").value.trim() || $("src").value;
+
+// ── staleness ──────────────────────────────────────────────────────────────
+// Every result on screen was computed from some input text. `shownFrom` keeps
+// that text per result; a result is stale once its input has moved on. Results
+// are left in place and dimmed, not cleared on the first keystroke -- an edit
+// is often a question about the result still showing.
+const INPUTS = {
+  sigs:     () => $("src").value,
+  strip:    () => $("src").value,
+  desugar:  () => program(),
+  derive:   () => $("src").value,
+  validate: () => $("src").value + "\0" + $("deriv").value,
+  model:    () => program(),
+  cruby:    () => program(),
+  trace:    () => program(),
+};
+const SHOWN_IN = {
+  sigs: ["sigout"], strip: ["stripped"], desugar: ["core"], derive: ["deriv"],
+  validate: ["verdict"], model: ["modelout"], cruby: ["crubyout"],
+  trace: ["ctl", "frames", "konts", "tout"],
+};
+const shownFrom = {};
+const FED_BY_PROGRAM = ["desugar", "model", "cruby", "trace"];
+const moved = (k) => k in shownFrom && shownFrom[k] !== INPUTS[k]();
+// Transitive through the strip: a stale stripped box makes everything that ran
+// on it stale too, even though the box itself has not changed yet.
+const isStale = (k) => k in shownFrom
+  && (moved(k) || (FED_BY_PROGRAM.includes(k) && moved("strip")));
+
+function refreshStale() {
+  for (const k of Object.keys(INPUTS)) {
+    const stale = isStale(k);
+    for (const id of SHOWN_IN[k]) $(id).classList.toggle("stale", stale);
+    // A stage that is busy or failed is saying something else, louder.
+    const st = $(`st-${k}`);
+    if (st) st.classList.toggle("stale", stale && /\b(ok|warn)\b/.test(st.className));
+  }
+  // The flag goes on the box that was edited, not the result that went stale.
+  const fed = !$("stripped").value.trim();          // program() is reading #src
+  const viaProgram = FED_BY_PROGRAM.some(moved);
+  const [vSrc, vDeriv] = "validate" in shownFrom ? shownFrom.validate.split("\0") : [];
+  $("flag-src").hidden = !(["sigs", "strip", "derive"].some(moved)
+    || (vSrc !== undefined && vSrc !== $("src").value) || (fed && viaProgram));
+  $("flag-stripped").hidden = !(!fed && viaProgram);
+  $("flag-deriv").hidden = vDeriv === undefined || vDeriv === $("deriv").value;
+}
+
+// What clearing a result puts back: the page's own placeholders.
+const BLANK = Object.fromEntries(
+  ["sigout", "core", "verdict", "modelout", "crubyout", "stripmsg"].map((id) => [id, $(id).innerHTML]));
+const CLEAR = {
+  sigs()     { $("sigout").innerHTML = BLANK.sigout; $("sigmsg").textContent = ""; },
+  strip()    { $("stripped").value = ""; $("stripmsg").innerHTML = BLANK.stripmsg; },
+  desugar()  { $("core").innerHTML = BLANK.core; },
+  derive()   { $("deriv").value = ""; },
+  validate() { $("verdict").innerHTML = BLANK.verdict; setTarget(); },
+  model()    { $("modelout").innerHTML = BLANK.modelout; lastModel = null; },
+  cruby()    { $("crubyout").innerHTML = BLANK.crubyout; lastCruby = null; },
+  trace() {
+    trace = null; $("ctl").textContent = "Trace a program to begin.";
+    $("frames").innerHTML = '<span class="empty">— no trace</span>';
+    $("konts").innerHTML = '<li class="empty">— no trace</li>';
+    $("tout").textContent = ""; $("counter").textContent = "—";
+    $("tstatus").textContent = ""; $("tdetail").textContent = ""; $("stepmsg").textContent = "";
+  },
+};
+function clear(keys) {
+  for (const k of keys) {
+    CLEAR[k]();
+    delete shownFrom[k];
+    const s = STAGES.find(([sk]) => sk === k);
+    if (s) mark(k, "idle", s[2]);
+  }
+  agree();
+  refreshStale();
+}
+
+// Running a buffer the screen no longer describes would put the output of one
+// program beside the stages of another. So a run first redoes what it depends
+// on -- strip, if the source has moved on (an edit to the stripped box is an
+// input in its own right, and is kept), then desugar -- and clears whatever is
+// still stale after that, rather than leave it describing the old program.
+// Concurrent runs share one refresh. Resolves false if the strip failed.
+let freshening = null;
+function freshen() {
+  return freshening ??= (async () => {
+    const needStrip = !$("stripped").value.trim() || isStale("strip");
+    const needDesugar = needStrip || isStale("desugar") || !("desugar" in shownFrom);
+    if (!needDesugar) return true;
+    if (needStrip && !(await STEPS.strip())) return false;
+    // A desugar failure is reported on its own stage and does not stop the run:
+    // CRuby does not need it, and the model will say the same thing itself.
+    await STEPS.desugar();
+    clear(["sigs", "derive", "validate", "model", "cruby", "trace"].filter(isStale));
+    return true;
+  })().finally(() => { freshening = null; });
+}
 
 // ── stages ─────────────────────────────────────────────────────────────────
 const STEPS = {
@@ -410,10 +526,14 @@ const STEPS = {
   },
 
   async derive() {
-    const d = await stage("derive", "emitting…", () => call("derive", { source: $("src").value }));
+    const src = $("src").value;
+    const d = await stage("derive", "emitting…", () => call("derive", { source: src }));
     if (!d) return null;
-    if (d.stripped) { $("stripped").value = d.stripped; $("stripmsg").textContent = "— from stage 3"; }
-    if (d.core) $("core").innerHTML = sexpr(d.core.ast);
+    if (d.stripped) {
+      $("stripped").value = d.stripped; $("stripmsg").textContent = "— from stage 3";
+      shownFrom.strip = src;
+    }
+    if (d.core) { $("core").innerHTML = sexpr(d.core.ast); shownFrom.desugar = program(); }
     $("deriv").value = JSON.stringify(d.deriv || d.emit, null, 2);
     // A block is a fact about the untrusted emitter's coverage, never a verdict
     // on the program -- so `warn`, and the reason *is* the content.
@@ -431,6 +551,7 @@ const STEPS = {
     // certificate. Asking the kernel to decode it would report a decode failure
     // as if it were a verdict. `Ratchet/Check/Rung.lean` already answers this case.
     if (deriv && typeof deriv.rule !== "string" && typeof deriv.status === "string") {
+      shownFrom.validate = INPUTS.validate();
       mark("validate", "warn", "validateD = false — no certificate to check");
       setTarget(false);
       $("verdict").innerHTML = `<div class="verdict unknown">` + [
@@ -488,31 +609,46 @@ let lastModel = null, lastCruby = null;
 function agree() {
   const p = $("agree");
   if (lastModel === null || lastCruby === null) { p.textContent = "—"; p.className = "pill"; return; }
+  // Two runs of two different buffers agreeing or not says nothing.
+  if (shownFrom.model !== shownFrom.cruby) {
+    p.textContent = "ran different programs"; p.className = "pill warn"; return;
+  }
   const same = lastModel === lastCruby;
   p.textContent = same ? "stdout agrees" : "stdout DIFFERS";
   p.className = "pill " + (same ? "ok" : "no");
 }
 
+/** Freshen, then run `k` over the program and render the answer into `out`. */
+async function run(k, out, render) {
+  $(out).textContent = "running…";
+  if (!(await freshen())) {
+    $(out).textContent = "not run — stage 1 could not strip the program";
+    return null;
+  }
+  $(out).textContent = "running…";         // freshen may have cleared it as stale
+  const source = program();
+  delete shownFrom[k];
+  const d = await call(k, { source });
+  shownFrom[k] = source;
+  $(out).textContent = d.error ? `${d.error}: ${d.message}` : render(d);
+  refreshStale();
+  return d;
+}
+
 $("model").onclick = async () => {
-  $("modelout").textContent = "running…";
-  const d = await call("model", { source: program() });
-  if (d.error) { $("modelout").textContent = `${d.error}: ${d.message}`; lastModel = null; return agree(); }
-  lastModel = d.stdout || "";
-  $("modelout").textContent =
+  const d = await run("model", "modelout", (d) =>
     `stdout:\n${d.stdout || "(none)"}\nresult: ${d.result_repr}` +
     (d.exception ? `\nexception: ${JSON.stringify(d.exception)}` : "") +
-    (d.ms ? `\n\n[${d.ms} ms]` : "");
+    (d.ms ? `\n\n[${d.ms} ms]` : ""));
+  lastModel = d && !d.error ? d.stdout || "" : null;
   agree();
 };
 
 $("cruby").onclick = async () => {
-  $("crubyout").textContent = "running…";
-  const d = await call("cruby", { source: program() });
-  if (d.error) { $("crubyout").textContent = `${d.error}: ${d.message}`; lastCruby = null; return agree(); }
-  lastCruby = d.stdout || "";
-  $("crubyout").textContent =
+  const d = await run("cruby", "crubyout", (d) =>
     `stdout:\n${d.stdout || "(none)"}` + (d.stderr ? `\nstderr:\n${d.stderr}` : "") +
-    `\nexit: ${d.returncode}` + (d.ms ? `\n\n[${d.ms} ms]` : "");
+    `\nexit: ${d.returncode}` + (d.ms ? `\n\n[${d.ms} ms]` : ""));
+  lastCruby = d && !d.error ? d.stdout || "" : null;
   agree();
 };
 
@@ -525,12 +661,15 @@ $("step").onclick = async () => {
   $("step").disabled = true;
   $("stepmsg").textContent = "tracing…";
   try {
+    if (!(await freshen())) { $("stepmsg").textContent = "not run — stage 1 could not strip the program"; return; }
+    $("stepmsg").textContent = "tracing…";
+    const source = program();
     const d = await call("trace", {
-      source: program(), max: parseInt($("max").value, 10) || 400,
+      source, max: parseInt($("max").value, 10) || 400,
       at: $("at").value.trim(), from: parseInt($("from").value, 10) || 0,
     });
     if (d.error) { trace = null; $("stepmsg").textContent = ""; return showErr(d); }
-    trace = d; at = 0;
+    trace = d; at = 0; shownFrom.trace = source; refreshStale();
     if (!trace.steps || !trace.steps.length) {
       // A window that matched nothing is not an error: the program ended some
       // other way, and the status says how.
@@ -545,6 +684,8 @@ $("step").onclick = async () => {
 };
 
 $("count").onclick = async () => {
+  $("stepmsg").textContent = "counting…";
+  if (!(await freshen())) { $("stepmsg").textContent = "not run — stage 1 could not strip the program"; return; }
   $("stepmsg").textContent = "counting…";
   const d = await call("steps", { source: program() });
   if (d.error) { $("stepmsg").textContent = ""; return showErr(d); }
@@ -615,8 +756,9 @@ about.addEventListener("click", (e) => { if (clickedOutside(about, e)) about.clo
 const dlg = $("stepper");
 $("openstep").onclick = () => {
   dlg.showModal();
-  // Opening with nothing to show is a dead end; trace straight away the first time.
-  if (!trace) $("step").click();
+  // Opening with nothing to show is a dead end, and so is opening on a trace of
+  // a program that is no longer in the editor; trace straight away.
+  if (!trace || isStale("trace")) $("step").click();
 };
 $("closestep").onclick = () => dlg.close();
 dlg.addEventListener("click", (e) => { if (clickedOutside(dlg, e)) dlg.close(); });
@@ -704,21 +846,9 @@ $("load").onclick = async () => {
   const d = await call("corpus-source", { file: $("corpus").value });
   if (d.error) return showErr(d);
   $("src").value = d.source;
-  $("stripped").value = ""; $("deriv").value = "";
-  $("core").innerHTML = '<span class="empty">— strip, then desugar</span>';
-  $("sigout").innerHTML = '<span class="empty">— run stage 0</span>';
-  $("verdict").innerHTML = '<span class="empty">— derive, then run stage 4</span>';
-  $("stripmsg").textContent = ""; $("sigmsg").textContent = "";
-  lastModel = lastCruby = null; agree();
-  trace = null; $("ctl").textContent = "Trace a program to begin.";
-  $("frames").innerHTML = '<span class="empty">— no trace</span>';
-  $("konts").innerHTML = '<li class="empty">— no trace</li>';
-  $("tout").textContent = ""; $("counter").textContent = "—";
-  $("tstatus").textContent = ""; $("tdetail").textContent = ""; $("stepmsg").textContent = "";
-  reset();
   const e = entries[$("corpus").value] || {};
   expect = e.expect_validate === undefined ? null : e.expect_validate;
-  setTarget();
+  clear(Object.keys(CLEAR));
   const blurb = summarise(e.description);
   $("msg").textContent = blurb || humanise($("corpus").value);
 };
@@ -738,6 +868,7 @@ function sexpr(node, depth = 0) {
 // ── boot ───────────────────────────────────────────────────────────────────
 drawRail();
 reset();
+for (const id of ["src", "stripped", "deriv"]) $(id).addEventListener("input", refreshStale);
 loadCorpus();
 prewarm();
 </script>

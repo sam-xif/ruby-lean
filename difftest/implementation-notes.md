@@ -1,9 +1,9 @@
 # difftest — implementation notes (non-critical choices, for rollback)
 
-Same convention as the harness's `../desugar-dt/implementation-choices.md`:
+Same convention as the harness's `../desugar/implementation-choices.md`:
 every non-obvious implementation choice gets a numbered entry here and this file is
 committed on each change, so any decision can be found and reverted. Load-bearing
-*design* decisions live in [`README.md`](README.md) §Invariants; these are the
+*design* decisions live in [`../docs/testing/engine.md`](../docs/testing/engine.md) §Invariants; these are the
 smaller calls.
 
 ## N1 — Tier 0 is repurposed as the conformance-corpus tier; bootstraptest is its first source
@@ -11,7 +11,7 @@ smaller calls.
 Tier 0 was originally sketched as "conformance suites from other languages,
 AI-translated to Ruby". MRI's own `bootstraptest/` is a strictly cheaper first
 occupant: already Ruby, already self-contained single-file programs, harvester
-already exists (`../desugar-dt/bin/harvest_bootstraptest`), no
+already exists (`../desugar/bin/harvest_bootstraptest`), no
 translation or licensing questions. Translated foreign suites remain a future
 tier-0 source, not a separate tier. (Refocus decision of 2026-07-07: corpora
 covering the language's real distribution come before splicing/mutation.)
@@ -34,7 +34,7 @@ order.
 ## N4 — The bootstraptest corpus stays unvendored (gitignored in the harness)
 
 The difftest source points at the harness's harvested copy
-(`../desugar-dt/corpus/bootstraptest/`) and raises with the harvest
+(`../desugar/corpus/bootstraptest/`) and raises with the harvest
 recipe when it is missing, rather than vendoring ~1300 upstream-derived files
 into this repo.
 
@@ -147,7 +147,7 @@ object model (the desugar M3 core and the Lean L2 fragment) went unexercised by
 fuzzing. Added three AST nodes to the *shared* `tiers/tier1` grammar so both tier 1
 and tier 1.5 (which is `tier1.programs().map(probe)` — N11) get them for free:
 `ClassDef` (name + ivars + instance methods), `New` (`C.new(...)`), `MethodCall`
-(`recv.m(...)`), plus `IvarRead` (`@x`). Scope-awareness (the prong-2 design, `../desugar-dt/README.md` §The method) is
+(`recv.m(...)`), plus `IvarRead` (`@x`). Scope-awareness (the prong-2 design, `../docs/front-end/method.md` 06 §4) is
 preserved by extending `Env` with `classes`/`instances`/`ivars` so `.new`
 arg-counts and receiver methods resolve and dispatch actually fires.
 
@@ -177,7 +177,7 @@ programs round-trip fully in-fragment through the harness).
 Closed the four biggest generative-coverage gaps (tier 1 owns the grammar; tier 1.5
 inherits every node via `.map(probe)` — N11). All additions preserve the two
 load-bearing invariants: **termination-by-construction** (HANDOFF invariant 4) and
-**scope-awareness** (the prong-2 design, `../desugar-dt/README.md` §The method, so dispatch fires instead of dying on
+**scope-awareness** (the prong-2 design, `../docs/front-end/method.md` 06 §4, so dispatch fires instead of dying on
 NameError). New pure-leaf nodes were registered in the tier-1.5 probe `_LEAVES`
 (`BlockGiven`, `ConstRead`); every other new node is handled by the probe's generic
 dataclass walk.
@@ -1482,7 +1482,7 @@ gated, 3 `control_invalid` — the baseline exactly. tier-4 25/0, tier-0 992/0.
 
 ## N49 — the control wrapper had no `__as_string`, so the `desugar` SUT was unrunnable
 
-`desugar-dt` C38 gave interpolation's cold arm a **call** — `t.__as_string` — and put the one-method
+`desugar` C38 gave interpolation's cold arm a **call** — `t.__as_string` — and put the one-method
 support layer in `Observe::WRAPPER`, "so both sides see it and neither can be advantaged by it."
 The difftest control wrapper (`control.py:_WRAPPER`) never got the same treatment. It is the thing
 that runs *both* the control program and the `desugar` SUT's rendered core, and it defined no

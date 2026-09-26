@@ -28,5 +28,5 @@ still true was folded into the localized READMEs, and the rest was deleted.
 per document on what it was — and the full text is in the git history.
 
 The current state, not the history, is in [`../AGENTS.md`](../AGENTS.md) (the
-checker), [`../README.md`](../README.md) (the model's layout and build) and
+checker), [`../README.md`](../README.md) (the package layout and build), [`../../docs/model/fragment.md`](../../docs/model/fragment.md) (what the model supports) and
 [`../RubyCore/README.md`](../RubyCore/README.md) (the semantics itself).

@@ -292,7 +292,7 @@ class FragmentChecker:
     def __init__(self, harness_lib: Path | None = None, lean_bin: Path | None = None,
                  runner: CRubyRunner | None = None):
         root = Path(__file__).resolve().parents[2]
-        self.harness_lib = Path(harness_lib) if harness_lib else root / "desugar-dt" / "lib"
+        self.harness_lib = Path(harness_lib) if harness_lib else root / "desugar" / "lib"
         self.lean_bin = Path(lean_bin) if lean_bin else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
         self.runner = runner or CRubyRunner()
 
@@ -365,7 +365,7 @@ class StaticChecker:
     def __init__(self, harness_lib: Path | None = None, lean_bin: Path | None = None,
                  runner: CRubyRunner | None = None):
         root = Path(__file__).resolve().parents[2]
-        self.harness_lib = Path(harness_lib) if harness_lib else root / "desugar-dt" / "lib"
+        self.harness_lib = Path(harness_lib) if harness_lib else root / "desugar" / "lib"
         self.lean_bin = Path(lean_bin) if lean_bin else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
         self.runner = runner or CRubyRunner()
 
@@ -408,7 +408,7 @@ class SigReader:
     def __init__(self, harness_lib: Path | None = None, lean_bin: Path | None = None,
                  runner: CRubyRunner | None = None):
         root = Path(__file__).resolve().parents[2]
-        self.harness_lib = Path(harness_lib) if harness_lib else root / "desugar-dt" / "lib"
+        self.harness_lib = Path(harness_lib) if harness_lib else root / "desugar" / "lib"
         self.lean_bin = Path(lean_bin) if lean_bin else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
         self.runner = runner or CRubyRunner()
 

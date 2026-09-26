@@ -34,7 +34,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-EXPORT_JSON = ROOT / "desugar-dt" / "bin" / "export-json"
+EXPORT_JSON = ROOT / "desugar" / "bin" / "export-json"
 RUBYCORE = ROOT / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
 RATCHET_VALIDATE = ROOT / "ruby-lean" / ".lake" / "build" / "bin" / "validate-one"
 CORPUS = ROOT / "ruby-lean" / "corpus"
@@ -247,7 +247,7 @@ def ratchet_validate(source: str, deriv) -> dict:
 #   file      homebrew/vendor/brew/Library/Homebrew/…      (PLAN.md §2's eight)
 #   link      linker + homebrew/slice-driver/build.py      (boot stubs + driver)
 #   strip     difftest/ruby/*_strip.rb                     (certify-file.sh's chain)
-#   desugar   desugar-dt/bin/export-json
+#   desugar   desugar/bin/export-json
 #   model     rubycore                                     (the observation record)
 #   cruby     $RUBY                                        (the oracle)
 #

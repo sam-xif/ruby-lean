@@ -3,7 +3,7 @@
 Deliberately independent of the desugar harness's RubyCore: this is a *surface*
 vocabulary (with sugar like &&/||, op-assign, interpolation) whose programs are
 rendered to text and fed to any SUT. Loops appear only in bounded counter form
-so generated programs terminate by construction (the prong-2 design, `../desugar-dt/README.md` §The method).
+so generated programs terminate by construction (the prong-2 design, `docs/front-end/method.md` 06 §4).
 """
 
 from __future__ import annotations

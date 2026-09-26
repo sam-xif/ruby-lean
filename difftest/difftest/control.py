@@ -24,7 +24,7 @@ from .observation import Observation
 
 SENTINEL = "\n__DIFFTEST_OBS__"
 
-# RubyCore's runtime support layer, verbatim from `desugar-dt/lib/observe.rb`
+# RubyCore's runtime support layer, verbatim from `desugar/lib/observe.rb`
 # (`Observe::SUPPORT`, C38): the cold arm of interpolation lowers to a call to
 # `__as_string`, a name plain CRuby does not have. It lives in the *wrapper*, so
 # the control and every SUT see one definition and neither side is advantaged —

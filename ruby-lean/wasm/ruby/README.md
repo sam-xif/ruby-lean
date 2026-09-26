@@ -9,7 +9,7 @@ One self-contained module doing the five Ruby jobs the playground needs:
 
 | job | what runs | invoked as |
 |---|---|---|
-| desugar | `desugar-dt/bin/export-json` | `ruby.wasm /opt/desugar/bin/export-json` |
+| desugar | `desugar/bin/export-json` | `ruby.wasm /opt/desugar/bin/export-json` |
 | strip chain | `difftest/ruby/*_strip.rb`, six stages | `ruby.wasm /opt/strip/<stage>.rb` |
 | CRuby oracle | the user's program | `ruby.wasm` with the source on stdin |
 | sig reading | `scripts/read_sigs.rb` (Prism, replaces `srb_sigs.py`) | `ruby.wasm /opt/deriv/read_sigs.rb` |

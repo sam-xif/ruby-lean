@@ -1,7 +1,7 @@
 """Observations and their normalization.
 
 An Observation is what we compare between the control (CRuby) and the system
-under test. It mirrors `obs` from README.md §Methodology (artifact 05 §3),
+under test. It mirrors `obs` from docs/testing/methodology.md (artifact 05 §3),
 minus the heap projection (deferred for v1):
 
     obs = (stdout, result_repr, exception[class, message])

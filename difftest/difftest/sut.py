@@ -60,7 +60,7 @@ class IdentityCRubySUT:
         return self.runner.run(source)
 
 
-# Ruby snippet that desugars stdin through the existing desugar-dt harness and
+# Ruby snippet that desugars stdin through the existing desugar harness and
 # prints the rendered RubyCore. Exit 3 = out of fragment (clean gate).
 _DESUGAR_SNIPPET = """\
 $LOAD_PATH.unshift(ARGV[0])
@@ -78,7 +78,7 @@ print Render.core(core)
 
 
 class DesugarRoundtripSUT:
-    """Adapter over the existing desugar-dt harness: desugar -> render -> CRuby.
+    """Adapter over the existing desugar harness: desugar -> render -> CRuby.
 
     This is a real, available-today SUT: it models Ruby as "the desugared
     program's behavior under CRuby". With inject_bug=True (DESUGAR_BUG) the
@@ -94,7 +94,7 @@ class DesugarRoundtripSUT:
         runner: CRubyRunner | None = None,
         inject_bug: bool = False,
     ):
-        default = Path(__file__).resolve().parents[2] / "desugar-dt" / "lib"
+        default = Path(__file__).resolve().parents[2] / "desugar" / "lib"
         self.harness_lib = Path(harness_lib) if harness_lib else default
         self.runner = runner or CRubyRunner()
         self.inject_bug = inject_bug
@@ -154,7 +154,7 @@ class LeanSUT:
         runner: CRubyRunner | None = None,
     ):
         root = Path(__file__).resolve().parents[2]
-        self.harness_lib = Path(harness_lib) if harness_lib else root / "desugar-dt" / "lib"
+        self.harness_lib = Path(harness_lib) if harness_lib else root / "desugar" / "lib"
         self.lean_bin = Path(lean_bin) if lean_bin else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
         self.runner = runner or CRubyRunner()
 

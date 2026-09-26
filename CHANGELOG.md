@@ -6,6 +6,13 @@ artifact, and `0.01` is the first cut of it that a stranger can build.
 
 ## Unreleased
 
+**`desugar-dt/` is renamed `desugar/`, and the READMEs are short orientation pages.** The
+long design material moved, mostly unchanged, into a new `docs/` directory that builds as an
+MkDocs site (`mkdocs.yml` at the root): artifact 05 → `docs/testing/methodology.md`,
+artifact 06 → `docs/front-end/method.md`, linearization, the model's fragment and metatheory,
+the difftest engine details, and the playground internals. Citations in code and notes were
+updated to the new paths. `ruby-lean/RubyCore/README.md` (the written semantics) is unchanged.
+
 **`Ratchet/` and `Denote/` are reorganized by what a file *says*.** No namespaces, theorem
 names or proofs changed — the four-library boundary (`RubyCore/` → `Ratchet/` +
 `Semantics/` → `Denote/`) and its isolation check are untouched, and every gate number is
