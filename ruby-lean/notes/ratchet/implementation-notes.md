@@ -11455,3 +11455,23 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
   pass. New entry/transport/control proofs build in about one second or less; no individual
   proof approached five minutes.
+
+## Clink 207 (2026-09-25) — captured return framing without frozen locals
+
+- CapturePath names the frames reachable by local writes. Path membership and CaptureLive
+  survive preserved capture links when the source chain is live; that guard avoids clink
+  206's dangling-frame counterexample. The real setLocal owner always lies on its path.
+- FramePres retains saved-frame metadata (all fields except locals), and isolates old frames
+  outside the live active capture chain. Local writes and composition discharge both fields;
+  ordinary return transports them from saved frames. Constructor publication uses its
+  uncaptured initializer's isolation, independent of the allocated heap.
+- Closure/FrameReturn proves full Framed and saved caller metadata after popping a closure
+  capturing its uncaptured caller. currentClosureFrame_runSpec consumes this proof instead
+  of assuming caller framing. Outgoing caller EnvOk/runtime StateOk remain explicit.
+- Controls retain the old contract's saved-self/unrelated-local damage witnesses and reject
+  both now. A real captured write changes caller x from 1 to 7 while restoring Framed.
+- No judgment or emitter change. Counts remain fragment 81 / checker reach 86, 61 rules,
+  60 worked theorems, 0 owed/exempt. Next: caller environment/runtime and capture tracking.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New proofs build in about a second or less; the existing NativePrefix rebuild took
+  143s during a concurrent external build. No individual proof reached five minutes.

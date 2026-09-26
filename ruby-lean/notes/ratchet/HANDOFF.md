@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 206)
+# Current resume point (2026-09-25, clink 207)
 
 Latest admission remains 084: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
@@ -62,7 +62,17 @@ for any supported zero-argument lambda body, retaining f at its exact closure ty
 boot Integer instance is non-vacuous under bootOkB. A dangling-capture control shows that
 equal heaps/code do not transport arbitrary closure types across a frame push.
 
-Next: discharge caller restoration through captured writes and track capture identity.
+Clink 207 adds CapturePath and strengthens FramePres: saved frames retain every field
+except locals, and frames outside a live capture chain remain unchanged. Liveness makes
+path membership stable across frame growth. Local writes, composition, ordinary returns
+and constructors prove the stronger contract. Rules/Closure/FrameReturn derives full Framed
+after popping a closure that captures its uncaptured caller, plus saved caller metadata.
+currentClosureFrame_runSpec discharges the block continuation's framing premise; caller
+StateOk remains explicit. Controls reject saved-self and unrelated-local damage admitted
+by LegacyFramePres, and prove that a real captured write changes caller x from 1 to 7 while
+retaining Framed. No frozen-local assumption is used.
+
+Next: caller environment/runtime conformance after captured writes, and capture identity.
 Entry now has full conformance under the named scope/liveness/environment premises, but
 Ty.clos does not yet supply those premises. The stored-f pilot retains its higher-order
 binding using ProcPres.empty_capture_den. General capture types still need transport.
@@ -72,7 +82,10 @@ Framed.procs now retains a saved Proc's descriptor across argument evaluation;
 Framed.firstOrder still excludes clos, and FieldsPres carries only first-order ivar facts.
 Current-capture environments now have an entry contract; arbitrary captures still need
 complete-environment and captured-value transport facts, not only a lower-bound spine.
-FramePres.isolated applies only to uncaptured activations; do not assume caller isolation.
+FramePres.isolated applies only to uncaptured activations. For direct current captures,
+closure_pop_framed now restores framing without assuming the caller's locals are unchanged.
+closure_pop_metadata retains its non-local fields. Full StateOk still needs the caller's
+outgoing EnvOk and runtime permissions/phase; the body drops the latter permissions.
 The unused ClosuresOk/closTblOk table machinery remains legacy, with F49's counterexamples
 retained explicitly. The old index-free denotation is now named LegacyIndexDen in controls.
 

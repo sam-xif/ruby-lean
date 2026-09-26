@@ -61,6 +61,10 @@ Current-capture entry now accepts closure-valued locals with proved transport; t
 zero-argument lambda pilot includes f at its exact type. A dangling-capture control refutes
 unconditional transport across a frame push. Caller restoration and capture identity tracking
 remain before admission.
+Clink 207 strengthens FramePres with saved metadata and isolation outside live capture
+chains. Current-capture return framing now follows from the body contract while permitting
+captured-local writes. Full caller environment/runtime conformance and capture identity
+tracking still precede callable admission.
 Next: 087, zero-argument lambda creation/call. See HANDOFF.
 
 ## Layout

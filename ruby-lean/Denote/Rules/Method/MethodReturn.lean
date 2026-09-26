@@ -36,13 +36,17 @@ theorem method_frame_pop {m n : Machine} {f : RubyCore.Frame}
   have hs : (popMethodFrame n).stack = m.stack := by
     simp [popMethodFrame, hb, pushMethodFrame]
   have hf := method_frame_savedFrames hc h
-  refine ⟨?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · have hh := h.size
     simp only [pushMethodFrame, Array.size_push] at hh
     exact Nat.le_trans (Nat.le_succ _) hh
   · change frameScope ((popMethodFrame n).frames.getD ((popMethodFrame n).stack.headD 0) default) = _
     rw [hs]
     exact congrArg frameScope (hf _ hl)
+  · intro _ i hi _
+    exact hf i hi
+  · intro i hi _
+    exact congrArg savedFrame (hf i hi)
   · intro _ i hi _
     exact hf i hi
 

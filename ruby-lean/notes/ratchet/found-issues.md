@@ -2737,6 +2737,12 @@ transport cannot follow from equal heaps/code alone: a dangling capture starts r
 newly allocated locals after a frame push. General capture identity/liveness/environment
 tracking and caller restoration remain outside callable admission.
 
+Clink 207 strengthens FramePres with saved metadata and isolation outside live capture
+chains. The old contract allowed saved-self damage and unrelated-local writes whenever
+the active frame had a capture; CaptureFrameControls retains both witnesses and rejects
+them under the new contract. Current-capture return now derives Framed while permitting
+actual writes to caller locals. Full caller environment/runtime conformance remains open.
+
 ## F50 — the body answer contract is too weak for block return (2026-09-25)
 
 **Resolved for the admitted fragment by clink 203; typed jump rules remain future work.**

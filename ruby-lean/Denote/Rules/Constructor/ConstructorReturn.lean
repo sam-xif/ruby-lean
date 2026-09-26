@@ -13,7 +13,13 @@ theorem constructor_frame_pres {m n : Machine} {k : ObjId} {md : MethodDef}
     (h : InitFrame m.heap (constructorFrame m k md ps args) n) :
     FramePres (pushMethodFrame m
       (requiredFrame (.ref m.heap.objs.size) "initialize" md (ps.map (·.1)) args)) n :=
-  ⟨h.frames.size, h.frames.scope, h.frames.isolated⟩
+  ⟨h.frames.size, h.frames.scope, h.frames.isolated, h.frames.saved, by
+    intro _ i hi hn
+    apply h.frames.isolated (by
+      simp [RootUncaptured, constructorFrame, pushMethodFrame, Array.getD_eq_getD_getElem?, requiredFrame]) i hi
+    intro he
+    subst i
+    exact hn (.here _)⟩
 
 theorem constructor_pop_framed {m n : Machine} {k : ObjId} {md : MethodDef}
     {ps : List SigParam} {args : List Value} (hl : FrameInRange m)

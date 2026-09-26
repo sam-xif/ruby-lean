@@ -1,4 +1,5 @@
 import Denote.Rules.Closure.Entry
+import Denote.Rules.Closure.FrameReturn
 import Denote.Rules.Method.MethodReturn
 
 /-! The real block continuation consumes the strengthened answer contract. Captured
@@ -68,4 +69,22 @@ theorem closureFrame_runSpec {m : Machine} {f : RubyCore.Frame} {e : Ratchet.Exp
 
 #print axioms blkFrameK_escape
 #print axioms closureFrame_runSpec
+
+/-- A closure capturing its ordinary caller discharges return framing from the body's
+certified frame effects. Full caller conformance after local writes remains explicit. -/
+theorem currentClosureFrame_runSpec {m : Machine} {f : RubyCore.Frame} {e : Ratchet.Expr}
+    {Γb Γ : Env} {κb κ : Ctx} {Ib I τ : Ty}
+    (hl : m.stack.headD 0 < m.frames.size) (hu : RootUncaptured m)
+    (hc : f.captured = some (m.stack.headD 0))
+    (lam : Bool) (brk : Option FrameId) (cl : Closure) (args : List Value)
+    (ht : FirstOrder τ = true)
+    (hb : RunSpec (pushMethodFrame m f) (evalFrom (pushMethodFrame m f) e) Γb τ κb Ib)
+    (hs : ∀ n v, ResultOk (pushMethodFrame m f) Γb τ (.val v) n κb Ib →
+      StateOk κ Γ I (popMethodFrame n)) :
+    RunSpec m (pushK [.blkFrameK m.frames.size lam brk cl args]
+      (evalFrom (pushMethodFrame m f) e)) Γ τ κ I :=
+  closureFrame_runSpec lam brk cl args ht hb
+    (fun _ _ hr => closure_pop_framed hl hu hc hr.1) hs
+
+#print axioms currentClosureFrame_runSpec
 end Ratchet.Denote.Typed

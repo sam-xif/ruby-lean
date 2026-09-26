@@ -123,7 +123,8 @@ argument premise runs from the machine the *receiver* left behind.
 `frames` adds the missing caller-isolation contract (clink 87). Equal heaps/stacks
 alone permit arbitrary damage to inactive locals. `FramePres` preserves all inactive old
 frames when the activation has no captured parent, and preserves that guard for composition.
-Captured activations may still write through their captured chain.
+Captured activations may still write through their captured chain. Saved activations keep
+their metadata, and frames outside a live capture chain remain unchanged (clink 207).
 
 `procs` retains every existing Proc's complete payload across evaluation, including saved
 receiver code and capture descriptors. It does not freeze the frames they reference. -/
