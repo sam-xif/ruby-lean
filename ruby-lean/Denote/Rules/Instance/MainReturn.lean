@@ -1,6 +1,7 @@
 import Denote.Sem.Singleton.SingletonScope
 import Denote.Rules.Instance.InstanceReturn
 import Ratchet.Guards.ClassCtx
+import Denote.Sem.Core.SavedFrame
 
 /-! Restore the top-level activation while retaining the body's outgoing declaration and
 absence tables. Frame restoration and retained heap facts are separate proof inputs. -/
@@ -8,21 +9,26 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
-theorem restore_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Machine}
+theorem restore_main_state_of_metadata {κ κb : Ctx} {Γ Γb Γout : Env} {I Ib : Ty} {m n : Machine}
     (hm : StateOk κ Γ I m) (ht : ReframeFO (returnScopeCtx κ κb) I) (ha : κ.asms = [])
     (hr : κ.scope.runtimeMain = true) (hw : κb.pos.mainWorld = true)
     (hcl : κ.scope.runtimeClass = none)
     (hk : ∀ x, constGet? κb x = constGet? (returnScopeCtx κ κb) x)
-    (hp : Framed m (popMethodFrame n)) (hpop : (popMethodFrame n).currentFrame = m.currentFrame)
-    (he : EnvOk Γ (popMethodFrame n)) (hphase : n.preludeMode = false)
-    (hn : StateOk κb Γb Ib n) : StateOk (returnScopeCtx κ κb) Γ I (popMethodFrame n) := by
+    (hp : Framed m (popMethodFrame n))
+    (hpop : savedFrame (popMethodFrame n).currentFrame = savedFrame m.currentFrame)
+    (he : EnvOk Γout (popMethodFrame n)) (hphase : n.preludeMode = false)
+    (hn : StateOk κb Γb Ib n) : StateOk (returnScopeCtx κ κb) Γout I (popMethodFrame n) := by
+  have hself := congrArg RubyCore.Frame.self hpop
+  have hblock := congrArg RubyCore.Frame.blk hpop
+  have howner := congrArg RubyCore.Frame.defmod hpop
+  have hcref := congrArg RubyCore.Frame.cref hpop
+  have hcap := congrArg RubyCore.Frame.captured hpop
+  simp only [savedFrame] at hself hblock howner hcref hcap
   have old := hm.runtime hr
   have site : MainSite κb n.heap := hn.mainSite hw
   have ready : MainReady (popMethodFrame n) := MainReady.of_view (m := popMethodFrame n) site.ready
-    ((congrArg RubyCore.Frame.self hpop).trans old.self)
-    ((congrArg RubyCore.Frame.defmod hpop).trans old.owner)
-    ((congrArg RubyCore.Frame.cref hpop).trans old.cref)
-    ((congrArg RubyCore.Frame.captured hpop).trans old.captured) hphase
+    (hself.trans old.self) (howner.trans old.owner) (hcref.trans old.cref)
+    (hcap.trans old.captured) hphase
   have hscope : ConstScopeOk (popMethodFrame n) := by
     intro x
     have he : constResolveAt (popMethodFrame n) x = mainConstResolve n.heap x := by
@@ -64,7 +70,7 @@ theorem restore_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mach
     frameInRange := ⟨by rw [hp.stack]; exact hm.frameInRange.1,
       by rw [hp.stack]; exact Nat.lt_of_lt_of_le hm.frameInRange.2 hp.frames.size⟩
     env := he
-    selfSpine := hp.selfSpine (congrArg RubyCore.Frame.self hpop) hm.selfLive ht.spine hm.selfSpine
+    selfSpine := hp.selfSpine hself hm.selfLive ht.spine hm.selfSpine
     classes := hn.classes
     ownNames := hn.ownNames
     classChains := hn.classChains
@@ -90,21 +96,21 @@ theorem restore_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mach
     declCls := hn.declCls
     baseChains := hn.baseChains
     nilQuery := hn.nilQuery
-    selfLive := fun o ho => Nat.lt_of_lt_of_le (hm.selfLive o (by rwa [hpop] at ho)) hp.fields.size }
-  · exact hp.frameOk hm.frame hpop
+    selfLive := fun o ho => Nat.lt_of_lt_of_le (hm.selfLive o (by rwa [hself] at ho)) hp.fields.size }
+  · exact hp.frameOk_saved hm.frame hpop
   · change BlockTyOk κ.blockTy (popMethodFrame n)
     cases hb : κ.blockTy with
-    | none => simpa only [BlockTyOk, hb, hpop] using hm.blockTy
+    | none => simpa only [BlockTyOk, hb, hblock] using hm.blockTy
     | some τ =>
       obtain ⟨v, hv, hd⟩ := (show ∃ v, m.currentFrame.blk = some v ∧ denM τ m v by
         simpa only [BlockTyOk, hb] using hm.blockTy)
-      exact ⟨v, by rw [hpop]; exact hv, hp.firstOrder τ (ht.block τ hb) v hd⟩
+      exact ⟨v, by rw [hblock]; exact hv, hp.firstOrder τ (ht.block τ hb) v hd⟩
   · change SelfTyOk κ.selfTy (popMethodFrame n)
     cases hs : κ.selfTy with
     | none => trivial
     | some τ =>
       change denM τ (popMethodFrame n) (popMethodFrame n).currentFrame.self
-      rw [hpop]
+      rw [hself]
       exact hp.firstOrder τ (ht.self τ hs) _ (by simpa only [SelfTyOk, hs] using hm.selfTy)
   · intro x τ hx
     obtain ⟨v, hv, hd⟩ := hn.consts x τ (by rwa [hk])
@@ -115,6 +121,17 @@ theorem restore_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mach
     · subst k
       exact site.names name hb owner md (by rwa [ready.self] at hl)
     · exact hn.nameFree name hb k (List.mem_cons_of_mem _ he) owner md hl
+
+/-- Ordinary calls recover their original frame and environment. -/
+theorem restore_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Machine}
+    (hm : StateOk κ Γ I m) (ht : ReframeFO (returnScopeCtx κ κb) I) (ha : κ.asms = [])
+    (hr : κ.scope.runtimeMain = true) (hw : κb.pos.mainWorld = true)
+    (hcl : κ.scope.runtimeClass = none)
+    (hk : ∀ x, constGet? κb x = constGet? (returnScopeCtx κ κb) x)
+    (hp : Framed m (popMethodFrame n)) (hpop : (popMethodFrame n).currentFrame = m.currentFrame)
+    (he : EnvOk Γ (popMethodFrame n)) (hphase : n.preludeMode = false)
+    (hn : StateOk κb Γb Ib n) : StateOk (returnScopeCtx κ κb) Γ I (popMethodFrame n) :=
+  restore_main_state_of_metadata hm ht ha hr hw hcl hk hp (congrArg savedFrame hpop) he hphase hn
 
 /-- An ordinary instance body leaves its surrounding tables unchanged. -/
 theorem instance_pop_main_state {κ : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Machine}
@@ -132,5 +149,6 @@ theorem instance_pop_main_state {κ : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mac
     (method_pop_envOk hm.frameInRange.2 hu hc h hm.env hΓ) scope.phase hn
 
 #print axioms restore_main_state
+#print axioms restore_main_state_of_metadata
 #print axioms instance_pop_main_state
 end Ratchet.Denote.Typed

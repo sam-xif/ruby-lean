@@ -65,6 +65,11 @@ Clink 207 strengthens FramePres with saved metadata and isolation outside live c
 chains. Current-capture return framing now follows from the body contract while permitting
 captured-local writes. Full caller environment/runtime conformance and capture identity
 tracking still precede callable admission.
+Clink 208 preserves prelude mode in every certified evaluation/initializer. Main-caller
+restoration now uses saved metadata and an independently proved outgoing environment;
+closure_main_runSpec restores full caller StateOk from that environment and the body result.
+A real captured Integer-to-nil write proves full return conformance, including at boot.
+General outgoing capture environments and capture identity tracking remain before admission.
 Next: 087, zero-argument lambda creation/call. See HANDOFF.
 
 ## Layout

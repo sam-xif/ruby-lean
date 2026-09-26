@@ -12,7 +12,7 @@ theorem InitFrame.pop {anchor : Heap} {m n : Machine} {f : RubyCore.Frame}
     (hl : m.stack.headD 0 < m.frames.size) (hc : f.captured = none) :
     InitFrame anchor m (popMethodFrame n) :=
   ⟨h.growth, by simp [popMethodFrame, h.stack, pushMethodFrame],
-    method_frame_pop hl hc h.stack h.frames, h.stable.reheap rfl rfl⟩
+    method_frame_pop hl hc h.stack h.frames, h.stable.reheap rfl rfl, h.phase⟩
 
 theorem InitFrame.pop_currentFrame {anchor : Heap} {m n : Machine} {f : RubyCore.Frame}
     (h : InitFrame anchor (pushMethodFrame m f) n) (hl : FrameInRange m)

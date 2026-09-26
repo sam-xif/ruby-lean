@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 207)
+# Current resume point (2026-09-25, clink 208)
 
 Latest admission remains 084: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
@@ -72,7 +72,18 @@ StateOk remains explicit. Controls reject saved-self and unrelated-local damage 
 by LegacyFramePres, and prove that a real captured write changes caller x from 1 to 7 while
 retaining Framed. No frozen-local assumption is used.
 
-Next: caller environment/runtime conformance after captured writes, and capture identity.
+Clink 208 adds prelude-mode preservation to Framed and InitFrame; djudge_phase exposes it
+for every certified answer. Ext and heap equality do not imply phase equality: Framed's
+heap transports now consume it explicitly (rfl auto-parameters at concrete operations).
+SavedFrame.frameOk_saved and EnvOk.reframe_uncaptured separate metadata/reads from value
+transport. Instance/MainReturn's old API wraps restore_main_state_of_metadata, which accepts
+changed caller locals and an independent outgoing environment. Closure/MainReturn discharges
+full runtime StateOk restoration and composes the block continuation from a body RunSpec
+plus outgoing caller EnvOk. Write proves that an unshadowed bound capture writes the actual
+caller frame. ClosureReturnStateControls proves full Integer-to-nil caller conformance and
+its boot instance, and rejects a prelude-mode flip.
+
+Next: derive outgoing caller EnvOk from general body effects, and track capture identity.
 Entry now has full conformance under the named scope/liveness/environment premises, but
 Ty.clos does not yet supply those premises. The stored-f pilot retains its higher-order
 binding using ProcPres.empty_capture_den. General capture types still need transport.
@@ -84,8 +95,11 @@ Current-capture environments now have an entry contract; arbitrary captures stil
 complete-environment and captured-value transport facts, not only a lower-bound spine.
 FramePres.isolated applies only to uncaptured activations. For direct current captures,
 closure_pop_framed now restores framing without assuming the caller's locals are unchanged.
-closure_pop_metadata retains its non-local fields. Full StateOk still needs the caller's
-outgoing EnvOk and runtime permissions/phase; the body drops the latter permissions.
+closure_pop_metadata retains its non-local fields. closure_pop_main_state restores full
+main-caller StateOk from its outgoing EnvOk and the body result; phase is retained by Framed.
+The body may update/introduce/shadow locals, so its EnvOk cannot simply be reused at the
+caller. Write's actual single-capture transport is a proved base case, not a general effect
+analysis. General non-main caller restoration also remains outside this theorem.
 The unused ClosuresOk/closTblOk table machinery remains legacy, with F49's counterexamples
 retained explicitly. The old index-free denotation is now named LegacyIndexDen in controls.
 

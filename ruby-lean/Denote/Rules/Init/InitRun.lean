@@ -24,6 +24,7 @@ structure InitFrame (anchor : Heap) (m n : Machine) : Prop where
   stack : n.stack = m.stack
   frames : FramePres m n
   stable : IvarTypePres m n
+  phase : n.preludeMode = m.preludeMode
 
 def InitResultOk (anchor : Heap) (origin : Machine) (Γ : Env) (τ : Ty)
     (a : Answer) (n : Machine) (κ : Ctx) (I : Ty) : Prop :=
@@ -44,15 +45,16 @@ theorem InitState.reCtl {anchor : Heap} {κ : Ctx} {Γ : Env} {I : Ty} {m : Mach
   ⟨StateOk_reCtl h.typed c ks, h.growth, h.fresh⟩
 
 theorem InitFrame.refl {anchor : Heap} {m : Machine} (hg : InitGrow anchor m.heap) :
-    InitFrame anchor m m := ⟨hg, rfl, .refl m, .refl m⟩
+    InitFrame anchor m m := ⟨hg, rfl, .refl m, .refl m, rfl⟩
 
 theorem InitFrame.reCtl {anchor : Heap} {m n : Machine} (h : InitFrame anchor m n)
     (c : Ctl) (ks : List Kont) : InitFrame anchor m (reCtl n c ks) :=
-  ⟨h.growth, h.stack, h.frames.trans (.of_eq rfl rfl) h.stack, h.stable.reheap rfl rfl⟩
+  ⟨h.growth, h.stack, h.frames.trans (.of_eq rfl rfl) h.stack, h.stable.reheap rfl rfl, h.phase⟩
 
 theorem InitFrame.trans {anchor : Heap} {m n p : Machine}
     (h : InitFrame anchor m n) (h' : InitFrame anchor n p) : InitFrame anchor m p :=
-  ⟨h'.growth, h'.stack.trans h.stack, h.frames.trans h'.frames h.stack, h.stable.trans h'.stable⟩
+  ⟨h'.growth, h'.stack.trans h.stack, h.frames.trans h'.frames h.stack, h.stable.trans h'.stable,
+    h'.phase.trans h.phase⟩
 
 theorem InitRunSpec.rebase {anchor : Heap} {origin middle start : Machine}
     {κ : Ctx} {Γ : Env} {τ I : Ty} (h : InitRunSpec anchor middle start Γ τ κ I)

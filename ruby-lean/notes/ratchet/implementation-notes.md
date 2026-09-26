@@ -11475,3 +11475,23 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
   pass. New proofs build in about a second or less; the existing NativePrefix rebuild took
   143s during a concurrent external build. No individual proof reached five minutes.
+
+## Clink 208 (2026-09-25) — full main-caller restoration after a captured write
+
+- Framed and InitFrame preserve preludeMode; all existing producers and compositions prove
+  it, and djudge_phase exposes it. Ext/heap equality remain phase-agnostic. Framed's heap
+  transports take a separate phase proof, with rfl auto-parameters for concrete operations.
+- MainReturn factors metadata-only restoration out of its old API, admitting a separately
+  proved changed caller environment. SavedFrame transports FrameOk without freezing locals;
+  its environment helper separates equal uncaptured reads from per-type value transport.
+- Closure/MainReturn restores full main-caller StateOk from body conformance and outgoing
+  EnvOk. closure_main_runSpec consumes this through the real block continuation. General
+  caller-environment effects remain explicit; no body locals are silently exported.
+- Write proves actual setLocal ownership and the returned frame for an unshadowed bound
+  capture. Controls change an Integer caller local to nil, prove full outgoing conformance,
+  instantiate it at boot, and reject a prelude-mode flip. No new judgment/emitter policy.
+- Counts remain fragment 81 / checker reach 86, 61 rules, 60 worked theorems, 0 owed/exempt.
+  Next: general outgoing capture environments and capture identity tracking (§F49).
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New restoration/write/control proofs build in about a second or less; no individual
+  proof reached five minutes.

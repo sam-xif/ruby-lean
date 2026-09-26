@@ -36,6 +36,10 @@ theorem bindIvar_size (m : Machine) (x : String) (v : Value) :
     (Interp.bindIvar m x v).stack = m.stack := by
   unfold Interp.bindIvar; split <;> rfl
 
+@[simp] theorem bindIvar_preludeMode (m : Machine) (x : String) (v : Value) :
+    (Interp.bindIvar m x v).preludeMode = m.preludeMode := by
+  unfold Interp.bindIvar; split <;> rfl
+
 @[simp] theorem bindIvar_currentFrame (m : Machine) (x : String) (v : Value) :
     (Interp.bindIvar m x v).currentFrame = m.currentFrame := by
   simp only [Machine.currentFrame, bindIvar_frames, bindIvar_stack]

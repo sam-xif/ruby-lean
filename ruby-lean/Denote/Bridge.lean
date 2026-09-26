@@ -154,6 +154,14 @@ theorem djudge_saved_proc {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env}
     procClosure? n.heap v = some cl :=
   (((djudge_context h) m hm).2 fuel a n rest hr).1.procs v cl hp
 
+/-- Every certified answer preserves prelude-loading mode, including bodies whose
+runtime activation permissions were dropped at captured entry. -/
+theorem djudge_phase {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
+    (h : DJudge Γ e τ Γ' κ I κ' I') {m n : Machine} (hm : StateOk κ Γ I m)
+    {fuel rest : Nat} {a : Answer} (hr : runA fuel (evalFrom m e) = .ans a n rest) :
+    n.preludeMode = m.preludeMode :=
+  (((djudge_context h) m hm).2 fuel a n rest hr).1.phase
+
 /-- A checker result carries the generic semantic contract, including a method frame. -/
 theorem certified_context {κ : Ctx} {I : Ty} {Γ : Env} {e : Ratchet.Expr}
     (c : Certified Γ e κ I) : SemSafeCtxA κ Γ I e c.ty c.ctx c.out c.spine :=
@@ -222,6 +230,7 @@ theorem validateD_safe_run {p : Ratchet.Expr} {d : Deriv} (h : validateD p d = t
 #print axioms djudge_context
 #print axioms djudge_escape_only_raise
 #print axioms djudge_saved_proc
+#print axioms djudge_phase
 #print axioms certified_context
 #print axioms validateD_safe
 #print axioms validateD_safe_boot

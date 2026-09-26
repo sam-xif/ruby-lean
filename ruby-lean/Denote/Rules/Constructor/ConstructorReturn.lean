@@ -24,7 +24,7 @@ theorem constructor_frame_pres {m n : Machine} {k : ObjId} {md : MethodDef}
 theorem constructor_pop_framed {m n : Machine} {k : ObjId} {md : MethodDef}
     {ps : List SigParam} {args : List Value} (hl : FrameInRange m)
     (h : InitFrame m.heap (constructorFrame m k md ps args) n) : Framed m (popMethodFrame n) :=
-  initializer_pop_framed hl.2 rfl h.stack (constructor_frame_pres h) h.growth
+  initializer_pop_framed hl.2 rfl h.stack (constructor_frame_pres h) h.growth h.phase
 
 theorem constructor_pop_currentFrame {m n : Machine} {k : ObjId} {md : MethodDef}
     {ps : List SigParam} {args : List Value} (hl : FrameInRange m)

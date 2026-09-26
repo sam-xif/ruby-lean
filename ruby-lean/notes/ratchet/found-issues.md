@@ -2743,6 +2743,12 @@ the active frame had a capture; CaptureFrameControls retains both witnesses and 
 them under the new contract. Current-capture return now derives Framed while permitting
 actual writes to caller locals. Full caller environment/runtime conformance remains open.
 
+Clink 208 retains prelude mode in Framed/InitFrame and restores full main-caller StateOk
+from saved metadata, the body's heap world and an independently proved outgoing EnvOk.
+The real captured Integer-to-nil write, including a boot instance, satisfies that contract.
+General outgoing-environment effects and capture identity tracking remain outside admission;
+the body environment is not automatically the caller's after shadowing or new local bindings.
+
 ## F50 — the body answer contract is too weak for block return (2026-09-25)
 
 **Resolved for the admitted fragment by clink 203; typed jump rules remain future work.**

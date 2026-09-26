@@ -44,7 +44,7 @@ theorem SemInitA.ivarAsgn {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ 
     obtain ⟨hn', hv⟩ := hw anchor n v hn hr.2.1
     apply InitRunSpec.step (by rfl) (stepFn_ivarWrite hs hf)
     exact InitRunSpec.answer (a := .val v) ⟨hr.1.trans
-      ⟨hn'.growth, by simp, .bindIvar n x v, .bindIvar n x v⟩,
+      ⟨hn'.growth, by simp, .bindIvar n x v, .bindIvar n x v, by simp⟩,
       hv, fun _ _ => hn'⟩
   | esc j =>
     apply InitRunSpec.step (by rfl) (show Interp.stepFn _ =

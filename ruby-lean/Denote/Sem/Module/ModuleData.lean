@@ -120,7 +120,8 @@ theorem dataPres (hc : ClassReady h) (hs : Saturated h)
 theorem framed {κ : Ctx} {Γ : Env} {I : Ty} {m n : Machine}
     (hm : StateOk κ Γ I m) (hf : constOwn m.heap Boot.objectId name = none)
     (hh : n.heap = freshModHeap m.heap Boot.objectId name name)
-    (hs : n.stack = m.stack) (hfr : FramePres m n) : Framed m n := by
+    (hs : n.stack = m.stack) (hfr : FramePres m n)
+    (hphase : n.preludeMode = m.preludeMode := by rfl) : Framed m n := by
   have hd : DataPres m.heap n.heap := by
     rw [hh]
     exact dataPres hm.core.classReady hm.sat hm.core.basicSelf hf hm.core.moduleBasic
@@ -129,9 +130,9 @@ theorem framed {κ : Ctx} {Γ : Env} {I : Ty} {m n : Machine}
     .of_unchanged (by rw [hh, freshModHeap_size]; exact Nat.le_add_right _ _)
       (fun o ho => by funext x; simp only [hh, ivarOf, (fields ho).1])
       (fun _ ht _ hv => hd.denM ht hv),
-    (fun o ho e he => by rw [hh, (fields ho).2.2.1]; exact he), by
+    (fun o ho e he => by rw [hh, (fields ho).2.2.1]; exact he), (by
       rw [hh]
-      exact .of_nonclass (fun _ ho hp => get_old_nonclass ho hp)⟩
+      exact .of_nonclass (fun _ ho hp => get_old_nonclass ho hp)), hphase⟩
 
 #print axioms dataPres
 #print axioms framed
