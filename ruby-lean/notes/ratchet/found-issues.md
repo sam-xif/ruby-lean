@@ -2938,3 +2938,8 @@ Clink 237 checks complete declaration bodies at proposed positional/block/result
 independently of callers. Successful results carry DMethod proofs and supply actual method
 entry/return in all six boot controls. Forged hints and a nilable yield-argument domain are
 rejected. Installation/lookup, source-call composition and explicit &b binding remain.
+
+Clink 238 proves installation, real lookup and implicit literal-block source calls. Full
+094 and captured-write programs are safe from boot for all fuel; special-name overrides
+also follow real dispatch. CRuby/model agree on all probes. No runtime defect blocks this
+step; registry/checker/emitter integration and explicit &b binding remain.

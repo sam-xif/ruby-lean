@@ -168,6 +168,10 @@ Successful checks carry DMethod proofs at the entire declared domains, independe
 callers. Optional ordinary proofs remain quantified over all callback codes. Checked
 declarations now feed real zero-positional entry and all six boot controls. Installation/
 lookup, source calls, &b binding and whole-program admission remain; floors are unchanged.
+Clink 238 proves source definition plus implicit literal-block dispatch, including actual
+lookup, allocation and return. Whole-program boot controls cover exact 094, captured writes
+and lambda/proc/new overrides. The model agrees with CRuby; no new runtime defect was found.
+Registry/checker/emitter integration and &b binding remain; no new acceptance is claimed.
 
 ## Layout
 

@@ -1,4 +1,30 @@
-# Current resume point (2026-09-26, clink 237 / model L274)
+# Current resume point (2026-09-26, clink 238 / model L274)
+
+Clink 238 proves the complete definition/implicit-literal-block source path. BodyDispatch
+resolves installed ordinary methods before and after reification, including lambda/proc/new
+interception, then enters the uniformly checked body with the actual callback. BodySource
+uses LocalFacts to derive physical capture ownership and returns full caller StateOk.
+BodyDefine requires the complete signature-domain body proof before installation; the
+shared top_definition helper preserves the existing ordinary defDecl interface.
+
+Mandatory CallbackSourceControls proves exact 094 from boot, plus lambda/proc/new overrides
+and repeated captured writes for every initial Integer. No entry-state or lookup assumption
+is supplied. All five proofs use only standard axioms; the module builds under a second.
+CRuby 4.0.5/model agree on 30/4/3/30/30/30. Sorbet 0.6.13405 accepts annotated twice,
+lambda/proc overrides and stable captured writes, rejects a String callback result (7005),
+and applies its constructor rule to the user new probe (7035). This is documented separately
+from the model's actual dispatch. No new runtime defect was found.
+
+Next: integrate DMethod into DJudge's mutual group/DFam and register definition/call rules
+with worked corpus coverage, then wire the checker and emitter for 094. Keep the zero
+unexercised ceiling; controls alone do not satisfy corpus coverage. Existing source proofs
+are semantic and do not yet make validateD accept 094. Explicit &b syntax/entry remains
+unsupported. No runtime, registered-rule or floor change is claimed.
+
+Full quiet gate GREEN: unchanged fragment 89 / checker reach 93, 77 rules, 68 worked,
+zero owed/exempt, 252 agree / 0 disagree. Metatheory/axiom audit PASS. No live builds.
+
+Previous foundation (clink 237):
 
 Clink 237 adds CheckCallbackBody with proof-producing expression/list/sequence checking.
 Deriv.defBlock carries proposed positional/block/result signatures; yieldArgs carries only

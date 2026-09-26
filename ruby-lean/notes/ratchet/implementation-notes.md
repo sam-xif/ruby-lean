@@ -12212,3 +12212,27 @@ both halves of what constrains them now have a name.
   zero owed/exempt, 252 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New checker,
   controls and entry modules build under a second; six boot proofs about five seconds.
   No resource limits were raised.
+
+## Clink 238 (2026-09-26) — whole-source implicit block calls
+
+- BodyDispatch resolves the installed method from DefsOk, allocates the actual literal
+  block and enters the uniformly checked body. Lookup is re-established after allocation
+  for finishSend's special new branch; lambda/proc overrides also take ordinary dispatch.
+  No name blacklist or interpreter shortcut replaces these steps.
+- BodySource obtains capture ownership from LocalFacts, composes real evaluation/dispatch
+  and restores full caller StateOk. It conservatively drops local facts on return. BodyDefine
+  requires the whole signature-domain proof even though installation does not execute it;
+  shared top_definition retains the existing ordinary defDecl interface and proof.
+- Mandatory CallbackSourceControls proves exact 094, lambda/proc/new overrides and a full
+  assignment/definition/call/captured-read program from boot. The captured-write proof is
+  uniform in the initial Integer; no prepared entry-state or lookup premise is supplied.
+- CRuby 4.0.5/model agree on 30/4/3/30/30/30. Sorbet 0.6.13405 accepts the annotated twice,
+  lambda/proc and stable capture probes, and rejects a String callback result (7005).
+  Its special new handling rejects that override call as BasicObject#initialize (7035);
+  the semantic rule follows actual runtime lookup. No model defect was exposed.
+- Registry/checker/emitter integration and explicit &b binding remain. The staged method
+  families still require worked corpus coverage before registration. Semantic controls do
+  not increase fragment size; no runtime, registered-rule or floor change is claimed.
+- Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
+  zero owed/exempt, 252 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
+  and the five boot proofs build under a second; no resource limit was raised.

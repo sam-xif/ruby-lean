@@ -10,11 +10,7 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
-theorem SemSafeCtxA.defDecl {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {d : Defn} {ps : List SigParam}
-    (_hparams : d.params = ps.map (fun p => Ratchet.Param.req p.1))
-    (_hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
-    (_hret : FirstOrder τ = true)
-    (_hbody : SemSafeCtxA (topBodyCtx κ d) ps I d.body τ (topBodyCtx κ d) Γb I)
+theorem top_definition {κ : Ctx} {Γ : Env} {I : Ty} {d : Defn}
     (hruntime : κ.scope.runtimeMain = true) (hclasses : topDeclClassesB κ d.name = true)
     (hself : κ.selfTy = none) (hblock : κ.blockTy = none) (hconst : κ.consts = [])
     (hasms : κ.asms = []) (hI : FirstOrder I = true)
@@ -46,6 +42,19 @@ theorem SemSafeCtxA.defDecl {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {d : Defn} {ps
       reCtl, definedMethod, Machine.currentFrame, Answer.ctl] using hs
   refine ⟨n, .sym d.name, hstep, ?_, by simp [AnsOk, denM, isSymV], fun _ _ => hn⟩
   exact Framed_defineMethod m m.currentFrame.defmod d.name md
+theorem SemSafeCtxA.defDecl {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {d : Defn} {ps : List SigParam}
+    (_hparams : d.params = ps.map (fun p => Ratchet.Param.req p.1))
+    (_hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
+    (_hret : FirstOrder τ = true)
+    (_hbody : SemSafeCtxA (topBodyCtx κ d) ps I d.body τ (topBodyCtx κ d) Γb I)
+    (hruntime : κ.scope.runtimeMain = true) (hclasses : topDeclClassesB κ d.name = true)
+    (hself : κ.selfTy = none) (hblock : κ.blockTy = none) (hconst : κ.consts = [])
+    (hasms : κ.asms = []) (hI : FirstOrder I = true)
+    (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
+    (hfresh : ∀ old ∈ κ.defs, old.name ≠ d.name)
+    (hmiss : "method_missing" ≠ d.name) (hquiet : "method_added" ≠ d.name) :
+    SemSafeCtxA κ Γ I (.def' d.name d.params d.body) .sym (topDeclCtx κ d) Γ I :=
+  top_definition hruntime hclasses hself hblock hconst hasms hI hΓ hfresh hmiss hquiet
 
 #print axioms SemSafeCtxA.defDecl
 end Ratchet.Denote.Typed
