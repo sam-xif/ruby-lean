@@ -11813,3 +11813,27 @@ both halves of what constrains them now have a name.
   A future exact-arity Proc rule still owes the actual non-lambda binding proof.
 - Final full quiet gate GREEN after raising all measured floors; metatheory and
   standard-axiom audit pass. No proof approached five minutes, and no limits were raised.
+
+## Clink 223 (2026-09-26) — admit exact-arity Proc and bracket calls
+
+- Generalize callClosure_required to both lambda modes. Exact required arity excludes
+  Proc auto-splatting and makes padding/truncation preserve the argument vector. The
+  real frame and blkFrameK retain cl.lam; the lambda theorem remains a wrapper. This
+  follows Sorbet's measured arity contract in 222, not Ruby's more permissive arity.
+- ProcDispatchReady and invoke_proc_dispatch carry the actual call/[] selector. StateOk
+  guards native Proc#[] lookup alongside Proc#call, including visibility, tombstones and
+  prelude shadows. Reserving either name removes its capability independently; neither
+  method enters the pure builtin signature table. No model/runtime changes are needed.
+- Generalize the existing DFlow.requiredCall rule and semantic proof, retaining actual
+  argument/body checking, current capture, shadow-aware return and first-order guards.
+  The emitter proposes proc literals and both selectors. The legacy zero-argument
+  closureCall hint remains lambda/call-only. No new rule or trusted hint is introduced.
+- Worked registry derivations cover 089/090. Controls accept lambda/Proc bracket calls
+  and reject other/reserved selectors, wrong arity, unsafe arguments and return escapes.
+  Twenty-one pipeline controls include a single array argument, two positional arguments,
+  missing/extra arguments and next. A top-level Proc return is rejected by the desugarer,
+  so its direct checker control uses the AST instead of pretending emission is reached.
+- Measured fragment 86, checker reach 90, 75 rules (40 + 35), 65 worked, zero owed/exempt,
+  252 agree / 0 disagree. Raised all changed floors. Next frontier is 091's attached each block.
+- Final full quiet gate GREEN; metatheory and standard-axiom audit pass. No new axioms,
+  resource-limit increases or proof builds over five minutes.

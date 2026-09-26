@@ -24,7 +24,7 @@ def primitiveMethods : List (ObjId × String × String) :=
 /-- Native lookup facts include interpreter-executed Proc calls. Membership here is
 not a pure-builtin signature; primitiveMethods alone supplies those rows. -/
 def dispatchMethods : List (ObjId × String × String) :=
-  primitiveMethods ++ [(Boot.procId, "call", "Proc#call")]
+  primitiveMethods ++ [(Boot.procId, "call", "Proc#call"), (Boot.procId, "[]", "Proc#[]")]
 
 def primitiveDispatchB (h : Heap) (free : String → Bool) : Bool :=
   dispatchMethods.all fun (k, name, bid) =>

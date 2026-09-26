@@ -94,6 +94,24 @@ f = ->(y) { x + y }
 x = nil
 f.call(3)
 ''', "blocked", False),
+        ("proc_array_argument", '''# typed: true
+proc { |x| x[0] }.call([7])
+''', "ok", True),
+        ("proc_two_arguments", '''# typed: true
+proc { |x, y| x + y }[2, 3]
+''', "ok", True),
+        ("proc_missing_argument", '''# typed: true
+proc { |x, y| x }.call(1)
+''', "blocked", False),
+        ("proc_extra_argument", '''# typed: true
+proc { |x| x }.call(1, 2)
+''', "blocked", False),
+        ("proc_unsafe_argument", '''# typed: true
+proc { |x| x * 2 }.call(nil)
+''', "blocked", False),
+        ("proc_next_escape", '''# typed: true
+proc { |x| next x }.call(1)
+''', "blocked", False),
     ]
     emitted = {}
     with tempfile.TemporaryDirectory(prefix="ruby-body-inference-") as directory:

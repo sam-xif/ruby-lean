@@ -7,10 +7,11 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
-theorem invoke_proc_call {m : Machine} {v : Value} {cl : Closure}
-    (hp : procClosure? m.heap v = some cl) (hr : ProcCallReady m.heap)
+theorem invoke_proc_dispatch {m : Machine} {v : Value} {cl : Closure} {name : String}
+    (hp : procClosure? m.heap v = some cl) (hr : ProcDispatchReady m.heap name)
+    (hn : procCallNameB name = true)
     (hk : classOf m.heap v = Boot.procId) (args : List Value) (site : SendSite := .explicit) :
-    Interp.invoke m v site "call" args none [] =
+    Interp.invoke m v site name args none [] =
       Interp.callClosure m cl args (Interp.blockOwner m v) := by
   cases v <;> simp only [procClosure?] at hp
   all_goals try contradiction
@@ -19,16 +20,26 @@ theorem invoke_proc_call {m : Machine} {v : Value} {cl : Closure}
   all_goals try contradiction
   cases hp
   obtain ⟨owner, md, hl, hb, hu, hv, hpre, ha⟩ := hr
-  have hlook : lookup m.heap (.ref o) "call" = some (owner, md) := by
+  have hlook : lookup m.heap (.ref o) name = some (owner, md) := by
     rw [lookup_eq_methodOn, hk]; exact hl
-  have hvis : Interp.visError? m (.ref o) site md "call" = none := by
+  have hvis : Interp.visError? m (.ref o) site md name = none := by
     simp [Interp.visError?, hv]
+  have hbid : Interp.procCallBid ("Proc#" ++ name) = true := by
+    have hn' : name = "call" ∨ name = "[]" := by simpa [procCallNameB] using hn
+    rcases hn' with rfl | rfl <;> rfl
   unfold Interp.invoke
   simp only [hpay]
   simp only [Interp.invoke.invokeDispatch, hlook, hu, hpre, Bool.false_eq_true,
     ↓reduceIte, hk, ha, hvis, hb,
-    Interp.procCallBid, Interp.callProcBuiltin, hpay]
-  rfl
+    hbid, Interp.callProcBuiltin, hpay]
+  simp
+
+theorem invoke_proc_call {m : Machine} {v : Value} {cl : Closure}
+    (hp : procClosure? m.heap v = some cl) (hr : ProcCallReady m.heap)
+    (hk : classOf m.heap v = Boot.procId) (args : List Value) (site : SendSite := .explicit) :
+    Interp.invoke m v site "call" args none [] =
+      Interp.callClosure m cl args (Interp.blockOwner m v) :=
+  invoke_proc_dispatch hp hr rfl hk args site
 
 theorem step_recv_required_lambda {m : Machine} {v : Value} {cl : Closure} {e : Ratchet.Expr}
     (hp : procClosure? m.heap v = some cl) (hr : ProcCallReady m.heap)
@@ -62,5 +73,6 @@ theorem local_lambda_call_runSpec {m : Machine} {cl : Closure} {e : Ratchet.Expr
   exact RunSpec.step (by rfl) (step_recv_required_lambda hp hr hk hps hl he) hb
 
 #print axioms invoke_proc_call
+#print axioms invoke_proc_dispatch
 #print axioms local_lambda_call_runSpec
 end Ratchet.Denote.Typed

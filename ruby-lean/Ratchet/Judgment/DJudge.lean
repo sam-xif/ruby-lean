@@ -639,22 +639,22 @@ inductive DFlow : Ctx → Env → Ty → LocalFacts → Expr → Ty → Bool →
       DJudge Γ code.body τ Γb (closureBodyCtx κ) I (closureBodyCtx κ) I →
       DFlow κ Γ I facts (.send (some (.var .lvar name)) "call" [] none) τ false
         κ (captureEnv names Γb) I .unknown
-  /-- Sorbet 0.6.13405 checks required lambda arity but infers untyped parameters/results
-  for `->(x) { x + 1 }` (clink 218). This rule checks the body at actual argument types. -/
+  /-- Sorbet 0.6.13405 checks required lambda/Proc arity and infers untyped parameters/results
+  (clinks 218/222). This rule checks the body at actual argument types and native selector. -/
   | requiredCall {κ κr κa : Ctx} {Γ Γr Γa Γb : Env}
       {I Ir Ia τ cap selfT : Ty} {facts fr fa : LocalFacts} {names : List String}
-      {recv : Expr} {args : List Expr} {ps : List SigParam} {code : ClosureCode} :
+      {recv : Expr} {args : List Expr} {ps : List SigParam} {code : ClosureCode} {name : String} :
       DFlow κ Γ I facts recv (.clos code cap selfT) true κr Γr Ir fr →
       DFlowAll κr Γr Ir fr args (ps.map (·.2)) κa Γa Ia fa →
       (∀ σ ∈ ps.map (·.2), FirstOrder σ = true) →
-      closureMainB κa Ia = true → nameFreeN κa "call" = true →
-      code.params = ps.map (fun p => Ratchet.Param.req p.1) → code.lam = true →
+      closureMainB κa Ia = true → nameFreeN κa name = true →
+      code.params = ps.map (fun p => Ratchet.Param.req p.1) → procCallNameB name = true →
       activationEnvB (ps ++ blockLocals code.locals ++ Γa) = true →
       activationReturnB Γb = true → FirstOrder τ = true →
       fa.captureNames? (withoutNames (ps.map (·.1) ++ code.locals) Γb) = some names →
       DJudge (ps ++ blockLocals code.locals ++ Γa) code.body τ Γb
         (closureBodyCtx κa) Ia (closureBodyCtx κa) Ia →
-      DFlow κ Γ I facts (.send (some recv) "call" args none) τ false κa
+      DFlow κ Γ I facts (.send (some recv) name args none) τ false κa
         (closureReturnEnv (ps.map (·.1) ++ code.locals) names Γa Γb) Ia .unknown
 
 /-- Sorbet's stored-lambda example (clink 200) uses the local established by the

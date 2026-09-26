@@ -1,13 +1,21 @@
-# Current resume point (2026-09-26, clink 222)
+# Current resume point (2026-09-26, clink 223)
 
-Latest admissions: 088 and 098. Fragment 84, checker reach 88,
-75 registered rules (40 expressions + 35 companions), 63 worked theorems, no exemptions.
-The safe prefix remains 17; 018 is correctly rejected. Next frontier: 089-proc-basic,
-`p = proc { |x| x * 2 }; p.call(3)`, then 090's bracket call. Sorbet 0.6.13405 was measured:
-it infers untyped parameter/result, rejects missing/extra arguments and two-parameter
-array autosplat calls, and accepts a nil argument and bracket call (222's notes). An
-exact-arity Proc rule fits that contract but must prove the real non-lambda normalization
-under that guard. Emitter proposals and call admission still exclude non-lambda Procs.
+Latest admissions: 089 and 090. Fragment 86, checker reach 90,
+75 registered rules (40 expressions + 35 companions), 65 worked theorems, no exemptions.
+The safe prefix remains 17; 018 is correctly rejected. Next frontier: 091-block-each-int,
+`[1, 2, 3].each { |x| x + 1 }`, followed by map (092/093). These need actual attached-block
+dispatch/iteration and caller-state composition; current closure calls supply useful entry,
+body and return contracts but do not type iterator sends. Measure Sorbet before new rules.
+
+Clink 223 generalizes callClosure_required to both modes: exact required arity prevents
+Proc autosplat, padding and truncation. The actual frame/continuation keep cl.lam. Native
+dispatch is selector-specific for call/[] and guarded independently in StateOk; no runtime
+change is needed. DFlow.requiredCall and its existing registry proof now accept both modes
+and selectors. The emitter proposes Proc literals and calls, while the checker rechecks
+their exact bodies at actual argument/live capture types. Wrong arity, unsafe types and
+non-value jumps remain rejected; Ruby's lenient Proc arity is outside this Sorbet contract.
+Worked proofs cover 089/090, and 21 pipeline controls exercise array/positional arguments
+and rejection boundaries. Counts are locked in MainTyped/SemLadder; no new rule was added.
 
 Clink 222 admits general required-parameter lambdas through validateD. DFlowAll is the ninth
 mutual family; all twelve DFam interpretations, registry rules and bridge cases carry its

@@ -16,9 +16,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 84 rungs, reach 17**, **75 registered rules** (40 expressions + 35 companions),
-**0 owed**, **0 exempt**. Checker reach is 88; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 63 rungs additionally carry a
+**Fragment 86 rungs, reach 17**, **75 registered rules** (40 expressions + 35 companions),
+**0 owed**, **0 exempt**. Checker reach is 90; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 65 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -105,7 +105,8 @@ Clinks 218–221 prove shadowed caller preservation, merged return environments,
 dispatch and general required-parameter receiver/argument composition. Clink 222 connects
 that proof through DFlowAll, the registry, checker and emitter, admitting 088 and 098.
 Flow literals retain exact code; body checking uses actual argument and live capture types.
-Next: non-lambda Proc calls (089), including their distinct arity contract. See HANDOFF.
+Clink 223 proves exact-arity Proc normalization and selector-specific native call/[] dispatch,
+admitting 089/090 through the same rule. Next: attached iterator blocks (091). See HANDOFF.
 
 ## Layout
 

@@ -5,6 +5,8 @@ import Ratchet.Static.All
 Capture origins and body certificates are checked separately; these guards grant neither. -/
 namespace Ratchet
 
+def procCallNameB (name : String) : Bool := name == "call" || name == "[]"
+
 def activationStableB (τ : Ty) : Bool :=
   FirstOrder τ || match τ with
     | .clos _ .ivar0 .never => true

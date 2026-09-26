@@ -128,7 +128,7 @@ def checkFlow (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I :
         else none
         else none
       | _ => none
-    | .send (some recv) "call" args none, .requiredClosureCall dr ds body ret => do
+    | .send (some recv) name args none, .requiredClosureCall dr ds body ret => do
       let r ← checkFlow n ordinary κ Γ I facts recv dr cache
       match hty : r.ty with
       | .clos code cap selfT => do
@@ -137,8 +137,8 @@ def checkFlow (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I :
         let ⟨ps, hp, hts⟩ ← requiredFlowParams? code.params a.tys
         if hat : a.tys.all FirstOrder = true then do
         if hm : closureMainB a.ctx a.spine = true then do
-        if hfree : nameFreeN a.ctx "call" = true then do
-        if hlam : code.lam = true then do
+        if hfree : nameFreeN a.ctx name = true then do
+        if hname : procCallNameB name = true then do
         if hin : activationEnvB (ps ++ blockLocals code.locals ++ a.out) = true then do
         if hret : FirstOrder ret = true then do
         let b ← ordinary (ps ++ blockLocals code.locals ++ a.out) code.body body
@@ -155,7 +155,7 @@ def checkFlow (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I :
               (by simpa only [hty, hc] using r.judged)
               (by simpa only [hts] using a.judged)
               (by simpa only [hts] using List.all_eq_true.mp hat)
-              hm hfree hp hlam hin hout hret hn
+              hm hfree hp hname hin hout hret hn
               (by simpa only [hbty, hbctx, hbspine] using b.judged), b.cache⟩
         else none
         else none

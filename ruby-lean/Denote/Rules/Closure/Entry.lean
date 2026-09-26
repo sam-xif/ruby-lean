@@ -62,6 +62,24 @@ theorem requiredClosureFrame_slots (m : Machine) (cl : Closure)
   rw [List.contains_eq_any_beq]
   simp only [BEq.comm]
 
+/-- At exact required arity, Proc padding/truncation and auto-splatting leave the
+argument vector unchanged. This is the Proc arity Sorbet accepts (clink 222). -/
+theorem callClosure_required (m : Machine) (cl : Closure)
+    (names : List String) (args : List Value) (brk : Option FrameId)
+    (selfOv : Option Value) (defmodOv : Option ObjId)
+    (hp : cl.params = names.map RubyCore.Param.req)
+    (ha : args.length = names.length) :
+    Interp.callClosure m cl args brk selfOv defmodOv =
+      .next (Interp.withKont
+        (pushMethodFrame m (requiredClosureFrame m cl names args selfOv defmodOv))
+        (.eval cl.body) (.blkFrameK m.frames.size cl.lam brk cl args)) := by
+  have hauto : ¬ ((cl.lam = false ∧ args.length = 1) ∧ 2 ≤ args.length) := by
+    intro h
+    omega
+  unfold Interp.callClosure
+  rw [hp, classifySimple_required]
+  simp [hauto, ← ha, values_in_order, requiredClosureFrame, pushMethodFrame,
+    Interp.withKont]
 
 theorem callClosure_required_lambda (m : Machine) (cl : Closure)
     (names : List String) (args : List Value) (brk : Option FrameId)
@@ -72,10 +90,7 @@ theorem callClosure_required_lambda (m : Machine) (cl : Closure)
       .next (Interp.withKont
         (pushMethodFrame m (requiredClosureFrame m cl names args selfOv defmodOv))
         (.eval cl.body) (.blkFrameK m.frames.size true brk cl args)) := by
-  unfold Interp.callClosure
-  rw [hp, classifySimple_required]
-  simp [hl, ← ha, values_in_order, requiredClosureFrame, pushMethodFrame,
-    Interp.withKont]
+  simpa only [hl] using callClosure_required m cl names args brk selfOv defmodOv hp ha
 
 /-- Entering the body consumes the extra lookup fuel contributed by the new frame.
 Unbound names therefore read the live capture at exactly its original fuel. -/
@@ -118,5 +133,6 @@ theorem requiredClosureFrame_getLocal (m : Machine) (cl : Closure)
         (frameLocal_go_preserved hframes x _ p (hp ▸ hcap))
 
 #print axioms callClosure_required_lambda
+#print axioms callClosure_required
 #print axioms requiredClosureFrame_getLocal
 end Ratchet.Denote.Typed

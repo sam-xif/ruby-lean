@@ -71,7 +71,16 @@ def requiredHint (args : List Deriv := [.intLit 2]) (body : Deriv := plusHint)
 #guard !validateD required (requiredHint [.intLit 2] plusHint .bool)
 #guard !validateD (required [.int 2] plusX [.rest (some "x")]) requiredHint
 #guard validateD (required [.int 2] plusX [.req "x"] ["scratch"]) requiredHint
-#guard !validateD (.send (some (literal plusX [.req "x"] [] "proc")) "call" [.int 2] none) requiredHint
+#guard validateD (.send (some (literal plusX [.req "x"] [] "proc")) "call" [.int 2] none) requiredHint
+#guard validateD (.send (some (literal plusX [.req "x"] [] "proc")) "[]" [.int 2] none) requiredHint
+#guard validateD (.send (some (literal plusX [.req "x"])) "[]" [.int 2] none) requiredHint
+#guard !validateD (.send (some (literal plusX [.req "x"] [] "proc")) "missing" [.int 2] none) requiredHint
+#guard !validateD (.send (some (literal plusX [.req "x"] [] "proc")) "call" [] none) (requiredHint [])
+#guard !validateD (.send (some (literal plusX [.req "x"] [] "proc")) "[]" [.nil] none) (requiredHint [.nilLit])
+#guard !validateD (.send (some (literal (.ret (some (.int 1))) [.req "x"] [] "proc"))
+  "call" [.int 2] none) (requiredHint [.intLit 2] (.intLit 1))
+#guard (check 100 [] (.send (some (literal plusX [.req "x"] [] "proc")) "[]" [.int 2] none)
+  requiredHint { ctx0 with neg := { ctx0.neg with declared := ["[]"] } }).isNone
 
 -- Creation-time captures are not frozen in the stored type; the body uses live bindings.
 #guard validateD (.seq [.vasgn .lvar "x" (.int 7), .vasgn .lvar "f" (literal plusX), call])
