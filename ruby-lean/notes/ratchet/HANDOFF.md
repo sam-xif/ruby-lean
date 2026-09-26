@@ -1,4 +1,4 @@
-# Current resume point (2026-09-26, clink 220)
+# Current resume point (2026-09-26, clink 221)
 
 Latest admission is 087: fragment 82, checker reach 87,
 72 registered rules (40 expressions + 32 companions), 61 worked theorems, no exemptions.
@@ -6,13 +6,32 @@ The prefix remains 17; 018 is correctly rejected. Next frontier: 088-lambda-stab
 `->(x) { x + 1 }.call(2)`. This is an immediate receiver, not a stored local.
 Zero-argument stored lambdas pass the complete pipeline.
 
+Clink 221 proves general required-parameter source calls. FlowArgs threads LocalFacts
+through arbitrary-length arguments, retains earlier first-order values and a saved receiver,
+and lets the final call change the outgoing caller environment. FlowSend evaluates the
+receiver first and retains its exact descriptor/capture/dispatch through those arguments.
+RequiredFlowCall checks the body at actual parameter types plus live caller captures, then
+merges the caller/body return environments from clink 219. Block locals are shadowed too;
+activationReturnB permits output aliases because return projection erases them.
+RequiredFlowControls proves the exact 088 source, an argument-created capture, receiver-local
+overwrite during arguments, and an earlier Integer argument surviving a later nil write.
+These are semantic proofs only: next integrate DFlowAll/requiredCall into the mutual
+judgment, every DFam interpretation/registry/bridge, FlowCheck, wire hints and emitter.
+Then add 088's worked registry derivation and raise its measured floors; counts remain 82/87.
+The parameterized emitter can also reach 098 (`n = 10; add_n = ->(x) { x + n };
+add_n.call(5)`). Its stored literal currently records a nonempty capture spine, which
+activationEnvB excludes. Account for that boundary explicitly: flow calls recheck live
+captures, so a code-only literal type is a possible general solution; do not claim 098
+from the immediate-call control. 097 still passes a block, 099 returns a lambda, 105 uses
+explicit return, and 107 deliberately mismatches arity.
+
 Clink 220 strengthens ProcPres with exact dispatch-class retention alongside its payload
 field. All Framed producers discharge both; CurrentProc.framed now carries a saved receiver
 across arbitrary certified arguments. djudge_saved_proc_dispatch exposes it through the
 bridge. activationStable_framed transports first-order/code-only closure types through
 body effects, supplying the preserved-caller half of clink 219's return obligation.
-Next: a flow-sensitive argument-list companion, general receiver evaluation, and required
-parameter call entry/return. Native method readiness still comes from the final StateOk.
+Clink 221 supplies argument flow and general required-call composition. Native method
+readiness still comes from the final StateOk; checker integration remains next.
 No new callable shape is admitted yet. Future Proc eigenclass creation needs a weaker
 effect-aware dispatch contract; current singleton rules operate on class objects.
 For argument flow, adapt MethodArgs.startArgsKeep using RunWith's result postcondition.

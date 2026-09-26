@@ -11759,3 +11759,25 @@ both halves of what constrains them now have a name.
   No runtime, judgment or emitter change, and no admission-count change (82/87).
 - Full quiet gate GREEN, including CRuby agreement; metatheory and standard-axiom audit
   pass. Existing heavy rules rebuilt in under a minute; no proof approached five minutes.
+
+## Clink 221 (2026-09-26) — compose general required-parameter lambda calls
+
+- RunWith.bindSpec consumes a proved intermediate postcondition without imposing it
+  on the final result. FlowArgs uses it to thread LocalFacts through real argsK steps,
+  retaining earlier first-order values and a Framed-stable saved receiver. The finish
+  callback has independent output indices: a block body can change caller-local types.
+- FlowSend evaluates an arbitrary current-capture receiver before its arguments and
+  retains its original descriptor, capture and dispatch class. It preserves the model's
+  explicit/self-receiver site distinction. Native readiness comes from final StateOk.
+- RequiredFlowCall binds actual typed values to required parameters, checks the body at
+  live captures, and uses the shadow-aware return environment. Frame slots are proved for
+  arbitrary arity and explicit block locals; no zero-argument shortcut remains in this
+  semantic API. Sorbet's measured untyped lambda inference/arity checks are cited (218).
+- activationReturnB checks stripped output types: returned aliases are erased, so body
+  aliases to disappearing locals need not be rejected. Entry types remain non-alias.
+- Whole-source controls prove exact 088, a capture created by an argument, a receiver's
+  old local overwritten during argument evaluation, and two arguments where the second
+  changes the first's old binding from Integer to nil. No runtime change. Judgment,
+  checker, emitter and registry admission are next; counts remain 82/87.
+- Full quiet gate GREEN (252 agree / 0 disagree); metatheory and standard-axiom audit
+  pass. New proof modules build in under a second; no resource limits or axioms added.

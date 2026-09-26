@@ -78,5 +78,17 @@ theorem RunWith.bind {origin m : Machine} {Γ Γ' : Env} {σ τ I I' : Ty} {κ �
       rw [hs] at hr
       exact (hk a₁ n₁ (h.2 fuel a₁ n₁ r₁ hs)).2 r₁ a n rest hr
 
+/-- Consume an intermediate postcondition without imposing it on the final result. -/
+theorem RunWith.bindSpec {origin m : Machine} {Γ Γ' : Env} {σ τ I I' : Ty} {κ κ' : Ctx}
+    {P : Value → Machine → Prop} {e : Ratchet.Expr}
+    (h : RunWith m (evalFrom m e) Γ σ κ I P)
+    {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
+    (hk : ∀ a n, ResultWith m Γ σ κ I P a n →
+      RunSpec origin (deliverA a n K) Γ' τ κ' I') :
+    RunSpec origin (pushK K (evalFrom m e)) Γ' τ κ' I' :=
+  (h.bind (Q := fun _ _ => True) hK
+    (fun a n hn => (hk a n hn).withPost (fun _ _ _ => trivial))).erase
+
 #print axioms RunWith.bind
+#print axioms RunWith.bindSpec
 end Ratchet.Denote.Typed

@@ -120,17 +120,23 @@ theorem LocalFactsOk.store {f : LocalFacts} {κ : Ctx} {Γ : Env} {I : Ty} {m : 
 
 /-- Type and origin facts must refer to the same live descriptor. No code, capture or
 dispatch property is recovered by matching a syntax-table entry. -/
-theorem LocalFactsOk.code {f : LocalFacts} {m : Machine} {x : String}
-    {code : ClosureCode} {cap selfT : Ty} (h : LocalFactsOk f m) (hx : x ∈ f.currentProcs)
-    (hv : denM (.clos code cap selfT) m (m.getLocal x)) :
-    ∃ cl, procClosure? m.heap (m.getLocal x) = some cl ∧ ClosureMatches code cl ∧
-      cl.captured = some (m.stack.headD 0) ∧ classOf m.heap (m.getLocal x) = Boot.procId := by
-  obtain ⟨cl, hp, hc, hk⟩ := h.currentProcs x hx
+theorem CurrentProc.code {m : Machine} {v : Value} {code : ClosureCode} {cap selfT : Ty}
+    (h : CurrentProc m v) (hv : denM (.clos code cap selfT) m v) :
+    ∃ cl, procClosure? m.heap v = some cl ∧ ClosureMatches code cl ∧
+      cl.captured = some (m.stack.headD 0) ∧ classOf m.heap v = Boot.procId := by
+  obtain ⟨cl, hp, hc, hk⟩ := h
   rw [denM] at hv
   obtain ⟨cl', hp', hcode, _⟩ := hv
   have he : cl' = cl := Option.some.inj (hp'.symm.trans hp)
   subst cl'
   exact ⟨cl, hp, hcode, hc, hk⟩
+
+theorem LocalFactsOk.code {f : LocalFacts} {m : Machine} {x : String}
+    {code : ClosureCode} {cap selfT : Ty} (h : LocalFactsOk f m) (hx : x ∈ f.currentProcs)
+    (hv : denM (.clos code cap selfT) m (m.getLocal x)) :
+    ∃ cl, procClosure? m.heap (m.getLocal x) = some cl ∧ ClosureMatches code cl ∧
+      cl.captured = some (m.stack.headD 0) ∧ classOf m.heap (m.getLocal x) = Boot.procId :=
+  (h.currentProcs x hx).code hv
 
 #print axioms LocalFactsOk.write
 #print axioms CurrentProc.framed

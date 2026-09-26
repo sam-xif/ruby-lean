@@ -9,8 +9,8 @@ open RubyCore Ratchet Ratchet.Denote
 
 theorem invoke_proc_call {m : Machine} {v : Value} {cl : Closure}
     (hp : procClosure? m.heap v = some cl) (hr : ProcCallReady m.heap)
-    (hk : classOf m.heap v = Boot.procId) (args : List Value) :
-    Interp.invoke m v .explicit "call" args none [] =
+    (hk : classOf m.heap v = Boot.procId) (args : List Value) (site : SendSite := .explicit) :
+    Interp.invoke m v site "call" args none [] =
       Interp.callClosure m cl args (Interp.blockOwner m v) := by
   cases v <;> simp only [procClosure?] at hp
   all_goals try contradiction
@@ -21,7 +21,7 @@ theorem invoke_proc_call {m : Machine} {v : Value} {cl : Closure}
   obtain ⟨owner, md, hl, hb, hu, hv, hpre, ha⟩ := hr
   have hlook : lookup m.heap (.ref o) "call" = some (owner, md) := by
     rw [lookup_eq_methodOn, hk]; exact hl
-  have hvis : Interp.visError? m (.ref o) .explicit md "call" = none := by
+  have hvis : Interp.visError? m (.ref o) site md "call" = none := by
     simp [Interp.visError?, hv]
   unfold Interp.invoke
   simp only [hpay]

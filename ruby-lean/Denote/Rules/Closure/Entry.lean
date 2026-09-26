@@ -41,6 +41,28 @@ theorem CaptureLive.pushFrame {m : Machine} {cap : Option FrameId}
     intro i hi
     simp [pushMethodFrame, Array.getD, hi, Nat.lt_succ_of_lt hi, Array.getElem_push_lt])
 
+theorem requiredClosureFrame_slots (m : Machine) (cl : Closure)
+    (names : List String) (args : List Value) (ha : args.length = names.length) (x : String) :
+    (requiredClosureFrame m cl names args).locals.any (·.1 == x) =
+      (names ++ cl.locals).contains x := by
+  have hz : (names.zip args).any (·.1 == x) = names.contains x := by
+    induction names generalizing args with
+    | nil => cases args with
+      | nil => rfl
+      | cons _ _ => cases ha
+    | cons name names ih => cases args with
+      | nil => cases ha
+      | cons v vs =>
+        have hlen : vs.length = names.length := Nat.succ.inj ha
+        change (name == x || (names.zip vs).any (·.1 == x)) = (x == name || names.contains x)
+        rw [ih vs hlen, show (name == x) = (x == name) from BEq.comm]
+  simp only [requiredClosureFrame, List.any_append, hz, List.any_map,
+    List.contains_append, Function.comp_def]
+  congr 1
+  rw [List.contains_eq_any_beq]
+  simp only [BEq.comm]
+
+
 theorem callClosure_required_lambda (m : Machine) (cl : Closure)
     (names : List String) (args : List Value) (brk : Option FrameId)
     (selfOv : Option Value) (defmodOv : Option ObjId)
