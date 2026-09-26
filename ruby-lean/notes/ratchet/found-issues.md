@@ -2880,7 +2880,7 @@ registers the rule and admits map blocks through validateD.
 
 ## F55 — Ordinary-method isolation cannot describe a captured write through yield
 
-**Return/embedding contracts proved through clink 233; source judgment/admission remain open.**
+**Semantic source rules proved through clink 234; syntactic judgment/admission remain open.**
 `def twice; saved = 7; result = yield(1) + yield(2); p saved; result; end;
 total = 0; p twice { |x| total = total + x }; p total` prints 7, 4, 3 under both
 CRuby 4.0.5 and the model. The runtime already handles this captured write correctly.
@@ -2916,3 +2916,9 @@ Clink 233 supplies both embeddings with full caller/method states, source yield 
 composition. A checked captured write followed by method-local insertion/retyping returns
 through the real method marker. No runtime defect blocks this step; general body typing,
 definition checking/dispatch and &b binding remain before source admission.
+
+Clink 234 introduces SemMethod with ordinary/assignment/sequence/yield-argument rules.
+MethodActivation.after retains callback identity and capture slots across mixed effects,
+allowing later callbacks after local retyping. Generic zero-positional method entry and boot
+controls cover repeated/nested yields and same-named writes in both frames. Primitive sends
+with yielding operands and definition/checker integration remain; no new runtime defect.

@@ -1,4 +1,33 @@
-# Current resume point (2026-09-26, clink 233 / model L274)
+# Current resume point (2026-09-26, clink 234 / model L274)
+
+Clink 234 supplies the general semantic source layer. MethodPres retains caller slot domains,
+both scopes and actual Proc payloads across MethodEffects. BodyContext packages CheckedCallback
+(exact code, checked body, activation guards/capture fixed point) and MethodActivation (original
+caller anchor, full method/caller states, scope and actual callback/capture). after derives the
+next activation from MethodResultOk, so a later yield may follow arbitrary method-local writes.
+
+SemMethod proves ordinary expression embedding, binary sequence and real method return.
+BodyAssign adds assignment around any SemMethod expression with the existing closure/alias/
+context guards and unchanged ivar spine. BodyYieldOne evaluates a checked argument before the
+actual callback; Plain excludes splat/kwargs/fwd syntax. yieldInt is now its specialization.
+BodyEntry proves zero-positional method entry/call for an arbitrary SemMethod body. It checks
+superName=none alongside owner/cref and the actual entry's params/capture/declared metadata.
+
+Mandatory MethodTypingControls constructs source proofs for local retyping around two yields
+and for `yield(total = yield(1))`, then proves real allocation/entry/return from boot for any
+initial captured Integer. Both method and caller can write total independently. Sorbet 0.6.13405
+accepts both; CRuby/model print 4/3 and 2/2. A nil argument is rejected by Sorbet (7002).
+New modules build in about a second, controls under four seconds, using standard axioms.
+Full quiet gate GREEN: unchanged fragment 89 / checker reach 93, 77 rules, 68 worked,
+zero owed/exempt, 252 agree / 0 disagree. Metatheory/axiom audit PASS. No live builds.
+
+Next: general primitive-send composition with yielding receiver/arguments, retaining saved
+values through MethodEffects; flat sequence/argument companions where needed. Then syntactic
+body judgment/definition checking, installation/dispatch, &b binding and checker/emitter
+admission. SemMethod is semantic only; none of these examples is a new validateD acceptance.
+Keep full output states and checked callback safety; don't turn the examples into special rules.
+
+Previous foundation (clink 233):
 
 Clink 233 embeds ordinary SemSafeCtxA and checked source yields into MethodRunSpec.
 BodyOrdinary derives caller StateOk after ordinary method expressions using the current
@@ -15,12 +44,8 @@ No runtime/rule/floor changes. New modules build in about one second with standa
 Full quiet gate GREEN: fragment 89, checker reach 93, 77 rules, 68 worked proofs, zero
 owed/exempt, 252 agree / 0 disagree. Metatheory and axiom audit PASS. No live builds.
 
-Next: a general source method-body judgment using these embeddings; assignment around yield,
-argument/send composition, then definition/dispatch, &b binding and checker/emitter admission.
-Carry the original caller anchor through composition. For repeated callbacks after method
-locals change, derive CallbackCaller/CallbackMethodScope preservation across MethodEffects
-(including physical caller slot domains); don't reuse CallbackFramed for the entire body.
-Keep both full output states and actual checked callback safety. No hard-coded twice rule.
+The original caller anchor must persist through composition; CallbackFramed describes only
+the suspended interval of one callback, not a whole method with local writes.
 
 Previous foundation (clink 232):
 

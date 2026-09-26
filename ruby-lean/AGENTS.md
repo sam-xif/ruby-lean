@@ -148,6 +148,11 @@ Clink 233 embeds ordinary expressions and checked yields into that target with b
 output states. Source sequence composition and a mixed captured-write/local-retyping control
 are proved through the real method return. General source-body checking, assignment around
 yield, argument/send composition and definition/&b admission remain; floors are unchanged.
+Clink 234 adds SemMethod source rules for ordinary expressions, assignment, sequence and
+yield with a checked argument. MethodActivation persists callback identity/ownership across
+mixed effects. Generic zero-argument entry and boot controls cover repeated/nested yields
+with same-named caller/method writes. Primitive sends with yielding operands, definition
+checking/dispatch and &b admission remain; no new registered rule or floor is claimed.
 
 ## Layout
 

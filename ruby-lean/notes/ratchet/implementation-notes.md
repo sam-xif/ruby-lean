@@ -12115,3 +12115,27 @@ both halves of what constrains them now have a name.
 - Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
   zero owed/exempt, 252 agree / 0 disagree. Metatheory and standard-axiom audit PASS.
   New modules build in about one second; no proof or resource-limit exceptions.
+
+## Clink 234 (2026-09-26) — source method typing across repeated callbacks
+
+- MethodPres derives caller slot/scope and Proc retention across MethodEffects. It does not
+  freeze the active method. CheckedCallback records actual body safety and the capture fixed
+  point; MethodActivation carries that callback's runtime identity/ownership and the original
+  caller anchor. Its after theorem restores the invariant from both proved output states.
+- SemMethod is a semantic source judgment with ordinary, assignment, sequence and yield rules.
+  Assignment retains the existing closure/alias/context guards and requires an unchanged ivar
+  spine. yieldOne checks the evaluated argument, which may itself yield or assign. It requires
+  Plain: a safe run for an argument-list syntax node does not license ordinary argument entry.
+  yieldInt is its specialization, not an independent restriction on callback arguments.
+- BodyEntry handles actual zero-positional entry for any such body. The method's owner/cref
+  must match the main caller; superName=none pins the method identity expected by FrameOk.
+  Actual entry separately checks required params, absent capture and empty declared locals.
+- Mandatory MethodTypingControls uses these rules for nil-to-Integer retyping around repeated
+  yields and `yield(total = yield(1))`. The method and outer caller both write total; real block
+  allocation/method entry/return are proved from boot for arbitrary initial Integers. Sorbet
+  0.6.13405 accepts both and rejects a nil argument (7002); CRuby 4.0.5/model print 4/3 and 2/2.
+- Generic primitive sends with yielding operands, syntactic body/definition checking, dispatch,
+  &b binding and checker/emitter admission remain. No registered rule, runtime or floor change.
+- Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
+  zero owed/exempt, 252 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New proof
+  modules build in about one second, controls under four; no resource limit was raised.
