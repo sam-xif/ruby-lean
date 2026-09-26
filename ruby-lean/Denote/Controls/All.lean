@@ -58,6 +58,7 @@ import Denote.Controls.PointConstructorControls
 import Denote.Controls.PointConstructorExprControls
 import Denote.Controls.PointProgramControls
 import Denote.Controls.PrimitiveControls
+import Denote.Controls.ProcPresControls
 import Denote.Controls.ReceiverCacheControls
 import Denote.Controls.RootInitControls
 import Denote.Controls.SubclassCoreControls

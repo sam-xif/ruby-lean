@@ -11418,3 +11418,21 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
   pass. New binding, state and control proofs each build in under a second; no individual
   proof approached five minutes.
+
+## Clink 205 (2026-09-25) — saved Proc descriptor preservation
+
+- Framed now carries ProcPres, retaining every existing Proc payload across typed evaluation.
+  Heap extension, initialization, ivar writes, method installation and class/module/subclass
+  creation discharge it; composition and frame restoration retain it. djudge_saved_proc
+  exposes the guarantee for every certified answer, including a saved argument-list receiver.
+- Closure transport separates exact descriptor identity from mutable captured reads. Full
+  denotation transport needs stable reads/self and first-order component types; an empty
+  capture/self contract needs only ProcPres. No frame snapshot or callable safety is inferred.
+- Controls refute framing between heaps with different code at the same Proc id. Captured
+  writes preserve the descriptor while invalidating incompatible captured-local type claims.
+- No new judgment or emitter policy. Counts stay fragment 81 / checker reach 86, 61 rules,
+  60 worked theorems, 0 owed/exempt. Complete higher-order captures and caller restoration
+  still precede callable admission at 087 (§F49).
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New transport and control proofs build in under a second; the bridge in 1.1s.
+  No individual proof approached five minutes.

@@ -2701,7 +2701,7 @@ the parentless module head has no methods. Full module-body entry now derives al
 
 ## F49 — legacy closure predicates do not justify callable admission (2026-09-25)
 
-**Code identity fixed by clink 201; activation/return remain open, outside admission.**
+**Code identity/persistence fixed by clinks 201/205; activation/return remain outside admission.**
 The former denM(.clos idx cap self) dropped idx and ClosuresOk was True. Clink 200's
 reified_unindexed witness survives under the explicit LegacyIndexDen predicate.
 wrong_body_not_table records the missing code relation; reified_table shows that even
@@ -2715,8 +2715,11 @@ writes and control changes preserve code identity. Semantic literal creation and
 are proved at this type. Wrong code/params/locals/mode fail the new controls.
 
 This does not yet justify calling the value. Captured activation needs liveness, lexical
-scope and return-home facts; return must account for captured writes. Framed.firstOrder
-excludes clos and does not preserve a saved Proc's code/captures across argument evaluation.
+scope and return-home facts; return must account for captured writes. Clink 205 adds
+Framed.procs, preserving existing Proc payloads across every certified evaluation. It retains
+saved code and capture descriptors, not the captured values. Framed.firstOrder excludes clos;
+full closure-type transport still needs captured-read/self stability. Controls reject code
+replacement and retain the incompatible-write counterexample despite descriptor preservation.
 No unsafe program is accepted and no callable rule is registered on the legacy predicates.
 
 Clink 204 proves full call-entry StateOk from explicit lexical scope, live capture and

@@ -138,7 +138,7 @@ theorem Framed.bindIvar_scalar {m : Machine} {o : ObjId} {x : String} {v : Value
   have hi := bindIvar_ivarOnly m x v
   have hfields := bindIvar_scalar_fields hs ho hv
   have hpres := scalarHeap_pres hi hfields
-  refine ⟨by simp, ?_, ?_, ?_, .bindIvar m x v, ?_, ?_⟩
+  refine ⟨by simp, ?_, ?_, ?_, .bindIvar m x v, ?_, ?_, ?_⟩
   · intro k hk; simpa only [hi.classPayload] using hk
   · intro w cn hw; simpa only [bindIvar_isAName] using hw
   · intro τ ht w hw; exact (hpres τ ht).1 w w (.refl _) hw
@@ -146,6 +146,7 @@ theorem Framed.bindIvar_scalar {m : Machine} {o : ObjId} {x : String} {v : Value
     intro k _ y τ ht hw
     exact (hpres τ ht).1 _ _ (hfields (.ref k) y) hw
   · intro k _ e hk; simpa only [hi.eigen] using hk
+  · exact ProcPres.of_payload (fun o _ => hi.payload o)
 
 #print axioms bindIvar_scalar_fields
 #print axioms Framed.bindIvar_scalar

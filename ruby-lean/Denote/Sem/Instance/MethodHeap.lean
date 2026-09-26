@@ -104,6 +104,13 @@ theorem hshEntries?_defineMethod (h : Heap) (cls : ObjId) (name : String)
   exact payloadProbe_defineMethod (fun p => match p with | .hsh xs => some xs | _ => none)
     (fun _ _ => rfl) h cls _ name md
 
+theorem procClosure?_defineMethod (h : Heap) (cls : ObjId) (name : String)
+    (md : MethodDef) (v : Value) :
+    procClosure? (defineMethod h cls name md) v = procClosure? h v := by
+  cases v <;> try rfl
+  exact payloadProbe_defineMethod (fun p => match p with | .proc cl => some cl | _ => none)
+    (fun _ _ => rfl) h cls _ name md
+
 theorem denM_defineMethod_aux {m n : Machine} {cls : ObjId} {name : String} {md : MethodDef}
     (hh : n.heap = defineMethod m.heap cls name md) : ∀ τ : Ty, FirstOrder τ = true →
     (∀ v, denM τ m v ↔ denM τ n v) ∧
@@ -175,7 +182,8 @@ theorem Framed_defineMethod (m : Machine) (cls : ObjId) (name : String) (md : Me
    .of_unchanged (by simp only [Proof.objs_size_defineMethod]; exact Nat.le_refl _)
      (fun _ _ => ivarOf_defineMethod m.heap cls name md _)
      (fun _ ht _ hv => (denM_defineMethod ht rfl).mp hv),
-   fun _ _ _ he => by rw [Proof.get_defineMethod_eigen]; exact he⟩
+   (fun _ _ _ he => by rw [Proof.get_defineMethod_eigen]; exact he),
+   fun v _ hp => by rw [procClosure?_defineMethod]; exact hp⟩
 
 theorem methodOn_eq_go (h : Heap) (k : ObjId) (name : String) :
     Interp.methodOn h k name = lookup.go h name (ancestors h k) := by

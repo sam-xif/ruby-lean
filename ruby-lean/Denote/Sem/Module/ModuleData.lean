@@ -129,7 +129,9 @@ theorem framed {κ : Ctx} {Γ : Env} {I : Ty} {m n : Machine}
     .of_unchanged (by rw [hh, freshModHeap_size]; exact Nat.le_add_right _ _)
       (fun o ho => by funext x; simp only [hh, ivarOf, (fields ho).1])
       (fun _ ht _ hv => hd.denM ht hv),
-    fun o ho e he => by rw [hh, (fields ho).2.2.1]; exact he⟩
+    (fun o ho e he => by rw [hh, (fields ho).2.2.1]; exact he), by
+      rw [hh]
+      exact .of_nonclass (fun _ ho hp => get_old_nonclass ho hp)⟩
 
 #print axioms dataPres
 #print axioms framed

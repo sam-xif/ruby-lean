@@ -235,7 +235,9 @@ theorem Framed.of_freshClass {κ : Ctx} {Γ : Env} {I : Ty} {m n : Machine}
     .of_unchanged (by rw [hh, Proof.Judgment.freshClsHeap_size]; omega)
       (fun o ho => by funext x; simp only [hh, ivarOf, (FreshClass.fields ho).1])
       (fun _ ht _ hv => hp.denM ht hv),
-    fun o ho e he => by rw [hh, (FreshClass.fields ho).2.2.1]; exact he⟩
+    (fun o ho e he => by rw [hh, (FreshClass.fields ho).2.2.1]; exact he), by
+      rw [hh]
+      exact .of_nonclass (fun _ ho hp => FreshClass.get_old_nonclass ho hp)⟩
 
 #print axioms Framed.of_freshClass
 end Ratchet.Denote

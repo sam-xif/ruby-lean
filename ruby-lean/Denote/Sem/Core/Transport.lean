@@ -226,7 +226,8 @@ theorem Framed.of_ext {m m' : Machine} (he : Ext m m') : Framed m m' :=
         (denM_ext (τ := .cls n) (v := v) he (by simpa only [denM] using h)),
     fun _ _ _ h => denM_ext he h, .of_eq he.stack he.frames,
     .of_unchanged he.size (fun o ho => by funext x; simp only [ivarOf, he.get o ho])
-      (fun _ _ _ h => denM_ext he h), fun o ho e hp => by rw [he.get o ho]; exact hp⟩
+      (fun _ _ _ h => denM_ext he h), (fun o ho e hp => by rw [he.get o ho]; exact hp),
+    fun _ _ hp => he.procClosure?_eq hp⟩
 
 theorem Framed_withCtl (m : Machine) (c : Ctl) : Framed m (Interp.withCtl m c) :=
   Framed.of_heap_stack rfl rfl (.of_eq rfl rfl)

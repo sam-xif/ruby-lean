@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 204)
+# Current resume point (2026-09-25, clink 205)
 
 Latest admission remains 084: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
@@ -46,13 +46,21 @@ to callClosure's real next machine. ClosureStateControls instantiates a current 
 and boot entry, and refutes MainReady at a captured frame and EnvOk [] from an empty spine.
 Constant lookup agreement is explicit when dropping the method frame; it is not inferred.
 
+Clink 205 adds ProcPres to Framed and proves it for allocation, initialization, ivar writes,
+method installation and class/module/subclass creation. djudge_saved_proc exposes exact
+descriptor retention for every certified answer. Sem/Closure/Transport retains code, and
+transports a full closure denotation given first-order capture/self types and unchanged
+reads. An empty capture/self contract needs only ProcPres. ProcPresControls rejects code
+replacement and shows that captured writes can invalidate typing despite retained payloads.
+
 Next: discharge caller restoration through captured writes and transport behavioral values.
 Entry now has full conformance under the named scope/liveness/environment premises, but
 Ty.clos does not yet supply those premises. A stored f itself is higher-order; the complete
 captured environment cannot simply omit it, even for lambda { 1 }. EnvOk.capture is one-way:
 its lower-bound spine does not supply EnvOk's absence clause for unmentioned names.
-Framed.firstOrder excludes clos, and FieldsPres carries only first-order
-ivar facts, so transporting a saved Proc across argument evaluation also needs a contract.
+Framed.procs now retains a saved Proc's descriptor across argument evaluation;
+Framed.firstOrder still excludes clos, and FieldsPres carries only first-order ivar facts.
+The missing contract concerns captured values and complete environment transport.
 FramePres.isolated applies only to uncaptured activations; do not assume caller isolation.
 The unused ClosuresOk/closTblOk table machinery remains legacy, with F49's counterexamples
 retained explicitly. The old index-free denotation is now named LegacyIndexDen in controls.

@@ -53,6 +53,9 @@ Clink 204 proves full required-lambda entry conformance from explicit lexical sc
 live capture and complete first-order environment facts. The body retains self/block types
 but drops runtime permissions requiring an uncaptured activation. Higher-order capture
 transport and caller restoration still precede callable admission.
+Clink 205 adds ProcPres to Framed: every certified evaluation preserves existing Proc
+payloads, including saved receiver code. Full closure-type transport separately requires
+stable captured reads/self; controls distinguish descriptor retention from capture typing.
 Next: 087, zero-argument lambda creation/call. See HANDOFF.
 
 ## Layout
