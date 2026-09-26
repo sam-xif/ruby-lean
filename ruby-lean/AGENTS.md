@@ -86,7 +86,11 @@ nil slots need not be enumerated. Unshadowing main return now derives full calle
 and the block RunSpec without an independent outgoing EnvOk. A stored-lambda pilot retains
 f's exact closure type, including at boot. Capture identity/slot tracking and overlapping
 parameter/block-local shadowing remain before general callable admission.
-Next: 087, zero-argument lambda creation/call. See HANDOFF.
+Clink 212 proves the complete stored-lambda source call: creation, assignment, receiver,
+entry, certified body and restored caller. The Integer pilot is safe for all fuel; concrete
+prefix execution supplies capture identity. No callable judgment is admitted. §F51 records
+a measured Proc dispatch defect: a singleton call override is ignored by the model.
+Next: fix §F51, then identity/slot tracking for 087 admission. See HANDOFF.
 
 ## Layout
 

@@ -11558,3 +11558,21 @@ both halves of what constrains them now have a name.
   read-after-write lemmas replaced it. No resource limit was increased.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
   pass. Final new proofs build in under a second each; no individual proof reached five minutes.
+
+## Clink 212 (2026-09-26) — compose complete stored-lambda source calls
+
+- Call proves the actual receiver/Proc dispatch/required-lambda prefix. StorePrefix keeps
+  the concrete allocated capture through creation and assignment; its continuation receives
+  the resulting machine, avoiding an unjustified identity inference from Ty.clos.
+- setLocal_reCtl proves writes commute with control changes by a small owner-walk induction.
+  This identifies the assignment continuation's result without reducing the whole machine.
+- ClosureCallControls composes entry, body and projected caller restoration. The complete
+  `f = lambda { 1 }; f.call` program (any Integer literal) is safe for all fuel. A generic
+  body contract retains f's exact type. Lambda extra args fail; proc extra args are ignored.
+- §F51 records a measured dispatch defect: singleton f.call returning 7 is bypassed by the
+  model, which returns the lambda body's 1. The executable witness is outside admission;
+  repair dispatch before adding a callable judgment. Identity/slot tracking remains next.
+- No judgment/emitter change. Counts remain fragment 81 / checker reach 86, 61 rules,
+  60 worked theorems, 0 owed/exempt.
+- Full quiet ratchet GREEN; metatheory and standard-axiom audit pass. New proofs build
+  in under a second; no individual build approached five minutes.

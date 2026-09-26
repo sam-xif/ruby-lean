@@ -89,6 +89,28 @@ theorem getLocal_go_reCtl (m : Machine) (c : Ctl) (k : List Kont) (x : String) :
     (reCtl m c k).getLocal x = m.getLocal x :=
   getLocal_go_reCtl m c k x _ _
 
+theorem setLocal_owner_reCtl (m : Machine) (c : Ctl) (k : List Kont)
+    (x : String) (start : FrameId) : ∀ fuel fid,
+    Machine.setLocal.owner (reCtl m c k) x start fid fuel =
+      Machine.setLocal.owner m x start fid fuel := by
+  intro fuel
+  induction fuel with
+  | zero => intro _; rfl
+  | succ fuel ih =>
+    intro fid
+    simp only [Machine.setLocal.owner]
+    split
+    · rfl
+    · split
+      · exact ih _
+      · rfl
+
+@[simp] theorem setLocal_reCtl (m : Machine) (c : Ctl) (k : List Kont)
+    (x : String) (v : Value) :
+    (reCtl m c k).setLocal x v = reCtl (m.setLocal x v) c k := by
+  simp only [setLocal_eq_setAt, setLocal_owner_reCtl]
+  rfl
+
 theorem frameLocal_go_reCtl (m : Machine) (c : Ctl) (k : List Kont) (x : String) :
     ∀ (fuel : Nat) (fid : FrameId),
       frameLocal.go (reCtl m c k) x fid fuel = frameLocal.go m x fid fuel := by

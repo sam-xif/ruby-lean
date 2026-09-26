@@ -1,4 +1,4 @@
-# Current resume point (2026-09-26, clink 211)
+# Current resume point (2026-09-26, clink 212)
 
 Latest admission remains 084: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
@@ -114,7 +114,16 @@ full caller restoration retaining f's exact closure type; assignment supplies it
 binding, so no complete input slot domain is assumed. The boot instance consumes body
 conformance/framing; it is still a return theorem, not a whole-call admission.
 
-Next: compose the stored lambda's full call and track capture identity/slot classification.
+Clink 212 composes actual local receiver evaluation, Proc dispatch, required-lambda entry,
+certified body and block return. StorePrefix executes creation/assignment while retaining
+the concrete allocated capture identity, then composes a state-specific continuation.
+ClosureCallControls proves the whole `f = lambda { 1 }; f.call` source safe for all fuel
+(and any Integer literal), with full caller conformance. Its generic body contract retains
+f's exact type; it does not infer activation facts from Ty.clos or admit a checker rule.
+Controls distinguish lambda/proc extra-argument behavior. A new §F51 witness shows current
+Proc dispatch bypasses singleton `call`: CRuby returns 7, the model returns the body’s 1.
+
+Next: fix §F51 dispatch fidelity before callable admission, then track capture identity/slots.
 Entry now has full conformance under the named scope/liveness/environment premises, but
 Ty.clos does not yet supply those premises. The stored-f pilot retains its higher-order
 binding using ProcPres.empty_capture_den. General capture types still need transport.

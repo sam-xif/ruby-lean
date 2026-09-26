@@ -2770,6 +2770,11 @@ nil-to-Integer captured write and refute retaining such an alias. Stored-lambda 
 retains f's exact code type from its actual assigned slot without assuming an otherwise
 empty physical domain. Identity/slot tracking and overlapping entry shadowing remain open.
 
+Clink 212 composes the whole stored-lambda program, with an all-fuel Integer pilot.
+Concrete allocation/assignment provides capture identity; the body contract preserves f's
+exact type. This closes the pilot's semantic composition, not general callable admission.
+Static activation/slot facts and overlapping entry shadowing remain; see also §F51.
+
 ## F50 — the body answer contract is too weak for block return (2026-09-25)
 
 **Resolved for the admitted fragment by clink 203; typed jump rules remain future work.**
@@ -2792,3 +2797,21 @@ all derivations. next_not_result rejects the former witness. Rules/Closure/Retur
 the real block continuation using this contract, with caller framing and StateOk obligations
 still explicit. Later jump rules need typed interception and state contracts. No checker
 rule or accepted program changed; captured activation/restoration remain §F49.
+
+## F51 — Proc call interception ignores user overrides (2026-09-26)
+
+**Open model fidelity defect; no callable checker rule is admitted.** `Interp.invoke`
+dispatches Proc payloads directly for call/()/[]/yield, before method lookup. Measured with
+CRuby 4.0.5 and the current rubycore binary:
+
+```ruby
+f = lambda { 1 }
+def f.call; 7; end
+p f.call
+```
+
+CRuby prints 7; the model prints 1. ClosureCallControls retains the executable model
+witness. Call's semantic theorem describes that actual dispatch, so it remains sound for
+the model, but is not evidence of override fidelity. Fix lookup/visibility/undefined
+handling before admitting calls; update the semantic dispatch premise and this witness
+with the fix. The current 252-case agreement replay does not cover this program.
