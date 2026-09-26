@@ -70,6 +70,11 @@ restoration now uses saved metadata and an independently proved outgoing environ
 closure_main_runSpec restores full caller StateOk from that environment and the body result.
 A real captured Integer-to-nil write proves full return conformance, including at boot.
 General outgoing capture environments and capture identity tracking remain before admission.
+Clink 209 preserves existing local slots and the exact slot domains of saved frames in
+FramePres, through real writes, composition and returns. The bridge exposes this for every
+certified answer. Controls reject saved nil-slot insertion and show that EnvOk cannot tell
+an absent slot from a bound nil slot, though they receive captured writes differently.
+Outgoing caller typing still needs ownership/shadowing effects and capture identity tracking.
 Next: 087, zero-argument lambda creation/call. See HANDOFF.
 
 ## Layout

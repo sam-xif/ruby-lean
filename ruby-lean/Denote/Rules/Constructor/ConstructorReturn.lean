@@ -19,7 +19,7 @@ theorem constructor_frame_pres {m n : Machine} {k : ObjId} {md : MethodDef}
       simp [RootUncaptured, constructorFrame, pushMethodFrame, Array.getD_eq_getD_getElem?, requiredFrame]) i hi
     intro he
     subst i
-    exact hn (.here _)⟩
+    exact hn (.here _), ⟨h.frames.bindings.bound, h.frames.bindings.saved⟩⟩
 
 theorem constructor_pop_framed {m n : Machine} {k : ObjId} {md : MethodDef}
     {ps : List SigParam} {args : List Value} (hl : FrameInRange m)

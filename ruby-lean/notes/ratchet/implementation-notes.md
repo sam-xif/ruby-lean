@@ -11495,3 +11495,22 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
   pass. New restoration/write/control proofs build in about a second or less; no individual
   proof reached five minutes.
+
+## Clink 209 (2026-09-25) — preserve saved binding domains
+
+- BindingsPres distinguishes physical slots from nil reads: all old bindings survive,
+  and inactive frames retain exactly their old domains. The real setLocal owner is either
+  the active start or already binds the written name. Other names retain their presence.
+- FramePres carries this contract through composition and every producer/return path.
+  closure_saved_bindings recovers all caller domains after a pushed-frame body, and
+  djudge_bindings exposes the invariant for every certified answer.
+- CaptureBindingControls rejects saved nil-slot insertion allowed by the previous contract,
+  permits actual captured writes and new active locals, and shows why EnvOk is insufficient
+  to infer ownership: empty and x=nil callers both satisfy EnvOk [], but captured x=1
+  changes only the latter caller. Saved domains still do not rule out active shadowing;
+  outgoing caller typing needs ownership/write effects and capture identity (§F49).
+- No judgment/emitter change. Counts remain fragment 81 / checker reach 86, 61 rules,
+  60 worked theorems, 0 owed/exempt. Callable admission remains at 087.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New binding/return/control proofs build in under a second; no individual proof
+  reached five minutes.

@@ -36,7 +36,7 @@ theorem method_frame_pop {m n : Machine} {f : RubyCore.Frame}
   have hs : (popMethodFrame n).stack = m.stack := by
     simp [popMethodFrame, hb, pushMethodFrame]
   have hf := method_frame_savedFrames hc h
-  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, .of_frames hf⟩
   · have hh := h.size
     simp only [pushMethodFrame, Array.size_push] at hh
     exact Nat.le_trans (Nat.le_succ _) hh

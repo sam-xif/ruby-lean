@@ -2749,6 +2749,13 @@ The real captured Integer-to-nil write, including a boot instance, satisfies tha
 General outgoing-environment effects and capture identity tracking remain outside admission;
 the body environment is not automatically the caller's after shadowing or new local bindings.
 
+Clink 209 preserves existing bindings and saved-frame slot domains through every certified
+answer. The prior FramePres allowed inserting a nil slot into a saved caller; the new field
+rejects it. CaptureBindingControls also distinguishes physical absence from EnvOk's nil
+read: callers with no slots or x=nil both conform to EnvOk [], but a captured x=1 writes
+only the latter caller. Saved domains alone do not prevent active-frame shadowing of an
+ancestor slot; ownership/write effects remain necessary for general outgoing caller typing.
+
 ## F50 — the body answer contract is too weak for block return (2026-09-25)
 
 **Resolved for the admitted fragment by clink 203; typed jump rules remain future work.**

@@ -14,6 +14,14 @@ theorem closure_saved_metadata {m n : Machine} {f : RubyCore.Frame}
     (by simpa [pushMethodFrame] using Nat.ne_of_lt hi)
   simpa [pushMethodFrame, Array.getD, hi, Nat.lt_succ_of_lt hi, Array.getElem_push_lt] using hs
 
+theorem closure_saved_bindings {m n : Machine} {f : RubyCore.Frame}
+    (h : FramePres (pushMethodFrame m f) n) (i : FrameId) (hi : i < m.frames.size) (x : String) :
+    frameBinds n i x = frameBinds m i x := by
+  have hs := h.bindings.saved i (by simpa [pushMethodFrame] using Nat.lt_succ_of_lt hi)
+    (by simpa [pushMethodFrame] using Nat.ne_of_lt hi) x
+  simpa [frameBinds, pushMethodFrame, Array.getD, hi, Nat.lt_succ_of_lt hi,
+    Array.getElem_push_lt] using hs
+
 theorem closure_saved_frames {m n : Machine} {f : RubyCore.Frame}
     (hl : m.stack.headD 0 < m.frames.size) (hu : RootUncaptured m)
     (hc : f.captured = some (m.stack.headD 0)) (h : FramePres (pushMethodFrame m f) n)
@@ -54,7 +62,7 @@ theorem closure_frame_pop {m n : Machine} {f : RubyCore.Frame}
     FramePres m (popMethodFrame n) := by
   have hs : (popMethodFrame n).stack = m.stack := by simp [popMethodFrame, hb, pushMethodFrame]
   have hf := closure_saved_frames hl hu hc h
-  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
   · have hh := h.size
     simp only [pushMethodFrame, Array.size_push] at hh
     exact Nat.le_trans (Nat.le_succ _) hh
@@ -65,6 +73,8 @@ theorem closure_frame_pop {m n : Machine} {f : RubyCore.Frame}
   · intro i hi hn; exact congrArg savedFrame (hf i hi hn)
   · intro _ i hi hn
     exact hf i hi (by intro he; subst i; exact hn (.here _))
+  · exact ⟨fun i hi x hx => (closure_saved_bindings h i hi x).trans hx,
+      fun i hi _ x => closure_saved_bindings h i hi x⟩
 
 theorem closure_pop_framed {m n : Machine} {f : RubyCore.Frame}
     (hl : m.stack.headD 0 < m.frames.size) (hu : RootUncaptured m)
@@ -86,6 +96,7 @@ theorem closure_pop_metadata {m n : Machine} {f : RubyCore.Frame}
   exact closure_saved_metadata h.frames _ hl.2
 
 #print axioms closure_saved_frames
+#print axioms closure_saved_bindings
 #print axioms closure_pop_framed
 #print axioms closure_pop_metadata
 end Ratchet.Denote.Typed

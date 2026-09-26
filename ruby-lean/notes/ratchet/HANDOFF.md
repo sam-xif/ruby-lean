@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 208)
+# Current resume point (2026-09-25, clink 209)
 
 Latest admission remains 084: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
@@ -83,6 +83,15 @@ plus outgoing caller EnvOk. Write proves that an unshadowed bound capture writes
 caller frame. ClosureReturnStateControls proves full Integer-to-nil caller conformance and
 its boot instance, and rejects a prelude-mode flip.
 
+Clink 209 adds BindingsPres to FramePres: old bindings cannot disappear, and every saved
+frame retains exactly its old slot domain. Real setLocal can introduce slots only at its
+active start; a different owner must already bind the written name. Composition and all
+return paths retain the contract; closure_saved_bindings recovers every caller slot domain,
+and djudge_bindings exposes it for arbitrary certified answers. CaptureBindingControls
+rejects inserting a nil slot into a saved frame (allowed by the previous contract), permits
+real captured writes/new active locals, and proves that empty and x=nil callers both satisfy
+EnvOk [] yet the same body assignment updates only the latter caller.
+
 Next: derive outgoing caller EnvOk from general body effects, and track capture identity.
 Entry now has full conformance under the named scope/liveness/environment premises, but
 Ty.clos does not yet supply those premises. The stored-f pilot retains its higher-order
@@ -100,6 +109,11 @@ main-caller StateOk from its outgoing EnvOk and the body result; phase is retain
 The body may update/introduce/shadow locals, so its EnvOk cannot simply be reused at the
 caller. Write's actual single-capture transport is a proved base case, not a general effect
 analysis. General non-main caller restoration also remains outside this theorem.
+BindingsPres now retains saved domains, but does not forbid a body from shadowing an
+existing ancestor slot in its active frame. Outgoing caller typing needs that ownership
+relation or explicit write effects as well. EnvOk's absence clause means nil reads, not
+physical absence: filtering body output to the incoming caller environment loses hidden
+nil slots that a captured assignment may change. Do not infer slot domains from EnvOk.
 The unused ClosuresOk/closTblOk table machinery remains legacy, with F49's counterexamples
 retained explicitly. The old index-free denotation is now named LegacyIndexDen in controls.
 
