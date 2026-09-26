@@ -107,6 +107,9 @@ that proof through DFlowAll, the registry, checker and emitter, admitting 088 an
 Flow literals retain exact code; body checking uses actual argument and live capture types.
 Clink 223 proves exact-arity Proc normalization and selector-specific native call/[] dispatch,
 admitting 089/090 through the same rule. Next: attached iterator blocks (091). See HANDOFF.
+Clink 224 / model L273 fixes Array#each's stale element snapshot (§F53). Iterator proofs
+now project captured writes past its inert activation and use fuel induction over the live
+array cursor. Body-entry/return invariants and native source dispatch remain before 091.
 
 ## Layout
 

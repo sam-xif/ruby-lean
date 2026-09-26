@@ -22,10 +22,12 @@ theorem closure_saved_bindings {m n : Machine} {f : RubyCore.Frame}
   simpa [frameBinds, pushMethodFrame, Array.getD, hi, Nat.lt_succ_of_lt hi,
     Array.getElem_push_lt] using hs
 
-theorem closure_saved_frames {m n : Machine} {f : RubyCore.Frame}
-    (hl : m.stack.headD 0 < m.frames.size) (hu : RootUncaptured m)
-    (hc : f.captured = some (m.stack.headD 0)) (h : FramePres (pushMethodFrame m f) n)
-    (i : FrameId) (hi : i < m.frames.size) (hne : i ≠ m.stack.headD 0) :
+/-- A block can skip an inert iterator activation and capture an older caller.
+Only that captured caller may change; the argument does not require it to be active. -/
+theorem closure_saved_frames_at {m n : Machine} {f : RubyCore.Frame} {root : FrameId}
+    (hl : root < m.frames.size) (hu : (m.frames.getD root default).captured = none)
+    (hc : f.captured = some root) (h : FramePres (pushMethodFrame m f) n)
+    (i : FrameId) (hi : i < m.frames.size) (hne : i ≠ root) :
     n.frames.getD i default = m.frames.getD i default := by
   let b := pushMethodFrame m f
   have hget (j : FrameId) (hj : j < m.frames.size) :
@@ -33,7 +35,7 @@ theorem closure_saved_frames {m n : Machine} {f : RubyCore.Frame}
     simp [b, pushMethodFrame, Array.getD, hj, Nat.lt_succ_of_lt hj, Array.getElem_push_lt]
   have hhead : b.frames.getD m.frames.size default = f := by
     simp [b, pushMethodFrame, Array.getD_eq_getD_getElem?]
-  have hparent : CaptureLive m (some (m.stack.headD 0)) := .frame hl (hu ▸ .none)
+  have hparent : CaptureLive m (some root) := .frame hl (hu ▸ .none)
   have hbody : CaptureLive b (some (b.stack.headD 0)) := by
     apply CaptureLive.frame (by simp [b, pushMethodFrame])
     change CaptureLive b (b.frames.getD m.frames.size default).captured
@@ -54,6 +56,13 @@ theorem closure_saved_frames {m n : Machine} {f : RubyCore.Frame}
       exact hne (hp.uncaptured (by rw [hget _ hl]; exact hu))
   exact (h.outside hbody i (by simpa [b, pushMethodFrame] using Nat.lt_succ_of_lt hi) hout).trans
     (hget i hi)
+
+theorem closure_saved_frames {m n : Machine} {f : RubyCore.Frame}
+    (hl : m.stack.headD 0 < m.frames.size) (hu : RootUncaptured m)
+    (hc : f.captured = some (m.stack.headD 0)) (h : FramePres (pushMethodFrame m f) n)
+    (i : FrameId) (hi : i < m.frames.size) (hne : i ≠ m.stack.headD 0) :
+    n.frames.getD i default = m.frames.getD i default :=
+  closure_saved_frames_at hl hu hc h i hi hne
 
 theorem closure_frame_pop {m n : Machine} {f : RubyCore.Frame}
     (hl : m.stack.headD 0 < m.frames.size) (hu : RootUncaptured m)

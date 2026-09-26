@@ -1,4 +1,4 @@
-# Current resume point (2026-09-26, clink 223)
+# Current resume point (2026-09-26, clink 224 / model L273)
 
 Latest admissions: 089 and 090. Fragment 86, checker reach 90,
 75 registered rules (40 expressions + 35 companions), 65 worked theorems, no exemptions.
@@ -6,6 +6,27 @@ The safe prefix remains 17; 018 is correctly rejected. Next frontier: 091-block-
 `[1, 2, 3].each { |x| x + 1 }`, followed by map (092/093). These need actual attached-block
 dispatch/iteration and caller-state composition; current closure calls supply useful entry,
 body and return contracts but do not type iterator sends. Measure Sorbet before new rules.
+
+Clink 224 measured Sorbet's each contract: Integer parameter, original Array[Integer]
+result despite a String body, captured type changes rejected. Zero parameters are accepted
+and a second parameter is NilClass. The one-required-parameter semantic pilot is in
+Rules/Iterator/Each; no new judgment/checker admission is claimed.
+
+§F53 exposed a model defect before rule admission: each snapshotted its arguments. L273
+adds IterKind.arrayEach o index and reads the live payload/length after every yield.
+Append/removal/replacement, nested loops and block exits agree in focused replay. Other
+native iterator families are unchanged; check their fidelity before reusing this proof.
+EachArrayContract carries an explicit live receiver/cursor invariant P. eachArrayStep_spec
+uses fuel induction through actual blkFrameK/iterK/frameK, permitting unbounded growth.
+Its body entry, invariant restoration and caller conformance premises remain to discharge.
+Iterator.FrameReturn supplies caller Framed/metadata after both pops. Do not impose
+Framed on the intermediate iterator activation: IteratorFrameControls refutes its isolation
+clause with an ordinary captured write. The relevant caller is popMethodFrame m, with the
+iterator frame retained in the store; its id need not be fresh on later iterations.
+Next: entry StateOk at a block capturing the caller below the iterator, shadow-aware
+caller EnvOk after both pops, native lookup-miss readiness for Array#each, then source
+composition and registry/checker/emitter integration. Current formal loop uses one required
+parameter; Sorbet's zero/additional parameter shapes need binding proofs too.
 
 Clink 223 generalizes callClosure_required to both modes: exact required arity prevents
 Proc autosplat, padding and truncation. The actual frame/continuation keep cl.lam. Native

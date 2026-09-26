@@ -148,6 +148,7 @@ deriving Inhabited
 /-- How a native block-iterator (`each`/`map`/`inject`/…) treats each block
     result and computes its final value. -/
 inductive IterKind where
+  | arrayEach (array : ObjId) (index : Nat) -- read the live payload after each yield
   | ignore    -- each / times / each_with_index: discard result, return `retVal`
   | collect   -- map / collect: gather results into a new Array
   | fold      -- inject / reduce: thread the accumulator (block gets `acc :: args`)

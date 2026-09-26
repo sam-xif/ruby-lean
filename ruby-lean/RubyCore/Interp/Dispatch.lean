@@ -361,10 +361,23 @@ def missNoMethod (m : Machine) (recv : Value) (implicit : SendSite) (mname : Str
     method. Non-recursive: the loop is driven by the `iterK` continuation. -/
 def iterStep (m : Machine) (cl : Closure) (brk : FrameId) (rest : List (List Value))
     (kind : IterKind) (acc : List Value) (retVal : Value) : StepResult :=
+  match kind with
+  | .arrayEach o index =>
+    -- Array#each rereads both length and element after every yield (L273).
+    -- Snapshotting skipped appends and yielded removed/replaced elements.
+    match (m.heap.get o).payload with
+    | .arr xs =>
+      if hi : index < xs.size then
+        let v := xs[index]
+        let m := { m with kont := .iterK cl brk [] (.arrayEach o (index + 1)) [] retVal v :: m.kont }
+        callClosure m cl [v] (some brk)
+      else .next (withCtl m (.value retVal))
+    | _ => .unsupported "Array#each receiver lost its Array payload"
+  | _ =>
   match rest with
   | [] =>
     let (finalV, m) := match kind with
-      | .ignore => (retVal, m)
+      | .ignore | .arrayEach .. => (retVal, m)
       | .collect => let (a, m) := Builtins.allocArr m acc.toArray; (a, m)
       | .fold => (acc.headD .nil, m)
       -- max_by/min_by: `acc` is `[bestElem, bestKey]` (or `[]` if the receiver was
@@ -420,7 +433,7 @@ def tryIterator (m : Machine) (recv : Value) (mname : String) (args : List Value
         | .arr xs =>
           let each1 := xs.toList.map (fun e => [e])
           match mname with
-          | "each" => some (startIter m recv mname cl each1 .ignore [] recv)
+          | "each" => some (startIter m recv mname cl [] (.arrayEach o 0) [] recv)
           | "map" | "collect" => some (startIter m recv mname cl each1 .collect [] .nil)
           | "each_with_index" =>
             let ei := xs.toList.zipIdx.map (fun (e, i) => [e, Value.int (Int.ofNat i)])

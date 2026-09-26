@@ -13634,3 +13634,26 @@ it did not exist.
   305 unsupported, 5 invalid controls and the existing test_syntax_115 harness
   error (no observation). Full quiet ratchet GREEN (252 agree, 0 disagree);
   check-proofs passes with standard Lean axioms only. No proof exceeded five minutes.
+
+## L273 — Array#each reads a live cursor (2026-09-26)
+
+- Ratchet §F53: appending 3 while iterating [1,2] yielded [1,2,3] in CRuby 4.0.5
+  but [1,2] in the model. tryIterator previously materialized every argument before
+  the first yield. Removal/replacement also retained stale elements.
+- IterKind.arrayEach stores the original array id and next index. iterStep reads the
+  current payload/length, calls the block on that element and saves index + 1. Exhaustion
+  returns the original receiver. It uses payload access, so Ruby overrides of length/[]
+  do not affect native iteration. Other iterator families keep their existing paths.
+- No new continuation constructor: iterK ignores the body result for this mode. Existing
+  blkFrameK/frameK preserve next, redo, break, return and exceptions; redo repeats the
+  current arguments before advancing. An impossible lost Array payload gates explicitly.
+- array-each-live.rb covers append/pop/shift/replacement, variable reassignment versus
+  receiver identity, nested iteration, length/[] overrides and block exits. Focused replay
+  (regression plus the minimal original witness) agrees 2/2.
+- The checker loop theorem uses fuel induction because a block can keep appending.
+  Iterator.FrameReturn projects effects onto the captured caller after two frame pops;
+  ordinary isolation of the inert iterator activation is refuted by a captured write.
+- Validation: MRI tier 0 remains 998 agree / 0 disagree, 305 unsupported, 5 invalid
+  controls and the existing test_syntax_115 harness error. Full quiet ratchet GREEN
+  (252 agree / 0 disagree); metatheory and standard-axiom audit pass. Existing framing
+  and notDone proofs rebuild without new axioms, resource limits or five-minute proofs.

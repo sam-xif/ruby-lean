@@ -2844,3 +2844,21 @@ twin to dispatch == and Booleanize its result. Native scalar === aliases retain 
 original builtin IDs, so replacing == does not replace Integer/String/Symbol/Float ===.
 The case-equality-identity regression also overrides equal?, checks truthy non-Boolean
 == results, super, and Float::NAN. Proc#=== independently retains native call semantics.
+
+## F53 — Array#each snapshots elements before yielding (2026-09-26)
+
+**Resolved for Array#each by model L273 / clink 224.** The native iterator materialized
+all arguments before the first block call. With `xs = [1, 2]`, a block that appends 3
+when visiting 2 sees `[1, 2, 3]` under CRuby 4.0.5 and formerly `[1, 2]` under the model.
+Removal and replacement likewise left stale future arguments. This would make the next
+typing rule certify the wrong iteration behavior even when every array element is Integer.
+
+IterKind.arrayEach carries the array id and advancing index. iterStep rereads the actual
+payload/length after each yield, bypassing Ruby length/[] overrides as CRuby does. Existing
+block/iterator continuations retain next/redo/break/return and exception behavior. The
+array-each-live regression checks mutations, nested loops, receiver identity and exits.
+Other native iterator families retain their existing implementations; this fix claims each.
+
+The semantic loop uses fuel induction, not induction on an entry-time element list:
+append can grow the array indefinitely. EachArrayContract states the body, loop invariant
+and caller-return obligations explicitly; deriving those from source typing remains next.

@@ -1,5 +1,17 @@
 # Lean model — hand-off
 
+## Current iterator repair (2026-09-26, L273)
+
+Array#each now uses IterKind.arrayEach arrayId index, rereading the live array payload
+and length after every yield. The old entry-time snapshot missed append and retained
+removed/replaced elements (ratchet §F53). Existing block continuations retain all exit
+behavior; native iteration bypasses length/[] overrides. Regression: array-each-live.rb.
+Other native iterator families are unchanged. The checker still declines attached each
+blocks; its new all-fuel loop contract and two-activation caller framing are prerequisites.
+Validation: focused replay 2/2; MRI tier 0 remains 998 agree / 0 disagree (same 305
+unsupported, 5 invalid controls, 1 existing harness error); full quiet ratchet GREEN
+(252 agree / 0 disagree); metatheory and standard-axiom audit pass.
+
 ## Current dispatch repair (2026-09-26, L272)
 
 Proc call/[]/yield/=== now resolve native markers through ordinary lookup, preserving

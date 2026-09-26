@@ -11837,3 +11837,32 @@ both halves of what constrains them now have a name.
   252 agree / 0 disagree. Raised all changed floors. Next frontier is 091's attached each block.
 - Final full quiet gate GREEN; metatheory and standard-axiom audit pass. No new axioms,
   resource-limit increases or proof builds over five minutes.
+
+## Clink 224 (2026-09-26) — repair live each iteration and prove its loop contract
+
+- Sorbet 0.6.13405, --no-config: `[1,2,3].each { |x| x.to_s }` binds x at Integer
+  and returns T::Array[Integer]; x + nil is rejected. Changing a captured Integer
+  binding to nil is rejected as a loop/block type change. Zero block parameters are
+  accepted; a second parameter is NilClass. map gives T::Array[String] for this body.
+- §F53 / model L273: the native each snapshot skipped appended elements and retained
+  removed/replaced ones. A CRuby/model witness returned [1,2,3] versus [1,2]. Each now
+  carries array id/index and rereads the payload after every yield. Focused replay covers
+  removal, replacement, nested loops, receiver identity, overrides and all block exits.
+- closure_saved_frames_at generalizes caller preservation to an older uncaptured frame.
+  Iterator.FrameReturn projects certified body effects past the inert iterator activation,
+  retaining caller framing and metadata after both pops, including captured-local writes.
+  IteratorFrameControls proves a write through that capture and refutes FramePres relative
+  to the iterator: its ordinary-method isolation would forbid the valid caller write.
+- EachArrayContract states the live receiver/cursor invariant, actual required-parameter
+  body run, per-value invariant restoration and full caller results for completion/raises.
+  eachArrayStep_spec proves the actual blkFrameK/iterK/frameK loop for all fuel. Fuel
+  induction pays for its back edge with block return; array growth needs no termination
+  premise. It handles one required parameter and does not register a judgment yet.
+- The finite snapshot-loop draft was replaced after the fidelity probe. Next derive the
+  contract's body-entry and caller-environment obligations from StateOk/checked bodies,
+  add guarded native each dispatch, then connect the source rule/checker/emitter.
+  Both new control modules ride Controls.All. No admission or floor changes (86/90).
+- Full quiet gate GREEN (252 agree / 0 disagree); metatheory and standard-axiom audit
+  pass. MRI tier 0 remains 998 agree / 0 disagree, 305 unsupported, 5 invalid controls
+  and the existing test_syntax_115 harness error. No proof exceeded five minutes and no
+  resource limits or axioms were added.
