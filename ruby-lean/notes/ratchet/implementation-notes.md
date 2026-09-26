@@ -12066,3 +12066,30 @@ both halves of what constrains them now have a name.
 - Full quiet gate GREEN: unchanged 89 fragment, checker reach 93, 77 rules, 68 worked
   proofs and zero owed/exempt; 252 agree / 0 disagree. Metatheory/standard-axiom audit pass.
   New modules build in about three seconds or less, with no axiom or resource-limit changes.
+
+## Clink 232 (2026-09-26) — compose method-local and callback-capture effects
+
+- MethodEffects closes the two proved boundaries (ordinary Framed and CallbackFramed)
+  under composition. Neither boundary alone describes a method that writes its own locals
+  and yields to a block that writes the outer caller. Existing Framed remains unchanged.
+- MethodEffects.project restores Framed relative to the original caller, before method
+  allocation. The active method id must be at least the original frame-store size. Ordinary
+  steps preserve that old prefix; callbacks compose their caller projection. This permits
+  fresh method locals without allowing damage to any old saved frame. A later caller snapshot
+  containing the method would incorrectly freeze those locals; late_anchor_false refutes it.
+- BodyRun states MethodResultOk/MethodRunSpec with both caller and method environments,
+  all-fuel safety and MethodEffects. Step, answer, continuation composition and method return
+  are proved. The real return marker recovers the existing RunSpec via the prefix theorem.
+  This semantic run target is not yet a source judgment: embedding ordinary expressions
+  needs caller conformance after their effects, and checked callbacks need to enter it too.
+- Mandatory MethodEffectsControls executes a method-local write, a captured caller write
+  and a new method-local insertion. It proves caller return and distinct final reads/slots,
+  and refutes ordinary framing, suspended-method framing and a late anchor for the full trace.
+  Repeated rfl expansion initially exhausted default heartbeats; normalizing each intermediate
+  machine once makes the proof small. No limit was raised.
+- Sorbet 0.6.13405 accepts `first = nil; first = yield(1); second = yield(2); first + second`
+  with typed &b and a block updating an outer Integer. CRuby/model print 4 and final capture 3.
+  The contract docstrings cite this measurement. No runtime, registered rule or floor changes.
+- Full quiet gate GREEN: 89 fragment, checker reach 93, 77 rules, 68 worked, zero owed/exempt,
+  252 agree / 0 disagree. Metatheory and standard-axiom audit pass. Final new modules build
+  in under a second; no proof exceeds five minutes and no resource limit or axiom is added.

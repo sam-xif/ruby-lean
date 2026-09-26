@@ -1,4 +1,28 @@
-# Current resume point (2026-09-26, clink 231 / model L274)
+# Current resume point (2026-09-26, clink 232 / model L274)
+
+Clink 232 establishes the general effect/run target for methods with callbacks. MethodEffects
+composes ordinary Framed and CallbackFramed. MethodEffects.project restores ordinary caller
+framing from before method allocation, requiring origin.frames.size ≤ active method id.
+It preserves the original frame prefix while allowing fresh method locals and callback writes.
+BodyRun defines MethodResultOk/MethodRunSpec with typed caller AND method state on values,
+all-fuel safety and MethodEffects. Step, answer, bind/bindSpec and methodReturn are proved.
+These live in Rules/Method so the judgment layer does not import rule proofs.
+
+Mandatory MethodEffectsControls mixes real writes to method and captured caller, then inserts
+a new method local. It proves the distinct reads/slots and full original-caller framing.
+It refutes Framed at the method, CallbackFramed over the whole body and a caller anchor that
+already contains the method. Normalizing intermediate machines avoids repeated reduction;
+new proofs remain under default limits. No runtime/rule/floor change; metrics remain 89/93,
+77 rules, 68 worked, zero owed/exempt. Full quiet gate GREEN (252 agree / 0 disagree);
+metatheory and standard-axiom audit PASS. New modules build in under a second. No live builds.
+
+Next: embed ordinary SemSafeCtxA expressions into MethodRunSpec by restoring caller StateOk
+after an uncaptured method expression (method locals may change); embed checked callbacks
+using CallbackResultOk.methodState. Then compose source body rules, definition/dispatch,
+&b binding and checker/emitter admission. Keep both full output states; do not substitute a
+bare arrow denotation or a hard-coded twice rule. The existing clink 231 twice pilot is the
+execution-path regression. Sorbet accepts mixed method-local retyping and stable captures:
+`first=nil; first=yield(1); second=yield(2); first+second`, with typed &b; CRuby/model print 4/3.
 
 Clink 231 proves the actual 094 body and post-dispatch method entry with checked callbacks.
 StateOk_reframe_block supports an independently typed actual block; its existing scopes

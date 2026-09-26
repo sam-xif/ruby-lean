@@ -2905,3 +2905,9 @@ The actual 094 body and post-dispatch method entry now have all-fuel proofs; boo
 cover arithmetic and captured writes. A generic method-body effect judgment still needs
 to permit assignments to method locals too: CallbackFramed's active-frame equality is for
 the suspended interval, not arbitrary expressions. No checker admission is claimed.
+
+Clink 232 supplies MethodEffects (composition of ordinary and callback effects) and the
+two-frame MethodRunSpec target. Its return theorem uses an origin before method allocation;
+the fresh-method bound ensures method locals are outside the old caller frame prefix.
+MethodEffectsControls proves mixed writes and refutes a later origin containing that method.
+Embedding expression/callback typing and registering the source judgment remain open.

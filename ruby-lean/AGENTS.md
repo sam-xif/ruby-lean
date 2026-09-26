@@ -140,6 +140,10 @@ Clink 231 restores full active-method conformance with exact block typing. The a
 body composes two checked yields and Integer addition; real enterUserMethod entry and boot
 controls cover arithmetic and captured writes. Generic method-body effects, definition/
 source-call checking and &b binding still precede admission. Fragment/floors remain unchanged.
+Clink 232 introduces MethodEffects for mixed method-local/callback writes and proves caller
+framing from before method allocation. BodyRun gives the corresponding two-frame run contract,
+composition and real return. Ordinary/callback embedding into it and source typing remain;
+controls refute using either older effect contract alone or anchoring after allocation.
 
 ## Layout
 
