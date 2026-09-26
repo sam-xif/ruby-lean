@@ -169,7 +169,17 @@ theorem djudge_saved_proc {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env}
     {v : Value} {cl : Closure} (hp : procClosure? m.heap v = some cl)
     (hr : runA fuel (evalFrom m e) = .ans a n rest) :
     procClosure? n.heap v = some cl :=
-  (((djudge_context h) m hm).2 fuel a n rest hr).1.procs v cl hp
+  (((djudge_context h) m hm).2 fuel a n rest hr).1.procs.payload v cl hp
+
+/-- A saved Proc's dispatch class also survives argument/body evaluation. Retaining
+its payload or nominal Proc type alone would not establish this equality. -/
+theorem djudge_saved_proc_dispatch {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env}
+    {e : Ratchet.Expr} {τ : Ty} (h : DJudge Γ e τ Γ' κ I κ' I')
+    {m n : Machine} (hm : StateOk κ Γ I m) {fuel rest : Nat} {a : Answer}
+    {v : Value} {cl : Closure} (hp : procClosure? m.heap v = some cl)
+    (hr : runA fuel (evalFrom m e) = .ans a n rest) :
+    classOf n.heap v = classOf m.heap v :=
+  (((djudge_context h) m hm).2 fuel a n rest hr).1.procs.dispatch v cl hp
 
 /-- Every certified answer preserves prelude-loading mode, including bodies whose
 runtime activation permissions were dropped at captured entry. -/
@@ -280,6 +290,7 @@ theorem validateD_safe_run {p : Ratchet.Expr} {d : Deriv} (h : validateD p d = t
 #print axioms djudge_context
 #print axioms djudge_escape_only_raise
 #print axioms djudge_saved_proc
+#print axioms djudge_saved_proc_dispatch
 #print axioms djudge_phase
 #print axioms djudge_bindings
 #print axioms djudge_owners

@@ -12,7 +12,7 @@ theorem Framed.closureCode {m n : Machine} {code : ClosureCode} {cap selfT : Ty}
       ClosureMatches code cl := by
   rw [denM] at hv
   obtain ⟨cl, hp, hc, _⟩ := hv
-  exact ⟨cl, hp, h.procs v cl hp, hc⟩
+  exact ⟨cl, hp, h.procs.payload v cl hp, hc⟩
 
 /-- Unchanged captured values may still require heap transport for their types.
 Neither equality here follows merely from retaining the Proc payload. -/
@@ -24,7 +24,7 @@ theorem Framed.closureDen {m n : Machine} {code : ClosureCode} {cap selfT : Ty} 
     denM (.clos code cap selfT) n v := by
   rw [denM] at hv ⊢
   obtain ⟨cl, hp, hc, hd, hv⟩ := hv
-  refine ⟨cl, h.procs v cl hp, hc, ?_, ?_⟩
+  refine ⟨cl, h.procs.payload v cl hp, hc, ?_, ?_⟩
   · rw [hcap cl hp]
     exact denSpineFrom_mono (fun _ τ ht hv => h.firstOrder τ ht _ hv) ht hd
   · rcases hv with he | hv
@@ -40,7 +40,7 @@ theorem ProcPres.empty_capture_den {m n : Machine} {code : ClosureCode} {v : Val
     denM (.clos code .ivar0 .never) n v := by
   rw [denM] at hv ⊢
   obtain ⟨cl, hp, hc, _⟩ := hv
-  exact ⟨cl, h v cl hp, hc, by simp [denSpineFrom], Or.inl rfl⟩
+  exact ⟨cl, h.payload v cl hp, hc, by simp [denSpineFrom], Or.inl rfl⟩
 
 #print axioms Framed.closureDen
 #print axioms ProcPres.empty_capture_den

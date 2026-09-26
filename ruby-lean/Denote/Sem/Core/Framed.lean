@@ -126,8 +126,8 @@ frames when the activation has no captured parent, and preserves that guard for 
 Captured activations may still write through their captured chain. Saved activations keep
 their metadata, and frames outside a live capture chain remain unchanged (clink 207).
 
-`procs` retains every existing Proc's complete payload across evaluation, including saved
-receiver code and capture descriptors. It does not freeze the frames they reference. -/
+`procs` retains every existing Proc's complete payload and dispatch class across evaluation,
+including saved receiver code and capture descriptors. It does not freeze captured frames. -/
 structure Framed (m m' : Machine) : Prop where
   stack : m'.stack = m.stack
   cls : ∀ k, (m.heap.classPayload? k).isSome = true → (m'.heap.classPayload? k).isSome = true
@@ -144,7 +144,7 @@ structure Framed (m m' : Machine) : Prop where
       future allocation of a previously absent eigenclass; it pins only existing caches. -/
   cachedEigen : ∀ o, o < m.heap.objs.size → ∀ e, (m.heap.get o).eigen = some e →
     (m'.heap.get o).eigen = some e
-  /-- A receiver saved before argument evaluation retains its actual callable code. -/
+  /-- A receiver saved before argument evaluation retains its code and dispatch class. -/
   procs : ProcPres m.heap m'.heap
   /-- Typed execution does not enter or leave prelude loading. -/
   phase : m'.preludeMode = m.preludeMode

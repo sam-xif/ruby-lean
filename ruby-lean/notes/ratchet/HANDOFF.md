@@ -1,4 +1,4 @@
-# Current resume point (2026-09-26, clink 219)
+# Current resume point (2026-09-26, clink 220)
 
 Latest admission is 087: fragment 82, checker reach 87,
 72 registered rules (40 expressions + 32 companions), 61 worked theorems, no exemptions.
@@ -6,14 +6,28 @@ The prefix remains 17; 018 is correctly rejected. Next frontier: 088-lambda-stab
 `->(x) { x + 1 }.call(2)`. This is an immediate receiver, not a stored local.
 Zero-argument stored lambdas pass the complete pipeline.
 
+Clink 220 strengthens ProcPres with exact dispatch-class retention alongside its payload
+field. All Framed producers discharge both; CurrentProc.framed now carries a saved receiver
+across arbitrary certified arguments. djudge_saved_proc_dispatch exposes it through the
+bridge. activationStable_framed transports first-order/code-only closure types through
+body effects, supplying the preserved-caller half of clink 219's return obligation.
+Next: a flow-sensitive argument-list companion, general receiver evaluation, and required
+parameter call entry/return. Native method readiness still comes from the final StateOk.
+No new callable shape is admitted yet. Future Proc eigenclass creation needs a weaker
+effect-aware dispatch contract; current singleton rules operate on class objects.
+For argument flow, adapt MethodArgs.startArgsKeep using RunWith's result postcondition.
+Its finish callback needs output indices independent of the final argument state: the
+block body can change caller-local types. Thread LocalFacts through every argument;
+ordinary SemAllCtxA erases the origin/ownership facts needed by the final call.
+
 Clink 219 computes closureReturnEnv from preserved caller types under parameter/block-local
 names and projected body types elsewhere. Both parts erase aliases; withoutNames removes
 all shadowed entries before capture ownership is classified. ReturnEnv proves full EnvOk,
 including omitted nil slots; ReturnState attaches it to the actual block continuation.
 ClosureReturnEnvControls combines a hidden nil caller slot, a changed capture, and an alias
 to a disappearing body local, and rejects returning the parameter's type for the caller.
-Next: evaluate general receivers/arguments while retaining exact Proc dispatch and local
-facts, then assemble required-parameter calls. Admission counts remain unchanged.
+Clink 220 supplies saved Proc dispatch retention; general receiver/argument flow and
+required-parameter calls remain next. Admission counts remain unchanged.
 
 Clink 218 adds FramePres.shadows: an initially bound active name protects the value
 of every saved same-named slot. BindingsPres makes it compose; local writes prove it,

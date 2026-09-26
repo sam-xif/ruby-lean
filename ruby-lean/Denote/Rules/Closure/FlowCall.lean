@@ -9,10 +9,12 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
-theorem activationStable_heap {τ : Ty} {m n : Machine} {v : Value}
-    (ht : activationStableB τ = true) (hh : n.heap = m.heap) (hv : denM τ m v) : denM τ n v := by
+theorem activationStable_transport {τ : Ty} {m n : Machine} {v : Value}
+    (ht : activationStableB τ = true)
+    (hfirst : ∀ σ, FirstOrder σ = true → ∀ w, denM σ m w → denM σ n w)
+    (hproc : ProcPres m.heap n.heap) (hv : denM τ m v) : denM τ n v := by
   by_cases hf : FirstOrder τ = true
-  · exact (denM_heap_only hf hh.symm).mp hv
+  · exact hfirst τ hf v hv
   · simp only [activationStableB, Bool.or_eq_true] at ht
     rcases ht with ht | htail
     · exact False.elim (hf ht)
@@ -23,7 +25,16 @@ theorem activationStable_heap {τ : Ty} {m n : Machine} {v : Value}
     all_goals try cases htail
     cases selfT <;> try simp only at htail
     all_goals try cases htail
-    exact ProcPres.empty_capture_den (m := m) (n := n) (by rw [hh]; exact .refl _) hv
+    exact hproc.empty_capture_den hv
+
+theorem activationStable_heap {τ : Ty} {m n : Machine} {v : Value}
+    (ht : activationStableB τ = true) (hh : n.heap = m.heap) (hv : denM τ m v) : denM τ n v :=
+  activationStable_transport ht (fun _ hf _ hv => (denM_heap_only hf hh.symm).mp hv)
+    (by rw [hh]; exact .refl _) hv
+
+theorem activationStable_framed {τ : Ty} {m n : Machine} {v : Value}
+    (ht : activationStableB τ = true) (h : Framed m n) (hv : denM τ m v) : denM τ n v :=
+  activationStable_transport ht h.firstOrder h.procs hv
 
 theorem captureNames_sound {facts : LocalFacts} {Γ : Env} {m : Machine} {names : List String}
     (hf : LocalFactsOk facts m) (hn : facts.captureNames? Γ = some names) : CaptureSlots names Γ m := by
@@ -89,4 +100,5 @@ theorem SemFlow.call {κ : Ctx} {Γ Γb : Env} {I τ cap selfT : Ty}
   exact h.withPost (fun _ n _ => ⟨.unknown n, by intro h; cases h⟩)
 
 #print axioms SemFlow.call
+#print axioms activationStable_framed
 end Ratchet.Denote.Typed

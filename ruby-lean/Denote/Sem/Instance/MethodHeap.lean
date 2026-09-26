@@ -183,7 +183,8 @@ theorem Framed_defineMethod (m : Machine) (cls : ObjId) (name : String) (md : Me
      (fun _ _ => ivarOf_defineMethod m.heap cls name md _)
      (fun _ ht _ hv => (denM_defineMethod ht rfl).mp hv),
    (fun _ _ _ he => by rw [Proof.get_defineMethod_eigen]; exact he),
-   (fun v _ hp => by rw [procClosure?_defineMethod]; exact hp), rfl⟩
+   ⟨(fun v _ hp => by rw [procClosure?_defineMethod]; exact hp),
+     (fun v _ _ => Proof.classOf_defineMethod ..)⟩, rfl⟩
 
 theorem methodOn_eq_go (h : Heap) (k : ObjId) (name : String) :
     Interp.methodOn h k name = lookup.go h name (ancestors h k) := by

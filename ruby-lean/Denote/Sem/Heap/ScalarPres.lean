@@ -146,7 +146,7 @@ theorem Framed.bindIvar_scalar {m : Machine} {o : ObjId} {x : String} {v : Value
     intro k _ y τ ht hw
     exact (hpres τ ht).1 _ _ (hfields (.ref k) y) hw
   · intro k _ e hk; simpa only [hi.eigen] using hk
-  · exact ProcPres.of_payload (fun o _ => hi.payload o)
+  · exact ProcPres.of_payload (fun o _ => hi.payload o) hi.classOf_eq
 
 #print axioms bindIvar_scalar_fields
 #print axioms Framed.bindIvar_scalar

@@ -49,6 +49,12 @@ theorem CurrentProc.ext {m n : Machine} {v : Value} (h : CurrentProc m v) (he : 
 theorem CurrentProc.setLocal {m : Machine} {v : Value} (h : CurrentProc m v)
     (x : String) (w : Value) : CurrentProc (m.setLocal x w) v := h
 
+theorem CurrentProc.framed {m n : Machine} {v : Value} (h : CurrentProc m v)
+    (hf : Framed m n) : CurrentProc n v := by
+  obtain ⟨cl, hp, hc, hk⟩ := h
+  exact ⟨cl, hf.procs.payload v cl hp, by simpa only [hf.stack] using hc,
+    (hf.procs.dispatch v cl hp).trans hk⟩
+
 theorem LocalFactsOk.ext {f : LocalFacts} {m n : Machine}
     (h : LocalFactsOk f m) (he : Ext m n) : LocalFactsOk f n := by
   refine ⟨?_, ?_, ?_⟩
@@ -127,6 +133,7 @@ theorem LocalFactsOk.code {f : LocalFacts} {m : Machine} {x : String}
   exact ⟨cl, hp, hcode, hc, hk⟩
 
 #print axioms LocalFactsOk.write
+#print axioms CurrentProc.framed
 #print axioms LocalFactsOk.copy
 #print axioms LocalFactsOk.store
 #print axioms LocalFactsOk.code

@@ -1,9 +1,10 @@
 import Denote.Sem.Closure.Transport
 import Denote.Sem.Closure.Reify
+import Denote.Sem.Closure.LocalFacts
 import Denote.Sem.Core.Boot
 import Denote.Ty.DenB
 
-/-! Exact descriptor preservation rejects code replacement but permits captured writes.
+/-! Exact Proc preservation rejects code/dispatch replacement but permits captured writes.
 The latter still invalidate incompatible captured-local type claims. -/
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed.ProcPresControls
@@ -16,7 +17,7 @@ theorem changed_code_not_framed (m : Machine) :
     ¬ Framed (reifiedMachine m [] [] (.int 1) true)
       (reifiedMachine m [] [] (.int 2) true) := by
   intro h
-  have hp := h.procs _ _ (reified_payload m [] [] (.int 1) true)
+  have hp := h.procs.payload _ _ (reified_payload m [] [] (.int 1) true)
   rw [reified_payload] at hp
   have hb := congrArg Closure.body (Option.some.inj hp)
   cases hb
@@ -29,6 +30,26 @@ private def capTy : Ty := .clos readX (.ivarCons "x" .int .ivar0) .never
 
 theorem write_preserves_descriptor : ProcPres captured.heap changed.heap :=
   (Framed_setLocal captured "x" .nil).procs
+
+theorem saved_receiver_survives_overwrite (m : Machine) (code : ClosureCode) :
+    CurrentProc
+      ((reifiedMachine m (toRubyParams code.params) code.locals (toRuby code.body) code.lam).setLocal
+        "f" .nil) (.ref m.heap.objs.size) :=
+  (currentProc_reified m code).framed (Framed_setLocal _ "f" .nil)
+
+private def dispatchHeap (e : Option ObjId) : Heap :=
+  ⟨#[{ klass := Boot.procId, eigen := e, payload := .proc default }]⟩
+
+theorem changed_dispatch_keeps_payload (o : ObjId) :
+    ((dispatchHeap (some 0)).get o).payload = ((dispatchHeap none).get o).payload := by
+  cases o with
+  | zero => rfl
+  | succ o => simp [dispatchHeap, Heap.get, Array.getD]
+
+theorem changed_dispatch_rejected : ¬ ProcPres (dispatchHeap none) (dispatchHeap (some 0)) := by
+  intro h
+  have he : (0 : Nat) = Boot.procId := h.dispatch (.ref 0) default rfl
+  exact (by decide : (0 : Nat) ≠ Boot.procId) he
 
 #guard closB capTy captured (.ref bootMachine.heap.objs.size)
 #guard !closB capTy changed (.ref bootMachine.heap.objs.size)
@@ -44,4 +65,6 @@ theorem write_preserves_descriptor : ProcPres captured.heap changed.heap :=
 
 #print axioms changed_code_not_framed
 #print axioms write_preserves_descriptor
+#print axioms saved_receiver_survives_overwrite
+#print axioms changed_dispatch_rejected
 end Ratchet.Denote.Typed.ProcPresControls

@@ -140,7 +140,7 @@ theorem Framed.of_initGrow {m n : Machine} (hg : InitGrow m.heap n.heap)
     fun _ ht _ hv => hg.denM ht hv, hf,
     .of_unchanged hg.size (fun o ho => by funext x; simp only [ivarOf, hg.get o ho])
       (fun _ ht _ hv => hg.denM ht hv), (fun o ho e he => by rw [hg.get o ho]; exact he),
-    .of_payload (fun o ho => congrArg Object.payload (hg.get o ho)), hp⟩
+    .of_get hg.get, hp⟩
 
 #print axioms InitGrow.bindIvar
 #print axioms InitGrow.denM

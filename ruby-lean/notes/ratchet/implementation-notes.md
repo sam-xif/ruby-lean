@@ -11738,3 +11738,24 @@ both halves of what constrains them now have a name.
   the caller's nil slot is refuted. No runtime, judgment or emitter change; counts 82/87.
 - Full quiet gate GREEN, including CRuby agreement; metatheory and standard-axiom audit
   pass. The new controls built in four seconds; no proof approached five minutes.
+
+## Clink 220 (2026-09-26) — retain saved Proc dispatch across argument evaluation
+
+- ProcPres now pairs complete descriptor retention with exact classOf equality for
+  existing Procs. Payload equality alone permits changing an eigenclass, and nominal
+  type retention does not establish the exact native dispatch required by CurrentProc.
+- Allocation and initializer growth retain old objects; fresh class/module/subclass
+  construction retains nonclass objects; scalar ivar writes and method installation
+  retain classOf explicitly. These discharge the stronger existing Framed field, which
+  composes through every certified rule. No new invariant is assumed at call sites.
+- CurrentProc.framed transports a saved receiver across arbitrary certified arguments,
+  independently of whether its old local binding is overwritten. The bridge exposes
+  djudge_saved_proc_dispatch; final StateOk still supplies native method-table readiness.
+  activationStable_framed transports the caller's first-order/code-only closure types
+  through body effects for the shadowed-name return case from clink 219.
+- A control preserves every payload while changing the Proc's dispatch class; ProcPres
+  rejects it. Captured-local mutation remains permitted. Future Proc eigenclass creation
+  will need an effect-aware dispatch contract; existing singleton rules use class objects.
+  No runtime, judgment or emitter change, and no admission-count change (82/87).
+- Full quiet gate GREEN, including CRuby agreement; metatheory and standard-axiom audit
+  pass. Existing heavy rules rebuilt in under a minute; no proof approached five minutes.
