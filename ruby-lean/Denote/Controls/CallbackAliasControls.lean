@@ -108,11 +108,11 @@ private def allocated (m : Machine) : Machine := reifiedMachine m (toRubyParams 
   cb.code.locals (toRuby cb.code.body) cb.code.lam
 private def method (m : Machine) (e : Ratchet.Expr) : MethodDef :=
   { params := [.block (some "b")], body := toRuby e, owner := m.currentFrame.defmod, cref := m.currentFrame.cref }
-private def callStep (m : Machine) (e : Ratchet.Expr) : StepResult :=
+def callStep (m : Machine) (e : Ratchet.Expr) : StepResult :=
   let entry := allocated m
   Interp.enterUserMethod entry entry.currentFrame.self "run" (method entry e) [] (some (.ref m.heap.objs.size))
 
-private theorem call_boot {e : Ratchet.Expr} {Γm : Env} {facts : CallbackFacts}
+theorem call_boot {e : Ratchet.Expr} {Γm : Env} {facts : CallbackFacts}
     (he : SemMethodFlow cb fr (binding cb.code) ⟨["b"]⟩ e .int false Γm facts)
     (hb : bootOkB = true) (initial : Int) :
     let m := bootMachine.setLocal "total" (.int initial)

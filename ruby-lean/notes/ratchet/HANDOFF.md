@@ -1,4 +1,31 @@
-# Current resume point (2026-09-26, clink 241 / model L274)
+# Current resume point (2026-09-26, clink 242 / model L274)
+
+checkBoundCallbackBody now checks lone named-&b definitions without actual callback code,
+captures or call values. MethodLocalTy keeps fixed first-order types and an opaque callback
+type; instantiation retains the exact code-only closure type. Capture invalidation is proved
+code-independent and matches envAfter. Certificates quantify over every ClosureCode.
+
+Staged DMethodFlow/Seq interpret through SemMethodFlow; embedded DMethod crosses its existing
+registered bridge. The executable checker supports Integer/nil/local leaves, assignment,
+flat sequence and one-argument call/[] from an identity-proved receiver. It checks exact
+argument types, not subtyping. Primitive/yield branches and ordinary method parameters are
+not implemented here. The old implicit-block checker is unchanged.
+
+Mandatory controls reject forged hints, missing/overwritten receivers and wrong signatures;
+five checker-produced bodies feed real boot calls with captured writes for all initial
+Integers. Sorbet 0.6.13405 accepts an uncalled Integer-domain body and rejects its String-domain
+counterpart (7002). The checker has no actual callback with which to specialize either body.
+No runtime defect or model change was needed. validateD still declines explicit &b definitions.
+
+Next: whole-source definition/lookup/literal-block dispatch from CheckedBoundCallbackBody,
+then mutual registry/cache/emitter integration and 095 admission. Preserve full declared-domain
+checking and whole-corpus coverage of each newly registered rule. Counts/floors are unchanged.
+
+Full quiet gate GREEN: fragment 91/260, checker reach 94, 88 rules, 70 worked,
+zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. Logs:
+/private/tmp/ratchet-boundbody-{gate,audit}.log. New modules build under a second; no live builds.
+
+Previous foundation (clink 241):
 
 SemMethodFlow now threads CallbackFacts (method locals equal to the actual supplied block)
 and a result-identity flag separately from Env. Scalar/variable leaves, assignment, flat

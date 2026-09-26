@@ -12324,3 +12324,31 @@ both halves of what constrains them now have a name.
 - Full quiet gate GREEN: unchanged fragment 91/260, checker reach 94, 88 rules, 70 worked,
   zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
   build under a second; no resource limit was raised.
+
+## Clink 242 (2026-09-26) — code-polymorphic explicit-block body checking
+
+- Staged DMethodFlow/Seq interpret alias-aware syntax through the proved SemMethodFlow rules.
+  Embedded DMethod still crosses its registered bridge. These families are not yet registered
+  source-admission rules; the mandatory controls explicitly retain validateD's rejection.
+- MethodLocalTy separates fixed first-order types from the opaque supplied callback code.
+  Successful checks return derivations for every code, never a proof specialized to a chosen
+  callback body. Assignment exactly instantiates to envAfter. Guards computed at default code
+  are justified by code-independence lemmas: first-order components cannot equal a closure,
+  and the opaque code-only closure has no captured environment to invalidate.
+- checkBoundCallbackBody checks the complete lone named-&b definition against a proposed
+  signature before any call. It supports Integer/nil/local leaves, assignment, flat sequence
+  and one-argument call/[] from arbitrary identity-proved receiver expressions. callbackCall
+  hints supply child derivations only. Exact argument types are required; nilable subtyping,
+  primitive/yield branches and ordinary method parameters remain unsupported in this checker.
+- Controls cover copied/restored aliases, receiver sequences, saved receivers, overwritten
+  bindings, forged children/names/arity and wrong signatures. Five checker-produced bodies
+  instantiate real boot calls with stable captured writes for every initial Integer. No
+  callback code or capture state is supplied during definition checking.
+- Sorbet 0.6.13405 accepts an uncalled b.call(5) definition at Integer→Integer and rejects
+  its String-domain counterpart (7002). Existing runtime probes from 240–241 still supply
+  the execution evidence; no model change or new runtime defect is claimed.
+- Whole-source definition/dispatch, mutual registry, cache and emitter integration remain
+  before 095 admission. Fragment counts, registered rules and floors are unchanged.
+- Full quiet gate GREEN: fragment 91/260, checker reach 94, 88 rules, 70 worked,
+  zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
+  build under a second with no resource-limit changes.

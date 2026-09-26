@@ -2887,8 +2887,10 @@ code-only type. Arguments may overwrite the source local or invoke the callback 
 Clink 241 supplies semantic binding tracking through assignment, flat sequence and calls
 from general receiver expressions. Copies survive overwriting the original; callback return
 preserves active-method aliases. Uniform body and real boot-entry proofs cover repeated
-captured writes. Syntactic checking/definition/source admission remain; measured
-Sorbet/CRuby/model behavior agrees and exposes no new runtime defect.
+captured writes. Clink 242 adds executable whole-definition checking with symbolic callback
+types and all-code DMethodFlow certificates. Actual callbacks instantiate these proofs only
+at entry. Registry/cache/emitter and whole-source admission remain; measured Sorbet/CRuby/model
+behavior agrees and exposes no new runtime defect.
 `def twice; saved = 7; result = yield(1) + yield(2); p saved; result; end;
 total = 0; p twice { |x| total = total + x }; p total` prints 7, 4, 3 under both
 CRuby 4.0.5 and the model. The runtime already handles this captured write correctly.

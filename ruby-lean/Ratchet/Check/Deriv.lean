@@ -77,6 +77,8 @@ inductive Deriv where
   | callBlock (name : String) (body : Deriv) (ret : Ty)
   /-- Yield arguments are checked against the surrounding method's block signature. -/
   | yieldArgs (args : List Deriv)
+  /-- Call the supplied method callback; its checked declaration supplies the signature. -/
+  | callbackCall (recv : Deriv) (args : List Deriv)
   /-- An implicit-self call to a method declared by a `defDecl`. -/
   | callSig (name : String) (args : List Deriv) (ret : Ty)
   /-- Explicit initializer super; parent code and annotations come from retained sources. -/
@@ -160,6 +162,7 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
     return .defBlock (← name "name") ps (← jList j "blockArgs" Ty.ofJson?)
       (← ty "blockRet") (← ty "ret") (← kid "body")
   | "yield" => return .yieldArgs (← kids "args")
+  | "callbackCall" => return .callbackCall (← kid "recv") (← kids "args")
   | "callSig" => return .callSig (← name "name") (← kids "args") (← ty "ret")
   | "callBlock" => return .callBlock (← name "name") (← kid "body") (← ty "ret")
   | "superInit" => return .superInit (← kids "args")

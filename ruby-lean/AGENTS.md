@@ -188,6 +188,11 @@ flat sequence and general receiver-call rules. Callback return retains aliases, 
 writes remove only the overwritten alias. Uniform body/boot controls cover copy, restore,
 receiver sequences and argument writes with repeated captured writes. Syntactic method
 checking and source admission remain; no new rule, floor or runtime change is claimed.
+Clink 242 checks lone-&b definitions independently of actual callbacks. Symbolic local types
+retain the opaque block code; every successful certificate proves its body for all codes.
+Staged DMethodFlow interprets through the proved alias semantics. Mandatory controls cover
+forged hints, declared domains and real captured-write boot calls. Registry/cache/emitter
+and whole-source integration remain before 095 admission; counts and floors are unchanged.
 
 ## Layout
 
