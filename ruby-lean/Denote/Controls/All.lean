@@ -68,6 +68,7 @@ import Denote.Controls.MethodStateControls
 import Denote.Controls.TypedYieldControls
 import Denote.Controls.YieldMethodControls
 import Denote.Controls.MethodEffectsControls
+import Denote.Controls.MethodBodyControls
 import Denote.Controls.OwnNamesControls
 import Denote.Controls.PointClassControls
 import Denote.Controls.PointConstructorControls

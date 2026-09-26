@@ -2880,7 +2880,7 @@ registers the rule and admits map blocks through validateD.
 
 ## F55 — Ordinary-method isolation cannot describe a captured write through yield
 
-**Return contract proved in clink 230; method-body judgment/admission remain open.**
+**Return/embedding contracts proved through clink 233; source judgment/admission remain open.**
 `def twice; saved = 7; result = yield(1) + yield(2); p saved; result; end;
 total = 0; p twice { |x| total = total + x }; p total` prints 7, 4, 3 under both
 CRuby 4.0.5 and the model. The runtime already handles this captured write correctly.
@@ -2911,3 +2911,8 @@ two-frame MethodRunSpec target. Its return theorem uses an origin before method 
 the fresh-method bound ensures method locals are outside the old caller frame prefix.
 MethodEffectsControls proves mixed writes and refutes a later origin containing that method.
 Embedding expression/callback typing and registering the source judgment remain open.
+
+Clink 233 supplies both embeddings with full caller/method states, source yield and sequence
+composition. A checked captured write followed by method-local insertion/retyping returns
+through the real method marker. No runtime defect blocks this step; general body typing,
+definition checking/dispatch and &b binding remain before source admission.

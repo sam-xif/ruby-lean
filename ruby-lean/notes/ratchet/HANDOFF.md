@@ -1,4 +1,28 @@
-# Current resume point (2026-09-26, clink 232 / model L274)
+# Current resume point (2026-09-26, clink 233 / model L274)
+
+Clink 233 embeds ordinary SemSafeCtxA and checked source yields into MethodRunSpec.
+BodyOrdinary derives caller StateOk after ordinary method expressions using the current
+caller environment and a framing origin before method allocation. MainReturn's new internal
+atStack_frame helper accepts the caller's FrameOk independently of saved scope metadata;
+the old return interfaces are preserved. CallbackResultOk.methodResult retains both states.
+BodyYield proves required-callback execution and source yield with an Integer argument.
+RunSpec.bindMethod and MethodRunSpec.seq handle actual continuations and escaping raises.
+
+Mandatory MethodBodyControls proves a checked captured Integer write followed by insertion
+and nil-to-Integer retyping of a same-named method local, then the real method return.
+Sorbet 0.6.13405 accepts this typed &b probe; CRuby/model agree on return 7 / caller total 1.
+No runtime/rule/floor changes. New modules build in about one second with standard axioms.
+Full quiet gate GREEN: fragment 89, checker reach 93, 77 rules, 68 worked proofs, zero
+owed/exempt, 252 agree / 0 disagree. Metatheory and axiom audit PASS. No live builds.
+
+Next: a general source method-body judgment using these embeddings; assignment around yield,
+argument/send composition, then definition/dispatch, &b binding and checker/emitter admission.
+Carry the original caller anchor through composition. For repeated callbacks after method
+locals change, derive CallbackCaller/CallbackMethodScope preservation across MethodEffects
+(including physical caller slot domains); don't reuse CallbackFramed for the entire body.
+Keep both full output states and actual checked callback safety. No hard-coded twice rule.
+
+Previous foundation (clink 232):
 
 Clink 232 establishes the general effect/run target for methods with callbacks. MethodEffects
 composes ordinary Framed and CallbackFramed. MethodEffects.project restores ordinary caller
@@ -16,12 +40,8 @@ new proofs remain under default limits. No runtime/rule/floor change; metrics re
 77 rules, 68 worked, zero owed/exempt. Full quiet gate GREEN (252 agree / 0 disagree);
 metatheory and standard-axiom audit PASS. New modules build in under a second. No live builds.
 
-Next: embed ordinary SemSafeCtxA expressions into MethodRunSpec by restoring caller StateOk
-after an uncaptured method expression (method locals may change); embed checked callbacks
-using CallbackResultOk.methodState. Then compose source body rules, definition/dispatch,
-&b binding and checker/emitter admission. Keep both full output states; do not substitute a
-bare arrow denotation or a hard-coded twice rule. The existing clink 231 twice pilot is the
-execution-path regression. Sorbet accepts mixed method-local retyping and stable captures:
+The clink 231 twice pilot is the execution-path regression. Sorbet accepts mixed
+method-local retyping and stable captures:
 `first=nil; first=yield(1); second=yield(2); first+second`, with typed &b; CRuby/model print 4/3.
 
 Clink 231 proves the actual 094 body and post-dispatch method entry with checked callbacks.

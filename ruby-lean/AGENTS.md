@@ -144,6 +144,10 @@ Clink 232 introduces MethodEffects for mixed method-local/callback writes and pr
 framing from before method allocation. BodyRun gives the corresponding two-frame run contract,
 composition and real return. Ordinary/callback embedding into it and source typing remain;
 controls refute using either older effect contract alone or anchoring after allocation.
+Clink 233 embeds ordinary expressions and checked yields into that target with both full
+output states. Source sequence composition and a mixed captured-write/local-retyping control
+are proved through the real method return. General source-body checking, assignment around
+yield, argument/send composition and definition/&b admission remain; floors are unchanged.
 
 ## Layout
 

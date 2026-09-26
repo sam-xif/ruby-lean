@@ -11,21 +11,22 @@ open RubyCore Ratchet Ratchet.Denote
 
 /-- Restore a caller at an explicit activation stack. The body heap/world are
 retained; metadata, framing and the complete caller environment are proved separately. -/
-theorem restore_main_state_atStack {κ κb : Ctx} {Γ Γb Γout : Env} {I Ib : Ty} {m n : Machine} {s : List FrameId}
+theorem restore_main_state_atStack_frame {κ κb : Ctx} {Γ Γb Γout : Env} {I Ib : Ty} {m n : Machine} {s : List FrameId}
     (hm : StateOk κ Γ I m) (ht : ReframeFO (returnScopeCtx κ κb) I) (ha : κ.asms = [])
     (hr : κ.scope.runtimeMain = true) (hw : κb.pos.mainWorld = true)
     (hcl : κ.scope.runtimeClass = none)
     (hk : ∀ x, constGet? κb x = constGet? (returnScopeCtx κ κb) x)
     (hp : Framed m ({ n with stack := s } : Machine))
-    (hpop : savedFrame ({ n with stack := s } : Machine).currentFrame = savedFrame m.currentFrame)
+    (hpop : frameScope ({ n with stack := s } : Machine).currentFrame = frameScope m.currentFrame)
+    (hf : FrameOk κ.frame ({ n with stack := s } : Machine))
     (he : EnvOk Γout ({ n with stack := s } : Machine)) (hphase : n.preludeMode = false)
     (hn : StateOk κb Γb Ib n) : StateOk (returnScopeCtx κ κb) Γout I ({ n with stack := s } : Machine) := by
-  have hself := congrArg RubyCore.Frame.self hpop
-  have hblock := congrArg RubyCore.Frame.blk hpop
-  have howner := congrArg RubyCore.Frame.defmod hpop
-  have hcref := congrArg RubyCore.Frame.cref hpop
-  have hcap := congrArg RubyCore.Frame.captured hpop
-  simp only [savedFrame] at hself hblock howner hcref hcap
+  have hself := congrArg FrameScope.self hpop
+  have hblock := congrArg FrameScope.blk hpop
+  have howner := congrArg FrameScope.defmod hpop
+  have hcref := congrArg FrameScope.cref hpop
+  have hcap := congrArg FrameScope.captured hpop
+  simp only [frameScope] at hself hblock howner hcref hcap
   have old := hm.runtime hr
   have site : MainSite κb n.heap := hn.mainSite hw
   have ready : MainReady ({ n with stack := s } : Machine) :=
@@ -79,7 +80,7 @@ theorem restore_main_state_atStack {κ κb : Ctx} {Γ Γb Γout : Env} {I Ib : T
     rootInit := hn.rootInit
     defs := hn.defs
     asms := by change AsmsOk κ.asms _; simp [AsmsOk, ha]
-    frame := ?_
+    frame := hf
     closures := trivial
     blockTy := ?_
     selfTy := ?_
@@ -99,7 +100,6 @@ theorem restore_main_state_atStack {κ κb : Ctx} {Γ Γb Γout : Env} {I Ib : T
     baseChains := hn.baseChains
     nilQuery := hn.nilQuery
     selfLive := fun o ho => Nat.lt_of_lt_of_le (hm.selfLive o (by rwa [hself] at ho)) hp.fields.size }
-  · exact hp.frameOk_saved hm.frame hpop
   · change BlockTyOk κ.blockTy ({ n with stack := s } : Machine)
     cases hb : κ.blockTy with
     | none => simpa only [BlockTyOk, hb, hblock] using hm.blockTy
@@ -123,7 +123,20 @@ theorem restore_main_state_atStack {κ κb : Ctx} {Γ Γb Γout : Env} {I Ib : T
     · subst k
       exact site.names name hb owner md (by rwa [ready.self] at hl)
     · exact hn.nameFree name hb k (List.mem_cons_of_mem _ he) owner md hl
-
+/-- Existing returns recover the frame predicate from saved metadata. A method-body
+expression can instead provide the current caller's predicate independently of its
+older heap/framing anchor, whose environment may predate captured writes. -/
+theorem restore_main_state_atStack {κ κb : Ctx} {Γ Γb Γout : Env} {I Ib : Ty} {m n : Machine} {s : List FrameId}
+    (hm : StateOk κ Γ I m) (ht : ReframeFO (returnScopeCtx κ κb) I) (ha : κ.asms = [])
+    (hr : κ.scope.runtimeMain = true) (hw : κb.pos.mainWorld = true)
+    (hcl : κ.scope.runtimeClass = none)
+    (hk : ∀ x, constGet? κb x = constGet? (returnScopeCtx κ κb) x)
+    (hp : Framed m ({ n with stack := s } : Machine))
+    (hpop : savedFrame ({ n with stack := s } : Machine).currentFrame = savedFrame m.currentFrame)
+    (he : EnvOk Γout ({ n with stack := s } : Machine)) (hphase : n.preludeMode = false)
+    (hn : StateOk κb Γb Ib n) : StateOk (returnScopeCtx κ κb) Γout I ({ n with stack := s } : Machine) :=
+  restore_main_state_atStack_frame hm ht ha hr hw hcl hk hp
+    (by have hs := congrArg frameScope hpop; exact hs) (hp.frameOk_saved hm.frame hpop) he hphase hn
 
 theorem restore_main_state_of_metadata {κ κb : Ctx} {Γ Γb Γout : Env} {I Ib : Ty} {m n : Machine}
     (hm : StateOk κ Γ I m) (ht : ReframeFO (returnScopeCtx κ κb) I) (ha : κ.asms = [])

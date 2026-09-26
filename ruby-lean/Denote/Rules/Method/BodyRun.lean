@@ -74,6 +74,26 @@ theorem MethodRunSpec.bind {origin m : Machine} {Γc Γm Γc' Γm' : Env}
       rw [hs] at hr
       exact (hk a₁ n₁ (h.2 fuel a₁ n₁ r₁ hs)).2 r₁ a n rest hr
 
+/-- A checked callback has the ordinary body contract; its real return marker converts
+that result into the enclosing method's two-frame contract. -/
+theorem RunSpec.bindMethod {origin m : Machine} {Γ Γc Γm : Env} {σ τ I Ic Im : Ty}
+    {κ κc κm : Ctx} {e : Ratchet.Expr}
+    (h : RunSpec m (evalFrom m e) Γ σ κ I)
+    {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
+    (hk : ∀ a n, ResultOk m Γ σ a n κ I →
+      MethodRunSpec origin (deliverA a n K) Γc Γm τ κc κm Ic Im) :
+    MethodRunSpec origin (pushK K (evalFrom m e)) Γc Γm τ κc κm Ic Im := by
+  constructor
+  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1)
+  · intro fuel a n rest hr
+    rw [runA_pushK _ hK] at hr
+    cases hs : runA fuel (evalFrom m e) with
+    | halt hh => rw [hs] at hr; cases hh <;> cases hr
+    | oof _ => rw [hs] at hr; cases hr
+    | ans a₁ n₁ r₁ =>
+      rw [hs] at hr
+      exact (hk a₁ n₁ (h.2 fuel a₁ n₁ r₁ hs)).2 r₁ a n rest hr
+
 /-- Cross back into the ordinary expression contract after leaving the method. -/
 theorem MethodRunSpec.bindSpec {origin m : Machine} {Γc Γm Γ : Env}
     {σ τ Ic Im I : Ty} {κc κm κ : Ctx} {e : Ratchet.Expr}
@@ -92,6 +112,40 @@ theorem MethodRunSpec.bindSpec {origin m : Machine} {Γc Γm Γ : Env}
     | ans a₁ n₁ r₁ =>
       rw [hs] at hr
       exact (hk a₁ n₁ (h.2 fuel a₁ n₁ r₁ hs)).2 r₁ a n rest hr
+
+/-- Source sequence composition retains the first expression's two-frame effects.
+The second expression starts from its proved output states and may retype method locals. -/
+theorem MethodRunSpec.seq {m : Machine} {Γc Γm Γc' Γm' : Env}
+    {σ τ Ic Im Ic' Im' : Ty} {κc κm κc' κm' : Ctx} {e e' : Ratchet.Expr}
+    (h : MethodRunSpec m (evalFrom m e) Γc Γm σ κc κm Ic Im)
+    (hk : ∀ n v, MethodResultOk m Γc Γm σ κc κm Ic Im (.val v) n →
+      MethodRunSpec n (evalFrom n e') Γc' Γm' τ κc' κm' Ic' Im') :
+    MethodRunSpec m (evalFrom m (.seq [e, e'])) Γc' Γm' τ κc' κm' Ic' Im' := by
+  have hK (es : List RubyCore.Expr) : RubyCore.Proof.CatchFree [.seqK es] := by
+    intro k hk tag
+    simp only [List.mem_singleton] at hk
+    subst k; simp
+  apply MethodRunSpec.step (by rfl) (show Interp.stepFn _ = .next
+    (pushK [.seqK [toRuby e']] (evalFrom m e)) from rfl)
+  apply h.bind (hK _)
+  intro a n hr
+  cases a with
+  | esc j =>
+    obtain ⟨exc, rfl, _⟩ := hr.2.1.only_raise
+    apply MethodRunSpec.step (next := deliverA (.esc (.raiseJ exc)) n []) (by rfl) (by rfl)
+    apply MethodRunSpec.answer (a := .esc (.raiseJ exc)) (n := n)
+    exact ⟨hr.1, hr.2.1, fun _ hv => by cases hv⟩
+  | val v =>
+    apply MethodRunSpec.step (by rfl) (show Interp.stepFn _ = .next
+      (pushK [.seqK []] (evalFrom n e')) from rfl)
+    apply (hk n v hr).bind (hK [])
+    intro a out hout
+    have hret := MethodRunSpec.answer ⟨hr.1.trans hout.1, hout.2⟩
+    cases a with
+    | val _ => exact MethodRunSpec.step (by rfl) (show Interp.stepFn _ = .next _ from rfl) hret
+    | esc j =>
+      obtain ⟨exc, rfl, _⟩ := hout.2.1.only_raise
+      exact MethodRunSpec.step (by rfl) (show Interp.stepFn _ = .next _ from rfl) hret
 
 /-- A mixed-effect method returns the usual caller contract through the real marker.
 Only non-type-error raises may escape a currently checked body, just as for other rules. -/
@@ -121,6 +175,8 @@ theorem MethodRunSpec.methodReturn {origin m : Machine} {Γc Γm : Env} {τ Ic I
     cases j <;> exact hn.2.1
 
 #print axioms MethodRunSpec.bind
+#print axioms RunSpec.bindMethod
+#print axioms MethodRunSpec.seq
 #print axioms MethodRunSpec.answer
 #print axioms MethodRunSpec.methodReturn
 end Ratchet.Denote.Typed

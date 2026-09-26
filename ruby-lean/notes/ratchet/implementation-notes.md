@@ -12093,3 +12093,25 @@ both halves of what constrains them now have a name.
 - Full quiet gate GREEN: 89 fragment, checker reach 93, 77 rules, 68 worked, zero owed/exempt,
   252 agree / 0 disagree. Metatheory and standard-axiom audit pass. Final new modules build
   in under a second; no proof exceeds five minutes and no resource limit or axiom is added.
+
+## Clink 233 (2026-09-26) — embed expressions and yields into the method contract
+
+- BodyOrdinary restores the caller after an uncaptured method expression. Its current
+  environment supplies stable reads after earlier captured writes; the pre-allocation
+  caller anchors heap/framing transport. MainReturn now separates FrameOk from scope
+  metadata internally, preserving every existing return interface and full StateOk.
+  A false Framed relation anchored after method allocation is never assumed.
+- SemSafeCtxA.methodOrdinary reuses existing expression proofs with changing method-local
+  environments. CallbackResultOk.methodResult supplies the other embedding, restoring both
+  full states. BodyYield carries a checked required-parameter callback through the actual
+  block marker; method_yield_int proves its source entry. RunSpec.bindMethod and
+  MethodRunSpec.seq compose these effects, including non-type-error raises.
+- Mandatory MethodBodyControls composes `yield(1); total=nil; total=7` with a checked block
+  updating the caller's total. Both totals retain independent environments; the real method
+  return restores the caller contract for all fuel. Sorbet 0.6.13405 accepts the typed &b
+  probe; CRuby 4.0.5/model agree on return 7 and caller total 1. No runtime defect was exposed.
+- This is semantic composition, not registered source admission. Assignment around yield,
+  general argument/send rules, definition/dispatch and &b binding still precede admission.
+- Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
+  zero owed/exempt, 252 agree / 0 disagree. Metatheory and standard-axiom audit PASS.
+  New modules build in about one second; no proof or resource-limit exceptions.
