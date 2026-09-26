@@ -11378,3 +11378,22 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
   pass. Entry proofs build in under a second and controls in about 1s; no individual proof
   approached five minutes.
+
+## Clink 203 (2026-09-25) — certified escape contract and block continuation
+
+- EscOk permits only non-type-error raises. This strengthens every semantic rule's
+  conclusion; no checker rule or guard changes. All registered clinks rebuild, and
+  djudge_escape_only_raise proves the property for arbitrary contexts and checked bodies.
+  Method/constructor/super return proofs eliminate the newly impossible branches.
+- §F50's counterexample remains under explicit LegacyEscOk/LegacyResultOk definitions.
+  The current ResultOk rejects it; controls also reject break/redo/retry/return/throw.
+  Future jump rules need typed interception and state contracts before admission.
+- Rules/Closure/Return proves real blkFrameK value/exception handling and body composition.
+  First-order results survive the unchanged-heap stack pop. Caller framing on every answer
+  and full caller StateOk on values remain explicit obligations: captured writes cannot
+  borrow ordinary-method isolation. This resolves §F50, not §F49's full call boundary.
+- Counts stay fragment 81 / checker reach 86, 61 rules, 60 worked theorems, 0 owed/exempt.
+  Next: discharge captured activation/caller conformance for closureFrame_runSpec.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. The block-return proof builds in 0.6s and the bridge in 1.2s; no individual proof
+  approached five minutes.

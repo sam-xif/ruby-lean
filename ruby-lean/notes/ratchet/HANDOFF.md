@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 202)
+# Current resume point (2026-09-25, clink 203)
 
 Latest admission remains 084: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
@@ -28,14 +28,17 @@ parent chain explicit; reification extends that chain and frame pushes preserve 
 The body lookup consumes the extra frame's lookup fuel, retaining the old capture budget.
 Controls exercise shadowing, argument order, arity, metadata and scope overrides.
 
-Next: strengthen the body answer contract before composing the block continuation (§F50).
-EscOk currently permits next/break/redo/retry. next_result satisfies ResultOk at any type,
-but next_returns_nil proves the real block continuation returns nil, violating Integer.
-No DJudge jump rule exists; excluding these escapes throughout the existing contract is
-one candidate, to be checked against every clink. Merely assuming StateOk on normal body
-values cannot fix intercepted escapes. Caller restoration still needs captured-write facts.
+Clink 203 strengthens EscOk to allow only non-type-error raises. All registered clinks
+and the bridge prove the stronger contract; djudge_escape_only_raise exposes it for arbitrary
+contexts and checked bodies. §F50's old witness remains as legacy_next_result; the actual
+ResultOk rejects next and all other untyped jumps. Method/constructor/super continuations
+now eliminate those impossible branches. Rules/Closure/Return proves the real blkFrameK
+value/escape steps and composes a body RunSpec. Its caller framing (all answers), caller
+StateOk (values), and first-order result premises are explicit; it does not assume isolation.
 
-Then prove callClosure's captured activation/body/return contract. Capture frame liveness,
+Next: full captured activation/caller conformance, discharging those restoration premises.
+StateOk_reframe requires equal captured fields, so it cannot directly enter a new captured
+frame; the body's runtime scope flags also need explicit transport. Capture frame liveness,
 lexical scope and return-home facts need explicit obligations; code identity alone does not
 establish them. EnvOk.capture is one-way: its lower-bound spine does not supply
 EnvOk's absence clause for unmentioned names. Framed.firstOrder excludes clos, and FieldsPres carries only first-order
@@ -136,7 +139,7 @@ calls consume exact context/code artifacts. Inherited singletons remain open, an
 self.new still has only its semantic proof. Nominal conversion only forgets information;
 it cannot recover exact receivers or initialized fields from a nominal annotation.
 
-See clinks 177–202 and AGENTS.md. Older text below is historical.
+See clinks 177–203 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 

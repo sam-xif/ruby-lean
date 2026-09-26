@@ -34,16 +34,9 @@ theorem super_initializer_continue {anchor : Heap} {κ κb : Ctx} {Γ Γb : Env}
         Γ τ (returnScopeCtx κ κb) Ib :=
       InitRunSpec.answer ⟨hp, he, fun _ hv => by cases hv⟩
     cases j with
-    | retJ | throwJ => cases he
+    | retJ | throwJ | brkJ | nxtJ | redoJ | retryJ => cases he
     | raiseJ =>
       exact InitRunSpec.step (by rfl) (show Interp.stepFn _ = .next _ from rfl) hr
-    | brkJ | nxtJ | redoJ | retryJ =>
-      by_cases hc : (n.frames[m.frames.size]?.getD default).kind = .classBody
-      · apply InitRunSpec.step (by rfl) (show Interp.stepFn _ = .next _ from ?_) hr
-        simp [Interp.stepFn, deliverA, Answer.ctl, Interp.unwind, hc,
-          Interp.withCtl, popMethodFrame]
-      · apply InitRunSpec.unsupported (msg := "break/next/retry/redo crossing a method boundary") (by rfl)
-        simp [Interp.stepFn, deliverA, Answer.ctl, Interp.unwind, hc]
 
 /-- Full conformance and a checked super route select the parent's annotated body.
 Neither physical lookup nor a call-site-specialized body proof is an input. -/

@@ -64,25 +64,18 @@ open RubyCore Ratchet Ratchet.Denote
 
 /-! ## §1 The judgment -/
 
-/-- **What it means for an escape to be safe.** The `raiseJ` arm is exact (see the header).
-
-`brkJ`/`nxtJ`/`redoJ`/`retryJ` are `True` because `unwind []` answers `.stuck` for them, and
-`.stuck` is not type-stuck — a `break` outside a loop is a `LocalJumpError` *in CRuby*, but in
-this model it ends the run without an exception, and the difftest agreement gate is what makes
-that a fact about the model rather than an assumption.
-
-`retJ`/`throwJ` are **`False`**, which is the *strong* choice rather than a weakening: at an
-empty continuation both step to a `raiseErr` whose class is `LocalJumpError` /
-`UncaughtThrowError`, and whether those are in the type-error family is a question about the
-heap's class table that `StateOk` does not answer (`found-issues.md` §F27's residue). Making
-the arm `False` means a rule that could produce one has to prove it cannot. No `DJudge` rule
-can — the judgment has no `ret`, `throw`, `brk` or `next` rule — so the arm is discharged by
-unreachability here, and the day a rule needs it, the class-table fact is what it owes. -/
+/-- Escapes produced by the current fragment are non-type-error exceptions. All other
+jumps are excluded: DJudge has no jump rule, and each semantic rule proves this stronger
+contract. Safety at an empty continuation alone is insufficient: blkFrameK turns next/break
+into values and redo re-enters the body (§F50). Future jump rules need typed interception
+and outgoing-state obligations before these arms can be admitted. -/
 def EscOk (m₀ : Machine) : Jump → Prop
   | .raiseJ exc => Semantics.isTypeError m₀.heap exc = false
-  | .retJ _ _ => False
-  | .throwJ _ _ => False
-  | _ => True
+  | _ => False
+
+theorem EscOk.only_raise {m : Machine} {j : Jump} (h : EscOk m j) :
+    ∃ exc, j = .raiseJ exc ∧ Semantics.isTypeError m.heap exc = false := by
+  cases j <;> simp_all [EscOk]
 
 /-- The obligation on an answer: a value is in the type, an escape is safe. One predicate
 where the old design had two ladders. -/

@@ -135,6 +135,15 @@ theorem djudge_context {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Ex
     (h : DJudge Γ e τ Γ' κ I κ' I') : SemSafeCtxA κ Γ I e τ κ' Γ' I' :=
   dregistry_context (djudge_certified h)
 
+/-- Every registered rule proves the strengthened escape contract, including checked
+method bodies at arbitrary contexts. Untyped block-control escapes are impossible. -/
+theorem djudge_escape_only_raise {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env}
+    {e : Ratchet.Expr} {τ : Ty} (h : DJudge Γ e τ Γ' κ I κ' I')
+    {m n : Machine} (hm : StateOk κ Γ I m) {fuel rest : Nat} {j : Jump}
+    (hr : runA fuel (evalFrom m e) = .ans (.esc j) n rest) :
+    ∃ exc, j = .raiseJ exc ∧ Semantics.isTypeError n.heap exc = false :=
+  (((djudge_context h) m hm).2 fuel (.esc j) n rest hr).2.1.only_raise
+
 /-- A checker result carries the generic semantic contract, including a method frame. -/
 theorem certified_context {κ : Ctx} {I : Ty} {Γ : Env} {e : Ratchet.Expr}
     (c : Certified Γ e κ I) : SemSafeCtxA κ Γ I e c.ty c.ctx c.out c.spine :=
@@ -201,6 +210,7 @@ theorem validateD_safe_run {p : Ratchet.Expr} {d : Deriv} (h : validateD p d = t
 
 #print axioms djudge_certified
 #print axioms djudge_context
+#print axioms djudge_escape_only_raise
 #print axioms certified_context
 #print axioms validateD_safe
 #print axioms validateD_safe_boot

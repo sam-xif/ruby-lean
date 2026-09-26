@@ -2721,10 +2721,11 @@ No unsafe program is accepted and no callable rule is registered on the legacy p
 
 ## F50 — the body answer contract is too weak for block return (2026-09-25)
 
-**Open, outside callable admission.** EscOk accepts next/break/redo/retry because at an
+**Resolved for the admitted fragment by clink 203; typed jump rules remain future work.**
+The former EscOk accepted next/break/redo/retry because at an
 empty continuation those jumps are not type errors. ResultOk consequently accepts
 `.esc (.nxtJ .nil)` at Integer, with reflexive framing and vacuous outgoing StateOk.
-ClosureEntryControls.next_result proves this for every machine and claimed type.
+ClosureEntryControls.legacy_next_result retains that witness against LegacyResultOk.
 
 The real blkFrameK intercepts next and returns its value. next_returns_nil proves its
 exact step and refutes the Integer denotation of the returned nil. Lambda break has the
@@ -2734,7 +2735,9 @@ also lack the StateOk required after an intercepted jump becomes a value.
 CRuby 4.0.5 confirms that both `lambda { next nil }.call` and `lambda { break nil }.call`
 return nil.
 
-The current DJudge has no jump rules. One candidate is to strengthen EscOk to exclude
-these escapes and prove that stronger contract for every existing clink. Later jump rules
-will need typed interception and state contracts. Neither a claimed return annotation nor
-the current SemSafeCtxA body premise supplies them. No accepted program is affected.
+EscOk now excludes every jump except non-type-error raises. Every existing clink and the
+bridge prove that stronger contract; djudge_escape_only_raise states its consequence for
+all derivations. next_not_result rejects the former witness. Rules/Closure/Return composes
+the real block continuation using this contract, with caller framing and StateOk obligations
+still explicit. Later jump rules need typed interception and state contracts. No checker
+rule or accepted program changed; captured activation/restoration remain §F49.

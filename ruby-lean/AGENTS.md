@@ -45,9 +45,10 @@ metadata. Clink 201 puts exact code, block locals and mode in Ty.clos and proves
 creation/assignment at that type. Callable admission still needs captured activation,
 return and saved-receiver preservation (§F49).
 Clink 202 proves required-positional lambda entry and parameter/block-local/capture lookup,
-with explicit live-chain transport. The existing answer contract cannot justify the block
-continuation: next/break may become untyped returned values (§F50). Strengthen that contract
-before composing callable bodies; no new callable judgment is admitted yet.
+with explicit live-chain transport. Clink 203 closes §F50 for the admitted fragment:
+EscOk permits only non-type-error raises, and every registered rule proves this stronger
+contract. The real block continuation now composes with explicit caller framing/conformance
+obligations. Captured writes and full activation/caller conformance remain open (§F49).
 Next: 087, zero-argument lambda creation/call. See HANDOFF.
 
 ## Layout

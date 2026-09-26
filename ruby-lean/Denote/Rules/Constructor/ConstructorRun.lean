@@ -15,9 +15,8 @@ theorem newK_escape {origin n : Machine} {Γ : Env} {τ I : Ty} {κ : Ctx}
     (hr : RunSpec origin (deliverA (.esc j) n []) Γ τ κ I) :
     RunSpec origin (deliverA (.esc j) n [.newK recv]) Γ τ κ I := by
   cases j with
-  | retJ => cases he
-  | throwJ => cases he
-  | raiseJ | brkJ | nxtJ | redoJ | retryJ =>
+  | retJ | throwJ | brkJ | nxtJ | redoJ | retryJ => cases he
+  | raiseJ =>
     exact RunSpec.step (by rfl) (show Interp.stepFn _ = .next _ from rfl) hr
 
 theorem constructor_continue {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m n : Machine}

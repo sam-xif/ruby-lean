@@ -109,16 +109,8 @@ theorem frameK_escape {origin n : Machine} {Γ : Env} {τ I : Ty} {κ : Ctx} {K 
     (hr : RunSpec origin (deliverA (.esc j) (popMethodFrame n) K) Γ τ κ I) :
     RunSpec origin (deliverA (.esc j) n (.frameK fid :: K)) Γ τ κ I := by
   cases j with
-  | retJ => cases he
-  | throwJ => cases he
+  | retJ | throwJ | brkJ | nxtJ | redoJ | retryJ => cases he
   | raiseJ exc => exact RunSpec.step (by rfl) (show Interp.stepFn _ = .next _ from rfl) hr
-  | brkJ v | nxtJ v | redoJ | retryJ =>
-    by_cases hc : (n.frames[fid]?.getD default).kind = .classBody
-    · apply RunSpec.step (by rfl) (show Interp.stepFn _ = .next _ from ?_) hr
-      simp [Interp.stepFn, deliverA, Answer.ctl, Interp.unwind, hc,
-        Interp.withCtl, popMethodFrame]
-    · apply RunSpec.unsupported (msg := "break/next/retry/redo crossing a method boundary") (by rfl)
-      simp [Interp.stepFn, deliverA, Answer.ctl, Interp.unwind, hc]
 
 /-- The return continuation depends only on the delivered answer, not on an unbounded
 body hypothesis. Bounded and unbounded method entry share this proof. -/
