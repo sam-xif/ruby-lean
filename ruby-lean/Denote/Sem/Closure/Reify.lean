@@ -1,5 +1,6 @@
 import Denote.Sem.Core.Alloc
 import Denote.Sem.Core.Transport
+import Denote.Sem.Closure.Capture
 
 /-! Literal block allocation preserves full conformance and records every field the
 call engine reads. No callable typing rule is admitted by this allocation lemma. -/
@@ -71,6 +72,19 @@ theorem reified_self {m : Machine} (hr : FrameInRange m) (ps : List RubyCore.Par
       m.currentFrame.self := by
   exact congrArg RubyCore.Frame.self (currentFrame_headD hr.1).symm
 
+/-- Allocation extends an already live capture chain by the current frame. StateOk's
+current-frame bound alone does not assert that its captured parents are live. -/
+theorem reified_captureLive {m : Machine} (hr : FrameInRange m)
+    (hc : CaptureLive m m.currentFrame.captured) (ps : List RubyCore.Param)
+    (ls : List String) (body : RubyCore.Expr) (lam : Bool) :
+    CaptureLive (reifiedMachine m ps ls body lam)
+      (reifiedClosure m ps ls body lam).captured := by
+  apply CaptureLive.frames_preserved (m := m) (n := reifiedMachine m ps ls body lam)
+    (Nat.le_refl _) (fun _ _ => rfl)
+  apply CaptureLive.frame hr.2
+  simpa only [currentFrame_headD hr.1] using hc
+
 #print axioms reified_state
 #print axioms reified_locals
+#print axioms reified_captureLive
 end Ratchet.Denote

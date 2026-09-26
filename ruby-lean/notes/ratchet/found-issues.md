@@ -2718,3 +2718,23 @@ This does not yet justify calling the value. Captured activation needs liveness,
 scope and return-home facts; return must account for captured writes. Framed.firstOrder
 excludes clos and does not preserve a saved Proc's code/captures across argument evaluation.
 No unsafe program is accepted and no callable rule is registered on the legacy predicates.
+
+## F50 — the body answer contract is too weak for block return (2026-09-25)
+
+**Open, outside callable admission.** EscOk accepts next/break/redo/retry because at an
+empty continuation those jumps are not type errors. ResultOk consequently accepts
+`.esc (.nxtJ .nil)` at Integer, with reflexive framing and vacuous outgoing StateOk.
+ClosureEntryControls.next_result proves this for every machine and claimed type.
+
+The real blkFrameK intercepts next and returns its value. next_returns_nil proves its
+exact step and refutes the Integer denotation of the returned nil. Lambda break has the
+same issue; redo re-enters the closure. Thus the ordinary-method continuation proof cannot
+be reused for blocks, even with exact code and correct entry conformance. Escape results
+also lack the StateOk required after an intercepted jump becomes a value.
+CRuby 4.0.5 confirms that both `lambda { next nil }.call` and `lambda { break nil }.call`
+return nil.
+
+The current DJudge has no jump rules. One candidate is to strengthen EscOk to exclude
+these escapes and prove that stronger contract for every existing clink. Later jump rules
+will need typed interception and state contracts. Neither a claimed return annotation nor
+the current SemSafeCtxA body premise supplies them. No accepted program is affected.

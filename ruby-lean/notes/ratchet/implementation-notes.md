@@ -11356,3 +11356,25 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory, standard-axiom audit
   and denotation examples pass. Comparators build in about 4s; creation/assignment proofs
   and new controls take under a second. No individual proof reached five minutes.
+
+## Clink 202 (2026-09-25) — required lambda activation and return-contract witness
+
+- Rules/Closure/Entry proves the real callClosure step for arbitrary required-positional
+  arity, body, block locals and self/defmod overrides. The argument count is exact; proc
+  padding and auto-splat remain separate behavior. The pushed frame retains capture,
+  lexical scope, block value, lambda mode, return home and the actual continuation.
+- Sem/Closure/Capture gives a finite live-chain predicate and preserves reads at fixed
+  fuel across frame extension. Reification extends that chain. Entry lookup proves the
+  parameter/block-local/capture precedence; the extra frame consumes the extra lookup
+  fuel, so the captured read uses the original budget. These are explicit obligations,
+  not facts inferred from the code-bearing denotation or StateOk alone.
+- Controls exercise real entry, parameter order, nil shadowing, captured fallback, arity
+  and overrides. The general return attempt exposes §F50: ResultOk accepts next nil at
+  Integer, but blkFrameK returns nil. Both the accepted answer and real step/refutation
+  are proved. CRuby 4.0.5 also returns nil for lambda next/break nil. The current body
+  contract needs strengthening before composition; no callable judgment is registered.
+- Counts stay fragment 81 / checker reach 86, 61 rules, 60 worked theorems, 0 owed/exempt.
+  Next: a sufficient escape contract, then full captured body/caller conformance.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. Entry proofs build in under a second and controls in about 1s; no individual proof
+  approached five minutes.

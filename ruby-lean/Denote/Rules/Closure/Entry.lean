@@ -1,0 +1,100 @@
+import Denote.Rules.Method.MethodEntry
+import Denote.Sem.Closure.Capture
+
+/-! Required-positional lambda entry against the real call engine. Parameters shadow
+explicit block locals, which shadow the captured chain. Proc padding and auto-splatting
+are different contracts and are not assumed here. -/
+set_option autoImplicit false
+namespace Ratchet.Denote.Typed
+open RubyCore Ratchet Ratchet.Denote
+
+theorem classifySimple_required (names : List String) :
+    Interp.classifySimple (names.map RubyCore.Param.req) =
+      some ⟨names, none, [], none⟩ := by
+  have hf : names.findIdx? (fun _ => false) = none :=
+    List.findIdx?_eq_none_iff.mpr (by simp)
+  unfold Interp.classifySimple
+  cases hr : names.reverse <;>
+    simp [← List.map_reverse, hr, List.any_map, List.findIdx?_map,
+      hf, List.filterMap_map, Function.comp_def]
+
+private theorem values_in_order (args : List Value) :
+    (List.range args.length).map (fun i => args[i]?.getD .nil) = args := by
+  apply List.ext_getElem
+  · simp
+  · intro i h₁ h₂
+    simp [h₂]
+
+/-- All metadata copied by callClosure, including its optional scope overrides. -/
+def requiredClosureFrame (m : Machine) (cl : Closure) (names : List String)
+    (args : List Value) (selfOv : Option Value := none)
+    (defmodOv : Option ObjId := none) : RubyCore.Frame :=
+  let cap := m.frames.getD (cl.captured.getD 0) default
+  { self := selfOv.getD cap.self, defmod := defmodOv.getD cap.defmod, blk := cap.blk,
+    locals := names.zip args ++ cl.locals.map (fun x => (x, Value.nil)),
+    kind := .block, captured := cl.captured, home := cl.home, lam := cl.lam,
+    cref := cap.cref }
+
+theorem CaptureLive.pushFrame {m : Machine} {cap : Option FrameId}
+    (h : CaptureLive m cap) (f : RubyCore.Frame) : CaptureLive (pushMethodFrame m f) cap :=
+  h.frames_preserved (by simp [pushMethodFrame]) (by
+    intro i hi
+    simp [pushMethodFrame, Array.getD, hi, Nat.lt_succ_of_lt hi, Array.getElem_push_lt])
+
+theorem callClosure_required_lambda (m : Machine) (cl : Closure)
+    (names : List String) (args : List Value) (brk : Option FrameId)
+    (selfOv : Option Value) (defmodOv : Option ObjId)
+    (hp : cl.params = names.map RubyCore.Param.req) (hl : cl.lam = true)
+    (ha : args.length = names.length) :
+    Interp.callClosure m cl args brk selfOv defmodOv =
+      .next (Interp.withKont
+        (pushMethodFrame m (requiredClosureFrame m cl names args selfOv defmodOv))
+        (.eval cl.body) (.blkFrameK m.frames.size true brk cl args)) := by
+  unfold Interp.callClosure
+  rw [hp, classifySimple_required]
+  simp [hl, ← ha, values_in_order, requiredClosureFrame, pushMethodFrame,
+    Interp.withKont]
+
+/-- Entering the body consumes the extra lookup fuel contributed by the new frame.
+Unbound names therefore read the live capture at exactly its original fuel. -/
+theorem requiredClosureFrame_getLocal (m : Machine) (cl : Closure)
+    (names : List String) (args : List Value) (selfOv : Option Value)
+    (defmodOv : Option ObjId) (hcap : CaptureLive m cl.captured) (x : String) :
+    (pushMethodFrame m (requiredClosureFrame m cl names args selfOv defmodOv)).getLocal x =
+      match (names.zip args ++ cl.locals.map (fun n => (n, Value.nil))).find? (·.1 == x) with
+      | some (_, v) => v
+      | none => closLocal m cl x := by
+  let f := requiredClosureFrame m cl names args selfOv defmodOv
+  have hframes (i : FrameId) (hi : i < m.frames.size) :
+      (pushMethodFrame m f).frames.getD i default = m.frames.getD i default := by
+    simp [pushMethodFrame, Array.getD, hi, Nat.lt_succ_of_lt hi, Array.getElem_push_lt]
+  change Machine.getLocal.go (pushMethodFrame m f) x m.frames.size
+    ((m.frames.push f).size + 1) = _
+  rw [Array.size_push]
+  rw [Machine.getLocal.go]
+  have hhead : (pushMethodFrame m f).frames.getD m.frames.size default = f := by
+    simp [pushMethodFrame, Array.getD_eq_getD_getElem?]
+  rw [hhead]
+  change (match f.locals.find? (·.1 == x) with
+    | some (_, v) => v
+    | none => match cl.captured with
+      | some p => Machine.getLocal.go (pushMethodFrame m f) x p (m.frames.size + 1)
+      | none => .nil) = match f.locals.find? (·.1 == x) with
+        | some (_, v) => v
+        | none => closLocal m cl x
+  cases hb : f.locals.find? (·.1 == x) with
+  | some p => rfl
+  | none =>
+    change (match cl.captured with
+      | some p => Machine.getLocal.go (pushMethodFrame m f) x p (m.frames.size + 1)
+      | none => .nil) = closLocal m cl x
+    cases hp : cl.captured with
+    | none => simp [closLocal, frameLocal?, hp]
+    | some p =>
+      simp only [closLocal, hp, frameLocal?, frameLocal]
+      exact (getLocal_go_eq_frameLocal_go _ x _ p).trans
+        (frameLocal_go_preserved hframes x _ p (hp ▸ hcap))
+
+#print axioms callClosure_required_lambda
+#print axioms requiredClosureFrame_getLocal
+end Ratchet.Denote.Typed

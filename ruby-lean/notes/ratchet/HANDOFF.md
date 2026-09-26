@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 201)
+# Current resume point (2026-09-25, clink 202)
 
 Latest admission remains 084: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
@@ -21,7 +21,21 @@ EnvOk capture (including shadowed bindings) and reified_den; SemSafeCtxA.closure
 returns the code-bearing type, and ClosureValueControls.stored_literal composes ordinary
 assignment. No DJudge rule, emitter change or callable admission yet.
 
-Next: prove callClosure's captured activation/body/return contract. Capture frame liveness,
+Clink 202 proves callClosure_required_lambda for arbitrary required-positional arity,
+block locals, body and optional self/defmod overrides. requiredClosureFrame_getLocal gives
+the actual parameter/block-local/capture lookup order. CaptureLive makes the finite live
+parent chain explicit; reification extends that chain and frame pushes preserve it.
+The body lookup consumes the extra frame's lookup fuel, retaining the old capture budget.
+Controls exercise shadowing, argument order, arity, metadata and scope overrides.
+
+Next: strengthen the body answer contract before composing the block continuation (§F50).
+EscOk currently permits next/break/redo/retry. next_result satisfies ResultOk at any type,
+but next_returns_nil proves the real block continuation returns nil, violating Integer.
+No DJudge jump rule exists; excluding these escapes throughout the existing contract is
+one candidate, to be checked against every clink. Merely assuming StateOk on normal body
+values cannot fix intercepted escapes. Caller restoration still needs captured-write facts.
+
+Then prove callClosure's captured activation/body/return contract. Capture frame liveness,
 lexical scope and return-home facts need explicit obligations; code identity alone does not
 establish them. EnvOk.capture is one-way: its lower-bound spine does not supply
 EnvOk's absence clause for unmentioned names. Framed.firstOrder excludes clos, and FieldsPres carries only first-order
@@ -122,7 +136,7 @@ calls consume exact context/code artifacts. Inherited singletons remain open, an
 self.new still has only its semantic proof. Nominal conversion only forgets information;
 it cannot recover exact receivers or initialized fields from a nominal annotation.
 
-See clinks 177–201 and AGENTS.md. Older text below is historical.
+See clinks 177–202 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 
