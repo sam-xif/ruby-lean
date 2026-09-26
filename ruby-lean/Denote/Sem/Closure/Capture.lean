@@ -26,6 +26,12 @@ theorem getLocal_go_eq_frameLocal_go (m : Machine) (x : String) :
       | none => rfl
       | some p => exact ih p
 
+theorem closLocal_current {m : Machine} {cl : Closure}
+    (hc : cl.captured = some (m.stack.headD 0)) : closLocal m cl = m.getLocal := by
+  funext x
+  simp only [closLocal, hc, frameLocal?, frameLocal, Machine.getLocal]
+  exact (getLocal_go_eq_frameLocal_go m x _ _).symm
+
 /-- Only frames on the captured chain matter; stack and heap may differ. The fuel is
 kept explicit because a pushed activation consumes one unit before reading its capture. -/
 theorem frameLocal_go_preserved {m n : Machine}

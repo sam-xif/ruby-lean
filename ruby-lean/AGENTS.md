@@ -49,6 +49,10 @@ with explicit live-chain transport. Clink 203 closes §F50 for the admitted frag
 EscOk permits only non-type-error raises, and every registered rule proves this stronger
 contract. The real block continuation now composes with explicit caller framing/conformance
 obligations. Captured writes and full activation/caller conformance remain open (§F49).
+Clink 204 proves full required-lambda entry conformance from explicit lexical scope,
+live capture and complete first-order environment facts. The body retains self/block types
+but drops runtime permissions requiring an uncaptured activation. Higher-order capture
+transport and caller restoration still precede callable admission.
 Next: 087, zero-argument lambda creation/call. See HANDOFF.
 
 ## Layout

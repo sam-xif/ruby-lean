@@ -2719,6 +2719,14 @@ scope and return-home facts; return must account for captured writes. Framed.fir
 excludes clos and does not preserve a saved Proc's code/captures across argument evaluation.
 No unsafe program is accepted and no callable rule is registered on the legacy predicates.
 
+Clink 204 proves full call-entry StateOk from explicit lexical scope, live capture and
+complete first-order environment facts. Ordinary runtime scope permissions are dropped
+because they assert captured = none; self/block types and actual lexical values are retained.
+ClosureStateControls pins both that conflict and the missing-absence counterexample.
+These facts are not yet furnished by Ty.clos. A stored closure binding is itself higher-order
+and cannot be silently omitted from the complete captured environment. Caller restoration
+and behavioral-value transport remain open.
+
 ## F50 — the body answer contract is too weak for block return (2026-09-25)
 
 **Resolved for the admitted fragment by clink 203; typed jump rules remain future work.**

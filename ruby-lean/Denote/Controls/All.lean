@@ -2,6 +2,7 @@ import Denote.Controls.ScalarWriteControls
 import Denote.Controls.ClosureLiteralControls
 import Denote.Controls.ClosureValueControls
 import Denote.Controls.ClosureEntryControls
+import Denote.Controls.ClosureStateControls
 import Denote.Controls.BoundedControls
 import Denote.Controls.ModuleDataControls
 import Denote.Controls.ModuleHeaderControls

@@ -45,16 +45,17 @@ theorem ReframeFO.empty {κ : Ctx} {I : Ty} (hi : FirstOrder I = true)
   · intro x τ h; rw [constGet?_empty hc x] at h; cases h
   · intro x τ h; simp [hc, envGet?] at h
 
-theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
+/-- Separate runtime activation obligations from unchanged-heap conformance. In
+particular, a captured frame need not have the source frame's captured field. -/
+theorem StateOk_reframe_scopes {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
     {fr : Option Ratchet.Frame} (h : StateOk κ Γ I m) (ht : ReframeFO κ I)
     (ha : κ.asms = []) (hh : n.heap = m.heap)
     (hs : n.currentFrame.self = m.currentFrame.self)
     (hb : n.currentFrame.blk = m.currentFrame.blk)
     (hc : n.currentFrame.cref = m.currentFrame.cref)
     (hd : n.currentFrame.defmod = m.currentFrame.defmod)
-    (hcap : n.currentFrame.captured = m.currentFrame.captured)
-    (hphase : n.preludeMode = m.preludeMode)
-    (hvis : κ.scope.runtimeClass ≠ none → defaultDefVis n = .pub)
+    (hruntime : RuntimeOk κ n) (hclass : ClassRuntimeOk κ n)
+    (hsingleton : SingletonRuntimeOk κ n)
     (hlookup : ∀ x, constGet? (κ.withFrame fr) x = constGet? κ x)
     (hr : FrameInRange n) (he : EnvOk Γ' n) (hf : FrameOk fr n) :
     StateOk (κ.withFrame fr) Γ' I n := by
@@ -67,20 +68,13 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
   have hfree : nameFreeN (κ.withFrame fr) = nameFreeN κ := rfl
   have hcore : coreConstFreeN (κ.withFrame fr) = coreConstFreeN κ := rfl
   refine {
-    runtime := fun hr => (h.runtime hr).reframe hh hs hd hc hcap hphase
+    runtime := hruntime
     mainSite := fun hr => by rw [hh]; exact h.mainSite hr
     moduleBase := by rw [hh]; exact h.moduleBase
     allocators := by rw [hh]; exact h.allocators
     globalConsts := by rw [hh]; exact h.globalConsts
-    classRuntime := by
-      intro cn hr
-      obtain ⟨k, hk⟩ := h.classRuntime cn hr
-      exact ⟨k, hk.reframe hh hd hc hcap hphase
-        ((hvis (by rw [hr]; simp)).trans hk.visibility.symm)⟩
-    singletonRuntime := by
-      intro cn hr
-      obtain ⟨k, e, scope⟩ := h.singletonRuntime cn hr
-      exact ⟨k, e, scope.reframe hh hs hd hc hcap hphase⟩
+    classRuntime := hclass
+    singletonRuntime := hsingleton
     classSites := by
       rw [hh]
       exact h.classSites.recontext (fun _ hc => hc) (fun _ hn => hn)
@@ -149,5 +143,30 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
     rw [hh] at hk hv
     exact hden τ (ht.paths _ τ hx) v (h.constPaths owner x τ k hx hk v hv)
 
+/-- The ordinary-frame specialization retains the previous interface. -/
+theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
+    {fr : Option Ratchet.Frame} (h : StateOk κ Γ I m) (ht : ReframeFO κ I)
+    (ha : κ.asms = []) (hh : n.heap = m.heap)
+    (hs : n.currentFrame.self = m.currentFrame.self)
+    (hb : n.currentFrame.blk = m.currentFrame.blk)
+    (hc : n.currentFrame.cref = m.currentFrame.cref)
+    (hd : n.currentFrame.defmod = m.currentFrame.defmod)
+    (hcap : n.currentFrame.captured = m.currentFrame.captured)
+    (hphase : n.preludeMode = m.preludeMode)
+    (hvis : κ.scope.runtimeClass ≠ none → defaultDefVis n = .pub)
+    (hlookup : ∀ x, constGet? (κ.withFrame fr) x = constGet? κ x)
+    (hr : FrameInRange n) (he : EnvOk Γ' n) (hf : FrameOk fr n) :
+    StateOk (κ.withFrame fr) Γ' I n := by
+  refine StateOk_reframe_scopes h ht ha hh hs hb hc hd
+    (fun hr => (h.runtime hr).reframe hh hs hd hc hcap hphase) ?_ ?_ hlookup hr he hf
+  · intro cn hr
+    obtain ⟨k, hk⟩ := h.classRuntime cn hr
+    exact ⟨k, hk.reframe hh hd hc hcap hphase
+      ((hvis (by rw [hr]; simp)).trans hk.visibility.symm)⟩
+  · intro cn hr
+    obtain ⟨k, e, scope⟩ := h.singletonRuntime cn hr
+    exact ⟨k, e, scope.reframe hh hs hd hc hcap hphase⟩
+
+#print axioms StateOk_reframe_scopes
 #print axioms StateOk_reframe
 end Ratchet.Denote

@@ -11397,3 +11397,24 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
   pass. The block-return proof builds in 0.6s and the bridge in 1.2s; no individual proof
   approached five minutes.
+
+## Clink 204 (2026-09-25) — full captured activation conformance
+
+- StateOk_reframe_scopes separates the three runtime activation obligations from
+  unchanged-heap conformance. StateOk_reframe retains its existing interface as a wrapper.
+  Ctx.withoutRuntimeScope removes only permissions whose predicates assert captured = none;
+  self/block types and values remain. ClosureScopeEq records the actual captured lexical
+  metadata, and StateOk_captured_reframe consumes it with explicit constant-lookup agreement.
+- Environment proves complete parameter/block-local/capture binding, including duplicate
+  names and nil shadowing. Captured absence is a separate premise; lower-bound denSpine
+  cannot produce it. First-order, non-alias types use unchanged-heap transport.
+- State proves full conformance of the real callClosure next machine for required lambdas.
+  Controls instantiate the current captured frame and boot entry for arbitrary Integer
+  bodies, and refute MainReady at a captured activation and EnvOk [] from an empty spine.
+- No callable judgment or emitter change. Ty.clos still needs to provide the scope/live/
+  complete-environment facts; a stored f is higher-order and cannot be omitted. Caller
+  restoration through captured writes and behavioral-value transport remain §F49.
+- Counts stay fragment 81 / checker reach 86, 61 rules, 60 worked theorems, 0 owed/exempt.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New binding, state and control proofs each build in under a second; no individual
+  proof approached five minutes.

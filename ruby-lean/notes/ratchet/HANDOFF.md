@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 203)
+# Current resume point (2026-09-25, clink 204)
 
 Latest admission remains 084: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
@@ -36,12 +36,22 @@ now eliminate those impossible branches. Rules/Closure/Return proves the real bl
 value/escape steps and composes a body RunSpec. Its caller framing (all answers), caller
 StateOk (values), and first-order result premises are explicit; it does not assume isolation.
 
-Next: full captured activation/caller conformance, discharging those restoration premises.
-StateOk_reframe requires equal captured fields, so it cannot directly enter a new captured
-frame; the body's runtime scope flags also need explicit transport. Capture frame liveness,
-lexical scope and return-home facts need explicit obligations; code identity alone does not
-establish them. EnvOk.capture is one-way: its lower-bound spine does not supply
-EnvOk's absence clause for unmentioned names. Framed.firstOrder excludes clos, and FieldsPres carries only first-order
+Clink 204 factors StateOk_reframe_scopes out of the existing ordinary-frame theorem,
+retaining its old interface. Ctx.withoutRuntimeScope drops only runtimeMain/Class/Singleton
+permissions, whose predicates require captured = none. ClosureScopeEq pins captured
+self/block/cref/defmod to the conformant source; self/block types and lexical values remain.
+Scope proves full StateOk transport. Environment proves parameter/block-local/capture
+precedence with complete first-order, non-alias captures. State attaches full conformance
+to callClosure's real next machine. ClosureStateControls instantiates a current capture
+and boot entry, and refutes MainReady at a captured frame and EnvOk [] from an empty spine.
+Constant lookup agreement is explicit when dropping the method frame; it is not inferred.
+
+Next: discharge caller restoration through captured writes and transport behavioral values.
+Entry now has full conformance under the named scope/liveness/environment premises, but
+Ty.clos does not yet supply those premises. A stored f itself is higher-order; the complete
+captured environment cannot simply omit it, even for lambda { 1 }. EnvOk.capture is one-way:
+its lower-bound spine does not supply EnvOk's absence clause for unmentioned names.
+Framed.firstOrder excludes clos, and FieldsPres carries only first-order
 ivar facts, so transporting a saved Proc across argument evaluation also needs a contract.
 FramePres.isolated applies only to uncaptured activations; do not assume caller isolation.
 The unused ClosuresOk/closTblOk table machinery remains legacy, with F49's counterexamples
@@ -139,7 +149,7 @@ calls consume exact context/code artifacts. Inherited singletons remain open, an
 self.new still has only its semantic proof. Nominal conversion only forgets information;
 it cannot recover exact receivers or initialized fields from a nominal annotation.
 
-See clinks 177–203 and AGENTS.md. Older text below is historical.
+See clinks 177–204 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 
