@@ -96,6 +96,7 @@ import Denote.Controls.IteratorFrameControls
 import Denote.Controls.IteratorEachControls
 import Denote.Controls.TypedEachControls
 import Denote.Controls.EachDispatchControls
+import Denote.Controls.TypedMapControls
 import Denote.Controls.FactoryConstructorControls
 import Denote.Clink.Controls
 

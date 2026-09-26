@@ -21,10 +21,11 @@ def primitiveMethods : List (ObjId × String × String) :=
    (Boot.hashId, "[]", "Hash#[]"),
    (Boot.trueClassId, "!", "Object#!"), (Boot.falseClassId, "!", "Object#!")]
 
-/-- Native lookup facts include interpreter-executed Proc calls. Membership here is
+/-- Native lookup facts include interpreter-executed Proc calls and Array iterators. Membership here is
 not a pure-builtin signature; primitiveMethods alone supplies those rows. -/
 def dispatchMethods : List (ObjId × String × String) :=
-  primitiveMethods ++ [(Boot.procId, "call", "Proc#call"), (Boot.procId, "[]", "Proc#[]")]
+  primitiveMethods ++ [(Boot.procId, "call", "Proc#call"), (Boot.procId, "[]", "Proc#[]"),
+    (Boot.arrayId, "map", "Array#map"), (Boot.arrayId, "collect", "Array#collect")]
 
 def nativeDispatchB (h : Heap) (free : String → Bool) : Bool :=
   dispatchMethods.all fun (k, name, bid) =>

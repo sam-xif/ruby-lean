@@ -122,7 +122,11 @@ Clink 227 registers/checks/emits one-required-parameter attached each blocks and
 The checker derives element types from the receiver, rechecks the exact body and enforces
 the caller-environment fixed point. Embedded expressions retain already bound slots via
 Framed while dropping origins/exact domains, permitting stable capture writes across array
-receiver evaluation. Next: map (092/093), after checking its snapshot iteration fidelity.
+receiver evaluation. Model L274 repairs native map/collect dispatch and live iteration (§F54).
+Clink 228 proves SemFlow.map through checked bodies, typed accumulated results, final Array
+allocation and guarded native lookup. Shared IteratorCaller lemmas retain capture ownership
+and caller conformance for each and map. Exact 092 has an all-fuel source proof; registry,
+checker and emitter admission for 092/093 remain next.
 
 ## Layout
 

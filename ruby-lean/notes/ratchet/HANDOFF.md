@@ -1,16 +1,30 @@
-# Current resume point (2026-09-26, clink 227 / model L274)
+# Current resume point (2026-09-26, clink 228 / model L274)
 
 Latest admission: 091-block-each-int. Fragment 87, checker reach 91,
 76 registered rules (40 expressions + 36 companions), 66 worked theorems, no exemptions.
 The safe prefix remains 17; 018 is correctly rejected. Next frontier: map (092/093).
 L274 fixes §F54: Array map/collect formerly reached Enumerable's each-dispatching body,
 not the dormant snapshot fallback. Native markers now use IterKind.arrayMap's live cursor.
-The next proof needs guarded native lookup, a typed accumulator and final array allocation.
+Clink 228 now proves the full source call through SemFlow.map (Rules/Iterator/FlowMap).
+Next: register DFlow.map, add/check/emit a mapBlock hint and admit 092/093. The hint should
+carry only receiver/body derivations; derive the result element type from the checked body.
 Sorbet 0.6.13405 was remeasured with --no-config: map Integer→String returns Array[String];
 collect Integer→Integer and stable captured Integer writes return Array[Integer]. Changing
 a captured Integer to nil is rejected (7001). Use these observations in the new rule's docstring.
 L274 validation: focused replay 3/3, MRI tier 0 unchanged at 998 agree / 0 disagree,
 full quiet gate GREEN (252/0), metatheory and standard-axiom audit pass.
+
+MapArrayContract uses fuel induction over the live cursor and typed accumulator. Shared
+IteratorCaller entry/return facts (Caller.lean) preserve capture ownership and caller types;
+each now uses the same proof. typed_map_step transports prior results via relative Framed
+and the current result via FirstOrder, then array_alloc_result proves final allocation.
+MapStart/MapDispatch/FlowMap reach L274's real native marker, with map/collect rows guarded
+by nameFreeN in StateOk.dispatchMethods. SemFlow.map requires one required parameter, no
+arguments, main scope, first-order input/result types, stable body context/spine and a
+closureReturnEnv fixed point. TypedMapControls proves exact 092 plus collect, allocation,
+shadowing and dispatch controls. No new registry rule or checker acceptance yet.
+Clink 228 validation: full quiet gate GREEN with unchanged floors and 252/0 agreement;
+metatheory and standard-axiom audit pass. New proofs take about a second each.
 
 Clink 227 registers DFlow.each through SemFlow.each and djudge_certified. eachBlock hints
 contain only receiver/body derivations. FlowCheck derives the parameter type from the

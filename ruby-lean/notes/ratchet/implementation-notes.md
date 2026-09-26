@@ -11948,3 +11948,35 @@ both halves of what constrains them now have a name.
   changed floors. Next: map (092/093), beginning with fidelity probes of its snapshot loop.
 - Final full quiet gate GREEN; metatheory and standard-axiom audit pass. No new axioms,
   resource-limit increases or proof builds over five minutes.
+
+## Clink 228 (2026-09-26) — prove native map/collect from checked bodies
+
+- Model L274 repaired the reached dispatch path (§F54). MapArrayContract now states the
+  live cursor/accumulator obligations, and mapArrayStep_spec pays the back edge by fuel
+  induction. Appending indefinitely need not terminate. Exhaustion allocates the result
+  Array; a raise unwinds the block and iterator without requiring a value-state result.
+- IteratorCaller factors each's entry and two-pop return invariant into Caller.lean.
+  Both iterators preserve captured slot ownership and the checked caller-environment
+  fixed point. Its relative framing result transports previously collected values;
+  FirstOrder on the body result transports the new value out of its activation. The
+  accumulator is typed at the current heap, not at its allocation-time heap.
+- array_alloc_result factors full allocation conformance out of the literal proof.
+  typed_map_step combines this with the checked body and caller invariant: no independent
+  iteration, output-state or accumulator-preservation premise remains at empty entry.
+- MapStart/MapDispatch/FlowMap compose inert activation allocation, actual native lookup,
+  block reification and receiver evaluation. StateOk's guarded dispatchMethods now includes
+  map/collect markers; reserved names withdraw their capabilities. Existing heap, method,
+  class and module transports apply to these rows. SemFlow.map proves the whole source.
+- Sorbet 0.6.13405 --no-config: Integer→String map yields Array[String]; Integer→Integer
+  collect and stable captured Integer writes yield Array[Integer]. Captured Integer→nil
+  is rejected (7001). The semantic rule cites this measurement. Its initial scope is one
+  required parameter, no arguments, main caller, first-order elements/results and stable
+  caller types; body-result typing is independent of receiver-element typing.
+- TypedMapControls proves the exact 092 source and collect spelling, typed prior String
+  results across later allocations, and hidden nil caller restoration. Live mutation/
+  exhaustion controls retain collected values and return a fresh Array. Override, undef,
+  visibility and reservation controls guard dispatch. The mandatory controls build imports
+  this file. Checker/registry/emitter admission for 092/093 is next; floors are unchanged.
+- Full quiet gate GREEN (87 fragment, reach 91, 76 rules, 66 worked, 252 agree / 0 disagree).
+  Metatheory and standard-axiom audit pass. New proofs build in about a second each;
+  no new axioms, resource-limit increases or proof builds over five minutes.

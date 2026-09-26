@@ -7,10 +7,13 @@ set_option maxRecDepth 4000
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
-theorem stepSpec_array {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {τ : Ty}
-    (hm : StateOk κ Γ I m) (hk : m.kont = [])
+/-- A fresh Array preserves full caller conformance and carries the supplied element
+types. Shared by literals and native map's final accumulator allocation. -/
+theorem array_alloc_result {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {τ : Ty}
+    (hm : StateOk κ Γ I m)
     (xs : List Value) (hd : ∀ x ∈ xs, denM τ m x) :
-    StepSpec m Γ (.arrayOf τ) (Interp.continueArray m xs []) κ I := by
+    ResultOk m Γ (.arrayOf τ) (.val (Builtins.allocArr m xs.toArray).1)
+      (Builtins.allocArr m xs.toArray).2 κ I := by
   let obj : Object := { klass := Boot.arrayId, payload := .arr xs.toArray }
   let n : Machine := { m with heap := pushHeap m.heap obj }
   have he : Ext m n := ext_push obj hm.sat hm.core.basicSelf
@@ -25,11 +28,15 @@ theorem stepSpec_array {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {τ : Ty}
     · simp [arrElems?, n, pushHeap_get_self, obj]
     · intro x hx
       exact denM_ext he (hd x (by simpa using hx))
-  have h := RunSpec.answer (a := .val (.ref m.heap.objs.size))
-    (show ResultOk m Γ (.arrayOf τ) _ n κ I from
-      ⟨Framed.of_ext he, hv, fun _ hv => by cases hv; exact hn⟩)
+  exact ⟨Framed.of_ext he, hv, fun _ hv => by cases hv; exact hn⟩
+
+theorem stepSpec_array {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {τ : Ty}
+    (hm : StateOk κ Γ I m) (hk : m.kont = [])
+    (xs : List Value) (hd : ∀ x ∈ xs, denM τ m x) :
+    StepSpec m Γ (.arrayOf τ) (Interp.continueArray m xs []) κ I := by
+  have h := RunSpec.answer (array_alloc_result hm xs hd)
   simpa only [StepSpec, Interp.continueArray, Builtins.allocArr, Heap.alloc,
-    n, obj, pushHeap, Interp.withCtl, deliverA, Answer.ctl, hk] using h
+    Interp.withCtl, deliverA, Answer.ctl, hk] using h
 
 private theorem continueArray_cons (m : Machine) (acc : List Value)
     (e : Ratchet.Expr) (es : List Ratchet.Expr) (hp : plainArgB e = true) :
