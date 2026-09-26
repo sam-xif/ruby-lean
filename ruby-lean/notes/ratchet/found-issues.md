@@ -2880,7 +2880,12 @@ registers the rule and admits map blocks through validateD.
 
 ## F55 — Ordinary-method isolation cannot describe a captured write through yield
 
-**Implicit-block source admission resolved by clink 239; explicit &b binding remains open.**
+**Implicit-block source admission resolved by clink 239; explicit &b admission remains open.**
+Clink 240 proves actual &b entry, saved-receiver native call/[] dispatch and full return.
+The receiver must be the checked callback and retain native Proc class, separately from its
+code-only type. Arguments may overwrite the source local or invoke the callback again.
+Binding identity tracking through general method bodies and checker admission remain;
+measured Sorbet/CRuby/model behavior agrees and exposes no new runtime defect.
 `def twice; saved = 7; result = yield(1) + yield(2); p saved; result; end;
 total = 0; p twice { |x| total = total + x }; p total` prints 7, 4, 3 under both
 CRuby 4.0.5 and the model. The runtime already handles this captured write correctly.

@@ -8,17 +8,20 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
-theorem MethodActivation.enter0 {κ : Ctx} {Γ : Env} {I : Ty}
+theorem MethodActivation.enterBindings {κ : Ctx} {Γ Γm : Env} {I : Ty}
     {cb : CheckedCallback κ Γ I} {m : Machine} {cl : Closure} {o : ObjId}
     (hm : StateOk κ Γ I m) (name : String) (md : MethodDef)
+    (names : List String) (args : List Value)
+    (henv : EnvOk Γm (pushMethodFrame m
+      (requiredBlockFrame m.currentFrame.self name md names args (some (.ref o)))))
     (howner : md.owner = m.currentFrame.defmod) (hcref : md.cref = m.currentFrame.cref)
     (hsuper : md.superName = none)
     (hc : cl.captured = some (m.stack.headD 0))
     (hd : CaptureSlots cb.names (withoutNames (cb.params.map (·.1) ++ cl.locals) cb.out) m)
     (hproc : (m.heap.get o).payload = .proc cl) (hcode : ClosureMatches cb.code cl) :
-    MethodActivation cb ⟨"Object", "Object", name, false⟩ [] m
-      (pushMethodFrame m (requiredBlockFrame m.currentFrame.self name md [] [] (some (.ref o)))) := by
-  let f := requiredBlockFrame m.currentFrame.self name md [] [] (some (.ref o))
+    MethodActivation cb ⟨"Object", "Object", name, false⟩ Γm m
+      (pushMethodFrame m (requiredBlockFrame m.currentFrame.self name md names args (some (.ref o)))) := by
+  let f := requiredBlockFrame m.currentFrame.self name md names args (some (.ref o))
   let entry := pushMethodFrame m f
   have hactive : entry.currentFrame = f := currentFrame_pushMethodFrame m f
   have hcap : f.captured = none := rfl
@@ -45,12 +48,7 @@ theorem MethodActivation.enter0 {κ : Ctx} {Γ : Env} {I : Ty}
     · exact hcap
   refine ⟨hm, ?_, hs, Nat.le_refl _, hf, ?_⟩
   · apply callbackMethod_state hcaller cb.main hs (by simp [FrameInRange, pushMethodFrame])
-    · constructor
-      · intro x τ hx; cases hx
-      · intro x _
-        change Machine.getLocal.go entry x m.frames.size (entry.frames.size + 1) = .nil
-        simp [Machine.getLocal.go, entry, pushMethodFrame, f, requiredBlockFrame, requiredFrame,
-          Array.getD_eq_getD_getElem?]
+    · exact henv
     · simp only [FrameOk, currentFrame_pushMethodFrame]
       refine ⟨by simp only [f, requiredBlockFrame, requiredFrame, hsuper, Option.getD_none], ?_, rfl⟩
       simp only [Frame.recvTy, Bool.false_eq_true, ↓reduceIte, denM]
@@ -65,6 +63,23 @@ theorem MethodActivation.enter0 {κ : Ctx} {Γ : Env} {I : Ty}
     intro x τ hx
     rw [show (popMethodFrame entry).stack = m.stack from hf.stack]
     exact (closure_saved_bindings (Framed.refl entry).frames _ hm.frameInRange.2 x).trans (hd x τ hx)
+
+theorem MethodActivation.enter0 {κ : Ctx} {Γ : Env} {I : Ty}
+    {cb : CheckedCallback κ Γ I} {m : Machine} {cl : Closure} {o : ObjId}
+    (hm : StateOk κ Γ I m) (name : String) (md : MethodDef)
+    (howner : md.owner = m.currentFrame.defmod) (hcref : md.cref = m.currentFrame.cref)
+    (hsuper : md.superName = none)
+    (hc : cl.captured = some (m.stack.headD 0))
+    (hd : CaptureSlots cb.names (withoutNames (cb.params.map (·.1) ++ cl.locals) cb.out) m)
+    (hproc : (m.heap.get o).payload = .proc cl) (hcode : ClosureMatches cb.code cl) :
+    MethodActivation cb ⟨"Object", "Object", name, false⟩ [] m
+      (pushMethodFrame m (requiredBlockFrame m.currentFrame.self name md [] [] (some (.ref o)))) := by
+  apply MethodActivation.enterBindings hm name md [] [] ?_ howner hcref hsuper hc hd hproc hcode
+  constructor
+  · intro x τ hx; cases hx
+  · intro x _
+    simp [Machine.getLocal, Machine.getLocal.go, pushMethodFrame, requiredBlockFrame,
+      requiredFrame, Array.getD_eq_getD_getElem?]
 
 theorem SemMethod.call0 {κ : Ctx} {Γ Γm : Env} {I τ : Ty} {cb : CheckedCallback κ Γ I}
     {m : Machine} {cl : Closure} {o : ObjId} {e : Ratchet.Expr} {name : String} {md : MethodDef}
@@ -82,6 +97,7 @@ theorem SemMethod.call0 {κ : Ctx} {Γ Γm : Env} {I τ : Ty} {cb : CheckedCallb
   simpa only [StepSpec, Interp.withKont, pushK, evalFrom, pushMethodFrame, hk, he, List.nil_append]
     using hbody.methodReturn ht hentry m.frames.size
 
+#print axioms MethodActivation.enterBindings
 #print axioms MethodActivation.enter0
 #print axioms SemMethod.call0
 end Ratchet.Denote.Typed

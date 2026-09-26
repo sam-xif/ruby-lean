@@ -1,7 +1,8 @@
 import Ratchet.Guards.ClosureFlow
 
 /-! An ordinary method receiving a checked callback keeps its actual method frame and
-exact block code. This type records identity; the callback body proof supplies safety. -/
+exact block code. Actual receiver identity is a separate fact; the callback body proof
+supplies safety. -/
 namespace Ratchet
 
 def callbackMethodCtx (κ : Ctx) (fr : Frame) (code : ClosureCode) : Ctx :=

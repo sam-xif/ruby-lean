@@ -12269,3 +12269,30 @@ both halves of what constrains them now have a name.
   zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. Floors
   raised accordingly. The shared bridge builds in about two seconds and RuleAudit in 19;
   no proof exceeds five minutes and no resource limit was raised.
+
+## Clink 240 (2026-09-26) — explicit block binding and saved callback dispatch
+
+- BodyBoundCall introduces MethodCallbackReceiver: the saved value is the actual active
+  frame's block and has native Proc class. MethodEffects transports both facts through
+  argument evaluation, including another callback. Code-only closure typing alone proves
+  neither capture identity nor absence of singleton dispatch. Real invoke lookup remains
+  guarded by StateOk/nameFreeN; call/[] use the existing native Proc proof.
+- Receiver evaluation precedes arbitrary typed argument effects. The proof never rereads
+  its source local. The shared checked-callback continuation now accepts any break owner,
+  so Proc#call uses blockOwner and yield retains methodFrameOf; both still admit only normal
+  results and non-type-error raises. All caller/method state and frame obligations remain.
+- BoundEntry normalizes real enterUserMethod predeclaration/setLocal for a lone &b formal,
+  proves complete EnvOk with its exact code-only closure type, and composes entry/call/return.
+  enterBindings factors the old entry proof while keeping enter0's interface unchanged.
+  This is a semantic foundation, not a new registered source rule or acceptance claim.
+- Mandatory boot controls cover b.call(5), b.call((b=nil;5)), b[(b=nil;5)] and b.call(yield(5))
+  with stable captured total writes, for every initial Integer. A real prior setLocal nil
+  refutes the binding contract. Sorbet 0.6.13405 accepts the typed valid cases and copying b,
+  rejects b=nil;b.call(5) (7003). CRuby 4.0.5/model agree on 6/6/6/missing/5/5 for direct,
+  overwrite, copy, rescued invalid and captured-write calls, and 5/5/10/10 for []/yield
+  arguments with total initially zero. No runtime defect or model change was needed.
+- General method-local identity tracking and declared-domain checker integration precede
+  admission of 095. Semantic controls do not change fragment counts, rules or floors.
+- Full quiet gate GREEN: fragment 91/260, checker reach 94, 88 rules, 70 worked proofs,
+  zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New proof
+  modules and boot controls build under a second; no resource limit was raised.

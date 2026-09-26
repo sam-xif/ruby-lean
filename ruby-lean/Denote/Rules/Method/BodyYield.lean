@@ -10,6 +10,7 @@ open RubyCore Ratchet Ratchet.Denote
 theorem checked_callback_method_run {m : Machine} {κ : Ctx} {Γ Γb Γm : Env}
     {I ρ : Ty} {cl : Closure} {ps : List SigParam} {names : List String}
     {args : List Value} {body : Ratchet.Expr} {fr : Ratchet.Frame} {code : ClosureCode}
+    {brk : Option FrameId}
     (hn : CallbackCaller κ Γ I cl ps names Γb m)
     (hm : StateOk (callbackMethodCtx κ fr code) Γm I m) (hs : CallbackMethodScope m)
     (hne : m.stack.headD 0 ≠ (popMethodFrame m).stack.headD 0)
@@ -21,7 +22,7 @@ theorem checked_callback_method_run {m : Machine} {κ : Ctx} {Γ Γb Γm : Env}
     (hb : SemSafeCtxA (closureBodyCtx κ) (ps ++ blockLocals cl.locals ++ Γ) I
       body ρ (closureBodyCtx κ) Γb I) :
     MethodRunSpec m
-      (pushK [.blkFrameK m.frames.size cl.lam (some (Interp.methodFrameOf m)) cl args]
+      (pushK [.blkFrameK m.frames.size cl.lam brk cl args]
         (evalFrom (pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) body))
       Γ Γm ρ κ (callbackMethodCtx κ fr code) I I := by
   apply (hb _ (hn.bodyState hmain hin hargs)).bindMethod (by

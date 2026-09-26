@@ -1,4 +1,34 @@
-# Current resume point (2026-09-26, clink 239 / model L274)
+# Current resume point (2026-09-26, clink 240 / model L274)
+
+Explicit &b entry and actual call/[] execution now have semantic proofs. BodyBoundCall
+tracks MethodCallbackReceiver (the actual frame block plus native Proc class) through
+MethodEffects, saves it before arbitrary SemMethod argument evaluation, and composes
+real invoke/callClosure/blkFrameK. checked_callback_method_run now permits any break
+owner. Code-only closure types alone identify neither the value/capture nor native lookup.
+
+BoundEntry proves enterUserMethod's real &b predeclaration/binding, complete singleton
+EnvOk at the exact closure-code type, and entry/body/return composition. BodyEntry factors
+enterBindings without weakening any frame or state contract. Mandatory BoundCallbackControls
+proves direct call, receiver-local overwrite, [] and a yielding argument from boot, all with
+stable captured writes and every initial Integer. A prior nil overwrite refutes the binding
+contract. New modules build under a second with only the standard axioms.
+
+CRuby 4.0.5/model agree on direct/overwrite/copy/bad-binding/captured-write probes
+(6/6/6/missing/5/5) and bracket/nested-callback probes (5/5/10/10). Sorbet 0.6.13405 accepts
+the valid typed versions and rejects a call after b=nil (7003). No new runtime defect.
+
+Next: binding identity tracking through general method-body typing, then definition/cache/
+checker/emitter/source integration for 095. SemMethod's plain Env does not carry actual
+block-reference identity. The explicit entry environment also depends on cb.code; retain
+uniform declared-domain checking when designing that extension. Do not treat code-only
+closure typing as identity, silently re-read b after arguments, or bypass native dispatch.
+Current semantic controls do not admit 095 or change any floor.
+
+Full quiet gate GREEN: unchanged fragment 91/260, checker reach 94, 88 rules, 70 worked,
+zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. Logs:
+/private/tmp/ratchet-boundcall-{gate,audit}.log. No live builds.
+
+Previous admission (clink 239):
 
 Rung 094 is now accepted by validateD. DMethod/DMethodAll/DMethodSeq share DJudge's
 mutual group and join DFam; defBlock and DFlow.callBlock consume uniformly checked method

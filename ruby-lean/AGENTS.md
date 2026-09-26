@@ -178,6 +178,11 @@ and checks actual blocks/captures against those signatures. The emitter proposes
 from definitions alone. Rungs 094 and new 260 (method-local retyping plus captured writes)
 are admitted; every rule has worked corpus coverage, with the zero exemption ceiling intact.
 Explicit &b binding (095) is next; no model change was needed for this admission.
+Clink 240 proves explicit &b entry and saved-receiver call/[] dispatch with full method/caller
+conformance. Mandatory boot controls include overwriting b during argument evaluation and
+a yielding argument, with stable captured writes. A prior nil overwrite loses receiver
+identity. Code-only closure types alone do not justify calls; binding tracking and checker
+admission of 095 remain. CRuby/Sorbet probes expose no new runtime defect; floors are unchanged.
 
 ## Layout
 
