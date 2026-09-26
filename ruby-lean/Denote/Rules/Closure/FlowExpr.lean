@@ -18,13 +18,19 @@ theorem SemFlow.closureLiteral {κ : Ctx} {Γ : Env} {I : Ty} (facts : LocalFact
     (code : ClosureCode) (hf : nameFreeN κ (if code.lam then "lambda" else "proc") = true) :
     SemFlow κ Γ I facts (.send none (if code.lam then "lambda" else "proc") []
       (some (.block code.params code.locals code.body)))
-      (.clos code (envToSpine Γ) (κ.selfTy.getD .never)) true κ Γ I facts := by
+      (.clos code .ivar0 .never) true κ Γ I facts := by
   apply SemFlow.leaf
   intro m hm hfacts
-  exact ⟨_, _, closure_literal_step hm code.lam hf code.params code.locals code.body,
-    ⟨Framed.of_ext (reified_ext hm _ _ _ _), reified_den hm code,
+  refine ⟨_, _, closure_literal_step hm code.lam hf code.params code.locals code.body,
+    ⟨Framed.of_ext (reified_ext hm _ _ _ _), ?_,
       fun _ _ => reified_state hm _ _ _ _⟩,
     hfacts.ext (reified_ext hm _ _ _ _), fun _ => currentProc_reified m code⟩
+  have hd := reified_den hm code
+  rw [denM] at hd
+  obtain ⟨cl, hp, hcode, _⟩ := hd
+  change denM (.clos code .ivar0 .never) _ _
+  rw [denM]
+  exact ⟨cl, hp, hcode, by simp [denSpineFrom], Or.inl rfl⟩
 
 theorem SemFlow.vasgn {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {facts out : LocalFacts}
     {e : Ratchet.Expr} {x : String} {current : Bool}

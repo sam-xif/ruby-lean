@@ -16,6 +16,7 @@ import Denote.Examples.ModuleParamDerivations
 import Denote.Examples.ModuleCompareDerivations
 import Denote.Examples.SingletonImplicitDerivations
 import Denote.Examples.FlowDerivations
+import Denote.Examples.RequiredFlowDerivations
 
 /-! Concrete corpus programs and their derivations. `SemLadder` compares each program
 against the current stripped corpus; `RuleAudit` reads the clinks from these proofs. -/
@@ -364,7 +365,9 @@ def safeRungs : List (String × Ratchet.Expr) :=
    ("078-module-method-with-arg", program_078_module_method_with_arg),
    ("080-module-method-calls-method", program_080_module_method_calls_method),
    ("084-module-boolean-method", program_084_module_boolean_method),
-   ("087-lambda-zero-arity", program_087_lambda_zero_arity)]
+   ("087-lambda-zero-arity", program_087_lambda_zero_arity),
+   ("088-lambda-stabby-one-param", program_088_lambda_stabby_one_param),
+   ("098-lambda-closure-capture", program_098_lambda_closure_capture)]
 
 theorem safeRungs_safe (hb : bootOkB = true) :
     ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
@@ -372,7 +375,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   simp only [safeRungs, List.mem_cons, List.not_mem_nil, or_false] at hq
   rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
     | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
-    | rfl | rfl | rfl | rfl | rfl
+    | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · exact safe_001_int_lit hb
   · exact safe_002_bool_true hb
   · exact safe_003_bool_false hb
@@ -434,6 +437,8 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   · exact safe_080_module_method_calls_method hb
   · exact safe_084_module_boolean_method hb
   · exact safe_087_lambda_zero_arity hb
+  · exact safe_088_lambda_stabby_one_param hb
+  · exact safe_098_lambda_closure_capture hb
 
 #print axioms safeRungs_safe
 end Ratchet.Denote.Typed

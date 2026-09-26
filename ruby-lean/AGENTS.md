@@ -16,9 +16,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 81 rungs, reach 17**, **61 registered rules** (39 expressions + 22 companions),
-**0 owed**, **0 exempt**. Checker reach is 86; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 60 rungs additionally carry a
+**Fragment 84 rungs, reach 17**, **75 registered rules** (40 expressions + 35 companions),
+**0 owed**, **0 exempt**. Checker reach is 88; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 63 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -100,7 +100,12 @@ dispatch readiness, deriving entry and caller return for a copied-binding call.
 Clink 215 puts native Proc#call lookup in guarded StateOk conformance, preserving it
 through existing heap/context transitions. djudge_proc_call exposes it for certified
 value states; the whole-call pilot now needs only the standard boot check.
-Next: thread mutable LocalFacts through checked evaluation for 087 admission. See HANDOFF.
+Clinks 216–217 thread LocalFacts through certified evaluation and admit stored lambdas (087).
+Clinks 218–221 prove shadowed caller preservation, merged return environments, saved Proc
+dispatch and general required-parameter receiver/argument composition. Clink 222 connects
+that proof through DFlowAll, the registry, checker and emitter, admitting 088 and 098.
+Flow literals retain exact code; body checking uses actual argument and live capture types.
+Next: non-lambda Proc calls (089), including their distinct arity contract. See HANDOFF.
 
 ## Layout
 

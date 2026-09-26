@@ -60,6 +60,40 @@ module Welcome
 end
 Welcome.relay(7)
 ''', "ok", True),
+        ("saved_lambda_receiver", '''# typed: true
+f = ->(x) { x + 1 }
+f.call(f = 2)
+''', "ok", True),
+        ("earlier_lambda_argument", '''# typed: true
+->(x, y) { x + 1 }.call(a = 2, a = nil)
+''', "ok", True),
+        ("lambda_parameter_shadow", '''# typed: true
+x = nil
+->(x) { x + 1 }.call(2)
+x
+''', "ok", True),
+        ("lambda_parameter_type_leak", '''# typed: true
+x = nil
+->(x) { x + 1 }.call(2)
+x + 1
+''', "blocked", False),
+        ("lambda_block_local_shadow", '''# typed: true
+x = 7
+->(y; x) { x = nil; y + 1 }.call(2)
+x + 1
+''', "ok", True),
+        ("lambda_live_capture", '''# typed: true
+x = 1
+f = ->(y) { x + y }
+x = 2
+f.call(3)
+''', "ok", True),
+        ("lambda_unsafe_capture", '''# typed: true
+x = 1
+f = ->(y) { x + y }
+x = nil
+f.call(3)
+''', "blocked", False),
     ]
     emitted = {}
     with tempfile.TemporaryDirectory(prefix="ruby-body-inference-") as directory:
@@ -80,7 +114,7 @@ Welcome.relay(7)
             assert accepted == expected, (name, accepted, expected)
     # Changing the caller's value/type cannot change the method's proposed domain.
     assert emitted["alias"]["stmts"][0] == emitted["wrong_domain"]["stmts"][0]
-    print(f"Body inference: {len(cases)} pipeline controls and caller independence passed")
+    print(f"Body inference and closure flow: {len(cases)} pipeline controls and caller independence passed")
 
 
 if __name__ == "__main__":

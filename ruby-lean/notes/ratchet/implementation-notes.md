@@ -11781,3 +11781,35 @@ both halves of what constrains them now have a name.
   checker, emitter and registry admission are next; counts remain 82/87.
 - Full quiet gate GREEN (252 agree / 0 disagree); metatheory and standard-axiom audit
   pass. New proof modules build in under a second; no resource limits or axioms added.
+
+## Clink 222 (2026-09-26) — admit required-parameter and captured lambdas
+
+- DFlow.requiredCall and DFlowAll register the general source-call proof from 221.
+  All twelve DFam fields abstract their premises; the nine-family mutual bridge carries
+  receiver, arguments and ordinary body proofs. Three new companion rules are exercised
+  by worked 088/098 derivations, with proof-term coverage checked against their real ASTs.
+- FlowCheck binds source-required names to checked argument types at exact arity, then
+  checks the exact stored body at the arguments' outgoing context/environment. The
+  requiredClosureCall hint contains derivations and a claimed return type; the checker
+  reconstructs code, arity, parameter types, capture ownership and the returned environment.
+- Flow literals retain `.clos code .ivar0 .never`, erasing creation-time capture/self
+  claims while CurrentProc still proves current capture and native dispatch. The old
+  snapshot prevented 098's stored capture from crossing activation boundaries. Calls
+  already recheck live captures, so preserving stale snapshot types buys no safety here.
+  The ordinary full closure denotation and its transport controls are unchanged.
+- The emitter saves the receiver descriptor before evaluating arguments, binds required
+  parameters and explicit/parse-time block locals, then checks the body with live types.
+  Returning drops body-only slots and restores incoming types under shadowed names.
+  Source AST hints remain untrusted, and closure-valued call results remain declined.
+- Controls reject wrong arity/mode, forged argument/body/return hints, unsafe live capture
+  types and parameter types leaking into caller slots. Fifteen pipeline cases also check
+  saved receivers, two-argument mutation, explicit block locals and safe/unsafe captures.
+- Measured counts: fragment 84, checker reach 88, 75 rules (40 + 35), 63 worked, zero owed
+  or exempt, 252 agree / 0 disagree. 088 and 098 are new accepts; 089 is the next frontier.
+- Next-frontier measurement, Sorbet 0.6.13405: `proc { |x| x * 2 }` has
+  `T.proc.params(arg0: T.untyped).returns(T.untyped)` and its call returns T.untyped.
+  Zero/two arguments to this Proc1 are rejected; nil and `p[3]` are accepted. For
+  `proc { |x, y| x + y }`, `.call([1, 2])` is rejected and `.call(1, 2)` accepted.
+  A future exact-arity Proc rule still owes the actual non-lambda binding proof.
+- Final full quiet gate GREEN after raising all measured floors; metatheory and
+  standard-axiom audit pass. No proof approached five minutes, and no limits were raised.

@@ -343,14 +343,15 @@ class Emitter
     args = n[3]
     if recv.nil? && m == "lambda" && args.empty? && n[4]
       block = n[4]
-      unless block[0] == "block" && block[1].empty? && block[2].empty? &&
-          (block.length == 4 || block[3].empty?)
-        raise Blocked, "lambda parameters and block locals are outside the callable fragment"
+      unless block[0] == "block" && block[1].all? { |p| p[0] == "preq" } && [4, 5].include?(block.length)
+        raise Blocked, "only required positional lambda parameters are in the callable fragment"
       end
       @uses_flow = true
       # Emitter-only code descriptor. The checker reconstructs its own closure type
       # from the source and rechecks this body at the call's live local environment.
-      return [{ "rule" => "closureLiteral" }, { "tag" => "closureCode", "body" => block[-1] }]
+      return [{ "rule" => "closureLiteral" }, { "tag" => "closureCode", "body" => block[-1],
+        "params" => block[1].map { |p| p[1] },
+        "locals" => block[2] + (block.length == 5 ? block[3] : []) }]
     end
     raise Blocked, "a block argument is outside the fragment" unless n[4].nil?
     return implicit_send(m, args) if recv.nil?
@@ -359,12 +360,26 @@ class Emitter
 
     dr, tr = go(recv)
     if tr["tag"] == "closureCode"
-      unless recv[0] == "var" && recv[1] == "local" && m == "call" && args.empty?
-        raise Blocked, "only a stored zero-argument lambda call is in the callable fragment"
+      raise Blocked, "only lambda call is in the callable fragment" unless m == "call"
+      raise Blocked, "lambda arity mismatch" unless args.length == tr["params"].length
+      dargs, targs = go_all(args)
+      caller = @env.dup
+      shadow = tr["params"] + tr["locals"]
+      @env = caller.merge(tr["locals"].to_h { |name| [name, NIL_T] }).merge(tr["params"].zip(targs).to_h)
+      begin
+        body, ret = go(tr["body"])
+        # Body-only slots disappear; shadowed caller slots keep their incoming types.
+        returned = caller.to_h { |name, ty| [name, shadow.include?(name) ? ty : @env.fetch(name, NIL_T)] }
+      ensure
+        @env = caller
       end
-      body, ret = go(tr["body"])
+      @env = returned
       raise Blocked, "closure-valued call results are outside the fragment" if closure_type?(ret)
-      return [{ "rule" => "closureCall", "body" => body, "ret" => ret }, ret]
+      if recv[0] == "var" && recv[1] == "local" && args.empty? && tr["locals"].empty?
+        return [{ "rule" => "closureCall", "body" => body, "ret" => ret }, ret]
+      end
+      return [{ "rule" => "requiredClosureCall", "recv" => dr, "args" => dargs,
+        "body" => body, "ret" => ret }, ret]
     end
     tr = as_inst(tr)
     dargs, targs = go_all(args)

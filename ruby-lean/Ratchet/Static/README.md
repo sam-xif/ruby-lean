@@ -33,9 +33,11 @@ generated per-class name tables) also live here: both are comparisons over this 
 rather than rules about it.
 
 `LocalFacts.lean` supplies flow data for callable admission: optional exact physical
-local slots and current-capture Proc origins, with assignment/copy updates. It is not
-yet threaded by the certified judgment; `Denote/Sem/Closure/LocalFacts.lean` proves
-its conformance transfers independently of local value types.
+local slots, known-bound names and current-capture Proc origins, with assignment/copy updates.
+`DFlow`/`DFlowSeq`/`DFlowAll` thread it through certified expressions and arguments;
+`Denote/Sem/Closure/LocalFacts.lean` proves its transfers independently of value types.
+`closureReturnEnv` merges original caller types under parameter/block-local names with
+final body types for other caller-owned slots, erasing aliases to discarded body locals.
 
 ## The judgment this file was named for, and its scope
 

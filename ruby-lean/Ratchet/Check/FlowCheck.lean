@@ -28,6 +28,26 @@ structure CertifiedFlowSeq (κ : Ctx) (Γ : Env) (I : Ty) (incoming : LocalFacts
 abbrev OrdinaryCheck := (Γ : Env) → (e : Expr) → Deriv → (κ : Ctx) → (I : Ty) →
   CheckedCache → Option (Certified Γ e κ I)
 
+structure CertifiedFlowAll (κ : Ctx) (Γ : Env) (I : Ty) (incoming : LocalFacts) (es : List Expr) where
+  tys : List Ty
+  ctx : Ctx
+  out : Env
+  spine : Ty
+  facts : LocalFacts
+  judged : DFlowAll κ Γ I incoming es tys ctx out spine facts
+  cache : CheckedCache := {}
+
+/-- Bind exactly the checked argument types to source-required names. No hint supplies
+parameter types, and missing/extra arguments cannot yield a certified parameter list. -/
+def requiredFlowParams? (ps : List Param) (ts : List Ty) :
+    Option {qs : List SigParam // ps = qs.map (fun p => Param.req p.1) ∧ ts = qs.map (·.2)} :=
+  match ps, ts with
+  | [], [] => some ⟨[], rfl, rfl⟩
+  | .req x :: ps, t :: ts => do
+    let ⟨qs, hp, ht⟩ ← requiredFlowParams? ps ts
+    some ⟨(x, t) :: qs, by simp only [List.map_cons, hp], by simp only [List.map_cons, ht]⟩
+  | _, _ => none
+
 mutual
 def checkFlow (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I : Ty)
     (facts : LocalFacts) (e : Expr) (d : Deriv) (cache : CheckedCache) :
@@ -53,7 +73,7 @@ def checkFlow (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I :
       if hs : (paramEqAll ps ps && exprEq body body) = true then do
       let code : ClosureCode := ⟨ps, ls, body, lam, hs⟩
       if hf : nameFreeN κ (if lam then "lambda" else "proc") = true then
-        some ⟨.clos code (envToSpine Γ) (κ.selfTy.getD .never), true, κ, Γ, I, facts,
+        some ⟨.clos code .ivar0 .never, true, κ, Γ, I, facts,
           by simpa only [hn] using DFlow.closureLiteral (κ := κ) (Γ := Γ) (I := I) facts code hf, cache⟩
       else none
       else none
@@ -108,6 +128,46 @@ def checkFlow (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I :
         else none
         else none
       | _ => none
+    | .send (some recv) "call" args none, .requiredClosureCall dr ds body ret => do
+      let r ← checkFlow n ordinary κ Γ I facts recv dr cache
+      match hty : r.ty with
+      | .clos code cap selfT => do
+        if hc : r.current = true then do
+        let a ← checkFlowAll n ordinary r.ctx r.out r.spine r.facts args ds r.cache
+        let ⟨ps, hp, hts⟩ ← requiredFlowParams? code.params a.tys
+        if hat : a.tys.all FirstOrder = true then do
+        if hm : closureMainB a.ctx a.spine = true then do
+        if hfree : nameFreeN a.ctx "call" = true then do
+        if hlam : code.lam = true then do
+        if hin : activationEnvB (ps ++ blockLocals code.locals ++ a.out) = true then do
+        if hret : FirstOrder ret = true then do
+        let b ← ordinary (ps ++ blockLocals code.locals ++ a.out) code.body body
+          (closureBodyCtx a.ctx) a.spine a.cache
+        if hbty : b.ty = ret then do
+        let ⟨hbctx⟩ ← ctxEq? b.ctx (closureBodyCtx a.ctx)
+        if hbspine : b.spine = a.spine then do
+        if hout : activationReturnB b.out = true then do
+        match hn : a.facts.captureNames? (withoutNames (ps.map (·.1) ++ code.locals) b.out) with
+        | none => none
+        | some names =>
+          some ⟨ret, false, a.ctx, closureReturnEnv (ps.map (·.1) ++ code.locals) names a.out b.out,
+            a.spine, .unknown, .requiredCall
+              (by simpa only [hty, hc] using r.judged)
+              (by simpa only [hts] using a.judged)
+              (by simpa only [hts] using List.all_eq_true.mp hat)
+              hm hfree hp hlam hin hout hret hn
+              (by simpa only [hbty, hbctx, hbspine] using b.judged), b.cache⟩
+        else none
+        else none
+        else none
+        else none
+        else none
+        else none
+        else none
+        else none
+        else none
+        else none
+      | _ => none
     | e, d => do
       let c ← ordinary Γ e d κ I cache
       some ⟨c.ty, false, c.ctx, c.out, c.spine, .unknown, .embed facts c.judged, c.cache⟩
@@ -126,6 +186,22 @@ def checkFlowSeq (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (
       let c ← checkFlow n ordinary κ Γ I facts e d cache
       let t ← checkFlowSeq n ordinary c.ctx c.out c.spine c.facts (e' :: es) (d' :: ds) c.cache
       some ⟨t.ty, t.current, t.ctx, t.out, t.spine, t.facts, .cons c.judged t.judged, t.cache⟩
+    | _, _ => none
+
+def checkFlowAll (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I : Ty)
+    (facts : LocalFacts) (es : List Expr) (ds : List Deriv) (cache : CheckedCache) :
+    Option (CertifiedFlowAll κ Γ I facts es) :=
+  match fuel with
+  | 0 => none
+  | n + 1 =>
+    match es, ds with
+    | [], [] => some ⟨[], κ, Γ, I, facts, .nil, cache⟩
+    | e :: es, d :: ds => do
+      if hp : plainArgB e = true then do
+      let c ← checkFlow n ordinary κ Γ I facts e d cache
+      let t ← checkFlowAll n ordinary c.ctx c.out c.spine c.facts es ds c.cache
+      some ⟨c.ty :: t.tys, t.ctx, t.out, t.spine, t.facts, .cons c.judged t.judged hp, t.cache⟩
+      else none
     | _, _ => none
 end
 end Ratchet

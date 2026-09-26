@@ -78,6 +78,8 @@ inductive Deriv where
   | closureLiteral
   /-- The stored source body is rechecked at the call's live local types. -/
   | closureCall (body : Deriv) (ret : Ty)
+  /-- General receiver/arguments; parameter types are reconstructed from their certificates. -/
+  | requiredClosureCall (recv : Deriv) (args : List Deriv) (body : Deriv) (ret : Ty)
   /-- A bare-name miss from the explicitly supported absence table. -/
   | bareName (name : String)
   | selfExpr
@@ -161,6 +163,8 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
   | "flow" => return .flow (← kid "body")
   | "closureLiteral" => return .closureLiteral
   | "closureCall" => return .closureCall (← kid "body") (← ty "ret")
+  | "requiredClosureCall" =>
+    return .requiredClosureCall (← kid "recv") (← kids "args") (← kid "body") (← ty "ret")
   | "bareName" => return .bareName (← name "name")
   | "selfExpr" => return .selfExpr
   | "var" => return .var (← varKindOfJson? (← j.getObjVal? "kind")) (← name "name")

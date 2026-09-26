@@ -1,10 +1,25 @@
-# Current resume point (2026-09-26, clink 221)
+# Current resume point (2026-09-26, clink 222)
 
-Latest admission is 087: fragment 82, checker reach 87,
-72 registered rules (40 expressions + 32 companions), 61 worked theorems, no exemptions.
-The prefix remains 17; 018 is correctly rejected. Next frontier: 088-lambda-stabby-one-param,
-`->(x) { x + 1 }.call(2)`. This is an immediate receiver, not a stored local.
-Zero-argument stored lambdas pass the complete pipeline.
+Latest admissions: 088 and 098. Fragment 84, checker reach 88,
+75 registered rules (40 expressions + 35 companions), 63 worked theorems, no exemptions.
+The safe prefix remains 17; 018 is correctly rejected. Next frontier: 089-proc-basic,
+`p = proc { |x| x * 2 }; p.call(3)`, then 090's bracket call. Sorbet 0.6.13405 was measured:
+it infers untyped parameter/result, rejects missing/extra arguments and two-parameter
+array autosplat calls, and accepts a nil argument and bracket call (222's notes). An
+exact-arity Proc rule fits that contract but must prove the real non-lambda normalization
+under that guard. Emitter proposals and call admission still exclude non-lambda Procs.
+
+Clink 222 admits general required-parameter lambdas through validateD. DFlowAll is the ninth
+mutual family; all twelve DFam interpretations, registry rules and bridge cases carry its
+premises. FlowCheck reconstructs parameter types from checked arguments with exact arity,
+rechecks the exact stored body at final caller types, and computes the shadowed return env.
+Flow literals now retain code-only closure types; CurrentProc separately proves capture and
+dispatch. Dropping creation-time capture claims permits stored captured lambdas while live
+body checking still rejects changed-to-nil arithmetic. The emitter saves receiver code before
+arguments and restores caller types under parameter/block-local names. requiredClosureCall
+contains only derivation hints; no code, parameter type, origin or slot claim is trusted.
+Worked registry proofs cover 088/098; 15 pipeline controls include receiver overwrite, earlier
+arguments, shadowing and live captures. Counts are locked in MainTyped/SemLadder floors.
 
 Clink 221 proves general required-parameter source calls. FlowArgs threads LocalFacts
 through arbitrary-length arguments, retains earlier first-order values and a saved receiver,
@@ -15,15 +30,9 @@ merges the caller/body return environments from clink 219. Block locals are shad
 activationReturnB permits output aliases because return projection erases them.
 RequiredFlowControls proves the exact 088 source, an argument-created capture, receiver-local
 overwrite during arguments, and an earlier Integer argument surviving a later nil write.
-These are semantic proofs only: next integrate DFlowAll/requiredCall into the mutual
-judgment, every DFam interpretation/registry/bridge, FlowCheck, wire hints and emitter.
-Then add 088's worked registry derivation and raise its measured floors; counts remain 82/87.
-The parameterized emitter can also reach 098 (`n = 10; add_n = ->(x) { x + n };
-add_n.call(5)`). Its stored literal currently records a nonempty capture spine, which
-activationEnvB excludes. Account for that boundary explicitly: flow calls recheck live
-captures, so a code-only literal type is a possible general solution; do not claim 098
-from the immediate-call control. 097 still passes a block, 099 returns a lambda, 105 uses
-explicit return, and 107 deliberately mismatches arity.
+Clink 222 connects these semantic proofs to judgment/checker/emitter admission and uses
+code-only flow literal types to admit 098's stored capture. 097 still passes a block,
+099 returns a lambda, 105 uses explicit return, and 107 deliberately mismatches arity.
 
 Clink 220 strengthens ProcPres with exact dispatch-class retention alongside its payload
 field. All Framed producers discharge both; CurrentProc.framed now carries a saved receiver

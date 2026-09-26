@@ -55,4 +55,41 @@ def plusHint : Deriv := .prim (.var .lvar "x") "+" [.intLit 1] .int .int
 #guard !validateD (.seq [.vasgn .lvar "f" (literal plusX), .vasgn .lvar "x" .nil, call])
   (.flow (.seq [.vasgn .lvar "f" .closureLiteral, .vasgn .lvar "x" .nilLit,
     .closureCall plusHint .int]))
+
+def required (args : List Expr := [.int 2]) (body : Expr := plusX)
+    (params : List Param := [.req "x"]) (locals : List String := []) : Expr :=
+  .send (some (literal body params locals)) "call" args none
+def requiredHint (args : List Deriv := [.intLit 2]) (body : Deriv := plusHint)
+    (ret : Ty := .int) : Deriv := .flow (.requiredClosureCall .closureLiteral args body ret)
+
+#guard validateD required requiredHint
+#guard !validateD (required []) (requiredHint [])
+#guard !validateD (required [.int 2, .int 3]) (requiredHint [.intLit 2, .intLit 3])
+#guard !validateD (required [.str "wrong"]) (requiredHint [.strLit "wrong"])
+#guard !validateD required (requiredHint [.intLit 3])
+#guard !validateD required (requiredHint [.intLit 2] (.intLit 1))
+#guard !validateD required (requiredHint [.intLit 2] plusHint .bool)
+#guard !validateD (required [.int 2] plusX [.rest (some "x")]) requiredHint
+#guard validateD (required [.int 2] plusX [.req "x"] ["scratch"]) requiredHint
+#guard !validateD (.send (some (literal plusX [.req "x"] [] "proc")) "call" [.int 2] none) requiredHint
+
+-- Creation-time captures are not frozen in the stored type; the body uses live bindings.
+#guard validateD (.seq [.vasgn .lvar "x" (.int 7), .vasgn .lvar "f" (literal plusX), call])
+  (.flow (.seq [.vasgn .lvar "x" (.intLit 7), .vasgn .lvar "f" .closureLiteral,
+    .closureCall plusHint .int]))
+#guard !validateD (.seq [.vasgn .lvar "x" (.int 7), .vasgn .lvar "f" (literal plusX),
+  .vasgn .lvar "x" .nil, call])
+  (.flow (.seq [.vasgn .lvar "x" (.intLit 7), .vasgn .lvar "f" .closureLiteral,
+    .vasgn .lvar "x" .nilLit, .closureCall plusHint .int]))
+
+-- Argument evaluation overwrites the old binding after the receiver has been saved.
+#guard validateD (.seq [.vasgn .lvar "f" (literal plusX [.req "x"]),
+  call "f" [.vasgn .lvar "f" (.int 2)]])
+  (.flow (.seq [.vasgn .lvar "f" .closureLiteral,
+    .requiredClosureCall (.var .lvar "f") [.vasgn .lvar "f" (.intLit 2)] plusHint .int]))
+
+-- A parameter's Integer type cannot leak into the nil caller binding it shadows.
+#guard !validateD (.seq [.vasgn .lvar "x" .nil, required, plusX])
+  (.flow (.seq [.vasgn .lvar "x" .nilLit,
+    .requiredClosureCall .closureLiteral [.intLit 2] plusHint .int, plusHint]))
 end Ratchet.ClosureCheckControls

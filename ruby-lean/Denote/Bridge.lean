@@ -49,7 +49,7 @@ namespace Ratchet.Denote.Typed
 
 open RubyCore Ratchet Ratchet.Denote
 
-/-! ## §1 Eight-family mutual induction, using the initializer registry bridge -/
+/-! ## §1 Nine-family mutual induction, using the initializer registry bridge -/
 
 /-- **Every syntactic derivation is a certified one.** The registry covers `DJudge`, so the
 judgment `check` returns lands in the judgment `dregistry_safe` consumes. -/
@@ -67,9 +67,11 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
       F.flow κ Γ I facts e τ current κ' Γ' I' out)
     (motive_8 := fun κ Γ I facts es τ current κ' Γ' I' out _ =>
       F.flowSeq κ Γ I facts es τ current κ' Γ' I' out)
+    (motive_9 := fun κ Γ I facts es tys κ' Γ' I' out _ =>
+      F.flowAll κ Γ I facts es tys κ' Γ' I' out)
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals intros
   · apply hF DClink.intLit (by simp [dclinks]) <;> assumption
   · apply hF DClink.fltLit (by simp [dclinks]) <;> assumption
@@ -144,8 +146,11 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
   · apply hF DClink.DFlow.vasgn (by simp [dclinks]) <;> assumption
   · apply hF DClink.DFlow.sequence (by simp [dclinks]) <;> assumption
   · apply hF DClink.DFlow.call (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DFlow.requiredCall (by simp [dclinks]) <;> assumption
   · apply hF DClink.DFlowSeq.last (by simp [dclinks]) <;> assumption
   · apply hF DClink.DFlowSeq.cons (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DFlowAll.nil (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DFlowAll.cons (by simp [dclinks]) <;> assumption
 
 /-- Fundamental lemma at arbitrary method contexts, not just the top-level specialization. -/
 theorem djudge_context {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}

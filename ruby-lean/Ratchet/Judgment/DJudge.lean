@@ -612,11 +612,13 @@ inductive DFlow : Ctx → Env → Ty → LocalFacts → Expr → Ty → Bool →
   | var {κ : Ctx} {Γ : Env} {I τ : Ty} {x : String} (facts : LocalFacts) :
       envGet? Γ x = some τ → isAliasTy τ = false →
       DFlow κ Γ I facts (.var .lvar x) τ (facts.currentProcs.contains x) κ Γ I facts
+  /-- Sorbet's mutable-capture examples (clinks 200/218) motivate call-time body checking.
+  Keep exact code here; do not freeze creation-time capture types into the stored value. -/
   | closureLiteral {κ : Ctx} {Γ : Env} {I : Ty} (facts : LocalFacts) (code : ClosureCode) :
       nameFreeN κ (if code.lam then "lambda" else "proc") = true →
       DFlow κ Γ I facts (.send none (if code.lam then "lambda" else "proc") []
         (some (.block code.params code.locals code.body)))
-        (.clos code (envToSpine Γ) (κ.selfTy.getD .never)) true κ Γ I facts
+        (.clos code .ivar0 .never) true κ Γ I facts
   | vasgn {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {facts out : LocalFacts}
       {e : Expr} {x : String} {current : Bool} :
       DFlow κ Γ I facts e τ current κ' Γ' I' out →
@@ -637,6 +639,23 @@ inductive DFlow : Ctx → Env → Ty → LocalFacts → Expr → Ty → Bool →
       DJudge Γ code.body τ Γb (closureBodyCtx κ) I (closureBodyCtx κ) I →
       DFlow κ Γ I facts (.send (some (.var .lvar name)) "call" [] none) τ false
         κ (captureEnv names Γb) I .unknown
+  /-- Sorbet 0.6.13405 checks required lambda arity but infers untyped parameters/results
+  for `->(x) { x + 1 }` (clink 218). This rule checks the body at actual argument types. -/
+  | requiredCall {κ κr κa : Ctx} {Γ Γr Γa Γb : Env}
+      {I Ir Ia τ cap selfT : Ty} {facts fr fa : LocalFacts} {names : List String}
+      {recv : Expr} {args : List Expr} {ps : List SigParam} {code : ClosureCode} :
+      DFlow κ Γ I facts recv (.clos code cap selfT) true κr Γr Ir fr →
+      DFlowAll κr Γr Ir fr args (ps.map (·.2)) κa Γa Ia fa →
+      (∀ σ ∈ ps.map (·.2), FirstOrder σ = true) →
+      closureMainB κa Ia = true → nameFreeN κa "call" = true →
+      code.params = ps.map (fun p => Ratchet.Param.req p.1) → code.lam = true →
+      activationEnvB (ps ++ blockLocals code.locals ++ Γa) = true →
+      activationReturnB Γb = true → FirstOrder τ = true →
+      fa.captureNames? (withoutNames (ps.map (·.1) ++ code.locals) Γb) = some names →
+      DJudge (ps ++ blockLocals code.locals ++ Γa) code.body τ Γb
+        (closureBodyCtx κa) Ia (closureBodyCtx κa) Ia →
+      DFlow κ Γ I facts (.send (some recv) "call" args none) τ false κa
+        (closureReturnEnv (ps.map (·.1) ++ code.locals) names Γa Γb) Ia .unknown
 
 /-- Sorbet's stored-lambda example (clink 200) uses the local established by the
 preceding statement. This companion threads the proved model facts in that order. -/
@@ -651,6 +670,18 @@ inductive DFlowSeq : Ctx → Env → Ty → LocalFacts → List Expr → Ty → 
       DFlow κ Γ I f e σ c κ₁ Γ₁ I₁ f₁ →
       DFlowSeq κ₁ Γ₁ I₁ f₁ (e' :: es) τ c' κ₂ Γ₂ I₂ f₂ →
       DFlowSeq κ Γ I f (e :: e' :: es) τ c' κ₂ Γ₂ I₂ f₂
+
+/-- Required-argument companion for Sorbet's strict lambda arity (clink 218).
+The model's local facts flow between argument evaluations in source order. -/
+inductive DFlowAll : Ctx → Env → Ty → LocalFacts → List Expr → List Ty →
+    Ctx → Env → Ty → LocalFacts → Prop
+  | nil {κ : Ctx} {Γ : Env} {I : Ty} {facts : LocalFacts} :
+      DFlowAll κ Γ I facts [] [] κ Γ I facts
+  | cons {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ σ : Ty}
+      {f f₁ f₂ : LocalFacts} {e : Expr} {es : List Expr} {tys : List Ty} {current : Bool} :
+      DFlow κ Γ I f e σ current κ₁ Γ₁ I₁ f₁ →
+      DFlowAll κ₁ Γ₁ I₁ f₁ es tys κ₂ Γ₂ I₂ f₂ → plainArgB e = true →
+      DFlowAll κ Γ I f (e :: es) (σ :: tys) κ₂ Γ₂ I₂ f₂
 end
 
 theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ : Ty}
@@ -665,7 +696,8 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_6 := fun _ _ _ _ _ _ _ _ => True)
     (motive_7 := fun _ _ _ _ e _ _ _ _ _ _ _ => plainArgB e = true)
     (motive_8 := fun _ _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    (motive_9 := fun _ _ _ _ _ _ _ _ _ _ _ => True)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 
