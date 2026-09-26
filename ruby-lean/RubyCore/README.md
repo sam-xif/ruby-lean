@@ -517,6 +517,14 @@ reified to a non-lambda `Proc` only if the callee captures it via `&blk` or asks
 The lambda flag controls **two** observable behaviors: arity (§2) and the meaning
 of `return` (§4).
 
+For `&e`, receiver, arguments and keywords are evaluated before `e`. A Proc passes
+through unchanged and `nil` supplies no block. Otherwise the model calls the resolved
+`to_proc`, including private methods, and requires a Proc result. A lookup miss follows
+checked conversion through response hooks and `method_missing`; a missing conversion
+raises TypeError. Continuations preserve the pending call across conversion's side effects,
+exceptions and jumps (L275). Native `Symbol#to_proc` supplies a capture-free closure;
+overriding or undefining that method changes `&:symbol` accordingly.
+
 ### 04 §2 — Calling a closure; arity
 
 `Proc#call`, `Proc#[]`, `Proc#yield` and `Proc#===` use ordinary method lookup, including

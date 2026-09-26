@@ -12410,3 +12410,21 @@ both halves of what constrains them now have a name.
   99 rules (42 expressions + 57 companions), 72 worked proofs, zero owed/exempt,
   254 agree / 0 disagree. Metatheory/standard-axiom audit PASS; floors raised. New modules
   build under a second, RuleAudit in 25; no proof exceeded five minutes or raised a limit.
+
+## Clink 245 (2026-09-26) — repair conversion before symbol-block typing
+
+- 096's plain map(&:to_s) agrees, but overriding Symbol#to_proc exposes §F56:
+  CRuby uses the returned callback, while the model still calls to_s. Private, undef
+  and invalid-return controls also disagreed. Fixed the model at L275 before proving it.
+- Effectful conversion keeps the evaluated call in a continuation, dispatches to_proc,
+  validates the result, and handles checked missing-method conversion. Proc/nil bypass
+  conversion. Symbol's native capture-free allocator is shared by explicit/implicit use.
+- Redefinition during method_missing disproved a merged response flag: its two response
+  answers and lookup owner must survive separately. The regression now covers that case.
+- Continuation framing covers every new stage. No typing rule, exemption or admission is
+  added: 096 still needs proofs for capture-free entry and required/rest native formals.
+- Validation: both new regressions agree; full replay retains exactly three baseline
+  disagreements verified against dfa5116. MRI tier 0 improves to 999 agree / 0 disagree
+  (304 unsupported). Full quiet gate GREEN: fragment 94/261, checker reach 95, 99 rules,
+  72 worked proofs, zero owed/exempt, 254 agree / 0 disagree. Metatheory and standard-axiom
+  audit PASS. Logs: /private/tmp/ratchet-blockpass-{gate,audit,tier0,regressions}.log.

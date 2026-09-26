@@ -13683,3 +13683,41 @@ it did not exist.
   305 unsupported, 5 invalid controls and the existing test_syntax_115 harness error.
   Full quiet ratchet GREEN (fragment 87, reach 91, 252 agree / 0 disagree); metatheory
   and standard-axiom audit pass. No new axioms, resource limits or five-minute proofs.
+
+## L275 — Block-pass conversion dispatches to_proc (2026-09-26)
+
+- Ratchet §F56: `&:symbol` allocated a closure without looking up Symbol#to_proc.
+  Overrides, private implementations, undef and invalid returns silently disagreed.
+  The pure coerceToProc helper is removed; native Symbol conversion has one allocator.
+- Interp/BlockPass follows CRuby's vm_to_proc (vm_args.c) and checked conversion
+  (vm_eval.c): Proc/nil bypass lookup, a defined to_proc bypasses response hooks and
+  visibility, and a miss consults respond_to?, then respond_to_missing?, then a custom
+  method_missing. The pending call retains its evaluated receiver/arguments/keywords.
+  A converted value must actually carry a Proc payload. Missing conversion and invalid
+  returns raise TypeError; ordinary converter exceptions and nonlocal jumps propagate.
+- The missing-method rescue retains both response answers and its lookup owner.
+  NoMethodError handling rechecks that owner's method table: installing to_proc while
+  failing can still produce TypeError, even after a positive respond_to_missing?.
+  A positive respond_to? answer preserves the original exception. Collapsing these two
+  answers into one flag was disproved by the new redefinition regression.
+- Fixed-one-argument respond_to? receives one argument; other supported signatures
+  receive name and include_private=true. Keyword response signatures and builtin aliases
+  of respond_to? still gate until native method arity is modeled. Unmodeled native
+  to_proc entries retain the fidelity gate. These gates do not bypass conversion.
+- BlockPassCall/Phase plus one continuation hold suspended conversion. The framing
+  lemmas use ordinary invoke framing and preserve the existing CatchFree boundary.
+  NotDone also covers every stage, retaining the unique whole-run completion site.
+  Two regressions cover native/override/private/undef/alias paths, Proc/nil bypass,
+  response hooks, mutation, wrong results, argument order, keywords, ensure and throw.
+- Primary implementation references: https://github.com/ruby/ruby/blob/master/vm_args.c
+  (vm_to_proc), https://github.com/ruby/ruby/blob/master/vm_eval.c (check_funcall_missing).
+  Observable cases were measured against installed CRuby 4.0.5.
+- Validation: both new regressions agree. Full regression replay is 42 agree, three
+  known disagreements and three unsupported; each disagreement was reproduced identically
+  with a separately built dfa5116 binary (anon-eigen-lazy-name, mix-08969-minimized,
+  super-method-missing). MRI tier 0 improves to 999 agree / 0 disagree, 304 unsupported,
+  five invalid controls and the existing test_syntax_115 harness error. The newly agreeing
+  test_method_217 invokes a nested call inside to_proc and preserves the original receiver.
+- Full quiet ratchet GREEN (94 fragment, 95 checker reach, 99 rules, 72 worked
+  proofs, 254 agree / 0 disagree). Metatheory and standard-axiom audit PASS.
+  New framing module: 674ms; no five-minute proofs, new axioms or resource increases.

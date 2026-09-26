@@ -428,32 +428,6 @@ def reifyBlock (m : Machine) (params : List Param) (locals : List String) (body 
   let (o, h) := m.heap.alloc { klass := Boot.procId, payload := .proc cl }
   (.ref o, { m with heap := h })
 
-/-- Coerce a `&e` block-pass operand: a Proc is used directly, `nil` means no
-    block, a Symbol builds `:m.to_proc`; anything else gates (`to_proc`
-    dispatch is out of L1). -/
-def coerceToProc (m : Machine) (v : Value) : Except String (Option Value × Machine) :=
-  match v with
-  | .nil => .ok (none, m)
-  | .ref o =>
-    match (m.heap.get o).payload with
-    | .proc _ => .ok (some v, m)
-    | _ => .error "block-pass of a non-Proc (to_proc dispatch is L2)"
-  | .sym s =>
-    -- `:m.to_proc` ≈ `->(x, *a){ x.m(*a) }` — lambda-like so it does NOT
-    -- auto-splat an Array receiver (`[[1,2]].map(&:first)` → `[1,2].first`).
-    let cl : Closure :=
-      { params := [.req "__recv", .rest (some "__rest")], locals := [],
-        body := .send (some (.var .lvar "__recv")) s
-                  [.splat (some (.var .lvar "__rest"))] none,
-        -- `captured := none`: this Proc is the model's *invention* for a Symbol,
-        -- and CRuby's has no binding at all (`ruby-lean/notes/ratchet/found-issues.md` §A6a).
-        -- The body's only free names are its own parameters, so there is nothing
-        -- for a capture chain to resolve. L266.
-        captured := none, home := 0, lam := true }
-    let (o, h) := m.heap.alloc { klass := Boot.procId, payload := .proc cl }
-    .ok (some (.ref o), { m with heap := h })
-  | _ => .error "block-pass of a non-Proc"
-
 /-- The innermost active frame whose block *is* this proc — i.e. the method the
     block was passed to. `break` inside a proc called via `#call` returns from
     that method (and is a `LocalJumpError` once it has exited) [V], so this is

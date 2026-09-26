@@ -2963,3 +2963,24 @@ Clink 239 closes the implicit-block source admission gap: 094 and regression 260
 through the registered method families, checked definition caches and actual callback proofs.
 All 88 rules have worked corpus coverage with no exemptions. Explicit &b binding/dispatch
 (095) remains; no new model defect was found.
+
+## F56 — Symbol block passing bypasses conversion dispatch
+
+**Fixed by model L275 / clink 245.** Before typing rung 096, this measured witness
+showed the model's direct closure allocation was not Ruby's conversion:
+
+```ruby
+class Symbol
+  def to_proc; ->(x) { "override" }; end
+end
+p [1, 2].map(&:to_s)
+```
+
+CRuby 4.0.5 prints `["override", "override"]`; the old model printed `["1", "2"]`.
+Private to_proc also runs; undef or a non-Proc result raises TypeError. A custom
+method_missing can provide the conversion. All previously bypassed lookup.
+Interp/BlockPass now dispatches conversion with continuations, validates its result,
+and resumes the original call. Native Symbol#to_proc keeps its capture-free closure.
+The new regressions exercise conversion effects and the checked-missing protocol.
+This repair does not by itself type 096: its native closure uses required/rest formals
+and has no captured frame, so the typing proof must cover that actual entry path.

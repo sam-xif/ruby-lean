@@ -419,6 +419,39 @@ set_option maxHeartbeats 40000000 in
       | (simp (maxSteps := 20000); done)
       | split
 
+/-! L275: conversion can suspend or raise, but cannot finish the whole run. -/
+@[simp] theorem blockPassNoConversion_notDone :
+    isDone (blockPassNoConversion m source) = false := by
+  unfold blockPassNoConversion; simp
+
+@[simp] theorem blockPassInvalid_notDone :
+    isDone (blockPassInvalid m source result) = false := by
+  unfold blockPassInvalid; simp
+
+@[simp] theorem blockPassMissing_notDone :
+    isDone (blockPassMissing m call source respond respondMissing) = false := by
+  unfold blockPassMissing; nd_walk
+
+@[simp] theorem blockPassChecked_notDone :
+    isDone (blockPassChecked m call source promised) = false := by
+  unfold blockPassChecked; nd_walk
+
+@[simp] theorem blockPassRespond_notDone :
+    isDone (blockPassRespond m call source md) = false := by
+  unfold blockPassRespond; nd_walk
+
+@[simp] theorem coerceBlockPass_notDone :
+    isDone (coerceBlockPass m call source) = false := by
+  unfold coerceBlockPass; nd_walk
+
+@[simp] theorem resumeBlockPass_notDone :
+    isDone (resumeBlockPass m call source phase result) = false := by
+  unfold resumeBlockPass; nd_walk
+
+@[simp] theorem unwindBlockPass_notDone :
+    isDone (unwindBlockPass m source phase j) = false := by
+  unfold unwindBlockPass; nd_walk
+
 set_option maxHeartbeats 40000000 in
 @[simp] theorem unwind_notDone : isDone (Interp.unwind m j) = false := by
   rw [Interp.unwind.eq_def]

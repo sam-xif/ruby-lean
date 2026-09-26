@@ -1,4 +1,4 @@
-import RubyCore.Proof.KontFrameSend
+import RubyCore.Proof.KontFrameBlockPass
 
 /-!
 # `RubyCore/Proof/KontFrameKont.lean` — the continuation appliers, framed
@@ -167,6 +167,8 @@ macro_rules
         | (rw [finishSend_frame $K $hK]; try rfl)
         | (rw [doSuper_frame $K $hK]; try rfl)
         | (rw [invoke_frame $K $hK]; try rfl)
+        | (rw [coerceBlockPass_frame $K $hK]; try rfl)
+        | (rw [resumeBlockPass_frame $K $hK]; try rfl)
         | (rw [invokeDispatch_frame $K $hK]; try rfl)
         | (rw [dispatchMiss_frame $K $hK]; try rfl)
         | (rw [tryReflect_frame $K $hK]; try rfl)

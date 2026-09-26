@@ -1,4 +1,4 @@
-import RubyCore.Interp.Send
+import RubyCore.Interp.BlockPass
 
 /-!
 Continuation application (`applyKont`) and jump unwinding (`unwind`) — what
@@ -213,9 +213,9 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .argsSplatK recv implicit mname acc rest pblk =>
       withSpread m v fun m vs => startArgs m recv implicit mname (acc ++ vs) rest pblk
     | .blkCoerceK recv implicit mname acc kw =>
-      match coerceToProc m v with
-      | .ok (blkV, m) => invoke m recv implicit mname acc blkV kw
-      | .error e => .unsupported e
+      coerceBlockPass m ⟨recv, implicit, mname, acc, kw⟩ v
+    | .blkConvertK call source phase =>
+      resumeBlockPass m call source phase v
     | .kwPairK key rest kwacc recv implicit mname posArgs pblk =>
       startKwargs m recv implicit mname posArgs (kwAdd kwacc (.sym key) v) rest pblk
     | .kwDynKeyK valE rest kwacc recv implicit mname posArgs pblk =>
@@ -406,6 +406,8 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
         -- `redo` re-runs *this* block invocation from the top with the same
         -- arguments (artifact 04, L69): pop the frame and re-enter the closure.
         callClosure { m with stack := m.stack.tail } cl args brk
+    | .blkConvertK _ source phase =>
+      unwindBlockPass m source phase j
     | .definedGuardK =>
       -- any exception while evaluating a `defined?` operand makes it nil [V]
       match j with

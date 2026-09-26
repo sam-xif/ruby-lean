@@ -446,8 +446,8 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         { params := [.req "__recv", .rest (some "__rest")], locals := [],
           body := .send (some (.var .lvar "__recv")) s
                     [.splat (some (.var .lvar "__rest"))] none,
-          -- `captured := none` — see `coerceToProc`'s twin of this closure in
-          -- `Interp/Support.lean` and `ruby-lean/notes/ratchet/found-issues.md` §A6a (L266).
+          -- No binding: only the parameters occur free (§A6a, L266).
+          -- `&:symbol` now reaches this same entry through lookup (L275).
           captured := none, home := 0, lam := true }
       let (o, h) := m.heap.alloc { klass := Boot.procId, payload := .proc cl }
       .ok (.ref o) { m with heap := h }

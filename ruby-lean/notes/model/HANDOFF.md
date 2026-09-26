@@ -1,5 +1,22 @@
 # Lean model — hand-off
 
+## Current block conversion repair (2026-09-26, L275)
+
+`&e` now dispatches to_proc after evaluating the call's receiver/arguments/keywords.
+Proc/nil bypass lookup; defined methods (including private ones) precede response hooks.
+Missing conversion follows checked method_missing handling and validates the Proc result.
+The old Symbol-only allocator bypass is removed (§F56). Native Symbol#to_proc retains its
+capture-free closure. Interp/BlockPass and KontFrameBlockPass contain the protocol/proofs.
+Two regression files cover conversion effects, response hooks, mutation and exits.
+MRI tier 0: 999 agree / 0 disagree (+1), 304 unsupported, five invalid controls and
+the existing harness error. Full regressions: 42 agree, three unchanged dfa5116 disagreements,
+three unsupported. test_method_217 now agrees (nested calls during to_proc).
+Full quiet ratchet GREEN (94 fragment, 254 agree / 0 disagree); metatheory and
+standard-axiom audit PASS. No live builds. Logs: /private/tmp/ratchet-blockpass-*.log.
+Rung 096 typing still needs native capture-free required/rest closure entry; do not reuse
+literal-block capture/one-required-parameter facts for this different path.
+
+
 ## Current map repair (2026-09-26, L274)
 
 Array#map/collect now resolve native markers through ordinary lookup, with a live

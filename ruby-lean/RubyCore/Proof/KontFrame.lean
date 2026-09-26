@@ -1075,12 +1075,6 @@ normalises `caps.toList.foldl` to this). -/
     reifyBlock (pushK K m) ps ls body lam =
       ((reifyBlock m ps ls body lam).1, pushK K (reifyBlock m ps ls body lam).2) := rfl
 
-@[simp, frameLem] theorem coerceToProc_frame (K : List Kont) (m : Machine) (v : Value) :
-    coerceToProc (pushK K m) v =
-      (coerceToProc m v).map (fun p => (p.1, pushK K p.2)) := by
-  rw [coerceToProc.eq_def, coerceToProc.eq_def]
-  frame_arms
-
 @[simp, frameLem] theorem finishRegion_frame (K : List Kont) (m : Machine) (ens : Option Expr)
     (pending : Pending) :
     finishRegion (pushK K m) ens pending = pushK K (finishRegion m ens pending) := by

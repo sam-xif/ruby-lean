@@ -1,4 +1,26 @@
-# Current resume point (2026-09-26, clink 244 / model L274)
+# Current resume point (2026-09-26, clink 245 / model L275)
+
+Before typing 096, measured §F56: &:symbol bypassed overridden/private/undefined
+Symbol#to_proc. Interp/BlockPass now runs conversion through lookup and continuations,
+including the checked response-hook/method_missing path; invalid results raise TypeError.
+Native Symbol#to_proc has one capture-free allocator. No checker rules or admissions change.
+New framing proofs cover conversion and its exception boundary; two regression programs
+exercise side effects, argument order, keywords, overrides, missing hooks and mutation.
+
+Next: type 096 on the repaired path. Native Symbol closures have captured=none and
+required/rest formals; attached iterator proofs currently assume a captured caller and one
+required formal. Prove native conversion readiness, capture-free entry, rest allocation,
+the underlying Integer#to_s send, and caller restoration before adding a source judgment.
+Then 097 is stored-lambda block passing. Keep every new judgment tied to measured Sorbet.
+
+Full quiet gate GREEN: fragment 94/261, checker reach 95, 99 rules, 72 worked proofs,
+zero owed/exempt, 254 agree / 0 disagree. Metatheory and standard-axiom audit PASS.
+MRI tier 0 improves to 999 agree / 0 disagree, 304 unsupported. Both new regressions
+agree; three unrelated regression mismatches reproduce identically at dfa5116.
+New framing module builds in 674ms; no five-minute proof or new resource limit.
+Logs: /private/tmp/ratchet-blockpass-{gate,audit,tier0,regressions}.log. No live builds.
+
+Previous admission (clink 244):
 
 Explicit named-&b source calls now pass validateD, admitting 095, 157 and new 261.
 DMethodFlow/Seq join DJudge's mutual

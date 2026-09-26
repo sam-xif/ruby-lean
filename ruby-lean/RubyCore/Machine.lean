@@ -110,6 +110,25 @@ inductive SendSite where
   | vcall
 deriving Repr, DecidableEq, Inhabited
 
+/-- The already evaluated call awaiting `&operand` conversion (L275). -/
+structure BlockPassCall where
+  recv : Value
+  site : SendSite
+  name : String
+  args : List Value
+  kw : List (Value × Value)
+deriving Inhabited
+
+/-- Checked conversion's suspended user calls. A missing-method failure retains
+    both response answers and the lookup owner, since redefinition during the
+    handler affects whether its NoMethodError propagates (L275). -/
+inductive BlockPassPhase where
+  | respond
+  | respondMissing (promised : Bool)
+  | converted (direct : Bool)
+  | missing (owner : ObjId) (respond : Bool) (respondMissing : Bool)
+deriving Inhabited
+
 /-- A send's block child, carried through arg evaluation. A literal block is
     reified (capturing the caller frame) only once args are in; a `&e`
     block-pass is evaluated last (eval order) then coerced via `to_proc`. -/
@@ -228,6 +247,7 @@ inductive Kont where
       dispatch (args + keywords already evaluated). -/
   | blkCoerceK (recv : Value) (implicit : SendSite) (m : String) (acc : List Value)
       (kw : List (Value × Value))
+  | blkConvertK (call : BlockPassCall) (source : Value) (phase : BlockPassPhase)
   /-- Evaluating a call-site `k: v` keyword value; then continue the kwargs. -/
   | kwPairK (key : String) (rest : List KwEntry) (kwacc : List (Value × Value))
       (recv : Value) (implicit : SendSite) (m : String) (posArgs : List Value) (pblk : PendingBlk)
