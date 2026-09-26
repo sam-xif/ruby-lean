@@ -131,6 +131,11 @@ Clink 229 registers/checks/emits map/collect and admits 092/093. Output element 
 from the checked body; hints supply no result type. Exact worked proofs and 45 pipeline
 controls cover String results, captured writes, local shadowing and refusals. Next: typed
 blocks crossing ordinary method activations (yield/&block) and explicit block-pass.
+Clink 230 proves callback entry/return across an ordinary method (§F55). CallbackFramed
+preserves the suspended method and permits captured caller writes; typed_yield_continue
+composes the checked block through actual doYield/blkFrameK. Source-yield controls prove
+the all-fuel contract and refute ordinary method isolation. Method-body judgment/definition
+and source-call composition still precede admission; fragment and floors are unchanged.
 
 ## Layout
 

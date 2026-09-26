@@ -65,6 +65,7 @@ import Denote.Controls.MethodEntryControls
 import Denote.Controls.MethodInstallControls
 import Denote.Controls.MethodRuleControls
 import Denote.Controls.MethodStateControls
+import Denote.Controls.TypedYieldControls
 import Denote.Controls.OwnNamesControls
 import Denote.Controls.PointClassControls
 import Denote.Controls.PointConstructorControls

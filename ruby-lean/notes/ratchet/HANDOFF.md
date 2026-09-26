@@ -1,4 +1,24 @@
-# Current resume point (2026-09-26, clink 229 / model L274)
+# Current resume point (2026-09-26, clink 230 / model L274)
+
+Clink 230 adds an entry/return proof layer for yield across an ordinary method. §F55 is
+a proof-contract obstruction: the runtime already agrees with CRuby on repeated yield
+updating an outer Integer while preserving a method local. CallbackFramed preserves the
+complete method frame, projects Framed to the captured caller and pins its slot domain.
+CallbackCaller derives required-arity block entry, full caller return and the next-call
+invariant from a checked body and a capture-type fixed point. typed_yield_continue composes
+actual doYield/blkFrameK with a continuation receiving both frames' guarantees. methodReturn
+pops the method marker. TypedYieldControls is mandatory and proves a source yield with a
+captured write for all fuel, refutes ordinary method isolation and rejects method damage.
+No new judgment or corpus admission; metrics below remain unchanged.
+Full quiet gate GREEN and metatheory/standard-axiom audit PASS. New proof modules build
+in under a second. No live builds remain.
+
+Next: compose callbacks with ordinary expressions in a method-body contract, then definition
+checking, attached-block dispatch and &b binding. Do not put yield directly under the old
+SemSafeCtxA method framing: method_isolation_false is the counterexample. Existing arrow
+denotations give partial-return typing, not call safety. Sorbet 0.6.13405 accepts stable
+captured Integer writes with typed &b, rejects type changes (7001) and nil yield arguments
+(7002); exact 094's missing block annotation has its expected Sorbet rejection.
 
 Latest admissions: 092-block-map-to-s and 093-block-doend-with-block-local. Fragment 89,
 checker reach 93, 77 registered rules (40 expressions + 37 companions), 68 worked proofs,

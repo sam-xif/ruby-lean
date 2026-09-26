@@ -12006,3 +12006,31 @@ both halves of what constrains them now have a name.
   zero owed/exempt, 252 agree / 0 disagree. All four changed floors are locked. Direct
   validate-one checks confirm 092/093 acceptance. Metatheory and standard-axiom audit pass;
   no new axioms or proof builds over five minutes. Next: yield/&block across method frames.
+
+## Clink 230 (2026-09-26) — preserve both frames across typed yield
+
+- The next obstruction is a proof contract, not a runtime mismatch (§F55). CRuby/model
+  agree on repeated yield updating an outer Integer while preserving a method local.
+  Ordinary Framed at the method forbids this valid callback effect. Keep that contract
+  for existing judgments; do not weaken every proof or restrict blocks to read-only code.
+- CallbackFramed projects framing to the captured caller, preserves the suspended method's
+  complete frame and pins caller slot ownership. Its return proof reuses the iterator's
+  two-pop projection, which is independent of the intervening activation's code, and proves
+  the additional method-frame guarantee from isolation outside the block's capture chain.
+- CallbackCaller handles arbitrary exact required arity. The checked body supplies entry
+  and return conformance; closureReturnEnv's fixed point retains captured types. Its next
+  theorem restores capture identity and slot facts for a later yield. First-order results
+  survive the pop; no arrow denotation is treated as a safety theorem.
+- typed_yield_continue composes actual doYield/callClosure and blkFrameK with a continuation
+  that consumes CallbackResultOk. methodReturn discharges the real method marker. The
+  mandatory TypedYieldControls proves `yield(Integer)` with `total = total + x` for all
+  fuel, refutes ordinary method isolation and rejects corruption of the active method.
+  This is an entry/return proof layer, not a new registered judgment or corpus admission.
+- Sorbet 0.6.13405 --no-config accepts stable captured Integer writes with a typed &b,
+  rejects Integer-to-nil writes (7001) and nil for an Integer yield argument (7002).
+  Exact 094's absent block annotation is rejected as its existing metadata expects.
+  Next: a method-body contract composing callbacks with ordinary expressions, definition
+  checking, attached-block dispatch and &b binding, then checker/emitter admission.
+- Full quiet gate GREEN: unchanged 89 fragment, checker reach 93, 77 rules, 68 worked
+  proofs, zero owed/exempt and 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New proof modules build in under a second; no new axioms or resource-limit changes.

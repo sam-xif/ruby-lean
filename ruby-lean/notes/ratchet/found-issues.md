@@ -2877,3 +2877,25 @@ Removing Array's map entry exposes Enumerable's implementation as CRuby does. Th
 snapshot fallback is removed. Regression: array-map-native.rb. Clink 228 proves guarded
 native resolution, typed accumulation and final allocation/caller conformance; clink 229
 registers the rule and admits map blocks through validateD.
+
+## F55 — Ordinary-method isolation cannot describe a captured write through yield
+
+**Return contract proved in clink 230; method-body judgment/admission remain open.**
+`def twice; saved = 7; result = yield(1) + yield(2); p saved; result; end;
+total = 0; p twice { |x| total = total + x }; p total` prints 7, 4, 3 under both
+CRuby 4.0.5 and the model. The runtime already handles this captured write correctly.
+Framed at the uncaptured method would require the inactive caller to remain unchanged.
+TypedYieldControls.method_isolation_false refutes that contract with an actual setLocal.
+
+CallbackFramed instead preserves the complete suspended method frame and projects Framed
+to its caller. It also preserves the caller's physical slot domain. CallbackCaller derives
+block entry and full caller return conformance from the checked body and capture-type fixed
+point. typed_yield_continue composes these through doYield and the real block marker;
+the continuation receives both frames' guarantees. Existing Framed and registered rules
+are unchanged. A source-yield control proves a captured Integer write through both return
+markers for all fuel; another control rejects damage to the suspended method itself.
+
+Sorbet 0.6.13405 accepts the stable Integer write with an explicit typed &b signature,
+rejects Integer-to-nil capture changes (7001) and a nil yield argument (7002). Exact 094
+still has its documented Sorbet rejection for an omitted block parameter (5082/7035/7003).
+An arrow denotation supplies partial-return typing, not the callback safety premise.
