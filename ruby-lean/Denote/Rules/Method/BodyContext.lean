@@ -87,6 +87,24 @@ theorem MethodActivation.after {κ : Ctx} {Γ Γm Γm' : Env} {I τ : Ty}
   exact ⟨o, cl, (congrArg FrameScope.blk (hr.1.scope h.method.frameInRange)).trans hblk,
     hr.1.proc hproc, hcode, hc.afterMethod hr.1 h.distinct (hr.2.2 v rfl).1⟩
 
+theorem MethodActivation.reCtl {κ : Ctx} {Γ Γm : Env} {I : Ty}
+    {cb : CheckedCallback κ Γ I} {fr : Ratchet.Frame} {origin m : Machine}
+    (h : MethodActivation cb fr Γm origin m) (c : Ctl) (K : List Kont) :
+    MethodActivation cb fr Γm origin (Ratchet.Denote.reCtl m c K) := by
+  refine ⟨h.originState, StateOk_reCtl h.method c K,
+    ⟨h.scope.self, h.scope.cref, h.scope.owner, h.scope.uncaptured⟩, h.fresh,
+    h.framed.trans (Framed_reCtl _ c K), ?_⟩
+  obtain ⟨o, cl, hblk, hproc, hcode, hc⟩ := h.callback
+  refine ⟨o, cl, hblk, hproc, hcode, ?_, hc.capture, hc.slots⟩
+  simpa only [popMethodFrame, Ratchet.Denote.reCtl] using (StateOk_reCtl hc.state c K)
+
+theorem RunSpec.inMethod {κ : Ctx} {Γ Γm Γm' : Env} {I τ : Ty}
+    {cb : CheckedCallback κ Γ I} {fr : Ratchet.Frame} {origin m start : Machine}
+    (h : RunSpec m start Γm' τ (callbackMethodCtx κ fr cb.code) I)
+    (hm : MethodActivation cb fr Γm origin m) :
+    MethodRunSpec m start Γ Γm' τ κ (callbackMethodCtx κ fr cb.code) I I :=
+  h.methodOrdinary hm.originState hm.caller hm.uncaptured cb.main cb.callerTypes hm.fresh hm.framed
+
 /-- Method-local flow typing with a checked callback. Sorbet 0.6.13405 accepts local
 retyping around repeated yields and stable captured writes (clinks 232–234). Every result
 retains full caller/method states; this semantic judgment is not yet a checker rule. -/
@@ -117,6 +135,7 @@ theorem SemMethod.methodReturn {κ : Ctx} {Γ Γm Γm' : Env} {I τ : Ty}
     hm.method.frameInRange hm.uncaptured hm.fresh hm.framed ht fid
 
 #print axioms MethodActivation.after
+#print axioms RunSpec.inMethod
 #print axioms SemMethod.ordinary
 #print axioms SemMethod.seq
 #print axioms SemMethod.methodReturn

@@ -68,6 +68,24 @@ theorem ordinary_caller_state {origin m n : Machine} {κ : Ctx} {Γ₀ Γc Γm :
     hf hscope hframe henv (hf.phase.trans (ho.runtime hr).phase) hn
   simpa only [hctx, popMethodFrame] using hout
 
+/-- Ordinary dispatch and expressions share the same caller-restoration boundary. -/
+theorem RunSpec.methodOrdinary {origin m start : Machine} {κ : Ctx} {Γ₀ Γc Γm' : Env}
+    {I τ : Ty} {fr : Ratchet.Frame} {code : ClosureCode}
+    (h : RunSpec m start Γm' τ (callbackMethodCtx κ fr code) I)
+    (ho : StateOk κ Γ₀ I origin) (hc : StateOk κ Γc I (popMethodFrame m))
+    (hu : RootUncaptured m)
+    (hmain : closureMainB κ I = true) (ht : activationReturnB Γc = true)
+    (fresh : origin.frames.size ≤ m.stack.headD 0)
+    (hcaller : Framed origin (popMethodFrame m)) :
+    MethodRunSpec m start Γc Γm' τ κ (callbackMethodCtx κ fr code) I I := by
+  refine ⟨h.1, ?_⟩
+  intro fuel a n rest he
+  have hn := h.2 fuel a n rest he
+  refine ⟨.ordinary hn.1, hn.2.1, ?_⟩
+  intro v hv
+  exact ⟨ordinary_caller_state ho hc hu hmain ht fresh hcaller hn.1
+    (hn.2.2 v hv), hn.2.2 v hv⟩
+
 /-- Reuse ordinary expression typing inside a callback-capable method. Method-local
 flow changes remain allowed; the caller retains stable capture types. Sorbet 0.6.13405
 accepts `first=nil; first=yield(1)` with an Integer callback (clinks 232–233). -/
@@ -80,15 +98,8 @@ theorem SemSafeCtxA.methodOrdinary {origin m : Machine} {κ : Ctx} {Γ₀ Γc Γ
     (hmain : closureMainB κ I = true) (ht : activationReturnB Γc = true)
     (fresh : origin.frames.size ≤ m.stack.headD 0)
     (hcaller : Framed origin (popMethodFrame m)) :
-    MethodRunSpec m (evalFrom m e) Γc Γm' τ κ (callbackMethodCtx κ fr code) I I := by
-  have hr := h m hm
-  refine ⟨hr.1, ?_⟩
-  intro fuel a n rest he
-  have hn := hr.2 fuel a n rest he
-  refine ⟨.ordinary hn.1, hn.2.1, ?_⟩
-  intro v hv
-  exact ⟨ordinary_caller_state ho hc hu hmain ht fresh hcaller hn.1
-    (hn.2.2 v hv), hn.2.2 v hv⟩
+    MethodRunSpec m (evalFrom m e) Γc Γm' τ κ (callbackMethodCtx κ fr code) I I :=
+  (h m hm).methodOrdinary ho hc hu hmain ht fresh hcaller
 
 /-- The callback result restores both frames, including stable method locals and its
 actual block. It therefore embeds into the same effect target as ordinary expressions. -/
@@ -106,6 +117,7 @@ theorem CallbackResultOk.methodResult {m n : Machine} {κ : Ctx} {Γc Γm : Env}
   exact ⟨h.2.2 v rfl, h.methodState hc hm hmain hs ht⟩
 
 #print axioms ordinary_caller_state
+#print axioms RunSpec.methodOrdinary
 #print axioms SemSafeCtxA.methodOrdinary
 #print axioms CallbackResultOk.methodResult
 end Ratchet.Denote.Typed

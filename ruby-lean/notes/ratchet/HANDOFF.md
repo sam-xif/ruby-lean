@@ -1,4 +1,29 @@
-# Current resume point (2026-09-26, clink 234 / model L274)
+# Current resume point (2026-09-26, clink 235 / model L274)
+
+Clink 235 adds SemMethod.prim for every existing DPrim row, allowing yielding receivers and
+arguments. BodyPrimitive derives receiver-type retention from MethodEffects.firstOrder,
+then reuses primitive_frame and full caller restoration at actual dispatch. BodyOrdinary's
+RunSpec.methodOrdinary handles arbitrary ordinary entries; the existing expression wrapper
+delegates to it. MethodActivation.reCtl and RunSpec.inMethod package that boundary.
+
+BodyLists defines SemMethodAll and SemMethodSeq, with proved flat-sequence execution and
+the final empty marker. Argument companions retain plainArgB; primitive rows currently have
+zero/one argument. MethodTypingControls now uses the actual flat mixed body and proves
+YieldBody.twice (`yield(1)+yield(2)`) through general source rules. Generic call/boot controls
+also cover `yield(1).to_s.length`, a saved array indexed by yield, and division raising
+ZeroDivisionError. Every initial captured Integer is covered for all fuel. Sorbet 0.6.13405
+accepts the annotated probes and rejects a String right operand (7002); CRuby/model output
+4/3, 1/1, 20/1, zero/0. New modules build under a second; expanded controls about five seconds.
+Full quiet gate GREEN: unchanged fragment 89 / checker reach 93, 77 rules, 68 worked,
+zero owed/exempt, 252 agree / 0 disagree. Metatheory/standard-axiom audit PASS. No live builds.
+
+Next: syntactic method-body judgment and definition checking, then installation/dispatch,
+&b binding and checker/emitter admission. Semantic source composition now covers the 094
+body; no new validateD acceptance is claimed. CheckedCallback must come from a checked body,
+not a Proc arrow's partial-return denotation. Keep uncalled definitions checked too. The
+current entry is zero-positional, main caller, same owner/cref and absent superName/capture.
+
+Previous foundation (clink 234):
 
 Clink 234 supplies the general semantic source layer. MethodPres retains caller slot domains,
 both scopes and actual Proc payloads across MethodEffects. BodyContext packages CheckedCallback
@@ -21,11 +46,7 @@ New modules build in about a second, controls under four seconds, using standard
 Full quiet gate GREEN: unchanged fragment 89 / checker reach 93, 77 rules, 68 worked,
 zero owed/exempt, 252 agree / 0 disagree. Metatheory/axiom audit PASS. No live builds.
 
-Next: general primitive-send composition with yielding receiver/arguments, retaining saved
-values through MethodEffects; flat sequence/argument companions where needed. Then syntactic
-body judgment/definition checking, installation/dispatch, &b binding and checker/emitter
-admission. SemMethod is semantic only; none of these examples is a new validateD acceptance.
-Keep full output states and checked callback safety; don't turn the examples into special rules.
+SemMethod is semantic only; none of these examples is a new validateD acceptance.
 
 Previous foundation (clink 233):
 

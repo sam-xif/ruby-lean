@@ -153,6 +153,11 @@ yield with a checked argument. MethodActivation persists callback identity/owner
 mixed effects. Generic zero-argument entry and boot controls cover repeated/nested yields
 with same-named caller/method writes. Primitive sends with yielding operands, definition
 checking/dispatch and &b admission remain; no new registered rule or floor is claimed.
+Clink 235 composes all existing primitive rows with yielding operands, retaining saved
+receivers through MethodEffects and restoring both states after dispatch. Flat sequence
+and argument companions match source ASTs. The exact 094 body now uses general source
+rules; boot controls cover allocation, saved arrays and escaping division errors. Syntactic
+body/definition checking, dispatch and &b admission remain; floors are unchanged.
 
 ## Layout
 

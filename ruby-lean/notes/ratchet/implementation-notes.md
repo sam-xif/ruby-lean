@@ -12139,3 +12139,26 @@ both halves of what constrains them now have a name.
 - Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
   zero owed/exempt, 252 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New proof
   modules build in about one second, controls under four; no resource limit was raised.
+
+## Clink 235 (2026-09-26) — primitive sends with yielding operands
+
+- RunSpec.methodOrdinary generalizes the expression embedding to ordinary dispatch entries;
+  the old wrapper delegates to it. MethodActivation.reCtl/RunSpec.inMethod retain the actual
+  callback and original caller anchor while the primitive continuation runs.
+- SemMethod.prim covers every existing DPrim row. Their receiver types are first-order,
+  including the guarded Array/Hash cases, so MethodEffects transports saved receivers across
+  yielding arguments. primitive_frame supplies native dispatch and answer safety; the ordinary
+  embedding restores full caller/method states. Name/dispatch guards and exact argument types
+  remain unchanged. Argument-list syntax is excluded by the SemMethodAll companion.
+- SemMethodSeq/sequence handle the real flat AST and its final empty continuation, including
+  escaping raises. MethodTypingControls' mixed program now uses that flat form. The exact 094
+  body uses general yield/primitive rules; no special twice rule or new checker acceptance.
+- Expanded generic boot controls cover repeated captured writes, allocating to_s then length,
+  an array receiver saved across a yielding index, and division's ZeroDivisionError. Sorbet
+  0.6.13405 accepts the annotated probes and rejects a String right operand (7002).
+  CRuby 4.0.5/model agree on 4/3, 1/1, 20/1 and zero/0. Proofs cover all initial captured Integers.
+- Syntactic body/definition checking, installation/dispatch, &b binding and checker/emitter
+  admission remain. No runtime, registered-rule or floor changes.
+- Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
+  zero owed/exempt, 252 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
+  build under a second, controls about five; no resource limit was raised.
