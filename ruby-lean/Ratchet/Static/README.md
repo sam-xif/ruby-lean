@@ -32,6 +32,11 @@ own section boundaries, in its own reading order, so each file still imports its
 generated per-class name tables) also live here: both are comparisons over this vocabulary
 rather than rules about it.
 
+`LocalFacts.lean` supplies flow data for callable admission: optional exact physical
+local slots and current-capture Proc origins, with assignment/copy updates. It is not
+yet threaded by the certified judgment; `Denote/Sem/Closure/LocalFacts.lean` proves
+its conformance transfers independently of local value types.
+
 ## The judgment this file was named for, and its scope
 
 Historical, kept because it records what the deleted judgment covered and why — the

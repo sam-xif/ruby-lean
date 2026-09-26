@@ -1,4 +1,4 @@
-# Current resume point (2026-09-26, clink 213)
+# Current resume point (2026-09-26, clink 214)
 
 Latest admission remains 084: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
@@ -137,7 +137,22 @@ Full quiet gate GREEN (252 agree / 0 disagree), metatheory and standard-axiom au
 Model replay: focused 5/5; tier 0 has 998 agree / 0 disagree, 305 unsupported, 5 invalid
 controls and the existing test_syntax_115 harness error. Admission counts are unchanged.
 
-Next: track capture identity/slots and native dispatch facts for callable admission.
+Clink 214 adds Ratchet.Static.LocalFacts and its LocalFactsOk conformance: optional
+exact physical slots and local Procs captured from the current activation with Proc
+dispatch class. Allocation, store, assignment and copy have proved transfers; unknown
+effects discard claims. Overwriting a source binding retains the copied closure's origin.
+TrackedCall derives the whole zero-argument call from these facts, exact Env code,
+ProcCallReady and the body proof, including projected main return. ClosureTrackingControls
+proves a copied-binding call for all fuel and distinguishes wrong-frame captures, nil
+slots, overwritten bindings and a native-table override. Entry/pop type transport remains
+explicit. No DJudge/emitter change yet.
+Full quiet gate GREEN (252 agree / 0 disagree); metatheory and standard-axiom audit pass.
+
+Next: thread mutable LocalFacts through checked evaluation and retain native dispatch
+readiness, then register callable admission. Scope/Pos cannot carry these facts unchanged:
+assignments replace origins, captured body writes need ownership-aware effects, and calls
+need a proved outgoing fact record. The record currently describes current captures;
+arbitrary escaped captures still need their own activation identity and scope contracts.
 Entry now has full conformance under the named scope/liveness/environment premises, but
 Ty.clos does not yet supply those premises. The stored-f pilot retains its higher-order
 binding using ProcPres.empty_capture_den. General capture types still need transport.

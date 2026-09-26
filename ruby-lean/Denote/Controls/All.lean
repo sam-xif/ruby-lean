@@ -10,6 +10,7 @@ import Denote.Controls.CaptureOwnerControls
 import Denote.Controls.ClosureProjectionControls
 import Denote.Controls.ClosureStoredReturnControls
 import Denote.Controls.ClosureCallControls
+import Denote.Controls.ClosureTrackingControls
 import Denote.Controls.ClosureReturnStateControls
 import Denote.Controls.BoundedControls
 import Denote.Controls.ModuleDataControls

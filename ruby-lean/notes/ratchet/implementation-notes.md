@@ -11599,3 +11599,26 @@ both halves of what constrains them now have a name.
   audit pass. Focused model replay 5/5; tier 0 is 998 agree / 0 disagree (305
   unsupported, 5 invalid controls, 1 existing harness error). Counts unchanged;
   no individual Lean proof exceeded five minutes.
+
+## Clink 214 (2026-09-26) — track local capture origins and physical slots
+
+- LocalFacts is static flow data, separate from Env: optional exact slot names plus
+  locals containing Procs captured from the current activation with Proc dispatch
+  class. Unknown slots mean no claim, not absence. Unknown effects forget both facts.
+- LocalFactsOk gives this data its machine meaning. Allocation preserves it; storing
+  a literal establishes its origin. Uncaptured assignment updates the slot domain
+  and replaces only the target's origin; copying reads the source fact before writing.
+  Overwriting f does not erase g's origin when g still holds the copied closure.
+- tracked_local_lambda_call combines those facts with the exact code in Env and
+  independent ProcCallReady. It derives entry and projected main return from a body
+  proof at live captures, at any conformant tracked caller. Type transport across
+  entry/pop remains explicit; no environment is inferred from a capture lower bound.
+- Controls prove an all-fuel call through a copied binding, including both closure
+  types on return. Executable controls distinguish wrong-frame captures, nil slots,
+  overwritten source bindings and an intact origin with overridden Proc#call.
+- No new judgment or emitter policy. Next: thread these mutable facts through checked
+  evaluation and retain dispatch readiness, then register the callable rule. They
+  cannot simply be added to Scope (lexical) or Pos (monotone), or preserved through
+  arbitrary assignment/calls without an effect proof.
+- Full quiet ratchet GREEN (252 agree / 0 disagree); metatheory and standard-axiom
+  audit pass. New files build in under a second each; admission counts are unchanged.

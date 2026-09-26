@@ -94,7 +94,10 @@ Clink 213 / model L272 resolves §F51 through native Proc call markers and ordin
 lookup, including aliases, visibility, undef and super. Proc#=== is a native alias.
 §F52's identity/equality defect, exposed by the broader replay, is also fixed. The
 whole-call pilot now consumes explicit native dispatch facts with a checked boot witness.
-Next: capture identity/slot and native dispatch tracking for 087 admission. See HANDOFF.
+Clink 214 adds LocalFacts with proved allocation/store/assignment/copy transfers for
+capture origins and physical slots. TrackedCall consumes them with Env code and native
+dispatch readiness, deriving entry and caller return for a copied-binding call.
+Next: thread these mutable facts through checked evaluation for 087 admission. See HANDOFF.
 
 ## Layout
 
