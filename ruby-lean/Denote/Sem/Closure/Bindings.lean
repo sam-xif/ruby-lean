@@ -99,6 +99,15 @@ theorem FrameSlots.setLocal {m : Machine} {names : List String} (hd : FrameSlots
   · rw [frameBinds_setAt_ne m x v _ _ hy, hd y]
     simp [hy]
 
+theorem frameBinds_setLocal_self (m : Machine) (x : String) (v : Value)
+    (hl : m.stack.headD 0 < m.frames.size)
+    (hc : (m.frames.getD (m.stack.headD 0) default).captured = none) :
+    frameBinds (m.setLocal x v) (m.stack.headD 0) x = true := by
+  rw [setLocal_eq_setAt]
+  have ho : Machine.setLocal.owner m x (m.stack.headD 0) (m.stack.headD 0) (m.frames.size + 1) =
+      m.stack.headD 0 := by simp only [Machine.setLocal.owner, hc, ite_self]
+  simp only [ho, frameBinds, ← List.isSome_find?, setAt_find_self m x v _ hl, Option.isSome_some]
+
 #print axioms setLocal_owner_bound_or_start
 #print axioms BindingsPres.setLocal
 #print axioms FrameSlots.setLocal

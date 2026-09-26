@@ -8,23 +8,37 @@ namespace Ratchet
 structure LocalFacts where
   slots : Option (List String) := none
   currentProcs : List String := []
+  /-- Known present slots, even when the entire physical domain is unknown. -/
+  bound : List String := []
 deriving BEq, DecidableEq, Repr, Inhabited
 
 namespace LocalFacts
 
-def empty : LocalFacts := ⟨some [], []⟩
+def empty : LocalFacts := ⟨some [], [], []⟩
 
 /-- Assignment creates a slot in an uncaptured frame and replaces only the target's
 origin fact. Other aliases still point to the same closure after this binding changes. -/
 def write (f : LocalFacts) (x : String) (current : Bool) : LocalFacts :=
   ⟨f.slots.map (x :: ·),
-    (if current then [x] else []) ++ f.currentProcs.filter (· != x)⟩
+    (if current then [x] else []) ++ f.currentProcs.filter (· != x), x :: f.bound⟩
 
 def copy (f : LocalFacts) (x y : String) : LocalFacts :=
   f.write x (f.currentProcs.contains y)
 
 /-- Unknown effects discard origin and slot claims; they do not invent absence. -/
-def unknown : LocalFacts := ⟨none, []⟩
+def unknown : LocalFacts := ⟨none, [], []⟩
+
+/-- Classify only names typed at body return. Known-present slots suffice if they
+cover those names; otherwise an exact domain is needed to separate fresh body locals. -/
+def captureNames? (f : LocalFacts) (Γ : Env) : Option (List String) :=
+  match f.slots with
+  | some names => some names
+  | none => if Γ.all (fun p => f.bound.contains p.1) then some f.bound else none
 
 end LocalFacts
+
+def captureEnv (names : List String) : Env → Env
+  | [] => []
+  | (x, τ) :: Γ => if names.contains x then (x, deAlias τ) :: captureEnv names Γ else captureEnv names Γ
+
 end Ratchet

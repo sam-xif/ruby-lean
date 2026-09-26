@@ -24,14 +24,16 @@ theorem currentProcB_iff {m : Machine} {v : Value} :
 structure LocalFactsOk (f : LocalFacts) (m : Machine) : Prop where
   slots : ∀ names, f.slots = some names → FrameSlots names m
   currentProcs : ∀ x ∈ f.currentProcs, CurrentProc m (m.getLocal x)
+  bound : ∀ x ∈ f.bound, frameBinds m (m.stack.headD 0) x = true
 
 theorem LocalFactsOk.unknown (m : Machine) : LocalFactsOk .unknown m := by
   constructor
   · intro _ h; cases h
   · intro _ h; cases h
+  · intro _ h; cases h
 
 theorem LocalFactsOk.empty {m : Machine} (h : FrameSlots [] m) : LocalFactsOk .empty m :=
-  ⟨fun _ he => by cases he; exact h, fun _ he => by cases he⟩
+  ⟨fun _ he => by cases he; exact h, (fun _ he => by cases he), (fun _ he => by cases he)⟩
 
 theorem CurrentProc.ext {m n : Machine} {v : Value} (h : CurrentProc m v) (he : Ext m n) :
     CurrentProc n v := by
@@ -49,13 +51,15 @@ theorem CurrentProc.setLocal {m : Machine} {v : Value} (h : CurrentProc m v)
 
 theorem LocalFactsOk.ext {f : LocalFacts} {m n : Machine}
     (h : LocalFactsOk f m) (he : Ext m n) : LocalFactsOk f n := by
-  refine ⟨?_, ?_⟩
+  refine ⟨?_, ?_, ?_⟩
   · intro names hn x
     simpa only [frameBinds, he.frames, he.stack] using h.slots names hn x
   · intro x hx
     have hr : n.getLocal x = m.getLocal x := he.getLocal_eq x
     rw [hr]
     exact (h.currentProcs x hx).ext he
+  · intro x hx
+    simpa only [frameBinds, he.frames, he.stack] using h.bound x hx
 
 /-- All writes preserve other names' capture origins. Slot insertion needs an uncaptured
 activation; a captured write may instead update an existing ancestor slot. -/
@@ -82,6 +86,10 @@ theorem LocalFactsOk.write {f : LocalFacts} {m : Machine} (h : LocalFactsOk f m)
       exact (hv hc).setLocal x v
     · rw [getLocal_setLocal_ne m x v hne]
       exact (h.currentProcs y hy).setLocal x v
+  · intro y hy
+    rcases List.mem_cons.mp hy with rfl | hy
+    · exact frameBinds_setLocal_self m y v hl hu
+    · exact (BindingsPres.setLocal m x v).bound _ hl y (h.bound y hy)
 
 theorem LocalFactsOk.copy {f : LocalFacts} {m : Machine} (h : LocalFactsOk f m)
     (hl : m.stack.headD 0 < m.frames.size)

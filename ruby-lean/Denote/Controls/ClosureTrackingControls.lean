@@ -40,8 +40,9 @@ theorem alias_integer_call {m : Machine} (hm : StateOk ctx0 [] .ivar0 m)
       (evalFrom (aliases m code) (.send (some (.var .lvar "g")) "call" [] none))
       (bindings code) .int ctx0 .ivar0 := by
   intro code
+  have hf := alias_facts hm hs code
   have h := tracked_local_lambda_call (names := ["g", "f"])
-    (alias_state hm code) (alias_facts hm hs code) rfl "g" (by decide) rfl
+    (alias_state hm code) hf (captureSlots_of_frameSlots (hf.slots _ rfl) _) "g" (by decide) rfl
     rfl
     rfl rfl rfl (ReframeFO.empty rfl rfl rfl rfl) rfl rfl (fun _ => rfl) rfl
     (by intro p hp; simp only [bindings, List.mem_cons, List.not_mem_nil, or_false] at hp

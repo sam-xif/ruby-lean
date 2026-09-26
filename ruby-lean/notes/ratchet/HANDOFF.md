@@ -1,9 +1,20 @@
-# Current resume point (2026-09-26, clink 215)
+# Current resume point (2026-09-26, clink 216)
 
 Latest admission remains 084: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
 The prefix remains 17; 018 is correctly rejected. Next frontier: 087-lambda-zero-arity,
 `f = lambda { 1 }; f.call`. The emitter currently declines block arguments.
+
+Clink 216 supplies the compositional semantic contract for local-flow checking.
+RunWith carries a value postcondition through actual continuations; SemFlow threads
+LocalFacts and result origin separately from Ctx. Literal, read, assignment, sequence
+and zero-argument lambda call proofs compose. LocalFacts also tracks known-bound slots:
+unknown complete slot layout no longer prevents calls whose output names are all bound.
+FlowCall checks activation-stable types, main scope, native lookup, current capture,
+and a body proof at live types; return projection is explicit and forgets origin facts.
+ClosureFlowControls proves both stored call and copy/overwrite/call from unknown slots.
+Next: add mutually recursive DFlow/DFlowSeq to DJudge and every registry interpretation,
+then proof-producing checking, emitter hints, and 087 admission. No syntax rule yet.
 
 Clink 200 proves actual lambda/proc creation for arbitrary parameters, block locals and
 bodies. Sem/Closure/Reify retains the complete Closure and proves Ext, StateOk, capture

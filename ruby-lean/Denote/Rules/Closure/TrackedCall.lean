@@ -18,7 +18,7 @@ This is a semantic rule interface; no DJudge constructor is admitted here. -/
 theorem tracked_local_lambda_call {κ κb : Ctx} {Γ Γb : Env} {I Ib τ cap selfT : Ty}
     {m : Machine} {facts : LocalFacts} {names : List String} {code : ClosureCode}
     (hm : StateOk κ Γ I m) (hf : LocalFactsOk facts m)
-    (hn : facts.slots = some names) (name : String) (hx : name ∈ facts.currentProcs)
+    (hslots : CaptureSlots names Γb m) (name : String) (hx : name ∈ facts.currentProcs)
     (hv : envGet? Γ name = some (.clos code cap selfT)) (hfree : nameFreeN κ "call" = true)
     (hp : code.params = []) (hls : code.locals = []) (hl : code.lam = true)
     (ht : ReframeFO κ I) (ha : κ.asms = []) (hr : κ.scope.runtimeMain = true)
@@ -49,7 +49,7 @@ theorem tracked_local_lambda_call {κ κb : Ctx} {Γ Γb : Env} {I Ib τ cap sel
   simp only [hlocals, blockLocals, List.nil_append] at hstate
   apply local_lambda_call_runSpec name hproc (hm.procCall hfree) hklass hparams hlam hcode.2.2.1
   apply closure_projected_main_runSpec hm hout ha hr hw hcl hk hcap
-    (captureSlots_of_frameSlots (hf.slots names hn) Γb)
+    hslots
     (by intros; simp [requiredClosureFrame, hlocals]) true _ cl [] hτ (hb _ hstate)
   intro n _
   exact hmove n

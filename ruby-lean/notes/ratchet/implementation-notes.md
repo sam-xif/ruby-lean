@@ -11642,3 +11642,25 @@ both halves of what constrains them now have a name.
   callable admission; no new judgment or emitter policy is installed.
 - Full quiet gate GREEN (252 agree / 0 disagree); metatheory and standard-axiom audit
   pass. No individual proof approached five minutes. Admission counts are unchanged.
+
+## Clink 216 (2026-09-26) — compose local-flow contracts through source evaluation
+
+- RunWith strengthens RunSpec with a value postcondition and composes through the
+  real answer/continuation machinery. SemFlow carries LocalFacts and a returned
+  current-capture bit as expression input/output indices, without changing Ctx.
+- Allocation, local read, assignment and sequence retain precisely their proved
+  facts. Embedding an ordinary certified expression forgets them. Assignment records
+  the evaluated value's origin, so copying f to g and overwriting f keeps g callable.
+- LocalFacts adds known-present bound slots. Unknown total slot layout cannot imply
+  absence (even EnvOk [] permits hidden nil slots). captureNames? instead classifies
+  every typed body output when known-bound names cover it; exact layouts still work.
+  captureEnv moved to Ratchet so the future syntactic rule can state its result.
+- FlowCall packages the existing entry/return transports with decidable guards:
+  main scope, native dispatch, current capture, activation-stable types, zero required
+  arguments and no block locals. The body is checked at live caller types, its result
+  is first-order, and outgoing origin facts are conservatively forgotten.
+- Whole-source controls compose stored call and copy/overwrite/call, starting from
+  unknown physical slots. No new judgment or emitter policy yet; DFlow registration
+  and checker integration are next. No proof approached five minutes.
+- Full quiet gate GREEN; metatheory and standard-axiom audit pass. Admission and
+  registered-rule counts are unchanged.

@@ -1,14 +1,11 @@
 import Denote.Rules.Closure.ReadReturn
+import Ratchet.Static.LocalFacts
 
 /-! Project body types onto the caller's physical slots. New body locals disappear;
 aliases are erased because their target may be one of those discarded locals. -/
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
-
-def captureEnv (names : List String) : Env → Env
-  | [] => []
-  | (x, τ) :: Γ => if names.contains x then (x, deAlias τ) :: captureEnv names Γ else captureEnv names Γ
 
 /-- Only names typed in the body output need ownership classification. Untyped names
 already read nil there, so hidden nil slots elsewhere need not be enumerated. -/
