@@ -182,6 +182,11 @@ set_option maxHeartbeats 40000000 in
   rw [Interp.startIter.eq_def]
   nd_walk
 
+@[simp] theorem callArrayMapBuiltin_notDone :
+    isDone (Interp.callArrayMapBuiltin m recv mname args blk kw) = false := by
+  unfold Interp.callArrayMapBuiltin
+  nd_walk
+
 set_option maxHeartbeats 40000000 in
 @[simp] theorem tryIterator_notDone : isDoneO (Interp.tryIterator m recv mname args blk) = false := by
   rw [Interp.tryIterator.eq_def]

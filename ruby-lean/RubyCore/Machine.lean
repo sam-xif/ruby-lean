@@ -149,8 +149,8 @@ deriving Inhabited
     result and computes its final value. -/
 inductive IterKind where
   | arrayEach (array : ObjId) (index : Nat) -- read the live payload after each yield
+  | arrayMap (array : ObjId) (index : Nat) -- live cursor, collect block results
   | ignore    -- each / times / each_with_index: discard result, return `retVal`
-  | collect   -- map / collect: gather results into a new Array
   | fold      -- inject / reduce: thread the accumulator (block gets `acc :: args`)
   | maxBy     -- max_by: keep the element whose block value is greatest
   | minBy     -- min_by: keep the element whose block value is least

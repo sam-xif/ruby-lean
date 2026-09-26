@@ -70,7 +70,8 @@ theorem invokeDispatch_builtin {site : SendSite} {m : Machine} {recv : Value} {n
     (hs : Interp.crubyShadow m.heap
       ((ancestors m.heap (classOf m.heap recv)).takeWhile (fun x => x != owner)) name = none)
     (hd : Builtins.deferTwin? m.heap bid recv args = none) (hn : (bid == "Object#raise") = false)
-    (hc : Interp.procCallBid bid = false := by rfl) :
+    (hc : Interp.procCallBid bid = false := by rfl)
+    (hm : Interp.arrayMapBid bid = false := by rfl) :
     Interp.invoke.invokeDispatch m recv site name args none [] =
       match Builtins.run bid recv args m with
       | .ok v n => .next (Interp.withCtl n (.value v))
@@ -80,7 +81,7 @@ theorem invokeDispatch_builtin {site : SendSite} {m : Machine} {recv : Value} {n
   have hvis : Interp.visError? m recv site md name = none := by
     cases site <;> simp [Interp.visError?, hv]
   simp only [Interp.invoke.invokeDispatch, hl, hu, hp, Bool.false_eq_true, ↓reduceIte,
-    hs, hvis, hb, hc, hd, hn, Option.isSome, Bool.false_and,
+    hs, hvis, hb, hc, hm, hd, hn, Option.isSome, Bool.false_and,
     Interp.appendKwHash, List.isEmpty, ↓reduceIte]
   cases Builtins.run bid recv args m <;> rfl
 

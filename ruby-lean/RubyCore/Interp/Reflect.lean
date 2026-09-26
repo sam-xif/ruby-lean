@@ -93,7 +93,8 @@ def visNames (m : Machine) (o target : ObjId) (vis : Visibility) (modFun : Bool)
     acc.bind fun m =>
       match methodOn m.heap target n with
       | some (_, md) =>
-        if md.builtin.isSome && !md.fromPrelude && !procCallBid (md.builtin.getD "") then none
+        if md.builtin.isSome && !md.fromPrelude &&
+            !(procCallBid (md.builtin.getD "") || arrayMapBid (md.builtin.getD "")) then none
           -- Other native visibility edits remain outside the modeled fragment.
         else
           let m := { m with heap := defineMethod m.heap target n { md with visibility := vis } }

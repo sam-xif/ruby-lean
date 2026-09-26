@@ -524,6 +524,12 @@ singleton/class overrides, aliases, visibility and `undef`. Resolving their nati
 marker invokes the closure; `super` can resolve the same marker. `f.()` is syntax
 for `f.call`, not a separate method named `()` (L272).
 
+Array's `map`/`collect` likewise resolve native entries through ordinary lookup (L274).
+They walk the original receiver with a live index, independent of Ruby overrides of
+`each`, `length` or `[]`, and collect each block result into a fresh Array. Mutations
+before the next yield affect both the next element and exhaustion. Enumerable's separate
+Ruby implementation dispatches `each`; removing Array's entry can expose that method.
+
 Invoking a closure pushes a **block frame** whose parent is `captured`, so free
 locals resolve into the enclosing scope. Argument binding differs by
 `lambda` **[V]**:

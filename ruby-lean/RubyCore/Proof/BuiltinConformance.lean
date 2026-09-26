@@ -93,6 +93,18 @@ theorem run_ok_not_procCall {bid : String} {recv v : Value} {args : List Value}
       change (if _ then BRes.unsupported _ else BRes.unsupported _) = .ok v n at hr
       split at hr <;> contradiction
 
+/-- Native Array map markers also execute outside the pure builtin runner. -/
+theorem run_ok_not_arrayMap {bid : String} {recv v : Value} {args : List Value}
+    {m n : Machine} (hr : Builtins.run bid recv args m = .ok v n) : arrayMapBid bid = false := by
+  cases hc : arrayMapBid bid with
+  | false => rfl
+  | true =>
+    simp only [arrayMapBid, Bool.or_eq_true, beq_iff_eq] at hc
+    rcases hc with rfl | rfl
+    all_goals
+      change (if _ then BRes.unsupported _ else BRes.unsupported _) = .ok v n at hr
+      split at hr <;> contradiction
+
 /-- **The conformance step.** With the receiver and the argument both already
     values, the dispatch yields the declared result in one `.next` — no raise,
     which makes this discharge a progress obligation as much as a preservation
@@ -115,7 +127,8 @@ theorem int_bin_dispatch
     -- say so — leaving it implicit is what broke this proof, and `Proof/` being off
     -- the default target is why nothing noticed (L119).
     (hdefer : Builtins.deferTwin? m.heap bid (.int a) [.int b] = none)
-    (hproc : procCallBid bid = false := by rfl) :
+    (hproc : procCallBid bid = false := by rfl)
+    (hmap : arrayMapBid bid = false := by rfl) :
     startArgs m (.int a) .explicit mname [.int b] [] .none
       = .next (withCtl m (.value (.int (op a b)))) := by
   obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ := hres
@@ -123,7 +136,7 @@ theorem int_bin_dispatch
   simp only [startArgs, finishSend]
   rw [invoke.eq_def]
   simp [invoke.invokeDispatch, classOf, lookup_int_const, hlook, hb, hu, hbtw, hpre,
-    visError?, hvis, appendKwHash, hrun, hns, hdefer, hproc]
+    visError?, hvis, appendKwHash, hrun, hns, hdefer, hproc, hmap]
 
 /-! ### 2.1 The three table entries -/
 

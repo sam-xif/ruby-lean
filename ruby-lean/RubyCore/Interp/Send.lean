@@ -160,6 +160,7 @@ where
       match md.builtin with
       | some bid =>
         if procCallBid bid then callProcBuiltin m recv args kw else
+        if arrayMapBid bid then callArrayMapBuiltin m recv mname args blk kw else
         -- Deferring to a prelude twin: when a builtin's answer would require a
         -- *dispatch* it cannot perform, it hands the call to a prelude method
         -- under a different name, which then recurses through ordinary dispatch.
@@ -277,6 +278,7 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
       match md.builtin with
       | some bid =>
         if procCallBid bid then callProcBuiltin m self args kw else
+        if arrayMapBid bid then callArrayMapBuiltin m self f.meth args blk kw else
         match Builtins.deferTwin? m.heap bid self args with
         | some slow =>
           match methodOn m.heap (classOf m.heap self) slow with

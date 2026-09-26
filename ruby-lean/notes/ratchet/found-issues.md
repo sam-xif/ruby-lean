@@ -2862,3 +2862,17 @@ Other native iterator families retain their existing implementations; this fix c
 The semantic loop uses fuel induction, not induction on an entry-time element list:
 append can grow the array indefinitely. EachArrayContract states the body, loop invariant
 and caller-return obligations explicitly; deriving those from source typing remains next.
+
+## F54 — Array map/collect dispatched Enumerable's each-dependent body
+
+**Resolved by model L274.** With `xs = [1, 2]; def xs.each; yield 99; end`,
+`xs.map { |x| x * 10 }` and `collect` return `[10, 20]` on CRuby 4.0.5 but formerly
+`[990]` in the model. Normal boot resolved the prelude's Enumerable methods, so mutation
+probes alone agreed after L273 while the dormant native fallback still snapshotted input.
+
+Array now owns native map/collect markers, resolved through ordinary lookup including
+aliases, visibility, undef and super. IterKind.arrayMap rereads the receiver payload at
+each index and collects body results; it bypasses overridden each/length/index methods.
+Removing Array's map entry exposes Enumerable's implementation as CRuby does. The obsolete
+snapshot fallback is removed. Regression: array-map-native.rb. Typing still needs guarded
+native resolution, a typed accumulator and final allocation/caller conformance.

@@ -1,13 +1,25 @@
 # Lean model — hand-off
 
+## Current map repair (2026-09-26, L274)
+
+Array#map/collect now resolve native markers through ordinary lookup, with a live
+IterKind.arrayMap cursor and result accumulator. Previously the prelude's Enumerable
+implementation incorrectly dispatched an overridden each (§F54). The snapshot native
+fallback is removed. Regression array-map-native.rb covers dispatch, mutation and exits.
+The checker admits attached each (clink 227); map typing is next and needs native dispatch
+readiness, accumulator transport and final Array allocation in addition to each's caller
+restoration. It must prove this reached path, not the old miss fallback.
+Validation: focused replay 3/3; MRI tier 0 unchanged at 998 agree / 0 disagree;
+full quiet ratchet GREEN (252/0); metatheory and standard-axiom audit pass.
+
 ## Current iterator repair (2026-09-26, L273)
 
 Array#each now uses IterKind.arrayEach arrayId index, rereading the live array payload
 and length after every yield. The old entry-time snapshot missed append and retained
 removed/replaced elements (ratchet §F53). Existing block continuations retain all exit
 behavior; native iteration bypasses length/[] overrides. Regression: array-each-live.rb.
-Other native iterator families are unchanged. The checker still declines attached each
-blocks; its new all-fuel loop contract and two-activation caller framing are prerequisites.
+Other native iterator families were unchanged in L273. Clink 227 subsequently admitted
+attached each blocks using the all-fuel loop contract and two-activation caller framing.
 Validation: focused replay 2/2; MRI tier 0 remains 998 agree / 0 disagree (same 305
 unsupported, 5 invalid controls, 1 existing harness error); full quiet ratchet GREEN
 (252 agree / 0 disagree); metatheory and standard-axiom audit pass.

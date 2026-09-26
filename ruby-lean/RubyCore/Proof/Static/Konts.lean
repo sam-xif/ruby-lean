@@ -426,7 +426,7 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       * **`retVal`'s type** is the iterator's answer, delivered to the `frameK` below once
         `rest` runs out.
 
-      `kind = .ignore` restricts this to the `each`-shaped iterators. `.collect` accumulates
+      `kind = .ignore` restricts this to the `each`-shaped iterators. `.arrayMap` accumulates
       the block's values into a fresh array and would need the element claim `Ty` cannot
       yet write (`arrayOf`, L238); `.fold`/`.maxBy` change the block's *argument* types
       between iterations. One `IterKind` at a time, and the census says `each` is the

@@ -289,7 +289,7 @@ theorem callClosure_frame_mk_cons (K : List Kont) (kk : Kont) (c : Ctl) (k : Lis
 /-! ### The native block iterators
 
 `iterStep` is the loop driver and `startIter` its entry. Both push, and `iterStep`'s
-zero-elements arm allocates (`.collect`), so this needs `allocArr_frame` and
+zero-elements arm allocates (`.arrayMap`), so this needs `allocArr_frame` and
 `callClosure_frame` — the whole `Builtins` layer under it is already framed. -/
 
 set_option maxHeartbeats 1000000 in
@@ -327,6 +327,15 @@ set_option maxHeartbeats 1000000 in
   -- the frame's `defmod`/`cref` read the heap and the current frame, both `pushK`-invariant
   simp only [pushK_heap, pushK_currentFrame, pushK_frames, pushK_stack]
   rw [iterStep_frame_mk_cons K]
+
+@[simp, frameLem] theorem callArrayMapBuiltin_frame (K : List Kont) (m : Machine)
+    (recv : Value) (mname : String) (args : List Value) (blk : Option Value)
+    (kw : List (Value × Value)) :
+    callArrayMapBuiltin (pushK K m) recv mname args blk kw =
+      frameR K (callArrayMapBuiltin m recv mname args blk kw) := by
+  unfold callArrayMapBuiltin
+  frame_simp
+  enter_arms K
 
 set_option maxHeartbeats 1000000 in
 @[simp, frameLem] theorem tryIterator_frame (K : List Kont) (m : Machine) (recv : Value)

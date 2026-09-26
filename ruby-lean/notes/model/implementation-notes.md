@@ -13657,3 +13657,29 @@ it did not exist.
   controls and the existing test_syntax_115 harness error. Full quiet ratchet GREEN
   (252 agree / 0 disagree); metatheory and standard-axiom audit pass. Existing framing
   and notDone proofs rebuild without new axioms, resource limits or five-minute proofs.
+
+## L274 — Array map/collect have native dispatch and a live cursor (2026-09-26)
+
+- Ratchet §F54 exposed the prelude dispatch mismatch: overriding an array's each to
+  yield 99 changed map/collect from CRuby's [10,20] to [990]. Plain mutation probes agreed
+  because Enumerable#map already used L273's live each. The old snapshot fallback was
+  dormant at normal boot; proving it would not have proved the source call.
+- Boot installs Array#map/collect markers. invoke and super resolve them after ordinary
+  lookup/visibility, as for Proc calls; aliases keep their marker. Visibility edits allow
+  them. Enumerable keeps its Ruby implementation for other collections and Array removal.
+- IterKind.arrayMap holds the original receiver id and advancing index. Each yield reads
+  the live payload; iterK appends the body result, and exhaustion allocates an Array from
+  the accumulator. Length/index/each overrides are bypassed. The old collect snapshot
+  mode and map/collect miss fallback are removed. No new continuation is needed.
+- Zero-argument arity is checked before the blockless Enumerator gate; keyword arguments
+  count as a trailing positional Hash. Existing block continuations handle next, redo,
+  break, nonlocal return and exceptions. Redo preserves the yielded element.
+- The regression covers both selectors, append/pop/shift/replacement, receiver identity,
+  nesting, empty/frozen receivers, subclass result class, aliases, overrides, prepend,
+  super, visibility/send, undef/method_missing and remove-to-Enumerable fallback.
+- Framing/notDone helpers cover native map entry. Pure builtin dispatch proofs explicitly
+  exclude these effectful markers, derived from successful Builtins.run where applicable.
+- Validation: focused replay 3/3 agree; MRI tier 0 remains 998 agree / 0 disagree,
+  305 unsupported, 5 invalid controls and the existing test_syntax_115 harness error.
+  Full quiet ratchet GREEN (fragment 87, reach 91, 252 agree / 0 disagree); metatheory
+  and standard-axiom audit pass. No new axioms, resource limits or five-minute proofs.

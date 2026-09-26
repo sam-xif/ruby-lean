@@ -918,6 +918,7 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
     EntryOk.resolves ha hn hnar hres hrv
   obtain ⟨hdefer, w, m', hrun, hw, hg, hfr, hst, hko, hgv⟩ := hconf m recv args hrv hargs
   have hproc := run_ok_not_procCall hrun
+  have hmap := run_ok_not_arrayMap hrun
   refine ⟨w, m', hw, hg, hfr, hst, hko, hgv, ?_⟩
   simp only [startArgs, finishSend]
   rw [invoke.eq_def]
@@ -967,7 +968,7 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
       -- Everything else is the uniform path, and identical to the immediate cases.
       all_goals
         simp [invoke.invokeDispatch, hpl, hlook, hb, hu, hbtw, hpre, visError?, hvis,
-          appendKwHash, hrun, hns, hdefer, hraise, hproc]
+          appendKwHash, hrun, hns, hdefer, hraise, hproc, hmap]
     · have hc := hclass
       unfold classRecv at hc
       simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, decide_eq_true_eq,
@@ -978,10 +979,10 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
         cases hp : (m.heap.get o).payload <;> simp_all
       simp [invoke.invokeMaybeNew, invoke.invokeDispatch, hpl, hrx, hmt, hnew,
         hlook, hb, hu, hbtw, hpre, visError?, hvis, appendKwHash, hrun, hns, hdefer,
-        hraise, hproc]
+        hraise, hproc, hmap]
   all_goals
     simp [invoke.invokeDispatch, hlook, hb, hu, hbtw, hpre, visError?, hvis,
-      appendKwHash, hrun, hns, hdefer, hraise, hproc]
+      appendKwHash, hrun, hns, hdefer, hraise, hproc, hmap]
 
 /-- The activation `enterUserMethod` builds for a zero-parameter, non-closure
     method. Named rather than left to an existential because unification cannot
@@ -1087,11 +1088,12 @@ theorem super_dispatch {m : Machine} {c mname : String} {d : MethodDecl}
   obtain ⟨-, -, -, -, hcf⟩ := hconf
   obtain ⟨hdefer, w, m', hrun, hw, hg, hfr, hst, hko, hgv⟩ := hcf m _ args hrv hargs
   have hproc := run_ok_not_procCall hrun
+  have hmap := run_ok_not_arrayMap hrun
   refine ⟨w, m', hw, hg, hfr, hst, hko, hgv, ?_⟩
   unfold doSuper
   simp only []
   rw [hfm, hf]
-  simp only [hb, hu, hproc, hdefer m.heap, Bool.false_eq_true, if_false, appendKwHash, hrun,
+  simp only [hb, hu, hproc, hmap, hdefer m.heap, Bool.false_eq_true, if_false, appendKwHash, hrun,
     beq_iff_eq, if_neg hne, List.isEmpty_nil, if_true]
 
 /-! ## 3. Preservation: the additive step is free

@@ -1,11 +1,16 @@
-# Current resume point (2026-09-26, clink 227 / model L273)
+# Current resume point (2026-09-26, clink 227 / model L274)
 
 Latest admission: 091-block-each-int. Fragment 87, checker reach 91,
 76 registered rules (40 expressions + 36 companions), 66 worked theorems, no exemptions.
 The safe prefix remains 17; 018 is correctly rejected. Next frontier: map (092/093).
-Native map/collect still uses a snapshot; measure its mutation behavior against CRuby
-before reusing each's loop proof. The result needs a typed accumulator and array allocation.
-Measure Sorbet before new rules; clink 224 already measured map's element/result types.
+L274 fixes §F54: Array map/collect formerly reached Enumerable's each-dispatching body,
+not the dormant snapshot fallback. Native markers now use IterKind.arrayMap's live cursor.
+The next proof needs guarded native lookup, a typed accumulator and final array allocation.
+Sorbet 0.6.13405 was remeasured with --no-config: map Integer→String returns Array[String];
+collect Integer→Integer and stable captured Integer writes return Array[Integer]. Changing
+a captured Integer to nil is rejected (7001). Use these observations in the new rule's docstring.
+L274 validation: focused replay 3/3, MRI tier 0 unchanged at 998 agree / 0 disagree,
+full quiet gate GREEN (252/0), metatheory and standard-axiom audit pass.
 
 Clink 227 registers DFlow.each through SemFlow.each and djudge_certified. eachBlock hints
 contain only receiver/body derivations. FlowCheck derives the parameter type from the

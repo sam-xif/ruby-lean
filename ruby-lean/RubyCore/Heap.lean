@@ -373,7 +373,7 @@ def builtinMethods : List (ObjId × List String) := [
              "-", "*", "&", "|", "inspect", "to_s", "to_a", "reverse", "join", "flatten",
              "compact", "uniq", "concat", "index", "eql?", "dup", "clone", "freeze",
              "initialize",
-             "frozen?", "sort", "min", "max", "sum"]),
+             "frozen?", "sort", "min", "max", "sum", "map", "collect"]),
   (hashId, ["==", "[]", "[]=", "length", "size", "empty?", "key?", "has_key?",
             "freeze", "frozen?",
             "include?", "member?", "keys", "values", "delete", "fetch",

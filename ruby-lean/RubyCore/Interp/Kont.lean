@@ -188,7 +188,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       -- v is the block's result for the current element; fold it, then continue.
       match kind with
       | .ignore | .arrayEach .. => iterStep m cl brk rest kind acc retVal
-      | .collect => iterStep m cl brk rest kind (acc ++ [v]) retVal
+      | .arrayMap .. => iterStep m cl brk rest kind (acc ++ [v]) retVal
       | .fold => iterStep m cl brk rest kind [v] retVal
       | .maxBy | .minBy =>
         -- keep [bestElem, bestKey]; replace only on a *strict* improvement so ties

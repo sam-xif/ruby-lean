@@ -71,7 +71,11 @@ theorem primitive_invoke {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : M
     simp only [primitiveMethods, List.mem_cons, List.not_mem_nil, or_false, Prod.mk.injEq] at hrow
     rcases hrow with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h
     all_goals rcases h with ⟨_, _, rfl⟩; rfl
-  apply invokeDispatch_builtin (owner := owner) (md := md) _ hb hu hv hp _ hd hraise hproc
+  have hmap : Interp.arrayMapBid bid = false := by
+    simp only [primitiveMethods, List.mem_cons, List.not_mem_nil, or_false, Prod.mk.injEq] at hrow
+    rcases hrow with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h
+    all_goals rcases h with ⟨_, _, rfl⟩; rfl
+  apply invokeDispatch_builtin (owner := owner) (md := md) _ hb hu hv hp _ hd hraise hproc hmap
   · rw [lookup_eq_methodOn, hc]; exact hl
   · simpa only [hc] using hs
 

@@ -373,12 +373,23 @@ def iterStep (m : Machine) (cl : Closure) (brk : FrameId) (rest : List (List Val
         callClosure m cl [v] (some brk)
       else .next (withCtl m (.value retVal))
     | _ => .unsupported "Array#each receiver lost its Array payload"
+  | .arrayMap o index =>
+    -- Array#map/collect use a live native cursor, independent of `each` (L274).
+    match (m.heap.get o).payload with
+    | .arr xs =>
+      if hi : index < xs.size then
+        let v := xs[index]
+        let m := { m with kont := .iterK cl brk [] (.arrayMap o (index + 1)) acc retVal v :: m.kont }
+        callClosure m cl [v] (some brk)
+      else
+        let (a, m) := Builtins.allocArr m acc.toArray
+        .next (withCtl m (.value a))
+    | _ => .unsupported "Array#map receiver lost its Array payload"
   | _ =>
   match rest with
   | [] =>
     let (finalV, m) := match kind with
-      | .ignore | .arrayEach .. => (retVal, m)
-      | .collect => let (a, m) := Builtins.allocArr m acc.toArray; (a, m)
+      | .ignore | .arrayEach .. | .arrayMap .. => (retVal, m)
       | .fold => (acc.headD .nil, m)
       -- max_by/min_by: `acc` is `[bestElem, bestKey]` (or `[]` if the receiver was
       -- empty, in which case both return `nil`); the result is the winning element.
@@ -417,6 +428,25 @@ def startIter (m : Machine) (recv : Value) (mname : String) (cl : Closure)
   let m := { m with kont := .frameK fid :: m.kont }
   iterStep m cl fid elemArgs kind initAcc retVal
 
+def arrayMapBid (bid : String) : Bool :=
+  bid == "Array#map" || bid == "Array#collect"
+
+/-- Resolve Array's own map/collect through ordinary lookup (L274). Unlike
+Enumerable#map, these methods never dispatch `each`, `length` or `[]`. Aliases
+and super retain native behavior; arity is checked even without a block. -/
+def callArrayMapBuiltin (m : Machine) (recv : Value) (mname : String)
+    (args : List Value) (blk : Option Value) (kw : List (Value × Value)) : StepResult :=
+  let n := args.length + if kw.isEmpty then 0 else 1
+  if n != 0 then
+    .next (raiseErr m Boot.argumentErrorId s!"wrong number of arguments (given {n}, expected 0)")
+  else
+    match recv, blk with
+    | .ref o, some (.ref bo) =>
+      match (m.heap.get o).payload, (m.heap.get bo).payload with
+      | .arr _, .proc cl => startIter m recv mname cl [] (.arrayMap o 0) [] .nil
+      | _, _ => .unsupported "Array#map builtin without Array/Proc payloads"
+    | _, _ => .unsupported "Enumerator: Array#map without a block"
+
 /-- If `(recv, mname)` is a native block-iterator invoked *with* a block, run it
     (returns `some`); otherwise `none` (fall through to the normal miss path — a
     blockless `each` etc. would be an Enumerator, still gated). Only reached on a
@@ -434,7 +464,6 @@ def tryIterator (m : Machine) (recv : Value) (mname : String) (args : List Value
           let each1 := xs.toList.map (fun e => [e])
           match mname with
           | "each" => some (startIter m recv mname cl [] (.arrayEach o 0) [] recv)
-          | "map" | "collect" => some (startIter m recv mname cl each1 .collect [] .nil)
           | "each_with_index" =>
             let ei := xs.toList.zipIdx.map (fun (e, i) => [e, Value.int (Int.ofNat i)])
             some (startIter m recv mname cl ei .ignore [] recv)
