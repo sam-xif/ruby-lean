@@ -35,6 +35,14 @@ theorem LocalFactsOk.unknown (m : Machine) : LocalFactsOk .unknown m := by
 theorem LocalFactsOk.empty {m : Machine} (h : FrameSlots [] m) : LocalFactsOk .empty m :=
   ⟨fun _ he => by cases he; exact h, (fun _ he => by cases he), (fun _ he => by cases he)⟩
 
+theorem LocalFactsOk.afterEffect {f : LocalFacts} {m n : Machine} (h : LocalFactsOk f m)
+    (hl : m.stack.headD 0 < m.frames.size) (hf : Framed m n) :
+    LocalFactsOk f.afterEffect n := by
+  refine ⟨(fun _ he => by cases he), (fun _ he => by cases he), ?_⟩
+  intro x hx
+  rw [hf.stack]
+  exact hf.frames.bindings.bound _ hl x (h.bound x hx)
+
 theorem CurrentProc.ext {m n : Machine} {v : Value} (h : CurrentProc m v) (he : Ext m n) :
     CurrentProc n v := by
   obtain ⟨cl, hp, hc, hk⟩ := h
@@ -139,6 +147,7 @@ theorem LocalFactsOk.code {f : LocalFacts} {m : Machine} {x : String}
   (h.currentProcs x hx).code hv
 
 #print axioms LocalFactsOk.write
+#print axioms LocalFactsOk.afterEffect
 #print axioms CurrentProc.framed
 #print axioms LocalFactsOk.copy
 #print axioms LocalFactsOk.store

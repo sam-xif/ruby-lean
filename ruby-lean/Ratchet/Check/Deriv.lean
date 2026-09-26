@@ -80,6 +80,8 @@ inductive Deriv where
   | closureCall (body : Deriv) (ret : Ty)
   /-- General receiver/arguments; parameter types are reconstructed from their certificates. -/
   | requiredClosureCall (recv : Deriv) (args : List Deriv) (body : Deriv) (ret : Ty)
+  /-- Receiver and body hints only; source syntax and checked receiver supply all types. -/
+  | eachBlock (recv body : Deriv)
   /-- A bare-name miss from the explicitly supported absence table. -/
   | bareName (name : String)
   | selfExpr
@@ -165,6 +167,7 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
   | "closureCall" => return .closureCall (← kid "body") (← ty "ret")
   | "requiredClosureCall" =>
     return .requiredClosureCall (← kid "recv") (← kids "args") (← kid "body") (← ty "ret")
+  | "eachBlock" => return .eachBlock (← kid "recv") (← kid "body")
   | "bareName" => return .bareName (← name "name")
   | "selfExpr" => return .selfExpr
   | "var" => return .var (← varKindOfJson? (← j.getObjVal? "kind")) (← name "name")

@@ -600,11 +600,11 @@ inductive DJudgeRecAll : Ctx → Ty → RecScope → Env → List Expr → List 
 /-- Sorbet's inferred Proc type motivates retaining the literal's exact code. A call
 checks that code at live capture types: Sorbet accepts some changed-capture errors
 (clink 200), so creation-time typing alone cannot justify model safety. Ordinary
-expressions may be embedded, conservatively forgetting origin and slot facts. -/
+expressions may be embedded, forgetting origins and exact slot domains. -/
 inductive DFlow : Ctx → Env → Ty → LocalFacts → Expr → Ty → Bool →
     Ctx → Env → Ty → LocalFacts → Prop
   | embed {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {e : Expr} (facts : LocalFacts) :
-      DJudge Γ e τ Γ' κ I κ' I' → DFlow κ Γ I facts e τ false κ' Γ' I' .unknown
+      DJudge Γ e τ Γ' κ I κ' I' → DFlow κ Γ I facts e τ false κ' Γ' I' facts.afterEffect
   | intLit {κ : Ctx} {Γ : Env} {I : Ty} (facts : LocalFacts) (n : Int) :
       DFlow κ Γ I facts (.int n) .int false κ Γ I facts
   | nilLit {κ : Ctx} {Γ : Env} {I : Ty} (facts : LocalFacts) :
@@ -656,6 +656,21 @@ inductive DFlow : Ctx → Env → Ty → LocalFacts → Expr → Ty → Bool →
         (closureBodyCtx κa) Ia (closureBodyCtx κa) Ia →
       DFlow κ Γ I facts (.send (some recv) name args none) τ false κa
         (closureReturnEnv (ps.map (·.1) ++ code.locals) names Γa Γb) Ia .unknown
+  /-- Sorbet 0.6.13405 gives each's block its array element type and returns the array,
+  rejecting captured type changes (clink 224). Check the exact body and stable caller
+  environment; this first attached-block rule binds one required parameter. -/
+  | each {κ κr : Ctx} {Γ Γr Γb : Env} {I Ir σ ρ : Ty}
+      {facts fr : LocalFacts} {current : Bool} {recv body : Expr}
+      {name : String} {locals names : List String} :
+      DFlow κ Γ I facts recv (.arrayOf σ) current κr Γr Ir fr →
+      nameFreeN κr "each" = true → closureMainB κr Ir = true → FirstOrder σ = true →
+      fr.captureNames? (withoutNames ([name] ++ locals) Γb) = some names →
+      activationEnvB ([(name, σ)] ++ blockLocals locals ++ Γr) = true →
+      activationReturnB Γb = true → closureReturnEnv ([name] ++ locals) names Γr Γb = Γr →
+      DJudge ([(name, σ)] ++ blockLocals locals ++ Γr) body ρ Γb
+        (closureBodyCtx κr) Ir (closureBodyCtx κr) Ir →
+      DFlow κ Γ I facts (.send (some recv) "each" [] (some (.block [.req name] locals body)))
+        (.arrayOf σ) false κr Γr Ir .unknown
 
 /-- Sorbet's stored-lambda example (clink 200) uses the local established by the
 preceding statement. This companion threads the proved model facts in that order. -/
@@ -697,7 +712,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_7 := fun _ _ _ _ e _ _ _ _ _ _ _ => plainArgB e = true)
     (motive_8 := fun _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_9 := fun _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 

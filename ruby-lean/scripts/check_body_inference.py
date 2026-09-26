@@ -112,6 +112,51 @@ proc { |x| x * 2 }.call(nil)
         ("proc_next_escape", '''# typed: true
 proc { |x| next x }.call(1)
 ''', "blocked", False),
+        ("each_body_result", '''# typed: true
+[1, 2, 3].each { |item| item.to_s }
+''', "ok", True),
+        ("each_empty", '''# typed: true
+[].each { |item| 7 }
+''', "ok", True),
+        ("each_capture_write", '''# typed: true
+total = 0
+[1, 2, 3].each { |item| total = total + item }
+total
+''', "ok", True),
+        ("each_capture_type_change", '''# typed: true
+total = 0
+[1].each { |item| total = nil }
+''', "blocked", False),
+        ("each_parameter_shadow", '''# typed: true
+item = nil
+[1].each { |item| item + 1 }
+item
+''', "ok", True),
+        ("each_parameter_type_leak", '''# typed: true
+item = nil
+[1].each { |item| item + 1 }
+item + 1
+''', "blocked", False),
+        ("each_block_local_shadow", '''# typed: true
+saved = 7
+[1].each { |item; saved| saved = nil; item + 1 }
+saved + 1
+''', "ok", True),
+        ("each_receiver_assignment", '''# typed: true
+(items = [1, 2]).each { |item| item + 1 }
+''', "ok", True),
+        ("each_unsafe_element", '''# typed: true
+[nil].each { |item| item + 1 }
+''', "blocked", False),
+        ("each_extra_argument", '''# typed: true
+[1].each(2) { |item| item + 1 }
+''', "blocked", False),
+        ("each_extra_parameter", '''# typed: true
+[1].each { |item, extra| item + 1 }
+''', "blocked", False),
+        ("each_next_escape", '''# typed: true
+[1].each { |item| next item }
+''', "blocked", False),
     ]
     emitted = {}
     with tempfile.TemporaryDirectory(prefix="ruby-body-inference-") as directory:
@@ -132,7 +177,7 @@ proc { |x| next x }.call(1)
             assert accepted == expected, (name, accepted, expected)
     # Changing the caller's value/type cannot change the method's proposed domain.
     assert emitted["alias"]["stmts"][0] == emitted["wrong_domain"]["stmts"][0]
-    print(f"Body inference and closure flow: {len(cases)} pipeline controls and caller independence passed")
+    print(f"Body inference and block flow: {len(cases)} pipeline controls and caller independence passed")
 
 
 if __name__ == "__main__":

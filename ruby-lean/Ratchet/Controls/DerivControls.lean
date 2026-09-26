@@ -13,6 +13,7 @@ import Ratchet.Controls.ScalarWriteControls
 import Ratchet.Controls.TopClassControls
 import Ratchet.Controls.ResultControls
 import Ratchet.Controls.ClosureCheckControls
+import Ratchet.Controls.EachCheckControls
 
 /-!
 Negative controls for `validateD`.

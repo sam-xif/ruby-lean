@@ -2,6 +2,7 @@ import Denote.Rules.Closure.FlowExpr
 import Denote.Rules.Closure.FlowCall
 import Denote.Rules.Closure.FlowSequence
 import Denote.Rules.Closure.RequiredFlowCall
+import Denote.Rules.Iterator.FlowEach
 
 /-! Registry names for the proved flow contracts. Their complete types are checked
 against constructor-derived forms, including every body and sequence premise. -/
@@ -17,6 +18,7 @@ abbrev SemSafeCtxA.DFlow.vasgn := @SemFlow.vasgn
 abbrev SemSafeCtxA.DFlow.sequence := @SemFlow.sequence
 abbrev SemSafeCtxA.DFlow.call := @SemFlow.call
 abbrev SemSafeCtxA.DFlow.requiredCall := @SemFlow.requiredCall
+abbrev SemSafeCtxA.DFlow.each := @SemFlow.each
 abbrev SemSafeCtxA.DFlowSeq.last := @SemFlowSeq.last
 abbrev SemSafeCtxA.DFlowSeq.cons := @SemFlowSeq.cons
 abbrev SemSafeCtxA.DFlowAll.nil := @SemFlowAll.nil

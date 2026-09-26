@@ -66,6 +66,8 @@ def flowRules (bodies : List (String × (Bool × Ratchet.Expr))) : Ratchet.Expr 
   | .seq es => "DFlow.sequence" :: flowSeqRules bodies es
   | .send none "lambda" [] (some (.block _ _ _))
   | .send none "proc" [] (some (.block _ _ _)) => ["DFlow.closureLiteral"]
+  | .send (some recv) "each" [] (some (.block _ _ body)) =>
+      "DFlow.each" :: (flowRules bodies recv ++ plainRules body)
   | .send (some (.var .lvar x)) "call" [] none =>
       match bodies.lookup x with
         | some (true, body) => "DFlow.call" :: plainRules body
@@ -299,7 +301,8 @@ def annotationHints : List (String × RuleAnnotations) :=
 def rulesUsedFor (q : String × Ratchet.Expr) : List String :=
   -- These worked proofs exercise the flow interpretation of otherwise shared syntax.
   if ["006-nil-lit", "031-reassign-different-type", "087-lambda-zero-arity",
-      "088-lambda-stabby-one-param", "098-lambda-closure-capture", "089-proc-basic", "090-proc-bracket-call"].contains q.1 then
+      "088-lambda-stabby-one-param", "098-lambda-closure-capture", "089-proc-basic", "090-proc-bracket-call",
+      "091-block-each-int"].contains q.1 then
     "flow" :: flowRules [] q.2
   else
   let ann := ((annotationHints.find? (·.1 == q.1)).map (·.2)).getD {}

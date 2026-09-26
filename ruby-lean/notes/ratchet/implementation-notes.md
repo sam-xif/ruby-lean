@@ -11921,3 +11921,30 @@ both halves of what constrains them now have a name.
 - Full quiet gate GREEN, including CRuby agreement; metatheory and standard-axiom audit
   pass. The first gate exposed the old list-only reservation proof; it now weakens both
   dispatch conjuncts. No new axioms, resource-limit increases or proof builds over five minutes.
+
+## Clink 227 (2026-09-26) — admit attached Array#each blocks through validateD
+
+- DFlow.each registers clink 226's complete source proof, with a docstring citing the
+  measured Sorbet contract. The registry form includes receiver flow, exact checked body,
+  guarded native dispatch, main scope, first-order elements, capture ownership and the
+  outgoing-environment fixed point. djudge_certified covers the new constructor.
+- eachBlock hints contain only receiver/body derivations. FlowCheck reconstructs the
+  block parameter type from the checked Array receiver, rechecks source code and requires
+  stable body context/spine and caller types. The discarded body result supplies no
+  trusted return proposal. The emitter mirrors shadowed caller restoration but cannot
+  assert types, ownership or safety. This rule covers one required parameter/no arguments.
+- A stable captured-write control initially failed because embedding the array receiver
+  erased known slot presence. LocalFacts.afterEffect now preserves input bound slots using
+  the existing Framed.bindings contract, dropping exact domains and Proc-origin claims.
+  DFlow.embed/SemFlow.embed/checkFlow use that same transfer. No slot is inferred from a
+  nil read or an environment type. Existing origin-loss controls still reject stale calls.
+- EachCheckControls rejects wrong code, receivers/types, arguments, parameter shapes,
+  selectors, next escapes, reserved dispatch and capture type changes. Positive controls
+  cover empty arrays, ignored String body results, stable captured writes and hidden
+  caller values. Twelve new pipeline cases bring check_body_inference.py to 33 controls.
+- EachDerivations derives exact source 091 through the arbitrary registry family. The
+  worked-program and rule-use audits include it. Measured fragment 87, checker reach 91,
+  76 rules (40 + 36), 66 worked, zero owed/exempt, 252 agree / 0 disagree. Raised all four
+  changed floors. Next: map (092/093), beginning with fidelity probes of its snapshot loop.
+- Final full quiet gate GREEN; metatheory and standard-axiom audit pass. No new axioms,
+  resource-limit increases or proof builds over five minutes.

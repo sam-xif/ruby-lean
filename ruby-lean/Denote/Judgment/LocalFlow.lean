@@ -28,13 +28,14 @@ theorem SemFlow.erase {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {e : Ratchet.
     SemSafeCtxA κ Γ I e τ κ' Γ' I' :=
   fun m hm => (h m hm (.unknown m)).erase
 
-/-- An ordinary certified expression may be embedded without assuming an effect bound.
-Its output loses local-origin claims; later flow rules can establish new ones. -/
+/-- An ordinary certified expression loses origins and the exact slot domain. The
+shared framing contract retains already bound slots even through unknown effects. -/
 theorem SemFlow.embed {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {e : Ratchet.Expr}
     (facts : LocalFacts) (h : SemSafeCtxA κ Γ I e τ κ' Γ' I') :
-    SemFlow κ Γ I facts e τ false κ' Γ' I' .unknown := by
-  intro m hm _
-  exact (h m hm).withPost (fun _ n _ => ⟨.unknown n, by intro h; cases h⟩)
+    SemFlow κ Γ I facts e τ false κ' Γ' I' facts.afterEffect := by
+  intro m hm hf
+  exact (h m hm).withPost
+    (fun _ _ hr => ⟨hf.afterEffect hm.frameInRange.2 hr.1, by intro h; cases h⟩)
 
 theorem SemFlow.leaf {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {e : Ratchet.Expr}
     {facts out : LocalFacts} {current : Bool}

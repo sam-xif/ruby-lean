@@ -1,10 +1,28 @@
-# Current resume point (2026-09-26, clink 226 / model L273)
+# Current resume point (2026-09-26, clink 227 / model L273)
 
-Latest admissions: 089 and 090. Fragment 86, checker reach 90,
-75 registered rules (40 expressions + 35 companions), 65 worked theorems, no exemptions.
-The safe prefix remains 17; 018 is correctly rejected. Next frontier: 091-block-each-int,
-`[1, 2, 3].each { |x| x + 1 }`, followed by map (092/093). The each source proof is complete;
-its registry/checker/emitter admission is next. Measure Sorbet before new rules.
+Latest admission: 091-block-each-int. Fragment 87, checker reach 91,
+76 registered rules (40 expressions + 36 companions), 66 worked theorems, no exemptions.
+The safe prefix remains 17; 018 is correctly rejected. Next frontier: map (092/093).
+Native map/collect still uses a snapshot; measure its mutation behavior against CRuby
+before reusing each's loop proof. The result needs a typed accumulator and array allocation.
+Measure Sorbet before new rules; clink 224 already measured map's element/result types.
+
+Clink 227 registers DFlow.each through SemFlow.each and djudge_certified. eachBlock hints
+contain only receiver/body derivations. FlowCheck derives the parameter type from the
+checked array, rechecks the exact source body, checks scope/spine stability and outgoing
+capture types, and verifies closureReturnEnv = caller Env. The emitter proposes this hint
+and restores the caller under shadowed names. Required-parameter arity is one, arguments
+are empty, and explicit block-pass/other iterator names remain outside this rule.
+
+LocalFacts.afterEffect preserves already bound slots across ordinary embedded expressions
+using Framed.bindings, while dropping origins and exact slot domains. This was necessary
+for a captured write after evaluating an array literal: discarding every slot fact rejected
+`total = 0; [1].each { |x| total = total + x }`. Presence is proved from input facts and
+framing, never inferred from EnvOk or a nil read. Each's final facts remain unknown.
+EachCheckControls and 33 pipeline controls cover return/element independence, stable
+captures, parameter/block-local shadowing and rejections. EachDerivations proves 091 through
+the arbitrary registry family; Safety's predictor and RuleAudit cross-check it. All four
+changed floors are locked in MainTyped/SemLadder; agreement remains 252/0.
 
 Clink 226 proves the complete attached each source through SemFlow.each in
 Rules/Iterator/FlowEach. TypedEachControls.source/source_boot instantiate the exact 091
@@ -17,9 +35,7 @@ method installation and name reservation. Start proves caller conformance after 
 Dispatch reduces actual invoke to startIter; FlowEach reifies the attached block and uses
 the receiver's final LocalFacts to classify captures. No extra loop/return premise remains.
 
-Next: add a DFlow each constructor with the premises of SemFlow.each, wire all DFam/registry
-cases, a checked derivation hint, checker body rechecking and untrusted emission. Register a
-worked derivation of 091 and raise measured floors only after acceptance. The semantic rule
+Clink 227 connects the DFlow constructor, registry, checker and emitter. The semantic rule
 requires one required parameter, first-order elements, the existing main-scope guard,
 activation-stable/nonalias entry types, activation-stable outputs, and a closureReturnEnv
 fixed point. Capture ownership uses fr.captureNames? on withoutNames shadow Γb; capture
@@ -58,7 +74,7 @@ Iterator.FrameReturn supplies caller Framed/metadata after both pops. Do not imp
 Framed on the intermediate iterator activation: IteratorFrameControls refutes its isolation
 clause with an ordinary captured write. The relevant caller is popMethodFrame m, with the
 iterator frame retained in the store; its id need not be fresh on later iterations.
-Next: registry/checker/emitter integration. Current formal loop uses one required
+Current formal loop uses one required
 parameter; Sorbet's zero/additional parameter shapes need binding proofs too.
 
 Clink 223 generalizes callClosure_required to both modes: exact required arity prevents

@@ -353,6 +353,7 @@ class Emitter
         "params" => block[1].map { |p| p[1] }, "lambda" => m == "lambda",
         "locals" => block[2] + (block.length == 5 ? block[3] : []) }]
     end
+    return each_block(recv, args, n[4]) if recv && m == "each" && n[4]
     raise Blocked, "a block argument is outside the fragment" unless n[4].nil?
     return implicit_send(m, args) if recv.nil?
     # `C.new(...)`
@@ -404,6 +405,29 @@ class Emitter
                 "ret" => result }, result]
     end
     raise Blocked, "no builtin signature for #{tr["tag"]}##{m}/#{targs.length}"
+  end
+
+  def each_block(recv, args, block)
+    unless args.empty? && block[0] == "block" && [4, 5].include?(block.length) &&
+        block[1].length == 1 && block[1][0][0] == "preq"
+      raise Blocked, "each requires one positional block parameter and no arguments"
+    end
+    dr, tr = go(recv)
+    raise Blocked, "each receiver is outside the Array fragment" unless tr["tag"] == "arrayOf"
+    @uses_flow = true
+    name = block[1][0][1]
+    locals = block[2] + (block.length == 5 ? block[3] : [])
+    caller = @env.dup
+    shadow = [name] + locals
+    @env = caller.merge(locals.to_h { |local| [local, NIL_T] }).merge(name => tr["elem"])
+    begin
+      body, = go(block[-1])
+      returned = caller.to_h { |local, ty| [local, shadow.include?(local) ? ty : @env.fetch(local, NIL_T)] }
+      raise Blocked, "each changes a captured local type" unless returned == caller
+    ensure
+      @env = caller
+    end
+    [{ "rule" => "eachBlock", "recv" => dr, "body" => body }, tr]
   end
 
   def implicit_send(m, args)

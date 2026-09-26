@@ -16,9 +16,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 86 rungs, reach 17**, **75 registered rules** (40 expressions + 35 companions),
-**0 owed**, **0 exempt**. Checker reach is 90; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 65 rungs additionally carry a
+**Fragment 87 rungs, reach 17**, **76 registered rules** (40 expressions + 36 companions),
+**0 owed**, **0 exempt**. Checker reach is 91; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 66 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -118,6 +118,11 @@ Clink 226 guards native each's lookup miss in StateOk and preserves it across he
 method, class and module changes. SemFlow.each composes receiver evaluation, actual block
 allocation, dispatch and the live loop. The exact 091 source has an all-fuel boot proof;
 registry/checker/emitter admission remains next.
+Clink 227 registers/checks/emits one-required-parameter attached each blocks and admits 091.
+The checker derives element types from the receiver, rechecks the exact body and enforces
+the caller-environment fixed point. Embedded expressions retain already bound slots via
+Framed while dropping origins/exact domains, permitting stable capture writes across array
+receiver evaluation. Next: map (092/093), after checking its snapshot iteration fidelity.
 
 ## Layout
 

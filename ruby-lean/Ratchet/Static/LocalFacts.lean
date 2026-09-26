@@ -28,6 +28,10 @@ def copy (f : LocalFacts) (x y : String) : LocalFacts :=
 /-- Unknown effects discard origin and slot claims; they do not invent absence. -/
 def unknown : LocalFacts := ⟨none, [], []⟩
 
+/-- Certified effects may add slots and overwrite values, but cannot remove an
+already bound caller slot. Preserve presence without claiming origins or absence. -/
+def afterEffect (f : LocalFacts) : LocalFacts := ⟨none, [], f.bound⟩
+
 /-- Classify only names typed at body return. Known-present slots suffice if they
 cover those names; otherwise an exact domain is needed to separate fresh body locals. -/
 def captureNames? (f : LocalFacts) (Γ : Env) : Option (List String) :=

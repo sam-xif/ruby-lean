@@ -168,9 +168,37 @@ def checkFlow (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I :
         else none
         else none
       | _ => none
+    | .send (some recv) "each" [] (some (.block [.req name] locals body)), .eachBlock dr db => do
+      let r ← checkFlow n ordinary κ Γ I facts recv dr cache
+      match hty : r.ty with
+      | .arrayOf σ => do
+        if hf : nameFreeN r.ctx "each" = true then do
+        if hm : closureMainB r.ctx r.spine = true then do
+        if hσ : FirstOrder σ = true then do
+        if hin : activationEnvB ([(name, σ)] ++ blockLocals locals ++ r.out) = true then do
+        let b ← ordinary ([(name, σ)] ++ blockLocals locals ++ r.out) body db
+          (closureBodyCtx r.ctx) r.spine r.cache
+        let ⟨hbctx⟩ ← ctxEq? b.ctx (closureBodyCtx r.ctx)
+        if hbspine : b.spine = r.spine then do
+        if hout : activationReturnB b.out = true then do
+        match hn : r.facts.captureNames? (withoutNames ([name] ++ locals) b.out) with
+        | none => none
+        | some names =>
+          if hfix : closureReturnEnv ([name] ++ locals) names r.out b.out = r.out then
+            some ⟨.arrayOf σ, false, r.ctx, r.out, r.spine, .unknown,
+              .each (by simpa only [hty] using r.judged) hf hm hσ hn hin hout hfix
+                (by simpa only [hbctx, hbspine] using b.judged), b.cache⟩
+          else none
+        else none
+        else none
+        else none
+        else none
+        else none
+        else none
+      | _ => none
     | e, d => do
       let c ← ordinary Γ e d κ I cache
-      some ⟨c.ty, false, c.ctx, c.out, c.spine, .unknown, .embed facts c.judged, c.cache⟩
+      some ⟨c.ty, false, c.ctx, c.out, c.spine, facts.afterEffect, .embed facts c.judged, c.cache⟩
 
 def checkFlowSeq (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I : Ty)
     (facts : LocalFacts) (es : List Expr) (ds : List Deriv) (cache : CheckedCache) :
