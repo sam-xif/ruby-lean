@@ -13,16 +13,8 @@ theorem primitive_lookup {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : Stat
     ∃ owner md, Interp.methodOn m.heap k name = some (owner, md) ∧
       md.builtin = some bid ∧ md.undefined = false ∧ md.visibility = .pub ∧
       md.fromPrelude = false ∧
-      Interp.crubyShadow m.heap ((ancestors m.heap k).takeWhile (fun x => x != owner)) name = none := by
-  have hp := List.all_eq_true.mp hm.primitiveDispatch (k, name, bid) hr
-  simp only [hf, Bool.not_true, Bool.false_or] at hp
-  cases hl : Interp.methodOn m.heap k name with
-  | none => rw [hl] at hp; cases hp
-  | some p =>
-    obtain ⟨owner, md⟩ := p
-    refine ⟨owner, md, rfl, ?_⟩
-    simpa only [hl, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
-      Option.isNone_iff_eq_none, and_assoc] using hp
+      Interp.crubyShadow m.heap ((ancestors m.heap k).takeWhile (fun x => x != owner)) name = none :=
+  dispatch_lookup hm.primitiveDispatch (List.mem_append_left _ hr) hf
 
 theorem string_class {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {v : Value}
     (hm : StateOk κ Γ I m) (hd : denM (.cls "String") m v)

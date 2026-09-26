@@ -1,4 +1,4 @@
-# Current resume point (2026-09-26, clink 214)
+# Current resume point (2026-09-26, clink 215)
 
 Latest admission remains 084: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
@@ -148,8 +148,17 @@ slots, overwritten bindings and a native-table override. Entry/pop type transpor
 explicit. No DJudge/emitter change yet.
 Full quiet gate GREEN (252 agree / 0 disagree); metatheory and standard-axiom audit pass.
 
-Next: thread mutable LocalFacts through checked evaluation and retain native dispatch
-readiness, then register callable admission. Scope/Pos cannot carry these facts unchanged:
+Clink 215 carries native Proc#call lookup in primitiveDispatchB/StateOk, gated by
+nameFreeN κ "call". dispatchMethods contains both pure primitives and the interpreter call
+marker; primitiveMethods remains pure-only. Existing heap/context transports retain the
+new row, and djudge_proc_call exposes it at certified value states. ProcCallReady now
+states the actual resolved owner and shadow check. The whole stored-program proof is
+SemSafeCtxA again; its boot theorem needs only bootOkB. No separate Proc boot premise remains.
+Full quiet gate GREEN (252 agree / 0 disagree); metatheory and standard-axiom audit pass.
+
+Next: thread mutable LocalFacts through checked evaluation, then register callable
+admission. Native dispatch already follows from conformance and the name guard.
+Scope/Pos cannot carry the local facts unchanged:
 assignments replace origins, captured body writes need ownership-aware effects, and calls
 need a proved outgoing fact record. The record currently describes current captures;
 arbitrary escaped captures still need their own activation identity and scope contracts.

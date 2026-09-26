@@ -21,13 +21,35 @@ def primitiveMethods : List (ObjId × String × String) :=
    (Boot.hashId, "[]", "Hash#[]"),
    (Boot.trueClassId, "!", "Object#!"), (Boot.falseClassId, "!", "Object#!")]
 
+/-- Native lookup facts include interpreter-executed Proc calls. Membership here is
+not a pure-builtin signature; primitiveMethods alone supplies those rows. -/
+def dispatchMethods : List (ObjId × String × String) :=
+  primitiveMethods ++ [(Boot.procId, "call", "Proc#call")]
+
 def primitiveDispatchB (h : Heap) (free : String → Bool) : Bool :=
-  primitiveMethods.all fun (k, name, bid) =>
+  dispatchMethods.all fun (k, name, bid) =>
     !free name || match Interp.methodOn h k name with
     | none => false
     | some (owner, md) =>
       md.builtin == some bid && !md.undefined && md.visibility == .pub && !md.fromPrelude &&
         (Interp.crubyShadow h ((ancestors h k).takeWhile (fun x => x != owner)) name).isNone
+
+theorem dispatch_lookup {h : Heap} {free : String → Bool}
+    (hd : primitiveDispatchB h free = true) {k : ObjId} {name bid : String}
+    (hr : (k, name, bid) ∈ dispatchMethods) (hf : free name = true) :
+    ∃ owner md, Interp.methodOn h k name = some (owner, md) ∧
+      md.builtin = some bid ∧ md.undefined = false ∧ md.visibility = .pub ∧
+      md.fromPrelude = false ∧
+      Interp.crubyShadow h ((ancestors h k).takeWhile (fun x => x != owner)) name = none := by
+  have hp := List.all_eq_true.mp hd (k, name, bid) hr
+  simp only [hf, Bool.not_true, Bool.false_or] at hp
+  cases hl : Interp.methodOn h k name with
+  | none => rw [hl] at hp; cases hp
+  | some p =>
+    obtain ⟨owner, md⟩ := p
+    refine ⟨owner, md, rfl, ?_⟩
+    simpa only [hl, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
+      Option.isNone_iff_eq_none, and_assoc] using hp
 
 def primitiveErrorClasses : List ObjId := [Boot.zeroDivisionErrorId, Boot.nameErrorId, Boot.frozenErrorId]
 

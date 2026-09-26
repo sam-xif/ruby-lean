@@ -1,5 +1,6 @@
 import Denote.Examples.Derivations
 import Denote.Rules.Init.InitBridge
+import Denote.Sem.Closure.Dispatch
 
 /-!
 # `Denote/Bridge.lean` — the syntactic judgment lands in the certified one
@@ -178,6 +179,15 @@ theorem djudge_owners {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Exp
     OwnersPres m n :=
   (((djudge_context h) m hm).2 fuel a n rest hr).1.frames.owners
 
+/-- Every checked value state retains native Proc dispatch while call is unreserved.
+A declaration that reserves the selector removes this capability instead of carrying
+an assumption about the old method table past a possible write. -/
+theorem djudge_proc_call {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
+    (h : DJudge Γ e τ Γ' κ I κ' I') (hf : nameFreeN κ' "call" = true)
+    {m n : Machine} (hm : StateOk κ Γ I m) {fuel rest : Nat} {v : Value}
+    (hr : runA fuel (evalFrom m e) = .ans (.val v) n rest) : ProcCallReady n.heap :=
+  ((((djudge_context h) m hm).2 fuel (.val v) n rest hr).2.2 v rfl).procCall hf
+
 /-- A checker result carries the generic semantic contract, including a method frame. -/
 theorem certified_context {κ : Ctx} {I : Ty} {Γ : Env} {e : Ratchet.Expr}
     (c : Certified Γ e κ I) : SemSafeCtxA κ Γ I e c.ty c.ctx c.out c.spine :=
@@ -249,6 +259,7 @@ theorem validateD_safe_run {p : Ratchet.Expr} {d : Deriv} (h : validateD p d = t
 #print axioms djudge_phase
 #print axioms djudge_bindings
 #print axioms djudge_owners
+#print axioms djudge_proc_call
 #print axioms certified_context
 #print axioms validateD_safe
 #print axioms validateD_safe_boot

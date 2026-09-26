@@ -97,7 +97,10 @@ whole-call pilot now consumes explicit native dispatch facts with a checked boot
 Clink 214 adds LocalFacts with proved allocation/store/assignment/copy transfers for
 capture origins and physical slots. TrackedCall consumes them with Env code and native
 dispatch readiness, deriving entry and caller return for a copied-binding call.
-Next: thread these mutable facts through checked evaluation for 087 admission. See HANDOFF.
+Clink 215 puts native Proc#call lookup in guarded StateOk conformance, preserving it
+through existing heap/context transitions. djudge_proc_call exposes it for certified
+value states; the whole-call pilot now needs only the standard boot check.
+Next: thread mutable LocalFacts through checked evaluation for 087 admission. See HANDOFF.
 
 ## Layout
 

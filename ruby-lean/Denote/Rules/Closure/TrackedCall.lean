@@ -5,7 +5,8 @@ import Denote.Rules.Closure.ProjectedReturn
 
 /-! A stored call consumes independently tracked origins and physical slots. Unlike a
 concrete allocation-prefix pilot, this works at any conformant caller carrying those
-facts, including copied bindings. Body typing is still required at the live captures. -/
+facts, including copied bindings. Native lookup comes from StateOk and the call name guard;
+body typing is still required at the live captures. -/
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
@@ -18,7 +19,7 @@ theorem tracked_local_lambda_call {κ κb : Ctx} {Γ Γb : Env} {I Ib τ cap sel
     {m : Machine} {facts : LocalFacts} {names : List String} {code : ClosureCode}
     (hm : StateOk κ Γ I m) (hf : LocalFactsOk facts m)
     (hn : facts.slots = some names) (name : String) (hx : name ∈ facts.currentProcs)
-    (hv : envGet? Γ name = some (.clos code cap selfT)) (hd : ProcCallReady m.heap)
+    (hv : envGet? Γ name = some (.clos code cap selfT)) (hfree : nameFreeN κ "call" = true)
     (hp : code.params = []) (hls : code.locals = []) (hl : code.lam = true)
     (ht : ReframeFO κ I) (ha : κ.asms = []) (hr : κ.scope.runtimeMain = true)
     (he : ∀ x, constGet? (κ.withFrame none) x = constGet? κ x)
@@ -46,7 +47,7 @@ theorem tracked_local_lambda_call {κ κb : Ctx} {Γ Γb : Env} {I Ib τ cap sel
   have hstate := requiredClosureFrame_state_of_env (ps := []) hm ht ha
     (ClosureScopeEq.current hm.frameInRange hcap) henv he
   simp only [hlocals, blockLocals, List.nil_append] at hstate
-  apply local_lambda_call_runSpec name hproc hd hklass hparams hlam hcode.2.2.1
+  apply local_lambda_call_runSpec name hproc (hm.procCall hfree) hklass hparams hlam hcode.2.2.1
   apply closure_projected_main_runSpec hm hout ha hr hw hcl hk hcap
     (captureSlots_of_frameSlots (hf.slots names hn) Γb)
     (by intros; simp [requiredClosureFrame, hlocals]) true _ cl [] hτ (hb _ hstate)

@@ -46,7 +46,7 @@ theorem primitiveDispatch (hc : ChainsIn h) (hs : Saturated h) (free : String �
   intro hp
   rcases p with ⟨k, mn, bid⟩
   have hbound : k ≤ Boot.procId := of_decide_eq_true (List.all_eq_true.mp
-    (by decide : primitiveMethods.all (fun p => decide (p.1 ≤ Boot.procId)) = true) _ hp)
+    (by decide : dispatchMethods.all (fun p => decide (p.1 ≤ Boot.procId)) = true) _ hp)
   have hk := Nat.lt_of_le_of_lt hbound hc.boot.2.2.2.1
   simp only [method_old hc hs hk, shadow_before_old hc hs hk]
 

@@ -34,7 +34,7 @@ theorem alias_state {m : Machine} (hm : StateOk ctx0 [] .ivar0 m)
 /-- An abstract tracked caller, with two aliases, supplies every call premise. No
 concrete payload identity or post-body caller environment is assumed. -/
 theorem alias_integer_call {m : Machine} (hm : StateOk ctx0 [] .ivar0 m)
-    (hs : FrameSlots [] m) (hd : ProcCallReady m.heap) (value : Int) :
+    (hs : FrameSlots [] m) (value : Int) :
     let code : ClosureCode := ⟨[], [], .int value, true, by simp [paramEqAll, exprEq]⟩
     RunSpec (aliases m code)
       (evalFrom (aliases m code) (.send (some (.var .lvar "g")) "call" [] none))
@@ -42,8 +42,7 @@ theorem alias_integer_call {m : Machine} (hm : StateOk ctx0 [] .ivar0 m)
   intro code
   have h := tracked_local_lambda_call (names := ["g", "f"])
     (alias_state hm code) (alias_facts hm hs code) rfl "g" (by decide) rfl
-    (hd.ext (n := reifiedMachine m (toRubyParams code.params) code.locals
-      (toRuby code.body) code.lam) (reified_ext hm _ _ _ _))
+    rfl
     rfl rfl rfl (ReframeFO.empty rfl rfl rfl rfl) rfl rfl (fun _ => rfl) rfl
     (by intro p hp; simp only [bindings, List.mem_cons, List.not_mem_nil, or_false] at hp
         rcases hp with rfl | rfl <;> rfl)
@@ -85,8 +84,13 @@ private def otherFrame : Machine := pushMethodFrame sample default
 -- Native table readiness is independent of both capture identity and exact code.
 #guard match Interp.run 50 (evalFrom sample
     (.class' "Proc" none (.def' "call" [] (.int 7)))) with
-  | .value _ n => currentProcB n (n.getLocal "g") && !procCallReadyB n.heap
+  | .value _ n => currentProcB n (n.getLocal "g") && !procCallReadyB n.heap &&
+      !primitiveDispatchB n.heap (nameFreeN ctx0) &&
+      primitiveDispatchB n.heap (fun name => name != "call" && nameFreeN ctx0 name)
   | _ => false
+
+-- Interpreter-executed calls must not enter the pure builtin proof table.
+#guard !(primitiveMethods.contains (Boot.procId, "call", "Proc#call"))
 
 #print axioms alias_facts
 #print axioms alias_state

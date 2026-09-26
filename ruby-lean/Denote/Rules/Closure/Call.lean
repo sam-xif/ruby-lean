@@ -18,15 +18,15 @@ theorem invoke_proc_call {m : Machine} {v : Value} {cl : Closure}
   cases hpay : (m.heap.get o).payload <;> simp only [hpay] at hp
   all_goals try contradiction
   cases hp
-  obtain ⟨md, hl, hb, hu, hv, hpre, ha⟩ := hr
-  have hlook : lookup m.heap (.ref o) "call" = some (Boot.procId, md) := by
+  obtain ⟨owner, md, hl, hb, hu, hv, hpre, ha⟩ := hr
+  have hlook : lookup m.heap (.ref o) "call" = some (owner, md) := by
     rw [lookup_eq_methodOn, hk]; exact hl
   have hvis : Interp.visError? m (.ref o) .explicit md "call" = none := by
     simp [Interp.visError?, hv]
   unfold Interp.invoke
   simp only [hpay]
   simp only [Interp.invoke.invokeDispatch, hlook, hu, hpre, Bool.false_eq_true,
-    ↓reduceIte, hk, ha, Interp.crubyShadow, hvis, hb,
+    ↓reduceIte, hk, ha, hvis, hb,
     Interp.procCallBid, Interp.callProcBuiltin, hpay]
   rfl
 

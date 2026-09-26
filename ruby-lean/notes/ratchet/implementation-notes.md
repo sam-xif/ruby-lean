@@ -11622,3 +11622,23 @@ both halves of what constrains them now have a name.
   arbitrary assignment/calls without an effect proof.
 - Full quiet ratchet GREEN (252 agree / 0 disagree); metatheory and standard-axiom
   audit pass. New files build in under a second each; admission counts are unchanged.
+
+## Clink 215 (2026-09-26) — carry native Proc dispatch in checker conformance
+
+- dispatchMethods extends the guarded lookup table with Proc#call. primitiveMethods
+  remains the pure-builtin table, so the call marker cannot inherit a pure runner
+  signature. dispatch_lookup factors the shared extraction proof.
+- StateOk.procCall now derives readiness from primitiveDispatchB when call is free.
+  Existing allocation, method installation, name reservation, fresh class/module and
+  subclass transports carry it. Their bounded-table checks include the new Proc row.
+  Reserving call removes the capability; an override with call still free fails conformance.
+- ProcCallReady uses the actual resolved owner and CRuby-shadow test instead of
+  demanding an empty prefix at Proc. invoke_proc_call proves the resulting real path.
+  The whole stored-program theorem is again SemSafeCtxA; boot_integer_program needs
+  only bootOkB. The separate pilot boot check and caller readiness premises are gone.
+- djudge_proc_call exposes the fact at every certified value state with an unreserved
+  call selector. Controls preserve the distinction between origin, native lookup and
+  a pure builtin. LocalFacts still needs an effect-indexed checking contract before
+  callable admission; no new judgment or emitter policy is installed.
+- Full quiet gate GREEN (252 agree / 0 disagree); metatheory and standard-axiom audit
+  pass. No individual proof approached five minutes. Admission counts are unchanged.
