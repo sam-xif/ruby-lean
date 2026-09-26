@@ -19,7 +19,13 @@ theorem constructor_frame_pres {m n : Machine} {k : ObjId} {md : MethodDef}
       simp [RootUncaptured, constructorFrame, pushMethodFrame, Array.getD_eq_getD_getElem?, requiredFrame]) i hi
     intro he
     subst i
-    exact hn (.here _), ⟨h.frames.bindings.bound, h.frames.bindings.saved⟩⟩
+    exact hn (.here _), ⟨h.frames.bindings.bound, h.frames.bindings.saved⟩, by
+    apply OwnersPres.uncaptured
+      (m := pushMethodFrame m (requiredFrame (.ref m.heap.objs.size) "initialize" md (ps.map (·.1)) args))
+      h.stack
+    · simp [pushMethodFrame, Array.getD_eq_getD_getElem?, requiredFrame]
+    · rw [h.frames.rootCaptured]
+      simp [constructorFrame, pushMethodFrame, Array.getD_eq_getD_getElem?, requiredFrame]⟩
 
 theorem constructor_pop_framed {m n : Machine} {k : ObjId} {md : MethodDef}
     {ps : List SigParam} {args : List Value} (hl : FrameInRange m)

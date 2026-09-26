@@ -1,4 +1,4 @@
-# Current resume point (2026-09-25, clink 209)
+# Current resume point (2026-09-26, clink 210)
 
 Latest admission remains 084: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
@@ -92,6 +92,17 @@ rejects inserting a nil slot into a saved frame (allowed by the previous contrac
 real captured writes/new active locals, and proves that empty and x=nil callers both satisfy
 EnvOk [] yet the same body assignment updates only the latter caller.
 
+Clink 210 adds OwnersPres to FramePres. For a live source capture chain, every owner lookup
+within the source fuel budget returns the same frame after evaluation. setLocal_owner_mono
+shows that an owner distinct from the fallback start remains selected with more fuel;
+this proves real writes preserve ownership while permitting new active locals. Composition
+transports liveness using retained capture links; ordinary returns use saved frames, and
+constructor/current-capture returns use the restored uncaptured root. djudge_owners exposes
+the contract. ReadReturn proves that a bound caller name unshadowed at entry cannot become
+shadowed, and its body read equals its returned caller read after arbitrary Framed bodies.
+Controls show binding-domain preservation alone admits shadowing, reject it with OwnersPres,
+and permit nested writes, fresh locals and a real captured-write/read return.
+
 Next: derive outgoing caller EnvOk from general body effects, and track capture identity.
 Entry now has full conformance under the named scope/liveness/environment premises, but
 Ty.clos does not yet supply those premises. The stored-f pilot retains its higher-order
@@ -109,11 +120,14 @@ main-caller StateOk from its outgoing EnvOk and the body result; phase is retain
 The body may update/introduce/shadow locals, so its EnvOk cannot simply be reused at the
 caller. Write's actual single-capture transport is a proved base case, not a general effect
 analysis. General non-main caller restoration also remains outside this theorem.
-BindingsPres now retains saved domains, but does not forbid a body from shadowing an
-existing ancestor slot in its active frame. Outgoing caller typing needs that ownership
-relation or explicit write effects as well. EnvOk's absence clause means nil reads, not
-physical absence: filtering body output to the incoming caller environment loses hidden
-nil slots that a captured assignment may change. Do not infer slot domains from EnvOk.
+BindingsPres retains saved domains; OwnersPres now excludes new shadowing of an existing
+owner along a live chain. closure_bound_read connects body/caller reads for unshadowed bound
+slots of an uncaptured caller. General outgoing EnvOk still needs a projection accounting
+for new body locals and explicitly shadowed parameters/block locals. EnvOk's absence clause
+means nil reads, not physical absence: filtering body output to the incoming caller
+environment loses hidden nil slots that a captured assignment may change. Do not infer
+slot domains from EnvOk. The stored-f pilot can consume its known physical binding; general
+capture types still require per-type transport when changing activations.
 The unused ClosuresOk/closTblOk table machinery remains legacy, with F49's counterexamples
 retained explicitly. The old index-free denotation is now named LegacyIndexDen in controls.
 

@@ -2756,6 +2756,13 @@ read: callers with no slots or x=nil both conform to EnvOk [], but a captured x=
 only the latter caller. Saved domains alone do not prevent active-frame shadowing of an
 ancestor slot; ownership/write effects remain necessary for general outgoing caller typing.
 
+Clink 210 adds live owner preservation within the source lookup budget, excluding new
+shadowing while allowing nested captured writes and fresh active locals. ReadReturn equates
+body and returned-caller reads for a previously unshadowed bound caller slot after arbitrary
+Framed evaluation. General outgoing EnvOk must still account for physical slot presence,
+new body locals, explicit parameter/block-local shadowing and per-type activation transport.
+Capture identity tracking remains outside callable admission.
+
 ## F50 — the body answer contract is too weak for block return (2026-09-25)
 
 **Resolved for the admitted fragment by clink 203; typed jump rules remain future work.**

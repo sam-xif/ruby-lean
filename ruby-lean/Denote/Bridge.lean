@@ -170,6 +170,14 @@ theorem djudge_bindings {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.E
     BindingsPres m n :=
   (((djudge_context h) m hm).2 fuel a n rest hr).1.frames.bindings
 
+/-- Existing lookup owners survive every certified answer within the source fuel
+budget, provided the source capture chain is live. -/
+theorem djudge_owners {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
+    (h : DJudge Γ e τ Γ' κ I κ' I') {m n : Machine} (hm : StateOk κ Γ I m)
+    {fuel rest : Nat} {a : Answer} (hr : runA fuel (evalFrom m e) = .ans a n rest) :
+    OwnersPres m n :=
+  (((djudge_context h) m hm).2 fuel a n rest hr).1.frames.owners
+
 /-- A checker result carries the generic semantic contract, including a method frame. -/
 theorem certified_context {κ : Ctx} {I : Ty} {Γ : Env} {e : Ratchet.Expr}
     (c : Certified Γ e κ I) : SemSafeCtxA κ Γ I e c.ty c.ctx c.out c.spine :=
@@ -240,6 +248,7 @@ theorem validateD_safe_run {p : Ratchet.Expr} {d : Deriv} (h : validateD p d = t
 #print axioms djudge_saved_proc
 #print axioms djudge_phase
 #print axioms djudge_bindings
+#print axioms djudge_owners
 #print axioms certified_context
 #print axioms validateD_safe
 #print axioms validateD_safe_boot

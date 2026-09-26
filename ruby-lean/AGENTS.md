@@ -4,7 +4,7 @@ Three of the four libraries of the `ruby-lean` Lake package; the fourth is the m
 they are about (`RubyCore/`, described in [`README.md`](README.md)). The chronological
 record is [`notes/ratchet/`](notes/), the model's is `notes/model/`.
 
-## Current state (2026-09-25)
+## Current state (2026-09-26)
 
 The typed/safe gap is closed **by a theorem, not rung by rung**.
 [`Denote/Bridge.lean`](Denote/Bridge.lean) proves
@@ -75,6 +75,11 @@ FramePres, through real writes, composition and returns. The bridge exposes this
 certified answer. Controls reject saved nil-slot insertion and show that EnvOk cannot tell
 an absent slot from a bound nil slot, though they receive captured writes differently.
 Outgoing caller typing still needs ownership/shadowing effects and capture identity tracking.
+Clink 210 adds live lookup-owner preservation to FramePres, within the source fuel budget.
+Writes, composition and returns prove it; the bridge exposes it for every certified answer.
+ReadReturn rules out new shadowing of a bound caller slot and equates its body/caller reads
+after arbitrary framed evaluation. Controls permit nested captured writes and fresh locals.
+General outgoing caller environments and capture identity tracking remain before admission.
 Next: 087, zero-argument lambda creation/call. See HANDOFF.
 
 ## Layout

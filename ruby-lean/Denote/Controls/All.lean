@@ -6,6 +6,7 @@ import Denote.Controls.ClosureStateControls
 import Denote.Controls.ClosureStoredControls
 import Denote.Controls.CaptureFrameControls
 import Denote.Controls.CaptureBindingControls
+import Denote.Controls.CaptureOwnerControls
 import Denote.Controls.ClosureReturnStateControls
 import Denote.Controls.BoundedControls
 import Denote.Controls.ModuleDataControls

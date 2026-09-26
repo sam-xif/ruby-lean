@@ -11514,3 +11514,23 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
   pass. New binding/return/control proofs build in under a second; no individual proof
   reached five minutes.
+
+## Clink 210 (2026-09-26) — retain capture ownership and caller reads
+
+- OwnersPres preserves every owner lookup within the source frame budget on a live capture
+  chain. An owner distinct from the fallback start survives more fuel; setLocal therefore
+  either updates an already-bound slot or introduces a local at the same fallback start.
+  Liveness guards saved-frame transport against dangling captures becoming real on growth.
+- FramePres carries ownership through composition and every return path. Ordinary returns
+  use saved-frame equality; constructor/current-capture returns restore an uncaptured root.
+  djudge_owners exposes the invariant for arbitrary certified answers.
+- ReadReturn rules out new shadowing of an initially unshadowed bound caller slot, then
+  equates its final body/caller reads after arbitrary Framed evaluation. CaptureOwnerControls
+  rejects shadow insertion admitted by binding domains alone, permits writes through two
+  enclosing frames and new active locals, and instantiates the captured-write return read.
+- No judgment/emitter change. Counts remain fragment 81 / checker reach 86, 61 rules,
+  60 worked theorems, 0 owed/exempt. General caller-environment projection and capture
+  identity tracking still precede callable admission at 087 (§F49).
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New ownership/return/control proofs build in under a second; no individual proof
+  reached five minutes. Restored sources match the gate-tested stash exactly.

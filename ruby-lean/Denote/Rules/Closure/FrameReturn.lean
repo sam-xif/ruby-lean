@@ -62,7 +62,7 @@ theorem closure_frame_pop {m n : Machine} {f : RubyCore.Frame}
     FramePres m (popMethodFrame n) := by
   have hs : (popMethodFrame n).stack = m.stack := by simp [popMethodFrame, hb, pushMethodFrame]
   have hf := closure_saved_frames hl hu hc h
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · have hh := h.size
     simp only [pushMethodFrame, Array.size_push] at hh
     exact Nat.le_trans (Nat.le_succ _) hh
@@ -75,6 +75,10 @@ theorem closure_frame_pop {m n : Machine} {f : RubyCore.Frame}
     exact hf i hi (by intro he; subst i; exact hn (.here _))
   · exact ⟨fun i hi x hx => (closure_saved_bindings h i hi x).trans hx,
       fun i hi _ x => closure_saved_bindings h i hi x⟩
+  · apply OwnersPres.uncaptured hs hu
+    rw [hs]
+    have he := congrArg RubyCore.Frame.captured (closure_saved_metadata h _ hl)
+    exact he.trans hu
 
 theorem closure_pop_framed {m n : Machine} {f : RubyCore.Frame}
     (hl : m.stack.headD 0 < m.frames.size) (hu : RootUncaptured m)

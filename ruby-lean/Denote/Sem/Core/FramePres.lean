@@ -1,11 +1,13 @@
 import Denote.Ty.Local
 import Denote.Sem.Closure.CapturePath
 import Denote.Sem.Closure.Bindings
+import Denote.Sem.Closure.Owners
 
 /-! Frame effects needed when a typed method returns to its caller. Ordinary method
 activations have no captured frame, so local writes cannot touch their inactive callers.
 Captured activations may write locals along their captured chain. Saved metadata and
-binding domains, and whole frames outside a live chain, remain intact.
+binding domains, and whole frames outside a live chain, remain intact. Live lookup
+ownership is preserved within the source fuel budget, preventing new capture shadowing.
 -/
 
 set_option autoImplicit false
@@ -42,11 +44,13 @@ structure FramePres (m n : Machine) : Prop where
     ¬ CapturePath m (some (m.stack.headD 0)) i →
       n.frames.getD i default = m.frames.getD i default
   bindings : BindingsPres m n
+  owners : OwnersPres m n
 
 theorem FramePres.of_eq {m n : Machine} (hs : n.stack = m.stack)
     (hf : n.frames = m.frames) : FramePres m n := by
   exact ⟨by simp [hf], by rw [hf, hs], by intros; rw [hf],
-    by intros; rw [hf], by intros; rw [hf], .of_frames (by intros; rw [hf])⟩
+    by intros; rw [hf], by intros; rw [hf], .of_frames (by intros; rw [hf]),
+    .of_frames hs (by intros; rw [hf])⟩
 
 theorem FramePres.refl (m : Machine) : FramePres m m := .of_eq rfl rfl
 
@@ -67,7 +71,7 @@ theorem FramePres.captured {m n : Machine} (h : FramePres m n) (hs : n.stack = m
 theorem FramePres.trans {m n p : Machine} (h : FramePres m n) (h' : FramePres n p)
     (hs : n.stack = m.stack) : FramePres m p := by
   refine ⟨Nat.le_trans h.size h'.size, h'.scope.trans h.scope, ?_, ?_, ?_,
-    h.bindings.trans h'.bindings hs h.size⟩
+    h.bindings.trans h'.bindings hs h.size, ?_⟩
   · intro hc i hi hn
     have hc' : RootUncaptured n := h.rootCaptured.trans hc
     rw [h'.isolated hc' i (Nat.lt_of_lt_of_le hi h.size) (by simpa [hs] using hn),
@@ -82,6 +86,10 @@ theorem FramePres.trans {m n p : Machine} (h : FramePres m n) (h' : FramePres n 
     rw [h'.outside hl' i (Nat.lt_of_lt_of_le hi h.size) (by
       rw [hs]; exact fun hp => hn ((CapturePath.preserved (h.captured hs) hl i).mp hp)),
       h.outside hl i hi hn]
+  · apply h.owners.trans h'.owners h.size
+    intro hl
+    rw [hs]
+    exact hl.capture_preserved h.size (h.captured hs)
 
 theorem savedFrame_setAt (m : Machine) (x : String) (v : Value) (target i : FrameId) :
     savedFrame ((setAt m x v target).frames.getD i default) =
@@ -95,7 +103,7 @@ theorem savedFrame_setAt (m : Machine) (x : String) (v : Value) (target i : Fram
 
 theorem FramePres.setLocal (m : Machine) (x : String) (v : Value) :
     FramePres m (m.setLocal x v) := by
-  refine ⟨by simp, ?_, ?_, ?_, ?_, .setLocal m x v⟩
+  refine ⟨by simp, ?_, ?_, ?_, ?_, .setLocal m x v, .setLocal m x v⟩
   · simp only [setLocal_eq_setAt, setAt_stack, frameScope, setAt_self,
       setAt_blk, setAt_cref, setAt_defmod, setAt_captured]
   · intro hc i _ hn
