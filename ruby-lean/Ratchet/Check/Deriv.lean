@@ -82,6 +82,8 @@ inductive Deriv where
   | requiredClosureCall (recv : Deriv) (args : List Deriv) (body : Deriv) (ret : Ty)
   /-- Receiver and body hints only; source syntax and checked receiver supply all types. -/
   | eachBlock (recv body : Deriv)
+  /-- Map result types come from the checked body; the hint carries no type claim. -/
+  | mapBlock (recv body : Deriv)
   /-- A bare-name miss from the explicitly supported absence table. -/
   | bareName (name : String)
   | selfExpr
@@ -168,6 +170,7 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
   | "requiredClosureCall" =>
     return .requiredClosureCall (← kid "recv") (← kids "args") (← kid "body") (← ty "ret")
   | "eachBlock" => return .eachBlock (← kid "recv") (← kid "body")
+  | "mapBlock" => return .mapBlock (← kid "recv") (← kid "body")
   | "bareName" => return .bareName (← name "name")
   | "selfExpr" => return .selfExpr
   | "var" => return .var (← varKindOfJson? (← j.getObjVal? "kind")) (← name "name")

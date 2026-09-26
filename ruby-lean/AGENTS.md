@@ -16,9 +16,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 87 rungs, reach 17**, **76 registered rules** (40 expressions + 36 companions),
-**0 owed**, **0 exempt**. Checker reach is 91; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 66 rungs additionally carry a
+**Fragment 89 rungs, reach 17**, **77 registered rules** (40 expressions + 37 companions),
+**0 owed**, **0 exempt**. Checker reach is 93; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 68 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -126,7 +126,11 @@ receiver evaluation. Model L274 repairs native map/collect dispatch and live ite
 Clink 228 proves SemFlow.map through checked bodies, typed accumulated results, final Array
 allocation and guarded native lookup. Shared IteratorCaller lemmas retain capture ownership
 and caller conformance for each and map. Exact 092 has an all-fuel source proof; registry,
-checker and emitter admission for 092/093 remain next.
+checker and emitter admission for 092/093 follow in clink 229.
+Clink 229 registers/checks/emits map/collect and admits 092/093. Output element types come
+from the checked body; hints supply no result type. Exact worked proofs and 45 pipeline
+controls cover String results, captured writes, local shadowing and refusals. Next: typed
+blocks crossing ordinary method activations (yield/&block) and explicit block-pass.
 
 ## Layout
 

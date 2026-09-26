@@ -157,6 +157,53 @@ saved + 1
         ("each_next_escape", '''# typed: true
 [1].each { |item| next item }
 ''', "blocked", False),
+        ("map_string_results", '''# typed: true
+strings = [1, 2].map { |item| item.to_s }
+strings.map { |word| word.length }
+''', "ok", True),
+        ("collect_integer_results", '''# typed: true
+[1, 2].collect { |item| item + 1 }
+''', "ok", True),
+        ("map_empty", '''# typed: true
+[].map { |item| "result" }
+''', "ok", True),
+        ("map_capture_write", '''# typed: true
+total = 0
+[1, 2].map { |item| total = total + item }
+total + 1
+''', "ok", True),
+        ("map_capture_type_change", '''# typed: true
+total = 0
+[1].map { |item| total = nil }
+''', "blocked", False),
+        ("map_body_local", '''# typed: true
+[1, 2].map do |item|
+  doubled = item * 2
+  doubled + 1
+end
+''', "ok", True),
+        ("map_block_local_shadow", '''# typed: true
+saved = 4
+[1].map { |item; saved| saved = nil; item.to_s }
+saved + 1
+''', "ok", True),
+        ("map_parameter_type_leak", '''# typed: true
+item = nil
+[1].map { |item| item + 1 }
+item + 1
+''', "blocked", False),
+        ("map_unsafe_element", '''# typed: true
+[nil].map { |item| item + 1 }
+''', "blocked", False),
+        ("map_extra_argument", '''# typed: true
+[1].map(2) { |item| item + 1 }
+''', "blocked", False),
+        ("map_extra_parameter", '''# typed: true
+[1].map { |item, extra| item + 1 }
+''', "blocked", False),
+        ("map_next_escape", '''# typed: true
+[1].map { |item| next item }
+''', "blocked", False),
     ]
     emitted = {}
     with tempfile.TemporaryDirectory(prefix="ruby-body-inference-") as directory:

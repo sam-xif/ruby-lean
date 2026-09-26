@@ -11980,3 +11980,29 @@ both halves of what constrains them now have a name.
 - Full quiet gate GREEN (87 fragment, reach 91, 76 rules, 66 worked, 252 agree / 0 disagree).
   Metatheory and standard-axiom audit pass. New proofs build in about a second each;
   no new axioms, resource-limit increases or proof builds over five minutes.
+
+## Clink 229 (2026-09-26) — admit map/collect through validateD
+
+- DFlow.map registers clink 228's complete source proof, with Sorbet provenance in the
+  judgment docstring. Its body result determines the returned Array element type; it is
+  independent of the receiver's element type. The mutual bridge and constructor audit
+  include the new rule (77 = 40 expressions + 37 companions, zero owed/exempt).
+- mapBlock contains receiver/body hints only. FlowCheck checks the actual selector,
+  single required parameter, no arguments, native name capability, main scope, first-order
+  input/result types, complete body, stable context/spine, capture ownership and the caller
+  environment fixed point. No proposed result type or loop invariant is trusted.
+- The emitter shares Array block setup/restoration between each/map/collect. Each retains
+  the receiver type; map/collect propose Array[body result]. Restoring hidden parameter
+  and block-local caller types is unchanged. The checker reconstructs both element types.
+- MapCheckControls covers wrong code/literals/types, receiver/arity/selector/block shapes,
+  reserved names, capture type changes, hidden nil slots and closure-valued results. The
+  45 pipeline controls include chained maps consuming String results, stable capture
+  writes, do/end locals, explicit local shadowing and malformed calls/escapes.
+- MapDerivations proves exact 092/093 through arbitrary registry families; CorpusSafety
+  and proof-term audit include both. Safety's flow selector list must include the two
+  new worked programs as well as its new map syntax arm; the first full gate caught that
+  missing selector list. No safety exemption or widened resource limit was needed.
+- Final full quiet gate GREEN: fragment 89, checker reach 93, 77 rules, 68 worked proofs,
+  zero owed/exempt, 252 agree / 0 disagree. All four changed floors are locked. Direct
+  validate-one checks confirm 092/093 acceptance. Metatheory and standard-axiom audit pass;
+  no new axioms or proof builds over five minutes. Next: yield/&block across method frames.

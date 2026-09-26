@@ -2874,5 +2874,6 @@ Array now owns native map/collect markers, resolved through ordinary lookup incl
 aliases, visibility, undef and super. IterKind.arrayMap rereads the receiver payload at
 each index and collects body results; it bypasses overridden each/length/index methods.
 Removing Array's map entry exposes Enumerable's implementation as CRuby does. The obsolete
-snapshot fallback is removed. Regression: array-map-native.rb. Typing still needs guarded
-native resolution, a typed accumulator and final allocation/caller conformance.
+snapshot fallback is removed. Regression: array-map-native.rb. Clink 228 proves guarded
+native resolution, typed accumulation and final allocation/caller conformance; clink 229
+registers the rule and admits map blocks through validateD.

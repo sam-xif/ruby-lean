@@ -14,6 +14,7 @@ import Ratchet.Controls.TopClassControls
 import Ratchet.Controls.ResultControls
 import Ratchet.Controls.ClosureCheckControls
 import Ratchet.Controls.EachCheckControls
+import Ratchet.Controls.MapCheckControls
 
 /-!
 Negative controls for `validateD`.

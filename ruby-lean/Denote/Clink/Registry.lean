@@ -24,7 +24,7 @@ import Denote.Judgment.FlowRules
 /-! The registry carries ordinary expressions/lists and scoped recursive bodies/arguments.
 Every constructor registers only with a proof of its constructor-derived semantic form.
 `ruleForm` replaces all twelve judgment heads with family projections; a premise reaching
-an uncarried judgment is refused before registration. All 76 constructors are proved.
+an uncarried judgment is refused before registration. All 77 constructors are proved.
 `DJudgeC` is their Church encoding, with unconditional semantic and safety interpretations. -/
 
 set_option autoImplicit false
@@ -400,8 +400,8 @@ def dCompanionRules : List String :=
 -- The registry and its report agree about its size.
 #guard dclinks.length == dRegisteredRules.length
 
--- Forty expression rules and thirty-six companions; an unproved rule fails the gate.
-#guard dRegisteredRules.length == 76
+-- Forty expression rules and thirty-seven companions; an unproved rule fails the gate.
+#guard dRegisteredRules.length == 77
 #guard dUnregisteredRules == []
 
 -- Every judgment premise is represented in the semantic family.
@@ -415,7 +415,7 @@ def dCompanionRules : List String :=
   "InitJudge.intLit", "InitJudge.var", "InitJudge.ivarAsgn", "InitJudge.seq", "InitJudge.ignoreResult",
   "InitJudge.superInit", "InitJudgeSeq.last", "InitJudgeSeq.cons", "InitJudgeAll.nil", "InitJudgeAll.cons",
   "DFlow.embed", "DFlow.intLit", "DFlow.nilLit", "DFlow.var", "DFlow.closureLiteral", "DFlow.vasgn",
-  "DFlow.sequence", "DFlow.call", "DFlow.requiredCall", "DFlow.each", "DFlowSeq.last", "DFlowSeq.cons",
+  "DFlow.sequence", "DFlow.call", "DFlow.requiredCall", "DFlow.each", "DFlow.map", "DFlowSeq.last", "DFlowSeq.cons",
   "DFlowAll.nil", "DFlowAll.cons"]
 
 -- Every family-blocked rule is unregistered, which `registerDClink` enforces and this states.

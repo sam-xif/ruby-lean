@@ -19,6 +19,7 @@ import Denote.Examples.FlowDerivations
 import Denote.Examples.RequiredFlowDerivations
 import Denote.Examples.ProcDerivations
 import Denote.Examples.EachDerivations
+import Denote.Examples.MapDerivations
 
 /-! Concrete corpus programs and their derivations. `SemLadder` compares each program
 against the current stripped corpus; `RuleAudit` reads the clinks from these proofs. -/
@@ -372,7 +373,9 @@ def safeRungs : List (String × Ratchet.Expr) :=
    ("098-lambda-closure-capture", program_098_lambda_closure_capture),
    ("089-proc-basic", program_089_proc_basic),
    ("090-proc-bracket-call", program_090_proc_bracket_call),
-   ("091-block-each-int", program_091_block_each_int)]
+   ("091-block-each-int", program_091_block_each_int),
+   ("092-block-map-to-s", program_092_block_map_to_s),
+   ("093-block-doend-with-block-local", program_093_block_doend_with_block_local)]
 
 theorem safeRungs_safe (hb : bootOkB = true) :
     ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
@@ -381,6 +384,7 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
     | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
     | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    | rfl | rfl
   · exact safe_001_int_lit hb
   · exact safe_002_bool_true hb
   · exact safe_003_bool_false hb
@@ -447,6 +451,8 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   · exact safe_089_proc_basic hb
   · exact safe_090_proc_bracket_call hb
   · exact safe_091_block_each_int hb
+  · exact safe_092_block_map_to_s hb
+  · exact safe_093_block_doend_with_block_local hb
 
 #print axioms safeRungs_safe
 end Ratchet.Denote.Typed

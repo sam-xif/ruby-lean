@@ -671,6 +671,23 @@ inductive DFlow : Ctx → Env → Ty → LocalFacts → Expr → Ty → Bool →
         (closureBodyCtx κr) Ir (closureBodyCtx κr) Ir →
       DFlow κ Γ I facts (.send (some recv) "each" [] (some (.block [.req name] locals body)))
         (.arrayOf σ) false κr Γr Ir .unknown
+  /-- Sorbet 0.6.13405 gives map/collect's block the receiver element type and returns
+  an Array of the checked body result type, rejecting captured type changes (clink 228).
+  Check the exact body, first-order result and caller-environment fixed point. -/
+  | map {κ κr : Ctx} {Γ Γr Γb : Env} {I Ir σ ρ : Ty}
+      {facts fr : LocalFacts} {current : Bool} {recv body : Expr}
+      {name mname : String} {locals names : List String} :
+      DFlow κ Γ I facts recv (.arrayOf σ) current κr Γr Ir fr →
+      (mname == "map" || mname == "collect") = true →
+      nameFreeN κr mname = true → closureMainB κr Ir = true →
+      FirstOrder σ = true → FirstOrder ρ = true →
+      fr.captureNames? (withoutNames ([name] ++ locals) Γb) = some names →
+      activationEnvB ([(name, σ)] ++ blockLocals locals ++ Γr) = true →
+      activationReturnB Γb = true → closureReturnEnv ([name] ++ locals) names Γr Γb = Γr →
+      DJudge ([(name, σ)] ++ blockLocals locals ++ Γr) body ρ Γb
+        (closureBodyCtx κr) Ir (closureBodyCtx κr) Ir →
+      DFlow κ Γ I facts (.send (some recv) mname [] (some (.block [.req name] locals body)))
+        (.arrayOf ρ) false κr Γr Ir .unknown
 
 /-- Sorbet's stored-lambda example (clink 200) uses the local established by the
 preceding statement. This companion threads the proved model facts in that order. -/
@@ -712,7 +729,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_7 := fun _ _ _ _ e _ _ _ _ _ _ _ => plainArgB e = true)
     (motive_8 := fun _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_9 := fun _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 

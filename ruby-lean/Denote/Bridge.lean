@@ -71,7 +71,7 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
       F.flowAll κ Γ I facts es tys κ' Γ' I' out)
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals intros
   · apply hF DClink.intLit (by simp [dclinks]) <;> assumption
   · apply hF DClink.fltLit (by simp [dclinks]) <;> assumption
@@ -148,6 +148,7 @@ theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.
   · apply hF DClink.DFlow.call (by simp [dclinks]) <;> assumption
   · apply hF DClink.DFlow.requiredCall (by simp [dclinks]) <;> assumption
   · apply hF DClink.DFlow.each (by simp [dclinks]) <;> assumption
+  · apply hF DClink.DFlow.map (by simp [dclinks]) <;> assumption
   · apply hF DClink.DFlowSeq.last (by simp [dclinks]) <;> assumption
   · apply hF DClink.DFlowSeq.cons (by simp [dclinks]) <;> assumption
   · apply hF DClink.DFlowAll.nil (by simp [dclinks]) <;> assumption

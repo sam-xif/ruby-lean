@@ -1,18 +1,31 @@
-# Current resume point (2026-09-26, clink 228 / model L274)
+# Current resume point (2026-09-26, clink 229 / model L274)
 
-Latest admission: 091-block-each-int. Fragment 87, checker reach 91,
-76 registered rules (40 expressions + 36 companions), 66 worked theorems, no exemptions.
-The safe prefix remains 17; 018 is correctly rejected. Next frontier: map (092/093).
-L274 fixes §F54: Array map/collect formerly reached Enumerable's each-dispatching body,
-not the dormant snapshot fallback. Native markers now use IterKind.arrayMap's live cursor.
-Clink 228 now proves the full source call through SemFlow.map (Rules/Iterator/FlowMap).
-Next: register DFlow.map, add/check/emit a mapBlock hint and admit 092/093. The hint should
-carry only receiver/body derivations; derive the result element type from the checked body.
-Sorbet 0.6.13405 was remeasured with --no-config: map Integer→String returns Array[String];
-collect Integer→Integer and stable captured Integer writes return Array[Integer]. Changing
-a captured Integer to nil is rejected (7001). Use these observations in the new rule's docstring.
-L274 validation: focused replay 3/3, MRI tier 0 unchanged at 998 agree / 0 disagree,
-full quiet gate GREEN (252/0), metatheory and standard-axiom audit pass.
+Latest admissions: 092-block-map-to-s and 093-block-doend-with-block-local. Fragment 89,
+checker reach 93, 77 registered rules (40 expressions + 37 companions), 68 worked proofs,
+zero owed/exempt. Safe prefix remains 17; 018 is correctly rejected.
+Final full quiet gate GREEN (252 agree / 0 disagree); direct validate-one checks accept
+092/093. Metatheory and standard-axiom audit pass. No live builds remain.
+
+Clink 229 registers DFlow.map through SemFlow.map and djudge_certified. mapBlock carries
+only receiver/body derivations. FlowCheck derives parameter types from the checked Array,
+checks the exact body and takes its result type for the output Array. It enforces native
+selector/name readiness, main scope, first-order input/result types, capture ownership,
+stable context/spine and closureReturnEnv = caller Env. The emitter shares setup/restoration
+with each while returning Array[body result] for map/collect. MapCheckControls and 45
+pipeline controls cover type independence, chained maps, captures, shadowing and rejection.
+MapDerivations proves exact 092/093; CorpusSafety and RuleAudit include them. Four floors
+are raised. Native map/collect use model L274's repaired lookup/live cursor (§F54).
+
+Next frontier: 094 yield, 095 &block parameter, 096/097 block-pass, or 100 higher-order
+method arguments. 094 calls a method that adds yield(1) and yield(2); 095 calls a typed
+Proc captured as &b. Both need a typed block across an ordinary method activation, beyond
+the current main-caller native iterator path. Measure Sorbet before extending judgments.
+Nested map (101) still needs captured block-caller conformance and flow-aware body hints.
+Do not widen closureMainB or rescue this in the emitter without the corresponding proof.
+
+Sorbet 0.6.13405 --no-config: Integer→String map returns Array[String]; Integer→Integer
+collect and stable captured Integer writes return Array[Integer]. Captured Integer→nil
+is rejected (7001). DFlow.map's docstring cites the clink 228 measurement.
 
 MapArrayContract uses fuel induction over the live cursor and typed accumulator. Shared
 IteratorCaller entry/return facts (Caller.lean) preserve capture ownership and caller types;
@@ -22,7 +35,7 @@ MapStart/MapDispatch/FlowMap reach L274's real native marker, with map/collect r
 by nameFreeN in StateOk.dispatchMethods. SemFlow.map requires one required parameter, no
 arguments, main scope, first-order input/result types, stable body context/spine and a
 closureReturnEnv fixed point. TypedMapControls proves exact 092 plus collect, allocation,
-shadowing and dispatch controls. No new registry rule or checker acceptance yet.
+shadowing and dispatch controls. Clink 229 adds registry/checker/emitter acceptance.
 Clink 228 validation: full quiet gate GREEN with unchanged floors and 252/0 agreement;
 metatheory and standard-axiom audit pass. New proofs take about a second each.
 
