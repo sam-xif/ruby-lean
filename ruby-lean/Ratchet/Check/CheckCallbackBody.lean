@@ -1,8 +1,8 @@
 import Ratchet.Check.MethodCertificate
 
 /-! Source/certificate checking for DMethod, independent of the eventual callback.
-Each successful branch returns its derivation. This is staged: validateD does not yet
-admit a method definition or call through these certificates. -/
+Each successful branch returns its derivation; definitions cache it and source calls
+check their actual callback against its signature. -/
 set_option autoImplicit false
 namespace Ratchet
 

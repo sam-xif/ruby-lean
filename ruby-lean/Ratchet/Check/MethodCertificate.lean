@@ -1,6 +1,6 @@
 import Ratchet.Judgment.DMethod
 
-/-! Certificates for the staged callback-capable body checker. An optional ordinary
+/-! Certificates for the callback-capable body checker. An optional ordinary
 proof permits reuse of existing expression rules, but only when every child has one. -/
 set_option autoImplicit false
 namespace Ratchet

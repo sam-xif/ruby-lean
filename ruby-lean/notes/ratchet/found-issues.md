@@ -2880,7 +2880,7 @@ registers the rule and admits map blocks through validateD.
 
 ## F55 — Ordinary-method isolation cannot describe a captured write through yield
 
-**Definition-body checker proved through clink 237; installation/call admission remain open.**
+**Implicit-block source admission resolved by clink 239; explicit &b binding remains open.**
 `def twice; saved = 7; result = yield(1) + yield(2); p saved; result; end;
 total = 0; p twice { |x| total = total + x }; p total` prints 7, 4, 3 under both
 CRuby 4.0.5 and the model. The runtime already handles this captured write correctly.
@@ -2943,3 +2943,8 @@ Clink 238 proves installation, real lookup and implicit literal-block source cal
 094 and captured-write programs are safe from boot for all fuel; special-name overrides
 also follow real dispatch. CRuby/model agree on all probes. No runtime defect blocks this
 step; registry/checker/emitter integration and explicit &b binding remain.
+
+Clink 239 closes the implicit-block source admission gap: 094 and regression 260 are accepted
+through the registered method families, checked definition caches and actual callback proofs.
+All 88 rules have worked corpus coverage with no exemptions. Explicit &b binding/dispatch
+(095) remains; no new model defect was found.

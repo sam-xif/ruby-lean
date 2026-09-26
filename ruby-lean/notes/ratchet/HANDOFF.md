@@ -1,4 +1,34 @@
-# Current resume point (2026-09-26, clink 238 / model L274)
+# Current resume point (2026-09-26, clink 239 / model L274)
+
+Rung 094 is now accepted by validateD. DMethod/DMethodAll/DMethodSeq share DJudge's
+mutual group and join DFam; defBlock and DFlow.callBlock consume uniformly checked method
+bodies and independently checked actual callbacks. All 88 rules (41 expressions + 47
+companions) are registered. The shared Certify macro supplies identical recursor cases to
+the ordinary and method bridges; BodyBridge now interprets the latter through the registry.
+
+CallbackCache stores exact context/spine/code/signature proofs. Definitions and scope exits
+recheck old callback bodies at unchanged domains; branch cache equality includes block
+signatures. Calls check source parameter shape, callback result, physical capture slots and
+the outgoing caller fixed point. The emitter proposes scalar block results from definition
+bodies alone, preserving positional/result annotations; call values never specialize them.
+
+New corpus 260 combines method-local nil→Integer retyping with repeated writes to a same-named
+outer capture. Worked registry proofs for 094/260 cover all method constructors; the zero
+unexercised ceiling stays intact. Mandatory controls reject forged source/signature hints,
+wrong callback results/arity, captured type changes and stale caches; later-definition replay
+and lambda/proc/new overrides pass. Sorbet 0.6.13405 accepts 260's explicit typed &b counterpart;
+implicit 094/260 retain expected Sorbet rejection (5082/7035/7003). CRuby/model print 4/3.
+
+Next: explicit &b binding and Proc dispatch inside the method (095). Current source calls
+have zero method arguments and a required-positional literal callback; yieldOne uses one
+argument. Blocks retain a first-order fixed caller environment, and calls drop LocalFacts.
+No new model defect was exposed. Keep declared-domain checking independent of actual calls.
+
+Full quiet gate GREEN: fragment 91/260, checker reach 94, 88 rules, 70 worked proofs,
+zero owed/exempt, 253 agree / 0 disagree. Floors raised; metatheory/axiom audit PASS.
+The shared bridge builds in about two seconds, RuleAudit in 19. No live builds.
+
+Previous foundation (clink 238):
 
 Clink 238 proves the complete definition/implicit-literal-block source path. BodyDispatch
 resolves installed ordinary methods before and after reification, including lambda/proc/new

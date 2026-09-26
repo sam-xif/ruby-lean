@@ -46,6 +46,29 @@ def plainRulesPairs : List (Ratchet.Expr × Ratchet.Expr) → List String
   | (k, v) :: ps => "DJudgePairs.cons" :: (plainRules k ++ plainRules v ++ plainRulesPairs ps)
 end
 
+/-! Signature-indexed callback body rules, independently checked by proof extraction. -/
+mutual
+def methodRules : Ratchet.Expr → List String
+  | .vasgn .lvar _ e => "DMethod.vasgn" :: methodRules e
+  | .seq es => "DMethod.sequence" :: methodSeqRules es
+  | .send (some r) _ args none => "DMethod.prim" :: (methodRules r ++ methodArgRules args)
+  | .yield' [arg] => "DMethod.yieldOne" :: methodRules arg
+  | e => "DMethod.ordinary" :: plainRules e
+
+def methodSeqRules : List Ratchet.Expr → List String
+  | [] => ["?"]
+  | [e] => "DMethodSeq.last" :: methodRules e
+  | e :: e' :: es => "DMethodSeq.cons" :: (methodRules e ++ methodSeqRules (e' :: es))
+
+def methodArgRules : List Ratchet.Expr → List String
+  | [] => ["DMethodAll.nil"]
+  | e :: es => "DMethodAll.cons" :: (methodRules e ++ methodArgRules es)
+end
+
+def flowMethods (methods : List (String × Ratchet.Expr)) : Ratchet.Expr → List (String × Ratchet.Expr)
+  | .def' name _ body => (name, body) :: methods.filter (·.1 != name)
+  | _ => methods
+
 /-- Code known syntactically to the worked flow predictor. This is coverage data,
 never a typing premise; the proof-term audit independently checks every rule used. -/
 def flowBodies (bodies : List (String × (Bool × Ratchet.Expr))) :
@@ -58,19 +81,19 @@ def flowBodies (bodies : List (String × (Bool × Ratchet.Expr))) :
   | _ => bodies
 
 mutual
-def flowRules (bodies : List (String × (Bool × Ratchet.Expr))) : Ratchet.Expr → List String
+def flowRules (bodies : List (String × (Bool × Ratchet.Expr))) (methods : List (String × Ratchet.Expr)) : Ratchet.Expr → List String
   | .int _ => ["DFlow.intLit"]
   | .nil => ["DFlow.nilLit"]
   | .var .lvar _ => ["DFlow.var"]
-  | .vasgn .lvar _ e => "DFlow.vasgn" :: flowRules bodies e
-  | .seq es => "DFlow.sequence" :: flowSeqRules bodies es
+  | .vasgn .lvar _ e => "DFlow.vasgn" :: flowRules bodies methods e
+  | .seq es => "DFlow.sequence" :: flowSeqRules bodies methods es
   | .send none "lambda" [] (some (.block _ _ _))
   | .send none "proc" [] (some (.block _ _ _)) => ["DFlow.closureLiteral"]
   | .send (some recv) "each" [] (some (.block _ _ body)) =>
-      "DFlow.each" :: (flowRules bodies recv ++ plainRules body)
+      "DFlow.each" :: (flowRules bodies methods recv ++ plainRules body)
   | .send (some recv) "map" [] (some (.block _ _ body))
   | .send (some recv) "collect" [] (some (.block _ _ body)) =>
-      "DFlow.map" :: (flowRules bodies recv ++ plainRules body)
+      "DFlow.map" :: (flowRules bodies methods recv ++ plainRules body)
   | .send (some (.var .lvar x)) "call" [] none =>
       match bodies.lookup x with
         | some (true, body) => "DFlow.call" :: plainRules body
@@ -78,7 +101,7 @@ def flowRules (bodies : List (String × (Bool × Ratchet.Expr))) : Ratchet.Expr 
         | none => ["?"]
   | .send (some recv) "call" args none
   | .send (some recv) "[]" args none =>
-      "DFlow.requiredCall" :: (flowRules bodies recv ++ flowArgsRules bodies args ++
+      "DFlow.requiredCall" :: (flowRules bodies methods recv ++ flowArgsRules bodies methods args ++
         match recv with
         | .send none "lambda" [] (some (.block _ _ body))
         | .send none "proc" [] (some (.block _ _ body)) => plainRules body
@@ -86,17 +109,22 @@ def flowRules (bodies : List (String × (Bool × Ratchet.Expr))) : Ratchet.Expr 
           | some (_, body) => plainRules body
           | none => ["?"]
         | _ => ["?"])
+  | .def' _ _ body => ["DFlow.embed", "defBlock"] ++ methodRules body
+  | .send none name [] (some (.block _ _ body)) =>
+      match methods.lookup name with
+      | some method => "DFlow.callBlock" :: (methodRules method ++ plainRules body)
+      | none => ["?"]
   | e => "DFlow.embed" :: plainRules e
 
-def flowSeqRules (bodies : List (String × (Bool × Ratchet.Expr))) : List Ratchet.Expr → List String
+def flowSeqRules (bodies : List (String × (Bool × Ratchet.Expr))) (methods : List (String × Ratchet.Expr)) : List Ratchet.Expr → List String
   | [] => ["?"]
-  | [e] => "DFlowSeq.last" :: flowRules bodies e
+  | [e] => "DFlowSeq.last" :: flowRules bodies methods e
   | e :: e' :: es => "DFlowSeq.cons" ::
-      (flowRules bodies e ++ flowSeqRules (flowBodies bodies e) (e' :: es))
+      (flowRules bodies methods e ++ flowSeqRules (flowBodies bodies e) (flowMethods methods e) (e' :: es))
 
-def flowArgsRules (bodies : List (String × (Bool × Ratchet.Expr))) : List Ratchet.Expr → List String
+def flowArgsRules (bodies : List (String × (Bool × Ratchet.Expr))) (methods : List (String × Ratchet.Expr)) : List Ratchet.Expr → List String
   | [] => ["DFlowAll.nil"]
-  | e :: es => "DFlowAll.cons" :: (flowRules bodies e ++ flowArgsRules (flowBodies bodies e) es)
+  | e :: es => "DFlowAll.cons" :: (flowRules bodies methods e ++ flowArgsRules (flowBodies bodies e) (flowMethods methods e) es)
 end
 
 mutual
@@ -305,8 +333,9 @@ def rulesUsedFor (q : String × Ratchet.Expr) : List String :=
   -- These worked proofs exercise the flow interpretation of otherwise shared syntax.
   if ["006-nil-lit", "031-reassign-different-type", "087-lambda-zero-arity",
       "088-lambda-stabby-one-param", "098-lambda-closure-capture", "089-proc-basic", "090-proc-bracket-call",
-      "091-block-each-int", "092-block-map-to-s", "093-block-doend-with-block-local"].contains q.1 then
-    "flow" :: flowRules [] q.2
+      "091-block-each-int", "092-block-map-to-s", "093-block-doend-with-block-local",
+      "094-yield-arith", "260-yield-local-and-captured-write"].contains q.1 then
+    "flow" :: flowRules [] [] q.2
   else
   let ann := ((annotationHints.find? (·.1 == q.1)).map (·.2)).getD {}
   rulesUsedAt (syntaxClasses q.2) ann [] q.2 ++ ((annotationRules.find? (·.1 == q.1)).map (·.2)).getD []

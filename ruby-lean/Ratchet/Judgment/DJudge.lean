@@ -12,7 +12,7 @@ import Ratchet.Static.NativeInstanceNames
 import Ratchet.Guards.SingletonGuards
 import Ratchet.Guards.ImplicitCall
 import Ratchet.Guards.ScalarWrite
-import Ratchet.Guards.ClosureFlow
+import Ratchet.Guards.Callback
 
 /-!
 # `Ratchet/Judgment/DJudge.lean` — the answer-typed judgment
@@ -326,6 +326,20 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       DJudge ps d.body τ Γb (topBodyCtx κ d) I (topBodyCtx κ d) I →
       κ.scope.runtimeMain = true → topDeclClassesB κ d.name = true → κ.selfTy = none → κ.blockTy = none →
       κ.consts = [] → κ.asms = [] → FirstOrder I = true →
+      (∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) →
+      (∀ old ∈ κ.defs, old.name ≠ d.name) → "method_missing" ≠ d.name → "method_added" ≠ d.name →
+      DJudge Γ (.def' d.name d.params d.body) .sym Γ κ I (topDeclCtx κ d) I
+  /-- Sorbet 0.6.13405 checks uncalled yielding bodies at the complete declared block
+  signature (clinks 236–238), independently of a later callback's code or captures. -/
+  | defBlock {κ : Ctx} {Γ Γm : Env} {I τ br : Ty} {d : Defn}
+      {ps : List SigParam} {bs : List Ty} :
+      d.params = ps.map (fun p => Param.req p.1) →
+      ps.all (fun p => FirstOrder p.2 && !isAliasTy p.2) = true →
+      bs.all (fun σ => FirstOrder σ && !isAliasTy σ) = true →
+      FirstOrder br = true → FirstOrder τ = true →
+      DMethod (topDeclCtx κ d) I ⟨"Object", "Object", d.name, false⟩ bs br ps d.body τ Γm →
+      κ.scope.runtimeMain = true → topDeclClassesB κ d.name = true →
+      κ.selfTy = none → κ.blockTy = none → κ.consts = [] → κ.asms = [] → FirstOrder I = true →
       (∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) →
       (∀ old ∈ κ.defs, old.name ≠ d.name) → "method_missing" ≠ d.name → "method_added" ≠ d.name →
       DJudge Γ (.def' d.name d.params d.body) .sym Γ κ I (topDeclCtx κ d) I
@@ -689,6 +703,21 @@ inductive DFlow : Ctx → Env → Ty → LocalFacts → Expr → Ty → Bool →
       DFlow κ Γ I facts (.send (some recv) mname [] (some (.block [.req name] locals body)))
         (.arrayOf ρ) false κr Γr Ir .unknown
 
+  /-- Sorbet 0.6.13405 accepts Integer arithmetic/captured-write callbacks at the
+  declared Integer→Integer signature and rejects a String result (7005; clink 238).
+  The whole definition is checked separately; exact code and capture ownership enter here. -/
+  | callBlock {κ : Ctx} {Γ Γm Γb : Env} {I τ br : Ty} {decl : Defn}
+      {facts : LocalFacts} {ps : List SigParam} {locals names : List String} {body : Expr} :
+      DMethod κ I ⟨"Object", "Object", decl.name, false⟩ (ps.map (·.2)) br [] decl.body τ Γm →
+      decl.params = [] → decl ∈ κ.defs → FirstOrder τ = true → FirstOrder br = true →
+      closureMainB κ I = true → activationEnvB (ps ++ blockLocals locals ++ Γ) = true →
+      activationReturnB Γb = true → closureReturnEnv (ps.map (·.1) ++ locals) names Γ Γb = Γ →
+      facts.captureNames? (withoutNames (ps.map (·.1) ++ locals) Γb) = some names →
+      (paramEqAll (ps.map (fun p => Param.req p.1)) (ps.map (fun p => Param.req p.1)) && exprEq body body) = true →
+      DJudge (ps ++ blockLocals locals ++ Γ) body br Γb (closureBodyCtx κ) I (closureBodyCtx κ) I →
+      DFlow κ Γ I facts (.send none decl.name []
+        (some (.block (ps.map (fun p => Param.req p.1)) locals body))) τ false κ Γ I .unknown
+
 /-- Sorbet's stored-lambda example (clink 200) uses the local established by the
 preceding statement. This companion threads the proved model facts in that order. -/
 inductive DFlowSeq : Ctx → Env → Ty → LocalFacts → List Expr → Ty → Bool →
@@ -714,6 +743,53 @@ inductive DFlowAll : Ctx → Env → Ty → LocalFacts → List Expr → List Ty
       DFlow κ Γ I f e σ current κ₁ Γ₁ I₁ f₁ →
       DFlowAll κ₁ Γ₁ I₁ f₁ es tys κ₂ Γ₂ I₂ f₂ → plainArgB e = true →
       DFlowAll κ Γ I f (e :: es) (σ :: tys) κ₂ Γ₂ I₂ f₂
+
+/-- Sorbet 0.6.13405 checks `yield(1)+yield(2)` against the declared
+`T.proc.params(x: Integer).returns(Integer)`, including in uncalled definitions;
+it rejects a String operand (7002). Clinks 234–236 also measure local retyping and
+nested yields. Ordinary premises must work for every callback code, not one caller. -/
+inductive DMethod : Ctx → Ty → Frame → List Ty → Ty → Env → Expr → Ty → Env → Prop
+  | ordinary {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret τ : Ty}
+      {Γ Γ' : Env} {e : Expr} :
+      (∀ code, DJudge Γ e τ Γ' (callbackMethodCtx κ fr code) I (callbackMethodCtx κ fr code) I) →
+      DMethod κ I fr ps ret Γ e τ Γ'
+  | vasgn {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret τ : Ty}
+      {Γ Γ' : Env} {e : Expr} {x : String} :
+      DMethod κ I fr ps ret Γ e τ Γ' → capStale x τ τ = false → isAliasTy τ = false →
+      (∀ code, capStaleCtx x τ (callbackMethodCtx κ fr code) = false) →
+      killClosOverSpine I x τ = I →
+      DMethod κ I fr ps ret Γ (.vasgn .lvar x e) τ (envAfter Γ' x τ)
+  | sequence {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret τ : Ty}
+      {Γ Γ' : Env} {es : List Expr} :
+      DMethodSeq κ I fr ps ret Γ es τ Γ' → DMethod κ I fr ps ret Γ (.seq es) τ Γ'
+  | prim {κ : Ctx} {I : Ty} {fr : Frame} {ps tys : List Ty} {ret σ τ : Ty}
+      {Γ Γ₁ Γ₂ : Env} {recv : Expr} {name : String} {args : List Expr} :
+      DMethod κ I fr ps ret Γ recv σ Γ₁ → DMethodAll κ I fr ps ret Γ₁ args tys Γ₂ →
+      DPrim σ name tys τ → nameFreeN κ name = true →
+      (σ = .cls "String" → isANoOk κ.wholeCls (["String", "Comparable"] ++ rootAncestors) = true) →
+      DMethod κ I fr ps ret Γ (.send (some recv) name args none) τ Γ₂
+  | yieldOne {κ : Ctx} {I : Ty} {fr : Frame} {σ ret : Ty} {Γ Γ' : Env} {arg : Expr} :
+      DMethod κ I fr [σ] ret Γ arg σ Γ' → activationReturnB Γ' = true → plainArgB arg = true →
+      DMethod κ I fr [σ] ret Γ (.yield' [arg]) ret Γ'
+
+/-- Source-order argument typing, with the same Sorbet block signature throughout. -/
+inductive DMethodAll : Ctx → Ty → Frame → List Ty → Ty → Env → List Expr → List Ty → Env → Prop
+  | nil {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret : Ty} {Γ : Env} :
+      DMethodAll κ I fr ps ret Γ [] [] Γ
+  | cons {κ : Ctx} {I : Ty} {fr : Frame} {ps tys : List Ty} {ret τ : Ty}
+      {Γ Γ₁ Γ₂ : Env} {e : Expr} {es : List Expr} :
+      DMethod κ I fr ps ret Γ e τ Γ₁ → DMethodAll κ I fr ps ret Γ₁ es tys Γ₂ →
+      plainArgB e = true → DMethodAll κ I fr ps ret Γ (e :: es) (τ :: tys) Γ₂
+
+/-- Flat sequences retain the method's outgoing locals between yields (Sorbet, clink 234). -/
+inductive DMethodSeq : Ctx → Ty → Frame → List Ty → Ty → Env → List Expr → Ty → Env → Prop
+  | last {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret τ : Ty}
+      {Γ Γ' : Env} {e : Expr} :
+      DMethod κ I fr ps ret Γ e τ Γ' → DMethodSeq κ I fr ps ret Γ [e] τ Γ'
+  | cons {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret σ τ : Ty}
+      {Γ Γ₁ Γ₂ : Env} {e e' : Expr} {es : List Expr} :
+      DMethod κ I fr ps ret Γ e σ Γ₁ → DMethodSeq κ I fr ps ret Γ₁ (e' :: es) τ Γ₂ →
+      DMethodSeq κ I fr ps ret Γ (e :: e' :: es) τ Γ₂
 end
 
 theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ : Ty}
@@ -729,7 +805,10 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_7 := fun _ _ _ _ e _ _ _ _ _ _ _ => plainArgB e = true)
     (motive_8 := fun _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_9 := fun _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    (motive_10 := fun _ _ _ _ _ _ _ _ _ _ => True)
+    (motive_11 := fun _ _ _ _ _ _ _ _ _ _ => True)
+    (motive_12 := fun _ _ _ _ _ _ _ _ _ _ => True)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 

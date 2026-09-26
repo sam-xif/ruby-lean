@@ -142,12 +142,6 @@ The list companions join when a rule concluding about them acquires a proof (Den
 #guard_msgs in
 register_dclink DPrim.intAdd
 
-/-- error: register_dclink: Ratchet.DMethod.yieldOne belongs to Ratchet.DMethod, which is not in DFam.
-The list companions join when a rule concluding about them acquires a proof (Denote/Clink/Registry.lean, header).
--/
-#guard_msgs in
-register_dclink DMethod.yieldOne
-
 example : DClink.seq.form dsemFam =
     (∀ {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty} {es : List Ratchet.Expr} {τ : Ty},
       SemSeqCtxA κ Γ I es τ κ' Γ' I' → SemSafeCtxA κ Γ I (.seq es) τ κ' Γ' I') := rfl
@@ -158,7 +152,13 @@ example : DClink.DJudgeAll.cons.form dsemFam =
       SemSafeCtxA κ Γ I e τ κ₁ Γ₁ I₁ → SemAllCtxA κ₁ Γ₁ I₁ es tys κ₂ Γ₂ I₂ → plainArgB e = true →
         SemAllCtxA κ Γ I (e :: es) (τ :: tys) κ₂ Γ₂ I₂) := rfl
 
-#guard dUncarriedJudgments == [``Ratchet.DMethod, ``Ratchet.DMethodAll, ``Ratchet.DMethodSeq]
+#guard dUncarriedJudgments == []
+
+example : DClink.DMethod.ordinary.form dsemFam =
+    (∀ {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret τ : Ty}
+      {Γ Γ' : Env} {e : Ratchet.Expr},
+      (∀ code, SemSafeCtxA (callbackMethodCtx κ fr code) Γ I e τ (callbackMethodCtx κ fr code) Γ' I) →
+      SemMethodBody κ I fr ps ret Γ e τ Γ') := rfl
 
 example : DClink.DJudgePairs.cons.form dsemFam =
     (∀ {κ κk κv κ' : Ctx} {Γ Γk Γv Γ' : Env} {I Ik Iv I' σ τ : Ty}

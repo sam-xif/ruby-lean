@@ -12236,3 +12236,36 @@ both halves of what constrains them now have a name.
 - Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
   zero owed/exempt, 252 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
   and the five boot proofs build under a second; no resource limit was raised.
+
+## Clink 239 (2026-09-26) — admit implicit-block source programs
+
+- DMethod and list companions join DJudge's mutual group and all three DFam readings.
+  defBlock and DFlow.callBlock register against their proved semantic forms. The latter
+  exposes actual callback typing/capture guards, including ClosureCode's supported syntax.
+  Certify shares one twelve-family recursor script between djudge_certified and
+  dmethod_certified; every premise crosses the registry, including code-quantified ordinary
+  bodies. No raw method derivation survives inside a registered semantic obligation.
+- CallbackCache stores exact code/context/spine/signature proofs. Definitions and restored
+  scopes recheck every saved body at its original domains, even if uncalled. Branch cache
+  equality includes block signatures. Call hints cannot choose parameter domains: source
+  block names bind the stored types, and the actual body/result/capture fixed point is checked.
+- The emitter searches scalar block-result proposals using only complete definition bodies
+  and declared positional/result types. Yield arguments determine the proposed common domain;
+  calls never supply it. Failed trials isolate mutable state. Known user lambda/proc overrides
+  precede literal creation proposals. Every proposal still requires a Lean derivation.
+- Added corpus 260 for method-local nil→Integer retyping interleaved with same-named captured
+  writes. This tests the two-frame invariant and supplies genuine whole-program coverage for
+  assignment/sequence rules that 094's arithmetic body does not exercise. Worked proofs for
+  both sources use the arbitrary registry family; syntax prediction independently matches
+  proof extraction. All 88 rules are exercised; the zero exemption ceiling is unchanged.
+- Mandatory controls cover successful 094/260, renamed callback parameters, forged names,
+  literals/results, wrong arity, missing definitions, hidden captured retyping, stale cache
+  contexts/signatures and rechecking after a later definition. lambda/proc/new overrides pass.
+  Sorbet 0.6.13405 accepts the explicit typed &b counterpart; implicit 094/260 keep expected
+  errors 5082/7035/7003. CRuby 4.0.5/model agree on 4/3. No runtime change was required.
+- Admission remains zero-positional at calls, required-positional literal blocks, one-argument
+  yields and first-order stable captures. Explicit &b binding is the next rung (095).
+- Full quiet gate GREEN: fragment 91/260, checker reach 94, 88 rules, 70 worked proofs,
+  zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. Floors
+  raised accordingly. The shared bridge builds in about two seconds and RuleAudit in 19;
+  no proof exceeds five minutes and no resource limit was raised.

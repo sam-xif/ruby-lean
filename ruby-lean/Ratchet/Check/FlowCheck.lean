@@ -1,4 +1,5 @@
 import Ratchet.Check.Certified
+import Ratchet.Check.CallbackCache
 
 /-! Proof-producing local-flow checking. The ordinary checker is a callback at
 strictly smaller fuel, including when the stored body is larger than the call. -/
@@ -227,6 +228,40 @@ def checkFlow (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I :
         else none
         else none
       | _ => none
+      else none
+    | .send none name [] (some (.block formals locals body)), .callBlock claimed db ret => do
+      if name != claimed then none else do
+      let c ← findCallback κ I name cache.callbacks
+      if hp : c.body.params = [] then do
+      if hr : c.body.ret = ret then do
+      let ⟨ps, hparams, htypes⟩ ← requiredFlowParams? formals c.body.blockArgs
+      if hs : (paramEqAll (ps.map (fun p => Param.req p.1)) (ps.map (fun p => Param.req p.1)) && exprEq body body) = true then do
+      if hm : closureMainB κ I = true then do
+      if hin : activationEnvB (ps ++ blockLocals locals ++ Γ) = true then do
+      let b ← ordinary (ps ++ blockLocals locals ++ Γ) body db (closureBodyCtx κ) I cache
+      let ⟨hbctx⟩ ← ctxEq? b.ctx (closureBodyCtx κ)
+      if hbi : b.spine = I then do
+      if hbr : b.ty = c.body.blockRet then do
+      if hout : activationReturnB b.out = true then do
+      match hn : facts.captureNames? (withoutNames (ps.map (·.1) ++ locals) b.out) with
+      | none => none
+      | some names =>
+        if hfix : closureReturnEnv (ps.map (·.1) ++ locals) names Γ b.out = Γ then
+          some ⟨ret, false, κ, Γ, I, .unknown, by
+            have hj := DFlow.callBlock (facts := facts)
+              (by simpa only [hp, htypes] using c.body.judged)
+              (by simpa only [hp, List.map_nil] using c.body.paramShape) c.installed c.body.returnFO
+              c.body.blockReturnFO hm hin hout hfix hn hs
+              (by simpa only [hbctx, hbi, hbr] using b.judged)
+            simpa only [c.nameOk, hparams, hr] using hj, cache⟩
+        else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
       else none
     | e, d => do
       let c ← ordinary Γ e d κ I cache

@@ -73,10 +73,10 @@ def mixedChecked : CheckedCallbackBody ctx0 .ivar0 mixedDecl :=
 #guard ((expr twice twiceHint).map (·.ordinary.isNone)) == some true
 #guard ((expr (.array [.int 1]) (.arrayLit [.intLit 1] .int)).map (·.ordinary.isSome)) == some true
 
--- The new wire hints decode, but do not yet add whole-program validateD admission.
+-- Wire hints decode; a checked uncalled definition is now admitted, while a bare yield is not.
 private def wire := "{\"rule\":\"defBlock\",\"name\":\"twice\",\"params\":[],\"blockArgs\":[{\"tag\":\"int\"}],\"blockRet\":{\"tag\":\"int\"},\"ret\":{\"tag\":\"int\"},\"body\":{\"rule\":\"yield\",\"args\":[{\"rule\":\"intLit\",\"n\":1}]}}"
 #guard ((Json.parse wire).bind Deriv.ofJson?).isOk
-#guard !(validateD (.def' decl.name decl.params decl.body) hint)
+#guard validateD (.def' decl.name decl.params decl.body) hint
 #guard !(validateD (.yield' [.int 1]) (.yieldArgs [.intLit 1]))
 
 end Ratchet.CallbackBodyCheckControls

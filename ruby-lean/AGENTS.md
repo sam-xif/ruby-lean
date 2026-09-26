@@ -16,9 +16,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 89 rungs, reach 17**, **77 registered rules** (40 expressions + 37 companions),
-**0 owed**, **0 exempt**. Checker reach is 93; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 68 rungs additionally carry a
+**Fragment 91 rungs, reach 17**, **88 registered rules** (41 expressions + 47 companions),
+**0 owed**, **0 exempt**. Checker reach is 94; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **253 agree, 0 disagreements**. 70 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -172,6 +172,12 @@ Clink 238 proves source definition plus implicit literal-block dispatch, includi
 lookup, allocation and return. Whole-program boot controls cover exact 094, captured writes
 and lambda/proc/new overrides. The model agrees with CRuby; no new runtime defect was found.
 Registry/checker/emitter integration and &b binding remain; no new acceptance is claimed.
+Clink 239 registers the method families and source definition/call rules through one shared
+mutual registry bridge. The checker caches complete body proofs, rechecks changed contexts
+and checks actual blocks/captures against those signatures. The emitter proposes signatures
+from definitions alone. Rungs 094 and new 260 (method-local retyping plus captured writes)
+are admitted; every rule has worked corpus coverage, with the zero exemption ceiling intact.
+Explicit &b binding (095) is next; no model change was needed for this admission.
 
 ## Layout
 
@@ -221,7 +227,7 @@ Two things this arrangement is defending against, both of which had already happ
 
 Annotated `corpus/NNN-id.rb` → Sorbet signatures → annotation stripping → RubyCore JSON →
 untrusted derivation emitter → Lean `check`, which returns a `DJudge` proof.
-`build/` is generated. The corpus has 259 rungs; unsupported constructs remain explicit
+`build/` is generated. The corpus has 260 rungs; unsupported constructs remain explicit
 coverage gaps. [`MainTyped.lean`](MainTyped.lean) reports checker reach;
 [`SemLadder.lean`](SemLadder.lean) checks safety coverage and reports the unmet rungs.
 
@@ -230,8 +236,8 @@ coverage gaps. [`MainTyped.lean`](MainTyped.lean) reports checker reach;
 [`Ratchet/Judgment/DJudge.lean`](Ratchet/Judgment/DJudge.lean) defines `DJudge`, its three list companions,
 `DJudgeRec`/`DJudgeRecAll`, and seventeen `DPrim` rows; `InitJudge.lean` supplies the scoped
 initializer expression, sequence and argument judgments. [`Denote/Clink/Registry.lean`](Denote/Clink/Registry.lean) derives each constructor's
-semantic obligation and registers only proved rules. **All nine judgments are fields of
-`DFam`**: no raw syntactic premise may bypass the registry. `djudge_certified` uses the six-family
+semantic obligation and registers only proved rules. **All fifteen judgments are fields of
+`DFam`**: no raw syntactic premise may bypass the registry. `djudge_certified` uses the twelve-family
 mutual recursor and the initializer families' independent registry bridge.
 
 The bridge deliberately runs *from* the syntactic judgment *to* `DJudgeC`, rather than the

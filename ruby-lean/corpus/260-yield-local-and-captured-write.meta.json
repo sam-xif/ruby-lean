@@ -1,0 +1,11 @@
+{
+  "id": "yield-local-and-captured-write",
+  "tier": 9,
+  "description": "Repeated yields interleave method-local retyping with writes to a same-named captured caller local. The block must update the outer total, skipping the method's total; the final caller read must retain its Integer type.",
+  "expect_sorbet": false,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 1,
+  "annotated": true,
+  "sorbet_note": "Implicit-yield counterpart of the annotated &b probe: Sorbet requires an explicit block parameter, as in 094."
+}

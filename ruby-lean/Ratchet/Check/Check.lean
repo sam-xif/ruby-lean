@@ -1,3 +1,4 @@
+import Ratchet.Check.CallbackCache
 import Ratchet.Check.FlowCheck
 
 set_option autoImplicit false
@@ -358,6 +359,38 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
           else none
         else none
       | none => none
+    | .def' name formals body, .defBlock name' ps bs br ret db => do
+      if name != name' then none else do
+      if hm : κ.scope.runtimeMain = true then do
+      if hc : topDeclClassesB κ name = true then do
+      if hs : κ.selfTy = none then do
+      if hb : κ.blockTy = none then do
+      if hco : κ.consts = [] then do
+      if ha : κ.asms = [] then do
+      if hi : FirstOrder I = true then do
+      if hg : Γ.all (fun p => FirstOrder (stripAlias p.2)) = true then do
+      if hf : κ.defs.all (fun old => old.name != name) = true then do
+      if hmiss : "method_missing" ≠ name then do
+      if hquiet : "method_added" ≠ name then do
+        let decl : Defn := ⟨name, formals, body⟩
+        let fresh ← refreshBodies n (topDeclCtx κ decl) I cache
+        let c ← checkCallbackBody n (topDeclCtx κ decl) I decl (.defBlock name' ps bs br ret db)
+        some ⟨.sym, Γ, topDeclCtx κ decl, I,
+          .defBlock c.paramShape c.paramsFO c.blockArgsFO c.blockReturnFO c.returnFO c.judged hm
+            hc hs hb hco ha hi (List.all_eq_true.mp hg)
+            (by simpa only [List.all_eq_true, bne_iff_ne] using hf) hmiss hquiet,
+          { fresh with callbacks := ⟨topDeclCtx κ decl, I, decl, c, db⟩ :: fresh.callbacks }⟩
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
     | .def' name formals body, .defDecl name' ps ret db => do
       if name != name' then none else do
       if let some cn := κ.scope.runtimeClass then
@@ -814,7 +847,8 @@ def refreshBodies (fuel : Nat) (κ : Ctx) (I : Ty) (cache : CheckedCache) : Opti
   | n + 1 => do
     let base ← refreshClassBodies n κ cache
     let ts ← refreshTopBodies n κ I base cache.top
-    let complete := { base with top := ts }
+    let callbacks ← refreshCallbackBodies n κ I cache.callbacks
+    let complete := { base with top := ts, callbacks := callbacks }
     if receiverCacheCompleteB κ complete && singletonCacheCompleteB κ complete then some complete else none
 end
 

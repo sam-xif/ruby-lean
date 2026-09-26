@@ -151,6 +151,8 @@ class Emitter
     @singleton = false
     @inferring = false
     @uses_flow = false
+    @callback_sigs = {}
+    @yield_signature = nil
   end
 
   attr_reader :uses_flow
@@ -341,6 +343,9 @@ class Emitter
     recv = n[1]
     m = n[2]
     args = n[3]
+    if recv.nil? && n[4] && @callback_sigs.key?(m)
+      return callback_send(m, args, n[4])
+    end
     if recv.nil? && %w[lambda proc].include?(m) && args.empty? && n[4]
       block = n[4]
       unless block[0] == "block" && block[1].all? { |p| p[0] == "preq" } && [4, 5].include?(block.length)
@@ -496,6 +501,10 @@ class Emitter
       { "name" => p[1], "ty" => as_inst(sig["params"][i]["ty"]) }
     end
 
+    if @self_cls.nil? && !@singleton && contains_yield?(body)
+      return callback_definition(name, sps, sig["ret"], body)
+    end
+
     outer_env = @env
     outer_method = @current_method
     @current_method = name
@@ -505,6 +514,74 @@ class Emitter
     @current_method = outer_method
     [{ "rule" => "defDecl", "name" => name, "params" => sps, "ret" => sig["ret"],
        "body" => dbody }, SYM]
+  end
+
+  def contains_yield?(node)
+    return false unless node.is_a?(Array)
+    return true if node[0] == "yield"
+    return false if %w[def defs class module].include?(node[0])
+
+    node.any? { |child| contains_yield?(child) }
+  end
+
+  # Only definition syntax and declared positional/result domains inform these
+  # proposals. Actual callback code and capture types are checked later, at calls.
+  def callback_definition(name, params, ret, body)
+    [INT, STR, BOOL, FLOAT, SYM, NIL_T].each do |block_ret|
+      trial = dup
+      instance_variables.each do |field|
+        value = instance_variable_get(field)
+        trial.instance_variable_set(field, value.dup) if value.is_a?(Hash) || value.is_a?(Array)
+      end
+      trial.instance_variable_set(:@env, params.to_h { |p| [p["name"], p["ty"]] })
+      trial.instance_variable_set(:@current_method, name)
+      trial.instance_variable_set(:@inferring, true)
+      trial.instance_variable_set(:@yield_signature, [nil, block_ret])
+      begin
+        dbody, result = trial.go(body)
+        next unless result == ret
+        block_args = trial.instance_variable_get(:@yield_signature)[0]
+        next unless block_args && block_args.length == 1
+      rescue Blocked
+        next
+      end
+      @callback_sigs[name] = { "args" => block_args, "ret" => block_ret, "result" => ret }
+      return [{ "rule" => "defBlock", "name" => name, "params" => params,
+                "blockArgs" => block_args, "blockRet" => block_ret, "ret" => ret, "body" => dbody }, SYM]
+    end
+    raise Blocked, "#{name}: no block signature for the complete method body"
+  end
+
+  def n_yield(node)
+    raise Blocked, "yield outside a checked callback method" unless @yield_signature
+    ds, ts = go_all(node[1])
+    @yield_signature[0] ||= ts
+    raise Blocked, "yield arguments disagree with the method's block domain" unless ts == @yield_signature[0]
+
+    [{ "rule" => "yield", "args" => ds }, @yield_signature[1]]
+  end
+
+  def callback_send(name, args, block)
+    sig = @callback_sigs.fetch(name)
+    unless args.empty? && block[0] == "block" && [4, 5].include?(block.length) &&
+        block[1].all? { |p| p[0] == "preq" } && block[1].length == sig["args"].length
+      raise Blocked, "#{name}: callback call requires matching positional block parameters and no method arguments"
+    end
+    caller = @env.dup
+    locals = block[2] + (block.length == 5 ? block[3] : [])
+    params = block[1].map { |p| p[1] }
+    shadow = params + locals
+    @env = caller.merge(locals.to_h { |local| [local, NIL_T] }).merge(params.zip(sig["args"]).to_h)
+    begin
+      body, result = go(block[-1])
+      raise Blocked, "#{name}: callback result disagrees with its declared signature" unless result == sig["ret"]
+      returned = caller.to_h { |local, ty| [local, shadow.include?(local) ? ty : @env.fetch(local, NIL_T)] }
+      raise Blocked, "#{name}: callback changes a captured local type" unless returned == caller
+    ensure
+      @env = caller
+    end
+    @uses_flow = true
+    [{ "rule" => "callBlock", "name" => name, "body" => body, "ret" => sig["result"] }, sig["result"]]
   end
 
   # Clink 197: search complete scalar domains, never call values. Integer-first

@@ -1,5 +1,5 @@
 import Denote.Examples.Derivations
-import Denote.Rules.Init.InitBridge
+import Denote.Clink.Certify
 import Denote.Sem.Closure.Dispatch
 
 /-!
@@ -49,110 +49,21 @@ namespace Ratchet.Denote.Typed
 
 open RubyCore Ratchet Ratchet.Denote
 
-/-! ## §1 Nine-family mutual induction, using the initializer registry bridge -/
+/-! ## §1 Twelve-family mutual induction, using the initializer registry bridge -/
 
 /-- **Every syntactic derivation is a certified one.** The registry covers `DJudge`, so the
 judgment `check` returns lands in the judgment `dregistry_safe` consumes. -/
 theorem djudge_certified {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
     (h : DJudge Γ e τ Γ' κ I κ' I') : (DJudgeC dclinks).judge Γ e τ Γ' κ I κ' I' := by
   intro F hF
-  refine DJudge.rec
-    (motive_1 := fun Γ e τ Γ' κ I κ' I' _ => F.judge Γ e τ Γ' κ I κ' I')
-    (motive_2 := fun Γ es tys Γ' κ I κ' I' _ => F.all Γ es tys Γ' κ I κ' I')
-    (motive_3 := fun Γ es τ Γ' κ I κ' I' _ => F.seq Γ es τ Γ' κ I κ' I')
-    (motive_4 := fun Γ ps ks vs Γ' κ I κ' I' _ => F.pairs Γ ps ks vs Γ' κ I κ' I')
-    (motive_5 := fun κ I s Γ e τ Γ' _ => F.recBody κ I s Γ e τ Γ')
-    (motive_6 := fun κ I s Γ es tys Γ' _ => F.recArgs κ I s Γ es tys Γ')
-    (motive_7 := fun κ Γ I facts e τ current κ' Γ' I' out _ =>
-      F.flow κ Γ I facts e τ current κ' Γ' I' out)
-    (motive_8 := fun κ Γ I facts es τ current κ' Γ' I' out _ =>
-      F.flowSeq κ Γ I facts es τ current κ' Γ' I' out)
-    (motive_9 := fun κ Γ I facts es tys κ' Γ' I' out _ =>
-      F.flowAll κ Γ I facts es tys κ' Γ' I' out)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
-  all_goals intros
-  · apply hF DClink.intLit (by simp [dclinks]) <;> assumption
-  · apply hF DClink.fltLit (by simp [dclinks]) <;> assumption
-  · apply hF DClink.strLit (by simp [dclinks]) <;> assumption
-  · apply hF DClink.symLit (by simp [dclinks]) <;> assumption
-  · apply hF DClink.truLit (by simp [dclinks]) <;> assumption
-  · apply hF DClink.flsLit (by simp [dclinks]) <;> assumption
-  · apply hF DClink.nilLit (by simp [dclinks]) <;> assumption
-  · apply hF DClink.var (by simp [dclinks]) <;> assumption
-  · apply hF DClink.vasgn (by simp [dclinks]) <;> assumption
-  · apply hF DClink.seq (by simp [dclinks]) <;> assumption
-  · apply hF DClink.prim (by simp [dclinks]) <;> assumption
-  · apply hF DClink.if' (by simp [dclinks]) <;> assumption
-  · apply hF DClink.ifNoElse (by simp [dclinks]) <;> assumption
-  · apply hF DClink.bareName (by simp [dclinks]) <;> assumption
-  · apply hF DClink.arrayLit (by simp [dclinks]) <;> assumption
-  · apply hF DClink.hashLit (by simp [dclinks]) <;> assumption
-  · rename_i κd Γd Γb Id τd d ps hp hps ht hb hm hc hs hbl hco ha hi hg hf hmiss hquiet ihb
-    exact hF DClink.defDecl (by simp [dclinks]) hp hps ht ihb
-      hm hc hs hbl hco ha hi hg hf hmiss hquiet
-  · apply hF DClink.callSig (by simp [dclinks]) <;> assumption
-  · apply hF DClink.recursive (by simp [dclinks]) <;> assumption
-  · exact hF DClink.ivarRead (by simp [dclinks])
-  · apply hF DClink.constClass (by simp [dclinks]) <;> assumption
-  · apply hF DClink.classDecl (by simp [dclinks]) <;> assumption
-  · apply hF DClink.moduleDecl (by simp [dclinks]) <;> assumption
-  · rename_i κd Γd Γb Id Ib τd c d ps hp hps hret hself hb hn hc hg ihb
-    exact hF DClink.memberDef (by simp [dclinks]) hp hps hret hself ihb hn hc hg
-  · rename_i κd Γd Γb Id Ib τd c d ps hn hp hps hret hout hb hc hg
-    exact hF DClink.initDef (by simp [dclinks]) hn hp hps hret hout
-      (initJudge_certified hb F hF) hc hg
-  · rename_i κd κ₁ κ₂ Γd Γ₁ Γ₂ Γb Id I₁ I₂ Ib τd c d ps recv args
-      hr ha hs hc hd hn hnew halloc hp hps hret hout hb hg ihr iha
-    exact hF DClink.newInst (by simp [dclinks]) ihr iha hs hc hd hn hnew halloc hp hps
-      hret hout (initJudge_certified hb F hF) hg
-  · apply hF DClink.callMethodSig (by simp [dclinks]) <;> assumption
-  · apply hF DClink.vcallMethodSig (by simp [dclinks]) <;> assumption
-  · apply hF DClink.subclassDecl (by simp [dclinks]) <;> assumption
-  · rename_i κd κ₁ κ₂ Γd Γ₁ Γ₂ Γb Id I₁ I₂ Ib τd c owner d ps recv args
-      hr ha hs hc route hn hnew halloc hp hps hret hout hb hg ihr iha
-    exact hF DClink.newInherited (by simp [dclinks]) ihr iha hs hc route hn hnew halloc hp hps
-      hret hout (initJudge_certified hb F hF) hg
-  · apply hF DClink.callInherited (by simp [dclinks]) <;> assumption
-  · apply hF DClink.newDefault (by simp [dclinks]) <;> assumption
-  · apply hF DClink.singletonDef (by simp [dclinks]) <;> assumption
-  · apply hF DClink.callSingleton (by simp [dclinks]) <;> assumption
-  · apply hF DClink.callSingletonImplicit (by simp [dclinks]) <;> assumption
-  · rename_i κd κ' Γd Γ' Γb Id I' Ib τd c d ps args hs ha hc hd hn hnew halloc hp hps hret hout hb hg iha
-    exact hF DClink.newImplicit (by simp [dclinks]) hs iha hc hd hn hnew halloc hp hps
-      hret hout (initJudge_certified hb F hF) hg
-  · apply hF DClink.instanceType (by simp [dclinks]) <;> assumption
-  · apply hF DClink.scalarIvarAsgn (by simp [dclinks]) <;> assumption
-  · apply hF DClink.selfRead (by simp [dclinks]) <;> assumption
-  · apply hF DClink.flow (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DJudgeAll.nil (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DJudgeAll.cons (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DJudgeSeq.last (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DJudgeSeq.cons (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DJudgePairs.nil (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DJudgePairs.cons (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DJudgeRec.embed (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DJudgeRec.prim (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DJudgeRec.if' (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DJudgeRec.selfCall (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DJudgeRecAll.nil (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DJudgeRecAll.cons (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DFlow.embed (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DFlow.intLit (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DFlow.nilLit (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DFlow.var (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DFlow.closureLiteral (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DFlow.vasgn (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DFlow.sequence (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DFlow.call (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DFlow.requiredCall (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DFlow.each (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DFlow.map (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DFlowSeq.last (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DFlowSeq.cons (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DFlowAll.nil (by simp [dclinks]) <;> assumption
-  · apply hF DClink.DFlowAll.cons (by simp [dclinks]) <;> assumption
+  certify_djudgments DJudge.rec h F hF
+
+/-- Callback methods cross the same registry, uniformly over the entire declared signature. -/
+theorem dmethod_certified {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret τ : Ty}
+    {Γ Γ' : Env} {e : Ratchet.Expr} (h : DMethod κ I fr ps ret Γ e τ Γ') :
+    (DJudgeC dclinks).method κ I fr ps ret Γ e τ Γ' := by
+  intro F hF
+  certify_djudgments DMethod.rec h F hF
 
 /-- Fundamental lemma at arbitrary method contexts, not just the top-level specialization. -/
 theorem djudge_context {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
