@@ -1164,6 +1164,12 @@ marker frames by `withKont`'s `rfl`. -/
   frame_simp
   frame_arms
 
+@[simp, frameLem] theorem callProcBuiltin_frame (K : List Kont) (m : Machine)
+    (recv : Value) (args : List Value) (kw : List (Value × Value)) :
+    callProcBuiltin (pushK K m) recv args kw = frameR K (callProcBuiltin m recv args kw) := by
+  unfold callProcBuiltin
+  cases recv <;> frame_simp <;> frame_arms
+
 /-! ## The `Interp` layer, part two: `destructureBind`, which was *impossible* until clink 53
 
 `Interp/Support.lean`'s `destructureBind` was a **`partial def`** — an opaque constant with no

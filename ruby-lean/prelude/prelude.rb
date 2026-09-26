@@ -40,9 +40,14 @@ end
 # ─── Kernel/Object ──────────────────────────────────────────────────────────
 
 class Object
-  # `===` is `==` for everything except Module (builtin), Range and Proc (below).
-  def ===(other)
-    self == other
+  # Object#=== first tests identity in the native primitive (rb_equal, L272).
+  # Only unequal identities dispatch ==, whose result is converted to a Boolean.
+  def __case_equal(other)
+    if self == other
+      true
+    else
+      false
+    end
   end
 
   def tap
@@ -65,13 +70,6 @@ class Object
     __cmp_failed(other) if c.nil?
 
     c
-  end
-end
-
-class Proc
-  # `case x when ->(v){…}` — Proc#=== calls the proc.
-  def ===(other)
-    call(other)
   end
 end
 

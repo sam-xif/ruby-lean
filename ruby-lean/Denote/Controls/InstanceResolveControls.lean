@@ -44,7 +44,7 @@ private def intercept : Ratchet.Expr := .seq [
   .send (some (.send (some (.const "Point")) "new" [] none)) "initialize" [] none])))
 
 -- Heap countermodel, not Ruby source: changing only the receiver payload leaves its
--- nominal type and installed method intact, but Proc#call interception runs a different body.
+-- nominal type and installed method intact. Corrected Proc dispatch respects that method.
 #guard match Interp.run 100 (evalFrom bootMachine
     (.class' "Point" none (.def' "call" [] (.int 1)))) with
   | .value _ m => match Interp.run 100 (evalFrom m (.send (some (.const "Point")) "new" [] none)) with
@@ -59,7 +59,8 @@ private def intercept : Ratchet.Expr := .seq [
           let bad := { n with heap := n.heap.set o { obj with payload := .proc closure } }
           ownOne bad k "call" && classFrontB bad.heap k && isExactInst bad.heap (.ref o) "Point" &&
             (match Interp.run 100 (evalFrom n expr) with | .value (.int 1) _ => true | _ => false) &&
-            Semantics.typeStuck (Interp.run 100 (evalFrom bad (.send (some expr) "+" [.int 1] none)))
+            (match Interp.run 100 (evalFrom bad (.send (some expr) "+" [.int 1] none)) with
+              | .value (.int 2) _ => true | _ => false)
       | none => false
     | _ => false
   | _ => false

@@ -663,6 +663,11 @@ def toAryDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     metatheorems one hypothesis to carry. -/
 def deferTwin? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     Option String :=
+  if bid == "Object#===" then
+    match args with
+    | [other] => if recv.identEq other then none else some "__case_equal"
+    | _ => none
+  else
   reprDefer? h bid recv args <|> coerceDefer? h bid recv args
     <|> toAryDefer? h bid recv args
 

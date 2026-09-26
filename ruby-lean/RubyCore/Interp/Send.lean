@@ -14,9 +14,7 @@ namespace RubyCore
 
 namespace Interp
 
-/-- All args evaluated → dispatch (artifact 02 §3 SEND-INVOKE). A Proc
-    receiver called via call/()/[]/yield runs its closure directly (a builtin
-    cannot push a frame). -/
+/-- All args evaluated → dispatch (artifact 02 §3 SEND-INVOKE). -/
 def invoke (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
     (args : List Value) (blk : Option Value) (kw : List (Value × Value) := []) : StepResult :=
   -- `send`/`public_send`/`__send__`: re-dispatch the (symbol/string) first arg on
@@ -33,11 +31,6 @@ def invoke (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
   match recv with
   | .ref o =>
     match (m.heap.get o).payload with
-    | .proc cl =>
-      if mname == "call" || mname == "()" || mname == "[]" || mname == "yield" then
-        if kw.isEmpty then callClosure m cl args (blockOwner m recv)
-        else .unsupported "keyword arguments to a Proc call"
-      else invokeDispatch m recv implicit mname args blk kw
     | .hsh xs =>
       -- Hash default_proc (L42): on `h[k]` with a *missing* key, call the proc
       -- with `(h, k)` and use its result as the value of `h[k]` (the proc may also
@@ -142,7 +135,7 @@ where
     if md.undefined then
       -- `undef` tombstone: the walk stopped here, dispatch as a miss.
       let (args, m) := appendKwHash m args kw
-      dispatchMiss m recv implicit mname args blk
+      invokeMethodMissing m recv implicit mname args blk
     else
     -- Dispatch fidelity: if CRuby defines `mname` on a class BETWEEN the
     -- receiver's class and our resolved owner, CRuby would dispatch there —
@@ -166,6 +159,7 @@ where
     | none =>
       match md.builtin with
       | some bid =>
+        if procCallBid bid then callProcBuiltin m recv args kw else
         -- Deferring to a prelude twin: when a builtin's answer would require a
         -- *dispatch* it cannot perform, it hands the call to a prelude method
         -- under a different name, which then recurses through ordinary dispatch.
@@ -276,8 +270,19 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
     let self := f.self
     match superFound m.heap (classOf m.heap self) f.defmod f.meth with
     | some (_, md) =>
+      if md.undefined then
+        .next (raiseErr m Boot.noMethodErrorId
+          s!"super: no superclass method '{f.meth}' for {receiverDesc m.heap self}")
+      else
       match md.builtin with
       | some bid =>
+        if procCallBid bid then callProcBuiltin m self args kw else
+        match Builtins.deferTwin? m.heap bid self args with
+        | some slow =>
+          match methodOn m.heap (classOf m.heap self) slow with
+          | some (_, md2) => enterUserMethod m self slow md2 args blk kw
+          | none => .unsupported s!"prelude twin {slow} is missing from the prelude"
+        | none =>
         -- builtins take keywords as a trailing positional Hash (Ruby-3 [V])
         let (args, m) := appendKwHash m args kw
         match Builtins.run bid self args m with

@@ -519,6 +519,11 @@ of `return` (§4).
 
 ### 04 §2 — Calling a closure; arity
 
+`Proc#call`, `Proc#[]`, `Proc#yield` and `Proc#===` use ordinary method lookup, including
+singleton/class overrides, aliases, visibility and `undef`. Resolving their native
+marker invokes the closure; `super` can resolve the same marker. `f.()` is syntax
+for `f.call`, not a separate method named `()` (L272).
+
 Invoking a closure pushes a **block frame** whose parent is `captured`, so free
 locals resolve into the enclosing scope. Argument binding differs by
 `lambda` **[V]**:

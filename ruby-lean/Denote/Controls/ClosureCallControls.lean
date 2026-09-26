@@ -27,6 +27,7 @@ theorem stored_body_state {m : Machine} (hm : StateOk ctx0 [] .ivar0 m)
 /-- The source local read, Proc dispatch, body, and return all compose. The body may
 write captures, provided its checked output retains the stored binding's exact type. -/
 theorem stored_call {m : Machine} (hm : StateOk ctx0 [] .ivar0 m)
+    (hd : ProcCallReady m.heap)
     (code : ClosureCode) (name : String) (hp : code.params = [])
     (hls : code.locals = []) (hl : code.lam = true) {τ : Ty} (ht : FirstOrder τ = true)
     (hb : SemSafeCtxA bodyCtx (binding code name) .ivar0 code.body τ
@@ -36,6 +37,12 @@ theorem stored_call {m : Machine} (hm : StateOk ctx0 [] .ivar0 m)
       (binding code name) τ ctx0 .ivar0 := by
   have hs := stored_state hm code name
   apply local_lambda_call_runSpec name (stored_payload hm code name)
+    (hd.ext (n := reifiedMachine m (toRubyParams code.params) code.locals
+      (toRuby code.body) code.lam) (reified_ext hm _ _ _ _)) (by
+      rw [stored, getLocal_setLocal_self
+        (reifiedMachine m (toRubyParams code.params) code.locals (toRuby code.body) code.lam)
+        _ _ hm.frameInRange.2, setLocal_heap]
+      simp only [reifiedMachine, classOf, pushHeap_get_self])
     (by simp [payload, reifiedClosure, hp, toRubyParams])
     (by simpa [payload, reifiedClosure] using hl) rfl
   apply currentClosureFrame_runSpec hs.frameInRange.2
@@ -46,35 +53,40 @@ theorem stored_call {m : Machine} (hm : StateOk ctx0 [] .ivar0 m)
   exact stored_main_return hm code name hls hr.1 (hr.2.2 v rfl)
 
 theorem stored_integer_call {m : Machine} (hm : StateOk ctx0 [] .ivar0 m)
+    (hd : ProcCallReady m.heap)
     (name : String) (value : Int) :
     let code : ClosureCode := ⟨[], [], .int value, true, by simp [paramEqAll, exprEq]⟩
     RunSpec (stored m code name)
       (evalFrom (stored m code name) (.send (some (.var .lvar name)) "call" [] none))
       (binding code name) .int ctx0 .ivar0 :=
-  stored_call hm _ name rfl rfl rfl rfl SemSafeCtxA.intLit
+  stored_call hm hd _ name rfl rfl rfl rfl SemSafeCtxA.intLit
 
 /-- This pilot proves the complete source prefix, so its activation facts come from
 allocation and assignment rather than being inferred from Ty.clos. No DJudge is admitted. -/
-theorem stored_program (code : ClosureCode) (name : String) (hp : code.params = [])
+theorem stored_program {m : Machine} (hm : StateOk ctx0 [] .ivar0 m)
+    (hd : ProcCallReady m.heap) (code : ClosureCode) (name : String) (hp : code.params = [])
     (hls : code.locals = []) (hl : code.lam = true) {τ : Ty} (ht : FirstOrder τ = true)
     (hb : SemSafeCtxA bodyCtx (binding code name) .ivar0 code.body τ
       bodyCtx (binding code name) .ivar0) :
-    SemSafeCtxA ctx0 [] .ivar0 (.seq [
+    RunSpec m (evalFrom m (.seq [
       .vasgn .lvar name (.send none "lambda" []
         (some (.block code.params code.locals code.body))),
-      .send (some (.var .lvar name)) "call" [] none]) τ ctx0 (binding code name) .ivar0 := by
-  intro m hm
+      .send (some (.var .lvar name)) "call" [] none])) (binding code name) τ ctx0 .ivar0 := by
   have h := closure_store_seq_runSpec hm code name (by rw [hl]; rfl)
     (.send (some (.var .lvar name)) "call" [] none)
-    (stored_call hm code name hp hls hl ht hb)
+    (stored_call hm hd code name hp hls hl ht hb)
   simpa only [hl, ↓reduceIte] using h
 
-theorem boot_integer_program (hb : bootOkB = true) (value : Int) :
+theorem boot_integer_program (hb : bootOkB = true)
+    (hc : procCallReadyB bootMachine.heap = true) (value : Int) :
     StuckFree bootMachine (.seq [
       .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] (.int value)))),
       .send (some (.var .lvar "f")) "call" [] none]) :=
-  (stored_program ⟨[], [], .int value, true, by simp [paramEqAll, exprEq]⟩ "f"
-    rfl rfl rfl rfl SemSafeCtxA.intLit).closed (stateOk_boot hb)
+  (stored_program (stateOk_boot hb) (procCallReadyB_sound hc)
+    ⟨[], [], .int value, true, by simp [paramEqAll, exprEq]⟩ "f"
+    rfl rfl rfl rfl SemSafeCtxA.intLit).1
+
+#guard procCallReadyB bootMachine.heap
 
 private def program (lam : Bool) (args : List Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none (if lam then "lambda" else "proc") []
@@ -89,13 +101,12 @@ private def program (lam : Bool) (args : List Ratchet.Expr) : Ratchet.Expr := .s
   | .value (.int 1) _ => true
   | _ => false
 
--- §F51: current model dispatch bypasses singleton Proc#call. CRuby 4.0.5 returns 7.
--- This witness records a fidelity defect outside the admitted checker fragment.
+-- §F51: singleton Proc#call wins over the payload, as in CRuby 4.0.5.
 #guard match Interp.run 50 (evalFrom bootMachine (.seq [
     .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] (.int 1)))),
     .defs (.var .lvar "f") "call" [] (.int 7),
     .send (some (.var .lvar "f")) "call" [] none])) with
-  | .value (.int 1) _ => true
+  | .value (.int 7) _ => true
   | _ => false
 
 #print axioms stored_body_state

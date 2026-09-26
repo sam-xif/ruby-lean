@@ -23,7 +23,8 @@ theorem dispatchMiss_x {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : StateO
     (hk : m.kont = []) (hmiss : nameFreeN κ "method_missing" = true := by rfl)
     (hself : κ.selfTy = none := by rfl) :
     StepSpec m Γ .any (Interp.dispatchMiss m m.currentFrame.self .vcall "x" [] none) κ I := by
-  simp only [Interp.dispatchMiss, Interp.tryIterator, Interp.tryMixin, Interp.tryReflect]
+  simp only [Interp.dispatchMiss, Interp.invokeMethodMissing, Interp.tryIterator,
+    Interp.tryMixin, Interp.tryReflect]
   cases Interp.crubySingletonShadow m.heap m.currentFrame.self "x" with
   | some _ => trivial
   | none =>
@@ -41,7 +42,7 @@ theorem dispatchMiss_x {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : StateO
           cases he : md.builtin with
           | none => rw [he] at hb; cases hb
           | some bid =>
-            simp only [he, Option.isNone, Bool.false_eq_true, ↓reduceIte]
+            simp only [he, Option.isNone, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
             exact stepSpec_error hm hk (by simp [primitiveErrorClasses]) _
 
 theorem SemSafeCtxA.bareName {κ : Ctx} {Γ : Env} {I : Ty}

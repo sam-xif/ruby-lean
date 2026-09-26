@@ -1,13 +1,15 @@
 import Denote.Rules.Closure.Return
+import Denote.Sem.Closure.Dispatch
 
 /-! The actual Proc call path: receiver lookup, required-lambda entry, body, and the
-block return continuation. The machine intercepts Proc payloads directly in invoke. -/
+block return continuation. Ordinary lookup must resolve the native Proc call marker. -/
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
 theorem invoke_proc_call {m : Machine} {v : Value} {cl : Closure}
-    (hp : procClosure? m.heap v = some cl) (args : List Value) :
+    (hp : procClosure? m.heap v = some cl) (hr : ProcCallReady m.heap)
+    (hk : classOf m.heap v = Boot.procId) (args : List Value) :
     Interp.invoke m v .explicit "call" args none [] =
       Interp.callClosure m cl args (Interp.blockOwner m v) := by
   cases v <;> simp only [procClosure?] at hp
@@ -16,18 +18,27 @@ theorem invoke_proc_call {m : Machine} {v : Value} {cl : Closure}
   cases hpay : (m.heap.get o).payload <;> simp only [hpay] at hp
   all_goals try contradiction
   cases hp
+  obtain ⟨md, hl, hb, hu, hv, hpre, ha⟩ := hr
+  have hlook : lookup m.heap (.ref o) "call" = some (Boot.procId, md) := by
+    rw [lookup_eq_methodOn, hk]; exact hl
+  have hvis : Interp.visError? m (.ref o) .explicit md "call" = none := by
+    simp [Interp.visError?, hv]
   unfold Interp.invoke
   simp only [hpay]
+  simp only [Interp.invoke.invokeDispatch, hlook, hu, hpre, Bool.false_eq_true,
+    ↓reduceIte, hk, ha, Interp.crubyShadow, hvis, hb,
+    Interp.procCallBid, Interp.callProcBuiltin, hpay]
   rfl
 
 theorem step_recv_required_lambda {m : Machine} {v : Value} {cl : Closure} {e : Ratchet.Expr}
-    (hp : procClosure? m.heap v = some cl) (hps : cl.params = [])
+    (hp : procClosure? m.heap v = some cl) (hr : ProcCallReady m.heap)
+    (hk : classOf m.heap v = Boot.procId) (hps : cl.params = [])
     (hl : cl.lam = true) (he : cl.body = toRuby e) :
     Interp.stepFn (deliverA (.val v) m [.recvK "call" [] .none .explicit]) =
       .next (pushK [.blkFrameK m.frames.size true (Interp.blockOwner m v) cl []]
         (evalFrom (pushMethodFrame m (requiredClosureFrame m cl [] [])) e)) := by
   change Interp.invoke (deliverA (.val v) m []) v .explicit "call" [] none [] = _
-  rw [invoke_proc_call (m := deliverA (.val v) m []) hp []]
+  rw [invoke_proc_call (m := deliverA (.val v) m []) hp hr hk []]
   rw [callClosure_required_lambda (deliverA (.val v) m []) cl [] [] _ none none hps hl rfl, he]
   rfl
 
@@ -35,7 +46,8 @@ theorem step_recv_required_lambda {m : Machine} {v : Value} {cl : Closure} {e : 
 body/return contract is supplied at its actual captured activation, not a value-only type. -/
 theorem local_lambda_call_runSpec {m : Machine} {cl : Closure} {e : Ratchet.Expr}
     {Γ : Env} {τ I : Ty} {κ : Ctx} (name : String)
-    (hp : procClosure? m.heap (m.getLocal name) = some cl) (hps : cl.params = [])
+    (hp : procClosure? m.heap (m.getLocal name) = some cl) (hr : ProcCallReady m.heap)
+    (hk : classOf m.heap (m.getLocal name) = Boot.procId) (hps : cl.params = [])
     (hl : cl.lam = true) (he : cl.body = toRuby e)
     (hb : RunSpec m (pushK [.blkFrameK m.frames.size true (Interp.blockOwner m (m.getLocal name)) cl []]
       (evalFrom (pushMethodFrame m (requiredClosureFrame m cl [] [])) e)) Γ τ κ I) :
@@ -47,7 +59,7 @@ theorem local_lambda_call_runSpec {m : Machine} {cl : Closure} {e : Ratchet.Expr
       simpa only [pushK, evalFrom, deliverA, Answer.ctl, reCtl, getLocal_reCtl,
         List.nil_append] using step_var_ctl (m := pushK [.recvK "call" [] .none .explicit]
         (evalFrom m (.var .lvar name))) (x := name) rfl)
-  exact RunSpec.step (by rfl) (step_recv_required_lambda hp hps hl he) hb
+  exact RunSpec.step (by rfl) (step_recv_required_lambda hp hr hk hps hl he) hb
 
 #print axioms invoke_proc_call
 #print axioms local_lambda_call_runSpec

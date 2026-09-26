@@ -81,6 +81,18 @@ def IntBuiltinResolves (h : Heap) (mname bid : String) : Prop :=
 theorem lookup_int_const (h : Heap) (a : Int) (mname : String) :
     lookup h (.int a) mname = lookup h (.int 0) mname := rfl
 
+/-- Proc call markers are executed by the interpreter, never by the pure builtin runner. -/
+theorem run_ok_not_procCall {bid : String} {recv v : Value} {args : List Value}
+    {m n : Machine} (hr : Builtins.run bid recv args m = .ok v n) : procCallBid bid = false := by
+  cases hc : procCallBid bid with
+  | false => rfl
+  | true =>
+    simp only [procCallBid, Bool.or_eq_true, beq_iff_eq] at hc
+    rcases hc with (rfl | rfl) | rfl
+    all_goals
+      change (if _ then BRes.unsupported _ else BRes.unsupported _) = .ok v n at hr
+      split at hr <;> contradiction
+
 /-- **The conformance step.** With the receiver and the argument both already
     values, the dispatch yields the declared result in one `.next` — no raise,
     which makes this discharge a progress obligation as much as a preservation
@@ -102,7 +114,8 @@ theorem int_bin_dispatch
     -- Arithmetic over two Integers is never such a call, but the *statement* has to
     -- say so — leaving it implicit is what broke this proof, and `Proof/` being off
     -- the default target is why nothing noticed (L119).
-    (hdefer : Builtins.deferTwin? m.heap bid (.int a) [.int b] = none) :
+    (hdefer : Builtins.deferTwin? m.heap bid (.int a) [.int b] = none)
+    (hproc : procCallBid bid = false := by rfl) :
     startArgs m (.int a) .explicit mname [.int b] [] .none
       = .next (withCtl m (.value (.int (op a b)))) := by
   obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ := hres
@@ -110,7 +123,7 @@ theorem int_bin_dispatch
   simp only [startArgs, finishSend]
   rw [invoke.eq_def]
   simp [invoke.invokeDispatch, classOf, lookup_int_const, hlook, hb, hu, hbtw, hpre,
-    visError?, hvis, appendKwHash, hrun, hns, hdefer]
+    visError?, hvis, appendKwHash, hrun, hns, hdefer, hproc]
 
 /-! ### 2.1 The three table entries -/
 

@@ -93,7 +93,8 @@ def visNames (m : Machine) (o target : ObjId) (vis : Visibility) (modFun : Bool)
     acc.bind fun m =>
       match methodOn m.heap target n with
       | some (_, md) =>
-        if md.builtin.isSome && !md.fromPrelude then none   -- unmodeled builtin → gate
+        if md.builtin.isSome && !md.fromPrelude && !procCallBid (md.builtin.getD "") then none
+          -- Other native visibility edits remain outside the modeled fragment.
         else
           let m := { m with heap := defineMethod m.heap target n { md with visibility := vis } }
           -- `module_function :m` also defines `m` as a singleton method [V]
@@ -591,10 +592,21 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
   | "respond_to?" => reflectRespondTo m recv mname args blk
   | _ => none
 
-/-- A lookup miss (no entry, or an `undef` tombstone): gate CRuby-shadowed
+/-- A known missing method, including an explicit undef tombstone (L272).
+No native fallback may resurrect a method that lookup found to be undefined. -/
+def invokeMethodMissing (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
+    (args : List Value) (blk : Option Value) : StepResult :=
+  match methodOn m.heap (classOf m.heap recv) "method_missing" with
+  | some (_, mm) =>
+    if mm.builtin.isNone && !mm.undefined then
+      enterUserMethod m recv "method_missing" mm (.sym mname :: args) blk
+    else missNoMethod m recv implicit mname args
+  | none => missNoMethod m recv implicit mname args
+
+/-- A lookup miss with no entry: gate CRuby-shadowed
     names, else route to `method_missing` (user override) or the byte-exact
-    `NoMethodError` (artifact 02 §4). Shared by the genuine-miss and
-    tombstone-hit dispatch paths. -/
+    `NoMethodError` (artifact 02 §4). Explicit tombstones bypass these
+    native fallbacks and use invokeMethodMissing directly. -/
 def dispatchMiss (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
     (args : List Value) (blk : Option Value) : StepResult :=
   match tryIterator m recv mname args blk with
@@ -616,12 +628,7 @@ def dispatchMiss (m : Machine) (recv : Value) (implicit : SendSite) (mname : Str
   match mixinShadow m recv mname with
   | some modName => .unsupported s!"method via unmodeled mixin {modName}#{mname}"
   | none =>
-    match methodOn m.heap (classOf m.heap recv) "method_missing" with
-    | some (_, mm) =>
-      if mm.builtin.isNone then
-        enterUserMethod m recv "method_missing" mm (.sym mname :: args) blk
-      else missNoMethod m recv implicit mname args
-    | none => missNoMethod m recv implicit mname args
+    invokeMethodMissing m recv implicit mname args blk
 
 /-- The site kind a `send`-family re-dispatch runs at: `send`/`__send__` bypass
     visibility, `public_send` does not [V]. A top-level `match` rather than an

@@ -544,6 +544,22 @@ def callClosure (m : Machine) (cl : Closure) (args : List Value)
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     .next (withKont m (.eval cl.body) (.blkFrameK fid cl.lam brk cl args))
 
+def procCallBid (bid : String) : Bool :=
+  bid == "Proc#call" || bid == "Proc#[]" || bid == "Proc#yield"
+
+/-- Execute a resolved Proc call marker, after normal lookup/visibility checks (L272).
+Aliases retain the marker; singleton overrides and undef never reach this helper. -/
+def callProcBuiltin (m : Machine) (recv : Value) (args : List Value)
+    (kw : List (Value × Value)) : StepResult :=
+  match recv with
+  | .ref o =>
+    match (m.heap.get o).payload with
+    | .proc cl =>
+      if kw.isEmpty then callClosure m cl args (blockOwner m recv)
+      else .unsupported "keyword arguments to a Proc call"
+    | _ => .unsupported "Proc call builtin without a Proc payload"
+  | _ => .unsupported "Proc call builtin without a Proc receiver"
+
 /-- The `$~`-view read itself. `none` for any other global name, so the ordinary
     path is untouched. -/
 def matchGlobal (m : Machine) (x : String) : Option (Value × Machine) :=

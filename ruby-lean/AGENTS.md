@@ -90,7 +90,11 @@ Clink 212 proves the complete stored-lambda source call: creation, assignment, r
 entry, certified body and restored caller. The Integer pilot is safe for all fuel; concrete
 prefix execution supplies capture identity. No callable judgment is admitted. §F51 records
 a measured Proc dispatch defect: a singleton call override is ignored by the model.
-Next: fix §F51, then identity/slot tracking for 087 admission. See HANDOFF.
+Clink 213 / model L272 resolves §F51 through native Proc call markers and ordinary
+lookup, including aliases, visibility, undef and super. Proc#=== is a native alias.
+§F52's identity/equality defect, exposed by the broader replay, is also fixed. The
+whole-call pilot now consumes explicit native dispatch facts with a checked boot witness.
+Next: capture identity/slot and native dispatch tracking for 087 admission. See HANDOFF.
 
 ## Layout
 

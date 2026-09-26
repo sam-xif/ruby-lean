@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "hand, L272 / ratchet F51",
+  "arm": "probe",
+  "case_id": "proc-call-dispatch",
+  "note": "Proc payload interception ignored singleton/class overrides, visibility and undef. Covers native aliases, super, call/[]/yield, inherited Object#call, method_missing and prepend. Native f.() is syntax for call; there is no method named ()."
+}

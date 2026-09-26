@@ -25,6 +25,13 @@ def modeledFeatures : List String :=
 def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=
   let h := m.heap
   match bid with
+  | "Object#===" =>
+    match args with
+    | [other] =>
+      if recv.identEq other then .ok (.bool true) m
+      else .unsupported "Object#=== requires its equality-dispatch twin"
+    | _ => .err Boot.argumentErrorId
+        s!"wrong number of arguments (given {args.length}, expected 1)" m
   /- ─── BasicObject / Object core ─── -/
   | "BasicObject#==" | "Object#==" =>
     match args with

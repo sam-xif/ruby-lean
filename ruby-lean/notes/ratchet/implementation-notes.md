@@ -11576,3 +11576,26 @@ both halves of what constrains them now have a name.
   60 worked theorems, 0 owed/exempt.
 - Full quiet ratchet GREEN; metatheory and standard-axiom audit pass. New proofs build
   in under a second; no individual build approached five minutes.
+
+## Clink 213 (2026-09-26) — repair Proc dispatch before callable admission
+
+- Model L272 replaces payload interception with lookup-resolved Proc call markers.
+  Overrides/aliases/visibility/undef use ordinary dispatch; super reaches native
+  markers and rejects tombstones. The new regression is measured against CRuby.
+- ProcCallReady records native lookup, provenance, visibility and an empty prefix
+  before Proc. Its Boolean checker is sound, Ext preserves it, and actual allocation
+  supplies the receiver class. Call and the whole-source pilot consume these facts;
+  a separate boot guard exhibits them without native_decide or changing bootOkB.
+- Generic pure-builtin proofs now exclude Proc markers. Framing and notDone cover
+  native calls and direct method_missing; all existing checker rules remain intact.
+- No new judgment/emitter policy. Capture identity/slot tracking still precedes 087.
+- The broader model replay exposed three formerly gated === cases. Identity now
+  short-circuits == in the native primitive; scalar aliases keep their original
+  builtin and Proc#=== stays a native call alias. The prelude was regenerated.
+- The corrected super path requires undefined=false in SuperOk and the live super
+  lemma; existing declaration facts supply it. Old Proc-payload interception
+  countermodels now assert that installed user methods retain precedence.
+- Full quiet ratchet GREEN (252 agree / 0 disagree); metatheory and standard-axiom
+  audit pass. Focused model replay 5/5; tier 0 is 998 agree / 0 disagree (305
+  unsupported, 5 invalid controls, 1 existing harness error). Counts unchanged;
+  no individual Lean proof exceeded five minutes.

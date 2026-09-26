@@ -114,6 +114,12 @@ set_option maxHeartbeats 40000000 in
   rw [Interp.callClosure.eq_def]
   nd_walk
 
+@[simp] theorem callProcBuiltin_notDone (m : Machine) (recv : Value)
+    (args : List Value) (kw : List (Value × Value)) :
+    isDone (Interp.callProcBuiltin m recv args kw) = false := by
+  unfold Interp.callProcBuiltin
+  cases recv <;> nd_walk
+
 -- diagnostic
 example (m : Machine) (cl : Closure) (args : List Value) (brk : Option FrameId) :
     isDone (Interp.callClosure m cl args brk) = false := by simp
@@ -269,6 +275,12 @@ set_option maxHeartbeats 40000000 in
 set_option maxHeartbeats 40000000 in
 @[simp] theorem tryReflect_notDone : isDoneO (Interp.tryReflect m recv mname args blk) = false := by
   rw [Interp.tryReflect.eq_def]
+  nd_walk
+
+@[simp] theorem invokeMethodMissing_notDone (m : Machine) (recv : Value) (site : SendSite)
+    (name : String) (args : List Value) (blk : Option Value) :
+    isDone (Interp.invokeMethodMissing m recv site name args blk) = false := by
+  unfold Interp.invokeMethodMissing
   nd_walk
 
 set_option maxHeartbeats 40000000 in

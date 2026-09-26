@@ -802,7 +802,7 @@ class is on, which is `IvarOk`'s shape at a chain instead of at an object.
 def SuperOk (h : Heap) (c mname : String) (d : MethodDecl) : Prop :=
   ∀ k dm, (h.classPayload? dm).isSome → className h dm = c → dm ∈ ancestors h k →
     ∃ owner md bid, superFound h k dm mname = some (owner, md) ∧
-      md.builtin = some bid ∧ ConformsAt (.cls c) mname bid d
+      md.builtin = some bid ∧ md.undefined = false ∧ ConformsAt (.cls c) mname bid d
 
 /-- `superFound` is a `firstM` over a chain-derived list and a per-class table read,
     so it is congruent under anything that pins `classPayload?` at every id — which is
@@ -844,10 +844,10 @@ theorem superOk_grow {h h' : Heap} {c n : String} {d : MethodDecl} (hg : PlainGr
   rw [hg.payload] at hdm
   rw [hg.className_eq] at hcn
   rw [hg.ancestors_eq hsat] at hmem
-  obtain ⟨owner, md, bid, hf, hb, hconf⟩ := hs k dm hdm hcn hmem
+  obtain ⟨owner, md, bid, hf, hb, hu, hconf⟩ := hs k dm hdm hcn hmem
   exact ⟨owner, md, bid,
     by rw [superFound_congr (fun j => by rw [hg.payload]) (hg.ancestors_eq hsat k)]; exact hf,
-    hb, hconf⟩
+    hb, hu, hconf⟩
 
 /-- **And across a `def` of a different name.** The side condition is the one
     `ResolvesUser_defineMethod` needs and for the same reason: a write to an existing
@@ -860,8 +860,8 @@ theorem superOk_defineMethod {h : Heap} {c n : String} {d : MethodDecl} {cls : O
   rw [classPayload?_isSome_defineMethod] at hdm
   rw [className_defineMethod] at hcn
   rw [ancestors_defineMethod] at hmem
-  obtain ⟨owner, md, bid, hf, hb, hconf⟩ := hs k dm hdm hcn hmem
-  refine ⟨owner, md, bid, ?_, hb, hconf⟩
+  obtain ⟨owner, md, bid, hf, hb, hu, hconf⟩ := hs k dm hdm hcn hmem
+  refine ⟨owner, md, bid, ?_, hb, hu, hconf⟩
   rw [superFound_congr (fun j => methods_find_defineMethod h cls j name n md' hne)
     (ancestors_defineMethod h cls k name md')]
   exact hf
@@ -917,6 +917,7 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
   obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ :=
     EntryOk.resolves ha hn hnar hres hrv
   obtain ⟨hdefer, w, m', hrun, hw, hg, hfr, hst, hko, hgv⟩ := hconf m recv args hrv hargs
+  have hproc := run_ok_not_procCall hrun
   refine ⟨w, m', hw, hg, hfr, hst, hko, hgv, ?_⟩
   simp only [startArgs, finishSend]
   rw [invoke.eq_def]
@@ -966,7 +967,7 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
       -- Everything else is the uniform path, and identical to the immediate cases.
       all_goals
         simp [invoke.invokeDispatch, hpl, hlook, hb, hu, hbtw, hpre, visError?, hvis,
-          appendKwHash, hrun, hns, hdefer, hraise]
+          appendKwHash, hrun, hns, hdefer, hraise, hproc]
     · have hc := hclass
       unfold classRecv at hc
       simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, decide_eq_true_eq,
@@ -977,10 +978,10 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
         cases hp : (m.heap.get o).payload <;> simp_all
       simp [invoke.invokeMaybeNew, invoke.invokeDispatch, hpl, hrx, hmt, hnew,
         hlook, hb, hu, hbtw, hpre, visError?, hvis, appendKwHash, hrun, hns, hdefer,
-        hraise]
+        hraise, hproc]
   all_goals
     simp [invoke.invokeDispatch, hlook, hb, hu, hbtw, hpre, visError?, hvis,
-      appendKwHash, hrun, hns, hdefer, hraise]
+      appendKwHash, hrun, hns, hdefer, hraise, hproc]
 
 /-- The activation `enterUserMethod` builds for a zero-parameter, non-closure
     method. Named rather than left to an existential because unification cannot
@@ -1082,14 +1083,16 @@ theorem super_dispatch {m : Machine} {c mname : String} {d : MethodDecl}
       m'.frames = m.frames ∧ m'.stack = m.stack ∧ m'.kont = m.kont ∧
       m'.globals = m.globals ∧
       doSuper m args blk = .next (withCtl m' (.value w)) := by
-  obtain ⟨owner, md, bid, hf, hb, hconf⟩ := hsup _ _ hdp hdn hch
+  obtain ⟨owner, md, bid, hf, hb, hu, hconf⟩ := hsup _ _ hdp hdn hch
   obtain ⟨-, -, -, -, hcf⟩ := hconf
   obtain ⟨hdefer, w, m', hrun, hw, hg, hfr, hst, hko, hgv⟩ := hcf m _ args hrv hargs
+  have hproc := run_ok_not_procCall hrun
   refine ⟨w, m', hw, hg, hfr, hst, hko, hgv, ?_⟩
   unfold doSuper
   simp only []
   rw [hfm, hf]
-  simp only [hb, appendKwHash, hrun, beq_iff_eq, if_neg hne, List.isEmpty_nil, if_true]
+  simp only [hb, hu, hproc, hdefer m.heap, Bool.false_eq_true, if_false, appendKwHash, hrun,
+    beq_iff_eq, if_neg hne, List.isEmpty_nil, if_true]
 
 /-! ## 3. Preservation: the additive step is free
 
@@ -3838,11 +3841,11 @@ theorem superOk (hi : IvarOnly h h') {c n : String} {d : MethodDecl}
   rw [hi.classPayload] at hdm
   rw [hi.className_eq] at hcn
   rw [hi.ancestors_eq] at hmem
-  obtain ⟨owner, md, bid, hf, hb, hconf⟩ := hs k dm hdm hcn hmem
+  obtain ⟨owner, md, bid, hf, hb, hu, hconf⟩ := hs k dm hdm hcn hmem
   exact ⟨owner, md, bid,
     by rw [superFound_congr (fun j => by rw [hi.classPayload]) (hi.ancestors_eq k)];
        exact hf,
-    hb, hconf⟩
+    hb, hu, hconf⟩
 
 /-- **Only three of the four halves** (L196, L205), and the omission is the rung:
     `IvarOnly` says an ivar write is invisible, and `DeclsOk`'s *ivar* half is the one
@@ -4066,8 +4069,8 @@ theorem superOk_constSetIn {c n : String} {d : MethodDecl} (hs : SuperOk h c n d
   rw [classPayload?_isSome_constSetIn] at hdm
   rw [className_constSetIn] at hcn
   rw [ancestors_constSetIn] at hmem
-  obtain ⟨owner, md, bid, hf, hb, hcf⟩ := hs k dm hdm hcn hmem
-  refine ⟨owner, md, bid, ?_, hb, hcf⟩
+  obtain ⟨owner, md, bid, hf, hb, hu, hcf⟩ := hs k dm hdm hcn hmem
+  refine ⟨owner, md, bid, ?_, hb, hu, hcf⟩
   rw [superFound_congr (h := h)
     (fun i => by
       have hmm := methods_constSetIn h j i nm v

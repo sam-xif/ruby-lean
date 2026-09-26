@@ -444,6 +444,14 @@ consumes: `tryIterator`, then `tryMixin`, then `tryReflect`, then the three CRub
 (heap-only), then `method_missing` or the byte-exact `NoMethodError`. It inherits
 `reflectThrow`'s hypothesis, and everything above it will too — up to `stepFn`. -/
 
+@[simp, frameLem] theorem invokeMethodMissing_frame (K : List Kont) (m : Machine)
+    (recv : Value) (site : SendSite) (name : String) (args : List Value) (blk : Option Value) :
+    invokeMethodMissing (pushK K m) recv site name args blk =
+      frameR K (invokeMethodMissing m recv site name args blk) := by
+  unfold invokeMethodMissing
+  frame_simp
+  frame_arms
+
 set_option maxHeartbeats 4000000 in
 theorem dispatchMiss_frame (K : List Kont) (hK : CatchFree K) (m : Machine) (recv : Value)
     (implicit : SendSite) (mname : String) (args : List Value) (blk : Option Value) :

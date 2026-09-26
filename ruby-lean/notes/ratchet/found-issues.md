@@ -2800,8 +2800,8 @@ rule or accepted program changed; captured activation/restoration remain §F49.
 
 ## F51 — Proc call interception ignores user overrides (2026-09-26)
 
-**Open model fidelity defect; no callable checker rule is admitted.** `Interp.invoke`
-dispatches Proc payloads directly for call/()/[]/yield, before method lookup. Measured with
+**Resolved by clink 213 / model L272; no callable checker rule is admitted.** The former
+`Interp.invoke` dispatched Proc payloads directly for call/()/[]/yield, before method lookup. Measured with
 CRuby 4.0.5 and the current rubycore binary:
 
 ```ruby
@@ -2810,8 +2810,21 @@ def f.call; 7; end
 p f.call
 ```
 
-CRuby prints 7; the model prints 1. ClosureCallControls retains the executable model
-witness. Call's semantic theorem describes that actual dispatch, so it remains sound for
-the model, but is not evidence of override fidelity. Fix lookup/visibility/undefined
-handling before admitting calls; update the semantic dispatch premise and this witness
-with the fix. The current 252-case agreement replay does not cover this program.
+CRuby prints 7; the former model printed 1. Boot now installs native call/[]/yield/===
+markers, resolved through ordinary lookup and visibility before closure invocation.
+Aliases, overrides and super retain their normal semantics. Visibility edits allow these
+markers. Undef tombstones go directly to method_missing, and super rejects tombstones.
+ClosureCallControls now expects 7; the persisted proc-call-dispatch regression covers the
+full matrix. Call consumes ProcCallReady and the receiver's actual dispatch class; neither
+is inferred from the payload type. Its boot Boolean is checked separately from bootOkB.
+
+## F52 — case equality loses its identity shortcut (2026-09-26)
+
+**Resolved in model L272 / clink 213.** Correct undef dispatch exposed MRI
+`test_yjit_348/349/350`, previously gated: true/false/nil compared with themselves
+must satisfy === even after == is overridden or undefined. Object's prelude wrapper
+always dispatched ==. Native Object#=== now tests identity first, then uses a prelude
+twin to dispatch == and Booleanize its result. Native scalar === aliases retain their
+original builtin IDs, so replacing == does not replace Integer/String/Symbol/Float ===.
+The case-equality-identity regression also overrides equal?, checks truthy non-Boolean
+== results, super, and Float::NAN. Proc#=== independently retains native call semantics.

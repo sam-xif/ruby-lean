@@ -1,5 +1,19 @@
 # Lean model — hand-off
 
+## Current dispatch repair (2026-09-26, L272)
+
+Proc call/[]/yield/=== now resolve native markers through ordinary lookup, preserving
+user overrides, aliases, visibility, undef and super. Tombstones cannot reach native
+fallbacks. See ratchet found-issues §F51. The newly reachable equality cases exposed §F52:
+Object/true/false/nil === now test identity before dispatching ==; other scalar === aliases
+retain their original equality implementation. Both families have regression files in
+`difftest/corpus/regressions/`. Prelude.lean is regenerated. The checker’s closure pilot
+uses explicit native dispatch facts; general callable admission remains work in progress.
+
+Validation: tier 0 is 998 agree / 0 disagree, with 305 unsupported, 5 invalid controls
+and the existing test_syntax_115 harness error. Focused replay 5/5; full quiet ratchet
+GREEN (252 agree / 0 disagree); metatheory and standard-axiom audit pass.
+
 > ## ⚠️ CURRENT STATE (2026-08-03) — read this block, then skip to §"Open threads"
 >
 > Everything dated earlier in this file (and the 2026-07-30 banner it replaces) is

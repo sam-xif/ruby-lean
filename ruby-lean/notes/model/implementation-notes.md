@@ -13600,3 +13600,37 @@ The consumer is the judgment layer's J29/J30: the answer-typed `StepOkJ` puts
 reachable `done` outcome — `SemJudge`'s result clause and `judge_result_vty`.
 Nothing before J29 could use it (the pre-J29 `done` arm was `True`), which is why
 it did not exist.
+
+## L272 — resolve Proc calls through the method table (2026-09-26)
+
+- Ratchet §F51 exposed `f = lambda { 1 }; def f.call; 7; end; f.call`: CRuby 4.0.5
+  returns 7, but payload interception returned 1. Boot now registers call/[]/yield/===
+  markers; normal lookup, shadow and visibility checks precede callProcBuiltin.
+  Alias copies retain the marker, and super dispatch handles it too. No `()` method
+  is installed: Ruby's f.() parses as call. Keyword Proc calls remain unsupported.
+- Visibility edits now allow these implemented native markers. An undef tombstone
+  goes directly to invokeMethodMissing, bypassing native fallbacks and shadow gates.
+  Undefined method_missing is not called. super also rejects a tombstone; a measured
+  Proc parent-undef probe previously returned nil instead of NoMethodError.
+- The frame/notDone lemmas cover both helpers. Pure builtin proofs explicitly
+  exclude Proc call markers. The closure pilot now needs ProcCallReady plus the
+  receiver's actual dispatch class; the boot condition is checked separately from
+  bootOkB. Payload/code alone no longer implies native dispatch.
+- `difftest/corpus/regressions/proc-call-dispatch.rb` covers native calls, singleton
+  and class overrides, aliases, super, visibility/send, undef/method_missing,
+  Object inheritance, prepend and the absence of a method named `()`.
+- Proc#=== is a native call alias, not a send to a possibly overridden call. The
+  old prelude wrapper was removed. Case equality for Object/true/false/nil now
+  tests identity natively, then defers to a Boolean-returning == twin. Integer,
+  Float, String and Symbol === retain their original equality builtin IDs.
+  This fixes three MRI cases exposed by removing the undef gate; overridden
+  equal? cannot corrupt the identity test. super now supports builtin deferrals.
+- SuperOk explicitly excludes undefined targets; its heap transports retain the
+  fact. Successful pure Builtins.run implies a non-Proc marker, by reduction of
+  the three impossible bids. No new conformance axiom or resource limit is used.
+- Prelude.lean was regenerated; fixed-width JSON chunking shifts most generated
+  lines despite the small Ruby source edit.
+- Validation: focused replay 5/5 agree; tier 0 has 998 agree, 0 disagree,
+  305 unsupported, 5 invalid controls and the existing test_syntax_115 harness
+  error (no observation). Full quiet ratchet GREEN (252 agree, 0 disagree);
+  check-proofs passes with standard Lean axioms only. No proof exceeded five minutes.

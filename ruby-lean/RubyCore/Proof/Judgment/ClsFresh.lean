@@ -1360,11 +1360,11 @@ theorem superOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
     have hanc : ancestors (freshClsHeap h₀ d name q eO) k
         = ancestors (hmidOf h₀ d name) k :=
       ClsGrow.ancestors_old hg hchm hsm hkm
-    obtain ⟨owner, md, bid, hsf, hb, hcf⟩ := hs k dm
+    obtain ⟨owner, md, bid, hsf, hb, hu, hcf⟩ := hs k dm
       (by rw [← hg.payloadOld hdmm]; exact hdm)
       (by rw [← ClsGrow.className_old hg hdmm]; exact hdc)
       (by rw [← hanc]; exact hmem)
-    refine ⟨owner, md, bid, ?_, hb, hcf⟩
+    refine ⟨owner, md, bid, ?_, hb, hu, hcf⟩
     unfold superFound at hsf ⊢
     rw [hanc]
     rw [firstM_congr (fun j hj => by
@@ -1388,11 +1388,11 @@ theorem superOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
         have hancO : ancestors (hmidOf h₀ d name) Boot.objectId
             = ancestors h₀ Boot.objectId :=
           ancestors_constSetIn h₀ d Boot.objectId name _
-        obtain ⟨owner, md, bid, hsf, hb, hcf⟩ := hs Boot.objectId dm
+        obtain ⟨owner, md, bid, hsf, hb, hu, hcf⟩ := hs Boot.objectId dm
           (by rw [← hg.payloadOld hdmm]; exact hdm)
           (by rw [← ClsGrow.className_old hg hdmm]; exact hdc)
           (by rw [hancO]; exact hmem2)
-        refine ⟨owner, md, bid, ?_, hb, hcf⟩
+        refine ⟨owner, md, bid, ?_, hb, hu, hcf⟩
         unfold superFound at hsf ⊢
         rw [ancestors_freshC_k hch hsat]
         rw [List.dropWhile_cons_of_pos (by
@@ -1420,11 +1420,11 @@ theorem superOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
             rw [hmid_size]; exact heOlt
           have hancE : ancestors (hmidOf h₀ d name) eO = ancestors h₀ eO :=
             ancestors_constSetIn h₀ d eO name _
-          obtain ⟨owner, md, bid, hsf, hb, hcf⟩ := hs eO dm
+          obtain ⟨owner, md, bid, hsf, hb, hu, hcf⟩ := hs eO dm
             (by rw [← hg.payloadOld hdmm]; exact hdm)
             (by rw [← ClsGrow.className_old hg hdmm]; exact hdc)
             (by rw [hancE]; exact hmem2)
-          refine ⟨owner, md, bid, ?_, hb, hcf⟩
+          refine ⟨owner, md, bid, ?_, hb, hu, hcf⟩
           unfold superFound at hsf ⊢
           rw [ancestors_freshC_e hch hsat heOlt]
           rw [List.dropWhile_cons_of_pos (by

@@ -1,4 +1,4 @@
-# Current resume point (2026-09-26, clink 212)
+# Current resume point (2026-09-26, clink 213)
 
 Latest admission remains 084: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
@@ -120,10 +120,24 @@ the concrete allocated capture identity, then composes a state-specific continua
 ClosureCallControls proves the whole `f = lambda { 1 }; f.call` source safe for all fuel
 (and any Integer literal), with full caller conformance. Its generic body contract retains
 f's exact type; it does not infer activation facts from Ty.clos or admit a checker rule.
-Controls distinguish lambda/proc extra-argument behavior. A new §F51 witness shows current
-Proc dispatch bypasses singleton `call`: CRuby returns 7, the model returns the body’s 1.
+Controls distinguish lambda/proc extra-argument behavior. A §F51 witness showed the old
+Proc dispatch bypassed singleton `call`: CRuby returns 7, the model returns the body’s 1.
 
-Next: fix §F51 dispatch fidelity before callable admission, then track capture identity/slots.
+Clink 213 / model L272 fixes §F51: native Proc call/[]/yield/=== markers use ordinary
+lookup and visibility, including aliases and super. Undef bypasses native fallbacks;
+super rejects a tombstone. Proc#=== retains its native alias despite call overrides.
+Call now requires ProcCallReady and the receiver's actual dispatch class. Ext preserves
+readiness, allocation supplies the class, and procCallReadyB is checked at boot alongside
+bootOkB. The whole-source theorem is state-specific under that explicit heap condition.
+The broader replay exposed §F52: === must test identity before dispatching ==. Native
+Object/true/false/nil markers now do so; scalar aliases retain original equality builtins.
+Both repaired families have persisted CRuby regressions. Pure builtin proofs exclude Proc
+markers by reduction; SuperOk now requires undefined=false, retained by its transports.
+Full quiet gate GREEN (252 agree / 0 disagree), metatheory and standard-axiom audit pass.
+Model replay: focused 5/5; tier 0 has 998 agree / 0 disagree, 305 unsupported, 5 invalid
+controls and the existing test_syntax_115 harness error. Admission counts are unchanged.
+
+Next: track capture identity/slots and native dispatch facts for callable admission.
 Entry now has full conformance under the named scope/liveness/environment premises, but
 Ty.clos does not yet supply those premises. The stored-f pilot retains its higher-order
 binding using ProcPres.empty_capture_den. General capture types still need transport.

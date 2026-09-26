@@ -341,7 +341,7 @@ def classTable : List (ObjId × String × Option ObjId) := [
 def builtinMethods : List (ObjId × List String) := [
   (basicObjectId, ["==", "!", "equal?"]),
   -- Kernel/Object layer (Kernel folded into Object at L0)
-  (objectId, ["==", "!", "equal?", "eql?", "class", "nil?", "inspect",
+  (objectId, ["==", "===", "!", "equal?", "eql?", "class", "nil?", "inspect",
               "to_s", "freeze", "frozen?", "is_a?", "kind_of?", "instance_of?",
               "puts", "print", "p", "raise", "String", "block_given?", "rand",
               "require", "require_relative", "__unsupported__", "dup", "clone",
@@ -349,25 +349,25 @@ def builtinMethods : List (ObjId × List String) := [
               "__any_to_s", "__match_to_caller", "respond_to_missing?",
               "__coerce_failed", "__cmp_failed",
               "initialize"]),
-  (nilClassId, ["to_s", "inspect", "nil?", "to_a", "&", "|", "dup", "clone"]),
-  (trueClassId, ["to_s", "inspect", "&", "|", "dup", "clone"]),
-  (falseClassId, ["to_s", "inspect", "&", "|", "dup", "clone"]),
-  (integerId, ["+", "-", "*", "/", "%", "**", "-@", "==", "<", ">", "[]",
+  (nilClassId, ["===", "to_s", "inspect", "nil?", "to_a", "&", "|", "dup", "clone"]),
+  (trueClassId, ["===", "to_s", "inspect", "&", "|", "dup", "clone"]),
+  (falseClassId, ["===", "to_s", "inspect", "&", "|", "dup", "clone"]),
+  (integerId, ["+", "-", "*", "/", "%", "**", "-@", "==", "===", "<", ">", "[]",
                "<=", ">=", "<=>", "to_s", "inspect", "to_i", "to_f", "abs", "succ",
                "pred", "zero?", "positive?", "negative?", "even?", "odd?", "chr",
                "round", "ceil", "floor", "truncate", "divmod", "nonzero?",
                "eql?", "hash", "dup", "clone"]),
   (floatId, ["round", "ceil", "floor", "truncate", "divmod", "nonzero?",
-             "+", "-", "*", "/", "%", "**", "-@", "==", "<", ">", "<=", ">=", "<=>",
+             "+", "-", "*", "/", "%", "**", "-@", "==", "===", "<", ">", "<=", ">=", "<=>",
              "to_s", "inspect", "to_i", "to_f", "abs", "zero?", "nan?", "eql?",
              "dup", "clone"]),
-  (stringId, ["+", "*", "==", "<", ">", "<=", ">=", "<=>", "length",
+  (stringId, ["+", "*", "==", "===", "<", ">", "<=", ">=", "<=>", "length",
               "size", "to_s", "to_str", "inspect", "<<", "concat", "empty?",
               "include?", "reverse", "upcase", "downcase", "strip", "chomp",
               "start_with?", "end_with?", "eql?", "freeze", "frozen?", "dup", "clone",
               "initialize", "+@", "-@",
               "to_sym", "[]"]),
-  (symbolId, ["to_s", "inspect", "==", "to_sym", "to_proc", "dup", "clone"]),
+  (symbolId, ["to_s", "inspect", "==", "===", "to_sym", "to_proc", "dup", "clone"]),
   (arrayId, ["==", "[]", "[]=", "<<", "push", "pop", "shift", "unshift",
              "length", "size", "first", "last", "empty?", "include?", "+",
              "-", "*", "&", "|", "inspect", "to_s", "to_a", "reverse", "join", "flatten",
@@ -386,10 +386,9 @@ def builtinMethods : List (ObjId × List String) := [
   (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors",
               "private_constant", "public_constant"]),
   (classId, ["new", "allocate", "__range_new_unchecked"]),
-  -- Proc#call/()/[]/yield are intercepted in `invoke` (they push a block
-  -- frame, which a pure builtin cannot); only the pure introspectors are
-  -- registered here.
-  (procId, ["lambda?", "to_proc"]),
+  -- Call markers resolve through ordinary lookup; the interpreter executes them
+  -- by pushing a block frame, which a pure builtin cannot (L272).
+  (procId, ["lambda?", "to_proc", "call", "[]", "yield", "==="]),
   (randomId, ["rand"]),
   (rangeId, ["first", "last", "begin", "end", "exclude_end?", "inspect", "to_s"]),
   (stringId, ["=~", "match", "match?", "scan", "__sub_rep", "__gsub_rep", "split", "to_i",
@@ -415,7 +414,13 @@ def install (h : Heap) (cls : ObjId) (names : List String) : Heap :=
     let cname := c.name
     let methods := names.foldl (init := c.methods) fun ms n =>
       (n, { params := [], body := .nil, owner := cls,
-            builtin := some s!"{cname}#{n}" : MethodDef }) :: ms
+            builtin := some (if n == "===" then
+              match cname with
+              | "Proc" => "Proc#call"
+              | "TrueClass" | "FalseClass" | "NilClass" => "Object#==="
+              | "Integer" | "Float" | "String" | "Symbol" => s!"{cname}#=="
+              | _ => s!"{cname}#{n}"
+              else s!"{cname}#{n}") : MethodDef }) :: ms
     h.setClassPayload cls { c with methods }
 
 /-- Reducible insertion sort by id (`.1`), replacing `Array.qsort` in `initHeap`.
