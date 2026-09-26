@@ -45,17 +45,21 @@ theorem envGet?_closureReturnEnv (shadow names : List String) (Γ Γb : Env) (x 
   cases hs : shadow.contains x <;> cases hn : names.contains x <;>
     cases hg : envGet? Γ x <;> rfl
 
-theorem closure_return_env {m n : Machine} {f : RubyCore.Frame}
+/-- Environment merging depends on three proved read relations, independent of
+how many inert activations stand between the block and its captured caller. -/
+theorem closure_return_env_of_reads {m n out : Machine}
     {shadow names : List String} {Γ Γb : Env}
-    (hl : FrameInRange m) (hu : RootUncaptured m) (hc : f.captured = some (m.stack.headD 0))
     (hd : CaptureSlots names (withoutNames shadow Γb) m)
-    (hf : ∀ x, f.locals.any (·.1 == x) = shadow.contains x)
-    (h : Framed (pushMethodFrame m f) n) (he : EnvOk Γ m) (hb : EnvOk Γb n)
+    (hshadow : ∀ x, shadow.contains x = true → out.getLocal x = m.getLocal x)
+    (hbound : ∀ x, shadow.contains x = false → frameBinds m (m.stack.headD 0) x = true →
+      out.getLocal x = n.getLocal x)
+    (habsent : ∀ x, frameBinds m (m.stack.headD 0) x = false → out.getLocal x = .nil)
+    (he : EnvOk Γ m) (hb : EnvOk Γb n)
     (hbefore : ∀ x τ, envGet? Γ x = some τ → ∀ v, denM (stripAlias τ) m v →
-      denM (stripAlias τ) (popMethodFrame n) v)
+      denM (stripAlias τ) out v)
     (hafter : ∀ x τ, envGet? Γb x = some τ → names.contains x = true → ∀ v,
-      denM (stripAlias τ) n v → denM (stripAlias τ) (popMethodFrame n) v) :
-    EnvOk (closureReturnEnv shadow names Γ Γb) (popMethodFrame n) := by
+      denM (stripAlias τ) n v → denM (stripAlias τ) out v) :
+    EnvOk (closureReturnEnv shadow names Γ Γb) out := by
   constructor
   · intro x τ hx
     rw [envGet?_closureReturnEnv] at hx
@@ -67,7 +71,7 @@ theorem closure_return_env {m n : Machine} {f : RubyCore.Frame}
         have ht : deAlias σ = τ := by simpa [hg] using hx
         subst τ
         refine ⟨?_, fun y ρ hy => False.elim (deAlias_ne_sameAs σ y ρ hy)⟩
-        rw [closure_shadowed_read hl hu hc h x ((hf x).trans hs)]
+        rw [hshadow x hs]
         exact denM_stripAlias.mpr (denM_deAlias.mpr
           (denM_stripAlias.mp (hbefore x σ hg _ (he.1 x σ hg).1)))
     · have hs0 := Bool.eq_false_iff.mpr hs
@@ -82,7 +86,7 @@ theorem closure_return_env {m n : Machine} {f : RubyCore.Frame}
           have hslot : frameBinds m (m.stack.headD 0) x = true :=
             (hd x σ (by rw [envGet?_withoutNames, hs0]; exact hg)).trans hn
           refine ⟨?_, fun y ρ hy => False.elim (deAlias_ne_sameAs σ y ρ hy)⟩
-          rw [closure_bound_read hl hu hc h x ((hf x).trans hs0) hslot]
+          rw [hbound x hs0 hslot]
           exact denM_stripAlias.mpr (denM_deAlias.mpr
             (denM_stripAlias.mp (hafter x σ hg hn _ (hb.1 x σ hg).1)))
       · simp only [if_neg hn] at hx
@@ -94,7 +98,7 @@ theorem closure_return_env {m n : Machine} {f : RubyCore.Frame}
         cases hg : envGet? Γ x with
         | none => rfl
         | some σ => rw [hs, hg] at hx; cases hx
-      rw [closure_shadowed_read hl hu hc h x ((hf x).trans hs)]
+      rw [hshadow x hs]
       exact he.2 x hg
     · have hs0 := Bool.eq_false_iff.mpr hs
       by_cases hslot : frameBinds m (m.stack.headD 0) x = true
@@ -106,9 +110,25 @@ theorem closure_return_env {m n : Machine} {f : RubyCore.Frame}
               (hd x σ (by rw [envGet?_withoutNames, hs0]; exact hg)).symm.trans hslot
             rw [hs0, hn, hg] at hx
             cases hx
-        rw [closure_bound_read hl hu hc h x ((hf x).trans hs0) hslot]
+        rw [hbound x hs0 hslot]
         exact hb.2 x hg
-      · exact closure_absent_read hl hu h x (Bool.eq_false_iff.mpr hslot)
+      · exact habsent x (Bool.eq_false_iff.mpr hslot)
+theorem closure_return_env {m n : Machine} {f : RubyCore.Frame}
+    {shadow names : List String} {Γ Γb : Env}
+    (hl : FrameInRange m) (hu : RootUncaptured m) (hc : f.captured = some (m.stack.headD 0))
+    (hd : CaptureSlots names (withoutNames shadow Γb) m)
+    (hf : ∀ x, f.locals.any (·.1 == x) = shadow.contains x)
+    (h : Framed (pushMethodFrame m f) n) (he : EnvOk Γ m) (hb : EnvOk Γb n)
+    (hbefore : ∀ x τ, envGet? Γ x = some τ → ∀ v, denM (stripAlias τ) m v →
+      denM (stripAlias τ) (popMethodFrame n) v)
+    (hafter : ∀ x τ, envGet? Γb x = some τ → names.contains x = true → ∀ v,
+      denM (stripAlias τ) n v → denM (stripAlias τ) (popMethodFrame n) v) :
+    EnvOk (closureReturnEnv shadow names Γ Γb) (popMethodFrame n) :=
+  closure_return_env_of_reads hd
+    (fun x hs => closure_shadowed_read hl hu hc h x ((hf x).trans hs))
+    (fun x hs hx => closure_bound_read hl hu hc h x ((hf x).trans hs) hx)
+    (fun x hx => closure_absent_read hl hu h x hx) he hb hbefore hafter
 
+#print axioms closure_return_env_of_reads
 #print axioms closure_return_env
 end Ratchet.Denote.Typed

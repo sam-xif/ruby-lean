@@ -11866,3 +11866,33 @@ both halves of what constrains them now have a name.
   pass. MRI tier 0 remains 998 agree / 0 disagree, 305 unsupported, 5 invalid controls
   and the existing test_syntax_115 harness error. No proof exceeded five minutes and no
   resource limits or axioms were added.
+
+## Clink 225 (2026-09-26) — derive the live each invariant from a checked block
+
+- Iterator.Entry binds arguments and complete captures from the caller below the inert
+  iterator. requiredClosureFrame_envOk_from separates the source of value typing from
+  the machine receiving the block frame. Full captured StateOk uses lexical scope and
+  activation-stable transport; no conformance is asserted on the intermediate iterator.
+- Iterator.ReadReturn proves shadowed, bound-unshadowed and absent caller reads after
+  both pops. closure_return_env_of_reads factors the common environment merge over these
+  three relations; existing one-pop closure clients keep their interface. ReturnEnv
+  retains caller types under parameters/block locals and projects other caller-owned
+  output types, erasing aliases to disappearing locals.
+- restore_main_state_atStack generalizes caller restoration to the actual projected
+  stack while keeping the body's heap/world. Iterator.ReturnState combines it with
+  two-pop framing, saved metadata and the merged environment. Non-type-error raises
+  need only restored framing/EscOk; no value StateOk is demanded on an escape.
+- typed_each_step now derives every EachArrayContract obligation from caller StateOk,
+  live array typing, capture identity/ownership and a standard checked body. Its invariant
+  carries caller conformance, origin framing, capture slots and receiver typing. Live
+  elements are extracted afresh and survive body effects by first-order transport. The
+  closureReturnEnv fixed point enforces the stable captured types measured from Sorbet
+  in clink 224; the body result type is independent of the returned array element type.
+- TypedEachControls instantiates the Integer arithmetic body and a hidden nil caller
+  slot, and rejects changed capture types. IteratorFrameControls additionally proves
+  parameter shadowing and captured-write retention through both pops. All new proofs
+  ride Controls.All. No runtime, judgment, checker, emitter or floor change (86/90).
+- Native dispatch/source composition remains before 091: the loop theorem starts with
+  an active iterator, and its initial caller StateOk includes the retained iterator frame.
+- Full quiet gate GREEN, including CRuby agreement; metatheory and standard-axiom audit
+  pass. No new axioms, resource-limit increases or proof builds over five minutes.

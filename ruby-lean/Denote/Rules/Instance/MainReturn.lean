@@ -9,15 +9,17 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
-theorem restore_main_state_of_metadata {κ κb : Ctx} {Γ Γb Γout : Env} {I Ib : Ty} {m n : Machine}
+/-- Restore a caller at an explicit activation stack. The body heap/world are
+retained; metadata, framing and the complete caller environment are proved separately. -/
+theorem restore_main_state_atStack {κ κb : Ctx} {Γ Γb Γout : Env} {I Ib : Ty} {m n : Machine} {s : List FrameId}
     (hm : StateOk κ Γ I m) (ht : ReframeFO (returnScopeCtx κ κb) I) (ha : κ.asms = [])
     (hr : κ.scope.runtimeMain = true) (hw : κb.pos.mainWorld = true)
     (hcl : κ.scope.runtimeClass = none)
     (hk : ∀ x, constGet? κb x = constGet? (returnScopeCtx κ κb) x)
-    (hp : Framed m (popMethodFrame n))
-    (hpop : savedFrame (popMethodFrame n).currentFrame = savedFrame m.currentFrame)
-    (he : EnvOk Γout (popMethodFrame n)) (hphase : n.preludeMode = false)
-    (hn : StateOk κb Γb Ib n) : StateOk (returnScopeCtx κ κb) Γout I (popMethodFrame n) := by
+    (hp : Framed m ({ n with stack := s } : Machine))
+    (hpop : savedFrame ({ n with stack := s } : Machine).currentFrame = savedFrame m.currentFrame)
+    (he : EnvOk Γout ({ n with stack := s } : Machine)) (hphase : n.preludeMode = false)
+    (hn : StateOk κb Γb Ib n) : StateOk (returnScopeCtx κ κb) Γout I ({ n with stack := s } : Machine) := by
   have hself := congrArg RubyCore.Frame.self hpop
   have hblock := congrArg RubyCore.Frame.blk hpop
   have howner := congrArg RubyCore.Frame.defmod hpop
@@ -26,19 +28,19 @@ theorem restore_main_state_of_metadata {κ κb : Ctx} {Γ Γb Γout : Env} {I Ib
   simp only [savedFrame] at hself hblock howner hcref hcap
   have old := hm.runtime hr
   have site : MainSite κb n.heap := hn.mainSite hw
-  have ready : MainReady (popMethodFrame n) := MainReady.of_view (m := popMethodFrame n) site.ready
+  have ready : MainReady ({ n with stack := s } : Machine) :=
+    MainReady.of_view (m := { n with stack := s }) site.ready
     (hself.trans old.self) (howner.trans old.owner) (hcref.trans old.cref)
     (hcap.trans old.captured) hphase
-  have hscope : ConstScopeOk (popMethodFrame n) := by
+  have hscope : ConstScopeOk ({ n with stack := s } : Machine) := by
     intro x
-    have he : constResolveAt (popMethodFrame n) x = mainConstResolve n.heap x := by
+    have he : constResolveAt ({ n with stack := s } : Machine) x = mainConstResolve n.heap x := by
       simp only [constResolveAt, ready.cref, ready.owner, List.firstM, mainConstResolve]
-      simp only [popMethodFrame]
       cases constOwn n.heap Boot.objectId x <;> rfl
     exact he.trans (site.constants x)
   have hden (τ : Ty) (ht : FirstOrder τ = true) (v : Value) :
-      denM τ n v → denM τ (popMethodFrame n) v :=
-    (denM_heap_only (m₁ := n) (m₂ := popMethodFrame n) ht rfl).mp
+      denM τ n v → denM τ ({ n with stack := s } : Machine) v :=
+    (denM_heap_only (m₁ := n) (m₂ := { n with stack := s }) ht rfl).mp
   refine {
     runtime := fun _ => ready
     mainSite := fun _ => site
@@ -98,29 +100,41 @@ theorem restore_main_state_of_metadata {κ κb : Ctx} {Γ Γb Γout : Env} {I Ib
     nilQuery := hn.nilQuery
     selfLive := fun o ho => Nat.lt_of_lt_of_le (hm.selfLive o (by rwa [hself] at ho)) hp.fields.size }
   · exact hp.frameOk_saved hm.frame hpop
-  · change BlockTyOk κ.blockTy (popMethodFrame n)
+  · change BlockTyOk κ.blockTy ({ n with stack := s } : Machine)
     cases hb : κ.blockTy with
     | none => simpa only [BlockTyOk, hb, hblock] using hm.blockTy
     | some τ =>
       obtain ⟨v, hv, hd⟩ := (show ∃ v, m.currentFrame.blk = some v ∧ denM τ m v by
         simpa only [BlockTyOk, hb] using hm.blockTy)
       exact ⟨v, by rw [hblock]; exact hv, hp.firstOrder τ (ht.block τ hb) v hd⟩
-  · change SelfTyOk κ.selfTy (popMethodFrame n)
+  · change SelfTyOk κ.selfTy ({ n with stack := s } : Machine)
     cases hs : κ.selfTy with
     | none => trivial
     | some τ =>
-      change denM τ (popMethodFrame n) (popMethodFrame n).currentFrame.self
+      change denM τ ({ n with stack := s } : Machine) ({ n with stack := s } : Machine).currentFrame.self
       rw [hself]
       exact hp.firstOrder τ (ht.self τ hs) _ (by simpa only [SelfTyOk, hs] using hm.selfTy)
   · intro x τ hx
     obtain ⟨v, hv, hd⟩ := hn.consts x τ (by rwa [hk])
     exact ⟨v, (hscope x).trans ((hn.constScope x).symm.trans hv), hden τ (ht.consts x τ hx) v hd⟩
   · intro name hb k hmem owner md hl
-    change k ∈ classOf (popMethodFrame n).heap (popMethodFrame n).currentFrame.self :: _ at hmem
+    change k ∈ classOf ({ n with stack := s } : Machine).heap ({ n with stack := s } : Machine).currentFrame.self :: _ at hmem
     rcases List.mem_cons.mp hmem with he | he
     · subst k
       exact site.names name hb owner md (by rwa [ready.self] at hl)
     · exact hn.nameFree name hb k (List.mem_cons_of_mem _ he) owner md hl
+
+
+theorem restore_main_state_of_metadata {κ κb : Ctx} {Γ Γb Γout : Env} {I Ib : Ty} {m n : Machine}
+    (hm : StateOk κ Γ I m) (ht : ReframeFO (returnScopeCtx κ κb) I) (ha : κ.asms = [])
+    (hr : κ.scope.runtimeMain = true) (hw : κb.pos.mainWorld = true)
+    (hcl : κ.scope.runtimeClass = none)
+    (hk : ∀ x, constGet? κb x = constGet? (returnScopeCtx κ κb) x)
+    (hp : Framed m (popMethodFrame n))
+    (hpop : savedFrame (popMethodFrame n).currentFrame = savedFrame m.currentFrame)
+    (he : EnvOk Γout (popMethodFrame n)) (hphase : n.preludeMode = false)
+    (hn : StateOk κb Γb Ib n) : StateOk (returnScopeCtx κ κb) Γout I (popMethodFrame n) :=
+  restore_main_state_atStack (s := n.stack.tail) hm ht ha hr hw hcl hk hp hpop he hphase hn
 
 /-- Ordinary calls recover their original frame and environment. -/
 theorem restore_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Machine}
@@ -150,5 +164,6 @@ theorem instance_pop_main_state {κ : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mac
 
 #print axioms restore_main_state
 #print axioms restore_main_state_of_metadata
+#print axioms restore_main_state_atStack
 #print axioms instance_pop_main_state
 end Ratchet.Denote.Typed

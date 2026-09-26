@@ -6,10 +6,11 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
-theorem closure_bound_unshadowed {m n : Machine} {f : RubyCore.Frame}
-    (hl : FrameInRange m) (hu : RootUncaptured m) (hc : f.captured = some (m.stack.headD 0))
+theorem closure_bound_unshadowed_at {m n : Machine} {f : RubyCore.Frame} {root : FrameId}
+    (hl : root < m.frames.size) (hu : (m.frames.getD root default).captured = none)
+    (hc : f.captured = some root)
     (h : Framed (pushMethodFrame m f) n) (x : String)
-    (hf : f.locals.any (·.1 == x) = false) (hx : frameBinds m (m.stack.headD 0) x = true) :
+    (hf : f.locals.any (·.1 == x) = false) (hx : frameBinds m root x = true) :
     frameBinds n (n.stack.headD 0) x = false := by
   let b := pushMethodFrame m f
   have hget (i : FrameId) (hi : i < m.frames.size) :
@@ -21,15 +22,22 @@ theorem closure_bound_unshadowed {m n : Machine} {f : RubyCore.Frame}
     apply CaptureLive.frame (by simp [b, pushMethodFrame])
     change CaptureLive b (b.frames.getD m.frames.size default).captured
     rw [hhead, hc]
-    exact CaptureLive.pushFrame (.frame hl.2 (hu ▸ .none)) f
+    exact CaptureLive.pushFrame (.frame hl (hu ▸ .none)) f
   apply h.frames.owners.unshadowed hlive h.stack x (fuel := 1) (by simp [pushMethodFrame])
   change Machine.setLocal.owner b x m.frames.size m.frames.size 2 ≠ m.frames.size
   rw [Machine.setLocal.owner, hhead]
   simp only [hf, Bool.false_eq_true, if_false, hc]
-  rw [Machine.setLocal.owner, hget _ hl.2]
-  change (if frameBinds m (m.stack.headD 0) x then m.stack.headD 0 else _) ≠ m.frames.size
+  rw [Machine.setLocal.owner, hget _ hl]
+  change (if frameBinds m root x then root else _) ≠ m.frames.size
   rw [hx]
-  exact Nat.ne_of_lt hl.2
+  exact Nat.ne_of_lt hl
+
+theorem closure_bound_unshadowed {m n : Machine} {f : RubyCore.Frame}
+    (hl : FrameInRange m) (hu : RootUncaptured m) (hc : f.captured = some (m.stack.headD 0))
+    (h : Framed (pushMethodFrame m f) n) (x : String)
+    (hf : f.locals.any (·.1 == x) = false) (hx : frameBinds m (m.stack.headD 0) x = true) :
+    frameBinds n (n.stack.headD 0) x = false :=
+  closure_bound_unshadowed_at hl.2 hu hc h x hf hx
 
 theorem closure_bound_read {m n : Machine} {f : RubyCore.Frame}
     (hl : FrameInRange m) (hu : RootUncaptured m) (hc : f.captured = some (m.stack.headD 0))

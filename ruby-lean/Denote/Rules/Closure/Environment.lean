@@ -65,18 +65,18 @@ private theorem local_bindings (m : Machine) (ls : List String) :
 
 /-- Complete binding needs type transport across the frame push, not a blanket ban on
 closure values. Captured absence and non-alias binding remain separate obligations. -/
-theorem requiredClosureFrame_envOk_of_transport {m : Machine} {cl : Closure} {ps : List SigParam}
-    {args : List Value} {cap : Env} (hargs : DenAll (ps.map (·.2)) m args)
+theorem requiredClosureFrame_envOk_from {source m : Machine} {cl : Closure} {ps : List SigParam}
+    {args : List Value} {cap : Env} (hargs : DenAll (ps.map (·.2)) source args)
     (hlive : CaptureLive m cl.captured)
-    (hcap : ∀ x τ, envGet? cap x = some τ → denM τ m (closLocal m cl x))
+    (hcap : ∀ x τ, envGet? cap x = some τ → denM τ source (closLocal m cl x))
     (habs : ∀ x, envGet? cap x = none → closLocal m cl x = .nil)
     (htypes : ∀ p ∈ ps ++ blockLocals cl.locals ++ cap, isAliasTy p.2 = false)
-    (hmove : ∀ p ∈ ps ++ blockLocals cl.locals ++ cap, ∀ v, denM p.2 m v →
+    (hmove : ∀ p ∈ ps ++ blockLocals cl.locals ++ cap, ∀ v, denM p.2 source v →
       denM p.2 (pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) v) :
     EnvOk (ps ++ blockLocals cl.locals ++ cap)
       (pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) := by
   let n := pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)
-  have hb := (parameter_bindings hargs).append (local_bindings m cl.locals)
+  have hb := (parameter_bindings hargs).append (local_bindings source cl.locals)
   have hread (x : String) : n.getLocal x =
       (((((ps.map (·.1)).zip args) ++ cl.locals.map (fun y => (y, Value.nil))).find?
         (·.1 == x)).map (·.2)).getD (closLocal m cl x) := by
@@ -98,6 +98,19 @@ theorem requiredClosureFrame_envOk_of_transport {m : Machine} {cl : Closure} {ps
     rw [hread]
     exact binding_absent hb habs hx
 
+/-- Ordinary closure calls use the active caller as their value-typing source. -/
+theorem requiredClosureFrame_envOk_of_transport {m : Machine} {cl : Closure} {ps : List SigParam}
+    {args : List Value} {cap : Env} (hargs : DenAll (ps.map (·.2)) m args)
+    (hlive : CaptureLive m cl.captured)
+    (hcap : ∀ x τ, envGet? cap x = some τ → denM τ m (closLocal m cl x))
+    (habs : ∀ x, envGet? cap x = none → closLocal m cl x = .nil)
+    (htypes : ∀ p ∈ ps ++ blockLocals cl.locals ++ cap, isAliasTy p.2 = false)
+    (hmove : ∀ p ∈ ps ++ blockLocals cl.locals ++ cap, ∀ v, denM p.2 m v →
+      denM p.2 (pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) v) :
+    EnvOk (ps ++ blockLocals cl.locals ++ cap)
+      (pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) :=
+  requiredClosureFrame_envOk_from hargs hlive hcap habs htypes hmove
+
 /-- First-order captures discharge transport using the unchanged heap. -/
 theorem requiredClosureFrame_envOk {m : Machine} {cl : Closure} {ps : List SigParam}
     {args : List Value} {cap : Env} (hargs : DenAll (ps.map (·.2)) m args)
@@ -115,5 +128,6 @@ theorem requiredClosureFrame_envOk {m : Machine} {cl : Closure} {ps : List SigPa
       (htypes p hp).1 rfl).mp hv)
 
 #print axioms requiredClosureFrame_envOk_of_transport
+#print axioms requiredClosureFrame_envOk_from
 #print axioms requiredClosureFrame_envOk
 end Ratchet.Denote.Typed

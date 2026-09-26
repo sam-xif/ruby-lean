@@ -110,6 +110,10 @@ admitting 089/090 through the same rule. Next: attached iterator blocks (091). S
 Clink 224 / model L273 fixes Array#each's stale element snapshot (§F53). Iterator proofs
 now project captured writes past its inert activation and use fuel induction over the live
 array cursor. Body-entry/return invariants and native source dispatch remain before 091.
+Clink 225 derives that loop contract from a checked body and ordinary caller StateOk.
+Entry captures below the iterator; return restores full caller conformance after both
+pops, preserving hidden parameter names and captured writes. A fixed outgoing environment
+keeps caller types stable across iterations. Native dispatch/source composition remain.
 
 ## Layout
 

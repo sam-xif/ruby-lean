@@ -1,4 +1,4 @@
-# Current resume point (2026-09-26, clink 224 / model L273)
+# Current resume point (2026-09-26, clink 225 / model L273)
 
 Latest admissions: 089 and 090. Fragment 86, checker reach 90,
 75 registered rules (40 expressions + 35 companions), 65 worked theorems, no exemptions.
@@ -12,20 +12,37 @@ result despite a String body, captured type changes rejected. Zero parameters ar
 and a second parameter is NilClass. The one-required-parameter semantic pilot is in
 Rules/Iterator/Each; no new judgment/checker admission is claimed.
 
+Clink 225 discharges the loop contract in Iterator.TypedEach. typed_each_step consumes
+caller StateOk at popMethodFrame m, live array denotation, current capture, CaptureSlots,
+activation-stable/nonalias entry types, stable outgoing types, and a checked body. The
+closureReturnEnv fixed point enforces Sorbet's stable captured types. The body result is
+discarded; the original array is returned. First-order elements survive arbitrary certified
+body effects, including live payload growth. Iterator.Entry proves full block StateOk;
+ReadReturn/ReturnEnv/ReturnState restore full caller state after both pops, including hidden
+parameter values, captured writes, fresh body locals and alias erasure. Escapes preserve
+caller framing without requiring a value-state postcondition. Controls instantiate the
+Integer arithmetic body and a hidden nil caller slot, and reject changed capture types.
+
+Next: establish typed_each_step's initial caller/receiver facts from the actual native
+each dispatch, then compose receiver evaluation and attached-block reification. Native
+lookup-miss readiness must be guarded in StateOk before source/checker admission. Merely
+knowing an Array payload does not exclude a user override. An initial pushed iterator
+leaves an extra frame in the store even after pop; StateOk/denotation transport must account
+for it. No StateOk is required or valid in general on the inert iterator itself.
+
 §F53 exposed a model defect before rule admission: each snapshotted its arguments. L273
 adds IterKind.arrayEach o index and reads the live payload/length after every yield.
 Append/removal/replacement, nested loops and block exits agree in focused replay. Other
 native iterator families are unchanged; check their fidelity before reusing this proof.
 EachArrayContract carries an explicit live receiver/cursor invariant P. eachArrayStep_spec
 uses fuel induction through actual blkFrameK/iterK/frameK, permitting unbounded growth.
-Its body entry, invariant restoration and caller conformance premises remain to discharge.
+Clink 225 derives its body entry, invariant restoration and caller conformance premises.
 Iterator.FrameReturn supplies caller Framed/metadata after both pops. Do not impose
 Framed on the intermediate iterator activation: IteratorFrameControls refutes its isolation
 clause with an ordinary captured write. The relevant caller is popMethodFrame m, with the
 iterator frame retained in the store; its id need not be fresh on later iterations.
-Next: entry StateOk at a block capturing the caller below the iterator, shadow-aware
-caller EnvOk after both pops, native lookup-miss readiness for Array#each, then source
-composition and registry/checker/emitter integration. Current formal loop uses one required
+Next: native lookup-miss readiness for Array#each, source composition and
+registry/checker/emitter integration. Current formal loop uses one required
 parameter; Sorbet's zero/additional parameter shapes need binding proofs too.
 
 Clink 223 generalizes callClosure_required to both modes: exact required arity prevents
