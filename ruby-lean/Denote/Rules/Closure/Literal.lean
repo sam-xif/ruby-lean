@@ -1,4 +1,4 @@
-import Denote.Sem.Closure.Reify
+import Denote.Sem.Closure.Value
 import Denote.Judgment.Context
 
 /-! Actual lambda/proc literal execution. The absence premise is consumed at lookup,
@@ -68,6 +68,21 @@ theorem closure_literal_result {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     StateOk_deliverA (reified_state hm _ _ _ _), ?_, reified_payload m _ _ _ _⟩
   exact (Framed.of_ext (reified_ext hm _ _ _ _)).trans (Framed_reCtl _ _ _)
 
+/-- Sorbet 0.6.13405 infers T.proc.returns(Integer) for lambda { 1 } (clink 200).
+This semantic value contract additionally retains exact code and live capture types;
+call safety still requires its own body/activation/return proof. -/
+theorem SemSafeCtxA.closureLiteral {κ : Ctx} {Γ : Env} {I : Ty} (code : ClosureCode)
+    (hf : nameFreeN κ (if code.lam then "lambda" else "proc") = true) :
+    SemSafeCtxA κ Γ I (.send none (if code.lam then "lambda" else "proc") []
+      (some (.block code.params code.locals code.body)))
+      (.clos code (envToSpine Γ) (κ.selfTy.getD .never)) κ Γ I := by
+  apply SemSafeCtxA.leaf
+  intro m hm
+  exact ⟨_, _, closure_literal_step hm code.lam hf code.params code.locals code.body,
+    Framed.of_ext (reified_ext hm _ _ _ _), reified_den hm code,
+    fun _ _ => reified_state hm _ _ _ _⟩
+
+#print axioms SemSafeCtxA.closureLiteral
 #print axioms closure_literal_step
 #print axioms closure_literal_result
 

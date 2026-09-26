@@ -66,11 +66,10 @@ two locals hold **the same object** (`Value` equality — see `EnvOk` on why not
 object is in `τ`. That is the first time the alias has had a meaning outside the checker's
 own bookkeeping, and it is what a proof of `Judge.narrowEnvs`' soundness will have to consume.
 
-**`ClosuresOk` closes `Denote/Ty/Den.lean`'s stated `idx` gap.** `Ty.clos idx` indexes
-`Ctx.closures`, a table of `Ratchet.Expr` block literals; a live Proc holds a
-`RubyCore.Closure`. With `toRuby` (`Denote/Sem/Core/Trans.lean`) those are comparable, so
-`closTblOk` can say what `denM`'s `clos` arm could not: this Proc *is* the block literal the
-type names.
+**Callable code lives in the value type.** `Ty.clos` carries `ClosureCode`, and denM
+compares it with the real Proc's parameters, block locals, body and lambda/proc mode.
+The legacy `closTblOk` predicate and vacuous `ClosuresOk` do not supply that evidence;
+§F49 records why they cannot justify a callable rule.
 -/
 
 set_option autoImplicit false
@@ -175,13 +174,9 @@ def SelfSpineOk (I : Ty) (m : Machine) (closed : Bool := true) : Prop :=
   denSpine I m (ivarOf m.heap m.currentFrame.self) ∧
   ∀ x, ivarGet? I x = none → closed = true → ivarOf m.heap m.currentFrame.self x = .nil
 
-/-- A `Ty.clos` really names *this* Proc: the heap closure's parameters and body are the
-translation of the table entry `idx` points at.
-
-The captured environment and creation `self` are **not** compared here — `denM`'s `clos` arm
-already does that (`closLocal`/`closSelf`), and the split is the one `Ty.clos`'s docstring
-draws: the *table* holds `(params, body)`, which two syntactically identical blocks share, and
-the *type* holds the environment, which they do not. -/
+/-- Legacy table predicate, unused by admission and retained for F49's counterexample.
+It checks only translated params/body, omitting block locals and lambda/proc mode.
+The live Ty.clos denotation uses ClosureMatches instead. -/
 def closTblOk (K : ClosTable) (idx : Nat) (m : Machine) (f : Value) : Prop :=
   ∃ c cl, closGet? K idx = some c ∧ procClosure? m.heap f = some cl ∧
     cl.params = toRubyParams c.params ∧ cl.body = toRuby c.body
@@ -269,10 +264,8 @@ def BlockTyOk (β? : Option Ty) (m : Machine) : Prop :=
   | none => m.currentFrame.blk = none
   | some β => ∃ b, m.currentFrame.blk = some b ∧ denM β m b
 
-/-- Every closure in the whole-program table is a real block literal of the program. Vacuous
-as stated — the table is syntax, and its *use* is `closTblOk`, applied where a `Ty.clos`
-appears. Kept as a named component so `StateOk` has one field per `Ctx` field and a future
-clink that needs a table invariant has somewhere to put it. -/
+/-- Legacy syntax-table slot, with no semantic constraint. Code identity is now part
+of denM's clos arm; no callable rule may derive evidence from this True component. -/
 def ClosuresOk (_K : ClosTable) (_m : Machine) : Prop := True
 
 /-- `"::LIMIT"` -> `"LIMIT"`: `Ctx.consts` is keyed by absolute path, the heap's toplevel

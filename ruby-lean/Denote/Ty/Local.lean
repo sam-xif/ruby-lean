@@ -519,8 +519,8 @@ theorem denM_setLocal_aux {m : Machine} {x : String} {w : Value} {τ' : Ty}
     refine ⟨fun hs f h => ?_, fun _ _ _ _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     rw [capStale, Bool.or_eq_false_iff] at hs
-    obtain ⟨cl, hpc, hspine, hself⟩ := h
-    refine ⟨cl, hpc, ?_, ?_⟩
+    obtain ⟨cl, hpc, hcode, hspine, hself⟩ := h
+    refine ⟨cl, hpc, hcode, ?_, ?_⟩
     · exact ihcap.2 hs.1 _ _ _ (fun y => closLocal_setLocal m x w cl y) hspine
     · rcases hself with h1 | h1
       · exact Or.inl h1

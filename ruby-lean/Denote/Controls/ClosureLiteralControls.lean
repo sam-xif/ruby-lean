@@ -16,12 +16,14 @@ example (hb : bootOkB = true) (lam : Bool) (ps : List Ratchet.Param)
         some (reifiedClosure bootMachine (toRubyParams ps) ls (toRuby body) lam) :=
   closure_literal_result (stateOk_boot hb) lam (by cases lam <;> rfl) ps ls body
 
-/-- Every index denotes the same empty-capture Proc, regardless of the actual body. -/
+/-- The superseded empty-capture denotation, retained to keep F49's witness explicit. -/
+def LegacyIndexDen (_idx : Nat) (m : Machine) (f : Value) : Prop :=
+  ∃ cl, procClosure? m.heap f = some cl
+
 theorem reified_unindexed (idx : Nat) (m : Machine) (ps : List RubyCore.Param)
     (ls : List String) (body : RubyCore.Expr) (lam : Bool) :
-    denM (.clos idx .ivar0 .never) (reifiedMachine m ps ls body lam) (.ref m.heap.objs.size) := by
-  rw [denM]
-  exact ⟨_, reified_payload m ps ls body lam, by simp [denSpineFrom], Or.inl rfl⟩
+    LegacyIndexDen idx (reifiedMachine m ps ls body lam) (.ref m.heap.objs.size) :=
+  ⟨_, reified_payload m ps ls body lam⟩
 
 theorem wrong_body_not_table (m : Machine) (body : RubyCore.Expr) (hb : body ≠ .int 1) :
     ¬ closTblOk [⟨[], .int 1⟩] 0 (reifiedMachine m [] [] body true) (.ref m.heap.objs.size) := by
@@ -53,10 +55,14 @@ private def callReified (ps : List RubyCore.Param) (ls : List String)
 
 -- Same parameter/body/capture types: a block-local shadows the captured Integer with nil.
 private def plusX : RubyCore.Expr := .send (some (.var .lvar "x")) "+" [.int 1] none
-#guard [[], ["x"]].all fun ls =>
-  closB (.clos 0 (.ivarCons "x" .int .ivar0) .never)
-    (reifiedMachine (bootMachine.setLocal "x" (.int 1)) [] ls plusX true)
-    (.ref bootMachine.heap.objs.size)
+private def plusCode : ClosureCode :=
+  ⟨[], [], .send (some (.var .lvar "x")) "+" [.int 1] none, true, rfl⟩
+#guard closB (.clos plusCode (.ivarCons "x" .int .ivar0) .never)
+  (reifiedMachine (bootMachine.setLocal "x" (.int 1)) [] [] plusX true)
+  (.ref bootMachine.heap.objs.size)
+#guard !closB (.clos plusCode (.ivarCons "x" .int .ivar0) .never)
+  (reifiedMachine (bootMachine.setLocal "x" (.int 1)) [] ["x"] plusX true)
+  (.ref bootMachine.heap.objs.size)
 #guard match callReified [] [] plusX true (bootMachine.setLocal "x" (.int 1)) with
   | .value (.int 2) _ => true
   | _ => false

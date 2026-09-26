@@ -2701,17 +2701,20 @@ the parentless module head has no methods. Full module-body entry now derives al
 
 ## F49 — legacy closure predicates do not justify callable admission (2026-09-25)
 
-**Open; outside the admitted judgment.** denM(.clos idx cap self) drops idx and
-ClosuresOk is True, despite State.lean's historical introduction claiming it closes that
-gap. ClosureLiteralControls.reified_unindexed proves that any code inhabits every index
-with an empty capture spine; wrong_body_not_table proves the missing code relation.
-reified_table shows that even closTblOk omits lambda mode and block locals. Runtime
-controls distinguish missing-argument lambda/proc calls and show a block-local replacing
-an otherwise well-typed captured Integer with nil. CRuby reproduces both distinctions.
+**Code identity fixed by clink 201; activation/return remain open, outside admission.**
+The former denM(.clos idx cap self) dropped idx and ClosuresOk was True. Clink 200's
+reified_unindexed witness survives under the explicit LegacyIndexDen predicate.
+wrong_body_not_table records the missing code relation; reified_table shows that even
+closTblOk omitted lambda mode and block locals. CRuby and model controls distinguish
+missing-argument lambda/proc calls and nil shadowing by a block-local.
 
-Clink 200's literal result retains the complete real Closure, including params, locals,
-body, captured frame, return home and lambda mode, with full StateOk and Framed. A callable
-value contract must retain the relevant facts through binding/evaluation before a body
-proof can justify a call. Captured writes also need a return contract: FramePres.isolated
-explicitly does not promise isolation for a captured activation. No unsafe program is
-accepted and no callable rule is registered on the old predicates.
+Ty.clos now carries ClosureCode and denM/closB require ClosureMatches: translated params,
+locals, body and mode. Reflexive-comparison evidence makes the conservative code comparator
+lawful. The full captured environment and creation self are retained; allocation, local
+writes and control changes preserve code identity. Semantic literal creation and assignment
+are proved at this type. Wrong code/params/locals/mode fail the new controls.
+
+This does not yet justify calling the value. Captured activation needs liveness, lexical
+scope and return-home facts; return must account for captured writes. Framed.firstOrder
+excludes clos and does not preserve a saved Proc's code/captures across argument evaluation.
+No unsafe program is accepted and no callable rule is registered on the legacy predicates.

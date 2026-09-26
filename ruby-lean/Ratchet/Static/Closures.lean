@@ -3,8 +3,9 @@ import Ratchet.Static.ExprEq
 /-!
 # `Ratchet/Static/Closures.lean`
 
-Tier 9's **block table**: `Clos`/`ClosTable` and `collectBlocks`. What `Ty.clos`'s index
-refers to, which is why a callable's type is a reference rather than an arrow.
+Legacy block table: `Clos`/`ClosTable` and `collectBlocks`. Retained in Scope and for
+F49's counterexample; Ty.clos now carries ClosureCode directly. The design notes below
+describe the superseded index representation, not current callable admission.
 -/
 
 namespace Ratchet

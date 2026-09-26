@@ -41,7 +41,9 @@ checked over complete domains, admitting 078/081/086. Clink 198 admits 080 throu
 implicit singleton dispatch, preserving bare/parenthesized call sites and the full caller.
 Clink 199 certifies Integer `>` with actual builtin dispatch, admitting 084.
 Clink 200 proves lambda/proc literal creation with full conformance and exact captured
-metadata. Callable admission still needs code identity, activation and return (§F49).
+metadata. Clink 201 puts exact code, block locals and mode in Ty.clos and proves
+creation/assignment at that type. Callable admission still needs captured activation,
+return and saved-receiver preservation (§F49).
 Next: 087, zero-argument lambda creation/call. See HANDOFF.
 
 ## Layout

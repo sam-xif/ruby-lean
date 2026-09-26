@@ -1,6 +1,6 @@
-# Current resume point (2026-09-25, clink 200)
+# Current resume point (2026-09-25, clink 201)
 
-084 is newly admitted through validateD: fragment 81, checker reach 86,
+Latest admission remains 084: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
 The prefix remains 17; 018 is correctly rejected. Next frontier: 087-lambda-zero-arity,
 `f = lambda { 1 }; f.call`. The emitter currently declines block arguments.
@@ -11,16 +11,30 @@ reads and creation self. Rules/Closure/Literal consumes name freedom at real loo
 proves the source step, exact result metadata and all-fuel creation safety. Both files
 ride the gate through ClosureLiteralControls. No callable judgment is admitted yet.
 
-Next: connect code identity and capture metadata to a callable value contract, then
-prove callClosure activation/body/return. The old denM(.clos idx ...) drops idx;
-ClosuresOk is True; closTblOk is unused and omits lambda mode and block locals (§F49).
-The controls prove these omissions and exercise arity, local shadowing, changed captures
-and a shadowed lambda selector. Do not infer body identity from the old denotation.
-FramePres.isolated applies only to uncaptured activations, so closure return must also
-account for writes through the captured frame rather than assume caller isolation.
+Clink 201 replaces Ty.clos's unused index with ClosureCode: exact supported params,
+block locals, body and lambda mode. Ratchet/Lang/ExprEq is the old structural comparator
+moved below Ty, with its soundness proofs. ClosureCode stores reflexive-comparison evidence,
+so its BEq/DecidableEq are lawful despite conservative syntax coverage. The syntax bridge's
+comparator proves ClosureMatches about the real payload; denM and closB now require it.
+Existing allocation/local/control transports preserve it. Sem/Closure/Value proves full
+EnvOk capture (including shadowed bindings) and reified_den; SemSafeCtxA.closureLiteral
+returns the code-bearing type, and ClosureValueControls.stored_literal composes ordinary
+assignment. No DJudge rule, emitter change or callable admission yet.
+
+Next: prove callClosure's captured activation/body/return contract. Capture frame liveness,
+lexical scope and return-home facts need explicit obligations; code identity alone does not
+establish them. EnvOk.capture is one-way: its lower-bound spine does not supply
+EnvOk's absence clause for unmentioned names. Framed.firstOrder excludes clos, and FieldsPres carries only first-order
+ivar facts, so transporting a saved Proc across argument evaluation also needs a contract.
+FramePres.isolated applies only to uncaptured activations; do not assume caller isolation.
+The unused ClosuresOk/closTblOk table machinery remains legacy, with F49's counterexamples
+retained explicitly. The old index-free denotation is now named LegacyIndexDen in controls.
+
 Sorbet 0.6.13405 infers T.proc.returns(Integer) for lambda { 1 }, rejects an extra call
 argument, but accepts the changed-capture TypeError probe. CRuby agrees with the model
-on that probe and on the arity/block-local distinctions.
+on that probe and on the arity/block-local distinctions. Controls now reject wrong code,
+params, locals and mode; same-type capture writes preserve typing and changed-type writes
+invalidate it. Type examples explicitly use RubyCore.Expr now that Ty imports Ratchet.Expr.
 
 DPrim.intGt checks Integer > Integer at Boolean. primitiveMethods now pins Integer#>
 in StateOk; the proof uses real dispatch and preserves the full machine contract.
@@ -108,7 +122,7 @@ calls consume exact context/code artifacts. Inherited singletons remain open, an
 self.new still has only its semantic proof. Nominal conversion only forgets information;
 it cannot recover exact receivers or initialized fields from a nominal annotation.
 
-See clinks 177–200 and AGENTS.md. Older text below is historical.
+See clinks 177–201 and AGENTS.md. Older text below is historical.
 
 # ratchet — hand-off note (2026-09-10)
 

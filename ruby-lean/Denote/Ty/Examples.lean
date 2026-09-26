@@ -29,19 +29,19 @@ def fuel : Nat := 200000
 
 /-- Run `p`, then ask the denotation about the result. `none` when the program did not
 produce a value at all (which every example here does). -/
-def denAfter (p : Expr) (τ : Ty) : Option Bool :=
+def denAfter (p : RubyCore.Expr) (τ : Ty) : Option Bool :=
   match Semantics.run fuel p with
   | .value v m => some (denB τ m.heap v)
   | _ => none
 
 /-- The same, for the machine-indexed `clos` arm. -/
-def closAfter (p : Expr) (κ : Ty) : Option Bool :=
+def closAfter (p : RubyCore.Expr) (κ : Ty) : Option Bool :=
   match Semantics.run fuel p with
   | .value v m => some (closB κ m v)
   | _ => none
 
 /-- The same, for a bounded arrow check. -/
-def arrowAfter (p : Expr) (ps : List Ty) (r : Ty) (samples : List (List Value)) :
+def arrowAfter (p : RubyCore.Expr) (ps : List Ty) (r : Ty) (samples : List (List Value)) :
     Option Bool :=
   match Semantics.run fuel p with
   | .value v m => some (arrowCheck fuel ps r m v samples)
@@ -50,9 +50,9 @@ def arrowAfter (p : Expr) (ps : List Ty) (r : Ty) (samples : List (List Value)) 
 /-! ## Immediates and the nominal core -/
 
 /-- `1 + 2` -/
-def pAdd : Expr := .send (some (.int 1)) "+" [.int 2] none
+def pAdd : RubyCore.Expr := .send (some (.int 1)) "+" [.int 2] none
 /-- `"a" + "b"` -/
-def pConcat : Expr := .send (some (.str "a")) "+" [.str "b"] none
+def pConcat : RubyCore.Expr := .send (some (.str "a")) "+" [.str "b"] none
 
 #guard denAfter pAdd .int == some true
 #guard denAfter pAdd .float == some false
@@ -71,11 +71,11 @@ def pConcat : Expr := .send (some (.str "a")) "+" [.str "b"] none
 /-! ## Parameterised types: looking *inside* the value -/
 
 /-- `[1, 2, 3]` -/
-def pArr : Expr := .array [.int 1, .int 2, .int 3]
+def pArr : RubyCore.Expr := .array [.int 1, .int 2, .int 3]
 /-- `[]` -/
-def pArrEmpty : Expr := .array []
+def pArrEmpty : RubyCore.Expr := .array []
 /-- `[1, "a"]` -/
-def pArrMixed : Expr := .array [.int 1, .str "a"]
+def pArrMixed : RubyCore.Expr := .array [.int 1, .str "a"]
 
 #guard denAfter pArr (.arrayOf .int) == some true
 #guard denAfter pArr (.arrayOf .float) == some false
@@ -91,7 +91,7 @@ def pArrMixed : Expr := .array [.int 1, .str "a"]
 table read by a variable key (`Ty.hashOf`'s docstring). The useful fact there is "every value
 is a Float", and that is a statement about the payload, so this is a type `expectedClasses`
 could only have answered `["Hash"]` for. -/
-def pHash : Expr :=
+def pHash : RubyCore.Expr :=
   .hash [(.str "a", .flt (1.5 : Float).toBits), (.str "b", .flt (2.5 : Float).toBits)]
 
 #guard denAfter pHash (.hashOf (.cls "String") .float) == some true
@@ -101,7 +101,7 @@ def pHash : Expr :=
 /-! ## An object, and its ivar spine -/
 
 /-- `class Box; def initialize(x); @x = x; end; end; Box.new(1)` -/
-def pBox : Expr :=
+def pBox : RubyCore.Expr :=
   .seq [
     .class' "Box" none
       (.def' "initialize" [.req "x"] (.vasgn .ivar "@x" (.var .lvar "x"))),
@@ -124,17 +124,18 @@ environment is **not in the heap**. `closB` finds `x = 7` by walking `Closure.ca
 the frame array; a heap-only denotation has no way to reach it. -/
 
 /-- `x = 7; lambda { x }` -/
-def pClosCapture : Expr :=
+def pClosCapture : RubyCore.Expr :=
   .seq [
     .vasgn .lvar "x" (.int 7),
     .send none "lambda" [] (some (.block [] [] (.var .lvar "x")))]
 
 -- `.never` in `selfTy` is the "created where `self` was not typed" sentinel (top level here),
--- not the bottom type — see `Denote/Ty/Den.lean` §Two stated gaps. The index is unused.
-#guard closAfter pClosCapture (.clos 0 (.ivarCons "x" .int .ivar0) .never) == some true
-#guard closAfter pClosCapture (.clos 0 (.ivarCons "x" (.cls "String") .ivar0) .never)
+-- not the bottom type. Code identity is checked as well as the live capture.
+def captureCode : ClosureCode := ⟨[], [], .var .lvar "x", true, rfl⟩
+#guard closAfter pClosCapture (.clos captureCode (.ivarCons "x" .int .ivar0) .never) == some true
+#guard closAfter pClosCapture (.clos captureCode (.ivarCons "x" (.cls "String") .ivar0) .never)
   == some false
-#guard closAfter pClosCapture (.clos 0 .ivar0 .never) == some true
+#guard closAfter pClosCapture (.clos captureCode .ivar0 .never) == some true
 -- **A repeated key is read the way `ivarGet?` reads it: first entry wins, later ones are
 -- skipped.** Not a curiosity — `Judge.closCall` types a lambda's body in
 -- `paramEnv c.params argTys ++ spineToEnv cap`, so a parameter shadowing a captured local
@@ -144,13 +145,13 @@ def pClosCapture : Expr :=
 -- the *shadowed* entry hold too, which made `StateOk` unsatisfiable at any machine holding
 -- such a closure (`Denote/Sem/notes.md` §The tenth stall point).
 #guard closAfter pClosCapture
-  (.clos 0 (.ivarCons "x" .int (.ivarCons "x" (.cls "String") .ivar0)) .never) == some true
+  (.clos captureCode (.ivarCons "x" .int (.ivarCons "x" (.cls "String") .ivar0)) .never) == some true
 -- And the shadowed entry cannot *rescue* a wrong one: the first entry is the one that has to
 -- hold, so this is `false` even though the second entry is the true type.
 #guard closAfter pClosCapture
-  (.clos 0 (.ivarCons "x" (.cls "String") (.ivarCons "x" .int .ivar0)) .never) == some false
+  (.clos captureCode (.ivarCons "x" (.cls "String") (.ivarCons "x" .int .ivar0)) .never) == some false
 -- Not a Proc at all.
-#guard closAfter pAdd (.clos 0 .ivar0 .never) == some false
+#guard closAfter pAdd (.clos captureCode .ivar0 .never) == some false
 
 /-! ## The arrow: bounded checking
 
@@ -159,12 +160,12 @@ here: the `Integer → Integer` arrow survives every sample, and the `Integer �
 refuted by the first. -/
 
 /-- `lambda { |x| x + 1 }` -/
-def pSucc : Expr :=
+def pSucc : RubyCore.Expr :=
   .send none "lambda" []
     (some (.block [.req "x"] [] (.send (some (.var .lvar "x")) "+" [.int 1] none)))
 
 /-- `lambda { |s| s.length }` -/
-def pLength : Expr :=
+def pLength : RubyCore.Expr :=
   .send none "lambda" []
     (some (.block [.req "s"] [] (.send (some (.var .lvar "s")) "length" [] none)))
 
@@ -193,10 +194,10 @@ def report : String :=
      ("Box.new(1) : Box{@x: Integer}",
        denAfter pBox (.inst "Box" (.ivarCons "@x" .int .ivar0))),
      ("lambda{x} : clos{x: Integer}",
-       closAfter pClosCapture (.clos 0 (.ivarCons "x" .int .ivar0) .never)),
+       closAfter pClosCapture (.clos captureCode (.ivarCons "x" .int .ivar0) .never)),
      ("lambda{x} : clos{x: Integer, x: String}  [shadowed key skipped]",
        closAfter pClosCapture
-         (.clos 0 (.ivarCons "x" .int (.ivarCons "x" (.cls "String") .ivar0)) .never)),
+         (.clos captureCode (.ivarCons "x" .int (.ivarCons "x" (.cls "String") .ivar0)) .never)),
      ("lambda{|x| x+1} : (Integer) -> Integer  [bounded]",
        arrowAfter pSucc [.int] .int intSamples),
      ("lambda{|x| x+1} : (Integer) -> String   [refuted]",

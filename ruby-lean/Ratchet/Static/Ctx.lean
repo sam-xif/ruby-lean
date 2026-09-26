@@ -121,8 +121,8 @@ body entry for a reason that is about scope. -/
 structure Scope where
   /-- The definition site of the running method, or `none` outside any method body. -/
   frame : Option Frame
-  /-- Every block literal in the program, indexed by `Ty.clos`. Constant for a whole run —
-      `validate` fills it in from `collectBlocks` and nothing changes it. -/
+  /-- Legacy block table retained in scope compatibility. Ty.clos carries its code
+      directly; no callable admission may rely on this table slot alone. -/
   closures : ClosTable
   /-- The **block** the currently-executing method was called with, as a `Ty.clos`, or `none`
       if it has none (or if we are not in a method body). This is what `yield` reads: Ruby

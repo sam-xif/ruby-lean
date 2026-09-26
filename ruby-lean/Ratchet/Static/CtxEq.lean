@@ -8,27 +8,6 @@ set_option autoImplicit false
 set_option maxRecDepth 4000
 namespace Ratchet
 
-theorem paramEq_sound {a b : Param} (h : paramEq a b = true) : a = b := by
-  cases a <;> cases b <;> simp_all [paramEq]
-
-theorem paramEqAll_sound {a b : List Param} (h : paramEqAll a b = true) : a = b := by
-  induction a generalizing b with
-  | nil => cases b <;> simp_all [paramEqAll]
-  | cons a as ih =>
-    cases b with
-    | nil => cases h
-    | cons b bs =>
-      simp only [paramEqAll, Bool.and_eq_true] at h
-      rw [paramEq_sound h.1, ih h.2]
-
-theorem exprEq_sound (a b : Expr) : exprEq a b = true → a = b := by
-  induction a, b using exprEq.induct
-    (motive_2 := fun a b => exprEqPairs a b = true → a = b)
-    (motive_3 := fun a b => exprEqAll a b = true → a = b) <;>
-    simp_all [exprEq, exprEqAll, exprEqPairs, Bool.and_eq_true]
-  all_goals intros; simp_all
-  all_goals apply paramEqAll_sound; assumption
-
 def listEqB {α : Type} (eq : α → α → Bool) : List α → List α → Bool
   | [], [] => true
   | a :: as, b :: bs => eq a b && listEqB eq as bs

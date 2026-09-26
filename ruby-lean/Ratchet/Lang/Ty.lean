@@ -1,4 +1,5 @@
 import Ratchet.Lang.JsonUtil
+import Ratchet.Lang.ClosureCode
 
 /-!
 The type language, **ported from `RubyCore/Types/Ty.lean`**: the constructors
@@ -120,45 +121,13 @@ inductive Ty where
       own convention: `Expr.var .ivar "@x"`); tier 9 reuses the same two constructors for a
       closure's **captured locals**, where it does not. -/
   | ivarCons (name : String) (ty : Ty) (rest : Ty)
-  /-- **A callable value: a reference to a block literal, plus the locals it captured.**
-      Added at tier 9; this package's own constructor.
-
-      Why not `arrowOf`, which has been in this `Ty` since the port and is still unused: an
-      arrow needs its parameter types, and **Ruby writes none**. `f = lambda { |x| x + 1 }`
-      says nothing about `x`; only `f.call(2)` does, and that is a different expression,
-      possibly a different statement, possibly inside a different method. There is no
-      principal type to infer without type variables, and this `Ty` has none.
-
-      So a lambda's type is a *reference to its code*, and a call instantiates the body at
-      the call site's argument types — the same move `Judge.callDef` makes for a named
-      method, lifted to a value. `idx` indexes `Ctx.closures`, the table of every block
-      literal in the program, collected once by `collectBlocks` before checking starts. It
-      does not thread, so nothing here needs a fourth piece of state.
-
-      `captured` is a binding spine (`ivar0`/`ivarCons`) holding the **locals as of the
-      lambda's creation**, and it is in the type rather than in the table for a reason: two
-      syntactically identical blocks share a table entry — harmless, since the entry is only
-      `(params, body)` — but they need not have captured the same environment.
-      `lambda-closure-capture` and `lambda-returns-lambda` are the two rungs that turn on
-      this, the second because the inner lambda's captured `x` is the outer's *parameter*.
-
-      **`selfTy` is the third field, added at tier 11.** A closure's body sees the `self` of
-      wherever it was *created*, not of wherever it is called — so a lambda made inside a
-      `Point` method and invoked inside a `Box` method must have its body checked against the
-      `Point`. Tier 9 sidestepped that by *forbidding* creation anywhere but top level
-      (`Judge.lambdaLit` carried a `κ.selfTy = none` premise, whose docstring named this field
-      as the fix), and tier 11's cross-products are what brought it due: `xc-lambda-in-ivar`
-      and `xc-module-applies-lambda` call a top-level lambda from inside a method, which the
-      old restriction refused because it constrained the *call* site as well.
-
-      Encoded as a `Ty` rather than an `Option Ty` because a `Ty` field must be one:
-      **`.never` means "created where `self` was not typed"** (top level). `closSelf?` and
-      `closSpine` decode it — the second because an `.inst n ivars` carries the creation
-      object's instance variables, which is the spine the body must be judged against.
-
-      Not `EqSafe`, and no `PrimSig` row has it as a receiver: the only rules that consume one
-      are `Judge.closCall`'s `call`/`[]`. -/
-  | clos (idx : Nat) (captured : Ty) (selfTy : Ty)
+  /-- A callable carries exact supported code, block locals and lambda/proc mode.
+      Captured bindings remain a spine read through the real captured frame; selfTy
+      records creation self, with never as the untyped-self sentinel. The denotation
+      checks code identity directly, without a whole-program table index (clink 201).
+      Code identity does not itself establish a safe call: body, activation and return
+      obligations must still be discharged before a callable judgment is admitted. -/
+  | clos (code : ClosureCode) (captured : Ty) (selfTy : Ty)
   /-- **"this local currently holds the same object as local `name`, and that object has type
       `τ`"** — an *alias*, added at tier 12 for `narrow-union-case-when`.
 

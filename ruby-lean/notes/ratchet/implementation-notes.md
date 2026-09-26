@@ -11333,3 +11333,26 @@ both halves of what constrains them now have a name.
   Next: a callable value contract retaining code/capture facts, then activation and return.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
   pass. New proofs and controls each build in under a second; no five-minute proof.
+
+## Clink 201 (2026-09-25) — code-bearing callable values
+
+- Ty.clos carries ClosureCode instead of an unused index. denM and closB pin the real
+  closure's translated parameters, block locals, body and lambda mode. The old index-free
+  witness is retained as LegacyIndexDen; the unused syntax-table predicates remain legacy.
+- Mutual Expr/Param/KwEntry cannot derive DecidableEq or LawfulBEq in this Lean version
+  (measured). ClosureCode instead stores evidence that the existing conservative comparator
+  covers its syntax. That yields lawful BEq/DecidableEq; unsupported syntax declines.
+  ExprEq and its soundness proofs move below Ty. A cross-syntax comparator proves exact
+  translation equality; a mismatch can lose completeness, never assert different code equal.
+- Allocation, local-write and control transports preserve code identity. EnvOk.capture
+  proves the entire environment spine, including shadowed keys and stripped aliases.
+  reified_den and SemSafeCtxA.closureLiteral give the literal its code-bearing type;
+  stored_literal composes the existing assignment proof. No new DJudge or emitter policy.
+- Controls reject altered code/parameters/block locals/mode, retain same-type capture
+  writes, and invalidate changed types. Denotation examples now name their actual RubyCore
+  syntax explicitly because importing code into Ty also makes Ratchet.Expr visible.
+- Counts stay fragment 81 / checker reach 86, 61 rules, 60 worked theorems, 0 owed/exempt.
+  Next: captured activation/return and preservation of saved Proc code across arguments.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory, standard-axiom audit
+  and denotation examples pass. Comparators build in about 4s; creation/assignment proofs
+  and new controls take under a second. No individual proof reached five minutes.
