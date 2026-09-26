@@ -47,26 +47,26 @@ theorem ReframeFO.empty {κ : Ctx} {I : Ty} (hi : FirstOrder I = true)
 
 /-- Separate runtime activation obligations from unchanged-heap conformance. In
 particular, a captured frame need not have the source frame's captured field. -/
-theorem StateOk_reframe_scopes {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
-    {fr : Option Ratchet.Frame} (h : StateOk κ Γ I m) (ht : ReframeFO κ I)
+theorem StateOk_reframe_block {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
+    {fr : Option Ratchet.Frame} {β : Option Ty} (h : StateOk κ Γ I m) (ht : ReframeFO κ I)
     (ha : κ.asms = []) (hh : n.heap = m.heap)
     (hs : n.currentFrame.self = m.currentFrame.self)
-    (hb : n.currentFrame.blk = m.currentFrame.blk)
+    (hb : BlockTyOk β n)
     (hc : n.currentFrame.cref = m.currentFrame.cref)
     (hd : n.currentFrame.defmod = m.currentFrame.defmod)
     (hruntime : RuntimeOk κ n) (hclass : ClassRuntimeOk κ n)
     (hsingleton : SingletonRuntimeOk κ n)
     (hlookup : ∀ x, constGet? (κ.withFrame fr) x = constGet? κ x)
     (hr : FrameInRange n) (he : EnvOk Γ' n) (hf : FrameOk fr n) :
-    StateOk (κ.withFrame fr) Γ' I n := by
+    StateOk ((κ.withFrame fr).withBlockTy β) Γ' I n := by
   have hden (τ : Ty) (ht : FirstOrder τ = true) (v : Value) :
       denM τ m v → denM τ n v := (denM_heap_only ht hh.symm).mp
   have hresolve (x : String) : constResolveAt n x = constResolveAt m x := by
     simp only [constResolveAt, hh, hc, hd]
   have hivar : ivarOf n.heap n.currentFrame.self = ivarOf m.heap m.currentFrame.self := by
     rw [hh, hs]
-  have hfree : nameFreeN (κ.withFrame fr) = nameFreeN κ := rfl
-  have hcore : coreConstFreeN (κ.withFrame fr) = coreConstFreeN κ := rfl
+  have hfree : nameFreeN ((κ.withFrame fr).withBlockTy β) = nameFreeN κ := rfl
+  have hcore : coreConstFreeN ((κ.withFrame fr).withBlockTy β) = coreConstFreeN κ := rfl
   refine {
     runtime := hruntime
     mainSite := fun hr => by rw [hh]; exact h.mainSite hr
@@ -96,7 +96,7 @@ theorem StateOk_reframe_scopes {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine
     asms := ?_
     frame := hf
     closures := trivial
-    blockTy := ?_
+    blockTy := hb
     selfTy := ?_
     consts := ?_
     constPaths := ?_
@@ -119,14 +119,6 @@ theorem StateOk_reframe_scopes {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine
     exact ((denM_heap_only_aux I ht.spine).2 m n _ [] hh.symm).mp h.selfSpine.1
   · change AsmsOk κ.asms n
     simp [AsmsOk, ha]
-  · change BlockTyOk κ.blockTy n
-    have ho := h.blockTy
-    cases ht' : κ.blockTy with
-    | none => simpa only [BlockTyOk, ht', hb] using ho
-    | some τ =>
-      obtain ⟨v, hv, hvty⟩ := (show ∃ v, m.currentFrame.blk = some v ∧ denM τ m v by
-        simpa only [BlockTyOk, ht'] using ho)
-      exact ⟨v, hb.trans hv, hden τ (ht.block τ ht') v hvty⟩
   · change SelfTyOk κ.selfTy n
     have ho := h.selfTy
     cases ht' : κ.selfTy with
@@ -136,12 +128,40 @@ theorem StateOk_reframe_scopes {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine
       rw [hs]
       exact hden τ (ht.self τ ht') _ (by simpa only [SelfTyOk, ht'] using ho)
   · intro x τ hx
+    change constGet? (κ.withFrame fr) x = some τ at hx
     rw [hlookup] at hx
     obtain ⟨v, hv, hvty⟩ := h.consts x τ hx
     exact ⟨v, by rw [hresolve]; exact hv, hden τ (ht.consts x τ hx) v hvty⟩
   · intro owner x τ k hx hk v hv
     rw [hh] at hk hv
     exact hden τ (ht.paths _ τ hx) v (h.constPaths owner x τ k hx hk v hv)
+
+/-- The original interface transports a retained first-order block at the same heap.
+An entering method can instead use StateOk_reframe_block with independently proved
+conformance for its actual block, including an exact closure type. -/
+theorem StateOk_reframe_scopes {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
+    {fr : Option Ratchet.Frame} (h : StateOk κ Γ I m) (ht : ReframeFO κ I)
+    (ha : κ.asms = []) (hh : n.heap = m.heap)
+    (hs : n.currentFrame.self = m.currentFrame.self)
+    (hb : n.currentFrame.blk = m.currentFrame.blk)
+    (hc : n.currentFrame.cref = m.currentFrame.cref)
+    (hd : n.currentFrame.defmod = m.currentFrame.defmod)
+    (hruntime : RuntimeOk κ n) (hclass : ClassRuntimeOk κ n)
+    (hsingleton : SingletonRuntimeOk κ n)
+    (hlookup : ∀ x, constGet? (κ.withFrame fr) x = constGet? κ x)
+    (hr : FrameInRange n) (he : EnvOk Γ' n) (hf : FrameOk fr n) :
+    StateOk (κ.withFrame fr) Γ' I n := by
+  have hblock : BlockTyOk κ.blockTy n := by
+    cases ht' : κ.blockTy with
+    | none => simpa only [BlockTyOk, ht', hb] using h.blockTy
+    | some τ =>
+      obtain ⟨v, hv, hvty⟩ := (show ∃ v, m.currentFrame.blk = some v ∧ denM τ m v by
+        simpa only [BlockTyOk, ht'] using h.blockTy)
+      exact ⟨v, hb.trans hv, (denM_heap_only (ht.block τ ht') hh.symm).mp hvty⟩
+  have hctx : ((κ.withFrame fr).withBlockTy κ.blockTy) = κ.withFrame fr := by cases κ; rfl
+  rw [← hctx]
+  exact StateOk_reframe_block h ht ha hh hs hblock hc hd hruntime hclass hsingleton
+    hlookup hr he hf
 
 /-- The ordinary-frame specialization retains the previous interface. -/
 theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
@@ -168,5 +188,6 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
     exact ⟨k, e, scope.reframe hh hs hd hc hcap hphase⟩
 
 #print axioms StateOk_reframe_scopes
+#print axioms StateOk_reframe_block
 #print axioms StateOk_reframe
 end Ratchet.Denote

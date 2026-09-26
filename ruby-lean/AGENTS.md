@@ -136,6 +136,10 @@ preserves the suspended method and permits captured caller writes; typed_yield_c
 composes the checked block through actual doYield/blkFrameK. Source-yield controls prove
 the all-fuel contract and refute ordinary method isolation. Method-body judgment/definition
 and source-call composition still precede admission; fragment and floors are unchanged.
+Clink 231 restores full active-method conformance with exact block typing. The actual 094
+body composes two checked yields and Integer addition; real enterUserMethod entry and boot
+controls cover arithmetic and captured writes. Generic method-body effects, definition/
+source-call checking and &b binding still precede admission. Fragment/floors remain unchanged.
 
 ## Layout
 

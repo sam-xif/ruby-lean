@@ -2899,3 +2899,9 @@ Sorbet 0.6.13405 accepts the stable Integer write with an explicit typed &b sign
 rejects Integer-to-nil capture changes (7001) and a nil yield argument (7002). Exact 094
 still has its documented Sorbet rejection for an omitted block parameter (5082/7035/7003).
 An arrow denotation supplies partial-return typing, not the callback safety premise.
+
+Clink 231 restores full active-method StateOk after a callback, with exact block typing.
+The actual 094 body and post-dispatch method entry now have all-fuel proofs; boot controls
+cover arithmetic and captured writes. A generic method-body effect judgment still needs
+to permit assignments to method locals too: CallbackFramed's active-frame equality is for
+the suspended interval, not arbitrary expressions. No checker admission is claimed.

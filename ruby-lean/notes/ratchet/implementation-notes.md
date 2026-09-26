@@ -12034,3 +12034,35 @@ both halves of what constrains them now have a name.
 - Full quiet gate GREEN: unchanged 89 fragment, checker reach 93, 77 rules, 68 worked
   proofs, zero owed/exempt and 252 agree / 0 disagree. Metatheory and standard-axiom audit
   pass. New proof modules build in under a second; no new axioms or resource-limit changes.
+
+## Clink 231 (2026-09-26) — compose repeated yield through real method entry
+
+- StateOk's `blockTy = none` asserts an absent runtime block. An ordinary method receiving
+  a callback must instead carry its exact closure type. StateOk_reframe_block factors the
+  existing conformance transfer and takes independently proved BlockTyOk for that block;
+  StateOk_reframe_scopes retains its old interface and derives the old transport as before.
+- callbackMethodCtx retains method identity and exact code-only block typing while dropping
+  main/class runtime permissions. CallbackResultOk.methodState rebuilds full active-method
+  conformance from the updated caller world, saved method frame and stable local types.
+  Exact closure-valued locals are supported by ProcPres, without treating code as call safety.
+- YieldInt supplies source Integer-argument evaluation and retains the Proc descriptor for
+  another yield. YieldBody.run proves the actual 094 body `yield(1) + yield(2)`: saved first
+  result, second callback, real Integer dispatch and method return, for all fuel. Both body
+  invocations consume the checked callback; captured writes remain allowed.
+- BlockEntry proves required-positionals with an implicit block against enterUserMethod.
+  The frame must retain both `blk` and `callBlk`, as the runtime does. YieldCall.call derives
+  entry conformance, caller capture ownership and the whole body run from main caller state.
+  Mandatory YieldMethodControls allocates the block and proves arithmetic and captured-write
+  variants from boot, with an arbitrary initial Integer in the latter; no body/return-state
+  premise remains. A negative control rejects an absent-block context for a present block.
+- CRuby 4.0.5/model replay prints 30, 4, 3 for the arithmetic call, captured-write call and
+  final capture. No runtime change or new type judgment is made. Clink 230's Sorbet typed
+  callback measurements remain the provenance. Definition checking, installation/lookup,
+  source-call composition, &b binding and checker/emitter admission remain ahead.
+- A general method-body effect contract must allow method-local assignments as well as
+  callback writes. CallbackFramed describes a suspended method during one callback, so its
+  unchanged-active-frame field cannot be imposed on arbitrary method expressions. The new
+  repeated-yield pilot establishes the execution path, not that broader judgment.
+- Full quiet gate GREEN: unchanged 89 fragment, checker reach 93, 77 rules, 68 worked
+  proofs and zero owed/exempt; 252 agree / 0 disagree. Metatheory/standard-axiom audit pass.
+  New modules build in about three seconds or less, with no axiom or resource-limit changes.

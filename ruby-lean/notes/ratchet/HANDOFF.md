@@ -1,4 +1,28 @@
-# Current resume point (2026-09-26, clink 230 / model L274)
+# Current resume point (2026-09-26, clink 231 / model L274)
+
+Clink 231 proves the actual 094 body and post-dispatch method entry with checked callbacks.
+StateOk_reframe_block supports an independently typed actual block; its existing scopes
+wrapper retains the old interface. callbackMethodCtx records exact code-only block typing
+and method identity. CallbackResultOk.methodState restores the active method's full state
+after a callback, including stable/code-only closure locals. An absent block type cannot
+describe a method with a block; the new mandatory control rejects that false conformance.
+
+YieldInt handles source Integer arguments and retained Proc descriptors. YieldBody.run
+composes `yield(1) + yield(2)`, saved result, native addition and method return for all fuel.
+BlockEntry's requiredBlockFrame includes blk AND callBlk. YieldCall.call supplies actual
+enterUserMethod entry, caller capture ownership and full method conformance. Mandatory
+YieldMethodControls allocates blocks and proves arithmetic and captured-write variants
+from boot (arbitrary initial Integer for the latter). CRuby/model print 30, 4, 3 as expected.
+No new judgment/admission; fragment 89, checker reach 93, rules 77 and worked proofs 68.
+
+Next: a general method-body effect contract, then definition checking, installation/lookup,
+source-call composition, &b binding and checker/emitter admission. CallbackFramed describes
+a suspended method across ONE callback; its active-frame equality cannot describe arbitrary
+method-local assignments. Both the method's own locals and callback capture writes must be
+allowed while restoring the original caller on return. Do not weaken existing Framed or
+replace the generic judgment with a hard-coded rule for the twice pilot.
+Validation: full quiet gate GREEN (252 agree / 0 disagree); metatheory and standard-axiom
+audit PASS. New proof modules build in about three seconds or less. No live builds remain.
 
 Clink 230 adds an entry/return proof layer for yield across an ordinary method. §F55 is
 a proof-contract obstruction: the runtime already agrees with CRuby on repeated yield
