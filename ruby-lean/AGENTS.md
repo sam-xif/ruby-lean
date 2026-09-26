@@ -80,6 +80,12 @@ Writes, composition and returns prove it; the bridge exposes it for every certif
 ReadReturn rules out new shadowing of a bound caller slot and equates its body/caller reads
 after arbitrary framed evaluation. Controls permit nested captured writes and fresh locals.
 General outgoing caller environments and capture identity tracking remain before admission.
+Clink 211 projects final body types onto known caller-owned slots, erasing aliases to
+discarded body locals. Only typed output names need slot classification; unrelated hidden
+nil slots need not be enumerated. Unshadowing main return now derives full caller StateOk
+and the block RunSpec without an independent outgoing EnvOk. A stored-lambda pilot retains
+f's exact closure type, including at boot. Capture identity/slot tracking and overlapping
+parameter/block-local shadowing remain before general callable admission.
 Next: 087, zero-argument lambda creation/call. See HANDOFF.
 
 ## Layout

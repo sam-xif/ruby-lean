@@ -11534,3 +11534,27 @@ both halves of what constrains them now have a name.
 - Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
   pass. New ownership/return/control proofs build in under a second; no individual proof
   reached five minutes. Restored sources match the gate-tested stash exactly.
+
+## Clink 211 (2026-09-26) — project the body environment back to its caller
+
+- FrameSlots names physical domains and survives uncaptured assignment/closure return.
+  CaptureSlots only classifies names typed in the body's output; omitted names already
+  read nil. This weaker premise avoids enumerating unrelated hidden nil caller slots.
+- captureEnv retains caller-owned output bindings and fully peels aliases with deAlias:
+  an alias target may be a new body local discarded on return. EnvReturn proves complete
+  outgoing EnvOk using retained domains/owners, unshadowing entry and activation transport
+  only for retained values. It does not infer slot presence from nil reads or EnvOk.
+- ProjectedReturn derives full main-caller StateOk and the real block continuation's
+  RunSpec without an independent outgoing environment premise. Explicit entry locals may
+  be fresh, but overlapping caller slots remain excluded until hidden-value effects exist.
+- Projection controls write a nil caller slot to Integer, create a fresh local, discard it
+  on return and reject retaining an alias to it. StoredReturn proves full restoration of
+  f's exact closure type; assignment supplies the needed slot, with a boot instance. A
+  separate boot-slot theorem extracts the checked empty domain without kernel boot reduction.
+- No judgment/emitter change. Counts remain fragment 81 / checker reach 86, 61 rules,
+  60 worked theorems, 0 owed/exempt. Next: whole stored-lambda call composition and static
+  capture identity/slot tracking (§F49); general overlapping shadowing remains open.
+- Direct reduction of two nested writes exceeded default heartbeats in a control; existing
+  read-after-write lemmas replaced it. No resource limit was increased.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. Final new proofs build in under a second each; no individual proof reached five minutes.

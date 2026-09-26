@@ -9,6 +9,11 @@ open RubyCore
 def frameBinds (m : Machine) (i : FrameId) (x : String) : Bool :=
   (m.frames.getD i default).locals.any (·.1 == x)
 
+/-- Exact physical slot names, including slots whose current value is nil. EnvOk's
+absence clause supplies nil reads and does not imply this domain. -/
+def FrameSlots (names : List String) (m : Machine) : Prop :=
+  ∀ x, frameBinds m (m.stack.headD 0) x = names.contains x
+
 structure BindingsPres (m n : Machine) : Prop where
   bound : ∀ i, i < m.frames.size → ∀ x, frameBinds m i x = true → frameBinds n i x = true
   saved : ∀ i, i < m.frames.size → i ≠ m.stack.headD 0 → ∀ x,
@@ -78,6 +83,23 @@ theorem BindingsPres.setLocal (m : Machine) (x : String) (v : Value) :
       simp only [setLocal_eq_setAt, frameBinds, setAt, framesD_set!_ne _ _ _ _ hi]
   · rw [setLocal_eq_setAt, frameBinds_setAt_ne m x v _ i hy]
 
+theorem FrameSlots.setLocal {m : Machine} {names : List String} (hd : FrameSlots names m)
+    (hl : m.stack.headD 0 < m.frames.size)
+    (hc : (m.frames.getD (m.stack.headD 0) default).captured = none) (x : String) (v : Value) :
+    FrameSlots (x :: names) (m.setLocal x v) := by
+  have ho : Machine.setLocal.owner m x (m.stack.headD 0) (m.stack.headD 0) (m.frames.size + 1) =
+      m.stack.headD 0 := by simp only [Machine.setLocal.owner, hc, ite_self]
+  intro y
+  change frameBinds (m.setLocal x v) (m.stack.headD 0) y = _
+  rw [setLocal_eq_setAt, ho]
+  by_cases hy : y = x
+  · subst y
+    simp only [frameBinds, ← List.isSome_find?, setAt_find_self m x v _ hl,
+      Option.isSome_some, List.contains_cons, beq_self_eq_true, Bool.true_or]
+  · rw [frameBinds_setAt_ne m x v _ _ hy, hd y]
+    simp [hy]
+
 #print axioms setLocal_owner_bound_or_start
 #print axioms BindingsPres.setLocal
+#print axioms FrameSlots.setLocal
 end Ratchet.Denote

@@ -1,4 +1,4 @@
-# Current resume point (2026-09-26, clink 210)
+# Current resume point (2026-09-26, clink 211)
 
 Latest admission remains 084: fragment 81, checker reach 86,
 61 registered rules (39 expressions + 22 companions), 60 worked theorems, no exemptions.
@@ -103,7 +103,18 @@ shadowed, and its body read equals its returned caller read after arbitrary Fram
 Controls show binding-domain preservation alone admits shadowing, reject it with OwnersPres,
 and permit nested writes, fresh locals and a real captured-write/read return.
 
-Next: derive outgoing caller EnvOk from general body effects, and track capture identity.
+Clink 211 adds FrameSlots for exact physical domains and its uncaptured assignment/return
+transport. EnvReturn's weaker CaptureSlots classifies only names typed in the body output;
+captureEnv retains caller-owned bindings and de-aliases them. closure_projected_env proves
+complete outgoing EnvOk from that classification, unshadowing entry and per-type transport
+for retained names only. ProjectedReturn composes full main StateOk and block RunSpec without
+an independent outgoing environment. Controls retain a nil caller slot changed to Integer,
+remove a fresh body local, and reject an alias to that discarded name. StoredReturn proves
+full caller restoration retaining f's exact closure type; assignment supplies its physical
+binding, so no complete input slot domain is assumed. The boot instance consumes body
+conformance/framing; it is still a return theorem, not a whole-call admission.
+
+Next: compose the stored lambda's full call and track capture identity/slot classification.
 Entry now has full conformance under the named scope/liveness/environment premises, but
 Ty.clos does not yet supply those premises. The stored-f pilot retains its higher-order
 binding using ProcPres.empty_capture_den. General capture types still need transport.
@@ -115,19 +126,20 @@ Current-capture environments now have an entry contract; arbitrary captures stil
 complete-environment and captured-value transport facts, not only a lower-bound spine.
 FramePres.isolated applies only to uncaptured activations. For direct current captures,
 closure_pop_framed now restores framing without assuming the caller's locals are unchanged.
-closure_pop_metadata retains its non-local fields. closure_pop_main_state restores full
-main-caller StateOk from its outgoing EnvOk and the body result; phase is retained by Framed.
-The body may update/introduce/shadow locals, so its EnvOk cannot simply be reused at the
-caller. Write's actual single-capture transport is a proved base case, not a general effect
-analysis. General non-main caller restoration also remains outside this theorem.
+closure_pop_metadata retains its non-local fields. closure_projected_main_state now restores
+full main-caller StateOk with a derived outgoing environment; phase is retained by Framed.
+The body may update/introduce locals; captureEnv projects its output rather than reusing it
+at the caller. The entry guard forbids overlapping parameter/block-local shadowing, which
+still needs effects preserving the hidden caller value. Non-main restoration remains open.
 BindingsPres retains saved domains; OwnersPres now excludes new shadowing of an existing
 owner along a live chain. closure_bound_read connects body/caller reads for unshadowed bound
-slots of an uncaptured caller. General outgoing EnvOk still needs a projection accounting
-for new body locals and explicitly shadowed parameters/block locals. EnvOk's absence clause
-means nil reads, not physical absence: filtering body output to the incoming caller
-environment loses hidden nil slots that a captured assignment may change. Do not infer
-slot domains from EnvOk. The stored-f pilot can consume its known physical binding; general
-capture types still require per-type transport when changing activations.
+slots of an uncaptured caller. CaptureSlots now accounts for new body locals without requiring
+an exact whole-frame domain. EnvOk's absence clause means nil reads, not physical absence:
+filtering body output to the incoming caller environment loses hidden nil slots that a
+captured assignment may change. Do not infer CaptureSlots from EnvOk. The stored-f pilot
+derives its one needed binding from assignment; general captures still need slot/identity
+tracking and per-type activation transport. Aliases are fully peeled with deAlias because
+their target may be a discarded body local, including under nested sameAs wrappers.
 The unused ClosuresOk/closTblOk table machinery remains legacy, with F49's counterexamples
 retained explicitly. The old index-free denotation is now named LegacyIndexDen in controls.
 

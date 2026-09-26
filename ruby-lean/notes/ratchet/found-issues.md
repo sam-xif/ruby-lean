@@ -2763,6 +2763,13 @@ Framed evaluation. General outgoing EnvOk must still account for physical slot p
 new body locals, explicit parameter/block-local shadowing and per-type activation transport.
 Capture identity tracking remains outside callable admission.
 
+Clink 211 derives outgoing main-caller EnvOk and StateOk for unshadowing entry. CaptureSlots
+classifies only names typed in the body output; captureEnv retains caller-owned bindings
+and removes aliases, whose targets may be discarded body locals. Controls exercise a
+nil-to-Integer captured write and refute retaining such an alias. Stored-lambda return
+retains f's exact code type from its actual assigned slot without assuming an otherwise
+empty physical domain. Identity/slot tracking and overlapping entry shadowing remain open.
+
 ## F50 — the body answer contract is too weak for block return (2026-09-25)
 
 **Resolved for the admitted fragment by clink 203; typed jump rules remain future work.**
