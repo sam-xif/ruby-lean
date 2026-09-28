@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L278 (2026-09-28)",
+  "note": "Exact Float expansion and CRuby conversion paths, including intermediate rounding, ties, subnormals and overflow."
+}

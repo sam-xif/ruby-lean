@@ -28,8 +28,15 @@ regenerated. Paths are relative to `ruby-lean/`.
 
 ## Fragment
 
-Verified 2026-08-03 by probing the built binary. The current agreement numbers are in
-the root `README.md`.
+The feature list and histogram below are historical (2026-08-03). The live
+conformance record is `ruby-lean/notes/model/HANDOFF.md`, with the implementation
+record beside it. In L278 (2026-09-28), Rational gains exact native literals,
+numeric constructors, arithmetic, comparison, coercion and Float conversion.
+Complex remains unsupported. String/custom Rational constructor conversion,
+rounding with digit precision, and component representation overrides still
+gate. L276/L277 also added missing-method/conversion protocols and effectful
+final/frozen-error representation; the old global-repr discussion below is
+historical, not the current boundary.
 
 Tier-0 baseline: **940/1304 bootstraptest agree, 0 disagree.**
 

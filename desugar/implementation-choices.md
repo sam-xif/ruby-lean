@@ -1083,3 +1083,24 @@ Ruby with a per-character loop, so putting it on the interpolation path of every
 have been a large slowdown for a cold-path rule.
 
 Rule coverage unchanged (`interp` already existed); seeds 43/43, bootstraptest 1227/0.
+
+## C39 — rational literals are native exact fractions (2026-09-28)
+
+The old `Rational(n, d)` lowering executed a user-overridable constructor, whereas
+CRuby evaluates `1.2r` without looking up a method or constant. It also lost
+literal identity: repeated execution of one literal site shares a frozen object;
+two separate occurrences do not. The core now carries `[:rat, numerator,
+denominator]`, using Prism's exact fraction. Render emits a finite decimal with
+the `r` suffix, computed with integer arithmetic. Literal denominators contain
+only factors 2 and 5; no Float or Ruby constructor participates in rendering.
+
+Export v5 gains an additive `rat` head with a fourth, syntax-site string. Stable
+preorder numbering belongs to export, leaving the render/parse normal form
+unchanged. `program` and `prelude` namespaces separate the two compilation units;
+any future runtime compilation must supply a fresh unit namespace. The model
+caches frozen fractions by site. Imaginary literals still lower through Complex
+(an open conformance gap), but their rational components use the new exact head.
+
+Seed 44 covers constructor/constant/unary-method overrides, decimal precision
+and shared/distinct literal sites. All 44 seeds round-trip with no disagreements
+or AST-idempotence failures. Existing six render-only instabilities are unchanged.

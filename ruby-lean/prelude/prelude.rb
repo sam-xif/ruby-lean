@@ -741,6 +741,19 @@ class Numeric
   include Comparable
 end
 
+# Native frozen fractions have no public allocator. The tombstones also apply
+# to subclasses; a program may still explicitly define its own singleton new.
+class << Rational
+  undef_method :new
+  undef_method :allocate
+end
+
+module Kernel
+  def self.Rational(*args)
+    super(*args)
+  end
+end
+
 class Integer
   def upto(n)
     return __unsupported__("Enumerator: Integer#upto without a block") unless block_given?
@@ -1711,7 +1724,7 @@ class Object
   # answered" and "answered nil", and `do_coerce` raises differently for those.
   def __coercible?(obj)
     return false if obj.__user_defines?(:respond_to?) && !obj.respond_to?(:coerce)
-    return true if obj.__user_defines?(:coerce)
+    return true if obj.__coerce_defined?
     return false unless obj.__user_defines?(:method_missing)
 
     !obj.__user_defines?(:respond_to_missing?) || obj.respond_to_missing?(:coerce, true)

@@ -10,6 +10,7 @@ module RubyCore
   HEADS = {
     int:   "[:int, Integer]",
     flt:   "[:flt, Float]",
+    rat:   "[:rat, Integer numerator, positive Integer denominator]",
     str:   "[:str, String]",           # literal string, no interpolation
     sym:   "[:sym, String]",
     true:  "[:true]",
@@ -125,6 +126,8 @@ module RubyCore
     case head
     when :int    then node[1].is_a?(Integer) ? nil : "int payload not Integer"
     when :flt    then node[1].is_a?(Float) ? nil : "flt payload not Float"
+    when :rat
+      node.length == 3 && node[1].is_a?(Integer) && node[2].is_a?(Integer) && node[2] > 0 ? nil : "invalid rational literal"
     when :str, :sym then node[1].is_a?(String) ? nil : ":#{head} payload not String"
     when :true, :false, :nil, :self then node.length == 1 ? nil : ":#{head} takes no children"
     when :var

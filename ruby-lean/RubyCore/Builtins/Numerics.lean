@@ -1,4 +1,4 @@
-import RubyCore.Builtins.Strings
+import RubyCore.Builtins.Rationals
 
 /-!
 Integer and Float rules.
@@ -116,11 +116,14 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
         (fun x y => .ok (.int (x * y)) m) (fun x y => .ok (.flt (x * y)) m)
   | "Integer#/" | "Float#/" =>
     binArg m args fun b =>
-      numBin (owner bid) m recv b
-        (fun x y =>
-          if y == 0 then .err Boot.zeroDivisionErrorId "divided by 0" m
-          else .ok (.int (Int.fdiv x y)) m)  -- Ruby / is floor division [V]
-        (fun x y => .ok (.flt (x / y)) m)
+      match bid, recv, rationalPayload? h b with
+      | "Integer#/", .int 1, some (n, d) => ratResult m d n
+      | _, _, _ =>
+        numBin (owner bid) m recv b
+          (fun x y =>
+            if y == 0 then .err Boot.zeroDivisionErrorId "divided by 0" m
+            else .ok (.int (Int.fdiv x y)) m)  -- Ruby / is floor division [V]
+          (fun x y => .ok (.flt (x / y)) m)
   | "Integer#%" | "Float#%" =>
     binArg m args fun b =>
       numBin (owner bid) m recv b
@@ -133,14 +136,13 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
           else .ok (.flt (x - y * (x / y).floor)) m)
   | "Integer#**" =>
     -- `**` coerces like the rest (L123), so a non-numeric argument that answered
-    -- nothing gets the coercion TypeError rather than a gate — only a *numeric*
-    -- exponent this rule cannot compute (a Float, or a negative giving a
-    -- Rational) is unsupported.
+    -- nothing gets the coercion TypeError rather than a gate. Negative Integer
+    -- exponents now produce exact Rational values; other exponents still gate.
     binArg m args fun b =>
       match recv, b with
       | .int x, .int y =>
         if y ≥ 0 then .ok (.int (x ^ y.toNat)) m
-        else .unsupported "Integer ** negative (Rational result)"
+        else ratResult m 1 (x ^ (-y).toNat)
       | _, _ =>
         if (num? b).isNone then coerceFailed (owner bid) m b
         else .unsupported "** with non-integer"
@@ -163,9 +165,7 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
     | _ => .unsupported "-@"
   | "Integer#==" | "Float#==" =>
     binArg m args fun b =>
-      match num? b with
-      | some _ => .ok (.bool (valueEq h recv b)) m
-      | none => .ok (.bool false) m
+      .ok (.bool (valueEq h recv b)) m
   | "Integer#!=" =>
     binArg m args fun b => .ok (.bool (!(valueEq h recv b))) m
   | "Integer#<" | "Float#<" =>
@@ -382,7 +382,7 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
     match recv with | .flt x => .ok (.bool (x == 0.0)) m | _ => .unsupported "zero?"
   | "Float#nan?" =>
     match recv with | .flt x => .ok (.bool x.isNaN) m | _ => .unsupported "nan?"
-  | _ => runStrings bid recv args m
+  | _ => runRationals bid recv args m
 
 end Builtins
 

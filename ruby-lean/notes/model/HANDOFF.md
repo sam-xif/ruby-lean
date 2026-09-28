@@ -1,6 +1,73 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-27, L277)
+## Active conformance goal (2026-09-28, L278)
+
+The user wants known semantics issues fixed first, then full CRuby bootstrap
+conformance. Proof repair is explicitly deferred. The goal remains active and is
+not complete. L276–L278 changes remain uncommitted; no checker/proof files or
+ratchet floors were changed. The existing untracked paper/ and wasm upstream-bug
+files were left alone. All validation processes have terminated.
+
+L278 adds exact native Rational literals and a frozen normalized payload,
+numeric constructors, arithmetic, coercion/equality, rounding and Float conversion.
+Literal identity is cached by compilation unit/site; distinct sites remain distinct.
+C39 documents the front-end head/render/export changes. Rational.lean and
+Builtins/Rationals.lean carry the numeric rules. Boot.rationalId is 39; mainId is
+now 40. Native `1 / rational` bypasses coerce. Rational.new/allocate are undefined
+in the prelude, and class allocation interception now honors actual new lookup.
+The CRuby name generator now preserves its curated stdlib constants list.
+
+Rational.to_f follows the **64-bit CRuby** Fixnum/Bignum conversion paths, including
+intermediate rounding. Do not replace it with just exactFractionFloat: the pinned
+large-fraction witness differs by one ulp. See the L278 implementation record.
+Frozen method definitions were also repaired: direct singleton def, def inside a
+singleton-class body, and define_singleton_method reject a frozen attached object.
+New eigenclasses inherit freezing; freeze propagates to an existing eigenclass.
+Other reflective mutation paths still need a frozen-state audit.
+
+Final executable build PASS (84 jobs). Bootstrap: **1,026 agree / 0 disagree /
+277 unsupported**, five invalid controls and the existing test_syntax_115 harness
+error (1,309 total). Exactly 22 new agreements over L277, no losses:
+test_literal_146, test_literal_suffix_001–020 and 045. Regression status tier:
+**62 held / zero failures / one gated** (63 total). Tier 1 n=300 seed20260927:
+219 agree / 81 unsupported / zero disagree; same sources/verdicts as L277.
+Final reports: `difftest/reports/20260928-000430-{tier0,tier1,tierregressions}-lean/`.
+Five new rational regressions pass. An additional seed-20260928 probe agrees on
+150 Float conversions and 80 exact arithmetic fragments; source/results:
+/private/tmp/conformance-l278-generated-numerics-final.json.
+Frontend: 44 seeds + five rational programs round-trip (49/0), AST-idempotent.
+Full front-end bootstrap had 1,231 agreements, zero disagreements, 77 gates and
+one transient source no-observation in test_load_002; that unchanged case passed
+an isolated rerun. Generated prelude matches regeneration; git diff --check passes.
+No proof rebuild or typed gate was attempted, and no commit was made.
+
+Next work:
+
+1. The sole old open regression is still sorbet-hash-gate. Its source scrubs the
+   process-specific gem hash, but the shim refuses before emitting the message.
+   Do not invent a matching CRuby identity hash or weaken comparison.
+2. **Complex: 22 current bootstrap gates.** Native imaginary literals still lower
+   through an overridable Complex call. Fix literal construction, exact Rational
+   components and identity together; C39/Rational are a starting point. Then
+   Enumerators (22 blockless times + five enum_for) are another large group.
+3. Other large groups: 50 string eval variants; seven optional/keyword/destructuring
+   block params; six top-level returns; six String#setbyte; five Object#itself.
+   Historical "out of scope" labels below do not finish the user's new objective.
+4. Rational's remaining explicit gates include string/custom/non-finite/keyword
+   constructor conversion, digit-precision rounding, non-Integer powers, fdiv and
+   other Numeric methods, clone options, and effectful component repr. Runtime
+   compilation, when added, needs fresh literal-unit namespaces.
+5. L277's legacy for path still bypasses ordinary each dispatch; destructureBind
+   still needs an audit for effectful to_ary. Frozen aliases/undef/attr/mixin paths
+   also deserve an audit; L278 only claims the method-definition paths it tests.
+6. A separate control-environment issue was observed: requiring json in the
+   wrapper adds JSON::Ext::Generator::GeneratorMethods::Object to Object.ancestors,
+   unlike the standalone model. The Rational test asserts its three relevant
+   ancestors; full wrapper/model ancestry equivalence remains unresolved. No
+   comparator or wrapper change was used to conceal that difference.
+
+
+## Previous conformance batch (2026-09-27, L277)
 
 Previous goal turns made verified progress. The user wants the known semantics
 issues addressed first, then full CRuby bootstrap conformance; proof repair is

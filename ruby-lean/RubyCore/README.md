@@ -202,8 +202,8 @@ library is written *in Ruby* — see `../prelude/prelude.rb`.
 ### 01 §3 — Builtin payloads
 
 Hidden state that RubyCore expressions cannot express directly: `str` (bytes +
-encoding), `arr`, `hsh`, `rng`, `proc` (a `Closure`), `meth`, `exc`. Three carry
-semantic teeth:
+encoding), `arr`, `hsh`, `rng`, `proc` (a `Closure`), `meth`, `exc`, and
+`rational`. Some observable consequences:
 
 - **String is mutable** and byte-oriented; `<<`/`gsub!` mutate in place, and two
   equal strings are not `equal?`. **[V]**
@@ -212,6 +212,15 @@ semantic teeth:
   detail. **[V]**
 - Frozen string literals change identity and mutation behavior; `frozen` is
   tracked per object.
+- **Rational** carries a reduced arbitrary-precision numerator and positive
+  denominator. It remains a heap object even when the denominator is one.
+  Instances are frozen; `dup`, `clone` without options and `to_r` retain identity.
+  A native rational literal bypasses constructor/constant lookup and is cached
+  by compilation unit and syntax site; repeated execution of one site shares
+  its object, while separate sites and constructor calls remain distinct (L278).
+  Mixed numeric operations follow Ruby's coercion protocol. Conversion to Float
+  follows the 64-bit CRuby integer-division paths, including their intermediate
+  rounding; it is not specified as the exact quotient rounded only once.
 
 ### 01 §4 — The class-of relation
 

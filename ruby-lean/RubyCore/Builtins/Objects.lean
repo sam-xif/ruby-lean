@@ -25,6 +25,9 @@ def modeledFeatures : List String :=
 def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=
   let h := m.heap
   match bid with
+  | "Object#__coerce_defined?" =>
+    .ok (.bool (match lookup h recv "coerce" with
+      | some (_, md) => !md.undefined | none => false)) m
   | "BasicObject#method_missing" =>
     match args with
     | [] => .err Boot.argumentErrorId "no method name given" m
@@ -202,7 +205,11 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     | _ => .ok (.bool true) m
   | "Object#freeze" | "String#freeze" | "Array#freeze" | "Hash#freeze" =>
     match recv with
-    | .ref o => .ok recv { m with heap := h.set o { h.get o with frozen := true } }
+    | .ref o =>
+      let h := match (h.get o).eigen with
+        | some e => h.set e { h.get e with frozen := true }
+        | none => h
+      .ok recv { m with heap := h.set o { h.get o with frozen := true } }
     | _ => .ok recv m
   | "Object#is_a?" | "Object#kind_of?" =>
     match args with

@@ -204,7 +204,7 @@ where
       -- Keep the attachment, not a snapshot of its name: an anonymous class
       -- can acquire a constant name after this singleton class was created.
       let (e, h) := m.heap.alloc
-        { klass := Boot.classId,
+        { klass := Boot.classId, frozen := obj.frozen,
           payload := .cls { superclass := some supr, name := "", attached := some o } }
       let h := h.set o { h.get o with eigen := some e }
       (e, { m with heap := h })

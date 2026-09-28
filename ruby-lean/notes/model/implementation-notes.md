@@ -13847,3 +13847,111 @@ it did not exist.
   it is byte-identical to RubyCore/Prelude.lean (the edit changes comments only).
   git diff --check passes. All checks have terminated. Full conformance remains
   incomplete; the next working record is the L277 section of HANDOFF.md.
+
+
+## L278 — exact native Rational values and literal identity (2026-09-28)
+
+The conformance goal remains active; proof repair remains deferred by the user.
+No checker or proof sources, acceptance floors, control wrapper or comparison
+relation were changed. The final executable is built independently of the proofs.
+
+- **Native literals and values.** Desugar C39 replaces the overridable
+  `Rational(n,d)` lowering with the exact `rat` head. The renderer emits a finite
+  decimal with the r suffix using integer arithmetic. Export assigns each literal
+  a stable syntax-site key in its compilation unit (`program` or `prelude`).
+  Expr.rat and Machine.rationalLiterals preserve identity across repeated execution
+  of one site without merging two distinct literals. PreludeBoot carries the cache
+  across its phases. Future runtime compilation must use fresh unit namespaces.
+- **Heap and numeric rules.** Rational is a Numeric subclass at boot id 39; main
+  moves to 40. Its frozen native payload stores a reduced numerator and positive
+  denominator. Rational.lean provides normalization, exact Float expansion and
+  numeric comparison helpers. Builtins/Rationals.lean implements numeric-only
+  constructors, numerator/denominator, repr, to_i/to_f/to_r, sign/abs, +,-,*,/,quo,
+  integer powers, comparison/equality/coerce, basic rounding, and identity-preserving
+  dup/clone without options. Integer/Float#to_r and Integer negative powers join
+  this path. A zero denominator raises ZeroDivisionError.
+- **Dispatch details.** Kernel/Object Rational is private; Kernel.Rational has a
+  public singleton wrapper. The prelude undefines Rational.new/allocate, inherited
+  by subclasses. invokeMaybeNew now intercepts only a resolved native Class#new,
+  preserving tombstones even with user initialize. CRubyNames gains Rational's
+  actual method inventory so unimplemented inherited names gate. Regenerating it
+  exposed a generator defect: the hand-maintained crubyStdlibConstants list was
+  lost on regeneration. The same curated list now lives in the generator output.
+- **Coercion and equality.** Native coerce joins the existing effectful protocol;
+  __coerce_defined? asks ordinary lookup, including private/native methods, instead
+  of conflating callability with a Ruby body. Rational's operators defer for opaque
+  operands; equality reverses to program hooks where CRuby does. Numeric#eql? on
+  distinct Rational instances of the same class dispatches an overridden == via
+  the existing __case_equal twin. Native aliases keep their original behavior.
+  The special `1 / rational` reciprocal bypasses coerce, as CRuby does.
+- **Frozen method definitions.** New immutable values exposed an existing bug:
+  def receiver.method, singleton-class def, and define_singleton_method could
+  mutate a frozen object's method table. They now check the attached receiver and
+  raise through the effectful L277 FrozenError path. New eigenclasses inherit the
+  frozen bit; Object#freeze also freezes an existing eigenclass. Freezing a class
+  similarly prevents an ordinary def in its body. Other reflective mutations
+  (alias/undef/attr/mixins) still need a separate full frozen-state audit.
+
+Two useful failed probes became repairs:
+
+1. Lean Int `/` is Euclidean division: -3/2 was -2. Rational#to_i/truncate now
+   use tdiv, while floor/ceil retain the corresponding mathematical rounding.
+2. A 150-case deterministic large-fraction probe found that a correctly rounded
+   exact quotient disagrees with CRuby. The reduced fraction
+   `74993924844200426125206210008109106712806312011710/68506977879177931`
+   converts to 1.0946903098902302e+33 in CRuby, versus 1.09469030989023e+33 from
+   exact rounding. fractionFloat now follows the 64-bit oracle's Fixnum/Bignum
+   branches, bounded-bit shifts, quotient truncation, conversion and scaling.
+   exactFractionFloat remains the IEEE rounding helper for the individual steps.
+   See [numeric.c rb_int_fdiv_double](https://github.com/ruby/ruby/blob/master/numeric.c)
+   and [bignum.c big_fdiv_int](https://github.com/ruby/ruby/blob/master/bignum.c).
+   The CRuby 4.0.5 executable, not the moving master source, remains the oracle.
+
+Five permanent rational regression programs cover exact digits, literal/constructor
+identity, method/constant overrides, reduction and signs, mixed arithmetic and hooks,
+undefined allocation, immutability, subnormals, ties and the intermediate-rounding
+witness. All five agree after the final build. A focused generated probe with seed
+20260928 agrees on 150 large-fraction Float conversions and 80 exact arithmetic
+program fragments; sources and results are in
+/private/tmp/conformance-l278-generated-numerics-final.json.
+
+Limits remain explicit: Complex; string/custom/non-finite/keyword Rational
+constructor conversion; digit-precision rounding; non-Integer powers; fdiv and
+remaining Numeric methods; clone options; effectful integer component repr inside
+native Rational repr. Unsupported methods are inventory-gated. This is a numeric
+fragment, not a claim that the entire Rational class is modeled.
+
+One unrelated harness issue was observed while writing the ancestry assertion:
+requiring json in the control adds JSON::Ext::Generator::GeneratorMethods::Object
+into Object.ancestors. The standalone model does not add that harness-specific
+module. The rational test checks its three relevant ancestors (Rational, Numeric,
+Comparable); complete Object.ancestors equivalence in this wrapper remains a
+separate environmental issue. No comparator change was used to erase it.
+
+Validation: the first full bootstrap run reached 1,026 agree / 0 disagree /
+277 unsupported (five control-invalid and the existing test_syntax_115 harness
+error), +22 with no lost agreements: test_literal_146, test_literal_suffix_001–020
+and 045. First final regression tier: 62 held / 0 disagree / one open gate;
+tier 1 n=300 seed20260927: 219 agree / 81 unsupported / 0 disagree.
+Reports: difftest/reports/20260928-000037-{tier0,tier1,tierregressions}-lean/.
+These precede the final rounding/reciprocal correction; the final rerun is recorded
+below after completion.
+
+Frontend: all 44 seeds plus the five new regression programs round-trip (49/0),
+with no AST-idempotence failures. The full front-end bootstrap pass gave 1,231
+agree / zero disagree / 77 out-of-fragment and one transient no-observation from
+source test_load_002; that unchanged filesystem/load case agrees on isolated rerun.
+The six existing seed and 27 bootstrap render-only instabilities remain.
+
+Final verification after the rounding/reciprocal correction: lake build rubycore
+PASS (84 jobs), all 230 targeted numeric fragments and all five new regression
+programs agree. Full bootstrap rerun remains 1,026 agree / 0 disagree / 277
+unsupported, five invalid controls and the existing test_syntax_115 harness error.
+All 1,309 sources/verdicts match the first L278 run; exactly 22 improvements over
+L277, with no lost agreements. Final regression status tier: 62 held / one gated /
+zero failures. Tier 1 n=300 seed20260927: 219 agree / 81 unsupported / zero disagree;
+all sources and verdicts are identical to L277. Final report directories:
+`difftest/reports/20260928-000430-{tier0,tier1,tierregressions}-lean/`.
+Generated Prelude.lean matches regeneration; git diff --check passes. All checks
+have terminated. No proof build or typed ratchet was attempted, and no commit was
+made. The goal is still incomplete.

@@ -89,7 +89,9 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       -- `def RECV.name`: install on RECV's eigenclass (v = the evaluated RECV)
       match v with
       | .ref o =>
+        if (m.heap.get o).frozen then raiseFrozen m v else
         let (e, m) := eigenclassOf m o
+        if let some receiver := frozenMethodReceiver? m.heap e then raiseFrozen m receiver else
         -- `def self.m` in a module keeps that module's lexical cref for constant
         -- lookup even though its dispatch owner is the eigenclass (artifact 03).
         let md : MethodDef :=

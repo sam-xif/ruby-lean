@@ -117,6 +117,7 @@ partial def pureOk (h : Heap) (sens : List String) : Value → Bool
     -- `#<C:0x…>` and ignored the override — found by the L122 range head, which
     -- gives its endpoints a fixed `inspect` precisely so no address is observed.
     | .range lo hi _ => own && pureOk h sens lo && pureOk h sens hi
+    | .rational _ _ => own && !reprOverridden h sens Boot.integerId
     -- An Exception renders **through `to_s`** whichever way it is asked:
     -- `rb_exc_inspect` is `#<Class: rb_obj_as_string(exc)>` and
     -- `Exception#message` *is* `to_s`. So `to_s` is repr-sensitive for an exception
@@ -232,7 +233,7 @@ def arrPayload? (h : Heap) : Value → Option (Array Value)
     its own `allocExc` path in `newImpl`). -/
 def payloadCoreClasses : List ObjId :=
   [Boot.stringId, Boot.arrayId, Boot.hashId, Boot.procId, Boot.integerId,
-   Boot.floatId, Boot.symbolId]
+   Boot.floatId, Boot.symbolId, Boot.rationalId]
 
 /-- The payload-carrying core class `k` inherits from, if any — `String`, `Array`,
     `Hash` and `Exception` are *allocatable* for a subclass (L70: allocate the
@@ -535,14 +536,14 @@ as the repr builtins defer to theirs (`reprDefer?`, L116). Deferral is keyed on
 "could a `coerce` possibly run", so every operand that *is* a number, and every
 operand whose class chain offers nothing, keeps the Lean fast path untouched. -/
 
-/-- Could an ordinary send of `coerce` reach a Ruby body on `v`? A `coerce`
-    from the prelude counts (a future prelude `Rational` will have a real one);
+/-- Could an ordinary send of `coerce` reach a method on `v`? Native Rational
+    conversion and methods from the prelude count alongside program methods;
     a `method_missing` does **not** if it came from the prelude, because the only
     one there is `Pathname`'s, which exists to *refuse* — routing through it
     would turn today's correct `TypeError` into a gate. -/
 def mayCoerce (h : Heap) (v : Value) : Bool :=
   (match lookup h v "coerce" with
-   | some (_, md) => md.builtin.isNone && !md.undefined
+   | some (_, md) => !md.undefined
    | none => false)
   || (match lookup h v "method_missing" with
       | some (_, md) => md.builtin.isNone && !md.undefined && !md.fromPrelude
@@ -569,18 +570,18 @@ def hasProgramEq (h : Heap) (v : Value) : Bool :=
     the twin is entered with the builtin's own arguments — there is nowhere to
     pass "which operator" — and each is a one-liner over `__coerce_bin`. -/
 def coerceTwin? : String → Option String
-  | "Integer#+"  | "Float#+"  => some "__coerce_add"
-  | "Integer#-"  | "Float#-"  => some "__coerce_sub"
-  | "Integer#*"  | "Float#*"  => some "__coerce_mul"
-  | "Integer#/"  | "Float#/"  => some "__coerce_div"
+  | "Integer#+"  | "Float#+" | "Rational#+" => some "__coerce_add"
+  | "Integer#-"  | "Float#-" | "Rational#-" => some "__coerce_sub"
+  | "Integer#*"  | "Float#*" | "Rational#*" => some "__coerce_mul"
+  | "Integer#/"  | "Float#/" | "Rational#/" | "Rational#quo" => some "__coerce_div"
   | "Integer#%"  | "Float#%"  => some "__coerce_mod"
-  | "Integer#**" | "Float#**" => some "__coerce_pow"
+  | "Integer#**" | "Float#**" | "Rational#**" => some "__coerce_pow"
   | "Integer#divmod" | "Float#divmod" => some "__coerce_divmod"
   | "Integer#<"  | "Float#<"  => some "__coerce_lt"
   | "Integer#>"  | "Float#>"  => some "__coerce_gt"
   | "Integer#<=" | "Float#<=" => some "__coerce_le"
   | "Integer#>=" | "Float#>=" => some "__coerce_ge"
-  | "Integer#<=>" | "Float#<=>" => some "__coerce_cmp"
+  | "Integer#<=>" | "Float#<=>" | "Rational#<=>" => some "__coerce_cmp"
   | _ => none
 
 /-- When a numeric builtin must dispatch rather than answer, the prelude twin to
@@ -591,8 +592,11 @@ def coerceDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     Option String :=
   match args with
   | [b] =>
-    if (num? recv).isNone || (num? b).isSome then none
-    else if bid == "Integer#==" || bid == "Float#==" then
+    if (num? recv).isNone && (rationalPayload? h recv).isNone then none
+    else if bid == "Integer#/" && recv.identEq (.int 1) && (rationalPayload? h b).isSome then none
+    else if (num? b).isSome then none
+    else if (rationalPayload? h recv).isSome && (rationalPayload? h b).isSome then none
+    else if bid == "Integer#==" || bid == "Float#==" || bid == "Rational#==" then
       if hasProgramEq h b then some "__eq_reverse" else none
     else if mayCoerce h b then coerceTwin? bid
     else none
@@ -669,6 +673,12 @@ def deferTwin? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     match args with
     | [other] => if recv.identEq other then none else some "__case_equal"
     | _ => none
+  else if bid == "Rational#eql?" then
+    match args with
+    | [other] =>
+      if !recv.identEq other && (rationalPayload? h other).isSome && hasUserEq h recv
+      then some "__case_equal" else none
+    | _ => none
   else
   reprDefer? h bid recv args <|> coerceDefer? h bid recv args
     <|> toAryDefer? h bid recv args
@@ -711,6 +721,11 @@ def sliceRange (n : Nat) (start len : Int) : Option (Nat × Nat) :=
     here; their with-arg forms gate as Unsupported inside their own arms. -/
 def zeroArgBids : List String :=
   ["Object#class", "Object#inspect", "Object#to_s", "Object#nil?",
+   "Object#__coerce_defined?", "Integer#to_r", "Float#to_r",
+   "Rational#numerator", "Rational#denominator", "Rational#to_s", "Rational#inspect",
+   "Rational#to_i", "Rational#to_f", "Rational#to_r", "Rational#-@", "Rational#+@",
+   "Rational#abs", "Rational#magnitude", "Rational#positive?", "Rational#negative?",
+   "Rational#dup",
    "Object#frozen?", "Object#freeze", "Object#block_given?",
    "NilClass#nil?", "NilClass#to_s", "NilClass#inspect", "NilClass#to_a",
    "TrueClass#to_s", "TrueClass#inspect", "FalseClass#to_s", "FalseClass#inspect",

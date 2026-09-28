@@ -22,6 +22,7 @@ FOLD = {
   "FalseClass" => [FalseClass],
   "Integer" => [Integer, Numeric, Comparable],
   "Float" => [Float, Numeric, Comparable],
+  "Rational" => [Rational, Numeric, Comparable],
   "String" => [String, Comparable],
   "Symbol" => [Symbol, Comparable],
   "Array" => [Array, Enumerable],
@@ -111,6 +112,15 @@ end
 puts sentries.join(",\n")
 
 puts <<~MID
+  ]
+
+  /-- Constants a require may define, curated separately from the oracle's
+      already-loaded constants. Preserve the L109 fidelity gate on regeneration. -/
+  def crubyStdlibConstants : List String := [
+    "Forwardable", "JSON", "YAML", "Date", "DateTime", "OpenSSL", "Digest",
+    "Tempfile", "FileUtils", "Shellwords", "StringIO", "Timeout", "Socket",
+    "OptionParser", "Open3", "SecureRandom", "Etc", "Zlib", "Base64", "CSV",
+    "Logger", "Delegator", "SimpleDelegator", "Singleton", "Observable"
   ]
 
   /-- Toplevel constants CRuby defines (Object.constants): a constant-lookup

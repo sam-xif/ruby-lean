@@ -1543,3 +1543,25 @@ frozen-error rendering and the effectful final observation. The comparator/contr
 wrapper are unchanged. The previously commented uncaught-message witness is now an
 executed regression. Intermediate full replay: 57 agree / 0 disagree / 1 unsupported;
 the sole remaining gated regression is sorbet-hash-gate, still declared open.
+
+
+## N52 — native rational semantics and targeted numeric probes (2026-09-28)
+
+L278 adds five rational regression programs and a front-end seed. Literal tests
+exercise constructor/constant overrides and identity by syntax site; the remaining
+programs exercise exact arithmetic, mixed coercion/equality, frozen allocation and
+Float conversion. Statuses were marked fixed only after successful CRuby replay.
+The large-fraction Float witness was found by a deterministic seed-20260928 probe
+(150 conversions); its intermediate-rounding discrepancy is now pinned alongside
+subnormals and ties. Eighty generated exact arithmetic fragments also agree.
+The wrapper and comparator were left unchanged.
+
+The ancestry probe exposed control-environment pollution: the wrapper's require
+json adds JSON::Ext::Generator::GeneratorMethods::Object into Object.ancestors.
+The Rational regression deliberately asserts its own three ancestors, leaving
+complete wrapper/model ancestry equivalence as a distinct unresolved issue.
+
+Final L278 reports: 20260928-000430-{tier0,tier1,tierregressions}-lean. Bootstrap
+1,026 agree / zero disagree / 277 unsupported (+22, no losses); regressions
+62 fixed statuses held / one existing open Sorbet hash gate; tier 1 n=300 seed
+20260927 remains 219 agree / 81 unsupported / zero disagree with the same sources.

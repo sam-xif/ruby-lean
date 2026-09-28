@@ -90,6 +90,17 @@ def crubyMethodNames : List (String × List String) := [
     "rect", "rectangular", "remainder", "round", "singleton_method_added", "step", "to_c", "to_f",
     "to_i", "to_int", "to_r", "to_s", "truncate", "zero?"
   ]),
+  ("Rational", [
+    "%", "*", "**", "+", "+@", "-", "-@", "/",
+    "<", "<=", "<=>", "==", ">", ">=", "abs", "abs2",
+    "angle", "arg", "between?", "ceil", "clamp", "clone", "coerce", "conj",
+    "conjugate", "denominator", "div", "divmod", "dup", "eql?", "fdiv", "finite?",
+    "floor", "hash", "i", "imag", "imaginary", "infinite?", "inspect", "integer?",
+    "magnitude", "marshal_dump", "modulo", "negative?", "nonzero?", "numerator", "phase", "polar",
+    "positive?", "quo", "rationalize", "real", "real?", "rect", "rectangular", "remainder",
+    "round", "singleton_method_added", "step", "to_c", "to_f", "to_i", "to_int", "to_r",
+    "to_s", "truncate", "zero?"
+  ]),
   ("String", [
     "%", "*", "+", "+@", "-@", "<", "<<", "<=",
     "<=>", "==", "===", "=~", ">", ">=", "[]", "[]=",
@@ -258,6 +269,9 @@ def crubySingletonNames : List (String × List String) := [
   ("Float", [
 
   ]),
+  ("Rational", [
+    "convert"
+  ]),
   ("String", [
     "new", "try_convert"
   ]),
@@ -329,13 +343,8 @@ def crubySingletonNames : List (String × List String) := [
   ])
 ]
 
-/-- Constants a **`require` would define** — stdlib and default gems that a bare
-    `ruby` process does not have, so `gen_cruby_names.rb` cannot see them. The
-    model has no idea whether the program's environment loaded them, and getting
-    it wrong is a *disagreement* rather than a refusal: a `NameError` where the
-    control succeeded. Gating is the safe answer, so these are folded into the
-    unmodeled-constant check by hand (L109). Kept short and only extended when a
-    corpus actually reaches one. Hand-maintained, unlike the rest of this file. -/
+/-- Constants a require may define, curated separately from the oracle's
+    already-loaded constants. Preserve the L109 fidelity gate on regeneration. -/
 def crubyStdlibConstants : List String := [
   "Forwardable", "JSON", "YAML", "Date", "DateTime", "OpenSSL", "Digest",
   "Tempfile", "FileUtils", "Shellwords", "StringIO", "Timeout", "Socket",

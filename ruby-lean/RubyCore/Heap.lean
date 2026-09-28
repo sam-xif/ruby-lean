@@ -153,6 +153,8 @@ deriving Inhabited
 
 inductive Payload where
   | none
+  /-- Reduced exact fraction; denominator is positive, instances are frozen. -/
+  | rational (num : Int) (den : Nat)
   | str (s : String)
   | arr (elems : Array Value)
   | hsh (entries : Array (Value × Value))
@@ -290,10 +292,11 @@ def regexpId : ObjId := 36
 def matchDataId : ObjId := 37
 /-- `RegexpError < StandardError` — raised by `Regexp.new` on a bad pattern. -/
 def regexpErrorId : ObjId := 38
+def rationalId : ObjId := 39
 /-- Toplevel self (`main`), an ordinary Object instance. **Must stay last**:
     `initHeap` allocates every `classTable` entry densely and then `main`, so
     `mainId = classTable.length`. Adding a bootstrap class means bumping this. -/
-def mainId : ObjId := 39
+def mainId : ObjId := 40
 
 /-- (id, name, superclass) for every bootstrap class, in id order. -/
 def classTable : List (ObjId × String × Option ObjId) := [
@@ -335,7 +338,8 @@ def classTable : List (ObjId × String × Option ObjId) := [
   (uncaughtThrowErrorId, "UncaughtThrowError", some argumentErrorId),
   (regexpId, "Regexp", some objectId),
   (matchDataId, "MatchData", some objectId),
-  (regexpErrorId, "RegexpError", some standardErrorId)
+  (regexpErrorId, "RegexpError", some standardErrorId),
+  (rationalId, "Rational", some numericId)
 ]
 
 /-- Builtin method table: class id → method names given by primitive rules.
@@ -350,7 +354,7 @@ def builtinMethods : List (ObjId × List String) := [
               "require", "require_relative", "__unsupported__", "dup", "clone",
               "__user_defines?", "__default_inspect?", "__write", "__addr_str",
               "__any_to_s", "__match_to_caller", "respond_to_missing?",
-              "__coerce_failed", "__cmp_failed",
+              "__coerce_failed", "__cmp_failed", "__coerce_defined?", "Rational",
               "initialize"]),
   (nilClassId, ["===", "to_s", "inspect", "nil?", "to_a", "&", "|", "dup", "clone"]),
   (trueClassId, ["===", "to_s", "inspect", "&", "|", "dup", "clone"]),
@@ -359,11 +363,15 @@ def builtinMethods : List (ObjId × List String) := [
                "<=", ">=", "<=>", "to_s", "inspect", "to_i", "to_f", "abs", "succ",
                "pred", "zero?", "positive?", "negative?", "even?", "odd?", "chr",
                "round", "ceil", "floor", "truncate", "divmod", "nonzero?",
-               "eql?", "hash", "dup", "clone"]),
+               "eql?", "hash", "dup", "clone", "to_r"]),
   (floatId, ["round", "ceil", "floor", "truncate", "divmod", "nonzero?",
              "+", "-", "*", "/", "%", "**", "-@", "==", "===", "<", ">", "<=", ">=", "<=>",
              "to_s", "inspect", "to_i", "to_f", "abs", "zero?", "nan?", "eql?",
-             "dup", "clone"]),
+             "dup", "clone", "to_r"]),
+  (rationalId, ["numerator", "denominator", "to_s", "inspect", "to_i", "to_f", "to_r",
+                "-@", "+@", "abs", "magnitude", "positive?", "negative?", "dup", "clone",
+                "eql?", "==", "coerce", "+", "-", "*", "/", "quo", "<=>", "**",
+                "floor", "ceil", "truncate"]),
   (stringId, ["+", "*", "==", "===", "<", ">", "<=", ">=", "<=>", "length",
               "size", "to_s", "to_str", "inspect", "<<", "concat", "empty?",
               "include?", "reverse", "upcase", "downcase", "strip", "chomp",
@@ -417,7 +425,7 @@ def install (h : Heap) (cls : ObjId) (names : List String) : Heap :=
     let cname := c.name
     let methods := names.foldl (init := c.methods) fun ms n =>
       (n, { params := [], body := .nil, owner := cls,
-            visibility := if n == "method_missing" then .priv else .pub,
+            visibility := if n == "method_missing" || n == "Rational" then .priv else .pub,
             builtin := some (if n == "===" then
               match cname with
               | "Proc" => "Proc#call"
@@ -708,7 +716,13 @@ def cvarSetIn (h : Heap) (scope : ObjId) (name : String) (v : Value) : Heap :=
       { c with cvars := (name, v) :: c.cvars.filter (·.1 != name) }
   | Option.none => h
 
-/-- Install a method (def'). Returns the updated heap. -/
+/-- Frozen method tables report the attached receiver for an eigenclass. -/
+def frozenMethodReceiver? (h : Heap) (target : ObjId) : Option Value :=
+  let attached := (h.classPayload? target).bind (·.attached)
+  let receiver := attached.getD target
+  if (h.get target).frozen || (h.get receiver).frozen then some (.ref receiver) else none
+
+/-- Install a method after the interpreter has checked the frozen receiver. -/
 def defineMethod (h : Heap) (cls : ObjId) (name : String) (md : MethodDef) : Heap :=
   match h.classPayload? cls with
   | some c =>

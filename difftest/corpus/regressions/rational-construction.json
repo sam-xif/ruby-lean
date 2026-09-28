@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L278 (2026-09-28)",
+  "note": "Frozen fractions, exact numeric conversion, undefined allocation and frozen method definitions."
+}

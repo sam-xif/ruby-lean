@@ -31,7 +31,7 @@ rescue Desugar::Unsupported => e
   exit 1
 end
 
-json = Export.json(core)
+json = Export.json(core, literal_namespace: "prelude")
 
 # Escape for a Lean string literal, cutting into ~96-char chunks at character
 # boundaries (never inside an escape sequence) so the generated file stays

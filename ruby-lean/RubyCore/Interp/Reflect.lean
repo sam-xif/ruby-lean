@@ -45,7 +45,7 @@ def localFreeB : Nat → Expr → Bool
   | 0, _ => false
   | n + 1, e =>
     match e with
-    | .int _ | .flt _ | .str _ | .sym _ | .tru | .fls | .nil | .self' => true
+    | .int _ | .flt _ | .rat _ _ _ | .str _ | .sym _ | .tru | .fls | .nil | .self' => true
     | .var .lvar _ => false
     | .var _ _ => true
     | .vasgn .lvar _ _ => false
@@ -222,6 +222,9 @@ def reflectDefineMethod (m : Machine) (recv : Value) (mname : String)
             | none => none   -- non-Module receiver: CRuby's NoMethodError; gate below
             | some target =>
               let m := dmTargetM m recv singleton
+              if let some receiver := frozenMethodReceiver? m.heap target then
+                some (raiseFrozen m receiver)
+              else
               -- constants in the body resolve at the *definition* site [V]
               let cref := (m.frames.getD (cl.captured.getD 0) default).cref
               -- **J33: capture erasure for closed bodies.** A body that can

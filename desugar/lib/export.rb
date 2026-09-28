@@ -34,19 +34,30 @@ module Export
   # Kept separate from `locals` because the two differ for `defined?`; the Lean
   # decoder merges them (it decides `defined?` from the node shape) and accepts the
   # v4 four-slot shape too, so an older AST still decodes.
+  # L278/C39: additive `rat` literal head with exact numerator/denominator;
+  # unlike a send, it is unaffected by constructor or constant redefinition.
   VERSION = 5
 
   module_function
 
   # Full export document: { "v": 2, "ast": <node> } as a JSON string.
-  def json(core)
-    JSON.generate({ "v" => VERSION, "ast" => jsonable(core) })
+  def json(core, literal_namespace: "program")
+    JSON.generate({ "v" => VERSION, "ast" => jsonable(core, [literal_namespace, 0]) })
   end
 
-  def jsonable(x)
+  def jsonable(x, literals = ["program", 0])
     case x
     when Symbol then x.to_s
     when Array
+      # CRuby caches a frozen numeric literal by its syntactic occurrence.
+      # Assign stable sites while exporting the normalized tree, keeping this
+      # metadata out of the render/parse normal form. Prelude and program are
+      # separate compilation units, hence separate namespaces.
+      if x[0] == :rat
+        site = "#{literals[0]}:#{literals[1]}"
+        literals[1] += 1
+        return ["rat", x[1], x[2], site]
+      end
       # J52: the regex-literal lowering (`::Regexp.new("src", opts)`, desugar
       # C33) exports as its own head — in CRuby the literal consults no
       # constant at runtime, and on the Lean side a dedicated head is one
@@ -60,7 +71,7 @@ module Export
          x[3][1][1].is_a?(Integer) && x[3][1][1] >= 0
         ["regexp_lit", x[3][0][1], x[3][1][1]]
       else
-        x.map { |e| jsonable(e) }
+        x.map { |e| jsonable(e, literals) }
       end
     when nil, Integer, String then x
     when Float

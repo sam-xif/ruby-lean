@@ -16,7 +16,7 @@ class Desugar
   RULES = %i[
     seq int flt str sym true false nil self var vasgn const casgn send block def array hash
     splat if while return break next and->if or->if unless->if until->while
-    or-write and-write op-write range->send rational->send imaginary->send interp massign
+    or-write and-write op-write range->send rational imaginary->send interp massign
     class module sclass defs begin retry super zsuper rescue-mod->begin attr-index-write
     yield lambda->send block-capture blockpass
     opt-param kw-param kwrest-param kwargs case->if defined cpath cpath-asgn
@@ -917,12 +917,12 @@ class Desugar
     [:send, [:cpath, nil, "Range"], "new", [lo, hi, excl], nil]
   end
 
-  # 2r => Rational(2, 1) ; 2.5r => Rational(5, 2). Uses the literal's exact value, so it
-  # is precise even for float-derived rationals.
+  # Native literal: neither Kernel#Rational nor the Rational constant is consulted.
+  # Prism supplies the exact fraction, including decimal digits beyond Float precision.
   def desugar_rational(n)
-    fire(:"rational->send")
+    fire(:rational)
     r = n.value
-    [:send, nil, "Rational", [[:int, r.numerator], [:int, r.denominator]], nil]
+    [:rat, r.numerator, r.denominator]
   end
 
   # 3i => Complex(0, 3) ; 2.5i => Complex(0, 2.5). Imag part may be Integer/Float/Rational.
@@ -935,7 +935,7 @@ class Desugar
     case v
     when Integer  then [:int, v]
     when Float    then [:flt, v]
-    when Rational then [:send, nil, "Rational", [[:int, v.numerator], [:int, v.denominator]], nil]
+    when Rational then [:rat, v.numerator, v.denominator]
     else raise Unsupported, "imaginary component #{v.class}"
     end
   end

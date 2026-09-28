@@ -102,12 +102,10 @@ where
       -- `T::Helpers#abstract!` installs exactly that (the abstract class must
       -- refuse to instantiate, L105), and without this check the interception
       -- allocated an instance and never consulted it.
-      let userNew := match (m.heap.get o).eigen with
-        | some e => match methodOn m.heap e "new" with
-          | some (_, md) => md.builtin.isNone && !md.undefined
-          | none => false
+      let nativeNew := match lookup m.heap recv "new" with
+        | some (_, md) => !md.undefined && md.builtin == some "Class#new"
         | none => false
-      if mname == "new" && !c.isModule && !userNew then
+      if mname == "new" && !c.isModule && nativeNew then
         match userInit? m.heap o with
         | some md =>
           -- Allocate, then run the user `initialize` (a frame the builtin cannot

@@ -365,6 +365,9 @@ structure Machine where
   stack : List FrameId
   frames : Array Frame
   heap : Heap
+  /-- Frozen numeric literals are shared on repeated execution of one syntax
+      site. Constructor calls allocate independently. Keys include the unit. -/
+  rationalLiterals : List (String × Value) := []
   globals : List (String × Value) := []
   /-- Accumulated stdout (the observation's trace). -/
   out : String := ""

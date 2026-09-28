@@ -16,6 +16,7 @@ module Render
     case node[0]
     when :int   then node[1].to_s
     when :flt   then node[1].inspect            # finite float literal -> re-parseable
+    when :rat   then rational_literal(node[1], node[2])
     when :str   then node[1].inspect            # produces a quoted, escaped literal
     when :sym   then ":#{node[1]}"
     when :true  then "true"
@@ -98,6 +99,21 @@ module Render
     else
       raise "cannot render head :#{node[0]}"
     end
+  end
+
+  # Literal fractions have only factors 2 and 5 in the denominator. Render an
+  # exact finite decimal, never a constructor call or a lossy Float conversion.
+  def rational_literal(num, den)
+    scale = 0
+    factor = 1
+    until factor % den == 0
+      factor *= 10
+      scale += 1
+      raise "non-decimal rational literal" if scale > den.bit_length
+    end
+    digits = (num.abs * (factor / den)).to_s.rjust(scale + 1, "0")
+    digits.insert(-scale - 1, ".") if scale > 0
+    "#{num < 0 ? '-' : ''}#{digits}r"
   end
 
   # (begin; body; rescue E1, E2 => e; h; ...; else; el; ensure; en; end)

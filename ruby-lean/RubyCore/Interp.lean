@@ -120,6 +120,13 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
   match e with
   | .int n => .next (withCtl m (.value (.int n)))
   | .flt x => .next (withCtl m (.value (.flt (Float.ofBits x))))
+  | .rat n d site =>
+    match m.rationalLiterals.find? (·.1 == site) with
+    | some (_, v) => .next (withCtl m (.value v))
+    | none =>
+      let (v, h) := m.heap.allocRational n d
+      let m := { m with heap := h, rationalLiterals := (site, v) :: m.rationalLiterals }
+      .next (withCtl m (.value v))
   | .str s =>
     -- string literals allocate a fresh unfrozen String [V]
     let (v, m) := Builtins.allocStr m s
@@ -256,6 +263,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     .next (withKont m (.eval coll) (.forStartK targets body))
   | .def' name params body =>
     let defmod := m.currentFrame.defmod
+    if let some receiver := frozenMethodReceiver? m.heap defmod then raiseFrozen m receiver else
     let md : MethodDef :=
       { params, body, owner := defmod, cref := m.currentFrame.cref,
         fromPrelude := m.preludeMode,

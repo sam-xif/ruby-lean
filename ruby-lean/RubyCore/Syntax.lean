@@ -37,6 +37,8 @@ inductive Expr where
       only at evaluation (`Float.ofBits`). The wire format is unchanged (a JSON
       float; `Decode` takes `.toBits`). -/
   | flt (bits : UInt64)
+  /-- Exact native rational literal; constructor/constant lookup is bypassed. -/
+  | rat (num : Int) (den : Nat) (site : String)
   | str (s : String)
   | sym (s : String)
   | tru
@@ -346,6 +348,10 @@ partial def expr (j : Json) : M Expr := do
   match head, a with
   | "int",   #[_, n] => .int <$> asInt n
   | "flt",   #[_, x] => (fun f => Expr.flt f.toBits) <$> asFloat x
+  | "rat", #[_, n, d, site] => do
+    let den ← asInt d
+    if den ≤ 0 then throw "rational literal denominator must be positive"
+    return .rat (← asInt n) den.toNat (← asStr site)
   | "regexp_lit", #[_, s, o] => return .regexpLit (← asStr s) (← asInt o).toNat
   | "str",   #[_, s] => .str <$> asStr s
   | "sym",   #[_, s] => .sym <$> asStr s
