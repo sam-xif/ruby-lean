@@ -15377,3 +15377,88 @@ The typed gate was rerun and remains red at HeapFacts className/lookup proof
 drift; its captured error log exactly matches L296. Proof repair stays deferred.
 The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
 was not reached. The captured proof-audit.log is archived.
+
+
+## L298 — native clone options and copy hooks (2026-09-28)
+
+Native clone flattened keywords into positional arguments, raising a zero-arity
+error on Object/String/Array/Hash copies and silently ignoring freeze:false on
+immediates. It also skipped both initialize_clone and initialize_copy. The new
+Interp/Copy module dispatches by resolved native bid (including aliases/super),
+checks positional arity before keywords, inspects unknown keys and renders the
+invalid option's class through live to_s. nil/true/false are the only accepted
+freeze values. Immediates, Rational and Complex retain identity and reject false.
+
+Core copies allocate without Ruby new/allocate/initialize calls, copy ivars, and
+send private initialize_clone with only explicit true/false forwarded. A nil
+option (including explicit nil) supplies no keyword. The default hook validates
+its own arguments and sends initialize_copy. Normal return discards the hook's
+value and freezes for true or the source's live frozen state under nil; false
+does not undo freezing done by the hook. Exceptions, throws and missing hooks
+follow ordinary dispatch/unwind and skip final freezing. Existing source
+singleton classes still gate. Newly added singleton metadata on a copy is
+frozen with its object at finalization.
+
+String/Array/Hash start with empty native contents (String is initially binary),
+but ivars already exist when a hook runs. Their registered private native
+initialize_copy methods change contents and encoding/default metadata, preserving
+destination ivars. They check frozen state before conversion, Hash rejects a
+nonself replacement during iteration, and conversions use the shared checked
+conversion machine (to_str/to_ary/to_hash). String also checks frozen state after
+conversion; Array/Hash finish even when conversion freezes the target. Exception
+message/hidden metadata are copied before hooks, matching CRuby's generic ivars.
+The previous Exception.exception protocol continues using its own final message
+replacement. Trace labels cover the new continuations.
+
+The algorithm follows CRuby 4.0's object.c (rb_get_freeze_opt, rb_obj_clone_setup,
+rb_obj_init_clone), string.c (rb_str_replace), array.c (rb_ary_replace) and hash.c
+(rb_hash_replace); executable CRuby 4.0.5 pins behavior. Native default copies of
+other already-modeled payloads retain the effect-free shortcut only while both
+hooks resolve to defaults. Their custom hooks still require uninitialized native
+allocation/state; namespace, singleton and Random copying remain separate work.
+Enumerator freeze options now work, with suspended execution copying rejected.
+Proc's own clone has a different zero-keyword API and remains an existing gate.
+
+The original 41 probes now yield 35 agreements and six gates: 30 disagreements
+and three gates become agreements; two earlier agreements hold. One disagreement
+now exposes the old Hash#default gate because the previously skipped hook runs;
+this is not counted as a conformance repair. Five other old gates remain
+(singleton copying, Array.new(array), Hash#default, Module#instance_method and
+Proc#clone). Equivalent supported constructions independently verify Array/Hash
+empty shells, shared defaults and native allocation bypass. The extra 26 probes
+have 24 agreements, one existing Range-subclass constructor gate and one preserved
+Regexp literal-frozen-state disagreement. Regexp.new and explicitly frozen
+Regexp copies agree; the literal bug is a distinct next increment. The L297
+33-case name audit now entirely agrees, repairing its final clone keyword case.
+Five native-clone-* programs preserve all 59 agreeing cases; every exact combined
+source agrees before its sidecar is marked fixed. No comparison or proof change.
+
+The separate next-audit has 12 probes: nine disagreements and three agreements.
+Six failures pin static/dynamic Regexp literal freezing, cached static site identity
+and /o freezing; three pin skipped dup hooks and ignored immediate dup arity.
+Runtime Regexp.new stays mutable, and new copy singleton finalization plus the
+initial String shell's ASCII-8BIT encoding agree. These reproducers define the
+next semantic increments; neither Regexp literal behavior nor dup is claimed fixed.
+
+Primary implementation references: [object.c](https://raw.githubusercontent.com/ruby/ruby/ruby_4_0/object.c),
+[string.c](https://raw.githubusercontent.com/ruby/ruby/ruby_4_0/string.c),
+[array.c](https://raw.githubusercontent.com/ruby/ruby/ruby_4_0/array.c), and
+[hash.c](https://raw.githubusercontent.com/ruby/ruby/ruby_4_0/hash.c).
+
+Final validation: model build passes (104 jobs), with no later runtime edits.
+Full bootstrap: 1,309 cases, 1,096 agree, zero disagree, 207 unsupported, five
+existing invalid controls and the old test_syntax_115 harness error. Every source
+and verdict matches L297. Regression replay: 208 cases, 207 agree and one old
+sorbet-hash gate; all 203 earlier sources/verdicts hold. Tier 1 (300, seed
+20260927): 226 agree, 74 gates, every source/verdict unchanged. Frontend seeds
+plus new guards: 51 agree, all AST-idempotent, six old render-only instabilities.
+Standalone and feature loading: three agreements each. Whitespace checks pass.
+Build logs, before/after focused probes, combined-source validation, full report
+comparisons and the next audit are archived in
+`difftest/reports/20260928-incremental-L298/`. No checker, proof, comparator,
+normalizer or floor changes; proof repair remains explicitly deferred.
+
+The typed gate was rerun and remains red at HeapFacts className/lookup proof
+drift; its captured error log exactly matches L297. Proof repair stays deferred.
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.

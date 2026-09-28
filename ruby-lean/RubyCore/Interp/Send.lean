@@ -1,4 +1,4 @@
-import RubyCore.Interp.Construct
+import RubyCore.Interp.Copy
 import RubyCore.Interp.Require
 import RubyCore.Interp.Forwardable
 
@@ -134,7 +134,11 @@ where
         if bid == "Exception#exception" then callExceptionCopy m recv args kw else
         if bid == "Exception#to_s" then callExceptionMessage m recv args kw else
         if bid == "UncaughtThrowError#to_s" then callUncaughtMessage m recv args kw else
-        if bid == "Object#initialize_clone" then callInitializeClone m recv args kw else
+        if nativeCloneBid bid then callNativeClone m recv args kw else
+        if bid == "Object#initialize_clone" then callNativeInitializeClone m recv args kw else
+        if bid == "String#initialize_copy" then callCoreCopy m Boot.stringId recv args kw else
+        if bid == "Array#initialize_copy" then callCoreCopy m Boot.arrayId recv args kw else
+        if bid == "Hash#initialize_copy" then callCoreCopy m Boot.hashId recv args kw else
         if bid == "Class#new" || bid == "Module#new" then callConstruct m recv args blk kw else
         if bid == "Class#allocate" then callAllocate m recv args kw else
         if bid == "Module#const_set" then callConstSet m recv args kw else
@@ -235,7 +239,11 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
         if bid == "Exception#exception" then callExceptionCopy m self args kw else
         if bid == "Exception#to_s" then callExceptionMessage m self args kw else
         if bid == "UncaughtThrowError#to_s" then callUncaughtMessage m self args kw else
-        if bid == "Object#initialize_clone" then callInitializeClone m self args kw else
+        if nativeCloneBid bid then callNativeClone m self args kw else
+        if bid == "Object#initialize_clone" then callNativeInitializeClone m self args kw else
+        if bid == "String#initialize_copy" then callCoreCopy m Boot.stringId self args kw else
+        if bid == "Array#initialize_copy" then callCoreCopy m Boot.arrayId self args kw else
+        if bid == "Hash#initialize_copy" then callCoreCopy m Boot.hashId self args kw else
         if bid == "Class#new" || bid == "Module#new" then callConstruct m self args blk kw else
         if bid == "Class#allocate" then callAllocate m self args kw else
         if bid == "Module#const_set" then callConstSet m self args kw else

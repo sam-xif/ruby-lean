@@ -26,6 +26,7 @@ regenerated. Paths are relative to `ruby-lean/`.
 | `RubyCore/Interp/BlockPass.lean` | Checked conversion continuations, including nested method/block parameter destructuring after defaults (L275–L287) |
 | `RubyCore/Interp/Inspect.lean` | Native object inspection with checked field-selection hooks, live values and recursion control (L289) |
 | `RubyCore/Interp/Enumerator.lean` | Native Enumerator/Generator/Yielder descriptors, internal dispatch and suspended external execution (L280) |
+| `RubyCore/Interp/Copy.lean` | Native clone keyword validation, copy-hook dispatch, final freezing and core initialize_copy conversion (L298) |
 | `RubyCore/Interp/Construct.lean` | Native constructor/allocator dispatch, Class/Module initialization and inherited callbacks, and exception construction/copy/message protocols (L284–L291) |
 | `RubyCore/Interp/Mutation.lean` | Method-table edits interleaved with ordinary Ruby callbacks and frozen-state checks (L282) |
 | `RubyCore/Interp/Forwardable.lean` | Forwardable's simple accessor source-generator fragment, compiled to real RubyCore definitions (L282) |
@@ -128,6 +129,13 @@ L297 caches frozen native Module#name Strings by path and encoding tag, preservi
 shared identity and earlier temporary-name snapshots during permanent promotion.
 Native display remains fresh and mutable. Permanent ASCII-name encoding and
 general String#-@ interning remain separate work.
+
+L298 implements native clone keyword validation and the Object/String/Array/Hash/
+Exception copy-hook protocol. Mutable allocations receive ivars before hooks;
+core initialize_copy fills native contents through checked conversions. Freezing
+occurs after normal hook return, using live source state for the default policy.
+Immutable values reject unfreezing. Singleton copies, native custom-copy allocators
+outside those core classes and the complete dup protocol remain separate work.
 
 Tier-0 baseline: **940/1304 bootstraptest agree, 0 disagree.**
 

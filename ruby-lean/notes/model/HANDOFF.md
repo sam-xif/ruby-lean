@@ -1,6 +1,68 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L297)
+## Active conformance goal (2026-09-28, L298)
+
+L298 repairs native clone keyword handling and copy initialization hooks. New
+Interp/Copy.lean validates options, allocates mutable core copies with ivars,
+sends private initialize_clone/initialize_copy and applies final freezing after
+normal return. String/Array/Hash native copy methods use checked conversion;
+String rechecks frozen state afterward, Array/Hash do not. Error diagnostics
+inspect unknown keys and call class to_s normally. Immutable objects reject
+freeze:false; aliases/super and Enumerator options follow the native entry.
+
+The 41-probe audit has 35 agreements and six gates: 30 disagreements and three
+old gates become agreements, with two earlier agreements preserved. One prior
+disagreement exposes the old Hash#default gate because its skipped hook now runs;
+it is not counted as repaired. Five other existing gates remain. Extra 26:
+24 agree, one old Range-subclass constructor gate and the Regexp literal-frozen
+failure. Five native-clone-* programs preserve all 59 agreeing probes. All 33
+L297 name probes now agree. L276–L298 are separate commits.
+
+Final validation: model build passes (104 jobs), with no later runtime edits.
+Full bootstrap: 1,309 cases, 1,096 agree, zero disagree, 207 unsupported, five
+existing invalid controls and the old test_syntax_115 harness error. Every source
+and verdict matches L297. Regression replay: 208 cases, 207 agree and one old
+sorbet-hash gate; all 203 earlier sources/verdicts hold. Tier 1 (300, seed
+20260927): 226 agree, 74 gates, every source/verdict unchanged. Frontend seeds
+plus new guards: 51 agree, all AST-idempotent, six old render-only instabilities.
+Standalone and feature loading: three agreements each. Whitespace checks pass.
+Build logs, before/after focused probes, combined-source validation, full report
+comparisons and the next audit are archived in
+`difftest/reports/20260928-incremental-L298/`. No checker, proof, comparator,
+normalizer or floor changes; proof repair remains explicitly deferred.
+
+The typed gate was rerun and remains red at HeapFacts className/lookup proof
+drift; its captured error log exactly matches L297. Proof repair stays deferred.
+
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.
+
+All runtime campaigns and proof audits are terminal.
+
+Next known failures are preserved in probes/next-audit.json (script beside it):
+12 cases, nine disagreements and three agreements. Six cover Regexp literal
+freezing and static-site identity, including dynamic literals and /o freezing.
+Three cover skipped dup initialization hooks and immediate dup positional arity.
+Two further clone probes verify singleton methods added during the hook freeze
+with their copy, and String hooks initially see an ASCII-8BIT empty shell.
+Runtime Regexp.new remains mutable and agrees. Do not implement regex literal
+identity by pattern equality: separate literal sites must stay distinct.
+
+For dup, reuse the new core-copy machinery but preserve its separate protocol:
+private initialize_dup calls initialize_copy, no freeze keyword, singleton state
+is omitted, and invalid immediate arity must raise. Original singleton clone and
+namespace/Random copying remain gates. Other native payloads currently preserve
+default copies only while both hooks resolve to defaults; custom hooks need
+uninitialized native allocation/state before they can be modeled honestly.
+
+Still open: Hash#default (exposed by the clone hook audit), Array.new(array),
+general String#-@ / frozen-literal canonicalization, permanent ASCII-name encoding,
+Integer#chr's ASCII encoding, competing namespace path ordering, set_temporary_name,
+namespace copy/removal, const_missing, native method removal/Kernel ownership and
+Random/Regexp overrides. Full conformance remains incomplete. Unrelated paper/
+and wasm upstream-bug files are untouched; proof repair remains deferred.
+
+## Previous batch (2026-09-28, L297)
 
 L296 and L297 are separate increments: native fresh String#b copies, then frozen
 cached Module#name identity. The latter shares equal native paths, keeps old name

@@ -173,6 +173,7 @@ deriving Inhabited
 inductive ConversionCall where
   | block (call : BlockPassCall)
   | stringPlus (recv : Value)
+  | coreCopy (kind : ObjId) (recv : Value)
   | splat (call : SplatCall)
   | closureArgs (cl : Closure) (brk : Option FrameId)
       (selfOv : Option Value) (defmodOv : Option ObjId)
@@ -267,6 +268,8 @@ inductive Kont where
   /-- A checked exception constructor returned; validate and raise its result. -/
   | raiseValueK
   | exceptionCopyK (copy message original : Value)
+  | cloneK (copy original freeze : Value)
+  | copyErrorK (lead : String) (remaining : List Value) (parts : List String) (fallback : Option Value)
   /-- The call supplied a literal block. A break targets this boundary even
       through initialize, super, or further block forwarding. -/
   | blockCallK (scope : FrameId)

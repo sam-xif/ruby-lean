@@ -239,12 +239,6 @@ def callExceptionCopy (m : Machine) (recv : Value) (args : List Value)
     .next { m with ctl := .send copy .reflective "initialize_clone" [recv] none [], kont := .exceptionCopyK copy (args.headD .nil) recv :: m.kont }
   | _ => .unsupported "Exception copy on a non-object"
 
-def callInitializeClone (m : Machine) (recv : Value) (args : List Value)
-    (kw : List (Value × Value)) : StepResult :=
-  if !kw.isEmpty then .unsupported "initialize_clone freeze keyword" else
-  if args.length != 1 then enumArity m args.length "1" else
-  .next { m with ctl := .send recv .reflective "initialize_copy" args none [], kont := .newK recv :: m.kont }
-
 def arrayInitYield (m : Machine) (recv : ObjId) (block : Value) (index size : Nat) : StepResult :=
   if index >= size then .next (withCtl m (.value (.ref recv))) else
   match procClosure? m block with

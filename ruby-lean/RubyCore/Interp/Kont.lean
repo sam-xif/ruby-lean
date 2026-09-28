@@ -68,6 +68,8 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .raiseValueK =>
       if isA m.heap v Boot.exceptionId then .next (withCtl m (.jump (.raiseJ v)))
       else .next (raiseErr m Boot.typeErrorId "exception object expected")
+    | .cloneK copy original freeze => finishNativeClone m copy original freeze
+    | .copyErrorK lead rest parts fallback => finishCopyError m lead rest parts fallback v
     | .exceptionCopyK copy message original =>
       let freeze := match original with | .ref o => (m.heap.get o).frozen | _ => true
       let m := if freeze then match copy with

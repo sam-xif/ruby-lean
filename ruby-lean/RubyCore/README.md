@@ -237,7 +237,7 @@ encoding), `arr`, `hsh`, `rng`, `proc` (a `Closure`), `meth`, `exc`, and
   Other messages render through checked to_str then to_s calls (L285).
 - **Rational** carries a reduced arbitrary-precision numerator and positive
   denominator. It remains a heap object even when the denominator is one.
-  Instances are frozen; `dup`, `clone` without options and `to_r` retain identity.
+  Instances are frozen; `dup`, `clone` with nil/true freezing, and `to_r` retain identity.
   A native rational literal bypasses constructor/constant lookup and is cached
   by compilation unit and syntax site; repeated execution of one site shares
   its object, while separate sites and constructor calls remain distinct (L278).
@@ -246,7 +246,7 @@ encoding), `arr`, `hsh`, `rng`, `proc` (a `Closure`), `meth`, `exc`, and
   rounding; it is not specified as the exact quotient rounded only once.
 - **Complex** carries native real and imaginary components (Integer, Float or
   Rational), preserving their types and identities. Instances are frozen; `dup`,
-  `clone` without options and `to_c` retain identity. Imaginary literals use the
+  `clone` with nil/true freezing, and `to_c` retain identity. Imaginary literals use the
   same compilation-unit/site cache as Rational literals and bypass constructor
   lookup. Float components cross JSON as IEEE bits, preserving negative zero.
   Numeric construction follows CRuby's zero normalization, including its
@@ -315,9 +315,26 @@ drives `if`, `while`, `and`/`or` and `!`.
 The heap is mutable, and ivar assignment plus builtin mutators updating `H` in
 place is the *only* reason the semantics is stateful. Mutating a frozen object
 raises `FrozenError`. `freeze` is idempotent and in-model irreversible;
-`dup`/`clone` allocate copies, and `clone` copies frozen state *and* the
-eigenclass while `dup` does not — a genuine observable difference. **[V]**
-Immediates are always frozen.
+`dup`/`clone` allocate copies. Native `clone` accepts `freeze: nil`, `true`, or
+`false`; nil preserves the source's live frozen state after the copy hooks return,
+true freezes the result, and false leaves the hook's final state alone. Immutable
+values return themselves and reject `freeze: false`. Positional arity precedes
+keyword validation; unknown keys are inspected and invalid option classes use
+Ruby `to_s`. **[V]** (L298)
+
+For Object, String, Array, Hash and Exception, clone copies ivars into a mutable
+allocation and sends private `initialize_clone`, which normally sends
+`initialize_copy`. Hook results are discarded; raise/throw retain effects and
+skip final freezing. String/Array/Hash initially have empty native contents;
+Exception's message and native metadata are copied before hooks. The native
+core `initialize_copy` methods fill contents, preserve destination ivars, and use
+checked String/Array/Hash conversion. Frozen checks precede conversion; String
+also checks afterward, while Array/Hash can finish after conversion freezes them.
+Ordinary copies of other already-modeled payloads retain the default-hook shortcut;
+custom hooks require their uninitialized native state. Singleton-class copying,
+namespace copying, Random state and the complete dup protocol remain incomplete.
+CRuby clone copies singleton classes, but that behavior is still gated here.
+**[V]** (L298)
 
 ---
 

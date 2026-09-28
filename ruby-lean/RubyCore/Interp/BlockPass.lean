@@ -12,6 +12,7 @@ def conversionMethod : ConversionCall → String
   | .objectInspect => "instance_variables_to_inspect"
   | .block _ => "to_proc"
   | .stringPlus _ => "to_str"
+  | .coreCopy kind _ => if kind == Boot.stringId then "to_str" else if kind == Boot.arrayId then "to_ary" else "to_hash"
   | .splat _ => "to_a"
   | .closureArgs .. | .paramDestructure .. | .forDestructure .. => "to_ary"
   | .enumRewind _ => "rewind"
@@ -27,6 +28,7 @@ def conversionType : ConversionCall → String
   | .objectInspect => "Array"
   | .block _ => "Proc"
   | .stringPlus _ => "String"
+  | .coreCopy kind _ => coreCopyType kind
   | .splat _ | .closureArgs .. | .paramDestructure .. | .forDestructure .. => "Array"
   | .enumRewind _ => "Object"
   | .raiseString | .stopMessage _ | .constantSet .. => "String"
@@ -52,6 +54,8 @@ def blockPassMethod (m : Machine) (v : Value) (name : String) : Option MethodDef
 def blockPassNoConversion (m : Machine) (call : ConversionCall) (source : Value) : StepResult :=
   match call with
   | .objectInspect => beginObjectInspect m source .nil
+  | .coreCopy kind _ => .next (raiseErr m Boot.typeErrorId
+      s!"no implicit conversion of {Builtins.coerceName m.heap source} into {coreCopyType kind}")
   | .constantSet .. => constantNameTypeError m source
   | .exceptionString false =>
     .next (withKont m (.value source) (.blkConvertK (.exceptionString true) source .start))
@@ -82,6 +86,9 @@ def finishConversion (m : Machine) (call : ConversionCall) (source result : Valu
     (direct : Bool) : StepResult :=
   match call with
   | .objectInspect => beginObjectInspect m source result
+  | .coreCopy kind recv =>
+    if coreCopyPayload m.heap kind result then finishCoreCopy m kind recv result
+    else blockPassInvalid m call source result
   | .constantSet target value =>
     if result.identEq .nil then blockPassNoConversion m call source
     else if (Builtins.strPayload? m.heap result).isSome then finishConstantSet m target value result

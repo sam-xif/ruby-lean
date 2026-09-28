@@ -113,6 +113,8 @@ def kontLabel : Kont → String
   | .newK _ => "then yield new instance"
   | .raiseValueK => "validate and raise exception result"
   | .exceptionCopyK .. => "finish exception clone and replace its message"
+  | .cloneK .. => "finish clone and apply freeze policy"
+  | .copyErrorK .. => "render native copy argument error"
   | .blockCallK scope => s!"literal block call #{scope}"
   | .arrayInitK _ _ index size => s!"initialize Array element {index}/{size}"
   | .methodEditsK rest _ => s!"method mutation: {rest.length} remaining"
