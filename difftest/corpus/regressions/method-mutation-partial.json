@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L282 (2026-09-28)",
+  "note": "Each edit commits before its callback; exceptions, freezing and callbacks that alter the next method preserve partial effects. Compared with CRuby 4.0.5."
+}

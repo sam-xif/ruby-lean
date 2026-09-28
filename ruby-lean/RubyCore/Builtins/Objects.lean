@@ -195,7 +195,12 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     match recv with
     | .ref o => .ok (.bool (h.get o).frozen) m
     | _ => .ok (.bool true) m
-  | "Object#freeze" | "String#freeze" | "Array#freeze" | "Hash#freeze" =>
+  | "Module#method_added" | "Module#method_removed" | "Module#method_undefined"
+  | "BasicObject#singleton_method_added" | "BasicObject#singleton_method_removed"
+  | "BasicObject#singleton_method_undefined" =>
+    if args.length == 1 then .ok .nil m else
+      .err Boot.argumentErrorId s!"wrong number of arguments (given {args.length}, expected 1)" m
+  | "Object#freeze" | "Module#freeze" | "String#freeze" | "Array#freeze" | "Hash#freeze" =>
     match recv with
     | .ref o =>
       let h := match (h.get o).eigen with

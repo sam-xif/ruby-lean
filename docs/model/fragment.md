@@ -23,6 +23,8 @@ regenerated. Paths are relative to `ruby-lean/`.
 | `RubyCore/PreludeBoot.lean` | the two-phase boot: run the prelude from H₀ (`preludeMode`), then the program under test on the resulting heap (`Machine.initOn`) |
 | `RubyCore/Interp.lean` | `stepFn` (one transition; helpers deliberately non-mutual) + `run fuel` (`outOfFuel` ≠ `stuck` from day one) |
 | `RubyCore/Interp/Enumerator.lean` | Native Enumerator/Generator/Yielder descriptors, internal dispatch and suspended external execution (L280) |
+| `RubyCore/Interp/Mutation.lean` | Method-table edits interleaved with ordinary Ruby callbacks and frozen-state checks (L282) |
+| `RubyCore/Interp/Forwardable.lean` | Forwardable's simple accessor source-generator fragment, compiled to real RubyCore definitions (L282) |
 | `RubyCore/Obs.lean` | observation = (stdout, result inspect, exception (class, msg)) |
 | `RubyCore/Types/` | what is left of the type vocabulary the SUT still needs: `Ty.lean` (the type language), `Fragment.lean` (`--fragment`: is a program in the Sorbet fragment, with a reason per exclusion), `SigRead.lean` (`--sigs`: the signatures a program declares — stage 1 of the ratchet's pipeline), plus `Core.lean`/`Decls.lean`, the declaration table the surviving proofs are stated over. The checker built on top of these (`infer`/`inferOpen`/the certificate language) was removed — see [Metatheory](metatheory.md). |
 | `Main.lean` | the SUT executable: RubyCore-JSON on stdin → Observation-JSON on stdout; **exit 3 = Unsupported** (reason on stderr), exit 1 = model bug |
@@ -59,6 +61,15 @@ conversion, copy hooks/singleton classes, Chain's blockless wrapping and rewind,
 remaining blockless prelude methods, scan receiver mutation and public Fiber APIs.
 This is an executable-model extension; proof repair remains deferred for the
 active conformance task.
+
+L281 separates core boot from cached, lazy modeled features. L282 adds method
+definition/removal/undef callbacks, including singleton hooks, partial effects
+and frozen mutation checks. Inherited visibility entries resolve live ancestor
+bodies; aliases retain the original name and lookup context for super.
+Forwardable's declarations match upstream callback order, and simple accessors
+generate ordinary methods with keyword/block forwarding. General source eval,
+Forwardable warning/source-location paths and remaining constant/ancestry hook
+protocols are still outside this fragment.
 
 Tier-0 baseline: **940/1304 bootstraptest agree, 0 disagree.**
 

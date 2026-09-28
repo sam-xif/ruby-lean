@@ -1,6 +1,95 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L281)
+## Active conformance goal (2026-09-28, L282)
+
+The user wants known semantics issues fixed first, then progress toward full
+CRuby bootstrap conformance. Proof repair is explicitly deferred. The goal
+remains active and incomplete. L276–L282 changes are uncommitted; checker/proof
+files and ratchet floors remain untouched. Existing unrelated paper/ and wasm
+upstream-bug files remain untouched. All validation processes have terminated.
+
+L282 fixes the open require-definition-hooks regression. Interp/Mutation.lean's
+MethodEdit queue commits one write then dispatches the ordinary Ruby callback;
+definitions/aliases/attrs/define_method, removals, undef and singleton variants
+share it. Hooks can raise, freeze or mutate a later method; prior effects remain.
+Default private hooks live on Module/BasicObject. Only boot suppresses callbacks.
+Module#freeze and reflective method/mixin/constant writes check frozen state.
+Initialization instance names are private even through aliases and attributes.
+Constant visibility uses own names, partial effects and the correct return value.
+
+MethodDef.visibilityOnly represents live inherited visibility changes. Calls and
+aliases resolve the current ancestor body; reflection/visibility/undef see the
+entry even when that body disappears. Same-visibility edits are no-ops. Module
+aliases and visibility macros use Object fallback; remove/undef do not. Modeled
+Kernel I/O/conversion/reflection names folded into Object now have private
+visibility. Alias superName and superScope preserve original names and class
+lookup context (module aliases use their eventual host). This repairs the old
+bootstrap test_yjit_145 timeout, including alias-of-alias. Ancestors still
+has the older module-identity deduplication; full inclusion-node fidelity remains.
+
+Forwardable now matches upstream 1.4.0 method declarations/order and supports
+ordinary load-time method hooks, failure/retry, reentry and frozen namespaces.
+Interp/Forwardable.lean compiles simple method/ivar/constant accessor expressions
+into a Proc with a real def and ... forwarding. Keyword/block dispatch and
+generated method hooks use the ordinary interpreter. Default generated definee
+matches the helper's lexical module. This is a Forwardable-specific compiler,
+not general string eval. General accessor expressions, source-position warnings,
+source/eval/conversion overrides and missing caller locations explicitly gate.
+Overridden String#freeze during loading gates because frozen literal compilation
+must not silently call a user method. Other libraries retain partial-body hook
+boundaries. Native singleton shadow checks respect actual user overrides and
+class-aware constructors; an overbroad interim constructor guard was repaired.
+
+Final build PASS (96 jobs). Bootstrap **1,082 agree / zero disagree /
+221 unsupported**, five invalid controls and the old syntax harness error.
+Only test_yjit_145 changes from L281: timeout to agree; all sources unchanged,
+no lost agreements. Regressions **97 held / one old gated / zero failures**
+(98 programs); all old sources unchanged, require-definition-hooks now fixed.
+Tier 1 n=300 seed20260927: **219 agree / 81 unsupported / zero disagree**,
+all sources/verdicts unchanged.
+
+Final reports:
+- difftest/reports/20260928-063421-tier0-lean/
+- difftest/reports/20260928-063421-tier1-lean/
+- difftest/reports/20260928-063351-tierregressions-lean/
+
+Eleven new fixed regression programs cover callbacks, partial mutations, frozen
+writes, live visibility, alias/super, constant mutation and Forwardable behavior.
+Focused 92-case replay: **85 agree / seven explicit gates / zero disagree**,
+including all 28 Sorbet programs (25 agree / three old gates). Four extra
+visibility-body/super/error-message probes agree. Three standalone core-only
+programs agree. The permanent identical-source check-feature-loading.py passes
+its three feature-loading protocols. Front-end: 45 seeds plus 12 changed/added
+regression programs, **57 agree / zero disagree**, AST-idempotent, seven
+render-only instabilities (six old seeds plus forwardable-delegation).
+Prelude/CRubyNames regeneration comparisons and git diff --check pass.
+No proof build, typed gate or commit attempted. Details and reproduction commands
+are in implementation-notes L282 and difftest N56; temporary evidence uses
+/private/tmp/conformance-l282-* (focused JSON includes exact sources/results).
+
+Next work, preserving the full objective:
+
+1. Known semantic leads first. Generic nested def inside a singleton method still
+   uses the method owner as definee: `class C; def self.make; proc { def x; 1; end };
+   end; end; C.make.call` should define C's instance x. The Forwardable compiler's
+   scoped fix does not repair generic def/Proc scope. Distinguish lexical definee
+   from super's method owner, and audit define_method/class_eval/reified blocks.
+2. Other old leads: legacy for bypasses each; destructureBind has unchecked to_ary;
+   constant/ancestry/mixin hook protocols remain incomplete; File is a module-shaped
+   stub. Continue the frozen/reflection audit beyond the paths covered here.
+   Kernel ownership folding and repeated inclusion nodes remain structural limits.
+3. The sole old regression gate is sorbet-hash-gate; do not invent a process-specific
+   hash or weaken comparison. Full Sorbet runtime remains partial, including
+   model-only helper/type namespaces. Loader path resolution/require_relative,
+   loader globals, namespace-conflict source positions and missing library APIs
+   remain work. Future runtime source compilation/retry needs fresh literal sites.
+4. Current bootstrap gates: 39 string eval, 10 TracePoint, seven block param shapes,
+   six each of class_eval strings/top-level return/binding or local reflection/
+   String#setbyte; five each of instance_eval strings/object_id/RubyVM/top-level
+   define_method; four timeouts remain. Historical out-of-scope labels do not
+   complete the objective. Re-measure before selecting the next batch.
+
+## Previous batch (2026-09-28, L281)
 
 The user wants known semantics issues fixed first, then progress toward full
 CRuby bootstrap conformance. Proof repair is explicitly deferred. The goal

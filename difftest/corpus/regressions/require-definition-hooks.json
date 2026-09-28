@@ -1,6 +1,7 @@
 {
-  "status": "open",
+  "status": "fixed",
   "filed_by": "L281 (2026-09-28)",
   "observed_then": "sut_unsupported",
-  "note": "The smaller modeled Forwardable body used to emit fewer method_added callbacks in a different order. Requiring a modeled library with user definition hooks now gates; matching these observations needs the complete library body and alias/singleton definition callbacks."
+  "note": "Forwardable declarations now match the upstream 1.4.0 method order. Ordinary alias, attribute and singleton definitions dispatch callbacks; the exact regression agrees with CRuby.",
+  "fixed_in": "L282 (2026-09-28)"
 }

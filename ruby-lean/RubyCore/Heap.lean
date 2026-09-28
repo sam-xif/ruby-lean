@@ -71,10 +71,15 @@ structure MethodDef where
       it aliases a method aside as `__t_unchecked_x` and a `super` in the body
       must still reach `x`'s parent. -/
   superName : Option String := none
+  /-- A class-side alias retains the lookup context of its original body,
+      including a repeated module occurrence below a subclass's occurrence. -/
+  superScope : Option ObjId := none
   /-- `some bid` marks an axiomatized builtin (artifact 01 §2); `body` is
       then ignored and Builtins.lean supplies the behavior keyed on `bid`. -/
   builtin : Option String := none
   visibility : Visibility := .pub
+  /-- An inherited visibility override resolves its body again on each lookup. -/
+  visibilityOnly : Bool := false
   /-- `define_method`: the frame this body **closes over** — free variables
       resolve up its `captured` chain, exactly as in the block it came from
       (L64). `none` for an ordinary `def`, whose body has no enclosing scope.
@@ -392,7 +397,8 @@ def builtinMethods : List (ObjId × List String) := [
   (generatorId, ["each", "initialize"]),
   (yielderId, ["yield", "<<", "initialize"]),
   (stopIterationId, ["result"]),
-  (basicObjectId, ["==", "!", "equal?", "method_missing"]),
+  (basicObjectId, ["==", "!", "equal?", "method_missing", "singleton_method_added",
+                   "singleton_method_removed", "singleton_method_undefined"]),
   -- Kernel/Object layer (Kernel folded into Object at L0)
   (objectId, ["==", "===", "!", "equal?", "eql?", "class", "nil?", "itself", "inspect",
               "to_s", "freeze", "frozen?", "is_a?", "kind_of?", "instance_of?",
@@ -402,7 +408,7 @@ def builtinMethods : List (ObjId × List String) := [
               "__any_to_s", "__match_to_caller", "respond_to_missing?",
               "__coerce_failed", "__cmp_failed", "__coerce_defined?", "Rational", "Complex", "__complex_rect",
               "initialize", "enum_for", "to_enum", "__enum_for", "__chain_init", "__chain_enums",
-              "binding", "local_variables"]),
+              "binding", "local_variables", "__forwardable_compile"]),
   (nilClassId, ["===", "to_s", "inspect", "nil?", "to_a", "&", "|", "dup", "clone"]),
   (trueClassId, ["===", "to_s", "inspect", "&", "|", "dup", "clone"]),
   (falseClassId, ["===", "to_s", "inspect", "&", "|", "dup", "clone"]),
@@ -428,7 +434,7 @@ def builtinMethods : List (ObjId × List String) := [
               "start_with?", "end_with?", "eql?", "freeze", "frozen?", "dup", "clone",
               "initialize", "+@", "-@",
               "to_sym", "[]"]),
-  (symbolId, ["to_s", "inspect", "==", "===", "to_sym", "to_proc", "dup", "clone"]),
+  (symbolId, ["to_s", "inspect", "==", "===", "to_sym", "to_proc", "dup", "clone", "match?"]),
   (arrayId, ["==", "[]", "[]=", "<<", "push", "pop", "shift", "unshift",
              "length", "size", "first", "last", "empty?", "include?", "+",
              "-", "*", "&", "|", "inspect", "to_s", "to_a", "reverse", "join", "flatten",
@@ -444,7 +450,8 @@ def builtinMethods : List (ObjId × List String) := [
   (exceptionId, ["to_s", "inspect", "dup", "clone", "initialize"]),
   (classId, ["superclass"]),
   (stringId, ["try_convert"]),
-  (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors",
+  (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors", "freeze",
+              "method_added", "method_removed", "method_undefined",
               "private_constant", "public_constant"]),
   (classId, ["new", "allocate", "__range_new_unchecked"]),
   -- Call markers resolve through ordinary lookup; the interpreter executes them
@@ -476,8 +483,12 @@ def install (h : Heap) (cls : ObjId) (names : List String) : Heap :=
     let methods := names.foldl (init := c.methods) fun ms n =>
       (n, { params := [], body := .nil, owner := cls,
             visibility := if n == "method_missing" || n == "Rational" || n == "Complex" ||
-                (["require", "require_relative"].contains n && cls == objectId) ||
-                (n == "initialize" && [enumeratorId, generatorId, yielderId].contains cls) then .priv else .pub,
+                ["method_added", "method_removed", "method_undefined", "singleton_method_added",
+                 "singleton_method_removed", "singleton_method_undefined"].contains n ||
+                (["puts", "print", "p", "raise", "String", "block_given?", "rand",
+                  "require", "require_relative", "respond_to_missing?", "binding",
+                  "local_variables"].contains n && cls == objectId) ||
+                n == "initialize" then .priv else .pub,
             builtin := some (if n == "===" then
               match cname with
               | "Proc" => "Proc#call"
@@ -623,20 +634,36 @@ where
           | some s => go s fuel
           | Option.none => [])
 
-/-- LOOKUP: first module in `ancestors (classOf v)` defining `m` directly,
-    returned with its owner (needed for `super`, artifact 02 §2). -/
-def lookup (h : Heap) (v : Value) (m : String) : Option (ObjId × MethodDef) :=
-  go (ancestors h (classOf h v))
+/-- Reflection sees a visibility forwarding entry even if its eventual body
+    has been removed or undefined. Calls and aliases resolve the body below. -/
+def methodEntryInChain (h : Heap) (chain : List ObjId) (name : String) : Option (ObjId × MethodDef) :=
+  chain.firstM fun k =>
+    (h.classPayload? k).bind fun cp =>
+      (cp.methods.find? (·.1 == name)).map fun (_, md) => (k, md)
+
+/-- Method lookup with live inherited visibility overrides (Ruby's ZSUPER
+    entries). A module's standalone reflection can use its Object fallback. -/
+def lookupInChain (h : Heap) (chain : List ObjId) (name : String) : Option (ObjId × MethodDef) :=
+  go (2 * h.objs.size + 2) chain false
 where
-  go : List ObjId → Option (ObjId × MethodDef)
-    | [] => Option.none
-    | k :: rest =>
+  go : Nat → List ObjId → Bool → Option (ObjId × MethodDef)
+    | 0, _, _ => none
+    | _ + 1, [], _ => none
+    | fuel + 1, k :: rest, fallbackUsed =>
       match h.classPayload? k with
-      | some c =>
-        match c.methods.find? (·.1 == m) with
-        | some (_, md) => some (k, md)
-        | Option.none => go rest
-      | Option.none => go rest
+      | none => go fuel rest fallbackUsed
+      | some cp =>
+        match cp.methods.find? (·.1 == name) with
+        | none => go fuel rest fallbackUsed
+        | some (_, md) =>
+          if !md.visibilityOnly then some (k, md) else
+          let body := (go fuel rest fallbackUsed).orElse fun _ =>
+            if cp.isModule && !fallbackUsed then go fuel (ancestors h Boot.objectId) true else none
+          body.map fun (owner, actual) => (owner, { actual with visibility := md.visibility })
+
+/-- LOOKUP returns the defining entry, resolving visibility-only wrappers. -/
+def lookup (h : Heap) (v : Value) (name : String) : Option (ObjId × MethodDef) :=
+  lookupInChain h (ancestors h (classOf h v)) name
 
 /-- `is_a?` test: does `v`'s ancestor chain include class `k`? -/
 def isA (h : Heap) (v : Value) (k : ObjId) : Bool :=

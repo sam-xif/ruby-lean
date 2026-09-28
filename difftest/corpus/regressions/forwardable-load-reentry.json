@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L282 (2026-09-28)",
+  "note": "Recursive require from a Forwardable method_added callback returns false without executing the feature twice. Compared with CRuby 4.0.5."
+}

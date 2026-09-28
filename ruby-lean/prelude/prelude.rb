@@ -27,8 +27,9 @@
 #    suppresses the shadow gate for its own name (L62), so fidelity is on this
 #    file. Match CRuby exactly, including the empty-receiver and tie cases.
 # 5. Optional feature bodies are smaller behavioral models of the upstream
-#    source. User definition hooks during require need that full source and
-#    therefore gate. Keep library origin separate from boot-only preludeMode;
+#    source. User definition hooks during require gate unless declaration order
+#    and callback behavior match upstream (Forwardable, L282). Keep library origin
+#    separate from boot-only preludeMode;
 #    the latter must never silently suppress runtime user callbacks.
 
 # ─── BasicObject ────────────────────────────────────────────────────────────

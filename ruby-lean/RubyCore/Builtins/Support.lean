@@ -448,7 +448,10 @@ def unrepresentableByteStr (h : Heap) (v : Value) : Bool :=
     would have to write the raw byte into an output `String` that cannot hold it. -/
 def byteStrAwareBids : List String :=
   -- String: byte-wise by construction, or tag-propagating (`okStrFrom`)
-  ["String#+", "String#*", "String#<<", "String#concat", "String#==", "String#eql?",
+  ["Module#method_added", "Module#method_removed", "Module#method_undefined",
+   "BasicObject#singleton_method_added", "BasicObject#singleton_method_removed",
+   "BasicObject#singleton_method_undefined",
+   "String#+", "String#*", "String#<<", "String#concat", "String#==", "String#eql?",
    "String#!=", "String#length", "String#size", "String#empty?", "String#ord",
    "String#to_i", "String#to_f", "String#to_s", "String#to_str", "String#to_sym",
    "String#inspect", "String#chars", "String#reverse", "String#upcase",
@@ -769,7 +772,7 @@ def zeroArgBids : List String :=
    "Rational#to_i", "Rational#to_f", "Rational#to_r", "Rational#-@", "Rational#+@",
    "Rational#abs", "Rational#magnitude", "Rational#positive?", "Rational#negative?",
    "Rational#dup",
-   "Object#frozen?", "Object#freeze", "Object#block_given?",
+   "Object#frozen?", "Object#freeze", "Module#freeze", "Object#block_given?",
    "NilClass#nil?", "NilClass#to_s", "NilClass#inspect", "NilClass#to_a",
    "TrueClass#to_s", "TrueClass#inspect", "FalseClass#to_s", "FalseClass#inspect",
    -- `Integer#inspect` is deliberately absent: it is `to_s`, base argument and

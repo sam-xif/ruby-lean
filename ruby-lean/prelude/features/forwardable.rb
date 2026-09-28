@@ -1,37 +1,81 @@
 # frozen_string_literal: true
 
-# ─── Forwardable ────────────────────────────────────────────────────────────
-#
-# `def_delegator :@list, :size` installs a `size` that forwards to `@list.size`.
-# Like `Struct`, it is a metaprogramming pattern rather than a library: the whole
-# module is `define_method` over a receiver expression, so it costs prelude Ruby
-# and no Lean rules. `pkg_version.rb` delegates six methods to its `version`.
-#
-# The accessor may be an ivar (`:@list`) or a method (`:inner`), which is the one
-# case worth being careful about — `instance_variable_get` for the former,
-# `send` for the latter [V].
+# L282: match forwardable 1.4.0's declarations, aliases and load-time order.
+# Its generated source is compiled to RubyCore by __forwardable_compile for
+# simple accessors. Other expressions remain an explicit source-compilation gate.
 module Forwardable
-  def def_delegator(accessor, method, ali = method)
-    acc = accessor.to_s
-    meth = method.to_sym
-    ivar = acc.start_with?("@")
-    define_method(ali.to_sym) do |*args, **kw, &blk|
-      target = ivar ? instance_variable_get(acc) : send(acc)
-      kw.empty? ? target.send(meth, *args, &blk) : target.send(meth, *args, **kw, &blk)
-    end
-    nil
+  VERSION = "1.4.0"
+  VERSION.freeze
+  FORWARDABLE_VERSION = VERSION
+  FORWARDABLE_VERSION.freeze
+  @debug = nil
+  class << self
+    attr_accessor :debug
   end
 
-  def def_delegators(accessor, *methods)
-    methods.each { |mm| def_delegator(accessor, mm) }
-    nil
-  end
-
-  # The `_delegator`-less spellings are the documented aliases.
-  def delegate(hash)
+  def instance_delegate(hash)
     hash.each do |methods, accessor|
-      Array(methods).each { |mm| def_delegator(accessor, mm) }
+      unless defined?(methods.each)
+        def_instance_delegator(accessor, methods)
+      else
+        methods.each { |method| def_instance_delegator(accessor, method) }
+      end
     end
-    nil
   end
+
+  def def_instance_delegators(accessor, *methods)
+    methods.each do |method|
+      next if /\A__(?:send|id)__\z/ =~ method
+      def_instance_delegator(accessor, method)
+    end
+  end
+
+  def def_instance_delegator(accessor, method, ali = method)
+    gen = Forwardable._delegator_method(self, accessor, method, ali)
+    mod = Module === self ? self : singleton_class
+    mod.module_eval(&gen)
+  end
+
+  alias delegate instance_delegate
+  alias def_delegators def_instance_delegators
+  alias def_delegator def_instance_delegator
+
+  def self._delegator_method(obj, accessor, method, ali)
+    accessor = accessor.to_s unless Symbol === accessor
+    method_accessor = if Module === obj
+      obj.method_defined?(accessor) || obj.private_method_defined?(accessor)
+    else
+      obj.respond_to?(accessor, true)
+    end
+    checked = method.match?(/\A[_a-zA-Z]\w*[?!]?\z/)
+    __forwardable_compile(accessor, method, ali, method_accessor, checked)
+  end
+end
+
+module SingleForwardable
+  def single_delegate(hash)
+    hash.each do |methods, accessor|
+      unless defined?(methods.each)
+        def_single_delegator(accessor, methods)
+      else
+        methods.each { |method| def_single_delegator(accessor, method) }
+      end
+    end
+  end
+
+  def def_single_delegators(accessor, *methods)
+    methods.each do |method|
+      next if /\A__(?:send|id)__\z/ =~ method
+      def_single_delegator(accessor, method)
+    end
+  end
+
+  def def_single_delegator(accessor, method, ali = method)
+    gen = Forwardable._delegator_method(self, accessor, method, ali)
+    instance_eval(&gen)
+  end
+
+  alias delegate single_delegate
+  alias def_delegators def_single_delegators
+  alias def_delegator def_single_delegator
 end

@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L282 (2026-09-28)",
+  "note": "Inherited visibility entries follow parent redefinitions; reflection retains the entry after its body disappears, while aliases and module_function copy the selected body. Compared with CRuby 4.0.5."
+}

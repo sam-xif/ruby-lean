@@ -102,17 +102,14 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
     let f := m.frames.getD (methodFrameOf m) default
     if f.meth == "" then nilR
     else
-      let after := ((ancestors m.heap (classOf m.heap f.self)).dropWhile (· != f.defmod)).drop 1
-      let found := after.any fun c =>
-        match m.heap.classPayload? c with
-        | some cp => match cp.methods.find? (·.1 == f.meth) with
-          | some (_, md) => !md.undefined
-          | none => false
-        | none => false
-      if found then str "super"
-      else if (crubyShadow m.heap after f.meth).isSome then
-        .unsupported s!"defined?(super) of unmodeled method {f.meth}"
-      else nilR
+      let scope := f.superScope.getD (classOf m.heap f.self)
+      let after := ((ancestors m.heap scope).dropWhile (· != f.defmod)).drop 1
+      match methodEntryInChain m.heap after f.meth with
+      | some (_, md) => strIf (!md.undefined) "super"
+      | none =>
+        if (crubyShadow m.heap after f.meth).isSome then
+          .unsupported s!"defined?(super) of unmodeled method {f.meth}"
+        else nilR
   | .vasgn .. | .casgn .. | .cpathAsgn .. => str "assignment"
   | _ => str "expression"
 
@@ -291,53 +288,14 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
         -- is a **toplevel** `def` (a private method of Object) [V] — which is why
         -- `public def m …` at toplevel exists at all (L72).
         visibility :=
-          if name == "initialize" then .priv
-          else if m.currentFrame.kind == .toplevel then .priv
+          if m.currentFrame.kind == .toplevel then .priv
           else m.currentFrame.defVis }
-    let m := { m with heap := defineMethod m.heap defmod name md }
-    -- CRuby fires `Module#method_added(:name)` on the defining module right after
-    -- installing, and `def` still evaluates to the name. The model has no builtin
-    -- `method_added`, so a lookup miss means "no hook" — the common case costs one
-    -- lookup. This is the hook sorbet-runtime's `sig` is built on: `sig` records a
-    -- pending declaration and `method_added` wraps the method that follows, so
-    -- without it a `sig` cannot enforce anything (prelude §T).
-    if m.preludeMode then .next (withCtl m (.value (.sym name)))
-    else
-      match lookup m.heap (.ref defmod) "method_added" with
-      | some (owner, hookMd) =>
-        -- CRuby defines `Module#method_added` as a private no-op, which *shadows*
-        -- anything further down the class object's ancestry. So a plain toplevel
-        -- `def method_added` (an Object instance method, and Object comes after
-        -- Module in a class object's chain) must NOT fire — verified against CRuby,
-        -- which prints nothing for it. Resolving to Object/Kernel/BasicObject here
-        -- means we walked past where CRuby's no-op sits: treat it as no hook.
-        if hookMd.undefined
-            || owner == Boot.objectId || owner == Boot.kernelId
-            || owner == Boot.basicObjectId then
-          .next (withCtl m (.value (.sym name)))
-        else
-          let m := { m with kont := .methodAddedK name :: m.kont }
-          enterUserMethod m (.ref defmod) "method_added" hookMd [.sym name] none
-      | none => .next (withCtl m (.value (.sym name)))
+    runMethodEdits m [.define defmod name md] (.sym name)
   | .defined e => evalDefined m e
-  | .undef names => undefNames m m.currentFrame.defmod names
-  | .alias' newN oldN =>
-    -- `alias` captures the current definition of `oldN` (walking ancestors) and
-    -- installs an independent copy under `newN` on the current definee; a later
-    -- redefinition of `oldN` does not affect `newN` [V]. A tombstone or a
-    -- genuine miss raises `NameError`. Returns nil.
-    let defmod := m.currentFrame.defmod
-    match methodOn m.heap defmod oldN with
-    | some (_, md) =>
-      if md.undefined then undefAliasMiss m oldN
-      else
-        -- keep the original name for `super` (L108); same-module only, see
-        -- the `alias_method` rule for why
-        let md := if md.owner == defmod then { md with superName := some (md.superName.getD oldN) }
-                  else md
-        let m := { m with heap := defineMethod m.heap defmod newN md }
-        .next (withCtl m (.value .nil))
-    | none => undefAliasMiss m oldN
+  | .undef names =>
+    runMethodEdits m (names.map fun name => .remove m.currentFrame.defmod name true) .nil
+  | .alias' name original =>
+    runMethodEdits m [.aliasMethod m.currentFrame.defmod name original] .nil
   | .array elems => continueArray m [] elems
   | .hash pairs =>
     match pairs with
@@ -401,8 +359,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
         let md : MethodDef :=
           { params, body, owner := e, cref := m.currentFrame.cref,
             fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
-        let m := { m with heap := defineMethod m.heap e name md }
-        .next (withCtl m (.value (.sym name)))
+        runMethodEdits m [.define e name md] (.sym name)
       | _ => .unsupported "singleton def on an immediate"
     | recv => .next (withKont m (.eval recv) (.defsK name params body))
   | .super' args blk =>

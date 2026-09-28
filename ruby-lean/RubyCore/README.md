@@ -209,6 +209,10 @@ library is written *in Ruby* — see `../prelude/prelude.rb` and
 through calls; it is separate from the boot-only flag that suppresses callbacks.
 Classes opened by library code retain a canonical namespace tag for the generated
 API inventories, independently of their Ruby-visible names (including aliases).
+An inherited visibility override stores `visibilityOnly` and resolves the current
+ancestor body on each lookup. Aliases instead retain the selected body,
+`superName`, and (for class/eigenclass aliases) `superScope`; the latter preserves
+the lookup context needed when the same module occurs in different class chains.
 
 ### 01 §3 — Builtin payloads
 
@@ -392,6 +396,10 @@ Two things the implementation had to get right and this sketch did not say: the
 frame records the method name being run, which for an **alias** is the *original*
 name (what CRuby's `super` searches for), and `zsuper` reconstructs its arguments
 from the running frame's own parameter list rather than re-looking-up the name.
+Class aliases also retain the chain in which their body was selected. Module
+aliases use the eventual host receiver's chain. This fixes alias/super context;
+the ancestor representation still deduplicates repeated module identities and
+does not claim a complete model of CRuby's distinct inclusion nodes. **[V]**
 
 ### 02 §5 — Visibility
 
@@ -408,6 +416,14 @@ affects **only** dispatch admissibility, never lookup — a private method is st
 *found*; the call is what is rejected. `send`/`__send__` bypass private;
 `public_send` does not.
 
+Changing the visibility of an inherited method installs a live forwarding entry,
+so a later ancestor redefinition changes the body called through it. An unchanged
+visibility is a no-op. Module visibility and alias macros can consult Object;
+undef/remove do not use that fallback. Initialization methods are private when
+defined as instance methods, including through aliases and attributes. **[V]**
+Reflection observes the forwarding entry even after its ancestor body disappears;
+calls then fail, and aliases cannot capture a missing body. **[V]**
+
 ### 02 §6 — Why this design pays off
 
 Every metaprogramming feature reduces to mutating `methods` / `ancestors` /
@@ -416,23 +432,28 @@ Every metaprogramming feature reduces to mutating `methods` / `ancestors` /
 | Feature | Heap effect |
 |---|---|
 | `define_method(:m){…}` | insert `m` into the current class's `methods` |
-| `attr_accessor :x` | insert `x` and `x=` (desugar, 00 §5) |
+| `attr_accessor :x` | insert `x`, run its callback, then insert `x=` |
 | `include M` / `prepend M` | extend `includes`/`prepends`, recompute ancestors |
 | `def obj.m` / `extend M` | allocate an eigenclass, insert there |
 | `alias` / `alias_method` | copy a `MethodDef` under a new name |
 | a dynamic finder | not defined → SEND-MM |
 
-**No new evaluation rules.** That is the concrete cash value of "everything is a
-message send" plus "classes are heap objects", and it is why the fragment reached
-`define_method`/`class_eval`/`method_missing` without the step relation growing.
+L282's `MethodEdit` queue commits one method-table mutation, then dispatches its
+Ruby callback before continuing. Definitions, aliases, define_method and attributes
+call `method_added`; remove/undef call `method_removed`/`method_undefined`.
+Eigenclass writes call the corresponding `singleton_method_*` on the attached
+receiver. Ordinary dispatch preserves private hooks, super and method_missing.
+A hook may raise, freeze the target or alter the next method: prior writes remain,
+and each remaining write checks the current heap and frozen state. The boot-only
+prelude suppresses hooks; runtime library loading does not. **[V]**
 
 ### 02 §7 — Open
 
 **[?]** `refinements` genuinely perturb lookup *lexically* — they add modules
 consulted before the normal chain, scoped to the activation's `cref`. Deferred;
 would need an extra lookup premise keyed on `φ.cref`.
-**[?]** `method_added`/`inherited` hooks fire as side effects of the mutations
-above, and their sequencing relative to the mutation is observable.
+**[?]** Constant and ancestry mutation hooks (`const_added`, `inherited`,
+`append_features`, `prepended`, `extended`) still need a complete protocol audit.
 
 ---
 
@@ -735,9 +756,15 @@ JSON before the program. **[V]**
 
 Filesystem resolution, `require_relative`, feature path conversion, loader-global
 paths/mutation and unknown libraries remain explicit gates. Partial library
-bodies also gate user definition hooks and frozen target namespaces: omitted
-upstream declarations make their callback order and first failing write
-observable. Existing class/module conflicts gate when their diagnostic requires
+bodies gate user definition hooks and frozen target namespaces when omitted
+upstream declarations would change the callback order or first failing write.
+Forwardable's L282 body matches the 1.4.0 method declarations and order, so its
+method hooks and frozen writes execute normally, including failed-load retry.
+Its source generator emits real RubyCore definitions with argument, keyword and
+block forwarding for simple method, ivar and constant accessors. General accessor
+expressions, source-position warning paths and source-generator overrides remain
+explicit gates. This compiler is specific to Forwardable, not general string eval.
+Existing class/module conflicts gate when their diagnostic requires
 the original source position. This does not claim full standard-library or
 Sorbet-runtime conformance.
 

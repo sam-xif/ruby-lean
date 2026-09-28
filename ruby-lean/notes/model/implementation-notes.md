@@ -14252,3 +14252,112 @@ Front-end replay: 45 seeds plus nine new programs, **54 agree / zero disagree**,
 AST-idempotent, six old render-only instabilities. Generated Prelude/CRubyNames
 match regeneration, CLI flag ordering checks pass, and git diff --check passes.
 All validation processes terminated. No proofs, typed gate or commit attempted.
+
+
+## L282 — method mutation callbacks, live visibility and Forwardable (2026-09-28)
+
+The open require-definition-hooks regression is now fixed. It required ordinary
+method-table callback semantics and matching Forwardable's declarations, rather
+than suppressing callbacks while a feature loads. Interp/Mutation.lean introduces
+MethodEdit and methodEditsK. Each edit checks the current frozen state, writes one
+entry, then performs an ordinary Ruby send of method_added/removed/undefined.
+Eigenclass edits send singleton_method_added/removed/undefined to the attached
+receiver. Hooks can be private, call super, invoke method_missing, raise, freeze
+the target or alter a later entry. Earlier effects remain; attribute getter and
+setter writes interleave with their callbacks. Boot preludeMode alone suppresses
+callbacks. Default private hooks live on Module and BasicObject.
+
+All definition paths, including def self's fast path, aliases, define_method,
+define_singleton_method, attrs, module_function, removal and undef use this
+protocol. Initialization names are normalized to private for instance definitions
+(including aliases/attributes), while their singleton versions remain public.
+Module#freeze is modeled. Named reflective method edits, mixin writes and
+constant assignment/const_set check frozen state. Constant visibility checks own
+names left-to-right, retains prior changes on failure, returns the target and
+raises on a frozen target even for an empty argument list. Invalid conversions
+and missing native-library inventory entries remain explicit gates.
+
+A visibility edit on an inherited method is not a copied body. MethodDef's
+visibilityOnly entry forwards to the current ancestor definition on each call.
+Same-visibility changes are no-ops, including private(:puts) on a module.
+Kernel methods folded into Object now carry the proper private metadata for the
+modeled I/O/conversion/reflection names. Module aliases and visibility macros
+consult Object when their own chain misses; remove/undef do not. Tombstones stop
+lookup. methodEntryInChain exposes the entry to reflection, visibility and undef;
+lookupInChain resolves its callable body. CRuby still reports the former after
+the parent removes/undefines the body, but calls fail and aliases raise NameError.
+This distinction was caught by an additional state-change regression, and also
+verified for respond_to?, defined?(call), defined?(super) and error messages.
+
+Aliases capture their original superName and class/eigenclass superScope; module
+aliases retain dynamic host lookup. The scope follows super activations. This
+repairs bootstrap test_yjit_145's timeout (the same forwarding module was selected
+from different class chains), including alias-of-alias. It does not replace the
+older ancestor representation: ancestors still deduplicates module identities;
+a full inclusion-node model remains separate work.
+
+Native singleton shadow checks now inspect only the chain before the resolved
+owner. Real user overrides such as Forwardable._delegator_method and
+String.try_convert can run. Class-aware new/allocate retain their core constructor
+coverage. The first broad run exposed an overbroad guard that newly gated ten
+bootstrap and five regression programs; crubyResolvedShadow fixes that without
+exempting unmodeled optional-library constructors. The final run is recorded
+below; the earlier 20260928-062926 bootstrap run is superseded.
+
+prelude/features/forwardable.rb mirrors forwardable 1.4.0's declarations, aliases,
+constants and method order for Forwardable and SingleForwardable. Require allows
+its ordinary method hooks and frozen namespace writes; other feature bodies and
+other hook protocols retain their explicit boundaries. Interp/Forwardable.lean
+compiles the simple accessor fragment of the upstream source generator into a
+Proc containing a real def with ... forwarding. It supports reflected accessor
+methods, ivars, bare method names and constant paths. Normal Ruby dispatch handles
+keywords, blocks, generated definitions, module_eval/instance_eval and hooks.
+The generated Proc's default definee is the helper's lexical module, matching
+eval; it can also be called directly for the unchecked operator case. Symbol's
+native match? supports the regex checks without changing match globals.
+
+General accessor expressions, warning paths needing caller source locations,
+direct checked helper calls without a caller location, source/eval/conversion
+overrides and loading with overridden String#freeze are explicit gates. Frozen
+string compilation is not implemented by an observable user freeze call. Root
+const_added hooks and namespace conflicts with prior source positions also gate.
+This compiler is specific to Forwardable; general string eval remains unmodeled.
+
+Eleven new fixed regression programs cover callbacks, partial mutations, frozen
+writes, live visibility, alias/super, constants and Forwardable delegation/loading.
+The old require-definition-hooks sidecar is now fixed. Exact permanent programs
+were compared before writing their fixed sidecars. Final focused replay currently
+has 85 agreements / seven explicit gates / zero disagreements over 92 programs,
+including all 28 Sorbet examples (25 agree / three old gates). The other four gates
+are deliberate Forwardable source/warning boundaries. Four extra visibility-body
+removal/super/error-message probes agree. Standalone core-only programs: three
+agree. check-feature-loading.py's three identical-source loading protocols agree.
+
+Build PASS (96 jobs), Prelude/CRubyNames regeneration comparisons and whitespace
+checks pass. Front-end replay: 45 seeds plus 12 regression programs, 57 agree /
+zero disagree, AST-idempotent; seven render-only instabilities (the six old seeds
+plus forwardable-delegation). Regressions on the final executable: 97 held / one
+old sorbet-hash-gate / zero failures (98 programs), report
+20260928-063351-tierregressions-lean. Full bootstrap and tier-1 results follow.
+No proof build, typed gate or commit: the user explicitly deferred proof repair.
+
+Remaining leads: the old process-specific Sorbet identity-hash gate; general
+constant/ancestry/mixin callbacks; generic nested-def definee in singleton methods
+(e.g. class C; def self.make; proc { def x; 1; end }; end; end; C.make.call should
+define C's instance x); legacy for bypassing each; unchecked destructureBind
+to_ary; older File module-shaped stub and model-only Sorbet namespaces. The scoped
+Forwardable compiler fix does not claim to repair generic nested def. Continue
+with known issues first, then the remaining bootstrap gates. Full conformance
+remains active and incomplete.
+
+
+Final L282 bootstrap report: `20260928-063421-tier0-lean` — **1,082 agree /
+zero disagree / 221 unsupported**, five invalid controls and the unchanged
+`test_syntax_115` harness error (1,309 total). Every source is unchanged from
+L281; the sole verdict change is `test_yjit_145`, timeout gate to agreement.
+No lost agreements. Final tier 1: `20260928-063421-tier1-lean`, **219 agree /
+81 unsupported / zero disagree**, all sources/verdicts unchanged. Final
+regressions: `20260928-063351-tierregressions-lean`, **97 held / one old gated /
+zero failures**, all old sources unchanged; require-definition-hooks is fixed.
+All validation processes terminated. No proof build, typed gate or commit was
+performed. The active full-conformance objective remains incomplete.

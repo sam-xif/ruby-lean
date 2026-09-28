@@ -1,4 +1,5 @@
 import RubyCore.Builtins.Regex
+import RubyCore.CRubyNames
 
 /-!
 Exception, Module and Class rules — the end of the chain, so this is
@@ -14,6 +15,31 @@ namespace RubyCore
 namespace Builtins
 
 /-- Exception, Module and Class rules — the end of the chain, so this is -/
+def setConstantVisibility (m : Machine) (recv : Value) (o : ObjId) (privateConst : Bool)
+    (names : List String) : BRes :=
+  match names with
+  | [] => .ok recv m
+  | name :: rest =>
+    match m.heap.classPayload? o with
+    | none => .unsupported "constant visibility on a non-module"
+    | some cp =>
+      if name.isEmpty || !(name.toList.headD '_').isUpper ||
+          !(name.toList.all (fun c => c.isAlphanum || c == '_')) then
+        .unsupported "constant visibility with a non-simple constant name" else
+      if !(cp.consts.any (·.1 == name)) then
+        let known := (crubyNamespaceConstants.find? (·.1 == className m.heap o)).any (·.2.contains name) ||
+          (cp.libraryNamespace.bind (fun ns => crubyFeatureConstants.find? (·.1 == ns))).any (·.2.contains name) ||
+          (o == Boot.objectId && m.attemptedFeatures.any (fun feature =>
+            (crubyFeatureRoots.find? (·.1 == feature)).any (·.2.contains name)))
+        if known then .unsupported s!"constant visibility of unmodeled constant {name}" else
+        .err Boot.nameErrorId s!"constant {className m.heap o}::{name} not defined" m
+      else
+        let priv := if privateConst then
+          cp.privateConsts ++ (if cp.privateConsts.contains name then [] else [name])
+          else cp.privateConsts.filter (· != name)
+        setConstantVisibility { m with heap := m.heap.setClassPayload o { cp with privateConsts := priv } }
+          recv o privateConst rest
+
 def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=
   let h := m.heap
   match bid with
@@ -163,19 +189,15 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     | .ref o =>
       match h.classPayload? o with
       | none => .unsupported "private_constant on a non-module"
-      | some cp =>
+      | some _ =>
+        if (h.get o).frozen then .frozen recv m else
         let names := args.filterMap fun a =>
           match a with
           | .sym s => some s
           | .ref so => match (h.get so).payload with | .str s => some s | _ => none
           | _ => none
-        if names.length != args.length then .unsupported "private_constant: non-name argument"
-        else
-          let priv :=
-            if bid == "Module#private_constant" then
-              cp.privateConsts ++ names.filter (fun n => !cp.privateConsts.contains n)
-            else cp.privateConsts.filter (fun n => !names.contains n)
-          .ok .nil { m with heap := h.setClassPayload o { cp with privateConsts := priv } }
+        if names.length != args.length then .unsupported "constant visibility: name conversion" else
+        setConstantVisibility m recv o (bid == "Module#private_constant") names
     | _ => .unsupported "private_constant on a non-module"
   | _ => runRegex bid recv args m
 

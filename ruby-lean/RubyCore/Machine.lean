@@ -46,6 +46,7 @@ structure Frame where
       For an **alias** this is the *original* name, which is what CRuby's `super`
       searches for (L108). -/
   meth : String := ""
+  superScope : Option ObjId := none
   /-- The running body's own parameter list, and whether it came from
       `define_method`. `zsuper` reconstructs its arguments from these; it used to
       re-look-up `meth` in `defmod`, which stopped working once `meth` could be an
@@ -213,6 +214,14 @@ inductive IterKind where
   | minBy     -- min_by: keep the element whose block value is least
 deriving Repr, Inhabited
 
+inductive MethodEdit where
+  | define (target : ObjId) (name : String) (method : MethodDef)
+  | aliasMethod (target : ObjId) (name original : String)
+  | remove (target : ObjId) (name : String) (undefine : Bool)
+  | visibility (target : ObjId) (name : String) (vis : Visibility)
+  | moduleFunction (target : ObjId) (name : String)
+deriving Inhabited
+
 inductive Kont where
   | requireK (feature : String) (frame : FrameId)
   | enumFinishK (id : ObjId)
@@ -232,6 +241,8 @@ inductive Kont where
       (artifact 02 §6 — a definition hook is ordinary dispatch on the defining
       module, not a new evaluation rule). -/
   | methodAddedK (name : String)
+  /-- Resume a native method-table operation after its Ruby callback. -/
+  | methodEditsK (remaining : List MethodEdit) (result : Value)
   /-- `raise C` / `raise C, msg` where `C` has a *user* `initialize` (L70): the
       in-flight value is that initializer's (discarded) result; raise the freshly
       built instance. -/

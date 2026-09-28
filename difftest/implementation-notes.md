@@ -1674,3 +1674,69 @@ zero disagree**, unchanged sources/verdicts. Front-end: 45 seeds plus nine new
 programs, **54 agree / zero disagree**, AST-idempotent with six old render-only
 instabilities. Build, regeneration comparisons and diff whitespace checks pass.
 All processes terminated; proof builds and typed gate remain deferred, no commit.
+
+
+## N56 — method-table effects and Forwardable conformance (2026-09-28)
+
+Model L282 fixes require-definition-hooks through ordinary callbacks and matching
+Forwardable 1.4.0 declaration order. Eleven new fixed programs cover method and
+singleton callbacks, interleaved partial effects, frozen mutations, live inherited
+visibility, alias super context, constant mutation and Forwardable delegation,
+reentry, failed-load retry and frozen namespace loads. The exact combined
+programs were compared before fixed sidecars were written. No comparator, control
+normalization or corpus source was weakened.
+
+The broader replay caught an overbroad singleton shadow guard on modeled String
+and Array constructors. It was repaired; the earlier 20260928-062926 bootstrap
+and 20260928-062958 regression reports are superseded. A further probe separated
+reflection on a visibility forwarding entry from resolution of its current body:
+a removed/undefined parent body still leaves a visible entry, but invocation and
+alias creation fail. method-visibility-live pins both sides of this distinction.
+
+Final regression report: 20260928-063351-tierregressions-lean, **97 held / one
+old sorbet-hash-gate / zero failures** (98 programs). Every old source is unchanged;
+require-definition-hooks is the only old verdict change, unsupported to agree.
+Final tier 1 n=300 seed20260927 report: 20260928-063421-tier1-lean, **219 agree /
+81 unsupported / zero disagree**, every source/verdict unchanged from L281.
+Focused replay: 92 cases, **85 agree / seven gates / zero disagree**, including
+25/3 over the 28 Sorbet programs. Four extra visibility-body/super probes and
+three standalone core-only programs agree. The permanent identical-source feature
+loading check agrees on exception/reentry/scope/cache, throw/ensure and completed
+dependencies surviving failure. Full bootstrap results follow after completion.
+
+Front-end: 45 seeds plus the 12 regression programs changed/added this batch,
+**57 agree / zero disagree**, AST-idempotent. Seven render-only instabilities:
+the six old seed cases plus forwardable-delegation. Model build (96 jobs), both
+regeneration comparisons and whitespace checks pass. No proof build, typed gate
+or commit; proof repair is deferred by the user. The full conformance goal remains
+active and incomplete.
+
+Reproduce the principal runs from difftest/ with
+UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache:
+
+```sh
+uv run python -m difftest run --tier regressions --sut lean
+uv run python -m difftest run --tier 0 --sut lean
+uv run python -m difftest run --tier 1 -n 300 --sut lean --seed 20260927
+```
+
+Build first with `cd ruby-lean && lake build rubycore`; feature protocol check is
+`python3 scripts/check-feature-loading.py` there. Front-end command from repo root
+(with the pinned Homebrew Ruby):
+
+```sh
+/opt/homebrew/opt/ruby/bin/ruby desugar/bin/run desugar/corpus/seeds \
+  difftest/corpus/regressions/{method-definition-callbacks,method-mutation-partial,method-mutation-frozen,method-visibility-live,alias-super-context,constant-mutation,forwardable-delegation,forwardable-load-retry,forwardable-load-reentry,forwardable-frozen-load,forwardable-frozen-single,require-definition-hooks}.rb
+```
+
+
+Final L282 bootstrap report: `20260928-063421-tier0-lean` — **1,082 agree /
+zero disagree / 221 unsupported**, five invalid controls and the unchanged
+`test_syntax_115` harness error (1,309 total). Every source is unchanged from
+L281; the sole verdict change is `test_yjit_145`, timeout gate to agreement.
+No lost agreements. Final tier 1: `20260928-063421-tier1-lean`, **219 agree /
+81 unsupported / zero disagree**, all sources/verdicts unchanged. Final
+regressions: `20260928-063351-tierregressions-lean`, **97 held / one old gated /
+zero failures**, all old sources unchanged; require-definition-hooks is fixed.
+All validation processes terminated. No proof build, typed gate or commit was
+performed. The active full-conformance objective remains incomplete.

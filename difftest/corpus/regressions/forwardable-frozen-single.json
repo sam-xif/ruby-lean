@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L282 (2026-09-28)",
+  "note": "A frozen SingleForwardable raises after the earlier Forwardable declarations have completed. Compared with CRuby 4.0.5."
+}

@@ -1,5 +1,6 @@
 import RubyCore.Interp.Reflect
 import RubyCore.Interp.Require
+import RubyCore.Interp.Forwardable
 
 /-!
 Dispatch proper: `invoke`, `super`/`zsuper`, and the argument/keyword/block
@@ -159,7 +160,7 @@ where
     -- prelude's `Enumerable#select`). Suppress the gate for prelude owners; the
     -- fidelity obligation moves to the prelude's body, where difftest checks it.
     let between := if md.fromPrelude then [] else chain.takeWhile (· != owner)
-    match crubyShadow m.heap between mname with
+    match crubyResolvedShadow m.heap between mname md with
     | some cname => .unsupported s!"unmodeled builtin would shadow: {cname}#{mname}"
     | none =>
     -- Visibility (L71) is checked *after* the shadow gate: when CRuby would
@@ -174,6 +175,7 @@ where
     | none =>
       match md.builtin with
       | some bid =>
+        if bid == "Object#__forwardable_compile" then compileForwardable m args else
         if requireBid bid then callRequire m bid args kw else
         if enumBid bid then callEnumerator m bid recv args blk kw else
         if nativeIteratorBid bid then callNativeIterator m bid recv args blk kw else
@@ -255,17 +257,9 @@ where
         | .frozen recv m => raiseFrozen m recv
         | .unsupported r => .unsupported r
       | none =>
-        -- Same L62 exception as the instance path above: a **prelude**-defined
-        -- singleton method *is* our model of the CRuby singleton of that name
-        -- (`String.try_convert`, `Array.try_convert`, `Regexp.last_match`), so
-        -- the gate must not fire on it. Without this the prelude cannot supply a
-        -- class method at all, which is what pushed those three into `invoke` as
-        -- hand-written special cases in the first place (L115).
-        match (if md.fromPrelude then none else crubySingletonShadow m.heap recv mname) with
-        | some cname => .unsupported s!"unmodeled singleton method {cname}.{mname}"
-        | none =>
-          -- a RubyCore-defined method: bind params + push the activation
-          enterUserMethod m recv mname md args blk kw
+        -- Native singleton shadows are checked in the chain before `owner`,
+        -- just like instance shadows. A real user override at `owner` wins.
+        enterUserMethod m recv mname md args blk kw
   | none =>
     let (args, m) := appendKwHash m args kw
     dispatchMiss m recv implicit mname args blk
@@ -276,10 +270,7 @@ where
     the same function instead of to a copy of it — a copy is what made `rw` fail, and
     the fix belongs here rather than in a proof that has to reproduce the shape. -/
 def superFound (h : Heap) (k dm : ObjId) (mname : String) : Option (ObjId × MethodDef) :=
-  ((ancestors h k).dropWhile (· != dm) |>.drop 1).firstM fun c =>
-    match h.classPayload? c with
-    | some cp => (cp.methods.find? (·.1 == mname)).map (fun (_, md) => (c, md))
-    | none => none
+  lookupInChain h (((ancestors h k).dropWhile (· != dm)).drop 1) mname
 
 /-- Super-dispatch (artifact 02 §2): re-run the current method name starting
     *after* its `defmod` in `self`'s ancestor chain, keeping the same `self` and
@@ -293,19 +284,21 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
   if f.meth == "" then .unsupported "super outside a method"
   else
     let self := f.self
-    let chain := (ancestors m.heap (classOf m.heap self)).dropWhile (· != f.defmod) |>.drop 1
-    match superFound m.heap (classOf m.heap self) f.defmod f.meth with
+    let scope := f.superScope.getD (classOf m.heap self)
+    let chain := (ancestors m.heap scope).dropWhile (· != f.defmod) |>.drop 1
+    match superFound m.heap scope f.defmod f.meth with
     | some (owner, md) =>
       if md.undefined then
         let (args, m) := appendKwHash m args kw
         invokeMethodMissing m self .implicit f.meth args blk .superCall
       else
       let between := if md.fromPrelude then [] else chain.takeWhile (· != owner)
-      match crubyShadow m.heap between f.meth with
+      match crubyResolvedShadow m.heap between f.meth md with
       | some cname => .unsupported s!"unmodeled builtin would shadow super: {cname}#{f.meth}"
       | none =>
       match md.builtin with
       | some bid =>
+        if bid == "Object#__forwardable_compile" then compileForwardable m args else
         if requireBid bid then callRequire m bid args kw else
         if enumBid bid then callEnumerator m bid self args blk kw else
         if nativeIteratorBid bid then callNativeIterator m bid self args blk kw else
@@ -326,7 +319,9 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
         | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
         | .frozen recv m => raiseFrozen m recv
         | .unsupported r => .unsupported r
-      | none => enterUserMethod m self f.meth md args blk kw
+      | none =>
+        let md := { md with superScope := md.superScope.orElse (fun _ => f.superScope) }
+        enterUserMethod m self f.meth md args blk kw
     | none =>
       match crubyShadow m.heap chain f.meth with
       | some cname => .unsupported s!"unmodeled super method {cname}#{f.meth}"
@@ -662,7 +657,7 @@ def definedMethod? (m : Machine) (recv : Value) (mname : String)
       | some (_, md) => md.builtin.isNone
       | none => false) then none
   else
-  match lookup m.heap recv mname with
+  match methodEntryInChain m.heap (ancestors m.heap (classOf m.heap recv)) mname with
   | some (_, md) =>
     -- visibility counts: `defined?(obj.private_m)` is nil [V] (L71)
     if md.undefined then some false

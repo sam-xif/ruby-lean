@@ -52,6 +52,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
             .next (withCtl { m with heap := cvarSetIn m.heap scope x v } (.value v))
     | .casgnK n =>
       let defmod := m.currentFrame.defmod
+      if (m.heap.get defmod).frozen then raiseFrozen m (.ref defmod) else
       let qual := if defmod == Boot.objectId then n else s!"{className m.heap defmod}::{n}"
       let h := nameIfAnonymous m.heap qual v
       .next (withCtl { m with heap := constSetIn h defmod n v } (.value v))
@@ -78,6 +79,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .newK inst =>
       -- `initialize` returned; its value is discarded, `new` yields the instance
       .next (withCtl m (.value inst))
+    | .methodEditsK remaining result => runMethodEdits m remaining result
     | .methodAddedK name =>
       -- the `method_added` hook returned; its value is discarded and `def`
       -- yields the method name, as if the hook had not run
@@ -100,8 +102,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         let md : MethodDef :=
           { params, body, owner := e, cref := m.currentFrame.cref,
             fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
-        let m := { m with heap := defineMethod m.heap e name md }
-        .next (withCtl m (.value (.sym name)))
+        runMethodEdits m [.define e name md] (.sym name)
       | _ =>
         -- singleton def on an immediate (`def 1.m`) — TypeError; message-gate
         .unsupported "singleton def on an immediate"
@@ -148,6 +149,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | .error sr => sr
       | .ok o => .next (withKont m (.eval rhs) (.cpathAsgnValK name o))
     | .cpathAsgnValK name base =>
+      if (m.heap.get base).frozen then raiseFrozen m (.ref base) else
       -- v is the rhs; write it into base's namespace; assignment yields rhs [V].
       let qual := if base == Boot.objectId then name
                   else s!"{className m.heap base}::{name}"

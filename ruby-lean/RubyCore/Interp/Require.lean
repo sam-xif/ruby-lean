@@ -1,4 +1,4 @@
-import RubyCore.Interp.Support
+import RubyCore.Interp.Dispatch
 
 /-! L281: execute modeled feature bodies on require, at a fresh top level.
     Completed features are cached; a raise preserves effects but permits retry. -/
@@ -22,13 +22,20 @@ def callRequire (m : Machine) (bid : String) (args : List Value)
     else match m.featurePrograms.find? (·.1 == feature) with
     | none => .unsupported s!"require of an unmodeled library: {raw}"
     | some (_, body) =>
+      if feature == "forwardable" && (methodOn m.heap Boot.stringId "freeze").any
+          (fun (_, md) => md.builtin.isNone) then
+        .unsupported "Forwardable loading with an overridden String#freeze needs frozen literal compilation" else
+      if (lookup m.heap (.ref Boot.objectId) "const_added").any
+          (fun (_, md) => md.builtin.isNone && !md.undefined && !md.fromPrelude) then
+        .unsupported "require with a root const_added hook" else
       -- Native reopening diagnostics include the earlier source location.
       -- The AST does not yet retain it; do not invent a shorter error message.
       let rootName := if feature == "sorbet-runtime" then "T"
         else if feature == "json" then "JSON"
         else if feature == "uri" then "URI"
         else if feature == "forwardable" then "Forwardable" else ""
-      let conflict := match constOwn m.heap Boot.objectId rootName with
+      let roots := if feature == "forwardable" then [rootName, "SingleForwardable"] else [rootName]
+      let conflict := roots.any fun root => match constOwn m.heap Boot.objectId root with
         | none => false
         | some (.ref o) => match m.heap.classPayload? o with
           | some cp => !cp.isModule

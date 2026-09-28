@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L282 (2026-09-28)",
+  "note": "Reflective method and mixin mutations reject frozen named class targets. Compared with CRuby 4.0.5."
+}

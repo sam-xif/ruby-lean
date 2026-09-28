@@ -20,19 +20,13 @@ namespace Interp
     prelude definition of the same name defers to it when a block is passed. -/
 def lookupAbove (h : Heap) (recv : Value) (owner : ObjId) (mname : String)
     : Option (ObjId × MethodDef) :=
-  ((ancestors h (classOf h recv)).dropWhile (· != owner)).drop 1 |>.firstM fun k =>
-    match h.classPayload? k with
-    | some c => (c.methods.find? (·.1 == mname)).map (fun (_, md) => (k, md))
-    | none => none
+  lookupInChain h (((ancestors h (classOf h recv)).dropWhile (· != owner)).drop 1) mname
 
 /-- First module in `ancestors k` defining `m` directly, with its owner — like
     `lookup` but keyed on a class ObjId rather than a receiver value (used to
     inspect a class before any instance of it exists, e.g. for `initialize`). -/
 def methodOn (h : Heap) (k : ObjId) (mname : String) : Option (ObjId × MethodDef) :=
-  (ancestors h k).firstM fun c =>
-    match h.classPayload? c with
-    | some cp => (cp.methods.find? (·.1 == mname)).map (fun (_, md) => (c, md))
-    | none => none
+  lookupInChain h (ancestors h k) mname
 
 /-- The user-defined `initialize` an instance of class `k` would run, if any
     (a builtin `initialize` — none is modeled — does not count). `Class#new`
@@ -149,7 +143,7 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
     let frame : Frame :=
       { self := recv, locals := localsA ++ predeclared, defmod := md.owner,
         kind := .method, blk := frameBlk, callBlk := blk,
-        meth := md.superName.getD mname,
+        meth := md.superName.getD mname, superScope := md.superScope,
         runParams := md.params, runFromDM := md.capturedFrame.isSome,
         cref := md.cref, captured := md.capturedFrame, libraryOrigin := md.fromPrelude }
     let fid := m.frames.size
@@ -209,15 +203,18 @@ where
       let h := h.set o { h.get o with eigen := some e }
       (e, { m with heap := h })
 
-/-- Optional libraries model their public behavior with smaller source bodies.
-    A user definition hook can observe omitted declarations or their order. That
-    requires the complete upstream body; running the smaller body is unsound. -/
+/-- Optional libraries generally have smaller source bodies; callbacks can
+    observe omitted declarations. Forwardable matches the upstream method order
+    (L282), while its other hook protocols remain outside this fragment. -/
 def libraryBodyGate (m : Machine) (k : ObjId) : Option String :=
   if !m.currentFrame.libraryOrigin || m.preludeMode || m.loadingFeatures.isEmpty then none else
-  if (m.heap.get k).frozen then some "require into a frozen namespace needs the complete library body" else
+  let exactMethods := m.loadingFeatures.head? == some "forwardable"
+  if (m.heap.get k).frozen && !exactMethods then some "require into a frozen namespace needs the complete library body" else
+  let hooks := if exactMethods then ["const_added", "inherited", "included", "extended", "prepended"] else
+    ["method_added", "singleton_method_added", "const_added", "inherited", "included", "extended", "prepended"]
   let targets := k :: ((m.heap.classPayload? k).bind (·.superclass)).toList
   if targets.any (fun target =>
-      ["method_added", "singleton_method_added", "const_added", "inherited", "included", "extended", "prepended"].any
+      hooks.any
         (fun hook => (lookup m.heap (.ref target) hook).any
           (fun (_, md) => md.builtin.isNone && !md.undefined && !md.fromPrelude))) then
     some "require with user definition hooks needs the complete library body"
@@ -667,6 +664,7 @@ def tryMixin (m : Machine) (recv : Value) (mname : String)
   | "include", .ref o, [.ref mo] =>
     match m.heap.classPayload? o, m.heap.classPayload? mo with
     | some c, some _ =>
+      if let some receiver := frozenMethodReceiver? m.heap o then some (raiseFrozen m receiver) else
       let m := { m with heap := m.heap.setClassPayload o { c with includes := c.includes ++ [mo] } }
       match moduleHook m mo "included" with
       | some hook =>
@@ -680,6 +678,7 @@ def tryMixin (m : Machine) (recv : Value) (mname : String)
     -- them reaches the overridden definition.
     match m.heap.classPayload? o, m.heap.classPayload? mo with
     | some c, some _ =>
+      if let some receiver := frozenMethodReceiver? m.heap o then some (raiseFrozen m receiver) else
       match moduleHook m mo "prepended" with
       | some _ => some (.unsupported "prepend with a `prepended` hook")
       | none =>
@@ -690,6 +689,7 @@ def tryMixin (m : Machine) (recv : Value) (mname : String)
   | "extend", .ref o, [.ref mo] =>
     match m.heap.classPayload? mo with
     | some _ =>
+      if (m.heap.get o).frozen then some (raiseFrozen m recv) else
       -- `extend` = include the module into the receiver's eigenclass; the
       -- `extended` hook is unmodeled → gate if present.
       match moduleHook m mo "extended" with
@@ -698,6 +698,7 @@ def tryMixin (m : Machine) (recv : Value) (mname : String)
         let (e, m) := eigenclassOf m o
         match m.heap.classPayload? e with
         | some ec =>
+          if let some receiver := frozenMethodReceiver? m.heap e then some (raiseFrozen m receiver) else
           let m := { m with heap := m.heap.setClassPayload e { ec with includes := ec.includes ++ [mo] } }
           some (.next (withCtl m (.value recv)))
         | none => none

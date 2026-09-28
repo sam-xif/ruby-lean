@@ -42,6 +42,10 @@ def libraryNamespace (h : Heap) (o : ObjId) : Option String :=
 def featureHas (table : List (String × List String)) (h : Heap) (o : ObjId) (name : String) : Bool :=
   ((libraryNamespace h o).bind fun ns => table.find? (·.1 == ns)).any (·.2.contains name)
 
+def nativeSingletonMethod (h : Heap) (o : ObjId) (name : String) : Bool :=
+  ((h.classPayload? o).bind (·.attached)).any
+    (fun target => crubySingletonDefines (className h target) name)
+
 def featureMethod (h : Heap) (o : ObjId) (name : String) : Bool :=
   featureHas crubyFeatureMethods h o name ||
     ((h.classPayload? o).bind (·.attached)).any
@@ -179,13 +183,22 @@ abbrev receiverDesc := RubyCore.receiverDesc
 def crubyShadow (h : Heap) (chain : List ObjId) (mname : String) : Option String :=
   chain.firstM fun k =>
     let cname := className h k
-    if crubyClassDefines cname mname || featureMethod h k mname then some cname else none
+    if crubyClassDefines cname mname || nativeSingletonMethod h k mname || featureMethod h k mname then some cname else none
+
+/-- Class-aware allocation builtins model core singleton constructors too.
+    Keep other shadow checks, including optional-library constructors. -/
+def crubyResolvedShadow (h : Heap) (chain : List ObjId) (mname : String)
+    (md : MethodDef) : Option String :=
+  if md.builtin.any (["Class#new", "Module#new", "Class#allocate"].contains ·) then
+    chain.firstM fun k =>
+      let cname := className h k
+      if crubyClassDefines cname mname || featureMethod h k mname then some cname else none
+  else crubyShadow h chain mname
 
 /-- For a *class object* receiver: would CRuby find `mname` on the class's
     singleton chain (e.g. `Hash.ruby2_keywords_hash`)? We have no
-    eigenclasses yet, so any singleton hit is unmodeled. Only consulted when
-    our lookup did NOT resolve to a builtin (our class-aware builtins like
-    Class#new deliberately subsume the common singleton constructors). -/
+    explicit entries for every native singleton method. This fallback is for a
+    lookup miss; resolved calls check the chain before their actual owner. -/
 def crubySingletonShadow (h : Heap) (recv : Value) (mname : String) : Option String :=
   match recv with
   | .ref o =>

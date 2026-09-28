@@ -297,6 +297,13 @@ def runRegex (bid : String) (recv : Value) (args : List Value) (m : Machine) : B
           | _ => .unsupported "MatchData#[] key"
         | _ => .unsupported "MatchData#[] key"
   /- ─── String methods that take a pattern ─── -/
+  | "Symbol#match?" =>
+    match args with
+    | [pat] =>
+      if (regexpParts? h pat).isSome then regexApply "Regexp#match?" m pat recv
+      else .unsupported "Symbol#match? with a non-Regexp pattern"
+    | [_, _] => .unsupported "Symbol#match? with an offset"
+    | _ => .err Boot.argumentErrorId s!"wrong number of arguments (given {args.length}, expected 1..2)" m
   | "String#=~" | "String#match" | "String#match?" =>
     binArg m args fun pat =>
       match regexpParts? h pat with
