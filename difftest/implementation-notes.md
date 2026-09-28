@@ -1815,3 +1815,51 @@ also needs to preserve normal initialize/method_missing dispatch. The exact
 source/results are saved in /private/tmp/conformance-l283-next-constructor.json.
 Fix and add a permanent regression next; do not merely filter the tombstone and
 silently allocate through newImpl instead.
+
+## N58 — constructor and block-boundary regression probes (2026-09-28)
+
+L284 adds eight fixed programs: constructor-dispatch, constructor-core-initialize,
+constructor-blocks, constructor-overrides, constructor-procs, constructor-allocators,
+literal-block-exits and method-missing-keywords. They compare the exact same source
+under CRuby 4.0.5 and the model, including initializer and method_missing effects,
+constructor aliases/visibility, Proc identity, frozen/arity ordering, and ensure
+ordering when a block exits through construction or further forwarding.
+
+All eight agree. Focused evidence is /private/tmp/conformance-l284-{focused,extra,
+permanent,previous}.json: 62 agree/four gates in the 66 individual new probes;
+128 agree/seven gates in the unchanged 135-case previous replay. Three standalone
+core-only and three identical-source feature-loading checks agree. Front-end
+45 seeds plus these eight programs: 53 agree/zero disagree, AST-idempotent,
+with six old render-only instabilities and one in constructor-blocks.rb.
+
+Final replay report 20260928-071903-replay-lean has 114 agree/one old gated
+sorbet-hash program (115 total). Tier 1 n=300 seed20260927 has 219 agree/81
+unsupported. All old sources and verdicts are unchanged. The initial bootstrap
+run 20260928-071407 gained test_flow_045, test_proc_030 and test_proc_031, reaching
+1,090 agree/zero disagree/213 unsupported; final bootstrap verification follows.
+
+Reproduce after building rubycore in ruby-lean/:
+
+```sh
+cd difftest
+UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache uv run python -m difftest replay corpus/regressions --sut lean
+UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache uv run python -m difftest run --tier 0 --sut lean
+UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache uv run python -m difftest run --tier 1 -n 300 --sut lean --seed 20260927
+```
+
+For the recorded front-end run, use ruby desugar/bin/run desugar/corpus/seeds
+and append the eight new regression .rb paths. The identical-feature-source check
+is python scripts/check-feature-loading.py from ruby-lean/. Proof repair stays
+deferred by the active conformance request; this batch does not claim the full
+goal or run the typed gate, and does not commit.
+
+Final L284 bootstrap verification: report 20260928-071903-tier0-lean has
+1,090 agree / zero disagree / 213 unsupported, five invalid controls and the old
+syntax harness error (1,309 total). Exactly test_flow_045, test_proc_030 and
+test_proc_031 gain over L283; no source changes or lost agreements. Final seeded
+tier 1 remains 219 agree/81 unsupported; final replay is 114 agree/one old gate,
+with every old source/verdict unchanged. Both generated-file comparisons and
+git diff --check pass. Differential suites have terminated; final comment-only
+rebuild is the sole remaining validation process at this write.
+
+Final comment-only rebuild PASS (98 jobs); all validation processes terminated.

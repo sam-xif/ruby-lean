@@ -28,10 +28,9 @@ def lookupAbove (h : Heap) (recv : Value) (owner : ObjId) (mname : String)
 def methodOn (h : Heap) (k : ObjId) (mname : String) : Option (ObjId × MethodDef) :=
   lookupInChain h (ancestors h k) mname
 
-/-- The user-defined `initialize` an instance of class `k` would run, if any
-    (a builtin `initialize` — none is modeled — does not count). `Class#new`
-    intercepts only when this is `some`; otherwise dispatch falls to the
-    `Class#new` builtin (artifact 02 §3). -/
+/-- Legacy `raise C` initializer interception (L70). Class#new instead uses
+    ordinary initialize dispatch in Construct (L284). The raise protocol still
+    needs a separate exception-construction audit. -/
 def userInit? (h : Heap) (k : ObjId) : Option MethodDef :=
   match methodOn h k "initialize" with
   | some (_, md) => if md.builtin.isNone then some md else none

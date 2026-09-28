@@ -76,6 +76,8 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .newK inst =>
       -- `initialize` returned; its value is discarded, `new` yields the instance
       .next (withCtl m (.value inst))
+    | .blockCallK _ => .next (withCtl m (.value v))
+    | .arrayInitK recv block index size => arrayInitNext m recv block index size v
     | .methodEditsK remaining result => runMethodEdits m remaining result
     | .methodAddedK name =>
       -- the `method_added` hook returned; its value is discarded and `def`
@@ -358,6 +360,12 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
   | k :: rest =>
     let m := { m with kont := rest }
     match k with
+    | .blockCallK scope =>
+      match j with
+      | .retJ v target =>
+        if target == scope then .next (withCtl m (.value v))
+        else .next (withCtl m (.jump j))
+      | _ => .next (withCtl m (.jump j))
     | .requireK feature fid =>
       let m := { m with stack := m.stack.tail, loadingFeatures := m.loadingFeatures.filter (· != feature) }
       match j with

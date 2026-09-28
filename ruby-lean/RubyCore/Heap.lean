@@ -163,6 +163,9 @@ structure Closure where
   captured : Option Nat
   home : Nat
   lam : Bool := false
+  /-- The literal block's call boundary. Forwarding preserves this target;
+      calling the Proc after that boundary exits makes break invalid. -/
+  breakScope : Option Nat := none
   /-- Native external-iteration callback; it suspends instead of entering Ruby. -/
   enumYield : Option ObjId := none
   /-- The block was compiled as part of a modeled library. -/
@@ -402,7 +405,7 @@ def builtinMethods : List (ObjId × List String) := [
   (generatorId, ["each", "initialize"]),
   (yielderId, ["yield", "<<", "initialize"]),
   (stopIterationId, ["result"]),
-  (basicObjectId, ["==", "!", "equal?", "method_missing", "singleton_method_added",
+  (basicObjectId, ["==", "!", "equal?", "initialize", "method_missing", "singleton_method_added",
                    "singleton_method_removed", "singleton_method_undefined"]),
   -- Kernel/Object layer (Kernel folded into Object at L0)
   (objectId, ["==", "===", "!", "equal?", "eql?", "class", "nil?", "itself", "inspect",
@@ -412,7 +415,7 @@ def builtinMethods : List (ObjId × List String) := [
               "__user_defines?", "__default_inspect?", "__write", "__addr_str",
               "__any_to_s", "__match_to_caller", "respond_to_missing?",
               "__coerce_failed", "__cmp_failed", "__coerce_defined?", "Rational", "Complex", "__complex_rect",
-              "initialize", "enum_for", "to_enum", "__enum_for", "__chain_init", "__chain_enums",
+              "enum_for", "to_enum", "__enum_for", "__chain_init", "__chain_enums",
               "binding", "local_variables", "__forwardable_compile"]),
   (nilClassId, ["===", "to_s", "inspect", "nil?", "to_a", "&", "|", "dup", "clone"]),
   (trueClassId, ["===", "to_s", "inspect", "&", "|", "dup", "clone"]),

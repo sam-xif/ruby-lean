@@ -811,6 +811,27 @@ class Enumerator
   end
 end
 
+# Immediate classes undefine new but retain allocate (which raises TypeError).
+# Real tombstones preserve singleton inheritance and reflection (L284).
+class << Integer
+  undef_method :new
+end
+class << Float
+  undef_method :new
+end
+class << Symbol
+  undef_method :new
+end
+class << NilClass
+  undef_method :new
+end
+class << TrueClass
+  undef_method :new
+end
+class << FalseClass
+  undef_method :new
+end
+
 # Native frozen fractions have no public allocator. The tombstones also apply
 # to subclasses; a program may still explicitly define its own singleton new.
 class << Rational

@@ -1,4 +1,4 @@
-import RubyCore.Interp.Reflect
+import RubyCore.Interp.Construct
 import RubyCore.Interp.Require
 import RubyCore.Interp.Forwardable
 
@@ -47,7 +47,7 @@ def invoke (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
           | .proc cl => callClosure m cl [recv, key] none
           | _ => invokeDispatch m recv implicit mname args blk kw
       | _, _, _ => invokeDispatch m recv implicit mname args blk kw
-    | .cls c =>
+    | .cls _ =>
       -- `Math` module functions (`Math.sqrt`/`exp`/`log`): a real double transform,
       -- special-cased on the receiver id since they are singleton methods of the
       -- `Math` constant (no eigenclass machinery at boot). Args coerce Int→Float.
@@ -83,7 +83,7 @@ def invoke (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
             else .next (withCtl m (.value (.flt (d.log / bb.log))))
           | _, _ => .unsupported "Math.log non-numeric"
         | _, _ => invokeDispatch m recv implicit mname args blk kw
-      else invokeMaybeNew m recv o c implicit mname args blk kw
+      else invokeDispatch m recv implicit mname args blk kw
     | _ => invokeDispatch m recv implicit mname args blk kw
   | _ => invokeDispatch m recv implicit mname args blk kw
 termination_by args.length
@@ -92,54 +92,6 @@ decreasing_by
   -- strips the (name) head arg: `args = nameArg :: rest`, so `rest.length` drops.
   simp_wf
 where
-  invokeMaybeNew (m : Machine) (recv : Value) (o : ObjId) (c : ClassPayload)
-      (implicit : SendSite) (mname : String) (args : List Value) (blk : Option Value)
-      (kw : List (Value × Value)) : StepResult :=
-      -- `Class#new` on a class with a user `initialize` must allocate then run
-      -- `initialize` (a frame the builtin cannot push); yield the instance via
-      -- `newK`. Special-payload subclasses (String/Array/Exception/…) need
-      -- allocation we don't model → gate. No user init ⇒ fall to the builtin.
-      -- A **user `self.new`** wins over this interception: it is an ordinary
-      -- singleton method and CRuby dispatches to it, not to `Class#new`.
-      -- `T::Helpers#abstract!` installs exactly that (the abstract class must
-      -- refuse to instantiate, L105), and without this check the interception
-      -- allocated an instance and never consulted it.
-      let nativeNew := match lookup m.heap recv "new" with
-        | some (_, md) => !md.undefined && md.builtin == some "Class#new"
-        | none => false
-      let enumClass := (ancestors m.heap o).any ([Boot.enumeratorId, Boot.generatorId, Boot.yielderId].contains ·)
-      if enumClass &&
-          mname == "allocate" && (lookup m.heap recv "allocate").any (fun (_, md) =>
-            !md.undefined && md.builtin == some "Class#allocate") then
-        if !args.isEmpty || !kw.isEmpty then enumArity m (args.length + if kw.isEmpty then 0 else 1) "0" else
-        let (v, m) := enumAllocate m o
-        .next { m with ctl := .value v }
-      else if enumClass &&
-          mname == "new" && nativeNew then
-        let (v, m) := enumAllocate m o
-        .next { m with ctl := .send v .reflective "initialize" args blk kw, kont := .newK v :: m.kont }
-      else
-      if mname == "new" && !c.isModule && nativeNew then
-        match userInit? m.heap o with
-        | some md =>
-          -- Allocate, then run the user `initialize` (a frame the builtin cannot
-          -- push). For a subclass of String/Array/Hash/Exception the instance
-          -- starts with that class's *empty* payload, so `super` inside
-          -- `initialize` can fill it (L70); a Proc/Range/Random subclass has no
-          -- such allocator and still gates.
-          match Builtins.allocatableCore m.heap o, (ancestors m.heap o).any
-              (fun a => Builtins.payloadCoreClasses.contains a || a == Boot.exceptionId) with
-          | none, true => .unsupported "Class#new with user initialize on a special-payload subclass"
-          | core?, _ =>
-            let payload := match core? with
-              | some core => Builtins.emptyCorePayload core
-              | none => Payload.none
-            let (io, h) := m.heap.alloc { klass := o, payload }
-            let inst := Value.ref io
-            let m := { m with heap := h, kont := .newK inst :: m.kont }
-            enterUserMethod m inst "initialize" md args blk kw
-        | none => invokeDispatch m recv implicit mname args blk kw
-      else invokeDispatch m recv implicit mname args blk kw
   invokeDispatch (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
       (args : List Value) (blk : Option Value) (kw : List (Value × Value)) : StepResult :=
   let chain := ancestors m.heap (classOf m.heap recv)
@@ -147,8 +99,7 @@ where
   | some (owner, md) =>
     if md.undefined then
       -- `undef` tombstone: the walk stopped here, dispatch as a miss.
-      let (args, m) := appendKwHash m args kw
-      invokeMethodMissing m recv implicit mname args blk
+      invokeMethodMissing m recv implicit mname args blk (kw := kw)
     else
     -- Dispatch fidelity: if CRuby defines `mname` on a class BETWEEN the
     -- receiver's class and our resolved owner, CRuby would dispatch there —
@@ -169,15 +120,18 @@ where
     -- `def getbyte`, now private, shadowed by the real `String#getbyte`).
     match visError? m recv implicit md mname with
     | some _ =>
-      let (args, m) := appendKwHash m args kw
       invokeMethodMissing m recv implicit mname args blk
-        (if md.visibility == .priv then .privateCall else .protectedCall)
+        (if md.visibility == .priv then .privateCall else .protectedCall) kw
     | none =>
       match md.builtin with
       | some bid =>
         if bid.startsWith "Main#" then
           let (args, m) := appendKwHash m args kw
           callMainMethod m recv bid args blk else
+        if bid == "Class#new" || bid == "Module#new" then callConstruct m recv args blk kw else
+        if bid == "Class#allocate" then callAllocate m recv args kw else
+        if ["String#initialize", "Array#initialize", "Hash#initialize", "Exception#initialize"].contains bid then
+          callCoreInitialize m bid recv args blk kw else
         if bid == "Object#__forwardable_compile" then compileForwardable m args else
         if requireBid bid then callRequire m bid args kw else
         if enumBid bid then callEnumerator m bid recv args blk kw else
@@ -264,8 +218,7 @@ where
         -- just like instance shadows. A real user override at `owner` wins.
         enterUserMethod m recv mname md args blk kw
   | none =>
-    let (args, m) := appendKwHash m args kw
-    dispatchMiss m recv implicit mname args blk
+    dispatchMiss m recv implicit mname args blk kw
 
 /-- The method `super` re-dispatches to: the first entry for `mname` strictly *after*
     `dm` on `k`'s ancestor chain. Named rather than inlined into `doSuper` (L212) so
@@ -292,8 +245,7 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
     match superFound m.heap scope (f.methodOwner.getD f.defmod) f.meth with
     | some (owner, md) =>
       if md.undefined then
-        let (args, m) := appendKwHash m args kw
-        invokeMethodMissing m self .implicit f.meth args blk .superCall
+        invokeMethodMissing m self .implicit f.meth args blk .superCall kw
       else
       let between := if md.fromPrelude then [] else chain.takeWhile (· != owner)
       match crubyResolvedShadow m.heap between f.meth md with
@@ -304,6 +256,10 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
         if bid.startsWith "Main#" then
           let (args, m) := appendKwHash m args kw
           callMainMethod m self bid args blk else
+        if bid == "Class#new" || bid == "Module#new" then callConstruct m self args blk kw else
+        if bid == "Class#allocate" then callAllocate m self args kw else
+        if ["String#initialize", "Array#initialize", "Hash#initialize", "Exception#initialize"].contains bid then
+          callCoreInitialize m bid self args blk kw else
         if bid == "Object#__forwardable_compile" then compileForwardable m args else
         if requireBid bid then callRequire m bid args kw else
         if enumBid bid then callEnumerator m bid self args blk kw else
@@ -332,8 +288,7 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
       match crubyShadow m.heap chain f.meth with
       | some cname => .unsupported s!"unmodeled super method {cname}#{f.meth}"
       | none =>
-        let (args, m) := appendKwHash m args kw
-        invokeMethodMissing m self .implicit f.meth args blk .superCall
+        invokeMethodMissing m self .implicit f.meth args blk .superCall kw
 
 /-- Args that bare `super` forwards: the *current* values of the enclosing
     method's formal parameters — read from the method frame's locals, a splat
@@ -409,39 +364,10 @@ def startSuperArgs (m : Machine) (acc : List Value) (rest : List Expr)
     | .fwd => .unsupported "... forwarding to super"
     | _ => .next (withKont m (.eval e) (.superArgK acc rest' blk))
 
-/-- `Class.new { … }` / `Module.new { … }`: allocate the anonymous class, then run the block
-    with `self` and the `def` target rebound to it. A named function rather than an arm of
-    `finishSend`, because the continuation-framing proof has to `cases` on the
-    `Builtins.run` result to keep the two sides in step, and that needs the call spelled out
-    (`Proof/KontFrameSend.lean`). -/
-def classNewBlock (m : Machine) (recv : Value) (args : List Value) (v : Value)
-    (isClass : Bool) : StepResult :=
-  match Builtins.run (if isClass then "Class#new" else "Module#new") recv args m with
-  | .ok newV m =>
-    match newV, procClosure? m v with
-    | .ref newK, some cl =>
-      -- the block's value is discarded; `Class.new` yields the class [V]
-      let m := { m with kont := .newK newV :: m.kont }
-      callClosure m cl [newV] none (some newV) (some newK)
-    | _, _ => .unsupported "Class.new did not yield a class"
-  | .err cls msg m => .next (raiseErr m cls msg)
-  | .throwV tv m => .next (withCtl m (.jump (.raiseJ tv)))
-  | .frozen recv m => raiseFrozen m recv
-  | .unsupported r => .unsupported r
-
-/-- Native redispatch can also supply a block to Class/Module.new. -/
+/-- Queued native calls use the same lookup and constructor protocol. -/
 def invokeQueued (m : Machine) (recv : Value) (site : SendSite) (name : String)
     (args : List Value) (blk : Option Value) (kw : List (Value × Value)) : StepResult :=
-  if name == "new" && (lookup m.heap recv name).any (fun (_, md) =>
-      !md.undefined && md.builtin == some "Class#new") then
-    match recv, blk with
-    | .ref k, some b =>
-      if k == Boot.classId || k == Boot.moduleId then
-        if !kw.isEmpty then .unsupported "Class/Module.new keyword arguments" else
-        classNewBlock m recv args b (k == Boot.classId)
-      else invoke m recv site name args blk kw
-    | _, _ => invoke m recv site name args blk kw
-  else invoke m recv site name args blk kw
+  invoke m recv site name args blk kw
 
 /-- All args in → resolve the pending block and dispatch. A literal block is
     reified here (capturing the caller frame); `proc`/`lambda`/`Proc.new` with
@@ -467,47 +393,9 @@ def finishSend (m : Machine) (recv : Value) (implicit : SendSite) (mname : Strin
       | some (_, md) => md.builtin.isNone && !md.undefined
       | none => false
     let mkLam := implicit == .implicit && mname == "lambda" && !shadowed
-    let (v, m) := reifyBlock m ps ls body mkLam
+    let (v, m) := reifyCallBlock m ps ls body mkLam
     if implicit == .implicit && (mname == "lambda" || mname == "proc") && !shadowed then
       .next (withCtl m (.value v))
-    else if mname == "new" && (match recv with | .ref k => k == Boot.procId | _ => false) then
-      .next (withCtl m (.value v))
-    else if mname == "new" && args.isEmpty
-        && (match recv with | .ref k => k == Boot.hashId | _ => false) then
-      -- `Hash.new { |h,k| … }`: the block becomes the hash's default_proc (L42),
-      -- consulted on a `[]` miss in `invoke`. `v` is the reified block (a Proc).
-      match v with
-      | .ref bo =>
-        let (o, h) := m.heap.alloc
-          { klass := Boot.hashId, payload := .hsh #[], hashDflt := some (.prc bo) }
-        .next (withCtl { m with heap := h } (.value (.ref o)))
-      | _ => .unsupported "Hash.new block not a proc"
-    else if mname == "new"
-        && (match recv with | .ref k => k == Boot.classId || k == Boot.moduleId | _ => false) then
-      -- `Class.new { … }` / `Module.new { … }`: allocate the anonymous class, then
-      -- run the block with `self`/the `def` target rebound to it — i.e. exactly
-      -- `class_eval` (L72). The block also receives the class as its argument [V].
-      match recv with
-      | .ref k => classNewBlock m recv args v (k == Boot.classId)
-      | _ => .unsupported "Class#new with a block"
-    else if mname == "new" && (match recv with
-        | .ref k => (ancestors m.heap k).any ([Boot.enumeratorId, Boot.generatorId, Boot.yielderId].contains ·)
-        | _ => false) then
-      invoke m recv implicit mname args (some v) kw
-    else if mname == "new" then
-      -- `X.new { … }` for any other class. If the receiver has a **user**
-      -- `self.new` (a singleton or inherited-singleton method), that method is
-      -- what runs and the block is an ordinary block argument — the interception
-      -- above must not steal it. `Struct.new(:a) { … }` in the prelude is exactly
-      -- this shape (L105). Otherwise the block would be an `initialize` block,
-      -- which is unmodeled, so gate.
-      match recv with
-      | .ref k =>
-        match methodOn m.heap (classOf m.heap recv) "new" with
-        | some (_, md) => if md.builtin.isNone then invoke m recv implicit mname args (some v) kw
-                          else .unsupported "Class#new with a block"
-        | none => .unsupported "Class#new with a block"
-      | _ => .unsupported "Class#new with a block"
     else invoke m recv implicit mname args (some v) kw
   | .passAnon => invoke m recv implicit mname args m.currentFrame.blk kw
   | .none => invoke m recv implicit mname args none kw

@@ -14476,3 +14476,94 @@ also needs to preserve normal initialize/method_missing dispatch. The exact
 source/results are saved in /private/tmp/conformance-l283-next-constructor.json.
 Fix and add a permanent regression next; do not merely filter the tombstone and
 silently allocate through newImpl instead.
+
+## L284 — constructor dispatch and literal-block exits (2026-09-28)
+
+The known `undef initialize` bug came from `invokeMaybeNew`: it read a tombstone
+as a user body, before ordinary visibility checks. The same interception ignored
+aliases/super into Class#new; finishSend also bypassed user Hash/Proc/Class/Module
+singleton new methods when a literal block was present.
+
+`Interp/Construct.lean` now handles resolved native Class#new/allocate markers
+from both ordinary and super dispatch. Plain objects, String/Array/Hash/Exception
+payloads, Proc and Enumerator families allocate first and queue a reflective
+initialize send with the original argument, keyword and block packets. The
+normal return goes through newK; undefined and missing initializers use ordinary
+method_missing. An overridden singleton allocate is not called by native new.
+Exception allocations start with the class-name default message. Proc.new needs
+a block, preserves the existing Proc for the same real class (including lambda
+status), or copies its closure into the requested subclass before initialization.
+
+BasicObject owns the zero-argument native initialize, returning nil. String,
+Array, Hash and Exception initializers return self. Empty String initialization
+preserves contents and permits frozen receivers; Hash initialization preserves
+entries and replaces/removes the default. Frozen checks and arity ordering follow
+the oracle. Hash block initialization validates lambda arity. Array's block
+initializer yields successive indices, writes each result into the live receiver,
+and observes mutation, freeze and nonlocal exits. Native allocate respects
+visibility/aliases and Enumerator payloads; Proc allocation raises TypeError.
+Immediate classes undefine singleton new in the prelude, matching the existing
+Rational/Complex tombstone pattern. They retain allocate, which raises TypeError.
+An initial attempt duplicated Rational/Complex's existing tombstones before
+prelude evaluation and caused a boot failure; the final prelude declares only
+the six previously missing immediate-class tombstones, and boot checks pass.
+
+Block control required a separate call boundary: returning from initialize is
+not equivalent to breaking from a block supplied to new. Closure.breakScope and
+Kont.blockCallK bind a literal block to its original call. A fresh tag reserves a
+frame-store slot without adding an activation. Forwarding through initialize,
+super, yield, Proc#call or ordinary helpers retains that target; ensures unwind
+before the original call returns the break value. A retired target gives
+LocalJumpError even if a detached Proc is passed to a new active method. Lambda
+break stays local. Explicit-super literal blocks use the same binding. This
+supersedes L66's innermost-callBlk heuristic for real literal blocks; synthetic
+closures without a literal call tag retain its fallback.
+
+The constructor probes also exposed keyword loss before method_missing. Undef,
+visibility, ordinary misses and super misses now retain keywords through the
+user handler's parameter binding. Only native handlers/macros convert the keyword
+packet to a trailing positional Hash. No emitter/checker workaround is involved.
+
+Eight permanent programs cover constructor dispatch, native initializers,
+blocks, singleton overrides, Proc identity/initialization, unavailable allocators,
+literal-block control flow and missing-method keywords. All eight agree. Focused
+47-case run: 43 agree/four explicit gates; additional 19 cases all agree. Previous
+135 cases retain all results: 128 agree/seven gates, including 28 Sorbet programs
+(25 agree/three old gates). Three standalone core-only programs and all three
+identical-source feature-loading protocols agree. Front-end 45 seeds plus eight
+new programs: 53 agree, zero disagree, AST-idempotent; six old render-only
+instabilities plus constructor-blocks.rb's render-only instability.
+
+The initial bootstrap run 20260928-071407 (before final keyword/tombstone/frozen
+ordering edits) had 1,090 agree, zero disagree, 213 unsupported, five invalid
+controls and the old syntax harness error. Exactly test_flow_045, test_proc_030
+and test_proc_031 gained agreement; no lost agreements or changed sources.
+The final seeded tier 1 run 20260928-071903 has 219 agree/81 unsupported, and the
+final replay has 114 agree/one old sorbet-hash gate (115 programs). All old
+sources/verdicts are unchanged. Final bootstrap and generated-file checks are
+still pending at this record's initial write; append their terminal results below.
+
+Remaining constructor limits: argument-dependent Class/Module/Random/Regexp
+factories keep the legacy native implementation and explicitly gate replaced
+initializers; native uninitialized payloads and those initialization protocols
+need further work. Explicit super block-pass and Hash#default= remain gated.
+The legacy raise C interception still uses userInit? and needs its own protocol
+repair: CRuby sends exception (independently of an overridden new), and that send
+can be overridden, private, missing, or return a non-exception. A 12-case read-only
+follow-up audit confirms seven disagreements, three gates, and two agreements;
+see /private/tmp/conformance-l285-raise-audit.{py,json,log}. It includes the same
+undef-initialize defect under raise, so it is the next known-bug priority.
+
+Build: lake build rubycore (98 jobs). Evidence: /private/tmp/conformance-l284-*.
+No proof repair, typed gate, commit, or ratchet-floor changes; full goal active.
+
+Final L284 bootstrap verification: report 20260928-071903-tier0-lean has
+1,090 agree / zero disagree / 213 unsupported, five invalid controls and the old
+syntax harness error (1,309 total). Exactly test_flow_045, test_proc_030 and
+test_proc_031 gain over L283; no source changes or lost agreements. Final seeded
+tier 1 remains 219 agree/81 unsupported; final replay is 114 agree/one old gate,
+with every old source/verdict unchanged. Both generated-file comparisons and
+git diff --check pass. Differential suites have terminated; final comment-only
+rebuild is the sole remaining validation process at this write.
+
+Final comment-only rebuild PASS (98 jobs); all validation processes terminated.

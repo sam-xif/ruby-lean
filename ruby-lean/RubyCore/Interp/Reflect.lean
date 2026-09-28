@@ -619,9 +619,11 @@ def callMainMethod (m : Machine) (recv : Value) (bid : String)
 No native fallback may resurrect a method that lookup found to be undefined. -/
 def invokeMethodMissing (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
     (args : List Value) (blk : Option Value)
-    (reason : MissingReason := if implicit == .vcall then .vcall else .ordinary) : StepResult :=
+    (reason : MissingReason := if implicit == .vcall then .vcall else .ordinary)
+    (kw : List (Value × Value) := []) : StepResult :=
   let m := { m with missingReason := reason }
   let fallback := fun (args : List Value) =>
+    let (args, m) := appendKwHash m args kw
     match Builtins.run "BasicObject#method_missing" recv args m with
     | .err cls msg m => .next (raiseErr m cls msg)
     | _ => .unsupported "invalid native method_missing result"
@@ -629,7 +631,7 @@ def invokeMethodMissing (m : Machine) (recv : Value) (implicit : SendSite) (mnam
   match methodOn m.heap (classOf m.heap recv) "method_missing" with
   | some (_, mm) =>
     if mm.builtin.isNone && !mm.undefined then
-      enterUserMethod m recv "method_missing" mm (.sym mname :: args) blk
+      enterUserMethod m recv "method_missing" mm (.sym mname :: args) blk kw
     else fallback (.sym mname :: args)
   | none => fallback (.sym mname :: args)
 
@@ -638,14 +640,15 @@ def invokeMethodMissing (m : Machine) (recv : Value) (implicit : SendSite) (mnam
     `NoMethodError` (artifact 02 §4). Explicit tombstones bypass these
     native fallbacks and use invokeMethodMissing directly. -/
 def dispatchMiss (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
-    (args : List Value) (blk : Option Value) : StepResult :=
-  match tryIterator m recv mname args blk with
+    (args : List Value) (blk : Option Value) (kw : List (Value × Value) := []) : StepResult :=
+  let (nativeArgs, nativeM) := appendKwHash m args kw
+  match tryIterator nativeM recv mname nativeArgs blk with
   | some sr => sr
   | none =>
-  match tryMixin m recv mname args with
+  match tryMixin nativeM recv mname nativeArgs with
   | some sr => sr
   | none =>
-  match tryReflect m recv mname args blk with
+  match tryReflect nativeM recv mname nativeArgs blk with
   | some sr => sr
   | none =>
   let chain := ancestors m.heap (classOf m.heap recv)
@@ -658,7 +661,7 @@ def dispatchMiss (m : Machine) (recv : Value) (implicit : SendSite) (mname : Str
   match mixinShadow m recv mname with
   | some modName => .unsupported s!"method via unmodeled mixin {modName}#{mname}"
   | none =>
-    invokeMethodMissing m recv implicit mname args blk
+    invokeMethodMissing m recv implicit mname args blk (kw := kw)
 
 /-- The site kind a `send`-family re-dispatch runs at: `send`/`__send__` bypass
     visibility, `public_send` does not [V]. A top-level `match` rather than an

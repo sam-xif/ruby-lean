@@ -382,6 +382,16 @@ dispatches, and its default consults defined methods plus
 a stuck state — the headline divergence from the prior SML semantics, which omits
 dispatch entirely.
 
+Native Class#new is selected after lookup and visibility, including aliases and
+super. For plain objects and modeled core payloads, it allocates directly (without
+sending an overridable allocate), sends private initialize with the original
+arguments/keywords/block, and discards only the normal initializer result.
+Undef initialize therefore reaches method_missing. Proc construction retains or
+copies the block's closure before initialization. Core initializers return the
+receiver; BasicObject#initialize requires zero arguments and returns nil.
+The argument-dependent Class/Module/Random/Regexp factories remain partial and
+gate replaced initializers. **[V]** (L284)
+
 ### 02 §4 — `super`
 
 `super` re-dispatches the same method name starting strictly **after the current
@@ -663,6 +673,13 @@ parameters, without fetching the next element.
 **`break [v]`** — terminate the *method call the block was passed to*, making
 **that call** return `v` — not the block. The target is the send activation that
 installed this block. **[V]**
+
+The executable model records that target in `Closure.breakScope`, with a
+`blockCallK` boundary at the literal call (L284). Forwarding the Proc through
+initialize, super or another method preserves the original target; a detached
+Proc's break raises LocalJumpError. The boundary consumes the targeted transfer
+after intervening ensures have run, independently of method return values and
+the constructor's discarded initializer result. Lambda break remains local.
 
 **`return [v]`** — the crux distinction:
 

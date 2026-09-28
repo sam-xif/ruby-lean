@@ -105,6 +105,8 @@ def kontLabel : Kont → String
   | .casgnK n => s!"then {n} = ▢"
   | .classDefK name _ => s!"then open class {name} < ▢"
   | .newK _ => "then yield new instance"
+  | .blockCallK scope => s!"literal block call #{scope}"
+  | .arrayInitK _ _ index size => s!"initialize Array element {index}/{size}"
   | .methodEditsK rest _ => s!"method mutation: {rest.length} remaining"
   | .methodAddedK n => s!"then yield :{n} (method_added hook)"
   | .raiseNewK _ => "then raise the new exception"

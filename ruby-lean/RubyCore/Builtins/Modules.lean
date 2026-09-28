@@ -95,19 +95,27 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
       | some cp => .ok (match cp.superclass with | some sup => .ref sup | none => .nil) m
       | none => .unsupported "superclass on a non-class"
     | _ => .unsupported "superclass on a non-class"
-  | "Object#initialize" => .ok .nil m
+  | "BasicObject#initialize" | "Object#initialize" =>
+    if args.isEmpty then .ok .nil m else
+      .err Boot.argumentErrorId s!"wrong number of arguments (given {args.length}, expected 0)" m
   | "String#initialize" | "Array#initialize" | "Hash#initialize"
   | "Exception#initialize" =>
     -- Core initializers *mutate* the (already allocated) receiver, so a subclass's
-    -- `initialize` can `super` into them (L70). Reached only via `super` or the
-    -- allocate-then-initialize path; a plain `String.new` goes through `newImpl`.
+    -- `initialize` can `super` into them (L70). Constructors now allocate then
+    -- send initialize through ordinary lookup (L284).
     match recv with
     | .ref o =>
+      if bid != "Array#initialize" && args.length > 1 then
+        .err Boot.argumentErrorId s!"wrong number of arguments (given {args.length}, expected 0..1)" m else
+      if (h.get o).frozen && !(bid == "String#initialize" && args.isEmpty) then
+        .frozen recv m else
+      if bid == "Array#initialize" && args.length > 2 then
+        .err Boot.argumentErrorId s!"wrong number of arguments (given {args.length}, expected 0..2)" m else
       let setP := fun (pl : Payload) =>
-        BRes.ok .nil { m with heap := m.heap.set o { m.heap.get o with payload := pl } }
+        BRes.ok recv { m with heap := m.heap.set o { m.heap.get o with payload := pl } }
       if bid == "String#initialize" then
         match args with
-        | [] => setP (.str "")
+        | [] => .ok recv m
         | [sv] => match strPayload? h sv with
           | some str => setP (.str str)
           | none => .unsupported "String#initialize with a non-String argument"
@@ -124,10 +132,10 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         | _ => .unsupported "Array#initialize arity"
       else if bid == "Hash#initialize" then
         match args with
-        | [] => setP (.hsh #[])
+        | [] => .ok recv { m with heap := h.set o { h.get o with hashDflt := none } }
         | [dflt] =>
-          let obj := { m.heap.get o with payload := .hsh #[], hashDflt := some (.val dflt) }
-          .ok .nil { m with heap := m.heap.set o obj }
+          let obj := { m.heap.get o with hashDflt := some (.val dflt) }
+          .ok recv { m with heap := m.heap.set o obj }
         | _ => .unsupported "Hash#initialize arity"
       else
         match args with
@@ -168,13 +176,13 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         else
           let chain := ancestors m.heap k
           let noAllocator :=
-            [Boot.integerId, Boot.floatId, Boot.symbolId, Boot.nilClassId,
+            [Boot.integerId, Boot.floatId, Boot.symbolId, Boot.nilClassId, Boot.procId,
              Boot.trueClassId, Boot.falseClassId].any chain.contains
           if noAllocator then
             .err Boot.typeErrorId s!"allocator undefined for {className m.heap k}" m
           else
             let payload := match allocatableCore m.heap k with
-              | some core => emptyCorePayload core
+              | some core => if core == Boot.exceptionId then .exc (className m.heap k) else emptyCorePayload core
               | none => Payload.none
             let (o, h) := m.heap.alloc { klass := k, payload }
             .ok (.ref o) { m with heap := h }

@@ -1,6 +1,72 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L283)
+## Active conformance goal (2026-09-28, L284)
+
+The full CRuby conformance goal remains active and incomplete. Known semantics
+bugs have priority; proof repair is explicitly deferred. L276–L284 changes are
+uncommitted. No checker/proof/floor edits, typed gate or commit. Unrelated paper/
+and wasm upstream-bug files remain untouched.
+
+L284 fixes Class#new's undef-initialize defect and related dispatch bypasses.
+Native construction/allocate now follow resolved method IDs after lookup and
+visibility, including aliases and super. Interp/Construct.lean allocates plain,
+String/Array/Hash/Exception, Proc and Enumerator instances and queues an ordinary
+reflective initialize send, preserving arguments/keywords/block and missing-method
+behavior. Native new does not send an overridden allocate. Core initializers
+return self; BasicObject owns its zero-argument nil-returning initialize. String
+and Hash reinitialization preserve contents, with frozen/arity checks matching
+CRuby; Hash default lambdas validate arity. Array block initialization observes
+live receiver mutations and control flow. Proc.new preserves same-class closure
+identity or copies into a subclass, and calls initialize. Proc.allocate raises
+TypeError. Six immediate classes now undefine singleton new in the prelude.
+
+Closure.breakScope and Kont.blockCallK bind literal-block break to its original
+call, including native constructors and explicit super literals. Forwarding
+through initialize, helpers and Proc#call preserves that boundary; ensures run
+while unwinding, detached Proc break raises LocalJumpError, lambda break stays
+local. Fresh tags reserve frame-store slots without adding activations. Keyword
+packets also survive undef/visibility/ordinary/super misses into method_missing.
+
+Final bootstrap report 20260928-071903-tier0-lean: **1,090 agree / zero disagree /
+213 unsupported**, five invalid controls and the old test_syntax_115 harness error.
+Exactly three gains over L283: test_flow_045, test_proc_030, test_proc_031. No lost
+agreements or source changes. Same-stamp tier 1 n=300 seed20260927: **219 agree /
+81 unsupported / zero disagree**. Same-stamp replay: **114 agree / one old
+sorbet-hash gate / zero failures**, 115 programs. All old sources/verdicts unchanged.
+
+Eight new permanent regression programs all agree. Focused 66 new individual
+probes: 62 agree/four explicit gates. Previous 135 cases: unchanged 128 agree /
+seven gates, including 28 Sorbet cases (25 agree/three old gates). Three standalone
+core-only programs and three identical-source feature-loading protocols agree.
+Front-end: 45 seeds plus eight new programs, 53 agree/zero disagree, AST-idempotent;
+six old render-only instabilities plus constructor-blocks.rb. Prelude and CRubyNames
+match regeneration; git diff --check passes. Final build passed 98 jobs, including the comment-only rebuild
+(/private/tmp/conformance-l284-final-build.log). All validation processes terminated.
+Details: implementation-notes L284, difftest N58, /private/tmp/conformance-l284-*.
+
+Next priority: the old raise C interception still uses userInit? and bypasses the
+exception protocol. The read-only /private/tmp/conformance-l285-raise-audit.py
+confirms seven disagreements, three gates and two agreements; JSON/log include
+exact sources and observations. Undef initialize still silently succeeds under
+raise; missing initialize must reach method_missing. CRuby sends exception even
+when private, independently of an overridden new, and validates its result.
+Instance exception cloning preserves ivars and bypasses user initialize.
+/private/tmp/conformance-l285-exception-oracle.py/log also pin checked to_str
+before exception for one argument, respond_to? hooks, live exception message
+objects, nil/default messages, frozen cloning and alias raise. No L285 source
+edits yet; repair this known bug family next.
+
+Other constructor limits: Class/Module/Random/Regexp factories retain their
+argument-dependent legacy path and now gate replaced initializers; native
+uninitialized payloads/protocols need work. Explicit super block-pass and
+Hash#default= remain gated. Other known leads remain unchecked destructureBind
+to_ary, legacy for bypassing each, constant/ancestry/mixin hooks, frozen writes
+outside audited paths, File's module-shaped stub, Kernel owner folding and
+repeated inclusion-node identity. The old sorbet-hash gate must not be bypassed
+with invented process-specific hashes. Full Sorbet/runtime loader fidelity and
+bootstrap eval/TracePoint/reflection/RubyVM gates remain unfinished.
+
+## Previous batch (2026-09-28, L283)
 
 The user wants known semantics issues fixed first, then progress toward full
 CRuby bootstrap conformance. Proof repair is explicitly deferred. The goal

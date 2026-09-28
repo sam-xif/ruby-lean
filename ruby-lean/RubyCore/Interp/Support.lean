@@ -439,6 +439,19 @@ def reifyBlock (m : Machine) (params : List Param) (locals : List String) (body 
   let (o, h) := m.heap.alloc { klass := Boot.procId, payload := .proc cl }
   (.ref o, { m with heap := h })
 
+/-- Bind break once, at the literal block's call site. The fresh tag uses a
+    reserved frame-store slot without adding an activation or lexical scope. -/
+def reifyCallBlock (m : Machine) (params : List Param) (locals : List String)
+    (body : Expr) (lam : Bool) : Value × Machine :=
+  let (v, m) := reifyBlock m params locals body lam
+  let scope := m.frames.size
+  let h := match v with
+    | .ref o => match (m.heap.get o).payload with
+      | .proc cl => m.heap.set o { m.heap.get o with payload := .proc { cl with breakScope := some scope } }
+      | _ => m.heap
+    | _ => m.heap
+  (v, { m with heap := h, frames := m.frames.push m.currentFrame, kont := .blockCallK scope :: m.kont })
+
 /-- The innermost active frame whose block *is* this proc — i.e. the method the
     block was passed to. `break` inside a proc called via `#call` returns from
     that method (and is a `LocalJumpError` once it has exited) [V], so this is
@@ -508,6 +521,10 @@ def enterClosure (m : Machine) (cl : Closure) (args : List Value)
 def callClosure (m : Machine) (cl : Closure) (args : List Value)
     (brk : Option FrameId) (selfOv : Option Value := none)
     (defmodOv : Option ObjId := none) : StepResult :=
+  let brk := match cl.breakScope with
+    | none => brk
+    | some scope => if m.kont.any (fun k => match k with
+        | .blockCallK s => s == scope | _ => false) then some scope else none
   if let some o := cl.enumYield then suspendEnumerator m o args else
   match classifySimple cl.params with
   | none => .unsupported "unmodeled block param kind (optional/keyword/forwarding/destructuring)"

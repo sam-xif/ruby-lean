@@ -236,10 +236,14 @@ inductive Kont where
   /-- Value in flight is a `class C < S` superclass expression: with `S`
       resolved, open (or create) the class and run its body (artifact 01 §5). -/
   | classDefK (name : String) (body : Expr)
-  /-- `Class#new` when the class has a user `initialize`: the in-flight value
-      is `initialize`'s (discarded) result; yield the fresh instance instead
+  /-- `Class#new`: the in-flight value is `initialize`'s (discarded) result;
+      yield the allocated instance instead
       (artifact 02 §3 — `new` = allocate ∘ initialize ∘ return self). -/
   | newK (inst : Value)
+  /-- The call supplied a literal block. A break targets this boundary even
+      through initialize, super, or further block forwarding. -/
+  | blockCallK (scope : FrameId)
+  | arrayInitK (recv : ObjId) (block : Value) (index size : Nat)
   /-- `def` fired the `Module#method_added` hook: the in-flight value is the
       hook's (discarded) result; `def` still evaluates to the method name
       (artifact 02 §6 — a definition hook is ordinary dispatch on the defining

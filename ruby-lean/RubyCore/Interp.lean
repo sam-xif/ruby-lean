@@ -359,7 +359,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     match blk with
     | none => startSuperArgs m [] args (methodBlk m)
     | some (.block ps ls body) =>
-      let (v, m) := reifyBlock m ps ls body false
+      let (v, m) := reifyCallBlock m ps ls body false
       startSuperArgs m [] args (some v)
     | some _ => .unsupported "super with a block-pass / anonymous block"
   | .zsuper blk =>
