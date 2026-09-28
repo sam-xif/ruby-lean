@@ -1565,3 +1565,28 @@ Final L278 reports: 20260928-000430-{tier0,tier1,tierregressions}-lean. Bootstra
 1,026 agree / zero disagree / 277 unsupported (+22, no losses); regressions
 62 fixed statuses held / one existing open Sorbet hash gate; tier 1 n=300 seed
 20260927 remains 219 agree / 81 unsupported / zero disagree with the same sources.
+
+## N53 — Complex conformance and reflection regression (2026-09-28)
+
+Model L279 adds five Complex regressions and one method-reflection regression.
+They cover native literal identity/exactness/signed zero, numeric construction,
+immutability, mixed arithmetic, coercion's quo dispatch, nonfinite representation
+and undefined/private method visibility. The latter caught a shadow-name fallback
+that resurrected an explicit tombstone. All six agree with the unchanged control
+and comparator. The final regression-status replay has 68 held / one old gated
+Sorbet hash case / zero failures (69 total).
+
+The deterministic numeric probe has 244 agree / 23 explicit gates / zero disagree
+across 267 fragments. Twelve further mixed large Integer/Float divisor cases
+agree; ten effectful comparison/representation/coercion probes confirm explicit
+boundaries rather than silently skipping user hooks. These gates are not counted
+as agreements. Tier 1, n=300 seed20260927, remains 219 agree / 81 unsupported / zero
+disagree with the same sources/verdicts as L278. Reports use the prefix
+20260928-002138; the full bootstrap result is appended after completion.
+
+Final bootstrap: 1,048 agree / zero disagree / 255 unsupported, five invalid
+controls and the existing test_syntax_115 harness error. Exactly 22 new agreements
+(test_literal_suffix_021–042), no lost agreements, with all sources unchanged.
+Full front-end bootstrap: 1,232 agree / zero disagree / 77 out-of-fragment and no
+harness/parse errors. Model reports:
+`20260928-002138-{tier0,tier1,tierregressions}-lean/`. All checks terminated.

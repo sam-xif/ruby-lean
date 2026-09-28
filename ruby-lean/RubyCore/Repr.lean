@@ -11,7 +11,7 @@ the machine tracks that with a `reprPure` flag and callers must gate on it
 Errors (`Except String`) are Unsupported reasons, e.g. float formatting
 (Ruby requires shortest-roundtrip which Lean's Float.toString is not).
 -/
-import RubyCore.Rational
+import RubyCore.Complex
 import RubyCore.FloatFmt
 
 namespace RubyCore
@@ -111,6 +111,7 @@ partial def valueEql (h : Heap) (a b : Value) : Bool :=
       match (h.get x).payload, (h.get y).payload with
       | .str s, .str t => strEqEnc h x y s t
       | .rational n d, .rational a b => n == a && d == b
+      | .complex r i, .complex a b => valueEql h r a && valueEql h i b
       | .arr xs, .arr ys =>
         xs.size == ys.size && (xs.zip ys).all (fun (p, q) => valueEql h p q)
       | .hsh xs, .hsh ys => hashEq xs ys
@@ -127,7 +128,13 @@ where
 /-- Loose `==` (numeric: 1 == 1.0). The builtin default; user overrides are
     gated by `reprPure`. -/
 partial def valueEq (h : Heap) (a b : Value) : Bool :=
-  if let some (n, d) := rationalPayload? h a then rationalEq h n d b
+  if let some (r, i) := complexPayload? h a then
+    match complexPayload? h b with
+    | some (x, y) => valueEq h r x && valueEq h i y
+    | none => nativeReal h b && valueEq h r b && realZero h i
+  else if let some (r, i) := complexPayload? h b then
+    nativeReal h a && valueEq h r a && realZero h i
+  else if let some (n, d) := rationalPayload? h a then rationalEq h n d b
   else if let some (n, d) := rationalPayload? h b then rationalEq h n d a
   else
   match a, b with
@@ -231,6 +238,7 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
       | _, .nil => return (← inspect h lo) ++ dots
       | _, _ => return (← inspect h lo) ++ dots ++ (← inspect h hi)
     | .rational n d => return s!"({n}/{d})"
+    | .complex r i => complexText h true r i
     | .regexp src opts => return regexpInspect src opts
     | .mdata subject caps names =>
       -- `#<MatchData "1.22" 1:"1" commit:nil>` — named groups print their name
@@ -289,6 +297,7 @@ partial def toS (h : Heap) (v : Value) : Except String String := do
     | .range lo hi excl =>
       return (← toS h lo) ++ (if excl then "..." else "..") ++ (← toS h hi)
     | .rational n d => return s!"{n}/{d}"
+    | .complex r i => complexText h false r i
     | .regexp src opts => return regexpToS src opts
     | .mdata subject caps _ =>
       let whole := (spanText subject (caps[0]?.getD none)).getD ""

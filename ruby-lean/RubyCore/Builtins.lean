@@ -35,6 +35,9 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     -- inspection of 60-odd rules — so admission is a *list*: a rule is reached
     -- with such an operand only if it is named in `byteStrAwareBids`.
     .unsupported s!"{bid} with a byte-string operand holding a byte ≥ 0x80 (L118)"
+  else if bid != "Complex#eql?" && (bid.endsWith "#==" || bid.endsWith "#eql?" || bid.endsWith "#!=" ||
+      pureEqualityBids.contains bid) && (recv :: args).any (complexEqualityImpure h 100) then
+    .unsupported "Complex equality requires effectful component/collection dispatch"
   else if zeroArgBids.contains bid && !args.isEmpty then
     .err Boot.argumentErrorId
       s!"wrong number of arguments (given {args.length}, expected 0)" m

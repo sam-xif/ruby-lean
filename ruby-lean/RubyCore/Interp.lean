@@ -121,12 +121,27 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
   | .int n => .next (withCtl m (.value (.int n)))
   | .flt x => .next (withCtl m (.value (.flt (Float.ofBits x))))
   | .rat n d site =>
-    match m.rationalLiterals.find? (·.1 == site) with
+    match m.numericLiterals.find? (·.1 == site) with
     | some (_, v) => .next (withCtl m (.value v))
     | none =>
       let (v, h) := m.heap.allocRational n d
-      let m := { m with heap := h, rationalLiterals := (site, v) :: m.rationalLiterals }
+      let m := { m with heap := h, numericLiterals := (site, v) :: m.numericLiterals }
       .next (withCtl m (.value v))
+  | .imag component site =>
+    match m.numericLiterals.find? (·.1 == site) with
+    | some (_, v) => .next (withCtl m (.value v))
+    | none =>
+      let operand? : Option (Value × Heap) := match component with
+        | .int n => some (.int n, m.heap)
+        | .flt bits => some (.flt (Float.ofBits bits), m.heap)
+        | .rat n d _ => some (m.heap.allocRational n d)
+        | _ => none
+      match operand? with
+      | none => .unsupported "nonliteral imaginary component"
+      | some (i, h) =>
+        let (v, h) := h.allocComplex (.int 0) i
+        let m := { m with heap := h, numericLiterals := (site, v) :: m.numericLiterals }
+        .next (withCtl m (.value v))
   | .str s =>
     -- string literals allocate a fresh unfrozen String [V]
     let (v, m) := Builtins.allocStr m s

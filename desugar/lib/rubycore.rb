@@ -11,6 +11,7 @@ module RubyCore
     int:   "[:int, Integer]",
     flt:   "[:flt, Float]",
     rat:   "[:rat, Integer numerator, positive Integer denominator]",
+    imag:  "[:imag, Integer/Float/Rational literal]",
     str:   "[:str, String]",           # literal string, no interpolation
     sym:   "[:sym, String]",
     true:  "[:true]",
@@ -128,6 +129,8 @@ module RubyCore
     when :flt    then node[1].is_a?(Float) ? nil : "flt payload not Float"
     when :rat
       node.length == 3 && node[1].is_a?(Integer) && node[2].is_a?(Integer) && node[2] > 0 ? nil : "invalid rational literal"
+    when :imag
+      node.length == 2 && node[1].is_a?(Array) && %i[int flt rat].include?(node[1][0]) ? explain(node[1]) : "invalid imaginary literal"
     when :str, :sym then node[1].is_a?(String) ? nil : ":#{head} payload not String"
     when :true, :false, :nil, :self then node.length == 1 ? nil : ":#{head} takes no children"
     when :var

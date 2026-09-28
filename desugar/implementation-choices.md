@@ -1104,3 +1104,28 @@ caches frozen fractions by site. Imaginary literals still lower through Complex
 Seed 44 covers constructor/constant/unary-method overrides, decimal precision
 and shared/distinct literal sites. All 44 seeds round-trip with no disagreements
 or AST-idempotence failures. Existing six render-only instabilities are unchanged.
+
+## C40 — native imaginary literals and signed-zero transport (2026-09-28)
+
+`[:imag, component]` replaces the overridable Complex call. The component is an
+Integer, Float or exact Rational literal; render appends `i` to that literal,
+including the existing exact decimal `r` rendering. Linearization treats it as
+an atomic expression. Export v5 adds `imag` with a compilation-unit/site string,
+sharing the numeric-literal namespace/counter from C39. The model constructs the
+frozen value directly and caches it by site.
+
+Imaginary Float components export as `flt_bits`, an unsigned 64-bit IEEE payload.
+JSON numeric `-0.0` loses its sign in Lean's JsonNumber. C31's ordinary Float
+workaround (a unary method send) would violate native imaginary-literal semantics,
+so this path carries the bits instead. No new syntax is needed in the rendered
+Ruby, and the bits metadata stays out of the render/parse normal form.
+
+Seed 45 and the complex-literals regression cover negative zero, exact long
+fractions, constructor/constant/unary overrides, and shared/distinct syntax sites.
+The initial round-trip run of all 45 seeds plus five Complex programs was 50
+agree, zero disagree, AST-idempotent, with the same six render-only instabilities.
+
+Final L279 round-trip verification: 45 seeds plus six regression programs give
+51 agree / zero disagree, AST-idempotent. Full bootstraptest is 1,232 agree /
+zero disagree / 77 out-of-fragment, with no parse/harness errors. The previous
+27 bootstrap and six seed render-only instabilities remain unchanged.

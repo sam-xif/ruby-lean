@@ -107,6 +107,8 @@ def runRationals (bid : String) (recv : Value) (args : List Value) (m : Machine)
           else ratResult m ((d : Int) ^ (-e).toNat) (n ^ (-e).toNat)
         | _ => .unsupported "Rational exponent other than Integer"
       | "Rational#coerce" => binArg m args fun b =>
+        if (complexPayload? m.heap b).isSome then
+          .unsupported "Rational#coerce of Complex (may construct a non-integer numerator)" else
         match b with
         | .int a =>
           let (v, m) := allocRat m a 1

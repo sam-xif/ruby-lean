@@ -242,6 +242,9 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .hshKeyK acc vExpr rest =>
       .next (withKont m (.eval vExpr) (.hshValK acc v rest))
     | .hshValK acc key rest =>
+      if Builtins.complexEqualityImpure m.heap 100 key ||
+          acc.any (fun (k, _) => Builtins.complexEqualityImpure m.heap 100 k) then
+        .unsupported "Hash literal with effectful Complex key comparison" else
       -- duplicate keys keep first position, last value [V]
       let acc := match acc.findIdx? (fun (k', _) => valueEql m.heap k' key) with
         | some i => acc.set i (acc[i]!.1, v)

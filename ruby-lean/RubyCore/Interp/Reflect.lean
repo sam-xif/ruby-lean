@@ -46,6 +46,7 @@ def localFreeB : Nat → Expr → Bool
   | n + 1, e =>
     match e with
     | .int _ | .flt _ | .rat _ _ _ | .str _ | .sym _ | .tru | .fls | .nil | .self' => true
+    | .imag .. => true
     | .var .lvar _ => false
     | .var _ _ => true
     | .vasgn .lvar _ _ => false
@@ -529,11 +530,10 @@ def reflectMethodDefined (m : Machine) (recv : Value) (mname : String)
           | "private_method_defined?" => v == .priv
           | "protected_method_defined?" => v == .prot
           | _ => v != .priv
-        let found := (match methodOn m.heap o name with
+        let found : Bool := match methodOn m.heap o name with
             | some (_, md) => !md.undefined && visOk md.visibility
-            | none => false)
-          || (crubyShadow m.heap (ancestors m.heap o) name).isSome
-          || mixinDefines m o name
+            | none => (crubyShadow m.heap (ancestors m.heap o) name).isSome
+                || mixinDefines m o name
         some (.next (withCtl m (.value (.bool found))))
       | _, _ => none
     | _, _ => none
@@ -548,11 +548,10 @@ def reflectRespondTo (m : Machine) (recv : Value) (_mname : String)
       match symOrStr m nameArg with
       | some name =>
         -- private *and* protected answer false unless include_private [V]
-        let found := (match lookup m.heap recv name with
+        let found : Bool := match lookup m.heap recv name with
             | some (_, md) => !md.undefined && (inclPrivate || md.visibility == .pub)
-            | none => false)
-          || (crubyShadow m.heap (ancestors m.heap (classOf m.heap recv)) name).isSome
-          || mixinDefines m (classOf m.heap recv) name
+            | none => (crubyShadow m.heap (ancestors m.heap (classOf m.heap recv)) name).isSome
+                || mixinDefines m (classOf m.heap recv) name
         if found then some (.next (withCtl m (.value (.bool true))))
         else
           -- not a real method; CRuby then consults a user `respond_to_missing?`,

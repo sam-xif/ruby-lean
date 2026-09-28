@@ -1,4 +1,4 @@
-import RubyCore.Builtins.Rationals
+import RubyCore.Builtins.Complex
 
 /-!
 Integer and Float rules.
@@ -382,7 +382,7 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
     match recv with | .flt x => .ok (.bool (x == 0.0)) m | _ => .unsupported "zero?"
   | "Float#nan?" =>
     match recv with | .flt x => .ok (.bool x.isNaN) m | _ => .unsupported "nan?"
-  | _ => runRationals bid recv args m
+  | _ => runComplex bid recv args m
 
 end Builtins
 

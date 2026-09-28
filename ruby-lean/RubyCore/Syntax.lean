@@ -39,6 +39,7 @@ inductive Expr where
   | flt (bits : UInt64)
   /-- Exact native rational literal; constructor/constant lookup is bypassed. -/
   | rat (num : Int) (den : Nat) (site : String)
+  | imag (component : Expr) (site : String)
   | str (s : String)
   | sym (s : String)
   | tru
@@ -348,10 +349,19 @@ partial def expr (j : Json) : M Expr := do
   match head, a with
   | "int",   #[_, n] => .int <$> asInt n
   | "flt",   #[_, x] => (fun f => Expr.flt f.toBits) <$> asFloat x
+  | "flt_bits", #[_, x] => do
+    let bits ← asInt x
+    if bits < 0 || bits ≥ 18446744073709551616 then throw "Float bits outside UInt64"
+    return .flt bits.toNat.toUInt64
   | "rat", #[_, n, d, site] => do
     let den ← asInt d
     if den ≤ 0 then throw "rational literal denominator must be positive"
     return .rat (← asInt n) den.toNat (← asStr site)
+  | "imag", #[_, x, site] => do
+    let component ← expr x
+    match component with
+    | .int _ | .flt _ | .rat .. => return .imag component (← asStr site)
+    | _ => throw "imaginary literal requires a numeric literal component"
   | "regexp_lit", #[_, s, o] => return .regexpLit (← asStr s) (← asInt o).toNat
   | "str",   #[_, s] => .str <$> asStr s
   | "sym",   #[_, s] => .sym <$> asStr s

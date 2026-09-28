@@ -32,7 +32,12 @@ The feature list and histogram below are historical (2026-08-03). The live
 conformance record is `ruby-lean/notes/model/HANDOFF.md`, with the implementation
 record beside it. In L278 (2026-09-28), Rational gains exact native literals,
 numeric constructors, arithmetic, comparison, coercion and Float conversion.
-Complex remains unsupported. String/custom Rational constructor conversion,
+L279 adds frozen native Complex values, imaginary literals, numeric construction,
+mixed arithmetic, coercion, equality and representation. Imaginary literals retain
+Rational precision, Float signed zero and identity by syntax site. String/custom
+numeric constructors, effectful Complex component operations/representation,
+nonfinite Complex arithmetic and Rational#coerce of Complex remain explicit gates.
+String/custom Rational constructor conversion,
 rounding with digit precision, and component representation overrides still
 gate. L276/L277 also added missing-method/conversion protocols and effectful
 final/frozen-error representation; the old global-repr discussion below is

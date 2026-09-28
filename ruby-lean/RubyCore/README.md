@@ -203,7 +203,7 @@ library is written *in Ruby* — see `../prelude/prelude.rb`.
 
 Hidden state that RubyCore expressions cannot express directly: `str` (bytes +
 encoding), `arr`, `hsh`, `rng`, `proc` (a `Closure`), `meth`, `exc`, and
-`rational`. Some observable consequences:
+`rational` and `complex`. Some observable consequences:
 
 - **String is mutable** and byte-oriented; `<<`/`gsub!` mutate in place, and two
   equal strings are not `equal?`. **[V]**
@@ -221,6 +221,17 @@ encoding), `arr`, `hsh`, `rng`, `proc` (a `Closure`), `meth`, `exc`, and
   Mixed numeric operations follow Ruby's coercion protocol. Conversion to Float
   follows the 64-bit CRuby integer-division paths, including their intermediate
   rounding; it is not specified as the exact quotient rounded only once.
+- **Complex** carries native real and imaginary components (Integer, Float or
+  Rational), preserving their types and identities. Instances are frozen; `dup`,
+  `clone` without options and `to_c` retain identity. Imaginary literals use the
+  same compilation-unit/site cache as Rational literals and bypass constructor
+  lookup. Float components cross JSON as IEEE bits, preserving negative zero.
+  Numeric construction follows CRuby's zero normalization, including its
+  distinction between exact zero and Float zero. Division uses the oracle's
+  ratio-based scalar operations and intermediate rounding; division through a
+  user coerce result sends `quo`. Effectful component operations/representation,
+  nonfinite arithmetic, string/custom conversion and unimplemented methods
+  remain explicit fragment gates (L279).
 
 ### 01 §4 — The class-of relation
 

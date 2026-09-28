@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L279 (2026-09-28)",
+  "note": "Numeric constructors preserve component identity and CRuby zero normalization; Complex values are frozen and have no public allocator."
+}

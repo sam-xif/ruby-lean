@@ -17,6 +17,7 @@ module Render
     when :int   then node[1].to_s
     when :flt   then node[1].inspect            # finite float literal -> re-parseable
     when :rat   then rational_literal(node[1], node[2])
+    when :imag  then core(node[1]) + "i"
     when :str   then node[1].inspect            # produces a quoted, escaped literal
     when :sym   then ":#{node[1]}"
     when :true  then "true"

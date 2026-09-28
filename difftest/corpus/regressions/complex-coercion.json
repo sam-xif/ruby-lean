@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L279 (2026-09-28)",
+  "note": "Effectful coerce and Complex eql? dispatch; Complex division uses quo on the coerced pair."
+}

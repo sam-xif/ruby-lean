@@ -101,6 +101,17 @@ def crubyMethodNames : List (String × List String) := [
     "round", "singleton_method_added", "step", "to_c", "to_f", "to_i", "to_int", "to_r",
     "to_s", "truncate", "zero?"
   ]),
+  ("Complex", [
+    "%", "*", "**", "+", "+@", "-", "-@", "/",
+    "<", "<=", "<=>", "==", ">", ">=", "abs", "abs2",
+    "angle", "arg", "between?", "ceil", "clamp", "clone", "coerce", "conj",
+    "conjugate", "denominator", "div", "divmod", "dup", "eql?", "fdiv", "finite?",
+    "floor", "hash", "i", "imag", "imaginary", "infinite?", "inspect", "integer?",
+    "magnitude", "marshal_dump", "modulo", "negative?", "nonzero?", "numerator", "phase", "polar",
+    "positive?", "quo", "rationalize", "real", "real?", "rect", "rectangular", "remainder",
+    "round", "singleton_method_added", "step", "to_c", "to_f", "to_i", "to_int", "to_r",
+    "to_s", "truncate", "zero?"
+  ]),
   ("String", [
     "%", "*", "+", "+@", "-@", "<", "<<", "<=",
     "<=>", "==", "===", "=~", ">", ">=", "[]", "[]=",
@@ -271,6 +282,9 @@ def crubySingletonNames : List (String × List String) := [
   ]),
   ("Rational", [
     "convert"
+  ]),
+  ("Complex", [
+    "convert", "polar", "rect", "rectangular"
   ]),
   ("String", [
     "new", "try_convert"

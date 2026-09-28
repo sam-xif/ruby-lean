@@ -72,7 +72,7 @@ module Linearize
 
   def run(node)
     case node[0]
-    when :int, :flt, :rat, :str, :sym, :true, :false, :nil, :self, :var, :const
+    when :int, :flt, :rat, :imag, :str, :sym, :true, :false, :nil, :self, :var, :const
       node
     when :vasgn
       v = run(node[3]); definitely_jumps?(v) ? v : [:vasgn, node[1], node[2], v]

@@ -1,6 +1,79 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L278)
+## Active conformance goal (2026-09-28, L279)
+
+The user wants known semantics issues fixed first, then full CRuby bootstrap
+conformance. Proof repair is explicitly deferred. The goal remains active and
+incomplete. L276–L279 changes are uncommitted; no checker/proof files or ratchet
+floors were changed. Existing unrelated paper/ and wasm upstream-bug files remain
+untouched. All validation processes have terminated.
+
+L279 adds native frozen Complex values, exact/signed-zero imaginary literals,
+numeric constructors, arithmetic, coercion/equality and representation. New files:
+RubyCore/Complex.lean and Builtins/Complex.lean. Boot.complexId is 40; mainId is 41.
+The literal cache is now Machine.numericLiterals, shared by Rational and Complex,
+with the existing separate program/prelude site namespaces. Export's additive
+imag head transports Float components as flt_bits; a JSON number loses -0.0.
+C40 explains the front-end changes. Prelude defines Complex.rect/rectangular,
+undefined new/allocate, Kernel.Complex and a __coerce_quo twin. The name inventory
+and generated prelude match regeneration.
+
+Complex construction must preserve CRuby's exact-zero versus Float-zero rules;
+Complex(c) preserves identity, but not every two-argument zero case does. Division
+uses scalar ratio-based operations in the observed order, preserving intermediate
+rounding and applicable Rational-to-Integer canonicalization. Coerced Complex
+#/ dispatches quo. Moving master complex.c differs from the installed CRuby 4.0.5
+in constructor details; trust the executable probes.
+
+The allocator test also repaired method reflection: an actual undefined/private
+method-table entry decides respond_to?/method_defined?; CRuby shadow/mixin names
+are consulted only on a lookup miss. Six new fixed regression programs cover the
+Complex rules and this visibility repair. Pure comparisons involving an overridden
+Complex/component equality or hash method conservatively gate, including collection
+operations and hash literals. Repr gates component to_s/inspect/to_str overrides.
+Rational#coerce of Complex gates: CRuby can produce a nested Rational numerator,
+outside the normalized integer-numerator payload.
+
+Final build PASS (88 jobs). Bootstrap: **1,048 agree / 0 disagree / 255 unsupported**,
+five invalid controls and the existing test_syntax_115 harness error (1,309 total).
+Exactly 22 new agreements over L278, no losses: test_literal_suffix_021–042.
+Regressions: **68 held / zero failures / one old gated** (69 total). Tier 1 n=300
+seed20260927: **219 agree / 81 unsupported / zero disagree**, with all sources and
+verdicts unchanged. Final reports:
+`difftest/reports/20260928-002138-{tier0,tier1,tierregressions}-lean/`.
+
+Targeted generated probe: 244 agree / 23 explicit gates / zero disagree across
+267 fragments (seed20260928); /private/tmp/conformance-l279-generated.json and
+conformance-l279-generated.py. Twelve more mixed large-divisor cases agree; ten
+hook/coercion boundary cases explicitly gate, in
+/private/tmp/conformance-l279-boundaries.json. Front-end: 45 seeds plus six new
+programs, 51/0, AST-idempotent; full bootstrap 1,232 agree / zero disagree / 77
+gates, no harness errors. Six seed and 27 bootstrap render-only instabilities are
+unchanged. git diff --check passes. No proof build or typed gate was attempted;
+no commit was made.
+
+Next work:
+
+1. The sole old open regression remains sorbet-hash-gate. Its source scrubs the
+   gem's process-specific hash, but the shim gates before producing the message.
+   Do not invent a matching CRuby identity hash or weaken comparison.
+2. **Enumerators** are a large next group: 22 blockless Integer.times gates plus
+   five enum_for gates. Native iterator selection is in Interp/Dispatch.lean;
+   most other blockless iteration gates live in prelude/prelude.rb. Model receiver/
+   method/arguments and continuation/resume behavior, not just test outputs.
+3. Other groups: 50 string eval variants; seven optional/keyword/destructuring
+   block-parameter cases; six top-level returns; six String#setbyte; five itself.
+   Historical out-of-scope labels do not finish this active objective.
+4. Numeric limits remain explicit: string/custom/keyword construction, remaining
+   Numeric/Complex methods, nonfinite Complex arithmetic, effectful component
+   operations/representation, Rational#coerce of Complex, and clone options.
+   Future runtime compilation must supply fresh numeric-literal namespaces.
+5. Earlier audit leads remain: legacy for bypasses each dispatch; destructureBind
+   needs checked to_ary; reflective aliases/undef/attr/mixins need a frozen-state
+   audit. Requiring json in the control adds a module to Object.ancestors that
+   the standalone model lacks; complete wrapper ancestry equivalence is unresolved.
+
+## Previous conformance batch (2026-09-28, L278)
 
 The user wants known semantics issues fixed first, then full CRuby bootstrap
 conformance. Proof repair is explicitly deferred. The goal remains active and is

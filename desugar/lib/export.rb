@@ -36,6 +36,8 @@ module Export
   # v4 four-slot shape too, so an older AST still decodes.
   # L278/C39: additive `rat` literal head with exact numerator/denominator;
   # unlike a send, it is unaffected by constructor or constant redefinition.
+  # L279/C40: additive `imag` and its `flt_bits` component preserve native
+  # imaginary construction, exact fractions, signed zero and per-site identity.
   VERSION = 5
 
   module_function
@@ -53,10 +55,14 @@ module Export
       # Assign stable sites while exporting the normalized tree, keeping this
       # metadata out of the render/parse normal form. Prelude and program are
       # separate compilation units, hence separate namespaces.
-      if x[0] == :rat
+      if x[0] == :rat || x[0] == :imag
         site = "#{literals[0]}:#{literals[1]}"
         literals[1] += 1
-        return ["rat", x[1], x[2], site]
+        return ["rat", x[1], x[2], site] if x[0] == :rat
+        # JSON numbers lose -0.0 in Lean. Imaginary components are native
+        # literals, so preserve their bits without an overridable unary send.
+        component = x[1][0] == :flt ? ["flt_bits", [x[1][1]].pack("G").unpack1("Q>")] : jsonable(x[1], literals)
+        return ["imag", component, site]
       end
       # J52: the regex-literal lowering (`::Regexp.new("src", opts)`, desugar
       # C33) exports as its own head — in CRuby the literal consults no

@@ -23,6 +23,7 @@ FOLD = {
   "Integer" => [Integer, Numeric, Comparable],
   "Float" => [Float, Numeric, Comparable],
   "Rational" => [Rational, Numeric, Comparable],
+  "Complex" => [Complex, Numeric, Comparable],
   "String" => [String, Comparable],
   "Symbol" => [Symbol, Comparable],
   "Array" => [Array, Enumerable],

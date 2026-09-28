@@ -748,8 +748,20 @@ class << Rational
   undef_method :allocate
 end
 
+class << Complex
+  undef_method :new
+  undef_method :allocate
+  def rect(real, imag = 0)
+    __complex_rect(real, imag)
+  end
+  alias rectangular rect
+end
+
 module Kernel
   def self.Rational(*args)
+    super(*args)
+  end
+  def self.Complex(*args)
     super(*args)
   end
 end
@@ -1777,6 +1789,8 @@ class Object
   def __coerce_mul(other) = __coerce_bin(other, :*)
 
   def __coerce_div(other) = __coerce_bin(other, :/)
+
+  def __coerce_quo(other) = __coerce_bin(other, :quo)
 
   def __coerce_mod(other) = __coerce_bin(other, :%)
 

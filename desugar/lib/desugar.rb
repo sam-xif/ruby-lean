@@ -16,7 +16,7 @@ class Desugar
   RULES = %i[
     seq int flt str sym true false nil self var vasgn const casgn send block def array hash
     splat if while return break next and->if or->if unless->if until->while
-    or-write and-write op-write range->send rational imaginary->send interp massign
+    or-write and-write op-write range->send rational imaginary interp massign
     class module sclass defs begin retry super zsuper rescue-mod->begin attr-index-write
     yield lambda->send block-capture blockpass
     opt-param kw-param kwrest-param kwargs case->if defined cpath cpath-asgn
@@ -925,10 +925,10 @@ class Desugar
     [:rat, r.numerator, r.denominator]
   end
 
-  # 3i => Complex(0, 3) ; 2.5i => Complex(0, 2.5). Imag part may be Integer/Float/Rational.
+  # Native imaginary literal; Kernel#Complex and the constant are not consulted.
   def desugar_imaginary(n)
-    fire(:"imaginary->send")
-    [:send, nil, "Complex", [numeric_lit(n.value.real), numeric_lit(n.value.imaginary)], nil]
+    fire(:imaginary)
+    [:imag, numeric_lit(n.value.imaginary)]
   end
 
   def numeric_lit(v)

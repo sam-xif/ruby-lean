@@ -40,7 +40,7 @@ def boot : Except String Machine :=
 def initWithPrelude (prog : Expr) : Except String Machine :=
   boot.map fun mp =>
     { Machine.initOn mp.heap prog with
-      globals := mp.globals, rationalLiterals := mp.rationalLiterals }
+      globals := mp.globals, numericLiterals := mp.numericLiterals }
 
 end Prelude
 end RubyCore

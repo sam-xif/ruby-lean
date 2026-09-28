@@ -33,6 +33,7 @@ partial def valBrief (h : Heap) : Nat → Value → String
     | .proc c => if c.lam then "#<Proc (lambda)>" else "#<Proc>"
     | .rng _ => "#<Random>"
     | .rational n d => s!"({n}/{d})"
+    | .complex r i => "Complex(" ++ valBrief h d r ++ ", " ++ valBrief h d i ++ ")"
     | .range lo hi excl => valBrief h d lo ++ (if excl then "..." else "..") ++ valBrief h d hi
     | .regexp src _ => "/" ++ src ++ "/"
     | .mdata _ caps _ => s!"#<MatchData {caps.size} slots>"
@@ -45,6 +46,7 @@ def exprBrief : Expr → String
   | .int n => s!"int {n}"
   | .flt x => s!"flt {x}"
   | .rat n d _ => s!"rat {n}/{d}"
+  | .imag _ site => s!"imag {site}"
   | .regexpLit s o => s!"regexpLit /{s}/{o}"
   | .str s => s!"str \"{s}\""
   | .sym s => s!"sym :{s}"

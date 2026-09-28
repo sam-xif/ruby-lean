@@ -118,6 +118,9 @@ partial def pureOk (h : Heap) (sens : List String) : Value → Bool
     -- gives its endpoints a fixed `inspect` precisely so no address is observed.
     | .range lo hi _ => own && pureOk h sens lo && pureOk h sens hi
     | .rational _ _ => own && !reprOverridden h sens Boot.integerId
+    | .complex r i => own && pureOk h sens r && pureOk h sens i &&
+        (!sens.contains "to_s" || [r, i].all (fun v =>
+          !reprOverridden h ["to_str"] (classOf h v)))
     -- An Exception renders **through `to_s`** whichever way it is asked:
     -- `rb_exc_inspect` is `#<Class: rb_obj_as_string(exc)>` and
     -- `Exception#message` *is* `to_s`. So `to_s` is repr-sensitive for an exception
@@ -233,7 +236,7 @@ def arrPayload? (h : Heap) : Value → Option (Array Value)
     its own `allocExc` path in `newImpl`). -/
 def payloadCoreClasses : List ObjId :=
   [Boot.stringId, Boot.arrayId, Boot.hashId, Boot.procId, Boot.integerId,
-   Boot.floatId, Boot.symbolId, Boot.rationalId]
+   Boot.floatId, Boot.symbolId, Boot.rationalId, Boot.complexId]
 
 /-- The payload-carrying core class `k` inherits from, if any — `String`, `Array`,
     `Hash` and `Exception` are *allocatable* for a subclass (L70: allocate the
@@ -257,6 +260,27 @@ def hasUserEq (h : Heap) (v : Value) : Bool :=
   match lookup h v "==" with
   | some (_, md) => md.builtin.isNone
   | none => false
+
+/-- Pure equality can reach Complex values through collection operations, or
+    through the reverse numeric comparison. Those leaves must not hide a user
+    equality method on the Complex or either component (L279). -/
+def complexEqualityImpure (h : Heap) : Nat → Value → Bool
+  | 0, _ => true
+  | fuel + 1, .ref o =>
+    match (h.get o).payload with
+    | .complex r i =>
+      ["==", "eql?", "hash"].any (fun name => match lookup h (.ref o) name with
+        | some (_, md) => md.builtin.isNone || md.undefined
+        | none => false) || [r, i].any (hasUserEq h)
+    | .arr xs => xs.any (complexEqualityImpure h fuel)
+    | .hsh xs => xs.any (fun (k, v) => complexEqualityImpure h fuel k || complexEqualityImpure h fuel v)
+    | _ => false
+  | _, _ => false
+
+def pureEqualityBids : List String :=
+  ["Array#include?", "Array#index", "Array#-", "Array#&", "Array#|", "Array#uniq",
+   "Hash#[]", "Hash#[]=", "Hash#key?", "Hash#has_key?", "Hash#include?", "Hash#member?",
+   "Hash#fetch", "Hash#delete", "Hash#merge", "Hash#merge!"]
 
 /-- Would CRuby dispatch `to_ary` on this value? Every implicit Array conversion
     goes through `rb_check_array_type`, which **dispatches** — so a *user*
@@ -570,10 +594,11 @@ def hasProgramEq (h : Heap) (v : Value) : Bool :=
     the twin is entered with the builtin's own arguments — there is nowhere to
     pass "which operator" — and each is a one-liner over `__coerce_bin`. -/
 def coerceTwin? : String → Option String
-  | "Integer#+"  | "Float#+" | "Rational#+" => some "__coerce_add"
-  | "Integer#-"  | "Float#-" | "Rational#-" => some "__coerce_sub"
-  | "Integer#*"  | "Float#*" | "Rational#*" => some "__coerce_mul"
+  | "Integer#+"  | "Float#+" | "Rational#+" | "Complex#+" => some "__coerce_add"
+  | "Integer#-"  | "Float#-" | "Rational#-" | "Complex#-" => some "__coerce_sub"
+  | "Integer#*"  | "Float#*" | "Rational#*" | "Complex#*" => some "__coerce_mul"
   | "Integer#/"  | "Float#/" | "Rational#/" | "Rational#quo" => some "__coerce_div"
+  | "Complex#/" | "Complex#quo" => some "__coerce_quo"
   | "Integer#%"  | "Float#%"  => some "__coerce_mod"
   | "Integer#**" | "Float#**" | "Rational#**" => some "__coerce_pow"
   | "Integer#divmod" | "Float#divmod" => some "__coerce_divmod"
@@ -592,11 +617,12 @@ def coerceDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     Option String :=
   match args with
   | [b] =>
-    if (num? recv).isNone && (rationalPayload? h recv).isNone then none
+    if !nativeReal h recv && (complexPayload? h recv).isNone then none
     else if bid == "Integer#/" && recv.identEq (.int 1) && (rationalPayload? h b).isSome then none
     else if (num? b).isSome then none
+    else if (complexPayload? h recv).isSome && (nativeReal h b || (complexPayload? h b).isSome) then none
     else if (rationalPayload? h recv).isSome && (rationalPayload? h b).isSome then none
-    else if bid == "Integer#==" || bid == "Float#==" || bid == "Rational#==" then
+    else if bid == "Integer#==" || bid == "Float#==" || bid == "Rational#==" || bid == "Complex#==" then
       if hasProgramEq h b then some "__eq_reverse" else none
     else if mayCoerce h b then coerceTwin? bid
     else none
@@ -679,6 +705,16 @@ def deferTwin? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
       if !recv.identEq other && (rationalPayload? h other).isSome && hasUserEq h recv
       then some "__case_equal" else none
     | _ => none
+  else if bid == "Complex#eql?" then
+    match args, complexPayload? h recv with
+    | [other], some (r, i) =>
+      match complexPayload? h other with
+      | some (a, b) =>
+        if !recv.identEq other && realClassOf h r == realClassOf h a &&
+            realClassOf h i == realClassOf h b && hasUserEq h recv
+        then some "__case_equal" else none
+      | none => none
+    | _, _ => none
   else
   reprDefer? h bid recv args <|> coerceDefer? h bid recv args
     <|> toAryDefer? h bid recv args
@@ -721,6 +757,10 @@ def sliceRange (n : Nat) (start len : Int) : Option (Nat × Nat) :=
     here; their with-arg forms gate as Unsupported inside their own arms. -/
 def zeroArgBids : List String :=
   ["Object#class", "Object#inspect", "Object#to_s", "Object#nil?",
+   "Integer#i", "Float#i", "Rational#i", "Integer#to_c", "Float#to_c", "Rational#to_c",
+   "Complex#real", "Complex#imag", "Complex#imaginary", "Complex#rect", "Complex#rectangular",
+   "Complex#to_s", "Complex#inspect", "Complex#real?", "Complex#to_c", "Complex#dup",
+   "Complex#-@", "Complex#+@", "Complex#conj", "Complex#conjugate", "Complex#finite?", "Complex#infinite?",
    "Object#__coerce_defined?", "Integer#to_r", "Float#to_r",
    "Rational#numerator", "Rational#denominator", "Rational#to_s", "Rational#inspect",
    "Rational#to_i", "Rational#to_f", "Rational#to_r", "Rational#-@", "Rational#+@",

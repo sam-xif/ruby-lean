@@ -13955,3 +13955,86 @@ all sources and verdicts are identical to L277. Final report directories:
 Generated Prelude.lean matches regeneration; git diff --check passes. All checks
 have terminated. No proof build or typed ratchet was attempted, and no commit was
 made. The goal is still incomplete.
+
+## L279 — native Complex literals, arithmetic and reflection tombstones (2026-09-28)
+
+The active conformance goal continues; proof repair remains explicitly deferred.
+No checker/proof files or ratchet floors changed. Complex gains a frozen payload
+holding real and imaginary Values, boot class 40 under Numeric (main moves to 41),
+and native numeric constructors, accessors, arithmetic, representation, coercion
+and equality. Complex.lean holds payload/representation helpers;
+Builtins/Complex.lean holds the rules and scalar operations. This extends the
+numeric fragment; it does not claim the whole Complex API.
+
+C40 replaces the overridable imaginary-literal constructor call with Expr.imag.
+The component is a native Integer, Float or Rational literal. Literal identity
+shares the renamed Machine.numericLiterals cache and separate program/prelude
+namespaces from L278. Imaginary Float components export as flt_bits because the
+old JSON-number path discarded the sign of -0.0. Introducing a unary send would
+have let a user Float#-@ change a native literal, so the bits cross directly.
+
+The oracle exposed several details beyond the bootstrap's literal/class checks:
+
+- Complex(c) preserves identity, even when c has a zero imaginary component.
+  The two-argument constructor unboxes exact-zero complex parts, distinguishes
+  Float zero, preserves the relevant identity fast path and implements the
+  non-real case through complex addition/multiplication. For example,
+  Complex(Complex(1,2),2r) promotes both resulting components to Rational.
+- Native scalar shortcuts preserve component identity. Division uses complex.c's
+  ratio-based algorithm, performing each scalar multiplication/addition/quotient
+  separately. Collapsing the expression into one float formula changes rounding.
+  Exact denominator-one quotient components canonicalize only on the applicable
+  paths. Mixed exact/Float division and signed zero have dedicated witnesses.
+- A custom coerce used by Complex#/ receives a quo send on the returned pair.
+  A new __coerce_quo prelude twin preserves that distinction from ordinary /.
+  Complex#eql? retains identity and component-class fast paths, dispatching a
+  user Complex#== through the existing __case_equal twin where appropriate.
+- Repr preserves Rational parentheses, the required '*' before i, signed zero,
+  NaN and Infinity. Component inspect/to_s/to_str overrides explicitly gate.
+- The allocator probe found that respond_to? and method_defined? could resurrect
+  an undefined/private method through the inherited CRuby shadow-name table.
+  An actual method-table entry now decides visibility/tombstones; shadow and
+  mixin fallbacks apply only to a miss. A separate regression pins this repair.
+
+The implementation was informed by Ruby's complex.c, but the executable CRuby
+4.0.5 remains the oracle: moving master constructor normalization does not match
+all installed-version identity cases. Unsupported paths include string/custom/
+keyword constructor conversion, clone options, remaining Complex methods,
+effectful component arithmetic/representation, and nonfinite arithmetic.
+Rational#coerce of Complex explicitly gates: CRuby can construct a Rational whose
+numerator is itself Rational, e.g. 1r.coerce(Complex(1.2r,0)), beyond our normalized
+integer-numerator payload. Raising TypeError there would be a wrong answer.
+
+Pure comparisons also need a boundary: equality reached through reverse numeric
+comparison, Array operations, Hash operations or hash literals must not silently
+bypass a user Complex/component equality/hash hook. These paths conservatively
+gate until effectful dispatch is modeled. Ten targeted boundary probes verify
+these refusals; twelve large mixed Integer/Float divisor-boundary cases agree.
+Sources/results are in /private/tmp/conformance-l279-boundaries.json.
+
+Six permanent regressions cover imaginary literal identity and overrides,
+construction/immutability, mixed arithmetic, coercion, Float edge behavior and
+method reflection. All six agree. A deterministic seed-20260928 probe covers 180
+arithmetic, 60 constructor and 27 hook fragments: 244 agree / 23 explicitly
+unsupported / zero disagree after the final build. Saved sources/results:
+/private/tmp/conformance-l279-generated.json; script:
+/private/tmp/conformance-l279-generated.py. The front-end seed/regression replay
+is 51 agree / zero disagree, AST-idempotent; six old render-only instabilities
+remain. Both generated Prelude.lean and CRubyNames.lean match regeneration.
+
+Full-run results are recorded below once all validation processes terminate.
+
+Final L279 verification: lake build rubycore PASS (88 jobs). Bootstrap:
+**1,048 agree / 0 disagree / 255 unsupported**, five invalid controls and the
+existing test_syntax_115 harness error (1,309 total). Exactly 22 new agreements
+and no losses relative to L278: test_literal_suffix_021–042. All sources are
+unchanged. Regression status tier: **68 held / one old gated / zero failures**
+(69 total). Tier 1 n=300 seed20260927: **219 agree / 81 unsupported / zero disagree**;
+all 300 sources/verdicts match L278. Final reports:
+`difftest/reports/20260928-002138-{tier0,tier1,tierregressions}-lean/`.
+Full front-end bootstrap: **1,232 agree / zero disagree / 77 out-of-fragment**,
+no parse/harness errors, with the same 27 render-only instabilities. Final
+seed/regression front-end replay: 51/0, with six old render-only instabilities.
+All validation processes terminated. git diff --check passes. No typed ratchet
+or proof build was attempted, and no commit was made. Full conformance remains
+incomplete; Enumerators and the other recorded bootstrap gates are next work.

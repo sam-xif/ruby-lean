@@ -155,6 +155,7 @@ inductive Payload where
   | none
   /-- Reduced exact fraction; denominator is positive, instances are frozen. -/
   | rational (num : Int) (den : Nat)
+  | complex (real imag : Value)
   | str (s : String)
   | arr (elems : Array Value)
   | hsh (entries : Array (Value × Value))
@@ -293,10 +294,11 @@ def matchDataId : ObjId := 37
 /-- `RegexpError < StandardError` — raised by `Regexp.new` on a bad pattern. -/
 def regexpErrorId : ObjId := 38
 def rationalId : ObjId := 39
+def complexId : ObjId := 40
 /-- Toplevel self (`main`), an ordinary Object instance. **Must stay last**:
     `initHeap` allocates every `classTable` entry densely and then `main`, so
     `mainId = classTable.length`. Adding a bootstrap class means bumping this. -/
-def mainId : ObjId := 40
+def mainId : ObjId := 41
 
 /-- (id, name, superclass) for every bootstrap class, in id order. -/
 def classTable : List (ObjId × String × Option ObjId) := [
@@ -339,7 +341,8 @@ def classTable : List (ObjId × String × Option ObjId) := [
   (regexpId, "Regexp", some objectId),
   (matchDataId, "MatchData", some objectId),
   (regexpErrorId, "RegexpError", some standardErrorId),
-  (rationalId, "Rational", some numericId)
+  (rationalId, "Rational", some numericId),
+  (complexId, "Complex", some numericId)
 ]
 
 /-- Builtin method table: class id → method names given by primitive rules.
@@ -354,7 +357,7 @@ def builtinMethods : List (ObjId × List String) := [
               "require", "require_relative", "__unsupported__", "dup", "clone",
               "__user_defines?", "__default_inspect?", "__write", "__addr_str",
               "__any_to_s", "__match_to_caller", "respond_to_missing?",
-              "__coerce_failed", "__cmp_failed", "__coerce_defined?", "Rational",
+              "__coerce_failed", "__cmp_failed", "__coerce_defined?", "Rational", "Complex", "__complex_rect",
               "initialize"]),
   (nilClassId, ["===", "to_s", "inspect", "nil?", "to_a", "&", "|", "dup", "clone"]),
   (trueClassId, ["===", "to_s", "inspect", "&", "|", "dup", "clone"]),
@@ -363,15 +366,18 @@ def builtinMethods : List (ObjId × List String) := [
                "<=", ">=", "<=>", "to_s", "inspect", "to_i", "to_f", "abs", "succ",
                "pred", "zero?", "positive?", "negative?", "even?", "odd?", "chr",
                "round", "ceil", "floor", "truncate", "divmod", "nonzero?",
-               "eql?", "hash", "dup", "clone", "to_r"]),
+               "eql?", "hash", "dup", "clone", "to_r", "to_c", "i"]),
   (floatId, ["round", "ceil", "floor", "truncate", "divmod", "nonzero?",
              "+", "-", "*", "/", "%", "**", "-@", "==", "===", "<", ">", "<=", ">=", "<=>",
              "to_s", "inspect", "to_i", "to_f", "abs", "zero?", "nan?", "eql?",
-             "dup", "clone", "to_r"]),
+             "dup", "clone", "to_r", "to_c", "i"]),
   (rationalId, ["numerator", "denominator", "to_s", "inspect", "to_i", "to_f", "to_r",
                 "-@", "+@", "abs", "magnitude", "positive?", "negative?", "dup", "clone",
                 "eql?", "==", "coerce", "+", "-", "*", "/", "quo", "<=>", "**",
-                "floor", "ceil", "truncate"]),
+                "floor", "ceil", "truncate", "to_c", "i"]),
+  (complexId, ["real", "imag", "imaginary", "rect", "rectangular", "to_s", "inspect",
+               "real?", "to_c", "dup", "clone", "coerce", "==", "eql?", "-@", "+@",
+               "conj", "conjugate", "+", "-", "*", "/", "quo", "finite?", "infinite?"]),
   (stringId, ["+", "*", "==", "===", "<", ">", "<=", ">=", "<=>", "length",
               "size", "to_s", "to_str", "inspect", "<<", "concat", "empty?",
               "include?", "reverse", "upcase", "downcase", "strip", "chomp",
@@ -425,7 +431,7 @@ def install (h : Heap) (cls : ObjId) (names : List String) : Heap :=
     let cname := c.name
     let methods := names.foldl (init := c.methods) fun ms n =>
       (n, { params := [], body := .nil, owner := cls,
-            visibility := if n == "method_missing" || n == "Rational" then .priv else .pub,
+            visibility := if n == "method_missing" || n == "Rational" || n == "Complex" then .priv else .pub,
             builtin := some (if n == "===" then
               match cname with
               | "Proc" => "Proc#call"
