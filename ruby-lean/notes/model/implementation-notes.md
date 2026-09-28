@@ -14892,3 +14892,54 @@ Extra oracle17 pins live values/filter, buffered names, recursion, missing hooks
 String conversion and a separate existing ivar-reassignment ordering defect.
 Primary source: https://raw.githubusercontent.com/ruby/ruby/master/object.c,
 rb_obj_inspect/inspect_i, cross-checked against pinned CRuby4.0.5.
+
+
+## L289 — checked native object inspection and stable ivar order (2026-09-28)
+
+Ruby 4's Object#inspect uses checked instance_variables_to_inspect even for an
+empty object. The old pure renderer skipped response/selection hooks, invalid
+result errors and their effects. Nine audit disagreements plus the original
+final-result for probe are repaired. Interp/Inspect.lean handles the operation
+selected by native method ID, including aliases/super. ConversionCall.objectInspect
+reuses checked dispatch; missing/nil selects all fields, Array filters actual
+Symbol names, and other results raise TypeError without conversion. The default
+private hook is installed natively and returns nil.
+
+The inspector buffers field names after the hook, reads each value and filter
+Array live, and dispatches nested inspect/to_s without Ruby instance_variables/
+get calls. objectInspectK holds the recursion guard, after hook execution, and
+unwinds naturally. Pure rendering checks hook purity and cycles; Random/Generator/
+Yielder use the same default object representation, including ivars. Both syntactic
+and reflective ivar writes preserve insertion positions on reassignment. The old
+Object#__inspect_slow twin is removed. Native Object#inspect of immediates and
+non-UTF-8 nested rendering remain explicit gates.
+
+Final build100 jobs PASS. Reports20260928-083226: bootstrap1309 =1095 agree /zero
+disagree /208 unsupported /five control-invalid /one old syntax115 harness-error;
+tier1 n300 seed20260927 =226 agree /74 gates. All source/verdict pairs unchanged
+from L288. Replay141 =140 agree /one old sorbet-hash gate; all135 old sources and
+verdicts held, six new programs agree. Previous414 =398 agree /16 old gates, all
+unchanged. Focused29 =26 agree /three old gates (private_instance_methods, Array
+clear and singleton []); extra32 all agree, including modeled equivalents for
+filter shrink/Array subclass and seeded Random. Frontend52 agree /zero disagree,
+AST-idempotent, six old render-only instabilities. One initial frontend harness
+failure came from leaving Symbol#to_s overridden; the permanent negative control
+now restores both Symbol aliases after exercising native membership. Standalone3
+and identical-source loading3 agree. Generated Prelude/CRubyNames cmp and whitespace
+checks pass. All final sessions ended; no Lean source edits after final build.
+
+Required proof audit FAILED exit1 at lake build Metatheory, captured tail names
+NotDone/KontFrame, no axiom scan. No repairs, checker/floor edits, typed gate or
+commit. Evidence /private/tmp/conformance-l289-*. Primary object.c behavior was
+cross-checked against pinned CRuby4.0.5; README §04.2 records the rules.
+
+Next audits: l290-repr-alias-audit has seven disagreements: pure rendering ignores
+native aliases (inspect→class/to_s/itself, Array length/Object inspect, Symbol to_s,
+and to_s→inspect). The purity predicate currently treats every builtin ID as its
+original renderer; it must validate the resolved native operation for the value's
+payload. Native Object#to_s also needs to render its own default representation,
+independent of subclass payload/twins. The separate l290-class-audit has nine
+disagreements /seven gates: inherited is skipped, Class can be subclassed, Module
+superclass error wording differs, and uninitialized/overridden Class/Module native
+initializers remain gated. Preserve both audits while prioritizing the adjacent
+representation defect, then class creation.

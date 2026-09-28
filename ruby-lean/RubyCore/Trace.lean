@@ -152,6 +152,7 @@ def kontLabel : Kont → String
   | .hshValK .. => "hash: next pair"
   | .jumpValK _ => "then jump with ▢"
   | .dmFrameK .. => "return from a block-defined method"
+  | .objectInspectK .. => "inspect an object field"
   | .frameK fid => s!"◀ method frame #{fid}"
   | .blkFrameK fid .. => s!"◀ block frame #{fid}"
   | .catchK _ => "catch: await throw"

@@ -1,6 +1,44 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L288)
+## Active conformance goal (2026-09-28, L289)
+
+Full conformance remains active/incomplete. L288 and L289 made verified progress;
+L276–L289 are uncommitted. No checker/proof/floor edits, typed gate or commit.
+Proof repairs remain explicitly deferred; unrelated paper/ and wasm files untouched.
+
+L289 adds native checked Object#inspect in Interp/Inspect.lean, a private default
+instance_variables_to_inspect hook, buffered field names with live values/filter,
+ordinary nested rendering and a continuation recursion guard. Ivar reassignment
+keeps insertion order. Pure repr checks hook purity and cycles. Old Object slow
+twin removed. Explicit binary/immediate gates remain. Model L289 / difftest N63.
+
+Final reports20260928-083226: bootstrap1309 =1095 agree /0 disagree /208 unsupported,
+five invalid controls and old syntax115 harness-error; tier1 n300 seed20260927 =226
+agree /74 gates. Every old source/verdict unchanged. Replay141 =140 agree /one old
+sorbet-hash gate; all135 old pairs held, six new guards agree. Previous414 =398 agree /
+16 gates unchanged. Focused29 =26 agree /three old gates; extra32 all agree.
+Frontend52 agree, AST-idempotent, six old render-only instabilities. Standalone3 /
+loading3, build100 jobs, generated cmp and whitespace checks pass. All L289 sessions
+ended. No Lean changes after final build. Evidence /private/tmp/conformance-l289-*.
+Proof audit FAILED exit1 at lake build Metatheory, NotDone/KontFrame in tail, no
+axiom scan; log l289-proof-audit.log. No repairs.
+
+Immediate next work: /private/tmp/conformance-l290-repr-alias-audit.{py,json,log}
+contains seven disagreements. Pure repr treats any builtin alias as its original
+renderer. Validate resolved native renderer IDs for the actual payload, including
+undefined/removed methods, and make resolved Object#to_s independent of subclass
+payload/twins. This is adjacent to L289 but is not fixed by it. No L290 source edits
+at this boundary. Then /private/tmp/conformance-l290-class-audit.{py,json,log} has
+nine disagreements /seven old gates: inherited skipped for new/named classes,
+subclassing Class wrongly allowed, wrong Module-superclass wording, uninitialized
+Class/Module initialization protocols and replaced initializers. Named constants
+exist before inherited; Class.new remains anonymous until later assignment.
+Inherited runs before the body; failures retain the named class binding.
+Primary object.c rb_class_initialize/rb_mod_initialize_exec confirms class initialize
+returns its class, Module initialize nil, hook before body. The broader open scope
+from preceding handoffs remains active; don't invent the old Sorbet hash.
+
+## Previous batch (2026-09-28, L288)
 
 Full conformance remains active and incomplete. L288 made verified progress:
 five confirmed for disagreements plus custom/private each gates now agree. No

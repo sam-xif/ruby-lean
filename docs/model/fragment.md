@@ -23,6 +23,7 @@ regenerated. Paths are relative to `ruby-lean/`.
 | `RubyCore/PreludeBoot.lean` | the two-phase boot: run the prelude from H₀ (`preludeMode`), then the program under test on the resulting heap (`Machine.initOn`) |
 | `RubyCore/Interp.lean` | `stepFn` (one transition; helpers deliberately non-mutual) + `run fuel` (`outOfFuel` ≠ `stuck` from day one) |
 | `RubyCore/Interp/BlockPass.lean` | Checked conversion continuations, including nested method/block parameter destructuring after defaults (L275–L287) |
+| `RubyCore/Interp/Inspect.lean` | Native object inspection with checked field-selection hooks, live values and recursion control (L289) |
 | `RubyCore/Interp/Enumerator.lean` | Native Enumerator/Generator/Yielder descriptors, internal dispatch and suspended external execution (L280) |
 | `RubyCore/Interp/Construct.lean` | Native constructor/allocator dispatch, block-aware initializers, and exception construction/copy/message protocols (L284–L286) |
 | `RubyCore/Interp/Mutation.lean` | Method-table edits interleaved with ordinary Ruby callbacks and frozen-state checks (L282) |

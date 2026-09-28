@@ -1,4 +1,4 @@
-import RubyCore.Interp.Send
+import RubyCore.Interp.Inspect
 
 /-! Effectful checked conversion: block-pass to_proc (L275), String#+ to_str
 (L276), splat/binding to_a/to_ary (L277), and nested parameter binding (L287). Each suspended Ruby call takes an
@@ -9,6 +9,7 @@ String conversion uses rb_check_funcall, which checks respond_to? first. -/
 namespace RubyCore.Interp
 
 def conversionMethod : ConversionCall → String
+  | .objectInspect => "instance_variables_to_inspect"
   | .block _ => "to_proc"
   | .stringPlus _ => "to_str"
   | .splat _ => "to_a"
@@ -23,6 +24,7 @@ def conversionArgs : ConversionCall → List Value
   | _ => []
 
 def conversionType : ConversionCall → String
+  | .objectInspect => "Array"
   | .block _ => "Proc"
   | .stringPlus _ => "String"
   | .splat _ | .closureArgs .. | .paramDestructure .. | .forDestructure .. => "Array"
@@ -49,6 +51,7 @@ def blockPassMethod (m : Machine) (v : Value) (name : String) : Option MethodDef
 
 def blockPassNoConversion (m : Machine) (call : ConversionCall) (source : Value) : StepResult :=
   match call with
+  | .objectInspect => beginObjectInspect m source .nil
   | .exceptionString false =>
     .next (withKont m (.value source) (.blkConvertK (.exceptionString true) source .start))
   | .exceptionString true => .next (raiseErr m Boot.typeErrorId
@@ -77,6 +80,7 @@ def blockPassInvalid (m : Machine) (call : ConversionCall) (source result : Valu
 def finishConversion (m : Machine) (call : ConversionCall) (source result : Value)
     (direct : Bool) : StepResult :=
   match call with
+  | .objectInspect => beginObjectInspect m source result
   | .exceptionString viaToS =>
     if result.identEq .nil && !viaToS then blockPassNoConversion m call source
     else if (Builtins.strPayload? m.heap result).isSome then .next (withCtl m (.value result))

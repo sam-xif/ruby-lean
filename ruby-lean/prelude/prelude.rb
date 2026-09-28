@@ -1457,17 +1457,7 @@ class Object
     String === v ? v : v.__as_string
   end
 
-  def __inspect_slow
-    ivs = instance_variables
-    # `__any_to_s` minus its closing `>`: the default `inspect` names the class the
-    # same dispatch-free way, so the two cannot drift.
-    head = __any_to_s
-    head = head[0, head.length - 1]
-    return head + ">" if ivs.empty?
-
-    head + " " + ivs.map { |n| n.to_s + "=" + instance_variable_get(n).__as_inspect }.join(", ") + ">"
-  end
-
+  # Native Object#inspect uses the checked hook and continuation in L289.
   def __to_s_slow = __any_to_s
 
   # `p` returns its argument (or the array of them, or nil for none) [V].

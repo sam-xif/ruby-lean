@@ -676,6 +676,19 @@ variant. `yield` calls the *current method frame's* block without naming it, wit
 non-lambda binding, and raises `LocalJumpError` when there is none.
 `block_given?` is that block being present. **[V]**
 
+Native Object#inspect first performs a checked `instance_variables_to_inspect`
+call, honoring response hooks, private dispatch, missing handlers and nonlocal
+exits. Nil/missing selects all fields; an Array selects matching Symbol names;
+other results raise TypeError without to_ary conversion. It buffers field names
+in insertion order after the hook, then reads each field value and the selection
+Array live. Nested values use ordinary inspect followed by String coercion. A
+continuation guards object recursion and unwinds on exceptions; the hook runs
+before that guard. Native traversal bypasses Ruby instance_variables/get overrides.
+Existing-field assignment preserves its insertion position. Pure rendering is
+allowed only when these hooks cannot run, and detects cycles before recursing.
+Binary non-UTF-8 nested renderings and native Object#inspect on immediate values
+remain explicit gates. **[V]** (L289)
+
 ### 04 §3 — The unwinding model
 
 `return`, `break`, `next`, `redo`, `retry` and `raise` are **not** ordinary

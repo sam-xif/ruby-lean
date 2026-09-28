@@ -90,6 +90,13 @@ def programOverridden (h : Heap) (sens : List String) (k : ObjId) : Bool :=
         sens.contains n && md.builtin.isNone && !md.undefined && !md.fromPrelude
     | none => false
 
+/-- Native Object#inspect uses rb_check_funcall before reading ivars. A known
+    default hook with no custom respond_to? is the only effect-free shortcut. -/
+def objectInspectPure (h : Heap) (recv : Value) : Bool :=
+  (lookup h recv "respond_to?").isNone &&
+    ((lookup h recv "instance_variables_to_inspect").any fun (_, md) =>
+      !md.undefined && md.builtin == some "Object#instance_variables_to_inspect")
+
 /-- Can pure repr (Repr.lean) speak for this value? Only if nothing in the
     ancestor chain *dispatch would walk* overrides a repr-sensitive method — and,
     for containers, recursively for what they hold.
@@ -100,29 +107,32 @@ def programOverridden (h : Heap) (sens : List String) (k : ObjId) : Bool :=
     override was invisible and the pure path rendered the default `#<C:0x…>`, in
     `p`, inside an Array/Hash/Range, and as an ivar of another object. This is the
     same one-argument miss `__user_defines?` had before L115 (L128). -/
-partial def pureOk (h : Heap) (sens : List String) : Value → Bool
+private partial def pureOkSeen (h : Heap) (sens : List String) (seen : List ObjId) : Value → Bool
   | .ref o =>
+    if seen.contains o then false else
+    let seen := o :: seen
     let own := !reprOverridden h sens (classOf h (.ref o))
     match (h.get o).payload with
     -- A container renders its elements with *their* renderer, so purity is
     -- recursive even when the container's own class is untouched — and it
     -- recurses with the **same** sensitivity it was asked about, since
     -- `[x].inspect` uses `x.inspect` while `[x].join` uses `x.to_s`.
-    | .arr xs => own && xs.all (pureOk h sens)
-    | .hsh xs => own && xs.all fun (k, v) => pureOk h sens k && pureOk h sens v
-    | .none => own && (h.get o).ivars.all (fun (_, v) => pureOk h sens v)
+    | .arr xs => own && xs.all (pureOkSeen h sens seen)
+    | .hsh xs => own && xs.all fun (k, v) => pureOkSeen h sens seen k && pureOkSeen h sens seen v
+    | .none | .rng _ | .generator _ | .yielder .. =>
+      own && (!sens.contains "inspect" || objectInspectPure h (.ref o)) && (h.get o).ivars.all (fun (_, v) => pureOkSeen h sens seen v)
     -- A Range is a container of two: `(a..b).inspect` calls `a.inspect`, so an
     -- endpoint with a user `inspect` makes the range impure too. Missing this was
     -- a **wrong answer** — the pure path rendered the endpoint's default
     -- `#<C:0x…>` and ignored the override — found by the L122 range head, which
     -- gives its endpoints a fixed `inspect` precisely so no address is observed.
-    | .range lo hi _ => own && pureOk h sens lo && pureOk h sens hi
+    | .range lo hi _ => own && pureOkSeen h sens seen lo && pureOkSeen h sens seen hi
     | .rational _ _ => own && !reprOverridden h sens Boot.integerId
-    | .complex r i => own && pureOk h sens r && pureOk h sens i &&
+    | .complex r i => own && pureOkSeen h sens seen r && pureOkSeen h sens seen i &&
         (!sens.contains "to_s" || [r, i].all (fun v =>
           !reprOverridden h ["to_str"] (classOf h v)))
-    | .enumerator (some data) => own && pureOk h ["inspect"] data.recv &&
-        data.args.all (pureOk h ["inspect"])
+    | .enumerator (some data) => own && pureOkSeen h ["inspect"] seen data.recv &&
+        data.args.all (pureOkSeen h ["inspect"] seen)
     -- An Exception renders **through `to_s`** whichever way it is asked:
     -- `rb_exc_inspect` is `#<Class: rb_obj_as_string(exc)>` and
     -- `Exception#message` *is* `to_s`. So `to_s` is repr-sensitive for an exception
@@ -143,6 +153,9 @@ partial def pureOk (h : Heap) (sens : List String) : Value → Bool
   -- written as `classOf` so the two arms cannot drift.
   | v => !reprOverridden h sens (classOf h v)
 
+def pureOk (h : Heap) (sens : List String) (value : Value) : Bool :=
+  pureOkSeen h sens [] value
+
 /-- When pure repr cannot speak for a value, the *prelude twin* to dispatch
     instead (L116). This is L63's "defer to the prelude" pattern: the twin has a
     **different name**, so it shadows nothing, changes no purity answer, and needs
@@ -156,7 +169,7 @@ partial def pureOk (h : Heap) (sens : List String) : Value → Bool
     can dispatch — off a cliff. -/
 def reprDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     Option String :=
-  if bid == "Object#inspect" || bid == "Array#inspect" || bid == "Hash#inspect"
+  if bid == "Array#inspect" || bid == "Hash#inspect"
      || bid == "Exception#inspect" then
     if pureOk h inspectSensitive recv then none else some "__inspect_slow"
   else if bid == "Array#to_s" || bid == "Hash#to_s" then
@@ -482,7 +495,7 @@ def byteStrAwareBids : List String :=
    "Object#==", "Object#!=", "Object#!", "Object#equal?", "Object#eql?",
    "Object#hash", "Object#class", "Object#nil?", "Object#itself", "Object#is_a?", "Object#kind_of?",
    "Object#instance_of?", "Object#respond_to?", "Object#freeze", "Object#frozen?",
-   "Object#inspect", "Object#p", "Object#__user_defines?",
+   "Object#inspect", "Object#p", "Object#__user_defines?", "Object#instance_variables_to_inspect",
    -- reads the method table, never the value (L127)
    "Object#__default_inspect?",
    -- renders the receiver's *class name* and address, never its payload (L129)
@@ -770,7 +783,7 @@ def sliceRange (n : Nat) (start len : Int) : Option (Nat × Nat) :=
     Methods with optional args (Integer#to_s(base), Array#pop(n), …) are NOT
     here; their with-arg forms gate as Unsupported inside their own arms. -/
 def zeroArgBids : List String :=
-  ["Object#class", "Object#inspect", "Object#to_s", "Object#nil?", "Object#itself",
+  ["Object#class", "Object#inspect", "Object#instance_variables_to_inspect", "Object#to_s", "Object#nil?", "Object#itself",
    "Integer#i", "Float#i", "Rational#i", "Integer#to_c", "Float#to_c", "Rational#to_c",
    "Complex#real", "Complex#imag", "Complex#imaginary", "Complex#rect", "Complex#rectangular",
    "Complex#to_s", "Complex#inspect", "Complex#real?", "Complex#to_c", "Complex#dup",

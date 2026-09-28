@@ -109,6 +109,7 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     -- occurrence-order normalization honest is not worth it for a program that
     -- has redefined `Integer#to_s` to return a non-String.
     | _ => .unsupported "__any_to_s of an immediate (CRuby prints its VALUE address)"
+  | "Object#instance_variables_to_inspect" => .ok .nil m
   | "Object#respond_to_missing?" =>
     -- The **default** one, which answers `false` for every name [V]. It exists so
     -- that a user override can call `super`, which is the idiomatic way to write

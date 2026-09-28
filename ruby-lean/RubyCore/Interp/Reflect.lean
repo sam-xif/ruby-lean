@@ -413,7 +413,11 @@ def reflectIvarSet (m : Machine) (recv : Value) (_mname : String)
           some (raiseFrozen m recv)
         else
           let obj := m.heap.get o
-          let obj := { obj with ivars := (n, val) :: obj.ivars.filter (·.1 != n) }
+          -- Updating a field retains its original insertion position (L289).
+          let ivars := if obj.ivars.any (·.1 == n) then
+            obj.ivars.map (fun (key, old) => (key, if key == n then val else old))
+            else (n, val) :: obj.ivars
+          let obj := { obj with ivars := ivars }
           some (.next (withCtl { m with heap := m.heap.set o obj } (.value val)))
     | _, _ => none
 

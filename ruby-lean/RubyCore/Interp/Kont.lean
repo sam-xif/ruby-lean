@@ -24,6 +24,8 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     match k with
     | .requireK feature _ =>
       .next { m with ctl := .value (.bool true), stack := m.stack.tail, loadingFeatures := m.loadingFeatures.filter (· != feature), loadedFeatures := feature :: m.loadedFeatures }
+    | .objectInspectK recv filter remaining text source =>
+      resumeObjectInspect m recv filter remaining text source v
     | .enumFinishK o => finishEnumerator m o v
     | .enumStopK owner exc result => finishStop m owner exc result
     | .seqK es =>

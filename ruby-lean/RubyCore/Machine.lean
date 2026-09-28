@@ -178,6 +178,7 @@ inductive ConversionCall where
       (selfOv : Option Value) (defmodOv : Option ObjId)
   | paramDestructure (subs : List Param) (remaining : List (Param × Value)) (body : Expr)
   | forDestructure (targets : List (TargetKind × String)) (body : Expr)
+  | objectInspect
   | enumRewind (object : ObjId)
   | raiseString
   | stopMessage (result : Value)
@@ -363,6 +364,8 @@ inductive Kont where
   | frameK (fid : FrameId)
   /-- define_method retains block-local break/next/redo semantics. -/
   | dmFrameK (frame : FrameId) (body : Expr)
+  | objectInspectK (recv filter : Value) (remaining : List String) (text : String)
+      (stringifying : Option Value)
   /-- Block-activation boundary (artifact 04 §2). `lam` = lambda semantics;
       `brk` = the method activation a `break` returns from (`none` for a
       detached proc `.call`, where `break` is a LocalJumpError). Consumes

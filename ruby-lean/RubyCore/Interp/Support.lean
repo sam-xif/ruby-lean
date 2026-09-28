@@ -172,7 +172,11 @@ def bindIvar (m : Machine) (x : String) (v : Value) : Machine :=
   match m.currentFrame.self with
   | .ref o =>
     let obj := m.heap.get o
-    let obj := { obj with ivars := (x, v) :: obj.ivars.filter (·.1 != x) }
+    -- Updating a field retains its original insertion position (L289).
+    let ivars := if obj.ivars.any (·.1 == x) then
+      obj.ivars.map (fun (key, old) => (key, if key == x then v else old))
+      else (x, v) :: obj.ivars
+    let obj := { obj with ivars := ivars }
     { m with heap := m.heap.set o obj }
   | _ => m
 
@@ -428,6 +432,17 @@ def appendKwHash (m : Machine) (args : List Value)
     (kw : List (Value × Value)) : List Value × Machine :=
   if kw.isEmpty then (args, m)
   else let (hv, m) := Builtins.allocHsh m kw.toArray; (args ++ [hv], m)
+
+/-- Native Object#inspect starts its checked hook after arity validation. -/
+def callObjectInspect (m : Machine) (recv : Value) (args : List Value)
+    (kw : List (Value × Value)) : StepResult :=
+  let (args, m) := appendKwHash m args kw
+  if !args.isEmpty then .next (raiseErr m Boot.argumentErrorId
+    s!"wrong number of arguments (given {args.length}, expected 0)")
+  else if recv.identEq (.ref Boot.mainId) then
+    let (str, m) := Builtins.allocStr m "main"
+    .next (withCtl m (.value str))
+  else .next (withKont m (.value recv) (.blkConvertK .objectInspect recv .start))
 
 /-- Lookup a keyword by name among evaluated `(Symbol, Value)` pairs. -/
 def kwLookup (kw : List (Value × Value)) (name : String) : Option Value :=

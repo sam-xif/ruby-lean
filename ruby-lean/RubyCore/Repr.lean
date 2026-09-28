@@ -224,7 +224,6 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
       let text ← if msg.identEq .nil then pure cname else toS h msg
       if text.isEmpty then return cname else return s!"#<{cname}: {text}>"
     | .proc _ => throw "Proc#inspect (address non-deterministic)"
-    | .rng _ => throw "Random#inspect (state/address non-deterministic)"
     | .range lo hi excl =>
       -- A **nil endpoint prints as nothing** — `(1..nil).inspect` is `"1.."` and
       -- `(nil..2)` is `"..2"` — *except* when both are nil, which prints
@@ -262,7 +261,6 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
       let args := args ++ kwParts
       return "#<" ++ className h (h.get o).klass ++ ": " ++ receiver ++ ":" ++ data.method ++
         (if args.isEmpty then "" else "(" ++ String.intercalate ", " args ++ ")") ++ ">"
-    | .generator _ | .yielder .. => return s!"#<{className h (h.get o).klass}:{fakeAddr o}>"
     | .regexp src opts => return regexpInspect src opts
     | .mdata subject caps names =>
       -- `#<MatchData "1.22" 1:"1" commit:nil>` — named groups print their name
@@ -282,7 +280,7 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
            | none => "nil")
       return "#<MatchData " ++ esc whole ++
         (if parts.isEmpty then "" else " " ++ String.intercalate " " parts) ++ ">"
-    | .none =>
+    | .none | .rng _ | .generator _ | .yielder .. =>
       let cname := className h (h.get o).klass
       let ivars := (h.get o).ivars.reverse
       if ivars.isEmpty then

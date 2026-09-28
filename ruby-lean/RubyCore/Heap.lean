@@ -423,7 +423,7 @@ def builtinMethods : List (ObjId × List String) := [
               "puts", "print", "p", "raise", "fail", "String", "block_given?", "rand",
               "require", "require_relative", "__unsupported__", "dup", "clone", "initialize_copy", "initialize_clone",
               "__user_defines?", "__default_inspect?", "__write", "__addr_str",
-              "__any_to_s", "__match_to_caller", "respond_to_missing?",
+              "__any_to_s", "__match_to_caller", "respond_to_missing?", "instance_variables_to_inspect",
               "__coerce_failed", "__cmp_failed", "__coerce_defined?", "Rational", "Complex", "__complex_rect",
               "enum_for", "to_enum", "__enum_for", "__chain_init", "__chain_enums",
               "binding", "local_variables", "__forwardable_compile"]),
@@ -505,7 +505,7 @@ def install (h : Heap) (cls : ObjId) (names : List String) : Heap :=
                 ["method_added", "method_removed", "method_undefined", "singleton_method_added",
                  "singleton_method_removed", "singleton_method_undefined"].contains n ||
                 (["puts", "print", "p", "raise", "fail", "String", "block_given?", "rand",
-                  "require", "require_relative", "respond_to_missing?", "binding",
+                  "require", "require_relative", "respond_to_missing?", "instance_variables_to_inspect", "binding",
                   "local_variables"].contains n && cls == objectId) ||
                 ["initialize", "initialize_copy", "initialize_clone"].contains n then .priv else .pub,
             builtin := some (if n == "===" then

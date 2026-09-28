@@ -128,6 +128,7 @@ where
         if bid.startsWith "Main#" then
           let (args, m) := appendKwHash m args kw
           callMainMethod m recv bid args blk else
+        if bid == "Object#inspect" then callObjectInspect m recv args kw else
         if bid == "Object#raise" || bid == "Object#fail" then callRaise m args kw else
         if bid == "Exception.exception" then callConstruct m recv args blk kw else
         if bid == "Exception#exception" then callExceptionCopy m recv args kw else
@@ -225,6 +226,7 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
         if bid.startsWith "Main#" then
           let (args, m) := appendKwHash m args kw
           callMainMethod m self bid args blk else
+        if bid == "Object#inspect" then callObjectInspect m self args kw else
         if bid == "Object#raise" || bid == "Object#fail" then callRaise m args kw else
         if bid == "Exception.exception" then callConstruct m self args blk kw else
         if bid == "Exception#exception" then callExceptionCopy m self args kw else

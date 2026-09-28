@@ -1984,8 +1984,7 @@ L288 replaces the snapshot loop with ordinary explicit each, shared local
 bindings, checked multiple assignment and safe captured callbacks. Six permanent
 programs cover dispatch/visibility/missing handlers, live mutation, local/block/
 match scope, control/ensure, conversion/nonlocal targets, trailing-comma syntax,
-escaped callbacks and define_method reuse. A seventh frontend seed (seed46, not a
-seventh regression program) retains the one-target comma distinction.
+escaped callbacks and define_method reuse. Frontend seed46 retains the one-target comma distinction.
 
 Full reports20260928-082327: bootstrap1309 =1095 agree /zero disagree /208 gates,
 five invalid controls and the old test_syntax_115 harness error; tier1 n300
@@ -2002,3 +2001,23 @@ preserved separately in /private/tmp/conformance-l289-inspect-known.json. Append
 nil to its loop-only variant isolates for conversion and does not claim to fix
 Object#inspect. The L289 audit records that next defect explicitly. See model
 L288, frontend C41 and /private/tmp/conformance-l288-* for evidence.
+
+
+## N63 — native object inspection protocol (2026-09-28)
+
+Six L289 guards cover checked field-selection hooks, ordinary missing/response
+handlers, live fields/filter arrays, insertion order, recursion, nested String
+coercion, container/error output and final observation. All agree. The Symbol
+membership negative control restores its aliases before the observation wrapper.
+
+Final reports20260928-083226: bootstrap1309 =1095 agree /zero disagree /208 gates,
+five invalid controls and old syntax115 harness error; tier1 n300 seed20260927
+=226 agree /74 gates. Every previous source/verdict held. Replay141 =140 agree /
+one old sorbet-hash gate, with all135 old source/verdict pairs unchanged. Previous414
+=398 agree /16 gates, unchanged. Focused29 =26 agree /three old gates; extra32 all
+agree. Frontend52 agree /zero disagree, AST-idempotent, six old render-only
+instabilities. Build100 jobs, standalone3/loading3, regeneration and whitespace
+checks pass. Proof audit fails before axiom scan; repair remains deferred.
+Model L289 and /private/tmp/conformance-l289-* contain details. Two next-work
+audits preserve seven native-repr-alias failures and nine class-creation failures;
+those are not claimed fixed by this batch.
