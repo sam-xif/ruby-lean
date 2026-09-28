@@ -236,6 +236,9 @@ structure Object where
   frozen : Bool := false
   /-- StopIteration's native result is not a Ruby instance variable. -/
   iterationResult : Value := .nil
+  /-- Native UncaughtThrowError metadata is hidden from Ruby instance variables. -/
+  throwTag : Value := .nil
+  throwValue : Value := .nil
   /-- Internal write generation, used by suspended native iterators. -/
   revision : Nat := 0
   eigen : Option ObjId := none
@@ -456,6 +459,7 @@ def builtinMethods : List (ObjId × List String) := [
   -- `message` is deliberately absent: it is `to_s` in CRuby, so it must dispatch,
   -- and the prelude defines it (L131).
   (exceptionId, ["to_s", "inspect", "dup", "clone", "initialize", "exception"]),
+  (uncaughtThrowErrorId, ["to_s", "tag", "value", "__throw_metadata"]),
   (classId, ["superclass"]),
   (stringId, ["try_convert"]),
   (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors", "freeze",

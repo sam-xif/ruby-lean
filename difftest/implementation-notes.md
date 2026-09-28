@@ -1914,3 +1914,35 @@ failed targets; the axiom scan was not reached. Log:
 /private/tmp/conformance-l285-proof-audit.log. No proof repair was attempted.
 All validation processes have now terminated; model conformance checks pass,
 metatheory does not. No typed gate or commit. Full semantics goal remains active.
+
+## N60 — native error construction probes (2026-09-28)
+
+L286 adds native-error-initialize, native-error-bypass, frozen-error-initialize,
+enumerator-stop-initialize and uncaught-throw-initialize. Their49 constituent
+probes pin initializer argument packets, private/undef/missing/alias dispatch,
+$! and producer/caller contexts, callback exits, live prefix/message identity,
+frozen state, lazy tag inspection and copied native metadata. Initialization
+aliases restore the native methods between combined cases. Every program agrees
+with CRuby4.0.5, both independently and in full regression replay.
+
+Full bootstrap20260928-075300-tier0-lean:1090 agree / zero disagree /213 unsupported,
+five invalid controls and the old syntax115 harness error. Seeded tier1 at the
+same timestamp:219 agree /81 unsupported (n300 seed20260927). Initial replay
+075350 and final replay075806:124 agree / one old sorbet-hash gate (125 programs).
+Every old source/verdict is unchanged. Previous250 probes:238 agree /12 old gates;
+the sole changed verdict repairs the known native-error-initialize disagreement.
+Focused24 has22 agree / two old gates (remove_const and String#replace); extra27
+all agree. The final native metadata copy correction was followed by full replay
+and23 bootstrap sources mentioning copy/throw operations:17 agree /six old gates,
+all unchanged. The full1309 run preceded only that final copy correction.
+Frontend50 agree / zero disagree, AST-idempotent, six old render-only instabilities.
+Three standalone core-only and three identical-source loading checks agree.
+Generated files match regeneration, build98 jobs and whitespace checks pass.
+
+Use N58's commands for full bootstrap/replay/seeded tier1 and append the five
+programs to ruby desugar/bin/run desugar/corpus/seeds for frontend verification.
+Exact sources and results: /private/tmp/conformance-l286-{focused,extra,permanent,
+previous,copy-bootstrap}.json. The separate next-work binding audit (l287) has
+seven known disagreements and one agreement; it is not labeled fixed or added
+to the regression guards yet. Proof audit failed at Metatheory (NotDone/KontFrame
+in the captured tail); no axiom scan, proof repair, typed gate or commit.

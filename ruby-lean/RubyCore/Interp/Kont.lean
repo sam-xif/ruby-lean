@@ -25,6 +25,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .requireK feature _ =>
       .next { m with ctl := .value (.bool true), stack := m.stack.tail, loadingFeatures := m.loadingFeatures.filter (· != feature), loadedFeatures := feature :: m.loadedFeatures }
     | .enumFinishK o => finishEnumerator m o v
+    | .enumStopK owner exc result => finishStop m owner exc result
     | .seqK es =>
       match es with
       | [] => .next (withCtl m (.value v))
@@ -93,8 +94,9 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       -- the `method_added` hook returned; its value is discarded and `def`
       -- yields the method name, as if the hook had not run
       .next (withCtl m (.value (.sym name)))
+    | .uncaughtInspectK source => finishUncaughtInspect m source v
     | .raiseNewK inst =>
-      -- `raise C[, msg]` with a user `initialize`: now raise the built instance
+      -- Native error initialize returned; discard its result and raise the instance.
       .next (withCtl m (.jump (.raiseJ inst)))
     | .includeK recv =>
       -- `included` hook returned; its value is discarded, `include` yields recv
@@ -230,7 +232,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       coerceBlockPass m ⟨recv, implicit, mname, acc, kw⟩ v
     | .blkConvertK call source phase =>
       resumeBlockPass m call source phase v
-    | .frozenErrorK recv cls phase => resumeFrozen m recv cls phase v
+    | .frozenErrorK recv phase => resumeFrozen m recv phase v
     | .kwPairK key rest kwacc recv implicit mname posArgs pblk =>
       startKwargs m recv implicit mname posArgs (kwAdd kwacc (.sym key) v) rest pblk
     | .kwDynKeyK valE rest kwacc recv implicit mname posArgs pblk =>
@@ -362,10 +364,7 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
     | .retJ _ _ =>
       -- a non-lambda block `return` whose home method already exited [V]
       .next (raiseErr m Boot.localJumpErrorId "unexpected return")
-    | .throwJ tag _ =>
-      match Builtins.inspectP m tag with
-      | .ok r => .next (raiseErr m Boot.uncaughtThrowErrorId s!"uncaught throw {r}")
-      | .error e => .unsupported e
+    | .throwJ tag value => .next (raiseUncaughtThrow m tag value)
     | _ => .stuck "jump escaped the program (break/next/retry at toplevel)"
   | k :: rest =>
     let m := { m with kont := rest }
@@ -392,9 +391,7 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
         match j with
         | .raiseJ _ => .next { m with ctl := .jump j }
         | .retJ .. => .next (raiseErr m Boot.localJumpErrorId "unexpected return")
-        | .throwJ tag _ => match Builtins.inspectP m tag with
-          | .ok text => .next (raiseErr m Boot.uncaughtThrowErrorId s!"uncaught throw {text}")
-          | .error text => .unsupported text
+        | .throwJ tag value => .next (raiseUncaughtThrow m tag value)
         | _ => .unsupported "nonlocal transfer out of Enumerator"
     | .whileCondK c body | .whileBodyK c body =>
       match j with

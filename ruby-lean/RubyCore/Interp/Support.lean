@@ -102,22 +102,22 @@ def suspendEnumerator (m : Machine) (o : ObjId) (args : List Value) : StepResult
     let (v, m) := enumPack m args st.values
     .next { m with ctl := .value v }
 
-def enumStop (m : Machine) (result : Value) : StepResult :=
-  let (message, m) := Builtins.allocStr m "iteration reached an end"
-  let (o, h) := m.heap.alloc { klass := Boot.stopIterationId, payload := .exc message, iterationResult := result }
-  .next { m with heap := h, ctl := .jump (.raiseJ (.ref o)) }
-
-def finishEnumerator (m : Machine) (o : ObjId) (result : Value) : StepResult :=
-  let st := enumState m o
-  match st.caller with
-  | none => .stuck "Enumerator completion without a caller"
-  | some caller =>
-    let m := setEnumState m o { finished := some result }
-    enumStop (restoreExecution m caller) result
-
+/-- Native rb_raise/rb_exc_new constructs through private initialize, without
+    sending new/allocate/exception. The VM's name/key errors use direct native
+    initialization instead (L286). Keep the surrounding $! while callbacks run. -/
 def raiseErr (m : Machine) (cls : ObjId) (msg : String) : Machine :=
-  let (v, m) := Builtins.allocExc m cls msg
-  { m with ctl := .jump (.raiseJ v) }
+  if [Boot.nameErrorId, Boot.noMethodErrorId, Boot.keyErrorId].contains cls then
+    let (v, m) := Builtins.allocExc m cls msg
+    { m with ctl := .jump (.raiseJ v) }
+  else
+    let (message, m) := Builtins.allocStr m msg
+    let (o, h) := m.heap.alloc { klass := cls, payload := .exc .nil }
+    { m with heap := h, ctl := .send (.ref o) .reflective "initialize" [message] none [], kont := .raiseNewK (.ref o) :: m.kont }
+
+def raiseUncaughtThrow (m : Machine) (tag value : Value) : Machine :=
+  let (message, m) := Builtins.allocStr m "uncaught throw %p"
+  let (o, h) := m.heap.alloc { klass := Boot.uncaughtThrowErrorId, payload := .exc .nil }
+  { m with heap := h, ctl := .send (.ref o) .reflective "initialize" [tag, value, message] none [], kont := .raiseNewK (.ref o) :: m.kont }
 
 def withCtl (m : Machine) (c : Ctl) : Machine := { m with ctl := c }
 
@@ -126,7 +126,47 @@ def withKont (m : Machine) (c : Ctl) (k : Kont) : Machine :=
 
 /-- Suspend a rejected mutation to render its class and receiver. -/
 def raiseFrozen (m : Machine) (recv : Value) : StepResult :=
-  .next (withKont m (.value recv) (.frozenErrorK recv "" .start))
+  .next (withKont m (.value recv) (.frozenErrorK recv .start))
+
+/-- StopIteration initialization runs in the finishing fiber; repeated next
+    calls construct from the first error's current raw message in the caller. -/
+def newStop (m : Machine) (owner : Option ObjId) (result message : Value) : StepResult :=
+  let (o, h) := m.heap.alloc { klass := Boot.stopIterationId, payload := .exc .nil }
+  .next { m with heap := h, ctl := .send (.ref o) .reflective "initialize" [message] none [], kont := .enumStopK owner (.ref o) result :: m.kont }
+
+def enumStop (m : Machine) (original : Value) : StepResult :=
+  match original with
+  | .ref o => match (m.heap.get o).payload with
+    | .exc message => match Builtins.strPayload? m.heap message with
+      | some str =>
+        let (copy, m) := Builtins.allocStrEnc m str (Builtins.isBinaryStr m.heap message)
+        newStop m none (m.heap.get o).iterationResult copy
+      | none =>
+        if message.identEq .nil then
+          .next (withKont m (.value message) (.blkConvertK (.stopMessage (m.heap.get o).iterationResult) message .start))
+        else .unsupported "repeated StopIteration with non-String message"
+    | _ => .stuck "Enumerator finished without StopIteration"
+  | _ => .stuck "Enumerator finished without StopIteration"
+
+def finishEnumerator (m : Machine) (o : ObjId) (result : Value) : StepResult :=
+  if (enumState m o).caller.isNone then .stuck "Enumerator completion without a caller" else
+  let (message, m) := Builtins.allocStr m "iteration reached an end"
+  -- Retain the fiber unwind marker while the initializer can raise/throw.
+  newStop { m with kont := .enumFinishK o :: m.kont } (some o) result message
+
+def finishStop (m : Machine) (owner : Option ObjId) (exc result : Value) : StepResult :=
+  match exc with
+  | .ref o =>
+    if (m.heap.get o).frozen then raiseFrozen m exc else
+    let m := { m with heap := m.heap.set o { m.heap.get o with iterationResult := result } }
+    match owner with
+    | none => .next (withCtl m (.jump (.raiseJ exc)))
+    | some e => match (enumState m e).caller with
+      | none => .stuck "StopIteration completion without caller"
+      | some caller =>
+        let m := restoreExecution (setEnumState m e { finished := some exc }) caller
+        .next (withCtl m (.jump (.raiseJ exc)))
+  | _ => .stuck "StopIteration completion without exception"
 
 def bindIvar (m : Machine) (x : String) (v : Value) : Machine :=
   match m.currentFrame.self with

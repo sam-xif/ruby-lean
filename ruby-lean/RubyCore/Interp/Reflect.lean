@@ -326,9 +326,7 @@ def reflectThrow (m : Machine) (_recv : Value) (_mname : String)
     -- rather than after unwinding, which would have discarded that rescue.
     let go := fun (tag : Value) (v : Value) =>
       if hasCatcher m tag then StepResult.next (withCtl m (.jump (.throwJ tag v)))
-      else match Builtins.inspectP m tag with
-        | .ok r => .next (raiseErr m Boot.uncaughtThrowErrorId s!"uncaught throw {r}")
-        | .error e => .unsupported e
+      else .next (raiseUncaughtThrow m tag v)
     match args with
     | [tag] => some (go tag .nil)
     | [tag, v] => some (go tag v)

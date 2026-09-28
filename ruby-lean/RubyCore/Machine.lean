@@ -142,7 +142,10 @@ deriving Inhabited
 
 /-- Rendering a receiver for FrozenError uses inspect, then rb_obj_as_string. -/
 inductive FrozenPhase where
-  | start | className | inspected | stringified (source : Value)
+  | start | className
+  | initialized (exc message : Value)
+  | inspected (exc message : Value)
+  | stringified (exc message source : Value)
 deriving Inhabited
 
 /-- A send's block child, carried through arg evaluation. A literal block is
@@ -173,6 +176,7 @@ inductive ConversionCall where
       (selfOv : Option Value) (defmodOv : Option ObjId)
   | enumRewind (object : ObjId)
   | raiseString
+  | stopMessage (result : Value)
   | raiseException (args : List Value)
   | exceptionString (viaToS : Bool)
 deriving Inhabited
@@ -232,6 +236,7 @@ deriving Inhabited
 inductive Kont where
   | requireK (feature : String) (frame : FrameId)
   | enumFinishK (id : ObjId)
+  | enumStopK (owner : Option ObjId) (exc result : Value)
   /-- Remaining statements of a `seq`; the in-flight value is discarded. -/
   | seqK (rest : List Expr)
   | asgnK (k : VarKind) (name : String)
@@ -257,10 +262,10 @@ inductive Kont where
   | methodAddedK (name : String)
   /-- Resume a native method-table operation after its Ruby callback. -/
   | methodEditsK (remaining : List MethodEdit) (result : Value)
-  /-- `raise C` / `raise C, msg` where `C` has a *user* `initialize` (L70): the
-      in-flight value is that initializer's (discarded) result; raise the freshly
-      built instance. -/
+  /-- A native error's initializer returned: discard its result and raise the
+      freshly allocated instance (L286). -/
   | raiseNewK (inst : Value)
+  | uncaughtInspectK (source : Option Value)
   /-- `include M` when `M` defines `self.included`: the in-flight value is the
       hook's (discarded) result; `include` evaluates to the receiver instead. -/
   | includeK (recv : Value)
@@ -314,7 +319,7 @@ inductive Kont where
       (kw : List (Value × Value))
   /-- Suspend a native operation during checked to_proc/to_str conversion. -/
   | blkConvertK (call : ConversionCall) (source : Value) (phase : BlockPassPhase)
-  | frozenErrorK (recv : Value) (cls : String) (phase : FrozenPhase)
+  | frozenErrorK (recv : Value) (phase : FrozenPhase)
   /-- Evaluating a call-site `k: v` keyword value; then continue the kwargs. -/
   | kwPairK (key : String) (rest : List KwEntry) (kwacc : List (Value × Value))
       (recv : Value) (implicit : SendSite) (m : String) (posArgs : List Value) (pblk : PendingBlk)
@@ -416,6 +421,7 @@ structure EnumState where
   caller : Option Execution := none
   lookahead : Option (List Value) := none
   feed : Option Value := none
+  /-- The first native StopIteration object, whose live message/result seed later errors. -/
   finished : Option Value := none
   peek : Bool := false
   values : Bool := false

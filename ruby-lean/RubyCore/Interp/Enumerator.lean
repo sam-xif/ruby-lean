@@ -17,7 +17,7 @@ def enumQueue (m : Machine) (data : EnumData) (blk : Option Value) : StepResult 
 def enumNext (m : Machine) (o : ObjId) (peek values : Bool) : StepResult :=
   let st := enumState m o
   if st.caller.isSome then .unsupported "resuming an already running Enumerator" else
-  if let some result := st.finished then enumStop m result else
+  if let some exc := st.finished then enumStop m exc else
   if let some args := st.lookahead then
     let m := setEnumState m o { st with lookahead := if peek then st.lookahead else none }
     let (v, m) := enumPack m args values

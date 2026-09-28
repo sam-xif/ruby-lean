@@ -278,6 +278,9 @@ def crubyMethodNames : List (String × List String) := [
   ("StopIteration", [
     "result"
   ]),
+  ("UncaughtThrowError", [
+    "initialize", "tag", "to_s", "value"
+  ]),
   ("NotImplementedError", [
 
   ]),
@@ -402,6 +405,9 @@ def crubySingletonNames : List (String × List String) := [
   ("StopIteration", [
 
   ]),
+  ("UncaughtThrowError", [
+
+  ]),
   ("NotImplementedError", [
 
   ]),
@@ -448,6 +454,7 @@ def crubyNamespaceConstants : List (String × List String) := [
   ("KeyError", []),
   ("RangeError", []),
   ("StopIteration", []),
+  ("UncaughtThrowError", []),
   ("NotImplementedError", []),
   ("ScriptError", [])
 ]

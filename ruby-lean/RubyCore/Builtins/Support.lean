@@ -135,7 +135,8 @@ partial def pureOk (h : Heap) (sens : List String) : Value → Bool
         | .nil => true
         | .ref message => match (h.get message).payload with | .str _ => true | _ => false
         | _ => false
-      own && !reprOverridden h ["to_s"] (classOf h (.ref o)) && direct
+      own && !isA h (.ref o) Boot.uncaughtThrowErrorId &&
+        !reprOverridden h ["to_s"] (classOf h (.ref o)) && direct
     | .proc _ => false   -- Proc repr is address-based → never pure
     | _ => own
   -- An immediate has no eigenclass slot, so `classOf` here *is* `realClassOf`;
@@ -411,6 +412,7 @@ def dupObj (m : Machine) (o : ObjId) (keepFrozen : Bool) : Value × Machine :=
   let (o2, h) := m.heap.alloc
     { klass := src.klass, ivars := src.ivars, payload := src.payload,
       hashDflt := src.hashDflt, frozen := keepFrozen && src.frozen, iterationResult := src.iterationResult,
+      throwTag := src.throwTag, throwValue := src.throwValue,
       -- the encoding tag is part of the copy: `"café".b.dup.encoding` is
       -- ASCII-8BIT [V] (L118)
       binary := src.binary }

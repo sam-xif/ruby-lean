@@ -100,6 +100,7 @@ def ctlBrief (h : Heap) : Ctl → String
 def kontLabel : Kont → String
   | .requireK feature _ => s!"require {feature}: finish"
   | .enumFinishK id => s!"Enumerator #{id}: finish"
+  | .enumStopK .. => "finish native StopIteration initialization"
   | .seqK rest => s!"seq (+{rest.length} more)"
   | .asgnK _ x => s!"then {x} = ▢"
   | .casgnK n => s!"then {n} = ▢"
@@ -111,6 +112,7 @@ def kontLabel : Kont → String
   | .arrayInitK _ _ index size => s!"initialize Array element {index}/{size}"
   | .methodEditsK rest _ => s!"method mutation: {rest.length} remaining"
   | .methodAddedK n => s!"then yield :{n} (method_added hook)"
+  | .uncaughtInspectK .. => "format the uncaught throw tag"
   | .raiseNewK _ => "then raise the new exception"
   | .includeK _ => "then yield include receiver"
   | .defsK name .. => s!"then def ▢.{name}"

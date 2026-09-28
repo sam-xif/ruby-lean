@@ -1610,6 +1610,20 @@ class Exception
   end
 end
 
+# The native throw constructor passes tag, value, then the raw format String.
+class UncaughtThrowError
+  def initialize(*args)
+    if args.length < 2
+      raise ArgumentError, "wrong number of arguments (given #{args.length}, expected 2+)"
+    end
+    tag = args.shift
+    value = args.shift
+    super(*args)
+    __throw_metadata(tag, value)
+    self
+  end
+end
+
 # Native specialized exception initializers delegate their message to super.
 # Metadata arguments/keywords await their own payload model (L285).
 class NameError

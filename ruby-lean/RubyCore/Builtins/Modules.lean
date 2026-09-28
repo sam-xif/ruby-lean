@@ -49,6 +49,18 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
   -- this arm it read the payload directly, and `E.new("boom").message` answered
   -- "boom" for a class whose `to_s` says otherwise. It is prelude Ruby now — `def
   -- message = to_s` — which is the only spelling that dispatches (L131).
+  | "UncaughtThrowError#tag" | "UncaughtThrowError#value" =>
+    if !args.isEmpty then .err Boot.argumentErrorId
+      s!"wrong number of arguments (given {args.length}, expected 0)" m else
+    match recv with
+    | .ref o => .ok (if bid == "UncaughtThrowError#tag" then (h.get o).throwTag else (h.get o).throwValue) m
+    | _ => .unsupported "UncaughtThrowError metadata receiver"
+  | "UncaughtThrowError#__throw_metadata" =>
+    match recv, args with
+    | .ref o, [tag, value] =>
+      if (h.get o).frozen then .frozen recv m else
+      .ok recv { m with heap := h.set o { h.get o with throwTag := tag, throwValue := value } }
+    | _, _ => .unsupported "UncaughtThrowError metadata arguments"
   | "Exception#to_s" =>
     match recv with
     | .ref o => match (h.get o).payload with

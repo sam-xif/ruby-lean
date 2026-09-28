@@ -14,7 +14,7 @@ def conversionMethod : ConversionCall → String
   | .splat _ => "to_a"
   | .closureArgs .. => "to_ary"
   | .enumRewind _ => "rewind"
-  | .raiseString => "to_str"
+  | .raiseString | .stopMessage _ => "to_str"
   | .raiseException _ => "exception"
   | .exceptionString viaToS => if viaToS then "to_s" else "to_str"
 
@@ -27,7 +27,7 @@ def conversionType : ConversionCall → String
   | .stringPlus _ => "String"
   | .splat _ | .closureArgs .. => "Array"
   | .enumRewind _ => "Object"
-  | .raiseString => "String"
+  | .raiseString | .stopMessage _ => "String"
   | .raiseException _ => "Exception"
   | .exceptionString _ => "String"
 
@@ -61,7 +61,7 @@ def blockPassNoConversion (m : Machine) (call : ConversionCall) (source : Value)
   | .enumRewind o => .next { resetEnumerator m o with ctl := .value (.ref o) }
   | .block _ => .next (raiseErr m Boot.typeErrorId
       s!"no implicit conversion of {className m.heap (realClassOf m.heap source)} into Proc")
-  | .stringPlus _ => .next (raiseErr m Boot.typeErrorId
+  | .stringPlus _ | .stopMessage _ => .next (raiseErr m Boot.typeErrorId
       s!"no implicit conversion of {Builtins.coerceName m.heap source} into String")
 
 def blockPassInvalid (m : Machine) (call : ConversionCall) (source result : Value) : StepResult :=
@@ -82,6 +82,9 @@ def finishConversion (m : Machine) (call : ConversionCall) (source result : Valu
   | .raiseString =>
     if result.identEq .nil then blockPassNoConversion m call source
     else if (Builtins.strPayload? m.heap result).isSome then raiseString m result
+    else blockPassInvalid m call source result
+  | .stopMessage value =>
+    if (Builtins.strPayload? m.heap result).isSome then newStop m none value result
     else blockPassInvalid m call source result
   | .raiseException _ =>
     if isA m.heap result Boot.exceptionId then .next (withCtl m (.jump (.raiseJ result)))

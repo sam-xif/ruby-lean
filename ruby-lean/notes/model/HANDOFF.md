@@ -1,6 +1,61 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L285)
+## Active conformance goal (2026-09-28, L286)
+
+The full CRuby conformance goal is active and incomplete. This turn made verified
+progress: L286 fixed the native-error-initialize defect left by L285. L276–L286
+remain uncommitted. No checker/proof/floor source edits, typed gate or commit.
+Proof repair remains explicitly deferred. Unrelated paper/ and wasm upstream-bug
+files are untouched.
+
+Native VM errors now initialize through ordinary private dispatch, retaining $!
+and bypassing new/allocate/exception; native NameError/NoMethodError/KeyError keep
+their deliberate direct initialization. FrozenError initializes its mutable prefix
+BEFORE inspecting and appending; callback message replacement, mutations, frozen
+checks and exceptions are respected. StopIteration initializes inside the producer
+on first completion, then from the original's live raw message inside the caller
+on later resumes. Uncaught throw sends tag/value/raw format to initialize and
+inspects its live tag lazily at message time. Native metadata survives copies.
+Nondefault printf formats, non-String throw format conversion, cause/backtrace and
+other native metadata remain partial. See model L286, difftest N60 and semantics
+README §§04.5/04.7.
+
+Verified full baseline20260928-075300:bootstrap1309 =1090 agree / zero disagree /
+213 unsupported, five invalid controls and the old test_syntax_115 harness error.
+Tier1 n300 seed20260927 =219 agree /81 unsupported / zero disagree. All old
+source/verdict pairs unchanged from L285. Final replay075806 =124 agree / one old
+sorbet-hash gate / zero failures (125 programs); all120 old sources/verdicts held.
+The full1309 run preceded only a final native tag/value copy correction; final
+binary replay of all23 bootstrap sources mentioning copy/throw =17 agree /six
+old gates, unchanged. Extra27 all agree, expanded permanent5 all agree. Focused24
+=22 agree /two old gates; Previous250 =238 agree /12 old gates, with the known
+native-error-initialize disagreement now agree and every other verdict unchanged.
+Frontend50 agree /zero disagree, AST-idempotent, six old render-only instabilities.
+Three standalone and three identical-source loading checks agree. Final model
+build98 jobs PASS; generated cmp and whitespace checks pass. All processes ended.
+
+AGENTS.md proof audit ran and FAILED exit1 at lake build Metatheory; NotDone and
+KontFrame appear in the captured failed-target tail, axiom scan not reached.
+No repairs. Log /private/tmp/conformance-l286-proof-audit.log. The executable
+model checks pass; metatheory does not. Evidence: /private/tmp/conformance-l286-*.
+
+Next confirmed known-bug priority: method parameter destructuring. Audit
+/private/tmp/conformance-l287-binding-audit.{py,json,log} has seven disagreements /
+one agreement. Private/public/nested to_ary are skipped, nil converters lose
+side effects, invalid converters fail to raise TypeError, and short inputs reuse
+leading values in trailing slots. CRuby evaluates optional defaults BEFORE these
+conversions (the default-order probe pins this); current pure destructureBind is
+folded into pre-default binding in Interp/Dispatch.lean. Repair the binding pipeline
+with effectful checked conversion and correct nonoverlapping positional slicing.
+No L287 source edits yet. No new fixed guards claim these still-failing cases.
+
+Continue full scope after that: native Class/Module/Random/Regexp constructors,
+legacy for/each, constant/ancestry/mixin hooks, generic dup/clone callbacks, File
+stub, Kernel owner folding, repeated inclusion identity, Sorbet/loader fidelity,
+and remaining bootstrap eval/TracePoint/reflection/RubyVM gates. Do not invent a
+process-specific hash to bypass the one old sorbet-hash gate.
+
+## Previous batch (2026-09-28, L285)
 
 The full conformance goal is active and incomplete. L276–L285 changes are
 uncommitted; no checker/proof/floor edits or typed gate. Proof repair is explicitly

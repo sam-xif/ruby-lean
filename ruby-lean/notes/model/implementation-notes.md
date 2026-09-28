@@ -14667,3 +14667,89 @@ failed targets; the axiom scan was not reached. Log:
 /private/tmp/conformance-l285-proof-audit.log. No proof repair was attempted.
 All validation processes have now terminated; model conformance checks pass,
 metatheory does not. No typed gate or commit. Full semantics goal remains active.
+
+## L286 — native error construction and lazy throw messages (2026-09-28)
+
+The next L285 defect was a missing TypeError#initialize callback for native errors.
+Native rb_raise/rb_exc_new paths now allocate a blank exception, queue ordinary
+private initialize(message) with no block/keywords, discard its result and raise
+the instance. Surrounding $! is retained while it runs. new, allocate and exception
+class-method overrides are bypassed. Native NameError/NoMethodError/KeyError use
+CRuby's separate direct native initialization and continue to bypass Ruby initialize.
+The oracle distinguishes these paths; a blanket rewrite would be incorrect.
+
+FrozenError now renders the class, initializes with a mutable prefix String,
+checks the exception's frozen state when native receiver metadata would be set,
+then enters the receiver-inspection recursion guard. Inspect/to_s effects and
+failures propagate. Native append targets the original prefix, bypasses String#<<
+overrides, and checks its live frozen bit. It still appends when initialize changed
+the exception's message to another Value. Callback-raised errors prevent receiver
+inspection. Recursive inspection uses the native ellipsis branch after initialization.
+
+StopIteration now initializes in the finishing producer's execution context,
+with a retained fiber-unwind marker, before result metadata is set. Only successful
+initialization caches the exception and restores the caller; callback failure resets
+the producer. Repeated next/peek duplicates the original's current raw String message
+and initializes a fresh error in caller context, retaining the live result. A nil
+raw message goes through checked to_str and normally raises TypeError. Other
+non-String repeated messages and cause metadata remain gates.
+
+Uncaught throw now passes tag, value, and raw format "uncaught throw %p" to ordinary
+initialize. Prelude's native initializer delegates the remaining arguments to super,
+then sets hidden native tag/value fields; custom initialize can raise or omit super.
+The default message inspects the live tag lazily, with ordinary inspect/to_s and
+native fallback rendering. Exception repr therefore defers for this class. Default
+and fixed non-format Strings are supported; other printf formats and non-String
+format conversion remain gates. CRubyNames now includes UncaughtThrowError's own
+methods. Copies preserve tag/value fields as well as the raw message. A final
+review caught that copy detail after the initial full suites; final focused and
+copy/throw-related bootstrap checks follow below.
+
+Primary implementation cross-checks (oracle remains pinned CRuby4.0.5):
+- https://raw.githubusercontent.com/ruby/ruby/master/error.c — rb_exc_new_str,
+  rb_name_err_new and rb_error_frozen_object.
+- https://raw.githubusercontent.com/ruby/ruby/master/enumerator.c — next_i and
+  get_next_values construct in different execution contexts.
+- https://raw.githubusercontent.com/ruby/ruby/master/vm_eval.c — rb_throw_obj,
+  uncaught_throw_init and uncaught_throw_to_s.
+
+Five permanent programs cover these protocols. Initial full reports:
+20260928-075300-tier0-lean = 1,090 agree / zero disagree / 213 unsupported, five
+invalid controls and the old test_syntax_115 harness error; same-stamp tier1 =
+219 agree / 81 unsupported (n300 seed20260927). Every old source/verdict unchanged.
+20260928-075350-replay-lean = 124 agree / one old sorbet-hash gate, 125 programs;
+every old source/verdict unchanged. Previous250 replay = 238 agree / 12 old gates;
+only changed verdict is the known native-error-initialize failure, now agree.
+Focused24 = 22 agree / two old gates (Module#remove_const and String#replace).
+Initial extra25 all agree. Frontend50 agree / zero disagree, AST-idempotent, six
+old render-only instabilities. Model build98 jobs passes; generated-file and
+whitespace checks pass. Final validation/proof audit results are appended below.
+
+The ongoing goal remains incomplete. No checker/proof/floor source edits, typed
+gate or commit. Proof repair is deferred. Next confirmed issue: destructured method
+parameters silently skip to_ary, including private conversions and nested values.
+Trailing parameters overlap leading ones on short inputs. Oracle/model audit
+/private/tmp/conformance-l287-binding-audit.{py,json,log}: seven disagreements,
+one agreement. Defaults execute BEFORE these conversions in CRuby, so inserting
+conversion into the current pre-default destructureBind fold would preserve the
+wrong order. Repair that binding pipeline next. Broader constructor, for/each,
+constant/ancestry/mixin, dup/clone and remaining bootstrap gates stay in scope.
+Evidence for this batch: /private/tmp/conformance-l286-*.
+
+Final L286 validation after the copy-field fix: build98 jobs PASS. Extra27 all
+agree, including copies and nil-message conversion; all five expanded permanent
+programs agree. Final replay20260928-075806-replay-lean has124 agree / the one old
+sorbet-hash gate, zero failures. All120 pre-existing sources/verdicts held. The23
+bootstrap sources mentioning throw/catch/dup/clone/exception were replayed on the
+final binary:17 agree / six old gates, all source/verdict pairs unchanged. The
+full1309 baseline above preceded only the final metadata-copy correction; that
+correction received this targeted bootstrap replay and the full regression replay.
+No bootstrap claim has been increased. Final frontend50 agree / zero disagree,
+AST-idempotent with six old render-only instabilities; three standalone core-only
+and three identical-source loading checks agree. Generated-file cmp and git diff
+--check pass. All validation processes terminated.
+
+The required check-proofs.sh audit FAILED at lake build Metatheory (exit1),
+with NotDone and KontFrame in the captured failed-target tail; axiom scan was not
+reached. /private/tmp/conformance-l286-proof-audit.log. No proof repairs, typed
+gate or commit. The full semantics goal remains active and incomplete.

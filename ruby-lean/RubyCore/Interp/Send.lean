@@ -132,6 +132,7 @@ where
         if bid == "Exception.exception" then callConstruct m recv args blk kw else
         if bid == "Exception#exception" then callExceptionCopy m recv args kw else
         if bid == "Exception#to_s" then callExceptionMessage m recv args kw else
+        if bid == "UncaughtThrowError#to_s" then callUncaughtMessage m recv args kw else
         if bid == "Object#initialize_clone" then callInitializeClone m recv args kw else
         if bid == "Class#new" || bid == "Module#new" then callConstruct m recv args blk kw else
         if bid == "Class#allocate" then callAllocate m recv args kw else
@@ -228,6 +229,7 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
         if bid == "Exception.exception" then callConstruct m self args blk kw else
         if bid == "Exception#exception" then callExceptionCopy m self args kw else
         if bid == "Exception#to_s" then callExceptionMessage m self args kw else
+        if bid == "UncaughtThrowError#to_s" then callUncaughtMessage m self args kw else
         if bid == "Object#initialize_clone" then callInitializeClone m self args kw else
         if bid == "Class#new" || bid == "Module#new" then callConstruct m self args blk kw else
         if bid == "Class#allocate" then callAllocate m self args kw else

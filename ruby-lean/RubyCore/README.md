@@ -711,8 +711,20 @@ protocol. Exception's singleton exception method constructs directly, independen
 of overridden new. The instance method returns self for no argument or self,
 otherwise clones through initialize_clone/initialize_copy and replaces the message
 without dispatching initialize. Source frozen state is applied after clone hooks.
-Metadata/backtrace/cause, singleton copies, and the separate native-VM error
-construction protocol remain incomplete. **[V]** (L285)
+Metadata/backtrace/cause and singleton copies remain incomplete. **[V]** (L285)
+
+Native VM errors construct through private initialize(message), preserving the
+surrounding `$!` and bypassing overridden new/allocate/exception. Native NameError,
+NoMethodError and KeyError use direct native initialization instead. FrozenError
+renders the class, initializes with a mutable prefix String, then inspects the
+receiver and appends to that same String. A callback can replace the exception's
+message, mutate/freeze the prefix, or raise before inspection. **[V]** (L286)
+
+An uncaught throw constructs with `(tag, value, "uncaught throw %p")`; its native
+initializer delegates the remaining arguments to super and then stores hidden
+tag/value metadata. Message rendering inspects the live tag lazily, including
+String conversion of a non-String inspect result. Arbitrary printf formats and
+non-String format conversion remain gated. **[V]** (L286)
 
 **Rescue matching uses `===`**, and the **default rescue class is `StandardError`,
 not `Exception`** **[V]** — so `raise Exception` is *not* caught by a bare
@@ -761,10 +773,13 @@ ordinary dispatch, independent of `next`. The first external resume dispatches
 the Enumerator's own `each`, honoring overrides, with a native yield callback.
 `next`/`peek` pack zero, one and multiple yielded arguments; their `_values`
 variants always return an Array. Peek caches yielded arguments, while feed is
-consumed only when execution resumes past that yield. Completion caches the
-method result and raises a fresh StopIteration carrying it on every subsequent
-resume. Errors reset the producer; nested Enumerators retain separate dynamic
-exception/control contexts. **[V]**
+consumed only when execution resumes past that yield. Completion initializes
+StopIteration inside the producer's execution context, stores the method result
+after that callback, and caches the exception. Later resumes duplicate its live
+raw String message and initialize a fresh StopIteration in the caller's context.
+Errors reset the producer; nested Enumerators retain separate dynamic exception/
+control contexts. StopIteration cause chains and repeated non-String messages
+other than nil remain gated. **[V]** (L280, L286)
 
 `rewind` checks the receiver's rewind protocol, including response/missing
 hooks, before discarding suspension. It does not execute abandoned `ensure`

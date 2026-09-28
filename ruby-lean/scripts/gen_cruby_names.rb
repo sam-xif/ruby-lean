@@ -52,6 +52,7 @@ FOLD = {
   "KeyError" => [KeyError],
   "RangeError" => [RangeError],
   "StopIteration" => [StopIteration],
+  "UncaughtThrowError" => [UncaughtThrowError],
   "NotImplementedError" => [NotImplementedError],
   "ScriptError" => [ScriptError],
 }.freeze

@@ -109,6 +109,43 @@ def callExceptionMessage (m : Machine) (recv : Value) (args : List Value)
     | _ => .unsupported "Exception message without an exception payload"
   | _ => .unsupported "Exception message on a non-object"
 
+/-- The native default throw format inspects the live tag at message time.
+    Other printf formats remain outside the current String formatter fragment. -/
+def callUncaughtMessage (m : Machine) (recv : Value) (args : List Value)
+    (kw : List (Value × Value)) : StepResult :=
+  let (args, m) := appendKwHash m args kw
+  if !args.isEmpty then enumArity m args.length "0" else
+  match recv with
+  | .ref o => match (m.heap.get o).payload with
+    | .exc message => match Builtins.strPayload? m.heap message with
+      | some str =>
+        if str == "uncaught throw %p" then
+          .next { m with ctl := .send (m.heap.get o).throwTag .reflective "inspect" [] none [], kont := .uncaughtInspectK none :: m.kont }
+        else if !str.contains '%' then
+          let (v, m) := Builtins.allocStrEnc m str (Builtins.isBinaryStr m.heap message)
+          .next (withCtl m (.value v))
+        else .unsupported "UncaughtThrowError custom printf format"
+      | none => .unsupported "UncaughtThrowError format String conversion"
+    | _ => .unsupported "UncaughtThrowError without exception payload"
+  | _ => .unsupported "UncaughtThrowError receiver"
+
+def finishUncaughtInspect (m : Machine) (source : Option Value) (v : Value) : StepResult :=
+  match Builtins.strPayload? m.heap v with
+  | some str =>
+    if Builtins.isBinaryStr m.heap v && hasHighByte str then
+      .unsupported "UncaughtThrowError tag containing non-UTF-8 bytes" else
+    let (v, m) := Builtins.allocStr m ("uncaught throw " ++ str)
+    .next (withCtl m (.value v))
+  | none => match source with
+    | none => .next { m with ctl := .send v .reflective "to_s" [] none [], kont := .uncaughtInspectK (some v) :: m.kont }
+    | some source => match Builtins.run "Object#__any_to_s" source [] m with
+      | .ok repr m => match Builtins.strPayload? m.heap repr with
+        | some str =>
+          let (v, m) := Builtins.allocStr m ("uncaught throw " ++ str)
+          .next (withCtl m (.value v))
+        | none => .unsupported "UncaughtThrowError generic String rendering"
+      | result => constructResult result
+
 def callRaise (m : Machine) (args : List Value) (kw : List (Value × Value)) : StepResult :=
   if !kw.isEmpty then .unsupported "raise keyword/cause protocol" else
   match args with
