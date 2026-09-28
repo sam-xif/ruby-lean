@@ -613,6 +613,15 @@ are distinct from singleton-class display names; Object-qualified declarations
 still acquire bare top-level names. Shared descendants whose chosen path depends
 on CRuby's symbol-table iteration order remain gated. **[V]** (L295)
 
+Native `Module#name` returns a frozen base String cached by native path and
+encoding tag. Repeated reads and distinct namespaces bearing the same path share
+identity; permanent promotion selects a new cached value without mutating saved
+temporary-name Strings. Anonymous namespaces return nil. ASCII temporary paths
+are binary; non-ASCII paths are UTF-8. Permanent ASCII paths retain the existing
+US-ASCII/UTF-8 observation boundary. Ruby String constructors/freezing hooks do
+not run, and `Module#to_s`/`inspect` still return fresh mutable display Strings.
+This name cache does not implement general String#-@ interning. **[V]** (L297)
+
 Native `Module#const_set` checks arity, then converts its name through checked
 `to_str` unless it is already a Symbol or String. Conversion and name validation
 precede the frozen check. UTF-8 names require an uppercase/titlecase first scalar;

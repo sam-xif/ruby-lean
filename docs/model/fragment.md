@@ -117,12 +117,17 @@ L295 distinguishes temporary and permanent namespace paths and propagates a new
 permanent path through live nested constants before callbacks. Frozen descendants,
 ancestor cycles, native singleton-class paths and Object-qualified declarations
 follow the same naming rule. Shared descendants with competing paths still need
-CRuby's symbol-table order and are explicitly gated; Module#name String identity,
-temporary-name APIs and namespace copying remain separate work.
+CRuby's symbol-table order and are explicitly gated; temporary-name APIs and
+namespace copying remain separate work.
 
 L296 makes String#b native and always copies into a mutable base String. Binary,
 frozen and subclass receivers keep their bytes while losing per-object metadata;
 Ruby conversion/copy hooks and the former __as_binary helper cannot intercept it.
+
+L297 caches frozen native Module#name Strings by path and encoding tag, preserving
+shared identity and earlier temporary-name snapshots during permanent promotion.
+Native display remains fresh and mutable. Permanent ASCII-name encoding and
+general String#-@ interning remain separate work.
 
 Tier-0 baseline: **940/1304 bootstraptest agree, 0 disagree.**
 

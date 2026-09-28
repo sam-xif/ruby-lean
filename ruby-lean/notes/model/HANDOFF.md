@@ -1,6 +1,58 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L296)
+## Active conformance goal (2026-09-28, L297)
+
+L296 and L297 are separate increments: native fresh String#b copies, then frozen
+cached Module#name identity. The latter shares equal native paths, keeps old name
+snapshots through permanent promotion and preserves identity across heap writes
+and optional-feature loading. Native to_s/inspect remain fresh and mutable.
+Seven name-cache-* guards retain 32 agreeing probes. The 33-case audit repairs
+29 disagreements and one temporary-name encoding gate; one old clone keyword
+failure remains. All seven disagreements in the original 14-case name audit are
+also repaired; its five gates remain. L276–L297 have separate commits.
+
+Final validation: model build passes (102 jobs), with no later runtime edits.
+Full bootstrap: 1,309 cases, 1,096 agree, zero disagree, 207 unsupported, five
+existing invalid controls and the old test_syntax_115 harness error. Every source
+and verdict matches L296. Regression replay: 203 cases, 202 agree and one old
+sorbet-hash gate; all 196 earlier sources/verdicts hold. Tier 1 (300, seed
+20260927): 226 agree, 74 gates, all sources/verdicts unchanged. Frontend seeds
+plus new guards: 53 agree, all AST-idempotent; six old render-only instabilities
+plus one benign name-cache-reads rendering instability. Standalone and feature
+loading: three agreements each. Whitespace checks pass. Build logs, before/after
+probes, combined-source validation, comparisons and the next audit are archived
+in `difftest/reports/20260928-incremental-L297/`. No checker, proof, comparator,
+normalizer or floor changes; proof repair remains explicitly deferred.
+
+The typed gate was rerun and remains red at HeapFacts className/lookup proof
+drift; its captured error log exactly matches L296. Proof repair stays deferred.
+
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.
+
+Next known semantic failure: native clone keyword handling. The 16-case
+`probes/next-audit.json` (script beside it) records eight clone disagreements,
+six general String interning disagreements, one singleton-copy gate and one
+agreeing positional-hash rejection. Object, Array, Hash, String and binary String
+clone(freeze: false/true) enter the positional-Hash/zero-arity path. Immediate
+values silently ignore freeze:false instead of raising; unknown/invalid keyword
+validation and subclass initialize_clone hooks also disagree. Repair the native
+copy protocol (aliases/super and effectful initialize_clone/initialize_copy),
+not just the arity list. Default no-keyword cloning has an agreeing name probe.
+
+General String#-@ and frozen-literal canonicalization remain known wrong answers.
+The old String#-@ comment that sharing is unobservable is false. A complete pool
+must share Unicode and temporary native names in both allocation orders, preserve
+metadata/subclass rules and represent the US-ASCII distinction: A.name shares
+with -A.name.dup, but not with -"A" or -"A".b. Permanent ASCII-name encoding still
+gates honestly. Competing namespace paths, Integer#chr's ASCII encoding,
+set_temporary_name, namespace copy/removal, const_missing, native method-removal/
+Kernel ownership and Random/Regexp overrides remain open conformance work.
+
+No running campaigns remain. Unrelated paper/ and wasm upstream-bug files are
+untouched. Full conformance remains incomplete; proof repair is deferred.
+
+## Previous batch (2026-09-28, L296)
 
 L296 makes String#b native and always returns a fresh mutable base String.
 It fixes binary receiver aliasing and bypasses the exposed __as_binary wrapper.

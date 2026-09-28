@@ -14,6 +14,22 @@ namespace RubyCore
 
 namespace Builtins
 
+/-- Module#name returns its frozen native path String, including shared identity
+    across bindings with the same path. Promotion selects a new cached String;
+    earlier temporary-name values remain unchanged. Anonymous namespaces return
+    nil. ASCII permanent names retain the existing US-ASCII/UTF-8 boundary;
+    temporary ASCII paths are native binary Strings (L297). -/
+def nativeModuleName (m : Machine) (c : ClassPayload) : BRes :=
+  if c.name.isEmpty then .ok .nil m else
+  let binary := !c.namePermanent && !hasHighByte c.name
+  match m.heap.nameStrings.find? (fun (s, b, _) => s == c.name && b == binary) with
+  | some (_, _, o) => .ok (.ref o) m
+  | none =>
+    let (o, h) := m.heap.alloc
+      { klass := Boot.stringId, payload := .str c.name, binary, frozen := true }
+    let h := { h with nameStrings := (c.name, binary, o) :: h.nameStrings }
+    .ok (.ref o) { m with heap := h }
+
 /-- Exception, Module and Class rules — the end of the chain, so this is -/
 def setConstantVisibility (m : Machine) (recv : Value) (o : ObjId) (privateConst : Bool)
     (names : List String) : BRes :=
@@ -89,7 +105,7 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
       match h.classPayload? k with
       | some c =>
         if bid == "Module#name" then
-          if c.name.isEmpty then .ok .nil m else okStr m c.name
+          nativeModuleName m c
         else okStr m (className h k)
       | none => .unsupported "name"
     | _ => .unsupported "name"

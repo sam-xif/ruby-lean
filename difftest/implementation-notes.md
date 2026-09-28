@@ -2221,3 +2221,34 @@ entry; neither cleanup changes behavior. Evidence is archived in
 
 The typed gate was rerun and remains red at the existing HeapFacts className/lookup
 proof drift. Its log is archived; proof repair remains explicitly deferred.
+
+
+## N71 — native Module#name String identity (2026-09-28)
+
+Seven name-cache-* programs retain 32 agreeing probes from model L297's 33-case
+audit. The baseline had 30 disagreements, two agreements and one gate; after
+repair, 29 disagreements and the temporary binary-name encoding gate agree.
+String#clone(freeze: false)'s existing arity disagreement remains separate work.
+The original 14-case audit also retains all seven repaired identity cases and
+its five unchanged gates. Shared equal paths, old frozen name snapshots, native
+aliases/super, allocation and feature-loading survival, independent copies and
+callback visibility are exercised. Global hook overrides are isolated. No
+comparator, observation normalization, checker or floor was changed.
+
+Final validation: model build passes (102 jobs), with no later runtime edits.
+Full bootstrap: 1,309 cases, 1,096 agree, zero disagree, 207 unsupported, five
+existing invalid controls and the old test_syntax_115 harness error. Every source
+and verdict matches L296. Regression replay: 203 cases, 202 agree and one old
+sorbet-hash gate; all 196 earlier sources/verdicts hold. Tier 1 (300, seed
+20260927): 226 agree, 74 gates, all sources/verdicts unchanged. Frontend seeds
+plus new guards: 53 agree, all AST-idempotent; six old render-only instabilities
+plus one benign name-cache-reads rendering instability. Standalone and feature
+loading: three agreements each. Whitespace checks pass. Build logs, before/after
+probes, combined-source validation, comparisons and the next audit are archived
+in `difftest/reports/20260928-incremental-L297/`. No checker, proof, comparator,
+normalizer or floor changes; proof repair remains explicitly deferred.
+
+The typed gate was rerun and remains red at HeapFacts className/lookup proof
+drift; its captured error log exactly matches L296. Proof repair stays deferred.
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.

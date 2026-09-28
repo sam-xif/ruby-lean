@@ -277,6 +277,10 @@ deriving Inhabited
 /-- ObjId = index; allocation appends (ids never reused, artifact 01 §2). -/
 structure Heap where
   objs : Array Object
+  /-- Frozen native namespace-name Strings, shared by equal paths (L297).
+      Kept in the heap so prelude/runtime boundaries retain name identity.
+      The Bool is the String's binary tag; general String interning is separate. -/
+  nameStrings : List (String × Bool × ObjId) := []
 deriving Inhabited
 
 namespace Heap
@@ -286,10 +290,10 @@ def get? (h : Heap) (o : ObjId) : Option Object := h.objs[o]?
 def get (h : Heap) (o : ObjId) : Object := h.objs.getD o default
 
 def set (h : Heap) (o : ObjId) (obj : Object) : Heap :=
-  ⟨h.objs.set! o { obj with revision := (h.get o).revision + 1 }⟩
+  { h with objs := h.objs.set! o { obj with revision := (h.get o).revision + 1 } }
 
 def alloc (h : Heap) (obj : Object) : ObjId × Heap :=
-  (h.objs.size, ⟨h.objs.push obj⟩)
+  (h.objs.size, { h with objs := h.objs.push obj })
 
 def classPayload? (h : Heap) (o : ObjId) : Option ClassPayload :=
   match (h.get o).payload with
@@ -551,7 +555,7 @@ def initHeap : Heap :=
   -- classes allocated in ascending-id order ⇒ alloc index = id.
   let hClasses := (sortById classTable).foldl
     (fun h (e : ObjId × String × Option ObjId) => (h.alloc (mkClassObj e.2.1 e.2.2)).2)
-    (⟨#[]⟩ : Heap)
+    ({ objs := #[] } : Heap)
   -- main object (allocated last, after all classes)
   let hMain := (hClasses.alloc { klass := objectId }).2
   -- install builtins

@@ -15316,3 +15316,64 @@ entry; neither cleanup changes behavior. Evidence is archived in
 
 The typed gate was rerun and remains red at the existing HeapFacts className/lookup
 proof drift. Its log is archived; proof repair remains explicitly deferred.
+
+
+## L297 — frozen native namespace-name identity (2026-09-28)
+
+Module#name returned a fresh mutable String on every read. It now uses a heap
+cache keyed by native path and String encoding tag: repeated reads and different
+namespaces assigned the same path share a frozen base String. Permanent naming
+selects a new path key; old temporary-name snapshots remain frozen and unchanged.
+Anonymous names remain nil. The cache survives heap writes/allocations and the
+prelude/runtime boundary; Heap.set/alloc preserve it explicitly. Reads bypass
+Ruby constructors, freezing hooks and overridden name methods through aliases or
+super. Module#to_s and inspect continue allocating fresh mutable display Strings.
+
+CRuby stores and returns its frozen native classpath VALUE (variable.c's classname,
+rb_mod_name and set_namespace_path); equal nested paths use rb_fstring. Executable
+CRuby 4.0.5 confirms path sharing, cache identity and promotion snapshots. ASCII
+temporary paths use ASCII-8BIT; Unicode paths use UTF-8. Permanent ASCII names
+really use US-ASCII, which the binary/UTF-8 model still cannot distinguish from
+other ASCII text: their encoding observation remains explicitly unsupported.
+The cache is deliberately native-name-only; general String#-@ canonicalization
+is still an independently observable known error, not claimed repaired here.
+
+The 33-case audit moves 29 disagreements and one old encoding gate to agreement,
+for 32 agreements and one existing String#clone(freeze: false) arity failure.
+A separate default-clone probe agrees. The original 14-case audit moves all seven
+disagreements to agreement, with nine agreements and five unchanged gates
+(String#replace, competing namespace paths and permanent ASCII-name encoding).
+Seven name-cache-* programs preserve all 32 agreeing probes, including aliases,
+super, frozen metadata rejection, duplicate paths, promotion and failed callbacks,
+Hash key identity, allocation survival and optional-feature loading. Core String
+and Object.const_added overrides are isolated in their own programs. Every exact
+combined source agrees before its sidecar is marked fixed. The L296 String#b
+prerequisite now gives cached temporary/binary names independent mutable copies.
+
+The preserved next-audit has 16 probes: 14 disagreements, one singleton-copy gate
+and one agreeing positional-hash rejection. Six disagreements show general
+String#-@ / frozen-literal canonicalization, including native name sharing. Eight
+show clone keyword validation/behavior across Object, Array, Hash, String, binary
+Strings, subclasses and immediate values. Send/super currently append keyword
+arguments into a positional Hash before the zeroArgBids path; clone also needs
+an effectful initialize_clone/initialize_copy protocol, not just an arity exception.
+Use this evidence for the next increment; none of these failures is hidden or
+counted as repaired by the native name cache.
+
+Final validation: model build passes (102 jobs), with no later runtime edits.
+Full bootstrap: 1,309 cases, 1,096 agree, zero disagree, 207 unsupported, five
+existing invalid controls and the old test_syntax_115 harness error. Every source
+and verdict matches L296. Regression replay: 203 cases, 202 agree and one old
+sorbet-hash gate; all 196 earlier sources/verdicts hold. Tier 1 (300, seed
+20260927): 226 agree, 74 gates, all sources/verdicts unchanged. Frontend seeds
+plus new guards: 53 agree, all AST-idempotent; six old render-only instabilities
+plus one benign name-cache-reads rendering instability. Standalone and feature
+loading: three agreements each. Whitespace checks pass. Build logs, before/after
+probes, combined-source validation, comparisons and the next audit are archived
+in `difftest/reports/20260928-incremental-L297/`. No checker, proof, comparator,
+normalizer or floor changes; proof repair remains explicitly deferred.
+
+The typed gate was rerun and remains red at HeapFacts className/lookup proof
+drift; its captured error log exactly matches L296. Proof repair stays deferred.
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.
