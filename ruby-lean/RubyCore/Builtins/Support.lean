@@ -90,6 +90,38 @@ def programOverridden (h : Heap) (sens : List String) (k : ObjId) : Bool :=
         sens.contains n && md.builtin.isNone && !md.undefined && !md.fromPrelude
     | none => false
 
+/-- The native operation implemented by the payload renderer. A builtin alias
+    is pure only when it still resolves to this operation (L290). -/
+def nativeReprOwner (h : Heap) (name : String) : Value → String
+  | .nil => "NilClass"
+  | .bool true => "TrueClass"
+  | .bool false => "FalseClass"
+  | .int _ => "Integer"
+  | .flt _ => "Float"
+  | .sym _ => "Symbol"
+  | .ref o => match (h.get o).payload with
+    | .none | .rng _ | .generator _ | .yielder .. => "Object"
+    | .str _ => "String"
+    | .arr _ => "Array"
+    | .hsh _ => "Hash"
+    | .cls _ => "Module"
+    | .exc _ => "Exception"
+    | .proc _ => "Proc"
+    | .range .. => "Range"
+    | .rational .. => "Rational"
+    | .complex .. => "Complex"
+    | .regexp .. => "Regexp"
+    | .mdata .. => "MatchData"
+    | .enumerator _ => if name == "to_s" then "Object" else "Enumerator"
+    | .chain _ => if name == "to_s" then "Object" else "Enumerator::Chain"
+
+def reprUnchanged (h : Heap) (sens : List String) (value : Value) : Bool :=
+  sens.all fun name =>
+    if name == "inspect" || name == "to_s" then
+      (lookup h value name).any fun (_, md) =>
+        !md.undefined && md.builtin == some (nativeReprOwner h name value ++ "#" ++ name)
+    else !reprOverridden h [name] (classOf h value)
+
 /-- Native Object#inspect uses rb_check_funcall before reading ivars. A known
     default hook with no custom respond_to? is the only effect-free shortcut. -/
 def objectInspectPure (h : Heap) (recv : Value) : Bool :=
@@ -97,9 +129,9 @@ def objectInspectPure (h : Heap) (recv : Value) : Bool :=
     ((lookup h recv "instance_variables_to_inspect").any fun (_, md) =>
       !md.undefined && md.builtin == some "Object#instance_variables_to_inspect")
 
-/-- Can pure repr (Repr.lean) speak for this value? Only if nothing in the
-    ancestor chain *dispatch would walk* overrides a repr-sensitive method — and,
-    for containers, recursively for what they hold.
+/-- Can pure repr (Repr.lean) speak for this value? The resolved method must
+    still be the native renderer for its payload, including aliases/tombstones;
+    containers also check the values they render (L290).
 
     `classOf`, not the object's `klass`: the chain starts at the **eigenclass**,
     so a `def obj.inspect` or an `o.extend(M)` makes the value impure exactly as a
@@ -111,7 +143,7 @@ private partial def pureOkSeen (h : Heap) (sens : List String) (seen : List ObjI
   | .ref o =>
     if seen.contains o then false else
     let seen := o :: seen
-    let own := !reprOverridden h sens (classOf h (.ref o))
+    let own := reprUnchanged h sens (.ref o)
     match (h.get o).payload with
     -- A container renders its elements with *their* renderer, so purity is
     -- recursive even when the container's own class is untouched — and it
@@ -127,7 +159,7 @@ private partial def pureOkSeen (h : Heap) (sens : List String) (seen : List ObjI
     -- `#<C:0x…>` and ignored the override — found by the L122 range head, which
     -- gives its endpoints a fixed `inspect` precisely so no address is observed.
     | .range lo hi _ => own && pureOkSeen h sens seen lo && pureOkSeen h sens seen hi
-    | .rational _ _ => own && !reprOverridden h sens Boot.integerId
+    | .rational _ _ => own && reprUnchanged h sens (.int 0)
     | .complex r i => own && pureOkSeen h sens seen r && pureOkSeen h sens seen i &&
         (!sens.contains "to_s" || [r, i].all (fun v =>
           !reprOverridden h ["to_str"] (classOf h v)))
@@ -146,12 +178,11 @@ private partial def pureOkSeen (h : Heap) (sens : List String) (seen : List ObjI
         | .ref message => match (h.get message).payload with | .str _ => true | _ => false
         | _ => false
       own && !isA h (.ref o) Boot.uncaughtThrowErrorId &&
-        !reprOverridden h ["to_s"] (classOf h (.ref o)) && direct
+        reprUnchanged h ["to_s"] (.ref o) && direct
     | .proc _ => false   -- Proc repr is address-based → never pure
     | _ => own
-  -- An immediate has no eigenclass slot, so `classOf` here *is* `realClassOf`;
-  -- written as `classOf` so the two arms cannot drift.
-  | v => !reprOverridden h sens (classOf h v)
+  -- Immediates also resolve the exact native renderer, honoring class aliases.
+  | v => reprUnchanged h sens v
 
 def pureOk (h : Heap) (sens : List String) (value : Value) : Bool :=
   pureOkSeen h sens [] value
@@ -182,7 +213,7 @@ def reprDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     -- `Range#to_s` is deliberately not here — it really does use its endpoints'
     -- `to_s` [V].
     if pureOk h inspectSensitive recv then none else some "__to_s_slow"
-  else if bid == "Object#to_s" || bid == "Range#to_s" then
+  else if bid == "Range#to_s" then
     if pureOk h toSSensitive recv then none else some "__to_s_slow"
   else if bid == "Range#inspect" then
     if pureOk h inspectSensitive recv then none else some "__inspect_slow"
@@ -495,7 +526,7 @@ def byteStrAwareBids : List String :=
    "Object#==", "Object#!=", "Object#!", "Object#equal?", "Object#eql?",
    "Object#hash", "Object#class", "Object#nil?", "Object#itself", "Object#is_a?", "Object#kind_of?",
    "Object#instance_of?", "Object#respond_to?", "Object#freeze", "Object#frozen?",
-   "Object#inspect", "Object#p", "Object#__user_defines?", "Object#instance_variables_to_inspect",
+   "Object#inspect", "Object#to_s", "Object#p", "Object#__user_defines?", "Object#instance_variables_to_inspect",
    -- reads the method table, never the value (L127)
    "Object#__default_inspect?",
    -- renders the receiver's *class name* and address, never its payload (L129)

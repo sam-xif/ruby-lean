@@ -1,6 +1,33 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L289)
+## Active conformance goal (2026-09-28, L290)
+
+Continue toward CRuby conformance, fixing known semantics issues first. The user
+requires an incremental commit for each change and the full bootstrap differential
+suite before each commit. Proof repair remains deferred. The accumulated
+L276–L290 batches have been reconstructed separately; each commit records a fresh
+model build, full bootstrap replay and regression replay. Evidence lives under
+`difftest/reports/20260928-incremental-LNNN/`. These later commit records supersede
+the historical uncommitted-status statements below. Unrelated paper/ and wasm
+upstream-bug files remain untouched.
+
+L290 checks resolved builtin identities before using pure inspect/to_s, fixes
+native Object#to_s on subclass payloads and Random, preserves NoMethodError on
+missing representation methods, and fixes deferred puts on an empty Array.
+Seven original alias disagreements now agree; 32 extra probes yield 28 agreements
+and four existing gates. Eleven native-repr-* permanent cases pin these repairs.
+The full bootstrap result and commit hashes are recorded by the commit series.
+
+Next known issues: `/private/tmp/conformance-l290-class-audit.json` has nine
+Class construction/inherited-callback disagreements and seven explicit gates.
+No class-construction fixes were started. Also retain the native method-removal
+shadow/Kernel ownership limitations and the old sorbet-hash-gate. Do not count
+unsupported results as conformance or weaken the comparator. The proof gate was
+attempted and failed in HeapFacts on className/lookup drift; do not claim it green.
+Full conformance remains incomplete.
+
+
+## Previous batch (2026-09-28, L289)
 
 Full conformance remains active/incomplete. L288 and L289 made verified progress;
 L276–L289 are uncommitted. No checker/proof/floor edits, typed gate or commit.

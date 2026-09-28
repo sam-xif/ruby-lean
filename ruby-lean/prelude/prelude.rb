@@ -1445,7 +1445,7 @@ class Object
   def __as_string
     return self if String === self
 
-    s = to_s
+    s = self.to_s
     String === s ? s : __any_to_s
   end
 
@@ -1453,7 +1453,7 @@ class Object
   # is why `p Bar.new` prints `1` for a `Bar#inspect` that answers `1`, rather than
   # raising [V]. Note it is the *result* that is coerced here, not the receiver.
   def __as_inspect
-    v = inspect
+    v = self.inspect
     String === v ? v : v.__as_string
   end
 
@@ -1474,7 +1474,7 @@ class Object
     nil
   end
 
-  # `puts` flattens arrays, prints a blank line for nil or an empty array, and
+  # `puts` flattens arrays, prints a blank line for nil, skips empty arrays, and
   # does not double a newline the value already ends with [V].
   def __puts_slow(*args)
     return __write("\n") if args.empty?
@@ -1493,7 +1493,7 @@ class Object
     unless String === a
       arr = __check_array_type(a)
       unless arr.nil?
-        return __write("\n") if arr.empty?
+        return nil if arr.empty?
 
         arr.each { |e| __puts_one(e) }
         return nil

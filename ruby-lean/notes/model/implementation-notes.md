@@ -14943,3 +14943,36 @@ disagreements /seven gates: inherited is skipped, Class can be subclassed, Modul
 superclass error wording differs, and uninitialized/overridden Class/Module native
 initializers remain gated. Preserve both audits while prioritizing the adjacent
 representation defect, then class creation.
+
+
+## L290 — resolved native rendering aliases (2026-09-28)
+
+A seven-case audit found that pure rendering treated aliases of unrelated native
+methods as if they were the payload's native inspect/to_s. For example, aliasing
+inspect to class, itself, or Array#length must execute that selected method. The
+pure path now checks the resolved builtin identity against the payload's native
+renderer, including immediate values and nested numeric components. Alias bodies
+remain snapshots even when their original method name is later redefined.
+
+Object#to_s now uses native class/address rendering independently of a subclass's
+String/Array payload; main retains its native "main" spelling. Random objects use
+the same native address rendering. Effectful __as_string/__as_inspect sends name
+self explicitly, preserving private conversion behavior while producing the proper
+NoMethodError when a method is undefined. Deferred puts on an empty converted
+Array produces no newline, matching the native puts path.
+
+All seven original rendering disagreements now agree. The additional 32 probes
+have 28 agreements, four explicit gates and zero disagreements. Eleven exact
+witnesses are permanent native-repr-* regressions, covering aliases, inherited
+native rendering, missing methods, and converted/nested empty arrays. Model build
+passes (100 jobs). The inherited Kernel/Object ownership boundary and native
+method-removal shadow inventories remain open; these four refusals are not fixes.
+The separate Class construction/inherited-callback audit remains follow-up work.
+
+The user now requires incremental commits and a full bootstrap differential replay
+before each commit while proof repair remains deferred. L276–L290 were recovered
+as separate implementation batches. Every commit records its fresh build,
+bootstrap and regression replay; evidence is under
+`difftest/reports/20260928-incremental-LNNN/`. The typed gate was attempted on the
+accumulated work and is RED in shared HeapFacts proofs (className/lookup drift).
+No proof source or checker acceptance rule was changed to conceal that failure.

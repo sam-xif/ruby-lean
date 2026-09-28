@@ -315,7 +315,6 @@ partial def toS (h : Heap) (v : Value) : Except String String := do
     | .cls _ => return className h o   -- as in `inspect` above (L124)
     | .exc msg => if msg.identEq .nil then return className h (h.get o).klass else toS h msg
     | .proc _ => throw "Proc#to_s (address non-deterministic)"
-    | .rng _ => throw "Random#to_s (state/address non-deterministic)"
     | .range lo hi excl =>
       return (← toS h lo) ++ (if excl then "..." else "..") ++ (← toS h hi)
     | .rational n d => return s!"{n}/{d}"
@@ -327,7 +326,7 @@ partial def toS (h : Heap) (v : Value) : Except String String := do
       if (h.get o).binary && hasHighByte whole then
         throw "MatchData#to_s over a byte-string subject with a byte ≥ 0x80 (L118)"
       else return whole
-    | .none =>
+    | .none | .rng _ =>
       let cname := className h (h.get o).klass
       return s!"#<{cname}:{fakeAddr o}>"
 

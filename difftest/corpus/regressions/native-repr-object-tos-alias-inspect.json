@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L290 (2026-09-28)",
+  "note": "Native repr must follow the resolved builtin identity, preserve missing-method errors and avoid output for converted empty arrays. Exact witness agrees with CRuby 4.0.5."
+}

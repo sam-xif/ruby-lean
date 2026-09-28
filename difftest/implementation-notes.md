@@ -2021,3 +2021,18 @@ checks pass. Proof audit fails before axiom scan; repair remains deferred.
 Model L289 and /private/tmp/conformance-l289-* contain details. Two next-work
 audits preserve seven native-repr-alias failures and nine class-creation failures;
 those are not claimed fixed by this batch.
+
+
+## N64 — native renderer identity and incremental commit validation (2026-09-28)
+
+Model L290 pins eleven native-repr-* witnesses. Pure representation is allowed
+only when lookup resolves to the payload's actual native renderer. Aliases to
+class/itself/length/to_s, inherited native inspection, missing inspect/to_s, and
+puts on empty converted arrays all use their proper dispatch behavior. The seven
+original wrong answers agree; 32 extra probes give 28 agreements and four gates.
+
+The accumulated L276–L290 work is committed as separate batches. Each batch is
+built and run against all 1,309 bootstrap cases and its regression corpus before
+commit, with full reports at `reports/20260928-incremental-LNNN/`. Bootstrap
+sources and verdicts are compared to that batch's original report, with no
+comparison normalization changes. Proof repair is still explicitly deferred.

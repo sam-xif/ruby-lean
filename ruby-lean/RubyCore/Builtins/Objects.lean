@@ -88,7 +88,10 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     match recv with
     | .ref o => okStr m (fakeAddr o)
     | _ => .unsupported "__addr_str of an immediate"
-  | "Object#__any_to_s" =>
+  | "Object#to_s" | "Object#__any_to_s" =>
+    -- A resolved Object#to_s renders class/address even on a native payload.
+    -- Only main's ordinary to_s has the special singleton spelling (L290).
+    if bid == "Object#to_s" && recv.identEq (.ref Boot.mainId) then okStr m "main" else
     -- CRuby's **`rb_any_to_s`** (L129): `#<Foo:0x…>`, the form every C-level
     -- renderer falls back to when a user `to_s` hands it something that is not a
     -- String. A primitive rather than prelude Ruby for the reason `Heap.anyToS`
@@ -186,10 +189,6 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
   | "Object#itself" => .ok recv m
   | "Object#inspect" =>
     match inspectP m recv with
-    | .ok s => okStr m s
-    | .error e => .unsupported e
-  | "Object#to_s" =>
-    match toSP m recv with
     | .ok s => okStr m s
     | .error e => .unsupported e
   | "Object#frozen?" | "Hash#frozen?" =>
