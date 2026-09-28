@@ -13,6 +13,7 @@ Errors (`Except String`) are Unsupported reasons, e.g. float formatting
 -/
 import RubyCore.Complex
 import RubyCore.FloatFmt
+import RubyCore.Unicode
 
 namespace RubyCore
 
@@ -48,7 +49,8 @@ private def escapeChar (binary : Bool) (c : Char) (next? : Option Char) : String
       String.ofList (List.replicate (width - hex.length) '0') ++ hex
     if binary then
       if c.val < 0x20 || c.val ≥ 0x7f then s!"\\x{hexOf 2}" else String.singleton c
-    else if c.val < 0x20 || c.val == 0x7f then s!"\\u{hexOf 4}"
+    else if !unicodePrintable c then
+      if c.toNat ≤ 0xffff then s!"\\u{hexOf 4}" else "\\u{" ++ hexOf 0 ++ "}"
     else String.singleton c
 
 def escapeStringEnc (binary : Bool) (s : String) : String := Id.run do

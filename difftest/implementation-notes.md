@@ -2102,3 +2102,24 @@ build; proof repair remains deferred.
 No observation normalization, checker acceptance or proof changes. The existing
 proof gate remains red under the user's explicit proof-repair deferral. Model L292
 records the rules and precise remaining constant mutation work.
+
+
+## N67 — Unicode String inspection boundaries (2026-09-28)
+
+Model L293 adds unicode-string-inspect.rb: 41 Unicode/control boundary values,
+nested inspect output, interpolation escaping, String subclasses and explicit
+binary strings. The generator independently verifies the printability predicate
+against native CRuby for every Unicode scalar. The initial broader test found
+an old Integer#chr ASCII encoding disagreement, retained in the initial audit
+report rather than claimed fixed by this String-rendering change.
+
+Validation: lake build rubycore passes (102 jobs). All 1,309 bootstrap cases ran:
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+the old test_syntax_115 harness error. Every source/verdict pair matches L292.
+Regression replay: 176 agree and the one old sorbet-hash gate (177 total); all old
+sources/verdicts hold. Frontend: 47 agree, AST-idempotent, with the six old
+render-only instabilities. Generator verification/reproduction and whitespace
+checks pass. Reports and logs: difftest/reports/20260928-incremental-L293/.
+Proof repair remains deferred; the typed gate is not claimed green.
+The typed gate was rerun and failed at the existing HeapFacts className/lookup
+proof drift; its captured log is retained. No proof repair was attempted.

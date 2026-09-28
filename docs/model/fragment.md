@@ -14,6 +14,7 @@ regenerated. Paths are relative to `ruby-lean/`.
 | `RubyCore/Syntax.lean` | `Expr` (mirrors the harness S-expr heads 1:1) + JSON decoder for the versioned export (`lib/export.rb`) |
 | `RubyCore/Heap.lean` | `Value`, `Object`, `Heap`, bootstrap heap **H₀** (metaclass knot as initial data), pure `classOf`/`ancestors`/`lookup`/const ops (artifacts 01–02) |
 | `RubyCore/Repr.lean` | Ruby-faithful default `inspect`/`to_s`, pure `==`/`eql?` — the byte-exact strings the observation compares |
+| `RubyCore/Unicode.lean` | **generated from the oracle**: Unicode printability for native String inspection (L293) |
 | `RubyCore/CRubyNames.lean` | **generated from the oracle**: per-class method-name sets + toplevel constants, so dispatch can detect "an unmodeled CRuby builtin would shadow this" and gate instead of mis-dispatching |
 | `RubyCore/Machine.lean` | `Machine` config: control state, kont stack, frame **store** + id stack (sketch §1.2), stdout accumulator, `$!` |
 | `RubyCore/Builtins.lean` | the axiomatized builtin methods, keyed `"Owner#name"`, registered in H₀'s method tables so shadowing is uniform |
@@ -101,6 +102,10 @@ inherited and class bodies follow it. Rescue targets use their lexical namespace
 with the rescued exception already installed as $!. Callback failures preserve
 writes and obey normal unwinding. Constant-name validation/conversion, removal and
 recursive namespace naming remain separate open conformance work.
+
+L293 corrects native String inspection for non-printing Unicode scalars, including
+line separators, unassigned characters and supplementary-plane escapes. The
+generated Unicode table is verified against CRuby for all 1,112,064 scalars.
 
 Tier-0 baseline: **940/1304 bootstraptest agree, 0 disagree.**
 
@@ -233,3 +238,14 @@ Optional feature inventories are captured in isolated subprocesses by
 `scripts/cruby_feature_names.rb`; they do not pollute the core snapshot. Missing
 library APIs gate only on objects opened by model library code or on roots of
 attempted features. Namespace tags preserve this distinction through aliases.
+
+## Regenerating `Unicode.lean`
+
+Run with the pinned CRuby oracle when its Unicode version changes:
+
+```sh
+ruby scripts/gen_unicode.rb --verify > RubyCore/Unicode.lean
+```
+
+The optional `--verify` cross-checks every Unicode scalar against native
+String inspection before emitting the compact range table.

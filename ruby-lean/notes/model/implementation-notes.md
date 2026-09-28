@@ -15115,3 +15115,34 @@ and remove_const are additional recorded gates. These existing gaps are separate
 from the callback ordering fixed here. Proof repair remains explicitly deferred;
 the known HeapFacts className/lookup failure is not repaired or claimed green.
 See difftest N66 and /private/tmp/conformance-l292-* for evidence.
+
+
+## L293 — Unicode String inspection (2026-09-28)
+
+Native UTF-8 String inspection previously emitted non-printing Unicode scalars
+literally. Repr now uses the pinned CRuby 4.0.5 / Unicode 17.0.0 printability
+table, retaining named control escapes and using \uXXXX or \u{XXXXX} for the
+remaining non-printing characters. Binary byte rendering is unchanged.
+The new scripts/gen_unicode.rb generator emits Unicode.lean and, with --verify,
+cross-checks all 1,112,064 Unicode scalars against native String#inspect. A second
+verified generation reproduces the committed table byte for byte.
+
+The unicode-string-inspect guard exercises native/nested/subclass rendering,
+41 character boundaries, interpolation escapes and explicit binary strings.
+The first broader probe also exposed an existing Integer#chr encoding error:
+0.chr and 127.chr have Unicode escapes in the model instead of CRuby's byte
+escapes. Its original disagreeing report is retained under
+regressions-initial-chr-audit; the String-focused guard uses explicit .b for
+those ASCII byte strings. This is a separate open producer-encoding defect,
+not a Unicode printability mismatch.
+
+Validation: lake build rubycore passes (102 jobs). All 1,309 bootstrap cases ran:
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+the old test_syntax_115 harness error. Every source/verdict pair matches L292.
+Regression replay: 176 agree and the one old sorbet-hash gate (177 total); all old
+sources/verdicts hold. Frontend: 47 agree, AST-idempotent, with the six old
+render-only instabilities. Generator verification/reproduction and whitespace
+checks pass. Reports and logs: difftest/reports/20260928-incremental-L293/.
+Proof repair remains deferred; the typed gate is not claimed green.
+The typed gate was rerun and failed at the existing HeapFacts className/lookup
+proof drift; its captured log is retained. No proof repair was attempted.

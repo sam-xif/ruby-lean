@@ -1,6 +1,32 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L292)
+## Active conformance goal (2026-09-28, L293)
+
+The user requested separate commits for every completed increment. L276–L292
+already have individual commits. L293 isolates the Unicode String inspection
+fix from the pending native const_set work. The Unicode generator verifies every
+scalar against CRuby 4.0.5; the regression covers controls, supplementary-plane
+escapes, nested/subclass inspection and explicit binary strings.
+
+Validation: lake build rubycore passes (102 jobs). All 1,309 bootstrap cases ran:
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+the old test_syntax_115 harness error. Every source/verdict pair matches L292.
+Regression replay: 176 agree and the one old sorbet-hash gate (177 total); all old
+sources/verdicts hold. Frontend: 47 agree, AST-idempotent, with the six old
+render-only instabilities. Generator verification/reproduction and whitespace
+checks pass. Reports and logs: difftest/reports/20260928-incremental-L293/.
+Proof repair remains deferred; the typed gate is not claimed green.
+
+Next: finish and separately commit native const_set validation/conversion, whose
+pending implementation is preserved under /private/tmp/ruby-lean-commit-current/.
+Constant descendant naming remains a known wrong answer. The new initial audit
+also records Integer#chr's existing ASCII encoding error (0.chr/127.chr render
+with Unicode rather than byte escapes); preserve that witness for a separate fix.
+No proof, checker, comparator or floor changes. The previously recorded proof
+failure remains deferred. Unrelated paper/ and wasm upstream-bug files are untouched.
+Full conformance remains incomplete.
+
+## Previous batch (2026-09-28, L292)
 
 Continue toward CRuby conformance, fixing known semantics issues first. Commit
 each increment separately and run the full bootstrap differential suite before

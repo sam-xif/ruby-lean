@@ -731,6 +731,12 @@ allowed only when these hooks cannot run, and detects cycles before recursing.
 Binary non-UTF-8 nested renderings and native Object#inspect on immediate values
 remain explicit gates. **[V]** (L289)
 
+Native UTF-8 String inspection escapes non-printing Unicode scalars with
+`\uXXXX` or supplementary-plane `\u{XXXXX}` notation. Printability comes from
+the pinned CRuby oracle's generated Unicode table, verified against every scalar.
+Existing named control escapes, interpolation escaping and binary byte escapes
+retain their separate rules. **[V]** (L293)
+
 ### 04 §3 — The unwinding model
 
 `return`, `break`, `next`, `redo`, `retry` and `raise` are **not** ordinary
