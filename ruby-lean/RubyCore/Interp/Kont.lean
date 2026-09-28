@@ -278,6 +278,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | .retK => doReturn m v
       | .brkK => .next (withCtl m (.jump (.brkJ v)))
       | .nxtK => .next (withCtl m (.jump (.nxtJ v)))
+    | .paramBindK pending body => stepParamBinding m pending body
     | .optDefK name rest post body =>
       -- v is the default value for `name`; bind it, then the next default, or
       -- (all defaults done) install post/rest/block and run the body.

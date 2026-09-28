@@ -1,6 +1,67 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L286)
+## Active conformance goal (2026-09-28, L287)
+
+Full CRuby conformance remains active and incomplete. This turn made verified
+progress: all seven confirmed parameter-destructuring failures are repaired, and
+five bootstrap plus seven seeded generated programs move from gated to agree.
+L276–L287 changes remain uncommitted. No checker/proof/floor source edits, typed
+gate or commit; proof repair is explicitly deferred. Unrelated paper/ and wasm
+upstream-bug files remain untouched.
+
+Nested formal binding now advances through Kont.paramBindK and the shared checked
+conversion protocol (ConversionCall.paramDestructure). Actual Arrays bypass to_ary;
+missing/nil conversion expands the original scalar, invalid results raise TypeError.
+Private methods, response hooks, missing handlers and nonlocal exits are ordinary
+transitions. Each expansion snapshots values before nested callbacks and assigns
+trailing slots only from the unconsumed tail, padding short inputs with nil. Later
+parameters read the live heap. Method positional/keyword defaults run BEFORE nested
+conversion; component names are nil in that phase and shadow captured define_method
+locals. Blocks/procs/lambdas share the binding queue, retaining strict/lenient
+arity and redo/return/next behavior. Synthetic slots use inaccessible names, avoiding
+collisions with __destr_0. Optional/keyword/forwarding closure forms still gate.
+The old executable destructureBind helper is removed; no proof repair attempted.
+
+All reports20260928-080526:bootstrap1309 =1095 agree / zero disagree /208
+unsupported, five invalid controls and the old test_syntax_115 harness error.
+Gains exactly test_block_037/038/039/040 and test_massign_008. Tier1 n300
+seed20260927 =226 agree /74 unsupported, seven gains. Replay129 =128 agree /one
+old sorbet-hash gate. Every old source is unchanged; no prior agreement lost.
+Previous301 =287 agree /14 gates, every verdict unchanged. Focused20, extra29,
+147-call shape matrix and permanent4 all agree. Frontend49 agree /zero disagree,
+AST-idempotent with six old render-only instabilities. Standalone3 and identical-
+source loading3 agree. Final build98 jobs passes; both generated files match
+regeneration and whitespace checks pass. All validation sessions terminated;
+no pending builds or tests and no source edits after final build except docs.
+Model notes L287 and difftest N61 record the full results. Evidence:
+/private/tmp/conformance-l287-*.
+
+Required proof audit FAILED exit1 during lake build Metatheory; NotDone and
+KontFrame in captured failed-target tail; axiom scan not reached. Log:
+/private/tmp/conformance-l287-proof-audit.log. Repairs remain deferred.
+
+Next confirmed priority: legacy for bypasses each and snapshots Array contents.
+/private/tmp/conformance-l288-for-audit.{py,json,log}: five disagreements (Array
+each override, live growth, live replacement, to_ary, break binding), two old gates
+(custom/private each), one scope agreement. for-oracle and for-escape-oracle logs
+pin CRuby details: call ordinary explicit each (private each raises), return its
+normal result, share enclosing locals/block/match scope, and honor live iteration.
+Single-target for takes the FIRST yielded argument; multi-target for destructures
+all yielded values. Body yield/block_given? refers to the enclosing method block.
+Escaped for callbacks must raise LocalJumpError for stale return/break targets;
+naively pushing an old enclosing method frame id would revive a dead return scope.
+A captured block reports lambda? false and arity1/-1 for single/multiple targets.
+Start at Interp/Kont.lean's forStartK/forBodyK and Send.lean's forBind/forStep. The
+old implementation's comment that for evaluates to its collection is too broad:
+overridden each can return a different value. No L288 source edits yet.
+
+Continue full scope after that: Class/Module/Random/Regexp/Array constructor
+protocols, constant/ancestry/mixin hooks, generic dup/clone callbacks, File stub,
+Kernel owner folding, repeated inclusion identity, Sorbet/loader fidelity, and
+remaining bootstrap eval/TracePoint/reflection/RubyVM gates. Do not invent a
+process-specific hash to bypass the sole old sorbet-hash gate.
+
+## Previous batch (2026-09-28, L286)
 
 The full CRuby conformance goal is active and incomplete. This turn made verified
 progress: L286 fixed the native-error-initialize defect left by L285. L276–L286

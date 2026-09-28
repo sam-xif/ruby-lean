@@ -127,6 +127,7 @@ def kontLabel : Kont → String
   | .forStartK .. => "for: start ▢"
   | .forBodyK .. => "for: after body"
   | .iterK _ _ rest .. => s!"iterate (+{rest.length} more)"
+  | .paramBindK .. => "bind destructured parameters"
   | .optDefK n .. => s!"then bind opt {n} = ▢"
   | .definedRecvK m => s!"then defined?(▢.{m})"
   | .definedCpathK n => s!"then defined?(▢::{n})"

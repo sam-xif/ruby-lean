@@ -22,8 +22,9 @@ regenerated. Paths are relative to `ruby-lean/`.
 | `RubyCore/Prelude.lean` | **generated** by `scripts/gen_prelude.rb` from the core prelude and feature files: export JSON decoded by ordinary `Decode.program` |
 | `RubyCore/PreludeBoot.lean` | the two-phase boot: run the prelude from H₀ (`preludeMode`), then the program under test on the resulting heap (`Machine.initOn`) |
 | `RubyCore/Interp.lean` | `stepFn` (one transition; helpers deliberately non-mutual) + `run fuel` (`outOfFuel` ≠ `stuck` from day one) |
+| `RubyCore/Interp/BlockPass.lean` | Checked conversion continuations, including nested method/block parameter destructuring after defaults (L275–L287) |
 | `RubyCore/Interp/Enumerator.lean` | Native Enumerator/Generator/Yielder descriptors, internal dispatch and suspended external execution (L280) |
-| `RubyCore/Interp/Construct.lean` | Native constructor/allocator dispatch, block-aware initializers, and exception construction/copy/message protocols (L284/L285) |
+| `RubyCore/Interp/Construct.lean` | Native constructor/allocator dispatch, block-aware initializers, and exception construction/copy/message protocols (L284–L286) |
 | `RubyCore/Interp/Mutation.lean` | Method-table edits interleaved with ordinary Ruby callbacks and frozen-state checks (L282) |
 | `RubyCore/Interp/Forwardable.lean` | Forwardable's simple accessor source-generator fragment, compiled to real RubyCore definitions (L282) |
 | `RubyCore/Obs.lean` | observation = (stdout, result inspect, exception (class, msg)) |

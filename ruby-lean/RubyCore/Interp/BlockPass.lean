@@ -1,7 +1,7 @@
 import RubyCore.Interp.Send
 
 /-! Effectful checked conversion: block-pass to_proc (L275), String#+ to_str
-(L276), and splat/binding to_a/to_ary (L277). Each suspended Ruby call takes an
+(L276), splat/binding to_a/to_ary (L277), and nested parameter binding (L287). Each suspended Ruby call takes an
 ordinary machine transition.
 The block VM shortcut resolves a defined to_proc before checking response hooks;
 String conversion uses rb_check_funcall, which checks respond_to? first. -/
@@ -12,7 +12,7 @@ def conversionMethod : ConversionCall → String
   | .block _ => "to_proc"
   | .stringPlus _ => "to_str"
   | .splat _ => "to_a"
-  | .closureArgs .. => "to_ary"
+  | .closureArgs .. | .paramDestructure .. => "to_ary"
   | .enumRewind _ => "rewind"
   | .raiseString | .stopMessage _ => "to_str"
   | .raiseException _ => "exception"
@@ -25,7 +25,7 @@ def conversionArgs : ConversionCall → List Value
 def conversionType : ConversionCall → String
   | .block _ => "Proc"
   | .stringPlus _ => "String"
-  | .splat _ | .closureArgs .. => "Array"
+  | .splat _ | .closureArgs .. | .paramDestructure .. => "Array"
   | .enumRewind _ => "Object"
   | .raiseString | .stopMessage _ => "String"
   | .raiseException _ => "Exception"
@@ -58,6 +58,7 @@ def blockPassNoConversion (m : Machine) (call : ConversionCall) (source : Value)
   | .raiseException _ => .next (raiseErr m Boot.typeErrorId "exception class/object expected")
   | .splat pending => resumeSplat m pending [source]
   | .closureArgs cl brk selfOv defmodOv => enterClosure m cl [source] brk selfOv defmodOv
+  | .paramDestructure subs remaining body => expandParamBindings m subs [source] remaining body
   | .enumRewind o => .next { resetEnumerator m o with ctl := .value (.ref o) }
   | .block _ => .next (raiseErr m Boot.typeErrorId
       s!"no implicit conversion of {className m.heap (realClassOf m.heap source)} into Proc")
@@ -89,6 +90,11 @@ def finishConversion (m : Machine) (call : ConversionCall) (source result : Valu
   | .raiseException _ =>
     if isA m.heap result Boot.exceptionId then .next (withCtl m (.jump (.raiseJ result)))
     else .next (raiseErr m Boot.typeErrorId "exception object expected")
+  | .paramDestructure subs remaining body =>
+    if result.identEq .nil then blockPassNoConversion m call source
+    else match Builtins.arrPayload? m.heap result with
+      | some xs => expandParamBindings m subs xs.toList remaining body
+      | none => blockPassInvalid m call source result
   | .enumRewind o => .next { resetEnumerator m o with ctl := .value (.ref o) }
   | .block pending =>
     if blockPassProc m result then

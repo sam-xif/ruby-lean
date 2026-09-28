@@ -14753,3 +14753,88 @@ The required check-proofs.sh audit FAILED at lake build Metatheory (exit1),
 with NotDone and KontFrame in the captured failed-target tail; axiom scan was not
 reached. /private/tmp/conformance-l286-proof-audit.log. No proof repairs, typed
 gate or commit. The full semantics goal remains active and incomplete.
+
+## L287 — effectful nested parameter binding (2026-09-28)
+
+The L286 next-work audit had seven method-destructuring disagreements: to_ary was
+never called, private/nil/invalid converters were mishandled, nested effects were
+lost, and short inputs reused leading values in trailing slots. All seven now
+agree. The eighth, empty nested input, still agrees.
+
+The old pure destructureBind fold is replaced by a resumable binding queue.
+Kont.paramBindK handles one positional formal per transition; a non-Array nested
+source enters the shared checked-conversion protocol as ConversionCall.paramDestructure.
+Actual Arrays bypass conversion. Missing/nil converters expand [source]; invalid
+non-Array returns raise TypeError. Private methods, response hooks, dynamic method
+installation, custom missing handlers, exceptions and nonlocal exits use ordinary
+machine transitions. Each expansion snapshots leading/rest/trailing values before
+nested callbacks, pads absent positions with nil and slices trailing values only
+from the unconsumed tail. Later top-level parameter expansions see the live heap.
+
+Method entry captures raw destructuring slots but does not bind their component
+names until positional and keyword defaults finish. Those names are predeclared
+as nil, preventing define_method capture leakage; default assignments to them are
+subsequently replaced by binding. A pending binding continuation sits above the
+method frame boundary, below default evaluation. Thus parameter failures do not
+enter body-level rescue/ensure, but outer handlers and converter ensures still run.
+
+Simple closure classification now accepts nested positional formals. Procs,
+blocks and lambdas enter their usual frame before the same binding queue executes;
+strict arity, lenient automatic expansion, captured locals, next/return/redo and
+break boundaries retain their existing semantics. Redo repeats the body without
+repeating conversion. Optional/keyword/forwarding closure forms remain gated.
+Synthetic slot names are inaccessible Ruby identifiers (<destructure:N>) rather
+than __destr_N, which could collide with a user's real parameter/local.
+
+The CRuby oracle pins defaults-before-conversion, per-expansion snapshots and
+live later parameters. Primary implementation cross-check:
+https://raw.githubusercontent.com/ruby/ruby/master/vm_insnhelper.c (vm_expandarray).
+The seven-shape matrix covers methods, procs and lambdas across seven inputs,
+147 calls. Focused20 and extra29 all agree, and the matrix agrees. One initial
+Array subclass probe used the old gated Array.new(array) form; constructing an
+empty subclass then appending tests binding independently. That constructor gate
+remains known, not claimed fixed. One invalid trailing-comma formal was rejected
+by CRuby's parser and removed before the shape matrix was run.
+
+Four permanent programs combine all50 probe sources, including the matrix:
+parameter-destructure-conversion, parameter-destructure-order,
+block-destructure-binding and parameter-destructure-shapes. All four agree.
+A combined block test initially shadowed its own method call with a local f;
+spelling f() makes the intended method call explicit. No model change was needed.
+
+Model build98 jobs PASS. Regression replay20260928-080526-replay-lean:128 agree /
+one old sorbet-hash gate (129 programs), all125 old sources/verdicts unchanged.
+Tier1 at the same stamp (n300 seed20260927):226 agree /74 unsupported, zero
+disagreements. Exactly seven previous gates became agreements:00039,00040,00168,
+00169,00170,00171,00172. Sources unchanged. Previous301 =287 agree /14 old gates,
+every verdict unchanged. Frontend49 =49 agree /zero disagree, AST-idempotent,
+six old render-only instabilities. Three standalone core-only and three identical-
+source loading checks agree. Both generated files match regeneration and
+whitespace checks pass. Full bootstrap is finalized below.
+
+The AGENTS-required proof audit FAILED exit1 at lake build Metatheory; NotDone
+and KontFrame appear in the captured tail. Axiom scan not reached. No proof
+repair, checker/floor edits, typed gate or commit. Log:
+/private/tmp/conformance-l287-proof-audit.log. The full goal remains active.
+Evidence: /private/tmp/conformance-l287-*.
+
+Next confirmed priority: legacy for bypasses each. L288 for-audit has five
+disagreements (override, live growth/replacement, to_ary and break value), two old
+non-Array gates, and one scope agreement. CRuby calls ordinary explicit each,
+returns its normal result, honors overrides/live iterators, and preserves enclosing
+locals. The extra escaped-callback oracle pins LocalJumpError after the originating
+return/break scope exits: don't revive a dead method frame by pushing its existing
+id as a fresh activation. Single-target for uses the first yielded argument (not
+multi-argument packing); multi-target for destructures all yielded values. Its
+body retains the enclosing block for yield/block_given?. Evidence:
+/private/tmp/conformance-l288-{for-audit,for-oracle,for-escape-oracle}.*.
+No L288 source edits yet. Other constructor/ancestry/mixin/copy/bootstrap gaps
+remain in the active scope.
+
+Final bootstrap20260928-080526-tier0-lean:1,095 agree / zero disagree /208
+unsupported, five old invalid controls and the old test_syntax_115 harness error.
+Exactly test_block_037/038/039/040 and test_massign_008 move from gated to agree;
+every source is unchanged and no old agreement is lost. This is the same final
+binary as all other checks above. All validation sessions have terminated, and
+no L287 source edits remain unbuilt. Full goal remains active; the next known
+for/each discrepancies are confirmed independently, not claimed fixed.

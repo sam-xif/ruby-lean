@@ -259,37 +259,16 @@ def crubySingletonShadow (h : Heap) (recv : Value) (mname : String) : Option Str
     | _ => none
   | _ => none
 
-/-- The legacy `(pre, rest?, post, block?)` binding shape for a param list that
-    uses only `req`/`rest`/`block` kinds. -/
+/-- Positional closure binding, with deferred nested destructuring obligations. -/
 structure SimpleParams where
   pre : List String
   rest? : Option String
   post : List String
   block? : Option String
+  destrs : List (String × List Param) := []
 
-/-- Phase-2 increment-1 lowering: reduce a `List Param` to `SimpleParams` when it
-    uses only the three already-modeled kinds (`req`/`rest`/`block`); any
-    `opt`/`key`/`kwrest`/`fwd`/`destr` present returns `none`, so the caller
-    gates Unsupported. Anonymous `*`/`&` lower to the name `""` (parity with the
-    old sigil convention: `"*".drop 1 = ""`). Later increments replace this with
-    native per-kind binding. -/
-def classifySimple (ps0 : List Param) : Option SimpleParams :=
-  let reqName : Param → Option String := fun p => match p with | .req n => some n | _ => none
-  let (ps, block?) := match ps0.reverse with
-    | (.block n) :: more => (more.reverse, some (n.getD ""))
-    | _ => (ps0, none)
-  if ps.any (fun p => match p with | .req _ | .rest _ => false | _ => true) then none
-  else match ps.findIdx? (fun p => match p with | .rest _ => true | _ => false) with
-    | none => some { pre := ps.filterMap reqName, rest? := none, post := [], block? }
-    | some i =>
-      let restName := match ps[i]! with | .rest n => n.getD "" | _ => ""
-      some { pre := (ps.take i).filterMap reqName, rest? := some restName,
-             post := (ps.drop (i + 1)).filterMap reqName, block? }
-
-/-- Positional param structure including optionals (`req` / `opt` / `rest` /
-    trailing `req` / `block`). Returns `none` if any keyword/`kwrest`/`fwd`/
-    `destr` kind is present (still gated at this increment). Canonical Ruby
-    order: leading required, optionals, `*rest`, trailing required, `&block`. -/
+/-- Method parameter groups in canonical Ruby order, including keywords,
+    forwarding and deferred nested destructuring. -/
 structure FullParams where
   pre : List String
   opt : List (String × Expr)
@@ -299,7 +278,7 @@ structure FullParams where
   kwrest? : Option (Option String)     -- `**o` present? outer some, inner name
   block? : Option String
   -- destructuring params `(a, b)` carried as synthetic positional names paired
-  -- with their sub-params; expanded after positional binding (P5).
+  -- with their sub-params; expanded after defaults and positional binding (L287).
   destrs : List (String × List Param) := []
 
 /-- Reserved local names for `...` argument forwarding (`def m(...)`). -/
@@ -315,11 +294,12 @@ def classifyFull (ps0 : List Param) : Option FullParams :=
     | .fwd => [.rest (some fwdRest), .kwrest (some fwdKw), .block (some fwdBlk)]
     | _ => [p]
   -- destructuring params `(a,b)` occupy one positional slot each: replace with a
-  -- synthetic required name and record the obligation, expanded post-binding (P5).
+  -- inaccessible synthetic name and record the obligation, expanded after defaults.
+  -- A Ruby local such as __destr_0 must not collide with this bookkeeping.
   let destrs := (ps0.zipIdx).filterMap fun (p, i) =>
-    match p with | .destr subs => some (s!"__destr_{i}", subs) | _ => none
+    match p with | .destr subs => some (s!"<destructure:{i}>", subs) | _ => none
   let ps0 := (ps0.zipIdx).map fun (p, i) =>
-    match p with | .destr _ => Param.req s!"__destr_{i}" | _ => p
+    match p with | .destr _ => Param.req s!"<destructure:{i}>" | _ => p
   let (ps, block?) := match ps0.reverse with
     | (.block n) :: more => (more.reverse, some (n.getD ""))
     | _ => (ps0, none)
@@ -352,61 +332,63 @@ def classifyFull (ps0 : List Param) : Option FullParams :=
       keys := keyPs.filterMap (fun p => match p with | .key n d => some (n, d) | _ => none),
       kwrest?, block?, destrs }
 
-/-- The nesting depth of `.destr` sub-params, which is the fuel `destructureBind` needs. A
-    plain structural recursion (and computable, unlike `sizeOf`, whose `SizeOf` instance has
-    no LCNF signature). -/
+/-- Closures currently admit positional/rest/block parameters, including nested
+    destructuring. Optional/keyword/forwarding closure parameters remain gated. -/
+def classifySimple (ps : List Param) : Option SimpleParams := do
+  if ps.any (fun p => match p with | .req _ | .rest _ | .destr _ | .block _ => false | _ => true) then none
+  else
+    let fp ← classifyFull ps
+    return { pre := fp.pre, rest? := fp.rest?, post := fp.post, block? := fp.block?, destrs := fp.destrs }
+
+/-- Nested formal depth bounds the pure collection of declaration names. -/
 def destrDepth : List Param → Nat
   | [] => 0
   | .destr subs :: ps => max (1 + destrDepth subs) (destrDepth ps)
   | _ :: ps => destrDepth ps
 
-/-- Destructure `v` into a param list (`(a, *b, (c,d))`, massign-style): coerce
-    `v` to an array (its elements if an Array, else wrap as `[v]`), bind leading
-    positionals from the front, a `*rest` the middle, trailing positionals from
-    the back; nested `(…)` recurse. Only req/rest/destr sub-params occur (P5).
+def destructureNames (ps : List Param) : Nat → List String
+  | 0 => []
+  | fuel + 1 => ps.flatMap fun p => match p with
+    | .req n | .rest (some n) => [n]
+    | .destr subs => destructureNames subs fuel
+    | _ => []
 
-    **Fuel-bounded, not `partial`** (clink 53). The recursion is on nested
-    `.destr` sub-params but it goes through a `foldl`, so the decrease is not
-    visible to the termination checker — which is why this was `partial def`,
-    and a `partial def` compiles to an opaque constant with no equation lemmas,
-    so *nothing* about it is provable. That blocked the continuation-framing
-    metatheorem the semantic ladder (`Denote/Sem/`) needs
-    (`Denote/Sem/notes.md` §The fifth stall point, item 3), which is the
-    same trap `../../AGENTS.md` L73 warns about and the same fix `ancestors`
-    already took (`Heap.lean` L73).
-    Callers pass `destrDepth subs + 1` — the nesting depth *of the sub-list*
-    plus the level being bound here — so the `0` arm is unreachable and the
-    behaviour is unchanged. (`destrDepth` alone is off by one, and the symptom
-    is a silent `nil` binding: `def f((a, b), c)` answered
-    `NoMethodError: undefined method '+' for nil`. Caught by running it.) -/
-def destructureBind (m : Machine) (subs : List Param) (v : Value)
-    : Nat → List (String × Value) × Machine
-  | 0 => ([], m)
-  | fuel + 1 =>
-  let vals := match v with
-    | .ref o => match (m.heap.get o).payload with | .arr xs => xs.toList | _ => [v]
-    | _ => [v]
+/-- Binding advances one formal per transition, so checked conversion can call
+    arbitrary Ruby and unwind through the normal method/block boundary (L287). -/
+def queueParamBindings (m : Machine) (pending : List (Param × Value)) (body : Expr) : Machine :=
+  if pending.isEmpty then withCtl m (.eval body)
+  else withKont m (.value .nil) (.paramBindK pending body)
+
+/-- Snapshot one expansion before nested callbacks. Post values are drawn only
+    from the unconsumed tail; short inputs pad on the right with nil. -/
+def expandParamBindings (m : Machine) (subs : List Param) (values : List Value)
+    (remaining : List (Param × Value)) (body : Expr) : StepResult :=
   let isPos : Param → Bool := fun p => match p with | .rest _ => false | _ => true
-  let preP := subs.takeWhile isPos
-  let a1 := subs.dropWhile isPos
-  let (rest?, postP) := match a1 with
-    | (.rest n) :: t => (some n, t)
-    | _ => (none, a1)
-  let np := preP.length; let npost := postP.length; let n := vals.length
-  let bindPos : List (String × Value) × Machine → Param × Value →
-      List (String × Value) × Machine := fun (acc, m) (p, val) =>
-    match p with
-    | .req nm => (acc ++ [(nm, val)], m)
-    | .destr subs' => let (bs, m) := destructureBind m subs' val fuel; (acc ++ bs, m)
-    | _ => (acc, m)
-  let (preB, m) := (preP.zip (vals.take np)).foldl bindPos ([], m)
-  let (restB, m) := match rest? with
-    | some (some rn) =>
-      let mid := (vals.drop np).take (n - npost - np)
-      let (rv, m) := Builtins.allocArr m mid.toArray; ([(rn, rv)], m)
+  let pre := subs.takeWhile isPos
+  let (rest?, post) := match subs.dropWhile isPos with
+    | .rest name :: more => (some name, more)
+    | _ => (none, [])
+  let front := pre.zip ((List.range pre.length).map (fun i => values.getD i .nil))
+  let tail := values.drop pre.length
+  let midCount := tail.length - post.length
+  let back := post.zip ((List.range post.length).map (fun i => (tail.drop midCount).getD i .nil))
+  let (middle, m) := match rest? with
+    | some (some name) =>
+      let (v, m) := Builtins.allocArr m (tail.take midCount).toArray
+      ([(Param.req name, v)], m)
     | _ => ([], m)
-  let (postB, m) := (postP.zip (vals.drop (n - npost))).foldl bindPos ([], m)
-  (preB ++ restB ++ postB, m)
+  .next (queueParamBindings m (front ++ middle ++ back ++ remaining) body)
+
+def stepParamBinding (m : Machine) (pending : List (Param × Value)) (body : Expr) : StepResult :=
+  match pending with
+  | [] => .next (withCtl m (.eval body))
+  | (p, value) :: remaining => match p with
+    | .req name => .next (queueParamBindings (m.setLocal name value) remaining body)
+    | .destr subs => match Builtins.arrPayload? m.heap value with
+      | some xs => expandParamBindings m subs xs.toList remaining body
+      | none => .next (withKont m (.value value)
+          (.blkConvertK (.paramDestructure subs remaining body) value .start))
+    | _ => .stuck "non-positional formal in destructuring binding"
 
 /-- Ruby-3 keyword→positional collapse: when the callee has no keyword params, a
     trailing keyword bundle becomes one positional `Hash` argument (an *empty*
@@ -509,7 +491,7 @@ def enterClosure (m : Machine) (cl : Closure) (args : List Value)
     (brk : Option FrameId) (selfOv : Option Value := none)
     (defmodOv : Option ObjId := none) : StepResult :=
   match classifySimple cl.params with
-  | none => .unsupported "unmodeled block param kind (optional/keyword/forwarding/destructuring)"
+  | none => .unsupported "unmodeled block param kind (optional/keyword/forwarding)"
   | some sp =>
   let pre := sp.pre; let rest? := sp.rest?; let post := sp.post
   let required := pre.length + post.length
@@ -536,6 +518,11 @@ def enterClosure (m : Machine) (cl : Closure) (args : List Value)
         let postVals := (List.range post.length).map (fun i => postSrc.getD i .nil)
         let (rv, m) := Builtins.allocArr m midArgs.toArray
         (pre.zip preVals ++ [(rname, rv)] ++ post.zip postVals, m)
+    let pending := sp.destrs.map fun (sn, subs) =>
+      (Param.destr subs, ((locals.find? (·.1 == sn)).map (·.2)).getD .nil)
+    let locals := locals.filter (fun b => !(sp.destrs.any (·.1 == b.1))) ++
+      sp.destrs.flatMap (fun (_, subs) =>
+        (destructureNames subs (destrDepth subs + 1)).map (fun n => (n, Value.nil)))
     let locals := locals ++ cl.locals.map (fun n => (n, Value.nil))
     -- `getD 0` for a capture-free closure (`captured = none`, the `Symbol#to_proc`
     -- fiction — L266): reads the toplevel frame's `self`/`defmod`/`blk`/`cref`,
@@ -555,7 +542,8 @@ def enterClosure (m : Machine) (cl : Closure) (args : List Value)
         home := cl.home, lam := cl.lam, cref := capF.cref, libraryOrigin := cl.libraryOrigin }
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
-    .next (withKont m (.eval cl.body) (.blkFrameK fid cl.lam brk cl args))
+    let m := { m with kont := .blkFrameK fid cl.lam brk cl args :: m.kont }
+    .next (queueParamBindings m pending cl.body)
 
 /-- A lenient block with multiple positional slots expands its sole argument via
     checked to_ary. Lambdas and single/rest-only parameter shapes skip expansion. -/
@@ -568,7 +556,7 @@ def callClosure (m : Machine) (cl : Closure) (args : List Value)
         | .blockCallK s => s == scope | _ => false) then some scope else none
   if let some o := cl.enumYield then suspendEnumerator m o args else
   match classifySimple cl.params with
-  | none => .unsupported "unmodeled block param kind (optional/keyword/forwarding/destructuring)"
+  | none => .unsupported "unmodeled block param kind (optional/keyword/forwarding)"
   | some sp =>
     let required := sp.pre.length + sp.post.length
     let autoSplat := !cl.lam && args.length == 1 &&

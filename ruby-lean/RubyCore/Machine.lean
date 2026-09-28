@@ -174,6 +174,7 @@ inductive ConversionCall where
   | splat (call : SplatCall)
   | closureArgs (cl : Closure) (brk : Option FrameId)
       (selfOv : Option Value) (defmodOv : Option ObjId)
+  | paramDestructure (subs : List Param) (remaining : List (Param × Value)) (body : Expr)
   | enumRewind (object : ObjId)
   | raiseString
   | stopMessage (result : Value)
@@ -353,6 +354,7 @@ inductive Kont where
       then evaluate the next omitted default (`rest`), and once all defaults are
       bound, install the post/rest/block bindings (`post`) and run `body`.
       (Post/rest/block bind *after* defaults — a default cannot see them [V].) -/
+  | paramBindK (pending : List (Param × Value)) (body : Expr)
   | optDefK (name : String) (rest : List (String × Expr))
       (post : List (String × Value)) (body : Expr)
   /-- Method-activation boundary (generative jump target = frame identity,

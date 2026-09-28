@@ -643,6 +643,17 @@ locals resolve into the enclosing scope. Argument binding differs by
 - **lambda**: *strict*, exactly like a method. Wrong arity ⇒ `ArgumentError`, no
   auto-splat.
 
+Nested positional parameters use checked `to_ary`, honoring private methods,
+response hooks and missing handlers; actual Arrays bypass conversion. Missing or
+nil conversion treats the original as one value, while other non-Array results
+raise TypeError. Each expansion snapshots its leading/rest/trailing values before
+nested callbacks, pads short inputs with nil, and never reuses consumed leading
+values in trailing positions. Each later parameter sees the live heap. Methods
+perform positional and keyword defaults before nested conversions; destructured
+names are nil during defaults and shadow captured locals in define_method bodies.
+Blocks, procs and lambdas share this binding sequence and ordinary unwind rules.
+The compiler's synthetic slots cannot collide with Ruby local names. **[V]** (L287)
+
 So `bind` is parameterized by the flag, and method invocation uses the strict
 variant. `yield` calls the *current method frame's* block without naming it, with
 non-lambda binding, and raises `LocalJumpError` when there is none.

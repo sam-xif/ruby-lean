@@ -1946,3 +1946,33 @@ previous,copy-bootstrap}.json. The separate next-work binding audit (l287) has
 seven known disagreements and one agreement; it is not labeled fixed or added
 to the regression guards yet. Proof audit failed at Metatheory (NotDone/KontFrame
 in the captured tail); no axiom scan, proof repair, typed gate or commit.
+
+## N61 — nested parameter binding probes (2026-09-28)
+
+L287 adds parameter-destructure-conversion, parameter-destructure-order,
+block-destructure-binding and parameter-destructure-shapes. The four guards combine
+50 independent probe sources, including147 method/proc/lambda calls across seven
+nested/rest/trailing shapes and seven inputs. They pin checked to_ary, defaults
+before conversion, nil/error fallback, callback order and snapshots, scope isolation,
+short-input padding, private/missing/response dispatch and nonlocal exits. All agree.
+A combined-test local f initially hid a method call; explicit f() fixed the test.
+No semantic workaround was added. Array.new(array) is still an unrelated old gate;
+the subclass binding probe constructs an empty Array subclass and appends values.
+
+Reports20260928-080526:bootstrap1309 =1095 agree / zero disagree /208 unsupported,
+five old invalid controls and the old syntax115 harness error. Five gates become
+agreements: test_block_037/038/039/040 and test_massign_008. Tier1 n300 seed20260927
+=226 agree /74 unsupported; seven old gates become agreements. Replay129 =128
+agree /one old sorbet-hash gate. All prior sources are unchanged; no agreement
+is lost. Previous301 probes retain287 agreements /14 old gates. Focused20, extra29,
+the147-call shape matrix and four permanent guards all agree. Frontend49 agree /
+zero disagree, AST-idempotent with six old render-only instabilities. Standalone3
+and identical-source loading3 agree. Final build98 jobs, generated cmp and git
+diff --check pass. Proof audit fails at Metatheory; repairs remain deferred.
+
+Use N58's suite commands after building rubycore. For frontend verification add
+the four new regression paths to ruby desugar/bin/run desugar/corpus/seeds.
+Exact sources/results: /private/tmp/conformance-l287-{focused,extra,shapes,
+permanent,previous}.json. The separate L288 for-audit is next-work evidence:
+five disagreements, two old gates, one agreement, and further CRuby-only escape/
+yield-packing oracles. Those cases are not fixed guards. No typed gate or commit.

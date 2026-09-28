@@ -36,7 +36,7 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
     (args : List Value) (blk : Option Value) (kw : List (Value × Value) := []) : StepResult :=
   let fp? := classifyFull md.params
   if fp?.isNone then
-    .unsupported "unmodeled param kind (forwarding/destructuring)"
+    .unsupported "non-canonical method parameter shape"
   else
   let fp := fp?.getD ⟨[], [], none, [], [], none, none, []⟩
   let hasKw := !fp.keys.isEmpty || fp.kwrest?.isSome
@@ -102,15 +102,13 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
       | _ => ([], m)
     let localsB := restBinding ++ fp.post.zip postVals ++
       (match fp.block? with | some b => [(b, blk.getD .nil)] | none => []) ++ kwrestBinding
-    -- P5: expand destructuring params — the synthetic `__destr_k` slots hold the
-    -- raw arg; destructure each into its sub-names (added to Phase A so they are
-    -- visible to defaults), and drop the synthetic names.
-    let (destrB, m) := fp.destrs.foldl (fun (acc, m) (sn, subs) =>
-      let dv := ((localsA ++ localsB).find? (·.1 == sn)).map (·.2) |>.getD .nil
-      let (bs, m) := destructureBind m subs dv (destrDepth subs + 1)
-      (acc ++ bs, m)) ([], m)
+    -- Capture raw destructuring slots now, but expand only after all defaults.
+    -- Names inside them are nil during defaults, including define_method captures.
+    let pending := fp.destrs.map fun (sn, subs) =>
+      (Param.destr subs, (((localsA ++ localsB).find? (·.1 == sn)).map (·.2)).getD .nil)
+    let destrNames := fp.destrs.flatMap fun (_, subs) => destructureNames subs (destrDepth subs + 1)
     let notSynth : (String × Value) → Bool := fun b => !(fp.destrs.any (·.1 == b.1))
-    let localsA := localsA.filter notSynth ++ destrB
+    let localsA := localsA.filter notSynth
     let localsB := localsB.filter notSynth
     -- Pre-declare every formal that is bound *later* (`localsB` after defaults,
     -- and the omitted defaults themselves) as nil in this frame, so the
@@ -121,7 +119,7 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
     -- ...and, for the same reason, every name the *body* binds itself: a
     -- `define_method` block's block-locals (L125/C35). Ordinary `def`s carry an
     -- empty list here.
-    let predeclared := localsB.map (fun b => (b.1, Value.nil)) ++
+    let predeclared := destrNames.map (fun n => (n, Value.nil)) ++ localsB.map (fun b => (b.1, Value.nil)) ++
       (optOmitted ++ kwOmitted).map (fun d => (d.1, Value.nil)) ++
       md.declared.map (fun n => (n, Value.nil))
     -- `blk`: an ordinary method sees its caller's block. A `define_method` body
@@ -142,13 +140,16 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     let m := { m with kont := .frameK fid :: m.kont }
+    let m := if pending.isEmpty then m else { m with kont := .paramBindK pending md.body :: m.kont }
+    -- Defaults complete by delivering a value to the pending binding phase.
+    let body := if pending.isEmpty then md.body else Expr.nil
     -- positional-opt defaults first, then keyword defaults (Ruby order [V]).
     match optOmitted ++ kwOmitted with
     | [] =>
       let m := localsB.foldl (fun m (nv : String × Value) => m.setLocal nv.1 nv.2) m
-      .next (withCtl m (.eval md.body))
+      .next (withCtl m (.eval body))
     | (n0, d0) :: more =>
-      .next (withKont m (.eval d0) (.optDefK n0 more localsB md.body))
+      .next (withKont m (.eval d0) (.optDefK n0 more localsB body))
 
 /-- Assigning an **anonymous** class/module (from `Class.new`) to a constant gives
     it that constant's name [V]: `S = Class.new; S.name == "S"` (L72). Applied by
