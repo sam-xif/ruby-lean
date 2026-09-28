@@ -123,7 +123,7 @@ def main (args : List String) : IO UInt32 := do
         IO.println (Trace.traceJson maxSteps m0 traceStart).compress
         return 0
       let result := Interp.run fuel m0
-      match observe result with
+      match observe result fuel with
       | .obs obs =>
         IO.println obs.compress
         return 0

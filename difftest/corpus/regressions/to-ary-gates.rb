@@ -1,13 +1,4 @@
-# The two implicit-Array-conversion sites L133 could *not* make answer, pinned
-# so the refusals stay visible. Neither is a builtin, so neither has a prelude
-# twin to defer to: `spread` and `callClosure` are interpreter code, and a rule
-# whose difficulty is "it has to dispatch" cannot live there.
-#
-# Both were **wrong answers** before L133 — the object was wrapped / bound whole
-# and the `to_ary`/`to_a` never ran — so a gate here is the trade L133 made
-# deliberately. Closing either means giving the interpreter a way to run a send
-# mid-binding, which is the same machinery §Known wrong answers 4 wants for the
-# observation.
+# L277: effectful splat and block-argument conversions now agree.
 def show(label)
   r = begin
     yield.inspect

@@ -1,7 +1,8 @@
 import RubyCore.Interp.Send
 
-/-! Effectful checked conversion: block-pass to_proc (L275) and String#+
-to_str (L276). Each suspended Ruby call takes an ordinary machine transition.
+/-! Effectful checked conversion: block-pass to_proc (L275), String#+ to_str
+(L276), and splat/binding to_a/to_ary (L277). Each suspended Ruby call takes an
+ordinary machine transition.
 The block VM shortcut resolves a defined to_proc before checking response hooks;
 String conversion uses rb_check_funcall, which checks respond_to? first. -/
 
@@ -10,10 +11,21 @@ namespace RubyCore.Interp
 def conversionMethod : ConversionCall → String
   | .block _ => "to_proc"
   | .stringPlus _ => "to_str"
+  | .splat _ => "to_a"
+  | .closureArgs .. => "to_ary"
 
 def conversionType : ConversionCall → String
   | .block _ => "Proc"
   | .stringPlus _ => "String"
+  | .splat _ | .closureArgs .. => "Array"
+
+/-- Continue left-to-right evaluation after expanding one splat. -/
+def resumeSplat (m : Machine) (call : SplatCall) (values : List Value) : StepResult :=
+  match call with
+  | .args recv site name acc rest blk => startArgs m recv site name (acc ++ values) rest blk
+  | .superArgs acc rest blk => startSuperArgs m (acc ++ values) rest blk
+  | .yieldArgs acc rest => startYield m (acc ++ values) rest
+  | .array acc rest => continueArray m (acc ++ values) rest
 
 def blockPassProc (m : Machine) (v : Value) : Bool :=
   match v with
@@ -24,10 +36,13 @@ def blockPassMethod (m : Machine) (v : Value) (name : String) : Option MethodDef
   (lookup m.heap v name).bind fun (_, md) => if md.undefined then none else some md
 
 def blockPassNoConversion (m : Machine) (call : ConversionCall) (source : Value) : StepResult :=
-  let desc := match call with
-    | .block _ => className m.heap (realClassOf m.heap source)
-    | .stringPlus _ => Builtins.coerceName m.heap source
-  .next (raiseErr m Boot.typeErrorId s!"no implicit conversion of {desc} into {conversionType call}")
+  match call with
+  | .splat pending => resumeSplat m pending [source]
+  | .closureArgs cl brk selfOv defmodOv => enterClosure m cl [source] brk selfOv defmodOv
+  | .block _ => .next (raiseErr m Boot.typeErrorId
+      s!"no implicit conversion of {className m.heap (realClassOf m.heap source)} into Proc")
+  | .stringPlus _ => .next (raiseErr m Boot.typeErrorId
+      s!"no implicit conversion of {Builtins.coerceName m.heap source} into String")
 
 def blockPassInvalid (m : Machine) (call : ConversionCall) (source result : Value) : StepResult :=
   let src := className m.heap (realClassOf m.heap source)
@@ -52,7 +67,18 @@ def finishConversion (m : Machine) (call : ConversionCall) (source result : Valu
       | .ok v m => .next (withCtl m (.value v))
       | .err cls msg m => .next (raiseErr m cls msg)
       | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
+      | .frozen recv m => raiseFrozen m recv
       | .unsupported r => .unsupported r
+  | .splat pending =>
+    if result.identEq .nil then blockPassNoConversion m call source
+    else match Builtins.arrPayload? m.heap result with
+      | some xs => resumeSplat m pending xs.toList
+      | none => blockPassInvalid m call source result
+  | .closureArgs cl brk selfOv defmodOv =>
+    if result.identEq .nil then blockPassNoConversion m call source
+    else match Builtins.arrPayload? m.heap result with
+      | some xs => enterClosure m cl xs.toList brk selfOv defmodOv
+      | none => blockPassInvalid m call source result
 
 /-- Only a custom handler is called by checked conversion. Its NoMethodError
     is conditionally rescued by the continuation, not by ordinary dispatch. -/
@@ -117,6 +143,14 @@ def startCheckedConversion (m : Machine) (call : ConversionCall) (source : Value
   match blockPassMethod m source "respond_to?" with
   | some md => blockPassRespond m call source md
   | none => blockPassChecked m call source false
+
+/-- VM splat bypasses nil and actual Arrays; every other value is checked via
+    to_a, including native Hash/Range/MatchData conversions and their overrides. -/
+def startSplat (m : Machine) (call : SplatCall) (source : Value) : StepResult :=
+  if source.identEq .nil then resumeSplat m call []
+  else match Builtins.arrPayload? m.heap source with
+    | some xs => resumeSplat m call xs.toList
+    | none => startCheckedConversion m (.splat call) source
 
 /-- Proc and nil bypass lookup; a defined to_proc also bypasses response hooks. -/
 def coerceBlockPass (m : Machine) (call : BlockPassCall) (source : Value) : StepResult :=

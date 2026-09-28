@@ -119,12 +119,6 @@ structure BlockPassCall where
   kw : List (Value × Value)
 deriving Inhabited
 
-/-- The native operation suspended while a Ruby conversion method runs. -/
-inductive ConversionCall where
-  | block (call : BlockPassCall)
-  | stringPlus (recv : Value)
-deriving Inhabited
-
 /-- Checked conversion's suspended user calls. A missing-method failure retains
     both response answers and the lookup owner, since redefinition during the
     handler affects whether its NoMethodError propagates (L275). -/
@@ -136,6 +130,11 @@ inductive BlockPassPhase where
   | missing (owner : ObjId) (respond : Bool) (respondMissing : Bool)
 deriving Inhabited
 
+/-- Rendering a receiver for FrozenError uses inspect, then rb_obj_as_string. -/
+inductive FrozenPhase where
+  | start | className | inspected | stringified (source : Value)
+deriving Inhabited
+
 /-- A send's block child, carried through arg evaluation. A literal block is
     reified (capturing the caller frame) only once args are in; a `&e`
     block-pass is evaluated last (eval order) then coerced via `to_proc`. -/
@@ -144,6 +143,24 @@ inductive PendingBlk where
   | lit (params : List Param) (locals : List String) (body : Expr)
   | passExpr (e : Expr)
   | passAnon
+deriving Inhabited
+
+/-- The evaluation already completed around a splat operand. -/
+inductive SplatCall where
+  | args (recv : Value) (site : SendSite) (name : String) (acc : List Value)
+      (rest : List Expr) (blk : PendingBlk)
+  | superArgs (acc : List Value) (rest : List Expr) (blk : Option Value)
+  | yieldArgs (acc : List Value) (rest : List Expr)
+  | array (acc : List Value) (rest : List Expr)
+deriving Inhabited
+
+/-- The operation suspended while a Ruby conversion method runs. -/
+inductive ConversionCall where
+  | block (call : BlockPassCall)
+  | stringPlus (recv : Value)
+  | splat (call : SplatCall)
+  | closureArgs (cl : Closure) (brk : Option FrameId)
+      (selfOv : Option Value) (defmodOv : Option ObjId)
 deriving Inhabited
 
 /-- What an `ensure` resumes when it finishes normally. -/
@@ -256,6 +273,7 @@ inductive Kont where
       (kw : List (Value × Value))
   /-- Suspend a native operation during checked to_proc/to_str conversion. -/
   | blkConvertK (call : ConversionCall) (source : Value) (phase : BlockPassPhase)
+  | frozenErrorK (recv : Value) (cls : String) (phase : FrozenPhase)
   /-- Evaluating a call-site `k: v` keyword value; then continue the kwargs. -/
   | kwPairK (key : String) (rest : List KwEntry) (kwacc : List (Value × Value))
       (recv : Value) (implicit : SendSite) (m : String) (posArgs : List Value) (pblk : PendingBlk)
@@ -298,8 +316,8 @@ inductive Kont where
       `brk` = the method activation a `break` returns from (`none` for a
       detached proc `.call`, where `break` is a LocalJumpError). Consumes
       `next` (block value) and a lambda-targeted `return`/`break`.
-      `cl`/`args` are kept so `redo` can re-run this invocation from the top with
-      the same arguments (L69). -/
+      `cl`/`args` retain the invocation descriptor. `redo` restarts cl.body in
+      this same frame, preserving local writes and completed conversion (L277). -/
   | blkFrameK (fid : FrameId) (lam : Bool) (brk : Option FrameId)
       (cl : Closure) (args : List Value)
   /-- `catch tag do … end` (L69): consumes a `throw` carrying an `equal?` tag,

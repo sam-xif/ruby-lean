@@ -1,6 +1,55 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-27, L276)
+## Active conformance goal (2026-09-27, L277)
+
+Previous goal turns made verified progress. The user wants the known semantics
+issues addressed first, then full CRuby bootstrap conformance; proof repair is
+explicitly deferred. The goal remains active. Changes from L276/L277 are uncommitted.
+No checker/proof files or ratchet floors were changed. Existing unrelated untracked
+paper/ and wasm upstream-bug files remain untouched.
+
+L277 closes to-ary-gates and impure-repr-gates. Splat and lenient block-argument
+conversion now suspend for checked to_a/to_ary. Hash#to_a has native pair allocation.
+Redo retains the existing block activation and its local/parameter writes. Frozen
+errors render via Interp/Frozen.lean, including class.to_s, inspect, result.to_s and
+recursive-inspection protection. Obs.observe runs the reference wrapper's final
+inspect and exception class/name/message sends, preserving stdout and captured heap.
+Main supplies the observation fuel. See the complete L277 implementation record.
+
+Executable build PASS; final regression-status tier PASS: 57 agree / 0 disagree /
+1 unsupported (58 total), all 57 fixed statuses held. Tier 1, n=300, seed 20260927:
+219 agree / 0 disagree / 81 unsupported; all 300 sources and verdicts match L276.
+Reports: `difftest/reports/20260927-234449-{tierregressions,tier1}-lean/`.
+Final bootstrap: 1,004 agree / 0 disagree / 299 unsupported, five invalid controls
+and the existing test_syntax_115 harness error (1,309 total). Report:
+`difftest/reports/20260927-234449-tier0-lean/`. Four new agreements, no lost ones:
+test_method_216, test_yjit_294 (splat); test_yjit_237/242 (frozen Struct setters).
+All checks terminated. git diff --check passes. Prelude comments were updated and
+the regenerated artifact is byte-identical. No proof rebuild/typed gate was attempted.
+
+Next work:
+
+1. The sole open regression is sorbet-hash-gate. Its Ruby source explicitly scrubs
+   the gem's process-specific object hash, but the model's Sorbet shim gates before
+   supplying the message. Do not invent a matching CRuby hash or weaken the comparator.
+   A faithful treatment of identity hashes/observable nondeterminism is still needed.
+2. Continue the full bootstrap objective. Its largest semantic groups beyond eval
+   are Rational/Complex (43 cases, primarily exact literals and class queries) and
+   Enumerators (22 blockless times, plus enum_for). Final observation can now dispatch
+   custom numeric repr. Numeric literals need exact values and native construction
+   semantics; do not merely special-case the literal test outputs.
+3. Optional/keyword/destructuring block params still gate (seven bootstrap cases).
+   The new separation between conversion and enterClosure can support full binding;
+   preserve the distinct lambda/proc and checked-conversion protocols.
+4. The legacy `for` path still enumerates Array payloads / integer Range endpoints;
+   it does not yet use normal each dispatch. Pure destructureBind is another place
+   to audit for effectful to_ary. These were not silently declared fixed by L277.
+5. The historical eval/TracePoint/VM/etc exclusions below are remaining work under
+   the user's new objective, not evidence of full conformance. Re-measure current
+   reports before selecting the next cases.
+
+
+## Previous batch (2026-09-27, L276)
 
 The user asked to fix open semantics regressions first, then drive toward full
 CRuby bootstrap conformance; proof repair is explicitly deferred. The goal remains

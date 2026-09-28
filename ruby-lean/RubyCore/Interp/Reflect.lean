@@ -389,10 +389,7 @@ def reflectIvarSet (m : Machine) (recv : Value) (_mname : String)
         if !n.startsWith "@" then
           some (.unsupported "instance_variable_set with a non-ivar name (NameError message)")
         else if (m.heap.get o).frozen then
-          match Builtins.inspectP m recv with
-          | .ok r => some (.next (raiseErr m Boot.frozenErrorId
-              s!"can't modify frozen {className m.heap (m.heap.get o).klass}: {r}"))
-          | .error e => some (.unsupported e)
+          some (raiseFrozen m recv)
         else
           let obj := m.heap.get o
           let obj := { obj with ivars := (n, val) :: obj.ivars.filter (·.1 != n) }

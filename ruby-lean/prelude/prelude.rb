@@ -16,12 +16,11 @@
 #    Blockless Enumerable calls (which CRuby answers with an `Enumerator`) are the
 #    standard case.
 # 3. **Repr-sensitive methods** (`to_s`, `inspect`, `==`, `eql?`, `message`,
-#    `to_str`) are fine on a class this file *introduces* — `Pathname`, `Struct`,
-#    `T::Struct`, `Encoding` all define them — because purity is a per-class
-#    question (L103) and an impure receiver dispatches a prelude twin (L116).
-#    Defining one on a class the model already renders (String, Array, Integer, …)
-#    is still wrong: it makes every instance impure, and `Obs`'s `result_repr` is
-#    computed after the program ends, where nothing can dispatch.
+#    `to_str`) require dispatch at their consumers. Purity is per-class (L103),
+#    impure builtin receivers dispatch prelude twins (L116), and frozen errors
+#    and final observations dispatch too (L277). When adding an override, test
+#    ordinary I/O, nested container repr, errors and the final observation;
+#    other pure consumers must still defer or gate when they cannot dispatch.
 # 4. **A prelude method is the model of the CRuby builtin of that name** — it
 #    suppresses the shadow gate for its own name (L62), so fidelity is on this
 #    file. Match CRuby exactly, including the empty-receiver and tie cases.

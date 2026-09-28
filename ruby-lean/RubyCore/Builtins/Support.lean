@@ -34,6 +34,8 @@ inductive BRes where
   | err (cls : ObjId) (msg : String) (m : Machine)
   /-- Raise an existing exception object. -/
   | throwV (v : Value) (m : Machine)
+  /-- A rejected mutation still needs effectful inspect for its error message. -/
+  | frozen (recv : Value) (m : Machine)
   | unsupported (reason : String)
 
 
@@ -729,7 +731,7 @@ def zeroArgBids : List String :=
    "Array#dup", "Array#clone", "Object#dup", "Object#clone",
    "String#clone", "Hash#clone", "Array#frozen?", "Array#freeze", "Array#sort", "Array#uniq",
    "Hash#length", "Hash#size", "Hash#empty?", "Hash#keys", "Hash#values",
-   "Hash#inspect", "Hash#to_s", "Hash#dup",
+   "Hash#inspect", "Hash#to_s", "Hash#to_a", "Hash#dup",
    "Exception#to_s", "Exception#inspect",
    "Module#name", "Module#to_s", "Module#inspect", "Module#ancestors",
    "Proc#lambda?", "Proc#to_proc", "Object#initialize",
@@ -776,10 +778,9 @@ def hshPayload? (h : Heap) : Value → Option (Array (Value × Value))
     | .hsh xs => some xs
     | _ => none
   | _ => none
-def frozenErr (m : Machine) (recv : Value) (cls : String) : BRes :=
-  match inspectP m recv with
-  | .ok r => .err Boot.frozenErrorId s!"can't modify frozen {cls}: {r}" m
-  | .error e => .unsupported e
+/-- The legacy class hint is superseded by effectful real-class.to_s rendering. -/
+def frozenErr (m : Machine) (recv : Value) (_cls : String) : BRes :=
+  .frozen recv m
 /-- puts: no args → newline; array → recursive per element; string keeps
     an existing trailing newline; nil → blank line; else to_s [V]. -/
 def putsGo (m : Machine) (args : List Value) : Nat → Option Machine

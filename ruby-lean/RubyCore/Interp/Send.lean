@@ -58,6 +58,7 @@ def invoke (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
         | .ok v m => .next (withCtl m (.value v))
         | .err cls msg m => .next (raiseErr m cls msg)
         | .throwV tv m => .next (withCtl m (.jump (.raiseJ tv)))
+        | .frozen recv m => raiseFrozen m recv
         | .unsupported r => .unsupported r
       else if o == Boot.mathId then
         let f? := fun (v : Value) => match v with
@@ -197,6 +198,7 @@ where
                 | .ok v m => .next (withCtl m (.value v))
                 | .err cls msg m => .next (raiseErr m cls msg)
                 | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
+                | .frozen recv m => raiseFrozen m recv
                 | .unsupported r => .unsupported r
               else
                 let (io, h) := m.heap.alloc { klass := k, payload := .exc "" }
@@ -208,12 +210,14 @@ where
               | .ok v m => .next (withCtl m (.value v))
               | .err cls msg m => .next (raiseErr m cls msg)
               | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
+              | .frozen recv m => raiseFrozen m recv
               | .unsupported r => .unsupported r
           | _ =>
             match Builtins.run bid recv args m with
             | .ok v m => .next (withCtl m (.value v))
             | .err cls msg m => .next (raiseErr m cls msg)
             | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
+            | .frozen recv m => raiseFrozen m recv
             | .unsupported r => .unsupported r
         else
         -- A block changes what several builtins mean (L63). Our arms are
@@ -234,6 +238,7 @@ where
         | .ok v m => .next (withCtl m (.value v))
         | .err cls msg m => .next (raiseErr m cls msg)
         | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
+        | .frozen recv m => raiseFrozen m recv
         | .unsupported r => .unsupported r
       | none =>
         -- Same L62 exception as the instance path above: a **prelude**-defined
@@ -297,6 +302,7 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
         | .ok v m => .next (withCtl m (.value v))
         | .err cls msg m => .next (raiseErr m cls msg)
         | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
+        | .frozen recv m => raiseFrozen m recv
         | .unsupported r => .unsupported r
       | none => enterUserMethod m self f.meth md args blk kw
     | none =>
@@ -394,6 +400,7 @@ def classNewBlock (m : Machine) (recv : Value) (args : List Value) (v : Value)
     | _, _ => .unsupported "Class.new did not yield a class"
   | .err cls msg m => .next (raiseErr m cls msg)
   | .throwV tv m => .next (withCtl m (.jump (.raiseJ tv)))
+  | .frozen recv m => raiseFrozen m recv
   | .unsupported r => .unsupported r
 
 /-- All args in → resolve the pending block and dispatch. A literal block is

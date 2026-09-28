@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L277 (2026-09-27)",
+  "note": "L277: checked to_ary for lenient closure binding; parameter shape, lambda strictness, one-time conversion and redo state retention."
+}

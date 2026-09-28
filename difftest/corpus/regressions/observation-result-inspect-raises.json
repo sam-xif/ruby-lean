@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L277 (2026-09-27)",
+  "note": "L277: the final inspect rescue preserves output and ensure effects before reporting <uninspectable>."
+}

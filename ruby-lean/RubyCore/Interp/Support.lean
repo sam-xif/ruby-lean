@@ -33,6 +33,10 @@ def withCtl (m : Machine) (c : Ctl) : Machine := { m with ctl := c }
 def withKont (m : Machine) (c : Ctl) (k : Kont) : Machine :=
   { m with ctl := c, kont := k :: m.kont }
 
+/-- Suspend a rejected mutation to render its class and receiver. -/
+def raiseFrozen (m : Machine) (recv : Value) : StepResult :=
+  .next (withKont m (.value recv) (.frozenErrorK recv "" .start))
+
 def bindIvar (m : Machine) (x : String) (v : Value) : Machine :=
   match m.currentFrame.self with
   | .ref o =>
@@ -280,65 +284,6 @@ def kwLookup (kw : List (Value × Value)) (name : String) : Option Value :=
 def kwNameList (names : List String) : String :=
   String.intercalate ", " (names.map (fun n => ":" ++ n))
 
-/-- Spread a splat operand [V]: array splices, nil vanishes, anything else
-    (without to_a) is itself. Hash's pair-conversion is gated for now. -/
-def spread (m : Machine) (v : Value) : Except String (List Value) :=
-  match v with
-  | .ref o =>
-    match (m.heap.get o).payload with
-    | .arr xs => .ok xs.toList
-    | .hsh _ => .error "splat of a Hash (to_a pairs)"
-    | .range lo hi excl =>
-      -- `[*a..b]` / `m(*a..b)`: expand an integer range to its elements (CRuby
-      -- calls Range#to_a). Non-integer / endless ranges aren't enumerable here → gate.
-      match lo, hi with
-      | .int a, .int b =>
-        let last := if excl then b - 1 else b
-        if last < a then .ok []
-        else .ok ((List.range (last - a + 1).toNat).map (fun i => Value.int (a + Int.ofNat i)))
-      | _, _ => .error "splat of a non-integer Range"
-    | _ =>
-      -- CRuby splats a non-Array via `to_a` if it responds; a *user* `to_a`
-      -- is a side-effecting dispatch a pure spread can't run → gate. A user
-      -- `method_missing` can serve that `to_a` too (`rb_check_funcall`), and
-      -- until L133 that case did not gate: `[0, *mm_obj]` wrapped the object
-      -- and the `method_missing` never ran, which is a wrong answer rather than
-      -- a refusal. Splat is not a builtin, so there is no twin to defer to —
-      -- the honest move is the gate the `to_a` case already had.
-      if (match lookup m.heap v "to_a" with
-          | some (_, md) => md.builtin.isNone
-          | none => false)
-         || (match lookup m.heap v "method_missing" with
-             | some (_, md) => md.builtin.isNone
-             | none => false) then
-        .error "splat via user to_a (dispatch)"
-      else .ok [v]
-  | .nil => .ok []
-  | _ => .ok [v]
-
-/-- `spread`, but able to **allocate** — which a `MatchData` needs, since its
-    `to_a` is the whole match plus every capture as fresh Strings.
-
-    `_, version, revision = *path.match(REGEX)` is how `pkg_version.rb`
-    destructures a match, and without this the splat wrapped the MatchData itself:
-    the first target got the MatchData and every other bound to nil. That is a
-    *wrong answer*, not a gate, because `[md]` is a perfectly good one-element
-    spread and nothing downstream could tell (L113). -/
-def spreadA (m : Machine) (v : Value) : Except String (List Value × Machine) :=
-  match v with
-  | .ref o =>
-    match (m.heap.get o).payload with
-    | .mdata subject caps _ =>
-      let bin := (m.heap.get o).binary
-      .ok (caps.toList.foldl (fun (acc, m) sp =>
-        match sp with
-        | some (a, b) =>
-          let (sv, m) := Builtins.allocStrEnc m (Builtins.charSlice subject a b) bin
-          (acc ++ [sv], m)
-        | none => (acc ++ [Value.nil], m)) ([], m))
-    | _ => (spread m v).map (fun vs => (vs, m))
-  | _ => (spread m v).map (fun vs => (vs, m))
-
 /-- Is `name` a `private_constant` anywhere in `o`'s ancestry? Heap-only, and named for the
     continuation-framing proof: as the inline `let isPrivate := (ancestors …).any …` it was,
     `simp` normalises the `List.any` into an `∃` on the *pushed* side only (that side is the
@@ -350,19 +295,6 @@ def isPrivateConst (h : Heap) (o : ObjId) (name : String) : Bool :=
     match h.classPayload? a with
     | some cp => cp.privateConsts.contains name
     | none => false
-
-/-- Spread `v` into positional arguments and continue. The four `*splat` continuation arms all
-    have this shape, and naming it is what makes them provable: a `match` on `spreadA m v`
-    carries a machine inside the matched value, so under a pushed continuation the two sides'
-    scrutinees differ and `split` pairs an `.ok` arm of one with the `.error` arm of the other.
-    As a combinator the framing proof `generalize`s the shared call once and `cases` it, with
-    the continuation's own framing as a pointwise hypothesis — the same shape as
-    `Builtins.binArg`/`numBin` (`Proof/KontFrame.lean`). -/
-def withSpread (m : Machine) (v : Value) (k : Machine → List Value → StepResult) :
-    StepResult :=
-  match spreadA m v with
-  | .ok (vs, m) => k m vs
-  | .error e => .unsupported e
 
 /-- The method activation governing the current frame (itself if a
     method/toplevel frame; its `home` if a block frame). -/
@@ -417,44 +349,16 @@ def blockOwner (m : Machine) (p : Value) : Option FrameId :=
     | some b => b.identEq p
     | none => false
 
-/-- Invoke a closure: push a block frame parented at `captured`, bind params
-    (lenient for blocks/procs — pad nil, drop extras, auto-splat a single
-    Array across ≥2 positionals; strict for lambdas), evaluate the body under
-    a `blkFrameK` marker (artifact 04 §2). `brk` is the method a `break`
-    returns from. -/
-def callClosure (m : Machine) (cl : Closure) (args : List Value)
+/-- Enter a closure after its argument conversions have completed. Keeping this
+    separate prevents a one-element conversion result from being converted twice. -/
+def enterClosure (m : Machine) (cl : Closure) (args : List Value)
     (brk : Option FrameId) (selfOv : Option Value := none)
     (defmodOv : Option ObjId := none) : StepResult :=
-  let sp? := classifySimple cl.params
-  if sp?.isNone then
-    .unsupported "unmodeled block param kind (optional/keyword/forwarding/destructuring)"
-  else
-  let sp := sp?.getD ⟨[], none, [], none⟩
+  match classifySimple cl.params with
+  | none => .unsupported "unmodeled block param kind (optional/keyword/forwarding/destructuring)"
+  | some sp =>
   let pre := sp.pre; let rest? := sp.rest?; let post := sp.post
   let required := pre.length + post.length
-  let autoSplat :=
-    !cl.lam && args.length == 1 && (required ≥ 2 || (rest?.isSome && required ≥ 1))
-  -- A block that auto-splats asks its single argument for `to_ary`
-  -- (`rb_vm_callee_setup_block_arg` → `rb_check_array_type`), so a user `to_ary`
-  -- — or a `method_missing` serving one — decides the binding, and a non-Array
-  -- answer raises. Until L133 this arm only looked at the payload, so
-  -- `[Pair.new].each { |x, y| … }` bound the object to `x` and nil to `y` where
-  -- CRuby binds the two halves: a wrong answer, not a refusal. `callClosure` is
-  -- not a builtin and has no twin to defer to, so the honest move is to gate.
-  if autoSplat && (match args.head? with
-                   | some a => (Builtins.arrPayload? m.heap a).isNone
-                               && Builtins.mayDispatchToAry m.heap a
-                   | none => false) then
-    .unsupported "block auto-splat via user to_ary (dispatch)"
-  else
-  let args :=
-    if autoSplat then
-      match args.head? with
-      | some (.ref o) => match (m.heap.get o).payload with
-        | .arr xs => xs.toList
-        | _ => args
-      | _ => args
-    else args
   let arityOk :=
     if cl.lam then
       match rest? with | some _ => args.length ≥ required | none => args.length == required
@@ -497,6 +401,25 @@ def callClosure (m : Machine) (cl : Closure) (args : List Value)
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     .next (withKont m (.eval cl.body) (.blkFrameK fid cl.lam brk cl args))
 
+/-- A lenient block with multiple positional slots expands its sole argument via
+    checked to_ary. Lambdas and single/rest-only parameter shapes skip expansion. -/
+def callClosure (m : Machine) (cl : Closure) (args : List Value)
+    (brk : Option FrameId) (selfOv : Option Value := none)
+    (defmodOv : Option ObjId := none) : StepResult :=
+  match classifySimple cl.params with
+  | none => .unsupported "unmodeled block param kind (optional/keyword/forwarding/destructuring)"
+  | some sp =>
+    let required := sp.pre.length + sp.post.length
+    let autoSplat := !cl.lam && args.length == 1 &&
+      (required ≥ 2 || (sp.rest?.isSome && required ≥ 1))
+    if autoSplat then
+      let source := args.headD .nil
+      match Builtins.arrPayload? m.heap source with
+      | some xs => enterClosure m cl xs.toList brk selfOv defmodOv
+      | none => .next (withKont m (.value source)
+          (.blkConvertK (.closureArgs cl brk selfOv defmodOv) source .start))
+    else enterClosure m cl args brk selfOv defmodOv
+
 def procCallBid (bid : String) : Bool :=
   bid == "Proc#call" || bid == "Proc#[]" || bid == "Proc#yield"
 
@@ -514,6 +437,7 @@ def callStringPlusBuiltin (m : Machine) (recv : Value) (args : List Value)
       | .ok v m => .next (withCtl m (.value v))
       | .err cls msg m => .next (raiseErr m cls msg)
       | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
+      | .frozen recv m => raiseFrozen m recv
       | .unsupported r => .unsupported r
   | _ => .next (raiseErr m Boot.argumentErrorId
       s!"wrong number of arguments (given {args.length}, expected 1)")

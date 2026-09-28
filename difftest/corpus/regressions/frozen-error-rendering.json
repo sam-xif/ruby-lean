@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L277 (2026-09-27)",
+  "note": "L277: frozen-error rendering dispatches class to_s, receiver inspect and result to_s with recursion protection and normal exits."
+}

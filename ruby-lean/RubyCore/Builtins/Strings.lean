@@ -178,9 +178,7 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     match recv, strPayload? h recv with
     | .ref o, some str =>
       if (h.get o).frozen then
-        match inspectP m recv with
-        | .ok r => .err Boot.frozenErrorId s!"can't modify frozen String: {r}" m
-        | .error e => .unsupported e
+        frozenErr m recv "String"
       else
         let toBinary := bid == "String#__force_binary"
         if (h.get o).binary == toBinary then .ok recv m
@@ -250,9 +248,7 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
       match recv, strPayload? h recv, strPayload? h b with
       | .ref o, some s, some t =>
         if (h.get o).frozen then
-          match inspectP m recv with
-          | .ok r => .err Boot.frozenErrorId s!"can't modify frozen String: {r}" m
-          | .error e => .unsupported e
+          frozenErr m recv "String"
         else
           -- appending *widens* the receiver in place: `(+"x") << "café".b` is
           -- ASCII-8BIT afterwards [V], by the same compatibility rule as `+`

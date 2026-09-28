@@ -1,4 +1,5 @@
 import RubyCore.Interp.BlockPass
+import RubyCore.Interp.Frozen
 
 /-!
 Continuation application (`applyKont`) and jump unwinding (`unwind`) — what
@@ -33,17 +34,11 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         match m.currentFrame.self with
         | .ref o =>
           if (m.heap.get o).frozen then
-            match Builtins.inspectP m (.ref o) with
-            | .ok r => .next (raiseErr m Boot.frozenErrorId
-                s!"can't modify frozen {className m.heap (m.heap.get o).klass}: {r}")
-            | .error e => .unsupported e
+            raiseFrozen m (.ref o)
           else .next (withCtl (bindIvar m x v) (.value v))
         | selfV =>
           -- immediates are frozen: @x= with Integer self → FrozenError [V]
-          match Builtins.inspectP m selfV with
-          | .ok r => .next (raiseErr m Boot.frozenErrorId
-              s!"can't modify frozen {className m.heap (realClassOf m.heap selfV)}: {r}")
-          | .error e => .unsupported e
+          raiseFrozen m selfV
       | .cvar =>
         match cvarScope m with
         | none => .unsupported "class variable in a singleton-class scope"
@@ -169,17 +164,18 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       .next (withKont m (.eval c) (.whileCondK c body))
     | .forStartK targets body =>
       -- v is the collection: iterate it natively (the model resolves `each` on a
-      -- lookup miss, so `for` cannot desugar to it). `spread` supplies the
-      -- element list — Arrays directly, integer Ranges expanded (L63) — and
-      -- gates anything whose expansion would need a dispatch.
+      -- lookup miss, so `for` cannot desugar to it). This legacy path handles
+      -- Arrays directly and integer Ranges by their endpoints (L63).
       match v with
       | .ref o =>
         match (m.heap.get o).payload with
         | .arr xs => forStep m targets body xs.toList v
-        | .range .. =>
-          match spread m v with
-          | .ok vs => forStep m targets body vs v
-          | .error e => .unsupported e
+        | .range (.int a) (.int b) excl =>
+          let last := if excl then b - 1 else b
+          let values := if last < a then [] else
+            (List.range (last - a + 1).toNat).map (fun i => Value.int (a + Int.ofNat i))
+          forStep m targets body values v
+        | .range .. => .unsupported "for over a non-integer Range"
         | _ => .unsupported "for over a non-Array collection"
       | _ => .unsupported "for over a non-Array collection"
     | .forBodyK targets body rest coll =>
@@ -211,11 +207,12 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .argsK recv implicit mname acc rest pblk =>
       startArgs m recv implicit mname (acc ++ [v]) rest pblk
     | .argsSplatK recv implicit mname acc rest pblk =>
-      withSpread m v fun m vs => startArgs m recv implicit mname (acc ++ vs) rest pblk
+      startSplat m (.args recv implicit mname acc rest pblk) v
     | .blkCoerceK recv implicit mname acc kw =>
       coerceBlockPass m ⟨recv, implicit, mname, acc, kw⟩ v
     | .blkConvertK call source phase =>
       resumeBlockPass m call source phase v
+    | .frozenErrorK recv cls phase => resumeFrozen m recv cls phase v
     | .kwPairK key rest kwacc recv implicit mname posArgs pblk =>
       startKwargs m recv implicit mname posArgs (kwAdd kwacc (.sym key) v) rest pblk
     | .kwDynKeyK valE rest kwacc recv implicit mname posArgs pblk =>
@@ -233,13 +230,13 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | _ => .unsupported "** of a non-Hash"
     | .superArgK acc rest blk => startSuperArgs m (acc ++ [v]) rest blk
     | .superSplatK acc rest blk =>
-      withSpread m v fun m vs => startSuperArgs m (acc ++ vs) rest blk
+      startSplat m (.superArgs acc rest blk) v
     | .yieldArgK acc rest => startYield m (acc ++ [v]) rest
     | .yieldSplatK acc rest =>
-      withSpread m v fun m vs => startYield m (acc ++ vs) rest
+      startSplat m (.yieldArgs acc rest) v
     | .arrK acc rest => continueArray m (acc ++ [v]) rest
     | .arrSplatK acc rest =>
-      withSpread m v fun m vs => continueArray m (acc ++ vs) rest
+      startSplat m (.array acc rest) v
     | .hshKeyK acc vExpr rest =>
       .next (withKont m (.eval vExpr) (.hshValK acc v rest))
     | .hshValK acc key rest =>
@@ -403,9 +400,9 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
       | .raiseJ _ | .throwJ .. => .next (withCtl { m with stack := m.stack.tail } (.jump j))
       | .retryJ => .unsupported "retry crossing a block boundary"
       | .redoJ =>
-        -- `redo` re-runs *this* block invocation from the top with the same
-        -- arguments (artifact 04, L69): pop the frame and re-enter the closure.
-        callClosure { m with stack := m.stack.tail } cl args brk
+        -- Redo restarts the body in the same activation. Parameter/local writes
+        -- remain visible, and argument conversion/defaults must not run again.
+        .next (withKont m (.eval cl.body) (.blkFrameK fid lam brk cl args))
     | .blkConvertK call source phase =>
       unwindBlockPass m call source phase j
     | .definedGuardK =>

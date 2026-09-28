@@ -1534,3 +1534,12 @@ The full regression tier is 47 agree / 0 disagree / 3 unsupported, with no statu
 failures. Unsupported cases remain open: impure-repr-gates, to-ary-gates and
 sorbet-hash-gate. Their gates were not weakened and their status was not relabeled.
 The engine and comparison relation are unchanged.
+
+## N51 — convert and render through the model's dispatch (2026-09-27)
+
+Model L277 closes the to-ary-gates and impure-repr-gates regressions. The new guards
+cover all four splat positions, lenient block conversion, redo retaining local writes,
+frozen-error rendering and the effectful final observation. The comparator/control
+wrapper are unchanged. The previously commented uncaught-message witness is now an
+executed regression. Intermediate full replay: 57 agree / 0 disagree / 1 unsupported;
+the sole remaining gated regression is sorbet-hash-gate, still declared open.

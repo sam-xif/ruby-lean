@@ -13777,3 +13777,73 @@ it did not exist.
   (removing BasicObject#method_missing), unsupported → agree. No prior agreement
   was lost. All checks have terminated; git diff --check passes. Full conformance
   remains incomplete, and the active goal continues with the gaps in HANDOFF.md.
+
+## L277 — effectful splat, block binding, frozen errors and observations (2026-09-27)
+
+- L276's remaining semantics regression gates now have real effectful paths.
+  ConversionCall carries suspended array/call/yield/super splat evaluation and
+  closure argument entry. Splat uses checked to_a (nil and actual Arrays bypass it);
+  lenient multi-position block binding uses checked to_ary (actual Arrays bypass it).
+  Missing conversion or a nil result retains the single original operand; another
+  non-Array result raises the method-specific TypeError. Private methods, response
+  hooks, missing-method handlers, mutation and exits use the shared checked-call path.
+- Closure argument conversion precedes activation entry. enterClosure binds already
+  normalized arguments, so an Array conversion result containing one object cannot
+  accidentally convert that object a second time. Strict lambdas and single/rest-only
+  block parameter shapes do not auto-expand. Existing optional/keyword/destructuring
+  block-parameter gates are unchanged.
+- A new probe found redo was rebuilding the block activation and resetting parameter
+  and block-local writes. CRuby preserves those writes. Redo now reinstalls the block
+  boundary and restarts its body in the same frame, retaining self/capture metadata and
+  avoiding repeated argument conversion. The guard pins both writes and conversion count.
+- Removed the obsolete pure spread/spreadA/withSpread path. Hash#to_a is now a native
+  method that allocates key/value pairs directly, bypassing overridden each. Range and
+  MatchData splats use normal to_a resolution, including overrides; Range's native
+  Enumerable to_a legitimately dispatches each (verified). The legacy for-loop path
+  still directly enumerates integer endpoints and was not conflated with splat.
+- BRes.frozen suspends a rejected mutation for Interp/Frozen.lean. Error rendering
+  sends to_s to the receiver's real class, then inspect to the receiver, then to_s
+  to a non-String inspection result (falling back to native any-to-s if needed).
+  These operations preserve effects, exceptions and nonlocal exits. A receiver-identity
+  guard in the continuation stack matches recursive frozen inspection's " ..." text;
+  class rendering happens before that guard. No heap mutation is performed by the
+  rejected operation. Byte strings outside the JSON transport remain explicit gates.
+- Obs.observe now performs the reference harness's final sends on the completed
+  program heap. Final inspect may mutate/print and sees its captured locals. An
+  exception during inspect produces <uninspectable>, preserving its output/ensure
+  effects. Uncaught exceptions dispatch class.name.to_s and message.to_s; message
+  failures produce <unmessageable>. The observation runs outside the harness rescue
+  context ($! is nil), and each send has the caller-supplied observation fuel budget.
+  Main passes the selected run fuel; traces still show program execution separately.
+- No comparator normalization or control semantics changed. Unsupported observation
+  values and encodings are refused rather than coerced into guessed JSON strings.
+  sorbet-hash-gate remains open: default object hashes in a gem error message are
+  process-specific. The source scrubs that hash, but the current shim cannot supply it;
+  this remains a modeling/observation issue, not a fixed regression.
+- Guards added: splat-conversion, block-argument-conversion, frozen-error-rendering,
+  and five observation cases covering final inspect, failing inspect, exception message,
+  failing message and class-name rendering. The old to-ary-gates and impure-repr-gates
+  sidecars are fixed after successful full replay; the commented uncaught-message
+  witness in the latter became an independently executed regression.
+- Primary references: Ruby vm_insnhelper.c (vm_splat_array), vm_args.c (block argument
+  expansion), object.c (rb_inspect) and error.c (rb_error_frozen_object), on
+  https://github.com/ruby/ruby/tree/master. Observable behavior was measured against
+  installed CRuby 4.0.5. Native class-name rendering and redo's preserved locals were
+  discovered by differential probes, not inferred from the previous implementation.
+- Executable build PASS. Intermediate full regression replay: 57 agree / 0 disagree /
+  1 unsupported (58 total), report difftest/reports/20260927-234325-replay-lean/.
+  Final bootstrap, regression-status and tier-1 results follow below. Proof repair and
+  the typed gate remain deferred at the user's request; no commit was made.
+- Final checks: bootstrap 1,004 agree / 0 disagree / 299 unsupported, five invalid
+  controls and the existing test_syntax_115 harness error (1,309 total). Only four
+  verdicts changed from L276, all unsupported → agree: test_method_216 and
+  test_yjit_294 (effectful splat), test_yjit_237 and test_yjit_242 (frozen Struct
+  setters). No previous agreement was lost. Final regression tier: 57 held / one
+  gated / no failures. Tier 1, seed 20260927, n=300: 219 agree / 81 unsupported /
+  0 disagree, identical sources and verdicts to L276. All three final reports are
+  under difftest/reports/20260927-234449-{tier0,tier1,tierregressions}-lean/.
+- Updated the prelude's obsolete warning that final observations cannot dispatch.
+  Regenerated the prelude to /private/tmp/conformance-l277-prelude.lean; cmp confirms
+  it is byte-identical to RubyCore/Prelude.lean (the edit changes comments only).
+  git diff --check passes. All checks have terminated. Full conformance remains
+  incomplete; the next working record is the L277 section of HANDOFF.md.

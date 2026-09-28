@@ -34,29 +34,75 @@ def obsJson (stdout : String) (result : Option String)
     ("timed_out", Json.bool false)
   ]
 
-def observe (r : Interp.RunResult) : ObsResult :=
+/-- Observation is an effectful phase, just like the CRuby harness wrapper:
+    sends run on the completed heap with the program's lexical captures intact. -/
+def observationSend (fuel : Nat) (m : Machine) (recv : Value) (name : String) : Interp.RunResult :=
+  let m := { m with kont := [], currentExc := none }
+  match Interp.invoke m recv .explicit name [] none with
+  | .next m => Interp.run fuel m
+  | .done v m => .value v m
+  | .uncaught e m => .uncaught e m
+  | .unsupported reason => .unsupported reason m
+  | .stuck reason => .stuck reason m
+
+def observationStopped : Interp.RunResult → ObsResult
+  | .unsupported reason _ => .unsupported reason
+  | .outOfFuel _ => .unsupported "out of fuel during observation"
+  | .stuck reason _ => .stuck reason
+  | .uncaught _ _ => .unsupported "exception escaped the observation wrapper"
+  | .value _ _ => .stuck "observation expected a stopped computation"
+
+/-- Byte strings that cannot be represented in our JSON transport remain explicit
+    gates; dispatching repr must not silently change their encoding. -/
+def observationString (m : Machine) (value : Value) : Except String String :=
+  match Builtins.strPayload? m.heap value with
+  | some s =>
+    if Builtins.isBinaryStr m.heap value && hasHighByte s then
+      .error "observation String contains non-UTF-8 bytes"
+    else .ok s
+  | none => .error "observation method returned a non-String"
+
+def observeExceptionMessage (fuel : Nat) (m : Machine) (exc : Value) (cls : String) : ObsResult :=
+  match observationSend fuel m exc "message" with
+  | .value message m =>
+    match observationSend fuel m message "to_s" with
+    | .value message m =>
+      match observationString m message with
+      | .ok str => .obs (obsJson m.out none (some (cls, str)))
+      | .error reason => .unsupported reason
+    | .uncaught _ m => .obs (obsJson m.out none (some (cls, "<unmessageable>")))
+    | stopped => observationStopped stopped
+  | .uncaught _ m => .obs (obsJson m.out none (some (cls, "<unmessageable>")))
+  | stopped => observationStopped stopped
+
+def observeException (fuel : Nat) (m : Machine) (exc : Value) : ObsResult :=
+  -- Match the wrapper's exc.class.name.to_s sends, including user overrides and
+  -- anonymous exception classes. This portion is outside its message rescue.
+  match observationSend fuel m exc "class" with
+  | .value klass m =>
+    match observationSend fuel m klass "name" with
+    | .value name m =>
+      match observationSend fuel m name "to_s" with
+      | .value name m =>
+        match observationString m name with
+        | .ok str => observeExceptionMessage fuel m exc str
+        | .error reason => .unsupported reason
+      | stopped => observationStopped stopped
+    | stopped => observationStopped stopped
+  | stopped => observationStopped stopped
+
+def observe (r : Interp.RunResult) (fuel : Nat := 100000) : ObsResult :=
   match r with
-  | .value v m =>
-    match Builtins.inspectP m v with
-    | .ok repr => .obs (obsJson m.out (some repr) none)
-    | .error e => .unsupported s!"final-value inspect: {e}"
-  | .uncaught exc m =>
-    let cls := className m.heap (realClassOf m.heap exc)
-    let msg := match exc with
-      | .ref o => match (m.heap.get o).payload with
-        | .exc s => s
-        | _ => ""
-      | _ => ""
-    -- The control observes `__exc.message`, which **dispatches** — and
-    -- `Exception#message` is `to_s`, so a user `to_s` or `message` decides what the
-    -- observation says. Reading the payload answered the raw message instead, and
-    -- there is no machine left to dispatch in: the program has ended, exactly as in
-    -- `result_repr` below (L131). So refuse rather than answer the payload.
-    if Builtins.programOverridden m.heap ["to_s", "message"] (classOf m.heap exc) then
-      .unsupported
-        "uncaught exception whose message is dispatched (a user to_s/message), computed after the program has ended"
-    else
-    .obs (obsJson m.out none (some (cls, msg)))
+  | .value value m =>
+    match observationSend fuel m value "inspect" with
+    | .value repr m =>
+      if repr.identEq .nil then .obs (obsJson m.out none none)
+      else match observationString m repr with
+        | .ok str => .obs (obsJson m.out (some str) none)
+        | .error reason => .unsupported reason
+    | .uncaught _ m => .obs (obsJson m.out (some "<uninspectable>") none)
+    | stopped => observationStopped stopped
+  | .uncaught exc m => observeException fuel m exc
   | .unsupported reason _ => .unsupported reason
   | .outOfFuel _ => .unsupported "out of fuel"
   | .stuck msg _ => .stuck msg
