@@ -46,6 +46,7 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
       | _ => false
     strIf has "instance-variable"
   | .var .gvar x =>
+    if loaderGlobal x then str "global-variable" else
     let has :=
       if x == "$!" then m.currentExc.isSome
       -- `$~` is *always* "global-variable", match or not — unlike its views, where
@@ -70,7 +71,7 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
     | none =>
       -- same fidelity split as a constant *read*: a constant CRuby has but we
       -- don't model must not answer nil.
-      if (crubyToplevelConstants.contains n || crubyStdlibConstants.contains n) then .unsupported s!"defined?(unmodeled constant {n})"
+      if (crubyToplevelConstants.contains n || crubyStdlibConstants.contains n || m.currentFrame.cref.any (fun c => unmodeledNamespaceConstant m c n)) then .unsupported s!"defined?(unmodeled constant {n})"
       else nilR
   | .cpath (some base) name =>
     -- the base *is* evaluated (`defined?(A::B)` runs `A`), under the guard
@@ -81,7 +82,7 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
     match constLookup m.heap name with
     | some _ => str "constant"
     | none =>
-      if (crubyToplevelConstants.contains name || crubyStdlibConstants.contains name) then
+      if (crubyToplevelConstants.contains name || crubyStdlibConstants.contains name || unmodeledFeatureRoot m name) then
         .unsupported s!"defined?(unmodeled constant {name})"
       else nilR
   | .send none mname _ _ | .vcall mname =>
@@ -155,6 +156,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     match kind with
     | .lvar => .next (withCtl m (.value (m.getLocal x)))
     | .gvar =>
+      if loaderGlobal x then .unsupported "loader global paths and mutation are not modeled" else
       match matchGlobal m x with
       | some (v, m) => .next (withCtl m (.value v))
       | none => .next (withCtl m (.value (m.getGlobal x)))
@@ -176,7 +178,9 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
           | none =>
             .next (raiseErr m Boot.nameErrorId
               s!"uninitialized class variable {x} in {className m.heap scope}")
-  | .vasgn kind x rhs => .next (withKont m (.eval rhs) (.asgnK kind x))
+  | .vasgn kind x rhs =>
+    if kind == .gvar && loaderGlobal x then .unsupported "assignment to loader global" else
+    .next (withKont m (.eval rhs) (.asgnK kind x))
   | .const n =>
     -- artifact 03 §4: lexical phase (each cref scope's OWN consts, innermost
     -- first), then inheritance phase (ancestors of the innermost class/defmod).
@@ -186,7 +190,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     | none =>
       -- same fidelity split as methods: a constant CRuby has but we don't
       -- model gates as Unsupported; a genuine miss is a real NameError
-      if (crubyToplevelConstants.contains n || crubyStdlibConstants.contains n) then
+      if (crubyToplevelConstants.contains n || crubyStdlibConstants.contains n || m.currentFrame.cref.any (fun c => unmodeledNamespaceConstant m c n)) then
         .unsupported s!"unmodeled constant {n}"
       else
         -- CRuby qualifies the miss with the **innermost cref**, not the bare
@@ -205,7 +209,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
       match constLookup m.heap name with
       | some v => .next (withCtl m (.value v))
       | none =>
-        if (crubyToplevelConstants.contains name || crubyStdlibConstants.contains name) then .unsupported s!"unmodeled constant {name}"
+        if (crubyToplevelConstants.contains name || crubyStdlibConstants.contains name || unmodeledFeatureRoot m name) then .unsupported s!"unmodeled constant {name}"
         else .next (raiseErr m Boot.nameErrorId s!"uninitialized constant {name}")
     | some baseExpr => .next (withKont m (.eval baseExpr) (.cpathK name))
   | .cpathAsgn base name rhs =>
@@ -281,7 +285,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     if let some receiver := frozenMethodReceiver? m.heap defmod then raiseFrozen m receiver else
     let md : MethodDef :=
       { params, body, owner := defmod, cref := m.currentFrame.cref,
-        fromPrelude := m.preludeMode,
+        fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin,
         -- `private`/`protected` with no arguments set the default for the rest of
         -- the class body (artifact 02 §5); `initialize` is always private, and so
         -- is a **toplevel** `def` (a private method of Object) [V] — which is why
@@ -396,7 +400,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
         let (e, m) := eigenclassOf m o
         let md : MethodDef :=
           { params, body, owner := e, cref := m.currentFrame.cref,
-            fromPrelude := m.preludeMode }
+            fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
         let m := { m with heap := defineMethod m.heap e name md }
         .next (withCtl m (.value (.sym name)))
       | _ => .unsupported "singleton def on an immediate"

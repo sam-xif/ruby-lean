@@ -101,6 +101,10 @@ deriving Inhabited
 
 structure ClassPayload where
   superclass : Option ObjId
+  /-- Canonical path used by model library code, independent of the object's
+      Ruby name (a feature can reopen an aliased module). Inventories apply only
+      to these objects, never to an unrelated user module with that name. -/
+  libraryNamespace : Option String := none
   methods : List (String × MethodDef) := []
   consts : List (String × Value) := []
   /-- Constants declared `private_constant`: still visible to lexical lookup
@@ -151,6 +155,8 @@ structure Closure where
   lam : Bool := false
   /-- Native external-iteration callback; it suspends instead of entering Ruby. -/
   enumYield : Option ObjId := none
+  /-- The block was compiled as part of a modeled library. -/
+  libraryOrigin : Bool := false
 deriving Inhabited
 
 inductive EnumSize where
@@ -470,6 +476,7 @@ def install (h : Heap) (cls : ObjId) (names : List String) : Heap :=
     let methods := names.foldl (init := c.methods) fun ms n =>
       (n, { params := [], body := .nil, owner := cls,
             visibility := if n == "method_missing" || n == "Rational" || n == "Complex" ||
+                (["require", "require_relative"].contains n && cls == objectId) ||
                 (n == "initialize" && [enumeratorId, generatorId, yielderId].contains cls) then .priv else .pub,
             builtin := some (if n == "===" then
               match cname with

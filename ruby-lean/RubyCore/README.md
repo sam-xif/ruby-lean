@@ -204,7 +204,11 @@ GC in the model). A class object additionally carries:
 and `origin`. `origin = builtin` marks a method whose behavior is a primitive rule
 rather than a RubyCore body (`Builtins.lean`, keyed `"Owner#name"` and registered
 in H₀'s method tables so that shadowing is uniform). Everything else in the core
-library is written *in Ruby* — see `../prelude/prelude.rb`.
+library is written *in Ruby* — see `../prelude/prelude.rb` and
+`../prelude/features/`. Method and closure origin follows model library code
+through calls; it is separate from the boot-only flag that suppresses callbacks.
+Classes opened by library code retain a canonical namespace tag for the generated
+API inventories, independently of their Ruby-visible names (including aliases).
 
 ### 01 §3 — Builtin payloads
 
@@ -706,6 +710,36 @@ backtrace wins, and `Exception#cause` chaining.
 ---
 
 ## Mechanization — from these rules to `stepFn`
+
+**Feature loading (L281).** Core boot evaluates `prelude/prelude.rb`; optional
+feature bodies remain decoded programs until `require`. A modeled require enters
+a fresh top-level frame with `self = main`, `defmod = Object`, and Object's lexical
+constant scope. The caller's locals and namespace do not become the feature's.
+The heap, globals and effects remain shared. **[V]**
+
+The machine distinguishes loading, completed and attempted features. A completed
+or recursively loading feature returns false; successful execution records the
+feature and returns true. An escaping exception clears only its loading state:
+effects survive, and a later require retries. Attempted-feature API inventories
+remain available after a failure so missing dependency APIs cannot become false
+negative constant or method answers. These lists stay shared across Enumerator
+suspension. **[V]** (cache, scope and unwind are compared to CRuby with identical
+small feature bodies; the modeled optional libraries remain partial.)
+
+`json`, `uri`, `forwardable`, `sorbet-runtime` and the `pathname.rb` wrapper have
+registered bodies; `.rb` aliases share a cache key. CRuby 4.0.5 already loads
+`pathname.so` at startup, so Pathname belongs to core boot. JSON installs its real
+generator mixin hierarchy. Standalone execution begins without JSON; the
+differential adapter passes `--preload-json` because its control wrapper requires
+JSON before the program. **[V]**
+
+Filesystem resolution, `require_relative`, feature path conversion, loader-global
+paths/mutation and unknown libraries remain explicit gates. Partial library
+bodies also gate user definition hooks and frozen target namespaces: omitted
+upstream declarations make their callback order and first failing write
+observable. Existing class/module conflicts gate when their diagnostic requires
+the original source position. This does not claim full standard-library or
+Sorbet-runtime conformance.
 
 Two definitions coexist: `inductive Step` (`Proof/Step.lean`) is the definition of
 record, and `stepFn` + `run fuel` (`Interp.lean`) is what executes. The adequacy

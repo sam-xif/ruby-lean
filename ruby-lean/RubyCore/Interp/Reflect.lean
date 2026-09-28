@@ -244,7 +244,7 @@ def reflectDefineMethod (m : Machine) (recv : Value) (mname : String)
                     if localFreeB 1000000 cl.body then none
                     else cl.captured,
                   declared := cl.locals,
-                  fromPrelude := m.preludeMode }
+                  fromPrelude := m.preludeMode || cl.libraryOrigin }
               let m := { m with heap := defineMethod m.heap target name md }
               some (.next (withCtl m (.value (.sym name))))
     | [] => none
@@ -415,18 +415,27 @@ def reflectIvarNames (m : Machine) (recv : Value) (_mname : String)
 
 def reflectConstGet (m : Machine) (recv : Value) (mname : String)
     (args : List Value) (_blk : Option Value) : Option StepResult :=
+    if args.isEmpty || args.length > 2 then
+      some (.next (raiseErr m Boot.argumentErrorId
+        s!"wrong number of arguments (given {args.length}, expected 1..2)"))
+    else
     match recv, args with
     | .ref o, nameArg :: _ =>
       match symOrStr m nameArg, m.heap.classPayload? o with
-      | some n, some _ =>
+      | some n, some cp =>
         if n.contains ':' then some (.unsupported s!"{mname} with a scoped name")
         else
-          match constLookupFrom m.heap o n with
+          let inherit := (args[1]?.map Value.truthy).getD true
+          -- Reflection on a module falls back to Object; a qualified A::X read
+          -- does not. Explicit inherit=false consults only this object's table.
+          let scopes := if !inherit then [o] else
+            ancestors m.heap o ++ (if cp.isModule then ancestors m.heap Boot.objectId else [])
+          match scopes.firstM (fun k => constOwn m.heap k n) with
           | some v =>
             some (.next (withCtl m
               (.value (if mname == "const_get" then v else .bool true))))
           | none =>
-            if unmodeledNamespaceConstant m.heap o n then
+            if scopes.any (fun k => unmodeledNamespaceConstant m k n false) then
               some (.unsupported s!"{mname} of unmodeled constant {className m.heap o}::{n}")
             else
             if mname == "const_defined?" then
@@ -436,8 +445,11 @@ def reflectConstGet (m : Machine) (recv : Value) (mname : String)
                 some (.unsupported s!"const_defined? of unmodeled constant {n}")
               else some (.next (withCtl m (.value (.bool false))))
             else
-              some (.next (raiseErr m Boot.nameErrorId
-                s!"uninitialized constant {className m.heap o}::{n}"))
+              if (lookup m.heap recv "const_missing").any (fun (_, md) => md.builtin.isNone) then
+                some (.unsupported "const_get with a user const_missing hook")
+              else
+                let qualifier := if o == Boot.objectId then "" else className m.heap o ++ "::"
+                some (.next (raiseErr m Boot.nameErrorId s!"uninitialized constant {qualifier}{n}"))
       | _, _ => none
     | _, _ => none
 
@@ -472,7 +484,7 @@ def reflectRemoveMethod (m : Machine) (recv : Value) (mname : String)
             let missing := (args.filterMap (symOrStr m)).headD ""
             if dn.startsWith "#<" then
               some (.unsupported s!"{mname} of a method not defined in a singleton class")
-            else if crubyClassDefines dn missing then
+            else if crubyClassDefines dn missing || featureMethod m.heap o missing then
               -- CRuby *does* define it there (e.g. the private
               -- `BasicObject#method_missing`), so it would succeed and change
               -- later dispatch: the L5 fidelity split says gate, not raise.
@@ -527,6 +539,10 @@ def reflectMethodDefined (m : Machine) (recv : Value) (mname : String)
     | .ref o, [nameArg] =>
       match symOrStr m nameArg, m.heap.classPayload? o with
       | some name, some _ =>
+        if (methodOn m.heap o name).isNone &&
+            (ancestors m.heap o).any (fun k => featureMethod m.heap k name) then
+          some (.unsupported s!"{mname} of unmodeled library method {name} (visibility)")
+        else
         -- `method_defined?` covers public *and* protected; the three specific
         -- predicates ask for exactly one visibility [V].
         let visOk : Visibility → Bool := fun v => match mname with
@@ -551,6 +567,10 @@ def reflectRespondTo (m : Machine) (recv : Value) (_mname : String)
         | _ => false
       match symOrStr m nameArg with
       | some name =>
+        if (lookup m.heap recv name).isNone &&
+            (ancestors m.heap (classOf m.heap recv)).any (fun k => featureMethod m.heap k name) then
+          some (.unsupported s!"respond_to? of unmodeled library method {name} (visibility)")
+        else
         -- private *and* protected answer false unless include_private [V]
         let found : Bool := match lookup m.heap recv name with
             | some (_, md) => !md.undefined && (inclPrivate || md.visibility == .pub)

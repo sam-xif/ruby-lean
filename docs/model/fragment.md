@@ -18,7 +18,8 @@ regenerated. Paths are relative to `ruby-lean/`.
 | `RubyCore/Machine.lean` | `Machine` config: control state, kont stack, frame **store** + id stack (sketch §1.2), stdout accumulator, `$!` |
 | `RubyCore/Builtins.lean` | the axiomatized builtin methods, keyed `"Owner#name"`, registered in H₀'s method tables so shadowing is uniform |
 | `prelude/prelude.rb` | the **prelude**: the part of the core library modeled *in Ruby* (Enumerable, Comparable, `Range#each`, Hash's Enumerable overrides, `BasicObject#!=`, …). Authored here; read the rules at the top of the file before editing (L62/L63) |
-| `RubyCore/Prelude.lean` | **generated** by `scripts/gen_prelude.rb` from `prelude/prelude.rb`: the desugared prelude as export JSON, decoded by the ordinary `Decode.program` |
+| `prelude/features/*.rb` | optional library bodies, executed on `require` (L281); distinct from core boot |
+| `RubyCore/Prelude.lean` | **generated** by `scripts/gen_prelude.rb` from the core prelude and feature files: export JSON decoded by ordinary `Decode.program` |
 | `RubyCore/PreludeBoot.lean` | the two-phase boot: run the prelude from H₀ (`preludeMode`), then the program under test on the resulting heap (`Machine.initOn`) |
 | `RubyCore/Interp.lean` | `stepFn` (one transition; helpers deliberately non-mutual) + `run fuel` (`outOfFuel` ≠ `stuck` from day one) |
 | `RubyCore/Interp/Enumerator.lean` | Native Enumerator/Generator/Yielder descriptors, internal dispatch and suspended external execution (L280) |
@@ -167,7 +168,7 @@ Two fidelity policies worth knowing (both are what keeps the corpus at
 
 `RubyCore/CRubyNames.lean` (oracle name tables) and `RubyCore/Prelude.lean` (the
 desugared prelude) are both **generated and committed**. Regenerate the prelude
-after every edit to `prelude/prelude.rb`:
+after every edit to `prelude/prelude.rb` or `prelude/features/*.rb`:
 
 ```sh
 "$(brew --prefix ruby)/bin/ruby" scripts/gen_prelude.rb > RubyCore/Prelude.lean
@@ -186,3 +187,7 @@ through both CRuby and the model and reports AGREE / DIFF / GATE.
 Rerun against the pinned oracle when the CRuby version bumps. It folds
 modules the L0 ancestor chain omits (Kernel→Object, Comparable/Numeric→
 numerics/strings, Enumerable→Array/Hash).
+Optional feature inventories are captured in isolated subprocesses by
+`scripts/cruby_feature_names.rb`; they do not pollute the core snapshot. Missing
+library APIs gate only on objects opened by model library code or on roots of
+attempted features. Namespace tags preserve this distinction through aliases.

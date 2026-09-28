@@ -98,6 +98,7 @@ def ctlBrief (h : Heap) : Ctl → String
 
 /-- Continuation-frame label (top of the kont stack = what happens next). -/
 def kontLabel : Kont → String
+  | .requireK feature _ => s!"require {feature}: finish"
   | .enumFinishK id => s!"Enumerator #{id}: finish"
   | .seqK rest => s!"seq (+{rest.length} more)"
   | .asgnK _ x => s!"then {x} = ▢"

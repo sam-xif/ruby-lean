@@ -14153,3 +14153,102 @@ disagree**, AST-idempotent; six old render-only instabilities. Generated Prelude
 and CRubyNames match regeneration; git diff --check passes. All validation
 processes terminated. No proof build, typed ratchet or commit was performed.
 The full conformance goal remains active and incomplete.
+
+## L281 — lazy modeled features and constant reflection (2026-09-28)
+
+The known `class T; end` disagreement came from installing optional libraries at
+core boot. `prelude/features/{json,uri,forwardable,sorbet-runtime,pathname}.rb`
+now contains separate bodies; `gen_prelude.rb` desugars/decodes each through the
+ordinary export path with a separate literal namespace. Core boot registers
+these programs without executing them. CRuby 4.0.5 itself boots pathname.so,
+even with gems disabled, so Pathname remains core and pathname.rb is a separate
+cached wrapper. The old Pathname#to_str was removed: the oracle has no such
+method. Pathname's broader reflection and filesystem operations remain partial.
+
+Interp/Require.lean intercepts the native require method, including aliases and
+super. It creates a fresh top-level frame (main/Object/Object cref), independent
+of the caller's locals and namespace. Machine.featurePrograms carries the
+registered ASTs. Loading/completed features distinguish recursive false from
+successful true; requireK restores the caller and clears loading state on unwind.
+Failed loads preserve heap/global effects and permit retry. Completed dependencies
+survive an outer feature's failure. Attempted features retain API inventories
+when a failed load might have partially introduced dependencies. These fields are
+shared across external Enumerator contexts, not copied into Execution.
+
+Frame/Closure.libraryOrigin and MethodDef.fromPrelude follow model library code
+through ordinary calls, closures, define_method and class bodies. They are distinct
+from boot-only preludeMode. Setting preludeMode during require would silently
+suppress user callbacks. An initial implementation that simply ran the smaller
+Forwardable body exposed a real mismatch in method_added counts/order. Optional
+library bodies now explicitly gate user definition hooks and frozen namespaces;
+they cannot claim the observations of omitted upstream declarations. The new
+open require-definition-hooks regression records this boundary. General
+alias/singleton definition callbacks and full upstream source execution remain
+work, not claimed solved by the gate.
+
+The JSON body installs JSON::Ext::Generator::GeneratorMethods modules on the
+same core ancestors as the oracle, instead of a direct Object#to_json shortcut.
+The default executable boots only core. difftest's control wrapper already
+requires JSON, so LeanSUT explicitly passes --preload-json. No comparator or
+control-wrapper normalization changed. Trace/fuel options compose with this
+flag in either order. The playground and cmp.sh compare against plain CRuby and
+therefore retain core-only boot.
+
+`gen_cruby_names.rb` captures each optional library in a separate subprocess
+(`cruby_feature_names.rb`) after emitting the uncontaminated core tables. Missing
+library methods/constants/dependency roots must gate, not produce false
+NoMethodErrors/NameErrors or reflection negatives. ClassPayload.libraryNamespace
+identifies the canonical library path independently of the object's Ruby name;
+a library may reopen a user module through an alias. Unrelated user T/URI/
+Forwardable modules do not acquire these inventories before require. Curated
+unmodeled optional constants also gate reflective misses, including StringIO in
+the observation environment. Loader globals report defined? correctly, while
+reads/writes of installation paths and load-path state explicitly gate.
+
+The scope audit additionally found old const_get/const_defined? bugs: inherit=false
+was ignored, and modules did not fall back to Object when inheritance was enabled.
+Reflection now searches the appropriate scopes, checks arity, uses the bare
+constant name for top-level NameErrors, and gates unmodeled const_missing hooks.
+It does not change qualified A::X lookup or claim scoped-string constant paths.
+constant-reflection-scope.rb and the class form of require-top-level.rb pin this.
+
+Eight new fixed regressions cover namespace absence, a user T class, cache and
+visibility, feature top-level scope, reopening a valid module, library behavior,
+JSON ancestry, and constant reflection. One new open regression records definition
+hooks. Exact combined programs passed before fixed sidecars were written. The
+focused 60-case replay has 40 agreements / 20 explicit gates / zero disagreements,
+including all 28 Sorbet cases (25 agree / three pre-existing gates). Three
+standalone core-only programs agree. `python3 scripts/check-feature-loading.py`
+compares identical feature bodies against actual CRuby require: exception/reentry/
+scope/cache, throw/ensure, and a completed dependency surviving outer failure all
+agree. This test-only Lean entry point is not a production filesystem loader.
+
+The first full L281 run (20260928-011806) preserved all L280 bootstrap verdicts:
+1,081 agree / 222 unsupported / zero disagree, five invalid controls and the old
+syntax harness error. It preceded the final reflection/alias-inventory refinement.
+The final build is PASS (92 jobs), generated Prelude/CRubyNames match regeneration,
+and git diff --check passes. Final suite results are appended below after completion.
+No proof build, typed gate or commit is attempted: proof repair is deferred by the
+user. The full conformance objective remains active and incomplete.
+
+Remaining feature boundaries: general require/require_relative path resolution,
+custom to_path/to_str conversion, loader globals, unmodeled library APIs, definition
+hooks, namespace-conflict diagnostics with prior source positions, and full Sorbet
+fidelity. Current feature bodies have no Rational/Complex literals; future runtime
+compilation/retry must give newly compiled literal sites fresh namespaces. The old
+Sorbet identity-hash gate remains open, and File's older module-shaped stub still
+needs an independent audit. No process-specific hash or weakened comparison was
+introduced.
+
+Final L281 verification: build PASS (92 jobs). Bootstrap **1,081 agree /
+zero disagree / 222 unsupported**, five invalid controls and the old
+test_syntax_115 harness error. Every bootstrap source and verdict is unchanged
+from L280. Regressions: **85 held / two gated / zero failures** (87 total);
+every pre-existing source/verdict is unchanged. The gates are sorbet-hash-gate
+and the newly recorded require-definition-hooks. Tier 1 n=300 seed20260927:
+**219 agree / 81 unsupported / zero disagree**, unchanged sources/verdicts.
+Final reports: `difftest/reports/20260928-012417-{tier0,tier1,tierregressions}-lean/`.
+Front-end replay: 45 seeds plus nine new programs, **54 agree / zero disagree**,
+AST-idempotent, six old render-only instabilities. Generated Prelude/CRubyNames
+match regeneration, CLI flag ordering checks pass, and git diff --check passes.
+All validation processes terminated. No proofs, typed gate or commit attempted.

@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L281 (2026-09-28)",
+  "note": "Lazy modeled feature loading; compared with CRuby 4.0.5 in the shared JSON-preloaded observation environment."
+}

@@ -24,6 +24,9 @@ deriving Inhabited
 
 namespace Interp
 
+def loaderGlobal (name : String) : Bool :=
+  ["$LOADED_FEATURES", "$\"", "$LOAD_PATH", "$:", "$-I"].contains name
+
 def executionOf (m : Machine) : Execution :=
   ⟨m.ctl, m.kont, m.stack, m.currentExc, m.missingReason, m.activeEnumerator⟩
 
@@ -33,9 +36,26 @@ def restoreExecution (m : Machine) (e : Execution) : Machine :=
 def enumState (m : Machine) (o : ObjId) : EnumState :=
   ((m.enumerators.find? (·.1 == o)).map Prod.snd).getD {}
 
-def unmodeledNamespaceConstant (h : Heap) (o : ObjId) (name : String) : Bool :=
-  (ancestors h o).any fun k =>
-    ((crubyNamespaceConstants.find? (·.1 == className h k)).map Prod.snd |>.getD []).contains name
+def libraryNamespace (h : Heap) (o : ObjId) : Option String :=
+  (h.classPayload? o).bind (·.libraryNamespace)
+
+def featureHas (table : List (String × List String)) (h : Heap) (o : ObjId) (name : String) : Bool :=
+  ((libraryNamespace h o).bind fun ns => table.find? (·.1 == ns)).any (·.2.contains name)
+
+def featureMethod (h : Heap) (o : ObjId) (name : String) : Bool :=
+  featureHas crubyFeatureMethods h o name ||
+    ((h.classPayload? o).bind (·.attached)).any
+      (fun target => featureHas crubyFeatureSingletonMethods h target name)
+
+def unmodeledFeatureRoot (m : Machine) (name : String) : Bool :=
+  m.attemptedFeatures.any fun f =>
+    (crubyFeatureRoots.find? (·.1 == f)).any (·.2.contains name)
+
+def unmodeledNamespaceConstant (m : Machine) (o : ObjId) (name : String) (inherit := true) : Bool :=
+  (if inherit then ancestors m.heap o else [o]).any fun k =>
+    ((crubyNamespaceConstants.find? (·.1 == className m.heap k)).map Prod.snd |>.getD []).contains name ||
+    featureHas crubyFeatureConstants m.heap k name ||
+    (k == Boot.objectId && (crubyStdlibConstants.contains name || unmodeledFeatureRoot m name))
 
 def setEnumState (m : Machine) (o : ObjId) (s : EnumState) : Machine :=
   { m with enumerators := (o, s) :: m.enumerators.filter (·.1 != o) }
@@ -159,7 +179,7 @@ abbrev receiverDesc := RubyCore.receiverDesc
 def crubyShadow (h : Heap) (chain : List ObjId) (mname : String) : Option String :=
   chain.firstM fun k =>
     let cname := className h k
-    if crubyClassDefines cname mname then some cname else none
+    if crubyClassDefines cname mname || featureMethod h k mname then some cname else none
 
 /-- For a *class object* receiver: would CRuby find `mname` on the class's
     singleton chain (e.g. `Hash.ruby2_keywords_hash`)? We have no
@@ -173,7 +193,7 @@ def crubySingletonShadow (h : Heap) (recv : Value) (mname : String) : Option Str
     | .cls _ =>
       (ancestors h o).firstM fun k =>
         let cname := className h k
-        if crubySingletonDefines cname mname then some cname else none
+        if crubySingletonDefines cname mname || featureHas crubyFeatureSingletonMethods h k mname then some cname else none
     | _ => none
   | _ => none
 
@@ -394,7 +414,7 @@ def reifyBlock (m : Machine) (params : List Param) (locals : List String) (body 
   -- This is exactly `returnTarget` evaluated at the defining frame — so a
   -- `proc { return }` created inside a lambda returns from that lambda [V].
   let home := returnTarget m
-  let cl : Closure := { params, locals, body, captured := some cur, home, lam }
+  let cl : Closure := { params, locals, body, captured := some cur, home, lam, libraryOrigin := m.currentFrame.libraryOrigin || m.preludeMode }
   let (o, h) := m.heap.alloc { klass := Boot.procId, payload := .proc cl }
   (.ref o, { m with heap := h })
 
@@ -455,7 +475,7 @@ def enterClosure (m : Machine) (cl : Closure) (args : List Value)
       { self := selfOv.getD capF.self, defmod := defmodOv.getD capF.defmod,
         blk := capF.blk,
         locals, kind := .block, captured := cl.captured,
-        home := cl.home, lam := cl.lam, cref := capF.cref }
+        home := cl.home, lam := cl.lam, cref := capF.cref, libraryOrigin := cl.libraryOrigin }
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     .next (withKont m (.eval cl.body) (.blkFrameK fid cl.lam brk cl args))

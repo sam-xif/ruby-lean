@@ -1,0 +1,6 @@
+{
+  "status": "open",
+  "filed_by": "L281 (2026-09-28)",
+  "observed_then": "sut_unsupported",
+  "note": "The smaller modeled Forwardable body used to emit fewer method_added callbacks in a different order. Requiring a modeled library with user definition hooks now gates; matching these observations needs the complete library body and alias/singleton definition callbacks."
+}

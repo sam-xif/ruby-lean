@@ -35,6 +35,14 @@ an hour, mostly for `Denote/`. Rebuilds after a change take seconds.
 `rubycore` exits 0 on success, 3 when the program uses something the model does
 not support (the reason is on stderr), and 1 on a model bug.
 
+The default runtime boots core Ruby. Modeled optional libraries (`json`, `uri`,
+`forwardable`, `sorbet-runtime`) load on `require`; `pathname.rb` is a separate
+feature over the Pathname class already booted by the pinned CRuby 4.0.5.
+`--preload-json` loads JSON before the input program, matching the differential
+runner's observation wrapper. It is unnecessary for ordinary standalone runs.
+`python3 scripts/check-feature-loading.py` compares scope, reentry, caching and
+failed-load retry against CRuby using identical feature bodies on both sides.
+
 ## The gate
 
 ```sh

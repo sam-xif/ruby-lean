@@ -129,7 +129,7 @@ puts <<~MID
   /-- Constants a require may define, curated separately from the oracle's
       already-loaded constants. Preserve the L109 fidelity gate on regeneration. -/
   def crubyStdlibConstants : List String := [
-    "Forwardable", "JSON", "YAML", "Date", "DateTime", "OpenSSL", "Digest",
+    "YAML", "Date", "DateTime", "OpenSSL", "Digest",
     "Tempfile", "FileUtils", "Shellwords", "StringIO", "Timeout", "Socket",
     "OptionParser", "Open3", "SecureRandom", "Etc", "Zlib", "Base64", "CSV",
     "Logger", "Delegator", "SimpleDelegator", "Singleton", "Observable"
@@ -142,8 +142,26 @@ MID
 puts NAME_LINES.call(
   (Object.constants - %i[FOLD NAME_LINES MAIN_SINGLETON]).map(&:to_s).sort, "  "
 )
+puts "]"
+
+# Capture each feature in isolation: the core tables above must describe the
+# process before optional libraries have been required.
+features = %w[forwardable json uri sorbet-runtime].to_h do |feature|
+  bytes = IO.popen([RbConfig.ruby, File.join(__dir__, "cruby_feature_names.rb"), feature], &:read)
+  abort "feature inventory failed: #{feature}" unless $?.success?
+  [feature, Marshal.load(bytes)]
+end
+puts "\n/-- Names introduced by modeled requires; consulted only after a load attempt. -/"
+puts "def crubyFeatureRoots : List (String × List String) := ["
+puts features.map { |feature, (roots, _)| "  (#{feature.inspect}, [#{roots.map(&:inspect).join(', ')}])" }.join(",\n")
+puts "]"
+%w[Methods SingletonMethods Constants].each_with_index do |kind, i|
+  puts "\ndef crubyFeature#{kind} : List (String × List String) := ["
+  namespaces = features.values.flat_map { |_, mods| mods.to_a }.to_h.sort
+  puts namespaces.map { |name, values| "  (#{name.inspect}, [#{values[i].map(&:inspect).join(', ')}])" }.join(",\n")
+  puts "]"
+end
 puts <<~'FOOTER'
-  ]
 
   def crubyClassDefines (className mname : String) : Bool :=
     match crubyMethodNames.find? (·.1 == className) with

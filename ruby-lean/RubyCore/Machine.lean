@@ -75,6 +75,8 @@ structure Frame where
   /-- A native Enumerator fiber started at top level shares that environment's
       match slot. This does not capture its locals or its control stack. -/
   matchAlias : Option FrameId := none
+  /-- Source origin, distinct from boot mode: library loading still runs hooks. -/
+  libraryOrigin : Bool := false
 deriving Inhabited
 
 /-- In-flight non-local transfer (artifact 04 §3's `C^ctl` variants).
@@ -212,6 +214,7 @@ inductive IterKind where
 deriving Repr, Inhabited
 
 inductive Kont where
+  | requireK (feature : String) (frame : FrameId)
   | enumFinishK (id : ObjId)
   /-- Remaining statements of a `seq`; the in-flight value is discarded. -/
   | seqK (rest : List Expr)
@@ -417,6 +420,12 @@ structure Machine where
       `prelude/prelude.rb`) is being loaded: methods defined in this phase are
       marked `fromPrelude` (L62). -/
   preludeMode : Bool := false
+  featurePrograms : List (String × Expr) := []
+  loadedFeatures : List String := ["pathname.so"]
+  loadingFeatures : List String := []
+  /-- A failed load can leave declarations behind; missing dependency APIs
+      remain explicit gates even while the feature is eligible for retry. -/
+  attemptedFeatures : List String := []
 deriving Inhabited
 
 namespace Machine

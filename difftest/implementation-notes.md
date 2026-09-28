@@ -1641,3 +1641,36 @@ disagree**, AST-idempotent; six old render-only instabilities. Generated Prelude
 and CRubyNames match regeneration; git diff --check passes. All validation
 processes terminated. No proof build, typed ratchet or commit was performed.
 The full conformance goal remains active and incomplete.
+
+## N55 — explicit library-loading environment (2026-09-28)
+
+Model L281 separates core boot from modeled requires. LeanSUT passes
+--preload-json because the existing CRuby observation wrapper requires JSON before
+executing the input. Standalone rubycore remains core-only. JSON's generator
+modules now participate in the actual ancestor chains. The comparator and control
+wrapper are unchanged; unmodeled optional APIs remain explicit gates.
+
+Eight new fixed programs cover lazy namespaces, user classes, require cache,
+visibility and lexical isolation, reopening, library behavior, JSON ancestry and
+constant-reflection scope. A ninth, require-definition-hooks, is open/gated: the
+partial Forwardable body exposed the wrong method_added order. This boundary is
+recorded rather than counted as fixed. Failed-load mechanics are tested separately
+against identical CRuby feature bodies by ruby-lean/scripts/check-feature-loading.py
+(exception/reentry/scope/cache, throw/ensure, and completed nested dependency).
+
+Focused replay: 60 programs, 40 agree / 20 unsupported / zero disagree, including
+all 28 Sorbet programs (25 agree / three old gates). Three standalone core-only
+programs also agree. The first full run (20260928-011806) retained all bootstrap
+sources/verdicts: 1,081 agree / 222 unsupported / zero disagree, five invalid controls
+and one old harness error. The final rerun includes the additional constant
+reflection and aliased-namespace fixes; its results follow after completion.
+
+Final L281 reports: `20260928-012417-{tier0,tier1,tierregressions}-lean/`.
+Bootstrap: **1,081 agree / zero disagree / 222 unsupported**, five invalid
+controls and old test_syntax_115 harness error; all sources/verdicts unchanged.
+Regressions: **85 held / two gated / zero failures** (87 cases); all old sources
+and verdicts unchanged. Tier 1 n=300 seed20260927: **219 agree / 81 unsupported /
+zero disagree**, unchanged sources/verdicts. Front-end: 45 seeds plus nine new
+programs, **54 agree / zero disagree**, AST-idempotent with six old render-only
+instabilities. Build, regeneration comparisons and diff whitespace checks pass.
+All processes terminated; proof builds and typed gate remain deferred, no commit.

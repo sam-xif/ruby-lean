@@ -37,10 +37,11 @@ def boot : Except String Machine :=
 /-- Initial machine for `prog` on the booted (prelude-loaded) heap. The heap
     and globals carry over from phase 1; frames/kont/stdout/`$!` are fresh, and
     `preludeMode` is back to `false` so program `def`s are ordinary. -/
-def initWithPrelude (prog : Expr) : Except String Machine :=
-  boot.map fun mp =>
-    { Machine.initOn mp.heap prog with
-      globals := mp.globals, numericLiterals := mp.numericLiterals }
+def initWithPrelude (prog : Expr) : Except String Machine := do
+  let mp ← boot
+  let featurePrograms ← features
+  return { Machine.initOn mp.heap prog with
+    globals := mp.globals, numericLiterals := mp.numericLiterals, featurePrograms }
 
 end Prelude
 end RubyCore

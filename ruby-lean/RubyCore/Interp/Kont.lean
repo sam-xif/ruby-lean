@@ -22,6 +22,8 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
   | k :: rest =>
     let m := { m with kont := rest }
     match k with
+    | .requireK feature _ =>
+      .next { m with ctl := .value (.bool true), stack := m.stack.tail, loadingFeatures := m.loadingFeatures.filter (· != feature), loadedFeatures := feature :: m.loadedFeatures }
     | .enumFinishK o => finishEnumerator m o v
     | .seqK es =>
       match es with
@@ -97,7 +99,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         -- lookup even though its dispatch owner is the eigenclass (artifact 03).
         let md : MethodDef :=
           { params, body, owner := e, cref := m.currentFrame.cref,
-            fromPrelude := m.preludeMode }
+            fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
         let m := { m with heap := defineMethod m.heap e name md }
         .next (withCtl m (.value (.sym name)))
       | _ =>
@@ -108,7 +110,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       match v with
       | .ref o =>
         let (e, m) := eigenclassOf m o
-        let frame : Frame := { self := .ref e, defmod := e, kind := .classBody, cref := e :: m.currentFrame.cref }
+        let frame : Frame := { self := .ref e, defmod := e, kind := .classBody, cref := e :: m.currentFrame.cref, libraryOrigin := m.currentFrame.libraryOrigin }
         let fid := m.frames.size
         let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
         .next (withKont m (.eval body) (.frameK fid))
@@ -136,7 +138,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
             -- *exists* says so, rather than claiming to be uninitialized.
             .next (raiseErr m Boot.nameErrorId
               s!"private constant {className m.heap o}::{name} referenced")
-          else if unmodeledNamespaceConstant m.heap o name then
+          else if unmodeledNamespaceConstant m o name then
             .unsupported s!"unmodeled constant {className m.heap o}::{name}"
           else .next (raiseErr m Boot.nameErrorId
             s!"uninitialized constant {className m.heap o}::{name}")
@@ -321,7 +323,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         if (m.heap.classPayload? o).isSome then
           match constLookupFrom m.heap o name with
           | some _ => let (sv, m) := Builtins.allocStr m "constant"; .next (withCtl m (.value sv))
-          | none => if unmodeledNamespaceConstant m.heap o name then
+          | none => if unmodeledNamespaceConstant m o name then
               .unsupported s!"defined? of unmodeled constant {className m.heap o}::{name}"
             else .next (withCtl m (.value .nil))
         else .unsupported "defined?(A::B) with a non-namespace base"
@@ -357,6 +359,13 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
   | k :: rest =>
     let m := { m with kont := rest }
     match k with
+    | .requireK feature fid =>
+      let m := { m with stack := m.stack.tail, loadingFeatures := m.loadingFeatures.filter (· != feature) }
+      match j with
+      | .retJ _ target =>
+        if target == fid then .next { m with ctl := .value (.bool true), loadedFeatures := feature :: m.loadedFeatures }
+        else .next { m with ctl := .jump j }
+      | _ => .next { m with ctl := .jump j }
     | .enumFinishK o =>
       let st := enumState m o
       match st.caller with

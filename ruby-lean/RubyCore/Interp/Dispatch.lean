@@ -151,7 +151,7 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
         kind := .method, blk := frameBlk, callBlk := blk,
         meth := md.superName.getD mname,
         runParams := md.params, runFromDM := md.capturedFrame.isSome,
-        cref := md.cref, captured := md.capturedFrame }
+        cref := md.cref, captured := md.capturedFrame, libraryOrigin := md.fromPrelude }
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     let m := { m with kont := .frameK fid :: m.kont }
@@ -209,6 +209,20 @@ where
       let h := h.set o { h.get o with eigen := some e }
       (e, { m with heap := h })
 
+/-- Optional libraries model their public behavior with smaller source bodies.
+    A user definition hook can observe omitted declarations or their order. That
+    requires the complete upstream body; running the smaller body is unsound. -/
+def libraryBodyGate (m : Machine) (k : ObjId) : Option String :=
+  if !m.currentFrame.libraryOrigin || m.preludeMode || m.loadingFeatures.isEmpty then none else
+  if (m.heap.get k).frozen then some "require into a frozen namespace needs the complete library body" else
+  let targets := k :: ((m.heap.classPayload? k).bind (·.superclass)).toList
+  if targets.any (fun target =>
+      ["method_added", "singleton_method_added", "const_added", "inherited", "included", "extended", "prepended"].any
+        (fun hook => (lookup m.heap (.ref target) hook).any
+          (fun (_, md) => md.builtin.isNone && !md.undefined && !md.fromPrelude))) then
+    some "require with user definition hooks needs the complete library body"
+  else none
+
 /-- Open (or create) a class/module named `name` and run its `body` in a fresh
     class-body frame with `self` = `defmod` = the class object (artifact 01 §5).
     Reopening checks class/module agreement and, for `class`, superclass match
@@ -217,8 +231,18 @@ def enterClassBody (m : Machine) (name : String) (isMod : Bool)
     (sup? : Option ObjId) (body : Expr) : StepResult :=
   let kindWord := if isMod then "module" else "class"
   let pushFrame (m : Machine) (k : ObjId) : StepResult :=
+    match libraryBodyGate m k with
+    | some reason => .unsupported reason
+    | none =>
+    let namespaceName := if m.currentFrame.defmod == Boot.objectId then name else
+      s!"{(libraryNamespace m.heap m.currentFrame.defmod).getD (className m.heap m.currentFrame.defmod)}::{name}"
+    let m := if m.preludeMode || m.currentFrame.libraryOrigin then
+      match m.heap.classPayload? k with
+      | some cp => { m with heap := m.heap.setClassPayload k { cp with libraryNamespace := some namespaceName } }
+      | none => m
+      else m
     let frame : Frame :=
-      { self := .ref k, defmod := k, kind := .classBody, cref := k :: m.currentFrame.cref }
+      { self := .ref k, defmod := k, kind := .classBody, cref := k :: m.currentFrame.cref, libraryOrigin := m.currentFrame.libraryOrigin }
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     .next (withKont m (.eval body) (.frameK fid))
@@ -273,7 +297,16 @@ def enterScopedClassBody (m : Machine) (container : ObjId) (name : String)
   let kindWord := if isMod then "module" else "class"
   let fullName := s!"{className m.heap container}::{name}"
   let pushFrame (m : Machine) (k : ObjId) : StepResult :=
-    let frame : Frame := { self := .ref k, defmod := k, kind := .classBody }
+    match libraryBodyGate m k with
+    | some reason => .unsupported reason
+    | none =>
+    let namespaceName := s!"{(libraryNamespace m.heap container).getD (className m.heap container)}::{name}"
+    let m := if m.preludeMode || m.currentFrame.libraryOrigin then
+      match m.heap.classPayload? k with
+      | some cp => { m with heap := m.heap.setClassPayload k { cp with libraryNamespace := some namespaceName } }
+      | none => m
+      else m
+    let frame : Frame := { self := .ref k, defmod := k, kind := .classBody, libraryOrigin := m.currentFrame.libraryOrigin }
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     .next (withKont m (.eval body) (.frameK fid))
@@ -692,10 +725,10 @@ def defineAttr (m : Machine) (cls : ObjId) (mname : String)
       let vis := m.currentFrame.defVis
       let getter : MethodDef :=
         { params := [], body := .var .ivar iv, owner := cls,
-          fromPrelude := m.preludeMode, visibility := vis }
+          fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin, visibility := vis }
       let setter : MethodDef :=
         { params := [.req "__v"], body := .vasgn .ivar iv (.var .lvar "__v"), owner := cls,
-          fromPrelude := m.preludeMode, visibility := vis }
+          fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin, visibility := vis }
       let m := if mname != "attr_writer" then { m with heap := defineMethod m.heap cls s getter } else m
       let m := if mname != "attr_reader" then { m with heap := defineMethod m.heap cls (s ++ "=") setter } else m
       let names := names

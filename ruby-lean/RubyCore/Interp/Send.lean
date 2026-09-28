@@ -1,4 +1,5 @@
 import RubyCore.Interp.Reflect
+import RubyCore.Interp.Require
 
 /-!
 Dispatch proper: `invoke`, `super`/`zsuper`, and the argument/keyword/block
@@ -173,6 +174,7 @@ where
     | none =>
       match md.builtin with
       | some bid =>
+        if requireBid bid then callRequire m bid args kw else
         if enumBid bid then callEnumerator m bid recv args blk kw else
         if nativeIteratorBid bid then callNativeIterator m bid recv args blk kw else
         if procCallBid bid then callProcBuiltin m recv args kw else
@@ -304,6 +306,7 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
       | none =>
       match md.builtin with
       | some bid =>
+        if requireBid bid then callRequire m bid args kw else
         if enumBid bid then callEnumerator m bid self args blk kw else
         if nativeIteratorBid bid then callNativeIterator m bid self args blk kw else
         if procCallBid bid then callProcBuiltin m self args kw else
