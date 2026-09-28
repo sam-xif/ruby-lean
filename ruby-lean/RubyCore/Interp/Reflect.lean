@@ -480,7 +480,9 @@ def reflectConstSet (m : Machine) (recv : Value) (_mname : String)
       match symOrStr m nameArg, m.heap.classPayload? o with
       | some n, some _ =>
         if (m.heap.get o).frozen then some (raiseFrozen m recv) else
-        some (.next (withCtl { m with heap := constSetIn m.heap o n val } (.value val)))
+        let qual := if o == Boot.objectId then n else s!"{className m.heap o}::{n}"
+        let h := nameIfAnonymous m.heap qual val
+        some (.next (withCtl { m with heap := constSetIn h o n val } (.value val)))
       | _, _ => none
     | _, _ => none
 

@@ -647,6 +647,18 @@ T::Boolean = T::Type.new(:any, [TrueClass, FalseClass], "T::Boolean")
 #   * `inspect` lists the props **alphabetically**, while `serialize` lists them
 #     in declaration order and **omits nil**.
 class T::Struct
+  # The gem installs a public inherited guard on each immediate child. Keep
+  # its super call before the error: the rejected grandchild still exists and
+  # receives its own guard before unwinding (L291).
+  def self.inherited(subclass)
+    super(subclass)
+    subclass.define_singleton_method(:inherited) do |child|
+      super(child)
+      raise self.name.to_s + " is a subclass of T::Struct and cannot be subclassed"
+    end
+    nil
+  end
+
   def self.__own_props
     @__props = [] if @__props.nil?
     @__props

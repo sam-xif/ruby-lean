@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L291 (2026-09-28)",
+  "note": "Native Class/Module allocation, initializer dispatch, inherited ordering and exits, class identity and effectful diagnostics. Exact combined program compared with CRuby 4.0.5; see model L291 and difftest N65."
+}

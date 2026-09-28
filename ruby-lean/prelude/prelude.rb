@@ -2480,3 +2480,8 @@ class Struct
     cls
   end
 end
+
+# Module's constructor allocates internally; its public allocate name is undefined.
+class << Module
+  undef_method :allocate
+end

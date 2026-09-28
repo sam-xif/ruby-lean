@@ -137,6 +137,8 @@ where
         if bid == "Object#initialize_clone" then callInitializeClone m recv args kw else
         if bid == "Class#new" || bid == "Module#new" then callConstruct m recv args blk kw else
         if bid == "Class#allocate" then callAllocate m recv args kw else
+        if bid == "Class#initialize" then callClassInitialize m recv args blk kw else
+        if bid == "Module#initialize" then callModuleInitialize m recv args blk kw else
         if ["String#initialize", "Array#initialize", "Hash#initialize", "Exception#initialize"].contains bid then
           callCoreInitialize m bid recv args blk kw else
         if bid == "Object#__forwardable_compile" then compileForwardable m args else
@@ -235,6 +237,8 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
         if bid == "Object#initialize_clone" then callInitializeClone m self args kw else
         if bid == "Class#new" || bid == "Module#new" then callConstruct m self args blk kw else
         if bid == "Class#allocate" then callAllocate m self args kw else
+        if bid == "Class#initialize" then callClassInitialize m self args blk kw else
+        if bid == "Module#initialize" then callModuleInitialize m self args blk kw else
         if ["String#initialize", "Array#initialize", "Hash#initialize", "Exception#initialize"].contains bid then
           callCoreInitialize m bid self args blk kw else
         if bid == "Object#__forwardable_compile" then compileForwardable m args else

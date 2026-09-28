@@ -249,6 +249,12 @@ inductive Kont where
   /-- Value in flight is a `class C < S` superclass expression: with `S`
       resolved, open (or create) the class and run its body (artifact 01 §5). -/
   | classDefK (name : String) (body : Expr)
+  /-- A newly bound class sends inherited before entering its saved body. -/
+  | classBodyK (klass : ObjId) (libraryName : String) (body : Expr)
+  /-- Native Class#initialize waits for inherited before executing its block. -/
+  | classInitK (klass : ObjId) (block : Option Value)
+  /-- Native type diagnostics render the selected Class object's live to_s. -/
+  | classNameErrorK (klass : ObjId) (lead tail : String)
   /-- `Class#new`: the in-flight value is `initialize`'s (discarded) result;
       yield the allocated instance instead
       (artifact 02 §3 — `new` = allocate ∘ initialize ∘ return self). -/

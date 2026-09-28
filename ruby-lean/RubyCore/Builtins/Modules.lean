@@ -103,12 +103,17 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         .ok v m
       else .unsupported "ancestors"
     | _ => .unsupported "ancestors"
+  | "Class#inherited" =>
+    if args.length == 1 then .ok .nil m else
+      .err Boot.argumentErrorId s!"wrong number of arguments (given {args.length}, expected 1)" m
   | "Class#superclass" =>
     -- `nil` for BasicObject and for a module [V].
     match recv with
     | .ref k =>
       match h.classPayload? k with
-      | some cp => .ok (match cp.superclass with | some sup => .ref sup | none => .nil) m
+      | some cp =>
+        if !cp.ancestryReady then .err Boot.typeErrorId "uninitialized class" m else
+        .ok (match cp.superclass with | some sup => .ref sup | none => .nil) m
       | none => .unsupported "superclass on a non-class"
     | _ => .unsupported "superclass on a non-class"
   | "BasicObject#initialize" | "Object#initialize" =>

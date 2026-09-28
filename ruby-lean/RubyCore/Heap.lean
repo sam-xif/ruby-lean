@@ -126,6 +126,14 @@ structure ClassPayload where
   privateConsts : List String := []
   name : String
   isModule : Bool := false
+  /-- Class.allocate has no superclass and has not run Class#initialize. -/
+  initialized : Bool := true
+  /-- CRuby caches its superclass index. A named subclass of an uninitialized
+      class has a superclass link but no completed index, even after its parent
+      is later initialized (L291). -/
+  ancestryReady : Bool := true
+  /-- Allocation is copied at class creation, independently of live ancestors. -/
+  allocatorUnavailable : Bool := false
   /-- A singleton class renders its attached object using the current heap.
       Its constant name (if any) remains separate from that display name. -/
   attached : Option ObjId := none
@@ -467,9 +475,9 @@ def builtinMethods : List (ObjId × List String) := [
   -- and the prelude defines it (L131).
   (exceptionId, ["to_s", "inspect", "dup", "clone", "initialize", "exception"]),
   (uncaughtThrowErrorId, ["to_s", "tag", "value", "__throw_metadata"]),
-  (classId, ["superclass"]),
+  (classId, ["superclass", "initialize", "inherited"]),
   (stringId, ["try_convert"]),
-  (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors", "freeze",
+  (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors", "freeze", "initialize",
               "method_added", "method_removed", "method_undefined",
               "private_constant", "public_constant"]),
   (classId, ["new", "allocate", "__range_new_unchecked"]),
@@ -502,7 +510,7 @@ def install (h : Heap) (cls : ObjId) (names : List String) : Heap :=
     let methods := names.foldl (init := c.methods) fun ms n =>
       (n, { params := [], body := .nil, owner := cls,
             visibility := if n == "method_missing" || n == "Rational" || n == "Complex" ||
-                ["method_added", "method_removed", "method_undefined", "singleton_method_added",
+                ["inherited", "method_added", "method_removed", "method_undefined", "singleton_method_added",
                  "singleton_method_removed", "singleton_method_undefined"].contains n ||
                 (["puts", "print", "p", "raise", "fail", "String", "block_given?", "rand",
                   "require", "require_relative", "respond_to_missing?", "instance_variables_to_inspect", "binding",
@@ -697,6 +705,26 @@ def fakeAddr (o : ObjId) : String :=
   let hex := String.ofList (Nat.toDigits 16 o)
   "0x" ++ String.ofList (List.replicate (16 - hex.length) '0') ++ hex
 
+/-- CRuby's temporary class path, distinct from singleton-class `to_s` (L291).
+    An unnamed Module-subclass instance uses its direct class's path, including
+    an eigenclass when present. That path names the eigenclass by address or its
+    assigned constant name, without recursively rendering its attached object. -/
+def classPath (h : Heap) (k : ObjId) : String :=
+  go (h.objs.size + 1) k
+where
+  go : Nat → ObjId → String
+    | 0, k => s!"#<Class:{fakeAddr k}>"
+    | fuel + 1, k =>
+      match h.classPayload? k with
+      | some c =>
+        if !c.name.isEmpty then c.name
+        else
+          let label := if !c.isModule then "Class"
+            else if (h.get k).klass == Boot.moduleId then "Module"
+            else go fuel (classOf h (.ref k))
+          s!"#<{label}:{fakeAddr k}>"
+      | none => "Object"
+
 /-- Class name (for error messages / inspect). An **anonymous** class or module
     (`Class.new`, `Module.new`) has an empty `name`, and CRuby renders it by
     address wherever a name is wanted — `0 + Class.new.new` says
@@ -720,10 +748,7 @@ where
             | some _ => go fuel o
             | none => s!"#<{go fuel (h.get o).klass}:{fakeAddr o}>"
           s!"#<Class:{attachedName}>"
-        | none =>
-          if c.name.isEmpty then
-            s!"#<{if c.isModule then "Module" else "Class"}:{fakeAddr k}>"
-          else c.name
+        | none => classPath h k
       | none => "Object"
 
 /-- CRuby's `rb_any_to_s`: how an object is named where a *class* would be named

@@ -14976,3 +14976,83 @@ bootstrap and regression replay; evidence is under
 `difftest/reports/20260928-incremental-LNNN/`. The typed gate was attempted on the
 accumulated work and is RED in shared HeapFacts proofs (className/lookup drift).
 No proof source or checker acceptance rule was changed to conceal that failure.
+
+
+## L291 — Class/Module allocation, initialization and inherited (2026-09-28)
+
+The L290 class audit's nine disagreements and seven gates now all agree. Class
+and Module construction previously used a factory that skipped inherited and
+native initializer dispatch. Native Class#new now allocates a namespace payload
+and sends initialize normally, including overrides, aliases, private methods,
+super and method_missing. Module-subclass instances retain their native module
+payload. Public Module.allocate is undefined; an alias of Class#allocate still
+allocates it. The obsolete Class/Module factory branches are removed.
+
+Class.allocate starts with no superclass and an uninitialized flag. Native
+Class#initialize rejects repeat initialization before checking arity, validates
+the native parent, copies allocator/ancestry state, replaces the old eigenclass,
+and sends inherited before executing its block. Old eigenclass references stay
+live, but their methods no longer apply to the newly initialized class. Class
+initialization returns the class; Module initialization returns nil and is
+repeatable. Both preserve nonlocal block exits. New named classes bind their
+constant before inherited and retain the saved class identity for the body even
+if the hook replaces the constant. Raising skips the body without undoing the
+binding or earlier effects; reopening does not resend inherited.
+
+Pinned CRuby 4.0.5 differs from current upstream master: initializing a frozen
+allocated class succeeds. Class.new rejects an uninitialized parent, while named
+class syntax permits one. Such a child has a real superclass link, but retains an
+unavailable ancestry index and allocator even if its parent is initialized later.
+These states are separate ClassPayload fields; checking only the superclass link
+would accept the wrong calls. Subclassing Class or a singleton class is rejected.
+Native superclass/allocator TypeErrors send the selected class's live to_s and
+preserve its effects, failures and non-String fallback.
+
+Reflective const_set now names anonymous namespaces using the same rule as
+syntactic assignment, including assignment from inside inherited. Module-subclass
+eigenclasses inherit from the actual subclass. Their unnamed instances render
+through a separate temporary class path, so a direct eigenclass contributes its
+name/address without recursively displaying the attached object. The singleton
+class's own to_s still displays the live attachment. This covers later naming,
+frozen instances and array evaluation/rendering order.
+
+Enabling ordinary inherited exposed a missing T::Struct hook in the modeled
+sorbet-runtime library. The model now installs the gem's public child guard,
+calling super before rejecting further subclassing; rejected named subclasses
+retain their bindings and guards. This restores the two previously agreeing
+Sorbet probes and the existing sorbet-describe-obj regression. The installed
+sorbet-runtime 0.6.13405 sources (`types/struct.rb` and
+`types/private/class_utils.rb`) and executable oracle pin the behavior. Other
+unmodeled library inheritance hooks remain explicit gates.
+
+Oracle implementation references: [object.c](https://raw.githubusercontent.com/ruby/ruby/ruby_4_0/object.c)
+for native initialization and inheritance checks, and
+[variable.c](https://raw.githubusercontent.com/ruby/ruby/ruby_4_0/variable.c)
+for temporary class paths. Executable CRuby 4.0.5 comparisons decide the versioned
+behavior; master source is not substituted for that oracle.
+
+The 16 focused and 46 extended probes yield 58 agreements and four existing gates
+(explicit super block-pass, remove_const, top-level return, private_methods). Seventeen permanent
+class-protocol-* programs retain every agreed probe, including core-class override
+cases in isolated programs. No comparator or unsupported verdict was weakened.
+
+Final validation: model build succeeds (100 jobs). Full bootstrap (1,309 cases): 1,096
+agree /zero disagree /207 unsupported, five unchanged invalid controls and the
+old test_syntax_115 harness error. All bootstrap sources are unchanged; the only
+verdict change is test_yjit_347, unsupported to agree. Regression replay (169 cases): 168
+agree /one old sorbet-hash gate; all 152 previously committed sources and verdicts
+hold, plus 17 new agreements. Tier 1 (300 cases, seed 20260927): 226 agree /74 gates, with
+all sources/verdicts unchanged. Previous 514 probes: 493 agree /21 gates, gaining two
+agreements with no losses. Frontend 63 agree, AST-idempotent, with six old
+render-only instabilities. Standalone 3 and feature-loading 3 agree; generated
+Prelude/CRubyNames and whitespace checks pass. Full reports and build log:
+`difftest/reports/20260928-incremental-L291/`. No runtime source edits after the
+final build; proof repair remains deferred.
+
+Proof repair remains explicitly deferred under the active user goal. The typed
+gate's existing HeapFacts className/lookup failure is not repaired or claimed green.
+No checker acceptance, proof or floor changes. Constant mutation callbacks,
+recursive anonymous-namespace naming, namespace copying, and the older native
+method-removal/Kernel ownership limitations remain follow-up work. Random/Regexp
+still use their partial argument-dependent factories; the old sorbet-hash gate is
+unchanged. See difftest N65 and /private/tmp/conformance-l291-* for probe evidence.

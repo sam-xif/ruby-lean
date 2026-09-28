@@ -2036,3 +2036,39 @@ built and run against all 1,309 bootstrap cases and its regression corpus before
 commit, with full reports at `reports/20260928-incremental-LNNN/`. Bootstrap
 sources and verdicts are compared to that batch's original report, with no
 comparison normalization changes. Proof repair is still explicitly deferred.
+
+
+## N65 — Class/Module construction and inherited callbacks (2026-09-28)
+
+Model L291 replaces Class/Module factories with native allocation followed by
+ordinary initialize dispatch. Seventeen class-protocol-* regression programs pin
+callback ordering and retained effects, allocation/initialization state, forbidden
+superclasses, overridden/missing initializers, block exits, live class-name
+conversion, constant naming and Module-subclass representation. A separate Sorbet
+guard verifies that T::Struct children cannot be subclassed, preserving the gem's
+super-before-error order and the rejected named class binding.
+
+The original audit's 16 cases now agree. Extended 46 gives 42 agreements and four
+existing gates (explicit super block-pass, remove_const, top-level return and
+private_methods). Every agreeing focused probe is retained in the permanent
+programs, which are compared as combined programs against CRuby 4.0.5 before
+being marked fixed. No observation normalization or gate policy changed.
+
+Final validation: model build succeeds (100 jobs). Full bootstrap (1,309 cases): 1,096
+agree /zero disagree /207 unsupported, five unchanged invalid controls and the
+old test_syntax_115 harness error. All bootstrap sources are unchanged; the only
+verdict change is test_yjit_347, unsupported to agree. Regression replay (169 cases): 168
+agree /one old sorbet-hash gate; all 152 previously committed sources and verdicts
+hold, plus 17 new agreements. Tier 1 (300 cases, seed 20260927): 226 agree /74 gates, with
+all sources/verdicts unchanged. Previous 514 probes: 493 agree /21 gates, gaining two
+agreements with no losses. Frontend 63 agree, AST-idempotent, with six old
+render-only instabilities. Standalone 3 and feature-loading 3 agree; generated
+Prelude/CRubyNames and whitespace checks pass. Full reports and build log:
+`difftest/reports/20260928-incremental-L291/`. No runtime source edits after the
+final build; proof repair remains deferred.
+
+The typed gate remains RED on deferred HeapFacts className/lookup proof drift;
+this is executable-model conformance evidence, not a new proof claim. Probe
+artifacts are /private/tmp/conformance-l291-*. The commit records the completed
+bootstrap and regression reports. See model L291 for version-specific allocation
+and superclass rules, remaining limitations and primary implementation sources.

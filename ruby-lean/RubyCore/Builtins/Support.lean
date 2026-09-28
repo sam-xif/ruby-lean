@@ -500,7 +500,7 @@ def unrepresentableByteStr (h : Heap) (v : Value) : Bool :=
     would have to write the raw byte into an output `String` that cannot hold it. -/
 def byteStrAwareBids : List String :=
   -- String: byte-wise by construction, or tag-propagating (`okStrFrom`)
-  ["Module#method_added", "Module#method_removed", "Module#method_undefined",
+  ["Class#inherited", "Module#method_added", "Module#method_removed", "Module#method_undefined",
    "BasicObject#singleton_method_added", "BasicObject#singleton_method_removed",
    "BasicObject#singleton_method_undefined",
    "String#+", "String#*", "String#<<", "String#concat", "String#==", "String#eql?",
@@ -1074,38 +1074,8 @@ def newImpl (m : Machine) (recv : Value) (args : List Value) : BRes :=
       -- `__range_new_unchecked` below (L122, the L115 shape). Range literals
       -- `a..b`/`a...b` desugar to that same `Range.new` send and are validated
       -- with it.
-      else if k == Boot.classId then
-        -- `Class.new(superclass = Object)`: an **anonymous** class (empty name,
-        -- rendered `#<Class:0x…>`; a later constant assignment names it, L72).
-        -- The block form carries a block, so it is intercepted in `invoke`.
-        match args with
-        | [] =>
-          let (o, h) := m.heap.alloc
-            { klass := Boot.classId,
-              payload := .cls { superclass := some Boot.objectId, name := "" } }
-          .ok (.ref o) { m with heap := h }
-        | [.ref sup] =>
-          match m.heap.classPayload? sup with
-          | some sc =>
-            if sc.isModule then
-              .err Boot.typeErrorId "superclass must be an instance of Class (given a Module)" m
-            else
-              let (o, h) := m.heap.alloc
-                { klass := Boot.classId,
-                  payload := .cls { superclass := some sup, name := "" } }
-              .ok (.ref o) { m with heap := h }
-          | none =>
-            .err Boot.typeErrorId
-              s!"superclass must be an instance of Class (given an instance of {className m.heap (realClassOf m.heap (.ref sup))})" m
-        | _ => .unsupported "Class.new arity"
-      else if k == Boot.moduleId then
-        match args with
-        | [] =>
-          let (o, h) := m.heap.alloc
-            { klass := Boot.moduleId,
-              payload := .cls { superclass := Option.none, name := "", isModule := true } }
-          .ok (.ref o) { m with heap := h }
-        | _ => .unsupported "Module.new arity"
+      else if k == Boot.classId || k == Boot.moduleId then
+        .unsupported "Class/Module construction requires initializer dispatch"
       else if [Boot.integerId, Boot.floatId,
                Boot.symbolId, Boot.nilClassId, Boot.trueClassId,
                Boot.falseClassId].contains k then

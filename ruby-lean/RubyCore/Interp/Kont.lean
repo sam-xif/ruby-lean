@@ -57,25 +57,12 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       let h := nameIfAnonymous m.heap qual v
       .next (withCtl { m with heap := constSetIn h defmod n v } (.value v))
     | .classDefK name body =>
-      -- v is the resolved superclass: it must be a non-module Class object [V]
-      match v with
-      | .ref k =>
-        match m.heap.classPayload? k with
-        | some c =>
-          if c.isModule then
-            .next (raiseErr m Boot.typeErrorId
-              s!"superclass must be an instance of Class (given an instance of {className m.heap (realClassOf m.heap v)})")
-          else enterClassBody m name false (some k) body
-        | none =>
-          .next (raiseErr m Boot.typeErrorId
-            s!"superclass must be an instance of Class (given an instance of {className m.heap (realClassOf m.heap v)})")
-      | .nil | .bool _ =>
-        -- CRuby phrases these as "given nil"/"given false" — gate rather than
-        -- emit the "an instance of …" form.
-        .unsupported "superclass is nil/true/false"
-      | _ =>
-        .next (raiseErr m Boot.typeErrorId
-          s!"superclass must be an instance of Class (given an instance of {className m.heap (realClassOf m.heap v)})")
+      match inheritableClass m v false with
+      | .error result => result
+      | .ok k => enterClassBody m name false (some k) body
+    | .classBodyK klass libraryName body => pushClassFrame m klass libraryName body
+    | .classInitK klass block => finishClassInitialize m klass block
+    | .classNameErrorK klass lead tail => finishClassNameError m klass lead tail v
     | .newK inst =>
       -- `initialize` returned; its value is discarded, `new` yields the instance
       .next (withCtl m (.value inst))

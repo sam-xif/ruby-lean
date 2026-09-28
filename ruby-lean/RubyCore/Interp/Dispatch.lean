@@ -191,7 +191,7 @@ where
           -- top of the metaclass chain: a module's own metaclass superclasses
           -- `Module` (CRuby: `M.singleton_class.superclass == Module`), a
           -- class's superclasses `Class`.
-          | none => ((if c.isModule then Boot.moduleId else Boot.classId), m)
+          | none => ((if c.isModule then obj.klass else Boot.classId), m)
         | _ => (obj.klass, m)
       -- Keep the attachment, not a snapshot of its name: an anonymous class
       -- can acquire a constant name after this singleton class was created.
@@ -218,6 +218,53 @@ def libraryBodyGate (m : Machine) (k : ObjId) : Option String :=
     some "require with user definition hooks needs the complete library body"
   else none
 
+def classNameTypeError (m : Machine) (klass : ObjId) (lead tail : String) : StepResult :=
+  .next { m with ctl := .send (.ref klass) .reflective "to_s" [] none [], kont := .classNameErrorK klass lead tail :: m.kont }
+
+/-- Inheritance validates native class identity, not overridable predicates.
+    Class.new rejects an uninitialized parent; a named class statement permits
+    it and retains the parent's unavailable allocator/index (CRuby 4.0.5). -/
+def inheritableClass (m : Machine) (value : Value) (requireInitialized : Bool) :
+    Except StepResult ObjId := do
+  let bad := .error (classNameTypeError m (realClassOf m.heap value)
+    "superclass must be an instance of Class (given an instance of " ")")
+  match value with
+  | .ref k => match m.heap.classPayload? k with
+    | some cp =>
+      if cp.isModule then bad
+      else if cp.attached.isSome then
+        .error (.next (raiseErr m Boot.typeErrorId "can't make subclass of singleton class"))
+      else if k == Boot.classId then
+        .error (.next (raiseErr m Boot.typeErrorId "can't make subclass of Class"))
+      else if requireInitialized && !cp.initialized then
+        .error (.next (raiseErr m Boot.typeErrorId "can't inherit uninitialized class"))
+      else .ok k
+    | none => bad
+  | _ => bad
+
+def pushClassFrame (m : Machine) (k : ObjId) (libraryName : String)
+    (body : Expr) : StepResult :=
+  match libraryBodyGate m k with
+  | some reason => .unsupported reason
+  | none =>
+  let m := if m.preludeMode || m.currentFrame.libraryOrigin then
+    match m.heap.classPayload? k with
+    | some cp => { m with heap := m.heap.setClassPayload k { cp with libraryNamespace := some libraryName } }
+    | none => m
+    else m
+  let frame : Frame :=
+    { self := .ref k, defmod := k, kind := .classBody, cref := k :: m.currentFrame.cref, libraryOrigin := m.currentFrame.libraryOrigin }
+  let fid := m.frames.size
+  let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
+  .next (withKont m (.eval body) (.frameK fid))
+
+def inheritClassBody (m : Machine) (k : ObjId) (superclass : Option ObjId)
+    (libraryName : String) (body : Expr) : StepResult :=
+  match superclass with
+  | none => pushClassFrame m k libraryName body
+  | some parent =>
+    .next { m with ctl := .send (.ref parent) .reflective "inherited" [.ref k] none [], kont := .classBodyK k libraryName body :: m.kont }
+
 /-- Open (or create) a class/module named `name` and run its `body` in a fresh
     class-body frame with `self` = `defmod` = the class object (artifact 01 §5).
     Reopening checks class/module agreement and, for `class`, superclass match
@@ -225,22 +272,9 @@ def libraryBodyGate (m : Machine) (k : ObjId) : Option String :=
 def enterClassBody (m : Machine) (name : String) (isMod : Bool)
     (sup? : Option ObjId) (body : Expr) : StepResult :=
   let kindWord := if isMod then "module" else "class"
-  let pushFrame (m : Machine) (k : ObjId) : StepResult :=
-    match libraryBodyGate m k with
-    | some reason => .unsupported reason
-    | none =>
-    let namespaceName := if m.lexicalNamespace == Boot.objectId then name else
-      s!"{(libraryNamespace m.heap m.lexicalNamespace).getD (className m.heap m.lexicalNamespace)}::{name}"
-    let m := if m.preludeMode || m.currentFrame.libraryOrigin then
-      match m.heap.classPayload? k with
-      | some cp => { m with heap := m.heap.setClassPayload k { cp with libraryNamespace := some namespaceName } }
-      | none => m
-      else m
-    let frame : Frame :=
-      { self := .ref k, defmod := k, kind := .classBody, cref := k :: m.currentFrame.cref, libraryOrigin := m.currentFrame.libraryOrigin }
-    let fid := m.frames.size
-    let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
-    .next (withKont m (.eval body) (.frameK fid))
+  let libraryName := if m.lexicalNamespace == Boot.objectId then name else
+    s!"{(libraryNamespace m.heap m.lexicalNamespace).getD (className m.heap m.lexicalNamespace)}::{name}"
+  let pushFrame (m : Machine) (k : ObjId) := pushClassFrame m k libraryName body
   -- Reopen detection looks up `name` in the *current innermost namespace only*
   -- (`defmod`), NOT a flat toplevel lookup and NOT the full lexical cref chain.
   -- So `module B` inside a reopened `module A` finds the existing `A::B` (A's own
@@ -272,15 +306,14 @@ def enterClassBody (m : Machine) (name : String) (isMod : Bool)
     let qualName := if defmod == Boot.objectId then name
                     else s!"{className m.heap defmod}::{name}"
     let obj : Object :=
-      { klass := (if isMod then Boot.moduleId else Boot.classId),
-        payload := .cls { superclass, name := qualName, isModule := isMod } }
+      { klass := (if isMod then Boot.moduleId else Boot.classId), payload := .cls { superclass, name := qualName, isModule := isMod, ancestryReady := superclass.all (fun s => (m.heap.classPayload? s).all (·.ancestryReady)), allocatorUnavailable := superclass.any (fun s => (m.heap.classPayload? s).any (·.allocatorUnavailable)) } }
     let (k, h) := m.heap.alloc obj
     -- register the class name in the *enclosing* namespace (Object at toplevel)
     let h := constSetIn h m.lexicalNamespace name (.ref k)
     -- eagerly realize the metaclass chain so inherited class methods resolve
     -- (`B < A` ⇒ `B`'s metaclass superclasses `A`'s) even before any `def self.`
     let (_, m) := eigenclassOf { m with heap := h } k
-    pushFrame m k
+    inheritClassBody m k superclass libraryName body
 
 /-- `class/module A::name … end` (artifact 03 §5): open (or create) `name`
     inside the already-resolved namespace object `container`, then run the body.
@@ -292,22 +325,8 @@ def enterScopedClassBody (m : Machine) (container : ObjId) (name : String)
     (isMod : Bool) (body : Expr) : StepResult :=
   let kindWord := if isMod then "module" else "class"
   let fullName := s!"{className m.heap container}::{name}"
-  let pushFrame (m : Machine) (k : ObjId) : StepResult :=
-    match libraryBodyGate m k with
-    | some reason => .unsupported reason
-    | none =>
-    let namespaceName := s!"{(libraryNamespace m.heap container).getD (className m.heap container)}::{name}"
-    let m := if m.preludeMode || m.currentFrame.libraryOrigin then
-      match m.heap.classPayload? k with
-      | some cp => { m with heap := m.heap.setClassPayload k { cp with libraryNamespace := some namespaceName } }
-      | none => m
-      else m
-    let frame : Frame :=
-      { self := .ref k, defmod := k, kind := .classBody,
-        cref := k :: m.currentFrame.cref, libraryOrigin := m.currentFrame.libraryOrigin }
-    let fid := m.frames.size
-    let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
-    .next (withKont m (.eval body) (.frameK fid))
+  let libraryName := s!"{(libraryNamespace m.heap container).getD (className m.heap container)}::{name}"
+  let pushFrame (m : Machine) (k : ObjId) := pushClassFrame m k libraryName body
   let existing : Option Value := (m.heap.classPayload? container).bind fun c =>
     (c.consts.find? (·.1 == name)).map (·.2)
   match existing with
@@ -328,7 +347,7 @@ def enterScopedClassBody (m : Machine) (container : ObjId) (name : String)
     let (k, h) := m.heap.alloc obj
     let h := constSetIn h container name (.ref k)
     let (_, m) := eigenclassOf { m with heap := h } k
-    pushFrame m k
+    inheritClassBody m k superclass libraryName body
 
 /-- Resolve a `cpath` base value to a namespace `ObjId`, or a `TypeError`
     result if it is not a class/module ("`<inspect>` is not a class/module"). -/

@@ -25,7 +25,7 @@ regenerated. Paths are relative to `ruby-lean/`.
 | `RubyCore/Interp/BlockPass.lean` | Checked conversion continuations, including nested method/block parameter destructuring after defaults (L275–L287) |
 | `RubyCore/Interp/Inspect.lean` | Native object inspection with checked field-selection hooks, live values and recursion control (L289) |
 | `RubyCore/Interp/Enumerator.lean` | Native Enumerator/Generator/Yielder descriptors, internal dispatch and suspended external execution (L280) |
-| `RubyCore/Interp/Construct.lean` | Native constructor/allocator dispatch, block-aware initializers, and exception construction/copy/message protocols (L284–L286) |
+| `RubyCore/Interp/Construct.lean` | Native constructor/allocator dispatch, Class/Module initialization and inherited callbacks, and exception construction/copy/message protocols (L284–L291) |
 | `RubyCore/Interp/Mutation.lean` | Method-table edits interleaved with ordinary Ruby callbacks and frozen-state checks (L282) |
 | `RubyCore/Interp/Forwardable.lean` | Forwardable's simple accessor source-generator fragment, compiled to real RubyCore definitions (L282) |
 | `RubyCore/Obs.lean` | observation = (stdout, result inspect, exception (class, msg)) |
@@ -86,6 +86,14 @@ nonoverlapping positional slices and conversion after method defaults. L288 rout
 for through ordinary each with shared locals, checked target assignment and safe
 escaped callback control. One-target trailing-comma destructuring is retained by
 the frontend, and block-defined methods handle break/next/redo locally.
+
+L291 adds native Class/Module allocation and initialization, ordinary initializer
+overrides, inherited callbacks before bodies, uninitialized class state and Module
+subclass payloads. Named bindings survive callbacks that raise or replace the
+constant. Native superclass diagnostics execute class-name conversion, and Module
+subclass representation preserves live eigenclass identity. Reflective const_set
+names anonymous classes/modules. These additions do not claim complete constant
+mutation/copy protocols or repair the deferred proofs.
 
 Tier-0 baseline: **940/1304 bootstraptest agree, 0 disagree.**
 

@@ -16,28 +16,76 @@ def initializeInstance (m : Machine) (inst : Value) (args : List Value)
     (blk : Option Value) (kw : List (Value × Value)) : StepResult :=
   .next { m with ctl := .send inst .reflective "initialize" args blk kw, kont := .newK inst :: m.kont }
 
-/-- The remaining argument-dependent native allocators retain their existing
-    implementation until their uninitialized payloads are modeled. -/
+def finishClassNameError (m : Machine) (klass : ObjId) (lead tail : String)
+    (value : Value) : StepResult :=
+  let finish (m : Machine) (value : Value) : StepResult :=
+    match Builtins.strPayload? m.heap value with
+    | none => .unsupported "native class-name diagnostic did not produce a String"
+    | some name =>
+      if Builtins.isBinaryStr m.heap value && hasHighByte name then
+        .unsupported "native class-name diagnostic with non-UTF-8 bytes"
+      else .next (raiseErr m Boot.typeErrorId (lead ++ name ++ tail))
+  if (Builtins.strPayload? m.heap value).isSome then finish m value else
+  match Builtins.run "Object#__any_to_s" (.ref klass) [] m with
+  | .ok value m => finish m value
+  | result => constructResult result
+
+/-- Module initialization executes its block as module_exec and discards only
+    its normal result. Break/return/raise keep the ordinary block boundaries. -/
+def initializeModuleBlock (m : Machine) (klass : ObjId) (blk : Option Value)
+    (result : Value) : StepResult :=
+  match blk with
+  | none => .next (withCtl m (.value result))
+  | some block => match procClosure? m block with
+    | some cl => callClosure { m with kont := .newK result :: m.kont }
+        cl [.ref klass] none (some (.ref klass)) (some klass)
+    | none => .unsupported "class/module initializer block is not a Proc"
+
+def finishClassInitialize (m : Machine) (klass : ObjId) (blk : Option Value) : StepResult :=
+  initializeModuleBlock m klass blk (.ref klass)
+
+def callClassInitialize (m : Machine) (recv : Value) (args : List Value)
+    (blk : Option Value) (kw : List (Value × Value)) : StepResult :=
+  let (args, m) := appendKwHash m args kw
+  match recv with
+  | .ref klass => match m.heap.classPayload? klass with
+    | some cp =>
+      if cp.initialized then .next (raiseErr m Boot.typeErrorId "already initialized class")
+      else if args.length > 1 then enumArity m args.length "0..1" else
+      match inheritableClass m (args.headD (.ref Boot.objectId)) true with
+      | .error result => result
+      | .ok parent =>
+        let parentCp := (m.heap.classPayload? parent).getD default
+        let h := m.heap.setClassPayload klass { cp with superclass := some parent, initialized := true, ancestryReady := parentCp.ancestryReady, allocatorUnavailable := parentCp.allocatorUnavailable }
+        -- CRuby replaces an allocated class's old metaclass, including its
+        -- singleton methods. References to the old metaclass remain live.
+        let h := h.set klass { h.get klass with eigen := none }
+        let (_, m) := eigenclassOf { m with heap := h } klass
+        .next { m with ctl := .send (.ref parent) .reflective "inherited" [recv] none [], kont := .classInitK klass blk :: m.kont }
+    | none => .unsupported "Class#initialize without a class payload"
+  | _ => .unsupported "Class#initialize receiver"
+
+def callModuleInitialize (m : Machine) (recv : Value) (args : List Value)
+    (blk : Option Value) (kw : List (Value × Value)) : StepResult :=
+  let (args, m) := appendKwHash m args kw
+  if !args.isEmpty then enumArity m args.length "0" else
+  match recv with
+  | .ref klass => initializeModuleBlock m klass blk .nil
+  | _ => .unsupported "Module#initialize receiver"
+
+def allocateNamespace (m : Machine) (klass : ObjId) (isModule : Bool) : Value × Machine :=
+  let (o, h) := m.heap.alloc { klass, payload := .cls { superclass := none, name := "", isModule, initialized := isModule, ancestryReady := isModule, allocatorUnavailable := !isModule } }
+  (.ref o, { m with heap := h })
+
+/-- Random and Regexp retain argument-dependent allocation until their empty
+    native payloads are modeled. Class/Module use the ordinary initialize path. -/
 def legacyConstruct (m : Machine) (recv : Value) (klass : ObjId)
-    (args : List Value) (blk : Option Value) (kw : List (Value × Value)) : StepResult :=
+    (args : List Value) (_blk : Option Value) (kw : List (Value × Value)) : StepResult :=
   if (methodOn m.heap klass "initialize").any (fun (_, md) =>
       md.undefined || md.builtin != some "BasicObject#initialize") then
     .unsupported "native constructor with a replaced initializer" else
   let (args, m) := appendKwHash m args kw
-  match Builtins.newImpl m recv args with
-  | .ok newV m =>
-    let m := if klass == Boot.classId || klass == Boot.moduleId then
-      match newV with | .ref k => (eigenclassOf m k).2 | _ => m
-      else m
-    if klass == Boot.classId || klass == Boot.moduleId then
-      match newV, blk with
-      | .ref newK, some b => match procClosure? m b with
-        | some cl => callClosure { m with kont := .newK newV :: m.kont }
-            cl [newV] none (some newV) (some newK)
-        | none => .unsupported "class constructor block is not a Proc"
-      | _, _ => .next (withCtl m (.value newV))
-    else .next (withCtl m (.value newV))
-  | result => constructResult result
+  constructResult (Builtins.newImpl m recv args)
 
 def callConstruct (m : Machine) (recv : Value) (args : List Value)
     (blk : Option Value) (kw : List (Value × Value)) : StepResult :=
@@ -46,8 +94,14 @@ def callConstruct (m : Machine) (recv : Value) (args : List Value)
     | none => .unsupported "new on a non-class"
     | some cp =>
       if cp.isModule then .unsupported "new on a module" else
+      if cp.attached.isSome then .next (raiseErr m Boot.typeErrorId "can't create instance of singleton class") else
+      if !cp.initialized then .next (raiseErr m Boot.typeErrorId "can't instantiate uninitialized class") else
+      if cp.allocatorUnavailable then classNameTypeError m klass "allocator undefined for " "" else
       let chain := ancestors m.heap klass
-      if chain.any ([Boot.enumeratorId, Boot.generatorId, Boot.yielderId].contains ·) then
+      if chain.contains Boot.moduleId then
+        let (inst, m) := allocateNamespace m klass (klass != Boot.classId)
+        initializeInstance m inst args blk kw
+      else if chain.any ([Boot.enumeratorId, Boot.generatorId, Boot.yielderId].contains ·) then
         let (inst, m) := enumAllocate m klass
         initializeInstance m inst args blk kw
       else if chain.contains Boot.procId then
@@ -61,9 +115,9 @@ def callConstruct (m : Machine) (recv : Value) (args : List Value)
             initializeInstance m inst args blk kw
           | _ => .unsupported "Proc constructor block is not a Proc"
         | some _ => .unsupported "Proc constructor block is not a Proc"
-      else if [Boot.classId, Boot.moduleId, Boot.randomId, Boot.regexpId].contains klass then
+      else if [Boot.randomId, Boot.regexpId].contains klass then
         legacyConstruct m recv klass args blk kw
-      else if chain.any ([Boot.classId, Boot.moduleId, Boot.randomId, Boot.regexpId,
+      else if chain.any ([Boot.randomId, Boot.regexpId,
           Boot.rangeId].contains ·) then
         .unsupported "constructor for an unmodeled native payload subclass"
       else if chain.any ([Boot.integerId, Boot.floatId, Boot.symbolId, Boot.rationalId,
@@ -83,7 +137,16 @@ def callAllocate (m : Machine) (recv : Value) (args : List Value)
   if !args.isEmpty then enumArity m args.length "0" else
   match recv with
   | .ref klass =>
-    if (ancestors m.heap klass).any ([Boot.enumeratorId, Boot.generatorId, Boot.yielderId].contains ·) then
+    match m.heap.classPayload? klass with
+    | none => constructResult (Builtins.run "Class#allocate" recv args m)
+    | some cp =>
+    if cp.attached.isSome then .next (raiseErr m Boot.typeErrorId "can't create instance of singleton class") else
+    if !cp.initialized then .next (raiseErr m Boot.typeErrorId "can't instantiate uninitialized class") else
+    if cp.allocatorUnavailable then classNameTypeError m klass "allocator undefined for " "" else
+    if (ancestors m.heap klass).contains Boot.moduleId then
+      let (inst, m) := allocateNamespace m klass (klass != Boot.classId)
+      .next (withCtl m (.value inst))
+    else if (ancestors m.heap klass).any ([Boot.enumeratorId, Boot.generatorId, Boot.yielderId].contains ·) then
       let (v, m) := enumAllocate m klass
       .next (withCtl m (.value v))
     else constructResult (Builtins.run "Class#allocate" recv args m)

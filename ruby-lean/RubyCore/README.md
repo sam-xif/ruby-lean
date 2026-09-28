@@ -193,10 +193,11 @@ Allocation takes `o = H.next` and bumps it; **ids are never reused** (there is n
 GC in the model). A class object additionally carries:
 
 ```
-  ClassPayload ::= { superclass : Option ObjId,   -- none only for BasicObject
+  ClassPayload ::= { superclass : Option ObjId,   -- none for modules, BasicObject, allocation
                      methods : m ⇀ MethodDef,     -- defined *directly* here
                      consts  : C_n ⇀ Value, cvars : @@x ⇀ Value,
                      is_module, is_singleton : Bool,
+                     initialized, ancestryReady, allocatorUnavailable : Bool,
                      attached : Option Value }    -- for an eigenclass, its object
 ```
 
@@ -392,8 +393,33 @@ arguments/keywords/block, and discards only the normal initializer result.
 Undef initialize therefore reaches method_missing. Proc construction retains or
 copies the block's closure before initialization. Core initializers return the
 receiver; BasicObject#initialize requires zero arguments and returns nil.
-The argument-dependent Class/Module/Random/Regexp factories remain partial and
-gate replaced initializers. **[V]** (L284)
+Class and Module use the same allocation/initializer protocol, including Module
+subclasses and replaced or undefined initializers. `Class.allocate` produces an
+uninitialized class. Native Class#initialize validates the superclass, installs
+its ancestry and allocator state, replaces the old eigenclass, sends `inherited`
+to the parent, then executes the block as module_exec and returns the class.
+Native Module#initialize executes that block and returns nil. Normal `new`
+discards this result; block exits keep their original targets. Module's public
+`allocate` method is undefined, but an alias of native Class#allocate can allocate
+it. Random/Regexp still use partial argument-dependent factories and gate
+replaced initializers. **[V]** (L284, L291)
+
+New named classes bind their constant before sending `inherited`, and execute
+the saved class body only after the callback returns. Reopening does not resend
+the callback. Raises retain the binding and earlier effects; a callback replacing
+the constant cannot redirect the saved body. Class.new rejects an uninitialized
+parent, while named class syntax in CRuby 4.0.5 permits one. Such children retain
+an unavailable ancestry index and allocator, even if their parent is initialized
+later. CRuby 4.0.5 also permits initializing a frozen allocated class; these rules
+are pinned to the executable oracle. Superclass type errors dispatch the selected
+class's live to_s, preserving effects, exceptions and non-String fallback. **[V]**
+(L291)
+
+Unnamed Module-subclass instances render through their direct class's temporary
+path, including an eigenclass if present. This path uses its name/address rather
+than recursively rendering its attachment. Singleton-class to_s itself still
+renders the attached object from the live heap. Reflective const_set names an
+anonymous class/module just as ordinary constant assignment does. **[V]** (L291)
 
 ### 02 §4 — `super`
 
@@ -484,7 +510,7 @@ prelude suppresses hooks; runtime library loading does not. **[V]**
 **[?]** `refinements` genuinely perturb lookup *lexically* — they add modules
 consulted before the normal chain, scoped to the activation's `cref`. Deferred;
 would need an extra lookup premise keyed on `φ.cref`.
-**[?]** Constant and ancestry mutation hooks (`const_added`, `inherited`,
+**[?]** Constant and ancestry mutation hooks (`const_added`,
 `append_features`, `prepended`, `extended`) still need a complete protocol audit.
 
 ---
