@@ -26,6 +26,8 @@ deriving Repr, DecidableEq, Inhabited
 structure Frame where
   self : Value
   locals : List (String × Value) := []
+  /-- For callbacks have fresh control scopes but share this local environment. -/
+  localAlias : Option FrameId := none
   /-- Target of an unqualified def/alias/undef in this environment. -/
   defmod : ObjId
   /-- Dispatch owner used by super, independently of the lexical definee. -/
@@ -175,6 +177,7 @@ inductive ConversionCall where
   | closureArgs (cl : Closure) (brk : Option FrameId)
       (selfOv : Option Value) (defmodOv : Option ObjId)
   | paramDestructure (subs : List Param) (remaining : List (Param × Value)) (body : Expr)
+  | forDestructure (targets : List (TargetKind × String)) (body : Expr)
   | enumRewind (object : ObjId)
   | raiseString
   | stopMessage (result : Value)
@@ -293,11 +296,9 @@ inductive Kont where
   | whileBodyK (c body : Expr)
   /-- `for` collection evaluated: the in-flight value is the collection; begin
       iterating it (artifact 04). -/
-  | forStartK (targets : List (TargetKind × String)) (body : Expr)
-  /-- `for` body finished for one element (value discarded). Loop marker for
-      brk/nxt; `rest` are the not-yet-visited elements, `coll` the loop value. -/
-  | forBodyK (targets : List (TargetKind × String)) (body : Expr)
-      (rest : List Value) (coll : Value)
+  | forStartK (targets : List (TargetKind × String)) (body : Expr) (multiple : Bool)
+  /-- Assign the remaining for targets, then evaluate the body. -/
+  | forAssignK (pending : List ((TargetKind × String) × Value)) (body : Expr)
   /-- A native block-iterator finished one block call. The in-flight value is the
       block's result; handle it per `kind`, then call the block for the next
       element (`rest` = remaining per-iteration arg lists) or deliver the final
@@ -360,6 +361,8 @@ inductive Kont where
   /-- Method-activation boundary (generative jump target = frame identity,
       sketch §1.1). Pops `stack` on normal or unwinding passage. -/
   | frameK (fid : FrameId)
+  /-- define_method retains block-local break/next/redo semantics. -/
+  | dmFrameK (frame : FrameId) (body : Expr)
   /-- Block-activation boundary (artifact 04 §2). `lam` = lambda semantics;
       `brk` = the method activation a `break` returns from (`none` for a
       detached proc `.call`, where `break` is a LocalJumpError). Consumes
@@ -512,12 +515,23 @@ def macroVisibility (m : Machine) (target : ObjId) : Visibility :=
 def lexicalNamespace (m : Machine) : ObjId :=
   m.currentFrame.cref.headD Boot.objectId
 
+/-- Follow for's local-environment alias without reviving an activation. -/
+def localFrameId (m : Machine) (fid : FrameId) : FrameId :=
+  go fid (m.frames.size + 1)
+where
+  go : FrameId → Nat → FrameId
+    | fid, 0 => fid
+    | fid, fuel + 1 => match (m.frames.getD fid default).localAlias with
+      | some parent => go parent fuel
+      | none => fid
+
 /-- Read `x`, walking the block-frame `captured` chain into enclosing scopes
     (sketch §1.2). Own locals (params, block-locals) shadow outer ones. -/
 def getLocal (m : Machine) (x : String) : Value :=
   let rec go : FrameId → Nat → Value
     | _, 0 => .nil
     | fid, fuel + 1 =>
+      let fid := m.localFrameId fid
       let f := m.frames.getD fid default
       match f.locals.find? (·.1 == x) with
       | some (_, v) => v
@@ -530,10 +544,11 @@ def getLocal (m : Machine) (x : String) : Value :=
     mutate *there* (shared locals, artifact 03 §2); otherwise it is a new local
     in the current frame. -/
 def setLocal (m : Machine) (x : String) (v : Value) : Machine :=
-  let start := m.stack.headD 0
+  let start := m.localFrameId (m.stack.headD 0)
   let rec owner : FrameId → Nat → FrameId
     | _, 0 => start
     | fid, fuel + 1 =>
+      let fid := m.localFrameId fid
       let f := m.frames.getD fid default
       if f.locals.any (·.1 == x) then fid
       else match f.captured with
@@ -550,6 +565,7 @@ def hasLocal (m : Machine) (x : String) : Bool :=
   let rec go : FrameId → Nat → Bool
     | _, 0 => false
     | fid, fuel + 1 =>
+      let fid := m.localFrameId fid
       let f := m.frames.getD fid default
       if f.locals.any (·.1 == x) then true
       else match f.captured with

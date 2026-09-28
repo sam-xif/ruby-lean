@@ -131,18 +131,22 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
       | none => blk
     let frame : Frame :=
       { self := recv, locals := localsA ++ predeclared,
+        localAlias := if md.forTargets.isSome then md.capturedFrame else none,
         defmod := md.definee.getD md.owner, methodOwner := some md.owner,
         definitionFrame := md.definitionFrame,
         kind := .method, blk := frameBlk, callBlk := blk,
         meth := md.superName.getD mname, superScope := md.superScope,
-        runParams := md.params, runFromDM := md.capturedFrame.isSome,
+        runParams := md.params, runFromDM := md.fromBlock,
         cref := md.cref, captured := md.capturedFrame, libraryOrigin := md.fromPrelude }
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
-    let m := { m with kont := .frameK fid :: m.kont }
+    let boundary := if md.fromBlock then Kont.dmFrameK fid md.body else .frameK fid
+    let m := { m with kont := boundary :: m.kont }
     let m := if pending.isEmpty then m else { m with kont := .paramBindK pending md.body :: m.kont }
     -- Defaults complete by delivering a value to the pending binding phase.
     let body := if pending.isEmpty then md.body else Expr.nil
+    if let some targets := md.forTargets then
+      startForBindings m targets md.forMultiple args md.body else
     -- positional-opt defaults first, then keyword defaults (Ruby order [V]).
     match optOmitted ++ kwOmitted with
     | [] =>

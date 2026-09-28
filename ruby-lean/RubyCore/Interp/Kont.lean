@@ -182,24 +182,8 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       else .next (withCtl m (.value .nil))
     | .whileBodyK c body =>
       .next (withKont m (.eval c) (.whileCondK c body))
-    | .forStartK targets body =>
-      -- v is the collection: iterate it natively (the model resolves `each` on a
-      -- lookup miss, so `for` cannot desugar to it). This legacy path handles
-      -- Arrays directly and integer Ranges by their endpoints (L63).
-      match v with
-      | .ref o =>
-        match (m.heap.get o).payload with
-        | .arr xs => forStep m targets body xs.toList v
-        | .range (.int a) (.int b) excl =>
-          let last := if excl then b - 1 else b
-          let values := if last < a then [] else
-            (List.range (last - a + 1).toNat).map (fun i => Value.int (a + Int.ofNat i))
-          forStep m targets body values v
-        | .range .. => .unsupported "for over a non-integer Range"
-        | _ => .unsupported "for over a non-Array collection"
-      | _ => .unsupported "for over a non-Array collection"
-    | .forBodyK targets body rest coll =>
-      forStep m targets body rest coll
+    | .forStartK targets body multiple => startFor m targets body multiple v
+    | .forAssignK pending body => .next (queueForAssignments m pending body)
     | .iterK cl brk rest kind acc retVal cur =>
       -- v is the block's result for the current element; fold it, then continue.
       match kind with
@@ -288,7 +272,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         let m := post.foldl (fun m (nv : String × Value) => m.setLocal nv.1 nv.2) m
         .next (withCtl m (.eval body))
       | (n0, d0) :: more => .next (withKont m (.eval d0) (.optDefK n0 more post body))
-    | .frameK _ =>
+    | .frameK _ | .dmFrameK .. =>
       -- normal completion of a method body: pop the activation
       .next (withCtl { m with stack := m.stack.tail } (.value v))
     | .blkFrameK .. =>
@@ -403,13 +387,15 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
     | .forStartK .. =>
       -- a jump raised while evaluating the collection is not the loop's: pass on
       .next (withCtl m (.jump j))
-    | .forBodyK targets body rest coll =>
+    | .dmFrameK fid body =>
       match j with
-      | .brkJ v => .next (withCtl m (.value v))           -- break value is for's value [V]
-      | .nxtJ _ => forStep m targets body rest coll        -- next → next element
-      | .redoJ =>                                          -- re-run body for the same element [V]
-        .next (withKont m (.eval body) (.forBodyK targets body rest coll))
-      | _ => .next (withCtl m (.jump j))
+      | .brkJ v | .nxtJ v => .next (withCtl { m with stack := m.stack.tail } (.value v))
+      | .redoJ => .next (withKont m (.eval body) (.dmFrameK fid body))
+      | .retJ v target =>
+        if target == fid then .next (withCtl { m with stack := m.stack.tail } (.value v))
+        else .next (withCtl { m with stack := m.stack.tail } (.jump j))
+      | .raiseJ _ | .throwJ .. => .next (withCtl { m with stack := m.stack.tail } (.jump j))
+      | .retryJ => .unsupported "retry crossing a define_method boundary"
     | .frameK fid =>
       match j with
       | .retJ v target =>

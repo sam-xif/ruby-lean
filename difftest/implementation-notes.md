@@ -1976,3 +1976,29 @@ Exact sources/results: /private/tmp/conformance-l287-{focused,extra,shapes,
 permanent,previous}.json. The separate L288 for-audit is next-work evidence:
 five disagreements, two old gates, one agreement, and further CRuby-only escape/
 yield-packing oracles. Those cases are not fixed guards. No typed gate or commit.
+
+
+## N62 — for/each and captured method controls (2026-09-28)
+
+L288 replaces the snapshot loop with ordinary explicit each, shared local
+bindings, checked multiple assignment and safe captured callbacks. Six permanent
+programs cover dispatch/visibility/missing handlers, live mutation, local/block/
+match scope, control/ensure, conversion/nonlocal targets, trailing-comma syntax,
+escaped callbacks and define_method reuse. A seventh frontend seed (seed46, not a
+seventh regression program) retains the one-target comma distinction.
+
+Full reports20260928-082327: bootstrap1309 =1095 agree /zero disagree /208 gates,
+five invalid controls and the old test_syntax_115 harness error; tier1 n300
+seed20260927 =226 agree /74 gates. Every old source/verdict held. Replay135 =134
+agree /one old sorbet-hash gate, all129 old sources/verdicts unchanged. Six new
+guards agree. Previous351 =337 agree /14 gates, unchanged. Focused20 =19 agree /
+one old Proc#arity gate; extra43 =42 agree /one old top-level-return gate.
+Frontend52 agree /zero disagree, AST-idempotent with six old render-only
+instabilities. Standalone/loading three each agree; model build and regeneration
+checks pass. Proof audit failed before axiom scan; repairs remain deferred.
+
+The original final-result inspection failure from the response-hook probe is
+preserved separately in /private/tmp/conformance-l289-inspect-known.json. Appending
+nil to its loop-only variant isolates for conversion and does not claim to fix
+Object#inspect. The L289 audit records that next defect explicitly. See model
+L288, frontend C41 and /private/tmp/conformance-l288-* for evidence.

@@ -113,7 +113,7 @@ module Linearize
     when :for
       coll = run(node[2])
       return coll if definitely_jumps?(coll)
-      [:for, node[1], coll, run(node[3])]
+      [:for, node[1], coll, run(node[3]), *node.drop(4)]
     when :dowhile
       # Body runs before the first cond test; both are statement/condition positions inside
       # the loop (a jump there stays in the loop), so recurse without hoisting out.

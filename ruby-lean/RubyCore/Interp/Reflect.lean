@@ -253,13 +253,14 @@ def reflectDefineMethod (m : Machine) (recv : Value) (mname : String)
               -- methods. Open bodies keep the capture, byte-for-byte as before.
               let md : MethodDef :=
                 { params := cl.params, body := cl.body, owner := target, cref,
+                  forTargets := cl.forTargets, forMultiple := cl.forMultiple, fromBlock := true,
                   definee := some capture.defmod,
                   definitionFrame := cl.captured.map m.definitionFrameId,
                   visibility := if singleton then .pub else m.macroVisibility target,
                   capturedFrame :=
                     -- fuel bounds the *depth*; any body deeper than this keeps
                     -- its capture (the conservative direction)
-                    if localFreeB 1000000 cl.body then none
+                    if cl.forTargets.isNone && localFreeB 1000000 cl.body then none
                     else cl.captured,
                   declared := cl.locals,
                   fromPrelude := m.preludeMode || cl.libraryOrigin }

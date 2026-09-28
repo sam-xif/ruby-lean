@@ -483,12 +483,16 @@ class Desugar
   # (`for a, b in`) supported for simple targets; a rest target is deferred.
   def desugar_for(n)
     fire(:for)
-    [:for, for_targets(n.index), node(n.collection), stmts(n.statements)]
+    targets = for_targets(n.index)
+    result = [:for, targets, node(n.collection), stmts(n.statements)]
+    result << true if n.index.type == :multi_target_node && targets.length == 1
+    result
   end
 
   def for_targets(idx)
     if idx.type == :multi_target_node
-      raise Unsupported, "for multi-target with rest" if idx.rest || !idx.rights.empty?
+      explicit_rest = idx.rest && idx.rest.type != :implicit_rest_node
+      raise Unsupported, "for multi-target with rest" if explicit_rest || !idx.rights.empty?
       idx.lefts.map { |t| massign_target(t) }
     else
       [massign_target(idx)]

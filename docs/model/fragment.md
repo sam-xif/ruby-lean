@@ -80,6 +80,12 @@ singleton macros have separate method entries and inventory, including top-level
 define_method. New class declarations reject frozen namespaces, and mixin macros
 validate their single module argument and required arity before frozen writes.
 
+L287 makes nested parameter destructuring effectful, including checked to_ary,
+nonoverlapping positional slices and conversion after method defaults. L288 routes
+for through ordinary each with shared locals, checked target assignment and safe
+escaped callback control. One-target trailing-comma destructuring is retained by
+the frontend, and block-defined methods handle break/next/redo locally.
+
 Tier-0 baseline: **940/1304 bootstraptest agree, 0 disagree.**
 
 **Modeled.** Literals, locals/ivars/gvars/**cvars**, sends, `if`/`while`/`dowhile`/

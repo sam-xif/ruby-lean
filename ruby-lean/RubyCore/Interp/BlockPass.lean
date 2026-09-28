@@ -12,7 +12,7 @@ def conversionMethod : ConversionCall → String
   | .block _ => "to_proc"
   | .stringPlus _ => "to_str"
   | .splat _ => "to_a"
-  | .closureArgs .. | .paramDestructure .. => "to_ary"
+  | .closureArgs .. | .paramDestructure .. | .forDestructure .. => "to_ary"
   | .enumRewind _ => "rewind"
   | .raiseString | .stopMessage _ => "to_str"
   | .raiseException _ => "exception"
@@ -25,7 +25,7 @@ def conversionArgs : ConversionCall → List Value
 def conversionType : ConversionCall → String
   | .block _ => "Proc"
   | .stringPlus _ => "String"
-  | .splat _ | .closureArgs .. | .paramDestructure .. => "Array"
+  | .splat _ | .closureArgs .. | .paramDestructure .. | .forDestructure .. => "Array"
   | .enumRewind _ => "Object"
   | .raiseString | .stopMessage _ => "String"
   | .raiseException _ => "Exception"
@@ -59,6 +59,7 @@ def blockPassNoConversion (m : Machine) (call : ConversionCall) (source : Value)
   | .splat pending => resumeSplat m pending [source]
   | .closureArgs cl brk selfOv defmodOv => enterClosure m cl [source] brk selfOv defmodOv
   | .paramDestructure subs remaining body => expandParamBindings m subs [source] remaining body
+  | .forDestructure targets body => finishForBindings m targets [source] body
   | .enumRewind o => .next { resetEnumerator m o with ctl := .value (.ref o) }
   | .block _ => .next (raiseErr m Boot.typeErrorId
       s!"no implicit conversion of {className m.heap (realClassOf m.heap source)} into Proc")
@@ -94,6 +95,11 @@ def finishConversion (m : Machine) (call : ConversionCall) (source result : Valu
     if result.identEq .nil then blockPassNoConversion m call source
     else match Builtins.arrPayload? m.heap result with
       | some xs => expandParamBindings m subs xs.toList remaining body
+      | none => blockPassInvalid m call source result
+  | .forDestructure targets body =>
+    if result.identEq .nil then blockPassNoConversion m call source
+    else match Builtins.arrPayload? m.heap result with
+      | some xs => finishForBindings m targets xs.toList body
       | none => blockPassInvalid m call source result
   | .enumRewind o => .next { resetEnumerator m o with ctl := .value (.ref o) }
   | .block pending =>

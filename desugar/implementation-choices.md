@@ -1129,3 +1129,21 @@ Final L279 round-trip verification: 45 seeds plus six regression programs give
 51 agree / zero disagree, AST-idempotent. Full bootstraptest is 1,232 agree /
 zero disagree / 77 out-of-fragment, with no parse/harness errors. The previous
 27 bootstrap and six seed render-only instabilities remain unchanged.
+
+## C41 — preserve one-target for destructuring (2026-09-28)
+
+`for x, in values` performs multiple assignment even though it has one named
+slot; `for x in values` keeps the first yielded argument intact. Prism records
+the comma as an ImplicitRestNode. The frontend now accepts that implicit rest
+and appends `true` to the existing four-slot `for` node only for this one-target
+case. Linearization preserves the optional field, the renderer emits the comma,
+and the validator/exporter preserve its Boolean value. Old four-slot exports
+remain valid under version 5; this is an additive distinction, like C39/C40.
+The Lean decoder accepts both forms. Named rest, trailing targets after rest,
+and nested for targets retain their existing frontend gates.
+
+Seed 46 checks zero/multiple yields, Array/scalar arguments, ivar targets and
+conversion effects. All 46 seeds plus six L288 regression programs round-trip:
+52 agree, zero disagree, AST-idempotent, with the same six render-only
+instabilities. The model's ordinary each dispatch and shared local environment
+are recorded in model L288 and difftest N62.

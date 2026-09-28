@@ -268,8 +268,8 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     -- sequences "after body → eval cond (whileCondK) → loop", and `unwind`
     -- already routes break/next through it [V].
     .next (withKont m (.eval body) (.whileBodyK cond body))
-  | .for' targets coll body =>
-    .next (withKont m (.eval coll) (.forStartK targets body))
+  | .for' targets coll body multiple =>
+    .next (withKont m (.eval coll) (.forStartK targets body (multiple || targets.length > 1)))
   | .def' name params body =>
     let defmod := m.currentFrame.defmod
     if let some receiver := frozenMethodReceiver? m.heap defmod then raiseFrozen m receiver else

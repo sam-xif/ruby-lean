@@ -57,6 +57,10 @@ inductive Visibility where
 deriving Repr, DecidableEq, Inhabited
 
 structure MethodDef where
+  /-- A method installed from a captured for callback still shares its loop locals. -/
+  fromBlock : Bool := false
+  forTargets : Option (List (TargetKind × String)) := none
+  forMultiple : Bool := false
   params : List Param
   body : Expr
   owner : ObjId
@@ -157,6 +161,9 @@ deriving Inhabited
     FrameId = Nat (defined in Machine); kept as Nat here to avoid an import
     cycle — as `MethodDef.capturedFrame`, the other capture field, already does. -/
 structure Closure where
+  /-- The hidden for block assigns in the enclosing local environment. -/
+  forTargets : Option (List (TargetKind × String)) := none
+  forMultiple : Bool := false
   params : List Param
   locals : List String
   body : Expr

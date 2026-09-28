@@ -14838,3 +14838,57 @@ every source is unchanged and no old agreement is lost. This is the same final
 binary as all other checks above. All validation sessions have terminated, and
 no L287 source edits remain unbuilt. Full goal remains active; the next known
 for/each discrepancies are confirmed independently, not claimed fixed.
+
+
+## L288 — for dispatch, shared environments and block-defined method exits (2026-09-28)
+
+The legacy loop bypassed each, returned its collection regardless of each's result,
+and walked a snapshot of Array contents. Five confirmed disagreements covered an
+Array override, live growth/replacement, checked target conversion and break's
+bound value; custom/private each were two further gates. All seven now agree.
+
+The core for node creates a hidden closure and invokes ordinary explicit each.
+Closure/MethodDef carry its target list and multiple-assignment flag. The callback
+gets a fresh control frame whose localAlias points at its enclosing environment:
+new body locals and target writes leak as Ruby requires, but stale return/break
+homes cannot be revived by invoking an escaped callback. Enclosing block/match/
+cref/definition context is retained, including block eval and define_method reuse.
+Single targets take the first yielded argument; multiple targets convert exactly
+one argument with checked to_ary, while zero/multiple arguments bind directly.
+forAssignK queues ordinary variable/constant assignments, preserving frozen and
+lexical scope checks. Native each implementations supply their live iteration.
+
+A trailing comma with one target is semantically significant. Frontend C41 adds
+an optional fifth true field to old four-slot for nodes; decoder accepts both.
+ImplicitRestNode is supported without claiming named rest/nested target syntax.
+Methods installed from blocks retain fromBlock even when their capture is erased.
+dmFrameK handles local break/next/return and redo in the same activation without
+rebinding/defaults; implicit super retains define_method's special error behavior.
+The old forBind/forStep/forBodyK snapshot path is removed.
+
+Validation: model build98 jobs PASS. Full reports20260928-082327: bootstrap1309
+=1095 agree /0 disagree /208 unsupported /5 invalid controls /1 old
+ test_syntax_115 harness error; tier1 n300 seed20260927 =226 agree /74 gates.
+Every L287 source/verdict is unchanged. Replay135 =134 agree /one old sorbet-hash
+gate; all129 previous sources/verdicts held. Six new permanent programs agree.
+Previous351 =337 agree /14 gates, every verdict unchanged. Focused20 =19 agree /
+one old Proc#arity gate; extra43 =42 agree /one old top-level-return frontend
+gate. Frontend46 seeds+six guards =52 agree /zero disagree, AST-idempotent with
+six old render-only instabilities. Standalone3 and identical-source loading3
+agree. Prelude/CRubyNames match regeneration; git diff --check passes.
+
+Required proof audit FAILED exit1 during lake build Metatheory; captured tail
+names NotDone and KontFrame, axiom scan not reached. No repairs, checker edits,
+floor edits, typed gate or commit. Evidence /private/tmp/conformance-l288-*.
+
+The conversion-response probe exposed a separate Object#inspect bug. Its original
+source/observation is saved in /private/tmp/conformance-l289-inspect-known.json;
+the loop-only extra probe explicitly ends with nil to isolate the conversion.
+This is not counted as an inspection fix. L289 audit11 confirms nine inspection
+disagreements, one native-ivar agreement and one old private_instance_methods gate.
+CRuby 4's checked instance_variables_to_inspect hook runs even on an empty object,
+accepts nil/Array, filters actual ivars in their insertion order, and may raise.
+Extra oracle17 pins live values/filter, buffered names, recursion, missing hooks,
+String conversion and a separate existing ivar-reassignment ordering defect.
+Primary source: https://raw.githubusercontent.com/ruby/ruby/master/object.c,
+rb_obj_inspect/inspect_i, cross-checked against pinned CRuby4.0.5.

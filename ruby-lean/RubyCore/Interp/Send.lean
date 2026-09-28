@@ -467,35 +467,19 @@ def continueArray (m : Machine) (acc : List Value) (rest : List Expr) : StepResu
     | .splat none => .unsupported "anonymous splat in array literal"
     | _ => .next (withKont m (.eval e) (.arrK acc rest'))
 
-/-- Bind one `for` element to the loop targets in the *enclosing* frame (the
-    leak, artifact 04 [V]). A single target takes the whole element; multiple
-    targets destructure it array-wise (an `Array` positionally, a scalar into
-    the first target with the rest `nil` — massign semantics [V]). Only local
-    targets are modeled; a non-local target returns `none` → gate. -/
-def forBind (m : Machine) (targets : List (TargetKind × String))
-    (elem : Value) : Option Machine :=
-  if !targets.all (fun (k, _) => k == .lvar) then none
-  else match targets with
-    | [(_, name)] => some (m.setLocal name elem)
-    | _ =>
-      let vals := match elem with
-        | .ref o => match (m.heap.get o).payload with
-            | .arr xs => xs.toList
-            | _ => [elem]
-        | _ => [elem]
-      some ((targets.zipIdx).foldl
-        (fun m (t, i) => m.setLocal t.2 (vals.getD i .nil)) m)
-
-/-- Advance a `for` loop: bind the next element and run the body, or finish with
-    the collection value when exhausted (`for` evaluates to its collection [V]). -/
-def forStep (m : Machine) (targets : List (TargetKind × String)) (body : Expr)
-    (rest : List Value) (coll : Value) : StepResult :=
-  match rest with
-  | [] => .next (withCtl m (.value coll))
-  | elem :: tail =>
-    match forBind m targets elem with
-    | none => .unsupported "for with a non-local loop target"
-    | some m => .next (withKont m (.eval body) (.forBodyK targets body tail coll))
+/-- For invokes each as an ordinary explicit send. Its hidden callback keeps
+    the literal-call break boundary and shares the enclosing local environment. -/
+def startFor (m : Machine) (targets : List (TargetKind × String)) (body : Expr)
+    (multiple : Bool) (collection : Value) : StepResult :=
+  let params := if multiple then [Param.rest none] else [Param.req "<for argument>"]
+  let (block, m) := reifyCallBlock m params [] body false
+  let m := match block with
+    | .ref o => match (m.heap.get o).payload with
+      | .proc cl => { m with heap := m.heap.set o { m.heap.get o with
+          payload := .proc { cl with forTargets := some targets, forMultiple := multiple } } }
+      | _ => m
+    | _ => m
+  invoke m collection .explicit "each" [] (some block)
 
 /-- Class variables use lexical nesting, skipping singleton-class scopes.
     No enclosing ordinary class/module means an access-from-toplevel error;

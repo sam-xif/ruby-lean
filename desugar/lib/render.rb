@@ -91,7 +91,9 @@ module Render
     when :alias then "alias #{node[1]} #{node[2]}"
     when :for
       _, targets, coll, body = node
-      "(for #{targets.map { |_k, nm| nm }.join(', ')} in (#{core(coll)}); #{core(body)}; end)"
+      names = targets.map { |_k, nm| nm }.join(', ')
+      names += ',' if node[4] && targets.length == 1
+      "(for #{names} in (#{core(coll)}); #{core(body)}; end)"
     when :dowhile
       _, body, cond = node
       "(begin; #{core(body)}; end while (#{core(cond)}))"

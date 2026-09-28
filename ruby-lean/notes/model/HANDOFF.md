@@ -1,6 +1,45 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L287)
+## Active conformance goal (2026-09-28, L288)
+
+Full conformance remains active and incomplete. L288 made verified progress:
+five confirmed for disagreements plus custom/private each gates now agree. No
+checker/proof/floor edits, typed gate or commit. L276–L288 remain uncommitted;
+proof repair is explicitly deferred. Unrelated paper/ and wasm files untouched.
+
+For now sends ordinary explicit each with a hidden callback, shares enclosing
+locals through Frame.localAlias while keeping fresh control frames, converts
+multiple targets through checked to_ary and queues ordinary assignments. Captured
+callbacks preserve scope and safe return/break, support block eval/define_method.
+The frontend retains one-target comma destructuring with an optional fifth field.
+MethodDef.fromBlock and dmFrameK retain define_method control semantics independently
+of capture erasure: break/next/return local, redo without rebinding/defaults.
+
+Final reports20260928-082327: bootstrap1309 =1095 agree /0 disagree /208 unsupported,
+5 control-invalid /1 old syntax115 harness-error. Tier1 n300 seed20260927 =226 agree /
+74 unsupported. Every source/verdict unchanged from L287. Replay135 =134 agree /
+one old sorbet-hash gate, all129 old sources/verdicts held; six new guards agree.
+Previous351 =337 agree /14 gates, unchanged. Focused20 =19 agree /old Proc#arity
+gate; extra43 =42 agree /old top-level-return gate. Frontend52 agree, AST-idempotent,
+six old render-only instabilities. Standalone3/loading3 agree. Build98 jobs,
+generated cmp and whitespace checks pass. All L288 validation sessions ended.
+Model notes L288, difftest N62, frontend C41; evidence /private/tmp/conformance-l288-*.
+
+Required proof audit FAILED exit1 at lake build Metatheory; NotDone/KontFrame in
+captured tail, axiom scan not reached. No repairs. Log l288-proof-audit.log.
+
+Next confirmed priority: Object#inspect skips Ruby 4's checked
+instance_variables_to_inspect hook. Original failing for probe is preserved in
+/private/tmp/conformance-l289-inspect-known.json; loop-only variant ends in nil.
+Audit11 =nine disagreements /one agreement /one old reflection gate; extra oracle17
+pins semantics. Hook returns nil or Array (otherwise TypeError), called before
+recursion check. Iterate buffered ivar names in insertion order, reading values
+and the selection Array live. Reassignment must not reorder an existing ivar.
+Current pure renderer skips hooks; Object#__inspect_slow calls Ruby instance_variables/
+get overrides incorrectly. Use checked conversion continuation plus native inspector.
+No L289 source edits at this recorded boundary. Other scope remains below.
+
+## Previous batch (2026-09-28, L287)
 
 Full CRuby conformance remains active and incomplete. This turn made verified
 progress: all seven confirmed parameter-destructuring failures are repaired, and

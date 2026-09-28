@@ -390,6 +390,36 @@ def stepParamBinding (m : Machine) (pending : List (Param × Value)) (body : Exp
           (.blkConvertK (.paramDestructure subs remaining body) value .start))
     | _ => .stuck "non-positional formal in destructuring binding"
 
+/-- For targets use ordinary variable/constant assignment, retaining their
+    frozen and scope checks. Each value is snapshotted before target writes. -/
+def queueForAssignments (m : Machine) (pending : List ((TargetKind × String) × Value))
+    (body : Expr) : Machine :=
+  match pending with
+  | [] => withCtl m (.eval body)
+  | ((kind, name), value) :: remaining =>
+    let assign := match kind with
+      | .const => Kont.casgnK name
+      | .lvar => .asgnK .lvar name
+      | .ivar => .asgnK .ivar name
+      | .cvar => .asgnK .cvar name
+      | .gvar => .asgnK .gvar name
+    { m with ctl := .value value, kont := assign :: .forAssignK remaining body :: m.kont }
+
+def finishForBindings (m : Machine) (targets : List (TargetKind × String))
+    (values : List Value) (body : Expr) : StepResult :=
+  let pending := targets.zip ((List.range targets.length).map (fun i => values.getD i .nil))
+  .next (queueForAssignments m pending body)
+
+def startForBindings (m : Machine) (targets : List (TargetKind × String))
+    (multiple : Bool) (args : List Value) (body : Expr) : StepResult :=
+  if multiple && args.length == 1 then
+    let source := args.headD .nil
+    match Builtins.arrPayload? m.heap source with
+    | some xs => finishForBindings m targets xs.toList body
+    | none => .next (withKont m (.value source)
+        (.blkConvertK (.forDestructure targets body) source .start))
+  else finishForBindings m targets args body
+
 /-- Ruby-3 keyword→positional collapse: when the callee has no keyword params, a
     trailing keyword bundle becomes one positional `Hash` argument (an *empty*
     bundle vanishes) [V]. Also used to feed builtins / method_missing, which
@@ -485,6 +515,21 @@ def blockOwner (m : Machine) (p : Value) : Option FrameId :=
     | some b => b.identEq p
     | none => false
 
+/-- A for callback shares its captured local environment but owns a fresh
+    block control frame. Escaped return/break therefore cannot revive its home. -/
+def enterForClosure (m : Machine) (cl : Closure) (targets : List (TargetKind × String))
+    (args : List Value) (brk : Option FrameId) (selfOv : Option Value)
+    (defmodOv : Option ObjId) : StepResult :=
+  let cap := m.frames.getD (cl.captured.getD 0) default
+  let frame : Frame :=
+    { self := selfOv.getD cap.self, defmod := defmodOv.getD cap.defmod,
+      definitionFrame := if defmodOv.isSome then none else cl.captured.map m.definitionFrameId,
+      blk := cap.blk, kind := .block, captured := cl.captured, localAlias := cl.captured,
+      home := cl.home, lam := cl.lam, cref := cap.cref, libraryOrigin := cl.libraryOrigin }
+  let fid := m.frames.size
+  let m := { m with frames := m.frames.push frame, stack := fid :: m.stack, kont := .blkFrameK fid cl.lam brk cl args :: m.kont }
+  startForBindings m targets cl.forMultiple args cl.body
+
 /-- Enter a closure after its argument conversions have completed. Keeping this
     separate prevents a one-element conversion result from being converted twice. -/
 def enterClosure (m : Machine) (cl : Closure) (args : List Value)
@@ -555,6 +600,7 @@ def callClosure (m : Machine) (cl : Closure) (args : List Value)
     | some scope => if m.kont.any (fun k => match k with
         | .blockCallK s => s == scope | _ => false) then some scope else none
   if let some o := cl.enumYield then suspendEnumerator m o args else
+  if let some targets := cl.forTargets then enterForClosure m cl targets args brk selfOv defmodOv else
   match classifySimple cl.params with
   | none => .unsupported "unmodeled block param kind (optional/keyword/forwarding)"
   | some sp =>

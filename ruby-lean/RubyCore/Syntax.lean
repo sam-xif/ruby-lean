@@ -91,7 +91,7 @@ inductive Expr where
   | dowhile (body cond : Expr)
   /-- `for tgts in coll; body; end` — `tgts` bind in the *enclosing* scope (no
       block frame; the loop variable leaks) [V]. -/
-  | for' (targets : List (TargetKind × String)) (coll body : Expr)
+  | for' (targets : List (TargetKind × String)) (coll body : Expr) (multiple : Bool := false)
   | def' (name : String) (params : List Param) (body : Expr)
   | array (elems : List Expr)
   | hash (pairs : List (Expr × Expr))
@@ -232,6 +232,11 @@ def asStr (j : Json) : M String :=
   match j with
   | .str s => .ok s
   | _ => fail "expected string" j
+
+def asBool (j : Json) : M Bool :=
+  match j with
+  | .bool b => .ok b
+  | _ => fail "expected boolean" j
 
 def asInt (j : Json) : M Int :=
   match j with
@@ -406,6 +411,12 @@ partial def expr (j : Json) : M Expr := do
         | #[k, n] => return (← targetKind (← asStr k), ← asStr n)
         | _ => fail "for target" t
       return .for' targets (← expr coll) (← expr body)
+  | "for", #[_, tgts, coll, body, multiple] =>
+      let targets ← (← asArr tgts).toList.mapM fun t => do
+        match ← asArr t with
+        | #[k, n] => return (← targetKind (← asStr k), ← asStr n)
+        | _ => fail "for target" t
+      return .for' targets (← expr coll) (← expr body) (← asBool multiple)
   | "def",   #[_, n, ps, body] =>
       return .def' (← asStr n) (← params ps) (← expr body)
   | "array", #[_, elems] => .array <$> exprs (← asArr elems)

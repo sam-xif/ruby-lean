@@ -38,6 +38,8 @@ module Export
   # unlike a send, it is unaffected by constructor or constant redefinition.
   # L279/C40: additive `imag` and its `flt_bits` component preserve native
   # imaginary construction, exact fractions, signed zero and per-site identity.
+  # L288/C41: optional fifth for slot retains one-target multiple assignment.
+  # Four-slot for nodes remain valid and unchanged.
   VERSION = 5
 
   module_function
@@ -79,7 +81,7 @@ module Export
       else
         x.map { |e| jsonable(e, literals) }
       end
-    when nil, Integer, String then x
+    when nil, true, false, Integer, String then x
     when Float
       raise ArgumentError, "non-finite Float in RubyCore: #{x}" unless x.finite?
       x

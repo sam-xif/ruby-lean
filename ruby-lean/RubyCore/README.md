@@ -633,6 +633,23 @@ They walk the original receiver with a live index, independent of Ruby overrides
 before the next yield affect both the next element and exhaustion. Enumerable's separate
 Ruby implementation dispatches `each`; removing Array's entry can expose that method.
 
+`for` retains a core node but invokes ordinary explicit `each`, including
+visibility, missing-method dispatch, overrides and live iterator mutations. Its
+normal value is the return from `each`. A single target takes the first yielded
+argument; multiple targets (including `for x,`) expand one argument through checked
+`to_ary`, while zero/multiple arguments bind directly. Target writes use ordinary
+assignment rules. The hidden callback has a fresh control frame and aliases the
+enclosing local environment, preserving new/shared locals, the enclosing block,
+match state and definition context without reviving a dead return target. Captured
+callbacks can be called, used with block eval, or installed by define_method. **[V]**
+(L288)
+
+A block installed by `define_method` keeps that origin even when it has no captured
+locals. Its method boundary handles local break/next/return and restarts redo in
+the same activation without repeating parameter conversion or defaults. This also
+applies to captured for callbacks; strict method arity remains in force. **[V]**
+(L288)
+
 Invoking a closure pushes a **block frame** whose parent is `captured`, so free
 locals resolve into the enclosing scope. Argument binding differs by
 `lambda` **[V]**:
