@@ -12428,3 +12428,34 @@ both halves of what constrains them now have a name.
   (304 unsupported). Full quiet gate GREEN: fragment 94/261, checker reach 95, 99 rules,
   72 worked proofs, zero owed/exempt, 254 agree / 0 disagree. Metatheory and standard-axiom
   audit PASS. Logs: /private/tmp/ratchet-blockpass-{gate,audit,tier0,regressions}.log.
+
+## Clink 246 (2026-09-27) — native Symbol closure entry and forwarding
+
+- Measured Sorbet 0.6.13405: map(&:to_s) reveals Array[String], map(&:abs)
+  Array[Integer]; an unknown selector is 7003 and &:+'s missing argument is 7004.
+  These constrain the eventual source judgment; this clink does not admit 096 yet.
+- Guarded nativeDispatchB now includes Symbol#to_proc. StateOk supplies exact lookup,
+  marker, visibility and no-shadow facts only while to_proc remains unreserved.
+  This is dispatch readiness, not a new pure-builtin signature or callable type.
+- Closure/Symbol proves native allocation, heap extension/full state preservation,
+  actual L275 conversion/resumption, and callClosure's required/rest activation.
+  Its receiver is not auto-splatted. The rest Array is allocated even when empty;
+  arbitrary remaining arguments retain their order. Locals have no capture fallback.
+- Closure/SymbolBody proves the real local reads/splat/forwarded send for all fuel,
+  parameterized by the actual callee StepSpec. No source-lambda replacement is used.
+  Capture-free body framing projects back to the caller after the pop, including the
+  rest allocation; an uncaptured caller recovers its exact local values.
+- Mandatory SymbolClosureControls checks boot conversion, both allocations, binding
+  shadowing, missing captures, nonempty rest forwarding, Array receiver identity,
+  conversion overrides/tombstones/wrong markers, missing methods and arity errors.
+- Remaining: adapt map's one-required-formal entry contract to this native activation,
+  discharge Integer#to_s's callee contract, restore complete caller conformance after
+  the iterator pop, then register/check/emit the source rule with real corpus coverage.
+  Symbol entry copies lexical metadata from frame zero, which need not be the active
+  caller; do not assume the attached-block ClosureScopeEq premise for this path.
+- Validation: mandatory controls PASS; full quiet gate GREEN, unchanged fragment 94/261,
+  checker reach 95, 99 rules, 72 worked proofs, zero owed/exempt, 254 agree / 0 disagree.
+  Metatheory and standard-axiom audit PASS. New proof modules build under two seconds;
+  no proof exceeded five minutes, introduced an axiom or raised a resource limit.
+  Logs: /private/tmp/ratchet-symbol-entry-{gate,audit}.log. No live builds.
+  Stopped after this clink at the user's request; 096 remains outside the judgment.

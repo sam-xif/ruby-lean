@@ -1,4 +1,31 @@
-# Current resume point (2026-09-26, clink 245 / model L275)
+# Current resume point (2026-09-27, clink 246 / model L275)
+
+Native Symbol conversion/entry/forwarding now have semantic proofs in
+Rules/Closure/Symbol and SymbolBody. Guarded native dispatch includes Symbol#to_proc;
+reserving the name withdraws that capability. Allocation preserves full StateOk.
+callClosure's actual required/rest frame allocates its rest Array, has no capture
+fallback, and forwards every remaining argument through the real splat path.
+The all-fuel body contract consumes the underlying callee StepSpec. Return lemmas
+project certified framing and recover uncaptured caller locals after the block pop.
+Mandatory SymbolClosureControls covers the native path and its negative assumptions.
+
+Full quiet gate GREEN: unchanged fragment 94/261, checker reach 95, 99 rules,
+72 worked proofs, zero owed/exempt, 254 agree / 0 disagree. Metatheory and
+standard-axiom audit PASS. New proof modules build under two seconds; no proof
+exceeded five minutes or raised a resource limit. Logs:
+/private/tmp/ratchet-symbol-entry-{gate,audit}.log. No live builds.
+Paused after clink 246 at the user's request; do not continue until asked.
+
+Next: 096 still needs map integration and source admission. MapArrayContract assumes
+one required formal; adapt it to the proved native entry rather than changing the model
+or substituting a lambda. Discharge Integer#to_s's call, preserve the typed accumulator,
+and restore full caller StateOk after both pops. Symbol entry reads lexical metadata
+from frame zero, not necessarily the active caller; its body proof uses only the two
+bound locals and explicit dispatch. Do not assume attached-block ClosureScopeEq.
+Sorbet 0.6.13405 gives map(&:to_s) Array[String], rejecting missing selectors (7003)
+and missing forwarded arguments (7004). Then 097 is stored-lambda block passing.
+
+Previous model repair (clink 245):
 
 Before typing 096, measured §F56: &:symbol bypassed overridden/private/undefined
 Symbol#to_proc. Interp/BlockPass now runs conversion through lookup and continuations,
