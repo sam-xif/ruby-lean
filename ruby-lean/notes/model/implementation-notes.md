@@ -15212,3 +15212,68 @@ The typed gate was rerun and fails at the existing HeapFacts className/lookup
 proof drift; the log is archived. Proof repair remains explicitly deferred.
 The batch proof audit also failed to build Metatheory (NotDone/KontFrame);
 its axiom scan was not reached. The captured proof-audit.log is archived.
+
+
+## L295 — permanent namespace paths and nested naming (2026-09-28)
+
+The preserved constant-nested-name failure exposed a missing distinction:
+ClassPayload.name contained both permanent paths and paths with an anonymous
+ancestor. The model treated every nonempty name as final. A focused audit found
+25 wrong answers among 28 cases; three already agreed. Nineteen wrong answers
+now agree, four become explicit symbol-order gates, and two Module#name identity
+failures remain separate known work.
+
+ClassPayload.namePermanent records the native distinction (empty names remain
+anonymous regardless of the flag). nameConstant runs after the binding and before
+const_added for assignment, native const_set and named class/module creation.
+An anonymous parent supplies only a first temporary path. A permanent parent (or
+Object) promotes the value and recursively names its own namespace constants,
+preserving already permanent names. Name propagation ignores frozen flags and
+does not send callbacks to descendants. Private constants participate; inherited
+constants and overwritten/detached values do not. Callback errors, throws and
+binding replacement retain the completed names. A heap-depth-bounded traversal
+marks ancestors before following their constants, so cycles terminate naturally.
+The namespace prefix uses native classPath, not the singleton attachment display
+or Ruby name/to_s overrides. Object::C now acquires the same bare name as ::C.
+
+The native algorithm is recorded in CRuby's
+[variable.c](https://raw.githubusercontent.com/ruby/ruby/ruby_4_0/variable.c)
+(classname, const_set, set_namespace_path and rb_set_class_path_string). Executable
+CRuby 4.0.5 pins the behavior independently of branch-source drift.
+
+Multiple paths to a still-temporary descendant expose an additional real boundary.
+CRuby's constant table traverses symbol-ID hash slots, not declaration order.
+With the differential wrapper, assigning Z then A chooses M::A, while merely
+prefixing the same program with `p :A` changes the answer to M::Z. Standalone
+CRuby can choose a different order again. The model has names, not CRuby's
+process-local symbol serials. Choosing newest, oldest or alphabetical bindings
+would emit a known wrong answer. The traversal explicitly declines competing
+non-ancestor paths until symbol-table order is represented. It still supports
+ancestor cycles and aliases to namespaces that were already permanent. These
+new gates are counted separately from repaired disagreements; no full naming
+or symbol-identity conformance is claimed.
+
+Focused 28: 22 agree, four ordering gates, two remaining identity disagreements.
+Extended 30: 25 agree, two ordering gates and three existing gates (scoped class
+syntax with explicit superclass, set_temporary_name, namespace dup/clone).
+Eight namespace-* regression programs preserve all 47 agreeing probes; global
+Object.const_added replacements remain in isolated programs. Each exact combined
+program agrees before its sidecar is marked fixed. The identity probes retain
+Module#name's unfrozen/fresh String bug for the next increment.
+
+Final validation: model build passes (102 jobs). Full bootstrap (1,309 cases):
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+the old test_syntax_115 harness error. Every source/verdict pair matches L294.
+Regression replay (192): 191 agree and one old sorbet-hash gate; all 184 earlier
+sources/verdicts hold, and eight new guards agree. Tier 1 (300, seed 20260927):
+226 agree, 74 gates, all sources/verdicts unchanged. Frontend seeds plus new guards:
+54 agree, all AST-idempotent; six old render-only instabilities plus one benign
+rebind-hook rendering instability. Standalone and feature loading: three agreements
+each. Whitespace checks pass. Reports, build log, before/after probes and the
+symbol-order witness are archived in difftest/reports/20260928-incremental-L295/.
+No runtime edits after the final build. No checker, proof, comparator or floor
+changes; proof repair remains explicitly deferred.
+The typed gate was rerun and remains red at the recorded HeapFacts className/lookup
+proof drift. Its log is archived; proof repair remains deferred.
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.

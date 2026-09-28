@@ -1,6 +1,52 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L294)
+## Active conformance goal (2026-09-28, L295)
+
+L295 fixes permanent namespace-name propagation, including the preserved
+constant-nested-name failure. ClassPayload.namePermanent distinguishes temporary
+paths; nameConstant and setNamespacePath run after binding and before callbacks.
+Frozen/private descendants, ancestor cycles, overwritten constants, Object-scoped
+declarations and native singleton-class prefixes are covered. Eight namespace-*
+regression programs retain 47 agreeing probes. L276–L295 are separate increments.
+
+Final validation: model build passes (102 jobs). Full bootstrap (1,309 cases):
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+the old test_syntax_115 harness error. Every source/verdict pair matches L294.
+Regression replay (192): 191 agree and one old sorbet-hash gate; all 184 earlier
+sources/verdicts hold, and eight new guards agree. Tier 1 (300, seed 20260927):
+226 agree, 74 gates, all sources/verdicts unchanged. Frontend seeds plus new guards:
+54 agree, all AST-idempotent; six old render-only instabilities plus one benign
+rebind-hook rendering instability. Standalone and feature loading: three agreements
+each. Whitespace checks pass. Reports, build log, before/after probes and the
+symbol-order witness are archived in difftest/reports/20260928-incremental-L295/.
+No runtime edits after the final build. No checker, proof, comparator or floor
+changes; proof repair remains explicitly deferred.
+
+The 28-case focused audit moved 19 disagreements to agreement. Four other wrong
+answers now gate explicitly on competing namespace paths: CRuby picks a path
+using its process-local symbol-ID table order, which the model does not carry.
+This is not counted as a conformance repair. In the archived order witness,
+merely prefixing `p :A` changes M::A into M::Z. Preserve the boundary until that
+ordering is modeled; do not guess newest/oldest/alphabetical order. The extra
+30 probes have 25 agreements, two ordering gates and three existing gates.
+
+Immediate next known semantic issue: Module#name allocates a fresh mutable String
+instead of returning its cached frozen name. The focused name-read-identity and
+name-boot-name-identity probes preserve two disagreements, including a temporary
+name snapshot across permanent promotion. Audit native arity, aliases, encoding,
+identity and representation snapshots before repairing it. Integer#chr's ASCII
+encoding error from the L293 audit also remains open. Other known work includes
+set_temporary_name, namespace copying/removal, const_missing, the old native
+method-removal/Kernel ownership limitations and Random/Regexp overrides.
+
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.
+The next Module#name audit is archived as probes/next-name-audit.json (script
+beside it); it adds arity, aliases, interned path identity and encoding probes.
+Proof repair remains deferred; the typed gate is not claimed green. Unrelated
+paper/ and wasm upstream-bug files remain untouched. Full conformance is incomplete.
+
+## Previous batch (2026-09-28, L294)
 
 The incremental-commit request is handled: L276–L294 each have separate commits.
 The last pending work was split into L293 (Unicode String inspection) and L294

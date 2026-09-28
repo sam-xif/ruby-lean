@@ -113,6 +113,13 @@ validation precede frozen writes and const_added. Non-UTF-8 names and binary
 high-byte diagnostic renderings remain gated. Recursive namespace naming and
 constant removal remain separate open work.
 
+L295 distinguishes temporary and permanent namespace paths and propagates a new
+permanent path through live nested constants before callbacks. Frozen descendants,
+ancestor cycles, native singleton-class paths and Object-qualified declarations
+follow the same naming rule. Shared descendants with competing paths still need
+CRuby's symbol-table order and are explicitly gated; Module#name String identity,
+temporary-name APIs and namespace copying remain separate work.
+
 Tier-0 baseline: **940/1304 bootstraptest agree, 0 disagree.**
 
 **Modeled.** Literals, locals/ivars/gvars/**cvars**, sends, `if`/`while`/`dowhile`/

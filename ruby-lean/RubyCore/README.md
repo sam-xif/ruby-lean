@@ -603,6 +603,16 @@ object for the body even if the hook replaces the binding. Their order is bindin
 const_added, inherited (classes), then body; reopening sends neither hook. Only
 core prelude boot suppresses const_added. **[V]** (L292)
 
+Namespace paths distinguish temporary names from permanent ones. Binding under
+Object or an already permanent namespace promotes the value and its live nested
+namespaces before const_added. Existing permanent names survive aliases; naming
+does not traverse inherited constants, emit descendant callbacks or reject frozen
+descendants. Ancestor cycles stop at the newly named ancestor. Temporary parents
+give only a first temporary path and do not rename descendants. Native class paths
+are distinct from singleton-class display names; Object-qualified declarations
+still acquire bare top-level names. Shared descendants whose chosen path depends
+on CRuby's symbol-table iteration order remain gated. **[V]** (L295)
+
 Native `Module#const_set` checks arity, then converts its name through checked
 `to_str` unless it is already a Symbol or String. Conversion and name validation
 precede the frozen check. UTF-8 names require an uppercase/titlecase first scalar;

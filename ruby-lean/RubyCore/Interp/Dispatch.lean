@@ -155,16 +155,50 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
     | (n0, d0) :: more =>
       .next (withKont m (.eval d0) (.optDefK n0 more localsB body))
 
-/-- Assigning an **anonymous** class/module (from `Class.new`) to a constant gives
-    it that constant's name [V]: `S = Class.new; S.name == "S"` (L72). Applied by
-    every constant-assignment path. -/
-def nameIfAnonymous (h : Heap) (name : String) (v : Value) : Heap :=
+/-- Permanently name a namespace and its still-temporary descendants (L295).
+    Ancestor back-edges stop after the ancestor has acquired its name. Multiple
+    paths to a descendant depend on CRuby's process-local symbol-table order;
+    the model does not yet carry that order and must not select an arbitrary path.
+    Names are internal metadata: frozen descendants are renamed without hooks. -/
+def setNamespacePath (h : Heap) (root : ObjId) (name : String) : Except String Heap := do
+  let (h, _) ← go (h.objs.size + 1) h root name [] []
+  return h
+where
+  go : Nat → Heap → ObjId → String → List ObjId → List ObjId → Except String (Heap × List ObjId)
+    | 0, _, _, _, _, _ => .error "namespace naming exhausted heap-depth bound"
+    | fuel + 1, h, o, name, ancestors, seen => do
+      if ancestors.contains o then return (h, seen)
+      if seen.contains o then
+        throw "permanent namespace naming with multiple paths needs CRuby symbol-table order"
+      match h.classPayload? o with
+      | none => return (h, seen)
+      | some c =>
+        if !c.name.isEmpty && c.namePermanent then return (h, seen)
+        let h := h.setClassPayload o { c with name, namePermanent := true }
+        c.consts.foldlM (init := (h, o :: seen)) fun (h, seen) (n, v) => do
+          if !validConstantName n then return (h, seen)
+          match v with
+          | .ref child => go fuel h child (name ++ "::" ++ n) (o :: ancestors) seen
+          | _ => return (h, seen)
+
+/-- Constant binding gives a namespace either its first temporary path or a
+    permanent path, recursively realizing descendants in the latter case.
+    Use the parent's native class path, including the address of an anonymous
+    eigenclass, independently of its attached-object display and Ruby overrides. -/
+def nameConstant (h : Heap) (target : ObjId) (name : String) (v : Value) : Except String Heap :=
   match v with
   | .ref o =>
     match h.classPayload? o with
-    | some c => if c.name.isEmpty then h.setClassPayload o { c with name } else h
-    | none => h
-  | _ => h
+    | some c =>
+      if !c.name.isEmpty && c.namePermanent then .ok h else
+      if target == Boot.objectId then setNamespacePath h o name else
+      let qual := classPath h target ++ "::" ++ name
+      let permanent := (h.classPayload? target).any fun p => !p.name.isEmpty && p.namePermanent
+      if permanent then setNamespacePath h o qual else
+      if c.name.isEmpty then .ok (h.setClassPayload o { c with name := qual, namePermanent := false })
+      else .ok h
+    | none => .ok h
+  | _ => .ok h
 
 /-- A constant is already bound when its ordinary callback executes (L292).
     Only core boot suppresses the callback; runtime library loads do not. -/
@@ -174,10 +208,10 @@ def callConstAdded (m : Machine) (target : ObjId) (name : String) : StepResult :
 
 def assignConstant (m : Machine) (target : ObjId) (name : String) (value : Value) : StepResult :=
   if (m.heap.get target).frozen then raiseFrozen m (.ref target) else
-  let qual := if target == Boot.objectId then name else s!"{className m.heap target}::{name}"
-  let h := nameIfAnonymous m.heap qual value
-  let m := { m with heap := constSetIn h target name value, kont := .newK value :: m.kont }
-  callConstAdded m target name
+  let h := constSetIn m.heap target name value
+  match nameConstant h target name value with
+  | .error why => .unsupported why
+  | .ok h => callConstAdded { m with heap := h, kont := .newK value :: m.kont } target name
 
 /-- Get (or lazily create) the eigenclass of object `o` (artifact 01 §5). Its
     superclass realizes the metaclass chain so dispatch through `classOf` finds
@@ -316,17 +350,18 @@ def enterClassBody (m : Machine) (name : String) (isMod : Bool)
     -- path `A::B` as its `name` (CRuby derives the name from where the constant
     -- is bound); a toplevel definition (`defmod` = Object) keeps the bare name.
     let defmod := m.lexicalNamespace
-    let qualName := if defmod == Boot.objectId then name
-                    else s!"{className m.heap defmod}::{name}"
     let obj : Object :=
-      { klass := (if isMod then Boot.moduleId else Boot.classId), payload := .cls { superclass, name := qualName, isModule := isMod, ancestryReady := superclass.all (fun s => (m.heap.classPayload? s).all (·.ancestryReady)), allocatorUnavailable := superclass.any (fun s => (m.heap.classPayload? s).any (·.allocatorUnavailable)) } }
+      { klass := (if isMod then Boot.moduleId else Boot.classId), payload := .cls { superclass, name := "", isModule := isMod, ancestryReady := superclass.all (fun s => (m.heap.classPayload? s).all (·.ancestryReady)), allocatorUnavailable := superclass.any (fun s => (m.heap.classPayload? s).any (·.allocatorUnavailable)) } }
     let (k, h) := m.heap.alloc obj
     -- register the class name in the *enclosing* namespace (Object at toplevel)
     let h := constSetIn h m.lexicalNamespace name (.ref k)
-    -- eagerly realize the metaclass chain so inherited class methods resolve
-    -- (`B < A` ⇒ `B`'s metaclass superclasses `A`'s) even before any `def self.`
-    let (_, m) := eigenclassOf { m with heap := h } k
-    callConstAdded { m with kont := .constClassK k superclass libraryName body :: m.kont } defmod name
+    match nameConstant h defmod name (.ref k) with
+    | .error why => .unsupported why
+    | .ok h =>
+      -- Eagerly realize the metaclass chain so inherited class methods resolve
+      -- (`B < A` ⇒ `B`'s metaclass superclasses `A`'s) before any `def self.`.
+      let (_, m) := eigenclassOf { m with heap := h } k
+      callConstAdded { m with kont := .constClassK k superclass libraryName body :: m.kont } defmod name
 
 /-- `class/module A::name … end` (artifact 03 §5): open (or create) `name`
     inside the already-resolved namespace object `container`, then run the body.
@@ -356,11 +391,14 @@ def enterScopedClassBody (m : Machine) (container : ObjId) (name : String)
     let superclass := if isMod then none else some Boot.objectId
     let obj : Object :=
       { klass := (if isMod then Boot.moduleId else Boot.classId),
-        payload := .cls { superclass, name := fullName, isModule := isMod } }
+        payload := .cls { superclass, name := "", isModule := isMod } }
     let (k, h) := m.heap.alloc obj
     let h := constSetIn h container name (.ref k)
-    let (_, m) := eigenclassOf { m with heap := h } k
-    callConstAdded { m with kont := .constClassK k superclass libraryName body :: m.kont } container name
+    match nameConstant h container name (.ref k) with
+    | .error why => .unsupported why
+    | .ok h =>
+      let (_, m) := eigenclassOf { m with heap := h } k
+      callConstAdded { m with kont := .constClassK k superclass libraryName body :: m.kont } container name
 
 /-- Resolve a `cpath` base value to a namespace `ObjId`, or a `TypeError`
     result if it is not a class/module ("`<inspect>` is not a class/module"). -/

@@ -2164,3 +2164,35 @@ The typed gate was rerun and fails at the existing HeapFacts className/lookup
 proof drift; the log is archived. Proof repair remains explicitly deferred.
 The batch proof audit also failed to build Metatheory (NotDone/KontFrame);
 its axiom scan was not reached. The captured proof-audit.log is archived.
+
+
+## N69 — recursive namespace naming (2026-09-28)
+
+Model L295 adds eight namespace-* programs retaining 47 agreeing focused/extended
+probes. They cover permanent promotion, temporary prefixes, deep trees, cycles,
+frozen/private descendants, live replacement, ancestor exclusion, singleton
+containers and callback timing/failures. Core callback replacements are isolated.
+The original 28-case audit had 25 disagreements and three agreements; after this
+increment 19 disagreements become agreements, four become explicitly unsupported
+because they depend on unmodeled symbol-table order, and two name-String identity
+failures remain recorded. Extended 30 yield 25 agreements, two ordering gates and
+three old gates. No comparator or observation normalizer was weakened. The
+symbol-order witness includes a semantically unrelated leading `p :A` that changes
+which alias supplies a descendant's permanent path under the pinned CRuby oracle.
+
+Final validation: model build passes (102 jobs). Full bootstrap (1,309 cases):
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+the old test_syntax_115 harness error. Every source/verdict pair matches L294.
+Regression replay (192): 191 agree and one old sorbet-hash gate; all 184 earlier
+sources/verdicts hold, and eight new guards agree. Tier 1 (300, seed 20260927):
+226 agree, 74 gates, all sources/verdicts unchanged. Frontend seeds plus new guards:
+54 agree, all AST-idempotent; six old render-only instabilities plus one benign
+rebind-hook rendering instability. Standalone and feature loading: three agreements
+each. Whitespace checks pass. Reports, build log, before/after probes and the
+symbol-order witness are archived in difftest/reports/20260928-incremental-L295/.
+No runtime edits after the final build. No checker, proof, comparator or floor
+changes; proof repair remains explicitly deferred.
+The typed gate was rerun and remains red at the recorded HeapFacts className/lookup
+proof drift. Its log is archived; proof repair remains deferred.
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.

@@ -125,6 +125,10 @@ structure ClassPayload where
       from inside the module, invisible to `A::B` from outside (L104). -/
   privateConsts : List String := []
   name : String
+  /-- A nonempty path can still contain an anonymous ancestor. Permanent paths
+      survive later aliases; temporary paths are replaced when a namespace is
+      bound under a permanent parent (L295). Empty names are never permanent. -/
+  namePermanent : Bool := true
   isModule : Bool := false
   /-- Class.allocate has no superclass and has not run Class#initialize. -/
   initialized : Bool := true
