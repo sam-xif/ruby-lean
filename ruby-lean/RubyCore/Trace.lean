@@ -105,6 +105,7 @@ def kontLabel : Kont → String
   | .asgnK _ x => s!"then {x} = ▢"
   | .casgnK n => s!"then {n} = ▢"
   | .classBodyK .. => "enter class body after inherited"
+  | .constClassK .. => "continue class definition after const_added"
   | .classNameErrorK .. => "render a class in a native TypeError"
   | .classInitK .. => "initialize class after inherited"
   | .classDefK name _ => s!"then open class {name} < ▢"

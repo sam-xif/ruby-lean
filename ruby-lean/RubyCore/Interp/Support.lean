@@ -203,11 +203,16 @@ def enterHandler (m : Machine) (node : BeginNode) (exc : Value)
     (ref : Option (TargetKind × String)) (handler : Expr) : Machine :=
   let saved := m.currentExc
   let m := { m with currentExc := some exc }
+  if let some (.const, n) := ref then
+    -- Constant rescue targets use the lexical namespace and the same frozen
+    -- check/callback as an assignment, before entering the handler (L292).
+    { m with ctl := .value exc, kont := .casgnK n :: .seqK [handler] :: .rescueK node saved :: m.kont }
+  else
   let m := match ref with
     | some (.lvar, x) => m.setLocal x exc
     | some (.gvar, x) => m.setGlobal x exc
     | some (.ivar, x) => bindIvar m x exc
-    | some (.const, n) => { m with heap := constSet m.heap n exc }
+    | some (.const, _) => m -- handled above
     | some (.cvar, _) => m   -- gated at begin' eval; unreachable
     | none => m
   withKont m (.eval handler) (.rescueK node saved)

@@ -103,7 +103,7 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         .ok v m
       else .unsupported "ancestors"
     | _ => .unsupported "ancestors"
-  | "Class#inherited" =>
+  | "Class#inherited" | "Module#const_added" =>
     if args.length == 1 then .ok .nil m else
       .err Boot.argumentErrorId s!"wrong number of arguments (given {args.length}, expected 1)" m
   | "Class#superclass" =>

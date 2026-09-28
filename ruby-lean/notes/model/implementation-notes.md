@@ -15056,3 +15056,62 @@ recursive anonymous-namespace naming, namespace copying, and the older native
 method-removal/Kernel ownership limitations remain follow-up work. Random/Regexp
 still use their partial argument-dependent factories; the old sorbet-hash gate is
 unchanged. See difftest N65 and /private/tmp/conformance-l291-* for probe evidence.
+
+
+## L292 — constant assignment callbacks and rescue targets (2026-09-28)
+
+A focused audit found 14 wrong answers from skipped const_added callbacks, plus
+two unmodeled native-hook cases. All now agree. Module#const_added is a private
+native unary method returning nil; its argument is ignored, including native
+binary strings. Aliases, super, undef and method_missing follow ordinary dispatch.
+
+assignConstant checks the target's frozen state, names and binds the value, then
+queues const_added and discards only its normal return value. Syntactic unqualified
+and qualified writes and reflective const_set share this path. Reassignments send
+the callback too. Core boot suppresses hooks, while runtime features retain them
+and their existing fidelity gates. Class/module creation binds and realizes the
+class's eigenchain before the callback, then resumes inherited and the saved body
+through constClassK. A callback can replace the constant, freeze objects or change
+the inherited method; continuation uses the original class and the current heap.
+Raises/throws retain writes and skip the pending body. Reopening writes nothing
+and sends neither callback. This ordering matches the official
+[Module callback documentation](https://docs.ruby-lang.org/en/master/Module.html#method-i-const_added)
+and is pinned independently to executable CRuby 4.0.5.
+
+The same audit found enterHandler writing a constant rescue target directly into
+Object, ignoring both lexical scope and callbacks. It now routes that target
+through casgnK before the handler, after installing the rescued exception in $!.
+This reuses frozen checks and callback dispatch and keeps rescue/ensure/retry
+continuations intact. Tests observe the original exception from the hook, retained
+bindings after a hook failure, handler suppression and retry overwrites.
+
+Focused 19: 18 agree and one existing frontend constant-or-write gate. Extended
+28: 21 agree, five existing gates, two confirmed follow-up disagreements. Seven
+permanent const-added-* programs retain all 39 agreeing probes. Each combined
+program was compared directly against CRuby before its sidecar was marked fixed.
+The default-hook binary case uses 255.chr; the separate non-UTF-8 source-literal
+export gate remains recorded and is not claimed fixed.
+
+Final validation: model build passes (100 jobs). Full bootstrap (1,309 cases):
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+the old test_syntax_115 harness error. Every source/verdict pair is unchanged
+from L291. Regression replay (176 cases): 175 agree and one old sorbet-hash gate;
+all 169 old sources/verdicts hold and seven new guards agree. Tier 1 (300 cases,
+seed 20260927): 226 agree and 74 gates, every pair unchanged. Previous 576 probes:
+551 agree and 25 gates, every verdict unchanged. Frontend 53 agree and remain
+AST-idempotent, with six old render-only instabilities. Standalone and feature
+loading: three agreements each. Generated Prelude/CRubyNames and whitespace
+checks pass. Reports, build log and probe snapshots are in
+`difftest/reports/20260928-incremental-L292/`. No runtime edits after the final
+build; proof repair remains deferred.
+
+Next increment must address the two explicit wrong answers in
+/private/tmp/conformance-l292-extra.json: constant-invalid-string-name accepts
+invalid names (x, A::B, empty) instead of raising NameError, and constant-nested-name
+fails to rename descendants when their anonymous parent acquires a permanent
+name. The mixed invalid-name probe also gates on non-String arguments; that gate
+must not hide its earlier invalid-string writes. const_set aliases/name conversion
+and remove_const are additional recorded gates. These existing gaps are separate
+from the callback ordering fixed here. Proof repair remains explicitly deferred;
+the known HeapFacts className/lookup failure is not repaired or claimed green.
+See difftest N66 and /private/tmp/conformance-l292-* for evidence.

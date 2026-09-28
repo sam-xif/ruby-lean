@@ -51,15 +51,13 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         | some scope =>
           .next (withCtl { m with heap := cvarSetIn m.heap scope x v } (.value v))
     | .casgnK n =>
-      let defmod := m.lexicalNamespace
-      if (m.heap.get defmod).frozen then raiseFrozen m (.ref defmod) else
-      let qual := if defmod == Boot.objectId then n else s!"{className m.heap defmod}::{n}"
-      let h := nameIfAnonymous m.heap qual v
-      .next (withCtl { m with heap := constSetIn h defmod n v } (.value v))
+      assignConstant m m.lexicalNamespace n v
     | .classDefK name body =>
       match inheritableClass m v false with
       | .error result => result
       | .ok k => enterClassBody m name false (some k) body
+    | .constClassK klass superclass libraryName body =>
+      inheritClassBody m klass superclass libraryName body
     | .classBodyK klass libraryName body => pushClassFrame m klass libraryName body
     | .classInitK klass block => finishClassInitialize m klass block
     | .classNameErrorK klass lead tail => finishClassNameError m klass lead tail v
@@ -149,12 +147,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | .error sr => sr
       | .ok o => .next (withKont m (.eval rhs) (.cpathAsgnValK name o))
     | .cpathAsgnValK name base =>
-      if (m.heap.get base).frozen then raiseFrozen m (.ref base) else
-      -- v is the rhs; write it into base's namespace; assignment yields rhs [V].
-      let qual := if base == Boot.objectId then name
-                  else s!"{className m.heap base}::{name}"
-      let h := nameIfAnonymous m.heap qual v
-      .next (withCtl { m with heap := constSetIn h base name v } (.value v))
+      assignConstant m base name v
     | .scopedClassDefK name isMod body =>
       -- v is base `A`; open (or create) `name` inside it.
       match cpathContainer m v with

@@ -166,6 +166,19 @@ def nameIfAnonymous (h : Heap) (name : String) (v : Value) : Heap :=
     | none => h
   | _ => h
 
+/-- A constant is already bound when its ordinary callback executes (L292).
+    Only core boot suppresses the callback; runtime library loads do not. -/
+def callConstAdded (m : Machine) (target : ObjId) (name : String) : StepResult :=
+  if m.preludeMode then .next { m with ctl := .value .nil } else
+  .next { m with ctl := .send (.ref target) .reflective "const_added" [.sym name] none [] }
+
+def assignConstant (m : Machine) (target : ObjId) (name : String) (value : Value) : StepResult :=
+  if (m.heap.get target).frozen then raiseFrozen m (.ref target) else
+  let qual := if target == Boot.objectId then name else s!"{className m.heap target}::{name}"
+  let h := nameIfAnonymous m.heap qual value
+  let m := { m with heap := constSetIn h target name value, kont := .newK value :: m.kont }
+  callConstAdded m target name
+
 /-- Get (or lazily create) the eigenclass of object `o` (artifact 01 §5). Its
     superclass realizes the metaclass chain so dispatch through `classOf` finds
     both singleton methods and inherited ones:
@@ -313,7 +326,7 @@ def enterClassBody (m : Machine) (name : String) (isMod : Bool)
     -- eagerly realize the metaclass chain so inherited class methods resolve
     -- (`B < A` ⇒ `B`'s metaclass superclasses `A`'s) even before any `def self.`
     let (_, m) := eigenclassOf { m with heap := h } k
-    inheritClassBody m k superclass libraryName body
+    callConstAdded { m with kont := .constClassK k superclass libraryName body :: m.kont } defmod name
 
 /-- `class/module A::name … end` (artifact 03 §5): open (or create) `name`
     inside the already-resolved namespace object `container`, then run the body.
@@ -347,7 +360,7 @@ def enterScopedClassBody (m : Machine) (container : ObjId) (name : String)
     let (k, h) := m.heap.alloc obj
     let h := constSetIn h container name (.ref k)
     let (_, m) := eigenclassOf { m with heap := h } k
-    inheritClassBody m k superclass libraryName body
+    callConstAdded { m with kont := .constClassK k superclass libraryName body :: m.kont } container name
 
 /-- Resolve a `cpath` base value to a namespace `ObjId`, or a `TypeError`
     result if it is not a class/module ("`<inspect>` is not a class/module"). -/

@@ -95,6 +95,13 @@ subclass representation preserves live eigenclass identity. Reflective const_set
 names anonymous classes/modules. These additions do not claim complete constant
 mutation/copy protocols or repair the deferred proofs.
 
+L292 adds ordinary const_added dispatch to assignment, const_set, class/module
+creation and constant rescue targets. Binding and naming precede the callback;
+inherited and class bodies follow it. Rescue targets use their lexical namespace,
+with the rescued exception already installed as $!. Callback failures preserve
+writes and obey normal unwinding. Constant-name validation/conversion, removal and
+recursive namespace naming remain separate open conformance work.
+
 Tier-0 baseline: **940/1304 bootstraptest agree, 0 disagree.**
 
 **Modeled.** Literals, locals/ivars/gvars/**cvars**, sends, `if`/`while`/`dowhile`/

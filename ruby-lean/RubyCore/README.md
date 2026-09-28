@@ -510,8 +510,10 @@ prelude suppresses hooks; runtime library loading does not. **[V]**
 **[?]** `refinements` genuinely perturb lookup *lexically* — they add modules
 consulted before the normal chain, scoped to the activation's `cref`. Deferred;
 would need an extra lookup premise keyed on `φ.cref`.
-**[?]** Constant and ancestry mutation hooks (`const_added`,
-`append_features`, `prepended`, `extended`) still need a complete protocol audit.
+**[?]** Ancestry mutation hooks (`append_features`, `prepended`, `extended`)
+still need a complete protocol audit. Constant-name conversion, removal and
+recursive temporary namespace naming also remain incomplete; const_added dispatch
+is modeled below (L292).
 
 ---
 
@@ -592,6 +594,20 @@ nesting, independent of where the method is called from. **[V]**
 A **qualified** `A::B` skips the lexical phase entirely and searches only `A`'s
 own consts and ancestors. `casgn` always writes to the innermost lexical module.
 Constants are reassignable (with a warning) — not truly immutable. **[V]**
+
+Every modeled constant write binds and names its value before sending private
+`const_added` through ordinary dispatch. Reassignment calls the hook again. Its
+normal result is discarded; exceptions and nonlocal exits retain the write and
+skip the pending continuation. Named class/module definitions keep their original
+object for the body even if the hook replaces the binding. Their order is binding,
+const_added, inherited (classes), then body; reopening sends neither hook. Only
+core prelude boot suppresses const_added. **[V]** (L292)
+
+A constant rescue target (`rescue => E`) also writes through this protocol in the
+lexical namespace. `$!` already contains the rescued exception during the hook,
+and the handler begins only after it returns. A hook failure or frozen target
+therefore skips the handler while preserving ordinary ensure/unwinding behavior.
+**[V]** (L292)
 
 A method carries the cref of where it was *defined*, not its dispatch owner —
 which is what makes `def self.m` inside a module resolve constants correctly.

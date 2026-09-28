@@ -500,7 +500,7 @@ def unrepresentableByteStr (h : Heap) (v : Value) : Bool :=
     would have to write the raw byte into an output `String` that cannot hold it. -/
 def byteStrAwareBids : List String :=
   -- String: byte-wise by construction, or tag-propagating (`okStrFrom`)
-  ["Class#inherited", "Module#method_added", "Module#method_removed", "Module#method_undefined",
+  ["Class#inherited", "Module#const_added", "Module#method_added", "Module#method_removed", "Module#method_undefined",
    "BasicObject#singleton_method_added", "BasicObject#singleton_method_removed",
    "BasicObject#singleton_method_undefined",
    "String#+", "String#*", "String#<<", "String#concat", "String#==", "String#eql?",

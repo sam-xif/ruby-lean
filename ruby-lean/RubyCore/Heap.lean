@@ -478,7 +478,7 @@ def builtinMethods : List (ObjId × List String) := [
   (classId, ["superclass", "initialize", "inherited"]),
   (stringId, ["try_convert"]),
   (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors", "freeze", "initialize",
-              "method_added", "method_removed", "method_undefined",
+              "const_added", "method_added", "method_removed", "method_undefined",
               "private_constant", "public_constant"]),
   (classId, ["new", "allocate", "__range_new_unchecked"]),
   -- Call markers resolve through ordinary lookup; the interpreter executes them
@@ -510,7 +510,7 @@ def install (h : Heap) (cls : ObjId) (names : List String) : Heap :=
     let methods := names.foldl (init := c.methods) fun ms n =>
       (n, { params := [], body := .nil, owner := cls,
             visibility := if n == "method_missing" || n == "Rational" || n == "Complex" ||
-                ["inherited", "method_added", "method_removed", "method_undefined", "singleton_method_added",
+                ["const_added", "inherited", "method_added", "method_removed", "method_undefined", "singleton_method_added",
                  "singleton_method_removed", "singleton_method_undefined"].contains n ||
                 (["puts", "print", "p", "raise", "fail", "String", "block_given?", "rand",
                   "require", "require_relative", "respond_to_missing?", "instance_variables_to_inspect", "binding",

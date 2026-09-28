@@ -2072,3 +2072,33 @@ this is executable-model conformance evidence, not a new proof claim. Probe
 artifacts are /private/tmp/conformance-l291-*. The commit records the completed
 bootstrap and regression reports. See model L291 for version-specific allocation
 and superclass rules, remaining limitations and primary implementation sources.
+
+
+## N66 — constant write callback protocol (2026-09-28)
+
+L292 adds seven const-added-* guards covering private/default/missing hooks,
+aliases and super, callback ordering, recursive writes, retained effects, freezing,
+class identity and lexical constant rescue targets. All 39 agreeing audit probes
+are retained in programs compared as combined sources, including separate global
+Object-hook programs. Focused 19 gives 18 agreements/one frontend gate; extended
+28 gives 21 agreements/five gates/two known follow-up disagreements. The invalid
+String-name and recursive namespace-name reproducers are preserved explicitly in
+/private/tmp/conformance-l292-extra.json for the next increment, rather than
+mistaking their mixed probe's later gate for a passing result.
+
+Final validation: model build passes (100 jobs). Full bootstrap (1,309 cases):
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+the old test_syntax_115 harness error. Every source/verdict pair is unchanged
+from L291. Regression replay (176 cases): 175 agree and one old sorbet-hash gate;
+all 169 old sources/verdicts hold and seven new guards agree. Tier 1 (300 cases,
+seed 20260927): 226 agree and 74 gates, every pair unchanged. Previous 576 probes:
+551 agree and 25 gates, every verdict unchanged. Frontend 53 agree and remain
+AST-idempotent, with six old render-only instabilities. Standalone and feature
+loading: three agreements each. Generated Prelude/CRubyNames and whitespace
+checks pass. Reports, build log and probe snapshots are in
+`difftest/reports/20260928-incremental-L292/`. No runtime edits after the final
+build; proof repair remains deferred.
+
+No observation normalization, checker acceptance or proof changes. The existing
+proof gate remains red under the user's explicit proof-repair deferral. Model L292
+records the rules and precise remaining constant mutation work.

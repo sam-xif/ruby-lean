@@ -1,45 +1,49 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L291)
+## Active conformance goal (2026-09-28, L292)
 
-Continue toward CRuby conformance, fixing known semantics issues first. The user
-requires a separate incremental commit for each change and the full bootstrap
-suite before each commit. Proof repair remains deferred. The historical
-L276–L290 batches are committed separately, each with a fresh model build,
-bootstrap and regression replay under
-`difftest/reports/20260928-incremental-LNNN/`. Those commit records supersede
-historical uncommitted-status statements below. Unrelated paper/ and wasm
-upstream-bug files remain untouched.
+Continue toward CRuby conformance, fixing known semantics issues first. Commit
+each increment separately and run the full bootstrap differential suite before
+each commit. Proof repair remains explicitly deferred. L276–L291 are committed
+separately; historical uncommitted-status statements below are superseded by
+those commits. Unrelated paper/ and wasm upstream-bug files remain untouched.
 
-L291 implements Class/Module allocation and initializer dispatch, inherited
-callbacks before bodies, uninitialized ancestry/allocator state, forbidden
-superclasses, effectful class-name errors, reflective constant naming and
-Module-subclass representation. It also supplies the modeled T::Struct inherited
-guard exposed by enabling callbacks. All 16 original audit cases agree; extended
-46 gives 42 agreements and four old gates. Seventeen permanent class-protocol-*
-programs pin the behavior. Details: model L291, difftest N65.
+L292 routes constant writes through private const_added dispatch, after naming
+and binding and before inherited/class bodies. Callback errors retain writes,
+while the original class identity survives binding replacement. Constant rescue
+targets now use their lexical namespace and callback/frozen protocol, with $!
+installed before the hook. Seven const-added-* regression programs retain all
+39 agreeing probes. Model L292 and difftest N66 record the boundary.
 
-Final validation: model build succeeds (100 jobs). Full bootstrap (1,309 cases): 1,096
-agree /zero disagree /207 unsupported, five unchanged invalid controls and the
-old test_syntax_115 harness error. All bootstrap sources are unchanged; the only
-verdict change is test_yjit_347, unsupported to agree. Regression replay (169 cases): 168
-agree /one old sorbet-hash gate; all 152 previously committed sources and verdicts
-hold, plus 17 new agreements. Tier 1 (300 cases, seed 20260927): 226 agree /74 gates, with
-all sources/verdicts unchanged. Previous 514 probes: 493 agree /21 gates, gaining two
-agreements with no losses. Frontend 63 agree, AST-idempotent, with six old
-render-only instabilities. Standalone 3 and feature-loading 3 agree; generated
-Prelude/CRubyNames and whitespace checks pass. Full reports and build log:
-`difftest/reports/20260928-incremental-L291/`. No runtime source edits after the
-final build; proof repair remains deferred.
+Final validation: model build passes (100 jobs). Full bootstrap (1,309 cases):
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+the old test_syntax_115 harness error. Every source/verdict pair is unchanged
+from L291. Regression replay (176 cases): 175 agree and one old sorbet-hash gate;
+all 169 old sources/verdicts hold and seven new guards agree. Tier 1 (300 cases,
+seed 20260927): 226 agree and 74 gates, every pair unchanged. Previous 576 probes:
+551 agree and 25 gates, every verdict unchanged. Frontend 53 agree and remain
+AST-idempotent, with six old render-only instabilities. Standalone and feature
+loading: three agreements each. Generated Prelude/CRubyNames and whitespace
+checks pass. Reports, build log and probe snapshots are in
+`difftest/reports/20260928-incremental-L292/`. No runtime edits after the final
+build; proof repair remains deferred.
 
-Next known work: constant mutation callbacks (const_added/remove_const), recursive
-anonymous-namespace naming and namespace copying remain incomplete. Preserve the
-older native method-removal shadow/Kernel ownership limitations and sorbet-hash
-gate. Random/Regexp construction still gates replaced initializers. The four
-extended probe gates remain explicit; do not count refusals as conformance or
-weaken the comparator. The typed gate was attempted and failed in HeapFacts on
-className/lookup drift; it is not green. Proof/checker/floor edits remain deferred.
-Full conformance is still incomplete.
+Next known wrong answers are preserved in /private/tmp/conformance-l292-extra.json:
+constant-invalid-string-name accepts x, A::B and the empty name; constant-nested-name
+leaves descendant names temporary after their parent acquires a permanent name.
+Address those first. The mixed name-validation probe gates later on non-String
+arguments and must not conceal its earlier invalid writes. const_set aliases and
+checked name conversion, remove_const, and frontend compound constant writes also
+remain recorded gates. The raw non-UTF-8 source literal still fails export; the
+runtime 255.chr default-hook test agrees. CRuby also accepts Unicode constant
+names such as É, ǅ and Aé; avoid treating ASCII-only validation as complete.
+Both const_set and remove_const call a supplied to_str before the frozen check.
+
+The prior native method-removal shadow/Kernel ownership limitations, namespace
+copying, const_missing, and Random/Regexp replaced initializers remain open. Keep
+the old sorbet-hash gate explicit. No comparator, checker, proof or floor changes;
+the typed gate has a known HeapFacts className/lookup failure and is not green.
+Full conformance remains incomplete.
 
 ## Previous batch (2026-09-28, L289)
 

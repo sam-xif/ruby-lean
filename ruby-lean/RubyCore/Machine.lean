@@ -249,6 +249,8 @@ inductive Kont where
   /-- Value in flight is a `class C < S` superclass expression: with `S`
       resolved, open (or create) the class and run its body (artifact 01 §5). -/
   | classDefK (name : String) (body : Expr)
+  /-- A bound namespace waits for const_added before inherited and its body. -/
+  | constClassK (klass : ObjId) (superclass : Option ObjId) (libraryName : String) (body : Expr)
   /-- A newly bound class sends inherited before entering its saved body. -/
   | classBodyK (klass : ObjId) (libraryName : String) (body : Expr)
   /-- Native Class#initialize waits for inherited before executing its block. -/
