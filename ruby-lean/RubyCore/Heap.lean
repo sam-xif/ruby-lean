@@ -493,7 +493,7 @@ def builtinMethods : List (ObjId × List String) := [
   (stringId, ["=~", "match", "match?", "scan", "__sub_rep", "__gsub_rep", "split", "to_i",
               "__search_at",
               "ord", "chars", "to_f",
-              "__binary?", "__bytes", "__as_binary", "__as_utf8",
+              "__binary?", "__bytes", "b", "__as_utf8",
               "__force_binary", "__force_utf8"]),
   (regexpId, ["escape", "quote", "union", "source", "options", "match", "match?", "=~", "===", "inspect",
               "to_s", "names", "==", "eql?", "hash"]),

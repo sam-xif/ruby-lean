@@ -120,6 +120,10 @@ follow the same naming rule. Shared descendants with competing paths still need
 CRuby's symbol-table order and are explicitly gated; Module#name String identity,
 temporary-name APIs and namespace copying remain separate work.
 
+L296 makes String#b native and always copies into a mutable base String. Binary,
+frozen and subclass receivers keep their bytes while losing per-object metadata;
+Ruby conversion/copy hooks and the former __as_binary helper cannot intercept it.
+
 Tier-0 baseline: **940/1304 bootstraptest agree, 0 disagree.**
 
 **Modeled.** Literals, locals/ivars/gvars/**cvars**, sends, `if`/`while`/`dowhile`/

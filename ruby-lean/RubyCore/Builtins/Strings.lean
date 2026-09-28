@@ -145,12 +145,13 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         else str.toUTF8.toList.map (·.toNat)
       let (v, m) := allocArr m (bs.map (fun b => Value.int (Int.ofNat b))).toArray
       .ok v m
-  | "String#__as_binary" =>
-    -- Reinterpret as bytes: one character per UTF-8 byte (L117).
+  | "String#b" =>
+    -- String#b always creates a mutable base String, including binary receivers.
+    -- Reinterpret UTF-8 as bytes; already-binary payloads only need copying (L296).
     match strPayload? h recv with
     | none => .unsupported "String#b on a non-String"
     | some str =>
-      if isBinaryStr h recv then .ok recv m
+      if isBinaryStr h recv then okStrEnc m true str
       else
         let bytes := str.toUTF8.toList.map (fun b => Char.ofNat b.toNat)
         let (v, m) := allocStrEnc m (String.mk bytes) true
@@ -171,7 +172,7 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
           .unsupported "force_encoding to UTF-8 of an invalid byte sequence (L117)"
   | "String#__force_binary" | "String#__force_utf8" =>
     -- `force_encoding` **mutates and returns the receiver** [V], so it cannot be
-    -- `__as_binary`/`__as_utf8` (which copy, as `b` needs). Retagging also
+    -- `b`/`__as_utf8` (which copy). Retagging also
     -- rewrites the payload — going to binary splits each scalar into its UTF-8
     -- bytes and coming back reassembles them — so both fields move together, on
     -- the same object (L118).

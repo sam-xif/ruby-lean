@@ -758,6 +758,12 @@ the pinned CRuby oracle's generated Unicode table, verified against every scalar
 Existing named control escapes, interpolation escaping and binary byte escapes
 retain their separate rules. **[V]** (L293)
 
+Native String#b always returns a fresh mutable base String in ASCII-8BIT, including
+for already-binary, frozen and subclass receivers. It copies the bytes without
+copying ivars/eigenclasses or calling Ruby conversion, copy or initialization hooks.
+Aliases and super retain native dispatch. The old exposed __as_binary wrapper is
+removed. **[V]** (L296)
+
 ### 04 §3 — The unwinding model
 
 `return`, `break`, `next`, `redo`, `retry` and `raise` are **not** ordinary

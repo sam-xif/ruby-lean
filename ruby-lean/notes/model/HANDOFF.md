@@ -1,6 +1,38 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L295)
+## Active conformance goal (2026-09-28, L296)
+
+L296 makes String#b native and always returns a fresh mutable base String.
+It fixes binary receiver aliasing and bypasses the exposed __as_binary wrapper.
+Four binary-copy-* guards preserve 20 agreeing probes; String#[]= still gates.
+L276–L296 are separate increments.
+
+Final validation: model build passes (102 jobs). Full bootstrap (1,309):
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+one old test_syntax_115 harness error. All source/verdict pairs match L295.
+Regressions (196): 195 agree and one old sorbet-hash gate; all earlier sources
+and verdicts hold. Tier 1 (300, seed 20260927): 226 agree and 74 gates, unchanged.
+Frontend seeds plus new guards: 50 agree, all AST-idempotent, six old render-only
+instabilities. Standalone and feature loading: three agreements each. Generated
+Prelude.lean reproduces exactly; whitespace checks pass. A final rebuild and
+focused replay pass after comment cleanup and removal of a duplicate membership
+entry; neither cleanup changes behavior. Evidence is archived in
+`difftest/reports/20260928-incremental-L296/`. No proof, checker or floor edits.
+
+The typed gate was rerun and remains red at the existing HeapFacts className/lookup
+proof drift. Its log is archived; proof repair remains explicitly deferred.
+
+Next: restore `/private/tmp/conformance-l297-name-cache.patch` with git apply.
+It adds native frozen Module#name caching and preserves L296's native b entry.
+Do not restore the whole saved Heap.lean: its pre-L296 method table is stale.
+The prepared `/private/tmp/conformance-l297-focused.py` has 28 probes, including
+one old String#clone(freeze: false) arity failure. Add cached-name binary-copy
+coverage and retain that failure as separate work. General String#-@ interning,
+permanent ASCII-name encoding, and the L295 competing-namespace-path ordering
+boundary remain open. Proof repair remains explicitly deferred. Unrelated paper/
+and wasm upstream-bug files are untouched; full conformance remains incomplete.
+
+## Previous batch (2026-09-28, L295)
 
 L295 fixes permanent namespace-name propagation, including the preserved
 constant-nested-name failure. ClassPayload.namePermanent distinguishes temporary

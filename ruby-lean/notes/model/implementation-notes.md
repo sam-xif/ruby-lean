@@ -15277,3 +15277,42 @@ The typed gate was rerun and remains red at the recorded HeapFacts className/loo
 proof drift. Its log is archived; proof repair remains deferred.
 The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
 was not reached. The captured proof-audit.log is archived.
+
+
+## L296 — native binary String copies (2026-09-28)
+
+The Module#name cache work exposed an existing String#b error: already-binary
+receivers were returned directly. This leaked identity, mutation, frozen state,
+subclass identity, ivars and eigenclass methods through an API that returns a
+fresh mutable base String. String#b now has a native entry and copies both binary
+and UTF-8 inputs to ASCII-8BIT, with zero-argument validation and ordinary native
+alias/super behavior. It bypasses Ruby copy/conversion/initialization hooks.
+
+The old prelude wrapper also let user code override __as_binary and change b's
+result. A direct probe returned :wrong in the model and the original bytes under
+CRuby. That helper is removed from the method table and the wrapper is deleted;
+Prelude.lean is regenerated and reproduces exactly. No checker or comparator
+change is involved. Twenty focused cases agree; one existing String#[]= gate is
+retained. Four binary-copy-* regression programs retain all 20 agreeing cases,
+including a separate core String override program.
+
+The name cache is a separate dependent increment (L297), preserved as
+/private/tmp/conformance-l297-name-cache.patch while this prerequisite is committed.
+The patch contains only cache changes and preserves this increment's new b entry.
+The new name audit also retains an old String#clone(freeze: false) arity failure
+and general String#-@ interning/encoding work; neither is claimed fixed here.
+
+Final validation: model build passes (102 jobs). Full bootstrap (1,309):
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+one old test_syntax_115 harness error. All source/verdict pairs match L295.
+Regressions (196): 195 agree and one old sorbet-hash gate; all earlier sources
+and verdicts hold. Tier 1 (300, seed 20260927): 226 agree and 74 gates, unchanged.
+Frontend seeds plus new guards: 50 agree, all AST-idempotent, six old render-only
+instabilities. Standalone and feature loading: three agreements each. Generated
+Prelude.lean reproduces exactly; whitespace checks pass. A final rebuild and
+focused replay pass after comment cleanup and removal of a duplicate membership
+entry; neither cleanup changes behavior. Evidence is archived in
+`difftest/reports/20260928-incremental-L296/`. No proof, checker or floor edits.
+
+The typed gate was rerun and remains red at the existing HeapFacts className/lookup
+proof drift. Its log is archived; proof repair remains explicitly deferred.

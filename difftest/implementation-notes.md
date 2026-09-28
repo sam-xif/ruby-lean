@@ -2196,3 +2196,28 @@ The typed gate was rerun and remains red at the recorded HeapFacts className/loo
 proof drift. Its log is archived; proof repair remains deferred.
 The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
 was not reached. The captured proof-audit.log is archived.
+
+
+## N70 — binary String copy identity (2026-09-28)
+
+Four binary-copy-* programs preserve 20 agreeing probes for native String#b:
+fresh identity, frozen state, independent mutations, base-class allocation,
+metadata stripping, UTF-8 bytes, aliases/super, arity and hook bypass. The old
+__as_binary override witness now agrees and the helper is absent from reflection.
+The one focused String#[]= case remains an existing gate. Model L296 records the
+implementation and the deferred dependent Module#name cache work.
+
+Final validation: model build passes (102 jobs). Full bootstrap (1,309):
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+one old test_syntax_115 harness error. All source/verdict pairs match L295.
+Regressions (196): 195 agree and one old sorbet-hash gate; all earlier sources
+and verdicts hold. Tier 1 (300, seed 20260927): 226 agree and 74 gates, unchanged.
+Frontend seeds plus new guards: 50 agree, all AST-idempotent, six old render-only
+instabilities. Standalone and feature loading: three agreements each. Generated
+Prelude.lean reproduces exactly; whitespace checks pass. A final rebuild and
+focused replay pass after comment cleanup and removal of a duplicate membership
+entry; neither cleanup changes behavior. Evidence is archived in
+`difftest/reports/20260928-incremental-L296/`. No proof, checker or floor edits.
+
+The typed gate was rerun and remains red at the existing HeapFacts className/lookup
+proof drift. Its log is archived; proof repair remains explicitly deferred.

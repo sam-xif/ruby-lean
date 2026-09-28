@@ -2325,7 +2325,7 @@ class String
   end
 
   # `b` is a *copy* in ASCII-8BIT, so it is the non-mutating primitive.
-  def b = __as_binary
+  # String#b is native: it copies without dispatching Ruby conversion/copy hooks (L296).
 end
 
 # ─── Encoding ───────────────────────────────────────────────────────────────

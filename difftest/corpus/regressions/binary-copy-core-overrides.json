@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L296 (2026-09-28)",
+  "note": "Native String#b returns a fresh mutable base String in ASCII-8BIT, without Ruby conversion/copy hooks or exposed helper dispatch. Exact combined program agrees with CRuby 4.0.5; see model L296 and difftest N70."
+}
