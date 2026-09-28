@@ -316,6 +316,8 @@ def runCollections (bid : String) (recv : Value) (args : List Value) (m : Machin
       match (h.get o).payload with
       | .hsh xs =>
         if (h.get o).frozen then frozenErr m recv "Hash"
+        else if m.hashIterationActive o && !xs.any (fun (k', _) => valueEql h k' k) then
+          .err Boot.runtimeErrorId "can't add a new key into hash during iteration" m
         else
           let xs := match xs.toList.findIdx? (fun (k', _) => valueEql h k' k) with
             | some i => xs.set! i (xs[i]!.1, v)

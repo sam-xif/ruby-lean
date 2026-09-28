@@ -13,11 +13,13 @@ def conversionMethod : ConversionCall → String
   | .stringPlus _ => "to_str"
   | .splat _ => "to_a"
   | .closureArgs .. => "to_ary"
+  | .enumRewind _ => "rewind"
 
 def conversionType : ConversionCall → String
   | .block _ => "Proc"
   | .stringPlus _ => "String"
   | .splat _ | .closureArgs .. => "Array"
+  | .enumRewind _ => "Object"
 
 /-- Continue left-to-right evaluation after expanding one splat. -/
 def resumeSplat (m : Machine) (call : SplatCall) (values : List Value) : StepResult :=
@@ -39,6 +41,7 @@ def blockPassNoConversion (m : Machine) (call : ConversionCall) (source : Value)
   match call with
   | .splat pending => resumeSplat m pending [source]
   | .closureArgs cl brk selfOv defmodOv => enterClosure m cl [source] brk selfOv defmodOv
+  | .enumRewind o => .next { resetEnumerator m o with ctl := .value (.ref o) }
   | .block _ => .next (raiseErr m Boot.typeErrorId
       s!"no implicit conversion of {className m.heap (realClassOf m.heap source)} into Proc")
   | .stringPlus _ => .next (raiseErr m Boot.typeErrorId
@@ -55,6 +58,7 @@ def blockPassInvalid (m : Machine) (call : ConversionCall) (source result : Valu
 def finishConversion (m : Machine) (call : ConversionCall) (source result : Value)
     (direct : Bool) : StepResult :=
   match call with
+  | .enumRewind o => .next { resetEnumerator m o with ctl := .value (.ref o) }
   | .block pending =>
     if blockPassProc m result then
       invoke m pending.recv pending.site pending.name pending.args (some result) pending.kw

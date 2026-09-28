@@ -24,6 +24,65 @@ deriving Inhabited
 
 namespace Interp
 
+def executionOf (m : Machine) : Execution :=
+  ⟨m.ctl, m.kont, m.stack, m.currentExc, m.missingReason, m.activeEnumerator⟩
+
+def restoreExecution (m : Machine) (e : Execution) : Machine :=
+  { m with ctl := e.ctl, kont := e.kont, stack := e.stack, currentExc := e.currentExc, missingReason := e.missingReason, activeEnumerator := e.activeEnumerator }
+
+def enumState (m : Machine) (o : ObjId) : EnumState :=
+  ((m.enumerators.find? (·.1 == o)).map Prod.snd).getD {}
+
+def unmodeledNamespaceConstant (h : Heap) (o : ObjId) (name : String) : Bool :=
+  (ancestors h o).any fun k =>
+    ((crubyNamespaceConstants.find? (·.1 == className h k)).map Prod.snd |>.getD []).contains name
+
+def setEnumState (m : Machine) (o : ObjId) (s : EnumState) : Machine :=
+  { m with enumerators := (o, s) :: m.enumerators.filter (·.1 != o) }
+
+/-- Discarding a suspended fiber does not unwind its native Hash cleanup. -/
+def resetEnumerator (m : Machine) (o : ObjId) : Machine :=
+  let locks := ((enumState m o).suspended.map fun e => e.kont.filterMap fun k => match k with
+    | .iterK _ _ _ (.hashEach h ..) _ _ _ => some h
+    | _ => none).getD []
+  setEnumState { m with abandonedHashIterations := locks ++ m.abandonedHashIterations } o {}
+
+def allocEnumerator (m : Machine) (data : EnumData) (klass := Boot.enumeratorId) : Value × Machine :=
+  let (o, h) := m.heap.alloc { klass, payload := .enumerator (some data) }
+  (.ref o, { m with heap := h })
+
+def enumPack (m : Machine) (args : List Value) (values : Bool) : Value × Machine :=
+  if values then Builtins.allocArr m args.toArray else
+  match args with
+  | [] => (.nil, m)
+  | [v] => (v, m)
+  | _ => Builtins.allocArr m args.toArray
+
+/-- A yield suspends exactly where the native callback was invoked. Frame store
+    and heap remain shared; restoring the caller never replays Ruby effects. -/
+def suspendEnumerator (m : Machine) (o : ObjId) (args : List Value) : StepResult :=
+  let st := enumState m o
+  match st.caller with
+  | none => .unsupported "detached Enumerator yield callback"
+  | some caller =>
+    let execution := executionOf { m with ctl := .value .nil }
+    let m := setEnumState m o { st with suspended := some execution, caller := none, lookahead := if st.peek then some args else none }
+    let m := restoreExecution m caller
+    let (v, m) := enumPack m args st.values
+    .next { m with ctl := .value v }
+
+def enumStop (m : Machine) (result : Value) : StepResult :=
+  let (o, h) := m.heap.alloc { klass := Boot.stopIterationId, payload := .exc "iteration reached an end", iterationResult := result }
+  .next { m with heap := h, ctl := .jump (.raiseJ (.ref o)) }
+
+def finishEnumerator (m : Machine) (o : ObjId) (result : Value) : StepResult :=
+  let st := enumState m o
+  match st.caller with
+  | none => .stuck "Enumerator completion without a caller"
+  | some caller =>
+    let m := setEnumState m o { finished := some result }
+    enumStop (restoreExecution m caller) result
+
 def raiseErr (m : Machine) (cls : ObjId) (msg : String) : Machine :=
   let (v, m) := Builtins.allocExc m cls msg
   { m with ctl := .jump (.raiseJ v) }
@@ -406,6 +465,7 @@ def enterClosure (m : Machine) (cl : Closure) (args : List Value)
 def callClosure (m : Machine) (cl : Closure) (args : List Value)
     (brk : Option FrameId) (selfOv : Option Value := none)
     (defmodOv : Option ObjId := none) : StepResult :=
+  if let some o := cl.enumYield then suspendEnumerator m o args else
   match classifySimple cl.params with
   | none => .unsupported "unmodeled block param kind (optional/keyword/forwarding/destructuring)"
   | some sp =>

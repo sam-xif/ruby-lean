@@ -40,6 +40,10 @@ partial def valBrief (h : Heap) : Nat → Value → String
     | .none =>
       if o == Boot.mainId then "main"
       else s!"#<{className h (h.get o).klass}##{o}>"
+    | .enumerator _ => "#<Enumerator>"
+    | .chain _ => "#<Enumerator::Chain>"
+    | .generator _ => "#<Enumerator::Generator>"
+    | .yielder .. => "#<Enumerator::Yielder>"
 
 /-- One-line head label for the expression about to be evaluated. -/
 def exprBrief : Expr → String
@@ -90,9 +94,11 @@ def ctlBrief (h : Heap) : Ctl → String
   | .eval e => "eval  " ++ exprBrief e
   | .value v => "value  " ++ valBrief h 5 v
   | .jump j => "jump  " ++ jumpBrief h j
+  | .send _ _ name .. => "native send ." ++ name
 
 /-- Continuation-frame label (top of the kont stack = what happens next). -/
 def kontLabel : Kont → String
+  | .enumFinishK id => s!"Enumerator #{id}: finish"
   | .seqK rest => s!"seq (+{rest.length} more)"
   | .asgnK _ x => s!"then {x} = ▢"
   | .casgnK n => s!"then {n} = ▢"

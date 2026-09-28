@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L280 (2026-09-28)",
+  "note": "Kernel identity preserves receiver identity and strict zero arity; a Proc reused by define_singleton_method resolves super from its current method owner."
+}

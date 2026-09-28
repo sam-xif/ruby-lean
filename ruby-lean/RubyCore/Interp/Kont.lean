@@ -22,6 +22,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
   | k :: rest =>
     let m := { m with kont := rest }
     match k with
+    | .enumFinishK o => finishEnumerator m o v
     | .seqK es =>
       match es with
       | [] => .next (withCtl m (.value v))
@@ -135,6 +136,8 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
             -- *exists* says so, rather than claiming to be uninitialized.
             .next (raiseErr m Boot.nameErrorId
               s!"private constant {className m.heap o}::{name} referenced")
+          else if unmodeledNamespaceConstant m.heap o name then
+            .unsupported s!"unmodeled constant {className m.heap o}::{name}"
           else .next (raiseErr m Boot.nameErrorId
             s!"uninitialized constant {className m.heap o}::{name}")
     | .cpathAsgnK name rhs =>
@@ -185,7 +188,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .iterK cl brk rest kind acc retVal cur =>
       -- v is the block's result for the current element; fold it, then continue.
       match kind with
-      | .ignore | .arrayEach .. => iterStep m cl brk rest kind acc retVal
+      | .ignore | .arrayEach .. | .arrayIndex .. | .hashEach .. | .times .. | .scan .. => iterStep m cl brk rest kind acc retVal
       | .arrayMap .. => iterStep m cl brk rest kind (acc ++ [v]) retVal
       | .fold => iterStep m cl brk rest kind [v] retVal
       | .maxBy | .minBy =>
@@ -318,7 +321,9 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         if (m.heap.classPayload? o).isSome then
           match constLookupFrom m.heap o name with
           | some _ => let (sv, m) := Builtins.allocStr m "constant"; .next (withCtl m (.value sv))
-          | none => .next (withCtl m (.value .nil))
+          | none => if unmodeledNamespaceConstant m.heap o name then
+              .unsupported s!"defined? of unmodeled constant {className m.heap o}::{name}"
+            else .next (withCtl m (.value .nil))
         else .unsupported "defined?(A::B) with a non-namespace base"
       | _ => .unsupported "defined?(A::B) with a non-namespace base"
     | .definedGuardK =>
@@ -352,6 +357,19 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
   | k :: rest =>
     let m := { m with kont := rest }
     match k with
+    | .enumFinishK o =>
+      let st := enumState m o
+      match st.caller with
+      | none => .stuck "Enumerator unwind without caller"
+      | some caller =>
+        let m := restoreExecution (setEnumState m o {}) caller
+        match j with
+        | .raiseJ _ => .next { m with ctl := .jump j }
+        | .retJ .. => .next (raiseErr m Boot.localJumpErrorId "unexpected return")
+        | .throwJ tag _ => match Builtins.inspectP m tag with
+          | .ok text => .next (raiseErr m Boot.uncaughtThrowErrorId s!"uncaught throw {text}")
+          | .error text => .unsupported text
+        | _ => .unsupported "nonlocal transfer out of Enumerator"
     | .whileCondK c body | .whileBodyK c body =>
       match j with
       | .brkJ v => .next (withCtl m (.value v))

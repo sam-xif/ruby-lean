@@ -1590,3 +1590,54 @@ controls and the existing test_syntax_115 harness error. Exactly 22 new agreemen
 Full front-end bootstrap: 1,232 agree / zero disagree / 77 out-of-fragment and no
 harness/parse errors. Model reports:
 `20260928-002138-{tier0,tier1,tierregressions}-lean/`. All checks terminated.
+
+## N54 — Enumerator protocols, mutation and suspension probes (2026-09-28)
+
+Model L280 adds eight regression programs for allocation, independent internal/
+external iteration, zero/multiple yields, lookahead/feed, shared captures and
+isolated exceptions, rewind hooks, keyword packing, live mutation, incremental
+scan and Chain block iteration. Sidecars were marked fixed after successful
+control/model comparison. A deterministic seed-20260928 probe contributes 174
+fragments: 166 agree / eight explicit gates / zero disagree. Its 150 randomized
+action sequences mix next/peek/value variants/feed/rewind over different producers.
+Saved script/results: /private/tmp/conformance-l280-generated.{py,json}.
+
+The mutation witness caught a subtle difference between unwind and abandonment:
+rewinding a suspended native Hash iterator never releases its insertion lock,
+even after explicit CRuby GC. The model now retains that abandoned lock; ordinary
+completion, break and exceptions release live locks. Other witnesses exposed
+keyword Hash packing, stale Array indices/Hash values, subclass inspection and
+copy hooks. Unsupported copy/conversion/reentrant/Chain paths remain gates, not
+agreements. The comparator, control wrapper and random baseline are unchanged.
+
+The full regression tier has 76 held / one old gated Sorbet hash case / zero
+failures (77 total). Tier 1 n=300 seed20260927 remains 219 agree / 81 unsupported /
+zero disagree; every source/verdict is unchanged. Front-end: 45 seeds plus eight
+new programs, 53 agree / zero disagree, AST-idempotent; six old render-only
+instabilities remain. Initial full reports use prefix 20260928-005234. The final
+bootstrap result and final allocation-edge verification are recorded below after
+all processes terminate.
+
+
+The first full bootstrap run found one newly reachable disagreement
+(test_yjit_152), behind Module.new's former gate. The final fix adds native
+Kernel#itself and pins a closure used both as a block and a method by
+kernel-itself-super.rb (the ninth new regression). Super's native-name shadow
+and miss boundaries were repaired too. The final focused replay is 41 agree /
+one explicit string-class_eval gate over 42 cases; no disagreement. The final
+full rerun includes this fix and the uninitialized Chain allocation checks.
+
+
+Final L280 verification: lake build rubycore PASS (90 jobs). Bootstrap:
+**1,081 agree / zero disagree / 222 unsupported**, five invalid controls and the
+existing test_syntax_115 harness error (1,309 total). Exactly 33 new agreements
+relative to L279, no lost agreements and no changed sources. The final regression
+status tier has **77 held / one old gated / zero failures** (78 total). Tier 1
+n=300 seed20260927 remains **219 agree / 81 unsupported / zero disagree**, with
+all sources/verdicts unchanged. Reports:
+`difftest/reports/20260928-005837-{tier0,tier1,tierregressions}-lean/`.
+Final front-end replay: 45 seeds plus nine new programs, **54 agree / zero
+disagree**, AST-idempotent; six old render-only instabilities. Generated Prelude
+and CRubyNames match regeneration; git diff --check passes. All validation
+processes terminated. No proof build, typed ratchet or commit was performed.
+The full conformance goal remains active and incomplete.

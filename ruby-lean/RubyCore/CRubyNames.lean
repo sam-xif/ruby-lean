@@ -112,6 +112,43 @@ def crubyMethodNames : List (String × List String) := [
     "round", "singleton_method_added", "step", "to_c", "to_f", "to_i", "to_int", "to_r",
     "to_s", "truncate", "zero?"
   ]),
+  ("Enumerator", [
+    "+", "all?", "any?", "chain", "chunk", "chunk_while", "collect", "collect_concat",
+    "compact", "count", "cycle", "detect", "drop", "drop_while", "each", "each_cons",
+    "each_entry", "each_slice", "each_with_index", "each_with_object", "entries", "feed", "filter", "filter_map",
+    "find", "find_all", "find_index", "first", "flat_map", "grep", "grep_v", "group_by",
+    "include?", "initialize", "initialize_copy", "inject", "inspect", "lazy", "map", "max",
+    "max_by", "member?", "min", "min_by", "minmax", "minmax_by", "next", "next_values",
+    "none?", "one?", "partition", "peek", "peek_values", "reduce", "reject", "reverse_each",
+    "rewind", "select", "size", "slice_after", "slice_before", "slice_when", "sort", "sort_by",
+    "sum", "take", "take_while", "tally", "to_a", "to_h", "to_set", "uniq",
+    "with_index", "with_object", "zip"
+  ]),
+  ("Enumerator::Generator", [
+    "all?", "any?", "chain", "chunk", "chunk_while", "collect", "collect_concat", "compact",
+    "count", "cycle", "detect", "drop", "drop_while", "each", "each_cons", "each_entry",
+    "each_slice", "each_with_index", "each_with_object", "entries", "filter", "filter_map", "find", "find_all",
+    "find_index", "first", "flat_map", "grep", "grep_v", "group_by", "include?", "initialize",
+    "initialize_copy", "inject", "lazy", "map", "max", "max_by", "member?", "min",
+    "min_by", "minmax", "minmax_by", "none?", "one?", "partition", "reduce", "reject",
+    "reverse_each", "select", "slice_after", "slice_before", "slice_when", "sort", "sort_by", "sum",
+    "take", "take_while", "tally", "to_a", "to_h", "to_set", "uniq", "zip"
+  ]),
+  ("Enumerator::Yielder", [
+    "<<", "initialize", "to_proc", "yield"
+  ]),
+  ("Enumerator::Chain", [
+    "+", "all?", "any?", "chain", "chunk", "chunk_while", "collect", "collect_concat",
+    "compact", "count", "cycle", "detect", "drop", "drop_while", "each", "each_cons",
+    "each_entry", "each_slice", "each_with_index", "each_with_object", "entries", "feed", "filter", "filter_map",
+    "find", "find_all", "find_index", "first", "flat_map", "grep", "grep_v", "group_by",
+    "include?", "initialize", "initialize_copy", "inject", "inspect", "lazy", "map", "max",
+    "max_by", "member?", "min", "min_by", "minmax", "minmax_by", "next", "next_values",
+    "none?", "one?", "partition", "peek", "peek_values", "reduce", "reject", "reverse_each",
+    "rewind", "select", "size", "slice_after", "slice_before", "slice_when", "sort", "sort_by",
+    "sum", "take", "take_while", "tally", "to_a", "to_h", "to_set", "uniq",
+    "with_index", "with_object", "zip"
+  ]),
   ("String", [
     "%", "*", "+", "+@", "-@", "<", "<<", "<=",
     "<=>", "==", "===", "=~", ">", ">=", "[]", "[]=",
@@ -286,6 +323,18 @@ def crubySingletonNames : List (String × List String) := [
   ("Complex", [
     "convert", "polar", "rect", "rectangular"
   ]),
+  ("Enumerator", [
+    "produce", "product"
+  ]),
+  ("Enumerator::Generator", [
+
+  ]),
+  ("Enumerator::Yielder", [
+
+  ]),
+  ("Enumerator::Chain", [
+
+  ]),
   ("String", [
     "new", "try_convert"
   ]),
@@ -355,6 +404,48 @@ def crubySingletonNames : List (String × List String) := [
   ("ScriptError", [
 
   ])
+]
+
+/-- Known constants in modeled namespaces; absence is a gate, not NameError. -/
+def crubyNamespaceConstants : List (String × List String) := [
+  ("BasicObject", ["BasicObject"]),
+  ("Object", ["ARGF", "ARGV", "ArgumentError", "Array", "BasicObject", "Binding", "CROSS_COMPILING", "Class", "ClosedQueueError", "Comparable", "Complex", "ConditionVariable", "Data", "DidYouMean", "Dir", "ENV", "EOFError", "Encoding", "EncodingError", "Enumerable", "Enumerator", "Errno", "ErrorHighlight", "Exception", "FalseClass", "Fiber", "FiberError", "File", "FileTest", "Float", "FloatDomainError", "FrozenError", "GC", "Gem", "Hash", "IO", "IOError", "IndexError", "Integer", "Interrupt", "Kernel", "KeyError", "LoadError", "LocalJumpError", "Marshal", "MatchData", "Math", "Method", "Module", "Monitor", "MonitorMixin", "Mutex", "NameError", "NilClass", "NoMatchingPatternError", "NoMatchingPatternKeyError", "NoMemoryError", "NoMethodError", "NotImplementedError", "Numeric", "Object", "ObjectSpace", "Pathname", "Proc", "Process", "Queue", "RUBY_COPYRIGHT", "RUBY_DESCRIPTION", "RUBY_ENGINE", "RUBY_ENGINE_VERSION", "RUBY_PATCHLEVEL", "RUBY_PLATFORM", "RUBY_RELEASE_DATE", "RUBY_REVISION", "RUBY_VERSION", "Ractor", "Random", "Range", "RangeError", "Rational", "RbConfig", "Refinement", "Regexp", "RegexpError", "Ruby", "RubyVM", "RuntimeError", "STDERR", "STDIN", "STDOUT", "ScriptError", "SecurityError", "Set", "Signal", "SignalException", "SizedQueue", "StandardError", "StopIteration", "String", "Struct", "Symbol", "SyntaxError", "SyntaxSuggest", "SystemCallError", "SystemExit", "SystemStackError", "TOPLEVEL_BINDING", "Thread", "ThreadError", "ThreadGroup", "Time", "TracePoint", "TrueClass", "TypeError", "UnboundMethod", "UncaughtThrowError", "UnicodeNormalize", "Warning", "ZeroDivisionError"]),
+  ("Module", []),
+  ("Class", []),
+  ("NilClass", []),
+  ("TrueClass", []),
+  ("FalseClass", []),
+  ("Integer", []),
+  ("Float", ["DIG", "EPSILON", "INFINITY", "MANT_DIG", "MAX", "MAX_10_EXP", "MAX_EXP", "MIN", "MIN_10_EXP", "MIN_EXP", "NAN", "RADIX"]),
+  ("Rational", []),
+  ("Complex", ["I"]),
+  ("Enumerator", ["ArithmeticSequence", "Chain", "Generator", "Lazy", "Producer", "Product", "Yielder"]),
+  ("Enumerator::Generator", []),
+  ("Enumerator::Yielder", []),
+  ("Enumerator::Chain", []),
+  ("String", []),
+  ("Symbol", []),
+  ("Array", []),
+  ("Hash", []),
+  ("Proc", []),
+  ("Range", []),
+  ("Random", ["Base", "Formatter"]),
+  ("Exception", []),
+  ("StandardError", []),
+  ("RuntimeError", []),
+  ("ArgumentError", []),
+  ("TypeError", []),
+  ("NameError", []),
+  ("NoMethodError", []),
+  ("ZeroDivisionError", []),
+  ("LocalJumpError", []),
+  ("FrozenError", []),
+  ("IndexError", []),
+  ("KeyError", []),
+  ("RangeError", []),
+  ("StopIteration", []),
+  ("NotImplementedError", []),
+  ("ScriptError", [])
 ]
 
 /-- Constants a require may define, curated separately from the oracle's

@@ -105,6 +105,18 @@ where
       let nativeNew := match lookup m.heap recv "new" with
         | some (_, md) => !md.undefined && md.builtin == some "Class#new"
         | none => false
+      let enumClass := (ancestors m.heap o).any ([Boot.enumeratorId, Boot.generatorId, Boot.yielderId].contains ·)
+      if enumClass &&
+          mname == "allocate" && (lookup m.heap recv "allocate").any (fun (_, md) =>
+            !md.undefined && md.builtin == some "Class#allocate") then
+        if !args.isEmpty || !kw.isEmpty then enumArity m (args.length + if kw.isEmpty then 0 else 1) "0" else
+        let (v, m) := enumAllocate m o
+        .next { m with ctl := .value v }
+      else if enumClass &&
+          mname == "new" && nativeNew then
+        let (v, m) := enumAllocate m o
+        .next { m with ctl := .send v .reflective "initialize" args blk kw, kont := .newK v :: m.kont }
+      else
       if mname == "new" && !c.isModule && nativeNew then
         match userInit? m.heap o with
         | some md =>
@@ -161,6 +173,8 @@ where
     | none =>
       match md.builtin with
       | some bid =>
+        if enumBid bid then callEnumerator m bid recv args blk kw else
+        if nativeIteratorBid bid then callNativeIterator m bid recv args blk kw else
         if procCallBid bid then callProcBuiltin m recv args kw else
         if arrayMapBid bid then callArrayMapBuiltin m recv mname args blk kw else
         if bid == "String#+" then callStringPlusBuiltin m recv args kw else
@@ -277,14 +291,21 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
   if f.meth == "" then .unsupported "super outside a method"
   else
     let self := f.self
+    let chain := (ancestors m.heap (classOf m.heap self)).dropWhile (· != f.defmod) |>.drop 1
     match superFound m.heap (classOf m.heap self) f.defmod f.meth with
-    | some (_, md) =>
+    | some (owner, md) =>
       if md.undefined then
         let (args, m) := appendKwHash m args kw
         invokeMethodMissing m self .implicit f.meth args blk .superCall
       else
+      let between := if md.fromPrelude then [] else chain.takeWhile (· != owner)
+      match crubyShadow m.heap between f.meth with
+      | some cname => .unsupported s!"unmodeled builtin would shadow super: {cname}#{f.meth}"
+      | none =>
       match md.builtin with
       | some bid =>
+        if enumBid bid then callEnumerator m bid self args blk kw else
+        if nativeIteratorBid bid then callNativeIterator m bid self args blk kw else
         if procCallBid bid then callProcBuiltin m self args kw else
         if arrayMapBid bid then callArrayMapBuiltin m self f.meth args blk kw else
         if bid == "String#+" then callStringPlusBuiltin m self args kw else
@@ -304,8 +325,11 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
         | .unsupported r => .unsupported r
       | none => enterUserMethod m self f.meth md args blk kw
     | none =>
-      let (args, m) := appendKwHash m args kw
-      invokeMethodMissing m self .implicit f.meth args blk .superCall
+      match crubyShadow m.heap chain f.meth with
+      | some cname => .unsupported s!"unmodeled super method {cname}#{f.meth}"
+      | none =>
+        let (args, m) := appendKwHash m args kw
+        invokeMethodMissing m self .implicit f.meth args blk .superCall
 
 /-- Args that bare `super` forwards: the *current* values of the enclosing
     method's formal parameters — read from the method frame's locals, a splat
@@ -401,6 +425,20 @@ def classNewBlock (m : Machine) (recv : Value) (args : List Value) (v : Value)
   | .frozen recv m => raiseFrozen m recv
   | .unsupported r => .unsupported r
 
+/-- Native redispatch can also supply a block to Class/Module.new. -/
+def invokeQueued (m : Machine) (recv : Value) (site : SendSite) (name : String)
+    (args : List Value) (blk : Option Value) (kw : List (Value × Value)) : StepResult :=
+  if name == "new" && (lookup m.heap recv name).any (fun (_, md) =>
+      !md.undefined && md.builtin == some "Class#new") then
+    match recv, blk with
+    | .ref k, some b =>
+      if k == Boot.classId || k == Boot.moduleId then
+        if !kw.isEmpty then .unsupported "Class/Module.new keyword arguments" else
+        classNewBlock m recv args b (k == Boot.classId)
+      else invoke m recv site name args blk kw
+    | _, _ => invoke m recv site name args blk kw
+  else invoke m recv site name args blk kw
+
 /-- All args in → resolve the pending block and dispatch. A literal block is
     reified here (capturing the caller frame); `proc`/`lambda`/`Proc.new` with
     a block capture rather than call; a `&e` block-pass evaluates `e` last
@@ -448,6 +486,10 @@ def finishSend (m : Machine) (recv : Value) (implicit : SendSite) (mname : Strin
       match recv with
       | .ref k => classNewBlock m recv args v (k == Boot.classId)
       | _ => .unsupported "Class#new with a block"
+    else if mname == "new" && (match recv with
+        | .ref k => (ancestors m.heap k).any ([Boot.enumeratorId, Boot.generatorId, Boot.yielderId].contains ·)
+        | _ => false) then
+      invoke m recv implicit mname args (some v) kw
     else if mname == "new" then
       -- `X.new { … }` for any other class. If the receiver has a **user**
       -- `self.new` (a singleton or inherited-singleton method), that method is

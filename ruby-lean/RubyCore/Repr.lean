@@ -239,6 +239,29 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
       | _, _ => return (← inspect h lo) ++ dots ++ (← inspect h hi)
     | .rational n d => return s!"({n}/{d})"
     | .complex r i => complexText h true r i
+    | .enumerator none => return s!"#<{className h (h.get o).klass}: uninitialized>"
+    | .chain _ => throw "Chain inspection requires method dispatch"
+    | .enumerator (some data) =>
+      let receiver ← inspect h data.recv
+      let (args, keywords) := if !data.kw.isEmpty then (data.args, data.kw) else
+        match data.args.getLast? with
+        | some (.ref a) => match (h.get a).payload with
+          | .hsh pairs =>
+            if !pairs.isEmpty && pairs.all (fun (k, _) => match k with | .sym _ => true | _ => false)
+            then (data.args.dropLast, pairs.toList) else (data.args, [])
+          | _ => (data.args, [])
+        | _ => (data.args, [])
+      let args ← args.mapM (inspect h)
+      let kwParts ← keywords.mapM fun (key, value) => do
+        match key with
+        | .sym s =>
+          let name := if symbolIdentLike s then s else escapeString s
+          return s!"{name}: {← inspect h value}"
+        | _ => throw "Enumerator inspect with non-Symbol keyword keys"
+      let args := args ++ kwParts
+      return "#<" ++ className h (h.get o).klass ++ ": " ++ receiver ++ ":" ++ data.method ++
+        (if args.isEmpty then "" else "(" ++ String.intercalate ", " args ++ ")") ++ ">"
+    | .generator _ | .yielder .. => return s!"#<{className h (h.get o).klass}:{fakeAddr o}>"
     | .regexp src opts => return regexpInspect src opts
     | .mdata subject caps names =>
       -- `#<MatchData "1.22" 1:"1" commit:nil>` — named groups print their name
@@ -298,6 +321,7 @@ partial def toS (h : Heap) (v : Value) : Except String String := do
       return (← toS h lo) ++ (if excl then "..." else "..") ++ (← toS h hi)
     | .rational n d => return s!"{n}/{d}"
     | .complex r i => complexText h false r i
+    | .enumerator _ | .chain _ | .generator _ | .yielder .. => return s!"#<{className h (h.get o).klass}:{fakeAddr o}>"
     | .regexp src opts => return regexpToS src opts
     | .mdata subject caps _ =>
       let whole := (spanText subject (caps[0]?.getD none)).getD ""

@@ -24,6 +24,10 @@ FOLD = {
   "Float" => [Float, Numeric, Comparable],
   "Rational" => [Rational, Numeric, Comparable],
   "Complex" => [Complex, Numeric, Comparable],
+  "Enumerator" => [Enumerator, Enumerable],
+  "Enumerator::Generator" => [Enumerator::Generator, Enumerable],
+  "Enumerator::Yielder" => [Enumerator::Yielder],
+  "Enumerator::Chain" => [Enumerator::Chain, Enumerator, Enumerable],
   "String" => [String, Comparable],
   "Symbol" => [Symbol, Comparable],
   "Array" => [Array, Enumerable],
@@ -111,6 +115,13 @@ sentries = FOLD.map do |name, mods|
   "  (\"#{name}\", [\n#{NAME_LINES.call(meths, "    ")}\n  ])"
 end
 puts sentries.join(",\n")
+
+puts "]\n\n/-- Known constants in modeled namespaces; absence is a gate, not NameError. -/"
+puts "def crubyNamespaceConstants : List (String × List String) := ["
+puts FOLD.map { |name, mods|
+  names = mods.first.constants(false) - %i[FOLD NAME_LINES MAIN_SINGLETON]
+  "  (#{name.inspect}, [#{names.map(&:to_s).sort.map(&:inspect).join(', ')}])"
+}.join(",\n")
 
 puts <<~MID
   ]

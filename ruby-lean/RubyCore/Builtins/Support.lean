@@ -121,6 +121,8 @@ partial def pureOk (h : Heap) (sens : List String) : Value → Bool
     | .complex r i => own && pureOk h sens r && pureOk h sens i &&
         (!sens.contains "to_s" || [r, i].all (fun v =>
           !reprOverridden h ["to_str"] (classOf h v)))
+    | .enumerator (some data) => own && pureOk h ["inspect"] data.recv &&
+        data.args.all (pureOk h ["inspect"])
     -- An Exception renders **through `to_s`** whichever way it is asked:
     -- `rb_exc_inspect` is `#<Class: rb_obj_as_string(exc)>` and
     -- `Exception#message` *is* `to_s`. So `to_s` is repr-sensitive for an exception
@@ -236,7 +238,8 @@ def arrPayload? (h : Heap) : Value → Option (Array Value)
     its own `allocExc` path in `newImpl`). -/
 def payloadCoreClasses : List ObjId :=
   [Boot.stringId, Boot.arrayId, Boot.hashId, Boot.procId, Boot.integerId,
-   Boot.floatId, Boot.symbolId, Boot.rationalId, Boot.complexId]
+   Boot.floatId, Boot.symbolId, Boot.rationalId, Boot.complexId,
+   Boot.enumeratorId, Boot.generatorId, Boot.yielderId]
 
 /-- The payload-carrying core class `k` inherits from, if any — `String`, `Array`,
     `Hash` and `Exception` are *allocatable* for a subclass (L70: allocate the
@@ -401,7 +404,7 @@ def dupObj (m : Machine) (o : ObjId) (keepFrozen : Bool) : Value × Machine :=
   let src := m.heap.get o
   let (o2, h) := m.heap.alloc
     { klass := src.klass, ivars := src.ivars, payload := src.payload,
-      hashDflt := src.hashDflt, frozen := keepFrozen && src.frozen,
+      hashDflt := src.hashDflt, frozen := keepFrozen && src.frozen, iterationResult := src.iterationResult,
       -- the encoding tag is part of the copy: `"café".b.dup.encoding` is
       -- ASCII-8BIT [V] (L118)
       binary := src.binary }
@@ -466,7 +469,7 @@ def byteStrAwareBids : List String :=
    -- `inspect`/`p` render through the binary-aware `Repr`
    "BasicObject#==", "BasicObject#!=", "BasicObject#!", "BasicObject#equal?",
    "Object#==", "Object#!=", "Object#!", "Object#equal?", "Object#eql?",
-   "Object#hash", "Object#class", "Object#nil?", "Object#is_a?", "Object#kind_of?",
+   "Object#hash", "Object#class", "Object#nil?", "Object#itself", "Object#is_a?", "Object#kind_of?",
    "Object#instance_of?", "Object#respond_to?", "Object#freeze", "Object#frozen?",
    "Object#inspect", "Object#p", "Object#__user_defines?",
    -- reads the method table, never the value (L127)
@@ -756,7 +759,7 @@ def sliceRange (n : Nat) (start len : Int) : Option (Nat × Nat) :=
     Methods with optional args (Integer#to_s(base), Array#pop(n), …) are NOT
     here; their with-arg forms gate as Unsupported inside their own arms. -/
 def zeroArgBids : List String :=
-  ["Object#class", "Object#inspect", "Object#to_s", "Object#nil?",
+  ["Object#class", "Object#inspect", "Object#to_s", "Object#nil?", "Object#itself",
    "Integer#i", "Float#i", "Rational#i", "Integer#to_c", "Float#to_c", "Rational#to_c",
    "Complex#real", "Complex#imag", "Complex#imaginary", "Complex#rect", "Complex#rectangular",
    "Complex#to_s", "Complex#inspect", "Complex#real?", "Complex#to_c", "Complex#dup",

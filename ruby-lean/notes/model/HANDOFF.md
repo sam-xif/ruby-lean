@@ -1,6 +1,85 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L279)
+## Active conformance goal (2026-09-28, L280)
+
+The user wants known semantics issues fixed first, then full CRuby bootstrap
+conformance. Proof repair is explicitly deferred. The goal remains active and
+incomplete. L276–L280 changes are uncommitted; checker/proof files and ratchet
+floors remain untouched. Existing unrelated paper/ and wasm upstream-bug files
+remain untouched. All validation processes have terminated.
+
+L280 adds native Enumerator/Generator/Yielder payloads and resumable execution
+in RubyCore/Interp/Enumerator.lean. Boot ids are Enumerator 41, Generator 42,
+Yielder 43, main 44. Ctl.send queues ordinary native-to-Ruby dispatch. Execution
+saves control/continuation/activation stacks, exception and missing-call context,
+and active Enumerator; heap, frames, globals, output and literal cache stay shared.
+A native Closure.enumYield callback suspends at the actual yield, without replay.
+Internal each starts a fresh traversal; external iteration dispatches the
+Enumerator's own each (including overrides), then resumes its saved context.
+
+Next/peek/value variants/feed, hidden StopIteration results, size callbacks,
+restart after errors, nested iterators and checked rewind are modeled. Rewind
+uses the existing checked-call protocol (response hooks/method_missing), then
+abandons the fiber without running ensure. Native Hash insertion locks also
+remain after abandonment, even after CRuby GC: Machine.abandonedHashIterations
+retains them. Normal completion/break/exception release live locks. Hash cursors
+skip deleted entries and reread values; Array each/each_index/map use live cursors;
+Integer.times advances without eagerly allocating List.range.
+
+String#scan yields incrementally with captures, zero-width advance and match
+slots. Frame.matchAlias preserves native external root sharing when first resumed
+at top level; first resume from an ordinary method gets an isolated slot. Heap
+writes increment Object.revision; scan gates receiver writes during suspension
+(including reverted writes/ivars) and high-byte binary Strings. Generator/Yielder
+and Class#new/allocate use native payloads plus ordinary initialize dispatch.
+Module.new's native constructor arm was missing and is now supplied.
+
+The prelude has Kernel#loop, Enumerable inclusion and Chain block operations.
+Uninitialized Chain checks are covered. Native Kernel#itself and super's missing/
+shadow-native checks fix the newly reached test_yjit_152 closure/method duality.
+Namespace constant inventories in CRubyNames prevent new core classes from
+turning unmodeled nested constants into false NameErrors/reflection negatives.
+
+Final build PASS (90 jobs). Bootstrap: **1,081 agree / zero disagree /
+222 unsupported**, five invalid controls and the old test_syntax_115 harness
+error. **+33 agreements over L279, no losses**, all sources unchanged. Regressions:
+**77 held / one old gated / zero failures** (78 total). Tier 1 n=300 seed20260927:
+**219 agree / 81 unsupported / zero disagree**, unchanged sources/verdicts.
+Final reports: `difftest/reports/20260928-005837-{tier0,tier1,tierregressions}-lean/`.
+
+Nine new regression programs: enumerator-{allocation,context,dispatch,external,
+internal,mutation,rewind,scan-chain} and kernel-itself-super. Final focused replay:
+41 agree / one string-class_eval gate over 42 cases. Deterministic seed20260928
+probe: 166 agree / eight explicit gates / zero disagree over 174 fragments
+(including 150 action sequences). Saved scripts/results:
+/private/tmp/conformance-l280-{focused,generated,super}.{py,json}.
+Front-end: 45 seeds plus nine new programs, **54 agree / zero disagree**,
+AST-idempotent, six old render-only instabilities. Both generated files match
+regeneration; git diff --check passes. No proof build/typed gate/commit attempted.
+
+Next work, preserving the full objective:
+
+1. The old sorbet-hash-gate remains open. Do not invent a process identity hash
+   or weaken the comparator. Another verified loading discrepancy: `class T; end`
+   works in plain CRuby but raises TypeError in the model because the prelude
+   eagerly installs Sorbet's T module without require. Lazy feature loading is
+   needed; the control's JSON ancestry pollution remains a separate issue.
+2. Re-measure current gates before selecting the next group. String eval,
+   optional/keyword/destructuring block parameters, top-level return, binding,
+   String#setbyte, forwarding, const_missing and runtime reflection remain work.
+   Historical out-of-scope labels do not complete the user's objective.
+3. Enumerator gates remain: custom method-name/to_int size conversions, copy
+   hooks/singleton classes and clone options, reentrant resume, Chain blockless
+   wrapping/rewind, other blockless prelude methods, scan receiver mutation and
+   public Fiber APIs. CRuby 4.0.5's Chain.each wrapping has a surprising TypeError
+   on size; do not guess a simpler descriptor. test_yjit_307 remains a resource
+   limit around a million-element argument list, not an agreement.
+4. Older audit leads remain: legacy for bypasses each dispatch, destructureBind
+   needs checked to_ary, and reflective alias/undef/attr/mixin mutation needs a
+   frozen-state audit. Numeric constructor/component-operation gates from L279
+   remain. Future runtime compilation needs fresh literal-site namespaces.
+
+## Previous batch (2026-09-28, L279)
 
 The user wants known semantics issues fixed first, then full CRuby bootstrap
 conformance. Proof repair is explicitly deferred. The goal remains active and

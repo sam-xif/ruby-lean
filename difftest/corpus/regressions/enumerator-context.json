@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L280 (2026-09-28)",
+  "note": "Nested suspension preserves shared heap/captured locals and isolated exception contexts."
+}

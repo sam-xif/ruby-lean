@@ -96,6 +96,7 @@ def visNames (m : Machine) (o target : ObjId) (vis : Visibility) (modFun : Bool)
       | some (_, md) =>
         if md.builtin.isSome && !md.fromPrelude &&
             !(procCallBid (md.builtin.getD "") || arrayMapBid (md.builtin.getD "") ||
+              enumBid (md.builtin.getD "") || nativeIteratorBid (md.builtin.getD "") ||
               md.builtin == some "BasicObject#method_missing") then none
           -- Other native visibility edits remain outside the modeled fragment.
         else
@@ -425,6 +426,9 @@ def reflectConstGet (m : Machine) (recv : Value) (mname : String)
             some (.next (withCtl m
               (.value (if mname == "const_get" then v else .bool true))))
           | none =>
+            if unmodeledNamespaceConstant m.heap o n then
+              some (.unsupported s!"{mname} of unmodeled constant {className m.heap o}::{n}")
+            else
             if mname == "const_defined?" then
               -- a constant CRuby has but we don't model would answer a wrong
               -- `false` — same fidelity split as dispatch (L5).

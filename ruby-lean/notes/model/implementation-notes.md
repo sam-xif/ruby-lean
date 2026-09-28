@@ -14038,3 +14038,118 @@ seed/regression front-end replay: 51/0, with six old render-only instabilities.
 All validation processes terminated. git diff --check passes. No typed ratchet
 or proof build was attempted, and no commit was made. Full conformance remains
 incomplete; Enumerators and the other recorded bootstrap gates are next work.
+
+
+## L280 — resumable Enumerators and live native cursors (2026-09-28)
+
+The active conformance goal continues with proof repair explicitly deferred.
+Ratchet/checker/proof code and acceptance floors remain unchanged. This batch
+adds Enumerator, Generator and Yielder as native payload classes (boot ids 41–43;
+main moves to 44), and Chain's block-form collection operations in the prelude.
+It does not implement public Fiber/Thread scheduling or the entire Enumerator API.
+
+An EnumData descriptor stores receiver, method, positional/keyword arguments and
+size policy. Machine.enumerators stores suspension/caller Execution contexts,
+lookahead, feed and completed result by object id. An Execution contains only
+control/continuation/activation stacks, current exception, missing-call reason
+and active Enumerator; heap, frame store, globals, output and numeric-literal
+cache remain shared. A Closure.enumYield callback suspends at the actual yield.
+No Ruby effect is replayed to reconstruct a cursor. Ctl.send queues normal
+native-to-Ruby dispatch without making the interpreter mutually recursive.
+
+Internal each independently dispatches the original receiver's method. External
+next first dispatches the Enumerator's own each, honoring user overrides, then
+resumes the saved execution. Zero/multiple yield packing, fresh outer peek
+Arrays, feed-before-first-yield, lookahead consumption, fresh StopIteration
+exceptions with cached hidden results, restart after producer errors, nested
+external iteration and copies before/after completion all have CRuby witnesses.
+The size callback directly invokes the stored Proc, bypassing Proc#call overrides.
+Additional each arguments convert old and new keyword packets to positional
+Hashes and clear the size policy; no additions preserve the original keyword flag.
+
+Rewind shares the rb_check_funcall-style continuation used for checked conversion:
+response hooks can veto/install a method, custom method_missing may run, and its
+conditional NoMethodError rescue is preserved. Only successful completion of
+that check clears the Enumerator. Rewind never runs a suspended ensure. Nor does
+it run native Hash iteration cleanup: the original Hash retains its insertion
+restriction even after explicit GC. This was a real initial implementation bug,
+caught by enumerator-mutation.rb. Active/suspended continuations express ordinary
+locks; Machine.abandonedHashIterations retains locks from discarded fibers.
+Normal completion, break and exception release their live locks.
+
+Native Array each/each_index/map and Hash each/each_pair/each_key/each_value now
+return sized Enumerators without a block. Array indices and elements reread the
+live payload. Hash cursors retain entry keys, skip deletions and reread values;
+Hash#[]= rejects new keys while a live or abandoned iteration holds its lock.
+Integer#times uses a live integer cursor, avoiding the old eager List.range.
+Kernel#loop catches StopIteration and returns its result, and has an infinite-size
+blockless Enumerator. Generator/Yielder carry native blocks and break targets.
+Class#new/allocate allocate the native payload before ordinary initialize dispatch;
+Module.new's queued block path also needed its native constructor arm.
+
+String#scan's block form now searches/yields incrementally, preserves captures,
+zero-width advance and native break/return behavior, and restores the last match
+on completion. Native external roots first resumed at top level share that
+lexical match slot, while first resume from an ordinary method has an isolated
+slot. Frame.matchAlias encodes this without capturing the caller's locals. Scan
+conservatively gates any receiver revision during yield, including reverted
+mutations/ivar writes, and high-byte binary receivers. Heap writes increment a
+hidden revision counter. This boundary prevents silently scanning a stale copy.
+
+Boot's nested class constants are kept out of Object's constant table. Generated
+CRubyNames now includes namespace constant inventories, consulted on lookup
+misses by direct constant lookup, defined? and constant reflection. Introducing
+Enumerator must not turn Lazy/Product/ArithmeticSequence into false NameErrors.
+Native visibility edits now recognize the new registered iterator methods.
+
+Nine fixed regression programs cover allocation, internal/external protocols,
+dynamic contexts, dispatch/keywords/hooks, mutation, rewind, scan/Chain and
+Kernel identity/super dispatch.
+The final focused run and full-suite counts are recorded below. The deterministic
+seed-20260928 probe has 174 fragments: 166 agree / eight explicit gates / zero
+disagree, including 150 randomized action sequences. Sources/results are saved
+in /private/tmp/conformance-l280-generated.{py,json}. It caught subclass
+uninitialized inspection, keyword packing, Array index mutation, stale Hash
+values and ignored copy hooks/singleton classes; these now agree or explicitly
+gate. The latter gates are not claimed fixed.
+
+Remaining boundaries include reentrant resumes, custom method-name/to_int size
+conversion, copy hooks/singleton classes and clone options, Chain's blockless
+wrapping/rewind, other blockless prelude iterators, scan receiver mutation, and
+public Fiber APIs. CRuby 4.0.5's Chain#each without a block produces a nested
+wrapper whose size can raise TypeError; do not replace it with a guessed sized
+descriptor. The old sorbet-hash-gate remains open; comparison was not weakened.
+No proof rebuild, typed ratchet or commit was performed.
+
+
+The first full bootstrap run (20260928-005234) had 1,075 agreements and one
+newly reached disagreement, test_yjit_152. Supporting Module.new exposed its
+closure-as-method super call into unmodeled Kernel#itself. Object#itself is now a
+registered zero-arity native identity primitive (including binary Strings), and
+its nine-program regression batch includes the closure's two invocation modes.
+Super dispatch now checks unmodeled native shadows and total misses, preserving
+explicit undef tombstones. Two boundary probes gate String#succ; a tombstoned
+String#succ correctly raises NoMethodError. Saved: conformance-l280-super.json.
+Final focused replay: 42 cases, 41 agree / one existing string-class_eval gate.
+
+A separate probe also reconfirmed an existing prelude-loading discrepancy:
+`class T; end` conflicts with the eagerly installed Sorbet T module even without
+require, while plain CRuby permits it. This is distinct from the control's JSON
+ancestry pollution and remains open; a real lazy feature-loading model must not
+claim that all prelude library namespaces exist before require. The super
+boundary witness uses DerivedS so it tests super rather than that known conflict.
+
+
+Final L280 verification: lake build rubycore PASS (90 jobs). Bootstrap:
+**1,081 agree / zero disagree / 222 unsupported**, five invalid controls and the
+existing test_syntax_115 harness error (1,309 total). Exactly 33 new agreements
+relative to L279, no lost agreements and no changed sources. The final regression
+status tier has **77 held / one old gated / zero failures** (78 total). Tier 1
+n=300 seed20260927 remains **219 agree / 81 unsupported / zero disagree**, with
+all sources/verdicts unchanged. Reports:
+`difftest/reports/20260928-005837-{tier0,tier1,tierregressions}-lean/`.
+Final front-end replay: 45 seeds plus nine new programs, **54 agree / zero
+disagree**, AST-idempotent; six old render-only instabilities. Generated Prelude
+and CRubyNames match regeneration; git diff --check passes. All validation
+processes terminated. No proof build, typed ratchet or commit was performed.
+The full conformance goal remains active and incomplete.

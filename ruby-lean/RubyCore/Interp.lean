@@ -437,6 +437,7 @@ def stepFn (m : Machine) : StepResult :=
   | .eval e => evalExpr m e
   | .value v => applyKont m v
   | .jump j => unwind m j
+  | .send recv site name args blk kw => invokeQueued m recv site name args blk kw
 
 inductive RunResult where
   | value (v : Value) (m : Machine)

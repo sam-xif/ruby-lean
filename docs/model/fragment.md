@@ -21,6 +21,7 @@ regenerated. Paths are relative to `ruby-lean/`.
 | `RubyCore/Prelude.lean` | **generated** by `scripts/gen_prelude.rb` from `prelude/prelude.rb`: the desugared prelude as export JSON, decoded by the ordinary `Decode.program` |
 | `RubyCore/PreludeBoot.lean` | the two-phase boot: run the prelude from H₀ (`preludeMode`), then the program under test on the resulting heap (`Machine.initOn`) |
 | `RubyCore/Interp.lean` | `stepFn` (one transition; helpers deliberately non-mutual) + `run fuel` (`outOfFuel` ≠ `stuck` from day one) |
+| `RubyCore/Interp/Enumerator.lean` | Native Enumerator/Generator/Yielder descriptors, internal dispatch and suspended external execution (L280) |
 | `RubyCore/Obs.lean` | observation = (stdout, result inspect, exception (class, msg)) |
 | `RubyCore/Types/` | what is left of the type vocabulary the SUT still needs: `Ty.lean` (the type language), `Fragment.lean` (`--fragment`: is a program in the Sorbet fragment, with a reason per exclusion), `SigRead.lean` (`--sigs`: the signatures a program declares — stage 1 of the ratchet's pipeline), plus `Core.lean`/`Decls.lean`, the declaration table the surviving proofs are stated over. The checker built on top of these (`infer`/`inferOpen`/the certificate language) was removed — see [Metatheory](metatheory.md). |
 | `Main.lean` | the SUT executable: RubyCore-JSON on stdin → Observation-JSON on stdout; **exit 3 = Unsupported** (reason on stderr), exit 1 = model bug |
@@ -42,6 +43,21 @@ rounding with digit precision, and component representation overrides still
 gate. L276/L277 also added missing-method/conversion protocols and effectful
 final/frozen-error representation; the old global-repr discussion below is
 historical, not the current boundary.
+
+L280 also adds native Kernel#itself and checks unmodeled native super dispatch.
+L280 adds internal/external Enumerators (`enum_for`/`to_enum`, next/peek and
+their values variants, feed, rewind, size), native Generator/Yielder, Kernel#loop,
+and Chain's block form. Blockless Integer#times, Array each/each_index/map and
+Hash each/each_pair/each_key/each_value now return Enumerators. Native Array/Hash
+cursors observe live mutations; Hash insertion locks survive external suspension
+and an abandoned rewind. String#scan yields incrementally and retains match-frame
+behavior. Namespace constant inventories prevent new core classes from turning
+unmodeled nested constants into false NameErrors/negative reflection answers.
+Remaining explicit gates include reentrant resumes, custom method-name/size
+conversion, copy hooks/singleton classes, Chain's blockless wrapping and rewind,
+remaining blockless prelude methods, scan receiver mutation and public Fiber APIs.
+This is an executable-model extension; proof repair remains deferred for the
+active conformance task.
 
 Tier-0 baseline: **940/1304 bootstraptest agree, 0 disagree.**
 

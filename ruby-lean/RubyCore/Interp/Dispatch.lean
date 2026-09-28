@@ -1,4 +1,4 @@
-import RubyCore.Interp.Support
+import RubyCore.Interp.Enumerator
 
 /-!
 Method lookup and entry: the ancestor walk, entering a user method or a
@@ -356,6 +356,31 @@ def missNoMethod (m : Machine) (recv : Value) (implicit : SendSite) (mname : Str
 def iterStep (m : Machine) (cl : Closure) (brk : FrameId) (rest : List (List Value))
     (kind : IterKind) (acc : List Value) (retVal : Value) : StepResult :=
   match kind with
+  | .scan o revision subject pattern options index last binary =>
+    if (m.heap.get o).revision != revision then
+      .unsupported "String#scan receiver mutation during a suspended block" else
+    match (if index > subject.length then Builtins.Found.miss else
+        Builtins.runSearch pattern options subject index) with
+    | .gate reason => .unsupported reason
+    | .miss => .next (withCtl (Builtins.setMatchGlobals m last) (.value retVal))
+    | .hit a b caps names =>
+      let (md, m) := Builtins.allocMData m subject caps names binary
+      let m := Builtins.setMatchGlobals m (some md)
+      let spans := if caps.size <= 1 then caps.toList.take 1 else caps.toList.drop 1
+      let (parts, m) := spans.foldl (fun (acc, m) span => match span with
+        | none => (acc ++ [Value.nil], m)
+        | some (x, y) => let (v, m) := Builtins.allocStrEnc m (Builtins.charSlice subject x y) binary
+                        (acc ++ [v], m)) ([], m)
+      let (item, m) := if caps.size <= 1 then (parts.headD .nil, m)
+        else Builtins.allocArr m parts.toArray
+      let kind := IterKind.scan o revision subject pattern options (if a == b then b + 1 else b) (some md) binary
+      callClosure { m with kont := .iterK cl brk [] kind [] retVal item :: m.kont } cl [item] (some brk)
+  | .times limit index =>
+    if index < limit then
+      let v := Value.int index
+      let m := { m with kont := .iterK cl brk [] (.times limit (index + 1)) [] retVal v :: m.kont }
+      callClosure m cl [v] (some brk)
+    else .next (withCtl m (.value retVal))
   | .arrayEach o index =>
     -- Array#each rereads both length and element after every yield (L273).
     -- Snapshotting skipped appends and yielded removed/replaced elements.
@@ -379,11 +404,32 @@ def iterStep (m : Machine) (cl : Closure) (brk : FrameId) (rest : List (List Val
         let (a, m) := Builtins.allocArr m acc.toArray
         .next (withCtl m (.value a))
     | _ => .unsupported "Array#map receiver lost its Array payload"
+  | .arrayIndex o index =>
+    match (m.heap.get o).payload with
+    | .arr xs =>
+      if index < xs.size then
+        let v := Value.int index
+        callClosure { m with kont := .iterK cl brk [] (.arrayIndex o (index + 1)) [] retVal v :: m.kont } cl [v] (some brk)
+      else .next (withCtl m (.value retVal))
+    | _ => .unsupported "Array#each_index receiver lost its Array payload"
+  | .hashEach o keys index mode =>
+    match (m.heap.get o).payload with
+    | .hsh xs =>
+      -- Deleted keys disappear; replacements of an existing value are visible.
+      -- Hash#[]= forbids insertion while this continuation is live/suspended.
+      match (keys.drop index).zipIdx.find? (fun (key, _) => xs.any (fun (k, _) => k.identEq key)) with
+      | none => .next (withCtl m (.value retVal))
+      | some (key, offset) =>
+        let value := ((xs.find? (fun (k, _) => k.identEq key)).map Prod.snd).getD .nil
+        let (v, m) := if mode == 1 then (key, m) else if mode == 2 then (value, m)
+          else Builtins.allocArr m #[key, value]
+        callClosure { m with kont := .iterK cl brk [] (.hashEach o keys (index + offset + 1) mode) [] retVal v :: m.kont } cl [v] (some brk)
+    | _ => .unsupported "Hash iterator receiver lost its Hash payload"
   | _ =>
   match rest with
   | [] =>
     let (finalV, m) := match kind with
-      | .ignore | .arrayEach .. | .arrayMap .. => (retVal, m)
+      | .ignore | .arrayEach .. | .arrayMap .. | .arrayIndex .. | .hashEach .. | .times .. | .scan .. => (retVal, m)
       | .fold => (acc.headD .nil, m)
       -- max_by/min_by: `acc` is `[bestElem, bestKey]` (or `[]` if the receiver was
       -- empty, in which case both return `nil`); the result is the winning element.
@@ -416,7 +462,7 @@ def startIter (m : Machine) (recv : Value) (mname : String) (cl : Closure)
   -- activation inherits the caller's cref, so this is also the more faithful frame.
   let frame : Frame :=
     { self := recv, defmod := classOf m.heap recv, kind := .method, meth := mname,
-      cref := m.currentFrame.cref }
+      cref := m.currentFrame.cref, matchXparent := mname == "scan" }
   let fid := m.frames.size
   let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
   let m := { m with kont := .frameK fid :: m.kont }
@@ -439,7 +485,8 @@ def callArrayMapBuiltin (m : Machine) (recv : Value) (mname : String)
       match (m.heap.get o).payload, (m.heap.get bo).payload with
       | .arr _, .proc cl => startIter m recv mname cl [] (.arrayMap o 0) [] .nil
       | _, _ => .unsupported "Array#map builtin without Array/Proc payloads"
-    | _, _ => .unsupported "Enumerator: Array#map without a block"
+    | _, none => enumMake m recv mname [] .receiverLength
+    | _, _ => .unsupported "Array#map invalid block"
 
 /-- If `(recv, mname)` is a native block-iterator invoked *with* a block, run it
     (returns `some`); otherwise `none` (fall through to the normal miss path — a
@@ -462,8 +509,7 @@ def tryIterator (m : Machine) (recv : Value) (mname : String) (args : List Value
             let ei := xs.toList.zipIdx.map (fun (e, i) => [e, Value.int (Int.ofNat i)])
             some (startIter m recv mname cl ei .ignore [] recv)
           | "each_index" =>
-            let idxs := (List.range xs.size).map (fun i => [Value.int (Int.ofNat i)])
-            some (startIter m recv mname cl idxs .ignore [] recv)
+            some (startIter m recv mname cl [] (.arrayIndex o 0) [] recv)
           | "inject" | "reduce" =>
             -- block form only; `inject(:sym)` has no block ⇒ not reached here.
             match args with
@@ -479,18 +525,9 @@ def tryIterator (m : Machine) (recv : Value) (mname : String) (args : List Value
           | _ => none
         | .hsh pairs =>
           match mname with
-          | "each" | "each_pair" =>
-            -- Hash#each yields one `[k, v]` array per entry (block `|k,v|`
-            -- auto-splats it; `|pair|` gets the whole array).
-            let (elemArgs, m) := pairs.toList.foldl (fun (acc, m) (kv : Value × Value) =>
-              let (pa, m) := Builtins.allocArr m #[kv.1, kv.2]; (acc ++ [[pa]], m)) ([], m)
-            some (startIter m recv mname cl elemArgs .ignore [] recv)
-          | "each_key" =>
-            -- yields the key alone per entry; returns the hash.
-            some (startIter m recv mname cl (pairs.toList.map (fun kv => [kv.1])) .ignore [] recv)
-          | "each_value" =>
-            -- yields the value alone per entry; returns the hash.
-            some (startIter m recv mname cl (pairs.toList.map (fun kv => [kv.2])) .ignore [] recv)
+          | "each" | "each_pair" | "each_key" | "each_value" =>
+            let mode := if mname == "each_key" then 1 else if mname == "each_value" then 2 else 0
+            some (startIter m recv mname cl [] (.hashEach o (pairs.toList.map Prod.fst) 0 mode) [] recv)
           | "max_by" | "min_by" =>
             -- yields each `[k, v]` pair; returns the pair with the extreme block
             -- value (e.g. `h.max_by { |_, v| v }.first`).
@@ -503,12 +540,50 @@ def tryIterator (m : Machine) (recv : Value) (mname : String) (args : List Value
       | .int n =>
         match mname with
         | "times" =>
-          some (startIter m recv mname cl
-            ((List.range n.toNat).map (fun i => [Value.int (Int.ofNat i)])) .ignore [] recv)
+          some (startIter m recv mname cl [] (.times n.toNat 0) [] recv)
         | _ => none
       | _ => none
     | _ => none
   | _ => none
+
+def nativeIteratorBid (bid : String) : Bool :=
+  ["String#scan", "Integer#times", "Array#each", "Array#each_index", "Hash#each", "Hash#each_pair",
+    "Hash#each_key", "Hash#each_value"].contains bid
+
+def callNativeIterator (m : Machine) (bid : String) (recv : Value) (args : List Value)
+    (blk : Option Value) (kw : List (Value × Value)) : StepResult :=
+  let n := args.length + if kw.isEmpty then 0 else 1
+  if bid == "String#scan" then
+    if n != 1 then enumArity m n "1" else
+    match recv, blk with
+    | .ref o, some (.ref p) =>
+      match (m.heap.get o).payload, (m.heap.get p).payload with
+      | .str subject, .proc cl =>
+        if Builtins.unrepresentableByteStr m.heap recv then
+          .unsupported "String#scan on a high-byte binary String" else
+        let pattern := args.headD .nil
+        let re := Builtins.regexpParts? m.heap pattern <|>
+          ((Builtins.strPayload? m.heap pattern).map fun s => (Builtins.escapeSource s, 0))
+        match re with
+        | none => .unsupported "String#scan pattern conversion"
+        | some (source, flags) => startIter m recv "scan" cl []
+            (.scan o (m.heap.get o).revision subject source flags 0 none (m.heap.get o).binary) [] recv
+      | _, _ => .unsupported "String#scan payload"
+    | _, _ => match Builtins.run bid recv args m with
+      | .ok v m => .next (withCtl m (.value v))
+      | .err k msg m => .next (raiseErr m k msg)
+      | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
+      | .frozen v m => raiseFrozen m v
+      | .unsupported r => .unsupported r
+  else
+  if n != 0 then enumArity m n "0" else
+  let name := (bid.splitOn "#").getLast!
+  if blk.isNone then
+    let size := match recv with
+      | .int n => EnumSize.fixed (.int (max n 0))
+      | _ => .receiverLength
+    enumMake m recv name [] size
+  else (tryIterator m recv name [] blk).getD (.unsupported "native iterator payload")
 
 /-- Standard library modules a core class includes in real CRuby but which the
     L0 heap does not put in its ancestor chain yet (no MRO/mixins). Used to gate

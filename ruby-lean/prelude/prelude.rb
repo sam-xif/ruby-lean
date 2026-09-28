@@ -13,8 +13,8 @@
 # 2. **Declare, never guess.** A form this code cannot model faithfully calls
 #    `__unsupported__("reason")`, the builtin that returns the engine's
 #    Unsupported gate — the RubyCore-level equivalent of `.unsupported` in Lean.
-#    Blockless Enumerable calls (which CRuby answers with an `Enumerator`) are the
-#    standard case.
+#    Blockless methods not yet connected to the native Enumerator descriptor
+#    remain explicit gates.
 # 3. **Repr-sensitive methods** (`to_s`, `inspect`, `==`, `eql?`, `message`,
 #    `to_str`) require dispatch at their consumers. Purity is per-class (L103),
 #    impure builtin receivers dispatch prelude twins (L116), and frozen errors
@@ -39,6 +39,18 @@ end
 # ─── Kernel/Object ──────────────────────────────────────────────────────────
 
 class Object
+  def loop
+    return __enum_for(:loop, :infinite) unless block_given?
+    begin
+      while true
+        yield
+      end
+    rescue StopIteration => e
+      e.result
+    end
+  end
+  private :loop
+
   # Object#=== first tests identity in the native primitive (rb_equal, L272).
   # Only unequal identities dispatch ==, whose result is converted to a Boolean.
   def __case_equal(other)
@@ -739,6 +751,57 @@ class Numeric
   # CRuby mixes Comparable into Numeric, not into Integer/Float — which is also
   # where it lands in `Integer.ancestors` [V].
   include Comparable
+end
+
+# Enumerator's suspension machinery is native; these collection methods use
+# ordinary Ruby dispatch.
+class Enumerator
+  include Enumerable
+end
+
+class Enumerator::Generator
+  include Enumerable
+end
+
+class Enumerator
+  class Chain < Enumerator
+    undef_method :next, :next_values, :peek, :peek_values, :feed
+
+    def initialize(*enums)
+      __chain_init(enums)
+    end
+
+    def each(*args)
+      return __unsupported__("Enumerator::Chain blockless each wrapping") unless block_given?
+      __chain_enums.each do |e|
+        e.each(*args) { |*values| yield(*values) }
+      end
+      self
+    end
+
+    def size
+      total = 0
+      __chain_enums.each do |e|
+        return nil unless e.respond_to?(:size)
+        n = e.size
+        return nil if n.nil?
+        return n if n.is_a?(Float) && n.infinite?
+        return nil unless n.is_a?(Integer)
+        total += n
+      end
+      total
+    end
+
+    def inspect
+      return "#<#{self.class}: uninitialized>" unless __chain_enums(:initialized?)
+      "#<#{self.class}: #{__chain_enums.inspect}>"
+    end
+
+    def rewind
+      __chain_enums
+      __unsupported__("Enumerator::Chain rewind requires visited-iterator state")
+    end
+  end
 end
 
 # Native frozen fractions have no public allocator. The tombstones also apply

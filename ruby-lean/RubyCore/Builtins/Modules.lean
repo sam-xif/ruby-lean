@@ -111,7 +111,7 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
           | .error e => .unsupported e
         | _ => .unsupported "Exception#initialize arity"
     | _ => .unsupported "initialize on a non-object"
-  | "Class#new" => newImpl m recv args
+  | "Class#new" | "Module#new" => newImpl m recv args
   | "Class#__range_new_unchecked" =>
     -- Allocate a `Range` with **no endpoint check** — the primitive the prelude's
     -- `Range.new` builds on, because the check has to dispatch `<=>` (L122).

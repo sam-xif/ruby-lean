@@ -72,6 +72,9 @@ structure Frame where
       `Regexp.last_match`); set by the `__match_to_caller` primitive as the first
       statement of such a body (L121). -/
   matchXparent : Bool := false
+  /-- A native Enumerator fiber started at top level shares that environment's
+      match slot. This does not capture its locals or its control stack. -/
+  matchAlias : Option FrameId := none
 deriving Inhabited
 
 /-- In-flight non-local transfer (artifact 04 §3's `C^ctl` variants).
@@ -161,6 +164,7 @@ inductive ConversionCall where
   | splat (call : SplatCall)
   | closureArgs (cl : Closure) (brk : Option FrameId)
       (selfOv : Option Value) (defmodOv : Option ObjId)
+  | enumRewind (object : ObjId)
 deriving Inhabited
 
 /-- What an `ensure` resumes when it finishes normally. -/
@@ -173,6 +177,9 @@ inductive Ctl where
   | eval (e : Expr)
   | value (v : Value)
   | jump (j : Jump)
+  /-- A native operation queues ordinary dispatch for the next transition. -/
+  | send (recv : Value) (site : SendSite) (name : String) (args : List Value)
+      (blk : Option Value) (kw : List (Value × Value))
 deriving Inhabited
 
 /-- Which jump a `return`/`break`/`next` value expression feeds. -/
@@ -191,7 +198,12 @@ deriving Inhabited
 /-- How a native block-iterator (`each`/`map`/`inject`/…) treats each block
     result and computes its final value. -/
 inductive IterKind where
+  | times (limit index : Nat)
+  | scan (object : ObjId) (revision : Nat) (subject pattern : String) (options index : Nat)
+      (last : Option Value) (binary : Bool)
   | arrayEach (array : ObjId) (index : Nat) -- read the live payload after each yield
+  | arrayIndex (array : ObjId) (index : Nat)
+  | hashEach (hash : ObjId) (keys : List Value) (index mode : Nat)
   | arrayMap (array : ObjId) (index : Nat) -- live cursor, collect block results
   | ignore    -- each / times / each_with_index: discard result, return `retVal`
   | fold      -- inject / reduce: thread the accumulator (block gets `acc :: args`)
@@ -200,6 +212,7 @@ inductive IterKind where
 deriving Repr, Inhabited
 
 inductive Kont where
+  | enumFinishK (id : ObjId)
   /-- Remaining statements of a `seq`; the in-flight value is discarded. -/
   | seqK (rest : List Expr)
   | asgnK (k : VarKind) (name : String)
@@ -359,12 +372,38 @@ inductive MissingReason where
   | ordinary | vcall | privateCall | protectedCall | superCall
 deriving Repr, DecidableEq, Inhabited
 
+/-- A fiber owns control and dynamic context; heap, frame store, globals and
+    output remain shared. Captured locals therefore survive suspension. -/
+structure Execution where
+  ctl : Ctl
+  kont : List Kont
+  stack : List FrameId
+  currentExc : Option Value
+  missingReason : MissingReason
+  activeEnumerator : Option ObjId
+deriving Inhabited
+
+structure EnumState where
+  suspended : Option Execution := none
+  caller : Option Execution := none
+  lookahead : Option (List Value) := none
+  feed : Option Value := none
+  finished : Option Value := none
+  peek : Bool := false
+  values : Bool := false
+deriving Inhabited
+
 structure Machine where
   ctl : Ctl
   kont : List Kont := []
   stack : List FrameId
   frames : Array Frame
   heap : Heap
+  enumerators : List (ObjId × EnumState) := []
+  /-- Rewind abandons a fiber without running native Hash iteration cleanup.
+      CRuby retains these insertion restrictions even after explicit GC. -/
+  abandonedHashIterations : List ObjId := []
+  activeEnumerator : Option ObjId := none
   /-- Frozen numeric literals are shared on repeated execution of one syntax
       site. Constructor calls allocate independently. Keys include the unit. -/
   numericLiterals : List (String × Value) := []
@@ -381,6 +420,15 @@ structure Machine where
 deriving Inhabited
 
 namespace Machine
+
+/-- Hash's insertion restriction survives external suspension. Normal unwind
+    releases a live lock; abandoning the fiber retains it separately. -/
+def hashIterationActive (m : Machine) (o : ObjId) : Bool :=
+  let holds := fun (kont : List Kont) => kont.any fun k => match k with
+    | .iterK _ _ _ (.hashEach h ..) _ _ _ => h == o
+    | _ => false
+  m.abandonedHashIterations.contains o || holds m.kont || m.enumerators.any fun (_, s) =>
+    s.suspended.any (fun e => holds e.kont) || s.caller.any (fun e => holds e.kont)
 
 def currentFrame (m : Machine) : Frame :=
   match m.stack with
@@ -445,7 +493,7 @@ def hasLocal (m : Machine) (x : String) : Bool :=
 def matchFrameOwner (m : Machine) : FrameId → Nat → FrameId
   | fid, 0 => fid
   | fid, fuel + 1 =>
-    match (m.frames.getD fid default).captured with
+    match (m.frames.getD fid default).matchAlias <|> (m.frames.getD fid default).captured with
     | some p => matchFrameOwner m p fuel
     | none => fid
 
@@ -469,7 +517,7 @@ def matchFrameId (m : Machine) : FrameId :=
         match rest with
         | [] => fid          -- nothing below: keep the slot rather than lose the write
         | _ => go rest fuel
-      else match f.captured with
+      else match f.matchAlias <|> f.captured with
         | some p =>
           match rest.dropWhile (· != p) with
           | [] => matchFrameOwner m p fuel

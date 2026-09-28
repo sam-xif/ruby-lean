@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L280 (2026-09-28)",
+  "note": "Incremental scan captures/match environments, zero-width matches and break; Chain block iteration and Module.new suspension."
+}

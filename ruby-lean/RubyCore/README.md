@@ -57,6 +57,13 @@ In Lean this is `Machine` (`Machine.lean`): `ctl`, `kont`, an activation stack o
 the observation needs (stdout, `$!`). See §*Mechanization* below for why the
 frames live in a store rather than on the stack.
 
+External Enumerators (L280) add a store indexed by object id. Each running or
+suspended producer holds an `Execution`: control, continuation and activation
+stacks, `$!`, missing-call reason and active Enumerator. Switching execution
+preserves the shared heap, frame store, globals, output and literal cache. A
+native yield callback suspends at the actual yield; resumption never replays
+effects. `Ctl.send` queues an ordinary method dispatch from a native operation.
+
 **Observation.** Differential testing compares `obs(C)`, never raw configs:
 
 ```
@@ -661,9 +668,38 @@ All of §3–§5 share one mechanism, stated as the metatheorem worth proving:
 This is what makes the control semantics *explainable*: every observed ordering
 has a derivation that runs the ensures in a provably correct sequence.
 
-### 04 §7 — Open
+### 04 §7 — External iteration and remaining boundaries
 
-**[?]** `Fiber`/`Enumerator` need a first-class captured continuation; deferred.
+**[V]** An Enumerator stores its receiver, method, positional/keyword arguments
+and size policy separately from its external cursor. `each` starts a fresh
+ordinary dispatch, independent of `next`. The first external resume dispatches
+the Enumerator's own `each`, honoring overrides, with a native yield callback.
+`next`/`peek` pack zero, one and multiple yielded arguments; their `_values`
+variants always return an Array. Peek caches yielded arguments, while feed is
+consumed only when execution resumes past that yield. Completion caches the
+method result and raises a fresh StopIteration carrying it on every subsequent
+resume. Errors reset the producer; nested Enumerators retain separate dynamic
+exception/control contexts. **[V]**
+
+`rewind` checks the receiver's rewind protocol, including response/missing
+hooks, before discarding suspension. It does not execute abandoned `ensure`
+bodies. Native Hash iteration cleanup is abandoned too: its insertion lock
+remains, even after CRuby's explicit GC. Live/suspended continuations hold normal
+Hash locks; abandoned locks are retained separately. Existing Hash values and
+deletions remain visible during iteration, and Array cursors reread their
+receiver after every yield. **[V]**
+
+Incremental String#scan writes its native caller's match slot. A native external
+fiber first resumed from top level shares that lexical match environment;
+first resumption from an ordinary method gets a separate slot. A dedicated
+`Frame.matchAlias` expresses this without capturing caller locals. Proc bodies
+continue to use their own captured lexical match environments. **[V]**
+
+Reentrant resumes, custom method-name/size conversions, copy initialization
+hooks/singleton classes, Chain's blockless wrapping/rewind, remaining blockless
+prelude iterators and public Fiber APIs are explicit gates. String#scan gates
+receiver mutation during a block and high-byte binary receivers. General
+Fiber/Thread scheduling remains open.
 **[?]** An `ensure` that raises while an exception is already in flight — whose
 backtrace wins, and `Exception#cause` chaining.
 

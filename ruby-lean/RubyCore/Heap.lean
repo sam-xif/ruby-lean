@@ -149,10 +149,32 @@ structure Closure where
   captured : Option Nat
   home : Nat
   lam : Bool := false
+  /-- Native external-iteration callback; it suspends instead of entering Ruby. -/
+  enumYield : Option ObjId := none
+deriving Inhabited
+
+inductive EnumSize where
+  | unknown
+  | fixed (v : Value)
+  | callback (proc : Value)
+  | receiverLength
+  | receiverMethod
+deriving Inhabited
+
+structure EnumData where
+  recv : Value
+  method : String := "each"
+  args : List Value := []
+  kw : List (Value × Value) := []
+  size : EnumSize := .unknown
 deriving Inhabited
 
 inductive Payload where
   | none
+  | enumerator (data : Option EnumData)
+  | chain (enums : List Value)
+  | generator (proc : Option Value)
+  | yielder (proc : Option Value) (brk : Option Nat)
   /-- Reduced exact fraction; denominator is positive, instances are frozen. -/
   | rational (num : Int) (den : Nat)
   | complex (real imag : Value)
@@ -193,6 +215,10 @@ structure Object where
   klass : ObjId
   ivars : List (String × Value) := []
   frozen : Bool := false
+  /-- StopIteration's native result is not a Ruby instance variable. -/
+  iterationResult : Value := .nil
+  /-- Internal write generation, used by suspended native iterators. -/
+  revision : Nat := 0
   eigen : Option ObjId := none
   payload : Payload := .none
   /-- Present only on Hash objects created with a default (value or proc). -/
@@ -219,7 +245,7 @@ def get? (h : Heap) (o : ObjId) : Option Object := h.objs[o]?
 def get (h : Heap) (o : ObjId) : Object := h.objs.getD o default
 
 def set (h : Heap) (o : ObjId) (obj : Object) : Heap :=
-  ⟨h.objs.set! o obj⟩
+  ⟨h.objs.set! o { obj with revision := (h.get o).revision + 1 }⟩
 
 def alloc (h : Heap) (obj : Object) : ObjId × Heap :=
   (h.objs.size, ⟨h.objs.push obj⟩)
@@ -295,10 +321,13 @@ def matchDataId : ObjId := 37
 def regexpErrorId : ObjId := 38
 def rationalId : ObjId := 39
 def complexId : ObjId := 40
+def enumeratorId : ObjId := 41
+def generatorId : ObjId := 42
+def yielderId : ObjId := 43
 /-- Toplevel self (`main`), an ordinary Object instance. **Must stay last**:
     `initHeap` allocates every `classTable` entry densely and then `main`, so
     `mainId = classTable.length`. Adding a bootstrap class means bumping this. -/
-def mainId : ObjId := 41
+def mainId : ObjId := 44
 
 /-- (id, name, superclass) for every bootstrap class, in id order. -/
 def classTable : List (ObjId × String × Option ObjId) := [
@@ -342,23 +371,32 @@ def classTable : List (ObjId × String × Option ObjId) := [
   (matchDataId, "MatchData", some objectId),
   (regexpErrorId, "RegexpError", some standardErrorId),
   (rationalId, "Rational", some numericId),
-  (complexId, "Complex", some numericId)
+  (complexId, "Complex", some numericId),
+  (enumeratorId, "Enumerator", some objectId),
+  (generatorId, "Enumerator::Generator", some objectId),
+  (yielderId, "Enumerator::Yielder", some objectId)
 ]
 
 /-- Builtin method table: class id → method names given by primitive rules.
     Builtin bid = "ClassName#name". Registered into each class's `methods`
     so lookup (incl. inheritance) is uniform. -/
 def builtinMethods : List (ObjId × List String) := [
+  (enumeratorId, ["each", "next", "next_values", "peek", "peek_values", "feed", "rewind",
+                  "size", "inspect", "dup", "clone", "initialize"]),
+  (generatorId, ["each", "initialize"]),
+  (yielderId, ["yield", "<<", "initialize"]),
+  (stopIterationId, ["result"]),
   (basicObjectId, ["==", "!", "equal?", "method_missing"]),
   -- Kernel/Object layer (Kernel folded into Object at L0)
-  (objectId, ["==", "===", "!", "equal?", "eql?", "class", "nil?", "inspect",
+  (objectId, ["==", "===", "!", "equal?", "eql?", "class", "nil?", "itself", "inspect",
               "to_s", "freeze", "frozen?", "is_a?", "kind_of?", "instance_of?",
               "puts", "print", "p", "raise", "String", "block_given?", "rand",
               "require", "require_relative", "__unsupported__", "dup", "clone",
               "__user_defines?", "__default_inspect?", "__write", "__addr_str",
               "__any_to_s", "__match_to_caller", "respond_to_missing?",
               "__coerce_failed", "__cmp_failed", "__coerce_defined?", "Rational", "Complex", "__complex_rect",
-              "initialize"]),
+              "initialize", "enum_for", "to_enum", "__enum_for", "__chain_init", "__chain_enums",
+              "binding", "local_variables"]),
   (nilClassId, ["===", "to_s", "inspect", "nil?", "to_a", "&", "|", "dup", "clone"]),
   (trueClassId, ["===", "to_s", "inspect", "&", "|", "dup", "clone"]),
   (falseClassId, ["===", "to_s", "inspect", "&", "|", "dup", "clone"]),
@@ -366,7 +404,7 @@ def builtinMethods : List (ObjId × List String) := [
                "<=", ">=", "<=>", "to_s", "inspect", "to_i", "to_f", "abs", "succ",
                "pred", "zero?", "positive?", "negative?", "even?", "odd?", "chr",
                "round", "ceil", "floor", "truncate", "divmod", "nonzero?",
-               "eql?", "hash", "dup", "clone", "to_r", "to_c", "i"]),
+               "eql?", "hash", "dup", "clone", "to_r", "to_c", "i", "times"]),
   (floatId, ["round", "ceil", "floor", "truncate", "divmod", "nonzero?",
              "+", "-", "*", "/", "%", "**", "-@", "==", "===", "<", ">", "<=", ">=", "<=>",
              "to_s", "inspect", "to_i", "to_f", "abs", "zero?", "nan?", "eql?",
@@ -389,10 +427,10 @@ def builtinMethods : List (ObjId × List String) := [
              "length", "size", "first", "last", "empty?", "include?", "+",
              "-", "*", "&", "|", "inspect", "to_s", "to_a", "reverse", "join", "flatten",
              "compact", "uniq", "concat", "index", "eql?", "dup", "clone", "freeze",
-             "initialize",
+             "initialize", "each", "each_index",
              "frozen?", "sort", "min", "max", "sum", "map", "collect"]),
   (hashId, ["==", "[]", "[]=", "length", "size", "empty?", "key?", "has_key?",
-            "freeze", "frozen?",
+            "freeze", "frozen?", "each", "each_pair", "each_key", "each_value",
             "include?", "member?", "keys", "values", "delete", "fetch",
             "inspect", "to_s", "to_a", "dup", "clone", "merge", "initialize"]),
   -- `message` is deliberately absent: it is `to_s` in CRuby, so it must dispatch,
@@ -431,7 +469,8 @@ def install (h : Heap) (cls : ObjId) (names : List String) : Heap :=
     let cname := c.name
     let methods := names.foldl (init := c.methods) fun ms n =>
       (n, { params := [], body := .nil, owner := cls,
-            visibility := if n == "method_missing" || n == "Rational" || n == "Complex" then .priv else .pub,
+            visibility := if n == "method_missing" || n == "Rational" || n == "Complex" ||
+                (n == "initialize" && [enumeratorId, generatorId, yielderId].contains cls) then .priv else .pub,
             builtin := some (if n == "===" then
               match cname with
               | "Proc" => "Proc#call"
@@ -485,11 +524,16 @@ def initHeap : Heap :=
         { c with consts := c.consts ++
             [("NAN", Value.flt (0.0 / 0.0)), ("INFINITY", Value.flt (1.0 / 0.0))] }
     | Option.none => hBuiltins
-  -- register every class name as a constant on Object
+  let hBuiltins := match hBuiltins.classPayload? enumeratorId with
+    | some c => hBuiltins.setClassPayload enumeratorId
+        { c with consts := [("Generator", .ref generatorId), ("Yielder", .ref yielderId)] }
+    | none => hBuiltins
+  -- Nested classes belong to their enclosing constant table.
   let hConsts : Heap := match hBuiltins.classPayload? objectId with
     | some c =>
       hBuiltins.setClassPayload objectId
-        { c with consts := classTable.map (fun (o, name, _) => (name, Value.ref o)) }
+        { c with consts := classTable.filterMap (fun (o, name, _) =>
+            if name.contains ':' then none else some (name, Value.ref o)) }
     | Option.none => hBuiltins
   -- **J53: the eigenclasses of `BasicObject` and `Object`, realized at boot.**
   -- `enterClassBody` eagerly realizes a fresh class's metaclass chain, and at a
