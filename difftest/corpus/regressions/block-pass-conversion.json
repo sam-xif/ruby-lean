@@ -1,0 +1,4 @@
+{
+  "status": "fixed",
+  "note": "L275: block-pass conversion dispatches to_proc, preserving evaluation order, overrides, result validation and exits."
+}

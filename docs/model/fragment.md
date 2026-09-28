@@ -158,4 +158,3 @@ through both CRuby and the model and reports AGREE / DIFF / GATE.
 Rerun against the pinned oracle when the CRuby version bumps. It folds
 modules the L0 ancestor chain omits (Kernel→Object, Comparable/Numeric→
 numerics/strings, Enumerable→Array/Hash).
-

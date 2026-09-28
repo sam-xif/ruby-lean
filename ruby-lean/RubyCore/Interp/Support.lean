@@ -89,28 +89,7 @@ def nextClause (m : Machine) (node : BeginNode) (exc : Value)
     | e :: es =>
       withKont m (.eval e) (.rescMatchK node exc es ref handler rest)
 
-/-- How a NoMethodError describes its receiver [V]:
-    main / nil / true / false literally; classes as "class C";
-    everything else "an instance of C" — **except** an object that has an
-    eigenclass, which CRuby renders as the object itself, by `rb_any_to_s`:
-    `def o.hi; end; o.zz` says `undefined method 'zz' for #<Foo:0x…>`, not
-    `… for an instance of Foo` (L124). The test is only "does a singleton class
-    exist" — `extend` and a bare `o.singleton_class` trigger it as much as a
-    `def o.x` — and it ignores a user `inspect`/`to_s` and any ivars. A *class*
-    receiver keeps "class C" even with singleton methods of its own [V]. -/
-def receiverDesc (h : Heap) (v : Value) : String :=
-  match v with
-  | .nil => "nil"
-  | .bool b => toString b
-  | .ref o =>
-    if o == Boot.mainId then "main"
-    else match (h.get o).payload with
-      | .cls c => (if c.isModule then "module " else "class ") ++ className h o
-      | _ =>
-        match (h.get o).eigen with
-        | some _ => anyToS h o
-        | Option.none => s!"an instance of {className h (h.get o).klass}"
-  | _ => s!"an instance of {className h (classOf h v)}"
+abbrev receiverDesc := RubyCore.receiverDesc
 
 /-- Would CRuby find `mname` on some class of `chain` (per the generated
     name tables) even though our model doesn't define it there? -/
@@ -520,6 +499,24 @@ def callClosure (m : Machine) (cl : Closure) (args : List Value)
 
 def procCallBid (bid : String) : Bool :=
   bid == "Proc#call" || bid == "Proc#[]" || bid == "Proc#yield"
+
+/-- String#+ keeps native payload concatenation for two Strings; other operands
+    suspend the resolved operation while checked to_str conversion runs. -/
+def callStringPlusBuiltin (m : Machine) (recv : Value) (args : List Value)
+    (kw : List (Value × Value)) : StepResult :=
+  let (args, m) := appendKwHash m args kw
+  match args with
+  | [source] =>
+    if (Builtins.strPayload? m.heap source).isNone then
+      .next (withKont m (.value source) (.blkConvertK (.stringPlus recv) source .start))
+    else
+      match Builtins.run "String#+" recv args m with
+      | .ok v m => .next (withCtl m (.value v))
+      | .err cls msg m => .next (raiseErr m cls msg)
+      | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
+      | .unsupported r => .unsupported r
+  | _ => .next (raiseErr m Boot.argumentErrorId
+      s!"wrong number of arguments (given {args.length}, expected 1)")
 
 /-- Execute a resolved Proc call marker, after normal lookup/visibility checks (L272).
 Aliases retain the marker; singleton overrides and undef never reach this helper. -/

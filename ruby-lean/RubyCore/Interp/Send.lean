@@ -155,12 +155,16 @@ where
     -- a NoMethodError about *our* resolution (test_yjit_120 — a toplevel
     -- `def getbyte`, now private, shadowed by the real `String#getbyte`).
     match visError? m recv implicit md mname with
-    | some sr => sr
+    | some _ =>
+      let (args, m) := appendKwHash m args kw
+      invokeMethodMissing m recv implicit mname args blk
+        (if md.visibility == .priv then .privateCall else .protectedCall)
     | none =>
       match md.builtin with
       | some bid =>
         if procCallBid bid then callProcBuiltin m recv args kw else
         if arrayMapBid bid then callArrayMapBuiltin m recv mname args blk kw else
+        if bid == "String#+" then callStringPlusBuiltin m recv args kw else
         -- Deferring to a prelude twin: when a builtin's answer would require a
         -- *dispatch* it cannot perform, it hands the call to a prelude method
         -- under a different name, which then recurses through ordinary dispatch.
@@ -260,8 +264,9 @@ def superFound (h : Heap) (k dm : ObjId) (mname : String) : Option (ObjId × Met
 
 /-- Super-dispatch (artifact 02 §2): re-run the current method name starting
     *after* its `defmod` in `self`'s ancestor chain, keeping the same `self` and
-    forwarding/passing `blk`. A miss raises `NoMethodError "super: no superclass
-    method '{m}' for {recv}"` [V]. `super` is evaluated in the enclosing method
+    forwarding/passing `blk`. A miss invokes method_missing with the super-call
+    reason; the native handler raises "super: no superclass method …" [V].
+    `super` is evaluated in the enclosing method
     activation (`methodFrameOf`), so it works from inside a block too. -/
 def doSuper (m : Machine) (args : List Value) (blk : Option Value)
     (kw : List (Value × Value) := []) : StepResult :=
@@ -272,13 +277,14 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
     match superFound m.heap (classOf m.heap self) f.defmod f.meth with
     | some (_, md) =>
       if md.undefined then
-        .next (raiseErr m Boot.noMethodErrorId
-          s!"super: no superclass method '{f.meth}' for {receiverDesc m.heap self}")
+        let (args, m) := appendKwHash m args kw
+        invokeMethodMissing m self .implicit f.meth args blk .superCall
       else
       match md.builtin with
       | some bid =>
         if procCallBid bid then callProcBuiltin m self args kw else
         if arrayMapBid bid then callArrayMapBuiltin m self f.meth args blk kw else
+        if bid == "String#+" then callStringPlusBuiltin m self args kw else
         match Builtins.deferTwin? m.heap bid self args with
         | some slow =>
           match methodOn m.heap (classOf m.heap self) slow with
@@ -294,8 +300,8 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
         | .unsupported r => .unsupported r
       | none => enterUserMethod m self f.meth md args blk kw
     | none =>
-      .next (raiseErr m Boot.noMethodErrorId
-        s!"super: no superclass method '{f.meth}' for {receiverDesc m.heap self}")
+      let (args, m) := appendKwHash m args kw
+      invokeMethodMissing m self .implicit f.meth args blk .superCall
 
 /-- Args that bare `super` forwards: the *current* values of the enclosing
     method's formal parameters — read from the method frame's locals, a splat

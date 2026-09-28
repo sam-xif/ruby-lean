@@ -94,7 +94,8 @@ def visNames (m : Machine) (o target : ObjId) (vis : Visibility) (modFun : Bool)
       match methodOn m.heap target n with
       | some (_, md) =>
         if md.builtin.isSome && !md.fromPrelude &&
-            !(procCallBid (md.builtin.getD "") || arrayMapBid (md.builtin.getD "")) then none
+            !(procCallBid (md.builtin.getD "") || arrayMapBid (md.builtin.getD "") ||
+              md.builtin == some "BasicObject#method_missing") then none
           -- Other native visibility edits remain outside the modeled fragment.
         else
           let m := { m with heap := defineMethod m.heap target n { md with visibility := vis } }
@@ -596,13 +597,20 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
 /-- A known missing method, including an explicit undef tombstone (L272).
 No native fallback may resurrect a method that lookup found to be undefined. -/
 def invokeMethodMissing (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
-    (args : List Value) (blk : Option Value) : StepResult :=
+    (args : List Value) (blk : Option Value)
+    (reason : MissingReason := if implicit == .vcall then .vcall else .ordinary) : StepResult :=
+  let m := { m with missingReason := reason }
+  let fallback := fun (args : List Value) =>
+    match Builtins.run "BasicObject#method_missing" recv args m with
+    | .err cls msg m => .next (raiseErr m cls msg)
+    | _ => .unsupported "invalid native method_missing result"
+  if mname == "method_missing" then fallback args else
   match methodOn m.heap (classOf m.heap recv) "method_missing" with
   | some (_, mm) =>
     if mm.builtin.isNone && !mm.undefined then
       enterUserMethod m recv "method_missing" mm (.sym mname :: args) blk
-    else missNoMethod m recv implicit mname args
-  | none => missNoMethod m recv implicit mname args
+    else fallback (.sym mname :: args)
+  | none => fallback (.sym mname :: args)
 
 /-- A lookup miss with no entry: gate CRuby-shadowed
     names, else route to `method_missing` (user override) or the byte-exact

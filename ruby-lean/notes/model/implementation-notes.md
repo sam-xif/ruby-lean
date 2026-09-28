@@ -13721,3 +13721,59 @@ it did not exist.
 - Full quiet ratchet GREEN (94 fragment, 95 checker reach, 99 rules, 72 worked
   proofs, 254 agree / 0 disagree). Metatheory and standard-axiom audit PASS.
   New framing module: 674ms; no five-minute proofs, new axioms or resource increases.
+
+## L276 — close the three live regression disagreements (2026-09-27)
+
+- Replayed the regression tier before editing: 42 agree, three disagree, three
+  unsupported. The failures were anon-eigen-lazy-name, mix-08969-minimized and
+  super-method-missing. The tier also failed because L275's two passing block-pass
+  guards had no fixed-status sidecars; both now have them.
+- ClassPayload records an optional attached object. Singleton-class display names
+  are computed from that attachment in the current heap, using heap-sized recursion
+  fuel. Constant naming can therefore change an existing singleton class's display.
+  Module#name still reports the separate constant name (nil until assigned), including
+  on boot singleton classes. The guard now covers named singleton classes and nested
+  singleton classes as well as delayed naming of an instance's anonymous class.
+- BasicObject#method_missing is installed as a private native method. Its argument
+  checks and receiver description are shared with the dispatch-miss path. MissingReason
+  lives in Machine, matching CRuby's execution-context state: a user handler's super
+  retains the reason, while nested failed calls overwrite it. Ordinary misses, vcalls,
+  visibility failures and missing-super calls reach the handler. The native method is
+  available through aliases, super, visibility edits and removal/undef.
+- The receiver-description helper moved from Interp.Support to Heap so dispatch
+  and the native method use one rule; the Interp name remains an abbreviation.
+- String#+ now suspends for checked to_str conversion when its argument lacks a
+  String payload. ConversionCall shares L275's response/missing-method continuations
+  with block conversion. String conversion checks respond_to? before resolving to_str;
+  block conversion retains the VM's direct-defined-method shortcut. Private converters,
+  missing-method handlers, response hooks, conversion effects and nonlocal exits run
+  through ordinary dispatch. Strict String conversion distinguishes absent conversion
+  from a converter returning nil. Type checks inspect payloads, not overridable is_a?.
+- The completed String conversion invokes the already resolved native concatenation
+  on the saved receiver and converted argument. It rereads the receiver payload after
+  conversion effects and does not redispatch an operator that the converter redefined.
+  Normal sends, builtin aliases and super use the same entry helper. Existing Strings
+  bypass the conversion protocol; keyword hashes and arity follow ordinary builtin entry.
+- New guards: method-missing-dispatch.rb and string-plus-conversion.rb. All three
+  original defect sidecars are fixed only after replaying them successfully. The three
+  gated cases remain open: impure-repr-gates (effectful final/error rendering),
+  to-ary-gates (effectful splat/block binding), and sorbet-hash-gate (process-specific
+  default object hash in a gem message). Gates are not counted as fixes.
+- Primary source references: Ruby vm_eval.c (rb_method_missing, method_missing,
+  rb_check_funcall and check_funcall_missing), object.c (rb_convert_type_with_id),
+  at https://github.com/ruby/ruby/blob/master/vm_eval.c and
+  https://github.com/ruby/ruby/blob/master/object.c. Observable regression cases
+  were compared with installed CRuby 4.0.5; master is explanatory, not the oracle.
+- Validation so far: lake build rubycore PASS; full regression tier PASS, 47 agree /
+  0 disagree / 3 unsupported (50 total); tier-1 seed 20260927, n=300: 219 agree /
+  0 disagree / 81 unsupported. Reports: difftest/reports/20260927-233122-{tier1,
+  tierregressions}-lean. The final full bootstrap result is recorded below.
+- Proof repair and the typed proof gate are deferred at the user's explicit request.
+  No proof files, checker rules or ratchet floors were changed, and no commit was made.
+- Final full bootstrap replay: 1,000 agree / 0 disagree / 303 unsupported,
+  five invalid controls and the existing test_syntax_115 harness error (1,309
+  total). Report: difftest/reports/20260927-233122-tier0-lean/. Against the
+  999-agreement pre-batch baseline, the only verdict change is test_method_211
+  (removing BasicObject#method_missing), unsupported → agree. No prior agreement
+  was lost. All checks have terminated; git diff --check passes. Full conformance
+  remains incomplete, and the active goal continues with the gaps in HANDOFF.md.

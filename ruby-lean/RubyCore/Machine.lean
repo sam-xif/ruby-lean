@@ -119,10 +119,17 @@ structure BlockPassCall where
   kw : List (Value × Value)
 deriving Inhabited
 
+/-- The native operation suspended while a Ruby conversion method runs. -/
+inductive ConversionCall where
+  | block (call : BlockPassCall)
+  | stringPlus (recv : Value)
+deriving Inhabited
+
 /-- Checked conversion's suspended user calls. A missing-method failure retains
     both response answers and the lookup owner, since redefinition during the
     handler affects whether its NoMethodError propagates (L275). -/
 inductive BlockPassPhase where
+  | start
   | respond
   | respondMissing (promised : Bool)
   | converted (direct : Bool)
@@ -247,7 +254,8 @@ inductive Kont where
       dispatch (args + keywords already evaluated). -/
   | blkCoerceK (recv : Value) (implicit : SendSite) (m : String) (acc : List Value)
       (kw : List (Value × Value))
-  | blkConvertK (call : BlockPassCall) (source : Value) (phase : BlockPassPhase)
+  /-- Suspend a native operation during checked to_proc/to_str conversion. -/
+  | blkConvertK (call : ConversionCall) (source : Value) (phase : BlockPassPhase)
   /-- Evaluating a call-site `k: v` keyword value; then continue the kwargs. -/
   | kwPairK (key : String) (rest : List KwEntry) (kwacc : List (Value × Value))
       (recv : Value) (implicit : SendSite) (m : String) (posArgs : List Value) (pblk : PendingBlk)
@@ -327,6 +335,12 @@ inductive Kont where
   | ensureK (pending : Pending) (restore : Option (Option Value) := none)
 deriving Inhabited
 
+/-- CRuby retains the last failed call's reason in its execution context.
+    The native method_missing reads it even through a user handler's super. -/
+inductive MissingReason where
+  | ordinary | vcall | privateCall | protectedCall | superCall
+deriving Repr, DecidableEq, Inhabited
+
 structure Machine where
   ctl : Ctl
   kont : List Kont := []
@@ -338,6 +352,7 @@ structure Machine where
   out : String := ""
   /-- `$!` — the exception being handled (set on rescue entry). -/
   currentExc : Option Value := none
+  missingReason : MissingReason := .ordinary
   /-- True only while the **prelude** (the core library written in RubyCore,
       `prelude/prelude.rb`) is being loaded: methods defined in this phase are
       marked `fromPrelude` (L62). -/

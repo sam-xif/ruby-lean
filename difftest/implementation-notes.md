@@ -1521,3 +1521,16 @@ After the fix, `desugar`: tier 0 **1232 agree, 0 disagree** (71 gated, 5 `contro
   that embeds a source location differs by construction. `_scrub_program_path` quotients out the
   harness's own temp path for exactly this reason; whether to extend it to line numbers is a real
   oracle-weakening decision (it would hide a genuine "raised from the wrong place") and is left open.
+
+## N50 — the three live model disagreements are repaired (2026-09-27)
+
+Model L276 closes anon-eigen-lazy-name, mix-08969-minimized and super-method-missing;
+all now declare fixed status after successful replay. Two additional guards cover
+checked String conversion and missing-call reasons/dispatch. L275's block-pass
+conversion guards already passed but lacked sidecars, so the regression tier treated
+them as unexpectedly fixed; they now declare fixed status too.
+
+The full regression tier is 47 agree / 0 disagree / 3 unsupported, with no status
+failures. Unsupported cases remain open: impure-repr-gates, to-ary-gates and
+sorbet-hash-gate. Their gates were not weakened and their status was not relabeled.
+The engine and comparison relation are unchanged.

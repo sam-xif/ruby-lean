@@ -1,14 +1,4 @@
-# L124, OPEN. CRuby computes an eigenclass's name *on demand*; the model fixes it
-# when the eigenclass is created. They agree everywhere except here: an anonymous
-# class that acquires a name (by constant assignment) *after* one of its
-# instances already has an eigenclass.
-#
-#   CRuby  #<Class:#<K:0xADDR>>          — recomputed from the class's name now
-#   model  #<Class:#<#<Class:0xADDR>:0xADDR>>  — the name the class had then
-#
-# Closing it means storing the attached object on the class payload and making
-# `className` recursive (fuel-bounded), i.e. a heap-shape change on the dispatch
-# path. Filed instead, so it cannot be forgotten.
+# L276: singleton-class display names follow their attached object in the live heap.
 def norm(s)
   s.gsub(/0x[0-9a-f]+/, "0xADDR")
 end
@@ -28,3 +18,17 @@ k2 = Class.new
 K2 = k2
 o2 = k2.new
 puts("named first => #{norm(o2.singleton_class.to_s)}")
+
+# A singleton class has no constant name until one is assigned to it, and that
+# name does not replace its display of the attached object.
+puts("unnamed eigen name => #{o2.singleton_class.name.inspect}")
+Eigen = o2.singleton_class
+puts("named eigen name => #{Eigen.name}")
+puts("named eigen display => #{norm(Eigen.to_s)}")
+k3 = Class.new
+e3 = k3.singleton_class
+ee3 = e3.singleton_class
+K3 = k3
+puts("class eigen => #{norm(e3.to_s)}")
+puts("nested eigen => #{norm(ee3.to_s)}")
+puts("boot eigen name => #{Object.singleton_class.name.inspect}")

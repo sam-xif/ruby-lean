@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L276 (2026-09-27)",
+  "note": "L276: bare calls, parenthesized calls, visibility, super, nested failure reasons, aliases, missing names and undef use native method_missing semantics."
+}

@@ -117,7 +117,7 @@ def kontLabel : Kont → String
   | .argsK _ _ m .. => s!"collect args for .{m}"
   | .argsSplatK _ _ m .. => s!"splat args for .{m}"
   | .blkCoerceK _ _ m _ _ => s!"coerce &block for .{m}"
-  | .blkConvertK call .. => s!"resume &block conversion for .{call.name}"
+  | .blkConvertK call .. => s!"resume checked .{Interp.conversionMethod call} conversion"
   | .kwPairK k .. => s!"kwarg {k}: ▢"
   | .kwDynKeyK .. => "kwarg ▢ => _"
   | .kwDynValK .. => "kwarg _ => ▢"

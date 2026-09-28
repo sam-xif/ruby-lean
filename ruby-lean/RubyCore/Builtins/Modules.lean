@@ -46,14 +46,9 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     | .ref k =>
       match h.classPayload? k with
       | some c =>
-        if c.name.isEmpty then
-          -- anonymous (`Class.new`): `name` is nil, `to_s`/`inspect` show the
-          -- address form (L72)
-          if bid == "Module#name" then .ok .nil m
-          else match inspectP m recv with
-            | .ok r => okStr m r
-            | .error e => .unsupported e
-        else okStr m c.name
+        if bid == "Module#name" then
+          if c.name.isEmpty then .ok .nil m else okStr m c.name
+        else okStr m (className h k)
       | none => .unsupported "name"
     | _ => .unsupported "name"
   | "Module#==" =>

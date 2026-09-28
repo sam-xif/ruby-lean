@@ -108,6 +108,9 @@ structure ClassPayload where
   privateConsts : List String := []
   name : String
   isModule : Bool := false
+  /-- A singleton class renders its attached object using the current heap.
+      Its constant name (if any) remains separate from that display name. -/
+  attached : Option ObjId := none
   /-- Modules mixed in via `include` (most-recently-included **last**); inserted
       into the ancestor chain just above this class, most-recent first (MRO). -/
   includes : List ObjId := []
@@ -339,7 +342,7 @@ def classTable : List (ObjId × String × Option ObjId) := [
     Builtin bid = "ClassName#name". Registered into each class's `methods`
     so lookup (incl. inheritance) is uniform. -/
 def builtinMethods : List (ObjId × List String) := [
-  (basicObjectId, ["==", "!", "equal?"]),
+  (basicObjectId, ["==", "!", "equal?", "method_missing"]),
   -- Kernel/Object layer (Kernel folded into Object at L0)
   (objectId, ["==", "===", "!", "equal?", "eql?", "class", "nil?", "inspect",
               "to_s", "freeze", "frozen?", "is_a?", "kind_of?", "instance_of?",
@@ -414,6 +417,7 @@ def install (h : Heap) (cls : ObjId) (names : List String) : Heap :=
     let cname := c.name
     let methods := names.foldl (init := c.methods) fun ms n =>
       (n, { params := [], body := .nil, owner := cls,
+            visibility := if n == "method_missing" then .priv else .pub,
             builtin := some (if n == "===" then
               match cname with
               | "Proc" => "Proc#call"
@@ -486,13 +490,13 @@ def initHeap : Heap :=
   let hE := (hConsts.alloc
     { klass := classId,
       payload := .cls { superclass := some classId,
-                        name := "#<Class:BasicObject>", isModule := false } }).2
+                        name := "", attached := some basicObjectId, isModule := false } }).2
   let hE := hE.set basicObjectId { hE.get basicObjectId with eigen := some eB }
   let eO := hE.objs.size
   let hE := (hE.alloc
     { klass := classId,
       payload := .cls { superclass := some eB,
-                        name := "#<Class:Object>", isModule := false } }).2
+                        name := "", attached := some objectId, isModule := false } }).2
   hE.set objectId { hE.get objectId with eigen := some eO }
 
 end Boot
@@ -587,25 +591,62 @@ def fakeAddr (o : ObjId) : String :=
     address wherever a name is wanted — `0 + Class.new.new` says
     `#<Class:0x…> can't be coerced into Integer`, not `` `` can't be coerced``.
     Every message built from `className` inherits that, so the fallback belongs
-    here and not at ~20 call sites (L124). `Module#name` still answers `nil`:
-    it tests `c.name.isEmpty` itself rather than going through here. -/
+    here and not at ~20 call sites (L124). Singleton classes render their attached
+    object from the current heap (L276). `Module#name` reads the separate constant
+    name, so an unnamed singleton class still answers nil. The heap-sized fuel
+    bounds the acyclic attachment/class walk of every runtime-allocated heap. -/
 def className (h : Heap) (k : ObjId) : String :=
-  match h.classPayload? k with
-  | some c =>
-    if c.name.isEmpty then
-      s!"#<{if c.isModule then "Module" else "Class"}:{fakeAddr k}>"
-    else c.name
-  | Option.none => "Object"
+  go (h.objs.size + 1) k
+where
+  go : Nat → ObjId → String
+    | 0, k => s!"#<Class:{fakeAddr k}>"
+    | fuel + 1, k =>
+      match h.classPayload? k with
+      | some c =>
+        match c.attached with
+        | some o =>
+          let attachedName := match h.classPayload? o with
+            | some _ => go fuel o
+            | none => s!"#<{go fuel (h.get o).klass}:{fakeAddr o}>"
+          s!"#<Class:{attachedName}>"
+        | none =>
+          if c.name.isEmpty then
+            s!"#<{if c.isModule then "Module" else "Class"}:{fakeAddr k}>"
+          else c.name
+      | none => "Object"
 
 /-- CRuby's `rb_any_to_s`: how an object is named where a *class* would be named
     by `className` — `#<Foo:0x…>`, ignoring any user `to_s`/`inspect` and any
-    ivars. The one caller is the **eigenclass**'s own name (`o.singleton_class`
-    is `#<Class:#<Foo:0x…>>`), which is why this is not `Repr.inspect`: it must
-    be a pure heap function, and CRuby does not dispatch here either [V]. -/
+    ivars. Used for receiver descriptions; singleton-class rendering uses the
+    same rule inside className's recursive walk. This is not Repr.inspect:
+    CRuby does not dispatch user methods here [V]. -/
 def anyToS (h : Heap) (o : ObjId) : String :=
   match h.classPayload? o with
   | some _ => className h o
   | Option.none => s!"#<{className h (h.get o).klass}:{fakeAddr o}>"
+
+/-- How a NoMethodError describes its receiver [V]:
+    main / nil / true / false literally; classes as "class C";
+    everything else "an instance of C" — **except** an object that has an
+    eigenclass, which CRuby renders as the object itself, by `rb_any_to_s`:
+    `def o.hi; end; o.zz` says `undefined method 'zz' for #<Foo:0x…>`, not
+    `… for an instance of Foo` (L124). The test is only "does a singleton class
+    exist" — `extend` and a bare `o.singleton_class` trigger it as much as a
+    `def o.x` — and it ignores a user `inspect`/`to_s` and any ivars. A *class*
+    receiver keeps "class C" even with singleton methods of its own [V]. -/
+def receiverDesc (h : Heap) (v : Value) : String :=
+  match v with
+  | .nil => "nil"
+  | .bool b => toString b
+  | .ref o =>
+    if o == Boot.mainId then "main"
+    else match (h.get o).payload with
+      | .cls c => (if c.isModule then "module " else "class ") ++ className h o
+      | _ =>
+        match (h.get o).eigen with
+        | some _ => anyToS h o
+        | Option.none => s!"an instance of {className h (h.get o).klass}"
+  | _ => s!"an instance of {className h (classOf h v)}"
 
 /-- Look up a constant on Object (L0: flat toplevel namespace,
     artifact 03's two-phase lookup degenerates to this). -/

@@ -201,17 +201,11 @@ where
           -- class's superclasses `Class`.
           | none => ((if c.isModule then Boot.moduleId else Boot.classId), m)
         | _ => (obj.klass, m)
-      -- CRuby names an eigenclass after the object it is attached to, by
-      -- `rb_any_to_s` — so a *class*'s metaclass is `#<Class:Foo>` but a plain
-      -- object's is `#<Class:#<Foo:0x…>>`, not `#<Class:Object>` [V]. `className`
-      -- answers "Object" for a non-class id, which is why this went through
-      -- `anyToS` in L124. The name is fixed here, at creation; CRuby computes it
-      -- on demand, which is observable in the one shape §Known wrong answers
-      -- records (an anonymous class named *after* an instance's eigenclass exists).
-      let ename := s!"#<Class:{anyToS m.heap o}>"
+      -- Keep the attachment, not a snapshot of its name: an anonymous class
+      -- can acquire a constant name after this singleton class was created.
       let (e, h) := m.heap.alloc
         { klass := Boot.classId,
-          payload := .cls { superclass := some supr, name := ename, isModule := false } }
+          payload := .cls { superclass := some supr, name := "", attached := some o } }
       let h := h.set o { h.get o with eigen := some e }
       (e, { m with heap := h })
 

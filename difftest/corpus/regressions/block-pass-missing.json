@@ -1,0 +1,4 @@
+{
+  "status": "fixed",
+  "note": "L275: checked block conversion handles response hooks, missing methods, mutation and NoMethodError."
+}

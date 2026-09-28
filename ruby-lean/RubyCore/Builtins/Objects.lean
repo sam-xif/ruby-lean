@@ -25,6 +25,24 @@ def modeledFeatures : List String :=
 def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=
   let h := m.heap
   match bid with
+  | "BasicObject#method_missing" =>
+    match args with
+    | [] => .err Boot.argumentErrorId "no method name given" m
+    | .sym name :: _ =>
+      let desc := receiverDesc h recv
+      match m.missingReason with
+      | .vcall => .err Boot.nameErrorId
+          s!"undefined local variable or method '{name}' for {desc}" m
+      | .privateCall => .err Boot.noMethodErrorId
+          s!"private method '{name}' called for {desc}" m
+      | .protectedCall => .err Boot.noMethodErrorId
+          s!"protected method '{name}' called for {desc}" m
+      | .superCall => .err Boot.noMethodErrorId
+          s!"super: no superclass method '{name}' for {desc}" m
+      | .ordinary => .err Boot.noMethodErrorId
+          s!"undefined method '{name}' for {desc}" m
+    | name :: _ => .err Boot.argumentErrorId
+        s!"method name must be a Symbol but {className h (realClassOf h name)} is given" m
   | "Object#===" =>
     match args with
     | [other] =>

@@ -406,8 +406,8 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
         -- `redo` re-runs *this* block invocation from the top with the same
         -- arguments (artifact 04, L69): pop the frame and re-enter the closure.
         callClosure { m with stack := m.stack.tail } cl args brk
-    | .blkConvertK _ source phase =>
-      unwindBlockPass m source phase j
+    | .blkConvertK call source phase =>
+      unwindBlockPass m call source phase j
     | .definedGuardK =>
       -- any exception while evaluating a `defined?` operand makes it nil [V]
       match j with

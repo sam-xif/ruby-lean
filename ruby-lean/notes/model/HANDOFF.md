@@ -1,5 +1,53 @@
 # Lean model — hand-off
 
+## Active conformance goal (2026-09-27, L276)
+
+The user asked to fix open semantics regressions first, then drive toward full
+CRuby bootstrap conformance; proof repair is explicitly deferred. The goal remains
+active. Worktree changes are uncommitted (the typed gate must pass before a commit).
+Existing untracked paper/ and wasm upstream-bug files were left alone.
+
+L276 fixes all three live regression disagreements: delayed singleton-class naming,
+String#+ implicit to_str conversion through method_missing, and super in a custom
+method_missing. See the latest implementation-notes entry. The conversion state
+machine now serves both to_proc and to_str. Machine.missingReason mirrors CRuby's
+execution-context reason, including nested-call overwrites. ClassPayload.attached
+makes singleton-class rendering use the current heap. No checker/proof files changed.
+
+Verified executable build and full regression tier: 47 agree / 0 disagree /
+3 unsupported (50 total), no status failures. Tier 1, n=300, seed 20260927:
+219 agree / 0 disagree / 81 unsupported. L275 block-pass guards now have fixed
+sidecars; new guards cover string conversion and method-missing dispatch. Reports:
+`difftest/reports/20260927-233122-{tier1,tierregressions}-lean/`.
+Final full bootstrap: 1,000 agree / 0 disagree / 303 unsupported, five invalid
+controls and the existing test_syntax_115 harness error. Report:
+`difftest/reports/20260927-233122-tier0-lean/`. Only test_method_211 changed verdict
+(unsupported → agree); no prior agreement was lost. All test processes terminated.
+No proof rebuild or typed gate was attempted; the executable alone was rebuilt.
+
+Next work, preserving the full objective:
+
+1. Three open regression programs still gate; a gate is not a fix. The semantics
+   gaps are impure-repr-gates.rb (frozen-error receiver inspect and final-result
+   inspect; uncaught custom exception messages are a related commented witness),
+   and to-ary-gates.rb (effectful to_a for splat and to_ary during block binding).
+   The third, sorbet-hash-gate.rb, names an object's process-specific hash in a gem
+   error message. Do not silently weaken the comparator to call it agreement.
+2. The shared checked-conversion continuation in Interp/BlockPass is a starting
+   point for splat/binding conversions, but their nil handling and resume operations
+   differ from both to_proc and strict String conversion. Preserve those protocols.
+3. Obs.observe still purely calls inspectP and gates custom final inspect/message.
+   Main runs observe after Interp.run; an effectful observation needs real sends on
+   the completed machine, matching difftest/control.py's wrapper and its exception
+   and stdout order. Frozen-error rendering separately needs a suspended builtin.
+4. Re-measure bootstrap gates from the current report. The preceding full run's
+   largest groups: 50 string eval variants, Rational 25, Complex 18, blockless
+   times/Enumerator 22 (+ enum_for 5), optional/keyword block parameters 7,
+   top-level return 6, String#setbyte 6. Historical out-of-scope labels are not
+   completion of the user's new full-conformance objective. Old summaries below
+   this section remain historical.
+
+
 ## Current block conversion repair (2026-09-26, L275)
 
 `&e` now dispatches to_proc after evaluating the call's receiver/arguments/keywords.
