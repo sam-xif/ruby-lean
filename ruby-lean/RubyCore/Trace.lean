@@ -107,6 +107,7 @@ def kontLabel : Kont → String
   | .classBodyK .. => "enter class body after inherited"
   | .constClassK .. => "continue class definition after const_added"
   | .classNameErrorK .. => "render a class in a native TypeError"
+  | .constantNameErrorK .. => "inspect an invalid constant-name argument"
   | .classInitK .. => "initialize class after inherited"
   | .classDefK name _ => s!"then open class {name} < ▢"
   | .newK _ => "then yield new instance"

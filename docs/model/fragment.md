@@ -14,7 +14,7 @@ regenerated. Paths are relative to `ruby-lean/`.
 | `RubyCore/Syntax.lean` | `Expr` (mirrors the harness S-expr heads 1:1) + JSON decoder for the versioned export (`lib/export.rb`) |
 | `RubyCore/Heap.lean` | `Value`, `Object`, `Heap`, bootstrap heap **H₀** (metaclass knot as initial data), pure `classOf`/`ancestors`/`lookup`/const ops (artifacts 01–02) |
 | `RubyCore/Repr.lean` | Ruby-faithful default `inspect`/`to_s`, pure `==`/`eql?` — the byte-exact strings the observation compares |
-| `RubyCore/Unicode.lean` | **generated from the oracle**: Unicode printability for native String inspection (L293) |
+| `RubyCore/Unicode.lean` | **generated from the oracle**: Unicode printability and constant-name classification (L293–L294) |
 | `RubyCore/CRubyNames.lean` | **generated from the oracle**: per-class method-name sets + toplevel constants, so dispatch can detect "an unmodeled CRuby builtin would shadow this" and gate instead of mis-dispatching |
 | `RubyCore/Machine.lean` | `Machine` config: control state, kont stack, frame **store** + id stack (sketch §1.2), stdout accumulator, `$!` |
 | `RubyCore/Builtins.lean` | the axiomatized builtin methods, keyed `"Owner#name"`, registered in H₀'s method tables so shadowing is uniform |
@@ -106,6 +106,12 @@ recursive namespace naming remain separate open conformance work.
 L293 corrects native String inspection for non-printing Unicode scalars, including
 line separators, unassigned characters and supplementary-plane escapes. The
 generated Unicode table is verified against CRuby for all 1,112,064 scalars.
+
+L294 adds a native const_set entry with aliases/super, checked name conversion,
+Unicode validation and effectful invalid-argument diagnostics. Name conversion and
+validation precede frozen writes and const_added. Non-UTF-8 names and binary
+high-byte diagnostic renderings remain gated. Recursive namespace naming and
+constant removal remain separate open work.
 
 Tier-0 baseline: **940/1304 bootstraptest agree, 0 disagree.**
 
@@ -248,4 +254,4 @@ ruby scripts/gen_unicode.rb --verify > RubyCore/Unicode.lean
 ```
 
 The optional `--verify` cross-checks every Unicode scalar against native
-String inspection before emitting the compact range table.
+String inspection and constant-name validation before emitting the range tables.

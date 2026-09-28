@@ -15,7 +15,7 @@ def conversionMethod : ConversionCall → String
   | .splat _ => "to_a"
   | .closureArgs .. | .paramDestructure .. | .forDestructure .. => "to_ary"
   | .enumRewind _ => "rewind"
-  | .raiseString | .stopMessage _ => "to_str"
+  | .raiseString | .stopMessage _ | .constantSet .. => "to_str"
   | .raiseException _ => "exception"
   | .exceptionString viaToS => if viaToS then "to_s" else "to_str"
 
@@ -29,7 +29,7 @@ def conversionType : ConversionCall → String
   | .stringPlus _ => "String"
   | .splat _ | .closureArgs .. | .paramDestructure .. | .forDestructure .. => "Array"
   | .enumRewind _ => "Object"
-  | .raiseString | .stopMessage _ => "String"
+  | .raiseString | .stopMessage _ | .constantSet .. => "String"
   | .raiseException _ => "Exception"
   | .exceptionString _ => "String"
 
@@ -52,6 +52,7 @@ def blockPassMethod (m : Machine) (v : Value) (name : String) : Option MethodDef
 def blockPassNoConversion (m : Machine) (call : ConversionCall) (source : Value) : StepResult :=
   match call with
   | .objectInspect => beginObjectInspect m source .nil
+  | .constantSet .. => constantNameTypeError m source
   | .exceptionString false =>
     .next (withKont m (.value source) (.blkConvertK (.exceptionString true) source .start))
   | .exceptionString true => .next (raiseErr m Boot.typeErrorId
@@ -81,6 +82,10 @@ def finishConversion (m : Machine) (call : ConversionCall) (source result : Valu
     (direct : Bool) : StepResult :=
   match call with
   | .objectInspect => beginObjectInspect m source result
+  | .constantSet target value =>
+    if result.identEq .nil then blockPassNoConversion m call source
+    else if (Builtins.strPayload? m.heap result).isSome then finishConstantSet m target value result
+    else blockPassInvalid m call source result
   | .exceptionString viaToS =>
     if result.identEq .nil && !viaToS then blockPassNoConversion m call source
     else if (Builtins.strPayload? m.heap result).isSome then .next (withCtl m (.value result))

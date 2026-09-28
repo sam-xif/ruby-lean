@@ -1,4 +1,5 @@
 import RubyCore.Interp.Mutation
+import RubyCore.Unicode
 
 /-!
 The reflective metaprogramming core (`define_method`, `*_eval`, `prepend`,
@@ -473,15 +474,63 @@ def reflectConstGet (m : Machine) (recv : Value) (mname : String)
       | _, _ => none
     | _, _ => none
 
-def reflectConstSet (m : Machine) (recv : Value) (_mname : String)
-    (args : List Value) (_blk : Option Value) : Option StepResult :=
-    match recv, args with
-    | .ref o, [nameArg, val] =>
-      match symOrStr m nameArg, m.heap.classPayload? o with
-      | some n, some _ =>
-        some (assignConstant m o n val)
-      | _, _ => none
-    | _, _ => none
+/-- ASCII native name diagnostics use byte escapes (US-ASCII or ASCII-8BIT
+    in CRuby); messages containing UTF-8 scalars retain Unicode representation. -/
+def raiseConstantError (m : Machine) (cls : ObjId) (text : String) : StepResult :=
+  let (message, m) := Builtins.allocStrEnc m text (!hasHighByte text)
+  if cls == Boot.nameErrorId then
+    let (o, h) := m.heap.alloc { klass := cls, payload := .exc message }
+    .next { m with heap := h, ctl := .jump (.raiseJ (.ref o)) }
+  else
+    let (o, h) := m.heap.alloc { klass := cls, payload := .exc .nil }
+    .next { m with heap := h, ctl := .send (.ref o) .reflective "initialize" [message] none [], kont := .raiseNewK (.ref o) :: m.kont }
+
+/-- Native const_set validates the converted name before testing frozen state.
+    Symbols and actual Strings bypass conversion, including String subclasses. -/
+def finishConstantSet (m : Machine) (target : ObjId) (value nameArg : Value) : StepResult :=
+  match symOrStr m nameArg with
+  | none => .unsupported "constant-name conversion did not produce a String"
+  | some name =>
+    if Builtins.isBinaryStr m.heap nameArg && hasHighByte name then
+      .unsupported "non-UTF-8 constant name needs encoded Symbol identity" else
+    if !validConstantName name then
+      raiseConstantError m Boot.nameErrorId ("wrong constant name " ++ name)
+    else assignConstant m target name value
+
+def constantNameTypeError (m : Machine) (source : Value) : StepResult :=
+  .next { m with ctl := .send source .reflective "inspect" [] none [], kont := .constantNameErrorK none :: m.kont }
+
+/-- rb_check_id diagnoses a non-name with rb_inspect, including its ordinary
+    to_s conversion and native fallback when inspect returned a non-String. -/
+def finishConstantNameError (m : Machine) (source : Option Value) (value : Value) : StepResult :=
+  let finish (m : Machine) (value : Value) : StepResult :=
+    match Builtins.strPayload? m.heap value with
+    | none => .unsupported "constant-name error renderer did not produce a String"
+    | some text =>
+      if Builtins.isBinaryStr m.heap value && hasHighByte text then
+        .unsupported "constant-name diagnostic with non-UTF-8 bytes" else
+      if text.contains (Char.ofNat 0) then
+        raiseConstantError m Boot.argumentErrorId "string contains null byte" else
+      raiseConstantError m Boot.typeErrorId (text ++ " is not a symbol nor a string")
+  if (Builtins.strPayload? m.heap value).isSome then finish m value else
+  match source with
+  | none => .next { m with ctl := .send value .reflective "to_s" [] none [], kont := .constantNameErrorK (some value) :: m.kont }
+  | some source => match Builtins.run "Object#__any_to_s" source [] m with
+    | .ok repr m => finish m repr
+    | _ => .unsupported "constant-name diagnostic native fallback"
+
+def callConstSet (m : Machine) (recv : Value) (args : List Value)
+    (kw : List (Value × Value)) : StepResult :=
+  let (args, m) := appendKwHash m args kw
+  if args.length != 2 then
+    .next (raiseErr m Boot.argumentErrorId
+      s!"wrong number of arguments (given {args.length}, expected 2)") else
+  match recv, args with
+  | .ref target, [nameArg, value] =>
+    if (m.heap.classPayload? target).isNone then .unsupported "const_set outside a namespace" else
+    if (symOrStr m nameArg).isSome then finishConstantSet m target value nameArg else
+    .next (withKont m (.value nameArg) (.blkConvertK (.constantSet target value) nameArg .start))
+  | _, _ => .unsupported "const_set receiver"
 
 def reflectRemoveMethod (m : Machine) (recv : Value) (mname : String)
     (args : List Value) (_blk : Option Value) : Option StepResult :=
@@ -597,7 +646,6 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
   | "instance_variable_set" => reflectIvarSet m recv mname args blk
   | "instance_variables" => reflectIvarNames m recv mname args blk
   | "const_defined?" | "const_get" => reflectConstGet m recv mname args blk
-  | "const_set" => reflectConstSet m recv mname args blk
   | "remove_method" | "undef_method" => reflectRemoveMethod m recv mname args blk
   | "alias_method" => reflectAliasMethod m recv mname args blk
   | "attr_reader" | "attr_writer" | "attr_accessor" => reflectAttr m recv mname args blk

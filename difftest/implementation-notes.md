@@ -2123,3 +2123,44 @@ checks pass. Reports and logs: difftest/reports/20260928-incremental-L293/.
 Proof repair remains deferred; the typed gate is not claimed green.
 The typed gate was rerun and failed at the existing HeapFacts className/lookup
 proof drift; its captured log is retained. No proof repair was attempted.
+
+
+## N68 — native const_set protocol (2026-09-28)
+
+Model L294 adds seven const-set-* regression programs retaining 53 agreeing
+probes. They cover native aliases/super/visibility/undef, argument packing,
+checked conversion and response/missing hooks, frozen ordering, saved identities,
+String/Symbol bypass, native Unicode names, ASCII grammar and effectful error
+rendering. Global Symbol overrides are isolated in their own program. The ASCII
+grammar guard checks all 128 characters both as first and suffix characters.
+Three probes remain explicitly unsupported: high-byte binary names, high-byte
+binary inspect output and the prior native-method-removal inventory limitation.
+The Unicode generator independently checks all scalar start characters against
+the pinned oracle. No comparator or unsupported verdict is weakened.
+
+Frontend round-trip: 51 agree, zero semantic disagreements, two harness errors;
+all 53 inputs are AST-idempotent. The name guard reaches an existing Render
+limitation: quoted invalid Symbols are emitted as bare :A::B / :, producing
+invalid Ruby. The isolated Symbol override breaks the frontend's later JSON
+loading through Symbol#to_s on both sides; temporary paths make those error
+observations unequal. The exact programs agree under the difftest wrapper and
+JSON-to-Lean execution. Both rendered sources and diagnostic logs are retained;
+no frontend implementation or comparator was changed to hide these limitations.
+The six earlier render-only instabilities also remain.
+
+Final validation: model build passes (102 jobs). Full bootstrap: all 1,309 cases,
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+one old test_syntax_115 harness error. All source/verdict pairs match L293.
+Regression replay: 183 agree and one old sorbet-hash gate (184 total); all 177
+old sources/verdicts hold and seven new guards agree. Tier 1 (300, seed 20260927):
+226 agree and 74 gates, every source/verdict unchanged from L292. The 47 prior
+constant probes now have 43 agreements, three gates and the unchanged recursive
+namespace-naming disagreement: three gates and the invalid-name disagreement
+become agreements, with no losses. Unicode generation verifies/reproduces exactly.
+Reports, build log, focused probes and frontend diagnostics are archived in
+`difftest/reports/20260928-incremental-L294/`. No runtime changes after the final
+model build. Proof repair remains deferred and the typed gate is not claimed green.
+The typed gate was rerun and fails at the existing HeapFacts className/lookup
+proof drift; the log is archived. Proof repair remains explicitly deferred.
+The batch proof audit also failed to build Metatheory (NotDone/KontFrame);
+its axiom scan was not reached. The captured proof-audit.log is archived.

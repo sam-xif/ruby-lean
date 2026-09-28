@@ -603,6 +603,17 @@ object for the body even if the hook replaces the binding. Their order is bindin
 const_added, inherited (classes), then body; reopening sends neither hook. Only
 core prelude boot suppresses const_added. **[V]** (L292)
 
+Native `Module#const_set` checks arity, then converts its name through checked
+`to_str` unless it is already a Symbol or String. Conversion and name validation
+precede the frozen check. UTF-8 names require an uppercase/titlecase first scalar;
+later characters may be ASCII letters/digits/underscore or any non-ASCII scalar.
+The oracle-generated Unicode table pins this classification. Invalid names raise
+NameError without writing. Missing/nil conversion diagnoses the original argument
+through ordinary inspect, String conversion and native fallback; embedded NUL in
+that rendering raises ArgumentError. Saved target/value identity survives callbacks.
+Aliases, visibility, super and undef use the native method entry. Non-UTF-8 names
+and high-byte binary diagnostic renderings remain explicit gates. **[V]** (L294)
+
 A constant rescue target (`rescue => E`) also writes through this protocol in the
 lexical namespace. `$!` already contains the rescued exception during the hook,
 and the handler begins only after it returns. A hook failure or frozen target

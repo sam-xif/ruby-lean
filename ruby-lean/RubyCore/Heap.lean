@@ -478,7 +478,7 @@ def builtinMethods : List (ObjId × List String) := [
   (classId, ["superclass", "initialize", "inherited"]),
   (stringId, ["try_convert"]),
   (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors", "freeze", "initialize",
-              "const_added", "method_added", "method_removed", "method_undefined",
+              "const_set", "const_added", "method_added", "method_removed", "method_undefined",
               "private_constant", "public_constant"]),
   (classId, ["new", "allocate", "__range_new_unchecked"]),
   -- Call markers resolve through ordinary lookup; the interpreter executes them

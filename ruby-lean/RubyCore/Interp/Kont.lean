@@ -61,6 +61,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .classBodyK klass libraryName body => pushClassFrame m klass libraryName body
     | .classInitK klass block => finishClassInitialize m klass block
     | .classNameErrorK klass lead tail => finishClassNameError m klass lead tail v
+    | .constantNameErrorK source => finishConstantNameError m source v
     | .newK inst =>
       -- `initialize` returned; its value is discarded, `new` yields the instance
       .next (withCtl m (.value inst))

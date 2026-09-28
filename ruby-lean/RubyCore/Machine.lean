@@ -184,6 +184,7 @@ inductive ConversionCall where
   | stopMessage (result : Value)
   | raiseException (args : List Value)
   | exceptionString (viaToS : Bool)
+  | constantSet (target : ObjId) (value : Value)
 deriving Inhabited
 
 /-- What an `ensure` resumes when it finishes normally. -/
@@ -257,6 +258,8 @@ inductive Kont where
   | classInitK (klass : ObjId) (block : Option Value)
   /-- Native type diagnostics render the selected Class object's live to_s. -/
   | classNameErrorK (klass : ObjId) (lead tail : String)
+  /-- An invalid constant-name argument is inspected, then converted to String. -/
+  | constantNameErrorK (source : Option Value)
   /-- `Class#new`: the in-flight value is `initialize`'s (discarded) result;
       yield the allocated instance instead
       (artifact 02 §3 — `new` = allocate ∘ initialize ∘ return self). -/

@@ -1,6 +1,46 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L293)
+## Active conformance goal (2026-09-28, L294)
+
+The incremental-commit request is handled: L276–L294 each have separate commits.
+The last pending work was split into L293 (Unicode String inspection) and L294
+(native const_set validation/conversion). L294 checks names before frozen writes,
+executes checked to_str and diagnostic inspection, preserves native aliases/super
+and uses a Unicode start-character table verified against all scalars. Seven
+const-set-* regression programs retain all 53 agreeing focused probes. Binary
+high-byte names/diagnostics and native-method-removal inventory cases still gate.
+
+Final validation: model build passes (102 jobs). Full bootstrap: all 1,309 cases,
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+one old test_syntax_115 harness error. All source/verdict pairs match L293.
+Regression replay: 183 agree and one old sorbet-hash gate (184 total); all 177
+old sources/verdicts hold and seven new guards agree. Tier 1 (300, seed 20260927):
+226 agree and 74 gates, every source/verdict unchanged from L292. The 47 prior
+constant probes now have 43 agreements, three gates and the unchanged recursive
+namespace-naming disagreement: three gates and the invalid-name disagreement
+become agreements, with no losses. Unicode generation verifies/reproduces exactly.
+Reports, build log, focused probes and frontend diagnostics are archived in
+`difftest/reports/20260928-incremental-L294/`. No runtime changes after the final
+model build. Proof repair remains deferred and the typed gate is not claimed green.
+
+Frontend: 51 agreements and two diagnosed harness failures, with AST idempotence
+preserved. Invalid quoted Symbols are rendered as invalid bare Symbol syntax;
+Symbol#to_s replacement breaks the frontend JSON observer. Exact source programs
+agree under the differential wrapper. These are recorded limits, not green checks.
+No frontend, checker, proof, comparator or floor changes.
+
+Next known wrong answers: recursive namespace naming (constant-nested-name in the
+archived prior-constants probes) and Integer#chr ASCII encoding (L293's initial
+regression audit). Constant removal, namespace copying, const_missing, the old
+method-removal/Kernel ownership limitations and Random/Regexp overrides remain
+open. Do not conflate this commit with encoded Symbol identity or a full encoding
+model. Proof repair remains deferred; the existing HeapFacts className/lookup
+failure is not repaired. Unrelated paper/ and wasm upstream-bug files are untouched.
+The batch proof audit also failed to build Metatheory (NotDone/KontFrame);
+its axiom scan was not reached. The captured proof-audit.log is archived.
+Full conformance remains incomplete.
+
+## Previous batch (2026-09-28, L293)
 
 The user requested separate commits for every completed increment. L276–L292
 already have individual commits. L293 isolates the Unicode String inspection

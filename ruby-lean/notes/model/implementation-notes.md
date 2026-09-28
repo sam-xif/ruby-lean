@@ -15146,3 +15146,69 @@ checks pass. Reports and logs: difftest/reports/20260928-incremental-L293/.
 Proof repair remains deferred; the typed gate is not claimed green.
 The typed gate was rerun and failed at the existing HeapFacts className/lookup
 proof drift; its captured log is retained. No proof repair was attempted.
+
+
+## L294 — native constant-name validation and conversion (2026-09-28)
+
+Module#const_set is now a native method entry, so ordinary lookup supplies alias,
+super, visibility and undef behavior. It checks arity/keyword packing before
+conversion, saves target/value identity and shares assignConstant's naming,
+frozen-state and const_added sequence after validation. Actual Symbols/Strings
+(including String subclasses) bypass user conversion. Other values use the
+existing checked to_str continuation: response hooks, private conversion,
+method_missing, swallowed unpromised NoMethodError and nonlocal exits retain
+their ordinary effects. Nil/missing conversion inspects the original argument;
+other non-String results raise the native conversion TypeError.
+
+The UTF-8 grammar requires an uppercase or titlecase first scalar. Later scalars
+may be ASCII alphanumeric/underscore or any non-ASCII value, including Unicode
+line separators. gen_unicode.rb now verifies constant starts against native
+Module#const_defined? for every Unicode scalar as well as L293's printability
+check: 2,037 starts accepted by CRuby 4.0.5 / Unicode 17.0.0. This avoids both
+ASCII-only rejection and overly permissive invalid writes. Validation precedes
+the frozen check; invalid names raise NameError without installing constants.
+
+Invalid-argument diagnostics execute inspect, ordinary to_s when necessary and
+a native fallback if conversion still returns a non-String. Their callbacks can
+raise or exit. Embedded NUL in the final rendering raises ArgumentError, while
+NUL in an invalid String name remains part of the native NameError message.
+ASCII native name messages use the model's byte encoding flag, preserving byte
+escapes; non-ASCII UTF-8 messages preserve Unicode scalars. Full US-ASCII encoding
+identity is not claimed by that two-way encoding abstraction. Binary high-byte
+names require encoded Symbol identity and still gate; binary high-byte diagnostic
+rendering also gates rather than guessing CRuby's escaping behavior.
+
+Focused probes: 25 agree. Extended probes: 28 agree and three explicit gates
+(binary names, binary diagnostic rendering, the old native-method-removal
+inventory limitation). They include all 256 ASCII first/suffix combinations.
+Seven permanent const-set-* programs retain all 53 agreeing probes, checked as
+exact combined programs against CRuby before marking their sidecars fixed.
+The initial implementation was split from L293's independent Unicode String
+inspection change at the user's request for separate incremental commits.
+
+Frontend round-trip: 51 agree, zero semantic disagreements, two harness errors;
+all 53 inputs are AST-idempotent. The name guard reaches an existing Render
+limitation: quoted invalid Symbols are emitted as bare :A::B / :, producing
+invalid Ruby. The isolated Symbol override breaks the frontend's later JSON
+loading through Symbol#to_s on both sides; temporary paths make those error
+observations unequal. The exact programs agree under the difftest wrapper and
+JSON-to-Lean execution. Both rendered sources and diagnostic logs are retained;
+no frontend implementation or comparator was changed to hide these limitations.
+The six earlier render-only instabilities also remain.
+
+Final validation: model build passes (102 jobs). Full bootstrap: all 1,309 cases,
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+one old test_syntax_115 harness error. All source/verdict pairs match L293.
+Regression replay: 183 agree and one old sorbet-hash gate (184 total); all 177
+old sources/verdicts hold and seven new guards agree. Tier 1 (300, seed 20260927):
+226 agree and 74 gates, every source/verdict unchanged from L292. The 47 prior
+constant probes now have 43 agreements, three gates and the unchanged recursive
+namespace-naming disagreement: three gates and the invalid-name disagreement
+become agreements, with no losses. Unicode generation verifies/reproduces exactly.
+Reports, build log, focused probes and frontend diagnostics are archived in
+`difftest/reports/20260928-incremental-L294/`. No runtime changes after the final
+model build. Proof repair remains deferred and the typed gate is not claimed green.
+The typed gate was rerun and fails at the existing HeapFacts className/lookup
+proof drift; the log is archived. Proof repair remains explicitly deferred.
+The batch proof audit also failed to build Metatheory (NotDone/KontFrame);
+its axiom scan was not reached. The captured proof-audit.log is archived.
