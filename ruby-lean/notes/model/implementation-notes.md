@@ -14567,3 +14567,103 @@ git diff --check pass. Differential suites have terminated; final comment-only
 rebuild is the sole remaining validation process at this write.
 
 Final comment-only rebuild PASS (98 jobs); all validation processes terminated.
+
+## L285 — checked exception construction and live messages (2026-09-28)
+
+The L284 follow-up found seven wrong answers in twelve probes. raise C still
+used userInit?, treated an undef initializer as a body, and never dispatched
+C.exception. Object#raise/fail now share a resolved-native path. A single String
+argument constructs RuntimeError directly; other single arguments try checked
+to_str first, then checked exception with no arguments. Two arguments check
+exception with the message. No arguments rethrow currentExc or construct
+RuntimeError with an empty String. A returned value must be an Exception; missing
+conversion and a bad returned object retain their distinct TypeError messages.
+Raise backtrace/cause keyword forms stay gated. Aliases and super reach this path.
+
+The existing conversion machine now carries raiseString, raiseException(args),
+and exceptionString phases. It retains response hooks, rechecks lookup after
+them, invokes private methods, forwards arguments to custom method_missing, and
+applies its existing conditional NoMethodError rescue. Exception's native
+singleton exception method directly constructs its receiver, ignoring an
+application-defined new. Boot exception classes and anonymous Class/Module.new
+results now realize eigenclass chains so that inherited singleton methods are
+visible before a class-body/singleton-definition path happens to realize them.
+Missing this initially caused thirteen regression disagreements; the ordinary
+class paths were already correct and supplied the repair pattern.
+
+Payload.exc holds a Value, not a rendered String. Nil means the class-name
+message; initializing with any other value retains that object, so mutation is
+observed later. Native model error allocation now creates an actual String value.
+Exception#to_s is intercepted by resolved native ID, returns actual Strings
+unchanged, or performs checked to_str then to_s conversion. A false response hook,
+missing conversion and a wrong return type have their own behavior. Rendering a
+non-String message is never admitted to the pure repr path; inspect then uses the
+existing effectful twin. This avoids silently bypassing container element inspect,
+message response hooks or mutable message objects. The initial __as_string-based
+attempt was too forgiving for a to_s returning a non-String; the oracle exposed
+that, and the final path uses checked String conversion instead.
+
+NameError, NoMethodError, KeyError and FrozenError own native initializers. Their
+message-only forms are prelude wrappers that delegate to super then return self,
+including a user-defined Exception#initialize. Metadata arguments/keywords gate.
+Without these wrappers, three old regression agreements became shadow gates once
+raise finally used real initializer dispatch; all three were recovered.
+
+Instance Exception#exception returns self with no argument or itself as argument.
+Otherwise it copies payload/ivars into an initially mutable receiver, invokes
+initialize_clone through ordinary dispatch, applies the source's frozen state,
+and replaces the raw message without invoking user initialize. Default private
+Object#initialize_clone invokes initialize_copy, discards that callback result,
+and returns self. Default initialize_copy checks arity, frozen state and matching
+real classes. User hooks, undef/method_missing and exceptions remain ordinary
+sends. A callback can freeze either object: the source's frozen state is read
+*after* the hook, not snapshotted before it. Singleton-method copies remain gated.
+A final edge probe caught the after-hook source-freeze detail; its source fix
+awaits the final rebuild/validation at this entry's initial write.
+
+Five permanent programs cover raise/exception dispatch, checked conversion,
+live messages, copy callbacks and native exception subclass construction. All
+five initially agree; the copy program is being extended with five frozen/hook
+edge cases. Focused24 all agree; extra19 has18 agree/one old Exception#== gate.
+The initial full replay has119 agree/one old sorbet-hash gate (120 programs),
+with all114 old agreements retained. Previous201-case replay remains190 agree /
+11 gates, with no changed verdicts. Front-end45seeds plus five programs has50
+agree/zero disagree, AST-idempotent with six old render-only instabilities.
+Three standalone core-only and three identical-source feature-loading checks
+agree. The first full bootstrap/tier1 runs are still being finalized below.
+
+Remaining known issue found by the same edge audit: native VM errors (e.g.1+nil)
+still allocate/raise directly and bypass an overridden TypeError#initialize.
+This is separate from the repaired Ruby-level raise protocol and is the next
+known-bug priority. Metadata, cause/backtrace, Exception#==, generic clone/dup
+callbacks outside this exception path, and singleton-class copying remain partial.
+Proof repair is deferred; changing Payload.exc intentionally does not repair the
+off-target proof consumers. No checker/floor edits, typed gate or commit.
+Temporary evidence: /private/tmp/conformance-l285-*.
+
+Post-edge validation: the source-freeze callback repair builds (98 jobs), all
+five copy edge cases and the expanded permanent copy guard agree. The initial
+bootstrap report20260928-073446-tier0-lean is1,090 agree/zero disagree/213
+unsupported, five invalid controls and the old syntax harness error; every source
+and verdict is unchanged from L284. Final replay20260928-074001-replay-lean has
+119 agree/one old hash gate; final same-stamp tier1 has219 agree/81 unsupported.
+Final frontend50 agree/zero disagree, AST-idempotent with six old render-only
+instabilities. Both generated files match regeneration and whitespace checks pass.
+The final bootstrap run is still pending at this append; no code/build changes
+are planned before its terminal result.
+
+Final L285 differential verification: reports20260928-074001 have bootstrap
+1,090 agree / zero disagree / 213 unsupported, five invalid controls and the old
+syntax harness error; tier1 219 agree / 81 unsupported; replay119 agree / one old
+hash gate (120 total). All pre-existing sources/verdicts are unchanged from L284.
+The expanded copy guard and all five copy edge cases agree. Model build passes
+98 jobs; generated-file and whitespace checks pass. All differential processes
+terminated. The AGENTS.md-required proof audit is running separately; proof repair
+remains deferred and its terminal result will be appended below.
+
+AGENTS.md boundary audit: check-proofs.sh FAILED (exit1) at lake build Metatheory.
+Its captured tail lists RubyCore.Proof.NotDone and RubyCore.Proof.KontFrame among
+failed targets; the axiom scan was not reached. Log:
+/private/tmp/conformance-l285-proof-audit.log. No proof repair was attempted.
+All validation processes have now terminated; model conformance checks pass,
+metatheory does not. No typed gate or commit. Full semantics goal remains active.

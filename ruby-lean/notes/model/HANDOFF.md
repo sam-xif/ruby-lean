@@ -1,6 +1,68 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L284)
+## Active conformance goal (2026-09-28, L285)
+
+The full conformance goal is active and incomplete. L276–L285 changes are
+uncommitted; no checker/proof/floor edits or typed gate. Proof repair is explicitly
+deferred. Unrelated paper/ and wasm upstream-bug files remain untouched.
+
+L285 fixes Ruby-level raise/exception dispatch, checked String conversion,
+mutable exception messages and Exception#exception copy callbacks. Payload.exc
+holds Value (nil = class-name default). Exception#to_s returns actual Strings
+unchanged; other messages go through checked to_str then to_s. Those messages
+make pure repr defer. Raise/fail retain response hooks and custom missing handlers;
+Exception.exception constructs directly, independently of overridden new. The old
+userInit? shortcut is removed. Boot exception classes and anonymous class/module
+results realize eigenclasses for inherited singleton methods. Message-only native
+NameError/NoMethodError/KeyError/FrozenError initializers delegate to super in
+prelude and return self; metadata forms gate. Instance exception copies through
+initialize_clone/initialize_copy, applies the original's current frozen state
+after callbacks, then replaces its raw message without initialize. Singleton
+copies, cause/backtrace/metadata and Exception#== remain gated.
+
+Final model build PASS (98 jobs). Final reports share 20260928-074001:
+bootstrap **1,090 agree / zero disagree / 213 unsupported**, five invalid
+controls and the old test_syntax_115 harness error; every source/verdict unchanged
+from L284. Tier 1 n=300 seed20260927: **219 agree / 81 unsupported / zero disagree**.
+Regression replay: **119 agree / one old sorbet-hash gate / zero failures**, 120
+programs. All old sources/verdicts held. Five new permanent programs agree,
+including five additional clone callback/freeze cases. Focused24 all agree;
+extra19 = 18 agree / one old equality gate; five copy edges agree. The separate
+native-error-initialize row is a confirmed next-work defect, not a fixed case.
+Previous201 replay (before the final copy-edge fix): unchanged 190 agree / 11 gates.
+Frontend50 agree / zero disagree, AST-idempotent with six old render-only
+instabilities. Three standalone core-only and three identical-source feature-
+loading checks agree. Prelude and CRubyNames match regeneration; whitespace check
+passes. Initial full suite 073446 also held all sources/verdicts.
+
+All validation processes have terminated. The AGENTS.md-required proof audit
+ran and FAILED during lake build Metatheory (exit 1); its captured tail names
+RubyCore.Proof.NotDone and RubyCore.Proof.KontFrame among failed targets. The axiom
+scan was not reached. Log: /private/tmp/conformance-l285-proof-audit.log. No proof
+repairs were attempted, as requested. Model implementation-notes L285 and difftest
+N59 contain the final results. The executable model checks pass; metatheory is not
+green. No typed gate or commit. Continue with the next known semantics issue.
+
+Next known-bug priority: native VM errors bypass user initialize in the model.
+The oracle audits /private/tmp/conformance-l286-{native,frozen}-oracle.py/log pin
+these distinctions: TypeError, ArgumentError and ZeroDivisionError invoke
+initialize(message), without keywords/block, and preserve the surrounding $! while
+it runs. Native VM NameError/NoMethodError deliberately DO NOT invoke initialize;
+a blanket raiseErr rewrite would be wrong. FrozenError initializes a mutable
+prefix String BEFORE inspecting its receiver and appending the result; callbacks
+can replace the exception's message, mutate the shared prefix, or raise before
+inspection. The live message representation now makes that protocol expressible.
+raiseErr currently allocates and jumps (Interp/Support.lean); Frozen.lean renders
+the whole message before raising. No L286 source edits yet.
+
+Other known leads: Class/Module/Random/Regexp initialization/allocator protocols,
+unchecked destructureBind to_ary, legacy for bypassing each, constant/ancestry/
+mixin hooks, generic dup/clone callbacks, File's module-shaped stub, Kernel owner
+folding and repeated inclusion-node identity. Full Sorbet/runtime loader fidelity
+and bootstrap eval/TracePoint/reflection/RubyVM gates remain unfinished. Do not
+invent a process-specific hash to bypass the sole old sorbet-hash gate.
+
+## Previous batch (2026-09-28, L284)
 
 The full CRuby conformance goal remains active and incomplete. Known semantics
 bugs have priority; proof repair is explicitly deferred. L276–L284 changes are

@@ -35,6 +35,15 @@ def boot : Except String Machine :=
           visibility := if repr then .pub else .priv,
           builtin := some ((if repr then "Object#" else "Main#") ++ name) }) initial.heap
     let initial := { initial with heap := h }
+    let (exceptionEigen, initial) := Interp.eigenclassOf initial Boot.exceptionId
+    let h := defineMethod initial.heap exceptionEigen "exception"
+      { params := [], body := .nil, owner := exceptionEigen, builtin := some "Exception.exception" }
+    let initial := { initial with heap := h }
+    -- Boot classes also inherit Exception's singleton constructor before any
+    -- Ruby class body has had a chance to realize their eigenclass chains.
+    let initial := Boot.classTable.foldl (fun m entry =>
+      if (ancestors m.heap entry.1).contains Boot.exceptionId then
+        (Interp.eigenclassOf m entry.1).2 else m) initial
     match Interp.run bootFuel initial with
     | .value _ m => .ok m
     | .uncaught exc m =>

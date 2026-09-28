@@ -52,7 +52,11 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
   | "Exception#to_s" =>
     match recv with
     | .ref o => match (h.get o).payload with
-      | .exc msg => okStr m msg
+      | .exc msg =>
+        if msg.identEq .nil then okStr m (className h (h.get o).klass) else
+        match strPayload? h msg with
+        | some _ => .ok msg m
+        | none => .unsupported "Exception#to_s requires checked String conversion"
       | _ => .unsupported "message"
     | _ => .unsupported "message"
   | "Exception#inspect" =>
@@ -98,6 +102,18 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
   | "BasicObject#initialize" | "Object#initialize" =>
     if args.isEmpty then .ok .nil m else
       .err Boot.argumentErrorId s!"wrong number of arguments (given {args.length}, expected 0)" m
+  | "Object#initialize_copy" =>
+    match args with
+    | [other] =>
+      if recv.identEq other then .ok recv m else
+      match recv with
+      | .ref o =>
+        if (h.get o).frozen then .frozen recv m else
+        if realClassOf h recv != realClassOf h other then
+          .err Boot.typeErrorId "initialize_copy should take same class object" m
+        else .ok recv m
+      | _ => .frozen recv m
+    | _ => .err Boot.argumentErrorId s!"wrong number of arguments (given {args.length}, expected 1)" m
   | "String#initialize" | "Array#initialize" | "Hash#initialize"
   | "Exception#initialize" =>
     -- Core initializers *mutate* the (already allocated) receiver, so a subclass's
@@ -139,10 +155,8 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         | _ => .unsupported "Hash#initialize arity"
       else
         match args with
-        | [] => setP (.exc (className h (h.get o).klass))
-        | [msgV] => match toSP m msgV with
-          | .ok str => setP (.exc str)
-          | .error e => .unsupported e
+        | [] => setP (.exc .nil)
+        | [msgV] => setP (.exc msgV)
         | _ => .unsupported "Exception#initialize arity"
     | _ => .unsupported "initialize on a non-object"
   | "Class#new" | "Module#new" => newImpl m recv args
@@ -182,7 +196,7 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
             .err Boot.typeErrorId s!"allocator undefined for {className m.heap k}" m
           else
             let payload := match allocatableCore m.heap k with
-              | some core => if core == Boot.exceptionId then .exc (className m.heap k) else emptyCorePayload core
+              | some core => emptyCorePayload core
               | none => Payload.none
             let (o, h) := m.heap.alloc { klass := k, payload }
             .ok (.ref o) { m with heap := h }

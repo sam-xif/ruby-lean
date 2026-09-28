@@ -1863,3 +1863,54 @@ git diff --check pass. Differential suites have terminated; final comment-only
 rebuild is the sole remaining validation process at this write.
 
 Final comment-only rebuild PASS (98 jobs); all validation processes terminated.
+
+## N59 — exception construction, message and copy probes (2026-09-28)
+
+L285 adds raise-exception-protocol, raise-checked-conversion, exception-live-messages,
+exception-copy-protocol and exception-native-subclasses. The same Ruby source
+checks dispatch and response-hook traces, distinct conversion failures, private
+exception methods, initializer overrides/undef, live message identity/mutation,
+clone callbacks/frozen state, and specialized native initializer delegation.
+
+The focused24 programs agree; extra19 has18 agree/one old Exception#== gate.
+All five combined permanent programs initially agree. The copy program is being
+extended with five further callback/freeze cases after one exposed a source-freeze
+ordering defect. Initial full replay:119 agree/one old gated (120 total), all114
+previous agreements retained. Previous201 replay remains190 agree/11 gates.
+Front-end45seeds plus five new programs:50 agree/zero disagree, AST-idempotent,
+six old render-only instabilities. Three standalone core-only and three
+identical-source feature-loading checks agree. Final suite results follow below.
+
+Use the N58 replay/bootstrap/seeded-tier1 commands after building rubycore.
+For frontend verification, append these five .rb paths to ruby desugar/bin/run
+with desugar/corpus/seeds. Exact sources/results are saved in
+/private/tmp/conformance-l285-{focused,extra,copy-edges,permanent,previous}.json.
+The native-error-initialize row in copy-edges is a confirmed next-work issue,
+not part of the new fixed guards: VM-originated errors still bypass initialize.
+
+Post-edge validation: the source-freeze callback repair builds (98 jobs), all
+five copy edge cases and the expanded permanent copy guard agree. The initial
+bootstrap report20260928-073446-tier0-lean is1,090 agree/zero disagree/213
+unsupported, five invalid controls and the old syntax harness error; every source
+and verdict is unchanged from L284. Final replay20260928-074001-replay-lean has
+119 agree/one old hash gate; final same-stamp tier1 has219 agree/81 unsupported.
+Final frontend50 agree/zero disagree, AST-idempotent with six old render-only
+instabilities. Both generated files match regeneration and whitespace checks pass.
+The final bootstrap run is still pending at this append; no code/build changes
+are planned before its terminal result.
+
+Final L285 differential verification: reports20260928-074001 have bootstrap
+1,090 agree / zero disagree / 213 unsupported, five invalid controls and the old
+syntax harness error; tier1 219 agree / 81 unsupported; replay119 agree / one old
+hash gate (120 total). All pre-existing sources/verdicts are unchanged from L284.
+The expanded copy guard and all five copy edge cases agree. Model build passes
+98 jobs; generated-file and whitespace checks pass. All differential processes
+terminated. The AGENTS.md-required proof audit is running separately; proof repair
+remains deferred and its terminal result will be appended below.
+
+AGENTS.md boundary audit: check-proofs.sh FAILED (exit1) at lake build Metatheory.
+Its captured tail lists RubyCore.Proof.NotDone and RubyCore.Proof.KontFrame among
+failed targets; the axiom scan was not reached. Log:
+/private/tmp/conformance-l285-proof-audit.log. No proof repair was attempted.
+All validation processes have now terminated; model conformance checks pass,
+metatheory does not. No typed gate or commit. Full semantics goal remains active.

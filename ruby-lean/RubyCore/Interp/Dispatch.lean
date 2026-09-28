@@ -28,14 +28,6 @@ def lookupAbove (h : Heap) (recv : Value) (owner : ObjId) (mname : String)
 def methodOn (h : Heap) (k : ObjId) (mname : String) : Option (ObjId × MethodDef) :=
   lookupInChain h (ancestors h k) mname
 
-/-- Legacy `raise C` initializer interception (L70). Class#new instead uses
-    ordinary initialize dispatch in Construct (L284). The raise protocol still
-    needs a separate exception-construction audit. -/
-def userInit? (h : Heap) (k : ObjId) : Option MethodDef :=
-  match methodOn h k "initialize" with
-  | some (_, md) => if md.builtin.isNone then some md else none
-  | none => none
-
 /-- Enter a RubyCore-defined method activation: bind params (required + rest +
     post; block-capture `&blk`), push the method frame, evaluate the body under
     a `frameK` boundary (artifact 02 §3). Factored out of dispatch so `Class#new`

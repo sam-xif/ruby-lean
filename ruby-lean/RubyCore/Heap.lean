@@ -201,8 +201,8 @@ inductive Payload where
   | arr (elems : Array Value)
   | hsh (entries : Array (Value × Value))
   | cls (c : ClassPayload)
-  /-- Exception instance: just the message for L0. -/
-  | exc (msg : String)
+  /-- Exception message object; nil means the default class-name message. -/
+  | exc (msg : Value)
   /-- A Proc (block/proc/lambda), artifact 04 §1. -/
   | proc (c : Closure)
   /-- A `Random` instance's MT19937 state (mutated in place by `#rand`). -/
@@ -410,8 +410,8 @@ def builtinMethods : List (ObjId × List String) := [
   -- Kernel/Object layer (Kernel folded into Object at L0)
   (objectId, ["==", "===", "!", "equal?", "eql?", "class", "nil?", "itself", "inspect",
               "to_s", "freeze", "frozen?", "is_a?", "kind_of?", "instance_of?",
-              "puts", "print", "p", "raise", "String", "block_given?", "rand",
-              "require", "require_relative", "__unsupported__", "dup", "clone",
+              "puts", "print", "p", "raise", "fail", "String", "block_given?", "rand",
+              "require", "require_relative", "__unsupported__", "dup", "clone", "initialize_copy", "initialize_clone",
               "__user_defines?", "__default_inspect?", "__write", "__addr_str",
               "__any_to_s", "__match_to_caller", "respond_to_missing?",
               "__coerce_failed", "__cmp_failed", "__coerce_defined?", "Rational", "Complex", "__complex_rect",
@@ -455,7 +455,7 @@ def builtinMethods : List (ObjId × List String) := [
             "inspect", "to_s", "to_a", "dup", "clone", "merge", "initialize"]),
   -- `message` is deliberately absent: it is `to_s` in CRuby, so it must dispatch,
   -- and the prelude defines it (L131).
-  (exceptionId, ["to_s", "inspect", "dup", "clone", "initialize"]),
+  (exceptionId, ["to_s", "inspect", "dup", "clone", "initialize", "exception"]),
   (classId, ["superclass"]),
   (stringId, ["try_convert"]),
   (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors", "freeze",
@@ -493,10 +493,10 @@ def install (h : Heap) (cls : ObjId) (names : List String) : Heap :=
             visibility := if n == "method_missing" || n == "Rational" || n == "Complex" ||
                 ["method_added", "method_removed", "method_undefined", "singleton_method_added",
                  "singleton_method_removed", "singleton_method_undefined"].contains n ||
-                (["puts", "print", "p", "raise", "String", "block_given?", "rand",
+                (["puts", "print", "p", "raise", "fail", "String", "block_given?", "rand",
                   "require", "require_relative", "respond_to_missing?", "binding",
                   "local_variables"].contains n && cls == objectId) ||
-                n == "initialize" then .priv else .pub,
+                ["initialize", "initialize_copy", "initialize_clone"].contains n then .priv else .pub,
             builtin := some (if n == "===" then
               match cname with
               | "Proc" => "Proc#call"

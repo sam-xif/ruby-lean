@@ -103,7 +103,8 @@ def suspendEnumerator (m : Machine) (o : ObjId) (args : List Value) : StepResult
     .next { m with ctl := .value v }
 
 def enumStop (m : Machine) (result : Value) : StepResult :=
-  let (o, h) := m.heap.alloc { klass := Boot.stopIterationId, payload := .exc "iteration reached an end", iterationResult := result }
+  let (message, m) := Builtins.allocStr m "iteration reached an end"
+  let (o, h) := m.heap.alloc { klass := Boot.stopIterationId, payload := .exc message, iterationResult := result }
   .next { m with heap := h, ctl := .jump (.raiseJ (.ref o)) }
 
 def finishEnumerator (m : Machine) (o : ObjId) (result : Value) : StepResult :=

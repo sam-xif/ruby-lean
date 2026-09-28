@@ -172,6 +172,9 @@ inductive ConversionCall where
   | closureArgs (cl : Closure) (brk : Option FrameId)
       (selfOv : Option Value) (defmodOv : Option ObjId)
   | enumRewind (object : ObjId)
+  | raiseString
+  | raiseException (args : List Value)
+  | exceptionString (viaToS : Bool)
 deriving Inhabited
 
 /-- What an `ensure` resumes when it finishes normally. -/
@@ -240,6 +243,9 @@ inductive Kont where
       yield the allocated instance instead
       (artifact 02 §3 — `new` = allocate ∘ initialize ∘ return self). -/
   | newK (inst : Value)
+  /-- A checked exception constructor returned; validate and raise its result. -/
+  | raiseValueK
+  | exceptionCopyK (copy message original : Value)
   /-- The call supplied a literal block. A break targets this boundary even
       through initialize, super, or further block forwarding. -/
   | blockCallK (scope : FrameId)

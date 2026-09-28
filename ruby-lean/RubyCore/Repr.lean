@@ -221,7 +221,8 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
       return className h o
     | .exc msg =>
       let cname := className h (h.get o).klass
-      if msg.isEmpty then return cname else return s!"#<{cname}: {msg}>"
+      let text ← if msg.identEq .nil then pure cname else toS h msg
+      if text.isEmpty then return cname else return s!"#<{cname}: {text}>"
     | .proc _ => throw "Proc#inspect (address non-deterministic)"
     | .rng _ => throw "Random#inspect (state/address non-deterministic)"
     | .range lo hi excl =>
@@ -314,7 +315,7 @@ partial def toS (h : Heap) (v : Value) : Except String String := do
       else return s
     | .arr _ | .hsh _ => inspect h v
     | .cls _ => return className h o   -- as in `inspect` above (L124)
-    | .exc msg => return msg
+    | .exc msg => if msg.identEq .nil then return className h (h.get o).klass else toS h msg
     | .proc _ => throw "Proc#to_s (address non-deterministic)"
     | .rng _ => throw "Random#to_s (state/address non-deterministic)"
     | .range lo hi excl =>

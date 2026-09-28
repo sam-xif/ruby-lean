@@ -29,7 +29,7 @@ partial def valBrief (h : Heap) : Nat → Value → String
     | .cls c => c.name
     | .exc msg =>
       let cn := className h (h.get o).klass
-      if msg.isEmpty then cn else s!"#<{cn}: {msg}>"
+      s!"#<{cn}: {valBrief h d msg}>"
     | .proc c => if c.lam then "#<Proc (lambda)>" else "#<Proc>"
     | .rng _ => "#<Random>"
     | .rational n d => s!"({n}/{d})"
@@ -105,6 +105,8 @@ def kontLabel : Kont → String
   | .casgnK n => s!"then {n} = ▢"
   | .classDefK name _ => s!"then open class {name} < ▢"
   | .newK _ => "then yield new instance"
+  | .raiseValueK => "validate and raise exception result"
+  | .exceptionCopyK .. => "finish exception clone and replace its message"
   | .blockCallK scope => s!"literal block call #{scope}"
   | .arrayInitK _ _ index size => s!"initialize Array element {index}/{size}"
   | .methodEditsK rest _ => s!"method mutation: {rest.length} remaining"

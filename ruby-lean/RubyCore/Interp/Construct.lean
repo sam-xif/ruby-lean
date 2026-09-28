@@ -26,6 +26,9 @@ def legacyConstruct (m : Machine) (recv : Value) (klass : ObjId)
   let (args, m) := appendKwHash m args kw
   match Builtins.newImpl m recv args with
   | .ok newV m =>
+    let m := if klass == Boot.classId || klass == Boot.moduleId then
+      match newV with | .ref k => (eigenclassOf m k).2 | _ => m
+      else m
     if klass == Boot.classId || klass == Boot.moduleId then
       match newV, blk with
       | .ref newK, some b => match procClosure? m b with
@@ -68,8 +71,7 @@ def callConstruct (m : Machine) (recv : Value) (args : List Value)
         .next (raiseErr m Boot.typeErrorId s!"allocator undefined for {className m.heap klass}")
       else
         let payload := match Builtins.allocatableCore m.heap klass with
-          | some core => if core == Boot.exceptionId then .exc (className m.heap klass)
-              else Builtins.emptyCorePayload core
+          | some core => Builtins.emptyCorePayload core
           | none => Payload.none
         let (o, h) := m.heap.alloc { klass, payload }
         initializeInstance { m with heap := h } (.ref o) args blk kw
@@ -86,6 +88,62 @@ def callAllocate (m : Machine) (recv : Value) (args : List Value)
       .next (withCtl m (.value v))
     else constructResult (Builtins.run "Class#allocate" recv args m)
   | _ => constructResult (Builtins.run "Class#allocate" recv args m)
+
+def raiseString (m : Machine) (message : Value) : StepResult :=
+  callConstruct { m with kont := .raiseValueK :: m.kont }
+    (.ref Boot.runtimeErrorId) [message] none []
+
+def callExceptionMessage (m : Machine) (recv : Value) (args : List Value)
+    (kw : List (Value × Value)) : StepResult :=
+  let (args, m) := appendKwHash m args kw
+  if !args.isEmpty then enumArity m args.length "0" else
+  match recv with
+  | .ref o => match (m.heap.get o).payload with
+    | .exc message =>
+      if message.identEq .nil then
+        let (v, m) := Builtins.allocStr m (className m.heap (m.heap.get o).klass)
+        .next (withCtl m (.value v))
+      else if (Builtins.strPayload? m.heap message).isSome then
+        .next (withCtl m (.value message))
+      else .next (withKont m (.value message) (.blkConvertK (.exceptionString false) message .start))
+    | _ => .unsupported "Exception message without an exception payload"
+  | _ => .unsupported "Exception message on a non-object"
+
+def callRaise (m : Machine) (args : List Value) (kw : List (Value × Value)) : StepResult :=
+  if !kw.isEmpty then .unsupported "raise keyword/cause protocol" else
+  match args with
+  | [] => match m.currentExc with
+    | some exc => .next (withCtl m (.jump (.raiseJ exc)))
+    | none =>
+      let (message, m) := Builtins.allocStr m ""
+      raiseString m message
+  | [source] =>
+    if (Builtins.strPayload? m.heap source).isSome then raiseString m source else
+    .next (withKont m (.value source) (.blkConvertK .raiseString source .start))
+  | [source, message] =>
+    .next (withKont m (.value source) (.blkConvertK (.raiseException [message]) source .start))
+  | _ => .unsupported "raise backtrace/arity protocol"
+
+/-- Exception#exception copies the receiver and replaces its raw message,
+    without dispatching initialize. Class-side exception uses callConstruct. -/
+def callExceptionCopy (m : Machine) (recv : Value) (args : List Value)
+    (kw : List (Value × Value)) : StepResult :=
+  let (args, m) := appendKwHash m args kw
+  if args.length > 1 then enumArity m args.length "0..1" else
+  if args.isEmpty || (args.headD .nil).identEq recv then
+    .next (withCtl m (.value recv)) else
+  match recv with
+  | .ref o =>
+    if (m.heap.get o).eigen.isSome then .unsupported "Exception copy with singleton methods" else
+    let (copy, m) := Builtins.dupObj m o false
+    .next { m with ctl := .send copy .reflective "initialize_clone" [recv] none [], kont := .exceptionCopyK copy (args.headD .nil) recv :: m.kont }
+  | _ => .unsupported "Exception copy on a non-object"
+
+def callInitializeClone (m : Machine) (recv : Value) (args : List Value)
+    (kw : List (Value × Value)) : StepResult :=
+  if !kw.isEmpty then .unsupported "initialize_clone freeze keyword" else
+  if args.length != 1 then enumArity m args.length "1" else
+  .next { m with ctl := .send recv .reflective "initialize_copy" args none [], kont := .newK recv :: m.kont }
 
 def arrayInitYield (m : Machine) (recv : ObjId) (block : Value) (index size : Nat) : StepResult :=
   if index >= size then .next (withCtl m (.value (.ref recv))) else

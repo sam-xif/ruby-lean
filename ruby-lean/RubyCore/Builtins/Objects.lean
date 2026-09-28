@@ -54,7 +54,7 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
       | .ref x, .ref y =>
         match (h.get x).payload, (h.get y).payload with
         | .exc ma, .exc mb =>
-          .ok (.bool ((h.get x).klass == (h.get y).klass && ma == mb)) m
+          .ok (.bool ((h.get x).klass == (h.get y).klass && valueEq h ma mb)) m
         | _, _ => .ok (.bool (recv.identEq b)) m
       | _, _ => .ok (.bool (recv.identEq b)) m
     | _ => .unsupported "==/arity"

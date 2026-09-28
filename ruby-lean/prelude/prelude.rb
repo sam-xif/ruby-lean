@@ -1610,6 +1610,48 @@ class Exception
   end
 end
 
+# Native specialized exception initializers delegate their message to super.
+# Metadata arguments/keywords await their own payload model (L285).
+class NameError
+  def initialize(*args, **kw)
+    if args.length > 1 || !kw.empty?
+      __unsupported__("NameError initializer metadata")
+    end
+    super(*args)
+    self
+  end
+end
+
+class NoMethodError
+  def initialize(*args, **kw)
+    if args.length > 1 || !kw.empty?
+      __unsupported__("NoMethodError initializer metadata")
+    end
+    super(*args)
+    self
+  end
+end
+
+class KeyError
+  def initialize(*args, **kw)
+    if args.length > 1 || !kw.empty?
+      __unsupported__("KeyError initializer metadata")
+    end
+    super(*args)
+    self
+  end
+end
+
+class FrozenError
+  def initialize(*args, **kw)
+    if args.length > 1 || !kw.empty?
+      __unsupported__("FrozenError initializer metadata")
+    end
+    super(*args)
+    self
+  end
+end
+
 class Hash
   def __inspect_slow
     return "{}" if empty?

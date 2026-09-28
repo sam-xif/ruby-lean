@@ -76,6 +76,16 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .newK inst =>
       -- `initialize` returned; its value is discarded, `new` yields the instance
       .next (withCtl m (.value inst))
+    | .raiseValueK =>
+      if isA m.heap v Boot.exceptionId then .next (withCtl m (.jump (.raiseJ v)))
+      else .next (raiseErr m Boot.typeErrorId "exception object expected")
+    | .exceptionCopyK copy message original =>
+      let freeze := match original with | .ref o => (m.heap.get o).frozen | _ => true
+      let m := if freeze then match copy with
+        | .ref o => { m with heap := m.heap.set o { m.heap.get o with frozen := true } }
+        | _ => m
+        else m
+      constructResult (Builtins.run "Exception#initialize" copy [message] m)
     | .blockCallK _ => .next (withCtl m (.value v))
     | .arrayInitK recv block index size => arrayInitNext m recv block index size v
     | .methodEditsK remaining result => runMethodEdits m remaining result

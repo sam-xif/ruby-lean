@@ -231,6 +231,9 @@ encoding), `arr`, `hsh`, `rng`, `proc` (a `Closure`), `meth`, `exc`, and
   detail. **[V]**
 - Frozen string literals change identity and mutation behavior; `frozen` is
   tracked per object.
+- **Exception** retains its message as a Ruby Value, including mutable objects;
+  nil selects the current class-name default. String messages retain identity.
+  Other messages render through checked to_str then to_s calls (L285).
 - **Rational** carries a reduced arbitrary-precision numerator and positive
   denominator. It remains a heap object even when the denominator is one.
   Instances are frozen; `dup`, `clone` without options and `to_r` retain identity.
@@ -700,6 +703,16 @@ so they were a priority target for the oracle.
 `raise` produces `^exc(v)`; propagation unwinds, and at each frame: transfer to a
 matching `rescue` (binding `$!` and the `=> x` variable), and run that frame's
 `ensure` as the transfer passes through, matched or not.
+
+For Ruby-level raise/fail, the one-argument form first tries checked String
+conversion. Otherwise the checked exception method receives zero or one message
+argument, and its result must be an Exception. Visibility does not block this
+protocol. Exception's singleton exception method constructs directly, independently
+of overridden new. The instance method returns self for no argument or self,
+otherwise clones through initialize_clone/initialize_copy and replaces the message
+without dispatching initialize. Source frozen state is applied after clone hooks.
+Metadata/backtrace/cause, singleton copies, and the separate native-VM error
+construction protocol remain incomplete. **[V]** (L285)
 
 **Rescue matching uses `===`**, and the **default rescue class is `StandardError`,
 not `Exception`** **[V]** — so `raise Exception` is *not* caught by a bare

@@ -128,6 +128,11 @@ where
         if bid.startsWith "Main#" then
           let (args, m) := appendKwHash m args kw
           callMainMethod m recv bid args blk else
+        if bid == "Object#raise" || bid == "Object#fail" then callRaise m args kw else
+        if bid == "Exception.exception" then callConstruct m recv args blk kw else
+        if bid == "Exception#exception" then callExceptionCopy m recv args kw else
+        if bid == "Exception#to_s" then callExceptionMessage m recv args kw else
+        if bid == "Object#initialize_clone" then callInitializeClone m recv args kw else
         if bid == "Class#new" || bid == "Module#new" then callConstruct m recv args blk kw else
         if bid == "Class#allocate" then callAllocate m recv args kw else
         if ["String#initialize", "Array#initialize", "Hash#initialize", "Exception#initialize"].contains bid then
@@ -156,43 +161,6 @@ where
           | some (_, md2) => enterUserMethod m recv slow md2 args blk kw
           | none => .unsupported s!"prelude twin {slow} is missing from the prelude"
         | none =>
-        -- `raise C` / `raise C, msg` where `C` defines a *user* `initialize`:
-        -- CRuby builds the exception with `C.new(…)`, so the initializer (and any
-        -- `super` into `Exception#initialize`) must run — a frame this builtin
-        -- cannot push, so it is finished by a `raiseNewK` kont (L70). Keyed on the
-        -- resolved *bid*, so no other dispatch pays for the check.
-        if bid == "Object#raise" then
-          match args with
-          | (.ref k) :: rest =>
-            match m.heap.classPayload? k, userInit? m.heap k with
-            | some c, some md' =>
-              if c.isModule || rest.length > 1 then
-                match Builtins.run bid recv args m with
-                | .ok v m => .next (withCtl m (.value v))
-                | .err cls msg m => .next (raiseErr m cls msg)
-                | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
-                | .frozen recv m => raiseFrozen m recv
-                | .unsupported r => .unsupported r
-              else
-                let (io, h) := m.heap.alloc { klass := k, payload := .exc "" }
-                let inst := Value.ref io
-                let m := { m with heap := h, kont := .raiseNewK inst :: m.kont }
-                enterUserMethod m inst "initialize" md' rest none
-            | _, _ =>
-              match Builtins.run bid recv args m with
-              | .ok v m => .next (withCtl m (.value v))
-              | .err cls msg m => .next (raiseErr m cls msg)
-              | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
-              | .frozen recv m => raiseFrozen m recv
-              | .unsupported r => .unsupported r
-          | _ =>
-            match Builtins.run bid recv args m with
-            | .ok v m => .next (withCtl m (.value v))
-            | .err cls msg m => .next (raiseErr m cls msg)
-            | .throwV v m => .next (withCtl m (.jump (.raiseJ v)))
-            | .frozen recv m => raiseFrozen m recv
-            | .unsupported r => .unsupported r
-        else
         -- A block changes what several builtins mean (L63). Our arms are
         -- blockless, so defer to a prelude definition of the same name higher in
         -- the chain (`Array#sort {}` → `Enumerable#sort`) rather than dropping
@@ -256,6 +224,11 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
         if bid.startsWith "Main#" then
           let (args, m) := appendKwHash m args kw
           callMainMethod m self bid args blk else
+        if bid == "Object#raise" || bid == "Object#fail" then callRaise m args kw else
+        if bid == "Exception.exception" then callConstruct m self args blk kw else
+        if bid == "Exception#exception" then callExceptionCopy m self args kw else
+        if bid == "Exception#to_s" then callExceptionMessage m self args kw else
+        if bid == "Object#initialize_clone" then callInitializeClone m self args kw else
         if bid == "Class#new" || bid == "Module#new" then callConstruct m self args blk kw else
         if bid == "Class#allocate" then callAllocate m self args kw else
         if ["String#initialize", "Array#initialize", "Hash#initialize", "Exception#initialize"].contains bid then

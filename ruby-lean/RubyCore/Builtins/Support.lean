@@ -130,7 +130,12 @@ partial def pureOk (h : Heap) (sens : List String) : Value → Bool
     -- here and not in `inspectSensitive` (L131). Getting it from the list instead
     -- was wrong in both directions: it refused a user `message`, which changes
     -- nothing, and admitted a user `to_s`, which changes everything.
-    | .exc _ => own && !reprOverridden h ["to_s"] (classOf h (.ref o))
+    | .exc msg =>
+      let direct := match msg with
+        | .nil => true
+        | .ref message => match (h.get message).payload with | .str _ => true | _ => false
+        | _ => false
+      own && !reprOverridden h ["to_s"] (classOf h (.ref o)) && direct
     | .proc _ => false   -- Proc repr is address-based → never pure
     | _ => own
   -- An immediate has no eigenclass slot, so `classOf` here *is* `realClassOf`;
@@ -254,7 +259,7 @@ def emptyCorePayload (core : ObjId) : Payload :=
   if core == Boot.stringId then .str ""
   else if core == Boot.arrayId then .arr #[]
   else if core == Boot.hashId then .hsh #[]
-  else .exc ""
+  else .exc .nil
 
 /-- Does `v`'s class resolve `==` to a *user* (non-builtin) method? Builtins
     that lean on default value-equality (`Array#include?`/`index`, …) must gate
@@ -394,6 +399,7 @@ def allocHsh (m : Machine) (xs : Array (Value × Value)) : Value × Machine :=
   (.ref o, { m with heap := h })
 
 def allocExc (m : Machine) (cls : ObjId) (msg : String) : Value × Machine :=
+  let (msg, m) := allocStr m msg
   let (o, h) := m.heap.alloc { klass := cls, payload := .exc msg }
   (.ref o, { m with heap := h })
 

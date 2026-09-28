@@ -14,12 +14,22 @@ def conversionMethod : ConversionCall → String
   | .splat _ => "to_a"
   | .closureArgs .. => "to_ary"
   | .enumRewind _ => "rewind"
+  | .raiseString => "to_str"
+  | .raiseException _ => "exception"
+  | .exceptionString viaToS => if viaToS then "to_s" else "to_str"
+
+def conversionArgs : ConversionCall → List Value
+  | .raiseException args => args
+  | _ => []
 
 def conversionType : ConversionCall → String
   | .block _ => "Proc"
   | .stringPlus _ => "String"
   | .splat _ | .closureArgs .. => "Array"
   | .enumRewind _ => "Object"
+  | .raiseString => "String"
+  | .raiseException _ => "Exception"
+  | .exceptionString _ => "String"
 
 /-- Continue left-to-right evaluation after expanding one splat. -/
 def resumeSplat (m : Machine) (call : SplatCall) (values : List Value) : StepResult :=
@@ -39,6 +49,13 @@ def blockPassMethod (m : Machine) (v : Value) (name : String) : Option MethodDef
 
 def blockPassNoConversion (m : Machine) (call : ConversionCall) (source : Value) : StepResult :=
   match call with
+  | .exceptionString false =>
+    .next (withKont m (.value source) (.blkConvertK (.exceptionString true) source .start))
+  | .exceptionString true => .next (raiseErr m Boot.typeErrorId
+      s!"can't convert {className m.heap (realClassOf m.heap source)} into String")
+  | .raiseString =>
+    .next (withKont m (.value source) (.blkConvertK (.raiseException []) source .start))
+  | .raiseException _ => .next (raiseErr m Boot.typeErrorId "exception class/object expected")
   | .splat pending => resumeSplat m pending [source]
   | .closureArgs cl brk selfOv defmodOv => enterClosure m cl [source] brk selfOv defmodOv
   | .enumRewind o => .next { resetEnumerator m o with ctl := .value (.ref o) }
@@ -58,6 +75,17 @@ def blockPassInvalid (m : Machine) (call : ConversionCall) (source result : Valu
 def finishConversion (m : Machine) (call : ConversionCall) (source result : Value)
     (direct : Bool) : StepResult :=
   match call with
+  | .exceptionString viaToS =>
+    if result.identEq .nil && !viaToS then blockPassNoConversion m call source
+    else if (Builtins.strPayload? m.heap result).isSome then .next (withCtl m (.value result))
+    else blockPassInvalid m call source result
+  | .raiseString =>
+    if result.identEq .nil then blockPassNoConversion m call source
+    else if (Builtins.strPayload? m.heap result).isSome then raiseString m result
+    else blockPassInvalid m call source result
+  | .raiseException _ =>
+    if isA m.heap result Boot.exceptionId then .next (withCtl m (.jump (.raiseJ result)))
+    else .next (raiseErr m Boot.typeErrorId "exception object expected")
   | .enumRewind o => .next { resetEnumerator m o with ctl := .value (.ref o) }
   | .block pending =>
     if blockPassProc m result then
@@ -95,7 +123,7 @@ def blockPassMissing (m : Machine) (call : ConversionCall) (source : Value)
     else
       let m := { m with missingReason := .ordinary }
       invoke (withKont m m.ctl (.blkConvertK call source (.missing owner respond respondMissing)))
-        source .reflective "method_missing" [.sym (conversionMethod call)] none
+        source .reflective "method_missing" (.sym (conversionMethod call) :: conversionArgs call) none
   | none => blockPassNoConversion m call source
 
 /-- Response hooks may install the converter, so repeat lookup after them. -/
@@ -105,7 +133,7 @@ def blockPassChecked (m : Machine) (call : ConversionCall) (source : Value)
   match blockPassMethod m source name with
   | some _ =>
     invoke (withKont m m.ctl (.blkConvertK call source (.converted false)))
-      source .reflective name [] none
+      source .reflective name (conversionArgs call) none
   | none =>
     if (lookup m.heap source name).isNone &&
         (crubyShadow m.heap (ancestors m.heap (classOf m.heap source)) name).isSome then
