@@ -141,7 +141,9 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
       | some cf => (m.frames.getD cf default).blk
       | none => blk
     let frame : Frame :=
-      { self := recv, locals := localsA ++ predeclared, defmod := md.owner,
+      { self := recv, locals := localsA ++ predeclared,
+        defmod := md.definee.getD md.owner, methodOwner := some md.owner,
+        definitionFrame := md.definitionFrame,
         kind := .method, blk := frameBlk, callBlk := blk,
         meth := md.superName.getD mname, superScope := md.superScope,
         runParams := md.params, runFromDM := md.capturedFrame.isSome,
@@ -231,8 +233,8 @@ def enterClassBody (m : Machine) (name : String) (isMod : Bool)
     match libraryBodyGate m k with
     | some reason => .unsupported reason
     | none =>
-    let namespaceName := if m.currentFrame.defmod == Boot.objectId then name else
-      s!"{(libraryNamespace m.heap m.currentFrame.defmod).getD (className m.heap m.currentFrame.defmod)}::{name}"
+    let namespaceName := if m.lexicalNamespace == Boot.objectId then name else
+      s!"{(libraryNamespace m.heap m.lexicalNamespace).getD (className m.heap m.lexicalNamespace)}::{name}"
     let m := if m.preludeMode || m.currentFrame.libraryOrigin then
       match m.heap.classPayload? k with
       | some cp => { m with heap := m.heap.setClassPayload k { cp with libraryNamespace := some namespaceName } }
@@ -251,7 +253,7 @@ def enterClassBody (m : Machine) (name : String) (isMod : Bool)
   -- *reads*: `class Foo` nested in `M` must create `M::Foo`, it does NOT reopen a
   -- lexically-visible `::Foo` (verified against CRuby). At the toplevel `defmod`
   -- is `Object`, so this coincides with the old flat lookup.
-  match constOwn m.heap m.currentFrame.defmod name with
+  match constOwn m.heap m.lexicalNamespace name with
   | some (.ref k) =>
     match m.heap.classPayload? k with
     | some c =>
@@ -265,11 +267,12 @@ def enterClassBody (m : Machine) (name : String) (isMod : Bool)
     | none => .next (raiseErr m Boot.typeErrorId s!"{name} is not a {kindWord}")
   | some _ => .next (raiseErr m Boot.typeErrorId s!"{name} is not a {kindWord}")
   | none =>
+    if (m.heap.get m.lexicalNamespace).frozen then raiseFrozen m (.ref m.lexicalNamespace) else
     let superclass := if isMod then none else some (sup?.getD Boot.objectId)
     -- A nested definition (`module B` inside `A`) takes the qualified constant
     -- path `A::B` as its `name` (CRuby derives the name from where the constant
     -- is bound); a toplevel definition (`defmod` = Object) keeps the bare name.
-    let defmod := m.currentFrame.defmod
+    let defmod := m.lexicalNamespace
     let qualName := if defmod == Boot.objectId then name
                     else s!"{className m.heap defmod}::{name}"
     let obj : Object :=
@@ -277,7 +280,7 @@ def enterClassBody (m : Machine) (name : String) (isMod : Bool)
         payload := .cls { superclass, name := qualName, isModule := isMod } }
     let (k, h) := m.heap.alloc obj
     -- register the class name in the *enclosing* namespace (Object at toplevel)
-    let h := constSetIn h m.currentFrame.defmod name (.ref k)
+    let h := constSetIn h m.lexicalNamespace name (.ref k)
     -- eagerly realize the metaclass chain so inherited class methods resolve
     -- (`B < A` ⇒ `B`'s metaclass superclasses `A`'s) even before any `def self.`
     let (_, m) := eigenclassOf { m with heap := h } k
@@ -303,7 +306,9 @@ def enterScopedClassBody (m : Machine) (container : ObjId) (name : String)
       | some cp => { m with heap := m.heap.setClassPayload k { cp with libraryNamespace := some namespaceName } }
       | none => m
       else m
-    let frame : Frame := { self := .ref k, defmod := k, kind := .classBody, libraryOrigin := m.currentFrame.libraryOrigin }
+    let frame : Frame :=
+      { self := .ref k, defmod := k, kind := .classBody,
+        cref := k :: m.currentFrame.cref, libraryOrigin := m.currentFrame.libraryOrigin }
     let fid := m.frames.size
     let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
     .next (withKont m (.eval body) (.frameK fid))
@@ -319,6 +324,7 @@ def enterScopedClassBody (m : Machine) (container : ObjId) (name : String)
     | none => .next (raiseErr m Boot.typeErrorId s!"{fullName} is not a {kindWord}")
   | some _ => .next (raiseErr m Boot.typeErrorId s!"{fullName} is not a {kindWord}")
   | none =>
+    if (m.heap.get container).frozen then raiseFrozen m (.ref container) else
     let superclass := if isMod then none else some Boot.objectId
     let obj : Object :=
       { klass := (if isMod then Boot.moduleId else Boot.classId),
@@ -660,6 +666,18 @@ def moduleHook (m : Machine) (mo : ObjId) (name : String) : Option MethodDef :=
     `some` if handled; `none` falls through to the normal miss path. -/
 def tryMixin (m : Machine) (recv : Value) (mname : String)
     (args : List Value) : Option StepResult :=
+  let eligible := if mname == "extend" then isA m.heap recv Boot.objectId else
+    if mname == "include" || mname == "prepend" then
+      match recv with | .ref o => (m.heap.classPayload? o).isSome | _ => false
+    else false
+  if !eligible then none else
+  if args.isEmpty then some (.next (raiseErr m Boot.argumentErrorId
+    "wrong number of arguments (given 0, expected 1+)")) else
+  if args.length == 1 && !(match args.headD .nil with
+      | .ref o => (m.heap.classPayload? o).any (·.isModule)
+      | _ => false) then
+    some (.next (raiseErr m Boot.typeErrorId
+      s!"wrong argument type {Builtins.coerceName m.heap (args.headD .nil)} (expected Module)")) else
   match mname, recv, args with
   | "include", .ref o, [.ref mo] =>
     match m.heap.classPayload? o, m.heap.classPayload? mo with

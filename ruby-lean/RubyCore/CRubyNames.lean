@@ -27,18 +27,18 @@ def crubyMethodNames : List (String × List String) := [
     "!~", "<=>", "===", "Array", "Complex", "Float", "Hash", "Integer",
     "Pathname", "Rational", "String", "__callee__", "__dir__", "__method__", "`", "abort",
     "at_exit", "autoload", "autoload?", "binding", "block_given?", "caller", "caller_locations", "catch",
-    "class", "clone", "define_method", "define_singleton_method", "display", "dup", "enum_for", "eql?",
-    "eval", "exec", "exit", "exit!", "extend", "fail", "fork", "format",
-    "freeze", "frozen?", "gem", "gem_original_require", "gets", "global_variables", "hash", "include",
-    "initialize_clone", "initialize_copy", "initialize_dup", "inspect", "instance_of?", "instance_variable_defined?", "instance_variable_get", "instance_variable_set",
-    "instance_variables", "instance_variables_to_inspect", "is_a?", "iterator?", "itself", "kind_of?", "lambda", "load",
-    "local_variables", "loop", "method", "methods", "nil?", "object_id", "open", "p",
-    "pp", "print", "printf", "private", "private_methods", "proc", "protected_methods", "public",
-    "public_method", "public_methods", "public_send", "putc", "puts", "raise", "rand", "readline",
-    "readlines", "remove_instance_variable", "require", "require_relative", "respond_to?", "respond_to_missing?", "ruby2_keywords", "select",
-    "send", "set_trace_func", "singleton_class", "singleton_method", "singleton_methods", "sleep", "spawn", "sprintf",
-    "srand", "syscall", "system", "tap", "test", "then", "throw", "to_enum",
-    "to_s", "trace_var", "trap", "untrace_var", "using", "warn", "yield_self"
+    "class", "clone", "define_singleton_method", "display", "dup", "enum_for", "eql?", "eval",
+    "exec", "exit", "exit!", "extend", "fail", "fork", "format", "freeze",
+    "frozen?", "gem", "gem_original_require", "gets", "global_variables", "hash", "initialize_clone", "initialize_copy",
+    "initialize_dup", "inspect", "instance_of?", "instance_variable_defined?", "instance_variable_get", "instance_variable_set", "instance_variables", "instance_variables_to_inspect",
+    "is_a?", "iterator?", "itself", "kind_of?", "lambda", "load", "local_variables", "loop",
+    "method", "methods", "nil?", "object_id", "open", "p", "pp", "print",
+    "printf", "private_methods", "proc", "protected_methods", "public_method", "public_methods", "public_send", "putc",
+    "puts", "raise", "rand", "readline", "readlines", "remove_instance_variable", "require", "require_relative",
+    "respond_to?", "respond_to_missing?", "select", "send", "set_trace_func", "singleton_class", "singleton_method", "singleton_methods",
+    "sleep", "spawn", "sprintf", "srand", "syscall", "system", "tap", "test",
+    "then", "throw", "to_enum", "to_s", "trace_var", "trap", "untrace_var", "warn",
+    "yield_self"
   ]),
   ("Module", [
     "<", "<=", "<=>", "==", "===", ">", ">=", "alias_method",
@@ -286,6 +286,10 @@ def crubyMethodNames : List (String × List String) := [
   ])
 ]
 
+/-- Methods native to main's singleton class, not all Objects. -/
+def crubyMainSingletonNames : List String := [
+  "define_method", "include", "inspect", "private", "public", "ruby2_keywords", "to_s", "using"
+]
 /-- Singleton (class-side) method names each bootstrap class defines in
     CRuby (e.g. Hash.ruby2_keywords_hash, Array.[]): a send to a class
     object resolving past these must gate. -/

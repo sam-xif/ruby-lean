@@ -26,9 +26,13 @@ deriving Repr, DecidableEq, Inhabited
 structure Frame where
   self : Value
   locals : List (String × Value) := []
-  /-- Module the enclosing `def` targets / `super` searches from (unused
-      until L2 but load-bearing in the frame shape). -/
+  /-- Target of an unqualified def/alias/undef in this environment. -/
   defmod : ObjId
+  /-- Dispatch owner used by super, independently of the lexical definee. -/
+  methodOwner : Option ObjId := none
+  /-- Ordinary blocks and define_method bodies share their defining visibility
+      scope. *_eval blocks instead start a fresh definition context. -/
+  definitionFrame : Option FrameId := none
   /-- Lexical constant scope (cref): the enclosing class/module bodies at this
       point, innermost first (artifact 03 §4). Constant lookup checks each's own
       consts before the ancestor phase. A method carries the cref of where it was
@@ -460,6 +464,36 @@ def setCurrentFrame (m : Machine) (f : Frame) : Machine :=
   | fid :: _ => { m with frames := m.frames.set! fid f }
   | [] => m
 
+def definitionFrameId (m : Machine) (fid : FrameId) : FrameId :=
+  go (m.frames.size + 1) fid
+where
+  go : Nat → FrameId → FrameId
+    | 0, fid => fid
+    | fuel + 1, fid =>
+      match (m.frames.getD fid default).definitionFrame with
+      | some parent => go fuel parent
+      | none => fid
+
+def currentDefinitionFrame (m : Machine) : Frame :=
+  m.frames.getD (m.definitionFrameId (m.stack.headD 0)) default
+
+def setDefinitionVisibility (m : Machine) (vis : Visibility) : Machine :=
+  let fid := m.definitionFrameId (m.stack.headD 0)
+  let f := m.frames.getD fid default
+  -- Ruby warns and ignores bare visibility changes in an ordinary method.
+  if f.kind == .method then m else
+    { m with frames := m.frames.set! fid { f with defVis := vis } }
+
+/-- Attribute/define_method macros use body visibility only for the matching
+    class/eval scope. Top-level calls and calls targeting another class are public. -/
+def macroVisibility (m : Machine) (target : ObjId) : Visibility :=
+  let f := m.currentDefinitionFrame
+  if f.kind != .toplevel && f.defmod == target then f.defVis else .pub
+
+/-- Literal constants follow lexical nesting; *_eval does not change it. -/
+def lexicalNamespace (m : Machine) : ObjId :=
+  m.currentFrame.cref.headD Boot.objectId
+
 /-- Read `x`, walking the block-frame `captured` chain into enclosing scopes
     (sketch §1.2). Own locals (params, block-locals) shadow outer ones. -/
 def getLocal (m : Machine) (x : String) : Value :=
@@ -581,7 +615,7 @@ def emit (m : Machine) (s : String) : Machine :=
 def initOn (heap : Heap) (program : Expr) : Machine :=
   let top : Frame :=
     { self := .ref Boot.mainId, defmod := Boot.objectId, kind := .toplevel,
-      cref := [Boot.objectId] }
+      defVis := .priv }
   { ctl := .eval program,
     stack := [0],
     frames := #[top],

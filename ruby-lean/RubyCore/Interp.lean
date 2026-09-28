@@ -60,13 +60,10 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
         | none => m.globals.any (·.1 == x)
     strIf has "global-variable"
   | .var .cvar x =>
-    -- `defined?(@@a)` at toplevel is nil, *not* the access RuntimeError [V]
-    match cvarScope m with
-    | none => .unsupported "defined?(@@x) in a singleton-class scope"
-    | some scope => strIf (cvarLookupIn m.heap scope x).isSome "class variable"
+    let scope := (cvarScope m).getD Boot.objectId
+    strIf (cvarLookupIn m.heap scope x).isSome "class variable"
   | .const n =>
-    let lexical := m.currentFrame.cref.firstM (fun c => constOwn m.heap c n)
-    match lexical.orElse (fun _ => constLookupFrom m.heap m.currentFrame.defmod n) with
+    match lexicalConstant m n with
     | some _ => str "constant"
     | none =>
       -- same fidelity split as a constant *read*: a constant CRuby has but we
@@ -103,7 +100,7 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
     if f.meth == "" then nilR
     else
       let scope := f.superScope.getD (classOf m.heap f.self)
-      let after := ((ancestors m.heap scope).dropWhile (· != f.defmod)).drop 1
+      let after := ((ancestors m.heap scope).dropWhile (· != f.methodOwner.getD f.defmod)).drop 1
       match methodEntryInChain m.heap after f.meth with
       | some (_, md) => strIf (!md.undefined) "super"
       | none =>
@@ -165,24 +162,20 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
       | _ => .next (withCtl m (.value .nil))  -- unset ivar on immediate self → nil
     | .cvar =>
       match cvarScope m with
-      | none => .unsupported "class variable in a singleton-class scope"
+      | none => .next (raiseErr m Boot.runtimeErrorId "class variable access from toplevel")
       | some scope =>
-        if scope == Boot.objectId && m.currentFrame.kind == .toplevel then
-          .next (raiseErr m Boot.runtimeErrorId "class variable access from toplevel")
-        else
-          match cvarLookupIn m.heap scope x with
-          | some v => .next (withCtl m (.value v))
-          | none =>
-            .next (raiseErr m Boot.nameErrorId
-              s!"uninitialized class variable {x} in {className m.heap scope}")
+        match cvarLookupIn m.heap scope x with
+        | some v => .next (withCtl m (.value v))
+        | none =>
+          .next (raiseErr m Boot.nameErrorId
+            s!"uninitialized class variable {x} in {className m.heap scope}")
   | .vasgn kind x rhs =>
     if kind == .gvar && loaderGlobal x then .unsupported "assignment to loader global" else
     .next (withKont m (.eval rhs) (.asgnK kind x))
   | .const n =>
     -- artifact 03 §4: lexical phase (each cref scope's OWN consts, innermost
     -- first), then inheritance phase (ancestors of the innermost class/defmod).
-    let lexical := m.currentFrame.cref.firstM (fun c => constOwn m.heap c n)
-    match lexical.orElse (fun _ => constLookupFrom m.heap m.currentFrame.defmod n) with
+    match lexicalConstant m n with
     | some v => .next (withCtl m (.value v))
     | none =>
       -- same fidelity split as methods: a constant CRuby has but we don't
@@ -281,15 +274,13 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     let defmod := m.currentFrame.defmod
     if let some receiver := frozenMethodReceiver? m.heap defmod then raiseFrozen m receiver else
     let md : MethodDef :=
-      { params, body, owner := defmod, cref := m.currentFrame.cref,
+      { params, body, owner := defmod, definee := some defmod, cref := m.currentFrame.cref,
         fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin,
         -- `private`/`protected` with no arguments set the default for the rest of
-        -- the class body (artifact 02 §5); `initialize` is always private, and so
-        -- is a **toplevel** `def` (a private method of Object) [V] — which is why
-        -- `public def m …` at toplevel exists at all (L72).
-        visibility :=
-          if m.currentFrame.kind == .toplevel then .priv
-          else m.currentFrame.defVis }
+        -- the definition scope (artifact 02 §5). Top level starts private and
+        -- honors an explicit public change; ordinary blocks share that context.
+        -- Initialization names are normalized by the mutation protocol.
+        visibility := m.currentDefinitionFrame.defVis }
     runMethodEdits m [.define defmod name md] (.sym name)
   | .defined e => evalDefined m e
   | .undef names =>
@@ -357,7 +348,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
       | .ref o =>
         let (e, m) := eigenclassOf m o
         let md : MethodDef :=
-          { params, body, owner := e, cref := m.currentFrame.cref,
+          { params, body, owner := e, definee := some m.currentFrame.defmod, cref := m.currentFrame.cref,
             fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
         runMethodEdits m [.define e name md] (.sym name)
       | _ => .unsupported "singleton def on an immediate"

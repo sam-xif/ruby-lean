@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L283 (2026-09-28)",
+  "note": "Class variables skip singleton lexical scopes, use enclosing classes/modules and reject top-level access while defined? can inspect Object. Compared with CRuby 4.0.5."
+}

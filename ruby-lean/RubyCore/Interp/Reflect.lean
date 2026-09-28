@@ -184,7 +184,8 @@ def dmTarget? (m : Machine) (recv : Value) (singleton : Bool) : Option ObjId :=
     | .ref o => some (eigenclassOf m o).1
     | _ => none
   else match recv with
-    | .ref o => if (m.heap.classPayload? o).isSome then some o else none
+    | .ref o => if o == Boot.mainId then some Boot.objectId else
+        if (m.heap.classPayload? o).isSome then some o else none
     | _ => none
 
 /-- The machine `dmTarget?` grows: `define_singleton_method` on a plain object allocates the
@@ -202,17 +203,30 @@ def reflectDefineMethod (m : Machine) (recv : Value) (mname : String)
     -- the defining scope's locals, but `self` is the receiver at call time and
     -- `return` returns from the method. `capturedFrame` on the MethodDef is what
     -- carries the first half; the frame kind (`.method`) the second.
+    if mname == "define_method" && (dmTarget? m recv false).isNone then none else
+    if args.isEmpty || args.length > 2 then
+      some (.next (raiseErr m Boot.argumentErrorId
+        s!"wrong number of arguments (given {args.length}, expected 1..2)")) else
     match args with
     | nameArg :: rest =>
       match symOrStr m nameArg with
       | none => none
       | some name =>
         -- body from the block, or from a Proc/lambda passed as the 2nd argument
-        let cl? := match blk with
-          | some bv => procClosure? m bv
-          | none => match rest with | [pv] => procClosure? m pv | _ => none
+        let body := match rest with | [pv] => some pv | _ => blk
+        let cl? := body.bind (procClosure? m)
         match cl? with
-        | none => none   -- a `Method`/`UnboundMethod` argument: falls to the gate
+        | none =>
+          if body.isNone then some (.next (raiseErr m Boot.argumentErrorId
+            "tried to create Proc object without a block")) else
+          -- Method/UnboundMethod bodies need their binding protocol; do not
+          -- report a false TypeError for those representations.
+          let value := body.getD .nil
+          let typeName := className m.heap (realClassOf m.heap value)
+          if ["Method", "UnboundMethod"].contains typeName then
+            some (.unsupported "define_method from a Method/UnboundMethod") else
+          some (.next (raiseErr m Boot.typeErrorId
+            s!"wrong argument type {typeName} (expected Proc/Method/UnboundMethod)"))
         | some cl =>
             -- `cl.locals` (block-locals, explicit and parse-time-implicit alike)
             -- used to gate here. They belong on the MethodDef instead: the body
@@ -228,7 +242,8 @@ def reflectDefineMethod (m : Machine) (recv : Value) (mname : String)
                 some (raiseFrozen m receiver)
               else
               -- constants in the body resolve at the *definition* site [V]
-              let cref := (m.frames.getD (cl.captured.getD 0) default).cref
+              let capture := m.frames.getD (cl.captured.getD 0) default
+              let cref := capture.cref
               -- **J33: capture erasure for closed bodies.** A body that can
               -- never read or write a local (`localFreeB`) never consults the
               -- chain, so installing it chain-free is unobservable — and it is
@@ -238,7 +253,9 @@ def reflectDefineMethod (m : Machine) (recv : Value) (mname : String)
               -- methods. Open bodies keep the capture, byte-for-byte as before.
               let md : MethodDef :=
                 { params := cl.params, body := cl.body, owner := target, cref,
-                  visibility := if singleton then .pub else m.currentFrame.defVis,
+                  definee := some capture.defmod,
+                  definitionFrame := cl.captured.map m.definitionFrameId,
+                  visibility := if singleton then .pub else m.macroVisibility target,
                   capturedFrame :=
                     -- fuel bounds the *depth*; any body deeper than this keeps
                     -- its capture (the conservative direction)
@@ -328,6 +345,8 @@ def reflectVisibility (m : Machine) (recv : Value) (mname : String)
       | _ => .priv
     match recv with
     | .ref o0 =>
+      if (m.heap.classPayload? o0).isNone &&
+          (o0 != Boot.mainId || !["public", "private"].contains mname) then none else
       -- at toplevel the receiver is `main`, and these operate on Object [V]
       let o := if (m.heap.classPayload? o0).isNone then Boot.objectId else o0
       let names := args.filterMap (symOrStr m)
@@ -338,8 +357,7 @@ def reflectVisibility (m : Machine) (recv : Value) (mname : String)
           some (.unsupported "bare module_function (sets a body-wide mode)")
         else
           -- bare `private`/`public`/`protected` in a class body
-          let f := m.currentFrame
-          let m := m.setCurrentFrame { f with defVis := vis }
+          let m := m.setDefinitionVisibility vis
           some (.next (withCtl m (.value .nil)))
       else
         -- the target class: the eigenclass for the `*_class_method` forms
@@ -493,8 +511,8 @@ def reflectAttr (m : Machine) (recv : Value) (mname : String)
     if names.any (fun n => n.isEmpty || !((n.toList.headD '_').isAlpha || n.toList.headD '_' == '_') || !(n.toList.all (fun c => c.isAlphanum || c == '_'))) then
       some (.unsupported "invalid attribute name") else
     let edits : List MethodEdit := names.flatMap fun name =>
-      let getter : MethodDef := { params := [], body := .var .ivar ("@" ++ name), owner := target, visibility := m.currentFrame.defVis, fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
-      let setter : MethodDef := { params := [.req "__v"], body := .vasgn .ivar ("@" ++ name) (.var .lvar "__v"), owner := target, visibility := m.currentFrame.defVis, fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
+      let getter : MethodDef := { params := [], body := .var .ivar ("@" ++ name), owner := target, visibility := m.macroVisibility target, fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
+      let setter : MethodDef := { params := [.req "__v"], body := .vasgn .ivar ("@" ++ name) (.var .lvar "__v"), owner := target, visibility := m.macroVisibility target, fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
       (if mname != "attr_writer" then [.define target name getter] else []) ++
       (if mname != "attr_reader" then [.define target (name ++ "=") setter] else [])
     let values := edits.filterMap fun edit => match edit with | .define _ name _ => some (.sym name) | _ => none
@@ -585,6 +603,17 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
   | "protected_method_defined?" => reflectMethodDefined m recv mname args blk
   | "respond_to?" => reflectRespondTo m recv mname args blk
   | _ => none
+
+/-- Native singleton macros on main have ordinary lookup and visibility. Their
+    implementations share the class-macro protocols without exposing those
+    names as instance methods on every Object. -/
+def callMainMethod (m : Machine) (recv : Value) (bid : String)
+    (args : List Value) (blk : Option Value) : StepResult :=
+  let name := (bid.drop 5).toString
+  let mixinRecv := if name == "include" then Value.ref Boot.objectId else recv
+  match (tryMixin m mixinRecv name args).orElse (fun _ => tryReflect m recv name args blk) with
+  | some result => result
+  | none => .unsupported s!"main singleton method {name}"
 
 /-- A known missing method, including an explicit undef tombstone (L272).
 No native fallback may resurrect a method that lookup found to be undefined. -/

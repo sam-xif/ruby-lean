@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L283 (2026-09-28)",
+  "note": "Ordinary blocks share definition visibility, eval blocks get fresh visibility, methods reset it, and macros target only the matching class scope. Compared with CRuby 4.0.5."
+}

@@ -1740,3 +1740,78 @@ regressions: `20260928-063351-tierregressions-lean`, **97 held / one old gated /
 zero failures**, all old sources unchanged; require-definition-hooks is fixed.
 All validation processes terminated. No proof build, typed gate or commit was
 performed. The active full-conformance objective remains incomplete.
+
+
+## N57 — definition context and main-only method coverage (2026-09-28)
+
+Model L283 separates lexical definition targets from super's owner, shares ordinary
+block visibility, creates fresh eval definition contexts, and preserves actual
+constant/class-variable lexical nesting. Main-only native methods no longer pollute
+Object's inventory. Top-level define_method gains ordinary singleton lookup and
+private visibility; body/arity checks and mixin argument validation now follow the
+oracle. Method/UnboundMethod binding and full mixin callbacks remain boundaries.
+
+Nine new permanent programs cover all 43 focused scope cases plus a mixin argument
+matrix. Exact combined programs agree before their fixed sidecars are written.
+The previous 92-case callback/Forwardable/Sorbet replay remains 85 agree / seven
+gates / zero disagree. Standalone core-only execution (three programs) and the
+permanent identical-source feature-loading check (three protocols) also agree.
+
+First bootstrap report 20260928-065253-tier0-lean: **1,087 agree / zero disagree /
+216 unsupported**, five invalid controls and the old syntax harness error. Five
+old top-level define_method cases become agreements, no lost agreements or source
+changes. This run preceded the final mixin argument validation fix and is superseded
+by the final report appended below. After a continuation lost its tool handle,
+its live OS PID was checked and the existing run was allowed to finish.
+
+Final regression report 20260928-065807-tierregressions-lean: **106 held / one
+old gated / zero failures** (107 programs), all old sources/verdicts unchanged.
+Final tier 1 n=300 seed20260927 report 20260928-065807-tier1-lean: **219 agree /
+81 unsupported / zero disagree**, all sources/verdicts unchanged. Front-end: 45
+seeds plus nine new programs, **54 agree / zero disagree**, AST-idempotent with
+six old render-only instabilities. Model build (96 jobs), both regeneration
+comparisons and whitespace checks pass. No comparator, normalizer, old corpus
+source, checker/proof file or ratchet floor was weakened or changed for this batch.
+No proof build, typed gate or commit; proof repair is deferred by the user.
+
+Reproduce from difftest/ with UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache:
+
+```sh
+uv run python -m difftest run --tier regressions --sut lean
+uv run python -m difftest run --tier 0 --sut lean
+uv run python -m difftest run --tier 1 -n 300 --sut lean --seed 20260927
+```
+
+Build first in ruby-lean/ using `lake build rubycore`. From there,
+`python3 scripts/check-feature-loading.py` runs the identical-source require tests.
+From the repository root, the front-end command is:
+
+```sh
+/opt/homebrew/opt/ruby/bin/ruby desugar/bin/run desugar/corpus/seeds
+```
+
+Add these nine paths to that command for the recorded 54-case run:
+`difftest/corpus/regressions/{nested-definition-targets,define-method-scope,definition-visibility-context,lexical-constant-context,frozen-declaration-scope,main-singleton-context,define-method-protocol,class-variable-scope,mixin-argument-validation}.rb`.
+Temporary focused evidence is /private/tmp/conformance-l283-{focused,permanent,
+previous-focused,standalone}.json; those files include the exact sources/results.
+
+
+Final L283 verification: bootstrap report `20260928-065807-tier0-lean` has
+**1,087 agree / zero disagree / 216 unsupported**, five invalid controls and the
+old test_syntax_115 harness error (1,309 total). Exactly five gains over L282:
+test_yjit_275,277,278,279,280; all sources unchanged and no lost agreements.
+Final tier 1 and regression reports share 20260928-065807: **219 agree / 81
+unsupported / zero disagree**, and **106 held / one old gated / zero failures**
+(107 programs), respectively. All old sources/verdicts are unchanged. Build PASS
+(96 jobs), regeneration comparisons and whitespace checks pass. All validation
+processes terminated. Proof repair remains deferred; no typed gate or commit.
+The full goal remains active and incomplete.
+
+A next-work audit confirmed an older constructor defect outside the completed
+regression/bootstrap runs: `class NoInitializer; undef initialize; end;
+NoInitializer.new` incorrectly succeeds, while CRuby raises NoMethodError.
+userInit? treats the undef tombstone as a user body, and the native new fallback
+also needs to preserve normal initialize/method_missing dispatch. The exact
+source/results are saved in /private/tmp/conformance-l283-next-constructor.json.
+Fix and add a permanent regression next; do not merely filter the tombstone and
+silently allocate through newImpl instead.

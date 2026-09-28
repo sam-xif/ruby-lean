@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L283 (2026-09-28)",
+  "note": "Nested def, alias and undef retain their lexical definition target across singleton methods, blocks and module inclusion. Compared with CRuby 4.0.5."
+}

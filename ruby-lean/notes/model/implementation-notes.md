@@ -14361,3 +14361,118 @@ regressions: `20260928-063351-tierregressions-lean`, **97 held / one old gated /
 zero failures**, all old sources unchanged; require-definition-hooks is fixed.
 All validation processes terminated. No proof build, typed gate or commit was
 performed. The active full-conformance objective remains incomplete.
+
+
+## L283 — lexical definition contexts and native main methods (2026-09-28)
+
+The known nested-def discrepancy was real: a def inside C's singleton method
+landed on C's eigenclass instead of C. The audit found related visibility and
+constant/class-variable errors in Proc, define_method and eval contexts. Forty-three
+focused programs now agree with CRuby; eight combined permanent programs retain
+all those cases, with distinct constant names to preserve their independent scopes.
+A ninth permanent program covers the mixin argument checks found during this work.
+
+MethodDef.definee captures the target of nested def/alias/undef independently of
+MethodDef.owner. Frame.defmod now denotes that target, while Frame.methodOwner
+carries the dispatch owner used by super and defined?(super). Ordinary defs and
+singleton defs record the current definee; aliases keep it. define_method takes
+it from the supplied block. Its definitionFrame reference is separate from local
+capturedFrame: even a locally closed body can perform metaprogramming that needs
+the defining visibility context. Local capture erasure remains conservative and
+does not erase this separate context.
+
+Ordinary blocks point to their defining visibility frame, including after that
+frame returns. Changes inside a block are shared with its surrounding class body;
+a Proc created before private sees the later visibility when invoked. Eval blocks
+instead start a fresh public context with their rebound definee. Ordinary method
+bodies start public and ignore bare private/protected/public changes, matching the
+oracle's warned no-op (stderr warnings are outside the observation triple).
+Attribute/define_method macros use scoped visibility only when the target matches
+the class/eval definition scope; calls aimed at another class and top-level
+calls are public. Ordinary top-level def defaults to private but honors public.
+
+Constant lookup and assignment now use actual lexical nesting. Top-level cref is
+empty, with Object as a fallback; retaining Object as a fake lexical entry let it
+incorrectly beat superclass constants. Modules still fall back to Object after
+their own ancestors. Qualified class bodies add themselves to their surrounding
+lexical nesting, not the path container. Block eval preserves nesting for constant
+reads, assignments and class declarations while rebinding the def target. New
+class declarations reject frozen constant namespaces; existing nested classes may
+still be reopened. Class variables select the innermost ordinary lexical scope,
+skipping singleton-class entries. With no enclosing scope, reads/writes raise
+RuntimeError even in blocks/methods; defined? alone can inspect Object's variables.
+
+The audit exposed an older name-table shortcut: main-only native singleton names
+had been folded into Object. That gave ordinary instances false method presence
+and unmodeled-method gates. gen_cruby_names.rb now emits crubyMainSingletonNames
+separately. Core boot realizes main's eigenclass and installs the native entries:
+inspect/to_s use the existing main-aware representation primitives; private macro
+entries use Main# dispatch to the existing reflective protocols. Visibility,
+aliasing, overrides and misses therefore use ordinary lookup. include delegates
+to Object and returns Object. Unknown main native APIs still gate. The generated
+inventory remains separate from Object's actual instance-method names.
+
+Top-level define_method now executes its actual protocol. Definition receiver and
+arity are checked, an explicit Proc argument wins over a supplied block, a missing
+body raises ArgumentError, and an invalid body raises the oracle's TypeError.
+Method/UnboundMethod binding remains unmodeled. Ordinary Object receivers cannot
+accidentally call Module's visibility/definition macros. This enables five old
+bootstrap top-level define_method cases (test_yjit_275,277,278,279,280).
+
+The final macro audit also caught class objects accepted as include/prepend/extend
+modules. The single-argument path validates module type before frozen-state checks;
+empty calls raise the correct 1+ arity error. Nil/true/false use the literal form
+in Check_Type diagnostics (unlike define_method's body-type diagnostics). Receivers
+without the macro still get method_missing. General multiple-module calls and
+append_features/prepend_features/extended callback protocols remain incomplete;
+this is an argument-validation fix, not a claim of full mixin conformance.
+
+The Forwardable compiler no longer needs its L282 artificial capture frame: the
+ordinary singleton-helper frame now carries the correct lexical definee. Its prior
+92-case focused replay is unchanged: 85 agreements / seven explicit gates / zero
+disagreements, including all 28 Sorbet examples (25 agree / three old gates).
+The new 43-case focused replay and all nine exact permanent programs agree.
+The new fixed programs are nested-definition-targets, define-method-scope,
+definition-visibility-context, lexical-constant-context, frozen-declaration-scope,
+main-singleton-context, define-method-protocol, class-variable-scope and
+mixin-argument-validation. Sidecars were written after exact program comparison.
+
+The first full L283 bootstrap run (20260928-065253) had 1,087 agree / zero disagree /
+216 unsupported, five invalid controls and the old test_syntax_115 harness error.
+Only the five named cases changed from L282, all unsupported to agree, with no
+source changes or lost agreements. It preceded the final mixin argument fix.
+An automatic goal continuation dropped the tool session handles while that run
+was still live; OS process inspection confirmed its PID, so it was allowed to
+finish without starting a duplicate. The final suite results follow below.
+
+Final model build PASS (96 jobs). Final regression report
+20260928-065807-tierregressions-lean: **106 held / one old sorbet-hash gate /
+zero failures** (107 cases), all prior sources/verdicts unchanged. Final tier 1
+n=300 seed20260927 report 20260928-065807-tier1-lean: **219 agree / 81 unsupported /
+zero disagree**, all sources/verdicts unchanged. Front-end: 45 seeds plus nine new
+programs, **54 agree / zero disagree**, AST-idempotent with the six old render-only
+instabilities. Three standalone core-only programs and all three identical-source
+feature-loading protocols agree. Prelude/CRubyNames regeneration comparisons and
+git diff --check pass. Proof repair remains explicitly deferred; no typed gate or
+commit. The full conformance objective remains active and incomplete.
+
+
+Final L283 verification: bootstrap report `20260928-065807-tier0-lean` has
+**1,087 agree / zero disagree / 216 unsupported**, five invalid controls and the
+old test_syntax_115 harness error (1,309 total). Exactly five gains over L282:
+test_yjit_275,277,278,279,280; all sources unchanged and no lost agreements.
+Final tier 1 and regression reports share 20260928-065807: **219 agree / 81
+unsupported / zero disagree**, and **106 held / one old gated / zero failures**
+(107 programs), respectively. All old sources/verdicts are unchanged. Build PASS
+(96 jobs), regeneration comparisons and whitespace checks pass. All validation
+processes terminated. Proof repair remains deferred; no typed gate or commit.
+The full goal remains active and incomplete.
+
+A next-work audit confirmed an older constructor defect outside the completed
+regression/bootstrap runs: `class NoInitializer; undef initialize; end;
+NoInitializer.new` incorrectly succeeds, while CRuby raises NoMethodError.
+userInit? treats the undef tombstone as a user body, and the native new fallback
+also needs to preserve normal initialize/method_missing dispatch. The exact
+source/results are saved in /private/tmp/conformance-l283-next-constructor.json.
+Fix and add a permanent regression next; do not merely filter the tombstone and
+silently allocate through newImpl instead.

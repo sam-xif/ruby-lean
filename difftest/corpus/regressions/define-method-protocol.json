@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L283 (2026-09-28)",
+  "note": "define_method checks receiver, arity and body type, prefers an explicit Proc argument over a block, and preserves missing-method behavior. Compared with CRuby 4.0.5."
+}

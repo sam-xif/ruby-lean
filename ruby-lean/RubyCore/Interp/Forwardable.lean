@@ -60,18 +60,9 @@ def compileForwardable (m : Machine) (args : List Value) : StepResult :=
             .if' (.defined (.send (some target) meth [] none)) call
               (some (.send none "__unsupported__" [.str "Forwardable warning path needs source locations and Kernel.warn"] none))]
           else Expr.send (some access) "__send__" [.sym meth, .fwd] none
-        -- eval's default definee is its lexical class/module, not the owner
-        -- of the singleton helper method. *_eval may rebind it when called.
-        let original := m.currentFrame
-        let capture := { original with defmod := original.cref.headD original.defmod }
-        let captureId := m.frames.size
-        let m := { m with frames := m.frames.push capture }
+        -- The ordinary frame now keeps the helper's lexical definee separately
+        -- from its singleton-method owner. *_eval can rebind it when called.
         let (value, m) := reifyBlock m [] [] (.def' ali [.fwd] body) false
-        let m := match value with
-          | .ref o => match (m.heap.get o).payload with
-            | .proc cl => { m with heap := m.heap.set o { m.heap.get o with payload := .proc { cl with captured := some captureId } } }
-            | _ => m
-          | _ => m
         .next { m with ctl := .value value }
     | _, _, _ => .unsupported "Forwardable source compilation with non-name values"
   | _ => .unsupported "internal Forwardable compiler arity"

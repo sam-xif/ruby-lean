@@ -1,6 +1,92 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L282)
+## Active conformance goal (2026-09-28, L283)
+
+The user wants known semantics issues fixed first, then progress toward full
+CRuby bootstrap conformance. Proof repair is explicitly deferred. The goal
+remains active and incomplete. L276–L283 changes are uncommitted; checker/proof
+files and ratchet floors remain untouched. Existing unrelated paper/ and wasm
+upstream-bug files remain untouched. All validation processes have terminated.
+
+L283 fixes the nested-definition target bug and related scope errors.
+MethodDef.definee captures nested def/alias/undef's lexical target; Frame.defmod
+holds that target, while methodOwner independently anchors super. define_method
+retains the block's definitionFrame separately from capturedFrame/local erasure.
+Ordinary blocks share defining visibility, including retired scopes and later
+changes. Eval blocks start fresh public definition contexts, retaining lexical
+constant scope. Ordinary methods start public and ignore bare visibility changes;
+macros use visibility only for the matching class/eval target. Top-level def is
+private by default and honors public; top-level define_method is public.
+
+Top-level cref is empty, with Object as fallback. Constants search lexical scopes
+before ancestors of the innermost scope; modules can fall back to Object.
+Qualified class bodies retain real surrounding nesting. Block eval preserves
+constant/class-declaration and class-variable scope while rebinding def targets.
+New class declarations check frozen namespace state; reopening existing nested
+classes is allowed. Class variables skip singleton lexical scopes and reject
+reads/writes with no enclosing ordinary class/module. defined? alone can still
+inspect Object's class variables.
+
+Main-only native methods no longer contaminate Object's inventory. Generated
+crubyMainSingletonNames is separate, core boot realizes main's eigenclass, and
+native entries have ordinary lookup/visibility. Main# macros share reflection
+protocols; include targets/returns Object. inspect/to_s use main-aware primitives.
+Top-level define_method now works, with receiver/arity/body checks and explicit
+Proc precedence over a block. Method/UnboundMethod bodies remain gated. Mixin
+macros validate one module argument and required arity before frozen writes;
+nil/true/false diagnostics use literal names. Full multi-module/hook protocols
+remain incomplete. Forwardable no longer needs a special synthetic capture frame:
+ordinary helper method frames now carry its correct lexical definee.
+
+Final build PASS (96 jobs). Bootstrap **1,087 agree / zero disagree /
+216 unsupported**, five invalid controls and the old syntax harness error.
+Exactly five gains over L282: test_yjit_275,277,278,279,280 (top-level
+ define_method), no lost agreements or source changes. Regressions **106 held /
+one old gated / zero failures** (107 programs); all old sources/verdicts unchanged.
+Tier 1 n=300 seed20260927: **219 agree / 81 unsupported / zero disagree**,
+all sources/verdicts unchanged. Final reports:
+`difftest/reports/20260928-065807-{tier0,tier1,tierregressions}-lean/`.
+
+Nine new fixed programs cover definition targets, define_method scope/protocol,
+visibility, constants, frozen declarations, main macros, class variables and
+mixin arguments. The 43 focused scope cases and all nine combined permanent
+programs agree. Prior 92-case replay is unchanged: 85 agree / seven explicit
+gates / zero disagree, including all 28 Sorbet programs (25 agree / three old
+gates). Three standalone core-only programs and all three identical-source
+feature-loading checks agree. Front-end: 45 seeds plus nine new programs,
+**54 agree / zero disagree**, AST-idempotent with six old render-only
+instabilities. Both generated files match regeneration; git diff --check passes.
+No proof build, typed gate or commit. Details/reproduction are implementation-notes
+L283 and difftest N57; temporary evidence is /private/tmp/conformance-l283-*.
+The interim 065253 suite completed normally after lost tool handles were checked
+against live OS PIDs; it was not restarted while still running.
+
+Next work, keeping the full objective:
+
+1. A final read-only audit confirmed the older Class#new bug: `class NoInitializer;
+   undef initialize; end; NoInitializer.new` succeeds in the model but raises
+   NoMethodError in CRuby. Evidence: /private/tmp/conformance-l283-next-constructor.json.
+   userInit? treats an undef tombstone as a user body. Preserve normal initialize
+   and method_missing dispatch after allocation; simply filtering it and falling
+   through to newImpl can still silently succeed. Fix this and add regression
+   coverage next, including custom method_missing, aliases and payload subclasses.
+2. Other known leads: unchecked destructureBind to_ary, legacy for bypassing each,
+   constant/ancestry/mixin hooks (including literal const_missing), frozen writes
+   outside audited paths, the File module-shaped stub. Kernel ownership folding
+   and repeated inclusion-node identity remain structural limits. Constructor
+   protocol and method-source binding still need broader fidelity.
+3. The sole old regression gate remains sorbet-hash-gate. Do not invent a
+   process-specific hash or weaken comparison. Full Sorbet runtime remains partial,
+   including model-only namespaces. Loader path resolution/require_relative,
+   loader globals, source-position diagnostics and missing library APIs remain.
+   Future runtime source compilation/retry needs fresh literal sites.
+4. Bootstrap gates still include string eval, TracePoint, block param shapes,
+   top-level return, binding/local reflection, String#setbyte, object_id, RubyVM,
+   four timeouts and others. The five top-level define_method gates are now fixed.
+   Historical out-of-scope labels do not complete the objective; re-measure before
+   selecting the next bootstrap batch.
+
+## Previous batch (2026-09-28, L282)
 
 The user wants known semantics issues fixed first, then progress toward full
 CRuby bootstrap conformance. Proof repair is explicitly deferred. The goal

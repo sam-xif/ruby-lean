@@ -213,6 +213,10 @@ An inherited visibility override stores `visibilityOnly` and resolves the curren
 ancestor body on each lookup. Aliases instead retain the selected body,
 `superName`, and (for class/eigenclass aliases) `superScope`; the latter preserves
 the lookup context needed when the same module occurs in different class chains.
+L283 adds `definee`, distinct from the dispatch owner. A `def self.make` inside C
+can therefore define an instance method on C when its body executes a nested def.
+A define_method body also retains its block's definition-context frame even when
+its local-variable capture can be erased; the two kinds of capture are independent.
 
 ### 01 §3 — Builtin payloads
 
@@ -366,7 +370,8 @@ class.
   ⟨ send e_recv m [ā] blk ⟩ → ⟨ send e_recv :method_missing [sym m, ā…] blk ⟩
 ```
 
-`invoke` pushes a frame with `self := v` and `defmod := owner`, binds params,
+`invoke` pushes a frame with `self := v`, the body's lexical `defmod`, and a
+separate `methodOwner` for super, then binds params,
 installs the block and evaluates the body.
 
 **`method_missing` is not magic** — it is an ordinary method whose *default*
@@ -423,6 +428,20 @@ undef/remove do not use that fallback. Initialization methods are private when
 defined as instance methods, including through aliases and attributes. **[V]**
 Reflection observes the forwarding entry even after its ancestor body disappears;
 calls then fail, and aliases cannot capture a missing body. **[V]**
+
+Ordinary blocks share their defining context's visibility, including changes made
+before a saved Proc runs or inside a block. Block forms of class_eval/instance_eval
+start a fresh public definition context while retaining lexical constant scope.
+Ordinary method bodies start public and ignore bare visibility changes (Ruby's
+warning is outside the observation triple). Attribute/define_method macros use
+the caller's visibility only when it belongs to the same class/eval target;
+top-level define_method is public. Top-level def defaults to private and honors
+an explicit public change. **[V]**
+
+Main's native singleton methods have their own entries and visibility. Public,
+private, include and define_method are private macros there, and do not appear on
+ordinary Object instances. Their missing/unmodeled inventory is separate from
+Object's method inventory. **[V]**
 
 ### 02 §6 — Why this design pays off
 
@@ -507,8 +526,11 @@ runtime `self`, never lexical.
 
 `@@x` is shared across an entire hierarchy: a `@@x` in a superclass is the *same
 slot* seen by subclasses and by instance methods. **[V]** Resolution walks from
-the current `defmod` up the superclass chain for an existing `@@x`, creating it on
-`defmod` if there is none; an undefined read is a `NameError`. This
+the innermost ordinary lexical class/module up its ancestor chain for an existing
+`@@x`, creating it there if there is none; an undefined read is a `NameError`.
+Singleton-class scopes are skipped. With no enclosing class/module, reads and
+writes raise RuntimeError even inside a Proc or method; defined? can still inspect
+Object's class variables. Block eval retains this lexical scope. **[V]** This
 shared-mutable-across-hierarchy behavior is a notorious footgun and differs from
 ivars, so it has to be modeled exactly.
 
@@ -519,8 +541,9 @@ The subtlest scoping rule in Ruby. An unqualified `C_n` resolves in order:
 1. **Lexical** — search `Module.nesting` (`φ.cref`), the chain of lexically
    enclosing `module`/`class` bodies, innermost first. **Not** the ancestor chain.
 2. **Ancestor** — if lexical fails, search the ancestors of the innermost lexical
-   class.
-3. Else send `const_missing`, whose default raises `NameError`.
+   class. A module can then fall back to Object.
+3. A miss follows `const_missing` in Ruby. The model handles the default error;
+   user const_missing hooks remain a boundary that needs a complete audit.
 
 Lexical beats ancestor **[V]**: a method in `Outer::Inner < Base` sees `Outer::C`
 even when `Base` defines `C`. Ancestor lookup applies only when lexical fails
@@ -533,6 +556,13 @@ Constants are reassignable (with a warning) — not truly immutable. **[V]**
 
 A method carries the cref of where it was *defined*, not its dispatch owner —
 which is what makes `def self.m` inside a module resolve constants correctly.
+Top-level nesting is empty; Object is a fallback, not an extra lexical ancestor
+that could beat a superclass constant. A qualified class body adds that class to
+the actual surrounding lexical nesting, without adding the path's container.
+Block eval keeps that nesting for constants and class declarations while rebinding
+the target of def/alias/undef. New class declarations check the frozen state of
+their constant namespace; reopening an existing nested class does not write a new
+constant. **[V]**
 
 ### 03 §6 — Globals
 
@@ -734,8 +764,9 @@ backtrace wins, and `Exception#cause` chaining.
 
 **Feature loading (L281).** Core boot evaluates `prelude/prelude.rb`; optional
 feature bodies remain decoded programs until `require`. A modeled require enters
-a fresh top-level frame with `self = main`, `defmod = Object`, and Object's lexical
-constant scope. The caller's locals and namespace do not become the feature's.
+a fresh top-level frame with `self = main`, `defmod = Object`, empty lexical
+nesting and Object as its constant fallback. The caller's locals and namespace do
+not become the feature's.
 The heap, globals and effects remain shared. **[V]**
 
 The machine distinguishes loading, completed and attempted features. A completed

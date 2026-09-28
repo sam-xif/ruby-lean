@@ -25,7 +25,17 @@ def boot : Except String Machine :=
   match program with
   | .error e => .error s!"prelude decode: {e}"
   | .ok p =>
-    match Interp.run bootFuel { Machine.init p with preludeMode := true } with
+    -- main's native singleton macros have their own place in lookup; they are
+    -- not instance methods on every Object.
+    let (e, initial) := Interp.eigenclassOf { Machine.init p with preludeMode := true } Boot.mainId
+    let h := crubyMainSingletonNames.foldl (fun h name =>
+      let repr := name == "inspect" || name == "to_s"
+      defineMethod h e name
+        { params := [], body := .nil, owner := e,
+          visibility := if repr then .pub else .priv,
+          builtin := some ((if repr then "Object#" else "Main#") ++ name) }) initial.heap
+    let initial := { initial with heap := h }
+    match Interp.run bootFuel initial with
     | .value _ m => .ok m
     | .uncaught exc m =>
       let cls := className m.heap (realClassOf m.heap exc)

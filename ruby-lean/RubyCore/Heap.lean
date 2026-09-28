@@ -60,6 +60,11 @@ structure MethodDef where
   params : List Param
   body : Expr
   owner : ObjId
+  /-- Lexical target of nested definitions; distinct from the dispatch owner. -/
+  definee : Option ObjId := none
+  /-- A define_method body shares the defining block's visibility context,
+      independently of whether its local-variable capture can be erased. -/
+  definitionFrame : Option Nat := none
   /-- Lexical constant scope captured at definition (innermost enclosing
       class/module first), threaded to the activation frame for cref-scoped
       constant lookup (artifact 03 §4). Empty = toplevel/`[Object]`. -/

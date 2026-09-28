@@ -71,6 +71,13 @@ generate ordinary methods with keyword/block forwarding. General source eval,
 Forwardable warning/source-location paths and remaining constant/ancestry hook
 protocols are still outside this fragment.
 
+L283 separates nested definitions' lexical target from the method owner used by
+super. Blocks retain definition visibility, eval gets a fresh definition context,
+and constants/class variables retain their actual lexical nesting. Main's native
+singleton macros have separate method entries and inventory, including top-level
+define_method. New class declarations reject frozen namespaces, and mixin macros
+validate their single module argument and required arity before frozen writes.
+
 Tier-0 baseline: **940/1304 bootstraptest agree, 0 disagree.**
 
 **Modeled.** Literals, locals/ivars/gvars/**cvars**, sends, `if`/`while`/`dowhile`/

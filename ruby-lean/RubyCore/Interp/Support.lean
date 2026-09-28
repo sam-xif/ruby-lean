@@ -27,6 +27,12 @@ namespace Interp
 def loaderGlobal (name : String) : Bool :=
   ["$LOADED_FEATURES", "$\"", "$LOAD_PATH", "$:", "$-I"].contains name
 
+def lexicalConstant (m : Machine) (name : String) : Option Value :=
+  (m.currentFrame.cref.firstM (fun k => constOwn m.heap k name)).orElse fun _ =>
+    (constLookupFrom m.heap m.lexicalNamespace name).orElse fun _ =>
+      if (m.heap.classPayload? m.lexicalNamespace).any (·.isModule) then
+        constLookupFrom m.heap Boot.objectId name else none
+
 def executionOf (m : Machine) : Execution :=
   ⟨m.ctl, m.kont, m.stack, m.currentExc, m.missingReason, m.activeEnumerator⟩
 
@@ -44,7 +50,8 @@ def featureHas (table : List (String × List String)) (h : Heap) (o : ObjId) (na
 
 def nativeSingletonMethod (h : Heap) (o : ObjId) (name : String) : Bool :=
   ((h.classPayload? o).bind (·.attached)).any
-    (fun target => crubySingletonDefines (className h target) name)
+    (fun target => if target == Boot.mainId then crubyMainSingletonNames.contains name
+      else crubySingletonDefines (className h target) name)
 
 def featureMethod (h : Heap) (o : ObjId) (name : String) : Bool :=
   featureHas crubyFeatureMethods h o name ||
@@ -202,6 +209,7 @@ def crubyResolvedShadow (h : Heap) (chain : List ObjId) (mname : String)
 def crubySingletonShadow (h : Heap) (recv : Value) (mname : String) : Option String :=
   match recv with
   | .ref o =>
+    if o == Boot.mainId && crubyMainSingletonNames.contains mname then some "main" else
     match (h.get o).payload with
     | .cls _ =>
       (ancestors h o).firstM fun k =>
@@ -486,6 +494,8 @@ def enterClosure (m : Machine) (cl : Closure) (args : List Value)
     -- block's own semantics while `self` / the `def` target move.
     let frame : Frame :=
       { self := selfOv.getD capF.self, defmod := defmodOv.getD capF.defmod,
+        definitionFrame := if defmodOv.isSome then none else
+          some (m.definitionFrameId (cl.captured.getD 0)),
         blk := capF.blk,
         locals, kind := .block, captured := cl.captured,
         home := cl.home, lam := cl.lam, cref := capF.cref, libraryOrigin := cl.libraryOrigin }

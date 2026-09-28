@@ -88,22 +88,23 @@ puts <<~HEADER
 HEADER
 
 # Toplevel `public`/`private`/`include`/`using`/`define_method` etc. live on
-# main's singleton class; fold them into Object so a program using them
-# gates as unmodeled instead of mis-raising NoMethodError.
+# main's singleton class. Keep them separate from Object's instance methods.
 MAIN_SINGLETON = TOPLEVEL_BINDING.receiver.singleton_class
   .then { |sc| sc.instance_methods(false) + sc.private_instance_methods(false) }
 
 entries = FOLD.map do |name, mods|
   meths = mods.flat_map { |m| m.instance_methods(false) + m.private_instance_methods(false) }
-  meths += MAIN_SINGLETON if name == "Object"
   meths = meths.uniq.sort
   "  (\"#{name}\", [\n#{NAME_LINES.call(meths, "    ")}\n  ])"
 end
 puts entries.join(",\n")
 
-puts <<~MID
-  ]
+puts "]\n\n/-- Methods native to main's singleton class, not all Objects. -/"
+puts "def crubyMainSingletonNames : List String := ["
+puts NAME_LINES.call(MAIN_SINGLETON.uniq.sort, "  ")
+puts "]"
 
+puts <<~MID
   /-- Singleton (class-side) method names each bootstrap class defines in
       CRuby (e.g. Hash.ruby2_keywords_hash, Array.[]): a send to a class
       object resolving past these must gate. -/

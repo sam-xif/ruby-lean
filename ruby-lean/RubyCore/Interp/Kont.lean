@@ -44,14 +44,11 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
           raiseFrozen m selfV
       | .cvar =>
         match cvarScope m with
-        | none => .unsupported "class variable in a singleton-class scope"
+        | none => .next (raiseErr m Boot.runtimeErrorId "class variable access from toplevel")
         | some scope =>
-          if scope == Boot.objectId && m.currentFrame.kind == .toplevel then
-            .next (raiseErr m Boot.runtimeErrorId "class variable access from toplevel")
-          else
-            .next (withCtl { m with heap := cvarSetIn m.heap scope x v } (.value v))
+          .next (withCtl { m with heap := cvarSetIn m.heap scope x v } (.value v))
     | .casgnK n =>
-      let defmod := m.currentFrame.defmod
+      let defmod := m.lexicalNamespace
       if (m.heap.get defmod).frozen then raiseFrozen m (.ref defmod) else
       let qual := if defmod == Boot.objectId then n else s!"{className m.heap defmod}::{n}"
       let h := nameIfAnonymous m.heap qual v
@@ -100,7 +97,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         -- `def self.m` in a module keeps that module's lexical cref for constant
         -- lookup even though its dispatch owner is the eigenclass (artifact 03).
         let md : MethodDef :=
-          { params, body, owner := e, cref := m.currentFrame.cref,
+          { params, body, owner := e, definee := some m.currentFrame.defmod, cref := m.currentFrame.cref,
             fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
         runMethodEdits m [.define e name md] (.sym name)
       | _ =>

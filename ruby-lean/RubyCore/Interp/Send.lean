@@ -175,6 +175,9 @@ where
     | none =>
       match md.builtin with
       | some bid =>
+        if bid.startsWith "Main#" then
+          let (args, m) := appendKwHash m args kw
+          callMainMethod m recv bid args blk else
         if bid == "Object#__forwardable_compile" then compileForwardable m args else
         if requireBid bid then callRequire m bid args kw else
         if enumBid bid then callEnumerator m bid recv args blk kw else
@@ -285,8 +288,8 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
   else
     let self := f.self
     let scope := f.superScope.getD (classOf m.heap self)
-    let chain := (ancestors m.heap scope).dropWhile (· != f.defmod) |>.drop 1
-    match superFound m.heap scope f.defmod f.meth with
+    let chain := (ancestors m.heap scope).dropWhile (· != f.methodOwner.getD f.defmod) |>.drop 1
+    match superFound m.heap scope (f.methodOwner.getD f.defmod) f.meth with
     | some (owner, md) =>
       if md.undefined then
         let (args, m) := appendKwHash m args kw
@@ -298,6 +301,9 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
       | none =>
       match md.builtin with
       | some bid =>
+        if bid.startsWith "Main#" then
+          let (args, m) := appendKwHash m args kw
+          callMainMethod m self bid args blk else
         if bid == "Object#__forwardable_compile" then compileForwardable m args else
         if requireBid bid then callRequire m bid args kw else
         if enumBid bid then callEnumerator m bid self args blk kw else
@@ -628,19 +634,12 @@ def forStep (m : Machine) (targets : List (TargetKind × String)) (body : Expr)
     | none => .unsupported "for with a non-local loop target"
     | some m => .next (withKont m (.eval body) (.forBodyK targets body tail coll))
 
-/-- The class/module a `@@x` in the current frame belongs to (artifact 03 §3):
-    the innermost *lexical* class/module (cref head), falling back to `defmod`.
-    `none` when there is no such scope (toplevel — CRuby warns and uses Object,
-    but the desugar's toplevel `@@x` cases are rare) or when it is an eigenclass,
-    whose class-variable scope CRuby resolves differently (L67). -/
+/-- Class variables use lexical nesting, skipping singleton-class scopes.
+    No enclosing ordinary class/module means an access-from-toplevel error;
+    defined? alone can still ask whether Object has the variable. -/
 def cvarScope (m : Machine) : Option ObjId :=
-  let k := match m.currentFrame.cref with
-    | c :: _ => c
-    | [] => m.currentFrame.defmod
-  -- An eigenclass body shares the *attached* class's class variables in CRuby
-  -- (`class << self; @@f = 1; end` writes the class's `@@f` [V]); our cref head
-  -- is the eigenclass itself, and we do not track the attachment → gate.
-  if (className m.heap k).startsWith "#<" then none else some k
+  m.currentFrame.cref.find? fun k =>
+    (m.heap.classPayload? k).any (fun cp => cp.attached.isNone)
 
 /-- Does `mname` resolve on `recv` for `defined?` purposes: `some true` = yes
     ("method"), `some false` = genuinely not defined (nil), `none` = CRuby has it

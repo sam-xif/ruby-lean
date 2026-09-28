@@ -42,7 +42,7 @@ def callRequire (m : Machine) (bid : String) (args : List Value)
           | none => true
         | some _ => true
       if conflict then .unsupported "require namespace conflict needs original source location" else
-      let frame : Frame := { self := .ref Boot.mainId, defmod := Boot.objectId, kind := .toplevel, cref := [Boot.objectId], libraryOrigin := true }
+      let frame : Frame := { self := .ref Boot.mainId, defmod := Boot.objectId, kind := .toplevel, defVis := .priv, libraryOrigin := true }
       let fid := m.frames.size
       .next { m with ctl := .eval body, frames := m.frames.push frame, stack := fid :: m.stack, kont := .requireK feature fid :: m.kont, loadingFeatures := feature :: m.loadingFeatures, attemptedFeatures := feature :: m.attemptedFeatures.filter (· != feature) }
 
