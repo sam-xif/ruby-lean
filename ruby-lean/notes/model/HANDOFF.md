@@ -1,6 +1,56 @@
 # Lean model — hand-off
 
-## Active conformance goal (2026-09-28, L298)
+## Conformance goal — closeout at L299 (2026-09-29)
+
+The user requested: "Close out the current task and commit, then stop."
+L299 closes the current dup increment. Pause the overall conformance goal after
+this commit and resume only on a new user request; full conformance is incomplete.
+No Regexp implementation work is included in this increment.
+
+L299 adds native dup argument validation and private initialize_dup/initialize_copy
+dispatch. It shares core allocation with clone, drops the source's singleton
+state before hook lookup and preserves the hook's final frozen state. All 42
+probes agree, repairing 20 disagreements and 13 gates without losing the nine
+previous agreements. Five native-dup-* guards preserve every probe, with the
+Integer override isolated. L298's 67 clone/copy source/verdict pairs hold.
+L276–L299 are separate increments.
+
+Final validation (closed 2026-09-29): model build passes (104 jobs), with no
+later runtime edits. Full bootstrap: 1,309 cases, 1,096 agree, zero disagree,
+207 unsupported, five existing invalid controls and the old test_syntax_115
+harness error. Every source/verdict matches L298. Regression replay: 213 cases,
+212 agree and one old sorbet-hash gate; all 208 earlier sources/verdicts hold.
+Tier 1 (300, seed 20260927): 226 agree, 74 gates, all sources/verdicts unchanged.
+Frontend seeds plus new guards: 51 agree, all AST-idempotent; six old render-only
+instabilities plus one benign native-dup-copies rendering instability. Standalone
+and feature loading: three agreements each. Whitespace checks pass. Evidence and
+before/after comparisons are archived in
+`difftest/reports/20260928-incremental-L299/`. No checker, proof, comparator,
+normalizer or floor changes; proof repair remains explicitly deferred.
+
+The typed gate was rerun and remains red at HeapFacts className/lookup proof
+drift; its captured error log exactly matches L298. Proof repair stays deferred.
+
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.
+
+All runtime campaigns and proof audits are terminal.
+
+If resumed, next known failures remain Regexp literal freezing and site identity,
+recorded in L298's probes/next-audit.json. Static literal sites need distinct
+cache identities; runtime Regexp.new must remain mutable. Dynamic literals and
+/o also need native frozen results. The frontend currently lowers literals to
+Regexp.new and export.rb recognizes a constructor-shaped tree, even for manually
+written constructors; preserving real literal provenance is necessary before
+adding caching. Only read-only investigation has begun in those files.
+
+Other open work: Hash#default, Array.new(array), general String#-@ interning,
+permanent ASCII-name encoding, Integer#chr's ASCII encoding, namespace path
+ordering/copy/removal, singleton clone, specialized native copy hooks, Random
+state, const_missing and native method removal/Kernel ownership. Unrelated paper/
+and wasm upstream-bug files remain untouched. Proof repair stays deferred.
+
+## Previous batch (2026-09-28, L298)
 
 L298 repairs native clone keyword handling and copy initialization hooks. New
 Interp/Copy.lean validates options, allocates mutable core copies with ivars,

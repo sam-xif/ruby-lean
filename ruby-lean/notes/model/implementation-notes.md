@@ -15462,3 +15462,61 @@ The typed gate was rerun and remains red at HeapFacts className/lookup proof
 drift; its captured error log exactly matches L297. Proof repair stays deferred.
 The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
 was not reached. The captured proof-audit.log is archived.
+
+
+## L299 — native dup initialization and singleton-state omission (2026-09-28)
+
+The L298 follow-up preserved skipped initialize_dup/initialize_copy effects and
+ignored immediate dup arity. Dup now enters a resolved native path, validates
+zero arguments before immutable identity, and treats nonempty keywords as one
+positional Hash (there is no freeze option). Object, String, Array, Hash and
+Exception reuse the native copy allocation/initialization machinery. They copy
+ivars before private initialize_dup, whose default calls initialize_copy and
+discards its normal return. Hooks see mutable allocations; hook freezing stays,
+with no final frozen-state copying from the source. Exceptions/throws retain
+ordinary effects and unwind. Literal blocks do not enter initialization hooks.
+
+Unlike clone, dup omits the source's singleton class. Its methods, extension
+modules, constants, undef entries and initialize_dup/initialize_copy overrides
+cannot leak into the result or intercept its hooks. Ordinary class hooks still
+run. Native aliases/super and aliases of initialize_dup keep their semantics.
+The shared allocation helper retains clone's existing singleton-copy gate and
+freeze protocol. For other already-modeled default payload copies, hook checks
+start from the real instance class, after singleton state is omitted. Enumerator
+copies retain execution-state checks; unstarted independent copies work even
+when the source has singleton methods. Namespace/Random copying and custom hooks
+requiring uninitialized specialized native payloads remain separate work.
+
+The implementation follows CRuby's
+[object.c](https://raw.githubusercontent.com/ruby/ruby/ruby_4_0/object.c)
+(rb_obj_dup, rb_obj_dup_setup and rb_obj_init_dup_clone), with CRuby 4.0.5 as the
+executable oracle. The native initialize_dup entry is private from boot; no Ruby
+wrapper, checker, proof, normalizer or comparator change is involved.
+
+All 42 focused probes agree: 20 disagreements and 13 old gates become agreements,
+with all nine earlier agreements preserved. They cover empty core shells,
+encoding/default sharing, immutable arity, native aliases/super, source/copy
+freezing, hook failure, metadata timing, singleton-state omission, constructor
+bypass and Enumerator state. Five native-dup-* programs preserve all 42; the
+global Integer hook override is isolated. Every exact combined source agrees
+before its sidecar is marked fixed. L298's 41 clone probes and 26 extra copy
+probes retain every earlier source/verdict (including their documented gates
+and Regexp literal-frozen-state failure).
+
+Final validation (closed 2026-09-29): model build passes (104 jobs), with no
+later runtime edits. Full bootstrap: 1,309 cases, 1,096 agree, zero disagree,
+207 unsupported, five existing invalid controls and the old test_syntax_115
+harness error. Every source/verdict matches L298. Regression replay: 213 cases,
+212 agree and one old sorbet-hash gate; all 208 earlier sources/verdicts hold.
+Tier 1 (300, seed 20260927): 226 agree, 74 gates, all sources/verdicts unchanged.
+Frontend seeds plus new guards: 51 agree, all AST-idempotent; six old render-only
+instabilities plus one benign native-dup-copies rendering instability. Standalone
+and feature loading: three agreements each. Whitespace checks pass. Evidence and
+before/after comparisons are archived in
+`difftest/reports/20260928-incremental-L299/`. No checker, proof, comparator,
+normalizer or floor changes; proof repair remains explicitly deferred.
+
+The typed gate was rerun and remains red at HeapFacts className/lookup proof
+drift; its captured error log exactly matches L298. Proof repair stays deferred.
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.

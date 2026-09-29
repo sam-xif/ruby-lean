@@ -26,7 +26,7 @@ regenerated. Paths are relative to `ruby-lean/`.
 | `RubyCore/Interp/BlockPass.lean` | Checked conversion continuations, including nested method/block parameter destructuring after defaults (L275–L287) |
 | `RubyCore/Interp/Inspect.lean` | Native object inspection with checked field-selection hooks, live values and recursion control (L289) |
 | `RubyCore/Interp/Enumerator.lean` | Native Enumerator/Generator/Yielder descriptors, internal dispatch and suspended external execution (L280) |
-| `RubyCore/Interp/Copy.lean` | Native clone keyword validation, copy-hook dispatch, final freezing and core initialize_copy conversion (L298) |
+| `RubyCore/Interp/Copy.lean` | Native dup/clone arguments, copy-hook dispatch, singleton-state omission, final freezing and core initialize_copy conversion (L298–L299) |
 | `RubyCore/Interp/Construct.lean` | Native constructor/allocator dispatch, Class/Module initialization and inherited callbacks, and exception construction/copy/message protocols (L284–L291) |
 | `RubyCore/Interp/Mutation.lean` | Method-table edits interleaved with ordinary Ruby callbacks and frozen-state checks (L282) |
 | `RubyCore/Interp/Forwardable.lean` | Forwardable's simple accessor source-generator fragment, compiled to real RubyCore definitions (L282) |
@@ -136,6 +136,11 @@ core initialize_copy fills native contents through checked conversions. Freezing
 occurs after normal hook return, using live source state for the default policy.
 Immutable values reject unfreezing. Singleton copies, native custom-copy allocators
 outside those core classes and the complete dup protocol remain separate work.
+
+L299 gives dup its native private initialize_dup/initialize_copy protocol, with
+zero-argument validation even on immutable values. Dup drops eigenclass state
+before hook lookup, supporting copies of extended objects and ignoring source
+singleton copy hooks. Existing specialized native-copy boundaries remain open.
 
 Tier-0 baseline: **940/1304 bootstraptest agree, 0 disagree.**
 

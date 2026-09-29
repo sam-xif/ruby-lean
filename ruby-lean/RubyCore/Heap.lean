@@ -437,7 +437,7 @@ def builtinMethods : List (ObjId × List String) := [
   (objectId, ["==", "===", "!", "equal?", "eql?", "class", "nil?", "itself", "inspect",
               "to_s", "freeze", "frozen?", "is_a?", "kind_of?", "instance_of?",
               "puts", "print", "p", "raise", "fail", "String", "block_given?", "rand",
-              "require", "require_relative", "__unsupported__", "dup", "clone", "initialize_copy", "initialize_clone",
+              "require", "require_relative", "__unsupported__", "dup", "clone", "initialize_copy", "initialize_clone", "initialize_dup",
               "__user_defines?", "__default_inspect?", "__write", "__addr_str",
               "__any_to_s", "__match_to_caller", "respond_to_missing?", "instance_variables_to_inspect",
               "__coerce_failed", "__cmp_failed", "__coerce_defined?", "Rational", "Complex", "__complex_rect",
@@ -523,7 +523,7 @@ def install (h : Heap) (cls : ObjId) (names : List String) : Heap :=
                 (["puts", "print", "p", "raise", "fail", "String", "block_given?", "rand",
                   "require", "require_relative", "respond_to_missing?", "instance_variables_to_inspect", "binding",
                   "local_variables"].contains n && cls == objectId) ||
-                ["initialize", "initialize_copy", "initialize_clone"].contains n then .priv else .pub,
+                ["initialize", "initialize_copy", "initialize_clone", "initialize_dup"].contains n then .priv else .pub,
             builtin := some (if n == "===" then
               match cname with
               | "Proc" => "Proc#call"

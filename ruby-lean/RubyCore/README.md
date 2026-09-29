@@ -332,9 +332,20 @@ checked String/Array/Hash conversion. Frozen checks precede conversion; String
 also checks afterward, while Array/Hash can finish after conversion freezes them.
 Ordinary copies of other already-modeled payloads retain the default-hook shortcut;
 custom hooks require their uninitialized native state. Singleton-class copying,
-namespace copying, Random state and the complete dup protocol remain incomplete.
+namespace copying and Random state remain incomplete.
 CRuby clone copies singleton classes, but that behavior is still gated here.
 **[V]** (L298)
+
+Native `dup` checks zero positional arity (a nonempty keyword bundle counts as
+one positional Hash), then returns immutable values unchanged or allocates a
+mutable copy. It omits the source's eigenclass, including extension modules,
+singleton methods and singleton copy hooks. It dispatches private initialize_dup
+on the copy, whose default calls initialize_copy; hook results are discarded and
+hook freezing is preserved. Core shell allocation/content copying is shared with
+clone, without clone's final freeze policy. Aliases and super use the resolved
+native entry. Existing namespace/Random and other native custom-copy boundaries
+remain explicit. **[V]** (L299)
+
 
 ---
 

@@ -2284,3 +2284,32 @@ The typed gate was rerun and remains red at HeapFacts className/lookup proof
 drift; its captured error log exactly matches L297. Proof repair stays deferred.
 The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
 was not reached. The captured proof-audit.log is archived.
+
+
+## N73 — native dup hooks and dropped singleton state (2026-09-28)
+
+Five native-dup-* programs preserve model L299's 42 agreeing probes. Before:
+20 disagreements, 13 gates, nine agreements; after: all 42 agree. Core mutable
+shells and hooks, immutable arity, metadata/default sharing, failures, aliases,
+super, source singleton/extension omission and Enumerator state are exercised.
+The global Integer hook override is isolated. The 67 L298 clone/copy probes
+retain their earlier source/verdict pairs, including the recorded Regexp literal
+failure. No comparator, observation normalizer, checker or floor changed.
+
+Final validation (closed 2026-09-29): model build passes (104 jobs), with no
+later runtime edits. Full bootstrap: 1,309 cases, 1,096 agree, zero disagree,
+207 unsupported, five existing invalid controls and the old test_syntax_115
+harness error. Every source/verdict matches L298. Regression replay: 213 cases,
+212 agree and one old sorbet-hash gate; all 208 earlier sources/verdicts hold.
+Tier 1 (300, seed 20260927): 226 agree, 74 gates, all sources/verdicts unchanged.
+Frontend seeds plus new guards: 51 agree, all AST-idempotent; six old render-only
+instabilities plus one benign native-dup-copies rendering instability. Standalone
+and feature loading: three agreements each. Whitespace checks pass. Evidence and
+before/after comparisons are archived in
+`difftest/reports/20260928-incremental-L299/`. No checker, proof, comparator,
+normalizer or floor changes; proof repair remains explicitly deferred.
+
+The typed gate was rerun and remains red at HeapFacts className/lookup proof
+drift; its captured error log exactly matches L298. Proof repair stays deferred.
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.

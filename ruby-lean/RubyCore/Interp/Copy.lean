@@ -1,11 +1,14 @@
 import RubyCore.Interp.Construct
 
-/-! Native clone's keyword and initialization protocol (L298). Allocation copies
-ivars before the ordinary private hooks; freezing occurs only after normal return. -/
+/-! Native dup/clone initialization protocols (L298–L299). Allocation copies
+ivars before the ordinary private hooks; clone freezes only after normal return. -/
 namespace RubyCore.Interp
 
 def nativeCloneBid (bid : String) : Bool :=
   Builtins.cloneBids.contains bid || ["Rational#clone", "Complex#clone", "Enumerator#clone"].contains bid
+
+def nativeDupBid (bid : String) : Bool :=
+  Builtins.dupBids.contains bid || ["Rational#dup", "Complex#dup", "Enumerator#dup"].contains bid
 
 /-- Keyword errors use Ruby inspection; class-valued diagnostics use to_s. -/
 def copyErrorNext (m : Machine) (lead : String) (remaining : List Value)
@@ -56,34 +59,32 @@ def finishNativeClone (m : Machine) (copy original freeze : Value) : StepResult 
     else m
   .next (withCtl m (.value copy))
 
-def callNativeClone (m : Machine) (recv : Value) (args : List Value)
-    (kw : List (Value × Value)) : StepResult :=
-  if !args.isEmpty then enumArity m args.length "0" else
-  match copyFreezeOption m kw with
-  | .error result => result
-  | .ok freeze =>
+/-- Dup discards the source's singleton state before hook lookup; clone retains
+its existing singleton-copy boundary. Core allocation/copying is shared. -/
+def beginNativeCopy (m : Machine) (recv : Value) (clone : Bool) (freeze : Value) : StepResult :=
   let immutable := match recv with
     | .ref o => match (m.heap.get o).payload with | .rational .. | .complex .. => true | _ => false
     | _ => true
   if immutable then
-    if freeze.identEq (.bool false) then copyClassError m "can't unfreeze " recv
+    if clone && freeze.identEq (.bool false) then copyClassError m "can't unfreeze " recv
     else .next (withCtl m (.value recv))
   else match recv with
   | .ref o =>
     let src := m.heap.get o
-    if src.eigen.isSome then .unsupported "clone of an object with a singleton class" else
+    if clone && src.eigen.isSome then .unsupported "clone of an object with a singleton class" else
     match src.payload with
-    | .cls _ => .unsupported "clone of a class/module"
-    | .rng _ => .unsupported "clone of a Random (state identity)"
+    | .cls _ => .unsupported "dup/clone of a class/module"
+    | .rng _ => .unsupported "dup/clone of a Random (state identity)"
     | _ =>
     let core := match src.payload with | .none | .str _ | .arr _ | .hsh _ | .exc _ => true | _ => false
     if !core then
       -- Preserve already modeled plain copies. Effectful hooks for these native
       -- payloads need their uninitialized allocation/state representation first.
-      let defaultHooks := ["initialize_clone", "initialize_copy"].all fun name =>
-        (lookup m.heap recv name).any fun (_, md) =>
+      let hook := if clone then "initialize_clone" else "initialize_dup"
+      let defaultHooks := [hook, "initialize_copy"].all fun name =>
+        (methodOn m.heap src.klass name).any fun (_, md) =>
           !md.undefined && md.builtin == some ("Object#" ++ name)
-      if !defaultHooks then .unsupported "native payload clone with custom initialization hooks" else
+      if !defaultHooks then .unsupported "native payload copy with custom initialization hooks" else
       if let .enumerator _ := src.payload then
         let st := enumState m o
         if st.suspended.isSome || st.caller.isSome then
@@ -105,9 +106,30 @@ def callNativeClone (m : Machine) (recv : Value) (args : List Value)
       let binary := match src.payload with | .str _ => true | _ => src.binary
       let (copy, h) := m.heap.alloc { klass := src.klass, payload, binary, ivars := src.ivars, iterationResult := src.iterationResult, throwTag := src.throwTag, throwValue := src.throwValue }
       let copy := Value.ref copy
-      let kw := if freeze.identEq .nil then [] else [(Value.sym "freeze", freeze)]
-      .next { m with heap := h, ctl := .send copy .reflective "initialize_clone" [recv] none kw, kont := .cloneK copy recv freeze :: m.kont }
-  | _ => .unsupported "mutable clone without an object"
+      let kw := if !clone || freeze.identEq .nil then [] else [(Value.sym "freeze", freeze)]
+      let hook := if clone then "initialize_clone" else "initialize_dup"
+      let kont := if clone then Kont.cloneK copy recv freeze else Kont.newK copy
+      .next { m with heap := h, ctl := .send copy .reflective hook [recv] none kw, kont := kont :: m.kont }
+  | _ => .unsupported "mutable copy without an object"
+
+def callNativeClone (m : Machine) (recv : Value) (args : List Value)
+    (kw : List (Value × Value)) : StepResult :=
+  if !args.isEmpty then enumArity m args.length "0" else
+  match copyFreezeOption m kw with
+  | .error result => result
+  | .ok freeze => beginNativeCopy m recv true freeze
+
+def callNativeDup (m : Machine) (recv : Value) (args : List Value)
+    (kw : List (Value × Value)) : StepResult :=
+  let (args, m) := appendKwHash m args kw
+  if !args.isEmpty then enumArity m args.length "0" else
+  beginNativeCopy m recv false (.bool false)
+
+def callNativeInitializeDup (m : Machine) (recv : Value) (args : List Value)
+    (kw : List (Value × Value)) : StepResult :=
+  let (args, m) := appendKwHash m args kw
+  if args.length != 1 then enumArity m args.length "1" else
+  .next { m with ctl := .send recv .reflective "initialize_copy" args none [], kont := .newK recv :: m.kont }
 
 def callNativeInitializeClone (m : Machine) (recv : Value) (args : List Value)
     (kw : List (Value × Value)) : StepResult :=
