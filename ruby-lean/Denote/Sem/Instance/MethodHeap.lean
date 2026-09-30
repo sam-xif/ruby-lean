@@ -38,6 +38,13 @@ theorem constLookup_defineMethod (h : Heap) (cls : ObjId) (name n : String) (md 
     cases hc : h.classPayload? Boot.objectId <;> simp [constLookup, constOwn, hc]
   rw [hco, hco, Proof.constOwn_defineMethod]
 
+theorem isModuleAny_defineMethod (h : Heap) (cls k : ObjId) (name : String) (md : MethodDef) :
+    ((defineMethod h cls name md).classPayload? k).any (·.isModule) =
+      (h.classPayload? k).any (·.isModule) := by
+  simpa only [Option.any_map, Function.comp_def] using
+    congrArg (fun p : Option (String × Bool) => p.any Prod.snd)
+      (Proof.clsName_defineMethod h cls k name md)
+
 theorem classNamed?_defineMethod (h : Heap) (cls : ObjId) (name n : String) (md : MethodDef) :
     classNamed? (defineMethod h cls name md) n = classNamed? h n := by
   simp only [classNamed?, constLookup_defineMethod, Proof.classPayload?_isSome_defineMethod]

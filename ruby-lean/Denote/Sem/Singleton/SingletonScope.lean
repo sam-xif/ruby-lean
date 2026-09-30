@@ -3,31 +3,18 @@ import Denote.Sem.Core.FramedNames
 import Denote.Sem.Singleton.SingletonActivation
 
 /-! Singleton activations retain lexical class cref but use its metaclass as defmod.
-The two constant phases therefore need separate retained heap facts. -/
+Constant lookup still uses the lexical namespace, rather than the definee. -/
 set_option autoImplicit false
 namespace Ratchet.Denote
 open RubyCore Ratchet
 
 theorem InstanceSite.singleton_constScope {κ : Ctx} {cn : String} {k : ObjId} {m : Machine}
     (site : InstanceSite κ cn k m.heap)
-    (hcref : m.currentFrame.cref = [k, Boot.objectId])
-    (howner : m.currentFrame.defmod = classOf m.heap (.ref k)) : ConstScopeOk m := by
+    (hcref : m.currentFrame.cref = [k])
+    (_howner : m.currentFrame.defmod = classOf m.heap (.ref k)) : ConstScopeOk m := by
   intro name
-  have hglobal : constOwn m.heap Boot.objectId name = constLookup m.heap name := by
-    unfold constOwn constLookup
-    cases m.heap.classPayload? Boot.objectId <;> rfl
-  rw [constResolveAt, hcref, howner]
-  cases hk : constOwn m.heap k name with
-  | some v =>
-    have hs := site.constants name
-    simpa [instanceConstResolve, List.firstM, hk] using hs
-  | none =>
-    cases hg : constLookup m.heap name with
-    | some v => simp [List.firstM, hk, hglobal, hg]
-    | none =>
-      have hf := site.metaConstants name hg
-      simp [List.firstM, hk, hglobal, hg, hf]
-      rfl
+  simpa only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace,
+    hcref, List.headD_cons, instanceConstResolve] using site.constants name
 
 theorem SingletonScopeAt.constScope {κ : Ctx} {cn : String} {k e : ObjId} {m : Machine}
     (scope : SingletonScopeAt cn k e m) (site : InstanceSite κ cn k m.heap) :

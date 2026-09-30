@@ -42,8 +42,9 @@ theorem classFrontB_sound {h : Heap} {k : ObjId} (hf : classFrontB h k = true) :
       exact ⟨rest, by simpa only [hk] using ha⟩
 
 def instanceConstResolve (h : Heap) (k : ObjId) (n : String) : Option Value :=
-  ([k, Boot.objectId].firstM (fun j => constOwn h j n)).orElse
-    (fun _ => constLookupFrom h k n)
+  ([k].firstM (fun j => constOwn h j n)).orElse fun _ =>
+    (constLookupFrom h k n).orElse fun _ =>
+      if (h.classPayload? k).any (·.isModule) then constLookupFrom h Boot.objectId n else none
 
 /-- The finite names whose absence is stronger than MethodsExact's prelude allowance. -/
 def shadowableNames : List String := ["lambda", "proc", "x"]
@@ -122,7 +123,7 @@ theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
       Interp.methodOn m.heap j mn := he.methodOn_eq hch j mn
   have hc (j : ObjId) (name : String) : constOwn n.heap j name = constOwn m.heap j name := by
     simp only [constOwn, he.payload]
-  have hi (name : String) : constLookupFrom n.heap k name = constLookupFrom m.heap k name := by
+  have hi (j : ObjId) (name : String) : constLookupFrom n.heap j name = constLookupFrom m.heap j name := by
     simp only [constLookupFrom, he.payload, he.ancestors]
   have hlk : lookup n.heap (.ref k) "method_added" = lookup m.heap (.ref k) "method_added" := by
     change Interp.methodOn n.heap (classOf n.heap (.ref k)) "method_added" =
@@ -133,7 +134,7 @@ theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
   · simpa only [classFrontB, he.payload] using h.front
   · simpa only [definitionHookQuietB, hlk] using h.hook
   · intro name
-    simpa only [instanceConstResolve, hc, hi, he.constLookup_eq] using h.constants name
+    simpa only [instanceConstResolve, hc, hi, he.payload, he.constLookup_eq] using h.constants name
   · intro name hn owner md hmd
     rw [hm] at hmd
     exact h.names name hn owner md hmd

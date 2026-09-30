@@ -157,7 +157,7 @@ theorem constScope_of_topScope {m : Machine} (hb : topScopeB m = true) : ConstSc
   simp only [topScopeB, Bool.and_eq_true, beq_iff_eq, List.all_eq_true] at hb
   obtain ⟨⟨⟨hcref, hdefmod⟩, hhead⟩, hanc⟩ := hb
   intro n
-  simp only [constResolveAt, hcref, hdefmod, List.firstM, Option.orElse_none]
+  rw [constResolveAt_top hcref]
   cases hl : constLookup m.heap n with
   | some w =>
     unfold constLookupFrom

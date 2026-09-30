@@ -35,7 +35,7 @@ theorem SemInitA.ivarAsgn {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ 
   intro anchor m hm
   apply InitRunSpec.step (answerPoint_evalFrom _ _) (show Interp.stepFn _ =
     .next (pushK [.asgnK .ivar x] (evalFrom m e)) from rfl)
-  apply (he anchor m hm).bindSpec (by intro k hk tag; simp only [List.mem_singleton] at hk; subst k; simp)
+  apply (he anchor m hm).bindSpec hm.typed.rootClean (by intro k hk; simp only [List.mem_singleton] at hk; subst k; rfl)
   intro a n hr
   cases a with
   | val v =>
@@ -44,7 +44,7 @@ theorem SemInitA.ivarAsgn {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ 
     obtain ⟨hn', hv⟩ := hw anchor n v hn hr.2.1
     apply InitRunSpec.step (by rfl) (stepFn_ivarWrite hs hf)
     exact InitRunSpec.answer (a := .val v) ⟨hr.1.trans
-      ⟨hn'.growth, by simp, .bindIvar n x v, .bindIvar n x v, by simp⟩,
+      ⟨hn'.growth, by simp, .bindIvar n x v, .bindIvar n x v, by simp, by intro h; unfold Interp.bindIvar; split <;> exact h⟩,
       hv, fun _ _ => hn'⟩
   | esc j =>
     apply InitRunSpec.step (by rfl) (show Interp.stepFn _ =
@@ -65,7 +65,7 @@ private theorem init_seq_bind {anchor : Heap} {κ κ₁ κ₂ : Ctx} {Γ Γ₁ �
     (ht : ∀ n v, InitState anchor κ₁ Γ₁ I₁ n → denM σ n v →
       InitRunSpec anchor n (deliverA (.val v) n [.seqK es]) Γ₂ τ κ₂ I₂) :
     InitRunSpec anchor m (pushK [.seqK es] (evalFrom m e)) Γ₂ τ κ₂ I₂ := by
-  apply (h anchor m hm).bindSpec (by intro k hk tag; simp only [List.mem_singleton] at hk; subst k; simp)
+  apply (h anchor m hm).bindSpec hm.typed.rootClean (by intro k hk; simp only [List.mem_singleton] at hk; subst k; rfl)
   intro a n hr
   cases a with
   | val v => exact (ht n v (hr.2.2 v rfl) hr.2.1).rebase hr.1

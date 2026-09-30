@@ -172,7 +172,8 @@ theorem StateCore_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine
     methodOn_defineMethod _ _ _ _ _ _ hx
   have hco (v : Value) : classOf n.heap v = classOf m.heap v := Proof.classOf_defineMethod ..
   have hresolve (x : String) : constResolveAt n x = constResolveAt m x := by
-    simp only [constResolveAt, hcf, n, Proof.constOwn_defineMethod, Proof.constLookupFrom_defineMethod]
+    simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, hcf, n, Proof.constOwn_defineMethod, Proof.constLookupFrom_defineMethod, isModuleAny_defineMethod]
+    rfl
   have hivar : ivarOf n.heap n.currentFrame.self = ivarOf m.heap m.currentFrame.self := by
     rw [hcf]; exact ivarOf_defineMethod ..
   refine {

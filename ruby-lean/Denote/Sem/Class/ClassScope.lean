@@ -10,7 +10,7 @@ structure ClassScopeAt (cn : String) (k : ObjId) (m : Machine) : Prop where
   named : classNamed? m.heap cn = some k
   live : k < m.heap.objs.size
   owner : m.currentFrame.defmod = k
-  cref : m.currentFrame.cref = [k, Boot.objectId]
+  cref : m.currentFrame.cref = [k]
   captured : m.currentFrame.captured = none
   phase : m.preludeMode = false
   visibility : defaultDefVis m = .pub

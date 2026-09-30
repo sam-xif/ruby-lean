@@ -19,10 +19,10 @@ inductive SemFlowSeq : Ctx → Env → Ty → LocalFacts → List Ratchet.Expr �
       SemFlowSeq κ Γ I f (e :: e' :: es) τ c' κ₂ Γ₂ I₂ f₂
 
 private theorem seq_catchFree (es : List RubyCore.Expr) : RubyCore.Proof.CatchFree [.seqK es] := by
-  intro k hk tag
+  intro k hk
   simp only [List.mem_singleton] at hk
   subst hk
-  simp
+  rfl
 
 private theorem seq_escape (es : List RubyCore.Expr) (m : Machine) (j : Jump) :
     Interp.stepFn (deliverA (.esc j) m [.seqK es]) = .next (deliverA (.esc j) m []) := by
@@ -35,7 +35,7 @@ private theorem seq_bind {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I
     (ht : ∀ n v, StateOk κ₁ Γ₁ I₁ n → denM σ n v → FlowPost mid current v n →
       RunWith n (deliverA (.val v) n [.seqK es]) Γ₂ τ κ₂ I₂ (FlowPost out current')) :
     RunWith m (pushK [.seqK es] (evalFrom m e)) Γ₂ τ κ₂ I₂ (FlowPost out current') := by
-  apply (h m hm hf).bind (seq_catchFree es)
+  apply (h m hm hf).bind hm.rootClean (seq_catchFree es)
   intro a n hr
   cases a with
   | val v => exact (ht n v (hr.1.2.2 v rfl) hr.1.2.1 (hr.2 v rfl)).rebase hr.1.1

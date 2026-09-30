@@ -12558,3 +12558,18 @@ accounts for frozen results. Consumers, especially String#+ and constructors,
 need their actual special-entry proofs rather than that generic lemma.
 Literal-call allocation additionally binds breakScope and reserves a frame-store
 slot; the old plain reifyBlock proof does not establish that transition.
+
+## 2026-09-30 — use the runtime lexical resolver
+
+constResolveAt delegates to Interp.lexicalConstant. Scope and code metadata now
+record an empty top-level cref and a one-element top-level class cref. Inherited
+constant lookup follows the lexical namespace, with Object fallback for modules;
+a singleton method's distinct definee does not change its lexical namespace.
+Heap/method/reframe transports preserve that lookup, and constClass now proves
+the actual interpreter step. Boot remains checked.
+
+LexicalConstantRegression checks that a poisoned definee is ignored and a module
+still finds an Object constant outside its ancestor chain; Controls.All includes
+it. Eleven targets pass together (253 jobs, standard axioms). Initializer,
+bounded and local-flow sequence composition also now supplies root-boundary
+facts. Full Denote remains red at the remaining declaration and call transitions.

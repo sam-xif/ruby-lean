@@ -34,7 +34,8 @@ theorem InitState.bindIvar {anchor : Heap} {κ : Ctx} {Γ : Env} {I ρ : Ty}
     simp only [constLookupFrom, hw.classPayload, hw.ancestors_eq]
   have hresolve (name : String) :
       constResolveAt (Interp.bindIvar m x v) name = constResolveAt m name := by
-    simp only [constResolveAt, bindIvar_currentFrame, hw.constOwn_eq, hlookup]
+    simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, bindIvar_currentFrame, hw.constOwn_eq, hlookup, hw.classPayload]
+    rfl
   refine ⟨⟨StateOk_bindIvar hm.typed x v henv hspine ?_ ?_ ?_ ?_,
     hm.growth.bindIvar ho hfresh x v, ?_⟩, hv'⟩
   · cases hb : κ.blockTy with

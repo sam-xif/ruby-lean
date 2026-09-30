@@ -7,11 +7,11 @@ namespace Ratchet.Denote
 open RubyCore
 
 structure SingletonMethodCode (lexical owner : ObjId) (md : MethodDef) : Prop
-    extends OrdinaryMethodCode owner [lexical, Boot.objectId] md where
+    extends OrdinaryMethodCode owner [lexical] md where
   visibility : md.visibility = .pub
 
 def singletonMethodCodeB (lexical owner : ObjId) (md : MethodDef) : Bool :=
-  ordinaryMethodCodeB owner [lexical, Boot.objectId] md && decide (md.visibility = .pub)
+  ordinaryMethodCodeB owner [lexical] md && decide (md.visibility = .pub)
 
 theorem singletonMethodCodeB_sound {lexical owner : ObjId} {md : MethodDef}
     (h : singletonMethodCodeB lexical owner md = true) : SingletonMethodCode lexical owner md := by

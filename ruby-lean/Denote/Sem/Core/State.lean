@@ -291,12 +291,16 @@ whose denotation is the *toplevel* class object, about a value the machine produ
 made those two the same value, and the rules' obligations were not derivable. That is stall
 point (1) again — a missing conformance component, not a missing lemma. -/
 
-/-- The machine's own constant resolution for `n`, transcribed from `Interp.evalExpr`'s
-`.const` arm so a rung can rewrite with it. Lexical phase (each `cref` scope's *own*
-constants, innermost first), then the inheritance phase from `defmod`. -/
+/-- Use the interpreter's lexical lookup directly: own lexical constants,
+inheritance from the lexical namespace, then Object fallback for modules. -/
 def constResolveAt (m : Machine) (n : String) : Option Value :=
-  (m.currentFrame.cref.firstM (fun c => constOwn m.heap c n)).orElse
-    (fun _ => constLookupFrom m.heap m.currentFrame.defmod n)
+  Interp.lexicalConstant m n
+
+theorem constResolveAt_top {m : Machine} (hc : m.currentFrame.cref = []) (n : String) :
+    constResolveAt m n = constLookupFrom m.heap Boot.objectId n := by
+  simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, hc,
+    List.firstM, List.headD_nil, Option.orElse_none]
+  cases constLookupFrom m.heap Boot.objectId n <;> simp <;> rfl
 
 /-- **The current scope resolves constants exactly as the toplevel table does.**
 
@@ -322,10 +326,10 @@ def ConstScopeOk (m : Machine) : Prop :=
   ∀ n, constResolveAt m n = constLookup m.heap n
 
 theorem InstanceSite.constScope {κ : Ctx} {cn : String} {k : ObjId} {m : Machine}
-    (h : InstanceSite κ cn k m.heap) (hc : m.currentFrame.cref = [k, Boot.objectId])
+    (h : InstanceSite κ cn k m.heap) (hc : m.currentFrame.cref = [k])
     (ho : m.currentFrame.defmod = k) : ConstScopeOk m := by
   intro n
-  simpa only [constResolveAt, hc, ho, instanceConstResolve] using h.constants n
+  simpa only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, hc, ho, instanceConstResolve, List.headD_cons] using h.constants n
 
 /-- Both resolutions read the heap only through `classPayload?` and `ancestors`, and the frame
 only through `currentFrame` — the three things `Ext` pins outright. -/
@@ -335,7 +339,7 @@ theorem ConstScopeOk.ext {m m₂ : Machine} (he : Ext m m₂) (h : ConstScopeOk 
   have hl : constLookup m₂.heap n = constLookup m.heap n := by
     simp only [constLookup, he.payload]
   have hr : constResolveAt m₂ n = constResolveAt m n := by
-    simp only [constResolveAt, constOwn, constLookupFrom, he.payload, he.ancestors,
+    simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, constOwn, constLookupFrom, he.payload, he.ancestors,
       he.currentFrame_eq]
   rw [hr, hl]; exact h n
 
@@ -345,8 +349,9 @@ theorem ConstScopeOk.setLocal {m : Machine} (x : String) (w : Value) (h : ConstS
     ConstScopeOk (m.setLocal x w) := by
   intro n
   have hr : constResolveAt (m.setLocal x w) n = constResolveAt m n := by
-    simp only [constResolveAt, setLocal_heap, currentFrame_setLocal_cref,
+    simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, setLocal_heap, currentFrame_setLocal_cref,
       currentFrame_setLocal_defmod]
+    rfl
   rw [hr, setLocal_heap]; exact h n
 
 /-- The constant table, **stated over the lookup function rather than over the table**
@@ -737,8 +742,7 @@ theorem mainSite_of_scope {κ : Ctx} {m : Machine} (h : MainReady m)
     simpa only [h.self] using hl
   · intro n
     have he : constResolveAt m n = mainConstResolve m.heap n := by
-      simp only [constResolveAt, h.cref, h.owner, List.firstM, mainConstResolve]
-      rfl
+      exact constResolveAt_top h.cref n
     exact he.symm.trans (hc n)
 
 /-! ## The query builtins
@@ -1250,7 +1254,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     obtain ⟨v, hv1, hv2⟩ := h.consts n τ hn
     refine ⟨v, ?_, denM_ext he hv2⟩
     rw [show constResolveAt m₂ n = constResolveAt m n by
-      simp only [constResolveAt, constOwn, constLookupFrom, he.payload, he.ancestors,
+      simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, constOwn, constLookupFrom, he.payload, he.ancestors,
         he.currentFrame_eq]]
     exact hv1
   privConsts := trivial
@@ -1662,8 +1666,9 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
         obtain ⟨v, hv1, hv2⟩ := h.consts n σ hn
         refine ⟨v, ?_, denM_setLocal hw ?_ hv2⟩
         · rw [show constResolveAt (m.setLocal x w) n = constResolveAt m n by
-            simp only [constResolveAt, setLocal_heap, currentFrame_setLocal_cref,
-              currentFrame_setLocal_defmod]]
+            simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, setLocal_heap, currentFrame_setLocal_cref,
+              currentFrame_setLocal_defmod]
+            rfl]
           exact hv1
         · obtain ⟨p, hp⟩ := constGet?_entry hn
           obtain ⟨q, hq⟩ := envGet?_mem hp

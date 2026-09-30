@@ -29,7 +29,7 @@ theorem SemSafeCtxAt.frame {N : Nat} {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : En
       .next (deliverA (.esc j) m [])) : SemSafeCtxAt N κ Γ I out τ κ₂ Γ₂ I₂ := by
   intro m hm
   apply RunSpecAt.stepWithin (answerPoint_evalFrom _ _) (heval m)
-  apply (hp m hm).bindSpec hK
+  apply (hp m hm).bindSpec hm.rootClean hK
   intro a n hr
   have hap : answerPoint (deliverA a n [k]) = none := by simp [answerPoint, deliverA]
   cases a with
@@ -54,10 +54,10 @@ theorem SemSafeCtxAt.if' {N : Nat} {κ κc κ' : Ctx} {Γ Γc Γ₁ Γ₂ : Env}
         ⟨StateOk_joinEnv true hm, denM_joinT_left hd⟩)
     · exact he.weaken (fun _ _ hm hd =>
         ⟨StateOk_joinEnv false hm, denM_joinT_right hd⟩)
-  · intro k hk tag
+  · intro k hk
     simp only [List.mem_singleton] at hk
     subst hk
-    simp
+    rfl
   · intro m; rfl
   · intro m v
     simp only [Interp.stepFn, deliverA, Answer.ctl, Interp.applyKont]

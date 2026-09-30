@@ -65,7 +65,8 @@ theorem StateOk_reframe_block {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
   have hden (τ : Ty) (ht : FirstOrder τ = true) (v : Value) :
       denM τ m v → denM τ n v := (denM_heap_only ht hh.symm).mp
   have hresolve (x : String) : constResolveAt n x = constResolveAt m x := by
-    simp only [constResolveAt, hh, hc, hd]
+    simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, hh, hc, hd]
+    rfl
   have hivar : ivarOf n.heap n.currentFrame.self = ivarOf m.heap m.currentFrame.self := by
     rw [hh, hs]
   have hfree : nameFreeN ((κ.withFrame fr).withBlockTy β) = nameFreeN κ := rfl

@@ -1,3 +1,4 @@
+import Denote.Controls.LexicalConstantRegression
 import Denote.Controls.MainSingletonRegression
 import Denote.Controls.ScalarWriteControls
 import Denote.Controls.ClosureLiteralControls

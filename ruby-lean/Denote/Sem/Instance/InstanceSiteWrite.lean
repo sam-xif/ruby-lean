@@ -37,7 +37,7 @@ theorem InstanceSite.methodWrite {κ : Ctx} {cn name : String} {k cls : ObjId}
         (Proof.classOf_defineMethod ..)] using site.hook
   · intro n
     simpa only [instanceConstResolve, Proof.constOwn_defineMethod,
-      Proof.constLookupFrom_defineMethod, constLookup_defineMethod] using site.constants n
+      Proof.constLookupFrom_defineMethod, constLookup_defineMethod, isModuleAny_defineMethod] using site.constants n
   · intro n hmem owner found hfound
     by_cases he : n = name
     · exact Or.inr (Or.inr (he ▸ hn))

@@ -12,7 +12,7 @@ structure SingletonScopeAt (cn : String) (k e : ObjId) (m : Machine) : Prop wher
   cached : (m.heap.get k).eigen = some e
   self : m.currentFrame.self = .ref k
   owner : m.currentFrame.defmod = e
-  cref : m.currentFrame.cref = [k, Boot.objectId]
+  cref : m.currentFrame.cref = [k]
   captured : m.currentFrame.captured = none
   phase : m.preludeMode = false
 

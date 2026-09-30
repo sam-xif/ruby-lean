@@ -61,7 +61,8 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     simp only [constLookupFrom, hw.classPayload, hw.ancestors_eq]
   have hresolve (name : String) :
       constResolveAt (Interp.bindIvar m x v) name = constResolveAt m name := by
-    simp only [constResolveAt, bindIvar_currentFrame, hw.constOwn_eq, hlookup]
+    simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, bindIvar_currentFrame, hw.constOwn_eq, hlookup, hw.classPayload]
+    rfl
   have herr : primitiveErrorB (Interp.bindIvar m x v).heap = primitiveErrorB m.heap := by
     funext cls; simp only [primitiveErrorB, hw.ancestors_eq]
   refine {

@@ -18,7 +18,8 @@ theorem StateOk.bindIvar_scalar {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
       constLookupFrom (Interp.bindIvar m x v).heap k name = constLookupFrom m.heap k name := by
     simp only [constLookupFrom, hw.classPayload, hw.ancestors_eq]
   have hresolve (name : String) : constResolveAt (Interp.bindIvar m x v) name = constResolveAt m name := by
-    simp only [constResolveAt, bindIvar_currentFrame, hw.constOwn_eq, hlookup]
+    simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, bindIvar_currentFrame, hw.constOwn_eq, hlookup, hw.classPayload]
+    rfl
   apply StateOk_bindIvar hm x v
   · exact env_bindIvar hm.env (by
       intro y τ hy

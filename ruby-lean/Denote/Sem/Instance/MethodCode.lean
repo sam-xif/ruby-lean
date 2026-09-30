@@ -17,12 +17,12 @@ structure OrdinaryMethodCode (owner : ObjId) (cref : List ObjId) (md : MethodDef
   visibilityOnly : md.visibilityOnly = false
 
 abbrev TopMethodCode (md : MethodDef) : Prop :=
-  OrdinaryMethodCode Boot.objectId [Boot.objectId] md
+  OrdinaryMethodCode Boot.objectId [] md
 
 /-- Current ordinary-class fragment: lexical top-level class scope, public methods except
 private initialize. Nested lexical scopes and visibility changes need distinct contracts. -/
 structure InstanceMethodCode (owner : ObjId) (name : String) (md : MethodDef) : Prop
-    extends OrdinaryMethodCode owner [owner, Boot.objectId] md where
+    extends OrdinaryMethodCode owner [owner] md where
   visibility : md.visibility = if name == "initialize" then .priv else .pub
 
 def ordinaryMethodCodeB (owner : ObjId) (cref : List ObjId) (md : MethodDef) : Bool :=
@@ -36,7 +36,7 @@ theorem ordinaryMethodCodeB_sound {owner : ObjId} {cref : List ObjId} {md : Meth
   exact ⟨ho, hc, hs, hb, hcap, hd, hp, hv⟩
 
 def instanceMethodCodeB (owner : ObjId) (name : String) (md : MethodDef) : Bool :=
-  ordinaryMethodCodeB owner [owner, Boot.objectId] md &&
+  ordinaryMethodCodeB owner [owner] md &&
     decide (md.visibility = if name == "initialize" then .priv else .pub)
 
 theorem instanceMethodCodeB_sound {owner : ObjId} {name : String} {md : MethodDef}
