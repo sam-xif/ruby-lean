@@ -7,10 +7,8 @@ namespace Ratchet.Denote
 open RubyCore Ratchet
 
 def moduleHookQuietB (h : Heap) : Bool :=
-  match Interp.methodOn h Boot.moduleId "method_added" with
-  | none => true
-  | some (owner, md) => md.undefined || owner == Boot.objectId ||
-      owner == Boot.kernelId || owner == Boot.basicObjectId
+  (Interp.methodOn h Boot.moduleId "method_added").any fun (_, md) =>
+    !md.undefined && md.builtin == some "Module#method_added"
 
 structure ModuleBaseAt (free : String → Bool) (h : Heap) : Prop where
   names : NamesAt free h Boot.moduleId

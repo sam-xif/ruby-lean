@@ -12489,3 +12489,13 @@ Added Rational, Complex, and UncaughtThrowError to the copied native to_s query
 rows. The exhaustive kernel coverage proof now passes. Ratchet, NativeGuards,
 and UserDispatch build together (238 jobs), using only standard axioms.
 No runtime or top-level theorem statement changed. Full Denote remains red.
+
+## 2026-09-30 — restore the boot conformance witness
+
+MainReady now describes the actual empty top-level cref and the singleton-class
+prefix before Object/Kernel/BasicObject. mainView and mainConstResolve agree with
+that scope. The method_added guards require a defined Module#method_added native
+entry, matching the current queued mutation callback rather than inferring
+silence from an owner name. The boot conformance proof and #guard bootOkB pass
+(134 build jobs, standard axioms). Downstream declaration/callback and class
+scope proofs still need migration; the full end-to-end gate remains red.

@@ -738,7 +738,7 @@ theorem mainSite_of_scope {κ : Ctx} {m : Machine} (h : MainReady m)
   · intro n
     have he : constResolveAt m n = mainConstResolve m.heap n := by
       simp only [constResolveAt, h.cref, h.owner, List.firstM, mainConstResolve]
-      cases constOwn m.heap Boot.objectId n <;> rfl
+      rfl
     exact he.symm.trans (hc n)
 
 /-! ## The query builtins

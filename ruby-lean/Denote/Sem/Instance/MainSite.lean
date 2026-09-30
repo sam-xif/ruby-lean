@@ -13,7 +13,7 @@ def mainView (h : Heap) : Machine :=
     frames := #[{
       self := .ref Boot.mainId
       defmod := Boot.objectId
-      cref := [Boot.objectId]
+      cref := []
       kind := .toplevel }]
     stack := [0] }
 
@@ -22,12 +22,12 @@ theorem MainReady.view {m : Machine} (h : MainReady m) : MainReady (mainView m.h
 
 theorem MainReady.of_view {m : Machine} (h : MainReady (mainView m.heap))
     (hs : m.currentFrame.self = .ref Boot.mainId)
-    (ho : m.currentFrame.defmod = Boot.objectId) (hc : m.currentFrame.cref = [Boot.objectId])
+    (ho : m.currentFrame.defmod = Boot.objectId) (hc : m.currentFrame.cref = [])
     (hcap : m.currentFrame.captured = none) (hp : m.preludeMode = false) : MainReady m :=
   ⟨hs, ho, hc, hcap, hp, h.live, h.payload, h.chain, h.object, h.classLive, h.hook⟩
 
 def mainConstResolve (h : Heap) (n : String) : Option Value :=
-  (constOwn h Boot.objectId n).orElse (fun _ => constLookupFrom h Boot.objectId n)
+  constLookupFrom h Boot.objectId n
 
 structure MainSiteAt (free : String → Bool) (h : Heap) : Prop where
   ready : MainReady (mainView h)

@@ -8,11 +8,11 @@ set_option autoImplicit false
 namespace Ratchet.Denote
 open RubyCore Ratchet
 
+/-- Ordinary definitions retain the native no-op callback. The callback is still
+queued by the mutation protocol; it is not an immediate definition transition. -/
 def definitionHookQuietB (h : Heap) (k : ObjId) : Bool :=
-  match lookup h (.ref k) "method_added" with
-  | none => true
-  | some (owner, md) => md.undefined || owner == Boot.objectId ||
-      owner == Boot.kernelId || owner == Boot.basicObjectId
+  (lookup h (.ref k) "method_added").any fun (_, md) =>
+    !md.undefined && md.builtin == some "Module#method_added"
 
 def objectHookQuietB (h : Heap) : Bool := definitionHookQuietB h Boot.objectId
 
@@ -23,13 +23,13 @@ def defaultDefVis (m : Machine) : Visibility :=
 structure MainReady (m : Machine) : Prop where
   self : m.currentFrame.self = .ref Boot.mainId
   owner : m.currentFrame.defmod = Boot.objectId
-  cref : m.currentFrame.cref = [Boot.objectId]
+  cref : m.currentFrame.cref = []
   captured : m.currentFrame.captured = none
   phase : m.preludeMode = false
   live : Boot.mainId < m.heap.objs.size
   payload : (m.heap.get Boot.mainId).payload = .none
   chain : ancestors m.heap (classOf m.heap (.ref Boot.mainId)) =
-    [Boot.objectId, Boot.kernelId, Boot.basicObjectId]
+    [classOf m.heap (.ref Boot.mainId), Boot.objectId, Boot.kernelId, Boot.basicObjectId]
   object : isAName m.heap (.ref Boot.mainId) "Object" = true
   classLive : (m.heap.classPayload? Boot.objectId).isSome = true
   hook : objectHookQuietB m.heap = true
@@ -37,12 +37,12 @@ structure MainReady (m : Machine) : Prop where
 def RuntimeOk (κ : Ctx) (m : Machine) : Prop := κ.scope.runtimeMain = true → MainReady m
 
 def mainReadyB (m : Machine) : Bool :=
-  decide (m.currentFrame.defmod = Boot.objectId ∧ m.currentFrame.cref = [Boot.objectId] ∧
+  decide (m.currentFrame.defmod = Boot.objectId ∧ m.currentFrame.cref = [] ∧
     m.currentFrame.captured = none ∧ m.preludeMode = false ∧ Boot.mainId < m.heap.objs.size) &&
   (match m.currentFrame.self with | .ref o => o == Boot.mainId | _ => false) &&
   (match (m.heap.get Boot.mainId).payload with | .none => true | _ => false) &&
   (ancestors m.heap (classOf m.heap (.ref Boot.mainId)) ==
-    [Boot.objectId, Boot.kernelId, Boot.basicObjectId]) &&
+    [classOf m.heap (.ref Boot.mainId), Boot.objectId, Boot.kernelId, Boot.basicObjectId]) &&
   isAName m.heap (.ref Boot.mainId) "Object" &&
   (m.heap.classPayload? Boot.objectId).isSome && objectHookQuietB m.heap
 
