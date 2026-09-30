@@ -35,9 +35,11 @@ theorem int_eq_step {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : StateOk �
   rw [Builtins.run]
   split
   · trivial
-  · change StepSpec m Γ .bool (builtinStep (Builtins.runNumerics "Integer#==" (.int x) [v] m)) κ I
-    simp only [Builtins.runNumerics, Builtins.binArg]
-    cases Builtins.num? v <;> exact stepSpec_value hm hk (by simp [denM, isBoolV])
+  · split
+    · trivial
+    · change StepSpec m Γ .bool
+        (.next (Interp.withCtl m (.value (.bool (valueEq m.heap (.int x) v))))) κ I
+      exact stepSpec_value hm hk (by simp [denM, isBoolV])
   all_goals intro o h; cases h
 
 #print axioms int_eq_step

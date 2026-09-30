@@ -12573,3 +12573,17 @@ still finds an Object constant outside its ancestor chain; Controls.All includes
 it. Eleven targets pass together (253 jobs, standard axioms). Initializer,
 bounded and local-flow sequence composition also now supplies root-boundary
 facts. Full Denote remains red at the remaining declaration and call transitions.
+
+## 2026-09-30 — primitive special dispatch and purity gates
+
+String#+ dispatch is proved through callStringPlusBuiltin with an existing String
+source payload. The generic primitive helper excludes that conversion entry.
+Builtin result conversion includes frozen outcomes. Scalar queries, Integer
+equality and Hash indexing retain the Complex-purity Unsupported branch.
+Array/Hash coercion absence follows from their actual payloads.
+
+Four primitive/index targets pass together (224 jobs, standard axioms), including
+runtime indexing controls. check-proofs.sh passes again. Remaining allocation
+work includes the two-object exception layout and queued initialize call: the old
+primitiveErrorsB ancestry fact alone does not establish safe native initialization.
+Full end-to-end soundness remains under repair.

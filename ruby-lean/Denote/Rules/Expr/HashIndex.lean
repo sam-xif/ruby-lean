@@ -38,7 +38,10 @@ theorem hash_index_invoke {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
     primitive_lookup hm (by simp [primitiveMethods]) hfree
       (k := Boot.hashId) (name := "[]") (bid := "Hash#[]")
   rw [hi]
-  apply invokeDispatch_builtin (owner := owner) (md := md) _ hb hu hv hpre _ (by rfl) (by rfl)
+  apply invokeDispatch_builtin (owner := owner) (md := md) _ hb hu hv hpre _ (by
+    simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
+      nativeReal, rationalPayload?, complexPayload?,
+      Builtins.toAryDefer?, hp]) (by rfl)
   · rw [lookup_eq_methodOn, hc]; exact hl
   · simpa only [hc] using hs
 
@@ -54,20 +57,22 @@ theorem hash_index_step {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : Ma
   simp only [List.any_cons, List.any_nil, hr, Bool.false_or, Bool.or_false]
   split
   · trivial
-  · change StepSpec m Γ (.nilable τ)
-      (builtinStep (Builtins.runCollections "Hash#[]" (.ref o) [key] m)) κ I
-    unfold Builtins.runCollections
-    simp only [Builtins.binArg, hp]
-    cases hf : xs.find? (fun p => valueEql m.heap p.1 key) with
-    | some p =>
-      obtain ⟨k, v⟩ := p
-      apply stepSpec_value hm hk
-      rw [denM]
-      exact Or.inr (hx _ (Array.mem_of_find?_eq_some hf)).2
-    | none =>
-      rcases hashDefaultNilB_cases (hm.hashPayload o xs hp).2 with hdef | hdef <;>
-        simp only [hdef] <;>
-        exact stepSpec_value hm hk (by rw [denM]; exact Or.inl rfl)
+  · split
+    · trivial
+    · change StepSpec m Γ (.nilable τ)
+        (builtinStep (Builtins.runCollections "Hash#[]" (.ref o) [key] m)) κ I
+      unfold Builtins.runCollections
+      simp only [Builtins.binArg, hp]
+      cases hf : xs.find? (fun p => valueEql m.heap p.1 key) with
+      | some p =>
+        obtain ⟨k, v⟩ := p
+        apply stepSpec_value hm hk
+        rw [denM]
+        exact Or.inr (hx _ (Array.mem_of_find?_eq_some hf)).2
+      | none =>
+        rcases hashDefaultNilB_cases (hm.hashPayload o xs hp).2 with hdef | hdef <;>
+          simp only [hdef] <;>
+          exact stepSpec_value hm hk (by rw [denM]; exact Or.inl rfl)
 
 -- The entries do not constrain a missing-key default: an empty hash still returns true
 -- with this default. The new conformance check rejects it, but accepts explicit nil.

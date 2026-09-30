@@ -129,7 +129,7 @@ theorem invokeDispatch_builtin {site : SendSite} {m : Machine} {recv : Value} {n
        "String#initialize", "Array#initialize", "Hash#initialize", "Exception#initialize",
        "Object#__forwardable_compile", "String#+"].contains bid ||
       Interp.nativeDupBid bid || Interp.nativeCloneBid bid || Interp.requireBid bid ||
-      Interp.enumBid bid || Interp.nativeIteratorBid bid) = false := by decide) :
+      Interp.enumBid bid || Interp.nativeIteratorBid bid) = false := by decide +kernel) :
     Interp.invoke.invokeDispatch m recv site name args none [] =
       match Builtins.run bid recv args m with
       | .ok v n => .next (Interp.withCtl n (.value v))

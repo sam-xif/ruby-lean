@@ -29,6 +29,9 @@ theorem array_index_run {m : Machine} {o : ObjId} {xs : Array Value}
       Builtins.runCollections "Array#[]" (.ref o) [.int i] m := by
     simp only [Builtins.run, List.any_cons, List.any_nil, Builtins.unrepresentableByteStr,
       Builtins.strPayload?, hp, Bool.false_or, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
+    simp only [show ("Array#[]".endsWith "#==" || "Array#[]".endsWith "#eql?" ||
+      "Array#[]".endsWith "#!=" || Builtins.pureEqualityBids.contains "Array#[]") = false from by decide +kernel,
+      Bool.and_false, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
     rfl
   rw [hrun]
   unfold Builtins.runCollections
@@ -49,7 +52,10 @@ theorem array_index_invoke {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m :
     primitive_lookup hm (by simp [primitiveMethods]) hfree
       (k := Boot.arrayId) (name := "[]") (bid := "Array#[]")
   rw [hi]
-  apply invokeDispatch_builtin (owner := owner) (md := md) _ hb hu hv hpre _ (by rfl) (by rfl)
+  apply invokeDispatch_builtin (owner := owner) (md := md) _ hb hu hv hpre _ (by
+    simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
+      nativeReal, rationalPayload?, complexPayload?,
+      Builtins.toAryDefer?, hp]) (by rfl)
   · rw [lookup_eq_methodOn, hc]; exact hl
   · simpa only [hc] using hs
 
