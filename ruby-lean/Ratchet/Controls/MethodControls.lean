@@ -110,4 +110,12 @@ private def incCache := installedInc.cache
   { incCache with top := incCache.top.map fun c => { c with deriv := .truLit } }).isNone
 #guard (refreshBodies 0 installedInc.ctx .ivar0 incCache).isNone
 
+-- Main's singleton methods shadow Object definitions. The annotation must not
+-- type a call to main's native inspect/to_s as the newly installed Object body.
+#guard mainSingletonNames.all fun name => !validateD
+  (.seq [.def' name [] (.int 1),
+    .send (some (.send none name [] none)) "+" [.int 1] none])
+  (.seq [.defDecl name [] .int (.intLit 1),
+    .prim (.callSig name [] .int) "+" [.intLit 1] .int .int])
+
 end Ratchet

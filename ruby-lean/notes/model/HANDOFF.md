@@ -25,16 +25,12 @@ Structural module conformance, bounded dispatch, recursive names, and the full
 builtin-id bound have been repaired independently; do not confuse their green
 builds with completion of the runtime bridge.
 
-The user approved adding Rational, Complex, and Enumerator to the checker's
-reserved global constants; that correction is applied. A further concrete
-checker bug is pending user direction: validateD accepts
-`def inspect; 1; end; inspect + 1`, but the prelude-booted runtime raises TypeError
-because main's singleton inspect returns a String. Reproducer and proposed
-conservative guard/regression patch are in /private/tmp/ruby-lean-main-shadow-*
-and recorded in proof-changes.md. The public safety theorem cannot hold with
-current admission and a true boot guard. Do not silently restore a false guard
-or weaken the theorem to hide this. Other finite native-metadata coverage
-mismatches are also recorded in the audit.
+On 2026-09-30 the user authorized all changes needed to handle the main-singleton
+admission bug, preserve top-level theorem statements, and continue the repair in
+small commits. The eight-name top-level guard and regression controls are now
+applied. Rational/Complex/Enumerator global-constant protection was already
+committed. No further approval is needed for necessary metadata/helper repairs
+within this task. Keep the detailed proof-changes.md audit uncommitted.
 
 Latest logs: /private/tmp/proof-check-proofs3.log (PASS),
 /private/tmp/proof-typed-gate-current.log (FAIL before agreement), and

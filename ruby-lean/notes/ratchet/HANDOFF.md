@@ -11,12 +11,12 @@ reaches stepFn; legacy KontFrame paths now re-export the corrected helper API.
 Denote still needs run-decomposition, boot-readiness, queued-callback entry, and
 downstream integration repairs. See `../model/HANDOFF.md` for the current frontier.
 
-The user approved reserving Rational, Complex, and Enumerator in the checker's
-global constants, and that correction is included. A separate main-singleton
-admission bug is reproduced and its candidate correction tested, but that patch
-remains unapplied and unapproved. Do not infer approval from the checkpoint
-request. No corpus floor or gate has been weakened. The detailed root
-`proof-changes.md` audit remains uncommitted at the user's request.
+The user subsequently authorized the necessary main-singleton correction and
+continued end-to-end repair in small commits on 2026-09-30, while retaining all
+top-level theorem statements. The main-name guard and regression controls are
+applied; further metadata/helper repairs are authorized within that task.
+No corpus floor or gate may be weakened. The detailed root proof-changes.md
+audit remains uncommitted at the user's request.
 
 # Current resume point (2026-09-27, clink 246 / model L275)
 

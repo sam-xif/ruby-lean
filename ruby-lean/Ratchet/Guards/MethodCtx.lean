@@ -4,11 +4,16 @@ import Ratchet.Static.All
 negative information only; `topDeclCtx` additionally records the installed definition. -/
 namespace Ratchet
 
-/-- Existing declared owners must be separate from Object. `new` needs additional
-allocator-lookup transport when there are declared classes. -/
+/-- Native methods on main itself shadow ordinary top-level Object definitions. -/
+def mainSingletonNames : List String :=
+  ["define_method", "include", "inspect", "private", "public", "ruby2_keywords", "to_s", "using"]
+
+/-- Main-native names are reserved. Existing declared owners must be separate
+from Object; `new` needs additional allocator transport when classes exist. -/
 def topDeclClassesB (κ : Ctx) (name : String) : Bool :=
-  κ.classes.isEmpty || (name != "new" &&
-    κ.classes.all (fun c => !rootAncestors.contains c.name))
+  !mainSingletonNames.contains name &&
+    (κ.classes.isEmpty || (name != "new" &&
+      κ.classes.all (fun c => !rootAncestors.contains c.name)))
 
 def reserveNameCtx (κ : Ctx) (name : String) : Ctx :=
   { κ with neg := { κ.neg with declared := name :: κ.declared } }

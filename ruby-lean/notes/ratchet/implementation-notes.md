@@ -12459,3 +12459,18 @@ both halves of what constrains them now have a name.
   no proof exceeded five minutes, introduced an axiom or raised a resource limit.
   Logs: /private/tmp/ratchet-symbol-entry-{gate,audit}.log. No live builds.
   Stopped after this clink at the user's request; 096 remains outside the judgment.
+
+
+## 2026-09-30 — reject main-singleton definitions in the ordinary top-level fragment
+
+The existing booted interpreter installs inspect/to_s and six other methods on
+main's singleton class. `def inspect; 1; end; inspect + 1` therefore calls the
+native inspect, returns a String, and raises TypeError. The checker previously
+accepted an Integer certificate for the Object definition and the call.
+
+The user authorized the correction and small repair commits. topDeclClassesB
+now reserves those eight names; MethodControls covers each rejection, and the
+new MainSingletonRegression control checks both certificate rejection and the
+unchanged runtime TypeError. The earlier class-separation proof consumes the
+existing second part of the strengthened guard. Top-level soundness theorem
+statements and runtime code are unchanged. Full Denote repair is still open.

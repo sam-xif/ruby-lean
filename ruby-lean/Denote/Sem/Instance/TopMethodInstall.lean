@@ -23,7 +23,7 @@ theorem StateOk_defineTopMethod_classes {κ : Ctx} {Γ : Env} {I : Ty} {m : Mach
     StateOk { κ with pos := { κ.pos with defs := d :: κ.defs } } Γ I
       { m with heap := defineMethod m.heap Boot.objectId d.name md } := by
   simp only [topDeclClassesB, Bool.or_eq_true, Bool.and_eq_true] at hclasses
-  rcases hclasses with hempty | ⟨hnew, howners⟩
+  rcases hclasses.2 with hempty | ⟨hnew, howners⟩
   · exact StateOk_defineTopMethod hm ht hΓ ha (List.isEmpty_iff.mp hempty)
       hn hmiss hquiet hc hfresh hp hb hu hcode
   have hsep (c : Cls) (hmem : c ∈ κ.classes)
