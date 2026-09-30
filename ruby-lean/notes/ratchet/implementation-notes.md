@@ -12718,3 +12718,18 @@ Logs: /private/tmp/clink-rebuild-{registry,final}.log and
 providers incrementally as documented in Denote/Clink/README.md. Other proof
 repairs and the full typed ratchet remain future work. Pre-existing untracked
 paper/, proof-changes.md and wasm upstream-bug files remain untouched.
+
+### 2026-09-30 — Literal validator restriction
+
+Ratchet/Check/Literal adds validateLiteralD, parameterized by a rule policy so
+the isolated checker imports no semantic registry. Acceptance requires ordinary
+validateD acceptance, a direct literal hint, and permission for the exact literal
+rule. LiteralJudge records the source literal, its type and its authoring-rule
+name; validateLiteralD_typed returns this evidence and both Boolean acceptance
+facts. The original validator and its consumers retain their behavior.
+
+LiteralControls checks all seven kinds, mismatched payloads/tags, disabled rules,
+and rejection of otherwise accepted sequences and flow-wrapped literals. The
+rebuild gate now runs these controls. lake build Ratchet.Controls.LiteralControls
+and the rebuild gate pass; the acceptance lemmas use only standard axioms.
+The semantic bridge will supply the active clink policy in the next increment.

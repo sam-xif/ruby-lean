@@ -31,6 +31,7 @@ check() {
 }
 check isolation ./scripts/check-isolation.sh
 check "profile and registration controls" lake build Denote.Clink.GateStatus Denote.Clink.GateControls
+check "literal validator controls" lake build Ratchet.Controls.LiteralControls
 check "active semantic proofs" lake build Denote.Clink.Registry
 check "model safety and axiom audit" lake env lean scripts/probes/clink-rebuild.lean
 if [[ "$verbose" == 0 ]]; then cat "$logdir/stage.log"; fi
