@@ -12756,3 +12756,13 @@ literal proof cases and validator rejections; the original profile is restored
 and rechecked before committing. Logs: /private/tmp/literal-bridge-{build,gate,
 int-only}.log. The unrestricted validateD and Bridge remain separate; the full
 typed ratchet still refuses partial coverage. Compound acceptance is future work.
+
+### 2026-09-30 — Share clink policy with the actual validator
+
+The user clarified that the desired boundary is validateD and Bridge.lean,
+rather than a separately named literal validator/theorem. The first preparatory
+increment moves the pure policy to Ratchet/ClinkPolicy; Denote/Clink/Policy exports
+compatibility names for the same definitions. Literal source evidence is split
+into LiteralEvidence so Check can import it without a cycle. Acceptance and
+theorems are unchanged in this increment. The rebuild gate passes. The next
+increment connects the original endpoints to the current enabled fragment.
