@@ -1,5 +1,11 @@
 # Generic validator/Bridge gating (2026-09-30)
 
+Ascent now explicitly includes adding the clink to `clinkProfile`, making
+`clinkEnabled rule = true`, alongside its proof/provider, required companion/body
+admission and controls. See AGENTS.md §What counts as climbing a rung. A proved
+but gated rule remains unclimbed in the active ratchet.
+
+
 validateD now checks a constructor-derived rule trace rather than literal source
 evidence. Ratchet/Audit covers all 99 constructors in all 17 authoring families.
 Recursive, initializer, cached/rechecked and uniform callback-body premises carry

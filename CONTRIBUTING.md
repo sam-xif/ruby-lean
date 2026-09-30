@@ -29,8 +29,16 @@ GREEN with unclimbed rungs is the normal state. Ascent is ordinary work.
 ## What a good change looks like
 
 * **Grow the fragment, don't widen the checker.** A new rule lands with its
-  semantic proof (its *clink*) in the same change. A rule registered without one
-  turns the gate red on purpose.
+  semantic proof (its *clink*) and admission to the `clinkEnabled` set in the same
+  change: add its exact constructor suffix to
+  `ruby-lean/Ratchet/ClinkPolicy.lean`'s `clinkProfile`, import its semantic provider
+  in `ActiveProofs.lean`, and enable the companion/body rules needed by its
+  derivations. Climbing requires these proofs and controls to pass the active
+  registry/Bridge gate and the production `validateD` to accept the positive
+  rung. A proved but gated rule remains unclimbed in the active ratchet. During
+  semantic rebuilding, run `./scripts/run_typed_ratchet.sh --clink-rebuild` from
+  `ruby-lean/`; the full historical corpus gate retains its coverage requirements
+  and floors.
 * **Keep the untrusted side untrusted.** If Sorbet, the strip stack, the
   desugarer or the emitter is wrong, fix it there. A patch inside `validateD` to
   rescue an upstream bug trades a false reject for a possible false accept, which

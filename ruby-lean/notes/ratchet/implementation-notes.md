@@ -12840,3 +12840,13 @@ literal cases. The final theorem/witnesses use only standard axioms. Restore the
 original seven-literal policy/providers and rerun the gate before committing.
 A stale generated-source control is also rejected by the freshness check.
 Logs: /private/tmp/generic-sequence-gate.log and generic-sequence-no-cons-gate.log.
+
+### 2026-09-30 — Make clink admission part of ascent
+
+The user requested that climbing the ratchet explicitly include adding the
+clink to the clinkEnabled set. AGENTS.md, CONTRIBUTING.md and the registry guide
+now require the exact constructor suffix in clinkProfile, provider import,
+required companion/body admission, passing active registry/Bridge proofs and
+controls, and production validateD acceptance for a positive corpus rung.
+A proved but gated rule remains unclimbed in the committed active profile.
+No policy, runtime or proof changes. Validation: the clink rebuild gate passes.

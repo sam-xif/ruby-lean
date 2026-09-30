@@ -17,6 +17,17 @@ that the full checker or corpus is certified. The ordinary typed gate refuses a
 partial profile before the historical full-coverage corpus audit. Its
 coverage, corpus floors, agreement checks and negative controls remain intact.
 
+## Climbing the ratchet
+
+Climbing a rule includes adding its exact constructor suffix to `clinkProfile`
+so `clinkEnabled rule = true`, importing its semantic proof provider, and passing
+the active registry/Bridge gate with the required proof dependencies. Enable
+all companion and body rules used by the desired derivation as well. The ascent
+commit carries this admission together with the proof and positive/negative
+controls. A positive corpus rung is climbed when the production `validateD`
+accepts it under that committed profile. A proved but gated rule remains
+unclimbed in the active ratchet; a temporary test profile does not change that.
+
 ## Re-enable a rule
 
 1. Add its exact constructor suffix to `Ratchet/ClinkPolicy.lean`'s `clinkProfile` list, such

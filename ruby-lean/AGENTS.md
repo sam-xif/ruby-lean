@@ -27,6 +27,21 @@ python3 scripts/generate_audited_checker.py; both gates reject stale projections
 Lean kernel-checks all generated proofs. See Denote/Clink/README.md and
 notes/ratchet/HANDOFF.md. Older numbers below describe the complete profile.
 
+## What counts as climbing a rung
+
+A rule is climbed in the active ratchet when its semantic clink and required
+proof dependencies build, its exact constructor suffix is added to
+`Ratchet/ClinkPolicy.lean`'s `clinkProfile` so `clinkEnabled rule = true`, and the
+active registry/Bridge gate passes. Import its provider through `ActiveProofs.lean`
+and enable every companion and body rule required by the intended derivation.
+
+A positive corpus rung is climbed when the production `validateD` accepts its
+program/certificate under that checked-in policy, with the corresponding
+positive and negative controls passing. An ascent change includes the clink
+admission alongside its proof and controls. A proved but gated rule remains
+unclimbed in the active ratchet. Historical full-profile reach remains a separate
+record; a temporary test profile does not claim an ascent in the committed one.
+
 ## Current state (2026-09-26)
 
 The typed/safe gap is closed **by a theorem, not rung by rung**.
