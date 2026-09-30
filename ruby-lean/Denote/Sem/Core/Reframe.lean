@@ -59,7 +59,8 @@ theorem StateOk_reframe_block {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
     (hlookup : ∀ x, constGet? (κ.withFrame fr) x = constGet? κ x)
     (hr : FrameInRange n) (he : EnvOk Γ' n) (hf : FrameOk fr n)
     (hal : n.currentFrame.localAlias = none)
-    (hlive : CaptureLive n n.currentFrame.captured) :
+    (hlive : CaptureLive n n.currentFrame.captured)
+    (hroot : RootClean n := by exact h.rootClean) :
     StateOk ((κ.withFrame fr).withBlockTy β) Γ' I n := by
   have hden (τ : Ty) (ht : FirstOrder τ = true) (v : Value) :
       denM τ m v → denM τ n v := (denM_heap_only ht hh.symm).mp
@@ -83,6 +84,7 @@ theorem StateOk_reframe_block {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
     names := by rw [hh]; exact h.names
     localAlias := hal
     capturedLive := hlive
+    rootClean := hroot
     sat := by simpa only [HeapSaturated, hh] using h.sat
     primitiveDispatch := by simpa only [hh, hfree] using h.primitiveDispatch
     primitiveErrors := by simpa only [hh] using h.primitiveErrors
@@ -156,7 +158,8 @@ theorem StateOk_reframe_scopes {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine
     (hlookup : ∀ x, constGet? (κ.withFrame fr) x = constGet? κ x)
     (hr : FrameInRange n) (he : EnvOk Γ' n) (hf : FrameOk fr n)
     (hal : n.currentFrame.localAlias = none)
-    (hlive : CaptureLive n n.currentFrame.captured) :
+    (hlive : CaptureLive n n.currentFrame.captured)
+    (hroot : RootClean n := by exact h.rootClean) :
     StateOk (κ.withFrame fr) Γ' I n := by
   have hblock : BlockTyOk κ.blockTy n := by
     cases ht' : κ.blockTy with
@@ -168,7 +171,7 @@ theorem StateOk_reframe_scopes {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine
   have hctx : ((κ.withFrame fr).withBlockTy κ.blockTy) = κ.withFrame fr := by cases κ; rfl
   rw [← hctx]
   exact StateOk_reframe_block h ht ha hh hs hblock hc hd hruntime hclass hsingleton
-    hlookup hr he hf hal hlive
+    hlookup hr he hf hal hlive hroot
 
 /-- The ordinary-frame specialization retains the previous interface. -/
 theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
@@ -184,10 +187,11 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
     (hlookup : ∀ x, constGet? (κ.withFrame fr) x = constGet? κ x)
     (hr : FrameInRange n) (he : EnvOk Γ' n) (hf : FrameOk fr n)
     (hal : n.currentFrame.localAlias = none)
-    (hlive : CaptureLive n n.currentFrame.captured) :
+    (hlive : CaptureLive n n.currentFrame.captured)
+    (hroot : RootClean n := by exact h.rootClean) :
     StateOk (κ.withFrame fr) Γ' I n := by
   refine StateOk_reframe_scopes h ht ha hh hs hb hc hd
-    (fun hr => (h.runtime hr).reframe hh hs hd hc hcap hphase) ?_ ?_ hlookup hr he hf hal hlive
+    (fun hr => (h.runtime hr).reframe hh hs hd hc hcap hphase) ?_ ?_ hlookup hr he hf hal hlive hroot
   · intro cn hr
     obtain ⟨k, hk⟩ := h.classRuntime cn hr
     exact ⟨k, hk.reframe hh hd hc hcap hphase

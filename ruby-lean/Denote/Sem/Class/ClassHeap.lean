@@ -228,7 +228,8 @@ theorem Framed.of_freshClass {κ : Ctx} {Γ : Env} {I : Ty} {m n : Machine}
     (he : (m.heap.get Boot.objectId).eigen = some e)
     (hh : n.heap = Proof.Judgment.freshClsHeap m.heap Boot.objectId name name e)
     (hs : n.stack = m.stack) (hf : FramePres m n)
-    (hphase : n.preludeMode = m.preludeMode := by rfl) : Framed m n := by
+    (hphase : n.preludeMode = m.preludeMode := by rfl)
+    (hroot : RootClean m → RootClean n := by exact id) : Framed m n := by
   have hp : DataPres m.heap n.heap := by
     rw [hh]; exact FreshClass.dataPres hm.core.classReady hm.sat hm.core.basicSelf hn he
   exact ⟨hs, fun k hk => by rw [hh]; exact FreshClass.classPayload_live hk,
@@ -238,7 +239,7 @@ theorem Framed.of_freshClass {κ : Ctx} {Γ : Env} {I : Ty} {m n : Machine}
       (fun _ ht _ hv => hp.denM ht hv),
     (fun o ho e he => by rw [hh, (FreshClass.fields ho).2.2.1]; exact he), (by
       rw [hh]
-      exact .of_nonclass (fun _ ho hp => FreshClass.get_old_nonclass ho hp)), hphase⟩
+      exact .of_nonclass (fun _ ho hp => FreshClass.get_old_nonclass ho hp)), hphase, hroot⟩
 
 #print axioms Framed.of_freshClass
 end Ratchet.Denote

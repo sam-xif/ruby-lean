@@ -184,7 +184,7 @@ theorem Framed_defineMethod (m : Machine) (cls : ObjId) (name : String) (md : Me
      (fun _ ht _ hv => (denM_defineMethod ht rfl).mp hv),
    (fun _ _ _ he => by rw [Proof.get_defineMethod_eigen]; exact he),
    ⟨(fun v _ hp => by rw [procClosure?_defineMethod]; exact hp),
-     (fun v _ _ => Proof.classOf_defineMethod ..)⟩, rfl⟩
+     (fun v _ _ => Proof.classOf_defineMethod ..)⟩, rfl, id⟩
 
 theorem methodOn_eq_go (h : Heap) (k : ObjId) (name : String) :
     Interp.methodOn h k name = lookupInChain h (ancestors h k) name := rfl

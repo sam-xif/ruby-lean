@@ -66,6 +66,7 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     funext cls; simp only [primitiveErrorB, hw.ancestors_eq]
   refine {
     runtime := ?_
+    rootClean := by unfold Interp.bindIvar; split <;> exact h.rootClean
     names := hw.namesOk h.names
     localAlias := by simpa only [bindIvar_currentFrame] using h.localAlias
     capturedLive := by

@@ -98,16 +98,18 @@ ivar spine, and origin (a method continuation restores the caller's frame). Halt
 covered; the continuation receives the complete answer contract. -/
 theorem RunSpec.bindSpec {Γ₁ Γ₂ : Env} {e : Ratchet.Expr} {σ τ : Ty}
     {κ₁ κ₂ : Ctx} {I₁ I₂ : Ty} {m origin : Machine}
-    (h : RunSpec m (evalFrom m e) Γ₁ σ κ₁ I₁)
+    (h : RunSpec m (evalFrom m e) Γ₁ σ κ₁ I₁) (hm : RootClean m)
     {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
     (hk : ∀ a n, ResultOk m Γ₁ σ a n κ₁ I₁ →
       RunSpec origin (deliverA a n K) Γ₂ τ κ₂ I₂) :
     RunSpec origin (pushK K (evalFrom m e)) Γ₂ τ κ₂ I₂ := by
   constructor
   · exact safe_pushK hK haltBlind_stuck oof_stuck h.1
-      h.2 (fun a n hn => (hk a n hn).1)
+      h.2 (fun a n hn => (hk a n hn).1) hm
+      (fun _ _ hr => hr.1.rootClean hm)
   · intro fuel a n rest hr
-    rw [runA_pushK _ hK] at hr
+    rw [runA_pushK _ hK fuel (evalFrom m e) hm
+      (fun a n r hr => (h.2 fuel a n r hr).1.rootClean hm)] at hr
     cases hs : runA fuel (evalFrom m e) with
     | halt hh => rw [hs] at hr; cases hh <;> cases hr
     | oof n' => rw [hs] at hr; cases hr
@@ -121,7 +123,7 @@ theorem RunSpec.bind {Γ Γ₁ Γ₂ : Env} {e : Ratchet.Expr} {σ τ : Ty}
     {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
     (hk : ∀ a n, ResultOk m Γ₁ σ a n → RunSpec m (deliverA a n K) Γ₂ τ) :
     RunSpec m (pushK K (evalFrom m e)) Γ₂ τ :=
-  (h.runSpec hm).bindSpec hK hk
+  (h.runSpec hm).bindSpec hm.rootClean hK hk
 
 #print axioms RunSpec.bind
 end Ratchet.Denote.Typed

@@ -57,7 +57,7 @@ theorem MainSite.ext {κ : Ctx} {m n : Machine} (site : MainSite κ m.heap) (he 
     (hn : Proof.NamesOk m.heap) (hch : Proof.ChainsIn m.heap) :
     MainSite κ n.heap := by
   have hv : Ext (mainView m.heap) (mainView n.heap) :=
-    { he with stack := rfl, frames := rfl }
+    { he with stack := rfl, frames := rfl, rootClean := fun _ => ⟨rfl, rfl⟩ }
   have hco : classOf n.heap (.ref Boot.mainId) = classOf m.heap (.ref Boot.mainId) := by
     simp only [classOf, he.get Boot.mainId site.ready.live]
   have hmo (name : String) :

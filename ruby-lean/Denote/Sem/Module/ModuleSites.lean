@@ -77,9 +77,7 @@ theorem hook_quiet {κ : Ctx} (hp : ModuleBase κ h) (hc : ChainsIn h) (hs : Sat
   rw [lookup_eq_methodOn, classOf_fresh_k, method_eigen hc hs]
   have hh := hp.hook
   unfold moduleHookQuietB at hh
-  cases hm : Interp.methodOn h Boot.moduleId "method_added" with
-  | none => rfl
-  | some pair => obtain ⟨owner, md⟩ := pair; rw [hm] at hh; exact hh
+  exact hh
 
 theorem instanceSite {κ : Ctx} (hp : ModuleBase κ h) (hc : ChainsIn h) (hs : Saturated h)
     (ho : (h.classPayload? Boot.objectId).isSome = true)

@@ -344,7 +344,7 @@ theorem step_vasgn_ctl {m : Machine} {x : String} {e : Ratchet.Expr}
     (hc : m.ctl = .eval (toRuby (.vasgn .lvar x e))) :
     Interp.stepFn m = .next (reCtl m (.eval (toRuby e)) (.asgnK .lvar x :: m.kont)) := by
   simp only [toRuby, toRubyVarKind] at hc
-  simp only [Interp.stepFn, hc, Interp.evalExpr, Interp.withKont, reCtl]
+  simp [Interp.stepFn, hc, Interp.evalExpr, Interp.withKont, reCtl]
 
 /-- The frame firing on a value: pop, write, pass the value on. -/
 theorem step_asgnK_val {m : Machine} {x : String} {v : Value} {rest : List Kont}
@@ -582,10 +582,9 @@ theorem vasgn_step_pushK (m : Machine) (x : String) (e : Ratchet.Expr) :
 
 theorem catchFree_asgnK (x : String) :
     RubyCore.Proof.CatchFree [.asgnK .lvar x] := by
-  intro k hk t
-  rcases List.mem_cons.mp hk with rfl | hmem
-  · simp
-  · exact absurd hmem (by simp)
+  intro k hk
+  cases List.mem_singleton.mp hk
+  rfl
 
 theorem SemA.vasgn {Γ Γ₁ : Env} {x : String} {e : Ratchet.Expr} {τ : Ty}
     (hprem : SemSafeA Γ e τ Γ₁) (hcap : capStale x τ τ = false) (halias : isAliasTy τ = false) :
@@ -601,7 +600,8 @@ theorem SemA.vasgn {Γ Γ₁ : Env} {x : String} {e : Ratchet.Expr} {τ : Ty}
       rw [runA_succ (answerPoint_evalFrom m _),
         step_vasgn_ctl (m := evalFrom m (.vasgn .lvar x e)) rfl] at h
       simp only at h
-      rw [vasgn_step_pushK m x e, runA_pushK _ (catchFree_asgnK x) f (evalFrom m e)] at h
+      rw [vasgn_step_pushK m x e, runA_pushK _ (catchFree_asgnK x) f (evalFrom m e) hm.rootClean
+        (fun a n rest hr => (hsem m hm f a n rest hr).1.rootClean hm.rootClean)] at h
       cases hr : runA f (evalFrom m e) with
       | halt hh => rw [hr] at h; exact absurd h (by cases hh <;> simp [resOutA, Halt.underK])
       | oof m₂ => rw [hr] at h; exact absurd h (by simp [resOutA])
@@ -613,6 +613,9 @@ theorem SemA.vasgn {Γ Γ₁ : Env} {x : String} {e : Ratchet.Expr} {τ : Ty}
         | val v =>
           have hm₁ : StateOk Ratchet.ctx0 Γ₁ .ivar0 m₁ := hout v rfl
           have hd : denM τ m₁ v := hans
+          have hal : (m₁.frames.getD (m₁.stack.headD 0) default).localAlias = none := by
+            rw [← currentFrame_headD hm₁.frameInRange.1]
+            exact hm₁.localAlias
           match r₁ with
           | 0 => rw [runA_zero (by simp [answerPoint, deliverA])] at h; exact absurd h (by simp)
           | g + 1 =>
@@ -626,7 +629,7 @@ theorem SemA.vasgn {Γ Γ₁ : Env} {x : String} {e : Ratchet.Expr} {τ : Ty}
             refine ⟨?_, ?_, ?_⟩
             · exact hfr.trans
                 ((Framed_reCtl m₁ (.value v) []).trans
-                  ((Framed_setLocal _ x v).trans (Framed_withCtl _ (.value v))))
+                  ((Framed_setLocal (reCtl m₁ (.value v) []) x v hal).trans (Framed_withCtl _ (.value v))))
             · show denM τ _ v
               exact denM_withCtl.mpr (denM_setLocal
                 (by rw [popK_eq]; exact denM_reCtl.mpr (denM_deliverA.mpr hd)) hcap

@@ -185,22 +185,7 @@ theorem answerPoint_of_ans : ∀ (fuel : Nat) (m : Machine) (a : Answer) (m₀ :
 /-- At an answer point the delivery to the *empty* continuation is the machine itself: an
 answer point already has an empty continuation and the answer already in flight. -/
 theorem deliverA_nil_self {m₀ : Machine} {a : Answer} (h : answerPoint m₀ = some a) :
-    deliverA a m₀ [] = m₀ := by
-  cases hk : m₀.kont with
-  | cons k r => rw [answerPoint, hk] at h; simp at h
-  | nil =>
-    cases hc : m₀.ctl with
-    | eval e => rw [answerPoint, hk] at h; simp only at h; rw [hc] at h; simp at h
-    | value v =>
-      rw [answerPoint, hk] at h; simp only at h; rw [hc] at h
-      simp only [Option.some.injEq] at h
-      subst h
-      simp only [deliverA, Answer.ctl, ← hc, ← hk]
-    | jump j =>
-      rw [answerPoint, hk] at h; simp only at h; rw [hc] at h
-      simp only [Option.some.injEq] at h
-      subst h
-      simp only [deliverA, Answer.ctl, ← hc, ← hk]
+    deliverA a m₀ [] = m₀ := answerPoint_deliver_nil h
 
 /-! ## The continuation obligation -/
 
@@ -224,10 +209,11 @@ re-entered. -/
 theorem safe_pushK {K : List Kont} {P : Answer → Machine → Prop}
     {Q : Interp.RunResult → Prop} (hK : RubyCore.Proof.CatchFree K) (hb : HaltBlind Q)
     (hoof : ∀ m₀, Q (.outOfFuel m₀)) {m : Machine}
-    (hin : ∀ f, Q (Interp.run f m)) (hP : Delivers m P) (hsafe : SafeKont K P Q) :
+    (hin : ∀ f, Q (Interp.run f m)) (hP : Delivers m P) (hsafe : SafeKont K P Q)
+    (hm : RootClean m) (hclean : ∀ a n, P a n → RootClean n) :
     ∀ fuel, Q (Interp.run fuel (pushK K m)) := by
   intro fuel
-  rw [run_pushK K hK fuel m]
+  rw [run_pushK K hK fuel m hm (fun a n rest hr => hclean a n (hP fuel a n rest hr))]
   cases hr : runA fuel m with
   | ans a m₀ rest => exact hsafe a m₀ (hP fuel a m₀ rest hr) rest
   | halt h =>
@@ -245,10 +231,11 @@ theorem safe_pushK_le {K : List Kont} {P : Answer → Machine → Prop}
     (hoof : ∀ m₀, Q (.outOfFuel m₀)) {m : Machine} {N : Nat}
     (hin : ∀ f, Q (Interp.run f m)) (hP : Delivers m P)
     (hsafe : ∀ (a : Answer) (m₀ : Machine) (rest : Nat), P a m₀ → rest ≤ N →
-      Q (Interp.run rest (deliverA a m₀ K))) :
+      Q (Interp.run rest (deliverA a m₀ K)))
+    (hm : RootClean m) (hclean : ∀ a n, P a n → RootClean n) :
     ∀ fuel, fuel ≤ N → Q (Interp.run fuel (pushK K m)) := by
   intro fuel hfuel
-  rw [run_pushK K hK fuel m]
+  rw [run_pushK K hK fuel m hm (fun a n rest hr => hclean a n (hP fuel a n rest hr))]
   cases hr : runA fuel m with
   | ans a m₀ rest =>
     exact hsafe a m₀ rest (hP fuel a m₀ rest hr)

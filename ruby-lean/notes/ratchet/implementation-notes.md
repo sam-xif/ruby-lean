@@ -12529,3 +12529,17 @@ compatibility name now denotes all runtime-observed continuation restrictions.
 Answer and Boot pass (169 jobs, standard axioms), including rootCleanB at
 the real boot machine. check-proofs.sh also passes. The original
 unrestricted-frame counterexample remains checked. Full Denote is still red.
+
+## 2026-09-30 — typed root-execution boundaries
+
+StateCore now requires RootClean; boot proves it. Ext and Framed carry explicit
+preservation, including escape answers. Reframe and heap helpers expose the
+corresponding proof obligations. Assignment and Context composition use these
+facts when specializing exact saved-execution framing to an ordinary stack.
+Catch/rescue helpers use the exact root action; empty catch tags alone no longer
+imply ContextFree, with a checked block-frame counterexample.
+
+The twelve targeted boundary/heap modules build together (266 jobs, standard
+axioms). Bridge is unchanged. Full Denote remains red in downstream consumers,
+lexical scope assumptions and queued callback transitions; this is a repair
+checkpoint, not a claim that the end-to-end gate passes.

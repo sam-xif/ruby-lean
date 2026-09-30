@@ -1,3 +1,4 @@
+import Denote.Ty.Root
 import Denote.Ty.Apply
 import RubyCore.Proof.HeapGrow
 
@@ -163,6 +164,8 @@ structure Ext (m m₂ : Machine) : Prop where
   /-- Allocation preserves bounded class/dispatch edges. Old-object agreement alone
       says nothing about the `klass` or `eigen` pointers of a fresh object. -/
   chains : Proof.ChainsIn m.heap → Proof.ChainsIn m₂.heap
+  /-- Allocating typed operations preserve root-execution boundary cleanliness. -/
+  rootClean : RootClean m → RootClean m₂ := by exact id
 
 /-! ## `Later` — the arrow's quantifier
 
@@ -287,6 +290,7 @@ theorem Ext.trans {m m₂ m₃ : Machine} (h₁ : Ext m m₂) (h₂ : Ext m₂ m
   payload := fun k => by rw [h₂.payload k, h₁.payload k]
   ancestors := fun k => by rw [h₂.ancestors k, h₁.ancestors k]
   chains := h₂.chains ∘ h₁.chains
+  rootClean := h₂.rootClean ∘ h₁.rootClean
   freshIvars := fun o ho => by
     by_cases hc : o < m₂.heap.objs.size
     · rw [h₂.get o hc]; exact h₁.freshIvars o ho

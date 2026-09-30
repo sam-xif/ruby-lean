@@ -105,27 +105,25 @@ def tagsOf : List Kont → List Value
   | .catchK t :: rest => t :: tagsOf rest
   | _ :: rest => tagsOf rest
 
-/-- **`CatchFree K` is exactly "`K` intercepts nothing".** So the hypothesis every theorem in
-`Answer.lean` and `SafeKont.lean` carries is not a technical restriction on the shape of `K`;
-it is the empty protocol, and the general decomposition is the same statement at a non-empty
-one. -/
-theorem catchFree_iff_tagsOf_nil (K : List Kont) :
-    RubyCore.Proof.CatchFree K ↔ tagsOf K = [] := by
+/-- Context-free tails contain no catch tags. The converse is false because
+native probes also observe block-call, inspection, frozen-error and Hash frames. -/
+theorem catchFree_tagsOf_nil (K : List Kont) :
+    Proof.CatchFree K → tagsOf K = [] := by
+  intro h
   induction K with
-  | nil => exact ⟨fun _ => rfl, fun _ k hk => absurd hk (by simp)⟩
+  | nil => rfl
   | cons k rest ih =>
-    constructor
-    · intro h
-      cases k with
-      | catchK t => exact absurd rfl (h (.catchK t) (by simp) t)
-      | _ => exact (by simpa [tagsOf] using ih.mp (fun kk hkk => h kk (by simp [hkk])))
-    · intro h kk hkk t
-      cases k with
-      | catchK t' => exact absurd h (by simp [tagsOf])
-      | _ =>
-        rcases List.mem_cons.mp hkk with rfl | hmem
-        · simp
-        · exact ih.mpr (by simpa [tagsOf] using h) kk hmem t
+    have ht : Proof.CatchFree rest := fun kk hkk => h kk (by simp [hkk])
+    cases k with
+    | catchK t => have hc := h (.catchK t) (by simp); cases hc
+    | _ => exact (by simpa [tagsOf] using ih ht)
+
+theorem tags_nil_not_contextFree (fid : FrameId) :
+    tagsOf [.blockCallK fid] = [] ∧ ¬ Proof.CatchFree [.blockCallK fid] := by
+  refine ⟨rfl, ?_⟩
+  intro h
+  have hc := h (.blockCallK fid) (by simp)
+  cases hc
 
 /-! ## The rescue family is `CatchFree`, so `run_pushK` applies to it unconditionally -/
 
@@ -142,14 +140,15 @@ theorem catchFree_controlKonts (n : BeginNode) (exc : Value) (pendingExcs : List
       [.beginBodyK n, .rescMatchK n exc pendingExcs ref handler restClauses,
        .rescueK n saved, .elseK n, .ensureK pend restore, .definedGuardK,
        .whileCondK c body, .whileBodyK c body] := by
-  intro k hk t
+  intro k hk
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hk
-  rcases hk with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> simp
+  rcases hk with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> rfl
 
 /-- The contrast, and it is the *only* one: a `catch` marker in the tail. -/
 theorem not_catchFree_catchK (t : Value) : ¬ RubyCore.Proof.CatchFree [.catchK t] := by
   intro h
-  exact h (.catchK t) (by simp) t rfl
+  have hc := h (.catchK t) (by simp)
+  cases hc
 
 /-! ## The two conditions are independent, and the interesting quadrant is non-empty
 
@@ -172,12 +171,12 @@ raised") is describing this. `run_pushK` asks only for the first. -/
 theorem not_jumpOpaque_definedGuardK : ¬ JumpOpaque [.definedGuardK] := by
   intro h
   refine h { ctl := .jump (.raiseJ .nil), kont := [.definedGuardK], stack := [],
-             frames := #[], heap := ⟨#[]⟩ } (.raiseJ .nil) 2 .nil
-    { ctl := .value .nil, kont := [], stack := [], frames := #[], heap := ⟨#[]⟩ } ?_
+             frames := #[], heap := { objs := #[] } } (.raiseJ .nil) 2 .nil
+    { ctl := .value .nil, kont := [], stack := [], frames := #[], heap := { objs := #[] } } ?_
   rfl
 
 theorem catchFree_definedGuardK : RubyCore.Proof.CatchFree [.definedGuardK] := by
-  intro k hk t; rcases List.mem_singleton.mp hk with rfl; simp
+  intro k hk; rcases List.mem_singleton.mp hk with rfl; rfl
 
 /-- **The decomposition at a handler continuation, with nothing to discharge.** `run_split`
 cannot be applied at `[.definedGuardK]` at all (`not_jumpOpaque_definedGuardK`); `run_pushK`
@@ -185,13 +184,13 @@ needs `catchFree_definedGuardK`, which is one line. The rescue family is the sam
 `catchFree_controlKonts` away. -/
 theorem run_pushK_guard :
     ∀ (fuel : Nat) (m : Machine),
-      Interp.run fuel (pushK [.definedGuardK] m) = (runA fuel m).out [.definedGuardK] :=
-  run_pushK [.definedGuardK] catchFree_definedGuardK
+      Interp.run fuel (Proof.pushRootK [.definedGuardK] m) = (runA fuel m).rootOut [.definedGuardK] :=
+  run_pushRootK [.definedGuardK] catchFree_definedGuardK
 
 theorem run_pushK_rescue (n : BeginNode) :
     ∀ (fuel : Nat) (m : Machine),
-      Interp.run fuel (pushK [.beginBodyK n] m) = (runA fuel m).out [.beginBodyK n] :=
-  run_pushK [.beginBodyK n] (by intro k hk t; rcases List.mem_singleton.mp hk with rfl; simp)
+      Interp.run fuel (Proof.pushRootK [.beginBodyK n] m) = (runA fuel m).rootOut [.beginBodyK n] :=
+  run_pushRootK [.beginBodyK n] (by intro k hk; rcases List.mem_singleton.mp hk with rfl; rfl)
 
 /-! ## And the information the projection threw away, at the one place it matters
 
@@ -218,10 +217,9 @@ theorem run_rescue_of_raise {m : Machine} {exc : Value} (n : BeginNode)
     (hc : m.ctl = .jump (.raiseJ exc)) (hk : m.kont = []) (fuel : Nat) :
     Interp.run fuel (pushK [.beginBodyK n] m)
       = Interp.run fuel (deliverA (.esc (.raiseJ exc)) m [.beginBodyK n]) := by
-  rw [run_pushK_rescue n fuel m, runA_ans (answerPoint_raise hc hk)]
-  rfl
+  rw [pushK_eq_deliverA _ (answerPoint_raise hc hk)]
 
-#print axioms catchFree_iff_tagsOf_nil
+#print axioms catchFree_tagsOf_nil
 #print axioms catchFree_controlKonts
 #print axioms not_catchFree_catchK
 #print axioms not_jumpOpaque_definedGuardK

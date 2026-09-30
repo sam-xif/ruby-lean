@@ -77,9 +77,7 @@ theorem hook_quiet (hc : ChainsIn h) (hs : Saturated h)
   unfold definitionHookQuietB
   rw [lookup_eq_methodOn, classOf_class, method_eigen hc hs (hc.eigen parent hl eParent he)]
   simp only [definitionHookQuietB, lookup_eq_methodOn, classOf, he] at hh
-  cases hm : Interp.methodOn h eParent "method_added" with
-  | none => rfl
-  | some pair => obtain ⟨owner, md⟩ := pair; rw [hm] at hh; exact hh
+  exact hh
 
 /-- Only the inherited parent capabilities are needed; no parent front/own-table shape
 is assumed. This also covers Object-based creation without manufacturing an Object row. -/

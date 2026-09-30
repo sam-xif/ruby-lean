@@ -148,10 +148,12 @@ structure Framed (m m' : Machine) : Prop where
   procs : ProcPres m.heap m'.heap
   /-- Typed execution does not enter or leave prelude loading. -/
   phase : m'.preludeMode = m.preludeMode
+  /-- Expression answers return to the root without retaining external fibers. -/
+  rootClean : RootClean m → RootClean m' := by exact id
 
 theorem Framed.refl (m : Machine) : Framed m m :=
   ⟨rfl, fun _ h => h, fun _ _ h => h, fun _ _ _ h => h, .refl m, .refl m,
-    fun _ _ _ h => h, .refl _, rfl⟩
+    fun _ _ _ h => h, .refl _, rfl, id⟩
 
 theorem Framed.trans {m₁ m₂ m₃ : Machine} (h₁ : Framed m₁ m₂) (h₂ : Framed m₂ m₃) :
     Framed m₁ m₃ :=
@@ -160,15 +162,16 @@ theorem Framed.trans {m₁ m₂ m₃ : Machine} (h₁ : Framed m₁ m₂) (h₂ 
     fun τ ht v h => h₂.firstOrder τ ht v (h₁.firstOrder τ ht v h),
     h₁.frames.trans h₂.frames h₁.stack, h₁.fields.trans h₂.fields,
     fun o ho e he => h₂.cachedEigen o (Nat.lt_of_lt_of_le ho h₁.fields.size) e
-      (h₁.cachedEigen o ho e he), h₁.procs.trans h₂.procs, h₂.phase.trans h₁.phase⟩
+      (h₁.cachedEigen o ho e he), h₁.procs.trans h₂.procs, h₂.phase.trans h₁.phase, h₂.rootClean ∘ h₁.rootClean⟩
 
 /-- Equal heaps/stacks do not imply frame preservation; callers must supply it explicitly. -/
 theorem Framed.of_heap_stack {m m' : Machine} (hh : m'.heap = m.heap)
     (hs : m'.stack = m.stack) (hf : FramePres m m')
-    (hp : m'.preludeMode = m.preludeMode := by rfl) : Framed m m' :=
+    (hp : m'.preludeMode = m.preludeMode := by rfl)
+    (hr : RootClean m → RootClean m' := by exact id) : Framed m m' :=
   ⟨hs, fun k h => by rw [hh]; exact h, fun v n h => by rw [hh]; exact h,
     fun _ ht _ h => (denM_heap_only ht hh.symm).mp h, hf, .of_heap_eq hh,
-    (fun _ _ _ he => by rw [hh]; exact he), (by rw [hh]; exact .refl _), hp⟩
+    (fun _ _ _ he => by rw [hh]; exact he), (by rw [hh]; exact .refl _), hp, hr⟩
 
 /-- Saved method identity and receiver mode survive a return to the same caller frame. -/
 theorem Framed.frameOk {m n : Machine} {fr : Option Ratchet.Frame} (h : Framed m n)

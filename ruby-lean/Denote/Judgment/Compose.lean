@@ -12,9 +12,9 @@ open RubyCore Ratchet Ratchet.Denote
 theorem DKontOk.catchFree {τa τ : Ty} {K : List Kont} {Γ : Env}
     (hk : DKontOk τa K Γ τ) : RubyCore.Proof.CatchFree K := by
   induction hk with
-  | nil => simp [RubyCore.Proof.CatchFree]
+  | nil => simp [RubyCore.Proof.CatchFree, Proof.Root.ContextFree, Proof.Root.observedKont]
   | asgnK _ _ _ ih =>
-    simpa [RubyCore.Proof.CatchFree] using ih
+    simpa [RubyCore.Proof.CatchFree, Proof.Root.ContextFree, Proof.Root.observedKont] using ih
 
 theorem safeA_escape_kontOk {τa τ : Ty} {K : List Kont} {Γ : Env}
     (hk : DKontOk τa K Γ τ) :
@@ -46,15 +46,16 @@ theorem safeUnder_of_closed {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
     simp [pushK, evalFrom, ← hc]
   rw [← hbase]
   apply safe_pushK hk.catchFree haltBlind_stuck oof_stuck (hs m hm)
-  · exact fun fuel a m₀ rest hr => (ha m hm fuel a m₀ rest hr).2
-  · intro a m₀ hp fuel
-    rcases hp with ⟨hd, hm₀⟩
-    cases a with
-    | val v =>
-      exact safeA_value_kontOk hk (m := deliverA (.val v) m₀ m.kont) rfl rfl
-        (StateOk_deliverA (hm₀ v rfl))
-        (denM_deliverA.mpr hd) fuel
-    | esc j => exact safeA_escape_kontOk hk m₀ j hd fuel
+    (fun fuel a m₀ rest hr => ha m hm fuel a m₀ rest hr) ?_ hm.rootClean
+    (fun _ _ hr => hr.1.rootClean hm.rootClean)
+  intro a m₀ hp fuel
+  rcases hp with ⟨_, hd, hm₀⟩
+  cases a with
+  | val v =>
+    exact safeA_value_kontOk hk (m := deliverA (.val v) m₀ m.kont) rfl rfl
+      (StateOk_deliverA (hm₀ v rfl))
+      (denM_deliverA.mpr hd) fuel
+  | esc j => exact safeA_escape_kontOk hk m₀ j hd fuel
 
 theorem SemSafeA.closed {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
     (h : SemSafeA Γ e τ Γ') {m : Machine} (hm : StateOk ctx0 Γ .ivar0 m) :
@@ -100,7 +101,8 @@ theorem semSafe_frame {Γ Γ₁ Γ₂ : Env} {sub out : Ratchet.Expr} {σ τ : T
     | succ f =>
       rw [runA_succ (answerPoint_evalFrom m out), heval] at hr
       simp only at hr
-      rw [runA_pushK _ hK] at hr
+      rw [runA_pushK _ hK f (evalFrom m sub) hm.rootClean
+        (fun a n rest hr => (hp.1 m hm f a n rest hr).1.rootClean hm.rootClean)] at hr
       cases hs : runA f (evalFrom m sub) with
       | halt h => rw [hs] at hr; cases h <;> cases hr
       | oof n => rw [hs] at hr; cases hr
@@ -133,7 +135,8 @@ theorem semSafe_frame {Γ Γ₁ Γ₂ : Env} {sub out : Ratchet.Expr} {σ τ : T
   | succ f =>
     rw [run_succ, heval]
     apply safe_pushK hK haltBlind_stuck oof_stuck (hp.closed hm)
-      (fun f a n r hr => (hp.1 m hm f a n r hr).2) ?_ f
+      (fun f a n r hr => hp.1 m hm f a n r hr) ?_ hm.rootClean
+      (fun _ _ hr => hr.1.rootClean hm.rootClean) f
     intro a n hn g
     cases g with
     | zero => rfl
@@ -142,10 +145,10 @@ theorem semSafe_frame {Γ Γ₁ Γ₂ : Env} {sub out : Ratchet.Expr} {σ τ : T
       cases a with
       | val v =>
         rw [hval]
-        exact (hb v).closed (hn.2 v rfl) g
+        exact (hb v).closed (hn.2.2 v rfl) g
       | esc j =>
         rw [hesc]
-        exact safeA_escape_kontOk (DKontOk.nil (τa := τ) (Γ := Γ₂)) n j hn.1 g
+        exact safeA_escape_kontOk (DKontOk.nil (τa := τ) (Γ := Γ₂)) n j hn.2.1 g
 
 #print axioms safeUnder_of_closed
 #print axioms semSafe_frame

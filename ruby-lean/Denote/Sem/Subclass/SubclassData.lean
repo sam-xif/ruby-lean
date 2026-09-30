@@ -104,7 +104,8 @@ theorem framed {κ : Ctx} {Γ : Env} {I : Ty} {m n : Machine} {c : Cls}
     (he : (m.heap.get parent).eigen = some eParent)
     (hh : n.heap = heap m.heap Boot.objectId name name parent eParent)
     (hs : n.stack = m.stack) (hfr : FramePres m n)
-    (hphase : n.preludeMode = m.preludeMode := by rfl) : Framed m n := by
+    (hphase : n.preludeMode = m.preludeMode := by rfl)
+    (hroot : RootClean m → RootClean n := by exact id) : Framed m n := by
   obtain ⟨ep, he', hr, _⟩ := hm.classSites.metaclass hc hp
   rw [he] at he'; cases he'
   have hl := hm.core.classReady.constRefs c.name parent (classNamed_constOwn hp)
@@ -119,7 +120,7 @@ theorem framed {κ : Ctx} {Γ : Env} {I : Ty} {m n : Machine} {c : Cls}
       (fun _ ht _ hv => hd.denM ht hv),
     (fun o ho e he => by rw [hh, (fields ho).2.2.1]; exact he), (by
       rw [hh]
-      exact .of_nonclass (fun _ ho hp => get_old_nonclass ho hp)), hphase⟩
+      exact .of_nonclass (fun _ ho hp => get_old_nonclass ho hp)), hphase, hroot⟩
 
 #print axioms dataPres
 #print axioms framed

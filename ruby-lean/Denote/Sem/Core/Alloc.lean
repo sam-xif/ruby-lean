@@ -151,7 +151,7 @@ theorem ext_push {m : Machine} (obj : Object)
   have hsize : m.heap.objs.size ≤ (pushHeap m.heap obj).objs.size := by simp
   have hanc : ∀ k, ancestors (pushHeap m.heap obj) k = ancestors m.heap k :=
     Proof.ancestors_congr_grow hshape hsize hsat
-  refine ⟨rfl, rfl, hsize, ?_, hpay, hanc, ?_, ?_, ?_⟩
+  refine ⟨rfl, rfl, hsize, ?_, hpay, hanc, ?_, ?_, ?_, id⟩
   · intro o ho; exact pushHeap_get_lt m.heap obj ho
   · intro o ho
     rcases Nat.eq_or_lt_of_le ho with he | he

@@ -46,7 +46,7 @@ theorem SemSafeCtxA.frame {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ 
       .next (deliverA (.esc j) m [])) : SemSafeCtxA κ Γ I out τ κ₂ Γ₂ I₂ := by
   intro m hm
   apply RunSpec.step (answerPoint_evalFrom _ _) (heval m)
-  apply (hp m hm).bindSpec hK
+  apply (hp m hm).bindSpec hm.rootClean hK
   intro a n hr
   have hap : answerPoint (deliverA a n [k]) = none := by simp [answerPoint, deliverA]
   cases a with
@@ -133,7 +133,7 @@ theorem SemSafeCtxA.vasgn {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty}
   apply RunSpec.step (answerPoint_evalFrom _ _)
     (show Interp.stepFn (evalFrom m (.vasgn .lvar x e)) =
       .next (pushK [.asgnK .lvar x] (evalFrom m e)) from rfl)
-  apply (h m hm).bindSpec (catchFree_asgnK x)
+  apply (h m hm).bindSpec hm.rootClean (catchFree_asgnK x)
   intro a n hr
   cases a with
   | val v =>
@@ -147,7 +147,8 @@ theorem SemSafeCtxA.vasgn {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty}
         (by intro y σ hy; rw [hy] at ha; simp [isAliasTy] at ha)
     have hresult : ResultOk m (envAfter Γ' x τ) τ (.val v) (base.setLocal x v)
         κ' (killClosOverSpine I' x τ) :=
-      ⟨hr.1.trans ((Framed_reCtl n _ []).trans (Framed_setLocal base x v)), denM_setLocal hd hc hd,
+      ⟨hr.1.trans ((Framed_reCtl n _ []).trans (Framed_setLocal base x v (by
+        rw [← currentFrame_headD hn.frameInRange.1]; exact hn.localAlias))), denM_setLocal hd hc hd,
         fun _ _ => hout⟩
     apply RunSpec.step (by rfl)
       (show Interp.stepFn (deliverA (.val v) n [.asgnK .lvar x]) =

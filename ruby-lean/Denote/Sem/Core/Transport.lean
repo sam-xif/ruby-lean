@@ -156,9 +156,9 @@ observed a `Reaches`-seeded arrow would *not* have had. -/
 theorem Ext_reCtl {m m₂ : Machine} {c : Ctl} {k : List Kont} :
     Ext (reCtl m c k) m₂ ↔ Ext m m₂ :=
   ⟨fun h => ⟨h.frames, h.stack, h.size, h.get, h.payload, h.ancestors, h.freshIvars,
-              h.freshBasic, h.chains⟩,
+              h.freshBasic, h.chains, h.rootClean⟩,
    fun h => ⟨h.frames, h.stack, h.size, h.get, h.payload, h.ancestors, h.freshIvars,
-              h.freshBasic, h.chains⟩⟩
+              h.freshBasic, h.chains, h.rootClean⟩⟩
 
 theorem Later_reCtl {m m₂ : Machine} {c : Ctl} {k : List Kont} :
     Later (reCtl m c k) m₂ ↔ Later m m₂ :=
@@ -253,7 +253,7 @@ theorem Framed.of_ext {m m' : Machine} (he : Ext m m')
     fun _ _ _ h => denM_ext he h, .of_eq he.stack he.frames,
     .of_unchanged he.size (fun o ho => by funext x; simp only [ivarOf, he.get o ho])
       (fun _ _ _ h => denM_ext he h), (fun o ho e hp => by rw [he.get o ho]; exact hp),
-    .of_get he.get, hp⟩
+    .of_get he.get, hp, he.rootClean⟩
 
 theorem Framed_withCtl (m : Machine) (c : Ctl) : Framed m (Interp.withCtl m c) :=
   Framed.of_heap_stack rfl rfl (.of_eq rfl rfl)

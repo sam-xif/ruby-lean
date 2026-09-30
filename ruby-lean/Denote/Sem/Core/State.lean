@@ -1100,6 +1100,8 @@ structure StateCore (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   localAlias : m.currentFrame.localAlias = none
   /-- Every captured activation is live, unaliased, and has a terminating parent chain. -/
   capturedLive : CaptureLive m m.currentFrame.captured
+  /-- Required for the stack-only corollary of the saved-root frame theorem. -/
+  rootClean : RootClean m
 
 /-- Complete state conformance. Positive rows and global selector reservations do not
 exclude hidden overrides; the own-table bound is also required at every typed state. -/
@@ -1164,6 +1166,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
   stringPayload := hp
   arrayPayload := ha
   hashPayload := hh
+  rootClean := he.rootClean h.rootClean
   names := he.namesOk h.names
   localAlias := by rw [he.currentFrame_eq]; exact h.localAlias
   capturedLive := by
@@ -1534,6 +1537,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
       classSites := by simpa only [setLocal_heap] using h.classSites
       allocators := by simpa only [setLocal_heap] using h.allocators
       globalConsts := by simpa only [setLocal_heap] using h.globalConsts
+      rootClean := h.rootClean
       names := h.names
       localAlias := by
         rw [currentFrame_setLocal_localAlias]
