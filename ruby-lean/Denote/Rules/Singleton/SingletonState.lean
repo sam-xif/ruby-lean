@@ -39,6 +39,7 @@ theorem StateOk_install_singleton {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (hm.ownNames.publish_singleton hm.classSites hc hleaf)
     ((hm.classChains.publish_singleton hc (declLookupFrameB_sound htab)).methodWrite)
     (hm.rootInit.transport id (methodOn_defineMethod _ _ _ _ _ _ hinit))
+    (primitiveInitB_defineMethod_other hm.primitiveInit hinit)
 
 theorem step_singleton_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Cls} {d : Defn}
     (hm : StateOk κ Γ I m) (hc : c ∈ κ.classes)

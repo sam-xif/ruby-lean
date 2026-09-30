@@ -80,10 +80,12 @@ theorem unrecorded_shadow_preserves_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Ma
     (hmiss : "method_missing" ≠ name) (hquiet : "method_added" ≠ name)
     (hc : cls ≠ Boot.objectId) (hw : (m.heap.get cls).eigen.isSome = true)
     (hrows : ∀ c ∈ κ.classes, classNamed? m.heap c.name = some cls →
-      ∀ d ∈ c.methods, d.name ≠ name) :
+      ∀ d ∈ c.methods, d.name ≠ name)
+    (hinit : "initialize" ≠ name) :
     StateCore κ Γ I { m with heap := defineMethod m.heap cls name md } :=
   StateCore_methodWrite hm.toStateCore ht hΓ ha hn hmiss hquiet (ClassesOk_methodWrite_old hm.classes hw hrows)
     (DefsOk_methodWrite_other hm.defs hc) (hm.declCls.methodWrite hnew hmiss)
+    (primitiveInitB_defineMethod_other hm.primitiveInit hinit)
 
 private def sourceDecl : Defn := ⟨"answer", [], .int 1⟩
 private def sourceCtx : Ctx := topDeclCtx ctx0 sourceDecl
@@ -131,7 +133,7 @@ theorem full_state_unrecorded_shadow (hb : bootOkB = true) :
       have he : c = classHeader "Child" := by simpa [childCtx, classHeaderCtx, Ctx.classes,
         classBodyCtx, sourceCtx, topDeclCtx, ctx0] using hc
       subst c
-      cases hd)
+      cases hd) (by decide)
   refine ⟨_, k, hn, ?_, ?_, ?_⟩
   · rw [classNamed?_defineMethod]; exact site.named
   · obtain ⟨rest, hr⟩ := classFrontB_sound site.front

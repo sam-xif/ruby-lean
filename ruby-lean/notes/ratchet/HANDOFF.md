@@ -8,8 +8,22 @@ not complete, and this checkpoint does not claim the soundness chain builds.
 The complete Metatheory target and `scripts/check-proofs.sh` pass, including the
 axiom audit and boot-heap probes. The replacement root-execution framing chain
 reaches stepFn; legacy KontFrame paths now re-export the corrected helper API.
-Denote still needs run-decomposition, boot-readiness, queued-callback entry, and
-downstream integration repairs. See `../model/HANDOFF.md` for the current frontier.
+Boot readiness and answer-based root-run decomposition now pass. Ordinary method
+entry and entry with a supplied block model the actual frame metadata and require
+explicit exclusion of block-defined methods and for-loop targets. Fresh-site
+producers retain the new after-builtin bound; singleton/inherited method writes
+carry native exception-initializer preservation. Several consumers remain blocked
+by failing dependencies, so those edits are checkpointed without a green claim.
+
+Latest validation: the method-entry, block-entry, Answer, Boot and TopMethodInstall
+batch passes (235 jobs); `scripts/check-proofs.sh` passes. The full typed gate
+still fails at the proof-build stage before CRuby replay. BoundedPrimitive is
+blocked by MethodReturn; class/module sites and controls are blocked by their
+lexical-lookup and entry dependencies. Remaining work includes method return/body
+composition, method-code metadata propagation, declaration/constructor callbacks,
+closure frame allocation and capture preservation, and effectful frozen errors.
+Logs: `/private/tmp/proof-checkpoint-{green-targets,targets,metatheory,gate}.log`.
+See `../model/HANDOFF.md` for the continuation-design direction.
 
 The user subsequently authorized the necessary main-singleton correction and
 continued end-to-end repair in small commits on 2026-09-30, while retaining all
@@ -18,7 +32,7 @@ applied; further metadata/helper repairs are authorized within that task.
 No corpus floor or gate may be weakened. The detailed root proof-changes.md
 audit remains uncommitted at the user's request.
 
-# Current resume point (2026-09-27, clink 246 / model L275)
+# Historical typed-fragment checkpoint (2026-09-27, clink 246 / model L275)
 
 Native Symbol conversion/entry/forwarding now have semantic proofs in
 Rules/Closure/Symbol and SymbolBody. Guarded native dispatch includes Symbol#to_proc;

@@ -57,7 +57,7 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
   have hl : lookup h₁ (.ref k) "method_added" = lookup h (.ref k) "method_added" := by
     rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hk, method_old hc hs (ClsGrow.classOf_lt hc hk)]
   refine ⟨named hc.boot.2.2.2.2 hn site.named, ?_, ?_,
-    instance_constants_old site hc hs ho hn, ?_, site.metaclass.subclass_old hc hs hk, ?_, ?_, ?_, ?_⟩
+    instance_constants_old site hc hs ho hn, ?_, site.metaclass.subclass_old hc hs hk, ?_, ?_, ?_, ?_, site.afterBuiltins⟩
   · simpa only [classFront_old hk] using site.front
   · simpa only [definitionHookQuietB, hl] using site.hook
   · intro n hn owner md hm
@@ -88,11 +88,11 @@ theorem instanceSite {κ : Ctx} (hc : ChainsIn h) (hs : Saturated h)
     (hh : definitionHookQuietB h parent = true)
     (hconst : ∀ cn, (constLookup h cn).orElse (fun _ => constLookupFrom h parent cn) = constLookup h cn)
     (hinst : NamesAt (nameFreeN κ) h parent) (hcls : NamesAt (nameFreeN κ) h eParent)
-    (hmeta : ConstFallback h eParent) :
+    (hmeta : ConstFallback h eParent) (hboot : Boot.yielderId < h.objs.size) :
     InstanceSite κ name h.objs.size h₁ := by
   have hel := hc.eigen parent hl eParent he
   refine ⟨named_fresh ho, ?_, hook_quiet hc hs hl he hh,
-    instance_constants_fresh hc hs ho hl hconst, ?_, meta_fresh hc hs hel hb, ?_, ?_, ?_, ?_⟩
+    instance_constants_fresh hc hs ho hl hconst, ?_, meta_fresh hc hs hel hb, ?_, ?_, ?_, ?_, hboot⟩
   · simp only [classFrontB, Heap.classPayload?, get_class, classObjE]; rfl
   · intro n hn owner md hm
     rw [method_class hc hs hl] at hm

@@ -83,7 +83,7 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
       · have heq := List.mem_singleton.mp hcn
         subst cn
         exact ⟨m.heap.objs.size, instanceSite hc hm.sat hmain.classLive hl he hb hp.hook hp.constants hp.names hnames
-          (by simpa only [classOf, he] using hp.metaConstants)⟩
+          (by simpa only [classOf, he] using hp.metaConstants) hm.core.classReady.bootEnd⟩
     sat := saturated hc hm.sat hl hel
     primitiveDispatch := (primitiveDispatch hc hm.sat _).trans hm.primitiveDispatch
     primitiveErrors := (primitiveErrors hc hm.sat).trans hm.primitiveErrors

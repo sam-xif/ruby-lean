@@ -94,7 +94,7 @@ theorem module_entry_sites {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     FreshModule.moduleBase hm.moduleBase hc hm.sat ready.classLive,
     FreshModule.scope_ready hm.moduleBase hc hm.sat ready.classLive ready.cref ready.phase,
     FreshModule.nameFree hc hm.sat hm.moduleBase hm.nameFree,
-    FreshModule.instanceSite hm.moduleBase hc hm.sat ready.classLive hm.core.moduleBasic, ?_⟩
+    FreshModule.instanceSite hm.moduleBase hc hm.sat ready.classLive hm.core.moduleBasic hm.core.classReady.bootEnd, ?_⟩
   intro cn hcn
   obtain ⟨k, site⟩ := hm.classSites cn hcn
   exact ⟨k, FreshModule.instanceSite_old site hc hm.sat ready.classLive hn⟩

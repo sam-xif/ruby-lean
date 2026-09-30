@@ -1,7 +1,8 @@
 import Denote.Rules.Singleton.SingletonEntry
 import Denote.Controls.SingletonInstallControls
 
-/-! Metaclass constant fallback is independent of ordinary lexical-class agreement. -/
+/-! Singleton methods resolve constants through their lexical class. The retained
+metaclass fallback guard is a separate, conservative site condition. -/
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed.SingletonScopeControls
 open RubyCore Ratchet Ratchet.Denote
@@ -13,15 +14,15 @@ open SingletonInstallControls (entry k e)
 private def hidden : Heap := constSetIn entry.heap e "IOError" (.int 99)
 private def activation : Machine :=
   pushMethodFrame { entry with heap := hidden }
-    { self := .ref k, defmod := e, cref := [k, Boot.objectId], kind := .method }
+    { self := .ref k, defmod := e, cref := [k], kind := .method }
 
--- These ordinary-site facts survive, but the actual singleton activation sees 99 where
--- the global table has no binding. This is a contract witness, not an admitted program.
+-- The poisoned definee does not redirect lexical lookup. The conservative
+-- site guard still rejects its metaclass constant table.
 #guard metaReadyB hidden k && classFrontB hidden (classOf hidden (.ref k)) &&
   (hidden.get (classOf hidden (.ref k))).eigen.isNone &&
   (instanceConstResolve hidden k "IOError").isNone &&
   (constLookup hidden "IOError").isNone &&
-  (constResolveAt activation "IOError").any (·.identEq (.int 99)) && !constFallbackB hidden e
+  (constResolveAt activation "IOError").isNone && !constFallbackB hidden e
 
 theorem recorded_scope {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Cls} {d : Defn}
     (hm : StateOk κ Γ I m) (hc : c ∈ κ.classes) (hd : d ∈ c.smethods)

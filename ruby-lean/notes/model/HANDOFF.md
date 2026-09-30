@@ -1,6 +1,6 @@
 # Lean model — hand-off
 
-## Authorized helper repair in progress (2026-09-29)
+## Authorized proof repair checkpoint (2026-09-30)
 
 The user authorized correcting false helper contracts while preserving public
 soundness theorem statements, and requested a clear audit in the root
@@ -16,14 +16,16 @@ No new trust axiom, sorry, native_decide proof, skipped target, or lowered gate
 has been introduced. The constants probe explicitly loads sorbet-runtime for
 its optional T rows, while the core-name probe still measures core boot.
 
-Denote and the full typed ratchet remain RED. Denote run decomposition still
-uses the false stack-only framing action, immediate-error assumptions, and the
-old control cases. Boot readiness still assumes the obsolete top-level cref,
-main dispatch chain, and definition-hook behavior. Fresh class/module runtime
-entry still needs queued-callback and actual anonymous-eigenclass integration.
-Structural module conformance, bounded dispatch, recursive names, and the full
-builtin-id bound have been repaired independently; do not confuse their green
-builds with completion of the runtime bridge.
+Denote and the full typed ratchet remain RED. Boot readiness, root-run
+decomposition, primitive dispatch and native ZeroDivisionError construction now
+pass. The stack-only composition interface requires RootClean at entry and answer
+boundaries; ContextFree still excludes block-call and inspection markers as well
+as catch and Hash-iteration markers. Required-argument method entry now models
+definition/super/library metadata and explicitly excludes block-defined methods
+and for-loop targets. Downstream method return/body composition and ordinary-code
+metadata propagation remain incomplete. Other blockers are class/module lexical
+lookup, queued declaration/constructor callbacks, closure frame allocation and
+capture preservation, and FrozenError's effectful initialization/inspection.
 
 On 2026-09-30 the user authorized all changes needed to handle the main-singleton
 admission bug, preserve top-level theorem statements, and continue the repair in
@@ -32,12 +34,31 @@ applied. Rational/Complex/Enumerator global-constant protection was already
 committed. No further approval is needed for necessary metadata/helper repairs
 within this task. Keep the detailed proof-changes.md audit uncommitted.
 
-Latest logs: /private/tmp/proof-check-proofs3.log (PASS),
-/private/tmp/proof-typed-gate-current.log (FAIL before agreement), and
-/private/tmp/proof-denote-frontier16.log (Denote frontier before the last module
-conformance batch). The user requested a checkpoint commit on 2026-09-30 with these failures
-explicitly disclosed. This checkpoint is not completion of the repair;
-proof-changes.md remains untracked and excluded from the commit.
+Latest logs: /private/tmp/proof-checkpoint-metatheory.log (PASS),
+/private/tmp/proof-checkpoint-green-targets.log (235 jobs, PASS),
+/private/tmp/proof-checkpoint-targets.log (BoundedPrimitive blocked by MethodReturn),
+and /private/tmp/proof-checkpoint-gate.log (FAIL before agreement).
+The user requested another checkpoint after discussing the continuation design.
+This checkpoint is not completion of the repair; proof-changes.md remains
+untracked and excluded from the commit.
+
+### Design constraint for the next runtime change
+
+The user requires decomposable continuation runs whenever Ruby semantics admit
+such a model; accepting avoidable whole-continuation probes is not the preferred
+repair. Catch/throw support can remain outside the typed fragment for now.
+
+The proposed block-break repair is an explicit lifetime token: a fresh call id
+stored in the closure, an execution-local set of live ids, and the existing
+blockCallK boundary responsible for expiration on normal return or unwinding.
+Closure entry reads the live set instead of scanning kont. A detached answer-run
+inherits the live set even when the matching marker is in its omitted outer
+continuation; a targeted escape is delivered to that continuation afterward.
+Forwarding preserves identity; a dead token invalidates break, not an otherwise
+normal Proc call. Ensure ordering and Enumerator suspension/restoration must
+preserve the lifetime semantics. Prove correspondence and framing before removing
+blockCallK from ContextFree's exclusions. This is a design proposal only: no
+lifetime-token runtime changes are included in this checkpoint.
 
 ## Historical statement-preserving obstruction (2026-09-29)
 

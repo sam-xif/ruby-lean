@@ -14,7 +14,8 @@ theorem enterUserMethod_required_block (m : Machine) (recv : Value) (name : Stri
     (md : MethodDef) (names : List String) (args : List Value) (blk : Option Value)
     (hp : md.params = names.map RubyCore.Param.req)
     (hc : md.capturedFrame = none) (hd : md.declared = [])
-    (ha : args.length = names.length) :
+    (ha : args.length = names.length)
+    (hblock : md.fromBlock = false) (hfor : md.forTargets = none) :
     Interp.enterUserMethod m recv name md args blk =
       .next (Interp.withKont (pushMethodFrame m (requiredBlockFrame recv name md names args blk))
         (.eval md.body) (.frameK m.frames.size)) := by
@@ -23,7 +24,7 @@ theorem enterUserMethod_required_block (m : Machine) (recv : Value) (name : Stri
   have hf : (names.zip args).filter (fun _ => true) = names.zip args :=
     List.filter_eq_self.mpr (fun _ _ => rfl)
   simp [Interp.appendKwHash, hc, hd, ← ha, requiredBlockFrame, requiredFrame, pushMethodFrame,
-    Interp.withKont, Interp.withCtl, hp, hf]
+    Interp.withKont, Interp.withCtl, hp, hf, hblock, hfor]
 
 #print axioms enterUserMethod_required_block
 end Ratchet.Denote.Typed

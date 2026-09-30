@@ -49,7 +49,7 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
         exact ⟨k, instanceSite_old site hc hm.sat hmain.classLive hn⟩
       · have heq := List.mem_singleton.mp hcn
         subst cn
-        exact ⟨m.heap.objs.size, instanceSite hm.moduleBase hc hm.sat hmain.classLive hm.core.moduleBasic⟩
+        exact ⟨m.heap.objs.size, instanceSite hm.moduleBase hc hm.sat hmain.classLive hm.core.moduleBasic hm.core.classReady.bootEnd⟩
     sat := saturated_fresh hc hm.sat ho
     primitiveDispatch := (primitiveDispatch hm.names hc hm.sat _).trans hm.primitiveDispatch
     primitiveErrors := (primitiveErrors hc hm.sat).trans hm.primitiveErrors

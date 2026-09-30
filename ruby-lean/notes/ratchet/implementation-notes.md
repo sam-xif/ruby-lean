@@ -12629,3 +12629,26 @@ producers are adapted separately while their existing lexical/entry dependencies
 are still being repaired. No checker admission guard or runtime behavior changed.
 Method-installation targets, Boot and WriteState pass (part of the 255-job batch).
 The stronger boot check passes; the full typed gate is still red.
+
+### 2026-09-30 — Checkpoint method-entry metadata and conformance consumers
+
+Required method frames now retain definee, method owner, definition frame, super
+scope, block-definition origin and library origin. Ordinary required-parameter
+entry, with and without a supplied block, explicitly excludes fromBlock and
+forTargets paths. Local lookup unfolds alias resolution. Both entry modules
+build with standard axioms; consumers still need ordinary-method metadata facts.
+
+Fresh class/module/subclass site producers now carry the after-builtin bound
+introduced by the native-initializer preservation repair. Singleton and inherited
+method writes supply initializer preservation; the inherited-shadow control
+supplies its new selector premise. Bounded primitive composition carries RootClean
+and observedKont=false. The singleton-scope control uses lexical lookup rather
+than a poisoned definee. These downstream edits are blocked by already failing
+dependencies and are not claimed fully checked.
+
+The MethodEntry/BlockEntry/Answer/Boot/TopMethodInstall batch passes (235 jobs),
+and check-proofs.sh passes. The full typed ratchet is RED in the proof build;
+CRuby replay is not reached. This user-requested checkpoint preserves top-level
+theorem statements, runtime behavior and all gate stages. The root audit remains
+uncommitted. The continuation-decomposability design decision and proposed block
+lifetime tokens are recorded in the model handoff; implementation has not begun.

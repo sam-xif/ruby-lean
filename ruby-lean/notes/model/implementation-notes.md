@@ -15660,3 +15660,22 @@ user direction. The approved Rational/Complex/Enumerator global-constant
 correction is applied. Full typed ratchet fails before agreement. The detailed
 uncommitted proof-changes.md audit distinguishes changed helper contracts,
 strengthened conformance invariants, executable fixtures, and remaining work.
+
+## 2026-09-30 — continuation decomposition is a design constraint
+
+The user requires a decomposable continuation model wherever it can faithfully
+express Ruby behavior. Catch/throw may remain outside typed admission for now.
+The current root-run theorem passes but its ContextFree restriction still excludes
+blockCallK, inspection guards and Hash iteration locks. That restriction is not
+the desired permanent answer for ordinary block calls.
+
+Proposed next change: replace the block-entry kont scan with an explicit live
+break-token set in execution state. Allocate identity at the original literal
+block call, retain it through forwarding, and expire it only when that call's
+marker is consumed on return/unwind. Open sub-runs inherit liveness, carry a
+targeted escape as an answer, and resume the outer continuation to consume it.
+Dead destinations make break invalid while allowing normal Proc execution.
+Execution suspension, exception/ensure ordering and fresh identities need checked
+correspondence with existing Ruby behavior. No token implementation or runtime
+change is part of this checkpoint. The metatheory is green; the typed bridge
+remains red as recorded in HANDOFF.md.

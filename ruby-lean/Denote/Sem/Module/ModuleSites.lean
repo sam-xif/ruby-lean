@@ -57,7 +57,7 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
   have hl : lookup h₁ (.ref k) "method_added" = lookup h (.ref k) "method_added" := by
     rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hk, method_old hc hs (ClsGrow.classOf_lt hc hk)]
   refine ⟨named hc.boot.2.2.2.2 hn site.named, ?_, ?_,
-    instance_constants_old site hc hs ho hn, ?_, meta_old site.metaclass hc hs hk, ?_, ?_, ?_, ?_⟩
+    instance_constants_old site hc hs ho hn, ?_, meta_old site.metaclass hc hs hk, ?_, ?_, ?_, ?_, site.afterBuiltins⟩
   · simpa only [classFront_old hk] using site.front
   · simpa only [definitionHookQuietB, hl] using site.hook
   · intro n hn owner md hm
@@ -81,10 +81,11 @@ theorem hook_quiet {κ : Ctx} (hp : ModuleBase κ h) (hc : ChainsIn h) (hs : Sat
 
 theorem instanceSite {κ : Ctx} (hp : ModuleBase κ h) (hc : ChainsIn h) (hs : Saturated h)
     (ho : (h.classPayload? Boot.objectId).isSome = true)
-    (hb : (ancestors h Boot.moduleId).contains Boot.basicObjectId = true) :
+    (hb : (ancestors h Boot.moduleId).contains Boot.basicObjectId = true)
+    (hboot : Boot.yielderId < h.objs.size) :
     InstanceSite κ name h.objs.size h₁ := by
   refine ⟨named_new hc.boot.2.2.2.2 ho, ?_, hook_quiet hp hc hs,
-    instance_constants_fresh, ?_, meta_fresh hc hs hb, ?_, ?_, ?_, ?_⟩
+    instance_constants_fresh, ?_, meta_fresh hc hs hb, ?_, ?_, ?_, ?_, hboot⟩
   · simp only [classFrontB, freshModHeap_cp_k]; rfl
   · intro n _ owner md hm
     rw [method_fresh] at hm; cases hm
