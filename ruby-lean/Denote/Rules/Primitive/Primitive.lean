@@ -39,11 +39,11 @@ theorem primitive_framed {σ τ : Ty} {name : String} {tys : List Ty} (hp : DPri
     first | exact hv | exact hf.nominal _ _ hv
 
 theorem prim_catchFree (k : Kont)
-    (h : ∀ tag, k ≠ .catchK tag) : RubyCore.Proof.CatchFree [k] := by
-  intro k' hk tag
+    (h : Proof.Root.observedKont k = false) : RubyCore.Proof.CatchFree [k] := by
+  intro k' hk
   simp only [List.mem_singleton] at hk
   subst hk
-  exact h tag
+  exact h
 
 theorem recv_one_step {site : SendSite} (m : Machine) (v : Value) (name : String) (e : Ratchet.Expr)
     (hp : plainArgB e = true) :
@@ -76,7 +76,7 @@ private theorem recv_one {κ κ' : Ctx} {I I' : Ty} {site : SendSite} {Γ Γ' : 
       isANoOk κ'.wholeCls (["String", "Comparable"] ++ rootAncestors) = true) :
     RunSpec m (deliverA (.val recv) m [.recvK name [toRuby e] .none site]) Γ' τ κ' I' := by
   apply RunSpec.step (by rfl) (recv_one_step m recv name e hplain)
-  apply (he m hm).bindSpec (prim_catchFree _ (by intro tag; simp))
+  apply (he m hm).bindSpec hm.rootClean (prim_catchFree _ rfl)
   intro a n hn
   cases a with
   | val v =>
@@ -130,7 +130,7 @@ theorem SemSafeCtxA.prim {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I
   apply RunSpec.step (by rfl)
     (show Interp.stepFn _ =
       .next (pushK [.recvK name (toRubyList args) .none site] (evalFrom m recv)) from ?_)
-  · apply (hr m hm).bindSpec (prim_catchFree _ (by intro tag; simp))
+  · apply (hr m hm).bindSpec hm.rootClean (prim_catchFree _ rfl)
     intro a n hn
     cases a with
     | val v => exact (recv_spec hp ha (hn.2.2 v rfl) hn.2.1 hfree hstring).rebase hn.1

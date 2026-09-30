@@ -20,7 +20,7 @@ theorem SemSafeCtxA.sendVia {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I�
   apply RunSpec.step (by rfl)
     (show Interp.stepFn _ =
       .next (pushK [.recvK name (toRubyList args) .none site] (evalFrom m recv)) from ?_)
-  · apply (hr m hm).bindSpec (prim_catchFree _ (by intro tag; simp))
+  · apply (hr m hm).bindSpec hm.rootClean (prim_catchFree _ rfl)
     intro a n hn
     cases a with
     | val v =>

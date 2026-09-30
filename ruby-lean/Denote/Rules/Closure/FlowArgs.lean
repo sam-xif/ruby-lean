@@ -38,11 +38,11 @@ theorem SemFlowAll.startArgsKeep {κ κ' κout : Ctx} {Γ Γ' Γout : Env} {I I'
     simp only [StepSpec, Interp.withKont, hk]
     change RunSpec m (pushK [.argsK recv site name acc (toRubyList es) .none] (evalFrom m e))
       Γout τ κout Iout
-    apply (he m hm hlocal).bindSpec (by
-      intro k h tag
+    apply (he m hm hlocal).bindSpec hm.rootClean (by
+      intro k h
       simp only [List.mem_singleton] at h
       subst h
-      simp)
+      rfl)
     intro a n hn
     cases a with
     | val v =>

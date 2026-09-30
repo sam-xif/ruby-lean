@@ -12605,3 +12605,13 @@ still red in downstream composition and state preservation (method installation
 now owes primitiveInit preservation). This is a repair checkpoint under the
 user's authorization, not a completed soundness claim. Runtime code and the
 Bridge theorem statements are unchanged; root proof-changes.md stays uncommitted.
+
+### 2026-09-30 — Receiver and argument continuation consumers
+
+Primitive sends, generic argument lists, arrays and flow-tracked argument lists
+now supply RootClean and the actual observedKont exclusion. The former
+prim_catchFree helper's non-catch premise was insufficient for block-call,
+inspection and other observable continuations. Its intermediate premise now
+states observedKont=false. The registered semantic rule statements are unchanged.
+The five targets pass in the 255-job native-init/composition batch; the complete
+gate remains red at later method/class/closure transitions.

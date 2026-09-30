@@ -57,11 +57,11 @@ private theorem array_spec {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty}
     rw [continueArray_cons m acc e es hp]
     simp only [StepSpec, Interp.withKont, hk]
     change RunSpec m (pushK [.arrK acc (toRubyList es)] (evalFrom m e)) Γ₂ (.arrayOf τ) κ₂ I₂
-    apply (he m hm).bindSpec (by
-      intro k h tag
+    apply (he m hm).bindSpec hm.rootClean (by
+      intro k h
       simp only [List.mem_singleton] at h
       subst h
-      simp)
+      rfl)
     intro a n hn
     cases a with
     | val v =>
