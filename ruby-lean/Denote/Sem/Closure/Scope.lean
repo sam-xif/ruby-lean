@@ -46,11 +46,11 @@ theorem StateOk_captured_reframe {κ : Ctx} {Γ Γb : Env} {I : Ty} {m n : Machi
     (hk : ∀ x, constGet? (κ.withFrame none) x = constGet? κ x)
     (hr : FrameInRange n) (he : EnvOk Γb n) (hf : FrameOk none n)
     (hal : n.currentFrame.localAlias = none)
-    (hlive : CaptureLive n n.currentFrame.captured) :
+    (hlive : CaptureLive n n.currentFrame.captured) (hroot : RootClean n) :
     StateOk (κ.withoutRuntimeScope.withFrame none) Γb I n :=
   StateOk_reframe_scopes (StateOk_withoutRuntimeScope h) ht.withoutRuntimeScope ha
     hh hs hb hc hd (by intro h; cases h) (by intro _ h; cases h)
-    (by intro _ h; cases h) hk hr he hf hal hlive
+    (by intro _ h; cases h) hk hr he hf hal hlive hroot
 
 #print axioms StateOk_captured_reframe
 end Ratchet.Denote

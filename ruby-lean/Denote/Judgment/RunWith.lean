@@ -62,15 +62,17 @@ theorem RunWith.answer {origin m : Machine} {Γ : Env} {τ I : Ty} {κ : Ctx}
 
 theorem RunWith.bind {origin m : Machine} {Γ Γ' : Env} {σ τ I I' : Ty} {κ κ' : Ctx}
     {P Q : Value → Machine → Prop} {e : Ratchet.Expr}
-    (h : RunWith m (evalFrom m e) Γ σ κ I P)
+    (h : RunWith m (evalFrom m e) Γ σ κ I P) (hm : RootClean m)
     {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
     (hk : ∀ a n, ResultWith m Γ σ κ I P a n →
       RunWith origin (deliverA a n K) Γ' τ κ' I' Q) :
     RunWith origin (pushK K (evalFrom m e)) Γ' τ κ' I' Q := by
   constructor
-  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1)
+  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1) hm
+      (fun _ _ hr => hr.1.1.rootClean hm)
   · intro fuel a n rest hr
-    rw [runA_pushK _ hK] at hr
+    rw [runA_pushK _ hK fuel (evalFrom m e) hm
+      (fun a n r hr => (h.2 fuel a n r hr).1.1.rootClean hm)] at hr
     cases hs : runA fuel (evalFrom m e) with
     | halt hh => rw [hs] at hr; cases hh <;> cases hr
     | oof n' => rw [hs] at hr; cases hr
@@ -81,12 +83,12 @@ theorem RunWith.bind {origin m : Machine} {Γ Γ' : Env} {σ τ I I' : Ty} {κ �
 /-- Consume an intermediate postcondition without imposing it on the final result. -/
 theorem RunWith.bindSpec {origin m : Machine} {Γ Γ' : Env} {σ τ I I' : Ty} {κ κ' : Ctx}
     {P : Value → Machine → Prop} {e : Ratchet.Expr}
-    (h : RunWith m (evalFrom m e) Γ σ κ I P)
+    (h : RunWith m (evalFrom m e) Γ σ κ I P) (hm : RootClean m)
     {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
     (hk : ∀ a n, ResultWith m Γ σ κ I P a n →
       RunSpec origin (deliverA a n K) Γ' τ κ' I') :
     RunSpec origin (pushK K (evalFrom m e)) Γ' τ κ' I' :=
-  (h.bind (Q := fun _ _ => True) hK
+  (h.bind (Q := fun _ _ => True) hm hK
     (fun a n hn => (hk a n hn).withPost (fun _ _ _ => trivial))).erase
 
 #print axioms RunWith.bind

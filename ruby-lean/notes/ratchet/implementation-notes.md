@@ -12543,3 +12543,18 @@ The twelve targeted boundary/heap modules build together (266 jobs, standard
 axioms). Bridge is unchanged. Full Denote remains red in downstream consumers,
 lexical scope assumptions and queued callback transitions; this is a repair
 checkpoint, not a claim that the end-to-end gate passes.
+
+## 2026-09-30 — boundary consumers and primitive dispatch
+
+RunWith, bounded runs and initializer runs now retain/provide root-boundary
+facts. Sequence and conditional composition build with the stronger context-free
+frame predicate. Method installation, scalar writes and captured reframing carry
+explicit preservation. The independent targets build together with standard
+axioms; full Denote is still red.
+
+Primitive numeric facts reduce through the current equality guard. The generic
+builtin dispatch lemma now explicitly excludes interpreter special entries and
+accounts for frozen results. Consumers, especially String#+ and constructors,
+need their actual special-entry proofs rather than that generic lemma.
+Literal-call allocation additionally binds breakScope and reserves a frame-store
+slot; the old plain reifyBlock proof does not establish that transition.

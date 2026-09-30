@@ -192,6 +192,7 @@ theorem StateCore_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine
     globalConsts := hm.globalConsts.defineMethod
     sat := Proof.Saturated_defineMethod hm.sat _ _ _
     names := Proof.namesOk_defineMethod hm.names _ _ _
+    rootClean := hm.rootClean
     localAlias := hm.localAlias
     capturedLive := CaptureLive.frames_preserved (m := m) (n := n)
       (Nat.le_refl _) (fun _ _ => rfl) hm.capturedLive

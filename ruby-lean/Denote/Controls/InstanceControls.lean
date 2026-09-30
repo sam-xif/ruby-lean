@@ -23,11 +23,11 @@ example {κ : Ctx} {Γ : Env} :
       (.var .ivar "@x") .int κ Γ
       (.ivarCons "@x" .int (.ivarCons "@x" (.cls "String") .ivar0)) := SemSafeCtxA.ivarRead
 
-private def pointHeap : Heap := ⟨#[
+private def pointHeap : Heap := { objs := #[
   { klass := 0 },
   { klass := 0, payload := .cls { name := "Object", superclass := none, consts := [("Point", .ref 2)] } },
   { klass := 0, payload := .cls { name := "Point", superclass := none } },
-  { klass := 2 }]⟩
+  { klass := 2 }] }
 
 private def ivarBefore : Machine :=
   { (Machine.initOn pointHeap .nil) with
@@ -57,7 +57,7 @@ example : ivarOf ivarAfter.heap (.ref 2) = ivarOf ivarBefore.heap (.ref 2) :=
   ivarOf_bindIvar_other rfl (by intro h; cases h)
 
 private def aliasBefore : Machine :=
-  { ivarBefore with heap := ⟨pointHeap.objs.push { klass := Boot.arrayId, payload := .arr #[.ref 3] }⟩ }
+  { ivarBefore with heap := { pointHeap with objs := pointHeap.objs.push { klass := Boot.arrayId, payload := .arr #[.ref 3] } } }
 private def aliasAfter : Machine := Interp.bindIvar aliasBefore "@x" (.int 1)
 private def retainedTy : Ty := .arrayOf (.inst "Point" (.ivarCons "@x" .nilT .ivar0))
 

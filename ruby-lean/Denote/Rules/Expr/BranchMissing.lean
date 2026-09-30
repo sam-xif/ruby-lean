@@ -15,7 +15,7 @@ theorem SemSafeCtxA.ifNoElse {κ κc : Ctx} {Γ Γc Γt : Env} {I Ic : Ty}
   apply RunSpec.step (by rfl)
     (show Interp.stepFn _ =
       .next (pushK [.ifK (toRuby t) none] (evalFrom m c)) from rfl)
-  apply (hc m hm).bindSpec (by intro k hk tag; simp_all)
+  apply (hc m hm).bindSpec hm.rootClean (by intro k hk; simp only [List.mem_singleton] at hk; subst k; rfl)
   intro a n hn
   cases a with
   | val v =>
