@@ -128,30 +128,47 @@ theorem StateOk_frame {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine}
 induction over the ancestor walk. -/
 theorem MethodsExact.lookup {κ : Ctx} {m : Machine} (h : MethodsExact κ m)
     {v : Value} {n : String} {o : ObjId} {md : MethodDef}
-    (hl : lookup m.heap v n = some (o, md)) :
+    (hl : lookup m.heap v n = some (o, md)) (hu : md.undefined = false) :
     md.fromPrelude = true ∨ md.builtin.isSome = true ∨ nameFreeN κ n = false := by
-  have go : ∀ (ks : List ObjId), lookup.go m.heap n ks = some (o, md) →
-      md.fromPrelude = true ∨ md.builtin.isSome = true ∨ nameFreeN κ n = false := by
-    intro ks
-    induction ks with
-    | nil => intro hg; exact absurd hg (by simp [lookup.go])
-    | cons k rest ih =>
-      intro hg
-      rw [lookup.go] at hg
-      split at hg
-      · rename_i cp hp
-        split at hg
-        · rename_i nm md' hf
-          have hmem : (nm, md') ∈ cp.methods := List.mem_of_find?_eq_some hf
-          have hname : nm = n := by simpa using List.find?_some hf
-          have hmd : md' = md := by
-            have := Option.some.inj hg
-            simpa using congrArg Prod.snd this
-          subst hname; subst hmd
-          exact h k cp hp nm md' hmem
-        · exact ih hg
-      · exact ih hg
-  exact go _ hl
+  let ok (pair : ObjId × MethodDef) :=
+    pair.2.undefined || pair.2.fromPrelude || pair.2.builtin.isSome || !nameFreeN κ n
+  have hor {a b : Option (ObjId × MethodDef)} (ha : a.all ok = true)
+      (hb : b.all ok = true) : (a.orElse (fun _ => b)).all ok = true := by
+    cases a <;> simp_all [Option.orElse]
+  have go : ∀ fuel ks used, (lookupInChain.go m.heap n fuel ks used).all ok = true := by
+    intro fuel
+    induction fuel with
+    | zero => intros; rfl
+    | succ fuel ih =>
+      intro ks used
+      cases ks with
+      | nil => rfl
+      | cons k rest =>
+        simp only [lookupInChain.go]
+        cases hc : m.heap.classPayload? k with
+        | none => exact ih rest used
+        | some cp =>
+          simp only
+          cases hm : cp.methods.find? (·.1 == n) with
+          | none => exact ih rest used
+          | some pair =>
+            dsimp only
+            split
+            · have hmem := List.mem_of_find?_eq_some hm
+              have hn : pair.1 = n := by simpa using List.find?_some hm
+              cases hu' : pair.2.undefined with
+              | true => simp [ok, hu']
+              | false =>
+                have hmd := h k cp hc pair.1 pair.2 hmem hu'
+                simpa [ok, hu', Bool.or_eq_true, or_assoc, hn] using hmd
+            · simp only [Option.all_map, Function.comp_def]
+              apply hor (ih rest used)
+              split
+              · exact ih _ true
+              · rfl
+  have hp := go (2 * m.heap.objs.size + 2) (ancestors m.heap (classOf m.heap v)) false
+  change (RubyCore.lookup m.heap v n).all ok = true at hp
+  simpa [hl, ok, hu, Bool.or_eq_true, or_assoc] using hp
 
 /-! ## 3. The interpreter's frame rule — the ladder's named target -/
 
@@ -257,9 +274,9 @@ Conditional on two `Bool`s rather than `decide`d, for the reason `Denote/Sem/Cor
 `rfl`-reducible, and `native_decide` would cost an axiom this package does not spend. The
 `#guard`s below are the build gate. -/
 def throwM : Machine :=
-  { ctl := .value (.sym "t"),
-    kont := [.argsK .nil .implicit "throw" [] [] .none],
-    stack := [], frames := #[], heap := ⟨#[]⟩ }
+  { ctl := .send .nil .implicit "throw" [.sym "t"] none [],
+    kont := [.seqK []],
+    stack := [], frames := #[], heap := { objs := #[] } }
 
 def catchTail : List Kont := [.catchK (.sym "t")]
 
@@ -268,6 +285,7 @@ def tagOf : StepResult → String
   | .next m => match m.ctl with
     | .jump (.raiseJ _) => "raise"
     | .jump (.throwJ _ _) => "throw"
+    | .send .. => "send"
     | _ => "other"
   | .unsupported r => "unsupported: " ++ r
   | .stuck r => "stuck: " ++ r
@@ -280,7 +298,7 @@ theorem tagOf_frameR (K : List Kont) (r : StepResult) : tagOf (frameR K r) = tag
 
 /-- **`KontFrame` is refutable.** -/
 theorem not_KontFrame
-    (hbare : tagOf (Interp.stepFn throwM) = "raise")
+    (hbare : tagOf (Interp.stepFn throwM) = "send")
     (hunder : tagOf (Interp.stepFn (pushK catchTail throwM)) = "throw") : ¬ KontFrame := by
   intro h
   have heq := h throwM catchTail (Or.inl (by simp [throwM]))
@@ -288,7 +306,7 @@ theorem not_KontFrame
   exact absurd hunder (by decide)
 
 -- **The gate.** The two computations the refutation is conditional on.
-#guard tagOf (Interp.stepFn throwM) == "raise"
+#guard tagOf (Interp.stepFn throwM) == "send"
 #guard tagOf (Interp.stepFn (pushK catchTail throwM)) == "throw"
 
 /-- **What the rungs will actually use**: the decomposition. A run of `e` under continuation

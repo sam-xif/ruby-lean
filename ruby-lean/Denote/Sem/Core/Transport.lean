@@ -68,6 +68,10 @@ theorem SendReturns_reCtl {m : Machine} {c : Ctl} {k : List Kont} {name : String
 @[simp] theorem currentFrame_reCtl (m : Machine) (c : Ctl) (k : List Kont) :
     (reCtl m c k).currentFrame = m.currentFrame := rfl
 
+@[simp] theorem localFrameId_reCtl (m : Machine) (c : Ctl) (k : List Kont) (fid : FrameId) :
+    (reCtl m c k).localFrameId fid = m.localFrameId fid :=
+  localFrameId_frames_eq (m := m) (n := reCtl m c k) rfl fid
+
 /-- Both local readers walk the frame array under an explicit fuel, carrying the machine as
 an argument, so their agreement is an induction rather than a projection. -/
 theorem getLocal_go_reCtl (m : Machine) (c : Ctl) (k : List Kont) (x : String) :
@@ -78,7 +82,7 @@ theorem getLocal_go_reCtl (m : Machine) (c : Ctl) (k : List Kont) (x : String) :
   | zero => intro fid; rfl
   | succ n ih =>
     intro fid
-    simp only [Machine.getLocal.go]
+    simp only [Machine.getLocal.go, localFrameId_reCtl, frames_reCtl]
     split
     · rfl
     · split
@@ -98,7 +102,7 @@ theorem setLocal_owner_reCtl (m : Machine) (c : Ctl) (k : List Kont)
   | zero => intro _; rfl
   | succ fuel ih =>
     intro fid
-    simp only [Machine.setLocal.owner]
+    simp only [Machine.setLocal.owner, localFrameId_reCtl, frames_reCtl]
     split
     · rfl
     · split
@@ -108,7 +112,7 @@ theorem setLocal_owner_reCtl (m : Machine) (c : Ctl) (k : List Kont)
 @[simp] theorem setLocal_reCtl (m : Machine) (c : Ctl) (k : List Kont)
     (x : String) (v : Value) :
     (reCtl m c k).setLocal x v = reCtl (m.setLocal x v) c k := by
-  simp only [setLocal_eq_setAt, setLocal_owner_reCtl]
+  simp only [setLocal_eq_setAt, localFrameId_reCtl, stack_reCtl, frames_reCtl, setLocal_owner_reCtl]
   rfl
 
 theorem frameLocal_go_reCtl (m : Machine) (c : Ctl) (k : List Kont) (x : String) :
@@ -254,9 +258,10 @@ theorem Framed.of_ext {m m' : Machine} (he : Ext m m')
 theorem Framed_withCtl (m : Machine) (c : Ctl) : Framed m (Interp.withCtl m c) :=
   Framed.of_heap_stack rfl rfl (.of_eq rfl rfl)
 
-theorem Framed_setLocal (m : Machine) (x : String) (w : Value) :
+theorem Framed_setLocal (m : Machine) (x : String) (w : Value)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none) :
     Framed m (m.setLocal x w) :=
-  Framed.of_heap_stack (setLocal_heap m x w) (setLocal_stack m x w) (.setLocal m x w)
+  Framed.of_heap_stack (setLocal_heap m x w) (setLocal_stack m x w) (.setLocal m x w ha)
 
 /-- **Conformance does not read the control word.** A corollary of `StateOk_ext`
 (`Denote/Sem/Core/State.lean`) rather than a second component-by-component induction: rewriting

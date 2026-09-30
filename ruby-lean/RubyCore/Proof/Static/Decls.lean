@@ -92,7 +92,17 @@ def ResolvesTo (h : Heap) (recv : Value) (mname bid : String) : Prop :=
 /-- The method-table walk from a **class**, which is all `lookup` ever does with a
     receiver (`lookup h v m = lookup.go h m (ancestors h (classOf h v))`, definitionally). -/
 def lookupIn (h : Heap) (k : ObjId) (mname : String) : Option (ObjId × MethodDef) :=
-  lookup.go h mname (ancestors h k)
+  lookupInChain h (ancestors h k) mname
+
+theorem lookupIn_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
+    (hchains : ChainsIn h) (k : ObjId) (mname : String) :
+    lookupIn h' k mname = lookupIn h k mname := by
+  unfold lookupIn
+  rw [hg.ancestors_eq hsat]
+  apply lookup_go_grow hg hsat
+  have hk := ancestors_length_bound hchains k
+  have ho := ancestors_length_bound hchains Boot.objectId
+  omega
 
 /-- **Resolution, indexed by the dispatch class instead of by a receiver** (L147).
     Every clause of `ResolvesTo` is this predicate at `classOf h recv` — L145's
@@ -612,9 +622,9 @@ def ConstOk (h : Heap) (n : String) (τ : Ty) : Prop :=
     id, so `constOwn` is unmoved at every id, and `ValueTy` transports by
     `typeAgree_of_plainGrow`. -/
 theorem constOk_grow {h h' : Heap} {n : String} {τ : Ty} (hg : PlainGrow h h')
-    (hsat : Saturated h) (hc : ConstOk h n τ) : ConstOk h' n τ := by
+    (hsat : Saturated h) (hnames : NamesOk h) (hc : ConstOk h n τ) : ConstOk h' n τ := by
   obtain ⟨v, hv, hty, hsole⟩ := hc
-  refine ⟨v, ?_, ValueTy.congr (typeAgree_of_plainGrow hg hsat) hty, fun j hj hjo => ?_⟩
+  refine ⟨v, ?_, ValueTy.congr (typeAgree_of_plainGrow hg hsat hnames) hty, fun j hj hjo => ?_⟩
   · unfold constOwn at hv ⊢; rw [hg.payload]; exact hv
   · unfold constOwn at hsole ⊢
     rw [hg.payload]
@@ -679,12 +689,12 @@ theorem get_defineMethod_fields (h : Heap) (cls : ObjId) (name : String)
     the old heap did not have, so the hypothesis cannot supply it — `PlainGrow`'s
     `get`-agreement below the old size is what bounds the quantifier back. -/
 theorem ivarOk_grow {h h' : Heap} {c x : String} {τ : Ty} (hg : PlainGrow h h')
-    (hsat : Saturated h) (hi : IvarOk h c x τ) : IvarOk h' c x τ := by
+    (hsat : Saturated h) (hnames : NamesOk h) (hi : IvarOk h c x τ) : IvarOk h' c x τ := by
   intro o ho hcn v hv
   by_cases hb : o < h.objs.size
   · rw [hg.get o hb] at hcn hv
-    exact ValueTy.congr (typeAgree_of_plainGrow hg hsat)
-      (hi o hb (by rwa [hg.className_eq] at hcn) v hv)
+    exact ValueTy.congr (typeAgree_of_plainGrow hg hsat hnames)
+      (hi o hb (by rwa [hg.className_eq _ hnames] at hcn) v hv)
   · -- Above the old size the object has no ivars at all, so the read is `none` and
     -- the hypothesis `hv` is contradictory.
     rw [hg.freshIvars o (by omega)] at hv
@@ -739,12 +749,12 @@ def ScopedConstOk (h : Heap) (c n : String) (τ : Ty) : Prop :=
     `private_constant` lists), `className`, the ancestor walk (with saturation), and
     `ValueTy` by `typeAgree_of_plainGrow`. -/
 theorem scopedConstOk_grow {h h' : Heap} {c n : String} {τ : Ty} (hg : PlainGrow h h')
-    (hsat : Saturated h) (hs : ScopedConstOk h c n τ) : ScopedConstOk h' c n τ := by
+    (hsat : Saturated h) (hnames : NamesOk h) (hs : ScopedConstOk h c n τ) : ScopedConstOk h' c n τ := by
   intro o ho hcn
   rw [hg.payload] at ho
-  rw [hg.className_eq] at hcn
+  rw [hg.className_eq _ hnames] at hcn
   obtain ⟨hpriv, v, hv, hty⟩ := hs o ho hcn
-  refine ⟨?_, v, ?_, ValueTy.congr (typeAgree_of_plainGrow hg hsat) hty⟩
+  refine ⟨?_, v, ?_, ValueTy.congr (typeAgree_of_plainGrow hg hsat hnames) hty⟩
   · rw [hg.ancestors_eq hsat]
     simp only [hg.payload]
     exact hpriv
@@ -809,44 +819,37 @@ def SuperOk (h : Heap) (c mname : String) (d : MethodDecl) : Prop :=
     both `PlainGrow` and `defineMethod`-of-a-different-name. Stated over the *list*
     rather than over the chain so the two callers can supply their own chain equality. -/
 theorem superFound_congr {h h' : Heap} {k dm : ObjId} {mname : String}
-    (hp : ∀ j, (h'.classPayload? j).map (fun c => c.methods.find? (·.1 == mname))
-              = (h.classPayload? j).map (fun c => c.methods.find? (·.1 == mname)))
-    (hanc : ancestors h' k = ancestors h k) :
+    (hp : ∀ j, (h'.classPayload? j).map (fun c => (c.methods.find? (·.1 == mname), c.isModule))
+              = (h.classPayload? j).map (fun c => (c.methods.find? (·.1 == mname), c.isModule)))
+    (hanc : ancestors h' k = ancestors h k)
+    (hsize : h'.objs.size = h.objs.size)
+    (hobj : ancestors h' Boot.objectId = ancestors h Boot.objectId) :
     superFound h' k dm mname = superFound h k dm mname := by
   unfold superFound
   rw [hanc]
-  induction (((ancestors h k).dropWhile (· != dm)).drop 1) with
-  | nil => rfl
-  | cons a rest ih =>
-    simp only [List.firstM, Option.orElse_eq_orElse]
-    have := hp a
-    cases h1 : h'.classPayload? a with
-    | none =>
-      cases h2 : h.classPayload? a with
-      | none => simp [h1, h2, ih]
-      | some cp => rw [h1, h2] at this; exact absurd this (by simp)
-    | some cp' =>
-      cases h2 : h.classPayload? a with
-      | none => rw [h1, h2] at this; exact absurd this (by simp)
-      | some cp =>
-        rw [h1, h2] at this
-        simp only [Option.map_some, Option.some.injEq] at this
-        simp only [h1, h2, this]
-        cases hf : cp.methods.find? (·.1 == mname) <;> simp [hf, ih]
+  exact lookupInChain_congr hsize hp hobj _
 
 /-- **`SuperOk` across an allocation.** Every clause is a `PlainGrow` field:
     `classPayload?` at every id, `className`, and the chain (with saturation).
     `ConformsAt` mentions no heap (L146), so the conformance half passes straight
     through. -/
 theorem superOk_grow {h h' : Heap} {c n : String} {d : MethodDecl} (hg : PlainGrow h h')
-    (hsat : Saturated h) (hs : SuperOk h c n d) : SuperOk h' c n d := by
+    (hsat : Saturated h) (hnames : NamesOk h) (hchains : ChainsIn h) (hs : SuperOk h c n d) : SuperOk h' c n d := by
   intro k dm hdm hcn hmem
   rw [hg.payload] at hdm
-  rw [hg.className_eq] at hcn
+  rw [hg.className_eq _ hnames] at hcn
   rw [hg.ancestors_eq hsat] at hmem
   obtain ⟨owner, md, bid, hf, hb, hu, hconf⟩ := hs k dm hdm hcn hmem
   exact ⟨owner, md, bid,
-    by rw [superFound_congr (fun j => by rw [hg.payload]) (hg.ancestors_eq hsat k)]; exact hf,
+    by
+      unfold superFound at hf ⊢
+      rw [hg.ancestors_eq hsat, lookup_go_grow hg hsat]
+      · exact hf
+      · have hk := ancestors_length_bound hchains k
+        have ho := ancestors_length_bound hchains Boot.objectId
+        have hd := @List.length_drop _ 1 (((ancestors h k).dropWhile (· != dm)))
+        have hw := (List.dropWhile_sublist (l := ancestors h k) (fun j => j != dm)).length_le
+        omega,
     hb, hu, hconf⟩
 
 /-- **And across a `def` of a different name.** The side condition is the one
@@ -862,8 +865,9 @@ theorem superOk_defineMethod {h : Heap} {c n : String} {d : MethodDecl} {cls : O
   rw [ancestors_defineMethod] at hmem
   obtain ⟨owner, md, bid, hf, hb, hu, hconf⟩ := hs k dm hdm hcn hmem
   refine ⟨owner, md, bid, ?_, hb, hu, hconf⟩
-  rw [superFound_congr (fun j => methods_find_defineMethod h cls j name n md' hne)
-    (ancestors_defineMethod h cls k name md')]
+  rw [superFound_congr (fun j => lookupFields_defineMethod h cls j name n md' hne)
+    (ancestors_defineMethod h cls k name md')
+    (objs_size_defineMethod h cls name md') (ancestors_defineMethod h cls _ name md')]
   exact hf
 
 /-- **The refinement invariant.** Note what is *not* here: no clause about names
@@ -903,6 +907,8 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
     -- receiver type, so it is `by simp` at each.
     (hnar : ∀ σ, τr ≠ .arrayOf σ)
     (he : BuiltinEntryOk m.heap τr mname d)
+    (hdirect : ∀ owner md, lookup m.heap recv mname = some (owner, md) →
+      ∀ bid, md.builtin = some bid → directBuiltinB bid = true)
     (hrv : ValueTy m.heap recv τr) (hargs : ValuesTy m.heap args d.params) :
     -- **L215: the conclusion carries the machine the builtin left**, and the four
     -- facts about it are `inv_grow_value`'s hypotheses verbatim. Every caller that used
@@ -917,6 +923,9 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
   obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ :=
     EntryOk.resolves ha hn hnar hres hrv
   obtain ⟨hdefer, w, m', hrun, hw, hg, hfr, hst, hko, hgv⟩ := hconf m recv args hrv hargs
+  have hdir := hdirect owner md hlook bid hb
+  simp only [directBuiltinB, Bool.not_eq_true, Bool.or_eq_false_iff,
+    List.contains_cons, List.contains_nil, beq_iff_eq] at hdir
   have hproc := run_ok_not_procCall hrun
   have hmap := run_ok_not_arrayMap hrun
   refine ⟨w, m', hw, hg, hfr, hst, hko, hgv, ?_⟩
@@ -967,7 +976,7 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
       case cls => exact absurd hplain (by simp [plainRecv, hpl])
       -- Everything else is the uniform path, and identical to the immediate cases.
       all_goals
-        simp [invoke.invokeDispatch, hpl, hlook, hb, hu, hbtw, hpre, visError?, hvis,
+        simp_all [invoke.invokeDispatch, crubyResolvedShadow, hpl, hlook, hb, hu, hbtw, hpre, visError?, hvis,
           appendKwHash, hrun, hns, hdefer, hraise, hproc, hmap]
     · have hc := hclass
       unfold classRecv at hc
@@ -977,11 +986,11 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
       have hpl : (m.heap.get o).payload = .cls cp := by
         unfold Heap.classPayload? at hcp
         cases hp : (m.heap.get o).payload <;> simp_all
-      simp [invoke.invokeMaybeNew, invoke.invokeDispatch, hpl, hrx, hmt, hnew,
+      simp_all [invoke.invokeDispatch, crubyResolvedShadow, hpl, hrx, hmt, hnew,
         hlook, hb, hu, hbtw, hpre, visError?, hvis, appendKwHash, hrun, hns, hdefer,
         hraise, hproc, hmap]
   all_goals
-    simp [invoke.invokeDispatch, hlook, hb, hu, hbtw, hpre, visError?, hvis,
+    simp_all [invoke.invokeDispatch, crubyResolvedShadow, hlook, hb, hu, hbtw, hpre, visError?, hvis,
       appendKwHash, hrun, hns, hdefer, hraise, hproc, hmap]
 
 /-- The activation `enterUserMethod` builds for a zero-parameter, non-closure
@@ -989,10 +998,11 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
     find a twelve-field literal from inside a `simp`, and because the two fields
     `FrameConforms` reads are then `rfl`. -/
 def userFrame (recv : Value) (md : MethodDef) (mname : String) : Frame :=
-  { self := recv, locals := [], defmod := md.owner, cref := md.cref,
+  { self := recv, locals := [], defmod := md.definee.getD md.owner, cref := md.cref,
     blk := none, callBlk := none, kind := .method,
     meth := md.superName.getD mname, runParams := [], runFromDM := false,
-    captured := none }
+    captured := none, methodOwner := some md.owner, definitionFrame := md.definitionFrame,
+    superScope := md.superScope, libraryOrigin := md.fromPrelude }
 
 set_option maxHeartbeats 1000000 in
 /-- **The user-method dispatch step** (L157) — `entry_dispatch`'s sibling, and the
@@ -1011,6 +1021,7 @@ theorem user_dispatch {m : Machine} {cn : String} {mname : String} {md : MethodD
     -- requires `τr = .cls c`, so every caller has this shape already — and pinning
     -- it is what keeps the class-*object* receiver out of this lemma, where the
     -- dispatch would go through `invokeMaybeNew` rather than `invokeDispatch`.
+    (hblock : md.fromBlock = false) (hfor : md.forTargets = none)
     (hrv : ValueTy m.heap recv (.cls cn)) :
     startArgs m recv site mname [] [] .none
       = .next { m with frames := m.frames.push (userFrame recv md mname),
@@ -1047,30 +1058,33 @@ theorem user_dispatch {m : Machine} {cn : String} {mname : String} {md : MethodD
       case hsh xs => exact absurd hplain (by simp [plainRecv, hpl])
       case cls c => exact absurd hplain (by simp [plainRecv, hpl])
       all_goals
-        simp [invoke.invokeDispatch, hpl, hlook', hb, hu, hbtw, hvis, visError?,
+        simp [invoke.invokeDispatch, crubyResolvedShadow, hpl, hlook', hb, hu, hbtw, hvis, visError?,
           crubySingletonShadow]
     all_goals
-      simp [invoke.invokeDispatch, hlook', hb, hu, hbtw, hvis, visError?,
+      simp [invoke.invokeDispatch, crubyResolvedShadow, hlook', hb, hu, hbtw, hvis, visError?,
         crubySingletonShadow]
   simp only [startArgs, finishSend, hinv]
   simp [enterUserMethod, classifyFull, hpar, hdec, hcap, userFrame, withCtl,
-    appendKwHash]
+    appendKwHash, hblock, hfor]
 
-/-- **The `super` dispatch step** (L212), and it is *cheaper* than
-    `entry_dispatch` for a reason worth knowing: **`doSuper` has no gates.** It goes
-    straight from `found` to `md.builtin`, where `invoke` walks receiver shapes,
-    `invokeMaybeNew`, visibility and the CRuby shadow table first — so there is no
-    `valueTy_shapes` case split here at all, and the receiver stays abstract.
-
-    Everything about the frame is a hypothesis, because everything about the frame is a
-    `StackCtx` clause at the call site: the running name (L207/L210), the definee's name
-    (L154), that it is a class (L154), and that it is on the receiver's chain (L209).
-    The last one is what makes `dropWhile` land rather than empty the list — without it
-    `doSuper` raises `NoMethodError`, which is exactly the type-stuck outcome. -/
+/-- Builtin `super` dispatch for an ordinary method frame. The frame metadata
+    selects its own receiver chain and definee, the target is unshadowed, and
+    its builtin id is handled by the pure runner rather than a protocol. -/
 theorem super_dispatch {m : Machine} {c mname : String} {d : MethodDecl}
     {args : List Value} {blk : Option Value}
     (hne : mname ≠ "")
     (hsup : SuperOk m.heap c mname d)
+    (hscope : (m.frames.getD (methodFrameOf m) default).superScope = none)
+    (howner : (m.frames.getD (methodFrameOf m) default).methodOwner.getD
+      (m.frames.getD (methodFrameOf m) default).defmod =
+      (m.frames.getD (methodFrameOf m) default).defmod)
+    (htarget : ∀ owner md, superFound m.heap
+      (classOf m.heap (m.frames.getD (methodFrameOf m) default).self)
+      (m.frames.getD (methodFrameOf m) default).defmod mname = some (owner, md) →
+      crubyShadow m.heap (if md.fromPrelude then [] else
+        ((ancestors m.heap (classOf m.heap (m.frames.getD (methodFrameOf m) default).self)).dropWhile
+          (· != (m.frames.getD (methodFrameOf m) default).defmod) |>.drop 1).takeWhile (· != owner))
+        mname = none ∧ ∀ bid, md.builtin = some bid → directBuiltinB bid = true)
     (hfm : (m.frames.getD (methodFrameOf m) default).meth = mname)
     (hdp : (m.heap.classPayload? (m.frames.getD (methodFrameOf m) default).defmod).isSome)
     (hdn : className m.heap (m.frames.getD (methodFrameOf m) default).defmod = c)
@@ -1087,14 +1101,14 @@ theorem super_dispatch {m : Machine} {c mname : String} {d : MethodDecl}
   obtain ⟨owner, md, bid, hf, hb, hu, hconf⟩ := hsup _ _ hdp hdn hch
   obtain ⟨-, -, -, -, hcf⟩ := hconf
   obtain ⟨hdefer, w, m', hrun, hw, hg, hfr, hst, hko, hgv⟩ := hcf m _ args hrv hargs
-  have hproc := run_ok_not_procCall hrun
-  have hmap := run_ok_not_arrayMap hrun
+  obtain ⟨hshadow, hdirect⟩ := htarget owner md hf
+  have hdir := hdirect bid hb
+  simp only [directBuiltinB, Bool.not_eq_true, Bool.or_eq_false_iff,
+    List.contains_cons, List.contains_nil, beq_iff_eq] at hdir
   refine ⟨w, m', hw, hg, hfr, hst, hko, hgv, ?_⟩
   unfold doSuper
-  simp only []
-  rw [hfm, hf]
-  simp only [hb, hu, hproc, hmap, hdefer m.heap, Bool.false_eq_true, if_false, appendKwHash, hrun,
-    beq_iff_eq, if_neg hne, List.isEmpty_nil, if_true]
+  simp only [hscope, Option.getD_none, howner, hfm, hf]
+  simp_all [crubyResolvedShadow, appendKwHash, hdefer m.heap]
 
 /-! ## 3. Preservation: the additive step is free
 
@@ -1254,27 +1268,25 @@ hypothesis. -/
     `ResolvesAt_defineMethod`, whose side condition is *name* disjointness: a write to
     an existing table can displace an entry, an allocation cannot. -/
 theorem ResolvesAt_grow {h h' : Heap} {k : ObjId} {mname bid : String}
-    (hg : PlainGrow h h') (hsat : Saturated h)
+    (hg : PlainGrow h h') (hsat : Saturated h) (hnames : NamesOk h) (hchains : ChainsIn h)
     (hr : ResolvesAt h k mname bid) : ResolvesAt h' k mname bid := by
   obtain ⟨owner, md0, hlook, hb, hu, hvis, hpre, hbtw⟩ := hr
   refine ⟨owner, md0, ?_, hb, hu, hvis, hpre, ?_⟩
-  · unfold lookupIn at hlook ⊢
-    rw [hg.ancestors_eq hsat, lookup_go_grow hg]; exact hlook
-  · rw [hg.ancestors_eq hsat, crubyShadow_grow hg]; exact hbtw
+  · rw [lookupIn_grow hg hsat hchains]; exact hlook
+  · rw [hg.ancestors_eq hsat, crubyShadow_grow hg hnames]; exact hbtw
 
 /-- **The user arm's growth transport** (L157). Clause for clause the same argument
     as `ResolvesAt_grow`, plus one: `(classPayload? md.owner).isSome`, which
     `PlainGrow` pins at *every* id. That extra clause is the frame's definee, and it
     is the only place the user arm reads the heap somewhere `ResolvesAt` does not. -/
 theorem ResolvesUser_grow {h h' : Heap} {k : ObjId} {mname : String} {md : MethodDef}
-    (hg : PlainGrow h h') (hsat : Saturated h)
+    (hg : PlainGrow h h') (hsat : Saturated h) (hnames : NamesOk h) (hchains : ChainsIn h)
     (hr : ResolvesUser h k mname md) : ResolvesUser h' k mname md := by
   obtain ⟨owner, hlook, hb, hu, hvis, hpar, hdec, hcap, hown, hbtw, hcref, hchain⟩ := hr
   refine ⟨owner, ?_, hb, hu, hvis, hpar, hdec, hcap, by rw [hg.payload]; exact hown, ?_,
     hcref, ?_⟩
-  · unfold lookupIn at hlook ⊢
-    rw [hg.ancestors_eq hsat, lookup_go_grow hg]; exact hlook
-  · rw [hg.ancestors_eq hsat, crubyShadow_grow hg]; exact hbtw
+  · rw [lookupIn_grow hg hsat hchains]; exact hlook
+  · rw [hg.ancestors_eq hsat, crubyShadow_grow hg hnames]; exact hbtw
   · -- L209: the chain itself, and `PlainGrow.ancestors_eq` is the same fact the two
     -- clauses above already spend.
     rw [hg.ancestors_eq hsat]; exact hchain
@@ -1351,10 +1363,10 @@ theorem TyClass_defineMethod {h : Heap} {τr : Ty} {k cls : ObjId} {name : Strin
       by rw [← className_defineMethod h cls k name md]; exact ht.2⟩
   | _ => exact ht
 
-theorem TyClass_grow {h h' : Heap} {τr : Ty} {k : ObjId} (hg : PlainGrow h h')
+theorem TyClass_grow {h h' : Heap} {τr : Ty} {k : ObjId} (hg : PlainGrow h h') (hnames : NamesOk h)
     (ht : TyClass h' τr k) : TyClass h τr k := by
   cases τr with
-  | cls n => exact ⟨by rw [← hg.payload k]; exact ht.1, by rw [← hg.className_eq k]; exact ht.2⟩
+  | cls n => exact ⟨by rw [← hg.payload k]; exact ht.1, by rw [← hg.className_eq k hnames]; exact ht.2⟩
   | any => exact absurd ht (by simp [TyClass])
   | nilable _ => exact absurd ht (by simp [TyClass])
   | clsOf n =>
@@ -1363,10 +1375,10 @@ theorem TyClass_grow {h h' : Heap} {τr : Ty} {k : ObjId} (hg : PlainGrow h h')
     -- the witness is a class in `h'`, so it was one in `h`, so it is in bounds.
     have ho' : (h.classPayload? o).isSome := by rw [← hg.payload o]; exact ho
     have hlt : o < h.objs.size := classPayload?_isSome_lt ho'
-    exact ⟨o, ho', by rw [← hg.className_eq o]; exact hn,
+    exact ⟨o, ho', by rw [← hg.className_eq o hnames]; exact hn,
       by rw [hk, hg.classOf_eq hlt]⟩
   | arrayOf _ =>
-    exact ⟨by rw [← hg.payload k]; exact ht.1, by rw [← hg.className_eq k]; exact ht.2⟩
+    exact ⟨by rw [← hg.payload k]; exact ht.1, by rw [← hg.className_eq k hnames]; exact ht.2⟩
   | _ => exact ht
 
 /-! ~~`ConformsAt_defineMethod`~~ is **withdrawn** (L146) rather than repaired.
@@ -1911,27 +1923,27 @@ theorem DeclsOk_of_subDecls {D D' : Decls} {h : Heap} (hd : DeclsOk D h)
     What a producer still owes is not here: it is the **step**, i.e. that the rule
     really does produce a `PlainGrow`-related machine, and `Saturated` for the heap it
     starts from (`saturatedB`, checked by `check-proofs.sh`). -/
-theorem DeclsOk_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
+theorem DeclsOk_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h) (hnames : NamesOk h) (hchains : ChainsIn h)
     (hd : DeclsOk D h) : DeclsOk D h' := by
-  refine ⟨?_, fun n τ hn => constOk_grow hg hsat (hd.2.1 n τ hn),
-    fun c x τ hn => ivarOk_grow hg hsat (hd.2.2.1 c x τ hn),
-    fun c nn τ hn => scopedConstOk_grow hg hsat (hd.2.2.2.1 c nn τ hn),
-    fun c nn dd hn => superOk_grow hg hsat (hd.2.2.2.2 c nn dd hn)⟩
+  refine ⟨?_, fun n τ hn => constOk_grow hg hsat hnames (hd.2.1 n τ hn),
+    fun c x τ hn => ivarOk_grow hg hsat hnames (hd.2.2.1 c x τ hn),
+    fun c nn τ hn => scopedConstOk_grow hg hsat hnames (hd.2.2.2.1 c nn τ hn),
+    fun c nn dd hn => superOk_grow hg hsat hnames hchains (hd.2.2.2.2 c nn dd hn)⟩
   intro τr mname decl hdecl
   rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ | ⟨mdu, cu, htys, hres, hnm, hconf⟩ |
     ⟨hτ, hmn, hdp, hdr, hdb, hmiss⟩
   · exact Or.inl ⟨bid,
-      fun k ht => ResolvesAt_grow hg hsat (hres k (TyClass_grow hg ht)), hconf⟩
+      fun k ht => ResolvesAt_grow hg hsat hnames hchains (hres k (TyClass_grow hg hnames ht)), hconf⟩
   · exact Or.inr (Or.inl ⟨mdu, cu, htys,
-      fun k ht => ResolvesUser_grow hg hsat (hres k (TyClass_grow hg ht)),
-      by rw [hg.className_eq]; exact hnm, hconf⟩)
+      fun k ht => ResolvesUser_grow hg hsat hnames hchains (hres k (TyClass_grow hg hnames ht)),
+      by rw [hg.className_eq _ hnames]; exact hnm, hconf⟩)
   -- **L254: an allocation cannot install a method**, so a miss survives with no side
   -- condition at all — the contrast `ResolvesAt_grow`'s docstring already draws, in the
   -- other direction.
   · exact Or.inr (Or.inr ⟨hτ, hmn, hdp, hdr, hdb, fun k ht => by
-      have hm0 := hmiss k (TyClass_grow hg ht)
-      unfold MissesAt lookupIn at hm0 ⊢
-      rw [hg.ancestors_eq hsat, lookup_go_grow hg]
+      have hm0 := hmiss k (TyClass_grow hg hnames ht)
+      unfold MissesAt at hm0 ⊢
+      rw [lookupIn_grow hg hsat hchains]
       exact hm0⟩)
 
 /-! ## 4. The bridge from `TableOk`
@@ -2036,7 +2048,7 @@ def NoHook (h : Heap) : Prop :=
     `Boot.objectId < h.objs.size` to rule out the pathological case where `Object` is
     the id being allocated; here `classPayload?_isSome_lt` supplies the bound from the
     quantifier's own hypothesis. -/
-theorem NoHook_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
+theorem NoHook_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h) (hchains : ChainsIn h)
     (hh : NoHook h) : NoHook h' := by
   refine ⟨by rw [hg.payload]; exact hh.1, fun k hk n hn => ?_,
     fun j hjm cp hj => hh.2.2.1 j
@@ -2046,7 +2058,7 @@ theorem NoHook_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
       (by rwa [ancestors_congr_grow hg.shapeAgree hg.size hsat] at hjm) cp
       (by rw [← hg.payload]; exact hj)⟩
   have hk' : (h.classPayload? k).isSome := by rw [← hg.payload k]; exact hk
-  rw [lookup_grow hg hsat (fun o hEq => by cases hEq; exact classPayload?_isSome_lt hk')]
+  rw [lookup_grow hg hsat hchains (fun o hEq => by cases hEq; exact classPayload?_isSome_lt hk')]
   exact hh.2.1 k hk' n hn
 
 /-- **And a `def`** (L153). The receiver's dispatch class is unchanged
@@ -2157,13 +2169,13 @@ def LitClsOk (h : Heap) : Prop :=
     neither a bound nor saturation: `PlainGrow` pins `classPayload?` at *every* id
     (that is exactly what the non-class restriction buys, `lookup_go_grow`'s note)
     and `className` is a function of it. -/
-theorem LitClsOk_grow {h h' : Heap} (hg : PlainGrow h h') (hs : LitClsOk h) :
+theorem LitClsOk_grow {h h' : Heap} (hg : PlainGrow h h') (hnames : NamesOk h) (hs : LitClsOk h) :
     LitClsOk h' :=
-  ⟨⟨by rw [hg.payload]; exact hs.1.1, by rw [hg.className_eq]; exact hs.1.2⟩,
-   ⟨by rw [hg.payload]; exact hs.2.1.1, by rw [hg.className_eq]; exact hs.2.1.2⟩,
+  ⟨⟨by rw [hg.payload]; exact hs.1.1, by rw [hg.className_eq _ hnames]; exact hs.1.2⟩,
+   ⟨by rw [hg.payload]; exact hs.2.1.1, by rw [hg.className_eq _ hnames]; exact hs.2.1.2⟩,
    by rw [hg.payload]; exact hs.2.2.1, by rw [hg.payload]; exact hs.2.2.2.1,
    ⟨by rw [hg.payload]; exact hs.2.2.2.2.1.1,
-    by rw [hg.className_eq]; exact hs.2.2.2.2.1.2⟩,
+    by rw [hg.className_eq _ hnames]; exact hs.2.2.2.2.1.2⟩,
    ⟨by rw [hg.payload]; exact hs.2.2.2.2.2.1,
     by rw [hg.get Boot.objectId (classPayload?_isSome_lt hs.2.2.2.2.2.1)]
        exact hs.2.2.2.2.2.2⟩⟩
@@ -2592,7 +2604,7 @@ def ClassNameOk (h : Heap) (owner nm : String) : Prop :=
       (h.get k).eigen.isSome ∧ k < h.objs.size
 
 theorem classNameOk_grow {h h' : Heap} {owner nm : String} (hg : PlainGrow h h')
-    (hsat : Saturated h) (hobj : Boot.objectId < h.objs.size)
+    (hsat : Saturated h) (hnames : NamesOk h) (hobj : Boot.objectId < h.objs.size)
     (hmo : ClassNameOk h owner nm) : ClassNameOk h' owner nm := by
   intro o ho
   have ho0 : ModOwner h owner o := by
@@ -2841,33 +2853,41 @@ theorem fakeClassNameHead (isMod : Bool) (o : ObjId) :
         = "#<".data ++ ("Module" ++ (":" ++ (fakeAddr o ++ ">"))).data from String.data_append]
     rfl
 
+/-- A display name without the anonymous/singleton prefix is its stored name. -/
+theorem rawName_of_display {h : Heap} {k : ObjId} {cp : ClassPayload} {n : String}
+    (hcp : h.classPayload? k = some cp) (hn : n.data.head? ≠ some '#')
+    (hk : className h k = n) : cp.name = n := by
+  simp only [className, className.go, hcp] at hk
+  cases ha : cp.attached with
+  | some o =>
+    simp only [ha] at hk
+    have hh := congrArg (fun s : String => s.data.head?) hk
+    simp only [String.append_assoc] at hh
+    change ("#<Class:" ++ _ : String).toList.head? = _ at hh
+    simp only [String.data_append] at hh
+    change some '#' = _ at hh
+    exact False.elim (hn hh.symm)
+  | none =>
+    simp only [ha, classPath, classPath.go, hcp] at hk
+    split at hk
+    · exact hk
+    · have hh := congrArg (fun s : String => s.data.head?) hk
+      simp only [String.append_assoc] at hh
+      change ("#<" ++ _ : String).toList.head? = _ at hh
+      simp only [String.data_append] at hh
+      change some '#' = _ at hh
+      exact False.elim (hn hh.symm)
+
 theorem className_inj_of_namesUnique {h : Heap} (hu : NamesUnique h)
     {k k' : ObjId} {n : String}
     (hkc : (h.classPayload? k).isSome) (hk'c : (h.classPayload? k').isSome)
     (hn : n.data.head? ≠ some '#')
     (hk : className h k = n) (hk' : className h k' = n) : k = k' := by
-  cases hcp : h.classPayload? k with
-  | none => exact absurd hcp (Option.isSome_iff_ne_none.mp hkc)
-  | some cp =>
-    cases hcp' : h.classPayload? k' with
-    | none => exact absurd hcp' (Option.isSome_iff_ne_none.mp hk'c)
-    | some cp' =>
-      have hnk : className h k = if cp.name.isEmpty then
-          s!"#<{if cp.isModule then "Module" else "Class"}:{fakeAddr k}>" else cp.name := by
-        unfold className; rw [hcp]
-      have hnk' : className h k' = if cp'.name.isEmpty then
-          s!"#<{if cp'.isModule then "Module" else "Class"}:{fakeAddr k'}>" else cp'.name := by
-        unfold className; rw [hcp']
-      rw [hnk] at hk; rw [hnk'] at hk'
-      have hcpn : cp.name = n := by
-        by_cases he : cp.name.isEmpty
-        · rw [if_pos he] at hk; exact absurd (hk ▸ fakeClassNameHead cp.isModule k) hn
-        · rwa [if_neg he] at hk
-      have hcpn' : cp'.name = n := by
-        by_cases he : cp'.name.isEmpty
-        · rw [if_pos he] at hk'; exact absurd (hk' ▸ fakeClassNameHead cp'.isModule k') hn
-        · rwa [if_neg he] at hk'
-      exact hu k k' cp cp' hcp hcp' (hcpn.trans hcpn'.symm) (hcpn ▸ hn)
+  obtain ⟨cp, hcp⟩ := Option.isSome_iff_exists.mp hkc
+  obtain ⟨cp', hcp'⟩ := Option.isSome_iff_exists.mp hk'c
+  have hname := rawName_of_display hcp hn hk
+  have hname' := rawName_of_display hcp' hn hk'
+  exact hu k k' cp cp' hcp hcp' (hname.trans hname'.symm) (hname ▸ hn)
 
 theorem namesUnique_grow {h h' : Heap} (hg : PlainGrow h h')
     (hu : NamesUnique h) : NamesUnique h' := by
@@ -2953,7 +2973,7 @@ def Registered (h : Heap) : Prop :=
       cp.name = qualifyMod (className h d) nm ∧
       ':' ∉ nm.data ∧ nm.data.head? ≠ some '#'
 
-theorem registered_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
+theorem registered_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h) (hnames : NamesOk h)
     (hr : Registered h) : Registered h' := by
   intro j cp hj hhd
   rw [hg.payload] at hj
@@ -2961,7 +2981,7 @@ theorem registered_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
   · exact Or.inl hobj
   · refine Or.inr ⟨d, nm, by rw [hg.payload]; exact hdo, ?_, ?_, hnc, hnh⟩
     · unfold constOwn at hco ⊢; rw [hg.payload]; exact hco
-    · rw [hg.className_eq]; exact hqn
+    · rw [hg.className_eq _ hnames]; exact hqn
 
 theorem registered_defineMethod {h : Heap} {cls : ObjId} {name : String}
     {md : MethodDef} (hr : Registered h) :
@@ -3184,18 +3204,8 @@ theorem freshName_not_taken {h : Heap} {d : ObjId} {owner name : String}
     -- both d and d' are payload'd objects named `owner`
     obtain ⟨cpd, hcpd⟩ := Option.isSome_iff_exists.mp hdo
     obtain ⟨cpd', hcpd'⟩ := Option.isSome_iff_exists.mp hdo'
-    have hnamed : cpd.name = owner := by
-      unfold className at hdn
-      rw [hcpd] at hdn
-      rw [← hdn]
-      show cpd.name = (if cpd.name.isEmpty = true then _ else cpd.name)
-      rw [if_neg (by rw [hanon d cpd hcpd]; exact Bool.false_ne_true)]
-    have hnamed' : cpd'.name = owner := by
-      unfold className at hown
-      rw [hcpd'] at hown
-      rw [← hown]
-      show cpd'.name = (if cpd'.name.isEmpty = true then _ else cpd'.name)
-      rw [if_neg (by rw [hanon d' cpd' hcpd']; exact Bool.false_ne_true)]
+    have hnamed : cpd.name = owner := rawName_of_display hcpd hoh hdn
+    have hnamed' : cpd'.name = owner := rawName_of_display hcpd' hoh hown
     have hdd : d' = d := hu d' d cpd' cpd hcpd' hcpd
       (by rw [hnamed', hnamed]) (by rw [hnamed']; exact hoh)
     rw [hdd, hnm] at hco'
@@ -3304,13 +3314,13 @@ theorem classOkB_sound {h : Heap} (hb : classOkB h = true) : ClassOk h := by
     `PlainGrow`'s third clause: `constOwn` is `classPayload?` composed with a
     lookup in `consts`, and `PlainGrow` pins `classPayload?` at *every* id. That is
     the same one-line argument `LitClsOk_grow` makes, for the same reason. -/
-theorem ClassOk_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
+theorem ClassOk_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h) (hnames : NamesOk h)
     (hc : ClassOk h) : ClassOk h' := by
-  refine ⟨by rw [hg.className_eq]; exact hc.1,
+  refine ⟨by rw [hg.className_eq _ hnames]; exact hc.1,
     NoShadowBefore_grow hg hsat hc.2.1, ?_,
     fun o cp hcp => hc.2.2.2.1 o cp (by rw [← hg.payload]; exact hcp),
     namesUnique_grow hg hc.2.2.2.2.1,
-    registered_grow hg hsat hc.2.2.2.2.2.1,
+    registered_grow hg hsat hnames hc.2.2.2.2.2.1,
     (by obtain ⟨cpO, h1, h2⟩ := hc.2.2.2.2.2.2
         exact ⟨cpO, by rw [hg.payload]; exact h1, h2⟩)⟩
   intro n hn
@@ -3320,8 +3330,8 @@ theorem ClassOk_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
     hrx, hmt, fun j hj hjo => ?_, fun hmem => ?_⟩
   -- `PlainGrow` pins `classPayload?` at every id and `className` with it, so both
   -- new clauses transport by the same rewrite the old ones do.
-  · rw [hg.className_eq]; exact h4
-  · exact h5 j (by rw [← hg.payload]; exact hj) (by rw [← hg.className_eq]; exact hjn)
+  · rw [hg.className_eq _ hnames]; exact h4
+  · exact h5 j (by rw [← hg.payload]; exact hj) (by rw [← hg.className_eq _ hnames]; exact hjn)
   · -- L189's sole-owner clause: `constOwn` reads `classPayload?`, which `PlainGrow`
     -- pins at every id, so the clause transports by the same rewrite the first one does.
     unfold constOwn at *
@@ -3758,7 +3768,9 @@ variable {h h' : Heap}
 
 theorem crubyShadow_eq (hi : IvarOnly h h') (chain : List ObjId) (mname : String) :
     crubyShadow h' chain mname = crubyShadow h chain mname := by
-  simp only [crubyShadow, hi.className_eq]
+  simp only [crubyShadow, nativeSingletonMethod, featureMethod, featureHas,
+    libraryNamespace, hi.classPayload, hi.className_eq]
+  rfl
 
 theorem lookupIn_eq (hi : IvarOnly h h') (k : ObjId) (mname : String) :
     lookupIn h' k mname = lookupIn h k mname := by
@@ -3845,7 +3857,7 @@ theorem superOk (hi : IvarOnly h h') {c n : String} {d : MethodDecl}
   rw [hi.ancestors_eq] at hmem
   obtain ⟨owner, md, bid, hf, hb, hu, hconf⟩ := hs k dm hdm hcn hmem
   exact ⟨owner, md, bid,
-    by rw [superFound_congr (fun j => by rw [hi.classPayload]) (hi.ancestors_eq k)];
+    by rw [superFound_congr (fun j => by rw [hi.classPayload]) (hi.ancestors_eq k) hi.size (hi.ancestors_eq _)];
        exact hf,
     hb, hu, hconf⟩
 
@@ -3945,8 +3957,35 @@ theorem lookupIn_constSetIn (k : ObjId) (mname : String) :
 
 theorem crubyShadow_constSetIn (chain : List ObjId) (mname : String) :
     crubyShadow (constSetIn h j nm v) chain mname = crubyShadow h chain mname := by
-  simp only [crubyShadow, className_constSetIn]
-
+  unfold crubyShadow
+  have hp (k : ObjId) :
+      ((constSetIn h j nm v).classPayload? k).map (fun c => (c.attached, c.libraryNamespace)) =
+        (h.classPayload? k).map (fun c => (c.attached, c.libraryNamespace)) := by
+    unfold constSetIn
+    split
+    · rename_i c hc
+      by_cases hk : k = j
+      · subst hk
+        simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+        by_cases hb : k < h.objs.size
+        · simp [Array.getD, hb, Array.set!]
+          unfold Heap.classPayload? Heap.get at hc
+          simp [Array.getD, hb] at hc
+          split at hc <;> simp_all
+        · rw [classPayload?_oob h k hb] at hc; exact absurd hc (by simp)
+      · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+        rw [objs_getD_set!_ne _ _ _ _ hk]
+    · rfl
+  have hlib (k : ObjId) : libraryNamespace (constSetIn h j nm v) k = libraryNamespace h k := by
+    have hh := hp k
+    cases h1 : (constSetIn h j nm v).classPayload? k <;>
+      cases h2 : h.classPayload? k <;> simp_all [libraryNamespace]
+  have hn (k : ObjId) : nativeSingletonMethod (constSetIn h j nm v) k mname = nativeSingletonMethod h k mname ∧
+      featureMethod (constSetIn h j nm v) k mname = featureMethod h k mname := by
+    have hh := hp k
+    cases h1 : (constSetIn h j nm v).classPayload? k <;>
+      cases h2 : h.classPayload? k <;> simp_all [nativeSingletonMethod, featureMethod, featureHas, hlib, className_constSetIn]
+  simp only [className_constSetIn, fun k => (hn k).1, fun k => (hn k).2]
 theorem resolvesAt_constSetIn {k : ObjId} {mname bid : String}
     (hr : ResolvesAt h k mname bid) : ResolvesAt (constSetIn h j nm v) k mname bid := by
   obtain ⟨owner, md, hl, hb, hu, hv2, hp, hsh⟩ := hr
@@ -4075,10 +4114,11 @@ theorem superOk_constSetIn {c n : String} {d : MethodDecl} (hs : SuperOk h c n d
   refine ⟨owner, md, bid, ?_, hb, hu, hcf⟩
   rw [superFound_congr (h := h)
     (fun i => by
-      have hmm := methods_constSetIn h j i nm v
-      cases h1 : (constSetIn h j nm v).classPayload? i <;>
-        cases h2 : h.classPayload? i <;> rw [h1, h2] at hmm <;> simp_all)
-    (ancestors_constSetIn h j k nm v)]
+      have fields := lookupFields_constSetIn h j i nm v
+      simpa only [Option.map_map, Function.comp_def] using
+        congrArg (Option.map (fun p => (p.1.find? (·.1 == n), p.2))) fields)
+    (ancestors_constSetIn h j k nm v) (objs_size_constSetIn h j nm v)
+    (ancestors_constSetIn h j _ nm v)]
   exact hf
 
 /-- **`NoShadowBefore` survives a write on `Object`** — the takeWhile segment

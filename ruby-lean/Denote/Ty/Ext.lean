@@ -417,7 +417,7 @@ theorem Ext.getLocal_go_eq {m m₂ : Machine} (he : Ext m m₂) (x : String) :
   | zero => intro fid; rfl
   | succ n ih =>
     intro fid
-    simp only [Machine.getLocal.go, he.frames]
+    simp only [Machine.getLocal.go, localFrameId_frames_eq he.frames, he.frames]
     split
     · rfl
     · split
@@ -469,5 +469,31 @@ theorem Ext.frameLocal_go_eq {m m₂ : Machine} (he : Ext m m₂) (x : String) :
 
 #print axioms Ext.isA_mono
 #print axioms Ext.ivarOf_eq
+
+/-- Recursive display names need a stable name-walk budget. -/
+theorem Ext.className_eq {m n : Machine} (he : Ext m n) (hn : Proof.NamesOk m.heap)
+    (k : ObjId) : className n.heap k = className m.heap k :=
+  Proof.className_plainGrow he.size he.get hn he.payload k
+
+theorem Ext.namesOk {m n : Machine} (he : Ext m n) (hn : Proof.NamesOk m.heap) :
+    Proof.NamesOk n.heap := Proof.namesOk_plainGrow he.size he.get hn he.payload
+
+/-- Bounded lookup has enough fuel for its chain and its Object fallback. -/
+theorem Ext.methodOn_eq {m n : Machine} (he : Ext m n) (hc : Proof.ChainsIn m.heap)
+    (k : ObjId) (name : String) : Interp.methodOn n.heap k name = Interp.methodOn m.heap k name := by
+  unfold Interp.methodOn
+  rw [he.ancestors]
+  apply Proof.lookupInChain_grow_congr he.size (he.ancestors _)
+  · have hk := Proof.ancestors_length_bound hc k
+    have ho := Proof.ancestors_length_bound hc Boot.objectId
+    omega
+  · exact fun j _ => he.payload j
+
+theorem Ext.crubyShadow_eq {m n : Machine} (he : Ext m n) (hn : Proof.NamesOk m.heap)
+    (chain : List ObjId) (name : String) :
+    Interp.crubyShadow n.heap chain name = Interp.crubyShadow m.heap chain name := by
+  simp only [Interp.crubyShadow, Interp.nativeSingletonMethod, Interp.featureMethod,
+    Interp.featureHas, Interp.libraryNamespace, he.payload, he.className_eq hn]
+  rfl
 
 end Ratchet.Denote

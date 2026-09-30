@@ -15,10 +15,13 @@ theorem no_program_eq {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : StateOk
   | none => rfl
   | some p =>
     obtain ⟨owner, md⟩ := p
-    rcases hm.exact.lookup hl with hp | hb | hf
-    · simp [hp]
-    · cases h : md.builtin <;> simp_all
-    · rw [hfree] at hf; cases hf
+    cases hu : md.undefined with
+    | true => simp [hu]
+    | false =>
+      rcases hm.exact.lookup hl hu with hp | hb | hf
+      · simp [hp]
+      · cases h : md.builtin <;> simp_all
+      · rw [hfree] at hf; cases hf
 
 theorem int_eq_defer {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : StateOk κ Γ I m)
     (x : Int) (v : Value) (hfree : nameFreeN κ "==" = true := by rfl) :

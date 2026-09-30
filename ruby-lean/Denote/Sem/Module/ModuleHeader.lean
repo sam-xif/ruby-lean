@@ -33,7 +33,7 @@ theorem classChains_header {C : CTable} {m : Machine} (hc : ClassReady m.heap)
     exact ordered_chain ho
   · exact old c hmem k hk ns (ht.chain c hmem ns hns)
 
-theorem declared_header {κ : Ctx} {m : Machine} (hc : ClassReady m.heap)
+theorem declared_header {κ : Ctx} {m : Machine} (hnames : NamesOk m.heap) (hc : ClassReady m.heap)
     (hs : Saturated m.heap) (ho : (m.heap.classPayload? Boot.objectId).isSome = true)
     (hn : constOwn m.heap Boot.objectId name = none)
     (hclasses : ClassesOk κ.classes m) (hp : DeclClassOk κ m)
@@ -41,7 +41,7 @@ theorem declared_header {κ : Ctx} {m : Machine} (hc : ClassReady m.heap)
     DeclClassOk (moduleHeaderCtx κ name)
       { m with heap := freshModHeap m.heap Boot.objectId name name } := by
   have old := declared (n := { m with heap := freshModHeap m.heap Boot.objectId name name })
-    hc.chains hs ho hn rfl hclasses hp
+    hnames hc.chains hs ho hn rfl hclasses hp
   intro c hmem k hk
   change c ∈ moduleHeader name :: κ.classes at hmem
   rcases List.mem_cons.mp hmem with rfl | hmem
@@ -125,7 +125,7 @@ theorem publish_header {κ : Ctx} {Γ : Env} {I : Ty} {m n : Machine}
     StateOk (moduleHeaderCtx (moduleBodyCtx κ name) name) [] .ivar0 n := by
   apply publish_empty hs rfl hp
   · change DeclClassOk (moduleHeaderCtx κ name) n
-    simpa only [DeclClassOk, hh] using declared_header hm.core.classReady hm.sat
+    simpa only [DeclClassOk, hh] using declared_header hm.names hm.core.classReady hm.sat
       (hm.runtime hr).classLive hn hm.classes hm.declCls ht
   · rw [hh]; exact ownNames_header (κ := κ) hm hr hn
   · rw [hh]; exact classChains_header hm.core.classReady hm.sat (hm.runtime hr).classLive

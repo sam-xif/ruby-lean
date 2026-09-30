@@ -1,3 +1,23 @@
+# Proof-repair checkpoint (2026-09-30)
+
+The user requested a checkpoint commit of the current proof repair after being
+informed that the full typed gate is still red. This explicitly authorizes the
+checkpoint despite the normal green-before-commit rule. The original task is
+not complete, and this checkpoint does not claim the soundness chain builds.
+
+The complete Metatheory target and `scripts/check-proofs.sh` pass, including the
+axiom audit and boot-heap probes. The replacement root-execution framing chain
+reaches stepFn; legacy KontFrame paths now re-export the corrected helper API.
+Denote still needs run-decomposition, boot-readiness, queued-callback entry, and
+downstream integration repairs. See `../model/HANDOFF.md` for the current frontier.
+
+The user approved reserving Rational, Complex, and Enumerator in the checker's
+global constants, and that correction is included. A separate main-singleton
+admission bug is reproduced and its candidate correction tested, but that patch
+remains unapplied and unapproved. Do not infer approval from the checkpoint
+request. No corpus floor or gate has been weakened. The detailed root
+`proof-changes.md` audit remains uncommitted at the user's request.
+
 # Current resume point (2026-09-27, clink 246 / model L275)
 
 Native Symbol conversion/entry/forwarding now have semantic proofs in

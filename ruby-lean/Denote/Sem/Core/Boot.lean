@@ -136,7 +136,8 @@ theorem firstM_none : ∀ (l : List ObjId) (f : ObjId → Option Value),
     simp [List.firstM, ha, hl]
 
 /-- **The three frame facts that make constant resolution toplevel resolution**: the lexical
-scope is `[Object]`, the definee is `Object`, and every *other* ancestor of `Object` owns no
+scope is empty, the definee is `Object`, its ancestor chain starts with `Object`,
+and every *other* ancestor of `Object` owns no
 constants.
 
 The third is the one that is not obvious and is the reason this is not a one-liner.
@@ -145,33 +146,40 @@ The third is the one that is not obvious and is the reason this is not a one-lin
 own table and stops) answers `none`. Measured at the booted heap: `Kernel` and `BasicObject`
 own zero constants, so the two agree. Decidable, and checked by `bootOkB` below. -/
 def topScopeB (m : Machine) : Bool :=
-  (m.currentFrame.cref == [Boot.objectId]) && (m.currentFrame.defmod == Boot.objectId) &&
+  (m.currentFrame.cref == []) && (m.currentFrame.defmod == Boot.objectId) &&
+  ((ancestors m.heap Boot.objectId).head? == some Boot.objectId) &&
   (ancestors m.heap Boot.objectId).all (fun k =>
     (k == Boot.objectId) ||
       (match m.heap.classPayload? k with | some c => c.consts.isEmpty | none => true))
 
 theorem constScope_of_topScope {m : Machine} (hb : topScopeB m = true) : ConstScopeOk m := by
   simp only [topScopeB, Bool.and_eq_true, beq_iff_eq, List.all_eq_true] at hb
-  obtain ⟨⟨hcref, hdefmod⟩, hanc⟩ := hb
+  obtain ⟨⟨⟨hcref, hdefmod⟩, hhead⟩, hanc⟩ := hb
   intro n
-  simp only [constResolveAt, hcref, hdefmod, List.firstM, constOwn_object]
+  simp only [constResolveAt, hcref, hdefmod, List.firstM, Option.orElse_none]
   cases hl : constLookup m.heap n with
-  | some w => simp
+  | some w =>
+    unfold constLookupFrom
+    cases ha : ancestors m.heap Boot.objectId with
+    | nil => simp [ha] at hhead
+    | cons k ks =>
+      have hk : k = Boot.objectId := by simpa [ha] using hhead
+      subst k
+      simp only [List.firstM]
+      change (constLookup m.heap n).orElse _ = some w
+      simp [hl]
   | none =>
-    have hfrom : constLookupFrom m.heap Boot.objectId n = none := by
-      refine firstM_none _ _ (fun k hk => ?_)
-      have := hanc k (by simpa using hk)
-      simp only [Bool.or_eq_true, beq_iff_eq] at this
-      rcases this with hk0 | hempty
-      · subst hk0; exact hl
-      · cases hp : m.heap.classPayload? k with
-        | none => simp
-        | some c =>
-          rw [hp] at hempty
-          have : c.consts = [] := List.isEmpty_iff.mp (by simpa using hempty)
-          simp [this]
-    simp [hfrom]
-    rfl
+    refine firstM_none _ _ (fun k hk => ?_)
+    have := hanc k (by simpa using hk)
+    simp only [Bool.or_eq_true, beq_iff_eq] at this
+    rcases this with hk0 | hempty
+    · subst hk0; exact hl
+    · cases hp : m.heap.classPayload? k with
+      | none => simp
+      | some c =>
+        rw [hp] at hempty
+        have : c.consts = [] := List.isEmpty_iff.mp (by simpa using hempty)
+        simp [this]
 
 /-- **"And nothing more", as one `Bool`.** Every method installed anywhere in the heap is a
 builtin, a prelude definition, or a name `κ` records.
@@ -184,7 +192,7 @@ def methodsExactB (κ : Ratchet.Ctx) (m : Machine) : Bool :=
   (List.range m.heap.objs.size).all fun k =>
     match m.heap.classPayload? k with
     | some cp => cp.methods.all fun p =>
-        p.2.fromPrelude || p.2.builtin.isSome || !nameFreeN κ p.1
+        p.2.undefined || p.2.fromPrelude || p.2.builtin.isSome || !nameFreeN κ p.1
     | none => true
 
 theorem classPayload?_oob (h : Heap) {o : ObjId} (ho : h.objs.size ≤ o) :
@@ -193,13 +201,15 @@ theorem classPayload?_oob (h : Heap) {o : ObjId} (ho : h.objs.size ≤ o) :
 
 theorem methodsExactB_sound {κ : Ratchet.Ctx} {m : Machine} (hb : methodsExactB κ m = true) :
     MethodsExact κ m := by
-  intro k cp hk n md hmem
+  intro k cp hk n md hmem hu
   by_cases hlt : k < m.heap.objs.size
   · simp only [methodsExactB, List.all_eq_true] at hb
     have hall := hb k (by simpa using hlt)
     rw [hk] at hall
     simp only [List.all_eq_true, Bool.or_eq_true] at hall
-    rcases hall (n, md) (by simpa using hmem) with (h3 | h3) | h3
+    have hrow := hall (n, md) (by simpa using hmem)
+    simp only [hu, Bool.false_eq_true, false_or] at hrow
+    rcases hrow with (h3 | h3) | h3
     · exact Or.inl h3
     · exact Or.inr (Or.inl h3)
     · exact Or.inr (Or.inr (by simpa using h3))
@@ -231,15 +241,10 @@ payload is `[id]`, and `methodOn` then reads that same absent payload — so the
 range and still discharge a component quantified over every id. -/
 theorem methodOn_of_no_payload {h : Heap} {k : ObjId} (hp : h.classPayload? k = none)
     (n : String) : Interp.methodOn h k n = none := by
-  -- the walk at an id with no payload is `[id]`, and `firstM` over it reads that same
-  -- absent payload
-  show List.firstM _ (RubyCore.ancestors h k) = none
   have hanc : RubyCore.ancestors h k = [k] := by
     simp only [RubyCore.ancestors, RubyCore.ancestors.go, hp]
     rfl
-  rw [hanc]
-  simp only [List.firstM, hp]
-  rfl
+  simp [Interp.methodOn, hanc, lookupInChain, lookupInChain.go, hp]
 
 theorem classPayload?_out_of_range {h : Heap} {k : ObjId} (hk : ¬ k < h.objs.size) :
     h.classPayload? k = none := by
@@ -259,7 +264,7 @@ def queryOkB (m : Machine) : Bool :=
         | none => true
         | some (_, mm) => mm.builtin.isSome
       | some (owner, md) =>
-        md.builtin == some p.2 && !md.undefined && md.visibility == Visibility.pub
+        md.builtin == some p.2 && !md.undefined && md.visibility == queryVisibility p.1
           && !md.fromPrelude
           && (Interp.crubyShadow m.heap
                 ((RubyCore.ancestors m.heap k).takeWhile (fun x => x != owner)) p.1).isNone))
@@ -509,13 +514,19 @@ rather than a proof for the file's usual reason: `bootMachine` is the *booted* m
 literal, so its frame's locals are not syntactically available. -/
 def localsEmptyB (m : Machine) : Bool :=
   (m.frames[m.stack.head?.getD 0]?.getD default).locals.isEmpty &&
-    (m.frames[m.stack.head?.getD 0]?.getD default).captured.isNone
+    (m.frames[m.stack.head?.getD 0]?.getD default).captured.isNone &&
+    (m.frames[m.stack.head?.getD 0]?.getD default).localAlias.isNone
 
 theorem localsEmptyB_sound {m : Machine} (h : localsEmptyB m = true) (x : String) :
     m.getLocal x = .nil := by
   simp only [localsEmptyB, Bool.and_eq_true, List.isEmpty_iff, Option.isNone_iff_eq_none] at h
-  obtain ⟨hl, hc⟩ := h
-  simp [Machine.getLocal, Machine.getLocal.go, hl, hc]
+  obtain ⟨⟨hl, hc⟩, ha⟩ := h
+  have hal : (m.frames.getD (m.stack.head?.getD 0) default).localAlias = none := by
+    simpa only [Array.getD_eq_getD_getElem?] using ha
+  simp only [Machine.getLocal, Machine.getLocal.go]
+  rw [show m.stack.headD 0 = m.stack.head?.getD 0 by cases m.stack <;> rfl,
+    localFrameId_of_noAlias hal]
+  simp only [Array.getD_eq_getD_getElem?, hl, hc, List.find?_nil]
 
 /-- **Everything about the booted machine that has to be computed rather than proved.**
 
@@ -544,6 +555,8 @@ def bootStateBaseB (m : Machine) : Bool :=
     && newDispatchB m.heap (classOf m.heap (.ref Boot.objectId))
     && globalConstsOkB Ratchet.ctx0.pos.globalConsts m.heap
     && moduleBaseB (nameFreeN Ratchet.ctx0) m.heap
+    && Proof.namesOkB m.heap
+    && m.currentFrame.localAlias.isNone
 
 def bootStateB (m : Machine) : Bool := bootStateBaseB m && rootInitOkB Ratchet.ctx0.defs m.heap
 
@@ -554,6 +567,7 @@ separate preserves its historical full-state countermodel (§F43). -/
 theorem stateCore_of_bootStateBaseB {m : Machine} (hb : bootStateBaseB m = true) :
     StateCore Ratchet.ctx0 [] .ivar0 m := by
   simp only [bootStateBaseB, Bool.and_eq_true] at hb
+  obtain ⟨⟨hb, hnames⟩, hal⟩ := hb
   obtain ⟨hb, hmodule⟩ := hb
   obtain ⟨hb, hglobals⟩ := hb
   obtain ⟨hb, hnew⟩ := hb
@@ -579,6 +593,9 @@ theorem stateCore_of_bootStateBaseB {m : Machine} (hb : bootStateBaseB m = true)
       stringPayload := stringPayloadB_sound hsp
       arrayPayload := arrayPayloadB_sound hap
       hashPayload := hashPayloadB_sound hhp
+      names := Proof.namesOkB_sound hnames
+      localAlias := Option.isNone_iff_eq_none.mp hal
+      capturedLive := by rw [(mainReadyB_sound hready).captured]; exact .none
       sat := Proof.saturatedB_sound hsat
       core := coreOkB_sound hcore
       env := ⟨by intro x τ hx; exact absurd hx (by simp [envGet?, Ratchet.ctx0]),

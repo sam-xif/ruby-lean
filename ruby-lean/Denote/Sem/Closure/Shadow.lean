@@ -33,15 +33,16 @@ theorem ShadowPres.trans {m n p : Machine} (h : ShadowPres m n) (h' : ShadowPres
   exact (h' x hx' i (Nat.lt_of_lt_of_le hi hz) (by simpa only [hs] using hn)).trans
     (h x hx i hi hn)
 
-theorem ShadowPres.setLocal (m : Machine) (x : String) (v : Value) :
+theorem ShadowPres.setLocal (m : Machine) (x : String) (v : Value)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none) :
     ShadowPres m (m.setLocal x v) := by
   intro y hy i _ hn
-  rw [setLocal_eq_setAt]
+  rw [setLocal_eq_setAt, localFrameId_of_noAlias ha]
   by_cases he : y = x
   · subst y
     have ho : Machine.setLocal.owner m x (m.stack.headD 0) (m.stack.headD 0)
         (m.frames.size + 1) = m.stack.headD 0 := by
-      rw [Machine.setLocal.owner]
+      simp only [Machine.setLocal.owner, localFrameId_of_noAlias ha]
       exact if_pos hy
     rw [ho, setAt, framesD_set!_ne _ _ _ _ hn]
   · exact setAt_find_ne m x v _ i he

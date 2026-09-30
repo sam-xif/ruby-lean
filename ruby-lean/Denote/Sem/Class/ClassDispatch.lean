@@ -11,8 +11,8 @@ open RubyCore.Proof.Judgment (freshClsHeap)
 variable {h : Heap} {name : String} {e : ObjId}
 local notation "h₁" => freshClsHeap h Boot.objectId name name e
 
-theorem lookup_go_old {ks : List ObjId} (hl : ∀ k ∈ ks, k < h.objs.size) (mn : String) :
-    lookup.go h₁ mn ks = lookup.go h mn ks := Subclass.lookup_go_old hl mn
+theorem lookup_go_old (hc : Proof.ChainsIn h) (hs : Proof.Saturated h) {ks : List ObjId} (hl : ∀ k ∈ ks, k < h.objs.size) (hlen : ks.length ≤ h.objs.size + 1) (mn : String) :
+    lookupInChain h₁ ks mn = lookupInChain h ks mn := Subclass.lookup_go_old hc hs hl hlen mn
 
 theorem method_old (hc : Proof.ChainsIn h) (hs : Proof.Saturated h)
     {k : ObjId} (hk : k < h.objs.size) (mn : String) :
@@ -38,24 +38,24 @@ theorem method_parent (hc : Proof.ChainsIn h) (hs : Proof.Saturated h)
     Interp.methodOn h₁ k mn = Interp.methodOn h (parent h e k) mn :=
   Subclass.method_source hc hs hc.boot.2.2.2.2 he k mn
 
-theorem shadow_old {ks : List ObjId} (hl : ∀ k ∈ ks, k < h.objs.size) (mn : String) :
-    Interp.crubyShadow h₁ ks mn = Interp.crubyShadow h ks mn := Subclass.shadow_old hl mn
+theorem shadow_old (hnames : Proof.NamesOk h) {ks : List ObjId} (hl : ∀ k ∈ ks, k < h.objs.size) (mn : String) :
+    Interp.crubyShadow h₁ ks mn = Interp.crubyShadow h ks mn := Subclass.shadow_old hnames hl mn
 
-theorem shadow_before_old (hc : Proof.ChainsIn h) (hs : Proof.Saturated h)
+theorem shadow_before_old (hnames : Proof.NamesOk h) (hc : Proof.ChainsIn h) (hs : Proof.Saturated h)
     {k : ObjId} (hk : k < h.objs.size) (owner : ObjId) (mn : String) :
     Interp.crubyShadow h₁ ((ancestors h₁ k).takeWhile (· != owner)) mn =
       Interp.crubyShadow h ((ancestors h k).takeWhile (· != owner)) mn :=
-  Subclass.shadow_before_old hc hs hk owner mn
+  Subclass.shadow_before_old hnames hc hs hk owner mn
 
 /-- Fresh class names must not introduce an unmodeled native method before the old owner. -/
-theorem shadow_before_parent (hc : Proof.ChainsIn h) (hs : Proof.Saturated h)
+theorem shadow_before_parent (hnames : Proof.NamesOk h) (hc : Proof.ChainsIn h) (hs : Proof.Saturated h)
     (he : e < h.objs.size) (hne : name.isEmpty = false) {mn : String}
     (hn : crubyClassDefines name mn = false)
     (hen : crubyClassDefines ("#<Class:" ++ name ++ ">") mn = false)
     (k owner : ObjId)
     (hp : Interp.crubyShadow h ((ancestors h (parent h e k)).takeWhile (· != owner)) mn = none) :
     Interp.crubyShadow h₁ ((ancestors h₁ k).takeWhile (· != owner)) mn = none :=
-  Subclass.shadow_before_source hc hs hc.boot.2.2.2.2 he hne hn hen k owner hp
+  Subclass.shadow_before_source hnames hc hs hc.boot.2.2.2.2 he hne hn hen k owner hp
 
 #print axioms method_parent
 #print axioms shadow_before_parent

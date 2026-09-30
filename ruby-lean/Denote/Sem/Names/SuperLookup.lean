@@ -29,25 +29,9 @@ private theorem dedup_nodup (xs acc : List ObjId) (ha : acc.Nodup) :
 theorem ancestors_nodup (h : Heap) (k : ObjId) : (ancestors h k).Nodup :=
   dedup_nodup _ [] (by simp)
 
-private theorem firstM_eq_lookup_go (h : Heap) (name : String) (ks : List ObjId) :
-    (ks.firstM fun k => match h.classPayload? k with
-      | some cp => (cp.methods.find? (·.1 == name)).map (fun (_, md) => (k, md))
-      | none => none) = lookup.go h name ks := by
-  induction ks with
-  | nil => rfl
-  | cons k ks ih =>
-    rw [List.firstM, lookup.go]
-    cases hp : h.classPayload? k with
-    | none => simpa using ih
-    | some cp =>
-      simp only
-      cases hm : cp.methods.find? (·.1 == name) with
-      | none => simpa using ih
-      | some pair => simp
-
 theorem superFound_after {h : Heap} {r current : ObjId} {name : String}
-    {before after : List ObjId} (ha : ancestors h r = before ++ current :: after) :
-    Interp.superFound h r current name = lookup.go h name after := by
+    {before after : List ObjId} (hch : Proof.ChainsIn h) (ha : ancestors h r = before ++ current :: after) :
+    Interp.superFound h r current name = Proof.lookupScan h name after := by
   have hn := List.nodup_append.mp (ha ▸ ancestors_nodup h r)
   have hd : ∀ k ∈ before, (k != current) = true := by
     intro k hk
@@ -55,13 +39,17 @@ theorem superFound_after {h : Heap} {r current : ObjId} {name : String}
   simp only [Interp.superFound, ha, List.dropWhile_append_of_pos hd,
     List.dropWhile_cons, bne_self_eq_false, Bool.false_eq_true, ↓reduceIte, List.drop_succ_cons,
     List.drop_zero]
-  exact firstM_eq_lookup_go h name after
+  apply Proof.lookupInChain_eq_scan
+  have ha' := Proof.ancestors_length_bound hch r
+  have hb := Proof.ancestors_length_bound hch Boot.objectId
+  rw [ha, List.length_append, List.length_cons] at ha'
+  omega
 
 private theorem lookup_go_own {h : Heap} {k : ObjId} {name : String} {rest : List ObjId}
     {md : MethodDef} (hm : (h.classPayload? k).bind
-      (fun cp => (cp.methods.find? (·.1 == name)).map (·.2)) = some md) :
-    lookup.go h name (k :: rest) = some (k, md) := by
-  simp only [lookup.go]
+      (fun cp => (cp.methods.find? (·.1 == name)).map (·.2)) = some md) (hv : md.visibilityOnly = false) :
+    Proof.lookupScan h name (k :: rest) = some (k, md) := by
+  simp only [Proof.lookupScan]
   cases hc : h.classPayload? k with
   | none => simp [hc] at hm
   | some cp =>
@@ -69,7 +57,7 @@ private theorem lookup_go_own {h : Heap} {k : ObjId} {name : String} {rest : Lis
     | none => simp [hc, hf] at hm
     | some p =>
       have he : p.2 = md := by simpa [hc, hf] using hm
-      simp only [hf, he]
+      simp only [hf, he, hv, Bool.not_false, if_true]
 
 /-- Recover code strictly after the current owner. Neither physical lookup nor a method
 signature is assumed; the caller must still check arguments and supply the body proof. -/
@@ -94,9 +82,9 @@ theorem declared_super_code {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
   have hkj : j = k := Option.some.inj (hj.symm.trans hk)
   subst j
   refine ⟨k, md, by simpa only [route.nameOk] using hk, ?_, hp, hb, hu, code⟩
-  rw [superFound_after hchain, he]
+  rw [superFound_after hm.core.classReady.chains hchain, he]
   rw [lookup_go_skip (fun j hj => ?_)]
-  · exact lookup_go_own hmd
+  · exact lookup_go_own hmd code.visibilityOnly
   · obtain ⟨cn, hcn, hnamed⟩ := hbetween.cover hj
     obtain ⟨old, hold, hname, hmiss⟩ := route.clear cn hcn
     exact hm.ownMethod_absent hold (by simpa only [hname] using hnamed) (by simpa only [hname] using hmiss)

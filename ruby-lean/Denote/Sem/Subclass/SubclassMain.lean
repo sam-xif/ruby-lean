@@ -8,7 +8,7 @@ namespace Ratchet.Denote.Subclass
 open RubyCore Ratchet
 
 theorem mainSite {κ : Ctx} {h : Heap} {name q : String} {parent eParent : ObjId}
-    (site : MainSite κ h) (hc : Proof.ChainsIn h) (hs : Proof.Saturated h)
+    (hnames : Proof.NamesOk h) (site : MainSite κ h) (hc : Proof.ChainsIn h) (hs : Proof.Saturated h)
     (hd : DataPres h (heap h Boot.objectId name q parent eParent)) :
     MainSite κ (heap h Boot.objectId name q parent eParent) := by
   let h' := heap h Boot.objectId name q parent eParent
@@ -58,7 +58,7 @@ theorem mainSite {κ : Ctx} {h : Heap} {name q : String} {parent eParent : ObjId
     have hl := Proof.ClsGrow.classOf_lt hc hc.boot.2.2.2.2
     apply (site.newDispatch hf).transport
     · rw [hco, method_old hc hs hl]
-    · intro owner; rw [hco, shadow_before_old hc hs hl]
+    · intro owner; rw [hco, shadow_before_old hnames hc hs hl]
 
 #print axioms mainSite
 end Ratchet.Denote.Subclass

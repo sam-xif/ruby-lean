@@ -511,7 +511,7 @@ def CtlOkJ (D : Decls) (c : JCtx) (Γ : Env) (Γs : List (JCtx × Env))
   | .jump (.retJ v target) =>
     ∃ σ, VTy m.heap v σ ∧ RetOkJ ans A D m.heap Γs σ m.kont ∧
       firstFrameK m.kont = some target
-  | .jump _ => False
+  | .jump _ | .send .. => False
 
 /-- The `JCtx`-shaped context stack, projected for `StackCtx`. -/
 def jctxs (c : JCtx) (Γs : List (JCtx × Env)) : List FrameCtx :=
@@ -677,12 +677,13 @@ theorem inv_grow_valueJ {ans : Ty} {A : SemAxioms} {F : Decls} {m m' : Machine} 
     (hgl : GlobalsOk F m.heap m.globals := by assumption)
     (hgv : m'.globals = m.globals := by rfl)
     (hsuE : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption)
-    (hclo : ClosuresOk m := by assumption) :
+    (hclo : ClosuresOk m := by assumption)
+    (hnames : NamesOk m.heap := by assumption) :
     InvJ ans A (withCtl m' (.value v)) := by
-  have hag : TypeAgree m.heap m'.heap := typeAgree_of_plainGrow hg hsat
-  refine ⟨NoHook_grow hg hsat hh,
-    Saturated_grow hg.shapeAgree hg.size hsat, hchn', LitClsOk_grow hg hstr,
-    ClassOk_grow hg hsat hcls,
+  have hag : TypeAgree m.heap m'.heap := typeAgree_of_plainGrow hg hsat hnames
+  refine ⟨NoHook_grow hg hsat hchn hh,
+    Saturated_grow hg.shapeAgree hg.size hsat, hchn', LitClsOk_grow hg hnames hstr,
+    ClassOk_grow hg hsat hnames hcls,
     show BottomObj m'.frames m'.stack by rw [hfr, hst]; exact hbot,
     show framePopLabels m'.kont = m'.stack.dropLast by rw [hko, hst]; exact hks,
     show ClosuresOk (withCtl m' (.value v)) from
@@ -699,7 +700,7 @@ theorem inv_grow_valueJ {ans : Ty} {A : SemAxioms} {F : Decls} {m m' : Machine} 
           intro o ho
           show (m'.heap.classPayload? o).isSome = true
           rw [hag.2.2.1 o (classPayload?_isSome_lt ho)]; exact ho),
-    F, c, Γ, Γs, DeclsOkJ_grow hg hsat hchn.boot.2.2.2.2 ht, ?_, ?_, ?_, ?_⟩
+    F, c, Γ, Γs, DeclsOkJ_grow hg hsat hnames hchn hchn.boot.2.2.2.2 ht, ?_, ?_, ?_, ?_⟩
   · show FramesOkJ m'.heap m'.frames m'.stack (Γ :: Γs.map Prod.snd)
     rw [hfr, hst]
     exact FramesOkJ.heap_congr hag hfs

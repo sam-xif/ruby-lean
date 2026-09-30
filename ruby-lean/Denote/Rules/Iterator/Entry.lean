@@ -65,6 +65,12 @@ theorem iteratorClosureFrame_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
   · simp [FrameInRange, pushMethodFrame]
   · exact iteratorClosureFrame_envOk hm hu hc hargs htypes hmove
   · simp [FrameOk, currentFrame_pushMethodFrame, requiredClosureFrame]
+  · simp [currentFrame_pushMethodFrame, requiredClosureFrame]
+  · simp only [currentFrame_pushMethodFrame, requiredClosureFrame]
+    have hl : CaptureLive m cl.captured := CaptureLive.frames_preserved
+      (m := popMethodFrame m) (n := m) (Nat.le_refl _) (fun _ _ => rfl)
+      (by rw [hc]; exact hm.toStateCore.captureLive)
+    exact hl.pushMethodFrame _
 
 #print axioms iteratorClosureFrame_envOk
 #print axioms iteratorClosureFrame_state

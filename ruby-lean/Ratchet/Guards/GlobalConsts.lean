@@ -10,6 +10,6 @@ def bootGlobalConsts : List String :=
    "NoMethodError", "ZeroDivisionError", "LocalJumpError", "FrozenError", "IndexError",
    "KeyError", "RangeError", "StopIteration", "NotImplementedError", "ScriptError", "Proc",
    "Random", "Math", "Range", "Kernel", "Numeric", "UncaughtThrowError", "Regexp",
-   "MatchData", "RegexpError"]
+   "MatchData", "RegexpError", "Rational", "Complex", "Enumerator"]
 
 end Ratchet

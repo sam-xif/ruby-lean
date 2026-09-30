@@ -39,14 +39,16 @@ theorem procCallReadyB_sound {h : Heap} (hb : procCallReadyB h = true) : ProcCal
   procDispatchReadyB_sound hb
 
 theorem ProcDispatchReady.ext {m n : Machine} {name : String}
-    (h : ProcDispatchReady m.heap name) (he : Ext m n) : ProcDispatchReady n.heap name := by
+    (h : ProcDispatchReady m.heap name) (he : Ext m n)
+    (hn : Proof.NamesOk m.heap) (hc : Proof.ChainsIn m.heap) : ProcDispatchReady n.heap name := by
   obtain ⟨owner, md, hl, hb, hu, hv, hp, ha⟩ := h
   refine ⟨owner, md, ?_, hb, hu, hv, hp, ?_⟩
-  · simpa only [Interp.methodOn, he.payload, he.ancestors] using hl
-  · simpa only [he.ancestors, Interp.crubyShadow, className, he.payload] using ha
+  · simpa only [he.methodOn_eq hc] using hl
+  · simpa only [he.ancestors, he.crubyShadow_eq hn] using ha
 
 theorem ProcCallReady.ext {m n : Machine} (h : ProcCallReady m.heap) (he : Ext m n) :
-    ProcCallReady n.heap := ProcDispatchReady.ext h he
+    Proof.NamesOk m.heap → Proof.ChainsIn m.heap → ProcCallReady n.heap :=
+  ProcDispatchReady.ext h he
 
 theorem StateOk.procDispatch {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {name : String}
     (h : StateOk κ Γ I m) (hf : nameFreeN κ name = true) (hn : procCallNameB name = true) :

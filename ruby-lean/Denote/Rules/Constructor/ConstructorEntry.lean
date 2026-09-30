@@ -13,7 +13,7 @@ def ctorAllocated (m : Machine) (k : ObjId) : Machine :=
 
 theorem finishSend_constructor {m : Machine} {k : ObjId} {md : MethodDef} {args : List Value} {site : SendSite}
     (hc : PlainAllocator m.heap k) (hd : NewDispatch m.heap (classOf m.heap (.ref k)))
-    (hi : Interp.userInit? m.heap k = some md) :
+    (hi : userInit? m.heap k = some md) :
     Interp.finishSend m (.ref k) site "new" args .none =
       Interp.enterUserMethod (ctorAllocated m k) (.ref m.heap.objs.size) "initialize" md args none := by
   obtain ⟨cp, hp, hm⟩ := hc.payload
@@ -42,7 +42,7 @@ theorem finishSend_constructor {m : Machine} {k : ObjId} {md : MethodDef} {args 
 theorem constructor_required_entry {m : Machine} {k : ObjId} {md : MethodDef}
     {args : List Value} {names : List String} {site : SendSite}
     (hc : PlainAllocator m.heap k) (hd : NewDispatch m.heap (classOf m.heap (.ref k)))
-    (hi : Interp.userInit? m.heap k = some md)
+    (hi : userInit? m.heap k = some md)
     (hp : md.params = names.map RubyCore.Param.req) (hcap : md.capturedFrame = none)
     (hdecl : md.declared = []) (ha : args.length = names.length) :
     Interp.finishSend m (.ref k) site "new" args .none =

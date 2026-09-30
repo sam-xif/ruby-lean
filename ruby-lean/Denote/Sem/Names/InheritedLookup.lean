@@ -29,7 +29,7 @@ theorem declared_inherited_code {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
       Interp.methodOn m.heap r d.name = some (k, md) ∧
       md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧
       md.undefined = false ∧ InstanceMethodCode k d.name md := by
-  apply classesOk_methodOn_after_prefix hm.classes hm.ownNames hoc hd
+  apply classesOk_methodOn_after_prefix hm.classes hm.ownNames hm.core.classReady.chains hoc hd
   intro k hk
   obtain ⟨before, j, after, he, hpre, hj, _⟩ := hm.classChains.before_owner hrc hr ha
   have hkj := Option.some.inj (hj.symm.trans hk)

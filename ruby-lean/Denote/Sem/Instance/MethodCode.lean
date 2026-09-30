@@ -14,6 +14,7 @@ structure OrdinaryMethodCode (owner : ObjId) (cref : List ObjId) (md : MethodDef
   captured : md.capturedFrame = none
   declared : md.declared = []
   fromPrelude : md.fromPrelude = false
+  visibilityOnly : md.visibilityOnly = false
 
 abbrev TopMethodCode (md : MethodDef) : Prop :=
   OrdinaryMethodCode Boot.objectId [Boot.objectId] md
@@ -26,12 +27,13 @@ structure InstanceMethodCode (owner : ObjId) (name : String) (md : MethodDef) : 
 
 def ordinaryMethodCodeB (owner : ObjId) (cref : List ObjId) (md : MethodDef) : Bool :=
   decide (md.owner = owner ∧ md.cref = cref ∧ md.superName = none ∧ md.builtin = none ∧
-    md.capturedFrame = none ∧ md.declared = [] ∧ md.fromPrelude = false)
+    md.capturedFrame = none ∧ md.declared = [] ∧ md.fromPrelude = false ∧ md.visibilityOnly = false)
 
 theorem ordinaryMethodCodeB_sound {owner : ObjId} {cref : List ObjId} {md : MethodDef}
     (hb : ordinaryMethodCodeB owner cref md = true) : OrdinaryMethodCode owner cref md := by
   simp only [ordinaryMethodCodeB, decide_eq_true_eq] at hb
-  exact ⟨hb.1, hb.2.1, hb.2.2.1, hb.2.2.2.1, hb.2.2.2.2.1, hb.2.2.2.2.2.1, hb.2.2.2.2.2.2⟩
+  rcases hb with ⟨ho, hc, hs, hb, hcap, hd, hp, hv⟩
+  exact ⟨ho, hc, hs, hb, hcap, hd, hp, hv⟩
 
 def instanceMethodCodeB (owner : ObjId) (name : String) (md : MethodDef) : Bool :=
   ordinaryMethodCodeB owner [owner, Boot.objectId] md &&

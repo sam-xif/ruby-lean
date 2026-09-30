@@ -50,10 +50,12 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     simpa only using congrArg Object.hashDflt (bindIvar_data m x v o)
   have hmethod (k : ObjId) (name : String) :
       Interp.methodOn (Interp.bindIvar m x v).heap k name = Interp.methodOn m.heap k name := by
-    simp only [Interp.methodOn, hw.classPayload, hw.ancestors_eq]
+    simp only [Interp.methodOn, hw.ancestors_eq, hw.lookup_go_eq]
   have hshadow (ks : List ObjId) (name : String) :
       Interp.crubyShadow (Interp.bindIvar m x v).heap ks name = Interp.crubyShadow m.heap ks name := by
-    simp only [Interp.crubyShadow, hw.className_eq]
+    simp only [Interp.crubyShadow, Interp.nativeSingletonMethod, Interp.featureMethod,
+      Interp.featureHas, Interp.libraryNamespace, hw.classPayload, hw.className_eq]
+    rfl
   have hlookup (k : ObjId) (name : String) :
       constLookupFrom (Interp.bindIvar m x v).heap k name = constLookupFrom m.heap k name := by
     simp only [constLookupFrom, hw.classPayload, hw.ancestors_eq]
@@ -64,6 +66,11 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     funext cls; simp only [primitiveErrorB, hw.ancestors_eq]
   refine {
     runtime := ?_
+    names := hw.namesOk h.names
+    localAlias := by simpa only [bindIvar_currentFrame] using h.localAlias
+    capturedLive := by
+      rw [bindIvar_currentFrame]
+      exact h.capturedLive.frames_preserved (by simp) (fun _ _ => by simp)
     mainSite := fun hr => (h.mainSite hr).ivarOnly hw
     moduleBase := h.moduleBase.ivarOnly hw
     classSites := h.classSites.ivarOnly hw
@@ -133,7 +140,7 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     clsQuery := by simpa only [ClsQueryOk, ClassQuerySite, hmethod, hw.classPayload,
       hw.classOf_eq, hw.ancestors_eq, hshadow] using h.clsQuery
     declCls := by simpa only [DeclClassOk, hn, hw.classPayload, hw.classOf_eq, hw.ancestors_eq,
-      hmethod, hshadow, Interp.userInit?] using h.declCls
+      hmethod, hshadow, userInit?] using h.declCls
     baseChains := by simpa only [BaseChainsOk, hn, hw.ancestors_eq] using h.baseChains
     nilQuery := by simpa only [NilQueryOk, hmethod, hw.ancestors_eq, hshadow] using h.nilQuery
     selfLive := by simpa only [SelfLive, bindIvar_currentFrame, hw.size] using h.selfLive }

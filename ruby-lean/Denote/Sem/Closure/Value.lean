@@ -33,7 +33,7 @@ theorem reified_den {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
       (.ref m.heap.objs.size) := by
   rw [denM]
   refine ⟨_, reified_payload m _ _ _ _, ⟨rfl, rfl, rfl, rfl⟩, ?_, ?_⟩
-  · rw [reified_locals]
+  · rw [reified_locals _ _ _ _ _ hm.toStateCore.captureLive]
     exact denSpine_ext (reified_ext hm _ _ _ _) hm.env.capture
   · cases hs : κ.selfTy with
     | none => exact Or.inl rfl

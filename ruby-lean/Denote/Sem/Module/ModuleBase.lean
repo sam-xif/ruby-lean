@@ -38,13 +38,15 @@ theorem ModuleBase.transport {κ : Ctx} {h h' : Heap} (hp : ModuleBase κ h)
     by simpa only [moduleHookQuietB, hm] using hp.hook, hc⟩
 
 theorem ModuleBase.ext {κ : Ctx} {m n : Machine} (hp : ModuleBase κ m.heap)
-    (he : Ext m n) : ModuleBase κ n.heap :=
-  hp.transport (fun _ => by simp only [Interp.methodOn, he.payload, he.ancestors])
+    (he : Ext m n) (hch : Proof.ChainsIn m.heap) : ModuleBase κ n.heap :=
+  hp.transport (fun name => he.methodOn_eq hch Boot.moduleId name)
     (hp.constants.ext he)
 
 theorem ModuleBase.ivarOnly {κ : Ctx} {h h' : Heap} (hp : ModuleBase κ h)
     (hi : Proof.IvarOnly h h') : ModuleBase κ h' :=
-  hp.transport (fun _ => by simp only [Interp.methodOn, hi.classPayload, hi.ancestors_eq])
+  hp.transport (fun name => by
+    unfold Interp.methodOn
+    rw [hi.ancestors_eq, hi.lookup_go_eq])
     (hp.constants.ivarOnly hi)
 
 #print axioms moduleBaseB_sound

@@ -15,7 +15,7 @@ theorem current_frame : (entry).currentFrame = freshModFrame m.heap.objs.size m.
 theorem frame_in_range : FrameInRange entry := by simp [FrameInRange, freshModMachine]
 
 theorem get_local (x : String) : (entry).getLocal x = .nil := by
-  simp [Machine.getLocal, Machine.getLocal.go, freshModMachine, freshModFrame,
+  simp [Machine.getLocal, Machine.getLocal.go, Machine.localFrameId, Machine.localFrameId.go, freshModMachine, freshModFrame,
     Array.getD_eq_getD_getElem?]
 
 theorem env_empty : EnvOk [] entry := by

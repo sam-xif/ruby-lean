@@ -182,12 +182,23 @@ way `heapOkB` decides `TableOk`/`NoHook`/`Saturated`/`ClassOk`.
 probe computes is *the* one `constsOk_of_constsOkB` turns into the invariant's clause.
 -/
 
+-- Optional libraries are loaded by require now. Keep checking the T row, on
+-- the heap where sorbet-runtime has actually been loaded.
+def tableBoot : Except String Machine := do
+  let m ← Prelude.initWithPrelude (.send none "require" [.str "sorbet-runtime"] none)
+  match Interp.run Prelude.bootFuel m with
+  | .value _ loaded => .ok loaded
+  | .unsupported why _ => .error s!"sorbet-runtime load gated: {why}"
+  | .stuck why _ => .error s!"sorbet-runtime load stuck: {why}"
+  | .uncaught exc m => .error s!"sorbet-runtime load raised {className m.heap (realClassOf m.heap exc)}"
+  | .outOfFuel _ => .error "sorbet-runtime load exhausted fuel"
+
 def tableMain : IO UInt32 := do
-  match Prelude.boot with
+  match tableBoot with
   | .error e => IO.eprintln s!"prelude boot failed: {e}"; return 1
   | .ok mp =>
     let h := mp.heap
-    IO.println "\n== L195: preludeDecls' constant table at the booted heap"
+    IO.println "\n== L195: preludeDecls' constant table after require sorbet-runtime"
     for e in RubyCore.Types.preludeConsts do
       let own := constOwn h Boot.objectId e.1
       let ty := own.bind (fun v => Proof.Static.valueTy? h v)

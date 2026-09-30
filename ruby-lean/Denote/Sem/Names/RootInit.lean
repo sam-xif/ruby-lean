@@ -8,11 +8,19 @@ set_option autoImplicit false
 namespace Ratchet.Denote
 open RubyCore Ratchet
 
+/-- Proof-side classifier retained after constructor entry moved to queued
+    ordinary dispatch. It records whether a user initializer exists; it is not
+    an executable constructor shortcut. -/
+def userInit? (h : Heap) (k : ObjId) : Option MethodDef :=
+  match Interp.methodOn h k "initialize" with
+  | some (_, md) => if md.builtin.isNone then some md else none
+  | none => none
+
 def RootInitOk (D : DefTable) (h : Heap) : Prop :=
-  rootInitFreeB D = true → Interp.userInit? h Boot.objectId = none
+  rootInitFreeB D = true → userInit? h Boot.objectId = none
 
 def rootInitOkB (D : DefTable) (h : Heap) : Bool :=
-  !rootInitFreeB D || (Interp.userInit? h Boot.objectId).isNone
+  !rootInitFreeB D || (userInit? h Boot.objectId).isNone
 
 theorem rootInitOkB_sound {D : DefTable} {h : Heap} (hb : rootInitOkB D h = true) : RootInitOk D h := by
   intro hf
@@ -23,11 +31,12 @@ theorem RootInitOk.transport {D D' : DefTable} {h h' : Heap} (hp : RootInitOk D 
     (hm : Interp.methodOn h' Boot.objectId "initialize" = Interp.methodOn h Boot.objectId "initialize") :
     RootInitOk D' h' := by
   intro hf
-  simpa only [Interp.userInit?, hm] using hp (hd hf)
+  simpa only [userInit?, hm] using hp (hd hf)
 
-theorem RootInitOk.ext {D : DefTable} {m n : Machine} (hp : RootInitOk D m.heap) (he : Ext m n) :
+theorem RootInitOk.ext {D : DefTable} {m n : Machine} (hp : RootInitOk D m.heap) (he : Ext m n)
+    (hc : Proof.ChainsIn m.heap) :
     RootInitOk D n.heap :=
-  hp.transport id (by simp only [Interp.methodOn, he.payload, he.ancestors])
+  hp.transport id (he.methodOn_eq hc _ _)
 
 #print axioms rootInitOkB_sound
 end Ratchet.Denote

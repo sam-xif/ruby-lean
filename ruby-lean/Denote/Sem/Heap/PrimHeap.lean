@@ -36,10 +36,14 @@ def nativeDispatchB (h : Heap) (free : String → Bool) : Bool :=
       md.builtin == some bid && !md.undefined && md.visibility == .pub && !md.fromPrelude &&
         (Interp.crubyShadow h ((ancestors h k).takeWhile (fun x => x != owner)) name).isNone
 
-/-- Native Array#each is reached only on a lookup miss. A payload alone cannot
-exclude an override or an undef tombstone. Reserving each withdraws this capability. -/
+/-- Native Array#each has an installed builtin row. A payload alone cannot exclude
+an override, visibility change, or undef tombstone. Reserving each withdraws this capability. -/
 def eachDispatchB (h : Heap) (free : String → Bool) : Bool :=
-  !free "each" || (Interp.methodOn h Boot.arrayId "each").isNone
+  !free "each" || match Interp.methodOn h Boot.arrayId "each" with
+    | none => false
+    | some (owner, md) =>
+      md.builtin == some "Array#each" && !md.undefined && md.visibility == .pub && !md.fromPrelude &&
+        (Interp.crubyShadow h ((ancestors h Boot.arrayId).takeWhile (· != owner)) "each").isNone
 
 def primitiveDispatchB (h : Heap) (free : String → Bool) : Bool :=
   nativeDispatchB h free && eachDispatchB h free
@@ -62,12 +66,22 @@ theorem dispatch_lookup {h : Heap} {free : String → Bool}
     simpa only [hl, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
       Option.isNone_iff_eq_none, and_assoc] using hp
 
-theorem each_lookup_miss {h : Heap} {free : String → Bool}
+theorem each_lookup {h : Heap} {free : String → Bool}
     (hd : primitiveDispatchB h free = true) (hf : free "each" = true) :
-    Interp.methodOn h Boot.arrayId "each" = none := by
+    ∃ owner md, Interp.methodOn h Boot.arrayId "each" = some (owner, md) ∧
+      md.builtin = some "Array#each" ∧ md.undefined = false ∧ md.visibility = .pub ∧
+      md.fromPrelude = false ∧
+      Interp.crubyShadow h ((ancestors h Boot.arrayId).takeWhile (· != owner)) "each" = none := by
   simp only [primitiveDispatchB, Bool.and_eq_true] at hd
-  simpa only [eachDispatchB, hf, Bool.not_true, Bool.false_or,
-    Option.isNone_iff_eq_none] using hd.2
+  have hp := hd.2
+  simp only [eachDispatchB, hf, Bool.not_true, Bool.false_or] at hp
+  cases hl : Interp.methodOn h Boot.arrayId "each" with
+  | none => rw [hl] at hp; cases hp
+  | some p =>
+    obtain ⟨owner, md⟩ := p
+    refine ⟨owner, md, rfl, ?_⟩
+    simpa only [hl, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
+      Option.isNone_iff_eq_none, and_assoc] using hp
 
 def primitiveErrorClasses : List ObjId := [Boot.zeroDivisionErrorId, Boot.nameErrorId, Boot.frozenErrorId]
 
@@ -135,10 +149,11 @@ theorem hashPayloadB_sound {h : Heap} (hb : hashPayloadB h = true) : HashPayload
   · rw [get_oob h (Nat.le_of_not_gt ho)] at hx
     cases hx
 
-theorem primitiveDispatchB_ext {m n : Machine} (he : Ext m n) (free : String → Bool) :
+theorem primitiveDispatchB_ext {m n : Machine} (he : Ext m n) (hn : Proof.NamesOk m.heap)
+    (hc : Proof.ChainsIn m.heap) (free : String → Bool) :
     primitiveDispatchB n.heap free = primitiveDispatchB m.heap free := by
-  simp only [primitiveDispatchB, nativeDispatchB, eachDispatchB, Interp.methodOn, Interp.crubyShadow, className,
-    he.payload, he.ancestors]
+  simp only [primitiveDispatchB, nativeDispatchB, eachDispatchB, he.methodOn_eq hc,
+    he.crubyShadow_eq hn, he.ancestors]
 
 theorem primitiveErrorsB_ext {m n : Machine} (he : Ext m n) :
     primitiveErrorsB n.heap = primitiveErrorsB m.heap := by

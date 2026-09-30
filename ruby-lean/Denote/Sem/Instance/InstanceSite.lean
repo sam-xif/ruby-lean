@@ -117,20 +117,17 @@ theorem InstanceSite.recontext {κ κ' : Ctx} {cn : String} {k : ObjId} {h : Hea
 This does not claim that method installation or class mutation preserves it. -/
 theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
     (h : InstanceSite κ cn k m.heap) (he : Ext m n)
-    (hl : k < m.heap.objs.size) : InstanceSite κ cn k n.heap := by
+    (hl : k < m.heap.objs.size) (hch : Proof.ChainsIn m.heap) : InstanceSite κ cn k n.heap := by
   have hm (j : ObjId) (mn : String) : Interp.methodOn n.heap j mn =
-      Interp.methodOn m.heap j mn := by simp only [Interp.methodOn, he.payload, he.ancestors]
+      Interp.methodOn m.heap j mn := he.methodOn_eq hch j mn
   have hc (j : ObjId) (name : String) : constOwn n.heap j name = constOwn m.heap j name := by
     simp only [constOwn, he.payload]
   have hi (name : String) : constLookupFrom n.heap k name = constLookupFrom m.heap k name := by
     simp only [constLookupFrom, he.payload, he.ancestors]
   have hlk : lookup n.heap (.ref k) "method_added" = lookup m.heap (.ref k) "method_added" := by
-    have hg (ks : List ObjId) : lookup.go n.heap "method_added" ks =
-        lookup.go m.heap "method_added" ks := by
-      induction ks with
-      | nil => rfl
-      | cons j ks ih => simp only [lookup.go, he.payload, ih]
-    simp only [lookup, classOf, he.get k hl, he.ancestors, hg]
+    change Interp.methodOn n.heap (classOf n.heap (.ref k)) "method_added" =
+      Interp.methodOn m.heap (classOf m.heap (.ref k)) "method_added"
+    simp only [classOf, he.get k hl, he.methodOn_eq hch]
   refine ⟨?_, ?_, ?_, ?_, ?_, h.metaclass.ext he hl, ?_, ?_, ?_, ?_⟩
   · simpa only [he.classNamed?_eq] using h.named
   · simpa only [classFrontB, he.payload] using h.front
@@ -195,10 +192,10 @@ theorem ClassSitesOk.recontext {κ κ' : Ctx} {h : Heap} (sites : ClassSitesOk �
   exact ⟨k, site.recontext hn⟩
 
 theorem ClassSitesOk.ext {κ : Ctx} {m n : Machine} (sites : ClassSitesOk κ m.heap)
-    (he : Ext m n) : ClassSitesOk κ n.heap := by
+    (he : Ext m n) (hch : Proof.ChainsIn m.heap) : ClassSitesOk κ n.heap := by
   intro cn hcn
   obtain ⟨k, site⟩ := sites cn hcn
-  exact ⟨k, site.ext he site.live⟩
+  exact ⟨k, site.ext he site.live hch⟩
 
 #print axioms classFrontB_sound
 #print axioms namesAtB_sound

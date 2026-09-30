@@ -9,7 +9,7 @@ namespace Ratchet.Denote.FreshModule
 open RubyCore Ratchet RubyCore.Proof.Judgment
 
 theorem mainSite {κ : Ctx} {h : Heap} {name : String}
-    (site : MainSite κ h) (hc : Proof.ChainsIn h) (hs : Proof.Saturated h)
+    (hnames : Proof.NamesOk h) (site : MainSite κ h) (hc : Proof.ChainsIn h) (hs : Proof.Saturated h)
     (hd : DataPres h (freshModHeap h Boot.objectId name name)) :
     MainSite κ (freshModHeap h Boot.objectId name name) := by
   let h' := freshModHeap h Boot.objectId name name
@@ -61,7 +61,7 @@ theorem mainSite {κ : Ctx} {h : Heap} {name : String}
     have hl := Proof.ClsGrow.classOf_lt hc hc.boot.2.2.2.2
     apply (site.newDispatch hf).transport
     · rw [hco, method_old hc hs hl]
-    · intro owner; rw [hco, shadow_before_old hc hs hl]
+    · intro owner; rw [hco, shadow_before_old hnames hc hs hl]
 
 #print axioms mainSite
 end Ratchet.Denote.FreshModule

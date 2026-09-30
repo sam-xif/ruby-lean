@@ -147,13 +147,13 @@ theorem chainsIn_push {h : Heap} {obj : Object}
       (∀ s, cp.superclass = some s → s < h.objs.size) ∧
       (∀ i ∈ cp.includes, i < h.objs.size) ∧
       (∀ q ∈ cp.prepends, q < h.objs.size)) :
-    ChainsIn ⟨h.objs.push obj⟩ := by
-  have hsz : (Heap.mk (h.objs.push obj)).objs.size = h.objs.size + 1 := by simp
-  have hgold : ∀ o, o < h.objs.size → (Heap.get ⟨h.objs.push obj⟩ o) = h.get o := by
+    ChainsIn { h with objs := h.objs.push obj } := by
+  have hsz : ({ h with objs := h.objs.push obj } : Heap).objs.size = h.objs.size + 1 := by simp
+  have hgold : ∀ o, o < h.objs.size → (Heap.get { h with objs := h.objs.push obj } o) = h.get o := by
     intro o ho
     simp only [Heap.get, Array.getD_eq_getD_getElem?, Array.getElem?_push,
       if_neg (Nat.ne_of_lt ho)]
-  have hgnew : (Heap.get ⟨h.objs.push obj⟩ h.objs.size) = obj := by
+  have hgnew : (Heap.get { h with objs := h.objs.push obj } h.objs.size) = obj := by
     simp [Heap.get, Array.getD_eq_getD_getElem?]
   have hsplit : ∀ o, o < h.objs.size + 1 → o < h.objs.size ∨ o = h.objs.size :=
     fun o hlt => Nat.lt_succ_iff_lt_or_eq.mp hlt
@@ -202,7 +202,7 @@ theorem chainsIn_push {h : Heap} {obj : Object}
 theorem chainsIn_alloc {h : Heap} {obj : Object}
     (hch : ChainsIn h) (hkl : obj.klass < h.objs.size) (heig : obj.eigen = none)
     (hnc : ∀ c, obj.payload ≠ .cls c) :
-    ChainsIn ⟨h.objs.push obj⟩ :=
+    ChainsIn { h with objs := h.objs.push obj } :=
   chainsIn_push hch hkl heig (fun cp hcp => absurd hcp (hnc cp))
 
 theorem get_defineMethod_eigen (h : Heap) (cls : ObjId) (name : String)

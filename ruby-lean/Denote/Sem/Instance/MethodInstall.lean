@@ -16,7 +16,7 @@ open RubyCore Ratchet
 theorem MethodsExact_defineMethod {κ : Ctx} {m : Machine} {cls : ObjId}
     {name : String} {md : MethodDef} (hm : MethodsExact κ m) (hn : nameFreeN κ name = false) :
     MethodsExact κ { m with heap := defineMethod m.heap cls name md } := by
-  intro k cp hp n md' hmem
+  intro k cp hp n md' hmem hu
   have hrow : (n, md') ∈ ownMethods (defineMethod m.heap cls name md) k := by
     simpa only [ownMethods, hp, Option.map_some, Option.getD_some] using hmem
   rcases ownMethods_defineMethod_mem hrow with ⟨_, he⟩ | hold
@@ -24,7 +24,7 @@ theorem MethodsExact_defineMethod {κ : Ctx} {m : Machine} {cls : ObjId}
     exact Or.inr (Or.inr hn)
   · cases hc : m.heap.classPayload? k with
     | none => simp [ownMethods, hc] at hold
-    | some cp₀ => exact hm k cp₀ hc n md' (by simpa [ownMethods, hc] using hold)
+    | some cp₀ => exact hm k cp₀ hc n md' (by simpa [ownMethods, hc] using hold) hu
 
 theorem ownMethod_defineMethod_ne (h : Heap) (cls k : ObjId) (name n : String)
     (md : MethodDef) (hn : n ≠ name) :
@@ -154,7 +154,7 @@ theorem StateCore_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine
       | zero => intro fid; rfl
       | succ fuel ih =>
         intro fid
-        simp only [Machine.getLocal.go, n]
+        simp only [Machine.getLocal.go, localFrameId_frames_eq (m := m) (n := n) rfl, n]
         split
         · rfl
         · split
@@ -191,6 +191,10 @@ theorem StateCore_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine
     allocators := hm.allocators.defineMethod
     globalConsts := hm.globalConsts.defineMethod
     sat := Proof.Saturated_defineMethod hm.sat _ _ _
+    names := Proof.namesOk_defineMethod hm.names _ _ _
+    localAlias := hm.localAlias
+    capturedLive := CaptureLive.frames_preserved (m := m) (n := n)
+      (Nat.le_refl _) (fun _ _ => rfl) hm.capturedLive
     primitiveDispatch := (primitiveDispatchB_defineMethod hn).trans hm.primitiveDispatch
     primitiveErrors := (primitiveErrorsB_defineMethod ..).trans hm.primitiveErrors
     stringPayload := hm.stringPayload.defineMethod
@@ -402,8 +406,8 @@ theorem StateOk_reserveName {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     moduleBase := hm.moduleBase.recontext hneg
     classSites := hm.classSites.recontext (fun _ hc => hc) hneg
     primitiveDispatch := ?_
-    exact := fun k cp hp n md hmem =>
-      (hm.exact k cp hp n md hmem).imp id (Or.imp id (hneg n))
+    exact := fun k cp hp n md hmem hu =>
+      (hm.exact k cp hp n md hmem hu).imp id (Or.imp id (hneg n))
     nameFree := fun n hn k hk o md hl =>
       (hm.nameFree n hn k hk o md hl).imp id (Or.imp id (hneg n))
     bareFree := fun n hn hf hs => hm.bareFree n hn (hfree n hf) hs

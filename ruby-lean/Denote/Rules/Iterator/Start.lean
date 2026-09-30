@@ -37,6 +37,10 @@ theorem iterator_push_caller_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     ⟨by rw [hp.stack]; exact hm.frameInRange.1,
       by rw [hp.stack]; exact Nat.lt_of_lt_of_le hm.frameInRange.2 hp.frames.size⟩
     he (hp.frameOk hm.frame hcur)
+    (by rw [hcur]; exact hm.localAlias)
+    (by rw [hcur]
+        exact hm.capturedLive.capture_preserved hp.frames.size
+          (hp.frames.captured hp.stack) (hp.frames.localAlias hp.stack))
 
 def eachFrame (m : Machine) (o : ObjId) : RubyCore.Frame :=
   { self := .ref o, defmod := classOf m.heap (.ref o), kind := .method, meth := "each",

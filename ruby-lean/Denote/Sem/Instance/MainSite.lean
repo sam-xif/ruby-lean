@@ -53,7 +53,8 @@ theorem MainSite.recontext {κ κ' : Ctx} {h : Heap} (site : MainSite κ h)
     fun n hb hf => site.bare n hb (ht n hf), fun hf => site.missing (ht _ hf), site.constants,
     fun hf => site.newDispatch (ht _ hf)⟩
 
-theorem MainSite.ext {κ : Ctx} {m n : Machine} (site : MainSite κ m.heap) (he : Ext m n) :
+theorem MainSite.ext {κ : Ctx} {m n : Machine} (site : MainSite κ m.heap) (he : Ext m n)
+    (hn : Proof.NamesOk m.heap) (hch : Proof.ChainsIn m.heap) :
     MainSite κ n.heap := by
   have hv : Ext (mainView m.heap) (mainView n.heap) :=
     { he with stack := rfl, frames := rfl }
@@ -62,15 +63,11 @@ theorem MainSite.ext {κ : Ctx} {m n : Machine} (site : MainSite κ m.heap) (he 
   have hmo (name : String) :
       Interp.methodOn n.heap (classOf n.heap (.ref Boot.mainId)) name =
         Interp.methodOn m.heap (classOf m.heap (.ref Boot.mainId)) name := by
-    simp only [Interp.methodOn, hco, he.payload, he.ancestors]
+    simp only [hco, he.methodOn_eq hch]
   have hl (name : String) : lookup n.heap (.ref Boot.mainId) name =
       lookup m.heap (.ref Boot.mainId) name := by
-    have hg (ks : List ObjId) : lookup.go n.heap name ks = lookup.go m.heap name ks := by
-      induction ks with
-      | nil => rfl
-      | cons k ks ih => simp only [lookup.go, he.payload, ih]
-    simp only [lookup, hco, he.ancestors, hg]
-  refine ⟨site.ready.ext hv rfl,
+    exact hmo name
+  refine ⟨site.ready.ext hv rfl hch,
     fun name hm o md hmd => site.names name hm o md (by rwa [hmo] at hmd),
     fun name hb hf => (hl name).trans (site.bare name hb hf),
     fun hf o md hmd => site.missing hf o md (by rwa [hmo] at hmd), fun name => by
@@ -80,8 +77,8 @@ theorem MainSite.ext {κ : Ctx} {m n : Machine} (site : MainSite κ m.heap) (he 
   have hc : classOf n.heap (.ref Boot.objectId) = classOf m.heap (.ref Boot.objectId) := by
     simp only [classOf, he.get Boot.objectId (lt_size_of_classPayload site.ready.classLive)]
   apply (site.newDispatch hf).transport
-  · simp only [Interp.methodOn, hc, he.payload, he.ancestors]
-  · intro owner; simp only [hc, he.ancestors, Interp.crubyShadow, className, he.payload]
+  · simp only [hc, he.methodOn_eq hch]
+  · intro owner; simp only [hc, he.ancestors, he.crubyShadow_eq hn]
 
 #print axioms MainSite.ext
 end Ratchet.Denote

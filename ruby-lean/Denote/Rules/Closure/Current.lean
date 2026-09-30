@@ -52,6 +52,7 @@ theorem callClosure_current_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (by simpa using hlen), ?_⟩
   exact StateOk_reCtl (requiredClosureFrame_state_of_env hm ht ha
     (ClosureScopeEq.current hm.frameInRange hc)
+    (by rw [hc]; exact hm.toStateCore.captureLive)
     (currentClosureFrame_envOk hm hu hc hargs htypes hmove) hk) _ _
 
 #print axioms currentClosureFrame_envOk

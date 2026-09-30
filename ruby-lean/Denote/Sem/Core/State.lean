@@ -1,5 +1,6 @@
 import Ratchet.Static.All
 import Denote.Ty.Local
+import Denote.Sem.Closure.CapturePath
 import Denote.Sem.Core.Trans
 import Denote.Sem.Heap.PrimHeap
 import Denote.Sem.Core.Ready
@@ -594,7 +595,7 @@ def declaresName (κ : Ctx) (n : String) : Bool :=
   κ.defs.any (·.name == n) ||
   κ.classes.any (fun c => c.methods.any (·.name == n) || c.smethods.any (·.name == n))
 
-/-- **"And nothing more", for methods.** Every method installed anywhere in the heap is the
+/-- **"And nothing more", for methods.** Every defined method installed anywhere in the heap is the
 model's own — an axiomatized builtin (`MethodDef.builtin`) or Ruby's core library written in
 RubyCore (`MethodDef.fromPrelude`) — or a name `κ` records.
 
@@ -607,12 +608,13 @@ heap-global form implies the statement at every one of them (`MethodsExact.looku
 `Denote/Sem/Core/Frame.lean`) while being a single decidable `Bool` at a concrete heap.
 
 Measured before it was stated: at the real prelude-booted heap the number of installed methods
-that are neither builtin nor prelude is **zero** (`Denote/Sem/Core/Boot.lean`'s `methodsExactB`), so
+that are neither builtin nor prelude, excluding undefined-method tombstones, is **zero**
+(`Denote/Sem/Core/Boot.lean`'s `methodsExactB`), so
 this is a fact about the machine the ladder starts from rather than a hopeful invariant, and
 `declaresName` is exactly the room a program grows into it. -/
 def MethodsExact (κ : Ctx) (m : Machine) : Prop :=
   ∀ k cp, m.heap.classPayload? k = some cp →
-    ∀ n md, (n, md) ∈ cp.methods →
+    ∀ n md, (n, md) ∈ cp.methods → md.undefined = false →
       md.fromPrelude = true ∨ md.builtin.isSome = true ∨ nameFreeN κ n = false
 
 /-- **`self` is a real object.** Every reference `StateOk` describes has to be one the heap
@@ -768,10 +770,14 @@ The name table grows one entry per rung, exactly as `CoreOk`'s rows do. -/
 def queryBuiltins : List (String × String) :=
   [("is_a?", "Object#is_a?"), ("class", "Object#class"), ("raise", "Object#raise")]
 
+/-- Native `raise` is private; the other query rows are public. -/
+def queryVisibility (name : String) : Visibility :=
+  if name == "raise" then .priv else .pub
+
 def QueryOk (κ : Ctx) (m : Machine) : Prop :=
   ∀ mname bid, (mname, bid) ∈ queryBuiltins → nameFreeN κ mname = true → ∀ k,
     (∀ owner md, Interp.methodOn m.heap k mname = some (owner, md) →
-        md.builtin = some bid ∧ md.undefined = false ∧ md.visibility = .pub ∧
+        md.builtin = some bid ∧ md.undefined = false ∧ md.visibility = queryVisibility mname ∧
         md.fromPrelude = false ∧
         Interp.crubyShadow m.heap
           ((ancestors m.heap k).takeWhile (fun x => x != owner)) mname = none) ∧
@@ -802,24 +808,26 @@ def ClsQueryOk (κ : Ctx) (m : Machine) : Prop :=
       ∀ o₂ md, Interp.methodOn m.heap k "method_missing"
         = some (o₂, md) → md.builtin.isSome = true)
 
-theorem QueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : QueryOk κ m) :
+theorem QueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : QueryOk κ m)
+    (hnames : Proof.NamesOk m.heap) (hchains : Proof.ChainsIn m.heap) :
     QueryOk κ m₂ := by
   intro mname bid hmem hfree k
   have hm : ∀ n, Interp.methodOn m₂.heap k n = Interp.methodOn m.heap k n := by
-    intro n; simp only [Interp.methodOn, he.payload, he.ancestors]
+    intro n; exact he.methodOn_eq hchains k n
   obtain ⟨h1, h2⟩ := h mname bid hmem hfree k
   refine ⟨?_, ?_⟩
   · intro owner md hfound
     rw [hm] at hfound
     obtain ⟨hb, hu, hv, hp, hsh⟩ := h1 owner md hfound
     refine ⟨hb, hu, hv, hp, ?_⟩
-    simp only [Interp.crubyShadow, className, he.payload, he.ancestors] at hsh ⊢
+    simp only [he.ancestors, he.crubyShadow_eq hnames]
     exact hsh
   · intro hnone o md hfound
     rw [hm] at hnone hfound
     exact h2 hnone o md hfound
 
-theorem ClsQueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : ClsQueryOk κ m) :
+theorem ClsQueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : ClsQueryOk κ m)
+    (hnames : Proof.NamesOk m.heap) (hchains : Proof.ChainsIn m.heap) :
     ClsQueryOk κ m₂ := by
   intro mname bid hmem hfree k hp
   have hs : ClassQuerySite m.heap k := by
@@ -831,14 +839,14 @@ theorem ClsQueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : ClsQ
       simp only [classOf, he.get o hlt] at hco
       exact Or.inr (Or.inr ⟨o, ho, hco⟩)
   have hm : ∀ n, Interp.methodOn m₂.heap k n = Interp.methodOn m.heap k n := by
-    intro n; simp only [Interp.methodOn, he.payload, he.ancestors]
+    intro n; exact he.methodOn_eq hchains k n
   obtain ⟨h1, h2⟩ := h mname bid hmem hfree k hs
   refine ⟨?_, ?_⟩
   · intro owner md hfound
     rw [hm] at hfound
     obtain ⟨hb, hu, hv, hpre, hsh⟩ := h1 owner md hfound
     refine ⟨hb, hu, hv, hpre, ?_⟩
-    simp only [Interp.crubyShadow, className, he.payload, he.ancestors] at hsh ⊢
+    simp only [he.ancestors, he.crubyShadow_eq hnames]
     exact hsh
   · intro hnone o₂ md hfound
     rw [hm] at hnone hfound
@@ -929,18 +937,19 @@ def NilQueryOk (κ : Ctx) (m : Machine) : Prop :=
       ∀ o₂ md, Interp.methodOn m.heap k "method_missing" = some (o₂, md) →
         md.builtin.isSome = true)
 
-theorem NilQueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : NilQueryOk κ m) :
+theorem NilQueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : NilQueryOk κ m)
+    (hnames : Proof.NamesOk m.heap) (hchains : Proof.ChainsIn m.heap) :
     NilQueryOk κ m₂ := by
   intro hfree k
   have hm : ∀ n, Interp.methodOn m₂.heap k n = Interp.methodOn m.heap k n := by
-    intro n; simp only [Interp.methodOn, he.payload, he.ancestors]
+    intro n; exact he.methodOn_eq hchains k n
   obtain ⟨h1, h2⟩ := h hfree k
   refine ⟨?_, ?_⟩
   · intro owner md hfound
     rw [hm] at hfound
     obtain ⟨hb, hu, hv, hp, hsh⟩ := h1 owner md hfound
     refine ⟨hb, hu, hv, hp, ?_⟩
-    simp only [Interp.crubyShadow, className, he.payload, he.ancestors] at hsh ⊢
+    simp only [he.ancestors, he.crubyShadow_eq hnames]
     exact hsh
   · intro hnone o₂ md hfound
     rw [hm] at hnone hfound
@@ -986,7 +995,8 @@ def DeclClassOk (κ : Ctx) (m : Machine) : Prop :=
       (∀ cn j, classNamed? m.heap cn = some j → (ancestors m.heap k).contains j = true →
           cn ∈ ch ++ c.rootTail))
 
-theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : DeclClassOk κ m) :
+theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : DeclClassOk κ m)
+    (hnames : Proof.NamesOk m.heap) (hchains : Proof.ChainsIn m.heap) :
     DeclClassOk κ m₂ := by
   intro c hc k hcn
   rw [he.classNamed?_eq] at hcn
@@ -1003,7 +1013,7 @@ theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : Dec
       exact absurd (lt_size_of_classPayload hsome) hk
   have hm : ∀ n, Interp.methodOn m₂.heap (classOf m₂.heap (.ref k)) n
       = Interp.methodOn m.heap (classOf m.heap (.ref k)) n := by
-    intro n; simp only [hco, Interp.methodOn, he.payload, he.ancestors]
+    intro n; simp only [hco, he.methodOn_eq hchains]
   refine ⟨by rw [he.ancestors]; exact hroot, hcls, hmod, by rw [he.payload]; exact hism,
     ?_, ?_⟩
   · intro hkind hsm
@@ -1013,7 +1023,7 @@ theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : Dec
       rw [hm] at hfound
       obtain ⟨hb, hu, hv, hp, hsh⟩ := h1 owner md hfound
       refine ⟨hb, hu, hv, hp, ?_⟩
-      simp only [hco, Interp.crubyShadow, className, he.payload, he.ancestors] at hsh ⊢
+      simp only [hco, he.ancestors, he.crubyShadow_eq hnames]
       exact hsh
     · simpa only [hm] using h2
   · intro ch hch hmf
@@ -1086,6 +1096,10 @@ structure StateCore (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   baseChains : BaseChainsOk κ m
   nilQuery : NilQueryOk κ m
   selfLive : SelfLive m
+  names : Proof.NamesOk m.heap
+  localAlias : m.currentFrame.localAlias = none
+  /-- Every captured activation is live, unaliased, and has a terminating parent chain. -/
+  capturedLive : CaptureLive m m.currentFrame.captured
 
 /-- Complete state conformance. Positive rows and global selector reservations do not
 exclude hidden overrides; the own-table bound is also required at every typed state. -/
@@ -1093,6 +1107,12 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop extends St
   ownNames : ClassOwnNames κ.classes m.heap
   classChains : ClassChains κ.classes m.heap
   rootInit : RootInitOk κ.defs m.heap
+
+theorem StateCore.captureLive {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    (h : StateCore κ Γ I m) : CaptureLive m (some (m.stack.headD 0)) := by
+  apply CaptureLive.frame h.frameInRange.2
+  · simpa only [← currentFrame_headD h.frameInRange.1] using h.capturedLive
+  · simpa only [← currentFrame_headD h.frameInRange.1] using h.localAlias
 
 /-- A retained allocator identifies an ordinary class, including its static record kind. -/
 theorem StateOk.ordinary_decl {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Cls}
@@ -1116,57 +1136,40 @@ The theorem every allocating rung needs, and the one that pays for `Denote/Ty/Ex
 
 Nothing here is specific to a string literal: an allocating rung supplies the `Ext` and this
 does the rest. -/
-/-- The ancestor walk `lookup` performs reads the heap only through `classPayload?`, so two
-heaps that agree there agree on it. One induction, and the reason it is needed rather than
-being a `simp` step is that `lookup.go` carries the heap as a captured argument. -/
+/-- Bounded lookup also reads heap size and Object's fallback ancestors. -/
 theorem lookup_go_payload {h h' : Heap} (hp : ∀ k, h'.classPayload? k = h.classPayload? k)
-    (n : String) : ∀ ks, lookup.go h' n ks = lookup.go h n ks
-  | [] => rfl
-  | k :: rest => by
-    rw [lookup.go, lookup.go, hp k]
-    cases hc : h.classPayload? k with
-    | none => simp only [hc]; exact lookup_go_payload hp n rest
-    | some cp =>
-      simp only [hc]
-      cases cp.methods.find? (·.1 == n) with
-      | none => exact lookup_go_payload hp n rest
-      | some p => rfl
+    (hs : h'.objs.size = h.objs.size)
+    (ho : RubyCore.ancestors h' Boot.objectId = RubyCore.ancestors h Boot.objectId)
+    (n : String) (ks : List ObjId) : lookupInChain h' ks n = lookupInChain h ks n :=
+  Proof.lookupInChain_congr hs (fun k => by rw [hp k]) ho ks
 
-/-- `lookup` **is** `methodOn` at the receiver's dispatch class: the same ancestor walk,
-written once as an explicit `go` (`RubyCore/Heap.lean`) and once as a `firstM`
-(`Interp/Dispatch.lean`). Needed because the two components below are stated at the walk the
-interpreter performs and the interpreter performs both. -/
+/-- Both dispatch readers now share the same bounded lookup implementation. -/
 theorem lookup_eq_methodOn (h : Heap) (v : Value) (n : String) :
-    lookup h v n = Interp.methodOn h (classOf h v) n := by
-  simp only [lookup, Interp.methodOn]
-  induction (RubyCore.ancestors h (classOf h v)) with
-  | nil => rfl
-  | cons k rest ih =>
-    rw [lookup.go, List.firstM]
-    cases hp : h.classPayload? k with
-    | none => simp [ih]
-    | some cp =>
-      cases hf : cp.methods.find? (·.1 == n) with
-      | none => simp [hf, ih]
-      | some p => simp [hf]
+    lookup h v n = Interp.methodOn h (classOf h v) n := rfl
 
 theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : StateOk κ Γ I m)
     (he : Ext m m₂) (hp : StringPayloadOk m₂.heap) (ha : ArrayPayloadOk m₂.heap)
     (hh : HashPayloadOk m₂.heap) (hphase : m₂.preludeMode = m.preludeMode) :
     StateOk κ Γ I m₂ where
-  runtime := fun hr => (h.runtime hr).ext he hphase
-  mainSite := fun hr => (h.mainSite hr).ext he
-  moduleBase := h.moduleBase.ext he
-  classRuntime := fun cn hr => (h.classRuntime cn hr).ext he hphase
+  runtime := fun hr => (h.runtime hr).ext he hphase h.core.classReady.chains
+  mainSite := fun hr => (h.mainSite hr).ext he h.names h.core.classReady.chains
+  moduleBase := h.moduleBase.ext he h.core.classReady.chains
+  classRuntime := fun cn hr => (h.classRuntime cn hr).ext he hphase h.core.classReady.chains
   singletonRuntime := fun cn hr => (h.singletonRuntime cn hr).ext he hphase
-  classSites := h.classSites.ext he
+  classSites := h.classSites.ext he h.core.classReady.chains
   allocators := h.allocators.ext he
   globalConsts := h.globalConsts.ext he
-  primitiveDispatch := (primitiveDispatchB_ext he _).trans h.primitiveDispatch
+  primitiveDispatch := (primitiveDispatchB_ext he h.names h.core.classReady.chains _).trans h.primitiveDispatch
   primitiveErrors := (primitiveErrorsB_ext he).trans h.primitiveErrors
   stringPayload := hp
   arrayPayload := ha
   hashPayload := hh
+  names := he.namesOk h.names
+  localAlias := by rw [he.currentFrame_eq]; exact h.localAlias
+  capturedLive := by
+    rw [he.currentFrame_eq]
+    exact h.capturedLive.frames_preserved (by simp only [he.frames, Nat.le_refl])
+      (fun _ _ => by rw [he.frames])
   sat := Proof.Saturated_grow he.shapeAgree he.size h.sat
   core := CoreOk.ext rfl rfl he h.core
   frameInRange := by
@@ -1191,7 +1194,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     exact ⟨denSpine_ext he this.1, this.2⟩
   ownNames := h.ownNames.ext he
   classChains := h.classChains.ext he
-  rootInit := h.rootInit.ext he
+  rootInit := h.rootInit.ext he h.core.classReady.chains
   classes := by
     intro c hc
     obtain ⟨k, hk, hm, hs⟩ := h.classes c hc
@@ -1260,24 +1263,24 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     intro n hn k hk o md hm
     refine h.nameFree n hn k (hs ▸ hk) o md ?_
     rw [← hm]
-    simp only [Interp.methodOn, he.payload, he.ancestors]
+    simp only [he.methodOn_eq h.core.classReady.chains]
   bareFree := by
     intro n hn hdef hself
     rw [show lookup m₂.heap m₂.currentFrame.self n
           = lookup m.heap m.currentFrame.self n by
-      simp only [lookup, classOf_self_ext he h.selfLive, he.ancestors]
-      exact lookup_go_payload he.payload n _]
+      simp only [lookup_eq_methodOn, classOf_self_ext he h.selfLive,
+        he.methodOn_eq h.core.classReady.chains]]
     exact h.bareFree n hn hdef hself
-  query := QueryOk.ext he h.query
-  clsQuery := ClsQueryOk.ext he h.clsQuery
-  declCls := DeclClassOk.ext he h.declCls
+  query := QueryOk.ext he h.query h.names h.core.classReady.chains
+  clsQuery := ClsQueryOk.ext he h.clsQuery h.names h.core.classReady.chains
+  declCls := DeclClassOk.ext he h.declCls h.names h.core.classReady.chains
   baseChains := BaseChainsOk.ext he h.baseChains
-  nilQuery := NilQueryOk.ext he h.nilQuery
+  nilQuery := NilQueryOk.ext he h.nilQuery h.names h.core.classReady.chains
   missFree := by
     intro hfree hself o md hm
     refine h.missFree hfree hself o md ?_
     rw [← hm]
-    simp only [Interp.methodOn, classOf_self_ext he h.selfLive, he.payload, he.ancestors]
+    simp only [classOf_self_ext he h.selfLive, he.methodOn_eq h.core.classReady.chains]
   selfLive := by
     intro o ho
     rw [he.currentFrame_eq] at ho
@@ -1531,6 +1534,15 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
       classSites := by simpa only [setLocal_heap] using h.classSites
       allocators := by simpa only [setLocal_heap] using h.allocators
       globalConsts := by simpa only [setLocal_heap] using h.globalConsts
+      names := h.names
+      localAlias := by
+        rw [currentFrame_setLocal_localAlias]
+        exact h.localAlias
+      capturedLive := by
+        rw [currentFrame_setLocal_captured]
+        apply h.capturedLive.capture_preserved (by simp)
+        · intro i _; rw [setLocal_eq_setAt]; exact setAt_captured ..
+        · intro i _; rw [setLocal_eq_setAt]; exact setAt_localAlias ..
       sat := h.sat
       core := h.core
       frameInRange := by
@@ -1545,7 +1557,8 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
             -- type the rule bound (`hρ` strips the alias `vasgnAlias` wraps it in).
             subst hyx
             rw [envGet?_envSet_self] at hy
-            rw [getLocal_setLocal_self m y w h.frameInRange.2, ← Option.some.inj hy]
+            rw [getLocal_setLocal_self m y w h.frameInRange.2
+              (by rw [← currentFrame_headD h.frameInRange.1]; exact h.localAlias), ← Option.some.inj hy]
             exact ⟨by rw [hρ]; exact denM_setLocal hw hcap hw, halias⟩
           · -- Every other name is untouched; its type is either widened to `.any` or
             -- transported by `denM_setLocal`.

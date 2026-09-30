@@ -539,13 +539,36 @@ def localOfIn (frames : Array Frame) (f : Frame) (x : String) : Value :=
     `blkFrameK`/`iterK` carries the closure, so it carries the pair — for `KontOk`'s
     standing reason (L236): a fact about how one activation relates to another has to be
     recorded where the continuation is built. -/
-def ShallowChain (frames : Array Frame) (fid : FrameId) : Prop :=
-  ∀ p, (frames.getD fid default).captured = some p →
+structure ShallowChain (frames : Array Frame) (fid : FrameId) : Prop where
+  captured : ∀ p, (frames.getD fid default).captured = some p →
     p < fid ∧ (frames.getD p default).captured = none
+  localAlias : (frames.getD fid default).localAlias = none
+  parentAlias : ∀ p, (frames.getD fid default).captured = some p →
+    (frames.getD p default).localAlias = none
+
+instance {frames : Array Frame} {fid : FrameId} :
+    CoeFun (ShallowChain frames fid) (fun _ => ∀ p,
+      (frames.getD fid default).captured = some p →
+        p < fid ∧ (frames.getD p default).captured = none) := ⟨ShallowChain.captured⟩
 
 theorem ShallowChain.of_none {frames : Array Frame} {fid : FrameId}
-    (hc : (frames.getD fid default).captured = none) : ShallowChain frames fid :=
-  fun _ hp => absurd (hc ▸ hp) (by simp)
+    (hc : (frames.getD fid default).captured = none)
+    (ha : (frames.getD fid default).localAlias = none) : ShallowChain frames fid :=
+  ⟨fun _ hp => absurd (hc ▸ hp) (by simp), ha,
+   fun _ hp => absurd (hc ▸ hp) (by simp)⟩
+
+theorem ShallowChain.congr {a b : Array Frame} {fid : FrameId}
+    (hc : ShallowChain a fid) (hf : b.getD fid default = a.getD fid default)
+    (hp : ∀ p, p < fid → b.getD p default = a.getD p default) : ShallowChain b fid := by
+  refine ⟨?_, by rw [hf]; exact hc.localAlias, ?_⟩
+  · intro p hcap
+    rw [hf] at hcap
+    obtain ⟨hlt, hnone⟩ := hc p hcap
+    exact ⟨hlt, by rw [hp p hlt]; exact hnone⟩
+  · intro p hcap
+    rw [hf] at hcap
+    rw [hp p (hc p hcap).1]
+    exact hc.parentAlias p hcap
 
 /-- One activation conforms to one environment.
 
@@ -634,7 +657,8 @@ def BottomObj (frames : Array Frame) : List FrameId → Prop
 /-- What `getLocal`/`setLocal` need, derived from the head of `FramesOk`. Kept as
     its own definition so the local-access lemmas stay readable. -/
 def FrameOk (m : Machine) : Prop :=
-  m.stack ≠ [] ∧ curFid m < m.frames.size ∧ (curFrame m).captured = none
+  m.stack ≠ [] ∧ curFid m < m.frames.size ∧
+    (curFrame m).captured = none ∧ (curFrame m).localAlias = none
 
 /-- **What `FramesOk` gives about the current frame once the chain may be non-empty**
     (L243) — `FrameOk` with its third clause weakened from *no chain* to *a shallow
@@ -962,13 +986,17 @@ theorem StackCtx.push {h : Heap} {frames : Array Frame} {f : Frame} :
   | [], _ :: _, _, hs => hs.elim
   | _ :: _, [], _, hs => hs.elim
 
+theorem localFrameId_of_none {m : Machine} {p : FrameId}
+    (ha : (m.frames.getD p default).localAlias = none) : m.localFrameId p = p := by
+  simp only [Machine.localFrameId, Machine.localFrameId.go, ha]
+
 theorem getLocal_cur {m : Machine} (hf : FrameOk m) (x : String) :
     m.getLocal x = localOf (curFrame m) x := by
-  obtain ⟨_, _, hc⟩ := hf
-  simp only [curFrame, curFid] at hc
+  obtain ⟨_, _, hc, ha⟩ := hf
+  simp only [curFrame, curFid] at hc ha
   unfold Machine.getLocal
   unfold Machine.getLocal.go
-  simp only [localOf, curFrame, curFid, hc]
+  simp only [localOf, curFrame, curFid, localFrameId_of_none ha, hc]
   rfl
 
 -- `find?_filter_ne` now lives in `Proof/HeapFacts.lean` — the `defineMethod`
@@ -978,10 +1006,11 @@ open RubyCore.Proof in
 /-- One unfolding of the fuel at a frame with no chain — `setLocal_owner_start`'s
     shape on the read side. -/
 theorem getLocal_go_self {m : Machine} {p : FrameId} {x : String} {fuel : Nat}
-    (hp : (m.frames.getD p default).captured = none) :
+    (hp : (m.frames.getD p default).captured = none)
+    (ha : (m.frames.getD p default).localAlias = none) :
     Machine.getLocal.go m x p (fuel + 1) = localOf (m.frames.getD p default) x := by
   unfold Machine.getLocal.go
-  simp only [localOf, hp]
+  simp only [localOf, localFrameId_of_none ha, hp]
   rfl
 
 /-- **`getLocal` really is `localOfIn`, once the chain is known shallow** (L243).
@@ -998,21 +1027,24 @@ theorem getLocal_curIn {m : Machine} (hf : FrameShallow m) (x : String) :
   obtain ⟨t, ht⟩ : ∃ t, m.frames.size = t + 1 := ⟨m.frames.size - 1, by omega⟩
   unfold Machine.getLocal
   unfold Machine.getLocal.go
+  simp only [localFrameId_of_none (show (m.frames.getD (m.stack.headD 0) default).localAlias = none
+    from hsc.localAlias)]
   unfold localOfIn
   cases hcap : (m.frames.getD (m.stack.headD 0) default).captured with
   | none => simp only [curFrame, curFid, hcap]; rfl
   | some q =>
     have hq := (hsc q (by simpa [curFrame, curFid] using hcap)).2
-    simp only [curFrame, curFid, hcap, ht, getLocal_go_self hq]
+    simp only [curFrame, curFid, hcap, ht, getLocal_go_self hq (hsc.parentAlias q (by simpa [curFrame, curFid] using hcap))]
     rfl
 
 /-- With no captured chain, `setLocal`'s owner search returns the start frame on
     both branches, whichever frame that is. -/
 theorem setLocal_owner_start {m : Machine} {start : FrameId}
-    (hc : (m.frames.getD start default).captured = none) (x : String) (fuel : Nat) :
+    (hc : (m.frames.getD start default).captured = none)
+    (ha : (m.frames.getD start default).localAlias = none) (x : String) (fuel : Nat) :
     Machine.setLocal.owner m x start start (fuel + 1) = start := by
   unfold Machine.setLocal.owner
-  simp only [hc]
+  simp only [localFrameId_of_none ha, hc]
   split <;> rfl
 
 /-- `setLocal` is a `set!` at `curFid`, and nothing else. -/
@@ -1020,10 +1052,10 @@ theorem setLocal_frames {m : Machine} (hf : FrameOk m) (x : String) (v : Value) 
     (m.setLocal x v).frames =
       m.frames.set! (curFid m)
         { curFrame m with locals := (x, v) :: (curFrame m).locals.filter (·.1 != x) } := by
-  obtain ⟨_, _, hc⟩ := hf
-  simp only [curFrame, curFid] at hc ⊢
+  obtain ⟨_, _, hc, ha⟩ := hf
+  simp only [curFrame, curFid] at hc ha ⊢
   unfold Machine.setLocal
-  simp only [setLocal_owner_start hc x m.frames.size]
+  simp only [localFrameId_of_none ha, setLocal_owner_start hc ha x m.frames.size]
 
 theorem setLocal_stack {m : Machine} (x : String) (v : Value) :
     (m.setLocal x v).stack = m.stack := by simp [Machine.setLocal]
@@ -1034,11 +1066,11 @@ theorem curFid_setLocal {m : Machine} (x : String) (v : Value) :
 theorem FrameOk.setLocal {m : Machine} (hf : FrameOk m) (x : String) (v : Value) :
     FrameOk (m.setLocal x v) := by
   have hfr := setLocal_frames hf x v
-  obtain ⟨hne, hlt, hc⟩ := hf
+  obtain ⟨hne, hlt, hc, ha⟩ := hf
   refine ⟨by rw [setLocal_stack]; exact hne, ?_, ?_⟩
   · rw [curFid_setLocal, hfr]; simpa [Array.set!] using hlt
   · rw [curFrame, curFid_setLocal, hfr, getD_set!_self _ _ _ (by simpa using hlt)]
-    exact hc
+    exact ⟨hc, ha⟩
 
 /-- The one substantive fact about locals: assignment updates exactly `x`. -/
 theorem localOf_setLocal {m : Machine} (hf : FrameOk m) (x y : String) (v : Value) :
@@ -1081,7 +1113,7 @@ theorem FramesOk.frameShallow {m : Machine} {Γ : Env} {Γs : List Env}
 theorem FramesOk.frameOk {m : Machine} {Γ : Env} {Γs : List Env}
     (h : FramesOk m.heap m.frames m.stack (Γ :: Γs))
     (hc : (curFrame m).captured = none) : FrameOk m :=
-  ⟨h.frameShallow.1, h.frameShallow.2.1, hc⟩
+  ⟨h.frameShallow.1, h.frameShallow.2.1, hc, h.frameShallow.2.2.localAlias⟩
 
 /-- The empty chain, read off the context stack (L243). -/
 theorem StackCtx.captured_none {h : Heap} {frames : Array Frame} {fid : FrameId}
@@ -1164,11 +1196,9 @@ theorem FrameConforms.push {h : Heap} {frames : Array Frame} {f : Frame} {Γ : E
     FrameConforms h (frames.push f) Γ fid := by
   have hb : (frames.push f).getD fid default = frames.getD fid default :=
     getD_push_lt _ _ _ hlt
-  refine ⟨fun p hp => ?_, by rw [hb]; exact hc.2.1, fun x τ hx => ?_⟩
-  · rw [hb] at hp
-    obtain ⟨hplt, hcp⟩ := hc.1 p hp
-    exact ⟨hplt, by rw [getD_push_lt _ _ _ (Nat.lt_trans hplt hlt)]; exact hcp⟩
-  · rw [hb, localOfIn_push hlt rfl hc.1]; exact hc.2.2 x τ hx
+  refine ⟨hc.1.congr hb (fun p hp => getD_push_lt _ _ _ (Nat.lt_trans hp hlt)),
+    by rw [hb]; exact hc.2.1, fun x τ hx => ?_⟩
+  rw [hb, localOfIn_push hlt rfl hc.1]; exact hc.2.2 x τ hx
 
 /-- **A pushed frame disturbs no frame already on the stack** (L156). `FramesOk`
     reads frames by id and every stacked id is already in bounds
@@ -1343,10 +1373,8 @@ theorem FramesOk.frames_congr {hp : Heap} {a b : Array Frame} {bound : Nat}
     refine ⟨Nat.lt_of_lt_of_le hfb hbs, hlt2, ?_,
       FramesOk.frames_congr hbs heq hrest (fun g hg => hlt g (by simp [hg]))⟩
     have hbf := heq fid hfb
-    refine ⟨fun q hq => ?_, by rw [hbf]; exact hcf.2.1, fun x τ hx => ?_⟩
-    · rw [hbf] at hq
-      obtain ⟨hqf, hqc⟩ := hcf.1 q hq
-      exact ⟨hqf, by rw [heq q (Nat.lt_trans hqf hfb)]; exact hqc⟩
+    refine ⟨hcf.1.congr hbf (fun p hp => heq p (Nat.lt_trans hp hfb)),
+      by rw [hbf]; exact hcf.2.1, fun x τ hx => ?_⟩
     · have hread : localOfIn b (b.getD fid default) x = localOfIn a (a.getD fid default) x := by
         rw [hbf]
         unfold localOfIn
@@ -1384,7 +1412,10 @@ theorem FramesOk.setLocal {m : Machine} {Γ : Env} {Γs : List Env} {x : String}
     have hcapn : ((m.setLocal x v).frames.getD fid default).captured = none := by
       rw [hhead]
       simpa [curFrame, hcur] using hcap
-    refine ⟨by rw [hsz]; exact hfl, hgt, ⟨ShallowChain.of_none hcapn, ?_, ?_⟩, ?_⟩
+    have han : ((m.setLocal x v).frames.getD fid default).localAlias = none := by
+      rw [hhead]
+      exact hf.2.2.2
+    refine ⟨by rw [hsz]; exact hfl, hgt, ⟨ShallowChain.of_none hcapn han, ?_, ?_⟩, ?_⟩
     · -- `defmod` rides through `setLocal`, which only rewrites `locals`
       rw [hhead]
       have hcf' : curFrame m = m.frames.getD fid default := by simp [curFrame, hcur]
@@ -1836,18 +1867,18 @@ theorem typeAgree_constSetIn (h : Heap) (j : ObjId) (nm : String) (v : Value) :
 
     Stated over the pushed heap rather than over `Heap.alloc`'s pair so that the
     producer's consecution case can use it after destructuring; `alloc` is
-    literally `(h.objs.size, ⟨h.objs.push obj⟩)`. -/
+    literally `(h.objs.size, { h with objs := h.objs.push obj })`. -/
 theorem typeAgree_of_get {h h' : Heap} (hsz : h.objs.size ≤ h'.objs.size)
     (hget : ∀ o, o < h.objs.size → h'.get o = h.get o)
     -- L208: `get` agreement does **not** give this one (the fuel differs), so it is a
     -- hypothesis. Every caller has it from a lemma written for another consumer.
-    (hanc : ∀ k, ancestors h' k = ancestors h k) : TypeAgree h h' := by
+    (hanc : ∀ k, ancestors h' k = ancestors h k) (hn : NamesOk h) : TypeAgree h h' := by
   refine ⟨fun o ho => ?_, fun k hk => ?_, fun k hk => ?_, fun o ho hp => ?_,
     fun o ho hc => ?_, hanc, fun o ho xs hxs => by rw [hget o ho]; exact hxs,
     fun k hk => by simp only [Heap.classPayload?, hget k hk],
     fun o ho => by rw [hget o ho], hsz⟩
   · simp only [classOf, hget o ho]
-  · simp only [className, Heap.classPayload?, hget k hk]
+  · exact className_old hsz hget hn hk
   · simp only [Heap.classPayload?, hget k hk]
   · -- The `plainRecv` clause is where the *implication* earns its keep: the bound
     -- gets wider, so the two `Bool`s are not equal in general — an object whose
@@ -1865,7 +1896,7 @@ theorem typeAgree_of_get {h h' : Heap} (hsz : h.objs.size ≤ h'.objs.size)
     · -- L230: the sixth clause reads the class *name*, and the name is a function of
       -- `get` at the class id — which is in bounds because being a class puts it there.
       have hb2 : (h.get o).klass < h.objs.size := classPayload?_isSome_lt h2
-      simp only [className, Heap.classPayload?, hget _ hb2]
+      rw [className_old hsz hget hn hb2]
       exact h5
   · -- L185's clause, and the `get` agreement does all of it: `classRecv` reads the
     -- bound, two id comparisons and the payload, and all four are functions of
@@ -1915,7 +1946,9 @@ theorem bindIvar_get_ne {m : Machine} {x : String} {v : Value} {o o' : ObjId}
 theorem bindIvar_ivars_self {m : Machine} {x : String} {v : Value} {o : ObjId}
     (hsf : m.currentFrame.self = .ref o) (hb : o < m.heap.objs.size) :
     ((bindIvar m x v).heap.get o).ivars
-      = (x, v) :: (m.heap.get o).ivars.filter (·.1 != x) := by
+      = if (m.heap.get o).ivars.any (·.1 == x) then
+          (m.heap.get o).ivars.map (fun (key, old) => (key, if key == x then v else old))
+        else (x, v) :: (m.heap.get o).ivars := by
   unfold bindIvar
   rw [hsf]
   simp only [Heap.get, Heap.set]
@@ -1934,17 +1967,17 @@ theorem typeAgree_of_fields {h h' : Heap} (hsz : h.objs.size = h'.objs.size)
     (hfz : ∀ o, (h'.get o).frozen = (h.get o).frozen) : TypeAgree h h' := by
   have hcp : ∀ k, h'.classPayload? k = h.classPayload? k := by
     intro k; simp only [Heap.classPayload?, hpl k]
+  have hnames := classNames_congr hsz.symm (fun k => by rw [hcp k]) hkl hei
   refine ⟨fun o _ => ?_, fun k _ => ?_, fun k _ => ?_, fun o _ hp => ?_, fun o _ hc => ?_,
     fun k => ?_, ?_, ?_, ?_, ?_⟩
   · simp only [classOf, hei o, hkl o]
-  · simp only [className, hcp k]
+  · exact hnames k
   · rw [hcp k]
   · unfold plainRecv at hp ⊢
     rw [hkl o, hei o, hpl o, hfz o, hcp _, ← hsz]
     -- L230: and the class name, which `hcp` gives at every id (`className` is
     -- `classPayload?`'s name field).
-    rw [show className h' (h.get o).klass = className h (h.get o).klass from by
-      simp only [className, hcp _]]
+    rw [hnames]
     exact hp
   · unfold classRecv at hc ⊢
     rw [hcp o, ← hsz]
@@ -1966,19 +1999,19 @@ theorem typeAgree_of_fields {h h' : Heap} (hsz : h.objs.size = h'.objs.size)
     the two weaker fields. Recorded here rather than in `Proof/HeapGrow.lean` because
     `TypeAgree` is the type judgement's vocabulary, not the heap's. -/
 theorem typeAgree_of_plainGrow {h h' : Heap} (hg : PlainGrow h h')
-    (hsat : Saturated h) : TypeAgree h h' :=
-  typeAgree_of_get hg.size hg.get (fun k => hg.ancestors_eq hsat k)
+    (hsat : Saturated h) (hn : NamesOk h) : TypeAgree h h' :=
+  typeAgree_of_get hg.size hg.get (fun k => hg.ancestors_eq hsat k) hn
 
 /-- **`alloc`'s transport, as a corollary** (L208 moved it below `typeAgree_of_plainGrow`
     and gave it saturation). The sixth clause is a chain fact, and the only route to a
     chain fact across a *growing* heap is `PlainGrow.ancestors_eq`, which needs
     `Saturated h` — so the direct `typeAgree_of_get` proof this lemma used to have
     cannot be reconstructed from `Array.push` alone. -/
-theorem typeAgree_alloc (h : Heap) (obj : Object) (hsat : Saturated h)
+theorem typeAgree_alloc (h : Heap) (obj : Object) (hsat : Saturated h) (hn : NamesOk h)
     (hnc : ∀ c, obj.payload ≠ .cls c) (hiv : obj.ivars = [])
     (hkl : obj.klass < h.objs.size) (heig : obj.eigen = none) :
-    TypeAgree h ⟨h.objs.push obj⟩ :=
-  typeAgree_of_plainGrow (plainGrow_alloc h obj hnc hiv hkl heig) hsat
+    TypeAgree h { h with objs := h.objs.push obj } :=
+  typeAgree_of_plainGrow (plainGrow_alloc h obj hnc hiv hkl heig) hsat hn
 
 /-- Transport of the value judgement. **No longer `id`** (F1b): the `.ref` arm
     reads three of `TypeAgree`'s four clauses, which is what L137 threaded the

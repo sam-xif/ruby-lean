@@ -62,10 +62,10 @@ theorem InstanceSite.ivarOnly {κ : Ctx} {cn : String} {k : ObjId} {h h' : Heap}
     simpa only [instanceConstResolve, hi.constOwn_eq, constLookupFrom,
       hi.classPayload, hi.ancestors_eq, constLookup] using site.constants n
   · intro n hmem owner md hm
-    simp only [Interp.methodOn, hi.classPayload, hi.ancestors_eq] at hm
+    simp only [Interp.methodOn, hi.ancestors_eq, hi.lookup_go_eq] at hm
     exact site.names n hmem owner md hm
   · intro n hmem owner md hm
-    simp only [hi.classOf_eq, Interp.methodOn, hi.classPayload, hi.ancestors_eq] at hm
+    simp only [hi.classOf_eq, Interp.methodOn, hi.ancestors_eq, hi.lookup_go_eq] at hm
     exact site.classNames n hmem owner md hm
   · simpa only [hi.classOf_eq, classFrontB, hi.classPayload] using site.metaFront
   · simpa only [hi.classOf_eq, hi.eigen] using site.metaLeaf

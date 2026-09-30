@@ -31,7 +31,7 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
   have hconst : ConstsOk κ entry := constants ho hn rfl hd hm.constScope hscope ht.consts hm.consts
   exact {
     runtime := by intro h; cases h
-    mainSite := fun hr => mainSite (hm.mainSite hr) hc hm.sat hd
+    mainSite := fun hr => mainSite hm.names (hm.mainSite hr) hc hm.sat hd
     moduleBase := moduleBase hm.moduleBase hc hm.sat hmain.classLive
     allocators := allocators hc hm.sat hn hm.allocators
     globalConsts := globalConsts ho hm.globalConsts
@@ -51,12 +51,15 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
         subst cn
         exact ⟨m.heap.objs.size, instanceSite hm.moduleBase hc hm.sat hmain.classLive hm.core.moduleBasic⟩
     sat := saturated_fresh hc hm.sat ho
-    primitiveDispatch := (primitiveDispatch hc hm.sat _).trans hm.primitiveDispatch
+    primitiveDispatch := (primitiveDispatch hm.names hc hm.sat _).trans hm.primitiveDispatch
     primitiveErrors := (primitiveErrors hc hm.sat).trans hm.primitiveErrors
     stringPayload := stringPayload hc hm.stringPayload
     arrayPayload := arrayPayload hm.arrayPayload
     hashPayload := hashPayload hm.hashPayload
     core := core hm.core hm.sat hmain.classLive hn
+    names := namesOk hc hm.names hne
+    localAlias := by rw [current_frame]; rfl
+    capturedLive := by rw [current_frame]; exact .none
     frameInRange := frame_in_range
     env := env_empty
     selfSpine := spine_empty
@@ -83,11 +86,11 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
     nameFree := nameFree hc hm.sat hm.moduleBase hm.nameFree
     bareFree := by intro _ _ _ hself; cases hself
     missFree := by intro _ hself; cases hself
-    query := query hc hm.sat hne hq.query rfl hm.query
-    clsQuery := clsQuery hc hm.sat hne hq.clsQuery rfl hm.clsQuery
-    declCls := declared hc hm.sat hmain.classLive hn rfl hm.classes hm.declCls
+    query := query hm.names hc hm.sat hne hq.query rfl hm.query
+    clsQuery := clsQuery hm.names hc hm.sat hne hq.clsQuery rfl hm.clsQuery
+    declCls := declared hm.names hc hm.sat hmain.classLive hn rfl hm.classes hm.declCls
     baseChains := baseChains hm.core.classReady hm.sat hmain.classLive hn rfl hm.baseChains
-    nilQuery := nilQuery hc hm.sat hne hq.nilQuery rfl hm.nilQuery
+    nilQuery := nilQuery hm.names hc hm.sat hne hq.nilQuery rfl hm.nilQuery
     selfLive := self_live }
 
 #print axioms state

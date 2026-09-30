@@ -29,7 +29,7 @@ theorem method_source (hc : ChainsIn h) (hs : Saturated h) (k : ObjId) (mn : Str
       · rw [FreshClass.method_nonclass (freshModHeap_cp_oob (Nat.le_of_not_lt (not_lt_add_two hl hk he))),
           FreshClass.method_nonclass (classPayload?_oob h k hl)]
 
-theorem shadow_before_source (hc : ChainsIn h) (hs : Saturated h)
+theorem shadow_before_source (hnames : NamesOk h) (hc : ChainsIn h) (hs : Saturated h)
     (hne : name.isEmpty = false) {mn : String}
     (hn : crubyClassDefines name mn = false) (hen : crubyClassDefines ("#<Class:" ++ name ++ ">") mn = false)
     (k owner : ObjId)
@@ -40,17 +40,20 @@ theorem shadow_before_source (hc : ChainsIn h) (hs : Saturated h)
     simp only [source, ite_true] at hold
     rw [ancestors_fresh_e hc hs]
     apply FreshClass.shadow_cons
-    · rw [className_fresh_e]; exact hen
-    · rw [shadow_old (fun j hj => ClsGrow.ancestors_mem_lt hc hc.boot.2.1 j ((List.takeWhile_sublist _).mem hj))]
+    · simp [className_fresh_e, Interp.nativeSingletonMethod, Interp.featureMethod,
+        Interp.featureHas, Interp.libraryNamespace, freshModHeap_cp_e, hen]
+    · rw [shadow_old hnames (fun j hj => ClsGrow.ancestors_mem_lt hc hc.boot.2.1 j ((List.takeWhile_sublist _).mem hj))]
       exact hold
   · simp only [source, if_neg he] at hold
     by_cases hl : k < h.objs.size
-    · rw [shadow_before_old hc hs hl]; exact hold
+    · rw [shadow_before_old hnames hc hs hl]; exact hold
     · by_cases hk : k = h.objs.size
       · subst k
         rw [ancestors_fresh_k]
         apply FreshClass.shadow_cons
-        · rw [className_fresh_k (by simp only [hne, Bool.false_eq_true, not_false_eq_true])]; exact hn
+        · simp [className_fresh_k (q := name) (by simpa only [hne] using Bool.false_ne_true),
+            Interp.nativeSingletonMethod, Interp.featureMethod, Interp.featureHas,
+            Interp.libraryNamespace, freshModHeap_cp_k, hn]
         · rfl
       · have hp₀ := classPayload?_oob h k hl
         have hp₁ : (h₁).classPayload? k = none := freshModHeap_cp_oob (Nat.le_of_not_lt (not_lt_add_two hl hk he))
@@ -58,7 +61,7 @@ theorem shadow_before_source (hc : ChainsIn h) (hs : Saturated h)
         have ha₁ : ancestors h₁ k = [k] := by simp [ancestors, ancestors.go, hp₁]
         simp only [ha₀] at hold
         rw [ha₁]
-        have hname : className h₁ k = className h k := by simp only [className, hp₀, hp₁]
+        have hname : className h₁ k = className h k := by simp only [className, className.go, hp₀, hp₁]
         by_cases hko : k = owner
         · subst owner
           simp only [List.takeWhile_cons, bne_self_eq_false, Bool.false_eq_true,
@@ -66,7 +69,9 @@ theorem shadow_before_source (hc : ChainsIn h) (hs : Saturated h)
           rfl
         · have hkb : (k != owner) = true := by simpa only [bne_iff_ne] using hko
           simpa only [List.takeWhile_cons, hkb, ite_true, List.takeWhile_nil, Interp.crubyShadow,
-            List.firstM, hname] using hold
+            List.firstM, hname, Interp.nativeSingletonMethod, Interp.featureMethod,
+            Interp.featureHas, Interp.libraryNamespace, hp₀, hp₁, Option.bind_none,
+            Option.any_none, Bool.or_false] using hold
 
 #print axioms method_source
 #print axioms shadow_before_source

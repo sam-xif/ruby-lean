@@ -46,17 +46,15 @@ theorem ClassScopeReady.setLocal {cn : String} {m : Machine}
     (by simp only [defaultDefVis, currentFrame_setLocal_kind, currentFrame_setLocal_defVis])⟩
 
 theorem ClassScopeReady.ext {cn : String} {m n : Machine}
-    (h : ClassScopeReady cn m) (he : Ext m n) (hp : n.preludeMode = m.preludeMode) :
+    (h : ClassScopeReady cn m) (he : Ext m n) (hp : n.preludeMode = m.preludeMode)
+    (hch : Proof.ChainsIn m.heap) :
     ClassScopeReady cn n := by
   obtain ⟨k, h⟩ := h
   have hobj := he.get k h.live
   have hl : lookup n.heap (.ref k) "method_added" = lookup m.heap (.ref k) "method_added" := by
-    have hg (ks : List ObjId) : lookup.go n.heap "method_added" ks =
-        lookup.go m.heap "method_added" ks := by
-      induction ks with
-      | nil => rfl
-      | cons k ks ih => simp only [lookup.go, he.payload, ih]
-    simp only [lookup, classOf, hobj, he.ancestors, hg]
+    change Interp.methodOn n.heap (classOf n.heap (.ref k)) "method_added" =
+      Interp.methodOn m.heap (classOf m.heap (.ref k)) "method_added"
+    simp only [classOf, hobj, he.methodOn_eq hch]
   exact ⟨k, by
     refine ⟨?_, Nat.lt_of_lt_of_le h.live he.size, ?_, ?_, ?_, hp.trans h.phase, ?_, ?_⟩
     · simpa only [he.classNamed?_eq] using h.named

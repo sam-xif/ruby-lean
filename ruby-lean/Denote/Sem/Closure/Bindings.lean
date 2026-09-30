@@ -61,7 +61,8 @@ theorem frameBinds_setAt_mono (m : Machine) (x : String) (v : Value) (target i :
   · rw [frameBinds_setAt_ne m x v target i he]
     exact hy
 
-theorem BindingsPres.setLocal (m : Machine) (x : String) (v : Value) :
+theorem BindingsPres.setLocal (m : Machine) (x : String) (v : Value)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none) :
     BindingsPres m (m.setLocal x v) := by
   have hbound (i : FrameId) (y : String) (hy : frameBinds m i y = true) :
       frameBinds (m.setLocal x v) i y = true := by
@@ -80,18 +81,19 @@ theorem BindingsPres.setLocal (m : Machine) (x : String) (v : Value) :
         · simpa only [hi] using he
       exact (hbound i x hb).trans hb.symm
     · dsimp only [target] at hi
-      simp only [setLocal_eq_setAt, frameBinds, setAt, framesD_set!_ne _ _ _ _ hi]
+      simp only [setLocal_eq_setAt, localFrameId_of_noAlias ha, frameBinds, setAt, framesD_set!_ne _ _ _ _ hi]
   · rw [setLocal_eq_setAt, frameBinds_setAt_ne m x v _ i hy]
 
 theorem FrameSlots.setLocal {m : Machine} {names : List String} (hd : FrameSlots names m)
     (hl : m.stack.headD 0 < m.frames.size)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none)
     (hc : (m.frames.getD (m.stack.headD 0) default).captured = none) (x : String) (v : Value) :
     FrameSlots (x :: names) (m.setLocal x v) := by
   have ho : Machine.setLocal.owner m x (m.stack.headD 0) (m.stack.headD 0) (m.frames.size + 1) =
-      m.stack.headD 0 := by simp only [Machine.setLocal.owner, hc, ite_self]
+      m.stack.headD 0 := by simp only [Machine.setLocal.owner, localFrameId_of_noAlias ha, hc, ite_self]
   intro y
   change frameBinds (m.setLocal x v) (m.stack.headD 0) y = _
-  rw [setLocal_eq_setAt, ho]
+  rw [setLocal_eq_setAt, localFrameId_of_noAlias ha, ho]
   by_cases hy : y = x
   · subst y
     simp only [frameBinds, ← List.isSome_find?, setAt_find_self m x v _ hl,
@@ -101,11 +103,12 @@ theorem FrameSlots.setLocal {m : Machine} {names : List String} (hd : FrameSlots
 
 theorem frameBinds_setLocal_self (m : Machine) (x : String) (v : Value)
     (hl : m.stack.headD 0 < m.frames.size)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none)
     (hc : (m.frames.getD (m.stack.headD 0) default).captured = none) :
     frameBinds (m.setLocal x v) (m.stack.headD 0) x = true := by
-  rw [setLocal_eq_setAt]
+  rw [setLocal_eq_setAt, localFrameId_of_noAlias ha]
   have ho : Machine.setLocal.owner m x (m.stack.headD 0) (m.stack.headD 0) (m.frames.size + 1) =
-      m.stack.headD 0 := by simp only [Machine.setLocal.owner, hc, ite_self]
+      m.stack.headD 0 := by simp only [Machine.setLocal.owner, localFrameId_of_noAlias ha, hc, ite_self]
   simp only [ho, frameBinds, ← List.isSome_find?, setAt_find_self m x v _ hl, Option.isSome_some]
 
 #print axioms setLocal_owner_bound_or_start

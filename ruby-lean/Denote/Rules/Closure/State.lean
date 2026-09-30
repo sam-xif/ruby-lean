@@ -14,6 +14,7 @@ theorem requiredClosureFrame_state_of_env {κ : Ctx} {Γ Γb : Env} {I : Ty}
     {m : Machine} {cl : Closure} {ps : List SigParam} {args : List Value}
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I) (ha : κ.asms = [])
     (hscope : ClosureScopeEq m cl)
+    (hlive : CaptureLive m cl.captured)
     (henv : EnvOk Γb (pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)))
     (hk : ∀ x, constGet? (κ.withFrame none) x = constGet? κ x) :
     StateOk (κ.withoutRuntimeScope.withFrame none) Γb I
@@ -28,6 +29,9 @@ theorem requiredClosureFrame_state_of_env {κ : Ctx} {Γ Γb : Env} {I : Ty}
   · simp [FrameInRange, pushMethodFrame]
   · exact henv
   · simp [FrameOk, currentFrame_pushMethodFrame, requiredClosureFrame]
+  · simp [currentFrame_pushMethodFrame, requiredClosureFrame]
+  · simpa only [currentFrame_pushMethodFrame, requiredClosureFrame] using
+      hlive.pushMethodFrame (requiredClosureFrame m cl (ps.map (·.1)) args)
 
 theorem requiredClosureFrame_state {κ : Ctx} {Γ cap : Env} {I : Ty}
     {m : Machine} {cl : Closure} {ps : List SigParam} {args : List Value}
@@ -41,7 +45,7 @@ theorem requiredClosureFrame_state {κ : Ctx} {Γ cap : Env} {I : Ty}
     (hk : ∀ x, constGet? (κ.withFrame none) x = constGet? κ x) :
     StateOk (κ.withoutRuntimeScope.withFrame none) (ps ++ blockLocals cl.locals ++ cap) I
       (pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) :=
-  requiredClosureFrame_state_of_env hm ht ha hscope
+  requiredClosureFrame_state_of_env hm ht ha hscope hlive
     (requiredClosureFrame_envOk hargs hlive hcap habs htypes) hk
 
 /-- The full state proof is attached to callClosure's actual next machine, including

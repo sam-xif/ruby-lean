@@ -8,7 +8,7 @@ namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
 theorem finishSend_no_initializer {m : Machine} {k : ObjId} {args : List Value}
-    (hc : PlainAllocator m.heap k) (hi : Interp.userInit? m.heap k = none) :
+    (hc : PlainAllocator m.heap k) (hi : userInit? m.heap k = none) :
     Interp.finishSend m (.ref k) .explicit "new" args .none =
       Interp.invoke.invokeDispatch m (.ref k) .explicit "new" args none [] := by
   obtain ⟨cp, hp, _⟩ := hc.payload
@@ -39,7 +39,7 @@ theorem default_constructor_resolved {κ : Ctx} {Γ : Env} {I J : Ty} {m : Machi
     (hm : StateOk κ Γ I m) (hc : PlainAllocator m.heap k) (hn : classNamed? m.heap cn = some k)
     (hd : NewDispatch m.heap (classOf m.heap (.ref k)))
     (hl : Interp.methodOn m.heap (classOf m.heap (.ref k)) "new" = some (owner, md))
-    (hi : Interp.userInit? m.heap k = none) (hk : m.kont = []) (hj : nilFieldsB J = true) :
+    (hi : userInit? m.heap k = none) (hk : m.kont = []) (hj : nilFieldsB J = true) :
     StepSpec m Γ (.inst cn J) (Interp.finishSend m (.ref k) .explicit "new" [] .none) κ I := by
   obtain ⟨hb, hu, hv, hp, hs⟩ := hd.found owner md hl
   rw [finishSend_no_initializer hc hi,

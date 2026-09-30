@@ -55,11 +55,12 @@ def blamePrefixes : List String :=
   ["Parameter '", "Return value:", "T.let:", "T.cast:", "T.bind:",
    "T.assert_type!:", "Passed `nil` into T.must"]
 
-/-- The message carried by an exception object (empty when there is none) —
-    the same projection `Obs.observe` reports. -/
+/-- The stored String message used by Sorbet's enforcement exceptions. An
+    absent or non-String message does not establish blame; observing a custom
+    message object may execute Ruby and is a separate operation. -/
 def excMessage (h : Heap) : Value → String
   | .ref o => match (h.get o).payload with
-    | .exc s => s
+    | .exc message => (Builtins.strPayload? h message).getD ""
     | _ => ""
   | _ => ""
 

@@ -33,7 +33,7 @@ theorem StateOk.methodOn_root_of_absent {κ : Ctx} {Γ : Env} {I : Ty} {m : Mach
   | some ns =>
     have hp : prefixClearB κ.classes ns name = true := by simpa [noDeclaredSelectorB, ha] using hn
     obtain ⟨before, he, hb⟩ := hm.classChains.root_tail hm.core.rootNames hc hk hkind ha
-    rw [methodOn_eq_go, methodOn_eq_go, he, hm.core.classReady.objectChain]
+    rw [methodOn_eq_scan hm.core.classReady.chains, methodOn_eq_scan hm.core.classReady.chains, he, hm.core.classReady.objectChain]
     apply lookup_go_skip
     intro j hj
     obtain ⟨cn, hcn, hnamed⟩ := hb.cover hj
@@ -45,15 +45,15 @@ theorem StateOk.userInit_eq_root {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (hk : classNamed? m.heap c.name = some r)
     (hkind : c.isModule = false)
     (hn : noDeclaredSelectorB κ.classes c.name "initialize" = true) :
-    Interp.userInit? m.heap r = Interp.userInit? m.heap Boot.objectId := by
-  simp only [Interp.userInit?, hm.methodOn_root_of_absent hc hk hkind hn]
+    userInit? m.heap r = userInit? m.heap Boot.objectId := by
+  simp only [userInit?, hm.methodOn_root_of_absent hc hk hkind hn]
 
 theorem StateOk.userInit_none {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     {c : Cls} {r : ObjId} (hm : StateOk κ Γ I m) (hc : c ∈ κ.classes)
     (hk : classNamed? m.heap c.name = some r)
     (hkind : c.isModule = false)
     (hn : noDeclaredSelectorB κ.classes c.name "initialize" = true)
-    (hr : rootInitFreeB κ.defs = true) : Interp.userInit? m.heap r = none :=
+    (hr : rootInitFreeB κ.defs = true) : userInit? m.heap r = none :=
   (hm.userInit_eq_root hc hk hkind hn).trans (hm.rootInit hr)
 
 #print axioms StateOk.methodOn_root_of_absent

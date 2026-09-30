@@ -14,7 +14,7 @@ theorem point_constructor_run {m : Machine} {Γ : Env} {k : ObjId} {md : MethodD
     (hm : StateOk callerCtx Γ .ivar0 m) (hc : OrdinaryClass m.heap k)
     (site : InstanceSite callerCtx "Point" k m.heap)
     (hd : NewDispatch m.heap (classOf m.heap (.ref k))) (hmath : k ≠ Boot.mathId)
-    (code : InstanceMethodCode k "initialize" md) (hi : Interp.userInit? m.heap k = some md)
+    (code : InstanceMethodCode k "initialize" md) (hi : userInit? m.heap k = some md)
     (hp : md.params = [.req "x", .req "y"]) (hb : md.body = toRuby pointInitBody)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (hkont : m.kont = []) (x y : Int) :
     ∃ n, Interp.finishSend m (.ref k) .explicit "new" [.int x, .int y] .none = .next n ∧

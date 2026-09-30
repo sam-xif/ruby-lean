@@ -27,9 +27,10 @@ structure FrameScope where
   cref : List ObjId
   defmod : ObjId
   captured : Option FrameId
+  localAlias : Option FrameId
 
 def frameScope (f : RubyCore.Frame) : FrameScope :=
-  ⟨f.self, f.blk, f.cref, f.defmod, f.captured⟩
+  ⟨f.self, f.blk, f.cref, f.defmod, f.captured, f.localAlias⟩
 
 /-- Saved activations may receive captured-local writes; all other fields stay intact. -/
 def savedFrame (f : RubyCore.Frame) : RubyCore.Frame := { f with locals := [] }
@@ -72,6 +73,15 @@ theorem FramePres.captured {m n : Machine} (h : FramePres m n) (hs : n.stack = m
   · have hc := congrArg RubyCore.Frame.captured (h.saved i hi he)
     exact hc
 
+theorem FramePres.localAlias {m n : Machine} (h : FramePres m n) (hs : n.stack = m.stack)
+    (i : FrameId) (hi : i < m.frames.size) :
+    (n.frames.getD i default).localAlias = (m.frames.getD i default).localAlias := by
+  by_cases he : i = m.stack.headD 0
+  · subst i
+    simpa only [hs, frameScope] using congrArg FrameScope.localAlias h.scope
+  · have hal := congrArg RubyCore.Frame.localAlias (h.saved i hi he)
+    exact hal
+
 theorem FramePres.trans {m n p : Machine} (h : FramePres m n) (h' : FramePres n p)
     (hs : n.stack = m.stack) : FramePres m p := by
   refine ⟨Nat.le_trans h.size h'.size, h'.scope.trans h.scope, ?_, ?_, ?_,
@@ -86,14 +96,14 @@ theorem FramePres.trans {m n p : Machine} (h : FramePres m n) (h' : FramePres n 
   · intro hl i hi hn
     have hl' : CaptureLive n (some (n.stack.headD 0)) := by
       rw [hs]
-      exact hl.capture_preserved h.size (h.captured hs)
+      exact hl.capture_preserved h.size (h.captured hs) (h.localAlias hs)
     rw [h'.outside hl' i (Nat.lt_of_lt_of_le hi h.size) (by
       rw [hs]; exact fun hp => hn ((CapturePath.preserved (h.captured hs) hl i).mp hp)),
       h.outside hl i hi hn]
   · apply h.owners.trans h'.owners h.size
     intro hl
     rw [hs]
-    exact hl.capture_preserved h.size (h.captured hs)
+    exact hl.capture_preserved h.size (h.captured hs) (h.localAlias hs)
 
 theorem savedFrame_setAt (m : Machine) (x : String) (v : Value) (target i : FrameId) :
     savedFrame ((setAt m x v target).frames.getD i default) =
@@ -105,30 +115,31 @@ theorem savedFrame_setAt (m : Machine) (x : String) (v : Value) (target i : Fram
     · rw [setAt, framesD_set!_oob _ _ _ hi]
   · rw [setAt, framesD_set!_ne _ _ _ _ he]
 
-theorem FramePres.setLocal (m : Machine) (x : String) (v : Value) :
+theorem FramePres.setLocal (m : Machine) (x : String) (v : Value)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none) :
     FramePres m (m.setLocal x v) := by
-  refine ⟨by simp, ?_, ?_, ?_, ?_, .setLocal m x v, .setLocal m x v, .setLocal m x v⟩
+  refine ⟨by simp, ?_, ?_, ?_, ?_, .setLocal m x v ha, .setLocal m x v, .setLocal m x v ha⟩
   · simp only [setLocal_eq_setAt, setAt_stack, frameScope, setAt_self,
-      setAt_blk, setAt_cref, setAt_defmod, setAt_captured]
+      setAt_blk, setAt_cref, setAt_defmod, setAt_captured, setAt_localAlias]
   · intro hc i _ hn
     have ho : Machine.setLocal.owner m x (m.stack.headD 0) (m.stack.headD 0)
         (m.frames.size + 1) = m.stack.headD 0 := by
-      rw [Machine.setLocal.owner]
+      rw [Machine.setLocal.owner, localFrameId_of_noAlias ha]
       split
       · rfl
       · unfold RootUncaptured at hc
         rw [hc]
-    rw [setLocal_eq_setAt, ho]
+    rw [setLocal_eq_setAt, localFrameId_of_noAlias ha, ho]
     exact framesD_set!_ne _ _ _ _ hn
   · intro i _ _
     rw [setLocal_eq_setAt]
     exact savedFrame_setAt m x v _ i
-  · intro _ i _ hn
-    rw [setLocal_eq_setAt]
+  · intro hl i _ hn
+    rw [setLocal_eq_setAt, localFrameId_of_noAlias ha]
     apply framesD_set!_ne
     intro he
     rcases setLocal_owner_path m x (m.stack.headD 0) (m.frames.size + 1)
-      (m.stack.headD 0) with hr | hr
+      (m.stack.headD 0) hl with hr | hr
     · exact hn (he.symm ▸ hr.symm ▸ CapturePath.here _)
     · exact hn (he.symm ▸ hr)
 

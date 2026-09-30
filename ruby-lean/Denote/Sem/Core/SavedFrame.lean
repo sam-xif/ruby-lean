@@ -29,10 +29,16 @@ still require transport; this supports closure-valued locals without erasing the
 theorem EnvOk.reframe_uncaptured {Γ : Ratchet.Env} {m n : Machine} (he : EnvOk Γ m)
     (hm : FrameInRange m) (hn : FrameInRange n) (hu : RootUncaptured m)
     (hc : n.currentFrame = m.currentFrame)
+    (ha : m.currentFrame.localAlias = none)
     (hmove : ∀ p ∈ Γ, ∀ v, denM (Ratchet.stripAlias p.2) m v →
       denM (Ratchet.stripAlias p.2) n v) : EnvOk Γ n := by
+  have ham : (m.frames.getD (m.stack.headD 0) default).localAlias = none := by
+    rw [← currentFrame_headD hm.1]; exact ha
+  have han : (n.frames.getD (n.stack.headD 0) default).localAlias = none := by
+    rw [← currentFrame_headD hn.1, hc]; exact ha
   have hread (x : String) : n.getLocal x = m.getLocal x := by
-    simp only [Machine.getLocal, Machine.getLocal.go, ← currentFrame_headD hn.1,
+    simp only [Machine.getLocal, Machine.getLocal.go, localFrameId_of_noAlias ham,
+      localFrameId_of_noAlias han, ← currentFrame_headD hn.1,
       ← currentFrame_headD hm.1, hc]
     have hcap : m.currentFrame.captured = none := by
       rw [currentFrame_headD hm.1]; exact hu

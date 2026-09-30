@@ -37,6 +37,8 @@ theorem private_class_state {cn : String} {m : Machine}
     (fun h => False.elim (h rfl))
     (fun _ => rfl) (by simp [FrameInRange, privateCopy, pushMethodFrame]) he
     (by simpa only [FrameOk, classBodyCtx, hcf] using (show FrameOk none m from hm.frame))
+    (by simpa only [hcf] using hm.localAlias)
+    (by rw [hcf]; simp only; rw [hcap]; exact .none)
 
 theorem private_class_witness (hb : bootOkB = true) {cn : String}
     (hq : FreshClass.nativeFrameB ctx0 cn = true)

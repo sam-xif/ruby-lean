@@ -26,10 +26,14 @@ theorem CaptureLive.capture_preserved {m n : Machine}
     (hsize : m.frames.size ≤ n.frames.size)
     (hc : ∀ i, i < m.frames.size →
       (n.frames.getD i default).captured = (m.frames.getD i default).captured)
+    (ha : ∀ i, i < m.frames.size →
+      (n.frames.getD i default).localAlias = (m.frames.getD i default).localAlias)
     {cap : Option FrameId} (h : CaptureLive m cap) : CaptureLive n cap := by
   induction h with
   | none => exact .none
-  | @frame i hi _ ih => exact .frame (Nat.lt_of_lt_of_le hi hsize) (by rw [hc i hi]; exact ih)
+  | @frame i hi _ hal ih =>
+    exact .frame (Nat.lt_of_lt_of_le hi hsize) (by rw [hc i hi]; exact ih)
+      (by rw [ha i hi]; exact hal)
 
 theorem CapturePath.preserved {m n : Machine}
     (hc : ∀ i, i < m.frames.size →
@@ -38,7 +42,7 @@ theorem CapturePath.preserved {m n : Machine}
     CapturePath n cap j ↔ CapturePath m cap j := by
   induction hl with
   | none => exact ⟨fun h => False.elim (h.root rfl), fun h => False.elim (h.root rfl)⟩
-  | @frame i hi _ ih =>
+  | @frame i hi _ _ ih =>
     constructor
     · intro h
       cases h with
@@ -50,22 +54,26 @@ theorem CapturePath.preserved {m n : Machine}
       | next h => exact .next (by rw [hc i hi]; exact ih.mpr h)
 
 theorem setLocal_owner_path (m : Machine) (x : String) (start : FrameId) :
-    ∀ fuel fid, Machine.setLocal.owner m x start fid fuel = start ∨
+    ∀ fuel fid, CaptureLive m (some fid) →
+      Machine.setLocal.owner m x start fid fuel = start ∨
       CapturePath m (some fid) (Machine.setLocal.owner m x start fid fuel) := by
   intro fuel
   induction fuel with
-  | zero => intro _; exact Or.inl rfl
+  | zero => intro _ _; exact Or.inl rfl
   | succ fuel ih =>
-    intro fid
-    rw [Machine.setLocal.owner]
-    split
-    · exact Or.inr (.here _)
-    · cases hp : (m.frames.getD fid default).captured with
-      | none => exact Or.inl rfl
-      | some p =>
-        rcases ih p with he | hr
-        · exact Or.inl he
-        · exact Or.inr (.next (by simpa only [hp] using hr))
+    intro fid hl
+    cases hl with
+    | frame hi hcap hal =>
+      by_cases hb : (m.frames.getD fid default).locals.any (·.1 == x) = true
+      · simp only [Machine.setLocal.owner, localFrameId_of_noAlias hal, hb, if_true]
+        exact Or.inr (.here _)
+      · simp only [Machine.setLocal.owner, localFrameId_of_noAlias hal, hb, Bool.false_eq_true, if_false]
+        cases hp : (m.frames.getD fid default).captured with
+        | none => exact Or.inl rfl
+        | some p =>
+          rcases ih p (hp ▸ hcap) with he | hr
+          · exact Or.inl he
+          · exact Or.inr (.next (by simpa only [hp] using hr))
 
 #print axioms CapturePath.preserved
 #print axioms setLocal_owner_path

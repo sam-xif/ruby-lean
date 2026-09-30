@@ -124,6 +124,27 @@ they need the frame array.
 chain, so a name the block did not bind itself but its enclosing scope did resolves the way
 a read in the block body would — but starts at a *given* frame instead of the current one. -/
 
+/-- Local aliases depend only on the frame array, including their fuel bound. -/
+theorem localFrameId_frames_eq {m n : Machine} (hf : n.frames = m.frames)
+    (fid : FrameId) : n.localFrameId fid = m.localFrameId fid := by
+  have go : ∀ fuel fid, Machine.localFrameId.go n fid fuel =
+      Machine.localFrameId.go m fid fuel := by
+    intro fuel
+    induction fuel with
+    | zero => intro fid; rfl
+    | succ fuel ih =>
+      intro fid
+      simp only [Machine.localFrameId.go, hf]
+      split
+      · exact ih _
+      · rfl
+  simp only [Machine.localFrameId, hf, go]
+
+/-- A frame without an alias is its own local-storage frame. -/
+theorem localFrameId_of_noAlias {m : Machine} {fid : FrameId}
+    (ha : (m.frames.getD fid default).localAlias = none) : m.localFrameId fid = fid := by
+  simp only [Machine.localFrameId, Machine.localFrameId.go, ha]
+
 /-- `x`'s value as seen from frame `fid`, walking the `captured` chain outward. `nil` for an
 unbound name, matching `Machine.getLocal`. -/
 def frameLocal (m : Machine) (fid : FrameId) (x : String) : Value :=

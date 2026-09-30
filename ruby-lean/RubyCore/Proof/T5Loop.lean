@@ -65,7 +65,7 @@ def F0 : Frame :=
 /-- The method activation frame `x.m` pushes (its content is never read; only its
     presence + the frame id matter). -/
 def mF : Frame :=
-  { self := .ref inst, locals := [], defmod := clsA, cref := [], blk := none,
+  { self := .ref inst, locals := [], defmod := clsA, methodOwner := some clsA, cref := [], blk := none,
     kind := .method, meth := "m", captured := none, home := 0, lam := false }
 
 /-- Continuation shapes. -/
@@ -87,7 +87,7 @@ theorem getLocal_x (m : Machine) (hs : m.stack = [0])
   unfold Machine.getLocal
   simp only [hs, List.headD_cons]
   rw [Machine.getLocal.go.eq_def]
-  simp only [hf, F0]
+  simp only [Machine.localFrameId, Machine.localFrameId.go, hf, F0]
   rfl
 
 /-- The result config of the dispatch step (`x.m`): push the activation `mF`,
@@ -102,8 +102,10 @@ set_option maxHeartbeats 2000000 in
 theorem dispatch_step (m : Machine) (hctl : m.ctl = .value (.ref inst))
     (hkont : m.kont = kR) (hheap : m.heap = Hstar) :
     stepFn m = .next (mkNext m) := by
+  have hl : lookup Hstar (.ref inst) "m" = some (clsA, mMd) := by rfl
   simp only [stepFn, hctl, applyKont, hkont, kR, startArgs, finishSend, mkNext]
   rw [hheap, invoke.eq_def]
+  simp only [invoke.invokeDispatch, hl, mMd]
   rfl
 
 /-! ### The inductive invariant -/

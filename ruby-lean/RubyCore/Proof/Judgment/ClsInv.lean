@@ -22,46 +22,46 @@ open RubyCore.Proof.Static
 
 variable {h h' : Heap}
 
-theorem VTy.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h) {v : Value} {τ : Ty}
+theorem VTy.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h) (hnames : NamesOk h) {v : Value} {τ : Ty}
     (hv : VTy h v τ) : VTy h' v τ := by
   obtain ⟨σ, hvt, hsub⟩ := hv
-  exact ⟨σ, ClsGrow.valueTy_old hg hch hvt, hsub⟩
+  exact ⟨σ, ClsGrow.valueTy_old hg hch hnames hvt, hsub⟩
 
-theorem VTys.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h) :
+theorem VTys.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h) (hnames : NamesOk h) :
     ∀ {vs : List Value} {τs : List Ty}, VTys h vs τs → VTys h' vs τs
   | [], [], hv => hv
-  | _ :: _, _ :: _, hv => ⟨VTy.clsGrow hg hch hv.1, VTys.clsGrow hg hch hv.2⟩
+  | _ :: _, _ :: _, hv => ⟨VTy.clsGrow hg hch hnames hv.1, VTys.clsGrow hg hch hnames hv.2⟩
   | [], _ :: _, hv => absurd hv (by simp [VTys])
   | _ :: _, [], hv => absurd hv (by simp [VTys])
 
-theorem FrameConformsJ.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h)
+theorem FrameConformsJ.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h) (hnames : NamesOk h)
     {frames : Array Frame} {Γ : Env} {fid : FrameId}
     (hc : FrameConformsJ h frames Γ fid) : FrameConformsJ h' frames Γ fid := by
-  refine ⟨hc.1, ?_, fun x τ hx => VTy.clsGrow hg hch (hc.2.2 x τ hx)⟩
+  refine ⟨hc.1, ?_, fun x τ hx => VTy.clsGrow hg hch hnames (hc.2.2 x τ hx)⟩
   rw [hg.classPayload?_isSome_old (classPayload?_isSome_lt hc.2.1)]
   exact hc.2.1
 
-theorem FramesOkJ.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h)
+theorem FramesOkJ.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h) (hnames : NamesOk h)
     {frames : Array Frame} :
     ∀ {fids : List FrameId} {Γs : List Env},
       FramesOkJ h frames fids Γs → FramesOkJ h' frames fids Γs
   | [], [], hf => hf
   | _ :: _, _ :: _, hf =>
-      ⟨hf.1, hf.2.1, FrameConformsJ.clsGrow hg hch hf.2.2.1,
-       FramesOkJ.clsGrow hg hch hf.2.2.2⟩
+      ⟨hf.1, hf.2.1, FrameConformsJ.clsGrow hg hch hnames hf.2.2.1,
+       FramesOkJ.clsGrow hg hch hnames hf.2.2.2⟩
   | [], _ :: _, hf => absurd hf (by simp [FramesOkJ])
   | _ :: _, [], hf => absurd hf (by simp [FramesOkJ])
 
-theorem GlobalsOk.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h) {D : Decls}
+theorem GlobalsOk.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h) (hnames : NamesOk h) {D : Decls}
     {gs : List (String × Value)} (hgl : GlobalsOk D h gs) : GlobalsOk D h' gs := by
   intro x p σ hpg hf hgt
-  exact ClsGrow.valueTy_old hg hch (hgl x p σ hpg hf hgt)
+  exact ClsGrow.valueTy_old hg hch hnames (hgl x p σ hpg hf hgt)
 
 set_option maxHeartbeats 1000000 in
 /-- `StackCtx` across a class allocation — `StackCtx.heap_congr`, one relation
     over: the chain half runs on `ancestors_old` (the id bounds coming out of
     `valueTy_ref_lt` and membership), everything else on the pinned reads. -/
-theorem StackCtx.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h) (hsat : Saturated h)
+theorem StackCtx.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h) (hnames : NamesOk h) (hsat : Saturated h)
     -- J44: the module clause's `ModOffChains` quantifies over *every* chain of the
     -- new heap, including the fresh ids' — which `ClsGrow` deliberately says
     -- nothing about. The caller knows the fresh chains concretely (they are
@@ -87,11 +87,11 @@ theorem StackCtx.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h) (hsat : Saturate
           obtain ⟨cp, hcp, hism, hnm, heig⟩ := hs.2.2.2.2.2.2.2.2.2.2.1 hfc hnb
           exact ⟨cp, by rw [hg.payloadOld hlt]; exact hcp, hism, hnm,
             by rw [hg.get _ hlt]; exact heig⟩),
-        StackCtx.clsGrow hg hch hsat hmoff hs.2.2.2.2.2.2.2.2.2.2.2⟩
+        StackCtx.clsGrow hg hch hnames hsat hmoff hs.2.2.2.2.2.2.2.2.2.2.2⟩
       · rw [hg.classPayload?_isSome_old hlt]; exact hs.1
-      · rw [hg.className_old hlt]; exact hs.2.1
+      · rw [hg.className_old hnames hlt]; exact hs.2.1
       · obtain ⟨hv, hchain⟩ := hs.2.2.2.1 sc hsc
-        refine ⟨ClsGrow.valueTy_old hg hch hv, ?_⟩
+        refine ⟨ClsGrow.valueTy_old hg hch hnames hv, ?_⟩
         -- membership is the bound (`classOf_lt_of_mem_ancestors`)
         have hkb : classOf h (frames.getD fid default).self < h.objs.size :=
           classOf_lt_of_mem_ancestors hs.1 hchain
@@ -114,54 +114,54 @@ theorem StackCtx.clsGrow (hg : ClsGrow h h') (hch : ChainsIn h) (hsat : Saturate
     `VTy.clsGrow`; every other constructor is structural. -/
 theorem KontOkJ.clsGrow {ans : Ty} {A : SemAxioms} :
     ∀ {D : Decls} {Γs : List (JCtx × Env)} {τ : Ty} {k : List Kont},
-      KontOkJ ans A D h Γs τ k → ClsGrow h h' → ChainsIn h →
+      KontOkJ ans A D h Γs τ k → ClsGrow h h' → ChainsIn h → NamesOk h →
       KontOkJ ans A D h' Γs τ k := by
   intro D Γs τ k hk
   induction hk with
-  | nil hsub hr hl => intro _ _; exact .nil hsub hr hl
-  | seqNil hw _ hsu ih => intro hg hch; exact .seqNil hw (ih hg hch) hsu
-  | seqCons hm hs hw _ hsu ih => intro hg hch; exact .seqCons hm hs hw (ih hg hch) hsu
-  | asgn hib hw _ hsu ih => intro hg hch; exact .asgn hib hw (ih hg hch) hsu
+  | nil hsub hr hl => intro _ _ _; exact .nil hsub hr hl
+  | seqNil hw _ hsu ih => intro hg hch hnames; exact .seqNil hw (ih hg hch hnames) hsu
+  | seqCons hm hs hw _ hsu ih => intro hg hch hnames; exact .seqCons hm hs hw (ih hg hch hnames) hsu
+  | asgn hib hw _ hsu ih => intro hg hch hnames; exact .asgn hib hw (ih hg hch hnames) hsu
   | cpathK hb hsco hsw _ hsu ih =>
-      intro hg hch; exact .cpathK hb hsco hsw (ih hg hch) hsu
+      intro hg hch hnames; exact .cpathK hb hsco hsw (ih hg hch hnames) hsu
   | retValK hσ hms hsub _ hsu ih =>
-      intro hg hch; exact .retValK hσ hms hsub (ih hg hch) hsu
+      intro hg hch hnames; exact .retValK hσ hms hsub (ih hg hch hnames) hsu
   | casgnK hct hsct hrd hmods hclss hnc hbn hsub _ hsu ih =>
-      intro hg hch; exact .casgnK hct hsct hrd hmods hclss hnc hbn hsub (ih hg hch) hsu
+      intro hg hch hnames; exact .casgnK hct hsct hrd hmods hclss hnc hbn hsub (ih hg hch hnames) hsu
   | casgnMK hicb himb hnbk hret hmeth hct hsct hrd hmods hclss hnc hbn hsub _ hsu ih =>
-      intro hg hch
-      exact .casgnMK hicb himb hnbk hret hmeth hct hsct hrd hmods hclss hnc hbn hsub (ih hg hch) hsu
+      intro hg hch hnames
+      exact .casgnMK hicb himb hnbk hret hmeth hct hsct hrd hmods hclss hnc hbn hsub (ih hg hch hnames) hsu
   | hshKeyK hfv hmv hfp hmk hmvs hjv hpr hw _ hsu ih =>
-      intro hg hch; exact .hshKeyK hfv hmv hfp hmk hmvs hjv hpr hw (ih hg hch) hsu
+      intro hg hch hnames; exact .hshKeyK hfv hmv hfp hmk hmvs hjv hpr hw (ih hg hch hnames) hsu
   | hshValK hfp hmk hmvs hpr hw _ hsu ih =>
-      intro hg hch; exact .hshValK hfp hmk hmvs hpr hw (ih hg hch) hsu
+      intro hg hch hnames; exact .hshValK hfp hmk hmvs hpr hw (ih hg hch hnames) hsu
   | ifElseK hft hfe hmt hme ht he hjt hje hct hce hw _ hsu ih =>
-      intro hg hch
-      exact .ifElseK hft hfe hmt hme ht he hjt hje hct hce hw (ih hg hch) hsu
+      intro hg hch hnames
+      exact .ifElseK hft hfe hmt hme ht he hjt hje hct hce hw (ih hg hch hnames) hsu
   | ifNoneK hft hmt ht hjt hjn hct hce hw _ hsu ih =>
-      intro hg hch; exact .ifNoneK hft hmt ht hjt hjn hct hce hw (ih hg hch) hsu
-  | whileCond hl hw _ hsu ih => intro hg hch; exact .whileCond hl hw (ih hg hch) hsu
-  | whileBody hl hw _ hsu ih => intro hg hch; exact .whileBody hl hw (ih hg hch) hsu
+      intro hg hch hnames; exact .ifNoneK hft hmt ht hjt hjn hct hce hw (ih hg hch hnames) hsu
+  | whileCond hl hw _ hsu ih => intro hg hch hnames; exact .whileCond hl hw (ih hg hch hnames) hsu
+  | whileBody hl hw _ hsu ih => intro hg hch hnames; exact .whileBody hl hw (ih hg hch hnames) hsu
   | recvK hfm hm hargs hsg hsub hw _ hsu ih =>
-      intro hg hch; exact .recvK hfm hm hargs hsg hsub hw (ih hg hch) hsu
-  | recvK0 hsg hw _ hsu ih => intro hg hch; exact .recvK0 hsg hw (ih hg hch) hsu
+      intro hg hch hnames; exact .recvK hfm hm hargs hsg hsub hw (ih hg hch hnames) hsu
+  | recvK0 hsg hw _ hsu ih => intro hg hch hnames; exact .recvK0 hsg hw (ih hg hch hnames) hsu
   | argsK hrv hva hst hfm hm hrest hsr hsg hw _ hsu ih =>
-      intro hg hch
-      exact .argsK (VTy.clsGrow hg hch hrv) (VTys.clsGrow hg hch hva) hst hfm hm
-        hrest hsr hsg hw (ih hg hch) hsu
-  | frameK hrt hil _ ih => intro hg hch; exact .frameK hrt hil (ih hg hch)
+      intro hg hch hnames
+      exact .argsK (VTy.clsGrow hg hch hnames hrv) (VTys.clsGrow hg hch hnames hva) hst hfm hm
+        hrest hsr hsg hw (ih hg hch hnames) hsu
+  | frameK hrt hil _ ih => intro hg hch hnames; exact .frameK hrt hil (ih hg hch hnames)
   | asgnIvar hsc hw hcf _ hsu ih =>
-      intro hg hch; exact .asgnIvar hsc hw hcf (ih hg hch) hsu
+      intro hg hch hnames; exact .asgnIvar hsc hw hcf (ih hg hch hnames) hsu
   | asgnGvar hpg hgt hcf hw _ hsu ih =>
-      intro hg hch; exact .asgnGvar hpg hgt hcf hw (ih hg hch) hsu
+      intro hg hch hnames; exact .asgnGvar hpg hgt hcf hw (ih hg hch hnames) hsu
   | ifNarrowElseK hft hfe hmt hme hget ht he hjt hje2 hct hce hs0 hT hFn hFf hjw _ hsu ih =>
-      intro hg hch
+      intro hg hch hnames
       exact .ifNarrowElseK hft hfe hmt hme hget ht he hjt hje2 hct hce hs0 hT hFn hFf
-        hjw (ih hg hch) hsu
+        hjw (ih hg hch hnames) hsu
   | ifNarrowNoneK hft hmt hget ht hjt hjn hct hcb hs0 hT hjw _ hsu ih =>
-      intro hg hch
-      exact .ifNarrowNoneK hft hmt hget ht hjt hjn hct hcb hs0 hT hjw (ih hg hch) hsu
-  | arrK hfm hm hje hw _ hsu ih => intro hg hch; exact .arrK hfm hm hje hw (ih hg hch) hsu
+      intro hg hch hnames
+      exact .ifNarrowNoneK hft hmt hget ht hjt hjn hct hcb hs0 hT hjw (ih hg hch hnames) hsu
+  | arrK hfm hm hje hw _ hsu ih => intro hg hch hnames; exact .arrK hfm hm hje hw (ih hg hch hnames) hsu
 
 end Judgment
 end Proof

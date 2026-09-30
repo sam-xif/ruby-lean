@@ -15,7 +15,7 @@ theorem definedMethod_instanceCode {m : Machine} {k : ObjId} {name : String}
     (ho : m.currentFrame.defmod = k) (hc : m.currentFrame.cref = [k, Boot.objectId])
     (hk : m.currentFrame.kind = .classBody) (hv : m.currentFrame.defVis = .pub)
     (hp : m.preludeMode = false) : InstanceMethodCode k name (definedMethod m name ps body) := by
-  refine ⟨⟨ho, hc, rfl, rfl, rfl, rfl, hp⟩, ?_⟩
+  refine ⟨⟨ho, hc, rfl, rfl, rfl, rfl, hp, rfl⟩, ?_⟩
   simp only [definedMethod, hk, hv]
   split <;> rfl
 
@@ -35,7 +35,7 @@ the fresh-entry witness. Body typing remains a separate premise of admission. -/
 theorem scoped_defined_instanceCode {name : String} {ps : List RubyCore.Param}
     {code : RubyCore.Expr} {k : ObjId} (h : ClassScopeAt cn k m) :
     InstanceMethodCode k name (definedMethod m name ps code) := by
-  refine ⟨⟨h.owner, h.cref, rfl, rfl, rfl, rfl, h.phase⟩, ?_⟩
+  refine ⟨⟨h.owner, h.cref, rfl, rfl, rfl, rfl, h.phase, rfl⟩, ?_⟩
   change (if name == "initialize" then .priv else defaultDefVis m) = _
   rw [h.visibility]
 

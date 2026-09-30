@@ -40,8 +40,8 @@ theorem FreshClass.ordinary {h : Heap} {d : ObjId} {name q : String} {e : ObjId}
   have hchain : ancestors (freshClsHeap h d name q e) h.objs.size =
       [h.objs.size, Boot.objectId, Boot.kernelId, Boot.basicObjectId] := by
     rw [Proof.Judgment.ancestors_freshC_k hc.chains hs, hc.objectChain]
-  have hne (k : ObjId) (hk : k ≤ Boot.procId) : h.objs.size ≠ k :=
-    (Nat.ne_of_lt (Nat.lt_of_le_of_lt hk hc.chains.boot.2.2.2.1)).symm
+  have hne (k : ObjId) (hk : k ≤ Boot.yielderId) : h.objs.size ≠ k :=
+    (Nat.ne_of_lt (Nat.lt_of_le_of_lt hk hc.bootEnd)).symm
   refine ⟨?_, hne _ (by decide), hne _ (by decide), ?_, hchain, ?_, ?_⟩
   · rw [Proof.Judgment.freshClsHeap_size]
     exact Nat.lt_add_of_pos_right (by decide : 0 < 2)
@@ -49,12 +49,12 @@ theorem FreshClass.ordinary {h : Heap} {d : ObjId} {name q : String} {e : ObjId}
   · simp [Builtins.allocatableCore, hchain,
       Boot.objectId, Boot.kernelId, Boot.basicObjectId, Boot.stringId, Boot.arrayId,
       Boot.hashId, Boot.exceptionId]
-    exact ⟨⟨⟨hne _ (by decide), hne _ (by decide)⟩, hne _ (by decide)⟩, hne _ (by decide)⟩
+    (repeat' apply And.intro) <;> exact hne _ (by decide)
   · simp [Builtins.payloadCoreClasses, hchain,
       Boot.objectId, Boot.kernelId, Boot.basicObjectId, Boot.stringId, Boot.arrayId,
-      Boot.hashId, Boot.procId, Boot.integerId, Boot.floatId, Boot.symbolId, Boot.exceptionId]
-    exact ⟨⟨hne _ (by decide), hne _ (by decide), hne _ (by decide), hne _ (by decide),
-      hne _ (by decide), hne _ (by decide), hne _ (by decide)⟩, hne _ (by decide)⟩
+      Boot.hashId, Boot.procId, Boot.integerId, Boot.floatId, Boot.symbolId, Boot.exceptionId,
+      Boot.rationalId, Boot.complexId, Boot.enumeratorId, Boot.generatorId, Boot.yielderId]
+    (repeat' apply And.intro) <;> exact hne _ (by decide)
 
 #print axioms FreshClass.ordinary
 end Ratchet.Denote

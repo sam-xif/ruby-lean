@@ -9,6 +9,12 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
+theorem _root_.Ratchet.Denote.CaptureLive.pushMethodFrame {m : Machine} {cap : Option FrameId}
+    (h : CaptureLive m cap) (f : RubyCore.Frame) : CaptureLive (pushMethodFrame m f) cap := by
+  apply h.frames_preserved (by simp [pushMethodFrame])
+  intro i hi
+  simp [pushMethodFrame, Array.getD, hi, Nat.lt_succ_of_lt hi, Array.getElem_push_lt]
+
 theorem currentFrame_pushMethodFrame (m : Machine) (f : RubyCore.Frame) :
     (pushMethodFrame m f).currentFrame = f := by
   simp [pushMethodFrame, Machine.currentFrame, Array.getD_eq_getD_getElem?]
@@ -27,7 +33,8 @@ theorem method_enter_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m : Machine}
     (hcap : f.captured = m.currentFrame.captured)
     (hvis : κ.scope.runtimeClass ≠ none → defaultDefVis (pushMethodFrame m f) = .pub)
     (hk : ∀ x, constGet? (κ.withFrame fr) x = constGet? κ x)
-    (he : EnvOk Γb (pushMethodFrame m f)) (hf : FrameOk fr (pushMethodFrame m f)) :
+    (he : EnvOk Γb (pushMethodFrame m f)) (hf : FrameOk fr (pushMethodFrame m f))
+    (hal : f.localAlias = none) :
     StateOk (κ.withFrame fr) Γb I (pushMethodFrame m f) :=
   StateOk_reframe hm ht ha rfl
     (by rw [currentFrame_pushMethodFrame]; exact hs)
@@ -36,6 +43,8 @@ theorem method_enter_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m : Machine}
     (by rw [currentFrame_pushMethodFrame]; exact hd)
     (by rw [currentFrame_pushMethodFrame]; exact hcap) rfl hvis hk
     (by simp [FrameInRange, pushMethodFrame]) he hf
+    (by rw [currentFrame_pushMethodFrame]; exact hal)
+    (by rw [currentFrame_pushMethodFrame, hcap]; exact hm.capturedLive.pushMethodFrame f)
 
 theorem method_pop_currentFrame {m n : Machine} {f : RubyCore.Frame}
     (hl : FrameInRange m) (hc : f.captured = none)
@@ -83,6 +92,10 @@ theorem method_pop_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m n : Machine}
       ⟨by rw [hp.stack]; exact hm.frameInRange.1,
        by rw [hp.stack]; exact Nat.lt_of_lt_of_le hm.frameInRange.2 hp.frames.size⟩)
     (method_pop_envOk hm.frameInRange.2 hu hc h hm.env hΓ) hframe
+    (by rw [hpop]; exact hm.localAlias)
+    (by rw [hpop]
+        exact hm.capturedLive.capture_preserved hp.frames.size
+          (hp.frames.captured hp.stack) (hp.frames.localAlias hp.stack))
   exact hout
 
 #print axioms method_enter_state
@@ -115,7 +128,7 @@ theorem required_method_runSpec {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : Machi
       (congrArg FrameScope.blk hscope) (congrArg FrameScope.cref hscope)
       (congrArg FrameScope.defmod hscope) (congrArg FrameScope.captured hscope)
       (fun _ => by simp only [defaultDefVis, currentFrame_pushMethodFrame, f, requiredFrame]; rfl) hk
-      (requiredFrame_envOk m _ name md ps args hlen hargs hps) hframe
+      (requiredFrame_envOk m _ name md ps args hlen hargs hps) hframe rfl
   have hu : RootUncaptured m := by
     unfold RootUncaptured
     rw [rootFrame_eq_currentFrame hm.frameInRange.1]

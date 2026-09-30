@@ -11,11 +11,12 @@ open RubyCore RubyCore.Proof RubyCore.Proof.Judgment
     payload := .cls { superclass := some parent, name := q, isModule := false } }
 
 @[reducible] def classObjE (q : String) (parent e : ObjId) : Object :=
-  { classObj q parent with eigen := some e }
+  { classObj q parent with eigen := some e, revision := 1 }
 
 def heap (h : Heap) (d : ObjId) (name q : String) (parent eParent : ObjId) : Heap :=
-  ⟨(((hmidOf h d name).objs.push (classObj q parent)).push (eigObjC q eParent)).set!
-    h.objs.size (classObjE q parent (h.objs.size + 1))⟩
+  { hmidOf h d name with
+    objs := (((hmidOf h d name).objs.push (classObj q parent)).push (eigObjC q eParent)).set!
+      h.objs.size (classObjE q parent (h.objs.size + 1)) }
 
 def machine (m : Machine) (d : ObjId) (cref : List ObjId) (name q : String)
     (parent eParent : ObjId) (body : RubyCore.Expr) : Machine :=
@@ -93,17 +94,14 @@ theorem classOf_eigen {h : Heap} {d parent eParent : ObjId} {name q : String} :
 
 theorem className_class {h : Heap} {d parent eParent : ObjId} {name q : String}
     (hq : q.isEmpty = false) : className (heap h d name q parent eParent) h.objs.size = q := by
-  simp only [className, Heap.classPayload?, get_class, classObjE, hq, Bool.false_eq_true, ↓reduceIte]
+  simp [className, className.go, classPath, classPath.go, Heap.classPayload?, get_class, classObjE, classObj, hq]
 
 theorem className_eigen {h : Heap} {d parent eParent : ObjId} {name q : String} :
     className (heap h d name q parent eParent) (h.objs.size + 1) = "#<Class:" ++ q ++ ">" := by
-  simp only [className, Heap.classPayload?, get_eigen, eigObjC]
-  change (if ("#<Class:" ++ q ++ ">").isEmpty then _ else _) = _
-  rw [if_neg (by
-    simp only [String.isEmpty_iff]
-    intro he
-    have hl := congrArg String.length he
-    simp [String.length_append] at hl)]
+  have hne : ("#<Class:" ++ q ++ ">").isEmpty = false := by
+    simp [String.isEmpty_iff, String.length_append]
+  simp [className, className.go, classPath, classPath.go, Heap.classPayload?, get_eigen,
+    eigObjC, hne]
 
 /-- Factor alloc/register/alloc/attach into the same heap used by the semantic proofs. -/
 theorem heap_machine (h : Heap) (d : ObjId) (name q : String) (parent eParent : ObjId)
@@ -124,7 +122,8 @@ theorem heap_machine (h : Heap) (d : ObjId) (name q : String) (parent eParent : 
     rw [objs_getD_push_lt _ _ h.objs.size (by rw [Array.size_push, hmid_size]; omega),
       show h.objs.size = (hmidOf h d name).objs.size from (hmid_size h d name).symm,
       objs_getD_push_self]
-  rw [hget, hsz]
+  rw [hsz]
+  simp only [Heap.set, hget]
   rfl
 
 #print axioms heap_machine

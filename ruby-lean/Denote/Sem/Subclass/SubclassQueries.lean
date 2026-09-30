@@ -36,7 +36,7 @@ theorem class_site_source (hc : ChainsIn h) (hp : (h.classPayload? parent).isSom
         · rw [cp_oob (Nat.le_of_not_lt (Judgment.not_lt_add_two hl hok hoe))] at hp'
           contradiction
 
-theorem primitiveDispatch (hc : ChainsIn h) (hs : Saturated h) (free : String → Bool) :
+theorem primitiveDispatch (hnames : NamesOk h) (hc : ChainsIn h) (hs : Saturated h) (free : String → Bool) :
     primitiveDispatchB h₁ free = primitiveDispatchB h free := by
   unfold primitiveDispatchB
   congr 1
@@ -50,10 +50,10 @@ theorem primitiveDispatch (hc : ChainsIn h) (hs : Saturated h) (free : String �
     have hbound : k ≤ Boot.procId := of_decide_eq_true (List.all_eq_true.mp
       (by decide : dispatchMethods.all (fun p => decide (p.1 ≤ Boot.procId)) = true) _ hp)
     have hk := Nat.lt_of_le_of_lt hbound hc.boot.2.2.2.1
-    simp only [method_old hc hs hk, shadow_before_old hc hs hk]
+    simp only [method_old hc hs hk, shadow_before_old hnames hc hs hk]
   · have hk : Boot.arrayId < h.objs.size :=
       Nat.lt_of_le_of_lt (by decide : Boot.arrayId ≤ Boot.procId) hc.boot.2.2.2.1
-    simp only [eachDispatchB, method_old hc hs hk]
+    simp only [eachDispatchB, method_old hc hs hk, shadow_before_old hnames hc hs hk]
 
 theorem primitiveErrors (hc : ChainsIn h) (hs : Saturated h) : primitiveErrorsB h₁ = primitiveErrorsB h := by
   apply Bool.eq_iff_iff.mpr
@@ -70,7 +70,7 @@ theorem primitiveErrors (hc : ChainsIn h) (hs : Saturated h) : primitiveErrorsB 
 
 variable {κ : Ctx} {m n : Machine}
 
-theorem query (hc : ChainsIn m.heap) (hs : Saturated m.heap)
+theorem query (hnames : NamesOk m.heap) (hc : ChainsIn m.heap) (hs : Saturated m.heap)
     (hp : parent < m.heap.objs.size) (he : eParent < m.heap.objs.size) (hne : q.isEmpty = false)
     (hn : ∀ mn bid, (mn, bid) ∈ queryBuiltins → nameFreeN κ mn = true → FreshClass.NativeQuiet q mn)
     (hh : n.heap = heap m.heap d name q parent eParent) (hq : QueryOk κ m) : QueryOk κ n := by
@@ -83,12 +83,12 @@ theorem query (hc : ChainsIn m.heap) (hs : Saturated m.heap)
     obtain ⟨hb, hu, hv, hp', hsh⟩ := hFound owner md hf
     refine ⟨hb, hu, hv, hp', ?_⟩
     rw [hh]
-    exact shadow_before_source hc hs hp he hne hn₁ hn₂ k owner hsh
+    exact shadow_before_source hnames hc hs hp he hne hn₁ hn₂ k owner hsh
   · intro hm owner md hf
     rw [hh, method_source hc hs hp he] at hm hf
     exact hMiss hm owner md hf
 
-theorem clsQuery (hc : ChainsIn m.heap) (hs : Saturated m.heap)
+theorem clsQuery (hnames : NamesOk m.heap) (hc : ChainsIn m.heap) (hs : Saturated m.heap)
     (hp : (m.heap.classPayload? parent).isSome = true) (he : (m.heap.get parent).eigen = some eParent)
     (hne : q.isEmpty = false)
     (hn : ∀ mn bid, (mn, bid) ∈ clsQueryBuiltins → nameFreeN κ mn = true → FreshClass.NativeQuiet q mn)
@@ -105,12 +105,12 @@ theorem clsQuery (hc : ChainsIn m.heap) (hs : Saturated m.heap)
     obtain ⟨hb, hu, hv, hp', hsh⟩ := hFound owner md hf
     refine ⟨hb, hu, hv, hp', ?_⟩
     rw [hh]
-    exact shadow_before_source hc hs hpl hel hne hn₁ hn₂ k owner hsh
+    exact shadow_before_source hnames hc hs hpl hel hne hn₁ hn₂ k owner hsh
   · intro hm owner md hf
     rw [hh, method_source hc hs hpl hel] at hm hf
     exact hMiss hm owner md hf
 
-theorem nilQuery (hc : ChainsIn m.heap) (hs : Saturated m.heap)
+theorem nilQuery (hnames : NamesOk m.heap) (hc : ChainsIn m.heap) (hs : Saturated m.heap)
     (hp : parent < m.heap.objs.size) (he : eParent < m.heap.objs.size) (hne : q.isEmpty = false)
     (hn : nameFreeN κ "nil?" = true → FreshClass.NativeQuiet q "nil?")
     (hh : n.heap = heap m.heap d name q parent eParent) (hq : NilQueryOk κ m) : NilQueryOk κ n := by
@@ -123,7 +123,7 @@ theorem nilQuery (hc : ChainsIn m.heap) (hs : Saturated m.heap)
     obtain ⟨hb, hu, hv, hp', hsh⟩ := hFound owner md hf
     refine ⟨hb, hu, hv, hp', ?_⟩
     rw [hh]
-    exact shadow_before_source hc hs hp he hne hn₁ hn₂ k owner hsh
+    exact shadow_before_source hnames hc hs hp he hne hn₁ hn₂ k owner hsh
   · intro hm owner md hf
     rw [hh, method_source hc hs hp he] at hm hf
     exact hMiss hm owner md hf

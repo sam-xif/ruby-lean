@@ -50,15 +50,16 @@ set_option maxHeartbeats 1600000
 
 /-- The class object once its eigenclass is realized. -/
 @[reducible] def clsObjE (q : String) (e : ObjId) : Object :=
-  { clsObj q with eigen := some e }
+  { clsObj q with eigen := some e, revision := 1 }
 
 /-! ## The composite, factored over `hmid` -/
 
 /-- The composite heap: two pushes and a fresh-id `set!` over `hmid`, exactly
     `freshModHeap`'s spelling at the class literals. -/
 def freshClsHeap (h₀ : Heap) (d : ObjId) (name q : String) (eO : ObjId) : Heap :=
-  ⟨(((hmidOf h₀ d name).objs.push (clsObj q)).push (eigObjC q eO)).set!
-      h₀.objs.size (clsObjE q (h₀.objs.size + 1))⟩
+  { hmidOf h₀ d name with
+    objs := (((hmidOf h₀ d name).objs.push (clsObj q)).push (eigObjC q eO)).set!
+      h₀.objs.size (clsObjE q (h₀.objs.size + 1)) }
 
 /-- **The factoring**: the machine's alloc → register → alloc → eigen-set order
     equals the factored composite. -/
@@ -88,6 +89,7 @@ theorem freshClsHeap_machine (h₀ : Heap) (d : ObjId) (name q : String) (eO : O
       show h₀.objs.size = (hmidOf h₀ d name).objs.size from (hmid_size h₀ d name).symm,
       objs_getD_push_self]
   rw [hgetk, hsz2]
+  simp only [Heap.set, hgetk]
   rfl
 
 /-! ## The step, reduced -/
@@ -117,18 +119,23 @@ theorem eigenclassOf_go_some {m : Machine} {o e : ObjId} {f : Nat}
   unfold eigenclassOf.go
   rw [he]
 
+/-- Current runtime singleton representation, separate from the named synthetic
+heap used by the legacy table-transport lemmas. -/
+def attachedClassEigen (o eO : ObjId) : Object :=
+  { klass := Boot.classId,
+    payload := .cls { superclass := some eO, name := "", attached := some o } }
+
 /-- `eigenclassOf` at the just-allocated class: the eigen is `none`, the
     superclass is `Object`, whose eigenclass is realized (`heO`) — so the
     metaclass parent is a pure read and one eigenclass is allocated and
     attached. -/
 theorem eigenclassOf_clsObj {mm : Machine} {o eO : ObjId} {q : String}
     (hget : mm.heap.get o = clsObj q)
-    (hany : anyToS mm.heap o = q)
     (heO : (mm.heap.get Boot.objectId).eigen = some eO)
     (hpos : 0 < mm.heap.objs.size) :
     eigenclassOf mm o =
       (mm.heap.objs.size,
-       { mm with heap := (attachEigen (mm.heap.alloc (eigObjC q eO)).2 o
+       { mm with heap := (attachEigen (mm.heap.alloc (attachedClassEigen o eO)).2 o
           mm.heap.objs.size) }) := by
   obtain ⟨n, hn⟩ : ∃ n, mm.heap.objs.size = n + 1 :=
     ⟨mm.heap.objs.size - 1, (Nat.succ_pred_eq_of_pos hpos).symm⟩
@@ -139,83 +146,36 @@ theorem eigenclassOf_clsObj {mm : Machine} {o eO : ObjId} {q : String}
   simp only [clsObj]
   rw [show eigenclassOf.go mm Boot.objectId (n + 1) = (eO, mm) from
     eigenclassOf_go_some heO]
-  simp only [eigObjC, hany, attachEigen]
+  simp only [attachedClassEigen, attachEigen]
   rw [← hn]
   rfl
 
-set_option maxHeartbeats 4000000 in
-/-- The fresh path of `evalExpr` on a superclass-free `class'`, reduced to the
-    explicit machine (J53). `heO0` is the boot groundwork: `Object`'s eigenclass
-    is realized, so the metaclass walk reads it instead of allocating. -/
-theorem evalExpr_class_fresh {m : Machine} {name q : String} {eO : ObjId} {body : Expr}
-    (hmiss : constOwn m.heap m.currentFrame.defmod name = none)
-    (hdlt : m.currentFrame.defmod < m.heap.objs.size)
-    (hobj : Boot.objectId < m.heap.objs.size)
-    (heO0 : (m.heap.get Boot.objectId).eigen = some eO)
-    (hq : (if m.currentFrame.defmod == Boot.objectId then name
-           else className m.heap m.currentFrame.defmod ++ "::" ++ name) = q)
-    (hqne : ¬ q.isEmpty = true) :
+/-- The anonymous class allocated by a superclass-free class statement inherits
+Object's allocator/readiness metadata before constant naming. -/
+def freshClassRegistered (m : Machine) (name : String) : Heap :=
+  let obj : Object :=
+    { klass := Boot.classId,
+      payload := .cls {
+        superclass := some Boot.objectId, name := "", isModule := false,
+        ancestryReady := (m.heap.classPayload? Boot.objectId).all (·.ancestryReady),
+        allocatorUnavailable := (m.heap.classPayload? Boot.objectId).any (·.allocatorUnavailable) } }
+  constSetIn (m.heap.alloc obj).2 m.lexicalNamespace name (.ref m.heap.objs.size)
+
+/-- A fresh class queues const_added, then inherited, before body entry. -/
+theorem evalExpr_class_fresh {m : Machine} {name : String} {body : Expr} {named : Heap}
+    (hmiss : constOwn m.heap m.lexicalNamespace name = none)
+    (hfrozen : (m.heap.get m.lexicalNamespace).frozen = false)
+    (hnamed : nameConstant (freshClassRegistered m name) m.lexicalNamespace name
+      (.ref m.heap.objs.size) = .ok named) :
     evalExpr m (.class' name none body) =
-      .next (freshClsMachine m m.currentFrame.defmod m.currentFrame.cref
-        name q eO body) := by
-  have hqq : (if m.currentFrame.defmod == Boot.objectId then name
-      else s!"{className m.heap m.currentFrame.defmod}::{name}") = q := by
-    rw [← hq]
-    split <;> rfl
-  have hg2k := h2C_get_k (m := m) (name := name) (q := q) hdlt
-  have hcls2 : className (constSetIn (m.heap.alloc (clsObj q)).2
-      m.currentFrame.defmod name (.ref m.heap.objs.size)) m.heap.objs.size = q := by
-    unfold className Heap.classPayload?
-    rw [hg2k]
-    show (if q.isEmpty then _ else q) = q
-    rw [if_neg hqne]
-  have hany : anyToS (constSetIn (m.heap.alloc (clsObj q)).2
-      m.currentFrame.defmod name (.ref m.heap.objs.size)) m.heap.objs.size = q := by
-    unfold anyToS Heap.classPayload?
-    rw [hg2k]
-    exact hcls2
-  have hsz2 : (constSetIn (m.heap.alloc (clsObj q)).2 m.currentFrame.defmod name
-      (.ref m.heap.objs.size)).objs.size = m.heap.objs.size + 1 := by
-    rw [objs_size_constSetIn]
-    simp [Heap.alloc]
-  -- `Object`'s eigen at the mid heap: the write and the push both pin it
-  have heO2 : ((constSetIn (m.heap.alloc (clsObj q)).2 m.currentFrame.defmod name
-      (.ref m.heap.objs.size)).get Boot.objectId).eigen = some eO := by
-    rw [(get_constSetIn_fields (m.heap.alloc (clsObj q)).2 m.currentFrame.defmod
-      name (.ref m.heap.objs.size) Boot.objectId).2.2.1]
-    show ((m.heap.objs.push (clsObj q)).getD Boot.objectId default).eigen = some eO
-    rw [objs_getD_push_lt _ _ _ hobj]
-    exact heO0
-  have hpos2 : 0 < (constSetIn (m.heap.alloc (clsObj q)).2 m.currentFrame.defmod name
-      (.ref m.heap.objs.size)).objs.size := by
-    rw [hsz2]
-    exact Nat.succ_pos _
-  simp only [evalExpr, enterClassBody, hmiss, hqq, if_true, Bool.false_eq_true,
-    if_false, Option.getD_none]
-  simp only [show ∀ ob : Object, (m.heap.alloc ob).1 = m.heap.objs.size from fun _ => rfl]
-  simp only [clsObj, eigObjC] at hg2k hany heO2 ⊢
-  rw [eigenclassOf_clsObj
-    (mm := { m with heap := (constSetIn (m.heap.alloc (clsObj q)).2
-      m.currentFrame.defmod name (.ref m.heap.objs.size)) }) hg2k hany heO2 hpos2]
-  show StepResult.next (withKont
-      { m with
-        heap := (attachEigen ((constSetIn (m.heap.alloc (clsObj q)).2
-            m.currentFrame.defmod name (.ref m.heap.objs.size)).alloc (eigObjC q eO)).2
-          m.heap.objs.size
-          (constSetIn (m.heap.alloc (clsObj q)).2 m.currentFrame.defmod name
-            (.ref m.heap.objs.size)).objs.size),
-        frames := m.frames.push (freshModFrame m.heap.objs.size m.currentFrame.cref),
-        stack := m.frames.size :: m.stack }
-      (.eval body) (.frameK m.frames.size)) =
-    StepResult.next (freshClsMachine m m.currentFrame.defmod m.currentFrame.cref
-      name q eO body)
-  rw [show (attachEigen ((constSetIn (m.heap.alloc (clsObj q)).2
-      m.currentFrame.defmod name (.ref m.heap.objs.size)).alloc (eigObjC q eO)).2
-      m.heap.objs.size
-      (constSetIn (m.heap.alloc (clsObj q)).2 m.currentFrame.defmod name
-        (.ref m.heap.objs.size)).objs.size)
-      = freshClsHeap m.heap m.currentFrame.defmod name q eO
-    from freshClsHeap_machine m.heap m.currentFrame.defmod name q eO hdlt]
+      let libraryName := if m.lexicalNamespace == Boot.objectId then name else
+        s!"{(libraryNamespace m.heap m.lexicalNamespace).getD (className m.heap m.lexicalNamespace)}::{name}"
+      let next := (eigenclassOf { m with heap := named } m.heap.objs.size).2
+      callConstAdded { next with kont := .constClassK m.heap.objs.size (some Boot.objectId) libraryName body :: next.kont } m.lexicalNamespace name := by
+  simp only [evalExpr, enterClassBody, hmiss, hfrozen, Bool.false_eq_true, ↓reduceIte]
+  change (match nameConstant (freshClassRegistered m name) m.lexicalNamespace name
+    (.ref m.heap.objs.size) with | .error _ => _ | .ok _ => _) = _
+  rw [hnamed]
   rfl
 
 /-! ## Reading the composite -/
@@ -600,88 +560,57 @@ theorem freshClsHeap_cp_old (hdlt : d < h₀.objs.size) {o : ObjId}
   unfold Heap.classPayload?
   rw [freshClsHeap_get_old ho]
 
-theorem className_old_freshC (hdlt : d < h₀.objs.size) {o : ObjId}
+theorem className_old_freshC (hnames : NamesOk h₀) (hdlt : d < h₀.objs.size) {o : ObjId}
     (ho : o < h₀.objs.size) :
     className (freshClsHeap h₀ d name q eO) o = className h₀ o := by
-  unfold className
-  rw [freshClsHeap_cp_old hdlt ho]
-  rw [show (hmidOf h₀ d name).classPayload? o = ((hmidOf h₀ d name).classPayload? o)
-    from rfl]
-  have := clsName_constSetIn h₀ d o name (Value.ref h₀.objs.size)
-  cases hcp : h₀.classPayload? o with
-  | none =>
-    rw [hcp] at this
-    cases hcp2 : (hmidOf h₀ d name).classPayload? o with
-    | none => rfl
-    | some c2 => rw [hcp2] at this; exact absurd this (by simp)
-  | some c =>
-    rw [hcp] at this
-    cases hcp2 : (hmidOf h₀ d name).classPayload? o with
-    | none => rw [hcp2] at this; exact absurd this (by simp)
-    | some c2 =>
-      rw [hcp2] at this
-      simp only [Option.map_some, Option.some.injEq] at this
-      have hpair := Prod.ext_iff.mp this
-      dsimp only
-      rw [show c2.name = c.name from hpair.1,
-        show c2.isModule = c.isModule from hpair.2]
+  have hn := namesOk_constSetIn hnames d name (.ref h₀.objs.size)
+  exact (ClsGrow.className_old clsGrow_hmid_freshC hn (by rw [hmid_size]; exact ho)).trans
+    (className_constSetIn h₀ d o name (.ref h₀.objs.size))
 
 theorem className_freshC_k (hqne : ¬ q.isEmpty = true) :
     className (freshClsHeap h₀ d name q eO) h₀.objs.size = q := by
-  unfold className
-  rw [freshClsHeap_cp_k]
-  show (if q.isEmpty then _ else q) = q
-  rw [if_neg hqne]
+  simp [className, className.go, classPath, classPath.go, freshClsHeap_cp_k, hqne]
 
 theorem className_freshC_e :
     className (freshClsHeap h₀ d name q eO) (h₀.objs.size + 1)
       = "#<Class:" ++ q ++ ">" := by
-  unfold className
-  rw [freshClsHeap_cp_e]
-  show (if ("#<Class:" ++ q ++ ">").isEmpty then _ else _) = _
-  rw [if_neg (by
-    simp only [String.isEmpty_iff]
+  have he : ("#<Class:" ++ q ++ ">").isEmpty = false := by
+    apply Bool.eq_false_iff.mpr
     intro hq
+    rw [String.isEmpty_iff] at hq
     have h1 := congrArg String.length hq
-    simp [String.length_append] at h1)]
+    simp [String.length_append] at h1
+  simp [className, className.go, classPath, classPath.go, freshClsHeap_cp_e, he]
 
-/-- A `lookup.go` miss means every table on the walked list misses — the
-    converse of `lookupGo_none_of_hookfree`, for reading `NoHook`'s per-value
-    clause back into per-table facts along `Object`'s eigenclass chain. -/
-theorem lookup_go_none_inv {h : Heap} {nn : String} :
-    ∀ l : List ObjId, lookup.go h nn l = none →
-      ∀ j ∈ l, ∀ cp, h.classPayload? j = some cp →
-        cp.methods.find? (·.1 == nn) = none := by
-  intro l
+/-- A finite scan miss implies table misses when there are no visibility-only
+forwarding rows. Without that premise a forwarding row can itself resolve to none. -/
+theorem lookup_go_none_inv {h : Heap} {nn : String} (l : List ObjId)
+    (hrows : ∀ j ∈ l, ∀ cp pair, h.classPayload? j = some cp →
+      cp.methods.find? (·.1 == nn) = some pair → pair.2.visibilityOnly = false)
+    (hgo : lookupScan h nn l = none) :
+    ∀ j ∈ l, ∀ cp, h.classPayload? j = some cp → cp.methods.find? (·.1 == nn) = none := by
   induction l with
-  | nil => intro _ j hj; exact absurd hj (by simp)
+  | nil => intro j hj; cases hj
   | cons a rest ih =>
-    intro hgo j hj cp hcp
-    unfold lookup.go at hgo
-    rcases List.mem_cons.mp hj with rfl | hjr
-    · rw [hcp] at hgo
-      dsimp only at hgo
-      cases hfind : cp.methods.find? (·.1 == nn) with
-      | none => rfl
-      | some p =>
-        rw [hfind] at hgo
-        cases p
-        exact absurd hgo (by simp)
-    · cases hcpa : h.classPayload? a with
+    have hr := ih (fun j hj => hrows j (List.mem_cons_of_mem _ hj))
+    cases hcpa : h.classPayload? a with
+    | none =>
+      simp only [lookupScan, hcpa] at hgo
+      intro j hj cp hcp
+      rcases List.mem_cons.mp hj with rfl | hj
+      · rw [hcpa] at hcp; cases hcp
+      · exact hr hgo j hj cp hcp
+    | some ca =>
+      cases hfind : ca.methods.find? (·.1 == nn) with
       | none =>
-        rw [hcpa] at hgo
-        exact ih hgo j hjr cp hcp
-      | some ca =>
-        rw [hcpa] at hgo
-        dsimp only at hgo
-        cases hfind : ca.methods.find? (·.1 == nn) with
-        | none =>
-          rw [hfind] at hgo
-          exact ih hgo j hjr cp hcp
-        | some p =>
-          rw [hfind] at hgo
-          cases p
-          exact absurd hgo (by simp)
+        simp only [lookupScan, hcpa, hfind] at hgo
+        intro j hj cp hcp
+        rcases List.mem_cons.mp hj with rfl | hj
+        · cases hcpa.symm.trans hcp; exact hfind
+        · exact hr hgo j hj cp hcp
+      | some pair =>
+        have hv := hrows a (by simp) ca pair hcpa hfind
+        simp [lookupScan, hcpa, hfind, hv] at hgo
 
 /-- `NoHook` at the composite. The fresh class's dispatch walk is its
     eigenclass's chain — `e :: ancestors h₀ eO` — whose tail's hook-freeness is
@@ -706,30 +635,15 @@ theorem noHook_freshC (hh : NoHook h₀) (hch : ChainsIn h₀) (hsat : Saturated
           | some e => e
           | none => (h₀.get Boot.objectId).klass := rfl
     rw [h1, heO0]
-  -- per-table hook-freeness along `ancestors h₀ eO`, from the per-value clause
-  have hancEO : ∀ j ∈ ancestors h₀ eO,
-      ∀ cp, h₀.classPayload? j = some cp →
-      ∀ n ∈ hookFreeNames, cp.methods.find? (·.1 == n) = none := by
-    intro j hj cp hcp n hn
-    have hlk := hh.2.1 Boot.objectId hh.1 n hn
-    unfold lookup at hlk
-    rw [hclsOfObj] at hlk
-    exact lookup_go_none_inv _ hlk j hj cp hcp
-  -- ... transported to the composite
-  have hancEOH : ∀ j ∈ ancestors h₀ eO,
-      ∀ cp, (freshClsHeap h₀ d name q eO).classPayload? j = some cp →
-      ∀ n ∈ hookFreeNames, cp.methods.find? (·.1 == n) = none := by
-    intro j hj cp hcp n hn
-    have hjlt : j < h₀.objs.size := ClsGrow.ancestors_mem_lt hch heOlt j hj
-    rw [freshClsHeap_cp_old hdlt hjlt] at hcp
-    have hms := methods_constSetIn h₀ d j name (Value.ref h₀.objs.size)
-    cases hcp0 : h₀.classPayload? j with
-    | none => rw [hcp0] at hms; rw [hcp] at hms; exact absurd hms (by simp)
-    | some cp0 =>
-      rw [hcp0, hcp] at hms
-      simp only [Option.map_some, Option.some.injEq] at hms
-      rw [hms]
-      exact hancEO j hj cp0 hcp0 n hn
+  have htail : ∀ n ∈ hookFreeNames,
+      lookupInChain (freshClsHeap h₀ d name q eO) (ancestors h₀ eO) n = none := by
+    intro n hn
+    rw [ClsGrow.lookup_go_old hg hchm hsm _
+      (fun j hj => by rw [hmid_size]; exact ancestors_mem_lt hch heOlt j hj)
+      (by rw [hmid_size]; exact ancestors_length_bound hch eO)]
+    rw [lookup_go_constSetIn]
+    have hl := hh.2.1 Boot.objectId hh.1 n hn
+    simpa only [lookup, hclsOfObj] using hl
   -- hook-free tables along `Class`'s chain, at the composite (as in ModFresh)
   have hanc3 : ∀ j ∈ ancestors (freshClsHeap h₀ d name q eO) Boot.classId,
       ∀ cp, (freshClsHeap h₀ d name q eO).classPayload? j = some cp →
@@ -768,32 +682,23 @@ theorem noHook_freshC (hh : NoHook h₀) (hch : ChainsIn h₀) (hsat : Saturated
     rw [classPayload?_isSome_constSetIn]
     exact hh.1
   · by_cases hko : k < h₀.objs.size
-    · unfold lookup
-      rw [ClsGrow.classOf_old hg hchm (by rw [hmid_size]; exact hko),
-        ClsGrow.ancestors_old hg hchm hsm
-          (ClsGrow.classOf_lt hchm (by rw [hmid_size]; exact hko)),
-        ClsGrow.lookup_go_old hg _
-          (ClsGrow.ancestors_mem_lt hchm
-            (ClsGrow.classOf_lt hchm (by rw [hmid_size]; exact hko)))]
-      have := hhm.2.1 k (by
-        rw [freshClsHeap_cp_old hdlt hko] at hk
-        exact hk) n hn
-      unfold lookup at this
-      exact this
+    · rw [ClsGrow.lookup_old hg hchm hsm (by rw [hmid_size]; exact hko)]
+      exact hhm.2.1 k (by rwa [freshClsHeap_cp_old hdlt hko] at hk) n hn
     · by_cases hkk : k = h₀.objs.size
       · subst hkk
         unfold lookup
         rw [classOf_freshC_k, ancestors_freshC_e hch hsat heOlt]
-        have hstep : lookup.go (freshClsHeap h₀ d name q eO) n
-            ((h₀.objs.size + 1) :: ancestors h₀ eO)
-            = lookup.go (freshClsHeap h₀ d name q eO) n (ancestors h₀ eO) := by
-          rw [lookup.go.eq_def]
-          simp only []
-          rw [freshClsHeap_cp_e]
-          simp
-        rw [hstep]
-        refine lookupGo_none_of_hookfree _ (fun j hj cp hcp => ?_)
-        exact hancEOH j hj cp hcp n hn
+        have hb : (((h₀.objs.size + 1) :: ancestors h₀ eO).length +
+            (ancestors (freshClsHeap h₀ d name q eO) Boot.objectId).length) ≤
+            2 * (freshClsHeap h₀ d name q eO).objs.size + 2 := by
+          rw [ancestors_old_freshC hch hsat hch.boot.2.2.2.2, freshClsHeap_size]
+          have he := ancestors_length_bound hch eO
+          have ho := ancestors_length_bound hch Boot.objectId
+          simp only [List.length_cons]; omega
+        rw [lookupInChain_eq_scan _ _ _ hb, lookupScan, freshClsHeap_cp_e]
+        change lookupScan (freshClsHeap h₀ d name q eO) n (ancestors h₀ eO) = none
+        rw [← lookupInChain_eq_scan _ _ _ (by simp only [List.length_cons] at hb; omega)]
+        exact htail n hn
       · by_cases hke : k = h₀.objs.size + 1
         · subst hke
           unfold lookup
@@ -805,7 +710,7 @@ theorem noHook_freshC (hh : NoHook h₀) (hch : ChainsIn h₀) (hsat : Saturated
             (fun hlt2 => not_lt_add_two hko hkk hke hlt2))] at hk
           exact absurd hk (by simp)
 
-theorem litClsOk_freshC (hs : LitClsOk h₀) (hdlt : d < h₀.objs.size)
+theorem litClsOk_freshC (hnames : NamesOk h₀) (hs : LitClsOk h₀) (hdlt : d < h₀.objs.size)
     (hch : ChainsIn h₀) : LitClsOk (freshClsHeap h₀ d name q eO) := by
   have hlt : ∀ x, (h₀.classPayload? x).isSome = true → x < h₀.objs.size :=
     fun x hx => classPayload?_isSome_lt hx
@@ -814,16 +719,16 @@ theorem litClsOk_freshC (hs : LitClsOk h₀) (hdlt : d < h₀.objs.size)
   · rw [freshClsHeap_cp_old hdlt (hlt _ hs.1.1)]; exact hsm.1.1
   · rw [show className (freshClsHeap h₀ d name q eO) Boot.stringId
       = className h₀ Boot.stringId from
-        className_old_freshC hdlt (hlt _ hs.1.1)]
+        className_old_freshC hnames hdlt (hlt _ hs.1.1)]
     exact hs.1.2
   · rw [freshClsHeap_cp_old hdlt (hlt _ hs.2.1.1)]; exact hsm.2.1.1
-  · rw [className_old_freshC hdlt (hlt _ hs.2.1.1)]; exact hs.2.1.2
+  · rw [className_old_freshC hnames hdlt (hlt _ hs.2.1.1)]; exact hs.2.1.2
   · rw [freshClsHeap_cp_old hdlt (hlt _ hs.2.2.1)]; exact hsm.2.2.1
   · rw [freshClsHeap_cp_old hdlt (hlt _ hs.2.2.2.1)]; exact hsm.2.2.2.1
   · rw [freshClsHeap_cp_old hdlt (hlt _ hs.2.2.2.2.1.1)]; exact hsm.2.2.2.2.1.1
   · rw [show className (freshClsHeap h₀ d name q eO) Boot.regexpId
       = className h₀ Boot.regexpId from
-        className_old_freshC hdlt (hlt _ hs.2.2.2.2.1.1)]
+        className_old_freshC hnames hdlt (hlt _ hs.2.2.2.2.1.1)]
     exact hs.2.2.2.2.1.2
   · rw [freshClsHeap_cp_old hdlt (hlt _ hs.2.2.2.2.2.1)]; exact hsm.2.2.2.2.2.1
   · rw [freshClsHeap_get_old (hlt _ hs.2.2.2.2.2.1),
@@ -874,7 +779,7 @@ theorem noShadowBefore_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
   exact hn.2 j hj cp hcp
 
 /-- `ClassOk` at the composite. -/
-theorem classOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
+theorem classOk_freshC (hnames : NamesOk h₀) (hch : ChainsIn h₀) (hsat : Saturated h₀)
     (hdlt : d < h₀.objs.size)
     (hcm : ClassOk (hmidOf h₀ d name))
     (hqne : ¬ q.isEmpty = true)
@@ -916,7 +821,7 @@ theorem classOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
             (fun hlt2 => not_lt_add_two hxo hxk hxe hlt2))] at hx
           exact absurd hx (by simp)
   refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-  · rw [ClsGrow.className_old hg hobj]
+  · rw [ClsGrow.className_old hg (namesOk_constSetIn hnames d name _) hobj]
     exact hcm.1
   · exact noShadowBefore_freshC hch hsat hch.boot.2.2.2.2 hcm.2.1
   · intro n hn
@@ -926,13 +831,13 @@ theorem classOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
     refine ⟨kn, cp,
       by rw [ClsGrow.constOwn_old hg hobj]; exact h1,
       by rw [hg.payloadOld hknlt]; exact h2,
-      by rw [ClsGrow.className_old hg hknlt]; exact h4,
+      by rw [ClsGrow.className_old hg (namesOk_constSetIn hnames d name _) hknlt]; exact h4,
       ?_, hrx, hmt, ?_, ?_⟩
     · intro j hji hjn
       by_cases hjo : j < h₀.objs.size
       · refine h5 j ?_ ?_
         · rw [← hg.payloadOld (by rw [hszm]; exact hjo)]; exact hji
-        · rw [← ClsGrow.className_old hg (by rw [hszm]; exact hjo)]; exact hjn
+        · rw [← ClsGrow.className_old hg (namesOk_constSetIn hnames d name _) (by rw [hszm]; exact hjo)]; exact hjn
       · by_cases hjk : j = h₀.objs.size
         · subst hjk
           rw [className_freshC_k hqne] at hjn
@@ -997,7 +902,7 @@ theorem classOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
       · have hd'lt : d' < (hmidOf h₀ d name).objs.size := classPayload?_isSome_lt hdo'
         refine Or.inr ⟨d', nm', by rw [hg.payloadOld hd'lt]; exact hdo', ?_, ?_, hnc', hnh'⟩
         · rw [ClsGrow.constOwn_old hg hd'lt]; exact hco'
-        · rw [ClsGrow.className_old hg hd'lt]; exact hqn'
+        · rw [ClsGrow.className_old hg (namesOk_constSetIn hnames d name _) hd'lt]; exact hqn'
     · subst hjk
       have hdm : d < (hmidOf h₀ d name).objs.size := by rw [hszm]; exact hdlt
       refine Or.inr ⟨d, name, ?_, ?_, ?_, hnc, hnh⟩
@@ -1008,7 +913,7 @@ theorem classOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
         exact hdom
       · rw [ClsGrow.constOwn_old hg hdm]
         exact hreg
-      · rw [hjq, ClsGrow.className_old hg hdm, hdnm]
+      · rw [hjq, ClsGrow.className_old hg (namesOk_constSetIn hnames d name _) hdm, hdnm]
         exact hqq
   · obtain ⟨cpO, h1, h2⟩ := hcm.2.2.2.2.2.2
     exact ⟨cpO, by rw [hg.payloadOld hobj]; exact h1, h2⟩
@@ -1023,7 +928,7 @@ variable {h₀ : Heap} {d : ObjId} {name q : String} {eO : ObjId}
 
 /-- `TyClass` at the composite lands at an old id, given the name is keyed
     fresh. -/
-theorem tyClass_freshC_old (hch : ChainsIn h₀) (hdlt : d < h₀.objs.size)
+theorem tyClass_freshC_old (hnames : NamesOk h₀) (hch : ChainsIn h₀) (hdlt : d < h₀.objs.size)
     (hqne : ¬ q.isEmpty = true) {τ : Ty} {k : ObjId}
     (hkeys : ∀ c ∈ tyClassNames τ, KeyFresh q c)
     (hnee : tyClassNames τ ≠ [])
@@ -1037,8 +942,8 @@ theorem tyClass_freshC_old (hch : ChainsIn h₀) (hdlt : d < h₀.objs.size)
   have hcn : ∀ o, o < h₀.objs.size →
       className (freshClsHeap h₀ d name q eO) o = className (hmidOf h₀ d name) o := by
     intro o ho
-    unfold className
-    rw [hpin o ho]
+    exact ClsGrow.className_old clsGrow_hmid_freshC (namesOk_constSetIn hnames d name _)
+      (by rw [hmid_size]; exact ho)
   cases τ with
   | cls n => exact ⟨(hpin k hko) ▸ ht.1, (hcn k hko) ▸ ht.2⟩
   | arrayOf e => exact absurd (rfl : tyClassNames (Ty.arrayOf e) = []) hnee
@@ -1112,7 +1017,7 @@ theorem tyClass_freshC_ground (hqne : ¬ q.isEmpty = true) {τ : Ty} {k : ObjId}
   | union _ _ => exact ht.elim
 
 /-- `ResolvesAt` lifts from `hmid` to the composite at an old class. -/
-theorem resolvesAt_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
+theorem resolvesAt_freshC (hnames : NamesOk h₀) (hch : ChainsIn h₀) (hsat : Saturated h₀)
     {k : ObjId} (hk : k < h₀.objs.size) {mname bid : String}
     (hr : ResolvesAt (hmidOf h₀ d name) k mname bid) :
     ResolvesAt (freshClsHeap h₀ d name q eO) k mname bid := by
@@ -1125,11 +1030,11 @@ theorem resolvesAt_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
   refine ⟨owner, md, by rw [ClsGrow.lookupIn_old hg hchm hsm hkm]; exact hl,
     hb, hu, hv2, hp, ?_⟩
   rw [ClsGrow.ancestors_old hg hchm hsm hkm]
-  rw [ClsGrow.crubyShadow_old hg _ (fun j hj =>
+  rw [ClsGrow.crubyShadow_old hg (namesOk_constSetIn hnames d name _) _ (fun j hj =>
     ClsGrow.ancestors_mem_lt hchm hkm j ((List.takeWhile_sublist _).mem hj))]
   exact hsh
 
-theorem resolvesUser_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
+theorem resolvesUser_freshC (hnames : NamesOk h₀) (hch : ChainsIn h₀) (hsat : Saturated h₀)
     (hdlt : d < h₀.objs.size)
     {k : ObjId} (hk : k < h₀.objs.size) {mname : String} {md : MethodDef}
     (hr : ResolvesUser (hmidOf h₀ d name) k mname md) :
@@ -1155,12 +1060,12 @@ theorem resolvesUser_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
   | false =>
     simp only [hmd, Bool.false_eq_true, if_false] at hsh ⊢
     rw [ClsGrow.ancestors_old hg hchm hsm hkm]
-    rw [ClsGrow.crubyShadow_old hg _ (fun j hj =>
+    rw [ClsGrow.crubyShadow_old hg (namesOk_constSetIn hnames d name _) _ (fun j hj =>
       ClsGrow.ancestors_mem_lt hchm hkm j ((List.takeWhile_sublist _).mem hj))]
     exact hsh
 
 /-- `EntryOkJ` at the composite. -/
-theorem entryOkJ_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
+theorem entryOkJ_freshC (hnames : NamesOk h₀) (hch : ChainsIn h₀) (hsat : Saturated h₀)
     (hdlt : d < h₀.objs.size) (hqne : ¬ q.isEmpty = true)
     (hcO : ClassOk (hmidOf h₀ d name)) (hnoO : NoHook (hmidOf h₀ d name))
     {A : SemAxioms} {D : Decls} {τr : Ty} {mname : String} {dd : MethodDecl}
@@ -1176,8 +1081,8 @@ theorem entryOkJ_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
     ⟨hτ, hmn, hdp, hdr, hdb, hmiss⟩
   · refine Or.inl ⟨bid, fun k hk => ?_, hconf⟩
     by_cases hko : k < h₀.objs.size
-    · exact resolvesAt_freshC hch hsat hko
-        (hres k (tyClass_freshC_old hch hdlt hqne hkeys hnee hk hko))
+    · exact resolvesAt_freshC hnames hch hsat hko
+        (hres k (tyClass_freshC_old hnames hch hdlt hqne hkeys hnee hk hko))
     · exfalso
       obtain ⟨owner, md, hl, -⟩ :=
         hres k (tyClass_freshC_ground hqne hkeys hnee hko hk)
@@ -1185,8 +1090,8 @@ theorem entryOkJ_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
       exact absurd hl.symm (by simp)
   · refine Or.inr (Or.inl ⟨md, c, hkey, fun k hk => ?_, ?_, hconf⟩)
     · by_cases hko : k < h₀.objs.size
-      · exact resolvesUser_freshC hch hsat hdlt hko
-          (hres k (tyClass_freshC_old hch hdlt hqne hkeys hnee hk hko))
+      · exact resolvesUser_freshC hnames hch hsat hdlt hko
+          (hres k (tyClass_freshC_old hnames hch hdlt hqne hkeys hnee hk hko))
       · exfalso
         obtain ⟨owner, hl, -⟩ :=
           hres k (tyClass_freshC_ground hqne hkeys hnee hko hk)
@@ -1198,20 +1103,19 @@ theorem entryOkJ_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
         · exfalso
           have hcobj : c = "Object" := by
             rw [← hown]
-            unfold className
-            rw [classPayload?_oob _ _ hb]
+            simp [className, className.go, classPayload?_oob _ _ hb]
           have hty : TyClass (hmidOf h₀ d name) τr Boot.objectId := by
             rcases hkey with rfl | ⟨⟨e, rfl⟩, rfl⟩
             · exact ⟨hnoO.1, by rw [hcO.1, hcobj]⟩
             · exact absurd (rfl : tyClassNames (Ty.arrayOf e) = []) hnee
           obtain ⟨owner', -, -, -, -, -, -, -, hown', -⟩ := hres Boot.objectId hty
           exact hb (classPayload?_isSome_lt hown')
-      rw [ClsGrow.className_old hg hownlt]
+      rw [ClsGrow.className_old hg (namesOk_constSetIn hnames d name _) hownlt]
       exact hown
   · refine Or.inr (Or.inr ⟨hτ, hmn, hdp, hdr, hdb, fun k hk => ?_⟩)
     subst hτ
     by_cases hko : k < h₀.objs.size
-    · have := hmiss k (tyClass_freshC_old hch hdlt hqne hkeys hnee hk hko)
+    · have := hmiss k (tyClass_freshC_old hnames hch hdlt hqne hkeys hnee hk hko)
       unfold MissesAt at this ⊢
       rw [ClsGrow.lookupIn_old hg hchm hsm (by rw [hmid_size]; exact hko)]
       exact this
@@ -1238,7 +1142,7 @@ theorem entryOkJ_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
             rw [freshClsHeap_size]
             exact fun hlt2 => not_lt_add_two hko hkk hke hlt2) mname
 
-theorem constOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
+theorem constOk_freshC (hnames : NamesOk h₀) (hch : ChainsIn h₀) (hsat : Saturated h₀)
     (hdlt : d < h₀.objs.size) {n : String} {τ : Ty}
     (hc : ConstOk (hmidOf h₀ d name) n τ) :
     ConstOk (freshClsHeap h₀ d name q eO) n τ := by
@@ -1250,7 +1154,7 @@ theorem constOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
     rw [hmid_size]; exact hch.boot.2.2.2.2
   obtain ⟨v, hv, hty, hsole⟩ := hc
   refine ⟨v, by rw [ClsGrow.constOwn_old hg hobj]; exact hv,
-    ClsGrow.valueTy_old hg hchm hty, fun j hj hjo => ?_⟩
+    ClsGrow.valueTy_old hg hchm (namesOk_constSetIn hnames d name _) hty, fun j hj hjo => ?_⟩
   by_cases hjlt : j < h₀.objs.size
   · rw [ClsGrow.constOwn_old hg (by rw [hmid_size]; exact hjlt)]
     refine hsole j ?_ hjo
@@ -1263,7 +1167,7 @@ theorem constOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
           (fun hlt2 => not_lt_add_two hjlt hjk hje hlt2))] at hj
         exact absurd hj (by simp)
 
-theorem ivarOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
+theorem ivarOk_freshC (hnames : NamesOk h₀) (hch : ChainsIn h₀) (hsat : Saturated h₀)
     (hdlt : d < h₀.objs.size) {c x : String} {τ : Ty}
     (hi : IvarOk (hmidOf h₀ d name) c x τ) :
     IvarOk (freshClsHeap h₀ d name q eO) c x τ := by
@@ -1276,8 +1180,8 @@ theorem ivarOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
     rw [freshClsHeap_get_old holt] at hcn hfind
     have hklt : ((hmidOf h₀ d name).get o).klass < (hmidOf h₀ d name).objs.size :=
       hchm.klass o hom
-    rw [ClsGrow.className_old hg hklt] at hcn
-    exact ClsGrow.valueTy_old hg hchm (hi o hom hcn v hfind)
+    rw [ClsGrow.className_old hg (namesOk_constSetIn hnames d name _) hklt] at hcn
+    exact ClsGrow.valueTy_old hg hchm (namesOk_constSetIn hnames d name _) (hi o hom hcn v hfind)
   · by_cases hok : o = h₀.objs.size
     · subst hok
       rw [freshClsHeap_get_k] at hfind
@@ -1289,7 +1193,7 @@ theorem ivarOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
       · rw [freshClsHeap_size] at ho
         exact absurd ho (not_lt_add_two holt hok hoe)
 
-theorem scopedConstOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
+theorem scopedConstOk_freshC (hnames : NamesOk h₀) (hch : ChainsIn h₀) (hsat : Saturated h₀)
     (hdlt : d < h₀.objs.size) (hqne : ¬ q.isEmpty = true)
     {c n : String} {τ : Ty} (hkc : KeyFresh q c)
     (hs : ScopedConstOk (hmidOf h₀ d name) c n τ) :
@@ -1302,12 +1206,12 @@ theorem scopedConstOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
   by_cases holt : o < h₀.objs.size
   · have hom : o < (hmidOf h₀ d name).objs.size := by rw [hmid_size]; exact holt
     rw [hg.payloadOld hom] at ho
-    rw [ClsGrow.className_old hg hom] at hcn
+    rw [ClsGrow.className_old hg (namesOk_constSetIn hnames d name _) hom] at hcn
     obtain ⟨hpriv, v, hv, hty⟩ := hs o ho hcn
     have hanc : ancestors (freshClsHeap h₀ d name q eO) o
         = ancestors (hmidOf h₀ d name) o :=
       ClsGrow.ancestors_old hg hchm hsm hom
-    refine ⟨?_, v, ?_, ClsGrow.valueTy_old hg hchm hty⟩
+    refine ⟨?_, v, ?_, ClsGrow.valueTy_old hg hchm (namesOk_constSetIn hnames d name _) hty⟩
     · rw [hanc]
       refine List.all_eq_true.mpr (fun a ha => ?_)
       have halt : a < (hmidOf h₀ d name).objs.size :=
@@ -1328,7 +1232,7 @@ theorem scopedConstOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
           (fun hlt2 => not_lt_add_two holt hok hoe hlt2))] at ho
         exact absurd ho (by simp)
 
-theorem superOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
+theorem superOk_freshC (hnames : NamesOk h₀) (hch : ChainsIn h₀) (hsat : Saturated h₀)
     (hdlt : d < h₀.objs.size) (hqne : ¬ q.isEmpty = true)
     (heOlt : eO < h₀.objs.size)
     {c mname : String} {dd : MethodDecl} (hkc : KeyFresh q c)
@@ -1362,19 +1266,16 @@ theorem superOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
       ClsGrow.ancestors_old hg hchm hsm hkm
     obtain ⟨owner, md, bid, hsf, hb, hu, hcf⟩ := hs k dm
       (by rw [← hg.payloadOld hdmm]; exact hdm)
-      (by rw [← ClsGrow.className_old hg hdmm]; exact hdc)
+      (by rw [← ClsGrow.className_old hg (namesOk_constSetIn hnames d name _) hdmm]; exact hdc)
       (by rw [← hanc]; exact hmem)
     refine ⟨owner, md, bid, ?_, hb, hu, hcf⟩
     unfold superFound at hsf ⊢
     rw [hanc]
-    rw [firstM_congr (fun j hj => by
-      have hjo : j < h₀.objs.size := by
-        rw [← hmid_size h₀ d name]
-        refine ClsGrow.ancestors_mem_lt hchm hkm j ?_
-        exact (((List.drop_sublist 1 (List.dropWhile (· != dm)
-            (ancestors (hmidOf h₀ d name) k))).trans
-          (List.dropWhile_sublist (· != dm))).mem hj)
-      rw [freshClsHeap_cp_old hdlt hjo])]
+    have hsub := (List.drop_sublist 1 (List.dropWhile (· != dm)
+        (ancestors (hmidOf h₀ d name) k))).trans (List.dropWhile_sublist (· != dm))
+    rw [ClsGrow.lookup_go_old hg hchm hsm _
+      (fun j hj => ClsGrow.ancestors_mem_lt hchm hkm j (hsub.mem hj))
+      (Nat.le_trans hsub.length_le (ancestors_length_bound hchm k))]
     exact hsf
   · by_cases hkk : k = h₀.objs.size
     · -- the fresh class: its chain is itself, then `Object`'s old chain
@@ -1390,7 +1291,7 @@ theorem superOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
           ancestors_constSetIn h₀ d Boot.objectId name _
         obtain ⟨owner, md, bid, hsf, hb, hu, hcf⟩ := hs Boot.objectId dm
           (by rw [← hg.payloadOld hdmm]; exact hdm)
-          (by rw [← ClsGrow.className_old hg hdmm]; exact hdc)
+          (by rw [← ClsGrow.className_old hg (namesOk_constSetIn hnames d name _) hdmm]; exact hdc)
           (by rw [hancO]; exact hmem2)
         refine ⟨owner, md, bid, ?_, hb, hu, hcf⟩
         unfold superFound at hsf ⊢
@@ -1401,14 +1302,11 @@ theorem superOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
           exact absurd hdmo (by rw [← h1]; exact Nat.lt_irrefl _))]
         rw [show ancestors h₀ Boot.objectId
             = ancestors (hmidOf h₀ d name) Boot.objectId from hancO.symm]
-        rw [firstM_congr (fun j hj => by
-          have hjo : j < h₀.objs.size := by
-            rw [← hmid_size h₀ d name]
-            refine ClsGrow.ancestors_mem_lt hchm hobm j ?_
-            exact (((List.drop_sublist 1 (List.dropWhile (· != dm)
-                (ancestors (hmidOf h₀ d name) Boot.objectId))).trans
-              (List.dropWhile_sublist (· != dm))).mem hj)
-          rw [freshClsHeap_cp_old hdlt hjo])]
+        have hsub := (List.drop_sublist 1 (List.dropWhile (· != dm)
+            (ancestors (hmidOf h₀ d name) Boot.objectId))).trans (List.dropWhile_sublist (· != dm))
+        rw [ClsGrow.lookup_go_old hg hchm hsm _
+          (fun j hj => ClsGrow.ancestors_mem_lt hchm hobm j (hsub.mem hj))
+          (Nat.le_trans hsub.length_le (ancestors_length_bound hchm Boot.objectId))]
         exact hsf
     · by_cases hke : k = h₀.objs.size + 1
       · -- the fresh eigenclass: itself, then `eO`'s old chain
@@ -1422,7 +1320,7 @@ theorem superOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
             ancestors_constSetIn h₀ d eO name _
           obtain ⟨owner, md, bid, hsf, hb, hu, hcf⟩ := hs eO dm
             (by rw [← hg.payloadOld hdmm]; exact hdm)
-            (by rw [← ClsGrow.className_old hg hdmm]; exact hdc)
+            (by rw [← ClsGrow.className_old hg (namesOk_constSetIn hnames d name _) hdmm]; exact hdc)
             (by rw [hancE]; exact hmem2)
           refine ⟨owner, md, bid, ?_, hb, hu, hcf⟩
           unfold superFound at hsf ⊢
@@ -1434,14 +1332,11 @@ theorem superOk_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
                                   exact Nat.not_lt.mpr (Nat.le_add_right _ 1)))]
           rw [show ancestors h₀ eO
               = ancestors (hmidOf h₀ d name) eO from hancE.symm]
-          rw [firstM_congr (fun j hj => by
-            have hjo : j < h₀.objs.size := by
-              rw [← hmid_size h₀ d name]
-              refine ClsGrow.ancestors_mem_lt hchm heOm j ?_
-              exact (((List.drop_sublist 1 (List.dropWhile (· != dm)
-                  (ancestors (hmidOf h₀ d name) eO))).trans
-                (List.dropWhile_sublist (· != dm))).mem hj)
-            rw [freshClsHeap_cp_old hdlt hjo])]
+          have hsub := (List.drop_sublist 1 (List.dropWhile (· != dm)
+              (ancestors (hmidOf h₀ d name) eO))).trans (List.dropWhile_sublist (· != dm))
+          rw [ClsGrow.lookup_go_old hg hchm hsm _
+            (fun j hj => ClsGrow.ancestors_mem_lt hchm heOm j (hsub.mem hj))
+            (Nat.le_trans hsub.length_le (ancestors_length_bound hchm eO))]
           exact hsf
       · rw [show ancestors (freshClsHeap h₀ d name q eO) k = [k] from by
           unfold ancestors
@@ -1579,7 +1474,8 @@ theorem modOwner_freshC_old (hch : ChainsIn h₀) (hsat : Saturated h₀)
 /-- `ModuleNameOk` at the class composite, for a pair the write cannot hit:
     either the names differ, or the pair's owner is not the definee's name. The
     fresh ids are never `ModOwner` witnesses, so every witness is old. -/
-theorem moduleNameOkC_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+theorem moduleNameOkC_fresh (hdet : ∀ k cp, h₀.classPayload? k = some cp →
+    cp.isModule = true → cp.attached = none) (hch : ChainsIn h₀) (hsat : Saturated h₀)
     (hdlt : d < h₀.objs.size) (hqne : ¬ q.isEmpty = true)
     (heOlt : eO < h₀.objs.size)
     (hcls0 : ClassOk h₀)
@@ -1609,10 +1505,9 @@ theorem moduleNameOkC_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
           rw [hcp0] at hnmm
           simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnmm
           rw [← hdn, ← hEq]
-          unfold className
-          rw [hcp0]
-          show owner = (if cp0.name.isEmpty = true then _ else cp0.name)
-          rw [if_neg (by rw [hcls0.2.2.2.1 o cp0 hcp0]; exact Bool.false_ne_true)]
+          have hdetach := hdet o cp0 hcp0 (by rw [← hnmm.2]; exact hism)
+          simp only [className, className.go, hcp0, hdetach, classPath, classPath.go,
+            hcls0.2.2.2.1 o cp0 hcp0, Bool.not_false, ↓reduceIte]
           rw [← hnmm.1]
           exact hnm.symm
   have hoo : ModOwner h₀ owner o := by
@@ -1674,7 +1569,8 @@ theorem moduleNameOkC_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
         exact Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hlt)
 
 /-- `ClassNameOk` at the class composite, for a pair the write cannot hit. -/
-theorem classNameOkC_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
+theorem classNameOkC_fresh (hdet : ∀ k cp, h₀.classPayload? k = some cp →
+    cp.isModule = true → cp.attached = none) (hch : ChainsIn h₀) (hsat : Saturated h₀)
     (hdlt : d < h₀.objs.size) (hqne : ¬ q.isEmpty = true)
     (hcls0 : ClassOk h₀)
     {owner nm ownerD : String}
@@ -1703,10 +1599,9 @@ theorem classNameOkC_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
           rw [hcp0] at hnmm
           simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hnmm
           rw [← hdn, ← hEq]
-          unfold className
-          rw [hcp0]
-          show owner = (if cp0.name.isEmpty = true then _ else cp0.name)
-          rw [if_neg (by rw [hcls0.2.2.2.1 o cp0 hcp0]; exact Bool.false_ne_true)]
+          have hdetach := hdet o cp0 hcp0 (by rw [← hnmm.2]; exact hism)
+          simp only [className, className.go, hcp0, hdetach, classPath, classPath.go,
+            hcls0.2.2.2.1 o cp0 hcp0, Bool.not_false, ↓reduceIte]
           rw [← hnmm.1]
           exact hnm.symm
   have hoo : ModOwner h₀ owner o := by
@@ -1767,7 +1662,8 @@ theorem classNameOkC_fresh (hch : ChainsIn h₀) (hsat : Saturated h₀)
 
 /-- `ClassNameOk` at the class composite, for **the written pair**: the write is
     the hit, and its facts are the fresh class's literals. -/
-theorem classNameOk_name_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
+theorem classNameOk_name_freshC (hdet : ∀ k cp, h₀.classPayload? k = some cp →
+    cp.isModule = true → cp.attached = none) (hch : ChainsIn h₀) (hsat : Saturated h₀)
     (hdlt : d < h₀.objs.size) (hqne : ¬ q.isEmpty = true)
     (hcls0 : ClassOk h₀)
     {owner owner' : String}
@@ -1820,12 +1716,9 @@ theorem classNameOk_name_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
           rw [hcp0] at hnmm
           simp only [Option.map_some, Option.some.injEq] at hnmm
           have hnm0 : cp.name = cp0.name := congrArg Prod.fst hnmm
-          unfold className
-          rw [hcp0]
-          show cp.name = (if cp0.name.isEmpty = true then _ else cp0.name)
-          rw [if_neg (by
-            rw [hcls0.2.2.2.1 d cp0 hcp0]
-            exact Bool.false_ne_true)]
+          have hdetach := hdet d cp0 hcp0 ((congrArg Prod.snd hnmm).symm.trans hism)
+          simp only [className, className.go, hcp0, hdetach, classPath, classPath.go,
+            hcls0.2.2.2.1 d cp0 hcp0, Bool.not_false, ↓reduceIte]
           exact hnm0
     rw [howeq] at hqow ⊢
     right
@@ -1913,7 +1806,8 @@ theorem classNameOk_name_freshC (hch : ChainsIn h₀) (hsat : Saturated h₀)
         exact Nat.lt_succ_of_lt (Nat.lt_succ_of_lt hlt)
 
 /-- **The table invariant at the class composite** — every clause assembled. -/
-theorem declsOkJC_fresh {A : SemAxioms} {D : Decls}
+theorem declsOkJC_fresh (hnames : NamesOk h₀)
+    (hdet : ∀ k cp, h₀.classPayload? k = some cp → cp.isModule = true → cp.attached = none) {A : SemAxioms} {D : Decls}
     (hch : ChainsIn h₀) (hsat : Saturated h₀) (hdlt : d < h₀.objs.size)
     (hqne : ¬ q.isEmpty = true)
     (heOlt : eO < h₀.objs.size)
@@ -1939,13 +1833,13 @@ theorem declsOkJC_fresh {A : SemAxioms} {D : Decls}
     htab.2.2.2.2.2.2.2.1, ?_, ?_, ?_⟩
   · intro τr mname dd hf
     obtain ⟨hnee, hkeys⟩ := declFor_keys hf
-    exact entryOkJ_freshC hch hsat hdlt hqne hcO hnoO
+    exact entryOkJ_freshC hnames hch hsat hdlt hqne hcO hnoO
       (fun c hc => by obtain ⟨rs, hrs⟩ := hkeys c hc; exact hkR (c, rs) hrs)
       hnee (hmidsuite.1 τr mname dd hf)
-  · exact fun n τ hn => constOk_freshC hch hsat hdlt (hmidsuite.2.1 n τ hn)
-  · exact fun c x τ hn => ivarOk_freshC hch hsat hdlt (hmidsuite.2.2.1 c x τ hn)
+  · exact fun n τ hn => constOk_freshC hnames hch hsat hdlt (hmidsuite.2.1 n τ hn)
+  · exact fun c x τ hn => ivarOk_freshC hnames hch hsat hdlt (hmidsuite.2.2.1 c x τ hn)
   · intro c n τ hn
-    refine scopedConstOk_freshC hch hsat hdlt hqne ?_ (hmidsuite.2.2.2.1 c n τ hn)
+    refine scopedConstOk_freshC hnames hch hsat hdlt hqne ?_ (hmidsuite.2.2.2.1 c n τ hn)
     have hn' := hn
     unfold scopedConstTy? at hn'
     cases hfind : D.scopedConsts.find? (·.1 == (c, n)) with
@@ -1958,7 +1852,7 @@ theorem declsOkJC_fresh {A : SemAxioms} {D : Decls}
       rw [hp] at this
       exact this
   · intro c n dd hn
-    refine superOk_freshC hch hsat hdlt hqne heOlt ?_ (hmidsuite.2.2.2.2 c n dd hn)
+    refine superOk_freshC hnames hch hsat hdlt hqne heOlt ?_ (hmidsuite.2.2.2.2 c n dd hn)
     have hn' := hn
     unfold superDecl? at hn'
     cases hfind : D.supers.find? (·.1 == (c, n)) with
@@ -1974,11 +1868,11 @@ theorem declsOkJC_fresh {A : SemAxioms} {D : Decls}
     -- from every declared module pair by the rule's collision guard.
     intro pr hpr
     by_cases hnm : pr.2 = name
-    · refine moduleNameOkC_fresh hch hsat hdlt hqne heOlt hcls0 hdn
+    · refine moduleNameOkC_fresh hdet hch hsat hdlt hqne heOlt hcls0 hdn
         (Or.inr ?_) (htab.2.2.2.2.2.2.2.2.1 pr hpr)
       intro hEq
       exact hmodg pr hpr ⟨hEq, hnm⟩
-    · exact moduleNameOkC_fresh hch hsat hdlt hqne heOlt hcls0 hdn
+    · exact moduleNameOkC_fresh hdet hch hsat hdlt hqne heOlt hcls0 hdn
         (Or.inl hnm) (htab.2.2.2.2.2.2.2.2.1 pr hpr)
   · -- the classes clause: the written pair is the hit; the rest transport.
     intro pr hpr
@@ -1989,9 +1883,9 @@ theorem declsOkJC_fresh {A : SemAxioms} {D : Decls}
         · exact h
         · exact absurd hnm h
       rw [hnm]
-      exact classNameOk_name_freshC hch hsat hdlt hqne hcls0 hdo hdn hqq
+      exact classNameOk_name_freshC hdet hch hsat hdlt hqne hcls0 hdo hdn hqq
         (Ne.symm hown) (hnm ▸ htab.2.2.2.2.2.2.2.2.2.1 pr hpr)
-    · exact classNameOkC_fresh hch hsat hdlt hqne hcls0 hdn
+    · exact classNameOkC_fresh hdet hch hsat hdlt hqne hcls0 hdn
         (Or.inl hnm) (htab.2.2.2.2.2.2.2.2.2.1 pr hpr)
   · -- J56: name provenance — mirror of the module composite's bullet.
     intro j cp hj hhd

@@ -55,8 +55,7 @@ inductive Step : Machine → Machine → Prop where
   | strLit {m s} :
       m.ctl = .eval (.str s) →
       Step m (withCtl
-        { m with heap := { objs := m.heap.objs.push
-                             { klass := Boot.stringId, payload := .str s } } }
+        { m with heap := { m.heap with objs := m.heap.objs.push { klass := Boot.stringId, payload := .str s } } }
         (.value (.ref m.heap.objs.size)))
   | symLit {m s} :
       m.ctl = .eval (.sym s) → Step m (withCtl m (.value (.sym s)))
@@ -77,7 +76,7 @@ inductive Step : Machine → Machine → Prop where
       semantic one `stepFn` actually branches on, and `Adequacy`'s fragment
       predicate supplies it from the *syntactic* `isMatchView` (L119). -/
   | varGvar {m x} :
-      m.ctl = .eval (.var .gvar x) → matchGlobal m x = none →
+      m.ctl = .eval (.var .gvar x) → matchGlobal m x = none → loaderGlobal x = false →
       Step m (withCtl m (.value (m.getGlobal x)))
   | varIvar {m x o} :
       m.ctl = .eval (.var .ivar x) → m.currentFrame.self = .ref o →
@@ -91,7 +90,7 @@ inductive Step : Machine → Machine → Prop where
       m.ctl = .eval (.vasgn .ivar x rhs) →
       Step m (withKont m (.eval rhs) (.asgnK .ivar x))
   | vasgnGvar {m x rhs} :
-      m.ctl = .eval (.vasgn .gvar x rhs) →
+      m.ctl = .eval (.vasgn .gvar x rhs) → loaderGlobal x = false →
       Step m (withKont m (.eval rhs) (.asgnK .gvar x))
   /- ── control-flow eval ── -/
   | ifEval {m c t e} :
@@ -139,16 +138,12 @@ inductive Step : Machine → Machine → Prop where
       m.ctl = .value v → m.kont = .asgnK .ivar x :: rest →
       m.currentFrame.self = .ref o → (m.heap.get o).frozen = false →
       Step m (withCtl (bindIvar (pop m rest) x v) (.value v))
-  /-- `@x = v` with a *frozen* `ref` self raises `FrozenError` (L2); the
-      message embeds the receiver's `inspect`, so this fires only when that
-      `inspect` is pure (`= .ok r`) — otherwise `stepFn` gates (`.unsupported`,
-      no `Step`). -/
-  | asgnKIvarFrozen {m v x o rest r} :
+  /-- A rejected frozen write starts the effectful diagnostic protocol. Rendering
+      and exception initialization happen in later transitions. -/
+  | asgnKIvarFrozen {m v x o rest} :
       m.ctl = .value v → m.kont = .asgnK .ivar x :: rest →
       m.currentFrame.self = .ref o → (m.heap.get o).frozen = true →
-      Builtins.inspectP (pop m rest) (.ref o) = .ok r →
-      Step m (raiseErr (pop m rest) Boot.frozenErrorId
-        s!"can't modify frozen {className (pop m rest).heap ((pop m rest).heap.get o).klass}: {r}")
+      Step m (withKont (pop m rest) (.value (.ref o)) (.frozenErrorK (.ref o) .start))
   | ifKTrue {m v t e rest} :
       m.ctl = .value v → m.kont = .ifK t e :: rest → v.truthy = true →
       Step m (withCtl (pop m rest) (.eval t))
@@ -213,7 +208,7 @@ theorem Step.sound {m m' : Machine} (h : Step m m') : stepFn m = .next m' := by
   cases h <;>
     simp_all [stepFn, evalExpr, applyKont, unwind, withCtl, withKont, pop,
               Machine.setLocal, Machine.setGlobal,
-              Machine.currentFrame, bindIvar, Builtins.allocStr, Heap.alloc]
+              Machine.currentFrame, bindIvar, raiseFrozen, Builtins.allocStr, Heap.alloc]
 
 /-- **Determinism** — immediate from soundness + `.next` injectivity, because
     `stepFn` is a function. -/

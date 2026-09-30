@@ -1,5 +1,89 @@
 # Lean model — hand-off
 
+## Authorized helper repair in progress (2026-09-29)
+
+The user authorized correcting false helper contracts while preserving public
+soundness theorem statements, and requested a clear audit in the root
+`proof-changes.md` **without committing that file**. The historical obstruction
+below is resolved as an authorization question, not by pretending the old helper
+was true. No runtime/checker behavior or gates have been weakened.
+
+The complete Metatheory target and `./scripts/check-proofs.sh` now pass,
+including the headline axiom audit and boot-heap probes. The root-execution
+framing chain is complete and the legacy KontFrame import paths now re-export
+that corrected helper API. Fresh class/module structural metatheory also builds.
+No new trust axiom, sorry, native_decide proof, skipped target, or lowered gate
+has been introduced. The constants probe explicitly loads sorbet-runtime for
+its optional T rows, while the core-name probe still measures core boot.
+
+Denote and the full typed ratchet remain RED. Denote run decomposition still
+uses the false stack-only framing action, immediate-error assumptions, and the
+old control cases. Boot readiness still assumes the obsolete top-level cref,
+main dispatch chain, and definition-hook behavior. Fresh class/module runtime
+entry still needs queued-callback and actual anonymous-eigenclass integration.
+Structural module conformance, bounded dispatch, recursive names, and the full
+builtin-id bound have been repaired independently; do not confuse their green
+builds with completion of the runtime bridge.
+
+The user approved adding Rational, Complex, and Enumerator to the checker's
+reserved global constants; that correction is applied. A further concrete
+checker bug is pending user direction: validateD accepts
+`def inspect; 1; end; inspect + 1`, but the prelude-booted runtime raises TypeError
+because main's singleton inspect returns a String. Reproducer and proposed
+conservative guard/regression patch are in /private/tmp/ruby-lean-main-shadow-*
+and recorded in proof-changes.md. The public safety theorem cannot hold with
+current admission and a true boot guard. Do not silently restore a false guard
+or weaken the theorem to hide this. Other finite native-metadata coverage
+mismatches are also recorded in the audit.
+
+Latest logs: /private/tmp/proof-check-proofs3.log (PASS),
+/private/tmp/proof-typed-gate-current.log (FAIL before agreement), and
+/private/tmp/proof-denote-frontier16.log (Denote frontier before the last module
+conformance batch). The user requested a checkpoint commit on 2026-09-30 with these failures
+explicitly disclosed. This checkpoint is not completion of the repair;
+proof-changes.md remains untracked and excluded from the commit.
+
+## Historical statement-preserving obstruction (2026-09-29)
+
+The latest user request is to make **all proofs green without modifying theorem
+statements**. This adds a constraint to the earlier repair work below. No existing
+statement or runtime definition was changed in this follow-up.
+
+`Proof/StatementObstruction.lean` proves the negation of the exact existing
+`callClosure_frame` statement (copying `pushK`/`frameR` because `KontFrame` does
+not compile). A closure with `breakScope := some 7` acquires that break target
+when `[.blockCallK 7]` is appended before entry; appending after entry leaves its
+target `none`. Lean checks the counterexample with only `propext`/`Quot.sound`.
+Thus the complete request is impossible for the current semantics with every
+statement fixed. The user was asked whether false helper statements may be
+repaired while keeping public soundness statements; the user subsequently
+authorized that repair as recorded above.
+
+The independent `T5.dispatch_progress` proof was repaired without altering its
+statement: unfold the constructor-aware resolved-shadow check and cover hidden
+for-callback method entry. Targeted builds of T5, T5Loop, Demo and DriftControls
+pass; dispatch_progress, dispatch_not_typestick and t5_loop_type_safe have only
+standard Lean axioms. The full Metatheory build still fails in Static.Decls,
+KontFrame, RootFrameBuiltins and RootFrameComplex. The full typed gate remains
+red (including Denote.Ty.Ext's local-alias drift); no commit was made.
+
+## Proof repair active against L299 (2026-09-29)
+
+The user has now requested all type proofs and the soundness theorem green.
+Work is in progress; the earlier stop request below closed conformance work,
+not this new proof task. Do not start another runtime conformance increment.
+
+Read the latest proof-repair entry in `implementation-notes.md`. Foundational
+proofs and the current completion inversion are repaired. `DriftControls`
+retains the false old claims, and `RootFrame` proves the three Enumerator
+switching laws for a frame action that follows saved root executions. The
+root-frame builtin primitives, state helpers, closures and small protocol entries
+also compile. The replacement uses `ContextFree` to account for all native
+whole-stack observations. Numeric and higher dispatch proofs are in progress;
+remaining work includes integrating that action, transporting the new name /
+alias invariants through the type proofs, and rebuilding the full soundness
+chain. No full green gate, proof audit, or repair commit exists yet.
+
 ## Conformance goal — closeout at L299 (2026-09-29)
 
 The user requested: "Close out the current task and commit, then stop."

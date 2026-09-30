@@ -79,6 +79,7 @@ theorem LocalFactsOk.ext {f : LocalFacts} {m n : Machine}
 activation; a captured write may instead update an existing ancestor slot. -/
 theorem LocalFactsOk.write {f : LocalFacts} {m : Machine} (h : LocalFactsOk f m)
     (hl : m.stack.headD 0 < m.frames.size)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none)
     (hu : (m.frames.getD (m.stack.headD 0) default).captured = none)
     (x : String) (v : Value) (current : Bool) (hv : current = true → CurrentProc m v) :
     LocalFactsOk (f.write x current) (m.setLocal x v) := by
@@ -89,27 +90,28 @@ theorem LocalFactsOk.write {f : LocalFacts} {m : Machine} (h : LocalFactsOk f m)
     | some old =>
       simp only [LocalFacts.write, hs, Option.map_some, Option.some.injEq] at hn
       subst names
-      exact (h.slots old hs).setLocal hl hu x v
+      exact (h.slots old hs).setLocal hl ha hu x v
   · intro y hy
     simp only [LocalFacts.write, List.mem_append, List.mem_filter, bne_iff_ne] at hy
     rcases hy with hy | ⟨hy, hne⟩
     · cases hc : current <;> simp only [hc, Bool.false_eq_true, if_true, if_false,
         List.not_mem_nil, List.mem_singleton] at hy
       subst y
-      rw [getLocal_setLocal_self m x v hl]
+      rw [getLocal_setLocal_self m x v hl ha]
       exact (hv hc).setLocal x v
     · rw [getLocal_setLocal_ne m x v hne]
       exact (h.currentProcs y hy).setLocal x v
   · intro y hy
     rcases List.mem_cons.mp hy with rfl | hy
-    · exact frameBinds_setLocal_self m y v hl hu
-    · exact (BindingsPres.setLocal m x v).bound _ hl y (h.bound y hy)
+    · exact frameBinds_setLocal_self m y v hl ha hu
+    · exact (BindingsPres.setLocal m x v ha).bound _ hl y (h.bound y hy)
 
 theorem LocalFactsOk.copy {f : LocalFacts} {m : Machine} (h : LocalFactsOk f m)
     (hl : m.stack.headD 0 < m.frames.size)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none)
     (hu : (m.frames.getD (m.stack.headD 0) default).captured = none) (x y : String) :
     LocalFactsOk (f.copy x y) (m.setLocal x (m.getLocal y)) :=
-  h.write hl hu x (m.getLocal y) _ (fun hy => h.currentProcs y (by simpa using hy))
+  h.write hl ha hu x (m.getLocal y) _ (fun hy => h.currentProcs y (by simpa using hy))
 
 theorem currentProc_reified (m : Machine) (code : ClosureCode) :
     CurrentProc (reifiedMachine m (toRubyParams code.params) code.locals (toRuby code.body) code.lam)
@@ -123,7 +125,9 @@ theorem LocalFactsOk.store {f : LocalFacts} {κ : Ctx} {Γ : Env} {I : Ty} {m : 
     LocalFactsOk (f.write x true)
       ((reifiedMachine m (toRubyParams code.params) code.locals (toRuby code.body) code.lam).setLocal
         x (.ref m.heap.objs.size)) :=
-  (h.ext (reified_ext hm _ _ _ _)).write hm.frameInRange.2 hu x _ true
+  (h.ext (reified_ext hm _ _ _ _)).write hm.frameInRange.2
+    (by change (m.frames.getD (m.stack.headD 0) default).localAlias = none
+        rw [← currentFrame_headD hm.frameInRange.1]; exact hm.localAlias) hu x _ true
     (fun _ => currentProc_reified m code)
 
 /-- Type and origin facts must refer to the same live descriptor. No code, capture or

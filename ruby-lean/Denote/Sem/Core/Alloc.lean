@@ -50,7 +50,7 @@ open RubyCore
 /-! ## Pushing one object -/
 
 /-- The heap with one object appended — `Heap.alloc`'s second component, named. -/
-def pushHeap (h : Heap) (obj : Object) : Heap := ⟨h.objs.push obj⟩
+def pushHeap (h : Heap) (obj : Object) : Heap := { h with objs := h.objs.push obj }
 
 @[simp] theorem pushHeap_size (h : Heap) (obj : Object) :
     (pushHeap h obj).objs.size = h.objs.size + 1 := by simp [pushHeap]

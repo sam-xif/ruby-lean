@@ -93,18 +93,18 @@ def hiddenRoot : Machine :=
 -- The complete previous gate passes; the new root-initializer clause excludes this heap.
 #guard bootStateBaseB hiddenRoot
 #guard !bootStateB hiddenRoot
-#guard (Interp.userInit? bootMachine.heap Boot.objectId).isNone
-#guard (Interp.userInit? hiddenRoot.heap Boot.objectId).isSome
+#guard (userInit? bootMachine.heap Boot.objectId).isNone
+#guard (userInit? hiddenRoot.heap Boot.objectId).isSome
 
 theorem hidden_root_full_state (hb : bootStateBaseB hiddenRoot = true) :
     StateCore ctx0 [] .ivar0 hiddenRoot ∧ ClassOwnNames ctx0.classes hiddenRoot.heap ∧
-      ClassChains ctx0.classes hiddenRoot.heap ∧ Interp.userInit? hiddenRoot.heap Boot.objectId = some hiddenInit := by
+      ClassChains ctx0.classes hiddenRoot.heap ∧ userInit? hiddenRoot.heap Boot.objectId = some hiddenInit := by
   have hm := stateCore_of_bootStateBaseB hb
   have hl : (bootMachine.heap.classPayload? Boot.objectId).isSome = true := by
     simpa only [hiddenRoot, Proof.classPayload?_isSome_defineMethod] using (hm.runtime rfl).classLive
   have hp := ownMethod_defineMethod_self bootMachine.heap Boot.objectId "initialize" hiddenInit hl
   have hr := methodOn_own_first hm.core.classReady.objectChain hp
-  exact ⟨hm, ClassOwnNames.empty _, ClassChains.empty _, by simp only [Interp.userInit?, hr]; rfl⟩
+  exact ⟨hm, ClassOwnNames.empty _, ClassChains.empty _, by simp only [userInit?, hr]; rfl⟩
 
 theorem hidden_root_not_state (hb : bootStateBaseB hiddenRoot = true) : ¬ StateOk ctx0 [] .ivar0 hiddenRoot := by
   intro hm

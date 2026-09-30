@@ -15520,3 +15520,143 @@ The typed gate was rerun and remains red at HeapFacts className/lookup proof
 drift; its captured error log exactly matches L298. Proof repair stays deferred.
 The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
 was not reached. The captured proof-audit.log is archived.
+
+
+## Proof repair against L299 — in progress (2026-09-29)
+
+The user explicitly resumed work to make all type proofs and the soundness
+theorem green. The conformance expansion remains closed at L299; this batch
+changes proofs and their invariants, not runtime behavior, checker admissions,
+comparison rules, or corpus floors. No green gate or completed soundness repair
+is claimed yet, and no commit has been made while the gate is red.
+
+The repaired foundations cover cache-preserving heap allocation, the new send
+control word and frozen-error protocol, direct builtin dispatch, recursive
+class names, visibility-only method entries, and local-frame aliasing. Native
+lookup is related to an unfueled proof scan only after proving that its supplied
+chain and optional Object fallback fit the execution budget. `NamesOk` records
+bounded name reads and fuel saturation; `namesOkB_sound` checks a finite
+certificate. Same-size writes and plain growth preserve this invariant.
+`ShallowChain` now also excludes aliases on the current and captured frame,
+which is what the existing direct-local model actually needs.
+
+`DriftControls.lean` retains counterexamples for cyclic attached names, lookup
+fuel growth, aliased local reads, and active-stack-only framing across an
+Enumerator resumption. The first two old growth claims and the old universal
+continuation frame law are false on the current runtime; restoring their
+statements with different tactics would not be a repair.
+
+`NotDone.lean` now covers the current interpreter helper graph. Its completion
+inversion, `done_inv`, and the eval/unwind lemmas compile with only standard
+Lean axioms. The tactic uses a dedicated erasure simp set; the one local Except
+validation is split directly, avoiding recursive proof-search loops. No
+admissions or new axioms were introduced.
+
+The replacement continuation action is being developed in `RootFrame.lean`.
+It appends the tail to the root execution wherever that execution is stored,
+including saved Enumerator callers, and leaves fiber continuations alone.
+The resumption, suspension, and completion laws are proved for arbitrary
+machines, using only `propext` and `Quot.sound`. A separate `HashLockFree`
+condition preserves the interpreter's native hash-iteration observation.
+The action agrees with ordinary continuation append at a quiescent root.
+It is not yet integrated into the full framing chain or denotational
+composition; the overall typed gate and Metatheory remain red.
+
+The root-frame chain now compiles through the nonnumeric builtin primitives
+(strings, collections, regexes, and module operations), interpreter state
+helpers, closure entry, and the small native-protocol entry points. The records
+are `RootFramePrimitives`, `RootFrameSupport`, `RootFrameContext`,
+`RootFrameClosures`, and `RootFrameProtocols`. Numeric dispatch and the higher
+interpreter layers are still being repaired; none of these replacements has
+yet been substituted for the old `KontFrame*` chain.
+
+The current runtime has five families of whole-stack observations: catch
+markers, native Hash iteration locks, block-call break scopes, Object#inspect
+recursion markers, and FrozenError inspection markers. `ContextFree` excludes
+those observers from the appended tail, and derives `HashLockFree`. This is a
+condition on the composition context, not a restriction on the interpreted
+program. Its eventual typed consumers must establish it for their actual
+contexts. Closure framing already uses it to preserve a captured break scope;
+without that condition the old closure lemma is false as well.
+
+## Statement-preserving proof repair — obstruction verified (2026-09-29)
+
+The new request explicitly forbids changing theorem statements. The earlier
+replacement-frame work cannot satisfy that constraint: the current
+`KontFrame.callClosure_frame` claim is false. `Proof/StatementObstruction.lean`
+copies its framing definitions and proves the negation of its exact universal
+statement. For a closure whose saved break scope is 7, appending `.blockCallK 7`
+before entry records `some 7` in the new block continuation; appending afterward
+leaves `none`. Both observations reduce by `rfl`; the refutation uses only
+`propext` and `Quot.sound`. Its standalone Lake target passes. Permission to
+repair false helper statements while preserving public soundness statements was
+requested and remains unanswered; no existing statement or runtime definition
+was changed in this follow-up.
+
+One independent proof repair is complete: `T5.dispatch_progress` now unfolds
+`crubyResolvedShadow` and handles `MethodDef.forTargets` after classifying empty
+parameters. Its statement and `dispatch_not_typestick` remain unchanged. T5,
+T5Loop, Demo and DriftControls build; `#print axioms` for both dispatch theorems
+and `t5_loop_type_safe` reports only Lean's standard axioms. The full Metatheory
+build remains red in Static.Decls, KontFrame, RootFrameBuiltins and
+RootFrameComplex, and the full typed ratchet remains red, including the
+local-alias failures in Denote.Sem.Closure.Capture and Denote.Ty.Ext. No green
+gate or completed repair is claimed, and no commit was made.
+
+## Authorized helper repair — continuing, gate still red (2026-09-29)
+
+The user subsequently authorized correcting false helper contracts while keeping
+public soundness statements, with an uncommitted audit in root proof-changes.md.
+The audit records exact changes and targeted validation. Name/ancestor bounds and
+alias resolution now transport through the core State/Frame/Reframe/Transport
+lemmas, local writes, ivar writes, and method-heap writes. These targeted modules
+build. Root framing builds through pure builtins, method entry, class entry,
+native copy/library calls, and enumerator reset/initialization. The new proof-only
+views are checked by definitional equality against the runtime; runtime code has
+not been changed. Remaining framing entry points and downstream proofs are red.
+
+Boot diagnostics exposed separate stale invariants: top-level lexical nesting is
+empty, raise is private, and method tables contain undefined tombstones. The
+corrected topScopeB/methodsExactB/queryOkB checks all evaluate true on the actual
+boot machine, but the production bootOkB guard still fails for the remaining
+main-singleton/native-each/hook/constant assumptions. No guard was removed. The
+checker constant bound omits Rational, Complex and Enumerator; a concrete
+metadata-only correction was proposed separately and has not been applied pending
+user direction because it changes admissions. Full check-proofs and typed ratchet
+are not green. No commit has been made.
+
+
+The replacement root-execution framing chain now builds through the actual
+stepFn theorem, with standard-axiom audits on evalDefined/evalExpr, applyKont,
+unwind, invoke/doSuper, and constructor dispatch. The framing action follows the
+root execution through Enumerator save/restore; ContextFree excludes catch,
+block-call, inspection, frozen-error recursion, and Hash-lock observations.
+Proof-only stages are definitionally checked against the runtime. A stale tactic
+option (`simp_all (disch := ...)`) inside try had silently skipped simplification;
+removing it fixed repeated case splitting. Large constructor/dispatch proofs now
+split outer branches before simplification.
+
+Method installation and inherited/root/super lookup also build. Ordinary method
+metadata excludes visibility-only forwarding entries; lookup proofs use bounded
+runtime lookup with its finite-scan equivalence. The public state-level lookup
+conclusions are unchanged. Full Metatheory still fails in the legacy KontFrame
+API and ModFresh; Denote and the typed gate are still red. Audit details and
+validation logs are summarized in the uncommitted root proof-changes.md.
+
+
+## 2026-09-29 — complete metatheory gate restored; Denote still in repair
+
+The root-execution frame proof now reaches stepFn, and the legacy KontFrame
+modules are compatibility imports for that corrected helper API. Fresh class
+and module metatheory uses bounded lookup, recursive name invariants, current
+heap revisions/caches, and truthful queued-callback entry contracts. Full
+Metatheory plus check-proofs.sh passes with the standard axiom set.
+
+Denote is not green. Its older run decomposition and boot/runtime-entry
+assumptions still need migration. A concrete accepted TypeError program
+(`def inspect; 1; end; inspect + 1`) exposed a separate main-singleton checker
+admission bug; a conservative guard/regression patch is prepared and awaiting
+user direction. The approved Rational/Complex/Enumerator global-constant
+correction is applied. Full typed ratchet fails before agreement. The detailed
+uncommitted proof-changes.md audit distinguishes changed helper contracts,
+strengthened conformance invariants, executable fixtures, and remaining work.

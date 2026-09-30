@@ -84,7 +84,7 @@ theorem FramesOkJ.frameShallow {m : Machine} {Γ : Env} {Γs : List Env}
 theorem FramesOkJ.frameOk {m : Machine} {Γ : Env} {Γs : List Env}
     (h : FramesOkJ m.heap m.frames m.stack (Γ :: Γs))
     (hc : (curFrame m).captured = none) : FrameOk m :=
-  ⟨h.frameShallow.1, h.frameShallow.2.1, hc⟩
+  ⟨h.frameShallow.1, h.frameShallow.2.1, hc, h.frameShallow.2.2.localAlias⟩
 
 /-- Conformance narrows with the environment — one composition, as before. -/
 theorem FrameConformsJ.narrow {h : Heap} {frames : Array Frame} {Γ Γ' : Env}
@@ -126,10 +126,8 @@ theorem FrameConformsJ.push {h : Heap} {frames : Array Frame} {f : Frame} {Γ : 
     FrameConformsJ h (frames.push f) Γ fid := by
   have hb : (frames.push f).getD fid default = frames.getD fid default :=
     getD_push_lt _ _ _ hlt
-  refine ⟨fun p hp => ?_, by rw [hb]; exact hc.2.1, fun x τ hx => ?_⟩
-  · rw [hb] at hp
-    obtain ⟨hplt, hcp⟩ := hc.1 p hp
-    exact ⟨hplt, by rw [getD_push_lt _ _ _ (Nat.lt_trans hplt hlt)]; exact hcp⟩
+  refine ⟨hc.1.congr hb (fun p hp => getD_push_lt _ _ _ (Nat.lt_trans hp hlt)),
+    by rw [hb]; exact hc.2.1, fun x τ hx => ?_⟩
   · rw [hb, localOfIn_push hlt rfl hc.1]
     exact hc.2.2 x τ hx
 
@@ -185,10 +183,8 @@ theorem FramesOkJ.frames_congr {hp : Heap} {a b : Array Frame} {bound : Nat}
     refine ⟨Nat.lt_of_lt_of_le hfb hbs, hlt2, ?_,
       FramesOkJ.frames_congr hbs heq hrest (fun g hg => hlt g (by simp [hg]))⟩
     have hbf := heq fid hfb
-    refine ⟨fun q hq => ?_, by rw [hbf]; exact hcf.2.1, fun x τ hx => ?_⟩
-    · rw [hbf] at hq
-      obtain ⟨hqf, hqc⟩ := hcf.1 q hq
-      exact ⟨hqf, by rw [heq q (Nat.lt_trans hqf hfb)]; exact hqc⟩
+    refine ⟨hcf.1.congr hbf (fun q hq => heq q (Nat.lt_trans hq hfb)),
+      by rw [hbf]; exact hcf.2.1, fun x τ hx => ?_⟩
     · have hread : localOfIn b (b.getD fid default) x
           = localOfIn a (a.getD fid default) x := by
         rw [hbf]
@@ -226,7 +222,10 @@ theorem FramesOkJ.setLocal {m : Machine} {Γ : Env} {Γs : List Env} {x : String
     have hcapn : ((m.setLocal x v).frames.getD fid default).captured = none := by
       rw [hhead]
       simpa [curFrame, hcur] using hcap
-    refine ⟨by rw [hsz]; exact hfl, hgt, ⟨ShallowChain.of_none hcapn, ?_, ?_⟩, ?_⟩
+    have han : ((m.setLocal x v).frames.getD fid default).localAlias = none := by
+      rw [hhead]
+      exact hf.2.2.2
+    refine ⟨by rw [hsz]; exact hfl, hgt, ⟨ShallowChain.of_none hcapn han, ?_, ?_⟩, ?_⟩
     · rw [hhead]
       have hcf' : curFrame m = m.frames.getD fid default := by simp [curFrame, hcur]
       have := hcf.2.1

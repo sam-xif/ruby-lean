@@ -9,6 +9,33 @@ open RubyCore Ratchet RubyCore.Proof RubyCore.Proof.Judgment
 variable {h : Heap} {name : String}
 local notation "h₁" => freshModHeap h Boot.objectId name name
 
+theorem namesOk (hc : ChainsIn h) (hn : NamesOk h) (hne : name.isEmpty = false) : NamesOk h₁ := by
+  apply namesOk_namedGrow clsGrow_hmid_fresh.size clsGrow_hmid_fresh.get
+    (namesOk_constSetIn hn Boot.objectId name (.ref h.objs.size))
+  intro k hk cp hp
+  rw [hmid_size] at hk
+  by_cases heq : k = h.objs.size
+  · subst k
+    rw [freshModHeap_cp_k] at hp
+    cases hp
+    refine ⟨rfl, hne, ?_⟩
+    rw [classOf_fresh_k, freshModHeap_size]
+    exact Nat.lt_succ_self _
+  · by_cases heq' : k = h.objs.size + 1
+    · subst k
+      rw [freshModHeap_cp_e] at hp
+      cases hp
+      refine ⟨rfl, ?_, ?_⟩
+      · apply Bool.eq_false_iff.mpr
+        intro he
+        rw [String.isEmpty_iff] at he
+        have hh := congrArg String.length he
+        simp [String.length_append] at hh
+      · rw [classOf_fresh_e, freshModHeap_size]
+        exact Nat.lt_of_lt_of_le hc.boot.1 (Nat.le_add_right _ _)
+    · rw [freshModHeap_cp_oob (by omega)] at hp
+      contradiction
+
 theorem stringPayload (hc : ChainsIn h) (hp : StringPayloadOk h) : StringPayloadOk h₁ := by
   intro o hco
   by_cases hl : o < h.objs.size

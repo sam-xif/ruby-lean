@@ -31,7 +31,7 @@ theorem constRefs (hc : ConstRefsLive h) (ho : Boot.objectId < h.objs.size) :
 theorem ready (hc : ClassReady h) (hs : Saturated h) : ClassReady h₁ := by
   have ho := hc.chains.boot.2.2.2.2
   obtain ⟨e, he, hb⟩ := hc.objectEigen
-  refine ⟨chainsIn_fresh hc.chains ho, ⟨e, ?_, ?_⟩, ?_, ?_, constRefs hc.constRefs ho, ?_⟩
+  refine ⟨by rw [freshModHeap_size]; exact Nat.lt_of_lt_of_le hc.bootEnd (Nat.le_add_right _ _), chainsIn_fresh hc.chains ho, ⟨e, ?_, ?_⟩, ?_, ?_, constRefs hc.constRefs ho, ?_⟩
   · rw [(fields ho).2.2.1]; exact he
   · rw [ancestors_old_fresh hc.chains hs (hc.chains.eigen _ ho _ he)]; exact hb
   · rw [ancestors_old_fresh hc.chains hs hc.chains.boot.1]; exact hc.classBasic

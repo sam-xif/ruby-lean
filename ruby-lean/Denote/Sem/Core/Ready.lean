@@ -72,17 +72,14 @@ theorem MainReady.setLocal {m : Machine} (h : MainReady m) (x : String) (v : Val
     (currentFrame_setLocal_captured ..) rfl
 
 theorem MainReady.ext {m n : Machine} (h : MainReady m) (he : Ext m n)
-    (hphase : n.preludeMode = m.preludeMode) : MainReady n := by
+    (hphase : n.preludeMode = m.preludeMode) (hc : Proof.ChainsIn m.heap) : MainReady n := by
   have hmain := he.get Boot.mainId h.live
   have hobj := he.get Boot.objectId (Nat.lt_trans (by decide) h.live)
   have hlookup : lookup n.heap (.ref Boot.objectId) "method_added" =
       lookup m.heap (.ref Boot.objectId) "method_added" := by
-    have hg (ks : List ObjId) : lookup.go n.heap "method_added" ks =
-        lookup.go m.heap "method_added" ks := by
-      induction ks with
-      | nil => rfl
-      | cons k ks ih => simp only [lookup.go, he.payload, ih]
-    simp only [lookup, classOf, hobj, he.ancestors, hg]
+    change Interp.methodOn n.heap (classOf n.heap (.ref Boot.objectId)) "method_added" =
+      Interp.methodOn m.heap (classOf m.heap (.ref Boot.objectId)) "method_added"
+    simp only [classOf, hobj, he.methodOn_eq hc]
   refine ⟨by rw [he.currentFrame_eq]; exact h.self,
     by rw [he.currentFrame_eq]; exact h.owner,
     by rw [he.currentFrame_eq]; exact h.cref,
