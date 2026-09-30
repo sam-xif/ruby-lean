@@ -12802,3 +12802,25 @@ adapter then accepts Integer and rejects String. Restoring the seven-clink
 profile and rebuilding restores String acceptance. The final theorem and
 witnesses depend only on propext, Classical.choice and Quot.sound. Logs:
 /private/tmp/active-bridge-build.log, active-validator-{gate,int-only}.log.
+
+### 2026-09-30 — Generic rule traces for validateD and Bridge
+
+Replace literal source-rule evidence with constructor-indexed judgments derived
+from all 99 authoring constructors in 17 families. Every conclusion records its
+own rule and each judgment-premise trace, including uniform callback witnesses.
+Erasure to the raw judgments and active-clink certification are generated from
+constructor metadata as ordinary kernel-checked proofs. Disabled cases contradict
+the policy hypothesis; enabled cases apply actual registry closure proofs.
+
+The computational checker moves unchanged to Check/Raw. Its generated Audit
+projection and body/cache helpers carry indexed proof/trace metadata. Gates
+reject stale projections. validateD checks the resulting trace with the same
+clink policy as the registry, preserving exact program/hint guards and the
+original final safety theorem. Literal-specific modules are deleted.
+
+The seven-rule rebuild gate and Bridge standard-axiom audit pass. Temporary
+all-enabled checker validation passes the existing DerivControls suite, covering
+compound, method, class, cache and callback paths; the seven-rule profile is
+restored. No runtime changes, other proof repairs, corpus floor changes or new
+axioms. Logs: /private/tmp/generic-validator-{bridge,gate}.log and
+/private/tmp/generic-full-checker-controls.log.

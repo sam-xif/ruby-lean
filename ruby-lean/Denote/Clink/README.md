@@ -23,10 +23,11 @@ coverage, corpus floors, agreement checks and negative controls remain intact.
    as `var`, `DJudgeAll.cons` or `DFlow.call`.
 2. Add its proof-provider import to `ActiveProofs.lean`. The former complete
    import set is retained in `FullProofs.lean` as a reference.
-3. Repair the selected rule and its necessary dependencies. Extend the validator
-   evidence and its Bridge certification case when admitting a new expression
-   rule, including evidence for every premise/body rule it uses. Then rerun the
-   rebuild command. Enabled rules with missing or mistyped proofs fail the build.
+3. Repair the selected rule and its necessary dependencies. Enable every companion
+   and body rule needed by the desired derivation, then rerun the rebuild command.
+   Enabled rules with missing or mistyped proofs fail the build. The validator and
+   Bridge certification are generated from the constructors; no new acceptance
+   case needs to be written.
 
 These names identify rules, rather than the chronological clink numbers in the
 working notes. Unknown names and duplicates fail; the full authoring census is
@@ -46,9 +47,8 @@ form. The ordinary registry safety statements are unchanged.
 
 The complete registry profile is `clinkProfile := none` with
 `Denote.Clink.FullProofs` imported by `ActiveProofs.lean`. Restoring complete
-admission additionally requires rebuilding the validator evidence/certification
-for compound rules and bodies; merely enabling their proofs does not admit them.
-Every proof must build before the full typed gate can pass. No production floor
+admission requires every semantic proof to build before the full typed gate
+can pass. No production floor
 is reset during this rebuild.
 
 `GateControls.lean` tests the mechanism with a separate syntactic fixture. That
@@ -57,34 +57,54 @@ claim. `scripts/probes/clink-rebuild.lean` checks the real safety witness.
 
 ## The actual validator and bridge
 
-`validateD` itself now requires an enabled rule, source evidence for the current
-rebuild fragment, and ordinary `check` success (including exact payload matching).
-The shared policy lives in `Ratchet/ClinkPolicy.lean`, preserving isolation;
-`Denote/Clink/Policy.lean` exports the same definitions for registry clients.
-There is no separate acceptance policy for the production validator.
+`validateD` runs a proof-producing checker, then checks that every rule in its
+result's trace is enabled. The trace is an index of the checked judgment: a
+constructor fixes its own rule name and appends the traces of its judgment
+premises. This includes companion rules, initializers, retained/rechecked cache
+bodies and uniformly quantified callback bodies. A hint cannot supply or forge
+the trace. Exact payload/type/guard checks remain in the checker.
 
-`Denote/Bridge.lean` proves the original `validateD_safe`, `validateD_safe_boot`
-and `validateD_safe_run` statements from that enabled evidence. The final theorem
-states, for any fuel:
+The shared policy lives in `Ratchet/ClinkPolicy.lean`, preserving isolation;
+`Denote/Clink/Policy.lean` exports those same definitions. `validateDWith` permits
+explicit policies in checker controls; the production `validateD` always uses
+the registry's policy.
+
+`Denote/Clink/AuditBridge.lean` derives certification for all seventeen indexed
+judgments from their constructor metadata. Each enabled case applies its actual
+active clink to the certified premises. Each gated case is impossible because
+its trace contains a disabled rule. The generated proofs are kernel checked.
+`Denote/Bridge.lean` then proves the original `validateD_safe`,
+`validateD_safe_boot` and `validateD_safe_run` statements, including:
 
 ```lean
 validateD p d = true → bootOkB = true →
   Semantics.typeStuck (Semantics.run fuel (toRuby p)) = false
 ```
 
-Its proof references only active clinks. Disabled literal cases are discharged
-by their contradictory policy hypothesis; Lean kernel-checks both paths.
-Its imports contain the actual checker, active registry and boot facts with
-transitive dependencies, excluding the complete authoring-rule certifier and
-examples. `Bridge/Full.lean` retains the optional raw-DJudge completeness helpers
-for the complete registry. `Bridge/Literal.lean` is now a compatibility wrapper
-around the original validator/theorems.
+Only active semantic proofs and their transitive dependencies are imported.
+`Bridge/Full.lean` retains optional completeness helpers for the unrestricted
+raw authoring judgments. The former literal-specific validator/evidence/bridge
+modules have been removed.
 
-The current evidence supports the seven direct literal rules. Gated literals,
-flow wrappers and compound programs are rejected by `validateD`, including in
-`ratchetd` and `validate-one`. Raw internal `check` still reconstructs the broader
-syntactic judgments; its success alone cannot bypass the enabled acceptance
-boundary. Compound admission requires extending restricted evidence for the rule,
-its companion premises and any checked/rechecked bodies. Adding its clink name
-alone does not yet provide that evidence. The full historical corpus audit and
-its production floors remain separate from this rebuilding profile.
+### Updating the checker
+
+`Ratchet/Check/Raw.lean` and its body/cache helper modules are the authored
+computational implementation. The checker modules under `Ratchet/Audit/` are
+generated projections using constructor-indexed judgments and explicit trace
+metadata. After changing an authored checker source, run:
+
+```sh
+python3 scripts/generate_audited_checker.py
+```
+
+Both gate modes run `--check` to reject stale generated sources. Judgment,
+erasure and certification declarations are generated by Lean from the actual
+constructor types. A generation error can fail compilation or cost acceptance;
+the safety proof still must check against the real active clinks.
+
+The initial profile continues to admit seven direct literals and reject
+compounds. The mechanism already supports compound admission: for a sequence
+of Integer literals, enable `seq`, `DJudgeSeq.last`, `DJudgeSeq.cons` and `intLit`,
+with their semantic proof providers. Any disabled premise rule causes rejection
+in `validateD`, `ratchetd` and `validate-one`. Historical corpus floors remain
+separate from this rebuild profile.

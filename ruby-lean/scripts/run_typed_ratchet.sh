@@ -169,6 +169,10 @@ stage "layering: the checker does not see the model" \
   checker's isolation is a claim this script keeps true. See scripts/check-isolation.sh." \
   -- ./scripts/check-isolation.sh
 
+stage "generated checker freshness" \
+  "The traced checker must match its raw source; run scripts/generate_audited_checker.py." \
+  -- python3 scripts/generate_audited_checker.py --check
+
 stage "registry profile: constructor census" \
   "The selected clink profile contains an unknown rule, duplicate entry, or a changed authoring census." \
   -- lake build Denote.Clink.GateStatus

@@ -6,22 +6,26 @@ record is [`notes/ratchet/`](notes/), the model's is `notes/model/`.
 
 ## Active semantic rebuild (2026-09-30)
 
-The user requested selective clink gating and then clarified that both
-validateD itself and the actual Bridge.lean theorem must follow the registry.
-The shared Ratchet/ClinkPolicy currently enables seven literal rules; 92 authoring
-rules are gated. validateD requires source evidence for an enabled rule plus raw
-check success. Bridge.lean proves the original validateD_safe, _safe_boot and
-_safe_run statements using only active clinks and dependencies. ActiveProofs
-imports only active providers; the authoring census remains 99.
+The shared Ratchet/ClinkPolicy enables seven literal rules; 92 authoring rules
+are gated. validateD checks the complete constructor-derived trace of its verified
+derivation against that policy. Traced judgments cover all 99 constructors in
+17 families, including companion, initializer, cache and uniform callback-body
+premises. No literal-specific acceptance cases remain. Enabling a rule and its
+semantic provider is sufficient to make it available to the validator; every
+rule actually used by its premises must also be enabled.
 
-Use ./scripts/run_typed_ratchet.sh --clink-rebuild for the actual checker/bridge,
-axiom audit, rule-policy controls and command-line adapters. Current evidence
-supports direct literals; compounds need restricted premise/body evidence before
-admission. The full historical corpus gate still requires complete coverage and
-retains its floors. Optional raw DJudge completeness helpers moved to
-Denote/Bridge/Full.lean; Bridge/Literal is a compatibility wrapper. See
-Denote/Clink/README.md and notes/ratchet/HANDOFF.md. Older numbers below describe
-the preceding complete profile.
+Bridge.lean proves the original validateD_safe, _safe_boot and _safe_run
+statements using only active clinks and their dependencies. Use
+./scripts/run_typed_ratchet.sh --clink-rebuild. The full historical corpus gate
+still requires complete coverage and retains its floors. Optional raw DJudge
+completeness helpers remain in Denote/Bridge/Full.lean.
+
+The authored checker is Ratchet/Check/Raw.lean with its Check body/cache helpers.
+Ratchet/Audit's checker modules are generated projections carrying indexed
+judgments and computational traces. After changing those authored sources, run
+python3 scripts/generate_audited_checker.py; both gates reject stale projections.
+Lean kernel-checks all generated proofs. See Denote/Clink/README.md and
+notes/ratchet/HANDOFF.md. Older numbers below describe the complete profile.
 
 ## Current state (2026-09-26)
 

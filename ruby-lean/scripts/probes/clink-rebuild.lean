@@ -17,8 +17,10 @@ open RubyCore Ratchet Ratchet.Denote
 #guard validateD .fls .flsLit == clinkEnabled "flsLit"
 #guard validateD .nil .nilLit == clinkEnabled "nilLit"
 #guard !validateD (.int 7) (.intLit 8)
-#guard !validateD (.int 7) (.flow (.intLit 7))
-#guard !validateD (.seq [.int 7]) (.seq [.intLit 7])
+#guard validateD (.int 7) (.flow (.intLit 7)) ==
+  ["flow", "DFlow.intLit"].all clinkEnabled
+#guard validateD (.seq [.int 7]) (.seq [.intLit 7]) ==
+  ["seq", "DJudgeSeq.last", "intLit"].all clinkEnabled
 
 -- A real model-safety witness, alongside the fixture-only registration controls.
 theorem rebuilt_int_safe {m : Machine} (hm : StateOk ctx0 [] .ivar0 m) :

@@ -1,3 +1,26 @@
+# Generic validator/Bridge gating (2026-09-30)
+
+validateD now checks a constructor-derived rule trace rather than literal source
+evidence. Ratchet/Audit covers all 99 constructors in all 17 authoring families.
+Recursive, initializer, cached/rechecked and uniform callback-body premises carry
+indexed traces. AuditBridge derives active certification from the same metadata;
+the original Bridge endpoints and safety statements remain intact.
+
+The authored checker moved to Check/Raw; generated Audit checker modules add
+proof-indexed metadata. Regenerate with python3 scripts/generate_audited_checker.py
+after editing Raw or its body/cache helpers. Both gates check freshness. The
+literal-specific modules are removed. The shared seven-literal profile remains
+unchanged; enabling compound rules no longer needs hand-written validator or
+Bridge cases. Semantic providers and every premise rule must be enabled.
+
+Validation: the seven-clink rebuild gate and main Bridge pass with standard
+axioms. A temporary all-enabled checker policy passed the existing
+Ratchet.Controls.DerivControls suite, including method/cache/class/callback cases.
+The original seven-rule policy was restored. Logs:
+/private/tmp/generic-validator-{bridge,gate}.log and generic-full-checker-controls.log.
+The full historical corpus gate still requires complete coverage with floors
+intact. The entries below are historical checkpoints.
+
 # Actual validator/Bridge gating (2026-09-30)
 
 The user clarified that the desired endpoints are validateD and Bridge.lean,
