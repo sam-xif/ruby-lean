@@ -12824,3 +12824,19 @@ compound, method, class, cache and callback paths; the seven-rule profile is
 restored. No runtime changes, other proof repairs, corpus floor changes or new
 axioms. Logs: /private/tmp/generic-validator-{bridge,gate}.log and
 /private/tmp/generic-full-checker-controls.log.
+
+### 2026-09-30 — Exercise compound admission through the original endpoints
+
+Move the unchanged DJudgeSeq.last/cons semantic obligations beside Sequence's
+interpretation so admitting sequences does not import unrelated Primitive/Hash
+proof providers through RulesCtx. Add a sequence witness to the rebuild probe,
+using the actual validateD_safe_run theorem and trace permission hypothesis.
+
+Temporary ten-rule sequence+last+cons and nine-rule sequence+last profiles pass
+the complete rebuild gate. The actual validate-one accepts one/two-element
+sequences under the former, and only the one-element case under the latter.
+The generic certifier therefore exercises recursive companion premises, not just
+literal cases. The final theorem/witnesses use only standard axioms. Restore the
+original seven-literal policy/providers and rerun the gate before committing.
+A stale generated-source control is also rejected by the freshness check.
+Logs: /private/tmp/generic-sequence-gate.log and generic-sequence-no-cons-gate.log.

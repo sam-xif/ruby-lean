@@ -25,6 +25,8 @@ coverage, corpus floors, agreement checks and negative controls remain intact.
    import set is retained in `FullProofs.lean` as a reference.
 3. Repair the selected rule and its necessary dependencies. Enable every companion
    and body rule needed by the desired derivation, then rerun the rebuild command.
+   Sequence and its two companions are supplied together by
+   `Denote.Rules.Expr.Sequence`; importing that provider does not enable its rules.
    Enabled rules with missing or mistyped proofs fail the build. The validator and
    Bridge certification are generated from the constructors; no new acceptance
    case needs to be written.
@@ -108,3 +110,9 @@ of Integer literals, enable `seq`, `DJudgeSeq.last`, `DJudgeSeq.cons` and `intLi
 with their semantic proof providers. Any disabled premise rule causes rejection
 in `validateD`, `ratchetd` and `validate-one`. Historical corpus floors remain
 separate from this rebuild profile.
+
+The generic path has also been checked with temporary sequence-enabled profiles.
+With both companions enabled, one- and two-element sequences pass the actual
+validator and runner-safety bridge. Disabling `DJudgeSeq.cons` preserves the
+one-element accept and rejects the two-element program. The checked-in profile
+remains the original seven literals.

@@ -130,4 +130,12 @@ theorem SemA.DJudgeSeq.cons {Γ Γ₁ Γ₂ : Env} {e e' : Ratchet.Expr}
     {es : List Ratchet.Expr} {σ τ : Ty} (h : SemSafeA Γ e σ Γ₁)
     (ht : SemSeqA Γ₁ (e' :: es) τ Γ₂) : SemSeqA Γ (e :: e' :: es) τ Γ₂ := .cons h ht
 
+theorem SemSafeCtxA.DJudgeSeq.last {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {e : Expr}
+    (he : SemSafeCtxA κ Γ I e τ κ' Γ' I') : SemSeqCtxA κ Γ I [e] τ κ' Γ' I' := .last he
+
+theorem SemSafeCtxA.DJudgeSeq.cons {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ σ τ : Ty}
+    {e e' : Expr} {es : List Expr} (he : SemSafeCtxA κ Γ I e σ κ₁ Γ₁ I₁)
+    (ht : SemSeqCtxA κ₁ Γ₁ I₁ (e' :: es) τ κ₂ Γ₂ I₂) :
+    SemSeqCtxA κ Γ I (e :: e' :: es) τ κ₂ Γ₂ I₂ := .cons he ht
+
 end Ratchet.Denote.Typed

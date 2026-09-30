@@ -16,8 +16,14 @@ Bridge cases. Semantic providers and every premise rule must be enabled.
 Validation: the seven-clink rebuild gate and main Bridge pass with standard
 axioms. A temporary all-enabled checker policy passed the existing
 Ratchet.Controls.DerivControls suite, including method/cache/class/callback cases.
-The original seven-rule policy was restored. Logs:
-/private/tmp/generic-validator-{bridge,gate}.log and generic-full-checker-controls.log.
+Temporary ten-rule (sequence + last/cons) and nine-rule (cons disabled)
+profiles also pass the rebuild gate and original runner-safety theorem. The
+actual validate-one accepts one/two-element sequences with cons enabled; with
+cons disabled it accepts only the one-element case. Sequence companion proofs
+now live with their Sequence provider, avoiding unrelated Primitive/Hash imports.
+The original seven-rule policy and providers were restored. Logs:
+/private/tmp/generic-validator-{bridge,gate}.log and generic-full-checker-controls.log, generic-sequence-gate.log and
+generic-sequence-no-cons-gate.log.
 The full historical corpus gate still requires complete coverage with floors
 intact. The entries below are historical checkpoints.
 

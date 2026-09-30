@@ -17,14 +17,6 @@ theorem SemSafeCtxA.DJudgeAll.cons {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env}
     (he : SemSafeCtxA κ Γ I e τ κ₁ Γ₁ I₁) (ht : SemAllCtxA κ₁ Γ₁ I₁ es tys κ₂ Γ₂ I₂)
     (hp : plainArgB e = true) : SemAllCtxA κ Γ I (e :: es) (τ :: tys) κ₂ Γ₂ I₂ := .cons he ht hp
 
-theorem SemSafeCtxA.DJudgeSeq.last {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {e : Expr}
-    (he : SemSafeCtxA κ Γ I e τ κ' Γ' I') : SemSeqCtxA κ Γ I [e] τ κ' Γ' I' := .last he
-
-theorem SemSafeCtxA.DJudgeSeq.cons {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ σ τ : Ty}
-    {e e' : Expr} {es : List Expr} (he : SemSafeCtxA κ Γ I e σ κ₁ Γ₁ I₁)
-    (ht : SemSeqCtxA κ₁ Γ₁ I₁ (e' :: es) τ κ₂ Γ₂ I₂) :
-    SemSeqCtxA κ Γ I (e :: e' :: es) τ κ₂ Γ₂ I₂ := .cons he ht
-
 theorem SemSafeCtxA.DJudgePairs.nil {κ : Ctx} {Γ : Env} {I : Ty} :
     SemPairsCtxA κ Γ I [] [] [] κ Γ I := .nil
 

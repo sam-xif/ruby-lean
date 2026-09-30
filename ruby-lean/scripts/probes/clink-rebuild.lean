@@ -34,5 +34,12 @@ theorem rebuilt_int_safe_run (hb : bootOkB = true) (fuel : Nat) :
   validateD_safe_run (by decide :
     validateD (.int 0) (.intLit 0) = true) hb fuel
 #print axioms rebuilt_int_safe_run
+-- This same production theorem covers compounds as soon as their trace is enabled.
+theorem rebuilt_sequence_safe_run
+    (he : ["seq", "DJudgeSeq.last", "intLit"].all clinkEnabled = true)
+    (hb : bootOkB = true) (fuel : Nat) :
+    Semantics.typeStuck (Semantics.run fuel (toRuby (.seq [.int 7]))) = false :=
+  validateD_safe_run (p := .seq [.int 7]) (d := .seq [.intLit 7]) he hb fuel
+#print axioms rebuilt_sequence_safe_run
 #print axioms validateD_safe_run
 end Ratchet.Denote.Typed
