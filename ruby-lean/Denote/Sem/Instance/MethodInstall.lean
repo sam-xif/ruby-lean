@@ -4,6 +4,7 @@ import Denote.Sem.Instance.InstanceSiteWrite
 import Denote.Sem.Names.OwnNamesWrite
 import Denote.Sem.Class.ClassChainsWrite
 import Denote.Sem.Names.RootInitWrite
+import Denote.Sem.Instance.ExceptionInitWrite
 
 /-! Conformance after installing a method. Positive tables must describe what was
 installed; negative-name facts are retained only away from the written name.
@@ -142,7 +143,8 @@ theorem StateCore_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine
     (hdefs : DefsOk D { m with heap := defineMethod m.heap cls name md })
     (hnested : NestedClassesOk C { m with heap := defineMethod m.heap cls name md })
     (hdecl : DeclClassOk { κ with pos := { κ.pos with classes := C } }
-      { m with heap := defineMethod m.heap cls name md }) :
+      { m with heap := defineMethod m.heap cls name md })
+    (hinit : primitiveInitB (defineMethod m.heap cls name md) = true) :
     StateCore { κ with pos := { κ.pos with classes := C, defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } := by
   let n : Machine := { m with heap := defineMethod m.heap cls name md }
@@ -199,6 +201,7 @@ theorem StateCore_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine
       (Nat.le_refl _) (fun _ _ => rfl) hm.capturedLive
     primitiveDispatch := (primitiveDispatchB_defineMethod hn).trans hm.primitiveDispatch
     primitiveErrors := (primitiveErrorsB_defineMethod ..).trans hm.primitiveErrors
+    primitiveInit := hinit
     stringPayload := hm.stringPayload.defineMethod
     arrayPayload := hm.arrayPayload.defineMethod
     hashPayload := hm.hashPayload.defineMethod
@@ -328,11 +331,12 @@ theorem StateOk_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} 
       { m with heap := defineMethod m.heap cls name md })
     (hown : ClassOwnNames C (defineMethod m.heap cls name md))
     (hchain : ClassChains C (defineMethod m.heap cls name md))
-    (hroot : RootInitOk D (defineMethod m.heap cls name md)) :
+    (hroot : RootInitOk D (defineMethod m.heap cls name md))
+    (hinit : primitiveInitB (defineMethod m.heap cls name md) = true) :
     StateOk { κ with pos := { κ.pos with classes := C, defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } :=
   ⟨StateCore_methodWrite_tables hm.toStateCore ht hΓ ha hn hmiss hquiet
-    hclasses hsites hdefs hnested hdecl, hown, hchain, hroot⟩
+    hclasses hsites hdefs hnested hdecl hinit, hown, hchain, hroot⟩
 
 theorem StateCore_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : ObjId}
     {name : String} {md : MethodDef} {D : DefTable}
@@ -342,13 +346,14 @@ theorem StateCore_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls 
     (hquiet : "method_added" ≠ name)
     (hclasses : ClassesOk κ.classes { m with heap := defineMethod m.heap cls name md })
     (hdefs : DefsOk D { m with heap := defineMethod m.heap cls name md })
-    (hdecl : DeclClassOk κ { m with heap := defineMethod m.heap cls name md }) :
+    (hdecl : DeclClassOk κ { m with heap := defineMethod m.heap cls name md })
+    (hinit : primitiveInitB (defineMethod m.heap cls name md) = true) :
     StateCore { κ with pos := { κ.pos with defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } :=
   StateCore_methodWrite_tables hm ht hΓ ha hn hmiss hquiet hclasses
     (hm.classSites.methodWrite hn hquiet) hdefs
     (by simpa only [NestedClassesOk, isClassRefNamed, classNamed?_defineMethod,
-      Proof.constLookupFrom_defineMethod] using hm.nested) hdecl
+      Proof.constLookupFrom_defineMethod] using hm.nested) hdecl hinit
 
 theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : ObjId}
     {name : String} {md : MethodDef} {D : DefTable}
@@ -360,10 +365,11 @@ theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : 
     (hdefs : DefsOk D { m with heap := defineMethod m.heap cls name md })
     (hdecl : DeclClassOk κ { m with heap := defineMethod m.heap cls name md })
     (hown : ClassOwnNames κ.classes (defineMethod m.heap cls name md))
-    (hroot : RootInitOk D (defineMethod m.heap cls name md)) :
+    (hroot : RootInitOk D (defineMethod m.heap cls name md))
+    (hinit : primitiveInitB (defineMethod m.heap cls name md) = true) :
     StateOk { κ with pos := { κ.pos with defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } :=
-  ⟨StateCore_methodWrite hm.toStateCore ht hΓ ha hn hmiss hquiet hclasses hdefs hdecl,
+  ⟨StateCore_methodWrite hm.toStateCore ht hΓ ha hn hmiss hquiet hclasses hdefs hdecl hinit,
     hown, hm.classChains.methodWrite, hroot⟩
 
 /-- Full conformance for the top-level method slice (no program class declarations).
@@ -388,6 +394,7 @@ theorem StateOk_defineTopMethod {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (by simp [DeclClassOk, hclasses])
     (by rw [hclasses]; exact ClassOwnNames.empty _)
     hm.rootInit.defineTop
+    (primitiveInitB_defineMethod_outside hm.primitiveInit hm.core.classReady.chains (by decide) (by decide) (by decide))
 
 /-- Reserving a method name weakens absence facts; it does not install a method or
 add a positive signature. Thus it cannot authorize a call before its definition. -/

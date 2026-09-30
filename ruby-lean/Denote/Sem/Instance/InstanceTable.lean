@@ -123,6 +123,10 @@ theorem StateOk_publish_instance {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (ClassesOk_publish_instance hm.classes hc hk hw hf hs hp hb hu hcode)
     (hm.classSites.publish_instance hsite hquiet)
     (DefsOk_methodWrite_other hm.defs hobj) hnested hdecl hown hchain hroot
+    (primitiveInitB_defineMethod_outside (cls := cls) hm.primitiveInit hm.core.classReady.chains
+      (Nat.ne_of_lt (Nat.lt_trans (by decide : Boot.zeroDivisionErrorId < Boot.yielderId) hsite.afterBuiltins))
+      (Nat.ne_of_lt (Nat.lt_trans (by decide : Boot.standardErrorId < Boot.yielderId) hsite.afterBuiltins))
+      (Nat.ne_of_lt (Nat.lt_trans (by decide : Boot.exceptionId < Boot.yielderId) hsite.afterBuiltins)))
 
 #print axioms ClassesOk_methodWrite_old
 #print axioms ClassesOk_publish_instance

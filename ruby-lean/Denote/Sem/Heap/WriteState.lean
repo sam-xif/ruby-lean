@@ -103,7 +103,7 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     primitiveDispatch := by simpa only [primitiveDispatchB, nativeDispatchB, eachDispatchB,
       hmethod, hw.ancestors_eq, hshadow] using h.primitiveDispatch
     primitiveErrors := by simpa only [primitiveErrorsB, herr] using h.primitiveErrors
-    primitiveInit := by simpa only [primitiveInitB, hmethod, hw.ancestors_eq, hshadow] using h.primitiveInit
+    primitiveInit := by simpa only [primitiveInitB, primitiveInitShapeB, errorInitOwn, hw.classPayload, hmethod, hw.ancestors_eq, hshadow] using h.primitiveInit
     stringPayload := by simpa only [StringPayloadOk, hw.classOf_eq, hw.payload] using h.stringPayload
     arrayPayload := by simpa only [ArrayPayloadOk, hw.classOf_eq, hw.payload] using h.arrayPayload
     hashPayload := by simpa only [HashPayloadOk, hw.classOf_eq, hw.payload, hd] using h.hashPayload

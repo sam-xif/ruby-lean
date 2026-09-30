@@ -39,6 +39,8 @@ theorem StateOk_defineTopMethod_classes {κ : Ctx} {Γ : Env} {I : Ty} {m : Mach
   · exact hm.declCls.methodWrite (Ne.symm (bne_iff_ne.mp hnew)) hmiss
   · exact hm.ownNames.methodWrite (fun c hmem hk => False.elim (hsep c hmem hk))
   · exact hm.rootInit.defineTop
+  · exact primitiveInitB_defineMethod_outside hm.primitiveInit hm.core.classReady.chains
+      (by decide) (by decide) (by decide)
 
 #print axioms StateOk_defineTopMethod_classes
 end Ratchet.Denote

@@ -97,8 +97,23 @@ def primitiveErrorsB (h : Heap) : Bool := primitiveErrorClasses.all (primitiveEr
 constructs its payload directly; FrozenError has a separate prelude initializer. -/
 def primitiveInitClasses : List ObjId := [Boot.zeroDivisionErrorId]
 
+/-- The protected prefix resolves initialize before any program definition on Object.
+The exact prefix also makes preservation under later method installation explicit. -/
+def errorInitChain : List ObjId :=
+  [Boot.zeroDivisionErrorId, Boot.standardErrorId, Boot.exceptionId,
+    Boot.objectId, Boot.kernelId, Boot.basicObjectId]
+
+def errorInitOwn (h : Heap) (k : ObjId) : Option MethodDef :=
+  (h.classPayload? k).bind fun cp => (cp.methods.find? (·.1 == "initialize")).map (·.2)
+
+def primitiveInitShapeB (h : Heap) : Bool :=
+  ancestors h Boot.zeroDivisionErrorId == errorInitChain &&
+    (errorInitOwn h Boot.zeroDivisionErrorId).isNone &&
+    (errorInitOwn h Boot.standardErrorId).isNone &&
+    (errorInitOwn h Boot.exceptionId).any (fun md => !md.visibilityOnly)
+
 def primitiveInitB (h : Heap) : Bool :=
-  primitiveInitClasses.all fun k => match Interp.methodOn h k "initialize" with
+  primitiveInitShapeB h && primitiveInitClasses.all fun k => match Interp.methodOn h k "initialize" with
     | none => false
     | some (owner, md) =>
       md.builtin == some "Exception#initialize" && !md.undefined && !md.fromPrelude &&
@@ -109,7 +124,8 @@ theorem primitiveInit_lookup {h : Heap} (hi : primitiveInitB h = true) {k : ObjI
     ∃ owner md, Interp.methodOn h k "initialize" = some (owner, md) ∧
       md.builtin = some "Exception#initialize" ∧ md.undefined = false ∧ md.fromPrelude = false ∧
       Interp.crubyShadow h ((ancestors h k).takeWhile (· != owner)) "initialize" = none := by
-  have hp := List.all_eq_true.mp hi k hk
+  simp only [primitiveInitB, Bool.and_eq_true] at hi
+  have hp := List.all_eq_true.mp hi.2 k hk
   cases hl : Interp.methodOn h k "initialize" with
   | none => rw [hl] at hp; cases hp
   | some p =>
@@ -182,7 +198,7 @@ theorem primitiveDispatchB_ext {m n : Machine} (he : Ext m n) (hn : Proof.NamesO
 
 theorem primitiveInitB_ext {m n : Machine} (he : Ext m n) (hn : Proof.NamesOk m.heap)
     (hc : Proof.ChainsIn m.heap) : primitiveInitB n.heap = primitiveInitB m.heap := by
-  simp only [primitiveInitB, he.methodOn_eq hc, he.crubyShadow_eq hn, he.ancestors]
+  simp only [primitiveInitB, primitiveInitShapeB, errorInitOwn, he.payload, he.methodOn_eq hc, he.crubyShadow_eq hn, he.ancestors]
 
 theorem primitiveErrorsB_ext {m n : Machine} (he : Ext m n) :
     primitiveErrorsB n.heap = primitiveErrorsB m.heap := by

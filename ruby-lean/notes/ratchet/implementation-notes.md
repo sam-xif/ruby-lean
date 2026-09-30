@@ -12615,3 +12615,17 @@ inspection and other observable continuations. Its intermediate premise now
 states observedKont=false. The registered semantic rule statements are unchanged.
 The five targets pass in the 255-job native-init/composition batch; the complete
 gate remains red at later method/class/closure transitions.
+
+### 2026-09-30 — Preserve native initialization across method definitions
+
+The native initialization capability now checks the protected ZeroDivisionError,
+StandardError, Exception prefix. ExceptionInitWrite proves that resolution occurs
+before Object, so top-level initialize definitions cannot replace it. Writes at
+other selectors also preserve the capability. Generic method transport consumes
+an explicit premise; top-level and instance-table publication derive it.
+InstanceSiteAt now records that published program classes were allocated after
+the builtin ids, and its unchanged-id transports retain that fact. Fresh-site
+producers are adapted separately while their existing lexical/entry dependencies
+are still being repaired. No checker admission guard or runtime behavior changed.
+Method-installation targets, Boot and WriteState pass (part of the 255-job batch).
+The stronger boot check passes; the full typed gate is still red.
