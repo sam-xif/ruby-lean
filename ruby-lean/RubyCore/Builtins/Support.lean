@@ -747,10 +747,54 @@ def toAryDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     if args.any (mayDispatchToAry h) then some "__puts_slow" else none
   else none
 
+/-! ### String ordering against a non-String (`rb_str_cmp_m`)
+
+`String#<=>` over a non-String does not answer nil outright: it asks
+`rb_check_string_type` (a checked `to_str`, which a user `method_missing`
+serves) and compares the converted String, and only when nothing converts does
+it hand over to `rb_invcmp` — the operand's own `<=>`, sign flipped. The
+operators are `Comparable`'s over that `<=>`. The builtins answered nil /
+`comparison of String with C failed` without calling anything, which is right
+exactly when nothing on the operand could speak up; otherwise they defer to
+prelude twins over `__str_cmp_slow`. -/
+
+/-- Could anything on `v` change what `rb_str_cmp_m` answers for it? A `to_str`
+    (prelude ones included, as in `mayDispatchToAry`), or a program-written
+    `method_missing` / `respond_to?` / `respond_to_missing?` (the checked call's
+    hooks), `<=>` (`rb_invcmp`) or `==` (the default `<=>` is `rb_equal`) — or
+    no `<=>` at all, which `rb_invcmp`'s plain call turns into `NoMethodError`. -/
+def mayDispatchStrCmp (h : Heap) (v : Value) : Bool :=
+  let program : String → Bool := fun n => match lookup h v n with
+    | some (_, md) => md.builtin.isNone && !md.undefined && !md.fromPrelude
+    | none => false
+  (match lookup h v "to_str" with | some (_, md) => md.builtin.isNone && !md.undefined | none => false)
+  || (match lookup h v "<=>" with | some (_, md) => md.undefined | none => true)
+  || ["method_missing", "respond_to?", "respond_to_missing?", "<=>", "=="].any program
+
+def strCmpTwin? : String → Option String
+  | "String#<=>" => some "__str_cmp_slow"
+  | "String#<" => some "__str_lt_slow"
+  | "String#>" => some "__str_gt_slow"
+  | "String#<=" => some "__str_le_slow"
+  | "String#>=" => some "__str_ge_slow"
+  | _ => none
+
+/-- String receiver, non-String operand that could dispatch: the twin. An
+    operand outside `Object` gates instead (`__str_cmp_basic`): the twin's
+    conversion helpers ask it `is_a?`, which a `BasicObject` does not answer. -/
+def strCmpDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
+    Option String :=
+  match strCmpTwin? bid, args with
+  | some twin, [b] =>
+    if (strPayload? h recv).isNone || (strPayload? h b).isSome then none
+    else if !isA h b Boot.objectId then some "__str_cmp_basic"
+    else if mayDispatchStrCmp h b then some twin else none
+  | _, _ => none
+
 /-- Every reason a builtin defers to a prelude twin instead of running: repr
-    purity (L116), the coerce protocol (L123) and the implicit Array conversion
-    (L133). One hook, so `invoke` has one place to consult and the dispatch
-    metatheorems one hypothesis to carry. -/
+    purity (L116), the coerce protocol (L123), the implicit Array conversion
+    (L133) and String ordering against a non-String. One hook, so `invoke` has
+    one place to consult and the dispatch metatheorems one hypothesis to carry. -/
 def deferTwin? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     Option String :=
   if bid == "Object#===" then
@@ -775,7 +819,7 @@ def deferTwin? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     | _, _ => none
   else
   reprDefer? h bid recv args <|> coerceDefer? h bid recv args
-    <|> toAryDefer? h bid recv args
+    <|> toAryDefer? h bid recv args <|> strCmpDefer? h bid recv args
 
 /-- Pure numeric comparison of two values (Int/Float, mixed promoted to Float);
     `none` if either is non-numeric — the caller then gates (a full `<=>` dispatch

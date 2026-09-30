@@ -1,0 +1,25 @@
+{
+  "status": "fixed",
+  "filed_by": "difftest campaign (automatic)",
+  "arm": "tier1",
+  "seed": 20260930,
+  "case_id": "mix-06676",
+  "diff": "stdout: '0\\n' vs '' | result: 'nil' vs None | exception: None vs ('ArgumentError', 'comparison of String with C0 failed')",
+  "control": {
+    "stdout": "0\n",
+    "result_repr": "nil",
+    "exception": null,
+    "timed_out": false
+  },
+  "sut": {
+    "stdout": "",
+    "result_repr": null,
+    "exception": [
+      "ArgumentError",
+      "comparison of String with C0 failed"
+    ],
+    "timed_out": false
+  },
+  "note": "String#<=>/</>/<=/>= over a non-String defer to prelude twins (rb_str_cmp_m): checked to_str (method_missing serves it), then a plain inverse <=>.",
+  "fixed_in": "2026-09-30"
+}

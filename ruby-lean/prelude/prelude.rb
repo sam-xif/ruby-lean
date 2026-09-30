@@ -1757,6 +1757,48 @@ class String
     raise TypeError, "can't convert " + obj.class.to_s + " to String (" +
                      obj.class.to_s + "#to_str gives " + r.class.to_s + ")"
   end
+
+  # `rb_str_cmp_m` for a non-String operand that could dispatch (the builtins
+  # keep every other case; `strCmpDefer?`). `rb_check_string_type` first — so a
+  # `to_str`, or a `method_missing` serving one, runs and its String is compared —
+  # and only when nothing converts, `rb_invcmp`: the operand's own `<=>` as a
+  # **plain** call (`rb_cmp`, not `rb_check_funcall` — no `respond_to?` is asked,
+  # and a missing `<=>` raises `NoMethodError`), nil passed through, anything
+  # else `rb_cmpint`-ed and negated [V].
+  def __str_cmp_slow(other)
+    s = String.try_convert(other)
+    return self <=> s unless s.nil?
+
+    r = other.__send__(:<=>, self)
+    return nil if r.nil?
+
+    if r > 0
+      -1
+    elsif r < 0
+      1
+    else
+      0
+    end
+  end
+
+  # `Comparable`'s operators over that `<=>`, with its nil turned into
+  # `comparison of String with C failed`.
+  def __str_rel_slow(other)
+    c = __str_cmp_slow(other)
+    __cmp_failed(other) if c.nil?
+
+    c
+  end
+
+  def __str_lt_slow(other) = __str_rel_slow(other) < 0
+
+  def __str_gt_slow(other) = __str_rel_slow(other) > 0
+
+  def __str_le_slow(other) = __str_rel_slow(other) <= 0
+
+  def __str_ge_slow(other) = __str_rel_slow(other) >= 0
+
+  def __str_cmp_basic(_other) = __unsupported__("String comparison with a BasicObject operand")
 end
 
 # ─── The implicit Array conversion (`rb_check_array_type`, L133) ────────────
