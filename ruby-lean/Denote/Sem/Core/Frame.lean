@@ -1,5 +1,5 @@
 import Denote.Sem.Core.Transport
-import RubyCore.Proof.RootFrameContext
+import Denote.Sem.Core.KontFrameBase
 
 /-!
 # `Denote/Sem/Core/Frame.lean` — `StateOk` describes the whole world, and nothing more
@@ -178,14 +178,6 @@ theorem MethodsExact.lookup {κ : Ctx} {m : Machine} (h : MethodsExact κ m)
 
 /-! ## 3. The interpreter's frame rule — the ladder's named target -/
 
-/-- The continuation tail, appended. -/
-def pushK (K : List Kont) (m : Machine) : Machine := { m with kont := m.kont ++ K }
-
-/-- A step result, with the tail carried through. -/
-def frameR (K : List Kont) : StepResult → StepResult
-  | .next m => .next (pushK K m)
-  | r => r
-
 /-- **The interpreter's frame rule.** `stepFn` does not read below the head of `kont`, so a
 step from a machine with more continuation behind it is the same step with more continuation
 behind it.
@@ -244,18 +236,6 @@ Under the empty continuation the `begin` block **returns 1** (the throw raises a
 its own `rescue` catches it); under the enclosing `catch` the same `throw` is a jump that
 leaves the `begin` entirely. So the run under `K` does not pass through the state delivering
 the sub-run's value to `K`, which is exactly what the decomposition claims. Same repair. -/
-
-/-- Compatibility name for the complete runtime-observation restriction: catch
-markers, block-return targets, inspect recursion, frozen errors, and Hash locks. -/
-abbrev CatchFree (K : List Kont) : Prop := RubyCore.Proof.Root.ContextFree K
-
-/-- The current interpreter frame rule follows saved root executions through
-Enumerator suspension. Its proof is `Decompose.kontFrameCatchFree`; the name is
-retained for compatibility, but ContextFree covers every observed frame kind. -/
-def KontFrameCatchFree : Prop :=
-  ∀ (m : Machine) (K : List Kont), CatchFree K →
-    (m.kont ≠ [] ∨ ∃ e, m.ctl = .eval e) →
-    Interp.stepFn (Proof.pushRootK K m) = Proof.rootFrameR K (Interp.stepFn m)
 
 /-! ### The counterexample, computed
 

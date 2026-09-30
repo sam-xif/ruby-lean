@@ -1,3 +1,17 @@
+# Scoped run_pushK restoration (2026-09-30)
+
+The user requested run_pushK alone after the four dynamic-state changes, leaving
+other proof repairs deferred. lake build Denote.Sem.Core.Answer passes (80 jobs),
+including the full root-framing chain and run_pushK's standard-axiom audit.
+Its statement and proof are unchanged. Log: /private/tmp/runpushK-targeted.log.
+
+KontFrameBase holds the interpreter-only continuation definitions, re-exported
+by Frame. AnswerBase/Decompose no longer pull in type-conformance transport;
+SafeKont imports Frame explicitly to preserve its former API. This separates
+the run equation from the unrelated BuiltinConformance failures encountered in
+the initial build. No runtime, checker or admission changes were made.
+The full typed gate and downstream typing proofs remain outside this task.
+
 # Proof-repair checkpoint (2026-09-30)
 
 The user requested a checkpoint commit of the current proof repair after being

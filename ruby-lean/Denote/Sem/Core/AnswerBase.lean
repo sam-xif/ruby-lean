@@ -1,4 +1,4 @@
-import Denote.Sem.Core.Frame
+import Denote.Sem.Core.KontFrameBase
 import RubyCore.Proof.RootFrameStep
 import RubyCore.Proof.NotDone
 

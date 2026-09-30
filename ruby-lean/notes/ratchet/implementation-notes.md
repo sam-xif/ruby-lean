@@ -12652,3 +12652,24 @@ CRuby replay is not reached. This user-requested checkpoint preserves top-level
 theorem statements, runtime behavior and all gate stages. The root audit remains
 uncommitted. The continuation-decomposability design decision and proposed block
 lifetime tokens are recorded in the model handoff; implementation has not begun.
+
+### 2026-09-30 — Independently check run_pushK after dynamic-state refactors
+
+The user requested restoring run_pushK alone, without repairing other proofs.
+The initial Answer target reached the complete root-framing chain, including
+block lifetime, Object/FrozenError inspection and shared Hash lock state, but
+failed through Frame's conformance imports at the existing BuiltinConformance
+strCmpDefer obligations. No framing or run-equation proof failed.
+
+KontFrameBase now owns the unchanged pushK, frameR, CatchFree and
+KontFrameCatchFree definitions. Frame re-exports them for existing typing
+consumers. AnswerBase and Decompose import that small interface directly;
+SafeKont imports Frame explicitly to retain its prior conformance API.
+The statement and proof of run_pushK are unchanged. Runtime, checker, admission
+and tests are unchanged; unrelated proof failures remain outside this task.
+
+Validation: lake build Denote.Sem.Core.Answer passes (80 jobs). The build checks
+run_pushK, runA_pushK and their root-run dependencies. Their axiom audits contain
+only propext, Classical.choice and Quot.sound. No sorry or additional assumption
+was introduced. Log: /private/tmp/runpushK-targeted.log. The full typed gate is
+not claimed green and was not rerun for this scoped task.

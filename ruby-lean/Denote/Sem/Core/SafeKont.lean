@@ -1,4 +1,5 @@
 import Denote.Sem.Core.Answer
+import Denote.Sem.Core.Frame
 
 /-!
 # `Denote/Sem/Core/SafeKont.lean` — the continuation obligation, answer-indexed

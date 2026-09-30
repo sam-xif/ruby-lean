@@ -1,5 +1,16 @@
 # Lean model — hand-off
 
+## Scoped run_pushK restoration (2026-09-30)
+
+The subsequent user request was to make run_pushK pass while leaving other
+proofs alone. The complete root-framing chain rebuilds against the dynamic-state
+model. lake build Denote.Sem.Core.Answer passes, with the unchanged run_pushK
+statement and proof and only standard Lean axioms. Log:
+/private/tmp/runpushK-targeted.log. KontFrameBase separates its continuation
+interface from Frame's unrelated conformance imports; Frame re-exports it.
+No runtime change or broader proof repair was needed. The full typed gate is
+still not claimed green. See notes/ratchet/implementation-notes.md for the record.
+
 ## Dynamic continuation state (2026-09-30)
 
 The four avoidable whole-continuation observations now use explicit dynamic
