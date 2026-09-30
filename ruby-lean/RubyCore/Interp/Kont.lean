@@ -171,6 +171,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .forStartK targets body multiple => startFor m targets body multiple v
     | .forAssignK pending body => .next (queueForAssignments m pending body)
     | .iterK cl brk rest kind acc retVal cur =>
+      let m := m.leaveHashIteration kind
       -- v is the block's result for the current element; fold it, then continue.
       match kind with
       | .ignore | .arrayEach .. | .arrayIndex .. | .hashEach .. | .times .. | .scan .. => iterStep m cl brk rest kind acc retVal
@@ -344,6 +345,8 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
       .next (withCtl (m.leaveObjectInspection recv) (.jump j))
     | .frozenErrorK recv phase =>
       .next (withCtl (m.leaveFrozenInspection recv phase) (.jump j))
+    | .iterK _ _ _ kind _ _ _ =>
+      .next (withCtl (m.leaveHashIteration kind) (.jump j))
     | .blockCallK scope =>
       let m := { m with liveBreakScopes := m.liveBreakScopes.filter (· != scope) }
       match j with

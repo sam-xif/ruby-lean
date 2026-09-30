@@ -71,12 +71,10 @@ def unmodeledNamespaceConstant (m : Machine) (o : ObjId) (name : String) (inheri
 def setEnumState (m : Machine) (o : ObjId) (s : EnumState) : Machine :=
   { m with enumerators := (o, s) :: m.enumerators.filter (·.1 != o) }
 
-/-- Discarding a suspended fiber does not unwind its native Hash cleanup. -/
+/-- Discarding a suspended fiber does not unwind its native Hash cleanup.
+    Its shared lock entries remain; no saved continuation needs to be inspected. -/
 def resetEnumerator (m : Machine) (o : ObjId) : Machine :=
-  let locks := ((enumState m o).suspended.map fun e => e.kont.filterMap fun k => match k with
-    | .iterK _ _ _ (.hashEach h ..) _ _ _ => some h
-    | _ => none).getD []
-  setEnumState { m with abandonedHashIterations := locks ++ m.abandonedHashIterations } o {}
+  setEnumState m o {}
 
 def allocEnumerator (m : Machine) (data : EnumData) (klass := Boot.enumeratorId) : Value × Machine :=
   let (o, h) := m.heap.alloc { klass, payload := .enumerator (some data) }

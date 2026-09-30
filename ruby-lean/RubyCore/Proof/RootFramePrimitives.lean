@@ -22,8 +22,12 @@ theorem pushRootK_kont (K : List Kont) (m : Machine) :
     (pushRootK K m).kont =
       (if m.activeEnumerator.isNone then m.kont ++ K else m.kont) := rfl
 
-@[simp, rootFrameLem] theorem pushRootK_abandonedHashIterations (K : List Kont) (m : Machine) :
-    (pushRootK K m).abandonedHashIterations = m.abandonedHashIterations := rfl
+@[simp, rootFrameLem] theorem pushRootK_hashIterationLocks (K : List Kont) (m : Machine) :
+    (pushRootK K m).hashIterationLocks = m.hashIterationLocks := rfl
+
+@[simp, rootFrameLem] theorem leaveHashIteration_frame (K : List Kont) (m : Machine) (kind : IterKind) :
+    (pushRootK K m).leaveHashIteration kind = pushRootK K (m.leaveHashIteration kind) := by
+  cases kind <;> rfl
 
 @[simp, rootFrameLem] theorem pushRootK_activeEnumerator (K : List Kont) (m : Machine) :
     (pushRootK K m).activeEnumerator = m.activeEnumerator := rfl

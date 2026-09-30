@@ -2,51 +2,56 @@
 
 ## Dynamic continuation state (2026-09-30)
 
-Active task: replace whole-continuation observations for block-call lifetimes,
-Object inspection recursion, FrozenError rendering recursion and native Hash
-iteration locks with explicit dynamic state, with one commit per family and no
-tier 0 regressions. Catch/throw remains outside this change. The user explicitly
-deferred failing proof repairs; runtime validation and tier 0 preservation are
-the commit checks for this task. The full typed gate remains failing.
+The four avoidable whole-continuation observations now use explicit dynamic
+state. The user requested one commit per family and no tier 0 regressions, and
+explicitly deferred failing proof repairs. Runtime validation and tier 0
+preservation are the commit checks for this task. The full typed gate remains
+failing; no checker, admission, comparator or testing floors changed.
 
-Block-call runtime change is committed as 7d5a002: fresh execution-local liveBreakScopes,
-closure entry from that state, expiration at normal/unwind boundaries, and
-Enumerator save/restore/isolation. ContextFree permits blockCallK. The historical
-stack-scan counterexample is retained against a named legacy helper, together
-with controls for the repaired behavior. Full proof migration remains deferred.
+- 7d5a002 — block-call lifetimes: execution-local liveBreakScopes; closure entry
+  reads tokens and blockCallK expires them on return/unwind. Forwarding preserves
+  identity; dead tokens invalidate break alone. Enumerator save/restore and new
+  producer isolation preserve execution lifetimes.
+- 6ec295f — Object inspection: execution-local objectInspections; callback guards
+  include String conversion, with one entry released by objectInspectK on every
+  return/unwind. The selection hook still runs before recursion detection.
+- 68f6ab8 — FrozenError rendering: execution-local frozenInspections; only
+  inspect/to_s phases acquire/release guards, after initialization. Earlier
+  phases leave ambient guards intact.
+- Hash iteration (final family): shared hashIterationLocks;
+  each callback owns one entry and iterK releases one on return/unwind. Execution
+  switching retains all shared locks. Rewind abandons cleanup and retains those
+  entries. Nested iterations and independent producers preserve each other's
+  locks. Empty/exhausted iteration acquires none.
 
-Runtime checks: lake build rubycore passes; scripts/probes/dynamic-contexts.lean
-checks detached live destinations, dead-marker non-revival and boundary cleanup
-with only standard Lean axioms. The regression replay is 214 agree / one old
-sorbet-hash gate, including the new dynamic-break-lifetime program.
-Block tier 0 is unchanged for all 1,309 sources/verdicts: 1,096 agree, zero disagree,
-207 unsupported, five old invalid controls and one old harness error.
-difftest/reports/20260930-dynamic-block/. Unrelated proof-changes.md, paper/ and
-wasm upstream-bug files remain outside the commits.
+Continuation detachment retains this dynamic state. ContextFree permits all
+four marker families and excludes only catchK. hasCatcher is the sole remaining
+runtime whole-continuation scan. HashLockFree is a compatibility predicate for
+state preservation, now proved for every tail. The old block-scan obstruction
+is retained against a named legacy helper, alongside repaired runtime controls.
+The empty-catch-tags characterization of ContextFree is restored. Full framing
+and type-judgement proof migration remains deferred, as requested.
 
-Object inspection runtime change is committed as 6ec295f: execution-local objectInspections
-is saved/restored with Enumerators and retained across continuation cuts. Each
-callback acquires a guard; its objectInspectK releases one on return or any jump.
-The selection hook remains before recursion detection, and String conversion
-remains guarded. ContextFree permits objectInspectK. Runtime and standalone
-controls pass; full regression replay is 215 agree / one old gate. Evidence:
-difftest/reports/20260930-dynamic-inspect/.
-Object tier 0 also preserves every one of the 1,309 sources/verdicts, with
-1,096 agreements and zero disagreements.
+Validation: lake build rubycore and scripts/probes/dynamic-contexts.lean pass.
+Controls cover detached state, inert markers, normal/unwind cleanup, duplicate
+counts, execution save/restore and shared abandoned locks, with standard Lean
+axioms only. The RootFrame leaf and isolated catch-tag equivalence also check.
+Four permanent dynamic-* regression programs preserve Ruby behavior at callback,
+forwarding, recursion, ensure, suspension, isolation and abandonment boundaries.
 
-FrozenError rendering runtime change is implemented: execution-local
-frozenInspections is active only for inspect/to_s callbacks, after initialization.
-The owning phase releases one guard on return or unwind; earlier phases leave
-ambient guards intact. Execution save/restore/isolation includes this state.
-ContextFree permits frozenErrorK. Runtime and standalone controls pass; the new
-guard agrees with CRuby. Evidence: difftest/reports/20260930-dynamic-frozen/.
-Full regression replay is 216 agree / one old gate, with every preceding
-source/verdict retained. FrozenError tier 0 preserves all 1,309 sources/verdicts:
-1,096 agreements and zero disagreements.
+Every family preserves all 1,309 tier 0 sources/verdicts: 1,096 agree, zero
+disagree, 207 unsupported, five old invalid controls and one old harness error.
+Their regression replays preserve every previous verdict. The final Hash replay
+has 218 cases: 217 agree and the same old sorbet-hash gate; its new guard agrees.
+The final tier 0 matches both the preceding commit and the initial baseline.
+Evidence and complete per-case comparisons:
+difftest/reports/20260930-dynamic-{block,inspect,frozen,hash}/.
+The fresh pre-change tier 0 baseline also matches archived L299.
+Unrelated proof-changes.md, paper/ and wasm upstream-bug files remain outside
+these commits.
 
-Next family is shared Hash iteration locks. Its before probe agrees, including
-nested lock counts, shared suspended locks and persistent abandoned locks.
-Evidence: difftest/reports/20260930-dynamic-hash/before/.
+The following checkpoints are historical; their old continuation exclusions
+and pending runtime proposals have been superseded by the changes above.
 
 ## Authorized proof repair checkpoint (2026-09-30)
 

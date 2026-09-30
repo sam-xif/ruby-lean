@@ -463,9 +463,10 @@ structure Machine where
   frames : Array Frame
   heap : Heap
   enumerators : List (ObjId × EnumState) := []
-  /-- Rewind abandons a fiber without running native Hash iteration cleanup.
-      CRuby retains these insertion restrictions even after explicit GC. -/
-  abandonedHashIterations : List ObjId := []
+  /-- Shared multiset of native Hash iteration locks. Each in-flight callback
+      owns one entry, released on return/unwind. Suspension preserves the count;
+      abandonment intentionally retains entries whose cleanup never ran. -/
+  hashIterationLocks : List ObjId := []
   activeEnumerator : Option ObjId := none
   /-- Fresh call tokens are installed by reifyCallBlock and expired when their
       blockCallK boundary returns or unwinds. Forwarded Procs retain the token. -/
@@ -508,14 +509,15 @@ def leaveFrozenInspection (m : Machine) (recv : Value) (phase : FrozenPhase) : M
     { m with frozenInspections := m.frozenInspections.eraseP (recv.identEq ·) }
   | _ => m
 
+def leaveHashIteration (m : Machine) (kind : IterKind) : Machine :=
+  match kind with
+  | .hashEach o .. => { m with hashIterationLocks := m.hashIterationLocks.erase o }
+  | _ => m
+
 /-- Hash's insertion restriction survives external suspension. Normal unwind
-    releases a live lock; abandoning the fiber retains it separately. -/
+    releases one shared entry; abandoning the fiber retains its entries. -/
 def hashIterationActive (m : Machine) (o : ObjId) : Bool :=
-  let holds := fun (kont : List Kont) => kont.any fun k => match k with
-    | .iterK _ _ _ (.hashEach h ..) _ _ _ => h == o
-    | _ => false
-  m.abandonedHashIterations.contains o || holds m.kont || m.enumerators.any fun (_, s) =>
-    s.suspended.any (fun e => holds e.kont) || s.caller.any (fun e => holds e.kont)
+  m.hashIterationLocks.contains o
 
 def currentFrame (m : Machine) : Frame :=
   match m.stack with

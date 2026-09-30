@@ -15759,3 +15759,40 @@ every preceding source/verdict is retained. Full tier 0: 1,309 cases, 1,096
 agree, zero disagree, 207 unsupported, five old invalid controls and one old
 harness error. The complete source/verdict comparison is unchanged. No testing
 floors, comparator or admission rules changed.
+## 2026-09-30 — shared native Hash iteration locks
+
+Native Hash iteration reads shared hashIterationLocks instead of scanning the
+active continuation, suspended/caller executions and an abandoned-lock store.
+Each Hash callback adds one receiver entry. Its iterK releases one entry on
+return or unwind; redo stays inside the callback and retains the lock. Nested
+iterations and independent suspended producers own separate entries for the
+same receiver. Execution switching retains this shared state. Rewind drops the
+saved execution without cleanup, so its entries remain, matching the previous
+abandoned-lock behavior. Empty/exhausted iteration acquires no entry. Existing
+value updates, deletions and iteration cursor behavior are unchanged.
+
+ContextFree now excludes only catchK. The four removed exclusions are blockCallK,
+objectInspectK, frozenErrorK and Hash iterK. Continuation detachment keeps their
+dynamic state; their owning boundaries perform cleanup when resumed. The only
+remaining runtime whole-continuation scan is hasCatcher. HashLockFree is retained
+as a compatibility predicate for state preservation, proved for every tail.
+The obsolete empty-tags/non-context-free Hash witness becomes the converse
+catch-tag theorem. Full framing/type proof repair remains deferred by the user.
+
+Runtime build and standalone dynamic-contexts controls pass, including detached
+locks, inert markers, duplicate-count cleanup, unwind, execution restoration and
+abandonment. The RootFrame leaf checks; the new tag equivalence also checks in
+isolation without the failing downstream proof imports. The before-change Hash
+probe agrees with CRuby. The permanent dynamic-hash-iteration regression covers
+nested break, raise/throw/redo/next, suspended insertion/copy rejection, live
+updates, independent producers, caller locks and abandoned-lock persistence.
+Evidence: difftest/reports/20260930-dynamic-hash/.
+
+Full regression replay: 218 cases, 217 agree and the old sorbet-hash gate.
+Every preceding source/verdict is retained, and the new Hash guard agrees.
+
+Full Hash tier 0: 1,309 cases, 1,096 agree, zero disagree, 207 unsupported,
+five old invalid controls and one old harness error. Every source and verdict
+matches both the preceding FrozenError commit and the initial baseline.
+All four runtime refactors are complete in separate commits; proof repair is
+still deferred, and the full typed gate is not claimed green.

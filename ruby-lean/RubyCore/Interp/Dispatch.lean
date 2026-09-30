@@ -518,14 +518,14 @@ def iterStep (m : Machine) (cl : Closure) (brk : FrameId) (rest : List (List Val
     match (m.heap.get o).payload with
     | .hsh xs =>
       -- Deleted keys disappear; replacements of an existing value are visible.
-      -- Hash#[]= forbids insertion while this continuation is live/suspended.
+      -- A shared lock forbids insertion while the callback is live/suspended.
       match (keys.drop index).zipIdx.find? (fun (key, _) => xs.any (fun (k, _) => k.identEq key)) with
       | none => .next (withCtl m (.value retVal))
       | some (key, offset) =>
         let value := ((xs.find? (fun (k, _) => k.identEq key)).map Prod.snd).getD .nil
         let (v, m) := if mode == 1 then (key, m) else if mode == 2 then (value, m)
           else Builtins.allocArr m #[key, value]
-        callClosure { m with kont := .iterK cl brk [] (.hashEach o keys (index + offset + 1) mode) [] retVal v :: m.kont } cl [v] (some brk)
+        callClosure { m with hashIterationLocks := o :: m.hashIterationLocks, kont := .iterK cl brk [] (.hashEach o keys (index + offset + 1) mode) [] retVal v :: m.kont } cl [v] (some brk)
     | _ => .unsupported "Hash iterator receiver lost its Hash payload"
   | _ =>
   match rest with

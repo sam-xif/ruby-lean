@@ -105,8 +105,7 @@ def tagsOf : List Kont → List Value
   | .catchK t :: rest => t :: tagsOf rest
   | _ :: rest => tagsOf rest
 
-/-- Context-free tails contain no catch tags. The converse is false because
-native probes also observe Hash frames. -/
+/-- Context-free tails contain no catch tags. -/
 theorem catchFree_tagsOf_nil (K : List Kont) :
     Proof.CatchFree K → tagsOf K = [] := by
   intro h
@@ -118,13 +117,24 @@ theorem catchFree_tagsOf_nil (K : List Kont) :
     | catchK t => have hc := h (.catchK t) (by simp); cases hc
     | _ => exact (by simpa [tagsOf] using ih ht)
 
-theorem tags_nil_not_contextFree (o : ObjId) :
-    tagsOf [.iterK default 0 [] (.hashEach o [] 0 0) [] .nil .nil] = [] ∧
-      ¬ Proof.CatchFree [.iterK default 0 [] (.hashEach o [] 0 0) [] .nil .nil] := by
-  refine ⟨rfl, ?_⟩
-  intro h
-  have hc := h (.iterK default 0 [] (.hashEach o [] 0 0) [] .nil .nil) (by simp)
-  cases hc
+theorem tagsOf_nil_catchFree (K : List Kont) :
+    tagsOf K = [] → Proof.CatchFree K := by
+  induction K with
+  | nil => intro _ k hk; cases hk
+  | cons k rest ih =>
+    intro h
+    cases k with
+    | catchK t => simp [tagsOf] at h
+    | _ =>
+      have ht : tagsOf rest = [] := by simpa [tagsOf] using h
+      intro kk hkk
+      rcases List.mem_cons.mp hkk with rfl | hm
+      · rfl
+      · exact ih ht kk hm
+
+theorem catchFree_iff_tagsOf_nil (K : List Kont) :
+    Proof.CatchFree K ↔ tagsOf K = [] :=
+  ⟨catchFree_tagsOf_nil K, tagsOf_nil_catchFree K⟩
 
 /-! ## The rescue family is `CatchFree`, so `run_pushK` applies to it unconditionally -/
 

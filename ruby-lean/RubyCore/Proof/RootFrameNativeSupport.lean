@@ -78,34 +78,8 @@ macro_rules
 @[rootFrameLem] theorem resetEnumerator_frame (K : List Kont) (hK : ContextFree K)
     (m : Machine) (o : ObjId) :
     resetEnumerator (pushRootK K m) o = pushRootK K (resetEnumerator m o) := by
-  let lock : Kont → Option ObjId := fun k => match k with
-    | .iterK _ _ _ (.hashEach h ..) _ _ _ => some h
-    | _ => none
-  have hlocks : K.filterMap lock = [] := by
-    apply List.filterMap_eq_nil_iff.mpr
-    intro k hk
-    have h := hK k hk
-    cases k <;> try rfl
-    rename_i cl brk rest kind acc ret cur
-    cases kind <;> simp_all [observedKont, lock]
-  have hex (e : Execution) : (frameExecution K e).kont.filterMap lock = e.kont.filterMap lock := by
-    simp only [frameExecution]
-    split <;> simp [List.filterMap_append, hlocks]
-  have hs : ((enumState (pushRootK K m) o).suspended.map
-      (fun e => e.kont.filterMap lock)).getD [] =
-      ((enumState m o).suspended.map (fun e => e.kont.filterMap lock)).getD [] := by
-    simp only [enumState_rootFrame, frameEnumState, Option.map_map, Function.comp_def, hex]
   unfold resetEnumerator
-  change setEnumState { pushRootK K m with abandonedHashIterations :=
-    ((enumState (pushRootK K m) o).suspended.map (fun e => e.kont.filterMap lock)).getD [] ++
-      m.abandonedHashIterations } o {} = _
-  rw [hs]
-  let locks := ((enumState m o).suspended.map (fun e => e.kont.filterMap lock)).getD []
-  change setEnumState (pushRootK K { m with abandonedHashIterations := locks ++ m.abandonedHashIterations })
-    o (frameEnumState K {}) = _
-  rw [setEnumState_rootFrame]
-  rfl
-
+  simpa only [frameEnumState_default] using setEnumState_rootFrame K m o {}
 
 @[rootFrameLem] theorem resetEnumerator_heap_frame (K : List Kont) (hK : ContextFree K)
     (m : Machine) (h : Heap) (o : ObjId) :

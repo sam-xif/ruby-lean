@@ -45,6 +45,22 @@ theorem initializer_does_not_release (m : Machine) (recv exc message : Value) :
 theorem saved_frozen_guards (m : Machine) : (Interp.executionOf m).frozenInspections = m.frozenInspections := rfl
 theorem restored_frozen_guards (m : Machine) (e : Execution) :
     (Interp.restoreExecution m e).frozenInspections = e.frozenInspections := rfl
+theorem detached_hash_lock :
+    ({ (default : Machine) with hashIterationLocks := [7] } : Machine).hashIterationActive 7 = true := rfl
+theorem hash_marker_cannot_lock :
+    ({ (default : Machine) with kont := [.iterK default 0 [] (.hashEach 7 [] 0 0) [] .nil .nil] } : Machine).hashIterationActive 7 = false := rfl
+theorem hash_lock_kont_independent (m : Machine) (K : List Kont) (o : ObjId) :
+    ({ m with kont := K } : Machine).hashIterationActive o = m.hashIterationActive o := rfl
+theorem hash_releases_one :
+    ({ (default : Machine) with hashIterationLocks := [7, 7] } : Machine).leaveHashIteration (.hashEach 7 [] 0 0) =
+    { (default : Machine) with hashIterationLocks := [7] } := rfl
+theorem hash_unwind_releases_one : Interp.unwind
+    { (default : Machine) with kont := [.iterK default 0 [] (.hashEach 7 [] 0 0) [] .nil .nil], hashIterationLocks := [7, 7] } (.raiseJ .nil) =
+    .next { (default : Machine) with ctl := .jump (.raiseJ .nil), hashIterationLocks := [7] } := rfl
+theorem restore_keeps_shared_locks (m : Machine) (e : Execution) :
+    (Interp.restoreExecution m e).hashIterationLocks = m.hashIterationLocks := rfl
+theorem abandonment_keeps_shared_locks (m : Machine) (o : ObjId) :
+    (Interp.resetEnumerator m o).hashIterationLocks = m.hashIterationLocks := rfl
 #print axioms detached_live
 #print axioms marker_cannot_revive
 #print axioms expires_normally
@@ -54,4 +70,11 @@ theorem restored_frozen_guards (m : Machine) (e : Execution) :
 #print axioms frozen_cleanup
 #print axioms frozen_stringification_cleanup
 #print axioms initializer_does_not_release
+#print axioms detached_hash_lock
+#print axioms hash_marker_cannot_lock
+#print axioms hash_lock_kont_independent
+#print axioms hash_releases_one
+#print axioms hash_unwind_releases_one
+#print axioms restore_keeps_shared_locks
+#print axioms abandonment_keeps_shared_locks
 end DynamicContextControls

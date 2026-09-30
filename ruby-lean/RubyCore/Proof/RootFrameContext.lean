@@ -1,14 +1,12 @@
 import RubyCore.Proof.RootFrameSupport
 
-/-! Native stack probes observe catch scopes and Hash iteration locks.
-Framing is valid when the appended
-context contributes none of those observations. -/
+/-! Catch tags are the remaining native whole-stack observation. Block-call
+lifetimes, inspection guards and Hash locks are carried explicitly in state. -/
 namespace RubyCore.Proof.Root
 
 /-- The continuation forms consulted by native whole-stack probes. -/
 def observedKont : Kont → Bool
   | .catchK _ => true
-  | .iterK _ _ _ (.hashEach ..) _ _ _ => true
   | _ => false
 
 def ContextFree (K : List Kont) : Prop := ∀ k ∈ K, observedKont k = false
@@ -20,12 +18,7 @@ theorem ContextFree.any_false {K : List Kont} (hK : ContextFree K) (p : Kont →
   exact (Bool.not_eq_true _).mpr (hp k (hK k hk))
 
 theorem ContextFree.hashLockFree {K : List Kont} (hK : ContextFree K) : HashLockFree K := by
-  intro o
-  apply hK.any_false
-  intro k hk
-  cases k <;> try rfl
-  rename_i cl brk rest kind acc ret cur
-  cases kind <;> simp_all [observedKont, holdsHash]
+  exact hashLockFree_all K
 
 theorem any_rootFrame (K : List Kont) (m : Machine) (p : Kont → Bool)
     (hK : K.any p = false) :

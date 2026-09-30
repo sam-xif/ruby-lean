@@ -22,33 +22,19 @@ def rootFrameR (K : List Kont) : StepResult → StepResult
   | .next m => .next (pushRootK K m)
   | r => r
 
-def holdsHash (o : ObjId) : Kont → Bool
-  | .iterK _ _ _ (.hashEach h ..) _ _ _ => h == o
-  | _ => false
+/-- Compatibility condition for existing framing clients: framing preserves
+shared Hash locks. Every continuation now satisfies it. -/
+def HashLockFree (K : List Kont) : Prop :=
+  ∀ (m : Machine) (o : ObjId),
+    (pushRootK K m).hashIterationActive o = m.hashIterationActive o
 
-/-- An appended context must not introduce a native Hash-iteration lock. -/
-def HashLockFree (K : List Kont) : Prop := ∀ o, K.any (holdsHash o) = false
+theorem hashLockFree_all (K : List Kont) : HashLockFree K := by
+  intro m o
+  rfl
 
 theorem hashIterationActive_rootFrame (K : List Kont) (hK : HashLockFree K)
     (m : Machine) (o : ObjId) :
-    (pushRootK K m).hashIterationActive o = m.hashIterationActive o := by
-  have hex (e : Execution) : (frameExecution K e).kont.any (holdsHash o) =
-      e.kont.any (holdsHash o) := by
-    simp only [frameExecution]
-    split <;> simp [List.any_append, hK o]
-  have hkont : (if m.activeEnumerator.isNone then m.kont ++ K else m.kont).any (holdsHash o) =
-      m.kont.any (holdsHash o) := by
-    split <;> simp [List.any_append, hK o]
-  change (m.abandonedHashIterations.contains o ||
-      (pushRootK K m).kont.any (holdsHash o) ||
-      (pushRootK K m).enumerators.any (fun (_, s) =>
-        s.suspended.any (fun e => e.kont.any (holdsHash o)) ||
-        s.caller.any (fun e => e.kont.any (holdsHash o)))) =
-    (m.abandonedHashIterations.contains o || m.kont.any (holdsHash o) ||
-      m.enumerators.any (fun (_, s) =>
-        s.suspended.any (fun e => e.kont.any (holdsHash o)) ||
-        s.caller.any (fun e => e.kont.any (holdsHash o))))
-  simp only [pushRootK, hkont, List.any_map, frameEnumState, Option.any_map, Function.comp_def, hex]
+    (pushRootK K m).hashIterationActive o = m.hashIterationActive o := hK m o
 
 theorem pushRootK_quiescent (K : List Kont) (m : Machine)
     (ha : m.activeEnumerator = none) (he : m.enumerators = []) :

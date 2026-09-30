@@ -63,9 +63,10 @@ stacks, `$!`, missing-call reason, active Enumerator, live block-call tokens,
 Object inspection guards and FrozenError rendering guards. A new producer starts
 with empty dynamic scopes; a detached answer run retains its execution's scopes.
 Switching execution preserves the shared heap, frame store,
-globals, output and literal cache. A
-native yield callback suspends at the actual yield; resumption never replays
-effects. `Ctl.send` queues an ordinary method dispatch from a native operation.
+globals, output, literal cache and native Hash iteration locks. Hash locks are a
+shared multiset: each active native iteration callback owns one entry, including
+callbacks suspended in another execution. A native yield callback suspends at
+the actual yield; resumption never replays effects. `Ctl.send` queues an ordinary method dispatch from a native operation.
 
 **Observation.** Differential testing compares `obs(C)`, never raw configs:
 
@@ -948,9 +949,12 @@ other than nil remain gated. **[V]** (L280, L286)
 `rewind` checks the receiver's rewind protocol, including response/missing
 hooks, before discarding suspension. It does not execute abandoned `ensure`
 bodies. Native Hash iteration cleanup is abandoned too: its insertion lock
-remains, even after CRuby's explicit GC. Live/suspended continuations hold normal
-Hash locks; abandoned locks are retained separately. Existing Hash values and
-deletions remain visible during iteration, and Array cursors reread their
+remains, even after CRuby's explicit GC. Shared `hashIterationLocks` carries one
+entry per active callback. Callback return or unwind releases one entry;
+suspension and abandonment retain it. Releasing one callback preserves entries
+owned by nested iterations, other producers or abandoned executions.
+No continuation scan is needed. Existing Hash values and deletions remain
+visible during iteration, and Array cursors reread their
 receiver after every yield. **[V]**
 
 Incremental String#scan writes its native caller's match slot. A native external

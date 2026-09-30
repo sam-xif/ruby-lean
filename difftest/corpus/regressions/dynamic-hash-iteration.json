@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "shared native Hash iteration locks (2026-09-30)",
+  "note": "Shared per-callback lock counts preserve nested iteration, normal/break/raise/throw/redo cleanup, suspended and caller locks, independent producers, retained abandoned locks and live value updates."
+}
