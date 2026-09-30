@@ -2,7 +2,8 @@ import Ratchet.Static.NativeInstanceNames
 import Denote.Sem.Names.NativeGuards
 
 /-! The copied selector set is checked against the model, and absence excludes native
-interception on any heap/prefix. No class-name/heap-label agreement is assumed. -/
+instance interception. Singleton and optional-library sources must be excluded
+for the actual prefix separately; they are not consequences of instance-name absence. -/
 set_option autoImplicit false
 namespace Ratchet.Denote
 open RubyCore Ratchet
@@ -28,14 +29,22 @@ theorem nativeInstanceFreeB_sound {name : String} (h : nativeInstanceFreeB name 
       cases ht
 
 theorem crubyShadow_free {h : Heap} {chain : List ObjId} {name : String}
-    (hf : ∀ cn, crubyClassDefines cn name = false) : Interp.crubyShadow h chain name = none := by
+    (hf : ∀ cn, crubyClassDefines cn name = false)
+    (hs : ∀ k ∈ chain, Interp.nativeSingletonMethod h k name = false)
+    (hl : ∀ k ∈ chain, Interp.featureMethod h k name = false) :
+    Interp.crubyShadow h chain name = none := by
   induction chain with
   | nil => rfl
-  | cons k ks ih => simpa [Interp.crubyShadow, List.firstM, hf] using ih
+  | cons k ks ih =>
+    simpa [Interp.crubyShadow, List.firstM, hf, hs k (by simp), hl k (by simp)] using
+      ih (fun j hj => hs j (by simp [hj])) (fun j hj => hl j (by simp [hj]))
 
 theorem nativeInstanceFreeB_shadow {h : Heap} {chain : List ObjId} {name : String}
-    (hf : nativeInstanceFreeB name = true) : Interp.crubyShadow h chain name = none :=
-  crubyShadow_free (nativeInstanceFreeB_sound hf)
+    (hf : nativeInstanceFreeB name = true)
+    (hs : ∀ k ∈ chain, Interp.nativeSingletonMethod h k name = false)
+    (hl : ∀ k ∈ chain, Interp.featureMethod h k name = false) :
+    Interp.crubyShadow h chain name = none :=
+  crubyShadow_free (nativeInstanceFreeB_sound hf) hs hl
 
 #guard nativeInstanceFreeB "speak"
 #guard !nativeInstanceFreeB "to_s"

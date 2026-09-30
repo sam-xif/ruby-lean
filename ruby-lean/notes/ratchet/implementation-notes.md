@@ -12499,3 +12499,17 @@ entry, matching the current queued mutation callback rather than inferring
 silence from an owner name. The boot conformance proof and #guard bootOkB pass
 (134 build jobs, standard axioms). Downstream declaration/callback and class
 scope proofs still need migration; the full end-to-end gate remains red.
+
+## 2026-09-30 — native-prefix and independent heap proof repairs
+
+Completed the copied instance selector set with nine selectors introduced by
+Enumerator/UncaughtThrowError. The exhaustive kernel coverage check passes.
+Native-prefix helpers now ask separately for singleton and optional-library
+absence on that prefix; instance-name absence alone does not imply either.
+The inherited-call consumer still needs those scoped premises discharged.
+
+Fresh subclass allocation uses the boot bound through Yielder, covering all
+payload-bearing classes. Fresh-class primitive dispatch threads NamesOk.
+Proc controls prove descriptor retention from unchanged heap/stack directly,
+without assuming that arbitrary input frames lack local aliases. All five
+repair targets and Ratchet build together (258 jobs, standard axioms).

@@ -29,16 +29,18 @@ private def changed : Machine := captured.setLocal "x" .nil
 private def capTy : Ty := .clos readX (.ivarCons "x" .int .ivar0) .never
 
 theorem write_preserves_descriptor : ProcPres captured.heap changed.heap :=
-  (Framed_setLocal captured "x" .nil).procs
+  by
+  simpa only [changed, setLocal_heap] using (ProcPres.refl captured.heap)
 
 theorem saved_receiver_survives_overwrite (m : Machine) (code : ClosureCode) :
     CurrentProc
       ((reifiedMachine m (toRubyParams code.params) code.locals (toRuby code.body) code.lam).setLocal
         "f" .nil) (.ref m.heap.objs.size) :=
-  (currentProc_reified m code).framed (Framed_setLocal _ "f" .nil)
+by
+  simpa only [CurrentProc, setLocal_heap, setLocal_stack] using currentProc_reified m code
 
 private def dispatchHeap (e : Option ObjId) : Heap :=
-  ⟨#[{ klass := Boot.procId, eigen := e, payload := .proc default }]⟩
+  { objs := #[{ klass := Boot.procId, eigen := e, payload := .proc default }] }
 
 theorem changed_dispatch_keeps_payload (o : ObjId) :
     ((dispatchHeap (some 0)).get o).payload = ((dispatchHeap none).get o).payload := by

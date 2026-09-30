@@ -4,6 +4,7 @@ The checker imports only this data, never the interpreter. -/
 namespace Ratchet
 
 def nativeInstanceNames : List String := [
+  "feed", "next_values", "peek", "peek_values", "rewind", "with_index", "with_object", "tag", "value",
   "!", "!=", "!~", "%", "&", "*", "**",
   "+", "+@", "-", "-@", "/", "<", "<<",
   "<=", "<=>", "==", "===", "=~", ">", ">=",

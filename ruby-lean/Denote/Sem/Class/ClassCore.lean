@@ -13,9 +13,9 @@ open RubyCore.Proof.Judgment (freshClsHeap)
 variable {h : Heap} {name : String} {e : ObjId}
 local notation "h₁" => freshClsHeap h Boot.objectId name name e
 
-theorem primitiveDispatch (hc : Proof.ChainsIn h) (hs : Proof.Saturated h)
+theorem primitiveDispatch (hn : Proof.NamesOk h) (hc : Proof.ChainsIn h) (hs : Proof.Saturated h)
     (free : String → Bool) : primitiveDispatchB h₁ free = primitiveDispatchB h free :=
-  Subclass.primitiveDispatch hc hs free
+  Subclass.primitiveDispatch hn hc hs free
 
 theorem primitiveErrors (hc : Proof.ChainsIn h) (hs : Proof.Saturated h) :
     primitiveErrorsB h₁ = primitiveErrorsB h := Subclass.primitiveErrors hc hs
