@@ -4,6 +4,19 @@ Three of the four libraries of the `ruby-lean` Lake package; the fourth is the m
 they are about (`RubyCore/`, described in [`README.md`](README.md)). The chronological
 record is [`notes/ratchet/`](notes/), the model's is `notes/model/`.
 
+## Active semantic rebuild (2026-09-30)
+
+The user requested selective clink gating and a minimal rebuild profile after
+moving continuation observations into dynamic state. `Denote/Clink/Policy.lean`
+currently enables the seven literal rules; 92 authoring rules are explicitly
+gated. `ActiveProofs.lean` imports only active proof providers. The full authoring
+census remains 99. Use `./scripts/run_typed_ratchet.sh --clink-rebuild` to check
+the subset. It verifies real semantic proofs and model safety, and does not claim
+full checker/corpus certification. The ordinary typed gate refuses this partial
+profile; its existing floors and the complete checker safety bridge are intact.
+See `Denote/Clink/README.md` and `notes/ratchet/HANDOFF.md`. The older state and
+coverage numbers below describe the preceding complete profile.
+
 ## Current state (2026-09-26)
 
 The typed/safe gap is closed **by a theorem, not rung by rung**.

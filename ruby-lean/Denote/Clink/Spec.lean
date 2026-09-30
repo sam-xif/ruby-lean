@@ -1,5 +1,3 @@
-import Denote.Sem.Core.Framed
-
 /-!
 # `Denote/Clink/Spec.lean` — a rule is one object with two readings, and the semantic one carries its proof
 
@@ -86,7 +84,6 @@ set_option autoImplicit false
 
 namespace Ratchet.Denote
 
-open RubyCore Ratchet
 
 /-! ## §1 The family, as a parameter
 

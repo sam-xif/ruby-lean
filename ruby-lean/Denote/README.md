@@ -47,6 +47,15 @@ failure.
 | `Clink/Registry.lean` | `DFam`, `register_dclink`, `dclinks`, `DJudgeC`, the growth gate |
 | `Clink/Controls.lean` | worked derivations, the captured refusal, the positive control |
 
+## Semantic rebuild profile
+
+The clink registry now starts with the seven literal rules; the other 92 rules
+are gated explicitly while their proofs are rebuilt against the dynamic-state
+machine. Use `../scripts/run_typed_ratchet.sh --clink-rebuild`. Select rules in
+`Clink/Policy.lean` and proof providers in `Clink/ActiveProofs.lean`.
+[The rebuild guide](Clink/README.md) explains the checks and how to re-enable a
+rule. The full typed gate still requires complete checker coverage.
+
 ## Controls and examples are separated from the proofs on purpose
 
 `Controls/` (63 files) is negative: countermodels, `#guard`s, and theorems that *pin an

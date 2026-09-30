@@ -89,16 +89,32 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 RATCHET_DIR="$PWD"   # ruby-lean/, the Lake package root
 
 VERBOSE=0
+CLINK_REBUILD=0
 PASSTHROUGH=()
 for arg in "$@"; do
   case "$arg" in
     --verbose|-v) VERBOSE=1 ;;
+    --clink-rebuild) CLINK_REBUILD=1 ;;
     --help|-h)
       sed -n '2,71p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      echo
+      echo "  --clink-rebuild  Check only the active semantic-rebuild clink profile."
       exit 0 ;;
     *) PASSTHROUGH+=("$arg") ;;
   esac
 done
+
+if [[ "$CLINK_REBUILD" == 1 ]]; then
+  if [[ ${#PASSTHROUGH[@]} -gt 0 ]]; then
+    echo "--clink-rebuild accepts only --verbose; corpus options belong to the full gate." >&2
+    exit 2
+  fi
+  if [[ "$VERBOSE" == 1 ]]; then
+    exec ./scripts/run_clink_rebuild.sh --verbose
+  else
+    exec ./scripts/run_clink_rebuild.sh
+  fi
+fi
 
 LOGDIR="$(mktemp -d)"
 CURRENT_STAGE=""
@@ -152,6 +168,15 @@ stage "layering: the checker does not see the model" \
   live in one Lake package now (ruby-lean/), so the compiler no longer refuses this -- the
   checker's isolation is a claim this script keeps true. See scripts/check-isolation.sh." \
   -- ./scripts/check-isolation.sh
+
+stage "registry profile: constructor census" \
+  "The selected clink profile contains an unknown rule, duplicate entry, or a changed authoring census." \
+  -- lake build Denote.Clink.GateStatus
+
+stage "registry profile: full checker coverage" \
+  "The full typed ratchet requires every clink. A partial registry is checked with
+  --clink-rebuild; it cannot justify the unrestricted validateD safety bridge." \
+  -- lake env lean scripts/probes/complete-clink-profile.lean
 
 stage "build: the negative controls and the proofs" \
   "A Lean source does not compile, or a #guard/#guard_msgs control failed. These are the gates

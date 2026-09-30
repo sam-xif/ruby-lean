@@ -12673,3 +12673,48 @@ run_pushK, runA_pushK and their root-run dependencies. Their axiom audits contai
 only propext, Classical.choice and Quot.sound. No sorry or additional assumption
 was introduced. Log: /private/tmp/runpushK-targeted.log. The full typed gate is
 not claimed green and was not rerun for this scoped task.
+
+### 2026-09-30 — Source-controlled clink gates and minimal semantic rebuild
+
+The user requested gating clinks to rebuild the typed ratchet against the new
+machine, and selected a minimal initial profile. Policy.lean enables the seven
+literal rules; 92 constructors are gated, with the complete authoring census
+still fixed at 99. intLit remains the real non-vacuity anchor. Unknown/duplicate
+profile entries fail. A gated rule is excluded before semantic-proof lookup,
+even when a provider imports its proof; explicit registration obeys the same
+gate. An enabled missing or mistyped proof is an error, not a deferred clink.
+
+Family.lean extracts the unchanged seventeen-family source interface. Spec no
+longer imports unrelated conformance proofs. ActiveProofs imports Context for
+the seven literals; FullProofs retains the former complete provider set.
+Target derives the same canonical semantic projections from available contracts.
+Unavailable projections are False, and registration rejects an active constructor
+mentioning any such projection in either its conclusion or premises. This check
+prevents an absent premise from making a semantic obligation vacuous. Kernel
+checking still enforces the exact constructor-derived form. The registry's
+public safety theorem statements are unchanged; the unrestricted DJudge bridge
+cannot be derived from a partial list.
+
+The new --clink-rebuild option checks isolation, profile census, refusal controls,
+all active clink proofs, registry soundness and an actual model-safety witness.
+It reports CLINK REBUILD CHECKS PASS, separately from RATCHET GREEN. The ordinary
+typed gate refuses partial coverage before its existing proof/corpus stages.
+No validateD behavior, admission rule, production floor, comparator or runtime
+semantics changed. Gated and missing rules have distinct report columns.
+
+The minimal proof-provider build required a shared prerequisite repair: the three
+Integer arithmetic dispatch lemmas now unfold strCmpDefer?/strCmpTwin? introduced
+by L299. Their statements are unchanged. No other proof family was advanced.
+The real Registry target passes (228 jobs), and its safety/non-vacuity axioms are
+only propext, Classical.choice and Quot.sound. GateControls exercises disabled
+imported proofs, enabled missing/wrong proofs, unavailable premise interpretations
+and malformed policies with a separate syntax-only fixture. It contributes no
+clinks to the real registry. The real integer safety witness has standard axioms.
+
+Validation: scripts/run_typed_ratchet.sh --clink-rebuild PASS; ordinary gate
+refuses the 92 gated clinks as intended. Shell syntax and diff whitespace pass.
+Logs: /private/tmp/clink-rebuild-{registry,final}.log and
+/private/tmp/clink-full-profile-refusal.log. Re-enable exact rule names and their
+providers incrementally as documented in Denote/Clink/README.md. Other proof
+repairs and the full typed ratchet remain future work. Pre-existing untracked
+paper/, proof-changes.md and wasm upstream-bug files remain untouched.

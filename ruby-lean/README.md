@@ -56,6 +56,12 @@ from `RubyCore/`), the build of the proofs and negative controls, pipeline stage
 `RATCHET_SKIP_AGREEMENT=1`), and finally the checks that every typing rule has a
 semantic proof and that the certified fragment has not shrunk.
 
+For the current semantic rebuild, check the active clink subset with
+`./scripts/run_typed_ratchet.sh --clink-rebuild`. It initially certifies seven
+literal rules and reports the other 92 as gated. This is a separate rebuild
+check; the complete typed gate still requires all rules and keeps its existing
+floors. See [the clink rebuild guide](Denote/Clink/README.md).
+
 ## Where to read next
 
 - [`RubyCore/README.md`](RubyCore/README.md): the written semantics of the model.
