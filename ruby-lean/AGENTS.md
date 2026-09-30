@@ -12,7 +12,9 @@ currently enables the seven literal rules; 92 authoring rules are explicitly
 gated. `ActiveProofs.lean` imports only active proof providers. The full authoring
 census remains 99. Use `./scripts/run_typed_ratchet.sh --clink-rebuild` to check
 the subset. It verifies real semantic proofs and model safety, and does not claim
-full checker/corpus certification. The ordinary typed gate refuses this partial
+full checker/corpus certification. Denote/Bridge/Literal.lean now certifies
+validateActiveLiteralD through the final model-runner safety theorem; its direct
+literal acceptance follows Policy.lean. The ordinary typed gate refuses this partial
 profile; its existing floors and the complete checker safety bridge are intact.
 See `Denote/Clink/README.md` and `notes/ratchet/HANDOFF.md`. The older state and
 coverage numbers below describe the preceding complete profile.

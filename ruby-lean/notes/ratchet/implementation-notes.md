@@ -12733,3 +12733,26 @@ and rejection of otherwise accepted sequences and flow-wrapped literals. The
 rebuild gate now runs these controls. lake build Ratchet.Controls.LiteralControls
 and the rebuild gate pass; the acceptance lemmas use only standard axioms.
 The semantic bridge will supply the active clink policy in the next increment.
+
+### 2026-09-30 — Active literal bridge through the actual runner
+
+Denote/Bridge/Literal specializes validateLiteralD to clinkEnabled and proves
+literal_certified, validateActiveLiteralD_certified, and the conformant-machine,
+boot-machine and actual Semantics.run safety theorems. The last theorem accepts
+any fuel. Its imports are the literal checker, active registry and boot facts,
+with their transitive dependencies; no full DJudge certifier or example imports.
+A macro emits only enabled literal DClink references. Disabled cases are proved
+impossible from their policy evidence, with both paths checked by the kernel.
+
+The rebuild gate now builds this bridge. The real probe compares all seven
+literal acceptances to the active policy, rejects wrong hints and compound/flow
+wrappers, and proves safety for an actually accepted Integer program through the
+final runner theorem. The bridge and witnesses have only propext, Classical.choice
+and Quot.sound. No runtime changes, new axioms or proof admissions were added.
+
+Validation: the seven-literal rebuild gate passes. A temporary Integer-only
+profile (one certified, 98 gated) also passes, exercising all six disabled
+literal proof cases and validator rejections; the original profile is restored
+and rechecked before committing. Logs: /private/tmp/literal-bridge-{build,gate,
+int-only}.log. The unrestricted validateD and Bridge remain separate; the full
+typed ratchet still refuses partial coverage. Compound acceptance is future work.

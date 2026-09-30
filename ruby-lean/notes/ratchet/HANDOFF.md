@@ -5,10 +5,13 @@ Policy.lean enables seven literals; 92 other constructors are gated. The full
 census remains 99. ActiveProofs.lean imports only Context; FullProofs.lean retains
 the former complete provider set. intLit anchors non-vacuity.
 
-Run ./scripts/run_typed_ratchet.sh --clink-rebuild: PASS. Registry soundness and a
-real model-safety witness use only standard Lean axioms. The ordinary gate refuses
-this partial profile before the unrestricted checker safety bridge. No runtime,
-validateD/admission rule, corpus floor, comparator or full-gate check was weakened.
+Run ./scripts/run_typed_ratchet.sh --clink-rebuild: PASS. Registry soundness,
+literal validator controls, and Denote/Bridge/Literal's final runner-safety
+theorem use only standard Lean axioms. validateActiveLiteralD requires ordinary
+validateD acceptance, a direct literal hint, and an enabled literal rule.
+The ordinary gate refuses this partial profile before the unrestricted checker
+safety bridge. The existing validateD/pipeline remain unrestricted; no runtime,
+corpus floor, comparator or full-gate check was weakened.
 The three shared Integer dispatch simplifiers needed strCmpDefer?/strCmpTwin?
 unfolding for the minimal base to compile; no other proof family was advanced.
 
@@ -19,6 +22,16 @@ Target's unavailable projections are False, with registration rejecting every
 constructor that mentions one in a premise or conclusion. See Clink/README.md
 for details. Restore clinkProfile := none and import FullProofs only when all
 rules have been revalidated; the complete ratchet retains its original floors.
+
+The literal bridge imports only the active registry, literal checker and boot
+facts with their dependency closure. Its macro emits only active clink references;
+disabled cases close from contradictory permission evidence. The final theorem
+is validateActiveLiteralD_safe_run, for the actual Semantics.run at arbitrary
+fuel. The probe checks each literal's acceptance against the active policy and
+an accepted Integer program through that final theorem. A temporary Integer-only
+profile (one active, 98 gated) also passes; the seven-literal profile is restored.
+Compound rules still require a restricted derivation/body-checking witness before
+the subset validator can admit them. The complete Bridge remains separate.
 
 Logs: /private/tmp/clink-rebuild-{registry,final}.log;
 /private/tmp/clink-full-profile-refusal.log. Pre-existing untracked files remain

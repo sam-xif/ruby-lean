@@ -10,7 +10,8 @@ From `ruby-lean/`, run:
 ```
 
 This checks isolation, the profile census, registration refusal controls, every
-active clink's semantic proof, registry soundness and a real model-safety witness.
+active clink's semantic proof, registry soundness, literal validation and the
+literal bridge's final model-runner safety theorem.
 It reports **CLINK REBUILD CHECKS PASS** when those checks pass. It does not claim
 that the full checker or corpus is certified. The ordinary typed gate refuses a
 partial profile before building the unrestricted checker safety bridge. Its
@@ -49,3 +50,33 @@ rebuild.
 `GateControls.lean` tests the mechanism with a separate syntactic fixture. That
 fixture contributes no clinks to the real registry and makes no Ruby safety
 claim. `scripts/probes/clink-rebuild.lean` checks the real safety witness.
+
+## Literal validator and bridge
+
+`Denote/Bridge/Literal.lean` exposes `validateActiveLiteralD p d` and proves
+`validateActiveLiteralD_safe`, `validateActiveLiteralD_safe_boot` and
+`validateActiveLiteralD_safe_run`. Acceptance requires a direct literal hint,
+ordinary `validateD` acceptance (including exact payload matching), and the
+literal's rule being enabled by the registry policy. A gated literal is rejected
+even when its semantic proof remains imported. Sequences, flow wrappers and
+other compound rules are rejected by this validator.
+
+The final theorem states, for any fuel:
+
+```lean
+validateActiveLiteralD p d = true → bootOkB = true →
+  Semantics.typeStuck (Semantics.run fuel (toRuby p)) = false
+```
+
+The bridge generates proof cases only for active literal clinks; gated cases
+are discharged by their contradictory policy hypothesis. Lean kernel-checks
+both. Its imports include the active registry, the literal checker and boot
+facts, with their transitive dependencies. It imports neither the unrestricted
+DJudge certifier nor disabled proof-provider modules.
+
+`Ratchet/Check/Literal.lean` takes the rule policy as a parameter, preserving
+checker isolation. `validateD` and the existing runner/pipeline retain their
+broader acceptance behavior; the full `Denote/Bridge.lean` still needs complete
+coverage. Enabling a compound clink does not automatically expand this literal
+validator. Future increments must carry restricted derivation evidence for
+compound rules and bodies before admitting them through a subset bridge.
