@@ -89,6 +89,7 @@ theorem StateOk_reframe_block {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
     sat := by simpa only [HeapSaturated, hh] using h.sat
     primitiveDispatch := by simpa only [hh, hfree] using h.primitiveDispatch
     primitiveErrors := by simpa only [hh] using h.primitiveErrors
+    primitiveInit := by simpa only [hh] using h.primitiveInit
     stringPayload := by simpa only [hh] using h.stringPayload
     arrayPayload := by simpa only [hh] using h.arrayPayload
     hashPayload := by simpa only [hh] using h.hashPayload

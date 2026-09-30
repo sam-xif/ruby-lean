@@ -1071,6 +1071,7 @@ structure StateCore (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   sat : HeapSaturated m
   primitiveDispatch : primitiveDispatchB m.heap (nameFreeN κ) = true
   primitiveErrors : primitiveErrorsB m.heap = true
+  primitiveInit : primitiveInitB m.heap = true
   stringPayload : StringPayloadOk m.heap
   arrayPayload : ArrayPayloadOk m.heap
   hashPayload : HashPayloadOk m.heap
@@ -1167,6 +1168,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
   globalConsts := h.globalConsts.ext he
   primitiveDispatch := (primitiveDispatchB_ext he h.names h.core.classReady.chains _).trans h.primitiveDispatch
   primitiveErrors := (primitiveErrorsB_ext he).trans h.primitiveErrors
+  primitiveInit := (primitiveInitB_ext he h.names h.core.classReady.chains).trans h.primitiveInit
   stringPayload := hp
   arrayPayload := ha
   hashPayload := hh
@@ -1697,6 +1699,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
         simp only [Interp.methodOn, classOf, setLocal_heap, currentFrame_setLocal_self]
       primitiveDispatch := by simpa only [setLocal_heap] using h.primitiveDispatch
       primitiveErrors := by simpa only [setLocal_heap] using h.primitiveErrors
+      primitiveInit := by simpa only [setLocal_heap] using h.primitiveInit
       stringPayload := by simpa only [setLocal_heap] using h.stringPayload
       arrayPayload := by simpa only [setLocal_heap] using h.arrayPayload
       hashPayload := by simpa only [setLocal_heap] using h.hashPayload

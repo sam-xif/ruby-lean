@@ -16,15 +16,40 @@ theorem invoke_x (m : Machine) (recv : Value) :
   cases recv with
   | ref o =>
     cases hp : (m.heap.get o).payload <;> simp only [hp]
-    all_goals first | rfl | simp [Interp.invoke.invokeMaybeNew]
+    all_goals first | rfl | simp [Bool.and_false]
   | _ => rfl
+
+theorem nativeMissing_x {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine}
+    (hm : StateOk κ Γ I m) (hk : m.kont = []) :
+    StepSpec m Γ .any (match Builtins.run "BasicObject#method_missing" m.currentFrame.self
+        [.sym "x"] { m with missingReason := .vcall } with
+      | .err cls msg n => .next (Interp.raiseErr n cls msg)
+      | _ => .unsupported "invalid native method_missing result") κ I := by
+  let n := { m with missingReason := MissingReason.vcall }
+  have he : Ext m n := { Ext.refl m with }
+  have hn : StateOk κ Γ I n := StateOk_ext hm he hm.stringPayload hm.arrayPayload hm.hashPayload rfl
+  have hf : Framed m n := .of_heap_stack rfl rfl (.of_eq rfl rfl)
+  change StepSpec m Γ .any (match Builtins.run _ _ _ n with | .err cls msg n => _ | _ => _) κ I
+  by_cases hbytes : ((m.currentFrame.self :: [Value.sym "x"]).any (Builtins.unrepresentableByteStr n.heap)
+      && !Builtins.byteStrAwareBids.contains "BasicObject#method_missing"
+      && !Builtins.dupBids.contains "BasicObject#method_missing"
+      && !Builtins.cloneBids.contains "BasicObject#method_missing") = true
+  · simp only [Builtins.run, hbytes, ↓reduceIte]; trivial
+  · simp only [Builtins.run, hbytes, ↓reduceIte]
+    simp only [show ("BasicObject#method_missing".endsWith "#==" ||
+      "BasicObject#method_missing".endsWith "#eql?" || "BasicObject#method_missing".endsWith "#!=" ||
+      Builtins.pureEqualityBids.contains "BasicObject#method_missing") = false from by decide +kernel,
+      Bool.and_false, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
+    exact (stepSpec_nameError hn hk _).rebase hf
 
 theorem dispatchMiss_x {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : StateOk κ Γ I m)
     (hk : m.kont = []) (hmiss : nameFreeN κ "method_missing" = true := by rfl)
     (hself : κ.selfTy = none := by rfl) :
     StepSpec m Γ .any (Interp.dispatchMiss m m.currentFrame.self .vcall "x" [] none) κ I := by
-  simp only [Interp.dispatchMiss, Interp.invokeMethodMissing, Interp.tryIterator,
-    Interp.tryMixin, Interp.tryReflect]
+  have hiter : Interp.tryIterator m m.currentFrame.self "x" [] none = none := rfl
+  have hmix : Interp.tryMixin m m.currentFrame.self "x" [] = none := rfl
+  have href : Interp.tryReflect m m.currentFrame.self "x" [] none = none := rfl
+  simp only [Interp.dispatchMiss, Interp.appendKwHash, List.isEmpty, ↓reduceIte, hiter, hmix, href]
   cases Interp.crubySingletonShadow m.heap m.currentFrame.self "x" with
   | some _ => trivial
   | none =>
@@ -34,8 +59,10 @@ theorem dispatchMiss_x {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : StateO
       cases Interp.mixinShadow m m.currentFrame.self "x" with
       | some _ => trivial
       | none =>
+        simp only [Interp.invokeMethodMissing, Interp.appendKwHash, List.isEmpty,
+          show ("x" == "method_missing") = false from rfl, Bool.false_eq_true, ↓reduceIte]
         cases hl : Interp.methodOn m.heap (classOf m.heap m.currentFrame.self) "method_missing" with
-        | none => exact stepSpec_error hm hk (by simp [primitiveErrorClasses]) _
+        | none => exact nativeMissing_x hm hk
         | some p =>
           obtain ⟨owner, md⟩ := p
           have hb := hm.missFree hmiss hself owner md hl
@@ -43,7 +70,7 @@ theorem dispatchMiss_x {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : StateO
           | none => rw [he] at hb; cases hb
           | some bid =>
             simp only [he, Option.isNone, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
-            exact stepSpec_error hm hk (by simp [primitiveErrorClasses]) _
+            exact nativeMissing_x hm hk
 
 theorem SemSafeCtxA.bareName {κ : Ctx} {Γ : Env} {I : Ty}
     (hx : nameFreeN κ "x" = true) (hmiss : nameFreeN κ "method_missing" = true)

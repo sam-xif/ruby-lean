@@ -1,4 +1,4 @@
-import Denote.Rules.Primitive.PrimitiveStep
+import Denote.Rules.Primitive.ExceptionAlloc
 
 /-! Primitive allocation results: a String value or a checked non-type-error exception. -/
 
@@ -20,38 +20,31 @@ theorem stepSpec_string {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : State
   simpa only [StepSpec, builtinStep, Builtins.okStrEnc, Builtins.allocStrEnc,
     Heap.alloc, pushHeap, strObj, Interp.withCtl, deliverA, Answer.ctl, reCtl, hk] using h
 
-theorem stepSpec_error {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {τ : Ty} {cls : ObjId}
-    (hm : StateOk κ Γ I m) (hk : m.kont = [])
-    (hcls : cls ∈ primitiveErrorClasses) (msg : String) :
-    StepSpec m Γ τ (.next (Interp.raiseErr m cls msg)) κ I := by
-  have hp := List.all_eq_true.mp hm.primitiveErrors cls hcls
-  simp only [primitiveErrorB, Bool.and_eq_true, Bool.not_eq_true'] at hp
-  let obj : Object := { klass := cls, payload := .exc msg }
-  let n : Machine := { m with heap := pushHeap m.heap obj }
-  have he : Ext m n := ext_push obj hm.sat hm.core.basicSelf
-    (fun c => by simp [obj]) rfl rfl hp.1.1.1
-  have hc : classOf n.heap (.ref m.heap.objs.size) = cls := by
-    simp [n, classOf, pushHeap_get_self, obj]
-  have hsafe : EscOk n (.raiseJ (.ref m.heap.objs.size)) := by
-    simp only [EscOk, Semantics.isTypeError, Semantics.typeErrorFamily, List.any_cons,
-      List.any_nil, isA, hc, he.ancestors, hp.1.1.2, hp.1.2, hp.2, Bool.false_or]
-  have h := RunSpec.answer (a := .esc (.raiseJ (.ref m.heap.objs.size)))
-    (show ResultOk m Γ τ _ n κ I from ⟨Framed.of_ext he, hsafe, fun _ hv => by cases hv⟩)
-  simpa only [StepSpec, Interp.raiseErr, Builtins.allocExc, Heap.alloc, n, pushHeap, obj,
-    deliverA, Answer.ctl, hk] using h
+theorem stepSpec_nameError {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {τ : Ty}
+    (hm : StateOk κ Γ I m) (hk : m.kont = []) (msg : String) :
+    StepSpec m Γ τ (.next (Interp.raiseErr m Boot.nameErrorId msg)) κ I := by
+  have h := errorObject_answer (τ := τ) hm (cls := Boot.nameErrorId)
+    (by simp [primitiveErrorClasses]) msg (.ref m.heap.objs.size) 0
+  simpa [StepSpec, Interp.raiseErr, Builtins.allocExc, Builtins.allocStr,
+    Builtins.allocStrEnc, Heap.alloc, errorObjectMachine, errorMessageMachine, pushHeap,
+    strObj, deliverA, Answer.ctl, hk, Boot.nameErrorId] using h
 
 theorem stepSpec_zeroDiv {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {τ : Ty}
     (hm : StateOk κ Γ I m) (hk : m.kont = []) (msg : String) :
     StepSpec m Γ τ (.next (Interp.raiseErr m Boot.zeroDivisionErrorId msg)) κ I :=
-  stepSpec_error hm hk (by simp [primitiveErrorClasses]) msg
+  runSpec_zeroDivisionError hm hk msg
 
 theorem string_add_run (m : Machine) (a b : Value) :
     Builtins.run "String#+" a [b] m = Builtins.runStrings "String#+" a [b] m := by
   simp only [Builtins.run,
     show Builtins.byteStrAwareBids.contains "String#+" = true from rfl,
     Bool.not_true, Bool.and_false, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
+  simp only [show ("String#+".endsWith "#==" || "String#+".endsWith "#eql?" ||
+    "String#+".endsWith "#!=" || Builtins.pureEqualityBids.contains "String#+") = false from by decide +kernel,
+    Bool.false_and, Bool.false_eq_true, ↓reduceIte]
   rfl
 
+#print axioms stepSpec_nameError
 #print axioms stepSpec_string
 #print axioms stepSpec_zeroDiv
 end Ratchet.Denote.Typed

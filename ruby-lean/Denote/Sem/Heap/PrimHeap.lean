@@ -93,6 +93,31 @@ def primitiveErrorB (h : Heap) (cls : ObjId) : Bool :=
 
 def primitiveErrorsB (h : Heap) : Bool := primitiveErrorClasses.all (primitiveErrorB h)
 
+/-- ZeroDivisionError runs the native initializer before being raised. NameError
+constructs its payload directly; FrozenError has a separate prelude initializer. -/
+def primitiveInitClasses : List ObjId := [Boot.zeroDivisionErrorId]
+
+def primitiveInitB (h : Heap) : Bool :=
+  primitiveInitClasses.all fun k => match Interp.methodOn h k "initialize" with
+    | none => false
+    | some (owner, md) =>
+      md.builtin == some "Exception#initialize" && !md.undefined && !md.fromPrelude &&
+        (Interp.crubyShadow h ((ancestors h k).takeWhile (· != owner)) "initialize").isNone
+
+theorem primitiveInit_lookup {h : Heap} (hi : primitiveInitB h = true) {k : ObjId}
+    (hk : k ∈ primitiveInitClasses) :
+    ∃ owner md, Interp.methodOn h k "initialize" = some (owner, md) ∧
+      md.builtin = some "Exception#initialize" ∧ md.undefined = false ∧ md.fromPrelude = false ∧
+      Interp.crubyShadow h ((ancestors h k).takeWhile (· != owner)) "initialize" = none := by
+  have hp := List.all_eq_true.mp hi k hk
+  cases hl : Interp.methodOn h k "initialize" with
+  | none => rw [hl] at hp; cases hp
+  | some p =>
+    obtain ⟨owner, md⟩ := p
+    refine ⟨owner, md, rfl, ?_⟩
+    simpa only [hl, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
+      Option.isNone_iff_eq_none, and_assoc] using hp
+
 /-- Only references whose dispatch class is String need a string payload. -/
 def StringPayloadOk (h : Heap) : Prop :=
   ∀ o, classOf h (.ref o) = Boot.stringId → ∃ s, (h.get o).payload = .str s
@@ -154,6 +179,10 @@ theorem primitiveDispatchB_ext {m n : Machine} (he : Ext m n) (hn : Proof.NamesO
     primitiveDispatchB n.heap free = primitiveDispatchB m.heap free := by
   simp only [primitiveDispatchB, nativeDispatchB, eachDispatchB, he.methodOn_eq hc,
     he.crubyShadow_eq hn, he.ancestors]
+
+theorem primitiveInitB_ext {m n : Machine} (he : Ext m n) (hn : Proof.NamesOk m.heap)
+    (hc : Proof.ChainsIn m.heap) : primitiveInitB n.heap = primitiveInitB m.heap := by
+  simp only [primitiveInitB, he.methodOn_eq hc, he.crubyShadow_eq hn, he.ancestors]
 
 theorem primitiveErrorsB_ext {m n : Machine} (he : Ext m n) :
     primitiveErrorsB n.heap = primitiveErrorsB m.heap := by

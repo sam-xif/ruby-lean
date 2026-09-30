@@ -12587,3 +12587,21 @@ runtime indexing controls. check-proofs.sh passes again. Remaining allocation
 work includes the two-object exception layout and queued initialize call: the old
 primitiveErrorsB ancestry fact alone does not establish safe native initialization.
 Full end-to-end soundness remains under repair.
+
+### 2026-09-30 — Exception allocation and native initialization proof repair
+
+The primitive error proof had become false: exception messages are heap Strings,
+and ZeroDivisionError queues native initialize before raiseNewK. Added the positive
+native initialization capability to StateCore, verified at boot and preserved by
+allocation/reframe/scalar heap writes. ExceptionAlloc proves both allocations,
+initialization's revision increment and the two queued transitions. NameError uses
+the direct native allocation path. FrozenError has a prelude initializer and
+requires its own effectful inspection argument; the former shared helper no longer
+claims that case. PrimitiveBuiltin and BareName now compile against the actual
+conversion/purity guards and native method_missing protocol.
+
+Targeted modules and the metatheory/axiom audit pass. The complete typed gate is
+still red in downstream composition and state preservation (method installation
+now owes primitiveInit preservation). This is a repair checkpoint under the
+user's authorization, not a completed soundness claim. Runtime code and the
+Bridge theorem statements are unchanged; root proof-changes.md stays uncommitted.

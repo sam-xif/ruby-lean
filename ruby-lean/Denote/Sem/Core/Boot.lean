@@ -559,6 +559,7 @@ def bootStateBaseB (m : Machine) : Bool :=
     && Proof.namesOkB m.heap
     && m.currentFrame.localAlias.isNone
     && rootCleanB m
+    && primitiveInitB m.heap
 
 def bootStateB (m : Machine) : Bool := bootStateBaseB m && rootInitOkB Ratchet.ctx0.defs m.heap
 
@@ -569,6 +570,7 @@ separate preserves its historical full-state countermodel (§F43). -/
 theorem stateCore_of_bootStateBaseB {m : Machine} (hb : bootStateBaseB m = true) :
     StateCore Ratchet.ctx0 [] .ivar0 m := by
   simp only [bootStateBaseB, Bool.and_eq_true] at hb
+  obtain ⟨hb, hinit⟩ := hb
   obtain ⟨⟨⟨hb, hnames⟩, hal⟩, hrootClean⟩ := hb
   obtain ⟨hb, hmodule⟩ := hb
   obtain ⟨hb, hglobals⟩ := hb
@@ -592,6 +594,7 @@ theorem stateCore_of_bootStateBaseB {m : Machine} (hb : bootStateBaseB m = true)
       globalConsts := globalConstsOkB_sound hglobals
       primitiveDispatch := hpd
       primitiveErrors := hpe
+      primitiveInit := hinit
       stringPayload := stringPayloadB_sound hsp
       arrayPayload := arrayPayloadB_sound hap
       hashPayload := hashPayloadB_sound hhp

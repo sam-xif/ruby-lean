@@ -69,7 +69,12 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
     obtain ⟨x, rfl⟩ := int_value hr
     obtain ⟨y, rfl⟩ := int_value hv
     rw [primitive_invoke (bid := "Integer#/") (k := Boot.integerId) hm
-      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by
+        cases x with
+        | ofNat n => cases n with
+          | zero => rfl
+          | succ n => cases n <;> rfl
+        | negSucc n => rfl) (by rfl) hfree,
       int_div_run]
     split
     · exact stepSpec_zeroDiv hm hk _
@@ -145,7 +150,9 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
     rw [primitive_invoke (bid := "Object#==") (k := Boot.nilClassId) hm
       (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
       nil_eq_run]
-    exact stepSpec_value hm hk (by simp [denM, isBoolV])
+    split
+    · trivial
+    · exact stepSpec_value hm hk (by simp [denM, isBoolV])
   | strLength =>
     cases ha
     obtain ⟨o, s, rfl, hs⟩ := string_payload hm hr (hstring rfl)
@@ -160,9 +167,7 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
     cases hs
     obtain ⟨o, s, rfl, hs⟩ := string_payload hm hr (hstring rfl)
     obtain ⟨p, t, rfl, ht⟩ := string_payload hm hv (hstring rfl)
-    rw [primitive_invoke (bid := "String#+") (k := Boot.stringId) hm
-      (by simp [primitiveMethods]) (string_class hm hr (hstring rfl)) (by rfl)
-      (by intro k hk; cases hk; exact ⟨s, hs⟩) (by rfl) (by rfl) hfree, string_add_run]
+    rw [invoke_string_add hm (string_class hm hr (hstring rfl)) hs ht hfree, string_add_run]
     simp only [Builtins.runStrings, Builtins.binArg, Builtins.strPayload?, hs, ht]
     cases he : Builtins.concatEnc m.heap (.ref o) s (.ref p) t with
     | ok binary => exact stepSpec_string hm hk _ binary
