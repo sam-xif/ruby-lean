@@ -37,7 +37,7 @@ def enumNext (m : Machine) (o : ObjId) (peek values : Bool) : StepResult :=
         | .toplevel => some owner | _ => none
       let root : Frame := { self := .ref o, defmod := Boot.objectId, kind := .toplevel, defVis := .priv, matchAlias := sharedMatch }
       let m := setEnumState { m with heap := h } o nextState
-      enumQueue { m with frames := m.frames.push root, stack := [m.frames.size], kont := [.enumFinishK o], currentExc := none, missingReason := .ordinary, activeEnumerator := some o } { recv := .ref o } (some (.ref bo))
+      enumQueue { m with frames := m.frames.push root, stack := [m.frames.size], kont := [.enumFinishK o], currentExc := none, missingReason := .ordinary, activeEnumerator := some o, liveBreakScopes := [] } { recv := .ref o } (some (.ref bo))
 
 def enumArity (m : Machine) (n : Nat) (expected : String) : StepResult :=
   .next (raiseErr m Boot.argumentErrorId s!"wrong number of arguments (given {n}, expected {expected})")

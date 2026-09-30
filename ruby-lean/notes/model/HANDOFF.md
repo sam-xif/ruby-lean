@@ -1,5 +1,33 @@
 # Lean model — hand-off
 
+## Dynamic continuation state (2026-09-30)
+
+Active task: replace whole-continuation observations for block-call lifetimes,
+Object inspection recursion, FrozenError rendering recursion and native Hash
+iteration locks with explicit dynamic state, with one commit per family and no
+tier 0 regressions. Catch/throw remains outside this change. The user explicitly
+deferred failing proof repairs; runtime validation and tier 0 preservation are
+the commit checks for this task. The full typed gate remains failing.
+
+Block-call runtime change is implemented: fresh execution-local liveBreakScopes,
+closure entry from that state, expiration at normal/unwind boundaries, and
+Enumerator save/restore/isolation. ContextFree permits blockCallK. The historical
+stack-scan counterexample is retained against a named legacy helper, together
+with controls for the repaired behavior. Full proof migration remains deferred.
+
+Runtime checks: lake build rubycore passes; scripts/probes/dynamic-contexts.lean
+checks detached live destinations, dead-marker non-revival and boundary cleanup
+with only standard Lean axioms. The regression replay is 214 agree / one old
+sorbet-hash gate, including the new dynamic-break-lifetime program. Evidence:
+Tier 0 is unchanged for all 1,309 sources/verdicts: 1,096 agree, zero disagree,
+207 unsupported, five old invalid controls and one old harness error.
+difftest/reports/20260930-dynamic-block/. Unrelated proof-changes.md, paper/ and
+wasm upstream-bug files remain outside the commits.
+
+Next family is Object inspection recursion. Its before-change probe agrees,
+including nested inspect/to_s, guard cleanup and Enumerator suspension/isolation.
+Evidence: difftest/reports/20260930-dynamic-inspect/before/.
+
 ## Authorized proof repair checkpoint (2026-09-30)
 
 The user authorized correcting false helper contracts while preserving public

@@ -17,7 +17,7 @@ macro_rules
      first
        | rfl
        | (simp only [pushRootK, rootFrameR, withKont]; (repeat' split) <;> rfl)
-       | (rw [← callClosure_frame $K $hK]; congr 1;
+       | (rw [← callClosure_frame $K]; congr 1;
           simp only [pushRootK]; (repeat' split) <;> rfl)
        | (split <;> root_walk $K $hK)
        | skip))

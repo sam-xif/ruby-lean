@@ -15679,3 +15679,35 @@ Execution suspension, exception/ensure ordering and fresh identities need checke
 correspondence with existing Ruby behavior. No token implementation or runtime
 change is part of this checkpoint. The metatheory is green; the typed bridge
 remains red as recorded in HANDOFF.md.
+
+## 2026-09-30 — dynamic block-call lifetimes
+
+The user authorized eliminating the four avoidable continuation dependencies,
+committing each family separately and preserving the tier 0 difftest ratchet.
+Failing proof repairs are explicitly deferred for this task.
+
+reifyCallBlock installs its fresh reserved-frame identity in liveBreakScopes.
+callClosure reads execution state instead of scanning kont. blockCallK removes
+the token on normal return and every unwind path, after intervening ensures.
+Forwarding keeps identity and dead tokens invalidate break alone. Execution
+save/restore includes liveness, while a new Enumerator producer starts empty.
+Detaching an outer continuation for an answer run therefore retains liveness.
+ContextFree now permits block-call boundaries.
+
+The standalone dynamic-contexts Lean probe verifies detached liveness, dead
+marker non-revival, normal/exception cleanup and execution save/restore against
+the executable interpreter, with standard axioms only. The old obstruction
+remains a checked historical counterexample using a legacy stack-scan helper.
+Full framing/type proof migration is deferred, as requested.
+
+Runtime build passes. Full regression replay: 215 cases, 214 agreements and the
+old sorbet-hash gate. Every L299 source/verdict is preserved; the additional
+mix-06676-minimized guard and new dynamic-break-lifetime guard agree. The new
+guard covers forwarding, constructors, ensure order, recursive token identity,
+expired ordinary/break calls and Enumerator suspension/isolation/abandonment.
+Reports and per-case comparisons: difftest/reports/20260930-dynamic-block/.
+
+Full tier 0 after the change: 1,309 cases, 1,096 agree, zero disagree, 207
+unsupported, five old invalid controls and the old test_syntax_115 harness error.
+Every source and verdict matches the fresh baseline (which also matches L299).
+Runtime and standalone controls pass; failing proof repairs remain deferred.

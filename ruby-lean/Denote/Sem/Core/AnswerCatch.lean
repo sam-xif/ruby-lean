@@ -106,7 +106,7 @@ def tagsOf : List Kont → List Value
   | _ :: rest => tagsOf rest
 
 /-- Context-free tails contain no catch tags. The converse is false because
-native probes also observe block-call, inspection, frozen-error and Hash frames. -/
+native probes also observe inspection, frozen-error and Hash frames. -/
 theorem catchFree_tagsOf_nil (K : List Kont) :
     Proof.CatchFree K → tagsOf K = [] := by
   intro h
@@ -118,11 +118,11 @@ theorem catchFree_tagsOf_nil (K : List Kont) :
     | catchK t => have hc := h (.catchK t) (by simp); cases hc
     | _ => exact (by simpa [tagsOf] using ih ht)
 
-theorem tags_nil_not_contextFree (fid : FrameId) :
-    tagsOf [.blockCallK fid] = [] ∧ ¬ Proof.CatchFree [.blockCallK fid] := by
+theorem tags_nil_not_contextFree (recv : Value) :
+    tagsOf [.frozenErrorK recv .start] = [] ∧ ¬ Proof.CatchFree [.frozenErrorK recv .start] := by
   refine ⟨rfl, ?_⟩
   intro h
-  have hc := h (.blockCallK fid) (by simp)
+  have hc := h (.frozenErrorK recv .start) (by simp)
   cases hc
 
 /-! ## The rescue family is `CatchFree`, so `run_pushK` applies to it unconditionally -/

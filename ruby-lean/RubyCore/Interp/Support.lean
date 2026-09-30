@@ -34,10 +34,10 @@ def lexicalConstant (m : Machine) (name : String) : Option Value :=
         constLookupFrom m.heap Boot.objectId name else none
 
 def executionOf (m : Machine) : Execution :=
-  ⟨m.ctl, m.kont, m.stack, m.currentExc, m.missingReason, m.activeEnumerator⟩
+  ⟨m.ctl, m.kont, m.stack, m.currentExc, m.missingReason, m.activeEnumerator, m.liveBreakScopes⟩
 
 def restoreExecution (m : Machine) (e : Execution) : Machine :=
-  { m with ctl := e.ctl, kont := e.kont, stack := e.stack, currentExc := e.currentExc, missingReason := e.missingReason, activeEnumerator := e.activeEnumerator }
+  { m with ctl := e.ctl, kont := e.kont, stack := e.stack, currentExc := e.currentExc, missingReason := e.missingReason, activeEnumerator := e.activeEnumerator, liveBreakScopes := e.liveBreakScopes }
 
 def enumState (m : Machine) (o : ObjId) : EnumState :=
   ((m.enumerators.find? (·.1 == o)).map Prod.snd).getD {}
@@ -523,7 +523,7 @@ def reifyCallBlock (m : Machine) (params : List Param) (locals : List String)
       | .proc cl => m.heap.set o { m.heap.get o with payload := .proc { cl with breakScope := some scope } }
       | _ => m.heap
     | _ => m.heap
-  (v, { m with heap := h, frames := m.frames.push m.currentFrame, kont := .blockCallK scope :: m.kont })
+  (v, { m with heap := h, frames := m.frames.push m.currentFrame, liveBreakScopes := scope :: m.liveBreakScopes, kont := .blockCallK scope :: m.kont })
 
 /-- The innermost active frame whose block *is* this proc — i.e. the method the
     block was passed to. `break` inside a proc called via `#call` returns from
@@ -617,8 +617,7 @@ def callClosure (m : Machine) (cl : Closure) (args : List Value)
     (defmodOv : Option ObjId := none) : StepResult :=
   let brk := match cl.breakScope with
     | none => brk
-    | some scope => if m.kont.any (fun k => match k with
-        | .blockCallK s => s == scope | _ => false) then some scope else none
+    | some scope => if m.liveBreakScopes.contains scope then some scope else none
   if let some o := cl.enumYield then suspendEnumerator m o args else
   if let some targets := cl.forTargets then enterForClosure m cl targets args brk selfOv defmodOv else
   match classifySimple cl.params with

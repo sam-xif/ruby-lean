@@ -28,6 +28,9 @@ theorem pushRootK_kont (K : List Kont) (m : Machine) :
 @[simp, rootFrameLem] theorem pushRootK_activeEnumerator (K : List Kont) (m : Machine) :
     (pushRootK K m).activeEnumerator = m.activeEnumerator := rfl
 
+@[simp, rootFrameLem] theorem pushRootK_liveBreakScopes (K : List Kont) (m : Machine) :
+    (pushRootK K m).liveBreakScopes = m.liveBreakScopes := rfl
+
 @[simp, rootFrameLem] theorem pushRootK_numericLiterals (K : List Kont) (m : Machine) :
     (pushRootK K m).numericLiterals = m.numericLiterals := rfl
 

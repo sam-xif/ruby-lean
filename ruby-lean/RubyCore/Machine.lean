@@ -436,6 +436,9 @@ structure Execution where
   currentExc : Option Value
   missingReason : MissingReason
   activeEnumerator : Option ObjId
+  /-- Literal block-call destinations live in this execution, including when
+      its outer continuation is detached for an answer run. -/
+  liveBreakScopes : List FrameId := []
 deriving Inhabited
 
 structure EnumState where
@@ -460,6 +463,9 @@ structure Machine where
       CRuby retains these insertion restrictions even after explicit GC. -/
   abandonedHashIterations : List ObjId := []
   activeEnumerator : Option ObjId := none
+  /-- Fresh call tokens are installed by reifyCallBlock and expired when their
+      blockCallK boundary returns or unwinds. Forwarded Procs retain the token. -/
+  liveBreakScopes : List FrameId := []
   /-- Frozen numeric literals are shared on repeated execution of one syntax
       site. Constructor calls allocate independently. Keys include the unit. -/
   numericLiterals : List (String × Value) := []

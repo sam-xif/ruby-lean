@@ -59,8 +59,10 @@ frames live in a store rather than on the stack.
 
 External Enumerators (L280) add a store indexed by object id. Each running or
 suspended producer holds an `Execution`: control, continuation and activation
-stacks, `$!`, missing-call reason and active Enumerator. Switching execution
-preserves the shared heap, frame store, globals, output and literal cache. A
+stacks, `$!`, missing-call reason, active Enumerator and live block-call tokens.
+A new producer starts with no live tokens; a detached answer run retains its
+execution's tokens. Switching execution preserves the shared heap, frame store,
+globals, output and literal cache. A
 native yield callback suspends at the actual yield; resumption never replays
 effects. `Ctl.send` queues an ordinary method dispatch from a native operation.
 
@@ -831,7 +833,10 @@ parameters, without fetching the next element.
 installed this block. **[V]**
 
 The executable model records that target in `Closure.breakScope`, with a
-`blockCallK` boundary at the literal call (L284). Forwarding the Proc through
+fresh token in execution-local `liveBreakScopes` and a `blockCallK` boundary at
+the literal call (L284). Closure entry reads the live tokens, independently of
+the continuation; the boundary expires its token on normal return or unwinding.
+Forwarding the Proc through
 initialize, super or another method preserves the original target; a detached
 Proc's break raises LocalJumpError. The boundary consumes the targeted transfer
 after intervening ensures have run, independently of method return values and

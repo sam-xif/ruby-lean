@@ -1,13 +1,13 @@
 import RubyCore.Proof.RootFrameSupport
 
-/-! Native stack probes observe catch scopes, block-call scopes, inspection
+/-! Native stack probes observe catch scopes, inspection
 recursion guards, and Hash iteration locks. Framing is valid when the appended
 context contributes none of those observations. -/
 namespace RubyCore.Proof.Root
 
 /-- The continuation forms consulted by native whole-stack probes. -/
 def observedKont : Kont → Bool
-  | .catchK _ | .blockCallK _ | .objectInspectK .. | .frozenErrorK .. => true
+  | .catchK _ | .objectInspectK .. | .frozenErrorK .. => true
   | .iterK _ _ _ (.hashEach ..) _ _ _ => true
   | _ => false
 
@@ -32,15 +32,5 @@ theorem any_rootFrame (K : List Kont) (m : Machine) (p : Kont → Bool)
     (pushRootK K m).kont.any p = m.kont.any p := by
   simp only [pushRootK_kont]
   split <;> simp [List.any_append, hK]
-
-@[rootFrameLem] theorem blockCall_rootFrame (K : List Kont) (hK : ContextFree K)
-    (m : Machine) (scope : FrameId) :
-    (pushRootK K m).kont.any (fun k => match k with
-      | .blockCallK s => s == scope | _ => false) =
-    m.kont.any (fun k => match k with | .blockCallK s => s == scope | _ => false) := by
-  apply any_rootFrame
-  apply hK.any_false
-  intro k hk
-  cases k <;> simp_all [observedKont]
 
 end RubyCore.Proof.Root

@@ -72,7 +72,8 @@ def applyKontView (m : Machine) (v : Value) (k : Kont) : StepResult :=
       | _ => m
       else m
     constructResult (Builtins.run "Exception#initialize" copy [message] m)
-  | .blockCallK _ => .next (withCtl m (.value v))
+  | .blockCallK scope =>
+    .next (withCtl { m with liveBreakScopes := m.liveBreakScopes.filter (· != scope) } (.value v))
   | .arrayInitK recv block index size => arrayInitNext m recv block index size v
   | .methodEditsK remaining result => runMethodEdits m remaining result
   | .methodAddedK name =>
@@ -361,6 +362,7 @@ def enumUnwindView (m : Machine) (o : ObjId) (j : Jump) : StepResult :=
 def unwindView (m : Machine) (j : Jump) (k : Kont) : StepResult :=
   match k with
   | .blockCallK scope =>
+    let m := { m with liveBreakScopes := m.liveBreakScopes.filter (· != scope) }
     match j with
     | .retJ v target =>
       if target == scope then .next (withCtl m (.value v))

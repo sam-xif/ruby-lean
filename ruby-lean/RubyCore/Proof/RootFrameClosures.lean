@@ -73,21 +73,20 @@ open Builtins Interp
   all_goals (cases ha : m.activeEnumerator <;> simp_all [queueParamBindings, withCtl, withKont, pushRootK, allocArr, ha])
   all_goals (repeat' split) <;> simp_all [pushRootK, withKont, allocArr]
 
-@[rootFrameLem] theorem callClosure_frame (K : List Kont) (hK : ContextFree K)
+@[rootFrameLem] theorem callClosure_frame (K : List Kont)
     (m : Machine) (cl : Closure) (args : List Value) (brk : Option FrameId)
     (selfOv : Option Value) (defmodOv : Option ObjId) :
     callClosure (pushRootK K m) cl args brk selfOv defmodOv =
       rootFrameR K (callClosure m cl args brk selfOv defmodOv) := by
   unfold callClosure
-  simp (disch := (apply hK.any_false; intro k hk; cases k <;> simp_all [observedKont]))
-    only [any_rootFrame K m, rootFrameLem]
+  simp only [rootFrameLem]
   root_arms
 
 @[rootFrameLem] theorem callProcBuiltin_frame (K : List Kont) (hK : ContextFree K)
     (m : Machine) (recv : Value) (args : List Value) (kw : List (Value × Value)) :
     callProcBuiltin (pushRootK K m) recv args kw = rootFrameR K (callProcBuiltin m recv args kw) := by
   unfold callProcBuiltin
-  simp only [callClosure_frame K hK, rootFrameLem]
+  simp only [callClosure_frame K, rootFrameLem]
   root_arms
 
 end RubyCore.Proof.Root
