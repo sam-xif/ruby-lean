@@ -163,19 +163,19 @@ theorem int_add_dispatch {m : Machine} {a b : Int}
     (hres : IntBuiltinResolves m.heap "+" "Integer#+") :
     startArgs m (.int a) .explicit "+" [.int b] [] .none
       = .next (withCtl m (.value (.int (a + b)))) :=
-  int_bin_dispatch hres (by decide) run_int_add (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.num?])
+  int_bin_dispatch hres (by decide) run_int_add (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?, Builtins.num?])
 
 theorem int_sub_dispatch {m : Machine} {a b : Int}
     (hres : IntBuiltinResolves m.heap "-" "Integer#-") :
     startArgs m (.int a) .explicit "-" [.int b] [] .none
       = .next (withCtl m (.value (.int (a - b)))) :=
-  int_bin_dispatch hres (by decide) run_int_sub (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.num?])
+  int_bin_dispatch hres (by decide) run_int_sub (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?, Builtins.num?])
 
 theorem int_mul_dispatch {m : Machine} {a b : Int}
     (hres : IntBuiltinResolves m.heap "*" "Integer#*") :
     startArgs m (.int a) .explicit "*" [.int b] [] .none
       = .next (withCtl m (.value (.int (a * b)))) :=
-  int_bin_dispatch hres (by decide) run_int_mul (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.num?])
+  int_bin_dispatch hres (by decide) run_int_mul (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?, Builtins.num?])
 
 /-! ## 3. Starting argument evaluation
 

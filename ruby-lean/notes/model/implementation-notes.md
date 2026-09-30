@@ -15796,3 +15796,15 @@ five old invalid controls and one old harness error. Every source and verdict
 matches both the preceding FrozenError commit and the initial baseline.
 All four runtime refactors are complete in separate commits; proof repair is
 still deferred, and the full typed gate is not claimed green.
+
+## 2026-09-30 — shared prerequisite for the clink rebuild
+
+The new minimal clink registry enables only the seven literal rules. Its common
+conformance imports exposed L299's existing dispatch-proof drift: Integer +, -
+and * lacked simplification of the new String-comparison deferral query.
+BuiltinConformance's three proofs now unfold strCmpDefer? and strCmpTwin?, with
+unchanged statements and no executable model change. The literal Registry and
+its real model-safety witness now compile with only standard Lean axioms.
+The remaining proof families are gated while rebuilt, rather than repaired here.
+See notes/ratchet/implementation-notes.md and Denote/Clink/README.md for the new
+profile and checks. No runtime differential rerun was needed for proof-only edits.
