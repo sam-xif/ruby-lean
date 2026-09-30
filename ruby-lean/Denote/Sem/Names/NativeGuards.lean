@@ -10,8 +10,6 @@ open RubyCore Ratchet
 
 private theorem query_covered : crubyMethodNames.all (fun p => nativeQueryNames.all
     (fun mn => !p.2.contains mn || nativeQueryHasB p.1 mn)) = true := by decide
-private theorem singleton_covered : crubySingletonNames.all
-    (fun p => p.2.all singletonSendNames.contains) = true := by decide
 
 theorem nativeQueryFreeB_sound {cn mn : String} (h : nativeQueryFreeB cn mn = true) :
     crubyClassDefines cn mn = false := by
@@ -50,19 +48,7 @@ theorem classNativeFrameB_sound {κ : Ctx} {cn : String} (h : classNativeFrameB 
 
 theorem directCallNameB_sound {mn : String} (h : directCallNameB mn = true) : DirectSendName mn := by
   simp only [directCallNameB, Bool.and_eq_true, Bool.not_eq_true'] at h
-  refine ⟨by simpa [interceptedSendNames, payloadSendNames] using h.1, ?_⟩
-  intro cn
-  unfold crubySingletonDefines
-  cases hf : crubySingletonNames.find? (·.1 == cn) with
-  | none => rfl
-  | some p =>
-    have hc := List.all_eq_true.mp singleton_covered p (List.mem_of_find?_eq_some hf)
-    cases hm : p.2.contains mn with
-    | false => exact hm
-    | true =>
-      have hn := List.all_eq_true.mp hc mn (List.contains_iff_mem.mp hm)
-      rw [h.2] at hn
-      cases hn
+  exact ⟨by simpa [interceptedSendNames, payloadSendNames] using h.1⟩
 
 theorem classNativeFrameB_to_semB {κ : Ctx} {cn : String} (h : classNativeFrameB κ cn = true) :
     FreshClass.nativeFrameB κ cn = true := by

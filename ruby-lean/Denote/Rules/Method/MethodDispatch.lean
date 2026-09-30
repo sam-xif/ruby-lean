@@ -1,5 +1,6 @@
 import Denote.Rules.Method.MethodState
 import Denote.Sem.Instance.MethodHeap
+import Denote.Sem.Instance.UserDispatch
 
 /-! The ordinary method's installation and dispatch paths. These are interpreter
 equalities, not annotation-based admission: safety still consumes the checked body.
@@ -95,38 +96,6 @@ theorem lookup_installed {m : Machine} {recv : Value} {name : String}
   dsimp only
   rw [Proof.classOf_defineMethod, Proof.ancestors_defineMethod, ha]
   exact Proof.lookup_go_defineMethod_self _ _ _ _ hc _
-
-theorem invokeDispatch_userMethod {m : Machine} {recv : Value} {site : SendSite}
-    {name : String} {md : MethodDef} {owner : ObjId} {args : List Value}
-    {blk : Option Value} {kw : List (Value × Value)}
-    (hl : lookup m.heap recv name = some (owner, md))
-    (hb : md.builtin = none) (hu : md.undefined = false) (hp : md.fromPrelude = false)
-    (hv : Interp.visError? m recv site md name = none)
-    (hs : Interp.crubyShadow m.heap
-      ((ancestors m.heap (classOf m.heap recv)).takeWhile (· != owner)) name = none)
-    (hss : Interp.crubySingletonShadow m.heap recv name = none) :
-    Interp.invoke.invokeDispatch m recv site name args blk kw =
-      Interp.enterUserMethod m recv name md args blk kw := by
-  simp only [Interp.invoke.invokeDispatch, hl, hu, hp, Bool.false_eq_true, ↓reduceIte,
-    hs, hv, hb, hss]
-
-/-- Ordinary objects have no Proc/Hash/Class interception. A found entry also
-shadows the reflective `send` family, so no method-name blacklist is necessary. -/
-theorem invoke_ordinary_userMethod {m : Machine} {o owner : ObjId} {site : SendSite}
-    {name : String} {md : MethodDef} {args : List Value} {blk : Option Value}
-    {kw : List (Value × Value)}
-    (ho : (m.heap.get o).payload = .none)
-    (hl : lookup m.heap (.ref o) name = some (owner, md))
-    (hb : md.builtin = none) (hu : md.undefined = false) (hp : md.fromPrelude = false)
-    (hv : Interp.visError? m (.ref o) site md name = none)
-    (hs : Interp.crubyShadow m.heap
-      ((ancestors m.heap (classOf m.heap (.ref o))).takeWhile (· != owner)) name = none) :
-    Interp.invoke m (.ref o) site name args blk kw =
-      Interp.enterUserMethod m (.ref o) name md args blk kw := by
-  unfold Interp.invoke
-  simp only [hl, Option.isNone, Bool.and_false, Bool.false_eq_true, ↓reduceIte, ho]
-  exact invokeDispatch_userMethod hl hb hu hp hv hs
-    (by simp [Interp.crubySingletonShadow, ho])
 
 theorem finishSend_ordinary_userMethod {m : Machine} {o owner : ObjId}
     {name : String} {md : MethodDef} {args : List Value}

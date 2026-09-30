@@ -12474,3 +12474,18 @@ new MainSingletonRegression control checks both certificate rejection and the
 unchanged runtime TypeError. The earlier class-separation proof consumes the
 existing second part of the strengthened guard. Top-level soundness theorem
 statements and runtime code are unchanged. Full Denote repair is still open.
+
+## 2026-09-30 — resolved user dispatch and native query coverage
+
+Moved the resolved user dispatch lemmas into Sem/Instance/UserDispatch, where
+all three build independently of the remaining run-decomposition repair.
+Native-prefix absence is still required. Removed the obsolete second singleton
+shadow premise: invokeDispatch checks the chain before the resolved owner, and
+a user definition at that owner wins. DirectSendName consequently expresses
+payload interception only; the checker retains its conservative direct-call
+selector guard. ClassRuleControls checks the resulting implication.
+
+Added Rational, Complex, and UncaughtThrowError to the copied native to_s query
+rows. The exhaustive kernel coverage proof now passes. Ratchet, NativeGuards,
+and UserDispatch build together (238 jobs), using only standard axioms.
+No runtime or top-level theorem statement changed. Full Denote remains red.

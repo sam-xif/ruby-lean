@@ -10,9 +10,11 @@ def nativeQueryRows : List (String × List String) :=
    ("Module", ["===", "to_s"]), ("Class", ["new"]), ("NilClass", ["===", "to_s", "nil?"]),
    ("TrueClass", ["===", "to_s"]), ("FalseClass", ["===", "to_s"]),
    ("Integer", ["===", "to_s"]), ("Float", ["===", "to_s"]),
+   ("Rational", ["to_s"]), ("Complex", ["to_s"]),
    ("String", ["===", "to_s"]), ("Symbol", ["===", "to_s"]),
    ("Array", ["to_s"]), ("Hash", ["to_s"]), ("Proc", ["===", "to_s"]),
-   ("Range", ["===", "to_s"]), ("Exception", ["to_s"])]
+   ("Range", ["===", "to_s"]), ("Exception", ["to_s"]),
+   ("UncaughtThrowError", ["to_s"])]
 
 def nativeQueryHasB (cn mn : String) : Bool :=
   (nativeQueryRows.find? (·.1 == cn)).any (fun p => p.2.contains mn)
