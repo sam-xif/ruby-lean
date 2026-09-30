@@ -441,6 +441,8 @@ structure Execution where
   liveBreakScopes : List FrameId := []
   /-- Receivers whose native Object#inspect callback is in flight. -/
   objectInspections : List Value := []
+  /-- Receivers whose FrozenError inspect/to_s callback is in flight. -/
+  frozenInspections : List Value := []
 deriving Inhabited
 
 structure EnumState where
@@ -471,6 +473,9 @@ structure Machine where
   /-- Execution-local recursion guards survive continuation cuts and suspension.
       objectInspectK releases one guard on normal return or unwinding. -/
   objectInspections : List Value := []
+  /-- Entered after native exception initialization; earlier rendering phases
+      do not own a recursion guard. Saved with the current execution. -/
+  frozenInspections : List Value := []
   /-- Frozen numeric literals are shared on repeated execution of one syntax
       site. Constructor calls allocate independently. Keys include the unit. -/
   numericLiterals : List (String × Value) := []
@@ -496,6 +501,12 @@ namespace Machine
 
 def leaveObjectInspection (m : Machine) (recv : Value) : Machine :=
   { m with objectInspections := m.objectInspections.eraseP (recv.identEq ·) }
+
+def leaveFrozenInspection (m : Machine) (recv : Value) (phase : FrozenPhase) : Machine :=
+  match phase with
+  | .inspected .. | .stringified .. =>
+    { m with frozenInspections := m.frozenInspections.eraseP (recv.identEq ·) }
+  | _ => m
 
 /-- Hash's insertion restriction survives external suspension. Normal unwind
     releases a live lock; abandoning the fiber retains it separately. -/

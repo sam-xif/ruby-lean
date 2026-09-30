@@ -34,10 +34,24 @@ theorem inspection_releases_one :
 theorem saved_inspections (m : Machine) : (Interp.executionOf m).objectInspections = m.objectInspections := rfl
 theorem restored_inspections (m : Machine) (e : Execution) :
     (Interp.restoreExecution m e).objectInspections = e.objectInspections := rfl
+theorem frozen_cleanup : Interp.unwind
+    { (default : Machine) with kont := [.frozenErrorK (.ref 7) (.inspected .nil .nil)], frozenInspections := [.ref 7, .ref 8] } (.raiseJ .nil) =
+    .next { (default : Machine) with ctl := .jump (.raiseJ .nil), frozenInspections := [.ref 8] } := rfl
+theorem frozen_stringification_cleanup : Interp.unwind
+    { (default : Machine) with kont := [.frozenErrorK (.ref 7) (.stringified .nil .nil .nil)], frozenInspections := [.ref 7, .ref 8] } (.throwJ .nil .nil) =
+    .next { (default : Machine) with ctl := .jump (.throwJ .nil .nil), frozenInspections := [.ref 8] } := rfl
+theorem initializer_does_not_release (m : Machine) (recv exc message : Value) :
+    m.leaveFrozenInspection recv (.initialized exc message) = m := rfl
+theorem saved_frozen_guards (m : Machine) : (Interp.executionOf m).frozenInspections = m.frozenInspections := rfl
+theorem restored_frozen_guards (m : Machine) (e : Execution) :
+    (Interp.restoreExecution m e).frozenInspections = e.frozenInspections := rfl
 #print axioms detached_live
 #print axioms marker_cannot_revive
 #print axioms expires_normally
 #print axioms expires_on_raise
 #print axioms inspection_cleanup
 #print axioms inspection_releases_one
+#print axioms frozen_cleanup
+#print axioms frozen_stringification_cleanup
+#print axioms initializer_does_not_release
 end DynamicContextControls

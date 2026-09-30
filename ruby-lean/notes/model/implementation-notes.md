@@ -15736,3 +15736,26 @@ Full tier 0 after the Object change preserves every one of the 1,309
 sources/verdicts: 1,096 agree, zero disagree, 207 unsupported, five old invalid
 controls and one old harness error. The per-case comparison is archived with
 the report; no testing floors, comparator or admission rules changed.
+
+## 2026-09-30 — dynamic FrozenError rendering guards
+
+FrozenError recursion detection now reads execution-local frozenInspections.
+The guard starts after exception initialization and the native frozen-exception
+check, when receiver inspect is invoked. Non-String results acquire the guard
+again for their to_s callback after the inspect continuation releases its entry.
+Only inspected/stringified phases release a guard; class-name and initialization
+phases leave ambient guards intact. Cleanup occurs on every return/unwind, and
+Execution save/restore/new-producer isolation includes the rendering state.
+Continuation cuts retain the guard. ContextFree now permits every frozenErrorK.
+
+Runtime and standalone controls pass. The new dynamic-frozen-rendering guard
+agrees before and after the refactor: recursive inspect/to_s, distinct receiver
+identity, raise/throw cleanup, reentry during class-name conversion/initialize,
+and Enumerator suspension/isolation/completion/abandonment. The full proof
+repair remains deferred by the user. Evidence: difftest/reports/20260930-dynamic-frozen/.
+
+Full regression replay: 217 cases, 216 agree and the old sorbet-hash gate;
+every preceding source/verdict is retained. Full tier 0: 1,309 cases, 1,096
+agree, zero disagree, 207 unsupported, five old invalid controls and one old
+harness error. The complete source/verdict comparison is unchanged. No testing
+floors, comparator or admission rules changed.

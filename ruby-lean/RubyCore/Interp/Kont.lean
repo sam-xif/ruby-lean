@@ -202,7 +202,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       coerceBlockPass m ⟨recv, implicit, mname, acc, kw⟩ v
     | .blkConvertK call source phase =>
       resumeBlockPass m call source phase v
-    | .frozenErrorK recv phase => resumeFrozen m recv phase v
+    | .frozenErrorK recv phase => resumeFrozen (m.leaveFrozenInspection recv phase) recv phase v
     | .kwPairK key rest kwacc recv implicit mname posArgs pblk =>
       startKwargs m recv implicit mname posArgs (kwAdd kwacc (.sym key) v) rest pblk
     | .kwDynKeyK valE rest kwacc recv implicit mname posArgs pblk =>
@@ -342,6 +342,8 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
     match k with
     | .objectInspectK recv .. =>
       .next (withCtl (m.leaveObjectInspection recv) (.jump j))
+    | .frozenErrorK recv phase =>
+      .next (withCtl (m.leaveFrozenInspection recv phase) (.jump j))
     | .blockCallK scope =>
       let m := { m with liveBreakScopes := m.liveBreakScopes.filter (· != scope) }
       match j with

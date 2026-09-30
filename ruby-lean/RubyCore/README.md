@@ -59,9 +59,10 @@ frames live in a store rather than on the stack.
 
 External Enumerators (L280) add a store indexed by object id. Each running or
 suspended producer holds an `Execution`: control, continuation and activation
-stacks, `$!`, missing-call reason, active Enumerator, live block-call tokens and
-Object inspection guards. A new producer starts with empty dynamic scopes; a
-detached answer run retains its execution's scopes. Switching execution preserves the shared heap, frame store,
+stacks, `$!`, missing-call reason, active Enumerator, live block-call tokens,
+Object inspection guards and FrozenError rendering guards. A new producer starts
+with empty dynamic scopes; a detached answer run retains its execution's scopes.
+Switching execution preserves the shared heap, frame store,
 globals, output and literal cache. A
 native yield callback suspends at the actual yield; resumption never replays
 effects. `Ctl.send` queues an ordinary method dispatch from a native operation.
@@ -879,6 +880,9 @@ NoMethodError and KeyError use direct native initialization instead. FrozenError
 renders the class, initializes with a mutable prefix String, then inspects the
 receiver and appends to that same String. A callback can replace the exception's
 message, mutate/freeze the prefix, or raise before inspection. **[V]** (L286)
+Execution-local `frozenInspections` tracks receiver recursion only during inspect
+and String conversion, after initialization. Returning or unwinding through the
+owning rendering continuation releases one guard; continuation cuts retain it.
 
 An uncaught throw constructs with `(tag, value, "uncaught throw %p")`; its native
 initializer delegates the remaining arguments to super and then stores hidden

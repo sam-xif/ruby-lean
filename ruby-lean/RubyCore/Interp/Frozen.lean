@@ -53,17 +53,16 @@ def resumeFrozen (m : Machine) (recv : Value) (phase : FrozenPhase)
     -- Setting CRuby's native receiver metadata checks the exception's frozen bit.
     if (match exc with | .ref o => (m.heap.get o).frozen | _ => false) then
       raiseFrozen m exc
-    else if m.kont.any (fun k => match k with
-        | .frozenErrorK other (.inspected ..)
-        | .frozenErrorK other (.stringified ..) => recv.identEq other
-        | _ => false) then
+    else if m.frozenInspections.any (recv.identEq ·) then
       let (tail, m) := Builtins.allocStr m " ..."
       finishFrozen m exc message tail
-    else invoke (withKont m m.ctl (.frozenErrorK recv (.inspected exc message)))
+    else invoke (withKont { m with frozenInspections := recv :: m.frozenInspections } m.ctl
+        (.frozenErrorK recv (.inspected exc message)))
       recv .reflective "inspect" [] none
   | .inspected exc message =>
     if (Builtins.strPayload? m.heap value).isSome then finishFrozen m exc message value
-    else invoke (withKont m m.ctl (.frozenErrorK recv (.stringified exc message value)))
+    else invoke (withKont { m with frozenInspections := recv :: m.frozenInspections } m.ctl
+        (.frozenErrorK recv (.stringified exc message value)))
       value .reflective "to_s" [] none
   | .stringified exc message source =>
     if (Builtins.strPayload? m.heap value).isSome then finishFrozen m exc message value

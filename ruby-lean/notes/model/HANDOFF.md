@@ -24,7 +24,7 @@ Block tier 0 is unchanged for all 1,309 sources/verdicts: 1,096 agree, zero disa
 difftest/reports/20260930-dynamic-block/. Unrelated proof-changes.md, paper/ and
 wasm upstream-bug files remain outside the commits.
 
-Object inspection runtime change is implemented: execution-local objectInspections
+Object inspection runtime change is committed as 6ec295f: execution-local objectInspections
 is saved/restored with Enumerators and retained across continuation cuts. Each
 callback acquires a guard; its objectInspectK releases one on return or any jump.
 The selection hook remains before recursion detection, and String conversion
@@ -34,10 +34,19 @@ difftest/reports/20260930-dynamic-inspect/.
 Object tier 0 also preserves every one of the 1,309 sources/verdicts, with
 1,096 agreements and zero disagreements.
 
-Next families are FrozenError rendering and Hash iteration locks. Their before
-probes both agree, including initialization/guard timing, fiber isolation,
+FrozenError rendering runtime change is implemented: execution-local
+frozenInspections is active only for inspect/to_s callbacks, after initialization.
+The owning phase releases one guard on return or unwind; earlier phases leave
+ambient guards intact. Execution save/restore/isolation includes this state.
+ContextFree permits frozenErrorK. Runtime and standalone controls pass; the new
+guard agrees with CRuby. Evidence: difftest/reports/20260930-dynamic-frozen/.
+Full regression replay is 216 agree / one old gate, with every preceding
+source/verdict retained. FrozenError tier 0 preserves all 1,309 sources/verdicts:
+1,096 agreements and zero disagreements.
+
+Next family is shared Hash iteration locks. Its before probe agrees, including
 nested lock counts, shared suspended locks and persistent abandoned locks.
-Evidence: difftest/reports/20260930-dynamic-{frozen,hash}/before/.
+Evidence: difftest/reports/20260930-dynamic-hash/before/.
 
 ## Authorized proof repair checkpoint (2026-09-30)
 

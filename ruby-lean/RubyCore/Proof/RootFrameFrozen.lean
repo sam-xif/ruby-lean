@@ -24,8 +24,7 @@ open Builtins Interp
     resumeFrozen (pushRootK K m) recv phase value = rootFrameR K (resumeFrozen m recv phase value) := by
   have hLock := hK.hashLockFree
   unfold resumeFrozen
-  simp (disch := (apply hK.any_false; intro k hk; cases k <;> simp_all [observedKont]))
-    only [any_rootFrame]
+  simp only [rootFrameLem]
   root_native_walk K hK
 
 @[rootFrameLem] theorem nextClause_root (K : List Kont) (hK : ContextFree K)

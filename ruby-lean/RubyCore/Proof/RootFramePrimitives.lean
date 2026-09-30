@@ -37,6 +37,14 @@ theorem pushRootK_kont (K : List Kont) (m : Machine) :
 @[simp, rootFrameLem] theorem leaveObjectInspection_frame (K : List Kont) (m : Machine) (recv : Value) :
     (pushRootK K m).leaveObjectInspection recv = pushRootK K (m.leaveObjectInspection recv) := rfl
 
+@[simp, rootFrameLem] theorem pushRootK_frozenInspections (K : List Kont) (m : Machine) :
+    (pushRootK K m).frozenInspections = m.frozenInspections := rfl
+
+@[simp, rootFrameLem] theorem leaveFrozenInspection_frame (K : List Kont) (m : Machine)
+    (recv : Value) (phase : FrozenPhase) :
+    (pushRootK K m).leaveFrozenInspection recv phase = pushRootK K (m.leaveFrozenInspection recv phase) := by
+  cases phase <;> rfl
+
 @[simp, rootFrameLem] theorem pushRootK_numericLiterals (K : List Kont) (m : Machine) :
     (pushRootK K m).numericLiterals = m.numericLiterals := rfl
 

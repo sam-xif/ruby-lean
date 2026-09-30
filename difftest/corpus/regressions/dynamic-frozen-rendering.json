@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "dynamic FrozenError rendering guards (2026-09-30)",
+  "note": "Execution-local FrozenError recursion guards preserve initialize-before-inspect timing, per-receiver identity, inspect/to_s/raise/throw behavior and Enumerator suspension/isolation/abandonment."
+}
