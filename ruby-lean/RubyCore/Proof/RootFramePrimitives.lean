@@ -31,6 +31,12 @@ theorem pushRootK_kont (K : List Kont) (m : Machine) :
 @[simp, rootFrameLem] theorem pushRootK_liveBreakScopes (K : List Kont) (m : Machine) :
     (pushRootK K m).liveBreakScopes = m.liveBreakScopes := rfl
 
+@[simp, rootFrameLem] theorem pushRootK_objectInspections (K : List Kont) (m : Machine) :
+    (pushRootK K m).objectInspections = m.objectInspections := rfl
+
+@[simp, rootFrameLem] theorem leaveObjectInspection_frame (K : List Kont) (m : Machine) (recv : Value) :
+    (pushRootK K m).leaveObjectInspection recv = pushRootK K (m.leaveObjectInspection recv) := rfl
+
 @[simp, rootFrameLem] theorem pushRootK_numericLiterals (K : List Kont) (m : Machine) :
     (pushRootK K m).numericLiterals = m.numericLiterals := rfl
 

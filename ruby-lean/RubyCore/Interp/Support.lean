@@ -34,10 +34,10 @@ def lexicalConstant (m : Machine) (name : String) : Option Value :=
         constLookupFrom m.heap Boot.objectId name else none
 
 def executionOf (m : Machine) : Execution :=
-  ⟨m.ctl, m.kont, m.stack, m.currentExc, m.missingReason, m.activeEnumerator, m.liveBreakScopes⟩
+  ⟨m.ctl, m.kont, m.stack, m.currentExc, m.missingReason, m.activeEnumerator, m.liveBreakScopes, m.objectInspections⟩
 
 def restoreExecution (m : Machine) (e : Execution) : Machine :=
-  { m with ctl := e.ctl, kont := e.kont, stack := e.stack, currentExc := e.currentExc, missingReason := e.missingReason, activeEnumerator := e.activeEnumerator, liveBreakScopes := e.liveBreakScopes }
+  { m with ctl := e.ctl, kont := e.kont, stack := e.stack, currentExc := e.currentExc, missingReason := e.missingReason, activeEnumerator := e.activeEnumerator, liveBreakScopes := e.liveBreakScopes, objectInspections := e.objectInspections }
 
 def enumState (m : Machine) (o : ObjId) : EnumState :=
   ((m.enumerators.find? (·.1 == o)).map Prod.snd).getD {}

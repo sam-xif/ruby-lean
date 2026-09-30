@@ -106,7 +106,7 @@ def tagsOf : List Kont → List Value
   | _ :: rest => tagsOf rest
 
 /-- Context-free tails contain no catch tags. The converse is false because
-native probes also observe inspection, frozen-error and Hash frames. -/
+native probes also observe frozen-error and Hash frames. -/
 theorem catchFree_tagsOf_nil (K : List Kont) :
     Proof.CatchFree K → tagsOf K = [] := by
   intro h

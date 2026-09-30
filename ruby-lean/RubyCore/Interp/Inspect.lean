@@ -28,7 +28,8 @@ def continueObjectInspect (m : Machine) (recv filter : Value) (remaining : List 
       if !selected then continueObjectInspect m recv filter more text else
       let lead := if text.startsWith "-" then
         "#" ++ String.ofList (text.toList.drop 1) ++ " " else text ++ ", "
-      invoke (withKont m m.ctl (.objectInspectK recv filter more (lead ++ name ++ "=") none))
+      invoke (withKont { m with objectInspections := recv :: m.objectInspections } m.ctl
+          (.objectInspectK recv filter more (lead ++ name ++ "=") none))
         value .reflective "inspect" [] none
 
 /-- The checked hook runs before recursion detection, as in rb_obj_inspect. -/
@@ -45,9 +46,7 @@ def beginObjectInspect (m : Machine) (recv filter : Value) : StepResult :=
     | .ref o =>
       let head := s!"-<{className m.heap (realClassOf m.heap recv)}:{fakeAddr o}"
       if count == 0 then continueObjectInspect m recv filter [] head
-      else if m.kont.any (fun k => match k with
-          | .objectInspectK other .. => recv.identEq other
-          | _ => false) then
+      else if m.objectInspections.any (recv.identEq ·) then
         continueObjectInspect m recv filter [] (head ++ " ...")
       else continueObjectInspect m recv filter fields head
     | _ => .unsupported "native Object#inspect of an immediate"
@@ -61,7 +60,8 @@ def resumeObjectInspect (m : Machine) (recv filter : Value) (remaining : List St
     else continueObjectInspect m recv filter remaining (text ++ suffix)
   | none => match stringifying with
     | none =>
-      invoke (withKont m m.ctl (.objectInspectK recv filter remaining text (some value)))
+      invoke (withKont { m with objectInspections := recv :: m.objectInspections } m.ctl
+          (.objectInspectK recv filter remaining text (some value)))
         value .reflective "to_s" [] none
     | some source =>
       match Builtins.run "Object#__any_to_s" source [] m with

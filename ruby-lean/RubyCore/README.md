@@ -59,9 +59,9 @@ frames live in a store rather than on the stack.
 
 External Enumerators (L280) add a store indexed by object id. Each running or
 suspended producer holds an `Execution`: control, continuation and activation
-stacks, `$!`, missing-call reason, active Enumerator and live block-call tokens.
-A new producer starts with no live tokens; a detached answer run retains its
-execution's tokens. Switching execution preserves the shared heap, frame store,
+stacks, `$!`, missing-call reason, active Enumerator, live block-call tokens and
+Object inspection guards. A new producer starts with empty dynamic scopes; a
+detached answer run retains its execution's scopes. Switching execution preserves the shared heap, frame store,
 globals, output and literal cache. A
 native yield callback suspends at the actual yield; resumption never replays
 effects. `Ctl.send` queues an ordinary method dispatch from a native operation.
@@ -784,8 +784,10 @@ exits. Nil/missing selects all fields; an Array selects matching Symbol names;
 other results raise TypeError without to_ary conversion. It buffers field names
 in insertion order after the hook, then reads each field value and the selection
 Array live. Nested values use ordinary inspect followed by String coercion. A
-continuation guards object recursion and unwinds on exceptions; the hook runs
-before that guard. Native traversal bypasses Ruby instance_variables/get overrides.
+continuation resumes buffered rendering. Execution-local `objectInspections`
+guards receiver recursion, including nested String conversion, and releases one
+guard on callback return or unwinding; the hook runs before that guard. Native
+traversal bypasses Ruby instance_variables/get overrides.
 Existing-field assignment preserves its insertion position. Pure rendering is
 allowed only when these hooks cannot run, and detects cycles before recursing.
 Binary non-UTF-8 nested renderings and native Object#inspect on immediate values

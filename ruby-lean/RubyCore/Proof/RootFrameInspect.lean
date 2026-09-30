@@ -7,16 +7,10 @@ set_option maxHeartbeats 400000
 namespace RubyCore.Proof.Root
 open Builtins Interp
 
-@[rootFrameLem] theorem inspectAny_frame (K : List Kont) (hK : ContextFree K)
+@[rootFrameLem] theorem inspectAny_frame (K : List Kont)
     (m : Machine) (recv : Value) :
-    (pushRootK K m).kont.any (fun k => match k with
-      | .objectInspectK other .. => recv.identEq other | _ => false) =
-    m.kont.any (fun k => match k with
-      | .objectInspectK other .. => recv.identEq other | _ => false) := by
-  apply any_rootFrame
-  apply hK.any_false
-  intro k hk
-  cases k <;> simp_all [observedKont]
+    (pushRootK K m).objectInspections.any (recv.identEq ·) =
+    m.objectInspections.any (recv.identEq ·) := rfl
 
 @[rootFrameLem] theorem continueObjectInspect_frame (K : List Kont) (hK : ContextFree K)
     (m : Machine) (recv filter : Value) (remaining : List String) (text : String) :
@@ -36,8 +30,7 @@ open Builtins Interp
     (m : Machine) (recv filter : Value) :
     beginObjectInspect (pushRootK K m) recv filter = rootFrameR K (beginObjectInspect m recv filter) := by
   unfold beginObjectInspect
-  simp (disch := (apply hK.any_false; intro k hk; cases k <;> simp_all [observedKont]))
-    only [any_rootFrame]
+  simp only [rootFrameLem]
   root_native_walk K hK
 
 @[rootFrameLem] theorem resumeObjectInspect_frame (K : List Kont) (hK : ContextFree K)

@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "dynamic Object inspection guards (2026-09-30)",
+  "note": "Execution-local native inspection recursion guards preserve hook order, nested inspect/to_s, raise/throw cleanup and Enumerator suspension/isolation/abandonment."
+}

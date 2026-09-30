@@ -20,7 +20,7 @@ def applyKontView (m : Machine) (v : Value) (k : Kont) : StepResult :=
   | .requireK feature _ =>
     .next { m with ctl := .value (.bool true), stack := m.stack.tail, loadingFeatures := m.loadingFeatures.filter (· != feature), loadedFeatures := feature :: m.loadedFeatures }
   | .objectInspectK recv filter remaining text source =>
-    resumeObjectInspect m recv filter remaining text source v
+    resumeObjectInspect (m.leaveObjectInspection recv) recv filter remaining text source v
   | .enumFinishK o => finishEnumerator m o v
   | .enumStopK owner exc result => finishStop m owner exc result
   | .seqK es =>
@@ -361,6 +361,8 @@ def enumUnwindView (m : Machine) (o : ObjId) (j : Jump) : StepResult :=
 
 def unwindView (m : Machine) (j : Jump) (k : Kont) : StepResult :=
   match k with
+  | .objectInspectK recv .. =>
+    .next (withCtl (m.leaveObjectInspection recv) (.jump j))
   | .blockCallK scope =>
     let m := { m with liveBreakScopes := m.liveBreakScopes.filter (· != scope) }
     match j with

@@ -15711,3 +15711,28 @@ Full tier 0 after the change: 1,309 cases, 1,096 agree, zero disagree, 207
 unsupported, five old invalid controls and the old test_syntax_115 harness error.
 Every source and verdict matches the fresh baseline (which also matches L299).
 Runtime and standalone controls pass; failing proof repairs remain deferred.
+
+## 2026-09-30 — dynamic Object inspection guards
+
+Native Object inspection reads execution-local objectInspections instead of
+scanning kont. Each nested inspect/to_s callback acquires a receiver-identity
+guard; its objectInspectK releases one entry on normal return or any unwind.
+The selection hook still executes before recursion detection. Field names remain
+buffered, and field values/filter remain live. Execution save/restore carries
+the guards; new Enumerator producers start empty and abandoned guards disappear
+with the discarded execution. A detached answer run retains ambient guards.
+ContextFree now permits objectInspectK.
+
+Runtime and standalone interpreter controls pass, including single-entry cleanup
+when an ambient guard for the same receiver is present. The before-change probe
+and new permanent dynamic-object-inspection regression both agree with CRuby:
+nested inspect/to_s, hook counts, raise/throw cleanup, suspension, independent
+caller/producer recursion state and abandonment are pinned. Full regression
+replay has 216 cases, 215 agree and the old sorbet-hash gate. Every preceding
+source/verdict is retained. Evidence: difftest/reports/20260930-dynamic-inspect/.
+Failing proof repairs remain deferred by the user's instruction.
+
+Full tier 0 after the Object change preserves every one of the 1,309
+sources/verdicts: 1,096 agree, zero disagree, 207 unsupported, five old invalid
+controls and one old harness error. The per-case comparison is archived with
+the report; no testing floors, comparator or admission rules changed.

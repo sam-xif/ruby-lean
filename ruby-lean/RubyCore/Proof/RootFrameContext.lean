@@ -1,13 +1,13 @@
 import RubyCore.Proof.RootFrameSupport
 
-/-! Native stack probes observe catch scopes, inspection
-recursion guards, and Hash iteration locks. Framing is valid when the appended
+/-! Native stack probes observe catch scopes, FrozenError recursion guards,
+and Hash iteration locks. Framing is valid when the appended
 context contributes none of those observations. -/
 namespace RubyCore.Proof.Root
 
 /-- The continuation forms consulted by native whole-stack probes. -/
 def observedKont : Kont → Bool
-  | .catchK _ | .objectInspectK .. | .frozenErrorK .. => true
+  | .catchK _ | .frozenErrorK .. => true
   | .iterK _ _ _ (.hashEach ..) _ _ _ => true
   | _ => false
 

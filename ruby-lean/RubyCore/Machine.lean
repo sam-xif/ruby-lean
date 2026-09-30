@@ -439,6 +439,8 @@ structure Execution where
   /-- Literal block-call destinations live in this execution, including when
       its outer continuation is detached for an answer run. -/
   liveBreakScopes : List FrameId := []
+  /-- Receivers whose native Object#inspect callback is in flight. -/
+  objectInspections : List Value := []
 deriving Inhabited
 
 structure EnumState where
@@ -466,6 +468,9 @@ structure Machine where
   /-- Fresh call tokens are installed by reifyCallBlock and expired when their
       blockCallK boundary returns or unwinds. Forwarded Procs retain the token. -/
   liveBreakScopes : List FrameId := []
+  /-- Execution-local recursion guards survive continuation cuts and suspension.
+      objectInspectK releases one guard on normal return or unwinding. -/
+  objectInspections : List Value := []
   /-- Frozen numeric literals are shared on repeated execution of one syntax
       site. Constructor calls allocate independently. Keys include the unit. -/
   numericLiterals : List (String × Value) := []
@@ -488,6 +493,9 @@ structure Machine where
 deriving Inhabited
 
 namespace Machine
+
+def leaveObjectInspection (m : Machine) (recv : Value) : Machine :=
+  { m with objectInspections := m.objectInspections.eraseP (recv.identEq ·) }
 
 /-- Hash's insertion restriction survives external suspension. Normal unwind
     releases a live lock; abandoning the fiber retains it separately. -/

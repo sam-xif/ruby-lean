@@ -9,7 +9,7 @@ tier 0 regressions. Catch/throw remains outside this change. The user explicitly
 deferred failing proof repairs; runtime validation and tier 0 preservation are
 the commit checks for this task. The full typed gate remains failing.
 
-Block-call runtime change is implemented: fresh execution-local liveBreakScopes,
+Block-call runtime change is committed as 7d5a002: fresh execution-local liveBreakScopes,
 closure entry from that state, expiration at normal/unwind boundaries, and
 Enumerator save/restore/isolation. ContextFree permits blockCallK. The historical
 stack-scan counterexample is retained against a named legacy helper, together
@@ -18,15 +18,26 @@ with controls for the repaired behavior. Full proof migration remains deferred.
 Runtime checks: lake build rubycore passes; scripts/probes/dynamic-contexts.lean
 checks detached live destinations, dead-marker non-revival and boundary cleanup
 with only standard Lean axioms. The regression replay is 214 agree / one old
-sorbet-hash gate, including the new dynamic-break-lifetime program. Evidence:
-Tier 0 is unchanged for all 1,309 sources/verdicts: 1,096 agree, zero disagree,
+sorbet-hash gate, including the new dynamic-break-lifetime program.
+Block tier 0 is unchanged for all 1,309 sources/verdicts: 1,096 agree, zero disagree,
 207 unsupported, five old invalid controls and one old harness error.
 difftest/reports/20260930-dynamic-block/. Unrelated proof-changes.md, paper/ and
 wasm upstream-bug files remain outside the commits.
 
-Next family is Object inspection recursion. Its before-change probe agrees,
-including nested inspect/to_s, guard cleanup and Enumerator suspension/isolation.
-Evidence: difftest/reports/20260930-dynamic-inspect/before/.
+Object inspection runtime change is implemented: execution-local objectInspections
+is saved/restored with Enumerators and retained across continuation cuts. Each
+callback acquires a guard; its objectInspectK releases one on return or any jump.
+The selection hook remains before recursion detection, and String conversion
+remains guarded. ContextFree permits objectInspectK. Runtime and standalone
+controls pass; full regression replay is 215 agree / one old gate. Evidence:
+difftest/reports/20260930-dynamic-inspect/.
+Object tier 0 also preserves every one of the 1,309 sources/verdicts, with
+1,096 agreements and zero disagreements.
+
+Next families are FrozenError rendering and Hash iteration locks. Their before
+probes both agree, including initialization/guard timing, fiber isolation,
+nested lock counts, shared suspended locks and persistent abandoned locks.
+Evidence: difftest/reports/20260930-dynamic-{frozen,hash}/before/.
 
 ## Authorized proof repair checkpoint (2026-09-30)
 
