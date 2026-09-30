@@ -1,4 +1,4 @@
-import Denote.Bridge
+import Denote.Bridge.Full
 import Denote.Judgment.MethodRules
 
 /-! Soundness of callback method bodies through the shared registry. Ordinary premises

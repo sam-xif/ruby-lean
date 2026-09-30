@@ -29,7 +29,7 @@ elab "check_dclink_profile" : command => do
 elab "require_complete_dclink_profile" : command => do
   let gated := (← authoringDClinks).filter (!clinkEnabled ·)
   unless gated.isEmpty do
-    throwError m!"full typed ratchet requires all clinks; {gated.length} are gated by \
+    throwError m!"full corpus audit requires all clinks; {gated.length} are gated by \
 {clinkProfileName}. Use scripts/run_typed_ratchet.sh --clink-rebuild for the active proof subset."
 
 check_dclink_profile

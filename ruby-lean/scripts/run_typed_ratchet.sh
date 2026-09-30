@@ -173,9 +173,9 @@ stage "registry profile: constructor census" \
   "The selected clink profile contains an unknown rule, duplicate entry, or a changed authoring census." \
   -- lake build Denote.Clink.GateStatus
 
-stage "registry profile: full checker coverage" \
-  "The full typed ratchet requires every clink. A partial registry is checked with
-  --clink-rebuild; it cannot justify the unrestricted validateD safety bridge." \
+stage "registry profile: complete corpus audit" \
+  "The historical full-coverage corpus audit requires every clink and keeps its floors.
+  --clink-rebuild checks the actual profile-gated validateD safety bridge and adapters." \
   -- lake env lean scripts/probes/complete-clink-profile.lean
 
 stage "build: the negative controls and the proofs" \

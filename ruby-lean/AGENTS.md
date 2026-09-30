@@ -6,18 +6,22 @@ record is [`notes/ratchet/`](notes/), the model's is `notes/model/`.
 
 ## Active semantic rebuild (2026-09-30)
 
-The user requested selective clink gating and a minimal rebuild profile after
-moving continuation observations into dynamic state. `Denote/Clink/Policy.lean`
-currently enables the seven literal rules; 92 authoring rules are explicitly
-gated. `ActiveProofs.lean` imports only active proof providers. The full authoring
-census remains 99. Use `./scripts/run_typed_ratchet.sh --clink-rebuild` to check
-the subset. It verifies real semantic proofs and model safety, and does not claim
-full checker/corpus certification. Denote/Bridge/Literal.lean now certifies
-validateActiveLiteralD through the final model-runner safety theorem; its direct
-literal acceptance follows Policy.lean. The ordinary typed gate refuses this partial
-profile; its existing floors and the complete checker safety bridge are intact.
-See `Denote/Clink/README.md` and `notes/ratchet/HANDOFF.md`. The older state and
-coverage numbers below describe the preceding complete profile.
+The user requested selective clink gating and then clarified that both
+validateD itself and the actual Bridge.lean theorem must follow the registry.
+The shared Ratchet/ClinkPolicy currently enables seven literal rules; 92 authoring
+rules are gated. validateD requires source evidence for an enabled rule plus raw
+check success. Bridge.lean proves the original validateD_safe, _safe_boot and
+_safe_run statements using only active clinks and dependencies. ActiveProofs
+imports only active providers; the authoring census remains 99.
+
+Use ./scripts/run_typed_ratchet.sh --clink-rebuild for the actual checker/bridge,
+axiom audit, rule-policy controls and command-line adapters. Current evidence
+supports direct literals; compounds need restricted premise/body evidence before
+admission. The full historical corpus gate still requires complete coverage and
+retains its floors. Optional raw DJudge completeness helpers moved to
+Denote/Bridge/Full.lean; Bridge/Literal is a compatibility wrapper. See
+Denote/Clink/README.md and notes/ratchet/HANDOFF.md. Older numbers below describe
+the preceding complete profile.
 
 ## Current state (2026-09-26)
 

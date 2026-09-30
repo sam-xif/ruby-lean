@@ -10,20 +10,22 @@ From `ruby-lean/`, run:
 ```
 
 This checks isolation, the profile census, registration refusal controls, every
-active clink's semantic proof, registry soundness, literal validation and the
-literal bridge's final model-runner safety theorem.
+active clink's semantic proof, registry soundness, the actual validateD and
+Bridge.lean's final model-runner safety theorem.
 It reports **CLINK REBUILD CHECKS PASS** when those checks pass. It does not claim
 that the full checker or corpus is certified. The ordinary typed gate refuses a
-partial profile before building the unrestricted checker safety bridge. Its
+partial profile before the historical full-coverage corpus audit. Its
 coverage, corpus floors, agreement checks and negative controls remain intact.
 
 ## Re-enable a rule
 
-1. Add its exact constructor suffix to `Policy.lean`'s `clinkProfile` list, such
+1. Add its exact constructor suffix to `Ratchet/ClinkPolicy.lean`'s `clinkProfile` list, such
    as `var`, `DJudgeAll.cons` or `DFlow.call`.
 2. Add its proof-provider import to `ActiveProofs.lean`. The former complete
    import set is retained in `FullProofs.lean` as a reference.
-3. Repair the selected rule and its necessary dependencies, then rerun the
+3. Repair the selected rule and its necessary dependencies. Extend the validator
+   evidence and its Bridge certification case when admitting a new expression
+   rule, including evidence for every premise/body rule it uses. Then rerun the
    rebuild command. Enabled rules with missing or mistyped proofs fail the build.
 
 These names identify rules, rather than the chronological clink numbers in the
@@ -42,41 +44,47 @@ importing disabled proof families without weakening any active rule's contract.
 Every admitted clink is still kernel-checked against its constructor-derived
 form. The ordinary registry safety statements are unchanged.
 
-To restore the complete profile, set `clinkProfile := none` and import
-`Denote.Clink.FullProofs` in `ActiveProofs.lean`. Every proof must then build again
-before the full typed gate can pass. No production floor is reset during this
-rebuild.
+The complete registry profile is `clinkProfile := none` with
+`Denote.Clink.FullProofs` imported by `ActiveProofs.lean`. Restoring complete
+admission additionally requires rebuilding the validator evidence/certification
+for compound rules and bodies; merely enabling their proofs does not admit them.
+Every proof must build before the full typed gate can pass. No production floor
+is reset during this rebuild.
 
 `GateControls.lean` tests the mechanism with a separate syntactic fixture. That
 fixture contributes no clinks to the real registry and makes no Ruby safety
 claim. `scripts/probes/clink-rebuild.lean` checks the real safety witness.
 
-## Literal validator and bridge
+## The actual validator and bridge
 
-`Denote/Bridge/Literal.lean` exposes `validateActiveLiteralD p d` and proves
-`validateActiveLiteralD_safe`, `validateActiveLiteralD_safe_boot` and
-`validateActiveLiteralD_safe_run`. Acceptance requires a direct literal hint,
-ordinary `validateD` acceptance (including exact payload matching), and the
-literal's rule being enabled by the registry policy. A gated literal is rejected
-even when its semantic proof remains imported. Sequences, flow wrappers and
-other compound rules are rejected by this validator.
+`validateD` itself now requires an enabled rule, source evidence for the current
+rebuild fragment, and ordinary `check` success (including exact payload matching).
+The shared policy lives in `Ratchet/ClinkPolicy.lean`, preserving isolation;
+`Denote/Clink/Policy.lean` exports the same definitions for registry clients.
+There is no separate acceptance policy for the production validator.
 
-The final theorem states, for any fuel:
+`Denote/Bridge.lean` proves the original `validateD_safe`, `validateD_safe_boot`
+and `validateD_safe_run` statements from that enabled evidence. The final theorem
+states, for any fuel:
 
 ```lean
-validateActiveLiteralD p d = true → bootOkB = true →
+validateD p d = true → bootOkB = true →
   Semantics.typeStuck (Semantics.run fuel (toRuby p)) = false
 ```
 
-The bridge generates proof cases only for active literal clinks; gated cases
-are discharged by their contradictory policy hypothesis. Lean kernel-checks
-both. Its imports include the active registry, the literal checker and boot
-facts, with their transitive dependencies. It imports neither the unrestricted
-DJudge certifier nor disabled proof-provider modules.
+Its proof references only active clinks. Disabled literal cases are discharged
+by their contradictory policy hypothesis; Lean kernel-checks both paths.
+Its imports contain the actual checker, active registry and boot facts with
+transitive dependencies, excluding the complete authoring-rule certifier and
+examples. `Bridge/Full.lean` retains the optional raw-DJudge completeness helpers
+for the complete registry. `Bridge/Literal.lean` is now a compatibility wrapper
+around the original validator/theorems.
 
-`Ratchet/Check/Literal.lean` takes the rule policy as a parameter, preserving
-checker isolation. `validateD` and the existing runner/pipeline retain their
-broader acceptance behavior; the full `Denote/Bridge.lean` still needs complete
-coverage. Enabling a compound clink does not automatically expand this literal
-validator. Future increments must carry restricted derivation evidence for
-compound rules and bodies before admitting them through a subset bridge.
+The current evidence supports the seven direct literal rules. Gated literals,
+flow wrappers and compound programs are rejected by `validateD`, including in
+`ratchetd` and `validate-one`. Raw internal `check` still reconstructs the broader
+syntactic judgments; its success alone cannot bypass the enabled acceptance
+boundary. Compound admission requires extending restricted evidence for the rule,
+its companion premises and any checked/rechecked bodies. Adding its clink name
+alone does not yet provide that evidence. The full historical corpus audit and
+its production floors remain separate from this rebuilding profile.

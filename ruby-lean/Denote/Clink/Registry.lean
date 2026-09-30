@@ -4,7 +4,8 @@ import Denote.Clink.Target
 
 /-! Active certified clinks under the source-controlled rebuild profile. A disabled
 clink is omitted before its proof is required; an enabled clink must still carry
-its constructor-derived proof. The full safety bridge requires complete coverage. -/
+its constructor-derived proof. Bridge.lean consumes enabled evidence;
+raw-DJudge completeness in Bridge/Full.lean requires the complete registry. -/
 set_option autoImplicit false
 open Lean Meta Elab Command
 namespace Ratchet.Denote.Typed

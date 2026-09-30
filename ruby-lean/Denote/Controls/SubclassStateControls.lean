@@ -1,7 +1,7 @@
 import Denote.Rules.Subclass.SubclassStateEntry
 import Denote.Rules.Subclass.SubclassHeaderEntry
 import Denote.Rules.Class.ClassHeaderRun
-import Denote.Bridge
+import Denote.Bridge.Full
 import Denote.Sem.Core.Boot
 
 /-! Full-state control after a real checked parent-class run, followed by actual subclass

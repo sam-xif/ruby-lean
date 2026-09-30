@@ -1,5 +1,5 @@
 import Denote.Rules.Super.SuperDispatch
-import Denote.Bridge
+import Denote.Bridge.Full
 
 /-! Super routes skip the defining owner, retain intermediate overrides, and cannot use
 an unrelated or absent owner. Positive rows alone do not prove a super target. -/

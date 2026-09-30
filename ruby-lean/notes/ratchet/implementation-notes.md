@@ -12766,3 +12766,39 @@ compatibility names for the same definitions. Literal source evidence is split
 into LiteralEvidence so Check can import it without a cycle. Acceptance and
 theorems are unchanged in this increment. The rebuild gate passes. The next
 increment connects the original endpoints to the current enabled fragment.
+
+### 2026-09-30 — Gate validateD and the original Bridge theorem
+
+validateD now requires literal source-rule evidence, permission from the shared
+clink policy and raw check success. validateD_enabled returns this evidence;
+validateD_typed preserves the raw syntactic typing consequence. Raw internal
+check retains its body/cache machinery, but raw success alone is no longer the
+production acceptance boundary. The active evidence currently covers the seven
+direct literals. Compounds and flow wrappers are rejected by the actual endpoint.
+Further compound admissions require restricted premise/body evidence and its
+certification case; adding a registry name alone does not restore that evidence.
+
+Bridge.lean now builds with the existing validateD_safe, validateD_safe_boot and
+validateD_safe_run statements, whose hypothesis remains validateD p d = true.
+It imports Check, the active Registry and Boot plus their transitive dependencies.
+The optional full-authoring completeness/helper proofs moved to Bridge/Full;
+their existing method/instance/control clients explicitly import that module.
+Bridge/Literal is a compatibility wrapper around the original endpoints. No
+unrestricted DJudge completeness assumption is needed in the main Bridge.
+
+The rebuild gate checks the actual Bridge, validator controls, ratchetd and
+validate-one, plus real safety witnesses and the standard-axiom audit. The full
+historical corpus gate still requires complete coverage and retains its floors;
+its refusal now describes the corpus audit rather than claiming that a partial
+registry cannot justify the actual safety theorem. No runtime semantics, theorem
+statement, comparator, corpus floor, or historical full-coverage control was
+weakened. Existing full-registry controls retain their raw-helper imports.
+
+Validation: lake build Denote.Bridge and the seven-clink rebuild gate pass.
+The actual validate-one binary accepts a matching Integer/String, rejects a
+mismatched literal and rejects a raw-typable sequence. A temporary Integer-only
+shared profile passes the same gate with one certified/98 gated; the actual
+adapter then accepts Integer and rejects String. Restoring the seven-clink
+profile and rebuilding restores String acceptance. The final theorem and
+witnesses depend only on propext, Classical.choice and Quot.sound. Logs:
+/private/tmp/active-bridge-build.log, active-validator-{gate,int-only}.log.

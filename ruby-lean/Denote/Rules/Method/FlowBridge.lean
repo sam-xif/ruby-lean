@@ -1,4 +1,4 @@
-import Denote.Bridge
+import Denote.Bridge.Full
 import Denote.Judgment.MethodFlowRules
 
 /-! All alias-aware method premises cross the shared registry. -/

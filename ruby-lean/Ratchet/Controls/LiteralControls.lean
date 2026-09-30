@@ -1,34 +1,30 @@
-import Ratchet.Check.Literal
+import Ratchet.Check.Check
 
 namespace Ratchet
-private def literalsOnly (rule : String) : Bool := rule == "intLit"
 
--- An allowed rule still checks the program against the exact certificate.
-#guard validateLiteralD literalsOnly (.int 7) (.intLit 7)
-#guard !validateLiteralD literalsOnly (.int 7) (.intLit 8)
-#guard !validateLiteralD literalsOnly (.int 7) (.nilLit)
+-- The actual verdict follows the shared clink policy for every supported rule.
+#guard validateD (.int 7) (.intLit 7) == clinkEnabled "intLit"
+#guard validateD (.flt 0) (.fltLit 0) == clinkEnabled "fltLit"
+#guard validateD (.str "ok") (.strLit "ok") == clinkEnabled "strLit"
+#guard validateD (.sym "ok") (.symLit "ok") == clinkEnabled "symLit"
+#guard validateD .tru .truLit == clinkEnabled "truLit"
+#guard validateD .fls .flsLit == clinkEnabled "flsLit"
+#guard validateD .nil .nilLit == clinkEnabled "nilLit"
 
--- A well-typed literal cannot cross a disabled rule; enabling is rule-specific.
-#guard validateD (.str "ok") (.strLit "ok")
-#guard !validateLiteralD literalsOnly (.str "ok") (.strLit "ok")
-#guard !validateLiteralD (fun _ => false) (.int 7) (.intLit 7)
-#guard validateLiteralD (fun _ => true) (.flt 0) (.fltLit 0)
-#guard validateLiteralD (fun _ => true) (.str "ok") (.strLit "ok")
-#guard validateLiteralD (fun _ => true) (.sym "ok") (.symLit "ok")
-#guard validateLiteralD (fun _ => true) .tru .truLit
-#guard validateLiteralD (fun _ => true) .fls .flsLit
-#guard validateLiteralD (fun _ => true) .nil .nilLit
-#guard !validateLiteralD (fun _ => true) (.flt 0) (.fltLit 1)
-#guard !validateLiteralD (fun _ => true) (.str "ok") (.strLit "bad")
-#guard !validateLiteralD (fun _ => true) (.sym "ok") (.symLit "bad")
+-- An enabled rule still checks the program against the exact certificate.
+#guard !validateD (.int 7) (.intLit 8)
+#guard !validateD (.int 7) .nilLit
+#guard !validateD (.flt 0) (.fltLit 1)
+#guard !validateD (.str "ok") (.strLit "bad")
+#guard !validateD (.sym "ok") (.symLit "bad")
 
--- Ordinary acceptance of a compound program or flow wrapper grants no literal
--- acceptance, even if every leaf uses an allowed rule.
-#guard validateD (.seq [.int 7]) (.seq [.intLit 7])
-#guard !validateLiteralD (fun _ => true) (.seq [.int 7]) (.seq [.intLit 7])
-#guard validateD (.int 7) (.flow (.intLit 7))
-#guard !validateLiteralD literalsOnly (.int 7) (.flow (.intLit 7))
+-- Raw syntactic checking remains available to internal body/cache checks.
+-- Its success cannot bypass the actual validator's current restricted evidence.
+#guard (check fuelD [] (.seq [.int 7]) (.seq [.intLit 7])).isSome
+#guard !validateD (.seq [.int 7]) (.seq [.intLit 7])
+#guard (check fuelD [] (.int 7) (.flow (.intLit 7))).isSome
+#guard !validateD (.int 7) (.flow (.intLit 7))
 
-#print axioms validateLiteralD_typed
-#print axioms validateLiteralD_validated
+#print axioms validateD_enabled
+#print axioms validateD_typed
 end Ratchet

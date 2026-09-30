@@ -1,5 +1,7 @@
 import Ratchet.Check.CallbackCache
 import Ratchet.Check.FlowCheck
+import Ratchet.Check.LiteralEvidence
+import Ratchet.ClinkPolicy
 
 set_option autoImplicit false
 namespace Ratchet
@@ -864,8 +866,9 @@ end
 /-! ## §4 The entry point
 
 `validate` in the sense the ladder means it: a program, a certificate, a `Bool`. The `Bool`
-is `isSome` of a value whose type contains the derivation, so `true` *is* "there is a
-`DJudge` derivation of this program", with no theorem in between.
+requires both the checker's derivation and source evidence for a rule enabled by
+the shared clink policy. The current rebuild supports the seven direct literals.
+Compound rules will carry their own restricted evidence as they are rebuilt.
 
 Fuel: 200 is far beyond anything in the corpus (the deepest rung nests ~12 levels) and is not
 a soundness parameter -- running out answers `false`. -/
@@ -876,23 +879,41 @@ def fuelD : Nat := 200
 empty environment. -/
 def DTyped (p : Expr) : Prop := ∃ τ Γ' κ' I', DJudge [] p τ Γ' ctx0 .ivar0 κ' I'
 
-/-- **The ladder's verdict.** `true` iff the certificate checks. -/
-def validateD (p : Expr) (d : Deriv) : Bool := (check fuelD [] p d).isSome
+/-- **The ladder's verdict.** A checked certificate must also use an enabled
+rule represented by the current rebuild evidence. -/
+def validateD (p : Expr) (d : Deriv) : Bool :=
+  match literalHint? p d with
+  | none => false
+  | some c => clinkEnabled c.rule && (check fuelD [] p d).isSome
+
+/-- Acceptance carries the exact source rule and its policy permission, as well
+as the ordinary checker's success. The bridge consumes this restricted evidence. -/
+theorem validateD_enabled {p : Expr} {d : Deriv} (h : validateD p d = true) :
+    ∃ τ rule, LiteralJudge p τ rule ∧ clinkEnabled rule = true ∧
+      (check fuelD [] p d).isSome = true := by
+  unfold validateD at h
+  cases hc : literalHint? p d with
+  | none => simp [hc] at h
+  | some c =>
+    rw [hc] at h
+    obtain ⟨he, hv⟩ := Bool.and_eq_true_iff.mp h
+    exact ⟨c.ty, c.rule, c.judged, he, hv⟩
 
 /-- …and the verdict means what it says, by construction rather than by induction: this is
 one `match`, because the `Certified` the checker returned carries the derivation. -/
 theorem validateD_typed {p : Expr} {d : Deriv} (h : validateD p d = true) : DTyped p := by
-  unfold validateD at h
+  obtain ⟨_, _, _, _, hv⟩ := validateD_enabled h
   match hc : check fuelD [] p d with
   | some c => exact ⟨c.ty, c.out, c.ctx, c.spine, c.judged⟩
-  | none => rw [hc] at h; exact absurd h (by simp)
+  | none => rw [hc] at hv; exact absurd hv (by simp)
 
 /-! ## §5 Semantic status
 
-`validateD p d = true` means the checker returned a `DJudge` derivation of `p`.
-All twenty-six expression rules and eighteen companion rules have answer-typed semantic proofs
-registered in `Denote/Clink/Registry.lean`. The semantic target includes safety under a typed
-continuation, so escapes and halts are covered as well as returned values.
+`validateD p d = true` means the checker returned a `DJudge` derivation of `p`
+and enabled-rule evidence for the current fragment. The isolated checker and
+Denote/Clink/Registry use the same Ratchet.ClinkPolicy. The semantic target
+includes safety under a typed continuation, so escapes and halts are covered
+as well as returned values.
 
 `Denote/Bridge.lean` proves `validateD_safe_boot` for every accepted certificate.
 `CorpusSafety.lean` additionally carries worked derivations exercising every registered rule;

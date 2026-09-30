@@ -62,6 +62,13 @@ literal rules and reports the other 92 as gated. This is a separate rebuild
 check; the complete typed gate still requires all rules and keeps its existing
 floors. See [the clink rebuild guide](Denote/Clink/README.md).
 
+
+During the semantic rebuild, `validateD` itself follows the shared
+`Ratchet/ClinkPolicy.lean` profile. `Denote/Bridge.lean` proves its original
+end-to-end safety theorem for the accepted subset. Current restricted evidence
+supports seven direct literals; further rule/premise/body evidence must be rebuilt
+before compound admissions return.
+
 ## Where to read next
 
 - [`RubyCore/README.md`](RubyCore/README.md): the written semantics of the model.

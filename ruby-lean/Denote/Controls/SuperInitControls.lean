@@ -2,7 +2,7 @@ import Denote.Rules.Super.SuperRun
 import Denote.Rules.Constructor.ConstructorState
 import Denote.Rules.Constructor.ConstructorLookup
 import Denote.Rules.Init.InitWrite
-import Denote.Bridge
+import Denote.Bridge.Full
 import Denote.Ty.DenB
 
 /-! Checked declarations establish a real child initializer entry. A body-local super

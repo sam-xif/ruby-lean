@@ -8,7 +8,7 @@ case "${1:-}" in
   --verbose|-v) verbose=1 ;;
   --help|-h)
     echo "Usage: scripts/run_clink_rebuild.sh [--verbose]"
-    echo "Select rules in Denote/Clink/Policy.lean and providers in ActiveProofs.lean."
+    echo "Select rules in Ratchet/ClinkPolicy.lean and providers in ActiveProofs.lean."
     exit 0 ;;
   "") ;;
   *) echo "Unknown argument: $1" >&2; exit 2 ;;
@@ -31,8 +31,9 @@ check() {
 }
 check isolation ./scripts/check-isolation.sh
 check "profile and registration controls" lake build Denote.Clink.GateStatus Denote.Clink.GateControls
-check "literal validator controls" lake build Ratchet.Controls.LiteralControls
-check "active semantic proofs and literal bridge" lake build Denote.Bridge.Literal
+check "actual validator controls" lake build Ratchet.Controls.LiteralControls Ratchet.Check.Literal
+check "active semantic proofs and validator bridge" lake build Denote.Bridge Denote.Bridge.Literal
+check "actual validator executables" lake build ratchetd validate-one
 check "model safety and axiom audit" lake env lean scripts/probes/clink-rebuild.lean
 if [[ "$verbose" == 0 ]]; then cat "$logdir/stage.log"; fi
 echo "CLINK REBUILD CHECKS PASS -- the active registry is checked; full typed ratchet remains separate."

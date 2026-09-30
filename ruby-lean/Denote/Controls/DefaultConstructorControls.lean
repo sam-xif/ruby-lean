@@ -1,5 +1,5 @@
 import Denote.Rules.Constructor.DefaultConstructor
-import Denote.Bridge
+import Denote.Bridge.Full
 import Denote.Rules.Constructor.ConstructorLookup
 
 /-! Annotation-checked classes feeding default allocation, and the full-state root

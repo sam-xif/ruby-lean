@@ -1,6 +1,6 @@
 import Ratchet.Check.ReceiverCache
 import Denote.Rules.Init.InitChecked
-import Denote.Bridge
+import Denote.Bridge.Full
 import Denote.Rules.Inherited.InheritedConstructor
 import Denote.Rules.Inherited.InheritedRun
 import Denote.Sem.Class.ClassGuards

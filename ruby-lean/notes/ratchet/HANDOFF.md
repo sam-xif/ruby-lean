@@ -1,3 +1,27 @@
+# Actual validator/Bridge gating (2026-09-30)
+
+The user clarified that the desired endpoints are validateD and Bridge.lean,
+not a separate literal-only API. Ratchet/ClinkPolicy is the shared pure policy;
+Denote/Clink/Policy exports compatibility names. validateD now requires literal
+source-rule evidence, policy permission and raw check success. The active seven
+literals are accepted with matching hints; gated literals and compound/flow
+wrappers are rejected by the production endpoint and adapters.
+
+Bridge.lean proves the original validateD_safe, validateD_safe_boot and
+validateD_safe_run statements with only active clinks and dependency imports.
+The generic authoring-DJudge completeness helpers moved to Bridge/Full; their
+existing consumers import that optional full-registry module. Bridge/Literal
+is a compatibility wrapper around the original endpoints. No runtime or safety
+statement changes; no new axioms. Current evidence supports the seven direct
+literals. To admit a compound rule, extend its restricted evidence and bridge
+case, including companion rules and checked/rechecked bodies. Enabling its clink
+alone does not rebuild its checker evidence.
+
+Run ./scripts/run_typed_ratchet.sh --clink-rebuild. It builds the actual bridge,
+validator controls, ratchetd/validate-one and real runner-safety witnesses.
+The full historical corpus audit still refuses partial coverage with original
+floors intact. The entries below record the earlier separate-endpoint approach.
+
 # Minimal semantic rebuild profile (2026-09-30)
 
 The user requested selective clink gating and chose a minimal initial profile.
