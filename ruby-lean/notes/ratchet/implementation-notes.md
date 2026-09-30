@@ -12513,3 +12513,19 @@ payload-bearing classes. Fresh-class primitive dispatch threads NamesOk.
 Proc controls prove descriptor retention from unchanged heap/stack directly,
 without assuming that arbitrary input frames lack local aliases. All five
 repair targets and Ratchet build together (258 jobs, standard axioms).
+
+## 2026-09-30 — exact root-execution run decomposition
+
+RootAnswer proves both run and runA composition for pushRootK, which follows
+saved Enumerator executions. AnswerBase recognizes queued sends as continuing
+execution. Stack-only wrappers now require RootClean at entry and answer
+boundaries; halts/out-of-fuel states retain the full frame action. The typed
+conformance and preservation layers still need to establish these premises.
+
+Removed the unused, false immediate-raise/empty-jump helpers and old run_split
+proof, whose stack-only frame assumption was refuted by Enumerator suspension.
+The checked replacement accounts for every interpreter outcome. CatchFree's
+compatibility name now denotes all runtime-observed continuation restrictions.
+Answer and Boot pass (169 jobs, standard axioms), including rootCleanB at
+the real boot machine. check-proofs.sh also passes. The original
+unrestricted-frame counterexample remains checked. Full Denote is still red.

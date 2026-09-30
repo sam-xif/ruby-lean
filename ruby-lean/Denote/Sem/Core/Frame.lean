@@ -1,4 +1,5 @@
 import Denote.Sem.Core.Transport
+import RubyCore.Proof.RootFrameContext
 
 /-!
 # `Denote/Sem/Core/Frame.lean` — `StateOk` describes the whole world, and nothing more
@@ -72,7 +73,12 @@ written for are *not* fixed by it:
 * **Not fixed:** the fifth stall point. That is the *other* frame rule — locality in the
   continuation tail (§3) — and it is a theorem about `stepFn`, not about `StateOk`.
 
-## 3. The interpreter's frame rule — stated, not proved, and **refuted** *(clink 52)*
+## 3. Historical frame-rule discovery (clink 52)
+
+The following history concerns the older interpreter. The current checked
+contract additionally covers block-return, inspect, frozen-error and Hash-lock
+observations and follows saved root executions. `RootAnswer.lean` proves the
+run-level law, with clean-boundary premises for a stack-only specialization.
 
 The continuation tail is frame too, and by exactly the same argument: `StateOk` does not
 describe it, so a run must not depend on it. `KontFrame` states that, and it was the **single
@@ -239,28 +245,17 @@ its own `rescue` catches it); under the enclosing `catch` the same `throw` is a 
 leaves the `begin` entirely. So the run under `K` does not pass through the state delivering
 the sub-run's value to `K`, which is exactly what the decomposition claims. Same repair. -/
 
-/-- The appended continuation tail carries no `catch` marker — the hypothesis both statements
-above are missing. Decidable, and true by inspection at every kont a `Judge` rule pushes. -/
-def CatchFree (K : List Kont) : Prop :=
-  ∀ k ∈ K, ∀ t : Value, k ≠ .catchK t
+/-- Compatibility name for the complete runtime-observation restriction: catch
+markers, block-return targets, inspect recursion, frozen errors, and Hash locks. -/
+abbrev CatchFree (K : List Kont) : Prop := RubyCore.Proof.Root.ContextFree K
 
-/-- **The corrected interpreter frame rule**: `KontFrame` plus `CatchFree`.
-
-**Now proved, and elsewhere.** `RubyCore.Proof.stepFn_frame` is this statement, in
-`RubyCore/Proof/KontFrameStep.lean` — which is where the paragraph above said it belonged,
-next to `stepFn` rather than in a second copy here. `Denote/Sem/Core/Decompose.lean` consumes it
-and `RubyCore.Proof.done_inv` to prove the run-level decomposition `EvalsDecompose` was
-stating. This `def` is kept as the *statement of record*: it is what the wall was, it carries
-the refutation below, and the proof's own side condition is the one it predicted.
-
-One correction to the prediction: the side condition is needed for the **`jump`** arm and not
-for `.value` — `unwind`'s `retJ` case at an empty continuation *steps* (to
-`raiseErr … "unexpected return"`) rather than escaping, so "the run cannot end in `.value`" is
-not what rules it out; being an empty continuation is. -/
+/-- The current interpreter frame rule follows saved root executions through
+Enumerator suspension. Its proof is `Decompose.kontFrameCatchFree`; the name is
+retained for compatibility, but ContextFree covers every observed frame kind. -/
 def KontFrameCatchFree : Prop :=
   ∀ (m : Machine) (K : List Kont), CatchFree K →
     (m.kont ≠ [] ∨ ∃ e, m.ctl = .eval e) →
-    Interp.stepFn (pushK K m) = frameR K (Interp.stepFn m)
+    Interp.stepFn (Proof.pushRootK K m) = Proof.rootFrameR K (Interp.stepFn m)
 
 /-! ### The counterexample, computed
 
@@ -309,24 +304,9 @@ theorem not_KontFrame
 #guard tagOf (Interp.stepFn throwM) == "send"
 #guard tagOf (Interp.stepFn (pushK catchTail throwM)) == "throw"
 
-/-- **What the rungs will actually use**: the decomposition. A run of `e` under continuation
-`K` passes through the state that delivers `e`'s value to `K` — so a compound rule's premise,
-which is about the run of `e` under the *empty* continuation, is about a prefix of the run its
-conclusion is about.
-
-Stated as a consequence of `KontFrame` rather than independently, because that is what it is:
-`stepFn` is a function, so the equation runs backwards for free — `frameR K r = .next m₂`
-forces `r = .next m'` with `m₂ = pushK K m'`. What it is *not* is unconditional in `K`: a `K`
-whose head is a handler (`beginBodyK`) can turn a sub-run that escaped into an outer run that
-returns, so the hypothesis is about runs that return a value, which is the only shape
-`SemJudge` imposes anything on.
-
-**Now proved, as `Decompose.lean`'s `run_split`**, and that second paragraph is exactly its
-third hypothesis: `JumpOpaque K`, "`K` cannot turn an escaping jump into a returned value".
-The proof needs one thing this statement does not mention — `RubyCore.Proof.done_inv`, the
-fact that `.done` is constructed at one site in the interpreter — because "the inner run
-stopped here" has to be turned into "and *here* is a value under an empty continuation" before
-the outer run can be continued from it. -/
+/-- Historical unconditional decomposition target. This is not a theorem or an
+assumption of a typing rule. RootAnswer replaces it with a total run equation
+and explicit clean-boundary conditions for the stack-only specialization. -/
 def EvalsDecompose : Prop :=
   ∀ (m : Machine) (e : Ratchet.Expr) (K : List Kont) (v : Value) (m' : Machine),
     (∃ fuel, Interp.run fuel (pushK K (evalFrom m e)) = .value v m') →

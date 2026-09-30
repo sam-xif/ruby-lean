@@ -1,3 +1,4 @@
+import Denote.Ty.Root
 import Denote.Sem.Core.Frame
 import Ratchet.Static.All
 import RubyCore.HeapCert
@@ -647,6 +648,7 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
 -- **The gate.** If this fails, the ladder's hypothesis has no exhibited model and every
 -- rung on it is suspect.
 #guard bootOkB
+#guard rootCleanB bootMachine
 
 #print axioms stateOk_boot
 
