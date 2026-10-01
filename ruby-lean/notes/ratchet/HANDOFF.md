@@ -55,8 +55,12 @@ the current complete bootStateB with main's dispatch class given a native bump
 bump(), but running it from this state raises a type-class ArgumentError because
 the prefix builtin wins. Active validateD still gates callSig. Reject this forged
 prefix in conformance, preserve the real main-native names and repair lookup
-before call admission. This control is mandatory and will need a retained legacy
-guard plus rejection by the repaired guard when fixing the prefix. Logs:
+before call admission. The mandatory control now retains the complete legacy
+guard and is rejected by the repaired guard. MainReady carries mainOwnNamesB;
+MainPrefix proves non-native selector absence, and MainPrefixWriteOk is an
+explicit generic-write obligation. Object separation is derived from chains,
+so the active definition proof remains unchanged. DefsOk records still need to
+exclude native main selectors. Logs:
 /private/tmp/ascent-method-prefix-{witness,controls}.log.
 Run Lake builds sequentially: concurrent builds raced over Context.olean.
 Final batch check-proofs.sh passes (/private/tmp/ascent-final-metatheory.log).

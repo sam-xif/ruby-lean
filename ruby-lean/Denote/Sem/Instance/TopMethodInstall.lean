@@ -32,7 +32,8 @@ theorem StateOk_defineTopMethod_classes {κ : Ctx} {Γ : Env} {I : Ty} {m : Mach
       simpa using List.all_eq_true.mp howners c hmem
     exact declared_not_object hm hk hnot rfl
   obtain ⟨e, he, _⟩ := hm.core.classReady.objectEigen
-  apply StateOk_methodWrite hm ht hΓ ha hn hmiss hquiet
+  apply StateOk_methodWrite (hprefix := hm.toStateCore.objectWrite d.name)
+    hm ht hΓ ha hn hmiss hquiet
   · exact ClassesOk_methodWrite_old hm.classes (by rw [he]; rfl)
       (fun c hmem hk => False.elim (hsep c hmem hk))
   · exact DefsOk_defineMethod hm.defs hc hfresh hp hb hu hcode

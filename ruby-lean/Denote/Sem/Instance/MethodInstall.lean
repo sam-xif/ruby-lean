@@ -60,8 +60,20 @@ theorem DefsOk_defineMethod {D : DefTable} {m : Machine} {d : Defn} {md : Method
     exact ⟨prev, (ownMethod_defineMethod_ne m.heap Boot.objectId Boot.objectId
       d.name old.name md (hn old ho)).trans hfind, hparams, hbody, hundef, hprev⟩
 
+theorem MainOwnNames.methodWrite {h : Heap} {cls : ObjId} {name : String} {md : MethodDef}
+    (hp : MainOwnNames h) (hw : MainPrefixWriteOk h cls name) :
+    MainOwnNames (defineMethod h cls name md) := by
+  intro p hm
+  rw [Proof.classOf_defineMethod] at hm
+  rcases ownMethods_defineMethod_mem hm with ⟨hk, rfl⟩ | hold
+  · rcases hw with hne | hn
+    · exact False.elim (hne hk.symm)
+    · exact hn
+  · exact hp p hold
+
 theorem MainReady.methodWrite {m : Machine} (h : MainReady m) (cls : ObjId)
-    (name : String) (md : MethodDef) (hq : "method_added" ≠ name) :
+    (name : String) (md : MethodDef) (hq : "method_added" ≠ name)
+    (hw : MainPrefixWriteOk m.heap cls name) :
     MainReady { m with heap := defineMethod m.heap cls name md } := by
   have hmain : (defineMethod m.heap cls name md).get Boot.mainId = m.heap.get Boot.mainId := by
     by_cases he : Boot.mainId = cls
@@ -77,7 +89,8 @@ theorem MainReady.methodWrite {m : Machine} (h : MainReady m) (cls : ObjId)
     by
       have hf := congrArg Object.frozen
         (get_defineMethod_data m.heap cls Boot.objectId name md)
-      exact hf.trans h.unfrozen, h.origin⟩
+      exact hf.trans h.unfrozen, h.origin,
+      mainOwnNamesB_iff.mpr ((mainOwnNamesB_iff.mp h.mainNames).methodWrite hw)⟩
   · simpa only [Proof.classOf_defineMethod, Proof.ancestors_defineMethod] using h.chain
   · simpa only [isAName_defineMethod] using h.object
   · simpa only [Proof.classPayload?_isSome_defineMethod] using h.classLive
@@ -86,11 +99,12 @@ theorem MainReady.methodWrite {m : Machine} (h : MainReady m) (cls : ObjId)
 
 theorem MainSite.methodWrite {κ : Ctx} {h : Heap} {cls : ObjId} {name : String} {md : MethodDef}
     (site : MainSite κ h) (hn : nameFreeN κ name = false)
-    (hm : "method_missing" ≠ name) (hq : "method_added" ≠ name) :
+    (hm : "method_missing" ≠ name) (hq : "method_added" ≠ name)
+    (hw : MainPrefixWriteOk h cls name) :
     MainSite κ (defineMethod h cls name md) := by
   have hne (n : String) (hf : nameFreeN κ n = true) : n ≠ name := by
     intro he; subst n; rw [hn] at hf; cases hf
-  refine ⟨site.ready.methodWrite cls name md hq, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨site.ready.methodWrite cls name md hq hw, ?_, ?_, ?_, ?_, ?_⟩
   · intro n hmem o found hl
     by_cases he : n = name
     · exact Or.inr (Or.inr (he ▸ hn))
@@ -149,7 +163,9 @@ theorem StateCore_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine
     (hnested : NestedClassesOk C { m with heap := defineMethod m.heap cls name md })
     (hdecl : DeclClassOk { κ with pos := { κ.pos with classes := C } }
       { m with heap := defineMethod m.heap cls name md })
-    (hinit : primitiveInitB (defineMethod m.heap cls name md) = true) :
+    (hinit : primitiveInitB (defineMethod m.heap cls name md) = true)
+    (hprefix : (κ.scope.runtimeMain = true ∨ κ.pos.mainWorld = true) →
+      MainPrefixWriteOk m.heap cls name) :
     StateCore { κ with pos := { κ.pos with classes := C, defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } := by
   let n : Machine := { m with heap := defineMethod m.heap cls name md }
@@ -184,8 +200,8 @@ theorem StateCore_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine
   have hivar : ivarOf n.heap n.currentFrame.self = ivarOf m.heap m.currentFrame.self := by
     rw [hcf]; exact ivarOf_defineMethod ..
   refine {
-    runtime := fun hr => (hm.runtime hr).methodWrite cls name md hquiet
-    mainSite := fun hr => (hm.mainSite hr).methodWrite hn hmiss hquiet
+    runtime := fun hr => (hm.runtime hr).methodWrite cls name md hquiet (hprefix (Or.inl hr))
+    mainSite := fun hr => (hm.mainSite hr).methodWrite hn hmiss hquiet (hprefix (Or.inr hr))
     moduleBase := hm.moduleBase.methodWrite hn hquiet
     classRuntime := fun cn hr => (hm.classRuntime cn hr).methodWrite cls name md hquiet
     singletonRuntime := by
@@ -319,6 +335,15 @@ theorem StateCore_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine
   · change SelfLive n
     simpa only [SelfLive, hcf, n, Proof.objs_size_defineMethod] using hm.selfLive
 
+theorem StateCore.objectWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    (hm : StateCore κ Γ I m) (name : String) :
+    (κ.scope.runtimeMain = true ∨ κ.pos.mainWorld = true) →
+      MainPrefixWriteOk m.heap Boot.objectId name := by
+  intro hw
+  rcases hw with hr | hr
+  · exact (hm.runtime hr).objectWrite name hm.core.classReady.objectChain
+  · exact (hm.mainSite hr).ready.objectWrite name hm.core.classReady.objectChain
+
 /-- Backward-compatible specialization: a top-level definition changes only the def table.
 The class/nested tables still describe the same declarations. -/
 theorem StateOk_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : ObjId}
@@ -337,11 +362,13 @@ theorem StateOk_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} 
     (hown : ClassOwnNames C (defineMethod m.heap cls name md))
     (hchain : ClassChains C (defineMethod m.heap cls name md))
     (hroot : RootInitOk D (defineMethod m.heap cls name md))
-    (hinit : primitiveInitB (defineMethod m.heap cls name md) = true) :
+    (hinit : primitiveInitB (defineMethod m.heap cls name md) = true)
+    (hprefix : (κ.scope.runtimeMain = true ∨ κ.pos.mainWorld = true) →
+      MainPrefixWriteOk m.heap cls name) :
     StateOk { κ with pos := { κ.pos with classes := C, defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } :=
   ⟨StateCore_methodWrite_tables hm.toStateCore ht hΓ ha hn hmiss hquiet
-    hclasses hsites hdefs hnested hdecl hinit, hown, hchain, hroot⟩
+    hclasses hsites hdefs hnested hdecl hinit hprefix, hown, hchain, hroot⟩
 
 theorem StateCore_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : ObjId}
     {name : String} {md : MethodDef} {D : DefTable}
@@ -352,13 +379,15 @@ theorem StateCore_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls 
     (hclasses : ClassesOk κ.classes { m with heap := defineMethod m.heap cls name md })
     (hdefs : DefsOk D { m with heap := defineMethod m.heap cls name md })
     (hdecl : DeclClassOk κ { m with heap := defineMethod m.heap cls name md })
-    (hinit : primitiveInitB (defineMethod m.heap cls name md) = true) :
+    (hinit : primitiveInitB (defineMethod m.heap cls name md) = true)
+    (hprefix : (κ.scope.runtimeMain = true ∨ κ.pos.mainWorld = true) →
+      MainPrefixWriteOk m.heap cls name) :
     StateCore { κ with pos := { κ.pos with defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } :=
   StateCore_methodWrite_tables hm ht hΓ ha hn hmiss hquiet hclasses
     (hm.classSites.methodWrite hn hquiet) hdefs
     (by simpa only [NestedClassesOk, isClassRefNamed, classNamed?_defineMethod,
-      Proof.constLookupFrom_defineMethod] using hm.nested) hdecl hinit
+      Proof.constLookupFrom_defineMethod] using hm.nested) hdecl hinit hprefix
 
 theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : ObjId}
     {name : String} {md : MethodDef} {D : DefTable}
@@ -371,10 +400,12 @@ theorem StateOk_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls : 
     (hdecl : DeclClassOk κ { m with heap := defineMethod m.heap cls name md })
     (hown : ClassOwnNames κ.classes (defineMethod m.heap cls name md))
     (hroot : RootInitOk D (defineMethod m.heap cls name md))
-    (hinit : primitiveInitB (defineMethod m.heap cls name md) = true) :
+    (hinit : primitiveInitB (defineMethod m.heap cls name md) = true)
+    (hprefix : (κ.scope.runtimeMain = true ∨ κ.pos.mainWorld = true) →
+      MainPrefixWriteOk m.heap cls name) :
     StateOk { κ with pos := { κ.pos with defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } :=
-  ⟨StateCore_methodWrite hm.toStateCore ht hΓ ha hn hmiss hquiet hclasses hdefs hdecl hinit,
+  ⟨StateCore_methodWrite hm.toStateCore ht hΓ ha hn hmiss hquiet hclasses hdefs hdecl hinit hprefix,
     hown, hm.classChains.methodWrite, hroot⟩
 
 /-- Full conformance for the top-level method slice (no program class declarations).
@@ -400,6 +431,7 @@ theorem StateOk_defineTopMethod {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (by rw [hclasses]; exact ClassOwnNames.empty _)
     hm.rootInit.defineTop
     (primitiveInitB_defineMethod_outside hm.primitiveInit hm.core.classReady.chains (by decide) (by decide) (by decide))
+    (hm.toStateCore.objectWrite d.name)
 
 /-- Reserving a method name weakens absence facts; it does not install a method or
 add a positive signature. Thus it cannot authorize a call before its definition. -/

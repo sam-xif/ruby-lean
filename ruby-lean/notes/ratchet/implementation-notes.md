@@ -13079,3 +13079,24 @@ control; production callSig remains gated. The next repair must constrain this
 prefix and illegal main-native names in positive definition records, then follow
 the real lookup walk. See ../../unsoundness.md. The evaluated control builds
 under a second; proof/controls gate passes at the unchanged definition profile.
+
+### 2026-09-30 — Reject forged main singleton-prefix entries
+
+MainPrefix bounds main's own table by the existing native selector list and
+proves absence for every other name. MainReady/its Boolean guard carry the bound;
+view/reframe/allocation and ordinary method writes preserve it. A generic write
+now takes MainPrefixWriteOk when runtimeMain or mainWorld is requested; this
+allows native selectors on main and arbitrary writes to distinct owners.
+StateCore.objectWrite derives Object's separation from main's exact ancestor
+chain. Top-definition installation uses that proof. Instance publication carries
+the new obligation explicitly instead of assuming a declared owner is distinct.
+
+MethodPrefixControls retains the complete old state guard, rejects the measured
+forged-prefix world under the new guard, and still accepts the real boot bound.
+The unchecked descriptor/call runtime counterexample remains intact. Call clinks
+stay gated until positive definition names and activation metadata are repaired.
+
+Validation: full default gate GREEN, unchanged 23/99 clinks and 49/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree; check-proofs.sh passes.
+Logs: /private/tmp/ascent-main-prefix-{gate,metatheory}.log. New guard/transport
+proofs build under a second, with standard axioms only.

@@ -97,4 +97,11 @@ Production validateD still rejects the sequence because callSig is gated.
 Before call admission, conformance must reject forged prefix entries, positive
 definition records must exclude main-native names, and lookup must follow the
 real prefix. Preserve the genuine main-native names already excluded by
-topDeclClassesB. This repair and definee/frame metadata revalidation remain open.
+topDeclClassesB.
+
+MainReady now carries mainOwnNamesB: the complete legacy state guard still
+accepts the witness, while the current guard rejects it. The real boot bound
+passes. Heap growth preserves it, and generic method writes explicitly establish
+MainPrefixWriteOk when the context requests main's world. Object writes prove
+separation from main's exact ancestor chain. Positive-name and activation
+metadata checks still precede call admission.
