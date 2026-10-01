@@ -4,8 +4,8 @@
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
-bare-name/collection providers. Full gate: /private/tmp/ascent-class-constantscope-gate.log.
-Metatheory: /private/tmp/ascent-class-constantscope-metatheory.log.
+bare-name/collection providers. Full gate: /private/tmp/ascent-class-main-gate.log.
+Metatheory: /private/tmp/ascent-class-main-metatheory.log.
 
 Repair uses the original MethodState body/frame/return and MethodArgs accumulator
 proofs. MethodResolve follows actual bounded lookup through main's singleton
@@ -80,8 +80,19 @@ constants fall through to Object's retained ancestor lookup; all new/old global
 lookup cases and fresh-metaclass missing-constant fallback are proved. Existing
 ClassTablesFrame premises remain unchanged. Both modules are mandatory.
 
-Next: repair actual class-body StateOk (instance/main sites, allocation/global-name/
-own-name/class-chain capabilities);
+ClassMetadataActual now retains constant-table-invariant old metadata projections
+(map/any/bind), including allocator readiness/module flags. ClassMainActual
+repairs main-site preservation with all 17 readiness fields, lookup/name/bare/
+missing/constant/new-dispatch capabilities. Both are mandatory. Use an outgoing
+heap variable plus equality to the actual heap to avoid deep record unfolding.
+
+Next: repair actual class-body StateOk (instance sites, allocation/global-name/
+own-name/class-chain capabilities). Old instance_constants_old assumed an explicit
+Object fallback; current ordinary instance resolution follows ancestors instead.
+Check the new-binding case with Object reachability/module fallback rather than
+reusing that false simplification; existing ClassChains can supply physical
+Object membership when the declared static ancestry resolves.
+
 retain ClassHeaderRun's original conformance/return structure. ClassRules currently
 imports constructor/instance/singleton providers too; preflight also found missing
 MainReady fields in SubclassMain, changed lexical constants in

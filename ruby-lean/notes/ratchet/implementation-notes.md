@@ -13343,3 +13343,22 @@ Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
 46/46 negatives rejected, 254 agree/0 disagree. Constant-scope/table modules
 build in 720/523ms, standard axioms only; metatheory passes. Logs:
 /private/tmp/ascent-class-constantscope-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair main-site and old allocator metadata retention
+
+ClassMetadataActual reuses the constant-write payload split for explicit
+constant-table-invariant projections; map/any/bind transports retain old module,
+attachment and allocation-ready metadata. ClassMainActual keeps SubclassMain's
+lookup/name/bare/missing/new-dispatch argument and carries all 17 MainReady
+fields, using the repaired Object ancestor/global agreement. Parameterize the
+outgoing heap with an equality to the actual heap: otherwise record projection
+elaboration unfolds nested allocation records. Rewrite both occurrences of
+the main dispatch class in its chain equality. No heartbeat increase, checker
+or runtime changes. Both modules/axiom probes are mandatory. Instance-site
+constant retention still needs the current ancestor/module-fallback argument;
+the old explicit Object fallback no longer describes instanceConstResolve.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Metadata/main-site modules
+build in 773/737ms, standard axioms only; metatheory passes. Logs:
+/private/tmp/ascent-class-main-{gate,metatheory}.log.
