@@ -13213,3 +13213,21 @@ Validation: full default gate GREEN, 31/99 clinks and 55/261 accepts, 46/46
 negatives rejected, 254 agree/0 disagree. Registration/readiness proofs build in
 304ms and field-write preservation in 213ms, standard axioms only; metatheory
 passes. Logs: /private/tmp/ascent-class-registration-{gate,metatheory}.log.
+
+### 2026-09-30 — Repair the fresh-class callback prefix
+
+ClassHookDispatch adapts the existing invoke_native_method_added argument to
+const_added/inherited, with real reflective lookup, exact no-op native identifiers
+and the existing crubyResolvedShadow unsupported branch. The prefix guard plus
+ChainsIn yields the operational step without changing heap, frames or continuations.
+ClassCallbacks follows definition_hook_runSpec's step composition through both
+callbacks and their continuations. Ordinary pushClassFrame reuses freshModFrame;
+class_callbacks_runSpec feeds the provided body/return RunSpec in that exact frame.
+Prove the push equation before specializing its machine control, so simplification
+does not repeatedly expose copied currentFrame records. Both modules are mandatory
+prerequisites. Actual post-registration heap conformance remains before admission.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Native dispatch builds in 1.6s,
+callback composition in 708ms; standard axioms only and metatheory passes. Logs:
+/private/tmp/ascent-class-callbacks-{gate,metatheory}.log.

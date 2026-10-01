@@ -4,8 +4,8 @@
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
-bare-name/collection providers. Full gate: /private/tmp/ascent-class-registration-gate.log.
-Metatheory: /private/tmp/ascent-class-registration-metatheory.log.
+bare-name/collection providers. Full gate: /private/tmp/ascent-class-callbacks-gate.log.
+Metatheory: /private/tmp/ascent-class-callbacks-metatheory.log.
 
 Repair uses the original MethodState body/frame/return and MethodArgs accumulator
 proofs. MethodResolve follows actual bounded lookup through main's singleton
@@ -43,10 +43,15 @@ callback step via the existing model lemma, plus named allocator readiness.
 MainSiteWrite.ivarOnly carries all added readiness fields. Both are mandatory
 gate prerequisites.
 
-Next: repair ClassEntry's metaclass/callback path and retain
+ClassHookDispatch adapts existing native definition-hook dispatch, retaining
+unsupported fidelity shadows. ClassCallbacks now composes both real callback
+steps and their continuations into the existing freshModFrame body/return
+RunSpec. These are mandatory gate prerequisites.
+
+Next: repair ClassEntry's actual metaclass heap/conformance path and retain
 ClassHeaderRun's original conformance/return structure. ClassRules currently
 imports constructor/instance/singleton providers too; preflight also found missing
-MainReady fields in MainSiteWrite/SubclassMain, changed lexical constants in
+MainReady fields in SubclassMain, changed lexical constants in
 SubclassConstants/MainReturn, positive DefsOk names in SubclassMethods, and binding/
 entry metadata in singleton/constructor/instance rules. Class clinks stay gated.
 AllocationReadyControls measured a complete legacy boot accept with Object
