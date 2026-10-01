@@ -41,5 +41,10 @@ theorem rebuilt_sequence_safe_run
     Semantics.typeStuck (Semantics.run fuel (toRuby (.seq [.int 7]))) = false :=
   validateD_safe_run (p := .seq [.int 7]) (d := .seq [.intLit 7]) he hb fuel
 #print axioms rebuilt_sequence_safe_run
+theorem rebuilt_sequence_pair_safe_run (hb : bootOkB = true) (fuel : Nat) :
+    Semantics.typeStuck (Semantics.run fuel (toRuby (.seq [.int 7, .str "ok"]))) = false :=
+  validateD_safe_run (by decide :
+    validateD (.seq [.int 7, .str "ok"]) (.seq [.intLit 7, .strLit "ok"]) = true) hb fuel
+#print axioms rebuilt_sequence_pair_safe_run
 #print axioms validateD_safe_run
 end Ratchet.Denote.Typed

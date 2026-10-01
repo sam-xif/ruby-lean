@@ -1,3 +1,12 @@
+# Active ascent (2026-09-30)
+
+Sequences and last/cons are now permanently enabled with their existing proof
+provider. Full default gate GREEN: 10/99 clinks, 8/261 corpus accepts, 46/46
+negative controls rejected, 254 agree/0 disagree. Standard-axiom audit passes.
+Log: /private/tmp/ascent-sequence-gate.log. Next: local reads/assignments and
+primitive sends, repairing the existing semantic proofs against the real model.
+The entries below are historical checkpoints.
+
 # Default active typed ratchet (2026-09-30)
 
 run_typed_ratchet.sh now checks the active Bridge soundness theorem and reports

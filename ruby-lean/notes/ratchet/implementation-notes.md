@@ -12881,3 +12881,16 @@ separate negative controls and trace-derived pending dependencies. Preserve the
 existing Denote control/example guidance under the historical full audit.
 Verbose mode forwards its flag to the active proof checker. The filtered verbose
 gate passes; the preceding full default run includes 254 CRuby agreements.
+
+### 2026-09-30 — Admit sequences in the active profile
+
+Enable seq and DJudgeSeq.last/cons with the existing Sequence provider. Reuse
+its answer/state/framing proofs unchanged. Exact child and length controls,
+empty-sequence refusal and nested mixed-literal acceptance accompany admission;
+a two-expression witness reaches validateD_safe_run using only standard axioms.
+No checker/runtime or historical floor changes.
+
+Full default gate GREEN: 10/99 clinks, 8/261 accepts, 46/46 negatives rejected,
+254 CRuby agreements, zero disagreements. Sequence alone adds compositional
+rules; the current corpus needs further rules before more programs accept.
+Log: /private/tmp/ascent-sequence-gate.log.

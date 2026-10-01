@@ -38,6 +38,14 @@ private def sequenceRules (r : String) : Bool :=
 #guard !validateDWith (fun r => sequenceRules r && r != "DJudgeSeq.cons")
   (.seq [.int 7, .int 8]) (.seq [.intLit 7, .intLit 8])
 
+-- Sequence admission retains exact child, length and nonempty-body checks.
+#guard !validateD (.seq [.int 7, .int 8]) (.seq [.intLit 7, .intLit 9])
+#guard !validateD (.seq [.int 7, .int 8]) (.seq [.intLit 7])
+#guard !validateD (.seq []) (.seq [])
+#guard validateD (.seq [.seq [.int 7], .str "ok"])
+  (.seq [.seq [.intLit 7], .strLit "ok"]) ==
+  ["seq", "DJudgeSeq.cons", "DJudgeSeq.last", "intLit", "strLit"].all clinkEnabled
+
 private def primitiveRules (r : String) : Bool :=
   ["prim", "intLit", "DJudgeAll.cons", "DJudgeAll.nil"].contains r
 #guard validateDWith primitiveRules (.send (some (.int 1)) "+" [.int 2] none)
