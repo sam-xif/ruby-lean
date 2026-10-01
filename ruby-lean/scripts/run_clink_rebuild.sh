@@ -34,7 +34,7 @@ check "generated checker freshness" python3 scripts/generate_audited_checker.py 
 check "profile and registration controls" lake build Denote.Clink.GateStatus Denote.Clink.GateControls
 check "actual validator controls" lake build Ratchet.Controls.ClinkPolicyControls Denote.Examples.RecursiveDerivations
 check "active semantic proofs and validator bridge" lake build Denote.Clink.SoundnessAudit
-check "method-boundary controls" lake build Denote.Controls.MethodAliasControls Denote.Controls.MethodCodeControls Denote.Controls.FrozenDefinitionControls Denote.Controls.MethodDefinitionControls Denote.Controls.MethodOriginControls Denote.Controls.MethodPrefixControls Denote.Controls.MethodDefineeControls Denote.Controls.ClassHookControls
+check "method-boundary controls" lake build Denote.Controls.MethodAliasControls Denote.Controls.MethodCodeControls Denote.Controls.FrozenDefinitionControls Denote.Controls.MethodDefinitionControls Denote.Controls.MethodOriginControls Denote.Controls.MethodPrefixControls Denote.Controls.MethodDefineeControls Denote.Controls.ClassHookControls Denote.Controls.AllocationReadyControls
 check "actual validator executables" lake build ratchetd validate-one
 check "model safety and axiom audit" lake env lean scripts/probes/clink-rebuild.lean
 if [[ "$verbose" == 0 ]]; then cat "$logdir/stage.log"; fi

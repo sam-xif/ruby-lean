@@ -2,6 +2,7 @@ import Ratchet.Static.All
 import Denote.Ty.Local
 import Denote.Sem.Instance.MainPrefix
 import Denote.Sem.Instance.ClassHooks
+import Denote.Sem.Heap.AllocationReady
 
 /-! Runtime facts required by ordinary top-level definitions and calls. The context
 explicitly requests this world; unrestricted contexts do not assume it. -/
@@ -40,6 +41,7 @@ structure MainReady (m : Machine) : Prop where
   origin : m.currentFrame.libraryOrigin = false
   mainNames : mainOwnNamesB m.heap = true
   classHooks : classHooksQuietB m.heap = true
+  classFlags : objectClassFlagsB m.heap = true
 
 def RuntimeOk (κ : Ctx) (m : Machine) : Prop := κ.scope.runtimeMain = true → MainReady m
 
@@ -71,17 +73,18 @@ def mainReadyBaseB (m : Machine) : Bool :=
 def mainReadyB (m : Machine) : Bool :=
   mainReadyBaseB m &&
     decide ((m.heap.classPayload? Boot.objectId).bind (·.attached) = none) &&
-    !(m.heap.get Boot.objectId).frozen && !m.currentFrame.libraryOrigin && mainOwnNamesB m.heap && classHooksQuietB m.heap
+    !(m.heap.get Boot.objectId).frozen && !m.currentFrame.libraryOrigin && mainOwnNamesB m.heap && classHooksQuietB m.heap && objectClassFlagsB m.heap
 
 theorem mainReadyB_sound {m : Machine} (h : mainReadyB m = true) : MainReady m := by
   simp only [mainReadyB, mainReadyBaseB, Bool.and_eq_true, decide_eq_true_eq,
     Bool.not_eq_true', beq_iff_eq] at h
+  obtain ⟨h, hflags⟩ := h
   obtain ⟨h, hhooks⟩ := h
   obtain ⟨h, hprefix⟩ := h
   obtain ⟨h, horigin⟩ := h
   obtain ⟨h, hd, hf⟩ := (and_assoc.mp h)
   obtain ⟨⟨⟨⟨⟨⟨⟨ho, hc, hcap, hphase, hlive⟩, hs⟩, hp⟩, ha⟩, hi⟩, hcl⟩, hh⟩ := h
-  refine ⟨?_, ho, hc, hcap, hphase, hlive, ?_, ha, hi, hcl, hh, hd, hf, horigin, hprefix, hhooks⟩
+  refine ⟨?_, ho, hc, hcap, hphase, hlive, ?_, ha, hi, hcl, hh, hd, hf, horigin, hprefix, hhooks, hflags⟩
   · cases he : m.currentFrame.self <;> simp_all
   · cases he : (m.heap.get Boot.mainId).payload <;> simp_all
 
@@ -98,7 +101,7 @@ theorem MainReady.reframe {m n : Machine} (h : MainReady m)
     by simpa only [hh] using h.object, by simpa only [hh] using h.classLive,
     by simpa only [hh] using h.hook,
     by simpa only [hh] using h.detached, by simpa only [hh] using h.unfrozen,
-    horigin.trans h.origin, by simpa only [hh] using h.mainNames, by simpa only [hh] using h.classHooks⟩
+    horigin.trans h.origin, by simpa only [hh] using h.mainNames, by simpa only [hh] using h.classHooks, by simpa only [hh] using h.classFlags⟩
 
 theorem MainReady.setLocal {m : Machine} (h : MainReady m) (x : String) (v : Value) :
     MainReady (m.setLocal x v) :=
@@ -124,7 +127,7 @@ theorem MainReady.ext {m n : Machine} (h : MainReady m) (he : Ext m n)
     by rw [he.payload]; exact h.classLive, ?_,
     by rw [he.payload]; exact h.detached,
     by rw [hobj]; exact h.unfrozen,
-    by rw [he.currentFrame_eq]; exact h.origin, ?_, ?_⟩
+    by rw [he.currentFrame_eq]; exact h.origin, ?_, ?_, ?_⟩
   · simpa only [classOf, hmain, he.ancestors] using h.chain
   · simpa only [objectHookQuietB, definitionHookQuietB, hlookup] using h.hook
   · simpa only [mainOwnNamesB, ownMethods, classOf, hmain, he.payload] using h.mainNames
@@ -133,6 +136,7 @@ theorem MainReady.ext {m n : Machine} (h : MainReady m) (he : Ext m n)
       (by simp only [objectCallbackPrefix, classOf, hobj, he.ancestors])
       (fun name k _ => by rw [he.payload])]
     exact h.classHooks
+  · simpa only [objectClassFlagsB, he.payload] using h.classFlags
 
 #print axioms mainReadyB_sound
 #print axioms MainReady.ext

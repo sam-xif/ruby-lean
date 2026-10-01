@@ -13173,3 +13173,26 @@ Validation: full default gate GREEN, unchanged 31/99 clinks and 55/261 accepts,
 46/46 negatives rejected, 254 agree/0 disagree. New callback-prefix/lookup helpers
 build in 201ms with standard axioms only; both controls build in 1.2s. Metatheory
 passes. Logs: /private/tmp/ascent-class-hooks-{gate,metatheory}.log.
+
+### 2026-09-30 — Repair ordinary allocation readiness
+
+Actual fresh class registration inherits ancestryReady/allocatorUnavailable from
+Object; the old synthetic heap supplied defaults. AllocationReadyControls measures
+a complete legacy boot accept whose checked fresh-class/new program raises TypeError.
+It also preserves the full legacy PlainAllocator guard for attached, uninitialized
+and unavailable Object and observes the real native construction failures.
+
+PlainAllocator now carries plainAllocationReadyB for attached/initialized/ancestry/
+allocator metadata, and its metadata lemma exposes the native checks. Preserve
+readiness through the existing Ext, method-write and ivar-write transports. The
+small classPayload_metadata_defineMethod lemma permits any metadata-only Bool;
+AllocationReady imports only HeapFacts to remain below Ready (ConstLive would
+create a cycle through InstanceSite). MainReady additionally pins Object's
+inherited ancestry/allocator flags; reframe/view/growth/method writes carry them.
+No checker or interpreter changes. Keep class/constructor rules gated until their
+real registration/dispatch proofs consume these facts. See ../../unsoundness.md.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks and 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Metadata helpers build in 188ms,
+controls in 1.1s; metatheory passes with standard axioms only. Logs:
+/private/tmp/ascent-allocation-ready-{gate,metatheory}.log.

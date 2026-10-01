@@ -143,3 +143,23 @@ is outside that prefix, so ordinary source definitions named const_added or
 inherited remain possible and preserve the callbacks. The mandatory controls
 check those writes too. Class entry still needs its real registration, attached
 metaclass and callback-continuation proof before admission.
+
+# Plain allocation omitted class initialization metadata (2026-09-30)
+
+AllocationReadyControls retains the complete former boot-state guard. It accepts
+Object with allocatorUnavailable=true. The unrestricted checker accepts a fresh
+class followed by its zero-argument new, but the real class inherits that flag
+and construction raises TypeError. Native callbacks remain intact. This is an
+arbitrary conformant-state countermodel, not a real-boot source/Sorbet error;
+class and constructor rules remain gated.
+
+The former PlainAllocator capability also ignores attached, initialized and
+allocatorUnavailable. Its complete legacy Boolean check accepts Object with
+each bad flag in turn; callConstruct reaches a type error in all three cases.
+PlainAllocator now requires plainAllocationReadyB: no singleton attachment,
+initialized/ancestry-ready and allocator available. The metadata lemma exposes
+these actual native checks; heap growth, method writes and ivar writes preserve
+them. MainReady pins Object's inherited ancestry/allocator flags, rejecting the
+fresh-class witness while retaining real boot. The mandatory gate carries all
+controls. Existing class/subclass allocator proofs must supply these facts when
+repaired against the real registration path.

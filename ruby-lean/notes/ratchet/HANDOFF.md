@@ -4,8 +4,8 @@
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
-bare-name/collection providers. Full gate: /private/tmp/ascent-class-hooks-gate.log.
-Metatheory: /private/tmp/ascent-class-hooks-metatheory.log.
+bare-name/collection providers. Full gate: /private/tmp/ascent-allocation-ready-gate.log.
+Metatheory: /private/tmp/ascent-allocation-ready-metatheory.log.
 
 Repair uses the original MethodState body/frame/return and MethodArgs accumulator
 proofs. MethodResolve follows actual bounded lookup through main's singleton
@@ -44,8 +44,16 @@ imports constructor/instance/singleton providers too; preflight also found missi
 MainReady fields in MainSiteWrite/SubclassMain, changed lexical constants in
 SubclassConstants/MainReturn, positive DefsOk names in SubclassMethods, and binding/
 entry metadata in singleton/constructor/instance rules. Class clinks stay gated.
-Check inherited ancestry/allocator flags too: actual registration reads them from
-Object, while the legacy composite supplies defaults. Do not alter the interpreter
+AllocationReadyControls measured a complete legacy boot accept with Object
+allocatorUnavailable=true: a checked fresh-class/new program raises TypeError.
+It also measures attached/uninitialized/unavailable native construction failures
+under the complete old PlainAllocator guard. PlainAllocator now requires
+plainAllocationReadyB, with a metadata projection and preserved Ext/method/ivar
+transports. MainReady.classFlags pins Object ancestryReady/allocatorUnavailable
+for actual inheritance; real boot passes. The new controls are mandatory.
+Use those facts to repair fresh class and subclass allocation; OrdinaryClass.plain
+and Subclass.plain still need their new readiness premise. Actual registration
+reads flags from its parent, while the legacy composite supplies defaults. Do not alter the interpreter
 to restore the legacy composite. MethodChecked still
 imports the historical Full bridge; BodyDispatch/FlowDispatch retain lookup drift.
 Run Lake builds sequentially; concurrent rebuilds previously raced .olean files.

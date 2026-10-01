@@ -92,7 +92,8 @@ theorem MainReady.methodWrite {m : Machine} (h : MainReady m) (cls : ObjId)
         (get_defineMethod_data m.heap cls Boot.objectId name md)
       exact hf.trans h.unfrozen, h.origin,
       mainOwnNamesB_iff.mpr ((mainOwnNamesB_iff.mp h.mainNames).methodWrite hw),
-      by rw [classHooksQuietB_defineMethod hhooks]; exact h.classHooks⟩
+      by rw [classHooksQuietB_defineMethod hhooks]; exact h.classHooks,
+      by rw [objectClassFlagsB_defineMethod]; exact h.classFlags⟩
   · simpa only [Proof.classOf_defineMethod, Proof.ancestors_defineMethod] using h.chain
   · simpa only [isAName_defineMethod] using h.object
   · simpa only [Proof.classPayload?_isSome_defineMethod] using h.classLive
