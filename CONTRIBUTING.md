@@ -20,9 +20,10 @@ cd ruby-lean && ./scripts/run_typed_ratchet.sh
 ```
 
 RED means the certified fragment is claiming something the proofs cannot back —
-a rule with no semantic proof, a worked theorem about the wrong program, a
-shrunk fragment, a moved floor. It is never something to work around; the floors
-exist because a ratchet that can slip is not a ratchet.
+an enabled rule with no semantic proof, a nonstandard axiom in soundness, a
+failed control, or a pipeline/CRuby failure. Disabled rules are work remaining.
+The default reports only enabled clinks and actual `validateD` accepts as climbed.
+`--full-corpus` retains the historical complete-coverage audit and its floors.
 
 GREEN with unclimbed rungs is the normal state. Ascent is ordinary work.
 
@@ -36,9 +37,10 @@ GREEN with unclimbed rungs is the normal state. Ascent is ordinary work.
   derivations. Climbing requires these proofs and controls to pass the active
   registry/Bridge gate and the production `validateD` to accept the positive
   rung. A proved but gated rule remains unclimbed in the active ratchet. During
-  semantic rebuilding, run `./scripts/run_typed_ratchet.sh --clink-rebuild` from
-  `ruby-lean/`; the full historical corpus gate retains its coverage requirements
-  and floors.
+  semantic rebuilding, the default `./scripts/run_typed_ratchet.sh` from
+  `ruby-lean/` checks active soundness and corpus progress; `--clink-rebuild`
+  checks proofs/controls only. `--full-corpus` retains historical coverage
+  requirements and floors.
 * **Keep the untrusted side untrusted.** If Sorbet, the strip stack, the
   desugarer or the emitter is wrong, fix it there. A patch inside `validateD` to
   rescue an upstream bug trades a false reject for a possible false accept, which

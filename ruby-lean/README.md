@@ -50,24 +50,25 @@ failed-load retry against CRuby using identical feature bodies on both sides.
 ./scripts/check-proofs.sh         # the off-target metatheory; run it at batch boundaries
 ```
 
-The gate runs, in order: the isolation check (`Ratchet/` still imports nothing
-from `RubyCore/`), the build of the proofs and negative controls, pipeline stages
-1–4 over every corpus program, the model-vs-CRuby agreement run (skip it with
-`RATCHET_SKIP_AGREEMENT=1`), and finally the checks that every typing rule has a
-semantic proof and that the certified fragment has not shrunk.
+The default gate checks isolation, generated-checker freshness, active registry
+and validator controls, and `Bridge.lean`'s original soundness theorem. It rejects
+nonstandard theorem axioms, builds a fresh corpus through stages 1–4, compares
+the stripped programs with CRuby (skip with `RATCHET_SKIP_AGREEMENT=1`), and
+reports enabled clinks and actual `validateD` accepts as climbed. Disabled rules
+and declined positive rungs are work remaining; they do not make soundness red.
+Sorbet drift, new upstream failures and accepted negative controls still fail.
 
-For the current semantic rebuild, check the active clink subset with
-`./scripts/run_typed_ratchet.sh --clink-rebuild`. It initially certifies seven
-literal rules and reports the other 92 as gated. This is a separate rebuild
-check; the complete typed gate still requires all rules and keeps its existing
-floors. See [the clink rebuild guide](Denote/Clink/README.md).
+```sh
+./scripts/run_typed_ratchet.sh --clink-rebuild  # proofs/controls only
+./scripts/run_typed_ratchet.sh --full-corpus    # historical complete-coverage audit and floors
+```
 
-
-During the semantic rebuild, `validateD` itself follows the shared
-`Ratchet/ClinkPolicy.lean` profile. `Denote/Bridge.lean` proves its original
-end-to-end safety theorem for the accepted subset. Current restricted evidence
-supports seven direct literals; further rule/premise/body evidence must be rebuilt
-before compound admissions return.
+The active profile enables seven literal clinks; the current report shows eight
+accepted corpus rungs. `validateD` checks every rule in the verified derivation's
+trace against `Ratchet/ClinkPolicy.lean`, including companion/body rules. Further
+admission requires enabling their clinks and rebuilding their semantic providers.
+The full historical audit retains its floors and requires all clinks; it remains
+separate from the default active gate. See [the clink rebuild guide](Denote/Clink/README.md).
 
 ## Where to read next
 

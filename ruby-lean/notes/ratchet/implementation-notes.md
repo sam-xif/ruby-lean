@@ -12871,3 +12871,13 @@ rejected, 254 agree/0 disagree. Filtered gate passes with and without agreement.
 Classifications, nonstandard-axiom refusal, negative-accept/Sorbet/upstream-error
 refusals and historical full-profile refusal pass. Logs:
 /private/tmp/active-ratchet-default-gate.log and active-ratchet-controls.log.
+
+### 2026-09-30 — Align gate guides and verbose output
+
+Root/package contribution instructions and reproduction/registry guides now
+explain default active soundness, proof-only --clink-rebuild, and historical
+--full-corpus modes. The example reports active clinks, actual corpus accepts,
+separate negative controls and trace-derived pending dependencies. Preserve the
+existing Denote control/example guidance under the historical full audit.
+Verbose mode forwards its flag to the active proof checker. The filtered verbose
+gate passes; the preceding full default run includes 254 CRuby agreements.

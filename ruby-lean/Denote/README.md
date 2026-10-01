@@ -49,19 +49,22 @@ failure.
 
 ## Semantic rebuild profile
 
-The clink registry now starts with the seven literal rules; the other 92 rules
-are gated explicitly while their proofs are rebuilt against the dynamic-state
-machine. Use `../scripts/run_typed_ratchet.sh --clink-rebuild`. Select rules in
-`Ratchet/ClinkPolicy.lean` and proof providers in `Clink/ActiveProofs.lean`.
-[The rebuild guide](Clink/README.md) explains the checks and how to re-enable a
-rule. The full typed gate still requires complete checker coverage.
+The clink registry starts with seven literal rules; the other 92 rules are gated
+while their proofs are rebuilt against the dynamic-state machine. Select rules
+in `Ratchet/ClinkPolicy.lean` and proof providers in `Clink/ActiveProofs.lean`.
+[The rebuild guide](Clink/README.md) explains admission and the gate modes.
 
+The default `../scripts/run_typed_ratchet.sh` checks the active registry and
+`Bridge.lean`'s original soundness theorem, then reports enabled clinks and actual
+`validateD` corpus accepts as climbed. `Clink/SoundnessAudit.lean` rejects
+nonstandard theorem axioms; `Report/Active.lean` derives gated dependencies from
+the checker's verified traces. Disabled rules are work remaining.
 
-The actual `validateD` and `Bridge.lean` now follow this policy. The original
-end-to-end safety statements build for the enabled literal profile. The current
-checker evidence supports direct literals; compound premise/body evidence is
-rebuilt alongside further clinks. `Bridge/Full.lean` holds optional raw-DJudge
-completeness helpers.
+Use `--clink-rebuild` for proofs/controls only, or `--full-corpus` for the original
+complete-coverage audit and floors. The generic validator/certifier supports
+all authoring families, including companion and body premises; enable the needed
+clinks and their semantic providers to admit more programs. `Bridge/Full.lean`
+holds optional raw-DJudge completeness helpers.
 
 ## Controls and examples are separated from the proofs on purpose
 
@@ -71,7 +74,8 @@ obstruction* rather than discharge one. `Examples/` (11) is the worked instantia
 Neither is the production interface: production lemmas stay class-, body- and
 annotation-parameterized.
 
-**`Controls/All.lean` names every control, and the gate builds that module.** It has to be
+**`Controls/All.lean` names every historical full-profile control;
+`--full-corpus` builds that module.** It has to be
 explicit: nothing imports a control by need, and `scripts/run_typed_ratchet.sh` builds named
 targets rather than everything. That list used to be reached by `ClassControls.lean` importing
 fifty-one of its siblings, which made "what I need" and "who I keep alive" indistinguishable

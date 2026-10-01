@@ -6,16 +6,28 @@ rules are explicitly gated out. `intLit` remains the non-vacuity anchor.
 From `ruby-lean/`, run:
 
 ```sh
-./scripts/run_typed_ratchet.sh --clink-rebuild
+./scripts/run_typed_ratchet.sh                  # active soundness + corpus progress
+./scripts/run_typed_ratchet.sh --clink-rebuild  # proofs/controls only
+./scripts/run_typed_ratchet.sh --full-corpus    # historical full audit
 ```
 
-This checks isolation, the profile census, registration refusal controls, every
-active clink's semantic proof, registry soundness, the actual validateD and
-Bridge.lean's final model-runner safety theorem.
-It reports **CLINK REBUILD CHECKS PASS** when those checks pass. It does not claim
-that the full checker or corpus is certified. The ordinary typed gate refuses a
-partial profile before the historical full-coverage corpus audit. Its
-coverage, corpus floors, agreement checks and negative controls remain intact.
+The default gate checks isolation, profile/registration refusal controls,
+generated-checker freshness, active semantic proofs and the actual `validateD`
+runner-safety theorem. The axiom audit rejects `sorryAx` and project axioms.
+It builds fresh corpus outputs, retains Sorbet/upstream/negative controls and
+CRuby agreement, and reports **RATCHET GREEN** when those checks pass. Missing
+coverage from disabled rules is work remaining, not a soundness failure.
+
+`Denote/Report/Active.lean` counts only certified enabled clinks and corpus
+programs the production `validateD` accepts. It lists disabled dependencies from
+the verified checker trace, including companion and body premises. Negative
+controls are reported separately and never count as climbed through rejection.
+Filtered runs use fresh output by default so cached rungs cannot inflate counts.
+
+`--clink-rebuild` runs the proof/controls subset without corpus progress and
+reports **CLINK REBUILD CHECKS PASS**. `--full-corpus` preserves the original
+complete-registry, coverage, corpus floors and worked-theorem audit, and refuses
+a partial profile. None of those historical floors is reset for the active gate.
 
 ## Climbing the ratchet
 

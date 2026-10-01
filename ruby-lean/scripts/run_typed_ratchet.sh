@@ -64,7 +64,9 @@ stage() {
     exit 1
   fi
 }
-stage "active validator soundness and controls" ./scripts/run_clink_rebuild.sh
+CLINK_ARGS=()
+[[ "$VERBOSE" == 1 ]] && CLINK_ARGS+=(--verbose)
+stage "active validator soundness and controls" ./scripts/run_clink_rebuild.sh ${CLINK_ARGS[@]+"${CLINK_ARGS[@]}"}
 stage "active progress report and model runner" lake build active-ratchet rubycore
 stage "Sorbet -> strip -> desugar -> emit" python3 scripts/build_corpus.py \
   --out "$CORPUS_OUT" ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}
