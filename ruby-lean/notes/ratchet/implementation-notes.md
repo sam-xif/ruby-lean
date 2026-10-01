@@ -13424,3 +13424,13 @@ fields (StateOk.localAlias_getD bridges the stack-head getD form). class_actual_
 composes stepFn_class_fresh, class_callbacks_runSpec, the actual header state and
 ClassActivation.runSpec; it keeps the explicit old-site reachability premise.
 Mandatory gate prerequisite; standard axioms only.
+
+### 2026-10-01 — Climb classDecl (32/99)
+
+classRuleB adds classReachB: every non-module declared class has resolvable static
+ancestry. StateOk.classReach turns it (via ClassChains.root_tail / DeclClassOk) into
+class_actual_runSpec's old-site reachability premise. ClassDeclActual provides
+SemSafeCtxA.classDecl; the legacy provider is removed from ClassRules. ClassGuards
+imports ClassTablesFrame directly (not legacy ClassTables). Controls: literal body,
+rule removal, String/Object, reopened name, two classes. No corpus rung yet: class
+rungs also need constClass/member/init/new rules.

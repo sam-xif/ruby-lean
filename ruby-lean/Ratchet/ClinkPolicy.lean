@@ -13,7 +13,7 @@ def clinkProfile : Option (List String) := some
    "prim", "DJudgeAll.nil", "DJudgeAll.cons", "if'", "ifNoElse", "bareName",
    "arrayLit", "hashLit", "DJudgePairs.nil", "DJudgePairs.cons", "defDecl", "callSig",
    "recursive", "DJudgeRec.embed", "DJudgeRec.prim", "DJudgeRec.if'", "DJudgeRec.selfCall",
-   "DJudgeRecAll.nil", "DJudgeRecAll.cons"]
+   "DJudgeRecAll.nil", "DJudgeRecAll.cons", "classDecl"]
 
 def clinkEnabled (rule : String) : Bool :=
   match clinkProfile with

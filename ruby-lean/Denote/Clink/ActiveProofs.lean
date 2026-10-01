@@ -9,6 +9,7 @@ import Denote.Rules.Expr.Hash
 import Denote.Rules.Method.MethodDefine
 import Denote.Rules.Method.MethodCall
 import Denote.Rules.Bounded.Recursive
+import Denote.Rules.Class.ClassDeclActual
 
 /-! Proof providers for the active rebuild profile: literals, locals, sequences
 and primitive sends, branches, guarded bare names, Array/Hash literals, definitions and ordinary/recursive calls.

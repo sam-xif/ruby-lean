@@ -1,6 +1,6 @@
 # Active ascent (2026-10-01)
 
-31/99 clinks, 55/261 production validateD accepts (prefix 17), 46/46 negatives
+32/99 clinks, 55/261 production validateD accepts (prefix 17), 46/46 negatives
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
@@ -94,8 +94,8 @@ publication. Fresh readiness uses Object's inherited flags. All are mandatory.
 ClassStateActual.state now proves the full actual class-body StateOk (mandatory).
 ClassHeaderStateActual.header publishes classHeaderCtx over it (mandatory).
 ClassRunActual.class_actual_runSpec composes the whole actual class run (mandatory).
-Next: discharge its reachability premise from a checker guard, point ClassRules at
-it, and re-enable the classDecl clink.
+classDecl is enabled (classReachB guard discharges reachability).
+Next: constClass (20 rungs gated on it), then memberDef/initDef/newInst.
 
 Old instance_constants_old assumed an explicit Object fallback; current ordinary instance resolution follows ancestors instead.
 Check the new-binding case with Object reachability/module fallback rather than

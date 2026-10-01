@@ -230,6 +230,17 @@ private def initializedHint : Deriv := .classDecl "Box" none
 #guard !validateDWith (fun r => r != "InitJudge.var") initializedClass initializedHint
 #guard !validateDWith (fun r => r != "InitJudge.ignoreResult") initializedClass initializedHint
 
+-- Active classDecl: a literal body is accepted; builtin/reserved and reopened names are not.
+private def literalClass : Expr := .class' "Box" none (.int 7)
+private def literalClassHint : Deriv := .classDecl "Box" none (.intLit 7)
+#guard validateD literalClass literalClassHint
+#guard !validateDWith (fun r => clinkEnabled r && r != "classDecl") literalClass literalClassHint
+#guard !validateD (.class' "String" none (.int 7)) (.classDecl "String" none (.intLit 7))
+#guard !validateD (.class' "Object" none (.int 7)) (.classDecl "Object" none (.intLit 7))
+#guard !validateD (.seq [literalClass, literalClass]) (.seq [literalClassHint, literalClassHint])
+#guard validateD (.seq [literalClass, .class' "Pair" none (.int 1)])
+  (.seq [literalClassHint, .classDecl "Pair" none (.intLit 1)])
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

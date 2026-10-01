@@ -1,5 +1,6 @@
 import Ratchet.Guards.ClassGuards
-import Denote.Sem.Class.ClassTables
+import Denote.Sem.Class.ClassTablesFrame
+import Ratchet.Guards.ClassHeader
 import Denote.Sem.Core.Reframe
 
 /-! Interpret static frame guards without baking in a class or demanding empty class
