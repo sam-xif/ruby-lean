@@ -69,6 +69,18 @@ theorem saved_frame {i : FrameId} (hi : i < m.frames.size) :
     (entry).frames.getD i default = m.frames.getD i default := by
   simp [machine, Array.getD, hi, Nat.lt_succ_of_lt hi, Array.getElem_push_lt]
 
+theorem local_alias : (entry).currentFrame.localAlias = none := by
+  rw [current_frame]; rfl
+
+theorem captured_live : CaptureLive entry (entry).currentFrame.captured := by
+  rw [current_frame]
+  exact CaptureLive.none
+
+theorem root_clean (hp : RootClean m) : RootClean entry := hp
+
+#print axioms local_alias
+#print axioms captured_live
+#print axioms root_clean
 #print axioms env_empty
 #print axioms spine_empty
 #print axioms self_type

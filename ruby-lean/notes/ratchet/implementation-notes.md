@@ -13399,3 +13399,11 @@ site still precedes class admission. Proof builds: 604/626ms, standard axioms on
 Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
 46/46 negatives rejected, 254 agree/0 disagree; metatheory passes. Logs:
 /private/tmp/ascent-class-sites-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair actual class-body StateOk
+
+FreshClassActual.state composes all actual-heap repairs into the original full
+StateOk at the callback-body entry. ClassBasesActual/ClassPrimitiveInitActual add
+module/builtin bases and primitiveInit; frame adds localAlias/captured/rootClean.
+Old class sites keep the explicit reachability premise (ConstantReachControls).
+Mandatory gate prerequisite; standard axioms only.

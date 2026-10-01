@@ -91,9 +91,9 @@ existing declarations/own names/ordered chains, old allocator readiness, global
 name growth, the fresh plain allocator, and empty-header selector/root-chain
 publication. Fresh readiness uses Object's inherited flags. All are mandatory.
 
-Next: repair actual class-body StateOk (instance sites, module-base/builtin-base
-capabilities and current primitiveInit/rootClean/capture/frame fields), then
-actual header/new-dispatch and the original body/return composition.
+ClassStateActual.state now proves the full actual class-body StateOk (mandatory).
+Next: actual header/new-dispatch (DeclClassOk via classHeaderCtx) and the original
+body/return composition through class_callbacks_runSpec.
 
 Old instance_constants_old assumed an explicit Object fallback; current ordinary instance resolution follows ancestors instead.
 Check the new-binding case with Object reachability/module fallback rather than
