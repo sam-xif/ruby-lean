@@ -35,6 +35,7 @@ check "profile and registration controls" lake build Denote.Clink.GateStatus Den
 check "actual validator controls" lake build Ratchet.Controls.ClinkPolicyControls Denote.Examples.RecursiveDerivations
 check "active semantic proofs and validator bridge" lake build Denote.Clink.SoundnessAudit
 check "method-boundary controls" lake build Denote.Controls.MethodAliasControls Denote.Controls.MethodCodeControls Denote.Controls.FrozenDefinitionControls Denote.Controls.MethodDefinitionControls Denote.Controls.MethodOriginControls Denote.Controls.MethodPrefixControls Denote.Controls.MethodDefineeControls Denote.Controls.ClassHookControls Denote.Controls.AllocationReadyControls
+check "class entry prerequisites" lake build Denote.Sem.Class.ClassRegistration Denote.Sem.Instance.MainSiteWrite
 check "actual validator executables" lake build ratchetd validate-one
 check "model safety and axiom audit" lake env lean scripts/probes/clink-rebuild.lean
 if [[ "$verbose" == 0 ]]; then cat "$logdir/stage.log"; fi

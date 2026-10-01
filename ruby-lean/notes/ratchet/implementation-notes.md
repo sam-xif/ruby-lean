@@ -13196,3 +13196,20 @@ Validation: full default gate GREEN, unchanged 31/99 clinks and 55/261 accepts,
 46/46 negatives rejected, 254 agree/0 disagree. Metadata helpers build in 188ms,
 controls in 1.1s; metatheory passes with standard axioms only. Logs:
 /private/tmp/ascent-allocation-ready-{gate,metatheory}.log.
+
+### 2026-09-30 — Repair class registration and retained field-write facts
+
+Keep the original MainSite.ivarOnly lookup/constant/dispatch proof; transport all
+six added MainReady fields using IvarOnly's payload/frozen/ancestor equalities.
+ClassRegistration reuses evalExpr_class_fresh and constSetIn_alloc_comm: prove
+the allocated anonymous payload, permanent naming of its empty constant table,
+and the actual first successor through eigenclassOf/callConstAdded. This repairs
+the entry prerequisite without assuming the legacy synthetic metaclass heap.
+MainReady's inherited flags prove freshClassNamed_ready for the real named class.
+Both modules are mandatory gate prerequisites with printed axioms. Class rules
+remain gated until callbacks, real heap conformance and return are repaired.
+
+Validation: full default gate GREEN, 31/99 clinks and 55/261 accepts, 46/46
+negatives rejected, 254 agree/0 disagree. Registration/readiness proofs build in
+304ms and field-write preservation in 213ms, standard axioms only; metatheory
+passes. Logs: /private/tmp/ascent-class-registration-{gate,metatheory}.log.

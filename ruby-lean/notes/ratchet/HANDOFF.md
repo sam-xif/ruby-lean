@@ -4,8 +4,8 @@
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
-bare-name/collection providers. Full gate: /private/tmp/ascent-allocation-ready-gate.log.
-Metatheory: /private/tmp/ascent-allocation-ready-metatheory.log.
+bare-name/collection providers. Full gate: /private/tmp/ascent-class-registration-gate.log.
+Metatheory: /private/tmp/ascent-class-registration-metatheory.log.
 
 Repair uses the original MethodState body/frame/return and MethodArgs accumulator
 proofs. MethodResolve follows actual bounded lookup through main's singleton
@@ -38,7 +38,12 @@ Generic write/publication helpers take ClassHookWriteOk; Object is outside the
 prefix, including when defining const_added/inherited. Real boot and those
 production definitions pass the controls. See ../../unsoundness.md.
 
-Next: repair ClassEntry's actual registration/metaclass/callback path and retain
+ClassRegistration now proves actual registration/naming and the first queued
+callback step via the existing model lemma, plus named allocator readiness.
+MainSiteWrite.ivarOnly carries all added readiness fields. Both are mandatory
+gate prerequisites.
+
+Next: repair ClassEntry's metaclass/callback path and retain
 ClassHeaderRun's original conformance/return structure. ClassRules currently
 imports constructor/instance/singleton providers too; preflight also found missing
 MainReady fields in MainSiteWrite/SubclassMain, changed lexical constants in

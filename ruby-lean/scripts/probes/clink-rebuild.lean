@@ -9,10 +9,17 @@ import Denote.Controls.MethodPrefixControls
 import Denote.Controls.MethodDefineeControls
 import Denote.Controls.ClassHookControls
 import Denote.Controls.AllocationReadyControls
+import Denote.Sem.Class.ClassRegistration
+import Denote.Sem.Instance.MainSiteWrite
 import Denote.Examples.RecursiveDerivations
 
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
+
+#print axioms freshClassRegistered_named
+#print axioms freshClassNamed_ready
+#print axioms stepFn_class_registered
+#print axioms MainSite.ivarOnly
 
 #eval IO.println s!"CLINK REBUILD: {dRegisteredRules.length} certified, {dGatedRules.length} gated, {dAllRules.length} total"
 #eval IO.println s!"  enabled: {String.intercalate ", " dRegisteredRules}"
