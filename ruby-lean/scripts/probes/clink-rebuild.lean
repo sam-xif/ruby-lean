@@ -9,6 +9,7 @@ import Denote.Controls.MethodPrefixControls
 import Denote.Controls.MethodDefineeControls
 import Denote.Controls.ClassHookControls
 import Denote.Controls.AllocationReadyControls
+import Denote.Controls.ConstantReachControls
 import Denote.Sem.Class.ClassRegistration
 import Denote.Sem.Instance.MainSiteWrite
 import Denote.Rules.Class.ClassCallbacks
@@ -17,6 +18,7 @@ import Denote.Sem.Class.ClassNameEntryActual
 import Denote.Sem.Class.ClassTablesActual
 import Denote.Sem.Class.ClassMainActual
 import Denote.Sem.Class.ClassChainsActual
+import Denote.Sem.Class.ClassSitesActual
 import Denote.Sem.Class.ClassPayloadActual
 import Denote.Examples.RecursiveDerivations
 
@@ -86,6 +88,15 @@ open RubyCore Ratchet Ratchet.Denote
 #print axioms FreshClassActual.ordered_chain
 #print axioms FreshClassActual.ownNames_header
 #print axioms FreshClassActual.classChains_header
+#print axioms ConstantReachControls.old_site_not_preserved
+#print axioms FreshClassActual.const_from_old_fresh
+#print axioms FreshClassActual.instance_constants_old
+#print axioms FreshClassActual.instance_object_reach
+#print axioms FreshClassActual.moduleBase
+#print axioms FreshClassActual.meta_old
+#print axioms FreshClassActual.meta_fresh
+#print axioms FreshClassActual.instanceSite_old
+#print axioms FreshClassActual.instanceSite
 
 #eval IO.println s!"CLINK REBUILD: {dRegisteredRules.length} certified, {dGatedRules.length} gated, {dAllRules.length} total"
 #eval IO.println s!"  enabled: {String.intercalate ", " dRegisteredRules}"

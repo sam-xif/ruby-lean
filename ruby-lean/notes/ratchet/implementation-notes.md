@@ -13379,3 +13379,23 @@ Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
 46/46 negatives rejected, 254 agree/0 disagree. Declaration/allocator/header-chain
 modules build in 737/677ms/2.6s, standard axioms only; metatheory passes. Logs:
 /private/tmp/ascent-class-capabilities-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair actual class instance sites and retain reachability witness
+
+ConstantReachControls kernel-checks an InstanceSite with a BasicObject-only chain
+and a copy of Object's current constants: actual fresh class registration breaks
+its constant equality. This refutes the old generic site transfer, not an accepted
+program's safety; no Sorbet or type-error claim follows. Preserve this witness.
+ClassInstanceConstantsActual repairs the original fresh-name/other-name split:
+fresh globals require Object in the old chain or the module fallback. A list
+induction transports an absent old lookup to the new Object binding; the existing
+ClassChains.root_tail supplies reachability when static ancestry resolves.
+ClassSitesActual reuses the original names/hook/metaclass/front/fallback transfers
+and fresh-site publication, carrying that explicit constant premise. ModuleBase
+uses its existing transport. These proofs and the witness are mandatory gate
+prerequisites. No checker/runtime change; old-site reachability for every body
+site still precedes class admission. Proof builds: 604/626ms, standard axioms only.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree; metatheory passes. Logs:
+/private/tmp/ascent-class-sites-{gate,metatheory}.log.

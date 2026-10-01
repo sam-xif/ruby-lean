@@ -4,8 +4,8 @@
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
-bare-name/collection providers. Full gate: /private/tmp/ascent-class-capabilities-gate.log.
-Metatheory: /private/tmp/ascent-class-capabilities-metatheory.log.
+bare-name/collection providers. Full gate: /private/tmp/ascent-class-sites-gate.log.
+Metatheory: /private/tmp/ascent-class-sites-metatheory.log.
 
 Repair uses the original MethodState body/frame/return and MethodArgs accumulator
 proofs. MethodResolve follows actual bounded lookup through main's singleton
@@ -1509,3 +1509,13 @@ stronger version — *never re-type an existing entry* — is false for Ruby
 (`031-reassign-different-type` is `x = 1; x = true; x`). Full statement, with why
 it makes the **next** rule's proof simpler, in `Ratchet/Check/Check.lean`
 §Authoring a rule.
+
+ClassInstanceConstantsActual repairs old constant equality with an explicit
+Object-chain/module-fallback premise; ClassSitesActual repairs the original
+old/fresh InstanceSite, MetaReady and ModuleBase transfers. Mandatory witness
+ConstantReachControls.old_site_not_preserved shows current global equality alone
+does not imply future global visibility (BasicObject-only chain, copied globals).
+This is a generic preservation counterexample, not an accepted type-error witness.
+ClassChains.root_tail derives reachability when static ancestors resolve; the
+current plainClassTablesB guard does not ensure that resolution. Establish the
+needed all-sites premise before assembling body StateOk/admitting class clinks.
