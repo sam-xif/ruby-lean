@@ -12850,3 +12850,24 @@ required companion/body admission, passing active registry/Bridge proofs and
 controls, and production validateD acceptance for a positive corpus rung.
 A proved but gated rule remains unclimbed in the committed active profile.
 No policy, runtime or proof changes. Validation: the clink rebuild gate passes.
+
+### 2026-09-30 — Default green for active soundness; active progress only
+
+The user requested that run_typed_ratchet pass GREEN when the active soundness
+theorem passes and count only enabled clinks in climbed rungs. The default now
+builds the active registry/Bridge, rejects nonstandard theorem axioms, retains
+its controls and corpus/CRuby checks, and reports active clinks plus actual
+validateD corpus accepts. Disabled rules and rejected positive rungs are work
+remaining rather than missing-proof debt. Gated dependencies come from indexed
+checker traces, including companion/body premises. A fresh default corpus output
+avoids cached rungs inflating filtered reports.
+
+The original historical full-coverage gate remains behind --full-corpus, with
+its floors and audits unchanged; --clink-rebuild remains proof/controls-only.
+No policy, checker admission, runtime or soundness statement changed.
+
+Validation: default gate GREEN, 7/99 clinks, 8/261 corpus rungs, 46/46 negatives
+rejected, 254 agree/0 disagree. Filtered gate passes with and without agreement.
+Classifications, nonstandard-axiom refusal, negative-accept/Sorbet/upstream-error
+refusals and historical full-profile refusal pass. Logs:
+/private/tmp/active-ratchet-default-gate.log and active-ratchet-controls.log.

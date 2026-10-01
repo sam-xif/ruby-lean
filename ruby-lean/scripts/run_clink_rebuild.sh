@@ -33,7 +33,7 @@ check isolation ./scripts/check-isolation.sh
 check "generated checker freshness" python3 scripts/generate_audited_checker.py --check
 check "profile and registration controls" lake build Denote.Clink.GateStatus Denote.Clink.GateControls
 check "actual validator controls" lake build Ratchet.Controls.ClinkPolicyControls
-check "active semantic proofs and validator bridge" lake build Denote.Bridge
+check "active semantic proofs and validator bridge" lake build Denote.Clink.SoundnessAudit
 check "actual validator executables" lake build ratchetd validate-one
 check "model safety and axiom audit" lake env lean scripts/probes/clink-rebuild.lean
 if [[ "$verbose" == 0 ]]; then cat "$logdir/stage.log"; fi

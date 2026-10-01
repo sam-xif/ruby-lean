@@ -1,3 +1,26 @@
+# Default active typed ratchet (2026-09-30)
+
+run_typed_ratchet.sh now checks the active Bridge soundness theorem and reports
+only enabled, certified clinks and production validateD accepts as climbed.
+Disabled clinks/declined positive rungs are ascent, not gate failures. The default
+retains checker/registry controls, generated-source freshness, fresh corpus
+emission, Sorbet/upstream drift and negative controls, and CRuby agreement.
+SoundnessAudit rejects axioms outside propext, Classical.choice and Quot.sound.
+
+The former full-coverage gate is preserved as --full-corpus, with all historical
+floors and audits intact. --clink-rebuild remains the proof/controls-only shortcut.
+Denote/Report/Active uses actual indexed checker traces for gated dependencies;
+no AST or hint-name guessing enters acceptance or progress. The default emits
+fresh temporary corpus outputs so filtered runs do not count cached rungs.
+
+Validation: the full default gate passes with 7/99 clinks, 8/261 corpus rungs,
+46/46 negatives rejected and 254 CRuby agreements, 0 disagreements. Filtered
+corpus runs also pass. Nonstandard axiom, wrong hint, negative-accept, Sorbet drift
+and new upstream-error controls are rejected; --full-corpus still refuses a
+partial registry. Policy/providers remain the seven-literal profile. Logs:
+/private/tmp/active-ratchet-default-gate.log, active-ratchet-agreement-gate.log,
+active-ratchet-controls.log and active-ratchet-full-audit-refusal.log.
+
 # Generic validator/Bridge gating (2026-09-30)
 
 Ascent now explicitly includes adding the clink to `clinkProfile`, making

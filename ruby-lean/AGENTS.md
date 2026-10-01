@@ -15,9 +15,13 @@ semantic provider is sufficient to make it available to the validator; every
 rule actually used by its premises must also be enabled.
 
 Bridge.lean proves the original validateD_safe, _safe_boot and _safe_run
-statements using only active clinks and their dependencies. Use
-./scripts/run_typed_ratchet.sh --clink-rebuild. The full historical corpus gate
-still requires complete coverage and retains its floors. Optional raw DJudge
+statements using only active clinks and their dependencies. The default
+./scripts/run_typed_ratchet.sh checks this soundness theorem and reports only
+active clinks and actual validateD accepts as climbed. Disabled rules are ascent.
+Its full default run passes: 7/99 clinks, 8/261 corpus rungs, 46 negative controls
+rejected, 254 CRuby agreements and 0 disagreements. --clink-rebuild checks only
+proofs/controls; --full-corpus preserves the historical complete-coverage gate
+and floors. SoundnessAudit rejects nonstandard axioms. Optional raw DJudge
 completeness helpers remain in Denote/Bridge/Full.lean.
 
 The authored checker is Ratchet/Check/Raw.lean with its Check body/cache helpers.
