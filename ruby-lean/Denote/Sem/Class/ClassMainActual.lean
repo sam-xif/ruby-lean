@@ -34,7 +34,7 @@ theorem mainSite {κ : Ctx} {m : Machine} {name : String} {e : ObjId} {h' : Heap
       live := ?_, payload := ?_, chain := ?_
       object := hdata.nominal _ _ hr.object
       classLive := ?_, hook := ?_, detached := ?_, unfrozen := ?_, origin := rfl
-      mainNames := ?_, classHooks := ?_, classFlags := ?_ }
+      mainNames := ?_, classHooks := ?_, classFlags := ?_, defFrame := rfl }
     · change Boot.mainId < h'.objs.size
       rw [hh, size m name e]
       exact Nat.lt_of_lt_of_le hmain (Nat.le_add_right _ _)

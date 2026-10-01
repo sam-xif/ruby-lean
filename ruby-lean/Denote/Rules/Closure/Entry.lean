@@ -10,13 +10,9 @@ open RubyCore Ratchet Ratchet.Denote
 
 theorem classifySimple_required (names : List String) :
     Interp.classifySimple (names.map RubyCore.Param.req) =
-      some ⟨names, none, [], none⟩ := by
-  have hf : names.findIdx? (fun _ => false) = none :=
-    List.findIdx?_eq_none_iff.mpr (by simp)
+      some ⟨names, none, [], none, []⟩ := by
   unfold Interp.classifySimple
-  cases hr : names.reverse <;>
-    simp [← List.map_reverse, hr, List.any_map, List.findIdx?_map,
-      hf, List.filterMap_map, Function.comp_def]
+  simp [List.any_map, classifyFull_required]
 
 private theorem values_in_order (args : List Value) :
     (List.range args.length).map (fun i => args[i]?.getD .nil) = args := by

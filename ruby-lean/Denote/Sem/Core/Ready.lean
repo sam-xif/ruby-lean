@@ -42,6 +42,7 @@ structure MainReady (m : Machine) : Prop where
   mainNames : mainOwnNamesB m.heap = true
   classHooks : classHooksQuietB m.heap = true
   classFlags : objectClassFlagsB m.heap = true
+  defFrame : m.currentFrame.definitionFrame = none
 
 def RuntimeOk (κ : Ctx) (m : Machine) : Prop := κ.scope.runtimeMain = true → MainReady m
 
@@ -73,18 +74,20 @@ def mainReadyBaseB (m : Machine) : Bool :=
 def mainReadyB (m : Machine) : Bool :=
   mainReadyBaseB m &&
     decide ((m.heap.classPayload? Boot.objectId).bind (·.attached) = none) &&
-    !(m.heap.get Boot.objectId).frozen && !m.currentFrame.libraryOrigin && mainOwnNamesB m.heap && classHooksQuietB m.heap && objectClassFlagsB m.heap
+    !(m.heap.get Boot.objectId).frozen && !m.currentFrame.libraryOrigin && mainOwnNamesB m.heap && classHooksQuietB m.heap && objectClassFlagsB m.heap &&
+    m.currentFrame.definitionFrame.isNone
 
 theorem mainReadyB_sound {m : Machine} (h : mainReadyB m = true) : MainReady m := by
   simp only [mainReadyB, mainReadyBaseB, Bool.and_eq_true, decide_eq_true_eq,
     Bool.not_eq_true', beq_iff_eq] at h
+  obtain ⟨h, hdf⟩ := h
   obtain ⟨h, hflags⟩ := h
   obtain ⟨h, hhooks⟩ := h
   obtain ⟨h, hprefix⟩ := h
   obtain ⟨h, horigin⟩ := h
   obtain ⟨h, hd, hf⟩ := (and_assoc.mp h)
   obtain ⟨⟨⟨⟨⟨⟨⟨ho, hc, hcap, hphase, hlive⟩, hs⟩, hp⟩, ha⟩, hi⟩, hcl⟩, hh⟩ := h
-  refine ⟨?_, ho, hc, hcap, hphase, hlive, ?_, ha, hi, hcl, hh, hd, hf, horigin, hprefix, hhooks, hflags⟩
+  refine ⟨?_, ho, hc, hcap, hphase, hlive, ?_, ha, hi, hcl, hh, hd, hf, horigin, hprefix, hhooks, hflags, Option.isNone_iff_eq_none.mp hdf⟩
   · cases he : m.currentFrame.self <;> simp_all
   · cases he : (m.heap.get Boot.mainId).payload <;> simp_all
 
@@ -94,20 +97,23 @@ theorem MainReady.reframe {m n : Machine} (h : MainReady m)
     (hc : n.currentFrame.cref = m.currentFrame.cref)
     (hcap : n.currentFrame.captured = m.currentFrame.captured)
     (hphase : n.preludeMode = m.preludeMode)
-    (horigin : n.currentFrame.libraryOrigin = m.currentFrame.libraryOrigin) : MainReady n :=
+    (horigin : n.currentFrame.libraryOrigin = m.currentFrame.libraryOrigin)
+    (hdf : n.currentFrame.definitionFrame = m.currentFrame.definitionFrame := by rfl) : MainReady n :=
   ⟨hs.trans h.self, ho.trans h.owner, hc.trans h.cref, hcap.trans h.captured,
     hphase.trans h.phase, by simpa only [hh] using h.live,
     by simpa only [hh] using h.payload, by simpa only [hh] using h.chain,
     by simpa only [hh] using h.object, by simpa only [hh] using h.classLive,
     by simpa only [hh] using h.hook,
     by simpa only [hh] using h.detached, by simpa only [hh] using h.unfrozen,
-    horigin.trans h.origin, by simpa only [hh] using h.mainNames, by simpa only [hh] using h.classHooks, by simpa only [hh] using h.classFlags⟩
+    horigin.trans h.origin, by simpa only [hh] using h.mainNames, by simpa only [hh] using h.classHooks, by simpa only [hh] using h.classFlags,
+    hdf.trans h.defFrame⟩
 
 theorem MainReady.setLocal {m : Machine} (h : MainReady m) (x : String) (v : Value) :
     MainReady (m.setLocal x v) :=
   h.reframe (setLocal_heap ..) (currentFrame_setLocal_self ..)
     (currentFrame_setLocal_defmod ..) (currentFrame_setLocal_cref ..)
     (currentFrame_setLocal_captured ..) rfl (currentFrame_setLocal_libraryOrigin ..)
+    (currentFrame_setLocal_definitionFrame ..)
 
 theorem MainReady.ext {m n : Machine} (h : MainReady m) (he : Ext m n)
     (hphase : n.preludeMode = m.preludeMode) (hc : Proof.ChainsIn m.heap) : MainReady n := by
@@ -127,7 +133,8 @@ theorem MainReady.ext {m n : Machine} (h : MainReady m) (he : Ext m n)
     by rw [he.payload]; exact h.classLive, ?_,
     by rw [he.payload]; exact h.detached,
     by rw [hobj]; exact h.unfrozen,
-    by rw [he.currentFrame_eq]; exact h.origin, ?_, ?_, ?_⟩
+    by rw [he.currentFrame_eq]; exact h.origin, ?_, ?_, ?_,
+    by rw [he.currentFrame_eq]; exact h.defFrame⟩
   · simpa only [classOf, hmain, he.ancestors] using h.chain
   · simpa only [objectHookQuietB, definitionHookQuietB, hlookup] using h.hook
   · simpa only [mainOwnNamesB, ownMethods, classOf, hmain, he.payload] using h.mainNames

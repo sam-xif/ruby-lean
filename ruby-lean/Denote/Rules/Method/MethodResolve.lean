@@ -98,7 +98,7 @@ theorem top_method_runSpec {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : Machine} {
     hcode.captured hcode.declared hb hcode.fromBlock hcode.forTargets hlen hargs hps hτ hΓ
     (by simp [frameScope, requiredFrame, hcode.owner, hcode.cref,
       hdef, hcode.fromPrelude, ready.owner, ready.cref, ready.captured,
-      ready.origin, hm.localAlias, hblk])
+      ready.origin, hm.localAlias, hblk, hcode.definitionFrame, ready.defFrame])
     (fun x => (constGet?_empty (κ := κ.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) hc x).trans
       (constGet?_empty hc x).symm)
     (by

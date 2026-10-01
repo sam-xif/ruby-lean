@@ -15,6 +15,8 @@ structure ClassScopeAt (cn : String) (k : ObjId) (m : Machine) : Prop where
   phase : m.preludeMode = false
   visibility : defaultDefVis m = .pub
   hook : definitionHookQuietB m.heap k = true
+  origin : m.currentFrame.libraryOrigin = false
+  defFrame : m.currentFrame.definitionFrame = none
 
 def ClassScopeReady (cn : String) (m : Machine) : Prop := ∃ k, ClassScopeAt cn k m
 def ClassRuntimeOk (κ : Ctx) (m : Machine) : Prop :=
@@ -31,11 +33,14 @@ theorem ClassScopeAt.reframe {cn : String} {k : ObjId} {m n : Machine}
     (ho : n.currentFrame.defmod = m.currentFrame.defmod)
     (hc : n.currentFrame.cref = m.currentFrame.cref)
     (hcap : n.currentFrame.captured = m.currentFrame.captured)
-    (hp : n.preludeMode = m.preludeMode) (hv : defaultDefVis n = defaultDefVis m) :
+    (hp : n.preludeMode = m.preludeMode) (hv : defaultDefVis n = defaultDefVis m)
+    (hl : n.currentFrame.libraryOrigin = m.currentFrame.libraryOrigin)
+    (hd : n.currentFrame.definitionFrame = m.currentFrame.definitionFrame) :
     ClassScopeAt cn k n :=
   ⟨by simpa only [hh] using h.named, by simpa only [hh] using h.live,
     ho.trans h.owner, hc.trans h.cref, hcap.trans h.captured,
-    hp.trans h.phase, hv.trans h.visibility, by simpa only [hh] using h.hook⟩
+    hp.trans h.phase, hv.trans h.visibility, by simpa only [hh] using h.hook,
+    hl.trans h.origin, hd.trans h.defFrame⟩
 
 theorem ClassScopeReady.setLocal {cn : String} {m : Machine}
     (h : ClassScopeReady cn m) (x : String) (v : Value) :
@@ -43,7 +48,8 @@ theorem ClassScopeReady.setLocal {cn : String} {m : Machine}
   obtain ⟨k, h⟩ := h
   exact ⟨k, h.reframe (setLocal_heap ..) (currentFrame_setLocal_defmod ..)
     (currentFrame_setLocal_cref ..) (currentFrame_setLocal_captured ..) rfl
-    (by simp only [defaultDefVis, currentFrame_setLocal_kind, currentFrame_setLocal_defVis])⟩
+    (by simp only [defaultDefVis, currentFrame_setLocal_kind, currentFrame_setLocal_defVis])
+    (currentFrame_setLocal_libraryOrigin ..) (currentFrame_setLocal_definitionFrame ..)⟩
 
 theorem ClassScopeReady.ext {cn : String} {m n : Machine}
     (h : ClassScopeReady cn m) (he : Ext m n) (hp : n.preludeMode = m.preludeMode)
@@ -56,13 +62,15 @@ theorem ClassScopeReady.ext {cn : String} {m n : Machine}
       Interp.methodOn m.heap (classOf m.heap (.ref k)) "method_added"
     simp only [classOf, hobj, he.methodOn_eq hch]
   exact ⟨k, by
-    refine ⟨?_, Nat.lt_of_lt_of_le h.live he.size, ?_, ?_, ?_, hp.trans h.phase, ?_, ?_⟩
+    refine ⟨?_, Nat.lt_of_lt_of_le h.live he.size, ?_, ?_, ?_, hp.trans h.phase, ?_, ?_, ?_, ?_⟩
     · simpa only [he.classNamed?_eq] using h.named
     · simpa only [he.currentFrame_eq] using h.owner
     · simpa only [he.currentFrame_eq] using h.cref
     · simpa only [he.currentFrame_eq] using h.captured
     · simpa only [defaultDefVis, he.currentFrame_eq] using h.visibility
-    · simpa only [definitionHookQuietB, hl] using h.hook⟩
+    · simpa only [definitionHookQuietB, hl] using h.hook
+    · simpa only [he.currentFrame_eq] using h.origin
+    · simpa only [he.currentFrame_eq] using h.defFrame⟩
 
 #print axioms ClassScopeReady.ext
 end Ratchet.Denote

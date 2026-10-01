@@ -49,7 +49,7 @@ theorem required_method_runSpecAt {N : Nat} {κ : Ctx} {Γ Γb : Env} {I τ : Ty
       (congrArg FrameScope.defmod hscope) (congrArg FrameScope.captured hscope)
       (fun _ => by simp only [defaultDefVis, currentFrame_pushMethodFrame, f, requiredFrame]; rfl) hk
       (requiredFrame_envOk m _ name md ps args hlen hargs hps) hframe rfl
-      (congrArg FrameScope.libraryOrigin hscope)
+      (congrArg FrameScope.libraryOrigin hscope) (congrArg FrameScope.definitionFrame hscope)
   have hu : RootUncaptured m := by
     unfold RootUncaptured
     rw [rootFrame_eq_currentFrame hm.frameInRange.1]
@@ -91,7 +91,7 @@ theorem top_method_runSpecAt {N : Nat} {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m 
     hcode.captured hcode.declared hb hcode.fromBlock hcode.forTargets hlen hargs hps hτ hΓ
     (by simp [frameScope, requiredFrame, hcode.owner, hcode.cref,
       hdef, hcode.fromPrelude, ready.owner, ready.cref, ready.captured,
-      ready.origin, hm.localAlias, hblk])
+      ready.origin, hm.localAlias, hblk, hcode.definitionFrame, ready.defFrame])
     (fun x => (constGet?_empty (κ := κ.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) hc x).trans
       (constGet?_empty hc x).symm)
     (by

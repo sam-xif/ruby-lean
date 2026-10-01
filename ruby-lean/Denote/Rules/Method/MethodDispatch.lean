@@ -56,7 +56,7 @@ theorem definedMethod_code {m : Machine} {name : String} {ps : List RubyCore.Par
     TopMethodCode (definedMethod m name ps body) := by
   unfold definedMethod Interp.normalizeDefinitionVisibility
   split <;> exact ⟨ho, hc, rfl, rfl, rfl, rfl, by simp [sourceMethod, hp, hlib],
-    rfl, rfl, rfl, ho⟩
+    rfl, rfl, rfl, ho, rfl⟩
 
 /-- Only the installed native no-op hook is covered by ordinary definitions. -/
 def DefHookQuiet (m : Machine) : Prop :=

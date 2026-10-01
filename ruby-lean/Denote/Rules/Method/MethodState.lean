@@ -37,10 +37,12 @@ theorem method_enter_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m : Machine}
     (hk : ∀ x, constGet? (κ.withFrame fr) x = constGet? κ x)
     (he : EnvOk Γb (pushMethodFrame m f)) (hf : FrameOk fr (pushMethodFrame m f))
     (hal : f.localAlias = none)
-    (hlibrary : f.libraryOrigin = m.currentFrame.libraryOrigin := by rfl) :
+    (hlibrary : f.libraryOrigin = m.currentFrame.libraryOrigin := by rfl)
+    (hdefFrame : f.definitionFrame = m.currentFrame.definitionFrame := by rfl) :
     StateOk (κ.withFrame fr) Γb I (pushMethodFrame m f) :=
   StateOk_reframe (hroot := hm.rootClean)
-    (horigin := by rw [currentFrame_pushMethodFrame]; exact hlibrary) hm ht ha rfl
+    (horigin := by rw [currentFrame_pushMethodFrame]; exact hlibrary)
+    (hdf := by rw [currentFrame_pushMethodFrame]; exact hdefFrame) hm ht ha rfl
     (by rw [currentFrame_pushMethodFrame]; exact hs)
     (by rw [currentFrame_pushMethodFrame]; exact hb)
     (by rw [currentFrame_pushMethodFrame]; exact hc)
@@ -88,6 +90,7 @@ theorem method_pop_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m n : Machine}
   have hframe : FrameOk κ.frame (popMethodFrame n) := hp.frameOk hm.frame hpop
   have hout := StateOk_reframe (hroot := hn.rootClean)
     (horigin := congrArg FrameScope.libraryOrigin hscope)
+    (hdf := congrArg FrameScope.definitionFrame hscope)
     hn htypes ha (n := popMethodFrame n) (fr := κ.frame) rfl
     (congrArg FrameScope.self hscope) (congrArg FrameScope.blk hscope)
     (congrArg FrameScope.cref hscope) (congrArg FrameScope.defmod hscope)
@@ -137,7 +140,7 @@ theorem required_method_runSpec {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : Machi
       (congrArg FrameScope.defmod hscope) (congrArg FrameScope.captured hscope)
       (fun _ => by simp only [defaultDefVis, currentFrame_pushMethodFrame, f, requiredFrame]; rfl) hk
       (requiredFrame_envOk m _ name md ps args hlen hargs hps) hframe rfl
-      (congrArg FrameScope.libraryOrigin hscope)
+      (congrArg FrameScope.libraryOrigin hscope) (congrArg FrameScope.definitionFrame hscope)
   have hu : RootUncaptured m := by
     unfold RootUncaptured
     rw [rootFrame_eq_currentFrame hm.frameInRange.1]

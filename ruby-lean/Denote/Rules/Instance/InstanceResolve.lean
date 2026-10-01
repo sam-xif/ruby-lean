@@ -76,11 +76,13 @@ theorem instance_required_scope {m : Machine} {recv : Value} {cn name : String}
     (hc : InstanceMethodCode k name md) (hp : m.preludeMode = false)
     (hh : definitionHookQuietB m.heap k = true) :
     ClassScopeAt cn k (pushMethodFrame m (requiredFrame recv name md names args)) := by
-  refine ⟨hk, hl, ?_, ?_, ?_, hp, ?_, hh⟩
+  refine ⟨hk, hl, ?_, ?_, ?_, hp, ?_, hh, ?_, ?_⟩
   · rw [currentFrame_pushMethodFrame]; exact hc.definee
   · rw [currentFrame_pushMethodFrame]; exact hc.cref
   · rw [currentFrame_pushMethodFrame]; rfl
   · simp only [defaultDefVis, currentFrame_pushMethodFrame, requiredFrame]; rfl
+  · rw [currentFrame_pushMethodFrame]; exact hc.fromPrelude
+  · rw [currentFrame_pushMethodFrame]; exact hc.definitionFrame
 
 theorem finishSend_instance {m : Machine} {o k : ObjId} {name : String} {md : MethodDef}
     {args : List Value} {rest : List ObjId}

@@ -28,13 +28,14 @@ theorem restore_main_state_atStack_frame {κ κb : Ctx} {Γ Γb Γout : Env} {I 
   have hcap := congrArg FrameScope.captured hpop
   have halias := congrArg FrameScope.localAlias hpop
   have horigin := congrArg FrameScope.libraryOrigin hpop
-  simp only [frameScope] at hself hblock howner hcref hcap halias horigin
+  have hdefFrame := congrArg FrameScope.definitionFrame hpop
+  simp only [frameScope] at hself hblock howner hcref hcap halias horigin hdefFrame
   have old := hm.runtime hr
   have site : MainSite κb n.heap := hn.mainSite hw
   have ready : MainReady ({ n with stack := s } : Machine) :=
     MainReady.of_view (m := { n with stack := s }) site.ready
     (hself.trans old.self) (howner.trans old.owner) (hcref.trans old.cref)
-    (hcap.trans old.captured) hphase (horigin.trans old.origin)
+    (hcap.trans old.captured) hphase (horigin.trans old.origin) (hdefFrame.trans old.defFrame)
   have hscope : ConstScopeOk ({ n with stack := s } : Machine) := by
     intro x
     rw [constResolveAt_top ready.cref]

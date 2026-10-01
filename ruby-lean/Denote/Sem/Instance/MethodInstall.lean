@@ -93,7 +93,7 @@ theorem MainReady.methodWrite {m : Machine} (h : MainReady m) (cls : ObjId)
       exact hf.trans h.unfrozen, h.origin,
       mainOwnNamesB_iff.mpr ((mainOwnNamesB_iff.mp h.mainNames).methodWrite hw),
       by rw [classHooksQuietB_defineMethod hhooks]; exact h.classHooks,
-      by rw [objectClassFlagsB_defineMethod]; exact h.classFlags⟩
+      by rw [objectClassFlagsB_defineMethod]; exact h.classFlags, h.defFrame⟩
   · simpa only [Proof.classOf_defineMethod, Proof.ancestors_defineMethod] using h.chain
   · simpa only [isAName_defineMethod] using h.object
   · simpa only [Proof.classPayload?_isSome_defineMethod] using h.classLive
@@ -148,7 +148,7 @@ theorem ClassScopeReady.methodWrite {cn : String} {m : Machine}
     by simpa only [Proof.objs_size_defineMethod] using h.live,
     h.owner, h.cref, h.captured, h.phase, h.visibility,
     by simpa only [definitionHookQuietB, Proof.lookup_defineMethod _ _ _ _ _ _ hq
-        (Proof.classOf_defineMethod ..)] using h.hook⟩⟩
+        (Proof.classOf_defineMethod ..)] using h.hook, h.origin, h.defFrame⟩⟩
 
 /-- Common state transport. The positive method/class tables are the installation
 rule's obligations; all data, scope, and negative dispatch facts are derived here.

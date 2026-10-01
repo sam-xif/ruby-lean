@@ -189,6 +189,16 @@ theorem setAt_defVis (m : Machine) (x : String) (v : Value) (T : FrameId) (i : F
     · simp only [setAt, framesD_set!_oob _ _ _ hb]
   · simp only [setAt, framesD_set!_ne _ _ _ _ hi]
 
+theorem setAt_definitionFrame (m : Machine) (x : String) (v : Value) (T : FrameId) (i : FrameId) :
+    ((setAt m x v T).frames.getD i default).definitionFrame =
+      (m.frames.getD i default).definitionFrame := by
+  by_cases hi : i = T
+  · subst hi
+    by_cases hb : i < m.frames.size
+    · simp only [setAt, framesD_set!_self _ _ _ hb, setFrame]
+    · simp only [setAt, framesD_set!_oob _ _ _ hb]
+  · simp only [setAt, framesD_set!_ne _ _ _ _ hi]
+
 theorem setAt_meth (m : Machine) (x : String) (v : Value) (T : FrameId) (i : FrameId) :
     ((setAt m x v T).frames.getD i default).meth = (m.frames.getD i default).meth := by
   by_cases hi : i = T
@@ -646,6 +656,13 @@ theorem currentFrame_setLocal_defVis (m : Machine) (x : String) (w : Value) :
   cases m.stack with
   | nil => rfl
   | cons fid rest => rw [setLocal_eq_setAt]; exact setAt_defVis m x w _ fid
+
+theorem currentFrame_setLocal_definitionFrame (m : Machine) (x : String) (w : Value) :
+    (m.setLocal x w).currentFrame.definitionFrame = m.currentFrame.definitionFrame := by
+  simp only [Machine.currentFrame, setLocal_stack]
+  cases m.stack with
+  | nil => rfl
+  | cons fid rest => rw [setLocal_eq_setAt]; exact setAt_definitionFrame m x w _ fid
 
 theorem currentFrame_setLocal_localAlias (m : Machine) (x : String) (w : Value) :
     (m.setLocal x w).currentFrame.localAlias = m.currentFrame.localAlias := by

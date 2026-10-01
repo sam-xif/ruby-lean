@@ -13462,3 +13462,12 @@ Hash#key? [α]→bool (first-order hash) copies HashIndex's invoke route; the re
 pure key equality, so no default handling is needed. Emitter (untrusted) gains the
 hashOf#key?/1 signature. Rows for unmodeled builtins (String#tr, #delete_prefix) are
 deliberately not added: model `unsupported` would make them vacuous. Climbs 205.
+
+### 2026-10-01 — Definition-frame invariants
+
+sourceMethod now reads currentDefinitionFrame.defVis and libraryOrigin. MainReady
+gains defFrame (current frame's definitionFrame = none), ClassScopeAt gains origin
+and defFrame, OrdinaryMethodCode gains definitionFrame = none, and FrameScope carries
+definitionFrame so reframe/pop transport it like libraryOrigin. All hold at boot,
+for freshModFrame and for ordinary requiredFrame (code pins md.definitionFrame).
+Prepares memberDef; no accepts change.
