@@ -13440,3 +13440,12 @@ rungs also need constClass/member/init/new rules.
 The existing ClassConstant provider builds unchanged against current StateOk
 (constScope + classes). Controls: declared-then-read accepted; rule removal,
 read-before-declare and undeclared reads rejected.
+
+### 2026-10-01 — Primitive rows intCmp/intNil/symToS/symEq (59/261)
+
+DPrim gains Integer#<=> [int]→int, Integer#nil?→bool (Object#nil?), Symbol#to_s→String
+and Symbol#== [α]→bool. Each is a primitiveMethods row (boot dispatch probed: owners
+Integer/Object/Symbol, unshadowed) with a Builtins.run equation; Symbol#== is
+branch-wise (byte-string/complex guards may be unsupported) and its deferTwin? is
+none under nameFree "==". PrimitiveStep's row enumerations grew to 22. Climbs 168,
+169, 188, 200. Controls cover accepts and wrong arg/result/receiver.

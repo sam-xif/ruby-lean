@@ -52,6 +52,30 @@ theorem string_length_run (m : Machine) (v : Value) :
     Bool.not_true, Bool.and_false, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
   rfl
 
+theorem int_cmp_run (m : Machine) (x y : Int) :
+    Builtins.run "Integer#<=>" (.int x) [.int y] m = .ok (Builtins.ordValue (compare x y)) m := by
+  simp only [Builtins.run, List.any_cons, List.any_nil, Builtins.unrepresentableByteStr,
+    Builtins.strPayload?, Builtins.complexEqualityImpure, Bool.false_or, Bool.or_false,
+    Bool.and_false, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
+  rfl
+
+theorem int_nil_run (m : Machine) (x : Int) :
+    Builtins.run "Object#nil?" (.int x) [] m = .ok (.bool false) m := by
+  simp only [Builtins.run, List.any_cons, List.any_nil, Builtins.unrepresentableByteStr,
+    Builtins.strPayload?, Builtins.complexEqualityImpure, Bool.false_or, Bool.or_false,
+    Bool.and_false, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
+  rfl
+
+theorem sym_to_s_run (m : Machine) (s : String) :
+    Builtins.run "Symbol#to_s" (.sym s) [] m = Builtins.okStrEnc m false s := by
+  simp only [Builtins.run, List.any_cons, List.any_nil, Builtins.unrepresentableByteStr,
+    Builtins.strPayload?, Builtins.complexEqualityImpure, Bool.false_or, Bool.or_false,
+    Bool.and_false, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
+  rfl
+
+#print axioms int_cmp_run
+#print axioms int_nil_run
+#print axioms sym_to_s_run
 #print axioms nil_eq_run
 #print axioms string_length_run
 end Ratchet.Denote.Typed

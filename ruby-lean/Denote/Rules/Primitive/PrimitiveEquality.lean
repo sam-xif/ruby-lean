@@ -43,5 +43,22 @@ theorem int_eq_step {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : StateOk �
       exact stepSpec_value hm hk (by simp [denM, isBoolV])
   all_goals intro o h; cases h
 
+theorem sym_eq_defer {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : StateOk κ Γ I m)
+    (x : String) (v : Value) (hfree : nameFreeN κ "==" = true := by rfl) :
+    Builtins.deferTwin? m.heap "Symbol#==" (.sym x) [v] = none := by
+  simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
+    Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?,
+    Builtins.num?, show Builtins.coerceTwin? "Symbol#==" = none from rfl]
+
+theorem sym_eq_step {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : StateOk κ Γ I m)
+    (hk : m.kont = []) (x : String) (v : Value) :
+    StepSpec m Γ .bool (builtinStep (Builtins.run "Symbol#==" (.sym x) [v] m)) κ I := by
+  have he : Builtins.runObjects "Symbol#==" (.sym x) [v] m =
+      .ok (.bool ((Value.sym x).identEq v)) m := rfl
+  simp only [Builtins.run]
+  repeat' split
+  all_goals first | trivial | (rw [he]; exact stepSpec_value hm hk (by simp [denM, isBoolV]))
+
+#print axioms sym_eq_step
 #print axioms int_eq_step
 end Ratchet.Denote.Typed

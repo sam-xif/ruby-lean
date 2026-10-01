@@ -95,7 +95,7 @@ namespace Ratchet
 /-! ## §1 The primitive table
 
 The rules for sends this fragment can type, as an inductive (`DPrim`) with a decision
-procedure (`dprim?`) and a soundness lemma between them. Seventeen rows.
+procedure (`dprim?`) and a soundness lemma between them. Twenty-one rows.
 
 The table grows with proved builtin obligations. `Judge.lean`'s `PrimSig` has ~90 rows and `Denote/`'s
 `Sem.Judge.prim` — the obligation that every one of them is true of CRuby — is one of the 35
@@ -139,6 +139,14 @@ inductive DPrim : Ty → String → List Ty → Ty → Prop
       premise this judgment has no context to state. So: booleans only, and the restriction
       is recorded rather than assumed away. -/
   | notBool : DPrim .bool "!" [] .bool
+  /-- `Integer#<=>` at an Integer argument always answers -1, 0 or 1. -/
+  | intCmp : DPrim .int "<=>" [.int] .int
+  /-- Integer inherits `Object#nil?`, answering false. -/
+  | intNil : DPrim .int "nil?" [] .bool
+  /-- `Symbol#to_s` allocates its String. -/
+  | symToS : DPrim .sym "to_s" [] (.cls "String")
+  /-- `Symbol#==` is identity; it never reverses into the argument. -/
+  | symEq {α : Ty} : DPrim .sym "==" [α] .bool
   /-- Index evaluation must retain the receiver's element denotations. -/
   | arrayIndex {τ : Ty} : FirstOrder τ = true → DPrim (.arrayOf τ) "[]" [.int] (.nilable τ)
   /-- Hash query types need not match stored keys; misses return nil. -/
@@ -162,6 +170,10 @@ def dprim? : Ty → String → List Ty → Option Ty
   | .cls "String", "length", [] => some .int
   | .cls "String", "+", [.cls "String"] => some (.cls "String")
   | .bool, "!", [] => some .bool
+  | .int, "<=>", [.int] => some .int
+  | .int, "nil?", [] => some .bool
+  | .sym, "to_s", [] => some (.cls "String")
+  | .sym, "==", [_] => some .bool
   | .arrayOf τ, "[]", [.int] => if FirstOrder τ then some (.nilable τ) else none
   | .hashOf σ τ, "[]", [_] => if FirstOrder (.hashOf σ τ) then some (.nilable τ) else none
   | _, _, _ => none
@@ -185,6 +197,10 @@ theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
   · rw [Option.some.injEq] at h; subst h; exact .strLength
   · rw [Option.some.injEq] at h; subst h; exact .strAdd
   · rw [Option.some.injEq] at h; subst h; exact .notBool
+  · rw [Option.some.injEq] at h; subst h; exact .intCmp
+  · rw [Option.some.injEq] at h; subst h; exact .intNil
+  · rw [Option.some.injEq] at h; subst h; exact .symToS
+  · rw [Option.some.injEq] at h; subst h; exact .symEq
   · split at h
     · rw [Option.some.injEq] at h; subst h; exact .arrayIndex (by assumption)
     · cases h

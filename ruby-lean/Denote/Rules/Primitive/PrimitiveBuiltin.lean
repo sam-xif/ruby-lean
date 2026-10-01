@@ -22,6 +22,9 @@ private theorem int_value {m : Machine} {v : Value} (h : denM .int m v) :
 private theorem bool_value {m : Machine} {v : Value} (h : denM .bool m v) :
     ∃ b, v = .bool b := by cases v <;> simp_all [denM, isBoolV]
 
+private theorem sym_value {m : Machine} {v : Value} (h : denM .sym m v) :
+    ∃ s, v = .sym s := by cases v <;> simp_all [denM, isSymV]
+
 private theorem nil_value {m : Machine} {v : Value} (h : denM .nilT m v) :
     v = .nil := by cases v <;> simp_all [denM, isNilV]
 
@@ -180,6 +183,39 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
         (by simp [primitiveMethods, classOf]) rfl (by rfl)
         (by intro o ho; cases ho) (by rfl) (by rfl) hfree, bool_not_run] <;>
       exact stepSpec_value hm hk (by simp [denM, isBoolV])
+  | intCmp =>
+    cases ha
+    rename_i v vs hv hs
+    cases hs
+    obtain ⟨x, rfl⟩ := int_value hr
+    obtain ⟨y, rfl⟩ := int_value hv
+    rw [primitive_invoke (bid := "Integer#<=>") (k := Boot.integerId) hm
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
+      int_cmp_run]
+    exact stepSpec_value hm hk (by cases compare x y <;> simp [Builtins.ordValue, denM, isIntV])
+  | intNil =>
+    cases ha
+    obtain ⟨x, rfl⟩ := int_value hr
+    rw [primitive_invoke (bid := "Object#nil?") (k := Boot.integerId) hm
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
+      int_nil_run]
+    exact stepSpec_value hm hk (by simp [denM, isBoolV])
+  | symToS =>
+    cases ha
+    obtain ⟨x, rfl⟩ := sym_value hr
+    rw [primitive_invoke (bid := "Symbol#to_s") (k := Boot.symbolId) hm
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
+      sym_to_s_run]
+    exact stepSpec_string hm hk _ false
+  | symEq =>
+    cases ha
+    rename_i v vs hv hs
+    cases hs
+    obtain ⟨x, rfl⟩ := sym_value hr
+    rw [primitive_invoke (bid := "Symbol#==") (k := Boot.symbolId) hm
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho)
+      (sym_eq_defer hm x v hfree) (by rfl) hfree]
+    exact sym_eq_step hm hk x v
   | arrayIndex _ =>
     cases ha
     rename_i v vs hv hs

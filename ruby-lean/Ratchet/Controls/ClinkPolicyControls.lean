@@ -248,6 +248,17 @@ private def literalClassHint : Deriv := .classDecl "Box" none (.intLit 7)
 #guard !validateD (.seq [.const "Box", literalClass]) (.seq [.constCls "Box", literalClassHint])
 #guard !validateD (.const "Box") (.constCls "Box")
 
+-- Primitive rows Integer#<=>, Integer#nil?, Symbol#to_s, Symbol#==.
+#guard validateD (.send (some (.int 1)) "<=>" [.int 2] none) (.prim (.intLit 1) "<=>" [.intLit 2] .int .int)
+#guard !validateD (.send (some (.int 1)) "<=>" [.str "a"] none)
+  (.prim (.intLit 1) "<=>" [.strLit "a"] .int .int)
+#guard !validateD (.send (some (.int 1)) "<=>" [.int 2] none) (.prim (.intLit 1) "<=>" [.intLit 2] .int .bool)
+#guard validateD (.send (some (.int 1)) "nil?" [] none) (.prim (.intLit 1) "nil?" [] .int .bool)
+#guard !validateD (.send (some .nil) "nil?" [] none) (.prim .nilLit "nil?" [] .nilT .bool)
+#guard validateD (.send (some (.sym "a")) "to_s" [] none) (.prim (.symLit "a") "to_s" [] .sym (.cls "String"))
+#guard validateD (.send (some (.sym "a")) "==" [.int 1] none) (.prim (.symLit "a") "==" [.intLit 1] .sym .bool)
+#guard !validateD (.send (some (.sym "a")) "length" [] none) (.prim (.symLit "a") "length" [] .sym .int)
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw
