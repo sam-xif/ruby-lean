@@ -13483,3 +13483,13 @@ invariant). Legacy fresh-machine install/publish step lemmas are removed;
 initializerDecl moves to Init/InitDefine (still blocked on legacy init proofs).
 AuditBridge's disabled-rule branch simplifies only the rulesEnabled hypothesis
 (simp_all timed out on the longer memberRuleB).
+
+### 2026-10-01 — Climb newDefault (35/99)
+
+Class#new now dispatches to callConstruct: allocate, then a real reflective
+`initialize` send under newK. DefaultNew proves it: Class#new and BasicObject#initialize
+native shadow gates are `unsupported` outcomes (case split, no premise). RootInitOk is
+strengthened from "no user Object#initialize" to initDispatchB (Object's initialize
+resolves to non-undefined BasicObject#initialize; boot #guard passes); userInit_none
+is derived. PlainAllocator gains plainChain (k and its chain avoid every non-plain
+callConstruct arm). Legacy newImpl/finishSend_no_initializer lemmas are retired.

@@ -35,7 +35,7 @@ theorem RootInitOk.defineTop {D : DefTable} {h : Heap} {d : Defn} {md : MethodDe
     (hp : RootInitOk D h) : RootInitOk (d :: D) (defineMethod h Boot.objectId d.name md) := by
   intro hf
   obtain ⟨hn, hD⟩ := rootInitFreeB_cons hf
-  simpa only [userInit?, methodOn_defineMethod h Boot.objectId Boot.objectId d.name "initialize" md hn.symm]
+  simpa only [initDispatchB, methodOn_defineMethod h Boot.objectId Boot.objectId d.name "initialize" md hn.symm]
     using hp hD
 
 #print axioms RootInitOk.write_outside

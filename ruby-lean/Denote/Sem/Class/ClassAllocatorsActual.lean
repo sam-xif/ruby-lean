@@ -42,7 +42,7 @@ theorem plain (hc : ClassReady m.heap) (hs : Saturated m.heap)
   have hne (k : ObjId) (hk : k ≤ Boot.yielderId) : m.heap.objs.size ≠ k :=
     (Nat.ne_of_lt (Nat.lt_of_le_of_lt hk hc.bootEnd)).symm
   refine ⟨?_, hne _ (by decide), hne _ (by decide), hne _ (by decide), hne _ (by decide),
-    ?_, ?_, ?_, allocator_ready hd hf, ?_⟩
+    ?_, ?_, ?_, allocator_ready hd hf, ?_, ?_⟩
   · rw [size m name e]
     exact Nat.lt_add_of_pos_right (by decide : 0 < 2)
   · simp only [Heap.classPayload?, get_class hd, namedObject, freshClassPayload]; rfl
@@ -55,6 +55,11 @@ theorem plain (hc : ClassReady m.heap) (hs : Saturated m.heap)
       Boot.objectId, Boot.kernelId, Boot.basicObjectId, Boot.stringId, Boot.arrayId,
       Boot.hashId, Boot.procId, Boot.integerId, Boot.floatId, Boot.symbolId, Boot.exceptionId,
       Boot.rationalId, Boot.complexId, Boot.enumeratorId, Boot.generatorId, Boot.yielderId]
+    (repeat' apply And.intro) <;> exact hne _ (by decide)
+  · simp [constructBlockers, hchain, Boot.objectId, Boot.kernelId, Boot.basicObjectId, Boot.moduleId,
+      Boot.enumeratorId, Boot.generatorId, Boot.yielderId, Boot.procId, Boot.randomId,
+      Boot.regexpId, Boot.rangeId, Boot.integerId, Boot.floatId, Boot.symbolId, Boot.rationalId,
+      Boot.complexId, Boot.nilClassId, Boot.trueClassId, Boot.falseClassId]
     (repeat' apply And.intro) <;> exact hne _ (by decide)
 
 #print axioms allocators

@@ -1,4 +1,5 @@
 import Denote.Rules.Constructor.ConstructorState
+import Denote.Rules.Constructor.DefaultNew
 import Denote.Rules.Primitive.PrimitiveStep
 import Ratchet.Guards.NilFields
 
@@ -7,56 +8,6 @@ This is the builtin's contract, not permission to skip an actual user initialize
 set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
-
-def defaultAllocated (m : Machine) (k : ObjId) : Machine :=
-  { m with heap := pushHeap m.heap { klass := k } }
-
-theorem defaultAllocated_ext {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {k : ObjId}
-    (hm : StateOk κ Γ I m) (hc : PlainAllocator m.heap k) : Ext m (defaultAllocated m k) :=
-  ext_push { klass := k } hm.sat hm.core.basicSelf (by intro c; cases c; simp) rfl rfl hc.rooted
-
-theorem defaultAllocated_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {k : ObjId}
-    (hm : StateOk κ Γ I m) (hc : PlainAllocator m.heap k) : StateOk κ Γ I (defaultAllocated m k) :=
-  StateOk_ext hm (defaultAllocated_ext hm hc)
-    (stringPayloadOk_push hm.stringPayload (by simpa using hc.notString))
-    (arrayPayloadOk_push hm.arrayPayload (by simp)) (hashPayloadOk_push hm.hashPayload (by simp)) rfl
-
-theorem denSpineFrom_nilFields {J : Ty} (hj : nilFieldsB J = true) (seen : List String) (m : Machine) :
-    denSpineFrom seen J m (fun _ => .nil) := by
-  induction J generalizing seen with
-  | ivar0 => simp [denSpineFrom]
-  | ivarCons x ty rest _ ih =>
-    cases ty <;> simp only [nilFieldsB, Bool.false_eq_true] at hj
-    simp only [denSpineFrom]
-    exact ⟨Or.inr (by simp [denM, isNilV]), ih hj _⟩
-  | _ => cases hj
-
-theorem defaultAllocated_receiver {κ : Ctx} {Γ : Env} {I J : Ty} {m : Machine} {k : ObjId} {cn : String}
-    (hm : StateOk κ Γ I m) (hc : PlainAllocator m.heap k) (hn : classNamed? m.heap cn = some k)
-    (hj : nilFieldsB J = true) :
-    denM (.inst cn J) (defaultAllocated m k) (.ref m.heap.objs.size) := by
-  have he := defaultAllocated_ext hm hc
-  rw [denM]
-  simp only [isExactInst, he.classNamed?_eq, hn]
-  simp only [defaultAllocated, pushHeap_get_self]
-  refine ⟨by simp [pushHeap], ?_⟩
-  have hg : ivarOf (pushHeap m.heap { klass := k }) (.ref m.heap.objs.size) = fun _ => .nil := by
-    funext x
-    simp [ivarOf, pushHeap_get_self]
-  rw [hg]
-  exact denSpineFrom_nilFields hj [] _
-
-theorem stepSpec_defaultAllocated {κ : Ctx} {Γ : Env} {I J : Ty} {m : Machine} {k : ObjId} {cn : String}
-    (hm : StateOk κ Γ I m) (hc : PlainAllocator m.heap k) (hn : classNamed? m.heap cn = some k)
-    (hk : m.kont = []) (hj : nilFieldsB J = true) :
-    StepSpec m Γ (.inst cn J)
-      (.next (Interp.withCtl (defaultAllocated m k) (.value (.ref m.heap.objs.size)))) κ I := by
-  have hs := defaultAllocated_state hm hc
-  have hd := defaultAllocated_receiver hm hc hn hj
-  have hf := Framed.of_ext (defaultAllocated_ext hm hc)
-  have h := RunSpec.answer (a := .val (.ref m.heap.objs.size))
-    (show ResultOk m Γ (.inst cn J) _ _ κ I from ⟨hf, hd, fun _ hv => by cases hv; exact hs⟩)
-  simpa only [StepSpec, defaultAllocated, Interp.withCtl, deliverA, Answer.ctl, reCtl, hk] using h
 
 private theorem no_payload_ancestor {h : Heap} {k j : ObjId} (hc : PlainAllocator h k)
     (hj : (Builtins.payloadCoreClasses.contains j || j == Boot.exceptionId) = true) :

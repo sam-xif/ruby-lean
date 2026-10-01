@@ -287,6 +287,16 @@ private def memberHint (n : String) : Deriv := .classDecl "Box" none (.defDecl n
   "const_added", "inherited", "method_added", "method_missing", "new"].all fun n =>
   !validateD (memberClass n) (memberHint n)
 
+-- Active newDefault: zero-argument construction of a declared class without initialize.
+private def newBox : Expr := .send (some (.const "Box")) "new" [] none
+#guard validateD (.seq [memberClass "get", newBox])
+  (.seq [memberHint "get", .newInst "Box" [] (.inst "Box" .ivar0)])
+#guard !validateDWith (fun r => clinkEnabled r && r != "newDefault") (.seq [memberClass "get", newBox])
+  (.seq [memberHint "get", .newInst "Box" [] (.inst "Box" .ivar0)])
+#guard !validateD (.seq [memberClass "get", .send (some (.const "Box")) "new" [.int 1] none])
+  (.seq [memberHint "get", .newInst "Box" [.intLit 1] (.inst "Box" .ivar0)])
+#guard !validateD newBox (.newInst "Box" [] (.inst "Box" .ivar0))
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

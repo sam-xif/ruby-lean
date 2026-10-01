@@ -27,8 +27,9 @@ theorem OrdinaryClass.rooted {h : Heap} {k : ObjId} (hc : OrdinaryClass h k) :
     (ancestors h k).contains Boot.basicObjectId = true := by simp [hc.chain]
 
 theorem OrdinaryClass.plain {h : Heap} {k : ObjId} (hc : OrdinaryClass h k)
-    (hm : k ≠ Boot.mathId) (hr : plainAllocationReadyB h k = true) : PlainAllocator h k := by
-  refine ⟨hc.live, hc.notClass, hc.notModule, hm, ?_, hc.module, hc.rooted, hc.noCore, hr, hc.noPayload⟩
+    (hm : k ≠ Boot.mathId) (hr : plainAllocationReadyB h k = true)
+    (hpc : (k :: ancestors h k).all (fun a => !constructBlockers.contains a) = true) : PlainAllocator h k := by
+  refine ⟨hc.live, hc.notClass, hc.notModule, hm, ?_, hc.module, hc.rooted, hc.noCore, hr, hc.noPayload, hpc⟩
   intro he
   have hn := hc.noPayload
   rw [hc.chain] at hn

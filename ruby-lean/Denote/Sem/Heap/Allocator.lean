@@ -7,6 +7,12 @@ set_option autoImplicit false
 namespace Ratchet.Denote
 open RubyCore
 
+/-- Ancestors that select a non-plain arm of native construction. -/
+def constructBlockers : List ObjId :=
+  [Boot.moduleId, Boot.enumeratorId, Boot.generatorId, Boot.yielderId, Boot.procId,
+   Boot.randomId, Boot.regexpId, Boot.rangeId, Boot.integerId, Boot.floatId, Boot.symbolId,
+   Boot.rationalId, Boot.complexId, Boot.nilClassId, Boot.trueClassId, Boot.falseClassId]
+
 structure PlainAllocator (h : Heap) (k : ObjId) : Prop where
   live : k < h.objs.size
   notClass : k ≠ Boot.classId
@@ -19,6 +25,7 @@ structure PlainAllocator (h : Heap) (k : ObjId) : Prop where
   ready : plainAllocationReadyB h k = true
   noPayload : (ancestors h k).any
     (fun a => Builtins.payloadCoreClasses.contains a || a == Boot.exceptionId) = false
+  plainChain : (k :: ancestors h k).all (fun a => !constructBlockers.contains a) = true
 
 theorem PlainAllocator.payload {h : Heap} {k : ObjId} (hc : PlainAllocator h k) :
     ∃ cp, (h.get k).payload = .cls cp ∧ cp.isModule = false := by
@@ -42,7 +49,8 @@ theorem PlainAllocator.transport {h h' : Heap} {k : ObjId} (hc : PlainAllocator 
     (hr : plainAllocationReadyB h' k = plainAllocationReadyB h k) : PlainAllocator h' k :=
   ⟨Nat.lt_of_lt_of_le hc.live hl, hc.notClass, hc.notModule, hc.notMath, hc.notString,
     hp.trans hc.module, ha ▸ hc.rooted,
-    by simpa only [Builtins.allocatableCore, ha] using hc.noCore, hr.trans hc.ready, ha ▸ hc.noPayload⟩
+    by simpa only [Builtins.allocatableCore, ha] using hc.noCore, hr.trans hc.ready, ha ▸ hc.noPayload,
+    by rw [ha]; exact hc.plainChain⟩
 
 def AllocatorsOk (names : List String) (h : Heap) : Prop :=
   ∀ cn ∈ names, ∃ k, classNamed? h cn = some k ∧ PlainAllocator h k

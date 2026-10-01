@@ -88,7 +88,13 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
         by simpa only [bindIvar_currentFrame] using hk.captured,
         hphase.trans hk.phase,
         by simpa only [defaultDefVis, bindIvar_currentFrame] using hk.visibility,
-        by simpa only [definitionHookQuietB, hw.lookup_eq] using hk.hook⟩⟩
+        by simpa only [definitionHookQuietB, hw.lookup_eq] using hk.hook,
+        by simpa only [bindIvar_currentFrame] using hk.origin,
+        by simpa only [bindIvar_currentFrame] using hk.defFrame,
+        by simpa only [hw.classPayload] using hk.detached,
+        by simpa only [hw.frozen] using hk.unfrozen,
+        by simpa only [hw.size] using hk.mainLive,
+        by simpa only [hw.classOf_eq] using hk.notMain⟩⟩
     singletonRuntime := by
       intro cn hr
       obtain ⟨k, e, scope⟩ := h.singletonRuntime cn hr
@@ -163,7 +169,8 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
       by simpa only [hw.frozen] using hm.unfrozen,
       by simpa only [bindIvar_currentFrame] using hm.origin,
       by simpa only [mainOwnNamesB, ownMethods, hw.classOf_eq, hw.classPayload] using hm.mainNames,
-      ?_, by simpa only [objectClassFlagsB, hw.classPayload] using hm.classFlags⟩
+      ?_, by simpa only [objectClassFlagsB, hw.classPayload] using hm.classFlags,
+      by simpa only [bindIvar_currentFrame] using hm.defFrame⟩
     rw [show classHooksQuietB (Interp.bindIvar m x v).heap = classHooksQuietB m.heap from
       classHooksQuietB_congr
         (by simp only [objectCallbackPrefix, hw.classOf_eq, hw.ancestors_eq])

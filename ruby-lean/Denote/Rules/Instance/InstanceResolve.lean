@@ -74,9 +74,11 @@ theorem instance_required_scope {m : Machine} {recv : Value} {cn name : String}
     {k : ObjId} {md : MethodDef} (names : List String) (args : List Value)
     (hk : classNamed? m.heap cn = some k) (hl : k < m.heap.objs.size)
     (hc : InstanceMethodCode k name md) (hp : m.preludeMode = false)
-    (hh : definitionHookQuietB m.heap k = true) :
+    (hh : definitionHookQuietB m.heap k = true)
+    (hdet : (m.heap.classPayload? k).bind (·.attached) = none) (hfz : (m.heap.get k).frozen = false)
+    (hml : Boot.mainId < m.heap.objs.size) (hnm : k ≠ classOf m.heap (.ref Boot.mainId)) :
     ClassScopeAt cn k (pushMethodFrame m (requiredFrame recv name md names args)) := by
-  refine ⟨hk, hl, ?_, ?_, ?_, hp, ?_, hh, ?_, ?_⟩
+  refine ⟨hk, hl, ?_, ?_, ?_, hp, ?_, hh, ?_, ?_, hdet, hfz, hml, hnm⟩
   · rw [currentFrame_pushMethodFrame]; exact hc.definee
   · rw [currentFrame_pushMethodFrame]; exact hc.cref
   · rw [currentFrame_pushMethodFrame]; rfl

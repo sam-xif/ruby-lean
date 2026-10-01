@@ -54,7 +54,7 @@ theorem StateOk.userInit_none {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (hkind : c.isModule = false)
     (hn : noDeclaredSelectorB κ.classes c.name "initialize" = true)
     (hr : rootInitFreeB κ.defs = true) : userInit? m.heap r = none :=
-  (hm.userInit_eq_root hc hk hkind hn).trans (hm.rootInit hr)
+  (hm.userInit_eq_root hc hk hkind hn).trans (hm.rootInit.userInit hr)
 
 #print axioms StateOk.methodOn_root_of_absent
 #print axioms StateOk.userInit_eq_root
