@@ -49,13 +49,15 @@ dispatch class before Object. Do not silently assume lookup starts at Object:
 prove absence/shadow safety for the prefix (topDeclClassesB excludes main-native
 names) and revalidate positive conformance, definee and frame metadata. Existing
 ordinaryMethodCodeB does not pin definee/definitionFrame. Call clinks stay gated.
-Measured main-prefix countermodel: /private/tmp/MethodPrefixWitness.lean passes
+Measured main-prefix countermodel: Denote/Controls/MethodPrefixControls.lean passes
 the current complete bootStateB with main's dispatch class given a native bump
 (builtin Module#method_added). The unrestricted checker accepts def bump=1;
 bump(), but running it from this state raises a type-class ArgumentError because
 the prefix builtin wins. Active validateD still gates callSig. Reject this forged
 prefix in conformance, preserve the real main-native names and repair lookup
-before call admission. Log: /private/tmp/ascent-method-prefix-witness.log.
+before call admission. This control is mandatory and will need a retained legacy
+guard plus rejection by the repaired guard when fixing the prefix. Logs:
+/private/tmp/ascent-method-prefix-{witness,controls}.log.
 Run Lake builds sequentially: concurrent builds raced over Context.olean.
 Final batch check-proofs.sh passes (/private/tmp/ascent-final-metatheory.log).
 No live builds.

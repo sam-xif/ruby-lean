@@ -5,6 +5,7 @@ import Denote.Controls.MethodCodeControls
 import Denote.Controls.FrozenDefinitionControls
 import Denote.Controls.MethodDefinitionControls
 import Denote.Controls.MethodOriginControls
+import Denote.Controls.MethodPrefixControls
 
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote

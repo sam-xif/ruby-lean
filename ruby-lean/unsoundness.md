@@ -80,3 +80,21 @@ and the existing local-write, heap-extension, method entry/return and reframe
 proofs preserve it. The legacy witness is rejected while the real boot passes.
 The repaired definition proof uses the real queued callback contract, so defDecl
 can be admitted without pretending that user phase alone establishes provenance.
+
+# Main's leading dispatch class can shadow a checked definition (2026-09-30)
+
+Denote/Controls/MethodPrefixControls.lean measures a complete bootStateB accept
+after adding bump to main's leading dispatch class with builtin
+Module#method_added. The unrestricted checker accepts the sequence def bump=1;
+bump(), but execution from this state raises ArgumentError: that native hook
+expects one argument and wins lookup ahead of Object's checked zero-arg body.
+The legacy top_method_runSpec incorrectly supplied MainReady.chain to a lemma
+requiring Object first. Actual main has its own dispatch class before Object.
+
+This is a semantic call-judgment countermodel over an accepted arbitrary state,
+not a source-program error from the real boot or a demonstrated Sorbet bug.
+Production validateD still rejects the sequence because callSig is gated.
+Before call admission, conformance must reject forged prefix entries, positive
+definition records must exclude main-native names, and lookup must follow the
+real prefix. Preserve the genuine main-native names already excluded by
+topDeclClassesB. This repair and definee/frame metadata revalidation remain open.

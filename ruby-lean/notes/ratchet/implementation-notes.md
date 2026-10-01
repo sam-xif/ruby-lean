@@ -13068,3 +13068,14 @@ Validation: full default gate GREEN, 23/99 clinks and 49/261 corpus accepts,
 46/46 negatives rejected, 254 agree/0 disagree; check-proofs.sh passes.
 Logs: /private/tmp/ascent-defdecl-{gate,metatheory}.log. Repaired definition
 and metadata lemmas build in under a second, with standard axioms only.
+
+### 2026-09-30 — Preserve the main-prefix call countermodel
+
+MethodPrefixControls passes the complete current boot-state guard with a forged
+native bump on main's leading dispatch class. The unrestricted checker accepts
+def bump=1; bump(), but execution raises ArgumentError because that builtin
+wins ahead of Object. Preserve the measured premises and result in a mandatory
+control; production callSig remains gated. The next repair must constrain this
+prefix and illegal main-native names in positive definition records, then follow
+the real lookup walk. See ../../unsoundness.md. The evaluated control builds
+under a second; proof/controls gate passes at the unchanged definition profile.
