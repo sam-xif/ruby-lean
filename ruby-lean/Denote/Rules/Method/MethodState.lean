@@ -11,9 +11,11 @@ open RubyCore Ratchet Ratchet.Denote
 
 theorem _root_.Ratchet.Denote.CaptureLive.pushMethodFrame {m : Machine} {cap : Option FrameId}
     (h : CaptureLive m cap) (f : RubyCore.Frame) : CaptureLive (pushMethodFrame m f) cap := by
-  apply h.frames_preserved (by simp [pushMethodFrame])
+  apply CaptureLive.frames_preserved (m := m) (n := Ratchet.Denote.Typed.pushMethodFrame m f)
+    (by simp [Ratchet.Denote.Typed.pushMethodFrame]) ?_ h
   intro i hi
-  simp [pushMethodFrame, Array.getD, hi, Nat.lt_succ_of_lt hi, Array.getElem_push_lt]
+  simp [Ratchet.Denote.Typed.pushMethodFrame, Array.getD, hi,
+    Nat.lt_succ_of_lt hi, Array.getElem_push_lt]
 
 theorem currentFrame_pushMethodFrame (m : Machine) (f : RubyCore.Frame) :
     (pushMethodFrame m f).currentFrame = f := by
@@ -36,7 +38,7 @@ theorem method_enter_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m : Machine}
     (he : EnvOk Γb (pushMethodFrame m f)) (hf : FrameOk fr (pushMethodFrame m f))
     (hal : f.localAlias = none) :
     StateOk (κ.withFrame fr) Γb I (pushMethodFrame m f) :=
-  StateOk_reframe hm ht ha rfl
+  StateOk_reframe (hroot := hm.rootClean) hm ht ha rfl
     (by rw [currentFrame_pushMethodFrame]; exact hs)
     (by rw [currentFrame_pushMethodFrame]; exact hb)
     (by rw [currentFrame_pushMethodFrame]; exact hc)
@@ -82,7 +84,7 @@ theorem method_pop_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m n : Machine}
     consts := fun x τ hx => ht.consts x τ (by rw [hk] at hx; exact hx)
     paths := ht.paths }
   have hframe : FrameOk κ.frame (popMethodFrame n) := hp.frameOk hm.frame hpop
-  have hout := StateOk_reframe hn htypes ha (n := popMethodFrame n) (fr := κ.frame) rfl
+  have hout := StateOk_reframe (hroot := hn.rootClean) hn htypes ha (n := popMethodFrame n) (fr := κ.frame) rfl
     (congrArg FrameScope.self hscope) (congrArg FrameScope.blk hscope)
     (congrArg FrameScope.cref hscope) (congrArg FrameScope.defmod hscope)
     (congrArg FrameScope.captured hscope) rfl
@@ -91,7 +93,8 @@ theorem method_pop_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m n : Machine}
     (show FrameInRange (popMethodFrame n) from
       ⟨by rw [hp.stack]; exact hm.frameInRange.1,
        by rw [hp.stack]; exact Nat.lt_of_lt_of_le hm.frameInRange.2 hp.frames.size⟩)
-    (method_pop_envOk hm.frameInRange.2 hu hc h hm.env hΓ) hframe
+    (method_pop_envOk hm.frameInRange.2 hu hc h hm.env hΓ
+      (by rw [← currentFrame_headD hm.frameInRange.1]; exact hm.localAlias)) hframe
     (by rw [hpop]; exact hm.localAlias)
     (by rw [hpop]
         exact hm.capturedLive.capture_preserved hp.frames.size
@@ -110,6 +113,7 @@ theorem required_method_runSpec {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : Machi
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I) (ha : κ.asms = [])
     (hkont : m.kont = []) (hp : md.params = (ps.map (·.1)).map RubyCore.Param.req)
     (hcap : md.capturedFrame = none) (hdecl : md.declared = []) (hbody : md.body = toRuby e)
+    (hblock : md.fromBlock = false) (hfor : md.forTargets = none)
     (hlen : args.length = ps.length) (hargs : DenAll (ps.map (·.2)) m args)
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (hτ : FirstOrder τ = true) (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
@@ -134,10 +138,10 @@ theorem required_method_runSpec {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : Machi
     rw [rootFrame_eq_currentFrame hm.frameInRange.1]
     exact (congrArg FrameScope.captured hscope).symm
   have hs := methodFrame_runSpec hm.frameInRange.2 (f := f) rfl hτ (hb entry he)
-    (fun n v hr => method_pop_state hm ht ha hu rfl hscope hk hΓ hr.1 (hr.2.2 v rfl))
+    (fun n v hr => method_pop_state hm ht ha hu rfl hscope hk hΓ hr.1 (hr.2.2 v rfl)) hm.rootClean
   refine ⟨_, ?_, hs⟩
   rw [enterUserMethod_required m _ name md (ps.map (·.1)) args hp hcap hdecl
-    (by simpa using hlen)]
+    (by simpa using hlen) hblock hfor]
   simp only [Interp.withKont, pushK, evalFrom, f, pushMethodFrame, hkont, hbody, List.nil_append]
 
 #print axioms required_method_runSpec

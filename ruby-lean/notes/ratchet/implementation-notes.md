@@ -12960,3 +12960,26 @@ Next method preflight fails in MethodReturn: new Framed root-clean field,
 localFrameId alias-aware lookup, and bindSpec's root-clean/catch-free interface.
 Log: /private/tmp/ascent-methods-preflight.log. Method rules remain gated.
 Final batch check-proofs.sh PASS: /private/tmp/ascent-final-metatheory.log.
+
+### 2026-09-30 — Restore ordinary method return prerequisites
+
+Keep the existing saved-frame/environment proof. Framed now transports root
+cleanliness on pop; methodFrame_runSpec takes it explicitly for bindSpec.
+getLocal_uncaptured's old premise is false for an uncaptured for-frame alias.
+Add the missing no-alias premise, preserve it across pop and supply it from
+StateOk in MethodState. MethodAliasControls preserves the kernel counterexample
+and runs in the mandatory rebuild probe; see ../../unsoundness.md.
+
+MethodState's capture-preservation proof now names the machine frame-push
+definition explicitly, avoiding its same-named CaptureLive theorem. Entry/return
+reframing supplies root cleanliness explicitly. Required method entry carries
+the runtime's fromBlock=false/forTargets=none preconditions; ordinary metadata
+and source dispatch still need revalidation before method admission.
+
+Validation: full default gate GREEN, unchanged 22/99 clinks and 49/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. The rebuild gate also passes
+with MethodAliasControls explicitly built before the probe, so a fresh checkout
+does not rely on its cached olean. Logs: /private/tmp/ascent-method-return-gate.log
+and ascent-method-return-rebuild.log. MethodReturn/State/control builds take
+under two seconds, with only standard axioms. Next failure is MethodDispatch:
+stale top-level cref, native method_added queuing and ordinary method metadata.

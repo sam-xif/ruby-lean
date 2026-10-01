@@ -10,10 +10,17 @@ excludes shared Hash-lock cleanup; the counterexample is in ../../unsoundness.md
 check-proofs.sh passes (/private/tmp/ascent-metatheory-repair.log).
 Array/Hash literals and pair companions are admitted. Hash supplies root cleanliness
 and handles the interpreter's Complex-key gate with its original accumulator proof.
-Next: defDecl/callSig (052/055/057/058/059). MethodReturn preflight fails at the
-new Framed root-clean field, alias-aware getLocal and bindSpec's updated premises
-(/private/tmp/ascent-methods-preflight.log). Inspect witnesses before repairing
-false lookup assumptions; preserve the existing proof logic and safety endpoints.
+Next: defDecl/callSig (052/055/057/058/059). MethodReturn and MethodState now
+build: root cleanliness is explicit and direct local reads require no local alias.
+MethodAliasControls preserves a kernel counterexample and is mandatory in the
+rebuild gate. Full default gate remains GREEN at the counts above; logs:
+/private/tmp/ascent-method-return-{gate,rebuild}.log.
+MethodDispatch is next: TopMethodCode now uses empty cref; source definitions
+queue method_added through runMethodEdits and may raise FrozenError. The old
+one-step step_def_install equality is false. Preserve the existing conformance/
+saved-frame proofs while following that real protocol. Ordinary method metadata
+also needs fromBlock/forTargets guards required by the repaired entry theorem.
+Log: /private/tmp/ascent-methods-repair.log. Method rules remain gated.
 Run Lake builds sequentially: concurrent builds raced over Context.olean.
 Final batch check-proofs.sh passes (/private/tmp/ascent-final-metatheory.log).
 No live builds.

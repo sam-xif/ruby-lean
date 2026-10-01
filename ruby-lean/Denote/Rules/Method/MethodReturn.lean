@@ -55,29 +55,35 @@ theorem method_pop_framed {m n : Machine} {f : RubyCore.Frame}
     (hl : m.stack.headD 0 < m.frames.size) (hc : f.captured = none)
     (h : Framed (pushMethodFrame m f) n) : Framed m (popMethodFrame n) := by
   refine ⟨by simp [popMethodFrame, h.stack, pushMethodFrame], h.cls, h.nominal, ?_,
-    method_frame_pop hl hc h.stack h.frames, h.fields.reheap rfl rfl, h.cachedEigen, h.procs, h.phase⟩
+    method_frame_pop hl hc h.stack h.frames, h.fields.reheap rfl rfl, h.cachedEigen,
+    h.procs, h.phase, h.rootClean⟩
   intro τ ht v hv
   have he : denM τ (pushMethodFrame m f) v :=
     (denM_heap_only (m₁ := m) (m₂ := pushMethodFrame m f) ht rfl).mp hv
   exact (denM_heap_only (m₁ := n) (m₂ := popMethodFrame n) ht rfl).mp
     (h.firstOrder τ ht v he)
 
-theorem getLocal_uncaptured {m : Machine} (hc : RootUncaptured m) (x : String) :
+theorem getLocal_uncaptured {m : Machine} (hc : RootUncaptured m) (x : String)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none := by rfl) :
     m.getLocal x = (((m.frames.getD (m.stack.headD 0) default).locals.find?
       (·.1 == x)).map (·.2)).getD .nil := by
   unfold RootUncaptured at hc
-  simp only [Machine.getLocal, Machine.getLocal.go]
+  simp only [Machine.getLocal, Machine.getLocal.go, localFrameId_of_noAlias ha]
   cases hs : (m.frames.getD (m.stack.headD 0) default).locals.find? (·.1 == x) with
   | none => rw [hc]; rfl
   | some p => cases p; rfl
 
 theorem method_pop_getLocal {m n : Machine} {f : RubyCore.Frame}
     (hl : m.stack.headD 0 < m.frames.size) (hu : RootUncaptured m)
-    (hc : f.captured = none) (h : Framed (pushMethodFrame m f) n) (x : String) :
+    (hc : f.captured = none) (h : Framed (pushMethodFrame m f) n) (x : String)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none := by rfl) :
     (popMethodFrame n).getLocal x = m.getLocal x := by
   have hp := method_pop_framed hl hc h
   have hn : RootUncaptured (popMethodFrame n) := hp.frames.rootCaptured.trans hu
-  rw [getLocal_uncaptured hn, getLocal_uncaptured hu]
+  have han : ((popMethodFrame n).frames.getD ((popMethodFrame n).stack.headD 0) default).localAlias = none := by
+    change (n.frames.getD ((popMethodFrame n).stack.headD 0) default).localAlias = none
+    rw [hp.stack, method_savedFrames hc h _ hl]; exact ha
+  rw [getLocal_uncaptured hn x han, getLocal_uncaptured hu x ha]
   change (((n.frames.getD ((popMethodFrame n).stack.headD 0) default).locals.find?
     (·.1 == x)).map (·.2)).getD .nil = _
   rw [hp.stack, method_savedFrames hc h _ hl]
@@ -87,10 +93,11 @@ their denotations through the body, and aliases retain their actual value equali
 theorem method_pop_envOk {m n : Machine} {f : RubyCore.Frame} {Γ : Env}
     (hl : m.stack.headD 0 < m.frames.size) (hu : RootUncaptured m)
     (hc : f.captured = none) (h : Framed (pushMethodFrame m f) n)
-    (he : EnvOk Γ m) (ht : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) :
+    (he : EnvOk Γ m) (ht : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none := by rfl) :
     EnvOk Γ (popMethodFrame n) := by
   have hp := method_pop_framed hl hc h
-  have hv := method_pop_getLocal hl hu hc h
+  have hv := fun x => method_pop_getLocal hl hu hc h x ha
   constructor
   · intro x τ hx
     obtain ⟨z, hz⟩ := envGet?_mem hx
@@ -150,13 +157,13 @@ theorem methodFrame_runSpec {m : Machine} {f : RubyCore.Frame} {e : Ratchet.Expr
     (ht : FirstOrder τ = true)
     (hb : RunSpec (pushMethodFrame m f) (evalFrom (pushMethodFrame m f) e) Γb τ κb Ib)
     (hs : ∀ n v, ResultOk (pushMethodFrame m f) Γb τ (.val v) n κb Ib →
-      StateOk κ Γ I (popMethodFrame n)) :
+      StateOk κ Γ I (popMethodFrame n)) (hroot : RootClean m) :
     RunSpec m (pushK [.frameK m.frames.size] (evalFrom (pushMethodFrame m f) e)) Γ τ κ I := by
-  apply hb.bindSpec (by
-    intro k hk tag
+  apply hb.bindSpec hroot (by
+    intro k hk
     simp only [List.mem_singleton] at hk
     subst hk
-    simp)
+    rfl)
   intro a n hr
   exact methodFrame_continue_spec hl hc ht hs hr
 
