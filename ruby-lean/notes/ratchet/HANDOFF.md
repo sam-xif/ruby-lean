@@ -28,9 +28,22 @@ FrozenError initializer: a trivial def reaches nil+1. MainReady now requires
 unattached/unfrozen Object; FrozenDefinitionControls preserves the complete old
 guard and runtime witness and runs in the mandatory gate. Heap/view/method-write
 preservation proofs are repaired. Full gate and metatheory remain GREEN:
-/private/tmp/ascent-writable-{gate,metatheory}.log. Next define-path prerequisites:
-source libraryOrigin provenance and the queued native callback (scratch proof
-/private/tmp/MethodHook.lean is incomplete; broad simp was stopped after a minute).
+/private/tmp/ascent-writable-{gate,metatheory}.log.
+MethodDispatch now builds with the actual normalized source MethodDef and queued
+send/edit marker. DefinitionHook proves native dispatch (retaining shadow gates),
+and definition_hook_runSpec proves callback/marker composition. Required dispatch
+carries fromBlock/forTargets; top source metadata explicitly needs libraryOrigin=false.
+MethodDefinitionControls measures all three transitions and copy-name privacy;
+the mandatory gate builds/imports it. Full gate + metatheory remain GREEN at the
+same counts: /private/tmp/ascent-definition-{gate,metatheory}.log.
+Next wrapper preflight (/private/tmp/ascent-method-wrappers-preflight.log):
+MethodDefine needs the libraryOrigin invariant, normalized-record projections
+and direct RunSpec.step/callback composition instead of SemSafeCtxA.leaf.
+MethodResolve uses removed lookup.go, and MainReady.chain has a leading main
+dispatch class before Object. Do not silently assume lookup starts at Object:
+prove absence/shadow safety for the prefix (topDeclClassesB excludes main-native
+names) and revalidate positive conformance, definee and frame metadata. Existing
+ordinaryMethodCodeB does not pin definee/definitionFrame. Method clinks stay gated.
 Run Lake builds sequentially: concurrent builds raced over Context.olean.
 Final batch check-proofs.sh passes (/private/tmp/ascent-final-metatheory.log).
 No live builds.

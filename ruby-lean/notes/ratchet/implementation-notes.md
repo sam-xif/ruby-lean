@@ -13016,3 +13016,33 @@ Validation: full default gate GREEN, 22/99 clinks and 49/261 accepts,
 46/46 negatives rejected, 254 agree/0 disagree; check-proofs.sh passes.
 Logs: /private/tmp/ascent-writable-{gate,metatheory}.log. Repaired modules
 build under one second; the active bridge rebuild takes 20 seconds.
+
+### 2026-09-30 — Repair the source method mutation protocol
+
+Retain MethodDispatch's pure heap-installation and user-dispatch lemmas, but
+construct the actual source record (definee, empty top cref, library provenance,
+definition-scope visibility) and apply the interpreter's privacy normalization.
+step_def_install now proves the real queued send plus methodEditsK, under explicit
+writable/detached/user-phase premises. DefHookQuiet pins the native hook; absence
+or arbitrary owner identity no longer substitutes for it.
+
+DefinitionHook proves the native callback's result while retaining shadow gates.
+definition_hook_runSpec composes that dispatch and the edit marker with the
+existing answer/conformance contract. Required dispatch carries the repaired
+fromBlock/forTargets premises. MethodDefinitionControls measures installation,
+the intermediate nil callback result, the final name and initialize_copy privacy.
+It explicitly builds MethodDispatch in the mandatory gate. These are prerequisite
+repairs: MethodDefine still needs the source library-origin invariant and method
+resolution's definee/frame metadata revalidation before admitting method clinks.
+
+A broad simp over builtin dispatch was stopped after about a minute. Closed
+guard facts (kernel decide) plus the existing dispatch structure reduce the
+replacement proof to under two seconds, with only standard axioms.
+
+Validation: full default gate GREEN at unchanged 22/99 and 49/261,
+46/46 negatives rejected, 254 agree/0 disagree; check-proofs.sh passes.
+Logs: /private/tmp/ascent-definition-{gate,metatheory}.log.
+Next wrapper preflight: MethodDefine needs libraryOrigin=false and the new
+callback composition. MethodResolve still uses deleted lookup.go and mistakes
+MainReady's leading main dispatch class for Object. Log:
+/private/tmp/ascent-method-wrappers-preflight.log. No method clink is admitted.

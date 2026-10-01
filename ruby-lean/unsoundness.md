@@ -55,3 +55,14 @@ counterexample is rejected; the real boot machine remains accepted. Ordinary
 definition safety can therefore follow the real queued method_added protocol
 without entering untyped FrozenError callbacks. Supporting frozen definitions
 requires a separate callback contract rather than assuming provenance is safety.
+
+# Source definition was no longer a one-step value (2026-09-30)
+
+The former step_def_install equation skipped runMethodEdits and its queued
+method_added send/marker, even when the hook was native. MethodDefinitionControls
+observes the first step's send, the native callback's intermediate nil and the
+final symbol after continuation resumption. The replacement equation follows
+that protocol and definition_hook_runSpec proves its answer contract. The
+source record also follows definee, libraryOrigin and all initialization-name
+privacy overrides. This repairs an off-target interpreter equality; it does
+not exhibit a Sorbet bug or an active validateD unsound accept.

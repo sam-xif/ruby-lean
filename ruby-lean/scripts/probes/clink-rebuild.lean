@@ -3,6 +3,7 @@ import Denote.Clink.GateStatus
 import Denote.Controls.MethodAliasControls
 import Denote.Controls.MethodCodeControls
 import Denote.Controls.FrozenDefinitionControls
+import Denote.Controls.MethodDefinitionControls
 
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
