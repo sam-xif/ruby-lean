@@ -4,8 +4,8 @@
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
-bare-name/collection providers. Full gate: /private/tmp/ascent-class-names-gate.log.
-Metatheory: /private/tmp/ascent-class-names-metatheory.log.
+bare-name/collection providers. Full gate: /private/tmp/ascent-class-conformance-gate.log.
+Metatheory: /private/tmp/ascent-class-conformance-metatheory.log.
 
 Repair uses the original MethodState body/frame/return and MethodArgs accumulator
 proofs. MethodResolve follows actual bounded lookup through main's singleton
@@ -57,9 +57,14 @@ ClassNamesActual repairs the old named-growth argument's fresh-id premise for
 an attached anonymous metaclass, proves actual NamesOk/fuel saturation and old
 display-name retention, and is mandatory.
 
-Next: use the actual heap/name facts to repair ClassReady, constant/live/root
-name retention, DataPres and class-body StateOk; retain
-ClassHeaderRun's original conformance/return structure. ClassRules currently
+ClassConstantsActual, ClassReadyActual, ClassDataActual and ClassCoreActual now
+repair constant/live/root-name retention, ClassReady, DataPres, caller framing
+and CoreOk by reusing the original Subclass transfers and generic type induction.
+They are mandatory prerequisites with axiom probes.
+
+Next: repair actual class-body StateOk (dispatch/error/query/payload transfers,
+name/bare/missing/defs, instance/main sites and class frame/table conformance);
+retain ClassHeaderRun's original conformance/return structure. ClassRules currently
 imports constructor/instance/singleton providers too; preflight also found missing
 MainReady fields in SubclassMain, changed lexical constants in
 SubclassConstants/MainReturn, positive DefsOk names in SubclassMethods, and binding/

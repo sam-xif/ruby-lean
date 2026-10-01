@@ -13271,3 +13271,21 @@ Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
 46/46 negatives rejected, 254 agree/0 disagree. Name proofs build in 370ms
 with standard axioms only; metatheory passes. Logs:
 /private/tmp/ascent-class-names-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair actual-class core conformance and data preservation
+
+ClassConstantsActual retains the Subclass constant-table case split: registration
+changes only Object's fresh binding, preserves old names/fallbacks, and keeps
+constant references live. Explicit namespace/live bounds support the real heap.
+ClassReadyActual and ClassCoreActual reuse the original field transfers with
+actual attached-metaclass facts. ClassDataActual supplies the original
+dataPres_of_class_growth induction with repaired reads, ancestor heads and names;
+the original caller-framing argument then transports data, fields and Proc payloads.
+No checker or runtime changes. All four modules and their axiom probes are
+mandatory prerequisites; class-body StateOk and header/return repair remain
+before class admission.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Constant/core/readiness/framing
+modules build in 445/163/322/218ms, standard axioms only; metatheory passes.
+Logs: /private/tmp/ascent-class-conformance-{gate,metatheory}.log.
