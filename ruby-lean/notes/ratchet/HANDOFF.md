@@ -1,10 +1,12 @@
 # Active ascent (2026-09-30)
 
-Sequences and last/cons are now permanently enabled with their existing proof
-provider. Full default gate GREEN: 10/99 clinks, 8/261 corpus accepts, 46/46
+Sequences, last/cons and local reads/assignments are permanently enabled with
+their existing proof providers. Full default gate GREEN: 12/99 clinks, 9/261 corpus accepts, 46/46
 negative controls rejected, 254 agree/0 disagree. Standard-axiom audit passes.
-Log: /private/tmp/ascent-sequence-gate.log. Next: local reads/assignments and
-primitive sends, repairing the existing semantic proofs against the real model.
+Log: /private/tmp/ascent-locals-gate.log. Next: repair String-comparison deferral
+simplification drift in Static/Decls and ArrayIndex/HashIndex, then admit primitive
+sends and their list companions. The off-target metatheory check currently fails
+on those four Static/Decls rows (/private/tmp/ascent-decls-preflight.log).
 The entries below are historical checkpoints.
 
 # Default active typed ratchet (2026-09-30)

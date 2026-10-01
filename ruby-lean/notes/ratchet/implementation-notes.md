@@ -12894,3 +12894,16 @@ Full default gate GREEN: 10/99 clinks, 8/261 accepts, 46/46 negatives rejected,
 254 CRuby agreements, zero disagreements. Sequence alone adds compositional
 rules; the current corpus needs further rules before more programs accept.
 Log: /private/tmp/ascent-sequence-gate.log.
+
+### 2026-09-30 — Admit local reads and assignments
+
+Enable var/vasgn using Context's existing conformance/framing proofs unchanged.
+Controls cover nil retyping, nested RHS effects, missing locals, forged RHS
+values and variable namespaces; a retyping witness reaches the final runner
+theorem with standard axioms. No checker/runtime or floor changes.
+
+Full default gate GREEN: 12/99 clinks, 9/261 accepts (031 newly climbed),
+46/46 negatives rejected, 254 agree/0 disagree. Log: /private/tmp/ascent-locals-gate.log.
+The batch metatheory check exposes pre-existing strCmpDefer? simplification drift
+in Static/Decls' four Integer rows; primitive preflight exposes the same drift
+in ArrayIndex/HashIndex. Repair those existing proofs next.

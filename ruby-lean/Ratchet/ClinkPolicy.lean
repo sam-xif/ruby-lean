@@ -9,7 +9,7 @@ def clinkProfileName : String := "semantic-rebuild"
 
 def clinkProfile : Option (List String) := some
   ["intLit", "fltLit", "strLit", "symLit", "truLit", "flsLit", "nilLit",
-   "seq", "DJudgeSeq.last", "DJudgeSeq.cons"]
+   "seq", "DJudgeSeq.last", "DJudgeSeq.cons", "var", "vasgn"]
 
 def clinkEnabled (rule : String) : Bool :=
   match clinkProfile with

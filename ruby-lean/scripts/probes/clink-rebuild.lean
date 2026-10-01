@@ -46,5 +46,12 @@ theorem rebuilt_sequence_pair_safe_run (hb : bootOkB = true) (fuel : Nat) :
   validateD_safe_run (by decide :
     validateD (.seq [.int 7, .str "ok"]) (.seq [.intLit 7, .strLit "ok"]) = true) hb fuel
 #print axioms rebuilt_sequence_pair_safe_run
+theorem rebuilt_local_retype_safe_run (hb : bootOkB = true) (fuel : Nat) :
+    Semantics.typeStuck (Semantics.run fuel (toRuby
+      (.seq [.vasgn .lvar "x" (.int 1), .vasgn .lvar "x" .nil, .var .lvar "x"]))) = false :=
+  validateD_safe_run (by decide : validateD
+    (.seq [.vasgn .lvar "x" (.int 1), .vasgn .lvar "x" .nil, .var .lvar "x"])
+    (.seq [.vasgn .lvar "x" (.intLit 1), .vasgn .lvar "x" .nilLit, .var .lvar "x"]) = true) hb fuel
+#print axioms rebuilt_local_retype_safe_run
 #print axioms validateD_safe_run
 end Ratchet.Denote.Typed

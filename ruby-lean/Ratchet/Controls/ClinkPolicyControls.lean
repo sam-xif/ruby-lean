@@ -56,6 +56,23 @@ private def primitiveRules (r : String) : Bool :=
 #guard !validateDWith (fun _ => true) (.send (some (.int 1)) "+" [.int 2] none)
   (.prim (.intLit 1) "+" [.intLit 3] .int .int)
 
+-- Assignment threads the RHS state and permits later retyping of a local.
+private def localRules := ["seq", "DJudgeSeq.last", "DJudgeSeq.cons", "var", "vasgn",
+  "intLit", "nilLit"]
+private def retypedLocal : Expr :=
+  .seq [.vasgn .lvar "x" (.int 1), .vasgn .lvar "x" .nil, .var .lvar "x"]
+private def retypedHint : Deriv :=
+  .seq [.vasgn .lvar "x" (.intLit 1), .vasgn .lvar "x" .nilLit, .var .lvar "x"]
+#guard validateD retypedLocal retypedHint == localRules.all clinkEnabled
+#guard !validateDWith (fun r => localRules.contains r && r != "var") retypedLocal retypedHint
+#guard !validateDWith (fun r => localRules.contains r && r != "vasgn") retypedLocal retypedHint
+#guard !validateD (.var .lvar "missing") (.var .lvar "missing")
+#guard !validateD (.vasgn .lvar "x" (.int 1)) (.vasgn .lvar "x" (.intLit 2))
+#guard !validateD (.vasgn .ivar "@x" (.int 1)) (.vasgn .lvar "@x" (.intLit 1))
+#guard validateD (.seq [.vasgn .lvar "x" (.vasgn .lvar "y" (.int 1)), .var .lvar "y"])
+  (.seq [.vasgn .lvar "x" (.vasgn .lvar "y" (.intLit 1)), .var .lvar "y"]) ==
+  ["seq", "DJudgeSeq.last", "DJudgeSeq.cons", "var", "vasgn", "intLit"].all clinkEnabled
+
 -- Uncalled bodies and uniformly quantified callback witnesses are checked too.
 private def method : Expr := .def' "get5" [] (.int 5)
 private def methodHint : Deriv := .defDecl "get5" [] .int (.intLit 5)
