@@ -241,6 +241,13 @@ private def literalClassHint : Deriv := .classDecl "Box" none (.intLit 7)
 #guard validateD (.seq [literalClass, .class' "Pair" none (.int 1)])
   (.seq [literalClassHint, .classDecl "Pair" none (.intLit 1)])
 
+-- Active constClass: only a class declared earlier in the program is readable.
+#guard validateD (.seq [literalClass, .const "Box"]) (.seq [literalClassHint, .constCls "Box"])
+#guard !validateDWith (fun r => clinkEnabled r && r != "constClass")
+  (.seq [literalClass, .const "Box"]) (.seq [literalClassHint, .constCls "Box"])
+#guard !validateD (.seq [.const "Box", literalClass]) (.seq [.constCls "Box", literalClassHint])
+#guard !validateD (.const "Box") (.constCls "Box")
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

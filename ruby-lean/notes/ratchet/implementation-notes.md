@@ -13434,3 +13434,9 @@ SemSafeCtxA.classDecl; the legacy provider is removed from ClassRules. ClassGuar
 imports ClassTablesFrame directly (not legacy ClassTables). Controls: literal body,
 rule removal, String/Object, reopened name, two classes. No corpus rung yet: class
 rungs also need constClass/member/init/new rules.
+
+### 2026-10-01 — Climb constClass (33/99)
+
+The existing ClassConstant provider builds unchanged against current StateOk
+(constScope + classes). Controls: declared-then-read accepted; rule removal,
+read-before-declare and undeclared reads rejected.
