@@ -13289,3 +13289,22 @@ Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
 46/46 negatives rejected, 254 agree/0 disagree. Constant/core/readiness/framing
 modules build in 445/163/322/218ms, standard axioms only; metatheory passes.
 Logs: /private/tmp/ascent-class-conformance-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair actual-class dispatch, queries and payloads
+
+ClassDispatchActual retains Subclass's source map and old/fresh/out-of-range
+case split. Fresh method tables are empty; the class maps to Object and its
+attached metaclass to Object's cached metaclass. Unlike the old anonymous
+metaclass, attachment also consults crubySingletonDefines on the class's name;
+the general shadow lemma keeps that premise and main's live bound explicit.
+ClassQueriesActual kernel-checks that none of the six query selectors occurs in
+the singleton-name table, deriving the extra premise without changing the guard.
+The original QueryOk/ClsQueryOk/NilQueryOk transfers and payload arguments then
+apply. Replace congr's deep heap unfolding with explicit Bool.and congruence;
+no heartbeat increase. All three modules/axiom probes are mandatory. No checker
+or runtime changes, and class rules remain gated pending full StateOk/return.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Dispatch/query/payload modules
+build in 286/306/216ms, standard axioms only; metatheory passes. Logs:
+/private/tmp/ascent-class-dispatch-{gate,metatheory}.log.
