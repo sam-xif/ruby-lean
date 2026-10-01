@@ -158,7 +158,17 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
       by simpa only [hw.classOf_eq, hw.ancestors_eq] using hm.chain,
       by simpa only [ha] using hm.object,
       by simpa only [hw.classPayload] using hm.classLive,
-      by simpa only [objectHookQuietB, definitionHookQuietB, hw.lookup_eq] using hm.hook⟩
+      by simpa only [objectHookQuietB, definitionHookQuietB, hw.lookup_eq] using hm.hook,
+      by simpa only [hw.classPayload] using hm.detached,
+      by simpa only [hw.frozen] using hm.unfrozen,
+      by simpa only [bindIvar_currentFrame] using hm.origin,
+      by simpa only [mainOwnNamesB, ownMethods, hw.classOf_eq, hw.classPayload] using hm.mainNames,
+      ?_, by simpa only [objectClassFlagsB, hw.classPayload] using hm.classFlags⟩
+    rw [show classHooksQuietB (Interp.bindIvar m x v).heap = classHooksQuietB m.heap from
+      classHooksQuietB_congr
+        (by simp only [objectCallbackPrefix, hw.classOf_eq, hw.ancestors_eq])
+        (fun _ _ _ => by rw [hw.classPayload])]
+    exact hm.classHooks
   · simpa only [HeapSaturated, Proof.Saturated, hw.size,
       Proof.modAncestors_go_congr hw.shape, Proof.ancestors_go_congr hw.shape] using h.sat
   · exact ⟨h.core.classReady.ivarOnly hw,

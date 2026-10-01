@@ -36,7 +36,7 @@ theorem classesOk_lookup {C : CTable} {m : Machine} {c : Cls} {d : Defn}
   rw [denM] at hv
   obtain ⟨rest, hrest⟩ := classFrontB_sound (hf k hk)
   have hco := exactInst_classOf hv.1 hk
-  exact ⟨k, md, hk, lookup_own_first (by rw [hco]; exact hrest) hm, hp, hb, hu, hcode⟩
+  exact ⟨k, md, hk, lookup_own_first (by rw [hco]; exact hrest) hm hcode.visibilityOnly, hp, hb, hu, hcode⟩
 
 theorem instance_required_frame_at {m : Machine} {recv : Value} {cn ownerCn name : String}
     {r k : ObjId} {md : MethodDef} {I : Ty} (names : List String) (args : List Value)
@@ -77,7 +77,7 @@ theorem instance_required_scope {m : Machine} {recv : Value} {cn name : String}
     (hh : definitionHookQuietB m.heap k = true) :
     ClassScopeAt cn k (pushMethodFrame m (requiredFrame recv name md names args)) := by
   refine ⟨hk, hl, ?_, ?_, ?_, hp, ?_, hh⟩
-  · rw [currentFrame_pushMethodFrame]; exact hc.owner
+  · rw [currentFrame_pushMethodFrame]; exact hc.definee
   · rw [currentFrame_pushMethodFrame]; exact hc.cref
   · rw [currentFrame_pushMethodFrame]; rfl
   · simp only [defaultDefVis, currentFrame_pushMethodFrame, requiredFrame]; rfl
