@@ -49,15 +49,16 @@ theorem DefsOk_defineMethod {D : DefTable} {m : Machine} {d : Defn} {md : Method
     (hm : DefsOk D m) (hc : (m.heap.classPayload? Boot.objectId).isSome = true)
     (hn : ∀ old ∈ D, old.name ≠ d.name)
     (hp : md.params = toRubyParams d.params) (hb : md.body = toRuby d.body)
-    (hu : md.undefined = false) (hcode : TopMethodCode md) :
+    (hu : md.undefined = false) (hcode : TopMethodCode md)
+    (hmain : d.name ∉ mainSingletonNames) :
     DefsOk (d :: D) { m with heap := defineMethod m.heap Boot.objectId d.name md } := by
   intro old ho
   simp only [List.mem_cons] at ho
   rcases ho with he | ho
   · subst old
-    exact ⟨md, ownMethod_defineMethod_self m.heap Boot.objectId d.name md hc, hp, hb, hu, hcode⟩
-  · obtain ⟨prev, hfind, hparams, hbody, hundef, hprev⟩ := hm old ho
-    exact ⟨prev, (ownMethod_defineMethod_ne m.heap Boot.objectId Boot.objectId
+    exact ⟨hmain, md, ownMethod_defineMethod_self m.heap Boot.objectId d.name md hc, hp, hb, hu, hcode⟩
+  · obtain ⟨hmainOld, prev, hfind, hparams, hbody, hundef, hprev⟩ := hm old ho
+    exact ⟨hmainOld, prev, (ownMethod_defineMethod_ne m.heap Boot.objectId Boot.objectId
       d.name old.name md (hn old ho)).trans hfind, hparams, hbody, hundef, hprev⟩
 
 theorem MainOwnNames.methodWrite {h : Heap} {cls : ObjId} {name : String} {md : MethodDef}
@@ -421,12 +422,13 @@ theorem StateOk_defineTopMethod {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (hc : (m.heap.classPayload? Boot.objectId).isSome = true)
     (hfresh : ∀ old ∈ κ.defs, old.name ≠ d.name)
     (hp : md.params = toRubyParams d.params) (hb : md.body = toRuby d.body)
-    (hu : md.undefined = false) (hcode : TopMethodCode md) :
+    (hu : md.undefined = false) (hcode : TopMethodCode md)
+    (hmain : d.name ∉ mainSingletonNames) :
     StateOk { κ with pos := { κ.pos with defs := d :: κ.defs } } Γ I
       { m with heap := defineMethod m.heap Boot.objectId d.name md } :=
   StateOk_methodWrite hm ht hΓ ha hn hmiss hquiet
     (by simp [ClassesOk, hclasses])
-    (DefsOk_defineMethod hm.defs hc hfresh hp hb hu hcode)
+    (DefsOk_defineMethod hm.defs hc hfresh hp hb hu hcode hmain)
     (by simp [DeclClassOk, hclasses])
     (by rw [hclasses]; exact ClassOwnNames.empty _)
     hm.rootInit.defineTop

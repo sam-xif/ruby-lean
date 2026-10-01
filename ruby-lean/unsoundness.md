@@ -105,3 +105,20 @@ passes. Heap growth preserves it, and generic method writes explicitly establish
 MainPrefixWriteOk when the context requests main's world. Object writes prove
 separation from main's exact ancestor chain. Positive-name and activation
 metadata checks still precede call admission.
+
+# Ordinary owner metadata did not pin activation definee (2026-09-30)
+
+MethodDefineeControls preserves the ten-clause legacy ordinary-code guard. A
+method with owner Object and definee NilClass passes it. Its checked Integer
+body defines inner=1 then calls inner(); activation installs on NilClass while
+lookup uses main, so execution raises NoMethodError. This is an arbitrary
+semantic-descriptor countermodel, not a source/Sorbet error from real boot.
+
+OrdinaryMethodCode and its Boolean guard now require definee.getD owner to equal
+the expected owner. Both absent definee and explicit matching definee remain
+valid. The source-definition proof supplies the fact from its real record.
+DefsOk also excludes mainSingletonNames, matching the existing topDeclClassesB
+checker guard. Lookup proves the leading singleton entry absent before resolving
+Object; native fidelity shadows retain the interpreter's unsupported outcome.
+The existing checked-body, activation and caller-restoration proofs then discharge
+ordinary call safety. MethodDefineeControls is mandatory in the gate.

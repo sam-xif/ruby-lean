@@ -16,6 +16,34 @@ private def identityDefinitionHint : Deriv :=
 #guard !validateD (.def' "bad" [] (.send (some .nil) "+" [.int 1] none))
   (.defDecl "bad" [] .int (.prim .nilLit "+" [.intLit 1] .int .int))
 
+-- Ordinary calls retain body, argument and companion checks.
+private def identityCall : Expr :=
+  .seq [identityDefinition, .send none "identity" [.int 7] none]
+private def identityCallHint : Deriv :=
+  .seq [identityDefinitionHint, .callSig "identity" [.intLit 7] .int]
+#guard validateD identityCall identityCallHint ==
+  ["seq", "DJudgeSeq.cons", "DJudgeSeq.last", "defDecl", "var", "callSig",
+    "intLit", "DJudgeAll.nil", "DJudgeAll.cons"].all clinkEnabled
+#guard !validateDWith (fun r => clinkEnabled r && r != "callSig") identityCall identityCallHint
+#guard !validateDWith (fun r => clinkEnabled r && r != "DJudgeAll.nil") identityCall identityCallHint
+#guard !validateDWith (fun r => clinkEnabled r && r != "DJudgeAll.cons") identityCall identityCallHint
+#guard !validateDWith (fun r => clinkEnabled r && r != "var") identityCall identityCallHint
+#guard !validateD (.seq [identityDefinition, .send none "identity" [.nil] none])
+  (.seq [identityDefinitionHint, .callSig "identity" [.nilLit] .int])
+#guard !validateD (.seq [identityDefinition, .send none "identity" [] none])
+  (.seq [identityDefinitionHint, .callSig "identity" [] .int])
+#guard !validateD identityCall (.seq [identityDefinitionHint, .callSig "identity" [.intLit 7] .bool])
+#guard !validateDWith (fun _ => true) (.def' "to_s" [] (.int 1))
+  (.defDecl "to_s" [] .int (.intLit 1))
+
+-- Calling an older definition after installing a second preserves its code row.
+#guard validateD
+  (.seq [identityDefinition, .def' "other" [] (.int 2), .send none "identity" [.int 7] none])
+  (.seq [identityDefinitionHint, .defDecl "other" [] .int (.intLit 2),
+    .callSig "identity" [.intLit 7] .int]) ==
+  ["seq", "DJudgeSeq.cons", "DJudgeSeq.last", "defDecl", "var", "callSig",
+    "intLit", "DJudgeAll.nil", "DJudgeAll.cons"].all clinkEnabled
+
 -- The actual verdict follows the shared clink policy for every supported rule.
 #guard validateD (.int 7) (.intLit 7) == clinkEnabled "intLit"
 #guard validateD (.flt 0) (.fltLit 0) == clinkEnabled "fltLit"
@@ -181,6 +209,10 @@ private def methodHint : Deriv := .defDecl "get5" [] .int (.intLit 5)
 #guard !validateDWith (fun r => r != "intLit")
   (.seq [method, .send none "get5" [] none])
   (.seq [methodHint, .callSig "get5" [] .int])
+#guard validateD (.seq [method, .send none "get5" [] none])
+  (.seq [methodHint, .callSig "get5" [] .int]) ==
+  ["seq", "DJudgeSeq.cons", "DJudgeSeq.last", "defDecl", "intLit", "callSig",
+    "DJudgeAll.nil"].all clinkEnabled
 #guard validateDWith (fun _ => true) method
   (.defBlock "get5" [] [.int] .int .int (.intLit 5))
 #guard !validateDWith (fun r => r != "DMethod.ordinary") method

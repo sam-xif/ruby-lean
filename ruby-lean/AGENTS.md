@@ -6,8 +6,8 @@ record is [`notes/ratchet/`](notes/), the model's is `notes/model/`.
 
 ## Active semantic rebuild (2026-09-30)
 
-The shared Ratchet/ClinkPolicy enables 22 literal/local/sequence/primitive/branch,
-bare-name and collection rules; 77 authoring rules are gated. validateD checks the complete
+The shared Ratchet/ClinkPolicy enables 24 literal/local/sequence/primitive/branch,
+bare-name, collection, ordinary definition and call rules; 75 authoring rules are gated. validateD checks the complete
 constructor-derived trace of its verified
 derivation against that policy. Traced judgments cover all 99 constructors in
 17 families, including companion, initializer, cache and uniform callback-body
@@ -19,7 +19,7 @@ Bridge.lean proves the original validateD_safe, _safe_boot and _safe_run
 statements using only active clinks and their dependencies. The default
 ./scripts/run_typed_ratchet.sh checks this soundness theorem and reports only
 active clinks and actual validateD accepts as climbed. Disabled rules are ascent.
-Its full default run passes: 22/99 clinks, 49/261 corpus rungs, 46 negative controls
+Its full default run passes: 24/99 clinks, 54/261 corpus rungs, 46 negative controls
 rejected, 254 CRuby agreements and 0 disagreements. --clink-rebuild checks only
 proofs/controls; --full-corpus preserves the historical complete-coverage gate
 and floors. SoundnessAudit rejects nonstandard axioms. Optional raw DJudge

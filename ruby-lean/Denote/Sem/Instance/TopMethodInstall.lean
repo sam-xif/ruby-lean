@@ -23,9 +23,15 @@ theorem StateOk_defineTopMethod_classes {κ : Ctx} {Γ : Env} {I : Ty} {m : Mach
     StateOk { κ with pos := { κ.pos with defs := d :: κ.defs } } Γ I
       { m with heap := defineMethod m.heap Boot.objectId d.name md } := by
   simp only [topDeclClassesB, Bool.or_eq_true, Bool.and_eq_true] at hclasses
+  have hmain : d.name ∉ mainSingletonNames := by
+    intro hn
+    have hf : mainSingletonNames.contains d.name = false := by
+      simpa only [Bool.not_eq_true'] using hclasses.1
+    rw [List.contains_iff_mem.mpr hn] at hf
+    cases hf
   rcases hclasses.2 with hempty | ⟨hnew, howners⟩
   · exact StateOk_defineTopMethod hm ht hΓ ha (List.isEmpty_iff.mp hempty)
-      hn hmiss hquiet hc hfresh hp hb hu hcode
+      hn hmiss hquiet hc hfresh hp hb hu hcode hmain
   have hsep (c : Cls) (hmem : c ∈ κ.classes)
       (hk : classNamed? m.heap c.name = some Boot.objectId) : False := by
     have hnot : c.name ∉ rootAncestors := by
@@ -36,7 +42,7 @@ theorem StateOk_defineTopMethod_classes {κ : Ctx} {Γ : Env} {I : Ty} {m : Mach
     hm ht hΓ ha hn hmiss hquiet
   · exact ClassesOk_methodWrite_old hm.classes (by rw [he]; rfl)
       (fun c hmem hk => False.elim (hsep c hmem hk))
-  · exact DefsOk_defineMethod hm.defs hc hfresh hp hb hu hcode
+  · exact DefsOk_defineMethod hm.defs hc hfresh hp hb hu hcode hmain
   · exact hm.declCls.methodWrite (Ne.symm (bne_iff_ne.mp hnew)) hmiss
   · exact hm.ownNames.methodWrite (fun c hmem hk => False.elim (hsep c hmem hk))
   · exact hm.rootInit.defineTop

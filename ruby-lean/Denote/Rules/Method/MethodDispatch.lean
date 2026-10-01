@@ -56,7 +56,7 @@ theorem definedMethod_code {m : Machine} {name : String} {ps : List RubyCore.Par
     TopMethodCode (definedMethod m name ps body) := by
   unfold definedMethod Interp.normalizeDefinitionVisibility
   split <;> exact ⟨ho, hc, rfl, rfl, rfl, rfl, by simp [sourceMethod, hp, hlib],
-    rfl, rfl, rfl⟩
+    rfl, rfl, rfl, ho⟩
 
 /-- Only the installed native no-op hook is covered by ordinary definitions. -/
 def DefHookQuiet (m : Machine) : Prop :=
@@ -155,6 +155,23 @@ theorem finishSend_ordinary_userMethod {m : Machine} {o owner : ObjId}
       Interp.enterUserMethod m (.ref o) name md args none :=
   invoke_ordinary_userMethod ho hl hb hu hp rfl hs
 
+/-- Preserve the interpreter's fidelity gate when a native prefix shadows the
+ordinary checked body. This outcome is safe without claiming body execution. -/
+theorem finishSend_ordinary_shadow {m : Machine} {o owner : ObjId}
+    {name cname : String} {md : MethodDef} {args : List Value}
+    (ho : (m.heap.get o).payload = .none)
+    (hl : lookup m.heap (.ref o) name = some (owner, md))
+    (hb : md.builtin = none) (hu : md.undefined = false) (hp : md.fromPrelude = false)
+    (hs : Interp.crubyShadow m.heap
+      ((ancestors m.heap (classOf m.heap (.ref o))).takeWhile (· != owner)) name = some cname) :
+    Interp.finishSend m (.ref o) .implicit name args .none =
+      .unsupported s!"unmodeled builtin would shadow: {cname}#{name}" := by
+  change Interp.invoke m (.ref o) .implicit name args none [] = _
+  unfold Interp.invoke
+  simp only [hl, Option.isNone, Bool.and_false, Bool.false_eq_true, ↓reduceIte, ho]
+  simp only [Interp.invoke.invokeDispatch, hl, hu, hp, Bool.false_eq_true, ↓reduceIte,
+    Interp.crubyResolvedShadow, hb, Option.any, hs]
+
 /-- Installation supplies the lookup and both shadow checks. The ordinary receiver
 is distinct from its defining class; its payload survives the class-table write. -/
 theorem finishSend_installed {m : Machine} {o : ObjId} {name : String}
@@ -221,6 +238,7 @@ theorem required_method_call_runSpec {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : 
 #print axioms definition_hook_runSpec
 #print axioms lookup_installed
 #print axioms finishSend_ordinary_userMethod
+#print axioms finishSend_ordinary_shadow
 #print axioms finishSend_installed
 #print axioms required_method_call_runSpec
 end Ratchet.Denote.Typed

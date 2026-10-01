@@ -40,4 +40,14 @@ private def legacyBootStateB (m : Machine) : Bool :=
 #guard Ratchet.validateDWith (fun _ => true)
   (.seq [.def' "bump" [] (.int 1), .send none "bump" [] none])
   (.seq [.defDecl "bump" [] .int (.intLit 1), .callSig "bump" [] .int])
+#guard Ratchet.validateD
+  (.seq [.def' "bump" [] (.int 1), .send none "bump" [] none])
+  (.seq [.defDecl "bump" [] .int (.intLit 1), .callSig "bump" [] .int]) ==
+  ["seq", "DJudgeSeq.cons", "DJudgeSeq.last", "defDecl", "intLit", "callSig",
+    "DJudgeAll.nil"].all Ratchet.clinkEnabled
+
+theorem defsOk_excludes_main_native {D : Ratchet.DefTable} {m : Machine}
+    {d : Ratchet.Defn} (hm : DefsOk D m) (hd : d ∈ D)
+    (hn : d.name ∈ Ratchet.mainSingletonNames) : False := (hm d hd).1 hn
+#print axioms defsOk_excludes_main_native
 end Ratchet.Denote.Typed

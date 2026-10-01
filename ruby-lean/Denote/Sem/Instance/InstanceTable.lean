@@ -88,8 +88,8 @@ theorem DefsOk_methodWrite_other {D : DefTable} {m : Machine} {cls : ObjId}
     {name : String} {md : MethodDef} (hp : DefsOk D m) (hc : cls ≠ Boot.objectId) :
     DefsOk D { m with heap := defineMethod m.heap cls name md } := by
   intro d hd
-  obtain ⟨prev, hf, hrest⟩ := hp d hd
-  exact ⟨prev, (ownMethod_defineMethod_other hc.symm).trans hf, hrest⟩
+  obtain ⟨hn, prev, hf, hrest⟩ := hp d hd
+  exact ⟨hn, prev, (ownMethod_defineMethod_other hc.symm).trans hf, hrest⟩
 
 /-- Publication derives the code/def tables and all ordinary heap/frame fields. Constructor
 and nested-name contracts remain explicit obligations for the class rule, not inferred from

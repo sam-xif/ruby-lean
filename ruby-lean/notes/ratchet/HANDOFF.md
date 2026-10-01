@@ -1,70 +1,30 @@
 # Active ascent (2026-09-30)
 
-Literals, locals, sequences, primitive sends, branches, bare names, collections and ordinary definitions are
-permanently enabled using existing proof providers. Full default gate GREEN:
-23/99 clinks, 49/261 corpus accepts (prefix 17), 46/46
-negative controls rejected, 254 agree/0 disagree. Standard-axiom audit passes.
-Log: /private/tmp/ascent-collections-gate.log. String-comparison deferral drift
-is repaired in indexing/equality/Static/Decls. Exact iterator transparency now
-excludes shared Hash-lock cleanup; the counterexample is in ../../unsoundness.md.
-check-proofs.sh passes (/private/tmp/ascent-metatheory-repair.log).
-Array/Hash literals and pair companions are admitted. Hash supplies root cleanliness
-and handles the interpreter's Complex-key gate with its original accumulator proof.
-Next: defDecl/callSig (052/055/057/058/059). MethodReturn and MethodState now
-build: root cleanliness is explicit and direct local reads require no local alias.
-MethodAliasControls preserves a kernel counterexample and is mandatory in the
-rebuild gate. Full default gate remains GREEN at the counts above; logs:
-/private/tmp/ascent-method-return-{gate,rebuild}.log.
-MethodDispatch is next: TopMethodCode now uses empty cref; source definitions
-queue method_added through runMethodEdits and may raise FrozenError. The old
-one-step step_def_install equality is false. Preserve the existing conformance/
-saved-frame proofs while following that real protocol. Ordinary method metadata
-now excludes fromBlock/forTargets alternate binding, with a checked Integer-body
-runtime counterexample in MethodCodeControls. The full gate and metatheory pass:
-/private/tmp/ascent-method-metadata-{gate,metatheory}.log. Counts are unchanged.
-Log: /private/tmp/ascent-methods-repair.log. Method rules remain gated.
-The former StateOk guard admits frozen Object with a forged prelude-marked
-FrozenError initializer: a trivial def reaches nil+1. MainReady now requires
-unattached/unfrozen Object; FrozenDefinitionControls preserves the complete old
-guard and runtime witness and runs in the mandatory gate. Heap/view/method-write
-preservation proofs are repaired. Full gate and metatheory remain GREEN:
-/private/tmp/ascent-writable-{gate,metatheory}.log.
-MethodDispatch now builds with the actual normalized source MethodDef and queued
-send/edit marker. DefinitionHook proves native dispatch (retaining shadow gates),
-and definition_hook_runSpec proves callback/marker composition. Required dispatch
-carries fromBlock/forTargets; top source metadata explicitly needs libraryOrigin=false.
-MethodDefinitionControls measures all three transitions and copy-name privacy;
-the mandatory gate builds/imports it. Full gate + metatheory remain GREEN at the
-same counts: /private/tmp/ascent-definition-{gate,metatheory}.log.
-Latest: defDecl is admitted (23/99), with normalized-record projections and
-direct RunSpec.step/callback composition. MainReady requires libraryOrigin=false;
-FrameScope and the existing local/heap/entry/return/reframe proofs transport it.
-MethodOriginControls retains the complete legacy guard's provenance witness.
-Full gate GREEN: 49/261 accepts, 46/46 negatives, 254 agree/0 disagree:
-/private/tmp/ascent-defdecl-gate.log. A definition-only identity program is accepted
-by the actual validator control; 052/055/057/058/059 now await callSig only.
-Next wrapper preflight (/private/tmp/ascent-method-wrappers-preflight.log):
-MethodResolve uses removed lookup.go, and MainReady.chain has a leading main
-dispatch class before Object. Do not silently assume lookup starts at Object:
-prove absence/shadow safety for the prefix (topDeclClassesB excludes main-native
-names) and revalidate positive conformance, definee and frame metadata. Existing
-ordinaryMethodCodeB does not pin definee/definitionFrame. Call clinks stay gated.
-Measured main-prefix countermodel: Denote/Controls/MethodPrefixControls.lean passes
-the current complete bootStateB with main's dispatch class given a native bump
-(builtin Module#method_added). The unrestricted checker accepts def bump=1;
-bump(), but running it from this state raises a type-class ArgumentError because
-the prefix builtin wins. Active validateD still gates callSig. Reject this forged
-prefix in conformance, preserve the real main-native names and repair lookup
-before call admission. The mandatory control now retains the complete legacy
-guard and is rejected by the repaired guard. MainReady carries mainOwnNamesB;
-MainPrefix proves non-native selector absence, and MainPrefixWriteOk is an
-explicit generic-write obligation. Object separation is derived from chains,
-so the active definition proof remains unchanged. DefsOk records still need to
-exclude native main selectors. Logs:
-/private/tmp/ascent-method-prefix-{witness,controls}.log.
-Run Lake builds sequentially: concurrent builds raced over Context.olean.
-Final batch check-proofs.sh passes (/private/tmp/ascent-final-metatheory.log).
-No live builds.
+24/99 clinks, 54/261 production validateD accepts (prefix 17), 46/46 negatives
+rejected, 254 CRuby agree/0 disagree. callSig is now permanently enabled alongside
+ordinary definitions and the existing literal/local/sequence/primitive/branch/
+bare-name/collection providers. Full final gate: /private/tmp/ascent-call-final-gate.log.
+Metatheory passes: /private/tmp/ascent-call-metatheory.log.
+
+Repair uses the original MethodState body/frame/return and MethodArgs accumulator
+proofs. MethodResolve follows actual bounded lookup through main's singleton
+prefix then Object. DefsOk excludes main-native selectors, derived on installation
+from existing topDeclClassesB. OrdinaryMethodCode now pins normalized definee;
+MethodDefineeControls retains the old guard's checked-body NoMethodError witness.
+Main-prefix and metadata controls remain mandatory; see ../../unsoundness.md.
+Native fidelity shadows retain unsupported in top_method_stepSpec, while ordinary
+entry consumes the original checked body. New proofs build under a second and
+use only standard axioms. Validator controls cover zero/one arguments, older
+method retention, wrong type/arity/result, reserved names and missing companion/
+body rules. The bridge probe proves identity-call boot runner safety.
+
+Next: recursive (060) or classes (061+). BoundedMethod/BoundedCall still need the
+same rootClean, binding metadata, actual prefix lookup and shadow-gate repairs;
+BoundedExpr already carries rootClean. Do not import all off-target providers:
+MethodChecked imports the historical Full bridge and also has drift. FlowDispatch/
+BodyDispatch still pass ready.chain to defsOk_lookup and presume no native shadow.
+Run Lake builds sequentially; concurrent rebuilds previously raced .olean files.
+
 The entries below are historical checkpoints.
 
 # Default active typed ratchet (2026-09-30)

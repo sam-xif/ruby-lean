@@ -197,7 +197,7 @@ def ClassesOk (C : CTable) (m : Machine) : Prop :=
 preceding statement performed — which is the whole soundness content of `DefTable`'s
 "already", per its docstring: a whole-program table would certify `foo(); def foo; end`. -/
 def DefsOk (D : DefTable) (m : Machine) : Prop :=
-  ∀ d ∈ D, ∃ md, (m.heap.classPayload? Boot.objectId).bind
+  ∀ d ∈ D, d.name ∉ mainSingletonNames ∧ ∃ md, (m.heap.classPayload? Boot.objectId).bind
       (fun cp => (cp.methods.find? (·.1 == d.name)).map (·.2)) = some md ∧
     md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧ md.undefined = false ∧ TopMethodCode md
 
@@ -1218,8 +1218,8 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
         (fun e name => by simp only [ownCode, he.payload])
   defs := by
     intro d hd
-    obtain ⟨md, h1, h2⟩ := h.defs d hd
-    exact ⟨md, by rw [he.payload]; exact h1, h2⟩
+    obtain ⟨hn, md, h1, h2⟩ := h.defs d hd
+    exact ⟨hn, md, by rw [he.payload]; exact h1, h2⟩
   asms := by
     intro a ha m₃ he₃ args hargs v m' hs
     exact h.asms a ha m₃ (he.later.trans he₃) args hargs v m' hs

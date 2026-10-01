@@ -6,6 +6,7 @@ import Denote.Controls.FrozenDefinitionControls
 import Denote.Controls.MethodDefinitionControls
 import Denote.Controls.MethodOriginControls
 import Denote.Controls.MethodPrefixControls
+import Denote.Controls.MethodDefineeControls
 
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
@@ -90,5 +91,15 @@ theorem rebuilt_duplicate_hash_safe_run (hb : bootOkB = true) (fuel : Nat) :
     (.hash [(.sym "k", .int 1), (.sym "k", .int 2)])
     (.hashLit [.symLit "k", .symLit "k"] [.intLit 1, .intLit 2] .sym .int) = true) hb fuel
 #print axioms rebuilt_duplicate_hash_safe_run
+theorem rebuilt_identity_call_safe_run (hb : bootOkB = true) (fuel : Nat) :
+    Semantics.typeStuck (Semantics.run fuel (toRuby
+      (.seq [.def' "identity" [.req "x"] (.var .lvar "x"),
+        .send none "identity" [.int 7] none]))) = false :=
+  validateD_safe_run (by decide : validateD
+    (.seq [.def' "identity" [.req "x"] (.var .lvar "x"),
+      .send none "identity" [.int 7] none])
+    (.seq [.defDecl "identity" [("x", .int)] .int (.var .lvar "x"),
+      .callSig "identity" [.intLit 7] .int]) = true) hb fuel
+#print axioms rebuilt_identity_call_safe_run
 #print axioms validateD_safe_run
 end Ratchet.Denote.Typed

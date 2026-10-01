@@ -13100,3 +13100,27 @@ Validation: full default gate GREEN, unchanged 23/99 clinks and 49/261 accepts,
 46/46 negatives rejected, 254 agree/0 disagree; check-proofs.sh passes.
 Logs: /private/tmp/ascent-main-prefix-{gate,metatheory}.log. New guard/transport
 proofs build under a second, with standard axioms only.
+
+### 2026-09-30 — Repair ordinary lookup and admit callSig
+
+Retain MethodState's checked-body/entry/return proof and MethodArgs' argument
+accumulator. MethodResolve now follows lookupInChain.go's fuel and the real
+main-singleton/Object chain, with visibilityOnly=false at the checked row.
+DefsOk carries non-native main names; top installation derives this from the
+existing topDeclClassesB guard. Generic preservation retains the fact.
+
+OrdinaryMethodCode pins definee.getD owner after MethodDefineeControls measured
+a legacy metadata accept whose checked nested def/call raises NoMethodError.
+See ../../unsoundness.md. Both default and explicit matching definee are valid.
+Do not overconstrain heaps to eliminate native fidelity gates: top_method_stepSpec
+uses the original body/frame proof when crubyShadow is absent and proves the
+real unsupported transition otherwise. callSig composes that StepSpec with the
+original argument/rebase proof. Enable its provider and shared policy entry.
+Validator controls cover zero/one arguments, wrong type/arity/result, reserved
+main names and missing body/argument companion permissions; the gate also checks
+an identity-call boot safety theorem and the metadata countermodel.
+
+Validation: full default gate GREEN, 24/99 clinks and 54/261 accepts (+5),
+46/46 negatives rejected, 254 agree/0 disagree. New semantic proofs build under
+a second, with standard axioms only. Logs: /private/tmp/ascent-call-final-gate.log
+and /private/tmp/ascent-call-metatheory.log.
