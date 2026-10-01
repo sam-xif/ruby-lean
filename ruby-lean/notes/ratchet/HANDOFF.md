@@ -92,8 +92,9 @@ name growth, the fresh plain allocator, and empty-header selector/root-chain
 publication. Fresh readiness uses Object's inherited flags. All are mandatory.
 
 ClassStateActual.state now proves the full actual class-body StateOk (mandatory).
-Next: actual header/new-dispatch (DeclClassOk via classHeaderCtx) and the original
-body/return composition through class_callbacks_runSpec.
+ClassHeaderStateActual.header publishes classHeaderCtx over it (mandatory).
+Next: rewrite class_header_runSpec over the actual entry (stepFn_class_fresh ->
+class_callbacks_runSpec -> class_body_runSpec), then re-enable class clinks.
 
 Old instance_constants_old assumed an explicit Object fallback; current ordinary instance resolution follows ancestors instead.
 Check the new-binding case with Object reachability/module fallback rather than

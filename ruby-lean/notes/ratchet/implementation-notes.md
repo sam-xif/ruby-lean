@@ -13407,3 +13407,12 @@ StateOk at the callback-body entry. ClassBasesActual/ClassPrimitiveInitActual ad
 module/builtin bases and primitiveInit; frame adds localAlias/captured/rootClean.
 Old class sites keep the explicit reachability premise (ConstantReachControls).
 Mandatory gate prerequisite; standard axioms only.
+
+### 2026-10-01 — Repair actual class header publication
+
+Actual `new` dispatch on the attached metaclass also checks CRuby singleton-name
+shadows. classNativeQuietB now excludes `new` for the 16 classes whose singleton
+table defines it (nativeSingletonNew; coverage kernel-checked by decide). All are
+existing builtins or qualified, so no accepts change. ClassHeaderActual repairs
+new_dispatch, the two-way named chain and DeclClassOk; ClassHeaderStateActual.header
+publishes classHeaderCtx over the actual body entry. Mandatory; standard axioms.

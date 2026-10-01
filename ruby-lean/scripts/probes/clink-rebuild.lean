@@ -20,6 +20,7 @@ import Denote.Sem.Class.ClassMainActual
 import Denote.Sem.Class.ClassChainsActual
 import Denote.Sem.Class.ClassSitesActual
 import Denote.Sem.Class.ClassStateActual
+import Denote.Sem.Class.ClassHeaderStateActual
 import Denote.Sem.Class.ClassPayloadActual
 import Denote.Examples.RecursiveDerivations
 
@@ -192,3 +193,5 @@ theorem rebuilt_identity_call_safe_run (hb : bootOkB = true) (fuel : Nat) :
 #print axioms validateD_safe_run
 end Ratchet.Denote.Typed
 #print axioms Ratchet.Denote.FreshClassActual.state
+#print axioms Ratchet.Denote.FreshClassActual.header
+#print axioms Ratchet.Denote.classNativeQuietB_singleton
