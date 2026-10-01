@@ -114,6 +114,7 @@ def prim_ret(recv, m, args)
     return INT                   if m == "length" && args.empty?
     return nilable(recv["val"])  if m == "[]" && args.length == 1
     return recv["val"]           if m == "fetch" && args.length == 1
+    return BOOL                  if m == "key?" && args.length == 1
   end
 
   return STR  if t == "sym" && m == "to_s" && args.empty?

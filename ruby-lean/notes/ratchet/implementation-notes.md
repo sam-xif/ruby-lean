@@ -13455,3 +13455,10 @@ none under nameFree "==". PrimitiveStep's row enumerations grew to 22. Climbs 16
 Array#length (first-order elements, as arrayIndex: primitive_framed needs it) uses
 ArrayLength's copy of the exact-Array invoke route; String#start_with? at a String
 prefix proves branch-wise, its final runObjects arm defeq runStrings. Climbs 170, 182.
+
+### 2026-10-01 — Primitive row hashKey (62/261)
+
+Hash#key? [α]→bool (first-order hash) copies HashIndex's invoke route; the result is
+pure key equality, so no default handling is needed. Emitter (untrusted) gains the
+hashOf#key?/1 signature. Rows for unmodeled builtins (String#tr, #delete_prefix) are
+deliberately not added: model `unsupported` would make them vacuous. Climbs 205.

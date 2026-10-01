@@ -35,6 +35,7 @@ theorem primitive_framed {σ τ : Ty} {name : String} {tys : List Ty} (hp : DPri
   | arrayIndex hfo => exact hf.firstOrder (.arrayOf _) hfo _ hv
   | arrayLength hfo => exact hf.firstOrder (.arrayOf _) hfo _ hv
   | hashIndex hfo => exact hf.firstOrder (.hashOf _ _) hfo _ hv
+  | hashKey hfo => exact hf.firstOrder (.hashOf _ _) hfo _ hv
   | _ =>
     simp only [denM] at hv ⊢
     first | exact hv | exact hf.nominal _ _ hv

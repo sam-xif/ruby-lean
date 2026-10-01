@@ -269,6 +269,14 @@ private def literalClassHint : Deriv := .classDecl "Box" none (.intLit 7)
 #guard !validateD (.send (some (.str "ab")) "start_with?" [.int 1] none)
   (.prim (.strLit "ab") "start_with?" [.intLit 1] (.cls "String") .bool)
 
+-- Primitive row Hash#key?.
+#guard validateD (.send (some (.hash [(.str "a", .int 1)])) "key?" [.str "a"] none)
+  (.prim (.hashLit [.strLit "a"] [.intLit 1] (.cls "String") .int) "key?" [.strLit "a"]
+    (.hashOf (.cls "String") .int) .bool)
+#guard !validateD (.send (some (.hash [(.str "a", .int 1)])) "key?" [] none)
+  (.prim (.hashLit [.strLit "a"] [.intLit 1] (.cls "String") .int) "key?" []
+    (.hashOf (.cls "String") .int) .bool)
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

@@ -4,6 +4,7 @@ import Denote.Rules.Primitive.PrimitiveQueries
 import Denote.Rules.Expr.ArrayIndex
 import Denote.Rules.Expr.ArrayLength
 import Denote.Rules.Expr.HashIndex
+import Denote.Rules.Expr.HashKey
 
 /-! Each `DPrim` row discharges against the interpreter and preserves conformance on values. -/
 
@@ -245,6 +246,11 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
     cases hs
     obtain ⟨i, rfl⟩ := int_value hv
     exact array_index_step hm hk hr i hfree
+  | hashKey _ =>
+    cases ha
+    rename_i key more hkey htail
+    cases htail
+    exact hash_key_step hm hk hr key hfree
   | hashIndex _ =>
     cases ha
     rename_i key more hkey htail
