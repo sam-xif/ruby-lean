@@ -24,3 +24,17 @@ Require the active frame's localAlias = none in that lemma and caller-local
 restoration. StateOk already supplies this premise, and FramePres preserves it
 on return. No active typing rule or accepted program is restricted. This is a
 false auxiliary lookup lemma, not a demonstrated Sorbet or validateD soundness bug.
+
+# Ordinary metadata admitted alternate formal binding (2026-09-30)
+
+ordinaryMethodCodeB omitted fromBlock and forTargets. MethodCodeControls retains
+its eight-clause legacy guard and a passing required-Integer body check for y+1.
+The same MethodDef carries a for callback's binding plan [z,y] with one argument
+7. Actual enterUserMethod then overwrites y with nil, and Interp.run reaches a
+type error. Both premises and the runtime result are mandatory evaluated controls.
+
+OrdinaryMethodCode and its Boolean guard now require fromBlock=false and
+forTargets=none; the soundness projection proves both fields. Controls reject
+either alternate mode independently and retain ordinary-code acceptance.
+This concerns the semantic metadata judgment over arbitrary runtime records;
+no accepted source program or Sorbet counterexample has been demonstrated.

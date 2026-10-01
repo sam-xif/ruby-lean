@@ -19,7 +19,9 @@ MethodDispatch is next: TopMethodCode now uses empty cref; source definitions
 queue method_added through runMethodEdits and may raise FrozenError. The old
 one-step step_def_install equality is false. Preserve the existing conformance/
 saved-frame proofs while following that real protocol. Ordinary method metadata
-also needs fromBlock/forTargets guards required by the repaired entry theorem.
+now excludes fromBlock/forTargets alternate binding, with a checked Integer-body
+runtime counterexample in MethodCodeControls. The full gate and metatheory pass:
+/private/tmp/ascent-method-metadata-{gate,metatheory}.log. Counts are unchanged.
 Log: /private/tmp/ascent-methods-repair.log. Method rules remain gated.
 Run Lake builds sequentially: concurrent builds raced over Context.olean.
 Final batch check-proofs.sh passes (/private/tmp/ascent-final-metatheory.log).

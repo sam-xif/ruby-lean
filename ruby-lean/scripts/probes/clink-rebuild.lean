@@ -1,6 +1,7 @@
 import Denote.Bridge
 import Denote.Clink.GateStatus
 import Denote.Controls.MethodAliasControls
+import Denote.Controls.MethodCodeControls
 
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote

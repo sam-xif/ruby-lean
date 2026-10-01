@@ -12983,3 +12983,20 @@ does not rely on its cached olean. Logs: /private/tmp/ascent-method-return-gate.
 and ascent-method-return-rebuild.log. MethodReturn/State/control builds take
 under two seconds, with only standard axioms. Next failure is MethodDispatch:
 stale top-level cref, native method_added queuing and ordinary method metadata.
+
+### 2026-09-30 — Reject alternate binding in ordinary method metadata
+
+MethodCodeControls measures an accepted legacy ordinary-code descriptor whose
+for callback binding plan overwrites typed Integer formal y with nil; its checked
+y+1 body reaches a runtime type error. Require fromBlock=false/forTargets=none
+in OrdinaryMethodCode and ordinaryMethodCodeB, and prove those projections in
+the existing Boolean soundness lemma. These are the entry modes assumed by
+required_method_runSpec, not result-type hints or emitter repairs.
+Controls preserve the legacy witness/body check and independently reject both
+alternate modes; ordinary metadata still passes. Both method-boundary controls
+are explicitly built and imported by the mandatory probe. See ../../unsoundness.md.
+No runtime/checker policy or top-level safety statement changes.
+
+Validation: full default gate GREEN at 22/99 clinks, 49/261 accepts,
+46/46 negatives rejected and 254 agree/0 disagree; check-proofs.sh passes.
+Logs: /private/tmp/ascent-method-metadata-{gate,metatheory}.log.
