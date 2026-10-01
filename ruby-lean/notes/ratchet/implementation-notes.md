@@ -12927,3 +12927,16 @@ Full default gate GREEN: 15/99 clinks, 29/261 accepts, 46/46 negatives rejected,
 254 agree/0 disagree. check-proofs.sh and its axiom/boot audits PASS. Primitive
 modules build in at most 14 seconds; no new axioms or resource-limit increases.
 Logs: /private/tmp/ascent-primitives-gate.log and ascent-metatheory-repair.log.
+
+### 2026-09-30 — Admit branches and guarded bare-name escapes
+
+Enable if'/ifNoElse/bareName with their existing providers unchanged. Controls
+check non-Boolean truthiness, both branches, omitted-else nil, joined local types
+and declaration/call-site guards. Missing else and bare NameError each reach the
+original all-fuel runner theorem with standard axioms. No checker/runtime change.
+
+Full default gate GREEN: 18/99 clinks, 41/261 accepts, prefix 17, 46/46 negatives
+rejected, 254 agree/0 disagree. Log: /private/tmp/ascent-branches-gate.log.
+Array preflight passes. Hash preflight needs the existing root-clean bindSpec
+premise and the actual Complex-key gate; a repaired temporary proof passes
+(/private/tmp/ascent-hash-proof.log), pending permanent admission.

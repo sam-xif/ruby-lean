@@ -1,15 +1,17 @@
 # Active ascent (2026-09-30)
 
-Literals, locals, sequences and primitive sends (with list companions) are
+Literals, locals, sequences, primitive sends, branches and bare names are
 permanently enabled using existing proof providers. Full default gate GREEN:
-15/99 clinks, 29/261 corpus accepts, 46/46
+18/99 clinks, 41/261 corpus accepts (prefix 17), 46/46
 negative controls rejected, 254 agree/0 disagree. Standard-axiom audit passes.
-Log: /private/tmp/ascent-primitives-gate.log. String-comparison deferral drift
+Log: /private/tmp/ascent-branches-gate.log. String-comparison deferral drift
 is repaired in indexing/equality/Static/Decls. Exact iterator transparency now
 excludes shared Hash-lock cleanup; the counterexample is in ../../unsoundness.md.
 check-proofs.sh passes (/private/tmp/ascent-metatheory-repair.log).
-Next: branches/no-else/bare names. Their existing providers pass preflight
-(/private/tmp/ascent-branch-preflight.log), but remain gated pending admission.
+Next: Array/Hash literals and pair companions. Array preflight passes; Hash's
+temporary repaired proof supplies root cleanliness and handles the Complex-key
+gate (/private/tmp/ascent-hash-proof.lean, ascent-hash-proof.log). Apply it and
+admit the rules with controls. No live builds.
 The entries below are historical checkpoints.
 
 # Default active typed ratchet (2026-09-30)

@@ -94,6 +94,35 @@ private def retypedHint : Deriv :=
   (.seq [.vasgn .lvar "x" (.vasgn .lvar "y" (.intLit 1)), .var .lvar "y"]) ==
   ["seq", "DJudgeSeq.last", "DJudgeSeq.cons", "var", "vasgn", "intLit"].all clinkEnabled
 
+-- Ruby tests truthiness; both branches are checked regardless of the condition.
+#guard validateD (.if' .nil (.int 1) (some (.int 2)))
+  (.ifD .nilLit (.intLit 1) (some (.intLit 2)) .int) ==
+  ["if'", "nilLit", "intLit"].all clinkEnabled
+#guard !validateD (.if' .nil (.int 1) (some (.int 2)))
+  (.ifD .nilLit (.intLit 3) (some (.intLit 2)) .int)
+#guard !validateD (.if' .tru (.int 1) (some (.var .lvar "missing")))
+  (.ifD .truLit (.intLit 1) (some (.var .lvar "missing")) .int)
+#guard validateD (.if' .fls (.int 1) none)
+  (.ifD .flsLit (.intLit 1) none (.nilable .int)) ==
+  ["ifNoElse", "flsLit", "intLit"].all clinkEnabled
+#guard !validateD (.if' .fls (.int 1) none) (.ifD .flsLit (.intLit 1) none .int)
+#guard !validateDWith (fun r => clinkEnabled r && r != "ifNoElse")
+  (.if' .fls (.int 1) none) (.ifD .flsLit (.intLit 1) none (.nilable .int))
+#guard !validateD (.seq [.vasgn .lvar "x" (.int 1),
+    .if' .tru (.vasgn .lvar "x" .nil) none,
+    .send (some (.var .lvar "x")) "+" [.int 1] none])
+  (.seq [.vasgn .lvar "x" (.intLit 1),
+    .ifD .truLit (.vasgn .lvar "x" .nilLit) none .nilT,
+    .prim (.var .lvar "x") "+" [.intLit 1] .int .int])
+
+-- The bare-name escape rule is guarded and preserves the syntactic call site.
+#guard validateD (.vcall "x") (.bareName "x") == clinkEnabled "bareName"
+#guard !validateD (.vcall "y") (.bareName "y")
+#guard !validateD (.send none "x" [] none) (.bareName "x")
+#guard !validateDWith (fun _ => true)
+  (.seq [.def' "x" [] (.int 1), .vcall "x"])
+  (.seq [.defDecl "x" [] .int (.intLit 1), .bareName "x"])
+
 -- Uncalled bodies and uniformly quantified callback witnesses are checked too.
 private def method : Expr := .def' "get5" [] (.int 5)
 private def methodHint : Deriv := .defDecl "get5" [] .int (.intLit 5)

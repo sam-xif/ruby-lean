@@ -61,5 +61,14 @@ theorem rebuilt_primitive_escape_safe_run (hb : bootOkB = true) (fuel : Nat) :
     (.send (some (.int 1)) "/" [.int 0] none)
     (.prim (.intLit 1) "/" [.intLit 0] .int .int) = true) hb fuel
 #print axioms rebuilt_primitive_escape_safe_run
+theorem rebuilt_missing_else_safe_run (hb : bootOkB = true) (fuel : Nat) :
+    Semantics.typeStuck (Semantics.run fuel (toRuby (.if' .fls (.int 1) none))) = false :=
+  validateD_safe_run (by decide : validateD (.if' .fls (.int 1) none)
+    (.ifD .flsLit (.intLit 1) none (.nilable .int)) = true) hb fuel
+#print axioms rebuilt_missing_else_safe_run
+theorem rebuilt_bare_name_safe_run (hb : bootOkB = true) (fuel : Nat) :
+    Semantics.typeStuck (Semantics.run fuel (toRuby (.vcall "x"))) = false :=
+  validateD_safe_run (by decide : validateD (.vcall "x") (.bareName "x") = true) hb fuel
+#print axioms rebuilt_bare_name_safe_run
 #print axioms validateD_safe_run
 end Ratchet.Denote.Typed
