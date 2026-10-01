@@ -13308,3 +13308,21 @@ Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
 46/46 negatives rejected, 254 agree/0 disagree. Dispatch/query/payload modules
 build in 286/306/216ms, standard axioms only; metatheory passes. Logs:
 /private/tmp/ascent-class-dispatch-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair actual class frame, tables and lexical scope
+
+ClassFrameActual identifies the real callback-body machine with the original
+freshModFrame shape and reuses its empty locals/ivars, self type, live receiver
+and saved-frame proofs. ClassMethodsActual keeps the old installed-table argument;
+DefsOk additionally carries the repaired main-singleton name exclusion.
+ClassScopeActual retains inherited definition-hook lookup and uses main's actual
+empty cref, making the body cref exactly [newClass]; the old [Object] premise
+produced the wrong frame. ClassNameEntryActual reuses the existing three-site
+absence transfer via Object's cached metaclass. All four modules and axiom probes
+are mandatory; full body StateOk and return still precede admission. No checker
+or interpreter changes.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Frame/table/scope/name-entry
+modules build in 1.0s/544ms/628ms/579ms, standard axioms only; metatheory passes.
+Logs: /private/tmp/ascent-class-scope-{gate,metatheory}.log.

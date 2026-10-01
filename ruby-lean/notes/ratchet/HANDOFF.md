@@ -4,8 +4,8 @@
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
-bare-name/collection providers. Full gate: /private/tmp/ascent-class-dispatch-gate.log.
-Metatheory: /private/tmp/ascent-class-dispatch-metatheory.log.
+bare-name/collection providers. Full gate: /private/tmp/ascent-class-scope-gate.log.
+Metatheory: /private/tmp/ascent-class-scope-metatheory.log.
 
 Repair uses the original MethodState body/frame/return and MethodArgs accumulator
 proofs. MethodResolve follows actual bounded lookup through main's singleton
@@ -68,8 +68,14 @@ String/Array/Hash payloads. The attached metaclass's native singleton-name check
 is explicit in general dispatch; kernel-checked table coverage supplies it for
 all existing query selectors without a new guard. These modules are mandatory.
 
-Next: repair actual class-body StateOk (name/bare/missing/defs, instance/main sites
-and class frame/table conformance);
+ClassFrameActual, ClassMethodsActual, ClassScopeActual and ClassNameEntryActual
+now repair the real callback-body frame, empty locals/ivars, self type/live bound,
+saved frames, installed class/definition/exact tables, inherited definition hook,
+lexical ClassScopeAt and name absence. Scope uses main's actual cref=[]; DefsOk
+retains its main-singleton selector exclusion. All four are mandatory.
+
+Next: repair actual class-body StateOk (constant scope/tables, instance/main sites,
+allocation/global-name/own-name/class-chain capabilities);
 retain ClassHeaderRun's original conformance/return structure. ClassRules currently
 imports constructor/instance/singleton providers too; preflight also found missing
 MainReady fields in SubclassMain, changed lexical constants in
