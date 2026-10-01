@@ -4,8 +4,8 @@
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
-bare-name/collection providers. Full gate: /private/tmp/ascent-class-main-gate.log.
-Metatheory: /private/tmp/ascent-class-main-metatheory.log.
+bare-name/collection providers. Full gate: /private/tmp/ascent-class-capabilities-gate.log.
+Metatheory: /private/tmp/ascent-class-capabilities-metatheory.log.
 
 Repair uses the original MethodState body/frame/return and MethodArgs accumulator
 proofs. MethodResolve follows actual bounded lookup through main's singleton
@@ -86,14 +86,21 @@ repairs main-site preservation with all 17 readiness fields, lookup/name/bare/
 missing/constant/new-dispatch capabilities. Both are mandatory. Use an outgoing
 heap variable plus equality to the actual heap to avoid deep record unfolding.
 
-Next: repair actual class-body StateOk (instance sites, allocation/global-name/
-own-name/class-chain capabilities). Old instance_constants_old assumed an explicit
-Object fallback; current ordinary instance resolution follows ancestors instead.
+ClassDeclaredActual, ClassAllocatorsActual and ClassChainsActual now repair
+existing declarations/own names/ordered chains, old allocator readiness, global
+name growth, the fresh plain allocator, and empty-header selector/root-chain
+publication. Fresh readiness uses Object's inherited flags. All are mandatory.
+
+Next: repair actual class-body StateOk (instance sites, module-base/builtin-base
+capabilities and current primitiveInit/rootClean/capture/frame fields), then
+actual header/new-dispatch and the original body/return composition.
+
+Old instance_constants_old assumed an explicit Object fallback; current ordinary instance resolution follows ancestors instead.
 Check the new-binding case with Object reachability/module fallback rather than
 reusing that false simplification; existing ClassChains can supply physical
 Object membership when the declared static ancestry resolves.
 
-retain ClassHeaderRun's original conformance/return structure. ClassRules currently
+Retain ClassHeaderRun's original conformance/return structure. ClassRules currently
 imports constructor/instance/singleton providers too; preflight also found missing
 MainReady fields in SubclassMain, changed lexical constants in
 SubclassConstants/MainReturn, positive DefsOk names in SubclassMethods, and binding/

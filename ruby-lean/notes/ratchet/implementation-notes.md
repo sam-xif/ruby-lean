@@ -13362,3 +13362,20 @@ Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
 46/46 negatives rejected, 254 agree/0 disagree. Metadata/main-site modules
 build in 773/737ms, standard axioms only; metatheory passes. Logs:
 /private/tmp/ascent-class-main-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair actual class declarations, allocators and header chains
+
+ClassDeclaredActual reuses the original name/id match, dispatch-shadow and
+ordered-chain transfers for existing declarations and own-selector bounds.
+ClassAllocatorsActual carries the newer readiness equality through old plain
+allocators, extends only the executed global-name bound, and reuses the original
+ordinary-chain/no-core/no-payload argument for the fresh allocator. Its readiness
+comes from Object's inherited flags, not default metadata. ClassChainsActual
+retains the original empty-header selector and ordered root-name publication
+proofs. All three modules/axiom probes are mandatory; full class-body StateOk
+and header/return composition still precede admission. No checker/runtime changes.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Declaration/allocator/header-chain
+modules build in 737/677ms/2.6s, standard axioms only; metatheory passes. Logs:
+/private/tmp/ascent-class-capabilities-{gate,metatheory}.log.

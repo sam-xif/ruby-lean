@@ -16,6 +16,7 @@ import Denote.Rules.Class.ClassEntry
 import Denote.Sem.Class.ClassNameEntryActual
 import Denote.Sem.Class.ClassTablesActual
 import Denote.Sem.Class.ClassMainActual
+import Denote.Sem.Class.ClassChainsActual
 import Denote.Sem.Class.ClassPayloadActual
 import Denote.Examples.RecursiveDerivations
 
@@ -76,6 +77,15 @@ open RubyCore Ratchet Ratchet.Denote
 #print axioms FreshClassActual.metadata_old
 #print axioms FreshClassActual.plain_ready_old
 #print axioms FreshClassActual.mainSite
+#print axioms FreshClassActual.declared
+#print axioms FreshClassActual.ownNames
+#print axioms FreshClassActual.classChains
+#print axioms FreshClassActual.allocators
+#print axioms FreshClassActual.globalConsts
+#print axioms FreshClassActual.plain
+#print axioms FreshClassActual.ordered_chain
+#print axioms FreshClassActual.ownNames_header
+#print axioms FreshClassActual.classChains_header
 
 #eval IO.println s!"CLINK REBUILD: {dRegisteredRules.length} certified, {dGatedRules.length} gated, {dAllRules.length} total"
 #eval IO.println s!"  enabled: {String.intercalate ", " dRegisteredRules}"
