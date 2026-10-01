@@ -13253,3 +13253,21 @@ Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
 46/46 negatives rejected and 254 agree/0 disagree. Actual heap proofs build in
 1.2s, repaired ClassEntry in 638ms; standard axioms only, metatheory passes.
 Logs: /private/tmp/ascent-class-heap-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair name growth for attached class metaclasses
+
+The old namesOk_namedGrow requires every fresh class to be named and unattached;
+the real metaclass meets neither premise. ClassNamesActual keeps its old-id
+branches and NameGrowth's bounded classPath/className transports, replacing only
+the fresh-id obligation with explicit bounds and fuel equalities. The actual
+class has an immediate permanent path; its metaclass has an anonymous native
+path and renders its attached class after two steps. Both allocated ids and
+their attachment are live, and all old displayed names survive registration.
+No name snapshot, attachment removal or weaker name guard is introduced.
+Use explicit heap-size equations at attachment bounds to avoid rewrite inference
+selecting a different nested heap. The module is a mandatory gate prerequisite.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Name proofs build in 370ms
+with standard axioms only; metatheory passes. Logs:
+/private/tmp/ascent-class-names-{gate,metatheory}.log.

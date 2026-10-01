@@ -1,11 +1,11 @@
-# Active ascent (2026-09-30)
+# Active ascent (2026-10-01)
 
 31/99 clinks, 55/261 production validateD accepts (prefix 17), 46/46 negatives
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
-bare-name/collection providers. Full gate: /private/tmp/ascent-class-heap-gate.log.
-Metatheory: /private/tmp/ascent-class-heap-metatheory.log.
+bare-name/collection providers. Full gate: /private/tmp/ascent-class-names-gate.log.
+Metatheory: /private/tmp/ascent-class-names-metatheory.log.
 
 Repair uses the original MethodState body/frame/return and MethodArgs accumulator
 proofs. MethodResolve follows actual bounded lookup through main's singleton
@@ -53,7 +53,12 @@ allocation, ClsGrow, ChainsIn, saturation, old ancestors/method tables, callback
 guard preservation and allocator readiness. ClassEntry.stepFn_class_fresh is
 repaired to the actual first queued callback successor and is mandatory.
 
-Next: repair actual class heap conformance and retain
+ClassNamesActual repairs the old named-growth argument's fresh-id premise for
+an attached anonymous metaclass, proves actual NamesOk/fuel saturation and old
+display-name retention, and is mandatory.
+
+Next: use the actual heap/name facts to repair ClassReady, constant/live/root
+name retention, DataPres and class-body StateOk; retain
 ClassHeaderRun's original conformance/return structure. ClassRules currently
 imports constructor/instance/singleton providers too; preflight also found missing
 MainReady fields in SubclassMain, changed lexical constants in
