@@ -1,7 +1,7 @@
 # Rebuilding the clink registry
 
 The active registry admits literals, locals, sequences, primitive sends, branches,
-bare names, Array/Hash literals, ordinary definitions/calls, scoped recursion, fresh class declarations/constants/member defs/default construction/instance calls and their companions (36/99 rules). `intLit` remains the
+bare names, Array/Hash literals, ordinary definitions/calls, scoped recursion, fresh class declarations/constants/member defs/default construction/instance calls/ivar reads and their companions (37/99 rules). `intLit` remains the
 non-vacuity anchor.
 
 From `ruby-lean/`, run:

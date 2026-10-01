@@ -308,6 +308,15 @@ private def callGet (n : String) : Expr := .send (some newBox) n [] none
 #guard !validateD (.seq [memberClass "get", callGet "other"])
   (.seq [memberHint "get", .callMethodSig (.newInst "Box" [] (.inst "Box" .ivar0)) "other" [] .int])
 
+-- Active ivarRead: an unset ivar in a method body reads as nil (rung 070's shape).
+private def revealClass : Expr := .class' "Box" none (.def' "reveal" [] (.var .ivar "@secret"))
+#guard validateD (.seq [revealClass, callGet "reveal"])
+  (.seq [.classDecl "Box" none (.defDecl "reveal" [] .nilT (.ivarRead "@secret" .nilT)),
+    .callMethodSig (.newInst "Box" [] (.inst "Box" (.ivarCons "@secret" .nilT .ivar0))) "reveal" [] .nilT])
+#guard !validateD (.seq [revealClass, callGet "reveal"])
+  (.seq [.classDecl "Box" none (.defDecl "reveal" [] .int (.ivarRead "@secret" .int)),
+    .callMethodSig (.newInst "Box" [] (.inst "Box" .ivar0)) "reveal" [] .int])
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

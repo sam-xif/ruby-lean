@@ -13501,3 +13501,8 @@ instance bodies (instance_required_scope). Instance/singleton entry and caller
 return take current StateOk fields, definee-based defmod, fromBlock/forTargets,
 root-clean frame runs. StateOk.localAlias_getD moves to Reframe. callMethodSig
 moves out of legacy ClassRules into CallMethodSigActual. Climbs 069.
+
+### 2026-10-01 — Climb ivarRead (37/99, 64/261)
+
+The existing InstanceRead provider builds unchanged. Controls use the emitter's
+instance spine (ivarCons "@secret" nilT). Climbs 070.
