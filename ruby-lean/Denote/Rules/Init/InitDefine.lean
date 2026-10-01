@@ -20,8 +20,8 @@ theorem SemSafeCtxA.initializerDecl {κ : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {c 
     SemSafeCtxA κ Γ I (.def' d.name d.params d.body) .sym (instanceDeclCtx κ c d) Γ I :=
   member_definition hr (by rw [hinit]; decide) (fun _ hm =>
     StateOk_install_member hm hr hc ht hΓ ha hplain hroot hf htab
-      (by rw [hinit]; decide) (by rw [hinit]; decide) (by rw [hinit]; decide))
+      (by rw [hinit]; decide) (by rw [hinit]; decide) (by rw [hinit]; decide)
+      (by rw [hinit]; decide) (by rw [hinit]; decide))
 
-#print axioms SemSafeCtxA.memberDecl
 #print axioms SemSafeCtxA.initializerDecl
 end Ratchet.Denote.Typed

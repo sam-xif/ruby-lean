@@ -113,7 +113,7 @@ theorem super_initializer_pop_state {anchor : Heap} {κ κb : Ctx} {Γ Γb : Env
         by rw [hp.stack]; exact Nat.lt_of_lt_of_le hm.typed.frameInRange.2 hp.frames.size⟩
       env := h.pop_env hm.typed.frameInRange (by
         rw [RootUncaptured, rootFrame_eq_currentFrame hm.typed.frameInRange.1]; exact old.captured)
-        hc hm.typed.env hΓ
+        hc hm.typed.env hΓ hm.typed.localAlias
       selfSpine := ?_
       classes := hn.typed.classes
       ownNames := hn.typed.ownNames

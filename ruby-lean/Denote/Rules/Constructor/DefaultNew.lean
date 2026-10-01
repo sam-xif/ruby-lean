@@ -61,9 +61,10 @@ theorem stepSpec_defaultAllocated {κ : Ctx} {Γ : Env} {I J : Ty} {m : Machine}
     (show ResultOk m Γ (.inst cn J) _ _ κ I from ⟨hf, hd, fun _ hv => by cases hv; exact hs⟩)
   simpa only [StepSpec, defaultAllocated, Interp.withCtl, deliverA, Answer.ctl, reCtl, hk] using h
 
-theorem finishSend_new {m : Machine} {k : ObjId} (hc : PlainAllocator m.heap k) :
-    Interp.finishSend m (.ref k) .explicit "new" [] .none =
-      Interp.invoke.invokeDispatch m (.ref k) .explicit "new" [] none [] := by
+theorem finishSend_new {m : Machine} {k : ObjId} {site : SendSite} {args : List Value}
+    (hc : PlainAllocator m.heap k) :
+    Interp.finishSend m (.ref k) site "new" args .none =
+      Interp.invoke.invokeDispatch m (.ref k) site "new" args none [] := by
   obtain ⟨cp, hp, _⟩ := hc.payload
   simp only [Interp.finishSend]
   rw [Interp.invoke.eq_def]
@@ -110,10 +111,11 @@ theorem _root_.Ratchet.Denote.PlainAllocator.chain_free {h : Heap} {k a : ObjId}
     simp at this
     exact absurd ha this
 
-theorem callConstruct_plain {m : Machine} {k : ObjId} (hc : PlainAllocator m.heap k) :
-    Interp.callConstruct m (.ref k) [] none [] =
+theorem callConstruct_plain {m : Machine} {k : ObjId} {args : List Value}
+    (hc : PlainAllocator m.heap k) :
+    Interp.callConstruct m (.ref k) args none [] =
       .next { defaultAllocated m k with
-        ctl := .send (.ref m.heap.objs.size) .reflective "initialize" [] none [],
+        ctl := .send (.ref m.heap.objs.size) .reflective "initialize" args none [],
         kont := .newK (.ref m.heap.objs.size) :: m.kont } := by
   obtain ⟨cp, hp, hatt, hinit, _, hunav⟩ := hc.metadata
   obtain ⟨cp', hp', hmod⟩ := hc.payload
@@ -269,6 +271,20 @@ theorem SemSafeCtxA.newDefault {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I 
   have he : recv = .ref k := by cases recv <;> simp_all [denM, isClassRefNamed]
   rw [he]
   exact declared_default_new hm hc hn halloc hnew hprefix hroot hk hj
+
+theorem invokeDispatch_user {m : Machine} {recv : Value} {site : SendSite} {name : String}
+    {args : List Value} {owner : ObjId} {md : MethodDef}
+    (hl : lookup m.heap recv name = some (owner, md))
+    (hb : md.builtin = none) (hu : md.undefined = false)
+    (hvis : Interp.visError? m recv site md name = none) :
+    (∃ msg, Interp.invoke.invokeDispatch m recv site name args none [] = .unsupported msg) ∨
+      Interp.invoke.invokeDispatch m recv site name args none [] =
+        Interp.enterUserMethod m recv name md args none [] := by
+  simp only [Interp.invoke.invokeDispatch, hl, hu, Bool.false_eq_true, ↓reduceIte]
+  split
+  · exact Or.inl ⟨_, rfl⟩
+  · right
+    simp only [hvis, hb]
 
 #print axioms callConstruct_plain
 #print axioms default_new_run

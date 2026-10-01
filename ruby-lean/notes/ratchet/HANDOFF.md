@@ -95,7 +95,12 @@ ClassStateActual.state now proves the full actual class-body StateOk (mandatory)
 ClassHeaderStateActual.header publishes classHeaderCtx over it (mandatory).
 ClassRunActual.class_actual_runSpec composes the whole actual class run (mandatory).
 classDecl is enabled (classReachB guard discharges reachability).
-memberDef, newDefault, callMethodSig, ivarRead enabled. Next: initDef+InitJudge*, newInst (061-076); vcallMethodSig; subclassDecl (066).
+memberDef, newDefault, callMethodSig, ivarRead enabled. WIP for newInst: InitRules (non-super) and
+initializerDecl build; DefaultNew has general-args finishSend_new/callConstruct_plain/
+invokeDispatch_user. Next: restate ConstructorRun.constructor_runSpec_at as StepSpec of
+finishSend (Class#new -> callConstruct -> reflective initialize -> enterUserMethod),
+then fix ConstructorResolve/ConstructorExpr, move initDef/newInst out of ClassRules,
+enable initDef+InitJudge*+newInst (061-063,068,071,072,075).
 
 Old instance_constants_old assumed an explicit Object fallback; current ordinary instance resolution follows ancestors instead.
 Check the new-binding case with Object reachability/module fallback rather than

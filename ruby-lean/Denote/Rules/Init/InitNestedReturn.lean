@@ -12,7 +12,7 @@ theorem InitFrame.pop {anchor : Heap} {m n : Machine} {f : RubyCore.Frame}
     (hl : m.stack.headD 0 < m.frames.size) (hc : f.captured = none) :
     InitFrame anchor m (popMethodFrame n) :=
   ⟨h.growth, by simp [popMethodFrame, h.stack, pushMethodFrame],
-    method_frame_pop hl hc h.stack h.frames, h.stable.reheap rfl rfl, h.phase⟩
+    method_frame_pop hl hc h.stack h.frames, h.stable.reheap rfl rfl, h.phase, h.rootClean⟩
 
 theorem InitFrame.pop_currentFrame {anchor : Heap} {m n : Machine} {f : RubyCore.Frame}
     (h : InitFrame anchor (pushMethodFrame m f) n) (hl : FrameInRange m)
@@ -32,11 +32,17 @@ theorem InitFrame.body_self {anchor : Heap} {m n : Machine} {f : RubyCore.Frame}
 theorem InitFrame.pop_env {anchor : Heap} {m n : Machine} {f : RubyCore.Frame} {Γ : Env}
     (h : InitFrame anchor (pushMethodFrame m f) n) (hl : FrameInRange m)
     (hu : RootUncaptured m) (hc : f.captured = none) (he : EnvOk Γ m)
-    (ht : ∀ p ∈ Γ, IvarStable (stripAlias p.2) = true) : EnvOk Γ (popMethodFrame n) := by
+    (ht : ∀ p ∈ Γ, IvarStable (stripAlias p.2) = true)
+    (hal : m.currentFrame.localAlias = none) : EnvOk Γ (popMethodFrame n) := by
   have hp := h.pop hl.2 hc
   have hpop := h.pop_currentFrame hl hc
+  have ha₁ : (m.frames.getD (m.stack.headD 0) default).localAlias = none := by
+    rw [rootFrame_eq_currentFrame hl.1]; exact hal
+  have ha₂ : ((popMethodFrame n).frames.getD ((popMethodFrame n).stack.headD 0) default).localAlias =
+      none := by
+    rw [rootFrame_eq_currentFrame (by rw [hp.stack]; exact hl.1), hpop]; exact hal
   have hv (x : String) : (popMethodFrame n).getLocal x = m.getLocal x := by
-    rw [getLocal_uncaptured (hp.frames.rootCaptured.trans hu), getLocal_uncaptured hu,
+    rw [getLocal_uncaptured (hp.frames.rootCaptured.trans hu) (ha := ha₂), getLocal_uncaptured hu (ha := ha₁),
       rootFrame_eq_currentFrame (by rw [hp.stack]; exact hl.1), rootFrame_eq_currentFrame hl.1, hpop]
   refine ⟨?_, fun x hx => by rw [hv]; exact he.2 x hx⟩
   intro x τ hx
