@@ -1,6 +1,6 @@
 # Active ascent (2026-10-01)
 
-33/99 clinks, 62/261 production validateD accepts (prefix 17), 46/46 negatives
+34/99 clinks, 62/261 production validateD accepts (prefix 17), 46/46 negatives
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
@@ -95,7 +95,7 @@ ClassStateActual.state now proves the full actual class-body StateOk (mandatory)
 ClassHeaderStateActual.header publishes classHeaderCtx over it (mandatory).
 ClassRunActual.class_actual_runSpec composes the whole actual class run (mandatory).
 classDecl is enabled (classReachB guard discharges reachability).
-constClass is enabled. Next: memberDef/ivarRead/callMethodSig, initDef+InitJudge, newInst.
+memberDef is enabled. Next: callMethodSig + newDefault (069), ivarRead, initDef+InitJudge, newInst.
 
 Old instance_constants_old assumed an explicit Object fallback; current ordinary instance resolution follows ancestors instead.
 Check the new-binding case with Object reachability/module fallback rather than

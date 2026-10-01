@@ -17,6 +17,10 @@ structure ClassScopeAt (cn : String) (k : ObjId) (m : Machine) : Prop where
   hook : definitionHookQuietB m.heap k = true
   origin : m.currentFrame.libraryOrigin = false
   defFrame : m.currentFrame.definitionFrame = none
+  detached : (m.heap.classPayload? k).bind (·.attached) = none
+  unfrozen : (m.heap.get k).frozen = false
+  mainLive : Boot.mainId < m.heap.objs.size
+  notMain : k ≠ classOf m.heap (.ref Boot.mainId)
 
 def ClassScopeReady (cn : String) (m : Machine) : Prop := ∃ k, ClassScopeAt cn k m
 def ClassRuntimeOk (κ : Ctx) (m : Machine) : Prop :=
@@ -40,7 +44,9 @@ theorem ClassScopeAt.reframe {cn : String} {k : ObjId} {m n : Machine}
   ⟨by simpa only [hh] using h.named, by simpa only [hh] using h.live,
     ho.trans h.owner, hc.trans h.cref, hcap.trans h.captured,
     hp.trans h.phase, hv.trans h.visibility, by simpa only [hh] using h.hook,
-    hl.trans h.origin, hd.trans h.defFrame⟩
+    hl.trans h.origin, hd.trans h.defFrame, by simpa only [hh] using h.detached,
+    by simpa only [hh] using h.unfrozen, by simpa only [hh] using h.mainLive,
+    by simpa only [hh] using h.notMain⟩
 
 theorem ClassScopeReady.setLocal {cn : String} {m : Machine}
     (h : ClassScopeReady cn m) (x : String) (v : Value) :
@@ -62,7 +68,10 @@ theorem ClassScopeReady.ext {cn : String} {m n : Machine}
       Interp.methodOn m.heap (classOf m.heap (.ref k)) "method_added"
     simp only [classOf, hobj, he.methodOn_eq hch]
   exact ⟨k, by
-    refine ⟨?_, Nat.lt_of_lt_of_le h.live he.size, ?_, ?_, ?_, hp.trans h.phase, ?_, ?_, ?_, ?_⟩
+    refine ⟨?_, Nat.lt_of_lt_of_le h.live he.size, ?_, ?_, ?_, hp.trans h.phase, ?_, ?_, ?_, ?_,
+      by rw [he.payload]; exact h.detached, by rw [hobj]; exact h.unfrozen,
+      Nat.lt_of_lt_of_le h.mainLive he.size,
+      by simp only [classOf, he.get Boot.mainId h.mainLive]; exact h.notMain⟩
     · simpa only [he.classNamed?_eq] using h.named
     · simpa only [he.currentFrame_eq] using h.owner
     · simpa only [he.currentFrame_eq] using h.cref
@@ -71,6 +80,11 @@ theorem ClassScopeReady.ext {cn : String} {m n : Machine}
     · simpa only [definitionHookQuietB, hl] using h.hook
     · simpa only [he.currentFrame_eq] using h.origin
     · simpa only [he.currentFrame_eq] using h.defFrame⟩
+
+theorem ClassScopeAt.writable {cn : String} {k : ObjId} {m : Machine} (h : ClassScopeAt cn k m) :
+    frozenMethodReceiver? m.heap k = none := by
+  simp only [frozenMethodReceiver?, h.detached, Option.getD_none, h.unfrozen,
+    Bool.false_or, Bool.false_eq_true, ↓reduceIte]
 
 #print axioms ClassScopeReady.ext
 end Ratchet.Denote

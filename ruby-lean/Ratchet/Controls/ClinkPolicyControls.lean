@@ -277,6 +277,16 @@ private def literalClassHint : Deriv := .classDecl "Box" none (.intLit 7)
   (.prim (.hashLit [.strLit "a"] [.intLit 1] (.cls "String") .int) "key?" []
     (.hashOf (.cls "String") .int) .bool)
 
+-- Active memberDef: a class-body def checks its body; auto-private and hook names are rejected.
+private def memberClass (n : String) : Expr := .class' "Box" none (.def' n [] (.int 1))
+private def memberHint (n : String) : Deriv := .classDecl "Box" none (.defDecl n [] .int (.intLit 1))
+#guard validateD (memberClass "get") (memberHint "get")
+#guard !validateDWith (fun r => clinkEnabled r && r != "memberDef") (memberClass "get") (memberHint "get")
+#guard !validateD (memberClass "get") (.classDecl "Box" none (.defDecl "get" [] .bool (.intLit 1)))
+#guard ["initialize_copy", "initialize_dup", "initialize_clone", "respond_to_missing?",
+  "const_added", "inherited", "method_added", "method_missing", "new"].all fun n =>
+  !validateD (memberClass n) (memberHint n)
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

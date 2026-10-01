@@ -13471,3 +13471,15 @@ and defFrame, OrdinaryMethodCode gains definitionFrame = none, and FrameScope ca
 definitionFrame so reframe/pop transport it like libraryOrigin. All hold at boot,
 for freshModFrame and for ordinary requiredFrame (code pins md.definitionFrame).
 Prepares memberDef; no accepts change.
+
+### 2026-10-01 — Climb memberDef (34/99)
+
+Class-body defs now step to the real method_added callback (as top-level defs);
+MemberDefine composes step_def_install with definition_hook_runSpec. ClassScopeAt
+gains detached/unfrozen (frozen-receiver check), mainLive/notMain (MainPrefixWriteOk).
+memberRuleB rejects autoPrivateNames (Sorbet gap, see unsoundness.md) and the
+class-hook selectors const_added/inherited (ClassHookWriteOk without a prefix
+invariant). Legacy fresh-machine install/publish step lemmas are removed;
+initializerDecl moves to Init/InitDefine (still blocked on legacy init proofs).
+AuditBridge's disabled-rule branch simplifies only the rulesEnabled hypothesis
+(simp_all timed out on the longer memberRuleB).

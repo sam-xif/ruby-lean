@@ -148,7 +148,11 @@ theorem ClassScopeReady.methodWrite {cn : String} {m : Machine}
     by simpa only [Proof.objs_size_defineMethod] using h.live,
     h.owner, h.cref, h.captured, h.phase, h.visibility,
     by simpa only [definitionHookQuietB, Proof.lookup_defineMethod _ _ _ _ _ _ hq
-        (Proof.classOf_defineMethod ..)] using h.hook, h.origin, h.defFrame⟩⟩
+        (Proof.classOf_defineMethod ..)] using h.hook, h.origin, h.defFrame,
+    by rw [attached_defineMethod]; exact h.detached,
+    (congrArg Object.frozen (get_defineMethod_data m.heap cls k name md)).trans h.unfrozen,
+    by simpa only [Proof.objs_size_defineMethod] using h.mainLive,
+    by simpa only [Proof.classOf_defineMethod] using h.notMain⟩⟩
 
 /-- Common state transport. The positive method/class tables are the installation
 rule's obligations; all data, scope, and negative dispatch facts are derived here.

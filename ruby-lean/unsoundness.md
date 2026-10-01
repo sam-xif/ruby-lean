@@ -1,3 +1,17 @@
+# Sorbet types explicit calls to auto-private hooks (2026-10-01)
+
+**Sorbet 0.6.13405 soundness gap.** At `# typed: true`, with a public sig,
+`class Box; def initialize_copy(o) = 1; end; Box.new.initialize_copy(Box.new) + 1`
+reports "No errors!", but CRuby makes `initialize_copy`, `initialize_dup`,
+`initialize_clone` and `respond_to_missing?` private on definition and raises
+NoMethodError (private method called). Same for each of the four names.
+The model privatizes the three initialize_* names (normalizeDefinitionVisibility)
+but not respond_to_missing? (a fidelity gap, unchanged here).
+
+memberRuleB now rejects these four names, so InstanceMethodCode's public
+visibility is provable for every admitted class-body def. No prior accept relied
+on them; memberDef was not yet enabled.
+
 # Hash iterator transparency (2026-09-30)
 
 The legacy static RetTransparent/NxtTransparent predicates admitted every

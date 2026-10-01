@@ -84,7 +84,7 @@ elab "certify_audited" rec:ident h:ident F:ident hF:ident : tactic => do
       if clinkEnabled (ruleName c) then
         text := text ++ s!"· certify_audit_case {c} {F.getId} {hF.getId}\n"
       else
-        text := text ++ "· simp_all [Ratchet.Audit.rulesEnabled, List.all_cons, Ratchet.clinkEnabled, Ratchet.clinkProfile]\n"
+        text := text ++ "· rename_i hen; simp [Ratchet.Audit.rulesEnabled, List.all_cons, Ratchet.clinkEnabled, Ratchet.clinkProfile] at hen\n"
   let stx ← ofExcept <| Parser.runParserCategory (← getEnv) `tactic ("(\n  " ++ text.replace "\n" "\n  " ++ "\n)")
   evalTactic stx
 
