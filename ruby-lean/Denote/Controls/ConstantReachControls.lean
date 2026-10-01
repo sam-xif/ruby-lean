@@ -53,7 +53,8 @@ private theorem old_constants (n : String) : instanceConstResolve h 45 n = const
   cases constLookup h n <;> rfl
 
 private theorem old_site : InstanceSite (default : Ctx) "Detached" 45 h := by
-  refine ⟨by decide, by decide, by decide, old_constants, ?_, ?_, ?_, by decide, rfl, ?_, by decide⟩
+  refine ⟨by decide, by decide, by decide, old_constants, ?_, ?_, ?_, by decide, rfl, ?_, by decide,
+    by rw [cp45]; rfl, by decide, by decide, by decide⟩
   · intro n hn owner md hm
     simp only [shadowableNames, List.mem_cons, List.not_mem_nil, or_false] at hn
     rcases hn with rfl | rfl | rfl <;>

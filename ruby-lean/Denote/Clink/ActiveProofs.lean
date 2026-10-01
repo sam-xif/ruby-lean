@@ -13,6 +13,7 @@ import Denote.Rules.Class.ClassDeclActual
 import Denote.Rules.Class.ClassConstant
 import Denote.Rules.Class.MemberDefActual
 import Denote.Rules.Constructor.DefaultNew
+import Denote.Rules.Class.CallMethodSigActual
 
 /-! Proof providers for the active rebuild profile: literals, locals, sequences
 and primitive sends, branches, guarded bare names, Array/Hash literals, definitions and ordinary/recursive calls.

@@ -29,7 +29,11 @@ theorem InstanceSite.methodWrite {κ : Ctx} {cn name : String} {k cls : ObjId}
     {h : Heap} {md : MethodDef} (site : InstanceSite κ cn k h)
     (hn : nameFreeN κ name = false) (hq : "method_added" ≠ name) :
     InstanceSite κ cn k (defineMethod h cls name md) := by
-  refine ⟨?_, ?_, ?_, ?_, ?_, site.metaclass.methodWrite, ?_, ?_, ?_, ?_, site.afterBuiltins⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, site.metaclass.methodWrite, ?_, ?_, ?_, ?_, site.afterBuiltins,
+    by rw [attached_defineMethod]; exact site.detached,
+    (congrArg Object.frozen (get_defineMethod_data h cls k name md)).trans site.unfrozen,
+    by simpa only [Proof.objs_size_defineMethod] using site.mainLive,
+    by simpa only [Proof.classOf_defineMethod] using site.notMain⟩
   · simpa only [classNamed?_defineMethod] using site.named
   · simpa only [classFrontB_defineMethod] using site.front
   · simpa only [definitionHookQuietB,
@@ -54,7 +58,11 @@ theorem InstanceSite.methodWrite {κ : Ctx} {cn name : String} {k cls : ObjId}
 
 theorem InstanceSite.ivarOnly {κ : Ctx} {cn : String} {k : ObjId} {h h' : Heap}
     (site : InstanceSite κ cn k h) (hi : Proof.IvarOnly h h') : InstanceSite κ cn k h' := by
-  refine ⟨?_, ?_, ?_, ?_, ?_, site.metaclass.ivarOnly hi, ?_, ?_, ?_, ?_, site.afterBuiltins⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, site.metaclass.ivarOnly hi, ?_, ?_, ?_, ?_, site.afterBuiltins,
+    by simpa only [hi.classPayload] using site.detached,
+    by simpa only [hi.frozen] using site.unfrozen,
+    by simpa only [hi.size] using site.mainLive,
+    by simpa only [hi.classOf_eq] using site.notMain⟩
   · simpa only [classNamed?, constLookup, hi.classPayload] using site.named
   · simpa only [classFrontB, hi.classPayload] using site.front
   · simpa only [definitionHookQuietB, hi.lookup_eq] using site.hook

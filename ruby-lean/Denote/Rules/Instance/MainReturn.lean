@@ -129,15 +129,6 @@ theorem restore_main_state_atStack_frame {κ κb : Ctx} {Γ Γb Γout : Env} {I 
     · subst k
       exact site.names name hb owner md (by rwa [ready.self] at hl)
     · exact hn.nameFree name hb k (List.mem_cons_of_mem _ he) owner md hl
-/-- The current-frame alias fact in the stack-head `getD` form used by return lemmas. -/
-theorem _root_.Ratchet.Denote.StateOk.localAlias_getD {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} (hm : StateOk κ Γ I m) :
-    (m.frames.getD (m.stack.headD 0) default).localAlias = none := by
-  have hl := hm.localAlias
-  obtain ⟨hne, _⟩ := hm.frameInRange
-  cases hs : m.stack with
-  | nil => exact absurd hs hne
-  | cons fid tl => simpa [Machine.currentFrame, hs, Array.getD_eq_getD_getElem?] using hl
-
 /-- Existing returns recover the frame predicate from saved metadata. A method-body
 expression can instead provide the current caller's predicate independently of its
 older heap/framing anchor, whose environment may predate captured writes. -/

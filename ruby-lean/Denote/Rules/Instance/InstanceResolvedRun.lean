@@ -35,11 +35,11 @@ theorem resolved_instance_run {κ : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m : Mach
     code hi hv hlen hargs hps hk
   have hrun := methodFrame_runSpec hm.frameInRange.2 (f := f) rfl hτ (body _ hentry)
     (fun n v result => call_world_pop_state hm ht ha hw rfl hk hΓ
-      result.1 (result.2.2 v rfl))
+      result.1 (result.2.2 v rfl)) hm.rootClean
   have henter : Interp.enterUserMethod m recv fr.methName md args none =
       .next (pushK [.frameK m.frames.size] (evalFrom (pushMethodFrame m f) e)) := by
     rw [enterUserMethod_required m recv fr.methName md (ps.map (·.1)) args
-      hparams code.captured code.declared (by simpa using hlen)]
+      hparams code.captured code.declared (by simpa using hlen) code.fromBlock code.forTargets]
     simp only [Interp.withKont, pushK, evalFrom, f, pushMethodFrame, hkont, hbody, List.nil_append]
   have hnom : isExactInst m.heap recv fr.recvClass = true := by rw [denM] at hv; exact hv.1
   obtain ⟨o, hrecv, _, _, _⟩ := exactInst_receiver hnom recvSite.named

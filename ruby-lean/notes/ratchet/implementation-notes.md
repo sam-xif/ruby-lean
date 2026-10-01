@@ -13493,3 +13493,11 @@ strengthened from "no user Object#initialize" to initDispatchB (Object's initial
 resolves to non-undefined BasicObject#initialize; boot #guard passes); userInit_none
 is derived. PlainAllocator gains plainChain (k and its chain avoid every non-plain
 callConstruct arm). Legacy newImpl/finishSend_no_initializer lemmas are retired.
+
+### 2026-10-01 — Climb callMethodSig (36/99, 63/261)
+
+InstanceSite gains detached/unfrozen/mainLive/notMain so ClassScopeAt holds inside
+instance bodies (instance_required_scope). Instance/singleton entry and caller
+return take current StateOk fields, definee-based defmod, fromBlock/forTargets,
+root-clean frame runs. StateOk.localAlias_getD moves to Reframe. callMethodSig
+moves out of legacy ClassRules into CallMethodSigActual. Climbs 069.

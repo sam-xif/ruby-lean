@@ -40,7 +40,11 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
     rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hd hk, method_old hc.chains hs hd hkl]
   refine ⟨named_old htop hc.chains.boot.2.2.2.2 hn site.named, ?_, ?_,
     instance_constants_old site hc hs htop ho hn hmain hreach, ?_,
-    meta_old site.metaclass hc.chains hs hd hk, ?_, ?_, ?_, ?_, site.afterBuiltins⟩
+    meta_old site.metaclass hc.chains hs hd hk, ?_, ?_, ?_, ?_, site.afterBuiltins,
+    by rw [metadata_bind_old hd hk (·.attached) (fun _ => rfl)]; exact site.detached,
+    (fields_old hd hk).2.2.2.trans site.unfrozen,
+    by rw [size]; exact Nat.lt_of_lt_of_le site.mainLive (Nat.le_add_right _ _),
+    by rw [classOf_old hd site.mainLive]; exact site.notMain⟩
   · simpa only [classFront_old hd hk] using site.front
   · simpa only [definitionHookQuietB, hl] using site.hook
   · intro n hn owner md hm
@@ -76,12 +80,15 @@ theorem instanceSite {κ : Ctx} (hc : ClassReady m.heap) (hs : Saturated m.heap)
     (hmain : ∀ n, constLookupFrom m.heap Boot.objectId n = constLookup m.heap n)
     (hinst : NamesAt (nameFreeN κ) m.heap Boot.objectId)
     (hcls : NamesAt (nameFreeN κ) m.heap e)
-    (hmeta : ConstFallback m.heap e) (hboot : Boot.yielderId < m.heap.objs.size) :
+    (hmeta : ConstFallback m.heap e) (hboot : Boot.yielderId < m.heap.objs.size)
+    (hml : Boot.mainId < m.heap.objs.size) :
     InstanceSite κ name m.heap.objs.size h₁ := by
   have hd : m.lexicalNamespace < m.heap.objs.size := htop ▸ hc.chains.boot.2.2.2.2
   have hel := hc.chains.eigen _ hc.chains.boot.2.2.2.2 _ he
   refine ⟨named_fresh htop ho, ?_, hook_quiet hc.chains hs hd he hh,
-    instance_constants_fresh hc hs htop ho hmain, ?_, meta_fresh hc hs hd he, ?_, ?_, ?_, ?_, hboot⟩
+    instance_constants_fresh hc hs htop ho hmain, ?_, meta_fresh hc hs hd he, ?_, ?_, ?_, ?_, hboot,
+    ?_, ?_, by rw [size]; exact Nat.lt_of_lt_of_le hml (Nat.le_add_right _ _),
+    by rw [classOf_old hd hml]; exact (Nat.ne_of_lt (ClsGrow.classOf_lt hc.chains hml)).symm⟩
   · simp only [classFrontB, Heap.classPayload?, get_class hd, namedObject, freshClassPayload]; rfl
   · intro n hn owner md hm
     rw [method_class hc.chains hs hd] at hm
@@ -93,6 +100,10 @@ theorem instanceSite {κ : Ctx} (hc : ClassReady m.heap) (hs : Saturated m.heap)
   · simp only [classOf_class hd, get_eigen, attachedClassEigen]
   · rw [classOf_class hd]
     exact fallback_fresh_meta hc.chains hs htop ho hel hmeta
+  · change ((heap m name e).classPayload? m.heap.objs.size).bind (·.attached) = none
+    simp only [Heap.classPayload?, get_class hd, namedObject, freshClassPayload]; rfl
+  · change ((heap m name e).get m.heap.objs.size).frozen = false
+    rw [get_class hd]; rfl
 
 #print axioms moduleBase
 #print axioms instanceSite_old

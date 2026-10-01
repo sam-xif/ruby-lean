@@ -74,7 +74,7 @@ theorem singleton_call_pop_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m n : Machi
   have hu := call_world_uncaptured hm hw
   have hp := method_pop_framed hm.frameInRange.2 hc h
   have hpop := method_pop_currentFrame hm.frameInRange hc h
-  have he := method_pop_envOk hm.frameInRange.2 hu hc h hm.env hΓ
+  have he := method_pop_envOk hm.frameInRange.2 hu hc h hm.env hΓ hm.localAlias_getD
   obtain ⟨_, _, scope⟩ := hn.singletonRuntime cn rfl
   cases hw with
   | main hr hw hcl =>

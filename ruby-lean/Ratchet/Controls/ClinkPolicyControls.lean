@@ -297,6 +297,17 @@ private def newBox : Expr := .send (some (.const "Box")) "new" [] none
   (.seq [memberHint "get", .newInst "Box" [.intLit 1] (.inst "Box" .ivar0)])
 #guard !validateD newBox (.newInst "Box" [] (.inst "Box" .ivar0))
 
+-- Active callMethodSig: Box.new.get (rung 069's shape); wrong result/unknown method rejected.
+private def callGet (n : String) : Expr := .send (some newBox) n [] none
+#guard validateD (.seq [memberClass "get", callGet "get"])
+  (.seq [memberHint "get", .callMethodSig (.newInst "Box" [] (.inst "Box" .ivar0)) "get" [] .int])
+#guard !validateDWith (fun r => clinkEnabled r && r != "callMethodSig") (.seq [memberClass "get", callGet "get"])
+  (.seq [memberHint "get", .callMethodSig (.newInst "Box" [] (.inst "Box" .ivar0)) "get" [] .int])
+#guard !validateD (.seq [memberClass "get", callGet "get"])
+  (.seq [memberHint "get", .callMethodSig (.newInst "Box" [] (.inst "Box" .ivar0)) "get" [] .bool])
+#guard !validateD (.seq [memberClass "get", callGet "other"])
+  (.seq [memberHint "get", .callMethodSig (.newInst "Box" [] (.inst "Box" .ivar0)) "other" [] .int])
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

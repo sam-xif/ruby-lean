@@ -15,7 +15,7 @@ theorem singleton_required_scope {m : Machine} {cn name : String} {k e : ObjId}
     SingletonScopeAt cn k e (pushMethodFrame m (requiredFrame (.ref k) name md names args)) := by
   refine ⟨hk, hl, he, ?_, ?_, ?_, ?_, hp⟩
   · rw [currentFrame_pushMethodFrame]; rfl
-  · rw [currentFrame_pushMethodFrame]; exact code.owner
+  · rw [currentFrame_pushMethodFrame]; exact code.definee
   · rw [currentFrame_pushMethodFrame]; exact code.cref
   · rw [currentFrame_pushMethodFrame]; rfl
 
@@ -98,7 +98,12 @@ theorem singleton_enter_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     declCls := hm.declCls
     baseChains := hm.baseChains
     nilQuery := hm.nilQuery
-    selfLive := by intro j hj; rw [scope.self] at hj; cases hj; exact site.live }
+    selfLive := by intro j hj; rw [scope.self] at hj; cases hj; exact site.live
+    primitiveInit := hm.primitiveInit
+    names := hm.names
+    localAlias := by rw [currentFrame_pushMethodFrame]; rfl
+    capturedLive := by rw [currentFrame_pushMethodFrame]; exact .none
+    rootClean := hm.rootClean }
   · intro x τ hx
     obtain ⟨v, hv, hd⟩ := hm.consts x τ (by rwa [hk] at hx)
     exact ⟨v, (hscope x).trans ((hm.constScope x).symm.trans hv), hden τ (ht.consts x τ (by rwa [hk] at hx)) v hd⟩
@@ -122,7 +127,7 @@ theorem singleton_enterUserMethod_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Mach
       n.ctl = .eval md.body ∧ StateOk (singletonBodyCtx κ cn name) ps .ivar0 n := by
   have hs := singleton_enter_state hm ht ha site he code hp hlen hargs hps hk
   refine ⟨_, enterUserMethod_required m (.ref k) name md _ args hparams code.captured code.declared
-    (by simpa using hlen), rfl, StateOk_reCtl hs _ _⟩
+    (by simpa using hlen) code.fromBlock code.forTargets, rfl, StateOk_reCtl hs _ _⟩
 
 #print axioms singleton_required_scope
 #print axioms singleton_pop_scope

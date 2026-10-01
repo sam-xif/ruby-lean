@@ -30,7 +30,13 @@ theorem restore_instance_state {κ κb : Ctx} {Γ Γb : Env} {I Ib Is : Ty} {m n
     captured := (congrArg RubyCore.Frame.captured hpop).trans old.captured
     phase := hphase
     visibility := by simpa only [defaultDefVis, hpop] using old.visibility
-    hook := site.hook }
+    hook := site.hook
+    origin := (congrArg RubyCore.Frame.libraryOrigin hpop).trans old.origin
+    defFrame := (congrArg RubyCore.Frame.definitionFrame hpop).trans old.defFrame
+    detached := site.detached
+    unfrozen := site.unfrozen
+    mainLive := site.mainLive
+    notMain := site.notMain }
   have hscope : ConstScopeOk (popMethodFrame n) :=
     InstanceSite.constScope (m := popMethodFrame n) site ready.cref ready.owner
   have hden (τ : Ty) (hτ : FirstOrder τ = true) (v : Value) :
@@ -102,7 +108,12 @@ theorem restore_instance_state {κ κb : Ctx} {Γ Γb : Env} {I Ib Is : Ty} {m n
     declCls := hn.declCls
     baseChains := hn.baseChains
     nilQuery := hn.nilQuery
-    selfLive := fun o ho => Nat.lt_of_lt_of_le (hm.selfLive o (by rwa [hpop] at ho)) hp.fields.size }
+    selfLive := fun o ho => Nat.lt_of_lt_of_le (hm.selfLive o (by rwa [hpop] at ho)) hp.fields.size
+    primitiveInit := hn.primitiveInit
+    names := hn.names
+    localAlias := by rw [hpop]; exact hm.localAlias
+    capturedLive := by rw [hpop, old.captured]; exact .none
+    rootClean := hn.rootClean }
   · exact hp.frameOk hm.frame hpop
   · change BlockTyOk κ.blockTy (popMethodFrame n)
     cases hb : κ.blockTy with
@@ -140,7 +151,7 @@ theorem instance_pop_instance_state {κ : Ctx} {Γ Γb : Env} {I Ib Is : Ty} {m 
   obtain ⟨_, scope⟩ := hn.classRuntime fr.defClass rfl
   exact restore_instance_state (κb := instanceBodyCtx κ fr Ib) hm ht ha hr hcl hself ho hv hk
     (method_pop_framed hm.frameInRange.2 hc h) (method_pop_currentFrame hm.frameInRange hc h)
-    (method_pop_envOk hm.frameInRange.2 hu hc h hm.env hΓ) scope.phase hn
+    (method_pop_envOk hm.frameInRange.2 hu hc h hm.env hΓ hm.localAlias_getD) scope.phase hn
 
 #print axioms restore_instance_state
 #print axioms instance_pop_instance_state

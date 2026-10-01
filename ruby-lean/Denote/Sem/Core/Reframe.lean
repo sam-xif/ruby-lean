@@ -207,4 +207,13 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
 #print axioms StateOk_reframe_scopes
 #print axioms StateOk_reframe_block
 #print axioms StateOk_reframe
+/-- The current-frame alias fact in the stack-head `getD` form used by return lemmas. -/
+theorem StateOk.localAlias_getD {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} (hm : StateOk κ Γ I m) :
+    (m.frames.getD (m.stack.headD 0) default).localAlias = none := by
+  have hl := hm.localAlias
+  obtain ⟨hne, _⟩ := hm.frameInRange
+  cases hs : m.stack with
+  | nil => exact absurd hs hne
+  | cons fid tl => simpa [Machine.currentFrame, hs, Array.getD_eq_getD_getElem?] using hl
+
 end Ratchet.Denote

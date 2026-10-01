@@ -73,7 +73,7 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
         subst cn
         exact ⟨m.heap.objs.size, instanceSite hm.core.classReady hm.sat htop hmain.classLive he
           hmain.hook hconst hinst hnames (by simpa only [classOf, he] using hm.core.metaConstants)
-          hm.core.classReady.bootEnd⟩
+          hm.core.classReady.bootEnd hmain.live⟩
     sat := saturated hc hm.sat hd hel
     primitiveDispatch := (primitiveDispatch hm.names hc hm.sat hd _).trans hm.primitiveDispatch
     primitiveErrors := (primitiveErrors hc hm.sat hd).trans hm.primitiveErrors
