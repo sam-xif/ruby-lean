@@ -13416,3 +13416,11 @@ table defines it (nativeSingletonNew; coverage kernel-checked by decide). All ar
 existing builtins or qualified, so no accepts change. ClassHeaderActual repairs
 new_dispatch, the two-way named chain and DeclClassOk; ClassHeaderStateActual.header
 publishes classHeaderCtx over the actual body entry. Mandatory; standard axioms.
+
+### 2026-10-01 — Compose the actual fresh-class run
+
+MainReturn/ClassActivation/ClassReturn take the current localAlias/rootClean/origin
+fields (StateOk.localAlias_getD bridges the stack-head getD form). class_actual_runSpec
+composes stepFn_class_fresh, class_callbacks_runSpec, the actual header state and
+ClassActivation.runSpec; it keeps the explicit old-site reachability premise.
+Mandatory gate prerequisite; standard axioms only.

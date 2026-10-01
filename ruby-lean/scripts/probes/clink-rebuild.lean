@@ -21,6 +21,7 @@ import Denote.Sem.Class.ClassChainsActual
 import Denote.Sem.Class.ClassSitesActual
 import Denote.Sem.Class.ClassStateActual
 import Denote.Sem.Class.ClassHeaderStateActual
+import Denote.Rules.Class.ClassRunActual
 import Denote.Sem.Class.ClassPayloadActual
 import Denote.Examples.RecursiveDerivations
 
@@ -195,3 +196,4 @@ end Ratchet.Denote.Typed
 #print axioms Ratchet.Denote.FreshClassActual.state
 #print axioms Ratchet.Denote.FreshClassActual.header
 #print axioms Ratchet.Denote.classNativeQuietB_singleton
+#print axioms Ratchet.Denote.Typed.class_actual_runSpec

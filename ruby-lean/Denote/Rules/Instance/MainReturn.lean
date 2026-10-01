@@ -26,19 +26,19 @@ theorem restore_main_state_atStack_frame {κ κb : Ctx} {Γ Γb Γout : Env} {I 
   have howner := congrArg FrameScope.defmod hpop
   have hcref := congrArg FrameScope.cref hpop
   have hcap := congrArg FrameScope.captured hpop
-  simp only [frameScope] at hself hblock howner hcref hcap
+  have halias := congrArg FrameScope.localAlias hpop
+  have horigin := congrArg FrameScope.libraryOrigin hpop
+  simp only [frameScope] at hself hblock howner hcref hcap halias horigin
   have old := hm.runtime hr
   have site : MainSite κb n.heap := hn.mainSite hw
   have ready : MainReady ({ n with stack := s } : Machine) :=
     MainReady.of_view (m := { n with stack := s }) site.ready
     (hself.trans old.self) (howner.trans old.owner) (hcref.trans old.cref)
-    (hcap.trans old.captured) hphase
+    (hcap.trans old.captured) hphase (horigin.trans old.origin)
   have hscope : ConstScopeOk ({ n with stack := s } : Machine) := by
     intro x
-    have he : constResolveAt ({ n with stack := s } : Machine) x = mainConstResolve n.heap x := by
-      simp only [constResolveAt, ready.cref, ready.owner, List.firstM, mainConstResolve]
-      cases constOwn n.heap Boot.objectId x <;> rfl
-    exact he.trans (site.constants x)
+    rw [constResolveAt_top ready.cref]
+    exact site.constants x
   have hden (τ : Ty) (ht : FirstOrder τ = true) (v : Value) :
       denM τ n v → denM τ ({ n with stack := s } : Machine) v :=
     (denM_heap_only (m₁ := n) (m₂ := { n with stack := s }) ht rfl).mp
@@ -99,7 +99,12 @@ theorem restore_main_state_atStack_frame {κ κb : Ctx} {Γ Γb Γout : Env} {I 
     declCls := hn.declCls
     baseChains := hn.baseChains
     nilQuery := hn.nilQuery
-    selfLive := fun o ho => Nat.lt_of_lt_of_le (hm.selfLive o (by rwa [hself] at ho)) hp.fields.size }
+    selfLive := fun o ho => Nat.lt_of_lt_of_le (hm.selfLive o (by rwa [hself] at ho)) hp.fields.size
+    primitiveInit := hn.primitiveInit
+    names := hn.names
+    localAlias := halias.trans hm.localAlias
+    capturedLive := by rw [hcap.trans old.captured]; exact .none
+    rootClean := hn.rootClean }
   · change BlockTyOk κ.blockTy ({ n with stack := s } : Machine)
     cases hb : κ.blockTy with
     | none => simpa only [BlockTyOk, hb, hblock] using hm.blockTy
@@ -123,6 +128,15 @@ theorem restore_main_state_atStack_frame {κ κb : Ctx} {Γ Γb Γout : Env} {I 
     · subst k
       exact site.names name hb owner md (by rwa [ready.self] at hl)
     · exact hn.nameFree name hb k (List.mem_cons_of_mem _ he) owner md hl
+/-- The current-frame alias fact in the stack-head `getD` form used by return lemmas. -/
+theorem _root_.Ratchet.Denote.StateOk.localAlias_getD {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} (hm : StateOk κ Γ I m) :
+    (m.frames.getD (m.stack.headD 0) default).localAlias = none := by
+  have hl := hm.localAlias
+  obtain ⟨hne, _⟩ := hm.frameInRange
+  cases hs : m.stack with
+  | nil => exact absurd hs hne
+  | cons fid tl => simpa [Machine.currentFrame, hs, Array.getD_eq_getD_getElem?] using hl
+
 /-- Existing returns recover the frame predicate from saved metadata. A method-body
 expression can instead provide the current caller's predicate independently of its
 older heap/framing anchor, whose environment may predate captured writes. -/
@@ -173,7 +187,7 @@ theorem instance_pop_main_state {κ : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : Mac
   obtain ⟨_, scope⟩ := hn.classRuntime fr.defClass rfl
   exact restore_main_state (κb := instanceBodyCtx κ fr Ib) hm ht ha hr hw hcl hk
     (method_pop_framed hm.frameInRange.2 hc h) (method_pop_currentFrame hm.frameInRange hc h)
-    (method_pop_envOk hm.frameInRange.2 hu hc h hm.env hΓ) scope.phase hn
+    (method_pop_envOk hm.frameInRange.2 hu hc h hm.env hΓ hm.localAlias_getD) scope.phase hn
 
 #print axioms restore_main_state
 #print axioms restore_main_state_of_metadata

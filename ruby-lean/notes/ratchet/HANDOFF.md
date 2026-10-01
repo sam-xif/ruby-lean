@@ -93,8 +93,9 @@ publication. Fresh readiness uses Object's inherited flags. All are mandatory.
 
 ClassStateActual.state now proves the full actual class-body StateOk (mandatory).
 ClassHeaderStateActual.header publishes classHeaderCtx over it (mandatory).
-Next: rewrite class_header_runSpec over the actual entry (stepFn_class_fresh ->
-class_callbacks_runSpec -> class_body_runSpec), then re-enable class clinks.
+ClassRunActual.class_actual_runSpec composes the whole actual class run (mandatory).
+Next: discharge its reachability premise from a checker guard, point ClassRules at
+it, and re-enable the classDecl clink.
 
 Old instance_constants_old assumed an explicit Object fallback; current ordinary instance resolution follows ancestors instead.
 Check the new-binding case with Object reachability/module fallback rather than

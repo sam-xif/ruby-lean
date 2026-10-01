@@ -28,8 +28,9 @@ theorem class_pop_framed (hm : StateOk κ Γ I m)
     (.of_freshClass hm hn he rfl rfl (.of_eq rfl rfl)) (pushed_framed.trans hb)
 
 theorem class_pop_getLocal (hl : m.stack.headD 0 < m.frames.size) (hu : RootUncaptured m)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none)
     (hb : Framed entry n) (x : String) : (popMethodFrame n).getLocal x = m.getLocal x := by
-  exact ClassActivation.pop_getLocal hl hu (pushed_framed.trans hb) x
+  exact ClassActivation.pop_getLocal hl hu ha (pushed_framed.trans hb) x
 
 theorem class_pop_currentFrame (hl : FrameInRange m) (hb : Framed entry n) :
     (popMethodFrame n).currentFrame = m.currentFrame :=
