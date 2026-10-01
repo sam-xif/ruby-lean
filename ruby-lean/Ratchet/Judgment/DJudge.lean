@@ -95,7 +95,7 @@ namespace Ratchet
 /-! ## §1 The primitive table
 
 The rules for sends this fragment can type, as an inductive (`DPrim`) with a decision
-procedure (`dprim?`) and a soundness lemma between them. Twenty-one rows.
+procedure (`dprim?`) and a soundness lemma between them. Twenty-three rows.
 
 The table grows with proved builtin obligations. `Judge.lean`'s `PrimSig` has ~90 rows and `Denote/`'s
 `Sem.Judge.prim` — the obligation that every one of them is true of CRuby — is one of the 35
@@ -147,6 +147,10 @@ inductive DPrim : Ty → String → List Ty → Ty → Prop
   | symToS : DPrim .sym "to_s" [] (.cls "String")
   /-- `Symbol#==` is identity; it never reverses into the argument. -/
   | symEq {α : Ty} : DPrim .sym "==" [α] .bool
+  /-- `Array#length` reads the payload size; elements are never dispatched on. -/
+  | arrayLength {τ : Ty} : FirstOrder τ = true → DPrim (.arrayOf τ) "length" [] .int
+  /-- `String#start_with?` at a String prefix (regexp/other prefixes are separate rows). -/
+  | strStartWith : DPrim (.cls "String") "start_with?" [.cls "String"] .bool
   /-- Index evaluation must retain the receiver's element denotations. -/
   | arrayIndex {τ : Ty} : FirstOrder τ = true → DPrim (.arrayOf τ) "[]" [.int] (.nilable τ)
   /-- Hash query types need not match stored keys; misses return nil. -/
@@ -174,6 +178,8 @@ def dprim? : Ty → String → List Ty → Option Ty
   | .int, "nil?", [] => some .bool
   | .sym, "to_s", [] => some (.cls "String")
   | .sym, "==", [_] => some .bool
+  | .arrayOf τ, "length", [] => if FirstOrder τ then some .int else none
+  | .cls "String", "start_with?", [.cls "String"] => some .bool
   | .arrayOf τ, "[]", [.int] => if FirstOrder τ then some (.nilable τ) else none
   | .hashOf σ τ, "[]", [_] => if FirstOrder (.hashOf σ τ) then some (.nilable τ) else none
   | _, _, _ => none
@@ -201,6 +207,10 @@ theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
   · rw [Option.some.injEq] at h; subst h; exact .intNil
   · rw [Option.some.injEq] at h; subst h; exact .symToS
   · rw [Option.some.injEq] at h; subst h; exact .symEq
+  · split at h
+    · rw [Option.some.injEq] at h; subst h; exact .arrayLength (by assumption)
+    · cases h
+  · rw [Option.some.injEq] at h; subst h; exact .strStartWith
   · split at h
     · rw [Option.some.injEq] at h; subst h; exact .arrayIndex (by assumption)
     · cases h

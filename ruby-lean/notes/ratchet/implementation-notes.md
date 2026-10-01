@@ -13449,3 +13449,9 @@ Integer/Object/Symbol, unshadowed) with a Builtins.run equation; Symbol#== is
 branch-wise (byte-string/complex guards may be unsupported) and its deferTwin? is
 none under nameFree "==". PrimitiveStep's row enumerations grew to 22. Climbs 168,
 169, 188, 200. Controls cover accepts and wrong arg/result/receiver.
+
+### 2026-10-01 — Primitive rows arrayLength/strStartWith (61/261)
+
+Array#length (first-order elements, as arrayIndex: primitive_framed needs it) uses
+ArrayLength's copy of the exact-Array invoke route; String#start_with? at a String
+prefix proves branch-wise, its final runObjects arm defeq runStrings. Climbs 170, 182.

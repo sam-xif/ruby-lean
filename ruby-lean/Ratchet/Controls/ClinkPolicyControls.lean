@@ -259,6 +259,16 @@ private def literalClassHint : Deriv := .classDecl "Box" none (.intLit 7)
 #guard validateD (.send (some (.sym "a")) "==" [.int 1] none) (.prim (.symLit "a") "==" [.intLit 1] .sym .bool)
 #guard !validateD (.send (some (.sym "a")) "length" [] none) (.prim (.symLit "a") "length" [] .sym .int)
 
+-- Primitive rows Array#length and String#start_with?.
+#guard validateD (.send (some (.array [.int 1])) "length" [] none)
+  (.prim (.arrayLit [.intLit 1] .int) "length" [] (.arrayOf .int) .int)
+#guard !validateD (.send (some (.array [.int 1])) "length" [] none)
+  (.prim (.arrayLit [.intLit 1] .int) "length" [] (.arrayOf .int) .bool)
+#guard validateD (.send (some (.str "ab")) "start_with?" [.str "a"] none)
+  (.prim (.strLit "ab") "start_with?" [.strLit "a"] (.cls "String") .bool)
+#guard !validateD (.send (some (.str "ab")) "start_with?" [.int 1] none)
+  (.prim (.strLit "ab") "start_with?" [.intLit 1] (.cls "String") .bool)
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

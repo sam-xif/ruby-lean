@@ -2,6 +2,7 @@ import Denote.Rules.Primitive.PrimitiveAlloc
 import Denote.Rules.Primitive.PrimitiveEquality
 import Denote.Rules.Primitive.PrimitiveQueries
 import Denote.Rules.Expr.ArrayIndex
+import Denote.Rules.Expr.ArrayLength
 import Denote.Rules.Expr.HashIndex
 
 /-! Each `DPrim` row discharges against the interpreter and preserves conformance on values. -/
@@ -216,6 +217,28 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
       (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho)
       (sym_eq_defer hm x v hfree) (by rfl) hfree]
     exact sym_eq_step hm hk x v
+  | arrayLength _ =>
+    cases ha
+    exact array_length_step hm hk hr hfree
+  | strStartWith =>
+    cases ha
+    rename_i v vs hv hs
+    cases hs
+    obtain ⟨o, s, rfl, hs⟩ := string_payload hm hr (hstring rfl)
+    obtain ⟨p, t, rfl, ht⟩ := string_payload hm hv (hstring rfl)
+    rw [primitive_invoke (bid := "String#start_with?") (k := Boot.stringId) hm
+      (by simp [primitiveMethods]) (string_class hm hr (hstring rfl)) (by rfl)
+      (by intro k hk; cases hk; exact ⟨s, hs⟩)
+      (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
+        nativeReal, rationalPayload?, complexPayload?, Builtins.toAryDefer?,
+        Builtins.strCmpDefer?, Builtins.strCmpTwin?, hs, ht]) (by rfl) hfree]
+    have he : Builtins.runObjects "String#start_with?" (.ref o) [.ref p] m =
+        .ok (.bool (s.startsWith t)) m := by
+      change Builtins.runStrings "String#start_with?" (.ref o) [.ref p] m = _
+      simp [Builtins.runStrings, Builtins.binArg, Builtins.strPayload?, hs, ht]
+    simp only [Builtins.run]
+    repeat' split
+    all_goals first | trivial | (rw [he]; exact stepSpec_value hm hk (by simp [denM, isBoolV])) | skip
   | arrayIndex _ =>
     cases ha
     rename_i v vs hv hs

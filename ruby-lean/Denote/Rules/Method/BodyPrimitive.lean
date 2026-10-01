@@ -14,6 +14,7 @@ private theorem primitive_receiver {σ τ : Ty} {name : String} {tys : List Ty}
   apply h.firstOrder (τ := σ) ?_ hv
   cases hp with
   | arrayIndex hfo => exact hfo
+  | arrayLength hfo => exact hfo
   | hashIndex hfo => exact hfo
   | _ => rfl
 
