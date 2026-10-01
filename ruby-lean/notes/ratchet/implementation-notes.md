@@ -13124,3 +13124,25 @@ Validation: full default gate GREEN, 24/99 clinks and 54/261 accepts (+5),
 46/46 negatives rejected, 254 agree/0 disagree. New semantic proofs build under
 a second, with standard axioms only. Logs: /private/tmp/ascent-call-final-gate.log
 and /private/tmp/ascent-call-metatheory.log.
+
+### 2026-09-30 — Repair the bounded call path and admit recursion
+
+Keep Recursive's existing strict execution-bound induction. BoundedMethod now
+threads RootClean through continuation binding, carries ordinary fromBlock/
+forTargets and activation provenance, and reuses the repaired main-prefix lookup.
+Its concrete entry theorem requires absent native shadows; top_method_stepSpecAt
+retains unsupported otherwise. BoundedCall consumes that contract and supplies
+argument root cleanliness. No change to recursive judgments or discovery.
+
+Enable recursive, its four DJudgeRec and two DJudgeRecAll companions. Build/import
+the existing RecursiveDerivations factorial proof and RecursiveControls in the
+mandatory gate. Those controls check full annotation domains, invalid unvisited
+base branches, arity/return mismatches, divergence without type error and cache
+refresh after another method definition. A new refusal control removes each of
+the seven recursive rules in turn from the real validator trace.
+
+Validation: full default gate GREEN, 31/99 clinks and 55/261 accepts (+1),
+46/46 negatives rejected, 254 agree/0 disagree. Existing recursive induction and
+new bounded helpers kernel-check under a second with standard axioms only.
+Logs: /private/tmp/ascent-recursive-final-gate.log and
+/private/tmp/ascent-recursive-metatheory.log.

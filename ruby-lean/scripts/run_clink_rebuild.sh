@@ -32,7 +32,7 @@ check() {
 check isolation ./scripts/check-isolation.sh
 check "generated checker freshness" python3 scripts/generate_audited_checker.py --check
 check "profile and registration controls" lake build Denote.Clink.GateStatus Denote.Clink.GateControls
-check "actual validator controls" lake build Ratchet.Controls.ClinkPolicyControls
+check "actual validator controls" lake build Ratchet.Controls.ClinkPolicyControls Denote.Examples.RecursiveDerivations
 check "active semantic proofs and validator bridge" lake build Denote.Clink.SoundnessAudit
 check "method-boundary controls" lake build Denote.Controls.MethodAliasControls Denote.Controls.MethodCodeControls Denote.Controls.FrozenDefinitionControls Denote.Controls.MethodDefinitionControls Denote.Controls.MethodOriginControls Denote.Controls.MethodPrefixControls Denote.Controls.MethodDefineeControls
 check "actual validator executables" lake build ratchetd validate-one

@@ -1,10 +1,11 @@
 # Active ascent (2026-09-30)
 
-24/99 clinks, 54/261 production validateD accepts (prefix 17), 46/46 negatives
-rejected, 254 CRuby agree/0 disagree. callSig is now permanently enabled alongside
+31/99 clinks, 55/261 production validateD accepts (prefix 17), 46/46 negatives
+rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
+are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
-bare-name/collection providers. Full final gate: /private/tmp/ascent-call-final-gate.log.
-Metatheory passes: /private/tmp/ascent-call-metatheory.log.
+bare-name/collection providers. Full gate: /private/tmp/ascent-recursive-final-gate.log.
+Metatheory: /private/tmp/ascent-recursive-metatheory.log.
 
 Repair uses the original MethodState body/frame/return and MethodArgs accumulator
 proofs. MethodResolve follows actual bounded lookup through main's singleton
@@ -18,11 +19,18 @@ use only standard axioms. Validator controls cover zero/one arguments, older
 method retention, wrong type/arity/result, reserved names and missing companion/
 body rules. The bridge probe proves identity-call boot runner safety.
 
-Next: recursive (060) or classes (061+). BoundedMethod/BoundedCall still need the
-same rootClean, binding metadata, actual prefix lookup and shadow-gate repairs;
-BoundedExpr already carries rootClean. Do not import all off-target providers:
-MethodChecked imports the historical Full bridge and also has drift. FlowDispatch/
-BodyDispatch still pass ready.chain to defsOk_lookup and presume no native shadow.
+Recursive (060) now accepts. The existing strict execution-bound induction is
+unchanged; BoundedMethod/BoundedCall carry rootClean, ordinary binding metadata,
+provenance, real prefix lookup and native shadow outcomes. The mandatory gate
+builds/imports the existing RecursiveDerivations factorial proof and its complete
+recursive positive/negative controls. Removing any one of the seven recursive
+rules rejects its production trace. New bounded proofs build under a second.
+
+Next: classes (061+), or default/flow/callback method families. Do not import all
+off-target providers: MethodChecked imports the historical Full bridge and has
+drift. FlowDispatch/BodyDispatch still pass ready.chain to defsOk_lookup and
+presume no native shadow. Class publication must prove the explicit main-prefix
+write obligation, and ordinary instance code must establish actual definee.
 Run Lake builds sequentially; concurrent rebuilds previously raced .olean files.
 
 The entries below are historical checkpoints.

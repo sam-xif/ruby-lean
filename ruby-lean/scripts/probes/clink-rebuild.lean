@@ -7,6 +7,7 @@ import Denote.Controls.MethodDefinitionControls
 import Denote.Controls.MethodOriginControls
 import Denote.Controls.MethodPrefixControls
 import Denote.Controls.MethodDefineeControls
+import Denote.Examples.RecursiveDerivations
 
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
