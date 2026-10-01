@@ -35,6 +35,7 @@ structure MainReady (m : Machine) : Prop where
   hook : objectHookQuietB m.heap = true
   detached : (m.heap.classPayload? Boot.objectId).bind (·.attached) = none
   unfrozen : (m.heap.get Boot.objectId).frozen = false
+  origin : m.currentFrame.libraryOrigin = false
 
 def RuntimeOk (κ : Ctx) (m : Machine) : Prop := κ.scope.runtimeMain = true → MainReady m
 
@@ -56,14 +57,15 @@ def mainReadyBaseB (m : Machine) : Bool :=
 def mainReadyB (m : Machine) : Bool :=
   mainReadyBaseB m &&
     decide ((m.heap.classPayload? Boot.objectId).bind (·.attached) = none) &&
-    !(m.heap.get Boot.objectId).frozen
+    !(m.heap.get Boot.objectId).frozen && !m.currentFrame.libraryOrigin
 
 theorem mainReadyB_sound {m : Machine} (h : mainReadyB m = true) : MainReady m := by
   simp only [mainReadyB, mainReadyBaseB, Bool.and_eq_true, decide_eq_true_eq,
     Bool.not_eq_true', beq_iff_eq] at h
+  obtain ⟨h, horigin⟩ := h
   obtain ⟨h, hd, hf⟩ := (and_assoc.mp h)
   obtain ⟨⟨⟨⟨⟨⟨⟨ho, hc, hcap, hphase, hlive⟩, hs⟩, hp⟩, ha⟩, hi⟩, hcl⟩, hh⟩ := h
-  refine ⟨?_, ho, hc, hcap, hphase, hlive, ?_, ha, hi, hcl, hh, hd, hf⟩
+  refine ⟨?_, ho, hc, hcap, hphase, hlive, ?_, ha, hi, hcl, hh, hd, hf, horigin⟩
   · cases he : m.currentFrame.self <;> simp_all
   · cases he : (m.heap.get Boot.mainId).payload <;> simp_all
 
@@ -72,19 +74,21 @@ theorem MainReady.reframe {m n : Machine} (h : MainReady m)
     (ho : n.currentFrame.defmod = m.currentFrame.defmod)
     (hc : n.currentFrame.cref = m.currentFrame.cref)
     (hcap : n.currentFrame.captured = m.currentFrame.captured)
-    (hphase : n.preludeMode = m.preludeMode) : MainReady n :=
+    (hphase : n.preludeMode = m.preludeMode)
+    (horigin : n.currentFrame.libraryOrigin = m.currentFrame.libraryOrigin) : MainReady n :=
   ⟨hs.trans h.self, ho.trans h.owner, hc.trans h.cref, hcap.trans h.captured,
     hphase.trans h.phase, by simpa only [hh] using h.live,
     by simpa only [hh] using h.payload, by simpa only [hh] using h.chain,
     by simpa only [hh] using h.object, by simpa only [hh] using h.classLive,
     by simpa only [hh] using h.hook,
-    by simpa only [hh] using h.detached, by simpa only [hh] using h.unfrozen⟩
+    by simpa only [hh] using h.detached, by simpa only [hh] using h.unfrozen,
+    horigin.trans h.origin⟩
 
 theorem MainReady.setLocal {m : Machine} (h : MainReady m) (x : String) (v : Value) :
     MainReady (m.setLocal x v) :=
   h.reframe (setLocal_heap ..) (currentFrame_setLocal_self ..)
     (currentFrame_setLocal_defmod ..) (currentFrame_setLocal_cref ..)
-    (currentFrame_setLocal_captured ..) rfl
+    (currentFrame_setLocal_captured ..) rfl (currentFrame_setLocal_libraryOrigin ..)
 
 theorem MainReady.ext {m n : Machine} (h : MainReady m) (he : Ext m n)
     (hphase : n.preludeMode = m.preludeMode) (hc : Proof.ChainsIn m.heap) : MainReady n := by
@@ -103,7 +107,8 @@ theorem MainReady.ext {m n : Machine} (h : MainReady m) (he : Ext m n)
     by rw [hmain]; exact h.payload, ?_, he.isAName_mono h.object,
     by rw [he.payload]; exact h.classLive, ?_,
     by rw [he.payload]; exact h.detached,
-    by rw [hobj]; exact h.unfrozen⟩
+    by rw [hobj]; exact h.unfrozen,
+    by rw [he.currentFrame_eq]; exact h.origin⟩
   · simpa only [classOf, hmain, he.ancestors] using h.chain
   · simpa only [objectHookQuietB, definitionHookQuietB, hlookup] using h.hook
 

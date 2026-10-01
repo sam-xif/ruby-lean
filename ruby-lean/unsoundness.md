@@ -66,3 +66,17 @@ that protocol and definition_hook_runSpec proves its answer contract. The
 source record also follows definee, libraryOrigin and all initialization-name
 privacy overrides. This repairs an off-target interpreter equality; it does
 not exhibit a Sorbet bug or an active validateD unsound accept.
+
+# Library provenance escaped ordinary source conformance (2026-09-30)
+
+MethodOriginControls preserves the complete former boot-state guard. It accepts
+the real boot machine with only currentFrame.libraryOrigin set to true. A source
+def then constructs fromPrelude=true, which fails ordinaryMethodCodeB even for
+the trivial Integer body. This refutes the former outgoing ordinary-code
+contract; it does not demonstrate a type error or a Sorbet soundness bug.
+
+MainReady now requires libraryOrigin=false. FrameScope transports that field,
+and the existing local-write, heap-extension, method entry/return and reframe
+proofs preserve it. The legacy witness is rejected while the real boot passes.
+The repaired definition proof uses the real queued callback contract, so defDecl
+can be admitted without pretending that user phase alone establishes provenance.

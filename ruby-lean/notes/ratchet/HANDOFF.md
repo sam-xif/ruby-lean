@@ -1,8 +1,8 @@
 # Active ascent (2026-09-30)
 
-Literals, locals, sequences, primitive sends, branches, bare names and collections are
+Literals, locals, sequences, primitive sends, branches, bare names, collections and ordinary definitions are
 permanently enabled using existing proof providers. Full default gate GREEN:
-22/99 clinks, 49/261 corpus accepts (prefix 17), 46/46
+23/99 clinks, 49/261 corpus accepts (prefix 17), 46/46
 negative controls rejected, 254 agree/0 disagree. Standard-axiom audit passes.
 Log: /private/tmp/ascent-collections-gate.log. String-comparison deferral drift
 is repaired in indexing/equality/Static/Decls. Exact iterator transparency now
@@ -36,14 +36,26 @@ carries fromBlock/forTargets; top source metadata explicitly needs libraryOrigin
 MethodDefinitionControls measures all three transitions and copy-name privacy;
 the mandatory gate builds/imports it. Full gate + metatheory remain GREEN at the
 same counts: /private/tmp/ascent-definition-{gate,metatheory}.log.
+Latest: defDecl is admitted (23/99), with normalized-record projections and
+direct RunSpec.step/callback composition. MainReady requires libraryOrigin=false;
+FrameScope and the existing local/heap/entry/return/reframe proofs transport it.
+MethodOriginControls retains the complete legacy guard's provenance witness.
+Full gate GREEN: 49/261 accepts, 46/46 negatives, 254 agree/0 disagree:
+/private/tmp/ascent-defdecl-gate.log. A definition-only identity program is accepted
+by the actual validator control; 052/055/057/058/059 now await callSig only.
 Next wrapper preflight (/private/tmp/ascent-method-wrappers-preflight.log):
-MethodDefine needs the libraryOrigin invariant, normalized-record projections
-and direct RunSpec.step/callback composition instead of SemSafeCtxA.leaf.
 MethodResolve uses removed lookup.go, and MainReady.chain has a leading main
 dispatch class before Object. Do not silently assume lookup starts at Object:
 prove absence/shadow safety for the prefix (topDeclClassesB excludes main-native
 names) and revalidate positive conformance, definee and frame metadata. Existing
-ordinaryMethodCodeB does not pin definee/definitionFrame. Method clinks stay gated.
+ordinaryMethodCodeB does not pin definee/definitionFrame. Call clinks stay gated.
+Measured main-prefix countermodel: /private/tmp/MethodPrefixWitness.lean passes
+the current complete bootStateB with main's dispatch class given a native bump
+(builtin Module#method_added). The unrestricted checker accepts def bump=1;
+bump(), but running it from this state raises a type-class ArgumentError because
+the prefix builtin wins. Active validateD still gates callSig. Reject this forged
+prefix in conformance, preserve the real main-native names and repair lookup
+before call admission. Log: /private/tmp/ascent-method-prefix-witness.log.
 Run Lake builds sequentially: concurrent builds raced over Context.olean.
 Final batch check-proofs.sh passes (/private/tmp/ascent-final-metatheory.log).
 No live builds.

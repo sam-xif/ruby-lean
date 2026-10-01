@@ -190,10 +190,11 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
     (hr : FrameInRange n) (he : EnvOk Γ' n) (hf : FrameOk fr n)
     (hal : n.currentFrame.localAlias = none)
     (hlive : CaptureLive n n.currentFrame.captured)
-    (hroot : RootClean n := by exact h.rootClean) :
+    (hroot : RootClean n := by exact h.rootClean)
+    (horigin : n.currentFrame.libraryOrigin = m.currentFrame.libraryOrigin := by rfl) :
     StateOk (κ.withFrame fr) Γ' I n := by
   refine StateOk_reframe_scopes h ht ha hh hs hb hc hd
-    (fun hr => (h.runtime hr).reframe hh hs hd hc hcap hphase) ?_ ?_ hlookup hr he hf hal hlive hroot
+    (fun hr => (h.runtime hr).reframe hh hs hd hc hcap hphase horigin) ?_ ?_ hlookup hr he hf hal hlive hroot
   · intro cn hr
     obtain ⟨k, hk⟩ := h.classRuntime cn hr
     exact ⟨k, hk.reframe hh hd hc hcap hphase

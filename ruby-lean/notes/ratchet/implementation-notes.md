@@ -13046,3 +13046,25 @@ Next wrapper preflight: MethodDefine needs libraryOrigin=false and the new
 callback composition. MethodResolve still uses deleted lookup.go and mistakes
 MainReady's leading main dispatch class for Object. Log:
 /private/tmp/ascent-method-wrappers-preflight.log. No method clink is admitted.
+
+### 2026-09-30 — Repair provenance and admit ordinary definitions
+
+MainReady now excludes library-origin frames: the complete legacy state guard
+accepted one whose trivial source definition fails ordinary-code conformance.
+MethodOriginControls retains that witness (see ../../unsoundness.md). Extend
+FrameScope by the provenance bit and transport it through existing local,
+heap/view, entry/return and reframe proofs; no runtime or emitter change.
+
+MethodDefine retains the heap conformance proof, supplies normalized-record
+projections and composes step_def_install with definition_hook_runSpec rather
+than the obsolete one-step leaf. definitionFrameId/currentDefinitionFrame and
+sourceMethod receive ctl/kont invariance lemmas so visibility is transported
+through the actual definition-frame walk. Permanently enable defDecl and import
+its provider. Validator controls accept a required-Integer identity definition,
+reject missing child/admission rules, parameter mismatch and uncalled bad bodies.
+Call rules remain gated pending main-prefix lookup and activation metadata repair.
+
+Validation: full default gate GREEN, 23/99 clinks and 49/261 corpus accepts,
+46/46 negatives rejected, 254 agree/0 disagree; check-proofs.sh passes.
+Logs: /private/tmp/ascent-defdecl-{gate,metatheory}.log. Repaired definition
+and metadata lemmas build in under a second, with standard axioms only.

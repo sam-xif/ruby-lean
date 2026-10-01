@@ -28,9 +28,10 @@ structure FrameScope where
   defmod : ObjId
   captured : Option FrameId
   localAlias : Option FrameId
+  libraryOrigin : Bool
 
 def frameScope (f : RubyCore.Frame) : FrameScope :=
-  ⟨f.self, f.blk, f.cref, f.defmod, f.captured, f.localAlias⟩
+  ⟨f.self, f.blk, f.cref, f.defmod, f.captured, f.localAlias, f.libraryOrigin⟩
 
 /-- Saved activations may receive captured-local writes; all other fields stay intact. -/
 def savedFrame (f : RubyCore.Frame) : RubyCore.Frame := { f with locals := [] }
@@ -120,7 +121,7 @@ theorem FramePres.setLocal (m : Machine) (x : String) (v : Value)
     FramePres m (m.setLocal x v) := by
   refine ⟨by simp, ?_, ?_, ?_, ?_, .setLocal m x v ha, .setLocal m x v, .setLocal m x v ha⟩
   · simp only [setLocal_eq_setAt, setAt_stack, frameScope, setAt_self,
-      setAt_blk, setAt_cref, setAt_defmod, setAt_captured, setAt_localAlias]
+      setAt_blk, setAt_cref, setAt_defmod, setAt_captured, setAt_localAlias, setAt_libraryOrigin]
   · intro hc i _ hn
     have ho : Machine.setLocal.owner m x (m.stack.headD 0) (m.stack.headD 0)
         (m.frames.size + 1) = m.stack.headD 0 := by

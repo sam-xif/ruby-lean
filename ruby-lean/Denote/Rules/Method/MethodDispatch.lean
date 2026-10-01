@@ -23,10 +23,31 @@ def definedMethod (m : Machine) (name : String) (ps : List RubyCore.Param)
     (body : RubyCore.Expr) : MethodDef :=
   Interp.normalizeDefinitionVisibility m.heap m.currentFrame.defmod name (sourceMethod m ps body)
 
+theorem sourceMethod_reCtl (m : Machine) (c : Ctl) (k : List Kont)
+    (ps : List RubyCore.Param) (body : RubyCore.Expr) :
+    sourceMethod (reCtl m c k) ps body = sourceMethod m ps body := by
+  simp only [sourceMethod, currentDefinitionFrame_reCtl]
+  rfl
+
 def installMethod (m : Machine) (name : String) (ps : List RubyCore.Param)
     (body : RubyCore.Expr) : Machine :=
   let md := definedMethod m name ps body
   { m with heap := defineMethod m.heap m.currentFrame.defmod name md }
+
+theorem definedMethod_params (m : Machine) (name : String) (ps : List RubyCore.Param)
+    (body : RubyCore.Expr) : (definedMethod m name ps body).params = ps := by
+  unfold definedMethod Interp.normalizeDefinitionVisibility
+  split <;> rfl
+
+theorem definedMethod_body (m : Machine) (name : String) (ps : List RubyCore.Param)
+    (body : RubyCore.Expr) : (definedMethod m name ps body).body = body := by
+  unfold definedMethod Interp.normalizeDefinitionVisibility
+  split <;> rfl
+
+theorem definedMethod_undefined (m : Machine) (name : String) (ps : List RubyCore.Param)
+    (body : RubyCore.Expr) : (definedMethod m name ps body).undefined = false := by
+  unfold definedMethod Interp.normalizeDefinitionVisibility
+  split <;> rfl
 
 theorem definedMethod_code {m : Machine} {name : String} {ps : List RubyCore.Param}
     {body : RubyCore.Expr} (ho : m.currentFrame.defmod = Boot.objectId)

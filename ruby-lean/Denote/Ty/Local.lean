@@ -129,6 +129,16 @@ theorem setAt_localAlias (m : Machine) (x : String) (v : Value) (T i : FrameId) 
     · simp only [setAt, framesD_set!_oob _ _ _ hb]
   · simp only [setAt, framesD_set!_ne _ _ _ _ hi]
 
+theorem setAt_libraryOrigin (m : Machine) (x : String) (v : Value) (T i : FrameId) :
+    ((setAt m x v T).frames.getD i default).libraryOrigin =
+      (m.frames.getD i default).libraryOrigin := by
+  by_cases hi : i = T
+  · subst hi
+    by_cases hb : i < m.frames.size
+    · simp only [setAt, framesD_set!_self _ _ _ hb, setFrame]
+    · simp only [setAt, framesD_set!_oob _ _ _ hb]
+  · simp only [setAt, framesD_set!_ne _ _ _ _ hi]
+
 theorem localFrameId_setAt (m : Machine) (x : String) (v : Value) (T i : FrameId) :
     (setAt m x v T).localFrameId i = m.localFrameId i := by
   have go : ∀ fuel fid, Machine.localFrameId.go (setAt m x v T) fid fuel =
@@ -587,6 +597,13 @@ theorem currentFrame_setLocal_self (m : Machine) (x : String) (w : Value) :
   cases m.stack with
   | nil => rfl
   | cons fid rest => rw [setLocal_eq_setAt]; exact setAt_self m x w _ fid
+
+theorem currentFrame_setLocal_libraryOrigin (m : Machine) (x : String) (w : Value) :
+    (m.setLocal x w).currentFrame.libraryOrigin = m.currentFrame.libraryOrigin := by
+  simp only [Machine.currentFrame, setLocal_stack]
+  cases m.stack with
+  | nil => rfl
+  | cons fid rest => rw [setLocal_eq_setAt]; exact setAt_libraryOrigin m x w _ fid
 
 theorem currentFrame_setLocal_blk (m : Machine) (x : String) (w : Value) :
     (m.setLocal x w).currentFrame.blk = m.currentFrame.blk := by

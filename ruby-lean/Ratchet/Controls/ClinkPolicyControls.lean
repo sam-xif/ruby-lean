@@ -2,6 +2,20 @@ import Ratchet.Check.Check
 
 namespace Ratchet
 
+-- Definitions still check the entire body, even if never called.
+private def identityDefinition : Expr := .def' "identity" [.req "x"] (.var .lvar "x")
+private def identityDefinitionHint : Deriv :=
+  .defDecl "identity" [("x", .int)] .int (.var .lvar "x")
+#guard validateD identityDefinition identityDefinitionHint == ["defDecl", "var"].all clinkEnabled
+#guard !validateDWith (fun r => clinkEnabled r && r != "defDecl")
+  identityDefinition identityDefinitionHint
+#guard !validateDWith (fun r => clinkEnabled r && r != "var")
+  identityDefinition identityDefinitionHint
+#guard !validateD identityDefinition (.defDecl "identity" [("y", .int)] .int (.var .lvar "x"))
+#guard !validateD (.def' "bad" [] (.str "wrong")) (.defDecl "bad" [] .int (.strLit "wrong"))
+#guard !validateD (.def' "bad" [] (.send (some .nil) "+" [.int 1] none))
+  (.defDecl "bad" [] .int (.prim .nilLit "+" [.intLit 1] .int .int))
+
 -- The actual verdict follows the shared clink policy for every supported rule.
 #guard validateD (.int 7) (.intLit 7) == clinkEnabled "intLit"
 #guard validateD (.flt 0) (.fltLit 0) == clinkEnabled "fltLit"

@@ -77,7 +77,7 @@ theorem MainReady.methodWrite {m : Machine} (h : MainReady m) (cls : ObjId)
     by
       have hf := congrArg Object.frozen
         (get_defineMethod_data m.heap cls Boot.objectId name md)
-      exact hf.trans h.unfrozen⟩
+      exact hf.trans h.unfrozen, h.origin⟩
   · simpa only [Proof.classOf_defineMethod, Proof.ancestors_defineMethod] using h.chain
   · simpa only [isAName_defineMethod] using h.object
   · simpa only [Proof.classPayload?_isSome_defineMethod] using h.classLive

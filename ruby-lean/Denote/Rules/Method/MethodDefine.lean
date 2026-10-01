@@ -18,7 +18,6 @@ theorem top_definition {κ : Ctx} {Γ : Env} {I : Ty} {d : Defn}
     (hfresh : ∀ old ∈ κ.defs, old.name ≠ d.name)
     (hmiss : "method_missing" ≠ d.name) (hquiet : "method_added" ≠ d.name) :
     SemSafeCtxA κ Γ I (.def' d.name d.params d.body) .sym (topDeclCtx κ d) Γ I := by
-  apply SemSafeCtxA.leaf
   intro m hm
   have ready := hm.runtime hruntime
   let md := definedMethod m d.name (toRubyParams d.params) (toRuby d.body)
@@ -30,18 +29,33 @@ theorem top_definition {κ : Ctx} {Γ : Env} {I : Ty} {d : Defn}
   have hn : StateOk (topDeclCtx κ d) Γ I n := by
     have hh := StateOk_defineTopMethod_classes (d := d) (md := md) hreserved
       (ReframeFO.empty hI hself hblock hconst) hΓ hasms hclasses hname hmiss hquiet
-      ready.classLive hfresh rfl rfl rfl (definedMethod_code ready.owner ready.cref ready.phase)
+      ready.classLive hfresh (definedMethod_params ..) (definedMethod_body ..)
+      (definedMethod_undefined ..)
+      (definedMethod_code ready.owner ready.cref ready.phase ready.origin)
     simpa only [topDeclCtx, reserveNameCtx, Ctx.defs, n, installMethod, ready.owner, md] using hh
   have hstep : Interp.stepFn (evalFrom m (.def' d.name d.params d.body)) =
-      .next (deliverA (.val (.sym d.name)) n []) := by
-    have hq : DefHookQuiet (evalFrom m (.def' d.name d.params d.body)) :=
-      mainReady_defHookQuiet (m := m) ready
-    have hs := step_def_install (name := d.name) (ps := toRubyParams d.params)
-      (body := toRuby d.body) rfl (defHookQuiet_install hquiet hq)
-    simpa only [n, installMethod, evalFrom, toRuby, deliverA, Interp.withCtl,
-      reCtl, definedMethod, Machine.currentFrame, Answer.ctl] using hs
-  refine ⟨n, .sym d.name, hstep, ?_, by simp [AnsOk, denM, isSymV], fun _ _ => hn⟩
-  exact Framed_defineMethod m m.currentFrame.defmod d.name md
+      .next { n with
+        ctl := .send (.ref m.currentFrame.defmod) .reflective "method_added" [.sym d.name] none [],
+        kont := [.methodEditsK [] (.sym d.name)] } := by
+    have hw : frozenMethodReceiver? m.heap m.currentFrame.defmod = none := by
+      rw [ready.owner]; exact ready.writable
+    have hd : (m.heap.classPayload? m.currentFrame.defmod).bind (·.attached) = none := by
+      rw [ready.owner]; exact ready.detached
+    have hs := step_def_install (m := evalFrom m (.def' d.name d.params d.body))
+      rfl ready.phase hw hd
+    simpa only [evalFrom, n, installMethod, definedMethod,
+      show ({ m with ctl := .eval (toRuby (.def' d.name d.params d.body)), kont := [] } : Machine).currentFrame =
+        m.currentFrame from currentFrame_reCtl ..,
+      show sourceMethod { m with ctl := .eval (toRuby (.def' d.name d.params d.body)), kont := [] }
+        (toRubyParams d.params) (toRuby d.body) =
+          sourceMethod m (toRubyParams d.params) (toRuby d.body) from sourceMethod_reCtl ..] using hs
+  apply RunSpec.step (answerPoint_evalFrom _ _) hstep
+  apply definition_hook_runSpec hn (Framed_defineMethod m m.currentFrame.defmod d.name md)
+  · change ((defineMethod m.heap m.currentFrame.defmod d.name md).classPayload?
+      m.currentFrame.defmod).isSome = true
+    rw [Proof.classPayload?_isSome_defineMethod, ready.owner]
+    exact ready.classLive
+  · exact defHookQuiet_install hquiet (mainReady_defHookQuiet ready)
 theorem SemSafeCtxA.defDecl {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {d : Defn} {ps : List SigParam}
     (_hparams : d.params = ps.map (fun p => Ratchet.Param.req p.1))
     (_hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)

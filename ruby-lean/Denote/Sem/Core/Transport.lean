@@ -41,6 +41,25 @@ between the machines a leaf rung has in hand. -/
 abbrev reCtl (m : Machine) (c : Ctl) (k : List Kont) : Machine :=
   { m with ctl := c, kont := k }
 
+theorem definitionFrameId_reCtl (m : Machine) (c : Ctl) (k : List Kont) (fid : FrameId) :
+    (reCtl m c k).definitionFrameId fid = m.definitionFrameId fid := by
+  have h : ∀ fuel i, Machine.definitionFrameId.go (reCtl m c k) fuel i =
+      Machine.definitionFrameId.go m fuel i := by
+    intro fuel
+    induction fuel with
+    | zero => intro i; rfl
+    | succ fuel ih =>
+      intro i
+      simp only [Machine.definitionFrameId.go]
+      split
+      · exact ih _
+      · rfl
+  exact h _ _
+
+@[simp] theorem currentDefinitionFrame_reCtl (m : Machine) (c : Ctl) (k : List Kont) :
+    (reCtl m c k).currentDefinitionFrame = m.currentDefinitionFrame := by
+  simp only [Machine.currentDefinitionFrame, definitionFrameId_reCtl]
+
 /-- Calling a value does not see `ctl`/`kont`: `applyIn` sets both itself. -/
 theorem applyIn_reCtl (m : Machine) (c : Ctl) (k : List Kont) (f : Value) (args : List Value) :
     applyIn (reCtl m c k) f args = applyIn m f args := rfl
