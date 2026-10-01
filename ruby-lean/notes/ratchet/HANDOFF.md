@@ -4,8 +4,8 @@
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
-bare-name/collection providers. Full gate: /private/tmp/ascent-class-scope-gate.log.
-Metatheory: /private/tmp/ascent-class-scope-metatheory.log.
+bare-name/collection providers. Full gate: /private/tmp/ascent-class-constantscope-gate.log.
+Metatheory: /private/tmp/ascent-class-constantscope-metatheory.log.
 
 Repair uses the original MethodState body/frame/return and MethodArgs accumulator
 proofs. MethodResolve follows actual bounded lookup through main's singleton
@@ -74,8 +74,14 @@ saved frames, installed class/definition/exact tables, inherited definition hook
 lexical ClassScopeAt and name absence. Scope uses main's actual cref=[]; DefsOk
 retains its main-singleton selector exclusion. All four are mandatory.
 
-Next: repair actual class-body StateOk (constant scope/tables, instance/main sites,
-allocation/global-name/own-name/class-chain capabilities);
+ClassConstScopeActual and ClassTablesActual now repair real lexical constant
+resolution and first-order constants/paths/nested-class transfers. Fresh own
+constants fall through to Object's retained ancestor lookup; all new/old global
+lookup cases and fresh-metaclass missing-constant fallback are proved. Existing
+ClassTablesFrame premises remain unchanged. Both modules are mandatory.
+
+Next: repair actual class-body StateOk (instance/main sites, allocation/global-name/
+own-name/class-chain capabilities);
 retain ClassHeaderRun's original conformance/return structure. ClassRules currently
 imports constructor/instance/singleton providers too; preflight also found missing
 MainReady fields in SubclassMain, changed lexical constants in

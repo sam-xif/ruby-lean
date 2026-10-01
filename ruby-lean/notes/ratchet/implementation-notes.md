@@ -13326,3 +13326,20 @@ Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
 46/46 negatives rejected, 254 agree/0 disagree. Frame/table/scope/name-entry
 modules build in 1.0s/544ms/628ms/579ms, standard axioms only; metatheory passes.
 Logs: /private/tmp/ascent-class-scope-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair actual-class constant resolution and typed tables
+
+ClassConstScopeActual retains the original own-table/ancestor argument, adjusted
+to the real cref=[newClass] and current lexicalConstant/instanceConstResolve.
+The fresh empty table falls through to Object's actual ancestor lookup; registration
+retains main's global agreement, with the new binding split from all other names.
+Retain the parent-metaclass missing-constant transfer. ClassTablesActual reuses
+the original first-order constant/path/nested-class transports and ClassTablesFrame
+preconditions unchanged. Use explicit frame rewriting before changing to
+instanceConstResolve to avoid deep machine unfolding; no heartbeat increase.
+Both modules and axiom probes are mandatory. No checker/runtime changes.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Constant-scope/table modules
+build in 720/523ms, standard axioms only; metatheory passes. Logs:
+/private/tmp/ascent-class-constantscope-{gate,metatheory}.log.
