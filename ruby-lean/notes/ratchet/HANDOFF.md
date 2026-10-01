@@ -4,8 +4,8 @@
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
-bare-name/collection providers. Full gate: /private/tmp/ascent-class-callbacks-gate.log.
-Metatheory: /private/tmp/ascent-class-callbacks-metatheory.log.
+bare-name/collection providers. Full gate: /private/tmp/ascent-class-heap-gate.log.
+Metatheory: /private/tmp/ascent-class-heap-metatheory.log.
 
 Repair uses the original MethodState body/frame/return and MethodArgs accumulator
 proofs. MethodResolve follows actual bounded lookup through main's singleton
@@ -28,8 +28,8 @@ rules rejects its production trace. New bounded proofs build under a second.
 
 ClassRules preflight: /private/tmp/ascent-class-preflight.log. Actual fresh class
 entry queues const_added then inherited, after anonymous registration/naming and
-an attached metaclass; old stepFn_class_fresh jumps straight into the legacy
-freshClsMachine and is false. ClassHookControls measures complete legacy boot
+an attached metaclass; the former stepFn_class_fresh jumped straight into the legacy
+freshClsMachine and was false (repaired below). ClassHookControls measures complete legacy boot
 accepts and unrestricted-checker accepts that raise nil+1 in either callback.
 MainReady now rejects those worlds using classHooksQuietB; first own entries
 above Object must be native, defined and non-visibility-only. ClassHooks proves
@@ -48,7 +48,12 @@ unsupported fidelity shadows. ClassCallbacks now composes both real callback
 steps and their continuations into the existing freshModFrame body/return
 RunSpec. These are mandatory gate prerequisites.
 
-Next: repair ClassEntry's actual metaclass heap/conformance path and retain
+ClassHeapActual now proves actual named/attached reads, exact cached metaclass
+allocation, ClsGrow, ChainsIn, saturation, old ancestors/method tables, callback
+guard preservation and allocator readiness. ClassEntry.stepFn_class_fresh is
+repaired to the actual first queued callback successor and is mandatory.
+
+Next: repair actual class heap conformance and retain
 ClassHeaderRun's original conformance/return structure. ClassRules currently
 imports constructor/instance/singleton providers too; preflight also found missing
 MainReady fields in SubclassMain, changed lexical constants in

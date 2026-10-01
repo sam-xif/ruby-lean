@@ -12,6 +12,7 @@ import Denote.Controls.AllocationReadyControls
 import Denote.Sem.Class.ClassRegistration
 import Denote.Sem.Instance.MainSiteWrite
 import Denote.Rules.Class.ClassCallbacks
+import Denote.Rules.Class.ClassEntry
 import Denote.Examples.RecursiveDerivations
 
 namespace Ratchet.Denote.Typed
@@ -24,6 +25,11 @@ open RubyCore Ratchet Ratchet.Denote
 #print axioms invoke_native_class_hook
 #print axioms stepFn_class_hook
 #print axioms class_callbacks_runSpec
+#print axioms FreshClassActual.chainsIn
+#print axioms FreshClassActual.saturated
+#print axioms FreshClassActual.classHooksQuietB_eq
+#print axioms FreshClassActual.allocator_ready
+#print axioms stepFn_class_fresh
 
 #eval IO.println s!"CLINK REBUILD: {dRegisteredRules.length} certified, {dGatedRules.length} gated, {dAllRules.length} total"
 #eval IO.println s!"  enabled: {String.intercalate ", " dRegisteredRules}"

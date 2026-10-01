@@ -13231,3 +13231,25 @@ Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
 46/46 negatives rejected, 254 agree/0 disagree. Native dispatch builds in 1.6s,
 callback composition in 708ms; standard axioms only and metatheory passes. Logs:
 /private/tmp/ascent-class-callbacks-{gate,metatheory}.log.
+
+### 2026-09-30 — Repair the actual fresh-class heap and entry equation
+
+ClassHeapActual factors naming/attachment over the existing constSetIn allocation
+commutation. Retain the original array-read strategy: the class has permanent
+naming/revision 1, then attachment/revision 2; its anonymous metaclass carries
+attached=some class id. eigenclassOf_named adapts eigenclassOf_clsObj's cached
+Object-parent branch. Old objects equal the registration heap; ClsGrow plus the
+existing chainsIn_of_clsGrow/saturated_of_clsGrow_heads preserve old ancestor
+walks, method tables and callback lookup. Named allocator metadata survives
+attachment. Use the original discrete fresh_cases split rather than automation.
+
+ClassEntry.stepFn_class_fresh now states/proves the actual queued const_added
+successor, retaining its original StateOk and cached-eigen premises. Its prior
+direct synthetic body successor was false. Header/body callers still need actual
+heap conformance before consuming ClassCallbacks; keep their clinks gated. The
+repaired entry and actual heap facts are mandatory gate prerequisites.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected and 254 agree/0 disagree. Actual heap proofs build in
+1.2s, repaired ClassEntry in 638ms; standard axioms only, metatheory passes.
+Logs: /private/tmp/ascent-class-heap-{gate,metatheory}.log.
