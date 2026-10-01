@@ -33,10 +33,17 @@ structure MainReady (m : Machine) : Prop where
   object : isAName m.heap (.ref Boot.mainId) "Object" = true
   classLive : (m.heap.classPayload? Boot.objectId).isSome = true
   hook : objectHookQuietB m.heap = true
+  detached : (m.heap.classPayload? Boot.objectId).bind (·.attached) = none
+  unfrozen : (m.heap.get Boot.objectId).frozen = false
 
 def RuntimeOk (κ : Ctx) (m : Machine) : Prop := κ.scope.runtimeMain = true → MainReady m
 
-def mainReadyB (m : Machine) : Bool :=
+theorem MainReady.writable {m : Machine} (h : MainReady m) :
+    frozenMethodReceiver? m.heap Boot.objectId = none := by
+  simp only [frozenMethodReceiver?, h.detached, Option.getD_none, h.unfrozen,
+    Bool.false_or, Bool.false_eq_true, ↓reduceIte]
+
+def mainReadyBaseB (m : Machine) : Bool :=
   decide (m.currentFrame.defmod = Boot.objectId ∧ m.currentFrame.cref = [] ∧
     m.currentFrame.captured = none ∧ m.preludeMode = false ∧ Boot.mainId < m.heap.objs.size) &&
   (match m.currentFrame.self with | .ref o => o == Boot.mainId | _ => false) &&
@@ -46,10 +53,17 @@ def mainReadyB (m : Machine) : Bool :=
   isAName m.heap (.ref Boot.mainId) "Object" &&
   (m.heap.classPayload? Boot.objectId).isSome && objectHookQuietB m.heap
 
+def mainReadyB (m : Machine) : Bool :=
+  mainReadyBaseB m &&
+    decide ((m.heap.classPayload? Boot.objectId).bind (·.attached) = none) &&
+    !(m.heap.get Boot.objectId).frozen
+
 theorem mainReadyB_sound {m : Machine} (h : mainReadyB m = true) : MainReady m := by
-  simp only [mainReadyB, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at h
+  simp only [mainReadyB, mainReadyBaseB, Bool.and_eq_true, decide_eq_true_eq,
+    Bool.not_eq_true', beq_iff_eq] at h
+  obtain ⟨h, hd, hf⟩ := (and_assoc.mp h)
   obtain ⟨⟨⟨⟨⟨⟨⟨ho, hc, hcap, hphase, hlive⟩, hs⟩, hp⟩, ha⟩, hi⟩, hcl⟩, hh⟩ := h
-  refine ⟨?_, ho, hc, hcap, hphase, hlive, ?_, ha, hi, hcl, hh⟩
+  refine ⟨?_, ho, hc, hcap, hphase, hlive, ?_, ha, hi, hcl, hh, hd, hf⟩
   · cases he : m.currentFrame.self <;> simp_all
   · cases he : (m.heap.get Boot.mainId).payload <;> simp_all
 
@@ -63,7 +77,8 @@ theorem MainReady.reframe {m n : Machine} (h : MainReady m)
     hphase.trans h.phase, by simpa only [hh] using h.live,
     by simpa only [hh] using h.payload, by simpa only [hh] using h.chain,
     by simpa only [hh] using h.object, by simpa only [hh] using h.classLive,
-    by simpa only [hh] using h.hook⟩
+    by simpa only [hh] using h.hook,
+    by simpa only [hh] using h.detached, by simpa only [hh] using h.unfrozen⟩
 
 theorem MainReady.setLocal {m : Machine} (h : MainReady m) (x : String) (v : Value) :
     MainReady (m.setLocal x v) :=
@@ -86,7 +101,9 @@ theorem MainReady.ext {m n : Machine} (h : MainReady m) (he : Ext m n)
     by rw [he.currentFrame_eq]; exact h.captured,
     hphase.trans h.phase, Nat.lt_of_lt_of_le h.live he.size,
     by rw [hmain]; exact h.payload, ?_, he.isAName_mono h.object,
-    by rw [he.payload]; exact h.classLive, ?_⟩
+    by rw [he.payload]; exact h.classLive, ?_,
+    by rw [he.payload]; exact h.detached,
+    by rw [hobj]; exact h.unfrozen⟩
   · simpa only [classOf, hmain, he.ancestors] using h.chain
   · simpa only [objectHookQuietB, definitionHookQuietB, hlookup] using h.hook
 

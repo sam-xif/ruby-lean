@@ -38,3 +38,20 @@ forTargets=none; the soundness projection proves both fields. Controls reject
 either alternate mode independently and retain ordinary-code acceptance.
 This concerns the semantic metadata judgment over arbitrary runtime records;
 no accepted source program or Sorbet counterexample has been demonstrated.
+
+# Frozen definitions escaped ordinary conformance (2026-09-30)
+
+FrozenDefinitionControls preserves the complete former boot-state check. It
+accepts the boot heap with Object frozen and FrozenError#initialize replaced by
+a fromPrelude-marked body executing nil+1. Defining the trivial method bump
+then runs that initializer and reaches a type error. Method provenance alone
+does not constrain this callback. This refutes the old semantic definition
+obligation over StateOk; defDecl remains gated, so it is not an active validator
+accept or a demonstrated Sorbet bug.
+
+MainReady now requires Object to be unattached and unfrozen. Its Boolean guard,
+heap-extension and method-write proofs preserve both facts. The old state
+counterexample is rejected; the real boot machine remains accepted. Ordinary
+definition safety can therefore follow the real queued method_added protocol
+without entering untyped FrozenError callbacks. Supporting frozen definitions
+requires a separate callback contract rather than assuming provenance is safety.

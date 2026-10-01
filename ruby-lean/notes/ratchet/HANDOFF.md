@@ -23,6 +23,14 @@ now excludes fromBlock/forTargets alternate binding, with a checked Integer-body
 runtime counterexample in MethodCodeControls. The full gate and metatheory pass:
 /private/tmp/ascent-method-metadata-{gate,metatheory}.log. Counts are unchanged.
 Log: /private/tmp/ascent-methods-repair.log. Method rules remain gated.
+The former StateOk guard admits frozen Object with a forged prelude-marked
+FrozenError initializer: a trivial def reaches nil+1. MainReady now requires
+unattached/unfrozen Object; FrozenDefinitionControls preserves the complete old
+guard and runtime witness and runs in the mandatory gate. Heap/view/method-write
+preservation proofs are repaired. Full gate and metatheory remain GREEN:
+/private/tmp/ascent-writable-{gate,metatheory}.log. Next define-path prerequisites:
+source libraryOrigin provenance and the queued native callback (scratch proof
+/private/tmp/MethodHook.lean is incomplete; broad simp was stopped after a minute).
 Run Lake builds sequentially: concurrent builds raced over Context.olean.
 Final batch check-proofs.sh passes (/private/tmp/ascent-final-metatheory.log).
 No live builds.

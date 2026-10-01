@@ -18,13 +18,15 @@ def mainView (h : Heap) : Machine :=
     stack := [0] }
 
 theorem MainReady.view {m : Machine} (h : MainReady m) : MainReady (mainView m.heap) :=
-  ⟨rfl, rfl, rfl, rfl, rfl, h.live, h.payload, h.chain, h.object, h.classLive, h.hook⟩
+  ⟨rfl, rfl, rfl, rfl, rfl, h.live, h.payload, h.chain, h.object, h.classLive, h.hook,
+    h.detached, h.unfrozen⟩
 
 theorem MainReady.of_view {m : Machine} (h : MainReady (mainView m.heap))
     (hs : m.currentFrame.self = .ref Boot.mainId)
     (ho : m.currentFrame.defmod = Boot.objectId) (hc : m.currentFrame.cref = [])
     (hcap : m.currentFrame.captured = none) (hp : m.preludeMode = false) : MainReady m :=
-  ⟨hs, ho, hc, hcap, hp, h.live, h.payload, h.chain, h.object, h.classLive, h.hook⟩
+  ⟨hs, ho, hc, hcap, hp, h.live, h.payload, h.chain, h.object, h.classLive, h.hook,
+    h.detached, h.unfrozen⟩
 
 def mainConstResolve (h : Heap) (n : String) : Option Value :=
   constLookupFrom h Boot.objectId n

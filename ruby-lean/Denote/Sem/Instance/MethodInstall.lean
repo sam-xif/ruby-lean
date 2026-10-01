@@ -72,7 +72,12 @@ theorem MainReady.methodWrite {m : Machine} (h : MainReady m) (cls : ObjId)
     · exact heap_get_defineMethod_ne he
   refine ⟨h.self, h.owner, h.cref, h.captured, h.phase,
     by simpa only [Proof.objs_size_defineMethod] using h.live,
-    by rw [hmain]; exact h.payload, ?_, ?_, ?_, ?_⟩
+    by rw [hmain]; exact h.payload, ?_, ?_, ?_, ?_,
+    by simpa only [attached_defineMethod] using h.detached,
+    by
+      have hf := congrArg Object.frozen
+        (get_defineMethod_data m.heap cls Boot.objectId name md)
+      exact hf.trans h.unfrozen⟩
   · simpa only [Proof.classOf_defineMethod, Proof.ancestors_defineMethod] using h.chain
   · simpa only [isAName_defineMethod] using h.object
   · simpa only [Proof.classPayload?_isSome_defineMethod] using h.classLive

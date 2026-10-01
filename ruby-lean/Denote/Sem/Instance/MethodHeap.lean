@@ -38,6 +38,27 @@ theorem constLookup_defineMethod (h : Heap) (cls : ObjId) (name n : String) (md 
     cases hc : h.classPayload? Boot.objectId <;> simp [constLookup, constOwn, hc]
   rw [hco, hco, Proof.constOwn_defineMethod]
 
+theorem attached_defineMethod (h : Heap) (cls k : ObjId) (name : String) (md : MethodDef) :
+    ((defineMethod h cls name md).classPayload? k).bind (·.attached) =
+      (h.classPayload? k).bind (·.attached) := by
+  unfold defineMethod
+  split
+  · rename_i c hc
+    by_cases hk : k = cls
+    · subst k
+      have hb : cls < h.objs.size := by
+        by_cases hn : cls < h.objs.size
+        · exact hn
+        · rw [Proof.classPayload?_oob h cls hn] at hc
+          cases hc
+      simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set,
+        Proof.objs_getD_set!_self _ _ _ hb]
+      change c.attached = (h.classPayload? cls).bind (·.attached)
+      rw [hc]; rfl
+    · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      rw [Proof.objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
 theorem isModuleAny_defineMethod (h : Heap) (cls k : ObjId) (name : String) (md : MethodDef) :
     ((defineMethod h cls name md).classPayload? k).any (·.isModule) =
       (h.classPayload? k).any (·.isModule) := by

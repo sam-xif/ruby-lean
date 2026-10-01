@@ -13000,3 +13000,19 @@ No runtime/checker policy or top-level safety statement changes.
 Validation: full default gate GREEN at 22/99 clinks, 49/261 accepts,
 46/46 negatives rejected and 254 agree/0 disagree; check-proofs.sh passes.
 Logs: /private/tmp/ascent-method-metadata-{gate,metatheory}.log.
+
+### 2026-09-30 — Make ordinary definition's method table writable
+
+The full former boot-state guard admits frozen Object plus an unconstrained
+fromPrelude FrozenError initializer; a trivial def reaches nil+1 in that callback.
+FrozenDefinitionControls preserves both measurements (see ../../unsoundness.md).
+Strengthen MainReady with unattached/unfrozen Object and prove writable from them.
+Preserve both facts using the existing heap-extension/view and method-write proofs;
+attached_defineMethod isolates unchanged attachment from the changed method table.
+The real boot guard still accepts. This repairs the ordinary semantic definition
+contract; frozen-definition callbacks need their own future contract.
+
+Validation: full default gate GREEN, 22/99 clinks and 49/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree; check-proofs.sh passes.
+Logs: /private/tmp/ascent-writable-{gate,metatheory}.log. Repaired modules
+build under one second; the active bridge rebuild takes 20 seconds.
