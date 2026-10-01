@@ -4,8 +4,8 @@
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
-bare-name/collection providers. Full gate: /private/tmp/ascent-recursive-final-gate.log.
-Metatheory: /private/tmp/ascent-recursive-metatheory.log.
+bare-name/collection providers. Full gate: /private/tmp/ascent-class-hooks-gate.log.
+Metatheory: /private/tmp/ascent-class-hooks-metatheory.log.
 
 Repair uses the original MethodState body/frame/return and MethodArgs accumulator
 proofs. MethodResolve follows actual bounded lookup through main's singleton
@@ -26,11 +26,28 @@ builds/imports the existing RecursiveDerivations factorial proof and its complet
 recursive positive/negative controls. Removing any one of the seven recursive
 rules rejects its production trace. New bounded proofs build under a second.
 
-Next: classes (061+), or default/flow/callback method families. Do not import all
-off-target providers: MethodChecked imports the historical Full bridge and has
-drift. FlowDispatch/BodyDispatch still pass ready.chain to defsOk_lookup and
-presume no native shadow. Class publication must prove the explicit main-prefix
-write obligation, and ordinary instance code must establish actual definee.
+ClassRules preflight: /private/tmp/ascent-class-preflight.log. Actual fresh class
+entry queues const_added then inherited, after anonymous registration/naming and
+an attached metaclass; old stepFn_class_fresh jumps straight into the legacy
+freshClsMachine and is false. ClassHookControls measures complete legacy boot
+accepts and unrestricted-checker accepts that raise nil+1 in either callback.
+MainReady now rejects those worlds using classHooksQuietB; first own entries
+above Object must be native, defined and non-visibility-only. ClassHooks proves
+real fuel-bounded lookup from that predicate and preserves it across writes.
+Generic write/publication helpers take ClassHookWriteOk; Object is outside the
+prefix, including when defining const_added/inherited. Real boot and those
+production definitions pass the controls. See ../../unsoundness.md.
+
+Next: repair ClassEntry's actual registration/metaclass/callback path and retain
+ClassHeaderRun's original conformance/return structure. ClassRules currently
+imports constructor/instance/singleton providers too; preflight also found missing
+MainReady fields in MainSiteWrite/SubclassMain, changed lexical constants in
+SubclassConstants/MainReturn, positive DefsOk names in SubclassMethods, and binding/
+entry metadata in singleton/constructor/instance rules. Class clinks stay gated.
+Check inherited ancestry/allocator flags too: actual registration reads them from
+Object, while the legacy composite supplies defaults. Do not alter the interpreter
+to restore the legacy composite. MethodChecked still
+imports the historical Full bridge; BodyDispatch/FlowDispatch retain lookup drift.
 Run Lake builds sequentially; concurrent rebuilds previously raced .olean files.
 
 The entries below are historical checkpoints.

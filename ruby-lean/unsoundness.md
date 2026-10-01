@@ -122,3 +122,24 @@ checker guard. Lookup proves the leading singleton entry absent before resolving
 Object; native fidelity shadows retain the interpreter's unsupported outcome.
 The existing checked-body, activation and caller-restoration proofs then discharge
 ordinary call safety. MethodDefineeControls is mandatory in the gate.
+
+# Fresh class entry skipped untyped callbacks (2026-09-30)
+
+ClassHookControls retains the complete former boot-state guard. It accepts a
+boot heap with const_added (or inherited) on Object's metaclass replaced by a
+fromPrelude-marked body that executes nil+1. The unrestricted checker accepts
+class FreshHookWitness; 1; end, but running it from either world raises a type
+error before its body. Actual class entry queues const_added, then inherited;
+the old stepFn_class_fresh equality incorrectly jumped directly into that body.
+This refutes the semantic class judgment over arbitrary conformant states, not
+a real-boot source/Sorbet accept. Production class rules remain gated.
+
+MainReady now requires classHooksQuietB: the first own callback entries in
+Object's dispatch prefix before Object must be native Module#const_added and
+Class#inherited, non-undefined and non-visibility-only. This rejects both forged
+worlds and accepts real boot. Heap growth/frame changes preserve it. Method
+writes explicitly preserve both selectors or avoid the prefix. Object itself
+is outside that prefix, so ordinary source definitions named const_added or
+inherited remain possible and preserve the callbacks. The mandatory controls
+check those writes too. Class entry still needs its real registration, attached
+metaclass and callback-continuation proof before admission.

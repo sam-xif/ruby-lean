@@ -13146,3 +13146,30 @@ Validation: full default gate GREEN, 31/99 clinks and 55/261 accepts (+1),
 new bounded helpers kernel-check under a second with standard axioms only.
 Logs: /private/tmp/ascent-recursive-final-gate.log and
 /private/tmp/ascent-recursive-metatheory.log.
+
+### 2026-09-30 — Reject unsafe fresh-class callback worlds
+
+ClassRules preflight found actual class entry now registers/names an anonymous
+class, realizes an attached metaclass, queues const_added then inherited, and
+only then pushes its body frame. The old direct freshClsMachine equality is
+false. ClassHookControls measures both callback countermodels against the
+complete former boot guard and unrestricted checker; see ../../unsoundness.md.
+
+ClassHooks bounds the first own callback entries above Object to native no-ops,
+excluding visibility-only forwarding. MainReady/its guard retain this contract;
+view, reframe, heap growth and method writes preserve it. ClassHookWriteOk allows
+writes outside that prefix or to other selectors; Object is always outside the
+takeWhile prefix, so top-level callback-name definitions stay available. Generic
+write/publication helpers carry the obligation explicitly. Keep class clinks
+gated until the real registration and callback path is proved; do not modify
+the interpreter to rescue the legacy composite.
+
+ClassHooks also proves its first-own guard reaches the real fuel-bounded lookup:
+empty tables consume fuel and the non-forwarding row stops before Object. The
+ancestor-length bound supplies the budget. Both unsafe witnesses are rejected,
+while real boot and actual validator definitions named const_added/inherited pass.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks and 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. New callback-prefix/lookup helpers
+build in 201ms with standard axioms only; both controls build in 1.2s. Metatheory
+passes. Logs: /private/tmp/ascent-class-hooks-{gate,metatheory}.log.

@@ -114,7 +114,9 @@ theorem StateOk_publish_instance {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (hchain : ClassChains (classWithMethod c d :: κ.classes) (defineMethod m.heap cls d.name md))
     (hroot : RootInitOk κ.defs (defineMethod m.heap cls d.name md))
     (hprefix : (κ.scope.runtimeMain = true ∨ κ.pos.mainWorld = true) →
-      MainPrefixWriteOk m.heap cls d.name) :
+      MainPrefixWriteOk m.heap cls d.name)
+    (hhooks : (κ.scope.runtimeMain = true ∨ κ.pos.mainWorld = true) →
+      ClassHookWriteOk m.heap cls d.name) :
     StateOk (instanceDeclCtx κ c d) Γ I { m with heap := defineMethod m.heap cls d.name md } := by
   have hr : ReframeFO (reserveNameCtx κ d.name) I :=
     ⟨ht.spine, ht.self, ht.block, ht.consts, ht.paths⟩
@@ -129,7 +131,7 @@ theorem StateOk_publish_instance {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
       (Nat.ne_of_lt (Nat.lt_trans (by decide : Boot.zeroDivisionErrorId < Boot.yielderId) hsite.afterBuiltins))
       (Nat.ne_of_lt (Nat.lt_trans (by decide : Boot.standardErrorId < Boot.yielderId) hsite.afterBuiltins))
       (Nat.ne_of_lt (Nat.lt_trans (by decide : Boot.exceptionId < Boot.yielderId) hsite.afterBuiltins)))
-    hprefix
+    hprefix hhooks
 
 #print axioms ClassesOk_methodWrite_old
 #print axioms ClassesOk_publish_instance
