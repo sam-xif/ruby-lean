@@ -70,5 +70,19 @@ theorem rebuilt_bare_name_safe_run (hb : bootOkB = true) (fuel : Nat) :
     Semantics.typeStuck (Semantics.run fuel (toRuby (.vcall "x"))) = false :=
   validateD_safe_run (by decide : validateD (.vcall "x") (.bareName "x") = true) hb fuel
 #print axioms rebuilt_bare_name_safe_run
+theorem rebuilt_array_bounds_safe_run (hb : bootOkB = true) (fuel : Nat) :
+    Semantics.typeStuck (Semantics.run fuel (toRuby
+      (.send (some (.array [.int 1])) "[]" [.int 2] none))) = false :=
+  validateD_safe_run (by decide : validateD
+    (.send (some (.array [.int 1])) "[]" [.int 2] none)
+    (.prim (.arrayLit [.intLit 1] .int) "[]" [.intLit 2] (.arrayOf .int) (.nilable .int)) = true) hb fuel
+#print axioms rebuilt_array_bounds_safe_run
+theorem rebuilt_duplicate_hash_safe_run (hb : bootOkB = true) (fuel : Nat) :
+    Semantics.typeStuck (Semantics.run fuel (toRuby
+      (.hash [(.sym "k", .int 1), (.sym "k", .int 2)]))) = false :=
+  validateD_safe_run (by decide : validateD
+    (.hash [(.sym "k", .int 1), (.sym "k", .int 2)])
+    (.hashLit [.symLit "k", .symLit "k"] [.intLit 1, .intLit 2] .sym .int) = true) hb fuel
+#print axioms rebuilt_duplicate_hash_safe_run
 #print axioms validateD_safe_run
 end Ratchet.Denote.Typed

@@ -7,7 +7,8 @@ iterK exact transparency for shared Hash-lock unwind. The kernel counterexample
 and the new IterUnwindInert premise are in Proof/Static/IteratorUnwind and
 ../../unsoundness.md. No runtime changes; check-proofs.sh and boot/axiom probes
 pass (/private/tmp/ascent-metatheory-repair.log). The active typed gate is green
-at 15/99 clinks, 29/261 accepts and 254 CRuby agreements, zero disagreements.
+at 22/99 clinks, 49/261 accepts and 254 CRuby agreements, zero disagreements
+after the subsequent admissions. Final batch audit: /private/tmp/ascent-final-metatheory.log.
 Earlier entries below are historical.
 
 ## Scoped run_pushK restoration (2026-09-30)

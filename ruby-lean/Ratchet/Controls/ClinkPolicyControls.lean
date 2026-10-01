@@ -123,6 +123,39 @@ private def retypedHint : Deriv :=
   (.seq [.def' "x" [] (.int 1), .vcall "x"])
   (.seq [.defDecl "x" [] .int (.intLit 1), .bareName "x"])
 
+-- Collection admission checks exact children, joins and companion permissions.
+#guard validateD (.array []) (.arrayLit [] .never) ==
+  ["arrayLit", "DJudgeAll.nil"].all clinkEnabled
+#guard !validateD (.array []) (.arrayLit [] .any)
+#guard validateD (.array [.vasgn .lvar "x" (.int 1), .var .lvar "x"])
+  (.arrayLit [.vasgn .lvar "x" (.intLit 1), .var .lvar "x"] .int) ==
+  ["arrayLit", "DJudgeAll.nil", "DJudgeAll.cons", "vasgn", "var", "intLit"].all clinkEnabled
+#guard !validateD (.array [.int 1]) (.arrayLit [.intLit 2] .int)
+#guard !validateD (.array [.int 1]) (.arrayLit [.intLit 1] .bool)
+#guard !validateD (.array [.var .lvar "x", .vasgn .lvar "x" (.int 1)])
+  (.arrayLit [.var .lvar "x", .vasgn .lvar "x" (.intLit 1)] .int)
+#guard (check 100 [("f", .arrow0 .int)] (.array [.var .lvar "f"])
+  (.arrayLit [.var .lvar "f"] (.arrow0 .int))).isNone
+#guard validateD (.hash []) (.hashLit [] [] .never .never) ==
+  ["hashLit", "DJudgePairs.nil"].all clinkEnabled
+private def duplicateHash : Expr := .hash [(.sym "k", .int 1), (.sym "k", .int 2)]
+private def duplicateHashHint : Deriv :=
+  .hashLit [.symLit "k", .symLit "k"] [.intLit 1, .intLit 2] .sym .int
+#guard validateD duplicateHash duplicateHashHint ==
+  ["hashLit", "DJudgePairs.nil", "DJudgePairs.cons", "symLit", "intLit"].all clinkEnabled
+#guard !validateDWith (fun r => clinkEnabled r && r != "DJudgePairs.cons")
+  duplicateHash duplicateHashHint
+#guard !validateDWith (fun r => clinkEnabled r && r != "DJudgePairs.nil")
+  duplicateHash duplicateHashHint
+#guard !validateD (.hash [(.sym "k", .int 1)]) (.hashLit [.symLit "k"] [] .sym .int)
+#guard !validateD (.hash [(.sym "k", .int 1)])
+  (.hashLit [.symLit "k"] [.intLit 2] .sym .int)
+#guard !validateD (.hash [(.sym "k", .int 1)])
+  (.hashLit [.symLit "k"] [.intLit 1] .sym .bool)
+#guard validateD (.hash [(.vasgn .lvar "x" (.int 1), .var .lvar "x")])
+  (.hashLit [.vasgn .lvar "x" (.intLit 1)] [.var .lvar "x"] .int .int) ==
+  ["hashLit", "DJudgePairs.nil", "DJudgePairs.cons", "vasgn", "var", "intLit"].all clinkEnabled
+
 -- Uncalled bodies and uniformly quantified callback witnesses are checked too.
 private def method : Expr := .def' "get5" [] (.int 5)
 private def methodHint : Deriv := .defDecl "get5" [] .int (.intLit 5)

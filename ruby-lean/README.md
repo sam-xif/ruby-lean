@@ -63,8 +63,8 @@ Sorbet drift, new upstream failures and accepted negative controls still fail.
 ./scripts/run_typed_ratchet.sh --full-corpus    # historical complete-coverage audit and floors
 ```
 
-The active profile enables 18 clinks and 41
-accepted corpus rungs. `validateD` checks every rule in the verified derivation's
+The active profile enables 22 clinks; `validateD` accepts 49 corpus rungs.
+It checks every rule in the verified derivation's
 trace against `Ratchet/ClinkPolicy.lean`, including companion/body rules. Further
 admission requires enabling their clinks and rebuilding their semantic providers.
 The full historical audit retains its floors and requires all clinks; it remains

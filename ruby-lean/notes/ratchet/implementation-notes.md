@@ -12940,3 +12940,23 @@ rejected, 254 agree/0 disagree. Log: /private/tmp/ascent-branches-gate.log.
 Array preflight passes. Hash preflight needs the existing root-clean bindSpec
 premise and the actual Complex-key gate; a repaired temporary proof passes
 (/private/tmp/ascent-hash-proof.log), pending permanent admission.
+
+### 2026-09-30 — Repair and admit Array/Hash literals
+
+Enable arrayLit/hashLit/DJudgePairs.nil/cons. Reuse Array's existing proof;
+repair Hash's bindSpec calls with the conformant state's root cleanliness and
+handle the interpreter's Complex-key comparison gate before reusing its existing
+typed-accumulator proof. No strengthened key domain or changed theorem statement.
+Move unchanged pair obligations beside Hash; RulesCtx remains a compatibility
+import. Controls cover joins, exact children, empty literals, effects/evaluation
+order, duplicate keys and companion permissions. Out-of-bounds Array indexing
+and duplicate Hash keys reach validateD_safe_run with standard axioms.
+
+Full default gate GREEN: 22/99 clinks, 49/261 accepts, prefix 17, 46/46 negatives
+rejected, 254 agree/0 disagree. Log: /private/tmp/ascent-collections-gate.log.
+A concurrent preflight initially raced over Context.olean; all Lake builds must
+now run sequentially. The successful gate rerun had no competing Lake process.
+Next method preflight fails in MethodReturn: new Framed root-clean field,
+localFrameId alias-aware lookup, and bindSpec's root-clean/catch-free interface.
+Log: /private/tmp/ascent-methods-preflight.log. Method rules remain gated.
+Final batch check-proofs.sh PASS: /private/tmp/ascent-final-metatheory.log.

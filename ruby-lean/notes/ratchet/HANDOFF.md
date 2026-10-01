@@ -1,17 +1,22 @@
 # Active ascent (2026-09-30)
 
-Literals, locals, sequences, primitive sends, branches and bare names are
+Literals, locals, sequences, primitive sends, branches, bare names and collections are
 permanently enabled using existing proof providers. Full default gate GREEN:
-18/99 clinks, 41/261 corpus accepts (prefix 17), 46/46
+22/99 clinks, 49/261 corpus accepts (prefix 17), 46/46
 negative controls rejected, 254 agree/0 disagree. Standard-axiom audit passes.
-Log: /private/tmp/ascent-branches-gate.log. String-comparison deferral drift
+Log: /private/tmp/ascent-collections-gate.log. String-comparison deferral drift
 is repaired in indexing/equality/Static/Decls. Exact iterator transparency now
 excludes shared Hash-lock cleanup; the counterexample is in ../../unsoundness.md.
 check-proofs.sh passes (/private/tmp/ascent-metatheory-repair.log).
-Next: Array/Hash literals and pair companions. Array preflight passes; Hash's
-temporary repaired proof supplies root cleanliness and handles the Complex-key
-gate (/private/tmp/ascent-hash-proof.lean, ascent-hash-proof.log). Apply it and
-admit the rules with controls. No live builds.
+Array/Hash literals and pair companions are admitted. Hash supplies root cleanliness
+and handles the interpreter's Complex-key gate with its original accumulator proof.
+Next: defDecl/callSig (052/055/057/058/059). MethodReturn preflight fails at the
+new Framed root-clean field, alias-aware getLocal and bindSpec's updated premises
+(/private/tmp/ascent-methods-preflight.log). Inspect witnesses before repairing
+false lookup assumptions; preserve the existing proof logic and safety endpoints.
+Run Lake builds sequentially: concurrent builds raced over Context.olean.
+Final batch check-proofs.sh passes (/private/tmp/ascent-final-metatheory.log).
+No live builds.
 The entries below are historical checkpoints.
 
 # Default active typed ratchet (2026-09-30)
