@@ -1,12 +1,15 @@
 # Active ascent (2026-09-30)
 
-Sequences, last/cons and local reads/assignments are permanently enabled with
-their existing proof providers. Full default gate GREEN: 12/99 clinks, 9/261 corpus accepts, 46/46
+Literals, locals, sequences and primitive sends (with list companions) are
+permanently enabled using existing proof providers. Full default gate GREEN:
+15/99 clinks, 29/261 corpus accepts, 46/46
 negative controls rejected, 254 agree/0 disagree. Standard-axiom audit passes.
-Log: /private/tmp/ascent-locals-gate.log. Next: repair String-comparison deferral
-simplification drift in Static/Decls and ArrayIndex/HashIndex, then admit primitive
-sends and their list companions. The off-target metatheory check currently fails
-on those four Static/Decls rows (/private/tmp/ascent-decls-preflight.log).
+Log: /private/tmp/ascent-primitives-gate.log. String-comparison deferral drift
+is repaired in indexing/equality/Static/Decls. Exact iterator transparency now
+excludes shared Hash-lock cleanup; the counterexample is in ../../unsoundness.md.
+check-proofs.sh passes (/private/tmp/ascent-metatheory-repair.log).
+Next: branches/no-else/bare names. Their existing providers pass preflight
+(/private/tmp/ascent-branch-preflight.log), but remain gated pending admission.
 The entries below are historical checkpoints.
 
 # Default active typed ratchet (2026-09-30)

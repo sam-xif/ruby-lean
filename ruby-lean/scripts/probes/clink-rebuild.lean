@@ -53,5 +53,13 @@ theorem rebuilt_local_retype_safe_run (hb : bootOkB = true) (fuel : Nat) :
     (.seq [.vasgn .lvar "x" (.int 1), .vasgn .lvar "x" .nil, .var .lvar "x"])
     (.seq [.vasgn .lvar "x" (.intLit 1), .vasgn .lvar "x" .nilLit, .var .lvar "x"]) = true) hb fuel
 #print axioms rebuilt_local_retype_safe_run
+-- Division by zero is an escaping non-type error, still safe for this contract.
+theorem rebuilt_primitive_escape_safe_run (hb : bootOkB = true) (fuel : Nat) :
+    Semantics.typeStuck (Semantics.run fuel (toRuby
+      (.send (some (.int 1)) "/" [.int 0] none))) = false :=
+  validateD_safe_run (by decide : validateD
+    (.send (some (.int 1)) "/" [.int 0] none)
+    (.prim (.intLit 1) "/" [.intLit 0] .int .int) = true) hb fuel
+#print axioms rebuilt_primitive_escape_safe_run
 #print axioms validateD_safe_run
 end Ratchet.Denote.Typed

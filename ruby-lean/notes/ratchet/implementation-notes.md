@@ -12907,3 +12907,23 @@ Full default gate GREEN: 12/99 clinks, 9/261 accepts (031 newly climbed),
 The batch metatheory check exposes pre-existing strCmpDefer? simplification drift
 in Static/Decls' four Integer rows; primitive preflight exposes the same drift
 in ArrayIndex/HashIndex. Repair those existing proofs next.
+
+### 2026-09-30 — Repair and admit primitive sends
+
+Enable prim/DJudgeAll.nil/cons with the existing Primitive provider. Move its
+unchanged context-indexed list obligations out of RulesCtx to avoid importing
+unrelated Hash expression proofs. Repair String-comparison deferral simplification
+in ArrayIndex, HashIndex and Integer equality; theorem statements are unchanged.
+Controls retain arity/result/operand checks and saved-receiver evaluation order;
+division by zero reaches the all-fuel safety theorem as a non-type-error escape.
+
+The batch audit also repairs Static/Decls' four Integer dispatch proofs and finds
+a false iterK transparency premise after shared Hash-lock cleanup. Preserve the
+counterexample and require IterUnwindInert in RetTransparent/NxtTransparent;
+the admitted ignore iterator remains supported. See ../../unsoundness.md and the
+model record. No runtime, checker, top-level safety statement or floor change.
+
+Full default gate GREEN: 15/99 clinks, 29/261 accepts, 46/46 negatives rejected,
+254 agree/0 disagree. check-proofs.sh and its axiom/boot audits PASS. Primitive
+modules build in at most 14 seconds; no new axioms or resource-limit increases.
+Logs: /private/tmp/ascent-primitives-gate.log and ascent-metatheory-repair.log.

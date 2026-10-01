@@ -156,4 +156,12 @@ theorem SemA.DJudgeAll.cons {Γ Γ₁ Γ₂ : Env} {e : Ratchet.Expr} {es : List
     {τ : Ty} {tys : List Ty} (h : SemSafeA Γ e τ Γ₁) (ht : SemAllA Γ₁ es tys Γ₂)
     (hp : plainArgB e = true) : SemAllA Γ (e :: es) (τ :: tys) Γ₂ := .cons h ht hp
 
+theorem SemSafeCtxA.DJudgeAll.nil {κ : Ctx} {Γ : Env} {I : Ty} :
+    SemAllCtxA κ Γ I [] [] κ Γ I := .nil
+
+theorem SemSafeCtxA.DJudgeAll.cons {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ τ : Ty}
+    {e : Expr} {es : List Expr} {tys : List Ty}
+    (he : SemSafeCtxA κ Γ I e τ κ₁ Γ₁ I₁) (ht : SemAllCtxA κ₁ Γ₁ I₁ es tys κ₂ Γ₂ I₂)
+    (hp : plainArgB e = true) : SemAllCtxA κ Γ I (e :: es) (τ :: tys) κ₂ Γ₂ I₂ := .cons he ht hp
+
 end Ratchet.Denote.Typed

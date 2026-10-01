@@ -15808,3 +15808,15 @@ its real model-safety witness now compile with only standard Lean axioms.
 The remaining proof families are gated while rebuilt, rather than repaired here.
 See notes/ratchet/implementation-notes.md and Denote/Clink/README.md for the new
 profile and checks. No runtime differential rerun was needed for proof-only edits.
+
+## 2026-09-30 — Revalidate static dispatch and iterator unwind
+
+Static/Decls' four Integer rows now simplify strCmpDefer?/strCmpTwin?, retaining
+their theorem statements. The next batch failure was substantive: iterK hashEach
+releases a shared lock, refuting the old exact unwind-transparency claim.
+Static/IteratorUnwind records a kernel-checked witness and IterUnwindInert;
+RetTransparent/NxtTransparent require it. KontOk's ignore iterator still qualifies.
+See ../../unsoundness.md. Runtime and active validator judgments are unchanged.
+check-proofs.sh passes with standard axioms and boot probes; the active typed
+gate passes with 15/99 clinks and 254 CRuby agreements, zero disagreements.
+Logs: /private/tmp/ascent-metatheory-repair.log and ascent-primitives-gate.log.

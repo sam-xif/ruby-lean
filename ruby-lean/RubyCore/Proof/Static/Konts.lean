@@ -1,4 +1,5 @@
 import RubyCore.Proof.Static.Decls
+import RubyCore.Proof.Static.IteratorUnwind
 
 /-!
 # P0 static soundness, part 2 — typing the machine
@@ -514,12 +515,9 @@ def RetTransparent : Kont → Prop
   -- catch-all passes a jump on with the kont popped, same as the ten above.
   | .hshKeyK .. => True
   | .hshValK .. => True
-  -- **L253: the native iterator's loop marker.** `unwind` has *no arm* for `.iterK` — it
-  -- falls to the catch-all, which passes the jump on with the kont popped — so it is
-  -- transparent for the same one line of the interpreter the ten above it are. Note the
-  -- asymmetry with `blkFrameK`, which is right there beside it in the continuation and is
-  -- **not** transparent: the block frame consumes a `next` and a lambda's `break`.
-  | .iterK .. => True
+  -- Hash markers release a shared insertion lock on unwind (unsoundness.md).
+  -- The typed iterator rule uses .ignore, which retains exact transparency.
+  | .iterK _ _ _ kind _ _ _ => IterUnwindInert kind
   | _ => False
 
 /-- The label of the innermost activation's `frameK`. With L199's clause this is the
@@ -704,8 +702,8 @@ def NxtTransparent : Kont → Prop
   | .arrSplatK .. => True
   | .jumpValK _ => True
   | .cpathK _ => True
-  -- L253, for `RetTransparent`'s reason at the other channel.
-  | .iterK .. => True
+  -- Same shared-lock restriction as RetTransparent.
+  | .iterK _ _ _ kind _ _ _ => IterUnwindInert kind
   | _ => False
 
 theorem unwind_nxt_transparent {m : Machine} {κ : Kont} {k : List Kont} {v : Value}

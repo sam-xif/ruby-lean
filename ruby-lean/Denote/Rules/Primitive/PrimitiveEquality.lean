@@ -27,7 +27,8 @@ theorem int_eq_defer {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : StateOk 
     (x : Int) (v : Value) (hfree : nameFreeN κ "==" = true := by rfl) :
     Builtins.deferTwin? m.heap "Integer#==" (.int x) [v] = none := by
   simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
-    Builtins.toAryDefer?, Builtins.num?, no_program_eq hm v hfree]
+    Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?,
+    Builtins.num?, no_program_eq hm v hfree]
 
 theorem int_eq_step {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} (hm : StateOk κ Γ I m)
     (hk : m.kont = []) (x : Int) (v : Value) :

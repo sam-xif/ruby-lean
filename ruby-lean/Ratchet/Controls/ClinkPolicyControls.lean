@@ -55,6 +55,27 @@ private def primitiveRules (r : String) : Bool :=
   (.prim (.intLit 1) "+" [.intLit 2] .int .int)
 #guard !validateDWith (fun _ => true) (.send (some (.int 1)) "+" [.int 2] none)
   (.prim (.intLit 1) "+" [.intLit 3] .int .int)
+#guard validateD (.send (some (.int 1)) "+" [.int 2] none)
+  (.prim (.intLit 1) "+" [.intLit 2] .int .int) ==
+  ["prim", "intLit", "DJudgeAll.cons", "DJudgeAll.nil"].all clinkEnabled
+#guard !validateD (.send (some (.int 1)) "+" [.nil] none)
+  (.prim (.intLit 1) "+" [.nilLit] .int .int)
+#guard !validateD (.send (some (.int 1)) "+" [] none)
+  (.prim (.intLit 1) "+" [] .int .int)
+#guard !validateD (.send (some (.int 1)) "+" [.int 2] none)
+  (.prim (.intLit 1) "+" [.intLit 2] .int .bool)
+
+-- The receiver is saved before an argument overwrites its source binding.
+private def savedReceiver : Expr := .send
+  (some (.vasgn .lvar "x" (.int 1))) "+"
+  [.seq [.vasgn .lvar "x" .nil, .int 2]] none
+private def savedReceiverHint : Deriv := .prim
+  (.vasgn .lvar "x" (.intLit 1)) "+"
+  [.seq [.vasgn .lvar "x" .nilLit, .intLit 2]] .int .int
+#guard validateD savedReceiver savedReceiverHint ==
+  ["prim", "intLit", "nilLit", "vasgn", "seq", "DJudgeSeq.last", "DJudgeSeq.cons",
+    "DJudgeAll.cons", "DJudgeAll.nil"].all clinkEnabled
+#guard !validateDWith (fun r => clinkEnabled r && r != "vasgn") savedReceiver savedReceiverHint
 
 -- Assignment threads the RHS state and permits later retyping of a local.
 private def localRules := ["seq", "DJudgeSeq.last", "DJudgeSeq.cons", "var", "vasgn",

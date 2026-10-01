@@ -9,14 +9,6 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open Ratchet
 
-theorem SemSafeCtxA.DJudgeAll.nil {κ : Ctx} {Γ : Env} {I : Ty} :
-    SemAllCtxA κ Γ I [] [] κ Γ I := .nil
-
-theorem SemSafeCtxA.DJudgeAll.cons {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ τ : Ty}
-    {e : Expr} {es : List Expr} {tys : List Ty}
-    (he : SemSafeCtxA κ Γ I e τ κ₁ Γ₁ I₁) (ht : SemAllCtxA κ₁ Γ₁ I₁ es tys κ₂ Γ₂ I₂)
-    (hp : plainArgB e = true) : SemAllCtxA κ Γ I (e :: es) (τ :: tys) κ₂ Γ₂ I₂ := .cons he ht hp
-
 theorem SemSafeCtxA.DJudgePairs.nil {κ : Ctx} {Γ : Env} {I : Ty} :
     SemPairsCtxA κ Γ I [] [] [] κ Γ I := .nil
 

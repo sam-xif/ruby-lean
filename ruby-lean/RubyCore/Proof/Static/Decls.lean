@@ -3678,7 +3678,7 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
       subst this
       exact Or.inl <| entryOk_int ht.1 (by decide) (by decide) (by decide) run_int_add
         (fun _ _ _ => by simp [Builtins.deferTwin?, Builtins.reprDefer?,
-          Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.num?])
+          Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?, Builtins.num?])
     · by_cases h2 : mname = "-"
       · subst h2
         have : d = { params := [Ty.int], ret := Ty.int } := by
@@ -3686,7 +3686,7 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
         subst this
         exact Or.inl <| entryOk_int ht.2.1 (by decide) (by decide) (by decide) run_int_sub
           (fun _ _ _ => by simp [Builtins.deferTwin?, Builtins.reprDefer?,
-            Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.num?])
+            Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?, Builtins.num?])
       · by_cases h3 : mname = "*"
         · subst h3
           have : d = { params := [Ty.int], ret := Ty.int } := by
@@ -3694,7 +3694,7 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
           subst this
           exact Or.inl <| entryOk_int ht.2.2.1 (by decide) (by decide) (by decide) run_int_mul
             (fun _ _ _ => by simp [Builtins.deferTwin?, Builtins.reprDefer?,
-              Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.num?])
+              Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?, Builtins.num?])
         -- L152's nullary row, and the only line of this proof that differs in shape:
         -- the return type is `.bool` rather than the receiver's, so the witness has
         -- to say what a `.bool` value *is* (`hty`).
@@ -3710,7 +3710,7 @@ theorem tableOk_declsOk {h : Heap} (ht : TableOk h) (hcls : ClassOk h) :
               ht.2.2.2 (by decide) (by decide) (by decide)
               (fun _ _ => ValueTy.exact rfl) run_int_zero
               (fun _ _ => by simp [Builtins.deferTwin?, Builtins.reprDefer?,
-                Builtins.coerceDefer?, Builtins.toAryDefer?])
+                Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?])
           · exact absurd hd (by
               simp [declFor, tyClassNames, declOf?, declsFor, baseDecls,
                 show ("+" == mname) = false from by simp [Ne.symm h1],

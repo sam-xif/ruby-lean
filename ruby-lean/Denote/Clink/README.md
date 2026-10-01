@@ -1,7 +1,7 @@
 # Rebuilding the clink registry
 
-The active registry admits seven literal rules, local reads/assignments, sequence
-expressions and their last/cons companions (12/99 rules). `intLit` remains the
+The active registry admits literals, local reads/assignments, sequences, primitive
+sends and their sequence/argument companions (15/99 rules). `intLit` remains the
 non-vacuity anchor.
 
 From `ruby-lean/`, run:

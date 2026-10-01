@@ -41,7 +41,7 @@ theorem hash_index_invoke {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
   apply invokeDispatch_builtin (owner := owner) (md := md) _ hb hu hv hpre _ (by
     simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
       nativeReal, rationalPayload?, complexPayload?,
-      Builtins.toAryDefer?, hp]) (by rfl)
+      Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?, hp]) (by rfl)
   · rw [lookup_eq_methodOn, hc]; exact hl
   · simpa only [hc] using hs
 

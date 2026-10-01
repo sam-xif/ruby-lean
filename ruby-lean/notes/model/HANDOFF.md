@@ -1,5 +1,15 @@
 # Lean model — hand-off
 
+## Static proof revalidation (2026-09-30)
+
+The active ascent repaired Static/Decls dispatch simplification and corrected
+iterK exact transparency for shared Hash-lock unwind. The kernel counterexample
+and the new IterUnwindInert premise are in Proof/Static/IteratorUnwind and
+../../unsoundness.md. No runtime changes; check-proofs.sh and boot/axiom probes
+pass (/private/tmp/ascent-metatheory-repair.log). The active typed gate is green
+at 15/99 clinks, 29/261 accepts and 254 CRuby agreements, zero disagreements.
+Earlier entries below are historical.
+
 ## Scoped run_pushK restoration (2026-09-30)
 
 The subsequent user request was to make run_pushK pass while leaving other
