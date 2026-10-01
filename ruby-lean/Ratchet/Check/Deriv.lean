@@ -2,48 +2,9 @@ import Ratchet.Lang.Ty
 import Ratchet.Lang.Expr
 import Ratchet.Lang.JsonUtil
 
-/-!
-# `Deriv` — the certificate language, and the stub that checks one
-
-`../AGENTS.md` §The answer-typed design §3.4: layer 1 of the seven, the thing an
-**untrusted** emitter writes and the kernel reads. This file is that layer plus a
-deliberately incomplete layer 2 (`validateD`), which is where this commit stops.
-
-## Why a certificate at all, when `Ratchet/Validate.lean` synthesizes
-
-`validate` infers, and inference is why the ladder is capped: `Judge.callDef` types a
-method body **once per call-site argument shape**, because Ruby writes no parameter
-types and there is therefore nothing to check a call against. Sorbet's `sig` is exactly
-the missing input, and it cannot be handed to an inference algorithm without trusting it
--- so it is handed in as *certificate data* instead, and re-checked. That is
-`sorbet-cert/README.md` §3's argument, and the reason a declared type cannot produce a
-wrong accept: it arrives as a field of `Deriv.defDecl`, and the checker re-checks the
-body at exactly that type. A wrong signature produces a body that fails to certify.
-
-## What is different from `Judge`
-
-Two constructors here have **no `Judge` rule yet**, and they are the point of the
-reshaping rather than an oversight:
-
-* `defDecl` -- check a method body **once**, at its declared signature, and register it.
-  `Judge.defStmt` types a `def` as `.sym` and says nothing about the body.
-* `callSig` / `callMethodSig` -- a call checked against a *declared* signature, rather
-  than `Judge.callDef`'s re-check of the body at the call site's argument types.
-
-Both are owed a `Judge` rule and a soundness lemma (`check_sound`, layer 3). Neither
-exists here; see §"Not built" below. The remaining constructors mirror an existing
-`Judge` rule one-for-one and are named after it.
-
-## Not built (and not pretended)
-
-* **`check`** -- the real layer 2: `Ctx -> Env -> Ty -> Expr -> Deriv -> Option (Ty x Env x Ty)`.
-  `validateD` below is a **shape check only**: it verifies the certificate is a
-  derivation *about this program*, and nothing about types. It is not sound and does not
-  claim to be; it is the half of `check` that has to be right before the typing half is
-  worth writing, and it is enough to run the pipeline end to end.
-* **`check_sound`** -- layer 3, `check ... = some ... -> Judge ...`.
-* The `Judge` rules `defDecl`/`callSig` need.
--/
+/-! Untrusted certificate hints. Check.lean reconstructs source judgments and rejects
+wrong literals, names, signatures, arity and subcertificates. A decoded hint alone grants
+nothing: only validateD acceptance crosses the registered semantic bridge. -/
 
 namespace Ratchet
 
@@ -72,6 +33,18 @@ inductive Deriv where
   | truLit
   | flsLit
   | nilLit
+  /-- Opt into the effect-indexed local-flow judgment. -/
+  | flow (d : Deriv)
+  /-- Code is reconstructed from the source block, never supplied by the certificate. -/
+  | closureLiteral
+  /-- The stored source body is rechecked at the call's live local types. -/
+  | closureCall (body : Deriv) (ret : Ty)
+  /-- General receiver/arguments; parameter types are reconstructed from their certificates. -/
+  | requiredClosureCall (recv : Deriv) (args : List Deriv) (body : Deriv) (ret : Ty)
+  /-- Receiver and body hints only; source syntax and checked receiver supply all types. -/
+  | eachBlock (recv body : Deriv)
+  /-- Map result types come from the checked body; the hint carries no type claim. -/
+  | mapBlock (recv body : Deriv)
   /-- A bare-name miss from the explicitly supported absence table. -/
   | bareName (name : String)
   | selfExpr
@@ -98,15 +71,31 @@ inductive Deriv where
       checked once, at `params -> ret`, and the method is registered at that signature.
       No `Judge` rule yet (see the header). -/
   | defDecl (name : String) (params : List SigParam) (ret : Ty) (body : Deriv)
+  /-- Block signatures are untrusted definition-side hints, checked before any call. -/
+  | defBlock (name : String) (params : List SigParam) (blockArgs : List Ty) (blockRet ret : Ty) (body : Deriv)
+  /-- The installed checked signature supplies the callback domain. -/
+  | callBlock (name : String) (body : Deriv) (ret : Ty)
+  /-- Yield arguments are checked against the surrounding method's block signature. -/
+  | yieldArgs (args : List Deriv)
+  /-- Call the supplied method callback; its checked declaration supplies the signature. -/
+  | callbackCall (recv : Deriv) (args : List Deriv)
   /-- An implicit-self call to a method declared by a `defDecl`. -/
   | callSig (name : String) (args : List Deriv) (ret : Ty)
+  /-- Explicit initializer super; parent code and annotations come from retained sources. -/
+  | superInit (args : List Deriv)
   /-- An explicit-receiver call to a method declared by a `defDecl` on the receiver's
       class. -/
   | callMethodSig (recv : Deriv) (name : String) (args : List Deriv) (ret : Ty)
   /-- `Judge.classStmt`. -/
   | classDecl (name : String) (sup : Option String) (body : Deriv)
+  /-- A fresh module with a checked body and separate locals. -/
+  | moduleDecl (name : String) (body : Deriv)
   /-- `Judge.newInst`. `ty` is the instance type the emitter claims, ivar spine included. -/
   | newInst (cls : String) (args : List Deriv) (ty : Ty)
+  /-- Implicit construction from class-valued self; owner and fields are rechecked. -/
+  | newImplicit (cls : String) (args : List Deriv) (ty : Ty)
+  /-- An own singleton call, separate from the ordinary instance table. -/
+  | callSingleton (recv : Deriv) (name : String) (args : List Deriv) (ret : Ty)
   /-- `Judge.ivarRead`. -/
   | ivarRead (name : String) (ty : Ty)
   /-- `Judge.ivarAsgn`. -/
@@ -144,6 +133,13 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
   | "truLit" => return .truLit
   | "flsLit" => return .flsLit
   | "nilLit" => return .nilLit
+  | "flow" => return .flow (← kid "body")
+  | "closureLiteral" => return .closureLiteral
+  | "closureCall" => return .closureCall (← kid "body") (← ty "ret")
+  | "requiredClosureCall" =>
+    return .requiredClosureCall (← kid "recv") (← kids "args") (← kid "body") (← ty "ret")
+  | "eachBlock" => return .eachBlock (← kid "recv") (← kid "body")
+  | "mapBlock" => return .mapBlock (← kid "recv") (← kid "body")
   | "bareName" => return .bareName (← name "name")
   | "selfExpr" => return .selfExpr
   | "var" => return .var (← varKindOfJson? (← j.getObjVal? "kind")) (← name "name")
@@ -160,12 +156,24 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
     let ps ← jList j "params" (fun p => do
       return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))
     return .defDecl (← name "name") ps (← ty "ret") (← kid "body")
+  | "defBlock" =>
+    let ps ← jList j "params" (fun p => do
+      return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))
+    return .defBlock (← name "name") ps (← jList j "blockArgs" Ty.ofJson?)
+      (← ty "blockRet") (← ty "ret") (← kid "body")
+  | "yield" => return .yieldArgs (← kids "args")
+  | "callbackCall" => return .callbackCall (← kid "recv") (← kids "args")
   | "callSig" => return .callSig (← name "name") (← kids "args") (← ty "ret")
+  | "callBlock" => return .callBlock (← name "name") (← kid "body") (← ty "ret")
+  | "superInit" => return .superInit (← kids "args")
   | "callMethodSig" =>
     return .callMethodSig (← kid "recv") (← name "name") (← kids "args") (← ty "ret")
   | "classDecl" =>
     return .classDecl (← name "name") (← jOpt j "super" (·.getStr?)) (← kid "body")
+  | "moduleDecl" => return .moduleDecl (← name "name") (← kid "body")
   | "newInst" => return .newInst (← name "cls") (← kids "args") (← ty "ty")
+  | "newImplicit" => return .newImplicit (← name "cls") (← kids "args") (← ty "ty")
+  | "callSingleton" => return .callSingleton (← kid "recv") (← name "name") (← kids "args") (← ty "ret")
   | "ivarRead" => return .ivarRead (← name "name") (← ty "ty")
   | "ivarAsgn" => return .ivarAsgn (← name "name") (← kid "value")
   | "constCls" => return .constCls (← name "name")

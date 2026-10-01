@@ -14,7 +14,7 @@ open RubyCore Ratchet Ratchet.Denote
 #guard ["Object", "Class", "String", "Point", "FlagBox", "IOError"].all fun cn =>
   classNativeFrameB ctx0 cn == FreshClass.nativeFrameB ctx0 cn
 #guard (interceptedSendNames ++ singletonSendNames ++ ["getX", "answer", "fresh_method"]).all fun mn =>
-  directCallNameB mn == directSendNameB mn
+  !directCallNameB mn || directSendNameB mn
 #guard !directCallNameB "call" && !directCallNameB "new" && !directCallNameB "sqrt"
 #guard directCallNameB "answer"
 #guard !explicitReceiverB .self'

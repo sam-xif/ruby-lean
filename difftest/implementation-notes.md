@@ -1521,3 +1521,795 @@ After the fix, `desugar`: tier 0 **1232 agree, 0 disagree** (71 gated, 5 `contro
   that embeds a source location differs by construction. `_scrub_program_path` quotients out the
   harness's own temp path for exactly this reason; whether to extend it to line numbers is a real
   oracle-weakening decision (it would hide a genuine "raised from the wrong place") and is left open.
+
+## N50 — the three live model disagreements are repaired (2026-09-27)
+
+Model L276 closes anon-eigen-lazy-name, mix-08969-minimized and super-method-missing;
+all now declare fixed status after successful replay. Two additional guards cover
+checked String conversion and missing-call reasons/dispatch. L275's block-pass
+conversion guards already passed but lacked sidecars, so the regression tier treated
+them as unexpectedly fixed; they now declare fixed status too.
+
+The full regression tier is 47 agree / 0 disagree / 3 unsupported, with no status
+failures. Unsupported cases remain open: impure-repr-gates, to-ary-gates and
+sorbet-hash-gate. Their gates were not weakened and their status was not relabeled.
+The engine and comparison relation are unchanged.
+
+## N51 — convert and render through the model's dispatch (2026-09-27)
+
+Model L277 closes the to-ary-gates and impure-repr-gates regressions. The new guards
+cover all four splat positions, lenient block conversion, redo retaining local writes,
+frozen-error rendering and the effectful final observation. The comparator/control
+wrapper are unchanged. The previously commented uncaught-message witness is now an
+executed regression. Intermediate full replay: 57 agree / 0 disagree / 1 unsupported;
+the sole remaining gated regression is sorbet-hash-gate, still declared open.
+
+
+## N52 — native rational semantics and targeted numeric probes (2026-09-28)
+
+L278 adds five rational regression programs and a front-end seed. Literal tests
+exercise constructor/constant overrides and identity by syntax site; the remaining
+programs exercise exact arithmetic, mixed coercion/equality, frozen allocation and
+Float conversion. Statuses were marked fixed only after successful CRuby replay.
+The large-fraction Float witness was found by a deterministic seed-20260928 probe
+(150 conversions); its intermediate-rounding discrepancy is now pinned alongside
+subnormals and ties. Eighty generated exact arithmetic fragments also agree.
+The wrapper and comparator were left unchanged.
+
+The ancestry probe exposed control-environment pollution: the wrapper's require
+json adds JSON::Ext::Generator::GeneratorMethods::Object into Object.ancestors.
+The Rational regression deliberately asserts its own three ancestors, leaving
+complete wrapper/model ancestry equivalence as a distinct unresolved issue.
+
+Final L278 reports: 20260928-000430-{tier0,tier1,tierregressions}-lean. Bootstrap
+1,026 agree / zero disagree / 277 unsupported (+22, no losses); regressions
+62 fixed statuses held / one existing open Sorbet hash gate; tier 1 n=300 seed
+20260927 remains 219 agree / 81 unsupported / zero disagree with the same sources.
+
+## N53 — Complex conformance and reflection regression (2026-09-28)
+
+Model L279 adds five Complex regressions and one method-reflection regression.
+They cover native literal identity/exactness/signed zero, numeric construction,
+immutability, mixed arithmetic, coercion's quo dispatch, nonfinite representation
+and undefined/private method visibility. The latter caught a shadow-name fallback
+that resurrected an explicit tombstone. All six agree with the unchanged control
+and comparator. The final regression-status replay has 68 held / one old gated
+Sorbet hash case / zero failures (69 total).
+
+The deterministic numeric probe has 244 agree / 23 explicit gates / zero disagree
+across 267 fragments. Twelve further mixed large Integer/Float divisor cases
+agree; ten effectful comparison/representation/coercion probes confirm explicit
+boundaries rather than silently skipping user hooks. These gates are not counted
+as agreements. Tier 1, n=300 seed20260927, remains 219 agree / 81 unsupported / zero
+disagree with the same sources/verdicts as L278. Reports use the prefix
+20260928-002138; the full bootstrap result is appended after completion.
+
+Final bootstrap: 1,048 agree / zero disagree / 255 unsupported, five invalid
+controls and the existing test_syntax_115 harness error. Exactly 22 new agreements
+(test_literal_suffix_021–042), no lost agreements, with all sources unchanged.
+Full front-end bootstrap: 1,232 agree / zero disagree / 77 out-of-fragment and no
+harness/parse errors. Model reports:
+`20260928-002138-{tier0,tier1,tierregressions}-lean/`. All checks terminated.
+
+## N54 — Enumerator protocols, mutation and suspension probes (2026-09-28)
+
+Model L280 adds eight regression programs for allocation, independent internal/
+external iteration, zero/multiple yields, lookahead/feed, shared captures and
+isolated exceptions, rewind hooks, keyword packing, live mutation, incremental
+scan and Chain block iteration. Sidecars were marked fixed after successful
+control/model comparison. A deterministic seed-20260928 probe contributes 174
+fragments: 166 agree / eight explicit gates / zero disagree. Its 150 randomized
+action sequences mix next/peek/value variants/feed/rewind over different producers.
+Saved script/results: /private/tmp/conformance-l280-generated.{py,json}.
+
+The mutation witness caught a subtle difference between unwind and abandonment:
+rewinding a suspended native Hash iterator never releases its insertion lock,
+even after explicit CRuby GC. The model now retains that abandoned lock; ordinary
+completion, break and exceptions release live locks. Other witnesses exposed
+keyword Hash packing, stale Array indices/Hash values, subclass inspection and
+copy hooks. Unsupported copy/conversion/reentrant/Chain paths remain gates, not
+agreements. The comparator, control wrapper and random baseline are unchanged.
+
+The full regression tier has 76 held / one old gated Sorbet hash case / zero
+failures (77 total). Tier 1 n=300 seed20260927 remains 219 agree / 81 unsupported /
+zero disagree; every source/verdict is unchanged. Front-end: 45 seeds plus eight
+new programs, 53 agree / zero disagree, AST-idempotent; six old render-only
+instabilities remain. Initial full reports use prefix 20260928-005234. The final
+bootstrap result and final allocation-edge verification are recorded below after
+all processes terminate.
+
+
+The first full bootstrap run found one newly reachable disagreement
+(test_yjit_152), behind Module.new's former gate. The final fix adds native
+Kernel#itself and pins a closure used both as a block and a method by
+kernel-itself-super.rb (the ninth new regression). Super's native-name shadow
+and miss boundaries were repaired too. The final focused replay is 41 agree /
+one explicit string-class_eval gate over 42 cases; no disagreement. The final
+full rerun includes this fix and the uninitialized Chain allocation checks.
+
+
+Final L280 verification: lake build rubycore PASS (90 jobs). Bootstrap:
+**1,081 agree / zero disagree / 222 unsupported**, five invalid controls and the
+existing test_syntax_115 harness error (1,309 total). Exactly 33 new agreements
+relative to L279, no lost agreements and no changed sources. The final regression
+status tier has **77 held / one old gated / zero failures** (78 total). Tier 1
+n=300 seed20260927 remains **219 agree / 81 unsupported / zero disagree**, with
+all sources/verdicts unchanged. Reports:
+`difftest/reports/20260928-005837-{tier0,tier1,tierregressions}-lean/`.
+Final front-end replay: 45 seeds plus nine new programs, **54 agree / zero
+disagree**, AST-idempotent; six old render-only instabilities. Generated Prelude
+and CRubyNames match regeneration; git diff --check passes. All validation
+processes terminated. No proof build, typed ratchet or commit was performed.
+The full conformance goal remains active and incomplete.
+
+## N55 — explicit library-loading environment (2026-09-28)
+
+Model L281 separates core boot from modeled requires. LeanSUT passes
+--preload-json because the existing CRuby observation wrapper requires JSON before
+executing the input. Standalone rubycore remains core-only. JSON's generator
+modules now participate in the actual ancestor chains. The comparator and control
+wrapper are unchanged; unmodeled optional APIs remain explicit gates.
+
+Eight new fixed programs cover lazy namespaces, user classes, require cache,
+visibility and lexical isolation, reopening, library behavior, JSON ancestry and
+constant-reflection scope. A ninth, require-definition-hooks, is open/gated: the
+partial Forwardable body exposed the wrong method_added order. This boundary is
+recorded rather than counted as fixed. Failed-load mechanics are tested separately
+against identical CRuby feature bodies by ruby-lean/scripts/check-feature-loading.py
+(exception/reentry/scope/cache, throw/ensure, and completed nested dependency).
+
+Focused replay: 60 programs, 40 agree / 20 unsupported / zero disagree, including
+all 28 Sorbet programs (25 agree / three old gates). Three standalone core-only
+programs also agree. The first full run (20260928-011806) retained all bootstrap
+sources/verdicts: 1,081 agree / 222 unsupported / zero disagree, five invalid controls
+and one old harness error. The final rerun includes the additional constant
+reflection and aliased-namespace fixes; its results follow after completion.
+
+Final L281 reports: `20260928-012417-{tier0,tier1,tierregressions}-lean/`.
+Bootstrap: **1,081 agree / zero disagree / 222 unsupported**, five invalid
+controls and old test_syntax_115 harness error; all sources/verdicts unchanged.
+Regressions: **85 held / two gated / zero failures** (87 cases); all old sources
+and verdicts unchanged. Tier 1 n=300 seed20260927: **219 agree / 81 unsupported /
+zero disagree**, unchanged sources/verdicts. Front-end: 45 seeds plus nine new
+programs, **54 agree / zero disagree**, AST-idempotent with six old render-only
+instabilities. Build, regeneration comparisons and diff whitespace checks pass.
+All processes terminated; proof builds and typed gate remain deferred, no commit.
+
+
+## N56 — method-table effects and Forwardable conformance (2026-09-28)
+
+Model L282 fixes require-definition-hooks through ordinary callbacks and matching
+Forwardable 1.4.0 declaration order. Eleven new fixed programs cover method and
+singleton callbacks, interleaved partial effects, frozen mutations, live inherited
+visibility, alias super context, constant mutation and Forwardable delegation,
+reentry, failed-load retry and frozen namespace loads. The exact combined
+programs were compared before fixed sidecars were written. No comparator, control
+normalization or corpus source was weakened.
+
+The broader replay caught an overbroad singleton shadow guard on modeled String
+and Array constructors. It was repaired; the earlier 20260928-062926 bootstrap
+and 20260928-062958 regression reports are superseded. A further probe separated
+reflection on a visibility forwarding entry from resolution of its current body:
+a removed/undefined parent body still leaves a visible entry, but invocation and
+alias creation fail. method-visibility-live pins both sides of this distinction.
+
+Final regression report: 20260928-063351-tierregressions-lean, **97 held / one
+old sorbet-hash-gate / zero failures** (98 programs). Every old source is unchanged;
+require-definition-hooks is the only old verdict change, unsupported to agree.
+Final tier 1 n=300 seed20260927 report: 20260928-063421-tier1-lean, **219 agree /
+81 unsupported / zero disagree**, every source/verdict unchanged from L281.
+Focused replay: 92 cases, **85 agree / seven gates / zero disagree**, including
+25/3 over the 28 Sorbet programs. Four extra visibility-body/super probes and
+three standalone core-only programs agree. The permanent identical-source feature
+loading check agrees on exception/reentry/scope/cache, throw/ensure and completed
+dependencies surviving failure. Full bootstrap results follow after completion.
+
+Front-end: 45 seeds plus the 12 regression programs changed/added this batch,
+**57 agree / zero disagree**, AST-idempotent. Seven render-only instabilities:
+the six old seed cases plus forwardable-delegation. Model build (96 jobs), both
+regeneration comparisons and whitespace checks pass. No proof build, typed gate
+or commit; proof repair is deferred by the user. The full conformance goal remains
+active and incomplete.
+
+Reproduce the principal runs from difftest/ with
+UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache:
+
+```sh
+uv run python -m difftest run --tier regressions --sut lean
+uv run python -m difftest run --tier 0 --sut lean
+uv run python -m difftest run --tier 1 -n 300 --sut lean --seed 20260927
+```
+
+Build first with `cd ruby-lean && lake build rubycore`; feature protocol check is
+`python3 scripts/check-feature-loading.py` there. Front-end command from repo root
+(with the pinned Homebrew Ruby):
+
+```sh
+/opt/homebrew/opt/ruby/bin/ruby desugar/bin/run desugar/corpus/seeds \
+  difftest/corpus/regressions/{method-definition-callbacks,method-mutation-partial,method-mutation-frozen,method-visibility-live,alias-super-context,constant-mutation,forwardable-delegation,forwardable-load-retry,forwardable-load-reentry,forwardable-frozen-load,forwardable-frozen-single,require-definition-hooks}.rb
+```
+
+
+Final L282 bootstrap report: `20260928-063421-tier0-lean` — **1,082 agree /
+zero disagree / 221 unsupported**, five invalid controls and the unchanged
+`test_syntax_115` harness error (1,309 total). Every source is unchanged from
+L281; the sole verdict change is `test_yjit_145`, timeout gate to agreement.
+No lost agreements. Final tier 1: `20260928-063421-tier1-lean`, **219 agree /
+81 unsupported / zero disagree**, all sources/verdicts unchanged. Final
+regressions: `20260928-063351-tierregressions-lean`, **97 held / one old gated /
+zero failures**, all old sources unchanged; require-definition-hooks is fixed.
+All validation processes terminated. No proof build, typed gate or commit was
+performed. The active full-conformance objective remains incomplete.
+
+
+## N57 — definition context and main-only method coverage (2026-09-28)
+
+Model L283 separates lexical definition targets from super's owner, shares ordinary
+block visibility, creates fresh eval definition contexts, and preserves actual
+constant/class-variable lexical nesting. Main-only native methods no longer pollute
+Object's inventory. Top-level define_method gains ordinary singleton lookup and
+private visibility; body/arity checks and mixin argument validation now follow the
+oracle. Method/UnboundMethod binding and full mixin callbacks remain boundaries.
+
+Nine new permanent programs cover all 43 focused scope cases plus a mixin argument
+matrix. Exact combined programs agree before their fixed sidecars are written.
+The previous 92-case callback/Forwardable/Sorbet replay remains 85 agree / seven
+gates / zero disagree. Standalone core-only execution (three programs) and the
+permanent identical-source feature-loading check (three protocols) also agree.
+
+First bootstrap report 20260928-065253-tier0-lean: **1,087 agree / zero disagree /
+216 unsupported**, five invalid controls and the old syntax harness error. Five
+old top-level define_method cases become agreements, no lost agreements or source
+changes. This run preceded the final mixin argument validation fix and is superseded
+by the final report appended below. After a continuation lost its tool handle,
+its live OS PID was checked and the existing run was allowed to finish.
+
+Final regression report 20260928-065807-tierregressions-lean: **106 held / one
+old gated / zero failures** (107 programs), all old sources/verdicts unchanged.
+Final tier 1 n=300 seed20260927 report 20260928-065807-tier1-lean: **219 agree /
+81 unsupported / zero disagree**, all sources/verdicts unchanged. Front-end: 45
+seeds plus nine new programs, **54 agree / zero disagree**, AST-idempotent with
+six old render-only instabilities. Model build (96 jobs), both regeneration
+comparisons and whitespace checks pass. No comparator, normalizer, old corpus
+source, checker/proof file or ratchet floor was weakened or changed for this batch.
+No proof build, typed gate or commit; proof repair is deferred by the user.
+
+Reproduce from difftest/ with UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache:
+
+```sh
+uv run python -m difftest run --tier regressions --sut lean
+uv run python -m difftest run --tier 0 --sut lean
+uv run python -m difftest run --tier 1 -n 300 --sut lean --seed 20260927
+```
+
+Build first in ruby-lean/ using `lake build rubycore`. From there,
+`python3 scripts/check-feature-loading.py` runs the identical-source require tests.
+From the repository root, the front-end command is:
+
+```sh
+/opt/homebrew/opt/ruby/bin/ruby desugar/bin/run desugar/corpus/seeds
+```
+
+Add these nine paths to that command for the recorded 54-case run:
+`difftest/corpus/regressions/{nested-definition-targets,define-method-scope,definition-visibility-context,lexical-constant-context,frozen-declaration-scope,main-singleton-context,define-method-protocol,class-variable-scope,mixin-argument-validation}.rb`.
+Temporary focused evidence is /private/tmp/conformance-l283-{focused,permanent,
+previous-focused,standalone}.json; those files include the exact sources/results.
+
+
+Final L283 verification: bootstrap report `20260928-065807-tier0-lean` has
+**1,087 agree / zero disagree / 216 unsupported**, five invalid controls and the
+old test_syntax_115 harness error (1,309 total). Exactly five gains over L282:
+test_yjit_275,277,278,279,280; all sources unchanged and no lost agreements.
+Final tier 1 and regression reports share 20260928-065807: **219 agree / 81
+unsupported / zero disagree**, and **106 held / one old gated / zero failures**
+(107 programs), respectively. All old sources/verdicts are unchanged. Build PASS
+(96 jobs), regeneration comparisons and whitespace checks pass. All validation
+processes terminated. Proof repair remains deferred; no typed gate or commit.
+The full goal remains active and incomplete.
+
+A next-work audit confirmed an older constructor defect outside the completed
+regression/bootstrap runs: `class NoInitializer; undef initialize; end;
+NoInitializer.new` incorrectly succeeds, while CRuby raises NoMethodError.
+userInit? treats the undef tombstone as a user body, and the native new fallback
+also needs to preserve normal initialize/method_missing dispatch. The exact
+source/results are saved in /private/tmp/conformance-l283-next-constructor.json.
+Fix and add a permanent regression next; do not merely filter the tombstone and
+silently allocate through newImpl instead.
+
+## N58 — constructor and block-boundary regression probes (2026-09-28)
+
+L284 adds eight fixed programs: constructor-dispatch, constructor-core-initialize,
+constructor-blocks, constructor-overrides, constructor-procs, constructor-allocators,
+literal-block-exits and method-missing-keywords. They compare the exact same source
+under CRuby 4.0.5 and the model, including initializer and method_missing effects,
+constructor aliases/visibility, Proc identity, frozen/arity ordering, and ensure
+ordering when a block exits through construction or further forwarding.
+
+All eight agree. Focused evidence is /private/tmp/conformance-l284-{focused,extra,
+permanent,previous}.json: 62 agree/four gates in the 66 individual new probes;
+128 agree/seven gates in the unchanged 135-case previous replay. Three standalone
+core-only and three identical-source feature-loading checks agree. Front-end
+45 seeds plus these eight programs: 53 agree/zero disagree, AST-idempotent,
+with six old render-only instabilities and one in constructor-blocks.rb.
+
+Final replay report 20260928-071903-replay-lean has 114 agree/one old gated
+sorbet-hash program (115 total). Tier 1 n=300 seed20260927 has 219 agree/81
+unsupported. All old sources and verdicts are unchanged. The initial bootstrap
+run 20260928-071407 gained test_flow_045, test_proc_030 and test_proc_031, reaching
+1,090 agree/zero disagree/213 unsupported; final bootstrap verification follows.
+
+Reproduce after building rubycore in ruby-lean/:
+
+```sh
+cd difftest
+UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache uv run python -m difftest replay corpus/regressions --sut lean
+UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache uv run python -m difftest run --tier 0 --sut lean
+UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache uv run python -m difftest run --tier 1 -n 300 --sut lean --seed 20260927
+```
+
+For the recorded front-end run, use ruby desugar/bin/run desugar/corpus/seeds
+and append the eight new regression .rb paths. The identical-feature-source check
+is python scripts/check-feature-loading.py from ruby-lean/. Proof repair stays
+deferred by the active conformance request; this batch does not claim the full
+goal or run the typed gate, and does not commit.
+
+Final L284 bootstrap verification: report 20260928-071903-tier0-lean has
+1,090 agree / zero disagree / 213 unsupported, five invalid controls and the old
+syntax harness error (1,309 total). Exactly test_flow_045, test_proc_030 and
+test_proc_031 gain over L283; no source changes or lost agreements. Final seeded
+tier 1 remains 219 agree/81 unsupported; final replay is 114 agree/one old gate,
+with every old source/verdict unchanged. Both generated-file comparisons and
+git diff --check pass. Differential suites have terminated; final comment-only
+rebuild is the sole remaining validation process at this write.
+
+Final comment-only rebuild PASS (98 jobs); all validation processes terminated.
+
+## N59 — exception construction, message and copy probes (2026-09-28)
+
+L285 adds raise-exception-protocol, raise-checked-conversion, exception-live-messages,
+exception-copy-protocol and exception-native-subclasses. The same Ruby source
+checks dispatch and response-hook traces, distinct conversion failures, private
+exception methods, initializer overrides/undef, live message identity/mutation,
+clone callbacks/frozen state, and specialized native initializer delegation.
+
+The focused24 programs agree; extra19 has18 agree/one old Exception#== gate.
+All five combined permanent programs initially agree. The copy program is being
+extended with five further callback/freeze cases after one exposed a source-freeze
+ordering defect. Initial full replay:119 agree/one old gated (120 total), all114
+previous agreements retained. Previous201 replay remains190 agree/11 gates.
+Front-end45seeds plus five new programs:50 agree/zero disagree, AST-idempotent,
+six old render-only instabilities. Three standalone core-only and three
+identical-source feature-loading checks agree. Final suite results follow below.
+
+Use the N58 replay/bootstrap/seeded-tier1 commands after building rubycore.
+For frontend verification, append these five .rb paths to ruby desugar/bin/run
+with desugar/corpus/seeds. Exact sources/results are saved in
+/private/tmp/conformance-l285-{focused,extra,copy-edges,permanent,previous}.json.
+The native-error-initialize row in copy-edges is a confirmed next-work issue,
+not part of the new fixed guards: VM-originated errors still bypass initialize.
+
+Post-edge validation: the source-freeze callback repair builds (98 jobs), all
+five copy edge cases and the expanded permanent copy guard agree. The initial
+bootstrap report20260928-073446-tier0-lean is1,090 agree/zero disagree/213
+unsupported, five invalid controls and the old syntax harness error; every source
+and verdict is unchanged from L284. Final replay20260928-074001-replay-lean has
+119 agree/one old hash gate; final same-stamp tier1 has219 agree/81 unsupported.
+Final frontend50 agree/zero disagree, AST-idempotent with six old render-only
+instabilities. Both generated files match regeneration and whitespace checks pass.
+The final bootstrap run is still pending at this append; no code/build changes
+are planned before its terminal result.
+
+Final L285 differential verification: reports20260928-074001 have bootstrap
+1,090 agree / zero disagree / 213 unsupported, five invalid controls and the old
+syntax harness error; tier1 219 agree / 81 unsupported; replay119 agree / one old
+hash gate (120 total). All pre-existing sources/verdicts are unchanged from L284.
+The expanded copy guard and all five copy edge cases agree. Model build passes
+98 jobs; generated-file and whitespace checks pass. All differential processes
+terminated. The AGENTS.md-required proof audit is running separately; proof repair
+remains deferred and its terminal result will be appended below.
+
+AGENTS.md boundary audit: check-proofs.sh FAILED (exit1) at lake build Metatheory.
+Its captured tail lists RubyCore.Proof.NotDone and RubyCore.Proof.KontFrame among
+failed targets; the axiom scan was not reached. Log:
+/private/tmp/conformance-l285-proof-audit.log. No proof repair was attempted.
+All validation processes have now terminated; model conformance checks pass,
+metatheory does not. No typed gate or commit. Full semantics goal remains active.
+
+## N60 — native error construction probes (2026-09-28)
+
+L286 adds native-error-initialize, native-error-bypass, frozen-error-initialize,
+enumerator-stop-initialize and uncaught-throw-initialize. Their49 constituent
+probes pin initializer argument packets, private/undef/missing/alias dispatch,
+$! and producer/caller contexts, callback exits, live prefix/message identity,
+frozen state, lazy tag inspection and copied native metadata. Initialization
+aliases restore the native methods between combined cases. Every program agrees
+with CRuby4.0.5, both independently and in full regression replay.
+
+Full bootstrap20260928-075300-tier0-lean:1090 agree / zero disagree /213 unsupported,
+five invalid controls and the old syntax115 harness error. Seeded tier1 at the
+same timestamp:219 agree /81 unsupported (n300 seed20260927). Initial replay
+075350 and final replay075806:124 agree / one old sorbet-hash gate (125 programs).
+Every old source/verdict is unchanged. Previous250 probes:238 agree /12 old gates;
+the sole changed verdict repairs the known native-error-initialize disagreement.
+Focused24 has22 agree / two old gates (remove_const and String#replace); extra27
+all agree. The final native metadata copy correction was followed by full replay
+and23 bootstrap sources mentioning copy/throw operations:17 agree /six old gates,
+all unchanged. The full1309 run preceded only that final copy correction.
+Frontend50 agree / zero disagree, AST-idempotent, six old render-only instabilities.
+Three standalone core-only and three identical-source loading checks agree.
+Generated files match regeneration, build98 jobs and whitespace checks pass.
+
+Use N58's commands for full bootstrap/replay/seeded tier1 and append the five
+programs to ruby desugar/bin/run desugar/corpus/seeds for frontend verification.
+Exact sources and results: /private/tmp/conformance-l286-{focused,extra,permanent,
+previous,copy-bootstrap}.json. The separate next-work binding audit (l287) has
+seven known disagreements and one agreement; it is not labeled fixed or added
+to the regression guards yet. Proof audit failed at Metatheory (NotDone/KontFrame
+in the captured tail); no axiom scan, proof repair, typed gate or commit.
+
+## N61 — nested parameter binding probes (2026-09-28)
+
+L287 adds parameter-destructure-conversion, parameter-destructure-order,
+block-destructure-binding and parameter-destructure-shapes. The four guards combine
+50 independent probe sources, including147 method/proc/lambda calls across seven
+nested/rest/trailing shapes and seven inputs. They pin checked to_ary, defaults
+before conversion, nil/error fallback, callback order and snapshots, scope isolation,
+short-input padding, private/missing/response dispatch and nonlocal exits. All agree.
+A combined-test local f initially hid a method call; explicit f() fixed the test.
+No semantic workaround was added. Array.new(array) is still an unrelated old gate;
+the subclass binding probe constructs an empty Array subclass and appends values.
+
+Reports20260928-080526:bootstrap1309 =1095 agree / zero disagree /208 unsupported,
+five old invalid controls and the old syntax115 harness error. Five gates become
+agreements: test_block_037/038/039/040 and test_massign_008. Tier1 n300 seed20260927
+=226 agree /74 unsupported; seven old gates become agreements. Replay129 =128
+agree /one old sorbet-hash gate. All prior sources are unchanged; no agreement
+is lost. Previous301 probes retain287 agreements /14 old gates. Focused20, extra29,
+the147-call shape matrix and four permanent guards all agree. Frontend49 agree /
+zero disagree, AST-idempotent with six old render-only instabilities. Standalone3
+and identical-source loading3 agree. Final build98 jobs, generated cmp and git
+diff --check pass. Proof audit fails at Metatheory; repairs remain deferred.
+
+Use N58's suite commands after building rubycore. For frontend verification add
+the four new regression paths to ruby desugar/bin/run desugar/corpus/seeds.
+Exact sources/results: /private/tmp/conformance-l287-{focused,extra,shapes,
+permanent,previous}.json. The separate L288 for-audit is next-work evidence:
+five disagreements, two old gates, one agreement, and further CRuby-only escape/
+yield-packing oracles. Those cases are not fixed guards. No typed gate or commit.
+
+
+## N62 — for/each and captured method controls (2026-09-28)
+
+L288 replaces the snapshot loop with ordinary explicit each, shared local
+bindings, checked multiple assignment and safe captured callbacks. Six permanent
+programs cover dispatch/visibility/missing handlers, live mutation, local/block/
+match scope, control/ensure, conversion/nonlocal targets, trailing-comma syntax,
+escaped callbacks and define_method reuse. Frontend seed46 retains the one-target comma distinction.
+
+Full reports20260928-082327: bootstrap1309 =1095 agree /zero disagree /208 gates,
+five invalid controls and the old test_syntax_115 harness error; tier1 n300
+seed20260927 =226 agree /74 gates. Every old source/verdict held. Replay135 =134
+agree /one old sorbet-hash gate, all129 old sources/verdicts unchanged. Six new
+guards agree. Previous351 =337 agree /14 gates, unchanged. Focused20 =19 agree /
+one old Proc#arity gate; extra43 =42 agree /one old top-level-return gate.
+Frontend52 agree /zero disagree, AST-idempotent with six old render-only
+instabilities. Standalone/loading three each agree; model build and regeneration
+checks pass. Proof audit failed before axiom scan; repairs remain deferred.
+
+The original final-result inspection failure from the response-hook probe is
+preserved separately in /private/tmp/conformance-l289-inspect-known.json. Appending
+nil to its loop-only variant isolates for conversion and does not claim to fix
+Object#inspect. The L289 audit records that next defect explicitly. See model
+L288, frontend C41 and /private/tmp/conformance-l288-* for evidence.
+
+
+## N63 — native object inspection protocol (2026-09-28)
+
+Six L289 guards cover checked field-selection hooks, ordinary missing/response
+handlers, live fields/filter arrays, insertion order, recursion, nested String
+coercion, container/error output and final observation. All agree. The Symbol
+membership negative control restores its aliases before the observation wrapper.
+
+Final reports20260928-083226: bootstrap1309 =1095 agree /zero disagree /208 gates,
+five invalid controls and old syntax115 harness error; tier1 n300 seed20260927
+=226 agree /74 gates. Every previous source/verdict held. Replay141 =140 agree /
+one old sorbet-hash gate, with all135 old source/verdict pairs unchanged. Previous414
+=398 agree /16 gates, unchanged. Focused29 =26 agree /three old gates; extra32 all
+agree. Frontend52 agree /zero disagree, AST-idempotent, six old render-only
+instabilities. Build100 jobs, standalone3/loading3, regeneration and whitespace
+checks pass. Proof audit fails before axiom scan; repair remains deferred.
+Model L289 and /private/tmp/conformance-l289-* contain details. Two next-work
+audits preserve seven native-repr-alias failures and nine class-creation failures;
+those are not claimed fixed by this batch.
+
+
+## N64 — native renderer identity and incremental commit validation (2026-09-28)
+
+Model L290 pins eleven native-repr-* witnesses. Pure representation is allowed
+only when lookup resolves to the payload's actual native renderer. Aliases to
+class/itself/length/to_s, inherited native inspection, missing inspect/to_s, and
+puts on empty converted arrays all use their proper dispatch behavior. The seven
+original wrong answers agree; 32 extra probes give 28 agreements and four gates.
+
+The accumulated L276–L290 work is committed as separate batches. Each batch is
+built and run against all 1,309 bootstrap cases and its regression corpus before
+commit, with full reports at `reports/20260928-incremental-LNNN/`. Bootstrap
+sources and verdicts are compared to that batch's original report, with no
+comparison normalization changes. Proof repair is still explicitly deferred.
+
+
+## N65 — Class/Module construction and inherited callbacks (2026-09-28)
+
+Model L291 replaces Class/Module factories with native allocation followed by
+ordinary initialize dispatch. Seventeen class-protocol-* regression programs pin
+callback ordering and retained effects, allocation/initialization state, forbidden
+superclasses, overridden/missing initializers, block exits, live class-name
+conversion, constant naming and Module-subclass representation. A separate Sorbet
+guard verifies that T::Struct children cannot be subclassed, preserving the gem's
+super-before-error order and the rejected named class binding.
+
+The original audit's 16 cases now agree. Extended 46 gives 42 agreements and four
+existing gates (explicit super block-pass, remove_const, top-level return and
+private_methods). Every agreeing focused probe is retained in the permanent
+programs, which are compared as combined programs against CRuby 4.0.5 before
+being marked fixed. No observation normalization or gate policy changed.
+
+Final validation: model build succeeds (100 jobs). Full bootstrap (1,309 cases): 1,096
+agree /zero disagree /207 unsupported, five unchanged invalid controls and the
+old test_syntax_115 harness error. All bootstrap sources are unchanged; the only
+verdict change is test_yjit_347, unsupported to agree. Regression replay (169 cases): 168
+agree /one old sorbet-hash gate; all 152 previously committed sources and verdicts
+hold, plus 17 new agreements. Tier 1 (300 cases, seed 20260927): 226 agree /74 gates, with
+all sources/verdicts unchanged. Previous 514 probes: 493 agree /21 gates, gaining two
+agreements with no losses. Frontend 63 agree, AST-idempotent, with six old
+render-only instabilities. Standalone 3 and feature-loading 3 agree; generated
+Prelude/CRubyNames and whitespace checks pass. Full reports and build log:
+`difftest/reports/20260928-incremental-L291/`. No runtime source edits after the
+final build; proof repair remains deferred.
+
+The typed gate remains RED on deferred HeapFacts className/lookup proof drift;
+this is executable-model conformance evidence, not a new proof claim. Probe
+artifacts are /private/tmp/conformance-l291-*. The commit records the completed
+bootstrap and regression reports. See model L291 for version-specific allocation
+and superclass rules, remaining limitations and primary implementation sources.
+
+
+## N66 — constant write callback protocol (2026-09-28)
+
+L292 adds seven const-added-* guards covering private/default/missing hooks,
+aliases and super, callback ordering, recursive writes, retained effects, freezing,
+class identity and lexical constant rescue targets. All 39 agreeing audit probes
+are retained in programs compared as combined sources, including separate global
+Object-hook programs. Focused 19 gives 18 agreements/one frontend gate; extended
+28 gives 21 agreements/five gates/two known follow-up disagreements. The invalid
+String-name and recursive namespace-name reproducers are preserved explicitly in
+/private/tmp/conformance-l292-extra.json for the next increment, rather than
+mistaking their mixed probe's later gate for a passing result.
+
+Final validation: model build passes (100 jobs). Full bootstrap (1,309 cases):
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+the old test_syntax_115 harness error. Every source/verdict pair is unchanged
+from L291. Regression replay (176 cases): 175 agree and one old sorbet-hash gate;
+all 169 old sources/verdicts hold and seven new guards agree. Tier 1 (300 cases,
+seed 20260927): 226 agree and 74 gates, every pair unchanged. Previous 576 probes:
+551 agree and 25 gates, every verdict unchanged. Frontend 53 agree and remain
+AST-idempotent, with six old render-only instabilities. Standalone and feature
+loading: three agreements each. Generated Prelude/CRubyNames and whitespace
+checks pass. Reports, build log and probe snapshots are in
+`difftest/reports/20260928-incremental-L292/`. No runtime edits after the final
+build; proof repair remains deferred.
+
+No observation normalization, checker acceptance or proof changes. The existing
+proof gate remains red under the user's explicit proof-repair deferral. Model L292
+records the rules and precise remaining constant mutation work.
+
+
+## N67 — Unicode String inspection boundaries (2026-09-28)
+
+Model L293 adds unicode-string-inspect.rb: 41 Unicode/control boundary values,
+nested inspect output, interpolation escaping, String subclasses and explicit
+binary strings. The generator independently verifies the printability predicate
+against native CRuby for every Unicode scalar. The initial broader test found
+an old Integer#chr ASCII encoding disagreement, retained in the initial audit
+report rather than claimed fixed by this String-rendering change.
+
+Validation: lake build rubycore passes (102 jobs). All 1,309 bootstrap cases ran:
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+the old test_syntax_115 harness error. Every source/verdict pair matches L292.
+Regression replay: 176 agree and the one old sorbet-hash gate (177 total); all old
+sources/verdicts hold. Frontend: 47 agree, AST-idempotent, with the six old
+render-only instabilities. Generator verification/reproduction and whitespace
+checks pass. Reports and logs: difftest/reports/20260928-incremental-L293/.
+Proof repair remains deferred; the typed gate is not claimed green.
+The typed gate was rerun and failed at the existing HeapFacts className/lookup
+proof drift; its captured log is retained. No proof repair was attempted.
+
+
+## N68 — native const_set protocol (2026-09-28)
+
+Model L294 adds seven const-set-* regression programs retaining 53 agreeing
+probes. They cover native aliases/super/visibility/undef, argument packing,
+checked conversion and response/missing hooks, frozen ordering, saved identities,
+String/Symbol bypass, native Unicode names, ASCII grammar and effectful error
+rendering. Global Symbol overrides are isolated in their own program. The ASCII
+grammar guard checks all 128 characters both as first and suffix characters.
+Three probes remain explicitly unsupported: high-byte binary names, high-byte
+binary inspect output and the prior native-method-removal inventory limitation.
+The Unicode generator independently checks all scalar start characters against
+the pinned oracle. No comparator or unsupported verdict is weakened.
+
+Frontend round-trip: 51 agree, zero semantic disagreements, two harness errors;
+all 53 inputs are AST-idempotent. The name guard reaches an existing Render
+limitation: quoted invalid Symbols are emitted as bare :A::B / :, producing
+invalid Ruby. The isolated Symbol override breaks the frontend's later JSON
+loading through Symbol#to_s on both sides; temporary paths make those error
+observations unequal. The exact programs agree under the difftest wrapper and
+JSON-to-Lean execution. Both rendered sources and diagnostic logs are retained;
+no frontend implementation or comparator was changed to hide these limitations.
+The six earlier render-only instabilities also remain.
+
+Final validation: model build passes (102 jobs). Full bootstrap: all 1,309 cases,
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+one old test_syntax_115 harness error. All source/verdict pairs match L293.
+Regression replay: 183 agree and one old sorbet-hash gate (184 total); all 177
+old sources/verdicts hold and seven new guards agree. Tier 1 (300, seed 20260927):
+226 agree and 74 gates, every source/verdict unchanged from L292. The 47 prior
+constant probes now have 43 agreements, three gates and the unchanged recursive
+namespace-naming disagreement: three gates and the invalid-name disagreement
+become agreements, with no losses. Unicode generation verifies/reproduces exactly.
+Reports, build log, focused probes and frontend diagnostics are archived in
+`difftest/reports/20260928-incremental-L294/`. No runtime changes after the final
+model build. Proof repair remains deferred and the typed gate is not claimed green.
+The typed gate was rerun and fails at the existing HeapFacts className/lookup
+proof drift; the log is archived. Proof repair remains explicitly deferred.
+The batch proof audit also failed to build Metatheory (NotDone/KontFrame);
+its axiom scan was not reached. The captured proof-audit.log is archived.
+
+
+## N69 — recursive namespace naming (2026-09-28)
+
+Model L295 adds eight namespace-* programs retaining 47 agreeing focused/extended
+probes. They cover permanent promotion, temporary prefixes, deep trees, cycles,
+frozen/private descendants, live replacement, ancestor exclusion, singleton
+containers and callback timing/failures. Core callback replacements are isolated.
+The original 28-case audit had 25 disagreements and three agreements; after this
+increment 19 disagreements become agreements, four become explicitly unsupported
+because they depend on unmodeled symbol-table order, and two name-String identity
+failures remain recorded. Extended 30 yield 25 agreements, two ordering gates and
+three old gates. No comparator or observation normalizer was weakened. The
+symbol-order witness includes a semantically unrelated leading `p :A` that changes
+which alias supplies a descendant's permanent path under the pinned CRuby oracle.
+
+Final validation: model build passes (102 jobs). Full bootstrap (1,309 cases):
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+the old test_syntax_115 harness error. Every source/verdict pair matches L294.
+Regression replay (192): 191 agree and one old sorbet-hash gate; all 184 earlier
+sources/verdicts hold, and eight new guards agree. Tier 1 (300, seed 20260927):
+226 agree, 74 gates, all sources/verdicts unchanged. Frontend seeds plus new guards:
+54 agree, all AST-idempotent; six old render-only instabilities plus one benign
+rebind-hook rendering instability. Standalone and feature loading: three agreements
+each. Whitespace checks pass. Reports, build log, before/after probes and the
+symbol-order witness are archived in difftest/reports/20260928-incremental-L295/.
+No runtime edits after the final build. No checker, proof, comparator or floor
+changes; proof repair remains explicitly deferred.
+The typed gate was rerun and remains red at the recorded HeapFacts className/lookup
+proof drift. Its log is archived; proof repair remains deferred.
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.
+
+
+## N70 — binary String copy identity (2026-09-28)
+
+Four binary-copy-* programs preserve 20 agreeing probes for native String#b:
+fresh identity, frozen state, independent mutations, base-class allocation,
+metadata stripping, UTF-8 bytes, aliases/super, arity and hook bypass. The old
+__as_binary override witness now agrees and the helper is absent from reflection.
+The one focused String#[]= case remains an existing gate. Model L296 records the
+implementation and the deferred dependent Module#name cache work.
+
+Final validation: model build passes (102 jobs). Full bootstrap (1,309):
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+one old test_syntax_115 harness error. All source/verdict pairs match L295.
+Regressions (196): 195 agree and one old sorbet-hash gate; all earlier sources
+and verdicts hold. Tier 1 (300, seed 20260927): 226 agree and 74 gates, unchanged.
+Frontend seeds plus new guards: 50 agree, all AST-idempotent, six old render-only
+instabilities. Standalone and feature loading: three agreements each. Generated
+Prelude.lean reproduces exactly; whitespace checks pass. A final rebuild and
+focused replay pass after comment cleanup and removal of a duplicate membership
+entry; neither cleanup changes behavior. Evidence is archived in
+`difftest/reports/20260928-incremental-L296/`. No proof, checker or floor edits.
+
+The typed gate was rerun and remains red at the existing HeapFacts className/lookup
+proof drift. Its log is archived; proof repair remains explicitly deferred.
+
+
+## N71 — native Module#name String identity (2026-09-28)
+
+Seven name-cache-* programs retain 32 agreeing probes from model L297's 33-case
+audit. The baseline had 30 disagreements, two agreements and one gate; after
+repair, 29 disagreements and the temporary binary-name encoding gate agree.
+String#clone(freeze: false)'s existing arity disagreement remains separate work.
+The original 14-case audit also retains all seven repaired identity cases and
+its five unchanged gates. Shared equal paths, old frozen name snapshots, native
+aliases/super, allocation and feature-loading survival, independent copies and
+callback visibility are exercised. Global hook overrides are isolated. No
+comparator, observation normalization, checker or floor was changed.
+
+Final validation: model build passes (102 jobs), with no later runtime edits.
+Full bootstrap: 1,309 cases, 1,096 agree, zero disagree, 207 unsupported, five
+existing invalid controls and the old test_syntax_115 harness error. Every source
+and verdict matches L296. Regression replay: 203 cases, 202 agree and one old
+sorbet-hash gate; all 196 earlier sources/verdicts hold. Tier 1 (300, seed
+20260927): 226 agree, 74 gates, all sources/verdicts unchanged. Frontend seeds
+plus new guards: 53 agree, all AST-idempotent; six old render-only instabilities
+plus one benign name-cache-reads rendering instability. Standalone and feature
+loading: three agreements each. Whitespace checks pass. Build logs, before/after
+probes, combined-source validation, comparisons and the next audit are archived
+in `difftest/reports/20260928-incremental-L297/`. No checker, proof, comparator,
+normalizer or floor changes; proof repair remains explicitly deferred.
+
+The typed gate was rerun and remains red at HeapFacts className/lookup proof
+drift; its captured error log exactly matches L296. Proof repair stays deferred.
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.
+
+
+## N72 — native clone and initialize_copy (2026-09-28)
+
+Five native-clone-* programs retain 59 agreeing probes for model L298: options,
+arity/error ordering, native aliases/super, mutable copy shells and prefilled
+ivars, effectful hooks, final freezing, exceptions/throws, conversion/frozen timing,
+container contents/defaults, immutable identity and Enumerator state. The original
+41-case audit has 35 agreements and six gates; 30 disagreements and three old
+gates become agreements. One earlier disagreement exposes unmodeled Hash#default
+once its skipped hook starts executing, and is not counted as repaired. The extra
+26 include 24 agreements, one old Range-subclass gate and a saved Regexp literal
+frozen-state failure. All 33 L297 name probes now agree. No normalizer, comparator,
+checker or floor changed. Source and before/after observations are retained.
+
+Final validation: model build passes (104 jobs), with no later runtime edits.
+Full bootstrap: 1,309 cases, 1,096 agree, zero disagree, 207 unsupported, five
+existing invalid controls and the old test_syntax_115 harness error. Every source
+and verdict matches L297. Regression replay: 208 cases, 207 agree and one old
+sorbet-hash gate; all 203 earlier sources/verdicts hold. Tier 1 (300, seed
+20260927): 226 agree, 74 gates, every source/verdict unchanged. Frontend seeds
+plus new guards: 51 agree, all AST-idempotent, six old render-only instabilities.
+Standalone and feature loading: three agreements each. Whitespace checks pass.
+Build logs, before/after focused probes, combined-source validation, full report
+comparisons and the next audit are archived in
+`difftest/reports/20260928-incremental-L298/`. No checker, proof, comparator,
+normalizer or floor changes; proof repair remains explicitly deferred.
+
+The typed gate was rerun and remains red at HeapFacts className/lookup proof
+drift; its captured error log exactly matches L297. Proof repair stays deferred.
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.
+
+
+## N73 — native dup hooks and dropped singleton state (2026-09-28)
+
+Five native-dup-* programs preserve model L299's 42 agreeing probes. Before:
+20 disagreements, 13 gates, nine agreements; after: all 42 agree. Core mutable
+shells and hooks, immutable arity, metadata/default sharing, failures, aliases,
+super, source singleton/extension omission and Enumerator state are exercised.
+The global Integer hook override is isolated. The 67 L298 clone/copy probes
+retain their earlier source/verdict pairs, including the recorded Regexp literal
+failure. No comparator, observation normalizer, checker or floor changed.
+
+Final validation (closed 2026-09-29): model build passes (104 jobs), with no
+later runtime edits. Full bootstrap: 1,309 cases, 1,096 agree, zero disagree,
+207 unsupported, five existing invalid controls and the old test_syntax_115
+harness error. Every source/verdict matches L298. Regression replay: 213 cases,
+212 agree and one old sorbet-hash gate; all 208 earlier sources/verdicts hold.
+Tier 1 (300, seed 20260927): 226 agree, 74 gates, all sources/verdicts unchanged.
+Frontend seeds plus new guards: 51 agree, all AST-idempotent; six old render-only
+instabilities plus one benign native-dup-copies rendering instability. Standalone
+and feature loading: three agreements each. Whitespace checks pass. Evidence and
+before/after comparisons are archived in
+`difftest/reports/20260928-incremental-L299/`. No checker, proof, comparator,
+normalizer or floor changes; proof repair remains explicitly deferred.
+
+The typed gate was rerun and remains red at HeapFacts className/lookup proof
+drift; its captured error log exactly matches L298. Proof repair stays deferred.
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.

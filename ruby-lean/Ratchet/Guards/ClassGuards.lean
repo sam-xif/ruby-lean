@@ -13,6 +13,9 @@ def plainClassTablesB (κ : Ctx) : Bool :=
   κ.consts.isEmpty && κ.classes.all (fun c => unqualifiedClassB c.name)
 def explicitReceiverB : Expr → Bool | .self' => false | _ => true
 
+/-- Every declared class has resolvable static ancestry, so its runtime chain reaches Object. -/
+def classReachB (C : CTable) : Bool := C.all fun c => c.isModule || (ancestors? C c.name).isSome
+
 def classRuleB (κ κb : Ctx) (Γ : Env) (I τ : Ty) (cn : String) : Bool :=
   reframeTypesB (returnScopeCtx κ κb) I && localTypesB Γ && FirstOrder τ &&
     decide (κ.asms = [] ∧ κ.scope.runtimeMain = true ∧ κ.frame = none ∧
@@ -20,13 +23,21 @@ def classRuleB (κ κb : Ctx) (Γ : Env) (I τ : Ty) (cn : String) : Bool :=
       κb.scope.runtimeClass = some cn ∧ κb.consts = []) &&
     plainClassTablesB κ && classNativeFrameB κ cn && freshClassNameB κ cn && !cn.isEmpty &&
     nameFreeN κ "new" && classNativeQuietB cn "new" && unqualifiedClassB cn &&
-    headerTableFrameB κ.classes cn
+    headerTableFrameB κ.classes cn && classReachB κ.classes
+
+/-- CRuby privatizes these on definition; Sorbet 0.6.13405 still types explicit calls. -/
+def autoPrivateNames : List String :=
+  ["initialize_copy", "initialize_dup", "initialize_clone", "respond_to_missing?"]
+
+/-- Object's class-callback selectors; class-body writes keep them unshadowed. -/
+def classHookSelectors : List String := ["const_added", "inherited"]
 
 def memberRuleB (κ : Ctx) (Γ : Env) (I : Ty) (c : Cls) (d : Defn) : Bool :=
   reframeTypesB κ I && localTypesB Γ &&
     decide (κ.asms = [] ∧ κ.scope.runtimeClass = some c.name ∧ c.name ∉ rootAncestors ∧
       "new" ≠ d.name ∧ "method_missing" ≠ d.name ∧ "method_added" ≠ d.name) &&
-    unqualifiedClassB c.name && memberFreshB κ c d && memberTableFrameB κ.classes c d
+    unqualifiedClassB c.name && memberFreshB κ c d && memberTableFrameB κ.classes c d &&
+    !autoPrivateNames.contains d.name && !classHookSelectors.contains d.name
 
 def mainCallB (κ : Ctx) (Γ : Env) (I : Ty) : Bool :=
   reframeTypesB κ I && localTypesB Γ &&

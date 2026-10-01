@@ -17,7 +17,7 @@ open RubyCore Ratchet Ratchet.Denote
 
 private def labelFields : Ty := .ivarCons "@label" (.cls "String") .ivar0
 private def echo : Defn := ⟨"echo", [.req "flag"], .var .lvar "flag"⟩
-private def echoCtx (κ : Ctx) : Ctx := instanceBodyCtx κ ⟨"Satellite", "Depot", "echo"⟩ labelFields
+private def echoCtx (κ : Ctx) : Ctx := instanceBodyCtx κ ⟨"Satellite", "Depot", "echo", false⟩ labelFields
 private def echoParams : Env := [("flag", .bool)]
 
 -- Full annotation-domain checking still precedes a call, including unused bodies.
@@ -44,7 +44,7 @@ theorem inherited_echo_run {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {r k : O
       ((ancestors m.heap (classOf m.heap recv)).takeWhile (· != k)) "echo" = none) (b : Bool) :
     ∃ n, Interp.finishSend m recv .explicit "echo" [.bool b] .none = .next n ∧
       RunSpec m n Γ .bool κ I :=
-  resolved_instance_run (fr := ⟨"Satellite", "Depot", "echo"⟩) (e := echo.body)
+  resolved_instance_run (fr := ⟨"Satellite", "Depot", "echo", false⟩) (e := echo.body)
     (ps := echoParams) (Γb := echoParams)
     hp hb (by simp [echoParams, FirstOrder, isAliasTy]) rfl (SemSafeCtxA.var rfl rfl)
     hm ht ha rs os hw hkont code hu hl rfl hv rfl (by simp [echoParams, DenAll, denM, isBoolV]) hk hΓ
@@ -78,12 +78,14 @@ theorem unrecorded_shadow_preserves_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Ma
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (ha : κ.asms = [])
     (hn : nameFreeN κ name = false) (hnew : "new" ≠ name)
     (hmiss : "method_missing" ≠ name) (hquiet : "method_added" ≠ name)
-    (hc : cls ≠ Boot.objectId)
+    (hc : cls ≠ Boot.objectId) (hw : (m.heap.get cls).eigen.isSome = true)
     (hrows : ∀ c ∈ κ.classes, classNamed? m.heap c.name = some cls →
-      ∀ d ∈ c.methods, d.name ≠ name) :
+      ∀ d ∈ c.methods, d.name ≠ name)
+    (hinit : "initialize" ≠ name) :
     StateCore κ Γ I { m with heap := defineMethod m.heap cls name md } :=
-  StateCore_methodWrite hm.toStateCore ht hΓ ha hn hmiss hquiet (ClassesOk_methodWrite_old hm.classes hrows)
+  StateCore_methodWrite hm.toStateCore ht hΓ ha hn hmiss hquiet (ClassesOk_methodWrite_old hm.classes hw hrows)
     (DefsOk_methodWrite_other hm.defs hc) (hm.declCls.methodWrite hnew hmiss)
+    (primitiveInitB_defineMethod_other hm.primitiveInit hinit)
 
 private def sourceDecl : Defn := ⟨"answer", [], .int 1⟩
 private def sourceCtx : Ctx := topDeclCtx ctx0 sourceDecl
@@ -122,14 +124,16 @@ theorem full_state_unrecorded_shadow (hb : bootOkB = true) :
   obtain ⟨k, site⟩ := hm.classSites.of_class
     (show classHeader "Child" ∈ childCtx.classes from by change _ ∈ [_]; simp)
   have hc : k ≠ Boot.objectId := declared_not_object hm site.named (by decide)
+  obtain ⟨e, he, _, _⟩ := site.metaclass
+  have hw : (m.heap.get k).eigen.isSome = true := by rw [he]; rfl
   have hn := unrecorded_shadow_preserves_state (name := "answer") (md := badMethod k) hm
     (reframeTypesB_sound (by decide)) (by simp) rfl (by decide)
-    (by decide) (by decide) (by decide) hc (by
+    (by decide) (by decide) (by decide) hc hw (by
       intro c hc _ d hd
       have he : c = classHeader "Child" := by simpa [childCtx, classHeaderCtx, Ctx.classes,
         classBodyCtx, sourceCtx, topDeclCtx, ctx0] using hc
       subst c
-      cases hd)
+      cases hd) (by decide)
   refine ⟨_, k, hn, ?_, ?_, ?_⟩
   · rw [classNamed?_defineMethod]; exact site.named
   · obtain ⟨rest, hr⟩ := classFrontB_sound site.front

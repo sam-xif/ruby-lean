@@ -64,25 +64,18 @@ open RubyCore Ratchet Ratchet.Denote
 
 /-! ## §1 The judgment -/
 
-/-- **What it means for an escape to be safe.** The `raiseJ` arm is exact (see the header).
-
-`brkJ`/`nxtJ`/`redoJ`/`retryJ` are `True` because `unwind []` answers `.stuck` for them, and
-`.stuck` is not type-stuck — a `break` outside a loop is a `LocalJumpError` *in CRuby*, but in
-this model it ends the run without an exception, and the difftest agreement gate is what makes
-that a fact about the model rather than an assumption.
-
-`retJ`/`throwJ` are **`False`**, which is the *strong* choice rather than a weakening: at an
-empty continuation both step to a `raiseErr` whose class is `LocalJumpError` /
-`UncaughtThrowError`, and whether those are in the type-error family is a question about the
-heap's class table that `StateOk` does not answer (`found-issues.md` §F27's residue). Making
-the arm `False` means a rule that could produce one has to prove it cannot. No `DJudge` rule
-can — the judgment has no `ret`, `throw`, `brk` or `next` rule — so the arm is discharged by
-unreachability here, and the day a rule needs it, the class-table fact is what it owes. -/
+/-- Escapes produced by the current fragment are non-type-error exceptions. All other
+jumps are excluded: DJudge has no jump rule, and each semantic rule proves this stronger
+contract. Safety at an empty continuation alone is insufficient: blkFrameK turns next/break
+into values and redo re-enters the body (§F50). Future jump rules need typed interception
+and outgoing-state obligations before these arms can be admitted. -/
 def EscOk (m₀ : Machine) : Jump → Prop
   | .raiseJ exc => Semantics.isTypeError m₀.heap exc = false
-  | .retJ _ _ => False
-  | .throwJ _ _ => False
-  | _ => True
+  | _ => False
+
+theorem EscOk.only_raise {m : Machine} {j : Jump} (h : EscOk m j) :
+    ∃ exc, j = .raiseJ exc ∧ Semantics.isTypeError m.heap exc = false := by
+  cases j <;> simp_all [EscOk]
 
 /-- The obligation on an answer: a value is in the type, an escape is safe. One predicate
 where the old design had two ladders. -/
@@ -351,7 +344,7 @@ theorem step_vasgn_ctl {m : Machine} {x : String} {e : Ratchet.Expr}
     (hc : m.ctl = .eval (toRuby (.vasgn .lvar x e))) :
     Interp.stepFn m = .next (reCtl m (.eval (toRuby e)) (.asgnK .lvar x :: m.kont)) := by
   simp only [toRuby, toRubyVarKind] at hc
-  simp only [Interp.stepFn, hc, Interp.evalExpr, Interp.withKont, reCtl]
+  simp [Interp.stepFn, hc, Interp.evalExpr, Interp.withKont, reCtl]
 
 /-- The frame firing on a value: pop, write, pass the value on. -/
 theorem step_asgnK_val {m : Machine} {x : String} {v : Value} {rest : List Kont}
@@ -589,10 +582,9 @@ theorem vasgn_step_pushK (m : Machine) (x : String) (e : Ratchet.Expr) :
 
 theorem catchFree_asgnK (x : String) :
     RubyCore.Proof.CatchFree [.asgnK .lvar x] := by
-  intro k hk t
-  rcases List.mem_cons.mp hk with rfl | hmem
-  · simp
-  · exact absurd hmem (by simp)
+  intro k hk
+  cases List.mem_singleton.mp hk
+  rfl
 
 theorem SemA.vasgn {Γ Γ₁ : Env} {x : String} {e : Ratchet.Expr} {τ : Ty}
     (hprem : SemSafeA Γ e τ Γ₁) (hcap : capStale x τ τ = false) (halias : isAliasTy τ = false) :
@@ -608,7 +600,8 @@ theorem SemA.vasgn {Γ Γ₁ : Env} {x : String} {e : Ratchet.Expr} {τ : Ty}
       rw [runA_succ (answerPoint_evalFrom m _),
         step_vasgn_ctl (m := evalFrom m (.vasgn .lvar x e)) rfl] at h
       simp only at h
-      rw [vasgn_step_pushK m x e, runA_pushK _ (catchFree_asgnK x) f (evalFrom m e)] at h
+      rw [vasgn_step_pushK m x e, runA_pushK _ (catchFree_asgnK x) f (evalFrom m e) hm.rootClean
+        (fun a n rest hr => (hsem m hm f a n rest hr).1.rootClean hm.rootClean)] at h
       cases hr : runA f (evalFrom m e) with
       | halt hh => rw [hr] at h; exact absurd h (by cases hh <;> simp [resOutA, Halt.underK])
       | oof m₂ => rw [hr] at h; exact absurd h (by simp [resOutA])
@@ -620,6 +613,9 @@ theorem SemA.vasgn {Γ Γ₁ : Env} {x : String} {e : Ratchet.Expr} {τ : Ty}
         | val v =>
           have hm₁ : StateOk Ratchet.ctx0 Γ₁ .ivar0 m₁ := hout v rfl
           have hd : denM τ m₁ v := hans
+          have hal : (m₁.frames.getD (m₁.stack.headD 0) default).localAlias = none := by
+            rw [← currentFrame_headD hm₁.frameInRange.1]
+            exact hm₁.localAlias
           match r₁ with
           | 0 => rw [runA_zero (by simp [answerPoint, deliverA])] at h; exact absurd h (by simp)
           | g + 1 =>
@@ -633,7 +629,7 @@ theorem SemA.vasgn {Γ Γ₁ : Env} {x : String} {e : Ratchet.Expr} {τ : Ty}
             refine ⟨?_, ?_, ?_⟩
             · exact hfr.trans
                 ((Framed_reCtl m₁ (.value v) []).trans
-                  ((Framed_setLocal _ x v).trans (Framed_withCtl _ (.value v))))
+                  ((Framed_setLocal (reCtl m₁ (.value v) []) x v hal).trans (Framed_withCtl _ (.value v))))
             · show denM τ _ v
               exact denM_withCtl.mpr (denM_setLocal
                 (by rw [popK_eq]; exact denM_reCtl.mpr (denM_deliverA.mpr hd)) hcap

@@ -6,35 +6,44 @@ set_option autoImplicit false
 namespace Ratchet.Denote
 open RubyCore
 
-structure OrdinaryMethodCode (owner : ObjId) (cref : List ObjId) (md : MethodDef) : Prop where
-  owner : md.owner = owner
+structure OrdinaryMethodCode (expectedOwner : ObjId) (cref : List ObjId) (md : MethodDef) : Prop where
+  owner : md.owner = expectedOwner
   cref : md.cref = cref
   superName : md.superName = none
   builtin : md.builtin = none
   captured : md.capturedFrame = none
   declared : md.declared = []
   fromPrelude : md.fromPrelude = false
+  visibilityOnly : md.visibilityOnly = false
+  fromBlock : md.fromBlock = false
+  forTargets : md.forTargets = none
+  definee : md.definee.getD md.owner = expectedOwner
+  /-- Ordinary `def` bodies use their own frame as definition context. -/
+  definitionFrame : md.definitionFrame = none
 
 abbrev TopMethodCode (md : MethodDef) : Prop :=
-  OrdinaryMethodCode Boot.objectId [Boot.objectId] md
+  OrdinaryMethodCode Boot.objectId [] md
 
 /-- Current ordinary-class fragment: lexical top-level class scope, public methods except
 private initialize. Nested lexical scopes and visibility changes need distinct contracts. -/
 structure InstanceMethodCode (owner : ObjId) (name : String) (md : MethodDef) : Prop
-    extends OrdinaryMethodCode owner [owner, Boot.objectId] md where
+    extends OrdinaryMethodCode owner [owner] md where
   visibility : md.visibility = if name == "initialize" then .priv else .pub
 
 def ordinaryMethodCodeB (owner : ObjId) (cref : List ObjId) (md : MethodDef) : Bool :=
   decide (md.owner = owner ∧ md.cref = cref ∧ md.superName = none ∧ md.builtin = none ∧
-    md.capturedFrame = none ∧ md.declared = [] ∧ md.fromPrelude = false)
+    md.capturedFrame = none ∧ md.declared = [] ∧ md.fromPrelude = false ∧ md.visibilityOnly = false ∧
+    md.fromBlock = false ∧ md.forTargets = none ∧ md.definee.getD md.owner = owner ∧
+    md.definitionFrame = none)
 
 theorem ordinaryMethodCodeB_sound {owner : ObjId} {cref : List ObjId} {md : MethodDef}
     (hb : ordinaryMethodCodeB owner cref md = true) : OrdinaryMethodCode owner cref md := by
   simp only [ordinaryMethodCodeB, decide_eq_true_eq] at hb
-  exact ⟨hb.1, hb.2.1, hb.2.2.1, hb.2.2.2.1, hb.2.2.2.2.1, hb.2.2.2.2.2.1, hb.2.2.2.2.2.2⟩
+  rcases hb with ⟨ho, hc, hs, hb, hcap, hd, hp, hv, hblock, hfor, hdefinee, hdf⟩
+  exact ⟨ho, hc, hs, hb, hcap, hd, hp, hv, hblock, hfor, hdefinee, hdf⟩
 
 def instanceMethodCodeB (owner : ObjId) (name : String) (md : MethodDef) : Bool :=
-  ordinaryMethodCodeB owner [owner, Boot.objectId] md &&
+  ordinaryMethodCodeB owner [owner] md &&
     decide (md.visibility = if name == "initialize" then .priv else .pub)
 
 theorem instanceMethodCodeB_sound {owner : ObjId} {name : String} {md : MethodDef}

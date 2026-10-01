@@ -1,11 +1,20 @@
 import Ratchet.Judgment.DJudge
 import Ratchet.Check.CheckInit
 import Ratchet.Guards.MemberRoute
+import Ratchet.Check.MethodCertificate
+import Ratchet.Check.MethodFlowCertificate
 
 /-! Annotation-checked body artifacts. Lookup proves code membership and exact context;
 neither cached signatures nor a receiver's call-site shape can stand in for a body proof. -/
 set_option autoImplicit false
 namespace Ratchet
+
+/-- A result checked over the entire parameter domain, with its own outgoing locals.
+This proof can retain information that the declared return annotation forgets. -/
+structure CheckedResult (κ : Ctx) (I : Ty) (decl : Defn) (params : List SigParam) (ty : Ty) where
+  out : Env
+  firstOrder : FirstOrder ty = true
+  judged : DJudge params decl.body ty out κ I κ I
 
 structure CheckedBody (κ : Ctx) (I : Ty) (decl : Defn) where
   params : List SigParam
@@ -15,6 +24,16 @@ structure CheckedBody (κ : Ctx) (I : Ty) (decl : Defn) where
   paramsFO : ∀ p ∈ params, FirstOrder p.2 = true ∧ isAliasTy p.2 = false
   returnFO : FirstOrder ret = true
   judged : DJudge params decl.body ret out κ I κ I
+  refined : Option ((ty : Ty) × CheckedResult κ I decl params ty) := none
+
+/-- Call hints choose only between two body proofs; a nominal annotation grants no fields. -/
+def CheckedBody.resultAt {κ : Ctx} {I : Ty} {decl : Defn}
+    (b : CheckedBody κ I decl) (ty : Ty) : Option (CheckedResult κ I decl b.params ty) := do
+  if he : b.ret = ty then
+    some ⟨b.out, he ▸ b.returnFO, he ▸ b.judged⟩
+  else do
+    let ⟨actual, result⟩ ← b.refined
+    if he : actual = ty then some (he ▸ result) else none
 
 structure CachedBody where
   ctx : Ctx
@@ -29,6 +48,9 @@ structure CachedMember extends CachedBody where
   owner : String
   receiver : String
 
+structure CachedSingleton extends CachedBody where
+  owner : String
+
 structure CachedInitializer where
   ctx : Ctx
   owner : String
@@ -37,25 +59,54 @@ structure CachedInitializer where
   body : CheckedInitializer ctx decl
   deriv : Deriv
 
+structure CachedCallback where
+  ctx : Ctx
+  spine : Ty
+  decl : Defn
+  body : CheckedCallbackBody ctx spine decl
+  deriv : Deriv
+
+structure CachedBoundCallback where
+  ctx : Ctx
+  spine : Ty
+  decl : Defn
+  body : CheckedBoundCallbackBody ctx spine decl
+  deriv : Deriv
+
 structure CheckedCache where
   top : BodyCache := []
   members : List CachedMember := []
   initializers : List CachedInitializer := []
+  singletons : List CachedSingleton := []
+  callbacks : List CachedCallback := []
+  boundCallbacks : List CachedBoundCallback := []
+
+/-- Retain definition annotations for parent replay, independent of receiver-specific
+cached output fields. Each super use rechecks the actual selected code in its new context. -/
+def initializerSources (cache : CheckedCache) : List InitializerSource :=
+  (cache.initializers.filter fun c => c.receiver == c.owner).map fun c =>
+    ⟨c.owner, c.decl, c.body.params, c.body.ret, c.deriv⟩
 
 /-- Equal code tables alone do not pin annotations. Branches must also agree on cached
 signatures, rather than silently selecting one branch's declared parameter/field types. -/
 def cacheSignaturesB (a b : CheckedCache) : Bool :=
-  (a.top.map fun c => (c.decl.name, c.body.params, c.body.ret, c.spine)) ==
-    (b.top.map fun c => (c.decl.name, c.body.params, c.body.ret, c.spine)) &&
-  (a.members.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.spine)) ==
-    (b.members.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.spine)) &&
+  (a.boundCallbacks.map fun c => (c.decl.name, c.body.localName, c.body.blockArgs, c.body.blockRet, c.body.ret, c.spine)) ==
+    (b.boundCallbacks.map fun c => (c.decl.name, c.body.localName, c.body.blockArgs, c.body.blockRet, c.body.ret, c.spine)) &&
+  (a.callbacks.map fun c => (c.decl.name, c.body.params, c.body.blockArgs, c.body.blockRet, c.body.ret, c.spine)) ==
+    (b.callbacks.map fun c => (c.decl.name, c.body.params, c.body.blockArgs, c.body.blockRet, c.body.ret, c.spine)) &&
+  (a.singletons.map fun c => (c.owner, c.decl.name, c.body.params, c.body.ret, c.body.refined.map (·.1))) ==
+    (b.singletons.map fun c => (c.owner, c.decl.name, c.body.params, c.body.ret, c.body.refined.map (·.1))) &&
+  (a.top.map fun c => (c.decl.name, c.body.params, c.body.ret, c.spine, c.body.refined.map (·.1))) ==
+    (b.top.map fun c => (c.decl.name, c.body.params, c.body.ret, c.spine, c.body.refined.map (·.1))) &&
+  (a.members.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.spine, c.body.refined.map (·.1))) ==
+    (b.members.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.spine, c.body.refined.map (·.1))) &&
   (a.initializers.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.body.fields)) ==
     (b.initializers.map fun c => (c.receiver, c.owner, c.decl.name, c.body.params, c.body.ret, c.body.fields))
 
 structure CallableBody (κ : Ctx) (I : Ty) (name : String) where
   decl : Defn
   nameOk : decl.name = name
-  body : CheckedBody (κ.withFrame (some ⟨"Object", "Object", decl.name⟩)) I decl
+  body : CheckedBody (κ.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I decl
   installed : decl ∈ κ.defs
 
 def findBody (κ : Ctx) (I : Ty) (name : String) : BodyCache → Option (CallableBody κ I name)
@@ -63,7 +114,7 @@ def findBody (κ : Ctx) (I : Ty) (name : String) : BodyCache → Option (Callabl
   | c :: cs =>
     let found : Option (CallableBody κ I name) := do
       if hn : c.decl.name = name then do
-        let ⟨hc⟩ ← ctxEq? c.ctx (κ.withFrame (some ⟨"Object", "Object", c.decl.name⟩))
+        let ⟨hc⟩ ← ctxEq? c.ctx (κ.withFrame (some ⟨"Object", "Object", c.decl.name, false⟩))
         if hi : c.spine = I then do
           let ⟨hd⟩ ← defnMem? c.decl κ.defs
           some ⟨c.decl, hn, by simpa only [hc, hi] using c.body, hd⟩
@@ -95,7 +146,7 @@ structure CallableMember (κ : Ctx) (c : Cls) (name : String) where
   installed : decl ∈ c.methods
   fields : Ty
   fieldsFO : FirstOrder fields = true
-  body : CheckedBody (instanceBodyCtx κ ⟨c.name, c.name, decl.name⟩ fields) fields decl
+  body : CheckedBody (instanceBodyCtx κ ⟨c.name, c.name, decl.name, false⟩ fields) fields decl
 
 def findMember (κ : Ctx) (c : Cls) (name : String) : List CachedMember → Option (CallableMember κ c name)
   | [] => none
@@ -104,7 +155,7 @@ def findMember (κ : Ctx) (c : Cls) (name : String) : List CachedMember → Opti
       if b.owner != c.name || b.receiver != c.name then none else do
       if hn : b.decl.name = name then do
       if hf : FirstOrder b.spine = true then do
-        let ⟨hc⟩ ← ctxEq? b.ctx (instanceBodyCtx κ ⟨c.name, c.name, b.decl.name⟩ b.spine)
+        let ⟨hc⟩ ← ctxEq? b.ctx (instanceBodyCtx κ ⟨c.name, c.name, b.decl.name, false⟩ b.spine)
         let ⟨hd⟩ ← defnMem? b.decl c.methods
         some ⟨b.decl, hn, hd, b.spine, hf, by simpa only [hc] using b.body⟩
       else none

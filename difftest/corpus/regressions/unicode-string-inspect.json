@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L293 (2026-09-28)",
+  "note": "Native UTF-8 String inspection uses the oracle Unicode printability table and escapes non-printing scalars, including supplementary planes. See model L293 and difftest N67."
+}

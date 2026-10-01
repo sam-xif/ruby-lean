@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L283 (2026-09-28)",
+  "note": "New class declarations reject frozen constant namespaces while existing classes can be reopened; eval writes use the lexical namespace. Compared with CRuby 4.0.5."
+}

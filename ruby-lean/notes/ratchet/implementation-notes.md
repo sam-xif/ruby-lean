@@ -10625,3 +10625,2884 @@ both halves of what constrains them now have a name.
   proofs build in seconds with standard axioms only.
 - Full quiet ratchet GREEN: fragment 63, checker reach 65, 48 proved rules, 0 owed/exempt,
   49 worked theorems, 252 agree / 0 disagree.
+
+## Clink 170 (2026-09-25) — retain successful default-new lookup
+
+- NewDispatch and declared-class conformance now retain a successful new lookup, alongside
+  its builtin/visibility/native-shadow metadata. The boot check rejects absence. Existing
+  heap, method, class and subclass transports preserve the positive fact; no new Ctx flag.
+  The obsolete method_missing transport premise is removed.
+- Removing Class#new satisfied the old conditional dispatch clauses yet makes a fresh
+  class's default new gate as unmodeled Class#new. ClassCtorControls pins both observations and
+  rejection by the strengthened boot check. Initialized construction is unchanged.
+- declared_default_constructor now derives successful lookup from full conformance; its
+  annotation-checked Depot/Satellite control no longer assumes physical new lookup.
+- Sorbet 0.6.13405 accepts corpus 066, reveals Dog.new as Dog, and rejects Dog.new(1)
+  with expected arity zero. These observations ground the upcoming default-new judgment.
+  No rule or floor changes in this prerequisite.
+- Full quiet ratchet GREEN: fragment 63, checker reach 65, 48 rules, 0 owed/exempt,
+  49 worked theorems, 252 agree / 0 disagree. Metatheory and axiom audit pass.
+
+## Clink 171 (2026-09-25) — certified default construction
+
+- newDefault follows the measured Sorbet zero-argument/default-instance behavior (clink
+  170), cited in its judgment docstring. Its generic semantic proof composes receiver and
+  argument evaluation with the real allocator. Empty argument types force zero runtime
+  arguments; allocation preserves all caller indices without a method-entry frame guard.
+- The checker selects this route only after proving initializer absence through the entire
+  declared chain and the top-level table. Missing cached initializer proofs never select
+  it. Initialized routes still consume full annotation-domain body proofs. The existing
+  newInst hint/schema/emitter already supplies the receiver, arguments and field claim.
+- Controls cover own/inherited default calls, extra arguments, forged fields and class
+  names, unknown classes, bad uncalled bodies, top-level initialize and an unrelated class's
+  initializer. Existing unsupported-default controls become positive regressions.
+- Whole 066 has an independent Church derivation, parameterized by the override String,
+  and executes to "Woof". Rule prediction selects default/own/inherited initialization from
+  declarations; the audit checks the exact proof-term rule set. No exemptions.
+- Measured 066 and 069 newly admitted: fragment 65, checker reach 66, 49 rules and
+  50 worked theorems. Raised all four floors; 067 remains gated on super dispatch.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree, 0 owed/exempt. Metatheory and
+  axiom audit pass; the new semantic and worked proofs build in under a second each.
+
+## Clink 172 (2026-09-25) — checked super routes and actual parent dispatch
+
+- SuperRoute splits the declared chain before the current defining owner, between it and
+  the target, and after the target. Only the intervening owners need selector absence;
+  ordinary MemberRoute would incorrectly reject the current owner's override. Every retained
+  record still contributes to absence. Missing/cyclic chains and backwards targets reject.
+- SuperLookup derives actual superFound and installed code from full conformance. Physical
+  ancestors are duplicate-free by their real fold; this identifies the current owner's
+  first occurrence without assuming distinct class-name resolutions. No physical lookup
+  equality, class name, annotation domain or body is fixed in the production theorem.
+- SuperDispatch proves real user dispatch and required-parameter binding on the existing
+  receiver. It needs neither ordinary-send native-shadow nor public-visibility guards:
+  doSuper directly consumes superFound. Body safety and initializer return are still owed.
+- Checked Depot/Gap/Relay/Satellite controls recover the parent's code through an empty
+  intermediate owner, then execute super from an inherited method on the same instance.
+  Controls reject skipped overrides, hidden older rows, wrong/current/missing owners and
+  cycles. FrameOk alone also accepts a block frame whose methodFrameOf follows another
+  activation. This is a local invariant omission, not an admitted unsafe program; keep
+  non-block activation explicit until the retained frame contract closes it.
+- Sorbet 0.6.13405 accepts 067 and rejects super("three") and super() against Shape's
+  Integer parameter. No new typing judgment yet. Remaining work: activation conformance,
+  nested initializer entry/return with anchored fields, argument composition and full-domain
+  super-body cache/checker/emitter integration. No admission or floor change.
+- Full quiet ratchet GREEN: fragment 65, checker reach 66, 49 rules, 0 owed/exempt,
+  50 worked theorems, 252 agree / 0 disagree. Metatheory and axiom audit pass. New
+  production proofs build in under a second; the controls take about three seconds.
+
+## Clink 173 (2026-09-25) — retain method activation in conformance
+
+- FrameOk's present arm now requires method kind. The clink-172 block witness still
+  satisfies the old name/receiver pair but fails this strengthened contract; its home
+  activation has no method name and super gates. No admitted program was implicated.
+- All existing method entries establish the kind, and heap/local transports and caller
+  restoration retain it. declared_super_dispatch now derives activation from full StateOk
+  instead of taking a non-block premise. Nested initializer field transport remains next.
+- No new typing judgment, admission or floor change.
+- Full quiet ratchet GREEN: fragment 65, checker reach 66, 49 rules, 0 owed/exempt,
+  50 worked theorems, 252 agree / 0 disagree. Metatheory and axiom audit pass.
+
+## Clink 174 (2026-09-25) — nested initializer entry and parent return
+
+- InitFrame now also retains IvarTypePres relative to body entry. The outer InitGrow
+  anchor protects preallocation objects, but says too little about child locals referring
+  to newer objects. The existing IvarStable predicate supplies the exact preservation
+  domain; writes and sequential composition establish it. Field snapshots stay excluded.
+- InitNestedReturn restores saved frames and stable locals within the same anchor.
+  SuperState establishes full parent-entry conformance without allocating or erasing
+  existing fields. Parent return restores child scope/locals and takes the outgoing field
+  spine, rather than claiming the old shape survived. Receiver freshness remains anchored.
+- SuperRun composes full-state checked lookup, arbitrary required arguments, the complete
+  annotated parent-body proof and actual frameK return. Escapes follow the existing real
+  method-boundary behavior. No physical lookup or call-site-specialized body is assumed.
+- SuperInitControls derives entry from checked Polygon/Wedge declarations and allocation,
+  then proves nested execution for arbitrary Integer arguments. Actual execution preserves
+  the receiver, heap size and child local while changing @sides from nil to Integer; the
+  old snapshot consequently fails denB. This is a semantic pilot, not super admission.
+- Hide the control's generated checked context from elaborator unfolding; kernel-checked
+  projection facts remain explicit. This removes repeated certificate reduction without
+  raising heartbeat limits. New production proofs build in under a second each.
+- No new typing judgment or floor change. Next: initializer literals/argument composition
+  and receiver/owner-aware super body replay, checker/emitter/registry integration.
+- Full quiet ratchet GREEN: fragment 65, checker reach 66, 49 rules, 0 owed/exempt,
+  50 worked theorems, 252 agree / 0 disagree. Metatheory and axiom audit pass; the
+  combined checked-declaration control builds in about four seconds.
+
+## Clink 175 (2026-09-25) — certified initializer super
+
+- Sorbet 0.6.13405 again accepts 067 and rejects super("three") and super() against
+  Shape#initialize(Integer). InitJudge.intLit/superInit cite this basis. InitJudgeAll
+  supplies required positional arguments as the ninth registered family; all three scoped
+  initializer judgments cross the registry bridge, with no raw syntactic premise bypass.
+- SuperArgs evaluates arbitrary-length arguments left to right, transporting accumulated
+  IvarStable values through subsequent writes. SuperExpr composes this with checked parent
+  entry/return and derives absence of a forwarded block from full activation conformance.
+  The shared plainArgB guard is moved unchanged out of DJudge.
+- Parent replay metadata retains previously checked annotations, code and body hints,
+  independently of receiver-specific cached fields. Each super checks the actual route
+  after the current defining owner and freshly checks the full parent annotation domain
+  at the argument evaluation's outgoing fields. It preserves existing child fields and
+  locals. Whole-cache refresh supplies the complete source catalog, including when a
+  further subclass inherits a super body. Fuel bounds recursive replay.
+- The super hint supplies only argument derivations. The emitter tracks the current
+  initializer and parent signature/fields; all its claims remain checked. Negative controls
+  cover bad uncalled overrides, type/arity/hint mismatches, missing parents and unsupported
+  argument forms. Positive controls cover inherited super, preexisting fields, argument
+  writes and a two-argument order witness that executes to Integer 2.
+- Whole 067 has an independent Church derivation for arbitrary Integer arguments; its
+  concrete corpus instance executes to 3. The exact rule audit exercises all four new
+  constructors. Measured fragment 66, checker reach 69, 53 rules, 51 worked theorems;
+  all four floors raised, no exemptions. Next frontier: 070's unset ivar read.
+- The worked derivation uses maxRecDepth 2048 for finite guard normalization with a
+  symbolic Integer; heartbeat limits are unchanged. New semantic proofs build in under
+  a second each, the worked proof in about 1.5 seconds. Full quiet ratchet GREEN:
+  252 agree / 0 disagree, 0 owed/exempt. Metatheory and standard-axiom audit pass.
+
+## Clink 176 (2026-09-25) — explicit nil fields from default allocation
+
+- Sorbet 0.6.13405 accepts 070's NilClass getter, but reveals the unset @secret as
+  T.untyped. It also accepts an Integer return annotation and @secret + 1. Record this
+  distinction in newDefault's docstring: the nil fact needs a semantic proof. The clink-122
+  open-instance counterexample still forbids treating every unlisted field as nil.
+- Default allocation now proves any finite nil-only field spine, checked by nilFieldsB.
+  The same dispatch/absence proofs carry that spine into newDefault; its empty-spine case
+  is unchanged. Ordinary method entry stays open and reads explicit nil fields through the
+  existing ivarRead rule. No new type constructor, judgment family or registered rule.
+- FieldHints collects receiver-body reads across declared ancestors and retained records,
+  deduplicated and sorted. These are candidate fields, not trusted absence facts: allocation
+  proves every nil entry, every body is checked under that spine, and calls require the
+  matching receiver type. Unsupported scan heads can only cost completeness. Initializer
+  bodies retain their inferred fields. The emitter mirrors the default-field choice.
+- Whole 070 has an independent Church derivation for any field name and executes to nil.
+  Controls reject forged non-nil/omitted fields, false uncalled return annotations and
+  writes that would invalidate the receiver's nil facts. Inherited getters with additional
+  child fields validate and execute; open omitted fields still type only at any.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Raised the fragment, reach and worked floors.
+  Metatheory and standard-axiom audit pass; allocation and worked proofs build below one
+  second, controls in about two seconds. Next frontier: 073's singleton factory method.
+
+## Clink 177 (2026-09-25) — actual singleton installation and dispatch
+
+- Sorbet 0.6.13405 accepts 073, reveals Point.origin as Point, and rejects a String factory
+  result, a String constructor argument, and Point.origin(1). No new typing judgment yet.
+- SingletonMethodCode separates dispatch owner (eigenclass) from lexical cref (class,
+  Object). The actual def-self step already composes receiver evaluation in the model.
+  SingletonInstall derives its cached eigenclass from full incoming class-site conformance,
+  proves the installed own row and preserves frames/first-order data. Rootedness plus
+  CoreOk establishes the eigenclass payload; no outgoing StateOk is assumed or claimed.
+- SingletonDispatch proves actual lookup and required-argument entry for arbitrary names,
+  parameters, bodies and values. The direct-name guard excludes interpreter interceptions;
+  eigenclass frontness is still an explicit premise. Neither an installed row nor cached
+  MetaReady proves it: a real prepended singleton module passes MetaReady and returns 99
+  instead of the newly installed own method's 7. This is a missing future contract, not an
+  admitted unsafe program.
+- A boot-grounded class-scope control derives installation from full conformance. Execution
+  checks the method result, unchanged heap size, eigenclass owner and lexical cref, and
+  rejects both ordinary-owner metadata substitutions. All new builds take under a second.
+- Next: persistent singleton code/table conformance and sufficient metaclass lookup facts;
+  singleton activation must keep dispatch owner distinct from lexical class scope. Then
+  constructor calls, annotation-domain body checking and checker/emitter admission for 073.
+  No floor or registry change in this prerequisite.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+
+## Clink 178 (2026-09-25) — retained singleton lookup precedence
+
+- InstanceSiteAt now retains metaclass frontness separately from MetaReady. Fresh class/
+  subclass entry establishes it; recontextualization, heap growth, method writes and ivar
+  writes preserve it. The real prepended-module counterexample from clink 177 violates
+  this stronger contract. Cached/rooted eigenclasses alone still do not justify lookup.
+- scoped_singleton_required derives the installed lookup and actual required-argument
+  entry from full incoming StateOk, without an external physical-front premise. The
+  boot-grounded control consumes this theorem; subclass controls check the retained fact.
+  Body safety and outgoing singleton table conformance remain separate obligations.
+- No typing judgment, admission or floor change. Next: persistent singleton code/table
+  conformance, distinct activation owner/scope, constructor calls and body-cache integration.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
+  the singleton dispatch proof and its control build in under a second each.
+
+## Clink 179 (2026-09-25) — persistent singleton code records
+
+- ClassesOk now interprets smethods as executed code: cached owner, exact parameters/body,
+  definedness and SingletonMethodCode. SingletonRows has no body-safety claim. Existing
+  allocation, subclass, frame and ivar transports retain the rows; empty publication
+  requires both method tables empty. No new Ctx table or typing judgment.
+- A class site's metaclass is now a leaf (has no eigenclass itself). Fresh entry establishes
+  this and all site transports preserve it. A modified real heap can point a class's eigen
+  pointer back to itself while passing MetaReady and frontness. The leaf fact excludes this
+  alias and separates every singleton owner from ordinary owners with cached metaclasses.
+  Ordinary writes therefore retain same-named singleton rows, without a global name ban.
+- SingletonTable preserves ordinary rows, protects old singleton rows at the physical
+  written owner, and publishes the new code. scoped_singleton_publish uses full incoming
+  StateOk and a sufficient singleton-name freshness premise. Retained code plus class sites
+  recovers actual lookup after intervening evaluation. Full outgoing StateOk publication
+  and activation/body safety remain separate, before checker/emitter admission.
+- Controls prove real-boot publication and reject a forged Boolean body for installed
+  Integer code. Actual execution distinguishes same-named singleton/instance methods
+  after an ordinary definition. The self-alias witness fails the new owner contract.
+  No admission or floor change; next: outgoing publication and singleton activation.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  New publication proofs and controls build in under one second each.
+
+## Clink 180 (2026-09-25) — full singleton definition-state publication
+
+- singletonDeclCtx publishes one executed singleton row and reserves its selector.
+  singletonFreshB checks only singleton tables, leaving same-named instance methods legal;
+  the existing declaration-frame guard rejects stale snapshots that change ancestry or
+  activate constructor claims. Neither guard certifies a method body.
+- SingletonContext transports sites, ordinary selector bounds, ancestry, nested constants
+  and constructor facts. SingletonState derives full outgoing StateOk through the actual
+  def-self step from incoming conformance and these guards, without outgoing heap premises.
+  Leaf ownership separates Object's def table. This transport excludes new, method_missing,
+  method_added and initialize; the last exclusion preserves root initialization by name.
+- Boot controls prove entry plus the actual singleton definition, then a same-selector
+  ordinary definition under full conformance. Lookup recovers the original singleton code.
+  Controls reject duplicate singleton selectors and stale superclass snapshots.
+- No new judgment or admission. Next: singleton activation must represent its class-valued
+  self and eigenclass defmod separately from lexical cref; constant fallback through that
+  eigenclass also needs a retained contract. Then constructor/body checking and integration.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
+  all new proofs and controls build in under one second each.
+
+## Clink 181 (2026-09-25) — singleton constant fallback
+
+- A singleton method keeps lexical cref [class, Object] but uses its eigenclass as defmod.
+  Ordinary constant agreement does not constrain that fallback. Injecting IOError = 99
+  into a real fresh metaclass leaves readiness/frontness/leafness and the selected ordinary
+  constant lookup intact, while actual singleton-frame lookup returns 99 (§F44).
+- ConstFallback rules out inherited bindings absent globally. Its Bool checks names across
+  the actual ancestor tables; values may differ because an existing global binding wins
+  before fallback. CoreOk retains Object's metaclass fallback, checked at real boot, and
+  InstanceSite retains each declared class's. Fresh entry inherits the parent's contract;
+  global registration, allocation, method writes and ivar writes preserve it. ClassReady
+  stays a lower-level readiness contract, including for arbitrary registration namespaces.
+- InstanceSite.singleton_constScope derives both constant phases for an actual singleton
+  activation. A control consumes retained singleton code from full StateOk to establish
+  scope for its required frame; another generically excludes the hidden-constant shape.
+  Subclass controls check the new site fact across actual multilevel entry.
+- No judgment or admission. Next: class-valued frame/self, distinct runtime owner/lexical
+  scope, and full singleton entry/return. Return must account for cached-owner identity;
+  existing Framed does not expose eigen-pointer preservation.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  New fallback/scope proofs and controls build in under one second each.
+
+## Clink 182 (2026-09-25) — retain singleton scope across nested calls
+
+- Framed now pins existing cached eigen pointers on live incoming objects. It permits
+  allocating a previously absent eigenclass. Equal heaps, allocation/initialization,
+  ordinary/singleton method writes and fresh class/subclass publication prove the field;
+  composition and method return preserve it. Names and ivar types alone did not expose it.
+- SingletonScopeAt records class-valued self, lexical cref and the distinct cached defmod.
+  Stored code establishes it at required entry. Framing restores it after a nested call,
+  using the nonempty stack and post-callee phase facts; post-body class sites then recover
+  constant scope. Controls compose retained code, entry and arbitrary framed nested return.
+- This is physical scope, not full StateOk. Next: represent singleton frame/self and runtime
+  scope in the static context, prove full entry/return, then constructors/body admission.
+  No new typing judgment, rule or floor change; 073 remains unadmitted.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
+  the new scope/entry proofs and controls build in under one second each.
+
+## Clink 183 (2026-09-25) — full singleton activation and call boundary
+
+- Frame distinguishes nominal instance receivers from named class objects; recvTy interprets
+  the flag through existing denotations. All old frames remain instance mode. Context equality
+  compares the flag, and the ordinary super guard rejects singleton mode. instanceBodyCtx
+  explicitly resets that mode, so generic ordinary-call helpers cannot inherit it accidentally.
+- runtimeSingleton retains SingletonScopeAt separately from runtimeClass. State transports
+  cover it; class/instance entry clears it. Singleton entry uses class-valued self, lexical
+  class constants and cached eigenclass defmod. Its ivar spine stays open: a class object is
+  not a freshly allocated plain instance. Exact-instance initializer states exclude this scope.
+- singleton_enter_state proves full conformance at the real required frame. Return retains
+  caller locals, self, scope and heap facts. CallWorld now supports singleton callers;
+  resolved_singleton_run composes actual dispatch, checked body execution and full return.
+  Controls connect real boot publication to entry for every Integer argument, reject wrong
+  parameter/result annotations, and execute a nested singleton call with caller restoration.
+- No new typing judgment or admission yet. Next: constructor calls from singleton self,
+  then singleton definition/call rules, annotation-domain caches and emitter integration for 073.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  New boundary proofs build in roughly one second each; no proof exceeded five minutes.
+
+## Clink 184 (2026-09-25) — complete factory semantics
+
+- Sorbet 0.6.13405 accepts implicit new and self.new in 073, reveals T.attached_class
+  inside the factory, and rejects wrong initializer types/arity and an uncalled factory
+  returning String against returns(Point). The new semantic contracts cover own singleton
+  methods on an exact named class; inherited attached-class behavior remains separate.
+- Constructors now restore main, instance or singleton callers through CallWorld. Its
+  class-membership check uses outgoing tables, which must retain the saved caller's class.
+  All send sites share the same allocator/initializer proof. Implicit construction retains
+  class-valued self across argument evaluation and recovers the declared allocator afterward.
+  The registered newInst rule keeps its existing main-only interface.
+- singletonDecl requires a full annotated-domain body proof even for uncalled definitions;
+  singletonCall recovers executed own code and checks its body over the full parameter domain.
+  FactoryConstructorControls composes these with implicit construction into all-fuel safety
+  for the complete 073 program from boot. Its expression matches the pipeline's generated
+  program exactly; execution returns a Point with both Integer fields. Constructor controls
+  cover every pair of Integer arguments and both implicit and explicit-self syntax.
+- No new registered judgment or admission. Next: singleton definition/call and implicit-new
+  judgments, annotation-domain body caches, registry/bridge and emitter integration. The
+  pipeline still rejects defs; fragment/rule/worked-theorem floors are unchanged.
+- Full quiet ratchet GREEN: fragment 67, checker reach 72, 53 rules, 0 owed/exempt,
+  52 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
+  all new proofs build in roughly one second each, below the five-minute limit.
+
+## Clink 185 (2026-09-25) — admit the singleton factory
+
+- Register singletonDef, callSingleton, newImplicit and instanceType, with the measured
+  Sorbet behavior from clinks 177/184 cited on each judgment. The first three consume the
+  full definition/dispatch/constructor proofs; the fourth forgets exact fields/receiver
+  information toward the same nominal class. Class-site frontness justifies its is-a fact.
+  No nominal annotation can recover exact receiver or field claims in the reverse direction.
+- Singleton body artifacts retain owner, code, parameter/return annotations and exact scope.
+  Definitions check every body, including uncalled ones; refresh replays original annotations
+  after table changes, oldest first, after initializer/member refresh. Calls consume those
+  artifacts. Branch compatibility includes singleton annotations; completeness checks own
+  declared singleton rows. Inherited singleton lookup remains outside these contracts.
+- The signature reader retains flat singleton owners as <Class:C>, distinct from C's
+  instance methods. The emitter emits defs, own class calls and implicit new with separate
+  class-self/instance-field state. checkMethodBody now accepts a proved same-class nominal
+  result conversion as well as equality; signatures themselves remain unchanged.
+- Whole 073 now passes validateD. FactoryDerivations independently constructs its certified
+  derivation; RuleAudit extracts all four new rules from that proof. The stripped AST omits
+  return annotations, so annotationRules separately predicts instanceType for 073. Per-rung
+  equality with proof extraction and the zero-exemption coverage gate remain mandatory.
+- Controls cover renamed classes, full parameter domains, uncalled bad results, wrong
+  constructor types/arity/field hints, wrong factory calls, same-named ordinary/singleton
+  methods, invalidated primitive guards, stale/missing caches and branch annotations.
+  Next frontier: 074's ordinary instance-field update. No model semantics changed.
+- Full quiet ratchet GREEN: fragment 68, checker reach 73, 57 rules, 0 owed/exempt,
+  53 worked theorems, 252 agree / 0 disagree. Floors raised accordingly. Metatheory and
+  standard-axiom audit pass; new proofs build in seconds, none near five minutes.
+
+## Clink 186 (2026-09-25) — admit ordinary scalar field updates
+
+- Sorbet 0.6.13405 accepts 074 and Float, Symbol, NilClass and Boolean replacements.
+  It rejects String assigned to the Integer field and nullable Integer arithmetic even
+  when the only call supplies an Integer. scalarIvarAsgn cites these measurements.
+- ScalarEq permits identity and Integer/Float/Symbol replacement. Simultaneous induction
+  over value and field types proves full first-order preservation across an ivar-only heap
+  change, including aliases nested in instances, arrays and hashes. Framed and StateOk then
+  preserve the existing field spine. The guard requires that exact scalar domain before
+  and after RHS evaluation; this is replacement, not initialization or type-changing mutation.
+- Boolean is deliberately excluded: true → false can destroy a retained TrueClass field
+  observation despite preserving Boolean (§F45). Nil replacement is identity. No framing
+  consumer or alias invariant was weakened. Three basic write/local facts moved from Rules
+  to IvarMutation so the new heap/state proofs keep the tier boundary.
+- Ordinary receivers may be frozen. primitiveErrorsB now checks FrozenError ancestry at
+  boot and through every transport; the real assignment either writes or raises that
+  non-type exception (or propagates inspection's unsupported result). No model change.
+- Register the rule and checker arm, retaining annotation-domain member refresh. Whole
+  074 has an independent certified derivation for every initial Integer. Controls exercise
+  two aliases plus an array, renamed classes and scalar kinds, reject domain/field/hint
+  changes, and execute the real frozen-receiver path. Next: 075, a top-level method declared
+  after Point that receives and calls a Point instance.
+- Full quiet ratchet GREEN: fragment 69, checker reach 74, 58 rules, 0 owed/exempt,
+  54 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
+  new proofs build in seconds, none near five minutes. Floors raised accordingly.
+
+## Clink 187 (2026-09-25) — top-level definitions after classes
+
+- Sorbet 0.6.13405 accepts 075 and a renamed class/method variant. It rejects an unguarded
+  nullable Point receiver despite the sole non-nil call, and an uncalled Boolean-return
+  annotation on the Integer getter. The generalized defDecl docstring cites these probes.
+- Replace the empty-class premise with topDeclClassesB. For nonempty tables it requires
+  non-root class names and excludes new, whose allocator lookup needs further transport.
+  RootNames.only proves separation from Object by heap identity, not merely source spelling.
+  Existing ordinary rows and own selectors survive at other owners; singleton rows survive
+  because Object has a cached eigenclass whereas singleton row owners are leaves.
+- TopMethodInstall derives full StateOk through actual installation, reusing the empty-table
+  proof and unchanged shared transports. Definition admission still refreshes every cached
+  class/top-level body; defining + after an uncalled arithmetic member is rejected. Same-named
+  top-level and instance methods are accepted without confusing their code or signatures.
+- No emitter change: its existing known-class parameter mapping supplies initialized inst
+  domains. The checker requires those fields at calls and checks bodies over the entire
+  domain. Nominal-only/empty-field/nullable annotations cannot borrow a caller's field facts.
+  TopClassDerivations independently certifies whole 075 for every Integer, with a real runtime
+  result control; the rule audit still checks the exact extracted set. Next: 076's nominal
+  result discards self's initialized-instance refinement; recovery needs a proved contract.
+- Rule prediction now carries separately recorded top-level parameter domains, since stripped
+  syntax cannot distinguish p.getX from a primitive send. Scope the domain by method name;
+  per-rung set equality against independent proof extraction remains mandatory, with no exemption.
+- Full quiet ratchet GREEN: fragment 70, checker reach 75, 58 rules, 0 owed/exempt,
+  55 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  New production proof builds in 0.2s, whole-program derivation in 0.9s; no proof exceeded
+  five minutes. Floors raised; no model or emitter changes.
+
+## Clink 188 (2026-09-25) — retain proved method results and admit self
+
+- Sorbet 0.6.13405 accepts 076, renamed variants and returning a fresh Point instead of self.
+  It rejects an uncalled self body declared Integer and a Boolean body declared Point.
+  Register selfRead against the existing full-conformance semantic proof; its docstring cites
+  these measurements. The result type comes from selfTy, never the method annotation.
+- CheckedBody retains both its original annotation proof and an optional first-order
+  CheckedResult from the body before nominal widening. Each result carries its own outgoing
+  locals and exact context/spine proof. resultAt accepts only a requested type with that proof.
+  All explicit, implicit, inherited, singleton and top-level calls use the selected proof;
+  definition and refresh still use the original annotations over the full parameter domain.
+- Branch cache signatures include retained result types. No nominal-to-instance cast exists:
+  an opaque nominal parameter stays nominal. Existing instanceType only forgets information.
+  The emitter may propose a known initialized-instance result; missing body evidence rejects
+  that hint. Constructor/parameter annotation policies are unchanged.
+- Controls cover renamed classes, Boolean fields, self through a local alias, both result
+  choices, wrong annotations/fields, opaque nominal results, and singleton/top-level/implicit
+  result selection. Independent SelfResultDerivations certifies whole 076 at every Integer;
+  execution returns 7. Rule prediction follows separately recorded result class annotations
+  for chained dispatch, with exact per-rung proof extraction and no exemptions.
+- Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
+  56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass;
+  new builds take seconds, none near five minutes. Floors raised. Next: 077's module scope
+  and singleton methods, including the unannotated-method manifest boundary.
+
+## Clink 189 (2026-09-25) — fresh module allocation preserves old data
+
+- ModuleData uses the real freshModHeap and the shared dataPres_of_class_growth theorem:
+  old names, nested first-order data, exact-instance fields and balanced caller framing
+  survive fresh top-level module allocation. ModuleEntry proves the actual stepFn successor
+  from runtimeMain. Only operational facts are reused from the model's old judgment library.
+- Module's BasicObject ancestry is explicit, not derived from ClassReady. A synthetic heap
+  with Class inheriting Object and Module parentless passes ClassReady and saturation, yet
+  allocation destroys a dangling reference's BasicObject membership (§F46). This is a
+  selected-contract witness, not full StateOk or reachable Ruby. Admission must retain the
+  missing premise. Fresh-name overwrite separately refutes dropping the freshness premise.
+- The real module has isModule=true and own chain [k]; its value dispatches through a new
+  eigenclass inheriting Module. module_not_declared_class proves the current DeclClassOk
+  cannot publish that header. Do not reuse ordinary-class constructor/ancestry claims.
+  Controls execute 077's singleton call, inspect the actual frame and preserve nested data.
+- Sorbet 0.6.13405 reveals unannotated M.foo as T.untyped and accepts T.let(M.foo, String)
+  even when its body is 1; adding a String return annotation rejects that body. No typing
+  rule or emitter change here. Future unannotated-method admission needs a checked body
+  contract; observed call arguments and Sorbet's untyped result are not such a contract.
+- Next: module-specific conformance/header and body scope, then singleton checking/emission.
+  077 remains outside the certified fragment. New proofs and controls build under a second;
+  only standard axioms. Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules,
+  0 owed/exempt, 56 worked theorems, 252 agree / 0 disagree. Metatheory audit passes.
+
+## Clink 190 (2026-09-25) — retain Module ancestry and establish its entry frame
+
+- CoreOk now retains Module's BasicObject ancestry separately from ClassReady. coreDataB
+  checks it at boot; heap extension, method installation, subclass allocation and ivar
+  mutation preserve it. Module entry and balanced framing derive the premise from StateOk.
+  The §F46 witness still passes ClassReady and saturation but fails coreOkB; a generic
+  theorem excludes every unrooted-Module heap from full conformance.
+- ModuleReady preserves ClassReady and old metaclass sites and establishes the fresh
+  metaclass through Module, with builtin-base separation. ModuleFrame proves the actual
+  fresh frame's empty locals/ivars, self type, liveness, uncaptured status and saved caller
+  frames. module_entry_ready combines the real step with readiness and saturation.
+- Controls check readiness on the real singleton-call path and execute a body that writes
+  its own local while restoring the caller's previous value. No new typing rule, emitter
+  policy or declaration-table claim. Next: module-specific header/ancestry publication and
+  body-scope dispatch/constant contracts; ordinary DeclClassOk remains inapplicable.
+- Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
+  56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  The longest rebuilt module takes 39s; new entry proofs take seconds, none near five minutes.
+
+## Clink 191 (2026-09-25) — distinguish module and class declaration contracts
+
+- DeclClassOk pins the physical isModule flag to the declared record. BasicObject instance
+  ancestry and builtin-new dispatch now require an ordinary-class record. ClassChains and
+  isAAnswer use Cls.rootTail: ordinary classes append Object/Kernel/BasicObject; modules
+  append nothing. The mixin guard follows that same tail. No new typing judgment.
+- Constructors derive the ordinary kind from retained PlainAllocator evidence; root lookup
+  and subclass continuation lemmas require it explicitly. Inherited/super lookup preserves
+  the actual tail. Existing name-separation guards remain conservative via chain_subset.
+  All class/subclass/member/singleton transports retain the declared kind.
+- moduleHeaderCtx grants no allocator. FreshModule proves kind and exact named ancestry for
+  a real fresh module from an empty declaration table, plus the no-hidden-alias fact needed
+  for reverse ancestry. This is metadata publication only: full StateOk, body scope and
+  singleton checking/emission remain ahead. Existing-row module allocation transport is
+  also still needed for declarations after classes or other modules.
+- CRuby reports [Marker] for a module and [Capsule, Object, Kernel, BasicObject] for a class;
+  Marker.new raises NoMethodError. Sorbet 0.6.13405 accepts the 077 singleton call and rejects
+  both M.new and class C < M. Controls prove an ordinary payload cannot satisfy a module
+  header, check both wrong-kind ancestry descriptions, and execute the failed allocator.
+- Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
+  56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  Header proofs build in seconds; no individual proof crossed five minutes.
+
+## Clink 192 (2026-09-25) — preserve core and existing tables at module entry
+
+- ModuleNames/Constants/Core preserve root names, CoreOk, payload shapes and old constant
+  fallback through the real freshModHeap. A module's own chain is just itself, so its empty
+  lexical scope agrees with global lookup without a parent-constant premise. Old-id bounds
+  keep reverse name transport honest when dangling references become fresh allocations.
+- ModuleMethods/Dispatch/Declared preserve installed ordinary/singleton code, native prefixes,
+  declaration kinds, constructor contracts, own selectors and ordered ancestry. Header
+  publication now permits earlier class/module rows under moduleHeaderFrameB; it reuses
+  DeclLookupFrame to prevent activating previously unknown ancestry/dispatch claims.
+  ModuleEntry connects core, payload, lexical-scope and old-table facts to the actual step.
+- Controls execute a module after a class and another module, read String in its body,
+  then call both earlier singleton methods. A CoreOk+saturation countermodel (§F47) shows
+  that Module's singleton constant fallback needs a separate premise: Class can bypass
+  Module while a new module's eigenclass inherits it and exposes a hidden constant. This
+  is a selected-contract witness only. fallback_fresh_meta retains that explicit premise.
+- No new typing rule or emitter policy; 077 remains outside the certified fragment. Query,
+  allocator and site transports, new-site names/hooks/fallback and full body-state assembly
+  remain before singleton checking/emission.
+- Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
+  56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  New proofs and controls build in seconds; none crossed five minutes.
+
+## Clink 193 (2026-09-25) — retain Module dispatch capabilities and publish its sites
+
+- StateCore retains ModuleBase independently of the current receiver and Class ancestry:
+  reserved-name behavior, a quiet method_added hook, and constant fallback at Module.
+  Boot checks it; extension, local/frame changes, method installation, name reservation,
+  ivar writes and class/subclass/module allocation preserve it. Method installation uses
+  the existing name reservation and hook-exclusion premises; no new typing judgment.
+- ModuleSites preserves every old InstanceSite and proves the fresh module's complete site:
+  empty own dispatch/constants, frontness, hook, rooted/leaf metaclass and singleton names/
+  fallback. ModuleNameEntry proves the body's NameFreeOk from its Module dispatch chain.
+  module_entry_sites ties these and ClassScopeReady to the actual step, without assuming
+  an ordinary-class payload or granting an allocator.
+- §F47 is closed by the retained fallback and generic hidden_module_not_state exclusion.
+  The CoreOk-only witness stays executable. Controls also reject unreserved Module code
+  and a nonquiet hook, allow the name after reservation, and inspect a real fresh module
+  site's lookup facts. Full body-state assembly, checking and emission remain; 077 is open.
+- Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
+  56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  New proofs take under a second; the longest shared rebuild takes 42s, below five minutes.
+
+## Clink 194 (2026-09-25) — full conformance through real module entry
+
+- ModuleTables/Globals/Main preserve first-order constant paths, nested declarations,
+  existing allocator capabilities and the retained main receiver. ModuleBases preserves
+  builtin ancestry: the fresh module is parentless, and its eigenclass inherits Module,
+  which is distinct from every builtin data base. No allocator is granted to the module.
+- ModuleQueryDispatch maps the empty head to its previously absent id and the eigenclass
+  to Module; old dispatch and guarded native prefixes survive. ClassQuerySite now retains
+  direct Module as well as Class. Boot and all transports check/preserve both. The §F48
+  control passes the previous selected query checks but exposes a hidden nil-returning
+  Module#to_s after actual entry; the new contract excludes it generically.
+- ModuleState assembles full StateOk. moduleBodyCtx aliases the shared lexical activation,
+  without ordinary-class ancestry or allocation. ModuleHeader publishes only the executed
+  empty module record, preserving prior rows under the existing table frame. module_entry_state
+  connects full conformance and publication to the real interpreter step, with explicit
+  freshness, table/native guards and unqualified-name premises.
+- ModuleStateControls instantiates entry from boot for every body, checks real to_s/===,
+  and verifies that header publication grants no allocator. Entry alone does not certify
+  the arbitrary body. Body execution/return composition and singleton checking/emission
+  remain; no new typing rule and 077 is still outside the certified fragment.
+- Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
+  56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  New proofs and controls build in seconds; no proof approached five minutes.
+
+## Clink 195 (2026-09-25) — checked module execution restores the caller
+
+- ModuleBodyRun supplies module allocation's Framed proof to ClassActivation.runSpec,
+  reusing the actual freshModFrame/frameK path. It restores caller locals/self/spine and
+  retains outgoing declarations and heap effects. ModuleRun composes the real module step,
+  empty-header publication and the checked body. SemSafeCtxA.moduleDecl exposes only a
+  body premise plus moduleRuleB's syntax/type guards; no allocator/new guard is borrowed.
+- Sorbet 0.6.13405 accepts fresh modules with separate locals and an unannotated singleton;
+  it rejects reading an outer local and an uncalled Integer singleton body declared String.
+  It reveals NilClass for `answer = module Marker; 7; end`, whereas CRuby 4.0.5 and the model
+  return 7. The semantic rule's docstring cites this measurement and retains the proved body
+  result. Sorbet's result and untyped methods remain untrusted inputs.
+- ModuleRuleControls proves the whole renamed 077 declaration/call pattern for every
+  Integer method result, with one body proof reused at installation and call. Its boot safety
+  theorem is at every fuel. Separate-local conformance is proved for arbitrary caller/body
+  Integers; VM controls confirm the actual result and caller restoration. Freshness,
+  behavioral-result and allocator controls remain negative.
+- No DJudge/registry/checker/emitter admission yet. Next: moduleDecl integration and an
+  unannotated-method proposal policy that still checks complete parameter domains.
+- Full quiet ratchet GREEN: fragment 71, checker reach 76, 59 rules, 0 owed/exempt,
+  56 worked theorems, 252 agree / 0 disagree. Metatheory and standard-axiom audit pass.
+  New proofs and controls build in seconds; none approached five minutes.
+
+## Clink 196 (2026-09-25) — admit fresh modules and checked zero-argument singletons
+
+- moduleDecl now joins DJudge/Deriv/check/registry/bridge, using clink 195's proved
+  moduleRuleB contract unchanged. The body starts with separate locals and module metadata;
+  exit refreshes cached bodies in the restored caller scope. No module allocator is granted.
+  The judgment docstring cites the measured Sorbet scope behavior and keeps the real body
+  result despite Sorbet's NilClass report for module expressions.
+- The emitter proposes a return type from a complete zero-argument singleton body only
+  when the manifest explicitly drops it as `no declared return type`. It never replaces
+  unsupported declared types or infers from call arguments. The proposal uses the existing
+  defDecl path: Lean checks every body before publishing it, including uncalled methods,
+  and calls consume those checked artifacts. Module emission isolates locals/ivars and
+  avoids instance-allocation proposals. Parameter inference and implicit singleton calls remain.
+- ModuleDerivations independently derives all of 077 for every Integer result. Its concrete
+  safety theorem joins CorpusSafety and the independent rule predictor/audit. Controls reject
+  forged names/results, an uncalled bad body, extra arguments, reopening, module allocation
+  and module subclassing; positives retain caller locals and old singleton calls after another
+  module. The existing same-selector freshness restriction still applies across modules.
+- Source-to-validateD probes accept a renamed String singleton and reject an uncalled Integer
+  body annotated String and an extra call argument. Emitter probes also retain rejection of
+  explicit T.untyped signatures, unannotated parameters, bad uncalled bodies and module new.
+- Newly admitted: 077, 079, 082, 083, 085. Fragment 76, checker reach 77, 60 registered rules,
+  57 worked theorems, 0 owed/exempt. Next frontier: 078's unannotated parameter domain.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree, all floors and coverage checks pass.
+  Metatheory and standard-axiom audit pass. New proofs/controls build in a few seconds;
+  shared rebuilds remain below five minutes.
+
+## Clink 197 (2026-09-25) — infer scalar domains, then check whole singleton bodies
+
+- The untrusted emitter now proposes required-parameter signatures for missing singleton
+  annotations. It searches Integer/String/Boolean/Float/Symbol/nil tuples, in that order,
+  with a 4096-attempt bound. Each trial owns separate mutable emitter state; known callee
+  signatures constrain arguments inside its body. It publishes only after walking the
+  complete body. Caller values/types never select the proposal. Ambiguous bodies get one
+  deterministic signature; polymorphism, richer domains and the bound remain completeness
+  limits. Zero-argument failures retain their original diagnostic.
+- The existing checker is unchanged: definitions check the whole proposed domain, including
+  uncalled bodies, and calls require the checked signature. ModuleParamDerivations proves
+  all of 078 for every String argument, independently of the emitter. Nullable/any parameter
+  proposals fail even with a String at the call; wrong-domain calls also fail.
+- Sorbet 0.6.13405 leaves `"hi " + value`'s unannotated method result T.untyped and accepts an
+  Integer argument; CRuby raises TypeError and validateD rejects the call. A further probe
+  found that a malformed sig missing its return can retain declared parameter types. The
+  manifest now distinguishes that case, so inference cannot silently replace those types.
+  Unsupported declared signatures, including explicit T.untyped, remain declined.
+- check_body_inference.py is a new quiet-gate stage: renamed local aliases, callee constraints,
+  wrong-domain calls, conflicting uncalled uses, explicit untyped and partial annotations.
+  It also requires identical declaration proposals under changed caller values/types.
+- Newly admitted: 078, 081, 086. Fragment 79, checker reach 79, 60 rules, 58 worked theorems,
+  no owed/exempt rules. Next: 080's implicit singleton call; 084 separately lacks DPrim's `>`.
+- Full quiet ratchet GREEN, including the new pipeline controls: 252 agree / 0 disagree.
+  Metatheory and standard-axiom audit pass. The new proof and checker controls build in
+  under a second; no proof approached five minutes.
+
+## Clink 198 (2026-09-25) — checked implicit singleton dispatch
+
+- ImplicitCallShape distinguishes bare calls from receiver-less sends using syntax only.
+  SingletonLookupRun recovers own-table code and dispatch from class-valued conformance;
+  explicit calls now share that helper. SingletonImplicit retains self across argument
+  evaluation, uses the real vcall/implicit site, and restores the full caller through the
+  existing singleton run contract. One callSingletonImplicit clink covers both spellings.
+- Sorbet 0.6.13405 accepts `value + value()` inside a singleton body and rejects a bare
+  call to a method requiring an Integer argument. The judgment docstring cites this probe.
+  It requires class-valued self, checked own singleton code and the complete parameter
+  domain. No inherited receiver/owner conflation or recursive body assumption is introduced.
+- checkImplicitSingleton consumes exact-context cached body artifacts. Existing callSig
+  hints suffice; the source syntax selects the dispatch site. The emitter resolves the
+  singleton signature table and reserves its main-only bare-x rule for the main scope.
+  Refresh checks dependent singleton bodies through the same route.
+- SingletonImplicitDerivations independently proves 080 for every Integer returned by value.
+  The rule predictor tracks singleton body scope; RuleAudit still checks its predictions
+  against proof terms. Controls cover bare/parenthesized calls, arguments, wrong arity,
+  result/domain forgery, different receivers, variable reads and instance/singleton selector
+  collisions. The pipeline stage also exercises renamed x calls and inferred arguments.
+- Newly admitted: 080. Fragment 80, checker reach 83, 61 rules, 59 worked theorems,
+  0 owed/exempt. Next: 084's missing DPrim/dprim? greater-than case.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree, all floors and rule-coverage checks
+  pass. Metatheory and standard-axiom audit pass. New semantic proofs build in about half
+  a second, the whole-program derivation in 1.5s; no proof approached five minutes.
+
+## Clink 199 (2026-09-25) — certified Integer greater-than
+
+- DPrim.intGt and dprim? admit Integer > Integer at Boolean. Sorbet 0.6.13405 reports
+  T::Boolean for the annotated comparison and rejects String or missing arguments;
+  the judgment docstring records the measurement. Other numeric domains stay outside.
+- primitiveMethods now pins the actual Integer#> builtin. primitive_builtin recovers
+  that dispatch, evaluates the comparison and preserves full conformance. Existing
+  class/module/method transports preserve the extended table without new hypotheses.
+- ModuleCompareDerivations independently proves the whole 084 program for every Integer
+  argument. Controls cover both signs, equality, large Integers, receiver/argument order,
+  wrong domains/arity/result and replacement of the builtin with a user method.
+- Newly admitted: 084. Fragment 81, checker reach 86, 61 rules, 60 worked theorems,
+  0 owed/exempt. No emitter change. Next: 087's lambda creation and call.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom
+  audit pass. The primitive proof built in 14s, the whole-program derivation in 5.3s;
+  no proof approached five minutes.
+
+## Clink 200 (2026-09-25) — exact lambda/proc literal creation
+
+- Sem/Closure/Reify mirrors the real allocator by rfl, then proves Ext and full StateOk
+  for arbitrary parameters, block locals, body and lambda mode. Capture reads agree with
+  the creation frame, and creation self is retained. No environment snapshot is invented.
+- Rules/Closure/Literal consumes NameFreeOk at actual lookup, proves the source step and
+  an exact fresh-closure result with StateOk/Framed, plus all-fuel creation safety.
+  Creation does not evaluate the body. Callable typing remains gated on §F49.
+- Controls prove that the old denM drops code identity and closTblOk omits mode/locals.
+  Model and CRuby probes distinguish proc/lambda arity, block-local nil shadowing and
+  changed captures; a user-defined lambda selector executes its own body. The new control
+  file is included by Controls.All, keeping all new proofs on the quiet gate.
+- Sorbet 0.6.13405 infers T.proc.returns(Integer) for lambda { 1 } and Integer for its call,
+  and rejects an extra argument. It accepts the captured Integer later changed to String;
+  CRuby and the model raise TypeError. No new type judgment or emitter policy yet.
+- Fragment/reach stay 81/86, 61 registered rules, 60 worked theorems, 0 owed/exempt.
+  Next: a callable value contract retaining code/capture facts, then activation and return.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New proofs and controls each build in under a second; no five-minute proof.
+
+## Clink 201 (2026-09-25) — code-bearing callable values
+
+- Ty.clos carries ClosureCode instead of an unused index. denM and closB pin the real
+  closure's translated parameters, block locals, body and lambda mode. The old index-free
+  witness is retained as LegacyIndexDen; the unused syntax-table predicates remain legacy.
+- Mutual Expr/Param/KwEntry cannot derive DecidableEq or LawfulBEq in this Lean version
+  (measured). ClosureCode instead stores evidence that the existing conservative comparator
+  covers its syntax. That yields lawful BEq/DecidableEq; unsupported syntax declines.
+  ExprEq and its soundness proofs move below Ty. A cross-syntax comparator proves exact
+  translation equality; a mismatch can lose completeness, never assert different code equal.
+- Allocation, local-write and control transports preserve code identity. EnvOk.capture
+  proves the entire environment spine, including shadowed keys and stripped aliases.
+  reified_den and SemSafeCtxA.closureLiteral give the literal its code-bearing type;
+  stored_literal composes the existing assignment proof. No new DJudge or emitter policy.
+- Controls reject altered code/parameters/block locals/mode, retain same-type capture
+  writes, and invalidate changed types. Denotation examples now name their actual RubyCore
+  syntax explicitly because importing code into Ty also makes Ratchet.Expr visible.
+- Counts stay fragment 81 / checker reach 86, 61 rules, 60 worked theorems, 0 owed/exempt.
+  Next: captured activation/return and preservation of saved Proc code across arguments.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory, standard-axiom audit
+  and denotation examples pass. Comparators build in about 4s; creation/assignment proofs
+  and new controls take under a second. No individual proof reached five minutes.
+
+## Clink 202 (2026-09-25) — required lambda activation and return-contract witness
+
+- Rules/Closure/Entry proves the real callClosure step for arbitrary required-positional
+  arity, body, block locals and self/defmod overrides. The argument count is exact; proc
+  padding and auto-splat remain separate behavior. The pushed frame retains capture,
+  lexical scope, block value, lambda mode, return home and the actual continuation.
+- Sem/Closure/Capture gives a finite live-chain predicate and preserves reads at fixed
+  fuel across frame extension. Reification extends that chain. Entry lookup proves the
+  parameter/block-local/capture precedence; the extra frame consumes the extra lookup
+  fuel, so the captured read uses the original budget. These are explicit obligations,
+  not facts inferred from the code-bearing denotation or StateOk alone.
+- Controls exercise real entry, parameter order, nil shadowing, captured fallback, arity
+  and overrides. The general return attempt exposes §F50: ResultOk accepts next nil at
+  Integer, but blkFrameK returns nil. Both the accepted answer and real step/refutation
+  are proved. CRuby 4.0.5 also returns nil for lambda next/break nil. The current body
+  contract needs strengthening before composition; no callable judgment is registered.
+- Counts stay fragment 81 / checker reach 86, 61 rules, 60 worked theorems, 0 owed/exempt.
+  Next: a sufficient escape contract, then full captured body/caller conformance.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. Entry proofs build in under a second and controls in about 1s; no individual proof
+  approached five minutes.
+
+## Clink 203 (2026-09-25) — certified escape contract and block continuation
+
+- EscOk permits only non-type-error raises. This strengthens every semantic rule's
+  conclusion; no checker rule or guard changes. All registered clinks rebuild, and
+  djudge_escape_only_raise proves the property for arbitrary contexts and checked bodies.
+  Method/constructor/super return proofs eliminate the newly impossible branches.
+- §F50's counterexample remains under explicit LegacyEscOk/LegacyResultOk definitions.
+  The current ResultOk rejects it; controls also reject break/redo/retry/return/throw.
+  Future jump rules need typed interception and state contracts before admission.
+- Rules/Closure/Return proves real blkFrameK value/exception handling and body composition.
+  First-order results survive the unchanged-heap stack pop. Caller framing on every answer
+  and full caller StateOk on values remain explicit obligations: captured writes cannot
+  borrow ordinary-method isolation. This resolves §F50, not §F49's full call boundary.
+- Counts stay fragment 81 / checker reach 86, 61 rules, 60 worked theorems, 0 owed/exempt.
+  Next: discharge captured activation/caller conformance for closureFrame_runSpec.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. The block-return proof builds in 0.6s and the bridge in 1.2s; no individual proof
+  approached five minutes.
+
+## Clink 204 (2026-09-25) — full captured activation conformance
+
+- StateOk_reframe_scopes separates the three runtime activation obligations from
+  unchanged-heap conformance. StateOk_reframe retains its existing interface as a wrapper.
+  Ctx.withoutRuntimeScope removes only permissions whose predicates assert captured = none;
+  self/block types and values remain. ClosureScopeEq records the actual captured lexical
+  metadata, and StateOk_captured_reframe consumes it with explicit constant-lookup agreement.
+- Environment proves complete parameter/block-local/capture binding, including duplicate
+  names and nil shadowing. Captured absence is a separate premise; lower-bound denSpine
+  cannot produce it. First-order, non-alias types use unchanged-heap transport.
+- State proves full conformance of the real callClosure next machine for required lambdas.
+  Controls instantiate the current captured frame and boot entry for arbitrary Integer
+  bodies, and refute MainReady at a captured activation and EnvOk [] from an empty spine.
+- No callable judgment or emitter change. Ty.clos still needs to provide the scope/live/
+  complete-environment facts; a stored f is higher-order and cannot be omitted. Caller
+  restoration through captured writes and behavioral-value transport remain §F49.
+- Counts stay fragment 81 / checker reach 86, 61 rules, 60 worked theorems, 0 owed/exempt.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New binding, state and control proofs each build in under a second; no individual
+  proof approached five minutes.
+
+## Clink 205 (2026-09-25) — saved Proc descriptor preservation
+
+- Framed now carries ProcPres, retaining every existing Proc payload across typed evaluation.
+  Heap extension, initialization, ivar writes, method installation and class/module/subclass
+  creation discharge it; composition and frame restoration retain it. djudge_saved_proc
+  exposes the guarantee for every certified answer, including a saved argument-list receiver.
+- Closure transport separates exact descriptor identity from mutable captured reads. Full
+  denotation transport needs stable reads/self and first-order component types; an empty
+  capture/self contract needs only ProcPres. No frame snapshot or callable safety is inferred.
+- Controls refute framing between heaps with different code at the same Proc id. Captured
+  writes preserve the descriptor while invalidating incompatible captured-local type claims.
+- No new judgment or emitter policy. Counts stay fragment 81 / checker reach 86, 61 rules,
+  60 worked theorems, 0 owed/exempt. Complete higher-order captures and caller restoration
+  still precede callable admission at 087 (§F49).
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New transport and control proofs build in under a second; the bridge in 1.1s.
+  No individual proof approached five minutes.
+
+## Clink 206 (2026-09-25) — complete entry with stored closure values
+
+- Environment separates complete binding from per-type frame transport; its old first-order
+  theorem remains a wrapper. State similarly consumes an independently proved EnvOk.
+  Current derives capture scope/liveness/complete reads from an uncaptured caller, preserving
+  parameter/block-local precedence and requiring non-alias types with explicit transport.
+- ClosureStoredControls constructs allocation/assignment and proves payload lookup plus full
+  entry for any supported zero-argument lambda body. The complete environment includes f
+  at its exact closure type; ProcPres transports its empty capture/self claims. A boot
+  Integer-body instance supplies the caller. This proves entry, not body or call safety.
+- A dangling-capture control refutes arbitrary type transport across an unchanged-heap frame
+  push: the newly allocated frame changes a previously nil captured read. Explicit transport
+  remains necessary even when Proc descriptors are retained (§F49).
+- No new judgment or emitter policy. Counts stay fragment 81 / checker reach 86, 61 rules,
+  60 worked theorems, 0 owed/exempt. Next: caller restoration and capture identity tracking.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New entry/transport/control proofs build in about one second or less; no individual
+  proof approached five minutes.
+
+## Clink 207 (2026-09-25) — captured return framing without frozen locals
+
+- CapturePath names the frames reachable by local writes. Path membership and CaptureLive
+  survive preserved capture links when the source chain is live; that guard avoids clink
+  206's dangling-frame counterexample. The real setLocal owner always lies on its path.
+- FramePres retains saved-frame metadata (all fields except locals), and isolates old frames
+  outside the live active capture chain. Local writes and composition discharge both fields;
+  ordinary return transports them from saved frames. Constructor publication uses its
+  uncaptured initializer's isolation, independent of the allocated heap.
+- Closure/FrameReturn proves full Framed and saved caller metadata after popping a closure
+  capturing its uncaptured caller. currentClosureFrame_runSpec consumes this proof instead
+  of assuming caller framing. Outgoing caller EnvOk/runtime StateOk remain explicit.
+- Controls retain the old contract's saved-self/unrelated-local damage witnesses and reject
+  both now. A real captured write changes caller x from 1 to 7 while restoring Framed.
+- No judgment or emitter change. Counts remain fragment 81 / checker reach 86, 61 rules,
+  60 worked theorems, 0 owed/exempt. Next: caller environment/runtime and capture tracking.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New proofs build in about a second or less; the existing NativePrefix rebuild took
+  143s during a concurrent external build. No individual proof reached five minutes.
+
+## Clink 208 (2026-09-25) — full main-caller restoration after a captured write
+
+- Framed and InitFrame preserve preludeMode; all existing producers and compositions prove
+  it, and djudge_phase exposes it. Ext/heap equality remain phase-agnostic. Framed's heap
+  transports take a separate phase proof, with rfl auto-parameters for concrete operations.
+- MainReturn factors metadata-only restoration out of its old API, admitting a separately
+  proved changed caller environment. SavedFrame transports FrameOk without freezing locals;
+  its environment helper separates equal uncaptured reads from per-type value transport.
+- Closure/MainReturn restores full main-caller StateOk from body conformance and outgoing
+  EnvOk. closure_main_runSpec consumes this through the real block continuation. General
+  caller-environment effects remain explicit; no body locals are silently exported.
+- Write proves actual setLocal ownership and the returned frame for an unshadowed bound
+  capture. Controls change an Integer caller local to nil, prove full outgoing conformance,
+  instantiate it at boot, and reject a prelude-mode flip. No new judgment/emitter policy.
+- Counts remain fragment 81 / checker reach 86, 61 rules, 60 worked theorems, 0 owed/exempt.
+  Next: general outgoing capture environments and capture identity tracking (§F49).
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New restoration/write/control proofs build in about a second or less; no individual
+  proof reached five minutes.
+
+## Clink 209 (2026-09-25) — preserve saved binding domains
+
+- BindingsPres distinguishes physical slots from nil reads: all old bindings survive,
+  and inactive frames retain exactly their old domains. The real setLocal owner is either
+  the active start or already binds the written name. Other names retain their presence.
+- FramePres carries this contract through composition and every producer/return path.
+  closure_saved_bindings recovers all caller domains after a pushed-frame body, and
+  djudge_bindings exposes the invariant for every certified answer.
+- CaptureBindingControls rejects saved nil-slot insertion allowed by the previous contract,
+  permits actual captured writes and new active locals, and shows why EnvOk is insufficient
+  to infer ownership: empty and x=nil callers both satisfy EnvOk [], but captured x=1
+  changes only the latter caller. Saved domains still do not rule out active shadowing;
+  outgoing caller typing needs ownership/write effects and capture identity (§F49).
+- No judgment/emitter change. Counts remain fragment 81 / checker reach 86, 61 rules,
+  60 worked theorems, 0 owed/exempt. Callable admission remains at 087.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New binding/return/control proofs build in under a second; no individual proof
+  reached five minutes.
+
+## Clink 210 (2026-09-26) — retain capture ownership and caller reads
+
+- OwnersPres preserves every owner lookup within the source frame budget on a live capture
+  chain. An owner distinct from the fallback start survives more fuel; setLocal therefore
+  either updates an already-bound slot or introduces a local at the same fallback start.
+  Liveness guards saved-frame transport against dangling captures becoming real on growth.
+- FramePres carries ownership through composition and every return path. Ordinary returns
+  use saved-frame equality; constructor/current-capture returns restore an uncaptured root.
+  djudge_owners exposes the invariant for arbitrary certified answers.
+- ReadReturn rules out new shadowing of an initially unshadowed bound caller slot, then
+  equates its final body/caller reads after arbitrary Framed evaluation. CaptureOwnerControls
+  rejects shadow insertion admitted by binding domains alone, permits writes through two
+  enclosing frames and new active locals, and instantiates the captured-write return read.
+- No judgment/emitter change. Counts remain fragment 81 / checker reach 86, 61 rules,
+  60 worked theorems, 0 owed/exempt. General caller-environment projection and capture
+  identity tracking still precede callable admission at 087 (§F49).
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New ownership/return/control proofs build in under a second; no individual proof
+  reached five minutes. Restored sources match the gate-tested stash exactly.
+
+## Clink 211 (2026-09-26) — project the body environment back to its caller
+
+- FrameSlots names physical domains and survives uncaptured assignment/closure return.
+  CaptureSlots only classifies names typed in the body's output; omitted names already
+  read nil. This weaker premise avoids enumerating unrelated hidden nil caller slots.
+- captureEnv retains caller-owned output bindings and fully peels aliases with deAlias:
+  an alias target may be a new body local discarded on return. EnvReturn proves complete
+  outgoing EnvOk using retained domains/owners, unshadowing entry and activation transport
+  only for retained values. It does not infer slot presence from nil reads or EnvOk.
+- ProjectedReturn derives full main-caller StateOk and the real block continuation's
+  RunSpec without an independent outgoing environment premise. Explicit entry locals may
+  be fresh, but overlapping caller slots remain excluded until hidden-value effects exist.
+- Projection controls write a nil caller slot to Integer, create a fresh local, discard it
+  on return and reject retaining an alias to it. StoredReturn proves full restoration of
+  f's exact closure type; assignment supplies the needed slot, with a boot instance. A
+  separate boot-slot theorem extracts the checked empty domain without kernel boot reduction.
+- No judgment/emitter change. Counts remain fragment 81 / checker reach 86, 61 rules,
+  60 worked theorems, 0 owed/exempt. Next: whole stored-lambda call composition and static
+  capture identity/slot tracking (§F49); general overlapping shadowing remains open.
+- Direct reduction of two nested writes exceeded default heartbeats in a control; existing
+  read-after-write lemmas replaced it. No resource limit was increased.
+- Full quiet ratchet GREEN: 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. Final new proofs build in under a second each; no individual proof reached five minutes.
+
+## Clink 212 (2026-09-26) — compose complete stored-lambda source calls
+
+- Call proves the actual receiver/Proc dispatch/required-lambda prefix. StorePrefix keeps
+  the concrete allocated capture through creation and assignment; its continuation receives
+  the resulting machine, avoiding an unjustified identity inference from Ty.clos.
+- setLocal_reCtl proves writes commute with control changes by a small owner-walk induction.
+  This identifies the assignment continuation's result without reducing the whole machine.
+- ClosureCallControls composes entry, body and projected caller restoration. The complete
+  `f = lambda { 1 }; f.call` program (any Integer literal) is safe for all fuel. A generic
+  body contract retains f's exact type. Lambda extra args fail; proc extra args are ignored.
+- §F51 records a measured dispatch defect: singleton f.call returning 7 is bypassed by the
+  model, which returns the lambda body's 1. The executable witness is outside admission;
+  repair dispatch before adding a callable judgment. Identity/slot tracking remains next.
+- No judgment/emitter change. Counts remain fragment 81 / checker reach 86, 61 rules,
+  60 worked theorems, 0 owed/exempt.
+- Full quiet ratchet GREEN; metatheory and standard-axiom audit pass. New proofs build
+  in under a second; no individual build approached five minutes.
+
+## Clink 213 (2026-09-26) — repair Proc dispatch before callable admission
+
+- Model L272 replaces payload interception with lookup-resolved Proc call markers.
+  Overrides/aliases/visibility/undef use ordinary dispatch; super reaches native
+  markers and rejects tombstones. The new regression is measured against CRuby.
+- ProcCallReady records native lookup, provenance, visibility and an empty prefix
+  before Proc. Its Boolean checker is sound, Ext preserves it, and actual allocation
+  supplies the receiver class. Call and the whole-source pilot consume these facts;
+  a separate boot guard exhibits them without native_decide or changing bootOkB.
+- Generic pure-builtin proofs now exclude Proc markers. Framing and notDone cover
+  native calls and direct method_missing; all existing checker rules remain intact.
+- No new judgment/emitter policy. Capture identity/slot tracking still precedes 087.
+- The broader model replay exposed three formerly gated === cases. Identity now
+  short-circuits == in the native primitive; scalar aliases keep their original
+  builtin and Proc#=== stays a native call alias. The prelude was regenerated.
+- The corrected super path requires undefined=false in SuperOk and the live super
+  lemma; existing declaration facts supply it. Old Proc-payload interception
+  countermodels now assert that installed user methods retain precedence.
+- Full quiet ratchet GREEN (252 agree / 0 disagree); metatheory and standard-axiom
+  audit pass. Focused model replay 5/5; tier 0 is 998 agree / 0 disagree (305
+  unsupported, 5 invalid controls, 1 existing harness error). Counts unchanged;
+  no individual Lean proof exceeded five minutes.
+
+## Clink 214 (2026-09-26) — track local capture origins and physical slots
+
+- LocalFacts is static flow data, separate from Env: optional exact slot names plus
+  locals containing Procs captured from the current activation with Proc dispatch
+  class. Unknown slots mean no claim, not absence. Unknown effects forget both facts.
+- LocalFactsOk gives this data its machine meaning. Allocation preserves it; storing
+  a literal establishes its origin. Uncaptured assignment updates the slot domain
+  and replaces only the target's origin; copying reads the source fact before writing.
+  Overwriting f does not erase g's origin when g still holds the copied closure.
+- tracked_local_lambda_call combines those facts with the exact code in Env and
+  independent ProcCallReady. It derives entry and projected main return from a body
+  proof at live captures, at any conformant tracked caller. Type transport across
+  entry/pop remains explicit; no environment is inferred from a capture lower bound.
+- Controls prove an all-fuel call through a copied binding, including both closure
+  types on return. Executable controls distinguish wrong-frame captures, nil slots,
+  overwritten source bindings and an intact origin with overridden Proc#call.
+- No new judgment or emitter policy. Next: thread these mutable facts through checked
+  evaluation and retain dispatch readiness, then register the callable rule. They
+  cannot simply be added to Scope (lexical) or Pos (monotone), or preserved through
+  arbitrary assignment/calls without an effect proof.
+- Full quiet ratchet GREEN (252 agree / 0 disagree); metatheory and standard-axiom
+  audit pass. New files build in under a second each; admission counts are unchanged.
+
+## Clink 215 (2026-09-26) — carry native Proc dispatch in checker conformance
+
+- dispatchMethods extends the guarded lookup table with Proc#call. primitiveMethods
+  remains the pure-builtin table, so the call marker cannot inherit a pure runner
+  signature. dispatch_lookup factors the shared extraction proof.
+- StateOk.procCall now derives readiness from primitiveDispatchB when call is free.
+  Existing allocation, method installation, name reservation, fresh class/module and
+  subclass transports carry it. Their bounded-table checks include the new Proc row.
+  Reserving call removes the capability; an override with call still free fails conformance.
+- ProcCallReady uses the actual resolved owner and CRuby-shadow test instead of
+  demanding an empty prefix at Proc. invoke_proc_call proves the resulting real path.
+  The whole stored-program theorem is again SemSafeCtxA; boot_integer_program needs
+  only bootOkB. The separate pilot boot check and caller readiness premises are gone.
+- djudge_proc_call exposes the fact at every certified value state with an unreserved
+  call selector. Controls preserve the distinction between origin, native lookup and
+  a pure builtin. LocalFacts still needs an effect-indexed checking contract before
+  callable admission; no new judgment or emitter policy is installed.
+- Full quiet gate GREEN (252 agree / 0 disagree); metatheory and standard-axiom audit
+  pass. No individual proof approached five minutes. Admission counts are unchanged.
+
+## Clink 216 (2026-09-26) — compose local-flow contracts through source evaluation
+
+- RunWith strengthens RunSpec with a value postcondition and composes through the
+  real answer/continuation machinery. SemFlow carries LocalFacts and a returned
+  current-capture bit as expression input/output indices, without changing Ctx.
+- Allocation, local read, assignment and sequence retain precisely their proved
+  facts. Embedding an ordinary certified expression forgets them. Assignment records
+  the evaluated value's origin, so copying f to g and overwriting f keeps g callable.
+- LocalFacts adds known-present bound slots. Unknown total slot layout cannot imply
+  absence (even EnvOk [] permits hidden nil slots). captureNames? instead classifies
+  every typed body output when known-bound names cover it; exact layouts still work.
+  captureEnv moved to Ratchet so the future syntactic rule can state its result.
+- FlowCall packages the existing entry/return transports with decidable guards:
+  main scope, native dispatch, current capture, activation-stable types, zero required
+  arguments and no block locals. The body is checked at live caller types, its result
+  is first-order, and outgoing origin facts are conservatively forgotten.
+- Whole-source controls compose stored call and copy/overwrite/call, starting from
+  unknown physical slots. No new judgment or emitter policy yet; DFlow registration
+  and checker integration are next. No proof approached five minutes.
+- Full quiet gate GREEN; metatheory and standard-axiom audit pass. Admission and
+  registered-rule counts are unchanged.
+
+## Clink 217 (2026-09-26) — admit stored zero-argument lambdas through validateD
+
+- DFlow/DFlowSeq join DJudge's mutual family. DJudge.flow starts with unknown facts;
+  embed forgets ordinary effects. All eleven registry families are abstracted, and
+  the eight-family bridge carries every body/sequence premise through registered rules.
+  The new judgment docstrings cite the measured Sorbet Proc inference (clink 200).
+- Check/FlowCheck builds derivations while threading actual types, contexts, spines,
+  local origins and bound slots. An ordinary-checker callback uses smaller outer fuel:
+  stored code can be larger than its call expression without compromising termination.
+  Certified records moved out of Check.lean to keep both files below 1000 lines.
+- Literal hints contain no trusted code/type. The checker reconstructs ClosureCode
+  from source. Call hints supply a body derivation and claimed result, both checked
+  against that exact body at live local types. Native name freedom and all entry/pop
+  guards are checked; no bare code equality implies current capture or dispatch.
+- The emitter retains an internal source-body descriptor and wraps block-containing
+  candidates in flow. It re-emits bodies at calls; closure-valued results are declined
+  before that internal descriptor could escape into a wire-format type annotation.
+  Parameters, block locals, non-lambda calls and higher-order results remain outside.
+- Controls accept renamed/literal variants, copied lambdas and safe live bindings;
+  they reject forged body/return hints, wrong arity, wrong mode, unknown effects,
+  overwritten receivers, untracked origins, reserved call and nil arithmetic captures.
+- 087 has a registry-derived whole-source safety theorem. Existing 006/031 proofs
+  exercise the remaining flow companions; their coverage predictor records the chosen
+  flow interpretation and is checked against the actual proof terms by RuleAudit.
+  Counts: fragment 82, checker reach 87, 72 rules (40 + 32), 61 worked, zero exemptions.
+- Full quiet gate GREEN, including CRuby agreement; metatheory and standard-axiom
+  audit pass. The longest rebuilt existing rule took 36 seconds; new checker/proof
+  modules built in under two seconds. No limits, axioms or native_decide were added.
+
+## Clink 218 (2026-09-26) — preserve caller values hidden by block parameters
+
+- 088's actual source is an immediate one-argument lambda call. Its parameter shadows
+  any caller slot of the same name, including an unmentioned nil slot. Copying the body
+  environment on return would give that caller slot the parameter's type incorrectly.
+- ShadowPres records the needed value preservation: any name already bound at entry
+  to the active frame protects every saved same-named slot. This needs no capture-fuel
+  argument. BindingsPres retains the active binding, so the property composes through
+  Framed; setLocal writes only the active owner for that name or leaves the name alone.
+- FramePres carries the property for all certified expressions, ordinary and initializer
+  returns, and current-capture closure returns. djudge_shadows exposes the contract.
+  ShadowReturn proves the popped caller reads its original value under a shadowed name.
+- Controls show identical slot domains and lookup owners can still admit hidden-value
+  damage. The new property rejects it; actual parameter reassignment preserves caller x
+  while an assignment to unshadowed captured y still changes y. No runtime change.
+- General return typing must merge preserved caller types for shadowed names with
+  projected body types elsewhere. Required-parameter receiver/argument checking follows;
+  no new judgment or emitter policy is installed, and admission counts remain unchanged.
+- Sorbet 0.6.13405 reports `T.proc.params(arg0: T.untyped).returns(T.untyped)` for
+  `f = ->(x) { x + 1 }` and T.untyped for `f.call(2)`. It rejects zero/two arguments
+  but reports no error for `f.call('x')`. A future callable rule must check the body
+  at actual argument types; Sorbet's inferred result is not a model safety premise.
+- ShadowPres is a certified-fragment contract, not a universal Ruby invariant:
+  `x = 1; f = -> { x = 2 }; ->(x) { f.call }.call(3); puts x` prints 2 under CRuby
+  and the model. Calling that older capture is already outside our current-origin
+  rule. Admitting escaped captures will require effects on hidden caller bindings.
+- Full quiet gate GREEN; metatheory and standard-axiom audit pass. No individual proof
+  approached five minutes, and no limits or axioms were added. Counts remain 82/87.
+
+## Clink 219 (2026-09-26) — merge caller and body environments on block return
+
+- closureReturnEnv retains incoming caller types under parameter/block-local names
+  and outgoing body types for other caller-owned names. Both projections erase aliases:
+  a returned capture may alias a body local whose slot disappears. withoutNames removes
+  every shadowed occurrence before ownership classification, including duplicate entries.
+- ReturnEnv proves complete EnvOk after popping the real captured frame. An unmentioned
+  shadowed caller slot remains nil; unshadowed bound names use the body's final read;
+  absent caller slots remain absent. Value-type transport is explicit for both inputs.
+  ReturnState attaches this environment to full StateOk through the block continuation.
+- Controls combine a parameter hiding an omitted nil caller slot, a capture updated from
+  1 to 7, and an alias to a new body local. Returning the parameter's Integer type for
+  the caller's nil slot is refuted. No runtime, judgment or emitter change; counts 82/87.
+- Full quiet gate GREEN, including CRuby agreement; metatheory and standard-axiom audit
+  pass. The new controls built in four seconds; no proof approached five minutes.
+
+## Clink 220 (2026-09-26) — retain saved Proc dispatch across argument evaluation
+
+- ProcPres now pairs complete descriptor retention with exact classOf equality for
+  existing Procs. Payload equality alone permits changing an eigenclass, and nominal
+  type retention does not establish the exact native dispatch required by CurrentProc.
+- Allocation and initializer growth retain old objects; fresh class/module/subclass
+  construction retains nonclass objects; scalar ivar writes and method installation
+  retain classOf explicitly. These discharge the stronger existing Framed field, which
+  composes through every certified rule. No new invariant is assumed at call sites.
+- CurrentProc.framed transports a saved receiver across arbitrary certified arguments,
+  independently of whether its old local binding is overwritten. The bridge exposes
+  djudge_saved_proc_dispatch; final StateOk still supplies native method-table readiness.
+  activationStable_framed transports the caller's first-order/code-only closure types
+  through body effects for the shadowed-name return case from clink 219.
+- A control preserves every payload while changing the Proc's dispatch class; ProcPres
+  rejects it. Captured-local mutation remains permitted. Future Proc eigenclass creation
+  will need an effect-aware dispatch contract; existing singleton rules use class objects.
+  No runtime, judgment or emitter change, and no admission-count change (82/87).
+- Full quiet gate GREEN, including CRuby agreement; metatheory and standard-axiom audit
+  pass. Existing heavy rules rebuilt in under a minute; no proof approached five minutes.
+
+## Clink 221 (2026-09-26) — compose general required-parameter lambda calls
+
+- RunWith.bindSpec consumes a proved intermediate postcondition without imposing it
+  on the final result. FlowArgs uses it to thread LocalFacts through real argsK steps,
+  retaining earlier first-order values and a Framed-stable saved receiver. The finish
+  callback has independent output indices: a block body can change caller-local types.
+- FlowSend evaluates an arbitrary current-capture receiver before its arguments and
+  retains its original descriptor, capture and dispatch class. It preserves the model's
+  explicit/self-receiver site distinction. Native readiness comes from final StateOk.
+- RequiredFlowCall binds actual typed values to required parameters, checks the body at
+  live captures, and uses the shadow-aware return environment. Frame slots are proved for
+  arbitrary arity and explicit block locals; no zero-argument shortcut remains in this
+  semantic API. Sorbet's measured untyped lambda inference/arity checks are cited (218).
+- activationReturnB checks stripped output types: returned aliases are erased, so body
+  aliases to disappearing locals need not be rejected. Entry types remain non-alias.
+- Whole-source controls prove exact 088, a capture created by an argument, a receiver's
+  old local overwritten during argument evaluation, and two arguments where the second
+  changes the first's old binding from Integer to nil. No runtime change. Judgment,
+  checker, emitter and registry admission are next; counts remain 82/87.
+- Full quiet gate GREEN (252 agree / 0 disagree); metatheory and standard-axiom audit
+  pass. New proof modules build in under a second; no resource limits or axioms added.
+
+## Clink 222 (2026-09-26) — admit required-parameter and captured lambdas
+
+- DFlow.requiredCall and DFlowAll register the general source-call proof from 221.
+  All twelve DFam fields abstract their premises; the nine-family mutual bridge carries
+  receiver, arguments and ordinary body proofs. Three new companion rules are exercised
+  by worked 088/098 derivations, with proof-term coverage checked against their real ASTs.
+- FlowCheck binds source-required names to checked argument types at exact arity, then
+  checks the exact stored body at the arguments' outgoing context/environment. The
+  requiredClosureCall hint contains derivations and a claimed return type; the checker
+  reconstructs code, arity, parameter types, capture ownership and the returned environment.
+- Flow literals retain `.clos code .ivar0 .never`, erasing creation-time capture/self
+  claims while CurrentProc still proves current capture and native dispatch. The old
+  snapshot prevented 098's stored capture from crossing activation boundaries. Calls
+  already recheck live captures, so preserving stale snapshot types buys no safety here.
+  The ordinary full closure denotation and its transport controls are unchanged.
+- The emitter saves the receiver descriptor before evaluating arguments, binds required
+  parameters and explicit/parse-time block locals, then checks the body with live types.
+  Returning drops body-only slots and restores incoming types under shadowed names.
+  Source AST hints remain untrusted, and closure-valued call results remain declined.
+- Controls reject wrong arity/mode, forged argument/body/return hints, unsafe live capture
+  types and parameter types leaking into caller slots. Fifteen pipeline cases also check
+  saved receivers, two-argument mutation, explicit block locals and safe/unsafe captures.
+- Measured counts: fragment 84, checker reach 88, 75 rules (40 + 35), 63 worked, zero owed
+  or exempt, 252 agree / 0 disagree. 088 and 098 are new accepts; 089 is the next frontier.
+- Next-frontier measurement, Sorbet 0.6.13405: `proc { |x| x * 2 }` has
+  `T.proc.params(arg0: T.untyped).returns(T.untyped)` and its call returns T.untyped.
+  Zero/two arguments to this Proc1 are rejected; nil and `p[3]` are accepted. For
+  `proc { |x, y| x + y }`, `.call([1, 2])` is rejected and `.call(1, 2)` accepted.
+  A future exact-arity Proc rule still owes the actual non-lambda binding proof.
+- Final full quiet gate GREEN after raising all measured floors; metatheory and
+  standard-axiom audit pass. No proof approached five minutes, and no limits were raised.
+
+## Clink 223 (2026-09-26) — admit exact-arity Proc and bracket calls
+
+- Generalize callClosure_required to both lambda modes. Exact required arity excludes
+  Proc auto-splatting and makes padding/truncation preserve the argument vector. The
+  real frame and blkFrameK retain cl.lam; the lambda theorem remains a wrapper. This
+  follows Sorbet's measured arity contract in 222, not Ruby's more permissive arity.
+- ProcDispatchReady and invoke_proc_dispatch carry the actual call/[] selector. StateOk
+  guards native Proc#[] lookup alongside Proc#call, including visibility, tombstones and
+  prelude shadows. Reserving either name removes its capability independently; neither
+  method enters the pure builtin signature table. No model/runtime changes are needed.
+- Generalize the existing DFlow.requiredCall rule and semantic proof, retaining actual
+  argument/body checking, current capture, shadow-aware return and first-order guards.
+  The emitter proposes proc literals and both selectors. The legacy zero-argument
+  closureCall hint remains lambda/call-only. No new rule or trusted hint is introduced.
+- Worked registry derivations cover 089/090. Controls accept lambda/Proc bracket calls
+  and reject other/reserved selectors, wrong arity, unsafe arguments and return escapes.
+  Twenty-one pipeline controls include a single array argument, two positional arguments,
+  missing/extra arguments and next. A top-level Proc return is rejected by the desugarer,
+  so its direct checker control uses the AST instead of pretending emission is reached.
+- Measured fragment 86, checker reach 90, 75 rules (40 + 35), 65 worked, zero owed/exempt,
+  252 agree / 0 disagree. Raised all changed floors. Next frontier is 091's attached each block.
+- Final full quiet gate GREEN; metatheory and standard-axiom audit pass. No new axioms,
+  resource-limit increases or proof builds over five minutes.
+
+## Clink 224 (2026-09-26) — repair live each iteration and prove its loop contract
+
+- Sorbet 0.6.13405, --no-config: `[1,2,3].each { |x| x.to_s }` binds x at Integer
+  and returns T::Array[Integer]; x + nil is rejected. Changing a captured Integer
+  binding to nil is rejected as a loop/block type change. Zero block parameters are
+  accepted; a second parameter is NilClass. map gives T::Array[String] for this body.
+- §F53 / model L273: the native each snapshot skipped appended elements and retained
+  removed/replaced ones. A CRuby/model witness returned [1,2,3] versus [1,2]. Each now
+  carries array id/index and rereads the payload after every yield. Focused replay covers
+  removal, replacement, nested loops, receiver identity, overrides and all block exits.
+- closure_saved_frames_at generalizes caller preservation to an older uncaptured frame.
+  Iterator.FrameReturn projects certified body effects past the inert iterator activation,
+  retaining caller framing and metadata after both pops, including captured-local writes.
+  IteratorFrameControls proves a write through that capture and refutes FramePres relative
+  to the iterator: its ordinary-method isolation would forbid the valid caller write.
+- EachArrayContract states the live receiver/cursor invariant, actual required-parameter
+  body run, per-value invariant restoration and full caller results for completion/raises.
+  eachArrayStep_spec proves the actual blkFrameK/iterK/frameK loop for all fuel. Fuel
+  induction pays for its back edge with block return; array growth needs no termination
+  premise. It handles one required parameter and does not register a judgment yet.
+- The finite snapshot-loop draft was replaced after the fidelity probe. Next derive the
+  contract's body-entry and caller-environment obligations from StateOk/checked bodies,
+  add guarded native each dispatch, then connect the source rule/checker/emitter.
+  Both new control modules ride Controls.All. No admission or floor changes (86/90).
+- Full quiet gate GREEN (252 agree / 0 disagree); metatheory and standard-axiom audit
+  pass. MRI tier 0 remains 998 agree / 0 disagree, 305 unsupported, 5 invalid controls
+  and the existing test_syntax_115 harness error. No proof exceeded five minutes and no
+  resource limits or axioms were added.
+
+## Clink 225 (2026-09-26) — derive the live each invariant from a checked block
+
+- Iterator.Entry binds arguments and complete captures from the caller below the inert
+  iterator. requiredClosureFrame_envOk_from separates the source of value typing from
+  the machine receiving the block frame. Full captured StateOk uses lexical scope and
+  activation-stable transport; no conformance is asserted on the intermediate iterator.
+- Iterator.ReadReturn proves shadowed, bound-unshadowed and absent caller reads after
+  both pops. closure_return_env_of_reads factors the common environment merge over these
+  three relations; existing one-pop closure clients keep their interface. ReturnEnv
+  retains caller types under parameters/block locals and projects other caller-owned
+  output types, erasing aliases to disappearing locals.
+- restore_main_state_atStack generalizes caller restoration to the actual projected
+  stack while keeping the body's heap/world. Iterator.ReturnState combines it with
+  two-pop framing, saved metadata and the merged environment. Non-type-error raises
+  need only restored framing/EscOk; no value StateOk is demanded on an escape.
+- typed_each_step now derives every EachArrayContract obligation from caller StateOk,
+  live array typing, capture identity/ownership and a standard checked body. Its invariant
+  carries caller conformance, origin framing, capture slots and receiver typing. Live
+  elements are extracted afresh and survive body effects by first-order transport. The
+  closureReturnEnv fixed point enforces the stable captured types measured from Sorbet
+  in clink 224; the body result type is independent of the returned array element type.
+- TypedEachControls instantiates the Integer arithmetic body and a hidden nil caller
+  slot, and rejects changed capture types. IteratorFrameControls additionally proves
+  parameter shadowing and captured-write retention through both pops. All new proofs
+  ride Controls.All. No runtime, judgment, checker, emitter or floor change (86/90).
+- Native dispatch/source composition remains before 091: the loop theorem starts with
+  an active iterator, and its initial caller StateOk includes the retained iterator frame.
+- Full quiet gate GREEN, including CRuby agreement; metatheory and standard-axiom audit
+  pass. No new axioms, resource-limit increases or proof builds over five minutes.
+
+## Clink 226 (2026-09-26) — certify actual attached each source evaluation
+
+- primitiveDispatchB now combines the existing native builtin/Proc table with guarded
+  Array#each lookup absence. Native each lives on the miss path, so an override or undef
+  tombstone must withdraw its capability. ArrayPayloadOk supplies the dispatch class.
+  Heap extension, ivar writes, method installation, name reservation and class/module proofs preserve
+  the new conjunct. Reserved each names impose no native claim; no runtime change.
+- Iterator.Start restores full StateOk at the caller projection after the real inert
+  activation push. The extra frame remains in the store. Local reads/aliases are unchanged;
+  activation-stable types transport across that allocation without banning code-only
+  closure values. typed_each_start rebases the loop result to the original caller.
+- Iterator.Dispatch reduces actual invoke through lookup, dispatchMiss and tryIterator
+  to the live loop. Iterator.FlowEach composes actual block reification and arbitrary
+  receiver evaluation, consuming its final LocalFacts for capture ownership. SemFlow.each
+  checks the exact body and outgoing-environment fixed point from clink 225. The discarded
+  body value does not constrain the receiver result; final origin facts are dropped.
+- TypedEachControls.source/source_boot prove the exact 091 program for all fuel.
+  EachDispatchControls rejects direct/inherited overrides and undef while retaining
+  Array payload conformance; a real override call returns 7 instead of entering the loop.
+  Both source and dispatch controls ride Controls.All. No judgment/checker/emitter or
+  floor change (86/90); registry integration is the next ascent step.
+- Full quiet gate GREEN, including CRuby agreement; metatheory and standard-axiom audit
+  pass. The first gate exposed the old list-only reservation proof; it now weakens both
+  dispatch conjuncts. No new axioms, resource-limit increases or proof builds over five minutes.
+
+## Clink 227 (2026-09-26) — admit attached Array#each blocks through validateD
+
+- DFlow.each registers clink 226's complete source proof, with a docstring citing the
+  measured Sorbet contract. The registry form includes receiver flow, exact checked body,
+  guarded native dispatch, main scope, first-order elements, capture ownership and the
+  outgoing-environment fixed point. djudge_certified covers the new constructor.
+- eachBlock hints contain only receiver/body derivations. FlowCheck reconstructs the
+  block parameter type from the checked Array receiver, rechecks source code and requires
+  stable body context/spine and caller types. The discarded body result supplies no
+  trusted return proposal. The emitter mirrors shadowed caller restoration but cannot
+  assert types, ownership or safety. This rule covers one required parameter/no arguments.
+- A stable captured-write control initially failed because embedding the array receiver
+  erased known slot presence. LocalFacts.afterEffect now preserves input bound slots using
+  the existing Framed.bindings contract, dropping exact domains and Proc-origin claims.
+  DFlow.embed/SemFlow.embed/checkFlow use that same transfer. No slot is inferred from a
+  nil read or an environment type. Existing origin-loss controls still reject stale calls.
+- EachCheckControls rejects wrong code, receivers/types, arguments, parameter shapes,
+  selectors, next escapes, reserved dispatch and capture type changes. Positive controls
+  cover empty arrays, ignored String body results, stable captured writes and hidden
+  caller values. Twelve new pipeline cases bring check_body_inference.py to 33 controls.
+- EachDerivations derives exact source 091 through the arbitrary registry family. The
+  worked-program and rule-use audits include it. Measured fragment 87, checker reach 91,
+  76 rules (40 + 36), 66 worked, zero owed/exempt, 252 agree / 0 disagree. Raised all four
+  changed floors. Next: map (092/093), beginning with fidelity probes of its snapshot loop.
+- Final full quiet gate GREEN; metatheory and standard-axiom audit pass. No new axioms,
+  resource-limit increases or proof builds over five minutes.
+
+## Clink 228 (2026-09-26) — prove native map/collect from checked bodies
+
+- Model L274 repaired the reached dispatch path (§F54). MapArrayContract now states the
+  live cursor/accumulator obligations, and mapArrayStep_spec pays the back edge by fuel
+  induction. Appending indefinitely need not terminate. Exhaustion allocates the result
+  Array; a raise unwinds the block and iterator without requiring a value-state result.
+- IteratorCaller factors each's entry and two-pop return invariant into Caller.lean.
+  Both iterators preserve captured slot ownership and the checked caller-environment
+  fixed point. Its relative framing result transports previously collected values;
+  FirstOrder on the body result transports the new value out of its activation. The
+  accumulator is typed at the current heap, not at its allocation-time heap.
+- array_alloc_result factors full allocation conformance out of the literal proof.
+  typed_map_step combines this with the checked body and caller invariant: no independent
+  iteration, output-state or accumulator-preservation premise remains at empty entry.
+- MapStart/MapDispatch/FlowMap compose inert activation allocation, actual native lookup,
+  block reification and receiver evaluation. StateOk's guarded dispatchMethods now includes
+  map/collect markers; reserved names withdraw their capabilities. Existing heap, method,
+  class and module transports apply to these rows. SemFlow.map proves the whole source.
+- Sorbet 0.6.13405 --no-config: Integer→String map yields Array[String]; Integer→Integer
+  collect and stable captured Integer writes yield Array[Integer]. Captured Integer→nil
+  is rejected (7001). The semantic rule cites this measurement. Its initial scope is one
+  required parameter, no arguments, main caller, first-order elements/results and stable
+  caller types; body-result typing is independent of receiver-element typing.
+- TypedMapControls proves the exact 092 source and collect spelling, typed prior String
+  results across later allocations, and hidden nil caller restoration. Live mutation/
+  exhaustion controls retain collected values and return a fresh Array. Override, undef,
+  visibility and reservation controls guard dispatch. The mandatory controls build imports
+  this file. Checker/registry/emitter admission for 092/093 is next; floors are unchanged.
+- Full quiet gate GREEN (87 fragment, reach 91, 76 rules, 66 worked, 252 agree / 0 disagree).
+  Metatheory and standard-axiom audit pass. New proofs build in about a second each;
+  no new axioms, resource-limit increases or proof builds over five minutes.
+
+## Clink 229 (2026-09-26) — admit map/collect through validateD
+
+- DFlow.map registers clink 228's complete source proof, with Sorbet provenance in the
+  judgment docstring. Its body result determines the returned Array element type; it is
+  independent of the receiver's element type. The mutual bridge and constructor audit
+  include the new rule (77 = 40 expressions + 37 companions, zero owed/exempt).
+- mapBlock contains receiver/body hints only. FlowCheck checks the actual selector,
+  single required parameter, no arguments, native name capability, main scope, first-order
+  input/result types, complete body, stable context/spine, capture ownership and the caller
+  environment fixed point. No proposed result type or loop invariant is trusted.
+- The emitter shares Array block setup/restoration between each/map/collect. Each retains
+  the receiver type; map/collect propose Array[body result]. Restoring hidden parameter
+  and block-local caller types is unchanged. The checker reconstructs both element types.
+- MapCheckControls covers wrong code/literals/types, receiver/arity/selector/block shapes,
+  reserved names, capture type changes, hidden nil slots and closure-valued results. The
+  45 pipeline controls include chained maps consuming String results, stable capture
+  writes, do/end locals, explicit local shadowing and malformed calls/escapes.
+- MapDerivations proves exact 092/093 through arbitrary registry families; CorpusSafety
+  and proof-term audit include both. Safety's flow selector list must include the two
+  new worked programs as well as its new map syntax arm; the first full gate caught that
+  missing selector list. No safety exemption or widened resource limit was needed.
+- Final full quiet gate GREEN: fragment 89, checker reach 93, 77 rules, 68 worked proofs,
+  zero owed/exempt, 252 agree / 0 disagree. All four changed floors are locked. Direct
+  validate-one checks confirm 092/093 acceptance. Metatheory and standard-axiom audit pass;
+  no new axioms or proof builds over five minutes. Next: yield/&block across method frames.
+
+## Clink 230 (2026-09-26) — preserve both frames across typed yield
+
+- The next obstruction is a proof contract, not a runtime mismatch (§F55). CRuby/model
+  agree on repeated yield updating an outer Integer while preserving a method local.
+  Ordinary Framed at the method forbids this valid callback effect. Keep that contract
+  for existing judgments; do not weaken every proof or restrict blocks to read-only code.
+- CallbackFramed projects framing to the captured caller, preserves the suspended method's
+  complete frame and pins caller slot ownership. Its return proof reuses the iterator's
+  two-pop projection, which is independent of the intervening activation's code, and proves
+  the additional method-frame guarantee from isolation outside the block's capture chain.
+- CallbackCaller handles arbitrary exact required arity. The checked body supplies entry
+  and return conformance; closureReturnEnv's fixed point retains captured types. Its next
+  theorem restores capture identity and slot facts for a later yield. First-order results
+  survive the pop; no arrow denotation is treated as a safety theorem.
+- typed_yield_continue composes actual doYield/callClosure and blkFrameK with a continuation
+  that consumes CallbackResultOk. methodReturn discharges the real method marker. The
+  mandatory TypedYieldControls proves `yield(Integer)` with `total = total + x` for all
+  fuel, refutes ordinary method isolation and rejects corruption of the active method.
+  This is an entry/return proof layer, not a new registered judgment or corpus admission.
+- Sorbet 0.6.13405 --no-config accepts stable captured Integer writes with a typed &b,
+  rejects Integer-to-nil writes (7001) and nil for an Integer yield argument (7002).
+  Exact 094's absent block annotation is rejected as its existing metadata expects.
+  Next: a method-body contract composing callbacks with ordinary expressions, definition
+  checking, attached-block dispatch and &b binding, then checker/emitter admission.
+- Full quiet gate GREEN: unchanged 89 fragment, checker reach 93, 77 rules, 68 worked
+  proofs, zero owed/exempt and 252 agree / 0 disagree. Metatheory and standard-axiom audit
+  pass. New proof modules build in under a second; no new axioms or resource-limit changes.
+
+## Clink 231 (2026-09-26) — compose repeated yield through real method entry
+
+- StateOk's `blockTy = none` asserts an absent runtime block. An ordinary method receiving
+  a callback must instead carry its exact closure type. StateOk_reframe_block factors the
+  existing conformance transfer and takes independently proved BlockTyOk for that block;
+  StateOk_reframe_scopes retains its old interface and derives the old transport as before.
+- callbackMethodCtx retains method identity and exact code-only block typing while dropping
+  main/class runtime permissions. CallbackResultOk.methodState rebuilds full active-method
+  conformance from the updated caller world, saved method frame and stable local types.
+  Exact closure-valued locals are supported by ProcPres, without treating code as call safety.
+- YieldInt supplies source Integer-argument evaluation and retains the Proc descriptor for
+  another yield. YieldBody.run proves the actual 094 body `yield(1) + yield(2)`: saved first
+  result, second callback, real Integer dispatch and method return, for all fuel. Both body
+  invocations consume the checked callback; captured writes remain allowed.
+- BlockEntry proves required-positionals with an implicit block against enterUserMethod.
+  The frame must retain both `blk` and `callBlk`, as the runtime does. YieldCall.call derives
+  entry conformance, caller capture ownership and the whole body run from main caller state.
+  Mandatory YieldMethodControls allocates the block and proves arithmetic and captured-write
+  variants from boot, with an arbitrary initial Integer in the latter; no body/return-state
+  premise remains. A negative control rejects an absent-block context for a present block.
+- CRuby 4.0.5/model replay prints 30, 4, 3 for the arithmetic call, captured-write call and
+  final capture. No runtime change or new type judgment is made. Clink 230's Sorbet typed
+  callback measurements remain the provenance. Definition checking, installation/lookup,
+  source-call composition, &b binding and checker/emitter admission remain ahead.
+- A general method-body effect contract must allow method-local assignments as well as
+  callback writes. CallbackFramed describes a suspended method during one callback, so its
+  unchanged-active-frame field cannot be imposed on arbitrary method expressions. The new
+  repeated-yield pilot establishes the execution path, not that broader judgment.
+- Full quiet gate GREEN: unchanged 89 fragment, checker reach 93, 77 rules, 68 worked
+  proofs and zero owed/exempt; 252 agree / 0 disagree. Metatheory/standard-axiom audit pass.
+  New modules build in about three seconds or less, with no axiom or resource-limit changes.
+
+## Clink 232 (2026-09-26) — compose method-local and callback-capture effects
+
+- MethodEffects closes the two proved boundaries (ordinary Framed and CallbackFramed)
+  under composition. Neither boundary alone describes a method that writes its own locals
+  and yields to a block that writes the outer caller. Existing Framed remains unchanged.
+- MethodEffects.project restores Framed relative to the original caller, before method
+  allocation. The active method id must be at least the original frame-store size. Ordinary
+  steps preserve that old prefix; callbacks compose their caller projection. This permits
+  fresh method locals without allowing damage to any old saved frame. A later caller snapshot
+  containing the method would incorrectly freeze those locals; late_anchor_false refutes it.
+- BodyRun states MethodResultOk/MethodRunSpec with both caller and method environments,
+  all-fuel safety and MethodEffects. Step, answer, continuation composition and method return
+  are proved. The real return marker recovers the existing RunSpec via the prefix theorem.
+  This semantic run target is not yet a source judgment: embedding ordinary expressions
+  needs caller conformance after their effects, and checked callbacks need to enter it too.
+- Mandatory MethodEffectsControls executes a method-local write, a captured caller write
+  and a new method-local insertion. It proves caller return and distinct final reads/slots,
+  and refutes ordinary framing, suspended-method framing and a late anchor for the full trace.
+  Repeated rfl expansion initially exhausted default heartbeats; normalizing each intermediate
+  machine once makes the proof small. No limit was raised.
+- Sorbet 0.6.13405 accepts `first = nil; first = yield(1); second = yield(2); first + second`
+  with typed &b and a block updating an outer Integer. CRuby/model print 4 and final capture 3.
+  The contract docstrings cite this measurement. No runtime, registered rule or floor changes.
+- Full quiet gate GREEN: 89 fragment, checker reach 93, 77 rules, 68 worked, zero owed/exempt,
+  252 agree / 0 disagree. Metatheory and standard-axiom audit pass. Final new modules build
+  in under a second; no proof exceeds five minutes and no resource limit or axiom is added.
+
+## Clink 233 (2026-09-26) — embed expressions and yields into the method contract
+
+- BodyOrdinary restores the caller after an uncaptured method expression. Its current
+  environment supplies stable reads after earlier captured writes; the pre-allocation
+  caller anchors heap/framing transport. MainReturn now separates FrameOk from scope
+  metadata internally, preserving every existing return interface and full StateOk.
+  A false Framed relation anchored after method allocation is never assumed.
+- SemSafeCtxA.methodOrdinary reuses existing expression proofs with changing method-local
+  environments. CallbackResultOk.methodResult supplies the other embedding, restoring both
+  full states. BodyYield carries a checked required-parameter callback through the actual
+  block marker; method_yield_int proves its source entry. RunSpec.bindMethod and
+  MethodRunSpec.seq compose these effects, including non-type-error raises.
+- Mandatory MethodBodyControls composes `yield(1); total=nil; total=7` with a checked block
+  updating the caller's total. Both totals retain independent environments; the real method
+  return restores the caller contract for all fuel. Sorbet 0.6.13405 accepts the typed &b
+  probe; CRuby 4.0.5/model agree on return 7 and caller total 1. No runtime defect was exposed.
+- This is semantic composition, not registered source admission. Assignment around yield,
+  general argument/send rules, definition/dispatch and &b binding still precede admission.
+- Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
+  zero owed/exempt, 252 agree / 0 disagree. Metatheory and standard-axiom audit PASS.
+  New modules build in about one second; no proof or resource-limit exceptions.
+
+## Clink 234 (2026-09-26) — source method typing across repeated callbacks
+
+- MethodPres derives caller slot/scope and Proc retention across MethodEffects. It does not
+  freeze the active method. CheckedCallback records actual body safety and the capture fixed
+  point; MethodActivation carries that callback's runtime identity/ownership and the original
+  caller anchor. Its after theorem restores the invariant from both proved output states.
+- SemMethod is a semantic source judgment with ordinary, assignment, sequence and yield rules.
+  Assignment retains the existing closure/alias/context guards and requires an unchanged ivar
+  spine. yieldOne checks the evaluated argument, which may itself yield or assign. It requires
+  Plain: a safe run for an argument-list syntax node does not license ordinary argument entry.
+  yieldInt is its specialization, not an independent restriction on callback arguments.
+- BodyEntry handles actual zero-positional entry for any such body. The method's owner/cref
+  must match the main caller; superName=none pins the method identity expected by FrameOk.
+  Actual entry separately checks required params, absent capture and empty declared locals.
+- Mandatory MethodTypingControls uses these rules for nil-to-Integer retyping around repeated
+  yields and `yield(total = yield(1))`. The method and outer caller both write total; real block
+  allocation/method entry/return are proved from boot for arbitrary initial Integers. Sorbet
+  0.6.13405 accepts both and rejects a nil argument (7002); CRuby 4.0.5/model print 4/3 and 2/2.
+- Generic primitive sends with yielding operands, syntactic body/definition checking, dispatch,
+  &b binding and checker/emitter admission remain. No registered rule, runtime or floor change.
+- Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
+  zero owed/exempt, 252 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New proof
+  modules build in about one second, controls under four; no resource limit was raised.
+
+## Clink 235 (2026-09-26) — primitive sends with yielding operands
+
+- RunSpec.methodOrdinary generalizes the expression embedding to ordinary dispatch entries;
+  the old wrapper delegates to it. MethodActivation.reCtl/RunSpec.inMethod retain the actual
+  callback and original caller anchor while the primitive continuation runs.
+- SemMethod.prim covers every existing DPrim row. Their receiver types are first-order,
+  including the guarded Array/Hash cases, so MethodEffects transports saved receivers across
+  yielding arguments. primitive_frame supplies native dispatch and answer safety; the ordinary
+  embedding restores full caller/method states. Name/dispatch guards and exact argument types
+  remain unchanged. Argument-list syntax is excluded by the SemMethodAll companion.
+- SemMethodSeq/sequence handle the real flat AST and its final empty continuation, including
+  escaping raises. MethodTypingControls' mixed program now uses that flat form. The exact 094
+  body uses general yield/primitive rules; no special twice rule or new checker acceptance.
+- Expanded generic boot controls cover repeated captured writes, allocating to_s then length,
+  an array receiver saved across a yielding index, and division's ZeroDivisionError. Sorbet
+  0.6.13405 accepts the annotated probes and rejects a String right operand (7002).
+  CRuby 4.0.5/model agree on 4/3, 1/1, 20/1 and zero/0. Proofs cover all initial captured Integers.
+- Syntactic body/definition checking, installation/dispatch, &b binding and checker/emitter
+  admission remain. No runtime, registered-rule or floor changes.
+- Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
+  zero owed/exempt, 252 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
+  build under a second, controls about five; no resource limit was raised.
+
+## Clink 236 (2026-09-26) — prove callback-independent method-body typing
+
+- DMethod and its two list companions cover the clink 235 source rules. Indices contain
+  the block's argument/result types, not its code, parameter names or captures: definitions
+  must be checked before a call supplies these. Ordinary premises quantify over all codes;
+  assignment guards do too. No concrete callback can stand in for that quantification.
+- BodyBridge proves all nine constructors by mutual induction, sending every ordinary
+  premise through djudge_context. SemMethodBody supplies the same source proof for any
+  matching CheckedCallback, retaining its actual body safety/capture fixed point.
+- Mandatory controls now derive all six bodies syntactically, then cross this bridge
+  before real allocation/entry/return from boot. The same twice derivation also works with
+  different callback code, parameter name and captures. Sorbet 0.6.13405 accepts the uncalled
+  annotated bodies and renamed parameter, and rejects the uncalled String operand (7002).
+- Executable definition checking, installation/dispatch and &b admission remain. DMethod
+  stays a separate mutual group until DJudge definition/call constructors depend on it;
+  then move it into that mutual group and add all three DFam fields/bridges.
+- Registration was attempted, but the gate correctly refused nine rules without worked
+  whole-program corpus coverage. Keep them staged until source admission supplies it;
+  the zero unexercised ceiling is unchanged. dUncarriedJudgments explicitly includes them
+  and a negative registration control pins refusal. No rule/floor/model change is claimed.
+- Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
+  zero owed/exempt, 252 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
+  build under a second, controls about five; no resource limits were raised.
+
+## Clink 237 (2026-09-26) — check complete callback-capable method bodies
+
+- CheckCallbackBody returns derivations, not unchecked type results. defBlock/yieldArgs
+  wire hints contain proposed signatures/subcertificates; source literals, names, arity,
+  parameter shape and primitive types are checked independently. CheckedCallbackBody checks
+  the complete body at declared positional/block domains and exact first-order return type.
+  Call arguments and captured environments cannot specialize or repair that check.
+- CertifiedMethod and list companions optionally retain universally code-quantified ordinary
+  proofs. These reuse existing array typing only when all children are ordinary; yielding
+  array elements remain unsupported. Assignment checks the existing context/spine guards.
+  callback_capStale proves that the default-code decision holds for every actual block;
+  it does not use a dummy callback's body as evidence for the real one.
+- BodyChecked derives semantic body safety and actual zero-positional entry from a checked
+  artifact, retaining all metadata/capture checks. All six boot controls now consume artifacts
+  produced by the executable checker. No manually chosen body proof supplies those calls.
+- Mandatory negative controls cover forged literal/name/type/signature hints, wrong parameter
+  domains, arity/plainness, fuel, ordinary fallback and unsupported &b entry. Sorbet 0.6.13405
+  accepts uncalled `yield(value)` at Integer and rejects T.nilable(Integer) (7002); the checker
+  makes the same body-domain decision. The new hints decode but validateD still declines them.
+- Installation/lookup, source-call composition, &b binding and whole-program admission remain.
+  No runtime, registered-rule or floor changes; staged families remain blocked as raw premises.
+- Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
+  zero owed/exempt, 252 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New checker,
+  controls and entry modules build under a second; six boot proofs about five seconds.
+  No resource limits were raised.
+
+## Clink 238 (2026-09-26) — whole-source implicit block calls
+
+- BodyDispatch resolves the installed method from DefsOk, allocates the actual literal
+  block and enters the uniformly checked body. Lookup is re-established after allocation
+  for finishSend's special new branch; lambda/proc overrides also take ordinary dispatch.
+  No name blacklist or interpreter shortcut replaces these steps.
+- BodySource obtains capture ownership from LocalFacts, composes real evaluation/dispatch
+  and restores full caller StateOk. It conservatively drops local facts on return. BodyDefine
+  requires the whole signature-domain proof even though installation does not execute it;
+  shared top_definition retains the existing ordinary defDecl interface and proof.
+- Mandatory CallbackSourceControls proves exact 094, lambda/proc/new overrides and a full
+  assignment/definition/call/captured-read program from boot. The captured-write proof is
+  uniform in the initial Integer; no prepared entry-state or lookup premise is supplied.
+- CRuby 4.0.5/model agree on 30/4/3/30/30/30. Sorbet 0.6.13405 accepts the annotated twice,
+  lambda/proc and stable capture probes, and rejects a String callback result (7005).
+  Its special new handling rejects that override call as BasicObject#initialize (7035);
+  the semantic rule follows actual runtime lookup. No model defect was exposed.
+- Registry/checker/emitter integration and explicit &b binding remain. The staged method
+  families still require worked corpus coverage before registration. Semantic controls do
+  not increase fragment size; no runtime, registered-rule or floor change is claimed.
+- Full quiet gate GREEN: unchanged 89 fragment / checker reach 93, 77 rules, 68 worked,
+  zero owed/exempt, 252 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
+  and the five boot proofs build under a second; no resource limit was raised.
+
+## Clink 239 (2026-09-26) — admit implicit-block source programs
+
+- DMethod and list companions join DJudge's mutual group and all three DFam readings.
+  defBlock and DFlow.callBlock register against their proved semantic forms. The latter
+  exposes actual callback typing/capture guards, including ClosureCode's supported syntax.
+  Certify shares one twelve-family recursor script between djudge_certified and
+  dmethod_certified; every premise crosses the registry, including code-quantified ordinary
+  bodies. No raw method derivation survives inside a registered semantic obligation.
+- CallbackCache stores exact code/context/spine/signature proofs. Definitions and restored
+  scopes recheck every saved body at its original domains, even if uncalled. Branch cache
+  equality includes block signatures. Call hints cannot choose parameter domains: source
+  block names bind the stored types, and the actual body/result/capture fixed point is checked.
+- The emitter searches scalar block-result proposals using only complete definition bodies
+  and declared positional/result types. Yield arguments determine the proposed common domain;
+  calls never supply it. Failed trials isolate mutable state. Known user lambda/proc overrides
+  precede literal creation proposals. Every proposal still requires a Lean derivation.
+- Added corpus 260 for method-local nil→Integer retyping interleaved with same-named captured
+  writes. This tests the two-frame invariant and supplies genuine whole-program coverage for
+  assignment/sequence rules that 094's arithmetic body does not exercise. Worked proofs for
+  both sources use the arbitrary registry family; syntax prediction independently matches
+  proof extraction. All 88 rules are exercised; the zero exemption ceiling is unchanged.
+- Mandatory controls cover successful 094/260, renamed callback parameters, forged names,
+  literals/results, wrong arity, missing definitions, hidden captured retyping, stale cache
+  contexts/signatures and rechecking after a later definition. lambda/proc/new overrides pass.
+  Sorbet 0.6.13405 accepts the explicit typed &b counterpart; implicit 094/260 keep expected
+  errors 5082/7035/7003. CRuby 4.0.5/model agree on 4/3. No runtime change was required.
+- Admission remains zero-positional at calls, required-positional literal blocks, one-argument
+  yields and first-order stable captures. Explicit &b binding is the next rung (095).
+- Full quiet gate GREEN: fragment 91/260, checker reach 94, 88 rules, 70 worked proofs,
+  zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. Floors
+  raised accordingly. The shared bridge builds in about two seconds and RuleAudit in 19;
+  no proof exceeds five minutes and no resource limit was raised.
+
+## Clink 240 (2026-09-26) — explicit block binding and saved callback dispatch
+
+- BodyBoundCall introduces MethodCallbackReceiver: the saved value is the actual active
+  frame's block and has native Proc class. MethodEffects transports both facts through
+  argument evaluation, including another callback. Code-only closure typing alone proves
+  neither capture identity nor absence of singleton dispatch. Real invoke lookup remains
+  guarded by StateOk/nameFreeN; call/[] use the existing native Proc proof.
+- Receiver evaluation precedes arbitrary typed argument effects. The proof never rereads
+  its source local. The shared checked-callback continuation now accepts any break owner,
+  so Proc#call uses blockOwner and yield retains methodFrameOf; both still admit only normal
+  results and non-type-error raises. All caller/method state and frame obligations remain.
+- BoundEntry normalizes real enterUserMethod predeclaration/setLocal for a lone &b formal,
+  proves complete EnvOk with its exact code-only closure type, and composes entry/call/return.
+  enterBindings factors the old entry proof while keeping enter0's interface unchanged.
+  This is a semantic foundation, not a new registered source rule or acceptance claim.
+- Mandatory boot controls cover b.call(5), b.call((b=nil;5)), b[(b=nil;5)] and b.call(yield(5))
+  with stable captured total writes, for every initial Integer. A real prior setLocal nil
+  refutes the binding contract. Sorbet 0.6.13405 accepts the typed valid cases and copying b,
+  rejects b=nil;b.call(5) (7003). CRuby 4.0.5/model agree on 6/6/6/missing/5/5 for direct,
+  overwrite, copy, rescued invalid and captured-write calls, and 5/5/10/10 for []/yield
+  arguments with total initially zero. No runtime defect or model change was needed.
+- General method-local identity tracking and declared-domain checker integration precede
+  admission of 095. Semantic controls do not change fragment counts, rules or floors.
+- Full quiet gate GREEN: fragment 91/260, checker reach 94, 88 rules, 70 worked proofs,
+  zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New proof
+  modules and boot controls build under a second; no resource limit was raised.
+
+## Clink 241 (2026-09-26) — method-local callback alias flow
+
+- CallbackFacts records local aliases of the actual supplied block, not just code or
+  current-frame capture origins. Its proved write/copy transfer invalidates only the target;
+  other aliases survive. CallbackFactsOk.callback uses the unchanged uncaptured method frame
+  plus ProcPres to retain identities and native class across captured caller writes.
+- MethodRunWith adds a value postcondition while retaining all of MethodResultOk. The shared
+  checked-callback proof and callback_invokeWith expose CallbackFramed; the earlier run
+  interfaces erase this extra evidence. No scope, frame, environment or dispatch premise
+  is weakened. Escapes retain their prior obligations and have no value-alias obligation.
+- SemMethodFlow threads alias facts and a result-identity flag through leaves, assignment,
+  flat sequence and calls from arbitrary receiver expressions. FlowCall saves the evaluated
+  receiver, then permits argument writes/callback effects, and preserves the argument's
+  outgoing aliases after the actual callback. FlowEntry supplies &b's initial alias and
+  composes a general body with actual method entry/return. Arbitrary SemMethod embedding
+  safely drops aliases; preserving them needs an operation-specific proof.
+- Mandatory CallbackAliasControls proves four bodies uniformly over every matching checked
+  callback, then instantiates real boot calls with captured writes for every initial Integer:
+  copy=b;b=nil;copy.call(5);copy.call(7), restoring b from copy, a receiver sequence returning
+  copy, and b.call((copy=nil;5)) followed by b.call(7). Full conformance excludes a claimed
+  callback alias at a nil-typed local. These are semantic proofs, not checker acceptance.
+- Sorbet 0.6.13405 accepts all four typed probes; CRuby 4.0.5/model agree on
+  12/12/5/5/5/5/12/12 with a captured total initially zero. No new model defect. Definition-side
+  syntactic checking/registry/cache/emitter/source integration remain before 095 admission.
+- Full quiet gate GREEN: unchanged fragment 91/260, checker reach 94, 88 rules, 70 worked,
+  zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
+  build under a second; no resource limit was raised.
+
+## Clink 242 (2026-09-26) — code-polymorphic explicit-block body checking
+
+- Staged DMethodFlow/Seq interpret alias-aware syntax through the proved SemMethodFlow rules.
+  Embedded DMethod still crosses its registered bridge. These families are not yet registered
+  source-admission rules; the mandatory controls explicitly retain validateD's rejection.
+- MethodLocalTy separates fixed first-order types from the opaque supplied callback code.
+  Successful checks return derivations for every code, never a proof specialized to a chosen
+  callback body. Assignment exactly instantiates to envAfter. Guards computed at default code
+  are justified by code-independence lemmas: first-order components cannot equal a closure,
+  and the opaque code-only closure has no captured environment to invalidate.
+- checkBoundCallbackBody checks the complete lone named-&b definition against a proposed
+  signature before any call. It supports Integer/nil/local leaves, assignment, flat sequence
+  and one-argument call/[] from arbitrary identity-proved receiver expressions. callbackCall
+  hints supply child derivations only. Exact argument types are required; nilable subtyping,
+  primitive/yield branches and ordinary method parameters remain unsupported in this checker.
+- Controls cover copied/restored aliases, receiver sequences, saved receivers, overwritten
+  bindings, forged children/names/arity and wrong signatures. Five checker-produced bodies
+  instantiate real boot calls with stable captured writes for every initial Integer. No
+  callback code or capture state is supplied during definition checking.
+- Sorbet 0.6.13405 accepts an uncalled b.call(5) definition at Integer→Integer and rejects
+  its String-domain counterpart (7002). Existing runtime probes from 240–241 still supply
+  the execution evidence; no model change or new runtime defect is claimed.
+- Whole-source definition/dispatch, mutual registry, cache and emitter integration remain
+  before 095 admission. Fragment counts, registered rules and floors are unchanged.
+- Full quiet gate GREEN: fragment 91/260, checker reach 94, 88 rules, 70 worked,
+  zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
+  build under a second with no resource-limit changes.
+
+## Clink 243 (2026-09-26) — whole-source explicit-block execution
+
+- FlowDispatch resolves the installed definition through DefsOk and uses real &b entry.
+  Literal block allocation proves native Proc class separately from its code/payload; code
+  typing alone would miss singleton overrides. The shared finishSend_main_userBlock proof
+  handles lambda/proc/new interception, including post-allocation lookup for new.
+- FlowDefine requires the complete all-code signature-domain proof even for uncalled methods.
+  FlowSource instantiates it only at the actual allocated callback code, recovers physical
+  capture slots from LocalFacts and restores full caller conformance after method return.
+  Outgoing source facts conservatively become unknown. No runtime shortcut or guard weakening.
+- Mandatory BoundSourceControls proves exact 095 and lambda/proc/new overrides from boot.
+  Four whole-source captured-write proofs cover copied/restored aliases, receiver sequences
+  and saved receivers for every initial Integer, with a renamed callback parameter. The 095
+  proof's Expr is checked against the pipeline AST by /private/tmp/ratchet-boundsource-match.lean.
+- CRuby 4.0.5/model probes agree on 6/6/6/6 for direct/overrides and 12/12, 5/5, 5/5, 12/12
+  for the four captured-write sources. Sorbet 0.6.13405 accepts all except new (7035), whose
+  constructor special case differs from runtime lookup. Probe driver:
+  /private/tmp/ratchet-boundsource-probes.py. No model defect or runtime change was needed.
+- These staged semantic source proofs do not grant checker admission. Mutual registry,
+  cache/emitter integration and whole-corpus rule coverage remain; counts/floors are unchanged.
+- Full quiet gate GREEN: fragment 91/260, checker reach 94, 88 rules, 70 worked,
+  zero owed/exempt, 253 agree / 0 disagree. Metatheory/standard-axiom audit PASS. New modules
+  build under a second; no resource limit was raised.
+
+## Clink 244 (2026-09-26) — admit explicit-block source programs
+
+- DMethodFlow/Seq join the mutual judgment. The registry carries seventeen families, with
+  one shared fourteen-family induction for ordinary, implicit-block and alias-aware bridges.
+  defBoundBlock/callBoundBlock interpret both method and actual callback premises through
+  that registry. Semantic family definitions moved out of FlowBridge to avoid import cycles.
+- BoundCallbackCache keeps complete all-code proofs and exact code/context/spine/signatures.
+  Every changed context rechecks the saved definitions, even uncalled ones; branch equality
+  includes explicit block domains/results. Call hints cannot replace the cached signature.
+- srb_sigs retains named Proc argument/result domains separately from value types, declining
+  unsupported components. Explicit-block emission uses those declared domains; only implicit
+  blocks retain the previous definition-only proposal search. The emitter's suppliedCallback
+  descriptor contains no actual code/captures; Lean reconstructs all identity/type evidence.
+- MethodLocalEnv.fixedB proves code-independent instantiation. The checker can then reuse
+  DMethod checking, retaining exact outgoing types with first-order guards and dropping alias
+  facts. This admits yield after clearing local block aliases without pretending the method
+  frame's block was cleared. No default callback body is used as a proof substitute.
+- New corpus 261 copies b, clears b, calls the copy, clears it and yields; both calls write a
+  captured Integer. Together with 095 it exercises every new constructor. Worked arbitrary-
+  family proofs and independent syntax prediction agree; the exemption ceiling stays zero.
+  The same general path also admits existing 157 (b.call(2) with an Integer multiplication block).
+- Full source controls cover aliases/overrides, forged hints/domains, arity, hidden captured
+  retyping, missing/stale caches, signature disagreement and definition refresh. All 53 pipeline
+  controls pass, including uncalled String-domain rejection and identical definition hints
+  under different actual callbacks. Source/model behavior is unchanged; no runtime fix needed.
+- Sorbet 0.6.13405 rejects 261's yield after b=nil (7003); it treats the yield as a call on
+  the overwritten block local. CRuby 4.0.5/model agree on total=12 through the retained
+  method-frame block. The new corpus expectation records this measured rejection. The first
+  full gate caught the initially incorrect expect_sorbet=true; no existing baseline moved.
+- Full quiet gate GREEN: fragment 94/261 (095/157/261 newly admitted), checker reach 95,
+  99 rules (42 expressions + 57 companions), 72 worked proofs, zero owed/exempt,
+  254 agree / 0 disagree. Metatheory/standard-axiom audit PASS; floors raised. New modules
+  build under a second, RuleAudit in 25; no proof exceeded five minutes or raised a limit.
+
+## Clink 245 (2026-09-26) — repair conversion before symbol-block typing
+
+- 096's plain map(&:to_s) agrees, but overriding Symbol#to_proc exposes §F56:
+  CRuby uses the returned callback, while the model still calls to_s. Private, undef
+  and invalid-return controls also disagreed. Fixed the model at L275 before proving it.
+- Effectful conversion keeps the evaluated call in a continuation, dispatches to_proc,
+  validates the result, and handles checked missing-method conversion. Proc/nil bypass
+  conversion. Symbol's native capture-free allocator is shared by explicit/implicit use.
+- Redefinition during method_missing disproved a merged response flag: its two response
+  answers and lookup owner must survive separately. The regression now covers that case.
+- Continuation framing covers every new stage. No typing rule, exemption or admission is
+  added: 096 still needs proofs for capture-free entry and required/rest native formals.
+- Validation: both new regressions agree; full replay retains exactly three baseline
+  disagreements verified against dfa5116. MRI tier 0 improves to 999 agree / 0 disagree
+  (304 unsupported). Full quiet gate GREEN: fragment 94/261, checker reach 95, 99 rules,
+  72 worked proofs, zero owed/exempt, 254 agree / 0 disagree. Metatheory and standard-axiom
+  audit PASS. Logs: /private/tmp/ratchet-blockpass-{gate,audit,tier0,regressions}.log.
+
+## Clink 246 (2026-09-27) — native Symbol closure entry and forwarding
+
+- Measured Sorbet 0.6.13405: map(&:to_s) reveals Array[String], map(&:abs)
+  Array[Integer]; an unknown selector is 7003 and &:+'s missing argument is 7004.
+  These constrain the eventual source judgment; this clink does not admit 096 yet.
+- Guarded nativeDispatchB now includes Symbol#to_proc. StateOk supplies exact lookup,
+  marker, visibility and no-shadow facts only while to_proc remains unreserved.
+  This is dispatch readiness, not a new pure-builtin signature or callable type.
+- Closure/Symbol proves native allocation, heap extension/full state preservation,
+  actual L275 conversion/resumption, and callClosure's required/rest activation.
+  Its receiver is not auto-splatted. The rest Array is allocated even when empty;
+  arbitrary remaining arguments retain their order. Locals have no capture fallback.
+- Closure/SymbolBody proves the real local reads/splat/forwarded send for all fuel,
+  parameterized by the actual callee StepSpec. No source-lambda replacement is used.
+  Capture-free body framing projects back to the caller after the pop, including the
+  rest allocation; an uncaptured caller recovers its exact local values.
+- Mandatory SymbolClosureControls checks boot conversion, both allocations, binding
+  shadowing, missing captures, nonempty rest forwarding, Array receiver identity,
+  conversion overrides/tombstones/wrong markers, missing methods and arity errors.
+- Remaining: adapt map's one-required-formal entry contract to this native activation,
+  discharge Integer#to_s's callee contract, restore complete caller conformance after
+  the iterator pop, then register/check/emit the source rule with real corpus coverage.
+  Symbol entry copies lexical metadata from frame zero, which need not be the active
+  caller; do not assume the attached-block ClosureScopeEq premise for this path.
+- Validation: mandatory controls PASS; full quiet gate GREEN, unchanged fragment 94/261,
+  checker reach 95, 99 rules, 72 worked proofs, zero owed/exempt, 254 agree / 0 disagree.
+  Metatheory and standard-axiom audit PASS. New proof modules build under two seconds;
+  no proof exceeded five minutes, introduced an axiom or raised a resource limit.
+  Logs: /private/tmp/ratchet-symbol-entry-{gate,audit}.log. No live builds.
+  Stopped after this clink at the user's request; 096 remains outside the judgment.
+
+
+## 2026-09-30 — reject main-singleton definitions in the ordinary top-level fragment
+
+The existing booted interpreter installs inspect/to_s and six other methods on
+main's singleton class. `def inspect; 1; end; inspect + 1` therefore calls the
+native inspect, returns a String, and raises TypeError. The checker previously
+accepted an Integer certificate for the Object definition and the call.
+
+The user authorized the correction and small repair commits. topDeclClassesB
+now reserves those eight names; MethodControls covers each rejection, and the
+new MainSingletonRegression control checks both certificate rejection and the
+unchanged runtime TypeError. The earlier class-separation proof consumes the
+existing second part of the strengthened guard. Top-level soundness theorem
+statements and runtime code are unchanged. Full Denote repair is still open.
+
+## 2026-09-30 — resolved user dispatch and native query coverage
+
+Moved the resolved user dispatch lemmas into Sem/Instance/UserDispatch, where
+all three build independently of the remaining run-decomposition repair.
+Native-prefix absence is still required. Removed the obsolete second singleton
+shadow premise: invokeDispatch checks the chain before the resolved owner, and
+a user definition at that owner wins. DirectSendName consequently expresses
+payload interception only; the checker retains its conservative direct-call
+selector guard. ClassRuleControls checks the resulting implication.
+
+Added Rational, Complex, and UncaughtThrowError to the copied native to_s query
+rows. The exhaustive kernel coverage proof now passes. Ratchet, NativeGuards,
+and UserDispatch build together (238 jobs), using only standard axioms.
+No runtime or top-level theorem statement changed. Full Denote remains red.
+
+## 2026-09-30 — restore the boot conformance witness
+
+MainReady now describes the actual empty top-level cref and the singleton-class
+prefix before Object/Kernel/BasicObject. mainView and mainConstResolve agree with
+that scope. The method_added guards require a defined Module#method_added native
+entry, matching the current queued mutation callback rather than inferring
+silence from an owner name. The boot conformance proof and #guard bootOkB pass
+(134 build jobs, standard axioms). Downstream declaration/callback and class
+scope proofs still need migration; the full end-to-end gate remains red.
+
+## 2026-09-30 — native-prefix and independent heap proof repairs
+
+Completed the copied instance selector set with nine selectors introduced by
+Enumerator/UncaughtThrowError. The exhaustive kernel coverage check passes.
+Native-prefix helpers now ask separately for singleton and optional-library
+absence on that prefix; instance-name absence alone does not imply either.
+The inherited-call consumer still needs those scoped premises discharged.
+
+Fresh subclass allocation uses the boot bound through Yielder, covering all
+payload-bearing classes. Fresh-class primitive dispatch threads NamesOk.
+Proc controls prove descriptor retention from unchanged heap/stack directly,
+without assuming that arbitrary input frames lack local aliases. All five
+repair targets and Ratchet build together (258 jobs, standard axioms).
+
+## 2026-09-30 — exact root-execution run decomposition
+
+RootAnswer proves both run and runA composition for pushRootK, which follows
+saved Enumerator executions. AnswerBase recognizes queued sends as continuing
+execution. Stack-only wrappers now require RootClean at entry and answer
+boundaries; halts/out-of-fuel states retain the full frame action. The typed
+conformance and preservation layers still need to establish these premises.
+
+Removed the unused, false immediate-raise/empty-jump helpers and old run_split
+proof, whose stack-only frame assumption was refuted by Enumerator suspension.
+The checked replacement accounts for every interpreter outcome. CatchFree's
+compatibility name now denotes all runtime-observed continuation restrictions.
+Answer and Boot pass (169 jobs, standard axioms), including rootCleanB at
+the real boot machine. check-proofs.sh also passes. The original
+unrestricted-frame counterexample remains checked. Full Denote is still red.
+
+## 2026-09-30 — typed root-execution boundaries
+
+StateCore now requires RootClean; boot proves it. Ext and Framed carry explicit
+preservation, including escape answers. Reframe and heap helpers expose the
+corresponding proof obligations. Assignment and Context composition use these
+facts when specializing exact saved-execution framing to an ordinary stack.
+Catch/rescue helpers use the exact root action; empty catch tags alone no longer
+imply ContextFree, with a checked block-frame counterexample.
+
+The twelve targeted boundary/heap modules build together (266 jobs, standard
+axioms). Bridge is unchanged. Full Denote remains red in downstream consumers,
+lexical scope assumptions and queued callback transitions; this is a repair
+checkpoint, not a claim that the end-to-end gate passes.
+
+## 2026-09-30 — boundary consumers and primitive dispatch
+
+RunWith, bounded runs and initializer runs now retain/provide root-boundary
+facts. Sequence and conditional composition build with the stronger context-free
+frame predicate. Method installation, scalar writes and captured reframing carry
+explicit preservation. The independent targets build together with standard
+axioms; full Denote is still red.
+
+Primitive numeric facts reduce through the current equality guard. The generic
+builtin dispatch lemma now explicitly excludes interpreter special entries and
+accounts for frozen results. Consumers, especially String#+ and constructors,
+need their actual special-entry proofs rather than that generic lemma.
+Literal-call allocation additionally binds breakScope and reserves a frame-store
+slot; the old plain reifyBlock proof does not establish that transition.
+
+## 2026-09-30 — use the runtime lexical resolver
+
+constResolveAt delegates to Interp.lexicalConstant. Scope and code metadata now
+record an empty top-level cref and a one-element top-level class cref. Inherited
+constant lookup follows the lexical namespace, with Object fallback for modules;
+a singleton method's distinct definee does not change its lexical namespace.
+Heap/method/reframe transports preserve that lookup, and constClass now proves
+the actual interpreter step. Boot remains checked.
+
+LexicalConstantRegression checks that a poisoned definee is ignored and a module
+still finds an Object constant outside its ancestor chain; Controls.All includes
+it. Eleven targets pass together (253 jobs, standard axioms). Initializer,
+bounded and local-flow sequence composition also now supplies root-boundary
+facts. Full Denote remains red at the remaining declaration and call transitions.
+
+## 2026-09-30 — primitive special dispatch and purity gates
+
+String#+ dispatch is proved through callStringPlusBuiltin with an existing String
+source payload. The generic primitive helper excludes that conversion entry.
+Builtin result conversion includes frozen outcomes. Scalar queries, Integer
+equality and Hash indexing retain the Complex-purity Unsupported branch.
+Array/Hash coercion absence follows from their actual payloads.
+
+Four primitive/index targets pass together (224 jobs, standard axioms), including
+runtime indexing controls. check-proofs.sh passes again. Remaining allocation
+work includes the two-object exception layout and queued initialize call: the old
+primitiveErrorsB ancestry fact alone does not establish safe native initialization.
+Full end-to-end soundness remains under repair.
+
+### 2026-09-30 — Exception allocation and native initialization proof repair
+
+The primitive error proof had become false: exception messages are heap Strings,
+and ZeroDivisionError queues native initialize before raiseNewK. Added the positive
+native initialization capability to StateCore, verified at boot and preserved by
+allocation/reframe/scalar heap writes. ExceptionAlloc proves both allocations,
+initialization's revision increment and the two queued transitions. NameError uses
+the direct native allocation path. FrozenError has a prelude initializer and
+requires its own effectful inspection argument; the former shared helper no longer
+claims that case. PrimitiveBuiltin and BareName now compile against the actual
+conversion/purity guards and native method_missing protocol.
+
+Targeted modules and the metatheory/axiom audit pass. The complete typed gate is
+still red in downstream composition and state preservation (method installation
+now owes primitiveInit preservation). This is a repair checkpoint under the
+user's authorization, not a completed soundness claim. Runtime code and the
+Bridge theorem statements are unchanged; root proof-changes.md stays uncommitted.
+
+### 2026-09-30 — Receiver and argument continuation consumers
+
+Primitive sends, generic argument lists, arrays and flow-tracked argument lists
+now supply RootClean and the actual observedKont exclusion. The former
+prim_catchFree helper's non-catch premise was insufficient for block-call,
+inspection and other observable continuations. Its intermediate premise now
+states observedKont=false. The registered semantic rule statements are unchanged.
+The five targets pass in the 255-job native-init/composition batch; the complete
+gate remains red at later method/class/closure transitions.
+
+### 2026-09-30 — Preserve native initialization across method definitions
+
+The native initialization capability now checks the protected ZeroDivisionError,
+StandardError, Exception prefix. ExceptionInitWrite proves that resolution occurs
+before Object, so top-level initialize definitions cannot replace it. Writes at
+other selectors also preserve the capability. Generic method transport consumes
+an explicit premise; top-level and instance-table publication derive it.
+InstanceSiteAt now records that published program classes were allocated after
+the builtin ids, and its unchanged-id transports retain that fact. Fresh-site
+producers are adapted separately while their existing lexical/entry dependencies
+are still being repaired. No checker admission guard or runtime behavior changed.
+Method-installation targets, Boot and WriteState pass (part of the 255-job batch).
+The stronger boot check passes; the full typed gate is still red.
+
+### 2026-09-30 — Checkpoint method-entry metadata and conformance consumers
+
+Required method frames now retain definee, method owner, definition frame, super
+scope, block-definition origin and library origin. Ordinary required-parameter
+entry, with and without a supplied block, explicitly excludes fromBlock and
+forTargets paths. Local lookup unfolds alias resolution. Both entry modules
+build with standard axioms; consumers still need ordinary-method metadata facts.
+
+Fresh class/module/subclass site producers now carry the after-builtin bound
+introduced by the native-initializer preservation repair. Singleton and inherited
+method writes supply initializer preservation; the inherited-shadow control
+supplies its new selector premise. Bounded primitive composition carries RootClean
+and observedKont=false. The singleton-scope control uses lexical lookup rather
+than a poisoned definee. These downstream edits are blocked by already failing
+dependencies and are not claimed fully checked.
+
+The MethodEntry/BlockEntry/Answer/Boot/TopMethodInstall batch passes (235 jobs),
+and check-proofs.sh passes. The full typed ratchet is RED in the proof build;
+CRuby replay is not reached. This user-requested checkpoint preserves top-level
+theorem statements, runtime behavior and all gate stages. The root audit remains
+uncommitted. The continuation-decomposability design decision and proposed block
+lifetime tokens are recorded in the model handoff; implementation has not begun.
+
+### 2026-09-30 — Independently check run_pushK after dynamic-state refactors
+
+The user requested restoring run_pushK alone, without repairing other proofs.
+The initial Answer target reached the complete root-framing chain, including
+block lifetime, Object/FrozenError inspection and shared Hash lock state, but
+failed through Frame's conformance imports at the existing BuiltinConformance
+strCmpDefer obligations. No framing or run-equation proof failed.
+
+KontFrameBase now owns the unchanged pushK, frameR, CatchFree and
+KontFrameCatchFree definitions. Frame re-exports them for existing typing
+consumers. AnswerBase and Decompose import that small interface directly;
+SafeKont imports Frame explicitly to retain its prior conformance API.
+The statement and proof of run_pushK are unchanged. Runtime, checker, admission
+and tests are unchanged; unrelated proof failures remain outside this task.
+
+Validation: lake build Denote.Sem.Core.Answer passes (80 jobs). The build checks
+run_pushK, runA_pushK and their root-run dependencies. Their axiom audits contain
+only propext, Classical.choice and Quot.sound. No sorry or additional assumption
+was introduced. Log: /private/tmp/runpushK-targeted.log. The full typed gate is
+not claimed green and was not rerun for this scoped task.
+
+### 2026-09-30 — Source-controlled clink gates and minimal semantic rebuild
+
+The user requested gating clinks to rebuild the typed ratchet against the new
+machine, and selected a minimal initial profile. Policy.lean enables the seven
+literal rules; 92 constructors are gated, with the complete authoring census
+still fixed at 99. intLit remains the real non-vacuity anchor. Unknown/duplicate
+profile entries fail. A gated rule is excluded before semantic-proof lookup,
+even when a provider imports its proof; explicit registration obeys the same
+gate. An enabled missing or mistyped proof is an error, not a deferred clink.
+
+Family.lean extracts the unchanged seventeen-family source interface. Spec no
+longer imports unrelated conformance proofs. ActiveProofs imports Context for
+the seven literals; FullProofs retains the former complete provider set.
+Target derives the same canonical semantic projections from available contracts.
+Unavailable projections are False, and registration rejects an active constructor
+mentioning any such projection in either its conclusion or premises. This check
+prevents an absent premise from making a semantic obligation vacuous. Kernel
+checking still enforces the exact constructor-derived form. The registry's
+public safety theorem statements are unchanged; the unrestricted DJudge bridge
+cannot be derived from a partial list.
+
+The new --clink-rebuild option checks isolation, profile census, refusal controls,
+all active clink proofs, registry soundness and an actual model-safety witness.
+It reports CLINK REBUILD CHECKS PASS, separately from RATCHET GREEN. The ordinary
+typed gate refuses partial coverage before its existing proof/corpus stages.
+No validateD behavior, admission rule, production floor, comparator or runtime
+semantics changed. Gated and missing rules have distinct report columns.
+
+The minimal proof-provider build required a shared prerequisite repair: the three
+Integer arithmetic dispatch lemmas now unfold strCmpDefer?/strCmpTwin? introduced
+by L299. Their statements are unchanged. No other proof family was advanced.
+The real Registry target passes (228 jobs), and its safety/non-vacuity axioms are
+only propext, Classical.choice and Quot.sound. GateControls exercises disabled
+imported proofs, enabled missing/wrong proofs, unavailable premise interpretations
+and malformed policies with a separate syntax-only fixture. It contributes no
+clinks to the real registry. The real integer safety witness has standard axioms.
+
+Validation: scripts/run_typed_ratchet.sh --clink-rebuild PASS; ordinary gate
+refuses the 92 gated clinks as intended. Shell syntax and diff whitespace pass.
+Logs: /private/tmp/clink-rebuild-{registry,final}.log and
+/private/tmp/clink-full-profile-refusal.log. Re-enable exact rule names and their
+providers incrementally as documented in Denote/Clink/README.md. Other proof
+repairs and the full typed ratchet remain future work. Pre-existing untracked
+paper/, proof-changes.md and wasm upstream-bug files remain untouched.
+
+### 2026-09-30 — Literal validator restriction
+
+Ratchet/Check/Literal adds validateLiteralD, parameterized by a rule policy so
+the isolated checker imports no semantic registry. Acceptance requires ordinary
+validateD acceptance, a direct literal hint, and permission for the exact literal
+rule. LiteralJudge records the source literal, its type and its authoring-rule
+name; validateLiteralD_typed returns this evidence and both Boolean acceptance
+facts. The original validator and its consumers retain their behavior.
+
+LiteralControls checks all seven kinds, mismatched payloads/tags, disabled rules,
+and rejection of otherwise accepted sequences and flow-wrapped literals. The
+rebuild gate now runs these controls. lake build Ratchet.Controls.LiteralControls
+and the rebuild gate pass; the acceptance lemmas use only standard axioms.
+The semantic bridge will supply the active clink policy in the next increment.
+
+### 2026-09-30 — Active literal bridge through the actual runner
+
+Denote/Bridge/Literal specializes validateLiteralD to clinkEnabled and proves
+literal_certified, validateActiveLiteralD_certified, and the conformant-machine,
+boot-machine and actual Semantics.run safety theorems. The last theorem accepts
+any fuel. Its imports are the literal checker, active registry and boot facts,
+with their transitive dependencies; no full DJudge certifier or example imports.
+A macro emits only enabled literal DClink references. Disabled cases are proved
+impossible from their policy evidence, with both paths checked by the kernel.
+
+The rebuild gate now builds this bridge. The real probe compares all seven
+literal acceptances to the active policy, rejects wrong hints and compound/flow
+wrappers, and proves safety for an actually accepted Integer program through the
+final runner theorem. The bridge and witnesses have only propext, Classical.choice
+and Quot.sound. No runtime changes, new axioms or proof admissions were added.
+
+Validation: the seven-literal rebuild gate passes. A temporary Integer-only
+profile (one certified, 98 gated) also passes, exercising all six disabled
+literal proof cases and validator rejections; the original profile is restored
+and rechecked before committing. Logs: /private/tmp/literal-bridge-{build,gate,
+int-only}.log. The unrestricted validateD and Bridge remain separate; the full
+typed ratchet still refuses partial coverage. Compound acceptance is future work.
+
+### 2026-09-30 — Share clink policy with the actual validator
+
+The user clarified that the desired boundary is validateD and Bridge.lean,
+rather than a separately named literal validator/theorem. The first preparatory
+increment moves the pure policy to Ratchet/ClinkPolicy; Denote/Clink/Policy exports
+compatibility names for the same definitions. Literal source evidence is split
+into LiteralEvidence so Check can import it without a cycle. Acceptance and
+theorems are unchanged in this increment. The rebuild gate passes. The next
+increment connects the original endpoints to the current enabled fragment.
+
+### 2026-09-30 — Gate validateD and the original Bridge theorem
+
+validateD now requires literal source-rule evidence, permission from the shared
+clink policy and raw check success. validateD_enabled returns this evidence;
+validateD_typed preserves the raw syntactic typing consequence. Raw internal
+check retains its body/cache machinery, but raw success alone is no longer the
+production acceptance boundary. The active evidence currently covers the seven
+direct literals. Compounds and flow wrappers are rejected by the actual endpoint.
+Further compound admissions require restricted premise/body evidence and its
+certification case; adding a registry name alone does not restore that evidence.
+
+Bridge.lean now builds with the existing validateD_safe, validateD_safe_boot and
+validateD_safe_run statements, whose hypothesis remains validateD p d = true.
+It imports Check, the active Registry and Boot plus their transitive dependencies.
+The optional full-authoring completeness/helper proofs moved to Bridge/Full;
+their existing method/instance/control clients explicitly import that module.
+Bridge/Literal is a compatibility wrapper around the original endpoints. No
+unrestricted DJudge completeness assumption is needed in the main Bridge.
+
+The rebuild gate checks the actual Bridge, validator controls, ratchetd and
+validate-one, plus real safety witnesses and the standard-axiom audit. The full
+historical corpus gate still requires complete coverage and retains its floors;
+its refusal now describes the corpus audit rather than claiming that a partial
+registry cannot justify the actual safety theorem. No runtime semantics, theorem
+statement, comparator, corpus floor, or historical full-coverage control was
+weakened. Existing full-registry controls retain their raw-helper imports.
+
+Validation: lake build Denote.Bridge and the seven-clink rebuild gate pass.
+The actual validate-one binary accepts a matching Integer/String, rejects a
+mismatched literal and rejects a raw-typable sequence. A temporary Integer-only
+shared profile passes the same gate with one certified/98 gated; the actual
+adapter then accepts Integer and rejects String. Restoring the seven-clink
+profile and rebuilding restores String acceptance. The final theorem and
+witnesses depend only on propext, Classical.choice and Quot.sound. Logs:
+/private/tmp/active-bridge-build.log, active-validator-{gate,int-only}.log.
+
+### 2026-09-30 — Generic rule traces for validateD and Bridge
+
+Replace literal source-rule evidence with constructor-indexed judgments derived
+from all 99 authoring constructors in 17 families. Every conclusion records its
+own rule and each judgment-premise trace, including uniform callback witnesses.
+Erasure to the raw judgments and active-clink certification are generated from
+constructor metadata as ordinary kernel-checked proofs. Disabled cases contradict
+the policy hypothesis; enabled cases apply actual registry closure proofs.
+
+The computational checker moves unchanged to Check/Raw. Its generated Audit
+projection and body/cache helpers carry indexed proof/trace metadata. Gates
+reject stale projections. validateD checks the resulting trace with the same
+clink policy as the registry, preserving exact program/hint guards and the
+original final safety theorem. Literal-specific modules are deleted.
+
+The seven-rule rebuild gate and Bridge standard-axiom audit pass. Temporary
+all-enabled checker validation passes the existing DerivControls suite, covering
+compound, method, class, cache and callback paths; the seven-rule profile is
+restored. No runtime changes, other proof repairs, corpus floor changes or new
+axioms. Logs: /private/tmp/generic-validator-{bridge,gate}.log and
+/private/tmp/generic-full-checker-controls.log.
+
+### 2026-09-30 — Exercise compound admission through the original endpoints
+
+Move the unchanged DJudgeSeq.last/cons semantic obligations beside Sequence's
+interpretation so admitting sequences does not import unrelated Primitive/Hash
+proof providers through RulesCtx. Add a sequence witness to the rebuild probe,
+using the actual validateD_safe_run theorem and trace permission hypothesis.
+
+Temporary ten-rule sequence+last+cons and nine-rule sequence+last profiles pass
+the complete rebuild gate. The actual validate-one accepts one/two-element
+sequences under the former, and only the one-element case under the latter.
+The generic certifier therefore exercises recursive companion premises, not just
+literal cases. The final theorem/witnesses use only standard axioms. Restore the
+original seven-literal policy/providers and rerun the gate before committing.
+A stale generated-source control is also rejected by the freshness check.
+Logs: /private/tmp/generic-sequence-gate.log and generic-sequence-no-cons-gate.log.
+
+### 2026-09-30 — Make clink admission part of ascent
+
+The user requested that climbing the ratchet explicitly include adding the
+clink to the clinkEnabled set. AGENTS.md, CONTRIBUTING.md and the registry guide
+now require the exact constructor suffix in clinkProfile, provider import,
+required companion/body admission, passing active registry/Bridge proofs and
+controls, and production validateD acceptance for a positive corpus rung.
+A proved but gated rule remains unclimbed in the committed active profile.
+No policy, runtime or proof changes. Validation: the clink rebuild gate passes.
+
+### 2026-09-30 — Default green for active soundness; active progress only
+
+The user requested that run_typed_ratchet pass GREEN when the active soundness
+theorem passes and count only enabled clinks in climbed rungs. The default now
+builds the active registry/Bridge, rejects nonstandard theorem axioms, retains
+its controls and corpus/CRuby checks, and reports active clinks plus actual
+validateD corpus accepts. Disabled rules and rejected positive rungs are work
+remaining rather than missing-proof debt. Gated dependencies come from indexed
+checker traces, including companion/body premises. A fresh default corpus output
+avoids cached rungs inflating filtered reports.
+
+The original historical full-coverage gate remains behind --full-corpus, with
+its floors and audits unchanged; --clink-rebuild remains proof/controls-only.
+No policy, checker admission, runtime or soundness statement changed.
+
+Validation: default gate GREEN, 7/99 clinks, 8/261 corpus rungs, 46/46 negatives
+rejected, 254 agree/0 disagree. Filtered gate passes with and without agreement.
+Classifications, nonstandard-axiom refusal, negative-accept/Sorbet/upstream-error
+refusals and historical full-profile refusal pass. Logs:
+/private/tmp/active-ratchet-default-gate.log and active-ratchet-controls.log.
+
+### 2026-09-30 — Align gate guides and verbose output
+
+Root/package contribution instructions and reproduction/registry guides now
+explain default active soundness, proof-only --clink-rebuild, and historical
+--full-corpus modes. The example reports active clinks, actual corpus accepts,
+separate negative controls and trace-derived pending dependencies. Preserve the
+existing Denote control/example guidance under the historical full audit.
+Verbose mode forwards its flag to the active proof checker. The filtered verbose
+gate passes; the preceding full default run includes 254 CRuby agreements.
+
+### 2026-09-30 — Admit sequences in the active profile
+
+Enable seq and DJudgeSeq.last/cons with the existing Sequence provider. Reuse
+its answer/state/framing proofs unchanged. Exact child and length controls,
+empty-sequence refusal and nested mixed-literal acceptance accompany admission;
+a two-expression witness reaches validateD_safe_run using only standard axioms.
+No checker/runtime or historical floor changes.
+
+Full default gate GREEN: 10/99 clinks, 8/261 accepts, 46/46 negatives rejected,
+254 CRuby agreements, zero disagreements. Sequence alone adds compositional
+rules; the current corpus needs further rules before more programs accept.
+Log: /private/tmp/ascent-sequence-gate.log.
+
+### 2026-09-30 — Admit local reads and assignments
+
+Enable var/vasgn using Context's existing conformance/framing proofs unchanged.
+Controls cover nil retyping, nested RHS effects, missing locals, forged RHS
+values and variable namespaces; a retyping witness reaches the final runner
+theorem with standard axioms. No checker/runtime or floor changes.
+
+Full default gate GREEN: 12/99 clinks, 9/261 accepts (031 newly climbed),
+46/46 negatives rejected, 254 agree/0 disagree. Log: /private/tmp/ascent-locals-gate.log.
+The batch metatheory check exposes pre-existing strCmpDefer? simplification drift
+in Static/Decls' four Integer rows; primitive preflight exposes the same drift
+in ArrayIndex/HashIndex. Repair those existing proofs next.
+
+### 2026-09-30 — Repair and admit primitive sends
+
+Enable prim/DJudgeAll.nil/cons with the existing Primitive provider. Move its
+unchanged context-indexed list obligations out of RulesCtx to avoid importing
+unrelated Hash expression proofs. Repair String-comparison deferral simplification
+in ArrayIndex, HashIndex and Integer equality; theorem statements are unchanged.
+Controls retain arity/result/operand checks and saved-receiver evaluation order;
+division by zero reaches the all-fuel safety theorem as a non-type-error escape.
+
+The batch audit also repairs Static/Decls' four Integer dispatch proofs and finds
+a false iterK transparency premise after shared Hash-lock cleanup. Preserve the
+counterexample and require IterUnwindInert in RetTransparent/NxtTransparent;
+the admitted ignore iterator remains supported. See ../../unsoundness.md and the
+model record. No runtime, checker, top-level safety statement or floor change.
+
+Full default gate GREEN: 15/99 clinks, 29/261 accepts, 46/46 negatives rejected,
+254 agree/0 disagree. check-proofs.sh and its axiom/boot audits PASS. Primitive
+modules build in at most 14 seconds; no new axioms or resource-limit increases.
+Logs: /private/tmp/ascent-primitives-gate.log and ascent-metatheory-repair.log.
+
+### 2026-09-30 — Admit branches and guarded bare-name escapes
+
+Enable if'/ifNoElse/bareName with their existing providers unchanged. Controls
+check non-Boolean truthiness, both branches, omitted-else nil, joined local types
+and declaration/call-site guards. Missing else and bare NameError each reach the
+original all-fuel runner theorem with standard axioms. No checker/runtime change.
+
+Full default gate GREEN: 18/99 clinks, 41/261 accepts, prefix 17, 46/46 negatives
+rejected, 254 agree/0 disagree. Log: /private/tmp/ascent-branches-gate.log.
+Array preflight passes. Hash preflight needs the existing root-clean bindSpec
+premise and the actual Complex-key gate; a repaired temporary proof passes
+(/private/tmp/ascent-hash-proof.log), pending permanent admission.
+
+### 2026-09-30 — Repair and admit Array/Hash literals
+
+Enable arrayLit/hashLit/DJudgePairs.nil/cons. Reuse Array's existing proof;
+repair Hash's bindSpec calls with the conformant state's root cleanliness and
+handle the interpreter's Complex-key comparison gate before reusing its existing
+typed-accumulator proof. No strengthened key domain or changed theorem statement.
+Move unchanged pair obligations beside Hash; RulesCtx remains a compatibility
+import. Controls cover joins, exact children, empty literals, effects/evaluation
+order, duplicate keys and companion permissions. Out-of-bounds Array indexing
+and duplicate Hash keys reach validateD_safe_run with standard axioms.
+
+Full default gate GREEN: 22/99 clinks, 49/261 accepts, prefix 17, 46/46 negatives
+rejected, 254 agree/0 disagree. Log: /private/tmp/ascent-collections-gate.log.
+A concurrent preflight initially raced over Context.olean; all Lake builds must
+now run sequentially. The successful gate rerun had no competing Lake process.
+Next method preflight fails in MethodReturn: new Framed root-clean field,
+localFrameId alias-aware lookup, and bindSpec's root-clean/catch-free interface.
+Log: /private/tmp/ascent-methods-preflight.log. Method rules remain gated.
+Final batch check-proofs.sh PASS: /private/tmp/ascent-final-metatheory.log.
+
+### 2026-09-30 — Restore ordinary method return prerequisites
+
+Keep the existing saved-frame/environment proof. Framed now transports root
+cleanliness on pop; methodFrame_runSpec takes it explicitly for bindSpec.
+getLocal_uncaptured's old premise is false for an uncaptured for-frame alias.
+Add the missing no-alias premise, preserve it across pop and supply it from
+StateOk in MethodState. MethodAliasControls preserves the kernel counterexample
+and runs in the mandatory rebuild probe; see ../../unsoundness.md.
+
+MethodState's capture-preservation proof now names the machine frame-push
+definition explicitly, avoiding its same-named CaptureLive theorem. Entry/return
+reframing supplies root cleanliness explicitly. Required method entry carries
+the runtime's fromBlock=false/forTargets=none preconditions; ordinary metadata
+and source dispatch still need revalidation before method admission.
+
+Validation: full default gate GREEN, unchanged 22/99 clinks and 49/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. The rebuild gate also passes
+with MethodAliasControls explicitly built before the probe, so a fresh checkout
+does not rely on its cached olean. Logs: /private/tmp/ascent-method-return-gate.log
+and ascent-method-return-rebuild.log. MethodReturn/State/control builds take
+under two seconds, with only standard axioms. Next failure is MethodDispatch:
+stale top-level cref, native method_added queuing and ordinary method metadata.
+
+### 2026-09-30 — Reject alternate binding in ordinary method metadata
+
+MethodCodeControls measures an accepted legacy ordinary-code descriptor whose
+for callback binding plan overwrites typed Integer formal y with nil; its checked
+y+1 body reaches a runtime type error. Require fromBlock=false/forTargets=none
+in OrdinaryMethodCode and ordinaryMethodCodeB, and prove those projections in
+the existing Boolean soundness lemma. These are the entry modes assumed by
+required_method_runSpec, not result-type hints or emitter repairs.
+Controls preserve the legacy witness/body check and independently reject both
+alternate modes; ordinary metadata still passes. Both method-boundary controls
+are explicitly built and imported by the mandatory probe. See ../../unsoundness.md.
+No runtime/checker policy or top-level safety statement changes.
+
+Validation: full default gate GREEN at 22/99 clinks, 49/261 accepts,
+46/46 negatives rejected and 254 agree/0 disagree; check-proofs.sh passes.
+Logs: /private/tmp/ascent-method-metadata-{gate,metatheory}.log.
+
+### 2026-09-30 — Make ordinary definition's method table writable
+
+The full former boot-state guard admits frozen Object plus an unconstrained
+fromPrelude FrozenError initializer; a trivial def reaches nil+1 in that callback.
+FrozenDefinitionControls preserves both measurements (see ../../unsoundness.md).
+Strengthen MainReady with unattached/unfrozen Object and prove writable from them.
+Preserve both facts using the existing heap-extension/view and method-write proofs;
+attached_defineMethod isolates unchanged attachment from the changed method table.
+The real boot guard still accepts. This repairs the ordinary semantic definition
+contract; frozen-definition callbacks need their own future contract.
+
+Validation: full default gate GREEN, 22/99 clinks and 49/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree; check-proofs.sh passes.
+Logs: /private/tmp/ascent-writable-{gate,metatheory}.log. Repaired modules
+build under one second; the active bridge rebuild takes 20 seconds.
+
+### 2026-09-30 — Repair the source method mutation protocol
+
+Retain MethodDispatch's pure heap-installation and user-dispatch lemmas, but
+construct the actual source record (definee, empty top cref, library provenance,
+definition-scope visibility) and apply the interpreter's privacy normalization.
+step_def_install now proves the real queued send plus methodEditsK, under explicit
+writable/detached/user-phase premises. DefHookQuiet pins the native hook; absence
+or arbitrary owner identity no longer substitutes for it.
+
+DefinitionHook proves the native callback's result while retaining shadow gates.
+definition_hook_runSpec composes that dispatch and the edit marker with the
+existing answer/conformance contract. Required dispatch carries the repaired
+fromBlock/forTargets premises. MethodDefinitionControls measures installation,
+the intermediate nil callback result, the final name and initialize_copy privacy.
+It explicitly builds MethodDispatch in the mandatory gate. These are prerequisite
+repairs: MethodDefine still needs the source library-origin invariant and method
+resolution's definee/frame metadata revalidation before admitting method clinks.
+
+A broad simp over builtin dispatch was stopped after about a minute. Closed
+guard facts (kernel decide) plus the existing dispatch structure reduce the
+replacement proof to under two seconds, with only standard axioms.
+
+Validation: full default gate GREEN at unchanged 22/99 and 49/261,
+46/46 negatives rejected, 254 agree/0 disagree; check-proofs.sh passes.
+Logs: /private/tmp/ascent-definition-{gate,metatheory}.log.
+Next wrapper preflight: MethodDefine needs libraryOrigin=false and the new
+callback composition. MethodResolve still uses deleted lookup.go and mistakes
+MainReady's leading main dispatch class for Object. Log:
+/private/tmp/ascent-method-wrappers-preflight.log. No method clink is admitted.
+
+### 2026-09-30 — Repair provenance and admit ordinary definitions
+
+MainReady now excludes library-origin frames: the complete legacy state guard
+accepted one whose trivial source definition fails ordinary-code conformance.
+MethodOriginControls retains that witness (see ../../unsoundness.md). Extend
+FrameScope by the provenance bit and transport it through existing local,
+heap/view, entry/return and reframe proofs; no runtime or emitter change.
+
+MethodDefine retains the heap conformance proof, supplies normalized-record
+projections and composes step_def_install with definition_hook_runSpec rather
+than the obsolete one-step leaf. definitionFrameId/currentDefinitionFrame and
+sourceMethod receive ctl/kont invariance lemmas so visibility is transported
+through the actual definition-frame walk. Permanently enable defDecl and import
+its provider. Validator controls accept a required-Integer identity definition,
+reject missing child/admission rules, parameter mismatch and uncalled bad bodies.
+Call rules remain gated pending main-prefix lookup and activation metadata repair.
+
+Validation: full default gate GREEN, 23/99 clinks and 49/261 corpus accepts,
+46/46 negatives rejected, 254 agree/0 disagree; check-proofs.sh passes.
+Logs: /private/tmp/ascent-defdecl-{gate,metatheory}.log. Repaired definition
+and metadata lemmas build in under a second, with standard axioms only.
+
+### 2026-09-30 — Preserve the main-prefix call countermodel
+
+MethodPrefixControls passes the complete current boot-state guard with a forged
+native bump on main's leading dispatch class. The unrestricted checker accepts
+def bump=1; bump(), but execution raises ArgumentError because that builtin
+wins ahead of Object. Preserve the measured premises and result in a mandatory
+control; production callSig remains gated. The next repair must constrain this
+prefix and illegal main-native names in positive definition records, then follow
+the real lookup walk. See ../../unsoundness.md. The evaluated control builds
+under a second; proof/controls gate passes at the unchanged definition profile.
+
+### 2026-09-30 — Reject forged main singleton-prefix entries
+
+MainPrefix bounds main's own table by the existing native selector list and
+proves absence for every other name. MainReady/its Boolean guard carry the bound;
+view/reframe/allocation and ordinary method writes preserve it. A generic write
+now takes MainPrefixWriteOk when runtimeMain or mainWorld is requested; this
+allows native selectors on main and arbitrary writes to distinct owners.
+StateCore.objectWrite derives Object's separation from main's exact ancestor
+chain. Top-definition installation uses that proof. Instance publication carries
+the new obligation explicitly instead of assuming a declared owner is distinct.
+
+MethodPrefixControls retains the complete old state guard, rejects the measured
+forged-prefix world under the new guard, and still accepts the real boot bound.
+The unchecked descriptor/call runtime counterexample remains intact. Call clinks
+stay gated until positive definition names and activation metadata are repaired.
+
+Validation: full default gate GREEN, unchanged 23/99 clinks and 49/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree; check-proofs.sh passes.
+Logs: /private/tmp/ascent-main-prefix-{gate,metatheory}.log. New guard/transport
+proofs build under a second, with standard axioms only.
+
+### 2026-09-30 — Repair ordinary lookup and admit callSig
+
+Retain MethodState's checked-body/entry/return proof and MethodArgs' argument
+accumulator. MethodResolve now follows lookupInChain.go's fuel and the real
+main-singleton/Object chain, with visibilityOnly=false at the checked row.
+DefsOk carries non-native main names; top installation derives this from the
+existing topDeclClassesB guard. Generic preservation retains the fact.
+
+OrdinaryMethodCode pins definee.getD owner after MethodDefineeControls measured
+a legacy metadata accept whose checked nested def/call raises NoMethodError.
+See ../../unsoundness.md. Both default and explicit matching definee are valid.
+Do not overconstrain heaps to eliminate native fidelity gates: top_method_stepSpec
+uses the original body/frame proof when crubyShadow is absent and proves the
+real unsupported transition otherwise. callSig composes that StepSpec with the
+original argument/rebase proof. Enable its provider and shared policy entry.
+Validator controls cover zero/one arguments, wrong type/arity/result, reserved
+main names and missing body/argument companion permissions; the gate also checks
+an identity-call boot safety theorem and the metadata countermodel.
+
+Validation: full default gate GREEN, 24/99 clinks and 54/261 accepts (+5),
+46/46 negatives rejected, 254 agree/0 disagree. New semantic proofs build under
+a second, with standard axioms only. Logs: /private/tmp/ascent-call-final-gate.log
+and /private/tmp/ascent-call-metatheory.log.
+
+### 2026-09-30 — Repair the bounded call path and admit recursion
+
+Keep Recursive's existing strict execution-bound induction. BoundedMethod now
+threads RootClean through continuation binding, carries ordinary fromBlock/
+forTargets and activation provenance, and reuses the repaired main-prefix lookup.
+Its concrete entry theorem requires absent native shadows; top_method_stepSpecAt
+retains unsupported otherwise. BoundedCall consumes that contract and supplies
+argument root cleanliness. No change to recursive judgments or discovery.
+
+Enable recursive, its four DJudgeRec and two DJudgeRecAll companions. Build/import
+the existing RecursiveDerivations factorial proof and RecursiveControls in the
+mandatory gate. Those controls check full annotation domains, invalid unvisited
+base branches, arity/return mismatches, divergence without type error and cache
+refresh after another method definition. A new refusal control removes each of
+the seven recursive rules in turn from the real validator trace.
+
+Validation: full default gate GREEN, 31/99 clinks and 55/261 accepts (+1),
+46/46 negatives rejected, 254 agree/0 disagree. Existing recursive induction and
+new bounded helpers kernel-check under a second with standard axioms only.
+Logs: /private/tmp/ascent-recursive-final-gate.log and
+/private/tmp/ascent-recursive-metatheory.log.
+
+### 2026-09-30 — Reject unsafe fresh-class callback worlds
+
+ClassRules preflight found actual class entry now registers/names an anonymous
+class, realizes an attached metaclass, queues const_added then inherited, and
+only then pushes its body frame. The old direct freshClsMachine equality is
+false. ClassHookControls measures both callback countermodels against the
+complete former boot guard and unrestricted checker; see ../../unsoundness.md.
+
+ClassHooks bounds the first own callback entries above Object to native no-ops,
+excluding visibility-only forwarding. MainReady/its guard retain this contract;
+view, reframe, heap growth and method writes preserve it. ClassHookWriteOk allows
+writes outside that prefix or to other selectors; Object is always outside the
+takeWhile prefix, so top-level callback-name definitions stay available. Generic
+write/publication helpers carry the obligation explicitly. Keep class clinks
+gated until the real registration and callback path is proved; do not modify
+the interpreter to rescue the legacy composite.
+
+ClassHooks also proves its first-own guard reaches the real fuel-bounded lookup:
+empty tables consume fuel and the non-forwarding row stops before Object. The
+ancestor-length bound supplies the budget. Both unsafe witnesses are rejected,
+while real boot and actual validator definitions named const_added/inherited pass.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks and 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. New callback-prefix/lookup helpers
+build in 201ms with standard axioms only; both controls build in 1.2s. Metatheory
+passes. Logs: /private/tmp/ascent-class-hooks-{gate,metatheory}.log.
+
+### 2026-09-30 — Repair ordinary allocation readiness
+
+Actual fresh class registration inherits ancestryReady/allocatorUnavailable from
+Object; the old synthetic heap supplied defaults. AllocationReadyControls measures
+a complete legacy boot accept whose checked fresh-class/new program raises TypeError.
+It also preserves the full legacy PlainAllocator guard for attached, uninitialized
+and unavailable Object and observes the real native construction failures.
+
+PlainAllocator now carries plainAllocationReadyB for attached/initialized/ancestry/
+allocator metadata, and its metadata lemma exposes the native checks. Preserve
+readiness through the existing Ext, method-write and ivar-write transports. The
+small classPayload_metadata_defineMethod lemma permits any metadata-only Bool;
+AllocationReady imports only HeapFacts to remain below Ready (ConstLive would
+create a cycle through InstanceSite). MainReady additionally pins Object's
+inherited ancestry/allocator flags; reframe/view/growth/method writes carry them.
+No checker or interpreter changes. Keep class/constructor rules gated until their
+real registration/dispatch proofs consume these facts. See ../../unsoundness.md.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks and 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Metadata helpers build in 188ms,
+controls in 1.1s; metatheory passes with standard axioms only. Logs:
+/private/tmp/ascent-allocation-ready-{gate,metatheory}.log.
+
+### 2026-09-30 — Repair class registration and retained field-write facts
+
+Keep the original MainSite.ivarOnly lookup/constant/dispatch proof; transport all
+six added MainReady fields using IvarOnly's payload/frozen/ancestor equalities.
+ClassRegistration reuses evalExpr_class_fresh and constSetIn_alloc_comm: prove
+the allocated anonymous payload, permanent naming of its empty constant table,
+and the actual first successor through eigenclassOf/callConstAdded. This repairs
+the entry prerequisite without assuming the legacy synthetic metaclass heap.
+MainReady's inherited flags prove freshClassNamed_ready for the real named class.
+Both modules are mandatory gate prerequisites with printed axioms. Class rules
+remain gated until callbacks, real heap conformance and return are repaired.
+
+Validation: full default gate GREEN, 31/99 clinks and 55/261 accepts, 46/46
+negatives rejected, 254 agree/0 disagree. Registration/readiness proofs build in
+304ms and field-write preservation in 213ms, standard axioms only; metatheory
+passes. Logs: /private/tmp/ascent-class-registration-{gate,metatheory}.log.
+
+### 2026-09-30 — Repair the fresh-class callback prefix
+
+ClassHookDispatch adapts the existing invoke_native_method_added argument to
+const_added/inherited, with real reflective lookup, exact no-op native identifiers
+and the existing crubyResolvedShadow unsupported branch. The prefix guard plus
+ChainsIn yields the operational step without changing heap, frames or continuations.
+ClassCallbacks follows definition_hook_runSpec's step composition through both
+callbacks and their continuations. Ordinary pushClassFrame reuses freshModFrame;
+class_callbacks_runSpec feeds the provided body/return RunSpec in that exact frame.
+Prove the push equation before specializing its machine control, so simplification
+does not repeatedly expose copied currentFrame records. Both modules are mandatory
+prerequisites. Actual post-registration heap conformance remains before admission.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Native dispatch builds in 1.6s,
+callback composition in 708ms; standard axioms only and metatheory passes. Logs:
+/private/tmp/ascent-class-callbacks-{gate,metatheory}.log.
+
+### 2026-09-30 — Repair the actual fresh-class heap and entry equation
+
+ClassHeapActual factors naming/attachment over the existing constSetIn allocation
+commutation. Retain the original array-read strategy: the class has permanent
+naming/revision 1, then attachment/revision 2; its anonymous metaclass carries
+attached=some class id. eigenclassOf_named adapts eigenclassOf_clsObj's cached
+Object-parent branch. Old objects equal the registration heap; ClsGrow plus the
+existing chainsIn_of_clsGrow/saturated_of_clsGrow_heads preserve old ancestor
+walks, method tables and callback lookup. Named allocator metadata survives
+attachment. Use the original discrete fresh_cases split rather than automation.
+
+ClassEntry.stepFn_class_fresh now states/proves the actual queued const_added
+successor, retaining its original StateOk and cached-eigen premises. Its prior
+direct synthetic body successor was false. Header/body callers still need actual
+heap conformance before consuming ClassCallbacks; keep their clinks gated. The
+repaired entry and actual heap facts are mandatory gate prerequisites.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected and 254 agree/0 disagree. Actual heap proofs build in
+1.2s, repaired ClassEntry in 638ms; standard axioms only, metatheory passes.
+Logs: /private/tmp/ascent-class-heap-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair name growth for attached class metaclasses
+
+The old namesOk_namedGrow requires every fresh class to be named and unattached;
+the real metaclass meets neither premise. ClassNamesActual keeps its old-id
+branches and NameGrowth's bounded classPath/className transports, replacing only
+the fresh-id obligation with explicit bounds and fuel equalities. The actual
+class has an immediate permanent path; its metaclass has an anonymous native
+path and renders its attached class after two steps. Both allocated ids and
+their attachment are live, and all old displayed names survive registration.
+No name snapshot, attachment removal or weaker name guard is introduced.
+Use explicit heap-size equations at attachment bounds to avoid rewrite inference
+selecting a different nested heap. The module is a mandatory gate prerequisite.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Name proofs build in 370ms
+with standard axioms only; metatheory passes. Logs:
+/private/tmp/ascent-class-names-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair actual-class core conformance and data preservation
+
+ClassConstantsActual retains the Subclass constant-table case split: registration
+changes only Object's fresh binding, preserves old names/fallbacks, and keeps
+constant references live. Explicit namespace/live bounds support the real heap.
+ClassReadyActual and ClassCoreActual reuse the original field transfers with
+actual attached-metaclass facts. ClassDataActual supplies the original
+dataPres_of_class_growth induction with repaired reads, ancestor heads and names;
+the original caller-framing argument then transports data, fields and Proc payloads.
+No checker or runtime changes. All four modules and their axiom probes are
+mandatory prerequisites; class-body StateOk and header/return repair remain
+before class admission.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Constant/core/readiness/framing
+modules build in 445/163/322/218ms, standard axioms only; metatheory passes.
+Logs: /private/tmp/ascent-class-conformance-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair actual-class dispatch, queries and payloads
+
+ClassDispatchActual retains Subclass's source map and old/fresh/out-of-range
+case split. Fresh method tables are empty; the class maps to Object and its
+attached metaclass to Object's cached metaclass. Unlike the old anonymous
+metaclass, attachment also consults crubySingletonDefines on the class's name;
+the general shadow lemma keeps that premise and main's live bound explicit.
+ClassQueriesActual kernel-checks that none of the six query selectors occurs in
+the singleton-name table, deriving the extra premise without changing the guard.
+The original QueryOk/ClsQueryOk/NilQueryOk transfers and payload arguments then
+apply. Replace congr's deep heap unfolding with explicit Bool.and congruence;
+no heartbeat increase. All three modules/axiom probes are mandatory. No checker
+or runtime changes, and class rules remain gated pending full StateOk/return.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Dispatch/query/payload modules
+build in 286/306/216ms, standard axioms only; metatheory passes. Logs:
+/private/tmp/ascent-class-dispatch-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair actual class frame, tables and lexical scope
+
+ClassFrameActual identifies the real callback-body machine with the original
+freshModFrame shape and reuses its empty locals/ivars, self type, live receiver
+and saved-frame proofs. ClassMethodsActual keeps the old installed-table argument;
+DefsOk additionally carries the repaired main-singleton name exclusion.
+ClassScopeActual retains inherited definition-hook lookup and uses main's actual
+empty cref, making the body cref exactly [newClass]; the old [Object] premise
+produced the wrong frame. ClassNameEntryActual reuses the existing three-site
+absence transfer via Object's cached metaclass. All four modules and axiom probes
+are mandatory; full body StateOk and return still precede admission. No checker
+or interpreter changes.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Frame/table/scope/name-entry
+modules build in 1.0s/544ms/628ms/579ms, standard axioms only; metatheory passes.
+Logs: /private/tmp/ascent-class-scope-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair actual-class constant resolution and typed tables
+
+ClassConstScopeActual retains the original own-table/ancestor argument, adjusted
+to the real cref=[newClass] and current lexicalConstant/instanceConstResolve.
+The fresh empty table falls through to Object's actual ancestor lookup; registration
+retains main's global agreement, with the new binding split from all other names.
+Retain the parent-metaclass missing-constant transfer. ClassTablesActual reuses
+the original first-order constant/path/nested-class transports and ClassTablesFrame
+preconditions unchanged. Use explicit frame rewriting before changing to
+instanceConstResolve to avoid deep machine unfolding; no heartbeat increase.
+Both modules and axiom probes are mandatory. No checker/runtime changes.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Constant-scope/table modules
+build in 720/523ms, standard axioms only; metatheory passes. Logs:
+/private/tmp/ascent-class-constantscope-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair main-site and old allocator metadata retention
+
+ClassMetadataActual reuses the constant-write payload split for explicit
+constant-table-invariant projections; map/any/bind transports retain old module,
+attachment and allocation-ready metadata. ClassMainActual keeps SubclassMain's
+lookup/name/bare/missing/new-dispatch argument and carries all 17 MainReady
+fields, using the repaired Object ancestor/global agreement. Parameterize the
+outgoing heap with an equality to the actual heap: otherwise record projection
+elaboration unfolds nested allocation records. Rewrite both occurrences of
+the main dispatch class in its chain equality. No heartbeat increase, checker
+or runtime changes. Both modules/axiom probes are mandatory. Instance-site
+constant retention still needs the current ancestor/module-fallback argument;
+the old explicit Object fallback no longer describes instanceConstResolve.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Metadata/main-site modules
+build in 773/737ms, standard axioms only; metatheory passes. Logs:
+/private/tmp/ascent-class-main-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair actual class declarations, allocators and header chains
+
+ClassDeclaredActual reuses the original name/id match, dispatch-shadow and
+ordered-chain transfers for existing declarations and own-selector bounds.
+ClassAllocatorsActual carries the newer readiness equality through old plain
+allocators, extends only the executed global-name bound, and reuses the original
+ordinary-chain/no-core/no-payload argument for the fresh allocator. Its readiness
+comes from Object's inherited flags, not default metadata. ClassChainsActual
+retains the original empty-header selector and ordered root-name publication
+proofs. All three modules/axiom probes are mandatory; full class-body StateOk
+and header/return composition still precede admission. No checker/runtime changes.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree. Declaration/allocator/header-chain
+modules build in 737/677ms/2.6s, standard axioms only; metatheory passes. Logs:
+/private/tmp/ascent-class-capabilities-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair actual class instance sites and retain reachability witness
+
+ConstantReachControls kernel-checks an InstanceSite with a BasicObject-only chain
+and a copy of Object's current constants: actual fresh class registration breaks
+its constant equality. This refutes the old generic site transfer, not an accepted
+program's safety; no Sorbet or type-error claim follows. Preserve this witness.
+ClassInstanceConstantsActual repairs the original fresh-name/other-name split:
+fresh globals require Object in the old chain or the module fallback. A list
+induction transports an absent old lookup to the new Object binding; the existing
+ClassChains.root_tail supplies reachability when static ancestry resolves.
+ClassSitesActual reuses the original names/hook/metaclass/front/fallback transfers
+and fresh-site publication, carrying that explicit constant premise. ModuleBase
+uses its existing transport. These proofs and the witness are mandatory gate
+prerequisites. No checker/runtime change; old-site reachability for every body
+site still precedes class admission. Proof builds: 604/626ms, standard axioms only.
+
+Validation: full default gate GREEN, unchanged 31/99 clinks, 55/261 accepts,
+46/46 negatives rejected, 254 agree/0 disagree; metatheory passes. Logs:
+/private/tmp/ascent-class-sites-{gate,metatheory}.log.
+
+### 2026-10-01 — Repair actual class-body StateOk
+
+FreshClassActual.state composes all actual-heap repairs into the original full
+StateOk at the callback-body entry. ClassBasesActual/ClassPrimitiveInitActual add
+module/builtin bases and primitiveInit; frame adds localAlias/captured/rootClean.
+Old class sites keep the explicit reachability premise (ConstantReachControls).
+Mandatory gate prerequisite; standard axioms only.
+
+### 2026-10-01 — Repair actual class header publication
+
+Actual `new` dispatch on the attached metaclass also checks CRuby singleton-name
+shadows. classNativeQuietB now excludes `new` for the 16 classes whose singleton
+table defines it (nativeSingletonNew; coverage kernel-checked by decide). All are
+existing builtins or qualified, so no accepts change. ClassHeaderActual repairs
+new_dispatch, the two-way named chain and DeclClassOk; ClassHeaderStateActual.header
+publishes classHeaderCtx over the actual body entry. Mandatory; standard axioms.
+
+### 2026-10-01 — Compose the actual fresh-class run
+
+MainReturn/ClassActivation/ClassReturn take the current localAlias/rootClean/origin
+fields (StateOk.localAlias_getD bridges the stack-head getD form). class_actual_runSpec
+composes stepFn_class_fresh, class_callbacks_runSpec, the actual header state and
+ClassActivation.runSpec; it keeps the explicit old-site reachability premise.
+Mandatory gate prerequisite; standard axioms only.
+
+### 2026-10-01 — Climb classDecl (32/99)
+
+classRuleB adds classReachB: every non-module declared class has resolvable static
+ancestry. StateOk.classReach turns it (via ClassChains.root_tail / DeclClassOk) into
+class_actual_runSpec's old-site reachability premise. ClassDeclActual provides
+SemSafeCtxA.classDecl; the legacy provider is removed from ClassRules. ClassGuards
+imports ClassTablesFrame directly (not legacy ClassTables). Controls: literal body,
+rule removal, String/Object, reopened name, two classes. No corpus rung yet: class
+rungs also need constClass/member/init/new rules.
+
+### 2026-10-01 — Climb constClass (33/99)
+
+The existing ClassConstant provider builds unchanged against current StateOk
+(constScope + classes). Controls: declared-then-read accepted; rule removal,
+read-before-declare and undeclared reads rejected.
+
+### 2026-10-01 — Primitive rows intCmp/intNil/symToS/symEq (59/261)
+
+DPrim gains Integer#<=> [int]→int, Integer#nil?→bool (Object#nil?), Symbol#to_s→String
+and Symbol#== [α]→bool. Each is a primitiveMethods row (boot dispatch probed: owners
+Integer/Object/Symbol, unshadowed) with a Builtins.run equation; Symbol#== is
+branch-wise (byte-string/complex guards may be unsupported) and its deferTwin? is
+none under nameFree "==". PrimitiveStep's row enumerations grew to 22. Climbs 168,
+169, 188, 200. Controls cover accepts and wrong arg/result/receiver.
+
+### 2026-10-01 — Primitive rows arrayLength/strStartWith (61/261)
+
+Array#length (first-order elements, as arrayIndex: primitive_framed needs it) uses
+ArrayLength's copy of the exact-Array invoke route; String#start_with? at a String
+prefix proves branch-wise, its final runObjects arm defeq runStrings. Climbs 170, 182.
+
+### 2026-10-01 — Primitive row hashKey (62/261)
+
+Hash#key? [α]→bool (first-order hash) copies HashIndex's invoke route; the result is
+pure key equality, so no default handling is needed. Emitter (untrusted) gains the
+hashOf#key?/1 signature. Rows for unmodeled builtins (String#tr, #delete_prefix) are
+deliberately not added: model `unsupported` would make them vacuous. Climbs 205.
+
+### 2026-10-01 — Definition-frame invariants
+
+sourceMethod now reads currentDefinitionFrame.defVis and libraryOrigin. MainReady
+gains defFrame (current frame's definitionFrame = none), ClassScopeAt gains origin
+and defFrame, OrdinaryMethodCode gains definitionFrame = none, and FrameScope carries
+definitionFrame so reframe/pop transport it like libraryOrigin. All hold at boot,
+for freshModFrame and for ordinary requiredFrame (code pins md.definitionFrame).
+Prepares memberDef; no accepts change.
+
+### 2026-10-01 — Climb memberDef (34/99)
+
+Class-body defs now step to the real method_added callback (as top-level defs);
+MemberDefine composes step_def_install with definition_hook_runSpec. ClassScopeAt
+gains detached/unfrozen (frozen-receiver check), mainLive/notMain (MainPrefixWriteOk).
+memberRuleB rejects autoPrivateNames (Sorbet gap, see unsoundness.md) and the
+class-hook selectors const_added/inherited (ClassHookWriteOk without a prefix
+invariant). Legacy fresh-machine install/publish step lemmas are removed;
+initializerDecl moves to Init/InitDefine (still blocked on legacy init proofs).
+AuditBridge's disabled-rule branch simplifies only the rulesEnabled hypothesis
+(simp_all timed out on the longer memberRuleB).
+
+### 2026-10-01 — Climb newDefault (35/99)
+
+Class#new now dispatches to callConstruct: allocate, then a real reflective
+`initialize` send under newK. DefaultNew proves it: Class#new and BasicObject#initialize
+native shadow gates are `unsupported` outcomes (case split, no premise). RootInitOk is
+strengthened from "no user Object#initialize" to initDispatchB (Object's initialize
+resolves to non-undefined BasicObject#initialize; boot #guard passes); userInit_none
+is derived. PlainAllocator gains plainChain (k and its chain avoid every non-plain
+callConstruct arm). Legacy newImpl/finishSend_no_initializer lemmas are retired.
+
+### 2026-10-01 — Climb callMethodSig (36/99, 63/261)
+
+InstanceSite gains detached/unfrozen/mainLive/notMain so ClassScopeAt holds inside
+instance bodies (instance_required_scope). Instance/singleton entry and caller
+return take current StateOk fields, definee-based defmod, fromBlock/forTargets,
+root-clean frame runs. StateOk.localAlias_getD moves to Reframe. callMethodSig
+moves out of legacy ClassRules into CallMethodSigActual. Climbs 069.
+
+### 2026-10-01 — Climb ivarRead (37/99, 64/261)
+
+The existing InstanceRead provider builds unchanged. Controls use the emitter's
+instance spine (ivarCons "@secret" nilT). Climbs 070.

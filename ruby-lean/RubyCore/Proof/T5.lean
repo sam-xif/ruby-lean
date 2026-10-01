@@ -82,13 +82,16 @@ theorem dispatch_progress
               ((ancestors m.heap ((m.heap.get o).klass)).takeWhile (· != owner)) "m" = none)
     (hsing : crubySingletonShadow m.heap (.ref o) "m" = none) :
     ∃ m', stepFn m = .next m' := by
+  -- Resolved public methods no longer use the lookup-miss singleton guard.
+  clear hsing
   simp only [stepFn, hctl, applyKont, hk, startArgs, finishSend]
   rw [invoke.eq_def]
-  simp only [invoke.invokeDispatch, classOf, heigen, hlook, hpay, hb, hu, hbtw, hsing,
-    visError?, hvis, hpre, Option.isNone_some, Bool.and_false, reduceIte, reduceBEq,
-    Bool.or_eq_true, Bool.false_or, or_self, Bool.false_eq_true, if_false, ite_false]
-  simp only [enterUserMethod, hp]
-  exact ⟨_, rfl⟩
+  simp only [invoke.invokeDispatch, crubyResolvedShadow, classOf, heigen, hlook,
+    hpay, hb, hu, hbtw, visError?, hvis, hpre, Option.isNone_some, Option.any_none,
+    Bool.and_false, Bool.or_eq_true, Bool.false_eq_true, if_false]
+  simp [enterUserMethod, hp, classifyFull, appendKwHash]
+  cases md.forTargets <;>
+    simp [startForBindings, finishForBindings]
 
 /-- The same config is **not about to type-stick**: a resolvable dispatch steps
     (`.next`), and `aboutToTypeStick` requires a `.uncaught` step — the `safe`

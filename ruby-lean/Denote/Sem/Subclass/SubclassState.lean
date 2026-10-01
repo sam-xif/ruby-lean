@@ -20,6 +20,7 @@ structure ParentCaps (κ : Ctx) (h : Heap) (parent : ObjId) : Prop where
   constants : ∀ cn, (constLookup h cn).orElse (fun _ => constLookupFrom h parent cn) = constLookup h cn
   names : NamesAt (nameFreeN κ) h parent
   classNames : NamesAt (nameFreeN κ) h (classOf h (.ref parent))
+  metaConstants : ConstFallback h (classOf h (.ref parent))
   bases : ∀ base ch, (base, ch) ∈ builtinBases → isANoOk κ.wholeCls ch = true → parent ≠ base
 
 theorem ParentCaps.of_main {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
@@ -29,7 +30,7 @@ theorem ParentCaps.of_main {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     fallback_of_main ready.cref ready.owner hm.constScope,
     fun n hn owner md hmd => hm.nameFree n hn _ (by simp [nameFreeSites]) owner md hmd,
     fun n hn owner md hmd => hm.nameFree n hn _ (by simp [nameFreeSites]) owner md hmd,
-    fun _ _ hb _ => (builtinBase_bound hb).2.symm⟩
+    hm.core.metaConstants, fun _ _ hb _ => (builtinBase_bound hb).2.symm⟩
 
 theorem ParentCaps.of_declared {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     {c : Cls} {parent : ObjId} (hm : StateOk κ Γ I m) (hc : c ∈ κ.classes)
@@ -37,7 +38,7 @@ theorem ParentCaps.of_declared {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     ParentCaps κ m.heap parent := by
   have site := hm.classSites.at_class hc hp
   refine ⟨?_, site.metaclass, site.hook, fallback_of_instance site.constants,
-    site.names, site.classNames, fun _ _ hbase hneg => hm.subclass_parent_separate hc hp hb hbase hneg⟩
+    site.names, site.classNames, site.metaConstants, fun _ _ hbase hneg => hm.subclass_parent_separate hc hp hb hbase hneg⟩
   simpa using congrArg Option.isSome (hm.declCls c hc parent hp).2.2.2.1
 
 variable {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
@@ -64,8 +65,10 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
   exact {
     runtime := by intro h; cases h
     mainSite := fun hr => mainSite (hm.mainSite hr) hc hm.sat hd
+    moduleBase := moduleBase hm.moduleBase hc hm.sat hmain.classLive
     allocators := allocators hc hm.sat hn hm.allocators
     globalConsts := globalConsts ho hm.globalConsts
+    singletonRuntime := by intro cn h; cases h
     classRuntime := by
       intro cn hr
       change some name = some cn at hr
@@ -79,7 +82,8 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
         exact ⟨k, instanceSite_old site hc hm.sat hmain.classLive hn⟩
       · have heq := List.mem_singleton.mp hcn
         subst cn
-        exact ⟨m.heap.objs.size, instanceSite hc hm.sat hmain.classLive hl he hb hp.hook hp.constants hp.names hnames⟩
+        exact ⟨m.heap.objs.size, instanceSite hc hm.sat hmain.classLive hl he hb hp.hook hp.constants hp.names hnames
+          (by simpa only [classOf, he] using hp.metaConstants) hm.core.classReady.bootEnd⟩
     sat := saturated hc hm.sat hl hel
     primitiveDispatch := (primitiveDispatch hc hm.sat _).trans hm.primitiveDispatch
     primitiveErrors := (primitiveErrors hc hm.sat).trans hm.primitiveErrors

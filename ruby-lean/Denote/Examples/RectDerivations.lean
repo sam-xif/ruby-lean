@@ -66,7 +66,7 @@ private theorem describe_deriv {κ : Ctx} (hs : κ.selfTy = some (.inst "Rect" f
   have hv : F.judge [] (.vcall "area") .int [] κ fields :=
     @hF DClink.vcallMethodSig (by simp [dclinks]) κ [] [] fields fields .int fullClass area hs hc
       (by change area ∈ [describe, area, init]; simp) (by decide) (by decide) rfl rfl rfl
-      (area_deriv (κ := instanceBodyCtx κ ⟨"Rect", "Rect", "area"⟩ fields)
+      (area_deriv (κ := instanceBodyCtx κ ⟨"Rect", "Rect", "area", false⟩ fields)
         (hf "*" (by simp)) F hF) hg
   have ht : F.judge [] (.send (some (.vcall "area")) "to_s" [] none) (.cls "String") [] κ fields :=
     hF DClink.prim (by simp [dclinks]) hv (hF DClink.DJudgeAll.nil (by simp [dclinks]))

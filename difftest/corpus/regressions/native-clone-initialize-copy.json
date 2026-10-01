@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L298 (2026-09-28)",
+  "note": "Native clone validates freeze keywords, allocates then invokes private copy hooks, and applies freezing after normal return. Core initialize_copy handles payloads and checked conversions. Exact combined program agrees with CRuby 4.0.5; see model L298 and difftest N72."
+}

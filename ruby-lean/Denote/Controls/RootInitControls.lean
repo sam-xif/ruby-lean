@@ -31,7 +31,7 @@ def topCall : Ratchet.Expr := .seq [topExpr, .send none "initialize" [.int 7] no
 the global initialize name has ceased to be free. No physical root premise is assumed. -/
 theorem after_class_root (hb : bootOkB = true) {m : Machine} {fuel rest : Nat} {v : Value}
     (hr : runA fuel (evalFrom bootMachine FlagBox.program) = .ans (.val v) m rest) :
-    Interp.userInit? m.heap Boot.objectId = none := by
+    userInit? m.heap Boot.objectId = none := by
   have hs := ((FlagBox.class_run (stateOk_boot hb)).2 fuel (.val v) m rest hr).2.2 v rfl
   exact hs.rootInit rfl
 
@@ -46,11 +46,11 @@ theorem after_top_definition (hb : bootOkB = true) {m : Machine} {fuel rest : Na
 -- Top-level initialize is legal, but deleting its declaration cannot re-enable default new.
 #guard match Interp.run 80 (evalFrom bootMachine topExpr) with
   | .value _ m => !rootInitOkB [] m.heap && rootInitOkB [topInit] m.heap &&
-      (Interp.userInit? m.heap Boot.objectId).isSome
+      (userInit? m.heap Boot.objectId).isSome
   | _ => false
 #guard match Interp.run 100 (evalFrom bootMachine FlagBox.program) with
   | .value _ m => rootInitOkB [] m.heap &&
-      (classNamed? m.heap "FlagBox").any (fun k => (Interp.userInit? m.heap k).isSome)
+      (classNamed? m.heap "FlagBox").any (fun k => (userInit? m.heap k).isSome)
   | _ => false
 
 -- Waiving an unrelated top-level selector cannot admit the hidden prelude initializer.

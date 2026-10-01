@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L282 (2026-09-28)",
+  "note": "Forwardable declarations and callbacks, simple accessors, single-object delegation, keyword/block forwarding and overridden generators. Compared with CRuby 4.0.5."
+}

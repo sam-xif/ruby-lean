@@ -19,7 +19,7 @@ private def record : Ratchet.Expr := .class' "Record" none (.seq [
   .def' "answer" [] (.int 1), .def' "call" [] (.int 1)])
 
 -- Keep the class, methods and nominal type; change only the receiver to a Proc payload.
--- answer still runs the installed body, while call is intercepted by the false closure.
+-- Both answer and call run the installed body; payloads no longer bypass call lookup.
 #guard match Interp.run 100 (evalFrom bootMachine record) with
   | .value _ m => match Interp.run 100 (evalFrom m
       (.send (some (.const "Record")) "new" [] none)) with
@@ -35,7 +35,7 @@ private def record : Ratchet.Expr := .class' "Record" none (.seq [
             | .value (.int 1) _ => true
             | _ => false) &&
           (match Interp.run 30 (evalFrom altered (.send (some (.var .lvar "obj")) "call" [] none)) with
-            | .value (.bool false) _ => true
+            | .value (.int 1) _ => true
             | _ => false)
     | _ => false
   | _ => false

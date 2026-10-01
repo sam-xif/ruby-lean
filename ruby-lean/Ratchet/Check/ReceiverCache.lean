@@ -1,4 +1,5 @@
 import Ratchet.Check.BodyCache
+import Ratchet.Check.FieldHints
 
 /-! Receiver-aware cached bodies carry both an actual static lookup route and a proof
 in the exact receiver/owner context. A parent-body proof cannot be cast to a child. -/
@@ -31,18 +32,20 @@ structure CallableMemberAt (κ : Ctx) (c : Cls) (name : String) where
   route : MemberRoute κ.classes c.name owner decl
   fields : Ty
   fieldsFO : FirstOrder fields = true
-  body : CheckedBody (instanceBodyCtx κ ⟨c.name, owner, decl.name⟩ fields) fields decl
+  body : CheckedBody (instanceBodyCtx κ ⟨c.name, owner, decl.name, false⟩ fields) fields decl
 
 /-- Equal receiver/owner names recover the existing own-method rule, with all annotation
 indices retained. Eliminate the record before equality to respect its dependent body. -/
-theorem CallableMemberAt.own_judged {κ : Ctx} {c : Cls} {name : String}
-    (b : CallableMemberAt κ c name) (ho : b.owner = c.name) :
-    DJudge b.body.params b.decl.body b.body.ret b.body.out
-      (instanceBodyCtx κ ⟨c.name, c.name, b.decl.name⟩ b.fields) b.fields := by
+theorem CallableMemberAt.own_judged {κ : Ctx} {c : Cls} {name : String} {τ : Ty} {Γb : Env}
+    (b : CallableMemberAt κ c name) (ho : b.owner = c.name)
+    (hb : DJudge b.body.params b.decl.body τ Γb
+      (instanceBodyCtx κ ⟨c.name, b.owner, b.decl.name, false⟩ b.fields) b.fields) :
+    DJudge b.body.params b.decl.body τ Γb
+      (instanceBodyCtx κ ⟨c.name, c.name, b.decl.name, false⟩ b.fields) b.fields := by
   rcases b with ⟨owner, decl, hn, route, fields, hf, body⟩
   dsimp at ho ⊢
   subst owner
-  exact body.judged
+  exact hb
 
 def findMemberAt (κ : Ctx) (c : Cls) (name : String) : List CachedMember → Option (CallableMemberAt κ c name)
   | [] => none
@@ -52,17 +55,17 @@ def findMemberAt (κ : Ctx) (c : Cls) (name : String) : List CachedMember → Op
       if hn : b.decl.name = name then do
       if hf : FirstOrder b.spine = true then do
         let route ← memberRoute? κ.classes c.name b.owner b.decl
-        let ⟨hc⟩ ← ctxEq? b.ctx (instanceBodyCtx κ ⟨c.name, b.owner, b.decl.name⟩ b.spine)
+        let ⟨hc⟩ ← ctxEq? b.ctx (instanceBodyCtx κ ⟨c.name, b.owner, b.decl.name, false⟩ b.spine)
         some ⟨b.owner, b.decl, hn, route, b.spine, hf, by simpa only [hc] using b.body⟩
       else none
       else none
     found.orElse (fun _ => findMemberAt κ c name bs)
 
 def receiverFields (κ : Ctx) (c : Cls) (cache : CheckedCache) : Ty :=
-  ((findInitializerAt κ c cache.initializers).map (·.body.fields)).getD .ivar0
+  ((findInitializerAt κ c cache.initializers).map (·.body.fields)).getD (defaultReceiverFields κ c.name)
 
-/-- Completeness is checked over declared selectors, not merely over entries the cache
-happens to contain. No initializer still means no constructor admission. -/
+/-- Completeness is checked over declared selectors, not merely over cached entries.
+Every declared initializer needs a body; default allocation separately proves absence. -/
 def receiverCacheCompleteB (κ : Ctx) (cache : CheckedCache) : Bool :=
   (κ.classes.map (·.name)).eraseDups.all fun cn =>
     match findClass cn κ.classes, ancestors? κ.classes cn with

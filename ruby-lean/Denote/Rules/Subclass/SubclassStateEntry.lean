@@ -39,9 +39,11 @@ theorem step_declared_state {κ : Ctx} {Γ : Env} {I : Ty}
     (ht : ClassTablesFrame κ name m) (hq : FreshClass.nativeFrameB κ name = true)
     (hc : c ∈ κ.classes) (hp : classNamed? m.heap c.name = some parent)
     (hb : subclassBaseFrameB κ c.name = true)
-    (hn : freshClassNameB κ name = true) (hne : name.isEmpty = false) :
+    (hn : freshClassNameB κ name = true) (hne : name.isEmpty = false)
+    (hkind : c.isModule = false) :
     ∃ n, stepFn m = .next n ∧ StateOk (classBodyCtx κ name) [] .ivar0 n := by
   have hmod := (hm.declCls c hc parent hp).2.2.2.1
+  rw [hkind] at hmod
   obtain ⟨cp, hcp, hfalse⟩ : ∃ cp, m.heap.classPayload? parent = some cp ∧ cp.isModule = false := by
     cases he : m.heap.classPayload? parent with
     | none => simp only [he, Option.map_none, reduceCtorEq] at hmod

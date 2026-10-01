@@ -129,6 +129,6 @@ derivation carrying one is only a conditional claim, and `frame`/`selfTy` becaus
 program's top level is inside no method and runs somewhere `self` is not an instance of
 anything this judgment models. The constant table is empty for the first of those reasons:
 a program's first statement is the first thing that could assign one. -/
-def ctx0 : Ctx := ⟨⟨[], [], [], [], true, [], bootGlobalConsts⟩, ⟨[], [], [], false, [], [], []⟩, ⟨none, [], none, none, [], true, none, true⟩⟩
+def ctx0 : Ctx := ⟨⟨[], [], [], [], true, [], bootGlobalConsts⟩, ⟨[], [], [], false, [], [], []⟩, ⟨none, [], none, none, [], true, none, none, true⟩⟩
 
 end Ratchet

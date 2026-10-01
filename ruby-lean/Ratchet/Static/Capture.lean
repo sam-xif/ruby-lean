@@ -10,6 +10,12 @@ A **closure's creation context** (tier 11) and the ivar/capture agreement guards
 
 namespace Ratchet
 
+/-- Retain the heap world and lexical types without claiming an ordinary uncaptured
+activation. Captured-body entry proves the remaining scope facts separately. -/
+def Ctx.withoutRuntimeScope (κ : Ctx) : Ctx :=
+  { κ with scope := { κ.scope with
+      runtimeMain := false, runtimeClass := none, runtimeSingleton := none } }
+
 /-! ### A closure's creation context (tier 11)
 
 `Ty.clos`'s third field records the `self` of the closure's *creation* site. These two

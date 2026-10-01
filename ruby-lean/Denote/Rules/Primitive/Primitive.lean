@@ -33,17 +33,19 @@ theorem primitive_framed {σ τ : Ty} {name : String} {tys : List Ty} (hp : DPri
     {m n : Machine} {v : Value} (hf : Framed m n) (hv : denM σ m v) : denM σ n v := by
   cases hp with
   | arrayIndex hfo => exact hf.firstOrder (.arrayOf _) hfo _ hv
+  | arrayLength hfo => exact hf.firstOrder (.arrayOf _) hfo _ hv
   | hashIndex hfo => exact hf.firstOrder (.hashOf _ _) hfo _ hv
+  | hashKey hfo => exact hf.firstOrder (.hashOf _ _) hfo _ hv
   | _ =>
     simp only [denM] at hv ⊢
     first | exact hv | exact hf.nominal _ _ hv
 
 theorem prim_catchFree (k : Kont)
-    (h : ∀ tag, k ≠ .catchK tag) : RubyCore.Proof.CatchFree [k] := by
-  intro k' hk tag
+    (h : Proof.Root.observedKont k = false) : RubyCore.Proof.CatchFree [k] := by
+  intro k' hk
   simp only [List.mem_singleton] at hk
   subst hk
-  exact h tag
+  exact h
 
 theorem recv_one_step {site : SendSite} (m : Machine) (v : Value) (name : String) (e : Ratchet.Expr)
     (hp : plainArgB e = true) :
@@ -76,7 +78,7 @@ private theorem recv_one {κ κ' : Ctx} {I I' : Ty} {site : SendSite} {Γ Γ' : 
       isANoOk κ'.wholeCls (["String", "Comparable"] ++ rootAncestors) = true) :
     RunSpec m (deliverA (.val recv) m [.recvK name [toRuby e] .none site]) Γ' τ κ' I' := by
   apply RunSpec.step (by rfl) (recv_one_step m recv name e hplain)
-  apply (he m hm).bindSpec (prim_catchFree _ (by intro tag; simp))
+  apply (he m hm).bindSpec hm.rootClean (prim_catchFree _ rfl)
   intro a n hn
   cases a with
   | val v =>
@@ -130,7 +132,7 @@ theorem SemSafeCtxA.prim {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I
   apply RunSpec.step (by rfl)
     (show Interp.stepFn _ =
       .next (pushK [.recvK name (toRubyList args) .none site] (evalFrom m recv)) from ?_)
-  · apply (hr m hm).bindSpec (prim_catchFree _ (by intro tag; simp))
+  · apply (hr m hm).bindSpec hm.rootClean (prim_catchFree _ rfl)
     intro a n hn
     cases a with
     | val v => exact (recv_spec hp ha (hn.2.2 v rfl) hn.2.1 hfree hstring).rebase hn.1
@@ -155,5 +157,13 @@ theorem SemA.DJudgeAll.nil {Γ : Env} : SemAllA Γ [] [] Γ := .nil
 theorem SemA.DJudgeAll.cons {Γ Γ₁ Γ₂ : Env} {e : Ratchet.Expr} {es : List Ratchet.Expr}
     {τ : Ty} {tys : List Ty} (h : SemSafeA Γ e τ Γ₁) (ht : SemAllA Γ₁ es tys Γ₂)
     (hp : plainArgB e = true) : SemAllA Γ (e :: es) (τ :: tys) Γ₂ := .cons h ht hp
+
+theorem SemSafeCtxA.DJudgeAll.nil {κ : Ctx} {Γ : Env} {I : Ty} :
+    SemAllCtxA κ Γ I [] [] κ Γ I := .nil
+
+theorem SemSafeCtxA.DJudgeAll.cons {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ τ : Ty}
+    {e : Expr} {es : List Expr} {tys : List Ty}
+    (he : SemSafeCtxA κ Γ I e τ κ₁ Γ₁ I₁) (ht : SemAllCtxA κ₁ Γ₁ I₁ es tys κ₂ Γ₂ I₂)
+    (hp : plainArgB e = true) : SemAllCtxA κ Γ I (e :: es) (τ :: tys) κ₂ Γ₂ I₂ := .cons he ht hp
 
 end Ratchet.Denote.Typed

@@ -29,20 +29,28 @@ partial def valBrief (h : Heap) : Nat → Value → String
     | .cls c => c.name
     | .exc msg =>
       let cn := className h (h.get o).klass
-      if msg.isEmpty then cn else s!"#<{cn}: {msg}>"
+      s!"#<{cn}: {valBrief h d msg}>"
     | .proc c => if c.lam then "#<Proc (lambda)>" else "#<Proc>"
     | .rng _ => "#<Random>"
+    | .rational n d => s!"({n}/{d})"
+    | .complex r i => "Complex(" ++ valBrief h d r ++ ", " ++ valBrief h d i ++ ")"
     | .range lo hi excl => valBrief h d lo ++ (if excl then "..." else "..") ++ valBrief h d hi
     | .regexp src _ => "/" ++ src ++ "/"
     | .mdata _ caps _ => s!"#<MatchData {caps.size} slots>"
     | .none =>
       if o == Boot.mainId then "main"
       else s!"#<{className h (h.get o).klass}##{o}>"
+    | .enumerator _ => "#<Enumerator>"
+    | .chain _ => "#<Enumerator::Chain>"
+    | .generator _ => "#<Enumerator::Generator>"
+    | .yielder .. => "#<Enumerator::Yielder>"
 
 /-- One-line head label for the expression about to be evaluated. -/
 def exprBrief : Expr → String
   | .int n => s!"int {n}"
   | .flt x => s!"flt {x}"
+  | .rat n d _ => s!"rat {n}/{d}"
+  | .imag _ site => s!"imag {site}"
   | .regexpLit s o => s!"regexpLit /{s}/{o}"
   | .str s => s!"str \"{s}\""
   | .sym s => s!"sym :{s}"
@@ -86,15 +94,32 @@ def ctlBrief (h : Heap) : Ctl → String
   | .eval e => "eval  " ++ exprBrief e
   | .value v => "value  " ++ valBrief h 5 v
   | .jump j => "jump  " ++ jumpBrief h j
+  | .send _ _ name .. => "native send ." ++ name
 
 /-- Continuation-frame label (top of the kont stack = what happens next). -/
 def kontLabel : Kont → String
+  | .requireK feature _ => s!"require {feature}: finish"
+  | .enumFinishK id => s!"Enumerator #{id}: finish"
+  | .enumStopK .. => "finish native StopIteration initialization"
   | .seqK rest => s!"seq (+{rest.length} more)"
   | .asgnK _ x => s!"then {x} = ▢"
   | .casgnK n => s!"then {n} = ▢"
+  | .classBodyK .. => "enter class body after inherited"
+  | .constClassK .. => "continue class definition after const_added"
+  | .classNameErrorK .. => "render a class in a native TypeError"
+  | .constantNameErrorK .. => "inspect an invalid constant-name argument"
+  | .classInitK .. => "initialize class after inherited"
   | .classDefK name _ => s!"then open class {name} < ▢"
   | .newK _ => "then yield new instance"
+  | .raiseValueK => "validate and raise exception result"
+  | .exceptionCopyK .. => "finish exception clone and replace its message"
+  | .cloneK .. => "finish clone and apply freeze policy"
+  | .copyErrorK .. => "render native copy argument error"
+  | .blockCallK scope => s!"literal block call #{scope}"
+  | .arrayInitK _ _ index size => s!"initialize Array element {index}/{size}"
+  | .methodEditsK rest _ => s!"method mutation: {rest.length} remaining"
   | .methodAddedK n => s!"then yield :{n} (method_added hook)"
+  | .uncaughtInspectK .. => "format the uncaught throw tag"
   | .raiseNewK _ => "then raise the new exception"
   | .includeK _ => "then yield include receiver"
   | .defsK name .. => s!"then def ▢.{name}"
@@ -107,8 +132,9 @@ def kontLabel : Kont → String
   | .whileCondK .. => "while: test ▢"
   | .whileBodyK .. => "while: after body"
   | .forStartK .. => "for: start ▢"
-  | .forBodyK .. => "for: after body"
+  | .forAssignK .. => "for: assign loop targets"
   | .iterK _ _ rest .. => s!"iterate (+{rest.length} more)"
+  | .paramBindK .. => "bind destructured parameters"
   | .optDefK n .. => s!"then bind opt {n} = ▢"
   | .definedRecvK m => s!"then defined?(▢.{m})"
   | .definedCpathK n => s!"then defined?(▢::{n})"
@@ -117,6 +143,8 @@ def kontLabel : Kont → String
   | .argsK _ _ m .. => s!"collect args for .{m}"
   | .argsSplatK _ _ m .. => s!"splat args for .{m}"
   | .blkCoerceK _ _ m _ _ => s!"coerce &block for .{m}"
+  | .blkConvertK call .. => s!"resume checked .{Interp.conversionMethod call} conversion"
+  | .frozenErrorK .. => "render receiver for FrozenError"
   | .kwPairK k .. => s!"kwarg {k}: ▢"
   | .kwDynKeyK .. => "kwarg ▢ => _"
   | .kwDynValK .. => "kwarg _ => ▢"
@@ -130,6 +158,8 @@ def kontLabel : Kont → String
   | .hshKeyK .. => "hash: value for key ▢"
   | .hshValK .. => "hash: next pair"
   | .jumpValK _ => "then jump with ▢"
+  | .dmFrameK .. => "return from a block-defined method"
+  | .objectInspectK .. => "inspect an object field"
   | .frameK fid => s!"◀ method frame #{fid}"
   | .blkFrameK fid .. => s!"◀ block frame #{fid}"
   | .catchK _ => "catch: await throw"

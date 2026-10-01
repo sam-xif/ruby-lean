@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L280 (2026-09-28)",
+  "note": "Native allocation, Generator/Yielder invocation, dynamic size callbacks and frozen external operations."
+}

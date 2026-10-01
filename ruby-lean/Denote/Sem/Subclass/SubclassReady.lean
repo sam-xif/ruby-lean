@@ -112,7 +112,7 @@ theorem ClassReady.subclass {h : Heap} {d parent eParent : ObjId} {name q : Stri
     ClassReady (Subclass.heap h d name q parent eParent) := by
   have ho := hc.chains.boot.2.2.2.2
   obtain ⟨e, he, hb⟩ := hc.objectEigen
-  refine ⟨Subclass.chainsIn hc.chains hp hep, ⟨e, ?_, ?_⟩, ?_, ?_, hc.constRefs.subclass ho, ?_⟩
+  refine ⟨by rw [Subclass.size]; exact Nat.lt_of_lt_of_le hc.bootEnd (Nat.le_add_right _ _), Subclass.chainsIn hc.chains hp hep, ⟨e, ?_, ?_⟩, ?_, ?_, hc.constRefs.subclass ho, ?_⟩
   · rw [(Subclass.fields ho).2.2.1]; exact he
   · rw [Subclass.ancestors_old hc.chains hs (hc.chains.eigen _ ho _ he)]; exact hb
   · rw [Subclass.ancestors_old hc.chains hs hc.chains.boot.1]; exact hc.classBasic

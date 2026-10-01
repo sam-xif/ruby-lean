@@ -10,7 +10,7 @@ open RubyCore Ratchet
 
 theorem StateOk_publish_empty_class {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Cls}
     (hm : StateOk κ Γ I m) (hs : κ.scope.runtimeClass = some c.name)
-    (hempty : c.methods = []) (_hsingle : c.smethods = []) (hn : unqualifiedClassB c.name = true)
+    (hempty : c.methods = []) (hsingle : c.smethods = []) (hn : unqualifiedClassB c.name = true)
     (hd : DeclClassOk { κ with pos := { κ.pos with
       classes := c :: κ.classes
       plainAlloc := c.name :: κ.pos.plainAlloc } } m)
@@ -45,7 +45,7 @@ theorem StateOk_publish_empty_class {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
   · intro old hold
     change old ∈ c :: κ.classes at hold
     rcases List.mem_cons.mp hold with rfl | hold
-    · exact ⟨k, site.named, by simp [hempty]⟩
+    · exact ⟨k, site.named, by simp [hempty], by simp [SingletonRows, hsingle]⟩
     · exact hm.classes old hold
   · intro owner leaf old hold
     have hne := unqualifiedClassB_ne_path hn owner leaf

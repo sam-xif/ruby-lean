@@ -31,13 +31,13 @@ private def addBodyCert : Deriv :=
 /-- The certificate is checked under the annotations in the installed method context.
 No argument values or concrete execution enter this check. -/
 private def addBodyChecked : CheckedBody
-    (installedCtx.withFrame (some ⟨"Object", "Object", "add"⟩)) .ivar0 addDecl :=
-  (checkMethodBody 100 (installedCtx.withFrame (some ⟨"Object", "Object", "add"⟩)) .ivar0 addDecl
+    (installedCtx.withFrame (some ⟨"Object", "Object", "add", false⟩)) .ivar0 addDecl :=
+  (checkMethodBody 100 (installedCtx.withFrame (some ⟨"Object", "Object", "add", false⟩)) .ivar0 addDecl
     (.defDecl "add" [("x", .int), ("y", .int)] .int addBodyCert)).get (by decide)
 
 theorem add_body_from_certificate : SemSafeCtxA
-    (installedCtx.withFrame (some ⟨"Object", "Object", "add"⟩)) [("x", .int), ("y", .int)] .ivar0
-    addBody .int (installedCtx.withFrame (some ⟨"Object", "Object", "add"⟩))
+    (installedCtx.withFrame (some ⟨"Object", "Object", "add", false⟩)) [("x", .int), ("y", .int)] .ivar0
+    addBody .int (installedCtx.withFrame (some ⟨"Object", "Object", "add", false⟩))
     [("x", .int), ("y", .int)] .ivar0 := checked_body_context addBodyChecked
 
 theorem add_definition_step (hb : bootOkB = true) :

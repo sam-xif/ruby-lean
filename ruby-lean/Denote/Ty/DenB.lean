@@ -281,10 +281,10 @@ spine abstraction was for. -/
 one-arm supplement to `denB`, not a replacement for it. -/
 def closB (κ : Ty) (m : Machine) (f : Value) : Bool :=
   match κ with
-  | .clos _ cap selfT =>
+  | .clos code cap selfT =>
       match procClosure? m.heap f with
       | some cl =>
-          denSpineB cap m.heap (closLocal m cl) &&
+          closureMatchesB code cl && denSpineB cap m.heap (closLocal m cl) &&
             (if selfT = .never then true else denB selfT m.heap (closSelf m cl))
       | none => false
   | _ => false
@@ -301,7 +301,8 @@ theorem closB_sound {κ : Ty} {m : Machine} {f : Value} (hb : closB κ m f = tru
       simp only [Bool.and_eq_true] at hb
       show denM (.clos i cap selfT) m f
       rw [denM]
-      refine ⟨cl, hc, (denB_sound_aux cap).2 m.heap m (closLocal m cl) [] rfl hb.1, ?_⟩
+      refine ⟨cl, hc, closureMatchesB_sound hb.1.1,
+        (denB_sound_aux cap).2 m.heap m (closLocal m cl) [] rfl hb.1.2, ?_⟩
       by_cases hs : selfT = .never
       · exact Or.inl hs
       · rw [if_neg hs] at hb

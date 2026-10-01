@@ -47,6 +47,25 @@ failure.
 | `Clink/Registry.lean` | `DFam`, `register_dclink`, `dclinks`, `DJudgeC`, the growth gate |
 | `Clink/Controls.lean` | worked derivations, the captured refusal, the positive control |
 
+## Semantic rebuild profile
+
+The clink registry starts with seven literal rules; the other 92 rules are gated
+while their proofs are rebuilt against the dynamic-state machine. Select rules
+in `Ratchet/ClinkPolicy.lean` and proof providers in `Clink/ActiveProofs.lean`.
+[The rebuild guide](Clink/README.md) explains admission and the gate modes.
+
+The default `../scripts/run_typed_ratchet.sh` checks the active registry and
+`Bridge.lean`'s original soundness theorem, then reports enabled clinks and actual
+`validateD` corpus accepts as climbed. `Clink/SoundnessAudit.lean` rejects
+nonstandard theorem axioms; `Report/Active.lean` derives gated dependencies from
+the checker's verified traces. Disabled rules are work remaining.
+
+Use `--clink-rebuild` for proofs/controls only, or `--full-corpus` for the original
+complete-coverage audit and floors. The generic validator/certifier supports
+all authoring families, including companion and body premises; enable the needed
+clinks and their semantic providers to admit more programs. `Bridge/Full.lean`
+holds optional raw-DJudge completeness helpers.
+
 ## Controls and examples are separated from the proofs on purpose
 
 `Controls/` (63 files) is negative: countermodels, `#guard`s, and theorems that *pin an
@@ -55,7 +74,8 @@ obstruction* rather than discharge one. `Examples/` (11) is the worked instantia
 Neither is the production interface: production lemmas stay class-, body- and
 annotation-parameterized.
 
-**`Controls/All.lean` names every control, and the gate builds that module.** It has to be
+**`Controls/All.lean` names every historical full-profile control;
+`--full-corpus` builds that module.** It has to be
 explicit: nothing imports a control by need, and `scripts/run_typed_ratchet.sh` builds named
 targets rather than everything. That list used to be reached by `ClassControls.lean` importing
 fifty-one of its siblings, which made "what I need" and "who I keep alive" indistinguishable

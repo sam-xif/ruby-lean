@@ -1,4 +1,4 @@
-import RubyCore.Heap
+import RubyCore.Proof.HeapReads
 
 /-!
 # Heap facts for `TableOk` under `defineMethod`
@@ -310,7 +310,7 @@ theorem ancestors_eq (hi : IvarOnly h h') (k : ObjId) : ancestors h' k = ancesto
   ancestors_congr hi.shape hi.size k
 
 theorem className_eq (hi : IvarOnly h h') (k : ObjId) : className h' k = className h k := by
-  simp only [className, hi.classPayload k]
+  exact classNames_congr hi.size (fun k => by rw [hi.classPayload k]) hi.klass hi.eigen k
 
 theorem classOf_eq (hi : IvarOnly h h') (v : Value) : classOf h' v = classOf h v := by
   cases v with
@@ -318,14 +318,10 @@ theorem classOf_eq (hi : IvarOnly h h') (v : Value) : classOf h' v = classOf h v
   | bool b => cases b <;> rfl
   | _ => rfl
 
-theorem lookup_go_eq (hi : IvarOnly h h') (mname : String) :
-    ∀ l, lookup.go h' mname l = lookup.go h mname l := by
-  intro l
-  induction l with
-  | nil => rfl
-  | cons k rest ih =>
-    unfold lookup.go
-    rw [hi.classPayload k, ih]
+theorem lookup_go_eq (hi : IvarOnly h h') (mname : String) (chain : List ObjId) :
+    lookupInChain h' chain mname = lookupInChain h chain mname :=
+  lookupInChain_congr hi.size (fun k => by rw [hi.classPayload k])
+    (hi.ancestors_eq _) chain
 
 theorem lookup_eq (hi : IvarOnly h h') (v : Value) (mname : String) :
     lookup h' v mname = lookup h v mname := by
@@ -441,29 +437,35 @@ theorem methods_find_defineMethod (h : Heap) (cls k : ObjId) (name m : String)
       rw [objs_getD_set!_ne _ _ _ _ hk]
   · rfl
 
-theorem lookup_go_defineMethod (h : Heap) (cls : ObjId) (name m : String)
+theorem lookupFields_defineMethod (h : Heap) (cls k : ObjId) (name m : String)
     (md : MethodDef) (hne : ¬ (m = name)) :
-    ∀ chain, lookup.go (defineMethod h cls name md) m chain = lookup.go h m chain := by
-  intro chain
-  induction chain with
-  | nil => rfl
-  | cons k rest ih =>
-    unfold lookup.go
-    have hk := methods_find_defineMethod h cls k name m md hne
-    cases h1 : (defineMethod h cls name md).classPayload? k with
-    | none =>
-      cases h2 : h.classPayload? k with
-      | none => exact ih
-      | some c => rw [h1, h2] at hk; exact absurd hk (by simp)
-    | some c' =>
-      cases h2 : h.classPayload? k with
-      | none => rw [h1, h2] at hk; exact absurd hk (by simp)
-      | some c =>
-        rw [h1, h2] at hk
-        simp only [Option.map_some, Option.some.injEq] at hk
-        dsimp only
-        rw [hk]
-        split <;> simp [ih]
+    ((defineMethod h cls name md).classPayload? k).map
+        (fun c => (c.methods.find? (·.1 == m), c.isModule))
+      = (h.classPayload? k).map (fun c => (c.methods.find? (·.1 == m), c.isModule)) := by
+  unfold defineMethod
+  split
+  · rename_i c hc
+    by_cases hk : k = cls
+    · subst hk
+      simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      by_cases hb : k < h.objs.size
+      · have hhead : ((name, md).1 == m) = false := by
+          simp only [beq_eq_false_iff_ne]; exact fun hh => hne hh.symm
+        simp [Array.getD, hb, Array.set!, List.find?, hhead, find?_filter_ne _ hne]
+        unfold Heap.classPayload? Heap.get at hc
+        simp [Array.getD, hb] at hc
+        split at hc <;> simp_all
+      · rw [classPayload?_oob h k hb] at hc; exact absurd hc (by simp)
+    · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
+theorem lookup_go_defineMethod (h : Heap) (cls : ObjId) (name m : String)
+    (md : MethodDef) (hne : ¬ (m = name)) (chain : List ObjId) :
+    lookupInChain (defineMethod h cls name md) chain m = lookupInChain h chain m :=
+  lookupInChain_congr (objs_size_defineMethod h cls name md)
+    (fun k => lookupFields_defineMethod h cls k name m md hne)
+    (ancestors_defineMethod h cls _ name md) chain
 
 
 /-! ## `constSetIn` instances (J41) — the constant write
@@ -606,36 +608,59 @@ theorem clsName_constSetIn (h : Heap) (j k : ObjId) (nm : String) (v : Value) :
       rw [objs_getD_set!_ne _ _ _ _ hk]
   · rfl
 
+theorem nameFields_constSetIn (h : Heap) (j k : ObjId) (nm : String) (v : Value) :
+    ((constSetIn h j nm v).classPayload? k).map nameFields
+      = (h.classPayload? k).map nameFields := by
+  unfold constSetIn
+  split
+  · rename_i c hc
+    by_cases hk : k = j
+    · subst hk
+      simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      by_cases hb : k < h.objs.size
+      · simp [Array.getD, hb, Array.set!]
+        unfold Heap.classPayload? Heap.get at hc
+        simp [Array.getD, hb] at hc
+        split at hc <;> simp_all [nameFields]
+      · rw [classPayload?_oob h k hb] at hc; exact absurd hc (by simp)
+    · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
+theorem lookupFields_constSetIn (h : Heap) (j k : ObjId) (nm : String) (v : Value) :
+    ((constSetIn h j nm v).classPayload? k).map (fun c => (c.methods, c.isModule))
+      = (h.classPayload? k).map (fun c => (c.methods, c.isModule)) := by
+  unfold constSetIn
+  split
+  · rename_i c hc
+    by_cases hk : k = j
+    · subst hk
+      simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      by_cases hb : k < h.objs.size
+      · simp [Array.getD, hb, Array.set!]
+        unfold Heap.classPayload? Heap.get at hc
+        simp [Array.getD, hb] at hc
+        split at hc <;> simp_all
+      · rw [classPayload?_oob h k hb] at hc; exact absurd hc (by simp)
+    · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
 theorem className_constSetIn (h : Heap) (j k : ObjId) (nm : String) (v : Value) :
     className (constSetIn h j nm v) k = className h k := by
-  have hnm := clsName_constSetIn h j k nm v
-  unfold className
-  cases h1 : (constSetIn h j nm v).classPayload? k <;>
-    cases h2 : h.classPayload? k <;> rw [h1, h2] at hnm <;> simp_all
+  exact classNames_congr (objs_size_constSetIn h j nm v)
+    (fun k => nameFields_constSetIn h j k nm v)
+    (fun k => (get_constSetIn_fields h j nm v k).2.1)
+    (fun k => (get_constSetIn_fields h j nm v k).2.2.1) k
 
 theorem lookup_go_constSetIn (h : Heap) (j : ObjId) (nm : String) (v : Value)
-    (m : String) :
-    ∀ chain, lookup.go (constSetIn h j nm v) m chain = lookup.go h m chain := by
-  intro chain
-  induction chain with
-  | nil => rfl
-  | cons k rest ih =>
-    unfold lookup.go
-    have hk := methods_constSetIn h j k nm v
-    cases h1 : (constSetIn h j nm v).classPayload? k with
-    | none =>
-      cases h2 : h.classPayload? k with
-      | none => exact ih
-      | some c => rw [h1, h2] at hk; exact absurd hk (by simp)
-    | some c' =>
-      cases h2 : h.classPayload? k with
-      | none => rw [h1, h2] at hk; exact absurd hk (by simp)
-      | some c =>
-        rw [h1, h2] at hk
-        simp only [Option.map_some, Option.some.injEq] at hk
-        dsimp only
-        rw [hk]
-        split <;> simp [ih]
+    (m : String) (chain : List ObjId) :
+    lookupInChain (constSetIn h j nm v) chain m = lookupInChain h chain m := by
+  apply lookupInChain_congr (objs_size_constSetIn h j nm v) _ (ancestors_constSetIn h j _ nm v)
+  intro k
+  have hk := lookupFields_constSetIn h j k nm v
+  simpa only [Option.map_map, Function.comp_def] using
+    congrArg (Option.map (fun p => (p.1.find? (·.1 == m), p.2))) hk
 
 /-- The constant table of every *other* class is untouched. -/
 theorem consts_constSetIn_ne (h : Heap) (j k : ObjId) (nm : String) (v : Value)
@@ -733,23 +758,55 @@ theorem clsName_defineMethod (h : Heap) (cls k : ObjId) (name : String)
       rw [objs_getD_set!_ne _ _ _ _ hk]
   · rfl
 
+theorem nameFields_defineMethod (h : Heap) (cls k : ObjId) (name : String)
+    (md : MethodDef) :
+    ((defineMethod h cls name md).classPayload? k).map nameFields
+      = (h.classPayload? k).map nameFields := by
+  unfold defineMethod
+  split
+  · rename_i c hc
+    by_cases hk : k = cls
+    · subst hk
+      simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      by_cases hb : k < h.objs.size
+      · simp [Array.getD, hb, Array.set!]
+        unfold Heap.classPayload? Heap.get at hc
+        simp [Array.getD, hb] at hc
+        split at hc <;> simp_all [nameFields]
+      · rw [classPayload?_oob h k hb] at hc; exact absurd hc (by simp)
+    · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
+theorem get_defineMethod_fields (h : Heap) (j : ObjId) (nm : String) (v : MethodDef)
+    (o : ObjId) :
+    ((defineMethod h j nm v).get o).ivars = (h.get o).ivars ∧
+    ((defineMethod h j nm v).get o).klass = (h.get o).klass ∧
+    ((defineMethod h j nm v).get o).eigen = (h.get o).eigen ∧
+    ((defineMethod h j nm v).get o).frozen = (h.get o).frozen := by
+  unfold defineMethod
+  cases hc : h.classPayload? j with
+  | none => exact ⟨rfl, rfl, rfl, rfl⟩
+  | some c =>
+    by_cases ho : o = j
+    · subst ho
+      by_cases hb : o < h.objs.size
+      · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+        rw [objs_getD_set!_self _ _ _ hb]
+        exact ⟨rfl, rfl, rfl, rfl⟩
+      · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+        rw [objs_getD_set!_oob _ _ _ hb]
+        exact ⟨rfl, rfl, rfl, rfl⟩
+    · simp only [Heap.setClassPayload, Heap.get, Heap.set]
+      rw [objs_getD_set!_ne _ _ _ _ ho]
+      exact ⟨rfl, rfl, rfl, rfl⟩
+
 theorem className_defineMethod (h : Heap) (cls k : ObjId) (name : String)
     (md : MethodDef) : className (defineMethod h cls name md) k = className h k := by
-  unfold className
-  have hk := clsName_defineMethod h cls k name md
-  cases h1 : (defineMethod h cls name md).classPayload? k with
-  | none =>
-    cases h2 : h.classPayload? k with
-    | none => rfl
-    | some c => rw [h1, h2] at hk; exact absurd hk (by simp)
-  | some c' =>
-    cases h2 : h.classPayload? k with
-    | none => rw [h1, h2] at hk; exact absurd hk (by simp)
-    | some c =>
-      rw [h1, h2] at hk
-      simp only [Option.map_some, Option.some.injEq, Prod.mk.injEq] at hk
-      dsimp only
-      rw [hk.1, hk.2]
+  exact classNames_congr (objs_size_defineMethod h cls name md)
+    (fun k => nameFields_defineMethod h cls k name md)
+    (fun k => (get_defineMethod_fields h cls name md k).2.1)
+    (fun k => (get_defineMethod_fields h cls name md k).2.2.1) k
 
 /-- `classOf` on an immediate is heap-independent (`Heap.lean:396`), so the
     `lookup` congruence below needs no side condition for integer receivers. -/
@@ -825,16 +882,16 @@ theorem methods_find_defineMethod_self (h : Heap) (cls : ObjId) (name : String)
     not automatic (`ancestors` puts `prepends` first, `Heap.lean:506`) and is the
     clause `ClassOk` carries for exactly this. -/
 theorem lookup_go_defineMethod_self (h : Heap) (cls : ObjId) (name : String)
-    (md : MethodDef) (hc : (h.classPayload? cls).isSome) (rest : List ObjId) :
-    lookup.go (defineMethod h cls name md) name (cls :: rest) = some (cls, md) := by
-  unfold lookup.go
+    (md : MethodDef) (hc : (h.classPayload? cls).isSome) (rest : List ObjId) (hv : md.visibilityOnly = false) :
+    lookupInChain (defineMethod h cls name md) (cls :: rest) name = some (cls, md) := by
+  simp only [lookupInChain, lookupInChain.go]
   have hf := methods_find_defineMethod_self h cls name md hc
   cases h1 : (defineMethod h cls name md).classPayload? cls with
   | none => rw [h1] at hf; exact absurd hf (by simp)
   | some c' =>
     rw [h1] at hf
     simp only [Option.map_some, Option.some.injEq] at hf
-    simp [hf]
+    simp [hf, hv]
 
 end Proof
 end RubyCore

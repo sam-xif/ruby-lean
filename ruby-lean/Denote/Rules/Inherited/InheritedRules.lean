@@ -44,8 +44,8 @@ theorem SemSafeCtxA.callInherited {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb : E
     (hp : d.params = ps.map (fun p => Ratchet.Param.req p.1))
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (hret : FirstOrder τ = true) (hself : FirstOrder Ib = true)
-    (hb : SemSafeCtxA (instanceBodyCtx κ₂ ⟨c.name, owner, d.name⟩ Ib) ps Ib d.body τ
-      (instanceBodyCtx κ₂ ⟨c.name, owner, d.name⟩ Ib) Γb Ib)
+    (hb : SemSafeCtxA (instanceBodyCtx κ₂ ⟨c.name, owner, d.name, false⟩ Ib) ps Ib d.body τ
+      (instanceBodyCtx κ₂ ⟨c.name, owner, d.name, false⟩ Ib) Γb Ib)
     (hg : instanceCallB κ₂ Γ₂ I₂ = true) :
     SemSafeCtxA κ Γ I (.send (some recv) d.name args none) τ κ₂ Γ₂ I₂ := by
   simp only [instanceCallB, Bool.and_eq_true, decide_eq_true_eq] at hg
@@ -59,7 +59,7 @@ theorem SemSafeCtxA.callInherited {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb : E
     (by simpa only [route.nameOk] using hb) hm (reframeTypesB_sound ht) hasms hc
     route.member route.installed route.chain route.clear (callWorldB_sound hw) hk hself hv
     (by simpa using denAll_length hargs) hargs
-    (fun x => (constGet?_empty (κ := instanceBodyCtx κ₂ ⟨c.name, route.cls.name, d.name⟩ Ib) hco x).trans
+    (fun x => (constGet?_empty (κ := instanceBodyCtx κ₂ ⟨c.name, route.cls.name, d.name, false⟩ Ib) hco x).trans
       (constGet?_empty hco x).symm) (List.all_eq_true.mp hΓ)
     (fun _ _ => Or.inr (directCallNameB_sound hname)) hn (fun _ _ => nativeInstanceFreeB_shadow hnative)
   rw [hs]

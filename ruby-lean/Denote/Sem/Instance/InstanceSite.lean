@@ -1,6 +1,7 @@
 import Denote.Sem.Core.Ready
 import Denote.Ty.Ext
 import Denote.Sem.Subclass.MetaReady
+import Denote.Sem.Names.ConstFallback
 
 /-! Heap facts needed when an ordinary instance call changes self and lexical scope.
 These are obligations to publish with the class, not consequences of a method signature.
@@ -41,8 +42,9 @@ theorem classFrontB_sound {h : Heap} {k : ObjId} (hf : classFrontB h k = true) :
       exact ⟨rest, by simpa only [hk] using ha⟩
 
 def instanceConstResolve (h : Heap) (k : ObjId) (n : String) : Option Value :=
-  ([k, Boot.objectId].firstM (fun j => constOwn h j n)).orElse
-    (fun _ => constLookupFrom h k n)
+  ([k].firstM (fun j => constOwn h j n)).orElse fun _ =>
+    (constLookupFrom h k n).orElse fun _ =>
+      if (h.classPayload? k).any (·.isModule) then constLookupFrom h Boot.objectId n else none
 
 /-- The finite names whose absence is stronger than MethodsExact's prelude allowance. -/
 def shadowableNames : List String := ["lambda", "proc", "x"]
@@ -75,6 +77,20 @@ structure InstanceSiteAt (free : String → Bool) (cn : String) (k : ObjId) (h :
   /-- Retain class-object dispatch separately: subclass-body self inherits this chain,
   not the instance chain. Prelude code alone is not an absence proof. -/
   classNames : NamesAt free h (classOf h (.ref k))
+  /-- Own singleton methods precede inherited entries. Cached/rooted eigenclasses alone
+  do not rule out prepends; fresh creation establishes this separate lookup fact. -/
+  metaFront : classFrontB h (classOf h (.ref k)) = true
+  /-- The cached singleton owner is distinct from every class with a cached metaclass. -/
+  metaLeaf : (h.get (classOf h (.ref k))).eigen = none
+  /-- Singleton method inheritance lookup cannot reveal an absent global constant. -/
+  metaConstants : ConstFallback h (classOf h (.ref k))
+  /-- Published program classes are allocated after the builtin class ids. -/
+  afterBuiltins : Boot.yielderId < k
+  /-- Writable ordinary class, distinct from main's class (class-scope def facts). -/
+  detached : (h.classPayload? k).bind (·.attached) = none
+  unfrozen : (h.get k).frozen = false
+  mainLive : Boot.mainId < h.objs.size
+  notMain : k ≠ classOf h (.ref Boot.mainId)
 
 /-- Only negative-name information affects a site's meaning, not the caller's scope. -/
 abbrev InstanceSite (κ : Ctx) := InstanceSiteAt (nameFreeN κ)
@@ -103,32 +119,33 @@ theorem InstanceSite.recontext {κ κ' : Ctx} {cn : String} {k : ObjId} {h : Hea
     (site : InstanceSite κ cn k h)
     (hn : ∀ n, nameFreeN κ n = false → nameFreeN κ' n = false) : InstanceSite κ' cn k h := by
   exact ⟨site.named, site.front, site.hook, site.constants, site.names.recontext hn,
-    site.metaclass, site.classNames.recontext hn⟩
+    site.metaclass, site.classNames.recontext hn, site.metaFront, site.metaLeaf, site.metaConstants, site.afterBuiltins,
+    site.detached, site.unfrozen, site.mainLive, site.notMain⟩
 
 /-- Scope-independent, so the same site survives a frame change or an allocation.
 This does not claim that method installation or class mutation preserves it. -/
 theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
     (h : InstanceSite κ cn k m.heap) (he : Ext m n)
-    (hl : k < m.heap.objs.size) : InstanceSite κ cn k n.heap := by
+    (hl : k < m.heap.objs.size) (hch : Proof.ChainsIn m.heap) : InstanceSite κ cn k n.heap := by
   have hm (j : ObjId) (mn : String) : Interp.methodOn n.heap j mn =
-      Interp.methodOn m.heap j mn := by simp only [Interp.methodOn, he.payload, he.ancestors]
+      Interp.methodOn m.heap j mn := he.methodOn_eq hch j mn
   have hc (j : ObjId) (name : String) : constOwn n.heap j name = constOwn m.heap j name := by
     simp only [constOwn, he.payload]
-  have hi (name : String) : constLookupFrom n.heap k name = constLookupFrom m.heap k name := by
+  have hi (j : ObjId) (name : String) : constLookupFrom n.heap j name = constLookupFrom m.heap j name := by
     simp only [constLookupFrom, he.payload, he.ancestors]
   have hlk : lookup n.heap (.ref k) "method_added" = lookup m.heap (.ref k) "method_added" := by
-    have hg (ks : List ObjId) : lookup.go n.heap "method_added" ks =
-        lookup.go m.heap "method_added" ks := by
-      induction ks with
-      | nil => rfl
-      | cons j ks ih => simp only [lookup.go, he.payload, ih]
-    simp only [lookup, classOf, he.get k hl, he.ancestors, hg]
-  refine ⟨?_, ?_, ?_, ?_, ?_, h.metaclass.ext he hl, ?_⟩
+    change Interp.methodOn n.heap (classOf n.heap (.ref k)) "method_added" =
+      Interp.methodOn m.heap (classOf m.heap (.ref k)) "method_added"
+    simp only [classOf, he.get k hl, he.methodOn_eq hch]
+  refine ⟨?_, ?_, ?_, ?_, ?_, h.metaclass.ext he hl, ?_, ?_, ?_, ?_, h.afterBuiltins,
+    by rw [he.payload]; exact h.detached, by rw [he.get k hl]; exact h.unfrozen,
+    Nat.lt_of_lt_of_le h.mainLive he.size,
+    by simp only [classOf, he.get Boot.mainId h.mainLive]; exact h.notMain⟩
   · simpa only [he.classNamed?_eq] using h.named
   · simpa only [classFrontB, he.payload] using h.front
   · simpa only [definitionHookQuietB, hlk] using h.hook
   · intro name
-    simpa only [instanceConstResolve, hc, hi, he.constLookup_eq] using h.constants name
+    simpa only [instanceConstResolve, hc, hi, he.payload, he.constLookup_eq] using h.constants name
   · intro name hn owner md hmd
     rw [hm] at hmd
     exact h.names name hn owner md hmd
@@ -136,6 +153,20 @@ theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
     rw [show classOf n.heap (.ref k) = classOf m.heap (.ref k) from by
       simp only [classOf, he.get k hl], hm] at hmd
     exact h.classNames name hn owner md hmd
+  · simpa only [classOf, he.get k hl, classFrontB, he.payload] using h.metaFront
+  · obtain ⟨e, hke, _, _⟩ := h.metaclass
+    have hco : classOf m.heap (.ref k) = e := by simp only [classOf, hke]
+    have hel : e < m.heap.objs.size := by
+      apply lt_size_of_classPayload
+      have hf := h.metaFront
+      rw [hco] at hf
+      cases hp : m.heap.classPayload? e <;> simp_all [classFrontB]
+    simpa only [classOf, he.get k hl, hke, he.get e hel] using h.metaLeaf
+  · simpa only [classOf, he.get k hl] using h.metaConstants.ext he
+
+theorem InstanceSite.eigen_front {κ : Ctx} {cn : String} {k e : ObjId} {h : Heap}
+    (site : InstanceSite κ cn k h) (he : (h.get k).eigen = some e) : classFrontB h e = true := by
+  simpa only [classOf, he] using site.metaFront
 
 /-- Installed classes persist after leaving a scope. The pending lexical class requests
 its site before a method/constructor record has been published. No new Ctx field is needed. -/
@@ -173,10 +204,10 @@ theorem ClassSitesOk.recontext {κ κ' : Ctx} {h : Heap} (sites : ClassSitesOk �
   exact ⟨k, site.recontext hn⟩
 
 theorem ClassSitesOk.ext {κ : Ctx} {m n : Machine} (sites : ClassSitesOk κ m.heap)
-    (he : Ext m n) : ClassSitesOk κ n.heap := by
+    (he : Ext m n) (hch : Proof.ChainsIn m.heap) : ClassSitesOk κ n.heap := by
   intro cn hcn
   obtain ⟨k, site⟩ := sites cn hcn
-  exact ⟨k, site.ext he site.live⟩
+  exact ⟨k, site.ext he site.live hch⟩
 
 #print axioms classFrontB_sound
 #print axioms namesAtB_sound

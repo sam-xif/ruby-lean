@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L282 (2026-09-28)",
+  "note": "Frozen constant writes and left-to-right constant visibility updates match CRuby return values, messages and partial effects. Compared with CRuby 4.0.5."
+}

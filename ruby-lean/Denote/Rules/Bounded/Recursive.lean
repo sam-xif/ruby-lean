@@ -55,7 +55,7 @@ theorem SemSafeCtxA.DJudgeRec.selfCall {κ : Ctx} {I : Ty} {s : RecScope}
     (hp : s.decl.params = s.params.map (fun p => Ratchet.Param.req p.1))
     (hps : ∀ p ∈ s.params, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (ht : FirstOrder s.ret = true) (hd : s.decl ∈ κ.defs)
-    (hframe : κ.withFrame (some ⟨"Object", "Object", s.decl.name⟩) = κ)
+    (hframe : κ.withFrame (some ⟨"Object", "Object", s.decl.name, false⟩) = κ)
     (hm : κ.scope.runtimeMain = true) (hs : κ.selfTy = none) (hb : κ.blockTy = none)
     (hc : κ.consts = []) (has : κ.asms = []) (hi : FirstOrder I = true)
     (hg : ∀ p ∈ Γ', FirstOrder (stripAlias p.2) = true) :

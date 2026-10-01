@@ -1,7 +1,7 @@
 import Denote.Rules.Subclass.SubclassStateEntry
 import Denote.Rules.Subclass.SubclassHeaderEntry
 import Denote.Rules.Class.ClassHeaderRun
-import Denote.Bridge
+import Denote.Bridge.Full
 import Denote.Sem.Core.Boot
 
 /-! Full-state control after a real checked parent-class run, followed by actual subclass
@@ -81,7 +81,7 @@ theorem boot_parent_child_step (hb : bootOkB = true) (body : RubyCore.Expr) :
       classHeaderCtx, classBodyCtx, ctx0, Ctx.classes])
     (classNamed_freshClass ((stateOk_boot hb).runtime rfl).classLive
       (stateOk_boot hb).core.classReady.chains.boot.2.2.2.2)
-    (by decide) (by decide) (by decide)
+    (by decide) (by decide) (by decide) rfl
 
 theorem boot_parent_child_header (hb : bootOkB = true) (body : RubyCore.Expr) :
     ∃ n, Interp.enterClassBody parentMachine "Relay" false

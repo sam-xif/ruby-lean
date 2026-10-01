@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L287 (2026-09-28)",
+  "note": "Checked nested parameter conversion after defaults, snapshot/positional binding and closure scope/control. CRuby4.0.5; model L287 / difftest N61."
+}

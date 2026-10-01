@@ -31,23 +31,23 @@ theorem classesOk_lookup {C : CTable} {m : Machine} {c : Cls} {d : Defn}
       lookup m.heap recv d.name = some (k, md) ∧
       md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧
       md.undefined = false ∧ InstanceMethodCode k d.name md := by
-  obtain ⟨k, hk, hm⟩ := hm c hc
+  obtain ⟨k, hk, hm, _⟩ := hm c hc
   obtain ⟨md, hm, hp, hb, hu, hcode⟩ := hm d hd
   rw [denM] at hv
   obtain ⟨rest, hrest⟩ := classFrontB_sound (hf k hk)
   have hco := exactInst_classOf hv.1 hk
-  exact ⟨k, md, hk, lookup_own_first (by rw [hco]; exact hrest) hm, hp, hb, hu, hcode⟩
+  exact ⟨k, md, hk, lookup_own_first (by rw [hco]; exact hrest) hm hcode.visibilityOnly, hp, hb, hu, hcode⟩
 
 theorem instance_required_frame_at {m : Machine} {recv : Value} {cn ownerCn name : String}
     {r k : ObjId} {md : MethodDef} {I : Ty} (names : List String) (args : List Value)
     (hk : classNamed? m.heap cn = some r) (hv : denM (.inst cn I) m recv)
     (hf : classFrontB m.heap r = true) (hc : InstanceMethodCode k name md) :
-    FrameOk (some ⟨cn, ownerCn, name⟩) (pushMethodFrame m (requiredFrame recv name md names args)) := by
+    FrameOk (some ⟨cn, ownerCn, name, false⟩) (pushMethodFrame m (requiredFrame recv name md names args)) := by
   rw [denM] at hv
   have hco := exactInst_classOf hv.1 hk
   obtain ⟨rest, ha⟩ := classFrontB_sound hf
-  simp only [FrameOk, currentFrame_pushMethodFrame, requiredFrame, hc.superName, Option.getD_none]
-  refine ⟨trivial, ?_⟩
+  simp only [FrameOk, Frame.recvTy, Bool.false_eq_true, ↓reduceIte, denM, currentFrame_pushMethodFrame, requiredFrame, hc.superName, Option.getD_none]
+  refine ⟨trivial, ?_, trivial⟩
   change isAName m.heap recv cn = true
   simp only [isAName, hk, isA, hco, ha, List.contains_cons, beq_self_eq_true, Bool.true_or]
 
@@ -55,7 +55,7 @@ theorem instance_required_frame {m : Machine} {recv : Value} {cn name : String}
     {k : ObjId} {md : MethodDef} {I : Ty} (names : List String) (args : List Value)
     (hk : classNamed? m.heap cn = some k) (hv : denM (.inst cn I) m recv)
     (hf : classFrontB m.heap k = true) (hc : InstanceMethodCode k name md) :
-    FrameOk (some ⟨cn, cn, name⟩) (pushMethodFrame m (requiredFrame recv name md names args)) :=
+    FrameOk (some ⟨cn, cn, name, false⟩) (pushMethodFrame m (requiredFrame recv name md names args)) :=
   instance_required_frame_at names args hk hv hf hc
 
 theorem instance_required_live {m : Machine} {recv : Value} {cn name : String}
@@ -74,13 +74,17 @@ theorem instance_required_scope {m : Machine} {recv : Value} {cn name : String}
     {k : ObjId} {md : MethodDef} (names : List String) (args : List Value)
     (hk : classNamed? m.heap cn = some k) (hl : k < m.heap.objs.size)
     (hc : InstanceMethodCode k name md) (hp : m.preludeMode = false)
-    (hh : definitionHookQuietB m.heap k = true) :
+    (hh : definitionHookQuietB m.heap k = true)
+    (hdet : (m.heap.classPayload? k).bind (·.attached) = none) (hfz : (m.heap.get k).frozen = false)
+    (hml : Boot.mainId < m.heap.objs.size) (hnm : k ≠ classOf m.heap (.ref Boot.mainId)) :
     ClassScopeAt cn k (pushMethodFrame m (requiredFrame recv name md names args)) := by
-  refine ⟨hk, hl, ?_, ?_, ?_, hp, ?_, hh⟩
-  · rw [currentFrame_pushMethodFrame]; exact hc.owner
+  refine ⟨hk, hl, ?_, ?_, ?_, hp, ?_, hh, ?_, ?_, hdet, hfz, hml, hnm⟩
+  · rw [currentFrame_pushMethodFrame]; exact hc.definee
   · rw [currentFrame_pushMethodFrame]; exact hc.cref
   · rw [currentFrame_pushMethodFrame]; rfl
   · simp only [defaultDefVis, currentFrame_pushMethodFrame, requiredFrame]; rfl
+  · rw [currentFrame_pushMethodFrame]; exact hc.fromPrelude
+  · rw [currentFrame_pushMethodFrame]; exact hc.definitionFrame
 
 theorem finishSend_instance {m : Machine} {o k : ObjId} {name : String} {md : MethodDef}
     {args : List Value} {rest : List ObjId}

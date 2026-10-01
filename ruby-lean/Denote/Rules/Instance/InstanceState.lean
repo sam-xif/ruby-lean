@@ -1,5 +1,5 @@
 import Denote.Rules.Instance.InstanceResolve
-import Denote.Sem.Class.ClassCore
+import Denote.Sem.Class.ClassScope
 
 /-! Full annotated instance-body entry. Unlike top-level method entry, self, block,
 lexical scope, and the ivar spine can all change. Receiver and lexical owner have independent
@@ -18,13 +18,13 @@ theorem instance_enter_state_at {κ : Ctx} {Γ : Env} {I Ib : Ty} {m : Machine}
     (hv : denM (.inst cn Ib) m recv)
     (hlen : args.length = ps.length) (hargs : DenAll (ps.map (·.2)) m args)
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
-    (hk : ∀ x, constGet? (instanceBodyCtx κ ⟨cn, ownerCn, name⟩ Ib) x = constGet? κ x) :
-    StateOk (instanceBodyCtx κ ⟨cn, ownerCn, name⟩ Ib) ps Ib
+    (hk : ∀ x, constGet? (instanceBodyCtx κ ⟨cn, ownerCn, name, false⟩ Ib) x = constGet? κ x) :
+    StateOk (instanceBodyCtx κ ⟨cn, ownerCn, name, false⟩ Ib) ps Ib
       (pushMethodFrame m (requiredFrame recv name md (ps.map (·.1)) args)) := by
   let entry := pushMethodFrame m (requiredFrame recv name md (ps.map (·.1)) args)
   have hscope : ConstScopeOk entry :=
     InstanceSite.constScope (m := entry) owner (by rw [currentFrame_pushMethodFrame]; exact code.cref)
-      (by rw [currentFrame_pushMethodFrame]; exact code.owner)
+      (by rw [currentFrame_pushMethodFrame]; exact code.definee)
   have hresolve (x : String) : constResolveAt entry x = constResolveAt m x :=
     (hscope x).trans (hm.constScope x).symm
   have hden (τ : Ty) (hτ : FirstOrder τ = true) (v : Value) :
@@ -36,8 +36,10 @@ theorem instance_enter_state_at {κ : Ctx} {Γ : Env} {I Ib : Ty} {m : Machine}
   refine {
     runtime := by intro h; cases h
     mainSite := hm.mainSite
+    moduleBase := hm.moduleBase
     allocators := hm.allocators
     globalConsts := hm.globalConsts
+    singletonRuntime := by intro cn h; cases h
     classRuntime := ?_
     classSites := by
       intro q hq
@@ -81,11 +83,17 @@ theorem instance_enter_state_at {κ : Ctx} {Γ : Env} {I Ib : Ty} {m : Machine}
     declCls := hm.declCls
     baseChains := hm.baseChains
     nilQuery := hm.nilQuery
-    selfLive := instance_required_live md _ _ site.named hv }
+    selfLive := instance_required_live md _ _ site.named hv
+    primitiveInit := hm.primitiveInit
+    names := hm.names
+    localAlias := by rw [currentFrame_pushMethodFrame]; rfl
+    capturedLive := by rw [currentFrame_pushMethodFrame]; exact .none
+    rootClean := hm.rootClean }
   · intro cn' hr
     change some ownerCn = some cn' at hr
     cases hr
-    exact ⟨k, instance_required_scope _ _ owner.named owner.live code hp owner.hook⟩
+    exact ⟨k, instance_required_scope _ _ owner.named owner.live code hp owner.hook
+      owner.detached owner.unfrozen owner.mainLive owner.notMain⟩
   · intro x τ hx
     rw [hk] at hx
     obtain ⟨v, hv, htau⟩ := hm.consts x τ hx
@@ -110,8 +118,8 @@ theorem instance_enter_state {κ : Ctx} {Γ : Env} {I Ib : Ty} {m : Machine}
     (hv : denM (.inst cn Ib) m recv)
     (hlen : args.length = ps.length) (hargs : DenAll (ps.map (·.2)) m args)
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
-    (hk : ∀ x, constGet? (instanceBodyCtx κ ⟨cn, cn, name⟩ Ib) x = constGet? κ x) :
-    StateOk (instanceBodyCtx κ ⟨cn, cn, name⟩ Ib) ps Ib
+    (hk : ∀ x, constGet? (instanceBodyCtx κ ⟨cn, cn, name, false⟩ Ib) x = constGet? κ x) :
+    StateOk (instanceBodyCtx κ ⟨cn, cn, name, false⟩ Ib) ps Ib
       (pushMethodFrame m (requiredFrame recv name md (ps.map (·.1)) args)) :=
   instance_enter_state_at hm ht ha site site hp code hi hv hlen hargs hps hk
 
@@ -127,14 +135,14 @@ theorem instance_enterUserMethod_state_at {κ : Ctx} {Γ : Env} {I Ib : Ty} {m :
     (hv : denM (.inst cn Ib) m recv)
     (hlen : args.length = ps.length) (hargs : DenAll (ps.map (·.2)) m args)
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
-    (hk : ∀ x, constGet? (instanceBodyCtx κ ⟨cn, ownerCn, name⟩ Ib) x = constGet? κ x)
+    (hk : ∀ x, constGet? (instanceBodyCtx κ ⟨cn, ownerCn, name, false⟩ Ib) x = constGet? κ x)
     (hparams : md.params = (ps.map (·.1)).map RubyCore.Param.req) :
     ∃ n, Interp.enterUserMethod m recv name md args none = .next n ∧
       n.ctl = .eval md.body ∧
-      StateOk (instanceBodyCtx κ ⟨cn, ownerCn, name⟩ Ib) ps Ib n := by
+      StateOk (instanceBodyCtx κ ⟨cn, ownerCn, name, false⟩ Ib) ps Ib n := by
   have he := instance_enter_state_at hm ht ha site owner hp code hi hv hlen hargs hps hk
   refine ⟨_, enterUserMethod_required m recv name md _ args hparams code.captured code.declared
-    (by simpa using hlen), rfl, ?_⟩
+    (by simpa using hlen) code.fromBlock code.forTargets, rfl, ?_⟩
   exact StateOk_reCtl he _ _
 
 theorem instance_enterUserMethod_state {κ : Ctx} {Γ : Env} {I Ib : Ty} {m : Machine}
@@ -146,11 +154,11 @@ theorem instance_enterUserMethod_state {κ : Ctx} {Γ : Env} {I Ib : Ty} {m : Ma
     (hv : denM (.inst cn Ib) m recv)
     (hlen : args.length = ps.length) (hargs : DenAll (ps.map (·.2)) m args)
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
-    (hk : ∀ x, constGet? (instanceBodyCtx κ ⟨cn, cn, name⟩ Ib) x = constGet? κ x)
+    (hk : ∀ x, constGet? (instanceBodyCtx κ ⟨cn, cn, name, false⟩ Ib) x = constGet? κ x)
     (hparams : md.params = (ps.map (·.1)).map RubyCore.Param.req) :
     ∃ n, Interp.enterUserMethod m recv name md args none = .next n ∧
       n.ctl = .eval md.body ∧
-      StateOk (instanceBodyCtx κ ⟨cn, cn, name⟩ Ib) ps Ib n :=
+      StateOk (instanceBodyCtx κ ⟨cn, cn, name, false⟩ Ib) ps Ib n :=
   instance_enterUserMethod_state_at hm ht ha site site hp code hi hv hlen hargs hps hk hparams
 
 #print axioms instance_enter_state

@@ -1,12 +1,14 @@
 import Ratchet.Static.All
 import Denote.Ty.Local
+import Denote.Sem.Closure.CapturePath
 import Denote.Sem.Core.Trans
 import Denote.Sem.Heap.PrimHeap
 import Denote.Sem.Core.Ready
 import Denote.Sem.Class.ClassScope
 import Denote.Sem.Class.ClassReady
 import Denote.Sem.Names.RootNames
-import Denote.Sem.Instance.MethodCode
+import Denote.Sem.Singleton.SingletonRows
+import Denote.Sem.Singleton.SingletonActivation
 import Denote.Sem.Instance.InstanceSite
 import Denote.Sem.Instance.MainSite
 import Denote.Sem.Heap.Allocator
@@ -14,6 +16,7 @@ import Denote.Sem.Names.GlobalConsts
 import Denote.Sem.Names.OwnNames
 import Denote.Sem.Class.ClassChains
 import Denote.Sem.Names.RootInit
+import Denote.Sem.Module.ModuleBase
 
 /-!
 # `Denote/Sem/Core/State.lean` — evaluation, and what it means for a machine to *match* a
@@ -64,11 +67,10 @@ two locals hold **the same object** (`Value` equality — see `EnvOk` on why not
 object is in `τ`. That is the first time the alias has had a meaning outside the checker's
 own bookkeeping, and it is what a proof of `Judge.narrowEnvs`' soundness will have to consume.
 
-**`ClosuresOk` closes `Denote/Ty/Den.lean`'s stated `idx` gap.** `Ty.clos idx` indexes
-`Ctx.closures`, a table of `Ratchet.Expr` block literals; a live Proc holds a
-`RubyCore.Closure`. With `toRuby` (`Denote/Sem/Core/Trans.lean`) those are comparable, so
-`closTblOk` can say what `denM`'s `clos` arm could not: this Proc *is* the block literal the
-type names.
+**Callable code lives in the value type.** `Ty.clos` carries `ClosureCode`, and denM
+compares it with the real Proc's parameters, block locals, body and lambda/proc mode.
+The legacy `closTblOk` predicate and vacuous `ClosuresOk` do not supply that evidence;
+§F49 records why they cannot justify a callable rule.
 -/
 
 set_option autoImplicit false
@@ -173,32 +175,29 @@ def SelfSpineOk (I : Ty) (m : Machine) (closed : Bool := true) : Prop :=
   denSpine I m (ivarOf m.heap m.currentFrame.self) ∧
   ∀ x, ivarGet? I x = none → closed = true → ivarOf m.heap m.currentFrame.self x = .nil
 
-/-- A `Ty.clos` really names *this* Proc: the heap closure's parameters and body are the
-translation of the table entry `idx` points at.
-
-The captured environment and creation `self` are **not** compared here — `denM`'s `clos` arm
-already does that (`closLocal`/`closSelf`), and the split is the one `Ty.clos`'s docstring
-draws: the *table* holds `(params, body)`, which two syntactically identical blocks share, and
-the *type* holds the environment, which they do not. -/
+/-- Legacy table predicate, unused by admission and retained for F49's counterexample.
+It checks only translated params/body, omitting block locals and lambda/proc mode.
+The live Ty.clos denotation uses ClosureMatches instead. -/
 def closTblOk (K : ClosTable) (idx : Nat) (m : Machine) (f : Value) : Prop :=
   ∃ c cl, closGet? K idx = some c ∧ procClosure? m.heap f = some cl ∧
     cl.params = toRubyParams c.params ∧ cl.body = toRuby c.body
 
 /-- Each positive class exists, and its instance methods are installed with the recorded
 syntax and ordinary top-level-class metadata. Superclass/constructor facts live in
-DeclClassOk; singleton methods and nested lexical scopes are not covered by this component. -/
+DeclClassOk. Singleton records pin their distinct dispatch/lexical owners; nested lexical
+scopes are not covered by this component. -/
 def ClassesOk (C : CTable) (m : Machine) : Prop :=
   ∀ c ∈ C, ∃ k, classNamed? m.heap c.name = some k ∧
     (∀ d ∈ c.methods, ∃ md, (m.heap.classPayload? k).bind
         (fun cp => (cp.methods.find? (·.1 == d.name)).map (·.2)) = some md ∧
       md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧ md.undefined = false ∧
-      InstanceMethodCode k d.name md)
+      InstanceMethodCode k d.name md) ∧ SingletonRows c.smethods k m.heap
 
 /-- The top-level `def` table describes ordinary methods installed on `Object`, and *only* the ones a
 preceding statement performed — which is the whole soundness content of `DefTable`'s
 "already", per its docstring: a whole-program table would certify `foo(); def foo; end`. -/
 def DefsOk (D : DefTable) (m : Machine) : Prop :=
-  ∀ d ∈ D, ∃ md, (m.heap.classPayload? Boot.objectId).bind
+  ∀ d ∈ D, d.name ∉ mainSingletonNames ∧ ∃ md, (m.heap.classPayload? Boot.objectId).bind
       (fun cp => (cp.methods.find? (·.1 == d.name)).map (·.2)) = some md ∧
     md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧ md.undefined = false ∧ TopMethodCode md
 
@@ -230,15 +229,26 @@ def AsmsOk (Δ : AsmTable) (m : Machine) : Prop :=
   ∀ a ∈ Δ, ∀ m₂, Later m m₂ → ∀ (args : List Value), DenAll a.argTys m₂ args →
     ∀ v m', SendReturns m₂ a.name args v m' → denM a.ret m' v
 
-/-- The running frame is the one `Ctx.frame` describes: same method name, and `self`'s class
-is the recorded receiver class. `none` means "outside any method body", i.e. the frame is a
-toplevel or class-body frame. -/
+/-- The running frame is the method activation `Ctx.frame` describes: same method name,
+receiver mode (instance or class object), and method kind. A block can copy the name and receiver while
+`methodFrameOf` follows its `home`, so those two facts alone do not identify the activation.
+`none` means outside a method activation. -/
 def FrameOk (fr : Option Ratchet.Frame) (m : Machine) : Prop :=
   match fr with
   | none => m.currentFrame.kind ≠ .method
   | some f =>
       m.currentFrame.meth = f.methName ∧
-      isAName m.heap m.currentFrame.self f.recvClass = true
+      denM f.recvTy m m.currentFrame.self ∧
+      m.currentFrame.kind = .method
+
+theorem SingletonScopeAt.not_instance {cn recv : String} {k e : ObjId} {m : Machine}
+    {I : Ty} (scope : SingletonScopeAt cn k e m)
+    (hv : denM (.inst recv I) m m.currentFrame.self) : False := by
+  rw [denM] at hv
+  have hx := hv.1
+  rw [scope.self] at hx
+  simp only [isExactInst] at hx
+  cases hn : classNamed? m.heap recv <;> simp [hn, scope.cached] at hx
 
 /-- `self`'s type. `none` is top level, where `Judge` declines to type `self'` at all. -/
 def SelfTyOk (σ? : Option Ty) (m : Machine) : Prop :=
@@ -255,10 +265,8 @@ def BlockTyOk (β? : Option Ty) (m : Machine) : Prop :=
   | none => m.currentFrame.blk = none
   | some β => ∃ b, m.currentFrame.blk = some b ∧ denM β m b
 
-/-- Every closure in the whole-program table is a real block literal of the program. Vacuous
-as stated — the table is syntax, and its *use* is `closTblOk`, applied where a `Ty.clos`
-appears. Kept as a named component so `StateOk` has one field per `Ctx` field and a future
-clink that needs a table invariant has somewhere to put it. -/
+/-- Legacy syntax-table slot, with no semantic constraint. Code identity is now part
+of denM's clos arm; no callable rule may derive evidence from this True component. -/
 def ClosuresOk (_K : ClosTable) (_m : Machine) : Prop := True
 
 /-- `"::LIMIT"` -> `"LIMIT"`: `Ctx.consts` is keyed by absolute path, the heap's toplevel
@@ -283,12 +291,16 @@ whose denotation is the *toplevel* class object, about a value the machine produ
 made those two the same value, and the rules' obligations were not derivable. That is stall
 point (1) again — a missing conformance component, not a missing lemma. -/
 
-/-- The machine's own constant resolution for `n`, transcribed from `Interp.evalExpr`'s
-`.const` arm so a rung can rewrite with it. Lexical phase (each `cref` scope's *own*
-constants, innermost first), then the inheritance phase from `defmod`. -/
+/-- Use the interpreter's lexical lookup directly: own lexical constants,
+inheritance from the lexical namespace, then Object fallback for modules. -/
 def constResolveAt (m : Machine) (n : String) : Option Value :=
-  (m.currentFrame.cref.firstM (fun c => constOwn m.heap c n)).orElse
-    (fun _ => constLookupFrom m.heap m.currentFrame.defmod n)
+  Interp.lexicalConstant m n
+
+theorem constResolveAt_top {m : Machine} (hc : m.currentFrame.cref = []) (n : String) :
+    constResolveAt m n = constLookupFrom m.heap Boot.objectId n := by
+  simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, hc,
+    List.firstM, List.headD_nil, Option.orElse_none]
+  cases constLookupFrom m.heap Boot.objectId n <;> simp <;> rfl
 
 /-- **The current scope resolves constants exactly as the toplevel table does.**
 
@@ -314,10 +326,10 @@ def ConstScopeOk (m : Machine) : Prop :=
   ∀ n, constResolveAt m n = constLookup m.heap n
 
 theorem InstanceSite.constScope {κ : Ctx} {cn : String} {k : ObjId} {m : Machine}
-    (h : InstanceSite κ cn k m.heap) (hc : m.currentFrame.cref = [k, Boot.objectId])
+    (h : InstanceSite κ cn k m.heap) (hc : m.currentFrame.cref = [k])
     (ho : m.currentFrame.defmod = k) : ConstScopeOk m := by
   intro n
-  simpa only [constResolveAt, hc, ho, instanceConstResolve] using h.constants n
+  simpa only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, hc, ho, instanceConstResolve, List.headD_cons] using h.constants n
 
 /-- Both resolutions read the heap only through `classPayload?` and `ancestors`, and the frame
 only through `currentFrame` — the three things `Ext` pins outright. -/
@@ -327,7 +339,7 @@ theorem ConstScopeOk.ext {m m₂ : Machine} (he : Ext m m₂) (h : ConstScopeOk 
   have hl : constLookup m₂.heap n = constLookup m.heap n := by
     simp only [constLookup, he.payload]
   have hr : constResolveAt m₂ n = constResolveAt m n := by
-    simp only [constResolveAt, constOwn, constLookupFrom, he.payload, he.ancestors,
+    simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, constOwn, constLookupFrom, he.payload, he.ancestors,
       he.currentFrame_eq]
   rw [hr, hl]; exact h n
 
@@ -337,8 +349,9 @@ theorem ConstScopeOk.setLocal {m : Machine} (x : String) (w : Value) (h : ConstS
     ConstScopeOk (m.setLocal x w) := by
   intro n
   have hr : constResolveAt (m.setLocal x w) n = constResolveAt m n := by
-    simp only [constResolveAt, setLocal_heap, currentFrame_setLocal_cref,
+    simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, setLocal_heap, currentFrame_setLocal_cref,
       currentFrame_setLocal_defmod]
+    rfl
   rw [hr, setLocal_heap]; exact h n
 
 /-- The constant table, **stated over the lookup function rather than over the table**
@@ -504,8 +517,11 @@ a table so that a rung cites the clause it needs and an unused clause is visible
 structure CoreOk (h : Heap) : Prop where
   classReady : ClassReady h
   rootNames : RootNames h
+  metaConstants : ConstFallback h (classOf h (.ref Boot.objectId))
   /-- `BasicObject` has no superclass and no mixins, so its ancestor list is just itself. -/
   basicSelf : ancestors h Boot.basicObjectId = [Boot.basicObjectId]
+  /-- Fresh module values dispatch through Module, independently of Class ancestry (§F46). -/
+  moduleBasic : (ancestors h Boot.moduleId).contains Boot.basicObjectId = true
   /-- The name `String` resolves to the boot `String` class. -/
   stringNamed : classNamed? h "String" = some Boot.stringId
   /-- `String` is a `String` … -/
@@ -544,7 +560,12 @@ theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m
     (he : Ext m m₂) (hc : CoreOk h) : CoreOk h' where
   classReady := by subst hm; subst hm₂; exact hc.classReady.ext he
   rootNames := by subst hm; subst hm₂; exact hc.rootNames.ext he
+  metaConstants := by
+    subst hm; subst hm₂
+    simpa only [classOf, he.get Boot.objectId hc.classReady.chains.boot.2.2.2.2]
+      using hc.metaConstants.ext he
   basicSelf := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.basicSelf
+  moduleBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.moduleBasic
   stringNamed := by subst hm; subst hm₂; rw [he.classNamed?_eq]; exact hc.stringNamed
   stringSelf := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.stringSelf
   stringBasic := by subst hm; subst hm₂; rw [he.ancestors]; exact hc.stringBasic
@@ -579,7 +600,7 @@ def declaresName (κ : Ctx) (n : String) : Bool :=
   κ.defs.any (·.name == n) ||
   κ.classes.any (fun c => c.methods.any (·.name == n) || c.smethods.any (·.name == n))
 
-/-- **"And nothing more", for methods.** Every method installed anywhere in the heap is the
+/-- **"And nothing more", for methods.** Every defined method installed anywhere in the heap is the
 model's own — an axiomatized builtin (`MethodDef.builtin`) or Ruby's core library written in
 RubyCore (`MethodDef.fromPrelude`) — or a name `κ` records.
 
@@ -592,12 +613,13 @@ heap-global form implies the statement at every one of them (`MethodsExact.looku
 `Denote/Sem/Core/Frame.lean`) while being a single decidable `Bool` at a concrete heap.
 
 Measured before it was stated: at the real prelude-booted heap the number of installed methods
-that are neither builtin nor prelude is **zero** (`Denote/Sem/Core/Boot.lean`'s `methodsExactB`), so
+that are neither builtin nor prelude, excluding undefined-method tombstones, is **zero**
+(`Denote/Sem/Core/Boot.lean`'s `methodsExactB`), so
 this is a fact about the machine the ladder starts from rather than a hopeful invariant, and
 `declaresName` is exactly the room a program grows into it. -/
 def MethodsExact (κ : Ctx) (m : Machine) : Prop :=
   ∀ k cp, m.heap.classPayload? k = some cp →
-    ∀ n md, (n, md) ∈ cp.methods →
+    ∀ n md, (n, md) ∈ cp.methods → md.undefined = false →
       md.fromPrelude = true ∨ md.builtin.isSome = true ∨ nameFreeN κ n = false
 
 /-- **`self` is a real object.** Every reference `StateOk` describes has to be one the heap
@@ -720,8 +742,7 @@ theorem mainSite_of_scope {κ : Ctx} {m : Machine} (h : MainReady m)
     simpa only [h.self] using hl
   · intro n
     have he : constResolveAt m n = mainConstResolve m.heap n := by
-      simp only [constResolveAt, h.cref, h.owner, List.firstM, mainConstResolve]
-      cases constOwn m.heap Boot.objectId n <;> rfl
+      exact constResolveAt_top h.cref n
     exact he.symm.trans (hc n)
 
 /-! ## The query builtins
@@ -753,10 +774,14 @@ The name table grows one entry per rung, exactly as `CoreOk`'s rows do. -/
 def queryBuiltins : List (String × String) :=
   [("is_a?", "Object#is_a?"), ("class", "Object#class"), ("raise", "Object#raise")]
 
+/-- Native `raise` is private; the other query rows are public. -/
+def queryVisibility (name : String) : Visibility :=
+  if name == "raise" then .priv else .pub
+
 def QueryOk (κ : Ctx) (m : Machine) : Prop :=
   ∀ mname bid, (mname, bid) ∈ queryBuiltins → nameFreeN κ mname = true → ∀ k,
     (∀ owner md, Interp.methodOn m.heap k mname = some (owner, md) →
-        md.builtin = some bid ∧ md.undefined = false ∧ md.visibility = .pub ∧
+        md.builtin = some bid ∧ md.undefined = false ∧ md.visibility = queryVisibility mname ∧
         md.fromPrelude = false ∧
         Interp.crubyShadow m.heap
           ((ancestors m.heap k).takeWhile (fun x => x != owner)) mname = none) ∧
@@ -768,10 +793,11 @@ def QueryOk (κ : Ctx) (m : Machine) : Prop :=
 def clsQueryBuiltins : List (String × String) :=
   [("===", "Module#==="), ("to_s", "Module#to_s")]
 
-/-- Existing class-object dispatch sites, plus Class itself: a fresh eigenclass has no
-eigenclass of its own and dispatches directly there. Existing receivers need not expose it. -/
+/-- Existing class-object sites and the direct Class/Module paths introduced by fresh
+eigenclasses. Existing receivers need not expose either inherited dispatch source. -/
 def ClassQuerySite (h : Heap) (k : ObjId) : Prop :=
-  k = Boot.classId ∨ ∃ o, (h.classPayload? o).isSome = true ∧ classOf h (.ref o) = k
+  k = Boot.classId ∨ k = Boot.moduleId ∨
+    ∃ o, (h.classPayload? o).isSome = true ∧ classOf h (.ref o) = k
 
 def ClsQueryOk (κ : Ctx) (m : Machine) : Prop :=
   ∀ mname bid, (mname, bid) ∈ clsQueryBuiltins → nameFreeN κ mname = true → ∀ k,
@@ -786,42 +812,45 @@ def ClsQueryOk (κ : Ctx) (m : Machine) : Prop :=
       ∀ o₂ md, Interp.methodOn m.heap k "method_missing"
         = some (o₂, md) → md.builtin.isSome = true)
 
-theorem QueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : QueryOk κ m) :
+theorem QueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : QueryOk κ m)
+    (hnames : Proof.NamesOk m.heap) (hchains : Proof.ChainsIn m.heap) :
     QueryOk κ m₂ := by
   intro mname bid hmem hfree k
   have hm : ∀ n, Interp.methodOn m₂.heap k n = Interp.methodOn m.heap k n := by
-    intro n; simp only [Interp.methodOn, he.payload, he.ancestors]
+    intro n; exact he.methodOn_eq hchains k n
   obtain ⟨h1, h2⟩ := h mname bid hmem hfree k
   refine ⟨?_, ?_⟩
   · intro owner md hfound
     rw [hm] at hfound
     obtain ⟨hb, hu, hv, hp, hsh⟩ := h1 owner md hfound
     refine ⟨hb, hu, hv, hp, ?_⟩
-    simp only [Interp.crubyShadow, className, he.payload, he.ancestors] at hsh ⊢
+    simp only [he.ancestors, he.crubyShadow_eq hnames]
     exact hsh
   · intro hnone o md hfound
     rw [hm] at hnone hfound
     exact h2 hnone o md hfound
 
-theorem ClsQueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : ClsQueryOk κ m) :
+theorem ClsQueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : ClsQueryOk κ m)
+    (hnames : Proof.NamesOk m.heap) (hchains : Proof.ChainsIn m.heap) :
     ClsQueryOk κ m₂ := by
   intro mname bid hmem hfree k hp
   have hs : ClassQuerySite m.heap k := by
-    rcases hp with hk | ⟨o, ho, hco⟩
+    rcases hp with hk | hk | ⟨o, ho, hco⟩
     · exact Or.inl hk
+    · exact Or.inr (Or.inl hk)
     · rw [he.payload] at ho
       have hlt := lt_size_of_classPayload ho
       simp only [classOf, he.get o hlt] at hco
-      exact Or.inr ⟨o, ho, hco⟩
+      exact Or.inr (Or.inr ⟨o, ho, hco⟩)
   have hm : ∀ n, Interp.methodOn m₂.heap k n = Interp.methodOn m.heap k n := by
-    intro n; simp only [Interp.methodOn, he.payload, he.ancestors]
+    intro n; exact he.methodOn_eq hchains k n
   obtain ⟨h1, h2⟩ := h mname bid hmem hfree k hs
   refine ⟨?_, ?_⟩
   · intro owner md hfound
     rw [hm] at hfound
     obtain ⟨hb, hu, hv, hpre, hsh⟩ := h1 owner md hfound
     refine ⟨hb, hu, hv, hpre, ?_⟩
-    simp only [Interp.crubyShadow, className, he.payload, he.ancestors] at hsh ⊢
+    simp only [he.ancestors, he.crubyShadow_eq hnames]
     exact hsh
   · intro hnone o₂ md hfound
     rw [hm] at hnone hfound
@@ -912,18 +941,19 @@ def NilQueryOk (κ : Ctx) (m : Machine) : Prop :=
       ∀ o₂ md, Interp.methodOn m.heap k "method_missing" = some (o₂, md) →
         md.builtin.isSome = true)
 
-theorem NilQueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : NilQueryOk κ m) :
+theorem NilQueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : NilQueryOk κ m)
+    (hnames : Proof.NamesOk m.heap) (hchains : Proof.ChainsIn m.heap) :
     NilQueryOk κ m₂ := by
   intro hfree k
   have hm : ∀ n, Interp.methodOn m₂.heap k n = Interp.methodOn m.heap k n := by
-    intro n; simp only [Interp.methodOn, he.payload, he.ancestors]
+    intro n; exact he.methodOn_eq hchains k n
   obtain ⟨h1, h2⟩ := h hfree k
   refine ⟨?_, ?_⟩
   · intro owner md hfound
     rw [hm] at hfound
     obtain ⟨hb, hu, hv, hp, hsh⟩ := h1 owner md hfound
     refine ⟨hb, hu, hv, hp, ?_⟩
-    simp only [Interp.crubyShadow, className, he.payload, he.ancestors] at hsh ⊢
+    simp only [he.ancestors, he.crubyShadow_eq hnames]
     exact hsh
   · intro hnone o₂ md hfound
     rw [hm] at hnone hfound
@@ -935,8 +965,9 @@ theorem NilQueryOk.setLocal {κ : Ctx} {m : Machine} (x : String) (w : Value)
   simp only [setLocal_heap]
   exact h hfree k
 
-/-- Class-header conformance, separate from installed method code (`ClassesOk`) and body
-proofs. Pins ordinary class status, guarded builtin `new` dispatch, and named ancestry.
+/-- Header conformance, separate from installed method code (`ClassesOk`) and body
+proofs. Pins the declared module/class kind and its named ancestry. Only ordinary classes
+owe BasicObject ancestry and guarded builtin `new` dispatch.
 The dispatch guard permits declared singleton overrides; Range/Struct's prelude constructors
 are why this is not a universal class-object query invariant.
 
@@ -946,31 +977,30 @@ body proof, or an explicit `userInit? = none` premise for a future default alloc
 Publishing a pending header grants neither route. -/
 def DeclClassOk (κ : Ctx) (m : Machine) : Prop :=
   ∀ c ∈ κ.classes, ∀ k, classNamed? m.heap c.name = some k →
-    (ancestors m.heap k).contains Boot.basicObjectId = true ∧
+    (c.isModule = false → (ancestors m.heap k).contains Boot.basicObjectId = true) ∧
     k ≠ Boot.classId ∧ k ≠ Boot.moduleId ∧
-    (m.heap.classPayload? k).map (·.isModule) = some false ∧
-    (Ratchet.smroGet? κ.classes c.name "new" = none →
+    (m.heap.classPayload? k).map (·.isModule) = some c.isModule ∧
+    (c.isModule = false → Ratchet.smroGet? κ.classes c.name "new" = none →
       (∀ owner md, Interp.methodOn m.heap (classOf m.heap (.ref k)) "new" = some (owner, md) →
           md.builtin = some "Class#new" ∧ md.undefined = false ∧ md.visibility = .pub ∧
           md.fromPrelude = false ∧
           Interp.crubyShadow m.heap
             ((ancestors m.heap (classOf m.heap (.ref k))).takeWhile (fun x => x != owner))
             "new" = none) ∧
-      (Interp.methodOn m.heap (classOf m.heap (.ref k)) "new" = none →
-        ∀ o₂ md, Interp.methodOn m.heap (classOf m.heap (.ref k)) "method_missing"
-          = some (o₂, md) → md.builtin.isSome = true)) ∧
+      (∃ owner md, Interp.methodOn m.heap (classOf m.heap (.ref k)) "new" = some (owner, md))) ∧
     -- **the declared chain is the machine's chain**, in both directions, and it is what
     -- narrowing's `isATy`/`notATy` spend at an `.inst n` type. `BaseChainsOk` is the same
     -- claim for the *builtin* rows; this is the declared one, and it needs no
     -- no-subclasses clause because `.inst` denotes the class **exactly** (§F12).
     (∀ ch, Ratchet.ancestors? κ.classes c.name = some ch →
-      Ratchet.mixinFreeChain κ.wholeCls Ratchet.rootAncestors = true →
-      (∀ cn ∈ ch ++ Ratchet.rootAncestors, ∃ j, classNamed? m.heap cn = some j ∧
+      Ratchet.mixinFreeChain κ.wholeCls c.rootTail = true →
+      (∀ cn ∈ ch ++ c.rootTail, ∃ j, classNamed? m.heap cn = some j ∧
           (ancestors m.heap k).contains j = true) ∧
       (∀ cn j, classNamed? m.heap cn = some j → (ancestors m.heap k).contains j = true →
-          cn ∈ ch ++ Ratchet.rootAncestors))
+          cn ∈ ch ++ c.rootTail))
 
-theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : DeclClassOk κ m) :
+theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : DeclClassOk κ m)
+    (hnames : Proof.NamesOk m.heap) (hchains : Proof.ChainsIn m.heap) :
     DeclClassOk κ m₂ := by
   intro c hc k hcn
   rw [he.classNamed?_eq] at hcn
@@ -987,21 +1017,19 @@ theorem DeclClassOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : Dec
       exact absurd (lt_size_of_classPayload hsome) hk
   have hm : ∀ n, Interp.methodOn m₂.heap (classOf m₂.heap (.ref k)) n
       = Interp.methodOn m.heap (classOf m.heap (.ref k)) n := by
-    intro n; simp only [hco, Interp.methodOn, he.payload, he.ancestors]
+    intro n; simp only [hco, he.methodOn_eq hchains]
   refine ⟨by rw [he.ancestors]; exact hroot, hcls, hmod, by rw [he.payload]; exact hism,
     ?_, ?_⟩
-  · intro hsm
-    obtain ⟨h1, h2⟩ := hnew hsm
+  · intro hkind hsm
+    obtain ⟨h1, h2⟩ := hnew hkind hsm
     refine ⟨?_, ?_⟩
     · intro owner md hfound
       rw [hm] at hfound
       obtain ⟨hb, hu, hv, hp, hsh⟩ := h1 owner md hfound
       refine ⟨hb, hu, hv, hp, ?_⟩
-      simp only [hco, Interp.crubyShadow, className, he.payload, he.ancestors] at hsh ⊢
+      simp only [hco, he.ancestors, he.crubyShadow_eq hnames]
       exact hsh
-    · intro hnone o₂ md hfound
-      rw [hm] at hnone hfound
-      exact h2 hnone o₂ md hfound
+    · simpa only [hm] using h2
   · intro ch hch hmf
     obtain ⟨h1, h2⟩ := hchain ch hch hmf
     refine ⟨fun cn hcnm => ?_, fun cn j hj hanc => ?_⟩
@@ -1034,13 +1062,16 @@ owner-local bound. Kept separate so the previous contract's countermodel remains
 structure StateCore (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   runtime : RuntimeOk κ m
   mainSite : κ.pos.mainWorld = true → MainSite κ m.heap
+  moduleBase : ModuleBase κ m.heap
   classRuntime : ClassRuntimeOk κ m
+  singletonRuntime : SingletonRuntimeOk κ m
   classSites : ClassSitesOk κ m.heap
   allocators : AllocatorsOk κ.pos.plainAlloc m.heap
   globalConsts : GlobalConstsOk κ.pos.globalConsts m.heap
   sat : HeapSaturated m
   primitiveDispatch : primitiveDispatchB m.heap (nameFreeN κ) = true
   primitiveErrors : primitiveErrorsB m.heap = true
+  primitiveInit : primitiveInitB m.heap = true
   stringPayload : StringPayloadOk m.heap
   arrayPayload : ArrayPayloadOk m.heap
   hashPayload : HashPayloadOk m.heap
@@ -1070,6 +1101,12 @@ structure StateCore (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   baseChains : BaseChainsOk κ m
   nilQuery : NilQueryOk κ m
   selfLive : SelfLive m
+  names : Proof.NamesOk m.heap
+  localAlias : m.currentFrame.localAlias = none
+  /-- Every captured activation is live, unaliased, and has a terminating parent chain. -/
+  capturedLive : CaptureLive m m.currentFrame.captured
+  /-- Required for the stack-only corollary of the saved-root frame theorem. -/
+  rootClean : RootClean m
 
 /-- Complete state conformance. Positive rows and global selector reservations do not
 exclude hidden overrides; the own-table bound is also required at every typed state. -/
@@ -1077,6 +1114,19 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop extends St
   ownNames : ClassOwnNames κ.classes m.heap
   classChains : ClassChains κ.classes m.heap
   rootInit : RootInitOk κ.defs m.heap
+
+theorem StateCore.captureLive {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    (h : StateCore κ Γ I m) : CaptureLive m (some (m.stack.headD 0)) := by
+  apply CaptureLive.frame h.frameInRange.2
+  · simpa only [← currentFrame_headD h.frameInRange.1] using h.capturedLive
+  · simpa only [← currentFrame_headD h.frameInRange.1] using h.localAlias
+
+/-- A retained allocator identifies an ordinary class, including its static record kind. -/
+theorem StateOk.ordinary_decl {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Cls}
+    (hm : StateOk κ Γ I m) (hc : c ∈ κ.classes) (ha : c.name ∈ κ.pos.plainAlloc) :
+    c.isModule = false := by
+  obtain ⟨k, hk, hp⟩ := hm.allocators c.name ha
+  exact Option.some.inj ((hm.declCls c hc k hk).2.2.2.1.symm.trans hp.module)
 
 /-! ## Conformance survives an allocation
 
@@ -1093,55 +1143,42 @@ The theorem every allocating rung needs, and the one that pays for `Denote/Ty/Ex
 
 Nothing here is specific to a string literal: an allocating rung supplies the `Ext` and this
 does the rest. -/
-/-- The ancestor walk `lookup` performs reads the heap only through `classPayload?`, so two
-heaps that agree there agree on it. One induction, and the reason it is needed rather than
-being a `simp` step is that `lookup.go` carries the heap as a captured argument. -/
+/-- Bounded lookup also reads heap size and Object's fallback ancestors. -/
 theorem lookup_go_payload {h h' : Heap} (hp : ∀ k, h'.classPayload? k = h.classPayload? k)
-    (n : String) : ∀ ks, lookup.go h' n ks = lookup.go h n ks
-  | [] => rfl
-  | k :: rest => by
-    rw [lookup.go, lookup.go, hp k]
-    cases hc : h.classPayload? k with
-    | none => simp only [hc]; exact lookup_go_payload hp n rest
-    | some cp =>
-      simp only [hc]
-      cases cp.methods.find? (·.1 == n) with
-      | none => exact lookup_go_payload hp n rest
-      | some p => rfl
+    (hs : h'.objs.size = h.objs.size)
+    (ho : RubyCore.ancestors h' Boot.objectId = RubyCore.ancestors h Boot.objectId)
+    (n : String) (ks : List ObjId) : lookupInChain h' ks n = lookupInChain h ks n :=
+  Proof.lookupInChain_congr hs (fun k => by rw [hp k]) ho ks
 
-/-- `lookup` **is** `methodOn` at the receiver's dispatch class: the same ancestor walk,
-written once as an explicit `go` (`RubyCore/Heap.lean`) and once as a `firstM`
-(`Interp/Dispatch.lean`). Needed because the two components below are stated at the walk the
-interpreter performs and the interpreter performs both. -/
+/-- Both dispatch readers now share the same bounded lookup implementation. -/
 theorem lookup_eq_methodOn (h : Heap) (v : Value) (n : String) :
-    lookup h v n = Interp.methodOn h (classOf h v) n := by
-  simp only [lookup, Interp.methodOn]
-  induction (RubyCore.ancestors h (classOf h v)) with
-  | nil => rfl
-  | cons k rest ih =>
-    rw [lookup.go, List.firstM]
-    cases hp : h.classPayload? k with
-    | none => simp [ih]
-    | some cp =>
-      cases hf : cp.methods.find? (·.1 == n) with
-      | none => simp [hf, ih]
-      | some p => simp [hf]
+    lookup h v n = Interp.methodOn h (classOf h v) n := rfl
 
 theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : StateOk κ Γ I m)
     (he : Ext m m₂) (hp : StringPayloadOk m₂.heap) (ha : ArrayPayloadOk m₂.heap)
     (hh : HashPayloadOk m₂.heap) (hphase : m₂.preludeMode = m.preludeMode) :
     StateOk κ Γ I m₂ where
-  runtime := fun hr => (h.runtime hr).ext he hphase
-  mainSite := fun hr => (h.mainSite hr).ext he
-  classRuntime := fun cn hr => (h.classRuntime cn hr).ext he hphase
-  classSites := h.classSites.ext he
+  runtime := fun hr => (h.runtime hr).ext he hphase h.core.classReady.chains
+  mainSite := fun hr => (h.mainSite hr).ext he h.names h.core.classReady.chains
+  moduleBase := h.moduleBase.ext he h.core.classReady.chains
+  classRuntime := fun cn hr => (h.classRuntime cn hr).ext he hphase h.core.classReady.chains
+  singletonRuntime := fun cn hr => (h.singletonRuntime cn hr).ext he hphase
+  classSites := h.classSites.ext he h.core.classReady.chains
   allocators := h.allocators.ext he
   globalConsts := h.globalConsts.ext he
-  primitiveDispatch := (primitiveDispatchB_ext he _).trans h.primitiveDispatch
+  primitiveDispatch := (primitiveDispatchB_ext he h.names h.core.classReady.chains _).trans h.primitiveDispatch
   primitiveErrors := (primitiveErrorsB_ext he).trans h.primitiveErrors
+  primitiveInit := (primitiveInitB_ext he h.names h.core.classReady.chains).trans h.primitiveInit
   stringPayload := hp
   arrayPayload := ha
   hashPayload := hh
+  rootClean := he.rootClean h.rootClean
+  names := he.namesOk h.names
+  localAlias := by rw [he.currentFrame_eq]; exact h.localAlias
+  capturedLive := by
+    rw [he.currentFrame_eq]
+    exact h.capturedLive.frames_preserved (by simp only [he.frames, Nat.le_refl])
+      (fun _ _ => by rw [he.frames])
   sat := Proof.Saturated_grow he.shapeAgree he.size h.sat
   core := CoreOk.ext rfl rfl he h.core
   frameInRange := by
@@ -1166,18 +1203,23 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     exact ⟨denSpine_ext he this.1, this.2⟩
   ownNames := h.ownNames.ext he
   classChains := h.classChains.ext he
-  rootInit := h.rootInit.ext he
+  rootInit := h.rootInit.ext he h.core.classReady.chains
   classes := by
     intro c hc
-    obtain ⟨k, hk, hm⟩ := h.classes c hc
-    refine ⟨k, by rw [he.classNamed?_eq]; exact hk, ?_⟩
-    intro d hd
-    obtain ⟨md, h1, h2⟩ := hm d hd
-    exact ⟨md, by rw [he.payload]; exact h1, h2⟩
+    obtain ⟨k, hk, hm, hs⟩ := h.classes c hc
+    refine ⟨k, by rw [he.classNamed?_eq]; exact hk, ?_, ?_⟩
+    · intro d hd
+      obtain ⟨md, h1, h2⟩ := hm d hd
+      exact ⟨md, by rw [he.payload]; exact h1, h2⟩
+    · obtain ⟨j, site⟩ := h.classSites.of_class hc
+      have hj : j = k := Option.some.inj (site.named.symm.trans hk)
+      subst j
+      exact hs.transport site.live (fun o ho => by rw [he.get o ho])
+        (fun e name => by simp only [ownCode, he.payload])
   defs := by
     intro d hd
-    obtain ⟨md, h1, h2⟩ := h.defs d hd
-    exact ⟨md, by rw [he.payload]; exact h1, h2⟩
+    obtain ⟨hn, md, h1, h2⟩ := h.defs d hd
+    exact ⟨hn, md, by rw [he.payload]; exact h1, h2⟩
   asms := by
     intro a ha m₃ he₃ args hargs v m' hs
     exact h.asms a ha m₃ (he.later.trans he₃) args hargs v m' hs
@@ -1189,7 +1231,8 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     | some f =>
       rw [hf] at h2
       exact ⟨by rw [he.currentFrame_eq]; exact h2.1,
-             by rw [he.currentFrame_eq]; exact he.isAName_mono h2.2⟩
+             by rw [he.currentFrame_eq]; exact denM_ext he h2.2.1,
+             by rw [he.currentFrame_eq]; exact h2.2.2⟩
   closures := trivial
   blockTy := by
     have h2 := h.blockTy
@@ -1213,7 +1256,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     obtain ⟨v, hv1, hv2⟩ := h.consts n τ hn
     refine ⟨v, ?_, denM_ext he hv2⟩
     rw [show constResolveAt m₂ n = constResolveAt m n by
-      simp only [constResolveAt, constOwn, constLookupFrom, he.payload, he.ancestors,
+      simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, constOwn, constLookupFrom, he.payload, he.ancestors,
         he.currentFrame_eq]]
     exact hv1
   privConsts := trivial
@@ -1229,24 +1272,24 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
     intro n hn k hk o md hm
     refine h.nameFree n hn k (hs ▸ hk) o md ?_
     rw [← hm]
-    simp only [Interp.methodOn, he.payload, he.ancestors]
+    simp only [he.methodOn_eq h.core.classReady.chains]
   bareFree := by
     intro n hn hdef hself
     rw [show lookup m₂.heap m₂.currentFrame.self n
           = lookup m.heap m.currentFrame.self n by
-      simp only [lookup, classOf_self_ext he h.selfLive, he.ancestors]
-      exact lookup_go_payload he.payload n _]
+      simp only [lookup_eq_methodOn, classOf_self_ext he h.selfLive,
+        he.methodOn_eq h.core.classReady.chains]]
     exact h.bareFree n hn hdef hself
-  query := QueryOk.ext he h.query
-  clsQuery := ClsQueryOk.ext he h.clsQuery
-  declCls := DeclClassOk.ext he h.declCls
+  query := QueryOk.ext he h.query h.names h.core.classReady.chains
+  clsQuery := ClsQueryOk.ext he h.clsQuery h.names h.core.classReady.chains
+  declCls := DeclClassOk.ext he h.declCls h.names h.core.classReady.chains
   baseChains := BaseChainsOk.ext he h.baseChains
-  nilQuery := NilQueryOk.ext he h.nilQuery
+  nilQuery := NilQueryOk.ext he h.nilQuery h.names h.core.classReady.chains
   missFree := by
     intro hfree hself o md hm
     refine h.missFree hfree hself o md ?_
     rw [← hm]
-    simp only [Interp.methodOn, classOf_self_ext he h.selfLive, he.payload, he.ancestors]
+    simp only [classOf_self_ext he h.selfLive, he.methodOn_eq h.core.classReady.chains]
   selfLive := by
     intro o ho
     rw [he.currentFrame_eq] at ho
@@ -1494,10 +1537,22 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
   exact
     { runtime := fun hr => (h.runtime hr).setLocal x w
       mainSite := by simpa only [setLocal_heap] using h.mainSite
+      moduleBase := by simpa only [setLocal_heap] using h.moduleBase
       classRuntime := fun cn hr => (h.classRuntime cn hr).setLocal x w
+      singletonRuntime := fun cn hr => (h.singletonRuntime cn hr).setLocal x w
       classSites := by simpa only [setLocal_heap] using h.classSites
       allocators := by simpa only [setLocal_heap] using h.allocators
       globalConsts := by simpa only [setLocal_heap] using h.globalConsts
+      rootClean := h.rootClean
+      names := h.names
+      localAlias := by
+        rw [currentFrame_setLocal_localAlias]
+        exact h.localAlias
+      capturedLive := by
+        rw [currentFrame_setLocal_captured]
+        apply h.capturedLive.capture_preserved (by simp)
+        · intro i _; rw [setLocal_eq_setAt]; exact setAt_captured ..
+        · intro i _; rw [setLocal_eq_setAt]; exact setAt_localAlias ..
       sat := h.sat
       core := h.core
       frameInRange := by
@@ -1512,7 +1567,8 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
             -- type the rule bound (`hρ` strips the alias `vasgnAlias` wraps it in).
             subst hyx
             rw [envGet?_envSet_self] at hy
-            rw [getLocal_setLocal_self m y w h.frameInRange.2, ← Option.some.inj hy]
+            rw [getLocal_setLocal_self m y w h.frameInRange.2
+              (by rw [← currentFrame_headD h.frameInRange.1]; exact h.localAlias), ← Option.some.inj hy]
             exact ⟨by rw [hρ]; exact denM_setLocal hw hcap hw, halias⟩
           · -- Every other name is untouched; its type is either widened to `.any` or
             -- transported by `denM_setLocal`.
@@ -1572,7 +1628,11 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
         | some f =>
           rw [hf] at h2
           exact ⟨by rw [currentFrame_setLocal_meth]; exact h2.1,
-                 by rw [currentFrame_setLocal_self]; exact h2.2⟩
+                 by
+                   rw [currentFrame_setLocal_self]
+                   exact (denM_heap_only (m₁ := m) (m₂ := m.setLocal x w)
+                     (by unfold Frame.recvTy; split <;> rfl) (setLocal_heap ..).symm).mp h2.2.1,
+                 by rw [currentFrame_setLocal_kind]; exact h2.2.2⟩
       closures := trivial
       blockTy := by
         have h2 := h.blockTy
@@ -1608,8 +1668,9 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
         obtain ⟨v, hv1, hv2⟩ := h.consts n σ hn
         refine ⟨v, ?_, denM_setLocal hw ?_ hv2⟩
         · rw [show constResolveAt (m.setLocal x w) n = constResolveAt m n by
-            simp only [constResolveAt, setLocal_heap, currentFrame_setLocal_cref,
-              currentFrame_setLocal_defmod]]
+            simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, setLocal_heap, currentFrame_setLocal_cref,
+              currentFrame_setLocal_defmod]
+            rfl]
           exact hv1
         · obtain ⟨p, hp⟩ := constGet?_entry hn
           obtain ⟨q, hq⟩ := envGet?_mem hp
@@ -1638,6 +1699,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
         simp only [Interp.methodOn, classOf, setLocal_heap, currentFrame_setLocal_self]
       primitiveDispatch := by simpa only [setLocal_heap] using h.primitiveDispatch
       primitiveErrors := by simpa only [setLocal_heap] using h.primitiveErrors
+      primitiveInit := by simpa only [setLocal_heap] using h.primitiveInit
       stringPayload := by simpa only [setLocal_heap] using h.stringPayload
       arrayPayload := by simpa only [setLocal_heap] using h.arrayPayload
       hashPayload := by simpa only [setLocal_heap] using h.hashPayload

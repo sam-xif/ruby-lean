@@ -13,13 +13,13 @@ theorem methodFrame_runSpecAt {N : Nat} {m : Machine} {f : RubyCore.Frame} {e : 
     (ht : FirstOrder τ = true)
     (hb : RunSpecAt N (pushMethodFrame m f) (evalFrom (pushMethodFrame m f) e) Γb τ κb Ib)
     (hs : ∀ n v, ResultOk (pushMethodFrame m f) Γb τ (.val v) n κb Ib →
-      StateOk κ Γ I (popMethodFrame n)) :
+      StateOk κ Γ I (popMethodFrame n)) (hroot : RootClean m) :
     RunSpecAt N m (pushK [.frameK m.frames.size] (evalFrom (pushMethodFrame m f) e)) Γ τ κ I := by
-  apply hb.bindSpec (by
-    intro k hk tag
+  apply hb.bindSpec hroot (by
+    intro k hk
     simp only [List.mem_singleton] at hk
     subst hk
-    simp)
+    rfl)
   intro a n hr
   exact (methodFrame_continue_spec hl hc ht hs hr).at N
 
@@ -29,6 +29,7 @@ theorem required_method_runSpecAt {N : Nat} {κ : Ctx} {Γ Γb : Env} {I τ : Ty
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I) (ha : κ.asms = [])
     (hkont : m.kont = []) (hp : md.params = (ps.map (·.1)).map RubyCore.Param.req)
     (hcap : md.capturedFrame = none) (hdecl : md.declared = []) (hbody : md.body = toRuby e)
+    (hblock : md.fromBlock = false) (hfor : md.forTargets = none)
     (hlen : args.length = ps.length) (hargs : DenAll (ps.map (·.2)) m args)
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (hτ : FirstOrder τ = true) (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
@@ -47,16 +48,17 @@ theorem required_method_runSpecAt {N : Nat} {κ : Ctx} {Γ Γb : Env} {I τ : Ty
       (congrArg FrameScope.blk hscope) (congrArg FrameScope.cref hscope)
       (congrArg FrameScope.defmod hscope) (congrArg FrameScope.captured hscope)
       (fun _ => by simp only [defaultDefVis, currentFrame_pushMethodFrame, f, requiredFrame]; rfl) hk
-      (requiredFrame_envOk m _ name md ps args hlen hargs hps) hframe
+      (requiredFrame_envOk m _ name md ps args hlen hargs hps) hframe rfl
+      (congrArg FrameScope.libraryOrigin hscope) (congrArg FrameScope.definitionFrame hscope)
   have hu : RootUncaptured m := by
     unfold RootUncaptured
     rw [rootFrame_eq_currentFrame hm.frameInRange.1]
     exact (congrArg FrameScope.captured hscope).symm
   have hs := methodFrame_runSpecAt hm.frameInRange.2 (f := f) rfl hτ (hb entry he)
-    (fun n v hr => method_pop_state hm ht ha hu rfl hscope hk hΓ hr.1 (hr.2.2 v rfl))
+    (fun n v hr => method_pop_state hm ht ha hu rfl hscope hk hΓ hr.1 (hr.2.2 v rfl)) hm.rootClean
   refine ⟨_, ?_, hs⟩
   rw [enterUserMethod_required m _ name md (ps.map (·.1)) args hp hcap hdecl
-    (by simpa using hlen)]
+    (by simpa using hlen) hblock hfor]
   simp only [Interp.withKont, pushK, evalFrom, f, pushMethodFrame, hkont, hbody, List.nil_append]
 
 
@@ -65,39 +67,75 @@ theorem top_method_runSpecAt {N : Nat} {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m 
     (hparams : decl.params = ps.map (fun p => Ratchet.Param.req p.1))
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (hτ : FirstOrder τ = true)
-    (hbody : SemSafeCtxAt N (κ.withFrame (some ⟨"Object", "Object", decl.name⟩)) ps I decl.body τ
-      (κ.withFrame (some ⟨"Object", "Object", decl.name⟩)) Γb I)
+    (hbody : SemSafeCtxAt N (κ.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) ps I decl.body τ
+      (κ.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) Γb I)
     (hm : StateOk κ Γ I m) (hd : decl ∈ κ.defs)
     (ht : ReframeFO κ I) (ha : κ.asms = []) (hc : κ.consts = [])
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
     (hkont : m.kont = []) (hlen : args.length = ps.length)
     (hargs : DenAll (ps.map (·.2)) m args)
-    (hruntime : κ.scope.runtimeMain = true) (hblock : κ.blockTy = none) :
+    (hruntime : κ.scope.runtimeMain = true) (hblock : κ.blockTy = none)
+    (hshadow : Interp.crubyShadow m.heap
+      ((ancestors m.heap (classOf m.heap (.ref Boot.mainId))).takeWhile (· != Boot.objectId))
+      decl.name = none) :
     ∃ next, Interp.finishSend m m.currentFrame.self .implicit decl.name args .none = .next next ∧
       RunSpecAt N m next Γ τ κ I := by
   have ready := hm.runtime hruntime
   have hblk : m.currentFrame.blk = none := by simpa only [BlockTyOk, hblock] using hm.blockTy
-  obtain ⟨md, hl, hp, hb, hu, hcode⟩ := defsOk_lookup hm.defs hd ready.chain
+  obtain ⟨md, hl, hp, hb, hu, hcode⟩ := defsOk_lookup hm.defs hd ready
+  have hdef : md.definee.getD Boot.objectId = Boot.objectId := by
+    simpa only [hcode.owner] using hcode.definee
   obtain ⟨next, he, hr⟩ := required_method_runSpecAt (name := decl.name)
-    (fr := some ⟨"Object", "Object", decl.name⟩)
+    (fr := some ⟨"Object", "Object", decl.name, false⟩)
     hm ht ha hkont (hp.trans (by rw [hparams]; exact toRubyParams_required ps))
-    hcode.captured hcode.declared hb hlen hargs hps hτ hΓ
+    hcode.captured hcode.declared hb hcode.fromBlock hcode.forTargets hlen hargs hps hτ hΓ
     (by simp [frameScope, requiredFrame, hcode.owner, hcode.cref,
-      ready.owner, ready.cref, ready.captured, hblk])
-    (fun x => (constGet?_empty (κ := κ.withFrame (some ⟨"Object", "Object", decl.name⟩)) hc x).trans
+      hdef, hcode.fromPrelude, ready.owner, ready.cref, ready.captured,
+      ready.origin, hm.localAlias, hblk, hcode.definitionFrame, ready.defFrame])
+    (fun x => (constGet?_empty (κ := κ.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) hc x).trans
       (constGet?_empty hc x).symm)
     (by
-      simp only [FrameOk, currentFrame_pushMethodFrame, requiredFrame, hcode.superName, Option.getD_none]
-      exact ⟨trivial, by rw [ready.self]; exact ready.object⟩)
+      simp only [FrameOk, Frame.recvTy, Bool.false_eq_true, ↓reduceIte, denM, currentFrame_pushMethodFrame, requiredFrame, hcode.superName, Option.getD_none]
+      exact ⟨trivial, by rw [ready.self]; exact ready.object, trivial⟩)
     hbody
   refine ⟨next, ?_, hr⟩
   rw [ready.self] at he ⊢
   rw [finishSend_ordinary_userMethod ready.payload hl hcode.builtin hu hcode.fromPrelude
-    (by simp [ready.chain, Interp.crubyShadow]; rfl)]
+    hshadow]
   exact he
 
+theorem top_method_stepSpecAt {N : Nat} {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : Machine} {decl : Defn}
+    {args : List Value} {ps : List SigParam}
+    (hparams : decl.params = ps.map (fun p => Ratchet.Param.req p.1))
+    (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
+    (hτ : FirstOrder τ = true)
+    (hbody : SemSafeCtxAt N (κ.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) ps I decl.body τ
+      (κ.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) Γb I)
+    (hm : StateOk κ Γ I m) (hd : decl ∈ κ.defs)
+    (ht : ReframeFO κ I) (ha : κ.asms = []) (hc : κ.consts = [])
+    (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
+    (hkont : m.kont = []) (hlen : args.length = ps.length)
+    (hargs : DenAll (ps.map (·.2)) m args)
+    (hruntime : κ.scope.runtimeMain = true) (hblock : κ.blockTy = none)
+    : StepSpecAt N m Γ τ
+      (Interp.finishSend m m.currentFrame.self .implicit decl.name args .none) κ I := by
+  have ready := hm.runtime hruntime
+  cases hs : Interp.crubyShadow m.heap
+      ((ancestors m.heap (classOf m.heap (.ref Boot.mainId))).takeWhile (· != Boot.objectId))
+      decl.name with
+  | none =>
+    obtain ⟨next, he, hr⟩ := top_method_runSpecAt hparams hps hτ hbody hm hd ht ha hc hΓ
+      hkont hlen hargs hruntime hblock hs
+    rw [he]
+    exact hr
+  | some cname =>
+    obtain ⟨md, hl, _, _, hu, hcode⟩ := defsOk_lookup hm.defs hd ready
+    rw [ready.self, finishSend_ordinary_shadow ready.payload hl hcode.builtin hu
+      hcode.fromPrelude hs]
+    trivial
 
 #print axioms methodFrame_runSpecAt
 #print axioms required_method_runSpecAt
+#print axioms top_method_stepSpecAt
 #print axioms top_method_runSpecAt
 end Ratchet.Denote.Typed

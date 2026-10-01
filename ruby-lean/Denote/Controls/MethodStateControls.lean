@@ -19,15 +19,15 @@ theorem identity_after_dispatch (hb : bootOkB = true) (v : Int) :
   have ready := hm.runtime rfl
   have hblk : bootMachine.currentFrame.blk = none := hm.blockTy
   apply required_method_runSpec (ps := [("x", .int)]) (e := .var .lvar "x")
-    (Γb := [("x", .int)]) (fr := some ⟨"Object", "Object", "identity"⟩)
+    (Γb := [("x", .int)]) (fr := some ⟨"Object", "Object", "identity", false⟩)
     hm (ReframeFO.empty rfl rfl rfl rfl) rfl bootMachine_kont rfl rfl rfl rfl rfl
     (by simp [DenAll, denM, isIntV]) (by simp [FirstOrder, isAliasTy]) rfl
     (by simp) (by simp [frameScope, requiredFrame, identityMethod, hblk, ready.captured])
   · intro x
     rw [constGet?_empty (κ := ctx0.withFrame _) rfl,
       constGet?_empty (κ := ctx0) rfl]
-  · simp only [FrameOk, currentFrame_pushMethodFrame]
-    refine ⟨rfl, ?_⟩
+  · simp only [FrameOk, Frame.recvTy, Bool.false_eq_true, ↓reduceIte, denM, currentFrame_pushMethodFrame]
+    refine ⟨rfl, ?_, rfl⟩
     change isAName bootMachine.heap bootMachine.currentFrame.self "Object" = true
     rw [ready.self]
     exact ready.object

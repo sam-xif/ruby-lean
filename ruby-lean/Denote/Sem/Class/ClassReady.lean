@@ -10,6 +10,7 @@ namespace Ratchet.Denote
 open RubyCore
 
 structure ClassReady (h : Heap) : Prop where
+  bootEnd : Boot.yielderId < h.objs.size
   chains : Proof.ChainsIn h
   objectEigen : ∃ e, (h.get Boot.objectId).eigen = some e ∧
     (ancestors h e).contains Boot.basicObjectId = true
@@ -33,7 +34,7 @@ theorem eigenSeparateB_sound {h : Heap} (hb : eigenSeparateB h = true)
   exact bne_iff_ne.mp (List.all_eq_true.mp hb (base, ch) hbase)
 
 def classReadyB (h : Heap) : Bool :=
-  Proof.chainsInB h &&
+  decide (Boot.yielderId < h.objs.size) && Proof.chainsInB h &&
     (match (h.get Boot.objectId).eigen with
      | some e => (ancestors h e).contains Boot.basicObjectId
      | none => false) &&
@@ -42,8 +43,8 @@ def classReadyB (h : Heap) : Bool :=
 
 theorem classReadyB_sound {h : Heap} (hb : classReadyB h = true) : ClassReady h := by
   simp only [classReadyB, Bool.and_eq_true] at hb
-  obtain ⟨⟨⟨⟨⟨hch, hei⟩, hclass⟩, hsep⟩, href⟩, hroot⟩ := hb
-  refine ⟨Proof.chainsInB_sound hch, ?_, hclass,
+  obtain ⟨⟨⟨⟨⟨⟨hboot, hch⟩, hei⟩, hclass⟩, hsep⟩, href⟩, hroot⟩ := hb
+  refine ⟨of_decide_eq_true hboot, Proof.chainsInB_sound hch, ?_, hclass,
     fun _ he _ _ hbase => eigenSeparateB_sound hsep he hbase, constRefsLiveB_sound href,
     beq_iff_eq.mp hroot⟩
   cases he : (h.get Boot.objectId).eigen with
@@ -52,7 +53,7 @@ theorem classReadyB_sound {h : Heap} (hb : classReadyB h = true) : ClassReady h 
 
 theorem ClassReady.ext {m n : Machine} (h : ClassReady m.heap) (he : Ext m n) :
     ClassReady n.heap := by
-  refine ⟨he.chains h.chains, ?_, ?_, ?_, h.constRefs.ext he, ?_⟩
+  refine ⟨Nat.lt_of_lt_of_le h.bootEnd he.size, he.chains h.chains, ?_, ?_, ?_, h.constRefs.ext he, ?_⟩
   · simpa only [he.get Boot.objectId h.chains.boot.2.2.2.2, he.ancestors] using h.objectEigen
   · simpa only [he.ancestors] using h.classBasic
   · simpa only [he.get Boot.objectId h.chains.boot.2.2.2.2] using h.eigenSeparate
@@ -60,7 +61,7 @@ theorem ClassReady.ext {m n : Machine} (h : ClassReady m.heap) (he : Ext m n) :
 
 theorem ClassReady.defineMethod {h : Heap} {k : ObjId} {name : String} {md : MethodDef}
     (hc : ClassReady h) : ClassReady (defineMethod h k name md) := by
-  refine ⟨Proof.chainsIn_defineMethod hc.chains, ?_, ?_, ?_, hc.constRefs.defineMethod, ?_⟩
+  refine ⟨by simpa only [Proof.objs_size_defineMethod] using hc.bootEnd, Proof.chainsIn_defineMethod hc.chains, ?_, ?_, ?_, hc.constRefs.defineMethod, ?_⟩
   · simpa only [Proof.get_defineMethod_eigen, Proof.ancestors_defineMethod] using hc.objectEigen
   · simpa only [Proof.ancestors_defineMethod] using hc.classBasic
   · simpa only [Proof.get_defineMethod_eigen] using hc.eigenSeparate
@@ -68,7 +69,7 @@ theorem ClassReady.defineMethod {h : Heap} {k : ObjId} {name : String} {md : Met
 
 theorem ClassReady.ivarOnly {h h' : Heap} (hc : ClassReady h) (hi : Proof.IvarOnly h h') :
     ClassReady h' :=
-  ⟨Proof.chainsIn_ivarOnly hi hc.chains,
+  ⟨by simpa only [hi.size] using hc.bootEnd, Proof.chainsIn_ivarOnly hi hc.chains,
     by simpa only [hi.eigen, hi.ancestors_eq] using hc.objectEigen,
     by simpa only [hi.ancestors_eq] using hc.classBasic,
     by simpa only [hi.eigen] using hc.eigenSeparate, hc.constRefs.ivarOnly hi,

@@ -34,6 +34,8 @@ inductive BRes where
   | err (cls : ObjId) (msg : String) (m : Machine)
   /-- Raise an existing exception object. -/
   | throwV (v : Value) (m : Machine)
+  /-- A rejected mutation still needs effectful inspect for its error message. -/
+  | frozen (recv : Value) (m : Machine)
   | unsupported (reason : String)
 
 
@@ -88,9 +90,48 @@ def programOverridden (h : Heap) (sens : List String) (k : ObjId) : Bool :=
         sens.contains n && md.builtin.isNone && !md.undefined && !md.fromPrelude
     | none => false
 
-/-- Can pure repr (Repr.lean) speak for this value? Only if nothing in the
-    ancestor chain *dispatch would walk* overrides a repr-sensitive method — and,
-    for containers, recursively for what they hold.
+/-- The native operation implemented by the payload renderer. A builtin alias
+    is pure only when it still resolves to this operation (L290). -/
+def nativeReprOwner (h : Heap) (name : String) : Value → String
+  | .nil => "NilClass"
+  | .bool true => "TrueClass"
+  | .bool false => "FalseClass"
+  | .int _ => "Integer"
+  | .flt _ => "Float"
+  | .sym _ => "Symbol"
+  | .ref o => match (h.get o).payload with
+    | .none | .rng _ | .generator _ | .yielder .. => "Object"
+    | .str _ => "String"
+    | .arr _ => "Array"
+    | .hsh _ => "Hash"
+    | .cls _ => "Module"
+    | .exc _ => "Exception"
+    | .proc _ => "Proc"
+    | .range .. => "Range"
+    | .rational .. => "Rational"
+    | .complex .. => "Complex"
+    | .regexp .. => "Regexp"
+    | .mdata .. => "MatchData"
+    | .enumerator _ => if name == "to_s" then "Object" else "Enumerator"
+    | .chain _ => if name == "to_s" then "Object" else "Enumerator::Chain"
+
+def reprUnchanged (h : Heap) (sens : List String) (value : Value) : Bool :=
+  sens.all fun name =>
+    if name == "inspect" || name == "to_s" then
+      (lookup h value name).any fun (_, md) =>
+        !md.undefined && md.builtin == some (nativeReprOwner h name value ++ "#" ++ name)
+    else !reprOverridden h [name] (classOf h value)
+
+/-- Native Object#inspect uses rb_check_funcall before reading ivars. A known
+    default hook with no custom respond_to? is the only effect-free shortcut. -/
+def objectInspectPure (h : Heap) (recv : Value) : Bool :=
+  (lookup h recv "respond_to?").isNone &&
+    ((lookup h recv "instance_variables_to_inspect").any fun (_, md) =>
+      !md.undefined && md.builtin == some "Object#instance_variables_to_inspect")
+
+/-- Can pure repr (Repr.lean) speak for this value? The resolved method must
+    still be the native renderer for its payload, including aliases/tombstones;
+    containers also check the values they render (L290).
 
     `classOf`, not the object's `klass`: the chain starts at the **eigenclass**,
     so a `def obj.inspect` or an `o.extend(M)` makes the value impure exactly as a
@@ -98,23 +139,32 @@ def programOverridden (h : Heap) (sens : List String) (k : ObjId) : Bool :=
     override was invisible and the pure path rendered the default `#<C:0x…>`, in
     `p`, inside an Array/Hash/Range, and as an ivar of another object. This is the
     same one-argument miss `__user_defines?` had before L115 (L128). -/
-partial def pureOk (h : Heap) (sens : List String) : Value → Bool
+private partial def pureOkSeen (h : Heap) (sens : List String) (seen : List ObjId) : Value → Bool
   | .ref o =>
-    let own := !reprOverridden h sens (classOf h (.ref o))
+    if seen.contains o then false else
+    let seen := o :: seen
+    let own := reprUnchanged h sens (.ref o)
     match (h.get o).payload with
     -- A container renders its elements with *their* renderer, so purity is
     -- recursive even when the container's own class is untouched — and it
     -- recurses with the **same** sensitivity it was asked about, since
     -- `[x].inspect` uses `x.inspect` while `[x].join` uses `x.to_s`.
-    | .arr xs => own && xs.all (pureOk h sens)
-    | .hsh xs => own && xs.all fun (k, v) => pureOk h sens k && pureOk h sens v
-    | .none => own && (h.get o).ivars.all (fun (_, v) => pureOk h sens v)
+    | .arr xs => own && xs.all (pureOkSeen h sens seen)
+    | .hsh xs => own && xs.all fun (k, v) => pureOkSeen h sens seen k && pureOkSeen h sens seen v
+    | .none | .rng _ | .generator _ | .yielder .. =>
+      own && (!sens.contains "inspect" || objectInspectPure h (.ref o)) && (h.get o).ivars.all (fun (_, v) => pureOkSeen h sens seen v)
     -- A Range is a container of two: `(a..b).inspect` calls `a.inspect`, so an
     -- endpoint with a user `inspect` makes the range impure too. Missing this was
     -- a **wrong answer** — the pure path rendered the endpoint's default
     -- `#<C:0x…>` and ignored the override — found by the L122 range head, which
     -- gives its endpoints a fixed `inspect` precisely so no address is observed.
-    | .range lo hi _ => own && pureOk h sens lo && pureOk h sens hi
+    | .range lo hi _ => own && pureOkSeen h sens seen lo && pureOkSeen h sens seen hi
+    | .rational _ _ => own && reprUnchanged h sens (.int 0)
+    | .complex r i => own && pureOkSeen h sens seen r && pureOkSeen h sens seen i &&
+        (!sens.contains "to_s" || [r, i].all (fun v =>
+          !reprOverridden h ["to_str"] (classOf h v)))
+    | .enumerator (some data) => own && pureOkSeen h ["inspect"] seen data.recv &&
+        data.args.all (pureOkSeen h ["inspect"] seen)
     -- An Exception renders **through `to_s`** whichever way it is asked:
     -- `rb_exc_inspect` is `#<Class: rb_obj_as_string(exc)>` and
     -- `Exception#message` *is* `to_s`. So `to_s` is repr-sensitive for an exception
@@ -122,12 +172,20 @@ partial def pureOk (h : Heap) (sens : List String) : Value → Bool
     -- here and not in `inspectSensitive` (L131). Getting it from the list instead
     -- was wrong in both directions: it refused a user `message`, which changes
     -- nothing, and admitted a user `to_s`, which changes everything.
-    | .exc _ => own && !reprOverridden h ["to_s"] (classOf h (.ref o))
+    | .exc msg =>
+      let direct := match msg with
+        | .nil => true
+        | .ref message => match (h.get message).payload with | .str _ => true | _ => false
+        | _ => false
+      own && !isA h (.ref o) Boot.uncaughtThrowErrorId &&
+        reprUnchanged h ["to_s"] (.ref o) && direct
     | .proc _ => false   -- Proc repr is address-based → never pure
     | _ => own
-  -- An immediate has no eigenclass slot, so `classOf` here *is* `realClassOf`;
-  -- written as `classOf` so the two arms cannot drift.
-  | v => !reprOverridden h sens (classOf h v)
+  -- Immediates also resolve the exact native renderer, honoring class aliases.
+  | v => reprUnchanged h sens v
+
+def pureOk (h : Heap) (sens : List String) (value : Value) : Bool :=
+  pureOkSeen h sens [] value
 
 /-- When pure repr cannot speak for a value, the *prelude twin* to dispatch
     instead (L116). This is L63's "defer to the prelude" pattern: the twin has a
@@ -142,7 +200,7 @@ partial def pureOk (h : Heap) (sens : List String) : Value → Bool
     can dispatch — off a cliff. -/
 def reprDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     Option String :=
-  if bid == "Object#inspect" || bid == "Array#inspect" || bid == "Hash#inspect"
+  if bid == "Array#inspect" || bid == "Hash#inspect"
      || bid == "Exception#inspect" then
     if pureOk h inspectSensitive recv then none else some "__inspect_slow"
   else if bid == "Array#to_s" || bid == "Hash#to_s" then
@@ -155,7 +213,7 @@ def reprDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     -- `Range#to_s` is deliberately not here — it really does use its endpoints'
     -- `to_s` [V].
     if pureOk h inspectSensitive recv then none else some "__to_s_slow"
-  else if bid == "Object#to_s" || bid == "Range#to_s" then
+  else if bid == "Range#to_s" then
     if pureOk h toSSensitive recv then none else some "__to_s_slow"
   else if bid == "Range#inspect" then
     if pureOk h inspectSensitive recv then none else some "__inspect_slow"
@@ -230,7 +288,8 @@ def arrPayload? (h : Heap) : Value → Option (Array Value)
     its own `allocExc` path in `newImpl`). -/
 def payloadCoreClasses : List ObjId :=
   [Boot.stringId, Boot.arrayId, Boot.hashId, Boot.procId, Boot.integerId,
-   Boot.floatId, Boot.symbolId]
+   Boot.floatId, Boot.symbolId, Boot.rationalId, Boot.complexId,
+   Boot.enumeratorId, Boot.generatorId, Boot.yielderId]
 
 /-- The payload-carrying core class `k` inherits from, if any — `String`, `Array`,
     `Hash` and `Exception` are *allocatable* for a subclass (L70: allocate the
@@ -245,7 +304,7 @@ def emptyCorePayload (core : ObjId) : Payload :=
   if core == Boot.stringId then .str ""
   else if core == Boot.arrayId then .arr #[]
   else if core == Boot.hashId then .hsh #[]
-  else .exc ""
+  else .exc .nil
 
 /-- Does `v`'s class resolve `==` to a *user* (non-builtin) method? Builtins
     that lean on default value-equality (`Array#include?`/`index`, …) must gate
@@ -254,6 +313,27 @@ def hasUserEq (h : Heap) (v : Value) : Bool :=
   match lookup h v "==" with
   | some (_, md) => md.builtin.isNone
   | none => false
+
+/-- Pure equality can reach Complex values through collection operations, or
+    through the reverse numeric comparison. Those leaves must not hide a user
+    equality method on the Complex or either component (L279). -/
+def complexEqualityImpure (h : Heap) : Nat → Value → Bool
+  | 0, _ => true
+  | fuel + 1, .ref o =>
+    match (h.get o).payload with
+    | .complex r i =>
+      ["==", "eql?", "hash"].any (fun name => match lookup h (.ref o) name with
+        | some (_, md) => md.builtin.isNone || md.undefined
+        | none => false) || [r, i].any (hasUserEq h)
+    | .arr xs => xs.any (complexEqualityImpure h fuel)
+    | .hsh xs => xs.any (fun (k, v) => complexEqualityImpure h fuel k || complexEqualityImpure h fuel v)
+    | _ => false
+  | _, _ => false
+
+def pureEqualityBids : List String :=
+  ["Array#include?", "Array#index", "Array#-", "Array#&", "Array#|", "Array#uniq",
+   "Hash#[]", "Hash#[]=", "Hash#key?", "Hash#has_key?", "Hash#include?", "Hash#member?",
+   "Hash#fetch", "Hash#delete", "Hash#merge", "Hash#merge!"]
 
 /-- Would CRuby dispatch `to_ary` on this value? Every implicit Array conversion
     goes through `rb_check_array_type`, which **dispatches** — so a *user*
@@ -364,6 +444,7 @@ def allocHsh (m : Machine) (xs : Array (Value × Value)) : Value × Machine :=
   (.ref o, { m with heap := h })
 
 def allocExc (m : Machine) (cls : ObjId) (msg : String) : Value × Machine :=
+  let (msg, m) := allocStr m msg
   let (o, h) := m.heap.alloc { klass := cls, payload := .exc msg }
   (.ref o, { m with heap := h })
 
@@ -374,7 +455,8 @@ def dupObj (m : Machine) (o : ObjId) (keepFrozen : Bool) : Value × Machine :=
   let src := m.heap.get o
   let (o2, h) := m.heap.alloc
     { klass := src.klass, ivars := src.ivars, payload := src.payload,
-      hashDflt := src.hashDflt, frozen := keepFrozen && src.frozen,
+      hashDflt := src.hashDflt, frozen := keepFrozen && src.frozen, iterationResult := src.iterationResult,
+      throwTag := src.throwTag, throwValue := src.throwValue,
       -- the encoding tag is part of the copy: `"café".b.dup.encoding` is
       -- ASCII-8BIT [V] (L118)
       binary := src.binary }
@@ -418,13 +500,16 @@ def unrepresentableByteStr (h : Heap) (v : Value) : Bool :=
     would have to write the raw byte into an output `String` that cannot hold it. -/
 def byteStrAwareBids : List String :=
   -- String: byte-wise by construction, or tag-propagating (`okStrFrom`)
-  ["String#+", "String#*", "String#<<", "String#concat", "String#==", "String#eql?",
+  ["Class#inherited", "Module#const_added", "Module#method_added", "Module#method_removed", "Module#method_undefined",
+   "BasicObject#singleton_method_added", "BasicObject#singleton_method_removed",
+   "BasicObject#singleton_method_undefined",
+   "String#+", "String#*", "String#<<", "String#concat", "String#==", "String#eql?",
    "String#!=", "String#length", "String#size", "String#empty?", "String#ord",
    "String#to_i", "String#to_f", "String#to_s", "String#to_str", "String#to_sym",
    "String#inspect", "String#chars", "String#reverse", "String#upcase",
-   "String#downcase", "String#strip", "String#chomp", "String#[]", "String#+@",
+   "String#b", "String#downcase", "String#strip", "String#chomp", "String#[]", "String#+@",
    "String#-@", "String#freeze", "String#frozen?", "String#hash",
-   "String#__binary?", "String#__bytes", "String#__as_binary", "String#__as_utf8",
+   "String#__binary?", "String#__bytes", "String#__as_utf8",
    "String#__force_binary", "String#__force_utf8",
    -- pattern methods: the subject's tag rides on the MatchData and its slices
    "String#=~", "String#match", "String#match?", "String#scan", "String#split",
@@ -439,9 +524,9 @@ def byteStrAwareBids : List String :=
    -- `inspect`/`p` render through the binary-aware `Repr`
    "BasicObject#==", "BasicObject#!=", "BasicObject#!", "BasicObject#equal?",
    "Object#==", "Object#!=", "Object#!", "Object#equal?", "Object#eql?",
-   "Object#hash", "Object#class", "Object#nil?", "Object#is_a?", "Object#kind_of?",
+   "Object#hash", "Object#class", "Object#nil?", "Object#itself", "Object#is_a?", "Object#kind_of?",
    "Object#instance_of?", "Object#respond_to?", "Object#freeze", "Object#frozen?",
-   "Object#inspect", "Object#p", "Object#__user_defines?",
+   "Object#inspect", "Object#to_s", "Object#p", "Object#__user_defines?", "Object#instance_variables_to_inspect",
    -- reads the method table, never the value (L127)
    "Object#__default_inspect?",
    -- renders the receiver's *class name* and address, never its payload (L129)
@@ -533,14 +618,14 @@ as the repr builtins defer to theirs (`reprDefer?`, L116). Deferral is keyed on
 "could a `coerce` possibly run", so every operand that *is* a number, and every
 operand whose class chain offers nothing, keeps the Lean fast path untouched. -/
 
-/-- Could an ordinary send of `coerce` reach a Ruby body on `v`? A `coerce`
-    from the prelude counts (a future prelude `Rational` will have a real one);
+/-- Could an ordinary send of `coerce` reach a method on `v`? Native Rational
+    conversion and methods from the prelude count alongside program methods;
     a `method_missing` does **not** if it came from the prelude, because the only
     one there is `Pathname`'s, which exists to *refuse* — routing through it
     would turn today's correct `TypeError` into a gate. -/
 def mayCoerce (h : Heap) (v : Value) : Bool :=
   (match lookup h v "coerce" with
-   | some (_, md) => md.builtin.isNone && !md.undefined
+   | some (_, md) => !md.undefined
    | none => false)
   || (match lookup h v "method_missing" with
       | some (_, md) => md.builtin.isNone && !md.undefined && !md.fromPrelude
@@ -567,18 +652,19 @@ def hasProgramEq (h : Heap) (v : Value) : Bool :=
     the twin is entered with the builtin's own arguments — there is nowhere to
     pass "which operator" — and each is a one-liner over `__coerce_bin`. -/
 def coerceTwin? : String → Option String
-  | "Integer#+"  | "Float#+"  => some "__coerce_add"
-  | "Integer#-"  | "Float#-"  => some "__coerce_sub"
-  | "Integer#*"  | "Float#*"  => some "__coerce_mul"
-  | "Integer#/"  | "Float#/"  => some "__coerce_div"
+  | "Integer#+"  | "Float#+" | "Rational#+" | "Complex#+" => some "__coerce_add"
+  | "Integer#-"  | "Float#-" | "Rational#-" | "Complex#-" => some "__coerce_sub"
+  | "Integer#*"  | "Float#*" | "Rational#*" | "Complex#*" => some "__coerce_mul"
+  | "Integer#/"  | "Float#/" | "Rational#/" | "Rational#quo" => some "__coerce_div"
+  | "Complex#/" | "Complex#quo" => some "__coerce_quo"
   | "Integer#%"  | "Float#%"  => some "__coerce_mod"
-  | "Integer#**" | "Float#**" => some "__coerce_pow"
+  | "Integer#**" | "Float#**" | "Rational#**" => some "__coerce_pow"
   | "Integer#divmod" | "Float#divmod" => some "__coerce_divmod"
   | "Integer#<"  | "Float#<"  => some "__coerce_lt"
   | "Integer#>"  | "Float#>"  => some "__coerce_gt"
   | "Integer#<=" | "Float#<=" => some "__coerce_le"
   | "Integer#>=" | "Float#>=" => some "__coerce_ge"
-  | "Integer#<=>" | "Float#<=>" => some "__coerce_cmp"
+  | "Integer#<=>" | "Float#<=>" | "Rational#<=>" => some "__coerce_cmp"
   | _ => none
 
 /-- When a numeric builtin must dispatch rather than answer, the prelude twin to
@@ -589,8 +675,12 @@ def coerceDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     Option String :=
   match args with
   | [b] =>
-    if (num? recv).isNone || (num? b).isSome then none
-    else if bid == "Integer#==" || bid == "Float#==" then
+    if !nativeReal h recv && (complexPayload? h recv).isNone then none
+    else if bid == "Integer#/" && recv.identEq (.int 1) && (rationalPayload? h b).isSome then none
+    else if (num? b).isSome then none
+    else if (complexPayload? h recv).isSome && (nativeReal h b || (complexPayload? h b).isSome) then none
+    else if (rationalPayload? h recv).isSome && (rationalPayload? h b).isSome then none
+    else if bid == "Integer#==" || bid == "Float#==" || bid == "Rational#==" || bid == "Complex#==" then
       if hasProgramEq h b then some "__eq_reverse" else none
     else if mayCoerce h b then coerceTwin? bid
     else none
@@ -657,14 +747,79 @@ def toAryDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     if args.any (mayDispatchToAry h) then some "__puts_slow" else none
   else none
 
+/-! ### String ordering against a non-String (`rb_str_cmp_m`)
+
+`String#<=>` over a non-String does not answer nil outright: it asks
+`rb_check_string_type` (a checked `to_str`, which a user `method_missing`
+serves) and compares the converted String, and only when nothing converts does
+it hand over to `rb_invcmp` — the operand's own `<=>`, sign flipped. The
+operators are `Comparable`'s over that `<=>`. The builtins answered nil /
+`comparison of String with C failed` without calling anything, which is right
+exactly when nothing on the operand could speak up; otherwise they defer to
+prelude twins over `__str_cmp_slow`. -/
+
+/-- Could anything on `v` change what `rb_str_cmp_m` answers for it? A `to_str`
+    (prelude ones included, as in `mayDispatchToAry`), or a program-written
+    `method_missing` / `respond_to?` / `respond_to_missing?` (the checked call's
+    hooks), `<=>` (`rb_invcmp`) or `==` (the default `<=>` is `rb_equal`) — or
+    no `<=>` at all, which `rb_invcmp`'s plain call turns into `NoMethodError`. -/
+def mayDispatchStrCmp (h : Heap) (v : Value) : Bool :=
+  let program : String → Bool := fun n => match lookup h v n with
+    | some (_, md) => md.builtin.isNone && !md.undefined && !md.fromPrelude
+    | none => false
+  (match lookup h v "to_str" with | some (_, md) => md.builtin.isNone && !md.undefined | none => false)
+  || (match lookup h v "<=>" with | some (_, md) => md.undefined | none => true)
+  || ["method_missing", "respond_to?", "respond_to_missing?", "<=>", "=="].any program
+
+def strCmpTwin? : String → Option String
+  | "String#<=>" => some "__str_cmp_slow"
+  | "String#<" => some "__str_lt_slow"
+  | "String#>" => some "__str_gt_slow"
+  | "String#<=" => some "__str_le_slow"
+  | "String#>=" => some "__str_ge_slow"
+  | _ => none
+
+/-- String receiver, non-String operand that could dispatch: the twin. An
+    operand outside `Object` gates instead (`__str_cmp_basic`): the twin's
+    conversion helpers ask it `is_a?`, which a `BasicObject` does not answer. -/
+def strCmpDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
+    Option String :=
+  match strCmpTwin? bid, args with
+  | some twin, [b] =>
+    if (strPayload? h recv).isNone || (strPayload? h b).isSome then none
+    else if !isA h b Boot.objectId then some "__str_cmp_basic"
+    else if mayDispatchStrCmp h b then some twin else none
+  | _, _ => none
+
 /-- Every reason a builtin defers to a prelude twin instead of running: repr
-    purity (L116), the coerce protocol (L123) and the implicit Array conversion
-    (L133). One hook, so `invoke` has one place to consult and the dispatch
-    metatheorems one hypothesis to carry. -/
+    purity (L116), the coerce protocol (L123), the implicit Array conversion
+    (L133) and String ordering against a non-String. One hook, so `invoke` has
+    one place to consult and the dispatch metatheorems one hypothesis to carry. -/
 def deferTwin? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     Option String :=
+  if bid == "Object#===" then
+    match args with
+    | [other] => if recv.identEq other then none else some "__case_equal"
+    | _ => none
+  else if bid == "Rational#eql?" then
+    match args with
+    | [other] =>
+      if !recv.identEq other && (rationalPayload? h other).isSome && hasUserEq h recv
+      then some "__case_equal" else none
+    | _ => none
+  else if bid == "Complex#eql?" then
+    match args, complexPayload? h recv with
+    | [other], some (r, i) =>
+      match complexPayload? h other with
+      | some (a, b) =>
+        if !recv.identEq other && realClassOf h r == realClassOf h a &&
+            realClassOf h i == realClassOf h b && hasUserEq h recv
+        then some "__case_equal" else none
+      | none => none
+    | _, _ => none
+  else
   reprDefer? h bid recv args <|> coerceDefer? h bid recv args
-    <|> toAryDefer? h bid recv args
+    <|> toAryDefer? h bid recv args <|> strCmpDefer? h bid recv args
 
 /-- Pure numeric comparison of two values (Int/Float, mixed promoted to Float);
     `none` if either is non-numeric — the caller then gates (a full `<=>` dispatch
@@ -703,8 +858,17 @@ def sliceRange (n : Nat) (start len : Int) : Option (Nat × Nat) :=
     Methods with optional args (Integer#to_s(base), Array#pop(n), …) are NOT
     here; their with-arg forms gate as Unsupported inside their own arms. -/
 def zeroArgBids : List String :=
-  ["Object#class", "Object#inspect", "Object#to_s", "Object#nil?",
-   "Object#frozen?", "Object#freeze", "Object#block_given?",
+  ["Object#class", "Object#inspect", "Object#instance_variables_to_inspect", "Object#to_s", "Object#nil?", "Object#itself",
+   "Integer#i", "Float#i", "Rational#i", "Integer#to_c", "Float#to_c", "Rational#to_c",
+   "Complex#real", "Complex#imag", "Complex#imaginary", "Complex#rect", "Complex#rectangular",
+   "Complex#to_s", "Complex#inspect", "Complex#real?", "Complex#to_c", "Complex#dup",
+   "Complex#-@", "Complex#+@", "Complex#conj", "Complex#conjugate", "Complex#finite?", "Complex#infinite?",
+   "Object#__coerce_defined?", "Integer#to_r", "Float#to_r",
+   "Rational#numerator", "Rational#denominator", "Rational#to_s", "Rational#inspect",
+   "Rational#to_i", "Rational#to_f", "Rational#to_r", "Rational#-@", "Rational#+@",
+   "Rational#abs", "Rational#magnitude", "Rational#positive?", "Rational#negative?",
+   "Rational#dup",
+   "Object#frozen?", "Object#freeze", "Module#freeze", "Object#block_given?",
    "NilClass#nil?", "NilClass#to_s", "NilClass#inspect", "NilClass#to_a",
    "TrueClass#to_s", "TrueClass#inspect", "FalseClass#to_s", "FalseClass#inspect",
    -- `Integer#inspect` is deliberately absent: it is `to_s`, base argument and
@@ -716,7 +880,7 @@ def zeroArgBids : List String :=
    "Float#nan?", "Float#to_i",
    "String#to_s", "String#to_str", "String#inspect", "String#length",
    "String#size", "String#empty?", "String#reverse", "String#upcase",
-   "String#downcase", "String#strip", "String#frozen?", "String#dup",
+   "String#b", "String#downcase", "String#strip", "String#frozen?", "String#dup",
    "String#to_sym", "String#freeze",
    "Symbol#to_s", "Symbol#inspect", "Symbol#to_sym", "Symbol#to_proc",
    "Array#length", "Array#size", "Array#empty?", "Array#inspect",
@@ -724,7 +888,7 @@ def zeroArgBids : List String :=
    "Array#dup", "Array#clone", "Object#dup", "Object#clone",
    "String#clone", "Hash#clone", "Array#frozen?", "Array#freeze", "Array#sort", "Array#uniq",
    "Hash#length", "Hash#size", "Hash#empty?", "Hash#keys", "Hash#values",
-   "Hash#inspect", "Hash#to_s", "Hash#dup",
+   "Hash#inspect", "Hash#to_s", "Hash#to_a", "Hash#dup",
    "Exception#to_s", "Exception#inspect",
    "Module#name", "Module#to_s", "Module#inspect", "Module#ancestors",
    "Proc#lambda?", "Proc#to_proc", "Object#initialize",
@@ -771,10 +935,9 @@ def hshPayload? (h : Heap) : Value → Option (Array (Value × Value))
     | .hsh xs => some xs
     | _ => none
   | _ => none
-def frozenErr (m : Machine) (recv : Value) (cls : String) : BRes :=
-  match inspectP m recv with
-  | .ok r => .err Boot.frozenErrorId s!"can't modify frozen {cls}: {r}" m
-  | .error e => .unsupported e
+/-- The legacy class hint is superseded by effectful real-class.to_s rendering. -/
+def frozenErr (m : Machine) (recv : Value) (_cls : String) : BRes :=
+  .frozen recv m
 /-- puts: no args → newline; array → recursive per element; string keeps
     an existing trailing newline; nil → blank line; else to_s [V]. -/
 def putsGo (m : Machine) (args : List Value) : Nat → Option Machine
@@ -955,38 +1118,8 @@ def newImpl (m : Machine) (recv : Value) (args : List Value) : BRes :=
       -- `__range_new_unchecked` below (L122, the L115 shape). Range literals
       -- `a..b`/`a...b` desugar to that same `Range.new` send and are validated
       -- with it.
-      else if k == Boot.classId then
-        -- `Class.new(superclass = Object)`: an **anonymous** class (empty name,
-        -- rendered `#<Class:0x…>`; a later constant assignment names it, L72).
-        -- The block form carries a block, so it is intercepted in `invoke`.
-        match args with
-        | [] =>
-          let (o, h) := m.heap.alloc
-            { klass := Boot.classId,
-              payload := .cls { superclass := some Boot.objectId, name := "" } }
-          .ok (.ref o) { m with heap := h }
-        | [.ref sup] =>
-          match m.heap.classPayload? sup with
-          | some sc =>
-            if sc.isModule then
-              .err Boot.typeErrorId "superclass must be an instance of Class (given a Module)" m
-            else
-              let (o, h) := m.heap.alloc
-                { klass := Boot.classId,
-                  payload := .cls { superclass := some sup, name := "" } }
-              .ok (.ref o) { m with heap := h }
-          | none =>
-            .err Boot.typeErrorId
-              s!"superclass must be an instance of Class (given an instance of {className m.heap (realClassOf m.heap (.ref sup))})" m
-        | _ => .unsupported "Class.new arity"
-      else if k == Boot.moduleId then
-        match args with
-        | [] =>
-          let (o, h) := m.heap.alloc
-            { klass := Boot.moduleId,
-              payload := .cls { superclass := Option.none, name := "", isModule := true } }
-          .ok (.ref o) { m with heap := h }
-        | _ => .unsupported "Module.new arity"
+      else if k == Boot.classId || k == Boot.moduleId then
+        .unsupported "Class/Module construction requires initializer dispatch"
       else if [Boot.integerId, Boot.floatId,
                Boot.symbolId, Boot.nilClassId, Boot.trueClassId,
                Boot.falseClassId].contains k then

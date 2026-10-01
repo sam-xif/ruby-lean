@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L279 (2026-09-28)",
+  "note": "Undefined/private methods remain absent despite the inherited CRuby shadow-name tables."
+}

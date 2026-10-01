@@ -39,11 +39,11 @@ theorem SemAllCtxAt.startArgs {N : Nat} {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty
     simp only [StepSpecAt, Interp.withKont, hk]
     change RunSpecAt N m (pushK [.argsK recv .implicit name acc (toRubyList es) .none] (evalFrom m e))
       Γ₂ τ κ₂ I₂
-    apply (he m hm).bindSpec (by
-      intro k h tag
+    apply (he m hm).bindSpec hm.rootClean (by
+      intro k h
       simp only [List.mem_singleton] at h
       subst h
-      simp)
+      rfl)
     intro a n hn
     cases a with
     | val v =>
@@ -72,8 +72,8 @@ theorem SemSafeCtxAt.callSig {N : Nat} {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' �
     (hparams : decl.params = ps.map (fun p => Ratchet.Param.req p.1))
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (hτ : FirstOrder τ = true)
-    (hbody : SemSafeCtxAt N (κ'.withFrame (some ⟨"Object", "Object", decl.name⟩)) ps I' decl.body τ
-      (κ'.withFrame (some ⟨"Object", "Object", decl.name⟩)) Γb I')
+    (hbody : SemSafeCtxAt N (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) ps I' decl.body τ
+      (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) Γb I')
     (hargs : SemAllCtxAt N κ Γ I args (ps.map (·.2)) κ' Γ' I')
     (hd : decl ∈ κ'.defs)
     (hstart : κ.scope.runtimeMain = true) (hruntime : κ'.scope.runtimeMain = true)
@@ -86,12 +86,10 @@ theorem SemSafeCtxAt.callSig {N : Nat} {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' �
   have hfinish (n : Machine) (hn : StateOk κ' Γ' I' n) (hk : n.kont = [])
       (vs : List Value) (hv : DenAll (ps.map (·.2)) n vs) :
       StepSpecAt N n Γ' τ (Interp.finishSend n (.ref Boot.mainId) .implicit decl.name vs .none) κ' I' := by
-    obtain ⟨next, hs, hr⟩ := top_method_runSpecAt hparams hps hτ hbody hn hd
+    have h := top_method_stepSpecAt hparams hps hτ hbody hn hd
       (ReframeFO.empty hI hself hblock hconst) hasms hconst hΓ hk
       (by simpa using denAll_length hv) hv hruntime hblock
-    rw [(hn.runtime hruntime).self] at hs
-    rw [hs]
-    exact hr
+    simpa only [(hn.runtime hruntime).self] using h
   apply RunSpecAt.rebase (middle := start) ?_ (Framed_reCtl _ _ [])
   apply RunSpecAt.of_stepSpec (by rfl)
   have hh := hargs.startArgs (m := start) (recv := .ref Boot.mainId) (name := decl.name)

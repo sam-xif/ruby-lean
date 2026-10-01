@@ -23,10 +23,10 @@ theorem SemSafeCtxA.if' {κ κc κ' : Ctx} {Γ Γc Γ₁ Γ₂ : Env} {I Ic I' :
         ⟨StateOk_joinEnv true hm, denM_joinT_left hd⟩)
     · exact he.weaken (fun _ _ hm hd =>
         ⟨StateOk_joinEnv false hm, denM_joinT_right hd⟩)
-  · intro k hk tag
+  · intro k hk
     simp only [List.mem_singleton] at hk
     subst hk
-    simp
+    rfl
   · intro m; rfl
   · intro m v
     simp only [Interp.stepFn, deliverA, Answer.ctl, Interp.applyKont]

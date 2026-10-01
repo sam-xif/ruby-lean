@@ -25,7 +25,7 @@ private def emptyClassFacts (m : Machine) (name : String) : Bool :=
     (m.heap.classPayload? k).any (fun cp => !cp.isModule && cp.methods.isEmpty) &&
       k != Boot.classId && k != Boot.moduleId &&
       ((ancestors m.heap k).map (className m.heap) == [name, "Object", "Kernel", "BasicObject"]) &&
-      (Interp.userInit? m.heap k).isNone &&
+      (userInit? m.heap k).isNone &&
       match Interp.methodOn m.heap site "new" with
       | some (owner, md) => md.builtin == some "Class#new" && !md.undefined &&
           md.visibility == .pub && !md.fromPrelude &&
@@ -62,7 +62,7 @@ private def newAfterBody (body : Machine) : Interp.RunResult :=
     match Interp.enterClassBody m "Point" false none .nil with
     | .next n =>
         (n.heap.classPayload? n.currentFrame.defmod).any (·.methods.isEmpty) &&
-        (Interp.userInit? n.heap n.currentFrame.defmod).any
+        (userInit? n.heap n.currentFrame.defmod).any
           (fun md => md.owner == Boot.objectId && md.params.length == 1) &&
         !emptyClassFacts n "Point" &&
         match newAfterBody n with

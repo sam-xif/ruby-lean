@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L289 (2026-09-28)",
+  "note": "Checked native object inspection hooks, live field values/filters, insertion order, recursion, dispatch and final observation. CRuby 4.0.5; model L289 / difftest N63."
+}

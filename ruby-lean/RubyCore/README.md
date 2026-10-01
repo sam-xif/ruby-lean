@@ -57,6 +57,17 @@ In Lean this is `Machine` (`Machine.lean`): `ctl`, `kont`, an activation stack o
 the observation needs (stdout, `$!`). See §*Mechanization* below for why the
 frames live in a store rather than on the stack.
 
+External Enumerators (L280) add a store indexed by object id. Each running or
+suspended producer holds an `Execution`: control, continuation and activation
+stacks, `$!`, missing-call reason, active Enumerator, live block-call tokens,
+Object inspection guards and FrozenError rendering guards. A new producer starts
+with empty dynamic scopes; a detached answer run retains its execution's scopes.
+Switching execution preserves the shared heap, frame store,
+globals, output, literal cache and native Hash iteration locks. Hash locks are a
+shared multiset: each active native iteration callback owns one entry, including
+callbacks suspended in another execution. A native yield callback suspends at
+the actual yield; resumption never replays effects. `Ctl.send` queues an ordinary method dispatch from a native operation.
+
 **Observation.** Differential testing compares `obs(C)`, never raw configs:
 
 ```
@@ -186,10 +197,11 @@ Allocation takes `o = H.next` and bumps it; **ids are never reused** (there is n
 GC in the model). A class object additionally carries:
 
 ```
-  ClassPayload ::= { superclass : Option ObjId,   -- none only for BasicObject
+  ClassPayload ::= { superclass : Option ObjId,   -- none for modules, BasicObject, allocation
                      methods : m ⇀ MethodDef,     -- defined *directly* here
                      consts  : C_n ⇀ Value, cvars : @@x ⇀ Value,
                      is_module, is_singleton : Bool,
+                     initialized, ancestryReady, allocatorUnavailable : Bool,
                      attached : Option Value }    -- for an eigenclass, its object
 ```
 
@@ -197,13 +209,25 @@ GC in the model). A class object additionally carries:
 and `origin`. `origin = builtin` marks a method whose behavior is a primitive rule
 rather than a RubyCore body (`Builtins.lean`, keyed `"Owner#name"` and registered
 in H₀'s method tables so that shadowing is uniform). Everything else in the core
-library is written *in Ruby* — see `../prelude/prelude.rb`.
+library is written *in Ruby* — see `../prelude/prelude.rb` and
+`../prelude/features/`. Method and closure origin follows model library code
+through calls; it is separate from the boot-only flag that suppresses callbacks.
+Classes opened by library code retain a canonical namespace tag for the generated
+API inventories, independently of their Ruby-visible names (including aliases).
+An inherited visibility override stores `visibilityOnly` and resolves the current
+ancestor body on each lookup. Aliases instead retain the selected body,
+`superName`, and (for class/eigenclass aliases) `superScope`; the latter preserves
+the lookup context needed when the same module occurs in different class chains.
+L283 adds `definee`, distinct from the dispatch owner. A `def self.make` inside C
+can therefore define an instance method on C when its body executes a nested def.
+A define_method body also retains its block's definition-context frame even when
+its local-variable capture can be erased; the two kinds of capture are independent.
 
 ### 01 §3 — Builtin payloads
 
 Hidden state that RubyCore expressions cannot express directly: `str` (bytes +
-encoding), `arr`, `hsh`, `rng`, `proc` (a `Closure`), `meth`, `exc`. Three carry
-semantic teeth:
+encoding), `arr`, `hsh`, `rng`, `proc` (a `Closure`), `meth`, `exc`, and
+`rational` and `complex`. Some observable consequences:
 
 - **String is mutable** and byte-oriented; `<<`/`gsub!` mutate in place, and two
   equal strings are not `equal?`. **[V]**
@@ -212,6 +236,29 @@ semantic teeth:
   detail. **[V]**
 - Frozen string literals change identity and mutation behavior; `frozen` is
   tracked per object.
+- **Exception** retains its message as a Ruby Value, including mutable objects;
+  nil selects the current class-name default. String messages retain identity.
+  Other messages render through checked to_str then to_s calls (L285).
+- **Rational** carries a reduced arbitrary-precision numerator and positive
+  denominator. It remains a heap object even when the denominator is one.
+  Instances are frozen; `dup`, `clone` with nil/true freezing, and `to_r` retain identity.
+  A native rational literal bypasses constructor/constant lookup and is cached
+  by compilation unit and syntax site; repeated execution of one site shares
+  its object, while separate sites and constructor calls remain distinct (L278).
+  Mixed numeric operations follow Ruby's coercion protocol. Conversion to Float
+  follows the 64-bit CRuby integer-division paths, including their intermediate
+  rounding; it is not specified as the exact quotient rounded only once.
+- **Complex** carries native real and imaginary components (Integer, Float or
+  Rational), preserving their types and identities. Instances are frozen; `dup`,
+  `clone` with nil/true freezing, and `to_c` retain identity. Imaginary literals use the
+  same compilation-unit/site cache as Rational literals and bypass constructor
+  lookup. Float components cross JSON as IEEE bits, preserving negative zero.
+  Numeric construction follows CRuby's zero normalization, including its
+  distinction between exact zero and Float zero. Division uses the oracle's
+  ratio-based scalar operations and intermediate rounding; division through a
+  user coerce result sends `quo`. Effectful component operations/representation,
+  nonfinite arithmetic, string/custom conversion and unimplemented methods
+  remain explicit fragment gates (L279).
 
 ### 01 §4 — The class-of relation
 
@@ -272,9 +319,37 @@ drives `if`, `while`, `and`/`or` and `!`.
 The heap is mutable, and ivar assignment plus builtin mutators updating `H` in
 place is the *only* reason the semantics is stateful. Mutating a frozen object
 raises `FrozenError`. `freeze` is idempotent and in-model irreversible;
-`dup`/`clone` allocate copies, and `clone` copies frozen state *and* the
-eigenclass while `dup` does not — a genuine observable difference. **[V]**
-Immediates are always frozen.
+`dup`/`clone` allocate copies. Native `clone` accepts `freeze: nil`, `true`, or
+`false`; nil preserves the source's live frozen state after the copy hooks return,
+true freezes the result, and false leaves the hook's final state alone. Immutable
+values return themselves and reject `freeze: false`. Positional arity precedes
+keyword validation; unknown keys are inspected and invalid option classes use
+Ruby `to_s`. **[V]** (L298)
+
+For Object, String, Array, Hash and Exception, clone copies ivars into a mutable
+allocation and sends private `initialize_clone`, which normally sends
+`initialize_copy`. Hook results are discarded; raise/throw retain effects and
+skip final freezing. String/Array/Hash initially have empty native contents;
+Exception's message and native metadata are copied before hooks. The native
+core `initialize_copy` methods fill contents, preserve destination ivars, and use
+checked String/Array/Hash conversion. Frozen checks precede conversion; String
+also checks afterward, while Array/Hash can finish after conversion freezes them.
+Ordinary copies of other already-modeled payloads retain the default-hook shortcut;
+custom hooks require their uninitialized native state. Singleton-class copying,
+namespace copying and Random state remain incomplete.
+CRuby clone copies singleton classes, but that behavior is still gated here.
+**[V]** (L298)
+
+Native `dup` checks zero positional arity (a nonempty keyword bundle counts as
+one positional Hash), then returns immutable values unchanged or allocates a
+mutable copy. It omits the source's eigenclass, including extension modules,
+singleton methods and singleton copy hooks. It dispatches private initialize_dup
+on the copy, whose default calls initialize_copy; hook results are discarded and
+hook freezing is preserved. Core shell allocation/content copying is shared with
+clone, without clone's final freeze policy. Aliases and super use the resolved
+native entry. Existing namespace/Random and other native custom-copy boundaries
+remain explicit. **[V]** (L299)
+
 
 ---
 
@@ -331,7 +406,8 @@ class.
   ⟨ send e_recv m [ā] blk ⟩ → ⟨ send e_recv :method_missing [sym m, ā…] blk ⟩
 ```
 
-`invoke` pushes a frame with `self := v` and `defmod := owner`, binds params,
+`invoke` pushes a frame with `self := v`, the body's lexical `defmod`, and a
+separate `methodOwner` for super, then binds params,
 installs the block and evaluates the body.
 
 **`method_missing` is not magic** — it is an ordinary method whose *default*
@@ -341,6 +417,41 @@ dispatches, and its default consults defined methods plus
 `respond_to_missing?`. **[V]** A miss is a *re-send inside the same rule set*, not
 a stuck state — the headline divergence from the prior SML semantics, which omits
 dispatch entirely.
+
+Native Class#new is selected after lookup and visibility, including aliases and
+super. For plain objects and modeled core payloads, it allocates directly (without
+sending an overridable allocate), sends private initialize with the original
+arguments/keywords/block, and discards only the normal initializer result.
+Undef initialize therefore reaches method_missing. Proc construction retains or
+copies the block's closure before initialization. Core initializers return the
+receiver; BasicObject#initialize requires zero arguments and returns nil.
+Class and Module use the same allocation/initializer protocol, including Module
+subclasses and replaced or undefined initializers. `Class.allocate` produces an
+uninitialized class. Native Class#initialize validates the superclass, installs
+its ancestry and allocator state, replaces the old eigenclass, sends `inherited`
+to the parent, then executes the block as module_exec and returns the class.
+Native Module#initialize executes that block and returns nil. Normal `new`
+discards this result; block exits keep their original targets. Module's public
+`allocate` method is undefined, but an alias of native Class#allocate can allocate
+it. Random/Regexp still use partial argument-dependent factories and gate
+replaced initializers. **[V]** (L284, L291)
+
+New named classes bind their constant before sending `inherited`, and execute
+the saved class body only after the callback returns. Reopening does not resend
+the callback. Raises retain the binding and earlier effects; a callback replacing
+the constant cannot redirect the saved body. Class.new rejects an uninitialized
+parent, while named class syntax in CRuby 4.0.5 permits one. Such children retain
+an unavailable ancestry index and allocator, even if their parent is initialized
+later. CRuby 4.0.5 also permits initializing a frozen allocated class; these rules
+are pinned to the executable oracle. Superclass type errors dispatch the selected
+class's live to_s, preserving effects, exceptions and non-String fallback. **[V]**
+(L291)
+
+Unnamed Module-subclass instances render through their direct class's temporary
+path, including an eigenclass if present. This path uses its name/address rather
+than recursively rendering its attachment. Singleton-class to_s itself still
+renders the attached object from the live heap. Reflective const_set names an
+anonymous class/module just as ordinary constant assignment does. **[V]** (L291)
 
 ### 02 §4 — `super`
 
@@ -361,6 +472,10 @@ Two things the implementation had to get right and this sketch did not say: the
 frame records the method name being run, which for an **alias** is the *original*
 name (what CRuby's `super` searches for), and `zsuper` reconstructs its arguments
 from the running frame's own parameter list rather than re-looking-up the name.
+Class aliases also retain the chain in which their body was selected. Module
+aliases use the eventual host receiver's chain. This fixes alias/super context;
+the ancestor representation still deduplicates repeated module identities and
+does not claim a complete model of CRuby's distinct inclusion nodes. **[V]**
 
 ### 02 §5 — Visibility
 
@@ -377,6 +492,28 @@ affects **only** dispatch admissibility, never lookup — a private method is st
 *found*; the call is what is rejected. `send`/`__send__` bypass private;
 `public_send` does not.
 
+Changing the visibility of an inherited method installs a live forwarding entry,
+so a later ancestor redefinition changes the body called through it. An unchanged
+visibility is a no-op. Module visibility and alias macros can consult Object;
+undef/remove do not use that fallback. Initialization methods are private when
+defined as instance methods, including through aliases and attributes. **[V]**
+Reflection observes the forwarding entry even after its ancestor body disappears;
+calls then fail, and aliases cannot capture a missing body. **[V]**
+
+Ordinary blocks share their defining context's visibility, including changes made
+before a saved Proc runs or inside a block. Block forms of class_eval/instance_eval
+start a fresh public definition context while retaining lexical constant scope.
+Ordinary method bodies start public and ignore bare visibility changes (Ruby's
+warning is outside the observation triple). Attribute/define_method macros use
+the caller's visibility only when it belongs to the same class/eval target;
+top-level define_method is public. Top-level def defaults to private and honors
+an explicit public change. **[V]**
+
+Main's native singleton methods have their own entries and visibility. Public,
+private, include and define_method are private macros there, and do not appear on
+ordinary Object instances. Their missing/unmodeled inventory is separate from
+Object's method inventory. **[V]**
+
 ### 02 §6 — Why this design pays off
 
 Every metaprogramming feature reduces to mutating `methods` / `ancestors` /
@@ -385,23 +522,30 @@ Every metaprogramming feature reduces to mutating `methods` / `ancestors` /
 | Feature | Heap effect |
 |---|---|
 | `define_method(:m){…}` | insert `m` into the current class's `methods` |
-| `attr_accessor :x` | insert `x` and `x=` (desugar, 00 §5) |
+| `attr_accessor :x` | insert `x`, run its callback, then insert `x=` |
 | `include M` / `prepend M` | extend `includes`/`prepends`, recompute ancestors |
 | `def obj.m` / `extend M` | allocate an eigenclass, insert there |
 | `alias` / `alias_method` | copy a `MethodDef` under a new name |
 | a dynamic finder | not defined → SEND-MM |
 
-**No new evaluation rules.** That is the concrete cash value of "everything is a
-message send" plus "classes are heap objects", and it is why the fragment reached
-`define_method`/`class_eval`/`method_missing` without the step relation growing.
+L282's `MethodEdit` queue commits one method-table mutation, then dispatches its
+Ruby callback before continuing. Definitions, aliases, define_method and attributes
+call `method_added`; remove/undef call `method_removed`/`method_undefined`.
+Eigenclass writes call the corresponding `singleton_method_*` on the attached
+receiver. Ordinary dispatch preserves private hooks, super and method_missing.
+A hook may raise, freeze the target or alter the next method: prior writes remain,
+and each remaining write checks the current heap and frozen state. The boot-only
+prelude suppresses hooks; runtime library loading does not. **[V]**
 
 ### 02 §7 — Open
 
 **[?]** `refinements` genuinely perturb lookup *lexically* — they add modules
 consulted before the normal chain, scoped to the activation's `cref`. Deferred;
 would need an extra lookup premise keyed on `φ.cref`.
-**[?]** `method_added`/`inherited` hooks fire as side effects of the mutations
-above, and their sequencing relative to the mutation is observable.
+**[?]** Ancestry mutation hooks (`append_features`, `prepended`, `extended`)
+still need a complete protocol audit. Constant-name conversion, removal and
+recursive temporary namespace naming also remain incomplete; const_added dispatch
+is modeled below (L292).
 
 ---
 
@@ -455,8 +599,11 @@ runtime `self`, never lexical.
 
 `@@x` is shared across an entire hierarchy: a `@@x` in a superclass is the *same
 slot* seen by subclasses and by instance methods. **[V]** Resolution walks from
-the current `defmod` up the superclass chain for an existing `@@x`, creating it on
-`defmod` if there is none; an undefined read is a `NameError`. This
+the innermost ordinary lexical class/module up its ancestor chain for an existing
+`@@x`, creating it there if there is none; an undefined read is a `NameError`.
+Singleton-class scopes are skipped. With no enclosing class/module, reads and
+writes raise RuntimeError even inside a Proc or method; defined? can still inspect
+Object's class variables. Block eval retains this lexical scope. **[V]** This
 shared-mutable-across-hierarchy behavior is a notorious footgun and differs from
 ivars, so it has to be modeled exactly.
 
@@ -467,8 +614,9 @@ The subtlest scoping rule in Ruby. An unqualified `C_n` resolves in order:
 1. **Lexical** — search `Module.nesting` (`φ.cref`), the chain of lexically
    enclosing `module`/`class` bodies, innermost first. **Not** the ancestor chain.
 2. **Ancestor** — if lexical fails, search the ancestors of the innermost lexical
-   class.
-3. Else send `const_missing`, whose default raises `NameError`.
+   class. A module can then fall back to Object.
+3. A miss follows `const_missing` in Ruby. The model handles the default error;
+   user const_missing hooks remain a boundary that needs a complete audit.
 
 Lexical beats ancestor **[V]**: a method in `Outer::Inner < Base` sees `Outer::C`
 even when `Base` defines `C`. Ancestor lookup applies only when lexical fails
@@ -479,8 +627,59 @@ A **qualified** `A::B` skips the lexical phase entirely and searches only `A`'s
 own consts and ancestors. `casgn` always writes to the innermost lexical module.
 Constants are reassignable (with a warning) — not truly immutable. **[V]**
 
+Every modeled constant write binds and names its value before sending private
+`const_added` through ordinary dispatch. Reassignment calls the hook again. Its
+normal result is discarded; exceptions and nonlocal exits retain the write and
+skip the pending continuation. Named class/module definitions keep their original
+object for the body even if the hook replaces the binding. Their order is binding,
+const_added, inherited (classes), then body; reopening sends neither hook. Only
+core prelude boot suppresses const_added. **[V]** (L292)
+
+Namespace paths distinguish temporary names from permanent ones. Binding under
+Object or an already permanent namespace promotes the value and its live nested
+namespaces before const_added. Existing permanent names survive aliases; naming
+does not traverse inherited constants, emit descendant callbacks or reject frozen
+descendants. Ancestor cycles stop at the newly named ancestor. Temporary parents
+give only a first temporary path and do not rename descendants. Native class paths
+are distinct from singleton-class display names; Object-qualified declarations
+still acquire bare top-level names. Shared descendants whose chosen path depends
+on CRuby's symbol-table iteration order remain gated. **[V]** (L295)
+
+Native `Module#name` returns a frozen base String cached by native path and
+encoding tag. Repeated reads and distinct namespaces bearing the same path share
+identity; permanent promotion selects a new cached value without mutating saved
+temporary-name Strings. Anonymous namespaces return nil. ASCII temporary paths
+are binary; non-ASCII paths are UTF-8. Permanent ASCII paths retain the existing
+US-ASCII/UTF-8 observation boundary. Ruby String constructors/freezing hooks do
+not run, and `Module#to_s`/`inspect` still return fresh mutable display Strings.
+This name cache does not implement general String#-@ interning. **[V]** (L297)
+
+Native `Module#const_set` checks arity, then converts its name through checked
+`to_str` unless it is already a Symbol or String. Conversion and name validation
+precede the frozen check. UTF-8 names require an uppercase/titlecase first scalar;
+later characters may be ASCII letters/digits/underscore or any non-ASCII scalar.
+The oracle-generated Unicode table pins this classification. Invalid names raise
+NameError without writing. Missing/nil conversion diagnoses the original argument
+through ordinary inspect, String conversion and native fallback; embedded NUL in
+that rendering raises ArgumentError. Saved target/value identity survives callbacks.
+Aliases, visibility, super and undef use the native method entry. Non-UTF-8 names
+and high-byte binary diagnostic renderings remain explicit gates. **[V]** (L294)
+
+A constant rescue target (`rescue => E`) also writes through this protocol in the
+lexical namespace. `$!` already contains the rescued exception during the hook,
+and the handler begins only after it returns. A hook failure or frozen target
+therefore skips the handler while preserving ordinary ensure/unwinding behavior.
+**[V]** (L292)
+
 A method carries the cref of where it was *defined*, not its dispatch owner —
 which is what makes `def self.m` inside a module resolve constants correctly.
+Top-level nesting is empty; Object is a fallback, not an extra lexical ancestor
+that could beat a superclass constant. A qualified class body adds that class to
+the actual surrounding lexical nesting, without adding the path's container.
+Block eval keeps that nesting for constants and class declarations while rebinding
+the target of def/alias/undef. New class declarations check the frozen state of
+their constant namespace; reopening an existing nested class does not write a new
+constant. **[V]**
 
 ### 03 §6 — Globals
 
@@ -517,7 +716,43 @@ reified to a non-lambda `Proc` only if the callee captures it via `&blk` or asks
 The lambda flag controls **two** observable behaviors: arity (§2) and the meaning
 of `return` (§4).
 
+For `&e`, receiver, arguments and keywords are evaluated before `e`. A Proc passes
+through unchanged and `nil` supplies no block. Otherwise the model calls the resolved
+`to_proc`, including private methods, and requires a Proc result. A lookup miss follows
+checked conversion through response hooks and `method_missing`; a missing conversion
+raises TypeError. Continuations preserve the pending call across conversion's side effects,
+exceptions and jumps (L275). Native `Symbol#to_proc` supplies a capture-free closure;
+overriding or undefining that method changes `&:symbol` accordingly.
+
 ### 04 §2 — Calling a closure; arity
+
+`Proc#call`, `Proc#[]`, `Proc#yield` and `Proc#===` use ordinary method lookup, including
+singleton/class overrides, aliases, visibility and `undef`. Resolving their native
+marker invokes the closure; `super` can resolve the same marker. `f.()` is syntax
+for `f.call`, not a separate method named `()` (L272).
+
+Array's `map`/`collect` likewise resolve native entries through ordinary lookup (L274).
+They walk the original receiver with a live index, independent of Ruby overrides of
+`each`, `length` or `[]`, and collect each block result into a fresh Array. Mutations
+before the next yield affect both the next element and exhaustion. Enumerable's separate
+Ruby implementation dispatches `each`; removing Array's entry can expose that method.
+
+`for` retains a core node but invokes ordinary explicit `each`, including
+visibility, missing-method dispatch, overrides and live iterator mutations. Its
+normal value is the return from `each`. A single target takes the first yielded
+argument; multiple targets (including `for x,`) expand one argument through checked
+`to_ary`, while zero/multiple arguments bind directly. Target writes use ordinary
+assignment rules. The hidden callback has a fresh control frame and aliases the
+enclosing local environment, preserving new/shared locals, the enclosing block,
+match state and definition context without reviving a dead return target. Captured
+callbacks can be called, used with block eval, or installed by define_method. **[V]**
+(L288)
+
+A block installed by `define_method` keeps that origin even when it has no captured
+locals. Its method boundary handles local break/next/return and restarts redo in
+the same activation without repeating parameter conversion or defaults. This also
+applies to captured for callbacks; strict method arity remains in force. **[V]**
+(L288)
 
 Invoking a closure pushes a **block frame** whose parent is `captured`, so free
 locals resolve into the enclosing scope. Argument binding differs by
@@ -529,10 +764,48 @@ locals resolve into the enclosing scope. Argument binding differs by
 - **lambda**: *strict*, exactly like a method. Wrong arity ⇒ `ArgumentError`, no
   auto-splat.
 
+Nested positional parameters use checked `to_ary`, honoring private methods,
+response hooks and missing handlers; actual Arrays bypass conversion. Missing or
+nil conversion treats the original as one value, while other non-Array results
+raise TypeError. Each expansion snapshots its leading/rest/trailing values before
+nested callbacks, pads short inputs with nil, and never reuses consumed leading
+values in trailing positions. Each later parameter sees the live heap. Methods
+perform positional and keyword defaults before nested conversions; destructured
+names are nil during defaults and shadow captured locals in define_method bodies.
+Blocks, procs and lambdas share this binding sequence and ordinary unwind rules.
+The compiler's synthetic slots cannot collide with Ruby local names. **[V]** (L287)
+
 So `bind` is parameterized by the flag, and method invocation uses the strict
 variant. `yield` calls the *current method frame's* block without naming it, with
 non-lambda binding, and raises `LocalJumpError` when there is none.
 `block_given?` is that block being present. **[V]**
+
+Native Object#inspect first performs a checked `instance_variables_to_inspect`
+call, honoring response hooks, private dispatch, missing handlers and nonlocal
+exits. Nil/missing selects all fields; an Array selects matching Symbol names;
+other results raise TypeError without to_ary conversion. It buffers field names
+in insertion order after the hook, then reads each field value and the selection
+Array live. Nested values use ordinary inspect followed by String coercion. A
+continuation resumes buffered rendering. Execution-local `objectInspections`
+guards receiver recursion, including nested String conversion, and releases one
+guard on callback return or unwinding; the hook runs before that guard. Native
+traversal bypasses Ruby instance_variables/get overrides.
+Existing-field assignment preserves its insertion position. Pure rendering is
+allowed only when these hooks cannot run, and detects cycles before recursing.
+Binary non-UTF-8 nested renderings and native Object#inspect on immediate values
+remain explicit gates. **[V]** (L289)
+
+Native UTF-8 String inspection escapes non-printing Unicode scalars with
+`\uXXXX` or supplementary-plane `\u{XXXXX}` notation. Printability comes from
+the pinned CRuby oracle's generated Unicode table, verified against every scalar.
+Existing named control escapes, interpolation escaping and binary byte escapes
+retain their separate rules. **[V]** (L293)
+
+Native String#b always returns a fresh mutable base String in ASCII-8BIT, including
+for already-binary, frozen and subclass receivers. It copies the bytes without
+copying ivars/eigenclasses or calling Ruby conversion, copy or initialization hooks.
+Aliases and super retain native dispatch. The old exposed __as_binary wrapper is
+removed. **[V]** (L296)
 
 ### 04 §3 — The unwinding model
 
@@ -563,6 +836,16 @@ parameters, without fetching the next element.
 **that call** return `v` — not the block. The target is the send activation that
 installed this block. **[V]**
 
+The executable model records that target in `Closure.breakScope`, with a
+fresh token in execution-local `liveBreakScopes` and a `blockCallK` boundary at
+the literal call (L284). Closure entry reads the live tokens, independently of
+the continuation; the boundary expires its token on normal return or unwinding.
+Forwarding the Proc through
+initialize, super or another method preserves the original target; a detached
+Proc's break raises LocalJumpError. The boundary consumes the targeted transfer
+after intervening ensures have run, independently of method return values and
+the constructor's discarded initializer result. Lambda break remains local.
+
 **`return [v]`** — the crux distinction:
 
 - in a method body or a **lambda**: returns from the immediately enclosing
@@ -582,6 +865,31 @@ so they were a priority target for the oracle.
 `raise` produces `^exc(v)`; propagation unwinds, and at each frame: transfer to a
 matching `rescue` (binding `$!` and the `=> x` variable), and run that frame's
 `ensure` as the transfer passes through, matched or not.
+
+For Ruby-level raise/fail, the one-argument form first tries checked String
+conversion. Otherwise the checked exception method receives zero or one message
+argument, and its result must be an Exception. Visibility does not block this
+protocol. Exception's singleton exception method constructs directly, independently
+of overridden new. The instance method returns self for no argument or self,
+otherwise clones through initialize_clone/initialize_copy and replaces the message
+without dispatching initialize. Source frozen state is applied after clone hooks.
+Metadata/backtrace/cause and singleton copies remain incomplete. **[V]** (L285)
+
+Native VM errors construct through private initialize(message), preserving the
+surrounding `$!` and bypassing overridden new/allocate/exception. Native NameError,
+NoMethodError and KeyError use direct native initialization instead. FrozenError
+renders the class, initializes with a mutable prefix String, then inspects the
+receiver and appends to that same String. A callback can replace the exception's
+message, mutate/freeze the prefix, or raise before inspection. **[V]** (L286)
+Execution-local `frozenInspections` tracks receiver recursion only during inspect
+and String conversion, after initialization. Returning or unwinding through the
+owning rendering continuation releases one guard; continuation cuts retain it.
+
+An uncaught throw constructs with `(tag, value, "uncaught throw %p")`; its native
+initializer delegates the remaining arguments to super and then stores hidden
+tag/value metadata. Message rendering inspects the live tag lazily, including
+String conversion of a non-String inspect result. Arbitrary printf formats and
+non-String format conversion remain gated. **[V]** (L286)
 
 **Rescue matching uses `===`**, and the **default rescue class is `StandardError`,
 not `Exception`** **[V]** — so `raise Exception` is *not* caught by a bare
@@ -622,15 +930,87 @@ All of §3–§5 share one mechanism, stated as the metatheorem worth proving:
 This is what makes the control semantics *explainable*: every observed ordering
 has a derivation that runs the ensures in a provably correct sequence.
 
-### 04 §7 — Open
+### 04 §7 — External iteration and remaining boundaries
 
-**[?]** `Fiber`/`Enumerator` need a first-class captured continuation; deferred.
+**[V]** An Enumerator stores its receiver, method, positional/keyword arguments
+and size policy separately from its external cursor. `each` starts a fresh
+ordinary dispatch, independent of `next`. The first external resume dispatches
+the Enumerator's own `each`, honoring overrides, with a native yield callback.
+`next`/`peek` pack zero, one and multiple yielded arguments; their `_values`
+variants always return an Array. Peek caches yielded arguments, while feed is
+consumed only when execution resumes past that yield. Completion initializes
+StopIteration inside the producer's execution context, stores the method result
+after that callback, and caches the exception. Later resumes duplicate its live
+raw String message and initialize a fresh StopIteration in the caller's context.
+Errors reset the producer; nested Enumerators retain separate dynamic exception/
+control contexts. StopIteration cause chains and repeated non-String messages
+other than nil remain gated. **[V]** (L280, L286)
+
+`rewind` checks the receiver's rewind protocol, including response/missing
+hooks, before discarding suspension. It does not execute abandoned `ensure`
+bodies. Native Hash iteration cleanup is abandoned too: its insertion lock
+remains, even after CRuby's explicit GC. Shared `hashIterationLocks` carries one
+entry per active callback. Callback return or unwind releases one entry;
+suspension and abandonment retain it. Releasing one callback preserves entries
+owned by nested iterations, other producers or abandoned executions.
+No continuation scan is needed. Existing Hash values and deletions remain
+visible during iteration, and Array cursors reread their
+receiver after every yield. **[V]**
+
+Incremental String#scan writes its native caller's match slot. A native external
+fiber first resumed from top level shares that lexical match environment;
+first resumption from an ordinary method gets a separate slot. A dedicated
+`Frame.matchAlias` expresses this without capturing caller locals. Proc bodies
+continue to use their own captured lexical match environments. **[V]**
+
+Reentrant resumes, custom method-name/size conversions, copy initialization
+hooks/singleton classes, Chain's blockless wrapping/rewind, remaining blockless
+prelude iterators and public Fiber APIs are explicit gates. String#scan gates
+receiver mutation during a block and high-byte binary receivers. General
+Fiber/Thread scheduling remains open.
 **[?]** An `ensure` that raises while an exception is already in flight — whose
 backtrace wins, and `Exception#cause` chaining.
 
 ---
 
 ## Mechanization — from these rules to `stepFn`
+
+**Feature loading (L281).** Core boot evaluates `prelude/prelude.rb`; optional
+feature bodies remain decoded programs until `require`. A modeled require enters
+a fresh top-level frame with `self = main`, `defmod = Object`, empty lexical
+nesting and Object as its constant fallback. The caller's locals and namespace do
+not become the feature's.
+The heap, globals and effects remain shared. **[V]**
+
+The machine distinguishes loading, completed and attempted features. A completed
+or recursively loading feature returns false; successful execution records the
+feature and returns true. An escaping exception clears only its loading state:
+effects survive, and a later require retries. Attempted-feature API inventories
+remain available after a failure so missing dependency APIs cannot become false
+negative constant or method answers. These lists stay shared across Enumerator
+suspension. **[V]** (cache, scope and unwind are compared to CRuby with identical
+small feature bodies; the modeled optional libraries remain partial.)
+
+`json`, `uri`, `forwardable`, `sorbet-runtime` and the `pathname.rb` wrapper have
+registered bodies; `.rb` aliases share a cache key. CRuby 4.0.5 already loads
+`pathname.so` at startup, so Pathname belongs to core boot. JSON installs its real
+generator mixin hierarchy. Standalone execution begins without JSON; the
+differential adapter passes `--preload-json` because its control wrapper requires
+JSON before the program. **[V]**
+
+Filesystem resolution, `require_relative`, feature path conversion, loader-global
+paths/mutation and unknown libraries remain explicit gates. Partial library
+bodies gate user definition hooks and frozen target namespaces when omitted
+upstream declarations would change the callback order or first failing write.
+Forwardable's L282 body matches the 1.4.0 method declarations and order, so its
+method hooks and frozen writes execute normally, including failed-load retry.
+Its source generator emits real RubyCore definitions with argument, keyword and
+block forwarding for simple method, ivar and constant accessors. General accessor
+expressions, source-position warning paths and source-generator overrides remain
+explicit gates. This compiler is specific to Forwardable, not general string eval.
+Existing class/module conflicts gate when their diagnostic requires
+the original source position. This does not claim full standard-library or
+Sorbet-runtime conformance.
 
 Two definitions coexist: `inductive Step` (`Proof/Step.lean`) is the definition of
 record, and `stepFn` + `run fuel` (`Interp.lean`) is what executes. The adequacy

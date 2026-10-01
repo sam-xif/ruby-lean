@@ -1,3 +1,4 @@
+import RubyCore.Proof.DirectBuiltin
 import RubyCore.Proof.TypeSafety
 import RubyCore.Proof.HeapFacts
 
@@ -42,13 +43,22 @@ set_option maxRecDepth 20000
 /-! ## 1. The builtin layer: `rfl` -/
 
 theorem run_int_add (a b : Int) (m : Machine) :
-    Builtins.run "Integer#+" (.int a) [.int b] m = .ok (.int (a + b)) m := rfl
+    Builtins.run "Integer#+" (.int a) [.int b] m = .ok (.int (a + b)) m := by
+  simp only [Builtins.run]
+  simp [Builtins.unrepresentableByteStr, Builtins.complexEqualityImpure]
+  rfl
 
 theorem run_int_sub (a b : Int) (m : Machine) :
-    Builtins.run "Integer#-" (.int a) [.int b] m = .ok (.int (a - b)) m := rfl
+    Builtins.run "Integer#-" (.int a) [.int b] m = .ok (.int (a - b)) m := by
+  simp only [Builtins.run]
+  simp [Builtins.unrepresentableByteStr, Builtins.complexEqualityImpure]
+  rfl
 
 theorem run_int_mul (a b : Int) (m : Machine) :
-    Builtins.run "Integer#*" (.int a) [.int b] m = .ok (.int (a * b)) m := rfl
+    Builtins.run "Integer#*" (.int a) [.int b] m = .ok (.int (a * b)) m := by
+  simp only [Builtins.run]
+  simp [Builtins.unrepresentableByteStr, Builtins.complexEqualityImpure]
+  rfl
 
 /-- The first **nullary** one (L152). Still `rfl`, and note the rule's arity is
     carried by the *declaration* rather than by the builtin: `Integer#zero?` matches
@@ -56,7 +66,10 @@ theorem run_int_mul (a b : Int) (m : Machine) :
     is `baseDecls`'s `params := []` and `infer`'s zero-argument arm that make
     `1.zero?(5)` `unknown` rather than typed. -/
 theorem run_int_zero (a : Int) (m : Machine) :
-    Builtins.run "Integer#zero?" (.int a) [] m = .ok (.bool (a == 0)) m := rfl
+    Builtins.run "Integer#zero?" (.int a) [] m = .ok (.bool (a == 0)) m := by
+  simp only [Builtins.run]
+  simp [Builtins.unrepresentableByteStr, Builtins.complexEqualityImpure]
+  rfl
 
 /-! ## 2. The dispatch layer -/
 
@@ -81,6 +94,32 @@ def IntBuiltinResolves (h : Heap) (mname bid : String) : Prop :=
 theorem lookup_int_const (h : Heap) (a : Int) (mname : String) :
     lookup h (.int a) mname = lookup h (.int 0) mname := rfl
 
+/-- Proc call markers are executed by the interpreter, never by the pure builtin runner. -/
+theorem run_ok_not_procCall {bid : String} {recv v : Value} {args : List Value}
+    {m n : Machine} (hr : Builtins.run bid recv args m = .ok v n) : procCallBid bid = false := by
+  cases hc : procCallBid bid with
+  | false => rfl
+  | true =>
+    simp only [procCallBid, Bool.or_eq_true, beq_iff_eq] at hc
+    rcases hc with (rfl | rfl) | rfl
+    all_goals
+      simp only [Builtins.run, endsWith_decide] at hr
+      change (if _ then BRes.unsupported _ else BRes.unsupported _) = .ok v n at hr
+      split at hr <;> contradiction
+
+/-- Native Array map markers also execute outside the pure builtin runner. -/
+theorem run_ok_not_arrayMap {bid : String} {recv v : Value} {args : List Value}
+    {m n : Machine} (hr : Builtins.run bid recv args m = .ok v n) : arrayMapBid bid = false := by
+  cases hc : arrayMapBid bid with
+  | false => rfl
+  | true =>
+    simp only [arrayMapBid, Bool.or_eq_true, beq_iff_eq] at hc
+    rcases hc with rfl | rfl
+    all_goals
+      simp only [Builtins.run, endsWith_decide] at hr
+      change (if _ then BRes.unsupported _ else BRes.unsupported _) = .ok v n at hr
+      split at hr <;> contradiction
+
 /-- **The conformance step.** With the receiver and the argument both already
     values, the dispatch yields the declared result in one `.next` — no raise,
     which makes this discharge a progress obligation as much as a preservation
@@ -102,15 +141,21 @@ theorem int_bin_dispatch
     -- Arithmetic over two Integers is never such a call, but the *statement* has to
     -- say so — leaving it implicit is what broke this proof, and `Proof/` being off
     -- the default target is why nothing noticed (L119).
-    (hdefer : Builtins.deferTwin? m.heap bid (.int a) [.int b] = none) :
+    (hdefer : Builtins.deferTwin? m.heap bid (.int a) [.int b] = none)
+    (hproc : procCallBid bid = false := by rfl)
+    (hmap : arrayMapBid bid = false := by rfl)
+    (hdirect : directBuiltinB bid = true := by
+      simp only [directBuiltinB, enumBid, startsWith_decide]; decide) :
     startArgs m (.int a) .explicit mname [.int b] [] .none
       = .next (withCtl m (.value (.int (op a b)))) := by
   obtain ⟨owner, md, hlook, hb, hu, hvis, hpre, hbtw⟩ := hres
   rw [lookup_int_const m.heap 0 mname] at hlook
   simp only [startArgs, finishSend]
   rw [invoke.eq_def]
-  simp [invoke.invokeDispatch, classOf, lookup_int_const, hlook, hb, hu, hbtw, hpre,
-    visError?, hvis, appendKwHash, hrun, hns, hdefer]
+  simp only [directBuiltinB, Bool.not_eq_true, Bool.or_eq_false_iff,
+    List.contains_cons, List.contains_nil, beq_iff_eq] at hdirect
+  simp_all [invoke.invokeDispatch, crubyResolvedShadow, classOf, lookup_int_const, hlook, hb, hu, hbtw, hpre,
+    visError?, hvis, appendKwHash, hrun, hns, hdefer, hproc, hmap]
 
 /-! ### 2.1 The three table entries -/
 
@@ -118,19 +163,19 @@ theorem int_add_dispatch {m : Machine} {a b : Int}
     (hres : IntBuiltinResolves m.heap "+" "Integer#+") :
     startArgs m (.int a) .explicit "+" [.int b] [] .none
       = .next (withCtl m (.value (.int (a + b)))) :=
-  int_bin_dispatch hres (by decide) run_int_add (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.num?])
+  int_bin_dispatch hres (by decide) run_int_add (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?, Builtins.num?])
 
 theorem int_sub_dispatch {m : Machine} {a b : Int}
     (hres : IntBuiltinResolves m.heap "-" "Integer#-") :
     startArgs m (.int a) .explicit "-" [.int b] [] .none
       = .next (withCtl m (.value (.int (a - b)))) :=
-  int_bin_dispatch hres (by decide) run_int_sub (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.num?])
+  int_bin_dispatch hres (by decide) run_int_sub (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?, Builtins.num?])
 
 theorem int_mul_dispatch {m : Machine} {a b : Int}
     (hres : IntBuiltinResolves m.heap "*" "Integer#*") :
     startArgs m (.int a) .explicit "*" [.int b] [] .none
       = .next (withCtl m (.value (.int (a * b)))) :=
-  int_bin_dispatch hres (by decide) run_int_mul (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.num?])
+  int_bin_dispatch hres (by decide) run_int_mul (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?, Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?, Builtins.num?])
 
 /-! ## 3. Starting argument evaluation
 
@@ -171,7 +216,34 @@ theorem crubyShadow_defineMethod (h : Heap) (cls : ObjId) (name mname : String)
     crubyShadow (defineMethod h cls name md) chain mname
       = crubyShadow h chain mname := by
   unfold crubyShadow
-  simp only [className_defineMethod]
+  have hp (k : ObjId) :
+      ((defineMethod h cls name md).classPayload? k).map (fun c => (c.attached, c.libraryNamespace)) =
+        (h.classPayload? k).map (fun c => (c.attached, c.libraryNamespace)) := by
+    unfold defineMethod
+    split
+    · rename_i c hc
+      by_cases hk : k = cls
+      · subst hk
+        simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+        by_cases hb : k < h.objs.size
+        · simp [Array.getD, hb, Array.set!]
+          unfold Heap.classPayload? Heap.get at hc
+          simp [Array.getD, hb] at hc
+          split at hc <;> simp_all
+        · rw [classPayload?_oob h k hb] at hc; exact absurd hc (by simp)
+      · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+        rw [objs_getD_set!_ne _ _ _ _ hk]
+    · rfl
+  have hlib (k : ObjId) : libraryNamespace (defineMethod h cls name md) k = libraryNamespace h k := by
+    have hh := hp k
+    cases h1 : (defineMethod h cls name md).classPayload? k <;>
+      cases h2 : h.classPayload? k <;> simp_all [libraryNamespace]
+  have hn (k : ObjId) : nativeSingletonMethod (defineMethod h cls name md) k mname = nativeSingletonMethod h k mname ∧
+      featureMethod (defineMethod h cls name md) k mname = featureMethod h k mname := by
+    have hh := hp k
+    cases h1 : (defineMethod h cls name md).classPayload? k <;>
+      cases h2 : h.classPayload? k <;> simp_all [nativeSingletonMethod, featureMethod, featureHas, hlib, className_defineMethod]
+  simp only [className_defineMethod, fun k => (hn k).1, fun k => (hn k).2]
 
 theorem IntBuiltinResolves_defineMethod {h : Heap} {mname bid : String}
     {cls : ObjId} {name : String} {md : MethodDef}

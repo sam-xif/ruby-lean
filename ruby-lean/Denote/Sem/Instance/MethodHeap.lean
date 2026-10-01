@@ -19,8 +19,8 @@ theorem heap_get_defineMethod_ne {h : Heap} {cls o : ObjId} {name : String}
 
 /-- Every object field except payload is retained, even at the definee. -/
 theorem get_defineMethod_data (h : Heap) (cls o : ObjId) (name : String) (md : MethodDef) :
-    { (defineMethod h cls name md).get o with payload := .none } =
-      { h.get o with payload := .none } := by
+    { (defineMethod h cls name md).get o with payload := .none, revision := 0 } =
+      { h.get o with payload := .none, revision := 0 } := by
   by_cases ho : o = cls
   · subst o
     unfold defineMethod
@@ -37,6 +37,34 @@ theorem constLookup_defineMethod (h : Heap) (cls : ObjId) (name n : String) (md 
   have hco (h : Heap) : constLookup h n = constOwn h Boot.objectId n := by
     cases hc : h.classPayload? Boot.objectId <;> simp [constLookup, constOwn, hc]
   rw [hco, hco, Proof.constOwn_defineMethod]
+
+theorem attached_defineMethod (h : Heap) (cls k : ObjId) (name : String) (md : MethodDef) :
+    ((defineMethod h cls name md).classPayload? k).bind (·.attached) =
+      (h.classPayload? k).bind (·.attached) := by
+  unfold defineMethod
+  split
+  · rename_i c hc
+    by_cases hk : k = cls
+    · subst k
+      have hb : cls < h.objs.size := by
+        by_cases hn : cls < h.objs.size
+        · exact hn
+        · rw [Proof.classPayload?_oob h cls hn] at hc
+          cases hc
+      simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set,
+        Proof.objs_getD_set!_self _ _ _ hb]
+      change c.attached = (h.classPayload? cls).bind (·.attached)
+      rw [hc]; rfl
+    · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      rw [Proof.objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
+theorem isModuleAny_defineMethod (h : Heap) (cls k : ObjId) (name : String) (md : MethodDef) :
+    ((defineMethod h cls name md).classPayload? k).any (·.isModule) =
+      (h.classPayload? k).any (·.isModule) := by
+  simpa only [Option.any_map, Function.comp_def] using
+    congrArg (fun p : Option (String × Bool) => p.any Prod.snd)
+      (Proof.clsName_defineMethod h cls k name md)
 
 theorem classNamed?_defineMethod (h : Heap) (cls : ObjId) (name n : String) (md : MethodDef) :
     classNamed? (defineMethod h cls name md) n = classNamed? h n := by
@@ -102,6 +130,13 @@ theorem hshEntries?_defineMethod (h : Heap) (cls : ObjId) (name : String)
     hshEntries? (defineMethod h cls name md) v = hshEntries? h v := by
   cases v <;> try rfl
   exact payloadProbe_defineMethod (fun p => match p with | .hsh xs => some xs | _ => none)
+    (fun _ _ => rfl) h cls _ name md
+
+theorem procClosure?_defineMethod (h : Heap) (cls : ObjId) (name : String)
+    (md : MethodDef) (v : Value) :
+    procClosure? (defineMethod h cls name md) v = procClosure? h v := by
+  cases v <;> try rfl
+  exact payloadProbe_defineMethod (fun p => match p with | .proc cl => some cl | _ => none)
     (fun _ _ => rfl) h cls _ name md
 
 theorem denM_defineMethod_aux {m n : Machine} {cls : ObjId} {name : String} {md : MethodDef}
@@ -174,22 +209,13 @@ theorem Framed_defineMethod (m : Machine) (cls : ObjId) (name : String) (md : Me
    fun τ ht v hv => (denM_defineMethod ht rfl).mp hv, FramePres.of_eq rfl rfl,
    .of_unchanged (by simp only [Proof.objs_size_defineMethod]; exact Nat.le_refl _)
      (fun _ _ => ivarOf_defineMethod m.heap cls name md _)
-     (fun _ ht _ hv => (denM_defineMethod ht rfl).mp hv)⟩
+     (fun _ ht _ hv => (denM_defineMethod ht rfl).mp hv),
+   (fun _ _ _ he => by rw [Proof.get_defineMethod_eigen]; exact he),
+   ⟨(fun v _ hp => by rw [procClosure?_defineMethod]; exact hp),
+     (fun v _ _ => Proof.classOf_defineMethod ..)⟩, rfl, id⟩
 
 theorem methodOn_eq_go (h : Heap) (k : ObjId) (name : String) :
-    Interp.methodOn h k name = lookup.go h name (ancestors h k) := by
-  unfold Interp.methodOn
-  induction ancestors h k with
-  | nil => rfl
-  | cons c rest ih =>
-    rw [List.firstM, lookup.go]
-    cases hp : h.classPayload? c with
-    | none => simp [ih]
-    | some cp =>
-      simp only
-      cases hm : cp.methods.find? (·.1 == name) with
-      | none => simp [ih]
-      | some pair => simp
+    Interp.methodOn h k name = lookupInChain h (ancestors h k) name := rfl
 
 theorem methodOn_defineMethod (h : Heap) (cls k : ObjId) (name n : String)
     (md : MethodDef) (hn : n ≠ name) :
@@ -197,22 +223,55 @@ theorem methodOn_defineMethod (h : Heap) (cls k : ObjId) (name n : String)
   rw [methodOn_eq_go, methodOn_eq_go, Proof.ancestors_defineMethod,
     Proof.lookup_go_defineMethod h cls name n md hn]
 
+/-- Method installation preserves native attachment and library metadata. -/
+theorem classField_defineMethod {α : Type} (f : ClassPayload → Option α)
+    (hf : ∀ cp ms, f { cp with methods := ms } = f cp)
+    (h : Heap) (cls k : ObjId) (name : String) (md : MethodDef) :
+    ((defineMethod h cls name md).classPayload? k).bind f = (h.classPayload? k).bind f := by
+  unfold defineMethod
+  split
+  · rename_i c hc
+    by_cases hk : k = cls
+    · subst hk
+      simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      by_cases hb : k < h.objs.size
+      · simp only [Proof.objs_getD_set!_self _ _ _ hb, Option.bind_some, hf]
+        unfold Heap.classPayload? Heap.get at hc
+        rw [hc]
+        rfl
+      · rw [Proof.classPayload?_oob h k hb] at hc
+        cases hc
+    · simp only [Heap.setClassPayload, Heap.classPayload?, Heap.get, Heap.set]
+      rw [Proof.objs_getD_set!_ne _ _ _ _ hk]
+  · rfl
+
 theorem crubyShadow_defineMethod (h : Heap) (cls : ObjId) (name n : String)
     (md : MethodDef) (chain : List ObjId) :
     Interp.crubyShadow (defineMethod h cls name md) chain n = Interp.crubyShadow h chain n := by
-  simp only [Interp.crubyShadow, Proof.className_defineMethod]
+  simp only [Interp.crubyShadow, Interp.nativeSingletonMethod, Interp.featureMethod,
+    Interp.featureHas, Interp.libraryNamespace, Proof.className_defineMethod,
+    classField_defineMethod (·.attached) (fun _ _ => rfl),
+    classField_defineMethod (·.libraryNamespace) (fun _ _ => rfl)]
+  rfl
 
 theorem primitiveDispatchB_defineMethod {h : Heap} {cls : ObjId} {name : String}
     {md : MethodDef} {free : String → Bool} (hn : free name = false) :
     primitiveDispatchB (defineMethod h cls name md) free = primitiveDispatchB h free := by
   unfold primitiveDispatchB
   congr 1
-  funext row
-  obtain ⟨k, n, bid⟩ := row
-  by_cases he : n = name
-  · subst n; simp [hn]
-  · simp only [methodOn_defineMethod h cls k name n md he,
-      Proof.ancestors_defineMethod, crubyShadow_defineMethod]
+  · unfold nativeDispatchB
+    congr 1
+    funext row
+    obtain ⟨k, n, bid⟩ := row
+    by_cases he : n = name
+    · subst n; simp [hn]
+    · simp only [methodOn_defineMethod h cls k name n md he,
+        Proof.ancestors_defineMethod, crubyShadow_defineMethod]
+  · unfold eachDispatchB
+    by_cases he : "each" = name
+    · subst name; simp [hn]
+    · simp only [methodOn_defineMethod h cls Boot.arrayId name "each" md he,
+        Proof.ancestors_defineMethod, crubyShadow_defineMethod]
 
 theorem primitiveErrorsB_defineMethod (h : Heap) (cls : ObjId) (name : String) (md : MethodDef) :
     primitiveErrorsB (defineMethod h cls name md) = primitiveErrorsB h := by
@@ -257,7 +316,9 @@ theorem CoreOk.defineMethod {h : Heap} {cls : ObjId} {name : String}
     {md : MethodDef} (hc : CoreOk h) : CoreOk (defineMethod h cls name md) where
   classReady := hc.classReady.defineMethod
   rootNames := hc.rootNames.defineMethod
+  metaConstants := by simpa only [Proof.classOf_defineMethod] using hc.metaConstants.methodWrite
   basicSelf := by simpa only [Proof.ancestors_defineMethod] using hc.basicSelf
+  moduleBasic := by simpa only [Proof.ancestors_defineMethod] using hc.moduleBasic
   stringNamed := by simpa only [classNamed?_defineMethod] using hc.stringNamed
   stringSelf := by simpa only [Proof.ancestors_defineMethod] using hc.stringSelf
   stringBasic := by simpa only [Proof.ancestors_defineMethod] using hc.stringBasic

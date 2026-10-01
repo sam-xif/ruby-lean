@@ -170,6 +170,22 @@ def run(path: str, binary: str, args: list[str]) -> subprocess.CompletedProcess:
         capture_output=True, text=True)
 
 
+def block_signature(raw: str | None, untyped: str) -> dict | None:
+    """A declared Proc domain, separate from value types; unsupported parts decline."""
+    match = re.fullmatch(r"T\.proc\.params\((.*)\)\.returns\((.*)\)", raw or "")
+    if not match:
+        return None
+    args = []
+    for param in split_args(match[1]):
+        pair = param.split(":", 1)
+        ty = to_ty(pair[1], untyped) if len(pair) == 2 else None
+        if ty is None:
+            return None
+        args.append(ty)
+    ret = to_ty(match[2], untyped)
+    return {"args": args, "ret": ret} if ret is not None else None
+
+
 def parse(text: str, target: str, untyped: str) -> tuple[list, list]:
     base = os.path.basename(target)
     sigs: list[dict] = []
@@ -184,7 +200,12 @@ def parse(text: str, target: str, untyped: str) -> tuple[list, list]:
             dropped.append({**common, "why": entry["owner_dropped"]})
             return
         if entry["raw_ret"] is None:
-            dropped.append({**common, "why": "no declared return type"})
+            # A malformed sig can retain parameter annotations. Do not let the
+            # emitter's missing-signature inference replace those declarations.
+            why = "no declared return type"
+            if any(ty is not None for _, ty in entry["args"]):
+                why += " (parameters are annotated)"
+            dropped.append({**common, "why": why})
             return
         ret = to_ty(entry["raw_ret"], untyped)
         if ret is None:
@@ -200,7 +221,15 @@ def parse(text: str, target: str, untyped: str) -> tuple[list, list]:
                 dropped.append({**common, "why": f"parameter {name} not in Ty: {raw_ty}"})
                 return
             params.append({"name": name, "ty": ty})
-        sigs.append({**common, "params": params, "ret": ret})
+        sig = {**common, "params": params, "ret": ret}
+        if entry.get("block"):
+            name, raw = entry["block"]
+            block = block_signature(raw, untyped)
+            if block is None:
+                dropped.append({**common, "why": f"block parameter {name} not supported: {raw}"})
+                return
+            sig["block"] = {"name": name, **block}
+        sigs.append(sig)
 
     for line in text.splitlines():
         m = METHOD.match(line)
@@ -213,8 +242,8 @@ def parse(text: str, target: str, untyped: str) -> tuple[list, list]:
             if name in SYNTHETIC:
                 continue
             why = None
-            if owner.startswith("<Class:"):
-                why = "singleton method (def self.x) -- outside the fragment"
+            if owner.startswith("<Class:") and not re.fullmatch(r"<Class:[A-Z]\w*>", owner):
+                why = f"unsupported singleton owner {owner}"
             elif "::" in owner:
                 why = f"namespaced owner {owner} -- Ty.cls carries flat names here"
             cur = {"owner": owner.split("::")[-1] if why is None else owner,
@@ -226,6 +255,8 @@ def parse(text: str, target: str, untyped: str) -> tuple[list, list]:
         a = ARGUMENT.match(line)
         if a:
             if a.group("kind") == "block" or a.group("name").strip() == "<blk>":
+                if a.group("name").strip() != "<blk>":
+                    cur["block"] = (a.group("name").strip(), a.group("ty"))
                 continue
             cur["args"].append((a.group("name").strip(), a.group("ty")))
             continue

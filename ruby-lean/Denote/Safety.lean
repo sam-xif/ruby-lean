@@ -46,6 +46,107 @@ def plainRulesPairs : List (Ratchet.Expr × Ratchet.Expr) → List String
   | (k, v) :: ps => "DJudgePairs.cons" :: (plainRules k ++ plainRules v ++ plainRulesPairs ps)
 end
 
+/-! Signature-indexed callback body rules, independently checked by proof extraction. -/
+mutual
+def methodRules : Ratchet.Expr → List String
+  | .vasgn .lvar _ e => "DMethod.vasgn" :: methodRules e
+  | .seq es => "DMethod.sequence" :: methodSeqRules es
+  | .send (some r) _ args none => "DMethod.prim" :: (methodRules r ++ methodArgRules args)
+  | .yield' [arg] => "DMethod.yieldOne" :: methodRules arg
+  | e => "DMethod.ordinary" :: plainRules e
+
+def methodSeqRules : List Ratchet.Expr → List String
+  | [] => ["?"]
+  | [e] => "DMethodSeq.last" :: methodRules e
+  | e :: e' :: es => "DMethodSeq.cons" :: (methodRules e ++ methodSeqRules (e' :: es))
+
+def methodArgRules : List Ratchet.Expr → List String
+  | [] => ["DMethodAll.nil"]
+  | e :: es => "DMethodAll.cons" :: (methodRules e ++ methodArgRules es)
+end
+
+mutual
+def boundMethodRules : Ratchet.Expr → List String
+  | .int _ => ["DMethodFlow.intLit"]
+  | .nil => ["DMethodFlow.nilLit"]
+  | .var .lvar _ => ["DMethodFlow.var"]
+  | .vasgn .lvar _ e => "DMethodFlow.vasgn" :: boundMethodRules e
+  | .seq es => "DMethodFlow.sequence" :: boundMethodSeqRules es
+  | .send (some r) name [arg] none =>
+      if procCallNameB name then "DMethodFlow.call" :: (boundMethodRules r ++ boundMethodRules arg)
+      else "DMethodFlow.embed" :: methodRules (.send (some r) name [arg] none)
+  | e => "DMethodFlow.embed" :: methodRules e
+
+def boundMethodSeqRules : List Ratchet.Expr → List String
+  | [] => ["?"]
+  | [e] => "DMethodFlowSeq.last" :: boundMethodRules e
+  | e :: e' :: es => "DMethodFlowSeq.cons" :: (boundMethodRules e ++ boundMethodSeqRules (e' :: es))
+end
+
+def flowMethods (methods : List (String × (Bool × Ratchet.Expr))) : Ratchet.Expr → List (String × (Bool × Ratchet.Expr))
+  | .def' name ps body => (name, (ps.any (fun p => match p with | .block _ => true | _ => false), body)) :: methods.filter (·.1 != name)
+  | _ => methods
+
+/-- Code known syntactically to the worked flow predictor. This is coverage data,
+never a typing premise; the proof-term audit independently checks every rule used. -/
+def flowBodies (bodies : List (String × (Bool × Ratchet.Expr))) :
+    Ratchet.Expr → List (String × (Bool × Ratchet.Expr))
+  | .vasgn .lvar x (.send none "lambda" [] (some (.block _ _ body))) =>
+      (x, true, body) :: bodies.filter (·.1 != x)
+  | .vasgn .lvar x (.send none "proc" [] (some (.block _ _ body))) =>
+      (x, false, body) :: bodies.filter (·.1 != x)
+  | .vasgn .lvar x _ => bodies.filter (·.1 != x)
+  | _ => bodies
+
+mutual
+def flowRules (bodies : List (String × (Bool × Ratchet.Expr))) (methods : List (String × (Bool × Ratchet.Expr))) : Ratchet.Expr → List String
+  | .int _ => ["DFlow.intLit"]
+  | .nil => ["DFlow.nilLit"]
+  | .var .lvar _ => ["DFlow.var"]
+  | .vasgn .lvar _ e => "DFlow.vasgn" :: flowRules bodies methods e
+  | .seq es => "DFlow.sequence" :: flowSeqRules bodies methods es
+  | .send none "lambda" [] (some (.block _ _ _))
+  | .send none "proc" [] (some (.block _ _ _)) => ["DFlow.closureLiteral"]
+  | .send (some recv) "each" [] (some (.block _ _ body)) =>
+      "DFlow.each" :: (flowRules bodies methods recv ++ plainRules body)
+  | .send (some recv) "map" [] (some (.block _ _ body))
+  | .send (some recv) "collect" [] (some (.block _ _ body)) =>
+      "DFlow.map" :: (flowRules bodies methods recv ++ plainRules body)
+  | .send (some (.var .lvar x)) "call" [] none =>
+      match bodies.lookup x with
+        | some (true, body) => "DFlow.call" :: plainRules body
+        | some (false, body) => ["DFlow.requiredCall", "DFlow.var", "DFlowAll.nil"] ++ plainRules body
+        | none => ["?"]
+  | .send (some recv) "call" args none
+  | .send (some recv) "[]" args none =>
+      "DFlow.requiredCall" :: (flowRules bodies methods recv ++ flowArgsRules bodies methods args ++
+        match recv with
+        | .send none "lambda" [] (some (.block _ _ body))
+        | .send none "proc" [] (some (.block _ _ body)) => plainRules body
+        | .var .lvar x => match bodies.lookup x with
+          | some (_, body) => plainRules body
+          | none => ["?"]
+        | _ => ["?"])
+  | .def' _ [.block (some _)] body => ["DFlow.embed", "defBoundBlock"] ++ boundMethodRules body
+  | .def' _ _ body => ["DFlow.embed", "defBlock"] ++ methodRules body
+  | .send none name [] (some (.block _ _ body)) =>
+      match methods.lookup name with
+      | some (false, method) => "DFlow.callBlock" :: (methodRules method ++ plainRules body)
+      | some (true, method) => "DFlow.callBoundBlock" :: (boundMethodRules method ++ plainRules body)
+      | none => ["?"]
+  | e => "DFlow.embed" :: plainRules e
+
+def flowSeqRules (bodies : List (String × (Bool × Ratchet.Expr))) (methods : List (String × (Bool × Ratchet.Expr))) : List Ratchet.Expr → List String
+  | [] => ["?"]
+  | [e] => "DFlowSeq.last" :: flowRules bodies methods e
+  | e :: e' :: es => "DFlowSeq.cons" ::
+      (flowRules bodies methods e ++ flowSeqRules (flowBodies bodies e) (flowMethods methods e) (e' :: es))
+
+def flowArgsRules (bodies : List (String × (Bool × Ratchet.Expr))) (methods : List (String × (Bool × Ratchet.Expr))) : List Ratchet.Expr → List String
+  | [] => ["DFlowAll.nil"]
+  | e :: es => "DFlowAll.cons" :: (flowRules bodies methods e ++ flowArgsRules (flowBodies bodies e) (flowMethods methods e) es)
+end
+
 mutual
 def hasSelfCall (name : String) : Ratchet.Expr → Bool
   | .send recv m args none =>
@@ -90,15 +191,21 @@ end
 ignoreResult at the definition; RuleAudit independently checks this against the proof. -/
 mutual
 def initRules : Ratchet.Expr → List String
+  | .int _ => ["InitJudge.intLit"]
   | .var .lvar _ => ["InitJudge.var"]
   | .vasgn .ivar _ e => "InitJudge.ivarAsgn" :: initRules e
   | .seq es => "InitJudge.seq" :: initSeqRules es
+  | .super' es none => "InitJudge.superInit" :: initArgRules es
   | _ => ["?"]
 
 def initSeqRules : List Ratchet.Expr → List String
   | [] => ["?"]
   | [e] => "InitJudgeSeq.last" :: initRules e
   | e :: e' :: es => "InitJudgeSeq.cons" :: (initRules e ++ initSeqRules (e' :: es))
+
+def initArgRules : List Ratchet.Expr → List String
+  | [] => ["InitJudgeAll.nil"]
+  | e :: es => "InitJudgeAll.cons" :: (initRules e ++ initArgRules es)
 end
 
 /-! Syntax-only class summary for predicting own versus inherited dispatch. It is not a
@@ -129,20 +236,43 @@ end
 def inheritedSelectorB (C : CTable) (cn name : String) : Bool :=
   ((ancestors? C cn).bind fun ns => searchMro C ns name).any (fun (owner, _) => owner != cn)
 
-/-- Predict using the extracted declarations, without any fixed class or method name. -/
-def explicitSendRule (C : CTable) (recv : Ratchet.Expr) (name : String) : String :=
+/-- Erased annotations used only by the rule predictor, independently of proof extraction. -/
+structure RuleAnnotations where
+  params : List (String × Env) := []
+  results : List ((String × String) × String) := []
+  /-- Syntactic body scope; no receiver type is inferred from a method name. -/
+  singletonBody : Bool := false
+
+/-- Follow receiver-producing syntax and declared result classes. This predicts a dispatch
+rule; the checker separately requires exact initialized-instance evidence. -/
+def receiverClass? (ann : RuleAnnotations) (Γ : Env) : Ratchet.Expr → Option String
+  | .var .lvar x => match envGet? Γ x with
+    | some (.inst cn _) => some cn
+    | _ => none
+  | .send (some (.const cn)) "new" _ none => some cn
+  | .send (some recv) name _ none => do
+    let cn ← receiverClass? ann Γ recv
+    ((ann.results.find? (·.1 == (cn, name))).map (·.2))
+  | _ => none
+
+/-- Predict using declarations and scoped annotations, without fixed selector names. -/
+def explicitSendRule (C : CTable) (ann : RuleAnnotations) (Γ : Env)
+    (recv : Ratchet.Expr) (name : String) : String :=
   if name == "new" then
     match recv with
-    | .const cn => if inheritedSelectorB C cn "initialize" then "newInherited" else "newInst"
+    | .const cn => if noDeclaredSelectorB C cn "initialize" then "newDefault"
+      else if inheritedSelectorB C cn "initialize" then "newInherited" else "newInst"
     | _ => "newInst"
   else match recv with
-  | .send (some (.const cn)) "new" _ none =>
-    if inheritedSelectorB C cn name then "callInherited" else "callMethodSig"
-  | .send _ "new" _ none => "callMethodSig"
-  | _ => "prim"
+  | .const _ => "callSingleton"
+  | _ => match receiverClass? ann Γ recv with
+    | some cn => if inheritedSelectorB C cn name then "callInherited" else "callMethodSig"
+    | none => match recv with
+      | .send _ "new" _ none => "callMethodSig"
+      | _ => "prim"
 
 mutual
-def rulesUsedAt (C : CTable) : Ratchet.Expr → List String
+def rulesUsedAt (C : CTable) (ann : RuleAnnotations) (Γ : Env) : Ratchet.Expr → List String
   | .int _ => ["intLit"]
   | .flt _ => ["fltLit"]
   | .str _ => ["strLit"]
@@ -150,56 +280,88 @@ def rulesUsedAt (C : CTable) : Ratchet.Expr → List String
   | .tru => ["truLit"]
   | .fls => ["flsLit"]
   | .nil => ["nilLit"]
-  | .vcall "x" => ["bareName"]
-  | .vcall _ => ["vcallMethodSig"]
+  | .vcall name => if ann.singletonBody then ["callSingletonImplicit", "DJudgeAll.nil"]
+      else if name == "x" then ["bareName"] else ["vcallMethodSig"]
+  | .self' => ["selfRead"]
   | .var .lvar _ => ["var"]
   | .var .ivar _ => ["ivarRead"]
   | .const _ => ["constClass"]
-  | .vasgn .lvar _ e => "vasgn" :: rulesUsedAt C e
-  | .seq es => "seq" :: rulesUsedSeqAt C es
-  | .send (some r) name args none => explicitSendRule C r name :: (rulesUsedAt C r ++ rulesUsedArgsAt C args)
-  | .class' _ none body => "classDecl" :: classRulesAt C body
-  | .class' _ (some super) body => "subclassDecl" :: (rulesUsedAt C super ++ classRulesAt C body)
+  | .vasgn .lvar _ e => "vasgn" :: rulesUsedAt C ann Γ e
+  | .vasgn .ivar _ e => "scalarIvarAsgn" :: rulesUsedAt C ann Γ e
+  | .seq es => "seq" :: rulesUsedSeqAt C ann Γ es
+  | .send (some r) name args none => explicitSendRule C ann Γ r name :: (rulesUsedAt C ann Γ r ++ rulesUsedArgsAt C ann Γ args)
+  | .class' _ none body => "classDecl" :: classRulesAt C ann body
+  | .module' _ body => "moduleDecl" :: classRulesAt C ann body
+  | .class' _ (some super) body => "subclassDecl" :: (rulesUsedAt C ann Γ super ++ classRulesAt C ann body)
   | .def' name _ body => "defDecl" ::
-    (if hasSelfCall name body then "recursive" :: scopedRules name body else rulesUsedAt C body)
-  | .send none _ args none => "callSig" :: rulesUsedArgsAt C args
-  | .if' c t (some e) => "if'" :: (rulesUsedAt C c ++ rulesUsedAt C t ++ rulesUsedAt C e)
-  | .if' c t none => "ifNoElse" :: (rulesUsedAt C c ++ rulesUsedAt C t)
-  | .array es => "arrayLit" :: rulesUsedArgsAt C es
-  | .hash ps => "hashLit" :: rulesUsedPairsAt C ps
+    (if hasSelfCall name body then "recursive" :: scopedRules name body else
+      rulesUsedAt C ann (((ann.params.find? (·.1 == name)).map (·.2)).getD []) body)
+  | .send none "new" args none => "newImplicit" :: rulesUsedArgsAt C ann Γ args
+  | .send none _ args none => (if ann.singletonBody then "callSingletonImplicit" else "callSig") ::
+      rulesUsedArgsAt C ann Γ args
+  | .if' c t (some e) => "if'" :: (rulesUsedAt C ann Γ c ++ rulesUsedAt C ann Γ t ++ rulesUsedAt C ann Γ e)
+  | .if' c t none => "ifNoElse" :: (rulesUsedAt C ann Γ c ++ rulesUsedAt C ann Γ t)
+  | .array es => "arrayLit" :: rulesUsedArgsAt C ann Γ es
+  | .hash ps => "hashLit" :: rulesUsedPairsAt C ann Γ ps
   | _ => ["?"]
 
-def rulesUsedSeqAt (C : CTable) : List Ratchet.Expr → List String
+def rulesUsedSeqAt (C : CTable) (ann : RuleAnnotations) (Γ : Env) : List Ratchet.Expr → List String
   | [] => ["?"]
-  | [e] => "DJudgeSeq.last" :: rulesUsedAt C e
-  | e :: e' :: es => "DJudgeSeq.cons" :: (rulesUsedAt C e ++ rulesUsedSeqAt C (e' :: es))
+  | [e] => "DJudgeSeq.last" :: rulesUsedAt C ann Γ e
+  | e :: e' :: es => "DJudgeSeq.cons" :: (rulesUsedAt C ann Γ e ++ rulesUsedSeqAt C ann Γ (e' :: es))
 
-def rulesUsedArgsAt (C : CTable) : List Ratchet.Expr → List String
+def rulesUsedArgsAt (C : CTable) (ann : RuleAnnotations) (Γ : Env) : List Ratchet.Expr → List String
   | [] => ["DJudgeAll.nil"]
-  | e :: es => "DJudgeAll.cons" :: (rulesUsedAt C e ++ rulesUsedArgsAt C es)
+  | e :: es => "DJudgeAll.cons" :: (rulesUsedAt C ann Γ e ++ rulesUsedArgsAt C ann Γ es)
 
-def rulesUsedPairsAt (C : CTable) : List (Ratchet.Expr × Ratchet.Expr) → List String
+def rulesUsedPairsAt (C : CTable) (ann : RuleAnnotations) (Γ : Env) : List (Ratchet.Expr × Ratchet.Expr) → List String
   | [] => ["DJudgePairs.nil"]
-  | (k, v) :: ps => "DJudgePairs.cons" :: (rulesUsedAt C k ++ rulesUsedAt C v ++ rulesUsedPairsAt C ps)
+  | (k, v) :: ps => "DJudgePairs.cons" :: (rulesUsedAt C ann Γ k ++ rulesUsedAt C ann Γ v ++ rulesUsedPairsAt C ann Γ ps)
 
-def classRulesAt (C : CTable) : Ratchet.Expr → List String
+def classRulesAt (C : CTable) (ann : RuleAnnotations) : Ratchet.Expr → List String
   | .def' "initialize" _ body => "initDef" :: "InitJudge.ignoreResult" :: initRules body
-  | .def' _ _ body => "memberDef" :: rulesUsedAt C body
-  | .seq es => "seq" :: classSeqRulesAt C es
+  | .def' _ _ body => "memberDef" :: rulesUsedAt C ann [] body
+  | .defs .self' _ _ body => "singletonDef" :: rulesUsedAt C { ann with singletonBody := true } [] body
+  | .seq es => "seq" :: classSeqRulesAt C ann es
   | .nil => ["nilLit"]
   | _ => ["?"]
 
-def classSeqRulesAt (C : CTable) : List Ratchet.Expr → List String
+def classSeqRulesAt (C : CTable) (ann : RuleAnnotations) : List Ratchet.Expr → List String
   | [] => ["?"]
-  | [e] => "DJudgeSeq.last" :: classRulesAt C e
-  | e :: e' :: es => "DJudgeSeq.cons" :: (classRulesAt C e ++ classSeqRulesAt C (e' :: es))
+  | [e] => "DJudgeSeq.last" :: classRulesAt C ann e
+  | e :: e' :: es => "DJudgeSeq.cons" :: (classRulesAt C ann e ++ classSeqRulesAt C ann (e' :: es))
 end
 
-def rulesUsed (e : Ratchet.Expr) : List String := rulesUsedAt (syntaxClasses e) e
+def rulesUsed (e : Ratchet.Expr) : List String := rulesUsedAt (syntaxClasses e) {} [] e
 
 def rulesUsedAll (es : List Ratchet.Expr) : List String := es.flatMap rulesUsed
 
-def rulesPredicted : List String := rulesUsedAll (safeRungs.map (·.2))
+/-- Return annotations are absent from the stripped AST. Record their extra conversion
+rule independently of proof extraction; RuleAudit checks exact equality per rung. -/
+def annotationRules : List (String × List String) :=
+  [("073-class-factory-method", ["instanceType"]),
+   ("076-class-self-returning-method", ["instanceType"])]
+
+/-- Parameter and result annotations are erased. Record them by method/owner rather
+than injecting rule names; RuleAudit compares the resulting prediction with the proof. -/
+def annotationHints : List (String × RuleAnnotations) :=
+  [("075-class-instance-as-fun-arg", { params :=
+      [("describe", [("p", .inst "Point" (.ivarCons "@x" .int .ivar0))])] }),
+   ("076-class-self-returning-method", { results := [(("Point", "myself"), "Point")] })]
+
+def rulesUsedFor (q : String × Ratchet.Expr) : List String :=
+  -- These worked proofs exercise the flow interpretation of otherwise shared syntax.
+  if ["006-nil-lit", "031-reassign-different-type", "087-lambda-zero-arity",
+      "088-lambda-stabby-one-param", "098-lambda-closure-capture", "089-proc-basic", "090-proc-bracket-call",
+      "091-block-each-int", "092-block-map-to-s", "093-block-doend-with-block-local",
+      "094-yield-arith", "260-yield-local-and-captured-write", "095-block-param-ampersand",
+      "261-bound-block-alias-and-yield"].contains q.1 then
+    "flow" :: flowRules [] [] q.2
+  else
+  let ann := ((annotationHints.find? (·.1 == q.1)).map (·.2)).getD {}
+  rulesUsedAt (syntaxClasses q.2) ann [] q.2 ++ ((annotationRules.find? (·.1 == q.1)).map (·.2)).getD []
+
+def rulesPredicted : List String := safeRungs.flatMap rulesUsedFor
 
 /-- All registered rules now occur in corpus safety proofs. The ceiling only decreases. -/
 def unexercised : List String := []

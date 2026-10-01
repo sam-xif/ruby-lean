@@ -1,8 +1,9 @@
 import Denote.Rules.Init.InitWrite
 
-/-! Constructor-mirroring forms for both initializer families. -/
+/-! Constructor-mirroring forms for the initializer families (super: SuperInitRules). -/
 namespace Ratchet.Denote.Typed
 
+abbrev SemSafeCtxA.InitJudge.intLit := @SemInitA.intLit
 abbrev SemSafeCtxA.InitJudge.var := @SemInitA.var
 abbrev SemSafeCtxA.InitJudge.ivarAsgn := @SemInitA.ivarAsgnChecked
 abbrev SemSafeCtxA.InitJudge.seq := @SemInitA.sequence

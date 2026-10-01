@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "hand, L273 / ratchet F53",
+  "arm": "probe",
+  "case_id": "array-each-live",
+  "note": "Array#each snapshotted its arguments before running the block. Covers append, pop, shift, replacement, receiver identity, nested iteration, overridden length/index access, next/redo/break/return, empty arrays and exceptions."
+}

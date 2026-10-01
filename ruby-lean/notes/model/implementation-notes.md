@@ -13600,3 +13600,2223 @@ The consumer is the judgment layer's J29/J30: the answer-typed `StepOkJ` puts
 reachable `done` outcome — `SemJudge`'s result clause and `judge_result_vty`.
 Nothing before J29 could use it (the pre-J29 `done` arm was `True`), which is why
 it did not exist.
+
+## L272 — resolve Proc calls through the method table (2026-09-26)
+
+- Ratchet §F51 exposed `f = lambda { 1 }; def f.call; 7; end; f.call`: CRuby 4.0.5
+  returns 7, but payload interception returned 1. Boot now registers call/[]/yield/===
+  markers; normal lookup, shadow and visibility checks precede callProcBuiltin.
+  Alias copies retain the marker, and super dispatch handles it too. No `()` method
+  is installed: Ruby's f.() parses as call. Keyword Proc calls remain unsupported.
+- Visibility edits now allow these implemented native markers. An undef tombstone
+  goes directly to invokeMethodMissing, bypassing native fallbacks and shadow gates.
+  Undefined method_missing is not called. super also rejects a tombstone; a measured
+  Proc parent-undef probe previously returned nil instead of NoMethodError.
+- The frame/notDone lemmas cover both helpers. Pure builtin proofs explicitly
+  exclude Proc call markers. The closure pilot now needs ProcCallReady plus the
+  receiver's actual dispatch class; the boot condition is checked separately from
+  bootOkB. Payload/code alone no longer implies native dispatch.
+- `difftest/corpus/regressions/proc-call-dispatch.rb` covers native calls, singleton
+  and class overrides, aliases, super, visibility/send, undef/method_missing,
+  Object inheritance, prepend and the absence of a method named `()`.
+- Proc#=== is a native call alias, not a send to a possibly overridden call. The
+  old prelude wrapper was removed. Case equality for Object/true/false/nil now
+  tests identity natively, then defers to a Boolean-returning == twin. Integer,
+  Float, String and Symbol === retain their original equality builtin IDs.
+  This fixes three MRI cases exposed by removing the undef gate; overridden
+  equal? cannot corrupt the identity test. super now supports builtin deferrals.
+- SuperOk explicitly excludes undefined targets; its heap transports retain the
+  fact. Successful pure Builtins.run implies a non-Proc marker, by reduction of
+  the three impossible bids. No new conformance axiom or resource limit is used.
+- Prelude.lean was regenerated; fixed-width JSON chunking shifts most generated
+  lines despite the small Ruby source edit.
+- Validation: focused replay 5/5 agree; tier 0 has 998 agree, 0 disagree,
+  305 unsupported, 5 invalid controls and the existing test_syntax_115 harness
+  error (no observation). Full quiet ratchet GREEN (252 agree, 0 disagree);
+  check-proofs passes with standard Lean axioms only. No proof exceeded five minutes.
+
+## L273 — Array#each reads a live cursor (2026-09-26)
+
+- Ratchet §F53: appending 3 while iterating [1,2] yielded [1,2,3] in CRuby 4.0.5
+  but [1,2] in the model. tryIterator previously materialized every argument before
+  the first yield. Removal/replacement also retained stale elements.
+- IterKind.arrayEach stores the original array id and next index. iterStep reads the
+  current payload/length, calls the block on that element and saves index + 1. Exhaustion
+  returns the original receiver. It uses payload access, so Ruby overrides of length/[]
+  do not affect native iteration. Other iterator families keep their existing paths.
+- No new continuation constructor: iterK ignores the body result for this mode. Existing
+  blkFrameK/frameK preserve next, redo, break, return and exceptions; redo repeats the
+  current arguments before advancing. An impossible lost Array payload gates explicitly.
+- array-each-live.rb covers append/pop/shift/replacement, variable reassignment versus
+  receiver identity, nested iteration, length/[] overrides and block exits. Focused replay
+  (regression plus the minimal original witness) agrees 2/2.
+- The checker loop theorem uses fuel induction because a block can keep appending.
+  Iterator.FrameReturn projects effects onto the captured caller after two frame pops;
+  ordinary isolation of the inert iterator activation is refuted by a captured write.
+- Validation: MRI tier 0 remains 998 agree / 0 disagree, 305 unsupported, 5 invalid
+  controls and the existing test_syntax_115 harness error. Full quiet ratchet GREEN
+  (252 agree / 0 disagree); metatheory and standard-axiom audit pass. Existing framing
+  and notDone proofs rebuild without new axioms, resource limits or five-minute proofs.
+
+## L274 — Array map/collect have native dispatch and a live cursor (2026-09-26)
+
+- Ratchet §F54 exposed the prelude dispatch mismatch: overriding an array's each to
+  yield 99 changed map/collect from CRuby's [10,20] to [990]. Plain mutation probes agreed
+  because Enumerable#map already used L273's live each. The old snapshot fallback was
+  dormant at normal boot; proving it would not have proved the source call.
+- Boot installs Array#map/collect markers. invoke and super resolve them after ordinary
+  lookup/visibility, as for Proc calls; aliases keep their marker. Visibility edits allow
+  them. Enumerable keeps its Ruby implementation for other collections and Array removal.
+- IterKind.arrayMap holds the original receiver id and advancing index. Each yield reads
+  the live payload; iterK appends the body result, and exhaustion allocates an Array from
+  the accumulator. Length/index/each overrides are bypassed. The old collect snapshot
+  mode and map/collect miss fallback are removed. No new continuation is needed.
+- Zero-argument arity is checked before the blockless Enumerator gate; keyword arguments
+  count as a trailing positional Hash. Existing block continuations handle next, redo,
+  break, nonlocal return and exceptions. Redo preserves the yielded element.
+- The regression covers both selectors, append/pop/shift/replacement, receiver identity,
+  nesting, empty/frozen receivers, subclass result class, aliases, overrides, prepend,
+  super, visibility/send, undef/method_missing and remove-to-Enumerable fallback.
+- Framing/notDone helpers cover native map entry. Pure builtin dispatch proofs explicitly
+  exclude these effectful markers, derived from successful Builtins.run where applicable.
+- Validation: focused replay 3/3 agree; MRI tier 0 remains 998 agree / 0 disagree,
+  305 unsupported, 5 invalid controls and the existing test_syntax_115 harness error.
+  Full quiet ratchet GREEN (fragment 87, reach 91, 252 agree / 0 disagree); metatheory
+  and standard-axiom audit pass. No new axioms, resource limits or five-minute proofs.
+
+## L275 — Block-pass conversion dispatches to_proc (2026-09-26)
+
+- Ratchet §F56: `&:symbol` allocated a closure without looking up Symbol#to_proc.
+  Overrides, private implementations, undef and invalid returns silently disagreed.
+  The pure coerceToProc helper is removed; native Symbol conversion has one allocator.
+- Interp/BlockPass follows CRuby's vm_to_proc (vm_args.c) and checked conversion
+  (vm_eval.c): Proc/nil bypass lookup, a defined to_proc bypasses response hooks and
+  visibility, and a miss consults respond_to?, then respond_to_missing?, then a custom
+  method_missing. The pending call retains its evaluated receiver/arguments/keywords.
+  A converted value must actually carry a Proc payload. Missing conversion and invalid
+  returns raise TypeError; ordinary converter exceptions and nonlocal jumps propagate.
+- The missing-method rescue retains both response answers and its lookup owner.
+  NoMethodError handling rechecks that owner's method table: installing to_proc while
+  failing can still produce TypeError, even after a positive respond_to_missing?.
+  A positive respond_to? answer preserves the original exception. Collapsing these two
+  answers into one flag was disproved by the new redefinition regression.
+- Fixed-one-argument respond_to? receives one argument; other supported signatures
+  receive name and include_private=true. Keyword response signatures and builtin aliases
+  of respond_to? still gate until native method arity is modeled. Unmodeled native
+  to_proc entries retain the fidelity gate. These gates do not bypass conversion.
+- BlockPassCall/Phase plus one continuation hold suspended conversion. The framing
+  lemmas use ordinary invoke framing and preserve the existing CatchFree boundary.
+  NotDone also covers every stage, retaining the unique whole-run completion site.
+  Two regressions cover native/override/private/undef/alias paths, Proc/nil bypass,
+  response hooks, mutation, wrong results, argument order, keywords, ensure and throw.
+- Primary implementation references: https://github.com/ruby/ruby/blob/master/vm_args.c
+  (vm_to_proc), https://github.com/ruby/ruby/blob/master/vm_eval.c (check_funcall_missing).
+  Observable cases were measured against installed CRuby 4.0.5.
+- Validation: both new regressions agree. Full regression replay is 42 agree, three
+  known disagreements and three unsupported; each disagreement was reproduced identically
+  with a separately built dfa5116 binary (anon-eigen-lazy-name, mix-08969-minimized,
+  super-method-missing). MRI tier 0 improves to 999 agree / 0 disagree, 304 unsupported,
+  five invalid controls and the existing test_syntax_115 harness error. The newly agreeing
+  test_method_217 invokes a nested call inside to_proc and preserves the original receiver.
+- Full quiet ratchet GREEN (94 fragment, 95 checker reach, 99 rules, 72 worked
+  proofs, 254 agree / 0 disagree). Metatheory and standard-axiom audit PASS.
+  New framing module: 674ms; no five-minute proofs, new axioms or resource increases.
+
+## L276 — close the three live regression disagreements (2026-09-27)
+
+- Replayed the regression tier before editing: 42 agree, three disagree, three
+  unsupported. The failures were anon-eigen-lazy-name, mix-08969-minimized and
+  super-method-missing. The tier also failed because L275's two passing block-pass
+  guards had no fixed-status sidecars; both now have them.
+- ClassPayload records an optional attached object. Singleton-class display names
+  are computed from that attachment in the current heap, using heap-sized recursion
+  fuel. Constant naming can therefore change an existing singleton class's display.
+  Module#name still reports the separate constant name (nil until assigned), including
+  on boot singleton classes. The guard now covers named singleton classes and nested
+  singleton classes as well as delayed naming of an instance's anonymous class.
+- BasicObject#method_missing is installed as a private native method. Its argument
+  checks and receiver description are shared with the dispatch-miss path. MissingReason
+  lives in Machine, matching CRuby's execution-context state: a user handler's super
+  retains the reason, while nested failed calls overwrite it. Ordinary misses, vcalls,
+  visibility failures and missing-super calls reach the handler. The native method is
+  available through aliases, super, visibility edits and removal/undef.
+- The receiver-description helper moved from Interp.Support to Heap so dispatch
+  and the native method use one rule; the Interp name remains an abbreviation.
+- String#+ now suspends for checked to_str conversion when its argument lacks a
+  String payload. ConversionCall shares L275's response/missing-method continuations
+  with block conversion. String conversion checks respond_to? before resolving to_str;
+  block conversion retains the VM's direct-defined-method shortcut. Private converters,
+  missing-method handlers, response hooks, conversion effects and nonlocal exits run
+  through ordinary dispatch. Strict String conversion distinguishes absent conversion
+  from a converter returning nil. Type checks inspect payloads, not overridable is_a?.
+- The completed String conversion invokes the already resolved native concatenation
+  on the saved receiver and converted argument. It rereads the receiver payload after
+  conversion effects and does not redispatch an operator that the converter redefined.
+  Normal sends, builtin aliases and super use the same entry helper. Existing Strings
+  bypass the conversion protocol; keyword hashes and arity follow ordinary builtin entry.
+- New guards: method-missing-dispatch.rb and string-plus-conversion.rb. All three
+  original defect sidecars are fixed only after replaying them successfully. The three
+  gated cases remain open: impure-repr-gates (effectful final/error rendering),
+  to-ary-gates (effectful splat/block binding), and sorbet-hash-gate (process-specific
+  default object hash in a gem message). Gates are not counted as fixes.
+- Primary source references: Ruby vm_eval.c (rb_method_missing, method_missing,
+  rb_check_funcall and check_funcall_missing), object.c (rb_convert_type_with_id),
+  at https://github.com/ruby/ruby/blob/master/vm_eval.c and
+  https://github.com/ruby/ruby/blob/master/object.c. Observable regression cases
+  were compared with installed CRuby 4.0.5; master is explanatory, not the oracle.
+- Validation so far: lake build rubycore PASS; full regression tier PASS, 47 agree /
+  0 disagree / 3 unsupported (50 total); tier-1 seed 20260927, n=300: 219 agree /
+  0 disagree / 81 unsupported. Reports: difftest/reports/20260927-233122-{tier1,
+  tierregressions}-lean. The final full bootstrap result is recorded below.
+- Proof repair and the typed proof gate are deferred at the user's explicit request.
+  No proof files, checker rules or ratchet floors were changed, and no commit was made.
+- Final full bootstrap replay: 1,000 agree / 0 disagree / 303 unsupported,
+  five invalid controls and the existing test_syntax_115 harness error (1,309
+  total). Report: difftest/reports/20260927-233122-tier0-lean/. Against the
+  999-agreement pre-batch baseline, the only verdict change is test_method_211
+  (removing BasicObject#method_missing), unsupported → agree. No prior agreement
+  was lost. All checks have terminated; git diff --check passes. Full conformance
+  remains incomplete, and the active goal continues with the gaps in HANDOFF.md.
+
+## L277 — effectful splat, block binding, frozen errors and observations (2026-09-27)
+
+- L276's remaining semantics regression gates now have real effectful paths.
+  ConversionCall carries suspended array/call/yield/super splat evaluation and
+  closure argument entry. Splat uses checked to_a (nil and actual Arrays bypass it);
+  lenient multi-position block binding uses checked to_ary (actual Arrays bypass it).
+  Missing conversion or a nil result retains the single original operand; another
+  non-Array result raises the method-specific TypeError. Private methods, response
+  hooks, missing-method handlers, mutation and exits use the shared checked-call path.
+- Closure argument conversion precedes activation entry. enterClosure binds already
+  normalized arguments, so an Array conversion result containing one object cannot
+  accidentally convert that object a second time. Strict lambdas and single/rest-only
+  block parameter shapes do not auto-expand. Existing optional/keyword/destructuring
+  block-parameter gates are unchanged.
+- A new probe found redo was rebuilding the block activation and resetting parameter
+  and block-local writes. CRuby preserves those writes. Redo now reinstalls the block
+  boundary and restarts its body in the same frame, retaining self/capture metadata and
+  avoiding repeated argument conversion. The guard pins both writes and conversion count.
+- Removed the obsolete pure spread/spreadA/withSpread path. Hash#to_a is now a native
+  method that allocates key/value pairs directly, bypassing overridden each. Range and
+  MatchData splats use normal to_a resolution, including overrides; Range's native
+  Enumerable to_a legitimately dispatches each (verified). The legacy for-loop path
+  still directly enumerates integer endpoints and was not conflated with splat.
+- BRes.frozen suspends a rejected mutation for Interp/Frozen.lean. Error rendering
+  sends to_s to the receiver's real class, then inspect to the receiver, then to_s
+  to a non-String inspection result (falling back to native any-to-s if needed).
+  These operations preserve effects, exceptions and nonlocal exits. A receiver-identity
+  guard in the continuation stack matches recursive frozen inspection's " ..." text;
+  class rendering happens before that guard. No heap mutation is performed by the
+  rejected operation. Byte strings outside the JSON transport remain explicit gates.
+- Obs.observe now performs the reference harness's final sends on the completed
+  program heap. Final inspect may mutate/print and sees its captured locals. An
+  exception during inspect produces <uninspectable>, preserving its output/ensure
+  effects. Uncaught exceptions dispatch class.name.to_s and message.to_s; message
+  failures produce <unmessageable>. The observation runs outside the harness rescue
+  context ($! is nil), and each send has the caller-supplied observation fuel budget.
+  Main passes the selected run fuel; traces still show program execution separately.
+- No comparator normalization or control semantics changed. Unsupported observation
+  values and encodings are refused rather than coerced into guessed JSON strings.
+  sorbet-hash-gate remains open: default object hashes in a gem error message are
+  process-specific. The source scrubs that hash, but the current shim cannot supply it;
+  this remains a modeling/observation issue, not a fixed regression.
+- Guards added: splat-conversion, block-argument-conversion, frozen-error-rendering,
+  and five observation cases covering final inspect, failing inspect, exception message,
+  failing message and class-name rendering. The old to-ary-gates and impure-repr-gates
+  sidecars are fixed after successful full replay; the commented uncaught-message
+  witness in the latter became an independently executed regression.
+- Primary references: Ruby vm_insnhelper.c (vm_splat_array), vm_args.c (block argument
+  expansion), object.c (rb_inspect) and error.c (rb_error_frozen_object), on
+  https://github.com/ruby/ruby/tree/master. Observable behavior was measured against
+  installed CRuby 4.0.5. Native class-name rendering and redo's preserved locals were
+  discovered by differential probes, not inferred from the previous implementation.
+- Executable build PASS. Intermediate full regression replay: 57 agree / 0 disagree /
+  1 unsupported (58 total), report difftest/reports/20260927-234325-replay-lean/.
+  Final bootstrap, regression-status and tier-1 results follow below. Proof repair and
+  the typed gate remain deferred at the user's request; no commit was made.
+- Final checks: bootstrap 1,004 agree / 0 disagree / 299 unsupported, five invalid
+  controls and the existing test_syntax_115 harness error (1,309 total). Only four
+  verdicts changed from L276, all unsupported → agree: test_method_216 and
+  test_yjit_294 (effectful splat), test_yjit_237 and test_yjit_242 (frozen Struct
+  setters). No previous agreement was lost. Final regression tier: 57 held / one
+  gated / no failures. Tier 1, seed 20260927, n=300: 219 agree / 81 unsupported /
+  0 disagree, identical sources and verdicts to L276. All three final reports are
+  under difftest/reports/20260927-234449-{tier0,tier1,tierregressions}-lean/.
+- Updated the prelude's obsolete warning that final observations cannot dispatch.
+  Regenerated the prelude to /private/tmp/conformance-l277-prelude.lean; cmp confirms
+  it is byte-identical to RubyCore/Prelude.lean (the edit changes comments only).
+  git diff --check passes. All checks have terminated. Full conformance remains
+  incomplete; the next working record is the L277 section of HANDOFF.md.
+
+
+## L278 — exact native Rational values and literal identity (2026-09-28)
+
+The conformance goal remains active; proof repair remains deferred by the user.
+No checker or proof sources, acceptance floors, control wrapper or comparison
+relation were changed. The final executable is built independently of the proofs.
+
+- **Native literals and values.** Desugar C39 replaces the overridable
+  `Rational(n,d)` lowering with the exact `rat` head. The renderer emits a finite
+  decimal with the r suffix using integer arithmetic. Export assigns each literal
+  a stable syntax-site key in its compilation unit (`program` or `prelude`).
+  Expr.rat and Machine.rationalLiterals preserve identity across repeated execution
+  of one site without merging two distinct literals. PreludeBoot carries the cache
+  across its phases. Future runtime compilation must use fresh unit namespaces.
+- **Heap and numeric rules.** Rational is a Numeric subclass at boot id 39; main
+  moves to 40. Its frozen native payload stores a reduced numerator and positive
+  denominator. Rational.lean provides normalization, exact Float expansion and
+  numeric comparison helpers. Builtins/Rationals.lean implements numeric-only
+  constructors, numerator/denominator, repr, to_i/to_f/to_r, sign/abs, +,-,*,/,quo,
+  integer powers, comparison/equality/coerce, basic rounding, and identity-preserving
+  dup/clone without options. Integer/Float#to_r and Integer negative powers join
+  this path. A zero denominator raises ZeroDivisionError.
+- **Dispatch details.** Kernel/Object Rational is private; Kernel.Rational has a
+  public singleton wrapper. The prelude undefines Rational.new/allocate, inherited
+  by subclasses. invokeMaybeNew now intercepts only a resolved native Class#new,
+  preserving tombstones even with user initialize. CRubyNames gains Rational's
+  actual method inventory so unimplemented inherited names gate. Regenerating it
+  exposed a generator defect: the hand-maintained crubyStdlibConstants list was
+  lost on regeneration. The same curated list now lives in the generator output.
+- **Coercion and equality.** Native coerce joins the existing effectful protocol;
+  __coerce_defined? asks ordinary lookup, including private/native methods, instead
+  of conflating callability with a Ruby body. Rational's operators defer for opaque
+  operands; equality reverses to program hooks where CRuby does. Numeric#eql? on
+  distinct Rational instances of the same class dispatches an overridden == via
+  the existing __case_equal twin. Native aliases keep their original behavior.
+  The special `1 / rational` reciprocal bypasses coerce, as CRuby does.
+- **Frozen method definitions.** New immutable values exposed an existing bug:
+  def receiver.method, singleton-class def, and define_singleton_method could
+  mutate a frozen object's method table. They now check the attached receiver and
+  raise through the effectful L277 FrozenError path. New eigenclasses inherit the
+  frozen bit; Object#freeze also freezes an existing eigenclass. Freezing a class
+  similarly prevents an ordinary def in its body. Other reflective mutations
+  (alias/undef/attr/mixins) still need a separate full frozen-state audit.
+
+Two useful failed probes became repairs:
+
+1. Lean Int `/` is Euclidean division: -3/2 was -2. Rational#to_i/truncate now
+   use tdiv, while floor/ceil retain the corresponding mathematical rounding.
+2. A 150-case deterministic large-fraction probe found that a correctly rounded
+   exact quotient disagrees with CRuby. The reduced fraction
+   `74993924844200426125206210008109106712806312011710/68506977879177931`
+   converts to 1.0946903098902302e+33 in CRuby, versus 1.09469030989023e+33 from
+   exact rounding. fractionFloat now follows the 64-bit oracle's Fixnum/Bignum
+   branches, bounded-bit shifts, quotient truncation, conversion and scaling.
+   exactFractionFloat remains the IEEE rounding helper for the individual steps.
+   See [numeric.c rb_int_fdiv_double](https://github.com/ruby/ruby/blob/master/numeric.c)
+   and [bignum.c big_fdiv_int](https://github.com/ruby/ruby/blob/master/bignum.c).
+   The CRuby 4.0.5 executable, not the moving master source, remains the oracle.
+
+Five permanent rational regression programs cover exact digits, literal/constructor
+identity, method/constant overrides, reduction and signs, mixed arithmetic and hooks,
+undefined allocation, immutability, subnormals, ties and the intermediate-rounding
+witness. All five agree after the final build. A focused generated probe with seed
+20260928 agrees on 150 large-fraction Float conversions and 80 exact arithmetic
+program fragments; sources and results are in
+/private/tmp/conformance-l278-generated-numerics-final.json.
+
+Limits remain explicit: Complex; string/custom/non-finite/keyword Rational
+constructor conversion; digit-precision rounding; non-Integer powers; fdiv and
+remaining Numeric methods; clone options; effectful integer component repr inside
+native Rational repr. Unsupported methods are inventory-gated. This is a numeric
+fragment, not a claim that the entire Rational class is modeled.
+
+One unrelated harness issue was observed while writing the ancestry assertion:
+requiring json in the control adds JSON::Ext::Generator::GeneratorMethods::Object
+into Object.ancestors. The standalone model does not add that harness-specific
+module. The rational test checks its three relevant ancestors (Rational, Numeric,
+Comparable); complete Object.ancestors equivalence in this wrapper remains a
+separate environmental issue. No comparator change was used to erase it.
+
+Validation: the first full bootstrap run reached 1,026 agree / 0 disagree /
+277 unsupported (five control-invalid and the existing test_syntax_115 harness
+error), +22 with no lost agreements: test_literal_146, test_literal_suffix_001–020
+and 045. First final regression tier: 62 held / 0 disagree / one open gate;
+tier 1 n=300 seed20260927: 219 agree / 81 unsupported / 0 disagree.
+Reports: difftest/reports/20260928-000037-{tier0,tier1,tierregressions}-lean/.
+These precede the final rounding/reciprocal correction; the final rerun is recorded
+below after completion.
+
+Frontend: all 44 seeds plus the five new regression programs round-trip (49/0),
+with no AST-idempotence failures. The full front-end bootstrap pass gave 1,231
+agree / zero disagree / 77 out-of-fragment and one transient no-observation from
+source test_load_002; that unchanged filesystem/load case agrees on isolated rerun.
+The six existing seed and 27 bootstrap render-only instabilities remain.
+
+Final verification after the rounding/reciprocal correction: lake build rubycore
+PASS (84 jobs), all 230 targeted numeric fragments and all five new regression
+programs agree. Full bootstrap rerun remains 1,026 agree / 0 disagree / 277
+unsupported, five invalid controls and the existing test_syntax_115 harness error.
+All 1,309 sources/verdicts match the first L278 run; exactly 22 improvements over
+L277, with no lost agreements. Final regression status tier: 62 held / one gated /
+zero failures. Tier 1 n=300 seed20260927: 219 agree / 81 unsupported / zero disagree;
+all sources and verdicts are identical to L277. Final report directories:
+`difftest/reports/20260928-000430-{tier0,tier1,tierregressions}-lean/`.
+Generated Prelude.lean matches regeneration; git diff --check passes. All checks
+have terminated. No proof build or typed ratchet was attempted, and no commit was
+made. The goal is still incomplete.
+
+## L279 — native Complex literals, arithmetic and reflection tombstones (2026-09-28)
+
+The active conformance goal continues; proof repair remains explicitly deferred.
+No checker/proof files or ratchet floors changed. Complex gains a frozen payload
+holding real and imaginary Values, boot class 40 under Numeric (main moves to 41),
+and native numeric constructors, accessors, arithmetic, representation, coercion
+and equality. Complex.lean holds payload/representation helpers;
+Builtins/Complex.lean holds the rules and scalar operations. This extends the
+numeric fragment; it does not claim the whole Complex API.
+
+C40 replaces the overridable imaginary-literal constructor call with Expr.imag.
+The component is a native Integer, Float or Rational literal. Literal identity
+shares the renamed Machine.numericLiterals cache and separate program/prelude
+namespaces from L278. Imaginary Float components export as flt_bits because the
+old JSON-number path discarded the sign of -0.0. Introducing a unary send would
+have let a user Float#-@ change a native literal, so the bits cross directly.
+
+The oracle exposed several details beyond the bootstrap's literal/class checks:
+
+- Complex(c) preserves identity, even when c has a zero imaginary component.
+  The two-argument constructor unboxes exact-zero complex parts, distinguishes
+  Float zero, preserves the relevant identity fast path and implements the
+  non-real case through complex addition/multiplication. For example,
+  Complex(Complex(1,2),2r) promotes both resulting components to Rational.
+- Native scalar shortcuts preserve component identity. Division uses complex.c's
+  ratio-based algorithm, performing each scalar multiplication/addition/quotient
+  separately. Collapsing the expression into one float formula changes rounding.
+  Exact denominator-one quotient components canonicalize only on the applicable
+  paths. Mixed exact/Float division and signed zero have dedicated witnesses.
+- A custom coerce used by Complex#/ receives a quo send on the returned pair.
+  A new __coerce_quo prelude twin preserves that distinction from ordinary /.
+  Complex#eql? retains identity and component-class fast paths, dispatching a
+  user Complex#== through the existing __case_equal twin where appropriate.
+- Repr preserves Rational parentheses, the required '*' before i, signed zero,
+  NaN and Infinity. Component inspect/to_s/to_str overrides explicitly gate.
+- The allocator probe found that respond_to? and method_defined? could resurrect
+  an undefined/private method through the inherited CRuby shadow-name table.
+  An actual method-table entry now decides visibility/tombstones; shadow and
+  mixin fallbacks apply only to a miss. A separate regression pins this repair.
+
+The implementation was informed by Ruby's complex.c, but the executable CRuby
+4.0.5 remains the oracle: moving master constructor normalization does not match
+all installed-version identity cases. Unsupported paths include string/custom/
+keyword constructor conversion, clone options, remaining Complex methods,
+effectful component arithmetic/representation, and nonfinite arithmetic.
+Rational#coerce of Complex explicitly gates: CRuby can construct a Rational whose
+numerator is itself Rational, e.g. 1r.coerce(Complex(1.2r,0)), beyond our normalized
+integer-numerator payload. Raising TypeError there would be a wrong answer.
+
+Pure comparisons also need a boundary: equality reached through reverse numeric
+comparison, Array operations, Hash operations or hash literals must not silently
+bypass a user Complex/component equality/hash hook. These paths conservatively
+gate until effectful dispatch is modeled. Ten targeted boundary probes verify
+these refusals; twelve large mixed Integer/Float divisor-boundary cases agree.
+Sources/results are in /private/tmp/conformance-l279-boundaries.json.
+
+Six permanent regressions cover imaginary literal identity and overrides,
+construction/immutability, mixed arithmetic, coercion, Float edge behavior and
+method reflection. All six agree. A deterministic seed-20260928 probe covers 180
+arithmetic, 60 constructor and 27 hook fragments: 244 agree / 23 explicitly
+unsupported / zero disagree after the final build. Saved sources/results:
+/private/tmp/conformance-l279-generated.json; script:
+/private/tmp/conformance-l279-generated.py. The front-end seed/regression replay
+is 51 agree / zero disagree, AST-idempotent; six old render-only instabilities
+remain. Both generated Prelude.lean and CRubyNames.lean match regeneration.
+
+Full-run results are recorded below once all validation processes terminate.
+
+Final L279 verification: lake build rubycore PASS (88 jobs). Bootstrap:
+**1,048 agree / 0 disagree / 255 unsupported**, five invalid controls and the
+existing test_syntax_115 harness error (1,309 total). Exactly 22 new agreements
+and no losses relative to L278: test_literal_suffix_021–042. All sources are
+unchanged. Regression status tier: **68 held / one old gated / zero failures**
+(69 total). Tier 1 n=300 seed20260927: **219 agree / 81 unsupported / zero disagree**;
+all 300 sources/verdicts match L278. Final reports:
+`difftest/reports/20260928-002138-{tier0,tier1,tierregressions}-lean/`.
+Full front-end bootstrap: **1,232 agree / zero disagree / 77 out-of-fragment**,
+no parse/harness errors, with the same 27 render-only instabilities. Final
+seed/regression front-end replay: 51/0, with six old render-only instabilities.
+All validation processes terminated. git diff --check passes. No typed ratchet
+or proof build was attempted, and no commit was made. Full conformance remains
+incomplete; Enumerators and the other recorded bootstrap gates are next work.
+
+
+## L280 — resumable Enumerators and live native cursors (2026-09-28)
+
+The active conformance goal continues with proof repair explicitly deferred.
+Ratchet/checker/proof code and acceptance floors remain unchanged. This batch
+adds Enumerator, Generator and Yielder as native payload classes (boot ids 41–43;
+main moves to 44), and Chain's block-form collection operations in the prelude.
+It does not implement public Fiber/Thread scheduling or the entire Enumerator API.
+
+An EnumData descriptor stores receiver, method, positional/keyword arguments and
+size policy. Machine.enumerators stores suspension/caller Execution contexts,
+lookahead, feed and completed result by object id. An Execution contains only
+control/continuation/activation stacks, current exception, missing-call reason
+and active Enumerator; heap, frame store, globals, output and numeric-literal
+cache remain shared. A Closure.enumYield callback suspends at the actual yield.
+No Ruby effect is replayed to reconstruct a cursor. Ctl.send queues normal
+native-to-Ruby dispatch without making the interpreter mutually recursive.
+
+Internal each independently dispatches the original receiver's method. External
+next first dispatches the Enumerator's own each, honoring user overrides, then
+resumes the saved execution. Zero/multiple yield packing, fresh outer peek
+Arrays, feed-before-first-yield, lookahead consumption, fresh StopIteration
+exceptions with cached hidden results, restart after producer errors, nested
+external iteration and copies before/after completion all have CRuby witnesses.
+The size callback directly invokes the stored Proc, bypassing Proc#call overrides.
+Additional each arguments convert old and new keyword packets to positional
+Hashes and clear the size policy; no additions preserve the original keyword flag.
+
+Rewind shares the rb_check_funcall-style continuation used for checked conversion:
+response hooks can veto/install a method, custom method_missing may run, and its
+conditional NoMethodError rescue is preserved. Only successful completion of
+that check clears the Enumerator. Rewind never runs a suspended ensure. Nor does
+it run native Hash iteration cleanup: the original Hash retains its insertion
+restriction even after explicit GC. This was a real initial implementation bug,
+caught by enumerator-mutation.rb. Active/suspended continuations express ordinary
+locks; Machine.abandonedHashIterations retains locks from discarded fibers.
+Normal completion, break and exception release their live locks.
+
+Native Array each/each_index/map and Hash each/each_pair/each_key/each_value now
+return sized Enumerators without a block. Array indices and elements reread the
+live payload. Hash cursors retain entry keys, skip deletions and reread values;
+Hash#[]= rejects new keys while a live or abandoned iteration holds its lock.
+Integer#times uses a live integer cursor, avoiding the old eager List.range.
+Kernel#loop catches StopIteration and returns its result, and has an infinite-size
+blockless Enumerator. Generator/Yielder carry native blocks and break targets.
+Class#new/allocate allocate the native payload before ordinary initialize dispatch;
+Module.new's queued block path also needed its native constructor arm.
+
+String#scan's block form now searches/yields incrementally, preserves captures,
+zero-width advance and native break/return behavior, and restores the last match
+on completion. Native external roots first resumed at top level share that
+lexical match slot, while first resume from an ordinary method has an isolated
+slot. Frame.matchAlias encodes this without capturing the caller's locals. Scan
+conservatively gates any receiver revision during yield, including reverted
+mutations/ivar writes, and high-byte binary receivers. Heap writes increment a
+hidden revision counter. This boundary prevents silently scanning a stale copy.
+
+Boot's nested class constants are kept out of Object's constant table. Generated
+CRubyNames now includes namespace constant inventories, consulted on lookup
+misses by direct constant lookup, defined? and constant reflection. Introducing
+Enumerator must not turn Lazy/Product/ArithmeticSequence into false NameErrors.
+Native visibility edits now recognize the new registered iterator methods.
+
+Nine fixed regression programs cover allocation, internal/external protocols,
+dynamic contexts, dispatch/keywords/hooks, mutation, rewind, scan/Chain and
+Kernel identity/super dispatch.
+The final focused run and full-suite counts are recorded below. The deterministic
+seed-20260928 probe has 174 fragments: 166 agree / eight explicit gates / zero
+disagree, including 150 randomized action sequences. Sources/results are saved
+in /private/tmp/conformance-l280-generated.{py,json}. It caught subclass
+uninitialized inspection, keyword packing, Array index mutation, stale Hash
+values and ignored copy hooks/singleton classes; these now agree or explicitly
+gate. The latter gates are not claimed fixed.
+
+Remaining boundaries include reentrant resumes, custom method-name/to_int size
+conversion, copy hooks/singleton classes and clone options, Chain's blockless
+wrapping/rewind, other blockless prelude iterators, scan receiver mutation, and
+public Fiber APIs. CRuby 4.0.5's Chain#each without a block produces a nested
+wrapper whose size can raise TypeError; do not replace it with a guessed sized
+descriptor. The old sorbet-hash-gate remains open; comparison was not weakened.
+No proof rebuild, typed ratchet or commit was performed.
+
+
+The first full bootstrap run (20260928-005234) had 1,075 agreements and one
+newly reached disagreement, test_yjit_152. Supporting Module.new exposed its
+closure-as-method super call into unmodeled Kernel#itself. Object#itself is now a
+registered zero-arity native identity primitive (including binary Strings), and
+its nine-program regression batch includes the closure's two invocation modes.
+Super dispatch now checks unmodeled native shadows and total misses, preserving
+explicit undef tombstones. Two boundary probes gate String#succ; a tombstoned
+String#succ correctly raises NoMethodError. Saved: conformance-l280-super.json.
+Final focused replay: 42 cases, 41 agree / one existing string-class_eval gate.
+
+A separate probe also reconfirmed an existing prelude-loading discrepancy:
+`class T; end` conflicts with the eagerly installed Sorbet T module even without
+require, while plain CRuby permits it. This is distinct from the control's JSON
+ancestry pollution and remains open; a real lazy feature-loading model must not
+claim that all prelude library namespaces exist before require. The super
+boundary witness uses DerivedS so it tests super rather than that known conflict.
+
+
+Final L280 verification: lake build rubycore PASS (90 jobs). Bootstrap:
+**1,081 agree / zero disagree / 222 unsupported**, five invalid controls and the
+existing test_syntax_115 harness error (1,309 total). Exactly 33 new agreements
+relative to L279, no lost agreements and no changed sources. The final regression
+status tier has **77 held / one old gated / zero failures** (78 total). Tier 1
+n=300 seed20260927 remains **219 agree / 81 unsupported / zero disagree**, with
+all sources/verdicts unchanged. Reports:
+`difftest/reports/20260928-005837-{tier0,tier1,tierregressions}-lean/`.
+Final front-end replay: 45 seeds plus nine new programs, **54 agree / zero
+disagree**, AST-idempotent; six old render-only instabilities. Generated Prelude
+and CRubyNames match regeneration; git diff --check passes. All validation
+processes terminated. No proof build, typed ratchet or commit was performed.
+The full conformance goal remains active and incomplete.
+
+## L281 — lazy modeled features and constant reflection (2026-09-28)
+
+The known `class T; end` disagreement came from installing optional libraries at
+core boot. `prelude/features/{json,uri,forwardable,sorbet-runtime,pathname}.rb`
+now contains separate bodies; `gen_prelude.rb` desugars/decodes each through the
+ordinary export path with a separate literal namespace. Core boot registers
+these programs without executing them. CRuby 4.0.5 itself boots pathname.so,
+even with gems disabled, so Pathname remains core and pathname.rb is a separate
+cached wrapper. The old Pathname#to_str was removed: the oracle has no such
+method. Pathname's broader reflection and filesystem operations remain partial.
+
+Interp/Require.lean intercepts the native require method, including aliases and
+super. It creates a fresh top-level frame (main/Object/Object cref), independent
+of the caller's locals and namespace. Machine.featurePrograms carries the
+registered ASTs. Loading/completed features distinguish recursive false from
+successful true; requireK restores the caller and clears loading state on unwind.
+Failed loads preserve heap/global effects and permit retry. Completed dependencies
+survive an outer feature's failure. Attempted features retain API inventories
+when a failed load might have partially introduced dependencies. These fields are
+shared across external Enumerator contexts, not copied into Execution.
+
+Frame/Closure.libraryOrigin and MethodDef.fromPrelude follow model library code
+through ordinary calls, closures, define_method and class bodies. They are distinct
+from boot-only preludeMode. Setting preludeMode during require would silently
+suppress user callbacks. An initial implementation that simply ran the smaller
+Forwardable body exposed a real mismatch in method_added counts/order. Optional
+library bodies now explicitly gate user definition hooks and frozen namespaces;
+they cannot claim the observations of omitted upstream declarations. The new
+open require-definition-hooks regression records this boundary. General
+alias/singleton definition callbacks and full upstream source execution remain
+work, not claimed solved by the gate.
+
+The JSON body installs JSON::Ext::Generator::GeneratorMethods modules on the
+same core ancestors as the oracle, instead of a direct Object#to_json shortcut.
+The default executable boots only core. difftest's control wrapper already
+requires JSON, so LeanSUT explicitly passes --preload-json. No comparator or
+control-wrapper normalization changed. Trace/fuel options compose with this
+flag in either order. The playground and cmp.sh compare against plain CRuby and
+therefore retain core-only boot.
+
+`gen_cruby_names.rb` captures each optional library in a separate subprocess
+(`cruby_feature_names.rb`) after emitting the uncontaminated core tables. Missing
+library methods/constants/dependency roots must gate, not produce false
+NoMethodErrors/NameErrors or reflection negatives. ClassPayload.libraryNamespace
+identifies the canonical library path independently of the object's Ruby name;
+a library may reopen a user module through an alias. Unrelated user T/URI/
+Forwardable modules do not acquire these inventories before require. Curated
+unmodeled optional constants also gate reflective misses, including StringIO in
+the observation environment. Loader globals report defined? correctly, while
+reads/writes of installation paths and load-path state explicitly gate.
+
+The scope audit additionally found old const_get/const_defined? bugs: inherit=false
+was ignored, and modules did not fall back to Object when inheritance was enabled.
+Reflection now searches the appropriate scopes, checks arity, uses the bare
+constant name for top-level NameErrors, and gates unmodeled const_missing hooks.
+It does not change qualified A::X lookup or claim scoped-string constant paths.
+constant-reflection-scope.rb and the class form of require-top-level.rb pin this.
+
+Eight new fixed regressions cover namespace absence, a user T class, cache and
+visibility, feature top-level scope, reopening a valid module, library behavior,
+JSON ancestry, and constant reflection. One new open regression records definition
+hooks. Exact combined programs passed before fixed sidecars were written. The
+focused 60-case replay has 40 agreements / 20 explicit gates / zero disagreements,
+including all 28 Sorbet cases (25 agree / three pre-existing gates). Three
+standalone core-only programs agree. `python3 scripts/check-feature-loading.py`
+compares identical feature bodies against actual CRuby require: exception/reentry/
+scope/cache, throw/ensure, and a completed dependency surviving outer failure all
+agree. This test-only Lean entry point is not a production filesystem loader.
+
+The first full L281 run (20260928-011806) preserved all L280 bootstrap verdicts:
+1,081 agree / 222 unsupported / zero disagree, five invalid controls and the old
+syntax harness error. It preceded the final reflection/alias-inventory refinement.
+The final build is PASS (92 jobs), generated Prelude/CRubyNames match regeneration,
+and git diff --check passes. Final suite results are appended below after completion.
+No proof build, typed gate or commit is attempted: proof repair is deferred by the
+user. The full conformance objective remains active and incomplete.
+
+Remaining feature boundaries: general require/require_relative path resolution,
+custom to_path/to_str conversion, loader globals, unmodeled library APIs, definition
+hooks, namespace-conflict diagnostics with prior source positions, and full Sorbet
+fidelity. Current feature bodies have no Rational/Complex literals; future runtime
+compilation/retry must give newly compiled literal sites fresh namespaces. The old
+Sorbet identity-hash gate remains open, and File's older module-shaped stub still
+needs an independent audit. No process-specific hash or weakened comparison was
+introduced.
+
+Final L281 verification: build PASS (92 jobs). Bootstrap **1,081 agree /
+zero disagree / 222 unsupported**, five invalid controls and the old
+test_syntax_115 harness error. Every bootstrap source and verdict is unchanged
+from L280. Regressions: **85 held / two gated / zero failures** (87 total);
+every pre-existing source/verdict is unchanged. The gates are sorbet-hash-gate
+and the newly recorded require-definition-hooks. Tier 1 n=300 seed20260927:
+**219 agree / 81 unsupported / zero disagree**, unchanged sources/verdicts.
+Final reports: `difftest/reports/20260928-012417-{tier0,tier1,tierregressions}-lean/`.
+Front-end replay: 45 seeds plus nine new programs, **54 agree / zero disagree**,
+AST-idempotent, six old render-only instabilities. Generated Prelude/CRubyNames
+match regeneration, CLI flag ordering checks pass, and git diff --check passes.
+All validation processes terminated. No proofs, typed gate or commit attempted.
+
+
+## L282 — method mutation callbacks, live visibility and Forwardable (2026-09-28)
+
+The open require-definition-hooks regression is now fixed. It required ordinary
+method-table callback semantics and matching Forwardable's declarations, rather
+than suppressing callbacks while a feature loads. Interp/Mutation.lean introduces
+MethodEdit and methodEditsK. Each edit checks the current frozen state, writes one
+entry, then performs an ordinary Ruby send of method_added/removed/undefined.
+Eigenclass edits send singleton_method_added/removed/undefined to the attached
+receiver. Hooks can be private, call super, invoke method_missing, raise, freeze
+the target or alter a later entry. Earlier effects remain; attribute getter and
+setter writes interleave with their callbacks. Boot preludeMode alone suppresses
+callbacks. Default private hooks live on Module and BasicObject.
+
+All definition paths, including def self's fast path, aliases, define_method,
+define_singleton_method, attrs, module_function, removal and undef use this
+protocol. Initialization names are normalized to private for instance definitions
+(including aliases/attributes), while their singleton versions remain public.
+Module#freeze is modeled. Named reflective method edits, mixin writes and
+constant assignment/const_set check frozen state. Constant visibility checks own
+names left-to-right, retains prior changes on failure, returns the target and
+raises on a frozen target even for an empty argument list. Invalid conversions
+and missing native-library inventory entries remain explicit gates.
+
+A visibility edit on an inherited method is not a copied body. MethodDef's
+visibilityOnly entry forwards to the current ancestor definition on each call.
+Same-visibility changes are no-ops, including private(:puts) on a module.
+Kernel methods folded into Object now carry the proper private metadata for the
+modeled I/O/conversion/reflection names. Module aliases and visibility macros
+consult Object when their own chain misses; remove/undef do not. Tombstones stop
+lookup. methodEntryInChain exposes the entry to reflection, visibility and undef;
+lookupInChain resolves its callable body. CRuby still reports the former after
+the parent removes/undefines the body, but calls fail and aliases raise NameError.
+This distinction was caught by an additional state-change regression, and also
+verified for respond_to?, defined?(call), defined?(super) and error messages.
+
+Aliases capture their original superName and class/eigenclass superScope; module
+aliases retain dynamic host lookup. The scope follows super activations. This
+repairs bootstrap test_yjit_145's timeout (the same forwarding module was selected
+from different class chains), including alias-of-alias. It does not replace the
+older ancestor representation: ancestors still deduplicates module identities;
+a full inclusion-node model remains separate work.
+
+Native singleton shadow checks now inspect only the chain before the resolved
+owner. Real user overrides such as Forwardable._delegator_method and
+String.try_convert can run. Class-aware new/allocate retain their core constructor
+coverage. The first broad run exposed an overbroad guard that newly gated ten
+bootstrap and five regression programs; crubyResolvedShadow fixes that without
+exempting unmodeled optional-library constructors. The final run is recorded
+below; the earlier 20260928-062926 bootstrap run is superseded.
+
+prelude/features/forwardable.rb mirrors forwardable 1.4.0's declarations, aliases,
+constants and method order for Forwardable and SingleForwardable. Require allows
+its ordinary method hooks and frozen namespace writes; other feature bodies and
+other hook protocols retain their explicit boundaries. Interp/Forwardable.lean
+compiles the simple accessor fragment of the upstream source generator into a
+Proc containing a real def with ... forwarding. It supports reflected accessor
+methods, ivars, bare method names and constant paths. Normal Ruby dispatch handles
+keywords, blocks, generated definitions, module_eval/instance_eval and hooks.
+The generated Proc's default definee is the helper's lexical module, matching
+eval; it can also be called directly for the unchecked operator case. Symbol's
+native match? supports the regex checks without changing match globals.
+
+General accessor expressions, warning paths needing caller source locations,
+direct checked helper calls without a caller location, source/eval/conversion
+overrides and loading with overridden String#freeze are explicit gates. Frozen
+string compilation is not implemented by an observable user freeze call. Root
+const_added hooks and namespace conflicts with prior source positions also gate.
+This compiler is specific to Forwardable; general string eval remains unmodeled.
+
+Eleven new fixed regression programs cover callbacks, partial mutations, frozen
+writes, live visibility, alias/super, constants and Forwardable delegation/loading.
+The old require-definition-hooks sidecar is now fixed. Exact permanent programs
+were compared before writing their fixed sidecars. Final focused replay currently
+has 85 agreements / seven explicit gates / zero disagreements over 92 programs,
+including all 28 Sorbet examples (25 agree / three old gates). The other four gates
+are deliberate Forwardable source/warning boundaries. Four extra visibility-body
+removal/super/error-message probes agree. Standalone core-only programs: three
+agree. check-feature-loading.py's three identical-source loading protocols agree.
+
+Build PASS (96 jobs), Prelude/CRubyNames regeneration comparisons and whitespace
+checks pass. Front-end replay: 45 seeds plus 12 regression programs, 57 agree /
+zero disagree, AST-idempotent; seven render-only instabilities (the six old seeds
+plus forwardable-delegation). Regressions on the final executable: 97 held / one
+old sorbet-hash-gate / zero failures (98 programs), report
+20260928-063351-tierregressions-lean. Full bootstrap and tier-1 results follow.
+No proof build, typed gate or commit: the user explicitly deferred proof repair.
+
+Remaining leads: the old process-specific Sorbet identity-hash gate; general
+constant/ancestry/mixin callbacks; generic nested-def definee in singleton methods
+(e.g. class C; def self.make; proc { def x; 1; end }; end; end; C.make.call should
+define C's instance x); legacy for bypassing each; unchecked destructureBind
+to_ary; older File module-shaped stub and model-only Sorbet namespaces. The scoped
+Forwardable compiler fix does not claim to repair generic nested def. Continue
+with known issues first, then the remaining bootstrap gates. Full conformance
+remains active and incomplete.
+
+
+Final L282 bootstrap report: `20260928-063421-tier0-lean` — **1,082 agree /
+zero disagree / 221 unsupported**, five invalid controls and the unchanged
+`test_syntax_115` harness error (1,309 total). Every source is unchanged from
+L281; the sole verdict change is `test_yjit_145`, timeout gate to agreement.
+No lost agreements. Final tier 1: `20260928-063421-tier1-lean`, **219 agree /
+81 unsupported / zero disagree**, all sources/verdicts unchanged. Final
+regressions: `20260928-063351-tierregressions-lean`, **97 held / one old gated /
+zero failures**, all old sources unchanged; require-definition-hooks is fixed.
+All validation processes terminated. No proof build, typed gate or commit was
+performed. The active full-conformance objective remains incomplete.
+
+
+## L283 — lexical definition contexts and native main methods (2026-09-28)
+
+The known nested-def discrepancy was real: a def inside C's singleton method
+landed on C's eigenclass instead of C. The audit found related visibility and
+constant/class-variable errors in Proc, define_method and eval contexts. Forty-three
+focused programs now agree with CRuby; eight combined permanent programs retain
+all those cases, with distinct constant names to preserve their independent scopes.
+A ninth permanent program covers the mixin argument checks found during this work.
+
+MethodDef.definee captures the target of nested def/alias/undef independently of
+MethodDef.owner. Frame.defmod now denotes that target, while Frame.methodOwner
+carries the dispatch owner used by super and defined?(super). Ordinary defs and
+singleton defs record the current definee; aliases keep it. define_method takes
+it from the supplied block. Its definitionFrame reference is separate from local
+capturedFrame: even a locally closed body can perform metaprogramming that needs
+the defining visibility context. Local capture erasure remains conservative and
+does not erase this separate context.
+
+Ordinary blocks point to their defining visibility frame, including after that
+frame returns. Changes inside a block are shared with its surrounding class body;
+a Proc created before private sees the later visibility when invoked. Eval blocks
+instead start a fresh public context with their rebound definee. Ordinary method
+bodies start public and ignore bare private/protected/public changes, matching the
+oracle's warned no-op (stderr warnings are outside the observation triple).
+Attribute/define_method macros use scoped visibility only when the target matches
+the class/eval definition scope; calls aimed at another class and top-level
+calls are public. Ordinary top-level def defaults to private but honors public.
+
+Constant lookup and assignment now use actual lexical nesting. Top-level cref is
+empty, with Object as a fallback; retaining Object as a fake lexical entry let it
+incorrectly beat superclass constants. Modules still fall back to Object after
+their own ancestors. Qualified class bodies add themselves to their surrounding
+lexical nesting, not the path container. Block eval preserves nesting for constant
+reads, assignments and class declarations while rebinding the def target. New
+class declarations reject frozen constant namespaces; existing nested classes may
+still be reopened. Class variables select the innermost ordinary lexical scope,
+skipping singleton-class entries. With no enclosing scope, reads/writes raise
+RuntimeError even in blocks/methods; defined? alone can inspect Object's variables.
+
+The audit exposed an older name-table shortcut: main-only native singleton names
+had been folded into Object. That gave ordinary instances false method presence
+and unmodeled-method gates. gen_cruby_names.rb now emits crubyMainSingletonNames
+separately. Core boot realizes main's eigenclass and installs the native entries:
+inspect/to_s use the existing main-aware representation primitives; private macro
+entries use Main# dispatch to the existing reflective protocols. Visibility,
+aliasing, overrides and misses therefore use ordinary lookup. include delegates
+to Object and returns Object. Unknown main native APIs still gate. The generated
+inventory remains separate from Object's actual instance-method names.
+
+Top-level define_method now executes its actual protocol. Definition receiver and
+arity are checked, an explicit Proc argument wins over a supplied block, a missing
+body raises ArgumentError, and an invalid body raises the oracle's TypeError.
+Method/UnboundMethod binding remains unmodeled. Ordinary Object receivers cannot
+accidentally call Module's visibility/definition macros. This enables five old
+bootstrap top-level define_method cases (test_yjit_275,277,278,279,280).
+
+The final macro audit also caught class objects accepted as include/prepend/extend
+modules. The single-argument path validates module type before frozen-state checks;
+empty calls raise the correct 1+ arity error. Nil/true/false use the literal form
+in Check_Type diagnostics (unlike define_method's body-type diagnostics). Receivers
+without the macro still get method_missing. General multiple-module calls and
+append_features/prepend_features/extended callback protocols remain incomplete;
+this is an argument-validation fix, not a claim of full mixin conformance.
+
+The Forwardable compiler no longer needs its L282 artificial capture frame: the
+ordinary singleton-helper frame now carries the correct lexical definee. Its prior
+92-case focused replay is unchanged: 85 agreements / seven explicit gates / zero
+disagreements, including all 28 Sorbet examples (25 agree / three old gates).
+The new 43-case focused replay and all nine exact permanent programs agree.
+The new fixed programs are nested-definition-targets, define-method-scope,
+definition-visibility-context, lexical-constant-context, frozen-declaration-scope,
+main-singleton-context, define-method-protocol, class-variable-scope and
+mixin-argument-validation. Sidecars were written after exact program comparison.
+
+The first full L283 bootstrap run (20260928-065253) had 1,087 agree / zero disagree /
+216 unsupported, five invalid controls and the old test_syntax_115 harness error.
+Only the five named cases changed from L282, all unsupported to agree, with no
+source changes or lost agreements. It preceded the final mixin argument fix.
+An automatic goal continuation dropped the tool session handles while that run
+was still live; OS process inspection confirmed its PID, so it was allowed to
+finish without starting a duplicate. The final suite results follow below.
+
+Final model build PASS (96 jobs). Final regression report
+20260928-065807-tierregressions-lean: **106 held / one old sorbet-hash gate /
+zero failures** (107 cases), all prior sources/verdicts unchanged. Final tier 1
+n=300 seed20260927 report 20260928-065807-tier1-lean: **219 agree / 81 unsupported /
+zero disagree**, all sources/verdicts unchanged. Front-end: 45 seeds plus nine new
+programs, **54 agree / zero disagree**, AST-idempotent with the six old render-only
+instabilities. Three standalone core-only programs and all three identical-source
+feature-loading protocols agree. Prelude/CRubyNames regeneration comparisons and
+git diff --check pass. Proof repair remains explicitly deferred; no typed gate or
+commit. The full conformance objective remains active and incomplete.
+
+
+Final L283 verification: bootstrap report `20260928-065807-tier0-lean` has
+**1,087 agree / zero disagree / 216 unsupported**, five invalid controls and the
+old test_syntax_115 harness error (1,309 total). Exactly five gains over L282:
+test_yjit_275,277,278,279,280; all sources unchanged and no lost agreements.
+Final tier 1 and regression reports share 20260928-065807: **219 agree / 81
+unsupported / zero disagree**, and **106 held / one old gated / zero failures**
+(107 programs), respectively. All old sources/verdicts are unchanged. Build PASS
+(96 jobs), regeneration comparisons and whitespace checks pass. All validation
+processes terminated. Proof repair remains deferred; no typed gate or commit.
+The full goal remains active and incomplete.
+
+A next-work audit confirmed an older constructor defect outside the completed
+regression/bootstrap runs: `class NoInitializer; undef initialize; end;
+NoInitializer.new` incorrectly succeeds, while CRuby raises NoMethodError.
+userInit? treats the undef tombstone as a user body, and the native new fallback
+also needs to preserve normal initialize/method_missing dispatch. The exact
+source/results are saved in /private/tmp/conformance-l283-next-constructor.json.
+Fix and add a permanent regression next; do not merely filter the tombstone and
+silently allocate through newImpl instead.
+
+## L284 — constructor dispatch and literal-block exits (2026-09-28)
+
+The known `undef initialize` bug came from `invokeMaybeNew`: it read a tombstone
+as a user body, before ordinary visibility checks. The same interception ignored
+aliases/super into Class#new; finishSend also bypassed user Hash/Proc/Class/Module
+singleton new methods when a literal block was present.
+
+`Interp/Construct.lean` now handles resolved native Class#new/allocate markers
+from both ordinary and super dispatch. Plain objects, String/Array/Hash/Exception
+payloads, Proc and Enumerator families allocate first and queue a reflective
+initialize send with the original argument, keyword and block packets. The
+normal return goes through newK; undefined and missing initializers use ordinary
+method_missing. An overridden singleton allocate is not called by native new.
+Exception allocations start with the class-name default message. Proc.new needs
+a block, preserves the existing Proc for the same real class (including lambda
+status), or copies its closure into the requested subclass before initialization.
+
+BasicObject owns the zero-argument native initialize, returning nil. String,
+Array, Hash and Exception initializers return self. Empty String initialization
+preserves contents and permits frozen receivers; Hash initialization preserves
+entries and replaces/removes the default. Frozen checks and arity ordering follow
+the oracle. Hash block initialization validates lambda arity. Array's block
+initializer yields successive indices, writes each result into the live receiver,
+and observes mutation, freeze and nonlocal exits. Native allocate respects
+visibility/aliases and Enumerator payloads; Proc allocation raises TypeError.
+Immediate classes undefine singleton new in the prelude, matching the existing
+Rational/Complex tombstone pattern. They retain allocate, which raises TypeError.
+An initial attempt duplicated Rational/Complex's existing tombstones before
+prelude evaluation and caused a boot failure; the final prelude declares only
+the six previously missing immediate-class tombstones, and boot checks pass.
+
+Block control required a separate call boundary: returning from initialize is
+not equivalent to breaking from a block supplied to new. Closure.breakScope and
+Kont.blockCallK bind a literal block to its original call. A fresh tag reserves a
+frame-store slot without adding an activation. Forwarding through initialize,
+super, yield, Proc#call or ordinary helpers retains that target; ensures unwind
+before the original call returns the break value. A retired target gives
+LocalJumpError even if a detached Proc is passed to a new active method. Lambda
+break stays local. Explicit-super literal blocks use the same binding. This
+supersedes L66's innermost-callBlk heuristic for real literal blocks; synthetic
+closures without a literal call tag retain its fallback.
+
+The constructor probes also exposed keyword loss before method_missing. Undef,
+visibility, ordinary misses and super misses now retain keywords through the
+user handler's parameter binding. Only native handlers/macros convert the keyword
+packet to a trailing positional Hash. No emitter/checker workaround is involved.
+
+Eight permanent programs cover constructor dispatch, native initializers,
+blocks, singleton overrides, Proc identity/initialization, unavailable allocators,
+literal-block control flow and missing-method keywords. All eight agree. Focused
+47-case run: 43 agree/four explicit gates; additional 19 cases all agree. Previous
+135 cases retain all results: 128 agree/seven gates, including 28 Sorbet programs
+(25 agree/three old gates). Three standalone core-only programs and all three
+identical-source feature-loading protocols agree. Front-end 45 seeds plus eight
+new programs: 53 agree, zero disagree, AST-idempotent; six old render-only
+instabilities plus constructor-blocks.rb's render-only instability.
+
+The initial bootstrap run 20260928-071407 (before final keyword/tombstone/frozen
+ordering edits) had 1,090 agree, zero disagree, 213 unsupported, five invalid
+controls and the old syntax harness error. Exactly test_flow_045, test_proc_030
+and test_proc_031 gained agreement; no lost agreements or changed sources.
+The final seeded tier 1 run 20260928-071903 has 219 agree/81 unsupported, and the
+final replay has 114 agree/one old sorbet-hash gate (115 programs). All old
+sources/verdicts are unchanged. Final bootstrap and generated-file checks are
+still pending at this record's initial write; append their terminal results below.
+
+Remaining constructor limits: argument-dependent Class/Module/Random/Regexp
+factories keep the legacy native implementation and explicitly gate replaced
+initializers; native uninitialized payloads and those initialization protocols
+need further work. Explicit super block-pass and Hash#default= remain gated.
+The legacy raise C interception still uses userInit? and needs its own protocol
+repair: CRuby sends exception (independently of an overridden new), and that send
+can be overridden, private, missing, or return a non-exception. A 12-case read-only
+follow-up audit confirms seven disagreements, three gates, and two agreements;
+see /private/tmp/conformance-l285-raise-audit.{py,json,log}. It includes the same
+undef-initialize defect under raise, so it is the next known-bug priority.
+
+Build: lake build rubycore (98 jobs). Evidence: /private/tmp/conformance-l284-*.
+No proof repair, typed gate, commit, or ratchet-floor changes; full goal active.
+
+Final L284 bootstrap verification: report 20260928-071903-tier0-lean has
+1,090 agree / zero disagree / 213 unsupported, five invalid controls and the old
+syntax harness error (1,309 total). Exactly test_flow_045, test_proc_030 and
+test_proc_031 gain over L283; no source changes or lost agreements. Final seeded
+tier 1 remains 219 agree/81 unsupported; final replay is 114 agree/one old gate,
+with every old source/verdict unchanged. Both generated-file comparisons and
+git diff --check pass. Differential suites have terminated; final comment-only
+rebuild is the sole remaining validation process at this write.
+
+Final comment-only rebuild PASS (98 jobs); all validation processes terminated.
+
+## L285 — checked exception construction and live messages (2026-09-28)
+
+The L284 follow-up found seven wrong answers in twelve probes. raise C still
+used userInit?, treated an undef initializer as a body, and never dispatched
+C.exception. Object#raise/fail now share a resolved-native path. A single String
+argument constructs RuntimeError directly; other single arguments try checked
+to_str first, then checked exception with no arguments. Two arguments check
+exception with the message. No arguments rethrow currentExc or construct
+RuntimeError with an empty String. A returned value must be an Exception; missing
+conversion and a bad returned object retain their distinct TypeError messages.
+Raise backtrace/cause keyword forms stay gated. Aliases and super reach this path.
+
+The existing conversion machine now carries raiseString, raiseException(args),
+and exceptionString phases. It retains response hooks, rechecks lookup after
+them, invokes private methods, forwards arguments to custom method_missing, and
+applies its existing conditional NoMethodError rescue. Exception's native
+singleton exception method directly constructs its receiver, ignoring an
+application-defined new. Boot exception classes and anonymous Class/Module.new
+results now realize eigenclass chains so that inherited singleton methods are
+visible before a class-body/singleton-definition path happens to realize them.
+Missing this initially caused thirteen regression disagreements; the ordinary
+class paths were already correct and supplied the repair pattern.
+
+Payload.exc holds a Value, not a rendered String. Nil means the class-name
+message; initializing with any other value retains that object, so mutation is
+observed later. Native model error allocation now creates an actual String value.
+Exception#to_s is intercepted by resolved native ID, returns actual Strings
+unchanged, or performs checked to_str then to_s conversion. A false response hook,
+missing conversion and a wrong return type have their own behavior. Rendering a
+non-String message is never admitted to the pure repr path; inspect then uses the
+existing effectful twin. This avoids silently bypassing container element inspect,
+message response hooks or mutable message objects. The initial __as_string-based
+attempt was too forgiving for a to_s returning a non-String; the oracle exposed
+that, and the final path uses checked String conversion instead.
+
+NameError, NoMethodError, KeyError and FrozenError own native initializers. Their
+message-only forms are prelude wrappers that delegate to super then return self,
+including a user-defined Exception#initialize. Metadata arguments/keywords gate.
+Without these wrappers, three old regression agreements became shadow gates once
+raise finally used real initializer dispatch; all three were recovered.
+
+Instance Exception#exception returns self with no argument or itself as argument.
+Otherwise it copies payload/ivars into an initially mutable receiver, invokes
+initialize_clone through ordinary dispatch, applies the source's frozen state,
+and replaces the raw message without invoking user initialize. Default private
+Object#initialize_clone invokes initialize_copy, discards that callback result,
+and returns self. Default initialize_copy checks arity, frozen state and matching
+real classes. User hooks, undef/method_missing and exceptions remain ordinary
+sends. A callback can freeze either object: the source's frozen state is read
+*after* the hook, not snapshotted before it. Singleton-method copies remain gated.
+A final edge probe caught the after-hook source-freeze detail; its source fix
+awaits the final rebuild/validation at this entry's initial write.
+
+Five permanent programs cover raise/exception dispatch, checked conversion,
+live messages, copy callbacks and native exception subclass construction. All
+five initially agree; the copy program is being extended with five frozen/hook
+edge cases. Focused24 all agree; extra19 has18 agree/one old Exception#== gate.
+The initial full replay has119 agree/one old sorbet-hash gate (120 programs),
+with all114 old agreements retained. Previous201-case replay remains190 agree /
+11 gates, with no changed verdicts. Front-end45seeds plus five programs has50
+agree/zero disagree, AST-idempotent with six old render-only instabilities.
+Three standalone core-only and three identical-source feature-loading checks
+agree. The first full bootstrap/tier1 runs are still being finalized below.
+
+Remaining known issue found by the same edge audit: native VM errors (e.g.1+nil)
+still allocate/raise directly and bypass an overridden TypeError#initialize.
+This is separate from the repaired Ruby-level raise protocol and is the next
+known-bug priority. Metadata, cause/backtrace, Exception#==, generic clone/dup
+callbacks outside this exception path, and singleton-class copying remain partial.
+Proof repair is deferred; changing Payload.exc intentionally does not repair the
+off-target proof consumers. No checker/floor edits, typed gate or commit.
+Temporary evidence: /private/tmp/conformance-l285-*.
+
+Post-edge validation: the source-freeze callback repair builds (98 jobs), all
+five copy edge cases and the expanded permanent copy guard agree. The initial
+bootstrap report20260928-073446-tier0-lean is1,090 agree/zero disagree/213
+unsupported, five invalid controls and the old syntax harness error; every source
+and verdict is unchanged from L284. Final replay20260928-074001-replay-lean has
+119 agree/one old hash gate; final same-stamp tier1 has219 agree/81 unsupported.
+Final frontend50 agree/zero disagree, AST-idempotent with six old render-only
+instabilities. Both generated files match regeneration and whitespace checks pass.
+The final bootstrap run is still pending at this append; no code/build changes
+are planned before its terminal result.
+
+Final L285 differential verification: reports20260928-074001 have bootstrap
+1,090 agree / zero disagree / 213 unsupported, five invalid controls and the old
+syntax harness error; tier1 219 agree / 81 unsupported; replay119 agree / one old
+hash gate (120 total). All pre-existing sources/verdicts are unchanged from L284.
+The expanded copy guard and all five copy edge cases agree. Model build passes
+98 jobs; generated-file and whitespace checks pass. All differential processes
+terminated. The AGENTS.md-required proof audit is running separately; proof repair
+remains deferred and its terminal result will be appended below.
+
+AGENTS.md boundary audit: check-proofs.sh FAILED (exit1) at lake build Metatheory.
+Its captured tail lists RubyCore.Proof.NotDone and RubyCore.Proof.KontFrame among
+failed targets; the axiom scan was not reached. Log:
+/private/tmp/conformance-l285-proof-audit.log. No proof repair was attempted.
+All validation processes have now terminated; model conformance checks pass,
+metatheory does not. No typed gate or commit. Full semantics goal remains active.
+
+## L286 — native error construction and lazy throw messages (2026-09-28)
+
+The next L285 defect was a missing TypeError#initialize callback for native errors.
+Native rb_raise/rb_exc_new paths now allocate a blank exception, queue ordinary
+private initialize(message) with no block/keywords, discard its result and raise
+the instance. Surrounding $! is retained while it runs. new, allocate and exception
+class-method overrides are bypassed. Native NameError/NoMethodError/KeyError use
+CRuby's separate direct native initialization and continue to bypass Ruby initialize.
+The oracle distinguishes these paths; a blanket rewrite would be incorrect.
+
+FrozenError now renders the class, initializes with a mutable prefix String,
+checks the exception's frozen state when native receiver metadata would be set,
+then enters the receiver-inspection recursion guard. Inspect/to_s effects and
+failures propagate. Native append targets the original prefix, bypasses String#<<
+overrides, and checks its live frozen bit. It still appends when initialize changed
+the exception's message to another Value. Callback-raised errors prevent receiver
+inspection. Recursive inspection uses the native ellipsis branch after initialization.
+
+StopIteration now initializes in the finishing producer's execution context,
+with a retained fiber-unwind marker, before result metadata is set. Only successful
+initialization caches the exception and restores the caller; callback failure resets
+the producer. Repeated next/peek duplicates the original's current raw String message
+and initializes a fresh error in caller context, retaining the live result. A nil
+raw message goes through checked to_str and normally raises TypeError. Other
+non-String repeated messages and cause metadata remain gates.
+
+Uncaught throw now passes tag, value, and raw format "uncaught throw %p" to ordinary
+initialize. Prelude's native initializer delegates the remaining arguments to super,
+then sets hidden native tag/value fields; custom initialize can raise or omit super.
+The default message inspects the live tag lazily, with ordinary inspect/to_s and
+native fallback rendering. Exception repr therefore defers for this class. Default
+and fixed non-format Strings are supported; other printf formats and non-String
+format conversion remain gates. CRubyNames now includes UncaughtThrowError's own
+methods. Copies preserve tag/value fields as well as the raw message. A final
+review caught that copy detail after the initial full suites; final focused and
+copy/throw-related bootstrap checks follow below.
+
+Primary implementation cross-checks (oracle remains pinned CRuby4.0.5):
+- https://raw.githubusercontent.com/ruby/ruby/master/error.c — rb_exc_new_str,
+  rb_name_err_new and rb_error_frozen_object.
+- https://raw.githubusercontent.com/ruby/ruby/master/enumerator.c — next_i and
+  get_next_values construct in different execution contexts.
+- https://raw.githubusercontent.com/ruby/ruby/master/vm_eval.c — rb_throw_obj,
+  uncaught_throw_init and uncaught_throw_to_s.
+
+Five permanent programs cover these protocols. Initial full reports:
+20260928-075300-tier0-lean = 1,090 agree / zero disagree / 213 unsupported, five
+invalid controls and the old test_syntax_115 harness error; same-stamp tier1 =
+219 agree / 81 unsupported (n300 seed20260927). Every old source/verdict unchanged.
+20260928-075350-replay-lean = 124 agree / one old sorbet-hash gate, 125 programs;
+every old source/verdict unchanged. Previous250 replay = 238 agree / 12 old gates;
+only changed verdict is the known native-error-initialize failure, now agree.
+Focused24 = 22 agree / two old gates (Module#remove_const and String#replace).
+Initial extra25 all agree. Frontend50 agree / zero disagree, AST-idempotent, six
+old render-only instabilities. Model build98 jobs passes; generated-file and
+whitespace checks pass. Final validation/proof audit results are appended below.
+
+The ongoing goal remains incomplete. No checker/proof/floor source edits, typed
+gate or commit. Proof repair is deferred. Next confirmed issue: destructured method
+parameters silently skip to_ary, including private conversions and nested values.
+Trailing parameters overlap leading ones on short inputs. Oracle/model audit
+/private/tmp/conformance-l287-binding-audit.{py,json,log}: seven disagreements,
+one agreement. Defaults execute BEFORE these conversions in CRuby, so inserting
+conversion into the current pre-default destructureBind fold would preserve the
+wrong order. Repair that binding pipeline next. Broader constructor, for/each,
+constant/ancestry/mixin, dup/clone and remaining bootstrap gates stay in scope.
+Evidence for this batch: /private/tmp/conformance-l286-*.
+
+Final L286 validation after the copy-field fix: build98 jobs PASS. Extra27 all
+agree, including copies and nil-message conversion; all five expanded permanent
+programs agree. Final replay20260928-075806-replay-lean has124 agree / the one old
+sorbet-hash gate, zero failures. All120 pre-existing sources/verdicts held. The23
+bootstrap sources mentioning throw/catch/dup/clone/exception were replayed on the
+final binary:17 agree / six old gates, all source/verdict pairs unchanged. The
+full1309 baseline above preceded only the final metadata-copy correction; that
+correction received this targeted bootstrap replay and the full regression replay.
+No bootstrap claim has been increased. Final frontend50 agree / zero disagree,
+AST-idempotent with six old render-only instabilities; three standalone core-only
+and three identical-source loading checks agree. Generated-file cmp and git diff
+--check pass. All validation processes terminated.
+
+The required check-proofs.sh audit FAILED at lake build Metatheory (exit1),
+with NotDone and KontFrame in the captured failed-target tail; axiom scan was not
+reached. /private/tmp/conformance-l286-proof-audit.log. No proof repairs, typed
+gate or commit. The full semantics goal remains active and incomplete.
+
+## L287 — effectful nested parameter binding (2026-09-28)
+
+The L286 next-work audit had seven method-destructuring disagreements: to_ary was
+never called, private/nil/invalid converters were mishandled, nested effects were
+lost, and short inputs reused leading values in trailing slots. All seven now
+agree. The eighth, empty nested input, still agrees.
+
+The old pure destructureBind fold is replaced by a resumable binding queue.
+Kont.paramBindK handles one positional formal per transition; a non-Array nested
+source enters the shared checked-conversion protocol as ConversionCall.paramDestructure.
+Actual Arrays bypass conversion. Missing/nil converters expand [source]; invalid
+non-Array returns raise TypeError. Private methods, response hooks, dynamic method
+installation, custom missing handlers, exceptions and nonlocal exits use ordinary
+machine transitions. Each expansion snapshots leading/rest/trailing values before
+nested callbacks, pads absent positions with nil and slices trailing values only
+from the unconsumed tail. Later top-level parameter expansions see the live heap.
+
+Method entry captures raw destructuring slots but does not bind their component
+names until positional and keyword defaults finish. Those names are predeclared
+as nil, preventing define_method capture leakage; default assignments to them are
+subsequently replaced by binding. A pending binding continuation sits above the
+method frame boundary, below default evaluation. Thus parameter failures do not
+enter body-level rescue/ensure, but outer handlers and converter ensures still run.
+
+Simple closure classification now accepts nested positional formals. Procs,
+blocks and lambdas enter their usual frame before the same binding queue executes;
+strict arity, lenient automatic expansion, captured locals, next/return/redo and
+break boundaries retain their existing semantics. Redo repeats the body without
+repeating conversion. Optional/keyword/forwarding closure forms remain gated.
+Synthetic slot names are inaccessible Ruby identifiers (<destructure:N>) rather
+than __destr_N, which could collide with a user's real parameter/local.
+
+The CRuby oracle pins defaults-before-conversion, per-expansion snapshots and
+live later parameters. Primary implementation cross-check:
+https://raw.githubusercontent.com/ruby/ruby/master/vm_insnhelper.c (vm_expandarray).
+The seven-shape matrix covers methods, procs and lambdas across seven inputs,
+147 calls. Focused20 and extra29 all agree, and the matrix agrees. One initial
+Array subclass probe used the old gated Array.new(array) form; constructing an
+empty subclass then appending tests binding independently. That constructor gate
+remains known, not claimed fixed. One invalid trailing-comma formal was rejected
+by CRuby's parser and removed before the shape matrix was run.
+
+Four permanent programs combine all50 probe sources, including the matrix:
+parameter-destructure-conversion, parameter-destructure-order,
+block-destructure-binding and parameter-destructure-shapes. All four agree.
+A combined block test initially shadowed its own method call with a local f;
+spelling f() makes the intended method call explicit. No model change was needed.
+
+Model build98 jobs PASS. Regression replay20260928-080526-replay-lean:128 agree /
+one old sorbet-hash gate (129 programs), all125 old sources/verdicts unchanged.
+Tier1 at the same stamp (n300 seed20260927):226 agree /74 unsupported, zero
+disagreements. Exactly seven previous gates became agreements:00039,00040,00168,
+00169,00170,00171,00172. Sources unchanged. Previous301 =287 agree /14 old gates,
+every verdict unchanged. Frontend49 =49 agree /zero disagree, AST-idempotent,
+six old render-only instabilities. Three standalone core-only and three identical-
+source loading checks agree. Both generated files match regeneration and
+whitespace checks pass. Full bootstrap is finalized below.
+
+The AGENTS-required proof audit FAILED exit1 at lake build Metatheory; NotDone
+and KontFrame appear in the captured tail. Axiom scan not reached. No proof
+repair, checker/floor edits, typed gate or commit. Log:
+/private/tmp/conformance-l287-proof-audit.log. The full goal remains active.
+Evidence: /private/tmp/conformance-l287-*.
+
+Next confirmed priority: legacy for bypasses each. L288 for-audit has five
+disagreements (override, live growth/replacement, to_ary and break value), two old
+non-Array gates, and one scope agreement. CRuby calls ordinary explicit each,
+returns its normal result, honors overrides/live iterators, and preserves enclosing
+locals. The extra escaped-callback oracle pins LocalJumpError after the originating
+return/break scope exits: don't revive a dead method frame by pushing its existing
+id as a fresh activation. Single-target for uses the first yielded argument (not
+multi-argument packing); multi-target for destructures all yielded values. Its
+body retains the enclosing block for yield/block_given?. Evidence:
+/private/tmp/conformance-l288-{for-audit,for-oracle,for-escape-oracle}.*.
+No L288 source edits yet. Other constructor/ancestry/mixin/copy/bootstrap gaps
+remain in the active scope.
+
+Final bootstrap20260928-080526-tier0-lean:1,095 agree / zero disagree /208
+unsupported, five old invalid controls and the old test_syntax_115 harness error.
+Exactly test_block_037/038/039/040 and test_massign_008 move from gated to agree;
+every source is unchanged and no old agreement is lost. This is the same final
+binary as all other checks above. All validation sessions have terminated, and
+no L287 source edits remain unbuilt. Full goal remains active; the next known
+for/each discrepancies are confirmed independently, not claimed fixed.
+
+
+## L288 — for dispatch, shared environments and block-defined method exits (2026-09-28)
+
+The legacy loop bypassed each, returned its collection regardless of each's result,
+and walked a snapshot of Array contents. Five confirmed disagreements covered an
+Array override, live growth/replacement, checked target conversion and break's
+bound value; custom/private each were two further gates. All seven now agree.
+
+The core for node creates a hidden closure and invokes ordinary explicit each.
+Closure/MethodDef carry its target list and multiple-assignment flag. The callback
+gets a fresh control frame whose localAlias points at its enclosing environment:
+new body locals and target writes leak as Ruby requires, but stale return/break
+homes cannot be revived by invoking an escaped callback. Enclosing block/match/
+cref/definition context is retained, including block eval and define_method reuse.
+Single targets take the first yielded argument; multiple targets convert exactly
+one argument with checked to_ary, while zero/multiple arguments bind directly.
+forAssignK queues ordinary variable/constant assignments, preserving frozen and
+lexical scope checks. Native each implementations supply their live iteration.
+
+A trailing comma with one target is semantically significant. Frontend C41 adds
+an optional fifth true field to old four-slot for nodes; decoder accepts both.
+ImplicitRestNode is supported without claiming named rest/nested target syntax.
+Methods installed from blocks retain fromBlock even when their capture is erased.
+dmFrameK handles local break/next/return and redo in the same activation without
+rebinding/defaults; implicit super retains define_method's special error behavior.
+The old forBind/forStep/forBodyK snapshot path is removed.
+
+Validation: model build98 jobs PASS. Full reports20260928-082327: bootstrap1309
+=1095 agree /0 disagree /208 unsupported /5 invalid controls /1 old
+ test_syntax_115 harness error; tier1 n300 seed20260927 =226 agree /74 gates.
+Every L287 source/verdict is unchanged. Replay135 =134 agree /one old sorbet-hash
+gate; all129 previous sources/verdicts held. Six new permanent programs agree.
+Previous351 =337 agree /14 gates, every verdict unchanged. Focused20 =19 agree /
+one old Proc#arity gate; extra43 =42 agree /one old top-level-return frontend
+gate. Frontend46 seeds+six guards =52 agree /zero disagree, AST-idempotent with
+six old render-only instabilities. Standalone3 and identical-source loading3
+agree. Prelude/CRubyNames match regeneration; git diff --check passes.
+
+Required proof audit FAILED exit1 during lake build Metatheory; captured tail
+names NotDone and KontFrame, axiom scan not reached. No repairs, checker edits,
+floor edits, typed gate or commit. Evidence /private/tmp/conformance-l288-*.
+
+The conversion-response probe exposed a separate Object#inspect bug. Its original
+source/observation is saved in /private/tmp/conformance-l289-inspect-known.json;
+the loop-only extra probe explicitly ends with nil to isolate the conversion.
+This is not counted as an inspection fix. L289 audit11 confirms nine inspection
+disagreements, one native-ivar agreement and one old private_instance_methods gate.
+CRuby 4's checked instance_variables_to_inspect hook runs even on an empty object,
+accepts nil/Array, filters actual ivars in their insertion order, and may raise.
+Extra oracle17 pins live values/filter, buffered names, recursion, missing hooks,
+String conversion and a separate existing ivar-reassignment ordering defect.
+Primary source: https://raw.githubusercontent.com/ruby/ruby/master/object.c,
+rb_obj_inspect/inspect_i, cross-checked against pinned CRuby4.0.5.
+
+
+## L289 — checked native object inspection and stable ivar order (2026-09-28)
+
+Ruby 4's Object#inspect uses checked instance_variables_to_inspect even for an
+empty object. The old pure renderer skipped response/selection hooks, invalid
+result errors and their effects. Nine audit disagreements plus the original
+final-result for probe are repaired. Interp/Inspect.lean handles the operation
+selected by native method ID, including aliases/super. ConversionCall.objectInspect
+reuses checked dispatch; missing/nil selects all fields, Array filters actual
+Symbol names, and other results raise TypeError without conversion. The default
+private hook is installed natively and returns nil.
+
+The inspector buffers field names after the hook, reads each value and filter
+Array live, and dispatches nested inspect/to_s without Ruby instance_variables/
+get calls. objectInspectK holds the recursion guard, after hook execution, and
+unwinds naturally. Pure rendering checks hook purity and cycles; Random/Generator/
+Yielder use the same default object representation, including ivars. Both syntactic
+and reflective ivar writes preserve insertion positions on reassignment. The old
+Object#__inspect_slow twin is removed. Native Object#inspect of immediates and
+non-UTF-8 nested rendering remain explicit gates.
+
+Final build100 jobs PASS. Reports20260928-083226: bootstrap1309 =1095 agree /zero
+disagree /208 unsupported /five control-invalid /one old syntax115 harness-error;
+tier1 n300 seed20260927 =226 agree /74 gates. All source/verdict pairs unchanged
+from L288. Replay141 =140 agree /one old sorbet-hash gate; all135 old sources and
+verdicts held, six new programs agree. Previous414 =398 agree /16 old gates, all
+unchanged. Focused29 =26 agree /three old gates (private_instance_methods, Array
+clear and singleton []); extra32 all agree, including modeled equivalents for
+filter shrink/Array subclass and seeded Random. Frontend52 agree /zero disagree,
+AST-idempotent, six old render-only instabilities. One initial frontend harness
+failure came from leaving Symbol#to_s overridden; the permanent negative control
+now restores both Symbol aliases after exercising native membership. Standalone3
+and identical-source loading3 agree. Generated Prelude/CRubyNames cmp and whitespace
+checks pass. All final sessions ended; no Lean source edits after final build.
+
+Required proof audit FAILED exit1 at lake build Metatheory, captured tail names
+NotDone/KontFrame, no axiom scan. No repairs, checker/floor edits, typed gate or
+commit. Evidence /private/tmp/conformance-l289-*. Primary object.c behavior was
+cross-checked against pinned CRuby4.0.5; README §04.2 records the rules.
+
+Next audits: l290-repr-alias-audit has seven disagreements: pure rendering ignores
+native aliases (inspect→class/to_s/itself, Array length/Object inspect, Symbol to_s,
+and to_s→inspect). The purity predicate currently treats every builtin ID as its
+original renderer; it must validate the resolved native operation for the value's
+payload. Native Object#to_s also needs to render its own default representation,
+independent of subclass payload/twins. The separate l290-class-audit has nine
+disagreements /seven gates: inherited is skipped, Class can be subclassed, Module
+superclass error wording differs, and uninitialized/overridden Class/Module native
+initializers remain gated. Preserve both audits while prioritizing the adjacent
+representation defect, then class creation.
+
+
+## L290 — resolved native rendering aliases (2026-09-28)
+
+A seven-case audit found that pure rendering treated aliases of unrelated native
+methods as if they were the payload's native inspect/to_s. For example, aliasing
+inspect to class, itself, or Array#length must execute that selected method. The
+pure path now checks the resolved builtin identity against the payload's native
+renderer, including immediate values and nested numeric components. Alias bodies
+remain snapshots even when their original method name is later redefined.
+
+Object#to_s now uses native class/address rendering independently of a subclass's
+String/Array payload; main retains its native "main" spelling. Random objects use
+the same native address rendering. Effectful __as_string/__as_inspect sends name
+self explicitly, preserving private conversion behavior while producing the proper
+NoMethodError when a method is undefined. Deferred puts on an empty converted
+Array produces no newline, matching the native puts path.
+
+All seven original rendering disagreements now agree. The additional 32 probes
+have 28 agreements, four explicit gates and zero disagreements. Eleven exact
+witnesses are permanent native-repr-* regressions, covering aliases, inherited
+native rendering, missing methods, and converted/nested empty arrays. Model build
+passes (100 jobs). The inherited Kernel/Object ownership boundary and native
+method-removal shadow inventories remain open; these four refusals are not fixes.
+The separate Class construction/inherited-callback audit remains follow-up work.
+
+The user now requires incremental commits and a full bootstrap differential replay
+before each commit while proof repair remains deferred. L276–L290 were recovered
+as separate implementation batches. Every commit records its fresh build,
+bootstrap and regression replay; evidence is under
+`difftest/reports/20260928-incremental-LNNN/`. The typed gate was attempted on the
+accumulated work and is RED in shared HeapFacts proofs (className/lookup drift).
+No proof source or checker acceptance rule was changed to conceal that failure.
+
+
+## L291 — Class/Module allocation, initialization and inherited (2026-09-28)
+
+The L290 class audit's nine disagreements and seven gates now all agree. Class
+and Module construction previously used a factory that skipped inherited and
+native initializer dispatch. Native Class#new now allocates a namespace payload
+and sends initialize normally, including overrides, aliases, private methods,
+super and method_missing. Module-subclass instances retain their native module
+payload. Public Module.allocate is undefined; an alias of Class#allocate still
+allocates it. The obsolete Class/Module factory branches are removed.
+
+Class.allocate starts with no superclass and an uninitialized flag. Native
+Class#initialize rejects repeat initialization before checking arity, validates
+the native parent, copies allocator/ancestry state, replaces the old eigenclass,
+and sends inherited before executing its block. Old eigenclass references stay
+live, but their methods no longer apply to the newly initialized class. Class
+initialization returns the class; Module initialization returns nil and is
+repeatable. Both preserve nonlocal block exits. New named classes bind their
+constant before inherited and retain the saved class identity for the body even
+if the hook replaces the constant. Raising skips the body without undoing the
+binding or earlier effects; reopening does not resend inherited.
+
+Pinned CRuby 4.0.5 differs from current upstream master: initializing a frozen
+allocated class succeeds. Class.new rejects an uninitialized parent, while named
+class syntax permits one. Such a child has a real superclass link, but retains an
+unavailable ancestry index and allocator even if its parent is initialized later.
+These states are separate ClassPayload fields; checking only the superclass link
+would accept the wrong calls. Subclassing Class or a singleton class is rejected.
+Native superclass/allocator TypeErrors send the selected class's live to_s and
+preserve its effects, failures and non-String fallback.
+
+Reflective const_set now names anonymous namespaces using the same rule as
+syntactic assignment, including assignment from inside inherited. Module-subclass
+eigenclasses inherit from the actual subclass. Their unnamed instances render
+through a separate temporary class path, so a direct eigenclass contributes its
+name/address without recursively displaying the attached object. The singleton
+class's own to_s still displays the live attachment. This covers later naming,
+frozen instances and array evaluation/rendering order.
+
+Enabling ordinary inherited exposed a missing T::Struct hook in the modeled
+sorbet-runtime library. The model now installs the gem's public child guard,
+calling super before rejecting further subclassing; rejected named subclasses
+retain their bindings and guards. This restores the two previously agreeing
+Sorbet probes and the existing sorbet-describe-obj regression. The installed
+sorbet-runtime 0.6.13405 sources (`types/struct.rb` and
+`types/private/class_utils.rb`) and executable oracle pin the behavior. Other
+unmodeled library inheritance hooks remain explicit gates.
+
+Oracle implementation references: [object.c](https://raw.githubusercontent.com/ruby/ruby/ruby_4_0/object.c)
+for native initialization and inheritance checks, and
+[variable.c](https://raw.githubusercontent.com/ruby/ruby/ruby_4_0/variable.c)
+for temporary class paths. Executable CRuby 4.0.5 comparisons decide the versioned
+behavior; master source is not substituted for that oracle.
+
+The 16 focused and 46 extended probes yield 58 agreements and four existing gates
+(explicit super block-pass, remove_const, top-level return, private_methods). Seventeen permanent
+class-protocol-* programs retain every agreed probe, including core-class override
+cases in isolated programs. No comparator or unsupported verdict was weakened.
+
+Final validation: model build succeeds (100 jobs). Full bootstrap (1,309 cases): 1,096
+agree /zero disagree /207 unsupported, five unchanged invalid controls and the
+old test_syntax_115 harness error. All bootstrap sources are unchanged; the only
+verdict change is test_yjit_347, unsupported to agree. Regression replay (169 cases): 168
+agree /one old sorbet-hash gate; all 152 previously committed sources and verdicts
+hold, plus 17 new agreements. Tier 1 (300 cases, seed 20260927): 226 agree /74 gates, with
+all sources/verdicts unchanged. Previous 514 probes: 493 agree /21 gates, gaining two
+agreements with no losses. Frontend 63 agree, AST-idempotent, with six old
+render-only instabilities. Standalone 3 and feature-loading 3 agree; generated
+Prelude/CRubyNames and whitespace checks pass. Full reports and build log:
+`difftest/reports/20260928-incremental-L291/`. No runtime source edits after the
+final build; proof repair remains deferred.
+
+Proof repair remains explicitly deferred under the active user goal. The typed
+gate's existing HeapFacts className/lookup failure is not repaired or claimed green.
+No checker acceptance, proof or floor changes. Constant mutation callbacks,
+recursive anonymous-namespace naming, namespace copying, and the older native
+method-removal/Kernel ownership limitations remain follow-up work. Random/Regexp
+still use their partial argument-dependent factories; the old sorbet-hash gate is
+unchanged. See difftest N65 and /private/tmp/conformance-l291-* for probe evidence.
+
+
+## L292 — constant assignment callbacks and rescue targets (2026-09-28)
+
+A focused audit found 14 wrong answers from skipped const_added callbacks, plus
+two unmodeled native-hook cases. All now agree. Module#const_added is a private
+native unary method returning nil; its argument is ignored, including native
+binary strings. Aliases, super, undef and method_missing follow ordinary dispatch.
+
+assignConstant checks the target's frozen state, names and binds the value, then
+queues const_added and discards only its normal return value. Syntactic unqualified
+and qualified writes and reflective const_set share this path. Reassignments send
+the callback too. Core boot suppresses hooks, while runtime features retain them
+and their existing fidelity gates. Class/module creation binds and realizes the
+class's eigenchain before the callback, then resumes inherited and the saved body
+through constClassK. A callback can replace the constant, freeze objects or change
+the inherited method; continuation uses the original class and the current heap.
+Raises/throws retain writes and skip the pending body. Reopening writes nothing
+and sends neither callback. This ordering matches the official
+[Module callback documentation](https://docs.ruby-lang.org/en/master/Module.html#method-i-const_added)
+and is pinned independently to executable CRuby 4.0.5.
+
+The same audit found enterHandler writing a constant rescue target directly into
+Object, ignoring both lexical scope and callbacks. It now routes that target
+through casgnK before the handler, after installing the rescued exception in $!.
+This reuses frozen checks and callback dispatch and keeps rescue/ensure/retry
+continuations intact. Tests observe the original exception from the hook, retained
+bindings after a hook failure, handler suppression and retry overwrites.
+
+Focused 19: 18 agree and one existing frontend constant-or-write gate. Extended
+28: 21 agree, five existing gates, two confirmed follow-up disagreements. Seven
+permanent const-added-* programs retain all 39 agreeing probes. Each combined
+program was compared directly against CRuby before its sidecar was marked fixed.
+The default-hook binary case uses 255.chr; the separate non-UTF-8 source-literal
+export gate remains recorded and is not claimed fixed.
+
+Final validation: model build passes (100 jobs). Full bootstrap (1,309 cases):
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+the old test_syntax_115 harness error. Every source/verdict pair is unchanged
+from L291. Regression replay (176 cases): 175 agree and one old sorbet-hash gate;
+all 169 old sources/verdicts hold and seven new guards agree. Tier 1 (300 cases,
+seed 20260927): 226 agree and 74 gates, every pair unchanged. Previous 576 probes:
+551 agree and 25 gates, every verdict unchanged. Frontend 53 agree and remain
+AST-idempotent, with six old render-only instabilities. Standalone and feature
+loading: three agreements each. Generated Prelude/CRubyNames and whitespace
+checks pass. Reports, build log and probe snapshots are in
+`difftest/reports/20260928-incremental-L292/`. No runtime edits after the final
+build; proof repair remains deferred.
+
+Next increment must address the two explicit wrong answers in
+/private/tmp/conformance-l292-extra.json: constant-invalid-string-name accepts
+invalid names (x, A::B, empty) instead of raising NameError, and constant-nested-name
+fails to rename descendants when their anonymous parent acquires a permanent
+name. The mixed invalid-name probe also gates on non-String arguments; that gate
+must not hide its earlier invalid-string writes. const_set aliases/name conversion
+and remove_const are additional recorded gates. These existing gaps are separate
+from the callback ordering fixed here. Proof repair remains explicitly deferred;
+the known HeapFacts className/lookup failure is not repaired or claimed green.
+See difftest N66 and /private/tmp/conformance-l292-* for evidence.
+
+
+## L293 — Unicode String inspection (2026-09-28)
+
+Native UTF-8 String inspection previously emitted non-printing Unicode scalars
+literally. Repr now uses the pinned CRuby 4.0.5 / Unicode 17.0.0 printability
+table, retaining named control escapes and using \uXXXX or \u{XXXXX} for the
+remaining non-printing characters. Binary byte rendering is unchanged.
+The new scripts/gen_unicode.rb generator emits Unicode.lean and, with --verify,
+cross-checks all 1,112,064 Unicode scalars against native String#inspect. A second
+verified generation reproduces the committed table byte for byte.
+
+The unicode-string-inspect guard exercises native/nested/subclass rendering,
+41 character boundaries, interpolation escapes and explicit binary strings.
+The first broader probe also exposed an existing Integer#chr encoding error:
+0.chr and 127.chr have Unicode escapes in the model instead of CRuby's byte
+escapes. Its original disagreeing report is retained under
+regressions-initial-chr-audit; the String-focused guard uses explicit .b for
+those ASCII byte strings. This is a separate open producer-encoding defect,
+not a Unicode printability mismatch.
+
+Validation: lake build rubycore passes (102 jobs). All 1,309 bootstrap cases ran:
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+the old test_syntax_115 harness error. Every source/verdict pair matches L292.
+Regression replay: 176 agree and the one old sorbet-hash gate (177 total); all old
+sources/verdicts hold. Frontend: 47 agree, AST-idempotent, with the six old
+render-only instabilities. Generator verification/reproduction and whitespace
+checks pass. Reports and logs: difftest/reports/20260928-incremental-L293/.
+Proof repair remains deferred; the typed gate is not claimed green.
+The typed gate was rerun and failed at the existing HeapFacts className/lookup
+proof drift; its captured log is retained. No proof repair was attempted.
+
+
+## L294 — native constant-name validation and conversion (2026-09-28)
+
+Module#const_set is now a native method entry, so ordinary lookup supplies alias,
+super, visibility and undef behavior. It checks arity/keyword packing before
+conversion, saves target/value identity and shares assignConstant's naming,
+frozen-state and const_added sequence after validation. Actual Symbols/Strings
+(including String subclasses) bypass user conversion. Other values use the
+existing checked to_str continuation: response hooks, private conversion,
+method_missing, swallowed unpromised NoMethodError and nonlocal exits retain
+their ordinary effects. Nil/missing conversion inspects the original argument;
+other non-String results raise the native conversion TypeError.
+
+The UTF-8 grammar requires an uppercase or titlecase first scalar. Later scalars
+may be ASCII alphanumeric/underscore or any non-ASCII value, including Unicode
+line separators. gen_unicode.rb now verifies constant starts against native
+Module#const_defined? for every Unicode scalar as well as L293's printability
+check: 2,037 starts accepted by CRuby 4.0.5 / Unicode 17.0.0. This avoids both
+ASCII-only rejection and overly permissive invalid writes. Validation precedes
+the frozen check; invalid names raise NameError without installing constants.
+
+Invalid-argument diagnostics execute inspect, ordinary to_s when necessary and
+a native fallback if conversion still returns a non-String. Their callbacks can
+raise or exit. Embedded NUL in the final rendering raises ArgumentError, while
+NUL in an invalid String name remains part of the native NameError message.
+ASCII native name messages use the model's byte encoding flag, preserving byte
+escapes; non-ASCII UTF-8 messages preserve Unicode scalars. Full US-ASCII encoding
+identity is not claimed by that two-way encoding abstraction. Binary high-byte
+names require encoded Symbol identity and still gate; binary high-byte diagnostic
+rendering also gates rather than guessing CRuby's escaping behavior.
+
+Focused probes: 25 agree. Extended probes: 28 agree and three explicit gates
+(binary names, binary diagnostic rendering, the old native-method-removal
+inventory limitation). They include all 256 ASCII first/suffix combinations.
+Seven permanent const-set-* programs retain all 53 agreeing probes, checked as
+exact combined programs against CRuby before marking their sidecars fixed.
+The initial implementation was split from L293's independent Unicode String
+inspection change at the user's request for separate incremental commits.
+
+Frontend round-trip: 51 agree, zero semantic disagreements, two harness errors;
+all 53 inputs are AST-idempotent. The name guard reaches an existing Render
+limitation: quoted invalid Symbols are emitted as bare :A::B / :, producing
+invalid Ruby. The isolated Symbol override breaks the frontend's later JSON
+loading through Symbol#to_s on both sides; temporary paths make those error
+observations unequal. The exact programs agree under the difftest wrapper and
+JSON-to-Lean execution. Both rendered sources and diagnostic logs are retained;
+no frontend implementation or comparator was changed to hide these limitations.
+The six earlier render-only instabilities also remain.
+
+Final validation: model build passes (102 jobs). Full bootstrap: all 1,309 cases,
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+one old test_syntax_115 harness error. All source/verdict pairs match L293.
+Regression replay: 183 agree and one old sorbet-hash gate (184 total); all 177
+old sources/verdicts hold and seven new guards agree. Tier 1 (300, seed 20260927):
+226 agree and 74 gates, every source/verdict unchanged from L292. The 47 prior
+constant probes now have 43 agreements, three gates and the unchanged recursive
+namespace-naming disagreement: three gates and the invalid-name disagreement
+become agreements, with no losses. Unicode generation verifies/reproduces exactly.
+Reports, build log, focused probes and frontend diagnostics are archived in
+`difftest/reports/20260928-incremental-L294/`. No runtime changes after the final
+model build. Proof repair remains deferred and the typed gate is not claimed green.
+The typed gate was rerun and fails at the existing HeapFacts className/lookup
+proof drift; the log is archived. Proof repair remains explicitly deferred.
+The batch proof audit also failed to build Metatheory (NotDone/KontFrame);
+its axiom scan was not reached. The captured proof-audit.log is archived.
+
+
+## L295 — permanent namespace paths and nested naming (2026-09-28)
+
+The preserved constant-nested-name failure exposed a missing distinction:
+ClassPayload.name contained both permanent paths and paths with an anonymous
+ancestor. The model treated every nonempty name as final. A focused audit found
+25 wrong answers among 28 cases; three already agreed. Nineteen wrong answers
+now agree, four become explicit symbol-order gates, and two Module#name identity
+failures remain separate known work.
+
+ClassPayload.namePermanent records the native distinction (empty names remain
+anonymous regardless of the flag). nameConstant runs after the binding and before
+const_added for assignment, native const_set and named class/module creation.
+An anonymous parent supplies only a first temporary path. A permanent parent (or
+Object) promotes the value and recursively names its own namespace constants,
+preserving already permanent names. Name propagation ignores frozen flags and
+does not send callbacks to descendants. Private constants participate; inherited
+constants and overwritten/detached values do not. Callback errors, throws and
+binding replacement retain the completed names. A heap-depth-bounded traversal
+marks ancestors before following their constants, so cycles terminate naturally.
+The namespace prefix uses native classPath, not the singleton attachment display
+or Ruby name/to_s overrides. Object::C now acquires the same bare name as ::C.
+
+The native algorithm is recorded in CRuby's
+[variable.c](https://raw.githubusercontent.com/ruby/ruby/ruby_4_0/variable.c)
+(classname, const_set, set_namespace_path and rb_set_class_path_string). Executable
+CRuby 4.0.5 pins the behavior independently of branch-source drift.
+
+Multiple paths to a still-temporary descendant expose an additional real boundary.
+CRuby's constant table traverses symbol-ID hash slots, not declaration order.
+With the differential wrapper, assigning Z then A chooses M::A, while merely
+prefixing the same program with `p :A` changes the answer to M::Z. Standalone
+CRuby can choose a different order again. The model has names, not CRuby's
+process-local symbol serials. Choosing newest, oldest or alphabetical bindings
+would emit a known wrong answer. The traversal explicitly declines competing
+non-ancestor paths until symbol-table order is represented. It still supports
+ancestor cycles and aliases to namespaces that were already permanent. These
+new gates are counted separately from repaired disagreements; no full naming
+or symbol-identity conformance is claimed.
+
+Focused 28: 22 agree, four ordering gates, two remaining identity disagreements.
+Extended 30: 25 agree, two ordering gates and three existing gates (scoped class
+syntax with explicit superclass, set_temporary_name, namespace dup/clone).
+Eight namespace-* regression programs preserve all 47 agreeing probes; global
+Object.const_added replacements remain in isolated programs. Each exact combined
+program agrees before its sidecar is marked fixed. The identity probes retain
+Module#name's unfrozen/fresh String bug for the next increment.
+
+Final validation: model build passes (102 jobs). Full bootstrap (1,309 cases):
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+the old test_syntax_115 harness error. Every source/verdict pair matches L294.
+Regression replay (192): 191 agree and one old sorbet-hash gate; all 184 earlier
+sources/verdicts hold, and eight new guards agree. Tier 1 (300, seed 20260927):
+226 agree, 74 gates, all sources/verdicts unchanged. Frontend seeds plus new guards:
+54 agree, all AST-idempotent; six old render-only instabilities plus one benign
+rebind-hook rendering instability. Standalone and feature loading: three agreements
+each. Whitespace checks pass. Reports, build log, before/after probes and the
+symbol-order witness are archived in difftest/reports/20260928-incremental-L295/.
+No runtime edits after the final build. No checker, proof, comparator or floor
+changes; proof repair remains explicitly deferred.
+The typed gate was rerun and remains red at the recorded HeapFacts className/lookup
+proof drift. Its log is archived; proof repair remains deferred.
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.
+
+
+## L296 — native binary String copies (2026-09-28)
+
+The Module#name cache work exposed an existing String#b error: already-binary
+receivers were returned directly. This leaked identity, mutation, frozen state,
+subclass identity, ivars and eigenclass methods through an API that returns a
+fresh mutable base String. String#b now has a native entry and copies both binary
+and UTF-8 inputs to ASCII-8BIT, with zero-argument validation and ordinary native
+alias/super behavior. It bypasses Ruby copy/conversion/initialization hooks.
+
+The old prelude wrapper also let user code override __as_binary and change b's
+result. A direct probe returned :wrong in the model and the original bytes under
+CRuby. That helper is removed from the method table and the wrapper is deleted;
+Prelude.lean is regenerated and reproduces exactly. No checker or comparator
+change is involved. Twenty focused cases agree; one existing String#[]= gate is
+retained. Four binary-copy-* regression programs retain all 20 agreeing cases,
+including a separate core String override program.
+
+The name cache is a separate dependent increment (L297), preserved as
+/private/tmp/conformance-l297-name-cache.patch while this prerequisite is committed.
+The patch contains only cache changes and preserves this increment's new b entry.
+The new name audit also retains an old String#clone(freeze: false) arity failure
+and general String#-@ interning/encoding work; neither is claimed fixed here.
+
+Final validation: model build passes (102 jobs). Full bootstrap (1,309):
+1,096 agree, zero disagree, 207 unsupported, five existing invalid controls and
+one old test_syntax_115 harness error. All source/verdict pairs match L295.
+Regressions (196): 195 agree and one old sorbet-hash gate; all earlier sources
+and verdicts hold. Tier 1 (300, seed 20260927): 226 agree and 74 gates, unchanged.
+Frontend seeds plus new guards: 50 agree, all AST-idempotent, six old render-only
+instabilities. Standalone and feature loading: three agreements each. Generated
+Prelude.lean reproduces exactly; whitespace checks pass. A final rebuild and
+focused replay pass after comment cleanup and removal of a duplicate membership
+entry; neither cleanup changes behavior. Evidence is archived in
+`difftest/reports/20260928-incremental-L296/`. No proof, checker or floor edits.
+
+The typed gate was rerun and remains red at the existing HeapFacts className/lookup
+proof drift. Its log is archived; proof repair remains explicitly deferred.
+
+
+## L297 — frozen native namespace-name identity (2026-09-28)
+
+Module#name returned a fresh mutable String on every read. It now uses a heap
+cache keyed by native path and String encoding tag: repeated reads and different
+namespaces assigned the same path share a frozen base String. Permanent naming
+selects a new path key; old temporary-name snapshots remain frozen and unchanged.
+Anonymous names remain nil. The cache survives heap writes/allocations and the
+prelude/runtime boundary; Heap.set/alloc preserve it explicitly. Reads bypass
+Ruby constructors, freezing hooks and overridden name methods through aliases or
+super. Module#to_s and inspect continue allocating fresh mutable display Strings.
+
+CRuby stores and returns its frozen native classpath VALUE (variable.c's classname,
+rb_mod_name and set_namespace_path); equal nested paths use rb_fstring. Executable
+CRuby 4.0.5 confirms path sharing, cache identity and promotion snapshots. ASCII
+temporary paths use ASCII-8BIT; Unicode paths use UTF-8. Permanent ASCII names
+really use US-ASCII, which the binary/UTF-8 model still cannot distinguish from
+other ASCII text: their encoding observation remains explicitly unsupported.
+The cache is deliberately native-name-only; general String#-@ canonicalization
+is still an independently observable known error, not claimed repaired here.
+
+The 33-case audit moves 29 disagreements and one old encoding gate to agreement,
+for 32 agreements and one existing String#clone(freeze: false) arity failure.
+A separate default-clone probe agrees. The original 14-case audit moves all seven
+disagreements to agreement, with nine agreements and five unchanged gates
+(String#replace, competing namespace paths and permanent ASCII-name encoding).
+Seven name-cache-* programs preserve all 32 agreeing probes, including aliases,
+super, frozen metadata rejection, duplicate paths, promotion and failed callbacks,
+Hash key identity, allocation survival and optional-feature loading. Core String
+and Object.const_added overrides are isolated in their own programs. Every exact
+combined source agrees before its sidecar is marked fixed. The L296 String#b
+prerequisite now gives cached temporary/binary names independent mutable copies.
+
+The preserved next-audit has 16 probes: 14 disagreements, one singleton-copy gate
+and one agreeing positional-hash rejection. Six disagreements show general
+String#-@ / frozen-literal canonicalization, including native name sharing. Eight
+show clone keyword validation/behavior across Object, Array, Hash, String, binary
+Strings, subclasses and immediate values. Send/super currently append keyword
+arguments into a positional Hash before the zeroArgBids path; clone also needs
+an effectful initialize_clone/initialize_copy protocol, not just an arity exception.
+Use this evidence for the next increment; none of these failures is hidden or
+counted as repaired by the native name cache.
+
+Final validation: model build passes (102 jobs), with no later runtime edits.
+Full bootstrap: 1,309 cases, 1,096 agree, zero disagree, 207 unsupported, five
+existing invalid controls and the old test_syntax_115 harness error. Every source
+and verdict matches L296. Regression replay: 203 cases, 202 agree and one old
+sorbet-hash gate; all 196 earlier sources/verdicts hold. Tier 1 (300, seed
+20260927): 226 agree, 74 gates, all sources/verdicts unchanged. Frontend seeds
+plus new guards: 53 agree, all AST-idempotent; six old render-only instabilities
+plus one benign name-cache-reads rendering instability. Standalone and feature
+loading: three agreements each. Whitespace checks pass. Build logs, before/after
+probes, combined-source validation, comparisons and the next audit are archived
+in `difftest/reports/20260928-incremental-L297/`. No checker, proof, comparator,
+normalizer or floor changes; proof repair remains explicitly deferred.
+
+The typed gate was rerun and remains red at HeapFacts className/lookup proof
+drift; its captured error log exactly matches L296. Proof repair stays deferred.
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.
+
+
+## L298 — native clone options and copy hooks (2026-09-28)
+
+Native clone flattened keywords into positional arguments, raising a zero-arity
+error on Object/String/Array/Hash copies and silently ignoring freeze:false on
+immediates. It also skipped both initialize_clone and initialize_copy. The new
+Interp/Copy module dispatches by resolved native bid (including aliases/super),
+checks positional arity before keywords, inspects unknown keys and renders the
+invalid option's class through live to_s. nil/true/false are the only accepted
+freeze values. Immediates, Rational and Complex retain identity and reject false.
+
+Core copies allocate without Ruby new/allocate/initialize calls, copy ivars, and
+send private initialize_clone with only explicit true/false forwarded. A nil
+option (including explicit nil) supplies no keyword. The default hook validates
+its own arguments and sends initialize_copy. Normal return discards the hook's
+value and freezes for true or the source's live frozen state under nil; false
+does not undo freezing done by the hook. Exceptions, throws and missing hooks
+follow ordinary dispatch/unwind and skip final freezing. Existing source
+singleton classes still gate. Newly added singleton metadata on a copy is
+frozen with its object at finalization.
+
+String/Array/Hash start with empty native contents (String is initially binary),
+but ivars already exist when a hook runs. Their registered private native
+initialize_copy methods change contents and encoding/default metadata, preserving
+destination ivars. They check frozen state before conversion, Hash rejects a
+nonself replacement during iteration, and conversions use the shared checked
+conversion machine (to_str/to_ary/to_hash). String also checks frozen state after
+conversion; Array/Hash finish even when conversion freezes the target. Exception
+message/hidden metadata are copied before hooks, matching CRuby's generic ivars.
+The previous Exception.exception protocol continues using its own final message
+replacement. Trace labels cover the new continuations.
+
+The algorithm follows CRuby 4.0's object.c (rb_get_freeze_opt, rb_obj_clone_setup,
+rb_obj_init_clone), string.c (rb_str_replace), array.c (rb_ary_replace) and hash.c
+(rb_hash_replace); executable CRuby 4.0.5 pins behavior. Native default copies of
+other already-modeled payloads retain the effect-free shortcut only while both
+hooks resolve to defaults. Their custom hooks still require uninitialized native
+allocation/state; namespace, singleton and Random copying remain separate work.
+Enumerator freeze options now work, with suspended execution copying rejected.
+Proc's own clone has a different zero-keyword API and remains an existing gate.
+
+The original 41 probes now yield 35 agreements and six gates: 30 disagreements
+and three gates become agreements; two earlier agreements hold. One disagreement
+now exposes the old Hash#default gate because the previously skipped hook runs;
+this is not counted as a conformance repair. Five other old gates remain
+(singleton copying, Array.new(array), Hash#default, Module#instance_method and
+Proc#clone). Equivalent supported constructions independently verify Array/Hash
+empty shells, shared defaults and native allocation bypass. The extra 26 probes
+have 24 agreements, one existing Range-subclass constructor gate and one preserved
+Regexp literal-frozen-state disagreement. Regexp.new and explicitly frozen
+Regexp copies agree; the literal bug is a distinct next increment. The L297
+33-case name audit now entirely agrees, repairing its final clone keyword case.
+Five native-clone-* programs preserve all 59 agreeing cases; every exact combined
+source agrees before its sidecar is marked fixed. No comparison or proof change.
+
+The separate next-audit has 12 probes: nine disagreements and three agreements.
+Six failures pin static/dynamic Regexp literal freezing, cached static site identity
+and /o freezing; three pin skipped dup hooks and ignored immediate dup arity.
+Runtime Regexp.new stays mutable, and new copy singleton finalization plus the
+initial String shell's ASCII-8BIT encoding agree. These reproducers define the
+next semantic increments; neither Regexp literal behavior nor dup is claimed fixed.
+
+Primary implementation references: [object.c](https://raw.githubusercontent.com/ruby/ruby/ruby_4_0/object.c),
+[string.c](https://raw.githubusercontent.com/ruby/ruby/ruby_4_0/string.c),
+[array.c](https://raw.githubusercontent.com/ruby/ruby/ruby_4_0/array.c), and
+[hash.c](https://raw.githubusercontent.com/ruby/ruby/ruby_4_0/hash.c).
+
+Final validation: model build passes (104 jobs), with no later runtime edits.
+Full bootstrap: 1,309 cases, 1,096 agree, zero disagree, 207 unsupported, five
+existing invalid controls and the old test_syntax_115 harness error. Every source
+and verdict matches L297. Regression replay: 208 cases, 207 agree and one old
+sorbet-hash gate; all 203 earlier sources/verdicts hold. Tier 1 (300, seed
+20260927): 226 agree, 74 gates, every source/verdict unchanged. Frontend seeds
+plus new guards: 51 agree, all AST-idempotent, six old render-only instabilities.
+Standalone and feature loading: three agreements each. Whitespace checks pass.
+Build logs, before/after focused probes, combined-source validation, full report
+comparisons and the next audit are archived in
+`difftest/reports/20260928-incremental-L298/`. No checker, proof, comparator,
+normalizer or floor changes; proof repair remains explicitly deferred.
+
+The typed gate was rerun and remains red at HeapFacts className/lookup proof
+drift; its captured error log exactly matches L297. Proof repair stays deferred.
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.
+
+
+## L299 — native dup initialization and singleton-state omission (2026-09-28)
+
+The L298 follow-up preserved skipped initialize_dup/initialize_copy effects and
+ignored immediate dup arity. Dup now enters a resolved native path, validates
+zero arguments before immutable identity, and treats nonempty keywords as one
+positional Hash (there is no freeze option). Object, String, Array, Hash and
+Exception reuse the native copy allocation/initialization machinery. They copy
+ivars before private initialize_dup, whose default calls initialize_copy and
+discards its normal return. Hooks see mutable allocations; hook freezing stays,
+with no final frozen-state copying from the source. Exceptions/throws retain
+ordinary effects and unwind. Literal blocks do not enter initialization hooks.
+
+Unlike clone, dup omits the source's singleton class. Its methods, extension
+modules, constants, undef entries and initialize_dup/initialize_copy overrides
+cannot leak into the result or intercept its hooks. Ordinary class hooks still
+run. Native aliases/super and aliases of initialize_dup keep their semantics.
+The shared allocation helper retains clone's existing singleton-copy gate and
+freeze protocol. For other already-modeled default payload copies, hook checks
+start from the real instance class, after singleton state is omitted. Enumerator
+copies retain execution-state checks; unstarted independent copies work even
+when the source has singleton methods. Namespace/Random copying and custom hooks
+requiring uninitialized specialized native payloads remain separate work.
+
+The implementation follows CRuby's
+[object.c](https://raw.githubusercontent.com/ruby/ruby/ruby_4_0/object.c)
+(rb_obj_dup, rb_obj_dup_setup and rb_obj_init_dup_clone), with CRuby 4.0.5 as the
+executable oracle. The native initialize_dup entry is private from boot; no Ruby
+wrapper, checker, proof, normalizer or comparator change is involved.
+
+All 42 focused probes agree: 20 disagreements and 13 old gates become agreements,
+with all nine earlier agreements preserved. They cover empty core shells,
+encoding/default sharing, immutable arity, native aliases/super, source/copy
+freezing, hook failure, metadata timing, singleton-state omission, constructor
+bypass and Enumerator state. Five native-dup-* programs preserve all 42; the
+global Integer hook override is isolated. Every exact combined source agrees
+before its sidecar is marked fixed. L298's 41 clone probes and 26 extra copy
+probes retain every earlier source/verdict (including their documented gates
+and Regexp literal-frozen-state failure).
+
+Final validation (closed 2026-09-29): model build passes (104 jobs), with no
+later runtime edits. Full bootstrap: 1,309 cases, 1,096 agree, zero disagree,
+207 unsupported, five existing invalid controls and the old test_syntax_115
+harness error. Every source/verdict matches L298. Regression replay: 213 cases,
+212 agree and one old sorbet-hash gate; all 208 earlier sources/verdicts hold.
+Tier 1 (300, seed 20260927): 226 agree, 74 gates, all sources/verdicts unchanged.
+Frontend seeds plus new guards: 51 agree, all AST-idempotent; six old render-only
+instabilities plus one benign native-dup-copies rendering instability. Standalone
+and feature loading: three agreements each. Whitespace checks pass. Evidence and
+before/after comparisons are archived in
+`difftest/reports/20260928-incremental-L299/`. No checker, proof, comparator,
+normalizer or floor changes; proof repair remains explicitly deferred.
+
+The typed gate was rerun and remains red at HeapFacts className/lookup proof
+drift; its captured error log exactly matches L298. Proof repair stays deferred.
+The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
+was not reached. The captured proof-audit.log is archived.
+
+
+## Proof repair against L299 — in progress (2026-09-29)
+
+The user explicitly resumed work to make all type proofs and the soundness
+theorem green. The conformance expansion remains closed at L299; this batch
+changes proofs and their invariants, not runtime behavior, checker admissions,
+comparison rules, or corpus floors. No green gate or completed soundness repair
+is claimed yet, and no commit has been made while the gate is red.
+
+The repaired foundations cover cache-preserving heap allocation, the new send
+control word and frozen-error protocol, direct builtin dispatch, recursive
+class names, visibility-only method entries, and local-frame aliasing. Native
+lookup is related to an unfueled proof scan only after proving that its supplied
+chain and optional Object fallback fit the execution budget. `NamesOk` records
+bounded name reads and fuel saturation; `namesOkB_sound` checks a finite
+certificate. Same-size writes and plain growth preserve this invariant.
+`ShallowChain` now also excludes aliases on the current and captured frame,
+which is what the existing direct-local model actually needs.
+
+`DriftControls.lean` retains counterexamples for cyclic attached names, lookup
+fuel growth, aliased local reads, and active-stack-only framing across an
+Enumerator resumption. The first two old growth claims and the old universal
+continuation frame law are false on the current runtime; restoring their
+statements with different tactics would not be a repair.
+
+`NotDone.lean` now covers the current interpreter helper graph. Its completion
+inversion, `done_inv`, and the eval/unwind lemmas compile with only standard
+Lean axioms. The tactic uses a dedicated erasure simp set; the one local Except
+validation is split directly, avoiding recursive proof-search loops. No
+admissions or new axioms were introduced.
+
+The replacement continuation action is being developed in `RootFrame.lean`.
+It appends the tail to the root execution wherever that execution is stored,
+including saved Enumerator callers, and leaves fiber continuations alone.
+The resumption, suspension, and completion laws are proved for arbitrary
+machines, using only `propext` and `Quot.sound`. A separate `HashLockFree`
+condition preserves the interpreter's native hash-iteration observation.
+The action agrees with ordinary continuation append at a quiescent root.
+It is not yet integrated into the full framing chain or denotational
+composition; the overall typed gate and Metatheory remain red.
+
+The root-frame chain now compiles through the nonnumeric builtin primitives
+(strings, collections, regexes, and module operations), interpreter state
+helpers, closure entry, and the small native-protocol entry points. The records
+are `RootFramePrimitives`, `RootFrameSupport`, `RootFrameContext`,
+`RootFrameClosures`, and `RootFrameProtocols`. Numeric dispatch and the higher
+interpreter layers are still being repaired; none of these replacements has
+yet been substituted for the old `KontFrame*` chain.
+
+The current runtime has five families of whole-stack observations: catch
+markers, native Hash iteration locks, block-call break scopes, Object#inspect
+recursion markers, and FrozenError inspection markers. `ContextFree` excludes
+those observers from the appended tail, and derives `HashLockFree`. This is a
+condition on the composition context, not a restriction on the interpreted
+program. Its eventual typed consumers must establish it for their actual
+contexts. Closure framing already uses it to preserve a captured break scope;
+without that condition the old closure lemma is false as well.
+
+## Statement-preserving proof repair — obstruction verified (2026-09-29)
+
+The new request explicitly forbids changing theorem statements. The earlier
+replacement-frame work cannot satisfy that constraint: the current
+`KontFrame.callClosure_frame` claim is false. `Proof/StatementObstruction.lean`
+copies its framing definitions and proves the negation of its exact universal
+statement. For a closure whose saved break scope is 7, appending `.blockCallK 7`
+before entry records `some 7` in the new block continuation; appending afterward
+leaves `none`. Both observations reduce by `rfl`; the refutation uses only
+`propext` and `Quot.sound`. Its standalone Lake target passes. Permission to
+repair false helper statements while preserving public soundness statements was
+requested and remains unanswered; no existing statement or runtime definition
+was changed in this follow-up.
+
+One independent proof repair is complete: `T5.dispatch_progress` now unfolds
+`crubyResolvedShadow` and handles `MethodDef.forTargets` after classifying empty
+parameters. Its statement and `dispatch_not_typestick` remain unchanged. T5,
+T5Loop, Demo and DriftControls build; `#print axioms` for both dispatch theorems
+and `t5_loop_type_safe` reports only Lean's standard axioms. The full Metatheory
+build remains red in Static.Decls, KontFrame, RootFrameBuiltins and
+RootFrameComplex, and the full typed ratchet remains red, including the
+local-alias failures in Denote.Sem.Closure.Capture and Denote.Ty.Ext. No green
+gate or completed repair is claimed, and no commit was made.
+
+## Authorized helper repair — continuing, gate still red (2026-09-29)
+
+The user subsequently authorized correcting false helper contracts while keeping
+public soundness statements, with an uncommitted audit in root proof-changes.md.
+The audit records exact changes and targeted validation. Name/ancestor bounds and
+alias resolution now transport through the core State/Frame/Reframe/Transport
+lemmas, local writes, ivar writes, and method-heap writes. These targeted modules
+build. Root framing builds through pure builtins, method entry, class entry,
+native copy/library calls, and enumerator reset/initialization. The new proof-only
+views are checked by definitional equality against the runtime; runtime code has
+not been changed. Remaining framing entry points and downstream proofs are red.
+
+Boot diagnostics exposed separate stale invariants: top-level lexical nesting is
+empty, raise is private, and method tables contain undefined tombstones. The
+corrected topScopeB/methodsExactB/queryOkB checks all evaluate true on the actual
+boot machine, but the production bootOkB guard still fails for the remaining
+main-singleton/native-each/hook/constant assumptions. No guard was removed. The
+checker constant bound omits Rational, Complex and Enumerator; a concrete
+metadata-only correction was proposed separately and has not been applied pending
+user direction because it changes admissions. Full check-proofs and typed ratchet
+are not green. No commit has been made.
+
+
+The replacement root-execution framing chain now builds through the actual
+stepFn theorem, with standard-axiom audits on evalDefined/evalExpr, applyKont,
+unwind, invoke/doSuper, and constructor dispatch. The framing action follows the
+root execution through Enumerator save/restore; ContextFree excludes catch,
+block-call, inspection, frozen-error recursion, and Hash-lock observations.
+Proof-only stages are definitionally checked against the runtime. A stale tactic
+option (`simp_all (disch := ...)`) inside try had silently skipped simplification;
+removing it fixed repeated case splitting. Large constructor/dispatch proofs now
+split outer branches before simplification.
+
+Method installation and inherited/root/super lookup also build. Ordinary method
+metadata excludes visibility-only forwarding entries; lookup proofs use bounded
+runtime lookup with its finite-scan equivalence. The public state-level lookup
+conclusions are unchanged. Full Metatheory still fails in the legacy KontFrame
+API and ModFresh; Denote and the typed gate are still red. Audit details and
+validation logs are summarized in the uncommitted root proof-changes.md.
+
+
+## 2026-09-29 — complete metatheory gate restored; Denote still in repair
+
+The root-execution frame proof now reaches stepFn, and the legacy KontFrame
+modules are compatibility imports for that corrected helper API. Fresh class
+and module metatheory uses bounded lookup, recursive name invariants, current
+heap revisions/caches, and truthful queued-callback entry contracts. Full
+Metatheory plus check-proofs.sh passes with the standard axiom set.
+
+Denote is not green. Its older run decomposition and boot/runtime-entry
+assumptions still need migration. A concrete accepted TypeError program
+(`def inspect; 1; end; inspect + 1`) exposed a separate main-singleton checker
+admission bug; a conservative guard/regression patch is prepared and awaiting
+user direction. The approved Rational/Complex/Enumerator global-constant
+correction is applied. Full typed ratchet fails before agreement. The detailed
+uncommitted proof-changes.md audit distinguishes changed helper contracts,
+strengthened conformance invariants, executable fixtures, and remaining work.
+
+## 2026-09-30 — continuation decomposition is a design constraint
+
+The user requires a decomposable continuation model wherever it can faithfully
+express Ruby behavior. Catch/throw may remain outside typed admission for now.
+The current root-run theorem passes but its ContextFree restriction still excludes
+blockCallK, inspection guards and Hash iteration locks. That restriction is not
+the desired permanent answer for ordinary block calls.
+
+Proposed next change: replace the block-entry kont scan with an explicit live
+break-token set in execution state. Allocate identity at the original literal
+block call, retain it through forwarding, and expire it only when that call's
+marker is consumed on return/unwind. Open sub-runs inherit liveness, carry a
+targeted escape as an answer, and resume the outer continuation to consume it.
+Dead destinations make break invalid while allowing normal Proc execution.
+Execution suspension, exception/ensure ordering and fresh identities need checked
+correspondence with existing Ruby behavior. No token implementation or runtime
+change is part of this checkpoint. The metatheory is green; the typed bridge
+remains red as recorded in HANDOFF.md.
+
+## 2026-09-30 — dynamic block-call lifetimes
+
+The user authorized eliminating the four avoidable continuation dependencies,
+committing each family separately and preserving the tier 0 difftest ratchet.
+Failing proof repairs are explicitly deferred for this task.
+
+reifyCallBlock installs its fresh reserved-frame identity in liveBreakScopes.
+callClosure reads execution state instead of scanning kont. blockCallK removes
+the token on normal return and every unwind path, after intervening ensures.
+Forwarding keeps identity and dead tokens invalidate break alone. Execution
+save/restore includes liveness, while a new Enumerator producer starts empty.
+Detaching an outer continuation for an answer run therefore retains liveness.
+ContextFree now permits block-call boundaries.
+
+The standalone dynamic-contexts Lean probe verifies detached liveness, dead
+marker non-revival, normal/exception cleanup and execution save/restore against
+the executable interpreter, with standard axioms only. The old obstruction
+remains a checked historical counterexample using a legacy stack-scan helper.
+Full framing/type proof migration is deferred, as requested.
+
+Runtime build passes. Full regression replay: 215 cases, 214 agreements and the
+old sorbet-hash gate. Every L299 source/verdict is preserved; the additional
+mix-06676-minimized guard and new dynamic-break-lifetime guard agree. The new
+guard covers forwarding, constructors, ensure order, recursive token identity,
+expired ordinary/break calls and Enumerator suspension/isolation/abandonment.
+Reports and per-case comparisons: difftest/reports/20260930-dynamic-block/.
+
+Full tier 0 after the change: 1,309 cases, 1,096 agree, zero disagree, 207
+unsupported, five old invalid controls and the old test_syntax_115 harness error.
+Every source and verdict matches the fresh baseline (which also matches L299).
+Runtime and standalone controls pass; failing proof repairs remain deferred.
+
+## 2026-09-30 — dynamic Object inspection guards
+
+Native Object inspection reads execution-local objectInspections instead of
+scanning kont. Each nested inspect/to_s callback acquires a receiver-identity
+guard; its objectInspectK releases one entry on normal return or any unwind.
+The selection hook still executes before recursion detection. Field names remain
+buffered, and field values/filter remain live. Execution save/restore carries
+the guards; new Enumerator producers start empty and abandoned guards disappear
+with the discarded execution. A detached answer run retains ambient guards.
+ContextFree now permits objectInspectK.
+
+Runtime and standalone interpreter controls pass, including single-entry cleanup
+when an ambient guard for the same receiver is present. The before-change probe
+and new permanent dynamic-object-inspection regression both agree with CRuby:
+nested inspect/to_s, hook counts, raise/throw cleanup, suspension, independent
+caller/producer recursion state and abandonment are pinned. Full regression
+replay has 216 cases, 215 agree and the old sorbet-hash gate. Every preceding
+source/verdict is retained. Evidence: difftest/reports/20260930-dynamic-inspect/.
+Failing proof repairs remain deferred by the user's instruction.
+
+Full tier 0 after the Object change preserves every one of the 1,309
+sources/verdicts: 1,096 agree, zero disagree, 207 unsupported, five old invalid
+controls and one old harness error. The per-case comparison is archived with
+the report; no testing floors, comparator or admission rules changed.
+
+## 2026-09-30 — dynamic FrozenError rendering guards
+
+FrozenError recursion detection now reads execution-local frozenInspections.
+The guard starts after exception initialization and the native frozen-exception
+check, when receiver inspect is invoked. Non-String results acquire the guard
+again for their to_s callback after the inspect continuation releases its entry.
+Only inspected/stringified phases release a guard; class-name and initialization
+phases leave ambient guards intact. Cleanup occurs on every return/unwind, and
+Execution save/restore/new-producer isolation includes the rendering state.
+Continuation cuts retain the guard. ContextFree now permits every frozenErrorK.
+
+Runtime and standalone controls pass. The new dynamic-frozen-rendering guard
+agrees before and after the refactor: recursive inspect/to_s, distinct receiver
+identity, raise/throw cleanup, reentry during class-name conversion/initialize,
+and Enumerator suspension/isolation/completion/abandonment. The full proof
+repair remains deferred by the user. Evidence: difftest/reports/20260930-dynamic-frozen/.
+
+Full regression replay: 217 cases, 216 agree and the old sorbet-hash gate;
+every preceding source/verdict is retained. Full tier 0: 1,309 cases, 1,096
+agree, zero disagree, 207 unsupported, five old invalid controls and one old
+harness error. The complete source/verdict comparison is unchanged. No testing
+floors, comparator or admission rules changed.
+## 2026-09-30 — shared native Hash iteration locks
+
+Native Hash iteration reads shared hashIterationLocks instead of scanning the
+active continuation, suspended/caller executions and an abandoned-lock store.
+Each Hash callback adds one receiver entry. Its iterK releases one entry on
+return or unwind; redo stays inside the callback and retains the lock. Nested
+iterations and independent suspended producers own separate entries for the
+same receiver. Execution switching retains this shared state. Rewind drops the
+saved execution without cleanup, so its entries remain, matching the previous
+abandoned-lock behavior. Empty/exhausted iteration acquires no entry. Existing
+value updates, deletions and iteration cursor behavior are unchanged.
+
+ContextFree now excludes only catchK. The four removed exclusions are blockCallK,
+objectInspectK, frozenErrorK and Hash iterK. Continuation detachment keeps their
+dynamic state; their owning boundaries perform cleanup when resumed. The only
+remaining runtime whole-continuation scan is hasCatcher. HashLockFree is retained
+as a compatibility predicate for state preservation, proved for every tail.
+The obsolete empty-tags/non-context-free Hash witness becomes the converse
+catch-tag theorem. Full framing/type proof repair remains deferred by the user.
+
+Runtime build and standalone dynamic-contexts controls pass, including detached
+locks, inert markers, duplicate-count cleanup, unwind, execution restoration and
+abandonment. The RootFrame leaf checks; the new tag equivalence also checks in
+isolation without the failing downstream proof imports. The before-change Hash
+probe agrees with CRuby. The permanent dynamic-hash-iteration regression covers
+nested break, raise/throw/redo/next, suspended insertion/copy rejection, live
+updates, independent producers, caller locks and abandoned-lock persistence.
+Evidence: difftest/reports/20260930-dynamic-hash/.
+
+Full regression replay: 218 cases, 217 agree and the old sorbet-hash gate.
+Every preceding source/verdict is retained, and the new Hash guard agrees.
+
+Full Hash tier 0: 1,309 cases, 1,096 agree, zero disagree, 207 unsupported,
+five old invalid controls and one old harness error. Every source and verdict
+matches both the preceding FrozenError commit and the initial baseline.
+All four runtime refactors are complete in separate commits; proof repair is
+still deferred, and the full typed gate is not claimed green.
+
+## 2026-09-30 — shared prerequisite for the clink rebuild
+
+The new minimal clink registry enables only the seven literal rules. Its common
+conformance imports exposed L299's existing dispatch-proof drift: Integer +, -
+and * lacked simplification of the new String-comparison deferral query.
+BuiltinConformance's three proofs now unfold strCmpDefer? and strCmpTwin?, with
+unchanged statements and no executable model change. The literal Registry and
+its real model-safety witness now compile with only standard Lean axioms.
+The remaining proof families are gated while rebuilt, rather than repaired here.
+See notes/ratchet/implementation-notes.md and Denote/Clink/README.md for the new
+profile and checks. No runtime differential rerun was needed for proof-only edits.
+
+## 2026-09-30 — Revalidate static dispatch and iterator unwind
+
+Static/Decls' four Integer rows now simplify strCmpDefer?/strCmpTwin?, retaining
+their theorem statements. The next batch failure was substantive: iterK hashEach
+releases a shared lock, refuting the old exact unwind-transparency claim.
+Static/IteratorUnwind records a kernel-checked witness and IterUnwindInert;
+RetTransparent/NxtTransparent require it. KontOk's ignore iterator still qualifies.
+See ../../unsoundness.md. Runtime and active validator judgments are unchanged.
+check-proofs.sh passes with standard axioms and boot probes; the active typed
+gate passes with 15/99 clinks and 254 CRuby agreements, zero disagreements.
+Logs: /private/tmp/ascent-metatheory-repair.log and ascent-primitives-gate.log.

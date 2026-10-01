@@ -11,11 +11,11 @@ open RubyCore Ratchet RubyCore.Proof RubyCore.Proof.Judgment
 namespace FreshClass
 theorem method_nonclass {heap : Heap} {k : ObjId} (hp : heap.classPayload? k = none)
     (mn : String) : Interp.methodOn heap k mn = none := by
-  simp [Interp.methodOn, ancestors, ancestors.go, hp, List.firstM]
-  rfl
+  simp [Interp.methodOn, ancestors, ancestors.go, hp, lookupInChain, lookupInChain.go]
 
 theorem shadow_cons {heap : Heap} {k owner : ObjId} {ks : List ObjId} {mn : String}
-    (hn : crubyClassDefines (className heap k) mn = false)
+    (hn : (crubyClassDefines (className heap k) mn || Interp.nativeSingletonMethod heap k mn ||
+      Interp.featureMethod heap k mn) = false)
     (ht : Interp.crubyShadow heap (ks.takeWhile (· != owner)) mn = none) :
     Interp.crubyShadow heap ((k :: ks).takeWhile (· != owner)) mn = none := by
   by_cases hk : k != owner
@@ -30,29 +30,43 @@ namespace Subclass
 variable {h : Heap} {d parent eParent : ObjId} {name q : String}
 local notation "h₁" => heap h d name q parent eParent
 
-theorem lookup_go_old {ks : List ObjId} (hl : ∀ k ∈ ks, k < h.objs.size) (mn : String) :
-    lookup.go h₁ mn ks = lookup.go h mn ks := by
-  rw [ClsGrow.lookup_go_old grow ks (fun k hk => by rw [hmid_size]; exact hl k hk)]
+theorem lookup_go_old (hc : ChainsIn h) (hs : Saturated h) {ks : List ObjId}
+    (hl : ∀ k ∈ ks, k < h.objs.size) (hlen : ks.length ≤ h.objs.size + 1) (mn : String) :
+    lookupInChain h₁ ks mn = lookupInChain h ks mn := by
+  rw [ClsGrow.lookup_go_old grow (chainsIn_hmid hc) (saturated_hmid hs)
+    ks (fun k hk => by rw [hmid_size]; exact hl k hk) (by rw [hmid_size]; exact hlen)]
   exact lookup_go_constSetIn h d name _ mn ks
 
 theorem method_old (hc : ChainsIn h) (hs : Saturated h) {k : ObjId}
     (hk : k < h.objs.size) (mn : String) : Interp.methodOn h₁ k mn = Interp.methodOn h k mn := by
   rw [methodOn_eq_go, methodOn_eq_go, ancestors_old hc hs hk,
-    lookup_go_old (ClsGrow.ancestors_mem_lt hc hk)]
+    lookup_go_old hc hs (ClsGrow.ancestors_mem_lt hc hk) (ancestors_length_bound hc k)]
 
 theorem method_class (hc : ChainsIn h) (hs : Saturated h) (hp : parent < h.objs.size) (mn : String) :
     Interp.methodOn h₁ h.objs.size mn = Interp.methodOn h parent mn := by
-  rw [methodOn_eq_go, ancestors_class hc hs hp, lookup.go]
-  simp only [Heap.classPayload?, get_class, classObjE]
-  change lookup.go h₁ mn (ancestors h parent) = _
-  rw [lookup_go_old (ClsGrow.ancestors_mem_lt hc hp), methodOn_eq_go]
+  have ho := ancestors_length_bound hc Boot.objectId
+  have hp' := ancestors_length_bound hc parent
+  have ha : ancestors h₁ Boot.objectId = ancestors h Boot.objectId :=
+    ancestors_old hc hs hc.boot.2.2.2.2
+  rw [methodOn_eq_go, ancestors_class hc hs hp,
+    lookupInChain_eq_scan _ _ _ (by rw [List.length_cons, ha, size]; omega)]
+  simp only [lookupScan, Heap.classPayload?, get_class, classObjE, classObj, List.find?_nil]
+  rw [← lookupInChain_eq_scan _ _ _ (by rw [ha, size]; omega),
+    lookup_go_old hc hs (ClsGrow.ancestors_mem_lt hc hp) hp']
+  rfl
 
 theorem method_eigen (hc : ChainsIn h) (hs : Saturated h) (he : eParent < h.objs.size) (mn : String) :
     Interp.methodOn h₁ (h.objs.size + 1) mn = Interp.methodOn h eParent mn := by
-  rw [methodOn_eq_go, ancestors_eigen hc hs he, lookup.go]
-  simp only [Heap.classPayload?, get_eigen, eigObjC]
-  change lookup.go h₁ mn (ancestors h eParent) = _
-  rw [lookup_go_old (ClsGrow.ancestors_mem_lt hc he), methodOn_eq_go]
+  have ho := ancestors_length_bound hc Boot.objectId
+  have hp' := ancestors_length_bound hc eParent
+  have ha : ancestors h₁ Boot.objectId = ancestors h Boot.objectId :=
+    ancestors_old hc hs hc.boot.2.2.2.2
+  rw [methodOn_eq_go, ancestors_eigen hc hs he,
+    lookupInChain_eq_scan _ _ _ (by rw [List.length_cons, ha, size]; omega)]
+  simp only [lookupScan, Heap.classPayload?, get_eigen, eigObjC, List.find?_nil]
+  rw [← lookupInChain_eq_scan _ _ _ (by rw [ha, size]; omega),
+    lookup_go_old hc hs (ClsGrow.ancestors_mem_lt hc he) hp']
+  rfl
 
 def source (h : Heap) (parent eParent k : ObjId) : ObjId :=
   if k = h.objs.size then parent else if k = h.objs.size + 1 then eParent else k
@@ -75,19 +89,19 @@ theorem method_source (hc : ChainsIn h) (hs : Saturated h)
       · rw [FreshClass.method_nonclass (cp_oob (Nat.le_of_not_lt (not_lt_add_two hl hk hek))),
           FreshClass.method_nonclass (classPayload?_oob h k hl)]
 
-theorem shadow_old {ks : List ObjId} (hl : ∀ k ∈ ks, k < h.objs.size) (mn : String) :
+theorem shadow_old (hnames : NamesOk h) {ks : List ObjId} (hl : ∀ k ∈ ks, k < h.objs.size) (mn : String) :
     Interp.crubyShadow h₁ ks mn = Interp.crubyShadow h ks mn := by
-  rw [ClsGrow.crubyShadow_old grow ks (fun k hk => by rw [hmid_size]; exact hl k hk)]
-  simp only [Interp.crubyShadow, className_constSetIn]
+  rw [ClsGrow.crubyShadow_old grow (namesOk_constSetIn hnames _ _ _) ks (fun k hk => by rw [hmid_size]; exact hl k hk)]
+  exact crubyShadow_constSetIn ks mn
 
-theorem shadow_before_old (hc : ChainsIn h) (hs : Saturated h) {k : ObjId}
+theorem shadow_before_old (hnames : NamesOk h) (hc : ChainsIn h) (hs : Saturated h) {k : ObjId}
     (hk : k < h.objs.size) (owner : ObjId) (mn : String) :
     Interp.crubyShadow h₁ ((ancestors h₁ k).takeWhile (· != owner)) mn =
       Interp.crubyShadow h ((ancestors h k).takeWhile (· != owner)) mn := by
   rw [ancestors_old hc hs hk]
-  exact shadow_old (fun j hj => ClsGrow.ancestors_mem_lt hc hk j ((List.takeWhile_sublist _).mem hj)) mn
+  exact shadow_old hnames (fun j hj => ClsGrow.ancestors_mem_lt hc hk j ((List.takeWhile_sublist _).mem hj)) mn
 
-theorem shadow_before_source (hc : ChainsIn h) (hs : Saturated h)
+theorem shadow_before_source (hnames : NamesOk h) (hc : ChainsIn h) (hs : Saturated h)
     (hp : parent < h.objs.size) (he : eParent < h.objs.size) (hne : q.isEmpty = false) {mn : String}
     (hn : crubyClassDefines q mn = false) (hen : crubyClassDefines ("#<Class:" ++ q ++ ">") mn = false)
     (k owner : ObjId)
@@ -98,27 +112,29 @@ theorem shadow_before_source (hc : ChainsIn h) (hs : Saturated h)
     simp only [source, ite_true] at hold
     rw [ancestors_class hc hs hp]
     apply FreshClass.shadow_cons
-    · rw [className_class hne]; exact hn
-    · rw [shadow_old (fun j hj => ClsGrow.ancestors_mem_lt hc hp j ((List.takeWhile_sublist _).mem hj))]
+    · simp [className_class hne, Interp.nativeSingletonMethod, Interp.featureMethod,
+        Interp.featureHas, Interp.libraryNamespace, Heap.classPayload?, get_class, classObjE, classObj, hn]
+    · rw [shadow_old hnames (fun j hj => ClsGrow.ancestors_mem_lt hc hp j ((List.takeWhile_sublist _).mem hj))]
       exact hold
   · by_cases hek : k = h.objs.size + 1
     · subst k
       simp only [source, if_neg (Nat.succ_ne_self _), ite_true] at hold
       rw [ancestors_eigen hc hs he]
       apply FreshClass.shadow_cons
-      · rw [className_eigen]; exact hen
-      · rw [shadow_old (fun j hj => ClsGrow.ancestors_mem_lt hc he j ((List.takeWhile_sublist _).mem hj))]
+      · simp [className_eigen, Interp.nativeSingletonMethod, Interp.featureMethod,
+          Interp.featureHas, Interp.libraryNamespace, Heap.classPayload?, get_eigen, eigObjC, hen]
+      · rw [shadow_old hnames (fun j hj => ClsGrow.ancestors_mem_lt hc he j ((List.takeWhile_sublist _).mem hj))]
         exact hold
     · simp only [source, if_neg hk, if_neg hek] at hold
       by_cases hl : k < h.objs.size
-      · rw [shadow_before_old hc hs hl]; exact hold
+      · rw [shadow_before_old hnames hc hs hl]; exact hold
       · have hp₀ := classPayload?_oob h k hl
         have hp₁ : (h₁).classPayload? k = none := cp_oob (Nat.le_of_not_lt (not_lt_add_two hl hk hek))
         have ha₀ : ancestors h k = [k] := by simp [ancestors, ancestors.go, hp₀]
         have ha₁ : ancestors h₁ k = [k] := by simp [ancestors, ancestors.go, hp₁]
         simp only [ha₀] at hold
         rw [ha₁]
-        have hname : className h₁ k = className h k := by simp only [className, hp₀, hp₁]
+        have hname : className h₁ k = className h k := by simp only [className, className.go, hp₀, hp₁]
         by_cases hko : k = owner
         · subst owner
           simp only [List.takeWhile_cons, bne_self_eq_false, Bool.false_eq_true,
@@ -126,7 +142,9 @@ theorem shadow_before_source (hc : ChainsIn h) (hs : Saturated h)
           rfl
         · have hkb : (k != owner) = true := by simpa only [bne_iff_ne] using hko
           simpa only [List.takeWhile_cons, hkb, ite_true, List.takeWhile_nil, Interp.crubyShadow,
-            List.firstM, hname] using hold
+            List.firstM, hname, Interp.nativeSingletonMethod, Interp.featureMethod,
+            Interp.featureHas, Interp.libraryNamespace, hp₀, hp₁, Option.bind_none,
+            Option.any_none, Bool.or_false] using hold
 
 #print axioms method_source
 #print axioms shadow_before_source

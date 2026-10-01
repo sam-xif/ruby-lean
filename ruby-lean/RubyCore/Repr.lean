@@ -11,8 +11,9 @@ the machine tracks that with a `reprPure` flag and callers must gate on it
 Errors (`Except String`) are Unsupported reasons, e.g. float formatting
 (Ruby requires shortest-roundtrip which Lean's Float.toString is not).
 -/
-import RubyCore.Heap
+import RubyCore.Complex
 import RubyCore.FloatFmt
+import RubyCore.Unicode
 
 namespace RubyCore
 
@@ -48,7 +49,8 @@ private def escapeChar (binary : Bool) (c : Char) (next? : Option Char) : String
       String.ofList (List.replicate (width - hex.length) '0') ++ hex
     if binary then
       if c.val < 0x20 || c.val ≥ 0x7f then s!"\\x{hexOf 2}" else String.singleton c
-    else if c.val < 0x20 || c.val == 0x7f then s!"\\u{hexOf 4}"
+    else if !unicodePrintable c then
+      if c.toNat ≤ 0xffff then s!"\\u{hexOf 4}" else "\\u{" ++ hexOf 0 ++ "}"
     else String.singleton c
 
 def escapeStringEnc (binary : Bool) (s : String) : String := Id.run do
@@ -110,6 +112,8 @@ partial def valueEql (h : Heap) (a b : Value) : Bool :=
     else
       match (h.get x).payload, (h.get y).payload with
       | .str s, .str t => strEqEnc h x y s t
+      | .rational n d, .rational a b => n == a && d == b
+      | .complex r i, .complex a b => valueEql h r a && valueEql h i b
       | .arr xs, .arr ys =>
         xs.size == ys.size && (xs.zip ys).all (fun (p, q) => valueEql h p q)
       | .hsh xs, .hsh ys => hashEq xs ys
@@ -126,6 +130,15 @@ where
 /-- Loose `==` (numeric: 1 == 1.0). The builtin default; user overrides are
     gated by `reprPure`. -/
 partial def valueEq (h : Heap) (a b : Value) : Bool :=
+  if let some (r, i) := complexPayload? h a then
+    match complexPayload? h b with
+    | some (x, y) => valueEq h r x && valueEq h i y
+    | none => nativeReal h b && valueEq h r b && realZero h i
+  else if let some (r, i) := complexPayload? h b then
+    nativeReal h a && valueEq h r a && realZero h i
+  else if let some (n, d) := rationalPayload? h a then rationalEq h n d b
+  else if let some (n, d) := rationalPayload? h b then rationalEq h n d a
+  else
   match a, b with
   | .int x, .flt y => Float.ofInt x == y
   | .flt x, .int y => x == Float.ofInt y
@@ -210,9 +223,9 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
       return className h o
     | .exc msg =>
       let cname := className h (h.get o).klass
-      if msg.isEmpty then return cname else return s!"#<{cname}: {msg}>"
+      let text ← if msg.identEq .nil then pure cname else toS h msg
+      if text.isEmpty then return cname else return s!"#<{cname}: {text}>"
     | .proc _ => throw "Proc#inspect (address non-deterministic)"
-    | .rng _ => throw "Random#inspect (state/address non-deterministic)"
     | .range lo hi excl =>
       -- A **nil endpoint prints as nothing** — `(1..nil).inspect` is `"1.."` and
       -- `(nil..2)` is `"..2"` — *except* when both are nil, which prints
@@ -226,6 +239,30 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
       | .nil, _ => return dots ++ (← inspect h hi)
       | _, .nil => return (← inspect h lo) ++ dots
       | _, _ => return (← inspect h lo) ++ dots ++ (← inspect h hi)
+    | .rational n d => return s!"({n}/{d})"
+    | .complex r i => complexText h true r i
+    | .enumerator none => return s!"#<{className h (h.get o).klass}: uninitialized>"
+    | .chain _ => throw "Chain inspection requires method dispatch"
+    | .enumerator (some data) =>
+      let receiver ← inspect h data.recv
+      let (args, keywords) := if !data.kw.isEmpty then (data.args, data.kw) else
+        match data.args.getLast? with
+        | some (.ref a) => match (h.get a).payload with
+          | .hsh pairs =>
+            if !pairs.isEmpty && pairs.all (fun (k, _) => match k with | .sym _ => true | _ => false)
+            then (data.args.dropLast, pairs.toList) else (data.args, [])
+          | _ => (data.args, [])
+        | _ => (data.args, [])
+      let args ← args.mapM (inspect h)
+      let kwParts ← keywords.mapM fun (key, value) => do
+        match key with
+        | .sym s =>
+          let name := if symbolIdentLike s then s else escapeString s
+          return s!"{name}: {← inspect h value}"
+        | _ => throw "Enumerator inspect with non-Symbol keyword keys"
+      let args := args ++ kwParts
+      return "#<" ++ className h (h.get o).klass ++ ": " ++ receiver ++ ":" ++ data.method ++
+        (if args.isEmpty then "" else "(" ++ String.intercalate ", " args ++ ")") ++ ">"
     | .regexp src opts => return regexpInspect src opts
     | .mdata subject caps names =>
       -- `#<MatchData "1.22" 1:"1" commit:nil>` — named groups print their name
@@ -245,7 +282,7 @@ partial def inspect (h : Heap) (v : Value) : Except String String := do
            | none => "nil")
       return "#<MatchData " ++ esc whole ++
         (if parts.isEmpty then "" else " " ++ String.intercalate " " parts) ++ ">"
-    | .none =>
+    | .none | .rng _ | .generator _ | .yielder .. =>
       let cname := className h (h.get o).klass
       let ivars := (h.get o).ivars.reverse
       if ivars.isEmpty then
@@ -278,18 +315,20 @@ partial def toS (h : Heap) (v : Value) : Except String String := do
       else return s
     | .arr _ | .hsh _ => inspect h v
     | .cls _ => return className h o   -- as in `inspect` above (L124)
-    | .exc msg => return msg
+    | .exc msg => if msg.identEq .nil then return className h (h.get o).klass else toS h msg
     | .proc _ => throw "Proc#to_s (address non-deterministic)"
-    | .rng _ => throw "Random#to_s (state/address non-deterministic)"
     | .range lo hi excl =>
       return (← toS h lo) ++ (if excl then "..." else "..") ++ (← toS h hi)
+    | .rational n d => return s!"{n}/{d}"
+    | .complex r i => complexText h false r i
+    | .enumerator _ | .chain _ | .generator _ | .yielder .. => return s!"#<{className h (h.get o).klass}:{fakeAddr o}>"
     | .regexp src opts => return regexpToS src opts
     | .mdata subject caps _ =>
       let whole := (spanText subject (caps[0]?.getD none)).getD ""
       if (h.get o).binary && hasHighByte whole then
         throw "MatchData#to_s over a byte-string subject with a byte ≥ 0x80 (L118)"
       else return whole
-    | .none =>
+    | .none | .rng _ =>
       let cname := className h (h.get o).klass
       return s!"#<{cname}:{fakeAddr o}>"
 

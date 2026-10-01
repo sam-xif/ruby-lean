@@ -10,6 +10,8 @@ module RubyCore
   HEADS = {
     int:   "[:int, Integer]",
     flt:   "[:flt, Float]",
+    rat:   "[:rat, Integer numerator, positive Integer denominator]",
+    imag:  "[:imag, Integer/Float/Rational literal]",
     str:   "[:str, String]",           # literal string, no interpolation
     sym:   "[:sym, String]",
     true:  "[:true]",
@@ -52,7 +54,7 @@ module RubyCore
     redo:  "[:redo]",                               # re-run the current loop iteration
     undef: "[:undef, [names]]",                     # undef foo, bar  (names carry any sigil)
     alias: "[:alias, new, old]",                    # alias new old   (method or $global names)
-    for:   "[:for, [[kind, name], ...], coll, body]",  # for x in coll; body; end (index leaks)
+    for:   "[:for, [[kind, name], ...], coll, body, multiple?]",  # for x in coll; body; end (index leaks)
     dowhile: "[:dowhile, body, cond]",              # begin; body; end while cond (run-once)
     seq:   "[:seq, *nodes]"
   }.freeze
@@ -125,6 +127,10 @@ module RubyCore
     case head
     when :int    then node[1].is_a?(Integer) ? nil : "int payload not Integer"
     when :flt    then node[1].is_a?(Float) ? nil : "flt payload not Float"
+    when :rat
+      node.length == 3 && node[1].is_a?(Integer) && node[2].is_a?(Integer) && node[2] > 0 ? nil : "invalid rational literal"
+    when :imag
+      node.length == 2 && node[1].is_a?(Array) && %i[int flt rat].include?(node[1][0]) ? explain(node[1]) : "invalid imaginary literal"
     when :str, :sym then node[1].is_a?(String) ? nil : ":#{head} payload not String"
     when :true, :false, :nil, :self then node.length == 1 ? nil : ":#{head} takes no children"
     when :var
@@ -251,6 +257,7 @@ module RubyCore
       node[1].is_a?(String) && node[2].is_a?(String) ? nil : "alias names not String"
     when :for
       _, targets, coll, body = node
+      return "for multiple marker invalid" unless node.length == 4 || (node.length == 5 && [true, false].include?(node[4]))
       return "for targets not Array" unless targets.is_a?(Array) && !targets.empty?
       targets.each do |kn|
         return "for target not [kind, name]" unless kn.is_a?(Array) && kn.length == 2 && kn[1].is_a?(String)

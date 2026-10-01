@@ -121,8 +121,8 @@ body entry for a reason that is about scope. -/
 structure Scope where
   /-- The definition site of the running method, or `none` outside any method body. -/
   frame : Option Frame
-  /-- Every block literal in the program, indexed by `Ty.clos`. Constant for a whole run —
-      `validate` fills it in from `collectBlocks` and nothing changes it. -/
+  /-- Legacy block table retained in scope compatibility. Ty.clos carries its code
+      directly; no callable admission may rely on this table slot alone. -/
   closures : ClosTable
   /-- The **block** the currently-executing method was called with, as a `Ty.clos`, or `none`
       if it has none (or if we are not in a method body). This is what `yield` reads: Ruby
@@ -149,6 +149,8 @@ structure Scope where
   /-- Ordinary lexical class owner, shared by a class body and its method activations.
       This is independent of the receiver type; `none` imposes no class-scope requirement. -/
   runtimeClass : Option String := none
+  /-- Singleton lexical class; runtime defmod is its cached eigenclass. -/
+  runtimeSingleton : Option String := none
   /-- Unmentioned self ivars are known to read as nil. Ordinary open instance annotations
       do not provide this fact; fresh initialization does. -/
   closedIvars : Bool := true
@@ -530,13 +532,13 @@ because a recursive call made from inside a body must still find the assumption 
 it. The body's *locals* are not in `Ctx` at all — they are the threaded `Env`, and a call
 rule supplies `paramEnv`'s fresh one. -/
 def Ctx.inMethod (κ : Ctx) (σ : Ty) (dc m : String) : Ctx :=
-  { κ with scope := { κ.scope with selfTy := some σ, frame := some ⟨selfClsName σ, dc, m⟩ } }
+  { κ with scope := { κ.scope with selfTy := some σ, frame := some ⟨selfClsName σ, dc, m, false⟩ } }
 
 /-- Entering a body whose `self` this judgment declines to type — `initialize` (see
 `Judge.newInst`) — but whose *definition site* still has to be recorded, because the body may
 call `super`. -/
 def Ctx.inCtor (κ : Ctx) (rc dc m : String) : Ctx :=
-  κ.withFrame (some ⟨rc, dc, m⟩)
+  κ.withFrame (some ⟨rc, dc, m, false⟩)
 
 /-! ### Constants (tier 13)
 

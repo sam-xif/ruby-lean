@@ -1083,3 +1083,67 @@ Ruby with a per-character loop, so putting it on the interpolation path of every
 have been a large slowdown for a cold-path rule.
 
 Rule coverage unchanged (`interp` already existed); seeds 43/43, bootstraptest 1227/0.
+
+## C39 — rational literals are native exact fractions (2026-09-28)
+
+The old `Rational(n, d)` lowering executed a user-overridable constructor, whereas
+CRuby evaluates `1.2r` without looking up a method or constant. It also lost
+literal identity: repeated execution of one literal site shares a frozen object;
+two separate occurrences do not. The core now carries `[:rat, numerator,
+denominator]`, using Prism's exact fraction. Render emits a finite decimal with
+the `r` suffix, computed with integer arithmetic. Literal denominators contain
+only factors 2 and 5; no Float or Ruby constructor participates in rendering.
+
+Export v5 gains an additive `rat` head with a fourth, syntax-site string. Stable
+preorder numbering belongs to export, leaving the render/parse normal form
+unchanged. `program` and `prelude` namespaces separate the two compilation units;
+any future runtime compilation must supply a fresh unit namespace. The model
+caches frozen fractions by site. Imaginary literals still lower through Complex
+(an open conformance gap), but their rational components use the new exact head.
+
+Seed 44 covers constructor/constant/unary-method overrides, decimal precision
+and shared/distinct literal sites. All 44 seeds round-trip with no disagreements
+or AST-idempotence failures. Existing six render-only instabilities are unchanged.
+
+## C40 — native imaginary literals and signed-zero transport (2026-09-28)
+
+`[:imag, component]` replaces the overridable Complex call. The component is an
+Integer, Float or exact Rational literal; render appends `i` to that literal,
+including the existing exact decimal `r` rendering. Linearization treats it as
+an atomic expression. Export v5 adds `imag` with a compilation-unit/site string,
+sharing the numeric-literal namespace/counter from C39. The model constructs the
+frozen value directly and caches it by site.
+
+Imaginary Float components export as `flt_bits`, an unsigned 64-bit IEEE payload.
+JSON numeric `-0.0` loses its sign in Lean's JsonNumber. C31's ordinary Float
+workaround (a unary method send) would violate native imaginary-literal semantics,
+so this path carries the bits instead. No new syntax is needed in the rendered
+Ruby, and the bits metadata stays out of the render/parse normal form.
+
+Seed 45 and the complex-literals regression cover negative zero, exact long
+fractions, constructor/constant/unary overrides, and shared/distinct syntax sites.
+The initial round-trip run of all 45 seeds plus five Complex programs was 50
+agree, zero disagree, AST-idempotent, with the same six render-only instabilities.
+
+Final L279 round-trip verification: 45 seeds plus six regression programs give
+51 agree / zero disagree, AST-idempotent. Full bootstraptest is 1,232 agree /
+zero disagree / 77 out-of-fragment, with no parse/harness errors. The previous
+27 bootstrap and six seed render-only instabilities remain unchanged.
+
+## C41 — preserve one-target for destructuring (2026-09-28)
+
+`for x, in values` performs multiple assignment even though it has one named
+slot; `for x in values` keeps the first yielded argument intact. Prism records
+the comma as an ImplicitRestNode. The frontend now accepts that implicit rest
+and appends `true` to the existing four-slot `for` node only for this one-target
+case. Linearization preserves the optional field, the renderer emits the comma,
+and the validator/exporter preserve its Boolean value. Old four-slot exports
+remain valid under version 5; this is an additive distinction, like C39/C40.
+The Lean decoder accepts both forms. Named rest, trailing targets after rest,
+and nested for targets retain their existing frontend gates.
+
+Seed 46 checks zero/multiple yields, Array/scalar arguments, ivar targets and
+conversion effects. All 46 seeds plus six L288 regression programs round-trip:
+52 agree, zero disagree, AST-idempotent, with the same six render-only
+instabilities. The model's ordinary each dispatch and shared local environment
+are recorded in model L288 and difftest N62.

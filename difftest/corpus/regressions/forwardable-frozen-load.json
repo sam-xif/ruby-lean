@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L282 (2026-09-28)",
+  "note": "Loading Forwardable into a frozen existing module raises at the first write. Compared with CRuby 4.0.5."
+}

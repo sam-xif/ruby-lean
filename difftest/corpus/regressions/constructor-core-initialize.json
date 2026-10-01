@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L284 (2026-09-28)",
+  "note": "Native constructor lookup, initializer protocol and literal block exits. Compared with CRuby 4.0.5; see model L284 and difftest N58."
+}

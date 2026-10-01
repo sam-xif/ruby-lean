@@ -1,0 +1,1 @@
+require "sorbet-runtime";class P<T::Struct;const :x,Integer;end;p P.new(x:3).x;p P.respond_to?(:inherited);begin;class C<P;puts :wrong;end;rescue=>e;p [e.class,e.message,C.superclass];end;begin;Class.new(P);rescue=>e;p [e.class,e.message];end;begin;class D<C;puts :wrong;end;rescue=>e;p [e.class,e.message,D.superclass];end

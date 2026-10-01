@@ -26,6 +26,8 @@ theorem instanceSite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {name : String
   · intro n hn owner md hmd
     have hco : classOf m.heap (.ref Boot.objectId) = e := by simp only [classOf, he]
     exact hm.nameFree n hn e (by simp [nameFreeSites, hco]) owner md hmd
+  · simpa only [classOf, he] using hm.core.metaConstants
+  · exact hm.core.classReady.bootEnd
 
 #print axioms instanceSite
 end Ratchet.Denote.FreshClass

@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L283 (2026-09-28)",
+  "note": "Mixin macros validate argument type and arity before frozen writes and remain absent from receivers that do not have them. Compared with CRuby 4.0.5."
+}

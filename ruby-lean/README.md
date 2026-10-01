@@ -35,6 +35,14 @@ an hour, mostly for `Denote/`. Rebuilds after a change take seconds.
 `rubycore` exits 0 on success, 3 when the program uses something the model does
 not support (the reason is on stderr), and 1 on a model bug.
 
+The default runtime boots core Ruby. Modeled optional libraries (`json`, `uri`,
+`forwardable`, `sorbet-runtime`) load on `require`; `pathname.rb` is a separate
+feature over the Pathname class already booted by the pinned CRuby 4.0.5.
+`--preload-json` loads JSON before the input program, matching the differential
+runner's observation wrapper. It is unnecessary for ordinary standalone runs.
+`python3 scripts/check-feature-loading.py` compares scope, reentry, caching and
+failed-load retry against CRuby using identical feature bodies on both sides.
+
 ## The gate
 
 ```sh
@@ -42,11 +50,25 @@ not support (the reason is on stderr), and 1 on a model bug.
 ./scripts/check-proofs.sh         # the off-target metatheory; run it at batch boundaries
 ```
 
-The gate runs, in order: the isolation check (`Ratchet/` still imports nothing
-from `RubyCore/`), the build of the proofs and negative controls, pipeline stages
-1–4 over every corpus program, the model-vs-CRuby agreement run (skip it with
-`RATCHET_SKIP_AGREEMENT=1`), and finally the checks that every typing rule has a
-semantic proof and that the certified fragment has not shrunk.
+The default gate checks isolation, generated-checker freshness, active registry
+and validator controls, and `Bridge.lean`'s original soundness theorem. It rejects
+nonstandard theorem axioms, builds a fresh corpus through stages 1–4, compares
+the stripped programs with CRuby (skip with `RATCHET_SKIP_AGREEMENT=1`), and
+reports enabled clinks and actual `validateD` accepts as climbed. Disabled rules
+and declined positive rungs are work remaining; they do not make soundness red.
+Sorbet drift, new upstream failures and accepted negative controls still fail.
+
+```sh
+./scripts/run_typed_ratchet.sh --clink-rebuild  # proofs/controls only
+./scripts/run_typed_ratchet.sh --full-corpus    # historical complete-coverage audit and floors
+```
+
+The active profile enables 22 clinks; `validateD` accepts 49 corpus rungs.
+It checks every rule in the verified derivation's
+trace against `Ratchet/ClinkPolicy.lean`, including companion/body rules. Further
+admission requires enabling their clinks and rebuilding their semantic providers.
+The full historical audit retains its floors and requires all clinks; it remains
+separate from the default active gate. See [the clink rebuild guide](Denote/Clink/README.md).
 
 ## Where to read next
 

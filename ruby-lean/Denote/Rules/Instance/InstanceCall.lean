@@ -10,14 +10,14 @@ open RubyCore Ratchet Ratchet.Denote
 
 theorem checked_instance_call_from_main {κ : Ctx} {Γ : Env} {I Ib : Ty} {m : Machine}
     {c : Cls} {d : Defn} {recv : Value} {args : List Value}
-    (body : CheckedBody (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) Ib d)
+    (body : CheckedBody (instanceBodyCtx κ ⟨c.name, c.name, d.name, false⟩ Ib) Ib d)
     (hm : StateOk κ Γ I m) (ht : ReframeFO κ I) (ha : κ.asms = [])
     (hc : c ∈ κ.classes) (hd : d ∈ c.methods)
     (hr : κ.scope.runtimeMain = true) (hw : κ.pos.mainWorld = true)
     (hcl : κ.scope.runtimeClass = none) (hkont : m.kont = [])
     (hi : FirstOrder Ib = true) (hv : denM (.inst c.name Ib) m recv)
     (hlen : args.length = body.params.length) (hargs : DenAll (body.params.map (·.2)) m args)
-    (hk : ∀ x, constGet? (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) x = constGet? κ x)
+    (hk : ∀ x, constGet? (instanceBodyCtx κ ⟨c.name, c.name, d.name, false⟩ Ib) x = constGet? κ x)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
     (hp : ∀ o, recv = .ref o → (m.heap.get o).payload = .none) (hn : d.name ≠ "initialize") :
     ∃ next, Interp.finishSend m recv .explicit d.name args .none = .next next ∧

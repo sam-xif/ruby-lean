@@ -1,5 +1,6 @@
 import Ratchet.Lang.Ty
 import Denote.Ty.Ext
+import Denote.Ty.ClosureCode
 
 /-!
 # `Denote/Ty/Den.lean` — the semantic denotation of `Ratchet.Ty`
@@ -81,19 +82,13 @@ true (the conflict `Denote/Sem/notes.md` recorded against seeding the arrow with
 directly), and it forbids a frame push, which is the clause the first call rung will have to
 spend. It is `ArrowStable` approximated from below, one step kind per rung that needs it.
 
-## Two stated gaps
+## Callable metadata
 
-* **`Ty.clos`'s `idx`** indexes the *checker's* syntactic closure table, which `Denote/` does
-  not import (and could not compare against, since `Ratchet.Expr` and `RubyCore.Expr` are
-  two separately-copied inductives — see `Denote/notes.md`). So the `clos` arm denotes the
-  nominal-plus-environment part (a Proc whose captured scope and `self` match the spine) and
-  drops `idx`. The behavioural content of a `clos` is available *via the arrow*: that is what
-  the arrow arm is for, and `closArrow` states the bridge a future `Judge.closCall`-soundness
-  proof would need.
-* **`Ty.clos`'s `selfTy` uses `.never` as a sentinel** for "created where `self` was not
-  typed" (top level) rather than as the bottom type. Since `denM .never` is `False`, that arm
-  is special-cased to impose no constraint, and the special case is written out rather than
-  inherited.
+`Ty.clos` carries supported code rather than a table index. Its denotation pins the
+real closure's parameters, block locals, body and lambda/proc mode through the syntax
+bridge. Capture types still read the live frame, not a snapshot. Creation self uses
+`.never` as an explicit untyped-self sentinel. These facts alone do not prove a call
+safe: a future call rule must establish activation, body and return conformance.
 -/
 
 set_option autoImplicit false
@@ -157,10 +152,9 @@ def denM : Ty → Machine → Value → Prop
   | .arrowCons p rest, m, f =>
       isProcV m.heap f = true ∧
         ∀ m₂, Later m m₂ → ∀ a, denM p m₂ a → denApp [a] rest m₂ f
-  -- A callable value, nominally: a Proc whose captured scope and `self` match what the type
-  -- recorded at its creation. `idx` is dropped; see the module docstring §Two stated gaps.
-  | .clos _ cap selfT, m, f =>
-      ∃ cl, procClosure? m.heap f = some cl ∧
+  -- Exact callable code plus the current captured scope and creation self.
+  | .clos code cap selfT, m, f =>
+      ∃ cl, procClosure? m.heap f = some cl ∧ ClosureMatches code cl ∧
         denSpineFrom [] cap m (closLocal m cl) ∧
         (selfT = .never ∨ denM selfT m (closSelf m cl))
 termination_by τ _ _ => sizeOf τ

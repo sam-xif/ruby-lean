@@ -277,6 +277,15 @@ def runCollections (bid : String) (recv : Value) (args : List Value) (m : Machin
       | none => .unsupported "sum of non-numerics"
     | _, _ => .unsupported "sum with arg"
   /- ─── Hash ─── -/
+  | "Hash#to_a" =>
+    match hshPayload? h recv with
+    | some pairs =>
+      let (values, m) := pairs.foldl (fun (acc, m) (k, v) =>
+        let (pair, m) := allocArr m #[k, v]
+        (acc.push pair, m)) (#[], m)
+      let (value, m) := allocArr m values
+      .ok value m
+    | none => .unsupported "Hash#to_a without a Hash payload"
   | "Hash#==" =>
     binArg m args fun b =>
       match recv, b with
@@ -307,6 +316,8 @@ def runCollections (bid : String) (recv : Value) (args : List Value) (m : Machin
       match (h.get o).payload with
       | .hsh xs =>
         if (h.get o).frozen then frozenErr m recv "Hash"
+        else if m.hashIterationActive o && !xs.any (fun (k', _) => valueEql h k' k) then
+          .err Boot.runtimeErrorId "can't add a new key into hash during iteration" m
         else
           let xs := match xs.toList.findIdx? (fun (k', _) => valueEql h k' k) with
             | some i => xs.set! i (xs[i]!.1, v)

@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L282 (2026-09-28)",
+  "note": "A method_added exception leaves partial feature effects; a later require retries and then caches success. Compared with CRuby 4.0.5."
+}

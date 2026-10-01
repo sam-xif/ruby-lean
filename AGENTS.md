@@ -42,7 +42,10 @@ replay while iterating. In a sandbox with a protected uv cache, set
 
 GREEN does not mean finished — it means nothing is *started and incomplete*.
 Rungs nobody has climbed are green, because nothing claims them. What is red is
-the fragment claiming something the bridge cannot back.
+the fragment claiming something the bridge cannot back. The default gate checks
+soundness for enabled clinks and counts only actual `validateD` accepts as climbed.
+`--clink-rebuild` checks proofs/controls only; `--full-corpus` retains the historical
+complete-coverage audit and its floors.
 
 ## Two boundaries not to blur
 

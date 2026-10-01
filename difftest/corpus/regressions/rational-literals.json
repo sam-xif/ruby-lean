@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L278 (2026-09-28)",
+  "note": "Exact literals bypass constructor/constant lookup and retain identity by syntax site."
+}

@@ -25,7 +25,26 @@ def boot : Except String Machine :=
   match program with
   | .error e => .error s!"prelude decode: {e}"
   | .ok p =>
-    match Interp.run bootFuel { Machine.init p with preludeMode := true } with
+    -- main's native singleton macros have their own place in lookup; they are
+    -- not instance methods on every Object.
+    let (e, initial) := Interp.eigenclassOf { Machine.init p with preludeMode := true } Boot.mainId
+    let h := crubyMainSingletonNames.foldl (fun h name =>
+      let repr := name == "inspect" || name == "to_s"
+      defineMethod h e name
+        { params := [], body := .nil, owner := e,
+          visibility := if repr then .pub else .priv,
+          builtin := some ((if repr then "Object#" else "Main#") ++ name) }) initial.heap
+    let initial := { initial with heap := h }
+    let (exceptionEigen, initial) := Interp.eigenclassOf initial Boot.exceptionId
+    let h := defineMethod initial.heap exceptionEigen "exception"
+      { params := [], body := .nil, owner := exceptionEigen, builtin := some "Exception.exception" }
+    let initial := { initial with heap := h }
+    -- Boot classes also inherit Exception's singleton constructor before any
+    -- Ruby class body has had a chance to realize their eigenclass chains.
+    let initial := Boot.classTable.foldl (fun m entry =>
+      if (ancestors m.heap entry.1).contains Boot.exceptionId then
+        (Interp.eigenclassOf m entry.1).2 else m) initial
+    match Interp.run bootFuel initial with
     | .value _ m => .ok m
     | .uncaught exc m =>
       let cls := className m.heap (realClassOf m.heap exc)
@@ -37,10 +56,11 @@ def boot : Except String Machine :=
 /-- Initial machine for `prog` on the booted (prelude-loaded) heap. The heap
     and globals carry over from phase 1; frames/kont/stdout/`$!` are fresh, and
     `preludeMode` is back to `false` so program `def`s are ordinary. -/
-def initWithPrelude (prog : Expr) : Except String Machine :=
-  boot.map fun mp =>
-    { Machine.initOn mp.heap prog with
-      globals := mp.globals }
+def initWithPrelude (prog : Expr) : Except String Machine := do
+  let mp ← boot
+  let featurePrograms ← features
+  return { Machine.initOn mp.heap prog with
+    globals := mp.globals, numericLiterals := mp.numericLiterals, featurePrograms }
 
 end Prelude
 end RubyCore

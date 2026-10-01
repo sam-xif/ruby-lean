@@ -46,6 +46,7 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
       | _ => false
     strIf has "instance-variable"
   | .var .gvar x =>
+    if loaderGlobal x then str "global-variable" else
     let has :=
       if x == "$!" then m.currentExc.isSome
       -- `$~` is *always* "global-variable", match or not — unlike its views, where
@@ -59,18 +60,15 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
         | none => m.globals.any (·.1 == x)
     strIf has "global-variable"
   | .var .cvar x =>
-    -- `defined?(@@a)` at toplevel is nil, *not* the access RuntimeError [V]
-    match cvarScope m with
-    | none => .unsupported "defined?(@@x) in a singleton-class scope"
-    | some scope => strIf (cvarLookupIn m.heap scope x).isSome "class variable"
+    let scope := (cvarScope m).getD Boot.objectId
+    strIf (cvarLookupIn m.heap scope x).isSome "class variable"
   | .const n =>
-    let lexical := m.currentFrame.cref.firstM (fun c => constOwn m.heap c n)
-    match lexical.orElse (fun _ => constLookupFrom m.heap m.currentFrame.defmod n) with
+    match lexicalConstant m n with
     | some _ => str "constant"
     | none =>
       -- same fidelity split as a constant *read*: a constant CRuby has but we
       -- don't model must not answer nil.
-      if (crubyToplevelConstants.contains n || crubyStdlibConstants.contains n) then .unsupported s!"defined?(unmodeled constant {n})"
+      if (crubyToplevelConstants.contains n || crubyStdlibConstants.contains n || m.currentFrame.cref.any (fun c => unmodeledNamespaceConstant m c n)) then .unsupported s!"defined?(unmodeled constant {n})"
       else nilR
   | .cpath (some base) name =>
     -- the base *is* evaluated (`defined?(A::B)` runs `A`), under the guard
@@ -81,7 +79,7 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
     match constLookup m.heap name with
     | some _ => str "constant"
     | none =>
-      if (crubyToplevelConstants.contains name || crubyStdlibConstants.contains name) then
+      if (crubyToplevelConstants.contains name || crubyStdlibConstants.contains name || unmodeledFeatureRoot m name) then
         .unsupported s!"defined?(unmodeled constant {name})"
       else nilR
   | .send none mname _ _ | .vcall mname =>
@@ -101,17 +99,14 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
     let f := m.frames.getD (methodFrameOf m) default
     if f.meth == "" then nilR
     else
-      let after := ((ancestors m.heap (classOf m.heap f.self)).dropWhile (· != f.defmod)).drop 1
-      let found := after.any fun c =>
-        match m.heap.classPayload? c with
-        | some cp => match cp.methods.find? (·.1 == f.meth) with
-          | some (_, md) => !md.undefined
-          | none => false
-        | none => false
-      if found then str "super"
-      else if (crubyShadow m.heap after f.meth).isSome then
-        .unsupported s!"defined?(super) of unmodeled method {f.meth}"
-      else nilR
+      let scope := f.superScope.getD (classOf m.heap f.self)
+      let after := ((ancestors m.heap scope).dropWhile (· != f.methodOwner.getD f.defmod)).drop 1
+      match methodEntryInChain m.heap after f.meth with
+      | some (_, md) => strIf (!md.undefined) "super"
+      | none =>
+        if (crubyShadow m.heap after f.meth).isSome then
+          .unsupported s!"defined?(super) of unmodeled method {f.meth}"
+        else nilR
   | .vasgn .. | .casgn .. | .cpathAsgn .. => str "assignment"
   | _ => str "expression"
 
@@ -120,6 +115,28 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
   match e with
   | .int n => .next (withCtl m (.value (.int n)))
   | .flt x => .next (withCtl m (.value (.flt (Float.ofBits x))))
+  | .rat n d site =>
+    match m.numericLiterals.find? (·.1 == site) with
+    | some (_, v) => .next (withCtl m (.value v))
+    | none =>
+      let (v, h) := m.heap.allocRational n d
+      let m := { m with heap := h, numericLiterals := (site, v) :: m.numericLiterals }
+      .next (withCtl m (.value v))
+  | .imag component site =>
+    match m.numericLiterals.find? (·.1 == site) with
+    | some (_, v) => .next (withCtl m (.value v))
+    | none =>
+      let operand? : Option (Value × Heap) := match component with
+        | .int n => some (.int n, m.heap)
+        | .flt bits => some (.flt (Float.ofBits bits), m.heap)
+        | .rat n d _ => some (m.heap.allocRational n d)
+        | _ => none
+      match operand? with
+      | none => .unsupported "nonliteral imaginary component"
+      | some (i, h) =>
+        let (v, h) := h.allocComplex (.int 0) i
+        let m := { m with heap := h, numericLiterals := (site, v) :: m.numericLiterals }
+        .next (withCtl m (.value v))
   | .str s =>
     -- string literals allocate a fresh unfrozen String [V]
     let (v, m) := Builtins.allocStr m s
@@ -133,6 +150,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     match kind with
     | .lvar => .next (withCtl m (.value (m.getLocal x)))
     | .gvar =>
+      if loaderGlobal x then .unsupported "loader global paths and mutation are not modeled" else
       match matchGlobal m x with
       | some (v, m) => .next (withCtl m (.value v))
       | none => .next (withCtl m (.value (m.getGlobal x)))
@@ -144,27 +162,25 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
       | _ => .next (withCtl m (.value .nil))  -- unset ivar on immediate self → nil
     | .cvar =>
       match cvarScope m with
-      | none => .unsupported "class variable in a singleton-class scope"
+      | none => .next (raiseErr m Boot.runtimeErrorId "class variable access from toplevel")
       | some scope =>
-        if scope == Boot.objectId && m.currentFrame.kind == .toplevel then
-          .next (raiseErr m Boot.runtimeErrorId "class variable access from toplevel")
-        else
-          match cvarLookupIn m.heap scope x with
-          | some v => .next (withCtl m (.value v))
-          | none =>
-            .next (raiseErr m Boot.nameErrorId
-              s!"uninitialized class variable {x} in {className m.heap scope}")
-  | .vasgn kind x rhs => .next (withKont m (.eval rhs) (.asgnK kind x))
+        match cvarLookupIn m.heap scope x with
+        | some v => .next (withCtl m (.value v))
+        | none =>
+          .next (raiseErr m Boot.nameErrorId
+            s!"uninitialized class variable {x} in {className m.heap scope}")
+  | .vasgn kind x rhs =>
+    if kind == .gvar && loaderGlobal x then .unsupported "assignment to loader global" else
+    .next (withKont m (.eval rhs) (.asgnK kind x))
   | .const n =>
     -- artifact 03 §4: lexical phase (each cref scope's OWN consts, innermost
     -- first), then inheritance phase (ancestors of the innermost class/defmod).
-    let lexical := m.currentFrame.cref.firstM (fun c => constOwn m.heap c n)
-    match lexical.orElse (fun _ => constLookupFrom m.heap m.currentFrame.defmod n) with
+    match lexicalConstant m n with
     | some v => .next (withCtl m (.value v))
     | none =>
       -- same fidelity split as methods: a constant CRuby has but we don't
       -- model gates as Unsupported; a genuine miss is a real NameError
-      if (crubyToplevelConstants.contains n || crubyStdlibConstants.contains n) then
+      if (crubyToplevelConstants.contains n || crubyStdlibConstants.contains n || m.currentFrame.cref.any (fun c => unmodeledNamespaceConstant m c n)) then
         .unsupported s!"unmodeled constant {n}"
       else
         -- CRuby qualifies the miss with the **innermost cref**, not the bare
@@ -183,7 +199,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
       match constLookup m.heap name with
       | some v => .next (withCtl m (.value v))
       | none =>
-        if (crubyToplevelConstants.contains name || crubyStdlibConstants.contains name) then .unsupported s!"unmodeled constant {name}"
+        if (crubyToplevelConstants.contains name || crubyStdlibConstants.contains name || unmodeledFeatureRoot m name) then .unsupported s!"unmodeled constant {name}"
         else .next (raiseErr m Boot.nameErrorId s!"uninitialized constant {name}")
     | some baseExpr => .next (withKont m (.eval baseExpr) (.cpathK name))
   | .cpathAsgn base name rhs =>
@@ -252,65 +268,25 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     -- sequences "after body → eval cond (whileCondK) → loop", and `unwind`
     -- already routes break/next through it [V].
     .next (withKont m (.eval body) (.whileBodyK cond body))
-  | .for' targets coll body =>
-    .next (withKont m (.eval coll) (.forStartK targets body))
+  | .for' targets coll body multiple =>
+    .next (withKont m (.eval coll) (.forStartK targets body (multiple || targets.length > 1)))
   | .def' name params body =>
     let defmod := m.currentFrame.defmod
+    if let some receiver := frozenMethodReceiver? m.heap defmod then raiseFrozen m receiver else
     let md : MethodDef :=
-      { params, body, owner := defmod, cref := m.currentFrame.cref,
-        fromPrelude := m.preludeMode,
+      { params, body, owner := defmod, definee := some defmod, cref := m.currentFrame.cref,
+        fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin,
         -- `private`/`protected` with no arguments set the default for the rest of
-        -- the class body (artifact 02 §5); `initialize` is always private, and so
-        -- is a **toplevel** `def` (a private method of Object) [V] — which is why
-        -- `public def m …` at toplevel exists at all (L72).
-        visibility :=
-          if name == "initialize" then .priv
-          else if m.currentFrame.kind == .toplevel then .priv
-          else m.currentFrame.defVis }
-    let m := { m with heap := defineMethod m.heap defmod name md }
-    -- CRuby fires `Module#method_added(:name)` on the defining module right after
-    -- installing, and `def` still evaluates to the name. The model has no builtin
-    -- `method_added`, so a lookup miss means "no hook" — the common case costs one
-    -- lookup. This is the hook sorbet-runtime's `sig` is built on: `sig` records a
-    -- pending declaration and `method_added` wraps the method that follows, so
-    -- without it a `sig` cannot enforce anything (prelude §T).
-    if m.preludeMode then .next (withCtl m (.value (.sym name)))
-    else
-      match lookup m.heap (.ref defmod) "method_added" with
-      | some (owner, hookMd) =>
-        -- CRuby defines `Module#method_added` as a private no-op, which *shadows*
-        -- anything further down the class object's ancestry. So a plain toplevel
-        -- `def method_added` (an Object instance method, and Object comes after
-        -- Module in a class object's chain) must NOT fire — verified against CRuby,
-        -- which prints nothing for it. Resolving to Object/Kernel/BasicObject here
-        -- means we walked past where CRuby's no-op sits: treat it as no hook.
-        if hookMd.undefined
-            || owner == Boot.objectId || owner == Boot.kernelId
-            || owner == Boot.basicObjectId then
-          .next (withCtl m (.value (.sym name)))
-        else
-          let m := { m with kont := .methodAddedK name :: m.kont }
-          enterUserMethod m (.ref defmod) "method_added" hookMd [.sym name] none
-      | none => .next (withCtl m (.value (.sym name)))
+        -- the definition scope (artifact 02 §5). Top level starts private and
+        -- honors an explicit public change; ordinary blocks share that context.
+        -- Initialization names are normalized by the mutation protocol.
+        visibility := m.currentDefinitionFrame.defVis }
+    runMethodEdits m [.define defmod name md] (.sym name)
   | .defined e => evalDefined m e
-  | .undef names => undefNames m m.currentFrame.defmod names
-  | .alias' newN oldN =>
-    -- `alias` captures the current definition of `oldN` (walking ancestors) and
-    -- installs an independent copy under `newN` on the current definee; a later
-    -- redefinition of `oldN` does not affect `newN` [V]. A tombstone or a
-    -- genuine miss raises `NameError`. Returns nil.
-    let defmod := m.currentFrame.defmod
-    match methodOn m.heap defmod oldN with
-    | some (_, md) =>
-      if md.undefined then undefAliasMiss m oldN
-      else
-        -- keep the original name for `super` (L108); same-module only, see
-        -- the `alias_method` rule for why
-        let md := if md.owner == defmod then { md with superName := some (md.superName.getD oldN) }
-                  else md
-        let m := { m with heap := defineMethod m.heap defmod newN md }
-        .next (withCtl m (.value .nil))
-    | none => undefAliasMiss m oldN
+  | .undef names =>
+    runMethodEdits m (names.map fun name => .remove m.currentFrame.defmod name true) .nil
+  | .alias' name original =>
+    runMethodEdits m [.aliasMethod m.currentFrame.defmod name original] .nil
   | .array elems => continueArray m [] elems
   | .hash pairs =>
     match pairs with
@@ -372,10 +348,9 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
       | .ref o =>
         let (e, m) := eigenclassOf m o
         let md : MethodDef :=
-          { params, body, owner := e, cref := m.currentFrame.cref,
-            fromPrelude := m.preludeMode }
-        let m := { m with heap := defineMethod m.heap e name md }
-        .next (withCtl m (.value (.sym name)))
+          { params, body, owner := e, definee := some m.currentFrame.defmod, cref := m.currentFrame.cref,
+            fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
+        runMethodEdits m [.define e name md] (.sym name)
       | _ => .unsupported "singleton def on an immediate"
     | recv => .next (withKont m (.eval recv) (.defsK name params body))
   | .super' args blk =>
@@ -384,7 +359,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     match blk with
     | none => startSuperArgs m [] args (methodBlk m)
     | some (.block ps ls body) =>
-      let (v, m) := reifyBlock m ps ls body false
+      let (v, m) := reifyCallBlock m ps ls body false
       startSuperArgs m [] args (some v)
     | some _ => .unsupported "super with a block-pass / anonymous block"
   | .zsuper blk =>
@@ -414,6 +389,7 @@ def stepFn (m : Machine) : StepResult :=
   | .eval e => evalExpr m e
   | .value v => applyKont m v
   | .jump j => unwind m j
+  | .send recv site name args blk kw => invokeQueued m recv site name args blk kw
 
 inductive RunResult where
   | value (v : Value) (m : Machine)

@@ -11,7 +11,7 @@ open RubyCore Ratchet Ratchet.Denote
 -- Identical parameter/body fields do not suffice to describe callable user code.
 private def codeProbe : MethodDef :=
   { params := [.req "x"], body := .var .lvar "x", owner := Boot.objectId, cref := [Boot.objectId] }
-example : TopMethodCode codeProbe := ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+example : TopMethodCode codeProbe := ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 example : ¬ TopMethodCode { codeProbe with builtin := some "Integer#+" } := by
   intro h; cases h.builtin
 example : ¬ TopMethodCode { codeProbe with capturedFrame := some 0 } := by

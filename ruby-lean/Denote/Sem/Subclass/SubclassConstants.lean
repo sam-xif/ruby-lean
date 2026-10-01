@@ -41,6 +41,31 @@ theorem const_from_class_other (hc : ChainsIn h) (hs : Saturated h)
   simp only [List.firstM, const_own_fresh]
   exact firstM_congr (fun j hj => const_own_old_other (ClsGrow.ancestors_mem_lt hc hp j hj) hn)
 
+theorem const_from_eigen_other (hc : ChainsIn h) (hs : Saturated h)
+    (hp : eParent < h.objs.size) {cn : String} (hn : cn ≠ name) :
+    constLookupFrom h₁ (h.objs.size + 1) cn = constLookupFrom h eParent cn := by
+  rw [const_from_eq_firstM, const_from_eq_firstM, ancestors_eigen hc hs hp]
+  have hf : constOwn h₁ (h.objs.size + 1) cn = none := by
+    simp [constOwn, Heap.classPayload?, get_eigen, eigObjC]
+  simp only [List.firstM, hf]
+  exact firstM_congr (fun j hj => const_own_old_other (ClsGrow.ancestors_mem_lt hc hp j hj) hn)
+
+theorem fallback_old {k : ObjId} (hc : ChainsIn h) (hs : Saturated h)
+    (ho : (h.classPayload? Boot.objectId).isSome = true) (hk : k < h.objs.size)
+    (hp : ConstFallback h k) : ConstFallback h₁ k := by
+  intro cn hn
+  have hne : cn ≠ name := by intro he; subst cn; rw [const_self ho] at hn; cases hn
+  rw [const_from_old_other hc hs hk hne]
+  exact hp cn ((const_other hc.boot.2.2.2.2 hne).symm.trans hn)
+
+theorem fallback_fresh_meta (hc : ChainsIn h) (hs : Saturated h)
+    (ho : (h.classPayload? Boot.objectId).isSome = true) (hep : eParent < h.objs.size)
+    (hp : ConstFallback h eParent) : ConstFallback h₁ (h.objs.size + 1) := by
+  intro cn hn
+  have hne : cn ≠ name := by intro he; subst cn; rw [const_self ho] at hn; cases hn
+  rw [const_from_eigen_other hc hs hep hne]
+  exact hp cn ((const_other hc.boot.2.2.2.2 hne).symm.trans hn)
+
 /-- A retained instance scope cannot reveal an inherited constant absent globally. -/
 theorem fallback_of_instance {k : ObjId}
     (hp : ∀ cn, instanceConstResolve h k cn = constLookup h cn) (cn : String) :

@@ -22,6 +22,12 @@ FOLD = {
   "FalseClass" => [FalseClass],
   "Integer" => [Integer, Numeric, Comparable],
   "Float" => [Float, Numeric, Comparable],
+  "Rational" => [Rational, Numeric, Comparable],
+  "Complex" => [Complex, Numeric, Comparable],
+  "Enumerator" => [Enumerator, Enumerable],
+  "Enumerator::Generator" => [Enumerator::Generator, Enumerable],
+  "Enumerator::Yielder" => [Enumerator::Yielder],
+  "Enumerator::Chain" => [Enumerator::Chain, Enumerator, Enumerable],
   "String" => [String, Comparable],
   "Symbol" => [Symbol, Comparable],
   "Array" => [Array, Enumerable],
@@ -46,6 +52,7 @@ FOLD = {
   "KeyError" => [KeyError],
   "RangeError" => [RangeError],
   "StopIteration" => [StopIteration],
+  "UncaughtThrowError" => [UncaughtThrowError],
   "NotImplementedError" => [NotImplementedError],
   "ScriptError" => [ScriptError],
 }.freeze
@@ -82,22 +89,23 @@ puts <<~HEADER
 HEADER
 
 # Toplevel `public`/`private`/`include`/`using`/`define_method` etc. live on
-# main's singleton class; fold them into Object so a program using them
-# gates as unmodeled instead of mis-raising NoMethodError.
+# main's singleton class. Keep them separate from Object's instance methods.
 MAIN_SINGLETON = TOPLEVEL_BINDING.receiver.singleton_class
   .then { |sc| sc.instance_methods(false) + sc.private_instance_methods(false) }
 
 entries = FOLD.map do |name, mods|
   meths = mods.flat_map { |m| m.instance_methods(false) + m.private_instance_methods(false) }
-  meths += MAIN_SINGLETON if name == "Object"
   meths = meths.uniq.sort
   "  (\"#{name}\", [\n#{NAME_LINES.call(meths, "    ")}\n  ])"
 end
 puts entries.join(",\n")
 
-puts <<~MID
-  ]
+puts "]\n\n/-- Methods native to main's singleton class, not all Objects. -/"
+puts "def crubyMainSingletonNames : List String := ["
+puts NAME_LINES.call(MAIN_SINGLETON.uniq.sort, "  ")
+puts "]"
 
+puts <<~MID
   /-- Singleton (class-side) method names each bootstrap class defines in
       CRuby (e.g. Hash.ruby2_keywords_hash, Array.[]): a send to a class
       object resolving past these must gate. -/
@@ -110,7 +118,23 @@ sentries = FOLD.map do |name, mods|
 end
 puts sentries.join(",\n")
 
+puts "]\n\n/-- Known constants in modeled namespaces; absence is a gate, not NameError. -/"
+puts "def crubyNamespaceConstants : List (String × List String) := ["
+puts FOLD.map { |name, mods|
+  names = mods.first.constants(false) - %i[FOLD NAME_LINES MAIN_SINGLETON]
+  "  (#{name.inspect}, [#{names.map(&:to_s).sort.map(&:inspect).join(', ')}])"
+}.join(",\n")
+
 puts <<~MID
+  ]
+
+  /-- Constants a require may define, curated separately from the oracle's
+      already-loaded constants. Preserve the L109 fidelity gate on regeneration. -/
+  def crubyStdlibConstants : List String := [
+    "YAML", "Date", "DateTime", "OpenSSL", "Digest",
+    "Tempfile", "FileUtils", "Shellwords", "StringIO", "Timeout", "Socket",
+    "OptionParser", "Open3", "SecureRandom", "Etc", "Zlib", "Base64", "CSV",
+    "Logger", "Delegator", "SimpleDelegator", "Singleton", "Observable"
   ]
 
   /-- Toplevel constants CRuby defines (Object.constants): a constant-lookup
@@ -120,8 +144,26 @@ MID
 puts NAME_LINES.call(
   (Object.constants - %i[FOLD NAME_LINES MAIN_SINGLETON]).map(&:to_s).sort, "  "
 )
+puts "]"
+
+# Capture each feature in isolation: the core tables above must describe the
+# process before optional libraries have been required.
+features = %w[forwardable json uri sorbet-runtime].to_h do |feature|
+  bytes = IO.popen([RbConfig.ruby, File.join(__dir__, "cruby_feature_names.rb"), feature], &:read)
+  abort "feature inventory failed: #{feature}" unless $?.success?
+  [feature, Marshal.load(bytes)]
+end
+puts "\n/-- Names introduced by modeled requires; consulted only after a load attempt. -/"
+puts "def crubyFeatureRoots : List (String × List String) := ["
+puts features.map { |feature, (roots, _)| "  (#{feature.inspect}, [#{roots.map(&:inspect).join(', ')}])" }.join(",\n")
+puts "]"
+%w[Methods SingletonMethods Constants].each_with_index do |kind, i|
+  puts "\ndef crubyFeature#{kind} : List (String × List String) := ["
+  namespaces = features.values.flat_map { |_, mods| mods.to_a }.to_h.sort
+  puts namespaces.map { |name, values| "  (#{name.inspect}, [#{values[i].map(&:inspect).join(', ')}])" }.join(",\n")
+  puts "]"
+end
 puts <<~'FOOTER'
-  ]
 
   def crubyClassDefines (className mname : String) : Bool :=
     match crubyMethodNames.find? (·.1 == className) with

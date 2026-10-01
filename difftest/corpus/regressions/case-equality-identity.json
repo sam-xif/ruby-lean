@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "hand, L272",
+  "arm": "probe",
+  "case_id": "case-equality-identity",
+  "note": "Correct undef dispatch exposed three formerly unsupported MRI cases: Object#=== must test identity before calling ==, and Booleanize its result. Identity must not dispatch an overridden equal?."
+}

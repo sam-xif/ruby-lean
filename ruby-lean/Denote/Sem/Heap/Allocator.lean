@@ -1,10 +1,17 @@
 import Denote.Sem.Names.ConstLive
+import Denote.Sem.Heap.AllocationReady
 
 /-! A named capability for plain-object allocation. Unlike a fresh class's exact root
 chain, this admits ordinary inheritance. It says nothing about initializer code or safety. -/
 set_option autoImplicit false
 namespace Ratchet.Denote
 open RubyCore
+
+/-- Ancestors that select a non-plain arm of native construction. -/
+def constructBlockers : List ObjId :=
+  [Boot.moduleId, Boot.enumeratorId, Boot.generatorId, Boot.yielderId, Boot.procId,
+   Boot.randomId, Boot.regexpId, Boot.rangeId, Boot.integerId, Boot.floatId, Boot.symbolId,
+   Boot.rationalId, Boot.complexId, Boot.nilClassId, Boot.trueClassId, Boot.falseClassId]
 
 structure PlainAllocator (h : Heap) (k : ObjId) : Prop where
   live : k < h.objs.size
@@ -15,8 +22,10 @@ structure PlainAllocator (h : Heap) (k : ObjId) : Prop where
   module : (h.classPayload? k).map (·.isModule) = some false
   rooted : (ancestors h k).contains Boot.basicObjectId = true
   noCore : Builtins.allocatableCore h k = none
+  ready : plainAllocationReadyB h k = true
   noPayload : (ancestors h k).any
     (fun a => Builtins.payloadCoreClasses.contains a || a == Boot.exceptionId) = false
+  plainChain : (k :: ancestors h k).all (fun a => !constructBlockers.contains a) = true
 
 theorem PlainAllocator.payload {h : Heap} {k : ObjId} (hc : PlainAllocator h k) :
     ∃ cp, (h.get k).payload = .cls cp ∧ cp.isModule = false := by
@@ -24,13 +33,24 @@ theorem PlainAllocator.payload {h : Heap} {k : ObjId} (hc : PlainAllocator h k) 
   unfold Heap.classPayload? at hm
   cases hp : (h.get k).payload <;> simp_all
 
+theorem PlainAllocator.metadata {h : Heap} {k : ObjId} (hc : PlainAllocator h k) :
+    ∃ cp, (h.get k).payload = .cls cp ∧ cp.attached = none ∧ cp.initialized = true ∧
+      cp.ancestryReady = true ∧ cp.allocatorUnavailable = false := by
+  obtain ⟨cp, hp, _⟩ := hc.payload
+  have hh := hc.ready
+  simp only [plainAllocationReadyB, Heap.classPayload?, hp, Option.any, allocationReadyB,
+    Bool.and_eq_true, Bool.not_eq_true', Option.isSome_eq_false_iff, Option.isNone_iff_eq_none] at hh
+  exact ⟨cp, hp, hh.1.1.1, hh.1.1.2, hh.1.2, hh.2⟩
+
 theorem PlainAllocator.transport {h h' : Heap} {k : ObjId} (hc : PlainAllocator h k)
     (hl : h.objs.size ≤ h'.objs.size)
     (hp : (h'.classPayload? k).map (·.isModule) = (h.classPayload? k).map (·.isModule))
-    (ha : ancestors h' k = ancestors h k) : PlainAllocator h' k :=
+    (ha : ancestors h' k = ancestors h k)
+    (hr : plainAllocationReadyB h' k = plainAllocationReadyB h k) : PlainAllocator h' k :=
   ⟨Nat.lt_of_lt_of_le hc.live hl, hc.notClass, hc.notModule, hc.notMath, hc.notString,
     hp.trans hc.module, ha ▸ hc.rooted,
-    by simpa only [Builtins.allocatableCore, ha] using hc.noCore, ha ▸ hc.noPayload⟩
+    by simpa only [Builtins.allocatableCore, ha] using hc.noCore, hr.trans hc.ready, ha ▸ hc.noPayload,
+    by rw [ha]; exact hc.plainChain⟩
 
 def AllocatorsOk (names : List String) (h : Heap) : Prop :=
   ∀ cn ∈ names, ∃ k, classNamed? h cn = some k ∧ PlainAllocator h k
@@ -40,7 +60,7 @@ theorem AllocatorsOk.ext {names : List String} {m n : Machine}
   intro cn hn
   obtain ⟨k, hk, hp⟩ := hc cn hn
   exact ⟨k, by rw [he.classNamed?_eq]; exact hk,
-    hp.transport he.size (by rw [he.payload]) (he.ancestors k)⟩
+    hp.transport he.size (by rw [he.payload]) (he.ancestors k) (by simp only [plainAllocationReadyB, he.payload])⟩
 
 theorem AllocatorsOk.defineMethod {names : List String} {h : Heap} {cls : ObjId}
     {name : String} {md : MethodDef} (hc : AllocatorsOk names h) :
@@ -48,7 +68,7 @@ theorem AllocatorsOk.defineMethod {names : List String} {h : Heap} {cls : ObjId}
   intro cn hn
   obtain ⟨k, hk, hp⟩ := hc cn hn
   refine ⟨k, ?_, hp.transport (by rw [Proof.objs_size_defineMethod]; exact Nat.le_refl _) ?_
-    (Proof.ancestors_defineMethod ..)⟩
+    (Proof.ancestors_defineMethod ..) (plainAllocationReadyB_defineMethod ..)⟩
   · have hl (g : Heap) : constLookup g cn = constOwn g Boot.objectId cn := by
       cases cp : g.classPayload? Boot.objectId <;> simp [constLookup, constOwn, cp]
     simpa only [classNamed?, hl, Proof.constOwn_defineMethod,
@@ -61,8 +81,9 @@ theorem AllocatorsOk.ivarOnly {names : List String} {h h' : Heap}
   intro cn hn
   obtain ⟨k, hk, hp⟩ := hc cn hn
   exact ⟨k, by simpa only [classNamed?, constLookup, hi.classPayload] using hk,
-    hp.transport (by rw [hi.size]; exact Nat.le_refl _) (by rw [hi.classPayload]) (hi.ancestors_eq k)⟩
+    hp.transport (by rw [hi.size]; exact Nat.le_refl _) (by rw [hi.classPayload]) (hi.ancestors_eq k) (by simp only [plainAllocationReadyB, hi.classPayload])⟩
 
+#print axioms PlainAllocator.metadata
 #print axioms AllocatorsOk.ext
 #print axioms AllocatorsOk.defineMethod
 end Ratchet.Denote

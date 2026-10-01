@@ -57,9 +57,18 @@ inductive Visibility where
 deriving Repr, DecidableEq, Inhabited
 
 structure MethodDef where
+  /-- A method installed from a captured for callback still shares its loop locals. -/
+  fromBlock : Bool := false
+  forTargets : Option (List (TargetKind × String)) := none
+  forMultiple : Bool := false
   params : List Param
   body : Expr
   owner : ObjId
+  /-- Lexical target of nested definitions; distinct from the dispatch owner. -/
+  definee : Option ObjId := none
+  /-- A define_method body shares the defining block's visibility context,
+      independently of whether its local-variable capture can be erased. -/
+  definitionFrame : Option Nat := none
   /-- Lexical constant scope captured at definition (innermost enclosing
       class/module first), threaded to the activation frame for cref-scoped
       constant lookup (artifact 03 §4). Empty = toplevel/`[Object]`. -/
@@ -71,10 +80,15 @@ structure MethodDef where
       it aliases a method aside as `__t_unchecked_x` and a `super` in the body
       must still reach `x`'s parent. -/
   superName : Option String := none
+  /-- A class-side alias retains the lookup context of its original body,
+      including a repeated module occurrence below a subclass's occurrence. -/
+  superScope : Option ObjId := none
   /-- `some bid` marks an axiomatized builtin (artifact 01 §2); `body` is
       then ignored and Builtins.lean supplies the behavior keyed on `bid`. -/
   builtin : Option String := none
   visibility : Visibility := .pub
+  /-- An inherited visibility override resolves its body again on each lookup. -/
+  visibilityOnly : Bool := false
   /-- `define_method`: the frame this body **closes over** — free variables
       resolve up its `captured` chain, exactly as in the block it came from
       (L64). `none` for an ordinary `def`, whose body has no enclosing scope.
@@ -101,13 +115,32 @@ deriving Inhabited
 
 structure ClassPayload where
   superclass : Option ObjId
+  /-- Canonical path used by model library code, independent of the object's
+      Ruby name (a feature can reopen an aliased module). Inventories apply only
+      to these objects, never to an unrelated user module with that name. -/
+  libraryNamespace : Option String := none
   methods : List (String × MethodDef) := []
   consts : List (String × Value) := []
   /-- Constants declared `private_constant`: still visible to lexical lookup
       from inside the module, invisible to `A::B` from outside (L104). -/
   privateConsts : List String := []
   name : String
+  /-- A nonempty path can still contain an anonymous ancestor. Permanent paths
+      survive later aliases; temporary paths are replaced when a namespace is
+      bound under a permanent parent (L295). Empty names are never permanent. -/
+  namePermanent : Bool := true
   isModule : Bool := false
+  /-- Class.allocate has no superclass and has not run Class#initialize. -/
+  initialized : Bool := true
+  /-- CRuby caches its superclass index. A named subclass of an uninitialized
+      class has a superclass link but no completed index, even after its parent
+      is later initialized (L291). -/
+  ancestryReady : Bool := true
+  /-- Allocation is copied at class creation, independently of live ancestors. -/
+  allocatorUnavailable : Bool := false
+  /-- A singleton class renders its attached object using the current heap.
+      Its constant name (if any) remains separate from that display name. -/
+  attached : Option ObjId := none
   /-- Modules mixed in via `include` (most-recently-included **last**); inserted
       into the ancestor chain just above this class, most-recent first (MRO). -/
   includes : List ObjId := []
@@ -140,22 +173,55 @@ deriving Inhabited
     FrameId = Nat (defined in Machine); kept as Nat here to avoid an import
     cycle — as `MethodDef.capturedFrame`, the other capture field, already does. -/
 structure Closure where
+  /-- The hidden for block assigns in the enclosing local environment. -/
+  forTargets : Option (List (TargetKind × String)) := none
+  forMultiple : Bool := false
   params : List Param
   locals : List String
   body : Expr
   captured : Option Nat
   home : Nat
   lam : Bool := false
+  /-- The literal block's call boundary. Forwarding preserves this target;
+      calling the Proc after that boundary exits makes break invalid. -/
+  breakScope : Option Nat := none
+  /-- Native external-iteration callback; it suspends instead of entering Ruby. -/
+  enumYield : Option ObjId := none
+  /-- The block was compiled as part of a modeled library. -/
+  libraryOrigin : Bool := false
+deriving Inhabited
+
+inductive EnumSize where
+  | unknown
+  | fixed (v : Value)
+  | callback (proc : Value)
+  | receiverLength
+  | receiverMethod
+deriving Inhabited
+
+structure EnumData where
+  recv : Value
+  method : String := "each"
+  args : List Value := []
+  kw : List (Value × Value) := []
+  size : EnumSize := .unknown
 deriving Inhabited
 
 inductive Payload where
   | none
+  | enumerator (data : Option EnumData)
+  | chain (enums : List Value)
+  | generator (proc : Option Value)
+  | yielder (proc : Option Value) (brk : Option Nat)
+  /-- Reduced exact fraction; denominator is positive, instances are frozen. -/
+  | rational (num : Int) (den : Nat)
+  | complex (real imag : Value)
   | str (s : String)
   | arr (elems : Array Value)
   | hsh (entries : Array (Value × Value))
   | cls (c : ClassPayload)
-  /-- Exception instance: just the message for L0. -/
-  | exc (msg : String)
+  /-- Exception message object; nil means the default class-name message. -/
+  | exc (msg : Value)
   /-- A Proc (block/proc/lambda), artifact 04 §1. -/
   | proc (c : Closure)
   /-- A `Random` instance's MT19937 state (mutated in place by `#rand`). -/
@@ -187,6 +253,13 @@ structure Object where
   klass : ObjId
   ivars : List (String × Value) := []
   frozen : Bool := false
+  /-- StopIteration's native result is not a Ruby instance variable. -/
+  iterationResult : Value := .nil
+  /-- Native UncaughtThrowError metadata is hidden from Ruby instance variables. -/
+  throwTag : Value := .nil
+  throwValue : Value := .nil
+  /-- Internal write generation, used by suspended native iterators. -/
+  revision : Nat := 0
   eigen : Option ObjId := none
   payload : Payload := .none
   /-- Present only on Hash objects created with a default (value or proc). -/
@@ -204,6 +277,10 @@ deriving Inhabited
 /-- ObjId = index; allocation appends (ids never reused, artifact 01 §2). -/
 structure Heap where
   objs : Array Object
+  /-- Frozen native namespace-name Strings, shared by equal paths (L297).
+      Kept in the heap so prelude/runtime boundaries retain name identity.
+      The Bool is the String's binary tag; general String interning is separate. -/
+  nameStrings : List (String × Bool × ObjId) := []
 deriving Inhabited
 
 namespace Heap
@@ -213,10 +290,10 @@ def get? (h : Heap) (o : ObjId) : Option Object := h.objs[o]?
 def get (h : Heap) (o : ObjId) : Object := h.objs.getD o default
 
 def set (h : Heap) (o : ObjId) (obj : Object) : Heap :=
-  ⟨h.objs.set! o obj⟩
+  { h with objs := h.objs.set! o { obj with revision := (h.get o).revision + 1 } }
 
 def alloc (h : Heap) (obj : Object) : ObjId × Heap :=
-  (h.objs.size, ⟨h.objs.push obj⟩)
+  (h.objs.size, { h with objs := h.objs.push obj })
 
 def classPayload? (h : Heap) (o : ObjId) : Option ClassPayload :=
   match (h.get o).payload with
@@ -287,10 +364,15 @@ def regexpId : ObjId := 36
 def matchDataId : ObjId := 37
 /-- `RegexpError < StandardError` — raised by `Regexp.new` on a bad pattern. -/
 def regexpErrorId : ObjId := 38
+def rationalId : ObjId := 39
+def complexId : ObjId := 40
+def enumeratorId : ObjId := 41
+def generatorId : ObjId := 42
+def yielderId : ObjId := 43
 /-- Toplevel self (`main`), an ordinary Object instance. **Must stay last**:
     `initHeap` allocates every `classTable` entry densely and then `main`, so
     `mainId = classTable.length`. Adding a bootstrap class means bumping this. -/
-def mainId : ObjId := 39
+def mainId : ObjId := 44
 
 /-- (id, name, superclass) for every bootstrap class, in id order. -/
 def classTable : List (ObjId × String × Option ObjId) := [
@@ -332,70 +414,90 @@ def classTable : List (ObjId × String × Option ObjId) := [
   (uncaughtThrowErrorId, "UncaughtThrowError", some argumentErrorId),
   (regexpId, "Regexp", some objectId),
   (matchDataId, "MatchData", some objectId),
-  (regexpErrorId, "RegexpError", some standardErrorId)
+  (regexpErrorId, "RegexpError", some standardErrorId),
+  (rationalId, "Rational", some numericId),
+  (complexId, "Complex", some numericId),
+  (enumeratorId, "Enumerator", some objectId),
+  (generatorId, "Enumerator::Generator", some objectId),
+  (yielderId, "Enumerator::Yielder", some objectId)
 ]
 
 /-- Builtin method table: class id → method names given by primitive rules.
     Builtin bid = "ClassName#name". Registered into each class's `methods`
     so lookup (incl. inheritance) is uniform. -/
 def builtinMethods : List (ObjId × List String) := [
-  (basicObjectId, ["==", "!", "equal?"]),
+  (enumeratorId, ["each", "next", "next_values", "peek", "peek_values", "feed", "rewind",
+                  "size", "inspect", "dup", "clone", "initialize"]),
+  (generatorId, ["each", "initialize"]),
+  (yielderId, ["yield", "<<", "initialize"]),
+  (stopIterationId, ["result"]),
+  (basicObjectId, ["==", "!", "equal?", "initialize", "method_missing", "singleton_method_added",
+                   "singleton_method_removed", "singleton_method_undefined"]),
   -- Kernel/Object layer (Kernel folded into Object at L0)
-  (objectId, ["==", "!", "equal?", "eql?", "class", "nil?", "inspect",
+  (objectId, ["==", "===", "!", "equal?", "eql?", "class", "nil?", "itself", "inspect",
               "to_s", "freeze", "frozen?", "is_a?", "kind_of?", "instance_of?",
-              "puts", "print", "p", "raise", "String", "block_given?", "rand",
-              "require", "require_relative", "__unsupported__", "dup", "clone",
+              "puts", "print", "p", "raise", "fail", "String", "block_given?", "rand",
+              "require", "require_relative", "__unsupported__", "dup", "clone", "initialize_copy", "initialize_clone", "initialize_dup",
               "__user_defines?", "__default_inspect?", "__write", "__addr_str",
-              "__any_to_s", "__match_to_caller", "respond_to_missing?",
-              "__coerce_failed", "__cmp_failed",
-              "initialize"]),
-  (nilClassId, ["to_s", "inspect", "nil?", "to_a", "&", "|", "dup", "clone"]),
-  (trueClassId, ["to_s", "inspect", "&", "|", "dup", "clone"]),
-  (falseClassId, ["to_s", "inspect", "&", "|", "dup", "clone"]),
-  (integerId, ["+", "-", "*", "/", "%", "**", "-@", "==", "<", ">", "[]",
+              "__any_to_s", "__match_to_caller", "respond_to_missing?", "instance_variables_to_inspect",
+              "__coerce_failed", "__cmp_failed", "__coerce_defined?", "Rational", "Complex", "__complex_rect",
+              "enum_for", "to_enum", "__enum_for", "__chain_init", "__chain_enums",
+              "binding", "local_variables", "__forwardable_compile"]),
+  (nilClassId, ["===", "to_s", "inspect", "nil?", "to_a", "&", "|", "dup", "clone"]),
+  (trueClassId, ["===", "to_s", "inspect", "&", "|", "dup", "clone"]),
+  (falseClassId, ["===", "to_s", "inspect", "&", "|", "dup", "clone"]),
+  (integerId, ["+", "-", "*", "/", "%", "**", "-@", "==", "===", "<", ">", "[]",
                "<=", ">=", "<=>", "to_s", "inspect", "to_i", "to_f", "abs", "succ",
                "pred", "zero?", "positive?", "negative?", "even?", "odd?", "chr",
                "round", "ceil", "floor", "truncate", "divmod", "nonzero?",
-               "eql?", "hash", "dup", "clone"]),
+               "eql?", "hash", "dup", "clone", "to_r", "to_c", "i", "times"]),
   (floatId, ["round", "ceil", "floor", "truncate", "divmod", "nonzero?",
-             "+", "-", "*", "/", "%", "**", "-@", "==", "<", ">", "<=", ">=", "<=>",
+             "+", "-", "*", "/", "%", "**", "-@", "==", "===", "<", ">", "<=", ">=", "<=>",
              "to_s", "inspect", "to_i", "to_f", "abs", "zero?", "nan?", "eql?",
-             "dup", "clone"]),
-  (stringId, ["+", "*", "==", "<", ">", "<=", ">=", "<=>", "length",
+             "dup", "clone", "to_r", "to_c", "i"]),
+  (rationalId, ["numerator", "denominator", "to_s", "inspect", "to_i", "to_f", "to_r",
+                "-@", "+@", "abs", "magnitude", "positive?", "negative?", "dup", "clone",
+                "eql?", "==", "coerce", "+", "-", "*", "/", "quo", "<=>", "**",
+                "floor", "ceil", "truncate", "to_c", "i"]),
+  (complexId, ["real", "imag", "imaginary", "rect", "rectangular", "to_s", "inspect",
+               "real?", "to_c", "dup", "clone", "coerce", "==", "eql?", "-@", "+@",
+               "conj", "conjugate", "+", "-", "*", "/", "quo", "finite?", "infinite?"]),
+  (stringId, ["+", "*", "==", "===", "<", ">", "<=", ">=", "<=>", "length",
               "size", "to_s", "to_str", "inspect", "<<", "concat", "empty?",
               "include?", "reverse", "upcase", "downcase", "strip", "chomp",
-              "start_with?", "end_with?", "eql?", "freeze", "frozen?", "dup", "clone",
+              "start_with?", "end_with?", "eql?", "freeze", "frozen?", "dup", "clone", "initialize_copy",
               "initialize", "+@", "-@",
               "to_sym", "[]"]),
-  (symbolId, ["to_s", "inspect", "==", "to_sym", "to_proc", "dup", "clone"]),
+  (symbolId, ["to_s", "inspect", "==", "===", "to_sym", "to_proc", "dup", "clone", "match?"]),
   (arrayId, ["==", "[]", "[]=", "<<", "push", "pop", "shift", "unshift",
              "length", "size", "first", "last", "empty?", "include?", "+",
              "-", "*", "&", "|", "inspect", "to_s", "to_a", "reverse", "join", "flatten",
-             "compact", "uniq", "concat", "index", "eql?", "dup", "clone", "freeze",
-             "initialize",
-             "frozen?", "sort", "min", "max", "sum"]),
+             "compact", "uniq", "concat", "index", "eql?", "dup", "clone", "freeze", "initialize_copy",
+             "initialize", "each", "each_index",
+             "frozen?", "sort", "min", "max", "sum", "map", "collect"]),
   (hashId, ["==", "[]", "[]=", "length", "size", "empty?", "key?", "has_key?",
-            "freeze", "frozen?",
+            "freeze", "frozen?", "each", "each_pair", "each_key", "each_value",
             "include?", "member?", "keys", "values", "delete", "fetch",
-            "inspect", "to_s", "dup", "clone", "merge", "initialize"]),
+            "inspect", "to_s", "to_a", "dup", "clone", "merge", "initialize", "initialize_copy"]),
   -- `message` is deliberately absent: it is `to_s` in CRuby, so it must dispatch,
   -- and the prelude defines it (L131).
-  (exceptionId, ["to_s", "inspect", "dup", "clone", "initialize"]),
-  (classId, ["superclass"]),
+  (exceptionId, ["to_s", "inspect", "dup", "clone", "initialize", "exception"]),
+  (uncaughtThrowErrorId, ["to_s", "tag", "value", "__throw_metadata"]),
+  (classId, ["superclass", "initialize", "inherited"]),
   (stringId, ["try_convert"]),
-  (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors",
+  (moduleId, ["===", "name", "to_s", "inspect", "==", "ancestors", "freeze", "initialize",
+              "const_set", "const_added", "method_added", "method_removed", "method_undefined",
               "private_constant", "public_constant"]),
   (classId, ["new", "allocate", "__range_new_unchecked"]),
-  -- Proc#call/()/[]/yield are intercepted in `invoke` (they push a block
-  -- frame, which a pure builtin cannot); only the pure introspectors are
-  -- registered here.
-  (procId, ["lambda?", "to_proc"]),
+  -- Call markers resolve through ordinary lookup; the interpreter executes them
+  -- by pushing a block frame, which a pure builtin cannot (L272).
+  (procId, ["lambda?", "to_proc", "call", "[]", "yield", "==="]),
   (randomId, ["rand"]),
   (rangeId, ["first", "last", "begin", "end", "exclude_end?", "inspect", "to_s"]),
   (stringId, ["=~", "match", "match?", "scan", "__sub_rep", "__gsub_rep", "split", "to_i",
               "__search_at",
               "ord", "chars", "to_f",
-              "__binary?", "__bytes", "__as_binary", "__as_utf8",
+              "__binary?", "__bytes", "b", "__as_utf8",
               "__force_binary", "__force_utf8"]),
   (regexpId, ["escape", "quote", "union", "source", "options", "match", "match?", "=~", "===", "inspect",
               "to_s", "names", "==", "eql?", "hash"]),
@@ -415,7 +517,20 @@ def install (h : Heap) (cls : ObjId) (names : List String) : Heap :=
     let cname := c.name
     let methods := names.foldl (init := c.methods) fun ms n =>
       (n, { params := [], body := .nil, owner := cls,
-            builtin := some s!"{cname}#{n}" : MethodDef }) :: ms
+            visibility := if n == "method_missing" || n == "Rational" || n == "Complex" ||
+                ["const_added", "inherited", "method_added", "method_removed", "method_undefined", "singleton_method_added",
+                 "singleton_method_removed", "singleton_method_undefined"].contains n ||
+                (["puts", "print", "p", "raise", "fail", "String", "block_given?", "rand",
+                  "require", "require_relative", "respond_to_missing?", "instance_variables_to_inspect", "binding",
+                  "local_variables"].contains n && cls == objectId) ||
+                ["initialize", "initialize_copy", "initialize_clone", "initialize_dup"].contains n then .priv else .pub,
+            builtin := some (if n == "===" then
+              match cname with
+              | "Proc" => "Proc#call"
+              | "TrueClass" | "FalseClass" | "NilClass" => "Object#==="
+              | "Integer" | "Float" | "String" | "Symbol" => s!"{cname}#=="
+              | _ => s!"{cname}#{n}"
+              else s!"{cname}#{n}") : MethodDef }) :: ms
     h.setClassPayload cls { c with methods }
 
 /-- Reducible insertion sort by id (`.1`), replacing `Array.qsort` in `initHeap`.
@@ -440,7 +555,7 @@ def initHeap : Heap :=
   -- classes allocated in ascending-id order ⇒ alloc index = id.
   let hClasses := (sortById classTable).foldl
     (fun h (e : ObjId × String × Option ObjId) => (h.alloc (mkClassObj e.2.1 e.2.2)).2)
-    (⟨#[]⟩ : Heap)
+    ({ objs := #[] } : Heap)
   -- main object (allocated last, after all classes)
   let hMain := (hClasses.alloc { klass := objectId }).2
   -- install builtins
@@ -462,11 +577,16 @@ def initHeap : Heap :=
         { c with consts := c.consts ++
             [("NAN", Value.flt (0.0 / 0.0)), ("INFINITY", Value.flt (1.0 / 0.0))] }
     | Option.none => hBuiltins
-  -- register every class name as a constant on Object
+  let hBuiltins := match hBuiltins.classPayload? enumeratorId with
+    | some c => hBuiltins.setClassPayload enumeratorId
+        { c with consts := [("Generator", .ref generatorId), ("Yielder", .ref yielderId)] }
+    | none => hBuiltins
+  -- Nested classes belong to their enclosing constant table.
   let hConsts : Heap := match hBuiltins.classPayload? objectId with
     | some c =>
       hBuiltins.setClassPayload objectId
-        { c with consts := classTable.map (fun (o, name, _) => (name, Value.ref o)) }
+        { c with consts := classTable.filterMap (fun (o, name, _) =>
+            if name.contains ':' then none else some (name, Value.ref o)) }
     | Option.none => hBuiltins
   -- **J53: the eigenclasses of `BasicObject` and `Object`, realized at boot.**
   -- `enterClassBody` eagerly realizes a fresh class's metaclass chain, and at a
@@ -481,13 +601,13 @@ def initHeap : Heap :=
   let hE := (hConsts.alloc
     { klass := classId,
       payload := .cls { superclass := some classId,
-                        name := "#<Class:BasicObject>", isModule := false } }).2
+                        name := "", attached := some basicObjectId, isModule := false } }).2
   let hE := hE.set basicObjectId { hE.get basicObjectId with eigen := some eB }
   let eO := hE.objs.size
   let hE := (hE.alloc
     { klass := classId,
       payload := .cls { superclass := some eB,
-                        name := "#<Class:Object>", isModule := false } }).2
+                        name := "", attached := some objectId, isModule := false } }).2
   hE.set objectId { hE.get objectId with eigen := some eO }
 
 end Boot
@@ -549,20 +669,36 @@ where
           | some s => go s fuel
           | Option.none => [])
 
-/-- LOOKUP: first module in `ancestors (classOf v)` defining `m` directly,
-    returned with its owner (needed for `super`, artifact 02 §2). -/
-def lookup (h : Heap) (v : Value) (m : String) : Option (ObjId × MethodDef) :=
-  go (ancestors h (classOf h v))
+/-- Reflection sees a visibility forwarding entry even if its eventual body
+    has been removed or undefined. Calls and aliases resolve the body below. -/
+def methodEntryInChain (h : Heap) (chain : List ObjId) (name : String) : Option (ObjId × MethodDef) :=
+  chain.firstM fun k =>
+    (h.classPayload? k).bind fun cp =>
+      (cp.methods.find? (·.1 == name)).map fun (_, md) => (k, md)
+
+/-- Method lookup with live inherited visibility overrides (Ruby's ZSUPER
+    entries). A module's standalone reflection can use its Object fallback. -/
+def lookupInChain (h : Heap) (chain : List ObjId) (name : String) : Option (ObjId × MethodDef) :=
+  go (2 * h.objs.size + 2) chain false
 where
-  go : List ObjId → Option (ObjId × MethodDef)
-    | [] => Option.none
-    | k :: rest =>
+  go : Nat → List ObjId → Bool → Option (ObjId × MethodDef)
+    | 0, _, _ => none
+    | _ + 1, [], _ => none
+    | fuel + 1, k :: rest, fallbackUsed =>
       match h.classPayload? k with
-      | some c =>
-        match c.methods.find? (·.1 == m) with
-        | some (_, md) => some (k, md)
-        | Option.none => go rest
-      | Option.none => go rest
+      | none => go fuel rest fallbackUsed
+      | some cp =>
+        match cp.methods.find? (·.1 == name) with
+        | none => go fuel rest fallbackUsed
+        | some (_, md) =>
+          if !md.visibilityOnly then some (k, md) else
+          let body := (go fuel rest fallbackUsed).orElse fun _ =>
+            if cp.isModule && !fallbackUsed then go fuel (ancestors h Boot.objectId) true else none
+          body.map fun (owner, actual) => (owner, { actual with visibility := md.visibility })
+
+/-- LOOKUP returns the defining entry, resolving visibility-only wrappers. -/
+def lookup (h : Heap) (v : Value) (name : String) : Option (ObjId × MethodDef) :=
+  lookupInChain h (ancestors h (classOf h v)) name
 
 /-- `is_a?` test: does `v`'s ancestor chain include class `k`? -/
 def isA (h : Heap) (v : Value) (k : ObjId) : Bool :=
@@ -577,30 +713,84 @@ def fakeAddr (o : ObjId) : String :=
   let hex := String.ofList (Nat.toDigits 16 o)
   "0x" ++ String.ofList (List.replicate (16 - hex.length) '0') ++ hex
 
+/-- CRuby's temporary class path, distinct from singleton-class `to_s` (L291).
+    An unnamed Module-subclass instance uses its direct class's path, including
+    an eigenclass when present. That path names the eigenclass by address or its
+    assigned constant name, without recursively rendering its attached object. -/
+def classPath (h : Heap) (k : ObjId) : String :=
+  go (h.objs.size + 1) k
+where
+  go : Nat → ObjId → String
+    | 0, k => s!"#<Class:{fakeAddr k}>"
+    | fuel + 1, k =>
+      match h.classPayload? k with
+      | some c =>
+        if !c.name.isEmpty then c.name
+        else
+          let label := if !c.isModule then "Class"
+            else if (h.get k).klass == Boot.moduleId then "Module"
+            else go fuel (classOf h (.ref k))
+          s!"#<{label}:{fakeAddr k}>"
+      | none => "Object"
+
 /-- Class name (for error messages / inspect). An **anonymous** class or module
     (`Class.new`, `Module.new`) has an empty `name`, and CRuby renders it by
     address wherever a name is wanted — `0 + Class.new.new` says
     `#<Class:0x…> can't be coerced into Integer`, not `` `` can't be coerced``.
     Every message built from `className` inherits that, so the fallback belongs
-    here and not at ~20 call sites (L124). `Module#name` still answers `nil`:
-    it tests `c.name.isEmpty` itself rather than going through here. -/
+    here and not at ~20 call sites (L124). Singleton classes render their attached
+    object from the current heap (L276). `Module#name` reads the separate constant
+    name, so an unnamed singleton class still answers nil. The heap-sized fuel
+    bounds the acyclic attachment/class walk of every runtime-allocated heap. -/
 def className (h : Heap) (k : ObjId) : String :=
-  match h.classPayload? k with
-  | some c =>
-    if c.name.isEmpty then
-      s!"#<{if c.isModule then "Module" else "Class"}:{fakeAddr k}>"
-    else c.name
-  | Option.none => "Object"
+  go (h.objs.size + 1) k
+where
+  go : Nat → ObjId → String
+    | 0, k => s!"#<Class:{fakeAddr k}>"
+    | fuel + 1, k =>
+      match h.classPayload? k with
+      | some c =>
+        match c.attached with
+        | some o =>
+          let attachedName := match h.classPayload? o with
+            | some _ => go fuel o
+            | none => s!"#<{go fuel (h.get o).klass}:{fakeAddr o}>"
+          s!"#<Class:{attachedName}>"
+        | none => classPath h k
+      | none => "Object"
 
 /-- CRuby's `rb_any_to_s`: how an object is named where a *class* would be named
     by `className` — `#<Foo:0x…>`, ignoring any user `to_s`/`inspect` and any
-    ivars. The one caller is the **eigenclass**'s own name (`o.singleton_class`
-    is `#<Class:#<Foo:0x…>>`), which is why this is not `Repr.inspect`: it must
-    be a pure heap function, and CRuby does not dispatch here either [V]. -/
+    ivars. Used for receiver descriptions; singleton-class rendering uses the
+    same rule inside className's recursive walk. This is not Repr.inspect:
+    CRuby does not dispatch user methods here [V]. -/
 def anyToS (h : Heap) (o : ObjId) : String :=
   match h.classPayload? o with
   | some _ => className h o
   | Option.none => s!"#<{className h (h.get o).klass}:{fakeAddr o}>"
+
+/-- How a NoMethodError describes its receiver [V]:
+    main / nil / true / false literally; classes as "class C";
+    everything else "an instance of C" — **except** an object that has an
+    eigenclass, which CRuby renders as the object itself, by `rb_any_to_s`:
+    `def o.hi; end; o.zz` says `undefined method 'zz' for #<Foo:0x…>`, not
+    `… for an instance of Foo` (L124). The test is only "does a singleton class
+    exist" — `extend` and a bare `o.singleton_class` trigger it as much as a
+    `def o.x` — and it ignores a user `inspect`/`to_s` and any ivars. A *class*
+    receiver keeps "class C" even with singleton methods of its own [V]. -/
+def receiverDesc (h : Heap) (v : Value) : String :=
+  match v with
+  | .nil => "nil"
+  | .bool b => toString b
+  | .ref o =>
+    if o == Boot.mainId then "main"
+    else match (h.get o).payload with
+      | .cls c => (if c.isModule then "module " else "class ") ++ className h o
+      | _ =>
+        match (h.get o).eigen with
+        | some _ => anyToS h o
+        | Option.none => s!"an instance of {className h (h.get o).klass}"
+  | _ => s!"an instance of {className h (classOf h v)}"
 
 /-- Look up a constant on Object (L0: flat toplevel namespace,
     artifact 03's two-phase lookup degenerates to this). -/
@@ -662,7 +852,13 @@ def cvarSetIn (h : Heap) (scope : ObjId) (name : String) (v : Value) : Heap :=
       { c with cvars := (name, v) :: c.cvars.filter (·.1 != name) }
   | Option.none => h
 
-/-- Install a method (def'). Returns the updated heap. -/
+/-- Frozen method tables report the attached receiver for an eigenclass. -/
+def frozenMethodReceiver? (h : Heap) (target : ObjId) : Option Value :=
+  let attached := (h.classPayload? target).bind (·.attached)
+  let receiver := attached.getD target
+  if (h.get target).frozen || (h.get receiver).frozen then some (.ref receiver) else none
+
+/-- Install a method after the interpreter has checked the frozen receiver. -/
 def defineMethod (h : Heap) (cls : ObjId) (name : String) (md : MethodDef) : Heap :=
   match h.classPayload? cls with
   | some c =>

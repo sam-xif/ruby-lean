@@ -26,9 +26,15 @@ deriving Repr, DecidableEq, Inhabited
 structure Frame where
   self : Value
   locals : List (String × Value) := []
-  /-- Module the enclosing `def` targets / `super` searches from (unused
-      until L2 but load-bearing in the frame shape). -/
+  /-- For callbacks have fresh control scopes but share this local environment. -/
+  localAlias : Option FrameId := none
+  /-- Target of an unqualified def/alias/undef in this environment. -/
   defmod : ObjId
+  /-- Dispatch owner used by super, independently of the lexical definee. -/
+  methodOwner : Option ObjId := none
+  /-- Ordinary blocks and define_method bodies share their defining visibility
+      scope. *_eval blocks instead start a fresh definition context. -/
+  definitionFrame : Option FrameId := none
   /-- Lexical constant scope (cref): the enclosing class/module bodies at this
       point, innermost first (artifact 03 §4). Constant lookup checks each's own
       consts before the ancestor phase. A method carries the cref of where it was
@@ -46,6 +52,7 @@ structure Frame where
       For an **alias** this is the *original* name, which is what CRuby's `super`
       searches for (L108). -/
   meth : String := ""
+  superScope : Option ObjId := none
   /-- The running body's own parameter list, and whether it came from
       `define_method`. `zsuper` reconstructs its arguments from these; it used to
       re-look-up `meth` in `defmod`, which stopped working once `meth` could be an
@@ -72,6 +79,11 @@ structure Frame where
       `Regexp.last_match`); set by the `__match_to_caller` primitive as the first
       statement of such a body (L121). -/
   matchXparent : Bool := false
+  /-- A native Enumerator fiber started at top level shares that environment's
+      match slot. This does not capture its locals or its control stack. -/
+  matchAlias : Option FrameId := none
+  /-- Source origin, distinct from boot mode: library loading still runs hooks. -/
+  libraryOrigin : Bool := false
 deriving Inhabited
 
 /-- In-flight non-local transfer (artifact 04 §3's `C^ctl` variants).
@@ -110,6 +122,34 @@ inductive SendSite where
   | vcall
 deriving Repr, DecidableEq, Inhabited
 
+/-- The already evaluated call awaiting `&operand` conversion (L275). -/
+structure BlockPassCall where
+  recv : Value
+  site : SendSite
+  name : String
+  args : List Value
+  kw : List (Value × Value)
+deriving Inhabited
+
+/-- Checked conversion's suspended user calls. A missing-method failure retains
+    both response answers and the lookup owner, since redefinition during the
+    handler affects whether its NoMethodError propagates (L275). -/
+inductive BlockPassPhase where
+  | start
+  | respond
+  | respondMissing (promised : Bool)
+  | converted (direct : Bool)
+  | missing (owner : ObjId) (respond : Bool) (respondMissing : Bool)
+deriving Inhabited
+
+/-- Rendering a receiver for FrozenError uses inspect, then rb_obj_as_string. -/
+inductive FrozenPhase where
+  | start | className
+  | initialized (exc message : Value)
+  | inspected (exc message : Value)
+  | stringified (exc message source : Value)
+deriving Inhabited
+
 /-- A send's block child, carried through arg evaluation. A literal block is
     reified (capturing the caller frame) only once args are in; a `&e`
     block-pass is evaluated last (eval order) then coerced via `to_proc`. -/
@@ -118,6 +158,34 @@ inductive PendingBlk where
   | lit (params : List Param) (locals : List String) (body : Expr)
   | passExpr (e : Expr)
   | passAnon
+deriving Inhabited
+
+/-- The evaluation already completed around a splat operand. -/
+inductive SplatCall where
+  | args (recv : Value) (site : SendSite) (name : String) (acc : List Value)
+      (rest : List Expr) (blk : PendingBlk)
+  | superArgs (acc : List Value) (rest : List Expr) (blk : Option Value)
+  | yieldArgs (acc : List Value) (rest : List Expr)
+  | array (acc : List Value) (rest : List Expr)
+deriving Inhabited
+
+/-- The operation suspended while a Ruby conversion method runs. -/
+inductive ConversionCall where
+  | block (call : BlockPassCall)
+  | stringPlus (recv : Value)
+  | coreCopy (kind : ObjId) (recv : Value)
+  | splat (call : SplatCall)
+  | closureArgs (cl : Closure) (brk : Option FrameId)
+      (selfOv : Option Value) (defmodOv : Option ObjId)
+  | paramDestructure (subs : List Param) (remaining : List (Param × Value)) (body : Expr)
+  | forDestructure (targets : List (TargetKind × String)) (body : Expr)
+  | objectInspect
+  | enumRewind (object : ObjId)
+  | raiseString
+  | stopMessage (result : Value)
+  | raiseException (args : List Value)
+  | exceptionString (viaToS : Bool)
+  | constantSet (target : ObjId) (value : Value)
 deriving Inhabited
 
 /-- What an `ensure` resumes when it finishes normally. -/
@@ -130,6 +198,9 @@ inductive Ctl where
   | eval (e : Expr)
   | value (v : Value)
   | jump (j : Jump)
+  /-- A native operation queues ordinary dispatch for the next transition. -/
+  | send (recv : Value) (site : SendSite) (name : String) (args : List Value)
+      (blk : Option Value) (kw : List (Value × Value))
 deriving Inhabited
 
 /-- Which jump a `return`/`break`/`next` value expression feeds. -/
@@ -148,14 +219,31 @@ deriving Inhabited
 /-- How a native block-iterator (`each`/`map`/`inject`/…) treats each block
     result and computes its final value. -/
 inductive IterKind where
+  | times (limit index : Nat)
+  | scan (object : ObjId) (revision : Nat) (subject pattern : String) (options index : Nat)
+      (last : Option Value) (binary : Bool)
+  | arrayEach (array : ObjId) (index : Nat) -- read the live payload after each yield
+  | arrayIndex (array : ObjId) (index : Nat)
+  | hashEach (hash : ObjId) (keys : List Value) (index mode : Nat)
+  | arrayMap (array : ObjId) (index : Nat) -- live cursor, collect block results
   | ignore    -- each / times / each_with_index: discard result, return `retVal`
-  | collect   -- map / collect: gather results into a new Array
   | fold      -- inject / reduce: thread the accumulator (block gets `acc :: args`)
   | maxBy     -- max_by: keep the element whose block value is greatest
   | minBy     -- min_by: keep the element whose block value is least
 deriving Repr, Inhabited
 
+inductive MethodEdit where
+  | define (target : ObjId) (name : String) (method : MethodDef)
+  | aliasMethod (target : ObjId) (name original : String)
+  | remove (target : ObjId) (name : String) (undefine : Bool)
+  | visibility (target : ObjId) (name : String) (vis : Visibility)
+  | moduleFunction (target : ObjId) (name : String)
+deriving Inhabited
+
 inductive Kont where
+  | requireK (feature : String) (frame : FrameId)
+  | enumFinishK (id : ObjId)
+  | enumStopK (owner : Option ObjId) (exc result : Value)
   /-- Remaining statements of a `seq`; the in-flight value is discarded. -/
   | seqK (rest : List Expr)
   | asgnK (k : VarKind) (name : String)
@@ -163,19 +251,40 @@ inductive Kont where
   /-- Value in flight is a `class C < S` superclass expression: with `S`
       resolved, open (or create) the class and run its body (artifact 01 §5). -/
   | classDefK (name : String) (body : Expr)
-  /-- `Class#new` when the class has a user `initialize`: the in-flight value
-      is `initialize`'s (discarded) result; yield the fresh instance instead
+  /-- A bound namespace waits for const_added before inherited and its body. -/
+  | constClassK (klass : ObjId) (superclass : Option ObjId) (libraryName : String) (body : Expr)
+  /-- A newly bound class sends inherited before entering its saved body. -/
+  | classBodyK (klass : ObjId) (libraryName : String) (body : Expr)
+  /-- Native Class#initialize waits for inherited before executing its block. -/
+  | classInitK (klass : ObjId) (block : Option Value)
+  /-- Native type diagnostics render the selected Class object's live to_s. -/
+  | classNameErrorK (klass : ObjId) (lead tail : String)
+  /-- An invalid constant-name argument is inspected, then converted to String. -/
+  | constantNameErrorK (source : Option Value)
+  /-- `Class#new`: the in-flight value is `initialize`'s (discarded) result;
+      yield the allocated instance instead
       (artifact 02 §3 — `new` = allocate ∘ initialize ∘ return self). -/
   | newK (inst : Value)
+  /-- A checked exception constructor returned; validate and raise its result. -/
+  | raiseValueK
+  | exceptionCopyK (copy message original : Value)
+  | cloneK (copy original freeze : Value)
+  | copyErrorK (lead : String) (remaining : List Value) (parts : List String) (fallback : Option Value)
+  /-- The call supplied a literal block. A break targets this boundary even
+      through initialize, super, or further block forwarding. -/
+  | blockCallK (scope : FrameId)
+  | arrayInitK (recv : ObjId) (block : Value) (index size : Nat)
   /-- `def` fired the `Module#method_added` hook: the in-flight value is the
       hook's (discarded) result; `def` still evaluates to the method name
       (artifact 02 §6 — a definition hook is ordinary dispatch on the defining
       module, not a new evaluation rule). -/
   | methodAddedK (name : String)
-  /-- `raise C` / `raise C, msg` where `C` has a *user* `initialize` (L70): the
-      in-flight value is that initializer's (discarded) result; raise the freshly
-      built instance. -/
+  /-- Resume a native method-table operation after its Ruby callback. -/
+  | methodEditsK (remaining : List MethodEdit) (result : Value)
+  /-- A native error's initializer returned: discard its result and raise the
+      freshly allocated instance (L286). -/
   | raiseNewK (inst : Value)
+  | uncaughtInspectK (source : Option Value)
   /-- `include M` when `M` defines `self.included`: the in-flight value is the
       hook's (discarded) result; `include` evaluates to the receiver instead. -/
   | includeK (recv : Value)
@@ -202,11 +311,9 @@ inductive Kont where
   | whileBodyK (c body : Expr)
   /-- `for` collection evaluated: the in-flight value is the collection; begin
       iterating it (artifact 04). -/
-  | forStartK (targets : List (TargetKind × String)) (body : Expr)
-  /-- `for` body finished for one element (value discarded). Loop marker for
-      brk/nxt; `rest` are the not-yet-visited elements, `coll` the loop value. -/
-  | forBodyK (targets : List (TargetKind × String)) (body : Expr)
-      (rest : List Value) (coll : Value)
+  | forStartK (targets : List (TargetKind × String)) (body : Expr) (multiple : Bool)
+  /-- Assign the remaining for targets, then evaluate the body. -/
+  | forAssignK (pending : List ((TargetKind × String) × Value)) (body : Expr)
   /-- A native block-iterator finished one block call. The in-flight value is the
       block's result; handle it per `kind`, then call the block for the next
       element (`rest` = remaining per-iteration arg lists) or deliver the final
@@ -227,6 +334,9 @@ inductive Kont where
       dispatch (args + keywords already evaluated). -/
   | blkCoerceK (recv : Value) (implicit : SendSite) (m : String) (acc : List Value)
       (kw : List (Value × Value))
+  /-- Suspend a native operation during checked to_proc/to_str conversion. -/
+  | blkConvertK (call : ConversionCall) (source : Value) (phase : BlockPassPhase)
+  | frozenErrorK (recv : Value) (phase : FrozenPhase)
   /-- Evaluating a call-site `k: v` keyword value; then continue the kwargs. -/
   | kwPairK (key : String) (rest : List KwEntry) (kwacc : List (Value × Value))
       (recv : Value) (implicit : SendSite) (m : String) (posArgs : List Value) (pblk : PendingBlk)
@@ -260,17 +370,22 @@ inductive Kont where
       then evaluate the next omitted default (`rest`), and once all defaults are
       bound, install the post/rest/block bindings (`post`) and run `body`.
       (Post/rest/block bind *after* defaults — a default cannot see them [V].) -/
+  | paramBindK (pending : List (Param × Value)) (body : Expr)
   | optDefK (name : String) (rest : List (String × Expr))
       (post : List (String × Value)) (body : Expr)
   /-- Method-activation boundary (generative jump target = frame identity,
       sketch §1.1). Pops `stack` on normal or unwinding passage. -/
   | frameK (fid : FrameId)
+  /-- define_method retains block-local break/next/redo semantics. -/
+  | dmFrameK (frame : FrameId) (body : Expr)
+  | objectInspectK (recv filter : Value) (remaining : List String) (text : String)
+      (stringifying : Option Value)
   /-- Block-activation boundary (artifact 04 §2). `lam` = lambda semantics;
       `brk` = the method activation a `break` returns from (`none` for a
       detached proc `.call`, where `break` is a LocalJumpError). Consumes
       `next` (block value) and a lambda-targeted `return`/`break`.
-      `cl`/`args` are kept so `redo` can re-run this invocation from the top with
-      the same arguments (L69). -/
+      `cl`/`args` retain the invocation descriptor. `redo` restarts cl.body in
+      this same frame, preserving local writes and completed conversion (L277). -/
   | blkFrameK (fid : FrameId) (lam : Bool) (brk : Option FrameId)
       (cl : Closure) (args : List Value)
   /-- `catch tag do … end` (L69): consumes a `throw` carrying an `equal?` tag,
@@ -306,24 +421,103 @@ inductive Kont where
   | ensureK (pending : Pending) (restore : Option (Option Value) := none)
 deriving Inhabited
 
+/-- CRuby retains the last failed call's reason in its execution context.
+    The native method_missing reads it even through a user handler's super. -/
+inductive MissingReason where
+  | ordinary | vcall | privateCall | protectedCall | superCall
+deriving Repr, DecidableEq, Inhabited
+
+/-- A fiber owns control and dynamic context; heap, frame store, globals and
+    output remain shared. Captured locals therefore survive suspension. -/
+structure Execution where
+  ctl : Ctl
+  kont : List Kont
+  stack : List FrameId
+  currentExc : Option Value
+  missingReason : MissingReason
+  activeEnumerator : Option ObjId
+  /-- Literal block-call destinations live in this execution, including when
+      its outer continuation is detached for an answer run. -/
+  liveBreakScopes : List FrameId := []
+  /-- Receivers whose native Object#inspect callback is in flight. -/
+  objectInspections : List Value := []
+  /-- Receivers whose FrozenError inspect/to_s callback is in flight. -/
+  frozenInspections : List Value := []
+deriving Inhabited
+
+structure EnumState where
+  suspended : Option Execution := none
+  caller : Option Execution := none
+  lookahead : Option (List Value) := none
+  feed : Option Value := none
+  /-- The first native StopIteration object, whose live message/result seed later errors. -/
+  finished : Option Value := none
+  peek : Bool := false
+  values : Bool := false
+deriving Inhabited
+
 structure Machine where
   ctl : Ctl
   kont : List Kont := []
   stack : List FrameId
   frames : Array Frame
   heap : Heap
+  enumerators : List (ObjId × EnumState) := []
+  /-- Shared multiset of native Hash iteration locks. Each in-flight callback
+      owns one entry, released on return/unwind. Suspension preserves the count;
+      abandonment intentionally retains entries whose cleanup never ran. -/
+  hashIterationLocks : List ObjId := []
+  activeEnumerator : Option ObjId := none
+  /-- Fresh call tokens are installed by reifyCallBlock and expired when their
+      blockCallK boundary returns or unwinds. Forwarded Procs retain the token. -/
+  liveBreakScopes : List FrameId := []
+  /-- Execution-local recursion guards survive continuation cuts and suspension.
+      objectInspectK releases one guard on normal return or unwinding. -/
+  objectInspections : List Value := []
+  /-- Entered after native exception initialization; earlier rendering phases
+      do not own a recursion guard. Saved with the current execution. -/
+  frozenInspections : List Value := []
+  /-- Frozen numeric literals are shared on repeated execution of one syntax
+      site. Constructor calls allocate independently. Keys include the unit. -/
+  numericLiterals : List (String × Value) := []
   globals : List (String × Value) := []
   /-- Accumulated stdout (the observation's trace). -/
   out : String := ""
   /-- `$!` — the exception being handled (set on rescue entry). -/
   currentExc : Option Value := none
+  missingReason : MissingReason := .ordinary
   /-- True only while the **prelude** (the core library written in RubyCore,
       `prelude/prelude.rb`) is being loaded: methods defined in this phase are
       marked `fromPrelude` (L62). -/
   preludeMode : Bool := false
+  featurePrograms : List (String × Expr) := []
+  loadedFeatures : List String := ["pathname.so"]
+  loadingFeatures : List String := []
+  /-- A failed load can leave declarations behind; missing dependency APIs
+      remain explicit gates even while the feature is eligible for retry. -/
+  attemptedFeatures : List String := []
 deriving Inhabited
 
 namespace Machine
+
+def leaveObjectInspection (m : Machine) (recv : Value) : Machine :=
+  { m with objectInspections := m.objectInspections.eraseP (recv.identEq ·) }
+
+def leaveFrozenInspection (m : Machine) (recv : Value) (phase : FrozenPhase) : Machine :=
+  match phase with
+  | .inspected .. | .stringified .. =>
+    { m with frozenInspections := m.frozenInspections.eraseP (recv.identEq ·) }
+  | _ => m
+
+def leaveHashIteration (m : Machine) (kind : IterKind) : Machine :=
+  match kind with
+  | .hashEach o .. => { m with hashIterationLocks := m.hashIterationLocks.erase o }
+  | _ => m
+
+/-- Hash's insertion restriction survives external suspension. Normal unwind
+    releases one shared entry; abandoning the fiber retains its entries. -/
+def hashIterationActive (m : Machine) (o : ObjId) : Bool :=
+  m.hashIterationLocks.contains o
 
 def currentFrame (m : Machine) : Frame :=
   match m.stack with
@@ -335,12 +529,53 @@ def setCurrentFrame (m : Machine) (f : Frame) : Machine :=
   | fid :: _ => { m with frames := m.frames.set! fid f }
   | [] => m
 
+def definitionFrameId (m : Machine) (fid : FrameId) : FrameId :=
+  go (m.frames.size + 1) fid
+where
+  go : Nat → FrameId → FrameId
+    | 0, fid => fid
+    | fuel + 1, fid =>
+      match (m.frames.getD fid default).definitionFrame with
+      | some parent => go fuel parent
+      | none => fid
+
+def currentDefinitionFrame (m : Machine) : Frame :=
+  m.frames.getD (m.definitionFrameId (m.stack.headD 0)) default
+
+def setDefinitionVisibility (m : Machine) (vis : Visibility) : Machine :=
+  let fid := m.definitionFrameId (m.stack.headD 0)
+  let f := m.frames.getD fid default
+  -- Ruby warns and ignores bare visibility changes in an ordinary method.
+  if f.kind == .method then m else
+    { m with frames := m.frames.set! fid { f with defVis := vis } }
+
+/-- Attribute/define_method macros use body visibility only for the matching
+    class/eval scope. Top-level calls and calls targeting another class are public. -/
+def macroVisibility (m : Machine) (target : ObjId) : Visibility :=
+  let f := m.currentDefinitionFrame
+  if f.kind != .toplevel && f.defmod == target then f.defVis else .pub
+
+/-- Literal constants follow lexical nesting; *_eval does not change it. -/
+def lexicalNamespace (m : Machine) : ObjId :=
+  m.currentFrame.cref.headD Boot.objectId
+
+/-- Follow for's local-environment alias without reviving an activation. -/
+def localFrameId (m : Machine) (fid : FrameId) : FrameId :=
+  go fid (m.frames.size + 1)
+where
+  go : FrameId → Nat → FrameId
+    | fid, 0 => fid
+    | fid, fuel + 1 => match (m.frames.getD fid default).localAlias with
+      | some parent => go parent fuel
+      | none => fid
+
 /-- Read `x`, walking the block-frame `captured` chain into enclosing scopes
     (sketch §1.2). Own locals (params, block-locals) shadow outer ones. -/
 def getLocal (m : Machine) (x : String) : Value :=
   let rec go : FrameId → Nat → Value
     | _, 0 => .nil
     | fid, fuel + 1 =>
+      let fid := m.localFrameId fid
       let f := m.frames.getD fid default
       match f.locals.find? (·.1 == x) with
       | some (_, v) => v
@@ -353,10 +588,11 @@ def getLocal (m : Machine) (x : String) : Value :=
     mutate *there* (shared locals, artifact 03 §2); otherwise it is a new local
     in the current frame. -/
 def setLocal (m : Machine) (x : String) (v : Value) : Machine :=
-  let start := m.stack.headD 0
+  let start := m.localFrameId (m.stack.headD 0)
   let rec owner : FrameId → Nat → FrameId
     | _, 0 => start
     | fid, fuel + 1 =>
+      let fid := m.localFrameId fid
       let f := m.frames.getD fid default
       if f.locals.any (·.1 == x) then fid
       else match f.captured with
@@ -373,6 +609,7 @@ def hasLocal (m : Machine) (x : String) : Bool :=
   let rec go : FrameId → Nat → Bool
     | _, 0 => false
     | fid, fuel + 1 =>
+      let fid := m.localFrameId fid
       let f := m.frames.getD fid default
       if f.locals.any (·.1 == x) then true
       else match f.captured with
@@ -388,7 +625,7 @@ def hasLocal (m : Machine) (x : String) : Bool :=
 def matchFrameOwner (m : Machine) : FrameId → Nat → FrameId
   | fid, 0 => fid
   | fid, fuel + 1 =>
-    match (m.frames.getD fid default).captured with
+    match (m.frames.getD fid default).matchAlias <|> (m.frames.getD fid default).captured with
     | some p => matchFrameOwner m p fuel
     | none => fid
 
@@ -412,7 +649,7 @@ def matchFrameId (m : Machine) : FrameId :=
         match rest with
         | [] => fid          -- nothing below: keep the slot rather than lose the write
         | _ => go rest fuel
-      else match f.captured with
+      else match f.matchAlias <|> f.captured with
         | some p =>
           match rest.dropWhile (· != p) with
           | [] => matchFrameOwner m p fuel
@@ -456,7 +693,7 @@ def emit (m : Machine) (s : String) : Machine :=
 def initOn (heap : Heap) (program : Expr) : Machine :=
   let top : Frame :=
     { self := .ref Boot.mainId, defmod := Boot.objectId, kind := .toplevel,
-      cref := [Boot.objectId] }
+      defVis := .priv }
   { ctl := .eval program,
     stack := [0],
     frames := #[top],

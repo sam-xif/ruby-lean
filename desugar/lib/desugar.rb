@@ -16,7 +16,7 @@ class Desugar
   RULES = %i[
     seq int flt str sym true false nil self var vasgn const casgn send block def array hash
     splat if while return break next and->if or->if unless->if until->while
-    or-write and-write op-write range->send rational->send imaginary->send interp massign
+    or-write and-write op-write range->send rational imaginary interp massign
     class module sclass defs begin retry super zsuper rescue-mod->begin attr-index-write
     yield lambda->send block-capture blockpass
     opt-param kw-param kwrest-param kwargs case->if defined cpath cpath-asgn
@@ -483,12 +483,16 @@ class Desugar
   # (`for a, b in`) supported for simple targets; a rest target is deferred.
   def desugar_for(n)
     fire(:for)
-    [:for, for_targets(n.index), node(n.collection), stmts(n.statements)]
+    targets = for_targets(n.index)
+    result = [:for, targets, node(n.collection), stmts(n.statements)]
+    result << true if n.index.type == :multi_target_node && targets.length == 1
+    result
   end
 
   def for_targets(idx)
     if idx.type == :multi_target_node
-      raise Unsupported, "for multi-target with rest" if idx.rest || !idx.rights.empty?
+      explicit_rest = idx.rest && idx.rest.type != :implicit_rest_node
+      raise Unsupported, "for multi-target with rest" if explicit_rest || !idx.rights.empty?
       idx.lefts.map { |t| massign_target(t) }
     else
       [massign_target(idx)]
@@ -917,25 +921,25 @@ class Desugar
     [:send, [:cpath, nil, "Range"], "new", [lo, hi, excl], nil]
   end
 
-  # 2r => Rational(2, 1) ; 2.5r => Rational(5, 2). Uses the literal's exact value, so it
-  # is precise even for float-derived rationals.
+  # Native literal: neither Kernel#Rational nor the Rational constant is consulted.
+  # Prism supplies the exact fraction, including decimal digits beyond Float precision.
   def desugar_rational(n)
-    fire(:"rational->send")
+    fire(:rational)
     r = n.value
-    [:send, nil, "Rational", [[:int, r.numerator], [:int, r.denominator]], nil]
+    [:rat, r.numerator, r.denominator]
   end
 
-  # 3i => Complex(0, 3) ; 2.5i => Complex(0, 2.5). Imag part may be Integer/Float/Rational.
+  # Native imaginary literal; Kernel#Complex and the constant are not consulted.
   def desugar_imaginary(n)
-    fire(:"imaginary->send")
-    [:send, nil, "Complex", [numeric_lit(n.value.real), numeric_lit(n.value.imaginary)], nil]
+    fire(:imaginary)
+    [:imag, numeric_lit(n.value.imaginary)]
   end
 
   def numeric_lit(v)
     case v
     when Integer  then [:int, v]
     when Float    then [:flt, v]
-    when Rational then [:send, nil, "Rational", [[:int, v.numerator], [:int, v.denominator]], nil]
+    when Rational then [:rat, v.numerator, v.denominator]
     else raise Unsupported, "imaginary component #{v.class}"
     end
   end

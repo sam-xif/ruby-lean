@@ -10,7 +10,8 @@ open RubyCore
 def primitiveMethods : List (ObjId × String × String) :=
   [(Boot.integerId, "+", "Integer#+"), (Boot.integerId, "-", "Integer#-"),
    (Boot.integerId, "*", "Integer#*"), (Boot.integerId, "/", "Integer#/"),
-   (Boot.integerId, "<", "Integer#<"), (Boot.integerId, "to_s", "Integer#to_s"),
+   (Boot.integerId, "<", "Integer#<"), (Boot.integerId, ">", "Integer#>"),
+   (Boot.integerId, "to_s", "Integer#to_s"),
    (Boot.integerId, "==", "Integer#=="),
    (Boot.integerId, "zero?", "Integer#zero?"),
    (Boot.integerId, "<=", "Integer#<="), (Boot.integerId, ">=", "Integer#>="),
@@ -18,17 +19,75 @@ def primitiveMethods : List (ObjId × String × String) :=
    (Boot.stringId, "+", "String#+"),
    (Boot.arrayId, "[]", "Array#[]"),
    (Boot.hashId, "[]", "Hash#[]"),
-   (Boot.trueClassId, "!", "Object#!"), (Boot.falseClassId, "!", "Object#!")]
+   (Boot.trueClassId, "!", "Object#!"), (Boot.falseClassId, "!", "Object#!"),
+   (Boot.integerId, "<=>", "Integer#<=>"), (Boot.integerId, "nil?", "Object#nil?"),
+   (Boot.symbolId, "to_s", "Symbol#to_s"), (Boot.symbolId, "==", "Symbol#=="),
+   (Boot.arrayId, "length", "Array#length"), (Boot.stringId, "start_with?", "String#start_with?"),
+   (Boot.hashId, "key?", "Hash#key?")]
 
-def primitiveDispatchB (h : Heap) (free : String → Bool) : Bool :=
-  primitiveMethods.all fun (k, name, bid) =>
+/-- Native lookup facts include Proc calls, Array iterators and Symbol conversion.
+Membership is not a pure-builtin signature; primitiveMethods alone supplies those rows. -/
+def dispatchMethods : List (ObjId × String × String) :=
+  primitiveMethods ++ [(Boot.procId, "call", "Proc#call"), (Boot.procId, "[]", "Proc#[]"),
+    (Boot.arrayId, "map", "Array#map"), (Boot.arrayId, "collect", "Array#collect"),
+    (Boot.symbolId, "to_proc", "Symbol#to_proc")]
+
+def nativeDispatchB (h : Heap) (free : String → Bool) : Bool :=
+  dispatchMethods.all fun (k, name, bid) =>
     !free name || match Interp.methodOn h k name with
     | none => false
     | some (owner, md) =>
       md.builtin == some bid && !md.undefined && md.visibility == .pub && !md.fromPrelude &&
         (Interp.crubyShadow h ((ancestors h k).takeWhile (fun x => x != owner)) name).isNone
 
-def primitiveErrorClasses : List ObjId := [Boot.zeroDivisionErrorId, Boot.nameErrorId]
+/-- Native Array#each has an installed builtin row. A payload alone cannot exclude
+an override, visibility change, or undef tombstone. Reserving each withdraws this capability. -/
+def eachDispatchB (h : Heap) (free : String → Bool) : Bool :=
+  !free "each" || match Interp.methodOn h Boot.arrayId "each" with
+    | none => false
+    | some (owner, md) =>
+      md.builtin == some "Array#each" && !md.undefined && md.visibility == .pub && !md.fromPrelude &&
+        (Interp.crubyShadow h ((ancestors h Boot.arrayId).takeWhile (· != owner)) "each").isNone
+
+def primitiveDispatchB (h : Heap) (free : String → Bool) : Bool :=
+  nativeDispatchB h free && eachDispatchB h free
+
+theorem dispatch_lookup {h : Heap} {free : String → Bool}
+    (hd : primitiveDispatchB h free = true) {k : ObjId} {name bid : String}
+    (hr : (k, name, bid) ∈ dispatchMethods) (hf : free name = true) :
+    ∃ owner md, Interp.methodOn h k name = some (owner, md) ∧
+      md.builtin = some bid ∧ md.undefined = false ∧ md.visibility = .pub ∧
+      md.fromPrelude = false ∧
+      Interp.crubyShadow h ((ancestors h k).takeWhile (fun x => x != owner)) name = none := by
+  simp only [primitiveDispatchB, Bool.and_eq_true] at hd
+  have hp := List.all_eq_true.mp hd.1 (k, name, bid) hr
+  simp only [hf, Bool.not_true, Bool.false_or] at hp
+  cases hl : Interp.methodOn h k name with
+  | none => rw [hl] at hp; cases hp
+  | some p =>
+    obtain ⟨owner, md⟩ := p
+    refine ⟨owner, md, rfl, ?_⟩
+    simpa only [hl, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
+      Option.isNone_iff_eq_none, and_assoc] using hp
+
+theorem each_lookup {h : Heap} {free : String → Bool}
+    (hd : primitiveDispatchB h free = true) (hf : free "each" = true) :
+    ∃ owner md, Interp.methodOn h Boot.arrayId "each" = some (owner, md) ∧
+      md.builtin = some "Array#each" ∧ md.undefined = false ∧ md.visibility = .pub ∧
+      md.fromPrelude = false ∧
+      Interp.crubyShadow h ((ancestors h Boot.arrayId).takeWhile (· != owner)) "each" = none := by
+  simp only [primitiveDispatchB, Bool.and_eq_true] at hd
+  have hp := hd.2
+  simp only [eachDispatchB, hf, Bool.not_true, Bool.false_or] at hp
+  cases hl : Interp.methodOn h Boot.arrayId "each" with
+  | none => rw [hl] at hp; cases hp
+  | some p =>
+    obtain ⟨owner, md⟩ := p
+    refine ⟨owner, md, rfl, ?_⟩
+    simpa only [hl, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
+      Option.isNone_iff_eq_none, and_assoc] using hp
+
+def primitiveErrorClasses : List ObjId := [Boot.zeroDivisionErrorId, Boot.nameErrorId, Boot.frozenErrorId]
 
 def primitiveErrorB (h : Heap) (cls : ObjId) : Bool :=
   (ancestors h cls).contains Boot.basicObjectId &&
@@ -37,6 +96,47 @@ def primitiveErrorB (h : Heap) (cls : ObjId) : Bool :=
   !(ancestors h cls).contains Boot.typeErrorId
 
 def primitiveErrorsB (h : Heap) : Bool := primitiveErrorClasses.all (primitiveErrorB h)
+
+/-- ZeroDivisionError runs the native initializer before being raised. NameError
+constructs its payload directly; FrozenError has a separate prelude initializer. -/
+def primitiveInitClasses : List ObjId := [Boot.zeroDivisionErrorId]
+
+/-- The protected prefix resolves initialize before any program definition on Object.
+The exact prefix also makes preservation under later method installation explicit. -/
+def errorInitChain : List ObjId :=
+  [Boot.zeroDivisionErrorId, Boot.standardErrorId, Boot.exceptionId,
+    Boot.objectId, Boot.kernelId, Boot.basicObjectId]
+
+def errorInitOwn (h : Heap) (k : ObjId) : Option MethodDef :=
+  (h.classPayload? k).bind fun cp => (cp.methods.find? (·.1 == "initialize")).map (·.2)
+
+def primitiveInitShapeB (h : Heap) : Bool :=
+  ancestors h Boot.zeroDivisionErrorId == errorInitChain &&
+    (errorInitOwn h Boot.zeroDivisionErrorId).isNone &&
+    (errorInitOwn h Boot.standardErrorId).isNone &&
+    (errorInitOwn h Boot.exceptionId).any (fun md => !md.visibilityOnly)
+
+def primitiveInitB (h : Heap) : Bool :=
+  primitiveInitShapeB h && primitiveInitClasses.all fun k => match Interp.methodOn h k "initialize" with
+    | none => false
+    | some (owner, md) =>
+      md.builtin == some "Exception#initialize" && !md.undefined && !md.fromPrelude &&
+        (Interp.crubyShadow h ((ancestors h k).takeWhile (· != owner)) "initialize").isNone
+
+theorem primitiveInit_lookup {h : Heap} (hi : primitiveInitB h = true) {k : ObjId}
+    (hk : k ∈ primitiveInitClasses) :
+    ∃ owner md, Interp.methodOn h k "initialize" = some (owner, md) ∧
+      md.builtin = some "Exception#initialize" ∧ md.undefined = false ∧ md.fromPrelude = false ∧
+      Interp.crubyShadow h ((ancestors h k).takeWhile (· != owner)) "initialize" = none := by
+  simp only [primitiveInitB, Bool.and_eq_true] at hi
+  have hp := List.all_eq_true.mp hi.2 k hk
+  cases hl : Interp.methodOn h k "initialize" with
+  | none => rw [hl] at hp; cases hp
+  | some p =>
+    obtain ⟨owner, md⟩ := p
+    refine ⟨owner, md, rfl, ?_⟩
+    simpa only [hl, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
+      Option.isNone_iff_eq_none, and_assoc] using hp
 
 /-- Only references whose dispatch class is String need a string payload. -/
 def StringPayloadOk (h : Heap) : Prop :=
@@ -94,10 +194,15 @@ theorem hashPayloadB_sound {h : Heap} (hb : hashPayloadB h = true) : HashPayload
   · rw [get_oob h (Nat.le_of_not_gt ho)] at hx
     cases hx
 
-theorem primitiveDispatchB_ext {m n : Machine} (he : Ext m n) (free : String → Bool) :
+theorem primitiveDispatchB_ext {m n : Machine} (he : Ext m n) (hn : Proof.NamesOk m.heap)
+    (hc : Proof.ChainsIn m.heap) (free : String → Bool) :
     primitiveDispatchB n.heap free = primitiveDispatchB m.heap free := by
-  simp only [primitiveDispatchB, Interp.methodOn, Interp.crubyShadow, className,
-    he.payload, he.ancestors]
+  simp only [primitiveDispatchB, nativeDispatchB, eachDispatchB, he.methodOn_eq hc,
+    he.crubyShadow_eq hn, he.ancestors]
+
+theorem primitiveInitB_ext {m n : Machine} (he : Ext m n) (hn : Proof.NamesOk m.heap)
+    (hc : Proof.ChainsIn m.heap) : primitiveInitB n.heap = primitiveInitB m.heap := by
+  simp only [primitiveInitB, primitiveInitShapeB, errorInitOwn, he.payload, he.methodOn_eq hc, he.crubyShadow_eq hn, he.ancestors]
 
 theorem primitiveErrorsB_ext {m n : Machine} (he : Ext m n) :
     primitiveErrorsB n.heap = primitiveErrorsB m.heap := by

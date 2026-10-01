@@ -1,4 +1,5 @@
 import RubyCore.Builtins.Regex
+import RubyCore.CRubyNames
 
 /-!
 Exception, Module and Class rules — the end of the chain, so this is
@@ -13,7 +14,48 @@ namespace RubyCore
 
 namespace Builtins
 
+/-- Module#name returns its frozen native path String, including shared identity
+    across bindings with the same path. Promotion selects a new cached String;
+    earlier temporary-name values remain unchanged. Anonymous namespaces return
+    nil. ASCII permanent names retain the existing US-ASCII/UTF-8 boundary;
+    temporary ASCII paths are native binary Strings (L297). -/
+def nativeModuleName (m : Machine) (c : ClassPayload) : BRes :=
+  if c.name.isEmpty then .ok .nil m else
+  let binary := !c.namePermanent && !hasHighByte c.name
+  match m.heap.nameStrings.find? (fun (s, b, _) => s == c.name && b == binary) with
+  | some (_, _, o) => .ok (.ref o) m
+  | none =>
+    let (o, h) := m.heap.alloc
+      { klass := Boot.stringId, payload := .str c.name, binary, frozen := true }
+    let h := { h with nameStrings := (c.name, binary, o) :: h.nameStrings }
+    .ok (.ref o) { m with heap := h }
+
 /-- Exception, Module and Class rules — the end of the chain, so this is -/
+def setConstantVisibility (m : Machine) (recv : Value) (o : ObjId) (privateConst : Bool)
+    (names : List String) : BRes :=
+  match names with
+  | [] => .ok recv m
+  | name :: rest =>
+    match m.heap.classPayload? o with
+    | none => .unsupported "constant visibility on a non-module"
+    | some cp =>
+      if name.isEmpty || !(name.toList.headD '_').isUpper ||
+          !(name.toList.all (fun c => c.isAlphanum || c == '_')) then
+        .unsupported "constant visibility with a non-simple constant name" else
+      if !(cp.consts.any (·.1 == name)) then
+        let known := (crubyNamespaceConstants.find? (·.1 == className m.heap o)).any (·.2.contains name) ||
+          (cp.libraryNamespace.bind (fun ns => crubyFeatureConstants.find? (·.1 == ns))).any (·.2.contains name) ||
+          (o == Boot.objectId && m.attemptedFeatures.any (fun feature =>
+            (crubyFeatureRoots.find? (·.1 == feature)).any (·.2.contains name)))
+        if known then .unsupported s!"constant visibility of unmodeled constant {name}" else
+        .err Boot.nameErrorId s!"constant {className m.heap o}::{name} not defined" m
+      else
+        let priv := if privateConst then
+          cp.privateConsts ++ (if cp.privateConsts.contains name then [] else [name])
+          else cp.privateConsts.filter (· != name)
+        setConstantVisibility { m with heap := m.heap.setClassPayload o { cp with privateConsts := priv } }
+          recv o privateConst rest
+
 def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=
   let h := m.heap
   match bid with
@@ -23,10 +65,26 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
   -- this arm it read the payload directly, and `E.new("boom").message` answered
   -- "boom" for a class whose `to_s` says otherwise. It is prelude Ruby now — `def
   -- message = to_s` — which is the only spelling that dispatches (L131).
+  | "UncaughtThrowError#tag" | "UncaughtThrowError#value" =>
+    if !args.isEmpty then .err Boot.argumentErrorId
+      s!"wrong number of arguments (given {args.length}, expected 0)" m else
+    match recv with
+    | .ref o => .ok (if bid == "UncaughtThrowError#tag" then (h.get o).throwTag else (h.get o).throwValue) m
+    | _ => .unsupported "UncaughtThrowError metadata receiver"
+  | "UncaughtThrowError#__throw_metadata" =>
+    match recv, args with
+    | .ref o, [tag, value] =>
+      if (h.get o).frozen then .frozen recv m else
+      .ok recv { m with heap := h.set o { h.get o with throwTag := tag, throwValue := value } }
+    | _, _ => .unsupported "UncaughtThrowError metadata arguments"
   | "Exception#to_s" =>
     match recv with
     | .ref o => match (h.get o).payload with
-      | .exc msg => okStr m msg
+      | .exc msg =>
+        if msg.identEq .nil then okStr m (className h (h.get o).klass) else
+        match strPayload? h msg with
+        | some _ => .ok msg m
+        | none => .unsupported "Exception#to_s requires checked String conversion"
       | _ => .unsupported "message"
     | _ => .unsupported "message"
   | "Exception#inspect" =>
@@ -46,14 +104,9 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     | .ref k =>
       match h.classPayload? k with
       | some c =>
-        if c.name.isEmpty then
-          -- anonymous (`Class.new`): `name` is nil, `to_s`/`inspect` show the
-          -- address form (L72)
-          if bid == "Module#name" then .ok .nil m
-          else match inspectP m recv with
-            | .ok r => okStr m r
-            | .error e => .unsupported e
-        else okStr m c.name
+        if bid == "Module#name" then
+          nativeModuleName m c
+        else okStr m (className h k)
       | none => .unsupported "name"
     | _ => .unsupported "name"
   | "Module#==" =>
@@ -66,27 +119,52 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         .ok v m
       else .unsupported "ancestors"
     | _ => .unsupported "ancestors"
+  | "Class#inherited" | "Module#const_added" =>
+    if args.length == 1 then .ok .nil m else
+      .err Boot.argumentErrorId s!"wrong number of arguments (given {args.length}, expected 1)" m
   | "Class#superclass" =>
     -- `nil` for BasicObject and for a module [V].
     match recv with
     | .ref k =>
       match h.classPayload? k with
-      | some cp => .ok (match cp.superclass with | some sup => .ref sup | none => .nil) m
+      | some cp =>
+        if !cp.ancestryReady then .err Boot.typeErrorId "uninitialized class" m else
+        .ok (match cp.superclass with | some sup => .ref sup | none => .nil) m
       | none => .unsupported "superclass on a non-class"
     | _ => .unsupported "superclass on a non-class"
-  | "Object#initialize" => .ok .nil m
+  | "BasicObject#initialize" | "Object#initialize" =>
+    if args.isEmpty then .ok .nil m else
+      .err Boot.argumentErrorId s!"wrong number of arguments (given {args.length}, expected 0)" m
+  | "Object#initialize_copy" =>
+    match args with
+    | [other] =>
+      if recv.identEq other then .ok recv m else
+      match recv with
+      | .ref o =>
+        if (h.get o).frozen then .frozen recv m else
+        if realClassOf h recv != realClassOf h other then
+          .err Boot.typeErrorId "initialize_copy should take same class object" m
+        else .ok recv m
+      | _ => .frozen recv m
+    | _ => .err Boot.argumentErrorId s!"wrong number of arguments (given {args.length}, expected 1)" m
   | "String#initialize" | "Array#initialize" | "Hash#initialize"
   | "Exception#initialize" =>
     -- Core initializers *mutate* the (already allocated) receiver, so a subclass's
-    -- `initialize` can `super` into them (L70). Reached only via `super` or the
-    -- allocate-then-initialize path; a plain `String.new` goes through `newImpl`.
+    -- `initialize` can `super` into them (L70). Constructors now allocate then
+    -- send initialize through ordinary lookup (L284).
     match recv with
     | .ref o =>
+      if bid != "Array#initialize" && args.length > 1 then
+        .err Boot.argumentErrorId s!"wrong number of arguments (given {args.length}, expected 0..1)" m else
+      if (h.get o).frozen && !(bid == "String#initialize" && args.isEmpty) then
+        .frozen recv m else
+      if bid == "Array#initialize" && args.length > 2 then
+        .err Boot.argumentErrorId s!"wrong number of arguments (given {args.length}, expected 0..2)" m else
       let setP := fun (pl : Payload) =>
-        BRes.ok .nil { m with heap := m.heap.set o { m.heap.get o with payload := pl } }
+        BRes.ok recv { m with heap := m.heap.set o { m.heap.get o with payload := pl } }
       if bid == "String#initialize" then
         match args with
-        | [] => setP (.str "")
+        | [] => .ok recv m
         | [sv] => match strPayload? h sv with
           | some str => setP (.str str)
           | none => .unsupported "String#initialize with a non-String argument"
@@ -103,20 +181,18 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         | _ => .unsupported "Array#initialize arity"
       else if bid == "Hash#initialize" then
         match args with
-        | [] => setP (.hsh #[])
+        | [] => .ok recv { m with heap := h.set o { h.get o with hashDflt := none } }
         | [dflt] =>
-          let obj := { m.heap.get o with payload := .hsh #[], hashDflt := some (.val dflt) }
-          .ok .nil { m with heap := m.heap.set o obj }
+          let obj := { m.heap.get o with hashDflt := some (.val dflt) }
+          .ok recv { m with heap := m.heap.set o obj }
         | _ => .unsupported "Hash#initialize arity"
       else
         match args with
-        | [] => setP (.exc (className h (h.get o).klass))
-        | [msgV] => match toSP m msgV with
-          | .ok str => setP (.exc str)
-          | .error e => .unsupported e
+        | [] => setP (.exc .nil)
+        | [msgV] => setP (.exc msgV)
         | _ => .unsupported "Exception#initialize arity"
     | _ => .unsupported "initialize on a non-object"
-  | "Class#new" => newImpl m recv args
+  | "Class#new" | "Module#new" => newImpl m recv args
   | "Class#__range_new_unchecked" =>
     -- Allocate a `Range` with **no endpoint check** — the primitive the prelude's
     -- `Range.new` builds on, because the check has to dispatch `<=>` (L122).
@@ -147,7 +223,7 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         else
           let chain := ancestors m.heap k
           let noAllocator :=
-            [Boot.integerId, Boot.floatId, Boot.symbolId, Boot.nilClassId,
+            [Boot.integerId, Boot.floatId, Boot.symbolId, Boot.nilClassId, Boot.procId,
              Boot.trueClassId, Boot.falseClassId].any chain.contains
           if noAllocator then
             .err Boot.typeErrorId s!"allocator undefined for {className m.heap k}" m
@@ -168,19 +244,15 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     | .ref o =>
       match h.classPayload? o with
       | none => .unsupported "private_constant on a non-module"
-      | some cp =>
+      | some _ =>
+        if (h.get o).frozen then .frozen recv m else
         let names := args.filterMap fun a =>
           match a with
           | .sym s => some s
           | .ref so => match (h.get so).payload with | .str s => some s | _ => none
           | _ => none
-        if names.length != args.length then .unsupported "private_constant: non-name argument"
-        else
-          let priv :=
-            if bid == "Module#private_constant" then
-              cp.privateConsts ++ names.filter (fun n => !cp.privateConsts.contains n)
-            else cp.privateConsts.filter (fun n => !names.contains n)
-          .ok .nil { m with heap := h.setClassPayload o { cp with privateConsts := priv } }
+        if names.length != args.length then .unsupported "constant visibility: name conversion" else
+        setConstantVisibility m recv o (bid == "Module#private_constant") names
     | _ => .unsupported "private_constant on a non-module"
   | _ => runRegex bid recv args m
 

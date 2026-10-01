@@ -2,7 +2,9 @@ import Denote.Rules.Primitive.PrimitiveAlloc
 import Denote.Rules.Primitive.PrimitiveEquality
 import Denote.Rules.Primitive.PrimitiveQueries
 import Denote.Rules.Expr.ArrayIndex
+import Denote.Rules.Expr.ArrayLength
 import Denote.Rules.Expr.HashIndex
+import Denote.Rules.Expr.HashKey
 
 /-! Each `DPrim` row discharges against the interpreter and preserves conformance on values. -/
 
@@ -21,6 +23,9 @@ private theorem int_value {m : Machine} {v : Value} (h : denM .int m v) :
 
 private theorem bool_value {m : Machine} {v : Value} (h : denM .bool m v) :
     ∃ b, v = .bool b := by cases v <;> simp_all [denM, isBoolV]
+
+private theorem sym_value {m : Machine} {v : Value} (h : denM .sym m v) :
+    ∃ s, v = .sym s := by cases v <;> simp_all [denM, isSymV]
 
 private theorem nil_value {m : Machine} {v : Value} (h : denM .nilT m v) :
     v = .nil := by cases v <;> simp_all [denM, isNilV]
@@ -69,7 +74,12 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
     obtain ⟨x, rfl⟩ := int_value hr
     obtain ⟨y, rfl⟩ := int_value hv
     rw [primitive_invoke (bid := "Integer#/") (k := Boot.integerId) hm
-      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by
+        cases x with
+        | ofNat n => cases n with
+          | zero => rfl
+          | succ n => cases n <;> rfl
+        | negSucc n => rfl) (by rfl) hfree,
       int_div_run]
     split
     · exact stepSpec_zeroDiv hm hk _
@@ -83,6 +93,16 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
     rw [primitive_invoke (bid := "Integer#<") (k := Boot.integerId) hm
       (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
       int_lt_run]
+    exact stepSpec_value hm hk (by simp [denM, isBoolV])
+  | intGt =>
+    cases ha
+    rename_i v vs hv hs
+    cases hs
+    obtain ⟨x, rfl⟩ := int_value hr
+    obtain ⟨y, rfl⟩ := int_value hv
+    rw [primitive_invoke (bid := "Integer#>") (k := Boot.integerId) hm
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
+      int_gt_run]
     exact stepSpec_value hm hk (by simp [denM, isBoolV])
   | intToS =>
     cases ha
@@ -135,7 +155,9 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
     rw [primitive_invoke (bid := "Object#==") (k := Boot.nilClassId) hm
       (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
       nil_eq_run]
-    exact stepSpec_value hm hk (by simp [denM, isBoolV])
+    split
+    · trivial
+    · exact stepSpec_value hm hk (by simp [denM, isBoolV])
   | strLength =>
     cases ha
     obtain ⟨o, s, rfl, hs⟩ := string_payload hm hr (hstring rfl)
@@ -150,9 +172,7 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
     cases hs
     obtain ⟨o, s, rfl, hs⟩ := string_payload hm hr (hstring rfl)
     obtain ⟨p, t, rfl, ht⟩ := string_payload hm hv (hstring rfl)
-    rw [primitive_invoke (bid := "String#+") (k := Boot.stringId) hm
-      (by simp [primitiveMethods]) (string_class hm hr (hstring rfl)) (by rfl)
-      (by intro k hk; cases hk; exact ⟨s, hs⟩) (by rfl) (by rfl) hfree, string_add_run]
+    rw [invoke_string_add hm (string_class hm hr (hstring rfl)) hs ht hfree, string_add_run]
     simp only [Builtins.runStrings, Builtins.binArg, Builtins.strPayload?, hs, ht]
     cases he : Builtins.concatEnc m.heap (.ref o) s (.ref p) t with
     | ok binary => exact stepSpec_string hm hk _ binary
@@ -165,12 +185,72 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
         (by simp [primitiveMethods, classOf]) rfl (by rfl)
         (by intro o ho; cases ho) (by rfl) (by rfl) hfree, bool_not_run] <;>
       exact stepSpec_value hm hk (by simp [denM, isBoolV])
+  | intCmp =>
+    cases ha
+    rename_i v vs hv hs
+    cases hs
+    obtain ⟨x, rfl⟩ := int_value hr
+    obtain ⟨y, rfl⟩ := int_value hv
+    rw [primitive_invoke (bid := "Integer#<=>") (k := Boot.integerId) hm
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
+      int_cmp_run]
+    exact stepSpec_value hm hk (by cases compare x y <;> simp [Builtins.ordValue, denM, isIntV])
+  | intNil =>
+    cases ha
+    obtain ⟨x, rfl⟩ := int_value hr
+    rw [primitive_invoke (bid := "Object#nil?") (k := Boot.integerId) hm
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
+      int_nil_run]
+    exact stepSpec_value hm hk (by simp [denM, isBoolV])
+  | symToS =>
+    cases ha
+    obtain ⟨x, rfl⟩ := sym_value hr
+    rw [primitive_invoke (bid := "Symbol#to_s") (k := Boot.symbolId) hm
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho) (by rfl) (by rfl) hfree,
+      sym_to_s_run]
+    exact stepSpec_string hm hk _ false
+  | symEq =>
+    cases ha
+    rename_i v vs hv hs
+    cases hs
+    obtain ⟨x, rfl⟩ := sym_value hr
+    rw [primitive_invoke (bid := "Symbol#==") (k := Boot.symbolId) hm
+      (by simp [primitiveMethods]) rfl (by rfl) (by intro o ho; cases ho)
+      (sym_eq_defer hm x v hfree) (by rfl) hfree]
+    exact sym_eq_step hm hk x v
+  | arrayLength _ =>
+    cases ha
+    exact array_length_step hm hk hr hfree
+  | strStartWith =>
+    cases ha
+    rename_i v vs hv hs
+    cases hs
+    obtain ⟨o, s, rfl, hs⟩ := string_payload hm hr (hstring rfl)
+    obtain ⟨p, t, rfl, ht⟩ := string_payload hm hv (hstring rfl)
+    rw [primitive_invoke (bid := "String#start_with?") (k := Boot.stringId) hm
+      (by simp [primitiveMethods]) (string_class hm hr (hstring rfl)) (by rfl)
+      (by intro k hk; cases hk; exact ⟨s, hs⟩)
+      (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
+        nativeReal, rationalPayload?, complexPayload?, Builtins.toAryDefer?,
+        Builtins.strCmpDefer?, Builtins.strCmpTwin?, hs, ht]) (by rfl) hfree]
+    have he : Builtins.runObjects "String#start_with?" (.ref o) [.ref p] m =
+        .ok (.bool (s.startsWith t)) m := by
+      change Builtins.runStrings "String#start_with?" (.ref o) [.ref p] m = _
+      simp [Builtins.runStrings, Builtins.binArg, Builtins.strPayload?, hs, ht]
+    simp only [Builtins.run]
+    repeat' split
+    all_goals first | trivial | (rw [he]; exact stepSpec_value hm hk (by simp [denM, isBoolV])) | skip
   | arrayIndex _ =>
     cases ha
     rename_i v vs hv hs
     cases hs
     obtain ⟨i, rfl⟩ := int_value hv
     exact array_index_step hm hk hr i hfree
+  | hashKey _ =>
+    cases ha
+    rename_i key more hkey htail
+    cases htail
+    exact hash_key_step hm hk hr key hfree
   | hashIndex _ =>
     cases ha
     rename_i key more hkey htail

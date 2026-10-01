@@ -6,6 +6,15 @@ import Ratchet.Controls.ClassCheckControls
 import Ratchet.Controls.MemberCallControls
 import Ratchet.Controls.ReceiverCacheControls
 import Ratchet.Controls.InheritanceControls
+import Ratchet.Controls.SingletonCheckControls
+import Ratchet.Controls.SingletonImplicitControls
+import Ratchet.Controls.ModuleCheckControls
+import Ratchet.Controls.ScalarWriteControls
+import Ratchet.Controls.TopClassControls
+import Ratchet.Controls.ResultControls
+import Ratchet.Controls.ClosureCheckControls
+import Ratchet.Controls.EachCheckControls
+import Ratchet.Controls.MapCheckControls
 
 /-!
 Negative controls for `validateD`.
@@ -49,6 +58,18 @@ def ctlDeriv : Deriv := .prim (.intLit 1) "+" [.intLit 2] .int .int
 #guard dprim? .int "zero?" [.int] = none
 #guard dprim? .int "<=" [.cls "String"] = none
 #guard dprim? .int ">=" [.nilT] = none
+-- Greater-than checks the entire Integer domain, its arity and its Boolean result.
+#guard validateD (.send (some (.int (-1))) ">" [.int (-2)] none)
+    (.prim (.intLit (-1)) ">" [.intLit (-2)] .int .bool)
+#guard dprim? .int ">" [.cls "String"] = none
+#guard dprim? .int ">" [] = none
+#guard dprim? .int ">" [.int, .int] = none
+#guard !validateD (.send (some (.int 1)) ">" [.int 0] none)
+    (.prim (.intLit 1) ">" [.intLit 0] .int .int)
+#guard validateD (.send (some (.vasgn .lvar "x" (.int 2))) ">"
+    [.vasgn .lvar "x" (.int 1)] none)
+    (.prim (.vasgn .lvar "x" (.intLit 2)) ">"
+      [.vasgn .lvar "x" (.intLit 1)] .int .bool)
 #guard dprim? .nilT "==" [] = none
 #guard dprim? (.cls "String") "length" [.int] = none
 #guard !validateD (.send (some (.int 1)) "=="
@@ -296,7 +317,7 @@ def ctlMethodCtx : Ctx :=
   { ctx0 with
     pos := { ctx0.pos with defs := [⟨"annotation_probe", [.req "x"], ctlAnnotationBody⟩] }
     neg := { ctx0.neg with declared := ["annotation_probe"] }
-    scope := { ctx0.scope with frame := some ⟨"Object", "Object", "annotation_probe"⟩ } }
+    scope := { ctx0.scope with frame := some ⟨"Object", "Object", "annotation_probe", false⟩ } }
 
 #guard (check 100 [("x", .int)] ctlAnnotationBody ctlAnnotationBodyCert ctlMethodCtx).isSome
 #guard (check 100 [("x", .nilable .int)] ctlAnnotationBody ctlAnnotationBodyCert ctlMethodCtx).isNone

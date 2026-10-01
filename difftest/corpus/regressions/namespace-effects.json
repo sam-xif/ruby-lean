@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L295 (2026-09-28)",
+  "note": "Permanent namespace naming propagates through live constants, preserves existing permanent names and handles frozen descendants, cycles and callback ordering. Exact combined program agrees with CRuby 4.0.5; see model L295 and difftest N69."
+}

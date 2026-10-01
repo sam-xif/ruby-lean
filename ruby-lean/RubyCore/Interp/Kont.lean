@@ -1,4 +1,5 @@
-import RubyCore.Interp.Send
+import RubyCore.Interp.BlockPass
+import RubyCore.Interp.Frozen
 
 /-!
 Continuation application (`applyKont`) and jump unwinding (`unwind`) — what
@@ -21,6 +22,12 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
   | k :: rest =>
     let m := { m with kont := rest }
     match k with
+    | .requireK feature _ =>
+      .next { m with ctl := .value (.bool true), stack := m.stack.tail, loadingFeatures := m.loadingFeatures.filter (· != feature), loadedFeatures := feature :: m.loadedFeatures }
+    | .objectInspectK recv filter remaining text source =>
+      resumeObjectInspect (m.leaveObjectInspection recv) recv filter remaining text source v
+    | .enumFinishK o => finishEnumerator m o v
+    | .enumStopK owner exc result => finishStop m owner exc result
     | .seqK es =>
       match es with
       | [] => .next (withCtl m (.value v))
@@ -33,59 +40,54 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         match m.currentFrame.self with
         | .ref o =>
           if (m.heap.get o).frozen then
-            match Builtins.inspectP m (.ref o) with
-            | .ok r => .next (raiseErr m Boot.frozenErrorId
-                s!"can't modify frozen {className m.heap (m.heap.get o).klass}: {r}")
-            | .error e => .unsupported e
+            raiseFrozen m (.ref o)
           else .next (withCtl (bindIvar m x v) (.value v))
         | selfV =>
           -- immediates are frozen: @x= with Integer self → FrozenError [V]
-          match Builtins.inspectP m selfV with
-          | .ok r => .next (raiseErr m Boot.frozenErrorId
-              s!"can't modify frozen {className m.heap (realClassOf m.heap selfV)}: {r}")
-          | .error e => .unsupported e
+          raiseFrozen m selfV
       | .cvar =>
         match cvarScope m with
-        | none => .unsupported "class variable in a singleton-class scope"
+        | none => .next (raiseErr m Boot.runtimeErrorId "class variable access from toplevel")
         | some scope =>
-          if scope == Boot.objectId && m.currentFrame.kind == .toplevel then
-            .next (raiseErr m Boot.runtimeErrorId "class variable access from toplevel")
-          else
-            .next (withCtl { m with heap := cvarSetIn m.heap scope x v } (.value v))
+          .next (withCtl { m with heap := cvarSetIn m.heap scope x v } (.value v))
     | .casgnK n =>
-      let defmod := m.currentFrame.defmod
-      let qual := if defmod == Boot.objectId then n else s!"{className m.heap defmod}::{n}"
-      let h := nameIfAnonymous m.heap qual v
-      .next (withCtl { m with heap := constSetIn h defmod n v } (.value v))
+      assignConstant m m.lexicalNamespace n v
     | .classDefK name body =>
-      -- v is the resolved superclass: it must be a non-module Class object [V]
-      match v with
-      | .ref k =>
-        match m.heap.classPayload? k with
-        | some c =>
-          if c.isModule then
-            .next (raiseErr m Boot.typeErrorId
-              s!"superclass must be an instance of Class (given an instance of {className m.heap (realClassOf m.heap v)})")
-          else enterClassBody m name false (some k) body
-        | none =>
-          .next (raiseErr m Boot.typeErrorId
-            s!"superclass must be an instance of Class (given an instance of {className m.heap (realClassOf m.heap v)})")
-      | .nil | .bool _ =>
-        -- CRuby phrases these as "given nil"/"given false" — gate rather than
-        -- emit the "an instance of …" form.
-        .unsupported "superclass is nil/true/false"
-      | _ =>
-        .next (raiseErr m Boot.typeErrorId
-          s!"superclass must be an instance of Class (given an instance of {className m.heap (realClassOf m.heap v)})")
+      match inheritableClass m v false with
+      | .error result => result
+      | .ok k => enterClassBody m name false (some k) body
+    | .constClassK klass superclass libraryName body =>
+      inheritClassBody m klass superclass libraryName body
+    | .classBodyK klass libraryName body => pushClassFrame m klass libraryName body
+    | .classInitK klass block => finishClassInitialize m klass block
+    | .classNameErrorK klass lead tail => finishClassNameError m klass lead tail v
+    | .constantNameErrorK source => finishConstantNameError m source v
     | .newK inst =>
       -- `initialize` returned; its value is discarded, `new` yields the instance
       .next (withCtl m (.value inst))
+    | .raiseValueK =>
+      if isA m.heap v Boot.exceptionId then .next (withCtl m (.jump (.raiseJ v)))
+      else .next (raiseErr m Boot.typeErrorId "exception object expected")
+    | .cloneK copy original freeze => finishNativeClone m copy original freeze
+    | .copyErrorK lead rest parts fallback => finishCopyError m lead rest parts fallback v
+    | .exceptionCopyK copy message original =>
+      let freeze := match original with | .ref o => (m.heap.get o).frozen | _ => true
+      let m := if freeze then match copy with
+        | .ref o => { m with heap := m.heap.set o { m.heap.get o with frozen := true } }
+        | _ => m
+        else m
+      constructResult (Builtins.run "Exception#initialize" copy [message] m)
+    | .blockCallK scope =>
+      .next (withCtl { m with liveBreakScopes := m.liveBreakScopes.filter (· != scope) } (.value v))
+    | .arrayInitK recv block index size => arrayInitNext m recv block index size v
+    | .methodEditsK remaining result => runMethodEdits m remaining result
     | .methodAddedK name =>
       -- the `method_added` hook returned; its value is discarded and `def`
       -- yields the method name, as if the hook had not run
       .next (withCtl m (.value (.sym name)))
+    | .uncaughtInspectK source => finishUncaughtInspect m source v
     | .raiseNewK inst =>
-      -- `raise C[, msg]` with a user `initialize`: now raise the built instance
+      -- Native error initialize returned; discard its result and raise the instance.
       .next (withCtl m (.jump (.raiseJ inst)))
     | .includeK recv =>
       -- `included` hook returned; its value is discarded, `include` yields recv
@@ -94,14 +96,15 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       -- `def RECV.name`: install on RECV's eigenclass (v = the evaluated RECV)
       match v with
       | .ref o =>
+        if (m.heap.get o).frozen then raiseFrozen m v else
         let (e, m) := eigenclassOf m o
+        if let some receiver := frozenMethodReceiver? m.heap e then raiseFrozen m receiver else
         -- `def self.m` in a module keeps that module's lexical cref for constant
         -- lookup even though its dispatch owner is the eigenclass (artifact 03).
         let md : MethodDef :=
-          { params, body, owner := e, cref := m.currentFrame.cref,
-            fromPrelude := m.preludeMode }
-        let m := { m with heap := defineMethod m.heap e name md }
-        .next (withCtl m (.value (.sym name)))
+          { params, body, owner := e, definee := some m.currentFrame.defmod, cref := m.currentFrame.cref,
+            fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
+        runMethodEdits m [.define e name md] (.sym name)
       | _ =>
         -- singleton def on an immediate (`def 1.m`) — TypeError; message-gate
         .unsupported "singleton def on an immediate"
@@ -110,7 +113,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       match v with
       | .ref o =>
         let (e, m) := eigenclassOf m o
-        let frame : Frame := { self := .ref e, defmod := e, kind := .classBody, cref := e :: m.currentFrame.cref }
+        let frame : Frame := { self := .ref e, defmod := e, kind := .classBody, cref := e :: m.currentFrame.cref, libraryOrigin := m.currentFrame.libraryOrigin }
         let fid := m.frames.size
         let m := { m with frames := m.frames.push frame, stack := fid :: m.stack }
         .next (withKont m (.eval body) (.frameK fid))
@@ -138,6 +141,8 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
             -- *exists* says so, rather than claiming to be uninitialized.
             .next (raiseErr m Boot.nameErrorId
               s!"private constant {className m.heap o}::{name} referenced")
+          else if unmodeledNamespaceConstant m o name then
+            .unsupported s!"unmodeled constant {className m.heap o}::{name}"
           else .next (raiseErr m Boot.nameErrorId
             s!"uninitialized constant {className m.heap o}::{name}")
     | .cpathAsgnK name rhs =>
@@ -146,11 +151,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | .error sr => sr
       | .ok o => .next (withKont m (.eval rhs) (.cpathAsgnValK name o))
     | .cpathAsgnValK name base =>
-      -- v is the rhs; write it into base's namespace; assignment yields rhs [V].
-      let qual := if base == Boot.objectId then name
-                  else s!"{className m.heap base}::{name}"
-      let h := nameIfAnonymous m.heap qual v
-      .next (withCtl { m with heap := constSetIn h base name v } (.value v))
+      assignConstant m base name v
     | .scopedClassDefK name isMod body =>
       -- v is base `A`; open (or create) `name` inside it.
       match cpathContainer m v with
@@ -167,28 +168,14 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       else .next (withCtl m (.value .nil))
     | .whileBodyK c body =>
       .next (withKont m (.eval c) (.whileCondK c body))
-    | .forStartK targets body =>
-      -- v is the collection: iterate it natively (the model resolves `each` on a
-      -- lookup miss, so `for` cannot desugar to it). `spread` supplies the
-      -- element list — Arrays directly, integer Ranges expanded (L63) — and
-      -- gates anything whose expansion would need a dispatch.
-      match v with
-      | .ref o =>
-        match (m.heap.get o).payload with
-        | .arr xs => forStep m targets body xs.toList v
-        | .range .. =>
-          match spread m v with
-          | .ok vs => forStep m targets body vs v
-          | .error e => .unsupported e
-        | _ => .unsupported "for over a non-Array collection"
-      | _ => .unsupported "for over a non-Array collection"
-    | .forBodyK targets body rest coll =>
-      forStep m targets body rest coll
+    | .forStartK targets body multiple => startFor m targets body multiple v
+    | .forAssignK pending body => .next (queueForAssignments m pending body)
     | .iterK cl brk rest kind acc retVal cur =>
+      let m := m.leaveHashIteration kind
       -- v is the block's result for the current element; fold it, then continue.
       match kind with
-      | .ignore => iterStep m cl brk rest kind acc retVal
-      | .collect => iterStep m cl brk rest kind (acc ++ [v]) retVal
+      | .ignore | .arrayEach .. | .arrayIndex .. | .hashEach .. | .times .. | .scan .. => iterStep m cl brk rest kind acc retVal
+      | .arrayMap .. => iterStep m cl brk rest kind (acc ++ [v]) retVal
       | .fold => iterStep m cl brk rest kind [v] retVal
       | .maxBy | .minBy =>
         -- keep [bestElem, bestKey]; replace only on a *strict* improvement so ties
@@ -211,11 +198,12 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
     | .argsK recv implicit mname acc rest pblk =>
       startArgs m recv implicit mname (acc ++ [v]) rest pblk
     | .argsSplatK recv implicit mname acc rest pblk =>
-      withSpread m v fun m vs => startArgs m recv implicit mname (acc ++ vs) rest pblk
+      startSplat m (.args recv implicit mname acc rest pblk) v
     | .blkCoerceK recv implicit mname acc kw =>
-      match coerceToProc m v with
-      | .ok (blkV, m) => invoke m recv implicit mname acc blkV kw
-      | .error e => .unsupported e
+      coerceBlockPass m ⟨recv, implicit, mname, acc, kw⟩ v
+    | .blkConvertK call source phase =>
+      resumeBlockPass m call source phase v
+    | .frozenErrorK recv phase => resumeFrozen (m.leaveFrozenInspection recv phase) recv phase v
     | .kwPairK key rest kwacc recv implicit mname posArgs pblk =>
       startKwargs m recv implicit mname posArgs (kwAdd kwacc (.sym key) v) rest pblk
     | .kwDynKeyK valE rest kwacc recv implicit mname posArgs pblk =>
@@ -233,16 +221,19 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | _ => .unsupported "** of a non-Hash"
     | .superArgK acc rest blk => startSuperArgs m (acc ++ [v]) rest blk
     | .superSplatK acc rest blk =>
-      withSpread m v fun m vs => startSuperArgs m (acc ++ vs) rest blk
+      startSplat m (.superArgs acc rest blk) v
     | .yieldArgK acc rest => startYield m (acc ++ [v]) rest
     | .yieldSplatK acc rest =>
-      withSpread m v fun m vs => startYield m (acc ++ vs) rest
+      startSplat m (.yieldArgs acc rest) v
     | .arrK acc rest => continueArray m (acc ++ [v]) rest
     | .arrSplatK acc rest =>
-      withSpread m v fun m vs => continueArray m (acc ++ vs) rest
+      startSplat m (.array acc rest) v
     | .hshKeyK acc vExpr rest =>
       .next (withKont m (.eval vExpr) (.hshValK acc v rest))
     | .hshValK acc key rest =>
+      if Builtins.complexEqualityImpure m.heap 100 key ||
+          acc.any (fun (k, _) => Builtins.complexEqualityImpure m.heap 100 k) then
+        .unsupported "Hash literal with effectful Complex key comparison" else
       -- duplicate keys keep first position, last value [V]
       let acc := match acc.findIdx? (fun (k', _) => valueEql m.heap k' key) with
         | some i => acc.set i (acc[i]!.1, v)
@@ -258,6 +249,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | .retK => doReturn m v
       | .brkK => .next (withCtl m (.jump (.brkJ v)))
       | .nxtK => .next (withCtl m (.jump (.nxtJ v)))
+    | .paramBindK pending body => stepParamBinding m pending body
     | .optDefK name rest post body =>
       -- v is the default value for `name`; bind it, then the next default, or
       -- (all defaults done) install post/rest/block and run the body.
@@ -267,7 +259,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         let m := post.foldl (fun m (nv : String × Value) => m.setLocal nv.1 nv.2) m
         .next (withCtl m (.eval body))
       | (n0, d0) :: more => .next (withKont m (.eval d0) (.optDefK n0 more post body))
-    | .frameK _ =>
+    | .frameK _ | .dmFrameK .. =>
       -- normal completion of a method body: pop the activation
       .next (withCtl { m with stack := m.stack.tail } (.value v))
     | .blkFrameK .. =>
@@ -316,7 +308,9 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         if (m.heap.classPayload? o).isSome then
           match constLookupFrom m.heap o name with
           | some _ => let (sv, m) := Builtins.allocStr m "constant"; .next (withCtl m (.value sv))
-          | none => .next (withCtl m (.value .nil))
+          | none => if unmodeledNamespaceConstant m o name then
+              .unsupported s!"defined? of unmodeled constant {className m.heap o}::{name}"
+            else .next (withCtl m (.value .nil))
         else .unsupported "defined?(A::B) with a non-namespace base"
       | _ => .unsupported "defined?(A::B) with a non-namespace base"
     | .definedGuardK =>
@@ -342,14 +336,42 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
     | .retJ _ _ =>
       -- a non-lambda block `return` whose home method already exited [V]
       .next (raiseErr m Boot.localJumpErrorId "unexpected return")
-    | .throwJ tag _ =>
-      match Builtins.inspectP m tag with
-      | .ok r => .next (raiseErr m Boot.uncaughtThrowErrorId s!"uncaught throw {r}")
-      | .error e => .unsupported e
+    | .throwJ tag value => .next (raiseUncaughtThrow m tag value)
     | _ => .stuck "jump escaped the program (break/next/retry at toplevel)"
   | k :: rest =>
     let m := { m with kont := rest }
     match k with
+    | .objectInspectK recv .. =>
+      .next (withCtl (m.leaveObjectInspection recv) (.jump j))
+    | .frozenErrorK recv phase =>
+      .next (withCtl (m.leaveFrozenInspection recv phase) (.jump j))
+    | .iterK _ _ _ kind _ _ _ =>
+      .next (withCtl (m.leaveHashIteration kind) (.jump j))
+    | .blockCallK scope =>
+      let m := { m with liveBreakScopes := m.liveBreakScopes.filter (· != scope) }
+      match j with
+      | .retJ v target =>
+        if target == scope then .next (withCtl m (.value v))
+        else .next (withCtl m (.jump j))
+      | _ => .next (withCtl m (.jump j))
+    | .requireK feature fid =>
+      let m := { m with stack := m.stack.tail, loadingFeatures := m.loadingFeatures.filter (· != feature) }
+      match j with
+      | .retJ _ target =>
+        if target == fid then .next { m with ctl := .value (.bool true), loadedFeatures := feature :: m.loadedFeatures }
+        else .next { m with ctl := .jump j }
+      | _ => .next { m with ctl := .jump j }
+    | .enumFinishK o =>
+      let st := enumState m o
+      match st.caller with
+      | none => .stuck "Enumerator unwind without caller"
+      | some caller =>
+        let m := restoreExecution (setEnumState m o {}) caller
+        match j with
+        | .raiseJ _ => .next { m with ctl := .jump j }
+        | .retJ .. => .next (raiseErr m Boot.localJumpErrorId "unexpected return")
+        | .throwJ tag value => .next (raiseUncaughtThrow m tag value)
+        | _ => .unsupported "nonlocal transfer out of Enumerator"
     | .whileCondK c body | .whileBodyK c body =>
       match j with
       | .brkJ v => .next (withCtl m (.value v))
@@ -359,13 +381,15 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
     | .forStartK .. =>
       -- a jump raised while evaluating the collection is not the loop's: pass on
       .next (withCtl m (.jump j))
-    | .forBodyK targets body rest coll =>
+    | .dmFrameK fid body =>
       match j with
-      | .brkJ v => .next (withCtl m (.value v))           -- break value is for's value [V]
-      | .nxtJ _ => forStep m targets body rest coll        -- next → next element
-      | .redoJ =>                                          -- re-run body for the same element [V]
-        .next (withKont m (.eval body) (.forBodyK targets body rest coll))
-      | _ => .next (withCtl m (.jump j))
+      | .brkJ v | .nxtJ v => .next (withCtl { m with stack := m.stack.tail } (.value v))
+      | .redoJ => .next (withKont m (.eval body) (.dmFrameK fid body))
+      | .retJ v target =>
+        if target == fid then .next (withCtl { m with stack := m.stack.tail } (.value v))
+        else .next (withCtl { m with stack := m.stack.tail } (.jump j))
+      | .raiseJ _ | .throwJ .. => .next (withCtl { m with stack := m.stack.tail } (.jump j))
+      | .retryJ => .unsupported "retry crossing a define_method boundary"
     | .frameK fid =>
       match j with
       | .retJ v target =>
@@ -403,9 +427,11 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
       | .raiseJ _ | .throwJ .. => .next (withCtl { m with stack := m.stack.tail } (.jump j))
       | .retryJ => .unsupported "retry crossing a block boundary"
       | .redoJ =>
-        -- `redo` re-runs *this* block invocation from the top with the same
-        -- arguments (artifact 04, L69): pop the frame and re-enter the closure.
-        callClosure { m with stack := m.stack.tail } cl args brk
+        -- Redo restarts the body in the same activation. Parameter/local writes
+        -- remain visible, and argument conversion/defaults must not run again.
+        .next (withKont m (.eval cl.body) (.blkFrameK fid lam brk cl args))
+    | .blkConvertK call source phase =>
+      unwindBlockPass m call source phase j
     | .definedGuardK =>
       -- any exception while evaluating a `defined?` operand makes it nil [V]
       match j with

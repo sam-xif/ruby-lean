@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "hand, L274 / ratchet F54",
+  "arm": "probe",
+  "case_id": "array-map-native",
+  "note": "Array#map/collect incorrectly resolved Enumerable's each-dispatching implementation. Native markers preserve overrides, aliases, visibility, undef, remove and super; a live cursor covers mutations and block exits."
+}

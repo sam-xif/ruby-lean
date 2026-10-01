@@ -20,7 +20,7 @@ inductive Steps : Machine → Machine → Prop where
 /-- The toplevel config of any fragment program is in the fragment
     (`self = main`, empty kont, fragment head). -/
 theorem init_InFrag {e : Expr} (he : FragExpr e) : InFrag (Machine.init e) := by
-  refine ⟨⟨Boot.mainId, rfl⟩, ?_, ?_, ?_⟩
+  refine ⟨⟨Boot.mainId, rfl⟩, ?_, ?_, ?_, ?_⟩
   · intro k hk; simp [Machine.init, Machine.initOn] at hk
   · intro e' he'
     have : (Machine.init e).ctl = .eval e := rfl
@@ -28,6 +28,7 @@ theorem init_InFrag {e : Expr} (he : FragExpr e) : InFrag (Machine.init e) := by
   · intro j hj
     have : (Machine.init e).ctl = .eval e := rfl
     rw [this] at hj; exact Ctl.noConfusion hj
+  · intros; simp [Machine.init, Machine.initOn]
 
 /-- Non-vacuity: the relation fires on a concrete config. -/
 example : Step (Machine.init (.int 7)) (withCtl (Machine.init (.int 7)) (.value (.int 7))) :=

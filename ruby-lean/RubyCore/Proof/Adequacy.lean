@@ -50,10 +50,11 @@ open Interp
   · simp [Heap.set, Heap.get]
   · rfl
 
-/-- `raiseErr` allocates one exception object, so the heap grows by one. -/
+/-- `raiseErr` allocates the message String and the exception object. -/
 @[simp] theorem raiseErr_heapSize (m : Machine) (cls : ObjId) (msg : String) :
-    (raiseErr m cls msg).heap.objs.size = m.heap.objs.size + 1 := by
-  simp [raiseErr, Builtins.allocExc, Heap.alloc]
+    (raiseErr m cls msg).heap.objs.size = m.heap.objs.size + 2 := by
+  simp [raiseErr, Builtins.allocExc, Builtins.allocStr, Heap.alloc]
+  split <;> simp [Array.size_push, Nat.add_assoc]
 
 /-- The heap never shrinks across a step (ObjIds are never reused). -/
 theorem Step.heap_monotone {m m' : Machine} (h : Step m m') :
@@ -111,7 +112,8 @@ def InFrag (m : Machine) : Prop :=
   (∃ o, m.currentFrame.self = .ref o) ∧
   (∀ k ∈ m.kont, FragKont k) ∧
   (∀ e, m.ctl = .eval e → FragExpr e) ∧
-  (∀ j, m.ctl = .jump j → FragJump j)
+  (∀ j, m.ctl = .jump j → FragJump j) ∧
+  (∀ recv site name args blk kw, m.ctl ≠ .send recv site name args blk kw)
 
 /-- If some `Step` fires and the executable takes a `.next` step, they agree —
     because `stepFn` is a function (`Step.sound` + `.next` injectivity). Lets
@@ -133,8 +135,8 @@ theorem matchGlobal_eq_none_of_not_view {m : Machine} {x : String}
     the fragment: `InFrag m → (Step m m' ↔ stepFn m = .next m')`. -/
 theorem Step.complete {m m' : Machine} (hf : InFrag m) (hs : stepFn m = .next m') :
     Step m m' := by
-  obtain ⟨⟨o, hself⟩, hkont, hce, hcj⟩ := hf
-  rcases hcc : m.ctl with e | v | j
+  obtain ⟨⟨o, hself⟩, hkont, hce, hcj, hsend⟩ := hf
+  rcases hcc : m.ctl with e | v | j | ⟨recv, site, name, args, blk, kw⟩
   · -- control = eval e
     have hfe := hce e hcc
     cases e with
@@ -149,14 +151,20 @@ theorem Step.complete {m m' : Machine} (hf : InFrag m) (hs : stepFn m = .next m'
     | var k x => cases k with
       | lvar => exact realize hs (.varLvar hcc)
       | gvar =>
-        exact realize hs (.varGvar hcc (matchGlobal_eq_none_of_not_view (by
-          simpa [FragExpr] using hfe)))
+        cases hl : loaderGlobal x with
+        | true => simp [stepFn, hcc, evalExpr, hl] at hs
+        | false =>
+          exact realize hs (.varGvar hcc (matchGlobal_eq_none_of_not_view (by
+            simpa [FragExpr] using hfe)) hl)
       | ivar => exact realize hs (.varIvar hcc hself)
       | cvar => simp [FragExpr] at hfe
     | vasgn k x rhs => cases k with
       | lvar => exact realize hs (.vasgnLvar hcc)
       | ivar => exact realize hs (.vasgnIvar hcc)
-      | gvar => exact realize hs (.vasgnGvar hcc)
+      | gvar =>
+        cases hl : loaderGlobal x with
+        | true => simp [stepFn, hcc, evalExpr, hl] at hs
+        | false => exact realize hs (.vasgnGvar hcc hl)
       | cvar => simp [FragExpr] at hfe
     | if' c t e => exact realize hs (.ifEval hcc)
     | while' c b => exact realize hs (.whileEval hcc)
@@ -190,12 +198,7 @@ theorem Step.complete {m m' : Machine} (hf : InFrag m) (hs : stepFn m = .next m'
           -- L2 split on the frozen check `stepFn` now performs for `@x=`
           cases hfr : (m.heap.get o).frozen with
           | false => exact realize hs (.asgnKIvar hcc hk hself hfr)
-          | true =>
-            cases hins : Builtins.inspectP (pop m rest) (.ref o) with
-            | ok r => exact realize hs (.asgnKIvarFrozen hcc hk hself hfr hins)
-            | error e =>
-              -- impure inspect ⇒ `stepFn` gates (`.unsupported`), so `hs` is absurd
-              simp_all [stepFn, applyKont, Machine.currentFrame, pop]
+          | true => exact realize hs (.asgnKIvarFrozen hcc hk hself hfr)
         | cvar => simp [FragKont] at hfk
       | ifK t e => cases hb : v.truthy with
         | true => exact realize hs (.ifKTrue hcc hk hb)
@@ -257,6 +260,8 @@ theorem Step.complete {m m' : Machine} (hf : InFrag m) (hs : stepFn m = .next m'
     | raiseJ v => simp [FragJump] at hfj
     | retryJ => simp [FragJump] at hfj
     | throwJ tag v => simp [FragJump] at hfj
+
+  · exact False.elim (hsend recv site name args blk kw hcc)
 
 /-- **Function–relation adequacy** on the fragment. -/
 theorem Step.adequacy {m m' : Machine} (hf : InFrag m) :

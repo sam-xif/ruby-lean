@@ -31,7 +31,7 @@ private def entryCoreB (name : String) : Bool :=
           classNamed? n.heap "Relay" == some parent &&
           classNamed? n.heap "RelayAlias" == some parent &&
           (n.heap.classPayload? m.heap.objs.size).any (·.methods.isEmpty) &&
-          (Interp.userInit? n.heap m.heap.objs.size).any (fun md =>
+          (userInit? n.heap m.heap.objs.size).any (fun md =>
             md.owner == parent && md.params.length == 1 && md.builtin.isNone &&
               !md.undefined && md.capturedFrame.isNone && md.cref == [parent, Boot.objectId]) &&
           (Interp.methodOn n.heap Boot.objectId "kept").any (fun (_, md) =>

@@ -37,6 +37,9 @@ inductive Expr where
       only at evaluation (`Float.ofBits`). The wire format is unchanged (a JSON
       float; `Decode` takes `.toBits`). -/
   | flt (bits : UInt64)
+  /-- Exact native rational literal; constructor/constant lookup is bypassed. -/
+  | rat (num : Int) (den : Nat) (site : String)
+  | imag (component : Expr) (site : String)
   | str (s : String)
   | sym (s : String)
   | tru
@@ -88,7 +91,7 @@ inductive Expr where
   | dowhile (body cond : Expr)
   /-- `for tgts in coll; body; end` — `tgts` bind in the *enclosing* scope (no
       block frame; the loop variable leaks) [V]. -/
-  | for' (targets : List (TargetKind × String)) (coll body : Expr)
+  | for' (targets : List (TargetKind × String)) (coll body : Expr) (multiple : Bool := false)
   | def' (name : String) (params : List Param) (body : Expr)
   | array (elems : List Expr)
   | hash (pairs : List (Expr × Expr))
@@ -230,6 +233,11 @@ def asStr (j : Json) : M String :=
   | .str s => .ok s
   | _ => fail "expected string" j
 
+def asBool (j : Json) : M Bool :=
+  match j with
+  | .bool b => .ok b
+  | _ => fail "expected boolean" j
+
 def asInt (j : Json) : M Int :=
   match j with
   | .num n => if n.exponent == 0 then .ok n.mantissa else fail "expected integer" j
@@ -346,6 +354,19 @@ partial def expr (j : Json) : M Expr := do
   match head, a with
   | "int",   #[_, n] => .int <$> asInt n
   | "flt",   #[_, x] => (fun f => Expr.flt f.toBits) <$> asFloat x
+  | "flt_bits", #[_, x] => do
+    let bits ← asInt x
+    if bits < 0 || bits ≥ 18446744073709551616 then throw "Float bits outside UInt64"
+    return .flt bits.toNat.toUInt64
+  | "rat", #[_, n, d, site] => do
+    let den ← asInt d
+    if den ≤ 0 then throw "rational literal denominator must be positive"
+    return .rat (← asInt n) den.toNat (← asStr site)
+  | "imag", #[_, x, site] => do
+    let component ← expr x
+    match component with
+    | .int _ | .flt _ | .rat .. => return .imag component (← asStr site)
+    | _ => throw "imaginary literal requires a numeric literal component"
   | "regexp_lit", #[_, s, o] => return .regexpLit (← asStr s) (← asInt o).toNat
   | "str",   #[_, s] => .str <$> asStr s
   | "sym",   #[_, s] => .sym <$> asStr s
@@ -390,6 +411,12 @@ partial def expr (j : Json) : M Expr := do
         | #[k, n] => return (← targetKind (← asStr k), ← asStr n)
         | _ => fail "for target" t
       return .for' targets (← expr coll) (← expr body)
+  | "for", #[_, tgts, coll, body, multiple] =>
+      let targets ← (← asArr tgts).toList.mapM fun t => do
+        match ← asArr t with
+        | #[k, n] => return (← targetKind (← asStr k), ← asStr n)
+        | _ => fail "for target" t
+      return .for' targets (← expr coll) (← expr body) (← asBool multiple)
   | "def",   #[_, n, ps, body] =>
       return .def' (← asStr n) (← params ps) (← expr body)
   | "array", #[_, elems] => .array <$> exprs (← asArr elems)

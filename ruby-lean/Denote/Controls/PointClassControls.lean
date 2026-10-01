@@ -20,7 +20,7 @@ theorem after_run {Γ : Env} {I : Ty} {m n : Machine} {fuel rest : Nat} {v : Val
       ∃ k md, InstanceSite callerCtx "Point" k n.heap ∧
         NewDispatch n.heap (classOf n.heap (.ref k)) ∧
         md.params = [.req "x", .req "y"] ∧ md.body = toRuby pointInitBody ∧
-        InstanceMethodCode k "initialize" md ∧ Interp.userInit? n.heap k = some md := by
+        InstanceMethodCode k "initialize" md ∧ userInit? n.heap k = some md := by
   have hs := ((runSpec hm hI hΓ).2 fuel (.val v) n rest hr).2.2 v rfl
   exact ⟨hs, constructor_code hs⟩
 
@@ -28,7 +28,7 @@ theorem after_run {Γ : Env} {I : Ty} {m n : Machine} {fuel rest : Nat} {v : Val
 #guard match Interp.run 200 (evalFrom bootMachine program) with
   | .value (.sym "getX") m =>
       m.currentFrame.kind == .toplevel && (classNamed? m.heap "Point").any (fun k =>
-        (Interp.userInit? m.heap k).any (fun md => md.params == [.req "x", .req "y"]))
+        (userInit? m.heap k).any (fun md => md.params == [.req "x", .req "y"]))
   | _ => false
 
 -- Methods execute only at calls; the class statement preserves the caller's String local.

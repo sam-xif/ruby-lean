@@ -58,11 +58,11 @@ theorem SemAllCtxA.startArgsKeep {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty}
     simp only [StepSpec, Interp.withKont, hk]
     change RunSpec m (pushK [.argsK recv site name acc (toRubyList es) .none] (evalFrom m e))
       Γ₂ τ κ₂ I₂
-    apply (he m hm).bindSpec (by
-      intro k h tag
+    apply (he m hm).bindSpec hm.rootClean (by
+      intro k h
       simp only [List.mem_singleton] at h
       subst h
-      simp)
+      rfl)
     intro a n hn
     cases a with
     | val v =>

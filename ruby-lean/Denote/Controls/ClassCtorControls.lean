@@ -25,6 +25,24 @@ private def wrongNew : Machine :=
 #guard clsQueryOkB bootMachine
 #guard !newDispatchB wrongNew.heap (classOf wrongNew.heap (.ref Boot.objectId))
 
+-- A missing new satisfied the old conditional metadata contract but default dispatch gates.
+private def missingNew : Machine :=
+  match bootMachine.heap.classPayload? Boot.classId with
+  | none => bootMachine
+  | some cp =>
+    let cp' := { cp with methods := cp.methods.filter (·.1 != "new") }
+    { bootMachine with heap := bootMachine.heap.setClassPayload Boot.classId cp' }
+
+#guard (Interp.methodOn missingNew.heap (classOf missingNew.heap (.ref Boot.objectId)) "new").isNone
+#guard (Interp.methodOn missingNew.heap (classOf missingNew.heap (.ref Boot.objectId)) "method_missing").all
+  (fun (_, md) => md.builtin.isSome)
+#guard !newDispatchB missingNew.heap (classOf missingNew.heap (.ref Boot.objectId))
+#guard !bootStateB missingNew
+#guard match Interp.run 150 (evalFrom missingNew (.seq [
+    .class' "Depot" none .nil, .send (some (.const "Depot")) "new" [] none])) with
+  | .unsupported reason _ => reason == "unmodeled method Class#new"
+  | _ => false
+
 -- Existing prelude constructors are deliberately outside the root-only requirement.
 #guard ["Range", "Struct"].all fun cn =>
   (classNamed? bootMachine.heap cn).any fun k =>

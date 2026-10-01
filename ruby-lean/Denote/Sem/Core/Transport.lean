@@ -41,6 +41,25 @@ between the machines a leaf rung has in hand. -/
 abbrev reCtl (m : Machine) (c : Ctl) (k : List Kont) : Machine :=
   { m with ctl := c, kont := k }
 
+theorem definitionFrameId_reCtl (m : Machine) (c : Ctl) (k : List Kont) (fid : FrameId) :
+    (reCtl m c k).definitionFrameId fid = m.definitionFrameId fid := by
+  have h : ∀ fuel i, Machine.definitionFrameId.go (reCtl m c k) fuel i =
+      Machine.definitionFrameId.go m fuel i := by
+    intro fuel
+    induction fuel with
+    | zero => intro i; rfl
+    | succ fuel ih =>
+      intro i
+      simp only [Machine.definitionFrameId.go]
+      split
+      · exact ih _
+      · rfl
+  exact h _ _
+
+@[simp] theorem currentDefinitionFrame_reCtl (m : Machine) (c : Ctl) (k : List Kont) :
+    (reCtl m c k).currentDefinitionFrame = m.currentDefinitionFrame := by
+  simp only [Machine.currentDefinitionFrame, definitionFrameId_reCtl]
+
 /-- Calling a value does not see `ctl`/`kont`: `applyIn` sets both itself. -/
 theorem applyIn_reCtl (m : Machine) (c : Ctl) (k : List Kont) (f : Value) (args : List Value) :
     applyIn (reCtl m c k) f args = applyIn m f args := rfl
@@ -68,6 +87,10 @@ theorem SendReturns_reCtl {m : Machine} {c : Ctl} {k : List Kont} {name : String
 @[simp] theorem currentFrame_reCtl (m : Machine) (c : Ctl) (k : List Kont) :
     (reCtl m c k).currentFrame = m.currentFrame := rfl
 
+@[simp] theorem localFrameId_reCtl (m : Machine) (c : Ctl) (k : List Kont) (fid : FrameId) :
+    (reCtl m c k).localFrameId fid = m.localFrameId fid :=
+  localFrameId_frames_eq (m := m) (n := reCtl m c k) rfl fid
+
 /-- Both local readers walk the frame array under an explicit fuel, carrying the machine as
 an argument, so their agreement is an induction rather than a projection. -/
 theorem getLocal_go_reCtl (m : Machine) (c : Ctl) (k : List Kont) (x : String) :
@@ -78,7 +101,7 @@ theorem getLocal_go_reCtl (m : Machine) (c : Ctl) (k : List Kont) (x : String) :
   | zero => intro fid; rfl
   | succ n ih =>
     intro fid
-    simp only [Machine.getLocal.go]
+    simp only [Machine.getLocal.go, localFrameId_reCtl, frames_reCtl]
     split
     · rfl
     · split
@@ -88,6 +111,28 @@ theorem getLocal_go_reCtl (m : Machine) (c : Ctl) (k : List Kont) (x : String) :
 @[simp] theorem getLocal_reCtl (m : Machine) (c : Ctl) (k : List Kont) (x : String) :
     (reCtl m c k).getLocal x = m.getLocal x :=
   getLocal_go_reCtl m c k x _ _
+
+theorem setLocal_owner_reCtl (m : Machine) (c : Ctl) (k : List Kont)
+    (x : String) (start : FrameId) : ∀ fuel fid,
+    Machine.setLocal.owner (reCtl m c k) x start fid fuel =
+      Machine.setLocal.owner m x start fid fuel := by
+  intro fuel
+  induction fuel with
+  | zero => intro _; rfl
+  | succ fuel ih =>
+    intro fid
+    simp only [Machine.setLocal.owner, localFrameId_reCtl, frames_reCtl]
+    split
+    · rfl
+    · split
+      · exact ih _
+      · rfl
+
+@[simp] theorem setLocal_reCtl (m : Machine) (c : Ctl) (k : List Kont)
+    (x : String) (v : Value) :
+    (reCtl m c k).setLocal x v = reCtl (m.setLocal x v) c k := by
+  simp only [setLocal_eq_setAt, localFrameId_reCtl, stack_reCtl, frames_reCtl, setLocal_owner_reCtl]
+  rfl
 
 theorem frameLocal_go_reCtl (m : Machine) (c : Ctl) (k : List Kont) (x : String) :
     ∀ (fuel : Nat) (fid : FrameId),
@@ -130,9 +175,9 @@ observed a `Reaches`-seeded arrow would *not* have had. -/
 theorem Ext_reCtl {m m₂ : Machine} {c : Ctl} {k : List Kont} :
     Ext (reCtl m c k) m₂ ↔ Ext m m₂ :=
   ⟨fun h => ⟨h.frames, h.stack, h.size, h.get, h.payload, h.ancestors, h.freshIvars,
-              h.freshBasic, h.chains⟩,
+              h.freshBasic, h.chains, h.rootClean⟩,
    fun h => ⟨h.frames, h.stack, h.size, h.get, h.payload, h.ancestors, h.freshIvars,
-              h.freshBasic, h.chains⟩⟩
+              h.freshBasic, h.chains, h.rootClean⟩⟩
 
 theorem Later_reCtl {m m₂ : Machine} {c : Ctl} {k : List Kont} :
     Later (reCtl m c k) m₂ ↔ Later m m₂ :=
@@ -216,24 +261,26 @@ without allocating. -/
 theorem Framed_reCtl (m : Machine) (c : Ctl) (k : List Kont) : Framed m (reCtl m c k) :=
   Framed.of_heap_stack rfl rfl (.of_eq rfl rfl)
 
-/-- An `Ext` is a `Framed`: it pins the frame stack and every object's class-ness outright.
-Every allocating leaf rung already builds one for `StateOk_ext`, so this is where those rungs
-get their first conjunct. -/
-theorem Framed.of_ext {m m' : Machine} (he : Ext m m') : Framed m m' :=
+/-- Heap/frame extension plus unchanged prelude mode gives `Framed`. `Ext` itself is
+phase-agnostic; concrete allocating operations discharge the separate phase proof by rfl. -/
+theorem Framed.of_ext {m m' : Machine} (he : Ext m m')
+    (hp : m'.preludeMode = m.preludeMode := by rfl) : Framed m m' :=
   ⟨he.stack, fun k h => by rw [he.payload]; exact h,
     fun v n h => by
       simpa only [denM] using
         (denM_ext (τ := .cls n) (v := v) he (by simpa only [denM] using h)),
     fun _ _ _ h => denM_ext he h, .of_eq he.stack he.frames,
     .of_unchanged he.size (fun o ho => by funext x; simp only [ivarOf, he.get o ho])
-      (fun _ _ _ h => denM_ext he h)⟩
+      (fun _ _ _ h => denM_ext he h), (fun o ho e hp => by rw [he.get o ho]; exact hp),
+    .of_get he.get, hp, he.rootClean⟩
 
 theorem Framed_withCtl (m : Machine) (c : Ctl) : Framed m (Interp.withCtl m c) :=
   Framed.of_heap_stack rfl rfl (.of_eq rfl rfl)
 
-theorem Framed_setLocal (m : Machine) (x : String) (w : Value) :
+theorem Framed_setLocal (m : Machine) (x : String) (w : Value)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none) :
     Framed m (m.setLocal x w) :=
-  Framed.of_heap_stack (setLocal_heap m x w) (setLocal_stack m x w) (.setLocal m x w)
+  Framed.of_heap_stack (setLocal_heap m x w) (setLocal_stack m x w) (.setLocal m x w ha)
 
 /-- **Conformance does not read the control word.** A corollary of `StateOk_ext`
 (`Denote/Sem/Core/State.lean`) rather than a second component-by-component induction: rewriting

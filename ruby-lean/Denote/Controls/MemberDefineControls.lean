@@ -40,7 +40,7 @@ theorem point_initializer_at_entry (hb : bootOkB = true)
 
 private def inc : Defn := ⟨"inc", [.req "x"], .send (some (.var .lvar "x")) "+" [.int 1] none⟩
 private def incOut : Ctx := instanceDeclCtx scope point inc
-private def incCtx : Ctx := instanceBodyCtx incOut ⟨"Point", "Point", "inc"⟩ .ivar0
+private def incCtx : Ctx := instanceBodyCtx incOut ⟨"Point", "Point", "inc", false⟩ .ivar0
 private def hint : Deriv := .prim (.var .lvar "x") "+" [.intLit 1] .int .int
 private def cert : Deriv := .defDecl "inc" [("x", .int)] .int hint
 private def checked : CheckedBody incCtx .ivar0 inc :=

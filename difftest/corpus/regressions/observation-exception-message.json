@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L277 (2026-09-27)",
+  "note": "L277: the final message.to_s dispatch preserves effects and runs outside the wrapper rescue context."
+}

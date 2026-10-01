@@ -2630,3 +2630,357 @@ method remains harmless to this contract: the invariant constrains effective loo
 `StateOk.userInit_none` derives actual initializer absence for arbitrary declared classes.
 The checker still gates default construction pending the new-dispatch contract/integration;
 this was a refuted proposed premise, not a regression in accepted programs.
+
+## F44 — ordinary constant scope does not constrain singleton fallback (2026-09-25)
+
+**Closed by Clink 181; selected-contract witness, not full-old-StateOk or an accepted
+unsafe program.** SingletonScopeControls injects IOError = 99 into a real fresh class's
+metaclass. Cached/rooted readiness, frontness, leafness and the selected ordinary/global
+constant lookups still pass. A real method frame with lexical cref [class, Object] and
+eigenclass defmod returns 99 for that constant while the global lookup is absent.
+
+ConstFallback now constrains that second lookup phase. CoreOk checks Object's metaclass
+at boot; every class site retains the inherited fact through all transports. Singleton
+constant scope follows from lexical agreement plus this fallback bound. The generic
+hidden_meta_not_site theorem excludes the bad shape. Singleton body admission remains gated.
+
+## F45 — Boolean replacement is not universally type-preserving (2026-09-25)
+
+**Extension boundary, not an accepted unsafe program.** Sorbet accepts replacing a Boolean
+field with false. Framed.fields also retains nominal observations: true has type TrueClass,
+false does not. ScalarWriteControls.bool_write_not_framed proves the obstruction for any
+live receiver with those facts; VM guards verify the nominal distinction at real boot.
+
+Clink 186 admits Integer/Float/Symbol/nil replacement, whose entire first-order observations
+survive, including nested aliases. The Boolean case needs a weaker retained-type contract
+or effect/ownership accounting; accepting it under the present universal framing is false.
+
+## F46 — class readiness does not retain Module ancestry (2026-09-25)
+
+**Closed by Clink 190; extension boundary, not an accepted unsafe program.** ModuleDataControls builds a heap
+where Class inherits Object and Module has no parent. ClassReady and saturation hold,
+but fresh module allocation changes a dangling reference's dispatch chain to an eigenclass
+inheriting the unrooted Module. It loses BasicObject membership. This witnesses only the
+selected contracts, not full StateOk or reachability.
+
+CoreOk now retains Module's BasicObject ancestry, checked at boot and preserved through
+all current transports. Entry/frame preservation derives it from StateOk; the generic
+unrooted_module_not_state theorem excludes the countermodel. ClassReady alone still cannot
+discharge it. Clink 191 separately makes declaration conformance kind-sensitive: a module's
+own chain is [k], and ordinary-class ancestry/allocator claims require isModule=false.
+
+## F47 — CoreOk does not retain Module singleton constant fallback (2026-09-25)
+
+**Closed by Clink 193; CoreOk-only countermodel, not full-StateOk, a reachable program
+or an accepted unsafe program.** ModuleCoreControls changes Class's parent to Object and
+places Hidden = 99 in Module. CoreOk and saturation still hold: Object's retained metaclass
+fallback bypasses Module. Actual fresh module entry preserves CoreOk and its lexical body
+cannot resolve Hidden, yet its singleton method returns 99 through the new eigenclass's
+Module ancestry. ConstFallback at Module and the new eigenclass both fail.
+
+ModuleConstants proves the module's own lexical constant scope unconditionally, but its
+fallback_fresh_meta requires ConstFallback at Module explicitly. Deriving that premise from
+CoreOk alone is false. StateCore now retains ModuleBase: constant fallback, reserved-name
+behavior and a quiet definition hook at Module's dispatch chain. Boot checks it and every
+current transport preserves it. hidden_module_not_state excludes the bad fallback generically;
+fresh module-site publication derives its singleton guarantees from this retained capability.
+
+## F48 — existing class-query sites need not expose Module dispatch (2026-09-25)
+
+**Closed by Clink 194; selected-contract countermodel, not full-old-StateOk, reachability
+or an accepted unsafe program.** ModuleStateControls routes old class objects through Class,
+makes Class inherit Object, supplies clean direct Class query builtins, and hides a user
+to_s returning nil in Module. ClassReady, saturation, direct Class and every old class-object
+query check pass. Real fresh module entry inherits the hidden Module row; its to_s returns nil.
+
+ClassQuerySite now includes direct Module alongside direct Class and existing receivers.
+Boot checks both bases and every current transport preserves them. The generic
+hidden_module_query_not_state theorem excludes the incompatible Module row. Module query
+transport maps the fresh eigenclass to that retained source and keeps native-prefix guards;
+the parentless module head has no methods. Full module-body entry now derives all queries.
+
+## F49 — legacy closure predicates do not justify callable admission (2026-09-25)
+
+**Stored zero-argument lambdas admitted by clink 217; general arity/shadowing remains open.**
+The former denM(.clos idx cap self) dropped idx and ClosuresOk was True. Clink 200's
+reified_unindexed witness survives under the explicit LegacyIndexDen predicate.
+wrong_body_not_table records the missing code relation; reified_table shows that even
+closTblOk omitted lambda mode and block locals. CRuby and model controls distinguish
+missing-argument lambda/proc calls and nil shadowing by a block-local.
+
+Ty.clos now carries ClosureCode and denM/closB require ClosureMatches: translated params,
+locals, body and mode. Reflexive-comparison evidence makes the conservative code comparator
+lawful. The full captured environment and creation self are retained; allocation, local
+writes and control changes preserve code identity. Semantic literal creation and assignment
+are proved at this type. Wrong code/params/locals/mode fail the new controls.
+
+This does not yet justify calling the value. Captured activation needs liveness, lexical
+scope and return-home facts; return must account for captured writes. Clink 205 adds
+Framed.procs, preserving existing Proc payloads across every certified evaluation. It retains
+saved code and capture descriptors, not the captured values. Framed.firstOrder excludes clos;
+full closure-type transport still needs captured-read/self stability. Controls reject code
+replacement and retain the incompatible-write counterexample despite descriptor preservation.
+No unsafe program is accepted and no callable rule is registered on the legacy predicates.
+
+Clink 204 proves full call-entry StateOk from explicit lexical scope, live capture and
+complete first-order environment facts. Ordinary runtime scope permissions are dropped
+because they assert captured = none; self/block types and actual lexical values are retained.
+ClosureStateControls pins both that conflict and the missing-absence counterexample.
+These facts are not yet furnished by Ty.clos. A stored closure binding is itself higher-order
+and cannot be silently omitted from the complete captured environment. Caller restoration
+and behavioral-value transport remain open.
+
+Clink 206 separates entry's complete environment proof from type transport and proves
+current-capture entry with explicit transport for every binding. The stored-lambda pilot
+retains f at its exact closure type, including at real boot entry. A new control shows why
+transport cannot follow from equal heaps/code alone: a dangling capture starts reading
+newly allocated locals after a frame push. General capture identity/liveness/environment
+tracking and caller restoration remain outside callable admission.
+
+Clink 207 strengthens FramePres with saved metadata and isolation outside live capture
+chains. The old contract allowed saved-self damage and unrelated-local writes whenever
+the active frame had a capture; CaptureFrameControls retains both witnesses and rejects
+them under the new contract. Current-capture return now derives Framed while permitting
+actual writes to caller locals. Full caller environment/runtime conformance remains open.
+
+Clink 208 retains prelude mode in Framed/InitFrame and restores full main-caller StateOk
+from saved metadata, the body's heap world and an independently proved outgoing EnvOk.
+The real captured Integer-to-nil write, including a boot instance, satisfies that contract.
+General outgoing-environment effects and capture identity tracking remain outside admission;
+the body environment is not automatically the caller's after shadowing or new local bindings.
+
+Clink 209 preserves existing bindings and saved-frame slot domains through every certified
+answer. The prior FramePres allowed inserting a nil slot into a saved caller; the new field
+rejects it. CaptureBindingControls also distinguishes physical absence from EnvOk's nil
+read: callers with no slots or x=nil both conform to EnvOk [], but a captured x=1 writes
+only the latter caller. Saved domains alone do not prevent active-frame shadowing of an
+ancestor slot; ownership/write effects remain necessary for general outgoing caller typing.
+
+Clink 210 adds live owner preservation within the source lookup budget, excluding new
+shadowing while allowing nested captured writes and fresh active locals. ReadReturn equates
+body and returned-caller reads for a previously unshadowed bound caller slot after arbitrary
+Framed evaluation. General outgoing EnvOk must still account for physical slot presence,
+new body locals, explicit parameter/block-local shadowing and per-type activation transport.
+Capture identity tracking remains outside callable admission.
+
+Clink 211 derives outgoing main-caller EnvOk and StateOk for unshadowing entry. CaptureSlots
+classifies only names typed in the body output; captureEnv retains caller-owned bindings
+and removes aliases, whose targets may be discarded body locals. Controls exercise a
+nil-to-Integer captured write and refute retaining such an alias. Stored-lambda return
+retains f's exact code type from its actual assigned slot without assuming an otherwise
+empty physical domain. Identity/slot tracking and overlapping entry shadowing remain open.
+
+Clink 212 composes the whole stored-lambda program, with an all-fuel Integer pilot.
+Concrete allocation/assignment provides capture identity; the body contract preserves f's
+exact type. This closes the pilot's semantic composition, not general callable admission.
+Static activation/slot facts and overlapping entry shadowing remain; see also §F51.
+
+Clinks 214–217 supply tracked current captures, physical/known-bound slots and native
+dispatch through full source evaluation. DFlow/DFlowSeq and their registry proofs now
+admit 087 through validateD. Calls check the exact stored body at live local types and
+project its result through proved slot ownership. Copies survive an overwrite of the
+source binding; ordinary effects conservatively forget facts. Entry is restricted to
+zero-argument lambdas with no block locals, an uncaptured main caller, activation-stable
+types and first-order results. General parameters, block locals, non-current captures
+and preserving origins across body effects need further transport proofs.
+
+Clink 218 supplies the missing value contract for shadowing: FramePres.shadows protects
+saved same-named values when the active name was already bound. Parameter reassignment
+may change the active value and other captures; ShadowReturn still recovers the caller's
+original shadowed value. Return-environment merging and argument/receiver evaluation
+remain before general required-parameter admission.
+
+## F50 — the body answer contract is too weak for block return (2026-09-25)
+
+**Resolved for the admitted fragment by clink 203; typed jump rules remain future work.**
+The former EscOk accepted next/break/redo/retry because at an
+empty continuation those jumps are not type errors. ResultOk consequently accepts
+`.esc (.nxtJ .nil)` at Integer, with reflexive framing and vacuous outgoing StateOk.
+ClosureEntryControls.legacy_next_result retains that witness against LegacyResultOk.
+
+The real blkFrameK intercepts next and returns its value. next_returns_nil proves its
+exact step and refutes the Integer denotation of the returned nil. Lambda break has the
+same issue; redo re-enters the closure. Thus the ordinary-method continuation proof cannot
+be reused for blocks, even with exact code and correct entry conformance. Escape results
+also lack the StateOk required after an intercepted jump becomes a value.
+CRuby 4.0.5 confirms that both `lambda { next nil }.call` and `lambda { break nil }.call`
+return nil.
+
+EscOk now excludes every jump except non-type-error raises. Every existing clink and the
+bridge prove that stronger contract; djudge_escape_only_raise states its consequence for
+all derivations. next_not_result rejects the former witness. Rules/Closure/Return composes
+the real block continuation using this contract, with caller framing and StateOk obligations
+still explicit. Later jump rules need typed interception and state contracts. No checker
+rule or accepted program changed; captured activation/restoration remain §F49.
+
+## F51 — Proc call interception ignores user overrides (2026-09-26)
+
+**Resolved by clink 213 / model L272; checker admission follows in clink 217.** The former
+`Interp.invoke` dispatched Proc payloads directly for call/()/[]/yield, before method lookup. Measured with
+CRuby 4.0.5 and the current rubycore binary:
+
+```ruby
+f = lambda { 1 }
+def f.call; 7; end
+p f.call
+```
+
+CRuby prints 7; the former model printed 1. Boot now installs native call/[]/yield/===
+markers, resolved through ordinary lookup and visibility before closure invocation.
+Aliases, overrides and super retain their normal semantics. Visibility edits allow these
+markers. Undef tombstones go directly to method_missing, and super rejects tombstones.
+ClosureCallControls now expects 7; the persisted proc-call-dispatch regression covers the
+full matrix. Call consumes ProcCallReady and the receiver's actual dispatch class; neither
+is inferred from the payload type. Clink 215 folds native readiness into guarded
+primitiveDispatchB and bootOkB; StateOk supplies it only while the call selector is free.
+
+## F52 — case equality loses its identity shortcut (2026-09-26)
+
+**Resolved in model L272 / clink 213.** Correct undef dispatch exposed MRI
+`test_yjit_348/349/350`, previously gated: true/false/nil compared with themselves
+must satisfy === even after == is overridden or undefined. Object's prelude wrapper
+always dispatched ==. Native Object#=== now tests identity first, then uses a prelude
+twin to dispatch == and Booleanize its result. Native scalar === aliases retain their
+original builtin IDs, so replacing == does not replace Integer/String/Symbol/Float ===.
+The case-equality-identity regression also overrides equal?, checks truthy non-Boolean
+== results, super, and Float::NAN. Proc#=== independently retains native call semantics.
+
+## F53 — Array#each snapshots elements before yielding (2026-09-26)
+
+**Resolved for Array#each by model L273 / clink 224.** The native iterator materialized
+all arguments before the first block call. With `xs = [1, 2]`, a block that appends 3
+when visiting 2 sees `[1, 2, 3]` under CRuby 4.0.5 and formerly `[1, 2]` under the model.
+Removal and replacement likewise left stale future arguments. This would make the next
+typing rule certify the wrong iteration behavior even when every array element is Integer.
+
+IterKind.arrayEach carries the array id and advancing index. iterStep rereads the actual
+payload/length after each yield, bypassing Ruby length/[] overrides as CRuby does. Existing
+block/iterator continuations retain next/redo/break/return and exception behavior. The
+array-each-live regression checks mutations, nested loops, receiver identity and exits.
+Other native iterator families retain their existing implementations; this fix claims each.
+
+The semantic loop uses fuel induction, not induction on an entry-time element list:
+append can grow the array indefinitely. EachArrayContract states the body, loop invariant
+and caller-return obligations explicitly; deriving those from source typing remains next.
+
+## F54 — Array map/collect dispatched Enumerable's each-dependent body
+
+**Resolved by model L274.** With `xs = [1, 2]; def xs.each; yield 99; end`,
+`xs.map { |x| x * 10 }` and `collect` return `[10, 20]` on CRuby 4.0.5 but formerly
+`[990]` in the model. Normal boot resolved the prelude's Enumerable methods, so mutation
+probes alone agreed after L273 while the dormant native fallback still snapshotted input.
+
+Array now owns native map/collect markers, resolved through ordinary lookup including
+aliases, visibility, undef and super. IterKind.arrayMap rereads the receiver payload at
+each index and collects body results; it bypasses overridden each/length/index methods.
+Removing Array's map entry exposes Enumerable's implementation as CRuby does. The obsolete
+snapshot fallback is removed. Regression: array-map-native.rb. Clink 228 proves guarded
+native resolution, typed accumulation and final allocation/caller conformance; clink 229
+registers the rule and admits map blocks through validateD.
+
+## F55 — Ordinary-method isolation cannot describe a captured write through yield
+
+**Resolved for implicit blocks (clink 239) and lone named-&b methods (clink 244).**
+Clink 240 proves actual &b entry, saved-receiver native call/[] dispatch and full return.
+The receiver must be the checked callback and retain native Proc class, separately from its
+code-only type. Arguments may overwrite the source local or invoke the callback again.
+Clink 241 supplies semantic binding tracking through assignment, flat sequence and calls
+from general receiver expressions. Copies survive overwriting the original; callback return
+preserves active-method aliases. Uniform body and real boot-entry proofs cover repeated
+captured writes. Clink 242 adds executable whole-definition checking with symbolic callback
+types and all-code DMethodFlow certificates. Actual callbacks instantiate these proofs only
+at entry. Clink 243 proves whole-source definition/lookup/allocation/return, including exact
+095 and alias-bearing captured-write programs from boot. Clink 244 registers both method-flow
+families and source rules, retains declared block signatures, rechecks cached all-code bodies,
+and admits 095/157/261 with complete rule coverage. Ordinary positional method arguments and
+broader callback effects remain fragment extensions. Measured runtime behavior agrees and
+exposes no new model defect; Sorbet's special
+new rule still declines a user override that the model correctly dispatches (7035).
+`def twice; saved = 7; result = yield(1) + yield(2); p saved; result; end;
+total = 0; p twice { |x| total = total + x }; p total` prints 7, 4, 3 under both
+CRuby 4.0.5 and the model. The runtime already handles this captured write correctly.
+Framed at the uncaptured method would require the inactive caller to remain unchanged.
+TypedYieldControls.method_isolation_false refutes that contract with an actual setLocal.
+
+CallbackFramed instead preserves the complete suspended method frame and projects Framed
+to its caller. It also preserves the caller's physical slot domain. CallbackCaller derives
+block entry and full caller return conformance from the checked body and capture-type fixed
+point. typed_yield_continue composes these through doYield and the real block marker;
+the continuation receives both frames' guarantees. Existing Framed and registered rules
+are unchanged. A source-yield control proves a captured Integer write through both return
+markers for all fuel; another control rejects damage to the suspended method itself.
+
+Sorbet 0.6.13405 accepts the stable Integer write with an explicit typed &b signature,
+rejects Integer-to-nil capture changes (7001) and a nil yield argument (7002). Exact 094
+still has its documented Sorbet rejection for an omitted block parameter (5082/7035/7003).
+An arrow denotation supplies partial-return typing, not the callback safety premise.
+
+Clink 231 restores full active-method StateOk after a callback, with exact block typing.
+The actual 094 body and post-dispatch method entry now have all-fuel proofs; boot controls
+cover arithmetic and captured writes. A generic method-body effect judgment still needs
+to permit assignments to method locals too: CallbackFramed's active-frame equality is for
+the suspended interval, not arbitrary expressions. No checker admission is claimed.
+
+Clink 232 supplies MethodEffects (composition of ordinary and callback effects) and the
+two-frame MethodRunSpec target. Its return theorem uses an origin before method allocation;
+the fresh-method bound ensures method locals are outside the old caller frame prefix.
+MethodEffectsControls proves mixed writes and refutes a later origin containing that method.
+Embedding expression/callback typing and registering the source judgment remain open.
+
+Clink 233 supplies both embeddings with full caller/method states, source yield and sequence
+composition. A checked captured write followed by method-local insertion/retyping returns
+through the real method marker. No runtime defect blocks this step; general body typing,
+definition checking/dispatch and &b binding remain before source admission.
+
+Clink 234 introduces SemMethod with ordinary/assignment/sequence/yield-argument rules.
+MethodActivation.after retains callback identity and capture slots across mixed effects,
+allowing later callbacks after local retyping. Generic zero-positional method entry and boot
+controls cover repeated/nested yields and same-named writes in both frames. Primitive sends
+with yielding operands and definition/checker integration remain; no new runtime defect.
+
+Clink 235 covers those primitive sends and flat source sequences. The exact 094 body now
+follows from general SemMethod rules, including saved-receiver transport across the second
+callback. Boot controls exercise string allocation, array retention and non-type-error escape.
+Syntactic method-body/definition checking, installation/dispatch and &b admission remain.
+
+Clink 236 stages the signature-indexed DMethod families and proves their bridge to any
+matching checked callback. Ordinary premises must hold for every code; callback argument
+names and captured environments are not definition-side indices. All six body/boot controls
+now use this bridge. Registry registration waits for whole-program corpus coverage; raw
+uses are explicitly refused. Executable definition checking and source-call admission remain.
+
+Clink 237 checks complete declaration bodies at proposed positional/block/result domains,
+independently of callers. Successful results carry DMethod proofs and supply actual method
+entry/return in all six boot controls. Forged hints and a nilable yield-argument domain are
+rejected. Installation/lookup, source-call composition and explicit &b binding remain.
+
+Clink 238 proves installation, real lookup and implicit literal-block source calls. Full
+094 and captured-write programs are safe from boot for all fuel; special-name overrides
+also follow real dispatch. CRuby/model agree on all probes. No runtime defect blocks this
+step; registry/checker/emitter integration and explicit &b binding remain.
+
+Clink 239 closes the implicit-block source admission gap: 094 and regression 260 are accepted
+through the registered method families, checked definition caches and actual callback proofs.
+All 88 rules have worked corpus coverage with no exemptions. Explicit &b binding/dispatch
+(095) remains; no new model defect was found.
+
+## F56 — Symbol block passing bypasses conversion dispatch
+
+**Fixed by model L275 / clink 245.** Before typing rung 096, this measured witness
+showed the model's direct closure allocation was not Ruby's conversion:
+
+```ruby
+class Symbol
+  def to_proc; ->(x) { "override" }; end
+end
+p [1, 2].map(&:to_s)
+```
+
+CRuby 4.0.5 prints `["override", "override"]`; the old model printed `["1", "2"]`.
+Private to_proc also runs; undef or a non-Proc result raises TypeError. A custom
+method_missing can provide the conversion. All previously bypassed lookup.
+Interp/BlockPass now dispatches conversion with continuations, validates its result,
+and resumes the original call. Native Symbol#to_proc keeps its capture-free closure.
+The new regressions exercise conversion effects and the checked-missing protocol.
+This repair does not by itself type 096: its native closure uses required/rest formals
+and has no captured frame, so the typing proof must cover that actual entry path.

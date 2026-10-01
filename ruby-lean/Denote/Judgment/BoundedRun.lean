@@ -113,14 +113,15 @@ theorem RunSpecAt.of_stepSpecWithin {N : Nat} {origin start : Machine} {Γ : Env
 The continuation gets no more than the original budget, including on escape answers. -/
 theorem RunSpecAt.bindSpec {N : Nat} {Γ₁ Γ₂ : Env} {e : Ratchet.Expr} {σ τ : Ty}
     {κ₁ κ₂ : Ctx} {I₁ I₂ : Ty} {m origin : Machine}
-    (h : RunSpecAt N m (evalFrom m e) Γ₁ σ κ₁ I₁)
+    (h : RunSpecAt N m (evalFrom m e) Γ₁ σ κ₁ I₁) (hm : RootClean m)
     {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
     (hk : ∀ a n, ResultOk m Γ₁ σ a n κ₁ I₁ →
       RunSpecAt N origin (deliverA a n K) Γ₂ τ κ₂ I₂) :
     RunSpecAt N origin (pushK K (evalFrom m e)) Γ₂ τ κ₂ I₂ := by
   constructor
   · intro fuel hfuel
-    rw [run_pushK K hK]
+    rw [run_pushK K hK fuel (evalFrom m e) hm
+      (fun a n r hr => (h.2 fuel hfuel a n r hr).1.rootClean hm)]
     cases hr : runA fuel (evalFrom m e) with
     | ans a n rest =>
       exact (hk a n (h.2 fuel hfuel a n rest hr)).1 rest
@@ -131,7 +132,8 @@ theorem RunSpecAt.bindSpec {N : Nat} {Γ₁ Γ₂ : Env} {e : Ratchet.Expr} {σ 
       exact haltBlind_stuck hh [] K hs
     | oof n => rfl
   · intro fuel hfuel a n rest hr
-    rw [runA_pushK _ hK] at hr
+    rw [runA_pushK _ hK fuel (evalFrom m e) hm
+      (fun a n r hr => (h.2 fuel hfuel a n r hr).1.rootClean hm)] at hr
     cases hs : runA fuel (evalFrom m e) with
     | halt hh => rw [hs] at hr; cases hh <;> cases hr
     | oof n' => rw [hs] at hr; cases hr

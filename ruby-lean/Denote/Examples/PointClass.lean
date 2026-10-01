@@ -76,19 +76,19 @@ theorem initializer_body :
   finalInit.sem
 
 theorem getter_body :
-    SemSafeCtxA (instanceBodyCtx callerCtx ⟨"Point", "Point", "getX"⟩ pointInitSpine)
+    SemSafeCtxA (instanceBodyCtx callerCtx ⟨"Point", "Point", "getX", false⟩ pointInitSpine)
       [] pointInitSpine getter.body .int
-      (instanceBodyCtx callerCtx ⟨"Point", "Point", "getX"⟩ pointInitSpine) [] pointInitSpine :=
+      (instanceBodyCtx callerCtx ⟨"Point", "Point", "getX", false⟩ pointInitSpine) [] pointInitSpine :=
   SemSafeCtxA.ivarRead
 
 theorem constructor_code {Γ : Env} {I : Ty} {m : Machine} (hm : StateOk callerCtx Γ I m) :
     ∃ k md, InstanceSite callerCtx "Point" k m.heap ∧
       NewDispatch m.heap (classOf m.heap (.ref k)) ∧
       md.params = [.req "x", .req "y"] ∧ md.body = toRuby pointInitBody ∧
-      InstanceMethodCode k "initialize" md ∧ Interp.userInit? m.heap k = some md :=
+      InstanceMethodCode k "initialize" md ∧ userInit? m.heap k = some md :=
   declared_constructor_code (c := classWithMethod initClass getter) (d := initDecl) hm
     (by change classWithMethod initClass getter ∈ [classWithMethod initClass getter, initClass, header]; simp)
-    (by change initDecl ∈ [getter, initDecl]; simp) rfl (by decide)
+    (by change initDecl ∈ [getter, initDecl]; simp) rfl (by decide) rfl
 
 #print axioms body_sem
 #print axioms runSpec

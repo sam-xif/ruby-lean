@@ -1,4 +1,5 @@
 import Denote.Sem.Core.Transport
+import Denote.Sem.Core.KontFrameBase
 
 /-!
 # `Denote/Sem/Core/Frame.lean` — `StateOk` describes the whole world, and nothing more
@@ -72,7 +73,12 @@ written for are *not* fixed by it:
 * **Not fixed:** the fifth stall point. That is the *other* frame rule — locality in the
   continuation tail (§3) — and it is a theorem about `stepFn`, not about `StateOk`.
 
-## 3. The interpreter's frame rule — stated, not proved, and **refuted** *(clink 52)*
+## 3. Historical frame-rule discovery (clink 52)
+
+The following history concerns the older interpreter. The current checked
+contract additionally covers block-return, inspect, frozen-error and Hash-lock
+observations and follows saved root executions. `RootAnswer.lean` proves the
+run-level law, with clean-boundary premises for a stack-only specialization.
 
 The continuation tail is frame too, and by exactly the same argument: `StateOk` does not
 describe it, so a run must not depend on it. `KontFrame` states that, and it was the **single
@@ -128,40 +134,49 @@ theorem StateOk_frame {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine}
 induction over the ancestor walk. -/
 theorem MethodsExact.lookup {κ : Ctx} {m : Machine} (h : MethodsExact κ m)
     {v : Value} {n : String} {o : ObjId} {md : MethodDef}
-    (hl : lookup m.heap v n = some (o, md)) :
+    (hl : lookup m.heap v n = some (o, md)) (hu : md.undefined = false) :
     md.fromPrelude = true ∨ md.builtin.isSome = true ∨ nameFreeN κ n = false := by
-  have go : ∀ (ks : List ObjId), lookup.go m.heap n ks = some (o, md) →
-      md.fromPrelude = true ∨ md.builtin.isSome = true ∨ nameFreeN κ n = false := by
-    intro ks
-    induction ks with
-    | nil => intro hg; exact absurd hg (by simp [lookup.go])
-    | cons k rest ih =>
-      intro hg
-      rw [lookup.go] at hg
-      split at hg
-      · rename_i cp hp
-        split at hg
-        · rename_i nm md' hf
-          have hmem : (nm, md') ∈ cp.methods := List.mem_of_find?_eq_some hf
-          have hname : nm = n := by simpa using List.find?_some hf
-          have hmd : md' = md := by
-            have := Option.some.inj hg
-            simpa using congrArg Prod.snd this
-          subst hname; subst hmd
-          exact h k cp hp nm md' hmem
-        · exact ih hg
-      · exact ih hg
-  exact go _ hl
+  let ok (pair : ObjId × MethodDef) :=
+    pair.2.undefined || pair.2.fromPrelude || pair.2.builtin.isSome || !nameFreeN κ n
+  have hor {a b : Option (ObjId × MethodDef)} (ha : a.all ok = true)
+      (hb : b.all ok = true) : (a.orElse (fun _ => b)).all ok = true := by
+    cases a <;> simp_all [Option.orElse]
+  have go : ∀ fuel ks used, (lookupInChain.go m.heap n fuel ks used).all ok = true := by
+    intro fuel
+    induction fuel with
+    | zero => intros; rfl
+    | succ fuel ih =>
+      intro ks used
+      cases ks with
+      | nil => rfl
+      | cons k rest =>
+        simp only [lookupInChain.go]
+        cases hc : m.heap.classPayload? k with
+        | none => exact ih rest used
+        | some cp =>
+          simp only
+          cases hm : cp.methods.find? (·.1 == n) with
+          | none => exact ih rest used
+          | some pair =>
+            dsimp only
+            split
+            · have hmem := List.mem_of_find?_eq_some hm
+              have hn : pair.1 = n := by simpa using List.find?_some hm
+              cases hu' : pair.2.undefined with
+              | true => simp [ok, hu']
+              | false =>
+                have hmd := h k cp hc pair.1 pair.2 hmem hu'
+                simpa [ok, hu', Bool.or_eq_true, or_assoc, hn] using hmd
+            · simp only [Option.all_map, Function.comp_def]
+              apply hor (ih rest used)
+              split
+              · exact ih _ true
+              · rfl
+  have hp := go (2 * m.heap.objs.size + 2) (ancestors m.heap (classOf m.heap v)) false
+  change (RubyCore.lookup m.heap v n).all ok = true at hp
+  simpa [hl, ok, hu, Bool.or_eq_true, or_assoc] using hp
 
 /-! ## 3. The interpreter's frame rule — the ladder's named target -/
-
-/-- The continuation tail, appended. -/
-def pushK (K : List Kont) (m : Machine) : Machine := { m with kont := m.kont ++ K }
-
-/-- A step result, with the tail carried through. -/
-def frameR (K : List Kont) : StepResult → StepResult
-  | .next m => .next (pushK K m)
-  | r => r
 
 /-- **The interpreter's frame rule.** `stepFn` does not read below the head of `kont`, so a
 step from a machine with more continuation behind it is the same step with more continuation
@@ -222,29 +237,6 @@ its own `rescue` catches it); under the enclosing `catch` the same `throw` is a 
 leaves the `begin` entirely. So the run under `K` does not pass through the state delivering
 the sub-run's value to `K`, which is exactly what the decomposition claims. Same repair. -/
 
-/-- The appended continuation tail carries no `catch` marker — the hypothesis both statements
-above are missing. Decidable, and true by inspection at every kont a `Judge` rule pushes. -/
-def CatchFree (K : List Kont) : Prop :=
-  ∀ k ∈ K, ∀ t : Value, k ≠ .catchK t
-
-/-- **The corrected interpreter frame rule**: `KontFrame` plus `CatchFree`.
-
-**Now proved, and elsewhere.** `RubyCore.Proof.stepFn_frame` is this statement, in
-`RubyCore/Proof/KontFrameStep.lean` — which is where the paragraph above said it belonged,
-next to `stepFn` rather than in a second copy here. `Denote/Sem/Core/Decompose.lean` consumes it
-and `RubyCore.Proof.done_inv` to prove the run-level decomposition `EvalsDecompose` was
-stating. This `def` is kept as the *statement of record*: it is what the wall was, it carries
-the refutation below, and the proof's own side condition is the one it predicted.
-
-One correction to the prediction: the side condition is needed for the **`jump`** arm and not
-for `.value` — `unwind`'s `retJ` case at an empty continuation *steps* (to
-`raiseErr … "unexpected return"`) rather than escaping, so "the run cannot end in `.value`" is
-not what rules it out; being an empty continuation is. -/
-def KontFrameCatchFree : Prop :=
-  ∀ (m : Machine) (K : List Kont), CatchFree K →
-    (m.kont ≠ [] ∨ ∃ e, m.ctl = .eval e) →
-    Interp.stepFn (pushK K m) = frameR K (Interp.stepFn m)
-
 /-! ### The counterexample, computed
 
 The smallest machine that reaches the `throw` dispatch: a value in flight, one `argsK`
@@ -257,9 +249,9 @@ Conditional on two `Bool`s rather than `decide`d, for the reason `Denote/Sem/Cor
 `rfl`-reducible, and `native_decide` would cost an axiom this package does not spend. The
 `#guard`s below are the build gate. -/
 def throwM : Machine :=
-  { ctl := .value (.sym "t"),
-    kont := [.argsK .nil .implicit "throw" [] [] .none],
-    stack := [], frames := #[], heap := ⟨#[]⟩ }
+  { ctl := .send .nil .implicit "throw" [.sym "t"] none [],
+    kont := [.seqK []],
+    stack := [], frames := #[], heap := { objs := #[] } }
 
 def catchTail : List Kont := [.catchK (.sym "t")]
 
@@ -268,6 +260,7 @@ def tagOf : StepResult → String
   | .next m => match m.ctl with
     | .jump (.raiseJ _) => "raise"
     | .jump (.throwJ _ _) => "throw"
+    | .send .. => "send"
     | _ => "other"
   | .unsupported r => "unsupported: " ++ r
   | .stuck r => "stuck: " ++ r
@@ -280,7 +273,7 @@ theorem tagOf_frameR (K : List Kont) (r : StepResult) : tagOf (frameR K r) = tag
 
 /-- **`KontFrame` is refutable.** -/
 theorem not_KontFrame
-    (hbare : tagOf (Interp.stepFn throwM) = "raise")
+    (hbare : tagOf (Interp.stepFn throwM) = "send")
     (hunder : tagOf (Interp.stepFn (pushK catchTail throwM)) = "throw") : ¬ KontFrame := by
   intro h
   have heq := h throwM catchTail (Or.inl (by simp [throwM]))
@@ -288,27 +281,12 @@ theorem not_KontFrame
   exact absurd hunder (by decide)
 
 -- **The gate.** The two computations the refutation is conditional on.
-#guard tagOf (Interp.stepFn throwM) == "raise"
+#guard tagOf (Interp.stepFn throwM) == "send"
 #guard tagOf (Interp.stepFn (pushK catchTail throwM)) == "throw"
 
-/-- **What the rungs will actually use**: the decomposition. A run of `e` under continuation
-`K` passes through the state that delivers `e`'s value to `K` — so a compound rule's premise,
-which is about the run of `e` under the *empty* continuation, is about a prefix of the run its
-conclusion is about.
-
-Stated as a consequence of `KontFrame` rather than independently, because that is what it is:
-`stepFn` is a function, so the equation runs backwards for free — `frameR K r = .next m₂`
-forces `r = .next m'` with `m₂ = pushK K m'`. What it is *not* is unconditional in `K`: a `K`
-whose head is a handler (`beginBodyK`) can turn a sub-run that escaped into an outer run that
-returns, so the hypothesis is about runs that return a value, which is the only shape
-`SemJudge` imposes anything on.
-
-**Now proved, as `Decompose.lean`'s `run_split`**, and that second paragraph is exactly its
-third hypothesis: `JumpOpaque K`, "`K` cannot turn an escaping jump into a returned value".
-The proof needs one thing this statement does not mention — `RubyCore.Proof.done_inv`, the
-fact that `.done` is constructed at one site in the interpreter — because "the inner run
-stopped here" has to be turned into "and *here* is a value under an empty continuation" before
-the outer run can be continued from it. -/
+/-- Historical unconditional decomposition target. This is not a theorem or an
+assumption of a typing rule. RootAnswer replaces it with a total run equation
+and explicit clean-boundary conditions for the stack-only specialization. -/
 def EvalsDecompose : Prop :=
   ∀ (m : Machine) (e : Ratchet.Expr) (K : List Kont) (v : Value) (m' : Machine),
     (∃ fuel, Interp.run fuel (pushK K (evalFrom m e)) = .value v m') →

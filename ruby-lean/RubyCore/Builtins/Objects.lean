@@ -12,19 +12,38 @@ namespace RubyCore
 
 namespace Builtins
 
-/-- Libraries whose surface the prelude actually carries, so `require` of them
-    is a faithful no-op. `sorbet-runtime` is the T shim (L80/L101); the rest of
-    the stdlib is not modeled and must gate rather than pretend (L109). -/
-def modeledFeatures : List String :=
-  ["sorbet-runtime", "sorbet-runtime/lib/types/private/methods/decl_builder",
-   -- the pure halves of these are in the prelude (L112): `Pathname`'s path
-   -- operations, `URI.decode_www_form_component`, `File`'s path operations
-   "pathname", "uri", "forwardable", "json"]
-
 /-- BasicObject / Object core, Kernel I/O, and the nil / boolean rules. -/
 def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :=
   let h := m.heap
   match bid with
+  | "Object#__coerce_defined?" =>
+    .ok (.bool (match lookup h recv "coerce" with
+      | some (_, md) => !md.undefined | none => false)) m
+  | "BasicObject#method_missing" =>
+    match args with
+    | [] => .err Boot.argumentErrorId "no method name given" m
+    | .sym name :: _ =>
+      let desc := receiverDesc h recv
+      match m.missingReason with
+      | .vcall => .err Boot.nameErrorId
+          s!"undefined local variable or method '{name}' for {desc}" m
+      | .privateCall => .err Boot.noMethodErrorId
+          s!"private method '{name}' called for {desc}" m
+      | .protectedCall => .err Boot.noMethodErrorId
+          s!"protected method '{name}' called for {desc}" m
+      | .superCall => .err Boot.noMethodErrorId
+          s!"super: no superclass method '{name}' for {desc}" m
+      | .ordinary => .err Boot.noMethodErrorId
+          s!"undefined method '{name}' for {desc}" m
+    | name :: _ => .err Boot.argumentErrorId
+        s!"method name must be a Symbol but {className h (realClassOf h name)} is given" m
+  | "Object#===" =>
+    match args with
+    | [other] =>
+      if recv.identEq other then .ok (.bool true) m
+      else .unsupported "Object#=== requires its equality-dispatch twin"
+    | _ => .err Boot.argumentErrorId
+        s!"wrong number of arguments (given {args.length}, expected 1)" m
   /- ─── BasicObject / Object core ─── -/
   | "BasicObject#==" | "Object#==" =>
     match args with
@@ -35,7 +54,7 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
       | .ref x, .ref y =>
         match (h.get x).payload, (h.get y).payload with
         | .exc ma, .exc mb =>
-          .ok (.bool ((h.get x).klass == (h.get y).klass && ma == mb)) m
+          .ok (.bool ((h.get x).klass == (h.get y).klass && valueEq h ma mb)) m
         | _, _ => .ok (.bool (recv.identEq b)) m
       | _, _ => .ok (.bool (recv.identEq b)) m
     | _ => .unsupported "==/arity"
@@ -69,7 +88,10 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     match recv with
     | .ref o => okStr m (fakeAddr o)
     | _ => .unsupported "__addr_str of an immediate"
-  | "Object#__any_to_s" =>
+  | "Object#to_s" | "Object#__any_to_s" =>
+    -- A resolved Object#to_s renders class/address even on a native payload.
+    -- Only main's ordinary to_s has the special singleton spelling (L290).
+    if bid == "Object#to_s" && recv.identEq (.ref Boot.mainId) then okStr m "main" else
     -- CRuby's **`rb_any_to_s`** (L129): `#<Foo:0x…>`, the form every C-level
     -- renderer falls back to when a user `to_s` hands it something that is not a
     -- String. A primitive rather than prelude Ruby for the reason `Heap.anyToS`
@@ -90,6 +112,7 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     -- occurrence-order normalization honest is not worth it for a program that
     -- has redefined `Integer#to_s` to return a non-String.
     | _ => .unsupported "__any_to_s of an immediate (CRuby prints its VALUE address)"
+  | "Object#instance_variables_to_inspect" => .ok .nil m
   | "Object#respond_to_missing?" =>
     -- The **default** one, which answers `false` for every name [V]. It exists so
     -- that a user override can call `super`, which is the idiomatic way to write
@@ -163,21 +186,27 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
   | "Object#nil?" | "NilClass#nil?" =>
     .ok (.bool (match recv with | .nil => true | _ => false)) m
   | "Object#class" => .ok (.ref (realClassOf h recv)) m
+  | "Object#itself" => .ok recv m
   | "Object#inspect" =>
     match inspectP m recv with
-    | .ok s => okStr m s
-    | .error e => .unsupported e
-  | "Object#to_s" =>
-    match toSP m recv with
     | .ok s => okStr m s
     | .error e => .unsupported e
   | "Object#frozen?" | "Hash#frozen?" =>
     match recv with
     | .ref o => .ok (.bool (h.get o).frozen) m
     | _ => .ok (.bool true) m
-  | "Object#freeze" | "String#freeze" | "Array#freeze" | "Hash#freeze" =>
+  | "Module#method_added" | "Module#method_removed" | "Module#method_undefined"
+  | "BasicObject#singleton_method_added" | "BasicObject#singleton_method_removed"
+  | "BasicObject#singleton_method_undefined" =>
+    if args.length == 1 then .ok .nil m else
+      .err Boot.argumentErrorId s!"wrong number of arguments (given {args.length}, expected 1)" m
+  | "Object#freeze" | "Module#freeze" | "String#freeze" | "Array#freeze" | "Hash#freeze" =>
     match recv with
-    | .ref o => .ok recv { m with heap := h.set o { h.get o with frozen := true } }
+    | .ref o =>
+      let h := match (h.get o).eigen with
+        | some e => h.set e { h.get e with frozen := true }
+        | none => h
+      .ok recv { m with heap := h.set o { h.get o with frozen := true } }
     | _ => .ok recv m
   | "Object#is_a?" | "Object#kind_of?" =>
     match args with
@@ -208,21 +237,7 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
       | none => .unsupported "prelude gate (non-String reason)"
     | _ => .unsupported "prelude gate"
   | "Object#require" | "Object#require_relative" =>
-    -- Linked programs have their internal deps inlined, so a residual `require`
-    -- names a library the *control* will load and the model will not. Returning
-    -- `true` for all of them (the old rule) is the N34 bug: the program then
-    -- runs on against constants the model does not have, and the first one
-    -- becomes a NameError where CRuby succeeded — a **disagreement** rather than
-    -- a refusal. So: a feature the prelude actually models returns true; any
-    -- other gates by name (L109).
-    match args with
-    | [f] =>
-      match strPayload? h f with
-      | some feat =>
-        if modeledFeatures.contains feat then .ok (.bool true) m
-        else .unsupported s!"require of an unmodeled library: {feat}"
-      | none => .unsupported "require of a non-String feature"
-    | _ => .unsupported "require arity"
+    .unsupported "require needs interpreter feature loading"
   -- Registered on Range (not inherited from Object) so the L6 shadow check sees
   -- the right owner; `Repr` already renders `.range` payloads [V].
   | "Range#inspect" =>

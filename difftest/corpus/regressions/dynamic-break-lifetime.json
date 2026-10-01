@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "dynamic block-call lifetime (2026-09-30)",
+  "note": "Execution-local break tokens preserve forwarding, constructor/ensure exits, recursion, detached Proc calls and Enumerator suspension/isolation/abandonment."
+}

@@ -19,10 +19,11 @@ theorem pop_framed (hl : m.stack.headD 0 < m.frames.size)
   hp.trans (method_pop_framed hl rfl hb)
 
 theorem pop_getLocal (hl : m.stack.headD 0 < m.frames.size) (hu : RootUncaptured m)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none)
     (hb : Framed entry n) (x : String) : (popMethodFrame n).getLocal x = m.getLocal x := by
-  have hp := method_pop_getLocal (m := published) (f := freshModFrame k m.currentFrame.cref) hl hu rfl hb x
-  rw [getLocal_uncaptured (m := published) hu] at hp
-  rw [getLocal_uncaptured hu]
+  have hp := method_pop_getLocal (m := published) (f := freshModFrame k m.currentFrame.cref) hl hu rfl hb x ha
+  rw [getLocal_uncaptured (m := published) hu (ha := ha)] at hp
+  rw [getLocal_uncaptured hu (ha := ha)]
   exact hp
 
 theorem pop_currentFrame (hl : FrameInRange m) (hb : Framed entry n) :
@@ -32,7 +33,7 @@ theorem pop_envOk (hm : StateOk κ Γ I m) (hp : Framed m published) (hu : RootU
     (hb : Framed entry n) (ht : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) :
     EnvOk Γ (popMethodFrame n) := by
   have framed := pop_framed hm.frameInRange.2 hp hb
-  have hv := pop_getLocal hm.frameInRange.2 hu hb
+  have hv := pop_getLocal hm.frameInRange.2 hu hm.localAlias_getD hb
   refine ⟨?_, ?_⟩
   · intro x τ hx
     obtain ⟨z, hz⟩ := envGet?_mem hx
@@ -70,7 +71,7 @@ theorem runSpec {name : String} {body : Ratchet.Expr} {τ : Ty}
     exact (hm.runtime hr).captured
   exact (methodFrame_runSpec (m := published) hm.frameInRange.2 rfl hτ hb
     (fun n v result => pop_main_state hm hp ht ha hr hw hcl hu hq hk hΓ result.1
-      (result.2.2 v rfl))).rebase hp
+      (result.2.2 v rfl)) hm.rootClean).rebase hp
 
 #print axioms pop_framed
 #print axioms pop_envOk

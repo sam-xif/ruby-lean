@@ -1,5 +1,6 @@
 import Denote.Judgment.Context
 import Denote.Sem.Heap.InitGrow
+import Denote.Sem.Heap.WriteStable
 
 /-! The initializer's scoped answer contract. Old callers are anchored before allocation;
 the running receiver is fresh and writable. Every value answer carries full conformance.
@@ -22,6 +23,9 @@ structure InitFrame (anchor : Heap) (m n : Machine) : Prop where
   growth : InitGrow anchor n.heap
   stack : n.stack = m.stack
   frames : FramePres m n
+  stable : IvarTypePres m n
+  phase : n.preludeMode = m.preludeMode
+  rootClean : RootClean m → RootClean n := by exact id
 
 def InitResultOk (anchor : Heap) (origin : Machine) (Γ : Env) (τ : Ty)
     (a : Answer) (n : Machine) (κ : Ctx) (I : Ty) : Prop :=
@@ -42,15 +46,16 @@ theorem InitState.reCtl {anchor : Heap} {κ : Ctx} {Γ : Env} {I : Ty} {m : Mach
   ⟨StateOk_reCtl h.typed c ks, h.growth, h.fresh⟩
 
 theorem InitFrame.refl {anchor : Heap} {m : Machine} (hg : InitGrow anchor m.heap) :
-    InitFrame anchor m m := ⟨hg, rfl, .refl m⟩
+    InitFrame anchor m m := ⟨hg, rfl, .refl m, .refl m, rfl, id⟩
 
 theorem InitFrame.reCtl {anchor : Heap} {m n : Machine} (h : InitFrame anchor m n)
     (c : Ctl) (ks : List Kont) : InitFrame anchor m (reCtl n c ks) :=
-  ⟨h.growth, h.stack, h.frames.trans (.of_eq rfl rfl) h.stack⟩
+  ⟨h.growth, h.stack, h.frames.trans (.of_eq rfl rfl) h.stack, h.stable.reheap rfl rfl, h.phase, h.rootClean⟩
 
 theorem InitFrame.trans {anchor : Heap} {m n p : Machine}
     (h : InitFrame anchor m n) (h' : InitFrame anchor n p) : InitFrame anchor m p :=
-  ⟨h'.growth, h'.stack.trans h.stack, h.frames.trans h'.frames h.stack⟩
+  ⟨h'.growth, h'.stack.trans h.stack, h.frames.trans h'.frames h.stack, h.stable.trans h'.stable,
+    h'.phase.trans h.phase, h'.rootClean ∘ h.rootClean⟩
 
 theorem InitRunSpec.rebase {anchor : Heap} {origin middle start : Machine}
     {κ : Ctx} {Γ : Env} {τ I : Ty} (h : InitRunSpec anchor middle start Γ τ κ I)
@@ -91,17 +96,33 @@ theorem InitRunSpec.answer {anchor : Heap} {origin m : Machine} {κ : Ctx}
       | esc j => exact h.2.1
     · intro v hv; exact (h.2.2 v hv).reCtl _ _
 
+theorem InitRunSpec.unsupported {anchor : Heap} {origin start : Machine} {Γ : Env}
+    {τ I : Ty} {κ : Ctx} {msg : String}
+    (ha : answerPoint start = none) (hs : Interp.stepFn start = .unsupported msg) :
+    InitRunSpec anchor origin start Γ τ κ I := by
+  constructor
+  · intro fuel
+    cases fuel with
+    | zero => rfl
+    | succ f => rw [run_succ, hs]; rfl
+  · intro fuel a m rest hr
+    cases fuel with
+    | zero => rw [runA_zero ha] at hr; cases hr
+    | succ f => rw [runA_succ ha, hs] at hr; cases hr
+
 theorem InitRunSpec.bindSpec {anchor : Heap} {m origin : Machine} {e : Ratchet.Expr}
     {κ₁ κ₂ : Ctx} {Γ₁ Γ₂ : Env} {I₁ I₂ σ τ : Ty}
-    (h : InitRunSpec anchor m (evalFrom m e) Γ₁ σ κ₁ I₁)
+    (h : InitRunSpec anchor m (evalFrom m e) Γ₁ σ κ₁ I₁) (hm : RootClean m)
     {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
     (hk : ∀ a n, InitResultOk anchor m Γ₁ σ a n κ₁ I₁ →
       InitRunSpec anchor origin (deliverA a n K) Γ₂ τ κ₂ I₂) :
     InitRunSpec anchor origin (pushK K (evalFrom m e)) Γ₂ τ κ₂ I₂ := by
   constructor
-  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1)
+  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1) hm
+      (fun _ _ hr => hr.1.rootClean hm)
   · intro fuel a n rest hr
-    rw [runA_pushK _ hK] at hr
+    rw [runA_pushK _ hK fuel (evalFrom m e) hm
+      (fun a n r hr => (h.2 fuel a n r hr).1.rootClean hm)] at hr
     cases hs : runA fuel (evalFrom m e) with
     | halt hh => rw [hs] at hr; cases hh <;> cases hr
     | oof n' => rw [hs] at hr; cases hr
@@ -113,15 +134,17 @@ theorem InitRunSpec.bindSpec {anchor : Heap} {m origin : Machine} {e : Ratchet.E
 continuation. The continuation must publish the preallocation frame and typed result. -/
 theorem InitRunSpec.bindRunSpec {anchor : Heap} {m origin : Machine} {e : Ratchet.Expr}
     {κ₁ κ₂ : Ctx} {Γ₁ Γ₂ : Env} {I₁ I₂ σ τ : Ty}
-    (h : InitRunSpec anchor m (evalFrom m e) Γ₁ σ κ₁ I₁)
+    (h : InitRunSpec anchor m (evalFrom m e) Γ₁ σ κ₁ I₁) (hm : RootClean m)
     {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
     (hk : ∀ a n, InitResultOk anchor m Γ₁ σ a n κ₁ I₁ →
       RunSpec origin (deliverA a n K) Γ₂ τ κ₂ I₂) :
     RunSpec origin (pushK K (evalFrom m e)) Γ₂ τ κ₂ I₂ := by
   constructor
-  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1)
+  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1) hm
+      (fun _ _ hr => hr.1.rootClean hm)
   · intro fuel a n rest hr
-    rw [runA_pushK _ hK] at hr
+    rw [runA_pushK _ hK fuel (evalFrom m e) hm
+      (fun a n r hr => (h.2 fuel a n r hr).1.rootClean hm)] at hr
     cases hs : runA fuel (evalFrom m e) with
     | halt hh => rw [hs] at hr; cases hh <;> cases hr
     | oof n' => rw [hs] at hr; cases hr

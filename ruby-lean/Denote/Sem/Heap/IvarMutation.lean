@@ -9,8 +9,8 @@ open RubyCore Ratchet
 
 /-- Mask only the changed field. Payloads, classes, eigenclasses, and frozen flags survive. -/
 theorem bindIvar_data (m : Machine) (x : String) (v : Value) (k : ObjId) :
-    { (Interp.bindIvar m x v).heap.get k with ivars := [] } =
-      { m.heap.get k with ivars := [] } := by
+    { (Interp.bindIvar m x v).heap.get k with ivars := [], revision := 0 } =
+      { m.heap.get k with ivars := [], revision := 0 } := by
   unfold Interp.bindIvar
   split
   · rename_i o hs
@@ -34,6 +34,10 @@ theorem bindIvar_size (m : Machine) (x : String) (v : Value) :
 
 @[simp] theorem bindIvar_stack (m : Machine) (x : String) (v : Value) :
     (Interp.bindIvar m x v).stack = m.stack := by
+  unfold Interp.bindIvar; split <;> rfl
+
+@[simp] theorem bindIvar_preludeMode (m : Machine) (x : String) (v : Value) :
+    (Interp.bindIvar m x v).preludeMode = m.preludeMode := by
   unfold Interp.bindIvar; split <;> rfl
 
 @[simp] theorem bindIvar_currentFrame (m : Machine) (x : String) (v : Value) :
@@ -60,16 +64,46 @@ theorem bindIvar_get_other {m : Machine} {o k : ObjId} {x : String} {v : Value}
 theorem bindIvar_get_self {m : Machine} {o : ObjId} {x : String} {v : Value}
     (hs : m.currentFrame.self = .ref o) (ho : o < m.heap.objs.size) :
     (Interp.bindIvar m x v).heap.get o =
-      { m.heap.get o with ivars := (x, v) :: (m.heap.get o).ivars.filter (·.1 != x) } := by
+      { m.heap.get o with
+        ivars := if (m.heap.get o).ivars.any (·.1 == x) then
+          (m.heap.get o).ivars.map (fun (y, w) => (y, if y == x then v else w))
+          else (x, v) :: (m.heap.get o).ivars,
+        revision := (m.heap.get o).revision + 1 } := by
   simp only [Interp.bindIvar, hs, Heap.get, Heap.set]
   exact Proof.objs_getD_set!_self _ _ _ ho
+
+private theorem ivar_write_read (xs : List (String × Value)) (x y : String) (v : Value) :
+    (match (if xs.any (·.1 == x) then
+      xs.map (fun (key, old) => (key, if key == x then v else old))
+      else (x, v) :: xs).find? (·.1 == y) with
+      | some (_, w) => w | none => .nil) =
+      if y == x then v else
+        (match xs.find? (·.1 == y) with | some (_, w) => w | none => .nil) := by
+  by_cases ha : xs.any (·.1 == x) = true
+  · simp only [ha, if_true, List.find?_map, Function.comp_def]
+    cases hf : xs.find? (·.1 == y) with
+    | none =>
+      by_cases hy : y = x
+      · subst y
+        obtain ⟨p, hp, hx⟩ := List.any_eq_true.mp ha
+        exact False.elim ((List.find?_eq_none.mp hf p hp) hx)
+      · simp [hy]
+    | some p =>
+      have hpy := List.find?_some hf
+      have hy : p.1 = y := by simpa using hpy
+      simp [hy]
+  · simp only [ha, if_false, List.find?_cons]
+    by_cases hy : y = x
+    · subst y; simp
+    · simp [hy, Ne.symm hy]
 
 theorem ivarOf_bindIvar_self {m : Machine} {o : ObjId} {x : String} {v : Value}
     (hs : m.currentFrame.self = .ref o) (ho : o < m.heap.objs.size) :
     ivarOf (Interp.bindIvar m x v).heap (.ref o) x = v := by
-  simp only [Interp.bindIvar, hs, ivarOf, Heap.get, Heap.set]
-  rw [Proof.objs_getD_set!_self _ _ _ ho]
-  simp
+  simp only [ivarOf, bindIvar_get_self hs ho]
+  have hr := ivar_write_read (m.heap.get o).ivars x x v
+  simp only [beq_self_eq_true, if_true] at hr
+  (repeat' split at hr) <;> simp_all only
 
 theorem ivarOf_bindIvar_other {m : Machine} {o : ObjId} {x : String} {v w : Value}
     (hs : m.currentFrame.self = .ref o) (hw : w ≠ .ref o) :
@@ -78,6 +112,45 @@ theorem ivarOf_bindIvar_other {m : Machine} {o : ObjId} {x : String} {v w : Valu
   cases w <;> try rfl
   rename_i k
   simp only [ivarOf, bindIvar_get_other (k := k) hs (by intro h; subst k; exact hw rfl)]
+
+theorem ivarOf_bindIvar_ne {m : Machine} {o : ObjId} {x y : String} {v : Value}
+    (hs : m.currentFrame.self = .ref o) (ho : o < m.heap.objs.size) (hne : y ≠ x) :
+    ivarOf (Interp.bindIvar m x v).heap (.ref o) y = ivarOf m.heap (.ref o) y := by
+  simp only [ivarOf, bindIvar_get_self hs ho]
+  have hr := ivar_write_read (m.heap.get o).ivars x y v
+  simp only [beq_eq_false_iff_ne.mpr hne, Bool.false_eq_true, if_false] at hr
+  (repeat' split at hr) <;> simp_all only
+
+theorem getLocal_bindIvar (m : Machine) (x : String) (v : Value) (y : String) :
+    (Interp.bindIvar m x v).getLocal y = m.getLocal y := by
+  have hg : ∀ fuel fid, Machine.getLocal.go (Interp.bindIvar m x v) y fid fuel =
+      Machine.getLocal.go m y fid fuel := by
+    intro fuel
+    induction fuel with
+    | zero => intro fid; rfl
+    | succ f ih =>
+      intro fid
+      simp only [Machine.getLocal.go, localFrameId_frames_eq (bindIvar_frames m x v), bindIvar_frames]
+      split
+      · rfl
+      · split
+        · exact ih _
+        · rfl
+  simp only [Machine.getLocal, bindIvar_stack, bindIvar_frames, hg]
+
+theorem env_bindIvar {m : Machine} {Γ : Env} {x : String} {v : Value}
+    (he : EnvOk Γ m)
+    (hkeep : ∀ y τ, envGet? Γ y = some τ →
+      denM (stripAlias τ) (Interp.bindIvar m x v) (m.getLocal y)) :
+    EnvOk Γ (Interp.bindIvar m x v) := by
+  refine ⟨?_, ?_⟩
+  · intro y τ hy
+    refine ⟨by rw [getLocal_bindIvar]; exact hkeep y τ hy, ?_⟩
+    intro z σ hz
+    simp only [getLocal_bindIvar]
+    exact (he.1 y τ hy).2 z σ hz
+  · intro y hy
+    rw [getLocal_bindIvar]; exact he.2 y hy
 
 /-- This is the real successful assignment transition, not a replacement execution model. -/
 theorem stepFn_ivarWrite {m : Machine} {o : ObjId} {x : String} {v : Value} {rest : List Kont}

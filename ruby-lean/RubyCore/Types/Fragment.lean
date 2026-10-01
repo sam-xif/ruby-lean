@@ -301,7 +301,7 @@ def scan (sigPrecedes : Bool) : Expr → List Violation
   | .if' c t e => scan false c ++ scan false t ++ scanOpt e
   | .while' c body => scan false c ++ scan false body
   | .dowhile body c => scan false body ++ scan false c
-  | .for' _ coll body => scan false coll ++ scan false body
+  | .for' _ coll body _ => scan false coll ++ scan false body
   | .block params _ body => scanParams params ++ scan false body
   | .yield' args => scanList args
   | .blockpass e => scanOpt e

@@ -41,6 +41,7 @@ theorem fresh_pair_publication {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
   exact initializer_pop_framed hm.frameInRange.2 rfl
     (by simp [pairWritten, pairEntry, pushMethodFrame]) hf
     (fresh_pair_growth x y hm.sat hm.core.basicSelf hk)
+    (by simp [pairWritten, pairEntry, pushMethodFrame])
 
 private theorem pairWritten_object (m : Machine) (k : ObjId) (x y : Int) :
     (pairWritten m k x y).heap.get m.heap.objs.size =

@@ -40,8 +40,11 @@ theorem classifyFull_required (names : List String) :
 /-- Ordinary `def` binds just its own formals: no captured caller frame. -/
 def requiredFrame (recv : Value) (name : String) (md : MethodDef)
     (names : List String) (args : List Value) : RubyCore.Frame :=
-  { self := recv, locals := names.zip args, defmod := md.owner, kind := .method,
-    meth := md.superName.getD name, runParams := md.params, cref := md.cref }
+  { self := recv, locals := names.zip args, defmod := md.definee.getD md.owner,
+    methodOwner := some md.owner, definitionFrame := md.definitionFrame, kind := .method,
+    meth := md.superName.getD name, superScope := md.superScope,
+    runParams := md.params, runFromDM := md.fromBlock, cref := md.cref,
+    libraryOrigin := md.fromPrelude }
 
 def pushMethodFrame (m : Machine) (f : RubyCore.Frame) : Machine :=
   { m with frames := m.frames.push f, stack := m.frames.size :: m.stack }
@@ -50,7 +53,8 @@ theorem enterUserMethod_required (m : Machine) (recv : Value) (name : String)
     (md : MethodDef) (names : List String) (args : List Value)
     (hp : md.params = names.map RubyCore.Param.req)
     (hc : md.capturedFrame = none) (hd : md.declared = [])
-    (ha : args.length = names.length) :
+    (ha : args.length = names.length)
+    (hblock : md.fromBlock = false) (hfor : md.forTargets = none) :
     Interp.enterUserMethod m recv name md args none =
       .next (Interp.withKont (pushMethodFrame m (requiredFrame recv name md names args))
         (.eval md.body) (.frameK m.frames.size)) := by
@@ -59,14 +63,14 @@ theorem enterUserMethod_required (m : Machine) (recv : Value) (name : String)
   have hf : (names.zip args).filter (fun _ => true) = names.zip args :=
     List.filter_eq_self.mpr (fun _ _ => rfl)
   simp [Interp.appendKwHash, hc, hd, ← ha, requiredFrame, pushMethodFrame,
-    Interp.withKont, Interp.withCtl, hp, hf]
+    Interp.withKont, Interp.withCtl, hp, hf, hblock, hfor]
 
 theorem requiredFrame_getLocal (m : Machine) (recv : Value) (name : String)
     (md : MethodDef) (names : List String) (args : List Value) (x : String) :
     (pushMethodFrame m (requiredFrame recv name md names args)).getLocal x =
       (((names.zip args).find? (·.1 == x)).map (·.2)).getD .nil := by
   simp only [Machine.getLocal, Machine.getLocal.go, pushMethodFrame, requiredFrame]
-  simp [Array.getD_eq_getD_getElem?]
+  simp [Machine.localFrameId, Machine.localFrameId.go, Array.getD_eq_getD_getElem?]
   cases (names.zip args).find? (·.1 == x) <;> rfl
 
 /-- Parameter lookup uses the same first matching name as the real binding list. -/

@@ -114,6 +114,7 @@ def prim_ret(recv, m, args)
     return INT                   if m == "length" && args.empty?
     return nilable(recv["val"])  if m == "[]" && args.length == 1
     return recv["val"]           if m == "fetch" && args.length == 1
+    return BOOL                  if m == "key?" && args.length == 1
   end
 
   return STR  if t == "sym" && m == "to_s" && args.empty?
@@ -144,8 +145,25 @@ class Emitter
     @env = {}          # locals
     @ivars = {}        # the current self's ivars
     @cls_ivars = {}    # class name -> [[ivar, ty], ...]
+    @modules = []     # no instance allocation proposals for modules
     @supers = {}       # class name -> superclass name
     @self_cls = nil
+    @current_method = nil
+    @singleton = false
+    @inferring = false
+    @uses_flow = false
+    @callback_sigs = {}
+    @yield_signature = nil
+  end
+
+  attr_reader :uses_flow
+
+  def closure_type?(ty)
+    case ty
+    when Hash then %w[closureCode suppliedCallback].include?(ty["tag"]) || ty.values.any? { |value| closure_type?(value) }
+    when Array then ty.any? { |value| closure_type?(value) }
+    else false
+    end
   end
 
   # -- helpers ------------------------------------------------------------
@@ -165,11 +183,9 @@ class Emitter
     raise Blocked, "no signature for #{owner}##{name}"
   end
 
-  # A declared `Ty.cls C` for a *user* class C, recovered as `Ty.inst C <spine>`.
-  # The known gap: a signature says `Point` and carries no ivar spine, but
-  # `Ratchet/Lang/Ty.lean` types an instance as `.inst name <spine>`. Where the class
-  # body has been seen the spine is known; where it has not, the `.cls` stays
-  # and the first method call on it blocks.
+  # Propose a known initialized-instance domain for a user-class annotation.
+  # At calls this is only a result hint: the checker must have retained a body
+  # proof of those fields. The nominal annotation alone cannot establish them.
   def as_inst(t)
     if t["tag"] == "cls" && @cls_ivars.key?(t["name"])
       { "tag" => "inst", "name" => t["name"], "ivars" => spine(@cls_ivars[t["name"]]) }
@@ -212,6 +228,8 @@ class Emitter
 
   def n_self(_n)
     raise Blocked, "`self` outside a class body" if @self_cls.nil?
+
+    return [{ "rule" => "selfExpr" }, { "tag" => "clsOf", "name" => @self_cls }] if @singleton
 
     [{ "rule" => "selfExpr" },
      { "tag" => "inst", "name" => @self_cls, "ivars" => spine(@ivars.to_a) }]
@@ -317,7 +335,7 @@ class Emitter
 
   # sends
   def n_vcall(n)
-    return [{ "rule" => "bareName", "name" => "x" }, { "tag" => "any" }] if n[1] == "x"
+    return [{ "rule" => "bareName", "name" => "x" }, { "tag" => "any" }] if n[1] == "x" && @self_cls.nil?
 
     implicit_send(n[1], [])
   end
@@ -326,12 +344,58 @@ class Emitter
     recv = n[1]
     m = n[2]
     args = n[3]
+    if recv.nil? && n[4] && @callback_sigs.key?(m)
+      return callback_send(m, args, n[4])
+    end
+    if recv.nil? && %w[lambda proc].include?(m) && args.empty? && n[4]
+      block = n[4]
+      unless block[0] == "block" && block[1].all? { |p| p[0] == "preq" } && [4, 5].include?(block.length)
+        raise Blocked, "only required positional closure parameters are in the callable fragment"
+      end
+      @uses_flow = true
+      # Emitter-only code descriptor. The checker reconstructs its own closure type
+      # from the source and rechecks this body at the call's live local environment.
+      return [{ "rule" => "closureLiteral" }, { "tag" => "closureCode", "body" => block[-1],
+        "params" => block[1].map { |p| p[1] }, "lambda" => m == "lambda",
+        "locals" => block[2] + (block.length == 5 ? block[3] : []) }]
+    end
+    return array_block(m, recv, args, n[4]) if recv && %w[each map collect].include?(m) && n[4]
     raise Blocked, "a block argument is outside the fragment" unless n[4].nil?
     return implicit_send(m, args) if recv.nil?
     # `C.new(...)`
     return new_inst(recv[1], args) if m == "new" && recv[0] == "const"
 
     dr, tr = go(recv)
+    if tr["tag"] == "suppliedCallback"
+      raise Blocked, "bound block requires call or []" unless %w[call []].include?(m)
+      ds, ts = go_all(args)
+      raise Blocked, "bound block arguments disagree with its declared domain" unless ts == @yield_signature[0]
+
+      return [{ "rule" => "callbackCall", "recv" => dr, "args" => ds }, @yield_signature[1]]
+    end
+    if tr["tag"] == "closureCode"
+      raise Blocked, "only call and bracket closure calls are in the callable fragment" unless %w[call []].include?(m)
+      raise Blocked, "closure arity mismatch" unless args.length == tr["params"].length
+      dargs, targs = go_all(args)
+      caller = @env.dup
+      shadow = tr["params"] + tr["locals"]
+      @env = caller.merge(tr["locals"].to_h { |name| [name, NIL_T] }).merge(tr["params"].zip(targs).to_h)
+      begin
+        body, ret = go(tr["body"])
+        # Body-only slots disappear; shadowed caller slots keep their incoming types.
+        returned = caller.to_h { |name, ty| [name, shadow.include?(name) ? ty : @env.fetch(name, NIL_T)] }
+      ensure
+        @env = caller
+      end
+      @env = returned
+      raise Blocked, "closure-valued call results are outside the fragment" if closure_type?(ret)
+      if tr["lambda"] && m == "call" && recv[0] == "var" && recv[1] == "local" &&
+          args.empty? && tr["locals"].empty?
+        return [{ "rule" => "closureCall", "body" => body, "ret" => ret }, ret]
+      end
+      return [{ "rule" => "requiredClosureCall", "recv" => dr, "args" => dargs,
+        "body" => body, "ret" => ret }, ret]
+    end
     tr = as_inst(tr)
     dargs, targs = go_all(args)
     ret = prim_ret(tr, m, targs)
@@ -339,28 +403,84 @@ class Emitter
       return [{ "rule" => "prim", "recv" => dr, "method" => m, "args" => dargs,
                 "recvTy" => tr, "retTy" => ret }, ret]
     end
+    if tr["tag"] == "clsOf"
+      sig = sig_for("<Class:#{tr['name']}>", m)
+      check_inferred_args(sig, targs)
+      result = as_inst(sig["ret"])
+      return [{ "rule" => "callSingleton", "recv" => dr, "name" => m, "args" => dargs,
+                "ret" => result }, result]
+    end
     if tr["tag"] == "inst"
       sig = sig_for(tr["name"], m)
+      check_inferred_args(sig, targs)
+      result = as_inst(sig["ret"])
       return [{ "rule" => "callMethodSig", "recv" => dr, "name" => m, "args" => dargs,
-                "ret" => sig["ret"] }, sig["ret"]]
+                "ret" => result }, result]
     end
     raise Blocked, "no builtin signature for #{tr["tag"]}##{m}/#{targs.length}"
   end
 
+  def array_block(method, recv, args, block)
+    unless args.empty? && block[0] == "block" && [4, 5].include?(block.length) &&
+        block[1].length == 1 && block[1][0][0] == "preq"
+      raise Blocked, "#{method} requires one positional block parameter and no arguments"
+    end
+    dr, tr = go(recv)
+    raise Blocked, "#{method} receiver is outside the Array fragment" unless tr["tag"] == "arrayOf"
+    @uses_flow = true
+    name = block[1][0][1]
+    locals = block[2] + (block.length == 5 ? block[3] : [])
+    caller = @env.dup
+    shadow = [name] + locals
+    @env = caller.merge(locals.to_h { |local| [local, NIL_T] }).merge(name => tr["elem"])
+    begin
+      body, result = go(block[-1])
+      returned = caller.to_h { |local, ty| [local, shadow.include?(local) ? ty : @env.fetch(local, NIL_T)] }
+      raise Blocked, "#{method} changes a captured local type" unless returned == caller
+    ensure
+      @env = caller
+    end
+    rule = method == "each" ? "eachBlock" : "mapBlock"
+    ty = method == "each" ? tr : { "tag" => "arrayOf", "elem" => result }
+    [{ "rule" => rule, "recv" => dr, "body" => body }, ty]
+  end
+
   def implicit_send(m, args)
-    dargs, = go_all(args)
-    owner = @self_cls || "Object"
+    if @singleton && m == "new"
+      deriv, ty = new_inst(@self_cls, args)
+      return [deriv.merge("rule" => "newImplicit"), ty]
+    end
+    dargs, targs = go_all(args)
+    owner = @singleton ? "<Class:#{@self_cls}>" : (@self_cls || "Object")
     sig = sig_for(owner, m)
-    [{ "rule" => "callSig", "name" => m, "args" => dargs, "ret" => sig["ret"] }, sig["ret"]]
+    check_inferred_args(sig, targs)
+    result = as_inst(sig["ret"])
+    [{ "rule" => "callSig", "name" => m, "args" => dargs, "ret" => result }, result]
   end
 
   def new_inst(name, args)
+    raise Blocked, "module #{name} has no allocator" if @modules.include?(name)
+
     dargs, = go_all(args)
-    ivars = @cls_ivars[name]
+    ivars = @cls_ivars[name] || (name == @self_cls ? @ivars.to_a : nil)
     raise Blocked, "`#{name}.new` before `class #{name}` is defined" if ivars.nil?
 
     ty = { "tag" => "inst", "name" => name, "ivars" => spine(ivars) }
     [{ "rule" => "newInst", "cls" => name, "args" => dargs, "ty" => ty }, ty]
+  end
+
+  # Own singleton signatures remain distinct from ordinary methods of the same name.
+  def n_defs(n)
+    raise Blocked, "singleton receiver other than self" unless n[1] == ["self"]
+
+    outer_singleton, outer_ivars = @singleton, @ivars
+    @singleton = true
+    # Constructor fields belong to instances, never to the class object's self.
+    @cls_ivars[@self_cls] = @ivars.to_a unless @modules.include?(@self_cls)
+    @ivars = {}
+    result = n_def(["def", n[2], n[3], n[4]])
+    @singleton, @ivars = outer_singleton, outer_ivars
+    result
   end
 
   # declarations
@@ -368,8 +488,20 @@ class Emitter
     name = n[1]
     params = n[2]
     body = n[3]
-    owner = @self_cls || "Object"
+    owner = @singleton ? "<Class:#{@self_cls}>" : (@self_cls || "Object")
+    # Missing annotations permit proposals; unsupported declared types do not.
+    if @singleton && !@sigs.key?([owner, name]) &&
+       @dropped[[owner, name]] == "no declared return type"
+      return infer_definition(owner, name, params, body)
+    end
     sig = sig_for(owner, name)
+    if @self_cls.nil? && !@singleton && params.length == 1 && params[0][0] == "pblock" && params[0][1]
+      block = sig["block"]
+      raise Blocked, "#{name}: missing declared block signature" unless block && block["name"] == params[0][1]
+      raise Blocked, "#{name}: unexpected positional signature" unless sig["params"].empty?
+
+      return callback_definition(name, [], sig["ret"], body, block)
+    end
     if sig["params"].length != params.length
       raise Blocked, "#{owner}##{name}: sig declares #{sig["params"].length} params, " \
                      "the def has #{params.length}"
@@ -384,12 +516,161 @@ class Emitter
       { "name" => p[1], "ty" => as_inst(sig["params"][i]["ty"]) }
     end
 
+    if @self_cls.nil? && !@singleton && contains_yield?(body)
+      return callback_definition(name, sps, sig["ret"], body)
+    end
+
     outer_env = @env
+    outer_method = @current_method
+    @current_method = name
     @env = sps.to_h { |p| [p["name"], p["ty"]] }
     dbody, = go(body)
     @env = outer_env
+    @current_method = outer_method
     [{ "rule" => "defDecl", "name" => name, "params" => sps, "ret" => sig["ret"],
        "body" => dbody }, SYM]
+  end
+
+  def contains_yield?(node)
+    return false unless node.is_a?(Array)
+    return true if node[0] == "yield"
+    return false if %w[def defs class module].include?(node[0])
+
+    node.any? { |child| contains_yield?(child) }
+  end
+
+  # Only definition syntax and declared positional/result domains inform these
+  # proposals. Actual callback code and capture types are checked later, at calls.
+  def callback_definition(name, params, ret, body, declared_block = nil)
+    results = declared_block ? [declared_block["ret"]] : [INT, STR, BOOL, FLOAT, SYM, NIL_T]
+    results.each do |block_ret|
+      trial = dup
+      instance_variables.each do |field|
+        value = instance_variable_get(field)
+        trial.instance_variable_set(field, value.dup) if value.is_a?(Hash) || value.is_a?(Array)
+      end
+      trial.instance_variable_set(:@env, params.to_h { |p| [p["name"], p["ty"]] })
+      if declared_block
+        trial.instance_variable_get(:@env)[declared_block["name"]] = { "tag" => "suppliedCallback" }
+      end
+      trial.instance_variable_set(:@current_method, name)
+      trial.instance_variable_set(:@inferring, true)
+      trial.instance_variable_set(:@yield_signature, [declared_block&.fetch("args"), block_ret])
+      begin
+        dbody, result = trial.go(body)
+        next unless result == ret
+        block_args = trial.instance_variable_get(:@yield_signature)[0]
+        next unless block_args && block_args.length == 1
+      rescue Blocked
+        next
+      end
+      @callback_sigs[name] = { "args" => block_args, "ret" => block_ret, "result" => ret }
+      return [{ "rule" => "defBlock", "name" => name, "params" => params,
+                "blockArgs" => block_args, "blockRet" => block_ret, "ret" => ret, "body" => dbody }, SYM]
+    end
+    raise Blocked, "#{name}: no block signature for the complete method body"
+  end
+
+  def n_yield(node)
+    raise Blocked, "yield outside a checked callback method" unless @yield_signature
+    ds, ts = go_all(node[1])
+    @yield_signature[0] ||= ts
+    raise Blocked, "yield arguments disagree with the method's block domain" unless ts == @yield_signature[0]
+
+    [{ "rule" => "yield", "args" => ds }, @yield_signature[1]]
+  end
+
+  def callback_send(name, args, block)
+    sig = @callback_sigs.fetch(name)
+    unless args.empty? && block[0] == "block" && [4, 5].include?(block.length) &&
+        block[1].all? { |p| p[0] == "preq" } && block[1].length == sig["args"].length
+      raise Blocked, "#{name}: callback call requires matching positional block parameters and no method arguments"
+    end
+    caller = @env.dup
+    locals = block[2] + (block.length == 5 ? block[3] : [])
+    params = block[1].map { |p| p[1] }
+    shadow = params + locals
+    @env = caller.merge(locals.to_h { |local| [local, NIL_T] }).merge(params.zip(sig["args"]).to_h)
+    begin
+      body, result = go(block[-1])
+      raise Blocked, "#{name}: callback result disagrees with its declared signature" unless result == sig["ret"]
+      returned = caller.to_h { |local, ty| [local, shadow.include?(local) ? ty : @env.fetch(local, NIL_T)] }
+      raise Blocked, "#{name}: callback changes a captured local type" unless returned == caller
+    ensure
+      @env = caller
+    end
+    @uses_flow = true
+    [{ "rule" => "callBlock", "name" => name, "body" => body, "ret" => sig["result"] }, sig["result"]]
+  end
+
+  # Clink 197: search complete scalar domains, never call values. Integer-first
+  # is a deterministic default for ambiguous bodies (e.g. a + b). The bound costs
+  # completeness only; every emitted candidate still needs Lean's whole-body proof.
+  def infer_definition(owner, name, params, body)
+    unless params.all? { |p| p[0] == "preq" }
+      raise Blocked, "#{owner}##{name}: inference requires positional parameters"
+    end
+
+    choices = [INT, STR, BOOL, FLOAT, SYM, NIL_T]
+    choices.repeated_permutation(params.length).each_with_index do |types, attempt|
+      raise Blocked, "#{owner}##{name}: scalar domain search exhausted" if attempt >= 4096
+
+      # Body walks can change locals, fields and declaration tables. Failed trials
+      # must not publish those changes into the next candidate or the outer scope.
+      trial = dup
+      instance_variables.each do |field|
+        value = instance_variable_get(field)
+        trial.instance_variable_set(field, value.dup) if value.is_a?(Hash) || value.is_a?(Array)
+      end
+      sps = params.zip(types).map { |p, ty| { "name" => p[1], "ty" => ty } }
+      trial.instance_variable_set(:@env, sps.to_h { |p| [p["name"], p["ty"]] })
+      trial.instance_variable_set(:@current_method, name)
+      trial.instance_variable_set(:@inferring, true)
+      begin
+        dbody, ret = trial.go(body)
+      rescue Blocked
+        raise if params.empty?
+        next
+      end
+      @sigs[[owner, name]] = { "params" => sps, "ret" => ret }
+      return [{ "rule" => "defDecl", "name" => name, "params" => sps, "ret" => ret,
+                "body" => dbody }, SYM]
+    end
+    raise Blocked, "#{owner}##{name}: no scalar parameter domain for the complete body"
+  end
+
+  # Calls inside an inferred body constrain its parameter proposal. The checker
+  # remains authoritative; this only avoids selecting a known-mismatching candidate.
+  def check_inferred_args(sig, types)
+    return unless @inferring
+    return if types == sig["params"].map { |p| as_inst(p["ty"]) }
+
+    raise Blocked, "inferred body arguments disagree with the callee signature"
+  end
+
+  def n_super(n)
+    raise Blocked, "super outside an initializer is outside the fragment" unless @current_method == "initialize"
+    raise Blocked, "a block argument is outside the fragment" if n[2]
+
+    parent = @supers[@self_cls]
+    raise Blocked, "super has no declared parent" unless parent
+
+    sig = sig_for(parent, "initialize")
+    ds, ts = go_all(n[1])
+    raise Blocked, "super arity disagrees with the parent annotation" unless ts.length == sig["params"].length
+
+    (@cls_ivars[parent] || []).each { |name, ty| @ivars[name] = ty }
+    [{ "rule" => "superInit", "args" => ds }, sig["ret"]]
+  end
+
+  def n_module(n)
+    name, body = n[1], n[2]
+    @modules << name
+    outer_cls, outer_ivars, outer_env = @self_cls, @ivars, @env
+    @self_cls, @ivars, @env = name, {}, {}
+    dbody, body_ty = go(body)
+    @self_cls, @ivars, @env = outer_cls, outer_ivars, outer_env
+    [{ "rule" => "moduleDecl", "name" => name, "body" => dbody }, body_ty]
   end
 
   def n_class(n)
@@ -409,6 +690,13 @@ class Emitter
     # A subclass starts from its parent's ivars: `class Dog < Animal; end` has
     # `Animal`'s, and `Dog.new("Rex").speak` reads one.
     @ivars = supname ? (@cls_ivars[supname] || []).to_h : {}
+    # Fresh default allocation proves these explicit nil fields. Ordinary open
+    # instance annotations still cannot treat every omitted field as nil.
+    unless initializer_declared?(name)
+      stmts = body[0] == "seq" ? body[1..] : [body]
+      reads = stmts.select { |st| st[0] == "def" }.flat_map { |st| field_reads(st[3]) }
+      @ivars = (@ivars.keys + reads).uniq.sort.to_h { |x| [x, NIL_T] }
+    end
     # `initialize` first, so the ivar spine exists before any other method body
     # reads an ivar. One pass, in source order, is not enough for that.
     seed_ivars(name, body)
@@ -456,6 +744,27 @@ class Emitter
     end
     nil
   end
+
+  def initializer_declared?(name)
+    seen = {}
+    while name
+      raise Blocked, "cyclic superclass chain" if seen[name]
+
+      seen[name] = true
+      return true if @sigs.key?([name, "initialize"]) || @dropped.key?([name, "initialize"])
+
+      name = @supers[name]
+    end
+    false
+  end
+
+  def field_reads(node)
+    return [] unless node.is_a?(Array)
+    return [node[2]] if node[0] == "var" && node[1] == "ivar"
+    return [] if %w[def defs class module sclass scoped_class scoped_module].include?(node[0])
+
+    node.flat_map { |child| child.is_a?(Array) ? field_reads(child) : [] }
+  end
 end
 
 # --------------------------------------------------------------------------
@@ -473,6 +782,8 @@ def main(argv)
   em = Emitter.new(sigs)
   begin
     deriv, ty = em.go(ast["ast"])
+    raise Blocked, "closure-valued program results are outside the fragment" if em.closure_type?(ty)
+    deriv = { "rule" => "flow", "body" => deriv } if em.uses_flow
   rescue Blocked => e
     puts JSON.generate({ "status" => "blocked", "why" => e.message })
     return 0

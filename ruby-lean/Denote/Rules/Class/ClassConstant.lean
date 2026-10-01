@@ -16,9 +16,12 @@ theorem SemSafeCtxA.constClass {κ : Ctx} {Γ : Env} {I : Ty} {c : Cls}
     cases hp : m.heap.classPayload? Boot.objectId <;> simpa [constOwn, constLookup, hp] using ho
   have hr := (hm.constScope c.name).trans hl
   refine ⟨m, .ref k, ?_, .refl m, ?_, fun _ _ => hm⟩
-  · simp only [constResolveAt] at hr
-    simp only [Interp.stepFn, Interp.evalExpr, toRuby, evalFrom, currentFrame_reCtl, hr,
-      Interp.withCtl, deliverA, Answer.ctl]
+  · have hr' : Interp.lexicalConstant (evalFrom m (.const c.name)) c.name = some (.ref k) := hr
+    change (match Interp.lexicalConstant (evalFrom m (.const c.name)) c.name with
+      | some v => StepResult.next (Interp.withCtl (evalFrom m (.const c.name)) (.value v))
+      | none => _) = _
+    rw [hr']
+    rfl
   · simp [AnsOk, denM, isClassRefNamed, hk]
 
 #print axioms SemSafeCtxA.constClass

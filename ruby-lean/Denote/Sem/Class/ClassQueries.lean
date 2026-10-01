@@ -18,24 +18,24 @@ theorem class_site_parent (hc : Proof.ChainsIn h)
 
 variable {κ : Ctx} {m n : Machine}
 
-theorem query (hc : Proof.ChainsIn m.heap) (hs : Proof.Saturated m.heap)
+theorem query (hnames : Proof.NamesOk m.heap) (hc : Proof.ChainsIn m.heap) (hs : Proof.Saturated m.heap)
     (he : e < m.heap.objs.size) (hne : name.isEmpty = false)
     (hn : ∀ mn bid, (mn, bid) ∈ queryBuiltins → nameFreeN κ mn = true → NativeQuiet name mn)
     (hh : n.heap = freshClsHeap m.heap Boot.objectId name name e) (hq : QueryOk κ m) :
-    QueryOk κ n := Subclass.query hc hs hc.boot.2.2.2.2 he hne hn hh hq
+    QueryOk κ n := Subclass.query hnames hc hs hc.boot.2.2.2.2 he hne hn hh hq
 
-theorem clsQuery (hc : Proof.ChainsIn m.heap) (hs : Proof.Saturated m.heap)
+theorem clsQuery (hnames : Proof.NamesOk m.heap) (hc : Proof.ChainsIn m.heap) (hs : Proof.Saturated m.heap)
     (ho : (m.heap.classPayload? Boot.objectId).isSome = true)
     (he : (m.heap.get Boot.objectId).eigen = some e) (hne : name.isEmpty = false)
     (hn : ∀ mn bid, (mn, bid) ∈ clsQueryBuiltins → nameFreeN κ mn = true → NativeQuiet name mn)
     (hh : n.heap = freshClsHeap m.heap Boot.objectId name name e) (hq : ClsQueryOk κ m) :
-    ClsQueryOk κ n := Subclass.clsQuery hc hs ho he hne hn hh hq
+    ClsQueryOk κ n := Subclass.clsQuery hnames hc hs ho he hne hn hh hq
 
-theorem nilQuery (hc : Proof.ChainsIn m.heap) (hs : Proof.Saturated m.heap)
+theorem nilQuery (hnames : Proof.NamesOk m.heap) (hc : Proof.ChainsIn m.heap) (hs : Proof.Saturated m.heap)
     (he : e < m.heap.objs.size) (hne : name.isEmpty = false)
     (hn : nameFreeN κ "nil?" = true → NativeQuiet name "nil?")
     (hh : n.heap = freshClsHeap m.heap Boot.objectId name name e) (hq : NilQueryOk κ m) :
-    NilQueryOk κ n := Subclass.nilQuery hc hs hc.boot.2.2.2.2 he hne hn hh hq
+    NilQueryOk κ n := Subclass.nilQuery hnames hc hs hc.boot.2.2.2.2 he hne hn hh hq
 
 #print axioms class_site_parent
 #print axioms query

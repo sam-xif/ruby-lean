@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L279 (2026-09-28)",
+  "note": "Native imaginary literals preserve exact Rational components, signed zero, and per-site identity while bypassing constructor/constant lookup."
+}

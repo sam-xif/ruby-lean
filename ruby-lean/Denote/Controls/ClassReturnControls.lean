@@ -1,5 +1,5 @@
 import Denote.Rules.Class.ClassRun
-import Denote.Bridge
+import Denote.Bridge.Full
 import Denote.Sem.Core.Boot
 
 /-! Scope-only restoration retains executed declarations/reservations. The complete class

@@ -1,9 +1,27 @@
+import Denote.Examples.BoundCallbackDerivations
 import Denote.Examples.Derivations
 import Denote.Examples.MethodDerivations
 import Denote.Examples.RecursiveDerivations
 import Denote.Examples.ClassDerivations
 import Denote.Examples.RectDerivations
 import Denote.Examples.InheritanceDerivations
+import Denote.Examples.DefaultDerivations
+import Denote.Examples.SuperDerivations
+import Denote.Examples.NilFieldDerivations
+import Denote.Examples.FactoryDerivations
+import Denote.Examples.ScalarWriteDerivations
+import Denote.Examples.TopClassDerivations
+import Denote.Examples.SelfResultDerivations
+import Denote.Examples.ModuleDerivations
+import Denote.Examples.ModuleParamDerivations
+import Denote.Examples.ModuleCompareDerivations
+import Denote.Examples.SingletonImplicitDerivations
+import Denote.Examples.FlowDerivations
+import Denote.Examples.RequiredFlowDerivations
+import Denote.Examples.ProcDerivations
+import Denote.Examples.EachDerivations
+import Denote.Examples.MapDerivations
+import Denote.Examples.CallbackDerivations
 
 /-! Concrete corpus programs and their derivations. `SemLadder` compares each program
 against the current stripped corpus; `RuleAudit` reads the clinks from these proofs. -/
@@ -46,7 +64,7 @@ def program_006_nil_lit : Ratchet.Expr :=
   .nil
 
 theorem safe_006_nil_lit (hb : bootOkB = true) : StuckFree bootMachine program_006_nil_lit :=
-  dregistry_safe (derivD_nilLit) (stateOk_boot hb)
+  dregistry_safe derivD_flowNil (stateOk_boot hb)
 
 def program_007_flt_lit : Ratchet.Expr :=
   .flt (1.5 : Float).toBits
@@ -186,7 +204,7 @@ def program_031_reassign_different_type : Ratchet.Expr :=
   .seq [.vasgn .lvar "x" (.int (1)), .vasgn .lvar "x" (.tru), .var .lvar "x"]
 
 theorem safe_031_reassign_different_type (hb : bootOkB = true) : StuckFree bootMachine program_031_reassign_different_type :=
-  dregistry_safe (derivD_seq (derivD_seqCons (derivD_vasgn (derivD_intLit) rfl rfl) (derivD_seqCons (derivD_vasgn (derivD_truLit) rfl rfl) (derivD_seqLast (derivD_var rfl rfl))))) (stateOk_boot hb)
+  dregistry_safe derivD_flowReassign (stateOk_boot hb)
 
 def program_032_bare_undeclared_var : Ratchet.Expr := .vcall "x"
 
@@ -340,14 +358,39 @@ def safeRungs : List (String × Ratchet.Expr) :=
    ("060-fun-recursive-factorial", program_060_fun_recursive_factorial),
    ("061-class-basic", program_061_class_basic),
    ("064-class-method-calls-method", program_064_class_method_calls_method),
-   ("065-class-inheritance-field", program_065_class_inheritance_field)]
+   ("065-class-inheritance-field", program_065_class_inheritance_field),
+   ("066-class-inheritance-override", program_066_class_inheritance_override),
+   ("067-class-super-call", program_067_class_super_call),
+   ("070-class-ivar-lazy-nil", program_070_class_ivar_lazy_nil),
+   ("073-class-factory-method", program_073_class_factory_method),
+   ("074-class-setter-method", program_074_class_setter_method),
+   ("075-class-instance-as-fun-arg", program_075_class_instance_as_fun_arg),
+   ("076-class-self-returning-method", program_076_class_self_returning_method),
+   ("077-module-basic", program_077_module_basic),
+   ("078-module-method-with-arg", program_078_module_method_with_arg),
+   ("080-module-method-calls-method", program_080_module_method_calls_method),
+   ("084-module-boolean-method", program_084_module_boolean_method),
+   ("087-lambda-zero-arity", program_087_lambda_zero_arity),
+   ("088-lambda-stabby-one-param", program_088_lambda_stabby_one_param),
+   ("098-lambda-closure-capture", program_098_lambda_closure_capture),
+   ("089-proc-basic", program_089_proc_basic),
+   ("090-proc-bracket-call", program_090_proc_bracket_call),
+   ("091-block-each-int", program_091_block_each_int),
+   ("092-block-map-to-s", program_092_block_map_to_s),
+   ("093-block-doend-with-block-local", program_093_block_doend_with_block_local),
+   ("094-yield-arith", program_094_yield_arith),
+   ("260-yield-local-and-captured-write", program_260_yield_local_and_captured_write),
+   ("095-block-param-ampersand", program_095_block_param_ampersand),
+   ("261-bound-block-alias-and-yield", program_261_bound_block_alias_and_yield)]
 
 theorem safeRungs_safe (hb : bootOkB = true) :
     ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
   intro q hq
   simp only [safeRungs, List.mem_cons, List.not_mem_nil, or_false] at hq
   rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
-    | rfl | rfl | rfl
+    | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    | rfl | rfl | rfl | rfl | rfl | rfl
   · exact safe_001_int_lit hb
   · exact safe_002_bool_true hb
   · exact safe_003_bool_false hb
@@ -397,6 +440,29 @@ theorem safeRungs_safe (hb : bootOkB = true) :
   · exact safe_061_class_basic hb
   · exact safe_064_class_method_calls_method hb
   · exact safe_065_class_inheritance_field hb
+  · exact safe_066_class_inheritance_override hb
+  · exact safe_067_class_super_call hb
+  · exact safe_070_class_ivar_lazy_nil hb
+  · exact safe_073_class_factory_method hb
+  · exact safe_074_class_setter_method hb
+  · exact safe_075_class_instance_as_fun_arg hb
+  · exact safe_076_class_self_returning_method hb
+  · exact safe_077_module_basic hb
+  · exact safe_078_module_method_with_arg hb
+  · exact safe_080_module_method_calls_method hb
+  · exact safe_084_module_boolean_method hb
+  · exact safe_087_lambda_zero_arity hb
+  · exact safe_088_lambda_stabby_one_param hb
+  · exact safe_098_lambda_closure_capture hb
+  · exact safe_089_proc_basic hb
+  · exact safe_090_proc_bracket_call hb
+  · exact safe_091_block_each_int hb
+  · exact safe_092_block_map_to_s hb
+  · exact safe_093_block_doend_with_block_local hb
+  · exact safe_094_yield_arith hb
+  · exact safe_260_yield_local_and_captured_write hb
+  · exact safe_095_block_param_ampersand hb
+  · exact safe_261_bound_block_alias_and_yield hb
 
 #print axioms safeRungs_safe
 end Ratchet.Denote.Typed

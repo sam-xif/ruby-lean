@@ -15,10 +15,10 @@ theorem SemSafeCtxA.instanceImplicit {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' Ib 
     (hparams : d.params = ps.map (fun p => Ratchet.Param.req p.1))
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (hτ : FirstOrder τ = true) (hIb : FirstOrder Ib = true)
-    (hbody : SemSafeCtxA (instanceBodyCtx κ' ⟨c.name, c.name, d.name⟩ Ib) ps Ib d.body τ
-      (instanceBodyCtx κ' ⟨c.name, c.name, d.name⟩ Ib) Γb Ib)
+    (hbody : SemSafeCtxA (instanceBodyCtx κ' ⟨c.name, c.name, d.name, false⟩ Ib) ps Ib d.body τ
+      (instanceBodyCtx κ' ⟨c.name, c.name, d.name, false⟩ Ib) Γb Ib)
     (ht : ReframeFO κ' I') (ha : κ'.asms = []) (hw : CallWorld κ')
-    (hconst : ∀ x, constGet? (instanceBodyCtx κ' ⟨c.name, c.name, d.name⟩ Ib) x = constGet? κ' x)
+    (hconst : ∀ x, constGet? (instanceBodyCtx κ' ⟨c.name, c.name, d.name, false⟩ Ib) x = constGet? κ' x)
     (hΓ : ∀ p ∈ Γ', FirstOrder (stripAlias p.2) = true) :
     SemSafeCtxA κ Γ I (.send none d.name args none) τ κ' Γ' I' := by
   intro m hm
@@ -51,10 +51,10 @@ theorem SemSafeCtxA.instanceVcall {κ : Ctx} {Γ Γb : Env} {I Ib τ : Ty}
     (hc : c ∈ κ.classes) (hd : d ∈ c.methods) (hn : d.name ≠ "initialize")
     (hname : DirectSendName d.name) (hparams : d.params = [])
     (hτ : FirstOrder τ = true) (hIb : FirstOrder Ib = true)
-    (hbody : SemSafeCtxA (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) [] Ib d.body τ
-      (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) Γb Ib)
+    (hbody : SemSafeCtxA (instanceBodyCtx κ ⟨c.name, c.name, d.name, false⟩ Ib) [] Ib d.body τ
+      (instanceBodyCtx κ ⟨c.name, c.name, d.name, false⟩ Ib) Γb Ib)
     (ht : ReframeFO κ I) (ha : κ.asms = []) (hw : CallWorld κ)
-    (hconst : ∀ x, constGet? (instanceBodyCtx κ ⟨c.name, c.name, d.name⟩ Ib) x = constGet? κ x)
+    (hconst : ∀ x, constGet? (instanceBodyCtx κ ⟨c.name, c.name, d.name, false⟩ Ib) x = constGet? κ x)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) :
     SemSafeCtxA κ Γ I (.vcall d.name) τ κ Γ I := by
   intro m hm

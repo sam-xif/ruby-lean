@@ -20,6 +20,10 @@ def programCert : Deriv := .seq [cert, .callSig "fact" [.intLit 4] .int]
 
 #guard validateD definition cert
 #guard validateD program programCert
+-- Every scoped-body/argument rule is required by the actual production trace.
+#guard ["recursive", "DJudgeRec.embed", "DJudgeRec.prim", "DJudgeRec.if'",
+    "DJudgeRec.selfCall", "DJudgeRecAll.nil", "DJudgeRecAll.cons"].all
+  (fun missing => !validateDWith (fun r => clinkEnabled r && r != missing) program programCert)
 #guard (check fuelD [] program programCert).map (·.ty) == some .int
 #guard !validateD definition (.defDecl "fact" [("n", .nilable .int)] .int bodyProof)
 #guard !validateD program (.seq [

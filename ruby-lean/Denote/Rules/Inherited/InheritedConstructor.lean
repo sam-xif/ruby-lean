@@ -36,18 +36,18 @@ theorem declared_inherited_constructor_run {κ : Ctx} {Γ Γb : Env} {I Ib τ : 
   have he : j = k := Option.some.inj (hj.symm.trans ownerSite.named)
   subst j
   rw [hn] at hl code
-  have hi : Interp.userInit? m.heap r = some md := by
-    simp [Interp.userInit?, hl, code.builtin]
-  have dispatch := (hm.declCls receiver hrc r site.named).2.2.2.2.1 hnew
+  have hi : userInit? m.heap r = some md := by
+    simp [userInit?, hl, code.builtin]
+  have dispatch := (hm.declCls receiver hrc r site.named).2.2.2.2.1 (hm.ordinary_decl hrc halloc) hnew
   obtain ⟨j, hj, alloc⟩ := hm.allocators receiver.name halloc
   have he : j = r := Option.some.inj (hj.symm.trans site.named)
   subst j
   have hparam : md.params = (ps.map (·.1)).map RubyCore.Param.req :=
     hp.trans (by rw [hparams]; exact toRubyParams_required ps)
-  obtain ⟨n, hs, hrun⟩ := constructor_runSpec_at
+  obtain ⟨n, hs, hrun⟩ := constructor_runSpec_at (sendSite := .explicit)
     (κb := initializerBodyCtxAt κ receiver.name owner.name)
     hm ht ha ht alloc site ownerSite ⟨dispatch.1, dispatch.2⟩ code hi hparam hb
-    (by simpa using denAll_length hargs) hargs hps hconst hr hw hcl rfl hconst hΓ rfl hIb hkont hbody
+    (by simpa using denAll_length hargs) hargs hps hconst (.main hr hw hcl) rfl hconst hΓ rfl hIb hkont hbody
   exact ⟨r, n, site.named, hs, hrun⟩
 
 #print axioms declared_inherited_constructor_run

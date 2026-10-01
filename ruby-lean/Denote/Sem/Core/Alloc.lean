@@ -50,7 +50,7 @@ open RubyCore
 /-! ## Pushing one object -/
 
 /-- The heap with one object appended — `Heap.alloc`'s second component, named. -/
-def pushHeap (h : Heap) (obj : Object) : Heap := ⟨h.objs.push obj⟩
+def pushHeap (h : Heap) (obj : Object) : Heap := { h with objs := h.objs.push obj }
 
 @[simp] theorem pushHeap_size (h : Heap) (obj : Object) :
     (pushHeap h obj).objs.size = h.objs.size + 1 := by simp [pushHeap]
@@ -151,7 +151,7 @@ theorem ext_push {m : Machine} (obj : Object)
   have hsize : m.heap.objs.size ≤ (pushHeap m.heap obj).objs.size := by simp
   have hanc : ∀ k, ancestors (pushHeap m.heap obj) k = ancestors m.heap k :=
     Proof.ancestors_congr_grow hshape hsize hsat
-  refine ⟨rfl, rfl, hsize, ?_, hpay, hanc, ?_, ?_, ?_⟩
+  refine ⟨rfl, rfl, hsize, ?_, hpay, hanc, ?_, ?_, ?_, id⟩
   · intro o ho; exact pushHeap_get_lt m.heap obj ho
   · intro o ho
     rcases Nat.eq_or_lt_of_le ho with he | he

@@ -1,4 +1,5 @@
-import RubyCore.Proof.AncestorsGrow
+import RubyCore.Proof.AncestorBounds
+import RubyCore.Proof.NameGrowth
 import RubyCore.Proof.BuiltinConformance
 
 /-!
@@ -94,12 +95,12 @@ theorem plainGrow_alloc (h : Heap) (obj : Object) (hnc : ∀ c, obj.payload ≠ 
     (hiv : obj.ivars = [])
     (hkl : obj.klass < h.objs.size := by decide)
     (heig : obj.eigen = none := by rfl) :
-    PlainGrow h ⟨h.objs.push obj⟩ := by
-  have hget : ∀ o, o < h.objs.size → (Heap.get ⟨h.objs.push obj⟩ o) = h.get o := by
+    PlainGrow h { h with objs := h.objs.push obj } := by
+  have hget : ∀ o, o < h.objs.size → (Heap.get { h with objs := h.objs.push obj } o) = h.get o := by
     intro o ho
     simp only [Heap.get, Array.getD_eq_getD_getElem?, Array.getElem?_push,
       if_neg (Nat.ne_of_lt ho)]
-  have hgnew : (Heap.get ⟨h.objs.push obj⟩ h.objs.size) = obj := by
+  have hgnew : (Heap.get { h with objs := h.objs.push obj } h.objs.size) = obj := by
     simp [Heap.get, Array.getD_eq_getD_getElem?]
   refine ⟨by simp, hget, fun k => ?_, fun o hlo hhi => ?_, fun o ho => ?_⟩
   case refine_2 =>
@@ -114,7 +115,7 @@ theorem plainGrow_alloc (h : Heap) (obj : Object) (hnc : ∀ c, obj.payload ≠ 
     -- anything higher reads `default`, whose `ivars` is `[]` too.
     by_cases he : o = h.objs.size
     · subst he
-      rw [show (Heap.get ⟨h.objs.push obj⟩ h.objs.size) = obj from by
+      rw [show (Heap.get { h with objs := h.objs.push obj } h.objs.size) = obj from by
         simp [Heap.get, Array.getD_eq_getD_getElem?]]
       exact hiv
     · have hb : ¬ o < (h.objs.push obj).size := by simp; omega
@@ -125,7 +126,7 @@ theorem plainGrow_alloc (h : Heap) (obj : Object) (hnc : ∀ c, obj.payload ≠ 
   · rw [classPayload?_oob h k hk]
     by_cases he : k = h.objs.size
     · subst he
-      have hg : (Heap.get ⟨h.objs.push obj⟩ h.objs.size) = obj := by
+      have hg : (Heap.get { h with objs := h.objs.push obj } h.objs.size) = obj := by
         simp [Heap.get, Array.getD_eq_getD_getElem?]
       unfold Heap.classPayload?
       rw [hg]
@@ -178,9 +179,12 @@ Named `_eq` rather than after the function they are about, because inside
 theorem PlainGrow.shapeAgree {h h' : Heap} (hg : PlainGrow h h') : ShapeAgree h h' :=
   fun k => by rw [hg.payload k]
 
-theorem PlainGrow.className_eq {h h' : Heap} (hg : PlainGrow h h') (k : ObjId) :
-    className h' k = className h k := by
-  simp only [className, hg.payload k]
+theorem PlainGrow.className_eq {h h' : Heap} (hg : PlainGrow h h') (k : ObjId)
+    (hn : NamesOk h) : className h' k = className h k :=
+  className_plainGrow hg.size hg.get hn hg.payload k
+
+theorem PlainGrow.namesOk {h h' : Heap} (hg : PlainGrow h h') (hn : NamesOk h) :
+    NamesOk h' := namesOk_plainGrow hg.size hg.get hn hg.payload
 
 /-- `classOf` needs the id to be one the old heap had — it is the one function here
     that reads the object rather than its payload, and the fresh id is exactly where
@@ -202,34 +206,33 @@ theorem PlainGrow.ancestors_eq {h h' : Heap} (hg : PlainGrow h h') (hsat : Satur
 
 /-! ## 2. Resolution: `lookup` and the shadow gate -/
 
-/-- The method-table walk, one ancestor at a time. `lookup.go` reads only
-    `classPayload?`, which `PlainGrow` pins **everywhere**, so this needs no side
-    condition on the chain — and that is precisely what the non-class restriction
-    buys. -/
-theorem lookup_go_grow {h h' : Heap} (hg : PlainGrow h h') (mname : String) :
-    ∀ chain, lookup.go h' mname chain = lookup.go h mname chain := by
-  intro chain
-  induction chain with
-  | nil => rfl
-  | cons k rest ih =>
-    unfold lookup.go
-    rw [hg.payload k]
-    split <;> simp [ih]
+/-- Native lookup agrees after growth when both its chain and optional Object
+fallback fit the old budget. Payload agreement alone does not imply this bound. -/
+theorem lookup_go_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
+    (mname : String) (chain : List ObjId)
+    (hf : chain.length + (ancestors h Boot.objectId).length ≤ 2 * h.objs.size + 2) :
+    lookupInChain h' chain mname = lookupInChain h chain mname :=
+  lookupInChain_grow_congr hg.size (hg.ancestors_eq hsat _) hf (fun k _ => hg.payload k)
 
 theorem lookup_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
-    {recv : Value} (hrv : ∀ o, recv = .ref o → o < h.objs.size) (mname : String) :
+    (hch : ChainsIn h) {recv : Value}
+    (hrv : ∀ o, recv = .ref o → o < h.objs.size) (mname : String) :
     lookup h' recv mname = lookup h recv mname := by
   unfold lookup
-  rw [hg.classOf_value_eq recv hrv, hg.ancestors_eq hsat, lookup_go_grow hg]
+  rw [hg.classOf_value_eq recv hrv, hg.ancestors_eq hsat]
+  apply lookup_go_grow hg hsat
+  have hc := ancestors_length_bound hch (classOf h recv)
+  have ho := ancestors_length_bound hch Boot.objectId
+  omega
 
-/-- The CRuby shadow gate reads `className` over a chain and nothing else, so
-    `PlainGrow`'s global `className` agreement settles it for **any** chain — there
-    is no need to know the chain came from an old heap's walk. Same one-line shape
-    as `crubyShadow_defineMethod`. -/
-theorem crubyShadow_grow {h h' : Heap} (hg : PlainGrow h h') (chain : List ObjId)
-    (mname : String) : crubyShadow h' chain mname = crubyShadow h chain mname := by
-  unfold crubyShadow
-  simp only [hg.className_eq]
+/-- Native and feature shadow checks read both display names and attachment /
+namespace metadata. Each of those observations is preserved here. -/
+theorem crubyShadow_grow {h h' : Heap} (hg : PlainGrow h h') (hn : NamesOk h)
+    (chain : List ObjId) (mname : String) :
+    crubyShadow h' chain mname = crubyShadow h chain mname := by
+  simp only [crubyShadow, nativeSingletonMethod, featureMethod, featureHas, libraryNamespace,
+    hg.payload, hg.className_eq _ hn]
+  rfl
 
 end Proof
 end RubyCore

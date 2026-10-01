@@ -12,3 +12,4 @@ dispatchers on the first pass.
 -/
 
 register_simp_attr frameLem
+register_simp_attr rootFrameLem

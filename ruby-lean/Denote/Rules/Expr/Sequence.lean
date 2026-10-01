@@ -30,10 +30,10 @@ theorem SemSeqA.context {Γ Γ' : Env} {es : List Ratchet.Expr} {τ : Ty}
 
 private theorem seq_catchFree (es : List RubyCore.Expr) :
     RubyCore.Proof.CatchFree [.seqK es] := by
-  intro k hk tag
+  intro k hk
   simp only [List.mem_singleton] at hk
   subst hk
-  simp
+  rfl
 
 private theorem seq_escape (es : List RubyCore.Expr) (m : Machine) (j : Jump) :
     Interp.stepFn (deliverA (.esc j) m [.seqK es]) =
@@ -47,7 +47,7 @@ private theorem seq_bind {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I
     (ht : ∀ n v, StateOk κ₁ Γ₁ I₁ n → denM σ n v →
       RunSpec n (deliverA (.val v) n [.seqK es]) Γ₂ τ κ₂ I₂) :
     RunSpec m (pushK [.seqK es] (evalFrom m e)) Γ₂ τ κ₂ I₂ := by
-  apply (h m hm).bindSpec (seq_catchFree es)
+  apply (h m hm).bindSpec hm.rootClean (seq_catchFree es)
   intro a n hr
   cases a with
   | val v => exact (ht n v (hr.2.2 v rfl) hr.2.1).rebase hr.1
@@ -80,13 +80,13 @@ theorem SemSeqCtxA.runSpec {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty} {es : List 
 /-- Continue a state-specific first run with a context-indexed sequence tail. -/
 theorem RunSpec.thenSeq {κ₁ κ₂ : Ctx} {Γ₁ Γ₂ : Env} {I₁ I₂ σ τ : Ty}
     {m : Machine} {e e' : Ratchet.Expr} {es : List Ratchet.Expr}
-    (h : RunSpec m (evalFrom m e) Γ₁ σ κ₁ I₁)
+    (h : RunSpec m (evalFrom m e) Γ₁ σ κ₁ I₁) (hm : RootClean m)
     (ht : SemSeqCtxA κ₁ Γ₁ I₁ (e' :: es) τ κ₂ Γ₂ I₂) :
     RunSpec m (evalFrom m (.seq (e :: e' :: es))) Γ₂ τ κ₂ I₂ := by
   apply RunSpec.step (by rfl)
     (show Interp.stepFn _ =
       .next (pushK [.seqK (toRubyList (e' :: es))] (evalFrom m e)) from rfl)
-  apply h.bindSpec (seq_catchFree _)
+  apply h.bindSpec hm (seq_catchFree _)
   intro a n hr
   cases a with
   | val v => exact (ht.runSpec n (hr.2.2 v rfl) v).rebase hr.1
@@ -103,7 +103,7 @@ theorem SemSafeCtxA.sequence {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty}
     exact RunSpec.step (by rfl) (show Interp.stepFn _ = .next (evalFrom m e) from rfl)
       (he m hm)
   | @cons _ _ _ _ Γ₁ _ _ _ _ σ _ e e' es he ht =>
-    exact (he m hm).thenSeq ht
+    exact (he m hm).thenSeq hm.rootClean ht
 
 /-- Two-expression convenience form; the list theorem owns the composition proof. -/
 theorem SemSafeCtxA.seq {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ σ τ : Ty}
@@ -129,5 +129,13 @@ theorem SemA.DJudgeSeq.last {Γ Γ' : Env} {e : Ratchet.Expr} {τ : Ty}
 theorem SemA.DJudgeSeq.cons {Γ Γ₁ Γ₂ : Env} {e e' : Ratchet.Expr}
     {es : List Ratchet.Expr} {σ τ : Ty} (h : SemSafeA Γ e σ Γ₁)
     (ht : SemSeqA Γ₁ (e' :: es) τ Γ₂) : SemSeqA Γ (e :: e' :: es) τ Γ₂ := .cons h ht
+
+theorem SemSafeCtxA.DJudgeSeq.last {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {e : Expr}
+    (he : SemSafeCtxA κ Γ I e τ κ' Γ' I') : SemSeqCtxA κ Γ I [e] τ κ' Γ' I' := .last he
+
+theorem SemSafeCtxA.DJudgeSeq.cons {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ σ τ : Ty}
+    {e e' : Expr} {es : List Expr} (he : SemSafeCtxA κ Γ I e σ κ₁ Γ₁ I₁)
+    (ht : SemSeqCtxA κ₁ Γ₁ I₁ (e' :: es) τ κ₂ Γ₂ I₂) :
+    SemSeqCtxA κ Γ I (e :: e' :: es) τ κ₂ Γ₂ I₂ := .cons he ht
 
 end Ratchet.Denote.Typed

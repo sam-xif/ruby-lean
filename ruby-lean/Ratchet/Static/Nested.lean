@@ -101,12 +101,17 @@ structure Frame where
       because a prepended module's "next" is the class that prepended it, and that is only
       findable in the **receiver's** MRO — `defClass` alone cannot name it.
 
-      For a singleton method body this is the class object's own name, which is harmless: a
-      `super` there would search instance methods and find nothing. -/
+      For a singleton body this is the class object's own name; `singleton` distinguishes
+      that receiver from an instance. Ordinary super guards require `singleton = false`. -/
   recvClass : String
   /-- Where the running method was **found** — which for a prepended or included module is that
       module, not the receiver's class. `super` continues from just after it. -/
   defClass : String
   methName : String
+  singleton : Bool := false
+
+/-- The receiver fact carried by a method frame, independently of its precise self type. -/
+def Frame.recvTy (f : Frame) : Ty :=
+  if f.singleton then .clsOf f.recvClass else .cls f.recvClass
 
 end Ratchet

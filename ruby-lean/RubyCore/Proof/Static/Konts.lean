@@ -1,4 +1,5 @@
 import RubyCore.Proof.Static.Decls
+import RubyCore.Proof.Static.IteratorUnwind
 
 /-!
 # P0 static soundness, part 2 — typing the machine
@@ -426,7 +427,7 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       * **`retVal`'s type** is the iterator's answer, delivered to the `frameK` below once
         `rest` runs out.
 
-      `kind = .ignore` restricts this to the `each`-shaped iterators. `.collect` accumulates
+      `kind = .ignore` restricts this to the `each`-shaped iterators. `.arrayMap` accumulates
       the block's values into a fresh array and would need the element claim `Ty` cannot
       yet write (`arrayOf`, L238); `.fold`/`.maxBy` change the block's *argument* types
       between iterations. One `IterKind` at a time, and the census says `each` is the
@@ -514,12 +515,9 @@ def RetTransparent : Kont → Prop
   -- catch-all passes a jump on with the kont popped, same as the ten above.
   | .hshKeyK .. => True
   | .hshValK .. => True
-  -- **L253: the native iterator's loop marker.** `unwind` has *no arm* for `.iterK` — it
-  -- falls to the catch-all, which passes the jump on with the kont popped — so it is
-  -- transparent for the same one line of the interpreter the ten above it are. Note the
-  -- asymmetry with `blkFrameK`, which is right there beside it in the continuation and is
-  -- **not** transparent: the block frame consumes a `next` and a lambda's `break`.
-  | .iterK .. => True
+  -- Hash markers release a shared insertion lock on unwind (unsoundness.md).
+  -- The typed iterator rule uses .ignore, which retains exact transparency.
+  | .iterK _ _ _ kind _ _ _ => IterUnwindInert kind
   | _ => False
 
 /-- The label of the innermost activation's `frameK`. With L199's clause this is the
@@ -704,8 +702,8 @@ def NxtTransparent : Kont → Prop
   | .arrSplatK .. => True
   | .jumpValK _ => True
   | .cpathK _ => True
-  -- L253, for `RetTransparent`'s reason at the other channel.
-  | .iterK .. => True
+  -- Same shared-lock restriction as RetTransparent.
+  | .iterK _ _ _ kind _ _ _ => IterUnwindInert kind
   | _ => False
 
 theorem unwind_nxt_transparent {m : Machine} {κ : Kont} {k : List Kont} {v : Value}
@@ -1000,7 +998,7 @@ def CtlOk (D : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env))
         NxtOk D m.heap c Γs m.kont
   -- The other jumps stay excluded: `break`/`retry`/`redo`/`throw` are not in the fragment,
   -- so no step can produce one.
-  | .jump _ => False
+  | .jump _ | .send .. => False
 
 /-- **Transport of the continuation judgement.** The other half of L137's cost:
     a heap-writing step must carry every `ValueTy` fact already stored in the
@@ -1273,7 +1271,7 @@ theorem setLocal_captured (m : Machine) (x : String) (v : Value) (p : ObjId) :
     ((m.setLocal x v).frames.getD p default).captured
       = (m.frames.getD p default).captured := by
   show ((m.frames.set! _ _).getD p default).captured = _
-  by_cases hq : p = Machine.setLocal.owner m x (m.stack.headD 0) (m.stack.headD 0)
+  by_cases hq : p = Machine.setLocal.owner m x (m.localFrameId (m.stack.headD 0)) (m.localFrameId (m.stack.headD 0))
       (m.frames.size + 1)
   · by_cases hlt : p < m.frames.size
     · rw [hq, getD_set!_self _ _ _ (hq ▸ hlt)]
@@ -1284,7 +1282,7 @@ theorem setLocal_captured (m : Machine) (x : String) (v : Value) (p : ObjId) :
 theorem setLocal_shape (m : Machine) (x : String) (v : Value) (p : ObjId) :
     FrameShape ((m.setLocal x v).frames.getD p default) (m.frames.getD p default) := by
   show FrameShape ((m.frames.set! _ _).getD p default) _
-  by_cases hq : p = Machine.setLocal.owner m x (m.stack.headD 0) (m.stack.headD 0)
+  by_cases hq : p = Machine.setLocal.owner m x (m.localFrameId (m.stack.headD 0)) (m.localFrameId (m.stack.headD 0))
       (m.frames.size + 1)
   · by_cases hlt : p < m.frames.size
     · rw [hq, getD_set!_self _ _ _ (hq ▸ hlt)]
@@ -1929,9 +1927,9 @@ theorem arrayPayload_of_valueTy {h : Heap} {v : Value} (hv : ValueTy h v (.cls "
     `.error` — hence `.unsupported`, which `StepOk` refuses — on a `.str`, an `.int` or a
     `.hsh`. `valueTy?` reads the *class*, so nothing but `plainRecv`'s clause connects the
     two, and this lemma is where the connection is spent. -/
-theorem spreadA_of_array {m : Machine} {v : Value}
+theorem spreadA_of_array {m : Machine} {v : Value} (call : SplatCall)
     (hv : ValueTy m.heap v (.cls "Array")) :
-    ∃ vs, Interp.spreadA m v = .ok (vs, m) := by
+    ∃ vs, Interp.startSplat m call v = Interp.resumeSplat m call vs := by
   -- The value is a reference: no immediate has a class type (`valueTy?`'s arms answer
   -- `.int`/`.bool`/… and `subTy` at a concrete type is an equality).
   obtain ⟨o, rfl⟩ : ∃ o, v = .ref o := by
@@ -1956,7 +1954,7 @@ theorem spreadA_of_array {m : Machine} {v : Value}
     | arr xs => exact ⟨xs, rfl⟩
     | _ => rw [hp] at h6; exact absurd h6 (by simp)
   obtain ⟨xs, hp⟩ := harr
-  exact ⟨xs.toList, by simp [Interp.spreadA, Interp.spread, hp, Except.map]⟩
+  exact ⟨xs.toList, by simp [Interp.startSplat, Builtins.arrPayload?, hp, Value.identEq]⟩
 
 /-- **And the splat arm** (L230), which is one line of `continueArray` and needs no
     hypothesis: a `.splat (some o)` element evaluates `o` under an `arrSplatK`. -/
@@ -1997,7 +1995,9 @@ theorem inv_eval {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     -- parameter — because a defaulted parameter still consumes a positional argument,
     -- and the callers of these five pass `hglob`/`hgv` positionally. L228's note says
     -- the same thing about `hgl`; this is the second time it has been load-bearing.
-    (hclo : ClosuresOk m := by assumption) :
+    (hclo : ClosuresOk m := by assumption)
+    (hnames : NamesOk m.heap := by assumption)
+    (hchains : ChainsIn m.heap := by assumption) :
     Inv (withCtl m (.eval e)) :=
   ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    ⟨τ, τ, Γ', F', Γk, hinf, by simp, hsuE, hk⟩⟩
@@ -2026,7 +2026,9 @@ theorem inv_eval_sub {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     -- parameter — because a defaulted parameter still consumes a positional argument,
     -- and the callers of these five pass `hglob`/`hgv` positionally. L228's note says
     -- the same thing about `hgl`; this is the second time it has been load-bearing.
-    (hclo : ClosuresOk m := by assumption) :
+    (hclo : ClosuresOk m := by assumption)
+    (hnames : NamesOk m.heap := by assumption)
+    (hchains : ChainsIn m.heap := by assumption) :
     Inv (withCtl m (.eval e)) :=
   ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    ⟨τ, τ', Γ', F', Γk, hinf, hsub, hsuE, hk⟩⟩
@@ -2046,7 +2048,9 @@ theorem inv_value {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     -- so a caller that lacks the fact still fails here rather than being papered over.
     (hgl : GlobalsOk F m.heap m.globals := by assumption)
     (hsuE : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption)
-    (hclo : ClosuresOk m := by assumption) :
+    (hclo : ClosuresOk m := by assumption)
+    (hnames : NamesOk m.heap := by assumption)
+    (hchains : ChainsIn m.heap := by assumption) :
     Inv (withCtl m (.value v)) :=
   ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl, ⟨τ, Γk, hv, hsuE, hk⟩⟩
 
@@ -2125,6 +2129,7 @@ theorem inv_push_sub {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
     is the shape that composes; `entry_dispatch` discharges the same three shapes the
     same way. -/
 theorem valueTy_alloc_fresh {h : Heap} {obj : Object} {n : String}
+    (hnames : NamesOk h)
     (hpl : (∀ c, obj.payload ≠ .proc c) ∧ (∀ xs, obj.payload ≠ .hsh xs) ∧
            (∀ c, obj.payload ≠ .cls c))
     (he : obj.eigen = none)
@@ -2142,19 +2147,19 @@ theorem valueTy_alloc_fresh {h : Heap} {obj : Object} {n : String}
     -- stated at the *name* the producer already has. Free at both call sites: the array
     -- literal's payload *is* an `.arr`, and the string literal's name is `"String"`.
     (harr : n = "Array" → ∃ xs, obj.payload = .arr xs) :
-    ValueTy ⟨h.objs.push obj⟩ (.ref h.objs.size) (.cls n) := by
+    ValueTy { h with objs := h.objs.push obj } (.ref h.objs.size) (.cls n) := by
   obtain ⟨hproc, hhsh, hnc⟩ := hpl
-  have hg : PlainGrow h ⟨h.objs.push obj⟩ :=
+  have hg : PlainGrow h { h with objs := h.objs.push obj } :=
     plainGrow_alloc h obj hnc hiv (classPayload?_isSome_lt hk) he
   -- The fresh id reads back as the object that was pushed; everything else is a
   -- rewrite through `PlainGrow`, which pins `classPayload?` at *every* id.
-  have hget : (Heap.get ⟨h.objs.push obj⟩ h.objs.size) = obj := by
+  have hget : (Heap.get { h with objs := h.objs.push obj } h.objs.size) = obj := by
     simp [Heap.get, Array.getD_eq_getD_getElem?]
-  have hlt : h.objs.size < (Heap.mk (h.objs.push obj)).objs.size := by simp
-  have hplain : plainRecv ⟨h.objs.push obj⟩ h.objs.size = true := by
+  have hlt : h.objs.size < ({ h with objs := h.objs.push obj } : Heap).objs.size := by simp
+  have hplain : plainRecv { h with objs := h.objs.push obj } h.objs.size = true := by
     unfold plainRecv
     rw [hget, he, hg.payload obj.klass]
-    rw [hg.className_eq obj.klass, hn]
+    rw [hg.className_eq obj.klass hnames, hn]
     cases hp : obj.payload
     case proc c => exact absurd hp (hproc c)
     case hsh xs => exact absurd hp (hhsh xs)
@@ -2172,7 +2177,7 @@ theorem valueTy_alloc_fresh {h : Heap} {obj : Object} {n : String}
        simp [hlt, hk, hfz, hna])
   refine ValueTy.exact ?_
   simp only [valueTy?, hplain, if_true]
-  rw [plainRecv_classOf hplain, hget, hg.className_eq obj.klass, hn]
+  rw [plainRecv_classOf hplain, hget, hg.className_eq obj.klass hnames, hn]
 
 /-- **The invariant survives a step that allocates a plain object** (L149) — which
     is the producer's consecution case with the rule removed, and therefore the
@@ -2216,12 +2221,14 @@ theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
     -- And that the allocation left the globals alone, which is `rfl` at every caller.
     (hgv : m'.globals = m.globals := by rfl)
     (hsuE : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption)
-    (hclo : ClosuresOk m := by assumption) :
+    (hclo : ClosuresOk m := by assumption)
+    (hnames : NamesOk m.heap := by assumption)
+    (hchains : ChainsIn m.heap := by assumption) :
     Inv (withCtl m' (.value v)) := by
-  have hag : TypeAgree m.heap m'.heap := typeAgree_of_plainGrow hg hsat
-  refine ⟨NoHook_grow hg hsat hh,
-    Saturated_grow hg.shapeAgree hg.size hsat, LitClsOk_grow hg hstr,
-    ClassOk_grow hg hsat hcls,
+  have hag : TypeAgree m.heap m'.heap := typeAgree_of_plainGrow hg hsat hnames
+  refine ⟨NoHook_grow hg hsat hchains hh,
+    Saturated_grow hg.shapeAgree hg.size hsat, LitClsOk_grow hg hnames hstr,
+    ClassOk_grow hg hsat hnames hcls,
     show BottomObj m'.frames m'.stack by rw [hfr, hst]; exact hbot,
     show framePopLabels m'.kont = m'.stack.dropLast by rw [hko, hst]; exact hks,
     -- L247: an allocating step moves neither the kont nor the frames.
@@ -2239,7 +2246,7 @@ theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
           intro o ho
           show (m'.heap.classPayload? o).isSome = true
           rw [hag.2.2.1 o (classPayload?_isSome_lt ho)]; exact ho),
-    F, c, Γ, Γs, DeclsOk_grow hg hsat ht, ?_, ?_, ?_, ?_⟩
+    F, c, Γ, Γs, DeclsOk_grow hg hsat hnames hchains ht, ?_, ?_, ?_, ?_⟩
   · show FramesOk m'.heap m'.frames m'.stack (Γ :: Γs.map Prod.snd)
     rw [hfr, hst]
     exact FramesOk.heap_congr hag hfs

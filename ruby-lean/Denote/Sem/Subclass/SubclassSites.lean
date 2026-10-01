@@ -11,6 +11,10 @@ open RubyCore Ratchet RubyCore.Proof RubyCore.Proof.Judgment
 variable {h : Heap} {name q : String} {parent eParent : ObjId}
 local notation "h₁" => heap h Boot.objectId name q parent eParent
 
+theorem moduleBase {κ : Ctx} (hp : ModuleBase κ h) (hc : ChainsIn h) (hs : Saturated h)
+    (ho : (h.classPayload? Boot.objectId).isSome = true) : ModuleBase κ h₁ :=
+  hp.transport (method_old hc hs hc.boot.2.1) (fallback_old hc hs ho hc.boot.2.1 hp.constants)
+
 theorem classFront_old {k : ObjId} (hk : k < h.objs.size) : classFrontB h₁ k = classFrontB h k := by
   unfold classFrontB
   rw [grow.payloadOld (by rwa [hmid_size])]
@@ -53,7 +57,7 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
   have hl : lookup h₁ (.ref k) "method_added" = lookup h (.ref k) "method_added" := by
     rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hk, method_old hc hs (ClsGrow.classOf_lt hc hk)]
   refine ⟨named hc.boot.2.2.2.2 hn site.named, ?_, ?_,
-    instance_constants_old site hc hs ho hn, ?_, site.metaclass.subclass_old hc hs hk, ?_⟩
+    instance_constants_old site hc hs ho hn, ?_, site.metaclass.subclass_old hc hs hk, ?_, ?_, ?_, ?_, site.afterBuiltins⟩
   · simpa only [classFront_old hk] using site.front
   · simpa only [definitionHookQuietB, hl] using site.hook
   · intro n hn owner md hm
@@ -62,6 +66,10 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
   · intro n hn owner md hm
     rw [classOf_old hk, method_old hc hs (ClsGrow.classOf_lt hc hk)] at hm
     exact site.classNames n hn owner md hm
+  · simpa only [classOf_old hk, classFront_old (ClsGrow.classOf_lt hc hk)] using site.metaFront
+  · simpa only [classOf_old hk, (fields (ClsGrow.classOf_lt hc hk)).2.2.1] using site.metaLeaf
+  · rw [classOf_old hk]
+    exact fallback_old hc hs ho (ClsGrow.classOf_lt hc hk) site.metaConstants
 
 theorem hook_quiet (hc : ChainsIn h) (hs : Saturated h)
     (hl : parent < h.objs.size) (he : (h.get parent).eigen = some eParent)
@@ -69,9 +77,7 @@ theorem hook_quiet (hc : ChainsIn h) (hs : Saturated h)
   unfold definitionHookQuietB
   rw [lookup_eq_methodOn, classOf_class, method_eigen hc hs (hc.eigen parent hl eParent he)]
   simp only [definitionHookQuietB, lookup_eq_methodOn, classOf, he] at hh
-  cases hm : Interp.methodOn h eParent "method_added" with
-  | none => rfl
-  | some pair => obtain ⟨owner, md⟩ := pair; rw [hm] at hh; exact hh
+  exact hh
 
 /-- Only the inherited parent capabilities are needed; no parent front/own-table shape
 is assumed. This also covers Object-based creation without manufacturing an Object row. -/
@@ -81,11 +87,12 @@ theorem instanceSite {κ : Ctx} (hc : ChainsIn h) (hs : Saturated h)
     (hb : (ancestors h eParent).contains Boot.basicObjectId = true)
     (hh : definitionHookQuietB h parent = true)
     (hconst : ∀ cn, (constLookup h cn).orElse (fun _ => constLookupFrom h parent cn) = constLookup h cn)
-    (hinst : NamesAt (nameFreeN κ) h parent) (hcls : NamesAt (nameFreeN κ) h eParent) :
+    (hinst : NamesAt (nameFreeN κ) h parent) (hcls : NamesAt (nameFreeN κ) h eParent)
+    (hmeta : ConstFallback h eParent) (hboot : Boot.yielderId < h.objs.size) :
     InstanceSite κ name h.objs.size h₁ := by
   have hel := hc.eigen parent hl eParent he
   refine ⟨named_fresh ho, ?_, hook_quiet hc hs hl he hh,
-    instance_constants_fresh hc hs ho hl hconst, ?_, meta_fresh hc hs hel hb, ?_⟩
+    instance_constants_fresh hc hs ho hl hconst, ?_, meta_fresh hc hs hel hb, ?_, ?_, ?_, ?_, hboot⟩
   · simp only [classFrontB, Heap.classPayload?, get_class, classObjE]; rfl
   · intro n hn owner md hm
     rw [method_class hc hs hl] at hm
@@ -93,6 +100,10 @@ theorem instanceSite {κ : Ctx} (hc : ChainsIn h) (hs : Saturated h)
   · intro n hn owner md hm
     rw [classOf_class, method_eigen hc hs hel] at hm
     exact hcls n hn owner md hm
+  · simp only [classOf_class, classFrontB, Heap.classPayload?, get_eigen, eigObjC]; rfl
+  · simp only [classOf_class, get_eigen, eigObjC]
+  · rw [classOf_class]
+    exact fallback_fresh_meta hc hs ho hel hmeta
 
 theorem scope_ready {m : Machine} {body : RubyCore.Expr}
     (hc : ChainsIn m.heap) (hs : Saturated m.heap)

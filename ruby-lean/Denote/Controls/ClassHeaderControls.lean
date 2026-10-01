@@ -85,7 +85,7 @@ theorem inherited_point_header (hb : bootOkB = true)
 #guard match Interp.enterClassBody inheritedBoot "Point" false none .nil with
   | .next n =>
       (n.heap.classPayload? n.currentFrame.defmod).any (·.methods.isEmpty) &&
-      (Interp.userInit? n.heap n.currentFrame.defmod).any
+      (userInit? n.heap n.currentFrame.defmod).any
         (fun md => md.owner == Boot.objectId && md.params.length == 1) &&
       match Interp.run 100 n with
       | .value _ m => match Interp.run 100

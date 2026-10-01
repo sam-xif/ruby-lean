@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L280 (2026-09-28)",
+  "note": "External each overrides, keyword packing, checked rewind response/missing hooks and user StopIteration."
+}

@@ -1,6 +1,6 @@
 import Ratchet.Check.ReceiverCache
 import Denote.Rules.Init.InitChecked
-import Denote.Bridge
+import Denote.Bridge.Full
 import Denote.Rules.Inherited.InheritedConstructor
 import Denote.Rules.Inherited.InheritedRun
 import Denote.Sem.Class.ClassGuards
@@ -48,7 +48,7 @@ theorem checked_inherited_member_run {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine
     (by simpa only [b.route.nameOk] using djudge_context b.body.judged)
     hm (reframeTypesB_sound ht) hasms hc b.route.member b.route.installed b.route.chain b.route.clear
     (callWorldB_sound hw) hkont b.fieldsFO hv (by simpa using denAll_length hargs) hargs
-    (fun x => (constGet?_empty (κ := instanceBodyCtx κ ⟨c.name, b.route.cls.name, b.decl.name⟩ b.fields)
+    (fun x => (constGet?_empty (κ := instanceBodyCtx κ ⟨c.name, b.route.cls.name, b.decl.name, false⟩ b.fields)
       hco x).trans (constGet?_empty hco x).symm)
     (List.all_eq_true.mp hΓ) (fun _ _ => Or.inr hname) hn hshadow
 

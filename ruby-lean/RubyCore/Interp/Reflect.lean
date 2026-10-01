@@ -1,4 +1,5 @@
-import RubyCore.Interp.Dispatch
+import RubyCore.Interp.Mutation
+import RubyCore.Unicode
 
 /-!
 The reflective metaprogramming core (`define_method`, `*_eval`, `prepend`,
@@ -45,7 +46,8 @@ def localFreeB : Nat → Expr → Bool
   | 0, _ => false
   | n + 1, e =>
     match e with
-    | .int _ | .flt _ | .str _ | .sym _ | .tru | .fls | .nil | .self' => true
+    | .int _ | .flt _ | .rat _ _ _ | .str _ | .sym _ | .tru | .fls | .nil | .self' => true
+    | .imag .. => true
     | .var .lvar _ => false
     | .var _ _ => true
     | .vasgn .lvar _ _ => false
@@ -93,7 +95,11 @@ def visNames (m : Machine) (o target : ObjId) (vis : Visibility) (modFun : Bool)
     acc.bind fun m =>
       match methodOn m.heap target n with
       | some (_, md) =>
-        if md.builtin.isSome && !md.fromPrelude then none   -- unmodeled builtin → gate
+        if md.builtin.isSome && !md.fromPrelude &&
+            !(procCallBid (md.builtin.getD "") || arrayMapBid (md.builtin.getD "") ||
+              enumBid (md.builtin.getD "") || nativeIteratorBid (md.builtin.getD "") ||
+              md.builtin == some "BasicObject#method_missing") then none
+          -- Other native visibility edits remain outside the modeled fragment.
         else
           let m := { m with heap := defineMethod m.heap target n { md with visibility := vis } }
           -- `module_function :m` also defines `m` as a singleton method [V]
@@ -179,7 +185,8 @@ def dmTarget? (m : Machine) (recv : Value) (singleton : Bool) : Option ObjId :=
     | .ref o => some (eigenclassOf m o).1
     | _ => none
   else match recv with
-    | .ref o => if (m.heap.classPayload? o).isSome then some o else none
+    | .ref o => if o == Boot.mainId then some Boot.objectId else
+        if (m.heap.classPayload? o).isSome then some o else none
     | _ => none
 
 /-- The machine `dmTarget?` grows: `define_singleton_method` on a plain object allocates the
@@ -197,17 +204,30 @@ def reflectDefineMethod (m : Machine) (recv : Value) (mname : String)
     -- the defining scope's locals, but `self` is the receiver at call time and
     -- `return` returns from the method. `capturedFrame` on the MethodDef is what
     -- carries the first half; the frame kind (`.method`) the second.
+    if mname == "define_method" && (dmTarget? m recv false).isNone then none else
+    if args.isEmpty || args.length > 2 then
+      some (.next (raiseErr m Boot.argumentErrorId
+        s!"wrong number of arguments (given {args.length}, expected 1..2)")) else
     match args with
     | nameArg :: rest =>
       match symOrStr m nameArg with
       | none => none
       | some name =>
         -- body from the block, or from a Proc/lambda passed as the 2nd argument
-        let cl? := match blk with
-          | some bv => procClosure? m bv
-          | none => match rest with | [pv] => procClosure? m pv | _ => none
+        let body := match rest with | [pv] => some pv | _ => blk
+        let cl? := body.bind (procClosure? m)
         match cl? with
-        | none => none   -- a `Method`/`UnboundMethod` argument: falls to the gate
+        | none =>
+          if body.isNone then some (.next (raiseErr m Boot.argumentErrorId
+            "tried to create Proc object without a block")) else
+          -- Method/UnboundMethod bodies need their binding protocol; do not
+          -- report a false TypeError for those representations.
+          let value := body.getD .nil
+          let typeName := className m.heap (realClassOf m.heap value)
+          if ["Method", "UnboundMethod"].contains typeName then
+            some (.unsupported "define_method from a Method/UnboundMethod") else
+          some (.next (raiseErr m Boot.typeErrorId
+            s!"wrong argument type {typeName} (expected Proc/Method/UnboundMethod)"))
         | some cl =>
             -- `cl.locals` (block-locals, explicit and parse-time-implicit alike)
             -- used to gate here. They belong on the MethodDef instead: the body
@@ -219,8 +239,12 @@ def reflectDefineMethod (m : Machine) (recv : Value) (mname : String)
             | none => none   -- non-Module receiver: CRuby's NoMethodError; gate below
             | some target =>
               let m := dmTargetM m recv singleton
+              if let some receiver := frozenMethodReceiver? m.heap target then
+                some (raiseFrozen m receiver)
+              else
               -- constants in the body resolve at the *definition* site [V]
-              let cref := (m.frames.getD (cl.captured.getD 0) default).cref
+              let capture := m.frames.getD (cl.captured.getD 0) default
+              let cref := capture.cref
               -- **J33: capture erasure for closed bodies.** A body that can
               -- never read or write a local (`localFreeB`) never consults the
               -- chain, so installing it chain-free is unobservable — and it is
@@ -230,15 +254,18 @@ def reflectDefineMethod (m : Machine) (recv : Value) (mname : String)
               -- methods. Open bodies keep the capture, byte-for-byte as before.
               let md : MethodDef :=
                 { params := cl.params, body := cl.body, owner := target, cref,
+                  forTargets := cl.forTargets, forMultiple := cl.forMultiple, fromBlock := true,
+                  definee := some capture.defmod,
+                  definitionFrame := cl.captured.map m.definitionFrameId,
+                  visibility := if singleton then .pub else m.macroVisibility target,
                   capturedFrame :=
                     -- fuel bounds the *depth*; any body deeper than this keeps
                     -- its capture (the conservative direction)
-                    if localFreeB 1000000 cl.body then none
+                    if cl.forTargets.isNone && localFreeB 1000000 cl.body then none
                     else cl.captured,
                   declared := cl.locals,
-                  fromPrelude := m.preludeMode }
-              let m := { m with heap := defineMethod m.heap target name md }
-              some (.next (withCtl m (.value (.sym name))))
+                  fromPrelude := m.preludeMode || cl.libraryOrigin }
+              some (runMethodEdits m [.define target name md] (.sym name))
     | [] => none
 
 def reflectEval (m : Machine) (recv : Value) (mname : String)
@@ -301,9 +328,7 @@ def reflectThrow (m : Machine) (_recv : Value) (_mname : String)
     -- rather than after unwinding, which would have discarded that rescue.
     let go := fun (tag : Value) (v : Value) =>
       if hasCatcher m tag then StepResult.next (withCtl m (.jump (.throwJ tag v)))
-      else match Builtins.inspectP m tag with
-        | .ok r => .next (raiseErr m Boot.uncaughtThrowErrorId s!"uncaught throw {r}")
-        | .error e => .unsupported e
+      else .next (raiseUncaughtThrow m tag v)
     match args with
     | [tag] => some (go tag .nil)
     | [tag, v] => some (go tag v)
@@ -320,6 +345,8 @@ def reflectVisibility (m : Machine) (recv : Value) (mname : String)
       | _ => .priv
     match recv with
     | .ref o0 =>
+      if (m.heap.classPayload? o0).isNone &&
+          (o0 != Boot.mainId || !["public", "private"].contains mname) then none else
       -- at toplevel the receiver is `main`, and these operate on Object [V]
       let o := if (m.heap.classPayload? o0).isNone then Boot.objectId else o0
       let names := args.filterMap (symOrStr m)
@@ -330,22 +357,20 @@ def reflectVisibility (m : Machine) (recv : Value) (mname : String)
           some (.unsupported "bare module_function (sets a body-wide mode)")
         else
           -- bare `private`/`public`/`protected` in a class body
-          let f := m.currentFrame
-          let m := m.setCurrentFrame { f with defVis := vis }
+          let m := m.setDefinitionVisibility vis
           some (.next (withCtl m (.value .nil)))
       else
         -- the target class: the eigenclass for the `*_class_method` forms
         let classMeth := mname == "private_class_method" || mname == "public_class_method"
         let target := if classMeth then (eigenclassOf m o).1 else o
         let m := if classMeth then (eigenclassOf m o).2 else m
-        if visOk m o target vis (mname == "module_function") names then
-          let m := visRun m o target vis (mname == "module_function") names
-          let (arr, m) := Builtins.allocArr m (names.map Value.sym).toArray
-          -- a single name answers that name, several answer the array [V]
-          match names with
-          | [n] => some (.next (withCtl m (.value (.sym n))))
-          | _ => some (.next (withCtl m (.value arr)))
-        else some (.unsupported s!"{mname} of a method the model does not define")
+        if mname == "module_function" && !(m.heap.classPayload? o).any (·.isModule) then
+          some (.unsupported "module_function on a class") else
+        let edits := names.map fun name =>
+          if mname == "module_function" then MethodEdit.moduleFunction o name else .visibility target name vis
+        let (arr, m) := Builtins.allocArr m args.toArray
+        let result := if args.length == 1 then args.headD .nil else arr
+        some (runMethodEdits m edits result)
     | _ => none
 
 def reflectSingletonClass (m : Machine) (recv : Value) (_mname : String)
@@ -386,13 +411,14 @@ def reflectIvarSet (m : Machine) (recv : Value) (_mname : String)
         if !n.startsWith "@" then
           some (.unsupported "instance_variable_set with a non-ivar name (NameError message)")
         else if (m.heap.get o).frozen then
-          match Builtins.inspectP m recv with
-          | .ok r => some (.next (raiseErr m Boot.frozenErrorId
-              s!"can't modify frozen {className m.heap (m.heap.get o).klass}: {r}"))
-          | .error e => some (.unsupported e)
+          some (raiseFrozen m recv)
         else
           let obj := m.heap.get o
-          let obj := { obj with ivars := (n, val) :: obj.ivars.filter (·.1 != n) }
+          -- Updating a field retains its original insertion position (L289).
+          let ivars := if obj.ivars.any (·.1 == n) then
+            obj.ivars.map (fun (key, old) => (key, if key == n then val else old))
+            else (n, val) :: obj.ivars
+          let obj := { obj with ivars := ivars }
           some (.next (withCtl { m with heap := m.heap.set o obj } (.value val)))
     | _, _ => none
 
@@ -410,17 +436,29 @@ def reflectIvarNames (m : Machine) (recv : Value) (_mname : String)
 
 def reflectConstGet (m : Machine) (recv : Value) (mname : String)
     (args : List Value) (_blk : Option Value) : Option StepResult :=
+    if args.isEmpty || args.length > 2 then
+      some (.next (raiseErr m Boot.argumentErrorId
+        s!"wrong number of arguments (given {args.length}, expected 1..2)"))
+    else
     match recv, args with
     | .ref o, nameArg :: _ =>
       match symOrStr m nameArg, m.heap.classPayload? o with
-      | some n, some _ =>
+      | some n, some cp =>
         if n.contains ':' then some (.unsupported s!"{mname} with a scoped name")
         else
-          match constLookupFrom m.heap o n with
+          let inherit := (args[1]?.map Value.truthy).getD true
+          -- Reflection on a module falls back to Object; a qualified A::X read
+          -- does not. Explicit inherit=false consults only this object's table.
+          let scopes := if !inherit then [o] else
+            ancestors m.heap o ++ (if cp.isModule then ancestors m.heap Boot.objectId else [])
+          match scopes.firstM (fun k => constOwn m.heap k n) with
           | some v =>
             some (.next (withCtl m
               (.value (if mname == "const_get" then v else .bool true))))
           | none =>
+            if scopes.any (fun k => unmodeledNamespaceConstant m k n false) then
+              some (.unsupported s!"{mname} of unmodeled constant {className m.heap o}::{n}")
+            else
             if mname == "const_defined?" then
               -- a constant CRuby has but we don't model would answer a wrong
               -- `false` — same fidelity split as dispatch (L5).
@@ -428,90 +466,110 @@ def reflectConstGet (m : Machine) (recv : Value) (mname : String)
                 some (.unsupported s!"const_defined? of unmodeled constant {n}")
               else some (.next (withCtl m (.value (.bool false))))
             else
-              some (.next (raiseErr m Boot.nameErrorId
-                s!"uninitialized constant {className m.heap o}::{n}"))
+              if (lookup m.heap recv "const_missing").any (fun (_, md) => md.builtin.isNone) then
+                some (.unsupported "const_get with a user const_missing hook")
+              else
+                let qualifier := if o == Boot.objectId then "" else className m.heap o ++ "::"
+                some (.next (raiseErr m Boot.nameErrorId s!"uninitialized constant {qualifier}{n}"))
       | _, _ => none
     | _, _ => none
 
-def reflectConstSet (m : Machine) (recv : Value) (_mname : String)
-    (args : List Value) (_blk : Option Value) : Option StepResult :=
-    match recv, args with
-    | .ref o, [nameArg, val] =>
-      match symOrStr m nameArg, m.heap.classPayload? o with
-      | some n, some _ =>
-        some (.next (withCtl { m with heap := constSetIn m.heap o n val } (.value val)))
-      | _, _ => none
-    | _, _ => none
+/-- ASCII native name diagnostics use byte escapes (US-ASCII or ASCII-8BIT
+    in CRuby); messages containing UTF-8 scalars retain Unicode representation. -/
+def raiseConstantError (m : Machine) (cls : ObjId) (text : String) : StepResult :=
+  let (message, m) := Builtins.allocStrEnc m text (!hasHighByte text)
+  if cls == Boot.nameErrorId then
+    let (o, h) := m.heap.alloc { klass := cls, payload := .exc message }
+    .next { m with heap := h, ctl := .jump (.raiseJ (.ref o)) }
+  else
+    let (o, h) := m.heap.alloc { klass := cls, payload := .exc .nil }
+    .next { m with heap := h, ctl := .send (.ref o) .reflective "initialize" [message] none [], kont := .raiseNewK (.ref o) :: m.kont }
+
+/-- Native const_set validates the converted name before testing frozen state.
+    Symbols and actual Strings bypass conversion, including String subclasses. -/
+def finishConstantSet (m : Machine) (target : ObjId) (value nameArg : Value) : StepResult :=
+  match symOrStr m nameArg with
+  | none => .unsupported "constant-name conversion did not produce a String"
+  | some name =>
+    if Builtins.isBinaryStr m.heap nameArg && hasHighByte name then
+      .unsupported "non-UTF-8 constant name needs encoded Symbol identity" else
+    if !validConstantName name then
+      raiseConstantError m Boot.nameErrorId ("wrong constant name " ++ name)
+    else assignConstant m target name value
+
+def constantNameTypeError (m : Machine) (source : Value) : StepResult :=
+  .next { m with ctl := .send source .reflective "inspect" [] none [], kont := .constantNameErrorK none :: m.kont }
+
+/-- rb_check_id diagnoses a non-name with rb_inspect, including its ordinary
+    to_s conversion and native fallback when inspect returned a non-String. -/
+def finishConstantNameError (m : Machine) (source : Option Value) (value : Value) : StepResult :=
+  let finish (m : Machine) (value : Value) : StepResult :=
+    match Builtins.strPayload? m.heap value with
+    | none => .unsupported "constant-name error renderer did not produce a String"
+    | some text =>
+      if Builtins.isBinaryStr m.heap value && hasHighByte text then
+        .unsupported "constant-name diagnostic with non-UTF-8 bytes" else
+      if text.contains (Char.ofNat 0) then
+        raiseConstantError m Boot.argumentErrorId "string contains null byte" else
+      raiseConstantError m Boot.typeErrorId (text ++ " is not a symbol nor a string")
+  if (Builtins.strPayload? m.heap value).isSome then finish m value else
+  match source with
+  | none => .next { m with ctl := .send value .reflective "to_s" [] none [], kont := .constantNameErrorK (some value) :: m.kont }
+  | some source => match Builtins.run "Object#__any_to_s" source [] m with
+    | .ok repr m => finish m repr
+    | _ => .unsupported "constant-name diagnostic native fallback"
+
+def callConstSet (m : Machine) (recv : Value) (args : List Value)
+    (kw : List (Value × Value)) : StepResult :=
+  let (args, m) := appendKwHash m args kw
+  if args.length != 2 then
+    .next (raiseErr m Boot.argumentErrorId
+      s!"wrong number of arguments (given {args.length}, expected 2)") else
+  match recv, args with
+  | .ref target, [nameArg, value] =>
+    if (m.heap.classPayload? target).isNone then .unsupported "const_set outside a namespace" else
+    if (symOrStr m nameArg).isSome then finishConstantSet m target value nameArg else
+    .next (withKont m (.value nameArg) (.blkConvertK (.constantSet target value) nameArg .start))
+  | _, _ => .unsupported "const_set receiver"
 
 def reflectRemoveMethod (m : Machine) (recv : Value) (mname : String)
     (args : List Value) (_blk : Option Value) : Option StepResult :=
-    -- `remove_method` deletes this class's own entry (an inherited definition
-    -- becomes visible again); `undef_method` installs the tombstone (artifact 02).
-    match recv with
-    | .ref o =>
-      match m.heap.classPayload? o with
-      | some _ =>
-        let names := args.filterMap (symOrStr m)
-        if names.length != args.length then none
-        else
-          if removeOk m o (mname == "undef_method") names then
-            some (.next (withCtl (removeRun m o (mname == "undef_method") names) (.value recv)))
-          else
-
-            -- CRuby: `NameError: method 'm' not defined in C` [V]; an eigenclass
-            -- definee has an address-dependent name we cannot reproduce → gate.
-            let dn := className m.heap o
-            let missing := (args.filterMap (symOrStr m)).headD ""
-            if dn.startsWith "#<" then
-              some (.unsupported s!"{mname} of a method not defined in a singleton class")
-            else if crubyClassDefines dn missing then
-              -- CRuby *does* define it there (e.g. the private
-              -- `BasicObject#method_missing`), so it would succeed and change
-              -- later dispatch: the L5 fidelity split says gate, not raise.
-              some (.unsupported s!"{mname} of unmodeled method {dn}#{missing}")
-            else
-              some (.next (raiseErr m Boot.nameErrorId
-                s!"method '{missing}' not defined in {dn}"))
-      | none => none
-    | _ => none
+  match recv with
+  | .ref target =>
+    if (m.heap.classPayload? target).isNone then none else
+    let names := args.filterMap (symOrStr m)
+    if names.length != args.length then some (.unsupported "method-name conversion for remove/undef") else
+    some (runMethodEdits m (names.map fun name => .remove target name (mname == "undef_method")) recv)
+  | _ => none
 
 def reflectAliasMethod (m : Machine) (recv : Value) (_mname : String)
     (args : List Value) (_blk : Option Value) : Option StepResult :=
-    -- `alias` with dynamic names (artifact 02): copy the current definition, so a
-    -- later redefinition of the original does not affect the alias [V].
-    match recv, args with
-    | .ref o, [newA, oldA] =>
-      match symOrStr m newA, symOrStr m oldA, m.heap.classPayload? o with
-      | some newN, some oldN, some _ =>
-        match methodOn m.heap o oldN with
-        | some (_, md) =>
-          if md.undefined then some (.unsupported "alias_method of an undef'd method")
-          else
-            -- Keep the original name for `super` (L108) — but only when the
-            -- alias lands on the module that *defines* the method. When it does
-            -- not, CRuby resumes the search from the original definition's
-            -- position in the chain, which this frame cannot express if that
-            -- module appears twice (`bootstraptest/test_yjit_145`), so the
-            -- cross-module case keeps the old behaviour rather than a new wrong
-            -- one. Every use in the sorbet-runtime shim is same-module.
-            let md := if md.owner == o then { md with superName := some (md.superName.getD oldN) }
-                      else md
-            let m := { m with heap := defineMethod m.heap o newN md }
-            some (.next (withCtl m (.value (.sym newN))))
-        | none => some (.unsupported s!"alias_method of unmodeled method {oldN}")
-      | _, _, _ => none
-    | _, _ => none
+  match recv, args with
+  | .ref target, [newArg, oldArg] =>
+    if (m.heap.classPayload? target).isNone then none else
+    match symOrStr m newArg, symOrStr m oldArg with
+    | some name, some original => some (runMethodEdits m [.aliasMethod target name original] (.sym name))
+    | _, _ => some (.unsupported "method-name conversion for alias_method")
+  | _, _ => none
 
 def reflectAttr (m : Machine) (recv : Value) (mname : String)
     (args : List Value) (_blk : Option Value) : Option StepResult :=
-    match recv with
-    | .ref o => match m.heap.classPayload? o with
-      | some _ =>
-        let (m, names) := defineAttr m o mname args
-        let (arr, m) := Builtins.allocArr m names.toArray
-        some (.next (withCtl m (.value arr)))
-      | none => none
-    | _ => none
+  match recv with
+  | .ref target =>
+    if (m.heap.classPayload? target).isNone then none else
+    let names := args.filterMap (symOrStr m)
+    if names.length != args.length then some (.unsupported "attribute-name conversion") else
+    if names.any (fun n => n.isEmpty || !((n.toList.headD '_').isAlpha || n.toList.headD '_' == '_') || !(n.toList.all (fun c => c.isAlphanum || c == '_'))) then
+      some (.unsupported "invalid attribute name") else
+    let edits : List MethodEdit := names.flatMap fun name =>
+      let getter : MethodDef := { params := [], body := .var .ivar ("@" ++ name), owner := target, visibility := m.macroVisibility target, fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
+      let setter : MethodDef := { params := [.req "__v"], body := .vasgn .ivar ("@" ++ name) (.var .lvar "__v"), owner := target, visibility := m.macroVisibility target, fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
+      (if mname != "attr_writer" then [.define target name getter] else []) ++
+      (if mname != "attr_reader" then [.define target (name ++ "=") setter] else [])
+    let values := edits.filterMap fun edit => match edit with | .define _ name _ => some (.sym name) | _ => none
+    let (value, m) := Builtins.allocArr m values.toArray
+    some (runMethodEdits m edits value)
+  | _ => none
 
 def reflectMethodDefined (m : Machine) (recv : Value) (mname : String)
     (args : List Value) (_blk : Option Value) : Option StepResult :=
@@ -519,6 +577,10 @@ def reflectMethodDefined (m : Machine) (recv : Value) (mname : String)
     | .ref o, [nameArg] =>
       match symOrStr m nameArg, m.heap.classPayload? o with
       | some name, some _ =>
+        if (methodEntryInChain m.heap (ancestors m.heap o) name).isNone &&
+            (ancestors m.heap o).any (fun k => featureMethod m.heap k name || nativeSingletonMethod m.heap k name) then
+          some (.unsupported s!"{mname} of unmodeled library method {name} (visibility)")
+        else
         -- `method_defined?` covers public *and* protected; the three specific
         -- predicates ask for exactly one visibility [V].
         let visOk : Visibility → Bool := fun v => match mname with
@@ -526,11 +588,10 @@ def reflectMethodDefined (m : Machine) (recv : Value) (mname : String)
           | "private_method_defined?" => v == .priv
           | "protected_method_defined?" => v == .prot
           | _ => v != .priv
-        let found := (match methodOn m.heap o name with
+        let found : Bool := match methodEntryInChain m.heap (ancestors m.heap o) name with
             | some (_, md) => !md.undefined && visOk md.visibility
-            | none => false)
-          || (crubyShadow m.heap (ancestors m.heap o) name).isSome
-          || mixinDefines m o name
+            | none => (crubyShadow m.heap (ancestors m.heap o) name).isSome
+                || mixinDefines m o name
         some (.next (withCtl m (.value (.bool found))))
       | _, _ => none
     | _, _ => none
@@ -544,12 +605,15 @@ def reflectRespondTo (m : Machine) (recv : Value) (_mname : String)
         | _ => false
       match symOrStr m nameArg with
       | some name =>
+        if (methodEntryInChain m.heap (ancestors m.heap (classOf m.heap recv)) name).isNone &&
+            (ancestors m.heap (classOf m.heap recv)).any (fun k => featureMethod m.heap k name || nativeSingletonMethod m.heap k name) then
+          some (.unsupported s!"respond_to? of unmodeled library method {name} (visibility)")
+        else
         -- private *and* protected answer false unless include_private [V]
-        let found := (match lookup m.heap recv name with
+        let found : Bool := match methodEntryInChain m.heap (ancestors m.heap (classOf m.heap recv)) name with
             | some (_, md) => !md.undefined && (inclPrivate || md.visibility == .pub)
-            | none => false)
-          || (crubyShadow m.heap (ancestors m.heap (classOf m.heap recv)) name).isSome
-          || mixinDefines m (classOf m.heap recv) name
+            | none => (crubyShadow m.heap (ancestors m.heap (classOf m.heap recv)) name).isSome
+                || mixinDefines m (classOf m.heap recv) name
         if found then some (.next (withCtl m (.value (.bool true))))
         else
           -- not a real method; CRuby then consults a user `respond_to_missing?`,
@@ -582,7 +646,6 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
   | "instance_variable_set" => reflectIvarSet m recv mname args blk
   | "instance_variables" => reflectIvarNames m recv mname args blk
   | "const_defined?" | "const_get" => reflectConstGet m recv mname args blk
-  | "const_set" => reflectConstSet m recv mname args blk
   | "remove_method" | "undef_method" => reflectRemoveMethod m recv mname args blk
   | "alias_method" => reflectAliasMethod m recv mname args blk
   | "attr_reader" | "attr_writer" | "attr_accessor" => reflectAttr m recv mname args blk
@@ -591,19 +654,51 @@ def tryReflect (m : Machine) (recv : Value) (mname : String)
   | "respond_to?" => reflectRespondTo m recv mname args blk
   | _ => none
 
-/-- A lookup miss (no entry, or an `undef` tombstone): gate CRuby-shadowed
-    names, else route to `method_missing` (user override) or the byte-exact
-    `NoMethodError` (artifact 02 §4). Shared by the genuine-miss and
-    tombstone-hit dispatch paths. -/
-def dispatchMiss (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
+/-- Native singleton macros on main have ordinary lookup and visibility. Their
+    implementations share the class-macro protocols without exposing those
+    names as instance methods on every Object. -/
+def callMainMethod (m : Machine) (recv : Value) (bid : String)
     (args : List Value) (blk : Option Value) : StepResult :=
-  match tryIterator m recv mname args blk with
+  let name := (bid.drop 5).toString
+  let mixinRecv := if name == "include" then Value.ref Boot.objectId else recv
+  match (tryMixin m mixinRecv name args).orElse (fun _ => tryReflect m recv name args blk) with
+  | some result => result
+  | none => .unsupported s!"main singleton method {name}"
+
+/-- A known missing method, including an explicit undef tombstone (L272).
+No native fallback may resurrect a method that lookup found to be undefined. -/
+def invokeMethodMissing (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
+    (args : List Value) (blk : Option Value)
+    (reason : MissingReason := if implicit == .vcall then .vcall else .ordinary)
+    (kw : List (Value × Value) := []) : StepResult :=
+  let m := { m with missingReason := reason }
+  let fallback := fun (args : List Value) =>
+    let (args, m) := appendKwHash m args kw
+    match Builtins.run "BasicObject#method_missing" recv args m with
+    | .err cls msg m => .next (raiseErr m cls msg)
+    | _ => .unsupported "invalid native method_missing result"
+  if mname == "method_missing" then fallback args else
+  match methodOn m.heap (classOf m.heap recv) "method_missing" with
+  | some (_, mm) =>
+    if mm.builtin.isNone && !mm.undefined then
+      enterUserMethod m recv "method_missing" mm (.sym mname :: args) blk kw
+    else fallback (.sym mname :: args)
+  | none => fallback (.sym mname :: args)
+
+/-- A lookup miss with no entry: gate CRuby-shadowed
+    names, else route to `method_missing` (user override) or the byte-exact
+    `NoMethodError` (artifact 02 §4). Explicit tombstones bypass these
+    native fallbacks and use invokeMethodMissing directly. -/
+def dispatchMiss (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
+    (args : List Value) (blk : Option Value) (kw : List (Value × Value) := []) : StepResult :=
+  let (nativeArgs, nativeM) := appendKwHash m args kw
+  match tryIterator nativeM recv mname nativeArgs blk with
   | some sr => sr
   | none =>
-  match tryMixin m recv mname args with
+  match tryMixin nativeM recv mname nativeArgs with
   | some sr => sr
   | none =>
-  match tryReflect m recv mname args blk with
+  match tryReflect nativeM recv mname nativeArgs blk with
   | some sr => sr
   | none =>
   let chain := ancestors m.heap (classOf m.heap recv)
@@ -616,12 +711,7 @@ def dispatchMiss (m : Machine) (recv : Value) (implicit : SendSite) (mname : Str
   match mixinShadow m recv mname with
   | some modName => .unsupported s!"method via unmodeled mixin {modName}#{mname}"
   | none =>
-    match methodOn m.heap (classOf m.heap recv) "method_missing" with
-    | some (_, mm) =>
-      if mm.builtin.isNone then
-        enterUserMethod m recv "method_missing" mm (.sym mname :: args) blk
-      else missNoMethod m recv implicit mname args
-    | none => missNoMethod m recv implicit mname args
+    invokeMethodMissing m recv implicit mname args blk (kw := kw)
 
 /-- The site kind a `send`-family re-dispatch runs at: `send`/`__send__` bypass
     visibility, `public_send` does not [V]. A top-level `match` rather than an

@@ -1,5 +1,5 @@
 import Ratchet.Check.MethodCheck
-import Denote.Bridge
+import Denote.Bridge.Full
 import Denote.Rules.Method.MethodState
 import Denote.Rules.Instance.InstanceReturn
 

@@ -171,8 +171,10 @@ class LeanSUT:
         if proc.returncode != 0:
             return Unsupported(f"desugar failed: {proc.stderr.strip()[:300]}")
         try:
+            # L281: the control wrapper requires JSON before the program. Match
+            # that environment explicitly; standalone rubycore boots core only.
             lean = subprocess.run(
-                [str(self.lean_bin)],
+                [str(self.lean_bin), "--preload-json"],
                 input=proc.stdout,
                 capture_output=True,
                 text=True,

@@ -291,7 +291,7 @@ theorem enter_declared_sites {κ : Ratchet.Ctx} {Γ : Ratchet.Env} {I : Ratchet.
     · have heq := List.mem_singleton.mp hcn
       subst cn
       exact ⟨m.heap.objs.size, instanceSite hch hm.sat ready.classLive site.live he hb site.hook
-        hconst site.names hnames⟩
+        hconst site.names hnames (by simpa only [classOf, he] using site.metaConstants) hm.core.classReady.bootEnd⟩
 
 #print axioms enter_declared_sites
 #print axioms enter_declared_frame

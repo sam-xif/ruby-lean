@@ -1,6 +1,6 @@
 import Denote.Rules.Subclass.SubclassRule
 import Denote.Controls.ConstructorGeneralControls
-import Denote.Bridge
+import Denote.Bridge.Full
 
 /-! A full checked superclass/body/return composition with distinct local environments
 and a newly installed annotated method. Inherited constructor calls remain model probes

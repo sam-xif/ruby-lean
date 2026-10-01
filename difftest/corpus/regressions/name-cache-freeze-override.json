@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L297 (2026-09-28)",
+  "note": "Native Module#name returns cached frozen base Strings, sharing equal paths and retaining old snapshots across namespace promotion. Native display remains fresh; copying and override bypass are covered. Exact combined program agrees with CRuby 4.0.5; see model L297 and difftest N71."
+}

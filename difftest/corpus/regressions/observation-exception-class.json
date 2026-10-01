@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L277 (2026-09-27)",
+  "note": "L277: the final exception class.name.to_s is dispatched, matching the reference wrapper."
+}

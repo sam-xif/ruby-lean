@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L286 (2026-09-28)",
+  "note": "Native exception initialization, frozen message sequencing, StopIteration context and lazy uncaught throw formatting. CRuby 4.0.5; model L286 / difftest N60."
+}

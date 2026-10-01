@@ -111,8 +111,8 @@ private theorem hash_spec {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty}
     simp only [toRubyPairs, hashNext, StepSpec, Interp.withKont, hk]
     change RunSpec m (pushK [.hshKeyK acc (toRuby v) (toRubyPairs ps)] (evalFrom m k))
       Γ' (.hashOf σ τ) κ' I'
-    apply (hkey m hm).bindSpec (by
-      intro k h tag; simp only [List.mem_singleton] at h; subst h; simp)
+    apply (hkey m hm).bindSpec hm.rootClean (by
+      intro k h; simp only [List.mem_singleton] at h; subst h; rfl)
     intro ak n hn
     cases ak with
     | esc j =>
@@ -126,8 +126,8 @@ private theorem hash_spec {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty}
         (show Interp.stepFn _ =
           .next (pushK [.hshValK acc key (toRubyPairs ps)] (evalFrom n v)) from rfl)
       apply RunSpec.rebase ?_ hn.1
-      apply (hval n (hn.2.2 key rfl)).bindSpec (by
-        intro k h tag; simp only [List.mem_singleton] at h; subst h; simp)
+      apply (hval n (hn.2.2 key rfl)).bindSpec (hn.2.2 key rfl).rootClean (by
+        intro k h; simp only [List.mem_singleton] at h; subst h; rfl)
       intro av o ho
       cases av with
       | esc j =>
@@ -143,7 +143,14 @@ private theorem hash_spec {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty}
         have h : RunSpec (deliverA (.val val) o [])
             (deliverA (.val val) o [.hshValK acc key (toRubyPairs ps)]) Γ' (.hashOf σ τ) κ' I' := by
           apply RunSpec.of_stepSpec (by rfl)
-          exact hnext
+          change StepSpec (deliverA (.val val) o []) Γ' (.hashOf σ τ)
+            (if Builtins.complexEqualityImpure o.heap 100 key ||
+                acc.any (fun (k, _) => Builtins.complexEqualityImpure o.heap 100 k) then
+              .unsupported "Hash literal with effectful Complex key comparison"
+             else hashNext (deliverA (.val val) o []) (hashPut o.heap acc key val) (toRubyPairs ps)) κ' I'
+          split
+          · trivial
+          · exact hnext
         exact h.rebase (ho.1.trans (Framed_reCtl _ _ _))
 
 theorem SemSafeCtxA.hashLit {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty}
@@ -181,5 +188,14 @@ theorem SemA.DJudgePairs.cons {Γ Γk Γv Γ' : Env} {k v : Ratchet.Expr}
     | some #[(.sym "a", .int 3), (.sym "b", .int 2)] => true
     | _ => false
   | _ => false
+
+theorem SemSafeCtxA.DJudgePairs.nil {κ : Ctx} {Γ : Env} {I : Ty} :
+    SemPairsCtxA κ Γ I [] [] [] κ Γ I := .nil
+
+theorem SemSafeCtxA.DJudgePairs.cons {κ κk κv κ' : Ctx} {Γ Γk Γv Γ' : Env} {I Ik Iv I' σ τ : Ty}
+    {k v : Expr} {ps : List (Expr × Expr)} {ks vs : List Ty}
+    (hk : SemSafeCtxA κ Γ I k σ κk Γk Ik) (hv : SemSafeCtxA κk Γk Ik v τ κv Γv Iv)
+    (hs : SemPairsCtxA κv Γv Iv ps ks vs κ' Γ' I') :
+    SemPairsCtxA κ Γ I ((k, v) :: ps) (σ :: ks) (τ :: vs) κ' Γ' I' := .cons hk hv hs
 
 end Ratchet.Denote.Typed

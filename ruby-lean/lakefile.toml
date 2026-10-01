@@ -114,3 +114,8 @@ root = "MainTyped"
 [[lean_exe]]
 name = "validate-one"
 root = "MainValidateOne"
+
+# Active registry soundness and corpus progress, without historical full-profile floors.
+[[lean_exe]]
+name = "active-ratchet"
+root = "MainActiveRatchet"

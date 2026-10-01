@@ -12,7 +12,7 @@ Six subdirectories, and the split is by *what kind of thing a file says*:
 |---|---|---|
 | `Lang/` | the copied language — `Expr`, `Ty`, and the JSON plumbing. Copied *text*, not an import of `RubyCore/Syntax.lean`, which is the whole point of the isolation | 3 |
 | `Static/` | the **static vocabulary**: the tables, contexts and predicates that both sides are stated over. Not a judgment; see [`Static/README.md`](Static/README.md) | 17 |
-| `Judgment/` | the **syntactic judgments** — `DJudge` and its companions, `InitJudge`. Eight families, and nothing else lives here | 2 |
+| `Judgment/` | the **syntactic judgments** — `DJudge` and its companions, `InitJudge`, `DFlow`. Eleven families, and nothing else lives here | 2 |
 | `Guards/` | the decidable side conditions a rule's premises are written in: the native/class/subclass guards, the header publication guards, `WriteTypes`, the frame and route guards, the definition-site contexts | 16 |
 | `Check/` | the **executable checker**: `Deriv` (untrusted hints), `validateD` and the checked-body/receiver caches, `Rung` | 7 |
 | `Controls/` | negative controls — what the checker must *refuse*. Built by the gate as `Ratchet.Controls.DerivControls` | 9 |

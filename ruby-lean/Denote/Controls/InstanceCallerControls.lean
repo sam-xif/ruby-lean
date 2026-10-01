@@ -17,23 +17,23 @@ private def beta : Cls := classWithMethod (classHeader "Beta") getter
 private def base : Ctx :=
   instanceDeclCtx (classHeaderCtx (classHeaderCtx ctx0 "Alpha") "Beta")
     (classHeader "Beta") getter
-private def caller : Ctx := instanceBodyCtx base ⟨"Alpha", "Alpha", "relay"⟩ callerFields
+private def caller : Ctx := instanceBodyCtx base ⟨"Alpha", "Alpha", "relay", false⟩ callerFields
 private def localEnv : Env := [("other", .inst "Beta" fields)]
-private def selfCaller : Ctx := instanceBodyCtx base ⟨"Beta", "Beta", "relay"⟩ fields
+private def selfCaller : Ctx := instanceBodyCtx base ⟨"Beta", "Beta", "relay", false⟩ fields
 private def otherGet : Ratchet.Expr := .send (some (.var .lvar "other")) "get" [] none
 
 -- The whole getter is proved for every context and caller; no concrete argument appears.
 private theorem getter_body {κ : Ctx} :
-    SemSafeCtxA (instanceBodyCtx κ ⟨"Beta", "Beta", "get"⟩ fields) [] fields getter.body .bool
-      (instanceBodyCtx κ ⟨"Beta", "Beta", "get"⟩ fields) [] fields := SemSafeCtxA.ivarRead
+    SemSafeCtxA (instanceBodyCtx κ ⟨"Beta", "Beta", "get", false⟩ fields) [] fields getter.body .bool
+      (instanceBodyCtx κ ⟨"Beta", "Beta", "get", false⟩ fields) [] fields := SemSafeCtxA.ivarRead
 
 private theorem beta_mem {κ : Ctx} (h : κ.classes = base.classes) : beta ∈ κ.classes := by
   rw [h]; change beta ∈ beta :: _; simp
 private theorem getter_mem : getter ∈ beta.methods := by change getter ∈ [getter]; simp
 private theorem consts {κ : Ctx} (h : κ.consts = []) (x : String) :
-    constGet? (instanceBodyCtx κ ⟨"Beta", "Beta", "get"⟩ fields) x = constGet? κ x := by
+    constGet? (instanceBodyCtx κ ⟨"Beta", "Beta", "get", false⟩ fields) x = constGet? κ x := by
   rw [constGet?_empty h]
-  exact constGet?_empty (κ := instanceBodyCtx κ ⟨"Beta", "Beta", "get"⟩ fields) h x
+  exact constGet?_empty (κ := instanceBodyCtx κ ⟨"Beta", "Beta", "get", false⟩ fields) h x
 
 theorem cross_class_call :
     SemSafeCtxA caller localEnv callerFields otherGet .bool caller localEnv callerFields :=
@@ -70,9 +70,9 @@ theorem self_explicit : SemSafeCtxA selfCaller [] fields
 
 #guard callWorldB caller && callWorldB selfCaller && callWorldB ctx0
 -- Lexical owner and receiver names need not coincide, but both need retained sites.
-#guard callWorldB (instanceBodyCtx base ⟨"Beta", "Alpha", "relay"⟩ fields)
-#guard !callWorldB (instanceBodyCtx base ⟨"Missing", "Alpha", "relay"⟩ fields)
-#guard !callWorldB (instanceBodyCtx base ⟨"Beta", "Missing", "relay"⟩ fields)
+#guard callWorldB (instanceBodyCtx base ⟨"Beta", "Alpha", "relay", false⟩ fields)
+#guard !callWorldB (instanceBodyCtx base ⟨"Missing", "Alpha", "relay", false⟩ fields)
+#guard !callWorldB (instanceBodyCtx base ⟨"Beta", "Missing", "relay", false⟩ fields)
 #guard !callWorldB (classBodyCtx base "Beta")
 #guard !callWorldB { caller with scope := { caller.scope with selfTy := none } }
 #guard !callWorldB { ctx0 with pos := { ctx0.pos with mainWorld := false } }

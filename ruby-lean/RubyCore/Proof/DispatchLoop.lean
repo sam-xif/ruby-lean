@@ -21,6 +21,7 @@ grows across calls, so the invariant loosens to "frames[0] fixed, active frame
 characterized"); the dispatch shape there uses `T5.dispatch_progress`. No new
 blockers — this file establishes the assembly.
 -/
+import RubyCore.Proof.StringFacts
 import RubyCore.Proof.TypeSafety
 
 namespace RubyCore
@@ -68,8 +69,12 @@ theorem step_G : stepFn sG = .next sB := by rfl
     `2`. Needs the well-founded `invoke` unfolded (`invoke.eq_def`); the lookup /
     builtin computation over the reducible `initHeap` then closes by `simp`. -/
 theorem step_F : stepFn sF = .next sG := by
+  have hl : lookup base.heap (.int 1) "succ" = some (Boot.integerId,
+      { params := [], body := .nil, owner := Boot.integerId, builtin := some "Integer#succ" }) := by rfl
   simp only [stepFn, sF, sG, recvKont, applyKont, startArgs, finishSend]
   rw [invoke.eq_def]
+  simp only [invoke.invokeDispatch, hl, enumBid, startsWith_decide]
+  simp only [Builtins.run, endsWith_decide]
   rfl
 
 /-! ### The inductive invariant (init / consecution / safety) -/

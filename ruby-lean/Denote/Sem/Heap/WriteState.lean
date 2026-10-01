@@ -50,21 +50,31 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     simpa only using congrArg Object.hashDflt (bindIvar_data m x v o)
   have hmethod (k : ObjId) (name : String) :
       Interp.methodOn (Interp.bindIvar m x v).heap k name = Interp.methodOn m.heap k name := by
-    simp only [Interp.methodOn, hw.classPayload, hw.ancestors_eq]
+    simp only [Interp.methodOn, hw.ancestors_eq, hw.lookup_go_eq]
   have hshadow (ks : List ObjId) (name : String) :
       Interp.crubyShadow (Interp.bindIvar m x v).heap ks name = Interp.crubyShadow m.heap ks name := by
-    simp only [Interp.crubyShadow, hw.className_eq]
+    simp only [Interp.crubyShadow, Interp.nativeSingletonMethod, Interp.featureMethod,
+      Interp.featureHas, Interp.libraryNamespace, hw.classPayload, hw.className_eq]
+    rfl
   have hlookup (k : ObjId) (name : String) :
       constLookupFrom (Interp.bindIvar m x v).heap k name = constLookupFrom m.heap k name := by
     simp only [constLookupFrom, hw.classPayload, hw.ancestors_eq]
   have hresolve (name : String) :
       constResolveAt (Interp.bindIvar m x v) name = constResolveAt m name := by
-    simp only [constResolveAt, bindIvar_currentFrame, hw.constOwn_eq, hlookup]
+    simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, bindIvar_currentFrame, hw.constOwn_eq, hlookup, hw.classPayload]
+    rfl
   have herr : primitiveErrorB (Interp.bindIvar m x v).heap = primitiveErrorB m.heap := by
     funext cls; simp only [primitiveErrorB, hw.ancestors_eq]
   refine {
     runtime := ?_
+    rootClean := by unfold Interp.bindIvar; split <;> exact h.rootClean
+    names := hw.namesOk h.names
+    localAlias := by simpa only [bindIvar_currentFrame] using h.localAlias
+    capturedLive := by
+      rw [bindIvar_currentFrame]
+      exact h.capturedLive.frames_preserved (by simp) (fun _ _ => by simp)
     mainSite := fun hr => (h.mainSite hr).ivarOnly hw
+    moduleBase := h.moduleBase.ivarOnly hw
     classSites := h.classSites.ivarOnly hw
     allocators := h.allocators.ivarOnly hw
     globalConsts := h.globalConsts.ivarOnly hw
@@ -78,10 +88,28 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
         by simpa only [bindIvar_currentFrame] using hk.captured,
         hphase.trans hk.phase,
         by simpa only [defaultDefVis, bindIvar_currentFrame] using hk.visibility,
-        by simpa only [definitionHookQuietB, hw.lookup_eq] using hk.hook⟩⟩
+        by simpa only [definitionHookQuietB, hw.lookup_eq] using hk.hook,
+        by simpa only [bindIvar_currentFrame] using hk.origin,
+        by simpa only [bindIvar_currentFrame] using hk.defFrame,
+        by simpa only [hw.classPayload] using hk.detached,
+        by simpa only [hw.frozen] using hk.unfrozen,
+        by simpa only [hw.size] using hk.mainLive,
+        by simpa only [hw.classOf_eq] using hk.notMain⟩⟩
+    singletonRuntime := by
+      intro cn hr
+      obtain ⟨k, e, scope⟩ := h.singletonRuntime cn hr
+      exact ⟨k, e, ⟨by simpa only [hn] using scope.named,
+        by simpa only [hw.size] using scope.live,
+        by rw [hw.eigen]; exact scope.cached,
+        by simpa only [bindIvar_currentFrame] using scope.self,
+        by simpa only [bindIvar_currentFrame] using scope.owner,
+        by simpa only [bindIvar_currentFrame] using scope.cref,
+        by simpa only [bindIvar_currentFrame] using scope.captured, hphase.trans scope.phase⟩⟩
     sat := ?_
-    primitiveDispatch := by simpa only [primitiveDispatchB, hmethod, hw.ancestors_eq, hshadow] using h.primitiveDispatch
+    primitiveDispatch := by simpa only [primitiveDispatchB, nativeDispatchB, eachDispatchB,
+      hmethod, hw.ancestors_eq, hshadow] using h.primitiveDispatch
     primitiveErrors := by simpa only [primitiveErrorsB, herr] using h.primitiveErrors
+    primitiveInit := by simpa only [primitiveInitB, primitiveInitShapeB, errorInitOwn, hw.classPayload, hmethod, hw.ancestors_eq, hshadow] using h.primitiveInit
     stringPayload := by simpa only [StringPayloadOk, hw.classOf_eq, hw.payload] using h.stringPayload
     arrayPayload := by simpa only [ArrayPayloadOk, hw.classOf_eq, hw.payload] using h.arrayPayload
     hashPayload := by simpa only [HashPayloadOk, hw.classOf_eq, hw.payload, hd] using h.hashPayload
@@ -89,14 +117,20 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     frameInRange := by simpa only [FrameInRange, bindIvar_stack, bindIvar_frames] using h.frameInRange
     env := he
     selfSpine := hi
-    classes := by simpa only [ClassesOk, hn, hw.classPayload] using h.classes
+    classes := by simpa only [ClassesOk, SingletonRows, ownCode, hn, hw.classPayload, hw.eigen] using h.classes
     ownNames := by simpa only [ClassOwnNames, ownMethods, hn, hw.classPayload] using h.ownNames
     classChains := h.classChains.heap hn hw.ancestors_eq
     rootInit := h.rootInit.transport id (hmethod _ _)
     defs := by simpa only [DefsOk, hw.classPayload] using h.defs
     asms := fun a ha n hl args hargs w n' hr =>
       h.asms a ha n ((bindIvar_later m x v).trans hl) args hargs w n' hr
-    frame := by simpa only [FrameOk, bindIvar_currentFrame, ha] using h.frame
+    frame := by
+      cases hf : κ.frame with
+      | none => simpa only [FrameOk, hf, bindIvar_currentFrame] using h.frame
+      | some f =>
+        cases hs : f.singleton <;>
+          simpa only [FrameOk, hf, Frame.recvTy, hs, Bool.false_eq_true, ↓reduceIte,
+            denM, bindIvar_currentFrame, ha, isClassRefNamed, hn] using h.frame
     closures := trivial
     blockTy := hb
     selfTy := hs
@@ -115,7 +149,7 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     clsQuery := by simpa only [ClsQueryOk, ClassQuerySite, hmethod, hw.classPayload,
       hw.classOf_eq, hw.ancestors_eq, hshadow] using h.clsQuery
     declCls := by simpa only [DeclClassOk, hn, hw.classPayload, hw.classOf_eq, hw.ancestors_eq,
-      hmethod, hshadow, Interp.userInit?] using h.declCls
+      hmethod, hshadow, userInit?] using h.declCls
     baseChains := by simpa only [BaseChainsOk, hn, hw.ancestors_eq] using h.baseChains
     nilQuery := by simpa only [NilQueryOk, hmethod, hw.ancestors_eq, hshadow] using h.nilQuery
     selfLive := by simpa only [SelfLive, bindIvar_currentFrame, hw.size] using h.selfLive }
@@ -130,12 +164,25 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
       by simpa only [hw.classOf_eq, hw.ancestors_eq] using hm.chain,
       by simpa only [ha] using hm.object,
       by simpa only [hw.classPayload] using hm.classLive,
-      by simpa only [objectHookQuietB, definitionHookQuietB, hw.lookup_eq] using hm.hook⟩
+      by simpa only [objectHookQuietB, definitionHookQuietB, hw.lookup_eq] using hm.hook,
+      by simpa only [hw.classPayload] using hm.detached,
+      by simpa only [hw.frozen] using hm.unfrozen,
+      by simpa only [bindIvar_currentFrame] using hm.origin,
+      by simpa only [mainOwnNamesB, ownMethods, hw.classOf_eq, hw.classPayload] using hm.mainNames,
+      ?_, by simpa only [objectClassFlagsB, hw.classPayload] using hm.classFlags,
+      by simpa only [bindIvar_currentFrame] using hm.defFrame⟩
+    rw [show classHooksQuietB (Interp.bindIvar m x v).heap = classHooksQuietB m.heap from
+      classHooksQuietB_congr
+        (by simp only [objectCallbackPrefix, hw.classOf_eq, hw.ancestors_eq])
+        (fun _ _ _ => by rw [hw.classPayload])]
+    exact hm.classHooks
   · simpa only [HeapSaturated, Proof.Saturated, hw.size,
       Proof.modAncestors_go_congr hw.shape, Proof.ancestors_go_congr hw.shape] using h.sat
   · exact ⟨h.core.classReady.ivarOnly hw,
       h.core.rootNames.ivarOnly hw,
+      by simpa only [hw.classOf_eq] using h.core.metaConstants.ivarOnly hw,
       by simpa only [hw.ancestors_eq] using h.core.basicSelf,
+      by simpa only [hw.ancestors_eq] using h.core.moduleBasic,
       by simpa only [hn] using h.core.stringNamed,
       by simpa only [hw.ancestors_eq] using h.core.stringSelf,
       by simpa only [hw.ancestors_eq] using h.core.stringBasic,

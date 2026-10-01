@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L278 (2026-09-28)",
+  "note": "Effectful numeric coercion/equality hooks, native aliases and constructor overrides."
+}

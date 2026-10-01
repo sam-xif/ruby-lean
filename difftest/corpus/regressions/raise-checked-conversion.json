@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L285 (2026-09-28)",
+  "note": "Checked raise/exception protocols, live message objects and copy callbacks; CRuby 4.0.5. See model L285 and difftest N59."
+}

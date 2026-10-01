@@ -4,7 +4,50 @@ Three of the four libraries of the `ruby-lean` Lake package; the fourth is the m
 they are about (`RubyCore/`, described in [`README.md`](README.md)). The chronological
 record is [`notes/ratchet/`](notes/), the model's is `notes/model/`.
 
-## Current state (2026-09-15)
+## Active semantic rebuild (2026-09-30)
+
+The shared Ratchet/ClinkPolicy enables 31 literal/local/sequence/primitive/branch,
+bare-name, collection, ordinary definition/call and recursive rules; 68 authoring rules are gated. validateD checks the complete
+constructor-derived trace of its verified
+derivation against that policy. Traced judgments cover all 99 constructors in
+17 families, including companion, initializer, cache and uniform callback-body
+premises. No literal-specific acceptance cases remain. Enabling a rule and its
+semantic provider is sufficient to make it available to the validator; every
+rule actually used by its premises must also be enabled.
+
+Bridge.lean proves the original validateD_safe, _safe_boot and _safe_run
+statements using only active clinks and their dependencies. The default
+./scripts/run_typed_ratchet.sh checks this soundness theorem and reports only
+active clinks and actual validateD accepts as climbed. Disabled rules are ascent.
+Its full default run passes: 31/99 clinks, 55/261 corpus rungs, 46 negative controls
+rejected, 254 CRuby agreements and 0 disagreements. --clink-rebuild checks only
+proofs/controls; --full-corpus preserves the historical complete-coverage gate
+and floors. SoundnessAudit rejects nonstandard axioms. Optional raw DJudge
+completeness helpers remain in Denote/Bridge/Full.lean.
+
+The authored checker is Ratchet/Check/Raw.lean with its Check body/cache helpers.
+Ratchet/Audit's checker modules are generated projections carrying indexed
+judgments and computational traces. After changing those authored sources, run
+python3 scripts/generate_audited_checker.py; both gates reject stale projections.
+Lean kernel-checks all generated proofs. See Denote/Clink/README.md and
+notes/ratchet/HANDOFF.md. Older numbers below describe the complete profile.
+
+## What counts as climbing a rung
+
+A rule is climbed in the active ratchet when its semantic clink and required
+proof dependencies build, its exact constructor suffix is added to
+`Ratchet/ClinkPolicy.lean`'s `clinkProfile` so `clinkEnabled rule = true`, and the
+active registry/Bridge gate passes. Import its provider through `ActiveProofs.lean`
+and enable every companion and body rule required by the intended derivation.
+
+A positive corpus rung is climbed when the production `validateD` accepts its
+program/certificate under that checked-in policy, with the corresponding
+positive and negative controls passing. An ascent change includes the clink
+admission alongside its proof and controls. A proved but gated rule remains
+unclimbed in the active ratchet. Historical full-profile reach remains a separate
+record; a temporary test profile does not claim an ascent in the committed one.
+
+## Current state (2026-09-26)
 
 The typed/safe gap is closed **by a theorem, not rung by rung**.
 [`Denote/Bridge.lean`](Denote/Bridge.lean) proves
@@ -16,9 +59,9 @@ syntactic derivation is a certified one — it typechecks exactly while every ru
 and `dregistry_safe`. So **acceptance is the safety claim**: a rung is climbed when
 `validateD` accepts it, and there is one reach number instead of two (§F32, closed).
 
-**Fragment 63 rungs, reach 17**, **48 registered rules** (30 expressions + 18 companions),
-**0 owed**, **0 exempt**. Checker reach is 65; rung 018 is correctly rejected, the fragment's
-prefix ends at 017. Agreement: **252 agree, 0 disagreements**. 49 rungs additionally carry a
+**Fragment 94 rungs, reach 17**, **99 registered rules** (42 expressions + 57 companions),
+**0 owed**, **0 exempt**. Checker reach is 95; rung 018 is correctly rejected, the fragment's
+prefix ends at 017. Agreement: **254 agree, 0 disagreements**. 72 rungs additionally carry a
 worked theorem in `CorpusSafety.lean`, cross-checked against the stripped program — examples
 and regression now, not the coverage story. The full gate is
 [`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh), and it is RED when the
@@ -29,6 +72,180 @@ The gate also checks Sorbet expectations, negative controls, floors, and the rul
 from each proof term. It must pass before committing. Use quiet mode; `--verbose` is only
 for a failure whose captured error is insufficient. In a sandbox with a protected uv cache,
 set `UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache`.
+
+Clinks 189–195 prove fresh module entry/header/body/return with full conformance and caller
+restoration, preserving declarations without granting a module allocator. CoreOk retains
+Module ancestry (§F46); StateCore retains its name/hook/constant-fallback capabilities (§F47),
+and class queries retain the direct Module source (§F48). SemSafeCtxA.moduleDecl and a whole
+singleton-call pilot are proved. Clink 196 registers moduleDecl and checks/emits fresh
+modules; complete zero-argument singleton bodies supply untrusted return proposals. Rungs
+077/079/082/083/085 are admitted. Clink 197 adds body-directed scalar parameter proposals,
+checked over complete domains, admitting 078/081/086. Clink 198 admits 080 through checked
+implicit singleton dispatch, preserving bare/parenthesized call sites and the full caller.
+Clink 199 certifies Integer `>` with actual builtin dispatch, admitting 084.
+Clink 200 proves lambda/proc literal creation with full conformance and exact captured
+metadata. Clink 201 puts exact code, block locals and mode in Ty.clos and proves
+creation/assignment at that type. Callable admission still needs captured activation,
+return and saved-receiver preservation (§F49).
+Clink 202 proves required-positional lambda entry and parameter/block-local/capture lookup,
+with explicit live-chain transport. Clink 203 closes §F50 for the admitted fragment:
+EscOk permits only non-type-error raises, and every registered rule proves this stronger
+contract. The real block continuation now composes with explicit caller framing/conformance
+obligations. Captured writes and full activation/caller conformance remain open (§F49).
+Clink 204 proves full required-lambda entry conformance from explicit lexical scope,
+live capture and complete first-order environment facts. The body retains self/block types
+but drops runtime permissions requiring an uncaptured activation. Higher-order capture
+transport and caller restoration still precede callable admission.
+Clink 205 adds ProcPres to Framed: every certified evaluation preserves existing Proc
+payloads, including saved receiver code. Full closure-type transport separately requires
+stable captured reads/self; controls distinguish descriptor retention from capture typing.
+Clink 206 separates complete environment binding from type transport at closure entry.
+Current-capture entry now accepts closure-valued locals with proved transport; the stored
+zero-argument lambda pilot includes f at its exact type. A dangling-capture control refutes
+unconditional transport across a frame push. Caller restoration and capture identity tracking
+remain before admission.
+Clink 207 strengthens FramePres with saved metadata and isolation outside live capture
+chains. Current-capture return framing now follows from the body contract while permitting
+captured-local writes. Full caller environment/runtime conformance and capture identity
+tracking still precede callable admission.
+Clink 208 preserves prelude mode in every certified evaluation/initializer. Main-caller
+restoration now uses saved metadata and an independently proved outgoing environment;
+closure_main_runSpec restores full caller StateOk from that environment and the body result.
+A real captured Integer-to-nil write proves full return conformance, including at boot.
+General outgoing capture environments and capture identity tracking remain before admission.
+Clink 209 preserves existing local slots and the exact slot domains of saved frames in
+FramePres, through real writes, composition and returns. The bridge exposes this for every
+certified answer. Controls reject saved nil-slot insertion and show that EnvOk cannot tell
+an absent slot from a bound nil slot, though they receive captured writes differently.
+Outgoing caller typing still needs ownership/shadowing effects and capture identity tracking.
+Clink 210 adds live lookup-owner preservation to FramePres, within the source fuel budget.
+Writes, composition and returns prove it; the bridge exposes it for every certified answer.
+ReadReturn rules out new shadowing of a bound caller slot and equates its body/caller reads
+after arbitrary framed evaluation. Controls permit nested captured writes and fresh locals.
+General outgoing caller environments and capture identity tracking remain before admission.
+Clink 211 projects final body types onto known caller-owned slots, erasing aliases to
+discarded body locals. Only typed output names need slot classification; unrelated hidden
+nil slots need not be enumerated. Unshadowing main return now derives full caller StateOk
+and the block RunSpec without an independent outgoing EnvOk. A stored-lambda pilot retains
+f's exact closure type, including at boot. Capture identity/slot tracking and overlapping
+parameter/block-local shadowing remain before general callable admission.
+Clink 212 proves the complete stored-lambda source call: creation, assignment, receiver,
+entry, certified body and restored caller. The Integer pilot is safe for all fuel; concrete
+prefix execution supplies capture identity. No callable judgment is admitted. §F51 records
+a measured Proc dispatch defect: a singleton call override is ignored by the model.
+Clink 213 / model L272 resolves §F51 through native Proc call markers and ordinary
+lookup, including aliases, visibility, undef and super. Proc#=== is a native alias.
+§F52's identity/equality defect, exposed by the broader replay, is also fixed. The
+whole-call pilot now consumes explicit native dispatch facts with a checked boot witness.
+Clink 214 adds LocalFacts with proved allocation/store/assignment/copy transfers for
+capture origins and physical slots. TrackedCall consumes them with Env code and native
+dispatch readiness, deriving entry and caller return for a copied-binding call.
+Clink 215 puts native Proc#call lookup in guarded StateOk conformance, preserving it
+through existing heap/context transitions. djudge_proc_call exposes it for certified
+value states; the whole-call pilot now needs only the standard boot check.
+Clinks 216–217 thread LocalFacts through certified evaluation and admit stored lambdas (087).
+Clinks 218–221 prove shadowed caller preservation, merged return environments, saved Proc
+dispatch and general required-parameter receiver/argument composition. Clink 222 connects
+that proof through DFlowAll, the registry, checker and emitter, admitting 088 and 098.
+Flow literals retain exact code; body checking uses actual argument and live capture types.
+Clink 223 proves exact-arity Proc normalization and selector-specific native call/[] dispatch,
+admitting 089/090 through the same rule. Next: attached iterator blocks (091). See HANDOFF.
+Clink 224 / model L273 fixes Array#each's stale element snapshot (§F53). Iterator proofs
+now project captured writes past its inert activation and use fuel induction over the live
+array cursor. Body-entry/return invariants and native source dispatch remain before 091.
+Clink 225 derives that loop contract from a checked body and ordinary caller StateOk.
+Entry captures below the iterator; return restores full caller conformance after both
+pops, preserving hidden parameter names and captured writes. A fixed outgoing environment
+keeps caller types stable across iterations. Native dispatch/source composition remain.
+Clink 226 guards native each's lookup miss in StateOk and preserves it across heap,
+method, class and module changes. SemFlow.each composes receiver evaluation, actual block
+allocation, dispatch and the live loop. The exact 091 source has an all-fuel boot proof;
+registry/checker/emitter admission remains next.
+Clink 227 registers/checks/emits one-required-parameter attached each blocks and admits 091.
+The checker derives element types from the receiver, rechecks the exact body and enforces
+the caller-environment fixed point. Embedded expressions retain already bound slots via
+Framed while dropping origins/exact domains, permitting stable capture writes across array
+receiver evaluation. Model L274 repairs native map/collect dispatch and live iteration (§F54).
+Clink 228 proves SemFlow.map through checked bodies, typed accumulated results, final Array
+allocation and guarded native lookup. Shared IteratorCaller lemmas retain capture ownership
+and caller conformance for each and map. Exact 092 has an all-fuel source proof; registry,
+checker and emitter admission for 092/093 follow in clink 229.
+Clink 229 registers/checks/emits map/collect and admits 092/093. Output element types come
+from the checked body; hints supply no result type. Exact worked proofs and 45 pipeline
+controls cover String results, captured writes, local shadowing and refusals. Next: typed
+blocks crossing ordinary method activations (yield/&block) and explicit block-pass.
+Clink 230 proves callback entry/return across an ordinary method (§F55). CallbackFramed
+preserves the suspended method and permits captured caller writes; typed_yield_continue
+composes the checked block through actual doYield/blkFrameK. Source-yield controls prove
+the all-fuel contract and refute ordinary method isolation. Method-body judgment/definition
+and source-call composition still precede admission; fragment and floors are unchanged.
+Clink 231 restores full active-method conformance with exact block typing. The actual 094
+body composes two checked yields and Integer addition; real enterUserMethod entry and boot
+controls cover arithmetic and captured writes. Generic method-body effects, definition/
+source-call checking and &b binding still precede admission. Fragment/floors remain unchanged.
+Clink 232 introduces MethodEffects for mixed method-local/callback writes and proves caller
+framing from before method allocation. BodyRun gives the corresponding two-frame run contract,
+composition and real return. Ordinary/callback embedding into it and source typing remain;
+controls refute using either older effect contract alone or anchoring after allocation.
+Clink 233 embeds ordinary expressions and checked yields into that target with both full
+output states. Source sequence composition and a mixed captured-write/local-retyping control
+are proved through the real method return. General source-body checking, assignment around
+yield, argument/send composition and definition/&b admission remain; floors are unchanged.
+Clink 234 adds SemMethod source rules for ordinary expressions, assignment, sequence and
+yield with a checked argument. MethodActivation persists callback identity/ownership across
+mixed effects. Generic zero-argument entry and boot controls cover repeated/nested yields
+with same-named caller/method writes. Primitive sends with yielding operands, definition
+checking/dispatch and &b admission remain; no new registered rule or floor is claimed.
+Clink 235 composes all existing primitive rows with yielding operands, retaining saved
+receivers through MethodEffects and restoring both states after dispatch. Flat sequence
+and argument companions match source ASTs. The exact 094 body now uses general source
+rules; boot controls cover allocation, saved arrays and escaping division errors. Syntactic
+body/definition checking, dispatch and &b admission remain; floors are unchanged.
+Clink 236 stages DMethod and its list companions, indexed by the block signature rather
+than callback code/captures. Ordinary premises quantify over all codes and cross the existing
+registry. BodyBridge interprets every derivation at any matching CheckedCallback; all method
+boot controls use it. Registration awaits whole-program corpus coverage; raw uses are refused
+by the registry. Definition checking, installation/dispatch and &b admission remain.
+Clink 237 adds executable callback-body checking and untrusted defBlock/yield hints.
+Successful checks carry DMethod proofs at the entire declared domains, independently of
+callers. Optional ordinary proofs remain quantified over all callback codes. Checked
+declarations now feed real zero-positional entry and all six boot controls. Installation/
+lookup, source calls, &b binding and whole-program admission remain; floors are unchanged.
+Clink 238 proves source definition plus implicit literal-block dispatch, including actual
+lookup, allocation and return. Whole-program boot controls cover exact 094, captured writes
+and lambda/proc/new overrides. The model agrees with CRuby; no new runtime defect was found.
+Registry/checker/emitter integration and &b binding remain; no new acceptance is claimed.
+Clink 239 registers the method families and source definition/call rules through one shared
+mutual registry bridge. The checker caches complete body proofs, rechecks changed contexts
+and checks actual blocks/captures against those signatures. The emitter proposes signatures
+from definitions alone. Rungs 094 and new 260 (method-local retyping plus captured writes)
+are admitted; every rule has worked corpus coverage, with the zero exemption ceiling intact.
+Explicit &b binding (095) is next; no model change was needed for this admission.
+Clink 240 proves explicit &b entry and saved-receiver call/[] dispatch with full method/caller
+conformance. Mandatory boot controls include overwriting b during argument evaluation and
+a yielding argument, with stable captured writes. A prior nil overwrite loses receiver
+identity. Code-only closure types alone do not justify calls; binding tracking and checker
+admission of 095 remain. CRuby/Sorbet probes expose no new runtime defect; floors are unchanged.
+Clink 241 adds SemMethodFlow with proved callback-alias inputs/results and assignment,
+flat sequence and general receiver-call rules. Callback return retains aliases, and local
+writes remove only the overwritten alias. Uniform body/boot controls cover copy, restore,
+receiver sequences and argument writes with repeated captured writes. Syntactic method
+checking and source admission remain; no new rule, floor or runtime change is claimed.
+Clink 242 checks lone-&b definitions independently of actual callbacks. Symbolic local types
+retain the opaque block code; every successful certificate proves its body for all codes.
+Staged DMethodFlow interprets through the proved alias semantics. Mandatory controls cover
+forged hints, declared domains and real captured-write boot calls. Registry/cache/emitter
+and whole-source integration remain before 095 admission; counts and floors are unchanged.
+Clink 243 proves whole-source named-&b definition/lookup/literal-block dispatch and return.
+Mandatory boot controls match exact 095 and cover copied/restored aliases, receiver sequences,
+saved receivers, captured writes and lambda/proc/new overrides. Runtime agreement holds;
+mutual registry/cache/emitter integration remains before admission. Counts/floors are unchanged.
+Clink 244 registers DMethodFlow/Seq and named-&b definition/call rules through the shared
+fourteen-family bridge. Explicit block signatures are retained from Sorbet; cached bodies
+quantify over all callback codes and recheck after context changes. Rungs 095/157 and new 261
+(copied block, overwritten aliases, then yield with captured writes) are admitted. A proved
+fixed-environment fallback uses existing method rules after local callback types disappear.
+Every new rule has whole-corpus coverage; no runtime change was needed. Next rung: 096.
 
 ## Layout
 
@@ -78,18 +295,18 @@ Two things this arrangement is defending against, both of which had already happ
 
 Annotated `corpus/NNN-id.rb` → Sorbet signatures → annotation stripping → RubyCore JSON →
 untrusted derivation emitter → Lean `check`, which returns a `DJudge` proof.
-`build/` is generated. The corpus has 259 rungs; unsupported constructs remain explicit
+`build/` is generated. The corpus has 260 rungs; unsupported constructs remain explicit
 coverage gaps. [`MainTyped.lean`](MainTyped.lean) reports checker reach;
 [`SemLadder.lean`](SemLadder.lean) checks safety coverage and reports the unmet rungs.
 
 ## The proof boundary
 
 [`Ratchet/Judgment/DJudge.lean`](Ratchet/Judgment/DJudge.lean) defines `DJudge`, its three list companions,
-`DJudgeRec`/`DJudgeRecAll`, and sixteen `DPrim` rows; `InitJudge.lean` supplies the scoped
-initializer pair. [`Denote/Clink/Registry.lean`](Denote/Clink/Registry.lean) derives each constructor's
-semantic obligation and registers only proved rules. **All eight judgments are fields of
-`DFam`**: no raw syntactic premise may bypass the registry. `djudge_certified` uses the six-family
-mutual recursor and the initializer pair's independent registry bridge.
+`DJudgeRec`/`DJudgeRecAll`, and seventeen `DPrim` rows; `InitJudge.lean` supplies the scoped
+initializer expression, sequence and argument judgments. [`Denote/Clink/Registry.lean`](Denote/Clink/Registry.lean) derives each constructor's
+semantic obligation and registers only proved rules. **All fifteen judgments are fields of
+`DFam`**: no raw syntactic premise may bypass the registry. `djudge_certified` uses the twelve-family
+mutual recursor and the initializer families' independent registry bridge.
 
 The bridge deliberately runs *from* the syntactic judgment *to* `DJudgeC`, rather than the
 checker returning a `DJudgeC` derivation: `Ratchet/` stays ignorant of `Denote/`, and
@@ -120,7 +337,7 @@ types and full conformance through fresh top-level definitions; reserving a name
 absence facts but grants no callable entry. A real-boot definition-step + installed-call
 pilot now handles `add(x, y)` for every pair of Integers, consuming a body proof from the
 annotations alone. `Primitive.lean` threads distinct incoming/outgoing contexts and ivar
-spines through receiver/argument evaluation; all 16 rows require dispatch guards at the
+spines through receiver/argument evaluation; all 17 rows require dispatch guards at the
 final context. The existing `SemA.prim` is its top-level specialization. Literals, sequences,
 and both conditional forms are also context-general; branches require matching outgoing
 contexts/spines while joining local/result types. Arrays and interleaved hash pairs thread
@@ -547,8 +764,76 @@ top-level initialize still requires its full annotated body proof and disables t
 absence guard. The old-state countermodel remains checked via `bootStateBaseB`; the current
 gate excludes effective hidden Object and Kernel initializers. `StateOk.userInit_none` now derives
 actual initializer absence from the declared-prefix and root-table guards for any class.
-Default-constructor admission still needs a complete new-dispatch contract and checker
-integration. No rule, acceptance or floor changes yet.
+NewDispatch and declared-class conformance now retain positive builtin new lookup; the
+boot gate checks it, and all existing transports preserve it. Removing Class#new passes
+the previous conditional clauses but gates as unmodeled, pinned in ClassCtorControls.
+The default-constructor theorem now derives lookup from full conformance. `newDefault`
+composes it through receiver/argument evaluation, with declared-chain/root absence and
+zero-argument checks. Its docstring records the observed Sorbet basis. The existing emitter
+hint now admits 066 and 069; a String-parameterized whole-066 derivation exercises the new
+clink and the exact rule audit. Fragment 65, checker reach 66, 49 rules, 50 worked theorems,
+no exemptions. Next frontier: 067 needs super dispatch; inherited implicit calls remain open.
+`SuperRoute` now distinguishes the current defining owner from the receiver and parent
+owner; `SuperLookup` derives actual superFound/code from full conformance and ordered
+chains. `SuperDispatch` proves the real parent entry on the same receiver. Controls cover
+inherited current bodies, empty intermediate owners and rejected skipped overrides. A
+block-frame witness pins why names and receiver classes alone do not identify methodFrameOf.
+FrameOk now retains method kind through entry, transport and caller restoration; full
+conformance discharges the activation premise. `SuperState`/`SuperRun` now prove nested
+initializer entry and real parent return on the same fresh receiver. InitFrame retains
+relative IvarStable-type preservation as well as the outer allocation anchor: child locals
+survive, but its receiver takes the parent's output spine. Checked-declaration controls
+exercise arbitrary Integer arguments and a changed field snapshot. `SuperArgs` composes
+arbitrary required positional arguments, retaining earlier values through later writes.
+`InitJudge.superInit` and `intLit`, plus the registered `InitJudgeAll` family, now admit 067.
+Parent replay uses retained annotations and checks the full body at the actual incoming
+fields, receiver and defining owner; the super hint supplies only argument derivations.
+An independent Integer-parameterized whole-067 derivation exercises all four new rules.
+Controls cover bad uncalled overrides, inherited super bodies and ordered argument writes.
+Fragment 66, checker reach 69, 53 rules, 51 worked theorems, no exemptions. The next
+frontier was 070's unset ivar read. Default allocation now proves explicit finite nil field
+facts. Receiver-body reads suggest a sorted field spine; allocation and full-domain body
+checks justify it. Open instance annotations stay open, and the clink-122 counterexample
+still applies. Sorbet accepts 070 but reveals its unset read as T.untyped, so nil follows
+from the proved allocator rather than that annotation. Whole 070 has a field-parameterized
+independent derivation. Fragment 67, checker reach 72, 53 rules, 52 worked theorems. Next:
+073's singleton factory method; inherited implicit calls remain open.
+`SingletonInstall` now proves the actual def-self step from full incoming conformance,
+including the installed own row and frame/data preservation. `SingletonMethodCode` separates
+the eigenclass dispatch owner from lexical cref. `InstanceSiteAt` retains metaclass
+frontness through fresh entry and every site transport. `SingletonDispatch` derives actual
+lookup and required entry from full StateOk. A prepended-module witness passes MetaReady
+but violates this stronger site contract. Class sites also retain leaf metaclasses, which
+separate singleton owners from ordinary cached class owners. `ClassesOk` now records exact
+singleton code and preserves it through heap/frame changes and ordinary definitions;
+`SingletonPublish` connects actual installation to those records and recovers retained
+lookup. A self-alias witness motivates owner separation. `SingletonState` derives full
+outgoing conformance from input guards; controls compose a real boot definition with a
+same-selector ordinary definition and recover the retained singleton code. `ConstFallback`
+now constrains metaclass inheritance lookup separately from lexical lookup; boot, class sites
+and all transports retain it. Stored singleton code proves the real frame's constant scope.
+A hidden-metaclass constant witness motivates the contract (§F44). Framed now pins cached
+eigen pointers of old live objects. SingletonScopeAt separates class self/cref from cached
+defmod; required entry and nested return establish and restore this physical scope. Frame
+now distinguishes instance/class-object receivers, and runtimeSingleton retains the latter's
+scope separately from runtimeClass. Full entry/return conformance and real singleton send
+execution are proved; annotation-checked controls cover all Integer arguments and nested
+singleton calls. Constructors now restore singleton callers and retain implicit class self
+across arguments. Full-domain singleton definition/call contracts compose with construction
+into boot safety for the exact generated 073 program (FactoryConstructorControls).
+073 is now admitted: singletonDef, callSingleton, newImplicit and instanceType are registered,
+with annotation-domain singleton caches and emitter integration. The same-class nominal
+result conversion forgets exact fields/receiver information; it never recovers it. Independent
+FactoryDerivations exercises all four rules, with the return annotation's conversion separately
+predicted because stripped syntax omits it. 074 now admits scalar field replacement through
+scalarIvarAsgn: Integer/Float/Symbol/nil observations survive across all nested aliases.
+Boolean needs a weaker framing contract (§F45); no consumer was weakened. FrozenError ancestry
+is checked by primitiveErrorsB, and the real frozen assignment path is covered. 075 generalizes
+defDecl to declared classes separated from Object, retaining installed ordinary/singleton
+rows and full body-cache refresh. 076 registers selfRead and retains a separately proved body
+result beside the declared return annotation. Calls can select either proved result, including
+initialized fields, without recovering them from a nominal type. Fragment 71, checker reach 76,
+59 rules, 56 worked theorems, no exemptions. Next: 077's module declaration. See clinks 177–188.
 The boot conformance hypothesis is `bootOkB = true`, checked at the real prelude boot;
 `bootMachine` is phase two's fresh user-code machine, not the phase-one prelude evaluator.
 `validateD_safe_run` additionally states safety over the executable `Semantics.run` itself.
@@ -656,7 +941,13 @@ String membership needs a payload invariant. See
 | `Ratchet/Controls/InheritanceControls.lean`, `Denote/Rules/Inherited/InheritedRules.lean`, `InheritanceDerivations.lean`, `Denote/Sem/Names/NativePrefix.lean` | Generic inherited-rule admission, proved native-prefix guard, full-domain negative controls and independently audited whole 065 |
 | `Denote/Sem/Names/RootLookup.lean`, `Denote/Rules/Constructor/DefaultAllocation.lean`, `DefaultConstructor.lean`, `DefaultConstructorControls.lean` | Generic root-tail lookup and default allocation/dispatch, checked class controls, and full-state root-initializer omission (§F43) |
 | `Ratchet/Guards/RootInit.lean`, `Denote/Sem/Names/RootInit.lean`, `RootInitWrite.lean`, `Denote/Controls/RootInitControls.lean` | Top-level-table-indexed root initializer conformance, generic write/extension transports, and full-old-state exclusion controls (§F43 closed) |
-| `Denote/Examples/Derivations.lean`, `ClassDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 49 concrete safety proofs |
+| `Denote/Rules/Super/SuperArgs.lean`, `SuperExpr.lean`, `Ratchet/Guards/SuperInit.lean`, `SuperCheckControls.lean` | Scoped explicit super admission, full-domain parent replay and ordered argument effects |
+| `Ratchet/Guards/NilFields.lean`, `Ratchet/Check/FieldHints.lean`, `Denote/Controls/NilFieldControls.lean` | Explicit nil fields proved by default allocation; receiver-aware field candidates and open-field controls |
+| `Denote/Sem/Singleton/SingletonCode.lean`, `Denote/Rules/Singleton/SingletonInstall.lean`, `SingletonDispatch.lean`, `SingletonInstallControls.lean` | Distinct dispatch/lexical owners, cached singleton installation and conformance-derived lookup/required entry; prepend counterexample |
+| `Denote/Sem/Singleton/SingletonRows.lean`, `SingletonRowsWrite.lean`, `SingletonTable.lean`, `Denote/Rules/Singleton/SingletonPublish.lean`, `SingletonTableControls.lean` | Persistent singleton code in ClassesOk, namespace separation, actual publication and retained lookup; alias/forged-body controls |
+| `Ratchet/Guards/SingletonCtx.lean`, `Denote/Sem/Singleton/SingletonContext.lean`, `Denote/Rules/Singleton/SingletonState.lean`, `SingletonStateControls.lean` | Full singleton definition-state publication from input guards; boot/same-selector/stale-snapshot controls |
+| `Denote/Sem/Names/ConstFallback.lean`, `Denote/Sem/Singleton/SingletonScope.lean`, `SingletonScopeControls.lean` | Retained metaclass constant fallback and actual singleton-frame scope; hidden-constant witness (§F44) |
+| `Denote/Examples/Derivations.lean`, `ClassDerivations.lean`, `SuperDerivations.lean`, `NilFieldDerivations.lean`, `CorpusSafety.lean` | Constructor-wise builders and 52 concrete safety proofs |
 | `Denote/Bridge.lean` | `djudge_certified` (syntactic ⟶ certified) and `validateD_safe_boot` |
 | `Denote/Safety.lean`, `RuleAudit.lean` | Syntax/proof cross-check and zero-exemption coverage gate |
 | `Denote/Sem/Core/Boot.lean` | Executable boot conformance gate and its kernel soundness theorem |

@@ -13,21 +13,25 @@ def mainView (h : Heap) : Machine :=
     frames := #[{
       self := .ref Boot.mainId
       defmod := Boot.objectId
-      cref := [Boot.objectId]
+      cref := []
       kind := .toplevel }]
     stack := [0] }
 
 theorem MainReady.view {m : Machine} (h : MainReady m) : MainReady (mainView m.heap) :=
-  ⟨rfl, rfl, rfl, rfl, rfl, h.live, h.payload, h.chain, h.object, h.classLive, h.hook⟩
+  ⟨rfl, rfl, rfl, rfl, rfl, h.live, h.payload, h.chain, h.object, h.classLive, h.hook,
+    h.detached, h.unfrozen, rfl, h.mainNames, h.classHooks, h.classFlags, rfl⟩
 
 theorem MainReady.of_view {m : Machine} (h : MainReady (mainView m.heap))
     (hs : m.currentFrame.self = .ref Boot.mainId)
-    (ho : m.currentFrame.defmod = Boot.objectId) (hc : m.currentFrame.cref = [Boot.objectId])
-    (hcap : m.currentFrame.captured = none) (hp : m.preludeMode = false) : MainReady m :=
-  ⟨hs, ho, hc, hcap, hp, h.live, h.payload, h.chain, h.object, h.classLive, h.hook⟩
+    (ho : m.currentFrame.defmod = Boot.objectId) (hc : m.currentFrame.cref = [])
+    (hcap : m.currentFrame.captured = none) (hp : m.preludeMode = false)
+    (horigin : m.currentFrame.libraryOrigin = false := by rfl)
+    (hdf : m.currentFrame.definitionFrame = none := by rfl) : MainReady m :=
+  ⟨hs, ho, hc, hcap, hp, h.live, h.payload, h.chain, h.object, h.classLive, h.hook,
+    h.detached, h.unfrozen, horigin, h.mainNames, h.classHooks, h.classFlags, hdf⟩
 
 def mainConstResolve (h : Heap) (n : String) : Option Value :=
-  (constOwn h Boot.objectId n).orElse (fun _ => constLookupFrom h Boot.objectId n)
+  constLookupFrom h Boot.objectId n
 
 structure MainSiteAt (free : String → Bool) (h : Heap) : Prop where
   ready : MainReady (mainView h)
@@ -53,24 +57,21 @@ theorem MainSite.recontext {κ κ' : Ctx} {h : Heap} (site : MainSite κ h)
     fun n hb hf => site.bare n hb (ht n hf), fun hf => site.missing (ht _ hf), site.constants,
     fun hf => site.newDispatch (ht _ hf)⟩
 
-theorem MainSite.ext {κ : Ctx} {m n : Machine} (site : MainSite κ m.heap) (he : Ext m n) :
+theorem MainSite.ext {κ : Ctx} {m n : Machine} (site : MainSite κ m.heap) (he : Ext m n)
+    (hn : Proof.NamesOk m.heap) (hch : Proof.ChainsIn m.heap) :
     MainSite κ n.heap := by
   have hv : Ext (mainView m.heap) (mainView n.heap) :=
-    { he with stack := rfl, frames := rfl }
+    { he with stack := rfl, frames := rfl, rootClean := fun _ => ⟨rfl, rfl⟩ }
   have hco : classOf n.heap (.ref Boot.mainId) = classOf m.heap (.ref Boot.mainId) := by
     simp only [classOf, he.get Boot.mainId site.ready.live]
   have hmo (name : String) :
       Interp.methodOn n.heap (classOf n.heap (.ref Boot.mainId)) name =
         Interp.methodOn m.heap (classOf m.heap (.ref Boot.mainId)) name := by
-    simp only [Interp.methodOn, hco, he.payload, he.ancestors]
+    simp only [hco, he.methodOn_eq hch]
   have hl (name : String) : lookup n.heap (.ref Boot.mainId) name =
       lookup m.heap (.ref Boot.mainId) name := by
-    have hg (ks : List ObjId) : lookup.go n.heap name ks = lookup.go m.heap name ks := by
-      induction ks with
-      | nil => rfl
-      | cons k ks ih => simp only [lookup.go, he.payload, ih]
-    simp only [lookup, hco, he.ancestors, hg]
-  refine ⟨site.ready.ext hv rfl,
+    exact hmo name
+  refine ⟨site.ready.ext hv rfl hch,
     fun name hm o md hmd => site.names name hm o md (by rwa [hmo] at hmd),
     fun name hb hf => (hl name).trans (site.bare name hb hf),
     fun hf o md hmd => site.missing hf o md (by rwa [hmo] at hmd), fun name => by
@@ -80,9 +81,8 @@ theorem MainSite.ext {κ : Ctx} {m n : Machine} (site : MainSite κ m.heap) (he 
   have hc : classOf n.heap (.ref Boot.objectId) = classOf m.heap (.ref Boot.objectId) := by
     simp only [classOf, he.get Boot.objectId (lt_size_of_classPayload site.ready.classLive)]
   apply (site.newDispatch hf).transport
-  · simp only [Interp.methodOn, hc, he.payload, he.ancestors]
-  · simp only [Interp.methodOn, hc, he.payload, he.ancestors]
-  · intro owner; simp only [hc, he.ancestors, Interp.crubyShadow, className, he.payload]
+  · simp only [hc, he.methodOn_eq hch]
+  · intro owner; simp only [hc, he.ancestors, he.crubyShadow_eq hn]
 
 #print axioms MainSite.ext
 end Ratchet.Denote

@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L276 (2026-09-27)",
+  "note": "L276: checked to_str conversion covers response hooks, private methods, missing methods, invalid results, mutation, aliases, super, arity and nonlocal exits."
+}

@@ -24,7 +24,7 @@ theorem point_constructor_body {m : Machine} {k : ObjId} {md : MethodDef}
     (site : InstanceSite callerCtx "Point" k m.heap)
     (hd : NewDispatch m.heap (classOf m.heap (.ref k))) (hmath : k ≠ Boot.mathId)
     (code : InstanceMethodCode k "initialize" md)
-    (hi : Interp.userInit? m.heap k = some md)
+    (hi : userInit? m.heap k = some md)
     (hp : md.params = [.req "x", .req "y"]) (hb : md.body = toRuby pointInitBody)
     (x y : Int) :
     ∃ n, Interp.finishSend m (.ref k) .explicit "new" [.int x, .int y] .none = .next n ∧
@@ -38,7 +38,7 @@ theorem point_constructor_body {m : Machine} {k : ObjId} {md : MethodDef}
     (point_initializer_sem rfl rfl rfl)
 
 #guard initCtx.scope.closedIvars
-#guard !(instanceBodyCtx callerCtx ⟨"Point", "Point", "initialize"⟩ .ivar0).scope.closedIvars
+#guard !(instanceBodyCtx callerCtx ⟨"Point", "Point", "initialize", false⟩ .ivar0).scope.closedIvars
 
 -- Actual class definition, initializer invocation, caller return, and getter invocation.
 #guard match Interp.run 300 (evalFrom bootMachine (.seq [pointClass, pointGet [.int 1, .int 2]])) with

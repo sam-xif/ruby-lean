@@ -14,6 +14,14 @@ def StepSpec (origin : Machine) (Γ : Env) (τ : Ty) (step : StepResult)
   | .unsupported _ => True
   | _ => False
 
+theorem StepSpec.rebase {origin middle : Machine} {Γ : Env} {τ I : Ty} {κ : Ctx}
+    {step : StepResult} (h : StepSpec middle Γ τ step κ I) (hf : Framed origin middle) :
+    StepSpec origin Γ τ step κ I := by
+  cases step with
+  | next n => exact RunSpec.rebase h hf
+  | unsupported _ => trivial
+  | done _ _ | uncaught _ _ | stuck _ => exact h
+
 theorem RunSpec.of_stepSpec {origin start : Machine} {Γ : Env} {τ : Ty} {κ : Ctx} {I : Ty}
     (ha : answerPoint start = none) (h : StepSpec origin Γ τ (Interp.stepFn start) κ I) :
     RunSpec origin start Γ τ κ I := by
@@ -36,6 +44,7 @@ def builtinStep (r : BRes) : StepResult :=
   | .ok v n => .next (Interp.withCtl n (.value v))
   | .err cls msg n => .next (Interp.raiseErr n cls msg)
   | .throwV v n => .next (Interp.withCtl n (.jump (.raiseJ v)))
+  | .frozen recv n => Interp.raiseFrozen n recv
   | .unsupported r => .unsupported r
 
 theorem invoke_plain {site : SendSite} {m : Machine} {recv : Value} {name : String} {args : List Value}
@@ -55,13 +64,58 @@ theorem primitive_invoke {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : M
     (hn : (name == "send" || name == "public_send" || name == "__send__") = false)
     (hr : ∀ o, recv = .ref o → ∃ s, (m.heap.get o).payload = .str s)
     (hd : Builtins.deferTwin? m.heap bid recv args = none)
-    (hraise : (bid == "Object#raise") = false) (hf : nameFreeN κ name = true := by rfl) :
+    (hraise : (bid == "Object#raise") = false) (hf : nameFreeN κ name = true := by rfl)
+    (hplus : bid ≠ "String#+" := by decide) :
     Interp.invoke m recv site name args none [] = builtinStep (Builtins.run bid recv args m) := by
   obtain ⟨owner, md, hl, hb, hu, hv, hp, hs⟩ := primitive_lookup hm hrow hf
   rw [invoke_plain hn hr]
-  apply invokeDispatch_builtin (owner := owner) (md := md) _ hb hu hv hp _ hd hraise
+  have hproc : Interp.procCallBid bid = false := by
+    simp only [primitiveMethods, List.mem_cons, List.not_mem_nil, or_false, Prod.mk.injEq] at hrow
+    rcases hrow with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h
+    all_goals rcases h with ⟨_, _, rfl⟩; rfl
+  have hmap : Interp.arrayMapBid bid = false := by
+    simp only [primitiveMethods, List.mem_cons, List.not_mem_nil, or_false, Prod.mk.injEq] at hrow
+    rcases hrow with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h
+    all_goals rcases h with ⟨_, _, rfl⟩; rfl
+  apply invokeDispatch_builtin (owner := owner) (md := md) (hentry := ?_) _ hb hu hv hp _ hd hraise hproc hmap
   · rw [lookup_eq_methodOn, hc]; exact hl
   · simpa only [hc] using hs
+  · simp only [primitiveMethods, List.mem_cons, List.not_mem_nil, or_false, Prod.mk.injEq] at hrow
+    rcases hrow with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h
+    all_goals rcases h with ⟨_, _, rfl⟩
+    all_goals first | exact False.elim (hplus rfl) | decide +kernel
+
+/-- String addition uses the interpreter conversion entry, whose conversion
+branch is skipped only after proving the source already has a String payload. -/
+theorem invoke_string_add {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : Machine}
+    (hm : StateOk κ Γ I m) {o p : ObjId} {s t : String}
+    (hc : classOf m.heap (.ref o) = Boot.stringId)
+    (ho : (m.heap.get o).payload = .str s) (hp : (m.heap.get p).payload = .str t)
+    (hf : nameFreeN κ "+" = true := by rfl) :
+    Interp.invoke m (.ref o) site "+" [.ref p] none [] =
+      builtinStep (Builtins.run "String#+" (.ref o) [.ref p] m) := by
+  obtain ⟨owner, md, hl, hb, hu, hv, hpre, hs⟩ :=
+    primitive_lookup hm (k := Boot.stringId) (name := "+") (bid := "String#+")
+      (by simp [primitiveMethods]) hf
+  have hlookup : lookup m.heap (.ref o) "+" = some (owner, md) := by
+    rw [lookup_eq_methodOn, hc]; exact hl
+  have hvis : Interp.visError? m (.ref o) site md "+" = none := by
+    cases site <;> simp [Interp.visError?, hv]
+  rw [invoke_plain (by rfl) (fun k hk => by cases hk; exact ⟨s, ho⟩)]
+  simp only [Interp.invoke.invokeDispatch, hlookup, hu, hpre, Interp.crubyResolvedShadow,
+    hb, Option.any, show ["Class#new", "Module#new", "Class#allocate"].contains "String#+" = false from rfl,
+    Bool.false_eq_true, ↓reduceIte, hc, hs, hvis]
+  simp only [show "String#+".startsWith "Main#" = false from by decide +kernel,
+    show Interp.nativeDupBid "String#+" = false from by decide +kernel,
+    show Interp.nativeCloneBid "String#+" = false from by decide +kernel,
+    show Interp.requireBid "String#+" = false from by decide +kernel,
+    show Interp.enumBid "String#+" = false from by decide +kernel,
+    show Interp.nativeIteratorBid "String#+" = false from by decide +kernel,
+    Bool.false_eq_true, ↓reduceIte]
+  change Interp.callStringPlusBuiltin m (.ref o) [.ref p] [] = _
+  simp only [Interp.callStringPlusBuiltin, Interp.appendKwHash, List.isEmpty,
+    ↓reduceIte, Builtins.strPayload?, hp, Option.isNone, Bool.false_eq_true]
+  rfl
 
 theorem invoke_int_add {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : Machine}
     (hm : StateOk κ Γ I m) (x y : Int) (hf : nameFreeN κ "+" = true := by rfl) :
@@ -72,5 +126,6 @@ theorem invoke_int_add {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : Mac
     (by intro o ho; cases ho) (by rfl) (by rfl) hf, int_add_run]
   rfl
 
+#print axioms invoke_string_add
 #print axioms invoke_int_add
 end Ratchet.Denote.Typed

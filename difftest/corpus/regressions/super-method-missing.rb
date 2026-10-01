@@ -1,22 +1,4 @@
-# OPEN — a **wrong answer**. `super` inside a user `method_missing` must reach
-# `BasicObject#method_missing`, which raises the ordinary
-# `NoMethodError: undefined method 'X' for an instance of C`. The model has no such
-# method, so `super` fails on its own terms and the program sees
-# `NoMethodError: super: no superclass method 'method_missing' …` instead.
-#
-# `def method_missing(n, *a) = handled?(n) ? … : super` is *the* idiomatic way to
-# write one — anything else swallows every typo in the class — so this is not an
-# exotic shape. It was found while fixing L130, where the same defect one name over
-# (`super` inside a user `respond_to_missing?`) was in the way of the
-# `Integer(obj)` conversion protocol; that one is fixed, because a default
-# `Object#respond_to_missing?` is a two-line builtin.
-#
-# This one is not, and the reason is worth recording: making
-# `BasicObject#method_missing` a builtin puts the model's **whole dispatch-miss
-# path** through a method-table entry, since `lookup` would then always find a
-# `method_missing` to dispatch. The message that path produces today is exact
-# (L124's `receiverDesc`), so the change is a refactor of the miss path rather than
-# a new rule, and it has to reproduce that message from inside a builtin.
+# L276: user method_missing handlers delegate to the native BasicObject method.
 def show(label)
   v = yield
   puts("#{label} => #{v.inspect.gsub(/0x[0-9a-f]+/, '0xADDR')}")

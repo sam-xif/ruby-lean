@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "L288 (2026-09-28)",
+  "note": "Ordinary each dispatch, shared for environments, checked target binding and captured block/method control. CRuby 4.0.5; model L288 / difftest N62."
+}

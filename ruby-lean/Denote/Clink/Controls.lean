@@ -132,7 +132,7 @@ theorem derivD_var_sem {Γ : Env} {x : String} {τ : Ty} (hget : envGet? Γ x = 
 
 /-! ### The family boundary remains enforced
 
-All judgment constructors now have proofs. A constructor outside the family is still
+All active judgment constructors have proofs. A constructor outside the family is still
 refused; the sequence and argument forms below also check that their premises are semantic
 family projections, rather than raw syntactic derivations. -/
 
@@ -152,7 +152,13 @@ example : DClink.DJudgeAll.cons.form dsemFam =
       SemSafeCtxA κ Γ I e τ κ₁ Γ₁ I₁ → SemAllCtxA κ₁ Γ₁ I₁ es tys κ₂ Γ₂ I₂ → plainArgB e = true →
         SemAllCtxA κ Γ I (e :: es) (τ :: tys) κ₂ Γ₂ I₂) := rfl
 
-#guard dUncarriedJudgments.isEmpty
+#guard dUncarriedJudgments == []
+
+example : DClink.DMethod.ordinary.form dsemFam =
+    (∀ {κ : Ctx} {I : Ty} {fr : Frame} {ps : List Ty} {ret τ : Ty}
+      {Γ Γ' : Env} {e : Ratchet.Expr},
+      (∀ code, SemSafeCtxA (callbackMethodCtx κ fr code) Γ I e τ (callbackMethodCtx κ fr code) Γ' I) →
+      SemMethodBody κ I fr ps ret Γ e τ Γ') := rfl
 
 example : DClink.DJudgePairs.cons.form dsemFam =
     (∀ {κ κk κv κ' : Ctx} {Γ Γk Γv Γ' : Env} {I Ik Iv I' σ τ : Ty}

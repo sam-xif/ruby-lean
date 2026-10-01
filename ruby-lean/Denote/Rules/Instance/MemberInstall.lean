@@ -12,7 +12,9 @@ theorem StateOk_install_member {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c :
     (ht : ReframeFO κ I) (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
     (ha : κ.asms = []) (hplain : unqualifiedClassB c.name = true) (hroot : c.name ∉ rootAncestors)
     (hf : memberFreshB κ c d = true) (htab : memberTableFrameB κ.classes c d = true)
-    (hnew : "new" ≠ d.name) (hmiss : "method_missing" ≠ d.name) (hquiet : "method_added" ≠ d.name) :
+    (hnew : "new" ≠ d.name) (hmiss : "method_missing" ≠ d.name) (hquiet : "method_added" ≠ d.name)
+    (hauto : autoPrivateNames.contains d.name = false)
+    (hhook : classHookSelectors.contains d.name = false) :
     StateOk (instanceDeclCtx κ c d) Γ I (installMethod m d.name (toRubyParams d.params) (toRuby d.body)) := by
   obtain ⟨k, ready⟩ := hm.classRuntime c.name hr
   obtain ⟨j, site⟩ := hm.classSites.of_scope hr
@@ -20,7 +22,7 @@ theorem StateOk_install_member {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c :
   subst j
   have howner := memberFreshB_sound hm hc ready.named hf
   have hcode := scoped_defined_instanceCode (name := d.name) (ps := toRubyParams d.params)
-    (code := toRuby d.body) ready
+    (code := toRuby d.body) ready hm.frameInRange.1 hauto
   have hs : ClassesOk [c] m := by
     intro old ho
     have he := List.mem_singleton.mp ho
@@ -30,7 +32,7 @@ theorem StateOk_install_member {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c :
   rw [ready.owner]
   exact StateOk_publish_instance hm ht hΓ ha hs ready.named site
     (declared_not_object hm ready.named hroot) (howner c hc ready.named) howner
-    rfl rfl rfl hcode hmiss hquiet
+    (definedMethod_params ..) (definedMethod_body ..) (definedMethod_undefined ..) hcode hmiss hquiet
     ((hm.nested.publish_member hplain).methodWrite)
     ((hm.declCls.methodWrite hnew hmiss).publish_member hc (declLookupFrameB_sound htab))
     (hm.ownNames.publish_instance hc
@@ -39,20 +41,8 @@ theorem StateOk_install_member {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c :
     (hm.rootInit.write_outside (by
       rw [hm.core.classReady.objectChain]
       exact declared_not_root hm ready.named hroot))
+    (fun _ => Or.inl ready.notMain)
+    (fun _ => Or.inr (by
+      simpa [classHookNames, classHookSelectors] using hhook))
 
-theorem step_member_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Cls} {d : Defn}
-    (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeClass = some c.name) (hc : c ∈ κ.classes)
-    (ht : ReframeFO κ I) (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
-    (ha : κ.asms = []) (hplain : unqualifiedClassB c.name = true) (hroot : c.name ∉ rootAncestors)
-    (hf : memberFreshB κ c d = true) (htab : memberTableFrameB κ.classes c d = true)
-    (hnew : "new" ≠ d.name) (hmiss : "method_missing" ≠ d.name) (hquiet : "method_added" ≠ d.name)
-    (hctl : m.ctl = .eval (.def' d.name (toRubyParams d.params) (toRuby d.body))) :
-    ∃ n, Interp.stepFn m = .next n ∧ StateOk (instanceDeclCtx κ c d) Γ I n := by
-  obtain ⟨k, ready⟩ := hm.classRuntime c.name hr
-  have hs := StateOk_install_member hm hr hc ht hΓ ha hplain hroot hf htab hnew hmiss hquiet
-  exact ⟨_, step_def_install hctl (defHookQuiet_install hquiet (scoped_defHookQuiet ready)),
-    StateOk_reCtl hs (.value (.sym d.name)) _⟩
-
-#print axioms StateOk_install_member
-#print axioms step_member_state
 end Ratchet.Denote.Typed

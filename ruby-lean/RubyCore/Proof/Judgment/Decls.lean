@@ -104,15 +104,15 @@ def DeclsOkJ (A : SemAxioms) (D : Decls) (h : Heap) : Prop :=
     user arm's conformance passing straight through (`UserConformsJ` mentions no
     heap, exactly as `UserConforms` did). -/
 theorem DeclsOkJ_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h')
-    (hsat : Saturated h) (hobj : Boot.objectId < h.objs.size)
+    (hsat : Saturated h) (hnames : NamesOk h) (hchains : ChainsIn h) (hobj : Boot.objectId < h.objs.size)
     (hd : DeclsOkJ A D h) : DeclsOkJ A D h' := by
-  refine ⟨?_, fun n τ hn => constOk_grow hg hsat (hd.2.1 n τ hn),
-    fun c x τ hn => ivarOk_grow hg hsat (hd.2.2.1 c x τ hn),
-    fun c nn τ hn => scopedConstOk_grow hg hsat (hd.2.2.2.1 c nn τ hn),
-    fun c nn dd hn => superOk_grow hg hsat (hd.2.2.2.2.1 c nn dd hn),
+  refine ⟨?_, fun n τ hn => constOk_grow hg hsat hnames (hd.2.1 n τ hn),
+    fun c x τ hn => ivarOk_grow hg hsat hnames (hd.2.2.1 c x τ hn),
+    fun c nn τ hn => scopedConstOk_grow hg hsat hnames (hd.2.2.2.1 c nn τ hn),
+    fun c nn dd hn => superOk_grow hg hsat hnames hchains (hd.2.2.2.2.1 c nn dd hn),
     hd.2.2.2.2.2.1, hd.2.2.2.2.2.2.1, hd.2.2.2.2.2.2.2.1,
     fun pr hpr => moduleNameOk_grow hg hsat hobj (hd.2.2.2.2.2.2.2.2.1 pr hpr),
-    fun pr hpr => classNameOk_grow hg hsat hobj (hd.2.2.2.2.2.2.2.2.2.1 pr hpr),
+    fun pr hpr => classNameOk_grow hg hsat hnames hobj (hd.2.2.2.2.2.2.2.2.2.1 pr hpr),
     (by
       intro j cp hj hhd
       rw [hg.payload] at hj
@@ -121,14 +121,14 @@ theorem DeclsOkJ_grow {D : Decls} {h h' : Heap} (hg : PlainGrow h h')
   rcases hd.1 τr mname decl hdecl with ⟨bid, hres, hconf⟩ |
     ⟨mdu, cu, htys, hres, hnm, hconf⟩ | ⟨hτ, hmn, hdp, hdr, hdb, hmiss⟩
   · exact Or.inl ⟨bid,
-      fun k ht => ResolvesAt_grow hg hsat (hres k (TyClass_grow hg ht)), hconf⟩
+      fun k ht => ResolvesAt_grow hg hsat hnames hchains (hres k (TyClass_grow hg hnames ht)), hconf⟩
   · exact Or.inr (Or.inl ⟨mdu, cu, htys,
-      fun k ht => ResolvesUser_grow hg hsat (hres k (TyClass_grow hg ht)),
-      by rw [hg.className_eq]; exact hnm, hconf⟩)
+      fun k ht => ResolvesUser_grow hg hsat hnames hchains (hres k (TyClass_grow hg hnames ht)),
+      by rw [hg.className_eq _ hnames]; exact hnm, hconf⟩)
   · exact Or.inr (Or.inr ⟨hτ, hmn, hdp, hdr, hdb, fun k ht => by
-      have hm0 := hmiss k (TyClass_grow hg ht)
-      unfold MissesAt lookupIn at hm0 ⊢
-      rw [hg.ancestors_eq hsat, lookup_go_grow hg]
+      have hm0 := hmiss k (TyClass_grow hg hnames ht)
+      unfold MissesAt at hm0 ⊢
+      rw [lookupIn_grow hg hsat hchains]
       exact hm0⟩)
 
 /-! ## The `IvarOnly` transports (J26) — an ivar write moves no table read -/

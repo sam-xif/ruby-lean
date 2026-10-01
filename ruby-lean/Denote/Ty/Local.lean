@@ -68,8 +68,8 @@ def setAt (m : Machine) (x : String) (v : Value) (T : FrameId) : Machine :=
 
 /-- `setLocal` is `setAt` at the target its own `owner` walk found. `rfl`. -/
 theorem setLocal_eq_setAt (m : Machine) (x : String) (v : Value) :
-    m.setLocal x v = setAt m x v (Machine.setLocal.owner m x (m.stack.headD 0)
-      (m.stack.headD 0) (m.frames.size + 1)) := rfl
+    m.setLocal x v = setAt m x v (Machine.setLocal.owner m x (m.localFrameId (m.stack.headD 0))
+      (m.localFrameId (m.stack.headD 0)) (m.frames.size + 1)) := rfl
 
 @[simp] theorem setAt_heap (m : Machine) (x : String) (v : Value) (T : FrameId) :
     (setAt m x v T).heap = m.heap := rfl
@@ -119,6 +119,39 @@ theorem setAt_captured (m : Machine) (x : String) (v : Value) (T : FrameId) (i :
     · simp only [setAt, framesD_set!_oob _ _ _ hb]
   · simp only [setAt, framesD_set!_ne _ _ _ _ hi]
 
+theorem setAt_localAlias (m : Machine) (x : String) (v : Value) (T i : FrameId) :
+    ((setAt m x v T).frames.getD i default).localAlias =
+      (m.frames.getD i default).localAlias := by
+  by_cases hi : i = T
+  · subst hi
+    by_cases hb : i < m.frames.size
+    · simp only [setAt, framesD_set!_self _ _ _ hb, setFrame]
+    · simp only [setAt, framesD_set!_oob _ _ _ hb]
+  · simp only [setAt, framesD_set!_ne _ _ _ _ hi]
+
+theorem setAt_libraryOrigin (m : Machine) (x : String) (v : Value) (T i : FrameId) :
+    ((setAt m x v T).frames.getD i default).libraryOrigin =
+      (m.frames.getD i default).libraryOrigin := by
+  by_cases hi : i = T
+  · subst hi
+    by_cases hb : i < m.frames.size
+    · simp only [setAt, framesD_set!_self _ _ _ hb, setFrame]
+    · simp only [setAt, framesD_set!_oob _ _ _ hb]
+  · simp only [setAt, framesD_set!_ne _ _ _ _ hi]
+
+theorem localFrameId_setAt (m : Machine) (x : String) (v : Value) (T i : FrameId) :
+    (setAt m x v T).localFrameId i = m.localFrameId i := by
+  have go : ∀ fuel fid, Machine.localFrameId.go (setAt m x v T) fid fuel =
+      Machine.localFrameId.go m fid fuel := by
+    intro fuel
+    induction fuel with
+    | zero => intro fid; rfl
+    | succ fuel ih =>
+      intro fid
+      simp only [Machine.localFrameId.go, setAt_localAlias]
+      split <;> first | rfl | exact ih _
+  simp only [Machine.localFrameId, setAt_framesSize, go]
+
 theorem setAt_self (m : Machine) (x : String) (v : Value) (T : FrameId) (i : FrameId) :
     ((setAt m x v T).frames.getD i default).self = (m.frames.getD i default).self := by
   by_cases hi : i = T
@@ -149,6 +182,16 @@ theorem setAt_kind (m : Machine) (x : String) (v : Value) (T : FrameId) (i : Fra
 
 theorem setAt_defVis (m : Machine) (x : String) (v : Value) (T : FrameId) (i : FrameId) :
     ((setAt m x v T).frames.getD i default).defVis = (m.frames.getD i default).defVis := by
+  by_cases hi : i = T
+  · subst hi
+    by_cases hb : i < m.frames.size
+    · simp only [setAt, framesD_set!_self _ _ _ hb, setFrame]
+    · simp only [setAt, framesD_set!_oob _ _ _ hb]
+  · simp only [setAt, framesD_set!_ne _ _ _ _ hi]
+
+theorem setAt_definitionFrame (m : Machine) (x : String) (v : Value) (T : FrameId) (i : FrameId) :
+    ((setAt m x v T).frames.getD i default).definitionFrame =
+      (m.frames.getD i default).definitionFrame := by
   by_cases hi : i = T
   · subst hi
     by_cases hb : i < m.frames.size
@@ -237,7 +280,7 @@ theorem getLocal_go_setAt_ne (m : Machine) (x : String) (v : Value) (T : FrameId
   | zero => intro fid; rfl
   | succ n ih =>
     intro fid
-    simp only [Machine.getLocal.go, setAt_find_ne m x v T fid hy, setAt_captured]
+    simp only [Machine.getLocal.go, localFrameId_setAt, setAt_find_ne m x v T _ hy, setAt_captured]
     split
     · rfl
     · split
@@ -288,13 +331,13 @@ theorem getLocal_go_setAt_self (m : Machine) (x : String) (v : Value) (T : Frame
   | zero => intro fid; exact Or.inr rfl
   | succ n ih =>
     intro fid
-    rcases setAt_frame_or m x v T fid with h1 | h1
-    · exact Or.inl (by simp only [Machine.getLocal.go, h1])
-    · simp only [Machine.getLocal.go, h1]
-      cases hfind : ((m.frames.getD fid default).locals.find? (·.1 == x)) with
+    rcases setAt_frame_or m x v T (m.localFrameId fid) with h1 | h1
+    · exact Or.inl (by simp only [Machine.getLocal.go, localFrameId_setAt, h1])
+    · simp only [Machine.getLocal.go, localFrameId_setAt, h1]
+      cases hfind : ((m.frames.getD (m.localFrameId fid) default).locals.find? (·.1 == x)) with
       | some p => exact Or.inr rfl
       | none =>
-        cases hcap : (m.frames.getD fid default).captured with
+        cases hcap : (m.frames.getD (m.localFrameId fid) default).captured with
         | some q => exact ih q
         | none => exact Or.inr rfl
 
@@ -321,43 +364,43 @@ theorem lt_of_any_locals {m : Machine} {fid : FrameId} {x : String}
   · rw [Array.getD, dif_neg (by omega)] at h
     exact absurd h (by simp [show (default : Frame).locals = [] from rfl])
 
-theorem getLocal_go_owner (m : Machine) (x : String) (v : Value) :
+theorem getLocal_go_owner (m : Machine) (x : String) (v : Value) (start : FrameId) :
     ∀ (fuel : Nat) (fid : FrameId),
       Machine.getLocal.go
-        (setAt m x v (Machine.setLocal.owner m x (m.stack.headD 0) fid fuel)) x fid fuel = v
-      ∨ Machine.setLocal.owner m x (m.stack.headD 0) fid fuel = m.stack.headD 0 := by
+        (setAt m x v (Machine.setLocal.owner m x start fid fuel)) x fid fuel = v
+      ∨ Machine.setLocal.owner m x start fid fuel = start := by
   intro fuel
   induction fuel with
   | zero => intro fid; exact Or.inr rfl
   | succ n ih =>
     intro fid
-    by_cases hany : (m.frames.getD fid default).locals.any (·.1 == x) = true
+    by_cases hany : (m.frames.getD (m.localFrameId fid) default).locals.any (·.1 == x) = true
     · -- The walk stops here, and so does the write.
-      have hb : fid < m.frames.size := lt_of_any_locals hany
-      have hown : Machine.setLocal.owner m x (m.stack.headD 0) fid (n + 1) = fid := by
+      have hb : m.localFrameId fid < m.frames.size := lt_of_any_locals hany
+      have hown : Machine.setLocal.owner m x start fid (n + 1) = m.localFrameId fid := by
         simp only [Machine.setLocal.owner, hany, if_true]
       refine Or.inl ?_
       rw [hown]
-      simp only [Machine.getLocal.go, setAt_find_self m x v fid hb]
-    · have hany' : (m.frames.getD fid default).locals.any (·.1 == x) = false := by
+      simp only [Machine.getLocal.go, localFrameId_setAt, setAt_find_self m x v _ hb]
+    · have hany' : (m.frames.getD (m.localFrameId fid) default).locals.any (·.1 == x) = false := by
         rw [Bool.not_eq_true] at hany; exact hany
-      have hnone : (m.frames.getD fid default).locals.find? (·.1 == x) = none :=
+      have hnone : (m.frames.getD (m.localFrameId fid) default).locals.find? (·.1 == x) = none :=
         find?_eq_none_of_any_false _ _ hany'
-      cases hcap : (m.frames.getD fid default).captured with
+      cases hcap : (m.frames.getD (m.localFrameId fid) default).captured with
       | none =>
         refine Or.inr ?_
         simp only [Machine.setLocal.owner, hany', hcap]
         simp
       | some q =>
-        have hown : Machine.setLocal.owner m x (m.stack.headD 0) fid (n + 1)
-            = Machine.setLocal.owner m x (m.stack.headD 0) q n := by
+        have hown : Machine.setLocal.owner m x start fid (n + 1)
+            = Machine.setLocal.owner m x start q n := by
           simp only [Machine.setLocal.owner, hany', hcap]; simp
         rw [hown]
-        rcases setAt_frame_or m x v (Machine.setLocal.owner m x (m.stack.headD 0) q n) fid
+        rcases setAt_frame_or m x v (Machine.setLocal.owner m x start q n) (m.localFrameId fid)
           with h1 | h1
-        · exact Or.inl (by simp only [Machine.getLocal.go, h1])
+        · exact Or.inl (by simp only [Machine.getLocal.go, localFrameId_setAt, h1])
         · rcases ih q with hq | hq
-          · exact Or.inl (by simp only [Machine.getLocal.go, h1, hnone, hcap]; exact hq)
+          · exact Or.inl (by simp only [Machine.getLocal.go, localFrameId_setAt, h1, hnone, hcap]; exact hq)
           · exact Or.inr hq
 
 /-! ## `getLocal` after `setLocal` -/
@@ -372,13 +415,16 @@ theorem getLocal_setLocal_ne (m : Machine) (x : String) (v : Value) {y : String}
 and the obligation asks about the value that binding names. The hypothesis is what rules out
 the degenerate machine with no current frame, where `set!` is a no-op. -/
 theorem getLocal_setLocal_self (m : Machine) (x : String) (v : Value)
-    (hb : m.stack.headD 0 < m.frames.size) : (m.setLocal x v).getLocal x = v := by
+    (hb : m.stack.headD 0 < m.frames.size)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none) :
+    (m.setLocal x v).getLocal x = v := by
+  have hd := localFrameId_of_noAlias ha
   rw [setLocal_eq_setAt]
-  simp only [Machine.getLocal, setAt_stack, setAt_framesSize]
-  rcases getLocal_go_owner m x v (m.frames.size + 1) (m.stack.headD 0) with h | h
+  simp only [Machine.getLocal, setAt_stack, setAt_framesSize, hd]
+  rcases getLocal_go_owner m x v (m.stack.headD 0) (m.frames.size + 1) (m.stack.headD 0) with h | h
   · exact h
   · rw [h]
-    simp only [Machine.getLocal.go, setAt_find_self m x v _ hb]
+    simp only [Machine.getLocal.go, localFrameId_setAt, hd, setAt_find_self m x v _ hb]
 
 /-! ## `Later`, and the transport
 
@@ -412,7 +458,7 @@ theorem closLocal_setLocal (m : Machine) (x : String) (w : Value) (cl : Closure)
     rw [setLocal_eq_setAt]
     simp only [closLocal, hc, frameLocal?, frameLocal, setAt_framesSize]
     rcases frameLocal_go_setAt_self m y w
-      (Machine.setLocal.owner m y (m.stack.headD 0) (m.stack.headD 0) (m.frames.size + 1))
+      (Machine.setLocal.owner m y (m.localFrameId (m.stack.headD 0)) (m.localFrameId (m.stack.headD 0)) (m.frames.size + 1))
       (m.frames.size + 1) p with h | h
     · exact Or.inr ⟨by simp, h⟩
     · exact Or.inl h
@@ -519,8 +565,8 @@ theorem denM_setLocal_aux {m : Machine} {x : String} {w : Value} {τ' : Ty}
     refine ⟨fun hs f h => ?_, fun _ _ _ _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     rw [capStale, Bool.or_eq_false_iff] at hs
-    obtain ⟨cl, hpc, hspine, hself⟩ := h
-    refine ⟨cl, hpc, ?_, ?_⟩
+    obtain ⟨cl, hpc, hcode, hspine, hself⟩ := h
+    refine ⟨cl, hpc, hcode, ?_, ?_⟩
     · exact ihcap.2 hs.1 _ _ _ (fun y => closLocal_setLocal m x w cl y) hspine
     · rcases hself with h1 | h1
       · exact Or.inl h1
@@ -561,6 +607,13 @@ theorem currentFrame_setLocal_self (m : Machine) (x : String) (w : Value) :
   cases m.stack with
   | nil => rfl
   | cons fid rest => rw [setLocal_eq_setAt]; exact setAt_self m x w _ fid
+
+theorem currentFrame_setLocal_libraryOrigin (m : Machine) (x : String) (w : Value) :
+    (m.setLocal x w).currentFrame.libraryOrigin = m.currentFrame.libraryOrigin := by
+  simp only [Machine.currentFrame, setLocal_stack]
+  cases m.stack with
+  | nil => rfl
+  | cons fid rest => rw [setLocal_eq_setAt]; exact setAt_libraryOrigin m x w _ fid
 
 theorem currentFrame_setLocal_blk (m : Machine) (x : String) (w : Value) :
     (m.setLocal x w).currentFrame.blk = m.currentFrame.blk := by
@@ -603,6 +656,22 @@ theorem currentFrame_setLocal_defVis (m : Machine) (x : String) (w : Value) :
   cases m.stack with
   | nil => rfl
   | cons fid rest => rw [setLocal_eq_setAt]; exact setAt_defVis m x w _ fid
+
+theorem currentFrame_setLocal_definitionFrame (m : Machine) (x : String) (w : Value) :
+    (m.setLocal x w).currentFrame.definitionFrame = m.currentFrame.definitionFrame := by
+  simp only [Machine.currentFrame, setLocal_stack]
+  cases m.stack with
+  | nil => rfl
+  | cons fid rest => rw [setLocal_eq_setAt]; exact setAt_definitionFrame m x w _ fid
+
+theorem currentFrame_setLocal_localAlias (m : Machine) (x : String) (w : Value) :
+    (m.setLocal x w).currentFrame.localAlias = m.currentFrame.localAlias := by
+  rw [setLocal_eq_setAt]
+  cases hs : m.stack with
+  | nil => simp [Machine.currentFrame, setAt_stack, hs]
+  | cons fid rest =>
+    simp only [Machine.currentFrame, setAt_stack, hs]
+    exact setAt_localAlias m x w _ fid
 
 theorem currentFrame_setLocal_captured (m : Machine) (x : String) (w : Value) :
     (m.setLocal x w).currentFrame.captured = m.currentFrame.captured := by

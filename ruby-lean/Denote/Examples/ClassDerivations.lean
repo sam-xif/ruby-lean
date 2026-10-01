@@ -7,7 +7,7 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote PointClass
 
-private theorem init_deriv {κ : Ctx} {cn : String}
+theorem point_init_deriv {κ : Ctx} {cn : String}
     (hs : κ.selfTy = some (.inst cn .ivar0)) (hb : κ.blockTy = none) (hc : κ.consts = []) :
     (DJudgeC dclinks).init κ pointInitParams .ivar0 pointInitBody .any κ pointInitParams pointInitSpine := by
   intro F hF
@@ -34,13 +34,13 @@ private theorem class_deriv :
     @hF DClink.initDef (by simp [dclinks]) entryCtx [] pointInitParams .ivar0 pointInitSpine .any
       header initDecl pointInitParams rfl rfl
       (by simp [pointInitParams, FirstOrder, isAliasTy]) rfl (by decide)
-      (init_deriv rfl rfl rfl F hF) (by change header ∈ [header]; simp) (by decide)
+      (point_init_deriv rfl rfl rfl F hF) (by change header ∈ [header]; simp) (by decide)
   have hg : F.judge [] (.def' getter.name getter.params getter.body)
       .sym [] afterInit .ivar0 bodyCtx .ivar0 :=
     @hF DClink.memberDef (by simp [dclinks]) afterInit [] [] .ivar0 pointInitSpine .int
       initClass getter [] rfl (by simp) rfl (by decide)
       (@hF DClink.ivarRead (by simp [dclinks])
-        (instanceBodyCtx bodyCtx ⟨"Point", "Point", "getX"⟩ pointInitSpine) [] pointInitSpine "@x") (by decide)
+        (instanceBodyCtx bodyCtx ⟨"Point", "Point", "getX", false⟩ pointInitSpine) [] pointInitSpine "@x") (by decide)
       (by change initClass ∈ [initClass, header]; simp) (by decide)
   exact hF DClink.classDecl (by simp [dclinks])
     (hF DClink.seq (by simp [dclinks])
@@ -63,7 +63,7 @@ private theorem new_deriv (x y : Int) :
     (by change classWithMethod initClass getter ∈ [classWithMethod initClass getter, initClass, header]; simp)
     (by change initDecl ∈ [getter, initDecl]; simp) rfl (by decide)
     (by change "Point" ∈ ["Point"]; simp) rfl (by simp [pointInitParams, FirstOrder, isAliasTy])
-    rfl (by decide) (init_deriv rfl rfl rfl F hF) (by decide)
+    rfl (by decide) (point_init_deriv rfl rfl rfl F hF) (by decide)
 
 def program_061_class_basic : Ratchet.Expr := fullProgram 1 2
 
@@ -79,7 +79,7 @@ theorem derivD_class_basic (x y : Int) :
       (by change getter ∈ [getter, initDecl]; simp) (by decide) (by decide)
       rfl (by simp) rfl (by decide)
       (@hF DClink.ivarRead (by simp [dclinks])
-        (instanceBodyCtx callerCtx ⟨"Point", "Point", "getX"⟩ pointInitSpine) [] pointInitSpine "@x") (by decide)
+        (instanceBodyCtx callerCtx ⟨"Point", "Point", "getX", false⟩ pointInitSpine) [] pointInitSpine "@x") (by decide)
   exact hF DClink.seq (by simp [dclinks])
     (hF DClink.DJudgeSeq.cons (by simp [dclinks]) (class_deriv F hF)
       (hF DClink.DJudgeSeq.last (by simp [dclinks]) hg))

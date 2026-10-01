@@ -10,8 +10,8 @@ open RubyCore Ratchet
 theorem plain {h : Heap} {d parent eParent : ObjId} {name q : String}
     (hc : CoreOk h) (hs : Proof.Saturated h) (hp : PlainAllocator h parent) :
     PlainAllocator (heap h d name q parent eParent) h.objs.size := by
-  have hb := named_live hc.regexpNamed
-  have hne (k : ObjId) (hk : k ≤ Boot.regexpId) : h.objs.size ≠ k :=
+  have hb := hc.classReady.bootEnd
+  have hne (k : ObjId) (hk : k ≤ Boot.yielderId) : h.objs.size ≠ k :=
     (Nat.ne_of_lt (Nat.lt_of_le_of_lt hk hb)).symm
   have hchain := ancestors_class (d := d) (name := name) (q := q) (eParent := eParent)
     hc.classReady.chains hs hp.live
@@ -28,8 +28,7 @@ theorem plain {h : Heap} {d parent eParent : ObjId} {name q : String}
       using hp.noCore
   · rw [hchain, List.any_cons, hp.noPayload, Bool.or_false]
     simp [Builtins.payloadCoreClasses]
-    exact ⟨⟨hne _ (by decide), hne _ (by decide), hne _ (by decide), hne _ (by decide),
-      hne _ (by decide), hne _ (by decide), hne _ (by decide)⟩, hne _ (by decide)⟩
+    (repeat' apply And.intro) <;> exact hne _ (by decide)
 
 #print axioms plain
 end Ratchet.Denote.Subclass

@@ -34,19 +34,38 @@ module Export
   # Kept separate from `locals` because the two differ for `defined?`; the Lean
   # decoder merges them (it decides `defined?` from the node shape) and accepts the
   # v4 four-slot shape too, so an older AST still decodes.
+  # L278/C39: additive `rat` literal head with exact numerator/denominator;
+  # unlike a send, it is unaffected by constructor or constant redefinition.
+  # L279/C40: additive `imag` and its `flt_bits` component preserve native
+  # imaginary construction, exact fractions, signed zero and per-site identity.
+  # L288/C41: optional fifth for slot retains one-target multiple assignment.
+  # Four-slot for nodes remain valid and unchanged.
   VERSION = 5
 
   module_function
 
   # Full export document: { "v": 2, "ast": <node> } as a JSON string.
-  def json(core)
-    JSON.generate({ "v" => VERSION, "ast" => jsonable(core) })
+  def json(core, literal_namespace: "program")
+    JSON.generate({ "v" => VERSION, "ast" => jsonable(core, [literal_namespace, 0]) })
   end
 
-  def jsonable(x)
+  def jsonable(x, literals = ["program", 0])
     case x
     when Symbol then x.to_s
     when Array
+      # CRuby caches a frozen numeric literal by its syntactic occurrence.
+      # Assign stable sites while exporting the normalized tree, keeping this
+      # metadata out of the render/parse normal form. Prelude and program are
+      # separate compilation units, hence separate namespaces.
+      if x[0] == :rat || x[0] == :imag
+        site = "#{literals[0]}:#{literals[1]}"
+        literals[1] += 1
+        return ["rat", x[1], x[2], site] if x[0] == :rat
+        # JSON numbers lose -0.0 in Lean. Imaginary components are native
+        # literals, so preserve their bits without an overridable unary send.
+        component = x[1][0] == :flt ? ["flt_bits", [x[1][1]].pack("G").unpack1("Q>")] : jsonable(x[1], literals)
+        return ["imag", component, site]
+      end
       # J52: the regex-literal lowering (`::Regexp.new("src", opts)`, desugar
       # C33) exports as its own head — in CRuby the literal consults no
       # constant at runtime, and on the Lean side a dedicated head is one
@@ -60,9 +79,9 @@ module Export
          x[3][1][1].is_a?(Integer) && x[3][1][1] >= 0
         ["regexp_lit", x[3][0][1], x[3][1][1]]
       else
-        x.map { |e| jsonable(e) }
+        x.map { |e| jsonable(e, literals) }
       end
-    when nil, Integer, String then x
+    when nil, true, false, Integer, String then x
     when Float
       raise ArgumentError, "non-finite Float in RubyCore: #{x}" unless x.finite?
       x

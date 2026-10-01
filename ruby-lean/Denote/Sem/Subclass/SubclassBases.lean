@@ -35,8 +35,9 @@ theorem StateOk.subclass_parent_separate {κ : Ctx} {Γ : Env} {I : Ty} {m : Mac
       subst k
       obtain ⟨rest, hfront⟩ := classFrontB_sound site.front
       have hself : (ancestors m.heap base).contains base = true := by simp [hfront]
-      have hmem := ((hm.declCls c hc base hp).2.2.2.2.2 ns hs hg.1.2).2 bn base hbn hself
-      have htrue := List.contains_iff_mem.mpr hmem
+      have hmem := ((hm.declCls c hc base hp).2.2.2.2.2 ns hs
+        (mixinFreeChain_rootTail c hg.1.2)).2 bn base hbn hself
+      have htrue := List.contains_iff_mem.mpr (c.chain_subset hmem)
       rw [hg.2] at htrue
       cases htrue
 

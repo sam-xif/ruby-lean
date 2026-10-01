@@ -21,7 +21,7 @@ theorem module_old {k : ObjId} (hk : k < h.objs.size) :
 
 variable {κ : Ctx} {m n : Machine}
 
-theorem declared (hc : ChainsIn m.heap) (hs : Saturated m.heap)
+theorem declared (hnames : NamesOk m.heap) (hc : ChainsIn m.heap) (hs : Saturated m.heap)
     (ho : (m.heap.classPayload? Boot.objectId).isSome = true)
     (hn : constOwn m.heap Boot.objectId name = none)
     (hh : n.heap = heap m.heap Boot.objectId name q parent eParent)
@@ -39,18 +39,16 @@ theorem declared (hc : ChainsIn m.heap) (hs : Saturated m.heap)
   refine ⟨?_, hcls, hmod, ?_, ?_, ?_⟩
   · rw [hh, ancestors_old hc hs hjl]; exact hroot
   · rw [hh, module_old hjl]; exact hism
-  · intro hnone
-    obtain ⟨hfound, hmiss⟩ := hnew hnone
+  · intro hkind hnone
+    obtain ⟨hfound, hmiss⟩ := hnew hkind hnone
     refine ⟨?_, ?_⟩
     · intro owner md hm
       rw [hh, classOf_old hjl, method_old hc hs hcl] at hm
       obtain ⟨hb, hu, hv, hpre, hshadow⟩ := hfound owner md hm
       refine ⟨hb, hu, hv, hpre, ?_⟩
-      rw [hh, classOf_old hjl, shadow_before_old hc hs hcl]
+      rw [hh, classOf_old hjl, shadow_before_old hnames hc hs hcl]
       exact hshadow
-    · intro hm owner md hf
-      rw [hh, classOf_old hjl, method_old hc hs hcl] at hm hf
-      exact hmiss hm owner md hf
+    · simpa only [hh, classOf_old hjl, method_old hc hs hcl] using hmiss
   · intro ch hch hmix
     obtain ⟨hpos, hneg⟩ := hchain ch hch hmix
     refine ⟨?_, ?_⟩

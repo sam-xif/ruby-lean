@@ -28,13 +28,11 @@ def traceStepsDefault : Nat := 3000
 def main (args : List String) : IO UInt32 := do
   let stdin ← IO.getStdin
   let input ← stdin.readToEnd
-  let fuel := match args with
-    | ["--fuel", n] => n.toNat?.getD fuelDefault
-    | _ => fuelDefault
+  let fuel := ((args.dropWhile (· != "--fuel"))[1]?.bind String.toNat?).getD fuelDefault
   -- `--trace [N]`: emit the step-by-step config trace (playground) instead of
   -- a single Observation. Decode errors still exit 1; a trace always exits 0
   -- (unsupported/stuck are reported inside the JSON `status`).
-  let traceSteps : Option Nat := match args with
+  let traceSteps : Option Nat := match args.dropWhile (· != "--trace") with
     | "--trace" :: rest => some (rest.head?.bind (·.toNat?) |>.getD traceStepsDefault)
     | _ => none
   -- Where the trace window starts. A whole-program trace is only viable for a
@@ -111,7 +109,11 @@ def main (args : List String) : IO UInt32 := do
       -- Phase 1: boot the prelude (the core library written in RubyCore, L62);
       -- phase 2 runs `prog` on the resulting heap. A prelude failure is a model
       -- bug, never a program outcome → exit 1.
-      let m0 ← match Prelude.initWithPrelude prog with
+      -- The difftest control preloads JSON. Keep that environment explicit;
+      -- standalone execution boots only core Ruby.
+      let runProg := if args.contains "--preload-json" then
+        Expr.seq [.send none "require" [.str "json"] none, prog] else prog
+      let m0 ← match Prelude.initWithPrelude runProg with
         | .error e =>
           IO.eprintln s!"MODEL PRELUDE FAILURE (bug): {e}"
           return 1
@@ -123,7 +125,7 @@ def main (args : List String) : IO UInt32 := do
         IO.println (Trace.traceJson maxSteps m0 traceStart).compress
         return 0
       let result := Interp.run fuel m0
-      match observe result with
+      match observe result fuel with
       | .obs obs =>
         IO.println obs.compress
         return 0
