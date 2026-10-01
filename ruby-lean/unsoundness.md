@@ -5,6 +5,7 @@
 reports "No errors!", but CRuby makes `initialize_copy`, `initialize_dup`,
 `initialize_clone` and `respond_to_missing?` private on definition and raises
 NoMethodError (private method called). Same for each of the four names.
+Runnable `# typed: strict` witness: examples/sorbet_auto_private_unsound.rb.
 The model privatizes the three initialize_* names (normalizeDefinitionVisibility)
 but not respond_to_missing? (a fidelity gap, unchanged here).
 
