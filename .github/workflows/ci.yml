@@ -294,6 +294,20 @@ jobs:
       - name: Typed ratchet floors (fragmentFloor / clinkFloor / safeRungFloor + reach)
         run: cd ruby-lean && ./scripts/run_typed_ratchet.sh
 
+      - name: Cache the sparse ruby/ruby checkout and harvested corpus
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/ruby-src
+            desugar/corpus/bootstraptest
+          key: ${{ runner.os }}-ruby-src-bootstraptest-v1
+
+      - name: Harvest bootstraptest if missing
+        run: |
+          if [ ! -e desugar/corpus/bootstraptest ]; then
+            RUBY_SRC=/tmp/ruby-src scripts/ci/harvest_bootstraptest.sh
+          fi
+
       - name: Desugarer bootstraptest ratchet (in_fragment)
         run: ruby desugar/bin/coverage
 
