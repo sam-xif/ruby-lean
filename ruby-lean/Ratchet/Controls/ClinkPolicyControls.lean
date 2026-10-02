@@ -237,7 +237,10 @@ private def literalClassHint : Deriv := .classDecl "Box" none (.intLit 7)
 #guard !validateDWith (fun r => clinkEnabled r && r != "classDecl") literalClass literalClassHint
 #guard !validateD (.class' "String" none (.int 7)) (.classDecl "String" none (.intLit 7))
 #guard !validateD (.class' "Object" none (.int 7)) (.classDecl "Object" none (.intLit 7))
-#guard !validateD (.seq [literalClass, literalClass]) (.seq [literalClassHint, literalClassHint])
+-- A second declaration is not fresh; only the reopen rule admits it.
+#guard !validateDWith (fun r => clinkEnabled r && r != "classReopen")
+  (.seq [literalClass, literalClass]) (.seq [literalClassHint, literalClassHint])
+#guard validateD (.seq [literalClass, literalClass]) (.seq [literalClassHint, literalClassHint])
 #guard validateD (.seq [literalClass, .class' "Pair" none (.int 1)])
   (.seq [literalClassHint, .classDecl "Pair" none (.intLit 1)])
 
@@ -529,6 +532,18 @@ private def nilQH (thn : Deriv) : Deriv := .seq [
 #guard !validateDWith (fun q => clinkEnabled q && q != "ifNilQuery") (nilQP (.int 0)) (nilQH (.intLit 0))
 #guard !validateD (nilQP (.send (some (.var .lvar "x")) "+" [.int 1] none))
   (nilQH (.prim (.var .lvar "x") "+" [.intLit 1] .int .int))
+
+-- Active classReopen (109): a second `class Foo` adds a method to the existing class.
+private def fooP (rhs : Ratchet.Expr) : Ratchet.Expr := .seq [
+  .class' "Foo" none (.def' "a" [] (.int 1)), .class' "Foo" none (.def' "b" [] rhs),
+  .send (some (.send (some (.const "Foo")) "new" [] none)) "b" [] none]
+private def fooH (rhs : Deriv) (t : Ty) : Deriv := .seq [
+  .classDecl "Foo" none (.defDecl "a" [] .int (.intLit 1)),
+  .classDecl "Foo" none (.defDecl "b" [] t rhs),
+  .callMethodSig (.newInst "Foo" [] (.inst "Foo" .ivar0)) "b" [] t]
+#guard validateD (fooP (.int 2)) (fooH (.intLit 2) .int)
+#guard !validateDWith (fun q => clinkEnabled q && q != "classReopen") (fooP (.int 2)) (fooH (.intLit 2) .int)
+#guard !validateD (fooP (.str "x")) (fooH (.strLit "x") .int)
 
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [

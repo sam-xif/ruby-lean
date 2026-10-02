@@ -25,6 +25,14 @@ def classRuleB (κ κb : Ctx) (Γ : Env) (I τ : Ty) (cn : String) : Bool :=
     nameFreeN κ "new" && classNativeQuietB cn "new" && unqualifiedClassB cn &&
     headerTableFrameB κ.classes cn && classReachB κ.classes
 
+/-- `class C ... end` on an existing top-level class: no registration or callbacks run. -/
+def reopenRuleB (κ κb : Ctx) (Γ : Env) (I τ : Ty) (cn : String) : Bool :=
+  reframeTypesB (returnScopeCtx κ κb) I && localTypesB Γ && FirstOrder τ &&
+    decide (κ.asms = [] ∧ κ.scope.runtimeMain = true ∧ κ.frame = none ∧
+      κ.pos.mainWorld = true ∧ κb.pos.mainWorld = true ∧ κ.scope.runtimeClass = none ∧
+      κb.scope.runtimeClass = some cn ∧ κb.consts = []) &&
+    plainClassTablesB κ && unqualifiedClassB cn
+
 /-- CRuby privatizes these on definition; Sorbet 0.6.13405 still types explicit calls. -/
 def autoPrivateNames : List String :=
   ["initialize_copy", "initialize_dup", "initialize_clone", "respond_to_missing?"]

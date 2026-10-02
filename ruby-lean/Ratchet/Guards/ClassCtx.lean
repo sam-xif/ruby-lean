@@ -23,6 +23,11 @@ def classBodyCtx (κ : Ctx) (name : String) : Ctx :=
 /-- Freshness is a static absence test backed by the interpreted global-name bound. -/
 def freshClassNameB (κ : Ctx) (name : String) : Bool := !κ.pos.globalConsts.contains name
 
+/-- Reopening an existing class: its object may already carry class-level ivars. -/
+def reopenBodyCtx (κ : Ctx) (name : String) : Ctx :=
+  let b := classBodyCtx κ name
+  { b with scope := { b.scope with closedIvars := false } }
+
 /-- The just-created ordinary class, before any body statement has executed. This records
 no future methods and makes no claim about inherited initialize. -/
 def classHeader (name : String) : Cls := ⟨name, none, [], [], false, [], [], []⟩

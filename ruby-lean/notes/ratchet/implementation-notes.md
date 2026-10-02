@@ -13715,3 +13715,10 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
 - `if x.nil?` with `x : nilable Integer`: `nilQuery_cond` is a RunWith recording that the
   native nil? row (new `NilClass#nil?` primitive row; Integer uses `Object#nil?`) answers
   x's nil-ness at an unchanged local; the branch then refines Γ via `envOk_refine`.
+
+## classReopen (2026-10-02, 103/103, 109/261)
+- `class C ... end` on a declared top-level class: no registration/callbacks, heap
+  unchanged; entry pushes a class frame on the class object (`reopen_state`, scope facts
+  from C's instance site). Body context `reopenBodyCtx` has open ivars (the class object
+  may already carry class-level ivars). Checker tries fresh classDecl, then classReopen.
+- Registry needs provider binders in constructor order; avoid `variable` sections there.

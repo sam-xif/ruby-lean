@@ -60,6 +60,7 @@ macro "certify_djudgments" rec:ident h:ident F:ident hF:ident : tactic => `(tact
   · exact $hF DClink.ivarRead (by simp [dclinks])
   · apply $hF DClink.constClass (by simp [dclinks]) <;> assumption
   · apply $hF DClink.classDecl (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.classReopen (by simp [dclinks]) <;> assumption
   · apply $hF DClink.moduleDecl (by simp [dclinks]) <;> assumption
   · rename_i κd Γd Γb Id Ib τd c d ps hp hps hret hself hb hn hc hg ihb
     exact $hF DClink.memberDef (by simp [dclinks]) hp hps hret hself ihb hn hc hg
