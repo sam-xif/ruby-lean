@@ -238,6 +238,7 @@ theorem StateCore_methodWrite_tables {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine
     stringPayload := hm.stringPayload.defineMethod
     arrayPayload := hm.arrayPayload.defineMethod
     hashPayload := hm.hashPayload.defineMethod
+    frozenFields := hm.frozenFields.defineMethod
     core := hm.core.defineMethod
     frameInRange := hm.frameInRange
     env := ?_

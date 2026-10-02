@@ -93,6 +93,7 @@ theorem StateOk_reframe_block {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
     stringPayload := by simpa only [hh] using h.stringPayload
     arrayPayload := by simpa only [hh] using h.arrayPayload
     hashPayload := by simpa only [hh] using h.hashPayload
+    frozenFields := by simpa only [hh] using h.frozenFields
     core := by simpa only [hh] using h.core
     frameInRange := hr
     env := he

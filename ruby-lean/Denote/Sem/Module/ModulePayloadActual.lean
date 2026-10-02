@@ -26,6 +26,19 @@ theorem stringPayload (hc : ChainsIn m.heap) (hd : m.lexicalNamespace < m.heap.o
       · rw [classOf_oob _ (by rw [size m name]; exact Nat.le_of_not_lt (not_lt_add_two hl hk he))] at hco
         cases hco
 
+theorem frozenFields (hd : m.lexicalNamespace < m.heap.objs.size) (hp : FrozenFieldsOk m.heap) :
+    FrozenFieldsOk h₁ := by
+  apply hp.of_fields
+  intro o
+  by_cases hl : o < m.heap.objs.size
+  · rw [get_old hd hl]; exact Or.inr (fields_constSetIn _ _ _ _ _)
+  · left
+    by_cases hk : o = m.heap.objs.size
+    · subst o; rw [get_module hd]; rfl
+    · by_cases he : o = m.heap.objs.size + 1
+      · subst o; rw [get_eigen]; rfl
+      · rw [get_oob _ (by rw [size m name]; exact Nat.le_of_not_lt (not_lt_add_two hl hk he))]; rfl
+
 theorem arrayPayload (hd : m.lexicalNamespace < m.heap.objs.size) (hp : ArrayPayloadOk m.heap) : ArrayPayloadOk h₁ := by
   intro o xs hx
   have hn : (h₁).classPayload? o = none := by simp only [Heap.classPayload?, hx]

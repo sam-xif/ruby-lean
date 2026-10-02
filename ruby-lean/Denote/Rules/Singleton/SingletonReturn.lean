@@ -57,6 +57,7 @@ theorem restore_singleton_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n :
     stringPayload := hn.stringPayload
     arrayPayload := hn.arrayPayload
     hashPayload := hn.hashPayload
+    frozenFields := hn.frozenFields
     core := hn.core
     frameInRange := ⟨by rw [hp.stack]; exact hm.frameInRange.1,
       by rw [hp.stack]; exact Nat.lt_of_lt_of_le hm.frameInRange.2 hp.frames.size⟩

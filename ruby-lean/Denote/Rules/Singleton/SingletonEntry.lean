@@ -68,6 +68,7 @@ theorem singleton_enter_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     stringPayload := hm.stringPayload
     arrayPayload := hm.arrayPayload
     hashPayload := hm.hashPayload
+    frozenFields := hm.frozenFields
     core := hm.core
     frameInRange := by simp [FrameInRange, pushMethodFrame]
     env := requiredFrame_envOk m (.ref k) name md ps args hlen hargs hps

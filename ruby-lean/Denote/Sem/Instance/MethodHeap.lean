@@ -290,6 +290,12 @@ theorem StringPayloadOk.defineMethod {h : Heap} {cls : ObjId} {name : String}
   rw [hp] at hx
   cases hn : ((RubyCore.defineMethod h cls name md).get o).payload <;> simp_all
 
+theorem FrozenFieldsOk.defineMethod {h : Heap} {cls : ObjId} {name : String}
+    {md : MethodDef} (hs : FrozenFieldsOk h) : FrozenFieldsOk (defineMethod h cls name md) :=
+  hs.of_fields fun o => Or.inr
+    ⟨by simpa only using congrArg Object.frozen (get_defineMethod_data h cls o name md),
+     by simpa only using congrArg Object.ivars (get_defineMethod_data h cls o name md)⟩
+
 theorem ArrayPayloadOk.defineMethod {h : Heap} {cls : ObjId} {name : String}
     {md : MethodDef} (hs : ArrayPayloadOk h) : ArrayPayloadOk (defineMethod h cls name md) := by
   intro o xs hp

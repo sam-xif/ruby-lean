@@ -425,6 +425,28 @@ private def hTy : Ty := .hashOf (.cls "String") .int
 #guard !validateD (.send (some (.str "a/b")) "split" [.int 1] none)
   (.prim (.strLit "a/b") "split" [.intLit 1] (.cls "String") (.arrayOf (.cls "String")))
 
+-- Active scalarIvarAsgn: 074's Integer field replacement; nil fields are excluded.
+private def boxCls (rhs : Ratchet.Expr) : Ratchet.Expr := .class' "Box" none (.seq [
+  .def' "initialize" [.req "size"] (.vasgn .ivar "@size" (.var .lvar "size")),
+  .def' "grow" [] (.vasgn .ivar "@size" rhs)])
+private def boxHint (fty : Ty) (rhs : Deriv) : Deriv := .classDecl "Box" none (.seq [
+  .defDecl "initialize" [("size", fty)] .any (.ivarAsgn "@size" (.var .lvar "size")),
+  .defDecl "grow" [] fty (.ivarAsgn "@size" rhs)])
+private def boxTy (fty : Ty) : Ty := .inst "Box" (.ivarCons "@size" fty .ivar0)
+private def growCall (fty : Ty) (arg : Deriv) : Deriv :=
+  .callMethodSig (.newInst "Box" [arg] (boxTy fty)) "grow" [] fty
+private def incr : Ratchet.Expr := .send (some (.var .ivar "@size")) "+" [.int 1] none
+private def incrH : Deriv := .prim (.ivarRead "@size" .int) "+" [.intLit 1] .int .int
+#guard validateD (.seq [boxCls incr, .send (some (.send (some (.const "Box")) "new" [.int 1] none)) "grow" [] none])
+  (.seq [boxHint .int incrH, growCall .int (.intLit 1)])
+#guard !validateDWith (fun q => clinkEnabled q && q != "scalarIvarAsgn")
+  (.seq [boxCls incr, .send (some (.send (some (.const "Box")) "new" [.int 1] none)) "grow" [] none])
+  (.seq [boxHint .int incrH, growCall .int (.intLit 1)])
+#guard !validateD (.seq [boxCls .nil, .send (some (.send (some (.const "Box")) "new" [.nil] none)) "grow" [] none])
+  (.seq [boxHint .nilT .nilLit, growCall .nilT .nilLit])
+#guard !validateD (.seq [boxCls (.str "a"), .send (some (.send (some (.const "Box")) "new" [.int 1] none)) "grow" [] none])
+  (.seq [boxHint .int (.strLit "a"), growCall .int (.intLit 1)])
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

@@ -10,7 +10,7 @@ theorem StateOk.bindIvar_scalar {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     {o : ObjId} {x : String} {v : Value} (hm : StateOk κ Γ I m) (ht : ReframeFO κ I)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
     (hs : m.currentFrame.self = .ref o)
-    (hv : ScalarEq (ivarOf m.heap (.ref o) x) v) :
+    (hv : ScalarEq (ivarOf m.heap (.ref o) x) v) (hfz : (m.heap.get o).frozen = false) :
     StateOk κ Γ I (Interp.bindIvar m x v) := by
   have hf := Framed.bindIvar_scalar hs (hm.selfLive o hs) hv
   have hw := bindIvar_ivarOnly m x v
@@ -44,6 +44,7 @@ theorem StateOk.bindIvar_scalar {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     rw [bindIvar_classNamed] at hk
     rw [hlookup] at hfound
     exact hf.firstOrder τ (ht.paths _ τ hn) w (hm.constPaths owner name τ k hn hk w hfound)
+  · intro o' h'; rw [hs] at h'; cases h'; exact hfz
 
 #print axioms StateOk.bindIvar_scalar
 end Ratchet.Denote

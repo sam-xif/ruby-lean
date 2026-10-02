@@ -23,7 +23,7 @@ theorem open_instance_not_complete {m : Machine} {cn x : String}
 private def withExtra : Machine := Interp.bindIvar bootMachine "@extra" (.int 7)
 
 -- Full-state witness: forgetting known fields is sound only with the open flag.
-theorem boot_extra_open_state (hb : bootOkB = true) :
+theorem boot_extra_open_state (hb : bootOkB = true) (hu : bootUnfrozenB = true) :
     StateOk { ctx0 with scope := { ctx0.scope with closedIvars := false } } [] .ivar0 withExtra ∧
       ivarOf withExtra.heap withExtra.currentFrame.self "@extra" = .int 7 := by
   have hm := stateOk_boot hb
@@ -37,6 +37,7 @@ theorem boot_extra_open_state (hb : bootOkB = true) :
     · trivial
     · intro x τ hx; rw [constGet?_empty (by rfl)] at hx; cases hx
     · intro owner x τ k hx; cases hx
+    · exact fun o _ => boot_unfrozen hu o
   refine ⟨StateOk_forgetIvars hw, ?_⟩
   change ivarOf (Interp.bindIvar bootMachine "@extra" (.int 7)).heap
     (Interp.bindIvar bootMachine "@extra" (.int 7)).currentFrame.self "@extra" = _
