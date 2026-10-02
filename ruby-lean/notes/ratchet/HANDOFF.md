@@ -1,6 +1,6 @@
 # Active ascent (2026-10-01)
 
-51/99 clinks, 82/261 production validateD accepts (prefix 17), 46/46 negatives
+54/99 clinks, 84/261 production validateD accepts (prefix 17), 46/46 negatives
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
@@ -99,8 +99,7 @@ memberDef, newDefault, callMethodSig, vcallMethodSig, ivarRead, initDef, newInst
 (intLit/var/ivarAsgn/seq/ignoreResult/Seq.*) enabled (Constructor/NewInstActual).
 moduleDecl enabled (Module/ModuleDeclActual). singletonDef/callSingleton(Implicit)
 enabled (Singleton/SingletonRulesActual). Remaining big blockers: flow (closures:
-literal now sets breakScope/pushes frame copy/blockCallK), newImplicit/instanceType
-(ConstructorImplicit still uses the old one-step constructor entry), scalarIvarAsgn
+literal now sets breakScope/pushes frame copy/blockCallK), scalarIvarAsgn
 (frozen-receiver path runs inspect), subclassDecl. Denote/Controls/ConstructorControls still cites the removed constructor_body_entry.
 
 Old instance_constants_old assumed an explicit Object fallback; current ordinary instance resolution follows ancestors instead.

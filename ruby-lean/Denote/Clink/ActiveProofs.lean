@@ -19,6 +19,7 @@ import Denote.Rules.Constructor.NewInstActual
 import Denote.Rules.Class.VcallMethodSigActual
 import Denote.Rules.Module.ModuleDeclActual
 import Denote.Rules.Singleton.SingletonRulesActual
+import Denote.Rules.Singleton.SingletonRules
 
 /-! Proof providers for the active rebuild profile: literals, locals, sequences
 and primitive sends, branches, guarded bare names, Array/Hash literals, definitions and ordinary/recursive calls.

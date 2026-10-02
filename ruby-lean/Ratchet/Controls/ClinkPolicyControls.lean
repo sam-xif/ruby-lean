@@ -368,6 +368,27 @@ private def callH (n : String) (t : Ty) : Deriv := .callSingleton (.constCls "M"
 #guard !validateD (.def' "singleton_method_added" [.req "x"] (.var .lvar "x"))
   (.defDecl "singleton_method_added" [("x", .int)] .int (.var .lvar "x"))
 
+-- Active newImplicit/instanceType/selfRead: P.make(1) factory (073) and P.new(1).me (076).
+private def pTy : Ty := .inst "P" (.ivarCons "@x" .int .ivar0)
+private def pCls : Expr := .class' "P" none (.seq [
+  .def' "initialize" [.req "x"] (.vasgn .ivar "@x" (.var .lvar "x")),
+  .def' "me" [] .self',
+  .defs .self' "make" [.req "x"] (.send none "new" [.var .lvar "x"] none)])
+private def pHint : Deriv := .classDecl "P" none (.seq [
+  .defDecl "initialize" [("x", .int)] .any (.ivarAsgn "@x" (.var .lvar "x")),
+  .defDecl "me" [] (.cls "P") .selfExpr,
+  .defDecl "make" [("x", .int)] (.cls "P") (.newImplicit "P" [.var .lvar "x"] pTy)])
+private def pMake : Expr := .send (some (.const "P")) "make" [.int 1] none
+private def pMakeH : Deriv := .callSingleton (.constCls "P") "make" [.intLit 1] pTy
+private def pMe : Expr := .send (some (.send (some (.const "P")) "new" [.int 1] none)) "me" [] none
+private def pMeH : Deriv := .callMethodSig (.newInst "P" [.intLit 1] pTy) "me" [] pTy
+#guard validateD (.seq [pCls, pMake]) (.seq [pHint, pMakeH])
+#guard validateD (.seq [pCls, pMe]) (.seq [pHint, pMeH])
+#guard ["newImplicit", "instanceType", "selfRead"].all fun r =>
+  !validateDWith (fun q => clinkEnabled q && q != r) (.seq [pCls, pMake]) (.seq [pHint, pMakeH])
+#guard !validateD (.seq [pCls, .send (some (.const "P")) "make" [.str "a"] none])
+  (.seq [pHint, .callSingleton (.constCls "P") "make" [.strLit "a"] pTy])
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

@@ -33,11 +33,11 @@ theorem SemSafeCtxA.constructImplicit {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' Ib
       (vs : List Value) (hvs : DenAll (ps.map (·.2)) n vs) :
       StepSpec n Γ' (.inst c.name Ib)
         (Interp.finishSend n m.currentFrame.self .implicit "new" vs .none) κ' I' := by
-    obtain ⟨k, next, hnamed, hs, hr⟩ := declared_constructor_run (sendSite := .implicit)
+    obtain ⟨k, hnamed, hr⟩ := declared_constructor_run (sendSite := .implicit)
       hn' hc hd hn hnew halloc hparams hps hbody ht ha hw hconst hΓ hIb hk hvs
     have he : m.currentFrame.self = .ref k := by
       cases hrecv : m.currentFrame.self <;> simp_all [denM, isClassRefNamed]
-    rw [he, hs]
+    rw [he]
     exact hr
   apply RunSpec.rebase (middle := start) ?_ (Framed_reCtl _ _ [])
   apply RunSpec.of_stepSpec (by rfl)
