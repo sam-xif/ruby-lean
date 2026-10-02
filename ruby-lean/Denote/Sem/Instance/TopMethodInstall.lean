@@ -23,9 +23,11 @@ theorem StateOk_defineTopMethod_classes {κ : Ctx} {Γ : Env} {I : Ty} {m : Mach
     StateOk { κ with pos := { κ.pos with defs := d :: κ.defs } } Γ I
       { m with heap := defineMethod m.heap Boot.objectId d.name md } := by
   simp only [topDeclClassesB, Bool.or_eq_true, Bool.and_eq_true] at hclasses
-  obtain ⟨⟨hms, hshn⟩, hclasses2⟩ := hclasses
+  obtain ⟨⟨⟨hms, hshn⟩, hinhn⟩, hclasses2⟩ := hclasses
   have hsh : singletonHookName ≠ d.name := by
     intro he; rw [← he] at hshn; simp [singletonHookName] at hshn
+  have hinh : "inherited" ≠ d.name := by
+    intro he; rw [← he] at hinhn; simp at hinhn
   have hmain : d.name ∉ mainSingletonNames := by
     intro hn
     have hf : mainSingletonNames.contains d.name = false := by
@@ -34,7 +36,7 @@ theorem StateOk_defineTopMethod_classes {κ : Ctx} {Γ : Env} {I : Ty} {m : Mach
     cases hf
   rcases hclasses2 with hempty | ⟨hnew, howners⟩
   · exact StateOk_defineTopMethod hm ht hΓ ha (List.isEmpty_iff.mp hempty)
-      hn hmiss hquiet hsh hc hfresh hp hb hu hcode hmain
+      hn hmiss hquiet hsh hinh hc hfresh hp hb hu hcode hmain
   have hsep (c : Cls) (hmem : c ∈ κ.classes)
       (hk : classNamed? m.heap c.name = some Boot.objectId) : False := by
     have hnot : c.name ∉ rootAncestors := by
@@ -43,7 +45,7 @@ theorem StateOk_defineTopMethod_classes {κ : Ctx} {Γ : Env} {I : Ty} {m : Mach
   obtain ⟨e, he, _⟩ := hm.core.classReady.objectEigen
   apply StateOk_methodWrite (hprefix := hm.toStateCore.objectWrite d.name)
     (hhooks := fun _ => ClassHookWriteOk.object _ _)
-    hm ht hΓ ha hn hmiss hquiet hsh
+    hm ht hΓ ha hn hmiss hquiet hsh hinh
   · exact ClassesOk_methodWrite_old hm.classes (by rw [he]; rfl)
       (fun c hmem hk => False.elim (hsep c hmem hk))
   · exact DefsOk_defineMethod hm.defs hc hfresh hp hb hu hcode hmain

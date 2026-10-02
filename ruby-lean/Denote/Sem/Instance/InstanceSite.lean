@@ -67,6 +67,12 @@ theorem NamesAt.recontext {free free' : String → Bool} {h : Heap} {k : ObjId}
     (hp : NamesAt free h k) (hn : ∀ n, free n = false → free' n = false) : NamesAt free' h k :=
   fun n hm owner md hl => (hp n hm owner md hl).imp id (Or.imp id (hn n))
 
+/-- A class's `inherited` callback is the native no-op (subclass creation sends it). -/
+def inheritedHookQuietB (h : Heap) (k : ObjId) : Bool :=
+  (h.classPayload? k).any (·.isModule) ||
+    (lookup h (.ref k) "inherited").any fun (_, md) =>
+      !md.undefined && md.builtin == some "Class#inherited"
+
 structure InstanceSiteAt (free : String → Bool) (cn : String) (k : ObjId) (h : Heap) : Prop where
   named : classNamed? h cn = some k
   front : classFrontB h k = true
@@ -98,6 +104,8 @@ structure InstanceSiteAt (free : String → Bool) (cn : String) (k : ObjId) (h :
   singletonHook : singletonDefHookQuietB h k = true
   /-- Its metaclass is not main's class, so def-self writes stay outside main's prefix. -/
   metaNotMain : classOf h (.ref k) ≠ classOf h (.ref Boot.mainId)
+  /-- Creating a subclass of k runs only the native `inherited`. -/
+  inheritedHook : inheritedHookQuietB h k = true
 
 /-- Only negative-name information affects a site's meaning, not the caller's scope. -/
 abbrev InstanceSite (κ : Ctx) := InstanceSiteAt (nameFreeN κ)
@@ -127,7 +135,8 @@ theorem InstanceSite.recontext {κ κ' : Ctx} {cn : String} {k : ObjId} {h : Hea
     (hn : ∀ n, nameFreeN κ n = false → nameFreeN κ' n = false) : InstanceSite κ' cn k h := by
   exact ⟨site.named, site.front, site.hook, site.constants, site.names.recontext hn,
     site.metaclass, site.classNames.recontext hn, site.metaFront, site.metaLeaf, site.metaConstants, site.afterBuiltins,
-    site.detached, site.unfrozen, site.mainLive, site.notMain, site.metaAttached, site.singletonHook, site.metaNotMain⟩
+    site.detached, site.unfrozen, site.mainLive, site.notMain, site.metaAttached, site.singletonHook, site.metaNotMain,
+    site.inheritedHook⟩
 
 /-- Scope-independent, so the same site survives a frame change or an allocation.
 This does not claim that method installation or class mutation preserves it. -/
@@ -148,12 +157,17 @@ theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
     change Interp.methodOn n.heap (classOf n.heap (.ref k)) _ =
       Interp.methodOn m.heap (classOf m.heap (.ref k)) _
     simp only [classOf, he.get k hl, he.methodOn_eq hch]
+  have hli : lookup n.heap (.ref k) "inherited" = lookup m.heap (.ref k) "inherited" := by
+    change Interp.methodOn n.heap (classOf n.heap (.ref k)) _ =
+      Interp.methodOn m.heap (classOf m.heap (.ref k)) _
+    simp only [classOf, he.get k hl, he.methodOn_eq hch]
   refine ⟨?_, ?_, ?_, ?_, ?_, h.metaclass.ext he hl, ?_, ?_, ?_, ?_, h.afterBuiltins,
     by rw [he.payload]; exact h.detached, by rw [he.get k hl]; exact h.unfrozen,
     Nat.lt_of_lt_of_le h.mainLive he.size,
     by simp only [classOf, he.get Boot.mainId h.mainLive]; exact h.notMain, ?_,
     by simpa only [singletonDefHookQuietB, hls] using h.singletonHook,
-    by simp only [classOf, he.get k hl, he.get Boot.mainId h.mainLive]; exact h.metaNotMain⟩
+    by simp only [classOf, he.get k hl, he.get Boot.mainId h.mainLive]; exact h.metaNotMain,
+    by simpa only [inheritedHookQuietB, hli, he.payload] using h.inheritedHook⟩
   · simpa only [he.classNamed?_eq] using h.named
   · simpa only [classFrontB, he.payload] using h.front
   · simpa only [definitionHookQuietB, hlk] using h.hook

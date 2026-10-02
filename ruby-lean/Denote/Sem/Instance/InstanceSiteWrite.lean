@@ -28,7 +28,7 @@ proof. The owner is arbitrary: aliases and writes to other classes are covered t
 theorem InstanceSite.methodWrite {κ : Ctx} {cn name : String} {k cls : ObjId}
     {h : Heap} {md : MethodDef} (site : InstanceSite κ cn k h)
     (hn : nameFreeN κ name = false) (hq : "method_added" ≠ name)
-    (hsh : singletonHookName ≠ name) :
+    (hsh : singletonHookName ≠ name) (hinh : "inherited" ≠ name) :
     InstanceSite κ cn k (defineMethod h cls name md) := by
   refine ⟨?_, ?_, ?_, ?_, ?_, site.metaclass.methodWrite, ?_, ?_, ?_, ?_, site.afterBuiltins,
     by rw [attached_defineMethod]; exact site.detached,
@@ -41,7 +41,10 @@ theorem InstanceSite.methodWrite {κ : Ctx} {cn name : String} {k cls : ObjId}
     by simpa only [singletonDefHookQuietB,
       Proof.lookup_defineMethod h cls name singletonHookName md (.ref k) hsh
         (Proof.classOf_defineMethod ..)] using site.singletonHook,
-    by simpa only [Proof.classOf_defineMethod] using site.metaNotMain⟩
+    by simpa only [Proof.classOf_defineMethod] using site.metaNotMain,
+    by simpa only [inheritedHookQuietB, isModuleAny_defineMethod,
+      Proof.lookup_defineMethod h cls name "inherited" md (.ref k) hinh
+        (Proof.classOf_defineMethod ..)] using site.inheritedHook⟩
   · simpa only [classNamed?_defineMethod] using site.named
   · simpa only [classFrontB_defineMethod] using site.front
   · simpa only [definitionHookQuietB,
@@ -74,7 +77,8 @@ theorem InstanceSite.ivarOnly {κ : Ctx} {cn : String} {k : ObjId} {h h' : Heap}
     by obtain ⟨e, hke, ha, hf⟩ := site.metaAttached
        exact ⟨e, by rw [hi.eigen]; exact hke, by rw [hi.classPayload]; exact ha, by rw [hi.frozen]; exact hf⟩,
     by simpa only [singletonDefHookQuietB, hi.lookup_eq] using site.singletonHook,
-    by simpa only [hi.classOf_eq] using site.metaNotMain⟩
+    by simpa only [hi.classOf_eq] using site.metaNotMain,
+    by simpa only [inheritedHookQuietB, hi.lookup_eq, hi.classPayload] using site.inheritedHook⟩
   · simpa only [classNamed?, constLookup, hi.classPayload] using site.named
   · simpa only [classFrontB, hi.classPayload] using site.front
   · simpa only [definitionHookQuietB, hi.lookup_eq] using site.hook
@@ -94,11 +98,11 @@ theorem InstanceSite.ivarOnly {κ : Ctx} {cn : String} {k : ObjId} {h h' : Heap}
 theorem ClassSitesOk.methodWrite {κ : Ctx} {name : String} {cls : ObjId}
     {h : Heap} {md : MethodDef} (sites : ClassSitesOk κ h)
     (hn : nameFreeN κ name = false) (hq : "method_added" ≠ name)
-    (hsh : singletonHookName ≠ name) :
+    (hsh : singletonHookName ≠ name) (hinh : "inherited" ≠ name) :
     ClassSitesOk κ (defineMethod h cls name md) := by
   intro cn hcn
   obtain ⟨k, site⟩ := sites cn hcn
-  exact ⟨k, site.methodWrite hn hq hsh⟩
+  exact ⟨k, site.methodWrite hn hq hsh hinh⟩
 
 theorem ClassSitesOk.ivarOnly {κ : Ctx} {h h' : Heap} (sites : ClassSitesOk κ h)
     (hi : Proof.IvarOnly h h') : ClassSitesOk κ h' := by
@@ -109,7 +113,7 @@ theorem ClassSitesOk.ivarOnly {κ : Ctx} {h h' : Heap} (sites : ClassSitesOk κ 
 theorem ClassSitesOk.publish_instance {κ : Ctx} {c : Cls} {d : Defn} {cls : ObjId}
     {h : Heap} {md : MethodDef} (sites : ClassSitesOk κ h)
     (site : InstanceSite κ c.name cls h) (hq : "method_added" ≠ d.name)
-    (hsh : singletonHookName ≠ d.name) :
+    (hsh : singletonHookName ≠ d.name) (hinh : "inherited" ≠ d.name) :
     ClassSitesOk (instanceDeclCtx κ c d) (defineMethod h cls d.name md) := by
   intro cn hcn
   change cn ∈ (classWithMethod c d :: κ.classes).map (·.name) ++ κ.scope.runtimeClass.toList at hcn
@@ -118,10 +122,10 @@ theorem ClassSitesOk.publish_instance {κ : Ctx} {c : Cls} {d : Defn} {cls : Obj
   · change cn = c.name at he
     subst cn
     exact ⟨cls, (site.reserveName d.name).methodWrite
-      (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hq hsh⟩
+      (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hq hsh hinh⟩
   · obtain ⟨k, old⟩ := sites cn hcn
     exact ⟨k, (old.reserveName d.name).methodWrite
-      (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hq hsh⟩
+      (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hq hsh hinh⟩
 
 #print axioms InstanceSite.methodWrite
 #print axioms InstanceSite.ivarOnly

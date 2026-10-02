@@ -41,6 +41,8 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
     rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hd hk, method_old hc.chains hs hd hkl]
   have hls : lookup h₁ (.ref k) singletonHookName = lookup m.heap (.ref k) singletonHookName := by
     rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hd hk, method_old hc.chains hs hd hkl]
+  have hli : lookup h₁ (.ref k) "inherited" = lookup m.heap (.ref k) "inherited" := by
+    rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hd hk, method_old hc.chains hs hd hkl]
   refine ⟨named_old (p := p) htop hc.chains.boot.2.2.2.2 hn site.named, ?_, ?_,
     instance_constants_old site hc hs htop ho hn hmain hreach, ?_,
     meta_old site.metaclass hc.chains hs hd hk, ?_, ?_, ?_, ?_, site.afterBuiltins,
@@ -54,7 +56,9 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
          by rw [metadata_bind_old hd hel (·.attached) (fun _ => rfl)]; exact ha,
          by rw [(fields_old hd hel).2.2.2]; exact hf⟩,
     by simpa only [singletonDefHookQuietB, hls] using site.singletonHook,
-    by rw [classOf_old hd hk, classOf_old hd site.mainLive]; exact site.metaNotMain⟩
+    by rw [classOf_old hd hk, classOf_old hd site.mainLive]; exact site.metaNotMain,
+    by simpa only [inheritedHookQuietB, hli, metadata_any_old hd hk (·.isModule) (fun _ => rfl)]
+      using site.inheritedHook⟩
   · simpa only [classFront_old hd hk] using site.front
   · simpa only [definitionHookQuietB, hl] using site.hook
   · intro n hn owner md hm
@@ -93,7 +97,9 @@ theorem instanceSiteAt {κ : Ctx} (hc : ClassReady m.heap) (hs : Saturated m.hea
     (hinst : NamesAt (nameFreeN κ) m.heap p)
     (hcls : NamesAt (nameFreeN κ) m.heap e)
     (hmeta : ConstFallback m.heap e) (hboot : Boot.yielderId < m.heap.objs.size)
-    (hml : Boot.mainId < m.heap.objs.size) (hsh : singletonDefHookQuietB m.heap p = true) :
+    (hml : Boot.mainId < m.heap.objs.size) (hsh : singletonDefHookQuietB m.heap p = true)
+    (hih : (lookup m.heap (.ref p) "inherited").any (fun (_, md) =>
+      !md.undefined && md.builtin == some "Class#inherited") = true) :
     InstanceSite κ name m.heap.objs.size h₁ := by
   have hd : m.lexicalNamespace < m.heap.objs.size := htop ▸ hc.chains.boot.2.2.2.2
   have hel := hc.chains.eigen _ hpl _ he
@@ -109,7 +115,11 @@ theorem instanceSiteAt {κ : Ctx} (hc : ClassReady m.heap) (hs : Saturated m.hea
        simp only [singletonDefHookQuietB, lookup_eq_methodOn, classOf, he] at hsh
        exact hsh,
     by rw [classOf_class hd, classOf_old hd hml]
-       exact (Nat.ne_of_lt (Nat.lt_succ_of_lt (ClsGrow.classOf_lt hc.chains hml))).symm⟩
+       exact (Nat.ne_of_lt (Nat.lt_succ_of_lt (ClsGrow.classOf_lt hc.chains hml))).symm,
+    by unfold inheritedHookQuietB
+       rw [lookup_eq_methodOn, classOf_class hd, method_eigen hc.chains hs hd hel]
+       simp only [lookup_eq_methodOn, classOf, he] at hih
+       simp only [hih, Bool.or_true]⟩
   · simp only [classFrontB, Heap.classPayload?, get_class hd, namedObject, freshClassPayload]; rfl
   · intro n hn owner md hm
     rw [method_class hc.chains hs hd hpl] at hm
@@ -135,7 +145,8 @@ theorem instanceSite {κ : Ctx} (hc : ClassReady m.heap) (hs : Saturated m.heap)
     (hinst : NamesAt (nameFreeN κ) m.heap Boot.objectId)
     (hcls : NamesAt (nameFreeN κ) m.heap e)
     (hmeta : ConstFallback m.heap e) (hboot : Boot.yielderId < m.heap.objs.size)
-    (hml : Boot.mainId < m.heap.objs.size) (hsq : singletonHooksQuietB m.heap = true) :
+    (hml : Boot.mainId < m.heap.objs.size) (hsq : singletonHooksQuietB m.heap = true)
+    (hcq : classHooksQuietB m.heap = true) :
     InstanceSite κ name m.heap.objs.size (heap m name e Boot.objectId) :=
   instanceSiteAt hc hs htop ho hc.chains.boot.2.2.2.2 hc.metaObject he hh
     (main_constants hc hs htop ho hmain) hinst hcls hmeta hboot hml
@@ -143,6 +154,9 @@ theorem instanceSite {κ : Ctx} (hc : ClassReady m.heap) (hs : Saturated m.heap)
       (by have hco : e = classOf m.heap (.ref Boot.objectId) := by simp only [classOf, he]
           rw [hco]
           exact singletonHooksQuietB_methodOn hsq hc.chains (by simp [singletonHookSites])))
+    (by obtain ⟨owner, md, hl, hu, hb⟩ := classHooksQuietB_lookup hcq hc.chains
+          (by simp [classHookNames] : ("inherited", "Class#inherited") ∈ classHookNames)
+        simp [hl, hu, hb])
 
 #print axioms moduleBase
 #print axioms instanceSite_old

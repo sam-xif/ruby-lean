@@ -53,6 +53,7 @@ private def legacyBootStateB (m : Machine) : Bool :=
 #guard ["const_added", "inherited"].all fun name =>
   classHooksQuietB (defineMethod bootMachine.heap Boot.objectId name
     { params := [], body := .int 1, owner := Boot.objectId })
-#guard ["const_added", "inherited"].all fun name =>
-  Ratchet.validateD (.def' name [] (.int 1)) (.defDecl name [] .int (.intLit 1))
+#guard Ratchet.validateD (.def' "const_added" [] (.int 1)) (.defDecl "const_added" [] .int (.intLit 1))
+-- `inherited` is reserved at top level: class sites keep subclass creation's callback native.
+#guard !Ratchet.validateD (.def' "inherited" [] (.int 1)) (.defDecl "inherited" [] .int (.intLit 1))
 end Ratchet.Denote.Typed
