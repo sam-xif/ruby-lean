@@ -388,6 +388,11 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       envGet? Γ x = some (.nilable σ) → falseFreeB σ = true → isAliasTy σ = false →
       DJudge (envSet Γ x σ) t τ₁ Γ₁ κ I κ' I' → DJudge (envSet Γ x .nilT) e τ₂ Γ₂ κ I κ' I' →
       DJudge Γ (.if' (.var .lvar x) t (some e)) (joinT τ₁ τ₂) (joinEnv Γ₁ Γ₂) κ I κ' I'
+  /-- `if x` without else: the absent branch yields nil at the state where x is nil. -/
+  | ifTruthyNoElse {κ : Ctx} {Γ Γ₁ : Env} {I : Ty} {x : String} {σ τ : Ty} {t : Expr} :
+      envGet? Γ x = some (.nilable σ) → falseFreeB σ = true → isAliasTy σ = false →
+      DJudge (envSet Γ x σ) t τ Γ₁ κ I κ I →
+      DJudge Γ (.if' (.var .lvar x) t none) (joinT τ .nilT) (joinEnv Γ₁ (envSet Γ x .nilT)) κ I κ I
   /-- `if x.nil?` on a nilable Integer local narrows it to nil / Integer (Sorbet 0.6.13405
       accepts corpus 126). The query is the native row, so its answer is x's nil-ness. -/
   | ifNilQuery {κ κ' : Ctx} {Γ Γ₁ Γ₂ : Env} {I I' : Ty} {x : String} {τ₁ τ₂ : Ty} {t e : Expr} :
@@ -1000,7 +1005,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_12 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_13 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_14 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 

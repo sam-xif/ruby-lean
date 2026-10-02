@@ -561,6 +561,21 @@ private def loopH (rhs : Deriv) (t : Ty) : Deriv := .seq [
   (loopH (.prim (.var .lvar "i") "+" [.intLit 1] .int .int) .int)
 #guard !validateD (loopP (.str "x")) (loopH (.strLit "x") (.cls "String"))
 
+-- Active ifTruthyNoElse (134): `if y` without else narrows y in the then-branch only.
+private def noElseP (thn : Ratchet.Expr) : Ratchet.Expr := .seq [
+  .vasgn .lvar "y" (.send (some (.array [.int 1])) "[]" [.int 0] none),
+  .if' (.var .lvar "y") thn none]
+private def noElseH (thn : Deriv) (j : Ty) : Deriv := .seq [
+  .vasgn .lvar "y" (.prim (.arrayLit [.intLit 1] .int) "[]" [.intLit 0] (.arrayOf .int) (.nilable .int)),
+  .ifTruthyNoElse "y" thn j]
+#guard validateD (noElseP (.send (some (.var .lvar "y")) "+" [.int 1] none))
+  (noElseH (.prim (.var .lvar "y") "+" [.intLit 1] .int .int) (.nilable .int))
+#guard !validateDWith (fun q => clinkEnabled q && q != "ifTruthyNoElse")
+  (noElseP (.send (some (.var .lvar "y")) "+" [.int 1] none))
+  (noElseH (.prim (.var .lvar "y") "+" [.intLit 1] .int .int) (.nilable .int))
+#guard !validateD (noElseP (.send (some (.var .lvar "y")) "+" [.int 1] none))
+  (noElseH (.prim (.var .lvar "y") "+" [.intLit 1] .int .int) .int)
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),

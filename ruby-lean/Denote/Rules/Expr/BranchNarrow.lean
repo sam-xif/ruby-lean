@@ -79,4 +79,52 @@ theorem SemSafeCtxA.ifTruthy {κ κ' : Ctx} {Γ Γ₁ Γ₂ : Env} {I I' : Ty} {
       (ht.weaken (fun _ _ hm hd => ⟨StateOk_joinEnv true hm, denM_joinT_left hd⟩)) m hs
 
 #print axioms SemSafeCtxA.ifTruthy
+
+theorem SemSafeCtxA.ifTruthyNoElse {κ : Ctx} {Γ Γ₁ : Env} {I : Ty} {x : String}
+    {σ τ : Ty} {t : Ratchet.Expr}
+    (hx : envGet? Γ x = some (.nilable σ)) (hf : falseFreeB σ = true) (ha : isAliasTy σ = false)
+    (ht : SemSafeCtxA κ (envSet Γ x σ) I t τ κ Γ₁ I) :
+    SemSafeCtxA κ Γ I (.if' (.var .lvar x) t none) (joinT τ .nilT) κ
+      (joinEnv Γ₁ (envSet Γ x .nilT)) I := by
+  intro m hm
+  let k : Kont := .ifK (toRuby t) none
+  have hv : denM (.nilable σ) m (m.getLocal x) := by
+    simpa [stripAlias] using (hm.env.1 x _ hx).1
+  apply RunSpec.step (answerPoint_evalFrom _ _)
+    (show Interp.stepFn _ = .next (pushK [k] (evalFrom m (.var .lvar x))) from rfl)
+  apply RunSpec.step (by rfl) (show Interp.stepFn _ = .next (deliverA (.val (m.getLocal x)) m [k]) from by
+    simpa only [pushK, evalFrom, deliverA, Answer.ctl, reCtl, getLocal_reCtl, List.nil_append] using
+      step_var_ctl (m := pushK [k] (evalFrom m (.var .lvar x))) (x := x) rfl)
+  cases htr : (m.getLocal x).truthy
+  · have hnil : denM .nilT m (m.getLocal x) := by
+      rw [denM] at hv
+      rcases hv with hv | hv
+      · simpa [denM] using hv
+      · cases hg : m.getLocal x with
+        | nil => simp [denM, isNilV]
+        | bool b =>
+          cases b
+          · rw [hg] at hv; exact absurd hv (denM_not_false hf)
+          · rw [hg] at htr; cases htr
+        | _ => rw [hg] at htr; cases htr
+    have hs : StateOk κ (envSet Γ x .nilT) I m :=
+      { hm with env := envOk_refine hm.env hx hnil rfl }
+    apply RunSpec.step (next := deliverA (.val .nil) m []) (by rfl) (by
+      simp only [Interp.stepFn, deliverA, Answer.ctl, Interp.applyKont, k, htr,
+        Bool.false_eq_true, ↓reduceIte, Interp.withCtl])
+    exact RunSpec.answer ⟨.refl m, denM_joinT_right (by simp [denM, isNilV]),
+      fun _ he => by cases he; exact StateOk_joinEnv false hs⟩
+  · have hsv : denM σ m (m.getLocal x) := by
+      rw [denM] at hv
+      rcases hv with hv | hv
+      · cases hg : m.getLocal x <;> rw [hg] at hv htr <;> simp_all [isNilV, Value.truthy]
+      · exact hv
+    have hs : StateOk κ (envSet Γ x σ) I m :=
+      { hm with env := envOk_refine hm.env hx hsv ha }
+    apply RunSpec.step (next := evalFrom m t) (by rfl) (by
+      simp only [Interp.stepFn, deliverA, Answer.ctl, Interp.applyKont, k, htr, ↓reduceIte,
+        Interp.withCtl, evalFrom])
+    exact (ht.weaken (fun _ _ hm hd => ⟨StateOk_joinEnv true hm, denM_joinT_left hd⟩)) m hs
+
+#print axioms SemSafeCtxA.ifTruthyNoElse
 end Ratchet.Denote.Typed
