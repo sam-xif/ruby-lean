@@ -5,8 +5,9 @@ import Denote.Sem.Module.ModuleBase
 set_option autoImplicit false
 namespace Ratchet.Denote.FreshClassActual
 open RubyCore Ratchet RubyCore.Proof RubyCore.Proof.Judgment
+variable {p : ObjId}
 variable {m : Machine} {name : String} {e : ObjId}
-local notation "h₁" => heap m name e
+local notation "h₁" => heap m name e p
 
 theorem moduleBase {κ : Ctx} (hp : ModuleBase κ m.heap)
     (hc : ChainsIn m.heap) (hs : Saturated m.heap)
@@ -40,7 +41,7 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
     rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hd hk, method_old hc.chains hs hd hkl]
   have hls : lookup h₁ (.ref k) singletonHookName = lookup m.heap (.ref k) singletonHookName := by
     rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hd hk, method_old hc.chains hs hd hkl]
-  refine ⟨named_old htop hc.chains.boot.2.2.2.2 hn site.named, ?_, ?_,
+  refine ⟨named_old (p := p) htop hc.chains.boot.2.2.2.2 hn site.named, ?_, ?_,
     instance_constants_old site hc hs htop ho hn hmain hreach, ?_,
     meta_old site.metaclass hc.chains hs hd hk, ?_, ?_, ?_, ?_, site.afterBuiltins,
     by rw [metadata_bind_old hd hk (·.attached) (fun _ => rfl)]; exact site.detached,
@@ -69,7 +70,7 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
 
 theorem meta_fresh (hc : ClassReady m.heap) (hs : Saturated m.heap)
     (hd : m.lexicalNamespace < m.heap.objs.size)
-    (he : (m.heap.get Boot.objectId).eigen = some e) : MetaReady h₁ m.heap.objs.size := by
+    (he : (m.heap.get Boot.objectId).eigen = some e) : MetaReady (heap m name e Boot.objectId) m.heap.objs.size := by
   obtain ⟨j, hj, hb, _⟩ := hc.metaObject
   rw [he] at hj; cases hj
   have hel := hc.chains.eigen _ hc.chains.boot.2.2.2.2 _ he
@@ -91,7 +92,7 @@ theorem instanceSite {κ : Ctx} (hc : ClassReady m.heap) (hs : Saturated m.heap)
     (hcls : NamesAt (nameFreeN κ) m.heap e)
     (hmeta : ConstFallback m.heap e) (hboot : Boot.yielderId < m.heap.objs.size)
     (hml : Boot.mainId < m.heap.objs.size) (hsq : singletonHooksQuietB m.heap = true) :
-    InstanceSite κ name m.heap.objs.size h₁ := by
+    InstanceSite κ name m.heap.objs.size (heap m name e Boot.objectId) := by
   have hd : m.lexicalNamespace < m.heap.objs.size := htop ▸ hc.chains.boot.2.2.2.2
   have hel := hc.chains.eigen _ hc.chains.boot.2.2.2.2 _ he
   refine ⟨named_fresh htop ho, ?_, hook_quiet hc.chains hs hd he hh,
@@ -110,7 +111,7 @@ theorem instanceSite {κ : Ctx} (hc : ClassReady m.heap) (hs : Saturated m.heap)
        exact (Nat.ne_of_lt (Nat.lt_succ_of_lt (ClsGrow.classOf_lt hc.chains hml))).symm⟩
   · simp only [classFrontB, Heap.classPayload?, get_class hd, namedObject, freshClassPayload]; rfl
   · intro n hn owner md hm
-    rw [method_class hc.chains hs hd] at hm
+    rw [method_class hc.chains hs hd hc.chains.boot.2.2.2.2] at hm
     exact hinst n hn owner md hm
   · intro n hn owner md hm
     rw [classOf_class hd, method_eigen hc.chains hs hd hel] at hm
@@ -119,9 +120,9 @@ theorem instanceSite {κ : Ctx} (hc : ClassReady m.heap) (hs : Saturated m.heap)
   · simp only [classOf_class hd, get_eigen, attachedClassEigen]
   · rw [classOf_class hd]
     exact fallback_fresh_meta hc.chains hs htop ho hel hmeta
-  · change ((heap m name e).classPayload? m.heap.objs.size).bind (·.attached) = none
+  · change ((heap m name e Boot.objectId).classPayload? m.heap.objs.size).bind (·.attached) = none
     simp only [Heap.classPayload?, get_class hd, namedObject, freshClassPayload]; rfl
-  · change ((heap m name e).get m.heap.objs.size).frozen = false
+  · change ((heap m name e Boot.objectId).get m.heap.objs.size).frozen = false
     rw [get_class hd]; rfl
 
 #print axioms moduleBase

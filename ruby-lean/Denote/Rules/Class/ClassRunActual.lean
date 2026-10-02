@@ -43,13 +43,15 @@ theorem class_actual_runSpec {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m : M
   have hbody := hb _ (StateOk_reCtl hheader (.eval (toRuby body)) [])
   let pub := ClassActivation.publishHeap start (FreshClassActual.heap m name e)
   have hp : Framed start pub :=
-    FreshClassActual.framed hstart htop hn he rfl rfl (.of_eq rfl rfl)
+    (by obtain ⟨eO, heO, hb⟩ := hm.core.classReady.objectEigen
+        rw [he] at heO; cases heO
+        exact FreshClassActual.framed hstart htop hn hel hb rfl rfl (.of_eq rfl rfl))
   have hrun := ClassActivation.runSpec (k := m.heap.objs.size) hstart hp ht ha hr hw hcl hq hk hΓ hτ
     (hbody.rebase (Framed.of_heap_stack rfl rfl (.of_eq rfl rfl)))
   have hcb := class_callbacks_runSpec (m := { start with heap := FreshClassActual.heap m name e })
     (k := m.heap.objs.size) (name := name) (body := toRuby body)
     ((FreshClassActual.classHooksQuietB_eq hc hm.sat hd).trans hmain.classHooks)
-    (FreshClassActual.chainsIn hc hd hel)
+    (FreshClassActual.chainsIn hc hd hel hol)
     ((FreshClassActual.classPayload_live hd hol).trans hmain.classLive) hmain.phase hmain.origin
     hrun
   exact RunSpec.step (answerPoint_evalFrom _ _) hs (hcb.rebase (Framed_reCtl m _ []))

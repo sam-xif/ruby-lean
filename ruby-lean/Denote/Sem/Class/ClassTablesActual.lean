@@ -6,12 +6,13 @@ registration. Table framing prevents a new name from activating unsupported old 
 set_option autoImplicit false
 namespace Ratchet.Denote.FreshClassActual
 open RubyCore Ratchet
+variable {p : ObjId}
 
 variable {κ : Ctx} {m n : Machine} {name : String} {e : ObjId}
 
 theorem constants (htop : m.lexicalNamespace = Boot.objectId) (ho : Boot.objectId < m.heap.objs.size)
     (hn : constOwn m.heap Boot.objectId name = none)
-    (hh : n.heap = heap m name e)
+    (hh : n.heap = heap m name e p)
     (hd : DataPres m.heap n.heap) (hs : ConstScopeOk m) (hs' : ConstScopeOk n)
     (hf : ∀ cn τ, constGet? κ cn = some τ → FirstOrder τ = true)
     (hp : ConstsOk κ m) : ConstsOk κ n := by
@@ -27,12 +28,12 @@ theorem constants (htop : m.lexicalNamespace = Boot.objectId) (ho : Boot.objectI
 
 theorem paths (hc : Proof.ChainsIn m.heap) (hs : Proof.Saturated m.heap)
     (htop : m.lexicalNamespace = Boot.objectId) (hn : constOwn m.heap Boot.objectId name = none)
-    (hh : n.heap = heap m name e)
+    (hh : n.heap = heap m name e p)
     (hd : DataPres m.heap n.heap) (hf : ClassTablesFrame κ name m)
     (hp : ConstPathsOk κ m) : ConstPathsOk κ n := by
   intro owner cn τ k ht hk v hv
   obtain ⟨hfo, hne, j, hj⟩ := hf.paths owner cn τ ht
-  have hj' := named_old (e := e) htop hc.boot.2.2.2.2 hn hj
+  have hj' := named_old (e := e) (p := p) htop hc.boot.2.2.2.2 hn hj
   rw [← hh] at hj'
   have heq : j = k := Option.some.inj (hj'.symm.trans hk)
   subst k
@@ -41,12 +42,12 @@ theorem paths (hc : Proof.ChainsIn m.heap) (hs : Proof.Saturated m.heap)
 
 theorem nested (hc : Proof.ChainsIn m.heap) (hs : Proof.Saturated m.heap)
     (htop : m.lexicalNamespace = Boot.objectId) (hn : constOwn m.heap Boot.objectId name = none)
-    (hh : n.heap = heap m name e)
+    (hh : n.heap = heap m name e p)
     (hd : DataPres m.heap n.heap) (hf : ClassTablesFrame κ name m)
     (hp : NestedClassesOk κ.classes m) : NestedClassesOk κ.classes n := by
   intro owner cn c ht k v hk hv
   obtain ⟨hne, j, hj⟩ := hf.nested owner cn c ht
-  have hj' := named_old (e := e) htop hc.boot.2.2.2.2 hn hj
+  have hj' := named_old (e := e) (p := p) htop hc.boot.2.2.2.2 hn hj
   rw [← hh] at hj'
   have heq : j = k := Option.some.inj (hj'.symm.trans hk)
   subst k

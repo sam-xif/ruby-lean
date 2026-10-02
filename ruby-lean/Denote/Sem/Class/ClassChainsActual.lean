@@ -14,7 +14,7 @@ theorem ordered_chain (hc : ClassReady m.heap) (hs : Saturated m.heap) (hr : Roo
     NamedChain h₁ (name :: rootAncestors) (ancestors h₁ m.heap.objs.size) := by
   have hd : m.lexicalNamespace < m.heap.objs.size := htop ▸ hc.chains.boot.2.2.2.2
   rw [ordinary_chain hc hs hd]
-  have roots := rootNames (e := e) hr hc.constRefs htop ho hn
+  have roots := rootNames (e := e) (p := Boot.objectId) hr hc.constRefs htop ho hn
   exact ⟨named_fresh htop ho,
     roots.named "Object" Boot.objectId (by decide),
     roots.named "Kernel" Boot.kernelId (by decide),

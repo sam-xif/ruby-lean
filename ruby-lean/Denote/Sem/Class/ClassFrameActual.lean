@@ -5,21 +5,23 @@ import Denote.Rules.Class.ClassCallbacks
 set_option autoImplicit false
 namespace Ratchet.Denote.FreshClassActual
 open RubyCore Ratchet RubyCore.Proof.Judgment
+variable {p : ObjId}
 
 /-- The body machine after both native callbacks, with the named/attached heap. -/
-def machine (m : Machine) (name : String) (e : ObjId) (body : RubyCore.Expr) : Machine :=
+def machine (m : Machine) (name : String) (e : ObjId) (body : RubyCore.Expr)
+    (p : ObjId := Boot.objectId) : Machine :=
   { m with
-    heap := heap m name e,
+    heap := heap m name e p,
     frames := m.frames.push (freshModFrame m.heap.objs.size m.currentFrame.cref),
     stack := m.frames.size :: m.stack, kont := .frameK m.frames.size :: m.kont,
     ctl := .eval body }
 
 theorem machine_callback (m : Machine) (name : String) (e : ObjId) (body : RubyCore.Expr) :
-    machine m name e body = Typed.classCallbackBody { m with heap := heap m name e }
+    machine m name e body p = Typed.classCallbackBody { m with heap := heap m name e p }
       m.heap.objs.size body := rfl
 
 variable {m : Machine} {name : String} {e : ObjId} {body : RubyCore.Expr}
-local notation "entry" => machine m name e body
+local notation "entry" => machine m name e body p
 
 theorem current_frame : (entry).currentFrame = freshModFrame m.heap.objs.size m.currentFrame.cref := by
   simp [machine, Machine.currentFrame, Array.getD_eq_getD_getElem?]
@@ -51,7 +53,7 @@ theorem self_type (htop : m.lexicalNamespace = Boot.objectId)
     (ho : (m.heap.classPayload? Boot.objectId).isSome = true) :
     SelfTyOk (some (.clsOf name)) entry := by
   rw [SelfTyOk, current_frame, denM]
-  change isClassRefNamed (heap m name e) (.ref m.heap.objs.size) name = true
+  change isClassRefNamed (heap m name e p) (.ref m.heap.objs.size) name = true
   simp only [isClassRefNamed, named_fresh htop ho, beq_self_eq_true]
 
 theorem self_live : SelfLive entry := by
@@ -59,7 +61,7 @@ theorem self_live : SelfLive entry := by
   rw [current_frame] at ho
   change Value.ref m.heap.objs.size = .ref o at ho
   cases ho
-  change m.heap.objs.size < (heap m name e).objs.size
+  change m.heap.objs.size < (heap m name e p).objs.size
   rw [size]; omega
 
 theorem uncaptured : RootUncaptured entry := by

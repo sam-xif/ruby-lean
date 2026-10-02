@@ -5,8 +5,9 @@ The new class's empty own table falls through to Object's retained ancestor look
 set_option autoImplicit false
 namespace Ratchet.Denote.FreshClassActual
 open RubyCore Ratchet RubyCore.Proof RubyCore.Proof.Judgment
+variable {p : ObjId}
 variable {m : Machine} {name : String} {e : ObjId}
-local notation "h₁" => heap m name e
+local notation "h₁" => heap m name e p
 
 theorem const_from_eq_firstM (g : Heap) (k : ObjId) (cn : String) :
     constLookupFrom g k cn = (ancestors g k).firstM (fun j => constOwn g j cn) := by
@@ -20,10 +21,10 @@ theorem const_own_fresh (hd : m.lexicalNamespace < m.heap.objs.size) (cn : Strin
   simp [constOwn, Heap.classPayload?, get_class hd, namedObject, freshClassPayload]
 
 theorem const_from_class (hc : ChainsIn m.heap) (hs : Saturated m.heap)
-    (hd : m.lexicalNamespace < m.heap.objs.size) (cn : String) :
-    constLookupFrom h₁ m.heap.objs.size cn = constLookupFrom h₁ Boot.objectId cn := by
-  rw [const_from_eq_firstM, const_from_eq_firstM, ancestors_class hc hs hd,
-    ancestors_old hc hs hd hc.boot.2.2.2.2]
+    (hd : m.lexicalNamespace < m.heap.objs.size) (hpl : p < m.heap.objs.size) (cn : String) :
+    constLookupFrom h₁ m.heap.objs.size cn = constLookupFrom h₁ p cn := by
+  rw [const_from_eq_firstM, const_from_eq_firstM, ancestors_class hc hs hd hpl,
+    ancestors_old hc hs hd hpl]
   simp only [List.firstM, const_own_fresh hd]
   rfl
 
@@ -66,17 +67,26 @@ theorem main_constants (hc : ClassReady m.heap) (hs : Saturated m.heap)
       const_other htop hc.chains.boot.2.2.2.2 hn]
     exact hp cn
 
-theorem instance_constants_fresh (hc : ClassReady m.heap) (hs : Saturated m.heap)
-    (htop : m.lexicalNamespace = Boot.objectId)
-    (ho : (m.heap.classPayload? Boot.objectId).isSome = true)
-    (hp : ∀ cn, constLookupFrom m.heap Boot.objectId cn = constLookup m.heap cn) :
+/-- The parent's constant walk must already agree with toplevel lookup in the new heap. -/
+theorem instance_constants_parent (hc : ClassReady m.heap) (hs : Saturated m.heap)
+    (htop : m.lexicalNamespace = Boot.objectId) (hpl : p < m.heap.objs.size)
+    (hpc : ∀ cn, constLookupFrom h₁ p cn = constLookup h₁ cn) :
     ∀ cn, instanceConstResolve h₁ m.heap.objs.size cn = constLookup h₁ cn := by
   have hd : m.lexicalNamespace < m.heap.objs.size := htop ▸ hc.chains.boot.2.2.2.2
   intro cn
   simp only [instanceConstResolve, List.firstM, const_own_fresh hd,
-    const_from_class hc.chains hs hd, main_constants hc hs htop ho hp]
+    const_from_class hc.chains hs hd hpl, hpc]
   cases hr : constLookup h₁ cn <;>
     (simp [Heap.classPayload?, get_class hd, namedObject, freshClassPayload]; rfl)
+
+theorem instance_constants_fresh (hc : ClassReady m.heap) (hs : Saturated m.heap)
+    (htop : m.lexicalNamespace = Boot.objectId)
+    (ho : (m.heap.classPayload? Boot.objectId).isSome = true)
+    (hp : ∀ cn, constLookupFrom m.heap Boot.objectId cn = constLookup m.heap cn) :
+    ∀ cn, instanceConstResolve (heap m name e) m.heap.objs.size cn =
+      constLookup (heap m name e) cn :=
+  instance_constants_parent (p := Boot.objectId) hc hs htop hc.chains.boot.2.2.2.2
+    (main_constants hc hs htop ho hp)
 
 theorem const_scope {body : RubyCore.Expr} (hc : ClassReady m.heap) (hs : Saturated m.heap)
     (hm : MainReady m) (hp : ConstScopeOk m) : ConstScopeOk (machine m name e body) := by
@@ -87,7 +97,8 @@ theorem const_scope {body : RubyCore.Expr} (hc : ClassReady m.heap) (hs : Satura
   intro cn
   simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace,
     current_frame, freshModFrame, hm.cref, List.headD_cons]
-  change instanceConstResolve (heap m name e) m.heap.objs.size cn = constLookup (heap m name e) cn
+  change instanceConstResolve (heap m name e Boot.objectId) m.heap.objs.size cn =
+    constLookup (heap m name e Boot.objectId) cn
   exact instance_constants_fresh hc hs htop hm.classLive hconst cn
 
 #print axioms main_constants

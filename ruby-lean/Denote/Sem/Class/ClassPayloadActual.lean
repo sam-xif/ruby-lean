@@ -4,8 +4,9 @@ import Denote.Sem.Class.ClassQueriesActual
 set_option autoImplicit false
 namespace Ratchet.Denote.FreshClassActual
 open RubyCore Ratchet RubyCore.Proof RubyCore.Proof.Judgment
+variable {p : ObjId}
 variable {m : Machine} {name : String} {e : ObjId}
-local notation "h₁" => heap m name e
+local notation "h₁" => heap m name e p
 
 theorem stringPayload (hc : ChainsIn m.heap) (hd : m.lexicalNamespace < m.heap.objs.size) (hp : StringPayloadOk m.heap) : StringPayloadOk h₁ := by
   intro o hco
