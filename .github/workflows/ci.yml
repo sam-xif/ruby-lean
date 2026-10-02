@@ -1,12 +1,5 @@
 # CI for ruby-lean — issue #4 (Proposal rev 2).
 #
-# NOTE ON THIS FILE'S PATH: GitHub Actions only reads workflows from
-# `.github/workflows/`. This file lives at `ci/ci.yml` because the token that
-# authored the PR cannot push to `.github/workflows/` (the GitHub App lacks the
-# `workflows` permission). A maintainer with that permission — or the App after
-# it is re-authorized — must move this file to `.github/workflows/ci.yml`
-# verbatim. Nothing else about it changes.
-#
 # Proves on every pull request that every build passes AND that no ratchet
 # regresses. The ratchets are the point: a change can build cleanly and still
 # silently drop the model's CRuby agreement, the desugarer's fragment coverage,
