@@ -401,7 +401,7 @@ theorem StateCore_methodWrite {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cls 
     StateCore { κ with pos := { κ.pos with defs := D } } Γ I
       { m with heap := defineMethod m.heap cls name md } :=
   StateCore_methodWrite_tables hm ht hΓ ha hn hmiss hquiet hsh hclasses
-    (hm.classSites.methodWrite hn hquiet) hdefs
+    (hm.classSites.methodWrite hn hquiet hsh) hdefs
     (by simpa only [NestedClassesOk, isClassRefNamed, classNamed?_defineMethod,
       Proof.constLookupFrom_defineMethod] using hm.nested) hdecl hinit hprefix hhooks
 

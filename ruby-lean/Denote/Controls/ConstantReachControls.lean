@@ -13,10 +13,13 @@ private def root : Object :=
 private def detached : Object :=
   { klass := Boot.classId, eigen := some 46,
     payload := .cls { name := "Detached", superclass := some Boot.basicObjectId, consts := row } }
-private def eigenObj : Object :=
-  { klass := Boot.classId,
-    payload := .cls { superclass := some Boot.basicObjectId, name := "", methods := [("method_added",
-      { params := [], body := .nil, owner := 46, builtin := some "Module#method_added" })] } }
+private def hooks : List (String × MethodDef) :=
+  [("method_added", { params := [], body := .nil, owner := 46, builtin := some "Module#method_added" }),
+   ("singleton_method_added",
+    { params := [], body := .nil, owner := 46, builtin := some "BasicObject#singleton_method_added" })]
+private def eigenPayload : ClassPayload :=
+  { superclass := some Boot.basicObjectId, name := "", attached := some 45, methods := hooks }
+private def eigenObj : Object := { klass := Boot.classId, payload := .cls eigenPayload }
 private def h : Heap :=
   { objs := ((((Array.replicate 47 (default : Object)).set! 0 basic).set! 1 root).set! 45 detached).set! 46 eigenObj }
 private def m : Machine :=
@@ -28,9 +31,7 @@ private theorem cp1 : h.classPayload? 1 = some
     { name := "Object", superclass := some Boot.basicObjectId, consts := row } := rfl
 private theorem cp45 : h.classPayload? 45 = some
     { name := "Detached", superclass := some Boot.basicObjectId, consts := row } := rfl
-private theorem cp46 : h.classPayload? 46 = some
-    { superclass := some Boot.basicObjectId, name := "", methods := [("method_added",
-      { params := [], body := .nil, owner := 46, builtin := some "Module#method_added" })] } := rfl
+private theorem cp46 : h.classPayload? 46 = some eigenPayload := rfl
 
 #guard chainsInB h
 #guard saturatedB h
@@ -54,7 +55,7 @@ private theorem old_constants (n : String) : instanceConstResolve h 45 n = const
 
 private theorem old_site : InstanceSite (default : Ctx) "Detached" 45 h := by
   refine ⟨by decide, by decide, by decide, old_constants, ?_, ?_, ?_, by decide, rfl, ?_, by decide,
-    by rw [cp45]; rfl, by decide, by decide, by decide⟩
+    by rw [cp45]; rfl, by decide, by decide, by decide, ⟨46, rfl, rfl, rfl⟩, by decide, by decide⟩
   · intro n hn owner md hm
     simp only [shadowableNames, List.mem_cons, List.not_mem_nil, or_false] at hn
     rcases hn with rfl | rfl | rfl <;>
