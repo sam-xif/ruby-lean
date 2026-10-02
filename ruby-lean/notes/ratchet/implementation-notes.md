@@ -13757,3 +13757,14 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   for `match?`, so the model was fixed (difftest regression
   `match-p-miss-keeps-last-match`). The builtin now leaves the machine unchanged, so the row
   needs no frame transport. Climbs 171, 179.
+
+## defDeclOpt / callSigOpt (2026-10-02, 112/112, 121/261)
+- Top-level methods with required params and exactly one trailing optional. The default is
+  typed over the required params only (later formals are still nil when it runs), with env,
+  context and spine unchanged; the body is typed over all params.
+- Calls carry the default and body derivations and recheck them in the call context, so the
+  body cache needs no optional-parameter entries. Omitted: the frame predeclares the optional
+  as nil (`EnvOk` over the required params), the default runs under `optDefK`, and
+  `StateOk_setLocal` binds it (premises `envAfter ps n σ = ps ++ [(n, σ)]`, spine unchanged).
+- `paramEq` rejects `.opt`, which made `ctxEqB` irreflexive on definition tables holding
+  such methods; `defnEqB` now uses `paramEqAllDeep` (defaults compared by `exprEq`).

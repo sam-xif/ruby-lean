@@ -160,6 +160,7 @@ class Emitter
     @callback_sigs = {}
     @yield_signature = nil
     @consts = {}       # top-level constant -> type
+    @opt_defs = {}     # top-level method with one optional -> its checked derivations
   end
 
   attr_reader :uses_flow
@@ -571,6 +572,14 @@ class Emitter
       return [deriv.merge("rule" => "newImplicit"), ty]
     end
     dargs, targs = go_all(args)
+    if !@singleton && @self_cls.nil? && (od = @opt_defs[m])
+      pre = od["params"].map { |p| p["ty"] }
+      raise Blocked, "#{m}: arguments disagree with the declared parameters" unless
+        targs == pre || targs == pre + [od["opt"]["ty"]]
+      return [{ "rule" => "callSigOpt", "name" => m, "args" => dargs, "ret" => od["ret"],
+                "params" => od["params"], "opt" => od["opt"], "default" => od["default"],
+                "body" => od["body"] }, od["ret"]]
+    end
     owner = @singleton ? "<Class:#{@self_cls}>" : (@self_cls || "Object")
     sig = sig_for(owner, m)
     check_inferred_args(sig, targs)
@@ -622,6 +631,10 @@ class Emitter
 
       return callback_definition(name, [], sig["ret"], body, block)
     end
+    if @self_cls.nil? && !@singleton && !params.empty? && params.last[0] == "popt" &&
+       params[0...-1].all? { |p| p[0] == "preq" } && sig["params"].length == params.length
+      return opt_definition(name, params, sig, body)
+    end
     if sig["params"].length != params.length
       raise Blocked, "#{owner}##{name}: sig declares #{sig["params"].length} params, " \
                      "the def has #{params.length}"
@@ -649,6 +662,32 @@ class Emitter
     @current_method = outer_method
     [{ "rule" => "defDecl", "name" => name, "params" => sps, "ret" => sig["ret"],
        "body" => dbody }, SYM]
+  end
+
+  # One trailing optional (DJudge.defDeclOpt): the default over the required params, the
+  # body over all of them. Calls replay both derivations (DJudge.callSigOpt).
+  def opt_definition(name, params, sig, body)
+    pre = params[0...-1].each_with_index.map do |p, i|
+      { "name" => p[1], "ty" => as_inst(sig["params"][i]["ty"]) }
+    end
+    opt = { "name" => params[-1][1], "ty" => as_inst(sig["params"][-1]["ty"]) }
+    outer_env = @env
+    outer_method = @current_method
+    @current_method = name
+    begin
+      @env = pre.to_h { |p| [p["name"], p["ty"]] }
+      ddflt, tdflt = go_ordinary(params[-1][2])
+      raise Blocked, "#{name}: the default's type is not the declared one" unless tdflt == opt["ty"]
+      @env = pre.to_h { |p| [p["name"], p["ty"]] }.merge(opt["name"] => opt["ty"])
+      dbody, = go_ordinary(body)
+    ensure
+      @env = outer_env
+      @current_method = outer_method
+    end
+    @opt_defs[name] = { "params" => pre, "opt" => opt, "default" => ddflt, "body" => dbody,
+                        "ret" => sig["ret"] }
+    [{ "rule" => "defDeclOpt", "name" => name, "params" => pre, "opt" => opt,
+       "default" => ddflt, "ret" => sig["ret"], "body" => dbody }, SYM]
   end
 
   def contains_yield?(node)

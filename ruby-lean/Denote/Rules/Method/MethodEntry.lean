@@ -74,7 +74,7 @@ theorem requiredFrame_getLocal (m : Machine) (recv : Value) (name : String)
   cases (names.zip args).find? (·.1 == x) <;> rfl
 
 /-- Parameter lookup uses the same first matching name as the real binding list. -/
-private theorem required_lookup {m : Machine} {ps : List SigParam} {args : List Value}
+theorem required_lookup {m : Machine} {ps : List SigParam} {args : List Value}
     (hargs : DenAll (ps.map (·.2)) m args) {x : String} {τ : Ty}
     (hget : envGet? ps x = some τ) :
     ∃ v, (((ps.map (·.1)).zip args).find? (·.1 == x)).map (·.2) = some v ∧ denM τ m v := by
@@ -93,7 +93,7 @@ private theorem required_lookup {m : Machine} {ps : List SigParam} {args : List 
       · have ht : envGet? ps x = some τ := by simpa [envGet?, hn] using hget
         simpa [hn] using ih ha.2 ht
 
-private theorem required_lookup_none {ps : List SigParam} {args : List Value}
+theorem required_lookup_none {ps : List SigParam} {args : List Value}
     (hlen : args.length = ps.length) {x : String} (hget : envGet? ps x = none) :
     (((ps.map (·.1)).zip args).find? (·.1 == x)).map (·.2) = none := by
   induction ps generalizing args with

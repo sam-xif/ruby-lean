@@ -134,4 +134,29 @@ theorem exprEq_sound (a b : Expr) : exprEq a b = true → a = b := by
   all_goals intros; simp_all
   all_goals apply paramEqAll_sound; assumption
 
+/-- Definition-level parameter comparison, after `exprEq`: optional defaults compare by
+syntax. Definition tables need this to be reflexive for optional-parameter methods. -/
+def paramEqDeep : Param → Param → Bool
+  | .opt a d, .opt b e => a == b && exprEq d e
+  | p, q => paramEq p q
+
+def paramEqAllDeep : List Param → List Param → Bool
+  | [], [] => true
+  | a :: as, b :: bs => paramEqDeep a b && paramEqAllDeep as bs
+  | _, _ => false
+
+theorem paramEqDeep_sound {a b : Param} (h : paramEqDeep a b = true) : a = b := by
+  cases a <;> cases b <;> simp_all [paramEqDeep, paramEq]
+  exact exprEq_sound _ _ h.2
+
+theorem paramEqAllDeep_sound {a b : List Param} (h : paramEqAllDeep a b = true) : a = b := by
+  induction a generalizing b with
+  | nil => cases b <;> simp_all [paramEqAllDeep]
+  | cons x xs ih =>
+    cases b with
+    | nil => simp [paramEqAllDeep] at h
+    | cons y ys =>
+      simp only [paramEqAllDeep, Bool.and_eq_true] at h
+      rw [paramEqDeep_sound h.1, ih h.2]
+
 end Ratchet

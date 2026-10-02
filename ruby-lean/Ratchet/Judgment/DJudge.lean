@@ -484,6 +484,19 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       (∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) →
       (∀ old ∈ κ.defs, old.name ≠ d.name) → "method_missing" ≠ d.name → "method_added" ≠ d.name →
       DJudge Γ (.def' d.name d.params d.body) .sym Γ κ I (topDeclCtx κ d) I
+  /-- One trailing optional parameter (Sorbet 0.6.13405 accepts corpus 150/151): the default
+      is checked over the required parameters, the body over all of them. -/
+  | defDeclOpt {κ : Ctx} {Γ Γb : Env} {I τ σ : Ty} {d : Defn} {ps : List SigParam}
+      {n : String} {dflt : Expr} :
+      d.params = ps.map (fun p => Param.req p.1) ++ [.opt n dflt] →
+      (∀ p ∈ ps ++ [(n, σ)], FirstOrder p.2 = true ∧ isAliasTy p.2 = false) → FirstOrder τ = true →
+      DJudge ps dflt σ ps (topBodyCtx κ d) I (topBodyCtx κ d) I →
+      DJudge (ps ++ [(n, σ)]) d.body τ Γb (topBodyCtx κ d) I (topBodyCtx κ d) I →
+      κ.scope.runtimeMain = true → topDeclClassesB κ d.name = true → κ.selfTy = none → κ.blockTy = none →
+      κ.consts = [] → κ.asms = [] → FirstOrder I = true →
+      (∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) →
+      (∀ old ∈ κ.defs, old.name ≠ d.name) → "method_missing" ≠ d.name → "method_added" ≠ d.name →
+      DJudge Γ (.def' d.name d.params d.body) .sym Γ κ I (topDeclCtx κ d) I
   /-- Calls consume an already checked body at its declared signature, not at a caller's
       inferred argument shape. The premise remains explicit for every registry backend. -/
   | callSig {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' τ : Ty} {decl : Defn}
@@ -493,6 +506,26 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       DJudge ps decl.body τ Γb (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I'
         (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I' →
       DJudgeAll Γ args (ps.map (·.2)) Γ' κ I κ' I' → decl ∈ κ'.defs →
+      κ.scope.runtimeMain = true → κ'.scope.runtimeMain = true → κ'.selfTy = none →
+      κ'.blockTy = none → κ'.consts = [] → κ'.asms = [] → FirstOrder I' = true →
+      (∀ p ∈ Γ', FirstOrder (stripAlias p.2) = true) →
+      DJudge Γ (.send none decl.name args none) τ Γ' κ I κ' I'
+  /-- A call supplying the required arguments, optionally with the optional one; an omitted
+      optional runs its default in the callee frame before the body. -/
+  | callSigOpt {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' τ σ : Ty}
+      {decl : Defn} {ps : List SigParam} {n : String} {d : Expr}
+      {args : List Expr} {tys : List Ty} :
+      decl.params = ps.map (fun p => Param.req p.1) ++ [.opt n d] →
+      (∀ p ∈ ps ++ [(n, σ)], FirstOrder p.2 = true ∧ isAliasTy p.2 = false) → FirstOrder τ = true →
+      DJudge ps d σ ps (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I'
+        (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I' →
+      DJudge (ps ++ [(n, σ)]) decl.body τ Γb (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I'
+        (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I' →
+      envAfter ps n σ = ps ++ [(n, σ)] → killClosOverSpine I' n σ = I' → capStale n σ σ = false →
+      capStaleCtx n σ (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) = false →
+      DJudgeAll Γ args tys Γ' κ I κ' I' →
+      (tys = ps.map (·.2) ∨ tys = (ps ++ [(n, σ)]).map (·.2)) →
+      decl ∈ κ'.defs →
       κ.scope.runtimeMain = true → κ'.scope.runtimeMain = true → κ'.selfTy = none →
       κ'.blockTy = none → κ'.consts = [] → κ'.asms = [] → FirstOrder I' = true →
       (∀ p ∈ Γ', FirstOrder (stripAlias p.2) = true) →
@@ -1033,7 +1066,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_12 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_13 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_14 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 
