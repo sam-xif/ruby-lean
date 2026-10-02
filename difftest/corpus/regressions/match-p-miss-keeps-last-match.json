@@ -1,0 +1,7 @@
+{
+  "status": "fixed",
+  "filed_by": "hand, ratchet regexp match?",
+  "arm": "probe",
+  "case_id": "match-p-miss-keeps-last-match",
+  "note": "Regexp#match? cleared $~ on a miss; CRuby leaves it untouched on both a hit and a miss."
+}
