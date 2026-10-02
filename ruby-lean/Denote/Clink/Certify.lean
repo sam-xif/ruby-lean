@@ -44,6 +44,7 @@ macro "certify_djudgments" rec:ident h:ident F:ident hF:ident : tactic => `(tact
   · apply $hF DClink.ifTruthy (by simp [dclinks]) <;> assumption
   · apply $hF DClink.ifTruthyNoElse (by simp [dclinks]) <;> assumption
   · apply $hF DClink.ifNilVar (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.ifNilQueryNil (by simp [dclinks]) <;> assumption
   · apply $hF DClink.ifNilQuery (by simp [dclinks]) <;> assumption
   · apply $hF DClink.casgnTop (by simp [dclinks]) <;> assumption
   · apply $hF DClink.constRead (by simp [dclinks]) <;> assumption

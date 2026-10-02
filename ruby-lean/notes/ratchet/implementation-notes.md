@@ -13745,3 +13745,7 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
 ## ifNilVar (2026-10-02, 108/108, 116/261)
 - `if x … else e` with `x : nil`: the value is nil, so only `e` runs; the then branch is
   not judged (dead). Climbs 190 (`x ||= 5` desugars to this shape).
+
+## ifNilQueryNil (2026-10-02, 109/109, 117/261)
+- `if x.nil?` with `x : nil` (safe navigation `x&.m` desugars to this): the native
+  NilClass#nil? answers true (`nilQuery_cond`), so only the then branch runs. Climbs 191.
