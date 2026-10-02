@@ -69,21 +69,27 @@ theorem primitive_invoke {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : M
     Interp.invoke m recv site name args none [] = builtinStep (Builtins.run bid recv args m) := by
   obtain ⟨owner, md, hl, hb, hu, hv, hp, hs⟩ := primitive_lookup hm hrow hf
   rw [invoke_plain hn hr]
-  have hproc : Interp.procCallBid bid = false := by
-    simp only [primitiveMethods, List.mem_cons, List.not_mem_nil, or_false, Prod.mk.injEq] at hrow
-    rcases hrow with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h
-    all_goals rcases h with ⟨_, _, rfl⟩; rfl
-  have hmap : Interp.arrayMapBid bid = false := by
-    simp only [primitiveMethods, List.mem_cons, List.not_mem_nil, or_false, Prod.mk.injEq] at hrow
-    rcases hrow with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h
-    all_goals rcases h with ⟨_, _, rfl⟩; rfl
+  have hproc : Interp.procCallBid bid = false :=
+    (show ∀ x ∈ primitiveMethods, Interp.procCallBid x.2.2 = false by decide +kernel) _ hrow
+  have hmap : Interp.arrayMapBid bid = false :=
+    (show ∀ x ∈ primitiveMethods, Interp.arrayMapBid x.2.2 = false by decide +kernel) _ hrow
   apply invokeDispatch_builtin (owner := owner) (md := md) (hentry := ?_) _ hb hu hv hp _ hd hraise hproc hmap
   · rw [lookup_eq_methodOn, hc]; exact hl
   · simpa only [hc] using hs
-  · simp only [primitiveMethods, List.mem_cons, List.not_mem_nil, or_false, Prod.mk.injEq] at hrow
-    rcases hrow with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h
-    all_goals rcases h with ⟨_, _, rfl⟩
-    all_goals first | exact False.elim (hplus rfl) | decide +kernel
+  · have hall : primitiveMethods.all (fun x => x.2.2 == "String#+" ||
+        !(x.2.2.startsWith "Main#" ||
+        ["Object#inspect", "Object#raise", "Object#fail", "Exception.exception",
+         "Exception#exception", "Exception#to_s", "UncaughtThrowError#to_s",
+         "Object#initialize_dup", "Object#initialize_clone", "String#initialize_copy",
+         "Array#initialize_copy", "Hash#initialize_copy", "Class#new", "Module#new",
+         "Class#allocate", "Module#const_set", "Class#initialize", "Module#initialize",
+         "String#initialize", "Array#initialize", "Hash#initialize", "Exception#initialize",
+         "Object#__forwardable_compile", "String#+"].contains x.2.2 ||
+        Interp.nativeDupBid x.2.2 || Interp.nativeCloneBid x.2.2 || Interp.requireBid x.2.2 ||
+        Interp.enumBid x.2.2 || Interp.nativeIteratorBid x.2.2)) = true := by decide +kernel
+    have h := List.all_eq_true.mp hall _ hrow
+    simp only [Bool.or_eq_true, beq_iff_eq, hplus, false_or, Bool.not_eq_true'] at h
+    exact h
 
 /-- String addition uses the interpreter conversion entry, whose conversion
 branch is skipped only after proving the source already has a String payload. -/

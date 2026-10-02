@@ -95,7 +95,7 @@ namespace Ratchet
 /-! ## §1 The primitive table
 
 The rules for sends this fragment can type, as an inductive (`DPrim`) with a decision
-procedure (`dprim?`) and a soundness lemma between them. Twenty-eight rows.
+procedure (`dprim?`) and a soundness lemma between them. Twenty-nine rows.
 
 The table grows with proved builtin obligations. `Judge.lean`'s `PrimSig` has ~90 rows and `Denote/`'s
 `Sem.Judge.prim` — the obligation that every one of them is true of CRuby — is one of the 35
@@ -158,6 +158,8 @@ inductive DPrim : Ty → String → List Ty → Ty → Prop
   /-- Hash query types need not match stored keys; misses return nil. -/
   | hashIndex {σ τ α : Ty} :
       FirstOrder (.hashOf σ τ) = true → DPrim (.hashOf σ τ) "[]" [α] (.nilable τ)
+  /-- `String#===` is native `String#==` at a String argument (case/when on strings). -/
+  | strCaseEq : DPrim (.cls "String") "===" [.cls "String"] .bool
   /-- `Array#compact` allocates the receiver's non-nil elements. -/
   | arrayCompact {τ : Ty} : FirstOrder (.nilable τ) = true →
       DPrim (.arrayOf (.nilable τ)) "compact" [] (.arrayOf τ)
@@ -195,6 +197,7 @@ def dprim? : Ty → String → List Ty → Option Ty
   | .hashOf σ τ, "key?", [_] => if FirstOrder (.hashOf σ τ) then some .bool else none
   | .arrayOf τ, "[]", [.int] => if FirstOrder τ then some (.nilable τ) else none
   | .hashOf σ τ, "[]", [_] => if FirstOrder (.hashOf σ τ) then some (.nilable τ) else none
+  | .cls "String", "===", [.cls "String"] => some .bool
   | .arrayOf (.nilable τ), "compact", [] =>
     if FirstOrder (.nilable τ) then some (.arrayOf τ) else none
   | .arrayOf τ, "uniq", [] => if FirstOrder τ then some (.arrayOf τ) else none
@@ -239,6 +242,7 @@ theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
   · split at h
     · rw [Option.some.injEq] at h; subst h; exact .hashIndex (by assumption)
     · cases h
+  · rw [Option.some.injEq] at h; subst h; exact .strCaseEq
   · split at h
     · rw [Option.some.injEq] at h; subst h; exact .arrayCompact (by assumption)
     · cases h

@@ -242,6 +242,25 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
     simp only [Builtins.run]
     repeat' split
     all_goals first | trivial | (rw [he]; exact stepSpec_value hm hk (by simp [denM, isBoolV])) | skip
+  | strCaseEq =>
+    cases ha
+    rename_i v vs hv hs
+    cases hs
+    obtain ⟨o, s, rfl, hs⟩ := string_payload hm hr (hstring rfl)
+    obtain ⟨p, t, rfl, ht⟩ := string_payload hm hv (hstring rfl)
+    rw [primitive_invoke (bid := "String#==") (k := Boot.stringId) hm
+      (by simp [primitiveMethods]) (string_class hm hr (hstring rfl)) (by rfl)
+      (by intro k hk; cases hk; exact ⟨s, hs⟩)
+      (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
+        nativeReal, rationalPayload?, complexPayload?, Builtins.toAryDefer?,
+        Builtins.strCmpDefer?, Builtins.strCmpTwin?, hs]) (by rfl) hfree]
+    have he : Builtins.runObjects "String#==" (.ref o) [.ref p] m =
+        .ok (.bool (valueEql m.heap (.ref o) (.ref p))) m := by
+      change Builtins.runStrings "String#==" (.ref o) [.ref p] m = _
+      simp [Builtins.runStrings, Builtins.binArg, Builtins.strPayload?, hs, ht]
+    simp only [Builtins.run]
+    repeat' split
+    all_goals first | trivial | (rw [he]; exact stepSpec_value hm hk (by simp [denM, isBoolV])) | skip
   | arrayIndex _ =>
     cases ha
     rename_i v vs hv hs
