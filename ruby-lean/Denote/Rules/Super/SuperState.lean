@@ -66,7 +66,15 @@ theorem super_initializer_pop_state {anchor : Heap} {κ κb : Ctx} {Γ Γb : Env
     captured := (congrArg RubyCore.Frame.captured hpop).trans old.captured
     phase := bodyScope.phase
     visibility := by simpa only [defaultDefVis, hpop] using old.visibility
-    hook := site.hook }
+    hook := site.hook
+    origin := (congrArg RubyCore.Frame.libraryOrigin hpop).trans old.origin
+    defFrame := (congrArg RubyCore.Frame.definitionFrame hpop).trans old.defFrame
+    detached := site.detached
+    unfrozen := site.unfrozen
+    mainLive := site.mainLive
+    notMain := site.notMain
+    superScope := (congrArg RubyCore.Frame.superScope hpop).trans old.superScope
+    methodOwner := by rw [hpop]; exact old.methodOwner }
   have hscope : ConstScopeOk (popMethodFrame n) :=
     InstanceSite.constScope (m := popMethodFrame n) site ready.cref ready.owner
   have hden (τ : Ty) (hτ : FirstOrder τ = true) (v : Value) :
@@ -143,7 +151,12 @@ theorem super_initializer_pop_state {anchor : Heap} {κ κb : Ctx} {Γ Γb : Env
       declCls := hn.typed.declCls
       baseChains := hn.typed.baseChains
       nilQuery := hn.typed.nilQuery
-      selfLive := fun o ho => hn.typed.selfLive o (hsame.symm.trans ho) }
+      selfLive := fun o ho => hn.typed.selfLive o (hsame.symm.trans ho)
+      primitiveInit := hn.typed.primitiveInit
+      names := hn.typed.names
+      localAlias := by rw [hpop]; exact hm.typed.localAlias
+      capturedLive := by rw [hpop, old.captured]; exact .none
+      rootClean := hn.typed.rootClean }
     · change denSpine Ib (popMethodFrame n) _ ∧ _
       rw [hsame]
       exact ⟨((denM_heap_only_aux Ib ht.spine).2 n (popMethodFrame n) _ [] rfl).mp hn.typed.selfSpine.1,

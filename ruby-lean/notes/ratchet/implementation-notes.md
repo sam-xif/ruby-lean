@@ -13698,3 +13698,9 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   (`hplain`); `StateOk_reframe` takes them only when a class scope is active (`hsup`).
 - `SuperRoute.direct`: the super owner is the definee's direct parent, so `doSuper`'s
   CRuby-shadow scan over intermediate classes is empty (covers 067).
+
+## superInit + InitJudgeAll enabled (2026-10-02, 100/100, 106/261)
+- Legacy Super/* repaired: `doSuper_user` now consumes the class-scope frame facts and an
+  empty shadow scan (`declared_super_chain`: direct-parent route + ancestors nodup);
+  bind sites pass rootClean/CatchFree; SuperState fills the newer StateOk/ClassScopeAt fields.
+- Providers via Rules/Init/SuperInitRules. All authoring clinks are now enabled.

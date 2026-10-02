@@ -75,9 +75,8 @@ theorem declared_super_initializer_runSpec {anchor : Heap} {κ κb : Ctx} {Γ Γ
   let entry := pushMethodFrame m (requiredFrame m.currentFrame.self "initialize" md (ps.map (·.1)) args)
   have he : InitState anchor (initializerBodyCtxAt κ receiver.name owner) ps I entry :=
     super_initializer_state hm ht ha site ownerSite scope.phase code' hself hclosed hlen hargs hps hentry
-  have run := (hb anchor entry he).bindSpec (origin := m)
-    (K := [.frameK m.frames.size]) (by
-      intro c hc tag; simp only [List.mem_singleton] at hc; subst c; simp)
+  have run := (hb anchor entry he).bindSpec (origin := m) he.typed.rootClean
+    (K := [.frameK m.frames.size]) (by intro c hc; simp at hc; subst hc; rfl)
     (fun _ _ hh => super_initializer_continue
       (f := requiredFrame m.currentFrame.self "initialize" md (ps.map (·.1)) args)
       hm hout ha hmain hc hq hself hblock
@@ -87,7 +86,7 @@ theorem declared_super_initializer_runSpec {anchor : Heap} {κ κb : Ctx} {Γ Γ
   refine ⟨_, hd.trans (by
     rw [hn]
     exact enterUserMethod_required m m.currentFrame.self "initialize" md _ args hp'
-      code.captured code.declared (by simpa using hlen)), ?_⟩
+      code.captured code.declared (by simpa using hlen) code.fromBlock code.forTargets), ?_⟩
   simpa only [entry, pushMethodFrame, Interp.withKont, evalFrom, pushK, reCtl,
     hbody, hkont, List.nil_append] using run
 

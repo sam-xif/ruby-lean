@@ -16,29 +16,43 @@ theorem methodFrame_current {m : Machine} (hs : m.stack ≠ []) (hk : m.currentF
     simp only [Machine.currentFrame, he] at hk ⊢
     simp only [Interp.methodFrameOf, he, List.headD_cons]
 
-theorem doSuper_user {m : Machine} {name : String} {owner : ObjId} {md : MethodDef}
+theorem doSuper_user {m : Machine} {name : String} {owner cur : ObjId} {md : MethodDef}
     {args : List Value} {blk : Option Value}
     (hs : m.stack ≠ []) (hk : m.currentFrame.kind ≠ .block) (hn : m.currentFrame.meth = name) (hne : name ≠ "")
-    (hl : Interp.superFound m.heap (classOf m.heap m.currentFrame.self)
-      m.currentFrame.defmod name = some (owner, md)) (hb : md.builtin = none) (hu : md.undefined = false) :
+    (hss : m.currentFrame.superScope = none)
+    (hmo : m.currentFrame.methodOwner.getD m.currentFrame.defmod = cur)
+    (hl : Interp.superFound m.heap (classOf m.heap m.currentFrame.self) cur name = some (owner, md))
+    (hsh : Interp.crubyShadow m.heap ((((ancestors m.heap (classOf m.heap m.currentFrame.self)).dropWhile
+      (· != cur)).drop 1).takeWhile (· != owner)) name = none)
+    (hb : md.builtin = none) (hu : md.undefined = false) (hpre : md.fromPrelude = false)
+    (hmss : md.superScope = none) :
     Interp.doSuper m args blk = Interp.enterUserMethod m m.currentFrame.self name md args blk := by
   simp only [Interp.doSuper, methodFrame_current hs hk, hn, beq_eq_false_iff_ne.mpr hne,
-    Bool.false_eq_true, ↓reduceIte, hl, hb, hu]
+    Bool.false_eq_true, ↓reduceIte, hss, Option.getD_none, hmo, hl, hu, hpre,
+    Interp.crubyResolvedShadow, hb, Option.any_none, hsh]
+  congr 1
+  cases md; simp_all
 
 /-- Required positional super arguments bind using the existing receiver and a fresh
 method frame. No object allocation or ordinary receiver dispatch occurs here. -/
 theorem doSuper_required {m : Machine} {name : String} {owner : ObjId} {md : MethodDef}
     {args : List Value} {names : List String}
     (hs : m.stack ≠ []) (hk : m.currentFrame.kind ≠ .block) (hn : m.currentFrame.meth = name) (hne : name ≠ "")
-    (hl : Interp.superFound m.heap (classOf m.heap m.currentFrame.self)
-      m.currentFrame.defmod name = some (owner, md)) (hb : md.builtin = none) (hu : md.undefined = false)
+    {cur : ObjId} (hss : m.currentFrame.superScope = none)
+    (hmo : m.currentFrame.methodOwner.getD m.currentFrame.defmod = cur)
+    (hl : Interp.superFound m.heap (classOf m.heap m.currentFrame.self) cur name = some (owner, md))
+    (hsh : Interp.crubyShadow m.heap ((((ancestors m.heap (classOf m.heap m.currentFrame.self)).dropWhile
+      (· != cur)).drop 1).takeWhile (· != owner)) name = none)
+    (hb : md.builtin = none) (hu : md.undefined = false) (hpre : md.fromPrelude = false)
+    (hmss : md.superScope = none)
     (hp : md.params = names.map RubyCore.Param.req) (hcap : md.capturedFrame = none)
-    (hdecl : md.declared = []) (ha : args.length = names.length) :
+    (hdecl : md.declared = []) (ha : args.length = names.length)
+    (hblock : md.fromBlock = false) (hfor : md.forTargets = none) :
     Interp.doSuper m args none = .next (Interp.withKont
       (pushMethodFrame m (requiredFrame m.currentFrame.self name md names args))
       (.eval md.body) (.frameK m.frames.size)) := by
-  rw [doSuper_user hs hk hn hne hl hb hu]
-  exact enterUserMethod_required _ _ _ _ _ _ hp hcap hdecl ha
+  rw [doSuper_user hs hk hn hne hss hmo hl hsh hb hu hpre hmss]
+  exact enterUserMethod_required _ _ _ _ _ _ hp hcap hdecl ha hblock hfor
 
 /-- Full conformance supplies receiver identity, lexical owner, method activation and code. -/
 theorem declared_super_dispatch {κ : Ctx} {Γ : Env} {I fields : Ty} {m : Machine}
@@ -68,9 +82,14 @@ theorem declared_super_dispatch {κ : Ctx} {Γ : Env} {I fields : Ty} {m : Machi
     simp only [FrameOk, hf] at h
     rw [h.2.2]
     decide
-  refine ⟨k, md, hkn, hp, hb, code, ?_⟩
-  exact doSuper_user hm.frameInRange.1 hk hname hn
-    (by simpa only [hco, scope.owner] using hl) code.builtin hu
+  obtain ⟨k', after, hk', hafter⟩ := declared_super_chain hm hr hrn scope.named route
+  have hkk : k' = k := Option.some.inj (hk'.symm.trans hkn)
+  subst hkk
+  refine ⟨k', md, hkn, hp, hb, code, ?_⟩
+  exact doSuper_user hm.frameInRange.1 hk hname hn scope.superScope scope.methodOwner
+    (by simpa only [hco] using hl)
+    (by rw [hco, hafter]; simp [Interp.crubyShadow, List.firstM]; rfl)
+    code.builtin hu code.fromPrelude code.superScope
 
 #print axioms methodFrame_current
 #print axioms doSuper_required
