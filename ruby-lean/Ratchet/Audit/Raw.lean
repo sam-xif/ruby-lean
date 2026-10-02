@@ -348,6 +348,24 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
           else none
         else none
       | _ => none
+    | .if' (.send (some (.var .lvar x)) "nil?" [] none) t (some el), .ifNilQuery y dt de j =>
+      if x != y then none else
+      if hx : envGet? Γ x = some (.nilable .int) then
+        if hf : nameFreeN κ "nil?" = true then
+          match check n (envSet Γ x .nilT) t dt κ I cache, check n (envSet Γ x .int) el de κ I cache with
+          | some ⟨τ₁, Γ₁, κ₁, I₁, ht, ct⟩, some ⟨τ₂, Γ₂, κ₂, I₂, he, ce⟩ =>
+            if joinT τ₁ τ₂ == j && cacheSignaturesB ct ce then
+              match ctxEq? κ₁ κ₂ with
+              | some ⟨hctx⟩ =>
+                if hi : I₁ = I₂ then
+                  some ⟨joinT τ₁ τ₂, joinEnv Γ₁ Γ₂, κ₁, I₁,
+                    .ifNilQuery (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hf ht (by simpa only [DJudge.rules, hctx, hi] using he), ct⟩
+                else none
+              | none => none
+            else none
+          | _, _ => none
+        else none
+      else none
     | .if' c t none, .ifD dc dt none j =>
       match check n Γ c dc κ I cache with
       | some ⟨_, Γc, κc, Ic, hc, cc⟩ =>

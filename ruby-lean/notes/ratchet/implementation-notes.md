@@ -13710,3 +13710,8 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   then-branch at `x : σ`, the else at `x : nil`. The condition is the local read, so the
   branch machine is unchanged; `StateOk` mentions Γ only in `env`, refined by `envOk_refine`.
 - New Deriv `ifTruthy`; emitter `narrow_truthy`; audit generator passes the two `used_i`.
+
+## ifNilQuery narrowing (2026-10-02, 102/102, 108/261)
+- `if x.nil?` with `x : nilable Integer`: `nilQuery_cond` is a RunWith recording that the
+  native nil? row (new `NilClass#nil?` primitive row; Integer uses `Object#nil?`) answers
+  x's nil-ness at an unchanged local; the branch then refines Γ via `envOk_refine`.

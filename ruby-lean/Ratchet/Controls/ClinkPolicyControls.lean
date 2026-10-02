@@ -515,6 +515,21 @@ private def truthyH (els : Deriv) (j : Ty) : Deriv := .seq [
 #guard !validateD (truthyP (.send (some (.var .lvar "x")) "+" [.int 1] none))
   (truthyH (.prim (.var .lvar "x") "+" [.intLit 1] .int .int) .int)
 
+-- Active ifNilQuery (126): `if x.nil?` narrows a nilable Integer local.
+private def nilQP (thn : Ratchet.Expr) : Ratchet.Expr := .seq [
+  .vasgn .lvar "a" (.array [.int 1, .int 2]),
+  .vasgn .lvar "x" (.send (some (.var .lvar "a")) "[]" [.int 1] none),
+  .if' (.send (some (.var .lvar "x")) "nil?" [] none) thn
+    (some (.send (some (.var .lvar "x")) "+" [.int 10] none))]
+private def nilQH (thn : Deriv) : Deriv := .seq [
+  .vasgn .lvar "a" (.arrayLit [.intLit 1, .intLit 2] .int),
+  .vasgn .lvar "x" (.prim (.var .lvar "a") "[]" [.intLit 1] (.arrayOf .int) (.nilable .int)),
+  .ifNilQuery "x" thn (.prim (.var .lvar "x") "+" [.intLit 10] .int .int) .int]
+#guard validateD (nilQP (.int 0)) (nilQH (.intLit 0))
+#guard !validateDWith (fun q => clinkEnabled q && q != "ifNilQuery") (nilQP (.int 0)) (nilQH (.intLit 0))
+#guard !validateD (nilQP (.send (some (.var .lvar "x")) "+" [.int 1] none))
+  (nilQH (.prim (.var .lvar "x") "+" [.intLit 1] .int .int))
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),

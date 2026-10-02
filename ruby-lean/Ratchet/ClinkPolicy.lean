@@ -10,7 +10,7 @@ def clinkProfileName : String := "semantic-rebuild"
 def clinkProfile : Option (List String) := some
   ["intLit", "fltLit", "strLit", "symLit", "truLit", "flsLit", "nilLit",
    "seq", "DJudgeSeq.last", "DJudgeSeq.cons", "var", "vasgn",
-   "prim", "DJudgeAll.nil", "DJudgeAll.cons", "if'", "ifNoElse", "ifTruthy", "bareName",
+   "prim", "DJudgeAll.nil", "DJudgeAll.cons", "if'", "ifNoElse", "ifTruthy", "ifNilQuery", "bareName",
    "arrayLit", "hashLit", "DJudgePairs.nil", "DJudgePairs.cons", "defDecl", "callSig",
    "recursive", "DJudgeRec.embed", "DJudgeRec.prim", "DJudgeRec.if'", "DJudgeRec.selfCall",
    "DJudgeRecAll.nil", "DJudgeRecAll.cons", "classDecl", "subclassDecl", "newInherited", "callInherited", "constClass", "memberDef", "newDefault", "callMethodSig", "ivarRead",
