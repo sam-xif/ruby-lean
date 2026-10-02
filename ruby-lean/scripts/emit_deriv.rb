@@ -161,6 +161,7 @@ class Emitter
     @yield_signature = nil
     @consts = {}       # top-level constant -> type
     @opt_defs = {}     # top-level method with one optional -> its checked derivations
+    @kw_defs = {}      # top-level keyword-only method -> its checked derivations
   end
 
   attr_reader :uses_flow
@@ -571,6 +572,20 @@ class Emitter
       deriv, ty = new_inst(@self_cls, args)
       return [deriv.merge("rule" => "newImplicit"), ty]
     end
+    if !@singleton && @self_cls.nil? && (kd = @kw_defs[m])
+      unless args.length == 1 && args[0][0] == "kwargs" &&
+             args[0][1].all? { |e| e.is_a?(Array) && e.length == 2 && e[0].is_a?(Array) && e[0][0] == "sym" }
+        raise Blocked, "#{m}: keyword calls must pass static keywords"
+      end
+      keys = args[0][1].map { |e| e[0][1] }
+      raise Blocked, "#{m}: keywords must be passed in declared order" unless
+        keys == kd["params"].map { |p| p["name"] }
+      dargs, targs = go_all(args[0][1].map { |e| e[1] })
+      raise Blocked, "#{m}: keyword values disagree with the declared types" unless
+        targs == kd["params"].map { |p| p["ty"] }
+      return [{ "rule" => "callSigKw", "name" => m, "args" => dargs, "ret" => kd["ret"],
+                "params" => kd["params"], "body" => kd["body"] }, kd["ret"]]
+    end
     dargs, targs = go_all(args)
     if !@singleton && @self_cls.nil? && (od = @opt_defs[m])
       pre = od["params"].map { |p| p["ty"] }
@@ -631,6 +646,10 @@ class Emitter
 
       return callback_definition(name, [], sig["ret"], body, block)
     end
+    if @self_cls.nil? && !@singleton && !params.empty? &&
+       params.all? { |p| p[0] == "pkey" && p[2].nil? } && sig["params"].length == params.length
+      return kw_definition(name, params, sig, body)
+    end
     if @self_cls.nil? && !@singleton && !params.empty? && params.last[0] == "popt" &&
        params[0...-1].all? { |p| p[0] == "preq" } && sig["params"].length == params.length
       return opt_definition(name, params, sig, body)
@@ -662,6 +681,27 @@ class Emitter
     @current_method = outer_method
     [{ "rule" => "defDecl", "name" => name, "params" => sps, "ret" => sig["ret"],
        "body" => dbody }, SYM]
+  end
+
+  # Required keywords only (DJudge.defDeclKw); calls replay the body (DJudge.callSigKw).
+  def kw_definition(name, params, sig, body)
+    ps = params.map do |p|
+      s = sig["params"].find { |q| q["name"] == p[1] }
+      raise Blocked, "#{name}: keyword #{p[1]} has no declared type" unless s
+      { "name" => p[1], "ty" => as_inst(s["ty"]) }
+    end
+    outer_env = @env
+    outer_method = @current_method
+    @current_method = name
+    begin
+      @env = ps.to_h { |p| [p["name"], p["ty"]] }
+      dbody, = go_ordinary(body)
+    ensure
+      @env = outer_env
+      @current_method = outer_method
+    end
+    @kw_defs[name] = { "params" => ps, "body" => dbody, "ret" => sig["ret"] }
+    [{ "rule" => "defDeclKw", "name" => name, "params" => ps, "ret" => sig["ret"], "body" => dbody }, SYM]
   end
 
   # One trailing optional (DJudge.defDeclOpt): the default over the required params, the

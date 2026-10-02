@@ -1,5 +1,6 @@
 import Ratchet.Static.CallbackFacts
 import Ratchet.Check.Deriv
+import Ratchet.Check.OptShape
 import Ratchet.Static.CtxEq
 import Ratchet.Guards.MethodCtx
 import Ratchet.Judgment.InitJudge
@@ -497,6 +498,16 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       (∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) →
       (∀ old ∈ κ.defs, old.name ≠ d.name) → "method_missing" ≠ d.name → "method_added" ≠ d.name →
       DJudge Γ (.def' d.name d.params d.body) .sym Γ κ I (topDeclCtx κ d) I
+  /-- Required keyword parameters only (Sorbet 0.6.13405 accepts corpus 154/161). -/
+  | defDeclKw {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {d : Defn} {ps : List SigParam} :
+      d.params = ps.map (fun p => Param.key p.1 none) →
+      (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) → FirstOrder τ = true →
+      DJudge ps d.body τ Γb (topBodyCtx κ d) I (topBodyCtx κ d) I →
+      κ.scope.runtimeMain = true → topDeclClassesB κ d.name = true → κ.selfTy = none → κ.blockTy = none →
+      κ.consts = [] → κ.asms = [] → FirstOrder I = true →
+      (∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) →
+      (∀ old ∈ κ.defs, old.name ≠ d.name) → "method_missing" ≠ d.name → "method_added" ≠ d.name →
+      DJudge Γ (.def' d.name d.params d.body) .sym Γ κ I (topDeclCtx κ d) I
   /-- Calls consume an already checked body at its declared signature, not at a caller's
       inferred argument shape. The premise remains explicit for every registry backend. -/
   | callSig {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' τ : Ty} {decl : Defn}
@@ -530,6 +541,20 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       κ'.blockTy = none → κ'.consts = [] → κ'.asms = [] → FirstOrder I' = true →
       (∀ p ∈ Γ', FirstOrder (stripAlias p.2) = true) →
       DJudge Γ (.send none decl.name args none) τ Γ' κ I κ' I'
+  /-- A call passing every required keyword, in declared order. -/
+  | callSigKw {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' τ : Ty}
+      {decl : Defn} {ps : List SigParam} {args : List Expr} {entries : List KwEntry} :
+      decl.params = ps.map (fun p => Param.key p.1 none) →
+      (ps.map (·.1)).Nodup → ps ≠ [] → kwArgs? (ps.map (·.1)) entries = some args →
+      (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) → FirstOrder τ = true →
+      DJudge ps decl.body τ Γb (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I'
+        (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I' →
+      DJudgeAll Γ args (ps.map (·.2)) Γ' κ I κ' I' →
+      decl ∈ κ'.defs →
+      κ.scope.runtimeMain = true → κ'.scope.runtimeMain = true → κ'.selfTy = none →
+      κ'.blockTy = none → κ'.consts = [] → κ'.asms = [] → FirstOrder I' = true →
+      (∀ p ∈ Γ', FirstOrder (stripAlias p.2) = true) →
+      DJudge Γ (.send none decl.name [.kwargs entries] none) τ Γ' κ I κ' I'
 
   /-- Close a scoped body derivation; the semantic rule discharges its guarded hypothesis. -/
   | recursive {κ : Ctx} {I : Ty} {s : RecScope} {Γb : Env} :
@@ -1066,7 +1091,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_12 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_13 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_14 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 

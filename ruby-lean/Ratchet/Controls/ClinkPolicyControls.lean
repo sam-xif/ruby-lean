@@ -639,6 +639,21 @@ private def lenD : Deriv := .prim (.var .lvar "s") "length" [] (.cls "String") .
   (optP (.send (some (.var .lvar "s")) "length" [] none)) (optH lenD .int)
 #guard !validateD (optP (.str "x")) (optH (.strLit "x") .int)
 
+-- Active defDeclKw/callSigKw (154, 161): every required keyword, in declared order.
+private def kwP (entries : List KwEntry) : Ratchet.Expr := .seq [
+  .def' "build" [.key "a" none, .key "b" none]
+    (.send (some (.var .lvar "a")) "+" [.var .lvar "b"] none),
+  .send none "build" [.kwargs entries] none]
+private def kwH (args : List Deriv) : Deriv :=
+  let ps : List SigParam := [("a", .cls "String"), ("b", .cls "String")]
+  let body : Deriv := .prim (.var .lvar "a") "+" [.var .lvar "b"] (.cls "String") (.cls "String")
+  .seq [.defDeclKw "build" ps (.cls "String") body, .callSigKw "build" args (.cls "String") ps body]
+#guard validateD (kwP [.pair "a" (.str "x"), .pair "b" (.str "y")]) (kwH [.strLit "x", .strLit "y"])
+#guard !validateDWith (fun q => clinkEnabled q && q != "callSigKw")
+  (kwP [.pair "a" (.str "x"), .pair "b" (.str "y")]) (kwH [.strLit "x", .strLit "y"])
+#guard !validateD (kwP [.pair "a" (.str "x")]) (kwH [.strLit "x"])
+#guard !validateD (kwP [.pair "a" (.str "x"), .pair "b" (.int 1)]) (kwH [.strLit "x", .intLit 1])
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),

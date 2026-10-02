@@ -13768,3 +13768,10 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   `StateOk_setLocal` binds it (premises `envAfter ps n σ = ps ++ [(n, σ)]`, spine unchanged).
 - `paramEq` rejects `.opt`, which made `ctxEqB` irreflexive on definition tables holding
   such methods; `defnEqB` now uses `paramEqAllDeep` (defaults compared by `exprEq`).
+
+## defDeclKw / callSigKw (2026-10-02, 114/114, 123/261)
+- Top-level methods whose parameters are all required keywords, called with every keyword
+  as a static `k: e` pair in declared order (`kwArgs?` recovers the values). With distinct
+  names the callee frame is exactly the required-positional frame over the keyword names, so
+  entry/return reuse the positional proofs; `SemAllCtxA.startKwargs` mirrors `startArgsKeep`.
+- `paramEq` now compares `.key n none`; calls recheck the body like `callSigOpt`.

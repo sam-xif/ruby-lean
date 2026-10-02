@@ -36,6 +36,7 @@ bundle. So an optional parameter compares `false` — conservatively, since a bl
 then has no index and is not typed, and no rung has one. -/
 def paramEq : Param → Param → Bool
   | .req a, .req b => a == b
+  | .key a none, .key b none => a == b
   | .rest a, .rest b => a == b
   | .kwrest a, .kwrest b => a == b
   | .block a, .block b => a == b
@@ -115,6 +116,8 @@ end
 
 theorem paramEq_sound {a b : Param} (h : paramEq a b = true) : a = b := by
   cases a <;> cases b <;> simp_all [paramEq]
+  rename_i d₁ _ d₂
+  cases d₁ <;> cases d₂ <;> simp_all
 
 theorem paramEqAll_sound {a b : List Param} (h : paramEqAll a b = true) : a = b := by
   induction a generalizing b with
@@ -147,7 +150,9 @@ def paramEqAllDeep : List Param → List Param → Bool
 
 theorem paramEqDeep_sound {a b : Param} (h : paramEqDeep a b = true) : a = b := by
   cases a <;> cases b <;> simp_all [paramEqDeep, paramEq]
-  exact exprEq_sound _ _ h.2
+  · exact exprEq_sound _ _ h.2
+  · rename_i d₁ _ d₂
+    cases d₁ <;> cases d₂ <;> simp_all
 
 theorem paramEqAllDeep_sound {a b : List Param} (h : paramEqAllDeep a b = true) : a = b := by
   induction a generalizing b with

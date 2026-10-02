@@ -525,6 +525,56 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
       else none
       else none
       else none
+    | .def' name formals body, .defDeclKw name' ps ret db => do
+      if name != name' then none else do
+      if κ.scope.runtimeClass.isSome then none else do
+      if hshape : paramEqAll formals (ps.map (fun p => Param.key p.1 none)) = true then do
+      if ht : ps.all (fun p => FirstOrder p.2 && !isAliasTy p.2) = true then do
+      if hr : FirstOrder ret = true then do
+      if hm : κ.scope.runtimeMain = true then do
+      if hc : topDeclClassesB κ name = true then do
+      if hs : κ.selfTy = none then do
+      if hb : κ.blockTy = none then do
+      if hco : κ.consts = [] then do
+      if ha : κ.asms = [] then do
+      if hi : FirstOrder I = true then do
+      if hg : Γ.all (fun p => FirstOrder (stripAlias p.2)) = true then do
+      if hf : κ.defs.all (fun old => old.name != name) = true then do
+      if hmiss : "method_missing" ≠ name then do
+      if hquiet : "method_added" ≠ name then do
+        let decl : Defn := ⟨name, formals, body⟩
+        match check n ps body db (topBodyCtx κ decl) I cache with
+        | some ⟨τb, Γb, κb, Ib, hbj, _⟩ =>
+          if hIb : Ib = I then
+          if hτb : τb = ret then
+          match ctxEq? κb (topBodyCtx κ decl) with
+          | some ⟨hκb⟩ => do
+            let fresh ← refreshBodies n (topDeclCtx κ decl) I cache
+            some ⟨.sym, Γ, topDeclCtx κ decl, I,
+              .defDeclKw (d := decl) (Γb := Γb) (paramEqAll_sound hshape)
+                (by simpa only [List.all_eq_true, Bool.and_eq_true, Bool.not_eq_true'] using ht)
+                hr (by rw [hIb, hτb, hκb] at hbj; exact hbj)
+                hm hc hs hb hco ha hi (List.all_eq_true.mp hg)
+                (by simpa only [List.all_eq_true, bne_iff_ne] using hf) hmiss hquiet,
+              fresh⟩
+          | none => none
+          else none
+          else none
+        | none => none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
     | .def' name formals body, .defDeclOpt name' ps o ddflt ret db => do
       if name != name' then none else do
       if κ.scope.runtimeClass.isSome then none else do
@@ -610,6 +660,59 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
             hc hs hb hco ha hi (List.all_eq_true.mp hg)
             (by simpa only [List.all_eq_true, bne_iff_ne] using hf) hmiss hquiet,
           { fresh with top := ⟨topBodyCtx κ decl, I, decl, c, db⟩ :: fresh.top }⟩
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+    | .send none name [.kwargs entries] none, .callSigKw name' ds ret ps db => do
+      if name != name' then none else do
+      match hka : kwArgs? (ps.map (·.1)) entries with
+      | none => none
+      | some args =>
+      let a ← checkAll n Γ args ds κ I cache
+      let ⟨decl, hdm, hname⟩ ← defnNamed? name a.ctx.defs
+      let κb := a.ctx.withFrame (some ⟨"Object", "Object", decl.name, false⟩)
+      if hshape : paramEqAll decl.params (ps.map (fun p => Param.key p.1 none)) = true then
+      if htys : a.tys = ps.map (·.2) then
+      if hnd : (ps.map (·.1)).Nodup then
+      if hne : ps ≠ [] then
+      if ht : ps.all (fun p => FirstOrder p.2 && !isAliasTy p.2) = true then
+      if hr : FirstOrder ret = true then
+      if hstart : κ.scope.runtimeMain = true then
+      if hm : a.ctx.scope.runtimeMain = true then
+      if hs : a.ctx.selfTy = none then
+      if hb : a.ctx.blockTy = none then
+      if hco : a.ctx.consts = [] then
+      if ha : a.ctx.asms = [] then
+      if hi : FirstOrder a.spine = true then
+      if hg : a.out.all (fun p => FirstOrder (stripAlias p.2)) = true then
+        match check n ps decl.body db κb a.spine a.cache with
+        | some ⟨τb, Γb, κb', Ib, hbj, _⟩ =>
+          if hIb : Ib = a.spine then
+          if hτb : τb = ret then
+          match ctxEq? κb' κb with
+          | some ⟨hκb⟩ =>
+            some ⟨ret, a.out, a.ctx, a.spine, by
+              simpa only [hname] using (DJudge.callSigKw (Γb := Γb) (paramEqAll_sound hshape)
+                hnd hne hka
+                (by simpa only [List.all_eq_true, Bool.and_eq_true, Bool.not_eq_true'] using ht)
+                hr (by rw [hIb, hτb, hκb] at hbj; exact hbj)
+                (by rw [← htys]; exact a.judged) hdm hstart hm hs hb hco ha hi
+                (List.all_eq_true.mp hg)), a.cache⟩
+          | none => none
+          else none
+          else none
+        | none => none
+      else none
+      else none
+      else none
       else none
       else none
       else none
