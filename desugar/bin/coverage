@@ -26,7 +26,7 @@ save = ARGV.delete("--save")
 path = ARGV.first || File.expand_path("../corpus/bootstraptest", __dir__)
 files = File.directory?(path) ? Dir.glob(File.join(path, "**", "*.rb")).sort : [path]
 
-if files.empty?
+if files.empty? || files.any? { |f| !File.file?(f) }
   warn "no .rb files under #{path} (harvest bootstraptest first: bin/harvest_bootstraptest ...)"
   exit 2
 end
@@ -131,10 +131,19 @@ if File.exist?(baseline_path)
   base = JSON.parse(File.read(baseline_path))
   puts "\nratchet: baseline in-fragment=#{base['in_fragment']} (of #{base['parseable']})  " \
        "current=#{in_fragment} (of #{parseable})"
-  if in_fragment < base["in_fragment"] && parseable >= base["parseable"]
+  regressed = false
+  # A smaller corpus must not mask a coverage drop: both counters are monotone.
+  # `in_fragment` can only rise, and `parseable` (the harvested set) can only
+  # rise or stay put — if either falls, the ratchet regresses.
+  if in_fragment < base["in_fragment"]
     warn "REGRESSION: in-fragment dropped from #{base['in_fragment']} to #{in_fragment}"
-    exit 1
+    regressed = true
   end
+  if parseable < base["parseable"]
+    warn "REGRESSION: parseable corpus shrank from #{base['parseable']} to #{parseable}"
+    regressed = true
+  end
+  exit 1 if regressed
   puts "up #{in_fragment - base['in_fragment']} since baseline" if in_fragment > base["in_fragment"]
 else
   puts "\n(no baseline yet; run with --save to create coverage-baseline.json)"

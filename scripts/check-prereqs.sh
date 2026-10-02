@@ -34,6 +34,10 @@ fi
 #    bundled binary by glob, so the gem is enough; `srb` need not be on PATH.
 if python3 - <<'PY' 2>/dev/null
 import glob, os, sys
+# Honor an explicit $SORBET first (srb_sigs.py does the same), then the usual
+# Homebrew / user-gem / system locations, then `srb` on PATH.
+if os.environ.get("SORBET") and os.path.exists(os.environ["SORBET"]):
+    sys.exit(0)
 pats = ["/opt/homebrew/lib/ruby/gems/*/gems/sorbet-static-*/libexec/sorbet",
         os.path.expanduser("~/.gem/ruby/*/gems/sorbet-static-*/libexec/sorbet"),
         "/usr/local/lib/ruby/gems/*/gems/sorbet-static-*/libexec/sorbet"]
