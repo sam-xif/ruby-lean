@@ -38,7 +38,7 @@ theorem scoped_defined_instanceCode {name : String} {ps : List RubyCore.Param}
   have hcode : OrdinaryMethodCode k [k] (definedMethod m name ps code) := by
     unfold definedMethod Interp.normalizeDefinitionVisibility
     split <;> exact ⟨h.owner, h.cref, rfl, rfl, rfl, rfl,
-      by simp [sourceMethod, h.phase, h.origin], rfl, rfl, rfl, h.owner, rfl⟩
+      by simp [sourceMethod, h.phase, h.origin], rfl, rfl, rfl, h.owner, rfl, rfl⟩
   refine ⟨hcode, ?_⟩
   unfold definedMethod Interp.normalizeDefinitionVisibility
   rw [h.owner, h.detached]

@@ -109,7 +109,9 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
         by simpa only [hw.classPayload] using hk.detached,
         by simpa only [hw.frozen] using hk.unfrozen,
         by simpa only [hw.size] using hk.mainLive,
-        by simpa only [hw.classOf_eq] using hk.notMain⟩⟩
+        by simpa only [hw.classOf_eq] using hk.notMain,
+        by simpa only [bindIvar_currentFrame] using hk.superScope,
+        by simpa only [bindIvar_currentFrame] using hk.methodOwner⟩⟩
     singletonRuntime := by
       intro cn hr
       obtain ⟨k, e, scope⟩ := h.singletonRuntime cn hr

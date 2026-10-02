@@ -21,6 +21,9 @@ structure ClassScopeAt (cn : String) (k : ObjId) (m : Machine) : Prop where
   unfrozen : (m.heap.get k).frozen = false
   mainLive : Boot.mainId < m.heap.objs.size
   notMain : k ≠ classOf m.heap (.ref Boot.mainId)
+  /-- `super` resolves from the receiver's class past k (no inherited super scope). -/
+  superScope : m.currentFrame.superScope = none
+  methodOwner : m.currentFrame.methodOwner.getD m.currentFrame.defmod = k
 
 def ClassScopeReady (cn : String) (m : Machine) : Prop := ∃ k, ClassScopeAt cn k m
 def ClassRuntimeOk (κ : Ctx) (m : Machine) : Prop :=
@@ -39,14 +42,18 @@ theorem ClassScopeAt.reframe {cn : String} {k : ObjId} {m n : Machine}
     (hcap : n.currentFrame.captured = m.currentFrame.captured)
     (hp : n.preludeMode = m.preludeMode) (hv : defaultDefVis n = defaultDefVis m)
     (hl : n.currentFrame.libraryOrigin = m.currentFrame.libraryOrigin)
-    (hd : n.currentFrame.definitionFrame = m.currentFrame.definitionFrame) :
+    (hd : n.currentFrame.definitionFrame = m.currentFrame.definitionFrame)
+    (hss : n.currentFrame.superScope = m.currentFrame.superScope)
+    (hmo : n.currentFrame.methodOwner.getD n.currentFrame.defmod =
+      m.currentFrame.methodOwner.getD m.currentFrame.defmod) :
     ClassScopeAt cn k n :=
   ⟨by simpa only [hh] using h.named, by simpa only [hh] using h.live,
     ho.trans h.owner, hc.trans h.cref, hcap.trans h.captured,
     hp.trans h.phase, hv.trans h.visibility, by simpa only [hh] using h.hook,
     hl.trans h.origin, hd.trans h.defFrame, by simpa only [hh] using h.detached,
     by simpa only [hh] using h.unfrozen, by simpa only [hh] using h.mainLive,
-    by simpa only [hh] using h.notMain⟩
+    by simpa only [hh] using h.notMain, hss.trans h.superScope,
+    hmo.trans h.methodOwner⟩
 
 theorem ClassScopeReady.setLocal {cn : String} {m : Machine}
     (h : ClassScopeReady cn m) (x : String) (v : Value) :
@@ -55,7 +62,9 @@ theorem ClassScopeReady.setLocal {cn : String} {m : Machine}
   exact ⟨k, h.reframe (setLocal_heap ..) (currentFrame_setLocal_defmod ..)
     (currentFrame_setLocal_cref ..) (currentFrame_setLocal_captured ..) rfl
     (by simp only [defaultDefVis, currentFrame_setLocal_kind, currentFrame_setLocal_defVis])
-    (currentFrame_setLocal_libraryOrigin ..) (currentFrame_setLocal_definitionFrame ..)⟩
+    (currentFrame_setLocal_libraryOrigin ..) (currentFrame_setLocal_definitionFrame ..)
+    (currentFrame_setLocal_superScope ..)
+    (by rw [currentFrame_setLocal_methodOwner, currentFrame_setLocal_defmod])⟩
 
 theorem ClassScopeReady.ext {cn : String} {m n : Machine}
     (h : ClassScopeReady cn m) (he : Ext m n) (hp : n.preludeMode = m.preludeMode)
@@ -71,7 +80,9 @@ theorem ClassScopeReady.ext {cn : String} {m n : Machine}
     refine ⟨?_, Nat.lt_of_lt_of_le h.live he.size, ?_, ?_, ?_, hp.trans h.phase, ?_, ?_, ?_, ?_,
       by rw [he.payload]; exact h.detached, by rw [hobj]; exact h.unfrozen,
       Nat.lt_of_lt_of_le h.mainLive he.size,
-      by simp only [classOf, he.get Boot.mainId h.mainLive]; exact h.notMain⟩
+      by simp only [classOf, he.get Boot.mainId h.mainLive]; exact h.notMain,
+      by simpa only [he.currentFrame_eq] using h.superScope,
+      by simpa only [he.currentFrame_eq] using h.methodOwner⟩
     · simpa only [he.classNamed?_eq] using h.named
     · simpa only [he.currentFrame_eq] using h.owner
     · simpa only [he.currentFrame_eq] using h.cref

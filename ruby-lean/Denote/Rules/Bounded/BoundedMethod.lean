@@ -30,6 +30,7 @@ theorem required_method_runSpecAt {N : Nat} {κ : Ctx} {Γ Γb : Env} {I τ : Ty
     (hkont : m.kont = []) (hp : md.params = (ps.map (·.1)).map RubyCore.Param.req)
     (hcap : md.capturedFrame = none) (hdecl : md.declared = []) (hbody : md.body = toRuby e)
     (hblock : md.fromBlock = false) (hfor : md.forTargets = none)
+    (hss : md.superScope = none) (hown : md.definee.getD md.owner = md.owner)
     (hlen : args.length = ps.length) (hargs : DenAll (ps.map (·.2)) m args)
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (hτ : FirstOrder τ = true) (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
@@ -48,7 +49,7 @@ theorem required_method_runSpecAt {N : Nat} {κ : Ctx} {Γ Γb : Env} {I τ : Ty
       (congrArg FrameScope.blk hscope) (congrArg FrameScope.cref hscope)
       (congrArg FrameScope.defmod hscope) (congrArg FrameScope.captured hscope)
       (fun _ => by simp only [defaultDefVis, currentFrame_pushMethodFrame, f, requiredFrame]; rfl) hk
-      (requiredFrame_envOk m _ name md ps args hlen hargs hps) hframe rfl
+      (requiredFrame_envOk m _ name md ps args hlen hargs hps) hframe rfl ⟨hss, hown.symm⟩
       (congrArg FrameScope.libraryOrigin hscope) (congrArg FrameScope.definitionFrame hscope)
   have hu : RootUncaptured m := by
     unfold RootUncaptured
@@ -88,7 +89,8 @@ theorem top_method_runSpecAt {N : Nat} {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m 
   obtain ⟨next, he, hr⟩ := required_method_runSpecAt (name := decl.name)
     (fr := some ⟨"Object", "Object", decl.name, false⟩)
     hm ht ha hkont (hp.trans (by rw [hparams]; exact toRubyParams_required ps))
-    hcode.captured hcode.declared hb hcode.fromBlock hcode.forTargets hlen hargs hps hτ hΓ
+    hcode.captured hcode.declared hb hcode.fromBlock hcode.forTargets hcode.superScope
+    (by rw [hcode.owner]; exact hdef) hlen hargs hps hτ hΓ
     (by simp [frameScope, requiredFrame, hcode.owner, hcode.cref,
       hdef, hcode.fromPrelude, ready.owner, ready.cref, ready.captured,
       ready.origin, hm.localAlias, hblk, hcode.definitionFrame, ready.defFrame])

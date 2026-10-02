@@ -78,13 +78,15 @@ theorem instance_required_scope {m : Machine} {recv : Value} {cn name : String}
     (hdet : (m.heap.classPayload? k).bind (·.attached) = none) (hfz : (m.heap.get k).frozen = false)
     (hml : Boot.mainId < m.heap.objs.size) (hnm : k ≠ classOf m.heap (.ref Boot.mainId)) :
     ClassScopeAt cn k (pushMethodFrame m (requiredFrame recv name md names args)) := by
-  refine ⟨hk, hl, ?_, ?_, ?_, hp, ?_, hh, ?_, ?_, hdet, hfz, hml, hnm⟩
+  refine ⟨hk, hl, ?_, ?_, ?_, hp, ?_, hh, ?_, ?_, hdet, hfz, hml, hnm, ?_, ?_⟩
   · rw [currentFrame_pushMethodFrame]; exact hc.definee
   · rw [currentFrame_pushMethodFrame]; exact hc.cref
   · rw [currentFrame_pushMethodFrame]; rfl
   · simp only [defaultDefVis, currentFrame_pushMethodFrame, requiredFrame]; rfl
   · rw [currentFrame_pushMethodFrame]; exact hc.fromPrelude
   · rw [currentFrame_pushMethodFrame]; exact hc.definitionFrame
+  · rw [currentFrame_pushMethodFrame]; exact hc.superScope
+  · rw [currentFrame_pushMethodFrame]; exact hc.owner
 
 theorem finishSend_instance {m : Machine} {o k : ObjId} {name : String} {md : MethodDef}
     {args : List Value} {rest : List ObjId}

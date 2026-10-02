@@ -25,7 +25,7 @@ theorem scope_ready (hc : ChainsIn m.heap) (hs : Saturated m.heap)
     simp only [Machine.lexicalNamespace, hm.cref, List.headD_nil]
   have hd : m.lexicalNamespace < m.heap.objs.size := htop ▸ hc.boot.2.2.2.2
   refine ⟨m.heap.objs.size, named_fresh htop hm.classLive, ?_, ?_, ?_, ?_, hm.phase, ?_,
-    hook_quiet hc hs hd hb, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    hook_quiet hc hs hd hb, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · change m.heap.objs.size < (heap m name).objs.size
     rw [size]; omega
   · rw [current_frame]; rfl
@@ -43,6 +43,8 @@ theorem scope_ready (hc : ChainsIn m.heap) (hs : Saturated m.heap)
   · change m.heap.objs.size ≠ classOf (heap m name) (.ref Boot.mainId)
     rw [classOf_old hd hm.live]
     exact (Nat.ne_of_lt (ClsGrow.classOf_lt hc hm.live)).symm
+  · rw [current_frame]; rfl
+  · rw [current_frame]; rfl
 
 #print axioms hook_quiet
 #print axioms scope_ready

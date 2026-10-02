@@ -37,10 +37,17 @@ theorem method_enter_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m : Machine}
     (hk : ∀ x, constGet? (κ.withFrame fr) x = constGet? κ x)
     (he : EnvOk Γb (pushMethodFrame m f)) (hf : FrameOk fr (pushMethodFrame m f))
     (hal : f.localAlias = none)
+    (hplain : f.superScope = none ∧ f.methodOwner.getD f.defmod = f.defmod)
     (hlibrary : f.libraryOrigin = m.currentFrame.libraryOrigin := by rfl)
     (hdefFrame : f.definitionFrame = m.currentFrame.definitionFrame := by rfl) :
     StateOk (κ.withFrame fr) Γb I (pushMethodFrame m f) :=
   StateOk_reframe (hroot := hm.rootClean)
+    (hsup := fun hr => by
+      obtain ⟨cn, hcn⟩ := Option.ne_none_iff_exists'.mp hr
+      obtain ⟨k, sc⟩ := hm.classRuntime cn hcn
+      rw [currentFrame_pushMethodFrame]
+      exact ⟨hplain.1.trans sc.superScope.symm,
+        hplain.2.trans (hd.trans (sc.owner.trans sc.methodOwner.symm))⟩)
     (horigin := by rw [currentFrame_pushMethodFrame]; exact hlibrary)
     (hdf := by rw [currentFrame_pushMethodFrame]; exact hdefFrame) hm ht ha rfl
     (by rw [currentFrame_pushMethodFrame]; exact hs)
@@ -89,6 +96,15 @@ theorem method_pop_state {κ : Ctx} {Γ Γb : Env} {I : Ty} {m n : Machine}
     paths := ht.paths }
   have hframe : FrameOk κ.frame (popMethodFrame n) := hp.frameOk hm.frame hpop
   have hout := StateOk_reframe (hroot := hn.rootClean)
+    (hsup := fun hr => by
+      obtain ⟨cn, hcn⟩ := Option.ne_none_iff_exists'.mp hr
+      obtain ⟨k, sc⟩ := hm.classRuntime cn hcn
+      obtain ⟨k', sc'⟩ := hn.classRuntime cn hcn
+      have hdn : n.currentFrame.defmod = m.currentFrame.defmod :=
+        (congrArg FrameScope.defmod (method_body_scope h)).trans (congrArg FrameScope.defmod hs)
+      rw [hpop]
+      exact ⟨sc.superScope.trans sc'.superScope.symm,
+        sc.methodOwner.trans (sc.owner.symm.trans (hdn.symm.trans (sc'.owner.trans sc'.methodOwner.symm)))⟩)
     (horigin := congrArg FrameScope.libraryOrigin hscope)
     (hdf := congrArg FrameScope.definitionFrame hscope)
     hn htypes ha (n := popMethodFrame n) (fr := κ.frame) rfl
@@ -121,6 +137,7 @@ theorem required_method_runSpec {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : Machi
     (hkont : m.kont = []) (hp : md.params = (ps.map (·.1)).map RubyCore.Param.req)
     (hcap : md.capturedFrame = none) (hdecl : md.declared = []) (hbody : md.body = toRuby e)
     (hblock : md.fromBlock = false) (hfor : md.forTargets = none)
+    (hss : md.superScope = none) (hown : md.definee.getD md.owner = md.owner)
     (hlen : args.length = ps.length) (hargs : DenAll (ps.map (·.2)) m args)
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (hτ : FirstOrder τ = true) (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
@@ -139,7 +156,7 @@ theorem required_method_runSpec {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : Machi
       (congrArg FrameScope.blk hscope) (congrArg FrameScope.cref hscope)
       (congrArg FrameScope.defmod hscope) (congrArg FrameScope.captured hscope)
       (fun _ => by simp only [defaultDefVis, currentFrame_pushMethodFrame, f, requiredFrame]; rfl) hk
-      (requiredFrame_envOk m _ name md ps args hlen hargs hps) hframe rfl
+      (requiredFrame_envOk m _ name md ps args hlen hargs hps) hframe rfl ⟨hss, hown.symm⟩
       (congrArg FrameScope.libraryOrigin hscope) (congrArg FrameScope.definitionFrame hscope)
   have hu : RootUncaptured m := by
     unfold RootUncaptured

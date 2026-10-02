@@ -48,7 +48,7 @@ theorem StateOk_pushDead {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
       intro cn hr'
       obtain ⟨k, hk⟩ := h.classRuntime cn hr'
       exact ⟨k, hk.reframe rfl (by rw [hcf]) (by rw [hcf]) (by rw [hcf]) rfl
-        (by simp only [defaultDefVis, hcf]) (by rw [hcf]) (by rw [hcf])⟩
+        (by simp only [defaultDefVis, hcf]) (by rw [hcf]) (by rw [hcf]) (by rw [hcf]) (by rw [hcf])⟩
     singletonRuntime := by
       intro cn hr'
       obtain ⟨k, e, scope⟩ := h.singletonRuntime cn hr'

@@ -13690,3 +13690,11 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
 - `InstanceSiteAt.library`: program classes carry no optional-library namespace, so the
   classes between an exact receiver and the owning ancestor have no CRuby singleton/feature
   shadow (`inherited_shadow_free`, via `ClassChains.before_owner`).
+
+## super frame facts (2026-10-02, superInit prep)
+- `doSuper` reads the method frame's `superScope`/`methodOwner`. `ClassScopeAt` now pins
+  `superScope = none` and `methodOwner.getD defmod = k`; `OrdinaryMethodCode` pins
+  `md.superScope = none`. Method entry derives the scope facts from frame-intrinsic ones
+  (`hplain`); `StateOk_reframe` takes them only when a class scope is active (`hsup`).
+- `SuperRoute.direct`: the super owner is the definee's direct parent, so `doSuper`'s
+  CRuby-shadow scan over intermediate classes is empty (covers 067).
