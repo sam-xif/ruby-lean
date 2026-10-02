@@ -47,8 +47,7 @@ theorem SemInitAllA.startSuperArgs {κ κ' : Ctx} {Γ Γ' Γo : Env} {I I' Io τ
     refine ⟨_, startSuperArgs_cons m acc e es hp, ?_⟩
     simp only [Interp.withKont, hk]
     change InitRunSpec anchor m (pushK [.superArgK acc (toRubyList es) none] (evalFrom m e)) Γo τ κ₂ Io
-    apply (he anchor m hm).bindSpec (by
-      intro k h tag; simp only [List.mem_singleton] at h; subst k; simp)
+    apply (he anchor m hm).bindSpec hm.typed.rootClean (by intro k h; simp at h; subst h; rfl)
     intro a n hn
     cases a with
     | val v =>

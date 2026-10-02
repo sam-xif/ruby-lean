@@ -89,6 +89,37 @@ theorem declared_super_code {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     obtain ⟨old, hold, hname, hmiss⟩ := route.clear cn hcn
     exact hm.ownMethod_absent hold (by simpa only [hname] using hnamed) (by simpa only [hname] using hmiss)
 
+
+/-- With a direct-parent route, the ancestors after the current owner start at the owner. -/
+theorem declared_super_chain {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    {receiver : Cls} {current owner : String} {d : Defn} {r currentId : ObjId}
+    (hm : StateOk κ Γ I m) (hrc : receiver ∈ κ.classes)
+    (hr : classNamed? m.heap receiver.name = some r)
+    (hc : classNamed? m.heap current = some currentId)
+    (route : SuperRoute κ.classes receiver.name current owner d) :
+    ∃ k after, classNamed? m.heap owner = some k ∧
+      ((ancestors m.heap r).dropWhile (· != currentId)).drop 1 = k :: after := by
+  obtain ⟨before, j, tail, hchain, _, hj, htail⟩ := hm.classChains.before_owner hrc hr route.chain
+  have he : j = currentId := Option.some.inj (hj.symm.trans hc)
+  subst j
+  have ht : NamedChain m.heap (route.between ++ route.cls.name :: (route.after ++ receiver.rootTail)) tail := by
+    simpa only [List.append_assoc, List.cons_append] using htail
+  obtain ⟨between, k, after, he, hbetween, hk, _⟩ := ht.split
+  have hb : between = [] := by
+    have hd := route.direct
+    rw [hd] at hbetween
+    cases between with
+    | nil => rfl
+    | cons _ _ => exact hbetween.elim
+  subst hb
+  refine ⟨k, after, by simpa only [route.nameOk] using hk, ?_⟩
+  have hn := List.nodup_append.mp (hchain ▸ ancestors_nodup m.heap r)
+  have hd : ∀ x ∈ before, (x != currentId) = true := by
+    intro x hx
+    exact bne_iff_ne.mpr (hn.2.2 x hx currentId List.mem_cons_self)
+  rw [hchain, List.dropWhile_append_of_pos hd]
+  simp [he]
+
 #print axioms ancestors_nodup
 #print axioms superFound_after
 #print axioms declared_super_code

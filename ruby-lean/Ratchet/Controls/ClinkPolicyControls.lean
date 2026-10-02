@@ -482,6 +482,25 @@ private def rexH (t : Ty) (arg : Deriv) : Deriv := .seq [animalFH t, .classDecl 
 #guard !validateD (rexP (.int 1)) (rexH (.cls "String") (.intLit 1))
 #guard !validateD (rexP (.str "Rex")) (rexH .int (.strLit "Rex"))
 
+-- Active InitJudge.superInit/InitJudgeAll (067): Triangle#initialize calls super(3).
+private def shapeC : Ratchet.Expr := .class' "Shape" none (.seq [
+  .def' "initialize" [.req "sides"] (.vasgn .ivar "@sides" (.var .lvar "sides")),
+  .def' "sides" [] (.var .ivar "@sides")])
+private def shapeH : Deriv := .classDecl "Shape" none (.seq [
+  .defDecl "initialize" [⟨"sides", .int⟩] .any (.ivarAsgn "@sides" (.var .lvar "sides")),
+  .defDecl "sides" [] .int (.ivarRead "@sides" .int)])
+private def triP (args : List Ratchet.Expr) : Ratchet.Expr := .seq [shapeC,
+  .class' "Triangle" (some (.const "Shape")) (.def' "initialize" [] (.super' args none)),
+  .send (some (.send (some (.const "Triangle")) "new" [] none)) "sides" [] none]
+private def triH (args : List Deriv) : Deriv := .seq [shapeH,
+  .classDecl "Triangle" (some "Shape") (.defDecl "initialize" [] .any (.superInit args)),
+  .callMethodSig (.newInst "Triangle" [] (.inst "Triangle" (.ivarCons "@sides" .int .ivar0))) "sides" [] .int]
+#guard validateD (triP [.int 3]) (triH [.intLit 3])
+#guard ["InitJudge.superInit", "InitJudgeAll.cons", "InitJudgeAll.nil"].all fun r =>
+  !validateDWith (fun q => clinkEnabled q && q != r) (triP [.int 3]) (triH [.intLit 3])
+#guard !validateD (triP [.str "three"]) (triH [.strLit "three"])
+#guard !validateD (triP []) (triH [])
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),
