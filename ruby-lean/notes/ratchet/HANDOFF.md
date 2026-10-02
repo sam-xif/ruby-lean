@@ -1,6 +1,6 @@
 # Active ascent (2026-10-01)
 
-47/99 clinks, 72/261 production validateD accepts (prefix 17), 46/46 negatives
+48/99 clinks, 72/261 production validateD accepts (prefix 17), 46/46 negatives
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
@@ -97,7 +97,11 @@ ClassRunActual.class_actual_runSpec composes the whole actual class run (mandato
 classDecl is enabled (classReachB guard discharges reachability).
 memberDef, newDefault, callMethodSig, vcallMethodSig, ivarRead, initDef, newInst and InitJudge
 (intLit/var/ivarAsgn/seq/ignoreResult/Seq.*) enabled (Constructor/NewInstActual).
-Denote/Controls/ConstructorControls still cites the removed constructor_body_entry.
+moduleDecl enabled (Module/ModuleDeclActual). Next: singletonDef — def self.x now runs
+runMethodEdits → singleton_method_added on the class (native in BasicObject, after Object
+in the metaclass chain). Needs a guard ("singleton_method_added" ≠ d.name) and a class-site
+heap fact that the hook resolves natively; verify DefsOk excludes top-level
+singleton_method_added. Denote/Controls/ConstructorControls still cites the removed constructor_body_entry.
 
 Old instance_constants_old assumed an explicit Object fallback; current ordinary instance resolution follows ancestors instead.
 Check the new-binding case with Object reachability/module fallback rather than
