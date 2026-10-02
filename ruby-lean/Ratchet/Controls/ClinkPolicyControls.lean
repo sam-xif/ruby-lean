@@ -447,6 +447,23 @@ private def incrH : Deriv := .prim (.ivarRead "@size" .int) "+" [.intLit 1] .int
 #guard !validateD (.seq [boxCls (.str "a"), .send (some (.send (some (.const "Box")) "new" [.int 1] none)) "grow" [] none])
   (.seq [boxHint .int (.strLit "a"), growCall .int (.intLit 1)])
 
+-- Active subclassDecl (066): a subclass of a declared plain class overrides a method.
+private def animal : Ratchet.Expr := .class' "Animal" none (.def' "speak" [] (.str "..."))
+private def animalH : Deriv := .classDecl "Animal" none (.defDecl "speak" [] (.cls "String") (.strLit "..."))
+private def dogP (sup : Ratchet.Expr) (rhs : Ratchet.Expr) : Ratchet.Expr := .seq [animal,
+  .class' "Dog" (some sup) (.def' "speak" [] rhs),
+  .send (some (.send (some (.const "Dog")) "new" [] none)) "speak" [] none]
+private def dogH (parent : String) (rhs : Deriv) (t : Ty) : Deriv := .seq [animalH,
+  .classDecl "Dog" (some parent) (.defDecl "speak" [] t rhs),
+  .callMethodSig (.newInst "Dog" [] (.inst "Dog" .ivar0)) "speak" [] t]
+#guard validateD (dogP (.const "Animal") (.str "Woof")) (dogH "Animal" (.strLit "Woof") (.cls "String"))
+#guard !validateDWith (fun q => clinkEnabled q && q != "subclassDecl")
+  (dogP (.const "Animal") (.str "Woof")) (dogH "Animal" (.strLit "Woof") (.cls "String"))
+#guard !validateD (dogP (.const "Animal") (.int 1)) (dogH "Animal" (.intLit 1) (.cls "String"))
+#guard !validateD (dogP (.const "Cat") (.str "Woof")) (dogH "Cat" (.strLit "Woof") (.cls "String"))
+#guard !validateD (.seq [.module' "M" (.int 1), .class' "Dog" (some (.const "M")) (.int 1)])
+  (.seq [.moduleDecl "M" (.intLit 1), .classDecl "Dog" (some "M") (.intLit 1)])
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),

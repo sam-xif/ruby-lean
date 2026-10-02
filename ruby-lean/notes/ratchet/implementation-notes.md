@@ -13675,3 +13675,12 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
 - `ParentFacts` bundles parent facts (Object from main; a declared class from its site);
   `stateAt`/`instanceSiteAt` are the parent-generic entry proofs, `headerSub` the subclass
   header state (Denote/Sem/Subclass/SubclassActual*.lean).
+
+## subclassDecl enabled (2026-10-02, 95/100, 104/261)
+- Provider: Rules/Subclass/SubclassDeclActual (super expr → classDefK delivery →
+  `subclass_actual_runSpec`: actual registration with the parent's metadata, Object's
+  const_added, the parent's native inherited, `headerSub` body state, class-frame return).
+- Guard: `subclassBaseFrameB` dropped (parent/eigen base separation now comes from the
+  parent site and its MetaReady); `classReachB` added for old-site constant transport.
+- Legacy Rules/Subclass/SubclassRule.lean (legacy composite) removed; FullProofs imports
+  the actual provider.

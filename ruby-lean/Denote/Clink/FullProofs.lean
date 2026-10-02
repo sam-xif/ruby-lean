@@ -16,7 +16,7 @@ import Denote.Rules.Module.ModuleRule
 import Denote.Rules.Class.ClassConstant
 import Denote.Rules.Init.InitRules
 import Denote.Rules.Init.SuperInitRules
-import Denote.Rules.Subclass.SubclassRule
+import Denote.Rules.Subclass.SubclassDeclActual
 import Denote.Rules.Inherited.InheritedRules
 import Denote.Rules.Constructor.DefaultConstructorExpr
 import Denote.Rules.Singleton.SingletonRules

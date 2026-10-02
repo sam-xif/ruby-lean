@@ -13,7 +13,7 @@ def clinkProfile : Option (List String) := some
    "prim", "DJudgeAll.nil", "DJudgeAll.cons", "if'", "ifNoElse", "bareName",
    "arrayLit", "hashLit", "DJudgePairs.nil", "DJudgePairs.cons", "defDecl", "callSig",
    "recursive", "DJudgeRec.embed", "DJudgeRec.prim", "DJudgeRec.if'", "DJudgeRec.selfCall",
-   "DJudgeRecAll.nil", "DJudgeRecAll.cons", "classDecl", "constClass", "memberDef", "newDefault", "callMethodSig", "ivarRead",
+   "DJudgeRecAll.nil", "DJudgeRecAll.cons", "classDecl", "subclassDecl", "constClass", "memberDef", "newDefault", "callMethodSig", "ivarRead",
    "initDef", "newInst", "InitJudge.intLit", "InitJudge.var", "InitJudge.ivarAsgn", "InitJudge.seq",
    "InitJudge.ignoreResult", "InitJudgeSeq.last", "InitJudgeSeq.cons", "vcallMethodSig", "moduleDecl",
    "singletonDef", "callSingleton", "callSingletonImplicit",

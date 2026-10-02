@@ -12,7 +12,7 @@ def subclassRuleB (κ κb : Ctx) (Γ : Env) (I τ : Ty) (name parent : String) :
       κb.pos.mainWorld = true ∧ κ.scope.runtimeClass = none ∧
       κb.scope.runtimeClass = some name ∧ κb.consts = []) &&
     plainClassTablesB κ && classNativeFrameB κ name && freshClassNameB κ name && !name.isEmpty &&
-    subclassBaseFrameB κ parent && κ.pos.plainAlloc.contains parent && classNativeQuietB name "new" &&
+    classReachB κ.classes && κ.pos.plainAlloc.contains parent && classNativeQuietB name "new" &&
     (smroGet? κ.classes parent "new").isNone && subclassHeaderFrameB κ.classes name parent &&
     unqualifiedClassB name
 
