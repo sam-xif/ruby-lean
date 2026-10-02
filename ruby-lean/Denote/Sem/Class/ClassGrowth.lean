@@ -68,6 +68,44 @@ theorem saturated_of_clsGrow_heads {h h' : Heap} (hg : ClsGrow h h')
           ancestors_go_ge hs.2 (by omega : h.objs.size + 1 ≤ h'.objs.size - 1)]
       · rw [anc_go_oob hl, hz', anc_go_oob hl]
 
+/-- Like saturated_of_clsGrow_heads, but a fresh id may also be a parentless root
+(a module: no superclass). -/
+theorem saturated_of_clsGrow_roots {h h' : Heap} (hg : ClsGrow h h')
+    (hc : ChainsIn h) (hs : Saturated h) (hz : h.objs.size + 2 ≤ h'.objs.size)
+    (hm : ∀ k, h.objs.size ≤ k → k < h'.objs.size →
+      ∀ f, modAncestors.go h' k (f + 1) = [k])
+    (ha : ∀ k, h.objs.size ≤ k → k < h'.objs.size →
+      (∀ f, ancestors.go h' k (f + 1) = [k]) ∨
+      ∃ p, p < h.objs.size ∧ ∀ f, ancestors.go h' k (f + 1) = k :: ancestors.go h' p f) :
+    Saturated h' := by
+  have hz' : h'.objs.size = (h'.objs.size - 1) + 1 := by omega
+  constructor
+  · intro k
+    by_cases hk : k < h.objs.size
+    · rw [ClsGrow.modAncestors_go_old hg hc _ k hk,
+        ClsGrow.modAncestors_go_old hg hc _ k hk,
+        modAncestors_go_ge hs.1 (by omega : h.objs.size + 1 ≤ h'.objs.size + 1),
+        modAncestors_go_ge hs.1 (by omega : h.objs.size + 1 ≤ h'.objs.size)]
+    · by_cases hl : k < h'.objs.size
+      · rw [hm k (Nat.le_of_not_lt hk) hl, hz', hm k (Nat.le_of_not_lt hk) hl]
+      · rw [modanc_go_oob hl, hz', modanc_go_oob hl]
+  · intro k
+    by_cases hk : k < h.objs.size
+    · rw [ClsGrow.ancestors_go_old hg hc hs _ k hk,
+        ClsGrow.ancestors_go_old hg hc hs _ k hk,
+        ancestors_go_ge hs.2 (by omega : h.objs.size + 1 ≤ h'.objs.size + 1),
+        ancestors_go_ge hs.2 (by omega : h.objs.size + 1 ≤ h'.objs.size)]
+    · by_cases hl : k < h'.objs.size
+      · rcases ha k (Nat.le_of_not_lt hk) hl with hroot | ⟨p, hp, hstep⟩
+        · rw [hroot, hz', hroot]
+        · rw [hstep, hz', hstep]
+          congr 1
+          rw [ClsGrow.ancestors_go_old hg hc hs _ p hp,
+            ClsGrow.ancestors_go_old hg hc hs _ p hp,
+            ancestors_go_ge hs.2 (by omega : h.objs.size + 1 ≤ (h'.objs.size - 1) + 1),
+            ancestors_go_ge hs.2 (by omega : h.objs.size + 1 ≤ h'.objs.size - 1)]
+      · rw [anc_go_oob hl, hz', anc_go_oob hl]
+
 #print axioms chainsIn_of_clsGrow
 #print axioms saturated_of_clsGrow_heads
 end Ratchet.Denote

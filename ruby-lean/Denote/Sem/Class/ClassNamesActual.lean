@@ -7,7 +7,7 @@ set_option autoImplicit false
 namespace Ratchet.Denote
 open RubyCore RubyCore.Proof RubyCore.Proof.Judgment
 
-private theorem namesOk_freshGrow {h h' : Heap} (hg : ClsGrow h h') (hn : NamesOk h)
+theorem namesOk_freshGrow {h h' : Heap} (hg : ClsGrow h h') (hn : NamesOk h)
     (hb : ∀ k, h.objs.size ≤ k → ∀ cp, h'.classPayload? k = some cp →
       classOf h' (.ref k) < h'.objs.size ∧
         ∀ o, cp.attached = some o → o < h'.objs.size ∧ (h'.get o).klass < h'.objs.size)
