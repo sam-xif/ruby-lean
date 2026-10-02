@@ -59,7 +59,9 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
     by simpa only [singletonDefHookQuietB, hls] using site.singletonHook,
     by rw [classOf_old hd hk, classOf_old hd site.mainLive]; exact site.metaNotMain,
     by simpa only [inheritedHookQuietB, hli, metadata_any_old hd hk (·.isModule) (fun _ => rfl)]
-      using site.inheritedHook⟩
+      using site.inheritedHook,
+    by simpa only [Interp.libraryNamespace, metadata_bind_old hd hk (·.libraryNamespace) (fun _ => rfl)]
+      using site.library⟩
   · simpa only [classFront_old hd hk] using site.front
   · simpa only [definitionHookQuietB, hl] using site.hook
   · intro n hn owner md hm
@@ -107,7 +109,8 @@ theorem instanceSite {κ : Ctx} (hc : ClassReady m.heap) (hs : Saturated m.heap)
           exact singletonHooksQuietB_methodOn hsq hc.chains (by simp [singletonHookSites])),
     by rw [classOf_module hd, classOf_old hd hml]
        exact (Nat.ne_of_lt (Nat.lt_succ_of_lt (ClsGrow.classOf_lt hc.chains hml))).symm,
-    by simp [inheritedHookQuietB, Heap.classPayload?, get_module hd, namedObject, modPayload]⟩
+    by simp [inheritedHookQuietB, Heap.classPayload?, get_module hd, namedObject, modPayload],
+    by simp [Interp.libraryNamespace, Heap.classPayload?, get_module hd, namedObject, modPayload]⟩
   · simp only [classFrontB, Heap.classPayload?, get_module hd, namedObject, modPayload]; rfl
   · intro n hn owner md hm
     rw [method_module hc.chains hd] at hm

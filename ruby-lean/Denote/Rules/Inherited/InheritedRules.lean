@@ -10,6 +10,63 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
+theorem mem_takeWhile_before {before after : List ObjId} {k j : ObjId}
+    (h : j ∈ (before ++ k :: after).takeWhile (· != k)) : j ∈ before := by
+  induction before with
+  | nil => simp at h
+  | cons x xs ih =>
+    by_cases hx : (x != k) = true
+    · simp only [List.cons_append, List.takeWhile_cons, hx, ite_true, List.mem_cons] at h
+      rcases h with rfl | h
+      · exact List.mem_cons_self
+      · exact List.mem_cons_of_mem _ (ih h)
+    · simp only [List.cons_append, List.takeWhile_cons, hx] at h
+      simp at h
+
+theorem NamedChain.mem_named {h : Heap} {ns : List String} {ks : List ObjId} {j : ObjId}
+    (hc : NamedChain h ns ks) (hj : j ∈ ks) : ∃ cn ∈ ns, classNamed? h cn = some j := by
+  induction ns generalizing ks with
+  | nil => cases ks with
+    | nil => cases hj
+    | cons _ _ => exact hc.elim
+  | cons cn ns ih => cases ks with
+    | nil => exact hc.elim
+    | cons k ks =>
+      obtain ⟨hk, hrest⟩ := hc
+      rcases List.mem_cons.mp hj with rfl | hj
+      · exact ⟨cn, List.mem_cons_self, hk⟩
+      · obtain ⟨cn', hm, hn⟩ := ih hrest hj
+        exact ⟨cn', List.mem_cons_of_mem _ hm, hn⟩
+
+/-- Classes between an exact receiver and the owning ancestor are program classes:
+no CRuby singleton or optional-library method shadows a native-free selector. -/
+theorem inherited_shadow_free {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Cls}
+    {owner name : String} {r k : ObjId} {pre post : List String}
+    (hm : StateOk κ Γ I m) (hc : c ∈ κ.classes) (hr : classNamed? m.heap c.name = some r)
+    (ha : ancestors? κ.classes c.name = some (pre ++ owner :: post))
+    (hpre : ∀ cn ∈ pre, ∃ old ∈ κ.classes, old.name = cn)
+    (hk : classNamed? m.heap owner = some k) (hf : nativeInstanceFreeB name = true) :
+    Interp.crubyShadow m.heap ((ancestors m.heap r).takeWhile (· != k)) name = none := by
+  obtain ⟨before, k', after, heq, hnc, hk', _⟩ := hm.classChains.before_owner hc hr ha
+  have hkk : k' = k := Option.some.inj (hk'.symm.trans hk)
+  subst hkk
+  have site (j : ObjId) (hj : j ∈ (ancestors m.heap r).takeWhile (· != k')) :
+      ∃ cn, InstanceSite κ cn j m.heap := by
+    rw [heq] at hj
+    obtain ⟨cn, hcn, hn⟩ := NamedChain.mem_named hnc (mem_takeWhile_before hj)
+    obtain ⟨old, hold, rfl⟩ := hpre cn hcn
+    exact ⟨_, hm.classSites.at_class hold hn⟩
+  apply nativeInstanceFreeB_shadow hf
+  · intro j hj
+    obtain ⟨_, s⟩ := site j hj
+    simp only [Interp.nativeSingletonMethod, s.detached, Option.any_none]
+  · intro j hj
+    obtain ⟨_, s⟩ := site j hj
+    have hl := s.library
+    simp only [Interp.libraryNamespace] at hl
+    simp only [Interp.featureMethod, Interp.featureHas, Interp.libraryNamespace, hl, s.detached,
+      Option.bind_none, Option.any_none, Bool.or_false]
+
 theorem SemSafeCtxA.newInherited {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb : Env} {I I₁ I₂ Ib τ : Ty}
     {c : Cls} {owner : String} {d : Defn} {ps : List SigParam} {recv : Ratchet.Expr} {args : List Ratchet.Expr}
     (hr : SemSafeCtxA κ Γ I recv (.clsOf c.name) κ₁ Γ₁ I₁)
@@ -29,7 +86,7 @@ theorem SemSafeCtxA.newInherited {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb : En
   obtain ⟨⟨ht, hΓ⟩, hasms, hmain, hw, hcl, hco⟩ := hg
   exact hr.constructInherited ha (explicitReceiverB_sound hs) hc route.member route.installed hn
     route.chain route.clear hnew halloc hp hps (by simpa only [route.nameOk] using hb)
-    (reframeTypesB_sound ht) hasms hmain hw hcl
+    (reframeTypesB_sound ht) hasms (.main hmain hw hcl)
     (fun x => (constGet?_empty (κ := initializerBodyCtxAt κ₂ c.name route.cls.name) hco x).trans
       (constGet?_empty hco x).symm) (List.all_eq_true.mp hΓ) hout
 
@@ -61,7 +118,11 @@ theorem SemSafeCtxA.callInherited {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb : E
     (by simpa using denAll_length hargs) hargs
     (fun x => (constGet?_empty (κ := instanceBodyCtx κ₂ ⟨c.name, route.cls.name, d.name, false⟩ Ib) hco x).trans
       (constGet?_empty hco x).symm) (List.all_eq_true.mp hΓ)
-    (fun _ _ => Or.inr (directCallNameB_sound hname)) hn (fun _ _ => nativeInstanceFreeB_shadow hnative)
+    (fun _ _ => Or.inr (directCallNameB_sound hname)) hn (fun k' hk' => by
+      obtain ⟨r, rsite⟩ := hm.classSites.of_class hc
+      rw [exactInst_classOf (by rw [denM] at hv; exact hv.1) rsite.named]
+      exact inherited_shadow_free hm hc rsite.named route.chain
+        (fun cn h => let ⟨o, ho, hn, _⟩ := route.clear cn h; ⟨o, ho, hn⟩) hk' hnative)
   rw [hs]
   exact hrun
 

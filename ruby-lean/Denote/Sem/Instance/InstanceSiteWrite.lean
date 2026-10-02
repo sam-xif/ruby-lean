@@ -44,7 +44,9 @@ theorem InstanceSite.methodWrite {κ : Ctx} {cn name : String} {k cls : ObjId}
     by simpa only [Proof.classOf_defineMethod] using site.metaNotMain,
     by simpa only [inheritedHookQuietB, isModuleAny_defineMethod,
       Proof.lookup_defineMethod h cls name "inherited" md (.ref k) hinh
-        (Proof.classOf_defineMethod ..)] using site.inheritedHook⟩
+        (Proof.classOf_defineMethod ..)] using site.inheritedHook,
+    by simpa only [Interp.libraryNamespace,
+      classField_defineMethod (·.libraryNamespace) (fun _ _ => rfl)] using site.library⟩
   · simpa only [classNamed?_defineMethod] using site.named
   · simpa only [classFrontB_defineMethod] using site.front
   · simpa only [definitionHookQuietB,
@@ -78,7 +80,8 @@ theorem InstanceSite.ivarOnly {κ : Ctx} {cn : String} {k : ObjId} {h h' : Heap}
        exact ⟨e, by rw [hi.eigen]; exact hke, by rw [hi.classPayload]; exact ha, by rw [hi.frozen]; exact hf⟩,
     by simpa only [singletonDefHookQuietB, hi.lookup_eq] using site.singletonHook,
     by simpa only [hi.classOf_eq] using site.metaNotMain,
-    by simpa only [inheritedHookQuietB, hi.lookup_eq, hi.classPayload] using site.inheritedHook⟩
+    by simpa only [inheritedHookQuietB, hi.lookup_eq, hi.classPayload] using site.inheritedHook,
+    by simpa only [Interp.libraryNamespace, hi.classPayload] using site.library⟩
   · simpa only [classNamed?, constLookup, hi.classPayload] using site.named
   · simpa only [classFrontB, hi.classPayload] using site.front
   · simpa only [definitionHookQuietB, hi.lookup_eq] using site.hook

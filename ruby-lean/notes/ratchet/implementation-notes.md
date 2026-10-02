@@ -13684,3 +13684,9 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   parent site and its MetaReady); `classReachB` added for old-site constant transport.
 - Legacy Rules/Subclass/SubclassRule.lean (legacy composite) removed; FullProofs imports
   the actual provider.
+
+## newInherited/callInherited enabled (2026-10-02, 97/100, 105/261)
+- Inherited constructor ported to the StepSpec/CallWorld constructor interface.
+- `InstanceSiteAt.library`: program classes carry no optional-library namespace, so the
+  classes between an exact receiver and the owning ancestor have no CRuby singleton/feature
+  shadow (`inherited_shadow_free`, via `ClassChains.before_owner`).
