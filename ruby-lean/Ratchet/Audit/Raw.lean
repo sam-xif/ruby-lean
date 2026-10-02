@@ -398,6 +398,16 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
           else none
         else none
       | _ => none
+    | .if' (.send (some (.var .lvar x)) "nil?" [] none) t _, .ifNilQueryNil y dt =>
+      if x != y then none else
+      match hx : envGet? Γ x with
+      | some .nilT =>
+        if hf : nameFreeN κ "nil?" = true then
+          match check n Γ t dt κ I cache with
+          | some ⟨τ, Γ', κ', I', h, c⟩ => some ⟨τ, Γ', κ', I', .ifNilQueryNil hx hf h, c⟩
+          | none => none
+        else none
+      | _ => none
     | .if' (.var .lvar x) _ (some e), .ifNilVar y de =>
       if x != y then none else
       match hx : envGet? Γ x with

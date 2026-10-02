@@ -106,4 +106,37 @@ theorem SemSafeCtxA.ifNilQuery {κ κ' : Ctx} {Γ Γ₁ Γ₂ : Env} {I I' : Ty}
         (ht.weaken (fun _ _ hm hd => ⟨StateOk_joinEnv true hm, denM_joinT_left hd⟩)) n hs
 
 #print axioms SemSafeCtxA.ifNilQuery
+theorem SemSafeCtxA.ifNilQueryNil {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {x : String}
+    {t : Ratchet.Expr} {e : Option Ratchet.Expr}
+    (hx : envGet? Γ x = some .nilT) (hfree : nameFreeN κ "nil?" = true)
+    (ht : SemSafeCtxA κ Γ I t τ κ' Γ' I') :
+    SemSafeCtxA κ Γ I (.if' (.send (some (.var .lvar x)) "nil?" [] none) t e) τ κ' Γ' I' := by
+  intro m hm
+  let k : Kont := .ifK (toRuby t) (e.map toRuby)
+  have hnil : m.getLocal x = .nil := by
+    have h := (hm.env.1 x _ hx).1
+    simp only [stripAlias, denM] at h
+    cases hg : m.getLocal x <;> rw [hg] at h <;> simp_all [isNilV]
+  apply RunSpec.step (answerPoint_evalFrom _ _)
+    (show Interp.stepFn _ = .next (pushK [k] (evalFrom m (.send (some (.var .lvar x)) "nil?" [] none))) from by
+      cases e <;> rfl)
+  apply (nilQuery_cond hm (.inl hnil) hfree).bindSpec hm.rootClean (by intro c hc; simp at hc; subst hc; rfl)
+  intro a n hr
+  cases a with
+  | esc j =>
+    apply RunSpec.step (by rfl)
+      (show Interp.stepFn _ = .next (deliverA (.esc j) n []) from by cases j <;> rfl)
+    exact RunSpec.answer ⟨hr.1.1, hr.1.2.1, fun _ hv => by cases hv⟩
+  | val w =>
+    obtain ⟨hw, _⟩ := hr.2 w rfl
+    subst hw
+    have hn : StateOk κ Γ I n := hr.1.2.2 _ rfl
+    have hbranch : Interp.stepFn (deliverA (.val (.bool (isNilV (m.getLocal x)))) n [k]) =
+        .next (evalFrom n t) := by
+      simp only [Interp.stepFn, deliverA, Answer.ctl, Interp.applyKont, k, hnil]
+      simp [isNilV, Value.truthy, Interp.withCtl, evalFrom]
+    apply RunSpec.step (by rfl) hbranch
+    exact RunSpec.rebase (ht n hn) hr.1.1
+
+#print axioms SemSafeCtxA.ifNilQueryNil
 end Ratchet.Denote.Typed

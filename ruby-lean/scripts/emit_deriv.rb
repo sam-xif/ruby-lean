@@ -349,9 +349,13 @@ class Emitter
   def narrow_nil_query(n)
     c = n[1]
     return nil unless c[0] == "send" && c[1].is_a?(Array) && c[1][0] == "var" &&
-      c[1][1] == "local" && c[2] == "nil?" && c[3] == [] && c[4].nil? && !n[3].nil?
+      c[1][1] == "local" && c[2] == "nil?" && c[3] == [] && c[4].nil?
     x = c[1][2]
-    return nil unless @env[x] == nilable(INT)
+    if @env[x] == NIL_T
+      dt, tt = go(n[2])
+      return [{ "rule" => "ifNilQueryNil", "name" => x, "then" => dt }, tt]
+    end
+    return nil unless @env[x] == nilable(INT) && !n[3].nil?
     before = @env.dup
     @env = before.merge(x => NIL_T)
     dt, tt = go(n[2])

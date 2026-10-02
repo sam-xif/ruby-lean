@@ -603,6 +603,17 @@ private def orEqH (x : String) : Deriv := .seq [.vasgn .lvar "x" .nilLit,
     .if' (.var .lvar "x") (.int 2) (some (.int 3))])
   (.seq [.vasgn .lvar "x" (.intLit 1), .ifNilVar "x" (.intLit 3)])
 
+-- Active ifNilQueryNil (191): `x&.length` after `x = nil` answers nil without the send.
+private def safeNavP (y : String) : Ratchet.Expr := .seq [.vasgn .lvar "x" .nil,
+  .if' (.send (some (.var .lvar y)) "nil?" [] none) .nil
+    (some (.send (some (.var .lvar y)) "length" [] none))]
+private def safeNavH (y : String) : Deriv := .seq [.vasgn .lvar "x" .nilLit, .ifNilQueryNil y .nilLit]
+#guard validateD (safeNavP "x") (safeNavH "x")
+#guard !validateDWith (fun q => clinkEnabled q && q != "ifNilQueryNil") (safeNavP "x") (safeNavH "x")
+#guard !validateD (.seq [.vasgn .lvar "x" (.int 1),
+    .if' (.send (some (.var .lvar "x")) "nil?" [] none) .nil (some (.var .lvar "x"))])
+  (.seq [.vasgn .lvar "x" (.intLit 1), .ifNilQueryNil "x" .nilLit])
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),
