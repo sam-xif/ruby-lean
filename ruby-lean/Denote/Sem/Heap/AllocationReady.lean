@@ -11,8 +11,9 @@ def allocationReadyB (cp : ClassPayload) : Bool :=
 def plainAllocationReadyB (h : Heap) (k : ObjId) : Bool :=
   (h.classPayload? k).any allocationReadyB
 
-def objectClassFlagsB (h : Heap) : Bool :=
-  (h.classPayload? Boot.objectId).any fun cp => cp.ancestryReady && !cp.allocatorUnavailable
+/-- Inheritable flags of a superclass (Object by default). -/
+def objectClassFlagsB (h : Heap) (p : ObjId := Boot.objectId) : Bool :=
+  (h.classPayload? p).any fun cp => cp.ancestryReady && !cp.allocatorUnavailable
 
 theorem classPayload_metadata_defineMethod {h : Heap} {cls k : ObjId}
     {name : String} {md : MethodDef} (f : ClassPayload → Bool)

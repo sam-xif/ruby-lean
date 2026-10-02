@@ -5,11 +5,12 @@ import Denote.Sem.Class.ClassConstScopeActual
 set_option autoImplicit false
 namespace Ratchet.Denote.FreshClassActual
 open RubyCore Ratchet RubyCore.Proof
+variable {p : ObjId}
 
 theorem mainSite {κ : Ctx} {m : Machine} {name : String} {e : ObjId} {h' : Heap}
     (hnames : NamesOk m.heap) (site : MainSite κ m.heap) (hc : ClassReady m.heap)
     (hs : Saturated m.heap) (htop : m.lexicalNamespace = Boot.objectId)
-    (hh : h' = heap m name e) (hdata : DataPres m.heap h') : MainSite κ h' := by
+    (hh : h' = heap m name e p) (hdata : DataPres m.heap h') : MainSite κ h' := by
   have hch := hc.chains
   have ho := hch.boot.2.2.2.2
   have hd : m.lexicalNamespace < m.heap.objs.size := htop ▸ ho

@@ -8,22 +8,23 @@ through arbitrary fresh subclass registration. No new class/body is published he
 set_option autoImplicit false
 namespace Ratchet.Denote.FreshClassActual
 open RubyCore Ratchet RubyCore.Proof RubyCore.Proof.Judgment
+variable {p : ObjId}
 
 variable {m : Machine} {name : String} {e : ObjId}
-local notation "h₁" => heap m name e
+local notation "h₁" => heap m name e p
 
 variable {κ : Ctx} {n : Machine}
 
 theorem declared (hnames : NamesOk m.heap) (hc : ChainsIn m.heap) (hs : Saturated m.heap)
     (htop : m.lexicalNamespace = Boot.objectId) (ho : (m.heap.classPayload? Boot.objectId).isSome = true)
     (hn : constOwn m.heap Boot.objectId name = none)
-    (hh : n.heap = heap m name e)
+    (hh : n.heap = heap m name e p)
     (hclasses : ClassesOk κ.classes m) (hp : DeclClassOk κ m) : DeclClassOk κ n := by
   have hd : m.lexicalNamespace < m.heap.objs.size := htop ▸ hc.boot.2.2.2.2
   intro c hmem k hk
   have hol := hc.boot.2.2.2.2
   obtain ⟨j, hj, _⟩ := hclasses c hmem
-  have hj' := named_old (e := e) htop hol hn hj
+  have hj' := named_old (e := e) (p := p) htop hol hn hj
   rw [← hh] at hj'
   have heq : j = k := Option.some.inj (hj'.symm.trans hk)
   subst k
@@ -60,12 +61,12 @@ theorem declared (hnames : NamesOk m.heap) (hc : ChainsIn m.heap) (hs : Saturate
 theorem ownNames {C : CTable}
     (htop : m.lexicalNamespace = Boot.objectId) (ho : Boot.objectId < m.heap.objs.size) (hn : constOwn m.heap Boot.objectId name = none)
     (hc : ClassesOk C m) (hp : ClassOwnNames C m.heap) :
-    ClassOwnNames C (heap m name e) := by
+    ClassOwnNames C (heap m name e p) := by
   have hd : m.lexicalNamespace < m.heap.objs.size := htop ▸ ho
   apply hp.transport
   · intro c hmem k hk
     obtain ⟨j, hj, _⟩ := hc c hmem
-    have he := (named_old (e := e) htop ho hn hj).symm.trans hk
+    have he := (named_old (e := e) (p := p) htop ho hn hj).symm.trans hk
     exact Option.some.inj he ▸ hj
   · intro k p hm
     simpa only [ownMethods, own_methods hd] using hm
@@ -73,11 +74,11 @@ theorem ownNames {C : CTable}
 theorem classChains {C : CTable} (hc : ClassReady m.heap) (hs : Saturated m.heap)
     (htop : m.lexicalNamespace = Boot.objectId) (hn : constOwn m.heap Boot.objectId name = none)
     (ht : ClassesOk C m) (hp : ClassChains C m.heap) :
-    ClassChains C (heap m name e) := by
+    ClassChains C (heap m name e p) := by
   have hd : m.lexicalNamespace < m.heap.objs.size := htop ▸ hc.chains.boot.2.2.2.2
   intro c hmem k hk ns hns
   obtain ⟨j, hj, _⟩ := ht c hmem
-  have he := (named_old (e := e) htop hc.chains.boot.2.2.2.2 hn hj).symm.trans hk
+  have he := (named_old (e := e) (p := p) htop hc.chains.boot.2.2.2.2 hn hj).symm.trans hk
   have heq := Option.some.inj he
   subst k
   rw [ancestors_old hc.chains hs hd (Subclass.named_live hj)]

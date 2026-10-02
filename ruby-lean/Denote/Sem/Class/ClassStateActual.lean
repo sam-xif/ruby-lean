@@ -74,7 +74,7 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
         exact ⟨m.heap.objs.size, instanceSite hm.core.classReady hm.sat htop hmain.classLive he
           hmain.hook hconst hinst hnames (by simpa only [classOf, he] using hm.core.metaConstants)
           hm.core.classReady.bootEnd hmain.live hmain.singletonHooks⟩
-    sat := saturated hc hm.sat hd hel
+    sat := saturated hc hm.sat hd hel ho
     primitiveDispatch := (primitiveDispatch hm.names hc hm.sat hd _).trans hm.primitiveDispatch
     primitiveErrors := (primitiveErrors hc hm.sat hd).trans hm.primitiveErrors
     primitiveInit := (primitiveInit hm.core.classReady hm.sat hm.names hd).trans hm.primitiveInit
@@ -82,7 +82,7 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
     arrayPayload := arrayPayload hd hm.arrayPayload
     hashPayload := hashPayload hd hm.hashPayload
     frozenFields := frozenFields hd hm.frozenFields
-    core := core hm.core hm.sat htop hmain.classLive hn he
+    core := core hm.core hm.sat htop hmain.classLive hn ho he
     frameInRange := frame_in_range
     env := env_empty
     selfSpine := spine_empty hd
@@ -109,11 +109,13 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
     nameFree := nameFree hc hm.sat hd hel hnames hm.nameFree
     bareFree := by intro _ _ _ hself; cases hself
     missFree := by intro _ hself; cases hself
-    query := query hm.names hc hm.sat hd hmain.live hel hne hq.query rfl hm.query
+    query := query hm.names hc hm.sat hd hmain.live hel ho hne hq.query rfl hm.query
     clsQuery := clsQuery hm.names hc hm.sat hd hmain.live hmain.classLive he hne hq.clsQuery rfl hm.clsQuery
     declCls := declared hm.names hc hm.sat htop hmain.classLive hn rfl hm.classes hm.declCls
-    baseChains := baseChains hm.core.classReady hm.sat htop hmain.classLive hn he rfl hm.baseChains
-    nilQuery := nilQuery hm.names hc hm.sat hd hmain.live hel hne hq.nilQuery rfl hm.nilQuery
+    baseChains := baseChains hm.core.classReady hm.sat htop hmain.classLive hn ho he
+      (fun base ch hb => ⟨fun h => (builtinBase_bound hb).2 h.symm,
+        hm.core.classReady.eigenSeparate e he base ch hb⟩) rfl hm.baseChains
+    nilQuery := nilQuery hm.names hc hm.sat hd hmain.live hel ho hne hq.nilQuery rfl hm.nilQuery
     selfLive := self_live
     names := namesOk hc hm.names hd hne
     localAlias := local_alias

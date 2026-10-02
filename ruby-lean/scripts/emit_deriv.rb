@@ -209,6 +209,18 @@ class Emitter
     send(meth, node)
   end
 
+  # An ordinary-position body (block, method, class) wraps its own flow rules;
+  # the enclosing derivation does not need flow on their account.
+  def go_ordinary(node)
+    outer = @uses_flow
+    @uses_flow = false
+    deriv, ty = go(node)
+    deriv = { "rule" => "flow", "body" => deriv } if @uses_flow
+    [deriv, ty]
+  ensure
+    @uses_flow = outer
+  end
+
   def go_all(nodes)
     ds = []
     ts = []
@@ -438,7 +450,7 @@ class Emitter
     shadow = [name] + locals
     @env = caller.merge(locals.to_h { |local| [local, NIL_T] }).merge(name => tr["elem"])
     begin
-      body, result = go(block[-1])
+      body, result = go_ordinary(block[-1])
       returned = caller.to_h { |local, ty| [local, shadow.include?(local) ? ty : @env.fetch(local, NIL_T)] }
       raise Blocked, "#{method} changes a captured local type" unless returned == caller
     ensure
@@ -528,7 +540,7 @@ class Emitter
     outer_method = @current_method
     @current_method = name
     @env = sps.to_h { |p| [p["name"], p["ty"]] }
-    dbody, = go(body)
+    dbody, = go_ordinary(body)
     @env = outer_env
     @current_method = outer_method
     [{ "rule" => "defDecl", "name" => name, "params" => sps, "ret" => sig["ret"],
@@ -704,7 +716,7 @@ class Emitter
     # `initialize` first, so the ivar spine exists before any other method body
     # reads an ivar. One pass, in source order, is not enough for that.
     seed_ivars(name, body)
-    dbody, = go(body)
+    dbody, = go_ordinary(body)
     @ivars = @cls_ivars[supname].to_h if @ivars.empty? && supname && @cls_ivars.key?(supname)
     @cls_ivars[name] = @ivars.to_a
     @self_cls = outer_cls

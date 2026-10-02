@@ -5,9 +5,10 @@ import Denote.Sem.Subclass.SubclassNames
 set_option autoImplicit false
 namespace Ratchet.Denote.FreshClassActual
 open RubyCore Ratchet RubyCore.Proof RubyCore.Proof.Judgment
+variable {p : ObjId}
 
 variable {m : Machine} {name : String} {e : ObjId}
-local notation "h₁" => heap m name e
+local notation "h₁" => heap m name e p
 
 theorem constOwn_old {o : ObjId} (hd : m.lexicalNamespace < m.heap.objs.size)
     (ho : o < m.heap.objs.size) (cn : String) :
@@ -71,7 +72,7 @@ theorem named_old_back (htop : m.lexicalNamespace = Boot.objectId)
       · rename_i hp
         cases hk
         have hp₀ : (m.heap.classPayload? k).isSome = true := by
-          rw [← classPayload_live (name := name) (e := e)
+          rw [← classPayload_live (name := name) (e := e) (p := p)
             (htop ▸ lt_size_of_classPayload ho) hl]
           exact hp
         simp only [hp₀, ite_true]

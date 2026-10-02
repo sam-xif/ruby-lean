@@ -4,14 +4,15 @@ import Denote.Sem.Class.ClassFrameActual
 set_option autoImplicit false
 namespace Ratchet.Denote.FreshClassActual
 open RubyCore Ratchet RubyCore.Proof RubyCore.Proof.Judgment
+variable {p : ObjId}
 variable {m n : Machine} {name : String} {e : ObjId} {κ : Ctx}
-local notation "h₁" => heap m name e
+local notation "h₁" => heap m name e p
 
 theorem own_methods (hd : m.lexicalNamespace < m.heap.objs.size) (k : ObjId) :
     (((h₁).classPayload? k).map ClassPayload.methods).getD [] =
       ((m.heap.classPayload? k).map ClassPayload.methods).getD [] := by
   by_cases hl : k < m.heap.objs.size
-  · exact congrArg (fun p => p.getD []) (methods_old (name := name) (e := e) hd hl)
+  · exact congrArg (fun p => p.getD []) (methods_old (name := name) (e := e) (p := p) hd hl)
   · have hp := RubyCore.Proof.classPayload?_oob m.heap k hl
     by_cases hk : k = m.heap.objs.size
     · subst k; rw [hp]; simp only [Heap.classPayload?, get_class hd, namedObject, freshClassPayload]; rfl
@@ -51,7 +52,7 @@ theorem defs (hd : m.lexicalNamespace < m.heap.objs.size) (hh : n.heap = h₁) {
 theorem methodsExact (hd : m.lexicalNamespace < m.heap.objs.size) (hh : n.heap = h₁)
     (hp : MethodsExact κ m) : MethodsExact κ n := by
   intro k cp hc mn md hm
-  have heq := own_methods (name := name) (e := e) hd k
+  have heq := own_methods (name := name) (e := e) (p := p) hd k
   rw [← hh, hc] at heq
   cases hcp : m.heap.classPayload? k with
   | none =>

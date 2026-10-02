@@ -38,6 +38,7 @@ theorem new_dispatch (hnames : NamesOk m.heap) (hc : ChainsIn m.heap) (hs : Satu
   refine ⟨hb, hu, hv, hp, ?_⟩
   rw [classOf_class hd]
   apply shadow_before_source hnames hc hs hd hel hne hn₁ hn₂ (classNativeQuietB_singleton hq) hlmain
+    hc.boot.2.2.2.2
   simpa only [source, Subclass.source, if_neg (Nat.succ_ne_self _), ite_true, classOf, he] using hsh
 
 theorem named_chain (hc : ClassReady m.heap) (hs : Saturated m.heap) (hr : RootNames m.heap)
@@ -50,7 +51,7 @@ theorem named_chain (hc : ClassReady m.heap) (hs : Saturated m.heap) (hr : RootN
       cn ∈ name :: rootAncestors) := by
   have hol := lt_size_of_classPayload ho
   have hchain := ordinary_chain (name := name) (e := e) hc hs (htop ▸ hol)
-  have roots := rootNames (e := e) hr hc.constRefs htop ho hn
+  have roots := rootNames (e := e) (p := Boot.objectId) hr hc.constRefs htop ho hn
   constructor
   · intro cn hcn
     rcases List.mem_cons.mp hcn with rfl | hcn

@@ -7,36 +7,36 @@ set_option autoImplicit false
 namespace Ratchet.Denote
 open RubyCore RubyCore.Interp RubyCore.Proof RubyCore.Proof.Judgment
 
-def freshClassPayload (h : Heap) : ClassPayload :=
-  { superclass := some Boot.objectId, name := "", isModule := false,
-    ancestryReady := (h.classPayload? Boot.objectId).all (·.ancestryReady),
-    allocatorUnavailable := (h.classPayload? Boot.objectId).any (·.allocatorUnavailable) }
+def freshClassPayload (h : Heap) (p : ObjId := Boot.objectId) : ClassPayload :=
+  { superclass := some p, name := "", isModule := false,
+    ancestryReady := (h.classPayload? p).all (·.ancestryReady),
+    allocatorUnavailable := (h.classPayload? p).any (·.allocatorUnavailable) }
 
-theorem freshClassPayload_ready {h : Heap} (hf : objectClassFlagsB h = true) :
-    allocationReadyB (freshClassPayload h) = true := by
-  cases hp : h.classPayload? Boot.objectId with
+theorem freshClassPayload_ready {h : Heap} {p : ObjId} (hf : objectClassFlagsB h p = true) :
+    allocationReadyB (freshClassPayload h p) = true := by
+  cases hp : h.classPayload? p with
   | none => simp [objectClassFlagsB, hp] at hf
   | some cp =>
     simp only [objectClassFlagsB, hp, Option.any, Bool.and_eq_true,
       Bool.not_eq_true'] at hf
     simp [allocationReadyB, freshClassPayload, hp, hf.1, hf.2]
 
-theorem freshClassRegistered_payload {m : Machine} {name : String}
+theorem freshClassRegistered_payload {m : Machine} {name : String} {p : ObjId}
     (hd : m.lexicalNamespace < m.heap.objs.size) :
-    (freshClassRegistered m name).classPayload? m.heap.objs.size =
-      some (freshClassPayload m.heap) := by
+    (freshClassRegistered m name p).classPayload? m.heap.objs.size =
+      some (freshClassPayload m.heap p) := by
   unfold freshClassRegistered
   rw [constSetIn_alloc_comm _ _ _ _ _ hd]
   have hz := objs_size_constSetIn m.heap m.lexicalNamespace name (.ref m.heap.objs.size)
   have hg := objs_getD_push_self
     (constSetIn m.heap m.lexicalNamespace name (.ref m.heap.objs.size)).objs
-    ({ klass := Boot.classId, payload := .cls (freshClassPayload m.heap) } : Object)
+    ({ klass := Boot.classId, payload := .cls (freshClassPayload m.heap p) } : Object)
   simp only [hz] at hg
   have hget : ((constSetIn m.heap m.lexicalNamespace name (.ref m.heap.objs.size)).alloc
-      ({ klass := Boot.classId, payload := .cls (freshClassPayload m.heap) } : Object)).2.get
-      m.heap.objs.size = { klass := Boot.classId, payload := .cls (freshClassPayload m.heap) } := hg
+      ({ klass := Boot.classId, payload := .cls (freshClassPayload m.heap p) } : Object)).2.get
+      m.heap.objs.size = { klass := Boot.classId, payload := .cls (freshClassPayload m.heap p) } := hg
   change (match (((constSetIn m.heap m.lexicalNamespace name (.ref m.heap.objs.size)).alloc
-    ({ klass := Boot.classId, payload := .cls (freshClassPayload m.heap) } : Object)).2.get
+    ({ klass := Boot.classId, payload := .cls (freshClassPayload m.heap p) } : Object)).2.get
     m.heap.objs.size).payload with | .cls cp => some cp | _ => none) = _
   rw [hget]
 
@@ -47,30 +47,31 @@ theorem nameConstant_empty_class {h : Heap} {k : ObjId} {cp : ClassPayload} {nam
   simp [nameConstant, hp, hn, setNamespacePath, setNamespacePath.go, hc]
   rfl
 
-def freshClassNamed (m : Machine) (name : String) : Heap :=
-  (freshClassRegistered m name).setClassPayload m.heap.objs.size
-    { freshClassPayload m.heap with name, namePermanent := true }
+def freshClassNamed (m : Machine) (name : String) (p : ObjId := Boot.objectId) : Heap :=
+  (freshClassRegistered m name p).setClassPayload m.heap.objs.size
+    { freshClassPayload m.heap p with name, namePermanent := true }
 
-theorem freshClassNamed_payload {m : Machine} {name : String} :
-    (freshClassNamed m name).classPayload? m.heap.objs.size =
-      some { freshClassPayload m.heap with name, namePermanent := true } := by
-  have hs : (freshClassRegistered m name).objs.size = m.heap.objs.size + 1 := by
+theorem freshClassNamed_payload {m : Machine} {name : String} {p : ObjId} :
+    (freshClassNamed m name p).classPayload? m.heap.objs.size =
+      some { freshClassPayload m.heap p with name, namePermanent := true } := by
+  have hs : (freshClassRegistered m name p).objs.size = m.heap.objs.size + 1 := by
     simp only [freshClassRegistered, objs_size_constSetIn, Heap.alloc, Array.size_push]
-  have hl : m.heap.objs.size < (freshClassRegistered m name).objs.size := by omega
+  have hl : m.heap.objs.size < (freshClassRegistered m name p).objs.size := by omega
   simp only [freshClassNamed, Heap.classPayload?, Heap.setClassPayload, Heap.get, Heap.set]
   rw [objs_getD_set!_self _ _ _ hl]
 
-theorem freshClassNamed_ready {m : Machine} {name : String} (hm : MainReady m) :
-    plainAllocationReadyB (freshClassNamed m name) m.heap.objs.size = true := by
+theorem freshClassNamed_ready {m : Machine} {name : String} {p : ObjId}
+    (hf : objectClassFlagsB m.heap p = true) :
+    plainAllocationReadyB (freshClassNamed m name p) m.heap.objs.size = true := by
   simp only [plainAllocationReadyB, freshClassNamed_payload, Option.any]
-  exact freshClassPayload_ready hm.classFlags
+  exact freshClassPayload_ready hf
 
-theorem freshClassRegistered_named {m : Machine} {name : String}
+theorem freshClassRegistered_named {m : Machine} {name : String} {p : ObjId}
     (hc : m.currentFrame.cref = []) (hd : Boot.objectId < m.heap.objs.size) :
-    nameConstant (freshClassRegistered m name) m.lexicalNamespace name
-      (.ref m.heap.objs.size) = .ok (freshClassNamed m name) := by
+    nameConstant (freshClassRegistered m name p) m.lexicalNamespace name
+      (.ref m.heap.objs.size) = .ok (freshClassNamed m name p) := by
   have hl : m.lexicalNamespace = Boot.objectId := by simp [Machine.lexicalNamespace, hc]
-  have hp := freshClassRegistered_payload (m := m) (name := name) (hl ▸ hd)
+  have hp := freshClassRegistered_payload (m := m) (name := name) (p := p) (hl ▸ hd)
   rw [hl]
   exact nameConstant_empty_class hp rfl rfl
 

@@ -5,8 +5,9 @@ import Denote.Sem.Class.ClassDispatchActual
 set_option autoImplicit false
 namespace Ratchet.Denote.FreshClassActual
 open RubyCore Ratchet RubyCore.Proof
+variable {p : ObjId}
 variable {m : Machine} {name : String} {e : ObjId}
-local notation "h₁" => heap m name e
+local notation "h₁" => heap m name e p
 
 theorem primitiveInit (hc : ClassReady m.heap) (hs : Saturated m.heap)
     (hnames : NamesOk m.heap) (hd : m.lexicalNamespace < m.heap.objs.size) :
@@ -24,7 +25,7 @@ theorem primitiveInit (hc : ClassReady m.heap) (hs : Saturated m.heap)
   | some pair =>
     rcases pair with ⟨owner, md⟩
     simp only
-    rw [shadow_before_old (name := name) (e := e) hnames hc.chains hs hd hz owner "initialize"]
+    rw [shadow_before_old (name := name) (e := e) (p := p) hnames hc.chains hs hd hz owner "initialize"]
 
 #print axioms primitiveInit
 end Ratchet.Denote.FreshClassActual

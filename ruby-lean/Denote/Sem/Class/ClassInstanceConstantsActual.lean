@@ -7,8 +7,9 @@ or the module fallback, in addition to equality for the current constant table. 
 set_option autoImplicit false
 namespace Ratchet.Denote.FreshClassActual
 open RubyCore Ratchet RubyCore.Proof RubyCore.Proof.Judgment
+variable {p : ObjId}
 variable {m : Machine} {name : String} {e : ObjId}
-local notation "h₁" => heap m name e
+local notation "h₁" => heap m name e p
 
 private theorem firstM_absent {xs : List ObjId} {f : ObjId → Option Value}
     (hp : xs.firstM f = none) : ∀ j ∈ xs, f j = none := by

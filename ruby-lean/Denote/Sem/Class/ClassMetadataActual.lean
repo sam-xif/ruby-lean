@@ -4,6 +4,7 @@ import Denote.Sem.Class.ClassMethodsActual
 set_option autoImplicit false
 namespace Ratchet.Denote.FreshClassActual
 open RubyCore Ratchet RubyCore.Proof RubyCore.Proof.Judgment
+variable {p : ObjId}
 
 /-- Registration changes constants only; any explicitly invariant projection survives. -/
 theorem metadata_constSetIn {α : Type} (h : Heap) (d k : ObjId) (name : String) (v : Value)
@@ -26,7 +27,7 @@ theorem metadata_constSetIn {α : Type} (h : Heap) (d k : ObjId) (name : String)
       rw [objs_getD_set!_ne _ _ _ _ hk]
 
 variable {m : Machine} {name : String} {e k : ObjId}
-local notation "h₁" => heap m name e
+local notation "h₁" => heap m name e p
 
 theorem metadata_old {α : Type} (hd : m.lexicalNamespace < m.heap.objs.size)
     (hk : k < m.heap.objs.size) (f : ClassPayload → α)

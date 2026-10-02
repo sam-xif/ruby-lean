@@ -48,21 +48,22 @@ theorem namesOk_freshGrow {h h' : Heap} (hg : ClsGrow h h') (hn : NamesOk h)
     · exact hc k (Nat.le_of_not_lt hk)
 
 namespace FreshClassActual
+variable {p : ObjId}
 
 theorem classPath_go_class {m : Machine} {name : String} {e : ObjId}
     (hd : m.lexicalNamespace < m.heap.objs.size) (hn : name.isEmpty = false) (fuel : Nat) :
-    classPath.go (heap m name e) (fuel + 1) m.heap.objs.size = name := by
+    classPath.go (heap m name e p) (fuel + 1) m.heap.objs.size = name := by
   simp [classPath.go, Heap.classPayload?, get_class hd, namedObject, hn]
 
 theorem className_go_class {m : Machine} {name : String} {e : ObjId}
     (hd : m.lexicalNamespace < m.heap.objs.size) (hn : name.isEmpty = false) (fuel : Nat) :
-    className.go (heap m name e) (fuel + 1) m.heap.objs.size = name := by
+    className.go (heap m name e p) (fuel + 1) m.heap.objs.size = name := by
   simp [className.go, Heap.classPayload?, get_class hd, namedObject, freshClassPayload,
     classPath, classPath_go_class hd hn]
 
 theorem className_go_eigen {m : Machine} {name : String} {e : ObjId}
     (hd : m.lexicalNamespace < m.heap.objs.size) (hn : name.isEmpty = false) (fuel : Nat) :
-    className.go (heap m name e) (fuel + 2) (m.heap.objs.size + 1) =
+    className.go (heap m name e p) (fuel + 2) (m.heap.objs.size + 1) =
       "#<Class:" ++ name ++ ">" := by
   rw [className.go]
   simp [Heap.classPayload?, get_eigen, attachedClassEigen,
@@ -72,13 +73,13 @@ theorem className_go_eigen {m : Machine} {name : String} {e : ObjId}
 theorem namesOk {m : Machine} {name : String} {e : ObjId}
     (hc : ChainsIn m.heap) (hn : NamesOk m.heap)
     (hd : m.lexicalNamespace < m.heap.objs.size) (hne : name.isEmpty = false) :
-    NamesOk (heap m name e) := by
+    NamesOk (heap m name e p) := by
   have hm := namesOk_constSetIn hn m.lexicalNamespace name (.ref m.heap.objs.size)
   apply namesOk_freshGrow (grow hd) hm
   · intro k hk cp hp
     rw [hmid_size] at hk
-    have hl : k < (heap m name e).objs.size := by
-      by_cases hbound : k < (heap m name e).objs.size
+    have hl : k < (heap m name e p).objs.size := by
+      by_cases hbound : k < (heap m name e p).objs.size
       · exact hbound
       · rw [classPayload?_oob _ _ hbound] at hp
         cases hp
@@ -101,27 +102,27 @@ theorem namesOk {m : Machine} {name : String} {e : ObjId}
           exact Nat.lt_of_lt_of_le hc.boot.1 (by rw [size]; omega)
   · intro k hk
     rw [hmid_size] at hk
-    by_cases hl : k < (heap m name e).objs.size
+    by_cases hl : k < (heap m name e p).objs.size
     · rcases fresh_cases hk hl with rfl | rfl
       · simp only [size, classPath_go_class hd hne]
       · simp [size, classPath.go, Heap.classPayload?, get_eigen, attachedClassEigen]
-    · have hz : 0 < (heap m name e).objs.size := by rw [size]; omega
+    · have hz : 0 < (heap m name e p).objs.size := by rw [size]; omega
       obtain ⟨n, hs⟩ := Nat.exists_eq_succ_of_ne_zero (Nat.ne_zero_of_lt hz)
       simp [hs, classPath.go, classPayload?_oob _ _ hl]
   · intro k hk
     rw [hmid_size] at hk
-    by_cases hl : k < (heap m name e).objs.size
+    by_cases hl : k < (heap m name e p).objs.size
     · rcases fresh_cases hk hl with rfl | rfl
       · simp only [size, className_go_class hd hne]
       · simp only [size, className_go_eigen hd hne]
-    · have hz : 0 < (heap m name e).objs.size := by rw [size]; omega
+    · have hz : 0 < (heap m name e p).objs.size := by rw [size]; omega
       obtain ⟨n, hs⟩ := Nat.exists_eq_succ_of_ne_zero (Nat.ne_zero_of_lt hz)
       simp [hs, className.go, classPayload?_oob _ _ hl]
 
 theorem className_old {m : Machine} {name : String} {e k : ObjId}
     (hn : NamesOk m.heap) (hd : m.lexicalNamespace < m.heap.objs.size)
-    (hk : k < m.heap.objs.size) : className (heap m name e) k = className m.heap k := by
-  have hg := grow (name := name) (e := e) hd
+    (hk : k < m.heap.objs.size) : className (heap m name e p) k = className m.heap k := by
+  have hg := grow (name := name) (e := e) (p := p) hd
   rw [Proof.className_old hg.size hg.get
     (namesOk_constSetIn hn m.lexicalNamespace name (.ref m.heap.objs.size))
     (by rw [hmid_size]; exact hk)]
@@ -129,17 +130,17 @@ theorem className_old {m : Machine} {name : String} {e k : ObjId}
 
 theorem classPath_class {m : Machine} {name : String} {e : ObjId}
     (hd : m.lexicalNamespace < m.heap.objs.size) (hn : name.isEmpty = false) :
-    classPath (heap m name e) m.heap.objs.size = name :=
+    classPath (heap m name e p) m.heap.objs.size = name :=
   classPath_go_class hd hn _
 
 theorem className_class {m : Machine} {name : String} {e : ObjId}
     (hd : m.lexicalNamespace < m.heap.objs.size) (hn : name.isEmpty = false) :
-    className (heap m name e) m.heap.objs.size = name :=
+    className (heap m name e p) m.heap.objs.size = name :=
   className_go_class hd hn _
 
 theorem className_eigen {m : Machine} {name : String} {e : ObjId}
     (hd : m.lexicalNamespace < m.heap.objs.size) (hn : name.isEmpty = false) :
-    className (heap m name e) (m.heap.objs.size + 1) = "#<Class:" ++ name ++ ">" := by
+    className (heap m name e p) (m.heap.objs.size + 1) = "#<Class:" ++ name ++ ">" := by
   simpa only [className, size] using className_go_eigen hd hn (m.heap.objs.size + 1)
 
 #print axioms className_go_eigen

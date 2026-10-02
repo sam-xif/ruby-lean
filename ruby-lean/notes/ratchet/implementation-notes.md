@@ -13654,3 +13654,14 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   facts are `facts.afterEffect` of the incoming facts, as for embed. The checker tries
   ordinary embed first, so existing certificates keep their derivations. SemFlow.prim
   reuses Primitive's receiver continuation (now public as `prim_recv_spec`).
+
+## Fresh-class machinery over a parent (2026-10-02, subclass prep)
+- `freshClassRegistered/freshClassPayload/freshClassNamed`, `FreshClassActual.heap`,
+  `namedObject`, `machine` and `source` take a parent `p` defaulting to Object;
+  `objectClassFlagsB h p` likewise. `enterClassBody_fresh` is the parent-generic entry.
+- Heap/names/constants/data/core/dispatch/queries/bases lemmas are generic in `p`
+  (premises `p < size`, `(get p).eigen = some e`, parent flags/bases). Object-only
+  results (root chain, plain allocator, fresh instance site, state/header) remain pinned
+  to Object and need subclass siblings. Lemmas pinned to Object write `Boot.objectId`
+  explicitly so the threading script leaves them alone.
+- Emitter: block/method/class bodies now self-wrap flow rules (`go_ordinary`).

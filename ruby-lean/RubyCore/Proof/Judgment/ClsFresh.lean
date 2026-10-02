@@ -152,13 +152,13 @@ theorem eigenclassOf_clsObj {mm : Machine} {o eO : ObjId} {q : String}
 
 /-- The anonymous class allocated by a superclass-free class statement inherits
 Object's allocator/readiness metadata before constant naming. -/
-def freshClassRegistered (m : Machine) (name : String) : Heap :=
+def freshClassRegistered (m : Machine) (name : String) (p : ObjId := Boot.objectId) : Heap :=
   let obj : Object :=
     { klass := Boot.classId,
       payload := .cls {
-        superclass := some Boot.objectId, name := "", isModule := false,
-        ancestryReady := (m.heap.classPayload? Boot.objectId).all (·.ancestryReady),
-        allocatorUnavailable := (m.heap.classPayload? Boot.objectId).any (·.allocatorUnavailable) } }
+        superclass := some p, name := "", isModule := false,
+        ancestryReady := (m.heap.classPayload? p).all (·.ancestryReady),
+        allocatorUnavailable := (m.heap.classPayload? p).any (·.allocatorUnavailable) } }
   constSetIn (m.heap.alloc obj).2 m.lexicalNamespace name (.ref m.heap.objs.size)
 
 /-- A fresh class queues const_added, then inherited, before body entry. -/
@@ -174,6 +174,23 @@ theorem evalExpr_class_fresh {m : Machine} {name : String} {body : Expr} {named 
       callConstAdded { next with kont := .constClassK m.heap.objs.size (some Boot.objectId) libraryName body :: next.kont } m.lexicalNamespace name := by
   simp only [evalExpr, enterClassBody, hmiss, hfrozen, Bool.false_eq_true, ↓reduceIte]
   change (match nameConstant (freshClassRegistered m name) m.lexicalNamespace name
+    (.ref m.heap.objs.size) with | .error _ => _ | .ok _ => _) = _
+  rw [hnamed]
+  rfl
+
+/-- A fresh subclass of `p` performs the same registration with `p`'s metadata. -/
+theorem enterClassBody_fresh {m : Machine} {name : String} {body : Expr} {named : Heap}
+    (p : ObjId) (hmiss : constOwn m.heap m.lexicalNamespace name = none)
+    (hfrozen : (m.heap.get m.lexicalNamespace).frozen = false)
+    (hnamed : nameConstant (freshClassRegistered m name p) m.lexicalNamespace name
+      (.ref m.heap.objs.size) = .ok named) :
+    enterClassBody m name false (some p) body =
+      let libraryName := if m.lexicalNamespace == Boot.objectId then name else
+        s!"{(libraryNamespace m.heap m.lexicalNamespace).getD (className m.heap m.lexicalNamespace)}::{name}"
+      let next := (eigenclassOf { m with heap := named } m.heap.objs.size).2
+      callConstAdded { next with kont := .constClassK m.heap.objs.size (some p) libraryName body :: next.kont } m.lexicalNamespace name := by
+  simp only [enterClassBody, hmiss, hfrozen, Bool.false_eq_true, ↓reduceIte]
+  change (match nameConstant (freshClassRegistered m name p) m.lexicalNamespace name
     (.ref m.heap.objs.size) with | .error _ => _ | .ok _ => _) = _
   rw [hnamed]
   rfl

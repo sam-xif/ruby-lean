@@ -7,18 +7,19 @@ The existing first-order type induction is reused unchanged. -/
 set_option autoImplicit false
 namespace Ratchet.Denote.FreshClassActual
 open RubyCore Ratchet RubyCore.Proof RubyCore.Proof.Judgment
+variable {p : ObjId}
 
 variable {m : Machine} {name : String} {e : ObjId}
-local notation "h₁" => heap m name e
+local notation "h₁" => heap m name e p
 
 theorem ancestors_class (hc : ChainsIn m.heap) (hs : Saturated m.heap)
-    (hd : m.lexicalNamespace < m.heap.objs.size) :
-    ancestors h₁ m.heap.objs.size = m.heap.objs.size :: ancestors m.heap Boot.objectId := by
+    (hd : m.lexicalNamespace < m.heap.objs.size) (hp : p < m.heap.objs.size) :
+    ancestors h₁ m.heap.objs.size = m.heap.objs.size :: ancestors m.heap p := by
   have he := ancestors_new_head (h := constSetIn m.heap m.lexicalNamespace name (.ref m.heap.objs.size))
-    (h' := h₁) (k := m.heap.objs.size) (parent := Boot.objectId) (grow hd)
+    (h' := h₁) (k := m.heap.objs.size) (parent := p) (grow hd)
     (chainsIn_hmid hc) (saturated_hmid hs)
     (by rw [hmid_size, size]; omega) (by rw [hmid_size]; exact Nat.le_refl _)
-    (by rw [hmid_size]; exact hc.boot.2.2.2.2) (by
+    (by rw [hmid_size]; exact hp) (by
       intro f
       rw [ancestors.go.eq_def]
       simp [Heap.classPayload?, get_class hd, namedObject, freshClassPayload])
@@ -51,7 +52,7 @@ theorem get_nonclass {o : ObjId} (hd : m.lexicalNamespace < m.heap.objs.size)
     (hp : (h₁).classPayload? o = none) : (h₁).get o = m.heap.get o := by
   by_cases hl : o < m.heap.objs.size
   · have hp₀ : m.heap.classPayload? o = none := by
-      have hh := classPayload_live (name := name) (e := e) hd hl
+      have hh := classPayload_live (name := name) (e := e) (p := p) hd hl
       rw [hp] at hh
       cases he : m.heap.classPayload? o <;> simp_all
     exact get_old_nonclass hd hl hp₀
@@ -97,19 +98,17 @@ theorem dataPres (hc : ClassReady m.heap) (hs : Saturated m.heap)
 theorem framed {κ : Ctx} {Γ : Env} {I : Ty} {n : Machine}
     (hm : StateOk κ Γ I m) (htop : m.lexicalNamespace = Boot.objectId)
     (hf : constOwn m.heap Boot.objectId name = none)
-    (he : (m.heap.get Boot.objectId).eigen = some e) (hh : n.heap = h₁)
+    (hep : e < m.heap.objs.size) (hr : (ancestors m.heap e).contains Boot.basicObjectId = true)
+    (hh : n.heap = h₁)
     (hs : n.stack = m.stack) (hfr : FramePres m n)
     (hphase : n.preludeMode = m.preludeMode := by rfl)
     (hroot : RootClean m → RootClean n := by exact id) : Framed m n := by
   have hc := hm.core.classReady
   have ho := hc.chains.boot.2.2.2.2
   have hd : m.lexicalNamespace < m.heap.objs.size := htop ▸ ho
-  obtain ⟨eO, heO, hr⟩ := hc.objectEigen
-  rw [he] at heO
-  cases heO
   have hp : DataPres m.heap n.heap := by
     rw [hh]
-    exact dataPres hc hm.sat hm.core.basicSelf htop hf (hc.chains.eigen _ ho _ he) hr
+    exact dataPres hc hm.sat hm.core.basicSelf htop hf hep hr
   exact ⟨hs, fun k hk => by rw [hh]; exact (classPayload_live hd (lt_size_of_classPayload hk)).trans hk,
     hp.nominal, fun _ ht _ hv => hp.denM ht hv, hfr,
     .of_unchanged (by rw [hh, size m name e]; exact Nat.le_add_right _ _)
