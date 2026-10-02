@@ -13576,3 +13576,9 @@ first argument is retained across the second's evaluation via Framed.firstOrder,
 two-argument rows must carry FirstOrder of their first argument type
 (dprim_first_firstOrder). BodyPrimitive (inactive; blocked on Closure.Entry) still
 handles arity ≤ 1 only. Climbs 203.
+
+### 2026-10-01 — String#=== row (87/261)
+
+Boot maps String#=== to native String#==, so strCaseEq reuses its pure payload
+compare at a String argument. PrimitiveStep now discharges per-row bid facts by kernel
+`decide` over primitiveMethods instead of a fixed-width rcases. Climbs 197.

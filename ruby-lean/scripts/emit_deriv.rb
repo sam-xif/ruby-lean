@@ -100,6 +100,7 @@ def prim_ret(recv, m, args)
     return INT           if m == "length" && args.empty?
     return BOOL          if m == "empty?" && args.empty?
     return BOOL          if m == "start_with?" && args == [STR]
+    return BOOL          if m == "===" && args == [STR]
     return array_of(STR) if m == "split" && args == [STR]
   end
 

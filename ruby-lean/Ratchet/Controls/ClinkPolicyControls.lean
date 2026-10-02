@@ -412,6 +412,12 @@ private def hTy : Ty := .hashOf (.cls "String") .int
 #guard !validateD (.send (some hA) "fetch" [.str "b", .str "x"] none)
   (.prim hAH "fetch" [.strLit "b", .strLit "x"] hTy (.cls "String"))
 
+-- Primitive row String#=== (197's case/when).
+#guard validateD (.send (some (.str "gem")) "===" [.str "x"] none)
+  (.prim (.strLit "gem") "===" [.strLit "x"] (.cls "String") .bool)
+#guard !validateD (.send (some (.str "gem")) "===" [.int 1] none)
+  (.prim (.strLit "gem") "===" [.intLit 1] (.cls "String") .bool)
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw
