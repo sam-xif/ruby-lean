@@ -268,7 +268,7 @@ def dCompanionRules : List String :=
 #guard dclinks.length == dRegisteredRules.length
 
 -- Keep the complete authoring census frozen; disabled rules are visible, not lost.
-#guard dAllRules.length == 99
+#guard dAllRules.length == 100
 #guard dRegisteredRules.length + dGatedRules.length == dAllRules.length
 #guard dRegisteredRules.all clinkEnabled
 #guard dGatedRules.all (!clinkEnabled ·)
@@ -285,7 +285,7 @@ def dCompanionRules : List String :=
   "InitJudge.intLit", "InitJudge.var", "InitJudge.ivarAsgn", "InitJudge.seq", "InitJudge.ignoreResult",
   "InitJudge.superInit", "InitJudgeSeq.last", "InitJudgeSeq.cons", "InitJudgeAll.nil", "InitJudgeAll.cons",
   "DFlow.embed", "DFlow.intLit", "DFlow.nilLit", "DFlow.var", "DFlow.closureLiteral", "DFlow.vasgn",
-  "DFlow.sequence", "DFlow.call", "DFlow.requiredCall", "DFlow.each", "DFlow.map", "DFlow.callBlock", "DFlow.callBoundBlock", "DFlowSeq.last", "DFlowSeq.cons",
+  "DFlow.sequence", "DFlow.call", "DFlow.requiredCall", "DFlow.each", "DFlow.map", "DFlow.callBlock", "DFlow.callBoundBlock", "DFlow.prim", "DFlowSeq.last", "DFlowSeq.cons",
   "DFlowAll.nil", "DFlowAll.cons", "DMethod.ordinary", "DMethod.vasgn", "DMethod.sequence",
   "DMethod.prim", "DMethod.yieldOne", "DMethodAll.nil", "DMethodAll.cons", "DMethodSeq.last", "DMethodSeq.cons",
   "DMethodFlow.embed", "DMethodFlow.intLit", "DMethodFlow.nilLit", "DMethodFlow.var", "DMethodFlow.vasgn", "DMethodFlow.sequence", "DMethodFlow.call", "DMethodFlowSeq.last", "DMethodFlowSeq.cons"]

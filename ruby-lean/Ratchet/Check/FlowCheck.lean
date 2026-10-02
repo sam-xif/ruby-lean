@@ -83,6 +83,16 @@ def checkBoundBlockCall (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I : Ty
   else none
   else none
 
+/-- Ordinary arguments after a flow-typed receiver, one at a time through the callback. -/
+def checkOrdinaryAll (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I : Ty) :
+    (es : List Expr) → List Deriv → CheckedCache → Option (CertifiedAll Γ es κ I)
+  | [], [], cache => some ⟨[], Γ, κ, I, .nil, cache⟩
+  | e :: es, d :: ds, cache => do
+    let c ← ordinary Γ e d κ I cache
+    let r ← checkOrdinaryAll ordinary c.ctx c.out c.spine es ds c.cache
+    some ⟨c.ty :: r.tys, r.out, r.ctx, r.spine, .cons c.judged r.judged c.judged.plainArg, r.cache⟩
+  | _, _, _ => none
+
 mutual
 def checkFlow (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I : Ty)
     (facts : LocalFacts) (e : Expr) (d : Deriv) (cache : CheckedCache) :
@@ -300,6 +310,25 @@ def checkFlow (fuel : Nat) (ordinary : OrdinaryCheck) (κ : Ctx) (Γ : Env) (I :
       else none
       else none
       else none
+    | .send (some recv) name args none, .prim dr dm dargs σc τc =>
+      (do let c ← ordinary Γ (.send (some recv) name args none) (.prim dr dm dargs σc τc) κ I cache
+          some ⟨c.ty, false, c.ctx, c.out, c.spine, facts.afterEffect, .embed facts c.judged, c.cache⟩) <|>
+      (do
+        if name != dm then none else do
+        let r ← checkFlow n ordinary κ Γ I facts recv dr cache
+        if r.ty != σc then none else do
+        let a ← checkOrdinaryAll ordinary r.ctx r.out r.spine args dargs r.cache
+        match hp : dprim? r.ty name a.tys with
+        | none => none
+        | some τ =>
+          if τ != τc then none else
+          if hf : nameFreeN a.ctx name = true then
+            if hs : r.ty = .cls "String" →
+                isANoOk a.ctx.wholeCls (["String", "Comparable"] ++ rootAncestors) = true then
+              some ⟨τ, false, a.ctx, a.out, a.spine, facts.afterEffect,
+                .prim r.judged a.judged (dprim?_sound hp) hf hs, a.cache⟩
+            else none
+          else none)
     | e, d => do
       let c ← ordinary Γ e d κ I cache
       some ⟨c.ty, false, c.ctx, c.out, c.spine, facts.afterEffect, .embed facts c.judged, c.cache⟩

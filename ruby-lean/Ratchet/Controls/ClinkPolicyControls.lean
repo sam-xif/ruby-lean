@@ -457,6 +457,18 @@ private def lamHint (body : Deriv) (t : Ty) : Deriv :=
 #guard !validateD (lamProg (.int 1)) (lamHint (.intLit 1) (.cls "String"))
 #guard ["flow", "DFlow.closureLiteral", "DFlow.call", "DFlow.vasgn"].all fun r =>
   !validateDWith (fun q => clinkEnabled q && q != r) (lamProg (.int 1)) (lamHint (.intLit 1) .int)
+-- Active DFlow.prim (235): a primitive on a stored-lambda result after a same-type
+-- reassignment of its capture; a String receiver claim or result is rejected.
+private def capProg (x2 : Ratchet.Expr) : Ratchet.Expr := .seq [
+  .vasgn .lvar "x" (.int 1), .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] (.var .lvar "x")))),
+  .vasgn .lvar "x" x2, .send (some (.send (some (.var .lvar "f")) "call" [] none)) "+" [.int 1] none]
+private def capHint (x2 : Deriv) (t : Ty) : Deriv := .flow (.seq [
+  .vasgn .lvar "x" (.intLit 1), .vasgn .lvar "f" .closureLiteral, .vasgn .lvar "x" x2,
+  .prim (.closureCall (.var .lvar "x") t) "+" [.intLit 1] t t])
+#guard validateD (capProg (.int 2)) (capHint (.intLit 2) .int)
+#guard !validateDWith (fun q => clinkEnabled q && q != "DFlow.prim") (capProg (.int 2)) (capHint (.intLit 2) .int)
+#guard !validateD (capProg (.str "a")) (capHint (.strLit "a") .int)
+#guard !validateD (capProg (.int 2)) (capHint (.intLit 2) (.cls "String"))
 
 -- Active each/map attached blocks (091/092): element type and result element are checked.
 private def arr12 : Ratchet.Expr := .array [.int 1, .int 2]
