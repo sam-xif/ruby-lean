@@ -234,15 +234,23 @@ jobs:
           SORBET_BIN="$(find "$(gem env gemdir)" -path '*sorbet-static-*/libexec/sorbet' -type f 2>/dev/null | head -1)"
           echo "SORBET=$SORBET_BIN" >> "$GITHUB_ENV"
 
-      - name: Build (for the adapters the controls need)
-        # Only the executables these controls run (`rubycore`, `validate-one`); a
-        # whole-library `lake build` would compile the gated proof families the
-        # active profile excludes and fail on the in-progress rebuild.
-        run: cd ruby-lean && lake build --log-level=error rubycore validate-one
+      - name: Build (for the profile-independent controls)
+        # `check-feature-loading.py` runs on `rubycore` alone. No whole-library
+        # `lake build` here: it would compile the gated proof families the active
+        # profile excludes and fail on the in-progress rebuild.
+        run: cd ruby-lean && lake build --log-level=error rubycore
 
-      - name: Body-inference controls
-        run: python3 ruby-lean/scripts/check_body_inference.py
-
+      # `scripts/check_body_inference.py` is deliberately NOT run here. It is a
+      # FULL-profile control -- a stage of `scripts/run_full_typed_ratchet.sh`, which
+      # runs it after `lake build ... Denote.Controls.All` and a full-profile
+      # validate-one. It went green under the pre-rebuild complete profile (clink 244,
+      # dfa51161), but `validate-one` now uses the gated `ClinkPolicy.clinkProfile`
+      # (37/99 rules, 2026-09-30 "active semantic rebuild"). Its block/closure/
+      # callSingleton cases are rejected by design, and its negative cases pass
+      # vacuously because gated rules reject everything -- so running it here would be
+      # a permanently red step that measures nothing. It stays a stage of the full
+      # gate and is re-added here (blocking) once `clinkProfile` is `none`; individual
+      # cases move into the active gate as their clinks are climbed.
       - name: Feature loading
         run: python3 ruby-lean/scripts/check-feature-loading.py
 
