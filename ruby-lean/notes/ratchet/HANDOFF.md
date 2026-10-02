@@ -1,6 +1,6 @@
 # Active ascent (2026-10-01)
 
-46/99 clinks, 71/261 production validateD accepts (prefix 17), 46/46 negatives
+47/99 clinks, 72/261 production validateD accepts (prefix 17), 46/46 negatives
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
@@ -95,7 +95,7 @@ ClassStateActual.state now proves the full actual class-body StateOk (mandatory)
 ClassHeaderStateActual.header publishes classHeaderCtx over it (mandatory).
 ClassRunActual.class_actual_runSpec composes the whole actual class run (mandatory).
 classDecl is enabled (classReachB guard discharges reachability).
-memberDef, newDefault, callMethodSig, ivarRead, initDef, newInst and InitJudge
+memberDef, newDefault, callMethodSig, vcallMethodSig, ivarRead, initDef, newInst and InitJudge
 (intLit/var/ivarAsgn/seq/ignoreResult/Seq.*) enabled (Constructor/NewInstActual).
 Denote/Controls/ConstructorControls still cites the removed constructor_body_entry.
 
