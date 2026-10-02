@@ -13728,3 +13728,7 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   induction on the `RunSpecAt` budget: each re-entry pays the whileBodyK step; escapes are
   raises only (EscOk), propagated unchanged; `runSpec_iff_allAt` recovers RunSpec.
 - `until` arrives desugared as `while !c`. Emitter `n_while` blocks if types change.
+
+## ifTruthyNoElse (2026-10-02, 105/105, 112/261)
+- `if x` without else: then-branch at `x : σ`, the absent branch answers nil at the
+  unchanged state refined to `x : nil`; both join. Climbs 134 (inside an each block).

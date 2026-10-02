@@ -373,6 +373,27 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
           | _, _ => none
         else none
       else none
+    | .if' (.var .lvar x) t none, .ifTruthyNoElse y dt j =>
+      if x != y then none else
+      match hx : envGet? Γ x with
+      | some (.nilable σ) =>
+        if hf : falseFreeB σ = true then
+          if ha : isAliasTy σ = false then
+            match check n (envSet Γ x σ) t dt κ I cache with
+            | some ⟨τ, Γt, κt, It, ht, ct⟩ =>
+              if joinT τ .nilT == j && cacheSignaturesB ct cache then
+                match ctxEq? κt κ with
+                | some ⟨hctx⟩ =>
+                  if hi : It = I then
+                    some ⟨joinT τ .nilT, joinEnv Γt (envSet Γ x .nilT), κ, I,
+                      .ifTruthyNoElse hx hf ha (by cases hctx; cases hi; exact ht), cache⟩
+                  else none
+                | none => none
+              else none
+            | none => none
+          else none
+        else none
+      | _ => none
     | .while' c b, .whileD dc db =>
       match check n Γ c dc κ I cache with
       | some ⟨_, Γc, κc, Ic, hc, cc⟩ =>

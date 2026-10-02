@@ -301,10 +301,11 @@ class Emitter
   # branches with x narrowed to the inner type and to nil.
   def narrow_truthy(n)
     c = n[1]
-    return nil unless c[0] == "var" && c[1] == "local" && !n[3].nil?
+    return nil unless c[0] == "var" && c[1] == "local"
     x = c[2]
     t = @env[x]
     return nil unless t && t["tag"] == "nilable" && FALSE_FREE.include?(t["elem"]["tag"])
+    return narrow_truthy_no_else(n, x, t) if n[3].nil?
     before = @env.dup
     @env = before.merge(x => t["elem"])
     dt, tt = go(n[2])
@@ -341,6 +342,19 @@ class Emitter
     @env = then_env.merge(x => join(then_env[x], else_env[x]))
     j = join(tt, te)
     [{ "rule" => "ifNilQuery", "name" => x, "then" => dt, "else" => de, "join" => j }, j]
+  end
+
+  def narrow_truthy_no_else(n, x, t)
+    before = @env.dup
+    @env = before.merge(x => t["elem"])
+    dt, tt = go(n[2])
+    then_env = @env
+    else_env = before.merge(x => NIL_T)
+    raise Blocked, "the two branches of an `if` leave different local types" if
+      then_env.reject { |k, _| k == x } != else_env.reject { |k, _| k == x }
+    @env = then_env.merge(x => join(then_env[x], NIL_T))
+    j = join(tt, NIL_T)
+    [{ "rule" => "ifTruthyNoElse", "name" => x, "then" => dt, "join" => j }, j]
   end
 
   def n_if(n)
