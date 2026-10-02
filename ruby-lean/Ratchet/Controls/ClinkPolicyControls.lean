@@ -347,6 +347,13 @@ private def vcallUseHint (t : Ty) : Deriv := .callMethodSig (.newInst "Box" [] (
 #guard !validateD (.seq [vcallClass "get", vcallUse]) (.seq [vcallHint "get" .bool, vcallUseHint .bool])
 #guard !validateD (.seq [vcallClass "nope", vcallUse]) (.seq [vcallHint "nope" .int, vcallUseHint .int])
 
+-- Active moduleDecl: a fresh module scope returns its body's value.
+#guard validateD (.module' "M" (.int 7)) (.moduleDecl "M" (.intLit 7))
+#guard !validateDWith (fun r => clinkEnabled r && r != "moduleDecl") (.module' "M" (.int 7)) (.moduleDecl "M" (.intLit 7))
+#guard !validateD (.module' "M" (.int 7)) (.moduleDecl "M" (.strLit "7"))
+#guard !validateD (.seq [.module' "M" (.int 7), .module' "M" (.int 8)])
+  (.seq [.moduleDecl "M" (.intLit 7), .moduleDecl "M" (.intLit 8)])
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

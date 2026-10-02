@@ -11,6 +11,6 @@ def moduleRuleB (κ κb : Ctx) (Γ : Env) (I τ : Ty) (name : String) : Bool :=
       κb.pos.mainWorld = true ∧ κ.scope.runtimeClass = none ∧
       κb.scope.runtimeClass = some name ∧ κb.consts = []) &&
     plainClassTablesB κ && classNativeFrameB κ name && freshClassNameB κ name && !name.isEmpty &&
-    unqualifiedClassB name && moduleHeaderFrameB κ.classes name
+    unqualifiedClassB name && moduleHeaderFrameB κ.classes name && classReachB κ.classes
 
 end Ratchet

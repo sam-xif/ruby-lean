@@ -13522,3 +13522,15 @@ Constructor/NewInstActual. Climbs 061-063, 068, 071, 072, 075.
 
 The existing instanceVcall proof builds unchanged; vcallMethodSig moves out of
 legacy ClassRules into VcallMethodSigActual. Climbs 064.
+
+### 2026-10-01 — Climb moduleDecl over actual module registration (48/99)
+
+Legacy module proofs used freshModHeap (named module + direct frame push); actual
+entry allocates an anonymous module, registers/names it, attaches a metaclass over
+Module, queues const_added, then pushes the body frame. Sem/Module/*Actual ports
+the class Actual layer (FreshModuleActual): the module's own lookup/consts/ancestry
+are empty, its metaclass reproduces Module, Object fallback serves lexical consts.
+Module-body method_added uses StateOk.moduleBase.hook. ClassGrowth gains
+saturated_of_clsGrow_roots for parentless roots. moduleRuleB now also requires
+classReachB (old-site reachability, as classRuleB). New provider: ModuleDeclActual.
+No rung yet: module rungs also need singletonDef/callSingleton.
