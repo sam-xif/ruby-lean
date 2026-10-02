@@ -28,10 +28,10 @@ theorem SemSafeCtxA.construct {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ Γb : Env} 
     obtain ⟨p, hp, rfl⟩ := List.mem_map.mp ht
     exact (hps p hp).1)
   intro m hm hk recv hv args hargs
-  obtain ⟨k, n, hnamed, hs, hrun⟩ := declared_constructor_run (sendSite := site) hm hc hd hn hnew halloc hparams hps
+  obtain ⟨k, hnamed, hrun⟩ := declared_constructor_run (sendSite := site) hm hc hd hn hnew halloc hparams hps
     hbody ht ha hw hconst hΓ hIb hk hargs
   have he : recv = .ref k := by cases recv <;> simp_all [denM, isClassRefNamed]
-  rw [he, hs]
+  rw [he]
   exact hrun
 
 #print axioms SemSafeCtxA.construct

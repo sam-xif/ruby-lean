@@ -13506,3 +13506,14 @@ moves out of legacy ClassRules into CallMethodSigActual. Climbs 069.
 
 The existing InstanceRead provider builds unchanged. Controls use the emitter's
 instance spine (ivarCons "@secret" nilT). Climbs 070.
+
+### 2026-10-01 — Climb initDef/newInst + InitJudge (46/99, 71/261)
+
+Constructor entry now follows actual dispatch: finishSend_new → Class#new →
+callConstruct_plain → reflective initialize → invokeDispatch_user →
+enterUserMethod_required (constructor_entry_stepSpec); native shadows stay
+unsupported. constructor_runSpec_at/declared_constructor_run now conclude a
+StepSpec of finishSend; declared_constructor_code returns methodOn + undefined.
+The false one-step constructor_body_entry(_at) is removed. ConstructorReturn takes
+the localAlias/RootClean repairs from InitReturn. initDef/newInst move to
+Constructor/NewInstActual. Climbs 061-063, 068, 071, 072, 075.

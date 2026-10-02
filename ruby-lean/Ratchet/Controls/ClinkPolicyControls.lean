@@ -317,6 +317,23 @@ private def revealClass : Expr := .class' "Box" none (.def' "reveal" [] (.var .i
   (.seq [.classDecl "Box" none (.defDecl "reveal" [] .int (.ivarRead "@secret" .int)),
     .callMethodSig (.newInst "Box" [] (.inst "Box" .ivar0)) "reveal" [] .int])
 
+-- Active initDef/newInst + InitJudge: Box.new(1) through a user initializer (rung 062's shape).
+private def initClass : Expr := .class' "Box" none
+  (.def' "initialize" [.req "n"] (.vasgn .ivar "@n" (.var .lvar "n")))
+private def initHint (t : Ty) : Deriv := .classDecl "Box" none
+  (.defDecl "initialize" [("n", .int)] t (.ivarAsgn "@n" (.var .lvar "n")))
+private def newBoxArg (a : Expr) : Expr := .send (some (.const "Box")) "new" [a] none
+private def initTy : Ty := .inst "Box" (.ivarCons "@n" .int .ivar0)
+#guard validateD (.seq [initClass, newBoxArg (.int 1)]) (.seq [initHint .int, .newInst "Box" [.intLit 1] initTy])
+#guard ["initDef", "newInst", "InitJudge.ivarAsgn", "InitJudge.var"].all fun r =>
+  !validateDWith (fun q => clinkEnabled q && q != r) (.seq [initClass, newBoxArg (.int 1)])
+    (.seq [initHint .int, .newInst "Box" [.intLit 1] initTy])
+#guard !validateD (.seq [initClass, newBoxArg (.str "x")]) (.seq [initHint .int, .newInst "Box" [.strLit "x"] initTy])
+#guard !validateD (.seq [initClass, .send (some (.const "Box")) "new" [] none]) (.seq [initHint .int, .newInst "Box" [] initTy])
+#guard !validateD (.seq [initClass, newBoxArg (.int 1)]) (.seq [initHint .nilT, .newInst "Box" [.intLit 1] initTy])
+#guard !validateD (.seq [initClass, newBoxArg (.int 1)])
+  (.seq [initHint .int, .newInst "Box" [.intLit 1] (.inst "Box" (.ivarCons "@n" .nilT .ivar0))])
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

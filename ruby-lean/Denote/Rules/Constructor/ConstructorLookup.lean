@@ -25,18 +25,18 @@ theorem declared_constructor_code {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     ∃ k md, InstanceSite κ c.name k m.heap ∧
       NewDispatch m.heap (classOf m.heap (.ref k)) ∧
       md.params = toRubyParams d.params ∧ md.body = toRuby d.body ∧
-      InstanceMethodCode k "initialize" md ∧ userInit? m.heap k = some md := by
+      InstanceMethodCode k "initialize" md ∧
+      Interp.methodOn m.heap k "initialize" = some (k, md) ∧ md.undefined = false := by
   obtain ⟨k, hk, hmethods, _⟩ := hm.classes c hc
   obtain ⟨j, site⟩ := hm.classSites.of_class hc
   have he : j = k := Option.some.inj (site.named.symm.trans hk)
   subst j
-  obtain ⟨md, hfind, hp, hb, _, code⟩ := hmethods d hd
+  obtain ⟨md, hfind, hp, hb, hu, code⟩ := hmethods d hd
   obtain ⟨rest, hrest⟩ := classFrontB_sound site.front
   have hlookup := methodOn_own_first hrest hfind code.visibilityOnly
   rw [hn] at hlookup code
   have hdispatch := (hm.declCls c hc k hk).2.2.2.2.1 hkind hnew
-  exact ⟨k, md, site, ⟨hdispatch.1, hdispatch.2⟩, hp, hb, code,
-    by simp [userInit?, hlookup, code.builtin]⟩
+  exact ⟨k, md, site, ⟨hdispatch.1, hdispatch.2⟩, hp, hb, code, hlookup, hu⟩
 
 #print axioms declared_constructor_code
 end Ratchet.Denote.Typed
