@@ -13647,3 +13647,10 @@ two-argument case, and native-prefix shadows yield `.unsupported` (case split as
 top_method_stepSpec). The block-passing call site reuses the attached-literal proof
 (finishSend_attached_shadowed + bindAny + blockCallK_answer). Climbs 094, 095,
 157, 260, 261.
+
+## DFlow.prim (2026-10-02)
+- A primitive whose receiver is flow-typed (e.g. `f.call + 1` after `x = 2` re-binds a
+  captured `x` at the same type, rung 235). Arguments stay ordinary DJudgeAll; output
+  facts are `facts.afterEffect` of the incoming facts, as for embed. The checker tries
+  ordinary embed first, so existing certificates keep their derivations. SemFlow.prim
+  reuses Primitive's receiver continuation (now public as `prim_recv_spec`).

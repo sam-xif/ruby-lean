@@ -112,6 +112,7 @@ macro "certify_djudgments" rec:ident h:ident F:ident hF:ident : tactic => `(tact
   · apply $hF DClink.DFlow.map (by simp [dclinks]) <;> assumption
   · apply $hF DClink.DFlow.callBlock (by simp [dclinks]) <;> assumption
   · apply $hF DClink.DFlow.callBoundBlock (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.DFlow.prim (by simp [dclinks]) <;> assumption
   · apply $hF DClink.DFlowSeq.last (by simp [dclinks]) <;> assumption
   · apply $hF DClink.DFlowSeq.cons (by simp [dclinks]) <;> assumption
   · apply $hF DClink.DFlowAll.nil (by simp [dclinks]) <;> assumption

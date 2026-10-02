@@ -157,7 +157,7 @@ private theorem recv_two {κ κ₁ κ' : Ctx} {I I₁ I' : Ty} {site : SendSite}
       (show Interp.stepFn _ = .next (deliverA (.esc j) n []) from by cases j <;> rfl)
     exact RunSpec.answer ⟨hn.1, hn.2.1, fun _ hv => by cases hv⟩
 
-private theorem recv_spec {κ κ' : Ctx} {I I' : Ty} {site : SendSite} {Γ Γ' : Env}
+theorem prim_recv_spec {κ κ' : Ctx} {I I' : Ty} {site : SendSite} {Γ Γ' : Env}
     {m : Machine} {recv : Value}
     {es : List Ratchet.Expr} {σ τ : Ty} {tys : List Ty} {name : String}
     (hp : DPrim σ name tys τ) (ha : SemAllCtxA κ Γ I es tys κ' Γ' I')
@@ -205,7 +205,7 @@ theorem SemSafeCtxA.prim {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I
   · apply (hr m hm).bindSpec hm.rootClean (prim_catchFree _ rfl)
     intro a n hn
     cases a with
-    | val v => exact (recv_spec hp ha (hn.2.2 v rfl) hn.2.1 hfree hstring).rebase hn.1
+    | val v => exact (prim_recv_spec hp ha (hn.2.2 v rfl) hn.2.1 hfree hstring).rebase hn.1
     | esc j =>
       apply RunSpec.step (by rfl)
         (show Interp.stepFn _ = .next (deliverA (.esc j) n []) from by cases j <;> rfl)

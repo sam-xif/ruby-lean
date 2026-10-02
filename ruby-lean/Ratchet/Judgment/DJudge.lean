@@ -818,6 +818,14 @@ inductive DFlow : Ctx → Env → Ty → LocalFacts → Expr → Ty → Bool →
       DJudge (ps ++ blockLocals locals ++ Γ) body br Γb (closureBodyCtx κ) I (closureBodyCtx κ) I →
       DFlow κ Γ I facts (.send none decl.name []
         (some (.block (ps.map (fun p => Param.req p.1)) locals body))) τ false κ Γ I .unknown
+  /-- A builtin primitive on a flow-typed receiver, e.g. `f.call + 1` after reassigning a
+  captured local at the same type (Sorbet 0.6.13405 accepts corpus 235). Arguments are ordinary. -/
+  | prim {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ σ τ : Ty} {facts out : LocalFacts}
+      {current : Bool} {recv : Expr} {name : String} {args : List Expr} {tys : List Ty} :
+      DFlow κ Γ I facts recv σ current κ₁ Γ₁ I₁ out →
+      DJudgeAll Γ₁ args tys Γ₂ κ₁ I₁ κ₂ I₂ → DPrim σ name tys τ → nameFreeN κ₂ name = true →
+      (σ = .cls "String" → isANoOk κ₂.wholeCls (["String", "Comparable"] ++ rootAncestors) = true) →
+      DFlow κ Γ I facts (.send (some recv) name args none) τ false κ₂ Γ₂ I₂ facts.afterEffect
 
 /-- Sorbet's stored-lambda example (clink 200) uses the local established by the
 preceding statement. This companion threads the proved model facts in that order. -/
@@ -962,7 +970,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_12 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_13 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_14 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 
