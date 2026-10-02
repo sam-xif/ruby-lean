@@ -3694,3 +3694,4 @@ migration completed at a tier-0 baseline three batches behind the current one), 
 `Ratchet/implementation-notes.md`, which held a single clink orphaned by the package
 merge — that one was **merged into `notes/ratchet/implementation-notes.md`** rather
 than dropped, so the clink series is now gap-free.
+
