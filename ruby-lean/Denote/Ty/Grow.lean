@@ -99,8 +99,9 @@ theorem denM_ext_aux {m m₂ : Machine} (he : Ext m m₂) : ∀ τ : Ty,
   | clos idx cap selfT ihcap ihself =>
     refine ⟨fun f h => ?_, fun _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
-    obtain ⟨cl, hpc, hcode, hspine, hself⟩ := h
-    refine ⟨cl, he.procClosure?_eq hpc, hcode, ?_, ?_⟩
+    obtain ⟨cl, hpc, hcode, hspine, hself, hlive⟩ := h
+    refine ⟨cl, he.procClosure?_eq hpc, hcode, ?_, ?_,
+      hlive.frames_preserved (by rw [he.frames]; exact Nat.le_refl _) (fun i _ => by rw [he.frames])⟩
     · rw [he.closLocal_eq cl]; exact ihcap.2 _ _ hspine
     · rcases hself with h | h
       · exact Or.inl h

@@ -13,7 +13,7 @@ theorem closure_return_main_runSpec {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty}
     (hr : κ.scope.runtimeMain = true) (hw : κb.pos.mainWorld = true)
     (hcl : κ.scope.runtimeClass = none)
     (hk : ∀ x, constGet? κb x = constGet? (returnScopeCtx κ κb) x)
-    (hc : f.captured = some (m.stack.headD 0))
+    (hc : f.captured = some (m.stack.headD 0)) (hfa : f.localAlias = none)
     (hd : CaptureSlots names (withoutNames shadow Γb) m)
     (hf : ∀ x, f.locals.any (·.1 == x) = shadow.contains x)
     (lam : Bool) (brk : Option FrameId) (cl : Closure) (args : List Value)
@@ -27,13 +27,13 @@ theorem closure_return_main_runSpec {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty}
     RunSpec m (pushK [.blkFrameK m.frames.size lam brk cl args]
       (evalFrom (pushMethodFrame m f) e)) (closureReturnEnv shadow names Γ Γb) τ
       (returnScopeCtx κ κb) I := by
-  apply closure_main_runSpec hm ht ha hr hw hcl hk hc lam brk cl args hτ hb
+  apply closure_main_runSpec hm ht ha hr hw hcl hk hc lam brk cl args hτ hfa hb
   intro n v hn
   have hu : RootUncaptured m := by
     rw [RootUncaptured, ← currentFrame_headD hm.frameInRange.1]
     exact (hm.runtime hr).captured
   exact closure_return_env hm.frameInRange hu hc hd hf hn.1 hm.env
-    (hn.2.2 v rfl).env (hbefore n hn.1) (hafter n hn.1)
+    (hn.2.2 v rfl).env hm.localAlias hfa (hbefore n hn.1) (hafter n hn.1)
 
 #print axioms closure_return_main_runSpec
 end Ratchet.Denote.Typed

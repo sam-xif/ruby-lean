@@ -11,11 +11,14 @@ theorem iterator_frame_pop {m n : Machine} {f : RubyCore.Frame}
     (hl : (popMethodFrame m).stack.headD 0 < m.frames.size)
     (hu : RootUncaptured (popMethodFrame m))
     (hc : f.captured = some ((popMethodFrame m).stack.headD 0))
-    (hb : n.stack = (pushMethodFrame m f).stack) (h : FramePres (pushMethodFrame m f) n) :
+    (hb : n.stack = (pushMethodFrame m f).stack) (h : FramePres (pushMethodFrame m f) n)
+    (hal : (m.frames.getD ((popMethodFrame m).stack.headD 0) default).localAlias = none)
+    (hfa : f.localAlias = none) :
     FramePres (popMethodFrame m) (popMethodFrame (popMethodFrame n)) := by
   have hs : (popMethodFrame (popMethodFrame n)).stack = (popMethodFrame m).stack := by
     simp [popMethodFrame, hb, pushMethodFrame]
-  have hf := closure_saved_frames_at hl hu hc h
+  have hf (i : FrameId) (hi : i < m.frames.size) (hne : i ≠ (popMethodFrame m).stack.headD 0) :=
+    closure_saved_frames_at hl hu hc h i hi hne hal hfa
   refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, .of_frames hf⟩
   · have hh := h.size
     simp only [pushMethodFrame, Array.size_push] at hh
@@ -30,8 +33,10 @@ theorem iterator_frame_pop {m n : Machine} {f : RubyCore.Frame}
   · exact ⟨fun i hi x hx => (closure_saved_bindings h i hi x).trans hx,
       fun i hi _ x => closure_saved_bindings h i hi x⟩
   · apply OwnersPres.uncaptured hs hu
-    rw [hs]
-    exact (congrArg RubyCore.Frame.captured (closure_saved_metadata h _ hl)).trans hu
+    · rw [hs]
+      exact (congrArg RubyCore.Frame.captured (closure_saved_metadata h _ hl)).trans hu
+    · rw [hs]
+      exact (congrArg RubyCore.Frame.localAlias (closure_saved_metadata h _ hl)).trans hal
 
 /-- The body's certified effects survive both pops, including caller-local writes.
 The iterator's frame id may be old; each iteration need not allocate another one. -/
@@ -39,11 +44,13 @@ theorem iterator_pop_framed {m n : Machine} {f : RubyCore.Frame}
     (hl : (popMethodFrame m).stack.headD 0 < m.frames.size)
     (hu : RootUncaptured (popMethodFrame m))
     (hc : f.captured = some ((popMethodFrame m).stack.headD 0))
-    (h : Framed (pushMethodFrame m f) n) :
+    (h : Framed (pushMethodFrame m f) n)
+    (hal : (m.frames.getD ((popMethodFrame m).stack.headD 0) default).localAlias = none)
+    (hfa : f.localAlias = none) :
     Framed (popMethodFrame m) (popMethodFrame (popMethodFrame n)) := by
   refine ⟨by simp [popMethodFrame, h.stack, pushMethodFrame], h.cls, h.nominal, ?_,
-    iterator_frame_pop hl hu hc h.stack h.frames, h.fields.reheap rfl rfl,
-    h.cachedEigen, h.procs, h.phase⟩
+    iterator_frame_pop hl hu hc h.stack h.frames hal hfa, h.fields.reheap rfl rfl,
+    h.cachedEigen, h.procs, h.phase, fun hr => h.rootClean hr⟩
   intro τ ht v hv
   have he : denM τ (pushMethodFrame m f) v :=
     (denM_heap_only (m₁ := popMethodFrame m) (m₂ := pushMethodFrame m f) ht rfl).mp hv

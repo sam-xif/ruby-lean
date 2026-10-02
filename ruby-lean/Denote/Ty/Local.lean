@@ -129,6 +129,18 @@ theorem setAt_localAlias (m : Machine) (x : String) (v : Value) (T i : FrameId) 
     · simp only [setAt, framesD_set!_oob _ _ _ hb]
   · simp only [setAt, framesD_set!_ne _ _ _ _ hi]
 
+theorem CaptureLive.setAt {m : Machine} {x : String} {v : Value} {T : FrameId}
+    {c : Option FrameId} (h : CaptureLive m c) : CaptureLive (setAt m x v T) c := by
+  induction h with
+  | none => exact .none
+  | @frame fid hi hc ha ih =>
+    exact .frame (by rw [setAt_framesSize]; exact hi) (by rw [setAt_captured]; exact ih)
+      (by rw [setAt_localAlias]; exact ha)
+
+theorem CaptureLive.setLocal {m : Machine} {c : Option FrameId} (h : CaptureLive m c)
+    (x : String) (v : Value) : CaptureLive (m.setLocal x v) c := by
+  rw [setLocal_eq_setAt]; exact h.setAt
+
 theorem setAt_libraryOrigin (m : Machine) (x : String) (v : Value) (T i : FrameId) :
     ((setAt m x v T).frames.getD i default).libraryOrigin =
       (m.frames.getD i default).libraryOrigin := by
@@ -434,7 +446,7 @@ goes through the `clos` arm, where `capStale` is the side condition. -/
 
 theorem setLocal_later (m : Machine) (x : String) (v : Value) : Later m (m.setLocal x v) where
   stack := rfl
-  frameCount := by rw [setLocal_eq_setAt]; exact setAt_framesSize m x v _
+  frameCount := by rw [setLocal_eq_setAt, setAt_framesSize m x v _]; exact Nat.le_refl _
   size := Nat.le_refl _
   klass := fun _ _ => rfl
   eigen := fun _ _ => rfl
@@ -565,8 +577,8 @@ theorem denM_setLocal_aux {m : Machine} {x : String} {w : Value} {τ' : Ty}
     refine ⟨fun hs f h => ?_, fun _ _ _ _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     rw [capStale, Bool.or_eq_false_iff] at hs
-    obtain ⟨cl, hpc, hcode, hspine, hself⟩ := h
-    refine ⟨cl, hpc, hcode, ?_, ?_⟩
+    obtain ⟨cl, hpc, hcode, hspine, hself, hlive⟩ := h
+    refine ⟨cl, hpc, hcode, ?_, ?_, hlive.setLocal x w⟩
     · exact ihcap.2 hs.1 _ _ _ (fun y => closLocal_setLocal m x w cl y) hspine
     · rcases hself with h1 | h1
       · exact Or.inl h1

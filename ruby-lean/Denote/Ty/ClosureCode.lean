@@ -111,17 +111,18 @@ theorem exprCodeEq_sound (a : Ratchet.Expr) (b : RubyCore.Expr) :
 
 def ClosureMatches (code : ClosureCode) (cl : RubyCore.Closure) : Prop :=
   cl.params = toRubyParams code.params ∧ cl.locals = code.locals ∧
-    cl.body = toRuby code.body ∧ cl.lam = code.lam
+    cl.body = toRuby code.body ∧ cl.lam = code.lam ∧ cl.enumYield = none ∧ cl.forTargets = none
 
 def closureMatchesB (code : ClosureCode) (cl : RubyCore.Closure) : Bool :=
   paramCodeEqAll code.params cl.params && code.locals == cl.locals &&
-    exprCodeEq code.body cl.body && code.lam == cl.lam
+    exprCodeEq code.body cl.body && code.lam == cl.lam && cl.enumYield.isNone &&
+    cl.forTargets.isNone
 
 theorem closureMatchesB_sound {code : ClosureCode} {cl : RubyCore.Closure}
     (h : closureMatchesB code cl = true) : ClosureMatches code cl := by
-  simp only [closureMatchesB, Bool.and_eq_true, beq_iff_eq] at h
-  exact ⟨(paramCodeEqAll_sound h.1.1.1).symm, h.1.1.2.symm,
-    (exprCodeEq_sound _ _ h.1.2).symm, h.2.symm⟩
+  simp only [closureMatchesB, Bool.and_eq_true, beq_iff_eq, Option.isNone_iff_eq_none] at h
+  exact ⟨(paramCodeEqAll_sound h.1.1.1.1.1).symm, h.1.1.1.1.2.symm,
+    (exprCodeEq_sound _ _ h.1.1.1.2).symm, h.1.1.2.symm, h.1.2, h.2⟩
 
 #print axioms closureMatchesB_sound
 end Ratchet.Denote

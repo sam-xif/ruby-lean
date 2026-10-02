@@ -13,14 +13,14 @@ theorem closure_pop_main_state {κ κb : Ctx} {Γ Γb Γout : Env} {I Ib : Ty}
     (hr : κ.scope.runtimeMain = true) (hw : κb.pos.mainWorld = true)
     (hcl : κ.scope.runtimeClass = none)
     (hk : ∀ x, constGet? κb x = constGet? (returnScopeCtx κ κb) x)
-    (hc : f.captured = some (m.stack.headD 0))
+    (hc : f.captured = some (m.stack.headD 0)) (hfa : f.localAlias = none)
     (h : Framed (pushMethodFrame m f) n) (he : EnvOk Γout (popMethodFrame n))
     (hn : StateOk κb Γb Ib n) : StateOk (returnScopeCtx κ κb) Γout I (popMethodFrame n) := by
   have hu : RootUncaptured m := by
     rw [RootUncaptured, ← currentFrame_headD hm.frameInRange.1]
     exact (hm.runtime hr).captured
   exact restore_main_state_of_metadata hm ht ha hr hw hcl hk
-    (closure_pop_framed hm.frameInRange.2 hu hc h) (closure_pop_metadata hm.frameInRange h)
+    (closure_pop_framed hm.frameInRange.2 hu hc h hm.headAlias hfa) (closure_pop_metadata hm.frameInRange h)
     he (h.phase.trans (hm.runtime hr).phase) hn
 
 /-- The real block continuation now restores full caller state; only the outgoing
@@ -33,7 +33,7 @@ theorem closure_main_runSpec {κ κb : Ctx} {Γ Γb Γout : Env} {I Ib τ : Ty}
     (hk : ∀ x, constGet? κb x = constGet? (returnScopeCtx κ κb) x)
     (hc : f.captured = some (m.stack.headD 0))
     (lam : Bool) (brk : Option FrameId) (cl : Closure) (args : List Value)
-    (hτ : FirstOrder τ = true)
+    (hτ : FirstOrder τ = true) (hfa : f.localAlias = none)
     (hb : RunSpec (pushMethodFrame m f) (evalFrom (pushMethodFrame m f) e) Γb τ κb Ib)
     (he : ∀ n v, ResultOk (pushMethodFrame m f) Γb τ (.val v) n κb Ib →
       EnvOk Γout (popMethodFrame n)) :
@@ -41,9 +41,9 @@ theorem closure_main_runSpec {κ κb : Ctx} {Γ Γb Γout : Env} {I Ib τ : Ty}
       (evalFrom (pushMethodFrame m f) e)) Γout τ (returnScopeCtx κ κb) I := by
   apply currentClosureFrame_runSpec hm.frameInRange.2 (by
     rw [RootUncaptured, ← currentFrame_headD hm.frameInRange.1]
-    exact (hm.runtime hr).captured) hc lam brk cl args hτ hb
+    exact (hm.runtime hr).captured) hc hm.headAlias hfa hm.rootClean lam brk cl args hτ hb
   intro n v hn
-  exact closure_pop_main_state hm ht ha hr hw hcl hk hc hn.1 (he n v hn) (hn.2.2 v rfl)
+  exact closure_pop_main_state hm ht ha hr hw hcl hk hc hfa hn.1 (he n v hn) (hn.2.2 v rfl)
 
 #print axioms closure_pop_main_state
 #print axioms closure_main_runSpec

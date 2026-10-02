@@ -13602,3 +13602,17 @@ non-frozen branch). A receiver whose field holds an Integer/Float/Symbol therefo
 cannot be frozen. scalarWriteB drops nilT: a nil field may be absent, so this
 argument fails there (proof limitation, not a Sorbet unsoundness). Inactive
 SubclassState/ModuleState (non-actual) were not updated. Climbs 074.
+
+### 2026-10-02 — Flow rebuild infrastructure (closure literal over reifyCallBlock)
+
+The literal now takes two steps (reify + frame-copy/break-scope/blockCallK, then
+blockCallK). New pieces: `Later.frameCount` weakened to `≤` (never consumed);
+`.clos` denotations carry `CaptureLive m cl.captured`; ClosureMatches pins
+`enumYield = none ∧ forTargets = none` (callClosure branches on both);
+CaptureFuel proves live chains are duplicate-free (manual pigeonhole), so lookup is
+fuel-stable; DeadFrame/DeadState transport denM, StateOk and Framed across a
+dead frame push. `SemFlow.closureLiteral` is re-proved via litMachine =
+pushDead (heap push + scope filter). callClosure lemmas take enum/for premises and
+install `closureBrk`; return lemmas thread `localAlias` facts. Old reified_den and
+SemSafeCtxA.closureLiteral were removed (old semantics). Iterator/method-flow files
+still red.

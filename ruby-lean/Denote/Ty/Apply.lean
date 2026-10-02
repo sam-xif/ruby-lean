@@ -178,6 +178,40 @@ def closSelf (m : Machine) (cl : Closure) : Value :=
 def closLocal (m : Machine) (cl : Closure) : String → Value :=
   frameLocal? m cl.captured
 
+/-- A live captured chain consists of existing, unaliased frames and terminates. -/
+inductive CaptureLive (m : Machine) : Option FrameId → Prop
+  | none : CaptureLive m none
+  | frame {fid : FrameId} (hi : fid < m.frames.size)
+      (hc : CaptureLive m (m.frames.getD fid default).captured)
+      (ha : (m.frames.getD fid default).localAlias = none) : CaptureLive m (some fid)
+
+theorem CaptureLive.frames_preserved {m n : Machine}
+    (hsize : m.frames.size ≤ n.frames.size)
+    (hf : ∀ i, i < m.frames.size → n.frames.getD i default = m.frames.getD i default)
+    {cap : Option FrameId} (h : CaptureLive m cap) : CaptureLive n cap := by
+  induction h with
+  | none => exact .none
+  | @frame fid hi hc ha ih =>
+    exact .frame (Nat.lt_of_lt_of_le hi hsize) (by rw [hf fid hi]; exact ih)
+      (by rw [hf fid hi]; exact ha)
+
+
+/-- Decidable `CaptureLive`, by fuel. -/
+def captureLiveB (m : Machine) : Nat → Option FrameId → Bool
+  | _, none => true
+  | 0, some _ => false
+  | n + 1, some fid => decide (fid < m.frames.size) &&
+      (m.frames.getD fid default).localAlias.isNone &&
+      captureLiveB m n (m.frames.getD fid default).captured
+
+theorem captureLiveB_sound {m : Machine} :
+    ∀ n c, captureLiveB m n c = true → CaptureLive m c
+  | _, none, _ => .none
+  | 0, some _, h => by simp [captureLiveB] at h
+  | n + 1, some fid, h => by
+    simp only [captureLiveB, Bool.and_eq_true, decide_eq_true_eq, Option.isNone_iff_eq_none] at h
+    exact .frame h.1.1 (captureLiveB_sound n _ h.2) h.1.2
+
 #print axioms Reaches.trans
 
 end Ratchet.Denote

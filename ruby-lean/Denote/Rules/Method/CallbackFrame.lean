@@ -30,14 +30,16 @@ theorem callback_pop_framed {m n : Machine} {f : RubyCore.Frame}
     (hne : m.stack.headD 0 ≠ (popMethodFrame m).stack.headD 0)
     (hu : RootUncaptured (popMethodFrame m))
     (hc : f.captured = some ((popMethodFrame m).stack.headD 0))
-    (h : Framed (pushMethodFrame m f) n) : CallbackFramed m (popMethodFrame n) := by
+    (h : Framed (pushMethodFrame m f) n)
+    (hal : (m.frames.getD ((popMethodFrame m).stack.headD 0) default).localAlias = none)
+    (hfa : f.localAlias = none) : CallbackFramed m (popMethodFrame n) := by
   have hs : (popMethodFrame n).stack = m.stack := by
     simp [popMethodFrame, h.stack, pushMethodFrame]
-  have hp := iterator_pop_framed hl.2 hu hc h
+  have hp := iterator_pop_framed hl.2 hu hc h hal hfa
   refine ⟨hp, hs, ?_, ?_⟩
   · rw [← rootFrame_eq_currentFrame (m := popMethodFrame n) (by rw [hs]; exact hm.1),
       ← rootFrame_eq_currentFrame hm.1, hs]
-    exact closure_saved_frames_at (m := m) hl.2 hu hc h.frames _ hm.2 hne
+    exact closure_saved_frames_at (m := m) hl.2 hu hc h.frames _ hm.2 hne hal hfa
   · intro x
     change frameBinds n ((popMethodFrame (popMethodFrame n)).stack.headD 0) x = _
     rw [hp.stack]

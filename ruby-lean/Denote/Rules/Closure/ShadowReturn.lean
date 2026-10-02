@@ -10,7 +10,9 @@ theorem closure_shadowed_read {m n : Machine} {f : RubyCore.Frame}
     (hl : FrameInRange m) (hu : RootUncaptured m)
     (hc : f.captured = some (m.stack.headD 0))
     (h : Framed (pushMethodFrame m f) n) (x : String)
-    (hx : f.locals.any (·.1 == x) = true) :
+    (hx : f.locals.any (·.1 == x) = true)
+    (hal : (m.frames.getD (m.stack.headD 0) default).localAlias = none)
+    (hfa : f.localAlias = none) :
     (popMethodFrame n).getLocal x = m.getLocal x := by
   have he := h.frames.shadows x
     (by simpa [frameBinds, pushMethodFrame, Array.getD_eq_getD_getElem?] using hx)
@@ -22,8 +24,9 @@ theorem closure_shadowed_read {m n : Machine} {f : RubyCore.Frame}
         (pushMethodFrame m f).frames.getD i default = m.frames.getD i default := by
       simp [pushMethodFrame, Array.getD, hi, Nat.lt_succ_of_lt hi, Array.getElem_push_lt]
     exact he.trans (congrArg (fun f => f.locals.find? (·.1 == x)) (hget _ hl.2))
-  have hp := closure_pop_framed hl.2 hu hc h
-  rw [getLocal_uncaptured (hp.frames.rootCaptured.trans hu), getLocal_uncaptured hu]
+  have hp := closure_pop_framed hl.2 hu hc h hal hfa
+  rw [getLocal_uncaptured (hp.frames.rootCaptured.trans hu) x (hp.frames.rootAlias.trans hal),
+    getLocal_uncaptured hu x hal]
   change (((n.frames.getD ((popMethodFrame n).stack.headD 0) default).locals.find?
     (·.1 == x)).map (·.2)).getD .nil = _
   rw [hp.stack, hfind]

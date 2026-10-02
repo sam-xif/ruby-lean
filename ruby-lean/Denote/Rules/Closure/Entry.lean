@@ -26,10 +26,19 @@ def requiredClosureFrame (m : Machine) (cl : Closure) (names : List String)
     (args : List Value) (selfOv : Option Value := none)
     (defmodOv : Option ObjId := none) : RubyCore.Frame :=
   let cap := m.frames.getD (cl.captured.getD 0) default
-  { self := selfOv.getD cap.self, defmod := defmodOv.getD cap.defmod, blk := cap.blk,
+  { self := selfOv.getD cap.self, defmod := defmodOv.getD cap.defmod,
+    definitionFrame := if defmodOv.isSome then none else
+      some (m.definitionFrameId (cl.captured.getD 0)),
+    blk := cap.blk,
     locals := names.zip args ++ cl.locals.map (fun x => (x, Value.nil)),
     kind := .block, captured := cl.captured, home := cl.home, lam := cl.lam,
-    cref := cap.cref }
+    cref := cap.cref, libraryOrigin := cl.libraryOrigin }
+
+/-- The break target callClosure actually installs: a literal's own scope while live. -/
+def closureBrk (m : Machine) (cl : Closure) (brk : Option FrameId) : Option FrameId :=
+  match cl.breakScope with
+  | none => brk
+  | some scope => if m.liveBreakScopes.contains scope then some scope else none
 
 theorem CaptureLive.pushFrame {m : Machine} {cap : Option FrameId}
     (h : CaptureLive m cap) (f : RubyCore.Frame) : CaptureLive (pushMethodFrame m f) cap :=
@@ -64,29 +73,34 @@ theorem callClosure_required (m : Machine) (cl : Closure)
     (names : List String) (args : List Value) (brk : Option FrameId)
     (selfOv : Option Value) (defmodOv : Option ObjId)
     (hp : cl.params = names.map RubyCore.Param.req)
-    (ha : args.length = names.length) :
+    (ha : args.length = names.length)
+    (henum : cl.enumYield = none) (hfor : cl.forTargets = none) :
     Interp.callClosure m cl args brk selfOv defmodOv =
       .next (Interp.withKont
         (pushMethodFrame m (requiredClosureFrame m cl names args selfOv defmodOv))
-        (.eval cl.body) (.blkFrameK m.frames.size cl.lam brk cl args)) := by
+        (.eval cl.body) (.blkFrameK m.frames.size cl.lam (closureBrk m cl brk) cl args)) := by
   have hauto : ¬ ((cl.lam = false ∧ args.length = 1) ∧ 2 ≤ args.length) := by
     intro h
     omega
-  unfold Interp.callClosure
-  rw [hp, classifySimple_required]
+  have hft : ∀ l : List (String × Value), l.filter (fun _ => true) = l := fun l => by
+    induction l <;> simp_all [List.filter]
+  unfold Interp.callClosure Interp.enterClosure
+  rw [henum, hfor, hp, classifySimple_required]
   simp [hauto, ← ha, values_in_order, requiredClosureFrame, pushMethodFrame,
-    Interp.withKont]
+    Interp.withKont, Interp.queueParamBindings, Interp.withCtl, hft]
+  cases h : cl.breakScope <;> simp [closureBrk, h]
 
 theorem callClosure_required_lambda (m : Machine) (cl : Closure)
     (names : List String) (args : List Value) (brk : Option FrameId)
     (selfOv : Option Value) (defmodOv : Option ObjId)
     (hp : cl.params = names.map RubyCore.Param.req) (hl : cl.lam = true)
-    (ha : args.length = names.length) :
+    (ha : args.length = names.length)
+    (henum : cl.enumYield = none) (hfor : cl.forTargets = none) :
     Interp.callClosure m cl args brk selfOv defmodOv =
       .next (Interp.withKont
         (pushMethodFrame m (requiredClosureFrame m cl names args selfOv defmodOv))
-        (.eval cl.body) (.blkFrameK m.frames.size true brk cl args)) := by
-  simpa only [hl] using callClosure_required m cl names args brk selfOv defmodOv hp ha
+        (.eval cl.body) (.blkFrameK m.frames.size true (closureBrk m cl brk) cl args)) := by
+  simpa only [hl] using callClosure_required m cl names args brk selfOv defmodOv hp ha henum hfor
 
 /-- Entering the body consumes the extra lookup fuel contributed by the new frame.
 Unbound names therefore read the live capture at exactly its original fuel. -/
@@ -107,7 +121,9 @@ theorem requiredClosureFrame_getLocal (m : Machine) (cl : Closure)
   rw [Machine.getLocal.go]
   have hhead : (pushMethodFrame m f).frames.getD m.frames.size default = f := by
     simp [pushMethodFrame, Array.getD_eq_getD_getElem?]
-  rw [hhead]
+  have hla : (pushMethodFrame m f).localFrameId m.frames.size = m.frames.size :=
+    localFrameId_of_noAlias (by rw [hhead]; rfl)
+  rw [hla, hhead]
   change (match f.locals.find? (·.1 == x) with
     | some (_, v) => v
     | none => match cl.captured with
@@ -125,7 +141,7 @@ theorem requiredClosureFrame_getLocal (m : Machine) (cl : Closure)
     | none => simp [closLocal, frameLocal?, hp]
     | some p =>
       simp only [closLocal, hp, frameLocal?, frameLocal]
-      exact (getLocal_go_eq_frameLocal_go _ x _ p).trans
+      exact (getLocal_go_eq_frameLocal_go _ x _ p (hp ▸ CaptureLive.pushFrame hcap f)).trans
         (frameLocal_go_preserved hframes x _ p (hp ▸ hcap))
 
 #print axioms callClosure_required_lambda

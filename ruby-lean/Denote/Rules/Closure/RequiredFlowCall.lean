@@ -43,29 +43,32 @@ theorem required_closure_finish {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {ps : List
       intro p hp v hv
       exact activationStable_heap (m := m) (hi' p (by simpa only [hcode.2.1] using hp)).1 rfl hv)
   have hstate := requiredClosureFrame_state_of_env hm
-    (ReframeFO.empty hi hself hblock hconst) hasm (ClosureScopeEq.current hm.frameInRange hcap) henv
+    (ReframeFO.empty hi hself hblock hconst) hasm (ClosureScopeEq.current hm.frameInRange hcap)
+    (by rw [hcap]; exact hm.toStateCore.captureLive) henv
     (fun x => (constGet?_empty (κ := κ.withFrame none) hconst x).trans
       (constGet?_empty hconst x).symm)
   rw [hcode.2.1] at hstate
   change StepSpec m _ τ (Interp.invoke m v site name args none []) κ I
   rw [invoke_proc_dispatch hproc (hm.procDispatch hfree hname) hname hklass args site,
-    callClosure_required m cl (ps.map (·.1)) args _ none none hparams hlen, hcode.2.2.1]
+    callClosure_required m cl (ps.map (·.1)) args _ none none hparams hlen
+      hcode.2.2.2.2.1 hcode.2.2.2.2.2, hcode.2.2.1]
   simp only [StepSpec, Interp.withKont, pushMethodFrame, hk]
-  change RunSpec m (pushK [.blkFrameK m.frames.size cl.lam (Interp.blockOwner m v) cl args]
+  change RunSpec m (pushK [.blkFrameK m.frames.size cl.lam
+    (closureBrk m cl (Interp.blockOwner m v)) cl args]
     (evalFrom (pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) code.body))
     (closureReturnEnv (ps.map (·.1) ++ code.locals) names Γ Γb) τ κ I
   apply closure_return_main_runSpec (κb := closureBodyCtx κ) hm (ReframeFO.empty hi hself hblock hconst)
     hasm hr hw hclass
     (fun x => (constGet?_empty (κ := closureBodyCtx κ) hconst x).trans
       (constGet?_empty (κ := returnScopeCtx κ (closureBodyCtx κ)) hconst x).symm)
-    hcap (captureNames_sound hf hn)
+    hcap rfl (captureNames_sound hf hn)
     (by intro x; simpa only [hcode.2.1] using requiredClosureFrame_slots m cl (ps.map (·.1)) args hlen x)
     cl.lam _ cl args ht (hb _ hstate)
   · intro n hfr x σ hx v hv
     obtain ⟨y, hy⟩ := envGet?_mem hx
     exact denM_stripAlias.mpr (activationStable_framed
       (hi' (y, σ) (List.mem_append_right _ hy)).1
-      (closure_pop_framed hm.frameInRange.2 hu hcap hfr) (denM_stripAlias.mp hv))
+      (closure_pop_framed hm.frameInRange.2 hu hcap hfr hm.headAlias rfl) (denM_stripAlias.mp hv))
   · intro n _ x σ hx _ v hv
     obtain ⟨y, hy⟩ := envGet?_mem hx
     exact activationStable_heap (m := n) (List.all_eq_true.mp hout (y, σ) hy) rfl hv

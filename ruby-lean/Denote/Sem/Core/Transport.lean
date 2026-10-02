@@ -188,6 +188,13 @@ theorem Later_reCtl {m m₂ : Machine} {c : Ctl} {k : List Kont} :
 
 /-- **The denotation does not read the control word.** All three mutually recursive relations
 at once, by structural induction on the type. -/
+theorem captureLive_reCtl {m : Machine} {c : Ctl} {k : List Kont} {cap : Option FrameId} :
+    CaptureLive (reCtl m c k) cap ↔ CaptureLive m cap :=
+  ⟨fun h => CaptureLive.frames_preserved (m := reCtl m c k) (n := m) (Nat.le_refl _)
+      (fun _ _ => rfl) h,
+   fun h => CaptureLive.frames_preserved (m := m) (n := reCtl m c k) (Nat.le_refl _)
+      (fun _ _ => rfl) h⟩
+
 theorem denM_ctl (m : Machine) (c : Ctl) (k : List Kont) : ∀ τ : Ty,
     (∀ v, denM τ (reCtl m c k) v ↔ denM τ m v) ∧
     (∀ acc f, denApp acc τ (reCtl m c k) f ↔ denApp acc τ m f) ∧
@@ -220,7 +227,7 @@ theorem denM_ctl (m : Machine) (c : Ctl) (k : List Kont) : ∀ τ : Ty,
     exact ⟨fun _ => by simp [denM], fun _ _ => by simp [denApp],
            fun seen g => by simp [denSpineFrom, ihσ.1, ihrest.2.2]⟩
   | clos idx cap selfT ihcap ihself =>
-    exact ⟨fun f => by simp [denM, ihcap.2.2, ihself.1], fun _ _ => by simp [denApp],
+    exact ⟨fun f => by simp [denM, ihcap.2.2, ihself.1, captureLive_reCtl], fun _ _ => by simp [denApp],
            fun _ _ => by simp [denSpineFrom]⟩
   | sameAs y τ ih =>
     exact ⟨fun v => by simp [denM, ih.1], fun _ _ => by simp [denApp], fun _ _ => by simp [denSpineFrom]⟩

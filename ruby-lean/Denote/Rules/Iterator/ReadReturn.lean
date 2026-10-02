@@ -12,9 +12,16 @@ theorem iterator_bound_read {m n : Machine} {f : RubyCore.Frame}
     (hc : f.captured = some ((popMethodFrame m).stack.headD 0))
     (h : Framed (pushMethodFrame m f) n) (x : String)
     (hf : f.locals.any (·.1 == x) = false)
-    (hx : frameBinds (popMethodFrame m) ((popMethodFrame m).stack.headD 0) x = true) :
+    (hx : frameBinds (popMethodFrame m) ((popMethodFrame m).stack.headD 0) x = true)
+    (hal : (m.frames.getD ((popMethodFrame m).stack.headD 0) default).localAlias = none)
+    (hfa : f.localAlias = none) :
     (popMethodFrame (popMethodFrame n)).getLocal x = n.getLocal x := by
-  have hp := iterator_pop_framed hl.2 hu hc h
+  have hp := iterator_pop_framed hl.2 hu hc h hal hfa
+  have hpa : (n.frames.getD ((popMethodFrame m).stack.headD 0) default).localAlias = none :=
+    (congrArg RubyCore.Frame.localAlias (closure_saved_metadata h.frames _ hl.2)).trans hal
+  have hna : (n.frames.getD (n.stack.headD 0) default).localAlias = none := by
+    rw [h.frames.rootAlias]
+    simpa [pushMethodFrame, Array.getD_eq_getD_getElem?] using hfa
   have hcap : (n.frames.getD ((popMethodFrame m).stack.headD 0) default).captured = none := by
     have he := congrArg RubyCore.Frame.captured (closure_saved_metadata h.frames _ hl.2)
     exact he.trans hu
@@ -23,14 +30,16 @@ theorem iterator_bound_read {m n : Machine} {f : RubyCore.Frame}
     have he := h.frames.rootCaptured
     simpa [pushMethodFrame, Array.getD_eq_getD_getElem?, hc] using he
   have hn := find?_eq_none_of_any_false _ _
-    (closure_bound_unshadowed_at (m := m) hl.2 hu hc h x hf hx)
+    (closure_bound_unshadowed_at (m := m) hl.2 hu hc h x hf hx hal hfa)
   have hz := h.frames.size
   simp only [pushMethodFrame, Array.size_push] at hz
   obtain ⟨k, hk⟩ : ∃ k, n.frames.size = k + 1 := ⟨n.frames.size - 1, by omega⟩
-  rw [getLocal_uncaptured (hp.frames.rootCaptured.trans hu), hp.stack]
+  rw [getLocal_uncaptured (hp.frames.rootCaptured.trans hu) x
+    (by rw [hp.stack]; exact hpa), hp.stack]
   change (((n.frames.getD ((popMethodFrame m).stack.headD 0) default).locals.find?
     (·.1 == x)).map (·.2)).getD .nil = _
-  simp only [Machine.getLocal, hk, Machine.getLocal.go, hn, hr]
+  simp only [Machine.getLocal, hk, Machine.getLocal.go, localFrameId_of_noAlias hna,
+    localFrameId_of_noAlias (m := n) hpa, hn, hr]
   cases he : (n.frames.getD ((popMethodFrame m).stack.headD 0) default).locals.find? (·.1 == x) with
   | none => simp only [hcap, Option.map_none, Option.getD_none]
   | some p => cases p; rfl
@@ -39,7 +48,9 @@ theorem iterator_shadowed_read {m n : Machine} {f : RubyCore.Frame}
     (hl : FrameInRange (popMethodFrame m)) (hu : RootUncaptured (popMethodFrame m))
     (hc : f.captured = some ((popMethodFrame m).stack.headD 0))
     (h : Framed (pushMethodFrame m f) n) (x : String)
-    (hx : f.locals.any (·.1 == x) = true) :
+    (hx : f.locals.any (·.1 == x) = true)
+    (hal : (m.frames.getD ((popMethodFrame m).stack.headD 0) default).localAlias = none)
+    (hfa : f.localAlias = none) :
     (popMethodFrame (popMethodFrame n)).getLocal x = (popMethodFrame m).getLocal x := by
   have he := h.frames.shadows x
     (by simpa [frameBinds, pushMethodFrame, Array.getD_eq_getD_getElem?] using hx)
@@ -51,8 +62,9 @@ theorem iterator_shadowed_read {m n : Machine} {f : RubyCore.Frame}
         (pushMethodFrame m f).frames.getD i default = m.frames.getD i default := by
       simp [pushMethodFrame, Array.getD, hi, Nat.lt_succ_of_lt hi, Array.getElem_push_lt]
     exact he.trans (congrArg (fun f => f.locals.find? (·.1 == x)) (hget _ hl.2))
-  have hp := iterator_pop_framed hl.2 hu hc h
-  rw [getLocal_uncaptured (hp.frames.rootCaptured.trans hu), getLocal_uncaptured hu]
+  have hp := iterator_pop_framed hl.2 hu hc h hal hfa
+  rw [getLocal_uncaptured (hp.frames.rootCaptured.trans hu) x (hp.frames.rootAlias.trans hal),
+    getLocal_uncaptured hu x hal]
   change (((n.frames.getD ((popMethodFrame (popMethodFrame n)).stack.headD 0) default).locals.find?
     (·.1 == x)).map (·.2)).getD .nil = _
   rw [hp.stack, hfind]
@@ -61,7 +73,8 @@ theorem iterator_shadowed_read {m n : Machine} {f : RubyCore.Frame}
 theorem iterator_absent_read {m n : Machine} {f : RubyCore.Frame}
     (hl : FrameInRange (popMethodFrame m)) (hu : RootUncaptured (popMethodFrame m))
     (h : Framed (pushMethodFrame m f) n) (x : String)
-    (hx : frameBinds (popMethodFrame m) ((popMethodFrame m).stack.headD 0) x = false) :
+    (hx : frameBinds (popMethodFrame m) ((popMethodFrame m).stack.headD 0) x = false)
+    (hal : (m.frames.getD ((popMethodFrame m).stack.headD 0) default).localAlias = none) :
     (popMethodFrame (popMethodFrame n)).getLocal x = .nil := by
   have hs : (popMethodFrame (popMethodFrame n)).stack = (popMethodFrame m).stack := by
     simp [popMethodFrame, h.stack, pushMethodFrame]
@@ -72,7 +85,9 @@ theorem iterator_absent_read {m n : Machine} {f : RubyCore.Frame}
     exact he.trans hu
   have hb := (closure_saved_bindings h.frames _ hl.2 x).trans hx
   have hf := find?_eq_none_of_any_false _ _ hb
-  rw [getLocal_uncaptured hc, hs]
+  rw [getLocal_uncaptured hc x (by
+    rw [hs]
+    exact (congrArg RubyCore.Frame.localAlias (closure_saved_metadata h.frames _ hl.2)).trans hal), hs]
   change (((n.frames.getD ((popMethodFrame m).stack.headD 0) default).locals.find?
     (·.1 == x)).map (·.2)).getD .nil = _
   rw [hf]; rfl

@@ -196,8 +196,8 @@ target approximated from below, by the step kinds the ladder has actually met. -
 structure Later (m m₂ : Machine) : Prop where
   /-- The frame stack is where it was: the *current* frame is still the current frame. -/
   stack : m₂.stack = m.stack
-  /-- No frame was pushed or popped. Their contents may have been rebound. -/
-  frameCount : m₂.frames.size = m.frames.size
+  /-- The frame store only grows (a closure literal reserves a slot). -/
+  frameCount : m.frames.size ≤ m₂.frames.size
   size : m.heap.objs.size ≤ m₂.heap.objs.size
   /-- **The heap's *shape* is where it was**, object by object — but not its contents.
       `Ext.get` says the whole object reads back identically; this says only that its class,
@@ -215,7 +215,7 @@ structure Later (m m₂ : Machine) : Prop where
 
 theorem Later.refl (m : Machine) : Later m m where
   stack := rfl
-  frameCount := rfl
+  frameCount := Nat.le_refl _
   size := Nat.le_refl _
   klass := fun _ _ => rfl
   eigen := fun _ _ => rfl
@@ -226,7 +226,7 @@ theorem Later.refl (m : Machine) : Later m m where
 
 theorem Later.trans {m m₂ m₃ : Machine} (h₁ : Later m m₂) (h₂ : Later m₂ m₃) : Later m m₃ where
   stack := by rw [h₂.stack, h₁.stack]
-  frameCount := by rw [h₂.frameCount, h₁.frameCount]
+  frameCount := Nat.le_trans h₁.frameCount h₂.frameCount
   size := Nat.le_trans h₁.size h₂.size
   klass := fun o ho => by
     rw [h₂.klass o (Nat.lt_of_lt_of_le ho h₁.size), h₁.klass o ho]
@@ -243,7 +243,7 @@ theorem Later.trans {m m₂ m₃ : Machine} (h₁ : Later m m₂) (h₂ : Later 
 no work at all: `Ext.trans` on the outside became `Later.trans` on the inside. -/
 theorem Ext.later {m m₂ : Machine} (he : Ext m m₂) : Later m m₂ where
   stack := he.stack
-  frameCount := by rw [he.frames]
+  frameCount := by rw [he.frames]; exact Nat.le_refl _
   size := he.size
   klass := fun o ho => by rw [he.get o ho]
   eigen := fun o ho => by rw [he.get o ho]

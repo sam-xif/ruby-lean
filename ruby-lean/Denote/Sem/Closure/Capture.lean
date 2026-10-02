@@ -6,12 +6,6 @@ set_option autoImplicit false
 namespace Ratchet.Denote
 open RubyCore
 
-inductive CaptureLive (m : Machine) : Option FrameId → Prop
-  | none : CaptureLive m none
-  | frame {fid : FrameId} (hi : fid < m.frames.size)
-      (hc : CaptureLive m (m.frames.getD fid default).captured)
-      (ha : (m.frames.getD fid default).localAlias = none) : CaptureLive m (some fid)
-
 theorem getLocal_go_eq_frameLocal_go (m : Machine) (x : String) :
     ∀ fuel fid, CaptureLive m (some fid) →
       Machine.getLocal.go m x fid fuel = frameLocal.go m x fid fuel := by
@@ -57,16 +51,6 @@ theorem frameLocal_go_preserved {m n : Machine}
         cases hp : (m.frames.getD fid default).captured with
         | none => rfl
         | some p => exact ih p (hp ▸ hc)
-
-theorem CaptureLive.frames_preserved {m n : Machine}
-    (hsize : m.frames.size ≤ n.frames.size)
-    (hf : ∀ i, i < m.frames.size → n.frames.getD i default = m.frames.getD i default)
-    {cap : Option FrameId} (h : CaptureLive m cap) : CaptureLive n cap := by
-  induction h with
-  | none => exact .none
-  | @frame fid hi hc ha ih =>
-    exact .frame (Nat.lt_of_lt_of_le hi hsize) (by rw [hf fid hi]; exact ih)
-      (by rw [hf fid hi]; exact ha)
 
 #print axioms frameLocal_go_preserved
 end Ratchet.Denote
