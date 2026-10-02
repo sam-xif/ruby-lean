@@ -14,15 +14,29 @@ The reachability premise is explicit: current constant equality alone cannot sup
 set_option autoImplicit false
 namespace Ratchet.Denote.FreshClassActual
 open RubyCore Ratchet RubyCore.Proof
-variable {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
-variable {name : String} {e : ObjId} {body : RubyCore.Expr}
-local notation "entry" => machine m name e body
+/-- Parent-class facts consumed by fresh class entry; Object's come from main. -/
+structure ParentFacts (κ : Ctx) (h : Heap) (p e : ObjId) : Prop where
+  live : p < h.objs.size
+  classLive : (h.classPayload? p).isSome = true
+  eigen : (h.get p).eigen = some e
+  metaReady : MetaReady h p
+  hook : definitionHookQuietB h p = true
+  names : NamesAt (nameFreeN κ) h p
+  classNames : NamesAt (nameFreeN κ) h e
+  metaConstants : ConstFallback h e
+  singletonHook : singletonDefHookQuietB h p = true
+  bases : ∀ base ch, (base, ch) ∈ builtinBases → p ≠ base ∧ e ≠ base
 
-theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
+variable {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+variable {name : String} {e : ObjId} {body : RubyCore.Expr} {p : ObjId}
+local notation "entry" => machine m name e body p
+
+theorem stateAt (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
     (hf : κ.frame = none) (ha : κ.asms = [])
     (ht : ClassTablesFrame κ name m) (hq : FreshClass.NativeFrame κ name)
     (hn : constOwn m.heap Boot.objectId name = none) (hne : name.isEmpty = false)
-    (he : (m.heap.get Boot.objectId).eigen = some e)
+    (hp : ParentFacts κ m.heap p e)
+    (hpc : ∀ cn, constLookupFrom (heap m name e p) p cn = constLookup (heap m name e p) cn)
     (hreach : ∀ cn ∈ κ.classes.map (·.name), ∀ k, InstanceSite κ cn k m.heap →
       Boot.objectId ∈ ancestors m.heap k ∨ (m.heap.classPayload? k).any (·.isModule) = true) :
     StateOk (classBodyCtx κ name) [] .ivar0 entry := by
@@ -32,20 +46,16 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
   have htop : m.lexicalNamespace = Boot.objectId := by
     simp only [Machine.lexicalNamespace, hmain.cref, List.headD_nil]
   have hd : m.lexicalNamespace < m.heap.objs.size := htop ▸ ho
-  have hel := hc.eigen _ ho _ he
-  obtain ⟨ep, he', hb, _⟩ := hm.core.classReady.metaObject
+  have he := hp.eigen
+  have hpl := hp.live
+  have hel := hc.eigen _ hpl _ he
+  obtain ⟨ep, he', hb, _⟩ := hp.metaReady
   rw [he] at he'; cases he'
   have hconst (cn : String) : constLookupFrom m.heap Boot.objectId cn = constLookup m.heap cn := by
     rw [← constResolveAt_top hmain.cref]; exact hm.constScope cn
-  have hnames : NamesAt (nameFreeN κ) m.heap e := by
-    intro n hn owner md hmd
-    apply hm.nameFree n hn e _ owner md hmd
-    simp only [nameFreeSites, classOf, he]
-    simp
-  have hinst : NamesAt (nameFreeN κ) m.heap Boot.objectId := by
-    intro n hn owner md hmd
-    exact hm.nameFree n hn _ (by simp [nameFreeSites]) owner md hmd
-  have hscope : ConstScopeOk entry := const_scope hm.core.classReady hm.sat hmain hm.constScope
+  have hnames : NamesAt (nameFreeN κ) m.heap e := hp.classNames
+  have hinst : NamesAt (nameFreeN κ) m.heap p := hp.names
+  have hscope : ConstScopeOk entry := const_scopeAt hm.core.classReady hm.sat hmain hpl hpc
   have hdata : DataPres m.heap (entry).heap :=
     dataPres hm.core.classReady hm.sat hm.core.basicSelf htop hn hel hb
   have htyped : ConstsOk κ entry :=
@@ -61,7 +71,7 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
       intro cn hr
       change some name = some cn at hr
       cases hr
-      exact scope_ready hc hm.sat he hmain
+      exact scope_ready hc hm.sat hpl he hp.hook hmain
     classSites := by
       intro cn hcn
       change cn ∈ κ.classes.map (·.name) ++ [name] at hcn
@@ -71,10 +81,10 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
           (hreach cn hcn k site)⟩
       · have heq := List.mem_singleton.mp hcn
         subst cn
-        exact ⟨m.heap.objs.size, instanceSite hm.core.classReady hm.sat htop hmain.classLive he
-          hmain.hook hconst hinst hnames (by simpa only [classOf, he] using hm.core.metaConstants)
-          hm.core.classReady.bootEnd hmain.live hmain.singletonHooks⟩
-    sat := saturated hc hm.sat hd hel ho
+        exact ⟨m.heap.objs.size, instanceSiteAt hm.core.classReady hm.sat htop hmain.classLive hpl
+          hp.metaReady he hp.hook hpc hinst hnames hp.metaConstants
+          hm.core.classReady.bootEnd hmain.live hp.singletonHook⟩
+    sat := saturated hc hm.sat hd hel hpl
     primitiveDispatch := (primitiveDispatch hm.names hc hm.sat hd _).trans hm.primitiveDispatch
     primitiveErrors := (primitiveErrors hc hm.sat hd).trans hm.primitiveErrors
     primitiveInit := (primitiveInit hm.core.classReady hm.sat hm.names hd).trans hm.primitiveInit
@@ -82,7 +92,7 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
     arrayPayload := arrayPayload hd hm.arrayPayload
     hashPayload := hashPayload hd hm.hashPayload
     frozenFields := frozenFields hd hm.frozenFields
-    core := core hm.core hm.sat htop hmain.classLive hn ho he
+    core := core hm.core hm.sat htop hmain.classLive hn hpl he
     frameInRange := frame_in_range
     env := env_empty
     selfSpine := spine_empty hd
@@ -109,18 +119,56 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
     nameFree := nameFree hc hm.sat hd hel hnames hm.nameFree
     bareFree := by intro _ _ _ hself; cases hself
     missFree := by intro _ hself; cases hself
-    query := query hm.names hc hm.sat hd hmain.live hel ho hne hq.query rfl hm.query
-    clsQuery := clsQuery hm.names hc hm.sat hd hmain.live hmain.classLive he hne hq.clsQuery rfl hm.clsQuery
+    query := query hm.names hc hm.sat hd hmain.live hel hpl hne hq.query rfl hm.query
+    clsQuery := clsQuery hm.names hc hm.sat hd hmain.live hp.classLive he hne hq.clsQuery rfl hm.clsQuery
     declCls := declared hm.names hc hm.sat htop hmain.classLive hn rfl hm.classes hm.declCls
-    baseChains := baseChains hm.core.classReady hm.sat htop hmain.classLive hn ho he
-      (fun base ch hb => ⟨fun h => (builtinBase_bound hb).2 h.symm,
-        hm.core.classReady.eigenSeparate e he base ch hb⟩) rfl hm.baseChains
-    nilQuery := nilQuery hm.names hc hm.sat hd hmain.live hel ho hne hq.nilQuery rfl hm.nilQuery
+    baseChains := baseChains hm.core.classReady hm.sat htop hmain.classLive hn hpl he
+      hp.bases rfl hm.baseChains
+    nilQuery := nilQuery hm.names hc hm.sat hd hmain.live hel hpl hne hq.nilQuery rfl hm.nilQuery
     selfLive := self_live
     names := namesOk hc hm.names hd hne
     localAlias := local_alias
     capturedLive := captured_live
     rootClean := root_clean hm.rootClean }
 
+
+theorem ParentFacts.object {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {e : ObjId}
+    (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
+    (he : (m.heap.get Boot.objectId).eigen = some e) : ParentFacts κ m.heap Boot.objectId e := by
+  have hc := hm.core.classReady
+  have hmain := hm.runtime hr
+  refine ⟨hc.chains.boot.2.2.2.2, hmain.classLive, he, hc.metaObject, hmain.hook, ?_, ?_,
+    by simpa only [classOf, he] using hm.core.metaConstants, ?_,
+    fun base ch hb => ⟨fun h => (builtinBase_bound hb).2 h.symm, hc.eigenSeparate e he base ch hb⟩⟩
+  · intro n hn owner md hmd
+    exact hm.nameFree n hn _ (by simp [nameFreeSites]) owner md hmd
+  · intro n hn owner md hmd
+    apply hm.nameFree n hn e _ owner md hmd
+    simp only [nameFreeSites, classOf, he]
+    simp
+  · exact singletonDefHookQuietB_of_methodOn (by simp only [classOf, he]; rfl)
+      (by have hco : e = classOf m.heap (.ref Boot.objectId) := by simp only [classOf, he]
+          rw [hco]
+          exact singletonHooksQuietB_methodOn hmain.singletonHooks hc.chains
+            (by simp [singletonHookSites]))
+
+theorem state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {name : String} {e : ObjId}
+    {body : RubyCore.Expr} (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
+    (hf : κ.frame = none) (ha : κ.asms = [])
+    (ht : ClassTablesFrame κ name m) (hq : FreshClass.NativeFrame κ name)
+    (hn : constOwn m.heap Boot.objectId name = none) (hne : name.isEmpty = false)
+    (he : (m.heap.get Boot.objectId).eigen = some e)
+    (hreach : ∀ cn ∈ κ.classes.map (·.name), ∀ k, InstanceSite κ cn k m.heap →
+      Boot.objectId ∈ ancestors m.heap k ∨ (m.heap.classPayload? k).any (·.isModule) = true) :
+    StateOk (classBodyCtx κ name) [] .ivar0 (machine m name e body) := by
+  have hmain := hm.runtime hr
+  have htop : m.lexicalNamespace = Boot.objectId := by
+    simp only [Machine.lexicalNamespace, hmain.cref, List.headD_nil]
+  have hconst (cn : String) : constLookupFrom m.heap Boot.objectId cn = constLookup m.heap cn := by
+    rw [← constResolveAt_top hmain.cref]; exact hm.constScope cn
+  exact stateAt hm hr hf ha ht hq hn hne (ParentFacts.object hm hr he)
+    (main_constants hm.core.classReady hm.sat htop hmain.classLive hconst) hreach
+
+#print axioms stateAt
 #print axioms state
 end Ratchet.Denote.FreshClassActual

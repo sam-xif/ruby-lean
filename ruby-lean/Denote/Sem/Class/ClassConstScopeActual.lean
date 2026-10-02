@@ -88,6 +88,18 @@ theorem instance_constants_fresh (hc : ClassReady m.heap) (hs : Saturated m.heap
   instance_constants_parent (p := Boot.objectId) hc hs htop hc.chains.boot.2.2.2.2
     (main_constants hc hs htop ho hp)
 
+theorem const_scopeAt {body : RubyCore.Expr} (hc : ClassReady m.heap) (hs : Saturated m.heap)
+    (hm : MainReady m) (hpl : p < m.heap.objs.size)
+    (hpc : ∀ cn, constLookupFrom h₁ p cn = constLookup h₁ cn) :
+    ConstScopeOk (machine m name e body p) := by
+  have htop : m.lexicalNamespace = Boot.objectId := by
+    simp only [Machine.lexicalNamespace, hm.cref, List.headD_nil]
+  intro cn
+  simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace,
+    current_frame, freshModFrame, hm.cref, List.headD_cons]
+  change instanceConstResolve (heap m name e p) m.heap.objs.size cn = constLookup (heap m name e p) cn
+  exact instance_constants_parent hc hs htop hpl hpc cn
+
 theorem const_scope {body : RubyCore.Expr} (hc : ClassReady m.heap) (hs : Saturated m.heap)
     (hm : MainReady m) (hp : ConstScopeOk m) : ConstScopeOk (machine m name e body) := by
   have htop : m.lexicalNamespace = Boot.objectId := by

@@ -69,11 +69,12 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
     exact fallback_old hc.chains hs htop ho hkl site.metaConstants
 
 theorem meta_fresh (hc : ClassReady m.heap) (hs : Saturated m.heap)
-    (hd : m.lexicalNamespace < m.heap.objs.size)
-    (he : (m.heap.get Boot.objectId).eigen = some e) : MetaReady (heap m name e Boot.objectId) m.heap.objs.size := by
-  obtain ⟨j, hj, hb, _⟩ := hc.metaObject
+    (hd : m.lexicalNamespace < m.heap.objs.size) (hpl : p < m.heap.objs.size)
+    (hmr : MetaReady m.heap p) (he : (m.heap.get p).eigen = some e) :
+    MetaReady h₁ m.heap.objs.size := by
+  obtain ⟨j, hj, hb, _⟩ := hmr
   rw [he] at hj; cases hj
-  have hel := hc.chains.eigen _ hc.chains.boot.2.2.2.2 _ he
+  have hel := hc.chains.eigen _ hpl _ he
   refine ⟨m.heap.objs.size + 1, ?_, ?_, ?_⟩
   · rw [get_class hd]
   · rw [ancestors_eigen hc.chains hs hd hel]
@@ -81,6 +82,49 @@ theorem meta_fresh (hc : ClassReady m.heap) (hs : Saturated m.heap)
   · intro base ch hbase
     exact (Nat.ne_of_lt (Nat.lt_succ_of_lt
       (Nat.lt_of_le_of_lt (builtinBase_bound hbase).1 hc.chains.boot.2.2.2.1))).symm
+
+/-- The fresh class's site, from its parent's site facts (Object or a declared class). -/
+theorem instanceSiteAt {κ : Ctx} (hc : ClassReady m.heap) (hs : Saturated m.heap)
+    (htop : m.lexicalNamespace = Boot.objectId)
+    (ho : (m.heap.classPayload? Boot.objectId).isSome = true) (hpl : p < m.heap.objs.size)
+    (hmr : MetaReady m.heap p) (he : (m.heap.get p).eigen = some e)
+    (hh : definitionHookQuietB m.heap p = true)
+    (hpc : ∀ n, constLookupFrom h₁ p n = constLookup h₁ n)
+    (hinst : NamesAt (nameFreeN κ) m.heap p)
+    (hcls : NamesAt (nameFreeN κ) m.heap e)
+    (hmeta : ConstFallback m.heap e) (hboot : Boot.yielderId < m.heap.objs.size)
+    (hml : Boot.mainId < m.heap.objs.size) (hsh : singletonDefHookQuietB m.heap p = true) :
+    InstanceSite κ name m.heap.objs.size h₁ := by
+  have hd : m.lexicalNamespace < m.heap.objs.size := htop ▸ hc.chains.boot.2.2.2.2
+  have hel := hc.chains.eigen _ hpl _ he
+  refine ⟨named_fresh htop ho, ?_, hook_quiet hc.chains hs hd hpl he hh,
+    instance_constants_parent hc hs htop hpl hpc, ?_, meta_fresh hc hs hd hpl hmr he, ?_, ?_, ?_, ?_, hboot,
+    ?_, ?_, by rw [size]; exact Nat.lt_of_lt_of_le hml (Nat.le_add_right _ _),
+    by rw [classOf_old hd hml]; exact (Nat.ne_of_lt (ClsGrow.classOf_lt hc.chains hml)).symm,
+    ⟨m.heap.objs.size + 1, by rw [get_class hd],
+      by simp only [Heap.classPayload?, get_eigen, attachedClassEigen]; rfl,
+      by rw [get_eigen]; rfl⟩,
+    by unfold singletonDefHookQuietB
+       rw [lookup_eq_methodOn, classOf_class hd, method_eigen hc.chains hs hd hel]
+       simp only [singletonDefHookQuietB, lookup_eq_methodOn, classOf, he] at hsh
+       exact hsh,
+    by rw [classOf_class hd, classOf_old hd hml]
+       exact (Nat.ne_of_lt (Nat.lt_succ_of_lt (ClsGrow.classOf_lt hc.chains hml))).symm⟩
+  · simp only [classFrontB, Heap.classPayload?, get_class hd, namedObject, freshClassPayload]; rfl
+  · intro n hn owner md hm
+    rw [method_class hc.chains hs hd hpl] at hm
+    exact hinst n hn owner md hm
+  · intro n hn owner md hm
+    rw [classOf_class hd, method_eigen hc.chains hs hd hel] at hm
+    exact hcls n hn owner md hm
+  · simp only [classOf_class hd, classFrontB, Heap.classPayload?, get_eigen, attachedClassEigen]; rfl
+  · simp only [classOf_class hd, get_eigen, attachedClassEigen]
+  · rw [classOf_class hd]
+    exact fallback_fresh_meta hc.chains hs htop ho hel hmeta
+  · change ((heap m name e p).classPayload? m.heap.objs.size).bind (·.attached) = none
+    simp only [Heap.classPayload?, get_class hd, namedObject, freshClassPayload]; rfl
+  · change ((heap m name e p).get m.heap.objs.size).frozen = false
+    rw [get_class hd]; rfl
 
 theorem instanceSite {κ : Ctx} (hc : ClassReady m.heap) (hs : Saturated m.heap)
     (htop : m.lexicalNamespace = Boot.objectId)
@@ -92,38 +136,13 @@ theorem instanceSite {κ : Ctx} (hc : ClassReady m.heap) (hs : Saturated m.heap)
     (hcls : NamesAt (nameFreeN κ) m.heap e)
     (hmeta : ConstFallback m.heap e) (hboot : Boot.yielderId < m.heap.objs.size)
     (hml : Boot.mainId < m.heap.objs.size) (hsq : singletonHooksQuietB m.heap = true) :
-    InstanceSite κ name m.heap.objs.size (heap m name e Boot.objectId) := by
-  have hd : m.lexicalNamespace < m.heap.objs.size := htop ▸ hc.chains.boot.2.2.2.2
-  have hel := hc.chains.eigen _ hc.chains.boot.2.2.2.2 _ he
-  refine ⟨named_fresh htop ho, ?_, hook_quiet hc.chains hs hd he hh,
-    instance_constants_fresh hc hs htop ho hmain, ?_, meta_fresh hc hs hd he, ?_, ?_, ?_, ?_, hboot,
-    ?_, ?_, by rw [size]; exact Nat.lt_of_lt_of_le hml (Nat.le_add_right _ _),
-    by rw [classOf_old hd hml]; exact (Nat.ne_of_lt (ClsGrow.classOf_lt hc.chains hml)).symm,
-    ⟨m.heap.objs.size + 1, by rw [get_class hd],
-      by simp only [Heap.classPayload?, get_eigen, attachedClassEigen]; rfl,
-      by rw [get_eigen]; rfl⟩,
-    singletonDefHookQuietB_of_methodOn (classOf_class hd)
-      (by rw [method_eigen hc.chains hs hd hel]
-          have hco : e = classOf m.heap (.ref Boot.objectId) := by simp only [classOf, he]
+    InstanceSite κ name m.heap.objs.size (heap m name e Boot.objectId) :=
+  instanceSiteAt hc hs htop ho hc.chains.boot.2.2.2.2 hc.metaObject he hh
+    (main_constants hc hs htop ho hmain) hinst hcls hmeta hboot hml
+    (singletonDefHookQuietB_of_methodOn (by simp only [classOf, he]; rfl)
+      (by have hco : e = classOf m.heap (.ref Boot.objectId) := by simp only [classOf, he]
           rw [hco]
-          exact singletonHooksQuietB_methodOn hsq hc.chains (by simp [singletonHookSites])),
-    by rw [classOf_class hd, classOf_old hd hml]
-       exact (Nat.ne_of_lt (Nat.lt_succ_of_lt (ClsGrow.classOf_lt hc.chains hml))).symm⟩
-  · simp only [classFrontB, Heap.classPayload?, get_class hd, namedObject, freshClassPayload]; rfl
-  · intro n hn owner md hm
-    rw [method_class hc.chains hs hd hc.chains.boot.2.2.2.2] at hm
-    exact hinst n hn owner md hm
-  · intro n hn owner md hm
-    rw [classOf_class hd, method_eigen hc.chains hs hd hel] at hm
-    exact hcls n hn owner md hm
-  · simp only [classOf_class hd, classFrontB, Heap.classPayload?, get_eigen, attachedClassEigen]; rfl
-  · simp only [classOf_class hd, get_eigen, attachedClassEigen]
-  · rw [classOf_class hd]
-    exact fallback_fresh_meta hc.chains hs htop ho hel hmeta
-  · change ((heap m name e Boot.objectId).classPayload? m.heap.objs.size).bind (·.attached) = none
-    simp only [Heap.classPayload?, get_class hd, namedObject, freshClassPayload]; rfl
-  · change ((heap m name e Boot.objectId).get m.heap.objs.size).frozen = false
-    rw [get_class hd]; rfl
+          exact singletonHooksQuietB_methodOn hsq hc.chains (by simp [singletonHookSites])))
 
 #print axioms moduleBase
 #print axioms instanceSite_old
