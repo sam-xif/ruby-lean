@@ -11,7 +11,7 @@ def mainSingletonNames : List String :=
 /-- Main-native names are reserved. Existing declared owners must be separate
 from Object; `new` needs additional allocator transport when classes exist. -/
 def topDeclClassesB (κ : Ctx) (name : String) : Bool :=
-  !mainSingletonNames.contains name &&
+  !mainSingletonNames.contains name && name != "singleton_method_added" &&
     (κ.classes.isEmpty || (name != "new" &&
       κ.classes.all (fun c => !rootAncestors.contains c.name)))
 

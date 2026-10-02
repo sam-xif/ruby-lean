@@ -20,6 +20,7 @@ theorem mainSite {κ : Ctx} {m : Machine} {name : String} {e : ObjId} {h' : Heap
   have hco : classOf h' (.ref Boot.mainId) = classOf m.heap (.ref Boot.mainId) := by
     rw [hh, classOf_old hd hmain]
   have hcl := ClsGrow.classOf_lt hch hmain
+  have hcl' := ClsGrow.classOf_lt hch ho
   have hmo (n : String) : Interp.methodOn h' (classOf h' (.ref Boot.mainId)) n =
       Interp.methodOn m.heap (classOf m.heap (.ref Boot.mainId)) n := by
     rw [hco, hh, method_old hch hs hd hcl]
@@ -34,7 +35,7 @@ theorem mainSite {κ : Ctx} {m : Machine} {name : String} {e : ObjId} {h' : Heap
       live := ?_, payload := ?_, chain := ?_
       object := hdata.nominal _ _ hr.object
       classLive := ?_, hook := ?_, detached := ?_, unfrozen := ?_, origin := rfl
-      mainNames := ?_, classHooks := ?_, classFlags := ?_, defFrame := rfl }
+      mainNames := ?_, classHooks := ?_, classFlags := ?_, defFrame := rfl, singletonHooks := ?_ }
     · change Boot.mainId < h'.objs.size
       rw [hh, size m name e]
       exact Nat.lt_of_lt_of_le hmain (Nat.le_add_right _ _)
@@ -63,6 +64,18 @@ theorem mainSite {κ : Ctx} {m : Machine} {name : String} {e : ObjId} {h' : Heap
     · change objectClassFlagsB h' = true
       rw [objectClassFlagsB, hh, metadata_any_old hd ho (fun cp => cp.ancestryReady && !cp.allocatorUnavailable) (fun _ => rfl)]
       exact hr.classFlags
+    · change singletonHooksQuietB h' = true
+      have hsites : ∀ k ∈ singletonHookSites m.heap, k < m.heap.objs.size := by
+        intro k hk
+        simp only [singletonHookSites, List.mem_cons, List.not_mem_nil, or_false] at hk
+        rcases hk with rfl | rfl
+        · exact hcl'
+        · exact hch.boot.2.1
+      rw [singletonHooksQuietB_congr (h := m.heap)
+        (by simp only [singletonHookSites, hh, classOf_old hd ho])
+        (fun k hk => by rw [hh]; exact ancestors_old hch hs hd (hsites k hk))
+        (fun k hk j hj => by rw [hh]; exact own_code hd j singletonHookName)]
+      exact hr.singletonHooks
   · intro n hn o md hm
     exact site.names n hn o md (by rwa [hmo] at hm)
   · intro n hb hf

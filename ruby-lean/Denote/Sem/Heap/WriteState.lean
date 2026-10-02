@@ -170,7 +170,10 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
       by simpa only [bindIvar_currentFrame] using hm.origin,
       by simpa only [mainOwnNamesB, ownMethods, hw.classOf_eq, hw.classPayload] using hm.mainNames,
       ?_, by simpa only [objectClassFlagsB, hw.classPayload] using hm.classFlags,
-      by simpa only [bindIvar_currentFrame] using hm.defFrame⟩
+      by simpa only [bindIvar_currentFrame] using hm.defFrame,
+      by rw [singletonHooksQuietB_congr (h := m.heap)
+        (by simp only [singletonHookSites, hw.classOf_eq])
+        (fun k _ => hw.ancestors_eq k) (fun _ _ j _ => by rw [hw.classPayload])]; exact hm.singletonHooks⟩
     rw [show classHooksQuietB (Interp.bindIvar m x v).heap = classHooksQuietB m.heap from
       classHooksQuietB_congr
         (by simp only [objectCallbackPrefix, hw.classOf_eq, hw.ancestors_eq])

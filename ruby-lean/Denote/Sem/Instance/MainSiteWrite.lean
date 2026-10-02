@@ -25,7 +25,11 @@ theorem MainSite.ivarOnly {κ : Ctx} {h h' : Heap} (site : MainSite κ h)
       by simpa only [mainView, hi.frozen] using hr.unfrozen,
       rfl,
       by simpa only [mainView, mainOwnNamesB, ownMethods, hi.classOf_eq, hi.classPayload] using hr.mainNames,
-      ?_, by simpa only [mainView, objectClassFlagsB, hi.classPayload] using hr.classFlags, rfl⟩
+      ?_, by simpa only [mainView, objectClassFlagsB, hi.classPayload] using hr.classFlags, rfl,
+      by change singletonHooksQuietB h' = true
+         rw [singletonHooksQuietB_congr (h := h)
+        (by simp only [singletonHookSites, hi.classOf_eq])
+        (fun k _ => hi.ancestors_eq k) (fun _ _ j _ => by rw [hi.classPayload])]; exact hr.singletonHooks⟩
     change classHooksQuietB h' = true
     rw [show classHooksQuietB h' = classHooksQuietB h from
       classHooksQuietB_congr

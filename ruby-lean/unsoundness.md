@@ -178,3 +178,14 @@ them. MainReady pins Object's inherited ancestry/allocator flags, rejecting the
 fresh-class witness while retaining real boot. The mandatory gate carries all
 controls. Existing class/subclass allocator proofs must supply these facts when
 repaired against the real registration path.
+
+# singleton_method_added was definable while def-self relies on its native (2026-10-01)
+
+`def self.x` queues `singleton_method_added` on the class object. Its native lives in
+BasicObject, after Object in every class's metaclass chain (and Module's chain), so a
+top-level `def singleton_method_added(n) = raise` would run on every later `def self.x`.
+Neither topDeclClassesB nor memberRuleB rejected that name; latent only because
+singletonDef is gated. Both guards now reject it (classHookSelectors), method writes
+require the name to differ, and MainReady.singletonHooks pins the native first own
+entry on Object's metaclass chain and Module's chain. Not a Sorbet type error: Sorbet
+does not model the hook, and the raise is a runtime exception, not a typing failure.
