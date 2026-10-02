@@ -358,6 +358,14 @@ jobs:
             RUBY_SRC=/tmp/ruby-src scripts/ci/harvest_bootstraptest.sh
           fi
 
+      # `--sut lean` shells out to ruby-lean/.lake/build/bin/rubycore, and jobs do
+      # not share a filesystem (lean-gate's build is not visible here). Without
+      # this the replay dies with FileNotFoundError, writes no summary.json and
+      # the watermark step then exits 2 ("must contain summary.json"). Build only
+      # the executables, via the repo's own Make target.
+      - name: Build the model executable (rubycore)
+        run: make lean-exes
+
       - name: Replay the model against CRuby (writes difftest/reports/<stamp>)
         id: replay
         run: |
