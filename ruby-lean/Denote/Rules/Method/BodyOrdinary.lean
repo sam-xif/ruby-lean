@@ -37,7 +37,7 @@ theorem ordinary_caller_state {origin m n : Machine} {κ : Ctx} {Γ₀ Γc Γm :
   have hcu : RootUncaptured (popMethodFrame m) := by
     rw [RootUncaptured, rootFrame_eq_currentFrame hc.frameInRange.1]
     exact (hc.runtime hr).captured
-  have hf := method_ordinary_project ho.frameInRange hou hu fresh hcaller h
+  have hf := method_ordinary_project ho.frameInRange hou hu ho.headAlias fresh hcaller h
   have heq := ordinary_caller_frame h hu hc.frameInRange (by
     rw [hcaller.stack]
     exact Nat.ne_of_lt (Nat.lt_of_lt_of_le ho.frameInRange.2 fresh))
@@ -48,7 +48,7 @@ theorem ordinary_caller_state {origin m n : Machine} {κ : Ctx} {Γ₀ Γc Γm :
       (hv : denM τ (popMethodFrame m) v) : denM τ (popMethodFrame n) v :=
     activationStable_heap (m := n) ht rfl
       (activationStable_framed ht h (activationStable_heap (m := popMethodFrame m) ht rfl hv))
-  have henv := hc.env.reframe_uncaptured hc.frameInRange hrange hcu heq
+  have henv := hc.env.reframe_uncaptured hc.frameInRange hrange hcu heq hc.localAlias
     (fun p hp _ hv => move (List.all_eq_true.mp ht p hp) hv)
   have hframe : FrameOk κ.frame (popMethodFrame n) := by
     cases hf' : κ.frame with

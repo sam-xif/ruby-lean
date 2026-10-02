@@ -26,10 +26,10 @@ theorem checked_callback_method_runWith {m : Machine} {κ : Ctx} {Γ Γb Γm : E
       (pushK [.blkFrameK m.frames.size cl.lam brk cl args]
         (evalFrom (pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) body))
       Γ Γm ρ κ (callbackMethodCtx κ fr code) I I (fun _ n => CallbackFramed m n) := by
-  apply (hb _ (hn.bodyState hmain hin hargs)).bindMethodWith (by
-    intro k hk tag
+  apply (hb _ (hn.bodyState hmain hin hargs)).bindMethodWith hm.rootClean (by
+    intro k hk
     simp only [List.mem_singleton] at hk
-    subst k; simp)
+    subst k; rfl)
   intro a n hres
   have hcb := hn.returnResult hm.frameInRange hne hmain hρ hlen hin hout hfix hres
   have hret := hcb.methodResult hn.state hm hmain hs hmethod
@@ -73,6 +73,7 @@ theorem method_yield_int {m : Machine} {κ : Ctx} {Γ Γb Γm : Env}
     (hne : m.stack.headD 0 ≠ (popMethodFrame m).stack.headD 0)
     (hblk : m.currentFrame.blk = some (.ref o)) (hproc : (m.heap.get o).payload = .proc cl)
     (hp : cl.params = [.req name]) (he : cl.body = toRuby body)
+    (henum : cl.enumYield = none) (hfor : cl.forTargets = none)
     (hmain : closureMainB κ I = true) (hρ : FirstOrder ρ = true)
     (hin : activationEnvB ([(name, .int)] ++ blockLocals cl.locals ++ Γ) = true)
     (hout : activationReturnB Γb = true) (hmethod : activationReturnB Γm = true)
@@ -90,9 +91,10 @@ theorem method_yield_int {m : Machine} {κ : Ctx} {Γ Γb Γm : Env}
     ⟨by simpa only [base, popMethodFrame, deliverA] using
       (StateOk_deliverA (a := .val (.int arg)) (K := []) hn.state), hn.capture, hn.slots⟩
   have hstep := doYield_required base cl o [name] [.int arg] body [] rfl hblk hproc hp he rfl
+    henum hfor
   apply MethodRunSpec.step (by rfl) (show Interp.stepFn
     (deliverA (.val (.int arg)) m [.yieldArgK [] []]) = .next _ from hstep)
-  have hs' : CallbackMethodScope base := ⟨hs.self, hs.cref, hs.owner, hs.uncaptured⟩
+  have hs' : CallbackMethodScope base := ⟨hs.self, hs.cref, hs.owner, hs.uncaptured, hs.unaliased⟩
   exact (checked_callback_method_run (args := [.int arg]) hn' (StateOk_deliverA hm) hs' hne rfl
     ⟨by simp [denM, isIntV], trivial⟩ hmain hρ hin hout hmethod hfix hb).rebase
     (.ordinary (Framed_reCtl _ _ _))

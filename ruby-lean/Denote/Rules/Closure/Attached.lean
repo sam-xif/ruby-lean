@@ -39,6 +39,26 @@ theorem finishSend_attached (m : Machine) (recv : Value) (site : SendSite) (name
   simp only [attMachine, pushDead, hk, reifiedMachine, List.nil_append]
   rfl
 
+/-- The same call when an installed user method shadows any Kernel selector. -/
+theorem finishSend_attached_shadowed (m : Machine) (recv : Value) (site : SendSite) (name : String)
+    {owner : ObjId} {md : MethodDef}
+    (hl : Interp.methodOn m.heap (classOf m.heap recv) name = some (owner, md))
+    (hb : md.builtin = none) (hu : md.undefined = false) (hk : m.kont = [])
+    (hq : RootClean m) (ps : List RubyCore.Param) (ls : List String) (body : RubyCore.Expr) :
+    Interp.finishSend m recv site name [] (.lit ps ls body) =
+      Interp.invoke (Proof.pushRootK [.blockCallK m.frames.size] (attMachine m ps ls body))
+        recv site name [] (some (.ref m.heap.objs.size)) [] := by
+  have hget : (reifiedMachine m ps ls body false).heap.get m.heap.objs.size =
+      { klass := Boot.procId, payload := .proc (reifiedClosure m ps ls body false) } := by
+    simp [reifiedMachine, pushHeap_get_self]
+  rw [Proof.pushRootK_quiescent _ (attMachine m ps ls body) hq.1 hq.2]
+  simp only [Interp.finishSend, hl, hb, hu, Option.isNone_none, Bool.not_false, Bool.and_true,
+    Bool.not_true, Bool.and_false, Bool.false_eq_true, ↓reduceIte]
+  simp only [Interp.reifyCallBlock, reifyBlock_eq, hget,
+    reifiedMachine_frames, lit_heap]
+  simp only [attMachine, pushDead, hk, reifiedMachine, List.nil_append]
+  rfl
+
 /-- The callee machine with the pushed Proc and live scope, before the dead frame. -/
 def attBase (m : Machine) (ps : List RubyCore.Param) (ls : List String)
     (body : RubyCore.Expr) : Machine := { m with

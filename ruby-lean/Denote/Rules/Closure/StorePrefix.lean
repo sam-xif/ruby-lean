@@ -40,10 +40,10 @@ theorem closure_store_seq_runSpec {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty}
   apply RunSpec.rebase (middle := assigned) ?_
     ((Framed.of_ext (reified_ext hm _ _ _ _)).trans (Framed_setLocal fresh name _))
   apply hb.bindSpec (by
-    intro k hk tag
+    intro k hk
     simp only [List.mem_singleton] at hk
     subst hk
-    simp)
+    rfl)
   intro a n hr
   apply RunSpec.step (by rfl) (show Interp.stepFn _ = .next (deliverA a n []) from by
     cases a with

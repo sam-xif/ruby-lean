@@ -15,14 +15,16 @@ theorem classifyFull_boundBlock (localName : String) :
 theorem enterUserMethod_boundBlock (m : Machine) (recv : Value) (name : String)
     (md : MethodDef) (localName : String) (blk : Option Value)
     (hp : md.params = [.block (some localName)])
-    (hc : md.capturedFrame = none) (hd : md.declared = []) :
+    (hc : md.capturedFrame = none) (hd : md.declared = [])
+    (hblock : md.fromBlock = false) (hfor : md.forTargets = none) :
     Interp.enterUserMethod m recv name md [] blk =
       .next (Interp.withKont (pushMethodFrame m
         (requiredBlockFrame recv name md [localName] [blk.getD .nil] blk))
         (.eval md.body) (.frameK m.frames.size)) := by
   unfold Interp.enterUserMethod
   rw [hp, classifyFull_boundBlock]
-  simp [Interp.appendKwHash, hc, hd, requiredBlockFrame, requiredFrame, pushMethodFrame,
+  simp [Interp.appendKwHash, hc, hd, hblock, hfor, requiredBlockFrame, requiredFrame, pushMethodFrame,
+    Machine.localFrameId, Machine.localFrameId.go,
     Interp.withKont, Interp.withCtl, hp, Machine.setLocal, Machine.setLocal.owner,
     Array.getD_eq_getD_getElem?, Array.setIfInBounds, Array.set_push]
 
@@ -30,14 +32,15 @@ theorem requiredBlockFrame_getLocal (m : Machine) (recv : Value) (name : String)
     (md : MethodDef) (names : List String) (args : List Value) (blk : Option Value) (x : String) :
     (pushMethodFrame m (requiredBlockFrame recv name md names args blk)).getLocal x =
       (((names.zip args).find? (·.1 == x)).map (·.2)).getD .nil := by
-  simp only [Machine.getLocal, Machine.getLocal.go, pushMethodFrame, requiredBlockFrame, requiredFrame]
+  simp only [Machine.getLocal, Machine.getLocal.go, Machine.localFrameId, Machine.localFrameId.go,
+    pushMethodFrame, requiredBlockFrame, requiredFrame]
   simp [Array.getD_eq_getD_getElem?]
   cases (names.zip args).find? (·.1 == x) <;> rfl
 
 theorem MethodActivation.enterBound {κ : Ctx} {Γ : Env} {I : Ty}
     {cb : CheckedCallback κ Γ I} {m : Machine} {cl : Closure} {o : ObjId}
     (hm : StateOk κ Γ I m) (name localName : String) (md : MethodDef)
-    (howner : md.owner = m.currentFrame.defmod) (hcref : md.cref = m.currentFrame.cref)
+    (howner : md.definee.getD md.owner = m.currentFrame.defmod) (hcref : md.cref = m.currentFrame.cref)
     (hsuper : md.superName = none)
     (hc : cl.captured = some (m.stack.headD 0))
     (hd : CaptureSlots cb.names (withoutNames (cb.params.map (·.1) ++ cl.locals) cb.out) m)
@@ -59,7 +62,7 @@ theorem MethodActivation.enterBound {κ : Ctx} {Γ : Env} {I : Ty}
         simp only [List.zip_cons_cons, List.zip_nil_left, List.find?, beq_self_eq_true,
           Option.map_some, Option.getD_some, stripAlias, denM]
         exact ⟨cl, by simp only [procClosure?, pushMethodFrame, hproc],
-          hcode, by simp [denSpineFrom], Or.inl trivial⟩
+          hcode, by simp [denSpineFrom], Or.inl trivial, Or.inl ⟨trivial, trivial⟩⟩
       · intro y ρ h; cases h
     · simp [envGet?, he] at hx
   · intro x hx
@@ -91,19 +94,20 @@ theorem bound_callback_method_call {κ : Ctx} {Γ Γm : Env} {I σ : Ty}
     (hm : StateOk κ Γ I m) (hk : m.kont = [])
     (hp : md.params = [.block (some localName)])
     (hbody : md.body = toRuby (.send (some (.var .lvar localName)) selector [arg] none))
-    (howner : md.owner = m.currentFrame.defmod) (hcref : md.cref = m.currentFrame.cref)
+    (howner : md.definee.getD md.owner = m.currentFrame.defmod) (hcref : md.cref = m.currentFrame.cref)
     (hsuper : md.superName = none) (hcapture : md.capturedFrame = none) (hdeclared : md.declared = [])
+    (hfromBlock : md.fromBlock = false) (hfor : md.forTargets = none)
     (hc : cl.captured = some (m.stack.headD 0))
     (hd : CaptureSlots cb.names (withoutNames (cb.params.map (·.1) ++ cl.locals) cb.out) m)
     (hproc : (m.heap.get o).payload = .proc cl) (hcode : ClosureMatches cb.code cl)
     (hclass : classOf m.heap (.ref o) = Boot.procId) :
     StepSpec m Γ cb.ret (Interp.enterUserMethod m m.currentFrame.self name md [] (some (.ref o))) κ I := by
-  rw [enterUserMethod_boundBlock m _ name md localName _ hp hcapture hdeclared]
+  rw [enterUserMethod_boundBlock m _ name md localName _ hp hcapture hdeclared hfromBlock hfor]
   have active := MethodActivation.enterBound hm name localName md howner hcref hsuper hc hd hproc hcode
   have receiver := boundBlock_receiver m m.currentFrame.self name localName md (.ref o) hclass
   have run := bound_callback_call_run active receiver he hparam ht hplain hfree hselector
   have done := run.methodReturn hm.frameInRange active.originUncaptured active.method.frameInRange
-    active.uncaptured active.fresh active.framed cb.returnFO m.frames.size
+    active.uncaptured active.fresh active.framed cb.returnFO m.frames.size hm.headAlias hm.rootClean
   simpa only [StepSpec, Interp.withKont, pushK, evalFrom, pushMethodFrame, hk, hbody,
     List.nil_append, Option.getD_some]
     using done

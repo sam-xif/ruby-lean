@@ -52,7 +52,7 @@ theorem callback_invokeWith {κ : Ctx} {Γ Γm : Env} {I σ : Ty}
     exact ⟨activationStable_heap (m := m) hσ rfl hv, trivial⟩
   rw [invoke_proc_dispatch hpay (hm.method.procDispatch hfree hname) hname hr.klass [v] site] at hs
   rw [callClosure_required m cl (cb.params.map (·.1)) [v] _ none none hparams
-    (by simpa only [List.length_map] using hlen), hcode.2.2.1] at hs
+    (by simpa only [List.length_map] using hlen) hcode.2.2.2.2.1 hcode.2.2.2.2.2, hcode.2.2.1] at hs
   apply MethodRunWith.step hap (by
     simpa only [Interp.withKont, pushMethodFrame, hk] using hs)
   exact checked_callback_method_runWith hc hm.method hm.scope hm.distinct hlen hargs
@@ -69,7 +69,7 @@ theorem saved_callback_call_run {κ : Ctx} {Γ Γm Γm' : Env} {I σ : Ty}
     MethodRunSpec m (deliverA (.val recv) m [.recvK name [toRuby arg] .none site])
       Γ Γm' cb.ret κ (callbackMethodCtx κ fr cb.code) I I := by
   apply MethodRunSpec.step (by rfl) (recv_one_step m recv name arg hplain)
-  apply (he origin m hm).bind (prim_catchFree _ (by intro tag; simp))
+  apply (he origin m hm).bind hm.method.rootClean (prim_catchFree _ rfl)
   intro a n hn
   cases a with
   | val v =>

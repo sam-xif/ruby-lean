@@ -23,9 +23,9 @@ inductive SemMethodSeq {κ : Ctx} {Γ : Env} {I : Ty}
       SemMethodSeq cb fr Γm (e :: e' :: es) τ Γm''
 
 private theorem seq_catchFree (es : List RubyCore.Expr) : RubyCore.Proof.CatchFree [.seqK es] := by
-  intro k hk tag
+  intro k hk
   simp only [List.mem_singleton] at hk
-  subst k; simp
+  subst k; rfl
 
 private theorem seq_answer {m n : Machine} {Γc Γm : Env} {κc κm : Ctx} {Ic Im τ : Ty} {a : Answer}
     (h : MethodResultOk m Γc Γm τ κc κm Ic Im a n) :
@@ -47,12 +47,12 @@ theorem SemMethodSeq.runSpec {κ : Ctx} {Γ Γm Γm' : Env} {I τ : Ty}
     intro origin m hm v
     apply MethodRunSpec.step (by rfl) (show Interp.stepFn _ = .next
       (pushK [.seqK []] (evalFrom m e)) from rfl)
-    exact (he origin m hm).bind (seq_catchFree []) (fun _ _ hr => seq_answer hr)
+    exact (he origin m hm).bind hm.method.rootClean (seq_catchFree []) (fun _ _ hr => seq_answer hr)
   | @cons Γm Γm' Γm'' e e' es σ τ he ht ih =>
     intro origin m hm v
     apply MethodRunSpec.step (by rfl) (show Interp.stepFn _ = .next
       (pushK [.seqK (toRubyList (e' :: es))] (evalFrom m e)) from rfl)
-    apply (he origin m hm).bind (seq_catchFree _)
+    apply (he origin m hm).bind hm.method.rootClean (seq_catchFree _)
     intro a n hr
     cases a with
     | val v => exact (ih origin n (hm.after hr) v).rebase hr.1
@@ -70,7 +70,7 @@ theorem SemMethod.sequence {κ : Ctx} {Γ Γm Γm' : Env} {I τ : Ty}
     exact MethodRunSpec.step (by rfl) (show Interp.stepFn _ = .next _ from rfl) (he origin m hm)
   | cons he ht =>
     apply MethodRunSpec.step (by rfl) (show Interp.stepFn _ = .next _ from rfl)
-    apply (he origin m hm).bind (seq_catchFree _)
+    apply (he origin m hm).bind hm.method.rootClean (seq_catchFree _)
     intro a n hr
     cases a with
     | val v => exact (ht.runSpec origin n (hm.after hr) v).rebase hr.1

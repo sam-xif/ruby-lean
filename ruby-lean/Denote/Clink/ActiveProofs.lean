@@ -22,6 +22,10 @@ import Denote.Rules.Singleton.SingletonRulesActual
 import Denote.Rules.Singleton.SingletonRules
 import Denote.Rules.Instance.ScalarWrite
 import Denote.Judgment.FlowRules
+import Denote.Rules.Method.FlowDefine
+import Denote.Rules.Method.FlowCallRule
+import Denote.Rules.Method.BodyDefine
+import Denote.Rules.Method.BodyCallRule
 
 /-! Proof providers for the active rebuild profile: literals, locals, sequences
 and primitive sends, branches, guarded bare names, Array/Hash literals, definitions and ordinary/recursive calls.

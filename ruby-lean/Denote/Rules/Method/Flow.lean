@@ -77,7 +77,7 @@ theorem SemMethodFlow.vasgn {κ : Ctx} {Γ Γm Γm' : Env} {I τ : Ty}
   intro origin m hm hf
   apply MethodRunWith.step (answerPoint_evalFrom _ _) (show Interp.stepFn _ = .next
     (pushK [.asgnK .lvar x] (evalFrom m e)) from rfl)
-  apply (h origin m hm hf).bind (catchFree_asgnK x)
+  apply (h origin m hm hf).bind hm.method.rootClean (catchFree_asgnK x)
   intro a n hr
   cases a with
   | val v =>
@@ -87,7 +87,7 @@ theorem SemMethodFlow.vasgn {κ : Ctx} {Γ Γm Γm' : Env} {I τ : Ty}
       simpa only [envAfter, hi] using StateOk_setLocal hn.method hd hc hk
         (ρ := τ) (by cases τ <;> simp_all [stripAlias, isAliasTy])
         (by intro y σ hy; rw [hy] at ha; simp [isAliasTy] at ha)
-    have hw := Framed_setLocal n x v
+    have hw := Framed_setLocal n x v hn.method.headAlias
     have hcaller := ordinary_caller_state hn.originState hn.caller hn.uncaptured cb.main
       cb.callerTypes hn.fresh hn.framed hw hs
     have hp := hr.2 v rfl
@@ -97,7 +97,7 @@ theorem SemMethodFlow.vasgn {κ : Ctx} {Γ Γm Γm' : Env} {I τ : Ty}
     exact MethodRunWith.answer (fun _ _ c k h => h.reCtl c k)
       ⟨⟨hr.1.1.trans (.ordinary hw), denM_setLocal hd hc hd,
         fun _ hv => by cases hv; exact ⟨hcaller, hs⟩⟩,
-       fun _ hv => by cases hv; exact ⟨hp.1.write hn.method.frameInRange.2 x v callback hp.2,
+       fun _ hv => by cases hv; exact ⟨hp.1.write hn.method.frameInRange.2 hn.method.headAlias x v callback hp.2,
          fun h => (hp.2 h).setLocal x v⟩⟩
   | esc j =>
     apply MethodRunWith.step (next := deliverA (.esc j) n []) (by rfl) (by cases j <;> rfl)
