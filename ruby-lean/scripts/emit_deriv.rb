@@ -158,6 +158,7 @@ class Emitter
     @uses_flow = false
     @callback_sigs = {}
     @yield_signature = nil
+    @consts = {}       # top-level constant -> type
   end
 
   attr_reader :uses_flow
@@ -287,7 +288,21 @@ class Emitter
     [{ "rule" => "vasgn", "kind" => "lvar", "name" => name, "value" => d }, t]
   end
 
-  def n_const(n) = [{ "rule" => "constCls", "name" => n[1] }, { "tag" => "clsOf", "name" => n[1] }]
+  def n_const(n)
+    return [{ "rule" => "constRead" }, @consts[n[1]]] if @consts.key?(n[1])
+    [{ "rule" => "constCls", "name" => n[1] }, { "tag" => "clsOf", "name" => n[1] }]
+  end
+
+  # Mirrors `casgnTopB`: one fresh top-level constant with a non-class value type.
+  CONST_VAL_TAGS = %w[int float sym bool nilT arrayOf hashOf].freeze
+  def n_casgn(n)
+    raise Blocked, "a constant outside the top level" if @self_cls || @current_method
+    raise Blocked, "a second constant" unless @consts.empty?
+    d, t = go(n[2])
+    raise Blocked, "a constant of a possibly class-valued type" unless CONST_VAL_TAGS.include?(t["tag"])
+    @consts[n[1]] = t
+    [{ "rule" => "casgn", "value" => d }, t]
+  end
 
   # control
   def n_seq(n)
