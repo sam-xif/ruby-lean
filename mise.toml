@@ -1,0 +1,8 @@
+# Toolchain pins for everything except Lean, which elan pins from
+# ruby-lean/lean-toolchain. Optional: with mise installed, `mise install` gets
+# these; without it, `make prereqs` checks the same versions by hand.
+[tools]
+ruby = "4.0.5"        # the CRuby oracle the model is checked against
+python = "3.12"       # difftest (its packages are pinned by difftest/uv.lock)
+uv = "0.10"
+wasmtime = "48"       # only for `make wasm` (the ruby.wasm smoke test)

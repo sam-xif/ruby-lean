@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Run a Ruby program on the Lean model: desugar it to RubyCore JSON, then hand
+# that to the `rubycore` executable.
+#
+#   bin/ruby-lean prog.rb                 # run a file
+#   echo 'puts 1 + 2' | bin/ruby-lean     # or stdin
+#   bin/ruby-lean --trace prog.rb         # flags other than the file go to rubycore
+#                                         #   (--trace [N], --steps, --fuel N, --fragment, --sigs, ...)
+#
+# Build the pieces first with `make run`. $RUBY picks the interpreter that runs
+# the desugarer; $RUBYCORE overrides the model binary.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RUBY="${RUBY:-ruby}"
+RUBYCORE="${RUBYCORE:-$ROOT/ruby-lean/.lake/build/bin/rubycore}"
+
+[ -x "$RUBYCORE" ] || { echo "ruby-lean: no model binary at $RUBYCORE (run \`make run\`)" >&2; exit 2; }
+
+# The last argument is the program if it names a file; everything else is a
+# rubycore flag. With no file, export-json reads stdin.
+args=("$@")
+src=()
+if [ ${#args[@]} -gt 0 ] && [ -f "${args[${#args[@]}-1]}" ]; then
+  src=("${args[${#args[@]}-1]}")
+  unset 'args[${#args[@]}-1]'
+fi
+
+# Exit 3 from export-json means "outside the desugar fragment", with the reason
+# on stderr; pipefail carries it through.
+"$RUBY" "$ROOT/desugar/bin/export-json" ${src[@]+"${src[@]}"} \
+  | "$RUBYCORE" ${args[@]+"${args[@]}"}

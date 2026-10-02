@@ -63,9 +63,8 @@ the desugar harness, the strip chain, the sig reader, the emitter and the CRuby
 oracle; `rubycore.wasm` for the model; `validate-one.wasm` for `validateD`.
 
 ```sh
-(cd ../ruby-lean && wasm/build.sh && wasm/ruby/build.sh)   # once
-./build.sh                    # -> dist/ and dist.tar.gz
-./build.sh --serve            # ... and serve it on :8080
+make -C .. playground        # the three .wasm modules, then dist/ and dist.tar.gz
+make -C .. playground-serve  # ... and serve it on :8080
 ```
 
 `dist/` is a static site: drop it on GitHub Pages or open it from disk. Nothing

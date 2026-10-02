@@ -10,7 +10,7 @@ lists what is missing and how to install it).
 scripts/reproduce.sh                   # build + the typed ratchet gate
 scripts/reproduce.sh --with-difftest   # also: model vs CRuby over MRI's bootstraptest
                                        #   (harvests the corpus on first run: one sparse
-                                       #    clone of ruby/ruby into $RUBY_SRC or /tmp)
+                                       #    clone of ruby/ruby into $RUBY_SRC or ~/.cache)
 scripts/reproduce.sh --with-proofs     # also: the metatheory + `#print axioms`
 ```
 
@@ -76,13 +76,15 @@ see [the rebuild guide](../ruby-lean/Denote/Clink/README.md) for climbing a rule
 
 ## The model against CRuby
 
-The bootstraptest corpus is harvested, not vendored. One sparse clone, once:
+The bootstraptest corpus is harvested, not vendored. `make bootstraptest` makes
+one sparse clone of `ruby/ruby` at the pinned tag (`RUBY_REF`, default
+`v4.0.5`), harvests it once, and runs the comparison. By hand, that is:
 
 ```sh
-git clone --depth 1 --filter=blob:none --sparse https://github.com/ruby/ruby /tmp/ruby-src
+git clone --depth 1 --branch v4.0.5 --filter=blob:none --sparse https://github.com/ruby/ruby /tmp/ruby-src
 (cd /tmp/ruby-src && git sparse-checkout set bootstraptest)
 desugar/bin/harvest_bootstraptest /tmp/ruby-src/bootstraptest
-cd difftest && uv sync && uv run python -m difftest run --tier 0 --sut lean
+cd difftest && uv sync && uv run difftest run --tier 0 --sut lean
 ```
 
 On v0.01 this prints

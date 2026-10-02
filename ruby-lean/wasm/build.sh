@@ -42,7 +42,17 @@ LEAN_VERSION="$(sed 's|.*:||' "$PKG/lean-toolchain")"          # e.g. v4.32.2
 TOOLCHAIN="$HOME/.elan/toolchains/leanprover--lean4---${LEAN_VERSION//./---}"
 # elan spells the directory with the version dotted, not dashed:
 TOOLCHAIN="$HOME/.elan/toolchains/leanprover--lean4---$LEAN_VERSION"
-WASI_SDK="${WASI_SDK:-$HOME/wasm-tools/wasi-sdk-34.0-arm64-macos}"
+# Pinned, and fetched into the cache like the Lean sources below. Set
+# $WASI_SDK to use an existing install instead.
+WASI_SDK_VERSION=34.0
+case "$(uname -s)-$(uname -m)" in
+  Darwin-arm64)  WASI_SDK_HOST=arm64-macos ;;
+  Darwin-x86_64) WASI_SDK_HOST=x86_64-macos ;;
+  Linux-aarch64) WASI_SDK_HOST=arm64-linux ;;
+  Linux-x86_64)  WASI_SDK_HOST=x86_64-linux ;;
+  *) echo "no wasi-sdk build for $(uname -s)-$(uname -m)"; exit 1 ;;
+esac
+WASI_SDK="${WASI_SDK:-$CACHE/wasi-sdk-$WASI_SDK_VERSION-$WASI_SDK_HOST}"
 
 LEAN_SRC="$CACHE/lean4-${LEAN_VERSION#v}/src"
 B="$CACHE/build"
@@ -69,6 +79,13 @@ STACK_SIZE=8388608
 say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
 
 # ── 0. preconditions ─────────────────────────────────────────────────────────
+if [ ! -x "$CXX" ] && [ "$WASI_SDK" = "$CACHE/wasi-sdk-$WASI_SDK_VERSION-$WASI_SDK_HOST" ]; then
+  say "fetching wasi-sdk $WASI_SDK_VERSION ($WASI_SDK_HOST; ~110 MB)"
+  mkdir -p "$CACHE"
+  curl -fsSL -o "$CACHE/wasi-sdk.tar.gz" \
+    "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION%%.*}/wasi-sdk-$WASI_SDK_VERSION-$WASI_SDK_HOST.tar.gz"
+  tar xzf "$CACHE/wasi-sdk.tar.gz" -C "$CACHE"
+fi
 [ -x "$CXX" ] || { echo "no wasi-sdk at $WASI_SDK (set \$WASI_SDK)"; exit 1; }
 [ -d "$TOOLCHAIN" ] || { echo "no Lean toolchain at $TOOLCHAIN"; exit 1; }
 [ -d "$PKG/.lake/build/ir" ] || { echo "run \`lake build\` in $PKG first"; exit 1; }
@@ -187,20 +204,32 @@ link() {
     "$(echo "$(stat -f%z "$OUT/$target.wasm" 2>/dev/null || stat -c%s "$OUT/$target.wasm") / 1048576" | bc -l)"
 }
 
+# The modules an executable links: exactly the objects in Lake's own native
+# link (`.lake/build/bin/<exe>.rsp`), mapped to their wasm objects. A glob over
+# a library is not the same set: `Ratchet/` holds modules that no executable
+# imports, and two of them (`Ratchet.Check`, `Ratchet.Check.Raw`) define the
+# same symbols, so linking both fails.
+closure() {  # closure <exe>
+  local rsp="$PKG/.lake/build/bin/$1.rsp"
+  [ -s "$rsp" ] || { echo "no $rsp -- run \`lake build $1\` first" >&2; exit 1; }
+  tr ' ' '\n' < "$rsp" | sed -n 's|^"'"$PKG"'/.lake/build/ir/\(.*\)\.c\.o\.export"$|\1|p' \
+    | tr / . | sed "s|^|$B/projobj/|; s|\$|.o|"
+}
+
 TARGETS="${*:-}"
 want() { [ -z "$TARGETS" ] || [[ " $TARGETS " == *" $1 "* ]]; }
 
 # `validate-one` is the trusted one: `validateD`, the Bool the safety theorem is
 # stated about. Its closure is Ratchet/ and the vendored Json/ and nothing else.
 if want validate-one; then
-  link validate-one "$B"/projobj/MainValidateOne.o "$B"/projobj/Json.o \
-       "$B"/projobj/Json.*.o "$B"/projobj/Ratchet.*.o "$B"/rt/wasi_stubs.o
+  # shellcheck disable=SC2046
+  link validate-one $(closure validate-one) "$B"/rt/wasi_stubs.o
 fi
 
 # `rubycore` is the model: the stepper's `--trace`, and the static queries.
 if want rubycore; then
-  link rubycore "$B"/projobj/Main.o "$B"/projobj/Json.o "$B"/projobj/Json.*.o \
-       "$B"/projobj/RubyCore.*.o "$B"/rt/wasi_stubs.o
+  # shellcheck disable=SC2046
+  link rubycore $(closure rubycore) "$B"/rt/wasi_stubs.o
 fi
 
 say "done -- artifacts in wasm/out/"

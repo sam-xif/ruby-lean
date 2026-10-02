@@ -5,8 +5,8 @@
 #   scripts/reproduce.sh --with-difftest   # also replay the tier-0 bootstraptest corpus
 #   scripts/reproduce.sh --with-proofs     # also build the metatheory and check axioms
 #
-# Every step is a command you can run by hand; this script only puts them in
-# order and stops at the first one that fails. Nothing here is trusted by the
+# Every step is a `make` target you can run by hand (`make help` lists them);
+# this script only puts them in order and stops at the first one that fails. Nothing here is trusted by the
 # result — the only trusted artifact in the repo is `validateD`'s Bool, produced
 # by step 3 (see README §What you have to trust).
 set -euo pipefail
@@ -26,36 +26,26 @@ done
 step() { echo; echo "── $* ──"; }
 
 step "0. prerequisites"
-"$ROOT/scripts/check-prereqs.sh"
+make -C "$ROOT" prereqs
 
 step "1-2. build the Lean project (ruby-lean/ — the rubycore SUT, and validateD with its proofs)"
 # One Lake package (`ruby-lean/`): the model (RubyCore/), the checker (Ratchet/), the
 # bridge to the real semantics (Semantics/) and the denotation that joins them
 # (Denote/) are four libraries in it, and `lake build` builds all of them.
-( cd "$ROOT/ruby-lean" && lake build )
+make -C "$ROOT" lean
 
 step "3. the typed ratchet gate (the headline numbers)"
 # Sorbet -> strip -> desugar -> emit -> validateD, over every corpus rung, plus
 # the negative controls, the CRuby/model agreement replay and the safety
 # cross-check. Prints GREEN or RED on its last line.
-( cd "$ROOT/ruby-lean" && ./scripts/run_typed_ratchet.sh )
+make -C "$ROOT" gate
 
 if [[ $WITH_DIFFTEST == 1 ]]; then
   step "4. differential test: the Lean model vs CRuby over MRI's bootstraptest"
   # The corpus is *harvested*, not vendored: MRI's bootstraptest suite is not part
-  # of an installed Ruby and is not ours to ship. One sparse clone gets it.
-  CORPUS="$ROOT/desugar/corpus/bootstraptest"
-  if [[ ! -d "$CORPUS" ]]; then
-    RUBY_SRC="${RUBY_SRC:-/tmp/ruby-src}"
-    echo "no bootstraptest corpus yet — harvesting it into ${CORPUS}"
-    if [[ ! -d "$RUBY_SRC/bootstraptest" ]]; then
-      echo "  cloning ruby/ruby (sparse, blobless) into ${RUBY_SRC}"
-      git clone --depth 1 --filter=blob:none --sparse https://github.com/ruby/ruby "$RUBY_SRC"
-      ( cd "$RUBY_SRC" && git sparse-checkout set bootstraptest )
-    fi
-    "$ROOT/desugar/bin/harvest_bootstraptest" "$RUBY_SRC/bootstraptest"
-  fi
-  ( cd "$ROOT/difftest" && uv sync --quiet && uv run python -m difftest run --tier 0 --sut lean )
+  # of an installed Ruby and is not ours to ship. The first run makes one sparse
+  # clone of ruby/ruby at the pinned tag (RUBY_REF, RUBY_SRC override it).
+  make -C "$ROOT" bootstraptest
 fi
 
 if [[ $WITH_PROOFS == 1 ]]; then
@@ -67,7 +57,7 @@ if [[ $WITH_PROOFS == 1 ]]; then
   # proofs, so this step exits non-zero. It is reported, not hidden — but it is
   # also not a failure of anything above it: the ratchet's own proofs and
   # `validateD_safe_boot` are on the default target and built in step 2.
-  ( cd "$ROOT/ruby-lean" && ./scripts/check-proofs.sh ) || {
+  make -C "$ROOT" proofs || {
     echo
     echo "step 5 FAILED — expected at 0.01, see README §Limits."
     echo "Steps 1-4 above are the reproduction; this one is a known-red target."
