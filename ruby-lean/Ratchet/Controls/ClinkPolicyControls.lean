@@ -399,6 +399,19 @@ private def nilArr : Deriv := .arrayLit [.intLit 1, .nilLit] (.nilable .int)
 #guard !validateD (.send (some (.array [.int 1])) "uniq" [.int 1] none)
   (.prim (.arrayLit [.intLit 1] .int) "uniq" [.intLit 1] (.arrayOf .int) (.arrayOf .int))
 
+-- Primitive rows Hash#fetch/1, /2 (203).
+private def hA : Ratchet.Expr := .hash [(.str "a", .int 1)]
+private def hAH : Deriv := .hashLit [.strLit "a"] [.intLit 1] (.cls "String") .int
+private def hTy : Ty := .hashOf (.cls "String") .int
+#guard validateD (.send (some (.send (some hA) "fetch" [.str "a"] none)) "+"
+    [.send (some hA) "fetch" [.str "b", .int 0] none] none)
+  (.prim (.prim hAH "fetch" [.strLit "a"] hTy .int) "+"
+    [.prim hAH "fetch" [.strLit "b", .intLit 0] hTy .int] .int .int)
+#guard !validateD (.send (some hA) "fetch" [.str "b", .str "x"] none)
+  (.prim hAH "fetch" [.strLit "b", .strLit "x"] hTy .int)
+#guard !validateD (.send (some hA) "fetch" [.str "b", .str "x"] none)
+  (.prim hAH "fetch" [.strLit "b", .strLit "x"] hTy (.cls "String"))
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

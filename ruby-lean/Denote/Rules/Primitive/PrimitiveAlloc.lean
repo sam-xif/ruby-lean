@@ -29,6 +29,15 @@ theorem stepSpec_nameError {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {τ : Ty
     Builtins.allocStrEnc, Heap.alloc, errorObjectMachine, errorMessageMachine, pushHeap,
     strObj, deliverA, Answer.ctl, hk, Boot.nameErrorId] using h
 
+theorem stepSpec_keyError {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {τ : Ty}
+    (hm : StateOk κ Γ I m) (hk : m.kont = []) (msg : String) :
+    StepSpec m Γ τ (.next (Interp.raiseErr m Boot.keyErrorId msg)) κ I := by
+  have h := errorObject_answer (τ := τ) hm (cls := Boot.keyErrorId)
+    (by simp [primitiveErrorClasses]) msg (.ref m.heap.objs.size) 0
+  simpa [StepSpec, Interp.raiseErr, Builtins.allocExc, Builtins.allocStr,
+    Builtins.allocStrEnc, Heap.alloc, errorObjectMachine, errorMessageMachine, pushHeap,
+    strObj, deliverA, Answer.ctl, hk, Boot.keyErrorId] using h
+
 theorem stepSpec_zeroDiv {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {τ : Ty}
     (hm : StateOk κ Γ I m) (hk : m.kont = []) (msg : String) :
     StepSpec m Γ τ (.next (Interp.raiseErr m Boot.zeroDivisionErrorId msg)) κ I :=

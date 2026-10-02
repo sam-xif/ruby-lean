@@ -95,7 +95,7 @@ namespace Ratchet
 /-! ## §1 The primitive table
 
 The rules for sends this fragment can type, as an inductive (`DPrim`) with a decision
-procedure (`dprim?`) and a soundness lemma between them. Twenty-six rows.
+procedure (`dprim?`) and a soundness lemma between them. Twenty-eight rows.
 
 The table grows with proved builtin obligations. `Judge.lean`'s `PrimSig` has ~90 rows and `Denote/`'s
 `Sem.Judge.prim` — the obligation that every one of them is true of CRuby — is one of the 35
@@ -163,6 +163,11 @@ inductive DPrim : Ty → String → List Ty → Ty → Prop
       DPrim (.arrayOf (.nilable τ)) "compact" [] (.arrayOf τ)
   /-- `Array#uniq` allocates a subset of the receiver's elements. -/
   | arrayUniq {τ : Ty} : FirstOrder τ = true → DPrim (.arrayOf τ) "uniq" [] (.arrayOf τ)
+  /-- `Hash#fetch` answers a stored value or raises KeyError (outside the family). -/
+  | hashFetch {σ τ α : Ty} : FirstOrder (.hashOf σ τ) = true → DPrim (.hashOf σ τ) "fetch" [α] τ
+  /-- `Hash#fetch` with a default of the value type answers a stored value or the default. -/
+  | hashFetchDefault {σ τ α : Ty} : FirstOrder α = true → FirstOrder (.hashOf σ τ) = true →
+      DPrim (.hashOf σ τ) "fetch" [α, τ] τ
 
 /-- The decidable counterpart. A miss is `none`, never a guess. -/
 def dprim? : Ty → String → List Ty → Option Ty
@@ -193,6 +198,9 @@ def dprim? : Ty → String → List Ty → Option Ty
   | .arrayOf (.nilable τ), "compact", [] =>
     if FirstOrder (.nilable τ) then some (.arrayOf τ) else none
   | .arrayOf τ, "uniq", [] => if FirstOrder τ then some (.arrayOf τ) else none
+  | .hashOf σ τ, "fetch", [_] => if FirstOrder (.hashOf σ τ) then some τ else none
+  | .hashOf σ τ, "fetch", [α, δ] =>
+    if FirstOrder α && FirstOrder (.hashOf σ τ) && decide (δ = τ) then some τ else none
   | _, _, _ => none
 
 theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
@@ -236,6 +244,15 @@ theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
     · cases h
   · split at h
     · rw [Option.some.injEq] at h; subst h; exact .arrayUniq (by assumption)
+    · cases h
+  · split at h
+    · rw [Option.some.injEq] at h; subst h; exact .hashFetch (by assumption)
+    · cases h
+  · split at h
+    · rename_i hc
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
+      obtain ⟨⟨ha, hf⟩, rfl⟩ := hc
+      rw [Option.some.injEq] at h; subst h; exact .hashFetchDefault ha hf
     · cases h
   · exact absurd h (by simp)
 

@@ -24,7 +24,7 @@ def primitiveMethods : List (ObjId × String × String) :=
    (Boot.symbolId, "to_s", "Symbol#to_s"), (Boot.symbolId, "==", "Symbol#=="),
    (Boot.arrayId, "length", "Array#length"), (Boot.stringId, "start_with?", "String#start_with?"),
    (Boot.hashId, "key?", "Hash#key?"), (Boot.arrayId, "compact", "Array#compact"),
-   (Boot.arrayId, "uniq", "Array#uniq")]
+   (Boot.arrayId, "uniq", "Array#uniq"), (Boot.hashId, "fetch", "Hash#fetch")]
 
 /-- Native lookup facts include Proc calls, Array iterators and Symbol conversion.
 Membership is not a pure-builtin signature; primitiveMethods alone supplies those rows. -/
@@ -88,7 +88,8 @@ theorem each_lookup {h : Heap} {free : String → Bool}
     simpa only [hl, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
       Option.isNone_iff_eq_none, and_assoc] using hp
 
-def primitiveErrorClasses : List ObjId := [Boot.zeroDivisionErrorId, Boot.nameErrorId, Boot.frozenErrorId]
+def primitiveErrorClasses : List ObjId :=
+  [Boot.zeroDivisionErrorId, Boot.nameErrorId, Boot.frozenErrorId, Boot.keyErrorId]
 
 def primitiveErrorB (h : Heap) (cls : ObjId) : Bool :=
   (ancestors h cls).contains Boot.basicObjectId &&

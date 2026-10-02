@@ -37,6 +37,8 @@ theorem primitive_framed {σ τ : Ty} {name : String} {tys : List Ty} (hp : DPri
   | hashIndex hfo => exact hf.firstOrder (.hashOf _ _) hfo _ hv
   | arrayCompact hfo => exact hf.firstOrder (.arrayOf (.nilable _)) hfo _ hv
   | arrayUniq hfo => exact hf.firstOrder (.arrayOf _) hfo _ hv
+  | hashFetch hfo => exact hf.firstOrder (.hashOf _ _) hfo _ hv
+  | hashFetchDefault _ hfo => exact hf.firstOrder (.hashOf _ _) hfo _ hv
   | hashKey hfo => exact hf.firstOrder (.hashOf _ _) hfo _ hv
   | _ =>
     simp only [denM] at hv ⊢
@@ -96,6 +98,65 @@ private theorem recv_one {κ κ' : Ctx} {I I' : Ty} {site : SendSite} {Γ Γ' : 
       (show Interp.stepFn _ = .next (deliverA (.esc j) n []) from by cases j <;> rfl)
     exact RunSpec.answer ⟨hn.1, hn.2.1, fun _ hv => by cases hv⟩
 
+theorem recv_two_step {site : SendSite} (m : Machine) (v : Value) (name : String)
+    (e₁ e₂ : Ratchet.Expr) (hp : plainArgB e₁ = true) :
+    Interp.stepFn (deliverA (.val v) m [.recvK name [toRuby e₁, toRuby e₂] .none site]) =
+      .next (pushK [.argsK v site name [] [toRuby e₂] .none] (evalFrom m e₁)) := by
+  cases e₁ <;> cases hp <;> rfl
+
+theorem args_last_step {site : SendSite} (m : Machine) (recv v : Value) (name : String)
+    (e : Ratchet.Expr) (hp : plainArgB e = true) :
+    Interp.stepFn (deliverA (.val v) m [.argsK recv site name [] [toRuby e] .none]) =
+      .next (pushK [.argsK recv site name [v] [] .none] (evalFrom m e)) := by
+  cases e <;> cases hp <;> rfl
+
+/-- Two-argument rows retain their first argument, which must be first-order. -/
+theorem dprim_first_firstOrder {σ α β τ : Ty} {name : String} (hp : DPrim σ name [α, β] τ) :
+    FirstOrder α = true := by
+  cases hp; assumption
+
+private theorem recv_two {κ κ₁ κ' : Ctx} {I I₁ I' : Ty} {site : SendSite} {Γ Γ₁ Γ' : Env}
+    {m : Machine} {recv : Value}
+    {e₁ e₂ : Ratchet.Expr} {σ α β τ : Ty} {name : String}
+    (hp : DPrim σ name [α, β] τ) (he₁ : SemSafeCtxA κ Γ I e₁ α κ₁ Γ₁ I₁)
+    (he₂ : SemSafeCtxA κ₁ Γ₁ I₁ e₂ β κ' Γ' I')
+    (hp₁ : plainArgB e₁ = true) (hp₂ : plainArgB e₂ = true)
+    (hm : StateOk κ Γ I m) (hr : denM σ m recv)
+    (hfree : nameFreeN κ' name = true)
+    (hstring : σ = .cls "String" →
+      isANoOk κ'.wholeCls (["String", "Comparable"] ++ rootAncestors) = true) :
+    RunSpec m (deliverA (.val recv) m [.recvK name [toRuby e₁, toRuby e₂] .none site])
+      Γ' τ κ' I' := by
+  apply RunSpec.step (by rfl) (recv_two_step m recv name e₁ e₂ hp₁)
+  apply (he₁ m hm).bindSpec hm.rootClean (prim_catchFree _ rfl)
+  intro a n hn
+  cases a with
+  | val v₁ =>
+    have hrecv := primitive_framed hp hn.1 hr
+    have hn' := hn.2.2 v₁ rfl
+    apply RunSpec.rebase (middle := n) ?_ hn.1
+    apply RunSpec.step (by rfl) (args_last_step n recv v₁ name e₂ hp₂)
+    apply (he₂ n hn').bindSpec hn'.rootClean (prim_catchFree _ rfl)
+    intro b q hq
+    cases b with
+    | val v₂ =>
+      have hrecv' := primitive_framed hp hq.1 hrecv
+      have hv₁ := hq.1.firstOrder α (dprim_first_firstOrder hp) v₁ hn.2.1
+      have h := primitive_frame hp (StateOk_deliverA (hq.2.2 v₂ rfl)) rfl
+        (m := deliverA (.val v₂) q []) (denM_deliverA.mpr hrecv')
+        (.cons (denM_deliverA.mpr hv₁) (.cons (denM_deliverA.mpr hq.2.1) .nil))
+        (start := deliverA (.val v₂) q [.argsK recv site name [v₁] [] .none])
+        (by rfl) (by rfl) hfree hstring
+      exact h.rebase (hq.1.trans (Framed_reCtl _ _ _))
+    | esc j =>
+      apply RunSpec.step (by rfl)
+        (show Interp.stepFn _ = .next (deliverA (.esc j) q []) from by cases j <;> rfl)
+      exact RunSpec.answer ⟨hq.1, hq.2.1, fun _ hv => by cases hv⟩
+  | esc j =>
+    apply RunSpec.step (by rfl)
+      (show Interp.stepFn _ = .next (deliverA (.esc j) n []) from by cases j <;> rfl)
+    exact RunSpec.answer ⟨hn.1, hn.2.1, fun _ hv => by cases hv⟩
+
 private theorem recv_spec {κ κ' : Ctx} {I I' : Ty} {site : SendSite} {Γ Γ' : Env}
     {m : Machine} {recv : Value}
     {es : List Ratchet.Expr} {σ τ : Ty} {tys : List Ty} {name : String}
@@ -105,9 +166,9 @@ private theorem recv_spec {κ κ' : Ctx} {I I' : Ty} {site : SendSite} {Γ Γ' :
     (hstring : σ = .cls "String" →
       isANoOk κ'.wholeCls (["String", "Comparable"] ++ rootAncestors) = true) :
     RunSpec m (deliverA (.val recv) m [.recvK name (toRubyList es) .none site]) Γ' τ κ' I' := by
-  have harity : tys = [] ∨ ∃ α, tys = [α] := by
+  have harity : tys = [] ∨ (∃ α, tys = [α]) ∨ ∃ α β, tys = [α, β] := by
     cases hp <;> simp
-  rcases harity with hnil | ⟨α, hone⟩
+  rcases harity with hnil | ⟨α, hone⟩ | ⟨α, β, htwo⟩
   · subst hnil
     cases ha
     have h := primitive_frame hp (StateOk_deliverA hm) rfl
@@ -119,6 +180,13 @@ private theorem recv_spec {κ κ' : Ctx} {I I' : Ty} {site : SendSite} {Γ Γ' :
     | cons he ht hplain =>
       cases ht
       exact recv_one hp he hplain hm hr hfree hstring
+  · subst htwo
+    cases ha with
+    | cons he ht hplain =>
+      cases ht with
+      | cons he₂ ht₂ hplain₂ =>
+        cases ht₂
+        exact recv_two hp he he₂ hplain hplain₂ hm hr hfree hstring
 
 theorem SemSafeCtxA.prim {κ κ₁ κ₂ : Ctx} {Γ Γ₁ Γ₂ : Env} {I I₁ I₂ : Ty}
     {recv : Ratchet.Expr} {name : String}
