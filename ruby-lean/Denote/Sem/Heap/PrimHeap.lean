@@ -27,7 +27,7 @@ def primitiveMethods : List (ObjId × String × String) :=
    (Boot.arrayId, "uniq", "Array#uniq"), (Boot.hashId, "fetch", "Hash#fetch"),
    (Boot.stringId, "===", "String#=="),
    (Boot.stringId, "split", "String#split"), (Boot.nilClassId, "nil?", "NilClass#nil?"),
-   (Boot.stringId, "match?", "String#match?")]
+   (Boot.stringId, "match?", "String#match?"), (Boot.stringId, "nil?", "Object#nil?")]
 
 /-- Native lookup facts include Proc calls, Array iterators and Symbol conversion.
 Membership is not a pure-builtin signature; primitiveMethods alone supplies those rows. -/

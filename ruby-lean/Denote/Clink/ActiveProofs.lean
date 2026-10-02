@@ -8,6 +8,7 @@ import Denote.Rules.Expr.While
 import Denote.Rules.Expr.ConstAssign
 import Denote.Rules.Expr.Regexp
 import Denote.Rules.Method.MethodRest
+import Denote.Rules.Expr.BranchNilQueryStr
 import Denote.Rules.Expr.BranchMissing
 import Denote.Rules.Expr.BareName
 import Denote.Rules.Expr.Array
