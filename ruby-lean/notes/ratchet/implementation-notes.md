@@ -13566,3 +13566,13 @@ compact is typed only at `arrayOf (nilable τ)` → `arrayOf τ` (no nonNilTy so
 lemma exists). uniq keeps `arrayOf τ`; its complex-equality gate is `.unsupported`.
 Both allocate via array_alloc_result, moved to ArrayCompact.lean to break the
 Array → Primitive import cycle. Climbs 209.
+
+### 2026-10-01 — Hash#fetch rows and two-argument primitives (86/261)
+
+KeyError joins primitiveErrorClasses (raiseErr allocates it directly, like NameError;
+boot ancestry is checked by primitiveErrorsB). fetch/1 answers τ or raises KeyError;
+fetch/2 requires the default at τ. Primitive and BoundedPrimitive gain recv_two: the
+first argument is retained across the second's evaluation via Framed.firstOrder, so
+two-argument rows must carry FirstOrder of their first argument type
+(dprim_first_firstOrder). BodyPrimitive (inactive; blocked on Closure.Entry) still
+handles arity ≤ 1 only. Climbs 203.
