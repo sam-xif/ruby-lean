@@ -13781,3 +13781,8 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   body sees `rest : Array[σ]`. The surplus Array is allocated before the frame is pushed
   (`array_alloc_result`), the frame predeclares `rest` as nil (reusing `optOmitted_envOk`),
   and the binding phase stores it via `StateOk_setLocal` before the body runs.
+
+## ifNilQueryStr (2026-10-02, 117/117, 124/261)
+- `if x.nil?` on a nilable String local, via a new primitive row String→Object#nil?. The
+  native answer is false, or unsupported at a byte-string receiver (`str_nil_run`), so the
+  condition lemma uses `RunWith.unsupported`. The checker reuses `Deriv.ifNilQuery`.

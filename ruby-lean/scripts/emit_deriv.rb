@@ -360,12 +360,13 @@ class Emitter
       dt, tt = go(n[2])
       return [{ "rule" => "ifNilQueryNil", "name" => x, "then" => dt }, tt]
     end
-    return nil unless @env[x] == nilable(INT) && !n[3].nil?
+    elem = [INT, STR].find { |t| @env[x] == nilable(t) }
+    return nil unless elem && !n[3].nil?
     before = @env.dup
     @env = before.merge(x => NIL_T)
     dt, tt = go(n[2])
     then_env = @env
-    @env = before.merge(x => INT)
+    @env = before.merge(x => elem)
     de, te = go(n[3])
     else_env = @env
     @env = before

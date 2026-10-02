@@ -671,6 +671,19 @@ private def restH (args : List Deriv) : Deriv :=
 #guard !validateD (restP [.int 1, .str "x"]) (restH [.intLit 1, .strLit "x"])
 #guard !validateD (restP []) (restH [])
 
+-- Active ifNilQueryStr: `if x.nil?` narrows a nilable String local.
+private def nqsP : Ratchet.Expr := .seq [
+  .vasgn .lvar "x" (.send (some (.array [.str "a"])) "[]" [.int 0] none),
+  .if' (.send (some (.var .lvar "x")) "nil?" [] none) (.int 0)
+    (some (.send (some (.var .lvar "x")) "length" [] none))]
+private def nqsH (elseD : Deriv) : Deriv := .seq [
+  .vasgn .lvar "x" (.prim (.arrayLit [.strLit "a"] (.cls "String")) "[]" [.intLit 0]
+    (.arrayOf (.cls "String")) (.nilable (.cls "String"))),
+  .ifNilQuery "x" (.intLit 0) elseD .int]
+#guard validateD nqsP (nqsH (.prim (.var .lvar "x") "length" [] (.cls "String") .int))
+#guard !validateDWith (fun q => clinkEnabled q && q != "ifNilQueryStr") nqsP
+  (nqsH (.prim (.var .lvar "x") "length" [] (.cls "String") .int))
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),
