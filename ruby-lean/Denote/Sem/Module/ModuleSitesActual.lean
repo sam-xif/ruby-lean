@@ -42,6 +42,8 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
     rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hd hk, method_old hc.chains hs hd hkl]
   have hls : lookup h₁ (.ref k) singletonHookName = lookup m.heap (.ref k) singletonHookName := by
     rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hd hk, method_old hc.chains hs hd hkl]
+  have hli : lookup h₁ (.ref k) "inherited" = lookup m.heap (.ref k) "inherited" := by
+    rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hd hk, method_old hc.chains hs hd hkl]
   refine ⟨named_old htop hc.chains.boot.2.2.2.2 hn site.named, ?_, ?_,
     instance_constants_old site hc hs htop ho hn hmain hreach, ?_,
     meta_old site.metaclass hc.chains hs hd hk, ?_, ?_, ?_, ?_, site.afterBuiltins,
@@ -55,7 +57,9 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
          by rw [metadata_bind_old hd hel (·.attached) (fun _ => rfl)]; exact ha,
          by rw [(fields_old hd hel).2.2.2]; exact hf⟩,
     by simpa only [singletonDefHookQuietB, hls] using site.singletonHook,
-    by rw [classOf_old hd hk, classOf_old hd site.mainLive]; exact site.metaNotMain⟩
+    by rw [classOf_old hd hk, classOf_old hd site.mainLive]; exact site.metaNotMain,
+    by simpa only [inheritedHookQuietB, hli, metadata_any_old hd hk (·.isModule) (fun _ => rfl)]
+      using site.inheritedHook⟩
   · simpa only [classFront_old hd hk] using site.front
   · simpa only [definitionHookQuietB, hl] using site.hook
   · intro n hn owner md hm
@@ -102,7 +106,8 @@ theorem instanceSite {κ : Ctx} (hc : ClassReady m.heap) (hs : Saturated m.heap)
       (by rw [method_eigen hc.chains hs hd]
           exact singletonHooksQuietB_methodOn hsq hc.chains (by simp [singletonHookSites])),
     by rw [classOf_module hd, classOf_old hd hml]
-       exact (Nat.ne_of_lt (Nat.lt_succ_of_lt (ClsGrow.classOf_lt hc.chains hml))).symm⟩
+       exact (Nat.ne_of_lt (Nat.lt_succ_of_lt (ClsGrow.classOf_lt hc.chains hml))).symm,
+    by simp [inheritedHookQuietB, Heap.classPayload?, get_module hd, namedObject, modPayload]⟩
   · simp only [classFrontB, Heap.classPayload?, get_module hd, namedObject, modPayload]; rfl
   · intro n hn owner md hm
     rw [method_module hc.chains hd] at hm

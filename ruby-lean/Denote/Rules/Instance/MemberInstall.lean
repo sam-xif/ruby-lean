@@ -37,6 +37,10 @@ theorem StateOk_install_member {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c :
       intro he
       have : classHookSelectors.contains d.name = true := by rw [← he]; decide
       rw [hhook] at this; cases this)
+    (by
+      intro he
+      have : classHookSelectors.contains d.name = true := by rw [← he]; decide
+      rw [hhook] at this; cases this)
     ((hm.nested.publish_member hplain).methodWrite)
     ((hm.declCls.methodWrite hnew hmiss).publish_member hc (declLookupFrameB_sound htab))
     (hm.ownNames.publish_instance hc

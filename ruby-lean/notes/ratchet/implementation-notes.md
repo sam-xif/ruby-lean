@@ -13665,3 +13665,13 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   to Object and need subclass siblings. Lemmas pinned to Object write `Boot.objectId`
   explicitly so the threading script leaves them alone.
 - Emitter: block/method/class bodies now self-wrap flow rules (`go_ordinary`).
+
+## Class sites keep a native `inherited` (2026-10-02)
+- `InstanceSiteAt.inheritedHook`: a class site's `inherited` lookup is native Class#inherited
+  (modules vacuous). Subclass entry sends `inherited` to the parent, so a user hook would run.
+- Method writes carry `"inherited" ≠ name`: member/singleton defs get it from
+  classHookSelectors; top-level defs now reserve `inherited` in `topDeclClassesB`
+  (ClassHookControls records the rejected top-level `def inherited`).
+- `ParentFacts` bundles parent facts (Object from main; a declared class from its site);
+  `stateAt`/`instanceSiteAt` are the parent-generic entry proofs, `headerSub` the subclass
+  header state (Denote/Sem/Subclass/SubclassActual*.lean).

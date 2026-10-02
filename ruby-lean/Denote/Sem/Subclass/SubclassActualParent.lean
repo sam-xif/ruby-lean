@@ -21,7 +21,8 @@ theorem instanceConstResolve_class {h : Heap} {k : ObjId} (hf : classFrontB h k 
 variable {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c : Cls} {p e : ObjId}
 
 theorem ParentFacts.of_declared (hm : StateOk κ Γ I m) (hc : c ∈ κ.classes)
-    (hp : classNamed? m.heap c.name = some p) (he : (m.heap.get p).eigen = some e) :
+    (hp : classNamed? m.heap c.name = some p) (he : (m.heap.get p).eigen = some e)
+    (hkind : c.isModule = false) :
     ParentFacts κ m.heap p e := by
   have site := hm.classSites.at_class hc hp
   have hclass := hm.declCls c hc p hp
@@ -31,7 +32,14 @@ theorem ParentFacts.of_declared (hm : StateOk κ Γ I m) (hc : c ∈ κ.classes)
   rw [he] at he'; cases he'
   have hco : classOf m.heap (.ref p) = e := by simp only [classOf, he]
   refine ⟨site.live, hlive, he, site.metaclass, site.hook, site.names, hco ▸ site.classNames,
-    hco ▸ site.metaConstants, site.singletonHook, fun base ch hbase => ⟨?_, hsep base ch hbase⟩⟩
+    hco ▸ site.metaConstants, site.singletonHook, fun base ch hbase => ⟨?_, hsep base ch hbase⟩, ?_⟩
+  rotate_left
+  · have hi := site.inheritedHook
+    have hm := hclass.2.2.2.1
+    rw [hkind] at hm
+    have hmod : (m.heap.classPayload? p).any (·.isModule) = false := by
+      cases hq : m.heap.classPayload? p <;> simp_all
+    simpa only [inheritedHookQuietB, hmod, Bool.false_or] using hi
   intro heq
   have hlt := Nat.lt_of_le_of_lt (builtinBase_bound hbase).1
     (Nat.lt_trans (by decide : Boot.procId < Boot.yielderId) site.afterBuiltins)
@@ -89,7 +97,7 @@ theorem headerSub {name : String} {body : RubyCore.Expr} (hm : StateOk κ Γ I m
   have heq := Option.some.inj (hp.symm.trans hk)
   subst k
   have site := hm.classSites.at_class hc hp
-  have hs := stateAt (body := body) hm hr hf ha ht hq hn hne (ParentFacts.of_declared hm hc hp he)
+  have hs := stateAt (body := body) hm hr hf ha ht hq hn hne (ParentFacts.of_declared hm hc hp he hkind)
     (parent_constants hm hr hc hp hn (hreach c.name (List.mem_map_of_mem hc) p site) hkind) hreach
   exact StateOk_publish_empty_class (c := subclassHeader name c.name) hs rfl rfl rfl hplain
     (declared_headerSub (κ := κ) hm hr hc hp hpa he hn hne hquiet hnew hframe rfl)

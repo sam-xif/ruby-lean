@@ -39,7 +39,7 @@ theorem StateOk_install_singleton {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (ClassesOk_publish_singleton hm.classes hm.classSites hc ready.named he
       (fun old ho _ _ _ => singletonFreshB_sound hf old ho) rfl rfl rfl
       (definedSingleton_code ready _ _))
-    (hm.classSites.publish_singleton hc hquiet hsh)
+    (hm.classSites.publish_singleton hc hquiet hsh (fun h => hnames.2.1 h.symm))
     (DefsOk_methodWrite_other hm.defs hobj)
     ((hm.nested.publish_singleton hplain).methodWrite)
     ((hm.declCls.methodWrite hnew hmiss).publish_singleton hc (declLookupFrameB_sound htab))

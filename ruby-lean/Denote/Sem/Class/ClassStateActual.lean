@@ -26,6 +26,8 @@ structure ParentFacts (κ : Ctx) (h : Heap) (p e : ObjId) : Prop where
   metaConstants : ConstFallback h e
   singletonHook : singletonDefHookQuietB h p = true
   bases : ∀ base ch, (base, ch) ∈ builtinBases → p ≠ base ∧ e ≠ base
+  inheritedHook : (lookup h (.ref p) "inherited").any (fun (_, md) =>
+    !md.undefined && md.builtin == some "Class#inherited") = true
 
 variable {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
 variable {name : String} {e : ObjId} {body : RubyCore.Expr} {p : ObjId}
@@ -83,7 +85,7 @@ theorem stateAt (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
         subst cn
         exact ⟨m.heap.objs.size, instanceSiteAt hm.core.classReady hm.sat htop hmain.classLive hpl
           hp.metaReady he hp.hook hpc hinst hnames hp.metaConstants
-          hm.core.classReady.bootEnd hmain.live hp.singletonHook⟩
+          hm.core.classReady.bootEnd hmain.live hp.singletonHook hp.inheritedHook⟩
     sat := saturated hc hm.sat hd hel hpl
     primitiveDispatch := (primitiveDispatch hm.names hc hm.sat hd _).trans hm.primitiveDispatch
     primitiveErrors := (primitiveErrors hc hm.sat hd).trans hm.primitiveErrors
@@ -139,7 +141,7 @@ theorem ParentFacts.object {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {e : Obj
   have hmain := hm.runtime hr
   refine ⟨hc.chains.boot.2.2.2.2, hmain.classLive, he, hc.metaObject, hmain.hook, ?_, ?_,
     by simpa only [classOf, he] using hm.core.metaConstants, ?_,
-    fun base ch hb => ⟨fun h => (builtinBase_bound hb).2 h.symm, hc.eigenSeparate e he base ch hb⟩⟩
+    fun base ch hb => ⟨fun h => (builtinBase_bound hb).2 h.symm, hc.eigenSeparate e he base ch hb⟩, ?_⟩
   · intro n hn owner md hmd
     exact hm.nameFree n hn _ (by simp [nameFreeSites]) owner md hmd
   · intro n hn owner md hmd
@@ -151,6 +153,9 @@ theorem ParentFacts.object {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {e : Obj
           rw [hco]
           exact singletonHooksQuietB_methodOn hmain.singletonHooks hc.chains
             (by simp [singletonHookSites]))
+  · obtain ⟨owner, md, hl, hu, hb⟩ := classHooksQuietB_lookup hmain.classHooks hc.chains
+      (by simp [classHookNames] : ("inherited", "Class#inherited") ∈ classHookNames)
+    simp [hl, hu, hb]
 
 theorem state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {name : String} {e : ObjId}
     {body : RubyCore.Expr} (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)

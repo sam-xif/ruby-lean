@@ -106,7 +106,7 @@ theorem StateOk_publish_instance {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (hp : md.params = toRubyParams d.params) (hb : md.body = toRuby d.body)
     (hu : md.undefined = false) (hcode : InstanceMethodCode cls d.name md)
     (hmiss : "method_missing" ≠ d.name) (hquiet : "method_added" ≠ d.name)
-    (hsh : singletonHookName ≠ d.name)
+    (hsh : singletonHookName ≠ d.name) (hinh : "inherited" ≠ d.name)
     (hnested : NestedClassesOk (classWithMethod c d :: κ.classes)
       { m with heap := defineMethod m.heap cls d.name md })
     (hdecl : DeclClassOk (instanceDeclCtx κ c d)
@@ -126,7 +126,7 @@ theorem StateOk_publish_instance {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
   exact StateOk_methodWrite_tables (StateOk_reserveName hm d.name) hr hΓ ha
     (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hmiss hquiet hsh
     (ClassesOk_publish_instance hm.classes hc hk hw hf hs hp hb hu hcode)
-    (hm.classSites.publish_instance hsite hquiet hsh)
+    (hm.classSites.publish_instance hsite hquiet hsh hinh)
     (DefsOk_methodWrite_other hm.defs hobj) hnested hdecl hown hchain hroot
     (primitiveInitB_defineMethod_outside (cls := cls) hm.primitiveInit hm.core.classReady.chains
       (Nat.ne_of_lt (Nat.lt_trans (by decide : Boot.zeroDivisionErrorId < Boot.yielderId) hsite.afterBuiltins))
