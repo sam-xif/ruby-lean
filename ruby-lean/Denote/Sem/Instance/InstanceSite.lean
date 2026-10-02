@@ -106,6 +106,8 @@ structure InstanceSiteAt (free : String → Bool) (cn : String) (k : ObjId) (h :
   metaNotMain : classOf h (.ref k) ≠ classOf h (.ref Boot.mainId)
   /-- Creating a subclass of k runs only the native `inherited`. -/
   inheritedHook : inheritedHookQuietB h k = true
+  /-- Program classes carry no optional-library namespace (no feature shadows). -/
+  library : Interp.libraryNamespace h k = none
 
 /-- Only negative-name information affects a site's meaning, not the caller's scope. -/
 abbrev InstanceSite (κ : Ctx) := InstanceSiteAt (nameFreeN κ)
@@ -136,7 +138,7 @@ theorem InstanceSite.recontext {κ κ' : Ctx} {cn : String} {k : ObjId} {h : Hea
   exact ⟨site.named, site.front, site.hook, site.constants, site.names.recontext hn,
     site.metaclass, site.classNames.recontext hn, site.metaFront, site.metaLeaf, site.metaConstants, site.afterBuiltins,
     site.detached, site.unfrozen, site.mainLive, site.notMain, site.metaAttached, site.singletonHook, site.metaNotMain,
-    site.inheritedHook⟩
+    site.inheritedHook, site.library⟩
 
 /-- Scope-independent, so the same site survives a frame change or an allocation.
 This does not claim that method installation or class mutation preserves it. -/
@@ -167,7 +169,8 @@ theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
     by simp only [classOf, he.get Boot.mainId h.mainLive]; exact h.notMain, ?_,
     by simpa only [singletonDefHookQuietB, hls] using h.singletonHook,
     by simp only [classOf, he.get k hl, he.get Boot.mainId h.mainLive]; exact h.metaNotMain,
-    by simpa only [inheritedHookQuietB, hli, he.payload] using h.inheritedHook⟩
+    by simpa only [inheritedHookQuietB, hli, he.payload] using h.inheritedHook,
+    by simpa only [Interp.libraryNamespace, he.payload] using h.library⟩
   · simpa only [he.classNamed?_eq] using h.named
   · simpa only [classFrontB, he.payload] using h.front
   · simpa only [definitionHookQuietB, hlk] using h.hook

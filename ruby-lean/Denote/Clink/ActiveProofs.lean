@@ -11,6 +11,7 @@ import Denote.Rules.Method.MethodCall
 import Denote.Rules.Bounded.Recursive
 import Denote.Rules.Class.ClassDeclActual
 import Denote.Rules.Subclass.SubclassDeclActual
+import Denote.Rules.Inherited.InheritedRules
 import Denote.Rules.Class.ClassConstant
 import Denote.Rules.Class.MemberDefActual
 import Denote.Rules.Constructor.DefaultNew

@@ -464,6 +464,24 @@ private def dogH (parent : String) (rhs : Deriv) (t : Ty) : Deriv := .seq [anima
 #guard !validateD (.seq [.module' "M" (.int 1), .class' "Dog" (some (.const "M")) (.int 1)])
   (.seq [.moduleDecl "M" (.intLit 1), .classDecl "Dog" (some "M") (.intLit 1)])
 
+-- Active newInherited/callInherited (065): Dog inherits Animal's initializer and reader.
+private def animalF : Ratchet.Expr := .class' "Animal" none (.seq [
+  .def' "initialize" [.req "name"] (.vasgn .ivar "@name" (.var .lvar "name")),
+  .def' "speak" [] (.var .ivar "@name")])
+private def animalFH (t : Ty) : Deriv := .classDecl "Animal" none (.seq [
+  .defDecl "initialize" [⟨"name", t⟩] .any (.ivarAsgn "@name" (.var .lvar "name")),
+  .defDecl "speak" [] t (.ivarRead "@name" t)])
+private def rexP (arg : Ratchet.Expr) : Ratchet.Expr := .seq [animalF,
+  .class' "Dog" (some (.const "Animal")) .nil,
+  .send (some (.send (some (.const "Dog")) "new" [arg] none)) "speak" [] none]
+private def rexH (t : Ty) (arg : Deriv) : Deriv := .seq [animalFH t, .classDecl "Dog" (some "Animal") .nilLit,
+  .callMethodSig (.newInst "Dog" [arg] (.inst "Dog" (.ivarCons "@name" t .ivar0))) "speak" [] t]
+#guard validateD (rexP (.str "Rex")) (rexH (.cls "String") (.strLit "Rex"))
+#guard ["newInherited", "callInherited"].all fun r =>
+  !validateDWith (fun q => clinkEnabled q && q != r) (rexP (.str "Rex")) (rexH (.cls "String") (.strLit "Rex"))
+#guard !validateD (rexP (.int 1)) (rexH (.cls "String") (.intLit 1))
+#guard !validateD (rexP (.str "Rex")) (rexH .int (.strLit "Rex"))
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),
