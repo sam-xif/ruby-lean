@@ -18,6 +18,7 @@ theorem typed_each_step {κ : Ctx} {Γ Γb : Env} {I σ ρ : Ty} {m : Machine}
     (hv : denM (.arrayOf σ) (popMethodFrame m) (.ref o))
     (hmain : closureMainB κ I = true) (hσ : FirstOrder σ = true)
     (hp : cl.params = [.req name]) (he : cl.body = toRuby body)
+    (henum : cl.enumYield = none) (hfor : cl.forTargets = none)
     (hin : activationEnvB ([(name, σ)] ++ blockLocals cl.locals ++ Γ) = true)
     (hout : activationReturnB Γb = true)
     (hfix : closureReturnEnv ([name] ++ cl.locals) names Γ Γb = Γ)
@@ -32,7 +33,7 @@ theorem typed_each_step {κ : Ctx} {Γ Γb : Env} {I σ ρ : Ty} {m : Machine}
   let P := fun n (_ : Nat) => IteratorCaller (popMethodFrame m) κ Γ I σ o cl name names Γb n
   have contract : EachArrayContract (popMethodFrame m) cl name body o P Γ (.arrayOf σ) κ I
       Γb ρ (closureBodyCtx κ) I := by
-    refine ⟨hp, he, ?_, ?_, ?_, ?_, ?_⟩
+    refine ⟨hp, he, henum, hfor, fun n _ hn => hn.state.rootClean, ?_, ?_, ?_, ?_, ?_⟩
     · intro n _ hn
       obtain ⟨o', xs, ho, hx, _⟩ := array_payload hn.receiver
       cases ho
@@ -48,7 +49,7 @@ theorem typed_each_step {κ : Ctx} {Γ Γb : Env} {I σ ρ : Ty} {m : Machine}
         rw [RootUncaptured, ← currentFrame_headD hn.state.frameInRange.1]
         exact (hn.state.runtime hr).captured
       have hret := iterator_escape_result (Γ := Γ) (τ := .arrayOf σ) (κ := κ) (I := I)
-        hn.state.frameInRange hu hn.capture hres
+        hn.state.frameInRange hu hn.capture hn.state.headAlias rfl hres
       exact ⟨hn.framed.trans hret.1, hret.2⟩
   exact eachArrayStep_spec contract brk m index ⟨hm, .refl _, hc, hd, hv⟩
 

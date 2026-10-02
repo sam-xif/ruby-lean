@@ -447,6 +447,17 @@ private def incrH : Deriv := .prim (.ivarRead "@size" .int) "+" [.intLit 1] .int
 #guard !validateD (.seq [boxCls (.str "a"), .send (some (.send (some (.const "Box")) "new" [.int 1] none)) "grow" [] none])
   (.seq [boxHint .int (.strLit "a"), growCall .int (.intLit 1)])
 
+-- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
+private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
+  .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),
+  .send (some (.var .lvar "f")) "call" [] none]
+private def lamHint (body : Deriv) (t : Ty) : Deriv :=
+  .flow (.seq [.vasgn .lvar "f" .closureLiteral, .closureCall body t])
+#guard validateD (lamProg (.int 1)) (lamHint (.intLit 1) .int)
+#guard !validateD (lamProg (.int 1)) (lamHint (.intLit 1) (.cls "String"))
+#guard ["flow", "DFlow.closureLiteral", "DFlow.call", "DFlow.vasgn"].all fun r =>
+  !validateDWith (fun q => clinkEnabled q && q != r) (lamProg (.int 1)) (lamHint (.intLit 1) .int)
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

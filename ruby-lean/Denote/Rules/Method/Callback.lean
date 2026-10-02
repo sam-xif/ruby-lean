@@ -65,6 +65,7 @@ theorem CallbackCaller.returnResult {m out : Machine} {κ : Ctx} {Γ Γb : Env} 
     rw [RootUncaptured, ← currentFrame_headD hn.state.frameInRange.1]
     exact (hn.state.runtime hr).captured
   have hf := callback_pop_framed hm hn.state.frameInRange hne hu hn.capture hres.1
+    hn.state.headAlias rfl
   refine ⟨hf, ?_, ?_⟩
   · cases a with
     | val v => exact (denM_heap_only (m₁ := out) (m₂ := popMethodFrame out) hρ rfl).mp hres.2.1
@@ -74,7 +75,7 @@ theorem CallbackCaller.returnResult {m out : Machine} {κ : Ctx} {Γ Γb : Env} 
       (ReframeFO.empty hi hself hblock hconst) hasm hr hw hclass
       (fun x => (constGet?_empty (κ := closureBodyCtx κ) hconst x).trans
         (constGet?_empty (κ := returnScopeCtx κ (closureBodyCtx κ)) hconst x).symm)
-      hn.capture hn.slots (requiredClosureFrame_slots m cl (ps.map (·.1)) args (by simpa using hlen))
+      hn.capture rfl hn.slots (requiredClosureFrame_slots m cl (ps.map (·.1)) args (by simpa using hlen))
       hres.1 (hres.2.2 v hv)
       (by
         intro x τ hx v hv

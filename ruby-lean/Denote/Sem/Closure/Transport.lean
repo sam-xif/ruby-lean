@@ -14,6 +14,15 @@ theorem Framed.closureCode {m n : Machine} {code : ClosureCode} {cap selfT : Ty}
   obtain ⟨cl, hp, hc, _⟩ := hv
   exact ⟨cl, hp, h.procs.payload v cl hp, hc⟩
 
+/-- Frame metadata preservation keeps live capture chains live. -/
+theorem FramePres.captureLive {m n : Machine} (h : FramePres m n) (hs : n.stack = m.stack)
+    {c : Option FrameId} (hl : CaptureLive m c) : CaptureLive n c := by
+  induction hl with
+  | none => exact .none
+  | @frame fid hi _ ha ih =>
+    exact .frame (Nat.lt_of_lt_of_le hi h.size) (by rw [h.captured hs fid hi]; exact ih)
+      (by rw [h.localAlias hs fid hi]; exact ha)
+
 /-- Unchanged captured values may still require heap transport for their types.
 Neither equality here follows merely from retaining the Proc payload. -/
 theorem Framed.closureDen {m n : Machine} {code : ClosureCode} {cap selfT : Ty} {v : Value}
@@ -23,8 +32,8 @@ theorem Framed.closureDen {m n : Machine} {code : ClosureCode} {cap selfT : Ty} 
     (hself : ∀ cl, procClosure? m.heap v = some cl → closSelf n cl = closSelf m cl) :
     denM (.clos code cap selfT) n v := by
   rw [denM] at hv ⊢
-  obtain ⟨cl, hp, hc, hd, hv⟩ := hv
-  refine ⟨cl, h.procs.payload v cl hp, hc, ?_, ?_⟩
+  obtain ⟨cl, hp, hc, hd, hv, hl⟩ := hv
+  refine ⟨cl, h.procs.payload v cl hp, hc, ?_, ?_, hl.imp_right (h.frames.captureLive h.stack)⟩
   · rw [hcap cl hp]
     exact denSpineFrom_mono (fun _ τ ht hv => h.firstOrder τ ht _ hv) ht hd
   · rcases hv with he | hv
@@ -40,7 +49,7 @@ theorem ProcPres.empty_capture_den {m n : Machine} {code : ClosureCode} {v : Val
     denM (.clos code .ivar0 .never) n v := by
   rw [denM] at hv ⊢
   obtain ⟨cl, hp, hc, _⟩ := hv
-  exact ⟨cl, h.payload v cl hp, hc, by simp [denSpineFrom], Or.inl rfl⟩
+  exact ⟨cl, h.payload v cl hp, hc, by simp [denSpineFrom], Or.inl rfl, Or.inl ⟨rfl, rfl⟩⟩
 
 #print axioms Framed.closureDen
 #print axioms ProcPres.empty_capture_den

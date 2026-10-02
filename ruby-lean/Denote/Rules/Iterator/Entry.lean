@@ -17,12 +17,9 @@ theorem iteratorClosureFrame_envOk {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     EnvOk (ps ++ blockLocals cl.locals ++ Γ)
       (pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) := by
   have hlive : CaptureLive (popMethodFrame m) cl.captured := by
-    rw [hc]
-    apply CaptureLive.frame hm.frameInRange.2
-    rw [← currentFrame_headD hm.frameInRange.1, hu]
-    exact .none
+    rw [hc]; exact hm.toStateCore.captureLive
   have hread : closLocal m cl = (popMethodFrame m).getLocal := by
-    rw [← closLocal_current hc]
+    rw [← closLocal_current hc hlive]
     funext x
     simp only [closLocal, hc, frameLocal?, frameLocal]
     exact frameLocal_go_preserved (m := popMethodFrame m) (n := m) (fun _ _ => rfl)
@@ -57,6 +54,7 @@ theorem iteratorClosureFrame_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
   have scope := ClosureScopeEq.current hm.frameInRange hc
   apply StateOk_captured_reframe
     (n := pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) hm ht ha rfl
+    (hroot := hm.rootClean)
   · simpa only [currentFrame_pushMethodFrame, requiredClosureFrame, Option.getD_none, popMethodFrame] using scope.self
   · simpa only [currentFrame_pushMethodFrame, requiredClosureFrame, popMethodFrame] using scope.block
   · simpa only [currentFrame_pushMethodFrame, requiredClosureFrame, popMethodFrame] using scope.cref

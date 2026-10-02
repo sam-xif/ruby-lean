@@ -14,6 +14,7 @@ theorem iterator_push_caller_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
   have hp := method_pop_framed hm.frameInRange.2 hc (Framed.refl (pushMethodFrame m f))
   have hcur := method_pop_currentFrame hm.frameInRange hc (Framed.refl (pushMethodFrame m f))
   have hread := method_pop_getLocal hm.frameInRange.2 hu hc (Framed.refl (pushMethodFrame m f))
+    (ha := hm.headAlias)
   have he : EnvOk Γ (popMethodFrame (pushMethodFrame m f)) := by
     constructor
     · intro x τ hx
@@ -41,10 +42,12 @@ theorem iterator_push_caller_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (by rw [hcur]
         exact hm.capturedLive.capture_preserved hp.frames.size
           (hp.frames.captured hp.stack) (hp.frames.localAlias hp.stack))
+    hm.rootClean (congrArg RubyCore.Frame.libraryOrigin hcur)
+    (congrArg RubyCore.Frame.definitionFrame hcur)
 
 def eachFrame (m : Machine) (o : ObjId) : RubyCore.Frame :=
   { self := .ref o, defmod := classOf m.heap (.ref o), kind := .method, meth := "each",
-    cref := m.currentFrame.cref }
+    cref := m.currentFrame.cref, matchXparent := "each" == "scan" }
 
 theorem startIter_each (m : Machine) (cl : Closure) (o : ObjId) (hk : m.kont = []) :
     Interp.startIter m (.ref o) "each" cl [] (.arrayEach o 0) [] (.ref o) =
@@ -59,6 +62,7 @@ theorem typed_each_start {κ : Ctx} {Γ Γb : Env} {I σ ρ : Ty} {m : Machine}
     (hv : denM (.arrayOf σ) m (.ref o))
     (hmain : closureMainB κ I = true) (hσ : FirstOrder σ = true)
     (hp : cl.params = [.req name]) (he : cl.body = toRuby body)
+    (henum : cl.enumYield = none) (hfor : cl.forTargets = none)
     (hin : activationEnvB ([(name, σ)] ++ blockLocals cl.locals ++ Γ) = true)
     (hout : activationReturnB Γb = true)
     (hfix : closureReturnEnv ([name] ++ cl.locals) names Γ Γb = Γ)
@@ -91,7 +95,7 @@ theorem typed_each_start {κ : Ctx} {Γ Γb : Env} {I σ ρ : Ty} {m : Machine}
   have h := typed_each_step hs hc hd'
     ((denM_heap_only (τ := .arrayOf σ) (m₁ := m)
       (m₂ := popMethodFrame (pushMethodFrame m f)) hσ rfl).mp hv)
-    hmain hσ hp he hin hout hfix hb m.frames.size 0
+    hmain hσ hp he henum hfor hin hout hfix hb m.frames.size 0
   rw [startIter_each m cl o hk]
   exact h.rebase hfr
 

@@ -9,7 +9,7 @@ open RubyCore Ratchet Ratchet.Denote
 
 def mapFrame (m : Machine) (o : ObjId) (mname : String) : RubyCore.Frame :=
   { self := .ref o, defmod := classOf m.heap (.ref o), kind := .method, meth := mname,
-    cref := m.currentFrame.cref }
+    cref := m.currentFrame.cref, matchXparent := mname == "scan" }
 
 theorem startIter_map (m : Machine) (cl : Closure) (o : ObjId) (mname : String) (hk : m.kont = []) :
     Interp.startIter m (.ref o) mname cl [] (.arrayMap o 0) [] .nil =
@@ -24,6 +24,7 @@ theorem typed_map_start {κ : Ctx} {Γ Γb : Env} {I σ ρ : Ty} {m : Machine}
     (hv : denM (.arrayOf σ) m (.ref o))
     (hmain : closureMainB κ I = true) (hσ : FirstOrder σ = true) (hρ : FirstOrder ρ = true)
     (hp : cl.params = [.req name]) (he : cl.body = toRuby body)
+    (henum : cl.enumYield = none) (hfor : cl.forTargets = none)
     (hin : activationEnvB ([(name, σ)] ++ blockLocals cl.locals ++ Γ) = true)
     (hout : activationReturnB Γb = true)
     (hfix : closureReturnEnv ([name] ++ cl.locals) names Γ Γb = Γ)
@@ -56,7 +57,7 @@ theorem typed_map_start {κ : Ctx} {Γ Γb : Env} {I σ ρ : Ty} {m : Machine}
   have h := typed_map_step hs hc hd'
     ((denM_heap_only (τ := .arrayOf σ) (m₁ := m)
       (m₂ := popMethodFrame (pushMethodFrame m f)) hσ rfl).mp hv)
-    hmain hσ hρ hp he hin hout hfix hb m.frames.size 0 [] (by simp)
+    hmain hσ hρ hp he henum hfor hin hout hfix hb m.frames.size 0 [] (by simp)
   rw [startIter_map m cl o mname hk]
   exact h.rebase hfr
 

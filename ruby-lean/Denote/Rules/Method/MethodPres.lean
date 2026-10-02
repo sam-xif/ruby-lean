@@ -51,7 +51,8 @@ theorem MethodEffects.methodScope {m n : Machine} (h : MethodEffects m n)
   exact ⟨(congrArg FrameScope.self ha).trans (hs.self.trans (congrArg FrameScope.self hb).symm),
     (congrArg FrameScope.cref ha).trans (hs.cref.trans (congrArg FrameScope.cref hb).symm),
     (congrArg FrameScope.defmod ha).trans (hs.owner.trans (congrArg FrameScope.defmod hb).symm),
-    (congrArg FrameScope.captured ha).trans hs.uncaptured⟩
+    (congrArg FrameScope.captured ha).trans hs.uncaptured,
+    (congrArg FrameScope.localAlias ha).trans hs.unaliased⟩
 
 theorem MethodEffects.proc {m n : Machine} {o : ObjId} {cl : Closure}
     (h : MethodEffects m n) (hp : (m.heap.get o).payload = .proc cl) :

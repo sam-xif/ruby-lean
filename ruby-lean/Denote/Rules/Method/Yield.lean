@@ -14,12 +14,13 @@ theorem doYield_required (m : Machine) (cl : Closure) (o : ObjId)
     (hk : m.kont = K) (hblk : m.currentFrame.blk = some (.ref o))
     (hproc : (m.heap.get o).payload = .proc cl)
     (hp : cl.params = names.map RubyCore.Param.req) (he : cl.body = toRuby body)
-    (ha : args.length = names.length) :
+    (ha : args.length = names.length)
+    (henum : cl.enumYield = none) (hfor : cl.forTargets = none) :
     Interp.doYield m args = .next
-      (pushK (.blkFrameK m.frames.size cl.lam (some (Interp.methodFrameOf m)) cl args :: K)
+      (pushK (.blkFrameK m.frames.size cl.lam (closureBrk m cl (some (Interp.methodFrameOf m))) cl args :: K)
         (evalFrom (pushMethodFrame m (requiredClosureFrame m cl names args)) body)) := by
   simp only [Interp.doYield, hblk, hproc]
-  rw [callClosure_required _ cl names args _ none none hp ha, he]
+  rw [callClosure_required _ cl names args _ none none hp ha henum hfor, he]
   simp only [Interp.withKont, pushK, evalFrom, pushMethodFrame, hk, List.nil_append]
 
 /-- Full all-fuel continuation composition. The body is checked against the actual
@@ -35,6 +36,7 @@ theorem typed_yield_continue {m origin : Machine} {κ κout : Ctx} {Γ Γb Γout
     (hblk : m.currentFrame.blk = some (.ref o)) (hproc : (m.heap.get o).payload = .proc cl)
     (hp : cl.params = (ps.map (·.1)).map RubyCore.Param.req) (he : cl.body = toRuby body)
     (hlen : args.length = ps.length) (hargs : DenAll (ps.map (·.2)) (popMethodFrame m) args)
+    (henum : cl.enumYield = none) (hfor : cl.forTargets = none)
     (hmain : closureMainB κ I = true) (hρ : FirstOrder ρ = true)
     (hin : activationEnvB (ps ++ blockLocals cl.locals ++ Γ) = true)
     (hout : activationReturnB Γb = true)
@@ -44,13 +46,14 @@ theorem typed_yield_continue {m origin : Machine} {κ κout : Ctx} {Γ Γb Γout
     (hcontinue : ∀ a n, CallbackResultOk m Γ ρ κ I a n →
       RunSpec origin (deliverA a n K) Γout τ κout Iout) :
     StepSpec origin Γout τ (Interp.doYield m args) κout Iout := by
-  rw [doYield_required m cl o (ps.map (·.1)) args body K hk hblk hproc hp he (by simpa using hlen)]
-  apply (hb _ (hn.bodyState hmain hin hargs)).bindSpec (by
-    intro k hmem tag
+  rw [doYield_required m cl o (ps.map (·.1)) args body K hk hblk hproc hp he (by simpa using hlen)
+    henum hfor]
+  apply (hb _ (hn.bodyState hmain hin hargs)).bindSpec hn.state.rootClean (by
+    intro k hmem
     simp only [List.mem_cons] at hmem
     rcases hmem with rfl | hmem
-    · simp
-    · exact hK k hmem tag)
+    · rfl
+    · exact hK k hmem)
   intro a n hres
   have hret := hn.returnResult hm hne hmain hρ hlen hin hout hfix hres
   cases a with

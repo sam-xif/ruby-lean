@@ -19,6 +19,7 @@ theorem typed_map_step {κ : Ctx} {Γ Γb : Env} {I σ ρ : Ty} {m : Machine}
     (hv : denM (.arrayOf σ) (popMethodFrame m) (.ref o))
     (hmain : closureMainB κ I = true) (hσ : FirstOrder σ = true) (hρ : FirstOrder ρ = true)
     (hp : cl.params = [.req name]) (he : cl.body = toRuby body)
+    (henum : cl.enumYield = none) (hfor : cl.forTargets = none)
     (hin : activationEnvB ([(name, σ)] ++ blockLocals cl.locals ++ Γ) = true)
     (hout : activationReturnB Γb = true)
     (hfix : closureReturnEnv ([name] ++ cl.locals) names Γ Γb = Γ)
@@ -36,7 +37,7 @@ theorem typed_map_step {κ : Ctx} {Γ Γb : Env} {I σ ρ : Ty} {m : Machine}
       ∀ v ∈ acc, denM ρ (popMethodFrame n) v
   have contract : MapArrayContract (popMethodFrame m) cl name body o P Γ (.arrayOf ρ) κ I
       Γb ρ (closureBodyCtx κ) I := by
-    refine ⟨hp, he, ?_, ?_, ?_, ?_, ?_⟩
+    refine ⟨hp, he, henum, hfor, fun n _ _ hn => hn.1.state.rootClean, ?_, ?_, ?_, ?_, ?_⟩
     · intro n _ acc hn
       obtain ⟨o', xs, ho, hx, _⟩ := array_payload hn.1.receiver
       cases ho
@@ -62,7 +63,7 @@ theorem typed_map_step {κ : Ctx} {Γ Γb : Env} {I σ ρ : Ty} {m : Machine}
         rw [RootUncaptured, ← currentFrame_headD hn.1.state.frameInRange.1]
         exact (hn.1.state.runtime hr).captured
       have hret := iterator_escape_result (Γ := Γ) (τ := .arrayOf ρ) (κ := κ) (I := I)
-        hn.1.state.frameInRange hu hn.1.capture hres
+        hn.1.state.frameInRange hu hn.1.capture hn.1.state.headAlias rfl hres
       exact ⟨hn.1.framed.trans hret.1, hret.2⟩
   exact mapArrayStep_spec contract brk m index acc ⟨⟨hm, .refl _, hc, hd, hv⟩, ha⟩
 
