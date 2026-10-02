@@ -529,8 +529,10 @@ where
     match runSearch src opts s with
     | .gate why => .unsupported why
     | .miss =>
+      -- `match?` never touches `$~`, on a miss as on a hit [V].
+      if bid == "Regexp#match?" then .ok (.bool false) m else
       let m := setMatchGlobals m none
-      .ok (if bid == "Regexp#match?" || bid == "Regexp#===" then .bool false else .nil) m
+      .ok (if bid == "Regexp#===" then .bool false else .nil) m
     | .hit a _ caps names =>
       if bid == "Regexp#match?" then .ok (.bool true) m       -- match? sets no globals [V]
       else if bid == "Regexp#===" then
