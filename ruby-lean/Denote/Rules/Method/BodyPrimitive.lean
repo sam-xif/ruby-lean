@@ -17,6 +17,8 @@ private theorem primitive_receiver {σ τ : Ty} {name : String} {tys : List Ty}
   | arrayLength hfo => exact hfo
   | hashIndex hfo => exact hfo
   | hashKey hfo => exact hfo
+  | arrayCompact hfo => exact hfo
+  | arrayUniq hfo => exact hfo
   | _ => rfl
 
 private theorem recv_one {κ : Ctx} {Γ Γm Γm' : Env} {I σ α τ : Ty}

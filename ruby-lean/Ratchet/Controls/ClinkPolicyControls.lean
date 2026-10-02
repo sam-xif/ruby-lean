@@ -389,6 +389,16 @@ private def pMeH : Deriv := .callMethodSig (.newInst "P" [.intLit 1] pTy) "me" [
 #guard !validateD (.seq [pCls, .send (some (.const "P")) "make" [.str "a"] none])
   (.seq [pHint, .callSingleton (.constCls "P") "make" [.strLit "a"] pTy])
 
+-- Primitive rows Array#compact/uniq (209).
+private def nilArr : Deriv := .arrayLit [.intLit 1, .nilLit] (.nilable .int)
+#guard validateD (.send (some (.send (some (.array [.int 1, .nil])) "compact" [] none)) "uniq" [] none)
+  (.prim (.prim nilArr "compact" [] (.arrayOf (.nilable .int)) (.arrayOf .int)) "uniq" []
+    (.arrayOf .int) (.arrayOf .int))
+#guard !validateD (.send (some (.array [.int 1, .nil])) "compact" [] none)
+  (.prim nilArr "compact" [] (.arrayOf (.nilable .int)) (.arrayOf (.nilable .int)))
+#guard !validateD (.send (some (.array [.int 1])) "uniq" [.int 1] none)
+  (.prim (.arrayLit [.intLit 1] .int) "uniq" [.intLit 1] (.arrayOf .int) (.arrayOf .int))
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

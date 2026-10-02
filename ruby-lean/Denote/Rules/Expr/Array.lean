@@ -7,29 +7,6 @@ set_option maxRecDepth 4000
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
-/-- A fresh Array preserves full caller conformance and carries the supplied element
-types. Shared by literals and native map's final accumulator allocation. -/
-theorem array_alloc_result {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {τ : Ty}
-    (hm : StateOk κ Γ I m)
-    (xs : List Value) (hd : ∀ x ∈ xs, denM τ m x) :
-    ResultOk m Γ (.arrayOf τ) (.val (Builtins.allocArr m xs.toArray).1)
-      (Builtins.allocArr m xs.toArray).2 κ I := by
-  let obj : Object := { klass := Boot.arrayId, payload := .arr xs.toArray }
-  let n : Machine := { m with heap := pushHeap m.heap obj }
-  have he : Ext m n := ext_push obj hm.sat hm.core.basicSelf
-    (fun c => by simp [obj]) rfl rfl hm.core.arrayBasic
-  have hn : StateOk κ Γ I n := StateOk_ext hm he
-    (stringPayloadOk_push hm.stringPayload (by simp [obj, Boot.arrayId, Boot.stringId]))
-    (arrayPayloadOk_push hm.arrayPayload (by simp [obj]))
-    (hashPayloadOk_push hm.hashPayload (by simp [obj])) rfl
-  have hv : denM (.arrayOf τ) n (.ref m.heap.objs.size) := by
-    rw [denM]
-    refine ⟨xs.toArray, ?_, ?_⟩
-    · simp [arrElems?, n, pushHeap_get_self, obj]
-    · intro x hx
-      exact denM_ext he (hd x (by simpa using hx))
-  exact ⟨Framed.of_ext he, hv, fun _ hv => by cases hv; exact hn⟩
-
 theorem stepSpec_array {κ : Ctx} {I : Ty} {Γ : Env} {m : Machine} {τ : Ty}
     (hm : StateOk κ Γ I m) (hk : m.kont = [])
     (xs : List Value) (hd : ∀ x ∈ xs, denM τ m x) :
