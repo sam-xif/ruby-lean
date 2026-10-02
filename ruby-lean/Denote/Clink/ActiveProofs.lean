@@ -2,6 +2,7 @@ import Denote.Judgment.Context
 import Denote.Rules.Expr.Sequence
 import Denote.Rules.Primitive.Primitive
 import Denote.Rules.Expr.Branch
+import Denote.Rules.Expr.BranchNarrow
 import Denote.Rules.Expr.BranchMissing
 import Denote.Rules.Expr.BareName
 import Denote.Rules.Expr.Array

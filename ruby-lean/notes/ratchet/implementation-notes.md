@@ -13704,3 +13704,9 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   empty shadow scan (`declared_super_chain`: direct-parent route + ancestors nodup);
   bind sites pass rootClean/CatchFree; SuperState fills the newer StateOk/ClassScopeAt fields.
 - Providers via Rules/Init/SuperInitRules. All authoring clinks are now enabled.
+
+## ifTruthy narrowing (2026-10-02, 101/101, 107/261)
+- `if x` on `x : nilable σ` (σ ∈ falseFreeB: int/float/sym/arrays/hashes) types the
+  then-branch at `x : σ`, the else at `x : nil`. The condition is the local read, so the
+  branch machine is unchanged; `StateOk` mentions Γ only in `env`, refined by `envOk_refine`.
+- New Deriv `ifTruthy`; emitter `narrow_truthy`; audit generator passes the two `used_i`.
