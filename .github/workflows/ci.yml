@@ -344,6 +344,14 @@ jobs:
         with:
           ruby-version: "4.0"
 
+      - name: Build rubycore (the SUT the replay drives)
+        # The replay shells out to `ruby-lean/.lake/build/bin/rubycore`; Lean is
+        # only installed, not built, so the binary is absent until this runs.
+        # No whole-library `lake build` here: it would compile the gated proof
+        # families the active profile excludes and fail on the in-progress rebuild
+        # (the same narrowing `pipeline-controls` uses for `check-feature-loading.py`).
+        run: cd ruby-lean && lake build --log-level=error rubycore
+
       - name: Cache the sparse ruby/ruby checkout and harvested corpus
         uses: actions/cache@v4
         with:
