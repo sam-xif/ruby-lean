@@ -15,6 +15,9 @@ structure SuperRoute (C : CTable) (receiver current owner : String) (d : Defn) w
   after : List String
   chain : ancestors? C receiver = some (before ++ current :: (between ++ cls.name :: after))
   clear : ∀ cn ∈ between, ∃ old ∈ C, old.name = cn ∧ d.name ∉ ownNames C cn
+  /-- The owner is the current definee's direct parent: no program class lies between,
+  so super's CRuby-shadow scan is empty. -/
+  direct : between = []
 
 def superRoute? (C : CTable) (receiver current owner : String) (d : Defn) :
     Option (SuperRoute C receiver current owner d) := do
@@ -27,7 +30,9 @@ def superRoute? (C : CTable) (receiver current owner : String) (d : Defn) :
   let after := tail.drop (between.length + 1)
   if hc : ancestors? C receiver = some (before ++ current :: (between ++ f.cls.name :: after)) then do
     if hp : prefixClearB C between d.name = true then
-      some ⟨f.cls, f.member, f.nameOk, hd, before, between, after, hc, prefixClearB_sound hp⟩
+      if hb : between = [] then
+        some ⟨f.cls, f.member, f.nameOk, hd, before, between, after, hc, prefixClearB_sound hp, hb⟩
+      else none
     else none
   else none
 

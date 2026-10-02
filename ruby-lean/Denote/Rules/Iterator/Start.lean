@@ -29,7 +29,8 @@ theorem iterator_push_caller_state {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     · intro x hx
       rw [hread]
       exact hm.env.2 x hx
-  exact StateOk_reframe hm ht ha rfl
+  exact StateOk_reframe (hsup := fun _ => ⟨congrArg RubyCore.Frame.superScope hcur, by rw [hcur]⟩)
+    hm ht ha rfl
     (congrArg RubyCore.Frame.self hcur) (congrArg RubyCore.Frame.blk hcur)
     (congrArg RubyCore.Frame.cref hcur) (congrArg RubyCore.Frame.defmod hcur)
     (congrArg RubyCore.Frame.captured hcur) rfl

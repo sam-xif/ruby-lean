@@ -155,7 +155,7 @@ theorem ClassScopeReady.methodWrite {cn : String} {m : Machine}
     by rw [attached_defineMethod]; exact h.detached,
     (congrArg Object.frozen (get_defineMethod_data m.heap cls k name md)).trans h.unfrozen,
     by simpa only [Proof.objs_size_defineMethod] using h.mainLive,
-    by simpa only [Proof.classOf_defineMethod] using h.notMain⟩⟩
+    by simpa only [Proof.classOf_defineMethod] using h.notMain, h.superScope, h.methodOwner⟩⟩
 
 /-- Common state transport. The positive method/class tables are the installation
 rule's obligations; all data, scope, and negative dispatch facts are derived here.

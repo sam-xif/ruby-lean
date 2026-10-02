@@ -20,6 +20,8 @@ structure OrdinaryMethodCode (expectedOwner : ObjId) (cref : List ObjId) (md : M
   definee : md.definee.getD md.owner = expectedOwner
   /-- Ordinary `def` bodies use their own frame as definition context. -/
   definitionFrame : md.definitionFrame = none
+  /-- Ordinary `def` bodies resolve `super` from the receiver's class. -/
+  superScope : md.superScope = none
 
 abbrev TopMethodCode (md : MethodDef) : Prop :=
   OrdinaryMethodCode Boot.objectId [] md
@@ -34,13 +36,13 @@ def ordinaryMethodCodeB (owner : ObjId) (cref : List ObjId) (md : MethodDef) : B
   decide (md.owner = owner ∧ md.cref = cref ∧ md.superName = none ∧ md.builtin = none ∧
     md.capturedFrame = none ∧ md.declared = [] ∧ md.fromPrelude = false ∧ md.visibilityOnly = false ∧
     md.fromBlock = false ∧ md.forTargets = none ∧ md.definee.getD md.owner = owner ∧
-    md.definitionFrame = none)
+    md.definitionFrame = none ∧ md.superScope = none)
 
 theorem ordinaryMethodCodeB_sound {owner : ObjId} {cref : List ObjId} {md : MethodDef}
     (hb : ordinaryMethodCodeB owner cref md = true) : OrdinaryMethodCode owner cref md := by
   simp only [ordinaryMethodCodeB, decide_eq_true_eq] at hb
-  rcases hb with ⟨ho, hc, hs, hb, hcap, hd, hp, hv, hblock, hfor, hdefinee, hdf⟩
-  exact ⟨ho, hc, hs, hb, hcap, hd, hp, hv, hblock, hfor, hdefinee, hdf⟩
+  rcases hb with ⟨ho, hc, hs, hb, hcap, hd, hp, hv, hblock, hfor, hdefinee, hdf, hss⟩
+  exact ⟨ho, hc, hs, hb, hcap, hd, hp, hv, hblock, hfor, hdefinee, hdf, hss⟩
 
 def instanceMethodCodeB (owner : ObjId) (name : String) (md : MethodDef) : Bool :=
   ordinaryMethodCodeB owner [owner] md &&

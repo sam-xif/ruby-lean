@@ -36,7 +36,9 @@ theorem restore_instance_state {κ κb : Ctx} {Γ Γb : Env} {I Ib Is : Ty} {m n
     detached := site.detached
     unfrozen := site.unfrozen
     mainLive := site.mainLive
-    notMain := site.notMain }
+    notMain := site.notMain
+    superScope := (congrArg RubyCore.Frame.superScope hpop).trans old.superScope
+    methodOwner := by rw [hpop]; exact old.methodOwner }
   have hscope : ConstScopeOk (popMethodFrame n) :=
     InstanceSite.constScope (m := popMethodFrame n) site ready.cref ready.owner
   have hden (τ : Ty) (hτ : FirstOrder τ = true) (v : Value) :

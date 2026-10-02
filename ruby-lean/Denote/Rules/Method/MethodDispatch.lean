@@ -56,7 +56,7 @@ theorem definedMethod_code {m : Machine} {name : String} {ps : List RubyCore.Par
     TopMethodCode (definedMethod m name ps body) := by
   unfold definedMethod Interp.normalizeDefinitionVisibility
   split <;> exact ⟨ho, hc, rfl, rfl, rfl, rfl, by simp [sourceMethod, hp, hlib],
-    rfl, rfl, rfl, ho, rfl⟩
+    rfl, rfl, rfl, ho, rfl, rfl⟩
 
 /-- Only the installed native no-op hook is covered by ordinary definitions. -/
 def DefHookQuiet (m : Machine) : Prop :=
@@ -211,6 +211,7 @@ theorem required_method_call_runSpec {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : 
     (hkont : m.kont = []) (hp : md.params = (ps.map (·.1)).map RubyCore.Param.req)
     (hcap : md.capturedFrame = none) (hdecl : md.declared = []) (hbody : md.body = toRuby e)
     (hblock : md.fromBlock = false) (hfor : md.forTargets = none)
+    (hss : md.superScope = none) (hown : md.definee.getD md.owner = md.owner)
     (hlen : args.length = ps.length) (hargs : DenAll (ps.map (·.2)) m args)
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (hτ : FirstOrder τ = true) (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
@@ -228,7 +229,7 @@ theorem required_method_call_runSpec {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : 
     ∃ next, Interp.finishSend m m.currentFrame.self .implicit name args .none = .next next ∧
       RunSpec m next Γ τ κ I := by
   obtain ⟨next, he, hr⟩ := required_method_runSpec hm ht ha hkont hp hcap hdecl hbody
-    hblock hfor hlen hargs hps hτ hΓ hscope hk hframe hb
+    hblock hfor hss hown hlen hargs hps hτ hΓ hscope hk hframe hb
   refine ⟨next, ?_, hr⟩
   rw [hself] at he ⊢
   rw [finishSend_ordinary_userMethod ho hl hbi hu hpre hs]

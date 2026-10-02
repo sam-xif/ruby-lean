@@ -95,7 +95,8 @@ theorem top_method_runSpec {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : Machine} {
   obtain ⟨next, he, hr⟩ := required_method_runSpec (name := decl.name)
     (fr := some ⟨"Object", "Object", decl.name, false⟩)
     hm ht ha hkont (hp.trans (by rw [hparams]; exact toRubyParams_required ps))
-    hcode.captured hcode.declared hb hcode.fromBlock hcode.forTargets hlen hargs hps hτ hΓ
+    hcode.captured hcode.declared hb hcode.fromBlock hcode.forTargets hcode.superScope
+    (by rw [hcode.owner]; exact hdef) hlen hargs hps hτ hΓ
     (by simp [frameScope, requiredFrame, hcode.owner, hcode.cref,
       hdef, hcode.fromPrelude, ready.owner, ready.cref, ready.captured,
       ready.origin, hm.localAlias, hblk, hcode.definitionFrame, ready.defFrame])

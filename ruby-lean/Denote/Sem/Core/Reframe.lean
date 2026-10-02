@@ -193,14 +193,18 @@ theorem StateOk_reframe {κ : Ctx} {Γ Γ' : Env} {I : Ty} {m n : Machine}
     (hlive : CaptureLive n n.currentFrame.captured)
     (hroot : RootClean n := by exact h.rootClean)
     (horigin : n.currentFrame.libraryOrigin = m.currentFrame.libraryOrigin := by rfl)
-    (hdf : n.currentFrame.definitionFrame = m.currentFrame.definitionFrame := by rfl) :
+    (hdf : n.currentFrame.definitionFrame = m.currentFrame.definitionFrame := by rfl)
+    (hsup : κ.scope.runtimeClass ≠ none → n.currentFrame.superScope = m.currentFrame.superScope ∧
+      n.currentFrame.methodOwner.getD n.currentFrame.defmod =
+        m.currentFrame.methodOwner.getD m.currentFrame.defmod := by intro _; exact ⟨rfl, rfl⟩) :
     StateOk (κ.withFrame fr) Γ' I n := by
   refine StateOk_reframe_scopes h ht ha hh hs hb hc hd
     (fun hr => (h.runtime hr).reframe hh hs hd hc hcap hphase horigin hdf) ?_ ?_ hlookup hr he hf hal hlive hroot
   · intro cn hr
     obtain ⟨k, hk⟩ := h.classRuntime cn hr
     exact ⟨k, hk.reframe hh hd hc hcap hphase
-      ((hvis (by rw [hr]; simp)).trans hk.visibility.symm) horigin hdf⟩
+      ((hvis (by rw [hr]; simp)).trans hk.visibility.symm) horigin hdf
+      (hsup (by rw [hr]; simp)).1 (hsup (by rw [hr]; simp)).2⟩
   · intro cn hr
     obtain ⟨k, e, scope⟩ := h.singletonRuntime cn hr
     exact ⟨k, e, scope.reframe hh hs hd hc hcap hphase⟩
