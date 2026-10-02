@@ -72,7 +72,7 @@ The pending list uses the actual verified derivation's trace to name gated rules
 including companion and body rules. The default builds fresh corpus outputs;
 `--only 001,009` reports only those selected rungs. Use `--verbose` for all stages
 and every rung. Source-controlled admission lives in `Ratchet/ClinkPolicy.lean`;
-see [the rebuild guide](../ruby-lean/Denote/Clink/README.md) for climbing a rule.
+see [the rebuild guide](https://github.com/sam-xif/ruby-lean/blob/main/ruby-lean/Denote/Clink/README.md) for climbing a rule.
 
 ## The model against CRuby
 

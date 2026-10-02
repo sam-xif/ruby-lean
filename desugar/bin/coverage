@@ -26,7 +26,7 @@ save = ARGV.delete("--save")
 path = ARGV.first || File.expand_path("../corpus/bootstraptest", __dir__)
 files = File.directory?(path) ? Dir.glob(File.join(path, "**", "*.rb")).sort : [path]
 
-if files.empty?
+if files.empty? || files.any? { |f| !File.file?(f) }
   warn "no .rb files under #{path} (harvest bootstraptest first: bin/harvest_bootstraptest ...)"
   exit 2
 end
