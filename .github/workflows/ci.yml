@@ -140,6 +140,20 @@ jobs:
           ruby --version
           ruby -e 'v = RUBY_VERSION; abort "need 4.0.x, got #{v}" unless v.start_with?("4.0.")'
 
+      - name: Cache the sparse ruby/ruby checkout and harvested corpus
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/ruby-src
+            desugar/corpus/bootstraptest
+          key: ${{ runner.os }}-ruby-src-bootstraptest-v1
+
+      - name: Harvest bootstraptest if missing
+        run: |
+          if [ ! -e desugar/corpus/bootstraptest ]; then
+            RUBY_SRC=/tmp/ruby-src scripts/ci/harvest_bootstraptest.sh
+          fi
+
       - name: Round-trip every corpus program against CRuby
         run: ruby desugar/bin/run
 
@@ -301,7 +315,7 @@ jobs:
 
       - name: Harvest bootstraptest if missing
         run: |
-          if [ ! -d desugar/corpus/bootstraptest ]; then
+          if [ ! -e desugar/corpus/bootstraptest ]; then
             RUBY_SRC=/tmp/ruby-src scripts/ci/harvest_bootstraptest.sh
           fi
 
