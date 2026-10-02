@@ -81,8 +81,8 @@ theorem MethodActivation.after {κ : Ctx} {Γ Γm Γm' : Env} {I τ : Ty}
   refine ⟨h.originState, (hr.2.2 v rfl).2,
     hr.1.methodScope h.method.frameInRange h.caller.frameInRange h.distinct h.scope,
     by rw [hr.1.stack]; exact h.fresh,
-    hr.1.project h.originState.frameInRange h.originUncaptured h.method.frameInRange
-      h.uncaptured h.fresh h.framed, ?_⟩
+    hr.1.project h.originState.frameInRange h.originUncaptured h.originState.headAlias
+      h.method.frameInRange h.uncaptured h.fresh h.framed, ?_⟩
   obtain ⟨o, cl, hblk, hproc, hcode, hc⟩ := h.callback
   exact ⟨o, cl, (congrArg FrameScope.blk (hr.1.scope h.method.frameInRange)).trans hblk,
     hr.1.proc hproc, hcode, hc.afterMethod hr.1 h.distinct (hr.2.2 v rfl).1⟩
@@ -92,7 +92,7 @@ theorem MethodActivation.reCtl {κ : Ctx} {Γ Γm : Env} {I : Ty}
     (h : MethodActivation cb fr Γm origin m) (c : Ctl) (K : List Kont) :
     MethodActivation cb fr Γm origin (Ratchet.Denote.reCtl m c K) := by
   refine ⟨h.originState, StateOk_reCtl h.method c K,
-    ⟨h.scope.self, h.scope.cref, h.scope.owner, h.scope.uncaptured⟩, h.fresh,
+    ⟨h.scope.self, h.scope.cref, h.scope.owner, h.scope.uncaptured, h.scope.unaliased⟩, h.fresh,
     h.framed.trans (Framed_reCtl _ c K), ?_⟩
   obtain ⟨o, cl, hblk, hproc, hcode, hc⟩ := h.callback
   refine ⟨o, cl, hblk, hproc, hcode, ?_, hc.capture, hc.slots⟩
@@ -124,7 +124,7 @@ theorem SemMethod.seq {κ : Ctx} {Γ Γm Γm' Γm'' : Env} {I σ τ : Ty}
     {cb : CheckedCallback κ Γ I} {fr : Ratchet.Frame} {e e' : Ratchet.Expr}
     (h : SemMethod cb fr Γm e σ Γm') (h' : SemMethod cb fr Γm' e' τ Γm'') :
     SemMethod cb fr Γm (.seq [e, e']) τ Γm'' :=
-  fun origin m hm => (h origin m hm).seq (fun n _ hr => h' origin n (hm.after hr))
+  fun origin m hm => (h origin m hm).seq hm.method.rootClean (fun n _ hr => h' origin n (hm.after hr))
 
 theorem SemMethod.methodReturn {κ : Ctx} {Γ Γm Γm' : Env} {I τ : Ty}
     {cb : CheckedCallback κ Γ I} {fr : Ratchet.Frame} {e : Ratchet.Expr}
@@ -132,7 +132,8 @@ theorem SemMethod.methodReturn {κ : Ctx} {Γ Γm Γm' : Env} {I τ : Ty}
     {origin m : Machine} (hm : MethodActivation cb fr Γm origin m) (fid : FrameId) :
     RunSpec origin (pushK [.frameK fid] (evalFrom m e)) Γ τ κ I :=
   (h origin m hm).methodReturn hm.originState.frameInRange hm.originUncaptured
-    hm.method.frameInRange hm.uncaptured hm.fresh hm.framed ht fid
+    hm.method.frameInRange hm.uncaptured hm.fresh hm.framed ht fid hm.originState.headAlias
+    hm.originState.rootClean
 
 #print axioms MethodActivation.after
 #print axioms RunSpec.inMethod

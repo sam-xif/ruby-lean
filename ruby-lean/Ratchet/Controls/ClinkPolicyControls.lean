@@ -478,6 +478,21 @@ private def xToSH : Deriv := .prim (.var .lvar "x") "to_s" [] .int (.cls "String
 #guard !validateD (eachP (.send (some (.var .lvar "x")) "+" [.str "a"] none))
   (.flow (.eachBlock arr12H (.prim (.var .lvar "x") "+" [.strLit "a"] .int .int)))
 
+-- Active yield rules (094): the block body is checked at the declared block types.
+private def twiceP (blk : Ratchet.Expr) : Ratchet.Expr := .seq [
+  .def' "twice" [] (.send (some (.yield' [.int 1])) "+" [.yield' [.int 2]] none),
+  .send none "twice" [] (some (.block [.req "x"] [] blk))]
+private def twiceH (blk : Deriv) : Deriv := .flow (.seq [
+  .defBlock "twice" [] [.int] .int .int
+    (.prim (.yieldArgs [.intLit 1]) "+" [.yieldArgs [.intLit 2]] .int .int),
+  .callBlock "twice" blk .int])
+private def x10 : Ratchet.Expr := .send (some (.var .lvar "x")) "*" [.int 10] none
+private def x10H : Deriv := .prim (.var .lvar "x") "*" [.intLit 10] .int .int
+#guard validateD (twiceP x10) (twiceH x10H)
+#guard ["defBlock", "DFlow.callBlock", "DMethod.yieldOne"].all fun r =>
+  !validateDWith (fun q => clinkEnabled q && q != r) (twiceP x10) (twiceH x10H)
+#guard !validateD (twiceP (.str "a")) (twiceH (.strLit "a"))
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

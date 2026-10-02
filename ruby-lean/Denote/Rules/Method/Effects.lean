@@ -17,6 +17,13 @@ inductive MethodEffects : Machine → Machine → Prop where
 
 theorem MethodEffects.refl (m : Machine) : MethodEffects m m := .ordinary (.refl m)
 
+theorem MethodEffects.rootClean {m n : Machine} (h : MethodEffects m n) (hm : RootClean m) :
+    RootClean n := by
+  induction h with
+  | ordinary h => exact h.rootClean hm
+  | callback h => exact h.caller.rootClean hm
+  | trans _ _ ih ih' => exact ih' (ih hm)
+
 theorem MethodEffects.stack {m n : Machine} (h : MethodEffects m n) : n.stack = m.stack := by
   induction h with
   | ordinary h => exact h.stack

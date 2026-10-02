@@ -18,7 +18,7 @@ private theorem recv_one {κ : Ctx} {Γ Γm Γm' : Env} {I σ : Ty}
     MethodRunWith m (deliverA (.val recv) m [.recvK name [toRuby arg] .none site])
       Γ Γm' cb.ret κ (callbackMethodCtx κ fr cb.code) I I (CallbackPost out false) := by
   apply MethodRunWith.step (by rfl) (recv_one_step m recv name arg hplain)
-  apply (he origin m hm hf).bind (prim_catchFree _ (by intro tag; simp))
+  apply (he origin m hm hf).bind hm.method.rootClean (prim_catchFree _ rfl)
   intro a n hn
   cases a with
   | val v =>
@@ -52,7 +52,7 @@ theorem SemMethodFlow.call {κ : Ctx} {Γ Γm Γm' Γm'' : Env} {I σ τ : Ty}
   let site : SendSite := match toRuby recv with | .self' => .selfRecv | _ => .explicit
   apply MethodRunWith.step (by rfl) (show Interp.stepFn _ = .next
     (pushK [.recvK name [toRuby arg] .none site] (evalFrom m recv)) from rfl)
-  apply (hr origin m hm hf).bind (prim_catchFree _ (by intro tag; simp))
+  apply (hr origin m hm hf).bind hm.method.rootClean (prim_catchFree _ rfl)
   intro a n hn
   cases a with
   | val v =>

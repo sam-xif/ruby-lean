@@ -31,6 +31,7 @@ theorem CallbackFactsOk.reCtl {facts : CallbackFacts} {m : Machine}
 
 theorem CallbackFactsOk.write {facts : CallbackFacts} {m : Machine}
     (h : CallbackFactsOk facts m) (hi : m.stack.headD 0 < m.frames.size)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none)
     (x : String) (v : Value) (callback : Bool)
     (hv : callback = true → MethodCallbackReceiver m v) :
     CallbackFactsOk (facts.write x callback) (m.setLocal x v) := by
@@ -40,15 +41,16 @@ theorem CallbackFactsOk.write {facts : CallbackFacts} {m : Machine}
   · cases hc : callback <;> simp only [hc, Bool.false_eq_true, if_true, if_false,
       List.not_mem_nil, List.mem_singleton] at hy
     subst y
-    rw [getLocal_setLocal_self m x v hi]
+    rw [getLocal_setLocal_self m x v hi ha]
     exact (hv hc).setLocal x v
   · rw [getLocal_setLocal_ne m x v hne]
     exact (h y hy).setLocal x v
 
 theorem CallbackFactsOk.copy {facts : CallbackFacts} {m : Machine}
-    (h : CallbackFactsOk facts m) (hi : m.stack.headD 0 < m.frames.size) (x y : String) :
+    (h : CallbackFactsOk facts m) (hi : m.stack.headD 0 < m.frames.size)
+    (ha : (m.frames.getD (m.stack.headD 0) default).localAlias = none) (x y : String) :
     CallbackFactsOk (facts.copy x y) (m.setLocal x (m.getLocal y)) :=
-  h.write hi x (m.getLocal y) _ (fun hy => h y (by simpa using hy))
+  h.write hi ha x (m.getLocal y) _ (fun hy => h y (by simpa using hy))
 
 theorem CallbackFactsOk.callback {κ : Ctx} {Γ Γm : Env} {I : Ty}
     {cb : CheckedCallback κ Γ I} {fr : Ratchet.Frame} {origin m n : Machine} {facts : CallbackFacts}
@@ -56,7 +58,12 @@ theorem CallbackFactsOk.callback {κ : Ctx} {Γ Γm : Env} {I : Ty}
     (hc : CallbackFramed m n) : CallbackFactsOk facts n := by
   have hn := hc.inRange hm.method.frameInRange
   have hread (x : String) : n.getLocal x = m.getLocal x := by
-    simp only [Machine.getLocal, Machine.getLocal.go, ← currentFrame_headD hn.1,
+    have ham := hm.method.headAlias
+    have han : (n.frames.getD (n.stack.headD 0) default).localAlias = none := by
+      rw [← currentFrame_headD hn.1, hc.active, currentFrame_headD hm.method.frameInRange.1]
+      exact ham
+    simp only [Machine.getLocal, Machine.getLocal.go, localFrameId_of_noAlias ham,
+      localFrameId_of_noAlias han, ← currentFrame_headD hn.1,
       ← currentFrame_headD hm.method.frameInRange.1, hc.active]
     cases m.currentFrame.locals.find? (·.1 == x) <;> simp [hm.scope.uncaptured]
   intro x hx

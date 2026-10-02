@@ -59,14 +59,16 @@ theorem MethodRunSpec.answer {origin n : Machine} {Γc Γm : Env} {τ Ic Im : Ty
 theorem MethodRunSpec.bind {origin m : Machine} {Γc Γm Γc' Γm' : Env}
     {σ τ Ic Im Ic' Im' : Ty} {κc κm κc' κm' : Ctx} {e : Ratchet.Expr}
     (h : MethodRunSpec m (evalFrom m e) Γc Γm σ κc κm Ic Im)
+    (hroot : RootClean m)
     {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
     (hk : ∀ a n, MethodResultOk m Γc Γm σ κc κm Ic Im a n →
       MethodRunSpec origin (deliverA a n K) Γc' Γm' τ κc' κm' Ic' Im') :
     MethodRunSpec origin (pushK K (evalFrom m e)) Γc' Γm' τ κc' κm' Ic' Im' := by
   constructor
-  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1)
+  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1) hroot
+      (fun _ _ hn => hn.1.rootClean hroot)
   · intro fuel a n rest hr
-    rw [runA_pushK _ hK] at hr
+    rw [runA_pushK _ hK fuel (evalFrom m e) hroot (fun a n r hr => (h.2 fuel a n r hr).1.rootClean hroot)] at hr
     cases hs : runA fuel (evalFrom m e) with
     | halt hh => rw [hs] at hr; cases hh <;> cases hr
     | oof _ => rw [hs] at hr; cases hr
@@ -79,14 +81,16 @@ that result into the enclosing method's two-frame contract. -/
 theorem RunSpec.bindMethod {origin m : Machine} {Γ Γc Γm : Env} {σ τ I Ic Im : Ty}
     {κ κc κm : Ctx} {e : Ratchet.Expr}
     (h : RunSpec m (evalFrom m e) Γ σ κ I)
+    (hroot : RootClean m)
     {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
     (hk : ∀ a n, ResultOk m Γ σ a n κ I →
       MethodRunSpec origin (deliverA a n K) Γc Γm τ κc κm Ic Im) :
     MethodRunSpec origin (pushK K (evalFrom m e)) Γc Γm τ κc κm Ic Im := by
   constructor
-  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1)
+  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1) hroot
+      (fun _ _ hn => hn.1.rootClean hroot)
   · intro fuel a n rest hr
-    rw [runA_pushK _ hK] at hr
+    rw [runA_pushK _ hK fuel (evalFrom m e) hroot (fun a n r hr => (h.2 fuel a n r hr).1.rootClean hroot)] at hr
     cases hs : runA fuel (evalFrom m e) with
     | halt hh => rw [hs] at hr; cases hh <;> cases hr
     | oof _ => rw [hs] at hr; cases hr
@@ -98,14 +102,16 @@ theorem RunSpec.bindMethod {origin m : Machine} {Γ Γc Γm : Env} {σ τ I Ic I
 theorem MethodRunSpec.bindSpec {origin m : Machine} {Γc Γm Γ : Env}
     {σ τ Ic Im I : Ty} {κc κm κ : Ctx} {e : Ratchet.Expr}
     (h : MethodRunSpec m (evalFrom m e) Γc Γm σ κc κm Ic Im)
+    (hroot : RootClean m)
     {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
     (hk : ∀ a n, MethodResultOk m Γc Γm σ κc κm Ic Im a n →
       RunSpec origin (deliverA a n K) Γ τ κ I) :
     RunSpec origin (pushK K (evalFrom m e)) Γ τ κ I := by
   constructor
-  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1)
+  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1) hroot
+      (fun _ _ hn => hn.1.rootClean hroot)
   · intro fuel a n rest hr
-    rw [runA_pushK _ hK] at hr
+    rw [runA_pushK _ hK fuel (evalFrom m e) hroot (fun a n r hr => (h.2 fuel a n r hr).1.rootClean hroot)] at hr
     cases hs : runA fuel (evalFrom m e) with
     | halt hh => rw [hs] at hr; cases hh <;> cases hr
     | oof _ => rw [hs] at hr; cases hr
@@ -117,17 +123,18 @@ theorem MethodRunSpec.bindSpec {origin m : Machine} {Γc Γm Γ : Env}
 The second expression starts from its proved output states and may retype method locals. -/
 theorem MethodRunSpec.seq {m : Machine} {Γc Γm Γc' Γm' : Env}
     {σ τ Ic Im Ic' Im' : Ty} {κc κm κc' κm' : Ctx} {e e' : Ratchet.Expr}
+    (hroot : RootClean m)
     (h : MethodRunSpec m (evalFrom m e) Γc Γm σ κc κm Ic Im)
     (hk : ∀ n v, MethodResultOk m Γc Γm σ κc κm Ic Im (.val v) n →
       MethodRunSpec n (evalFrom n e') Γc' Γm' τ κc' κm' Ic' Im') :
     MethodRunSpec m (evalFrom m (.seq [e, e'])) Γc' Γm' τ κc' κm' Ic' Im' := by
   have hK (es : List RubyCore.Expr) : RubyCore.Proof.CatchFree [.seqK es] := by
-    intro k hk tag
+    intro k hk
     simp only [List.mem_singleton] at hk
-    subst k; simp
+    subst k; rfl
   apply MethodRunSpec.step (by rfl) (show Interp.stepFn _ = .next
     (pushK [.seqK [toRuby e']] (evalFrom m e)) from rfl)
-  apply h.bind (hK _)
+  apply h.bind hroot (hK _)
   intro a n hr
   cases a with
   | esc j =>
@@ -138,7 +145,7 @@ theorem MethodRunSpec.seq {m : Machine} {Γc Γm Γc' Γm' : Env}
   | val v =>
     apply MethodRunSpec.step (by rfl) (show Interp.stepFn _ = .next
       (pushK [.seqK []] (evalFrom n e')) from rfl)
-    apply (hk n v hr).bind (hK [])
+    apply (hk n v hr).bind (hr.1.rootClean hroot) (hK [])
     intro a out hout
     have hret := MethodRunSpec.answer ⟨hr.1.trans hout.1, hout.2⟩
     cases a with
@@ -155,14 +162,16 @@ theorem MethodRunSpec.methodReturn {origin m : Machine} {Γc Γm : Env} {τ Ic I
     (hl : FrameInRange origin) (hu : RootUncaptured origin)
     (hm : FrameInRange m) (hmu : RootUncaptured m)
     (fresh : origin.frames.size ≤ m.stack.headD 0)
-    (hcaller : Framed origin (popMethodFrame m)) (ht : FirstOrder τ = true) (fid : FrameId) :
+    (hcaller : Framed origin (popMethodFrame m)) (ht : FirstOrder τ = true) (fid : FrameId)
+    (hoa : (origin.frames.getD (origin.stack.headD 0) default).localAlias = none)
+    (hroot : RootClean origin) :
     RunSpec origin (pushK [.frameK fid] (evalFrom m e)) Γc τ κc Ic := by
-  apply h.bindSpec (by
-    intro k hk tag
+  apply h.bindSpec (hcaller.rootClean hroot) (by
+    intro k hk
     simp only [List.mem_singleton] at hk
-    subst k; simp)
+    subst k; rfl)
   intro a n hn
-  have hf := hn.1.project hl hu hm hmu fresh hcaller
+  have hf := hn.1.project hl hu hoa hm hmu fresh hcaller
   cases a with
   | val v =>
     apply RunSpec.step (by rfl) (step_frameK_value n fid v)

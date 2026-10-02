@@ -17,7 +17,7 @@ theorem SemMethod.vasgn {κ : Ctx} {Γ Γm Γm' : Env} {I τ : Ty}
   intro origin m hm
   apply MethodRunSpec.step (answerPoint_evalFrom _ _) (show Interp.stepFn _ = .next
     (pushK [.asgnK .lvar x] (evalFrom m e)) from rfl)
-  apply (h origin m hm).bind (catchFree_asgnK x)
+  apply (h origin m hm).bind hm.method.rootClean (catchFree_asgnK x)
   intro a n hr
   cases a with
   | val v =>
@@ -27,7 +27,7 @@ theorem SemMethod.vasgn {κ : Ctx} {Γ Γm Γm' : Env} {I τ : Ty}
       simpa only [envAfter, hi] using StateOk_setLocal hn.method hd hc hk
         (ρ := τ) (by cases τ <;> simp_all [stripAlias, isAliasTy])
         (by intro y σ hy; rw [hy] at ha; simp [isAliasTy] at ha)
-    have hf := Framed_setLocal n x v
+    have hf := Framed_setLocal n x v hn.method.headAlias
     have hcaller := ordinary_caller_state hn.originState hn.caller hn.uncaptured cb.main
       cb.callerTypes hn.fresh hn.framed hf hs
     apply MethodRunSpec.step (next := deliverA (.val v) (n.setLocal x v) []) (by rfl) (by

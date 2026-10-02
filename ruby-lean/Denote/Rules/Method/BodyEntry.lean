@@ -14,7 +14,7 @@ theorem MethodActivation.enterBindings {κ : Ctx} {Γ Γm : Env} {I : Ty}
     (names : List String) (args : List Value)
     (henv : EnvOk Γm (pushMethodFrame m
       (requiredBlockFrame m.currentFrame.self name md names args (some (.ref o)))))
-    (howner : md.owner = m.currentFrame.defmod) (hcref : md.cref = m.currentFrame.cref)
+    (howner : md.definee.getD md.owner = m.currentFrame.defmod) (hcref : md.cref = m.currentFrame.cref)
     (hsuper : md.superName = none)
     (hc : cl.captured = some (m.stack.headD 0))
     (hd : CaptureSlots cb.names (withoutNames (cb.params.map (·.1) ++ cl.locals) cb.out) m)
@@ -41,11 +41,12 @@ theorem MethodActivation.enterBindings {κ : Ctx} {Γ Γm : Env} {I : Ty}
       simp only [Bool.and_eq_true] at h
       exact h.1)
   have hs : CallbackMethodScope entry := by
-    refine ⟨?_, ?_, ?_, ?_⟩ <;> rw [hactive]
+    refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;> rw [hactive]
     · rw [hcur]; rfl
     · rw [hcur]; exact hcref
     · rw [hcur]; exact howner
     · exact hcap
+    · rfl
   refine ⟨hm, ?_, hs, Nat.le_refl _, hf, ?_⟩
   · apply callbackMethod_state hcaller cb.main hs (by simp [FrameInRange, pushMethodFrame])
     · exact henv
@@ -58,7 +59,7 @@ theorem MethodActivation.enterBindings {κ : Ctx} {Γ Γm : Env} {I : Ty}
     · refine ⟨.ref o, by rw [hactive]; rfl, ?_⟩
       rw [denM]
       exact ⟨cl, by simp only [procClosure?, pushMethodFrame, hproc],
-        hcode, by simp [denSpineFrom], Or.inl rfl⟩
+        hcode, by simp [denSpineFrom], Or.inl rfl, Or.inl ⟨rfl, rfl⟩⟩
   · refine ⟨o, cl, by rw [hactive]; rfl, hproc, hcode, hcaller, hc, ?_⟩
     intro x τ hx
     rw [show (popMethodFrame entry).stack = m.stack from hf.stack]
@@ -67,7 +68,7 @@ theorem MethodActivation.enterBindings {κ : Ctx} {Γ Γm : Env} {I : Ty}
 theorem MethodActivation.enter0 {κ : Ctx} {Γ : Env} {I : Ty}
     {cb : CheckedCallback κ Γ I} {m : Machine} {cl : Closure} {o : ObjId}
     (hm : StateOk κ Γ I m) (name : String) (md : MethodDef)
-    (howner : md.owner = m.currentFrame.defmod) (hcref : md.cref = m.currentFrame.cref)
+    (howner : md.definee.getD md.owner = m.currentFrame.defmod) (hcref : md.cref = m.currentFrame.cref)
     (hsuper : md.superName = none)
     (hc : cl.captured = some (m.stack.headD 0))
     (hd : CaptureSlots cb.names (withoutNames (cb.params.map (·.1) ++ cl.locals) cb.out) m)
@@ -78,21 +79,22 @@ theorem MethodActivation.enter0 {κ : Ctx} {Γ : Env} {I : Ty}
   constructor
   · intro x τ hx; cases hx
   · intro x _
-    simp [Machine.getLocal, Machine.getLocal.go, pushMethodFrame, requiredBlockFrame,
-      requiredFrame, Array.getD_eq_getD_getElem?]
+    simp [Machine.getLocal, Machine.getLocal.go, Machine.localFrameId, Machine.localFrameId.go,
+      pushMethodFrame, requiredBlockFrame, requiredFrame, Array.getD_eq_getD_getElem?]
 
 theorem SemMethod.call0 {κ : Ctx} {Γ Γm : Env} {I τ : Ty} {cb : CheckedCallback κ Γ I}
     {m : Machine} {cl : Closure} {o : ObjId} {e : Ratchet.Expr} {name : String} {md : MethodDef}
     (hbody : SemMethod cb ⟨"Object", "Object", name, false⟩ [] e τ Γm)
     (hm : StateOk κ Γ I m) (hk : m.kont = []) (ht : FirstOrder τ = true)
     (hp : md.params = []) (he : md.body = toRuby e)
-    (howner : md.owner = m.currentFrame.defmod) (hcref : md.cref = m.currentFrame.cref)
+    (howner : md.definee.getD md.owner = m.currentFrame.defmod) (hcref : md.cref = m.currentFrame.cref)
     (hsuper : md.superName = none) (hcapture : md.capturedFrame = none) (hdeclared : md.declared = [])
+    (hfromBlock : md.fromBlock = false) (hfor : md.forTargets = none)
     (hc : cl.captured = some (m.stack.headD 0))
     (hd : CaptureSlots cb.names (withoutNames (cb.params.map (·.1) ++ cl.locals) cb.out) m)
     (hproc : (m.heap.get o).payload = .proc cl) (hcode : ClosureMatches cb.code cl) :
     StepSpec m Γ τ (Interp.enterUserMethod m m.currentFrame.self name md [] (some (.ref o))) κ I := by
-  rw [enterUserMethod_required_block m _ name md [] [] _ hp hcapture hdeclared rfl]
+  rw [enterUserMethod_required_block m _ name md [] [] _ hp hcapture hdeclared rfl hfromBlock hfor]
   have hentry := MethodActivation.enter0 (cb := cb) hm name md howner hcref hsuper hc hd hproc hcode
   simpa only [StepSpec, Interp.withKont, pushK, evalFrom, pushMethodFrame, hk, he, List.nil_append]
     using hbody.methodReturn ht hentry m.frames.size

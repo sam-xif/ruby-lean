@@ -13636,3 +13636,14 @@ iteration, and blockCallK_answer retires the scope. The intermediate machine's
 RootClean comes from the explicit each/map step lemmas. Native Array#each now
 dispatches through its builtin row; its selector `"Array#each".splitOn "#"` is
 reduced by repeated `rw [String.splitOnAux]` (decide/kernel cannot). Climbs 091–093.
+
+### 2026-10-02 — Climb the method-flow family (93/99, 102/261)
+
+defBlock/defBoundBlock, callBlock/callBoundBlock and all DMethod*/DMethodFlow*
+rules. Repairs: RootClean threading through MethodRunSpec/MethodRunWith binds
+(MethodEffects.rootClean), CallbackMethodScope gains `unaliased`, method entry uses
+OrdinaryMethodCode's definee/fromBlock/forTargets, method-body primitives get the
+two-argument case, and native-prefix shadows yield `.unsupported` (case split as in
+top_method_stepSpec). The block-passing call site reuses the attached-literal proof
+(finishSend_attached_shadowed + bindAny + blockCallK_answer). Climbs 094, 095,
+157, 260, 261.

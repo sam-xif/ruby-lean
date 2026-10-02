@@ -16,10 +16,10 @@ theorem SemMethod.yieldOne {κ : Ctx} {Γ Γm Γm' : Env} {I σ : Ty}
   apply MethodRunSpec.step (answerPoint_evalFrom _ _) (show Interp.stepFn _ = .next
     (pushK [.yieldArgK [] []] (evalFrom m arg)) from by
       cases arg <;> first | rfl | exact False.elim hplain)
-  apply (h origin m hm).bind (by
-    intro k hk tag
+  apply (h origin m hm).bind hm.method.rootClean (by
+    intro k hk
     simp only [List.mem_singleton] at hk
-    subst k; simp)
+    subst k; rfl)
   intro a n hr
   cases a with
   | esc j =>
@@ -34,7 +34,8 @@ theorem SemMethod.yieldOne {κ : Ctx} {Γ Γm Γm' : Env} {I σ : Ty}
     have hc' : CallbackCaller κ Γ I cl cb.params cb.names cb.out base :=
       ⟨by simpa only [base, popMethodFrame, deliverA] using
         (StateOk_deliverA (a := .val v) (K := []) hc.state), hc.capture, hc.slots⟩
-    have hs' : CallbackMethodScope base := ⟨hn.scope.self, hn.scope.cref, hn.scope.owner, hn.scope.uncaptured⟩
+    have hs' : CallbackMethodScope base := ⟨hn.scope.self, hn.scope.cref, hn.scope.owner, hn.scope.uncaptured,
+      hn.scope.unaliased⟩
     have hσ : activationStableB σ = true := by
       have hi := cb.inputTypes
       rw [hp] at hi
@@ -49,6 +50,7 @@ theorem SemMethod.yieldOne {κ : Ctx} {Γ Γm Γm' : Env} {I σ : Ty}
       exact ⟨activationStable_heap (m := n) hσ rfl hr.2.1, trivial⟩
     have hstep := doYield_required base cl o (cb.params.map (·.1)) [v] cb.code.body []
       rfl hblk hproc hparams hcode.2.2.1 (by simpa only [List.length_map] using hlen)
+      hcode.2.2.2.2.1 hcode.2.2.2.2.2
     apply MethodRunSpec.step (by rfl) (show Interp.stepFn (deliverA (.val v) n [.yieldArgK [] []]) =
       .next _ from hstep)
     exact (checked_callback_method_run hc' (StateOk_deliverA hn.method) hs' hn.distinct hlen hargs

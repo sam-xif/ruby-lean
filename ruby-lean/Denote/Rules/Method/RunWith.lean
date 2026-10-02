@@ -76,14 +76,17 @@ theorem MethodRunWith.bind {origin m : Machine} {Γc Γm Γc' Γm' : Env}
     {σ τ Ic Im Ic' Im' : Ty} {κc κm κc' κm' : Ctx}
     {P Q : Value → Machine → Prop} {e : Ratchet.Expr}
     (h : MethodRunWith m (evalFrom m e) Γc Γm σ κc κm Ic Im P)
+    (hroot : RootClean m)
     {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
     (hk : ∀ a n, MethodResultWith m Γc Γm σ κc κm Ic Im P a n →
       MethodRunWith origin (deliverA a n K) Γc' Γm' τ κc' κm' Ic' Im' Q) :
     MethodRunWith origin (pushK K (evalFrom m e)) Γc' Γm' τ κc' κm' Ic' Im' Q := by
   constructor
-  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1)
+  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1) hroot
+      (fun _ _ hn => hn.1.1.rootClean hroot)
   · intro fuel a n rest hr
-    rw [runA_pushK _ hK] at hr
+    rw [runA_pushK _ hK fuel (evalFrom m e) hroot
+      (fun a n r hr => (h.2 fuel a n r hr).1.1.rootClean hroot)] at hr
     cases hs : runA fuel (evalFrom m e) with
     | halt hh => rw [hs] at hr; cases hh <;> cases hr
     | oof _ => rw [hs] at hr; cases hr
@@ -94,14 +97,17 @@ theorem MethodRunWith.bind {origin m : Machine} {Γc Γm Γc' Γm' : Env}
 theorem RunSpec.bindMethodWith {origin m : Machine} {Γ Γc Γm : Env} {σ τ I Ic Im : Ty}
     {κ κc κm : Ctx} {e : Ratchet.Expr} {P : Value → Machine → Prop}
     (h : RunSpec m (evalFrom m e) Γ σ κ I)
+    (hroot : RootClean m)
     {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
     (hk : ∀ a n, ResultOk m Γ σ a n κ I →
       MethodRunWith origin (deliverA a n K) Γc Γm τ κc κm Ic Im P) :
     MethodRunWith origin (pushK K (evalFrom m e)) Γc Γm τ κc κm Ic Im P := by
   constructor
-  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1)
+  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1 h.2 (fun a n hn => (hk a n hn).1) hroot
+      (fun _ _ hn => hn.1.rootClean hroot)
   · intro fuel a n rest hr
-    rw [runA_pushK _ hK] at hr
+    rw [runA_pushK _ hK fuel (evalFrom m e) hroot
+      (fun a n r hr => (h.2 fuel a n r hr).1.rootClean hroot)] at hr
     cases hs : runA fuel (evalFrom m e) with
     | halt hh => rw [hs] at hr; cases hh <;> cases hr
     | oof _ => rw [hs] at hr; cases hr
