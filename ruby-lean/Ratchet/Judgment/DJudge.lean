@@ -8,6 +8,7 @@ import Ratchet.Guards.ModuleGuards
 import Ratchet.Guards.SubclassRule
 import Ratchet.Guards.RootInit
 import Ratchet.Guards.NilFields
+import Ratchet.Guards.ConstGuards
 import Ratchet.Guards.MemberRoute
 import Ratchet.Static.NativeInstanceNames
 import Ratchet.Guards.SingletonGuards
@@ -400,6 +401,14 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       DJudge (envSet Γ x .nilT) t τ₁ Γ₁ κ I κ' I' → DJudge (envSet Γ x .int) e τ₂ Γ₂ κ I κ' I' →
       DJudge Γ (.if' (.send (some (.var .lvar x)) "nil?" [] none) t (some e)) (joinT τ₁ τ₂)
         (joinEnv Γ₁ Γ₂) κ I κ' I'
+  /-- `N = e` at top level (Sorbet accepts corpus 137): binds a fresh constant to a
+      non-class value; later reads see its type. -/
+  | casgnTop {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {n : String} {e : Expr} :
+      DJudge Γ e τ Γ' κ I κ' I' → casgnTopB κ' Γ' I' τ n = true →
+      DJudge Γ (.casgn n e) τ Γ' κ I (constAddCtx κ' n τ) I'
+  /-- Reading a constant the context has typed. -/
+  | constRead {κ : Ctx} {Γ : Env} {I τ : Ty} {n : String} :
+      constGet? κ n = some τ → DJudge Γ (.const n) τ Γ κ I
   /-- `while c; b; end` (and `until`, desugared) with a loop-invariant context: condition and
       body return exactly the incoming locals/context/spine (Sorbet accepts corpus 184/185). -/
   | while' {κ : Ctx} {Γ : Env} {I σ τ : Ty} {c b : Expr} :
@@ -1005,7 +1014,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_12 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_13 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_14 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 

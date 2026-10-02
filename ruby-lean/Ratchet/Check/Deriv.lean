@@ -65,6 +65,10 @@ inductive Deriv where
   | ifTruthyNoElse (x : String) (t : Deriv) (join : Ty)
   /-- `DJudge.while'`: a loop whose condition and body preserve the context. -/
   | whileD (c b : Deriv)
+  /-- `DJudge.casgnTop`: a fresh top-level constant bound to a non-class value. -/
+  | casgnTop (value : Deriv)
+  /-- `DJudge.constRead`: a constant the context has typed. -/
+  | constRead
   /-- `Judge.arrayLit`. `elem` is the join over the elements, load-bearing for the same
       reason (and `.never` for `[]`). -/
   | arrayLit (elems : List Deriv) (elem : Ty)
@@ -159,6 +163,8 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
   | "ifTruthy" => return .ifTruthy (← name "name") (← kid "then") (← kid "else") (← ty "join")
   | "ifTruthyNoElse" => return .ifTruthyNoElse (← name "name") (← kid "then") (← ty "join")
   | "while" => return .whileD (← kid "cond") (← kid "body")
+  | "casgn" => return .casgnTop (← kid "value")
+  | "constRead" => return .constRead
   | "ifNilQuery" => return .ifNilQuery (← name "name") (← kid "then") (← kid "else") (← ty "join")
   | "arrayLit" => return .arrayLit (← kids "elems") (← ty "elem")
   | "hashLit" => return .hashLit (← kids "keys") (← kids "vals") (← ty "key") (← ty "val")

@@ -398,6 +398,17 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
           else none
         else none
       | _ => none
+    | .casgn name e, .casgnTop de =>
+      match check n Γ e de κ I cache with
+      | some ⟨τ, Γ', κ', I', h, c⟩ =>
+        if hg : casgnTopB κ' Γ' I' τ name = true then
+          some ⟨τ, Γ', constAddCtx κ' name τ, I', .casgnTop h hg, c⟩
+        else none
+      | none => none
+    | .const name, .constRead =>
+      match hc : constGet? κ name with
+      | some τ => some ⟨τ, Γ, κ, I, .constRead hc, cache⟩
+      | none => none
     | .while' c b, .whileD dc db =>
       match check n Γ c dc κ I cache with
       | some ⟨_, Γc, κc, Ic, hc, cc⟩ =>

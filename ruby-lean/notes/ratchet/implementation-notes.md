@@ -13732,3 +13732,12 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
 ## ifTruthyNoElse (2026-10-02, 105/105, 112/261)
 - `if x` without else: then-branch at `x : σ`, the absent branch answers nil at the
   unchanged state refined to `x : nil`; both join. Climbs 134 (inside an each block).
+
+## casgnTop / constRead (2026-10-02, 107/107, 115/261)
+- First constant fragment: one fresh top-level `N = e` in a class-free main context
+  (`κ.consts = []`, `κ.classes = []`), value type in int/float/sym/bool/nil/Array/Hash so
+  the value is never a class (`NonClassVal`). Core class names are reserved.
+- Only Object's const table changes (`ConstAdd`): ancestry, dispatch, class names and data
+  are unchanged, so `StateOk` transports (`ConstAddState.state`). Object's native
+  const_added runs via `stepFn_class_hook`, then `newK` answers the value.
+- `constRead` is a leaf from `StateOk.consts`. Climbs 137, 143, 144 (`.freeze` is stripped).

@@ -576,6 +576,20 @@ private def noElseH (thn : Deriv) (j : Ty) : Deriv := .seq [
 #guard !validateD (noElseP (.send (some (.var .lvar "y")) "+" [.int 1] none))
   (noElseH (.prim (.var .lvar "y") "+" [.intLit 1] .int .int) .int)
 
+-- Active casgnTop/constRead (137): one fresh top-level constant with a non-class value.
+private def constP (n : String) (rhs : Ratchet.Expr) : Ratchet.Expr :=
+  .seq [.casgn n rhs, .send (some (.const n)) "+" [.int 1] none]
+private def constH (n : String) (rhs : Deriv) : Deriv :=
+  .seq [.casgnTop rhs, .prim .constRead "+" [.intLit 1] .int .int]
+#guard validateD (constP "LIMIT" (.int 10)) (constH "LIMIT" (.intLit 10))
+#guard !validateDWith (fun q => clinkEnabled q && q != "casgnTop")
+  (constP "LIMIT" (.int 10)) (constH "LIMIT" (.intLit 10))
+#guard !validateD (constP "Integer" (.int 10)) (constH "Integer" (.intLit 10))
+#guard !validateD (.seq [.casgn "A" (.int 1), .casgn "B" (.int 2)])
+  (.seq [.casgnTop (.intLit 1), .casgnTop (.intLit 2)])
+#guard !validateD (.casgn "S" (.str "x")) (.casgnTop (.strLit "x"))
+#guard !validateD (.const "MISSING") .constRead
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),
