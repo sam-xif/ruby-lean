@@ -1116,6 +1116,10 @@ structure StateOk (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop extends St
   classChains : ClassChains κ.classes m.heap
   rootInit : RootInitOk κ.defs m.heap
 
+theorem StateCore.headAlias {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
+    (h : StateCore κ Γ I m) : (m.frames.getD (m.stack.headD 0) default).localAlias = none := by
+  rw [← currentFrame_headD h.frameInRange.1]; exact h.localAlias
+
 theorem StateCore.captureLive {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (h : StateCore κ Γ I m) : CaptureLive m (some (m.stack.headD 0)) := by
   apply CaptureLive.frame h.frameInRange.2

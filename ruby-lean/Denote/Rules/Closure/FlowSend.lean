@@ -23,11 +23,11 @@ theorem SemFlow.sendRun {κ κr κa κout : Ctx} {Γ Γr Γa Γout : Env}
   apply RunSpec.withPost ?_ (fun _ n _ => ⟨.unknown n, by intro h; cases h⟩)
   apply RunSpec.step (by rfl) (show Interp.stepFn _ = .next
     (pushK [.recvK name (toRubyList args) .none site] (evalFrom m recv)) from rfl)
-  apply (hr m hm hf).bindSpec (by
-    intro k hk tag
+  apply (hr m hm hf).bindSpec hm.rootClean (by
+    intro k hk
     simp only [List.mem_singleton] at hk
     subst hk
-    simp)
+    rfl)
   intro a n hn
   cases a with
   | val v =>

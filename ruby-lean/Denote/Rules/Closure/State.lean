@@ -21,6 +21,7 @@ theorem requiredClosureFrame_state_of_env {κ : Ctx} {Γ Γb : Env} {I : Ty}
       (pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) := by
   apply StateOk_captured_reframe
     (n := pushMethodFrame m (requiredClosureFrame m cl (ps.map (·.1)) args)) hm ht ha rfl
+    (hroot := hm.rootClean)
   · simpa only [currentFrame_pushMethodFrame, requiredClosureFrame, Option.getD_none] using hscope.self
   · simpa only [currentFrame_pushMethodFrame, requiredClosureFrame] using hscope.block
   · simpa only [currentFrame_pushMethodFrame, requiredClosureFrame] using hscope.cref
@@ -61,11 +62,12 @@ theorem callClosure_required_state {κ : Ctx} {Γ cap : Env} {I : Ty}
       FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
     (hk : ∀ x, constGet? (κ.withFrame none) x = constGet? κ x)
     (hp : cl.params = (ps.map (·.1)).map RubyCore.Param.req) (hl : cl.lam = true)
-    (hlen : args.length = ps.length) (brk : Option FrameId) :
+    (hlen : args.length = ps.length) (brk : Option FrameId)
+    (henum : cl.enumYield = none) (hfor : cl.forTargets = none) :
     ∃ n, Interp.callClosure m cl args brk = .next n ∧
       StateOk (κ.withoutRuntimeScope.withFrame none) (ps ++ blockLocals cl.locals ++ cap) I n := by
   refine ⟨_, callClosure_required_lambda m cl (ps.map (·.1)) args brk none none hp hl
-    (by simpa using hlen), ?_⟩
+    (by simpa using hlen) henum hfor, ?_⟩
   exact StateOk_reCtl (requiredClosureFrame_state hm ht ha hscope hlive hargs hcap habs htypes hk) _ _
 
 #print axioms requiredClosureFrame_state

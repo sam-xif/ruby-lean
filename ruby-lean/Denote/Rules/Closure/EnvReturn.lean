@@ -45,7 +45,8 @@ theorem closure_pop_slots {m n : Machine} {f : RubyCore.Frame} {names : List Str
 
 theorem closure_absent_read {m n : Machine} {f : RubyCore.Frame}
     (hl : FrameInRange m) (hu : RootUncaptured m) (h : Framed (pushMethodFrame m f) n)
-    (x : String) (hx : frameBinds m (m.stack.headD 0) x = false) :
+    (x : String) (hx : frameBinds m (m.stack.headD 0) x = false)
+    (hal : m.currentFrame.localAlias = none) :
     (popMethodFrame n).getLocal x = .nil := by
   have hs : (popMethodFrame n).stack = m.stack := by simp [popMethodFrame, h.stack, pushMethodFrame]
   have hc : RootUncaptured (popMethodFrame n) := by
@@ -55,7 +56,12 @@ theorem closure_absent_read {m n : Machine} {f : RubyCore.Frame}
     exact he.trans hu
   have hb := (closure_saved_bindings h.frames _ hl.2 x).trans hx
   have hf := find?_eq_none_of_any_false _ _ hb
-  rw [getLocal_uncaptured hc, hs]
+  have hpa : ((popMethodFrame n).frames.getD ((popMethodFrame n).stack.headD 0) default).localAlias
+      = none := by
+    rw [hs]
+    exact (congrArg RubyCore.Frame.localAlias (closure_saved_metadata h.frames _ hl.2)).trans
+      (by rw [← currentFrame_headD hl.1]; exact hal)
+  rw [getLocal_uncaptured hc x hpa, hs]
   change (((n.frames.getD (m.stack.headD 0) default).locals.find? (·.1 == x)).map (·.2)).getD .nil = _
   rw [hf]; rfl
 
@@ -66,6 +72,7 @@ theorem closure_projected_env {m n : Machine} {f : RubyCore.Frame} {names : List
     (hd : CaptureSlots names Γb m)
     (hf : ∀ x, frameBinds m (m.stack.headD 0) x = true → f.locals.any (·.1 == x) = false)
     (h : Framed (pushMethodFrame m f) n) (he : EnvOk Γb n)
+    (hal : m.currentFrame.localAlias = none) (hfa : f.localAlias = none)
     (hmove : ∀ x τ, envGet? Γb x = some τ → names.contains x = true → ∀ v, denM (stripAlias τ) n v →
       denM (stripAlias τ) (popMethodFrame n) v) :
     EnvOk (captureEnv names Γb) (popMethodFrame n) := by
@@ -81,7 +88,7 @@ theorem closure_projected_env {m n : Machine} {f : RubyCore.Frame} {names : List
         subst τ
         have hs : frameBinds m (m.stack.headD 0) x = true := (hd x σ hg).trans hb
         refine ⟨?_, fun y ρ hy => False.elim (deAlias_ne_sameAs σ y ρ hy)⟩
-        rw [closure_bound_read hl hu hc h x (hf x hs) hs]
+        rw [closure_bound_read hl hu hc h x (hf x hs) hs hal hfa]
         exact denM_stripAlias.mpr (denM_deAlias.mpr
           (denM_stripAlias.mp (hmove x σ hg hb _ (he.1 x σ hg).1)))
     · simp only [if_neg hb] at hx
@@ -95,9 +102,9 @@ theorem closure_projected_env {m n : Machine} {f : RubyCore.Frame} {names : List
           have hn : names.contains x = true := (hd x σ hg).symm.trans hb
           rw [envGet?_captureEnv, hn, hg] at hx
           cases hx
-      rw [closure_bound_read hl hu hc h x (hf x hb) hb]
+      rw [closure_bound_read hl hu hc h x (hf x hb) hb hal hfa]
       exact he.2 x heq
-    · exact closure_absent_read hl hu h x (Bool.eq_false_iff.mpr hb)
+    · exact closure_absent_read hl hu h x (Bool.eq_false_iff.mpr hb) hal
 
 #print axioms closure_pop_slots
 #print axioms closure_projected_env

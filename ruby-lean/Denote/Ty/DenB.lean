@@ -285,7 +285,8 @@ def closB (κ : Ty) (m : Machine) (f : Value) : Bool :=
       match procClosure? m.heap f with
       | some cl =>
           closureMatchesB code cl && denSpineB cap m.heap (closLocal m cl) &&
-            (if selfT = .never then true else denB selfT m.heap (closSelf m cl))
+            (if selfT = .never then true else denB selfT m.heap (closSelf m cl)) &&
+            captureLiveB m (m.frames.size + 1) cl.captured
       | none => false
   | _ => false
 
@@ -301,12 +302,14 @@ theorem closB_sound {κ : Ty} {m : Machine} {f : Value} (hb : closB κ m f = tru
       simp only [Bool.and_eq_true] at hb
       show denM (.clos i cap selfT) m f
       rw [denM]
-      refine ⟨cl, hc, closureMatchesB_sound hb.1.1,
-        (denB_sound_aux cap).2 m.heap m (closLocal m cl) [] rfl hb.1.2, ?_⟩
+      refine ⟨cl, hc, closureMatchesB_sound hb.1.1.1,
+        (denB_sound_aux cap).2 m.heap m (closLocal m cl) [] rfl hb.1.1.2, ?_,
+        captureLiveB_sound _ _ hb.2⟩
       by_cases hs : selfT = .never
       · exact Or.inl hs
-      · rw [if_neg hs] at hb
-        exact Or.inr ((denB_sound_aux selfT).1 m.heap m _ rfl hb.2)
+      · have hb' := hb.1.2
+        rw [if_neg hs] at hb'
+        exact Or.inr ((denB_sound_aux selfT).1 m.heap m _ rfl hb')
   | .int | .bool | .nilT | .sym | .float | .any | .never | .cls _ | .clsOf _
   | .nilable _ | .union _ _ | .arrayOf _ | .hashOf _ _ | .inst _ _ | .sameAs _ _
   | .ivar0 | .ivarCons .. | .arrow0 _ | .arrowCons .. => simp [closB] at hb

@@ -51,7 +51,7 @@ theorem closureFrame_continue_spec {m : Machine} {f : RubyCore.Frame}
 theorem closureFrame_runSpec {m : Machine} {f : RubyCore.Frame} {e : Ratchet.Expr}
     {Γb Γ : Env} {κb κ : Ctx} {Ib I τ : Ty}
     (lam : Bool) (brk : Option FrameId) (cl : Closure) (args : List Value)
-    (ht : FirstOrder τ = true)
+    (ht : FirstOrder τ = true) (hroot : RootClean m)
     (hb : RunSpec (pushMethodFrame m f) (evalFrom (pushMethodFrame m f) e) Γb τ κb Ib)
     (hf : ∀ a n, ResultOk (pushMethodFrame m f) Γb τ a n κb Ib →
       Framed m (popMethodFrame n))
@@ -59,11 +59,11 @@ theorem closureFrame_runSpec {m : Machine} {f : RubyCore.Frame} {e : Ratchet.Exp
       StateOk κ Γ I (popMethodFrame n)) :
     RunSpec m (pushK [.blkFrameK m.frames.size lam brk cl args]
       (evalFrom (pushMethodFrame m f) e)) Γ τ κ I := by
-  apply hb.bindSpec (by
-    intro k hk tag
+  apply hb.bindSpec hroot (by
+    intro k hk
     simp only [List.mem_singleton] at hk
     subst hk
-    simp)
+    rfl)
   intro a n hr
   exact closureFrame_continue_spec lam brk cl args ht hf hs hr
 
@@ -76,6 +76,8 @@ theorem currentClosureFrame_runSpec {m : Machine} {f : RubyCore.Frame} {e : Ratc
     {Γb Γ : Env} {κb κ : Ctx} {Ib I τ : Ty}
     (hl : m.stack.headD 0 < m.frames.size) (hu : RootUncaptured m)
     (hc : f.captured = some (m.stack.headD 0))
+    (hal : (m.frames.getD (m.stack.headD 0) default).localAlias = none)
+    (hfa : f.localAlias = none) (hroot : RootClean m)
     (lam : Bool) (brk : Option FrameId) (cl : Closure) (args : List Value)
     (ht : FirstOrder τ = true)
     (hb : RunSpec (pushMethodFrame m f) (evalFrom (pushMethodFrame m f) e) Γb τ κb Ib)
@@ -83,8 +85,8 @@ theorem currentClosureFrame_runSpec {m : Machine} {f : RubyCore.Frame} {e : Ratc
       StateOk κ Γ I (popMethodFrame n)) :
     RunSpec m (pushK [.blkFrameK m.frames.size lam brk cl args]
       (evalFrom (pushMethodFrame m f) e)) Γ τ κ I :=
-  closureFrame_runSpec lam brk cl args ht hb
-    (fun _ _ hr => closure_pop_framed hl hu hc hr.1) hs
+  closureFrame_runSpec lam brk cl args ht hroot hb
+    (fun _ _ hr => closure_pop_framed hl hu hc hr.1 hal hfa) hs
 
 #print axioms currentClosureFrame_runSpec
 end Ratchet.Denote.Typed

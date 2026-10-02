@@ -13,7 +13,8 @@ theorem closure_projected_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty}
     (hr : κ.scope.runtimeMain = true) (hw : κb.pos.mainWorld = true)
     (hcl : κ.scope.runtimeClass = none)
     (hk : ∀ x, constGet? κb x = constGet? (returnScopeCtx κ κb) x)
-    (hc : f.captured = some (m.stack.headD 0)) (hd : CaptureSlots names Γb m)
+    (hc : f.captured = some (m.stack.headD 0)) (hfa : f.localAlias = none)
+    (hd : CaptureSlots names Γb m)
     (hf : ∀ x, frameBinds m (m.stack.headD 0) x = true → f.locals.any (·.1 == x) = false)
     (h : Framed (pushMethodFrame m f) n) (hn : StateOk κb Γb Ib n)
     (hmove : ∀ x τ, envGet? Γb x = some τ → names.contains x = true → ∀ v, denM (stripAlias τ) n v →
@@ -22,8 +23,8 @@ theorem closure_projected_main_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty}
   have hu : RootUncaptured m := by
     rw [RootUncaptured, ← currentFrame_headD hm.frameInRange.1]
     exact (hm.runtime hr).captured
-  exact closure_pop_main_state hm ht ha hr hw hcl hk hc h
-    (closure_projected_env hm.frameInRange hu hc hd hf h hn.env hmove) hn
+  exact closure_pop_main_state hm ht ha hr hw hcl hk hc hfa h
+    (closure_projected_env hm.frameInRange hu hc hd hf h hn.env hm.localAlias hfa hmove) hn
 
 theorem closure_projected_main_runSpec {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty}
     {m : Machine} {f : RubyCore.Frame} {e : Ratchet.Expr} {names : List String}
@@ -31,7 +32,8 @@ theorem closure_projected_main_runSpec {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : 
     (hr : κ.scope.runtimeMain = true) (hw : κb.pos.mainWorld = true)
     (hcl : κ.scope.runtimeClass = none)
     (hk : ∀ x, constGet? κb x = constGet? (returnScopeCtx κ κb) x)
-    (hc : f.captured = some (m.stack.headD 0)) (hd : CaptureSlots names Γb m)
+    (hc : f.captured = some (m.stack.headD 0)) (hfa : f.localAlias = none)
+    (hd : CaptureSlots names Γb m)
     (hf : ∀ x, frameBinds m (m.stack.headD 0) x = true → f.locals.any (·.1 == x) = false)
     (lam : Bool) (brk : Option FrameId) (cl : Closure) (args : List Value)
     (hτ : FirstOrder τ = true)
@@ -40,12 +42,13 @@ theorem closure_projected_main_runSpec {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : 
       names.contains x = true → ∀ v, denM (stripAlias σ) n v → denM (stripAlias σ) (popMethodFrame n) v) :
     RunSpec m (pushK [.blkFrameK m.frames.size lam brk cl args]
       (evalFrom (pushMethodFrame m f) e)) (captureEnv names Γb) τ (returnScopeCtx κ κb) I := by
-  apply closure_main_runSpec hm ht ha hr hw hcl hk hc lam brk cl args hτ hb
+  apply closure_main_runSpec hm ht ha hr hw hcl hk hc lam brk cl args hτ hfa hb
   intro n v hn
   have hu : RootUncaptured m := by
     rw [RootUncaptured, ← currentFrame_headD hm.frameInRange.1]
     exact (hm.runtime hr).captured
-  exact closure_projected_env hm.frameInRange hu hc hd hf hn.1 (hn.2.2 v rfl).env (hmove n hn.1)
+  exact closure_projected_env hm.frameInRange hu hc hd hf hn.1 (hn.2.2 v rfl).env hm.localAlias hfa
+    (hmove n hn.1)
 
 #print axioms closure_projected_main_state
 #print axioms closure_projected_main_runSpec

@@ -66,6 +66,11 @@ theorem FramePres.rootCaptured {m n : Machine} (h : FramePres m n) :
       (m.frames.getD (m.stack.headD 0) default).captured :=
   congrArg FrameScope.captured h.scope
 
+theorem FramePres.rootAlias {m n : Machine} (h : FramePres m n) :
+    (n.frames.getD (n.stack.headD 0) default).localAlias =
+      (m.frames.getD (m.stack.headD 0) default).localAlias :=
+  congrArg FrameScope.localAlias h.scope
+
 theorem FramePres.captured {m n : Machine} (h : FramePres m n) (hs : n.stack = m.stack)
     (i : FrameId) (hi : i < m.frames.size) :
     (n.frames.getD i default).captured = (m.frames.getD i default).captured := by

@@ -39,16 +39,18 @@ theorem tracked_local_lambda_call {κ κb : Ctx} {Γ Γb : Env} {I Ib τ cap sel
   obtain ⟨cl, hproc, hcode, hcap, hklass⟩ := hf.code hx hval
   have hparams : cl.params = [] := by rw [hcode.1, hp]; rfl
   have hlocals : cl.locals = [] := hcode.2.1.trans hls
-  have hlam : cl.lam = true := hcode.2.2.2.trans hl
+  have hlam : cl.lam = true := hcode.2.2.2.1.trans hl
   have henv := currentClosureFrame_envOk (ps := []) (args := []) hm
     (hm.runtime hr).captured hcap trivial
     (by simpa [hlocals, blockLocals] using halias)
     (by simpa [hlocals, blockLocals] using hin cl)
   have hstate := requiredClosureFrame_state_of_env (ps := []) hm ht ha
-    (ClosureScopeEq.current hm.frameInRange hcap) henv he
+    (ClosureScopeEq.current hm.frameInRange hcap)
+    (by rw [hcap]; exact hm.toStateCore.captureLive) henv he
   simp only [hlocals, blockLocals, List.nil_append] at hstate
   apply local_lambda_call_runSpec name hproc (hm.procCall hfree) hklass hparams hlam hcode.2.2.1
-  apply closure_projected_main_runSpec hm hout ha hr hw hcl hk hcap
+    hcode.2.2.2.2.1 hcode.2.2.2.2.2
+  apply closure_projected_main_runSpec hm hout ha hr hw hcl hk hcap rfl
     hslots
     (by intros; simp [requiredClosureFrame, hlocals]) true _ cl [] hτ (hb _ hstate)
   intro n _
