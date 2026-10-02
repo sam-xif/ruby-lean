@@ -59,6 +59,8 @@ inductive Deriv where
   | ifD (c t : Deriv) (e : Option Deriv) (join : Ty)
   /-- `DJudge.ifTruthy`: `if x` narrowing a nilable local in both branches. -/
   | ifTruthy (x : String) (t e : Deriv) (join : Ty)
+  /-- `DJudge.ifNilQuery`: `if x.nil?` narrowing a nilable Integer local. -/
+  | ifNilQuery (x : String) (t e : Deriv) (join : Ty)
   /-- `Judge.arrayLit`. `elem` is the join over the elements, load-bearing for the same
       reason (and `.never` for `[]`). -/
   | arrayLit (elems : List Deriv) (elem : Ty)
@@ -151,6 +153,7 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
   | "if" =>
     return .ifD (← kid "cond") (← kid "then") (← jOpt j "else" Deriv.ofJson?) (← ty "join")
   | "ifTruthy" => return .ifTruthy (← name "name") (← kid "then") (← kid "else") (← ty "join")
+  | "ifNilQuery" => return .ifNilQuery (← name "name") (← kid "then") (← kid "else") (← ty "join")
   | "arrayLit" => return .arrayLit (← kids "elems") (← ty "elem")
   | "hashLit" => return .hashLit (← kids "keys") (← kids "vals") (← ty "key") (← ty "val")
   | "prim" =>
