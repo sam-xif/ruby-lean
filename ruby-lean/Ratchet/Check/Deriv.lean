@@ -107,6 +107,11 @@ inductive Deriv where
   | defDeclKw (name : String) (params : List SigParam) (ret : Ty) (body : Deriv)
   /-- `DJudge.callSigKw`: every keyword in declared order; the body is rechecked. -/
   | callSigKw (name : String) (args : List Deriv) (ret : Ty) (params : List SigParam) (body : Deriv)
+  /-- `DJudge.defDeclRest`: required positionals and a named `*rest` (`rest.2` = element type). -/
+  | defDeclRest (name : String) (params : List SigParam) (rest : SigParam) (ret : Ty) (body : Deriv)
+  /-- `DJudge.callSigRest`: the body is rechecked in the calling context. -/
+  | callSigRest (name : String) (args : List Deriv) (ret : Ty) (params : List SigParam)
+      (rest : SigParam) (body : Deriv)
   /-- An implicit-self call to a method declared by a `defDecl`. -/
   | callSig (name : String) (args : List Deriv) (ret : Ty)
   /-- Explicit initializer super; parent code and annotations come from retained sources. -/
@@ -193,6 +198,18 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
     let ps ← jList j "params" (fun p => do
       return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))
     return .defDecl (← name "name") ps (← ty "ret") (← kid "body")
+  | "defDeclRest" =>
+    let ps ← jList j "params" (fun p => do
+      return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))
+    let o ← j.getObjVal? "rest"
+    return .defDeclRest (← name "name") ps ((← o.getObjValAs? String "name"), ← Ty.ofJson? (← o.getObjVal? "ty"))
+      (← ty "ret") (← kid "body")
+  | "callSigRest" =>
+    let ps ← jList j "params" (fun p => do
+      return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))
+    let o ← j.getObjVal? "rest"
+    return .callSigRest (← name "name") (← kids "args") (← ty "ret") ps
+      ((← o.getObjValAs? String "name"), ← Ty.ofJson? (← o.getObjVal? "ty")) (← kid "body")
   | "defDeclKw" =>
     let ps ← jList j "params" (fun p => do
       return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))

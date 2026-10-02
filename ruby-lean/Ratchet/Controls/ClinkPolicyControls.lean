@@ -654,6 +654,23 @@ private def kwH (args : List Deriv) : Deriv :=
 #guard !validateD (kwP [.pair "a" (.str "x")]) (kwH [.strLit "x"])
 #guard !validateD (kwP [.pair "a" (.str "x"), .pair "b" (.int 1)]) (kwH [.strLit "x", .intLit 1])
 
+-- Active defDeclRest/callSigRest (153): surplus positionals collected at the element type.
+private def restP (args : List Ratchet.Expr) : Ratchet.Expr := .seq [
+  .def' "tag" [.req "first", .rest (some "rest")]
+    (.send (some (.var .lvar "first")) "+" [.send (some (.var .lvar "rest")) "length" [] none] none),
+  .send none "tag" args none]
+private def restH (args : List Deriv) : Deriv :=
+  let body : Deriv := .prim (.var .lvar "first") "+"
+    [.prim (.var .lvar "rest") "length" [] (.arrayOf .int) .int] .int .int
+  .seq [.defDeclRest "tag" [("first", .int)] ("rest", .int) .int body,
+    .callSigRest "tag" args .int [("first", .int)] ("rest", .int) body]
+#guard validateD (restP [.int 1, .int 2, .int 3]) (restH [.intLit 1, .intLit 2, .intLit 3])
+#guard validateD (restP [.int 1]) (restH [.intLit 1])
+#guard !validateDWith (fun q => clinkEnabled q && q != "callSigRest")
+  (restP [.int 1, .int 2]) (restH [.intLit 1, .intLit 2])
+#guard !validateD (restP [.int 1, .str "x"]) (restH [.intLit 1, .strLit "x"])
+#guard !validateD (restP []) (restH [])
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),

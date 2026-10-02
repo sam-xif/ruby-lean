@@ -162,6 +162,7 @@ class Emitter
     @consts = {}       # top-level constant -> type
     @opt_defs = {}     # top-level method with one optional -> its checked derivations
     @kw_defs = {}      # top-level keyword-only method -> its checked derivations
+    @rest_defs = {}    # top-level *rest method -> its checked derivations
   end
 
   attr_reader :uses_flow
@@ -587,6 +588,14 @@ class Emitter
                 "params" => kd["params"], "body" => kd["body"] }, kd["ret"]]
     end
     dargs, targs = go_all(args)
+    if !@singleton && @self_cls.nil? && (rd = @rest_defs[m])
+      pre = rd["params"].map { |p| p["ty"] }
+      raise Blocked, "#{m}: arguments disagree with the declared parameters" unless
+        targs.length >= pre.length && targs.take(pre.length) == pre &&
+        targs.drop(pre.length).all? { |t| t == rd["rest"]["ty"] }
+      return [{ "rule" => "callSigRest", "name" => m, "args" => dargs, "ret" => rd["ret"],
+                "params" => rd["params"], "rest" => rd["rest"], "body" => rd["body"] }, rd["ret"]]
+    end
     if !@singleton && @self_cls.nil? && (od = @opt_defs[m])
       pre = od["params"].map { |p| p["ty"] }
       raise Blocked, "#{m}: arguments disagree with the declared parameters" unless
@@ -650,6 +659,10 @@ class Emitter
        params.all? { |p| p[0] == "pkey" && p[2].nil? } && sig["params"].length == params.length
       return kw_definition(name, params, sig, body)
     end
+    if @self_cls.nil? && !@singleton && !params.empty? && params.last[0] == "prest" && params.last[1] &&
+       params[0...-1].all? { |p| p[0] == "preq" } && sig["params"].length == params.length
+      return rest_definition(name, params, sig, body)
+    end
     if @self_cls.nil? && !@singleton && !params.empty? && params.last[0] == "popt" &&
        params[0...-1].all? { |p| p[0] == "preq" } && sig["params"].length == params.length
       return opt_definition(name, params, sig, body)
@@ -681,6 +694,27 @@ class Emitter
     @current_method = outer_method
     [{ "rule" => "defDecl", "name" => name, "params" => sps, "ret" => sig["ret"],
        "body" => dbody }, SYM]
+  end
+
+  # Required positionals and a named `*rest` (DJudge.defDeclRest); the sig types elements.
+  def rest_definition(name, params, sig, body)
+    pre = params[0...-1].each_with_index.map do |p, i|
+      { "name" => p[1], "ty" => as_inst(sig["params"][i]["ty"]) }
+    end
+    rest = { "name" => params[-1][1], "ty" => as_inst(sig["params"][-1]["ty"]) }
+    outer_env = @env
+    outer_method = @current_method
+    @current_method = name
+    begin
+      @env = pre.to_h { |p| [p["name"], p["ty"]] }.merge(rest["name"] => array_of(rest["ty"]))
+      dbody, = go_ordinary(body)
+    ensure
+      @env = outer_env
+      @current_method = outer_method
+    end
+    @rest_defs[name] = { "params" => pre, "rest" => rest, "body" => dbody, "ret" => sig["ret"] }
+    [{ "rule" => "defDeclRest", "name" => name, "params" => pre, "rest" => rest,
+       "ret" => sig["ret"], "body" => dbody }, SYM]
   end
 
   # Required keywords only (DJudge.defDeclKw); calls replay the body (DJudge.callSigKw).

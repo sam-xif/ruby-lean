@@ -13775,3 +13775,9 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   names the callee frame is exactly the required-positional frame over the keyword names, so
   entry/return reuse the positional proofs; `SemAllCtxA.startKwargs` mirrors `startArgsKeep`.
 - `paramEq` now compares `.key n none`; calls recheck the body like `callSigOpt`.
+
+## defDeclRest / callSigRest (2026-10-02, 116/116, 124/261)
+- Required positionals plus a named `*rest`; the sig's rest type is the element type and the
+  body sees `rest : Array[σ]`. The surplus Array is allocated before the frame is pushed
+  (`array_alloc_result`), the frame predeclares `rest` as nil (reusing `optOmitted_envOk`),
+  and the binding phase stores it via `StateOk_setLocal` before the body runs.
