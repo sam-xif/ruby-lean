@@ -102,6 +102,7 @@ def prim_ret(recv, m, args)
     return BOOL          if m == "start_with?" && args == [STR]
     return BOOL          if m == "===" && args == [STR]
     return array_of(STR) if m == "split" && args == [STR]
+    return BOOL          if m == "match?" && args == [cls("Regexp")]
   end
 
   if t == "arrayOf"
@@ -239,6 +240,7 @@ class Emitter
   def n_int(n)   = [{ "rule" => "intLit", "n" => n[1] }, INT]
   def n_str(n)   = [{ "rule" => "strLit", "s" => n[1] }, STR]
   def n_sym(n)   = [{ "rule" => "symLit", "s" => n[1] }, SYM]
+  def n_regexp_lit(n) = [{ "rule" => "regexpLit", "src" => n[1], "opts" => n[2] }, cls("Regexp")]
   def n_true(_n) = [{ "rule" => "truLit" }, BOOL]
   def n_false(_n) = [{ "rule" => "flsLit" }, BOOL]
   def n_nil(_n)  = [{ "rule" => "nilLit" }, NIL_T]

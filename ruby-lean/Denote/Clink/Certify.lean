@@ -35,6 +35,7 @@ macro "certify_djudgments" rec:ident h:ident F:ident hF:ident : tactic => `(tact
   · apply $hF DClink.truLit (by simp [dclinks]) <;> assumption
   · apply $hF DClink.flsLit (by simp [dclinks]) <;> assumption
   · apply $hF DClink.nilLit (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.regexpLit (by simp [dclinks]) <;> assumption
   · apply $hF DClink.var (by simp [dclinks]) <;> assumption
   · apply $hF DClink.vasgn (by simp [dclinks]) <;> assumption
   · apply $hF DClink.seq (by simp [dclinks]) <;> assumption

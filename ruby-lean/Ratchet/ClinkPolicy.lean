@@ -8,7 +8,7 @@ namespace Ratchet
 def clinkProfileName : String := "semantic-rebuild"
 
 def clinkProfile : Option (List String) := some
-  ["intLit", "fltLit", "strLit", "symLit", "truLit", "flsLit", "nilLit",
+  ["intLit", "fltLit", "strLit", "symLit", "truLit", "flsLit", "nilLit", "regexpLit",
    "seq", "DJudgeSeq.last", "DJudgeSeq.cons", "var", "vasgn",
    "prim", "DJudgeAll.nil", "DJudgeAll.cons", "if'", "ifNoElse", "ifTruthy", "ifTruthyNoElse", "ifNilVar", "ifNilQueryNil", "ifNilQuery", "casgnTop", "constRead", "while'", "bareName",
    "arrayLit", "hashLit", "DJudgePairs.nil", "DJudgePairs.cons", "defDecl", "callSig",
