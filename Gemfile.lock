@@ -1,0 +1,36 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    prism (1.8.1)
+    sorbet (0.6.13405)
+      sorbet-static (= 0.6.13405)
+    sorbet-runtime (0.6.13405)
+    sorbet-static (0.6.13405-aarch64-linux)
+    sorbet-static (0.6.13405-universal-darwin)
+    sorbet-static (0.6.13405-x86_64-linux)
+
+PLATFORMS
+  aarch64-linux
+  arm64-darwin
+  universal-darwin
+  x86_64-darwin
+  x86_64-linux
+
+DEPENDENCIES
+  prism (= 1.8.1)
+  sorbet (= 0.6.13405)
+  sorbet-runtime (= 0.6.13405)
+
+CHECKSUMS
+  prism (1.8.1) sha256=b260c1844ee0c7ead9c938f7fd63b95888c87cc054dfb64043204eccff8116ac
+  sorbet (0.6.13405) sha256=302f4154c641cb8ee825bcd76ba066d5ebb89c010fcae64300fa6668ddaaf763
+  sorbet-runtime (0.6.13405) sha256=b1e38aea9200cdfcdd2f7758836f8150f22462eecb4ee0cef86a8f58df4e9e31
+  sorbet-static (0.6.13405-aarch64-linux) sha256=73873bf82645306956f0f5e3504f5e436fd9e1835d8c9e5347ad1df68fb0143e
+  sorbet-static (0.6.13405-universal-darwin) sha256=92143283766d475196916a41a146452acd46fedad2768bf741fcfe6e1b48fc7a
+  sorbet-static (0.6.13405-x86_64-linux) sha256=dd6c8312f4741dd23b6b9fc28aafaa4b0632e4ff3f4cedd17e29bf95e3c2a6c3
+
+RUBY VERSION
+  ruby 4.0.5
+
+BUNDLED WITH
+  4.0.11

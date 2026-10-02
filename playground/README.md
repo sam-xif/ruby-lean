@@ -21,8 +21,7 @@ python3 server.py             # http://localhost:8077, Python stdlib only
 Entirely in the browser, with everything compiled to wasm:
 
 ```sh
-(cd ../ruby-lean && wasm/build.sh && wasm/ruby/build.sh)   # once
-./build.sh --serve            # builds dist/ and serves it on :8080
+make -C .. playground-serve  # builds the wasm and dist/, serves it on :8080
 ```
 
 `dist/` is a static site you can host anywhere. The page uses wasm when it finds

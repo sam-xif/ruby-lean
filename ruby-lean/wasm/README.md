@@ -14,8 +14,10 @@ the checker. [`wasm/ruby/`](ruby/README.md) is CRuby: the desugar harness, the
 strip chain, and the oracle. All five jobs are stdin -> stdout WASI modules, so
 the browser needs one runner rather than three integrations.
 
-Needs [wasi-sdk](https://github.com/WebAssembly/wasi-sdk) (set `$WASI_SDK`, or
-unpack it at `~/wasm-tools/wasi-sdk-34.0-arm64-macos`). Intermediates are cached
+From the repository root, `make wasm` runs all three, rebuilding only what is
+stale. Needs [wasi-sdk](https://github.com/WebAssembly/wasi-sdk) 34; `build.sh`
+fetches it into the cache on first use (set `$WASI_SDK` to use an existing
+install instead). Intermediates are cached
 in `~/.cache/ruby-lean-wasm`; a warm rebuild is seconds, a cold one about three
 minutes.
 

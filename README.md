@@ -17,11 +17,16 @@ You need:
 - [elan](https://github.com/leanprover/elan) for Lean and Lake. The Lean version
   is pinned in [`ruby-lean/lean-toolchain`](ruby-lean/lean-toolchain).
 - CRuby 4.0.x, available as `ruby` on your `PATH`.
-- Sorbet (`sorbet` and `sorbet-runtime` gems).
+- Sorbet (`sorbet` and `sorbet-runtime` gems), pinned in [`Gemfile.lock`](Gemfile.lock).
 - [uv](https://docs.astral.sh/uv/) and Python 3.12 or newer for the differential
   tests. uv manages the test environment.
 - Git and network access for the optional MRI `bootstraptest` run, which
   downloads test cases on its first run.
+- For the playground's WebAssembly build only: `wasmtime`. The build fetches
+  its own wasi-sdk.
+
+[`mise.toml`](mise.toml) pins the non-Lean tool versions if you use
+[mise](https://mise.jdx.dev).
 
 On macOS with Homebrew, one way to install them is:
 
@@ -29,18 +34,41 @@ On macOS with Homebrew, one way to install them is:
 curl -sSf https://elan.lean-lang.org/elan-init.sh | sh
 brew install ruby python@3.12 uv
 export PATH="$(brew --prefix ruby)/bin:$PATH"
-gem install sorbet sorbet-runtime
+make deps        # the pinned gems from Gemfile.lock
 ```
 
 From the repository root, check that the tools are available:
 
 ```sh
-scripts/check-prereqs.sh
+make prereqs
 ```
 
 The script reports missing tools and installation hints. Also check that
 `ruby --version` reports 4.0.x and that Python 3.12 or newer is available
 before running the differential tests.
+
+## Build targets
+
+`make` from the repository root drives everything; `make help` lists the
+targets. The main ones:
+
+| Target | Builds or runs |
+|---|---|
+| `make lean` | The Lean package: the model, the validator and its soundness proof |
+| `make run` | `rubycore` and the desugarer, for [`bin/ruby-lean`](bin/ruby-lean) (`make run FILE=prog.rb` also runs it) |
+| `make desugar` | The desugarer, `desugar/bin/export-json` (Ruby to the model's JSON) |
+| `make difftest` | The differential-test environment; then `cd difftest && uv run difftest --help` |
+| `make bootstraptest` | The model vs CRuby over MRI's `bootstraptest` |
+| `make proofs` | The metatheory (`RubyCore/Proof/`), plus a check of every headline theorem's axioms |
+| `make wasm`, `make playground` | The three WebAssembly modules, then the static playground in `playground/dist/` |
+| `make gate` | The typed ratchet gate, which must print `GREEN` before a commit |
+| `make check` | Generated-source freshness, the desugar and difftest suites, and the gate |
+| `make gen`, `make gen-check` | Regenerate, or check, the committed Lean files generated from Ruby |
+| `make docs` | The documentation site in `site/` |
+
+Each part keeps its own tool (Lake, uv, Bundler); the Makefile adds the links
+between them. For example, `RubyCore/Prelude.lean` is regenerated when the
+desugarer changes, and `make wasm` relinks only after Lake does.
 
 ## Reproduce the results
 
@@ -64,16 +92,17 @@ half an hour; later runs are faster.
    scripts/reproduce.sh --with-difftest --with-proofs
    ```
 
-   The first differential run fetches a sparse copy of `ruby/ruby`. Set
-   `RUBY_SRC` if you want that checkout somewhere other than `/tmp/ruby-src`.
+   The first differential run fetches a sparse copy of `ruby/ruby` at the pinned
+   tag (`RUBY_REF`, default `v4.0.5`) into `~/.cache/ruby-lean/`; set `RUBY_SRC`
+   to put it elsewhere.
    The script stops at the first failure.
 
 For the individual commands and an explanation of the measurements, see
 [Reproducing the results](docs/reproducing.md). To run a
-single program through the model after building:
+single program through the model after `make run`:
 
 ```sh
-echo 'puts 1 + 2' | ruby desugar/bin/export-json | ruby-lean/.lake/build/bin/rubycore
+bin/ruby-lean prog.rb            # or: echo 'puts 1 + 2' | bin/ruby-lean
 ```
 
 ## What the result means
