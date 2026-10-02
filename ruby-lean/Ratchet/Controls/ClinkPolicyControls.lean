@@ -418,6 +418,13 @@ private def hTy : Ty := .hashOf (.cls "String") .int
 #guard !validateD (.send (some (.str "gem")) "===" [.int 1] none)
   (.prim (.strLit "gem") "===" [.intLit 1] (.cls "String") .bool)
 
+-- Primitive row String#split (177).
+#guard validateD (.send (some (.send (some (.str "a/b")) "split" [.str "/"] none)) "length" [] none)
+  (.prim (.prim (.strLit "a/b") "split" [.strLit "/"] (.cls "String") (.arrayOf (.cls "String")))
+    "length" [] (.arrayOf (.cls "String")) .int)
+#guard !validateD (.send (some (.str "a/b")) "split" [.int 1] none)
+  (.prim (.strLit "a/b") "split" [.intLit 1] (.cls "String") (.arrayOf (.cls "String")))
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

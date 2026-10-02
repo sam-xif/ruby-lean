@@ -13582,3 +13582,10 @@ handles arity ≤ 1 only. Climbs 203.
 Boot maps String#=== to native String#==, so strCaseEq reuses its pure payload
 compare at a String argument. PrimitiveStep now discharges per-row bid facts by kernel
 `decide` over primitiveMethods instead of a fixed-width rcases. Climbs 197.
+
+### 2026-10-01 — String#split row (88/261)
+
+strSplit is typed at a String separator only. The proof never inspects the regex
+engine: splitBy either gates (.unsupported) or folds fresh String allocations
+(allocStrs_ok) into a fresh Array. runRegex is reduced via `rw [eq_def]; simp only []`
+(literal matcher reduction); plain `unfold`/`simp [runRegex]` times out. Climbs 177.
