@@ -394,6 +394,14 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
           else none
         else none
       | _ => none
+    | .if' (.var .lvar x) _ (some e), .ifNilVar y de =>
+      if x != y then none else
+      match hx : envGet? Γ x with
+      | some .nilT =>
+        match check n Γ e de κ I cache with
+        | some ⟨τ, Γ', κ', I', h, c⟩ => some ⟨τ, Γ', κ', I', .ifNilVar hx h, c⟩
+        | none => none
+      | _ => none
     | .casgn name e, .casgnTop de =>
       match check n Γ e de κ I cache with
       | some ⟨τ, Γ', κ', I', h, c⟩ =>

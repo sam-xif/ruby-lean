@@ -314,6 +314,14 @@ class Emitter
 
   # `if x` on a nilable local whose inner type excludes false: DJudge.ifTruthy types the
   # branches with x narrowed to the inner type and to nil.
+  # `if x` on a nil-typed local with an else: only the else branch runs (DJudge.ifNilVar).
+  def narrow_nil_var(n)
+    c = n[1]
+    return nil unless c[0] == "var" && c[1] == "local" && @env[c[2]] == NIL_T && n[3]
+    de, te = go(n[3])
+    [{ "rule" => "ifNilVar", "name" => c[2], "else" => de }, te]
+  end
+
   def narrow_truthy(n)
     c = n[1]
     return nil unless c[0] == "var" && c[1] == "local"
@@ -373,7 +381,7 @@ class Emitter
   end
 
   def n_if(n)
-    narrowed = narrow_truthy(n) || narrow_nil_query(n)
+    narrowed = narrow_truthy(n) || narrow_nil_query(n) || narrow_nil_var(n)
     return narrowed if narrowed
     dc, = go(n[1])
     # Both branches are typed in the incoming environment's *copy*: this emitter
