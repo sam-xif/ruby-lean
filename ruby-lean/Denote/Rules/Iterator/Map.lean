@@ -17,14 +17,16 @@ def mapArrayStep (m : Machine) (cl : Closure) (brk o : ObjId) (index : Nat) (acc
 theorem mapArrayStep_more (m : Machine) (cl : Closure) (brk o : ObjId) (index : Nat) (acc : List Value)
     (xs : Array Value) (name : String) (e : Ratchet.Expr)
     (hx : (m.heap.get o).payload = .arr xs) (hi : index < xs.size)
-    (hp : cl.params = [.req name]) (he : cl.body = toRuby e) :
+    (hp : cl.params = [.req name]) (he : cl.body = toRuby e)
+    (henum : cl.enumYield = none) (hfor : cl.forTargets = none) :
     mapArrayStep m cl brk o index acc = .next
-      (pushK [.blkFrameK m.frames.size cl.lam (some brk) cl [xs[index]],
+      (pushK [.blkFrameK m.frames.size cl.lam (closureBrk m cl (some brk)) cl [xs[index]],
         .iterK cl brk [] (.arrayMap o (index + 1)) acc .nil xs[index], .frameK brk]
         (evalFrom (pushMethodFrame m (requiredClosureFrame m cl [name] [xs[index]])) e)) := by
   unfold mapArrayStep Interp.iterStep
   simp only [hx, hi, ↓reduceDIte]
-  rw [callClosure_required _ cl [name] [xs[index]] _ none none hp rfl, he]
+  rw [callClosure_required _ cl [name] [xs[index]] _ none none hp rfl henum hfor, he]
+  simp only [requiredClosureFrame, definitionFrameId_reCtl]
   rfl
 
 theorem mapArrayStep_end (m : Machine) (cl : Closure) (brk o : ObjId) (index : Nat) (acc : List Value)
@@ -42,6 +44,9 @@ structure MapArrayContract (origin : Machine) (cl : Closure) (name : String)
     (Γ : Env) (τ : Ty) (κ : Ctx) (I : Ty) (Γb : Env) (ρ : Ty) (κb : Ctx) (Ib : Ty) : Prop where
   params : cl.params = [.req name]
   code : cl.body = toRuby e
+  enumNone : cl.enumYield = none
+  forNone : cl.forTargets = none
+  root : ∀ m i acc, P m i acc → RootClean m
   array : ∀ m i acc, P m i acc → ∃ xs, (m.heap.get o).payload = .arr xs
   body : ∀ m i acc, P m i acc → ∀ xs, (m.heap.get o).payload = .arr xs → ∀ hi : i < xs.size,
     RunSpec (pushMethodFrame m (requiredClosureFrame m cl [name] [xs[i]]))
@@ -65,22 +70,22 @@ theorem mapArrayStep_specAt {origin : Machine} {cl : Closure} {name : String}
   | zero =>
     obtain ⟨xs, hx⟩ := h.array m index acc hm
     by_cases hi : index < xs.size
-    · rw [mapArrayStep_more m cl brk o index acc xs name e hx hi h.params h.code]
+    · rw [mapArrayStep_more m cl brk o index acc xs name e hx hi h.params h.code h.enumNone h.forNone]
       exact RunSpecAt.zero (by rfl)
     · rw [mapArrayStep_end m cl brk o index acc xs hx hi]
       exact RunSpecAt.zero (by rfl)
   | succ N ih =>
     obtain ⟨xs, hx⟩ := h.array m index acc hm
     by_cases hi : index < xs.size
-    · rw [mapArrayStep_more m cl brk o index acc xs name e hx hi h.params h.code]
-      apply ((h.body m index acc hm xs hx hi).at (N + 1)).bindSpec (by
-        intro k hk tag
+    · rw [mapArrayStep_more m cl brk o index acc xs name e hx hi h.params h.code h.enumNone h.forNone]
+      apply ((h.body m index acc hm xs hx hi).at (N + 1)).bindSpec (h.root m index acc hm) (by
+        intro k hk
         simp only [List.mem_cons, List.not_mem_nil, or_false] at hk
-        rcases hk with rfl | rfl | rfl <;> simp)
+        rcases hk with rfl | rfl | rfl <;> rfl)
       intro a n hn
       cases a with
       | val v =>
-        apply RunSpecAt.step (by rfl) (step_blkFrameK_value n _ cl.lam (some brk) cl [xs[index]] v)
+        apply RunSpecAt.step (by rfl) (step_blkFrameK_value n _ cl.lam (closureBrk m cl (some brk)) cl [xs[index]] v)
         apply RunSpecAt.of_stepSpecWithin (by rfl)
         exact ih (deliverA (.val v) (popMethodFrame n) []) (index + 1) (acc ++ [v])
           (h.next m index acc hm xs hx hi v n hn)

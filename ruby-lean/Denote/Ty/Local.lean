@@ -578,7 +578,7 @@ theorem denM_setLocal_aux {m : Machine} {x : String} {w : Value} {τ' : Ty}
     rw [denM] at h ⊢
     rw [capStale, Bool.or_eq_false_iff] at hs
     obtain ⟨cl, hpc, hcode, hspine, hself, hlive⟩ := h
-    refine ⟨cl, hpc, hcode, ?_, ?_, hlive.setLocal x w⟩
+    refine ⟨cl, hpc, hcode, ?_, ?_, hlive.imp_right (·.setLocal x w)⟩
     · exact ihcap.2 hs.1 _ _ _ (fun y => closLocal_setLocal m x w cl y) hspine
     · rcases hself with h1 | h1
       · exact Or.inl h1

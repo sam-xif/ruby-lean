@@ -156,7 +156,8 @@ def denM : Ty → Machine → Value → Prop
   | .clos code cap selfT, m, f =>
       ∃ cl, procClosure? m.heap f = some cl ∧ ClosureMatches code cl ∧
         denSpineFrom [] cap m (closLocal m cl) ∧
-        (selfT = .never ∨ denM selfT m (closSelf m cl)) ∧ CaptureLive m cl.captured
+        (selfT = .never ∨ denM selfT m (closSelf m cl)) ∧
+        (cap = .ivar0 ∧ selfT = .never ∨ CaptureLive m cl.captured)
 termination_by τ _ _ => sizeOf τ
 
 /-- The arrow spine walk. `acc` is the argument list gathered so far, in call order. -/

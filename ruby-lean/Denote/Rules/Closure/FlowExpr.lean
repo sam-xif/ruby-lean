@@ -31,7 +31,7 @@ theorem SemFlow.closureLiteral {κ : Ctx} {Γ : Env} {I : Ty} (facts : LocalFact
       (.ref m.heap.objs.size) := by
     rw [denM]
     exact ⟨_, lit_payload _ _ _ _ _, ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩, by simp [denSpineFrom],
-      Or.inl rfl, lit_live hm _ _ _ _⟩
+      Or.inl rfl, Or.inr (lit_live hm _ _ _ _)⟩
   apply RunWith.step (answerPoint_evalFrom _ _)
     (closure_literal_step₁ hm code.lam hf code.params code.locals code.body)
   apply RunWith.step (by rfl) (closure_literal_step₂ m code.lam code.params code.locals code.body)

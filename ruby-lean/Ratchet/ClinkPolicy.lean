@@ -17,7 +17,10 @@ def clinkProfile : Option (List String) := some
    "initDef", "newInst", "InitJudge.intLit", "InitJudge.var", "InitJudge.ivarAsgn", "InitJudge.seq",
    "InitJudge.ignoreResult", "InitJudgeSeq.last", "InitJudgeSeq.cons", "vcallMethodSig", "moduleDecl",
    "singletonDef", "callSingleton", "callSingletonImplicit",
-   "newImplicit", "instanceType", "selfRead", "scalarIvarAsgn"]
+   "newImplicit", "instanceType", "selfRead", "scalarIvarAsgn",
+   "flow", "DFlow.embed", "DFlow.intLit", "DFlow.nilLit", "DFlow.var", "DFlow.closureLiteral",
+   "DFlow.vasgn", "DFlow.sequence", "DFlow.call", "DFlow.requiredCall", "DFlowSeq.last",
+   "DFlowSeq.cons", "DFlowAll.nil", "DFlowAll.cons"]
 
 def clinkEnabled (rule : String) : Bool :=
   match clinkProfile with

@@ -13,6 +13,7 @@ structure CallbackMethodScope (m : Machine) : Prop where
   cref : m.currentFrame.cref = (popMethodFrame m).currentFrame.cref
   owner : m.currentFrame.defmod = (popMethodFrame m).currentFrame.defmod
   uncaptured : m.currentFrame.captured = none
+  unaliased : m.currentFrame.localAlias = none
 
 theorem callbackMethod_state {κ : Ctx} {Γ Γm : Env} {I : Ty} {m : Machine}
     {fr : Ratchet.Frame} {code : ClosureCode}
@@ -24,12 +25,13 @@ theorem callbackMethod_state {κ : Ctx} {Γ Γm : Env} {I : Ty} {m : Machine}
   simp only [closureMainB, Bool.and_eq_true, Option.isNone_iff_eq_none,
     List.isEmpty_iff, and_assoc] at hmain
   obtain ⟨_, _, _, hasm, hself, hblock, hconst, hi⟩ := hmain
-  exact StateOk_reframe_block (StateOk_withoutRuntimeScope hm)
+  exact StateOk_reframe_block (n := m) (StateOk_withoutRuntimeScope hm)
     (ReframeFO.empty hi hself hblock hconst).withoutRuntimeScope hasm rfl
     hscope.self hb hscope.cref hscope.owner
     (by intro h; cases h) (by intro _ h; cases h) (by intro _ h; cases h)
     (fun x => (constGet?_empty (κ := κ.withoutRuntimeScope.withFrame (some fr)) hconst x).trans
-      (constGet?_empty (κ := κ.withoutRuntimeScope) hconst x).symm) hr he hf
+      (constGet?_empty (κ := κ.withoutRuntimeScope) hconst x).symm) hr he hf hscope.unaliased
+    (by rw [hscope.uncaptured]; exact .none) hm.rootClean
 
 theorem CallbackFramed.inRange {m n : Machine} (h : CallbackFramed m n)
     (hm : FrameInRange m) : FrameInRange n :=
@@ -49,7 +51,7 @@ theorem CallbackFramed.methodScope {m n : Machine} (h : CallbackFramed m n)
   exact ⟨by rw [h.active]; exact hs.self.trans (congrArg FrameScope.self hcaller).symm,
     by rw [h.active]; exact hs.cref.trans (congrArg FrameScope.cref hcaller).symm,
     by rw [h.active]; exact hs.owner.trans (congrArg FrameScope.defmod hcaller).symm,
-    by rw [h.active]; exact hs.uncaptured⟩
+    by rw [h.active]; exact hs.uncaptured, by rw [h.active]; exact hs.unaliased⟩
 
 /-- Callback effects restore the suspended method's ordinary expression context. Stable
 local types include exact code-only closures (such as &b), as well as first-order values. -/
@@ -65,7 +67,7 @@ theorem CallbackResultOk.methodState {m n : Machine} {κ : Ctx} {Γ Γm : Env} {
     rw [RootUncaptured, rootFrame_eq_currentFrame hm.frameInRange.1]
     exact hs.uncaptured
   apply callbackMethod_state (h.2.2 v rfl) hmain (h.1.methodScope hc.frameInRange hs) hr
-  · exact hm.env.reframe_uncaptured hm.frameInRange hr hu h.1.active
+  · exact hm.env.reframe_uncaptured hm.frameInRange hr hu h.1.active hm.localAlias
       (fun p hp _ hv => h.1.stable (List.all_eq_true.mp ht p hp) hv)
   · obtain ⟨hname, hrecv, hkind⟩ := hm.frame
     refine ⟨by rw [h.1.active]; exact hname, ?_, by rw [h.1.active]; exact hkind⟩

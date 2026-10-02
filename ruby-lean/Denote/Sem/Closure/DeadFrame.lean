@@ -99,7 +99,9 @@ theorem denM_pushDead_aux {m : Machine} (f : RubyCore.Frame) (h0 : 0 < m.frames.
     refine ⟨fun f' h => ?_, fun _ _ h => absurd h (by simp [denSpineFrom])⟩
     rw [denM] at h ⊢
     obtain ⟨cl, hpc, hcode, hspine, hself, hlive⟩ := h
-    refine ⟨cl, hpc, hcode, ?_, ?_, hlive.pushDead f⟩
+    rcases hlive with ⟨rfl, rfl⟩ | hlive
+    · exact ⟨cl, hpc, hcode, by simp [denSpineFrom], Or.inl rfl, Or.inl ⟨rfl, rfl⟩⟩
+    refine ⟨cl, hpc, hcode, ?_, ?_, Or.inr (hlive.pushDead f)⟩
     · rw [closLocal_pushDead hlive f]; exact ihcap.2 _ _ hspine
     · rcases hself with h | h
       · exact Or.inl h

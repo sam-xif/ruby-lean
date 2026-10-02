@@ -67,6 +67,7 @@ theorem MethodEffects.procs {m n : Machine} (h : MethodEffects m n) : ProcPres m
 caller entry may have changed. Existing caller-local changes in h remain permitted. -/
 private theorem framePres_prefix {origin m n : Machine}
     (hl : FrameInRange origin) (hu : RootUncaptured origin)
+    (hoa : (origin.frames.getD (origin.stack.headD 0) default).localAlias = none)
     (h : FramePres origin m) (hs : m.stack = origin.stack) (hs' : n.stack = m.stack)
     (hz : m.frames.size ≤ n.frames.size)
     (hf : ∀ i, i < origin.frames.size → n.frames.getD i default = m.frames.getD i default) :
@@ -85,6 +86,7 @@ private theorem framePres_prefix {origin m n : Machine}
     · intro i hi hn x
       simpa only [frameBinds, hf i hi] using h.bindings.saved i hi hn x
   · exact OwnersPres.uncaptured (hs'.trans hs) hu ((congrArg FrameScope.captured hscope).trans hu)
+      ((congrArg FrameScope.localAlias hscope).trans hoa)
   · intro x hx i hi hn
     rw [hf i hi]
     exact h.shadows x hx i hi hn
@@ -93,6 +95,7 @@ private theorem framePres_prefix {origin m n : Machine}
 the active method id is newer than every frame mentioned by that contract. -/
 theorem method_ordinary_project {origin m n : Machine}
     (hl : FrameInRange origin) (hu : RootUncaptured origin) (hm : RootUncaptured m)
+    (hoa : (origin.frames.getD (origin.stack.headD 0) default).localAlias = none)
     (fresh : origin.frames.size ≤ m.stack.headD 0)
     (hcaller : Framed origin (popMethodFrame m)) (h : Framed m n) :
     Framed origin (popMethodFrame n) := by
@@ -101,12 +104,12 @@ theorem method_ordinary_project {origin m n : Machine}
   refine ⟨hs.trans hcaller.stack, fun k hk => h.cls k (hcaller.cls k hk),
     fun v cn hv => h.nominal v cn (hcaller.nominal v cn hv), ?_, ?_,
     hcaller.fields.trans (h.fields.reheap rfl rfl), ?_, hcaller.procs.trans h.procs,
-    h.phase.trans hcaller.phase⟩
+    h.phase.trans hcaller.phase, fun hr => h.rootClean (hcaller.rootClean hr)⟩
   · intro τ ht v hv
     have hv' := (denM_heap_only (m₁ := popMethodFrame m) (m₂ := m) ht rfl).mp
       (hcaller.firstOrder τ ht v hv)
     exact (denM_heap_only (m₁ := n) (m₂ := popMethodFrame n) ht rfl).mp (h.firstOrder τ ht v hv')
-  · apply framePres_prefix hl hu hcaller.frames hcaller.stack hs h.frames.size
+  · apply framePres_prefix hl hu hoa hcaller.frames hcaller.stack hs h.frames.size
     intro i hi
     exact h.frames.isolated hm i (Nat.lt_of_lt_of_le hi hcaller.frames.size)
       (Nat.ne_of_lt (Nat.lt_of_lt_of_le hi fresh))
@@ -118,11 +121,12 @@ The caller is anchored before method allocation; no preservation of the fresh me
 locals is claimed. All old caller frames retain the original certified Framed contract. -/
 theorem MethodEffects.project {m n : Machine} (h : MethodEffects m n)
     {origin : Machine} (hl : FrameInRange origin) (hu : RootUncaptured origin)
+    (hoa : (origin.frames.getD (origin.stack.headD 0) default).localAlias = none)
     (hm : FrameInRange m) (hmu : RootUncaptured m)
     (fresh : origin.frames.size ≤ m.stack.headD 0)
     (hcaller : Framed origin (popMethodFrame m)) : Framed origin (popMethodFrame n) := by
   induction h with
-  | ordinary h => exact method_ordinary_project hl hu hmu fresh hcaller h
+  | ordinary h => exact method_ordinary_project hl hu hmu hoa fresh hcaller h
   | callback h => exact hcaller.trans h.caller
   | trans h _ ih ih' =>
     exact ih' (h.inRange hm) (h.uncaptured hm hmu) (by rw [h.stack]; exact fresh)

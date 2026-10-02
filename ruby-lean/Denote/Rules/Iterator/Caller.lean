@@ -72,12 +72,12 @@ theorem IteratorCaller.next {origin m out : Machine} {κ : Ctx} {Γ Γb : Env} {
     exact (hn.state.runtime hr).captured
   have hcap : (requiredClosureFrame m cl [name] [arg]).captured =
       some ((popMethodFrame m).stack.headD 0) := hn.capture
-  have hf := iterator_pop_framed hn.state.frameInRange.2 hu hcap hres.1
+  have hf := iterator_pop_framed hn.state.frameInRange.2 hu hcap hres.1 hn.state.headAlias rfl
   have hs := iterator_return_main_state (κb := closureBodyCtx κ) hn.state
     (ReframeFO.empty hi hself hblock hconst) hasm hr hw hclass
     (fun x => (constGet?_empty (κ := closureBodyCtx κ) hconst x).trans
       (constGet?_empty (κ := returnScopeCtx κ (closureBodyCtx κ)) hconst x).symm)
-    hcap hn.slots (requiredClosureFrame_slots m cl [name] [arg] rfl)
+    hcap rfl hn.slots (requiredClosureFrame_slots m cl [name] [arg] rfl)
     hres.1 (hres.2.2 v rfl)
     (by
       intro x τ hx v hv

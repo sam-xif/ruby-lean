@@ -13616,3 +13616,13 @@ pushDead (heap push + scope filter). callClosure lemmas take enum/for premises a
 install `closureBrk`; return lemmas thread `localAlias` facts. Old reified_den and
 SemSafeCtxA.closureLiteral were removed (old semantics). Iterator/method-flow files
 still red.
+
+### 2026-10-02 — Climb 14 flow rules (69/99, 94/261)
+
+FlowRules is split: FlowRulesCore (literal, locals, sequence, stored-lambda
+call/requiredCall, Seq/All companions) is active; FlowRules adds each/map, still red:
+native Array#each now dispatches through its builtin row and callNativeIterator
+computes the selector with `String.splitOn`, which neither `decide` (kernel) nor simp
+reduces in this toolchain. `.clos` denotations require CaptureLive only when they
+claim captures or self (empty-capture closures never read their chain), so
+activation transports need no frame facts. Climbs 087–090, 098.
