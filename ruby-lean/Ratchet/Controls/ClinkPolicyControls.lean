@@ -545,6 +545,22 @@ private def fooH (rhs : Deriv) (t : Ty) : Deriv := .seq [
 #guard !validateDWith (fun q => clinkEnabled q && q != "classReopen") (fooP (.int 2)) (fooH (.intLit 2) .int)
 #guard !validateD (fooP (.str "x")) (fooH (.strLit "x") .int)
 
+-- Active while' (184): a loop whose body keeps local types.
+private def loopP (rhs : Ratchet.Expr) : Ratchet.Expr := .seq [
+  .vasgn .lvar "i" (.int 0),
+  .while' (.send (some (.var .lvar "i")) "<" [.int 3] none) (.vasgn .lvar "i" rhs),
+  .var .lvar "i"]
+private def loopH (rhs : Deriv) (t : Ty) : Deriv := .seq [
+  .vasgn .lvar "i" (.intLit 0),
+  .whileD (.prim (.var .lvar "i") "<" [.intLit 3] .int .bool) (.vasgn .lvar "i" rhs),
+  .var .lvar "i"]
+#guard validateD (loopP (.send (some (.var .lvar "i")) "+" [.int 1] none))
+  (loopH (.prim (.var .lvar "i") "+" [.intLit 1] .int .int) .int)
+#guard !validateDWith (fun q => clinkEnabled q && q != "while'")
+  (loopP (.send (some (.var .lvar "i")) "+" [.int 1] none))
+  (loopH (.prim (.var .lvar "i") "+" [.intLit 1] .int .int) .int)
+#guard !validateD (loopP (.str "x")) (loopH (.strLit "x") (.cls "String"))
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),

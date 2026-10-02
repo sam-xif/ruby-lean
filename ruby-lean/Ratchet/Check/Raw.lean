@@ -373,6 +373,29 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
           | _, _ => none
         else none
       else none
+    | .while' c b, .whileD dc db =>
+      match check n Γ c dc κ I cache with
+      | some ⟨_, Γc, κc, Ic, hc, cc⟩ =>
+        if hΓc : Γc = Γ then
+          match ctxEq? κc κ with
+          | some ⟨hκc⟩ =>
+            if hIc : Ic = I then
+              match check n Γ b db κ I cc with
+              | some ⟨_, Γb, κb, Ib, hb, cb⟩ =>
+                if hΓb : Γb = Γ then
+                  match ctxEq? κb κ with
+                  | some ⟨hκb⟩ =>
+                    if hIb : Ib = I then
+                      some ⟨.nilT, Γ, κ, I, .while' (by subst hΓc hκc hIc; exact hc)
+                        (by subst hΓb hκb hIb; exact hb), cb⟩
+                    else none
+                  | none => none
+                else none
+              | none => none
+            else none
+          | none => none
+        else none
+      | none => none
     | .if' c t none, .ifD dc dt none j =>
       match check n Γ c dc κ I cache with
       | some ⟨_, Γc, κc, Ic, hc, cc⟩ =>

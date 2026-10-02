@@ -367,6 +367,17 @@ class Emitter
     [{ "rule" => "if", "cond" => dc, "then" => dt, "else" => de, "join" => j }, j]
   end
 
+  # `while c; b; end` (`until` arrives negated): DJudge.while' needs the condition and the
+  # body to leave the incoming local types unchanged.
+  def n_while(n)
+    before = @env.dup
+    dc, = go(n[1])
+    raise Blocked, "a `while` condition changes local types" if @env != before
+    db, = go(n[2])
+    raise Blocked, "a `while` body changes local types" if @env != before
+    [{ "rule" => "while", "cond" => dc, "body" => db }, NIL_T]
+  end
+
   # aggregates
   def n_array(n)
     ds, ts = go_all(n[1])
