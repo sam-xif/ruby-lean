@@ -334,6 +334,19 @@ private def initTy : Ty := .inst "Box" (.ivarCons "@n" .int .ivar0)
 #guard !validateD (.seq [initClass, newBoxArg (.int 1)])
   (.seq [initHint .int, .newInst "Box" [.intLit 1] (.inst "Box" (.ivarCons "@n" .nilT .ivar0))])
 
+-- Active vcallMethodSig: a bare-name self call inside an instance method (rung 064's shape).
+private def vcallClass (callee : String) : Expr := .class' "Box" none (.seq [
+  .def' "get" [] (.int 1), .def' "twice" [] (.vcall callee)])
+private def vcallHint (callee : String) (t : Ty) : Deriv := .classDecl "Box" none (.seq [
+  .defDecl "get" [] .int (.intLit 1), .defDecl "twice" [] t (.callSig callee [] t)])
+private def vcallUse : Expr := .send (some newBox) "twice" [] none
+private def vcallUseHint (t : Ty) : Deriv := .callMethodSig (.newInst "Box" [] (.inst "Box" .ivar0)) "twice" [] t
+#guard validateD (.seq [vcallClass "get", vcallUse]) (.seq [vcallHint "get" .int, vcallUseHint .int])
+#guard !validateDWith (fun r => clinkEnabled r && r != "vcallMethodSig") (.seq [vcallClass "get", vcallUse])
+  (.seq [vcallHint "get" .int, vcallUseHint .int])
+#guard !validateD (.seq [vcallClass "get", vcallUse]) (.seq [vcallHint "get" .bool, vcallUseHint .bool])
+#guard !validateD (.seq [vcallClass "nope", vcallUse]) (.seq [vcallHint "nope" .int, vcallUseHint .int])
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

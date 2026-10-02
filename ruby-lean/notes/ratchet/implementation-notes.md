@@ -13517,3 +13517,8 @@ StepSpec of finishSend; declared_constructor_code returns methodOn + undefined.
 The false one-step constructor_body_entry(_at) is removed. ConstructorReturn takes
 the localAlias/RootClean repairs from InitReturn. initDef/newInst move to
 Constructor/NewInstActual. Climbs 061-063, 068, 071, 072, 075.
+
+### 2026-10-01 — Climb vcallMethodSig (47/99, 72/261)
+
+The existing instanceVcall proof builds unchanged; vcallMethodSig moves out of
+legacy ClassRules into VcallMethodSigActual. Climbs 064.

@@ -15,7 +15,7 @@ def clinkProfile : Option (List String) := some
    "recursive", "DJudgeRec.embed", "DJudgeRec.prim", "DJudgeRec.if'", "DJudgeRec.selfCall",
    "DJudgeRecAll.nil", "DJudgeRecAll.cons", "classDecl", "constClass", "memberDef", "newDefault", "callMethodSig", "ivarRead",
    "initDef", "newInst", "InitJudge.intLit", "InitJudge.var", "InitJudge.ivarAsgn", "InitJudge.seq",
-   "InitJudge.ignoreResult", "InitJudgeSeq.last", "InitJudgeSeq.cons"]
+   "InitJudge.ignoreResult", "InitJudgeSeq.last", "InitJudgeSeq.cons", "vcallMethodSig"]
 
 def clinkEnabled (rule : String) : Bool :=
   match clinkProfile with
