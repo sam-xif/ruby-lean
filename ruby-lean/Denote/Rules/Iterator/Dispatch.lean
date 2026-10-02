@@ -7,6 +7,12 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
+/-- `String.splitOn` is legacy well-founded code; unfold it step by step. -/
+theorem array_each_selector : ("Array#each".splitOn "#") = ["Array", "each"] := by
+  unfold String.splitOn
+  simp only [show ("#" == "") = false from by decide]
+  repeat (rw [String.splitOnAux]; simp (config := {decide := true}) only [↓reduceIte])
+
 theorem invoke_array_each {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     {o bo : ObjId} {xs : Array Value} {cl : Closure}
     (hm : StateOk κ Γ I m) (hx : (m.heap.get o).payload = .arr xs)
@@ -29,10 +35,12 @@ theorem invoke_array_each {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     Interp.enumBid, Interp.procCallBid, Interp.arrayMapBid, Interp.callNativeIterator,
     Interp.tryIterator, hb, hx, Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
     Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?]
-  have h1 : ("Array#each".splitOn "#").getLast?.getD "" = "each" := by decide +kernel
+  have h1 : ("Array#each".splitOn "#").getLast?.getD "" = "each" := by
+    rw [array_each_selector]; rfl
   have h2 : "Array#each" ∉ Builtins.dupBids := by decide
   have h3 : "Array#each" ∉ Builtins.cloneBids := by decide
   simp only [h1, h2, h3, ↓reduceIte]
+  rfl
 
 theorem typed_each_invoke {κ : Ctx} {Γ Γb : Env} {I σ ρ : Ty} {m : Machine}
     {cl : Closure} {name : String} {names : List String} {body : Ratchet.Expr} {o bo : ObjId}

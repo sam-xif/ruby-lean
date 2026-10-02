@@ -13626,3 +13626,13 @@ computes the selector with `String.splitOn`, which neither `decide` (kernel) nor
 reduces in this toolchain. `.clos` denotations require CaptureLive only when they
 claim captures or self (empty-capture closures never read their chain), so
 activation transports need no frame facts. Climbs 087–090, 098.
+
+### 2026-10-02 — Climb DFlow.each/map over attached-block semantics (71/99, 97/261)
+
+An attached literal runs its call above `blockCallK s`. finishSend_attached exposes
+the call as `invoke (pushRootK [blockCallK s] attMachine)`; RubyCore's invoke_frame
+commutes it, RunSpec.bindAny (bindSpec for any start machine) composes the
+iteration, and blockCallK_answer retires the scope. The intermediate machine's
+RootClean comes from the explicit each/map step lemmas. Native Array#each now
+dispatches through its builtin row; its selector `"Array#each".splitOn "#"` is
+reduced by repeated `rw [String.splitOnAux]` (decide/kernel cannot). Climbs 091–093.

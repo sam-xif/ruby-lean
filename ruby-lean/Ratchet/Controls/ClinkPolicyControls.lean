@@ -458,6 +458,26 @@ private def lamHint (body : Deriv) (t : Ty) : Deriv :=
 #guard ["flow", "DFlow.closureLiteral", "DFlow.call", "DFlow.vasgn"].all fun r =>
   !validateDWith (fun q => clinkEnabled q && q != r) (lamProg (.int 1)) (lamHint (.intLit 1) .int)
 
+-- Active each/map attached blocks (091/092): element type and result element are checked.
+private def arr12 : Ratchet.Expr := .array [.int 1, .int 2]
+private def arr12H : Deriv := .arrayLit [.intLit 1, .intLit 2] .int
+private def eachP (body : Ratchet.Expr) : Ratchet.Expr :=
+  .send (some arr12) "each" [] (some (.block [.req "x"] [] body))
+private def mapP (body : Ratchet.Expr) : Ratchet.Expr :=
+  .send (some arr12) "map" [] (some (.block [.req "x"] [] body))
+private def xPlus1 : Ratchet.Expr := .send (some (.var .lvar "x")) "+" [.int 1] none
+private def xPlus1H : Deriv := .prim (.var .lvar "x") "+" [.intLit 1] .int .int
+private def xToS : Ratchet.Expr := .send (some (.var .lvar "x")) "to_s" [] none
+private def xToSH : Deriv := .prim (.var .lvar "x") "to_s" [] .int (.cls "String")
+#guard validateD (eachP xPlus1) (.flow (.eachBlock arr12H xPlus1H))
+#guard validateD (mapP xToS) (.flow (.mapBlock arr12H xToSH))
+#guard !validateDWith (fun q => clinkEnabled q && q != "DFlow.each") (eachP xPlus1)
+  (.flow (.eachBlock arr12H xPlus1H))
+#guard !validateDWith (fun q => clinkEnabled q && q != "DFlow.map") (mapP xToS)
+  (.flow (.mapBlock arr12H xToSH))
+#guard !validateD (eachP (.send (some (.var .lvar "x")) "+" [.str "a"] none))
+  (.flow (.eachBlock arr12H (.prim (.var .lvar "x") "+" [.strLit "a"] .int .int)))
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

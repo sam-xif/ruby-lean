@@ -117,6 +117,28 @@ theorem RunSpec.bindSpec {Γ₁ Γ₂ : Env} {e : Ratchet.Expr} {σ τ : Ty}
       rw [hs] at hr
       exact (hk a₁ n₁ (h.2 fuel a₁ n₁ r₁ hs)).2 r₁ a n rest hr
 
+/-- `bindSpec` for an arbitrary start machine: a continuation appended below its run. -/
+theorem RunSpec.bindAny {Γ₁ Γ₂ : Env} {σ τ : Ty}
+    {κ₁ κ₂ : Ctx} {I₁ I₂ : Ty} {m origin S : Machine}
+    (h : RunSpec m S Γ₁ σ κ₁ I₁) (hm : RootClean m) (hS : RootClean S)
+    {K : List Kont} (hK : RubyCore.Proof.CatchFree K)
+    (hk : ∀ a n, ResultOk m Γ₁ σ a n κ₁ I₁ →
+      RunSpec origin (deliverA a n K) Γ₂ τ κ₂ I₂) :
+    RunSpec origin (pushK K S) Γ₂ τ κ₂ I₂ := by
+  constructor
+  · exact safe_pushK hK haltBlind_stuck oof_stuck h.1
+      h.2 (fun a n hn => (hk a n hn).1) hS
+      (fun _ _ hr => hr.1.rootClean hm)
+  · intro fuel a n rest hr
+    rw [runA_pushK _ hK fuel S hS
+      (fun a n r hr => (h.2 fuel a n r hr).1.rootClean hm)] at hr
+    cases hs : runA fuel S with
+    | halt hh => rw [hs] at hr; cases hh <;> cases hr
+    | oof n' => rw [hs] at hr; cases hr
+    | ans a₁ n₁ r₁ =>
+      rw [hs] at hr
+      exact (hk a₁ n₁ (h.2 fuel a₁ n₁ r₁ hs)).2 r₁ a n rest hr
+
 /-- The existing fragment uses the context-general composition theorem unchanged. -/
 theorem RunSpec.bind {Γ Γ₁ Γ₂ : Env} {e : Ratchet.Expr} {σ τ : Ty}
     (h : SemSafeA Γ e σ Γ₁) {m : Machine} (hm : StateOk ctx0 Γ .ivar0 m)
