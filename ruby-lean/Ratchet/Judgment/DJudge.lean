@@ -163,6 +163,8 @@ inductive DPrim : Ty → String → List Ty → Ty → Prop
   | strCaseEq : DPrim (.cls "String") "===" [.cls "String"] .bool
   /-- `String#split` at a String separator allocates an Array of fresh Strings. -/
   | strSplit : DPrim (.cls "String") "split" [.cls "String"] (.arrayOf (.cls "String"))
+  /-- `String#match?` at a Regexp answers a Boolean and sets no `$~`. -/
+  | strMatchQ : DPrim (.cls "String") "match?" [.cls "Regexp"] .bool
   /-- `Array#compact` allocates the receiver's non-nil elements. -/
   | arrayCompact {τ : Ty} : FirstOrder (.nilable τ) = true →
       DPrim (.arrayOf (.nilable τ)) "compact" [] (.arrayOf τ)
@@ -202,6 +204,7 @@ def dprim? : Ty → String → List Ty → Option Ty
   | .hashOf σ τ, "[]", [_] => if FirstOrder (.hashOf σ τ) then some (.nilable τ) else none
   | .cls "String", "===", [.cls "String"] => some .bool
   | .cls "String", "split", [.cls "String"] => some (.arrayOf (.cls "String"))
+  | .cls "String", "match?", [.cls "Regexp"] => some .bool
   | .arrayOf (.nilable τ), "compact", [] =>
     if FirstOrder (.nilable τ) then some (.arrayOf τ) else none
   | .arrayOf τ, "uniq", [] => if FirstOrder τ then some (.arrayOf τ) else none
@@ -248,6 +251,7 @@ theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
     · cases h
   · rw [Option.some.injEq] at h; subst h; exact .strCaseEq
   · rw [Option.some.injEq] at h; subst h; exact .strSplit
+  · rw [Option.some.injEq] at h; subst h; exact .strMatchQ
   · split at h
     · rw [Option.some.injEq] at h; subst h; exact .arrayCompact (by assumption)
     · cases h
@@ -325,6 +329,10 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
   | truLit {κ : Ctx} {Γ : Env} {I : Ty} : DJudge Γ .tru .bool Γ κ I
   | flsLit {κ : Ctx} {Γ : Env} {I : Ty} : DJudge Γ .fls .bool Γ κ I
   | nilLit {κ : Ctx} {Γ : Env} {I : Ty} : DJudge Γ .nil .nilT Γ κ I
+  /-- A regexp literal allocates a Regexp (Sorbet 0.6.13405 accepts corpus 171); a pattern
+      the model cannot compile halts as unsupported. -/
+  | regexpLit {κ : Ctx} {Γ : Env} {I : Ty} {src : String} {opts : Nat} :
+      DJudge Γ (.regexpLit src opts) (.cls "Regexp") Γ κ I
   /-- Reading a local. The type comes from the environment, so there is nothing for a
       certificate to choose and `Deriv.var` carries only the name.
 
@@ -1025,7 +1033,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_12 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_13 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_14 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 

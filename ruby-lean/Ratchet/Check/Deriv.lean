@@ -33,6 +33,8 @@ inductive Deriv where
   | truLit
   | flsLit
   | nilLit
+  /-- `DJudge.regexpLit`. -/
+  | regexpLit (src : String) (opts : Nat)
   /-- Opt into the effect-indexed local-flow judgment. -/
   | flow (d : Deriv)
   /-- Code is reconstructed from the source block, never supplied by the certificate. -/
@@ -144,6 +146,7 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
   match rule with
   | "intLit" => return .intLit (← j.getObjValAs? Int "n")
   | "fltLit" => return .fltLit (UInt64.ofNat (← j.getObjValAs? Nat "bits"))
+  | "regexpLit" => return .regexpLit (← name "src") (← j.getObjValAs? Nat "opts")
   | "strLit" => return .strLit (← name "s")
   | "symLit" => return .symLit (← name "s")
   | "truLit" => return .truLit

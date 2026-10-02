@@ -13749,3 +13749,11 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
 ## ifNilQueryNil (2026-10-02, 109/109, 117/261)
 - `if x.nil?` with `x : nil` (safe navigation `x&.m` desugars to this): the native
   NilClass#nil? answers true (`nilQuery_cond`), so only the then branch runs. Climbs 191.
+
+## regexpLit / String#match? (2026-10-02, 110/110, 119/261)
+- `regexpLit` allocates a Regexp; no static parse guard is needed because a pattern the
+  model cannot compile halts as unsupported (a safe outcome).
+- `String#match?` row: the model's miss path used to clear `$~`; CRuby never touches it
+  for `match?`, so the model was fixed (difftest regression
+  `match-p-miss-keeps-last-match`). The builtin now leaves the machine unchanged, so the row
+  needs no frame transport. Climbs 171, 179.

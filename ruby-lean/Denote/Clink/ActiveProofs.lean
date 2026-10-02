@@ -6,6 +6,7 @@ import Denote.Rules.Expr.BranchNarrow
 import Denote.Rules.Expr.BranchNilQuery
 import Denote.Rules.Expr.While
 import Denote.Rules.Expr.ConstAssign
+import Denote.Rules.Expr.Regexp
 import Denote.Rules.Expr.BranchMissing
 import Denote.Rules.Expr.BareName
 import Denote.Rules.Expr.Array

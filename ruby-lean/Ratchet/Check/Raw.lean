@@ -47,6 +47,8 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
       some ⟨c.ty, c.out, c.ctx, c.spine, .flow c.judged, c.cache⟩
     | .int k, .intLit k' => if k == k' then some ⟨.int, Γ, κ, I, .intLit, cache⟩ else none
     | .flt b, .fltLit b' => if b == b' then some ⟨.float, Γ, κ, I, .fltLit, cache⟩ else none
+    | .regexpLit s o, .regexpLit s' o' =>
+      if s == s' && o == o' then some ⟨.cls "Regexp", Γ, κ, I, .regexpLit, cache⟩ else none
     | .str s, .strLit s' => if s == s' then some ⟨.cls "String", Γ, κ, I, .strLit, cache⟩ else none
     | .sym s, .symLit s' => if s == s' then some ⟨.sym, Γ, κ, I, .symLit, cache⟩ else none
     | .tru, .truLit => some ⟨.bool, Γ, κ, I, .truLit, cache⟩

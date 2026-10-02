@@ -614,6 +614,15 @@ private def safeNavH (y : String) : Deriv := .seq [.vasgn .lvar "x" .nilLit, .if
     .if' (.send (some (.var .lvar "x")) "nil?" [] none) .nil (some (.var .lvar "x"))])
   (.seq [.vasgn .lvar "x" (.intLit 1), .ifNilQueryNil "x" .nilLit])
 
+-- Active regexpLit and the String#match? row (171, 179).
+private def matchP (re : Ratchet.Expr) : Ratchet.Expr := .send (some (.str "12")) "match?" [re] none
+private def matchH (re : Deriv) (argTy : Ty) : Deriv := .prim (.strLit "12") "match?" [re] (.cls "String") .bool
+#guard validateD (matchP (.regexpLit "\\A\\d+\\z" 0)) (matchH (.regexpLit "\\A\\d+\\z" 0) (.cls "Regexp"))
+#guard !validateD (matchP (.regexpLit "a" 0)) (matchH (.regexpLit "b" 0) (.cls "Regexp"))
+#guard !validateDWith (fun q => clinkEnabled q && q != "regexpLit")
+  (matchP (.regexpLit "a" 0)) (matchH (.regexpLit "a" 0) (.cls "Regexp"))
+#guard !validateD (matchP (.str "a")) (matchH (.strLit "a") (.cls "String"))
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),

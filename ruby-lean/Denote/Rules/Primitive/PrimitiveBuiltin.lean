@@ -8,6 +8,7 @@ import Denote.Rules.Expr.HashKey
 import Denote.Rules.Expr.ArrayCompact
 import Denote.Rules.Expr.HashFetch
 import Denote.Rules.Expr.StringSplit
+import Denote.Rules.Expr.StringMatch
 
 /-! Each `DPrim` row discharges against the interpreter and preserves conformance on values. -/
 
@@ -275,6 +276,18 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
         nativeReal, rationalPayload?, complexPayload?, Builtins.toAryDefer?,
         Builtins.strCmpDefer?, Builtins.strCmpTwin?, hs]) (by rfl) hfree]
     exact string_split_run hm hk hs ht
+  | strMatchQ =>
+    cases ha
+    rename_i v vs hv hs
+    cases hs
+    obtain ⟨o, s, rfl, hs⟩ := string_payload hm hr (hstring rfl)
+    rw [primitive_invoke (bid := "String#match?") (k := Boot.stringId) hm
+      (by simp [primitiveMethods]) (string_class hm hr (hstring rfl)) (by rfl)
+      (by intro k hk; cases hk; exact ⟨s, hs⟩)
+      (by simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
+        nativeReal, rationalPayload?, complexPayload?, Builtins.toAryDefer?,
+        Builtins.strCmpDefer?, Builtins.strCmpTwin?, hs]) (by rfl) hfree]
+    exact string_match_run hm hk hs
   | arrayIndex _ =>
     cases ha
     rename_i v vs hv hs
