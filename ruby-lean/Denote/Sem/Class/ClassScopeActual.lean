@@ -10,23 +10,24 @@ variable {m : Machine} {name : String} {e : ObjId} {body : RubyCore.Expr}
 local notation "entry" => machine m name e body p
 
 theorem hook_quiet (hc : ChainsIn m.heap) (hs : Saturated m.heap)
-    (hd : m.lexicalNamespace < m.heap.objs.size)
-    (he : (m.heap.get Boot.objectId).eigen = some e)
-    (hh : definitionHookQuietB m.heap Boot.objectId = true) :
+    (hd : m.lexicalNamespace < m.heap.objs.size) (hpl : p < m.heap.objs.size)
+    (he : (m.heap.get p).eigen = some e)
+    (hh : definitionHookQuietB m.heap p = true) :
     definitionHookQuietB (heap m name e p) m.heap.objs.size = true := by
   unfold definitionHookQuietB
-  rw [lookup_eq_methodOn, classOf_class hd, method_eigen hc hs hd (hc.eigen _ hc.boot.2.2.2.2 _ he)]
+  rw [lookup_eq_methodOn, classOf_class hd, method_eigen hc hs hd (hc.eigen _ hpl _ he)]
   simp only [definitionHookQuietB, lookup_eq_methodOn, classOf, he] at hh
   exact hh
 
 theorem scope_ready (hc : ChainsIn m.heap) (hs : Saturated m.heap)
-    (he : (m.heap.get Boot.objectId).eigen = some e) (hm : MainReady m) :
+    (hpl : p < m.heap.objs.size) (he : (m.heap.get p).eigen = some e)
+    (hh : definitionHookQuietB m.heap p = true) (hm : MainReady m) :
     ClassScopeReady name entry := by
   have htop : m.lexicalNamespace = Boot.objectId := by
     simp only [Machine.lexicalNamespace, hm.cref, List.headD_nil]
   have hd : m.lexicalNamespace < m.heap.objs.size := htop ▸ hc.boot.2.2.2.2
   refine ⟨m.heap.objs.size, named_fresh htop hm.classLive, ?_, ?_, ?_, ?_, hm.phase, ?_,
-    hook_quiet hc hs hd he hm.hook, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    hook_quiet hc hs hd hpl he hh, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · change m.heap.objs.size < (heap m name e p).objs.size
     rw [size]; omega
   · rw [current_frame]; rfl
