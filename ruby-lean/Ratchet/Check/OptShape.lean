@@ -26,3 +26,40 @@ def defnNamed? (name : String) : (ds : List Defn) → Option ((d : Defn) ×' (d 
     else (defnNamed? name xs).map (fun r => ⟨r.1, List.mem_cons_of_mem _ r.2.1, r.2.2⟩)
 
 end Ratchet
+
+namespace Ratchet
+
+/-- Call-site keyword pairs `k: e`, keys and values aligned. -/
+def kwPairs : List String → List Expr → List KwEntry
+  | k :: ks, e :: es => .pair k e :: kwPairs ks es
+  | _, _ => []
+
+/-- The call-site values of `k: e` pairs whose keys are exactly `ks`, in order. -/
+def kwArgs? : List String → List KwEntry → Option (List Expr)
+  | [], [] => some []
+  | k :: ks, .pair k' e :: rest => if k = k' then (kwArgs? ks rest).map (e :: ·) else none
+  | _, _ => none
+
+theorem kwArgs?_sound : ∀ {ks : List String} {es : List KwEntry} {args : List Expr},
+    kwArgs? ks es = some args → es = kwPairs ks args ∧ args.length = ks.length
+  | [], [], args, h => by simp [kwArgs?] at h; subst h; exact ⟨rfl, rfl⟩
+  | k :: ks, .pair k' e :: rest, args, h => by
+    simp only [kwArgs?] at h
+    split at h
+    · rename_i hk
+      subst hk
+      cases hr : kwArgs? ks rest with
+      | none => rw [hr] at h; cases h
+      | some as =>
+        rw [hr] at h
+        simp at h
+        subst h
+        obtain ⟨h1, h2⟩ := kwArgs?_sound hr
+        exact ⟨by rw [h1]; rfl, by simp [h2]⟩
+    · cases h
+  | [], _ :: _, _, h => by simp [kwArgs?] at h
+  | _ :: _, [], _, h => by simp [kwArgs?] at h
+  | _ :: _, .dyn _ _ :: _, _, h => by simp [kwArgs?] at h
+  | _ :: _, .splat _ :: _, _, h => by simp [kwArgs?] at h
+
+end Ratchet

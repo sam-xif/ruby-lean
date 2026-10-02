@@ -103,6 +103,10 @@ inductive Deriv where
   /-- `DJudge.callSigOpt`: the default and body are rechecked in the calling context. -/
   | callSigOpt (name : String) (args : List Deriv) (ret : Ty) (params : List SigParam)
       (opt : SigParam) (dflt body : Deriv)
+  /-- `DJudge.defDeclKw`: required keyword parameters only. -/
+  | defDeclKw (name : String) (params : List SigParam) (ret : Ty) (body : Deriv)
+  /-- `DJudge.callSigKw`: every keyword in declared order; the body is rechecked. -/
+  | callSigKw (name : String) (args : List Deriv) (ret : Ty) (params : List SigParam) (body : Deriv)
   /-- An implicit-self call to a method declared by a `defDecl`. -/
   | callSig (name : String) (args : List Deriv) (ret : Ty)
   /-- Explicit initializer super; parent code and annotations come from retained sources. -/
@@ -189,6 +193,14 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
     let ps ← jList j "params" (fun p => do
       return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))
     return .defDecl (← name "name") ps (← ty "ret") (← kid "body")
+  | "defDeclKw" =>
+    let ps ← jList j "params" (fun p => do
+      return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))
+    return .defDeclKw (← name "name") ps (← ty "ret") (← kid "body")
+  | "callSigKw" =>
+    let ps ← jList j "params" (fun p => do
+      return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))
+    return .callSigKw (← name "name") (← kids "args") (← ty "ret") ps (← kid "body")
   | "defDeclOpt" =>
     let ps ← jList j "params" (fun p => do
       return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))
