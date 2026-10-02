@@ -501,6 +501,20 @@ private def triH (args : List Deriv) : Deriv := .seq [shapeH,
 #guard !validateD (triP [.str "three"]) (triH [.strLit "three"])
 #guard !validateD (triP []) (triH [])
 
+-- Active ifTruthy (125): `if x` narrows a nilable local in both branches.
+private def truthyP (els : Ratchet.Expr) : Ratchet.Expr := .seq [
+  .vasgn .lvar "a" (.array [.int 1, .int 2]),
+  .vasgn .lvar "x" (.send (some (.var .lvar "a")) "[]" [.int 0] none),
+  .if' (.var .lvar "x") (.send (some (.var .lvar "x")) "+" [.int 1] none) (some els)]
+private def truthyH (els : Deriv) (j : Ty) : Deriv := .seq [
+  .vasgn .lvar "a" (.arrayLit [.intLit 1, .intLit 2] .int),
+  .vasgn .lvar "x" (.prim (.var .lvar "a") "[]" [.intLit 0] (.arrayOf .int) (.nilable .int)),
+  .ifTruthy "x" (.prim (.var .lvar "x") "+" [.intLit 1] .int .int) els j]
+#guard validateD (truthyP (.int 0)) (truthyH (.intLit 0) .int)
+#guard !validateDWith (fun q => clinkEnabled q && q != "ifTruthy") (truthyP (.int 0)) (truthyH (.intLit 0) .int)
+#guard !validateD (truthyP (.send (some (.var .lvar "x")) "+" [.int 1] none))
+  (truthyH (.prim (.var .lvar "x") "+" [.intLit 1] .int .int) .int)
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),

@@ -295,7 +295,34 @@ class Emitter
     [{ "rule" => "seq", "stmts" => ds }, ts.empty? ? NIL_T : ts[-1]]
   end
 
+  FALSE_FREE = %w[int float sym arrayOf hashOf].freeze
+
+  # `if x` on a nilable local whose inner type excludes false: DJudge.ifTruthy types the
+  # branches with x narrowed to the inner type and to nil.
+  def narrow_truthy(n)
+    c = n[1]
+    return nil unless c[0] == "var" && c[1] == "local" && !n[3].nil?
+    x = c[2]
+    t = @env[x]
+    return nil unless t && t["tag"] == "nilable" && FALSE_FREE.include?(t["elem"]["tag"])
+    before = @env.dup
+    @env = before.merge(x => t["elem"])
+    dt, tt = go(n[2])
+    then_env = @env
+    @env = before.merge(x => NIL_T)
+    de, te = go(n[3])
+    else_env = @env
+    @env = before
+    raise Blocked, "the two branches of an `if` leave different local types" if
+      then_env.reject { |k, _| k == x } != else_env.reject { |k, _| k == x }
+    @env = then_env.merge(x => join(then_env[x], else_env[x]))
+    j = join(tt, te)
+    [{ "rule" => "ifTruthy", "name" => x, "then" => dt, "else" => de, "join" => j }, j]
+  end
+
   def n_if(n)
+    narrowed = narrow_truthy(n)
+    return narrowed if narrowed
     dc, = go(n[1])
     # Both branches are typed in the incoming environment's *copy*: this emitter
     # does not join environments, so a branch that rebinds a local is a block

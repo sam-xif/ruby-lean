@@ -41,6 +41,7 @@ macro "certify_djudgments" rec:ident h:ident F:ident hF:ident : tactic => `(tact
   · apply $hF DClink.prim (by simp [dclinks]) <;> assumption
   · apply $hF DClink.if' (by simp [dclinks]) <;> assumption
   · apply $hF DClink.ifNoElse (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.ifTruthy (by simp [dclinks]) <;> assumption
   · apply $hF DClink.bareName (by simp [dclinks]) <;> assumption
   · apply $hF DClink.arrayLit (by simp [dclinks]) <;> assumption
   · apply $hF DClink.hashLit (by simp [dclinks]) <;> assumption

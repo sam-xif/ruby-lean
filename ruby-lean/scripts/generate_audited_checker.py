@@ -50,6 +50,7 @@ def generate(module):
     if module == 'Raw':
         text = text.replace(".if' hc ht (by", ".if' (used_0 := DJudge.rules hc) (used_1 := DJudge.rules ht) (used_2 := DJudge.rules he) hc ht (by")
         text = text.replace('.ifNoElse hc (by', '.ifNoElse (used_0 := DJudge.rules hc) (used_1 := DJudge.rules ht) hc (by')
+        text = text.replace('.ifTruthy hx hf ha ht (by', '.ifTruthy (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hf ha ht (by')
         text = text.replace('by cases hctx; cases hi; exact he', 'by simpa only [DJudge.rules, hctx, hi] using he')
         text = text.replace('by cases hctx; cases hi; exact ht', 'by simpa only [DJudge.rules, hctx, hi] using ht')
     if module == 'MethodCertificate':
