@@ -13553,3 +13553,9 @@ metaNotMain, established at class/module entry from MainReady.singletonHooks.
 singletonRuleB rejects classHookSelectors names. SingletonHook proves the native hook
 run; SingletonRulesActual holds the providers (newImplicit stays in SingletonRules).
 Climbs 077–086.
+
+### 2026-10-01 — Climb newImplicit/instanceType/selfRead (54/99, 84/261)
+
+ConstructorImplicit consumes declared_constructor_run's StepSpec form; the existing
+SingletonRules newImplicit/instanceType and InstanceRead selfRead providers then build
+unchanged. Controls use the emitter's shapes (initialize returns .any). Climbs 073, 076.

@@ -16,7 +16,8 @@ def clinkProfile : Option (List String) := some
    "DJudgeRecAll.nil", "DJudgeRecAll.cons", "classDecl", "constClass", "memberDef", "newDefault", "callMethodSig", "ivarRead",
    "initDef", "newInst", "InitJudge.intLit", "InitJudge.var", "InitJudge.ivarAsgn", "InitJudge.seq",
    "InitJudge.ignoreResult", "InitJudgeSeq.last", "InitJudgeSeq.cons", "vcallMethodSig", "moduleDecl",
-   "singletonDef", "callSingleton", "callSingletonImplicit"]
+   "singletonDef", "callSingleton", "callSingletonImplicit",
+   "newImplicit", "instanceType", "selfRead"]
 
 def clinkEnabled (rule : String) : Bool :=
   match clinkProfile with
