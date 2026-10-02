@@ -34,8 +34,14 @@ out_dir = File.expand_path("../corpus/bootstraptest", __dir__)
 FileUtils.mkdir_p(out_dir)
 
 ASSERTS = %w[assert_equal assert_normal_exit assert_finish assert_not_equal].freeze
-# out-of-fragment / non-deterministic markers to skip (artifact 06 §4, `RubyCore/README.md` 00 §6)
-SKIP = /\b(Thread|Ractor|Fiber|ObjectSpace|GC|Process|fork|Mutex|require|require_relative|__FILE__|rand|Time|Signal|trap|at_exit|ENV|sleep)\b/.freeze
+# out-of-fragment / non-deterministic markers to skip (artifact 06 §4, `RubyCore/README.md` 00 §6).
+#
+# Filesystem interactions are not supported yet, and a program that touches the
+# filesystem is not hermetic: it mutates the CWD/`$LOAD_PATH` its observation
+# wrapper runs in, so it cannot be round-tripped faithfully (it surfaces as a
+# `harness_error`, e.g. `test_load_002.rb`). Gate the whole family out until
+# filesystem support lands — see the tracking issue.
+SKIP = /\b(Thread|Ractor|Fiber|ObjectSpace|GC|Process|fork|Mutex|require|require_relative|__FILE__|rand|Time|Signal|trap|at_exit|ENV|sleep|load|Dir|File|FileUtils|FileTest|IO|Pathname|Tempfile)\b/.freeze
 
 # Extract a string literal argument's content, if it is a plain string literal.
 def string_lit(node)
