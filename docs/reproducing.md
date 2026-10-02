@@ -47,24 +47,24 @@ requirements do not prevent the default active-soundness gate from being GREEN.
 
 ### Reading the active gate's output
 
-With the seven-clink rebuild profile (2026-09-30):
+With the current rebuild profile (live record: `ruby-lean/notes/ratchet/HANDOFF.md`):
 
 ```text
 agreement: 254 agree, 0 disagree
-ACTIVE CLINKS: 7/99 climbed; 92 gated
-CORPUS RUNGS: 8/261 climbed by validateD; 207 positive goals remaining
-  accepted prefix: 8; negative controls: 46/46 rejected
-  009-add: gated: prim, DJudgeAll.cons, DJudgeAll.nil
+ACTIVE CLINKS: 37/99 climbed; 62 gated
+CORPUS RUNGS: 64/261 climbed by validateD; 151 positive goals remaining
+  accepted prefix: 17; negative controls: 46/46 rejected
+  061-class-basic: gated: initDef, InitJudge.ignoreResult, InitJudge.seq, InitJudgeSeq.cons, InitJudge.ivarAsgn, InitJudge.var, InitJudgeSeq.last, newInst
 ...
 RATCHET GREEN -- validateD_safe_run passes for the enabled clinks.
 ```
 
 | Number | Meaning |
 |---|---|
-| **7/99 clinks climbed** | enabled rules in the active certified registry; disabled rules do not count |
-| **8/261 corpus rungs climbed** | production `validateD` accepts under the active policy; each is covered by the original soundness theorem |
-| **accepted prefix 8** | consecutive accepted programs from the start of the selected corpus |
-| **207 positive goals remaining** | positive rungs declined by the validator or blocked upstream |
+| **37/99 clinks climbed** | enabled rules in the active certified registry; disabled rules do not count |
+| **64/261 corpus rungs climbed** | production `validateD` accepts under the active policy; each is covered by the original soundness theorem |
+| **accepted prefix 17** | consecutive accepted programs from the start of the selected corpus |
+| **151 positive goals remaining** | positive rungs declined by the validator or blocked upstream |
 | **46/46 negatives rejected** | negative controls pass; rejection does not count as ascent |
 | **254 agree, 0 disagree** | the Lean model and CRuby agree on the stripped programs replayed |
 

@@ -4,10 +4,10 @@ Three of the four libraries of the `ruby-lean` Lake package; the fourth is the m
 they are about (`RubyCore/`, described in [`README.md`](README.md)). The chronological
 record is [`notes/ratchet/`](notes/), the model's is `notes/model/`.
 
-## Active semantic rebuild (2026-09-30)
+## Active semantic rebuild (live record: [`notes/ratchet/HANDOFF.md`](notes/ratchet/HANDOFF.md))
 
-The shared Ratchet/ClinkPolicy enables 31 literal/local/sequence/primitive/branch,
-bare-name, collection, ordinary definition/call and recursive rules; 68 authoring rules are gated. validateD checks the complete
+The shared Ratchet/ClinkPolicy enables 37 literal/local/sequence/primitive/branch,
+bare-name, collection, ordinary definition/call and recursive rules; 62 authoring rules are gated. validateD checks the complete
 constructor-derived trace of its verified
 derivation against that policy. Traced judgments cover all 99 constructors in
 17 families, including companion, initializer, cache and uniform callback-body
@@ -19,8 +19,9 @@ Bridge.lean proves the original validateD_safe, _safe_boot and _safe_run
 statements using only active clinks and their dependencies. The default
 ./scripts/run_typed_ratchet.sh checks this soundness theorem and reports only
 active clinks and actual validateD accepts as climbed. Disabled rules are ascent.
-Its full default run passes: 31/99 clinks, 55/261 corpus rungs, 46 negative controls
-rejected, 254 CRuby agreements and 0 disagreements. --clink-rebuild checks only
+Its full default run passes: 37/99 clinks, 64/261 corpus rungs (accepted
+prefix 17), 46/46 negative controls rejected, 254 CRuby agreements and
+0 disagreements. --clink-rebuild checks only
 proofs/controls; --full-corpus preserves the historical complete-coverage gate
 and floors. SoundnessAudit rejects nonstandard axioms. Optional raw DJudge
 completeness helpers remain in Denote/Bridge/Full.lean.
@@ -1648,7 +1649,7 @@ one line for any registry).
 > function with its five machine-touching stages named, `enterUM_eq` is `rfl` (so fidelity is a
 > kernel check), and the walk then closes in **18 s** against three previous non-terminating
 > attempts. Chosen over refactoring `Interp/Dispatch.lean` itself because that breaks
-> `KontFrameDispatch`'s `enterUserMethod_frame`, which the climbed `Judge.vasgn` rung sits on.
+> `RootFrameDispatch`'s `enterUserMethod_frame`, which the climbed `Judge.vasgn` rung sits on.
 > **The rule generalises** — `finishSend`, `invokeDispatch`, `startArgs`, `tryReflect` and
 > `evalExpr` are let-chains of the same kind.
 >
@@ -2108,7 +2109,7 @@ empty continuation and *not* under `K` (`catch(:t) { x = begin; throw :t; rescue
 UncaughtThrowError; 1; end; … }`). Nothing here assumes either version.
 
 **Its `Builtins` half is proved, and `Interp/Support` and most of `Interp/Dispatch` with it**
-(clinks 52–53, `RubyCore/Proof/KontFrame.lean` + `KontFrameDispatch.lean` — the first
+(clinks 52–53, `RubyCore/Proof/RootFrame.lean` + `RootFrameDispatch.lean` — the first
 files this investigation adds outside `ruby-lean/`, because a theorem about `stepFn` belongs next
 to `stepFn`). That was the part the fifth stall point could not size: `grep` finds **zero**
 reads of `kont` in the whole 24k-line `Builtins/` directory, so the layer is transparent by

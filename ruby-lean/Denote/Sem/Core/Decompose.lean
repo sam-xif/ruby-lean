@@ -1,5 +1,5 @@
 import Denote.Sem.Core.KontFrameBase
-import RubyCore.Proof.KontFrameStep
+import RubyCore.Proof.KontFrame
 import RubyCore.Proof.NotDone
 
 /-! Continuation framing now follows saved root executions. The old unconditional
