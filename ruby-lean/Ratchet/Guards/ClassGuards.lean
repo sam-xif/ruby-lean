@@ -30,7 +30,7 @@ def autoPrivateNames : List String :=
   ["initialize_copy", "initialize_dup", "initialize_clone", "respond_to_missing?"]
 
 /-- Object's class-callback selectors; class-body writes keep them unshadowed. -/
-def classHookSelectors : List String := ["const_added", "inherited"]
+def classHookSelectors : List String := ["const_added", "inherited", "singleton_method_added"]
 
 def memberRuleB (κ : Ctx) (Γ : Env) (I : Ty) (c : Cls) (d : Defn) : Bool :=
   reframeTypesB κ I && localTypesB Γ &&

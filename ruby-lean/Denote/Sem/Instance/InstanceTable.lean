@@ -106,6 +106,7 @@ theorem StateOk_publish_instance {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (hp : md.params = toRubyParams d.params) (hb : md.body = toRuby d.body)
     (hu : md.undefined = false) (hcode : InstanceMethodCode cls d.name md)
     (hmiss : "method_missing" ≠ d.name) (hquiet : "method_added" ≠ d.name)
+    (hsh : singletonHookName ≠ d.name)
     (hnested : NestedClassesOk (classWithMethod c d :: κ.classes)
       { m with heap := defineMethod m.heap cls d.name md })
     (hdecl : DeclClassOk (instanceDeclCtx κ c d)
@@ -123,7 +124,7 @@ theorem StateOk_publish_instance {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
   obtain ⟨e, he, _, _⟩ := hsite.metaclass
   have hw : (m.heap.get cls).eigen.isSome = true := by rw [he]; rfl
   exact StateOk_methodWrite_tables (StateOk_reserveName hm d.name) hr hΓ ha
-    (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hmiss hquiet
+    (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hmiss hquiet hsh
     (ClassesOk_publish_instance hm.classes hc hk hw hf hs hp hb hu hcode)
     (hm.classSites.publish_instance hsite hquiet)
     (DefsOk_methodWrite_other hm.defs hobj) hnested hdecl hown hchain hroot

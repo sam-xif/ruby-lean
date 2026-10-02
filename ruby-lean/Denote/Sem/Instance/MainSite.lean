@@ -19,7 +19,7 @@ def mainView (h : Heap) : Machine :=
 
 theorem MainReady.view {m : Machine} (h : MainReady m) : MainReady (mainView m.heap) :=
   ⟨rfl, rfl, rfl, rfl, rfl, h.live, h.payload, h.chain, h.object, h.classLive, h.hook,
-    h.detached, h.unfrozen, rfl, h.mainNames, h.classHooks, h.classFlags, rfl⟩
+    h.detached, h.unfrozen, rfl, h.mainNames, h.classHooks, h.classFlags, rfl, h.singletonHooks⟩
 
 theorem MainReady.of_view {m : Machine} (h : MainReady (mainView m.heap))
     (hs : m.currentFrame.self = .ref Boot.mainId)
@@ -28,7 +28,7 @@ theorem MainReady.of_view {m : Machine} (h : MainReady (mainView m.heap))
     (horigin : m.currentFrame.libraryOrigin = false := by rfl)
     (hdf : m.currentFrame.definitionFrame = none := by rfl) : MainReady m :=
   ⟨hs, ho, hc, hcap, hp, h.live, h.payload, h.chain, h.object, h.classLive, h.hook,
-    h.detached, h.unfrozen, horigin, h.mainNames, h.classHooks, h.classFlags, hdf⟩
+    h.detached, h.unfrozen, horigin, h.mainNames, h.classHooks, h.classFlags, hdf, h.singletonHooks⟩
 
 def mainConstResolve (h : Heap) (n : String) : Option Value :=
   constLookupFrom h Boot.objectId n

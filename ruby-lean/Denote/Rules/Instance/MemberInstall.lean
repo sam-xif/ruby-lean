@@ -33,6 +33,10 @@ theorem StateOk_install_member {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c :
   exact StateOk_publish_instance hm ht hΓ ha hs ready.named site
     (declared_not_object hm ready.named hroot) (howner c hc ready.named) howner
     (definedMethod_params ..) (definedMethod_body ..) (definedMethod_undefined ..) hcode hmiss hquiet
+    (by
+      intro he
+      have : classHookSelectors.contains d.name = true := by rw [← he]; decide
+      rw [hhook] at this; cases this)
     ((hm.nested.publish_member hplain).methodWrite)
     ((hm.declCls.methodWrite hnew hmiss).publish_member hc (declLookupFrameB_sound htab))
     (hm.ownNames.publish_instance hc
@@ -43,6 +47,8 @@ theorem StateOk_install_member {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c :
       exact declared_not_root hm ready.named hroot))
     (fun _ => Or.inl ready.notMain)
     (fun _ => Or.inr (by
-      simpa [classHookNames, classHookSelectors] using hhook))
+      have h' : ¬d.name = "const_added" ∧ ¬d.name = "inherited" ∧ ¬d.name = "singleton_method_added" := by
+        simpa [classHookSelectors] using hhook
+      simp [classHookNames, h'.1, h'.2.1]))
 
 end Ratchet.Denote.Typed

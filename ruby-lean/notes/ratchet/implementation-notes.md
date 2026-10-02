@@ -13534,3 +13534,10 @@ Module-body method_added uses StateOk.moduleBase.hook. ClassGrowth gains
 saturated_of_clsGrow_roots for parentless roots. moduleRuleB now also requires
 classReachB (old-site reachability, as classRuleB). New provider: ModuleDeclActual.
 No rung yet: module rungs also need singletonDef/callSingleton.
+
+### 2026-10-01 — singleton_method_added invariant (prep for singletonDef)
+
+SingletonHooks: singletonHooksQuietB (first own entry native on Object's metaclass and
+Module's chains) as MainReady.singletonHooks; all method writes now take
+`singletonHookName ≠ name`; classHookSelectors and topDeclClassesB reject defining it.
+See ../../unsoundness.md.
