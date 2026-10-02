@@ -623,6 +623,22 @@ private def matchH (re : Deriv) (argTy : Ty) : Deriv := .prim (.strLit "12") "ma
   (matchP (.regexpLit "a" 0)) (matchH (.regexpLit "a" 0) (.cls "Regexp"))
 #guard !validateD (matchP (.str "a")) (matchH (.strLit "a") (.cls "String"))
 
+-- Active defDeclOpt/callSigOpt (150, 151): one trailing optional, called both ways.
+private def optP (dflt : Ratchet.Expr) : Ratchet.Expr := .seq [
+  .def' "pad" [.req "s", .opt "n" dflt] (.var .lvar "n"),
+  .send (some (.send none "pad" [.str "a"] none)) "+" [.send none "pad" [.str "a", .int 2] none] none]
+private def optH (dflt : Deriv) (σ : Ty) : Deriv :=
+  let body : Deriv := .var .lvar "n"
+  let call (args : List Deriv) : Deriv :=
+    .callSigOpt "pad" args .int [("s", .cls "String")] ("n", σ) dflt body
+  .seq [.defDeclOpt "pad" [("s", .cls "String")] ("n", σ) dflt .int body,
+    .prim (call [.strLit "a"]) "+" [call [.strLit "a", .intLit 2]] .int .int]
+private def lenD : Deriv := .prim (.var .lvar "s") "length" [] (.cls "String") .int
+#guard validateD (optP (.send (some (.var .lvar "s")) "length" [] none)) (optH lenD .int)
+#guard !validateDWith (fun q => clinkEnabled q && q != "callSigOpt")
+  (optP (.send (some (.var .lvar "s")) "length" [] none)) (optH lenD .int)
+#guard !validateD (optP (.str "x")) (optH (.strLit "x") .int)
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),

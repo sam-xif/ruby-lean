@@ -26,13 +26,13 @@ theorem listEqB_sound {α : Type} {eq : α → α → Bool}
       rw [hs a b h.1, ih h.2]
 
 def defnEqB (a b : Defn) : Bool :=
-  decide (a.name = b.name) && paramEqAll a.params b.params && exprEq a.body b.body
+  decide (a.name = b.name) && paramEqAllDeep a.params b.params && exprEq a.body b.body
 
 theorem defnEqB_sound (a b : Defn) (h : defnEqB a b = true) : a = b := by
   cases a; cases b
   simp only [defnEqB, Bool.and_eq_true, decide_eq_true_eq] at h
   simp only [Defn.mk.injEq]
-  exact ⟨h.1.1, paramEqAll_sound h.1.2, exprEq_sound _ _ h.2⟩
+  exact ⟨h.1.1, paramEqAllDeep_sound h.1.2, exprEq_sound _ _ h.2⟩
 
 /-- Membership evidence, never an unchecked cast from the syntax comparator. -/
 def defnMem? (d : Defn) : (ds : List Defn) → Option (PLift (d ∈ ds))

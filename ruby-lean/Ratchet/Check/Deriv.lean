@@ -97,6 +97,12 @@ inductive Deriv where
   | yieldArgs (args : List Deriv)
   /-- Call the supplied method callback; its checked declaration supplies the signature. -/
   | callbackCall (recv : Deriv) (args : List Deriv)
+  /-- `DJudge.defDeclOpt`: required params, one optional with its default's derivation. -/
+  | defDeclOpt (name : String) (params : List SigParam) (opt : SigParam) (dflt : Deriv)
+      (ret : Ty) (body : Deriv)
+  /-- `DJudge.callSigOpt`: the default and body are rechecked in the calling context. -/
+  | callSigOpt (name : String) (args : List Deriv) (ret : Ty) (params : List SigParam)
+      (opt : SigParam) (dflt body : Deriv)
   /-- An implicit-self call to a method declared by a `defDecl`. -/
   | callSig (name : String) (args : List Deriv) (ret : Ty)
   /-- Explicit initializer super; parent code and annotations come from retained sources. -/
@@ -183,6 +189,18 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
     let ps ← jList j "params" (fun p => do
       return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))
     return .defDecl (← name "name") ps (← ty "ret") (← kid "body")
+  | "defDeclOpt" =>
+    let ps ← jList j "params" (fun p => do
+      return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))
+    let o ← j.getObjVal? "opt"
+    return .defDeclOpt (← name "name") ps ((← o.getObjValAs? String "name"), ← Ty.ofJson? (← o.getObjVal? "ty"))
+      (← kid "default") (← ty "ret") (← kid "body")
+  | "callSigOpt" =>
+    let ps ← jList j "params" (fun p => do
+      return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))
+    let o ← j.getObjVal? "opt"
+    return .callSigOpt (← name "name") (← kids "args") (← ty "ret") ps
+      ((← o.getObjValAs? String "name"), ← Ty.ofJson? (← o.getObjVal? "ty")) (← kid "default") (← kid "body")
   | "defBlock" =>
     let ps ← jList j "params" (fun p => do
       return ((← p.getObjValAs? String "name"), ← Ty.ofJson? (← p.getObjVal? "ty")))

@@ -62,7 +62,9 @@ macro "certify_djudgments" rec:ident h:ident F:ident hF:ident : tactic => `(tact
   · rename_i κd Γd Id τd brd d localName bs callback Γm out hp hbs hbr ht hb hm hc hs hbl hco ha hi hg hf hmiss hquiet ihb
     exact $hF DClink.defBoundBlock (by simp [dclinks]) hp hbs hbr ht ihb
       hm hc hs hbl hco ha hi hg hf hmiss hquiet
+  · apply $hF DClink.defDeclOpt (by simp [dclinks]) <;> assumption
   · apply $hF DClink.callSig (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.callSigOpt (by simp [dclinks]) <;> assumption
   · apply $hF DClink.recursive (by simp [dclinks]) <;> assumption
   · exact $hF DClink.ivarRead (by simp [dclinks])
   · apply $hF DClink.constClass (by simp [dclinks]) <;> assumption
