@@ -358,6 +358,15 @@ jobs:
             RUBY_SRC=/tmp/ruby-src scripts/ci/harvest_bootstraptest.sh
           fi
 
+      # The `lean` SUT shell (`difftest/difftest/sut.py`) invokes
+      # `ruby-lean/.lake/build/bin/rubycore`. `lean-action` installs the toolchain
+      # and restores the build cache but does not build it, and the `lean-gate`
+      # job's build lives on a different runner, so this job must build the SUT
+      # itself. `rubycore` alone -- not a whole-library `lake build`, which would
+      # fail on the gated proof families the active profile excludes.
+      - name: Build the model (the SUT under test)
+        run: cd ruby-lean && lake build --log-level=error rubycore
+
       - name: Replay the model against CRuby (writes difftest/reports/<stamp>)
         id: replay
         run: |
