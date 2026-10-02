@@ -344,6 +344,15 @@ jobs:
         with:
           ruby-version: "4.0"
 
+      # `diff-test-lean` runs `difftest --sut lean`, which shells out to
+      # `ruby-lean/.lake/build/bin/rubycore` (difftest/difftest/sut.py). A fresh
+      # runner has no such binary and `lean-action` with `auto-config: false`
+      # does not build it, so build the model executable explicitly -- exactly as
+      # `pipeline-controls` does. No whole-library `lake build`: the gated proof
+      # families the active profile excludes would fail the in-progress rebuild.
+      - name: Build the model executable (rubycore)
+        run: cd ruby-lean && lake build --log-level=error rubycore
+
       - name: Cache the sparse ruby/ruby checkout and harvested corpus
         uses: actions/cache@v4
         with:
