@@ -5,6 +5,7 @@ import Denote.Rules.Expr.ArrayIndex
 import Denote.Rules.Expr.ArrayLength
 import Denote.Rules.Expr.HashIndex
 import Denote.Rules.Expr.HashKey
+import Denote.Rules.Expr.ArrayCompact
 
 /-! Each `DPrim` row discharges against the interpreter and preserves conformance on values. -/
 
@@ -256,6 +257,12 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
     rename_i key more hkey htail
     cases htail
     exact hash_index_step hm hk hr key hfree
+  | arrayCompact _ =>
+    cases ha
+    exact array_compact_step hm hk hr hfree
+  | arrayUniq _ =>
+    cases ha
+    exact array_uniq_step hm hk hr hfree
 
 #print axioms primitive_builtin
 end Ratchet.Denote.Typed

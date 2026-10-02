@@ -71,17 +71,17 @@ theorem primitive_invoke {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : M
   rw [invoke_plain hn hr]
   have hproc : Interp.procCallBid bid = false := by
     simp only [primitiveMethods, List.mem_cons, List.not_mem_nil, or_false, Prod.mk.injEq] at hrow
-    rcases hrow with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h
+    rcases hrow with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h
     all_goals rcases h with ⟨_, _, rfl⟩; rfl
   have hmap : Interp.arrayMapBid bid = false := by
     simp only [primitiveMethods, List.mem_cons, List.not_mem_nil, or_false, Prod.mk.injEq] at hrow
-    rcases hrow with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h
+    rcases hrow with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h
     all_goals rcases h with ⟨_, _, rfl⟩; rfl
   apply invokeDispatch_builtin (owner := owner) (md := md) (hentry := ?_) _ hb hu hv hp _ hd hraise hproc hmap
   · rw [lookup_eq_methodOn, hc]; exact hl
   · simpa only [hc] using hs
   · simp only [primitiveMethods, List.mem_cons, List.not_mem_nil, or_false, Prod.mk.injEq] at hrow
-    rcases hrow with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h
+    rcases hrow with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h
     all_goals rcases h with ⟨_, _, rfl⟩
     all_goals first | exact False.elim (hplus rfl) | decide +kernel
 

@@ -13559,3 +13559,10 @@ Climbs 077–086.
 ConstructorImplicit consumes declared_constructor_run's StepSpec form; the existing
 SingletonRules newImplicit/instanceType and InstanceRead selfRead providers then build
 unchanged. Controls use the emitter's shapes (initialize returns .any). Climbs 073, 076.
+
+### 2026-10-01 — Array#compact/uniq primitive rows (85/261)
+
+compact is typed only at `arrayOf (nilable τ)` → `arrayOf τ` (no nonNilTy soundness
+lemma exists). uniq keeps `arrayOf τ`; its complex-equality gate is `.unsupported`.
+Both allocate via array_alloc_result, moved to ArrayCompact.lean to break the
+Array → Primitive import cycle. Climbs 209.
