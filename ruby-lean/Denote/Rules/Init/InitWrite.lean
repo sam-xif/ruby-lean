@@ -36,7 +36,8 @@ theorem InitState.bindIvar {anchor : Heap} {κ : Ctx} {Γ : Env} {I ρ : Ty}
       constResolveAt (Interp.bindIvar m x v) name = constResolveAt m name := by
     simp only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace, bindIvar_currentFrame, hw.constOwn_eq, hlookup, hw.classPayload]
     rfl
-  refine ⟨⟨StateOk_bindIvar hm.typed x v henv hspine ?_ ?_ ?_ ?_,
+  refine ⟨⟨StateOk_bindIvar hm.typed x v henv hspine ?_ ?_ ?_ ?_
+    (fun o' h' => by rw [ho] at h'; cases h'; exact hfrozen),
     hm.growth.bindIvar ho hfresh x v, ?_⟩, hv'⟩
   · cases hb : κ.blockTy with
     | none => simpa only [BlockTyOk, hb, bindIvar_currentFrame] using hm.typed.blockTy

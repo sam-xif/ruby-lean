@@ -1075,6 +1075,7 @@ structure StateCore (κ : Ctx) (Γ : Env) (I : Ty) (m : Machine) : Prop where
   stringPayload : StringPayloadOk m.heap
   arrayPayload : ArrayPayloadOk m.heap
   hashPayload : HashPayloadOk m.heap
+  frozenFields : FrozenFieldsOk m.heap
   core : CoreOk m.heap
   frameInRange : FrameInRange m
   env : EnvOk Γ m
@@ -1172,6 +1173,7 @@ theorem StateOk_ext {κ : Ctx} {Γ : Env} {I : Ty} {m m₂ : Machine} (h : State
   stringPayload := hp
   arrayPayload := ha
   hashPayload := hh
+  frozenFields := h.frozenFields.ext he
   rootClean := he.rootClean h.rootClean
   names := he.namesOk h.names
   localAlias := by rw [he.currentFrame_eq]; exact h.localAlias
@@ -1703,6 +1705,7 @@ theorem StateOk_setLocal {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : Strin
       stringPayload := by simpa only [setLocal_heap] using h.stringPayload
       arrayPayload := by simpa only [setLocal_heap] using h.arrayPayload
       hashPayload := by simpa only [setLocal_heap] using h.hashPayload
+      frozenFields := by simpa only [setLocal_heap] using h.frozenFields
       selfLive := by
         intro o ho
         rw [currentFrame_setLocal_self m x w] at ho

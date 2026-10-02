@@ -13589,3 +13589,16 @@ strSplit is typed at a String separator only. The proof never inspects the regex
 engine: splitBy either gates (.unsupported) or folds fresh String allocations
 (allocStrs_ok) into a fresh Array. runRegex is reduced via `rw [eq_def]; simp only []`
 (literal matcher reduction); plain `unfold`/`simp [runRegex]` times out. Climbs 177.
+
+### 2026-10-01 — Climb scalarIvarAsgn via FrozenFieldsOk (55/99, 89/261)
+
+The model's FrozenError path now dispatches Class#to_s, FrozenError#initialize and the
+receiver's own inspect, so ScalarWrite's old direct-raise branch was false. Instead
+StateCore gains `frozenFields : FrozenFieldsOk` (frozen objects have no ivars): boot
+has no frozen object (bootStateBaseB checks frozenFieldsB), Ext preserves it via
+freshIvars, payload/constant/method writes via of_fields, and StateOk_bindIvar takes
+an explicit unfrozen-receiver premise (InitWrite: fresh object; ScalarWrite: the
+non-frozen branch). A receiver whose field holds an Integer/Float/Symbol therefore
+cannot be frozen. scalarWriteB drops nilT: a nil field may be absent, so this
+argument fails there (proof limitation, not a Sorbet unsoundness). Inactive
+SubclassState/ModuleState (non-actual) were not updated. Climbs 074.

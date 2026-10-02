@@ -552,7 +552,7 @@ def bootStateBaseB (m : Machine) : Bool :=
     && primitiveDispatchB m.heap (nameFreeN Ratchet.ctx0)
     && primitiveErrorsB m.heap && stringPayloadB m.heap
     && arrayPayloadB m.heap
-    && hashPayloadB m.heap && mainReadyB m
+    && hashPayloadB m.heap && frozenFieldsB m.heap && mainReadyB m
     && newDispatchB m.heap (classOf m.heap (.ref Boot.objectId))
     && globalConstsOkB Ratchet.ctx0.pos.globalConsts m.heap
     && moduleBaseB (nameFreeN Ratchet.ctx0) m.heap
@@ -576,7 +576,7 @@ theorem stateCore_of_bootStateBaseB {m : Machine} (hb : bootStateBaseB m = true)
   obtain ⟨hb, hglobals⟩ := hb
   obtain ⟨hb, hnew⟩ := hb
   obtain ⟨hb, hready⟩ := hb
-  obtain ⟨⟨⟨⟨⟨hb, hpd⟩, hpe⟩, hsp⟩, hap⟩, hhp⟩ := hb
+  obtain ⟨⟨⟨⟨⟨⟨hb, hpd⟩, hpe⟩, hsp⟩, hap⟩, hhp⟩, hff⟩ := hb
   simp only [frameOkB, Bool.and_eq_true, bne_iff_ne, ne_eq, Option.isNone_iff_eq_none,
     decide_eq_true_eq] at hb
   obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hsat, hcore⟩, ⟨⟨⟨hkind, hblk⟩, hne⟩, hfr⟩, hself⟩, htop⟩, hex⟩, hnf⟩, hmf⟩,
@@ -598,6 +598,7 @@ theorem stateCore_of_bootStateBaseB {m : Machine} (hb : bootStateBaseB m = true)
       stringPayload := stringPayloadB_sound hsp
       arrayPayload := arrayPayloadB_sound hap
       hashPayload := hashPayloadB_sound hhp
+      frozenFields := frozenFieldsB_sound hff
       rootClean := rootCleanB_sound hrootClean
       names := Proof.namesOkB_sound hnames
       localAlias := Option.isNone_iff_eq_none.mp hal
@@ -653,6 +654,18 @@ theorem stateOk_boot (hb : bootOkB = true) : StateOk Ratchet.ctx0 [] .ivar0 boot
 -- **The gate.** If this fails, the ladder's hypothesis has no exhibited model and every
 -- rung on it is suspect.
 #guard bootOkB
+
+/-- The boot heap holds no frozen object. -/
+def bootUnfrozenB : Bool :=
+  (List.range bootMachine.heap.objs.size).all fun o => !(bootMachine.heap.get o).frozen
+
+theorem boot_unfrozen (hb : bootUnfrozenB = true) (o : ObjId) :
+    (bootMachine.heap.get o).frozen = false := by
+  by_cases ho : o < bootMachine.heap.objs.size
+  · simpa using List.all_eq_true.mp hb o (List.mem_range.mpr ho)
+  · rw [get_oob _ (Nat.le_of_not_gt ho)]; rfl
+
+#guard bootUnfrozenB
 #guard rootCleanB bootMachine
 
 #print axioms stateOk_boot

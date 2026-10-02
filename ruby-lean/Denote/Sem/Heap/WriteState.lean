@@ -32,6 +32,20 @@ theorem bindIvar_isExactInst (m : Machine) (x : String) (v w : Value) (cn : Stri
   simp only [isExactInst, bindIvar_classNamed]
   cases classNamed? m.heap cn <;> cases w <;> simp only [hi.size, hi.eigen, hi.klass]
 
+theorem FrozenFieldsOk.bindIvar {m : Machine} {x : String} {v : Value}
+    (h : FrozenFieldsOk m.heap)
+    (hfz : ∀ o, m.currentFrame.self = .ref o → (m.heap.get o).frozen = false) :
+    FrozenFieldsOk (Interp.bindIvar m x v).heap := by
+  intro k hk
+  cases hs : m.currentFrame.self with
+  | ref o =>
+    by_cases hko : k = o
+    · subst hko
+      rw [(bindIvar_ivarOnly m x v).frozen, hfz k hs] at hk
+      cases hk
+    · rw [bindIvar_get_other hs hko] at hk ⊢; exact h k hk
+  | _ => simp only [Interp.bindIvar, hs] at hk ⊢; exact h k hk
+
 theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     (h : StateOk κ Γ I m) (x : String) (v : Value)
     (he : EnvOk Γ' (Interp.bindIvar m x v))
@@ -39,7 +53,8 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     (hb : BlockTyOk κ.blockTy (Interp.bindIvar m x v))
     (hs : SelfTyOk κ.selfTy (Interp.bindIvar m x v))
     (hc : ConstsOk κ (Interp.bindIvar m x v))
-    (hp : ConstPathsOk κ (Interp.bindIvar m x v)) :
+    (hp : ConstPathsOk κ (Interp.bindIvar m x v))
+    (hfz : ∀ o, m.currentFrame.self = .ref o → (m.heap.get o).frozen = false) :
     StateOk κ Γ' I' (Interp.bindIvar m x v) := by
   have hw := bindIvar_ivarOnly m x v
   have hn := bindIvar_classNamed m x v
@@ -113,6 +128,7 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
     stringPayload := by simpa only [StringPayloadOk, hw.classOf_eq, hw.payload] using h.stringPayload
     arrayPayload := by simpa only [ArrayPayloadOk, hw.classOf_eq, hw.payload] using h.arrayPayload
     hashPayload := by simpa only [HashPayloadOk, hw.classOf_eq, hw.payload, hd] using h.hashPayload
+    frozenFields := h.frozenFields.bindIvar hfz
     core := ?_
     frameInRange := by simpa only [FrameInRange, bindIvar_stack, bindIvar_frames] using h.frameInRange
     env := he

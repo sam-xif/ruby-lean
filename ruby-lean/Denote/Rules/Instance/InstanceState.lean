@@ -55,6 +55,7 @@ theorem instance_enter_state_at {κ : Ctx} {Γ : Env} {I Ib : Ty} {m : Machine}
     stringPayload := hm.stringPayload
     arrayPayload := hm.arrayPayload
     hashPayload := hm.hashPayload
+    frozenFields := hm.frozenFields
     core := hm.core
     frameInRange := by simp [FrameInRange, pushMethodFrame]
     env := requiredFrame_envOk m recv name md ps args hlen hargs hps

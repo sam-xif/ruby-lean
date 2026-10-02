@@ -198,6 +198,60 @@ theorem hashPayloadB_sound {h : Heap} (hb : hashPayloadB h = true) : HashPayload
   · rw [get_oob h (Nat.le_of_not_gt ho)] at hx
     cases hx
 
+/-- Frozen objects carry no fields: the fragment never freezes an object, and fresh or
+    literal-frozen objects start without ivars. A field write therefore never meets a
+    frozen receiver whose field is a non-nil scalar. -/
+def FrozenFieldsOk (h : Heap) : Prop :=
+  ∀ o, (h.get o).frozen = true → (h.get o).ivars = []
+
+def frozenFieldsB (h : Heap) : Bool :=
+  (List.range h.objs.size).all fun o => !(h.get o).frozen || (h.get o).ivars.isEmpty
+
+theorem frozenFieldsB_sound {h : Heap} (hb : frozenFieldsB h = true) : FrozenFieldsOk h := by
+  intro o hf
+  by_cases ho : o < h.objs.size
+  · have hp := List.all_eq_true.mp hb o (List.mem_range.mpr ho)
+    simpa only [hf, Bool.not_true, Bool.false_or, List.isEmpty_iff] using hp
+  · rw [get_oob h (Nat.le_of_not_gt ho)] at hf ⊢
+    rfl
+
+theorem FrozenFieldsOk.ext {m n : Machine} (h : FrozenFieldsOk m.heap) (he : Ext m n) :
+    FrozenFieldsOk n.heap := by
+  intro o hf
+  by_cases ho : o < m.heap.objs.size
+  · rw [he.get o ho] at hf ⊢; exact h o hf
+  · exact he.freshIvars o (Nat.le_of_not_gt ho)
+
+/-- Transport: each object keeps its frozen bit and fields, or is unfrozen. -/
+theorem FrozenFieldsOk.of_fields {h h' : Heap} (hf : FrozenFieldsOk h)
+    (hp : ∀ o, (h'.get o).frozen = false ∨
+      ((h'.get o).frozen = (h.get o).frozen ∧ (h'.get o).ivars = (h.get o).ivars)) :
+    FrozenFieldsOk h' := by
+  intro o ho
+  rcases hp o with h0 | ⟨h1, h2⟩
+  · rw [h0] at ho; cases ho
+  · rw [h2]; exact hf o (h1 ▸ ho)
+
+/-- Replacing an object's payload keeps every frozen bit and field list. -/
+theorem fields_setPayload (h : Heap) (o k : ObjId) (p : Payload) :
+    ((h.set o { h.get o with payload := p }).get k).frozen = (h.get k).frozen ∧
+      ((h.set o { h.get o with payload := p }).get k).ivars = (h.get k).ivars := by
+  simp only [Heap.get, Heap.set]
+  by_cases hk : k = o
+  · subst k
+    by_cases ho : o < h.objs.size
+    · rw [Proof.objs_getD_set!_self _ _ _ ho]; exact ⟨rfl, rfl⟩
+    · rw [Proof.objs_getD_set!_oob _ _ _ ho]; exact ⟨rfl, rfl⟩
+  · rw [Proof.objs_getD_set!_ne _ _ _ _ hk]; exact ⟨rfl, rfl⟩
+
+theorem fields_constSetIn (h : Heap) (cls k : ObjId) (n : String) (v : Value) :
+    ((constSetIn h cls n v).get k).frozen = (h.get k).frozen ∧
+      ((constSetIn h cls n v).get k).ivars = (h.get k).ivars := by
+  unfold constSetIn
+  split
+  · exact fields_setPayload h cls k _
+  · exact ⟨rfl, rfl⟩
+
 theorem primitiveDispatchB_ext {m n : Machine} (he : Ext m n) (hn : Proof.NamesOk m.heap)
     (hc : Proof.ChainsIn m.heap) (free : String → Bool) :
     primitiveDispatchB n.heap free = primitiveDispatchB m.heap free := by

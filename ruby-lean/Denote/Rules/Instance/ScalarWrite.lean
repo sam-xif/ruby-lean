@@ -13,6 +13,7 @@ theorem scalar_write_run {κ : Ctx} {Γ : Env} {I ρ : Ty} {m : Machine}
     {o : ObjId} {x : String} {v : Value} (hm : StateOk κ Γ I m) (ht : ReframeFO κ I)
     (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (hρ : FirstOrder ρ = true)
     (hs : m.currentFrame.self = .ref o) (hv : denM ρ m v)
+    (hρs : scalarWriteB ρ = true) (hold : denM ρ m (ivarOf m.heap (.ref o) x))
     (he : ScalarEq (ivarOf m.heap (.ref o) x) v) :
     RunSpec m (deliverA (.val v) m [.asgnK .ivar x]) Γ ρ κ I := by
   let n := deliverA (.val v) m []
@@ -27,18 +28,16 @@ theorem scalar_write_run {κ : Ctx} {Γ : Env} {I ρ : Ty} {m : Machine}
   | false =>
     simp only [hfrozen, Bool.false_eq_true, ↓reduceIte]
     have hfr := Framed.bindIvar_scalar (m := n) hs' (hn.selfLive o hs') he
-    have hn' := hn.bindIvar_scalar ht hΓ hs' he
+    have hn' := hn.bindIvar_scalar ht hΓ hs' he hfrozen
     have hv' := hfr.firstOrder ρ hρ v ((denM_heap_only (m₁ := m) (m₂ := n) hρ rfl).mp hv)
     exact (stepSpec_value hn' (by simp only [Interp.bindIvar, hs']; rfl) hv').rebase hfr
   | true =>
-    simp only [hfrozen, ↓reduceIte]
-    change StepSpec n Γ ρ (match Builtins.inspectP n (.ref o) with
-      | .ok r => .next (Interp.raiseErr n Boot.frozenErrorId
-          s!"can't modify frozen {className n.heap (n.heap.get o).klass}: {r}")
-      | .error e => .unsupported e) κ I
-    cases hi : Builtins.inspectP n (.ref o) with
-    | ok r => exact stepSpec_error hn rfl (by simp [primitiveErrorClasses]) _
-    | error e => trivial
+    have hne : (m.heap.get o).ivars ≠ [] := by
+      intro hnil
+      have hn : ivarOf m.heap (.ref o) x = .nil := by simp [ivarOf, hnil]
+      rw [hn] at hold
+      cases ρ <;> simp_all [scalarWriteB, denM, isIntV, isFltV, isSymV]
+    exact absurd (hm.frozenFields o hfrozen) hne
 
 /-- Sorbet 0.6.13405 accepts 074's Integer replacement, also Float/Symbol variants, and
 rejects String replacement and a nullable Integer arithmetic domain (clink 186).
@@ -53,7 +52,8 @@ theorem SemSafeCtxA.scalarIvarAsgn {κ κ' : Ctx} {Γ Γ' : Env} {I I' ρ : Ty}
   intro m hm
   apply RunSpec.step (by rfl)
     (show Interp.stepFn _ = .next (pushK [.asgnK .ivar x] (evalFrom m e)) from rfl)
-  apply (he m hm).bindSpec (by intro k hk tag; simp_all)
+  apply (he m hm).bindSpec hm.rootClean
+    (by intro k hk; simp only [List.mem_singleton] at hk; subst hk; rfl)
   intro a n hr
   cases a with
   | val v =>
@@ -69,7 +69,7 @@ theorem SemSafeCtxA.scalarIvarAsgn {κ κ' : Ctx} {Γ Γ' : Env} {I I' ρ : Ty}
       simpa only [ho] using denSpineFrom_get hn.selfSpine.1 (by simp) hx
     have hfo : FirstOrder ρ = true := by cases ρ <;> cases hρ <;> rfl
     exact (scalar_write_run hn (reframeTypesB_sound ht) (List.all_eq_true.mp hΓ) hfo ho hr.2.1
-      (scalarWriteB_values hρ hold hr.2.1)).rebase hr.1
+      hρ hold (scalarWriteB_values hρ hold hr.2.1)).rebase hr.1
   | esc j =>
     apply RunSpec.step (by rfl)
       (show Interp.stepFn _ = .next (deliverA (.esc j) n []) from by

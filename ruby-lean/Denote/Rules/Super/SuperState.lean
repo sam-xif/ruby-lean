@@ -108,6 +108,7 @@ theorem super_initializer_pop_state {anchor : Heap} {κ κb : Ctx} {Γ Γb : Env
       stringPayload := hn.typed.stringPayload
       arrayPayload := hn.typed.arrayPayload
       hashPayload := hn.typed.hashPayload
+      frozenFields := hn.typed.frozenFields
       core := hn.typed.core
       frameInRange := ⟨by rw [hp.stack]; exact hm.typed.frameInRange.1,
         by rw [hp.stack]; exact Nat.lt_of_lt_of_le hm.typed.frameInRange.2 hp.frames.size⟩

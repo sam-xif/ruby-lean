@@ -69,6 +69,7 @@ theorem state (hm : StateOk κ Γ I m) (hr : κ.scope.runtimeMain = true)
     stringPayload := stringPayload hc hd hm.stringPayload
     arrayPayload := arrayPayload hd hm.arrayPayload
     hashPayload := hashPayload hd hm.hashPayload
+    frozenFields := frozenFields hd hm.frozenFields
     core := core hm.core hm.sat htop hmain.classLive hn
     frameInRange := frame_in_range
     env := env_empty
