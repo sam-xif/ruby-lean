@@ -508,6 +508,17 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       (∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) →
       (∀ old ∈ κ.defs, old.name ≠ d.name) → "method_missing" ≠ d.name → "method_added" ≠ d.name →
       DJudge Γ (.def' d.name d.params d.body) .sym Γ κ I (topDeclCtx κ d) I
+  /-- Required positionals and a named `*rest` of element type σ (corpus 153). -/
+  | defDeclRest {κ : Ctx} {Γ Γb : Env} {I τ σ : Ty} {d : Defn} {ps : List SigParam} {r : String} :
+      d.params = ps.map (fun p => Param.req p.1) ++ [.rest (some r)] →
+      (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) → FirstOrder σ = true →
+      FirstOrder τ = true →
+      DJudge (ps ++ [(r, .arrayOf σ)]) d.body τ Γb (topBodyCtx κ d) I (topBodyCtx κ d) I →
+      κ.scope.runtimeMain = true → topDeclClassesB κ d.name = true → κ.selfTy = none → κ.blockTy = none →
+      κ.consts = [] → κ.asms = [] → FirstOrder I = true →
+      (∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) →
+      (∀ old ∈ κ.defs, old.name ≠ d.name) → "method_missing" ≠ d.name → "method_added" ≠ d.name →
+      DJudge Γ (.def' d.name d.params d.body) .sym Γ κ I (topDeclCtx κ d) I
   /-- Calls consume an already checked body at its declared signature, not at a caller's
       inferred argument shape. The premise remains explicit for every registry backend. -/
   | callSig {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' τ : Ty} {decl : Defn}
@@ -536,6 +547,25 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       capStaleCtx n σ (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) = false →
       DJudgeAll Γ args tys Γ' κ I κ' I' →
       (tys = ps.map (·.2) ∨ tys = (ps ++ [(n, σ)]).map (·.2)) →
+      decl ∈ κ'.defs →
+      κ.scope.runtimeMain = true → κ'.scope.runtimeMain = true → κ'.selfTy = none →
+      κ'.blockTy = none → κ'.consts = [] → κ'.asms = [] → FirstOrder I' = true →
+      (∀ p ∈ Γ', FirstOrder (stripAlias p.2) = true) →
+      DJudge Γ (.send none decl.name args none) τ Γ' κ I κ' I'
+  /-- A call to a `*rest` method: surplus arguments at the element type. -/
+  | callSigRest {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' τ σ : Ty}
+      {decl : Defn} {ps : List SigParam} {r : String} {args : List Expr} {tys : List Ty} :
+      decl.params = ps.map (fun p => Param.req p.1) ++ [.rest (some r)] →
+      (∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false) → FirstOrder σ = true →
+      FirstOrder τ = true →
+      DJudge (ps ++ [(r, .arrayOf σ)]) decl.body τ Γb
+        (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I'
+        (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I' →
+      envAfter ps r (.arrayOf σ) = ps ++ [(r, .arrayOf σ)] →
+      killClosOverSpine I' r (.arrayOf σ) = I' → capStale r (.arrayOf σ) (.arrayOf σ) = false →
+      capStaleCtx r (.arrayOf σ) (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) = false →
+      DJudgeAll Γ args tys Γ' κ I κ' I' →
+      tys = ps.map (·.2) ++ List.replicate (tys.length - ps.length) σ →
       decl ∈ κ'.defs →
       κ.scope.runtimeMain = true → κ'.scope.runtimeMain = true → κ'.selfTy = none →
       κ'.blockTy = none → κ'.consts = [] → κ'.asms = [] → FirstOrder I' = true →
@@ -1091,7 +1121,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_12 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_13 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_14 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 
