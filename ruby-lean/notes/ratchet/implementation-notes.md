@@ -13722,3 +13722,9 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   from C's instance site). Body context `reopenBodyCtx` has open ivars (the class object
   may already carry class-level ivars). Checker tries fresh classDecl, then classReopen.
 - Registry needs provider binders in constructor order; avoid `variable` sections there.
+
+## while' (2026-10-02, 104/104, 111/261)
+- Loop-invariant rule: condition and body return the incoming Γ/κ/I exactly. Soundness by
+  induction on the `RunSpecAt` budget: each re-entry pays the whileBodyK step; escapes are
+  raises only (EscOk), propagated unchanged; `runSpec_iff_allAt` recovers RunSpec.
+- `until` arrives desugared as `while !c`. Emitter `n_while` blocks if types change.
