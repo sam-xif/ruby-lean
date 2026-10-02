@@ -81,3 +81,5 @@ separate from the default active gate. See [the clink rebuild guide](Denote/Clin
   what Ruby is and isn't supported) and [Metatheory](../docs/model/metatheory.md).
 - Editing `prelude/prelude.rb`? Regenerate `RubyCore/Prelude.lean` afterwards; see
   [Regenerating the generated files](../docs/model/fragment.md#regenerating-the-generated-files).
+
+<!-- ci-test: exercise difftest-lean job -->
