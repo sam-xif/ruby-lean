@@ -20,7 +20,7 @@ def clinkProfile : Option (List String) := some
    "newImplicit", "instanceType", "selfRead", "scalarIvarAsgn",
    "flow", "DFlow.embed", "DFlow.intLit", "DFlow.nilLit", "DFlow.var", "DFlow.closureLiteral",
    "DFlow.vasgn", "DFlow.sequence", "DFlow.call", "DFlow.requiredCall", "DFlowSeq.last",
-   "DFlowSeq.cons", "DFlowAll.nil", "DFlowAll.cons"]
+   "DFlowSeq.cons", "DFlowAll.nil", "DFlowAll.cons", "DFlow.each", "DFlow.map"]
 
 def clinkEnabled (rule : String) : Bool :=
   match clinkProfile with

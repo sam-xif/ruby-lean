@@ -32,6 +32,12 @@ theorem invoke_array_map {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
   simp only [Interp.invoke.invokeDispatch, hlook, hu, hp, Bool.false_eq_true, ↓reduceIte,
     hc, hs, hvis, hbid, hproc, hmap, Interp.callArrayMapBuiltin, List.length_nil,
     List.isEmpty_nil, Nat.add_zero, bne_self_eq_false, ↓reduceIte, hb, hx]
+  rcases hn with rfl | rfl <;>
+    simp [Interp.crubyResolvedShadow, hs, Interp.nativeDupBid, Interp.nativeCloneBid,
+      Interp.requireBid, Interp.enumBid, Interp.nativeIteratorBid, Interp.callArrayMapBuiltin,
+      Interp.appendKwHash, hb, hx, Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
+      Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?, Interp.procCallBid,
+      Interp.arrayMapBid, hbid, Builtins.dupBids, Builtins.cloneBids]
 
 theorem typed_map_invoke {κ : Ctx} {Γ Γb : Env} {I σ ρ : Ty} {m : Machine}
     {cl : Closure} {name mname : String} {names : List String} {body : Ratchet.Expr} {o bo : ObjId}
@@ -43,6 +49,7 @@ theorem typed_map_invoke {κ : Ctx} {Γ Γb : Env} {I σ ρ : Ty} {m : Machine}
     (hv : denM (.arrayOf σ) m (.ref o))
     (hmain : closureMainB κ I = true) (hσ : FirstOrder σ = true) (hρ : FirstOrder ρ = true)
     (hp : cl.params = [.req name]) (he : cl.body = toRuby body)
+    (henum : cl.enumYield = none) (hfor : cl.forTargets = none)
     (hin : activationEnvB ([(name, σ)] ++ blockLocals cl.locals ++ Γ) = true)
     (hout : activationReturnB Γb = true)
     (hfix : closureReturnEnv ([name] ++ cl.locals) names Γ Γb = Γ)
@@ -52,7 +59,7 @@ theorem typed_map_invoke {κ : Ctx} {Γ Γb : Env} {I σ ρ : Ty} {m : Machine}
   obtain ⟨o', xs, heq, hx, _⟩ := array_payload hv
   cases heq
   rw [invoke_array_map hm hx hproc hf hn site]
-  exact typed_map_start hm hk hc hd hv hmain hσ hρ hp he hin hout hfix hb
+  exact typed_map_start hm hk hc hd hv hmain hσ hρ hp he henum hfor hin hout hfix hb
 
 #print axioms invoke_array_map
 #print axioms typed_map_invoke
