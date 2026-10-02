@@ -56,10 +56,10 @@ theorem constructor_body_runSpec {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m
       (evalFrom (constructorFrame m k md ps args) body) Γb τ κb Ib) :
     RunSpec m (pushK [.frameK m.frames.size, .newK (.ref m.heap.objs.size)]
       (evalFrom (constructorFrame m k md ps args) body)) Γ (.inst cn Ib) (returnScopeCtx κ κb) I := by
-  apply hb.bindRunSpec (by
-    intro c hc tag
+  apply hb.bindRunSpec hm.rootClean (by
+    intro c hc
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
-    rcases hc with rfl | rfl <;> simp)
+    rcases hc with rfl | rfl <;> rfl)
   intro a n hn
   exact constructor_continue hm ht ha hw hq hk hΓ hs hi hn
 
@@ -73,7 +73,8 @@ theorem constructor_runSpec_at {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m :
     (hc : PlainAllocator m.heap k) (site : InstanceSite κ cn k m.heap)
     (owner : InstanceSite κ ownerCn ownerId m.heap)
     (hd : NewDispatch m.heap (classOf m.heap (.ref k)))
-    (code : InstanceMethodCode ownerId "initialize" md) (hi : userInit? m.heap k = some md)
+    (code : InstanceMethodCode ownerId "initialize" md)
+    (hl : Interp.methodOn m.heap k "initialize" = some (ownerId, md)) (hu : md.undefined = false)
     (hparams : md.params = (ps.map (·.1)).map RubyCore.Param.req) (hbody : md.body = toRuby body)
     (hlen : args.length = ps.length) (hargs : DenAll (ps.map (·.2)) m args)
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
@@ -84,13 +85,13 @@ theorem constructor_runSpec_at {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m :
     (hs : κb.selfTy = some (.inst cn .ivar0)) (hIb : FirstOrder Ib = true)
     (hkont : m.kont = [])
     (hb : SemInitA (initializerBodyCtxAt κ cn ownerCn) ps .ivar0 body τ κb Γb Ib) :
-    ∃ n, Interp.finishSend m (.ref k) sendSite "new" args .none = .next n ∧
-      RunSpec m n Γ (.inst cn Ib) (returnScopeCtx κ κb) I := by
+    StepSpec m Γ (.inst cn Ib) (Interp.finishSend m (.ref k) sendSite "new" args .none)
+      (returnScopeCtx κ κb) I := by
   have he := constructor_frame_state_at hm ht ha hc site owner (call_world_phase_scope hm hw) code hlen hargs hps hentry
   have hrun := constructor_body_runSpec hm hout ha hw hq hk hΓ hs hIb
     (hb m.heap (constructorFrame m k md ps args) he)
-  refine ⟨_, constructor_required_entry hc hd hi hparams code.captured code.declared
-    (by simpa using hlen), ?_⟩
+  refine constructor_entry_stepSpec hm hc hd hl code.builtin hu hparams code.captured
+    code.declared (by simpa using hlen) code.fromBlock code.forTargets ?_
   simpa only [constructorFrame, ctorAllocated, pushMethodFrame, Interp.withKont, evalFrom,
     pushK, reCtl, hbody, hkont, List.nil_append] using hrun
 
@@ -102,7 +103,8 @@ theorem constructor_runSpec {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m : Ma
     (hout : ReframeFO (returnScopeCtx κ κb) I)
     (hc : PlainAllocator m.heap k) (site : InstanceSite κ cn k m.heap)
     (hd : NewDispatch m.heap (classOf m.heap (.ref k)))
-    (code : InstanceMethodCode k "initialize" md) (hi : userInit? m.heap k = some md)
+    (code : InstanceMethodCode k "initialize" md)
+    (hl : Interp.methodOn m.heap k "initialize" = some (k, md)) (hu : md.undefined = false)
     (hparams : md.params = (ps.map (·.1)).map RubyCore.Param.req) (hbody : md.body = toRuby body)
     (hlen : args.length = ps.length) (hargs : DenAll (ps.map (·.2)) m args)
     (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
@@ -113,9 +115,9 @@ theorem constructor_runSpec {κ κb : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m : Ma
     (hs : κb.selfTy = some (.inst cn .ivar0)) (hIb : FirstOrder Ib = true)
     (hkont : m.kont = [])
     (hb : SemInitA (initializerBodyCtx κ cn) ps .ivar0 body τ κb Γb Ib) :
-    ∃ n, Interp.finishSend m (.ref k) sendSite "new" args .none = .next n ∧
-      RunSpec m n Γ (.inst cn Ib) (returnScopeCtx κ κb) I :=
-  constructor_runSpec_at hm ht ha hout hc site site hd code hi hparams hbody hlen hargs hps
+    StepSpec m Γ (.inst cn Ib) (Interp.finishSend m (.ref k) sendSite "new" args .none)
+      (returnScopeCtx κ κb) I :=
+  constructor_runSpec_at hm ht ha hout hc site site hd code hl hu hparams hbody hlen hargs hps
     hentry hw hq hk hΓ hs hIb hkont hb
 
 #print axioms constructor_continue

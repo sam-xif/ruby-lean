@@ -25,13 +25,16 @@ theorem constructor_frame_pres {m n : Machine} {k : ObjId} {md : MethodDef}
       h.stack
     · simp [pushMethodFrame, Array.getD_eq_getD_getElem?, requiredFrame]
     · rw [h.frames.rootCaptured]
-      simp [constructorFrame, pushMethodFrame, Array.getD_eq_getD_getElem?, requiredFrame],
+      simp [constructorFrame, pushMethodFrame, Array.getD_eq_getD_getElem?, requiredFrame]
+    · rw [show (n.frames.getD (n.stack.headD 0) default).localAlias = _ from
+        congrArg FrameScope.localAlias h.frames.scope]
+      simp [constructorFrame, pushMethodFrame, Array.getD_eq_getD_getElem?, requiredFrame, frameScope],
     h.frames.shadows⟩
 
 theorem constructor_pop_framed {m n : Machine} {k : ObjId} {md : MethodDef}
     {ps : List SigParam} {args : List Value} (hl : FrameInRange m)
     (h : InitFrame m.heap (constructorFrame m k md ps args) n) : Framed m (popMethodFrame n) :=
-  initializer_pop_framed hl.2 rfl h.stack (constructor_frame_pres h) h.growth h.phase
+  initializer_pop_framed hl.2 rfl h.stack (constructor_frame_pres h) h.growth h.phase h.rootClean
 
 theorem constructor_pop_currentFrame {m n : Machine} {k : ObjId} {md : MethodDef}
     {ps : List SigParam} {args : List Value} (hl : FrameInRange m)
@@ -44,14 +47,19 @@ theorem constructor_pop_currentFrame {m n : Machine} {k : ObjId} {md : MethodDef
 
 theorem constructor_pop_env {m n : Machine} {k : ObjId} {md : MethodDef}
     {ps : List SigParam} {args : List Value} {Γ : Env} (hl : FrameInRange m)
-    (hu : RootUncaptured m) (he : EnvOk Γ m)
+    (hu : RootUncaptured m) (he : EnvOk Γ m) (hal : m.currentFrame.localAlias = none)
     (ht : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
     (h : InitFrame m.heap (constructorFrame m k md ps args) n) :
     EnvOk Γ (popMethodFrame n) := by
   have hp := constructor_pop_framed hl h
   have hpop := constructor_pop_currentFrame hl h
+  have ha₁ : (m.frames.getD (m.stack.headD 0) default).localAlias = none := by
+    rw [rootFrame_eq_currentFrame hl.1]; exact hal
+  have ha₂ : ((popMethodFrame n).frames.getD ((popMethodFrame n).stack.headD 0) default).localAlias =
+      none := by
+    rw [rootFrame_eq_currentFrame (by rw [hp.stack]; exact hl.1), hpop]; exact hal
   have hv (x : String) : (popMethodFrame n).getLocal x = m.getLocal x := by
-    rw [getLocal_uncaptured (hp.frames.rootCaptured.trans hu), getLocal_uncaptured hu,
+    rw [getLocal_uncaptured (hp.frames.rootCaptured.trans hu) (ha := ha₂), getLocal_uncaptured hu (ha := ha₁),
       rootFrame_eq_currentFrame (by rw [hp.stack]; exact hl.1), rootFrame_eq_currentFrame hl.1, hpop]
   refine ⟨?_, fun x hx => by rw [hv]; exact he.2 x hx⟩
   intro x τ hx
@@ -98,7 +106,7 @@ theorem constructor_pop_state {κ κb : Ctx} {Γ Γb : Env} {I Ib : Ty} {m n : M
   have hu := call_world_uncaptured_scope hm hw
   obtain ⟨_, scope⟩ := hn.classRuntime cn hq
   exact call_world_restore_state hm ht ha hw hk (constructor_pop_framed hm.frameInRange h)
-    (constructor_pop_currentFrame hm.frameInRange h) (constructor_pop_env hm.frameInRange hu hm.env hΓ h)
+    (constructor_pop_currentFrame hm.frameInRange h) (constructor_pop_env hm.frameInRange hu hm.env hm.localAlias hΓ h)
     scope.phase hn
 
 #print axioms constructor_result
