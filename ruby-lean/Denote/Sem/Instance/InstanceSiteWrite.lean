@@ -27,13 +27,21 @@ theorem classFrontB_defineMethod (h : Heap) (cls k : ObjId) (name : String) (md 
 proof. The owner is arbitrary: aliases and writes to other classes are covered too. -/
 theorem InstanceSite.methodWrite {κ : Ctx} {cn name : String} {k cls : ObjId}
     {h : Heap} {md : MethodDef} (site : InstanceSite κ cn k h)
-    (hn : nameFreeN κ name = false) (hq : "method_added" ≠ name) :
+    (hn : nameFreeN κ name = false) (hq : "method_added" ≠ name)
+    (hsh : singletonHookName ≠ name) :
     InstanceSite κ cn k (defineMethod h cls name md) := by
   refine ⟨?_, ?_, ?_, ?_, ?_, site.metaclass.methodWrite, ?_, ?_, ?_, ?_, site.afterBuiltins,
     by rw [attached_defineMethod]; exact site.detached,
     (congrArg Object.frozen (get_defineMethod_data h cls k name md)).trans site.unfrozen,
     by simpa only [Proof.objs_size_defineMethod] using site.mainLive,
-    by simpa only [Proof.classOf_defineMethod] using site.notMain⟩
+    by simpa only [Proof.classOf_defineMethod] using site.notMain,
+    by obtain ⟨e, hke, ha, hf⟩ := site.metaAttached
+       exact ⟨e, by rw [Proof.get_defineMethod_eigen]; exact hke, by rw [attached_defineMethod]; exact ha,
+         (congrArg Object.frozen (get_defineMethod_data h cls e name md)).trans hf⟩,
+    by simpa only [singletonDefHookQuietB,
+      Proof.lookup_defineMethod h cls name singletonHookName md (.ref k) hsh
+        (Proof.classOf_defineMethod ..)] using site.singletonHook,
+    by simpa only [Proof.classOf_defineMethod] using site.metaNotMain⟩
   · simpa only [classNamed?_defineMethod] using site.named
   · simpa only [classFrontB_defineMethod] using site.front
   · simpa only [definitionHookQuietB,
@@ -62,7 +70,11 @@ theorem InstanceSite.ivarOnly {κ : Ctx} {cn : String} {k : ObjId} {h h' : Heap}
     by simpa only [hi.classPayload] using site.detached,
     by simpa only [hi.frozen] using site.unfrozen,
     by simpa only [hi.size] using site.mainLive,
-    by simpa only [hi.classOf_eq] using site.notMain⟩
+    by simpa only [hi.classOf_eq] using site.notMain,
+    by obtain ⟨e, hke, ha, hf⟩ := site.metaAttached
+       exact ⟨e, by rw [hi.eigen]; exact hke, by rw [hi.classPayload]; exact ha, by rw [hi.frozen]; exact hf⟩,
+    by simpa only [singletonDefHookQuietB, hi.lookup_eq] using site.singletonHook,
+    by simpa only [hi.classOf_eq] using site.metaNotMain⟩
   · simpa only [classNamed?, constLookup, hi.classPayload] using site.named
   · simpa only [classFrontB, hi.classPayload] using site.front
   · simpa only [definitionHookQuietB, hi.lookup_eq] using site.hook
@@ -81,11 +93,12 @@ theorem InstanceSite.ivarOnly {κ : Ctx} {cn : String} {k : ObjId} {h h' : Heap}
 
 theorem ClassSitesOk.methodWrite {κ : Ctx} {name : String} {cls : ObjId}
     {h : Heap} {md : MethodDef} (sites : ClassSitesOk κ h)
-    (hn : nameFreeN κ name = false) (hq : "method_added" ≠ name) :
+    (hn : nameFreeN κ name = false) (hq : "method_added" ≠ name)
+    (hsh : singletonHookName ≠ name) :
     ClassSitesOk κ (defineMethod h cls name md) := by
   intro cn hcn
   obtain ⟨k, site⟩ := sites cn hcn
-  exact ⟨k, site.methodWrite hn hq⟩
+  exact ⟨k, site.methodWrite hn hq hsh⟩
 
 theorem ClassSitesOk.ivarOnly {κ : Ctx} {h h' : Heap} (sites : ClassSitesOk κ h)
     (hi : Proof.IvarOnly h h') : ClassSitesOk κ h' := by
@@ -95,7 +108,8 @@ theorem ClassSitesOk.ivarOnly {κ : Ctx} {h h' : Heap} (sites : ClassSitesOk κ 
 
 theorem ClassSitesOk.publish_instance {κ : Ctx} {c : Cls} {d : Defn} {cls : ObjId}
     {h : Heap} {md : MethodDef} (sites : ClassSitesOk κ h)
-    (site : InstanceSite κ c.name cls h) (hq : "method_added" ≠ d.name) :
+    (site : InstanceSite κ c.name cls h) (hq : "method_added" ≠ d.name)
+    (hsh : singletonHookName ≠ d.name) :
     ClassSitesOk (instanceDeclCtx κ c d) (defineMethod h cls d.name md) := by
   intro cn hcn
   change cn ∈ (classWithMethod c d :: κ.classes).map (·.name) ++ κ.scope.runtimeClass.toList at hcn
@@ -104,10 +118,10 @@ theorem ClassSitesOk.publish_instance {κ : Ctx} {c : Cls} {d : Defn} {cls : Obj
   · change cn = c.name at he
     subst cn
     exact ⟨cls, (site.reserveName d.name).methodWrite
-      (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hq⟩
+      (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hq hsh⟩
   · obtain ⟨k, old⟩ := sites cn hcn
     exact ⟨k, (old.reserveName d.name).methodWrite
-      (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hq⟩
+      (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hq hsh⟩
 
 #print axioms InstanceSite.methodWrite
 #print axioms InstanceSite.ivarOnly

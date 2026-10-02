@@ -26,7 +26,7 @@ theorem declared_singleton_run {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : Machin
   have classSite := hm.classSites.at_class hc hnamed
   obtain ⟨tail, hchain⟩ := classFrontB_sound (classSite.eigen_front he)
   have hl : lookup m.heap (.ref k) d.name = some (e, md) :=
-    lookup_own_first (by simpa only [classOf, he] using hchain) row
+    lookup_own_first (by simpa only [classOf, he] using hchain) row code.visibilityOnly
   have hr : recv = .ref k := by cases recv <;> simp_all [denM, isClassRefNamed]
   have hp' : md.params = (ps.map (·.1)).map RubyCore.Param.req :=
     hparams.trans (by rw [hp]; exact toRubyParams_required ps)

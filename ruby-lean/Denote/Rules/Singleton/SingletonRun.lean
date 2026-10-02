@@ -31,9 +31,9 @@ theorem resolved_singleton_run {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {m : Machin
   have henter : Interp.enterUserMethod m (.ref k) name md args none =
       .next (pushK [.frameK m.frames.size] (evalFrom (pushMethodFrame m f) bodyExpr)) := by
     rw [enterUserMethod_required m (.ref k) name md (ps.map (·.1)) args
-      hparams code.captured code.declared (by simpa using hlen)]
+      hparams code.captured code.declared (by simpa using hlen) code.fromBlock code.forTargets]
     simp only [Interp.withKont, pushK, evalFrom, f, pushMethodFrame, hkont, hbody, List.nil_append]
-  exact ⟨_, (finishSend_singleton he (classSite.eigen_front he) hl code hu hn).trans henter, hrun⟩
+  exact ⟨_, (finishSend_singleton he (classSite.eigen_front he) hl code hu hn).trans henter, hrun hm.rootClean⟩
 
 #print axioms resolved_singleton_run
 end Ratchet.Denote.Typed

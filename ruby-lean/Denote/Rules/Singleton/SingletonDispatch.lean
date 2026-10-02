@@ -23,7 +23,7 @@ theorem finishSend_singleton {m : Machine} {k e : ObjId} {name : String}
 theorem finishSend_singleton_installed {m : Machine} {k e : ObjId} {name : String}
     {ps : List RubyCore.Param} {body : RubyCore.Expr} {args : List Value} {site : SendSite}
     (he : (m.heap.get k).eigen = some e) (hf : classFrontB m.heap e = true)
-    (hp : m.preludeMode = false) (hn : DirectSendName name) :
+    (hp : (definedSingleton m e ps body).fromPrelude = false) (hn : DirectSendName name) :
     Interp.finishSend (installSingleton m e name ps body) (.ref k) site name args .none =
       Interp.enterUserMethod (installSingleton m e name ps body) (.ref k) name
         (definedSingleton m e ps body) args none := by
@@ -39,7 +39,8 @@ theorem finishSend_singleton_installed {m : Machine} {k e : ObjId} {name : Strin
 theorem singleton_installed_required {m : Machine} {k e : ObjId} {name : String}
     {body : RubyCore.Expr} {names : List String} {args : List Value} {site : SendSite}
     (he : (m.heap.get k).eigen = some e) (hf : classFrontB m.heap e = true)
-    (hp : m.preludeMode = false) (hn : DirectSendName name) (ha : args.length = names.length) :
+    (hp : (definedSingleton m e (names.map RubyCore.Param.req) body).fromPrelude = false)
+    (hn : DirectSendName name) (ha : args.length = names.length) :
     let md := definedSingleton m e (names.map RubyCore.Param.req) body
     let installed := installSingleton m e name (names.map RubyCore.Param.req) body
     Interp.finishSend installed (.ref k) site name args .none =
@@ -47,7 +48,8 @@ theorem singleton_installed_required {m : Machine} {k e : ObjId} {name : String}
         (.eval body) (.frameK installed.frames.size)) := by
   dsimp only
   rw [finishSend_singleton_installed he hf hp hn]
-  exact enterUserMethod_required _ _ _ _ _ _ rfl rfl rfl ha
+  exact enterUserMethod_required _ _ _ (definedSingleton m e (names.map RubyCore.Param.req) body)
+    names args rfl rfl rfl ha rfl rfl
 
 /-- Full incoming conformance justifies actual lookup and entry; no physical lookup or
 metaclass-front premise is supplied by an emitter or caller. Body safety is still separate. -/
@@ -60,18 +62,17 @@ theorem scoped_singleton_required {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {
     ∃ k e, classNamed? m.heap cn = some k ∧
       let md := definedSingleton m e (names.map RubyCore.Param.req) body
       let installed := installSingleton m e name (names.map RubyCore.Param.req) body
-      Interp.stepFn m = .next (Interp.withCtl installed (.value (.sym name))) ∧
       SingletonMethodCode k e md ∧
       lookup installed.heap (.ref k) name = some (e, md) ∧
       Interp.finishSend installed (.ref k) site name args .none =
         .next (Interp.withKont (pushMethodFrame installed (requiredFrame (.ref k) name md names args))
           (.eval body) (.frameK installed.frames.size)) := by
-  obtain ⟨k, e, hk, _, he, hs, hcode, _, _⟩ := scoped_singleton_install hm hr ht hc
+  obtain ⟨k, e, hk, _, he, _, hcode, _, _⟩ := scoped_singleton_install hm hr ht hc
   obtain ⟨j, hsit⟩ := hm.classSites.of_scope hr
   have hj : j = k := Option.some.inj (hsit.named.symm.trans hk)
   subst j
   have hf := hsit.eigen_front he
-  exact ⟨k, e, hk, hs, hcode, installSingleton_lookup he hf,
+  exact ⟨k, e, hk, hcode, installSingleton_lookup he hf,
     singleton_installed_required he hf hcode.fromPrelude hn ha⟩
 
 #print axioms finishSend_singleton

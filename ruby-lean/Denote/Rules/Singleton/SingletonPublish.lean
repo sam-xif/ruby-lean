@@ -14,7 +14,9 @@ theorem scoped_singleton_publish {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
     (hf : ∀ old ∈ κ.classes, ∀ prev ∈ old.smethods, prev.name ≠ d.name) :
     ∃ k e, classNamed? m.heap c.name = some k ∧
       let n := installSingleton m e d.name (toRubyParams d.params) (toRuby d.body)
-      Interp.stepFn m = .next (Interp.withCtl n (.value (.sym d.name))) ∧
+      Interp.stepFn m = .next { n with
+        ctl := .send (.ref k) .reflective "singleton_method_added" [.sym d.name] none [],
+        kont := .methodEditsK [] (.sym d.name) :: m.kont } ∧
       ClassesOk ({ c with smethods := d :: c.smethods } :: κ.classes) n := by
   obtain ⟨k, e, hk, _, he, step, code, _, _⟩ := scoped_singleton_install hm hr ht hctl
   exact ⟨k, e, hk, step, ClassesOk_publish_singleton hm.classes hm.classSites hc hk he
@@ -35,7 +37,8 @@ theorem classesOk_singleton_lookup {κ : Ctx} {m : Machine} {c : Cls} {d : Defn}
   have hj : j = k := Option.some.inj (site.named.symm.trans hk)
   subst j
   obtain ⟨tail, ha⟩ := classFrontB_sound (site.eigen_front he)
-  exact ⟨k, e, md, hk, lookup_own_first (by simpa only [classOf, he] using ha) row, rest⟩
+  exact ⟨k, e, md, hk, lookup_own_first (by simpa only [classOf, he] using ha) row
+    rest.2.2.2.visibilityOnly, rest⟩
 
 #print axioms scoped_singleton_publish
 #print axioms classesOk_singleton_lookup

@@ -10,7 +10,7 @@ open RubyCore Ratchet
 
 theorem ClassSitesOk.publish_singleton {κ : Ctx} {c : Cls} {d : Defn} {e : ObjId}
     {h : Heap} {md : MethodDef} (sites : ClassSitesOk κ h) (hc : c ∈ κ.classes)
-    (hq : "method_added" ≠ d.name) :
+    (hq : "method_added" ≠ d.name) (hsh : singletonHookName ≠ d.name) :
     ClassSitesOk (singletonDeclCtx κ c d) (defineMethod h e d.name md) := by
   intro cn hcn
   change cn ∈ (classWithSingleton c d :: κ.classes).map (·.name) ++ κ.scope.runtimeClass.toList at hcn
@@ -21,7 +21,7 @@ theorem ClassSitesOk.publish_singleton {κ : Ctx} {c : Cls} {d : Defn} {e : ObjI
     · exact hcn
   obtain ⟨k, site⟩ := sites cn old
   exact ⟨k, (site.reserveName d.name).methodWrite
-    (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hq⟩
+    (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hq hsh⟩
 
 theorem DeclClassOk.publish_singleton {κ : Ctx} {m : Machine} {c : Cls} {d : Defn}
     (hp : DeclClassOk κ m) (hc : c ∈ κ.classes)

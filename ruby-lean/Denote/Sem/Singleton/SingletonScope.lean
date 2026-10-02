@@ -2,7 +2,7 @@ import Denote.Sem.Core.State
 import Denote.Sem.Core.FramedNames
 import Denote.Sem.Singleton.SingletonActivation
 
-/-! Singleton activations retain lexical class cref but use its metaclass as defmod.
+/-! Singleton activations retain lexical class cref and defmod (the actual definee).
 Constant lookup still uses the lexical namespace, rather than the definee. -/
 set_option autoImplicit false
 namespace Ratchet.Denote
@@ -10,8 +10,7 @@ open RubyCore Ratchet
 
 theorem InstanceSite.singleton_constScope {κ : Ctx} {cn : String} {k : ObjId} {m : Machine}
     (site : InstanceSite κ cn k m.heap)
-    (hcref : m.currentFrame.cref = [k])
-    (_howner : m.currentFrame.defmod = classOf m.heap (.ref k)) : ConstScopeOk m := by
+    (hcref : m.currentFrame.cref = [k]) : ConstScopeOk m := by
   intro name
   simpa only [constResolveAt, Interp.lexicalConstant, Machine.lexicalNamespace,
     hcref, List.headD_cons, instanceConstResolve] using site.constants name
@@ -19,7 +18,7 @@ theorem InstanceSite.singleton_constScope {κ : Ctx} {cn : String} {k : ObjId} {
 theorem SingletonScopeAt.constScope {κ : Ctx} {cn : String} {k e : ObjId} {m : Machine}
     (scope : SingletonScopeAt cn k e m) (site : InstanceSite κ cn k m.heap) :
     ConstScopeOk m :=
-  site.singleton_constScope scope.cref (by simp only [scope.owner, classOf, scope.cached])
+  site.singleton_constScope scope.cref
 
 /-- A nested call may grow the heap, but it cannot redirect the saved singleton owner.
 The phase premise comes from the callee's runtime conformance. -/

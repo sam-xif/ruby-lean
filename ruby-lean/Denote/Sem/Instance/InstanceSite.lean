@@ -91,6 +91,13 @@ structure InstanceSiteAt (free : String → Bool) (cn : String) (k : ObjId) (h :
   unfrozen : (h.get k).frozen = false
   mainLive : Boot.mainId < h.objs.size
   notMain : k ≠ classOf h (.ref Boot.mainId)
+  /-- The cached metaclass is attached to k, so def-self's hook targets k itself. -/
+  metaAttached : ∃ e, (h.get k).eigen = some e ∧ (h.classPayload? e).bind (·.attached) = some k ∧
+    (h.get e).frozen = false
+  /-- singleton_method_added on k resolves to the native no-op. -/
+  singletonHook : singletonDefHookQuietB h k = true
+  /-- Its metaclass is not main's class, so def-self writes stay outside main's prefix. -/
+  metaNotMain : classOf h (.ref k) ≠ classOf h (.ref Boot.mainId)
 
 /-- Only negative-name information affects a site's meaning, not the caller's scope. -/
 abbrev InstanceSite (κ : Ctx) := InstanceSiteAt (nameFreeN κ)
@@ -120,7 +127,7 @@ theorem InstanceSite.recontext {κ κ' : Ctx} {cn : String} {k : ObjId} {h : Hea
     (hn : ∀ n, nameFreeN κ n = false → nameFreeN κ' n = false) : InstanceSite κ' cn k h := by
   exact ⟨site.named, site.front, site.hook, site.constants, site.names.recontext hn,
     site.metaclass, site.classNames.recontext hn, site.metaFront, site.metaLeaf, site.metaConstants, site.afterBuiltins,
-    site.detached, site.unfrozen, site.mainLive, site.notMain⟩
+    site.detached, site.unfrozen, site.mainLive, site.notMain, site.metaAttached, site.singletonHook, site.metaNotMain⟩
 
 /-- Scope-independent, so the same site survives a frame change or an allocation.
 This does not claim that method installation or class mutation preserves it. -/
@@ -137,10 +144,16 @@ theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
     change Interp.methodOn n.heap (classOf n.heap (.ref k)) "method_added" =
       Interp.methodOn m.heap (classOf m.heap (.ref k)) "method_added"
     simp only [classOf, he.get k hl, he.methodOn_eq hch]
+  have hls : lookup n.heap (.ref k) singletonHookName = lookup m.heap (.ref k) singletonHookName := by
+    change Interp.methodOn n.heap (classOf n.heap (.ref k)) _ =
+      Interp.methodOn m.heap (classOf m.heap (.ref k)) _
+    simp only [classOf, he.get k hl, he.methodOn_eq hch]
   refine ⟨?_, ?_, ?_, ?_, ?_, h.metaclass.ext he hl, ?_, ?_, ?_, ?_, h.afterBuiltins,
     by rw [he.payload]; exact h.detached, by rw [he.get k hl]; exact h.unfrozen,
     Nat.lt_of_lt_of_le h.mainLive he.size,
-    by simp only [classOf, he.get Boot.mainId h.mainLive]; exact h.notMain⟩
+    by simp only [classOf, he.get Boot.mainId h.mainLive]; exact h.notMain, ?_,
+    by simpa only [singletonDefHookQuietB, hls] using h.singletonHook,
+    by simp only [classOf, he.get k hl, he.get Boot.mainId h.mainLive]; exact h.metaNotMain⟩
   · simpa only [he.classNamed?_eq] using h.named
   · simpa only [classFrontB, he.payload] using h.front
   · simpa only [definitionHookQuietB, hlk] using h.hook
@@ -163,6 +176,9 @@ theorem InstanceSite.ext {κ : Ctx} {cn : String} {k : ObjId} {m n : Machine}
       cases hp : m.heap.classPayload? e <;> simp_all [classFrontB]
     simpa only [classOf, he.get k hl, hke, he.get e hel] using h.metaLeaf
   · simpa only [classOf, he.get k hl] using h.metaConstants.ext he
+  · obtain ⟨e, hke, ha, hf⟩ := h.metaAttached
+    have hel : e < m.heap.objs.size := hch.eigen k hl e hke
+    exact ⟨e, by rw [he.get k hl]; exact hke, by rw [he.payload]; exact ha, by rw [he.get e hel]; exact hf⟩
 
 theorem InstanceSite.eigen_front {κ : Ctx} {cn : String} {k e : ObjId} {h : Heap}
     (site : InstanceSite κ cn k h) (he : (h.get k).eigen = some e) : classFrontB h e = true := by

@@ -9,6 +9,6 @@ def singletonRuleB (κ : Ctx) (Γ : Env) (I : Ty) (c : Cls) (d : Defn) : Bool :=
     decide (κ.asms = [] ∧ κ.scope.runtimeClass = some c.name ∧
       κ.selfTy = some (.clsOf c.name) ∧ "new" ≠ d.name ∧ "method_missing" ≠ d.name ∧
       "method_added" ≠ d.name ∧ "initialize" ≠ d.name) &&
-    unqualifiedClassB c.name && singletonFreshB κ.classes d && singletonTableFrameB κ.classes c d
+    !classHookSelectors.contains d.name && unqualifiedClassB c.name && singletonFreshB κ.classes d && singletonTableFrameB κ.classes c d
 
 end Ratchet

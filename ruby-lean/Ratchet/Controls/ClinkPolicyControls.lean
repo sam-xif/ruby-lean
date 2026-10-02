@@ -354,6 +354,20 @@ private def vcallUseHint (t : Ty) : Deriv := .callMethodSig (.newInst "Box" [] (
 #guard !validateD (.seq [.module' "M" (.int 7), .module' "M" (.int 8)])
   (.seq [.moduleDecl "M" (.intLit 7), .moduleDecl "M" (.intLit 8)])
 
+-- Active singletonDef/callSingleton: M.f(1) through a module's def self.f (rung 078's shape).
+private def modF (n : String) : Expr := .module' "M" (.defs .self' n [.req "x"] (.var .lvar "x"))
+private def modH (n : String) (t : Ty) : Deriv := .moduleDecl "M" (.defDecl n [("x", .int)] t (.var .lvar "x"))
+private def callF (n : String) : Expr := .send (some (.const "M")) n [.int 1] none
+private def callH (n : String) (t : Ty) : Deriv := .callSingleton (.constCls "M") n [.intLit 1] t
+#guard validateD (.seq [modF "f", callF "f"]) (.seq [modH "f" .int, callH "f" .int])
+#guard ["singletonDef", "callSingleton", "moduleDecl"].all fun r =>
+  !validateDWith (fun q => clinkEnabled q && q != r) (.seq [modF "f", callF "f"]) (.seq [modH "f" .int, callH "f" .int])
+#guard !validateD (.seq [modF "f", callF "f"]) (.seq [modH "f" .bool, callH "f" .bool])
+-- def self.singleton_method_added would hijack later def-self hooks; top-level too.
+#guard !validateD (modF "singleton_method_added") (modH "singleton_method_added" .int)
+#guard !validateD (.def' "singleton_method_added" [.req "x"] (.var .lvar "x"))
+  (.defDecl "singleton_method_added" [("x", .int)] .int (.var .lvar "x"))
+
 #print axioms validateD_enabled
 #print axioms validateD_typed
 #print axioms Audit.DJudge.toRaw

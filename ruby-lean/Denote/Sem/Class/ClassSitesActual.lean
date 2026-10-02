@@ -38,13 +38,22 @@ theorem instanceSite_old {κ : Ctx} {cn : String} {k : ObjId}
   have hkl := ClsGrow.classOf_lt hc.chains hk
   have hl : lookup h₁ (.ref k) "method_added" = lookup m.heap (.ref k) "method_added" := by
     rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hd hk, method_old hc.chains hs hd hkl]
+  have hls : lookup h₁ (.ref k) singletonHookName = lookup m.heap (.ref k) singletonHookName := by
+    rw [lookup_eq_methodOn, lookup_eq_methodOn, classOf_old hd hk, method_old hc.chains hs hd hkl]
   refine ⟨named_old htop hc.chains.boot.2.2.2.2 hn site.named, ?_, ?_,
     instance_constants_old site hc hs htop ho hn hmain hreach, ?_,
     meta_old site.metaclass hc.chains hs hd hk, ?_, ?_, ?_, ?_, site.afterBuiltins,
     by rw [metadata_bind_old hd hk (·.attached) (fun _ => rfl)]; exact site.detached,
     (fields_old hd hk).2.2.2.trans site.unfrozen,
     by rw [size]; exact Nat.lt_of_lt_of_le site.mainLive (Nat.le_add_right _ _),
-    by rw [classOf_old hd site.mainLive]; exact site.notMain⟩
+    by rw [classOf_old hd site.mainLive]; exact site.notMain,
+    by obtain ⟨e', hke, ha, hf⟩ := site.metaAttached
+       have hel : e' < m.heap.objs.size := hc.chains.eigen k hk e' hke
+       exact ⟨e', by rw [(fields_old hd hk).2.2.1]; exact hke,
+         by rw [metadata_bind_old hd hel (·.attached) (fun _ => rfl)]; exact ha,
+         by rw [(fields_old hd hel).2.2.2]; exact hf⟩,
+    by simpa only [singletonDefHookQuietB, hls] using site.singletonHook,
+    by rw [classOf_old hd hk, classOf_old hd site.mainLive]; exact site.metaNotMain⟩
   · simpa only [classFront_old hd hk] using site.front
   · simpa only [definitionHookQuietB, hl] using site.hook
   · intro n hn owner md hm
@@ -81,14 +90,24 @@ theorem instanceSite {κ : Ctx} (hc : ClassReady m.heap) (hs : Saturated m.heap)
     (hinst : NamesAt (nameFreeN κ) m.heap Boot.objectId)
     (hcls : NamesAt (nameFreeN κ) m.heap e)
     (hmeta : ConstFallback m.heap e) (hboot : Boot.yielderId < m.heap.objs.size)
-    (hml : Boot.mainId < m.heap.objs.size) :
+    (hml : Boot.mainId < m.heap.objs.size) (hsq : singletonHooksQuietB m.heap = true) :
     InstanceSite κ name m.heap.objs.size h₁ := by
   have hd : m.lexicalNamespace < m.heap.objs.size := htop ▸ hc.chains.boot.2.2.2.2
   have hel := hc.chains.eigen _ hc.chains.boot.2.2.2.2 _ he
   refine ⟨named_fresh htop ho, ?_, hook_quiet hc.chains hs hd he hh,
     instance_constants_fresh hc hs htop ho hmain, ?_, meta_fresh hc hs hd he, ?_, ?_, ?_, ?_, hboot,
     ?_, ?_, by rw [size]; exact Nat.lt_of_lt_of_le hml (Nat.le_add_right _ _),
-    by rw [classOf_old hd hml]; exact (Nat.ne_of_lt (ClsGrow.classOf_lt hc.chains hml)).symm⟩
+    by rw [classOf_old hd hml]; exact (Nat.ne_of_lt (ClsGrow.classOf_lt hc.chains hml)).symm,
+    ⟨m.heap.objs.size + 1, by rw [get_class hd],
+      by simp only [Heap.classPayload?, get_eigen, attachedClassEigen]; rfl,
+      by rw [get_eigen]; rfl⟩,
+    singletonDefHookQuietB_of_methodOn (classOf_class hd)
+      (by rw [method_eigen hc.chains hs hd hel]
+          have hco : e = classOf m.heap (.ref Boot.objectId) := by simp only [classOf, he]
+          rw [hco]
+          exact singletonHooksQuietB_methodOn hsq hc.chains (by simp [singletonHookSites])),
+    by rw [classOf_class hd, classOf_old hd hml]
+       exact (Nat.ne_of_lt (Nat.lt_succ_of_lt (ClsGrow.classOf_lt hc.chains hml))).symm⟩
   · simp only [classFrontB, Heap.classPayload?, get_class hd, namedObject, freshClassPayload]; rfl
   · intro n hn owner md hm
     rw [method_class hc.chains hs hd] at hm

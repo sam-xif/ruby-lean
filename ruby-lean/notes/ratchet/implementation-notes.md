@@ -13541,3 +13541,15 @@ SingletonHooks: singletonHooksQuietB (first own entry native on Object's metacla
 Module's chains) as MainReady.singletonHooks; all method writes now take
 `singletonHookName ≠ name`; classHookSelectors and topDeclClassesB reject defining it.
 See ../../unsoundness.md.
+
+### 2026-10-01 — Climb singletonDef/callSingleton(Implicit) (51/99, 82/261)
+
+def-self is runMethodEdits [define e …] then singleton_method_added on the attached
+class, then methodEditsK. definedSingleton is the interpreter's record (definee :=
+defmod, fromPrelude := prelude || origin); SingletonMethodCode no longer extends
+OrdinaryMethodCode (definee = lexical class) and SingletonScopeAt.owner is the class.
+InstanceSite gains metaAttached (eigen attached to k, unfrozen), singletonHook, and
+metaNotMain, established at class/module entry from MainReady.singletonHooks.
+singletonRuleB rejects classHookSelectors names. SingletonHook proves the native hook
+run; SingletonRulesActual holds the providers (newImplicit stays in SingletonRules).
+Climbs 077–086.

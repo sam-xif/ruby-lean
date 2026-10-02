@@ -126,7 +126,7 @@ theorem StateOk_publish_instance {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine}
   exact StateOk_methodWrite_tables (StateOk_reserveName hm d.name) hr hΓ ha
     (by simp [nameFreeN, reserveNameCtx, Ctx.declared]) hmiss hquiet hsh
     (ClassesOk_publish_instance hm.classes hc hk hw hf hs hp hb hu hcode)
-    (hm.classSites.publish_instance hsite hquiet)
+    (hm.classSites.publish_instance hsite hquiet hsh)
     (DefsOk_methodWrite_other hm.defs hobj) hnested hdecl hown hchain hroot
     (primitiveInitB_defineMethod_outside (cls := cls) hm.primitiveInit hm.core.classReady.chains
       (Nat.ne_of_lt (Nat.lt_trans (by decide : Boot.zeroDivisionErrorId < Boot.yielderId) hsite.afterBuiltins))

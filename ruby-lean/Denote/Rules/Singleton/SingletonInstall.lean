@@ -9,9 +9,12 @@ set_option autoImplicit false
 namespace Ratchet.Denote.Typed
 open RubyCore Ratchet Ratchet.Denote
 
+/-- The interpreter's def-self record; visibility normalization is a no-op on an attached
+metaclass, and the lexical defmod is recorded as definee. -/
 def definedSingleton (m : Machine) (owner : ObjId) (ps : List RubyCore.Param)
     (body : RubyCore.Expr) : MethodDef :=
-  { params := ps, body, owner, cref := m.currentFrame.cref, fromPrelude := m.preludeMode }
+  { params := ps, body, owner, definee := some m.currentFrame.defmod, cref := m.currentFrame.cref,
+    fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
 
 def installSingleton (m : Machine) (owner : ObjId) (name : String)
     (ps : List RubyCore.Param) (body : RubyCore.Expr) : Machine :=
@@ -34,23 +37,39 @@ private theorem rooted_payload {h : Heap} {e : ObjId} (hc : CoreOk h)
       · cases hn
     · cases hn
 
+/-- The real def-self step: install on the cached metaclass, then queue the native
+singleton_method_added hook on the attached class (after the install). -/
 theorem step_defs_cached {m : Machine} {k e : ObjId} {name : String}
     {ps : List RubyCore.Param} {body : RubyCore.Expr}
     (hc : m.ctl = .eval (.defs .self' name ps body))
-    (hs : m.currentFrame.self = .ref k) (he : (m.heap.get k).eigen = some e) :
-    Interp.stepFn m = .next (Interp.withCtl (installSingleton m e name ps body) (.value (.sym name))) := by
+    (hs : m.currentFrame.self = .ref k) (he : (m.heap.get k).eigen = some e)
+    (hp : m.preludeMode = false) (hw : frozenMethodReceiver? m.heap e = none)
+    (ha : (m.heap.classPayload? e).bind (·.attached) = some k) :
+    Interp.stepFn m = .next { installSingleton m e name ps body with
+      ctl := .send (.ref k) .reflective "singleton_method_added" [.sym name] none [],
+      kont := .methodEditsK [] (.sym name) :: m.kont } := by
   have hm : Interp.eigenclassOf m k = (e, m) := Proof.Judgment.eigenclassOf_go_some he
-  simp only [Interp.stepFn, hc]
-  change (match m.currentFrame.self with
-    | .ref o => let (owner, n) := Interp.eigenclassOf m o
-                StepResult.next (Interp.withCtl (installSingleton n owner name ps body) (.value (.sym name)))
-    | _ => .unsupported "singleton def on an immediate") = _
-  simp only [hs, hm]
+  have hnorm : Interp.normalizeDefinitionVisibility m.heap e name (definedSingleton m e ps body) =
+      definedSingleton m e ps body := by
+    simp [Interp.normalizeDefinitionVisibility, ha]
+  have ha' : ((defineMethod m.heap e name (definedSingleton m e ps body)).classPayload? e).bind
+      (·.attached) = some k := by rw [attached_defineMethod]; exact ha
+  have hstep : Interp.stepFn m =
+      Interp.runMethodEdits m [MethodEdit.define e name (definedSingleton m e ps body)] (.sym name) := by
+    simp only [Interp.stepFn, hc]
+    simp only [Interp.evalExpr, hs, hm]
+    rfl
+  rw [hstep]
+  simp only [Interp.runMethodEdits, hw, hnorm]
+  simp only [Interp.finishMethodEdit, hp, ha', Option.isSome_some, Option.getD_some,
+    installSingleton, Bool.false_or, String.isEmpty, ↓reduceIte]
+  rfl
 
 theorem definedSingleton_code {m : Machine} {cn : String} {k e : ObjId}
     (h : ClassScopeAt cn k m) (ps : List RubyCore.Param) (body : RubyCore.Expr) :
     SingletonMethodCode k e (definedSingleton m e ps body) :=
-  ⟨⟨rfl, h.cref, rfl, rfl, rfl, rfl, h.phase⟩, rfl⟩
+  ⟨rfl, h.cref, rfl, rfl, rfl, rfl, by simp [definedSingleton, h.phase, h.origin], rfl, rfl, rfl,
+    by simp [definedSingleton, h.owner], rfl, rfl⟩
 
 theorem installSingleton_framed (m : Machine) (e : ObjId) (name : String)
     (ps : List RubyCore.Param) (body : RubyCore.Expr) :
@@ -75,6 +94,7 @@ theorem installSingleton_lookup {m : Machine} {k e : ObjId} {name : String}
     simpa only [classOf, he] using ha
   · apply installSingleton_own
     cases hp : m.heap.classPayload? e <;> simp_all [classFrontB]
+  · rfl
 
 /-- Full incoming conformance supplies both the lexical class and the cached metaclass.
 The result records the physical step and data/frame preservation, not outgoing StateOk. -/
@@ -84,7 +104,9 @@ theorem scoped_singleton_install {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c
     (ht : κ.selfTy = some (.clsOf cn)) (hc : m.ctl = .eval (.defs .self' name ps body)) :
     ∃ k e, classNamed? m.heap cn = some k ∧ m.currentFrame.self = .ref k ∧
       (m.heap.get k).eigen = some e ∧
-      Interp.stepFn m = .next (Interp.withCtl (installSingleton m e name ps body) (.value (.sym name))) ∧
+      Interp.stepFn m = .next { installSingleton m e name ps body with
+        ctl := .send (.ref k) .reflective "singleton_method_added" [.sym name] none [],
+        kont := .methodEditsK [] (.sym name) :: m.kont } ∧
       SingletonMethodCode k e (definedSingleton m e ps body) ∧
       Framed m (installSingleton m e name ps body) ∧
       ((installSingleton m e name ps body).heap.classPayload? e).bind
@@ -95,12 +117,16 @@ theorem scoped_singleton_install {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {c
   have hj : j = k := Option.some.inj (site.named.symm.trans ready.named)
   subst j
   obtain ⟨e, he, hroot, _⟩ := site.metaclass
+  obtain ⟨e', he', hatt, hfz⟩ := site.metaAttached
+  rw [he] at he'; cases he'
+  have hw : frozenMethodReceiver? m.heap e = none := by
+    simp [frozenMethodReceiver?, hatt, hfz, ready.unfrozen]
   have hs : m.currentFrame.self = .ref k := by
     have hv := hm.selfTy
     simp only [SelfTyOk, ht] at hv
     rw [denM] at hv
     cases hs : m.currentFrame.self <;> simp_all [isClassRefNamed, ready.named]
-  exact ⟨k, e, ready.named, hs, he, step_defs_cached hc hs he,
+  exact ⟨k, e, ready.named, hs, he, step_defs_cached hc hs he ready.phase hw hatt,
     definedSingleton_code ready ps body, installSingleton_framed m e name ps body,
     installSingleton_own (rooted_payload hm.core hroot)⟩
 
