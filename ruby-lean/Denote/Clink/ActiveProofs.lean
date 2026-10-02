@@ -12,6 +12,7 @@ import Denote.Rules.Method.MethodDefine
 import Denote.Rules.Method.MethodCall
 import Denote.Rules.Bounded.Recursive
 import Denote.Rules.Class.ClassDeclActual
+import Denote.Rules.Class.ClassReopen
 import Denote.Rules.Subclass.SubclassDeclActual
 import Denote.Rules.Inherited.InheritedRules
 import Denote.Rules.Init.SuperInitRules

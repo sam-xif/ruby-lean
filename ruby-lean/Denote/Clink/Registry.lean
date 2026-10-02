@@ -268,7 +268,7 @@ def dCompanionRules : List String :=
 #guard dclinks.length == dRegisteredRules.length
 
 -- Keep the complete authoring census frozen; disabled rules are visible, not lost.
-#guard dAllRules.length == 102
+#guard dAllRules.length == 103
 #guard dRegisteredRules.length + dGatedRules.length == dAllRules.length
 #guard dRegisteredRules.all clinkEnabled
 #guard dGatedRules.all (!clinkEnabled ·)

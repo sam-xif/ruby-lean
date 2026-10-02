@@ -106,13 +106,24 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
       let c ← findClass name κ.classes
       some ⟨.clsOf name, Γ, κ, I, by
         simpa only [c.nameOk] using (DJudge.constClass (Γ := Γ) (I := I) c.member), cache⟩
-    | .class' name none body, .classDecl claimed none db => do
-      if name != claimed then none else do
-      let c ← check n [] body db (classHeaderCtx (classBodyCtx κ name) name) .ivar0 cache
-      if hg : classRuleB κ c.ctx Γ I c.ty name = true then do
-        let fresh ← refreshBodies n (returnScopeCtx κ c.ctx) I c.cache
-        some ⟨c.ty, Γ, returnScopeCtx κ c.ctx, I, .classDecl c.judged hg, fresh⟩
-      else none
+    | .class' name none body, .classDecl claimed none db =>
+      if name != claimed then none else
+      (do
+        let c ← check n [] body db (classHeaderCtx (classBodyCtx κ name) name) .ivar0 cache
+        if hg : classRuleB κ c.ctx Γ I c.ty name = true then do
+          let fresh ← refreshBodies n (returnScopeCtx κ c.ctx) I c.cache
+          some ⟨c.ty, Γ, returnScopeCtx κ c.ctx, I, .classDecl c.judged hg, fresh⟩
+        else none) <|>
+      (do
+        let f ← findClass name κ.classes
+        if hmod : f.cls.isModule = false then do
+          let c ← check n [] body db (reopenBodyCtx κ f.cls.name) .ivar0 cache
+          if hg : reopenRuleB κ c.ctx Γ I c.ty f.cls.name = true then do
+            let fresh ← refreshBodies n (returnScopeCtx κ c.ctx) I c.cache
+            some ⟨c.ty, Γ, returnScopeCtx κ c.ctx, I, by
+              simpa only [f.nameOk] using DJudge.classReopen f.member hmod c.judged hg, fresh⟩
+          else none
+        else none)
     | .module' name body, .moduleDecl claimed db => do
       if name != claimed then none else do
       let c ← check n [] body db (moduleHeaderCtx (moduleBodyCtx κ name) name) .ivar0 cache
