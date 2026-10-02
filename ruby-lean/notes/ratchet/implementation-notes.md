@@ -13741,3 +13741,7 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   are unchanged, so `StateOk` transports (`ConstAddState.state`). Object's native
   const_added runs via `stepFn_class_hook`, then `newK` answers the value.
 - `constRead` is a leaf from `StateOk.consts`. Climbs 137, 143, 144 (`.freeze` is stripped).
+
+## ifNilVar (2026-10-02, 108/108, 116/261)
+- `if x … else e` with `x : nil`: the value is nil, so only `e` runs; the then branch is
+  not judged (dead). Climbs 190 (`x ||= 5` desugars to this shape).

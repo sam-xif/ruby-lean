@@ -127,4 +127,25 @@ theorem SemSafeCtxA.ifTruthyNoElse {κ : Ctx} {Γ Γ₁ : Env} {I : Ty} {x : Str
     exact (ht.weaken (fun _ _ hm hd => ⟨StateOk_joinEnv true hm, denM_joinT_left hd⟩)) m hs
 
 #print axioms SemSafeCtxA.ifTruthyNoElse
+theorem SemSafeCtxA.ifNilVar {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {x : String}
+    {t e : Ratchet.Expr} (hx : envGet? Γ x = some .nilT) (he : SemSafeCtxA κ Γ I e τ κ' Γ' I') :
+    SemSafeCtxA κ Γ I (.if' (.var .lvar x) t (some e)) τ κ' Γ' I' := by
+  intro m hm
+  let k : Kont := .ifK (toRuby t) (some (toRuby e))
+  have hv : m.getLocal x = .nil := by
+    have h := (hm.env.1 x _ hx).1
+    simp only [stripAlias, denM] at h
+    cases hg : m.getLocal x <;> rw [hg] at h <;> simp_all [isNilV]
+  apply RunSpec.step (answerPoint_evalFrom _ _)
+    (show Interp.stepFn _ = .next (pushK [k] (evalFrom m (.var .lvar x))) from rfl)
+  apply RunSpec.step (by rfl) (show Interp.stepFn _ = .next (deliverA (.val (m.getLocal x)) m [k]) from by
+    simpa only [pushK, evalFrom, deliverA, Answer.ctl, reCtl, getLocal_reCtl, List.nil_append] using
+      step_var_ctl (m := pushK [k] (evalFrom m (.var .lvar x))) (x := x) rfl)
+  have hbranch : Interp.stepFn (deliverA (.val (m.getLocal x)) m [k]) = .next (evalFrom m e) := by
+    simp only [Interp.stepFn, deliverA, Answer.ctl, Interp.applyKont, k, hv]
+    simp [Value.truthy, Interp.withCtl, evalFrom, toRuby]
+  apply RunSpec.step (by rfl) hbranch
+  exact he m hm
+
+#print axioms SemSafeCtxA.ifNilVar
 end Ratchet.Denote.Typed

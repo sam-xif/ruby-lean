@@ -590,6 +590,19 @@ private def constH (n : String) (rhs : Deriv) : Deriv :=
 #guard !validateD (.casgn "S" (.str "x")) (.casgnTop (.strLit "x"))
 #guard !validateD (.const "MISSING") .constRead
 
+-- Active ifNilVar (190): `x ||= 5` after `x = nil` runs only the assignment.
+private def orEqP : Ratchet.Expr := .seq [.vasgn .lvar "x" .nil,
+  .if' (.var .lvar "x") (.var .lvar "x") (some (.vasgn .lvar "x" (.int 5))),
+  .send (some (.var .lvar "x")) "+" [.int 1] none]
+private def orEqH (x : String) : Deriv := .seq [.vasgn .lvar "x" .nilLit,
+  .ifNilVar x (.vasgn .lvar "x" (.intLit 5)), .prim (.var .lvar "x") "+" [.intLit 1] .int .int]
+#guard validateD orEqP (orEqH "x")
+#guard !validateD orEqP (orEqH "y")
+#guard !validateDWith (fun q => clinkEnabled q && q != "ifNilVar") orEqP (orEqH "x")
+#guard !validateD (.seq [.vasgn .lvar "x" (.int 1),
+    .if' (.var .lvar "x") (.int 2) (some (.int 3))])
+  (.seq [.vasgn .lvar "x" (.intLit 1), .ifNilVar "x" (.intLit 3)])
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),
