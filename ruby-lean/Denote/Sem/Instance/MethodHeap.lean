@@ -337,6 +337,8 @@ theorem CoreOk.defineMethod {h : Heap} {cls : ObjId} {name : String}
   coreNamed := by
     simpa only [constLookup_defineMethod, Proof.classPayload?_isSome_defineMethod]
       using hc.coreNamed
+  intMeta := by simpa only [Proof.classOf_defineMethod] using hc.intMeta
+  strMeta := by simpa only [Proof.classOf_defineMethod] using hc.strMeta
 
 #print axioms denM_defineMethod
 #print axioms Framed_defineMethod
