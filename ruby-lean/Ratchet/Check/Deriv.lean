@@ -61,7 +61,7 @@ inductive Deriv where
   | ifD (c t : Deriv) (e : Option Deriv) (join : Ty)
   /-- `DJudge.ifTruthy`: `if x` narrowing a nilable local in both branches. -/
   | ifTruthy (x : String) (t e : Deriv) (join : Ty)
-  /-- `DJudge.ifNilQuery`: `if x.nil?` narrowing a nilable Integer local. -/
+  /-- `DJudge.ifNilQuery`: `if x.nil?` narrowing a local by nil-ness. -/
   | ifNilQuery (x : String) (t e : Deriv) (join : Ty)
   /-- `DJudge.ifTruthyNoElse`: `if x` without else, narrowing a nilable local. -/
   | ifTruthyNoElse (x : String) (t : Deriv) (join : Ty)

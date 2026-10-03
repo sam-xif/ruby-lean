@@ -4,6 +4,7 @@ import Denote.Rules.Primitive.Primitive
 import Denote.Rules.Expr.Branch
 import Denote.Rules.Expr.BranchNarrow
 import Denote.Rules.Expr.BranchNilQuery
+import Denote.Rules.Expr.BranchNilQ
 import Denote.Rules.Expr.While
 import Denote.Rules.Expr.ConstAssign
 import Denote.Rules.Expr.Regexp

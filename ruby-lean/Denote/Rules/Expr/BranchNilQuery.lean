@@ -55,57 +55,6 @@ theorem nilQuery_cond {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x : String}
 
 #print axioms nilQuery_cond
 
-theorem SemSafeCtxA.ifNilQuery {κ κ' : Ctx} {Γ Γ₁ Γ₂ : Env} {I I' : Ty} {x : String}
-    {τ₁ τ₂ : Ty} {t e : Ratchet.Expr}
-    (hx : envGet? Γ x = some (.nilable .int)) (hfree : nameFreeN κ "nil?" = true)
-    (ht : SemSafeCtxA κ (envSet Γ x .nilT) I t τ₁ κ' Γ₁ I')
-    (he : SemSafeCtxA κ (envSet Γ x .int) I e τ₂ κ' Γ₂ I') :
-    SemSafeCtxA κ Γ I (.if' (.send (some (.var .lvar x)) "nil?" [] none) t (some e))
-      (joinT τ₁ τ₂) κ' (joinEnv Γ₁ Γ₂) I' := by
-  intro m hm
-  let k : Kont := .ifK (toRuby t) (some (toRuby e))
-  have hv0 : denM (.nilable .int) m (m.getLocal x) := by
-    simpa [stripAlias] using (hm.env.1 x _ hx).1
-  have hv : m.getLocal x = .nil ∨ ∃ i, m.getLocal x = .int i := by
-    rw [denM] at hv0
-    rcases hv0 with h | h
-    · left; cases hg : m.getLocal x <;> rw [hg] at h <;> simp_all [isNilV]
-    · right; cases hg : m.getLocal x <;> rw [hg] at h <;> simp_all [denM, isIntV]
-  apply RunSpec.step (answerPoint_evalFrom _ _)
-    (show Interp.stepFn _ = .next (pushK [k] (evalFrom m (.send (some (.var .lvar x)) "nil?" [] none))) from rfl)
-  apply (nilQuery_cond hm hv hfree).bindSpec hm.rootClean (by intro c hc; simp at hc; subst hc; rfl)
-  intro a n hr
-  cases a with
-  | esc j =>
-    apply RunSpec.step (by rfl)
-      (show Interp.stepFn _ = .next (deliverA (.esc j) n []) from by cases j <;> rfl)
-    exact RunSpec.answer ⟨hr.1.1, hr.1.2.1, fun _ hv => by cases hv⟩
-  | val w =>
-    obtain ⟨hw, hloc⟩ := hr.2 w rfl
-    subst hw
-    have hn : StateOk κ Γ I n := hr.1.2.2 _ rfl
-    have hbranch : Interp.stepFn (deliverA (.val (.bool (isNilV (m.getLocal x)))) n [k]) =
-        .next (evalFrom n (if isNilV (m.getLocal x) then t else e)) := by
-      simp only [Interp.stepFn, deliverA, Answer.ctl, Interp.applyKont, k]
-      cases hb : isNilV (m.getLocal x) <;> simp [Value.truthy, Interp.withCtl, evalFrom, toRuby]
-    apply RunSpec.step (by rfl) hbranch
-    apply RunSpec.rebase _ hr.1.1
-    cases hb : isNilV (m.getLocal x)
-    · have hint : denM .int n (n.getLocal x) := by
-        rw [hloc]
-        rcases hv with h | ⟨i, h⟩
-        · rw [h] at hb; cases hb
-        · rw [h]; simp [denM, isIntV]
-      have hs : StateOk κ (envSet Γ x .int) I n := { hn with env := envOk_refine hn.env hx hint rfl }
-      simpa only [Bool.false_eq_true, ite_false] using
-        (he.weaken (fun _ _ hm hd => ⟨StateOk_joinEnv false hm, denM_joinT_right hd⟩)) n hs
-    · have hnil : denM .nilT n (n.getLocal x) := by
-        rw [hloc]; simpa [denM] using hb
-      have hs : StateOk κ (envSet Γ x .nilT) I n := { hn with env := envOk_refine hn.env hx hnil rfl }
-      simpa only [ite_true] using
-        (ht.weaken (fun _ _ hm hd => ⟨StateOk_joinEnv true hm, denM_joinT_left hd⟩)) n hs
-
-#print axioms SemSafeCtxA.ifNilQuery
 theorem SemSafeCtxA.ifNilQueryNil {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {x : String}
     {t : Ratchet.Expr} {e : Option Ratchet.Expr}
     (hx : envGet? Γ x = some .nilT) (hfree : nameFreeN κ "nil?" = true)
