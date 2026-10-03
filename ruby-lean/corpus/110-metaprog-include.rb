@@ -1,5 +1,7 @@
 # typed: true
 module Greetable
+  extend T::Sig
+  sig { returns(String) }
   def greet
     "hi"
   end
