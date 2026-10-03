@@ -684,22 +684,37 @@ private def nqsH (elseD : Deriv) : Deriv := .seq [
 #guard !validateDWith (fun q => clinkEnabled q && q != "ifNilQueryStr") nqsP
   (nqsH (.prim (.var .lvar "x") "length" [] (.cls "String") .int))
 
--- Active ifIsAUnion (127): `is_a?(Integer)` splits an Integer/String union local.
-private def isaP (cn : String) : Ratchet.Expr := .seq [
+-- Active ifIsA (127): `is_a?(C)` refines a local by `isATy`/`notATy`, for any class name.
+private def isaP (cn : String) (thn els : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "v" (.if' .tru (.int 1) (some (.str "s"))),
-  .if' (.send (some (.var .lvar "v")) "is_a?" [.const cn] none)
-    (.send (some (.var .lvar "v")) "+" [.int 1] none)
-    (some (.send (some (.var .lvar "v")) "length" [] none))]
-private def isaH (cn : String) (tT tF : Ty) : Deriv := .seq [
+  .if' (.send (some (.var .lvar "v")) "is_a?" [.const cn] none) thn (some els)]
+private def isaH (cn : String) (thn els : Deriv) (j : Ty) : Deriv := .seq [
   .vasgn .lvar "v" (.ifD .truLit (.intLit 1) (some (.strLit "s")) (.union .int (.cls "String"))),
-  .ifIsA "v" cn (.prim (.var .lvar "v") "+" [.intLit 1] tT .int)
-    (.prim (.var .lvar "v") "length" [] tF .int) .int]
-#guard validateD (isaP "Integer") (isaH "Integer" .int (.cls "String"))
-#guard !validateD (isaP "String") (isaH "String" .int (.cls "String"))
-#guard !validateDWith (fun q => clinkEnabled q && q != "ifIsAUnion") (isaP "Integer")
-  (isaH "Integer" .int (.cls "String"))
-#guard !validateD (.seq [.casgn "Integer" (.int 1), isaP "Integer"])
-  (.seq [.casgnTop (.intLit 1), isaH "Integer" .int (.cls "String")])
+  .ifIsA "v" cn thn els j]
+private def plusP : Ratchet.Expr := .send (some (.var .lvar "v")) "+" [.int 1] none
+private def lenP : Ratchet.Expr := .send (some (.var .lvar "v")) "length" [] none
+private def plusH : Deriv := .prim (.var .lvar "v") "+" [.intLit 1] .int .int
+private def lenH : Deriv := .prim (.var .lvar "v") "length" [] (.cls "String") .int
+#guard validateD (isaP "Integer" plusP lenP) (isaH "Integer" plusH lenH .int)
+#guard validateD (isaP "String" lenP plusP) (isaH "String" lenH plusH .int)
+-- A shared ancestor keeps both members in the then branch; nothing reaches the else.
+#guard validateD (isaP "Comparable" (.int 0) (.int 1)) (isaH "Comparable" (.intLit 0) (.intLit 1) .int)
+#guard !validateD (isaP "Comparable" plusP lenP) (isaH "Comparable" plusH lenH .int)
+-- Numeric is above Integer only.
+#guard validateD (isaP "Numeric" plusP lenP) (isaH "Numeric" plusH lenH .int)
+-- Backwards narrowing, a disabled rule, an unresolved name and a rebound core name all fail.
+#guard !validateD (isaP "String" plusP lenP) (isaH "String" plusH lenH .int)
+#guard !validateDWith (fun q => clinkEnabled q && q != "ifIsA") (isaP "Integer" plusP lenP)
+  (isaH "Integer" plusH lenH .int)
+#guard !validateD (isaP "Nope" (.int 0) (.int 1)) (isaH "Nope" (.intLit 0) (.intLit 1) .int)
+#guard !validateD (.seq [.casgn "Integer" (.int 1), isaP "Integer" plusP lenP])
+  (.seq [.casgnTop (.intLit 1), isaH "Integer" plusH lenH .int])
+-- A declared class is a class name too: no scalar is one, so only the else branch narrows.
+#guard validateD (.seq [.class' "Foo" none .nil, isaP "Foo" (.int 0) (.int 1)])
+  (.seq [.classDecl "Foo" none .nilLit, isaH "Foo" (.intLit 0) (.intLit 1) .int])
+-- Both members reach that else branch, so `v + 1` there is rejected.
+#guard !validateD (.seq [.class' "Foo" none .nil, isaP "Foo" (.int 0) plusP])
+  (.seq [.classDecl "Foo" none .nilLit, isaH "Foo" (.intLit 0) plusH .int])
 
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [

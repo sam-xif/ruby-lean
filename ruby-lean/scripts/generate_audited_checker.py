@@ -55,7 +55,7 @@ def generate(module):
         text = text.replace('.defDeclOpt (d := decl) (σ := o.2) (Γb := Γb) hshape', '.defDeclOpt (d := decl) (σ := o.2) (Γb := Γb) (used_0 := DJudge.rules hd) (used_1 := DJudge.rules hbj) hshape')
         text = text.replace('DJudge.callSigOpt (σ := o.2) (Γb := Γb) hshape', 'DJudge.callSigOpt (σ := o.2) (Γb := Γb) (used_0 := DJudge.rules hd) (used_1 := DJudge.rules hbj) hshape')
         text = text.replace(".while' (by subst", ".while' (used_0 := DJudge.rules hc) (used_1 := DJudge.rules hb) (by subst")
-        text = text.replace('.ifIsAUnion hx hsides hcase hcf hf hokI hokS ht', '.ifIsAUnion (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hsides hcase hcf hf hokI hokS ht')
+        text = text.replace('.ifIsA hx hg ht (by', '.ifIsA (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hg ht (by')
         text = text.replace('.ifNilQueryStr hx hf hg ht (by', '.ifNilQueryStr (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hf hg ht (by')
         text = text.replace('.ifNilQuery hx hf ht (by', '.ifNilQuery (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hf ht (by')
         text = text.replace('by cases hctx; cases hi; exact he', 'by simpa only [DJudge.rules, hctx, hi] using he')

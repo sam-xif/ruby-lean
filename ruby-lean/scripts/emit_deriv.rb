@@ -319,19 +319,43 @@ class Emitter
 
   # `if x` on a nilable local whose inner type excludes false: DJudge.ifTruthy types the
   # branches with x narrowed to the inner type and to nil.
-  # `if x.is_a?(C)` on an Integer/String union local, C a core class (DJudge.ifIsAUnion).
+  # Mirrors `builtinAncestors` for the leaves `isALeafB` admits.
+  ROOT_CHAIN = %w[Object Kernel BasicObject].freeze
+  def leaf_chain(t)
+    case t
+    when INT then %w[Integer Numeric Comparable] + ROOT_CHAIN
+    when FLOAT then %w[Float Numeric Comparable] + ROOT_CHAIN
+    when NIL_T then %w[NilClass] + ROOT_CHAIN
+    when SYM then %w[Symbol Comparable] + ROOT_CHAIN
+    when STR then %w[String Comparable] + ROOT_CHAIN
+    end
+  end
+
+  # Mirrors `isATy` (yes = true) and `notATy` (yes = false) over admitted receivers.
+  def is_a_refine(cn, t, yes)
+    case t["tag"]
+    when "union" then join(is_a_refine(cn, t["l"], yes), is_a_refine(cn, t["r"], yes))
+    when "nilable"
+      nil_part = leaf_chain(NIL_T).include?(cn) == yes ? NIL_T : NEVER
+      join(nil_part, is_a_refine(cn, t["elem"], yes))
+    else
+      chain = leaf_chain(t)
+      raise Blocked, "is_a? on a receiver outside the scalar builtin leaves" unless chain
+      chain.include?(cn) == yes ? t : NEVER
+    end
+  end
+
+  # `if x.is_a?(C)` on a local, any class name (DJudge.ifIsA).
   def narrow_is_a(n)
     c = n[1]
     return nil unless c[0] == "send" && c[1].is_a?(Array) && c[1][0] == "var" && c[1][1] == "local" &&
       c[2] == "is_a?" && c[3].length == 1 && c[3][0][0] == "const" && c[4].nil? && n[3]
     x = c[1][2]
     t = @env[x]
-    return nil unless t && t["tag"] == "union" && [[t["l"], t["r"]], [t["r"], t["l"]]].include?([INT, STR])
-    yes, no = case c[3][0][1]
-              when "Integer" then [INT, STR]
-              when "String" then [STR, INT]
-              else return nil
-              end
+    return nil unless t
+    cn = c[3][0][1]
+    yes = is_a_refine(cn, t, true)
+    no = is_a_refine(cn, t, false)
     before = @env.dup
     @env = before.merge(x => yes)
     dt, tt = go(n[2])
@@ -344,7 +368,7 @@ class Emitter
       then_env.reject { |k, _| k == x } != else_env.reject { |k, _| k == x }
     @env = then_env.merge(x => join(then_env[x], else_env[x]))
     j = join(tt, te)
-    [{ "rule" => "ifIsA", "name" => x, "cls" => c[3][0][1], "then" => dt, "else" => de, "join" => j }, j]
+    [{ "rule" => "ifIsA", "name" => x, "cls" => cn, "then" => dt, "else" => de, "join" => j }, j]
   end
 
   # `if x` on a nil-typed local with an else: only the else branch runs (DJudge.ifNilVar).
