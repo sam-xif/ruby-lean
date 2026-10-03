@@ -429,17 +429,14 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       DJudge (envSet Γ x .nilT) t τ₁ Γ₁ κ I κ' I' → DJudge (envSet Γ x (.cls "String")) e τ₂ Γ₂ κ I κ' I' →
       DJudge Γ (.if' (.send (some (.var .lvar x)) "nil?" [] none) t (some e)) (joinT τ₁ τ₂)
         (joinEnv Γ₁ Γ₂) κ I κ' I'
-  /-- `if x.is_a?(C)` on an Integer/String union local with `C` a core class (Sorbet
-      0.6.13405 accepts corpus 127): each branch sees the member the answer selects. -/
-  | ifIsAUnion {κ κ' : Ctx} {Γ Γ₁ Γ₂ : Env} {I I' : Ty} {x cn : String}
-      {σ τ tT tF τ₁ τ₂ : Ty} {t e : Expr} :
-      envGet? Γ x = some (.union σ τ) →
-      ((σ = .int ∧ τ = .cls "String") ∨ (σ = .cls "String" ∧ τ = .int)) →
-      ((cn = "Integer" ∧ tT = .int ∧ tF = .cls "String") ∨
-        (cn = "String" ∧ tT = .cls "String" ∧ tF = .int)) →
-      coreConstFreeN κ = true → nameFreeN κ "is_a?" = true →
-      isANoOk κ.wholeCls intChain = true → isANoOk κ.wholeCls strChain = true →
-      DJudge (envSet Γ x tT) t τ₁ Γ₁ κ I κ' I' → DJudge (envSet Γ x tF) e τ₂ Γ₂ κ I κ' I' →
+  /-- `if x.is_a?(C)` on a local, for any class name the context resolves (Sorbet 0.6.13405
+      accepts corpus 127): the then branch sees the members that are a `C` (`isATy`), the
+      else branch the members that are not (`notATy`). -/
+  | ifIsA {κ κ' : Ctx} {Γ Γ₁ Γ₂ : Env} {I I' : Ty} {x cn : String}
+      {ρ τ₁ τ₂ : Ty} {t e : Expr} :
+      envGet? Γ x = some ρ → ifIsAB κ ρ cn = true →
+      DJudge (envSet Γ x (isATy κ.classes κ.wholeCls cn ρ)) t τ₁ Γ₁ κ I κ' I' →
+      DJudge (envSet Γ x (notATy κ.classes κ.wholeCls cn ρ)) e τ₂ Γ₂ κ I κ' I' →
       DJudge Γ (.if' (.send (some (.var .lvar x)) "is_a?" [.const cn] none) t (some e)) (joinT τ₁ τ₂)
         (joinEnv Γ₁ Γ₂) κ I κ' I'
   /-- `N = e` at top level (Sorbet accepts corpus 137): binds a fresh constant to a

@@ -13795,8 +13795,14 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   class's current initializer fields, so readers defined before any initializer would need
   member-cache entries not yet checked against real fields (unsafe for early calls).
 
-## ifIsAUnion (2026-10-02, 118/118, 126/261)
-- `if x.is_a?(C)` with `x : T.any(Integer, String)`, `C ∈ {Integer, String}`. The const read
-  resolves through `BaseChainsOk` (guarded by `coreConstFreeN`), Object#is_a? is a new
-  primitive row for both classes, and the answer is decided by the builtin chains: a class
-  contains itself, and `isANoOk` excludes the other name. Climbs 127.
+## ifIsA (2026-10-02, 118/118, 126/261)
+- General `if x.is_a?(C)`: the branches are typed at `isATy`/`notATy` of the local's type,
+  for any class name the context resolves (`isAClassB`: an unrebound core chain name, or a
+  declared class). Replaces the Integer/String-only `ifIsAUnion`.
+- Receivers (`isARecvB`): scalar builtin leaves (Integer, Float, nil, Symbol, String) whose
+  chain passes `isANoOk`, and unions/nilables of them. A leaf value has exactly its builtin
+  class, so the native answer is the static chain's membership test (`chain_isA`, from
+  `BaseChainsOk`); `recv_facts` proves `isATy`/`notATy` sound by recursion on the type.
+  Object#is_a? is a primitive row for each leaf class.
+- Not yet admitted: `.inst` receivers (needs dispatch of Object#is_a? through a user class
+  chain), `.bool`, Array/Hash types.
