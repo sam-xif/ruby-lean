@@ -2,7 +2,7 @@
 
 Commands run from `playground/`.
 
-The user-facing front end. Pick one of 259 annotated Ruby programs, run the five
+The user-facing front end. Pick one of 261 annotated Ruby programs, run the five
 stages over it, and see whether the Lean checker can prove it will never raise a
 type error. Edit the program, or edit the proposed proof, and check it again.
 
@@ -14,8 +14,12 @@ aimed at the whole language and at programs that read user input.
 
 Corpus descriptions are working notes written for whoever is building the
 ladder, so the menu does not show them raw: programs are listed by name and
-grouped by tier, and prose appears under the menu only when a clean sentence can
-be extracted from the note (48 of 259 have none, and show the name instead).
+grouped by tier. Each tier group carries a one-line description of what its
+programs exercise, and the menu numbers the programs 1..261 in the order they
+appear, so a group's numbers are consecutive even though the underlying source
+files are not (the adversarial rungs were appended to existing tiers later).
+Prose appears under the menu only when a clean sentence can be extracted from
+the note (48 of 259 have none, and show the name instead).
 
 ```
 annotated Ruby
@@ -106,7 +110,7 @@ real thing and says so.
 | `js/worker.js` | runs the modules off the main thread and caches compiled ones |
 | `js/backend.js` | the seam: eleven calls, answered by wasm or by `server.py` |
 | `build.sh` | assembles `dist/` and `dist.tar.gz` |
-| `mkcorpus.py` | bakes all 259 rungs (metadata, source, recorded verdict) into one `corpus.json` |
+| `mkcorpus.py` | bakes all 261 rungs (metadata, source, recorded verdict) into one `corpus.json` |
 | `server.py` | the localhost fallback, eleven matching routes |
 | `check.mjs` | drives the built `dist/` headlessly against the real modules |
 

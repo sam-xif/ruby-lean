@@ -791,7 +791,31 @@ document.addEventListener("keydown", (e) => {
 const humanise = (stem) =>
   stem.replace(/^(\d+)-/, "").replace(/-/g, " ");
 
-const numberOf = (stem) => (stem.match(/^(\d+)/) || [, ""])[1];
+// One sentence per rung of the ladder, so the menu says what sets a tier's
+// programs apart rather than only how many there are. These are the ladder's
+// own themes (ruby-lean/AGENTS.md, "the Homebrew slice"): each tier adds one
+// layer of the language, and a program is placed by the constructs it needs.
+const TIERS = {
+  1: "Literals: integers, booleans, strings, symbols, floats and nil",
+  2: "Built-in queries and operators over those values",
+  3: "Locals: assignment, rebinding and sequencing",
+  4: "Conditionals and truthiness, including branch joins",
+  5: "Array and hash literals, nesting and indexing",
+  6: "Top-level methods: definition, calls, arity and recursion",
+  7: "Classes: instantiation, ivars, dispatch, inheritance and super",
+  8: "Modules: module methods and calling across modules",
+  9: "Blocks, procs, lambdas, yield and the built-in iterators",
+  10: "Metaprogramming: reopening, include/extend/prepend, method_missing",
+  11: "Cross-products: features combined (a class with a block, a module that yields)",
+  12: "Narrowing: refining nilable and union types in branches and guards",
+  13: "Constants: assignment, scoping, paths, aliases and attr_reader",
+  14: "Parameters and arguments: optional, rest, keyword and splat",
+  15: "String and Regexp rows: interpolation, matching and symbols",
+  16: "Control flow: while/until, next/break, case and begin/rescue",
+  17: "Library rows and iterators: Comparable, Struct, Hash and Array",
+  18: "Real files: single Homebrew slice programs and their drivers",
+  19: "The whole linked Homebrew slice, safe and under adversarial inputs",
+};
 
 const CODEY = /;\s*(def|end|class)\b|\bend;|::|=>|\w#\w/;
 
@@ -833,11 +857,20 @@ async function loadCorpus() {
     if (!byTier.has(k)) byTier.set(k, []);
     byTier.get(k).push(e);
   }
+  // The menu is the ladder in tier order, but a tier's source-file numbers are
+  // not contiguous -- the adversarial rungs were appended later, so tier 6 reads
+  // 052..060 then 236. Renumber for display only, counting up through the menu
+  // in the order the groups appear, so every adjacent pair reads 1, 2, 3, ...
+  // (`e.file`, the source stem, is what the lookups use and stays untouched.)
+  let n = 0;
   $("corpus").innerHTML = [...byTier.entries()].map(([tier, es]) =>
-    `<optgroup label="Tier ${esc(tier)} — ${es.length} program${es.length === 1 ? "" : "s"}">` +
-    es.map((e) =>
-      `<option value="${esc(e.file)}">${esc(numberOf(e.file))} · ${esc(humanise(e.file))}` +
-      `${e.expect_validate === false ? "   (not expected to pass)" : ""}</option>`).join("") +
+    `<optgroup label="Tier ${esc(tier)} · ${es.length} program${es.length === 1 ? "" : "s"}` +
+    `${TIERS[tier] ? " — " + esc(TIERS[tier]) : ""}">` +
+    es.map((e) => {
+      e.number = String(++n).padStart(3, "0");
+      return `<option value="${esc(e.file)}">${esc(e.number)} · ${esc(humanise(e.file))}` +
+        `${e.expect_validate === false ? "   (not expected to pass)" : ""}</option>`;
+    }).join("") +
     `</optgroup>`).join("");
   $("msg").textContent = `${(d.entries || []).length} programs · pick one and press “Check it”`;
 }
