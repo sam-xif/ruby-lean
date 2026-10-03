@@ -38,6 +38,7 @@ macro "certify_djudgments" rec:ident h:ident F:ident hF:ident : tactic => `(tact
   · apply $hF DClink.regexpLit (by simp [dclinks]) <;> assumption
   · apply $hF DClink.var (by simp [dclinks]) <;> assumption
   · apply $hF DClink.vasgn (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.vasgnAlias (by simp [dclinks]) <;> assumption
   · apply $hF DClink.seq (by simp [dclinks]) <;> assumption
   · apply $hF DClink.prim (by simp [dclinks]) <;> assumption
   · apply $hF DClink.if' (by simp [dclinks]) <;> assumption
@@ -50,6 +51,7 @@ macro "certify_djudgments" rec:ident h:ident F:ident hF:ident : tactic => `(tact
   · apply $hF DClink.ifNilQueryStr (by simp [dclinks]) <;> assumption
   · apply $hF DClink.ifIsA (by simp [dclinks]) <;> assumption
   · apply $hF DClink.ifIsAIvar (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.ifCaseEq (by simp [dclinks]) <;> assumption
   · apply $hF DClink.casgnTop (by simp [dclinks]) <;> assumption
   · apply $hF DClink.constRead (by simp [dclinks]) <;> assumption
   · apply $hF DClink.while' (by simp [dclinks]) <;> assumption

@@ -99,9 +99,7 @@ theorem clsQuery (hnames : NamesOk m.heap) (hc : ChainsIn m.heap) (hs : Saturate
     refine ⟨hb, hu, hv, hp', ?_⟩
     rw [hh]
     exact shadow_before_source hnames hc hs hne hn₁ hn₂ k owner hsh
-  · intro hm owner md hf
-    rw [hh, method_source hc hs] at hm hf
-    exact hMiss hm owner md hf
+  · rw [hh, method_source hc hs]; exact hMiss
 
 theorem nilQuery (hnames : NamesOk m.heap) (hc : ChainsIn m.heap) (hs : Saturated m.heap)
     (hne : name.isEmpty = false)

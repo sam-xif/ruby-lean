@@ -38,6 +38,22 @@ theorem class_site_source (hc : ChainsIn m.heap) (hd : m.lexicalNamespace < m.he
         · rw [classPayload?_oob _ _ (by rw [size m name]; exact Judgment.not_lt_add_two hl hok hoe)] at hp'
           contradiction
 
+/-- The module object itself is nobody's dispatch class. -/
+theorem site_ne_module (hc : ChainsIn m.heap) (hd : m.lexicalNamespace < m.heap.objs.size)
+    {k : ObjId} (hk : ClassQuerySite h₁ k) : k ≠ m.heap.objs.size := by
+  rcases hk with hk | hk | ⟨o, hp', hco⟩
+  · subst k; exact Nat.ne_of_lt hc.boot.1
+  · subst k; exact Nat.ne_of_lt hc.boot.2.1
+  · subst k
+    by_cases hl : o < m.heap.objs.size
+    · rw [classOf_old hd hl]; exact Nat.ne_of_lt (ClsGrow.classOf_lt hc hl)
+    · by_cases hok : o = m.heap.objs.size
+      · subst o; rw [classOf_module hd]; exact Nat.succ_ne_self _
+      · by_cases hoe : o = m.heap.objs.size + 1
+        · subst o; rw [classOf_eigen]; exact Nat.ne_of_lt hc.boot.1
+        · rw [classPayload?_oob _ _ (by rw [size m name]; exact Judgment.not_lt_add_two hl hok hoe)] at hp'
+          contradiction
+
 theorem primitiveDispatch (hnames : NamesOk m.heap) (hc : ChainsIn m.heap) (hs : Saturated m.heap)
     (hd : m.lexicalNamespace < m.heap.objs.size) (free : String → Bool) :
     primitiveDispatchB h₁ free = primitiveDispatchB m.heap free := by
@@ -110,9 +126,7 @@ theorem clsQuery (hnames : NamesOk m.heap) (hc : ChainsIn m.heap) (hs : Saturate
   intro mn bid hmem hfree k hsite
   rw [hh] at hsite
   by_cases hk : k = m.heap.objs.size
-  · subst k
-    refine ⟨fun owner md hf => ?_, fun _ owner md hf => ?_⟩ <;>
-      (rw [hh, method_module hc hd] at hf; cases hf)
+  · exact absurd hk (site_ne_module hc hd hsite)
   obtain ⟨hFound, hMiss⟩ := hq mn bid hmem hfree (source m.heap k) (class_site_source hc hd hsite)
   obtain ⟨_, hn₂⟩ := hn mn bid hmem hfree
   have hn₃ : crubySingletonDefines name mn = false := FreshClassActual.singleton_query_free (by
@@ -126,9 +140,7 @@ theorem clsQuery (hnames : NamesOk m.heap) (hc : ChainsIn m.heap) (hs : Saturate
     refine ⟨hb, hu, hv, hp', ?_⟩
     rw [hh]
     exact shadow_before_source hnames hc hs hd hne hn₂ hn₃ hlmain hk owner hsh
-  · intro hm owner md hf
-    rw [hh, method_source hc hs hd hk] at hm hf
-    exact hMiss hm owner md hf
+  · rw [hh, method_source hc hs hd hk]; exact hMiss
 
 theorem nilQuery (hnames : NamesOk m.heap) (hc : ChainsIn m.heap) (hs : Saturated m.heap)
     (hd : m.lexicalNamespace < m.heap.objs.size) (hlmain : Boot.mainId < m.heap.objs.size)

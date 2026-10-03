@@ -57,6 +57,7 @@ def generate(module):
         text = text.replace(".while' (by subst", ".while' (used_0 := DJudge.rules hc) (used_1 := DJudge.rules hb) (by subst")
         text = text.replace('.ifIsAIvar hx hg (by rw [hi₁] at ht; exact ht)', '.ifIsAIvar (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hg (by simpa only [DJudge.rules, hi₁] using ht)')
         text = text.replace('(by rw [hi₂] at he; cases hctx; exact he)', '(by simpa only [DJudge.rules, hctx, hi₂] using he)')
+        text = text.replace('.ifCaseEq ht (hρ ▸ hx) hg hf hth (by', '.ifCaseEq (used_0 := DJudge.rules hth) (used_1 := DJudge.rules he) ht (hρ ▸ hx) hg hf hth (by')
         text = text.replace('.ifIsA hx hg ht (by', '.ifIsA (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hg ht (by')
         text = text.replace('.ifNilQueryStr hx hf hg ht (by', '.ifNilQueryStr (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hf hg ht (by')
         text = text.replace('.ifNilQuery hx hf ht (by', '.ifNilQuery (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hf ht (by')

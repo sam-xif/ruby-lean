@@ -830,9 +830,7 @@ def ClsQueryOk (κ : Ctx) (m : Machine) : Prop :=
         Interp.crubyShadow m.heap
           ((ancestors m.heap k).takeWhile (fun x => x != owner))
           mname = none) ∧
-    (Interp.methodOn m.heap k mname = none →
-      ∀ o₂ md, Interp.methodOn m.heap k "method_missing"
-        = some (o₂, md) → md.builtin.isSome = true)
+    (Interp.methodOn m.heap k mname).isSome = true
 
 theorem QueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : QueryOk κ m)
     (hnames : Proof.NamesOk m.heap) (hchains : Proof.ChainsIn m.heap) :
@@ -874,9 +872,7 @@ theorem ClsQueryOk.ext {κ : Ctx} {m m₂ : Machine} (he : Ext m m₂) (h : ClsQ
     refine ⟨hb, hu, hv, hpre, ?_⟩
     simp only [he.ancestors, he.crubyShadow_eq hnames]
     exact hsh
-  · intro hnone o₂ md hfound
-    rw [hm] at hnone hfound
-    exact h2 hnone o₂ md hfound
+  · rw [hm]; exact h2
 
 theorem ClsQueryOk.setLocal {κ : Ctx} {m : Machine} (x : String) (w : Value)
     (h : ClsQueryOk κ m) : ClsQueryOk κ (m.setLocal x w) := by

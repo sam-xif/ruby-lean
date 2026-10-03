@@ -71,8 +71,12 @@ inductive Deriv where
   | ifNilVar (x : String) (e : Deriv)
   /-- `InitJudge.widenL`/`widenR`: widen an initializer value to a join with `other`. -/
   | initWiden (left : Bool) (other : Ty) (d : Deriv)
-  /-- `DJudge.ifIsAUnion`: `if x.is_a?(C)` narrowing an Integer/String union local. -/
+  /-- `DJudge.ifIsA`/`ifIsAIvar`: `if x.is_a?(C)` narrowing a local or a field. -/
   | ifIsA (x cn : String) (t e : Deriv) (join : Ty)
+  /-- `DJudge.vasgnAlias`: `t = x`, recording `t` as an alias of `x`. -/
+  | vasgnAlias
+  /-- `DJudge.ifCaseEq`: `if C === t` narrowing an alias and its source. -/
+  | ifCaseEq (t e : Deriv) (join : Ty)
   /-- `DJudge.ifNilQueryNil`: `if x.nil?` on a nil-typed local runs only the then branch. -/
   | ifNilQueryNil (x : String) (t : Deriv)
   /-- `DJudge.casgnTop`: a fresh top-level constant bound to a non-class value. -/
@@ -190,6 +194,8 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
   | "ifTruthyNoElse" => return .ifTruthyNoElse (← name "name") (← kid "then") (← ty "join")
   | "while" => return .whileD (← kid "cond") (← kid "body")
   | "ifNilQueryNil" => return .ifNilQueryNil (← name "name") (← kid "then")
+  | "vasgnAlias" => return .vasgnAlias
+  | "ifCaseEq" => return .ifCaseEq (← kid "then") (← kid "else") (← ty "join")
   | "ifIsA" => return .ifIsA (← name "name") (← name "cls") (← kid "then") (← kid "else") (← ty "join")
   | "initWiden" =>
     return .initWiden (← j.getObjValAs? Bool "left") (← ty "other") (← kid "value")

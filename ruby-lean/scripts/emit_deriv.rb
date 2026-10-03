@@ -208,6 +208,7 @@ class Emitter
 
   # `node` -> [deriv, type]. Raises `Blocked` outside the fragment.
   def go(node)
+    @root ||= node
     tag = node[0]
     meth = "n_#{tag.gsub("?", "_q")}"
     raise Blocked, "no rule for AST node '#{tag}'" unless respond_to?(meth, true)
@@ -280,9 +281,36 @@ class Emitter
     [{ "rule" => "var", "kind" => "lvar", "name" => name }, @env[name]]
   end
 
+  # A desugarer temporary read only as the scrutinee of `Const === tmp`. Any other read
+  # would need a rule that reads through an alias binding, and none does.
+  def case_temp?(name)
+    return false unless name.start_with?("__dt_") && @root
+    @case_temps ||= {}
+    return @case_temps[name] if @case_temps.key?(name)
+    tests = reads = 0
+    walk = lambda do |node|
+      next unless node.is_a?(Array)
+      reads += 1 if node[0] == "var" && node[1] == "local" && node[2] == name
+      tests += 1 if node[0] == "send" && node[1].is_a?(Array) && node[1][0] == "const" &&
+        node[2] == "===" && node[3] == [["var", "local", name]] && node[4].nil?
+      node.each { |ch| walk.(ch) }
+    end
+    walk.(@root)
+    @case_temps[name] = tests.positive? && tests == reads
+  end
+
   def n_vasgn(n)
     kind = n[1]
     name = n[2]
+    # the desugarer's `case` temporary: an alias of the scrutinee (DJudge.vasgnAlias)
+    v = n[3]
+    if kind == "local" && case_temp?(name) && v[0] == "var" && v[1] == "local" &&
+       v[2] != name && @env.key?(v[2]) && @env[v[2]]["tag"] != "sameAs"
+      t = @env[v[2]]
+      @env.each { |k, ty| @env[k] = ty["elem"] if ty["tag"] == "sameAs" && ty["name"] == name }
+      @env[name] = { "tag" => "sameAs", "name" => v[2], "elem" => t }
+      return [{ "rule" => "vasgnAlias" }, t]
+    end
     d, t = go(n[3])
     if kind == "ivar"
       @ivars[name] = t
@@ -290,6 +318,8 @@ class Emitter
     end
     raise Blocked, "#{kind} assignment is outside the fragment" unless kind == "local"
 
+    # a write to `name` ends every "same value as `name`" record (killAliasesTo)
+    @env.each { |k, ty| @env[k] = ty["elem"] if ty["tag"] == "sameAs" && ty["name"] == name }
     @env[name] = t
     [{ "rule" => "vasgn", "kind" => "lvar", "name" => name, "value" => d }, t]
   end
@@ -397,6 +427,32 @@ class Emitter
        "join" => j }, j]
   end
 
+  # `if C === t` with `t` an alias of `x` -- `case x when C` (DJudge.ifCaseEq).
+  def narrow_case_eq(n)
+    c = n[1]
+    return nil unless c[0] == "send" && c[1].is_a?(Array) && c[1][0] == "const" && c[2] == "===" &&
+      c[3].length == 1 && c[3][0][0] == "var" && c[3][0][1] == "local" && c[4].nil? && n[3]
+    t = c[3][0][2]
+    a = @env[t]
+    return nil unless a && a["tag"] == "sameAs" && @env[a["name"]] == a["elem"]
+    x = a["name"]
+    cn = c[1][1]
+    before = @env.dup
+    arms = [[n[2], true], [n[3], false]].map do |body, yes|
+      r = is_a_refine(cn, a["elem"], yes)
+      @env = before.merge(x => r, t => { "tag" => "sameAs", "name" => x, "elem" => r })
+      d, ty = go(body)
+      [d, ty, @env]
+    end
+    rest = ->(e) { e.reject { |k, _| k == x || k == t } }
+    raise Blocked, "the two branches of an `if` leave different local types" if
+      rest.(arms[0][2]) != rest.(arms[1][2])
+    @env = arms[0][2].merge(x => join(arms[0][2][x], arms[1][2][x]),
+                            t => join(arms[0][2][t], arms[1][2][t]))
+    j = join(arms[0][1], arms[1][1])
+    [{ "rule" => "ifCaseEq", "then" => arms[0][0], "else" => arms[1][0], "join" => j }, j]
+  end
+
   # `if x.is_a?(C)` on a local, any class name (DJudge.ifIsA).
   def narrow_is_a(n)
     c = n[1]
@@ -496,7 +552,7 @@ class Emitter
 
   def n_if(n)
     narrowed = narrow_truthy(n) || narrow_nil_query(n) || narrow_nil_var(n) || narrow_is_a(n) ||
-      narrow_is_a_ivar(n) || init_if_widen(n)
+      narrow_is_a_ivar(n) || narrow_case_eq(n) || init_if_widen(n)
     return narrowed if narrowed
     dc, = go(n[1])
     # Both branches are typed in the incoming environment's *copy*: this emitter
