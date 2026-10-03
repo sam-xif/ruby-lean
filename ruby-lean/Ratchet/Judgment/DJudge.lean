@@ -439,6 +439,18 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       DJudge (envSet Γ x (notATy κ.classes κ.wholeCls cn ρ)) e τ₂ Γ₂ κ I κ' I' →
       DJudge Γ (.if' (.send (some (.var .lvar x)) "is_a?" [.const cn] none) t (some e)) (joinT τ₁ τ₂)
         (joinEnv Γ₁ Γ₂) κ I κ' I'
+  /-- `if @x.is_a?(C)` on an instance variable (Sorbet 0.6.13405 accepts corpus 129): each
+      branch sees the field refined, and must leave that refined spine as it found it. Writes
+      (`scalarIvarAsgn`) are tied to the declared `selfTy` spine, so none checks inside. -/
+  | ifIsAIvar {κ κ' : Ctx} {Γ Γ₁ Γ₂ : Env} {I : Ty} {x cn : String}
+      {ρ τ₁ τ₂ : Ty} {t e : Expr} :
+      ivarGet? I x = some ρ → ifIsAB κ ρ cn = true →
+      DJudge Γ t τ₁ Γ₁ κ (ivarSet I x (isATy κ.classes κ.wholeCls cn ρ)) κ'
+        (ivarSet I x (isATy κ.classes κ.wholeCls cn ρ)) →
+      DJudge Γ e τ₂ Γ₂ κ (ivarSet I x (notATy κ.classes κ.wholeCls cn ρ)) κ'
+        (ivarSet I x (notATy κ.classes κ.wholeCls cn ρ)) →
+      DJudge Γ (.if' (.send (some (.var .ivar x)) "is_a?" [.const cn] none) t (some e)) (joinT τ₁ τ₂)
+        (joinEnv Γ₁ Γ₂) κ I κ' I
   /-- `N = e` at top level (Sorbet accepts corpus 137): binds a fresh constant to a
       non-class value; later reads see its type. -/
   | casgnTop {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {n : String} {e : Expr} :
@@ -1139,7 +1151,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_12 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_13 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_14 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 

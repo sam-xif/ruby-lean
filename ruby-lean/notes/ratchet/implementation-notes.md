@@ -13812,3 +13812,23 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
 - The emitter proposes the body's own union when a top-level method annotated with a class
   returns exact instances of its subclasses, so `is_a?` can split it.
 - Not yet admitted: `.bool`, Array/Hash receivers.
+
+## Field narrowing and branching initializers (128/261, climbs 129)
+
+- `InitJudge.ifVar` (`if flag` on a local; both arms must end in one context, locals and
+  field spine) with `strLit` and `widenL`/`widenR`. Widening is a separate rule so an arm's
+  `@v = 1` can be recorded at `Integer | String`; the emitter wraps each arm's value in
+  `initWiden` (one Deriv node, `left` picks the side) when the arms assign different types.
+- `DJudge.ifIsAIvar`: `if @x.is_a?(C)` checks each branch at `ivarSet I x (isATy/notATy ρ)`
+  and requires the branch to hand back that same spine; the rule's output spine is `I`.
+  Restoring `I` needs only `isATy_sub`/`notATy_sub` (a refinement shrinks the type), proven
+  from `denM_joinT_inv` (`Denote/Ty/JoinInv.lean`).
+- Why a self-call inside the branch cannot invalidate the refinement: field writes are
+  `scalarIvarAsgn` only, which replaces an Integer/Float/Symbol by a value of the same type,
+  and call rules restore the caller's spine through `Framed.selfSpine` for any first-order
+  `I`. A write inside the narrowed branch itself does not check (`scalarIvarAsgn` wants
+  `selfTy`'s declared spine to equal the current one), which is conservative.
+- `isA_cond` now takes the receiver's one-step read as a hypothesis, shared by the local
+  and field rules. The checker reuses the `ifIsA` Deriv node; the receiver's syntax picks
+  the rule.
+- No dedicated negative control yet for `ifIsAIvar` (controls run at the empty spine).

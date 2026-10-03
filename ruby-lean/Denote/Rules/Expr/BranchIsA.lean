@@ -291,24 +291,28 @@ theorem recv_facts {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cn : String} {k
 
 #print axioms recv_facts
 
-/-- `x.is_a?(C)` answers the ancestor test at an unchanged local, or gates. -/
-theorem isA_cond {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x cn : String} {k : ObjId}
+/-- `r.is_a?(C)` for a receiver that reads in one step: the ancestor test's answer at a
+machine that differs from the start only in control, or a gate. -/
+theorem isA_cond {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {r : Ratchet.Expr} {cn : String}
+    {k : ObjId} {vx : Value}
     (hm : StateOk κ Γ I m) (hnamed : classNamed? m.heap cn = some k)
     (hlex : Interp.lexicalConstant m cn = some (.ref k))
-    (hdisp : Interp.invoke (deliverA (.val (.ref k)) m []) (m.getLocal x) .explicit "is_a?"
+    (hsend : Interp.stepFn (evalFrom m (.send (some r) "is_a?" [.const cn] none)) =
+      .next (pushK [.recvK "is_a?" [toRuby (.const cn)] .none .explicit] (evalFrom m r)))
+    (hread : Interp.stepFn (pushK [.recvK "is_a?" [toRuby (.const cn)] .none .explicit]
+        (evalFrom m r)) =
+      .next (deliverA (.val vx) m [.recvK "is_a?" [toRuby (.const cn)] .none .explicit]))
+    (hdisp : Interp.invoke (deliverA (.val (.ref k)) m []) vx .explicit "is_a?"
         [.ref k] none [] =
-      builtinStep (Builtins.run "Object#is_a?" (m.getLocal x) [.ref k]
+      builtinStep (Builtins.run "Object#is_a?" vx [.ref k]
         (deliverA (.val (.ref k)) m []))) :
-    RunWith m (evalFrom m (.send (some (.var .lvar x)) "is_a?" [.const cn] none)) Γ .bool κ I
-      (fun w n => w = .bool (isA m.heap (m.getLocal x) k) ∧ n.getLocal x = m.getLocal x) := by
+    RunWith m (evalFrom m (.send (some r) "is_a?" [.const cn] none)) Γ .bool κ I
+      (fun w n => w = .bool (isA m.heap vx k) ∧ ∃ c ks, n = reCtl m c ks) := by
   let k₁ : Kont := .recvK "is_a?" [toRuby (.const cn)] .none .explicit
-  let vx := m.getLocal x
   let k₂ : Kont := .argsK vx .explicit "is_a?" [] [] .none
   apply RunWith.step (answerPoint_evalFrom _ _)
-    (show Interp.stepFn _ = .next (pushK [k₁] (evalFrom m (.var .lvar x))) from rfl)
-  apply RunWith.step (by rfl) (show Interp.stepFn _ = .next (deliverA (.val vx) m [k₁]) from by
-    simpa only [pushK, evalFrom, deliverA, Answer.ctl, reCtl, getLocal_reCtl, List.nil_append] using
-      step_var_ctl (m := pushK [k₁] (evalFrom m (.var .lvar x))) (x := x) rfl)
+    hsend
+  apply RunWith.step (by rfl) hread
   apply RunWith.step (by rfl) (recv_one_step m vx "is_a?" (.const cn) rfl)
   have hconst : Interp.stepFn (pushK [k₂] (evalFrom m (.const cn))) =
       .next (deliverA (.val (.ref k)) m [k₂]) := by
@@ -330,15 +334,15 @@ theorem isA_cond {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x cn : String} {k
       · cases hk; assumption
       · cases hk
     · cases hk
-  have hinv' : Interp.invoke M vx .explicit "is_a?" [.ref k] none [] =
-      builtinStep (Builtins.run "Object#is_a?" vx [.ref k] M) := hdisp
   rcases isA_run M vx k hk with h | ⟨msg, h⟩
-  · apply RunWith.step (by rfl) (hinv.trans (hinv'.trans (by rw [h]; rfl)))
+  · apply RunWith.step (by rfl) (hinv.trans (hdisp.trans (by rw [h]; rfl)))
     apply RunWith.answer (a := .val (.bool (isA M.heap vx k))) (m := M)
-      (fun v n c ks hp => ⟨hp.1, by rw [getLocal_reCtl]; exact hp.2⟩)
+      (fun v n c ks hp => ⟨hp.1, by
+        obtain ⟨c', ks', rfl⟩ := hp.2
+        exact ⟨c, ks, rfl⟩⟩)
     exact ⟨⟨Framed_reCtl m _ [], by simp [AnsOk, denM, isBoolV], fun _ _ => hM⟩,
-      fun v hv => by cases hv; exact ⟨rfl, getLocal_reCtl m _ [] x⟩⟩
-  · exact RunWith.unsupported (by rfl) (hinv.trans (hinv'.trans (by rw [h]; rfl)))
+      fun v hv => by cases hv; exact ⟨rfl, _, _, rfl⟩⟩
+  · exact RunWith.unsupported (by rfl) (hinv.trans (hdisp.trans (by rw [h]; rfl)))
 
 #print axioms isA_cond
 
@@ -366,7 +370,13 @@ theorem SemSafeCtxA.ifIsA {κ κ' : Ctx} {Γ Γ₁ Γ₂ : Env} {I I' : Ty} {x c
   apply RunSpec.step (answerPoint_evalFrom _ _)
     (show Interp.stepFn _ = .next (pushK [k] (evalFrom m
       (.send (some (.var .lvar x)) "is_a?" [.const cn] none))) from rfl)
-  apply (isA_cond hm hnamed hlex hdisp).bindSpec hm.rootClean
+  have hread : Interp.stepFn (pushK [.recvK "is_a?" [toRuby (.const cn)] .none .explicit]
+        (evalFrom m (.var .lvar x))) =
+      .next (deliverA (.val (m.getLocal x)) m [.recvK "is_a?" [toRuby (.const cn)] .none .explicit]) := by
+    simpa only [pushK, evalFrom, deliverA, Answer.ctl, reCtl, getLocal_reCtl, List.nil_append] using
+      step_var_ctl (m := pushK [.recvK "is_a?" [toRuby (.const cn)] .none .explicit]
+        (evalFrom m (.var .lvar x))) (x := x) rfl
+  apply (isA_cond hm hnamed hlex rfl hread hdisp).bindSpec hm.rootClean
     (by intro c hc; simp at hc; subst hc; rfl)
   intro a n hr
   cases a with
@@ -375,8 +385,9 @@ theorem SemSafeCtxA.ifIsA {κ κ' : Ctx} {Γ Γ₁ Γ₂ : Env} {I I' : Ty} {x c
       (show Interp.stepFn _ = .next (deliverA (.esc j) n []) from by cases j <;> rfl)
     exact RunSpec.answer ⟨hr.1.1, hr.1.2.1, fun _ hv => by cases hv⟩
   | val w =>
-    obtain ⟨hw, hloc⟩ := hr.2 w rfl
+    obtain ⟨hw, c', ks', hre⟩ := hr.2 w rfl
     subst hw
+    have hloc : n.getLocal x = m.getLocal x := by rw [hre]; exact getLocal_reCtl m _ _ x
     have hn : StateOk κ Γ I n := hr.1.2.2 _ rfl
     have hbranch : Interp.stepFn (deliverA (.val (.bool (isA m.heap (m.getLocal x) c))) n [k]) =
         .next (evalFrom n (if isA m.heap (m.getLocal x) c then t else e)) := by

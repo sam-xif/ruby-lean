@@ -349,6 +349,54 @@ class Emitter
     end
   end
 
+  # `if @x.is_a?(C)` on a field (DJudge.ifIsAIvar): each branch sees the refined field and
+  # must leave it alone; the declared spine comes back afterwards.
+  def narrow_is_a_ivar(n)
+    c = n[1]
+    return nil unless c[0] == "send" && c[1].is_a?(Array) && c[1][0] == "var" && c[1][1] == "ivar" &&
+      c[2] == "is_a?" && c[3].length == 1 && c[3][0][0] == "const" && c[4].nil? && n[3]
+    x = c[1][2]
+    t = @ivars[x]
+    return nil unless t
+    cn = c[3][0][1]
+    before_iv, before = @ivars, @env.dup
+    arms = [[n[2], true], [n[3], false]].map do |body, yes|
+      @ivars = before_iv.merge(x => is_a_refine(cn, t, yes))
+      @env = before.dup
+      seen = @ivars.dup
+      d, ty = go(body)
+      raise Blocked, "a branch narrowed on a field changes the fields" if @ivars != seen
+      [d, ty, @env]
+    end
+    @ivars = before_iv
+    raise Blocked, "the two branches of an `if` leave different local types" if arms[0][2] != arms[1][2]
+    @env = arms[0][2]
+    j = join(arms[0][1], arms[1][1])
+    [{ "rule" => "ifIsA", "name" => x, "cls" => cn, "then" => arms[0][0], "else" => arms[1][0],
+       "join" => j }, j]
+  end
+
+  # In an initializer, `if flag; @x = a; else; @x = b; end` with differently typed arms: each
+  # value is widened to the join (InitJudge.widenL/widenR) so both arms leave one spine.
+  def init_if_widen(n)
+    return nil unless @current_method == "initialize" && n[3]
+    c, a, b = n[1], n[2], n[3]
+    return nil unless c[0] == "var" && c[1] == "local" && @env.key?(c[2])
+    return nil unless [a, b].all? { |s| s[0] == "vasgn" && s[1] == "ivar" } && a[2] == b[2]
+    dc, = go(c)
+    d1, t1 = go(a[3])
+    d2, t2 = go(b[3])
+    return nil if t1 == t2
+    j = join(t1, t2)
+    @ivars[a[2]] = j
+    arm = lambda do |left, other, d|
+      { "rule" => "ivarAsgn", "name" => a[2],
+        "value" => { "rule" => "initWiden", "left" => left, "other" => other, "value" => d } }
+    end
+    [{ "rule" => "if", "cond" => dc, "then" => arm.(true, t2, d1), "else" => arm.(false, t1, d2),
+       "join" => j }, j]
+  end
+
   # `if x.is_a?(C)` on a local, any class name (DJudge.ifIsA).
   def narrow_is_a(n)
     c = n[1]
@@ -447,7 +495,8 @@ class Emitter
   end
 
   def n_if(n)
-    narrowed = narrow_truthy(n) || narrow_nil_query(n) || narrow_nil_var(n) || narrow_is_a(n)
+    narrowed = narrow_truthy(n) || narrow_nil_query(n) || narrow_nil_var(n) || narrow_is_a(n) ||
+      narrow_is_a_ivar(n) || init_if_widen(n)
     return narrowed if narrowed
     dc, = go(n[1])
     # Both branches are typed in the incoming environment's *copy*: this emitter

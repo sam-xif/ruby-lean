@@ -24,6 +24,20 @@ inductive InitJudge : Ctx → Env → Ty → Expr → Ty → Ctx → Env → Ty 
   /-- Forget only the value type (void/untyped return), never the body or its effects. -/
   | ignoreResult {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {e : Expr} :
       InitJudge κ Γ I e τ κ' Γ' I' → InitJudge κ Γ I e .any κ' Γ' I'
+  /-- A String literal in an initializer (corpus 129's `@v = "s"`). -/
+  | strLit {κ : Ctx} {Γ : Env} {I : Ty} {s : String} :
+      InitJudge κ Γ I (.str s) (.cls "String") κ Γ I
+  /-- Widen a value's type to a join before it is written: the two arms of an `if` can then
+      leave the same field type (`@v : Integer | String`). -/
+  | widenL {κ κ' : Ctx} {Γ Γ' : Env} {I I' ρ σ : Ty} {e : Expr} :
+      InitJudge κ Γ I e ρ κ' Γ' I' → InitJudge κ Γ I e (joinT ρ σ) κ' Γ' I'
+  | widenR {κ κ' : Ctx} {Γ Γ' : Env} {I I' ρ σ : Ty} {e : Expr} :
+      InitJudge κ Γ I e ρ κ' Γ' I' → InitJudge κ Γ I e (joinT σ ρ) κ' Γ' I'
+  /-- `if x` on a local: both arms end in the same context, locals and fields. -/
+  | ifVar {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ σ τ₁ τ₂ : Ty} {x : String} {t e : Expr} :
+      envGet? Γ x = some σ →
+      InitJudge κ Γ I t τ₁ κ' Γ' I' → InitJudge κ Γ I e τ₂ κ' Γ' I' → τ = joinT τ₁ τ₂ →
+      InitJudge κ Γ I (.if' (.var .lvar x) t (some e)) τ κ' Γ' I'
   /-- Sorbet 0.6.13405 accepts 067's explicit super(3), rejecting super("three") and
   super() against Shape#initialize(Integer). Check the full parent annotation domain,
   in the actual receiver/parent-owner context, and retain its output fields. -/
