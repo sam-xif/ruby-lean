@@ -286,6 +286,48 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
       else none
       else none
       else none
+    | .vasgn .lvar t (.var .lvar x), .vasgnAlias =>
+      match hx : envGet? Γ x with
+      | some σ =>
+        if ha : isAliasTy σ = false then
+          if hne : x ≠ t then
+            if hc : capStale t σ σ = false then
+              if hk : capStaleCtx t σ κ = false then
+                some ⟨σ, envSet (killClosOver (killAliasesTo Γ t) t σ) t (.sameAs x σ), κ,
+                  killClosOverSpine I t σ, .vasgnAlias hx ha hne hc hk, cache⟩
+              else none
+            else none
+          else none
+        else none
+      | none => none
+    | .if' (.send (some (.const cn)) "===" [.var .lvar t] none) th (some el), .ifCaseEq dt de j =>
+      match ht : envGet? Γ t with
+      | some (.sameAs x ρ) =>
+        match hx : envGet? Γ x with
+        | some ρ' =>
+          if hρ : ρ' = ρ then
+            if hg : ifIsAB κ ρ cn = true then
+              if hf : nameFreeN κ "===" = true then
+                match check n (envSet (envSet Γ x (isATy κ.classes κ.wholeCls cn ρ)) t
+                      (.sameAs x (isATy κ.classes κ.wholeCls cn ρ))) th dt κ I cache,
+                    check n (envSet (envSet Γ x (notATy κ.classes κ.wholeCls cn ρ)) t
+                      (.sameAs x (notATy κ.classes κ.wholeCls cn ρ))) el de κ I cache with
+                | some ⟨τ₁, Γ₁, κ₁, I₁, hth, ct⟩, some ⟨τ₂, Γ₂, κ₂, I₂, he, ce⟩ =>
+                  if joinT τ₁ τ₂ == j && cacheSignaturesB ct ce then
+                    match ctxEq? κ₁ κ₂ with
+                    | some ⟨hctx⟩ =>
+                      if hi : I₁ = I₂ then
+                        some ⟨joinT τ₁ τ₂, joinEnv Γ₁ Γ₂, κ₁, I₁,
+                          .ifCaseEq (used_0 := DJudge.rules hth) (used_1 := DJudge.rules he) ht (hρ ▸ hx) hg hf hth (by simpa only [DJudge.rules, hctx, hi] using he), ct⟩
+                      else none
+                    | none => none
+                  else none
+                | _, _ => none
+              else none
+            else none
+          else none
+        | none => none
+      | _ => none
     | .vasgn .lvar x ev, .vasgn .lvar x' dv =>
       if x == x' then
         match check n Γ ev dv κ I cache with

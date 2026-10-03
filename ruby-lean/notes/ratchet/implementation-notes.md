@@ -13832,3 +13832,19 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   and field rules. The checker reuses the `ifIsA` Deriv node; the receiver's syntax picks
   the rule.
 - No dedicated negative control yet for `ifIsAIvar` (controls run at the empty spine).
+
+## `case`/`when` on a union (129/261, climbs 128)
+
+- The desugarer emits `tmp = v; if Integer === tmp … v …`, so the test names one local and
+  the bodies another. `DJudge.vasgnAlias` binds `tmp : sameAs v σ` (the alias type and its
+  `EnvOk` clause already existed; `StateOk_setLocal` already accepted it), and
+  `DJudge.ifCaseEq` refines both names by `isATy`/`notATy`, for any class name.
+- `ClsQueryOk`'s second clause changed from "if `===` is missing, `method_missing` is native"
+  to "`===` is found" at every class-object dispatch site. The old clause could not rule out
+  NoMethodError. Transports got shorter; `FreshModuleActual.site_ne_module` shows a fresh
+  module object is not itself a dispatch site. No `PrimHeap` rows were needed.
+- `ifCaseEq` reuses `ifIsAB` (so it also asks `is_a?` to be unclaimed — stricter than
+  necessary) plus `nameFreeN κ "==="`.
+- Nothing reads through an alias binding except `ifCaseEq`, so the emitter aliases a
+  `__dt_` temporary only when every read of it is a `Const === tmp` scrutinee (165 and 191
+  use such temporaries otherwise). A direct `C === x` on a non-alias local is not admitted yet.

@@ -716,6 +716,33 @@ private def lenH : Deriv := .prim (.var .lvar "v") "length" [] (.cls "String") .
 #guard !validateD (.seq [.class' "Foo" none .nil, isaP "Foo" (.int 0) plusP])
   (.seq [.classDecl "Foo" none .nilLit, isaH "Foo" (.intLit 0) plusH .int])
 
+-- Active vasgnAlias/ifCaseEq (128): `t = v; if C === t` refines both names.
+private def caseP (cn : String) (thn els : Ratchet.Expr) : Ratchet.Expr := .seq [
+  .vasgn .lvar "v" (.if' .tru (.int 1) (some (.str "s"))),
+  .vasgn .lvar "t" (.var .lvar "v"),
+  .if' (.send (some (.const cn)) "===" [.var .lvar "t"] none) thn (some els)]
+private def caseH (asg thn els : Deriv) (j : Ty) : Deriv := .seq [
+  .vasgn .lvar "v" (.ifD .truLit (.intLit 1) (some (.strLit "s")) (.union .int (.cls "String"))),
+  asg, .ifCaseEq thn els j]
+#guard validateD (caseP "Integer" plusP lenP) (caseH .vasgnAlias plusH lenH .int)
+-- Backwards narrowing, a temporary that is not an alias, and either rule disabled all fail.
+#guard !validateD (caseP "String" plusP lenP) (caseH .vasgnAlias plusH lenH .int)
+#guard !validateD (caseP "Integer" plusP lenP)
+  (caseH (.vasgn .lvar "t" (.var .lvar "v")) plusH lenH .int)
+#guard !validateDWith (fun q => clinkEnabled q && q != "ifCaseEq") (caseP "Integer" plusP lenP)
+  (caseH .vasgnAlias plusH lenH .int)
+#guard !validateDWith (fun q => clinkEnabled q && q != "vasgnAlias") (caseP "Integer" plusP lenP)
+  (caseH .vasgnAlias plusH lenH .int)
+-- An alias binding is not readable by the ordinary variable rule.
+#guard !validateD (.seq [.vasgn .lvar "v" (.int 1), .vasgn .lvar "t" (.var .lvar "v"), .var .lvar "t"])
+  (.seq [.vasgn .lvar "v" (.intLit 1), .vasgnAlias, .var .lvar "t"])
+-- A write to the source drops the alias, so the test no longer narrows.
+#guard !validateD (.seq [.vasgn .lvar "v" (.if' .tru (.int 1) (some (.str "s"))),
+    .vasgn .lvar "t" (.var .lvar "v"), .vasgn .lvar "v" (.int 2),
+    .if' (.send (some (.const "Integer")) "===" [.var .lvar "t"] none) (.int 0) (some (.int 1))])
+  (.seq [.vasgn .lvar "v" (.ifD .truLit (.intLit 1) (some (.strLit "s")) (.union .int (.cls "String"))),
+    .vasgnAlias, .vasgn .lvar "v" (.intLit 2), .ifCaseEq (.intLit 0) (.intLit 1) .int])
+
 -- ifIsA receivers also include exact instances of declared classes (130), unless the class
 -- (or an ancestor) defines `is_a?` itself or is a module.
 private def clsCtx (cs : CTable) : Ctx := { ctx0 with pos := { ctx0.pos with classes := cs } }

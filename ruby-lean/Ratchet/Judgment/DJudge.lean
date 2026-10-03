@@ -362,6 +362,15 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       DJudge Γ e τ Γ' κ I κ' I' → capStale x τ τ = false → isAliasTy τ = false →
       capStaleCtx x τ κ' = false →
       DJudge Γ (.vasgn .lvar x e) τ (envAfter Γ' x τ) κ I κ' (killClosOverSpine I' x τ)
+  /-- `t = x` between locals, recording that `t` names `x`'s value (`Ty.sameAs`) — what the
+      desugarer's `case` temporary is. A later write to either name drops the record
+      (`killAliasesTo`). Only `ifCaseEq` reads through an alias binding. -/
+  | vasgnAlias {κ : Ctx} {Γ : Env} {I σ : Ty} {t x : String} :
+      envGet? Γ x = some σ → isAliasTy σ = false → x ≠ t →
+      capStale t σ σ = false → capStaleCtx t σ κ = false →
+      DJudge Γ (.vasgn .lvar t (.var .lvar x)) σ
+        (envSet (killClosOver (killAliasesTo Γ t) t σ) t (.sameAs x σ)) κ I κ
+        (killClosOverSpine I t σ)
   /-- A statement sequence, via `DJudgeSeq`. -/
   | seq {κ κ' : Ctx} {Γ Γ' : Env} {I I' : Ty} {es : List Expr} {τ : Ty} :
       DJudgeSeq Γ es τ Γ' κ I κ' I' → DJudge Γ (.seq es) τ Γ' κ I κ' I'
@@ -451,6 +460,19 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
         (ivarSet I x (notATy κ.classes κ.wholeCls cn ρ)) →
       DJudge Γ (.if' (.send (some (.var .ivar x)) "is_a?" [.const cn] none) t (some e)) (joinT τ₁ τ₂)
         (joinEnv Γ₁ Γ₂) κ I κ' I
+  /-- `if C === t` where `t` aliases `x` — `case x when C` after desugaring (Sorbet 0.6.13405
+      accepts corpus 128). `Module#===` is the ancestor test, so both names are refined
+      exactly as `ifIsA` refines one. -/
+  | ifCaseEq {κ κ' : Ctx} {Γ Γ₁ Γ₂ : Env} {I I' : Ty} {t x cn : String}
+      {ρ τ₁ τ₂ : Ty} {th el : Expr} :
+      envGet? Γ t = some (.sameAs x ρ) → envGet? Γ x = some ρ →
+      ifIsAB κ ρ cn = true → nameFreeN κ "===" = true →
+      DJudge (envSet (envSet Γ x (isATy κ.classes κ.wholeCls cn ρ)) t
+        (.sameAs x (isATy κ.classes κ.wholeCls cn ρ))) th τ₁ Γ₁ κ I κ' I' →
+      DJudge (envSet (envSet Γ x (notATy κ.classes κ.wholeCls cn ρ)) t
+        (.sameAs x (notATy κ.classes κ.wholeCls cn ρ))) el τ₂ Γ₂ κ I κ' I' →
+      DJudge Γ (.if' (.send (some (.const cn)) "===" [.var .lvar t] none) th (some el)) (joinT τ₁ τ₂)
+        (joinEnv Γ₁ Γ₂) κ I κ' I'
   /-- `N = e` at top level (Sorbet accepts corpus 137): binds a fresh constant to a
       non-class value; later reads see its type. -/
   | casgnTop {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {n : String} {e : Expr} :
@@ -1151,7 +1173,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_12 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_13 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_14 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 

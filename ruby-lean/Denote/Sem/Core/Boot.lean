@@ -319,10 +319,7 @@ def queryOkB (m : Machine) : Bool :=
 def clsQueryAtB (m : Machine) (k : ObjId) : Bool :=
     Ratchet.Denote.clsQueryBuiltins.all (fun p =>
       match Interp.methodOn m.heap k p.1 with
-      | none =>
-        match Interp.methodOn m.heap k "method_missing" with
-        | none => true
-        | some (_, mm) => mm.builtin.isSome
+      | none => false
       | some (owner, md) =>
         md.builtin == some p.2 && !md.undefined && md.visibility == Visibility.pub
           && !md.fromPrelude
@@ -447,9 +444,9 @@ theorem clsQueryOkB_sound {m : Machine} (hb : clsQueryOkB m = true) (κ : Ratche
     simp only [Bool.and_eq_true, beq_iff_eq, Bool.not_eq_true'] at hp2
     obtain ⟨⟨⟨⟨hb1, hu⟩, hv⟩, hpre⟩, hsh⟩ := hp2
     exact ⟨hb1, by simpa using hu, by simpa using hv, by simpa using hpre, by simpa using hsh⟩
-  · intro hnone o₂ md hfound
-    rw [hnone, hfound] at hp2
-    exact hp2
+  · cases hf : Interp.methodOn m.heap k mname with
+    | none => rw [hf] at hp2; cases hp2
+    | some _ => rfl
 
 /-- **`NilQueryOk` as one `Bool`** — the same five facts, with the bid a *disjunction* of the
 two `nil?` implementations. -/
