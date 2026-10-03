@@ -82,6 +82,27 @@ def checkInit (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty) (e : Expr) (d : Deriv)
     | .seq es, .seq ds => do
         let c ← checkInitSeq n κ Γ I es ds sources
         some ⟨c.ty, c.ctx, c.out, c.fields, .seq c.judged⟩
+    | .str s, .strLit s' => if s == s' then some ⟨.cls "String", κ, Γ, I, .strLit⟩ else none
+    | e, .initWiden left σ d => do
+        let c ← checkInit n κ Γ I e d sources
+        if left then some ⟨joinT c.ty σ, c.ctx, c.out, c.fields, .widenL c.judged⟩
+        else some ⟨joinT σ c.ty, c.ctx, c.out, c.fields, .widenR c.judged⟩
+    | .if' (.var .lvar x) t (some e), .ifD (.var .lvar y) dt (some de) j => do
+        if x != y then none else do
+        match hx : envGet? Γ x with
+        | none => none
+        | some σ =>
+          let ct ← checkInit n κ Γ I t dt sources
+          let ce ← checkInit n κ Γ I e de sources
+          let ⟨hctx⟩ ← ctxEq? ce.ctx ct.ctx
+          if hout : ce.out = ct.out then
+          if hf : ce.fields = ct.fields then
+          if hj : j = joinT ct.ty ce.ty then
+            some ⟨j, ct.ctx, ct.out, ct.fields,
+              .ifVar hx ct.judged (by rw [← hctx, ← hout, ← hf]; exact ce.judged) hj⟩
+          else none
+          else none
+          else none
     | _, _ => none
 
 def checkInitSeq (fuel : Nat) (κ : Ctx) (Γ : Env) (I : Ty)

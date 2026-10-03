@@ -268,7 +268,7 @@ def dCompanionRules : List String :=
 #guard dclinks.length == dRegisteredRules.length
 
 -- Keep the complete authoring census frozen; disabled rules are visible, not lost.
-#guard dAllRules.length == 118
+#guard dAllRules.length == 123
 #guard dRegisteredRules.length + dGatedRules.length == dAllRules.length
 #guard dRegisteredRules.all clinkEnabled
 #guard dGatedRules.all (!clinkEnabled ·)
@@ -283,6 +283,7 @@ def dCompanionRules : List String :=
   "DJudgePairs.nil", "DJudgePairs.cons", "DJudgeRec.embed", "DJudgeRec.prim", "DJudgeRec.if'",
   "DJudgeRec.selfCall", "DJudgeRecAll.nil", "DJudgeRecAll.cons",
   "InitJudge.intLit", "InitJudge.var", "InitJudge.ivarAsgn", "InitJudge.seq", "InitJudge.ignoreResult",
+  "InitJudge.strLit", "InitJudge.widenL", "InitJudge.widenR", "InitJudge.ifVar",
   "InitJudge.superInit", "InitJudgeSeq.last", "InitJudgeSeq.cons", "InitJudgeAll.nil", "InitJudgeAll.cons",
   "DFlow.embed", "DFlow.intLit", "DFlow.nilLit", "DFlow.var", "DFlow.closureLiteral", "DFlow.vasgn",
   "DFlow.sequence", "DFlow.call", "DFlow.requiredCall", "DFlow.each", "DFlow.map", "DFlow.callBlock", "DFlow.callBoundBlock", "DFlow.prim", "DFlowSeq.last", "DFlowSeq.cons",

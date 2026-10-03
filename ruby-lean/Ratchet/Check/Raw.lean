@@ -445,6 +445,29 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
           | _, _ => none
         else none
       | none => none
+    | .if' (.send (some (.var .ivar x)) "is_a?" [.const cn] none) t (some el), .ifIsA y cn' dt de j =>
+      if x != y || cn != cn' then none else
+      match hx : ivarGet? I x with
+      | some ρ =>
+        if hg : ifIsAB κ ρ cn = true then
+          match check n Γ t dt κ (ivarSet I x (isATy κ.classes κ.wholeCls cn ρ)) cache,
+              check n Γ el de κ (ivarSet I x (notATy κ.classes κ.wholeCls cn ρ)) cache with
+          | some ⟨τ₁, Γ₁, κ₁, I₁, ht, ct⟩, some ⟨τ₂, Γ₂, κ₂, I₂, he, ce⟩ =>
+            if joinT τ₁ τ₂ == j && cacheSignaturesB ct ce then
+              match ctxEq? κ₁ κ₂ with
+              | some ⟨hctx⟩ =>
+                if hi₁ : I₁ = ivarSet I x (isATy κ.classes κ.wholeCls cn ρ) then
+                  if hi₂ : I₂ = ivarSet I x (notATy κ.classes κ.wholeCls cn ρ) then
+                    some ⟨joinT τ₁ τ₂, joinEnv Γ₁ Γ₂, κ₁, I,
+                      .ifIsAIvar hx hg (by rw [hi₁] at ht; exact ht)
+                        (by rw [hi₂] at he; cases hctx; exact he), ct⟩
+                  else none
+                else none
+              | none => none
+            else none
+          | _, _ => none
+        else none
+      | none => none
     | .if' (.var .lvar x) _ (some e), .ifNilVar y de =>
       if x != y then none else
       match hx : envGet? Γ x with
