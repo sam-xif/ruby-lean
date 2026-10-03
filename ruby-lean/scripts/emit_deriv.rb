@@ -625,10 +625,32 @@ class Emitter
     implicit_send(n[1], [])
   end
 
+  # A send on a union-typed local: typed once per arm, results joined (DJudge.sendUnion).
+  def send_union(n)
+    x = n[1][2]
+    u = @env[x]
+    before = @env.dup
+    arms = [u["l"], u["r"]].map do |t|
+      @env = before.merge(x => t)
+      d, ty = go(n)
+      [d, ty, @env]
+    end
+    rest = ->(e) { e.reject { |k, _| k == x } }
+    raise Blocked, "the arms of a union receiver leave different local types" if
+      rest.(arms[0][2]) != rest.(arms[1][2])
+    @env = arms[0][2].merge(x => join(arms[0][2][x], arms[1][2][x]))
+    j = join(arms[0][1], arms[1][1])
+    [{ "rule" => "sendUnion", "left" => arms[0][0], "right" => arms[1][0], "join" => j }, j]
+  end
+
   def n_send(n)
     recv = n[1]
     m = n[2]
     args = n[3]
+    if recv.is_a?(Array) && recv[0] == "var" && recv[1] == "local" &&
+       @env[recv[2]].is_a?(Hash) && @env[recv[2]]["tag"] == "union"
+      return send_union(n)
+    end
     if recv.nil? && n[4] && @callback_sigs.key?(m)
       return callback_send(m, args, n[4])
     end

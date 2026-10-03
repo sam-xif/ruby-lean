@@ -13848,3 +13848,14 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
 - Nothing reads through an alias binding except `ifCaseEq`, so the emitter aliases a
   `__dt_` temporary only when every read of it is a `Const === tmp` scrutinee (165 and 191
   use such temporaries otherwise). A direct `C === x` on a non-alias local is not admitted yet.
+
+## Sends on a union-typed local (130/262, climbs new rung 262)
+
+- `DJudge.sendUnion`: with `x : union σ₁ σ₂`, the send `x.m(args)` is derived at
+  `envSet Γ x σ₁` and at `envSet Γ x σ₂`; the result is the join. The proof takes no machine
+  step — it is union elimination on the binding (`envOk_refine`), so each arm reuses whatever
+  call rule fits (`callMethodSig`, `callInherited`, `prim`, …).
+- This is Sorbet's reading of a `T.any` receiver: the arms need not resolve to the same
+  method, only each to *a* method; an arm that cannot respond has no derivation.
+- Receiver must be a local; a union-typed call result as receiver is not admitted. Nested
+  unions split recursively in the emitter.

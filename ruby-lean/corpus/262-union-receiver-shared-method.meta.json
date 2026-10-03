@@ -1,0 +1,10 @@
+{
+  "id": "union-receiver-shared-method",
+  "tier": 12,
+  "description": "A message send whose receiver is a union with no narrowing in sight: union(inst Dog, inst Animal) receives #speak, which Dog inherits and Animal defines. The send is typed once per arm and the results joined; an arm that cannot respond (e.g. #fetch here) has no derivation and the send is rejected.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 3,
+  "annotated": true
+}

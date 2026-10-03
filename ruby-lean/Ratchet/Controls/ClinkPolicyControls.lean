@@ -743,6 +743,22 @@ private def caseH (asg thn els : Deriv) (j : Ty) : Deriv := .seq [
   (.seq [.vasgn .lvar "v" (.ifD .truLit (.intLit 1) (some (.strLit "s")) (.union .int (.cls "String"))),
     .vasgnAlias, .vasgn .lvar "v" (.intLit 2), .ifCaseEq (.intLit 0) (.intLit 1) .int])
 
+-- Active sendUnion (262): a send on a union-typed local is typed once per arm.
+private def unionP (m : String) : Ratchet.Expr := .seq [
+  .vasgn .lvar "v" (.if' .tru (.int 1) (some (.sym "a"))),
+  .send (some (.var .lvar "v")) m [] none]
+private def unionH (m : String) : Deriv := .seq [
+  .vasgn .lvar "v" (.ifD .truLit (.intLit 1) (some (.symLit "a")) (.union .int .sym)),
+  .sendUnion (.prim (.var .lvar "v") m [] .int (.cls "String"))
+    (.prim (.var .lvar "v") m [] .sym (.cls "String")) (.cls "String")]
+#guard validateD (unionP "to_s") (unionH "to_s")
+-- One arm that cannot respond, a single-arm certificate, and a disabled rule all fail.
+#guard !validateD (unionP "zero?") (unionH "zero?")
+#guard !validateD (unionP "to_s") (.seq [
+  .vasgn .lvar "v" (.ifD .truLit (.intLit 1) (some (.symLit "a")) (.union .int .sym)),
+  .prim (.var .lvar "v") "to_s" [] .int (.cls "String")])
+#guard !validateDWith (fun q => clinkEnabled q && q != "sendUnion") (unionP "to_s") (unionH "to_s")
+
 -- ifIsA receivers also include exact instances of declared classes (130), unless the class
 -- (or an ancestor) defines `is_a?` itself or is a module.
 private def clsCtx (cs : CTable) : Ctx := { ctx0 with pos := { ctx0.pos with classes := cs } }
