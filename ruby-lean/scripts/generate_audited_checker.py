@@ -61,8 +61,7 @@ def generate(module):
         text = text.replace('.sendUnion hx ha₁ ha₂ hl (by', '.sendUnion (used_0 := DJudge.rules hl) (used_1 := DJudge.rules hr) hx ha₁ ha₂ hl (by')
         text = text.replace('by cases hctx; cases hi; exact hr', 'by simpa only [DJudge.rules, hctx, hi] using hr')
         text = text.replace('.ifIsA hx hg ht (by', '.ifIsA (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hg ht (by')
-        text = text.replace('.ifNilQueryStr hx hf hg ht (by', '.ifNilQueryStr (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hf hg ht (by')
-        text = text.replace('.ifNilQuery hx hf ht (by', '.ifNilQuery (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hf ht (by')
+        text = text.replace('.ifNilQuery hx hg ht (by', '.ifNilQuery (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hg ht (by')
         text = text.replace('by cases hctx; cases hi; exact he', 'by simpa only [DJudge.rules, hctx, hi] using he')
         text = text.replace('by cases hctx; cases hi; exact ht', 'by simpa only [DJudge.rules, hctx, hi] using ht')
     if module == 'MethodCertificate':

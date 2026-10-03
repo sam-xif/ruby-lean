@@ -671,7 +671,7 @@ private def restH (args : List Deriv) : Deriv :=
 #guard !validateD (restP [.int 1, .str "x"]) (restH [.intLit 1, .strLit "x"])
 #guard !validateD (restP []) (restH [])
 
--- Active ifNilQueryStr: `if x.nil?` narrows a nilable String local.
+-- ifNilQuery also narrows a nilable String local (one general rule).
 private def nqsP : Ratchet.Expr := .seq [
   .vasgn .lvar "x" (.send (some (.array [.str "a"])) "[]" [.int 0] none),
   .if' (.send (some (.var .lvar "x")) "nil?" [] none) (.int 0)
@@ -681,7 +681,7 @@ private def nqsH (elseD : Deriv) : Deriv := .seq [
     (.arrayOf (.cls "String")) (.nilable (.cls "String"))),
   .ifNilQuery "x" (.intLit 0) elseD .int]
 #guard validateD nqsP (nqsH (.prim (.var .lvar "x") "length" [] (.cls "String") .int))
-#guard !validateDWith (fun q => clinkEnabled q && q != "ifNilQueryStr") nqsP
+#guard !validateDWith (fun q => clinkEnabled q && q != "ifNilQuery") nqsP
   (nqsH (.prim (.var .lvar "x") "length" [] (.cls "String") .int))
 
 -- Active ifIsA (127): `is_a?(C)` refines a local by `isATy`/`notATy`, for any class name.
@@ -743,6 +743,23 @@ private def caseH (asg thn els : Deriv) (j : Ty) : Deriv := .seq [
   (.seq [.vasgn .lvar "v" (.ifD .truLit (.intLit 1) (some (.strLit "s")) (.union .int (.cls "String"))),
     .vasgnAlias, .vasgn .lvar "v" (.intLit 2), .ifCaseEq (.intLit 0) (.intLit 1) .int])
 
+-- ifNilQuery is general: a union with nil, a non-nilable scalar (then branch unreachable),
+-- and an instance of a declared class; Boolean receivers are not admitted.
+private def nilUP (rhs thn els : Ratchet.Expr) : Ratchet.Expr := .seq [
+  .vasgn .lvar "v" rhs, .if' (.send (some (.var .lvar "v")) "nil?" [] none) thn (some els)]
+private def symOrNil : Ratchet.Expr := .if' .tru (.sym "a") (some .nil)
+private def symToS : Ratchet.Expr := .send (some (.var .lvar "v")) "to_s" [] none
+#guard validateD (nilUP symOrNil (.str "") symToS) (.seq [
+  .vasgn .lvar "v" (.ifD .truLit (.symLit "a") (some .nilLit) (.nilable .sym)),
+  .ifNilQuery "v" (.strLit "") (.prim (.var .lvar "v") "to_s" [] .sym (.cls "String")) (.cls "String")])
+#guard !validateD (nilUP symOrNil symToS (.str "")) (.seq [
+  .vasgn .lvar "v" (.ifD .truLit (.symLit "a") (some .nilLit) (.nilable .sym)),
+  .ifNilQuery "v" (.prim (.var .lvar "v") "to_s" [] .sym (.cls "String")) (.strLit "") (.cls "String")])
+#guard validateD (nilUP (.int 1) (.int 0) plusP) (.seq [
+  .vasgn .lvar "v" (.intLit 1), .ifNilQuery "v" (.intLit 0) plusH .int])
+#guard !validateD (nilUP .tru (.int 0) (.int 1)) (.seq [
+  .vasgn .lvar "v" .truLit, .ifNilQuery "v" (.intLit 0) (.intLit 1) .int])
+
 -- Active sendUnion (262): a send on a union-typed local is typed once per arm.
 private def unionP (m : String) : Ratchet.Expr := .seq [
   .vasgn .lvar "v" (.if' .tru (.int 1) (some (.sym "a"))),
@@ -770,6 +787,10 @@ private def plainA : Cls := classHeader "A"
 #guard isATy [plainA] [plainA] "A" (.inst "A" .ivar0) == .inst "A" .ivar0
 #guard notATy [plainA] [plainA] "A" (.inst "A" .ivar0) == .never
 #guard isATy [plainA] [plainA] "Integer" (.inst "A" .ivar0) == .never
+#guard nilLeafB (clsCtx [plainA]) (.inst "A" .ivar0)
+#guard !nilLeafB (clsCtx [{ plainA with methods := [⟨"nil?", [], .tru⟩] }]) (.inst "A" .ivar0)
+#guard nilYesTy (.union (.inst "A" .ivar0) .nilT) == .nilT
+#guard nonNilTy (.union (.inst "A" .ivar0) .nilT) == .inst "A" .ivar0
 
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [

@@ -509,8 +509,26 @@ class Emitter
     [{ "rule" => "ifTruthy", "name" => x, "then" => dt, "else" => de, "join" => j }, j]
   end
 
-  # `if x.nil?` on a nilable Integer local: DJudge.ifNilQuery types the branches with x
-  # narrowed to nil and to Integer.
+  # `if x.nil?` on a local: DJudge.ifNilQuery types the branches with x narrowed to its
+  # nil members and to the rest.
+  # Receivers DJudge.ifNilQuery admits (nilRecvB), and its branch types (nilYesTy/nonNilTy).
+  def nil_recv?(t)
+    case t["tag"]
+    when "union" then nil_recv?(t["l"]) && nil_recv?(t["r"])
+    when "nilable" then nil_recv?(t["elem"])
+    when "inst" then @cls_ivars.key?(t["name"])
+    else [INT, FLOAT, SYM, NIL_T, STR].include?(t)
+    end
+  end
+
+  def nil_refine(t, yes)
+    case t["tag"]
+    when "union" then join(nil_refine(t["l"], yes), nil_refine(t["r"], yes))
+    when "nilable" then yes ? NIL_T : nil_refine(t["elem"], false)
+    else (t == NIL_T) == yes ? t : NEVER
+    end
+  end
+
   def narrow_nil_query(n)
     c = n[1]
     return nil unless c[0] == "send" && c[1].is_a?(Array) && c[1][0] == "var" &&
@@ -520,13 +538,14 @@ class Emitter
       dt, tt = go(n[2])
       return [{ "rule" => "ifNilQueryNil", "name" => x, "then" => dt }, tt]
     end
-    elem = [INT, STR].find { |t| @env[x] == nilable(t) }
-    return nil unless elem && !n[3].nil?
+    return nil unless @env[x] && nil_recv?(@env[x]) && !n[3].nil?
+    yes = nil_refine(@env[x], true)
+    no = nil_refine(@env[x], false)
     before = @env.dup
-    @env = before.merge(x => NIL_T)
+    @env = before.merge(x => yes)
     dt, tt = go(n[2])
     then_env = @env
-    @env = before.merge(x => elem)
+    @env = before.merge(x => no)
     de, te = go(n[3])
     else_env = @env
     @env = before
@@ -897,8 +916,12 @@ class Emitter
     chain
   end
 
-  def subclass_union?(t, declared)
-    return false unless declared["tag"] == "cls" && @cls_ivars.key?(declared["name"]) && t["tag"] == "union"
+  def subclass_union?(t, declared, nested = false)
+    if declared["tag"] == "nilable" && t["tag"] == "nilable"
+      return subclass_union?(t["elem"], declared["elem"], true)
+    end
+    return false unless declared["tag"] == "cls" && @cls_ivars.key?(declared["name"]) &&
+      (t["tag"] == "union" || (nested && t["tag"] == "inst"))
     members = lambda { |u| u["tag"] == "union" ? members.call(u["l"]) + members.call(u["r"]) : [u] }
     members.call(t).all? { |x| x["tag"] == "inst" && class_chain(x["name"]).include?(declared["name"]) }
   end

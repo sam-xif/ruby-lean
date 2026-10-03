@@ -1,7 +1,7 @@
 import Ratchet.Static.CallbackFacts
 import Ratchet.Check.Deriv
 import Ratchet.Check.OptShape
-import Ratchet.Guards.IsAGuards
+import Ratchet.Guards.NilQGuards
 import Ratchet.Static.CtxEq
 import Ratchet.Guards.MethodCtx
 import Ratchet.Judgment.InitJudge
@@ -424,18 +424,14 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       {e : Option Expr} :
       envGet? Γ x = some .nilT → nameFreeN κ "nil?" = true → DJudge Γ t τ Γ' κ I κ' I' →
       DJudge Γ (.if' (.send (some (.var .lvar x)) "nil?" [] none) t e) τ Γ' κ I κ' I'
-  /-- `if x.nil?` on a nilable Integer local narrows it to nil / Integer (Sorbet 0.6.13405
-      accepts corpus 126). The query is the native row, so its answer is x's nil-ness. -/
-  | ifNilQuery {κ κ' : Ctx} {Γ Γ₁ Γ₂ : Env} {I I' : Ty} {x : String} {τ₁ τ₂ : Ty} {t e : Expr} :
-      envGet? Γ x = some (.nilable .int) → nameFreeN κ "nil?" = true →
-      DJudge (envSet Γ x .nilT) t τ₁ Γ₁ κ I κ' I' → DJudge (envSet Γ x .int) e τ₂ Γ₂ κ I κ' I' →
-      DJudge Γ (.if' (.send (some (.var .lvar x)) "nil?" [] none) t (some e)) (joinT τ₁ τ₂)
-        (joinEnv Γ₁ Γ₂) κ I κ' I'
-  /-- `if x.nil?` on a nilable String local (Sorbet 0.6.13405 accepts corpus 155's ternary). -/
-  | ifNilQueryStr {κ κ' : Ctx} {Γ Γ₁ Γ₂ : Env} {I I' : Ty} {x : String} {τ₁ τ₂ : Ty} {t e : Expr} :
-      envGet? Γ x = some (.nilable (.cls "String")) → nameFreeN κ "nil?" = true →
-      isANoOk κ.wholeCls (["String", "Comparable"] ++ rootAncestors) = true →
-      DJudge (envSet Γ x .nilT) t τ₁ Γ₁ κ I κ' I' → DJudge (envSet Γ x (.cls "String")) e τ₂ Γ₂ κ I κ' I' →
+  /-- `if x.nil?` on a local of any admitted receiver type (Sorbet 0.6.13405 accepts corpus
+      126 and 155's ternary): the query is the native row, so the then branch sees the nil
+      members (`nilYesTy`) and the else branch the rest (`nonNilTy`). -/
+  | ifNilQuery {κ κ' : Ctx} {Γ Γ₁ Γ₂ : Env} {I I' : Ty} {x : String} {ρ τ₁ τ₂ : Ty}
+      {t e : Expr} :
+      envGet? Γ x = some ρ → ifNilQB κ ρ = true →
+      DJudge (envSet Γ x (nilYesTy ρ)) t τ₁ Γ₁ κ I κ' I' →
+      DJudge (envSet Γ x (nonNilTy ρ)) e τ₂ Γ₂ κ I κ' I' →
       DJudge Γ (.if' (.send (some (.var .lvar x)) "nil?" [] none) t (some e)) (joinT τ₁ τ₂)
         (joinEnv Γ₁ Γ₂) κ I κ' I'
   /-- `if x.is_a?(C)` on a local, for any class name the context resolves (Sorbet 0.6.13405
@@ -1183,7 +1179,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_12 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_13 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_14 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 

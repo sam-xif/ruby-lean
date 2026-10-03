@@ -1,0 +1,10 @@
+{
+  "id": "nil-query-user-class",
+  "tier": 12,
+  "description": "`nil?` narrowing at a nilable user class: `v : T.nilable(Animal)` is refined to nil in the then branch and to Animal in the else branch, where #speak is reached. The general form of 126's nilable-Integer rule: any receiver whose `nil?` is the native row narrows.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 2,
+  "annotated": true
+}

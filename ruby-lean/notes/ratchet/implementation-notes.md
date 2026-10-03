@@ -13859,3 +13859,20 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   method, only each to *a* method; an arm that cannot respond has no derivation.
 - Receiver must be a local; a union-typed call result as receiver is not admitted. Nested
   unions split recursively in the emitter.
+
+## General `nil?` narrowing (125/125, 131/263, climbs new rung 263)
+
+- `ifNilQuery` is now one rule for any admitted receiver (`nilRecvB`): Integer, Float,
+  Symbol, String, nil, exact instances of declared non-module classes that leave `nil?`
+  alone, and unions/nilables of those. It replaces the nilable-Integer rule and
+  `ifNilQueryStr` (removed; one clink fewer). `ifNilQueryNil` stays: it has no else branch.
+- Branch types are `nilYesTy`/`nonNilTy`. `nilYesTy` is new and sharper than `isNilTy`
+  (which keeps nominal types because `nil` may inhabit them elsewhere); it is only used
+  behind `nilRecvB`, where every non-nil leaf has no nil value.
+- `nil_recv_facts` mirrors `recv_facts`: per leaf, native dispatch with the value's
+  nil-ness as the answer (or a byte-string gate at references). Scalars use primitive rows
+  (Float, Symbol and Object rows added); instances reach Object's row by
+  `methodOn_root_of_absent` and take the remaining facts from `NilQueryOk`.
+- The emitter proposes the body's type for a `T.nilable(C)` return too, so the else branch
+  sees an exact instance.
+- Not admitted: Boolean, Array, Hash receivers; a field receiver (`@x.nil?`).
