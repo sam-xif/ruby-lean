@@ -13786,3 +13786,11 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
 - `if x.nil?` on a nilable String local, via a new primitive row String→Object#nil?. The
   native answer is false, or unsupported at a byte-string receiver (`str_nil_run`), so the
   condition lemma uses `RunWith.unsupported`. The checker reuses `Deriv.ifNilQuery`.
+
+## Corpus annotations (2026-10-02, 117/117, 125/261)
+- Rungs that lacked sigs were annotated through `scripts/annotate_corpus.py` (110–112, 118,
+  123, 127–129, 141) with Sorbet verdicts unchanged against each meta; 118 names its block
+  (`&blk`), 128 drops an `else` that typing made unreachable.
+- 146 declares its `attr_reader` after `initialize`: member bodies are checked at the
+  class's current initializer fields, so readers defined before any initializer would need
+  member-cache entries not yet checked against real fields (unsafe for early calls).
