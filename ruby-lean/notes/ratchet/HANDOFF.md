@@ -1,6 +1,6 @@
 # Active ascent (2026-10-01)
 
-125/125 clinks, 129/261 production validateD accepts (prefix 17), 46/46 negatives
+126/126 clinks, 130/262 production validateD accepts (prefix 17), 46/46 negatives
 rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/

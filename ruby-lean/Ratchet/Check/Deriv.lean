@@ -73,6 +73,8 @@ inductive Deriv where
   | initWiden (left : Bool) (other : Ty) (d : Deriv)
   /-- `DJudge.ifIsA`/`ifIsAIvar`: `if x.is_a?(C)` narrowing a local or a field. -/
   | ifIsA (x cn : String) (t e : Deriv) (join : Ty)
+  /-- `DJudge.sendUnion`: a send on a union-typed local, typed once per arm. -/
+  | sendUnion (l r : Deriv) (join : Ty)
   /-- `DJudge.vasgnAlias`: `t = x`, recording `t` as an alias of `x`. -/
   | vasgnAlias
   /-- `DJudge.ifCaseEq`: `if C === t` narrowing an alias and its source. -/
@@ -194,6 +196,7 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
   | "ifTruthyNoElse" => return .ifTruthyNoElse (← name "name") (← kid "then") (← ty "join")
   | "while" => return .whileD (← kid "cond") (← kid "body")
   | "ifNilQueryNil" => return .ifNilQueryNil (← name "name") (← kid "then")
+  | "sendUnion" => return .sendUnion (← kid "left") (← kid "right") (← ty "join")
   | "vasgnAlias" => return .vasgnAlias
   | "ifCaseEq" => return .ifCaseEq (← kid "then") (← kid "else") (← ty "join")
   | "ifIsA" => return .ifIsA (← name "name") (← name "cls") (← kid "then") (← kid "else") (← ty "join")

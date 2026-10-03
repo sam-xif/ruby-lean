@@ -282,6 +282,27 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
       else none
       else none
       else none
+    | .send (some (.var .lvar x)) name args blk, .sendUnion dl dr j =>
+      match hx : envGet? Γ x with
+      | some (.union σ₁ σ₂) =>
+        if ha₁ : isAliasTy σ₁ = false then
+          if ha₂ : isAliasTy σ₂ = false then
+            match check n (envSet Γ x σ₁) (.send (some (.var .lvar x)) name args blk) dl κ I cache,
+                check n (envSet Γ x σ₂) (.send (some (.var .lvar x)) name args blk) dr κ I cache with
+            | some ⟨τ₁, Γ₁, κ₁, I₁, hl, cl⟩, some ⟨τ₂, Γ₂, κ₂, I₂, hr, cr⟩ =>
+              if joinT τ₁ τ₂ == j && cacheSignaturesB cl cr then
+                match ctxEq? κ₁ κ₂ with
+                | some ⟨hctx⟩ =>
+                  if hi : I₁ = I₂ then
+                    some ⟨joinT τ₁ τ₂, joinEnv Γ₁ Γ₂, κ₁, I₁,
+                      .sendUnion hx ha₁ ha₂ hl (by cases hctx; cases hi; exact hr), cl⟩
+                  else none
+                | none => none
+              else none
+            | _, _ => none
+          else none
+        else none
+      | _ => none
     | .vasgn .lvar t (.var .lvar x), .vasgnAlias =>
       match hx : envGet? Γ x with
       | some σ =>
