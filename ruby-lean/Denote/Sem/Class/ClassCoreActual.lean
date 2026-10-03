@@ -35,7 +35,9 @@ theorem core {m : Machine} {name : String} {e : ObjId}
     procBasic := ?_
     arrayBasic := ?_
     hashBasic := ?_
-    coreNamed := ?_ }
+    coreNamed := ?_
+    intMeta := by rw [classOf_old hd (hl _ (by decide))]; exact hc.intMeta
+    strMeta := by rw [classOf_old hd (hl _ (by decide))]; exact hc.strMeta }
   · rw [ancestors_old hch hs hd (hl _ (by decide))]; exact hc.basicSelf
   · rw [ancestors_old hch hs hd (hl _ (by decide))]; exact hc.stringSelf
   · rw [ancestors_old hch hs hd (hl _ (by decide))]; exact hc.stringBasic

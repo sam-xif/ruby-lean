@@ -64,6 +64,7 @@ def coreDataB (h : Heap) : Bool :=
   (ancestors h Boot.procId).contains Boot.basicObjectId &&
   (ancestors h Boot.arrayId).contains Boot.basicObjectId &&
   (ancestors h Boot.hashId).contains Boot.basicObjectId &&
+  (classOf h (.ref Boot.integerId) == intMetaId) && (classOf h (.ref Boot.stringId) == strMetaId) &&
   coreClsNames.all (fun n =>
     match constLookup h n with
     | some (.ref o) => (h.classPayload? o).isSome
@@ -75,9 +76,9 @@ def coreOkB (h : Heap) : Bool := classReadyB h && rootNamesB h &&
 
 theorem coreOkB_sound {h : Heap} (hb : coreOkB h = true) : CoreOk h := by
   simp only [coreOkB, coreDataB, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, and_assoc] at hb
-  rcases hb with ⟨hc, hr, hmeta, hb, mb, sn, ss, sb, rn, rs, rb, pb, ab, hb', names⟩
+  rcases hb with ⟨hc, hr, hmeta, hb, mb, sn, ss, sb, rn, rs, rb, pb, ab, hb', im, sm, names⟩
   refine ⟨classReadyB_sound hc, rootNamesB_sound hr, constFallbackB_sound hmeta,
-    hb, mb, sn, ss, sb, rn, rs, rb, pb, ab, hb', ?_⟩
+    hb, mb, sn, ss, sb, rn, rs, rb, pb, ab, hb', ?_, im, sm⟩
   intro n hn v hv
   have := names n hn
   rw [hv] at this

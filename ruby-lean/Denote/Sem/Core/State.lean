@@ -497,6 +497,11 @@ def coreClsNames : List String :=
    "NoMethodError", "ZeroDivisionError", "IndexError", "KeyError", "RangeError",
    "IOError", "FrozenError", "NotImplementedError"]
 
+/-- The boot metaclasses of Integer and String: `Integer === x` and `String === x` dispatch
+from here, where Module#=== is installed (checked at boot by `coreDataB`). -/
+def intMetaId : ObjId := 76
+def strMetaId : ObjId := 85
+
 /-- **The core classes are what they are.**
 
 `Judge.strLit` concludes `.cls "String"`, whose denotation resolves the *name* `"String"`
@@ -555,6 +560,9 @@ structure CoreOk (h : Heap) : Prop where
       `"IOError"` is discharged by having no case rather than by a fact about the heap. -/
   coreNamed : ∀ n ∈ coreClsNames, ∀ v, constLookup h n = some v →
     ∃ o, v = .ref o ∧ (h.classPayload? o).isSome = true
+  /-- Integer's and String's dispatch classes stay their boot metaclasses. -/
+  intMeta : classOf h (.ref Boot.integerId) = intMetaId
+  strMeta : classOf h (.ref Boot.stringId) = strMetaId
 
 theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m₂.heap = h')
     (he : Ext m m₂) (hc : CoreOk h) : CoreOk h' where
@@ -579,6 +587,14 @@ theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m
     subst hm; subst hm₂; intro n hn v hv
     exact hc.coreNamed n hn v (by rw [← he.constLookup_eq]; exact hv) |>.imp
       (fun o ho => ⟨ho.1, by rw [he.payload]; exact ho.2⟩)
+  intMeta := by
+    subst hm; subst hm₂
+    simpa only [classOf, he.get Boot.integerId (Nat.lt_trans (by decide)
+      hc.classReady.chains.boot.2.2.2.1)] using hc.intMeta
+  strMeta := by
+    subst hm; subst hm₂
+    simpa only [classOf, he.get Boot.stringId (Nat.lt_trans (by decide)
+      hc.classReady.chains.boot.2.2.2.1)] using hc.strMeta
 
 /-! ## "And nothing more" — the exactness component
 
