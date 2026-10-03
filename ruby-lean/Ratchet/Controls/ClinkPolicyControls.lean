@@ -716,6 +716,18 @@ private def lenH : Deriv := .prim (.var .lvar "v") "length" [] (.cls "String") .
 #guard !validateD (.seq [.class' "Foo" none .nil, isaP "Foo" (.int 0) plusP])
   (.seq [.classDecl "Foo" none .nilLit, isaH "Foo" (.intLit 0) plusH .int])
 
+-- ifIsA receivers also include exact instances of declared classes (130), unless the class
+-- (or an ancestor) defines `is_a?` itself or is a module.
+private def clsCtx (cs : CTable) : Ctx := { ctx0 with pos := { ctx0.pos with classes := cs } }
+private def plainA : Cls := classHeader "A"
+#guard isALeafB (clsCtx [plainA]) (.inst "A" .ivar0)
+#guard !isALeafB (clsCtx [{ plainA with methods := [⟨"is_a?", [], .nil⟩] }]) (.inst "A" .ivar0)
+#guard !isALeafB (clsCtx [{ plainA with isModule := true }]) (.inst "A" .ivar0)
+#guard !isALeafB (clsCtx []) (.inst "A" .ivar0)
+#guard isATy [plainA] [plainA] "A" (.inst "A" .ivar0) == .inst "A" .ivar0
+#guard notATy [plainA] [plainA] "A" (.inst "A" .ivar0) == .never
+#guard isATy [plainA] [plainA] "Integer" (.inst "A" .ivar0) == .never
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),

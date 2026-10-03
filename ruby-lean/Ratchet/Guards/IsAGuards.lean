@@ -1,25 +1,30 @@
 import Ratchet.Static.All
+import Ratchet.Guards.MemberRoute
 
 /-! Guards for general `is_a?` narrowing (`DJudge.ifIsA`). The branch types are
 `isATy`/`notATy`; these say which receivers dispatch the native test and which names are
 classes the context can resolve. -/
 namespace Ratchet
 
-/-- A scalar builtin type whose chain the context leaves alone: its values have exactly
-that class, so the native test's answer is the static chain's. -/
-def isALeafB (W : CTable) (τ : Ty) : Bool :=
+/-- A leaf whose values have one known class: a scalar builtin type whose chain the context
+leaves alone, or an exact instance of a declared class that does not define `is_a?`. -/
+def isALeafB (κ : Ctx) (τ : Ty) : Bool :=
   match τ with
   | .int | .float | .nilT | .sym | .cls "String" =>
     match builtinAncestors τ with
-    | some ch => isANoOk W ch
+    | some ch => isANoOk κ.wholeCls ch
+    | none => false
+  | .inst n _ =>
+    match clsGet? κ.classes n with
+    | some c => !c.isModule && noDeclaredSelectorB κ.classes n "is_a?"
     | none => false
   | _ => false
 
 /-- Receivers the rule admits: leaves, and unions/nilables of admitted receivers. -/
-def isARecvB (W : CTable) : Ty → Bool
-  | .union σ τ => isARecvB W σ && isARecvB W τ
-  | .nilable ρ => isARecvB W ρ && isALeafB W .nilT
-  | τ => isALeafB W τ
+def isARecvB (κ : Ctx) : Ty → Bool
+  | .union σ τ => isARecvB κ σ && isARecvB κ τ
+  | .nilable ρ => isARecvB κ ρ && isALeafB κ .nilT
+  | τ => isALeafB κ τ
 
 /-- The tested name is a class the machine resolves: a core chain name the context has not
 rebound, or a declared class. -/
@@ -28,7 +33,7 @@ def isAClassB (κ : Ctx) (cn : String) : Bool :=
 
 /-- Everything `DJudge.ifIsA` asks of the context, receiver type and tested name. -/
 def ifIsAB (κ : Ctx) (ρ : Ty) (cn : String) : Bool :=
-  isARecvB κ.wholeCls ρ && isAClassB κ cn && coreConstFreeN κ && !κ.boundConsts.contains cn &&
+  isARecvB κ ρ && isAClassB κ cn && coreConstFreeN κ && !κ.boundConsts.contains cn &&
     nameFreeN κ "is_a?" &&
     FirstOrder (isATy κ.classes κ.wholeCls cn ρ) && !isAliasTy (isATy κ.classes κ.wholeCls cn ρ) &&
     FirstOrder (notATy κ.classes κ.wholeCls cn ρ) && !isAliasTy (notATy κ.classes κ.wholeCls cn ρ)

@@ -51,6 +51,49 @@ theorem bootMachine_kont : bootMachine.kont = [] := by
   unfold bootMachine
   cases Semantics.bootedMachine <;> rfl
 
+/-- The class-valued constants of Object's table, as (name, class) pairs. -/
+def classConsts (h : Heap) : List (String × ObjId) :=
+  match h.classPayload? Boot.objectId with
+  | some cp => cp.consts.filterMap fun p => match p.2 with
+    | .ref o => if (h.classPayload? o).isSome then some (p.1, o) else none
+    | _ => none
+  | none => []
+
+def namesInjB (h : Heap) : Bool :=
+  (classConsts h).all fun p => (classConsts h).all fun q => p.2 != q.2 || p.1 == q.1
+
+theorem classNamed_mem {h : Heap} {a : String} {k : ObjId} (hk : classNamed? h a = some k) :
+    (a, k) ∈ classConsts h := by
+  unfold classNamed? constLookup at hk
+  unfold classConsts
+  cases hp : h.classPayload? Boot.objectId with
+  | none => simp [hp] at hk
+  | some cp =>
+    simp only [hp] at hk ⊢
+    cases hf : cp.consts.find? (·.1 == a) with
+    | none => simp [hf] at hk
+    | some p =>
+      have hmem := List.mem_of_find?_eq_some hf
+      have hname : p.1 = a := by simpa using List.find?_some hf
+      simp only [hf, Option.map_some] at hk
+      rw [List.mem_filterMap]
+      refine ⟨p, hmem, ?_⟩
+      cases hv : p.2 with
+      | ref o =>
+        rw [hv] at hk
+        by_cases hc : (h.classPayload? o).isSome
+        · simp only [hc, ↓reduceIte, Option.some.injEq] at hk
+          subst hk
+          simp [hv, hc, hname]
+        · simp [hc] at hk
+      | _ => rw [hv] at hk; simp at hk
+
+theorem namesInjB_sound {h : Heap} (hb : namesInjB h = true) :
+    ∀ a b k, classNamed? h a = some k → classNamed? h b = some k → a = b := by
+  intro a b k ha hbk
+  have h1 := List.all_eq_true.mp (List.all_eq_true.mp hb _ (classNamed_mem ha)) _ (classNamed_mem hbk)
+  simpa using h1
+
 /-- `CoreOk` as a `Bool`, so all its clauses are checked at boot. -/
 def coreDataB (h : Heap) : Bool :=
   (ancestors h Boot.basicObjectId == [Boot.basicObjectId]) &&
@@ -65,6 +108,7 @@ def coreDataB (h : Heap) : Bool :=
   (ancestors h Boot.arrayId).contains Boot.basicObjectId &&
   (ancestors h Boot.hashId).contains Boot.basicObjectId &&
   (classOf h (.ref Boot.integerId) == intMetaId) && (classOf h (.ref Boot.stringId) == strMetaId) &&
+  namesInjB h &&
   coreClsNames.all (fun n =>
     match constLookup h n with
     | some (.ref o) => (h.classPayload? o).isSome
@@ -76,9 +120,9 @@ def coreOkB (h : Heap) : Bool := classReadyB h && rootNamesB h &&
 
 theorem coreOkB_sound {h : Heap} (hb : coreOkB h = true) : CoreOk h := by
   simp only [coreOkB, coreDataB, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, and_assoc] at hb
-  rcases hb with ⟨hc, hr, hmeta, hb, mb, sn, ss, sb, rn, rs, rb, pb, ab, hb', im, sm, names⟩
+  rcases hb with ⟨hc, hr, hmeta, hb, mb, sn, ss, sb, rn, rs, rb, pb, ab, hb', im, sm, inj, names⟩
   refine ⟨classReadyB_sound hc, rootNamesB_sound hr, constFallbackB_sound hmeta,
-    hb, mb, sn, ss, sb, rn, rs, rb, pb, ab, hb', ?_, im, sm⟩
+    hb, mb, sn, ss, sb, rn, rs, rb, pb, ab, hb', ?_, im, sm, namesInjB_sound inj⟩
   intro n hn v hv
   have := names n hn
   rw [hv] at this

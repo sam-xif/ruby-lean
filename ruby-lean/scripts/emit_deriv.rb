@@ -160,6 +160,7 @@ class Emitter
     @callback_sigs = {}
     @yield_signature = nil
     @consts = {}       # top-level constant -> type
+    @ret_refined = {}  # [owner, name] -> body union proposed in place of a nominal return
     @opt_defs = {}     # top-level method with one optional -> its checked derivations
     @kw_defs = {}      # top-level keyword-only method -> its checked derivations
     @rest_defs = {}    # top-level *rest method -> its checked derivations
@@ -338,9 +339,12 @@ class Emitter
     when "nilable"
       nil_part = leaf_chain(NIL_T).include?(cn) == yes ? NIL_T : NEVER
       join(nil_part, is_a_refine(cn, t["elem"], yes))
+    when "inst"
+      raise Blocked, "is_a? on an instance of an undeclared class" unless @cls_ivars.key?(t["name"])
+      (class_chain(t["name"]) + ROOT_CHAIN).include?(cn) == yes ? t : NEVER
     else
       chain = leaf_chain(t)
-      raise Blocked, "is_a? on a receiver outside the scalar builtin leaves" unless chain
+      raise Blocked, "is_a? on a receiver outside the admitted leaves" unless chain
       chain.include?(cn) == yes ? t : NEVER
     end
   end
@@ -660,7 +664,7 @@ class Emitter
     owner = @singleton ? "<Class:#{@self_cls}>" : (@self_cls || "Object")
     sig = sig_for(owner, m)
     check_inferred_args(sig, targs)
-    result = as_inst(sig["ret"])
+    result = @ret_refined[[owner, m]] || as_inst(sig["ret"])
     [{ "rule" => "callSig", "name" => m, "args" => dargs, "ret" => result }, result]
   end
 
@@ -742,11 +746,34 @@ class Emitter
     outer_method = @current_method
     @current_method = name
     @env = sps.to_h { |p| [p["name"], p["ty"]] }
-    dbody, = go_ordinary(body)
+    dbody, tbody = go_ordinary(body)
     @env = outer_env
     @current_method = outer_method
-    [{ "rule" => "defDecl", "name" => name, "params" => sps, "ret" => sig["ret"],
+    ret = sig["ret"]
+    # A nominal class annotation over a body that returns exact instances of its
+    # subclasses: propose the body's own union, which the checker verifies and
+    # `is_a?` narrowing can then split (corpus 130).
+    if @self_cls.nil? && !@singleton && subclass_union?(tbody, ret)
+      ret = tbody
+      @ret_refined[["Object", name]] = tbody
+    end
+    [{ "rule" => "defDecl", "name" => name, "params" => sps, "ret" => ret,
        "body" => dbody }, SYM]
+  end
+
+  def class_chain(n)
+    chain = []
+    while n
+      chain << n
+      n = @supers[n]
+    end
+    chain
+  end
+
+  def subclass_union?(t, declared)
+    return false unless declared["tag"] == "cls" && @cls_ivars.key?(declared["name"]) && t["tag"] == "union"
+    members = lambda { |u| u["tag"] == "union" ? members.call(u["l"]) + members.call(u["r"]) : [u] }
+    members.call(t).all? { |x| x["tag"] == "inst" && class_chain(x["name"]).include?(declared["name"]) }
   end
 
   # Required positionals and a named `*rest` (DJudge.defDeclRest); the sig types elements.

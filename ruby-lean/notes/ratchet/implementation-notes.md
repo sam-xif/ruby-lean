@@ -13804,5 +13804,11 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   class, so the native answer is the static chain's membership test (`chain_isA`, from
   `BaseChainsOk`); `recv_facts` proves `isATy`/`notATy` sound by recursion on the type.
   Object#is_a? is a primitive row for each leaf class.
-- Not yet admitted: `.inst` receivers (needs dispatch of Object#is_a? through a user class
-  chain), `.bool`, Array/Hash types.
+- `.inst n I` receivers (127/261, climbs 130): exact instances of a declared non-module class
+  whose chain declares no `is_a?`. Dispatch reaches Object's row by
+  `StateOk.methodOn_root_of_absent` plus `QueryOk`; the answer is the declared chain's
+  membership (`ClassChains`), and the negative direction uses the new boot-checked
+  `CoreOk.namesInj` (no class object has two names).
+- The emitter proposes the body's own union when a top-level method annotated with a class
+  returns exact instances of its subclasses, so `is_a?` can split it.
+- Not yet admitted: `.bool`, Array/Hash receivers.
