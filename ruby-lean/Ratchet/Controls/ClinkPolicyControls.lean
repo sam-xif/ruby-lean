@@ -684,6 +684,23 @@ private def nqsH (elseD : Deriv) : Deriv := .seq [
 #guard !validateDWith (fun q => clinkEnabled q && q != "ifNilQueryStr") nqsP
   (nqsH (.prim (.var .lvar "x") "length" [] (.cls "String") .int))
 
+-- Active ifIsAUnion (127): `is_a?(Integer)` splits an Integer/String union local.
+private def isaP (cn : String) : Ratchet.Expr := .seq [
+  .vasgn .lvar "v" (.if' .tru (.int 1) (some (.str "s"))),
+  .if' (.send (some (.var .lvar "v")) "is_a?" [.const cn] none)
+    (.send (some (.var .lvar "v")) "+" [.int 1] none)
+    (some (.send (some (.var .lvar "v")) "length" [] none))]
+private def isaH (cn : String) (tT tF : Ty) : Deriv := .seq [
+  .vasgn .lvar "v" (.ifD .truLit (.intLit 1) (some (.strLit "s")) (.union .int (.cls "String"))),
+  .ifIsA "v" cn (.prim (.var .lvar "v") "+" [.intLit 1] tT .int)
+    (.prim (.var .lvar "v") "length" [] tF .int) .int]
+#guard validateD (isaP "Integer") (isaH "Integer" .int (.cls "String"))
+#guard !validateD (isaP "String") (isaH "String" .int (.cls "String"))
+#guard !validateDWith (fun q => clinkEnabled q && q != "ifIsAUnion") (isaP "Integer")
+  (isaH "Integer" .int (.cls "String"))
+#guard !validateD (.seq [.casgn "Integer" (.int 1), isaP "Integer"])
+  (.seq [.casgnTop (.intLit 1), isaH "Integer" .int (.cls "String")])
+
 -- Active flow rules: 087's stored zero-arity lambda call; the body's real type is checked.
 private def lamProg (body : Ratchet.Expr) : Ratchet.Expr := .seq [
   .vasgn .lvar "f" (.send none "lambda" [] (some (.block [] [] body))),

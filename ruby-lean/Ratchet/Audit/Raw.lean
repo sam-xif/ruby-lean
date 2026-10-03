@@ -429,6 +429,42 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
           | none => none
         else none
       | _ => none
+    | .if' (.send (some (.var .lvar x)) "is_a?" [.const cn] none) t (some el), .ifIsA y cn' dt de j =>
+      if x != y || cn != cn' then none else
+      match hx : envGet? Γ x with
+      | some (.union σ τ) =>
+        if hsides : (σ = .int ∧ τ = .cls "String") ∨ (σ = .cls "String" ∧ τ = .int) then
+        let sides : Option ((tT : Ty) × (tF : Ty) ×' ((cn = "Integer" ∧ tT = .int ∧ tF = .cls "String") ∨
+            (cn = "String" ∧ tT = .cls "String" ∧ tF = .int))) :=
+          if h1 : cn = "Integer" then some ⟨.int, .cls "String", .inl ⟨h1, rfl, rfl⟩⟩
+          else if h2 : cn = "String" then some ⟨.cls "String", .int, .inr ⟨h2, rfl, rfl⟩⟩
+          else none
+        match sides with
+        | some ⟨tT, tF, hcase⟩ =>
+          if hcf : coreConstFreeN κ = true then
+          if hf : nameFreeN κ "is_a?" = true then
+          if hokI : isANoOk κ.wholeCls intChain = true then
+          if hokS : isANoOk κ.wholeCls strChain = true then
+            match check n (envSet Γ x tT) t dt κ I cache, check n (envSet Γ x tF) el de κ I cache with
+            | some ⟨τ₁, Γ₁, κ₁, I₁, ht, ct⟩, some ⟨τ₂, Γ₂, κ₂, I₂, he, ce⟩ =>
+              if joinT τ₁ τ₂ == j && cacheSignaturesB ct ce then
+                match ctxEq? κ₁ κ₂ with
+                | some ⟨hctx⟩ =>
+                  if hi : I₁ = I₂ then
+                    some ⟨joinT τ₁ τ₂, joinEnv Γ₁ Γ₂, κ₁, I₁,
+                      .ifIsAUnion (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hsides hcase hcf hf hokI hokS ht
+                        (by simpa only [DJudge.rules, hctx, hi] using he), ct⟩
+                  else none
+                | none => none
+              else none
+            | _, _ => none
+          else none
+          else none
+          else none
+          else none
+        | none => none
+        else none
+      | _ => none
     | .if' (.var .lvar x) _ (some e), .ifNilVar y de =>
       if x != y then none else
       match hx : envGet? Γ x with

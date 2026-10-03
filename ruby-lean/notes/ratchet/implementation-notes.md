@@ -13794,3 +13794,9 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
 - 146 declares its `attr_reader` after `initialize`: member bodies are checked at the
   class's current initializer fields, so readers defined before any initializer would need
   member-cache entries not yet checked against real fields (unsafe for early calls).
+
+## ifIsAUnion (2026-10-02, 118/118, 126/261)
+- `if x.is_a?(C)` with `x : T.any(Integer, String)`, `C ∈ {Integer, String}`. The const read
+  resolves through `BaseChainsOk` (guarded by `coreConstFreeN`), Object#is_a? is a new
+  primitive row for both classes, and the answer is decided by the builtin chains: a class
+  contains itself, and `isANoOk` excludes the other name. Climbs 127.

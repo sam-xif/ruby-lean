@@ -319,6 +319,34 @@ class Emitter
 
   # `if x` on a nilable local whose inner type excludes false: DJudge.ifTruthy types the
   # branches with x narrowed to the inner type and to nil.
+  # `if x.is_a?(C)` on an Integer/String union local, C a core class (DJudge.ifIsAUnion).
+  def narrow_is_a(n)
+    c = n[1]
+    return nil unless c[0] == "send" && c[1].is_a?(Array) && c[1][0] == "var" && c[1][1] == "local" &&
+      c[2] == "is_a?" && c[3].length == 1 && c[3][0][0] == "const" && c[4].nil? && n[3]
+    x = c[1][2]
+    t = @env[x]
+    return nil unless t && t["tag"] == "union" && [[t["l"], t["r"]], [t["r"], t["l"]]].include?([INT, STR])
+    yes, no = case c[3][0][1]
+              when "Integer" then [INT, STR]
+              when "String" then [STR, INT]
+              else return nil
+              end
+    before = @env.dup
+    @env = before.merge(x => yes)
+    dt, tt = go(n[2])
+    then_env = @env
+    @env = before.merge(x => no)
+    de, te = go(n[3])
+    else_env = @env
+    @env = before
+    raise Blocked, "the two branches of an `if` leave different local types" if
+      then_env.reject { |k, _| k == x } != else_env.reject { |k, _| k == x }
+    @env = then_env.merge(x => join(then_env[x], else_env[x]))
+    j = join(tt, te)
+    [{ "rule" => "ifIsA", "name" => x, "cls" => c[3][0][1], "then" => dt, "else" => de, "join" => j }, j]
+  end
+
   # `if x` on a nil-typed local with an else: only the else branch runs (DJudge.ifNilVar).
   def narrow_nil_var(n)
     c = n[1]
@@ -391,7 +419,7 @@ class Emitter
   end
 
   def n_if(n)
-    narrowed = narrow_truthy(n) || narrow_nil_query(n) || narrow_nil_var(n)
+    narrowed = narrow_truthy(n) || narrow_nil_query(n) || narrow_nil_var(n) || narrow_is_a(n)
     return narrowed if narrowed
     dc, = go(n[1])
     # Both branches are typed in the incoming environment's *copy*: this emitter

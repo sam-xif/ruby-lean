@@ -1,6 +1,7 @@
 import Ratchet.Static.CallbackFacts
 import Ratchet.Check.Deriv
 import Ratchet.Check.OptShape
+import Ratchet.Guards.IsAGuards
 import Ratchet.Static.CtxEq
 import Ratchet.Guards.MethodCtx
 import Ratchet.Judgment.InitJudge
@@ -427,6 +428,19 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       isANoOk κ.wholeCls (["String", "Comparable"] ++ rootAncestors) = true →
       DJudge (envSet Γ x .nilT) t τ₁ Γ₁ κ I κ' I' → DJudge (envSet Γ x (.cls "String")) e τ₂ Γ₂ κ I κ' I' →
       DJudge Γ (.if' (.send (some (.var .lvar x)) "nil?" [] none) t (some e)) (joinT τ₁ τ₂)
+        (joinEnv Γ₁ Γ₂) κ I κ' I'
+  /-- `if x.is_a?(C)` on an Integer/String union local with `C` a core class (Sorbet
+      0.6.13405 accepts corpus 127): each branch sees the member the answer selects. -/
+  | ifIsAUnion {κ κ' : Ctx} {Γ Γ₁ Γ₂ : Env} {I I' : Ty} {x cn : String}
+      {σ τ tT tF τ₁ τ₂ : Ty} {t e : Expr} :
+      envGet? Γ x = some (.union σ τ) →
+      ((σ = .int ∧ τ = .cls "String") ∨ (σ = .cls "String" ∧ τ = .int)) →
+      ((cn = "Integer" ∧ tT = .int ∧ tF = .cls "String") ∨
+        (cn = "String" ∧ tT = .cls "String" ∧ tF = .int)) →
+      coreConstFreeN κ = true → nameFreeN κ "is_a?" = true →
+      isANoOk κ.wholeCls intChain = true → isANoOk κ.wholeCls strChain = true →
+      DJudge (envSet Γ x tT) t τ₁ Γ₁ κ I κ' I' → DJudge (envSet Γ x tF) e τ₂ Γ₂ κ I κ' I' →
+      DJudge Γ (.if' (.send (some (.var .lvar x)) "is_a?" [.const cn] none) t (some e)) (joinT τ₁ τ₂)
         (joinEnv Γ₁ Γ₂) κ I κ' I'
   /-- `N = e` at top level (Sorbet accepts corpus 137): binds a fresh constant to a
       non-class value; later reads see its type. -/
@@ -1128,7 +1142,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_12 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_13 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_14 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 
