@@ -1,6 +1,7 @@
 # typed: true
 class Point
   extend T::Sig
+  sig { returns(Integer) }
   attr_reader :x, :y
 
   sig { params(x: Integer, y: Integer).void }

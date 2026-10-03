@@ -90,6 +90,9 @@ SIGS: dict[str, dict[str, object]] = {
                  + ".returns(Integer)"},
     "105-lambda-explicit-return": {"apply_twice": "returns(Integer)"},
     "109-metaprog-class-reopening": {"a": "returns(Integer)", "b": "returns(Integer)"},
+    "110-metaprog-include": {"greet": "returns(String)"},
+    "111-metaprog-extend": {"shout": "returns(String)"},
+    "112-metaprog-prepend": {"speak": ["returns(String)", "returns(String)"]},
     "113-metaprog-method-missing-fixed-arity": {
         "method_missing": P("name: Symbol") + ".returns(String)"},
     "114-metaprog-method-missing-splat": {
@@ -101,6 +104,9 @@ SIGS: dict[str, dict[str, object]] = {
     "117-xc-lambda-in-ivar": {
         "initialize": P("f: T.proc.params(x: Integer).returns(Integer)") + "." + V,
         "apply": P("v: Integer") + ".returns(Integer)"},
+    # 118 also gained `&blk` by hand: Sorbet requires a yielding method's sig to name its block.
+    "118-xc-module-yield": {
+        "self.twice": P("blk: T.proc.params(arg0: Integer).returns(Integer)") + ".returns(Integer)"},
     "119-xc-inherit-implicit-block": {"wrap": "returns(String)", "show": "returns(String)"},
     # A method whose value is its block's has no type this `Ty` can write down; the
     # declaration says so, and the emitter reports `T.untyped` as the boundary.
@@ -109,15 +115,22 @@ SIGS: dict[str, dict[str, object]] = {
     "122-xc-ivar-array-map": {
         "initialize": P("items: T::Array[Integer]") + "." + V,
         "names": "returns(T::Array[String])"},
+    "123-xc-module-applies-lambda": {
+        "self.apply": P("f: T.proc.params(arg0: Integer).returns(Integer)", "v: Integer") + ".returns(Integer)"},
     "124-xc-block-retypes-ivar": {"initialize": P("x: Integer") + "." + V,
                                   "run": "returns(T.untyped)", "go": "returns(Integer)"},
     # -- tier 12: narrowing ---------------------------------------------------
+    "127-narrow-union-is-a": {"pick": P("flag: T::Boolean") + ".returns(T.any(Integer, String))"},
+    "128-narrow-union-case-when": {"pick": P("flag: T::Boolean") + ".returns(T.any(Integer, String))"},
+    "129-narrow-union-in-ivar": {"initialize": P("flag: T::Boolean") + "." + V,
+                                 "describe": "returns(T.any(Integer, String))"},
     "130-narrow-union-subclass": {"speak": "returns(String)", "fetch": "returns(String)",
                                   "make": P("flag: T::Boolean") + ".returns(Animal)"},
     "131-narrow-guard-clause": {
         "first_or_zero": P("a: T::Array[Integer]") + ".returns(Integer)"},
     "135-narrow-backwards-unsafe": {
         "pick": P("flag: T::Boolean") + ".returns(T.any(Integer, String))"},
+    "141-const-scoped-class-ref": {"initialize": P("v: Integer") + "." + V, "get": "returns(Integer)"},
     "146-const-attr-reader": {"initialize": P("x: Integer", "y: Integer") + "." + V},
     "147-const-alias": {"size": "returns(Integer)"},
     # -- tiers 14-15: parameters and arguments --------------------------------

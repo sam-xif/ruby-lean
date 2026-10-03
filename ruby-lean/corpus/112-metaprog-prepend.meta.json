@@ -6,6 +6,6 @@
   "expect_validate": true,
   "false_reason": null,
   "defs": 2,
-  "annotated": false,
+  "annotated": true,
   "sorbet_note": "`Logger` was previously defined as a `class`"
 }
