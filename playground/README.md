@@ -1,6 +1,6 @@
 # playground/
 
-A browser UI for the whole pipeline. Pick one of the 259 annotated corpus
+A browser UI for the whole pipeline. Pick one of the 261 annotated corpus
 programs (or write your own), run the five stages on it, and see whether the Lean
 checker proves it free of type errors. You can edit the program or the proposed
 derivation and check again.
