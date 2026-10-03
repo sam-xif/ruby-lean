@@ -69,6 +69,8 @@ inductive Deriv where
   | whileD (c b : Deriv)
   /-- `DJudge.ifNilVar`: `if x` on a nil-typed local runs only the else branch. -/
   | ifNilVar (x : String) (e : Deriv)
+  /-- `DJudge.ifIsAUnion`: `if x.is_a?(C)` narrowing an Integer/String union local. -/
+  | ifIsA (x cn : String) (t e : Deriv) (join : Ty)
   /-- `DJudge.ifNilQueryNil`: `if x.nil?` on a nil-typed local runs only the then branch. -/
   | ifNilQueryNil (x : String) (t : Deriv)
   /-- `DJudge.casgnTop`: a fresh top-level constant bound to a non-class value. -/
@@ -186,6 +188,7 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
   | "ifTruthyNoElse" => return .ifTruthyNoElse (← name "name") (← kid "then") (← ty "join")
   | "while" => return .whileD (← kid "cond") (← kid "body")
   | "ifNilQueryNil" => return .ifNilQueryNil (← name "name") (← kid "then")
+  | "ifIsA" => return .ifIsA (← name "name") (← name "cls") (← kid "then") (← kid "else") (← ty "join")
   | "ifNilVar" => return .ifNilVar (← name "name") (← kid "else")
   | "casgn" => return .casgnTop (← kid "value")
   | "constRead" => return .constRead
