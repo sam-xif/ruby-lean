@@ -1,6 +1,7 @@
 import Denote.Rules.Expr.BranchNilQueryStr
 import Denote.Sem.Class.BuiltinBases
 import Denote.Rules.Primitive.Primitive
+import Denote.Sem.Names.RootLookup
 
 /-! `if x.is_a?(C)` on an Integer/String union local, with `C` a core class name the
 context has not rebound. The native Object#is_a? answers the ancestor test, which the
@@ -68,40 +69,44 @@ theorem isA_run (m : Machine) (recv : Value) (k : ObjId)
     change Builtins.runObjects "Object#is_a?" recv [.ref k] m = _
     simp [Builtins.runObjects, hk]
 
-/-- A leaf value has exactly its builtin class: the native test answers by the static
-chain, and the receiver dispatches the Object#is_a? row. -/
-theorem leaf_facts {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {τ : Ty} {v : Value}
+/-- What the rule needs of one leaf value: native dispatch of the test, and each answer
+placing the value in the corresponding refinement. -/
+def IsAFacts (κ : Ctx) (m : Machine) (cn : String) (k : ObjId) (τ : Ty) (v : Value) : Prop :=
+  (Interp.invoke m v .explicit "is_a?" [.ref k] none [] =
+      builtinStep (Builtins.run "Object#is_a?" v [.ref k] m)) ∧
+  (isA m.heap v k = true → denM (isATy κ.classes κ.wholeCls cn τ) m v) ∧
+  (isA m.heap v k = false → denM (notATy κ.classes κ.wholeCls cn τ) m v)
+
+theorem isA_deferTwin (h : Heap) (v : Value) (k : ObjId) :
+    Builtins.deferTwin? h "Object#is_a?" v [.ref k] = none := by
+  simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
+    Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?, Builtins.coerceTwin?]
+
+/-- A scalar builtin leaf: the value has exactly its builtin class. -/
+theorem builtin_leaf_facts {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {τ : Ty} {v : Value}
     {cn : String} {k : ObjId} (hm : StateOk κ Γ I m) (hcf : coreConstFreeN κ = true)
-    (hbound : κ.boundConsts.contains cn = false) (hleaf : isALeafB κ.wholeCls τ = true)
-    (hd : denM τ m v) (hk : classNamed? m.heap cn = some k) :
-    ∃ ch, builtinAncestors τ = some ch ∧ isANoOk κ.wholeCls ch = true ∧
-      isA m.heap v k = ch.contains cn ∧
-      (classOf m.heap v, "is_a?", "Object#is_a?") ∈ primitiveMethods ∧
-      (∀ o, v = .ref o → ∃ s, (m.heap.get o).payload = .str s) ∧
-      isATy κ.classes κ.wholeCls cn τ = (if ch.contains cn then τ else .never) ∧
-      notATy κ.classes κ.wholeCls cn τ = (if ch.contains cn then .never else τ) := by
-  have fin : ∀ base ch, (base, ch) ∈ builtinBases → builtinAncestors τ = some ch →
-      isANoOk κ.wholeCls ch = true → classOf m.heap v = base →
-      (base, "is_a?", "Object#is_a?") ∈ primitiveMethods →
+    (hbound : κ.boundConsts.contains cn = false) (hfree : nameFreeN κ "is_a?" = true)
+    (hleaf : isALeafB κ τ = true) (hni : ∀ n J, τ ≠ .inst n J)
+    (hd : denM τ m v) (hk : classNamed? m.heap cn = some k) : IsAFacts κ m cn k τ v := by
+  have fin : ∀ base ch, (base, ch) ∈ builtinBases → isANoOk κ.wholeCls ch = true →
+      classOf m.heap v = base → (base, "is_a?", "Object#is_a?") ∈ primitiveMethods →
       (∀ o, v = .ref o → ∃ s, (m.heap.get o).payload = .str s) →
       isATy κ.classes κ.wholeCls cn τ = (if ch.contains cn then τ else .never) →
       notATy κ.classes κ.wholeCls cn τ = (if ch.contains cn then .never else τ) →
-      ∃ ch, builtinAncestors τ = some ch ∧ isANoOk κ.wholeCls ch = true ∧
-        isA m.heap v k = ch.contains cn ∧
-        (classOf m.heap v, "is_a?", "Object#is_a?") ∈ primitiveMethods ∧
-        (∀ o, v = .ref o → ∃ s, (m.heap.get o).payload = .str s) ∧
-        isATy κ.classes κ.wholeCls cn τ = (if ch.contains cn then τ else .never) ∧
-        notATy κ.classes κ.wholeCls cn τ = (if ch.contains cn then .never else τ) := by
-    intro base ch hb hba hok hc hrow hpay hT hF
-    refine ⟨ch, hba, hok, ?_, by rw [hc]; exact hrow, hpay, hT, hF⟩
-    simp only [isA, hc]
-    exact chain_isA hm hcf hb hok hbound hk
+      IsAFacts κ m cn k τ v := by
+    intro base ch hb hok hc hrow hpay hT hF
+    have hisA : isA m.heap v k = ch.contains cn := by
+      simp only [isA, hc]; exact chain_isA hm hcf hb hok hbound hk
+    refine ⟨primitive_invoke (bid := "Object#is_a?") (k := base) hm hrow hc (by rfl) hpay
+      (isA_deferTwin _ _ _) (by rfl) hfree, fun h => ?_, fun h => ?_⟩
+    · rw [hT, ← hisA, h]; exact hd
+    · rw [hF, ← hisA, h]; exact hd
   cases τ with
   | int =>
     have hok : isANoOk κ.wholeCls (["Integer", "Numeric", "Comparable"] ++ rootAncestors) = true := by
       simpa [isALeafB, builtinAncestors] using hleaf
     cases v <;> simp [denM, isIntV] at hd
-    exact fin Boot.integerId _ (by simp [builtinBases]) rfl hok rfl (by simp [primitiveMethods])
+    exact fin Boot.integerId _ (by simp [builtinBases]) hok rfl (by simp [primitiveMethods])
       (by intro o ho; cases ho)
       (by simp only [isATy, isAAnswer, builtinAncestors, Option.bind, hok, ↓reduceIte]; split <;> simp_all)
       (by simp only [notATy, isAAnswer, builtinAncestors, Option.bind, hok, ↓reduceIte]; split <;> simp_all)
@@ -109,7 +114,7 @@ theorem leaf_facts {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {τ : Ty} {v : V
     have hok : isANoOk κ.wholeCls (["Float", "Numeric", "Comparable"] ++ rootAncestors) = true := by
       simpa [isALeafB, builtinAncestors] using hleaf
     cases v <;> simp [denM, isFltV] at hd
-    exact fin Boot.floatId _ (by simp [builtinBases]) rfl hok rfl (by simp [primitiveMethods])
+    exact fin Boot.floatId _ (by simp [builtinBases]) hok rfl (by simp [primitiveMethods])
       (by intro o ho; cases ho)
       (by simp only [isATy, isAAnswer, builtinAncestors, Option.bind, hok, ↓reduceIte]; split <;> simp_all)
       (by simp only [notATy, isAAnswer, builtinAncestors, Option.bind, hok, ↓reduceIte]; split <;> simp_all)
@@ -117,7 +122,7 @@ theorem leaf_facts {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {τ : Ty} {v : V
     have hok : isANoOk κ.wholeCls ("NilClass" :: rootAncestors) = true := by
       simpa [isALeafB, builtinAncestors] using hleaf
     cases v <;> simp [denM, isNilV] at hd
-    exact fin Boot.nilClassId _ (by simp [builtinBases]) rfl hok rfl (by simp [primitiveMethods])
+    exact fin Boot.nilClassId _ (by simp [builtinBases]) hok rfl (by simp [primitiveMethods])
       (by intro o ho; cases ho)
       (by simp only [isATy, isAAnswer, builtinAncestors, Option.bind, hok, ↓reduceIte]; split <;> simp_all)
       (by simp only [notATy, isAAnswer, builtinAncestors, Option.bind, hok, ↓reduceIte]; split <;> simp_all)
@@ -125,7 +130,7 @@ theorem leaf_facts {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {τ : Ty} {v : V
     have hok : isANoOk κ.wholeCls (["Symbol", "Comparable"] ++ rootAncestors) = true := by
       simpa [isALeafB, builtinAncestors] using hleaf
     cases v <;> simp [denM, isSymV] at hd
-    exact fin Boot.symbolId _ (by simp [builtinBases]) rfl hok rfl (by simp [primitiveMethods])
+    exact fin Boot.symbolId _ (by simp [builtinBases]) hok rfl (by simp [primitiveMethods])
       (by intro o ho; cases ho)
       (by simp only [isATy, isAAnswer, builtinAncestors, Option.bind, hok, ↓reduceIte]; split <;> simp_all)
       (by simp only [notATy, isAAnswer, builtinAncestors, Option.bind, hok, ↓reduceIte]; split <;> simp_all)
@@ -135,34 +140,124 @@ theorem leaf_facts {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {τ : Ty} {v : V
       have hok : isANoOk κ.wholeCls (["String", "Comparable"] ++ rootAncestors) = true := by
         simpa [isALeafB, builtinAncestors] using hleaf
       obtain ⟨o, s, rfl, hs⟩ := string_payload hm hd hok
-      exact fin Boot.stringId _ (by simp [builtinBases]) rfl hok (string_class hm hd hok)
+      exact fin Boot.stringId _ (by simp [builtinBases]) hok (string_class hm hd hok)
         (by simp [primitiveMethods]) (by intro o' ho'; cases ho'; exact ⟨s, hs⟩)
         (by simp only [isATy, isAAnswer, builtinAncestors, Option.bind, hok, ↓reduceIte]; split <;> simp_all)
         (by simp only [notATy, isAAnswer, builtinAncestors, Option.bind, hok, ↓reduceIte]; split <;> simp_all)
     · simp [isALeafB, hn] at hleaf
+  | inst n J => exact absurd rfl (hni n J)
   | _ => simp [isALeafB] at hleaf
 
-#print axioms leaf_facts
-/-- Soundness of the `is_a?` refinements at an admitted receiver type: the value
-dispatches the native row, and each answer puts it in the corresponding refinement. -/
+/-- `is_a?` has no receiver-payload special case: every reference dispatches. -/
+theorem invoke_isA_plain (m : Machine) (o : ObjId) (site : SendSite) (args : List Value) :
+    Interp.invoke m (.ref o) site "is_a?" args none [] =
+      Interp.invoke.invokeDispatch m (.ref o) site "is_a?" args none [] := by
+  rw [Interp.invoke.eq_def]
+  simp only [show (("is_a?" : String) == "send" || "is_a?" == "public_send" || "is_a?" == "__send__") = false
+    from by decide, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
+  cases hp : (m.heap.get o).payload <;> simp
+  done
+
+theorem namedChain_mem {h : Heap} {ns : List String} {ks : List ObjId} (hp : NamedChain h ns ks)
+    {cn : String} (hc : cn ∈ ns) : ∃ k ∈ ks, classNamed? h cn = some k := by
+  obtain ⟨pre, post, rfl⟩ := List.append_of_mem hc
+  obtain ⟨before, k, after, rfl, _, hk, _⟩ := hp.split
+  exact ⟨k, by simp, hk⟩
+
+/-- An exact instance of a declared class that leaves `is_a?` alone: lookup falls through
+to Object's native row, and the answer is the declared chain's membership test. -/
+theorem inst_leaf_facts {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {n : String} {J : Ty}
+    {v : Value} {cn : String} {k : ObjId} (hm : StateOk κ Γ I m)
+    (hfree : nameFreeN κ "is_a?" = true) (hleaf : isALeafB κ (.inst n J) = true)
+    (hd : denM (.inst n J) m v) (hk : classNamed? m.heap cn = some k) :
+    IsAFacts κ m cn k (.inst n J) v := by
+  -- the declared class
+  cases hg : clsGet? κ.classes n with
+  | none => simp [isALeafB, hg] at hleaf
+  | some c =>
+  simp only [isALeafB, hg, Bool.and_eq_true, Bool.not_eq_true'] at hleaf
+  obtain ⟨hkind, hnd⟩ := hleaf
+  have hcm : c ∈ κ.classes := List.mem_of_find?_eq_some hg
+  have hcn : c.name = n := by simpa using List.find?_some hg
+  subst hcn
+  -- the value is an exact instance: its dispatch class is the class object
+  have hex : isExactInst m.heap v c.name = true := by rw [denM] at hd; exact hd.1
+  unfold isExactInst at hex
+  cases hr : classNamed? m.heap c.name with
+  | none => simp [hr] at hex
+  | some r =>
+  cases v with
+  | ref o =>
+    simp only [hr, Bool.and_eq_true, decide_eq_true_eq, Option.isNone_iff_eq_none, beq_iff_eq] at hex
+    obtain ⟨⟨_, heig⟩, hkl⟩ := hex
+    have hcls : classOf m.heap (.ref o) = r := by simp [classOf, heig, hkl]
+    -- dispatch
+    obtain ⟨owner, md, hl, _, _, _, _, _⟩ := primitive_lookup hm (k := Boot.objectId)
+      (name := "is_a?") (bid := "Object#is_a?") (by simp [primitiveMethods]) hfree
+    have hfound : Interp.methodOn m.heap r "is_a?" = some (owner, md) :=
+      (hm.methodOn_root_of_absent hcm hr hkind hnd).trans hl
+    obtain ⟨hb, hu, hvis, hpre, hsh⟩ := (hm.query "is_a?" "Object#is_a?"
+      (by simp [queryBuiltins]) hfree r).1 owner md hfound
+    have hdisp : Interp.invoke m (.ref o) .explicit "is_a?" [.ref k] none [] =
+        builtinStep (Builtins.run "Object#is_a?" (.ref o) [.ref k] m) := by
+      rw [invoke_isA_plain]
+      exact invokeDispatch_builtin (owner := owner) (md := md)
+        (by rw [lookup_eq_methodOn, hcls]; exact hfound) hb hu
+        (by simpa [queryVisibility] using hvis) hpre (by simpa only [hcls] using hsh)
+        (isA_deferTwin _ _ _) (by rfl)
+    -- the answer
+    cases ha : ancestors? κ.classes c.name with
+    | none => simp [noDeclaredSelectorB, ha] at hnd
+    | some ch =>
+    have hchain : NamedChain m.heap (ch ++ c.rootTail) (ancestors m.heap r) :=
+      hm.classChains c hcm r hr ch ha
+    have hisA : isA m.heap (.ref o) k = (ancestors m.heap r).contains k := by simp [isA, hcls]
+    refine ⟨hdisp, fun h => ?_, fun h => ?_⟩
+    · -- a true answer cannot be refined away
+      have hT : isATy κ.classes κ.wholeCls cn (.inst c.name J) = .inst c.name J := by
+        simp only [isATy, isAAnswer, hg, ha, Option.bind]
+        split
+        · rename_i hfalse
+          split at hfalse
+          · cases hfalse
+          · split at hfalse
+            · rename_i hnot _
+              rw [hisA] at h
+              obtain ⟨cn', hcn', hnamed'⟩ := hchain.cover (by simpa using h)
+              have := hm.core.namesInj cn cn' k hk hnamed'
+              subst this
+              exact absurd (by simpa using hcn') hnot
+            · cases hfalse
+        · rfl
+      rw [hT]; exact hd
+    · have hF : notATy κ.classes κ.wholeCls cn (.inst c.name J) = .inst c.name J := by
+        simp only [notATy, isAAnswer, hg, ha, Option.bind]
+        split
+        · rename_i htrue
+          split at htrue
+          · rename_i hin
+            obtain ⟨j, hj, hnamed'⟩ := namedChain_mem hchain (by simpa using hin)
+            rw [hk] at hnamed'; cases hnamed'
+            rw [hisA] at h
+            simp [hj] at h
+          · split at htrue <;> cases htrue
+        · rfl
+      rw [hF]; exact hd
+  | _ => simp [hr] at hex
+
+#print axioms inst_leaf_facts
+/-- Soundness of the `is_a?` refinements at an admitted receiver type. -/
 theorem recv_facts {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cn : String} {k : ObjId}
     (hm : StateOk κ Γ I m) (hcf : coreConstFreeN κ = true)
-    (hbound : κ.boundConsts.contains cn = false) (hk : classNamed? m.heap cn = some k) :
-    ∀ (ρ : Ty) (v : Value), isARecvB κ.wholeCls ρ = true → denM ρ m v →
-      ((classOf m.heap v, "is_a?", "Object#is_a?") ∈ primitiveMethods ∧
-        (∀ o, v = .ref o → ∃ s, (m.heap.get o).payload = .str s)) ∧
-      (isA m.heap v k = true → denM (isATy κ.classes κ.wholeCls cn ρ) m v) ∧
-      (isA m.heap v k = false → denM (notATy κ.classes κ.wholeCls cn ρ) m v) := by
-  have leaf : ∀ (τ : Ty) (v : Value), isALeafB κ.wholeCls τ = true → denM τ m v →
-      ((classOf m.heap v, "is_a?", "Object#is_a?") ∈ primitiveMethods ∧
-        (∀ o, v = .ref o → ∃ s, (m.heap.get o).payload = .str s)) ∧
-      (isA m.heap v k = true → denM (isATy κ.classes κ.wholeCls cn τ) m v) ∧
-      (isA m.heap v k = false → denM (notATy κ.classes κ.wholeCls cn τ) m v) := by
+    (hbound : κ.boundConsts.contains cn = false) (hfree : nameFreeN κ "is_a?" = true)
+    (hk : classNamed? m.heap cn = some k) :
+    ∀ (ρ : Ty) (v : Value), isARecvB κ ρ = true → denM ρ m v → IsAFacts κ m cn k ρ v := by
+  have leaf : ∀ (τ : Ty) (v : Value), isALeafB κ τ = true → denM τ m v →
+      IsAFacts κ m cn k τ v := by
     intro τ v hl hd
-    obtain ⟨ch, _, _, hisA, hrow, hpay, hT, hF⟩ := leaf_facts hm hcf hbound hl hd hk
-    refine ⟨⟨hrow, hpay⟩, fun h => ?_, fun h => ?_⟩
-    · rw [hT, ← hisA, h]; exact hd
-    · rw [hF, ← hisA, h]; exact hd
+    cases τ <;> first
+      | exact inst_leaf_facts hm hfree hl hd hk
+      | exact builtin_leaf_facts hm hcf hbound hfree hl (by intro n J h; cases h) hd hk
   intro ρ
   induction ρ with
   | union σ τ ihσ ihτ =>
@@ -180,31 +275,30 @@ theorem recv_facts {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {cn : String} {k
     rw [denM] at hd
     rcases hd with hd | hd
     · have hdn : denM .nilT m v := by simpa [denM] using hd
-      obtain ⟨ch, hba, hok, hisA, hrow, hpay, _, _⟩ := leaf_facts hm hcf hbound hr.2 hdn hk
-      have hch : ch = "NilClass" :: rootAncestors := by
-        simp [builtinAncestors] at hba; exact hba.symm
-      subst hch
-      refine ⟨⟨hrow, hpay⟩, fun h => ?_, fun h => ?_⟩
-      · apply denM_joinT_left
-        rw [hisA] at h
-        simp only [isATy, isANilPart, h, ↓reduceIte]
-        exact hdn
-      · apply denM_joinT_left
-        rw [hisA] at h
-        simp only [notATy, notANilPart, h, Bool.false_eq_true, ↓reduceIte]
-        exact hdn
+      have hok : isANoOk κ.wholeCls ("NilClass" :: rootAncestors) = true := by
+        simpa [isALeafB, builtinAncestors] using hr.2
+      obtain ⟨hdisp, hT, hF⟩ := leaf .nilT v hr.2 hdn
+      have hTe : isATy κ.classes κ.wholeCls cn .nilT = isANilPart κ.classes κ.wholeCls cn := by
+        simp only [isATy, isAAnswer, builtinAncestors, Option.bind, isANilPart, hok, ↓reduceIte]
+        split <;> simp_all
+      have hFe : notATy κ.classes κ.wholeCls cn .nilT = notANilPart cn := by
+        simp only [notATy, isAAnswer, builtinAncestors, Option.bind, notANilPart, hok, ↓reduceIte]
+        split <;> simp_all
+      exact ⟨hdisp, fun h => denM_joinT_left (hTe ▸ hT h), fun h => denM_joinT_left (hFe ▸ hF h)⟩
     · obtain ⟨hdisp, hT, hF⟩ := ih v hr.1 hd
       exact ⟨hdisp, fun h => denM_joinT_right (hT h), fun h => denM_joinT_right (hF h)⟩
   | _ => intro v hr hd; exact leaf _ v (by simpa [isARecvB] using hr) hd
 
 #print axioms recv_facts
+
 /-- `x.is_a?(C)` answers the ancestor test at an unchanged local, or gates. -/
 theorem isA_cond {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x cn : String} {k : ObjId}
     (hm : StateOk κ Γ I m) (hnamed : classNamed? m.heap cn = some k)
     (hlex : Interp.lexicalConstant m cn = some (.ref k))
-    (hrow : (classOf m.heap (m.getLocal x), "is_a?", "Object#is_a?") ∈ primitiveMethods)
-    (hpay : ∀ o, m.getLocal x = .ref o → ∃ s, (m.heap.get o).payload = .str s)
-    (hfree : nameFreeN κ "is_a?" = true) :
+    (hdisp : Interp.invoke (deliverA (.val (.ref k)) m []) (m.getLocal x) .explicit "is_a?"
+        [.ref k] none [] =
+      builtinStep (Builtins.run "Object#is_a?" (m.getLocal x) [.ref k]
+        (deliverA (.val (.ref k)) m []))) :
     RunWith m (evalFrom m (.send (some (.var .lvar x)) "is_a?" [.const cn] none)) Γ .bool κ I
       (fun w n => w = .bool (isA m.heap (m.getLocal x) k) ∧ n.getLocal x = m.getLocal x) := by
   let k₁ : Kont := .recvK "is_a?" [toRuby (.const cn)] .none .explicit
@@ -236,13 +330,8 @@ theorem isA_cond {κ : Ctx} {Γ : Env} {I : Ty} {m : Machine} {x cn : String} {k
       · cases hk; assumption
       · cases hk
     · cases hk
-  have hd : Builtins.deferTwin? M.heap "Object#is_a?" vx [.ref k] = none := by
-    simp [Builtins.deferTwin?, Builtins.reprDefer?, Builtins.coerceDefer?,
-      Builtins.toAryDefer?, Builtins.strCmpDefer?, Builtins.strCmpTwin?, Builtins.coerceTwin?]
   have hinv' : Interp.invoke M vx .explicit "is_a?" [.ref k] none [] =
-      builtinStep (Builtins.run "Object#is_a?" vx [.ref k] M) :=
-    primitive_invoke (bid := "Object#is_a?") (k := classOf m.heap vx) hM hrow rfl (by rfl)
-      hpay hd (by rfl) hfree
+      builtinStep (Builtins.run "Object#is_a?" vx [.ref k] M) := hdisp
   rcases isA_run M vx k hk with h | ⟨msg, h⟩
   · apply RunWith.step (by rfl) (hinv.trans (hinv'.trans (by rw [h]; rfl)))
     apply RunWith.answer (a := .val (.bool (isA M.heap vx k))) (m := M)
@@ -270,11 +359,14 @@ theorem SemSafeCtxA.ifIsA {κ κ' : Ctx} {Γ Γ₁ Γ₂ : Env} {I I' : Ty} {x c
   have hv0 : denM ρ m (m.getLocal x) := by
     have := (hm.env.1 x _ hx).1
     rwa [hρ] at this
-  obtain ⟨⟨hrow, hpay⟩, hT, hF⟩ := recv_facts hm hcf hbound hnamed ρ _ hrecv hv0
+  obtain ⟨_, hT, hF⟩ := recv_facts hm hcf hbound hfree hnamed ρ _ hrecv hv0
+  have hM : StateOk κ Γ I (deliverA (.val (.ref c)) m []) := StateOk_deliverA hm
+  obtain ⟨hdisp, _, _⟩ := recv_facts hM hcf hbound hfree (cn := cn) (k := c) hnamed ρ _ hrecv
+    (denM_deliverA.mpr hv0)
   apply RunSpec.step (answerPoint_evalFrom _ _)
     (show Interp.stepFn _ = .next (pushK [k] (evalFrom m
       (.send (some (.var .lvar x)) "is_a?" [.const cn] none))) from rfl)
-  apply (isA_cond hm hnamed hlex hrow hpay hfree).bindSpec hm.rootClean
+  apply (isA_cond hm hnamed hlex hdisp).bindSpec hm.rootClean
     (by intro c hc; simp at hc; subst hc; rfl)
   intro a n hr
   cases a with

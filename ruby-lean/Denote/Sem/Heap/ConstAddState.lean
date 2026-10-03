@@ -209,7 +209,8 @@ theorem state {κ : Ctx} {Γ : Env} {I τ : Ty} {m : Machine} {n : String} {v : 
         by simpa only [anc] using hm.core.arrayBasic,
         by simpa only [anc] using hm.core.hashBasic, ?_,
         by rw [classOf_eq]; exact hm.core.intMeta,
-        by rw [classOf_eq]; exact hm.core.strMeta⟩
+        by rw [classOf_eq]; exact hm.core.strMeta,
+        by simpa only [hnamed] using hm.core.namesInj⟩
       · intro cn k hk
         rw [size]
         by_cases he : cn = n

@@ -36,7 +36,26 @@ theorem core {m : Machine} {name : String}
     hashBasic := ?_
     coreNamed := ?_
     intMeta := by rw [classOf_old hd (hl _ (by decide))]; exact hc.intMeta
-    strMeta := by rw [classOf_old hd (hl _ (by decide))]; exact hc.strMeta }
+    strMeta := by rw [classOf_old hd (hl _ (by decide))]; exact hc.strMeta
+    namesInj := by
+      intro a b k ha hb
+      have key : ∀ x, classNamed? (heap m name) x = some k →
+          (k < m.heap.objs.size ∧ classNamed? m.heap x = some k) ∨ x = name := by
+        intro x hx
+        by_cases hx' : x = name
+        · exact .inr hx'
+        · left
+          have href := classNamed_constOwn hx
+          rw [constOwn_other htop hch.boot.2.2.2.2 hch.boot.2.2.2.2 hx'] at href
+          have hl := hc.classReady.constRefs x k href
+          exact ⟨hl, named_old_back htop ho hl hx⟩
+      rcases key a ha with ⟨hl, ha'⟩ | rfl
+      · rcases key b hb with ⟨_, hb'⟩ | rfl
+        · exact hc.namesInj a b k ha' hb'
+        · rw [named_fresh htop ho] at hb; cases hb; exact absurd hl (Nat.lt_irrefl _)
+      · rcases key b hb with ⟨hl, _⟩ | rfl
+        · rw [named_fresh htop ho] at ha; cases ha; exact absurd hl (Nat.lt_irrefl _)
+        · rfl }
   · rw [ancestors_old hch hs hd (hl _ (by decide))]; exact hc.basicSelf
   · rw [ancestors_old hch hs hd (hl _ (by decide))]; exact hc.stringSelf
   · rw [ancestors_old hch hs hd (hl _ (by decide))]; exact hc.stringBasic

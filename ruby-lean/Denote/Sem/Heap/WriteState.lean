@@ -215,7 +215,8 @@ theorem StateOk_bindIvar {κ : Ctx} {Γ Γ' : Env} {I I' : Ty} {m : Machine}
       by simpa only [hw.ancestors_eq] using h.core.hashBasic,
       by simpa only [constLookup, hw.classPayload] using h.core.coreNamed,
       by simpa only [hw.classOf_eq] using h.core.intMeta,
-      by simpa only [hw.classOf_eq] using h.core.strMeta⟩
+      by simpa only [hw.classOf_eq] using h.core.strMeta,
+      by simpa only [hn] using h.core.namesInj⟩
 
 #print axioms StateOk_bindIvar
 end Ratchet.Denote

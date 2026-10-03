@@ -563,6 +563,9 @@ structure CoreOk (h : Heap) : Prop where
   /-- Integer's and String's dispatch classes stay their boot metaclasses. -/
   intMeta : classOf h (.ref Boot.integerId) = intMetaId
   strMeta : classOf h (.ref Boot.stringId) = strMetaId
+  /-- No class object has two names: a negative `is_a?` answer about a declared chain reads
+      the tested class off its name. -/
+  namesInj : ∀ a b k, classNamed? h a = some k → classNamed? h b = some k → a = b
 
 theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m₂.heap = h')
     (he : Ext m m₂) (hc : CoreOk h) : CoreOk h' where
@@ -595,6 +598,9 @@ theorem CoreOk.ext {h h' : Heap} {m m₂ : Machine} (hm : m.heap = h) (hm₂ : m
     subst hm; subst hm₂
     simpa only [classOf, he.get Boot.stringId (Nat.lt_trans (by decide)
       hc.classReady.chains.boot.2.2.2.1)] using hc.strMeta
+  namesInj := by
+    subst hm; subst hm₂
+    simpa only [he.classNamed?_eq] using hc.namesInj
 
 /-! ## "And nothing more" — the exactness component
 
