@@ -12,6 +12,7 @@ import Denote.Rules.Method.MethodRest
 import Denote.Rules.Expr.BranchIsA
 import Denote.Rules.Expr.BranchIsAIvar
 import Denote.Rules.Expr.CaseEq
+import Denote.Rules.Expr.CaseEqVar
 import Denote.Rules.Expr.SendUnion
 import Denote.Rules.Expr.BranchMissing
 import Denote.Rules.Expr.BareName

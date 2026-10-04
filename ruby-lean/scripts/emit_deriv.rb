@@ -427,6 +427,11 @@ class Emitter
        "join" => j }, j]
   end
 
+  # A branch whose narrowed local is `never` is unreachable (DJudge.dead): not judged.
+  def go_arm(body, x, r)
+    r == NEVER ? [{ "rule" => "dead", "name" => x }, NEVER] : go(body)
+  end
+
   # `if C === t` with `t` an alias of `x` -- `case x when C` (DJudge.ifCaseEq).
   def narrow_case_eq(n)
     c = n[1]
@@ -434,14 +439,18 @@ class Emitter
       c[3].length == 1 && c[3][0][0] == "var" && c[3][0][1] == "local" && c[4].nil? && n[3]
     t = c[3][0][2]
     a = @env[t]
-    return nil unless a && a["tag"] == "sameAs" && @env[a["name"]] == a["elem"]
-    x = a["name"]
+    return nil unless a
+    plain = a["tag"] != "sameAs"
+    return nil unless plain || @env[a["name"]] == a["elem"]
+    # a plain local is refined in place (DJudge.ifCaseEqVar)
+    x = plain ? t : a["name"]
     cn = c[1][1]
     before = @env.dup
     arms = [[n[2], true], [n[3], false]].map do |body, yes|
-      r = is_a_refine(cn, a["elem"], yes)
-      @env = before.merge(x => r, t => { "tag" => "sameAs", "name" => x, "elem" => r })
-      d, ty = go(body)
+      r = is_a_refine(cn, plain ? a : a["elem"], yes)
+      @env = before.merge(x => r)
+      @env[t] = { "tag" => "sameAs", "name" => x, "elem" => r } unless plain
+      d, ty = go_arm(body, x, r)
       [d, ty, @env]
     end
     rest = ->(e) { e.reject { |k, _| k == x || k == t } }
@@ -466,10 +475,10 @@ class Emitter
     no = is_a_refine(cn, t, false)
     before = @env.dup
     @env = before.merge(x => yes)
-    dt, tt = go(n[2])
+    dt, tt = go_arm(n[2], x, yes)
     then_env = @env
     @env = before.merge(x => no)
-    de, te = go(n[3])
+    de, te = go_arm(n[3], x, no)
     else_env = @env
     @env = before
     raise Blocked, "the two branches of an `if` leave different local types" if

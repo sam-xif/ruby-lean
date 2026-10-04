@@ -469,6 +469,20 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
         (.sameAs x (notATy κ.classes κ.wholeCls cn ρ))) el τ₂ Γ₂ κ I κ' I' →
       DJudge Γ (.if' (.send (some (.const cn)) "===" [.var .lvar t] none) th (some el)) (joinT τ₁ τ₂)
         (joinEnv Γ₁ Γ₂) κ I κ' I'
+  /-- `if C === x` on a plain local — string interpolation's `String === t` after desugaring
+      (Sorbet 0.6.13405 accepts corpus 165). Refines `x` exactly as `ifIsA` does. -/
+  | ifCaseEqVar {κ κ' : Ctx} {Γ Γ₁ Γ₂ : Env} {I I' : Ty} {x cn : String}
+      {ρ τ₁ τ₂ : Ty} {th el : Expr} :
+      envGet? Γ x = some ρ → ifIsAB κ ρ cn = true → nameFreeN κ "===" = true →
+      DJudge (envSet Γ x (isATy κ.classes κ.wholeCls cn ρ)) th τ₁ Γ₁ κ I κ' I' →
+      DJudge (envSet Γ x (notATy κ.classes κ.wholeCls cn ρ)) el τ₂ Γ₂ κ I κ' I' →
+      DJudge Γ (.if' (.send (some (.const cn)) "===" [.var .lvar x] none) th (some el)) (joinT τ₁ τ₂)
+        (joinEnv Γ₁ Γ₂) κ I κ' I'
+  /-- Unreachable code: a local typed `never` (a narrowed-away branch) has no value, so no
+      conformant machine evaluates `e`. Sorbet does not check dead code either. -/
+  | dead {κ : Ctx} {Γ : Env} {I τ : Ty} {x : String} {e : Expr} :
+      envGet? Γ x = some τ → stripAlias τ = .never → plainArgB e = true →
+      DJudge Γ e .never Γ κ I
   /-- A send on a union-typed local (Sorbet 0.6.13405 accepts corpus 262): the receiver is in
       one arm, so the send is typed at each arm's binding and the results joined. Each arm
       resolves the message by whatever rule applies to it; an arm that cannot respond has no
@@ -1179,7 +1193,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_12 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_13 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_14 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 
