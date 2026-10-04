@@ -11,7 +11,7 @@ def clinkProfile : Option (List String) := some
   ["intLit", "fltLit", "strLit", "symLit", "truLit", "flsLit", "nilLit", "regexpLit",
    "seq", "DJudgeSeq.last", "DJudgeSeq.cons", "var", "vasgn", "vasgnAlias",
    "prim", "DJudgeAll.nil", "DJudgeAll.cons", "if'", "ifNoElse", "ifTruthy", "ifTruthyNoElse", "ifNilVar", "ifNilQueryNil", "ifNilQuery", "ifIsA", "ifIsAIvar", "ifCaseEq", "ifCaseEqVar", "dead", "widen", "sendUnion", "casgnTop", "constRead", "while'", "bareName",
-   "arrayLit", "hashLit", "DJudgePairs.nil", "DJudgePairs.cons", "defDecl", "callSig", "defDeclOpt", "callSigOpt", "defDeclKw", "callSigKw", "defDeclRest", "callSigRest",
+   "arrayLit", "hashLit", "DJudgePairs.nil", "DJudgePairs.cons", "defDecl", "callSig", "defDeclOpt", "callSigOpt", "defDeclKw", "callSigKw", "defDeclKwOpt", "callSigKwOpt", "defDeclRest", "callSigRest",
    "recursive", "DJudgeRec.embed", "DJudgeRec.prim", "DJudgeRec.if'", "DJudgeRec.selfCall",
    "DJudgeRecAll.nil", "DJudgeRecAll.cons", "classDecl", "classReopen", "subclassDecl", "newInherited", "callInherited", "constClass", "memberDef", "newDefault", "callMethodSig", "ivarRead",
    "initDef", "newInst", "InitJudge.intLit", "InitJudge.var", "InitJudge.ivarAsgn", "InitJudge.seq",

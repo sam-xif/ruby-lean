@@ -13907,3 +13907,18 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
 - The emitter's `fit(d, t, want)` wraps a derivation when `join(t, want) == want` (a `String`
   or `nil` where `T.nilable(String)` is declared). Used for keyword/optional call arguments
   and optional defaults; other call sites still compare types exactly.
+
+## Keyword with a default: `defDeclKwOpt`/`callSigKwOpt` (130/130, 134/263, climbs 155)
+
+- Shape: required keywords, then one keyword with a default. A call passes the required
+  keywords in declared order, with or without the defaulted one last (`kwOptKeys` picks by
+  entry count). Any number of defaulted keywords, or reordered ones, are not admitted.
+- The machine binds an omitted keyword default through the same `optDefK` as a positional
+  default, so `opt_default_chain`, `optOmitted_envOk` and `methodFrame_runSpec_at` are reused
+  unchanged. New: `classifyFull_keys` (any non-empty key list, with or without defaults —
+  it subsumes `classifyFull_kw`) and the two `enterUserMethod_kwOpt*` lemmas.
+- `paramEqDeep` compares a defaulted keyword by its default's syntax; without it `ctxEq?`
+  was irreflexive on any context holding such a method and every check declined.
+- The declared type is exact in the rule; the emitter widens the default and arguments
+  (`nil` or `String` at `T.nilable(String)`). `fit` offers the nilable's element as the join
+  partner, because `joinT nil (nilable X)` is `nilable (nilable X)`.

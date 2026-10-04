@@ -654,6 +654,33 @@ private def kwH (args : List Deriv) : Deriv :=
 #guard !validateD (kwP [.pair "a" (.str "x")]) (kwH [.strLit "x"])
 #guard !validateD (kwP [.pair "a" (.str "x"), .pair "b" (.int 1)]) (kwH [.strLit "x", .intLit 1])
 
+-- Active defDeclKwOpt/callSigKwOpt (155): required keywords, then one with a default.
+private def kwOptP (entries : List KwEntry) : Ratchet.Expr := .seq [
+  .def' "build" [.key "a" none, .key "b" (some (.str "!"))]
+    (.send (some (.var .lvar "a")) "+" [.var .lvar "b"] none),
+  .send none "build" [.kwargs entries] none]
+private def kwOptH (args : List Deriv) (dflt : Deriv := .strLit "!") : Deriv :=
+  let ps : List SigParam := [("a", .cls "String")]
+  let o : SigParam := ("b", .cls "String")
+  let body : Deriv := .prim (.var .lvar "a") "+" [.var .lvar "b"] (.cls "String") (.cls "String")
+  .seq [.defDeclKwOpt "build" ps o dflt (.cls "String") body,
+    .callSigKwOpt "build" args (.cls "String") ps o dflt body]
+#guard validateD (kwOptP [.pair "a" (.str "x")]) (kwOptH [.strLit "x"])
+#guard validateD (kwOptP [.pair "a" (.str "x"), .pair "b" (.str "y")]) (kwOptH [.strLit "x", .strLit "y"])
+-- A wrongly typed keyword, a missing required one, an unknown one, a wrongly typed default
+-- and either rule disabled all fail.
+#guard !validateD (kwOptP [.pair "a" (.str "x"), .pair "b" (.int 1)]) (kwOptH [.strLit "x", .intLit 1])
+#guard !validateD (kwOptP [.pair "b" (.str "y")]) (kwOptH [.strLit "y"])
+#guard !validateD (kwOptP [.pair "a" (.str "x"), .pair "c" (.str "y")]) (kwOptH [.strLit "x", .strLit "y"])
+#guard !validateD (.seq [.def' "build" [.key "a" none, .key "b" (some (.int 1))]
+    (.send (some (.var .lvar "a")) "+" [.var .lvar "b"] none)])
+  (.seq [.defDeclKwOpt "build" [("a", .cls "String")] ("b", .cls "String") (.intLit 1) (.cls "String")
+    (.prim (.var .lvar "a") "+" [.var .lvar "b"] (.cls "String") (.cls "String"))])
+#guard !validateDWith (fun q => clinkEnabled q && q != "callSigKwOpt")
+  (kwOptP [.pair "a" (.str "x")]) (kwOptH [.strLit "x"])
+#guard !validateDWith (fun q => clinkEnabled q && q != "defDeclKwOpt")
+  (kwOptP [.pair "a" (.str "x")]) (kwOptH [.strLit "x"])
+
 -- Active defDeclRest/callSigRest (153): surplus positionals collected at the element type.
 private def restP (args : List Ratchet.Expr) : Ratchet.Expr := .seq [
   .def' "tag" [.req "first", .rest (some "rest")]

@@ -163,6 +163,7 @@ class Emitter
     @ret_refined = {}  # [owner, name] -> body union proposed in place of a nominal return
     @opt_defs = {}     # top-level method with one optional -> its checked derivations
     @kw_defs = {}      # top-level keyword-only method -> its checked derivations
+    @kw_opt_defs = {}  # ... with a defaulted last keyword
     @rest_defs = {}    # top-level *rest method -> its checked derivations
   end
 
@@ -783,9 +784,10 @@ class Emitter
   # Subsumption (DJudge.widen): a `t` where `want` is expected, when `want` is their join.
   def fit(d, t, want)
     return d if t == want
-    return nil unless join(t, want) == want
 
-    { "rule" => "widen", "value" => d, "other" => want }
+    # `joinT nil (nilable X)` is not `nilable X`, so a nilable target also offers its element
+    other = [want, want["elem"]].compact.find { |o| join(t, o) == want }
+    other && { "rule" => "widen", "value" => d, "other" => other }
   end
 
   def fit_all(ds, ts, wants)
@@ -813,6 +815,22 @@ class Emitter
       raise Blocked, "#{m}: keyword values disagree with the declared types" unless dargs
       return [{ "rule" => "callSigKw", "name" => m, "args" => dargs, "ret" => kd["ret"],
                 "params" => kd["params"], "body" => kd["body"] }, kd["ret"]]
+    end
+    if !@singleton && @self_cls.nil? && (kd = @kw_opt_defs[m])
+      unless args.length == 1 && args[0][0] == "kwargs" &&
+             args[0][1].all? { |e| e.is_a?(Array) && e.length == 2 && e[0].is_a?(Array) && e[0][0] == "sym" }
+        raise Blocked, "#{m}: keyword calls must pass static keywords"
+      end
+      keys = args[0][1].map { |e| e[0][1] }
+      all = kd["params"] + [kd["opt"]]
+      want = [kd["params"], all].find { |ps| keys == ps.map { |p| p["name"] } }
+      raise Blocked, "#{m}: keywords must be passed in declared order" unless want
+      dargs, targs = go_all(args[0][1].map { |e| e[1] })
+      dargs = fit_all(dargs, targs, want.map { |p| p["ty"] })
+      raise Blocked, "#{m}: keyword values disagree with the declared types" unless dargs
+      return [{ "rule" => "callSigKwOpt", "name" => m, "args" => dargs, "ret" => kd["ret"],
+                "params" => kd["params"], "opt" => kd["opt"], "default" => kd["default"],
+                "body" => kd["body"] }, kd["ret"]]
     end
     dargs, targs = go_all(args)
     if !@singleton && @self_cls.nil? && (rd = @rest_defs[m])
@@ -885,6 +903,10 @@ class Emitter
     if @self_cls.nil? && !@singleton && !params.empty? &&
        params.all? { |p| p[0] == "pkey" && p[2].nil? } && sig["params"].length == params.length
       return kw_definition(name, params, sig, body)
+    end
+    if @self_cls.nil? && !@singleton && !params.empty? && params.all? { |p| p[0] == "pkey" } &&
+       params[0...-1].all? { |p| p[2].nil? } && params[-1][2] && sig["params"].length == params.length
+      return kw_opt_definition(name, params, sig, body)
     end
     if @self_cls.nil? && !@singleton && !params.empty? && params.last[0] == "prest" && params.last[1] &&
        params[0...-1].all? { |p| p[0] == "preq" } && sig["params"].length == params.length
@@ -990,6 +1012,35 @@ class Emitter
     end
     @kw_defs[name] = { "params" => ps, "body" => dbody, "ret" => sig["ret"] }
     [{ "rule" => "defDeclKw", "name" => name, "params" => ps, "ret" => sig["ret"], "body" => dbody }, SYM]
+  end
+
+  # Required keywords, then one with a default (DJudge.defDeclKwOpt / callSigKwOpt).
+  def kw_opt_definition(name, params, sig, body)
+    tys = params.map do |p|
+      s = sig["params"].find { |q| q["name"] == p[1] }
+      raise Blocked, "#{name}: keyword #{p[1]} has no declared type" unless s
+      { "name" => p[1], "ty" => as_inst(s["ty"]) }
+    end
+    pre = tys[0...-1]
+    opt = tys[-1]
+    outer_env = @env
+    outer_method = @current_method
+    @current_method = name
+    begin
+      @env = pre.to_h { |p| [p["name"], p["ty"]] }
+      ddflt, tdflt = go_ordinary(params[-1][2])
+      ddflt = fit(ddflt, tdflt, opt["ty"])
+      raise Blocked, "#{name}: the default's type is not the declared one" unless ddflt
+      @env = pre.to_h { |p| [p["name"], p["ty"]] }.merge(opt["name"] => opt["ty"])
+      dbody, = go_ordinary(body)
+    ensure
+      @env = outer_env
+      @current_method = outer_method
+    end
+    @kw_opt_defs[name] = { "params" => pre, "opt" => opt, "default" => ddflt, "body" => dbody,
+                           "ret" => sig["ret"] }
+    [{ "rule" => "defDeclKwOpt", "name" => name, "params" => pre, "opt" => opt,
+       "default" => ddflt, "ret" => sig["ret"], "body" => dbody }, SYM]
   end
 
   # One trailing optional (DJudge.defDeclOpt): the default over the required params, the

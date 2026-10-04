@@ -52,6 +52,8 @@ def generate(module):
         text = text.replace('.ifNoElse hc (by', '.ifNoElse (used_0 := DJudge.rules hc) (used_1 := DJudge.rules ht) hc (by')
         text = text.replace('.ifTruthy hx hf ha ht (by', '.ifTruthy (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hf ha ht (by')
         text = text.replace('.ifTruthyNoElse hx hf ha (by', '.ifTruthyNoElse (used_0 := DJudge.rules ht) hx hf ha (by')
+        text = text.replace('.defDeclKwOpt (d := decl) (σ := o.2) (Γb := Γb) hshape', '.defDeclKwOpt (d := decl) (σ := o.2) (Γb := Γb) (used_0 := DJudge.rules hd) (used_1 := DJudge.rules hbj) hshape')
+        text = text.replace('DJudge.callSigKwOpt (σ := o.2) (Γb := Γb) hshape', 'DJudge.callSigKwOpt (σ := o.2) (Γb := Γb) (used_0 := DJudge.rules hd) (used_1 := DJudge.rules hbj) hshape')
         text = text.replace('.defDeclOpt (d := decl) (σ := o.2) (Γb := Γb) hshape', '.defDeclOpt (d := decl) (σ := o.2) (Γb := Γb) (used_0 := DJudge.rules hd) (used_1 := DJudge.rules hbj) hshape')
         text = text.replace('DJudge.callSigOpt (σ := o.2) (Γb := Γb) hshape', 'DJudge.callSigOpt (σ := o.2) (Γb := Γb) (used_0 := DJudge.rules hd) (used_1 := DJudge.rules hbj) hshape')
         text = text.replace(".while' (by subst", ".while' (used_0 := DJudge.rules hc) (used_1 := DJudge.rules hb) (by subst")
