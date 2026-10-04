@@ -8793,8 +8793,9 @@ def core_46 : Expr :=
            none))))
 
 def core_47 : Expr :=
-  RubyCore.Expr.module'
+  RubyCore.Expr.class'
     "File"
+    none
     (RubyCore.Expr.seq
       [RubyCore.Expr.casgn "SEPARATOR" (RubyCore.Expr.str "/"),
        RubyCore.Expr.defs

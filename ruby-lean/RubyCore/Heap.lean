@@ -249,10 +249,10 @@ inductive Payload where
   | file (bytes : String)
   /-- A **directory** in the virtual filesystem (issue #7, step 1). `entries`
       maps a child's basename to its `ObjId`, in the boot-sorted order CRuby's
-      `Dir.entries` reports, so relative-path resolution and directory listing
-      have one definition. A directory and a file are distinguished by payload,
-      never by a string convention. -/
-  | dir (entries : List (String × ObjId))
+      `Dir.entries` reports; `parent` gives `..` one definition (the root's is
+      `none`) rather than a textual collapse. A directory and a file are
+      distinguished by payload, never by a string convention. -/
+  | dir (entries : List (String × ObjId)) (parent : Option ObjId)
 deriving Inhabited
 
 /-- A Hash's default for missing keys: `Hash.new(v)` stores a static value `val v`;
@@ -670,16 +670,18 @@ def initHeap : Heap :=
                         name := "", attached := some objectId, isModule := false } }).2
   let hE := hE.set objectId { hE.get objectId with eigen := some eO }
   -- The VFS fixture, allocated in the order `vfsReadmeId`, `vfsNumsId`,
-  -- `vfsDataId`, `vfsTmpId`, `vfsRootId` name, children before parents.
+  -- `vfsDataId`, `vfsTmpId`, `vfsRootId` name, children before parents. Parents
+  -- are patched in where the id is already known.
   let hV := (hE.alloc { klass := fileId, payload := .file "hello\n" }).2
-  let hV := (hV.alloc { klass := fileId, payload := .file "1\n2\n3\n" }).2
   let hV := (hV.alloc
-    { klass := dirId, payload := .dir [("nums.txt", vfsNumsId)] }).2
+    { klass := fileId, payload := .file "1\n2\n3\n" }).2
+  let hV := (hV.alloc
+    { klass := dirId, payload := .dir [("nums.txt", vfsNumsId)] (some vfsTmpId) }).2
   let hV := (hV.alloc
     { klass := dirId,
-      payload := .dir [("readme.txt", vfsReadmeId), ("vfsdata", vfsDataId)] }).2
+      payload := .dir [("readme.txt", vfsReadmeId), ("vfsdata", vfsDataId)] (some vfsRootId) }).2
   (hV.alloc
-    { klass := dirId, payload := .dir [("tmp", vfsTmpId)] }).2
+    { klass := dirId, payload := .dir [("tmp", vfsTmpId)] none }).2
 
 /- Drift guard: `vfsBase` is derived from `classTable.length`, so a new bootstrap
    class shifts the fixture ids automatically. The one remaining way to break
@@ -730,13 +732,17 @@ def components (s : String) : List String :=
   (s.splitOn "/").filter (fun c => c != "" && c != ".")
 
 /-- Resolve `comps` from directory `dir`. A `dir` payload is the only thing that
-    can hold children; anything else stops the walk (`none`). -/
+    can hold children; anything else stops the walk (`none`). `..` climbs to the
+    stored parent (staying put at the root, whose parent is `none`). -/
 def walk (h : Heap) (dir : ObjId) : List String → Option ObjId
   | [] => some dir
   | c :: rest =>
     match (h.get dir).payload with
-    | .dir entries =>
-      if c == ".." then walk h dir rest
+    | .dir entries parent =>
+      if c == ".." then
+        match parent with
+        | some p => walk h p rest
+        | none => walk h dir rest
       else match entries.find? (fun p => p.1 == c) with
         | some (_, child) => walk h child rest
         | none => none

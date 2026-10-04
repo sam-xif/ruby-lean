@@ -298,7 +298,7 @@ def inspectFuel : Nat → Heap → Value → Except String String
              | none => "nil")
         return "#<MatchData " ++ esc whole ++
           (if parts.isEmpty then "" else " " ++ String.intercalate " " parts) ++ ">"
-      | .file _ | .dir _ =>
+      | .file _ | .dir _ _ =>
         -- A VFS file/directory object never reaches `inspect` at step 1 (the
         -- `File.*`/`Dir.*` singleton methods return String/Integer/Bool, never the
         -- object itself), and CRuby's rendering carries the path, which the
@@ -352,7 +352,7 @@ def toSFuel : Nat → Heap → Value → Except String String
         if (h.get o).binary && hasHighByte whole then
           throw "MatchData#to_s over a byte-string subject with a byte ≥ 0x80"
         else return whole
-      | .file _ | .dir _ =>
+      | .file _ | .dir _ _ =>
         throw "to_s of a VFS file/directory object (issue #7 step 1)"
       | .none | .rng _ =>
         let cname := className h (h.get o).klass

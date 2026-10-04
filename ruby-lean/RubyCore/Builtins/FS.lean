@@ -40,7 +40,7 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
         | some o =>
           match (h.get o).payload with
           | .file bytes => okStr m bytes
-          | .dir _ => .unsupported "File.read: is a directory (Errno::EISDIR gated at step 1)"
+          | .dir _ _ => .unsupported "File.read: is a directory (Errno::EISDIR gated at step 1)"
           | _ => .unsupported "File.read: not a regular file"
         | none => .unsupported "File.read: no such file (Errno::ENOENT gated at step 1)"
       | none => .unsupported "File.read: path argument is not a String"
@@ -56,7 +56,7 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
           | .file _ =>
             let h' := h.set o { h.get o with payload := .file bytes }
             .ok (.int (Int.ofNat bytes.length)) { m with heap := h' }
-          | .dir _ => .unsupported "File.write: is a directory (Errno::EISDIR gated at step 1)"
+          | .dir _ _ => .unsupported "File.write: is a directory (Errno::EISDIR gated at step 1)"
           | _ => .unsupported "File.write: not a regular file"
         | none => .unsupported "File.write: no such file (Errno::ENOENT gated at step 1)"
       | _, _ => .unsupported "File.write: path or data argument is not a String"
@@ -79,7 +79,7 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
     match args with
     | [p] => (match pathArg? m p with
       | some path => match VFS.lookup h path with
-        | some o => .ok (.bool (match (h.get o).payload with | .dir _ => true | _ => false)) m
+        | some o => .ok (.bool (match (h.get o).payload with | .dir _ _ => true | _ => false)) m
         | none => .ok (.bool false) m
       | none => .unsupported s!"{bid}: path argument is not a String")
     | _ => .unsupported s!"{bid}: argument shape outside step 1"
@@ -89,7 +89,7 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
       | some path => match VFS.lookup h path with
         | some o => match (h.get o).payload with
           | .file bytes => .ok (.int (Int.ofNat bytes.length)) m
-          | .dir _ => .unsupported "File.size: is a directory (Errno::EISDIR gated at step 1)"
+          | .dir _ _ => .unsupported "File.size: is a directory (Errno::EISDIR gated at step 1)"
           | _ => .unsupported "File.size: not a regular file"
         | none => .unsupported "File.size: no such file (Errno::ENOENT gated at step 1)"
       | none => .unsupported "File.size: path argument is not a String")
