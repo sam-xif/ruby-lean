@@ -13899,3 +13899,11 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   type. 121 climbs with no rule change (a block may write a captured local at its own type).
   120/124 stay rejected (retyped capture / yield in an instance method); 238 needs a
   union-typed block domain.
+
+## Subsumption: `DJudge.widen` (128/128)
+
+- `widen σ : DJudge Γ e τ Γ' → DJudge Γ e (joinT τ σ) Γ'` — Sorbet's `T <: T.any(T, U)`.
+  Proof is `denM_joinT_left`. The Deriv node carries `σ`; nothing is decided.
+- The emitter's `fit(d, t, want)` wraps a derivation when `join(t, want) == want` (a `String`
+  or `nil` where `T.nilable(String)` is declared). Used for keyword/optional call arguments
+  and optional defaults; other call sites still compare types exactly.

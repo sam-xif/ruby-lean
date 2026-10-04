@@ -67,6 +67,11 @@ theorem SemSafeCtxA.dead {κ : Ctx} {Γ : Env} {I τ : Ty} {x : String} {e : Rat
   rw [hn] at h
   exact absurd h (by simp [denM])
 
+theorem SemSafeCtxA.widen {κ κ' : Ctx} {Γ Γ' : Env} {I I' τ : Ty} {e : Ratchet.Expr} (σ : Ty)
+    (h : SemSafeCtxA κ Γ I e τ κ' Γ' I') : SemSafeCtxA κ Γ I e (joinT τ σ) κ' Γ' I' :=
+  h.weaken (fun _ _ hm hd => ⟨hm, denM_joinT_left hd⟩)
+
 #print axioms SemSafeCtxA.ifCaseEqVar
+#print axioms SemSafeCtxA.widen
 #print axioms SemSafeCtxA.dead
 end Ratchet.Denote.Typed

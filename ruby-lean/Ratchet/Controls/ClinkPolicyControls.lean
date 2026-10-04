@@ -760,6 +760,11 @@ private def unionInitH : Deriv :=
 #guard !validateD (.seq [.vasgn .lvar "v" (.int 1), lenP]) (.seq [.vasgn .lvar "v" (.intLit 1), .dead "v"])
 #guard !validateDWith (fun q => clinkEnabled q && q != "ifCaseEqVar") (caseVarP unionInit lenP plusP)
   (.seq [unionInitH, .ifCaseEq lenH plusH .int])
+-- Active widen (155): a value is a member of any join with its type, and of nothing else.
+#guard !validateD (.send (some (.int 1)) "+" [.str "s"] none)
+  (.prim (.intLit 1) "+" [.widen (.strLit "s") .int] .int .int)
+#guard !validateDWith (fun q => clinkEnabled q && q != "widen") (.int 1) (.widen (.intLit 1) .nilT)
+#guard validateD (.int 1) (.widen (.intLit 1) .nilT)
 #guard !validateDWith (fun q => clinkEnabled q && q != "dead") (caseVarP (.str "s") lenP plusP)
   (.seq [.vasgn .lvar "v" (.strLit "s"), .ifCaseEq lenH (.dead "v") .int])
 
