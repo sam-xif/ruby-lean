@@ -19,6 +19,26 @@ def optShape? (formals : List Param) (ps : List SigParam) (n : String) :
     else none
   | _ => none
 
+/-- Required keywords followed by one keyword with a default. -/
+def kwOptShape? (formals : List Param) (ps : List SigParam) (n : String) :
+    Option ((d : Expr) ×'
+      formals = ps.map (fun p => Param.key p.1 none) ++ [.key n (some d)]) :=
+  match hl : formals.getLast? with
+  | some (.key n' (some d)) =>
+    if hn : n' = n then
+      if h : paramEqAll formals.dropLast (ps.map (fun p => Param.key p.1 none)) = true then
+        some ⟨d, by
+          obtain ⟨ys, hys⟩ := List.getLast?_eq_some_iff.mp hl
+          rw [hys, List.dropLast_concat] at h
+          rw [hys, ← paramEqAll_sound h, ← hn]⟩
+      else none
+    else none
+  | _ => none
+
+/-- The keys a `callSigKwOpt` call site passes: all of them, or all but the defaulted one. -/
+def kwOptKeys (ps : List SigParam) (o : SigParam) (entries : List KwEntry) : List String :=
+  if entries.length = ps.length then ps.map (·.1) else (ps ++ [o]).map (·.1)
+
 def defnNamed? (name : String) : (ds : List Defn) → Option ((d : Defn) ×' (d ∈ ds ∧ d.name = name))
   | [] => none
   | x :: xs =>

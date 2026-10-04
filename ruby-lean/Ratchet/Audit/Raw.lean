@@ -829,6 +829,67 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
       else none
       else none
       else none
+    | .def' name formals body, .defDeclKwOpt name' ps o ddflt ret db => do
+      if name != name' then none else do
+      if κ.scope.runtimeClass.isSome then none else do
+      let ⟨dflt, hshape⟩ ← kwOptShape? formals ps o.1
+      if ht : (ps ++ [(o.1, o.2)]).all (fun p => FirstOrder p.2 && !isAliasTy p.2) = true then do
+      if hr : FirstOrder ret = true then do
+      if hm : κ.scope.runtimeMain = true then do
+      if hc : topDeclClassesB κ name = true then do
+      if hs : κ.selfTy = none then do
+      if hb : κ.blockTy = none then do
+      if hco : κ.consts = [] then do
+      if ha : κ.asms = [] then do
+      if hi : FirstOrder I = true then do
+      if hg : Γ.all (fun p => FirstOrder (stripAlias p.2)) = true then do
+      if hf : κ.defs.all (fun old => old.name != name) = true then do
+      if hmiss : "method_missing" ≠ name then do
+      if hquiet : "method_added" ≠ name then do
+        let decl : Defn := ⟨name, formals, body⟩
+        match check n ps dflt ddflt (topBodyCtx κ decl) I cache with
+        | some ⟨σd, Γd, κd, Id, hd, _⟩ =>
+          if hΓd : Γd = ps then
+          if hId : Id = I then
+          if hσd : σd = o.2 then
+          match ctxEq? κd (topBodyCtx κ decl) with
+          | some ⟨hκd⟩ =>
+            match check n (ps ++ [(o.1, o.2)]) body db (topBodyCtx κ decl) I cache with
+            | some ⟨τb, Γb, κb, Ib, hbj, _⟩ =>
+              if hIb : Ib = I then
+              if hτb : τb = ret then
+              match ctxEq? κb (topBodyCtx κ decl) with
+              | some ⟨hκb⟩ => do
+                let fresh ← refreshBodies n (topDeclCtx κ decl) I cache
+                some ⟨.sym, Γ, topDeclCtx κ decl, I,
+                  .defDeclKwOpt (d := decl) (σ := o.2) (Γb := Γb) (used_0 := DJudge.rules hd) (used_1 := DJudge.rules hbj) hshape
+                    (by simpa only [List.all_eq_true, Bool.and_eq_true, Bool.not_eq_true'] using ht)
+                    hr (by rw [hΓd, hId, hσd, hκd] at hd; exact hd) (by rw [hIb, hτb, hκb] at hbj; exact hbj)
+                    hm hc hs hb hco ha hi (List.all_eq_true.mp hg)
+                    (by simpa only [List.all_eq_true, bne_iff_ne] using hf) hmiss hquiet,
+                  fresh⟩
+              | none => none
+              else none
+              else none
+            | none => none
+          | none => none
+          else none
+          else none
+          else none
+        | none => none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
     | .def' name formals body, .defDecl name' ps ret db => do
       if name != name' then none else do
       if let some cn := κ.scope.runtimeClass then
@@ -1021,6 +1082,77 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
           else none
           else none
         | none => none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+      else none
+    | .send none name [.kwargs entries] none, .callSigKwOpt name' ds ret ps o ddflt db => do
+      if name != name' then none else do
+      match hka : kwArgs? (kwOptKeys ps o entries) entries with
+      | none => none
+      | some args =>
+      let a ← checkAll n Γ args ds κ I cache
+      let ⟨decl, hdm, hname⟩ ← defnNamed? name a.ctx.defs
+      let ⟨dflt, hshape⟩ ← kwOptShape? decl.params ps o.1
+      let κb := a.ctx.withFrame (some ⟨"Object", "Object", decl.name, false⟩)
+      if htys : (kwOptKeys ps o entries = ps.map (·.1) ∧ a.tys = ps.map (·.2)) ∨
+          (kwOptKeys ps o entries = (ps ++ [(o.1, o.2)]).map (·.1) ∧
+            a.tys = (ps ++ [(o.1, o.2)]).map (·.2)) then
+      if hnd : (ps.map (·.1) ++ [o.1]).Nodup then
+      if ht : (ps ++ [(o.1, o.2)]).all (fun p => FirstOrder p.2 && !isAliasTy p.2) = true then
+      if hr : FirstOrder ret = true then
+      if hafter : envAfter ps o.1 o.2 = ps ++ [(o.1, o.2)] then
+      if hkill : killClosOverSpine a.spine o.1 o.2 = a.spine then
+      if hcap : capStale o.1 o.2 o.2 = false then
+      if hctx : capStaleCtx o.1 o.2 κb = false then
+      if hstart : κ.scope.runtimeMain = true then
+      if hm : a.ctx.scope.runtimeMain = true then
+      if hs : a.ctx.selfTy = none then
+      if hb : a.ctx.blockTy = none then
+      if hco : a.ctx.consts = [] then
+      if ha : a.ctx.asms = [] then
+      if hi : FirstOrder a.spine = true then
+      if hg : a.out.all (fun p => FirstOrder (stripAlias p.2)) = true then
+        match check n ps dflt ddflt κb a.spine a.cache with
+        | some ⟨σd, Γd, κd, Id, hd, _⟩ =>
+          if hΓd : Γd = ps then
+          if hId : Id = a.spine then
+          if hσd : σd = o.2 then
+          match ctxEq? κd κb with
+          | some ⟨hκd⟩ =>
+            match check n (ps ++ [(o.1, o.2)]) decl.body db κb a.spine a.cache with
+            | some ⟨τb, Γb, κb', Ib, hbj, _⟩ =>
+              if hIb : Ib = a.spine then
+              if hτb : τb = ret then
+              match ctxEq? κb' κb with
+              | some ⟨hκb⟩ =>
+                some ⟨ret, a.out, a.ctx, a.spine, by
+                  simpa only [hname] using (DJudge.callSigKwOpt (σ := o.2) (Γb := Γb) (used_0 := DJudge.rules hd) (used_1 := DJudge.rules hbj) hshape hnd hka
+                    (by simpa only [List.all_eq_true, Bool.and_eq_true, Bool.not_eq_true'] using ht)
+                    hr (by rw [hΓd, hId, hσd, hκd] at hd; exact hd) (by rw [hIb, hτb, hκb] at hbj; exact hbj)
+                    hafter hkill hcap hctx a.judged htys hdm hstart hm hs hb hco ha hi
+                    (List.all_eq_true.mp hg)), a.cache⟩
+              | none => none
+              else none
+              else none
+            | none => none
+          | none => none
+          else none
+          else none
+          else none
+        | none => none
+      else none
       else none
       else none
       else none

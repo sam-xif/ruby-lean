@@ -141,6 +141,7 @@ theorem exprEq_sound (a b : Expr) : exprEq a b = true → a = b := by
 syntax. Definition tables need this to be reflexive for optional-parameter methods. -/
 def paramEqDeep : Param → Param → Bool
   | .opt a d, .opt b e => a == b && exprEq d e
+  | .key a (some d), .key b (some e) => a == b && exprEq d e
   | p, q => paramEq p q
 
 def paramEqAllDeep : List Param → List Param → Bool
@@ -149,10 +150,14 @@ def paramEqAllDeep : List Param → List Param → Bool
   | _, _ => false
 
 theorem paramEqDeep_sound {a b : Param} (h : paramEqDeep a b = true) : a = b := by
-  cases a <;> cases b <;> simp_all [paramEqDeep, paramEq]
-  · exact exprEq_sound _ _ h.2
-  · rename_i d₁ _ d₂
-    cases d₁ <;> cases d₂ <;> simp_all
+  unfold paramEqDeep at h
+  split at h
+  · simp only [Bool.and_eq_true, beq_iff_eq] at h
+    rw [h.1, exprEq_sound _ _ h.2]
+  · simp only [Bool.and_eq_true, beq_iff_eq] at h
+    rw [h.1, exprEq_sound _ _ h.2]
+  · have := paramEqAll_sound (a := [a]) (b := [b]) (by simpa [paramEqAll] using h)
+    exact List.cons.inj this |>.1
 
 theorem paramEqAllDeep_sound {a b : List Param} (h : paramEqAllDeep a b = true) : a = b := by
   induction a generalizing b with

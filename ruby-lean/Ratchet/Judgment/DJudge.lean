@@ -584,6 +584,19 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       (∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) →
       (∀ old ∈ κ.defs, old.name ≠ d.name) → "method_missing" ≠ d.name → "method_added" ≠ d.name →
       DJudge Γ (.def' d.name d.params d.body) .sym Γ κ I (topDeclCtx κ d) I
+  /-- Required keywords, then one keyword with a default (Sorbet 0.6.13405 accepts corpus
+      155). The default is judged over the required keywords, as `defDeclOpt`'s is. -/
+  | defDeclKwOpt {κ : Ctx} {Γ Γb : Env} {I τ σ : Ty} {d : Defn} {ps : List SigParam}
+      {n : String} {dflt : Expr} :
+      d.params = ps.map (fun p => Param.key p.1 none) ++ [.key n (some dflt)] →
+      (∀ p ∈ ps ++ [(n, σ)], FirstOrder p.2 = true ∧ isAliasTy p.2 = false) → FirstOrder τ = true →
+      DJudge ps dflt σ ps (topBodyCtx κ d) I (topBodyCtx κ d) I →
+      DJudge (ps ++ [(n, σ)]) d.body τ Γb (topBodyCtx κ d) I (topBodyCtx κ d) I →
+      κ.scope.runtimeMain = true → topDeclClassesB κ d.name = true → κ.selfTy = none → κ.blockTy = none →
+      κ.consts = [] → κ.asms = [] → FirstOrder I = true →
+      (∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) →
+      (∀ old ∈ κ.defs, old.name ≠ d.name) → "method_missing" ≠ d.name → "method_added" ≠ d.name →
+      DJudge Γ (.def' d.name d.params d.body) .sym Γ κ I (topDeclCtx κ d) I
   /-- Required positionals and a named `*rest` of element type σ (corpus 153). -/
   | defDeclRest {κ : Ctx} {Γ Γb : Env} {I τ σ : Ty} {d : Defn} {ps : List SigParam} {r : String} :
       d.params = ps.map (fun p => Param.req p.1) ++ [.rest (some r)] →
@@ -656,6 +669,26 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       DJudge ps decl.body τ Γb (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I'
         (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I' →
       DJudgeAll Γ args (ps.map (·.2)) Γ' κ I κ' I' →
+      decl ∈ κ'.defs →
+      κ.scope.runtimeMain = true → κ'.scope.runtimeMain = true → κ'.selfTy = none →
+      κ'.blockTy = none → κ'.consts = [] → κ'.asms = [] → FirstOrder I' = true →
+      (∀ p ∈ Γ', FirstOrder (stripAlias p.2) = true) →
+      DJudge Γ (.send none decl.name [.kwargs entries] none) τ Γ' κ I κ' I'
+  /-- A call to a `defDeclKwOpt` method: the required keywords in order, with or without the
+      defaulted one last. -/
+  | callSigKwOpt {κ κ' : Ctx} {Γ Γ' Γb : Env} {I I' τ σ : Ty}
+      {decl : Defn} {ps : List SigParam} {n : String} {d : Expr}
+      {args : List Expr} {entries : List KwEntry} {keys : List String} {tys : List Ty} :
+      decl.params = ps.map (fun p => Param.key p.1 none) ++ [.key n (some d)] →
+      (ps.map (·.1) ++ [n]).Nodup → kwArgs? keys entries = some args →
+      (∀ p ∈ ps ++ [(n, σ)], FirstOrder p.2 = true ∧ isAliasTy p.2 = false) → FirstOrder τ = true →
+      DJudge ps d σ ps (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I' (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I' →
+      DJudge (ps ++ [(n, σ)]) decl.body τ Γb (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I' (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) I' →
+      envAfter ps n σ = ps ++ [(n, σ)] → killClosOverSpine I' n σ = I' → capStale n σ σ = false →
+      capStaleCtx n σ (κ'.withFrame (some ⟨"Object", "Object", decl.name, false⟩)) = false →
+      DJudgeAll Γ args tys Γ' κ I κ' I' →
+      ((keys = ps.map (·.1) ∧ tys = ps.map (·.2)) ∨
+        (keys = (ps ++ [(n, σ)]).map (·.1) ∧ tys = (ps ++ [(n, σ)]).map (·.2))) →
       decl ∈ κ'.defs →
       κ.scope.runtimeMain = true → κ'.scope.runtimeMain = true → κ'.selfTy = none →
       κ'.blockTy = none → κ'.consts = [] → κ'.asms = [] → FirstOrder I' = true →
@@ -1197,7 +1230,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_12 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_13 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_14 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 
