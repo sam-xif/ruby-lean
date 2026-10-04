@@ -46,6 +46,25 @@ def boot : Except String Machine :=
     let initial := Boot.classTable.foldl (fun m entry =>
       if (ancestors m.heap entry.1).contains Boot.exceptionId then
         (Interp.eigenclassOf m entry.1).2 else m) initial
+    -- Filesystem singleton methods (issue #7 step 1): the `File.`/`Dir.`/`IO.`
+    -- class methods that actually exist in CRuby and are modeled, installed on
+    -- the constants' eigenclasses here exactly like `Exception.exception`, and
+    -- reached by ordinary dispatch — no interpreter special case, and the
+    -- prelude's own `File.basename`/`method_missing` continue to resolve as
+    -- before. Only real CRuby class methods are installed, so an unknown call
+    -- still reaches the prelude's `method_missing` and gates rather than
+    -- answering.
+    let fsSingleton : List (ObjId × List String) :=
+      [ (Boot.fileId, ["read", "write", "exist?", "file?", "directory?", "size"]),
+        (Boot.dirId, ["exist?"]),
+        (Boot.ioId, ["read", "write"]) ]
+    let initial := fsSingleton.foldl (fun m (cls, names) =>
+      let (eigen, m) := Interp.eigenclassOf m cls
+      let cname := match m.heap.classPayload? cls with | some c => c.name | none => ""
+      names.foldl (fun m name =>
+        let bid := cname ++ "#" ++ name
+        let md : MethodDef := { params := [], body := .nil, owner := eigen, builtin := some bid }
+        { m with heap := defineMethod m.heap eigen name md }) m) initial
     match Interp.run bootFuel initial with
     | .value _ m => .ok m
     | .uncaught exc m =>

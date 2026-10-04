@@ -849,6 +849,34 @@ set_option maxRecDepth 400000 in
     | split)
   all_goals root_hof
 
+set_option maxHeartbeats 4000000 in
+set_option maxRecDepth 400000 in
+@[rootFrameLem] theorem pathArg?_frame (K : List Kont) (m : Machine) (v : Value) :
+    Builtins.pathArg? (pushRootK K m) v = Builtins.pathArg? m v := by
+  cases v <;> simp [Builtins.pathArg?, pushRootK_heap]
+
+@[rootFrameLem] theorem vfs_lookup_frame (K : List Kont) (m : Machine) (p : String) :
+    VFS.lookup (pushRootK K m).heap p = VFS.lookup m.heap p := by
+  simp [VFS.lookup, VFS.resolve, pushRootK_heap]
+
+set_option maxHeartbeats 4000000 in
+set_option maxRecDepth 400000 in
+@[rootFrameLem] theorem runFS_frame (K : List Kont) (bid : String) (recv : Value)
+    (args : List Value) (m : Machine) :
+    runFS bid recv args (pushRootK K m) = bRootPush K (runFS bid recv args m) := by
+  rw [runFS.eq_def, runFS.eq_def]
+  root_simp
+  root_arms
+  all_goals root_hof
+  all_goals (repeat' first
+    | rfl
+    | (simp only [rootFrameLem]; done)
+    | (simp [rootFrameLem]; done)
+    | (rw [foldPair_frame K]; try simp only [rootFrameLem])
+    | (rw [foldPairArray_frame K]; try simp only [rootFrameLem])
+    | intro _
+    | split)
+
 @[rootFrameLem] theorem nativeModuleName_frame (K : List Kont) (m : Machine) (cp : ClassPayload) :
     nativeModuleName (pushRootK K m) cp = bRootPush K (nativeModuleName m cp) := by
   unfold nativeModuleName
