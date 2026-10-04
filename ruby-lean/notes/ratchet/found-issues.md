@@ -2984,3 +2984,28 @@ and resumes the original call. Native Symbol#to_proc keeps its capture-free clos
 The new regressions exercise conversion effects and the checked-missing protocol.
 This repair does not by itself type 096: its native closure uses required/rest formals
 and has no captured frame, so the typing proof must cover that actual entry path.
+
+## F57 — `ScalarWriteControls` asserted nil acceptance that the implementation rejects (2026-10-04)
+
+**Fixed here; the F45 claim about nil now conflicts with the code and needs a decision.**
+`Ratchet/Controls/ScalarWriteControls.lean` carried
+`#guard validateD (cls "NilBox" .nil) (hint "NilBox" .nilT .nilLit)`, asserting that a
+nil-typed field write is admitted. It is not: `scalarWriteB` (Ratchet/Guards/ScalarWrite.lean)
+admits only `.int | .float | .sym`, and `scalar_write_run` / `SemSafeCtxA.scalarIvarAsgn`
+require `scalarWriteB ρ = true`. The guard was added in 3c8d1d54, never built by the active
+gate (which builds named targets, not `Denote/Controls/All`), and so failed silently under
+`lake build`. It is now `!validateD`, matching the sibling `FlagBox` control.
+
+The open question is F45's text: it says "Clink 186 admits Integer/Float/Symbol/nil
+replacement." Under the current `scalarWriteB` that is false — nil is dropped because a
+nil-typed field may be absent, so the frozen-receiver argument in `scalar_write_run` does
+not close. Either F45 should drop the `nil` claim, or nil support should be implemented
+(add `.nilT` to `scalarWriteB` and extend the frozen-field proof). Left open for the owner.
+
+## F58 — three `Denote/Controls` files imported a module deleted by `f2ca45e6` (2026-10-04)
+
+`Denote/Controls/{InheritedConstructorControls,ReceiverCacheControls,SubclassRunControls}.lean`
+imported `Denote.Rules.Subclass.SubclassRule`, which `f2ca45e6` deleted when the
+`SemSafeCtxA.subclassDecl` provider moved to `Denote/Rules/Subclass/SubclassDeclActual.lean`.
+The dangling imports made those controls fail with "bad import" under `lake build`. Imports
+repointed to `SubclassDeclActual`. A repo-wide scan now finds zero dangling imports.

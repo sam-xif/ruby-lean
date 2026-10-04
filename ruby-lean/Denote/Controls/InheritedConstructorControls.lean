@@ -1,5 +1,5 @@
 import Denote.Rules.Inherited.InheritedConstructorExpr
-import Denote.Rules.Subclass.SubclassRule
+import Denote.Rules.Subclass.SubclassDeclActual
 import Denote.Controls.ConstructorGeneralControls
 
 /-! Definition plus inherited call, with a body replayed at its original Boolean

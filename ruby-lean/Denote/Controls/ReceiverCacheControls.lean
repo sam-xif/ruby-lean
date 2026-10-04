@@ -1,6 +1,6 @@
 import Ratchet.Controls.ReceiverCacheControls
 import Denote.Rules.Instance.ReceiverCache
-import Denote.Rules.Subclass.SubclassRule
+import Denote.Rules.Subclass.SubclassDeclActual
 import Denote.Rules.Class.ClassConstant
 import Denote.Sem.Core.Boot
 

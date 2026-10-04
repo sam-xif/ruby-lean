@@ -19,7 +19,12 @@ def callHint (cn : String) (ty : Ty) (d : Deriv) : Deriv :=
 #guard validateD (.seq [cls "Tag" (.sym "new"), call "Tag" (.sym "old")])
   (.seq [hint "Tag" .sym (.symLit "new"), callHint "Tag" .sym (.symLit "old")])
 #guard validateD (cls "FloatBox" (.flt 0)) (hint "FloatBox" .float (.fltLit 0))
-#guard validateD (cls "NilBox" .nil) (hint "NilBox" .nilT .nilLit)
+-- `scalarWriteB` admits only Integer/Float/Symbol, so a nil-typed or Boolean
+-- field is *rejected*, not accepted (see `Ratchet/Guards/ScalarWrite.lean` and
+-- `Denote/Rules/Instance/ScalarWrite.lean` — the frozen-receiver argument needs a
+-- field that is never absent). Note F45 claims nil replacement is admitted by
+-- clink 186; this guard pins the implemented behaviour and flags that discrepancy.
+#guard !validateD (cls "NilBox" .nil) (hint "NilBox" .nilT .nilLit)
 #guard !validateD (cls "FlagBox" .fls) (hint "FlagBox" .bool .flsLit)
 #guard !validateD (cls "Counter" (.str "bad"))
   (.classDecl "Counter" none (.seq [initHint .int, getterHint .int .int,

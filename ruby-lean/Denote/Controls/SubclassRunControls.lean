@@ -1,4 +1,4 @@
-import Denote.Rules.Subclass.SubclassRule
+import Denote.Rules.Subclass.SubclassDeclActual
 import Denote.Controls.ConstructorGeneralControls
 import Denote.Bridge.Full
 
