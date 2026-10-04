@@ -79,6 +79,8 @@ inductive Deriv where
   | vasgnAlias
   /-- `DJudge.ifCaseEq`: `if C === t` narrowing an alias and its source. -/
   | ifCaseEq (t e : Deriv) (join : Ty)
+  /-- `DJudge.ifAndVar`: the desugared `if x && c`. -/
+  | ifAndVar (c t e : Deriv) (join : Ty)
   /-- `DJudge.dead`: code behind the `never`-typed local `x`. -/
   | dead (x : String)
   /-- `DJudge.widen`: the value's type joined with `other`. -/
@@ -208,6 +210,7 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
   | "sendUnion" => return .sendUnion (← kid "left") (← kid "right") (← ty "join")
   | "vasgnAlias" => return .vasgnAlias
   | "dead" => return .dead (← name "name")
+  | "ifAndVar" => return .ifAndVar (← kid "cond") (← kid "then") (← kid "else") (← ty "join")
   | "widen" => return .widen (← kid "value") (← ty "other")
   | "ifCaseEq" => return .ifCaseEq (← kid "then") (← kid "else") (← ty "join")
   | "ifIsA" => return .ifIsA (← name "name") (← name "cls") (← kid "then") (← kid "else") (← ty "join")

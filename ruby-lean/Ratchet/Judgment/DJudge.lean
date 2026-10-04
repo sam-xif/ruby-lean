@@ -2,6 +2,7 @@ import Ratchet.Static.CallbackFacts
 import Ratchet.Check.Deriv
 import Ratchet.Check.OptShape
 import Ratchet.Guards.NilQGuards
+import Ratchet.Guards.AndGuard
 import Ratchet.Static.CtxEq
 import Ratchet.Guards.MethodCtx
 import Ratchet.Judgment.InitJudge
@@ -477,6 +478,22 @@ inductive DJudge : Env → Expr → Ty → Env → (κ : optParam Ctx ctx0) →
       DJudge (envSet Γ x (isATy κ.classes κ.wholeCls cn ρ)) th τ₁ Γ₁ κ I κ' I' →
       DJudge (envSet Γ x (notATy κ.classes κ.wholeCls cn ρ)) el τ₂ Γ₂ κ I κ' I' →
       DJudge Γ (.if' (.send (some (.const cn)) "===" [.var .lvar x] none) th (some el)) (joinT τ₁ τ₂)
+        (joinEnv Γ₁ Γ₂) κ I κ' I'
+  /-- `if x && c` after desugaring — `if (t = x; if t then c else t)` — on a nilable local
+      (Sorbet 0.6.13405 accepts corpus 132): `c` and the then branch see `x` non-nil; the
+      else branch sees either outcome. -/
+  | ifAndVar {κ κ' : Ctx} {Γ Γc Γ₁ Γ₂ : Env} {I I' : Ty} {x t : String}
+      {σ τc τ₁ τ₂ : Ty} {c th el : Expr} :
+      envGet? Γ x = some (.nilable σ) → falseFreeB σ = true → isAliasTy σ = false → x ≠ t →
+      capStale t (.nilable σ) (.nilable σ) = false → capStaleCtx t (.nilable σ) κ = false →
+      envGet? (aliasEnv Γ x t (.nilable σ)) x = some (.nilable σ) →
+      DJudge (andEnv Γ x t (.nilable σ) σ) c τc Γc κ (killClosOverSpine I t (.nilable σ))
+        κ (killClosOverSpine I t (.nilable σ)) →
+      DJudge Γc th τ₁ Γ₁ κ (killClosOverSpine I t (.nilable σ)) κ' I' →
+      DJudge (joinEnv Γc (andEnv Γ x t (.nilable σ) .nilT)) el τ₂ Γ₂ κ
+        (killClosOverSpine I t (.nilable σ)) κ' I' →
+      DJudge Γ (.if' (.seq [.vasgn .lvar t (.var .lvar x),
+          .if' (.var .lvar t) c (some (.var .lvar t))]) th (some el)) (joinT τ₁ τ₂)
         (joinEnv Γ₁ Γ₂) κ I κ' I'
   /-- Unreachable code: a local typed `never` (a narrowed-away branch) has no value, so no
       conformant machine evaluates `e`. Sorbet does not check dead code either. -/
@@ -1230,7 +1247,7 @@ theorem DJudge.plainArg {κ κ' : Ctx} {I I' : Ty} {Γ Γ' : Env} {e : Expr} {τ
     (motive_12 := fun _ _ _ _ _ _ _ _ _ _ => True)
     (motive_13 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
     (motive_14 := fun _ _ _ _ _ _ _ _ _ _ _ _ _ => True)
-    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h
   all_goals (try intros) <;> first
     | rfl | trivial | assumption | exact ImplicitCallShape.plainArg (by assumption)
 

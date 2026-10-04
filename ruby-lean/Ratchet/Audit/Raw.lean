@@ -417,6 +417,51 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
           else none
         | none => none
       else none
+    | .if' (.seq [.vasgn .lvar t (.var .lvar x), .if' (.var .lvar t') c (some (.var .lvar t''))])
+        th (some el), .ifAndVar dc dt de j =>
+      if ht' : t = t' ∧ t = t'' then
+      match t', t'', ht' with
+      | _, _, ⟨rfl, rfl⟩ =>
+      match hx : envGet? Γ x with
+      | some (.nilable σ) =>
+        if hf : falseFreeB σ = true then
+        if ha : isAliasTy σ = false then
+        if hne : x ≠ t then
+        if hcs : capStale t (.nilable σ) (.nilable σ) = false then
+        if hck : capStaleCtx t (.nilable σ) κ = false then
+        if hx0 : envGet? (aliasEnv Γ x t (.nilable σ)) x = some (.nilable σ) then
+          match check n (andEnv Γ x t (.nilable σ) σ) c dc κ (killClosOverSpine I t (.nilable σ)) cache with
+          | some ⟨_, Γc, κc, Ic, hc, cc⟩ =>
+            match ctxEq? κc κ with
+            | some ⟨hκc⟩ =>
+              if hIc : Ic = killClosOverSpine I t (.nilable σ) then
+                match check n Γc th dt κ (killClosOverSpine I t (.nilable σ)) cc,
+                    check n (joinEnv Γc (andEnv Γ x t (.nilable σ) .nilT)) el de κ
+                      (killClosOverSpine I t (.nilable σ)) cc with
+                | some ⟨τ₁, Γ₁, κ₁, I₁, hth, ct⟩, some ⟨τ₂, Γ₂, κ₂, I₂, he, ce⟩ =>
+                  if joinT τ₁ τ₂ == j && cacheSignaturesB ct ce then
+                    match ctxEq? κ₁ κ₂ with
+                    | some ⟨hctx⟩ =>
+                      if hi : I₁ = I₂ then
+                        some ⟨joinT τ₁ τ₂, joinEnv Γ₁ Γ₂, κ₁, I₁,
+                          .ifAndVar (used_0 := DJudge.rules hc) (used_1 := DJudge.rules hth) (used_2 := DJudge.rules he) hx hf ha hne hcs hck hx0
+                            (by rw [hκc, hIc] at hc; exact hc) hth
+                            (by simpa only [DJudge.rules, hctx, hi] using he), ct⟩
+                      else none
+                    | none => none
+                  else none
+                | _, _ => none
+              else none
+            | none => none
+          | none => none
+        else none
+        else none
+        else none
+        else none
+        else none
+        else none
+      | _ => none
+      else none
     | .if' c t (some el), .ifD dc dt (some de) j =>
       match check n Γ c dc κ I cache with
       | some ⟨_, Γc, κc, Ic, hc, cc⟩ =>

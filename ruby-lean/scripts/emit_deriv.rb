@@ -566,6 +566,39 @@ class Emitter
     [{ "rule" => "ifNilQuery", "name" => x, "then" => dt, "else" => de, "join" => j }, j]
   end
 
+  # `if x && c` after desugaring -- `if (t = x; if t then c else t)` -- on a nilable local
+  # (DJudge.ifAndVar): `c` and the then branch see `x` non-nil, the else branch either.
+  def narrow_and(n)
+    c = n[1]
+    return nil unless n[3] && c[0] == "seq" && c.length == 3
+    asg, inner = c[1], c[2]
+    return nil unless asg[0] == "vasgn" && asg[1] == "local" && asg[3][0] == "var" && asg[3][1] == "local"
+    t, x = asg[2], asg[3][2]
+    return nil unless t.start_with?("__dt_") && x != t && inner[0] == "if" &&
+      inner[1] == ["var", "local", t] && inner[3] == ["var", "local", t]
+    xt = @env[x]
+    return nil unless xt && xt["tag"] == "nilable" && FALSE_FREE.include?(xt["elem"]["tag"])
+    base = @env.to_h { |k, ty| [k, ty["tag"] == "sameAs" && ty["name"] == t ? ty["elem"] : ty] }
+    both = ->(r) { base.merge(x => r, t => { "tag" => "sameAs", "name" => x, "elem" => r }) }
+    @env = both.(xt["elem"])
+    dc, = go(inner[2])
+    cond_env = @env
+    dt, tt = go(n[2])
+    then_env = @env
+    nil_env = both.(NIL_T)
+    @env = cond_env.merge(x => join(cond_env[x], NIL_T), t => join(cond_env[t], nil_env[t]))
+    raise Blocked, "the condition of `&&` changes other local types" if
+      cond_env.reject { |k, _| [x, t].include?(k) } != nil_env.reject { |k, _| [x, t].include?(k) }
+    de, te = go(n[3])
+    else_env = @env
+    rest = ->(e) { e.reject { |k, _| k == x || k == t } }
+    raise Blocked, "the two branches of an `if` leave different local types" if
+      rest.(then_env) != rest.(else_env)
+    @env = then_env.merge(x => join(then_env[x], else_env[x]), t => join(then_env[t], else_env[t]))
+    j = join(tt, te)
+    [{ "rule" => "ifAndVar", "cond" => dc, "then" => dt, "else" => de, "join" => j }, j]
+  end
+
   def narrow_truthy_no_else(n, x, t)
     before = @env.dup
     @env = before.merge(x => t["elem"])
@@ -580,7 +613,7 @@ class Emitter
   end
 
   def n_if(n)
-    narrowed = narrow_truthy(n) || narrow_nil_query(n) || narrow_nil_var(n) || narrow_is_a(n) ||
+    narrowed = narrow_and(n) || narrow_truthy(n) || narrow_nil_query(n) || narrow_nil_var(n) || narrow_is_a(n) ||
       narrow_is_a_ivar(n) || narrow_case_eq(n) || init_if_widen(n)
     return narrowed if narrowed
     dc, = go(n[1])
