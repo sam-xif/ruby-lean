@@ -787,6 +787,21 @@ private def unionInitH : Deriv :=
 #guard !validateD (.seq [.vasgn .lvar "v" (.int 1), lenP]) (.seq [.vasgn .lvar "v" (.intLit 1), .dead "v"])
 #guard !validateDWith (fun q => clinkEnabled q && q != "ifCaseEqVar") (caseVarP unionInit lenP plusP)
   (.seq [unionInitH, .ifCaseEq lenH plusH .int])
+-- Active ifAndVar (132): `if x && c` narrows `x` for `c` and the then branch only.
+private def andP (thn els : Ratchet.Expr) : Ratchet.Expr := .seq [
+  .vasgn .lvar "v" (.if' .tru (.int 1) (some .nil)),
+  .if' (.seq [.vasgn .lvar "t" (.var .lvar "v"),
+    .if' (.var .lvar "t") (.send (some (.var .lvar "v")) ">" [.int 0] none) (some (.var .lvar "t"))])
+    thn (some els)]
+private def andH (thn els : Deriv) : Deriv := .seq [
+  .vasgn .lvar "v" (.ifD .truLit (.intLit 1) (some .nilLit) (.nilable .int)),
+  .ifAndVar (.prim (.var .lvar "v") ">" [.intLit 0] .int .bool) thn els .int]
+#guard validateD (andP plusP (.int 0)) (andH plusH (.intLit 0))
+-- The else branch may still see nil, and a disabled rule fails.
+#guard !validateD (andP (.int 0) plusP) (andH (.intLit 0) plusH)
+#guard !validateDWith (fun q => clinkEnabled q && q != "ifAndVar") (andP plusP (.int 0))
+  (andH plusH (.intLit 0))
+
 -- Active widen (155): a value is a member of any join with its type, and of nothing else.
 #guard !validateD (.send (some (.int 1)) "+" [.str "s"] none)
   (.prim (.intLit 1) "+" [.widen (.strLit "s") .int] .int .int)

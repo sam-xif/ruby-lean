@@ -13922,3 +13922,19 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
 - The declared type is exact in the rule; the emitter widens the default and arguments
   (`nil` or `String` at `T.nilable(String)`). `fit` offers the nilable's element as the join
   partner, because `joinT nil (nilable X)` is `nilable (nilable X)`.
+
+## `if x && c` on a nilable local: `DJudge.ifAndVar` (131/131, 135/263, climbs 132)
+
+- The desugarer emits `if (t = x; if t then c else t) then A else B`. One rule covers the whole
+  shape, because the refinement made inside the condition has to reach `A`: `c` is judged at
+  `andEnv Γ x t (nilable σ) σ` (the `vasgnAlias` environment with both names refined), `A`
+  at `c`'s outgoing environment, `B` at its join with the both-nil environment.
+- `c` may have any type: a truthy result runs `A` after `c`, a falsy one runs `B` after `c`,
+  and a nil `x` runs `B` without `c`. `c` must leave `κ` and the spine alone.
+- The proof reuses `SemSafeCtxA.vasgnAlias` under `[seqK, ifK]` and `envOk_refine_alias`.
+  That `x` is still `nilable σ` after the alias write is a checked premise
+  (`envGet? (aliasEnv …) x`), not a lemma about `killClosOver`.
+- This is the eleventh stall point's shape (`joinEnv` and the `&&` sandwich) solved for the
+  local-variable left operand only; a general left operand is not admitted.
+- Emitter: `narrow_and`, tried before `narrow_truthy`; requires `c` to leave other locals'
+  types unchanged.

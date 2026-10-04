@@ -19,8 +19,8 @@ elab "check_dclink_profile" : command => do
   let names ← authoringDClinks
   let errors := clinkPolicyErrors names clinkProfile
   unless errors.isEmpty do throwError m!"clink profile: {errors}"
-  unless names.length == 130 do
-    throwError m!"clink profile: authoring census changed ({names.length}, expected 130)"
+  unless names.length == 131 do
+    throwError m!"clink profile: authoring census changed ({names.length}, expected 131)"
   unless clinkEnabled "intLit" do
     throwError "clink profile: intLit must remain enabled as the non-vacuity anchor"
   logInfo m!"clink profile {clinkProfileName}: {names.filter clinkEnabled |>.length} selected, \

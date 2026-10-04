@@ -61,6 +61,7 @@ def generate(module):
         text = text.replace('(by rw [hi₂] at he; cases hctx; exact he)', '(by simpa only [DJudge.rules, hctx, hi₂] using he)')
         text = text.replace('.ifCaseEq ht (hρ ▸ hx) hg hf hth (by', '.ifCaseEq (used_0 := DJudge.rules hth) (used_1 := DJudge.rules he) ht (hρ ▸ hx) hg hf hth (by')
         text = text.replace('.ifCaseEqVar ht hg hf hth (by', '.ifCaseEqVar (used_0 := DJudge.rules hth) (used_1 := DJudge.rules he) ht hg hf hth (by')
+        text = text.replace('.ifAndVar hx hf', '.ifAndVar (used_0 := DJudge.rules hc) (used_1 := DJudge.rules hth) (used_2 := DJudge.rules he) hx hf')
         text = text.replace('.sendUnion hx ha₁ ha₂ hl (by', '.sendUnion (used_0 := DJudge.rules hl) (used_1 := DJudge.rules hr) hx ha₁ ha₂ hl (by')
         text = text.replace('by cases hctx; cases hi; exact hr', 'by simpa only [DJudge.rules, hctx, hi] using hr')
         text = text.replace('.ifIsA hx hg ht (by', '.ifIsA (used_0 := DJudge.rules ht) (used_1 := DJudge.rules he) hx hg ht (by')
