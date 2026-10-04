@@ -13876,3 +13876,19 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
 - The emitter proposes the body's type for a `T.nilable(C)` return too, so the else branch
   sees an exact instance.
 - Not admitted: Boolean, Array, Hash receivers; a field receiver (`@x.nil?`).
+
+## `C === x` on a plain local, and dead branches (127/127, 132/263, climbs 165)
+
+- Interpolation desugars to `t = e; String === t ? t : t.__as_string`. `DJudge.ifCaseEqVar`
+  is `ifIsA` with `Module#===` as the test: it refines the tested local itself, under the
+  same `ifIsAB` guard plus `nameFreeN κ "==="`. The checker reuses the `ifCaseEq` Deriv node;
+  the binding (alias or not) picks the rule.
+- `DJudge.dead`: with a local whose (alias-stripped) type is `never` in scope, any expression
+  is typed `never` and leaves `Γ`, `κ`, `I` unchanged. No conformant machine exists, so the
+  proof is `EnvOk` at `never`. Sorbet likewise does not check unreachable code. The
+  `plainArgB` premise only keeps `DJudge.plainArg` true.
+- The emitter emits `dead` for an `is_a?`/`===` arm whose refinement is `never` instead of
+  descending, so the String arm of 165 never needs `__as_string`.
+- 166/167 still need `__as_string` on a non-String (a prelude Ruby method, not a builtin).
+- The "write to the source drops the alias" control now reads the source in its branches:
+  with `ifCaseEqVar` the test legitimately narrows the temporary itself.

@@ -348,7 +348,32 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
             else none
           else none
         | none => none
-      | _ => none
+      | some ρ =>
+        if hg : ifIsAB κ ρ cn = true then
+          if hf : nameFreeN κ "===" = true then
+            match check n (envSet Γ t (isATy κ.classes κ.wholeCls cn ρ)) th dt κ I cache,
+                check n (envSet Γ t (notATy κ.classes κ.wholeCls cn ρ)) el de κ I cache with
+            | some ⟨τ₁, Γ₁, κ₁, I₁, hth, ct⟩, some ⟨τ₂, Γ₂, κ₂, I₂, he, ce⟩ =>
+              if joinT τ₁ τ₂ == j && cacheSignaturesB ct ce then
+                match ctxEq? κ₁ κ₂ with
+                | some ⟨hctx⟩ =>
+                  if hi : I₁ = I₂ then
+                    some ⟨joinT τ₁ τ₂, joinEnv Γ₁ Γ₂, κ₁, I₁,
+                      .ifCaseEqVar (used_0 := DJudge.rules hth) (used_1 := DJudge.rules he) ht hg hf hth (by simpa only [DJudge.rules, hctx, hi] using he), ct⟩
+                  else none
+                | none => none
+              else none
+            | _, _ => none
+          else none
+        else none
+      | none => none
+    | e, .dead x =>
+      match hx : envGet? Γ x with
+      | some τ =>
+        if hn : stripAlias τ = .never then
+          if hp : plainArgB e = true then some ⟨.never, Γ, κ, I, .dead hx hn hp, cache⟩ else none
+        else none
+      | none => none
     | .vasgn .lvar x ev, .vasgn .lvar x' dv =>
       if x == x' then
         match check n Γ ev dv κ I cache with

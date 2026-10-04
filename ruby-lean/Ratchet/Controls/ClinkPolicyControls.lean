@@ -739,9 +739,29 @@ private def caseH (asg thn els : Deriv) (j : Ty) : Deriv := .seq [
 -- A write to the source drops the alias, so the test no longer narrows.
 #guard !validateD (.seq [.vasgn .lvar "v" (.if' .tru (.int 1) (some (.str "s"))),
     .vasgn .lvar "t" (.var .lvar "v"), .vasgn .lvar "v" (.int 2),
-    .if' (.send (some (.const "Integer")) "===" [.var .lvar "t"] none) (.int 0) (some (.int 1))])
+    .if' (.send (some (.const "Integer")) "===" [.var .lvar "t"] none) plusP (some lenP)])
   (.seq [.vasgn .lvar "v" (.ifD .truLit (.intLit 1) (some (.strLit "s")) (.union .int (.cls "String"))),
-    .vasgnAlias, .vasgn .lvar "v" (.intLit 2), .ifCaseEq (.intLit 0) (.intLit 1) .int])
+    .vasgnAlias, .vasgn .lvar "v" (.intLit 2), .ifCaseEq plusH lenH .int])
+
+-- Active ifCaseEqVar/dead (165): `C === v` on a plain local refines `v` itself, and a branch
+-- whose local is narrowed to `never` is not judged.
+private def caseVarP (init thn els : Ratchet.Expr) : Ratchet.Expr := .seq [
+  .vasgn .lvar "v" init,
+  .if' (.send (some (.const "String")) "===" [.var .lvar "v"] none) thn (some els)]
+private def unionInit : Ratchet.Expr := .if' .tru (.int 1) (some (.str "s"))
+private def unionInitH : Deriv :=
+  .vasgn .lvar "v" (.ifD .truLit (.intLit 1) (some (.strLit "s")) (.union .int (.cls "String")))
+#guard validateD (caseVarP unionInit lenP plusP) (.seq [unionInitH, .ifCaseEq lenH plusH .int])
+#guard !validateD (caseVarP unionInit plusP lenP) (.seq [unionInitH, .ifCaseEq plusH lenH .int])
+#guard validateD (caseVarP (.str "s") lenP plusP)
+  (.seq [.vasgn .lvar "v" (.strLit "s"), .ifCaseEq lenH (.dead "v") .int])
+-- `dead` needs a `never`-typed local; a live branch cannot be skipped.
+#guard !validateD (caseVarP unionInit lenP plusP) (.seq [unionInitH, .ifCaseEq lenH (.dead "v") .int])
+#guard !validateD (.seq [.vasgn .lvar "v" (.int 1), lenP]) (.seq [.vasgn .lvar "v" (.intLit 1), .dead "v"])
+#guard !validateDWith (fun q => clinkEnabled q && q != "ifCaseEqVar") (caseVarP unionInit lenP plusP)
+  (.seq [unionInitH, .ifCaseEq lenH plusH .int])
+#guard !validateDWith (fun q => clinkEnabled q && q != "dead") (caseVarP (.str "s") lenP plusP)
+  (.seq [.vasgn .lvar "v" (.strLit "s"), .ifCaseEq lenH (.dead "v") .int])
 
 -- ifNilQuery is general: a union with nil, a non-nilable scalar (then branch unreachable),
 -- and an instance of a declared class; Boolean receivers are not admitted.
