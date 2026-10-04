@@ -1,7 +1,14 @@
-# Active ascent (2026-10-01)
+# Active ascent (2026-10-04)
 
 131/131 clinks, 135/263 production validateD accepts (prefix 17), 46/46 negatives
-rejected, 254 CRuby agree/0 disagree. Ordinary calls and all seven recursive rules
+rejected, 256 CRuby agree/0 disagree. Climbed 2026-10-04: 165 (`ifCaseEqVar`, `dead`),
+121 (sig only), 155 (`widen`, `defDeclKwOpt`/`callSigKwOpt`), 132 (`ifAndVar`).
+Surveyed and not cheap: 166/167 need `Object#__as_string`, a prelude Ruby method entered on
+an Integer receiver; `Array#join`'s deferral test is `pureOkSeen`, a `private partial def`,
+so no row can be proved for it; `return`/`break`/`next` need a non-raise escape in `EscOk`;
+nested blocks (101) fail `closureMainB` under `closureBodyCtx`.
+`Ratchet/Controls/ScalarWriteControls.lean:22` fails under `lake build Ratchet` (outside
+the gate, and it failed before this session). Ordinary calls and all seven recursive rules
 are permanently enabled alongside
 ordinary definitions and the existing literal/local/sequence/primitive/branch/
 bare-name/collection providers. Full gate: /private/tmp/ascent-class-sites-gate.log.
