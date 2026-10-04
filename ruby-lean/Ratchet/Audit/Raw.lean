@@ -374,6 +374,10 @@ def check (fuel : Nat) (Γ : Env) (e : Expr) (d : Deriv) (κ : Ctx := ctx0) (I :
           if hp : plainArgB e = true then some ⟨.never, Γ, κ, I, .dead hx hn hp, cache⟩ else none
         else none
       | none => none
+    | e, .widen d σ =>
+      match check n Γ e d κ I cache with
+      | some ⟨τ, Γ', κ', I', h, c⟩ => some ⟨joinT τ σ, Γ', κ', I', .widen σ h, c⟩
+      | none => none
     | .vasgn .lvar x ev, .vasgn .lvar x' dv =>
       if x == x' then
         match check n Γ ev dv κ I cache with

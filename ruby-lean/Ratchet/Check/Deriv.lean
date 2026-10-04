@@ -81,6 +81,8 @@ inductive Deriv where
   | ifCaseEq (t e : Deriv) (join : Ty)
   /-- `DJudge.dead`: code behind the `never`-typed local `x`. -/
   | dead (x : String)
+  /-- `DJudge.widen`: the value's type joined with `other`. -/
+  | widen (d : Deriv) (other : Ty)
   /-- `DJudge.ifNilQueryNil`: `if x.nil?` on a nil-typed local runs only the then branch. -/
   | ifNilQueryNil (x : String) (t : Deriv)
   /-- `DJudge.casgnTop`: a fresh top-level constant bound to a non-class value. -/
@@ -201,6 +203,7 @@ partial def Deriv.ofJson? (j : Json) : Except String Deriv := do
   | "sendUnion" => return .sendUnion (← kid "left") (← kid "right") (← ty "join")
   | "vasgnAlias" => return .vasgnAlias
   | "dead" => return .dead (← name "name")
+  | "widen" => return .widen (← kid "value") (← ty "other")
   | "ifCaseEq" => return .ifCaseEq (← kid "then") (← kid "else") (← ty "join")
   | "ifIsA" => return .ifIsA (← name "name") (← name "cls") (← kid "then") (← kid "else") (← ty "join")
   | "initWiden" =>

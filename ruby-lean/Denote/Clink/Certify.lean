@@ -53,6 +53,7 @@ macro "certify_djudgments" rec:ident h:ident F:ident hF:ident : tactic => `(tact
   · apply $hF DClink.ifCaseEq (by simp [dclinks]) <;> assumption
   · apply $hF DClink.ifCaseEqVar (by simp [dclinks]) <;> assumption
   · apply $hF DClink.dead (by simp [dclinks]) <;> assumption
+  · apply $hF DClink.widen (by simp [dclinks]) <;> assumption
   · apply $hF DClink.sendUnion (by simp [dclinks]) <;> assumption
   · apply $hF DClink.casgnTop (by simp [dclinks]) <;> assumption
   · apply $hF DClink.constRead (by simp [dclinks]) <;> assumption

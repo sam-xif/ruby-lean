@@ -780,6 +780,21 @@ class Emitter
     [{ "rule" => rule, "recv" => dr, "body" => body }, ty]
   end
 
+  # Subsumption (DJudge.widen): a `t` where `want` is expected, when `want` is their join.
+  def fit(d, t, want)
+    return d if t == want
+    return nil unless join(t, want) == want
+
+    { "rule" => "widen", "value" => d, "other" => want }
+  end
+
+  def fit_all(ds, ts, wants)
+    return nil unless ts.length == wants.length
+
+    out = ds.each_with_index.map { |d, i| fit(d, ts[i], wants[i]) }
+    out.all? ? out : nil
+  end
+
   def implicit_send(m, args)
     if @singleton && m == "new"
       deriv, ty = new_inst(@self_cls, args)
@@ -794,8 +809,8 @@ class Emitter
       raise Blocked, "#{m}: keywords must be passed in declared order" unless
         keys == kd["params"].map { |p| p["name"] }
       dargs, targs = go_all(args[0][1].map { |e| e[1] })
-      raise Blocked, "#{m}: keyword values disagree with the declared types" unless
-        targs == kd["params"].map { |p| p["ty"] }
+      dargs = fit_all(dargs, targs, kd["params"].map { |p| p["ty"] })
+      raise Blocked, "#{m}: keyword values disagree with the declared types" unless dargs
       return [{ "rule" => "callSigKw", "name" => m, "args" => dargs, "ret" => kd["ret"],
                 "params" => kd["params"], "body" => kd["body"] }, kd["ret"]]
     end
@@ -810,8 +825,8 @@ class Emitter
     end
     if !@singleton && @self_cls.nil? && (od = @opt_defs[m])
       pre = od["params"].map { |p| p["ty"] }
-      raise Blocked, "#{m}: arguments disagree with the declared parameters" unless
-        targs == pre || targs == pre + [od["opt"]["ty"]]
+      dargs = fit_all(dargs, targs, pre) || fit_all(dargs, targs, pre + [od["opt"]["ty"]])
+      raise Blocked, "#{m}: arguments disagree with the declared parameters" unless dargs
       return [{ "rule" => "callSigOpt", "name" => m, "args" => dargs, "ret" => od["ret"],
                 "params" => od["params"], "opt" => od["opt"], "default" => od["default"],
                 "body" => od["body"] }, od["ret"]]
@@ -990,7 +1005,8 @@ class Emitter
     begin
       @env = pre.to_h { |p| [p["name"], p["ty"]] }
       ddflt, tdflt = go_ordinary(params[-1][2])
-      raise Blocked, "#{name}: the default's type is not the declared one" unless tdflt == opt["ty"]
+      ddflt = fit(ddflt, tdflt, opt["ty"])
+      raise Blocked, "#{name}: the default's type is not the declared one" unless ddflt
       @env = pre.to_h { |p| [p["name"], p["ty"]] }.merge(opt["name"] => opt["ty"])
       dbody, = go_ordinary(body)
     ensure
