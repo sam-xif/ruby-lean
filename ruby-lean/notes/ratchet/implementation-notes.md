@@ -13892,3 +13892,10 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
 - 166/167 still need `__as_string` on a non-String (a prelude Ruby method, not a builtin).
 - The "write to the source drops the alias" control now reads the source in its branches:
   with `ifCaseEqVar` the test legitimately narrows the temporary itself.
+
+## Concrete return sigs for yield rungs (133/263, climbs 121)
+
+- 120, 121, 124, 238 carried `returns(T.untyped)`; they now declare the block's result
+  type. 121 climbs with no rule change (a block may write a captured local at its own type).
+  120/124 stay rejected (retyped capture / yield in an instance method); 238 needs a
+  union-typed block domain.
