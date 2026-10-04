@@ -1,6 +1,6 @@
 # typed: true
 extend T::Sig
-sig { returns(T.untyped) }
+sig { returns(String) }
 def hello
   yield 1
   yield "str"

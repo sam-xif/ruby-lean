@@ -1,6 +1,6 @@
 # typed: true
 extend T::Sig
-sig { returns(T.untyped) }
+sig { returns(String) }
 def t
   yield(1)
 end

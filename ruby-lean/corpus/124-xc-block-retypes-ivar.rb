@@ -6,7 +6,7 @@ class C
     @x = x
   end
 
-  sig { returns(T.untyped) }
+  sig { returns(String) }
   def run
     yield
   end
