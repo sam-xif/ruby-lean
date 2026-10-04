@@ -2078,7 +2078,7 @@ end
 # and gates by name. Defining the constant without that guard would turn
 # `File.read` from an honest Unsupported into a NoMethodError, which is a wrong
 # answer rather than a refusal.
-module File
+class File
   SEPARATOR = "/"
 
   def self.basename(path, suffix = nil)
