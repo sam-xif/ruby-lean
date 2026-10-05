@@ -55,7 +55,7 @@ def boot : Except String Machine :=
     -- still reaches the prelude's `method_missing` and gates rather than
     -- answering.
     let fsSingleton : List (ObjId × List String) :=
-      [ (Boot.fileId, ["read", "write", "exist?", "file?", "directory?", "size", "open"]),
+      [ (Boot.fileId, ["read", "write", "exist?", "file?", "directory?", "size", "__open"]),
         (Boot.dirId, ["exist?"]),
         (Boot.ioId, ["read", "write"]) ]
     let initial := fsSingleton.foldl (fun m (cls, names) =>

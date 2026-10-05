@@ -2126,6 +2126,23 @@ class File
     parts.map { |x| x.to_s }.join("/")
   end
 
+  # `File.open` with a block (issue #7 step 4). The block form is a prelude
+  # method and not a builtin because closing the descriptor on both normal
+  # return and exception needs a real `yield` inside `begin … ensure … end`,
+  # and a pure builtin cannot push a block frame. The descriptor itself is
+  # allocated by the `__open` primitive (the step-2 singleton), so the mode and
+  # path semantics have one definition. The block form returns the block's
+  # value, exactly as CRuby does [V]; the non-block form returns the descriptor.
+  def self.open(path, mode = nil, &blk)
+    io = mode.nil? ? __open(path) : __open(path, mode)
+    return io if blk.nil?
+    begin
+      blk.call(io)
+    ensure
+      io.close
+    end
+  end
+
   def self.method_missing(name, *args, **kw, &blk)
     __unsupported__("File." + name.to_s + " (only the pure path operations are modeled)")
   end
