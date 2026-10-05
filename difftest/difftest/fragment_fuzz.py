@@ -1,8 +1,12 @@
-"""Random programs inside the P0 checker fragment, and the relation over them.
+"""Random programs inside the P0 checker fragment, and the Sorbet relation over
+them.
 
-Part of the checker difftest (see `checker_relation.py`). Mining the
-bootstraptest corpus gave 21 accepts and **zero** rejects, so the dangerous
-verdict has no natural population and has to be generated.
+Mining the bootstraptest corpus gave 21 accepts and **zero** rejects, so the
+dangerous verdict has no natural population and has to be generated. With the
+pre-ratchet `check` query removed, the surviving oracle here is `srb`: each
+generated program declares an *intent* (well typed, or ill typed with the error
+injected under a literal- or local-rooted receiver), and the relation is intent
+against `srb`'s answer.
 
 ## Why source, not `Expr`
 
@@ -16,22 +20,16 @@ the existing desugar pipeline and guarantees both oracles read the same artifact
 loop condition cannot be typed and a terminating typed loop is inexpressible.
 `while` is therefore absent from the grammar below, and `if` conditions can only
 be the literals `true`/`false` — which `srb` always flags 7006, an excluded
-code. Adding `Integer#<` is the single change that would unlock both; it needs a
-Bool-returning variant of `int_bin_dispatch`, since the current one is
-`Int -> Int -> Int`. That is the top ratchet item and it is a checker change,
-not a harness one.
+code.
 
 ## Three intents, three different expectations
 
-- `wellformed` — should `accept`. Anything else is a checker regression.
-- `injected-literal` — a bad operand under a *literal-rooted* receiver, so
-  `defTy` knows both operand types. Should `reject`; the rate at which it does
-  is the refutation pass's **recall**, the number that says whether `reject`
-  earns its risk.
-- `injected-local` — the same bad operand under a *local* receiver. Expected to
-  be `unknown`, because `defTy` takes no environment. Generated deliberately:
-  it keeps the known incompleteness measured rather than assumed, and it is the
-  population that would move if `defTy` ever gains an environment.
+- `wellformed` — `srb` should report no error. An error here is a generator bug.
+- `injected-literal` — a bad operand under a *literal-rooted* receiver, so the
+  operand types are locally knowable. `srb` should catch it; the rate at which it
+  does is its **recall** on this population.
+- `injected-local` — the same bad operand under a *local* receiver. Generated
+  deliberately: it keeps a population srb may miss measured rather than assumed.
 """
 
 from __future__ import annotations
@@ -178,38 +176,55 @@ def srb_batch(samples: list[Sample], srb: str | None = None,
 # The run
 # ---------------------------------------------------------------------------
 
+# What each intent should see from `srb`, checked against what it actually sees.
+# The intents make different claims, so the interesting outcome differs per
+# intent: a `wellformed` program srb rejects is a generator bug, while an
+# `injected-*` program srb accepts is an unsoundness candidate.
+FUZZ_CELLS: dict[str, str] = {
+    "fuzz-typed-srb-rejected": (
+        "intended well-typed; srb reported an error — a generator bug or a "
+        "finding about Sorbet"
+    ),
+    "fuzz-injected-srb-caught": (
+        "intended ill-typed; srb reported an error, as it should"
+    ),
+    "fuzz-injected-srb-missed": (
+        "intended ill-typed; srb reported no error — an unsoundness candidate, "
+        "or a mutation that was not really a type error"
+    ),
+    "fuzz-typed-srb-clean": "intended well-typed; srb reported no error",
+}
+
+# Only well-typed-but-rejected fails the run: it means the generator is emitting
+# programs it wrongly believes are well typed, which invalidates the rest.
+FUZZ_PINNED_ZERO_CELLS = ("fuzz-typed-srb-rejected",)
+
 
 def run_fuzz(count: int, seed: int, out_dir: Path, timeout: float = 300.0) -> dict:
-    """Generate, check, srb, and relate. Returns the summary dict; the caller
-    exits nonzero on `violations`."""
+    """Generate, srb, and relate. Returns the summary dict; the caller exits
+    nonzero on `violations`."""
     import json
 
-    from .checker_relation import CHECK_CELLS, PINNED_ZERO_CELLS, relate
     from .control import CRubyRunner
-    from .sorbet import StaticChecker
-    from .sorbet_check import TYPE_ERROR_FAMILY, runtime_kind
+    from .sorbet_check import runtime_kind
 
     samples = sample(count, seed)
     control = CRubyRunner(timeout=timeout)
-    checker = StaticChecker(runner=control)
     errors = srb_batch(samples, timeout=timeout)
 
     rows = []
     for s in samples:
-        verdict = checker.check(s.source)
+        errs = errors[s.name]
+        if s.intent == "wellformed":
+            cell = "fuzz-typed-srb-rejected" if errs else "fuzz-typed-srb-clean"
+        else:
+            cell = "fuzz-injected-srb-caught" if errs else "fuzz-injected-srb-missed"
         obs = control.run(s.source)
-        cell = relate(
-            verdict.verdict if verdict else None,
-            errors[s.name],
-            obs.exception[0] if obs.exception else None,
-            TYPE_ERROR_FAMILY,
-        )
         rows.append({
             "name": s.name,
             "intent": s.intent,
-            "verdict": verdict.verdict if verdict else None,
             "cell": cell,
-            "srb_errors": [e.to_json() for e in errors[s.name]],
+            "srb_errors": [e.to_json() for e in errs],
             "runtime": runtime_kind(obs.exception),
             "source": s.source,
         })
@@ -219,35 +234,20 @@ def run_fuzz(count: int, seed: int, out_dir: Path, timeout: float = 300.0) -> di
         for r in rows:
             fh.write(json.dumps(r) + "\n")
 
-    def by(intent, verdict):
-        return sum(1 for r in rows if r["intent"] == intent and r["verdict"] == verdict)
+    def by(intent, cell):
+        return sum(1 for r in rows if r["intent"] == intent and r["cell"] == cell)
 
-    per_intent = {
-        i: {
-            "total": sum(1 for r in rows if r["intent"] == i),
-            "accept": by(i, "accept"),
-            "reject": by(i, "reject"),
-            "unknown": by(i, "unknown"),
-            "undecidable": by(i, None),
-        }
-        for i in INTENTS
-    }
-    inj = per_intent["injected-literal"]
+    inj = sum(1 for r in rows if r["intent"] == "injected-literal")
     summary = {
         "count": count,
         "seed": seed,
-        "cells": {c: sum(1 for r in rows if r["cell"] == c) for c in CHECK_CELLS},
-        "per_intent": per_intent,
-        # The number that says whether `reject` earns its risk.
-        "reject_recall": (inj["reject"] / inj["total"]) if inj["total"] else None,
-        "violations": [r["name"] for r in rows if r["cell"] in PINNED_ZERO_CELLS],
-        # A wellformed program that is not accepted is a checker regression, not
-        # a relation violation — tracked separately so it cannot hide in the
-        # `unknown` count.
-        "wellformed_not_accepted": [
-            r["name"] for r in rows
-            if r["intent"] == "wellformed" and r["verdict"] != "accept"
-        ],
+        "cells": {c: sum(1 for r in rows if r["cell"] == c) for c in FUZZ_CELLS},
+        # The number that says whether `srb` catches injected errors on the
+        # populations the generator can express.
+        "srb_recall_injected_literal": (
+            by("injected-literal", "fuzz-injected-srb-caught") / inj if inj else None
+        ),
+        "violations": [r["name"] for r in rows if r["cell"] in FUZZ_PINNED_ZERO_CELLS],
     }
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
     return summary

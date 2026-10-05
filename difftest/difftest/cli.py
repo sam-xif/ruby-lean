@@ -292,12 +292,9 @@ def cmd_sorbet(args) -> int:
     out_dir = _out_dir(args.out, "sorbet-check")
     summary = run_check(cases, out_dir, timeout=args.timeout)
     _print_summary(summary, out_dir)
-    # Exit 1 on a *declaration mismatch* or a **pinned-zero violation** of the
-    # checker relation (the static-soundness POC note §7). Unsoundness witnesses stay
-    # findings, not failures — the corpus exists to collect them — but a program
-    # where `check` and `srb` genuinely disagree is a bug in one of them, and
-    # the whole point of the zeros is that they are not negotiable.
-    return 1 if (summary["mismatches"] or summary["check_violations"]) else 0
+    # Exit 1 on a *declaration mismatch* (corpus integrity). Unsoundness
+    # witnesses stay findings, not failures — the corpus exists to collect them.
+    return 1 if summary["mismatches"] else 0
 
 
 def cmd_checker_sample(args) -> int:
@@ -392,10 +389,9 @@ def cmd_checker(args) -> int:
     out_dir = _out_dir(args.out, "checker-fuzz")
     summary = run_fuzz(count, args.seed, out_dir, timeout=args.timeout)
     _print_summary(summary, out_dir)
-    # Pinned-zero violations fail. A wellformed program that is not accepted is
-    # a *checker* regression rather than a relation violation, but it is still a
-    # failure — silently degrading to `unknown` is exactly how a ratchet rots.
-    return 1 if (summary["violations"] or summary["wellformed_not_accepted"]) else 0
+    # A well-typed program `srb` rejects is a generation bug and fails the run;
+    # the injected cells are findings, not failures.
+    return 1 if summary["violations"] else 0
 
 
 def cmd_replay(args) -> int:
@@ -508,8 +504,7 @@ def main(argv=None) -> int:
 
     p_checker = sub.add_parser(
         "checker",
-        help="fuzz the P0 checker fragment and relate `check` to srb "
-             "(the static-soundness POC note §7)",
+        help="fuzz the P0 fragment and relate generated programs to srb",
     )
     p_checker.add_argument("subcommand",
                            choices=["fuzz", "siggen", "sample", "sigread"])

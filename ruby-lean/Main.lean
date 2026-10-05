@@ -25,7 +25,60 @@ open RubyCore
 def fuelDefault : Nat := 5_000_000
 def traceStepsDefault : Nat := 3000
 
+/-- The flags this binary understands, with their argument shapes. Anything else
+is a harness error (exit 1) rather than a silently-ignored token: a stale caller
+that still passes a removed flag (the pre-ratchet `--check`, `--certify`, …) would
+otherwise get a *program run* back instead of an error, which reads as a verdict
+to whoever parses the Observation JSON. -/
+inductive FlagArg where
+  | none_   -- the flag takes no argument
+  | required -- the flag needs one more token
+  | optional -- the flag may be followed by one token, but need not be
+  deriving BEq
+
+def knownFlag? (a : String) : Option FlagArg :=
+  match a with
+  | "--fuel" | "--trace-from" | "--trace-at" => some .required
+  | "--trace" => some .optional
+  | "--steps" | "--fragment" | "--sigs" | "--preload-json" => some .none_
+  | _ => none
+
+/-- Walk `args`, ensuring every token is either a known flag or its argument.
+Returns the offending token on the first unknown one. Rejects a missing required
+argument rather than letting it fall back to a default, and rejects a stray
+non-flag token. -/
+def validateArgs (args : List String) : Except String Unit :=
+  match args with
+  | [] => .ok ()
+  | a :: rest =>
+    match knownFlag? a with
+    | none => .error a
+    | some .none_ => validateArgs rest
+    | some .required =>
+      match rest with
+      | [] => .error a
+      | _ :: tl => validateArgs tl
+    | some .optional =>
+      -- `--trace`'s optional count must be a number if it is present and not a
+      -- flag; a bare `--trace` uses the default window. The equation binder `h`
+      -- is what lets the termination proof see `rest = n :: tl`.
+      match _h : rest with
+      | n :: tl =>
+        if n.startsWith "--" then validateArgs rest else validateArgs tl
+      | [] => .ok ()
+termination_by args.length
+decreasing_by
+  all_goals (simp_all; try omega)
+
 def main (args : List String) : IO UInt32 := do
+  match validateArgs args with
+  | .error bad =>
+    IO.eprintln s!"unknown or malformed flag: {bad}\n\
+      usage: rubycore [--fragment | --sigs | --steps | --trace [N] | \
+      --trace-from N | --trace-at SUBSTR | --fuel N | --preload-json]\n\
+      reads RubyCore JSON on stdin; writes Observation JSON on stdout"
+    return 1
+  | .ok () => pure ()
   let stdin ← IO.getStdin
   let input ← stdin.readToEnd
   let fuel := ((args.dropWhile (· != "--fuel"))[1]?.bind String.toNat?).getD fuelDefault

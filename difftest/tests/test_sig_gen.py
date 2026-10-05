@@ -44,9 +44,9 @@ def _code_only(obj) -> str:
     return " ".join(out)
 
 
-# The generation path. `run_siggen` is deliberately excluded: it *records* the
-# checker's verdict for the report, which is not the same as letting the checker
-# decide what counts as well-typed.
+# The generation path. `run_siggen` is deliberately excluded: it *records* srb's
+# verdict for the report, which is not the same as letting an oracle decide what
+# counts as well-typed.
 GENERATION_PATH = (
     sig_gen.Ty, sig_gen.Gen, sig_gen.Method, sig_gen.Program,
     sig_gen.build, sig_gen._mutate, sig_gen.sample,
@@ -54,13 +54,13 @@ GENERATION_PATH = (
 )
 
 
-def test_generation_path_does_not_consult_the_checker():
-    """If "well-typed" were defined by the checker under test, agreement would
-    be guaranteed by construction and the harness would measure nothing. The
-    generation path's only oracle is srb."""
+def test_generation_path_does_not_consult_an_oracle():
+    """If "well-typed" were defined by the typing layer under test, agreement
+    would be guaranteed by construction and the harness would measure nothing.
+    The generation path's only oracle is srb."""
     for obj in GENERATION_PATH:
         body = _code_only(obj)
-        for forbidden in ("builtinSig", "StaticChecker", "rubycore", "check"):
+        for forbidden in ("builtinSig", "rubycore", "check"):
             assert forbidden not in body, f"{obj.__name__} references {forbidden}"
 
 

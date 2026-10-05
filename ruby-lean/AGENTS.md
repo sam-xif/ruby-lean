@@ -3597,8 +3597,9 @@ A re-statement of the judgment layer, not a patch.
   false` and safety properties are prefix-closed, so `∀ fuel` catches every real
   stuck outcome without needing termination.
 - **Not reachability.** `while true; end; 1 + "s"` is genuinely safe and the
-  checker says `false`. `difftest/checker_relation.py` deliberately excludes that
-  as "a reachability opinion, not a type one".
+  checker says `false`. The retired `check` vs. `srb` relation
+  (`difftest/checker_relation.py`, removed with the pre-ratchet checker) excluded
+  that as "a reachability opinion, not a type one".
 
 ### §3.1 — the keystone: `SemJudgeA`
 
@@ -3678,7 +3679,7 @@ what each one was, so a citation is readable without fetching it.
 | `RubyCore/README.md` §Mechanization | → `RubyCore/README.md` §Mechanization |
 | artifacts `00`–`04`, `linearization.md` | `00`–`04` → `RubyCore/README.md`; `05` → `../docs/testing/methodology.md`; `06` and `linearization.md` → `../docs/front-end/` |
 | `PROJECT_PLAN.md` | the original project plan: motivation, prior-art survey, scope and phasing. §4 (what is modeled, and the exclusions) is `RubyCore/README.md` 00 §6; §7 (the relation, not the interpreter, is the definition of record) is its §Mechanization |
-| the static-soundness POC note | the first end-to-end soundness POC: a total `check : Expr → Verdict` with `check_sound` over the *fully-typed* fragment, `I ≡ InFragment ∧ WellTyped`, and the builtin signature table it forced. Its §7 is the **checker difftest**, which survives as `difftest/checker_relation.py` |
+| the static-soundness POC note | the first end-to-end soundness POC: a total `check : Expr → Verdict` with `check_sound` over the *fully-typed* fragment, `I ≡ InFragment ∧ WellTyped`, and the builtin signature table it forced. Its §7 is the **checker difftest**, whose `check` vs. `srb` relation was retired with the pre-ratchet checker (see `difftest/implementation-notes.md` N74); the Sorbet two-by-two and the live `--fragment` query survive in `difftest/sorbet_check.py` |
 | the typed-portion-safety note | the plan for "a type error never occurs inside typed code" — the blame-theorem shape. Its finding stands: four verified channels carry untyped data into typed code, one of which (alias + mutate) shows *no entry check, however deep, suffices*, so the required condition is a property of the **heap over time**, not of the call graph |
 | the certificate-language note | type-checking as certificate replay, and the norms (untrusted generation, one trusted checker, `#guard` not `native_decide`, agreement counts must not move). Superseded by `Ratchet/Check/Deriv.lean` + `validateD`; the norms stand |
 | the judgment-layer note | the J-milestones: state the invariant over an **inductive judgment** rather than over a checker function, because metatheory stated over a *function* is re-incurred at every checker rewrite. Superseded by `Denote/Typed/`; the diagnosis stands |

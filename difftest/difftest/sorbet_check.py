@@ -27,8 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .control import CRubyRunner
-from .checker_relation import CHECK_CELLS, PINNED_ZERO_CELLS, excluded, relate, type_relevant
-from .sorbet import FragmentChecker, SorbetStatic, StaticChecker, is_sorbet_runtime_error
+from .sorbet import FragmentChecker, SorbetStatic, is_sorbet_runtime_error
 from .testcase import TestCase
 
 # Mirrors `typeErrorFamily` in ruby-lean/RubyCore/Proof/TypeSafety.lean. The Lean
@@ -86,10 +85,7 @@ class CheckResult:
     cell: str
     declared_static: str
     declared_runtime: str
-    declared_check: str | None = None
     fragment: object = None  # FragmentResult | None ("cannot say")
-    checker: object = None  # CheckResultLean | None ("cannot say")
-    check_cell: str = "check-undecidable"
 
     @property
     def in_theorem_scope(self) -> bool:
@@ -99,17 +95,10 @@ class CheckResult:
 
     @property
     def matches_declaration(self) -> bool:
-        """Corpus integrity. `check_expect` is **optional**: the 22 pre-existing
-        tier-4 programs predate the checker and their verdicts will churn as the
-        fragment widens, so requiring a declaration there would make every
-        widening a 22-file edit. Where it *is* declared it is enforced — that
-        catches a verdict silently flipping `accept` to `unknown`, which breaks
-        no pinned zero and would otherwise pass unnoticed."""
-        if (
-            self.declared_check is not None
-            and (self.checker.verdict if self.checker else None) != self.declared_check
-        ):
-            return False
+        """Corpus integrity: the declared (static, runtime) pair is what actually
+        happens. The fragment is not declared — it is a property of the semantics
+        that the corpus measures rather than pins — so it is not part of the
+        integrity check."""
         return (
             ("clean" if self.static_ok else "errors") == self.declared_static
             and self.runtime_kind == self.declared_runtime
@@ -133,11 +122,8 @@ class CheckResult:
             "declared": {
                 "static_expect": self.declared_static,
                 "runtime_expect": self.declared_runtime,
-                "check_expect": self.declared_check,
             },
             "fragment": self.fragment.to_json() if self.fragment else None,
-            "checker": self.checker.to_json() if self.checker else None,
-            "check_cell": self.check_cell,
             "in_theorem_scope": self.in_theorem_scope,
             "matches_declaration": self.matches_declaration,
             "description": self.case.provenance.get("description"),
@@ -150,12 +136,10 @@ def check_case(
     static: SorbetStatic,
     control: CRubyRunner,
     fragment: FragmentChecker | None = None,
-    checker: StaticChecker | None = None,
 ) -> CheckResult:
     result = static.check(case.source)
     obs = control.run(case.source)
     kind = runtime_kind(obs.exception)
-    verdict = checker.check(case.source) if checker else None
     return CheckResult(
         case=case,
         static_ok=result.ok,
@@ -166,15 +150,7 @@ def check_case(
         cell=classify(result.ok, kind, obs.exception[0] if obs.exception else None),
         declared_static=case.provenance.get("static_expect", "?"),
         declared_runtime=case.provenance.get("runtime_expect", "?"),
-        declared_check=case.provenance.get("check_expect"),
         fragment=fragment.check(case.source) if fragment else None,
-        checker=verdict,
-        check_cell=relate(
-            verdict.verdict if verdict else None,
-            result.errors,
-            obs.exception[0] if obs.exception else None,
-            TYPE_ERROR_FAMILY,
-        ),
     )
 
 
@@ -209,55 +185,7 @@ def render_markdown(results: list[CheckResult]) -> str:
         "",
     ]
 
-    # ---- the checker relation (the static-soundness POC note §7) ----
-    by_check: dict[str, list[CheckResult]] = {}
-    for r in results:
-        by_check.setdefault(r.check_cell, []).append(r)
-    violations = [r for r in results if r.check_cell in PINNED_ZERO_CELLS]
-    lines += [
-        "## `check` vs. `srb` — the checker relation",
-        "",
-        "Soundness of `accept` is *proved*, not tested "
-        "(`Proof/StaticSoundness.check_sound`); what this buys is **relevance** —",
-        "evidence that `check` formalizes Sorbet rather than a type system we",
-        "invented. Two directions, deliberately asymmetric:",
-        "",
-        "```",
-        "accept  =>  srb reports no error in a type-relevant class",
-        "reject  =>  srb reports some error, in any class",
-        "```",
-        "",
-        "| Cell | Count | Meaning |",
-        "|---|---|---|",
-    ]
-    for cell, meaning in CHECK_CELLS.items():
-        pin = " **(pinned 0)**" if cell in PINNED_ZERO_CELLS else ""
-        lines.append(f"| `{cell}` | {len(by_check.get(cell, []))} | {meaning}{pin} |")
-    unknown_n = len(by_check.get("check-unknown", []))
-    lines += [
-        "",
-        f"**Ratchet:** {unknown_n}/{len(results)} `unknown` "
-        f"(the number to drive down); "
-        f"{len(violations)} pinned-zero violations (must be 0).",
-        "",
-    ]
-    if violations:
-        lines += ["Violations — **this fails the run**:", ""]
-        for r in violations:
-            lines.append(f"- `{r.case.id}` — `{r.check_cell}`")
-        lines.append("")
-    coincidences = by_check.get("check-reject-agrees-verdict-only", [])
-    if coincidences:
-        lines += [
-            "Agreement on the verdict but **not the reason** (§7.2) — not a "
-            "failure, but not a win either:",
-            "",
-        ]
-        for r in coincidences:
-            codes = ", ".join(str(e.code) for e in excluded(r.static_errors))
-            lines.append(f"- `{r.case.id}` — srb erred only on excluded code(s) {codes}")
-        lines.append("")
-
+    # ---- theorem scope: the fragment intersected with what srb accepts ----
     scope = [r for r in results if r.in_theorem_scope]
     in_frag = [r for r in results if r.fragment and r.fragment.in_fragment]
     unknown = [r for r in results if r.fragment is None]
@@ -293,10 +221,8 @@ def render_markdown(results: list[CheckResult]) -> str:
         for r in mismatches:
             lines.append(
                 f"- `{r.case.id}`: declared "
-                f"({r.declared_static}, {r.declared_runtime}, "
-                f"{r.declared_check or '-'}), observed "
-                f"({'clean' if r.static_ok else 'errors'}, {r.runtime_kind}, "
-                f"{(r.checker.verdict if r.checker else '-')})"
+                f"({r.declared_static}, {r.declared_runtime}), observed "
+                f"({'clean' if r.static_ok else 'errors'}, {r.runtime_kind})"
             )
         lines.append("")
 
@@ -332,8 +258,7 @@ def run_check(cases: list[TestCase], out_dir: Path, timeout: float = 60.0) -> di
     static = SorbetStatic(timeout=timeout)
     control = CRubyRunner(timeout=timeout)
     fragment = FragmentChecker(runner=control)
-    checker = StaticChecker(runner=control)
-    results = [check_case(c, static, control, fragment, checker) for c in cases]
+    results = [check_case(c, static, control, fragment) for c in cases]
 
     out_dir.mkdir(parents=True, exist_ok=True)
     with (out_dir / "cases.jsonl").open("w") as fh:
@@ -355,15 +280,6 @@ def run_check(cases: list[TestCase], out_dir: Path, timeout: float = 60.0) -> di
         ],
         "conservative_rejections": [
             r.case.id for r in results if r.cell == "conservative-rejection"
-        ],
-        "check_cells": {cell: 0 for cell in CHECK_CELLS}
-        | {
-            cell: sum(1 for r in results if r.check_cell == cell)
-            for cell in CHECK_CELLS
-        },
-        "check_unknown": sum(1 for r in results if r.check_cell == "check-unknown"),
-        "check_violations": [
-            r.case.id for r in results if r.check_cell in PINNED_ZERO_CELLS
         ],
     }
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))

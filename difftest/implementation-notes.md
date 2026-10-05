@@ -2313,3 +2313,55 @@ The typed gate was rerun and remains red at HeapFacts className/lookup proof
 drift; its captured error log exactly matches L298. Proof repair stays deferred.
 The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
 was not reached. The captured proof-audit.log is archived.
+
+## N74 — retire the pre-ratchet `check` vs. `srb` relation (2026-10-05)
+
+Following `5ee6b034` ("Remove the four pre-ratchet type-checking layers from
+RubyCore"), `StaticChecker` in `difftest/difftest/sorbet.py` still shelled out to
+`rubycore --check`, a flag that no longer exists. The binary silently ignored the
+unknown flag, ran the program, and returned Observation JSON; `StaticChecker`
+then parsed that for a `verdict` key and raised `KeyError`. Three tests in
+`test_sorbet_check.py` exercised that path and only passed because the fast CI
+job skips them (no `rubycore`, no Sorbet).
+
+The relation was removed rather than repaired, because the checker it queried no
+longer exists and is not coming back in that form (the checker of record is
+`validateD`, `lake exe ratchetd`, which is a different interface). Concretely:
+
+- `StaticChecker`, `CheckResultLean` and `checker_relation.py`
+  (`CHECK_CELLS`/`PINNED_ZERO_CELLS`/`relate`) are deleted, along with
+  `tests/test_checker_relation.py`.
+- `sorbet_check.py` keeps the Sorbet two-by-two (`srb` × runtime) and the
+  **live** fragment query (`rubycore --fragment`); `CheckResult` no longer
+  carries `checker`/`check_cell`, and `run_check` no longer takes a checker.
+- The `p0-fragment` corpus category is removed: it existed only to populate the
+  removed relation's cells ("the harness was otherwise vacuous" — N-checker). Its
+  six annotation-free programs probed nothing else. `SORBET_CATEGORIES` loses the
+  entry, and the now-vacuous `NO_RUNTIME_CATEGORIES` exemption in
+  `test_sorbet_corpus.py` is deleted with it.
+- The fuzz and sig-gen arms lose their `check` dimension. `fragment_fuzz.run_fuzz`
+  now relates each generated program's *intent* against what `srb` actually
+  reports (`fuzz-typed-srb-rejected`, `fuzz-injected-srb-caught`,
+  `fuzz-injected-srb-missed`, `fuzz-typed-srb-clean`), and `sig_gen.run_siggen`
+  keeps its `GEN_CELLS` intent relation. `run_sigread` (the `--sigs` reader
+  check) is untouched — it was already live.
+- `rubycore` now rejects unknown or malformed flags with exit 1 instead of
+  silently running the program. A stale caller of a removed flag gets an error,
+  not an Observation that reads as a verdict. `validateArgs` enumerates the known
+  flags (with required/optional arg shapes) in `Main.lean`.
+
+Removing the dead relation exposed a live inconsistency the `KeyError` had been
+hiding: `escape-hatches/002.rb` (a `define_method` that reinstalls a sig-annotated
+method with an unannotated body) is reported *in-fragment* by `--fragment` yet is
+an unsoundness witness, and it lands in `theorem_scope`. The fragment admits
+`define_method` structurally (D10) on the justification that redefinition
+conformance is a question for `infer` — which was removed with the pre-ratchet
+layers, so nothing checks it now. `test_no_unsoundness_witness_is_in_the_fragment`
+pins this one known in-fragment witness explicitly (any *new* one still fails the
+test) and points at the tracked finding; tightening the fragment itself is out of
+scope here.
+
+Validation: `difftest` pytest grew to 146 passed (the three previously-skipped
+tests now run for real); `run_fuzz`, `run_siggen` and `sorbet check` exercised
+locally; `rubycore` flag validation checked by hand for known, removed, missing-
+argument and stray-token cases.

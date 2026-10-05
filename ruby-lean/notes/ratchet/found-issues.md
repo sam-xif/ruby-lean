@@ -2019,7 +2019,7 @@ syntax for. Where the two differ:
   there is no `.brk` rule) and on a body that calls an unannotated method (`i = f(i)` is
   7001 because `f` returns `T.untyped`; `validate` accepts it by typing `f`'s body).
 * On `while true; end` both say the program is fine; on `if`-bodies Sorbet adds **7006
-  "This code is unreachable"**, which `difftest/checker_relation.py` already excludes as a
+  "This code is unreachable"**, which the retired `difftest/checker_relation.py` excluded as a
   reachability opinion rather than a type one.
 
 **Method note**: the three-column table is the point. `validate=false` on its own cannot

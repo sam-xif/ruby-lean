@@ -2,7 +2,7 @@
 
 No toolchain: these check that the *generator* upholds the invariants the fuzz
 report's numbers depend on. If `injected-literal` ever emitted a local-rooted
-receiver, `reject_recall` would silently measure something else.
+receiver, `srb_recall_injected_literal` would silently measure something else.
 """
 
 import random
@@ -54,10 +54,10 @@ def test_wellformed_never_mentions_a_bad_operand():
 
 
 def test_injected_literal_puts_the_bad_operand_under_a_literal_receiver():
-    """The property `reject_recall` measures. The final line must be
+    """The property `srb_recall_injected_literal` measures. The final line must be
     `<literal-rooted expr> <op> <bad>` with no local name in the receiver —
-    otherwise `defTy` has no unconditional type and the honest verdict is
-    `unknown`, not `reject`."""
+    otherwise the operand types are not locally knowable and the honest reading is
+    that `srb` has less to go on."""
     for i in range(40):
         src = gen("injected-literal", i)
         last = src.strip().splitlines()[-1]

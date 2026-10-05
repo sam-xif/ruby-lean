@@ -1,6 +1,6 @@
 """Type-directed generation of Sorbet-annotated Ruby.
 
-Part of the checker difftest (see `checker_relation.py`). `fragment_fuzz.py` generates plain
+Part of the difftest Sorbet harness. `fragment_fuzz.py` generates plain
 Ruby inside the P0 checker fragment; this generates *annotated* programs, and it
 does so **type-first**: a term is built downward from the type it must have, so
 well-typedness is a property of the construction rather than something checked
@@ -12,12 +12,12 @@ below.
 
 ## Independence from the artifact under test
 
-**Nothing here may import `builtinSig`, and nothing here may consult
-`rubycore --check`.** If "well-typed" were defined by the checker we are
-testing, agreement would be guaranteed by construction and the harness would
-measure nothing. `BUILTINS` below is written from *Sorbet's* RBIs, deliberately
-as a second, independent table — and the two tables disagreeing is a finding we
-want, not a defect to paper over. (They already do: Sorbet's `Integer#+` accepts
+**Nothing here may import `builtinSig`.** If "well-typed" were defined by the
+typing layer we are testing, agreement would be guaranteed by construction and
+the harness would measure nothing. `BUILTINS` below is written from *Sorbet's*
+RBIs, deliberately as a second, independent table — and the two tables
+disagreeing is a finding we want, not a defect to paper over. (They already do:
+Sorbet's `Integer#+` accepts
 `T.any(Integer, Float, Rational, BigDecimal, Complex)`, ours accepts `Integer`.
 Ours being narrower is incompleteness, which is allowed.)
 
@@ -25,8 +25,8 @@ Ours being narrower is incompleteness, which is allowed.)
 
 The well-typed population is **exact** — by construction, not by filtering. The
 ill-typed population is only ever *intended* ill-typed; `srb` adjudicates. A
-mislabelled case therefore surfaces as a generator-vs-`srb` disagreement, which
-is diagnosable and cannot corrupt the check-vs-`srb` zeros.
+mis-labelled case therefore surfaces as a generator-vs-`srb` disagreement, which
+is diagnosable and cannot corrupt the relation's pinned zero.
 
 ## Two knobs, and why they are coupled
 
@@ -355,8 +355,7 @@ def sample(count: int, seed: int, *, sigil: str = "true", coverage: float = 1.0,
 # The run
 # ---------------------------------------------------------------------------
 
-# The generator's own relation, distinct from `checker_relation.py`'s. This one
-# compares *intent* against `srb`; that one compares `check` against `srb`.
+# The generator's own relation: it compares *intent* against `srb`.
 GEN_CELLS: dict[str, str] = {
     "gen-unsoundness-witness": (
         "intended ill-typed; srb clean AND CRuby raised a type-family error — "
@@ -387,30 +386,23 @@ def run_siggen(count: int, seed: int, out_dir, *, sigil: str = "true",
                timeout: float = 300.0) -> dict:
     import json
 
-    from .checker_relation import CHECK_CELLS, PINNED_ZERO_CELLS, relate
     from .control import CRubyRunner
     from .fragment_fuzz import srb_batch
-    from .sorbet import StaticChecker
     from .sorbet_check import TYPE_ERROR_FAMILY, runtime_kind
 
     samples = sample(count, seed, sigil=sigil, coverage=coverage, loose=loose)
     errors = srb_batch(samples, timeout=timeout)
     control = CRubyRunner(timeout=timeout)
-    checker = StaticChecker(runner=control)
 
     rows = []
     for s in samples:
         errs = errors[s.name]
-        verdict = checker.check(s.source)
-        # CRuby is run only where it can change a verdict: an intended-ill-typed
-        # program srb accepted (does it really fail?), or one our checker
-        # accepted (the model-bug zero). Everywhere else it would cost a process
-        # per program to confirm what srb already settled.
+        # CRuby is run only where it can change a finding: an intended-ill-typed
+        # program srb accepted (does it really fail?). Everywhere else it would
+        # cost a process per program to confirm what srb already settled.
         exc_class = None
         rt = None
-        if (s.intent == "illtyped" and not errs) or (
-            verdict is not None and verdict.verdict == "accept"
-        ):
+        if s.intent == "illtyped" and not errs:
             obs = control.run(s.source)
             rt = runtime_kind(obs.exception)
             exc_class = obs.exception[0] if obs.exception else None
@@ -428,15 +420,6 @@ def run_siggen(count: int, seed: int, out_dir, *, sigil: str = "true",
             "name": s.name, "intent": s.intent, "mutation": s.mutation,
             "cell": cell, "runtime": rt,
             "srb_errors": [e.to_json() for e in errs],
-            "check_verdict": verdict.verdict if verdict else None,
-            # The annotated population guards the three pinned zeros too. It is
-            # not redundant with the `fuzz` arm: these programs reach `check`
-            # through a *method-shaped* AST whose toplevel body still lands in
-            # the fragment, which is a shape the fragment generator cannot emit.
-            "check_cell": relate(
-                verdict.verdict if verdict else None, errs, exc_class,
-                TYPE_ERROR_FAMILY,
-            ),
             "source": s.source,
         })
 
@@ -462,19 +445,8 @@ def run_siggen(count: int, seed: int, out_dir, *, sigil: str = "true",
             for k in MUTATIONS
         },
         "srb_catch_rate": (caught / injected) if injected else None,
-        # What our checker made of the same programs. Expected to be all
-        # `unknown` until P1 lands methods — recorded so the day it stops being
-        # all `unknown` is visible.
-        "check_verdicts": {
-            v: sum(1 for r in rows if r["check_verdict"] == v)
-            for v in ("accept", "reject", "unknown", None)
-        },
-        "check_cells": {
-            c: sum(1 for r in rows if r["check_cell"] == c) for c in CHECK_CELLS
-        },
         "violations": [
-            r["name"] for r in rows
-            if r["cell"] in GEN_PINNED_ZERO_CELLS or r["check_cell"] in PINNED_ZERO_CELLS
+            r["name"] for r in rows if r["cell"] in GEN_PINNED_ZERO_CELLS
         ],
         "findings": [r["name"] for r in rows
                      if r["cell"] in ("gen-unsoundness-witness", "gen-illtyped-accepted")],
