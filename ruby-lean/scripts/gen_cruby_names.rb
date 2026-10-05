@@ -40,6 +40,16 @@ FOLD = {
   "Proc" => [Proc],
   "Range" => [Range, Enumerable],
   "Random" => [Random],
+  # The VFS classes (issue #7). `File < IO`, `Dir < Object`. Fold in only the
+  # modules the L0 chain omits (File::Constants, Enumerable); `IO` is already in
+  # `File`'s model chain, so it is deliberately NOT folded into `File` (folding
+  # it would make `crubyClassDefines "File" "close"` true and spuriously gate
+  # `File#close`, which resolves to `IO#close`). Their methods must be in the
+  # tables so an unmodeled File/IO/Dir instance method (File#path, IO#fileno, …)
+  # gates as Unsupported instead of mis-raising NoMethodError (issue #27).
+  "IO" => [IO, File::Constants, Enumerable],
+  "File" => [File, File::Constants, Enumerable],
+  "Dir" => [Dir, Enumerable],
   "Exception" => [Exception],
   # Exception subclasses in the bootstrap heap: each may add its own methods
   # (e.g. NameError#receiver, NoMethodError#args) that dispatch must know

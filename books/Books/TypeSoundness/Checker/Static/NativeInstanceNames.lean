@@ -85,7 +85,21 @@ def nativeInstanceNames : List String := [
   "uniq", "uniq!", "unpack", "unpack1", "unshift", "untrace_var", "upcase",
   "upcase!", "update", "upto", "using", "valid_encoding?", "value?", "values",
   "values_at", "warn", "yield", "yield_self", "zero?", "zip", "|",
-  "~"
+  "~",
+  -- File/IO/Dir selectors (issue #7's VFS classes; added with the CRuby-name
+  -- tables so unmodeled File/IO/Dir instance methods gate as Unsupported
+  -- instead of mis-raising NoMethodError — issue #27).
+  "advise", "atime", "autoclose=", "autoclose?", "binmode", "binmode?",
+  "birthtime", "chdir", "children", "chmod", "chown", "close", "close_on_exec=",
+  "close_on_exec?", "close_read", "close_write", "closed?", "ctime", "each_child",
+  "eof", "eof?", "external_encoding", "fcntl", "fdatasync", "fileno", "flock",
+  "flush", "fsync", "getc", "internal_encoding", "ioctl", "isatty", "lineno",
+  "lineno=", "lstat", "mtime", "path", "pid", "pos", "pos=", "pread", "pwrite",
+  "read", "read_nonblock", "readbyte", "readchar", "readpartial", "reopen", "seek",
+  "set_encoding", "set_encoding_by_bom", "stat", "sync", "sync=", "sysread",
+  "sysseek", "syswrite", "tell", "timeout", "timeout=", "to_io", "to_path",
+  "tty?", "ungetbyte", "ungetc", "wait", "wait_priority", "wait_readable",
+  "wait_writable", "write", "write_nonblock"
 ]
 
 /-- Sufficient for any inherited native prefix; own calls still use their empty prefix.

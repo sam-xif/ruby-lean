@@ -22,7 +22,7 @@ def nativeQueryFreeB (cn mn : String) : Bool :=
   nativeQueryNames.contains mn && !nativeQueryHasB cn mn
 /-- Classes whose CRuby singleton table defines `new` (a dispatch shadow). -/
 def nativeSingletonNew : List String :=
-  ["String", "Array", "Proc", "T::Types::TypedArray", "T::Types::TypedEnumerator",
+  ["String", "Array", "Proc", "IO", "T::Types::TypedArray", "T::Types::TypedEnumerator",
    "T::Types::TypedEnumeratorChain", "T::Types::TypedEnumeratorLazy", "T::Types::TypedHash",
    "T::Types::TypedRange", "T::Types::TypedSet", "JSON::Fragment",
    "T::Private::Methods::Declaration", "T::Private::Methods::DeclarationBlock",
