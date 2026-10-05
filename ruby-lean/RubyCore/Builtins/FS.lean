@@ -78,6 +78,9 @@ def getsArgsH (h : Heap) : List Value → Option (Option String × Option Nat)
     match strPayload? h p with
     | some s => some (some s, none)
     | none => none
+  | [.nil, .int n] =>
+    -- `gets(nil, limit)`: no separator (read the rest), capped at `limit`.
+    if n < 0 then none else some (none, some n.toNat)
   | [p, .int n] =>
     if n < 0 then none
     else match strPayload? h p with
