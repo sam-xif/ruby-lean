@@ -2135,6 +2135,38 @@ class File
   end
 end
 
+# ─── IO — line reads built on the step-5 primitives ─────────────────────────
+#
+# `IO#gets`, `#pos`, `#pos=` and `#rewind` are step-5 primitives in
+# `RubyCore/Builtins/FS.lean`. The remaining member of the ship-order group is
+# written here, in Ruby, because it is defined in terms of `gets` and a block:
+#
+#   * `readline` is `gets`, except that end of file raises `EOFError` rather
+#     than answering `nil`. `EOFError`/`IOError` are unmodeled classes (step 7),
+#     so the EOF case routes to `__unsupported__` by name — an honest gate
+#     rather than a fabricated exception object.
+#   * `each_line` with a block is the loop that `yield`s `gets` until `nil` and
+#     answers the receiver. Without a block CRuby answers an `Enumerator`, which
+#     the model cannot build from a descriptor, so the blockless form gates by
+#     name rather than returning a guess.
+class IO
+  def readline
+    line = gets
+    return __unsupported__("IO#readline at end of file (EOFError gated at step 7)") if line.nil?
+    line
+  end
+
+  def each_line(&blk)
+    return __unsupported__("IO#each_line without a block (needs an Enumerator over a descriptor)") unless block_given?
+    loop do
+      line = gets
+      break if line.nil?
+      yield line
+    end
+    self
+  end
+end
+
 class String
   # `sub`/`gsub` live here because of the **block form**, which a builtin cannot
   # serve: it has to call back into the interpreter once per match. The
