@@ -2150,16 +2150,16 @@ end
 #     the model cannot build from a descriptor, so the blockless form gates by
 #     name rather than returning a guess.
 class IO
-  def readline
-    line = gets
+  def readline(*args)
+    line = gets(*args)
     return __unsupported__("IO#readline at end of file (EOFError gated at step 7)") if line.nil?
     line
   end
 
-  def each_line(&blk)
+  def each_line(*args, &blk)
     return __unsupported__("IO#each_line without a block (needs an Enumerator over a descriptor)") unless block_given?
     loop do
-      line = gets
+      line = gets(*args)
       break if line.nil?
       yield line
     end

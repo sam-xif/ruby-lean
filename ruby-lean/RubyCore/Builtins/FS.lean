@@ -25,8 +25,8 @@ Step 5 adds line reads and positioning over those descriptors: `IO#gets` (all
 four CRuby forms, including the `gets(0) = ""` corner), `IO#pos`/`#pos=`, and
 `IO#rewind`. `IO#readline` and `IO#each_line` are not primitives — they are
 defined in the prelude over `gets`, so that the block form is ordinary Ruby
-evaluation; the blockless `each_line` and the EOF `readline` gate on the
-unmodeled `Enumerator`/`EOFError`.
+evaluation; both forward their `*args` to `gets`, and the blockless `each_line`
+and the EOF `readline` gate on the unmodeled `Enumerator`/`EOFError`.
 -/
 
 namespace RubyCore
