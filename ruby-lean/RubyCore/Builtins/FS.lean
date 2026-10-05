@@ -1,9 +1,9 @@
 import RubyCore.Builtins.Regex
 
 /-!
-The filesystem singleton methods of issue #7 step 1: `File.read`/`write`/
-`exist?`/`file?`/`directory?`/`size` over the symbolic boot fixture
-(`RubyCore/Heap.lean` §Virtual filesystem).
+The filesystem singleton methods of issue #7: `File.read`/`write`/`exist?`/
+`file?`/`directory?`/`size` (step 1) and `Dir.entries`/`children`/`exist?`
+(step 3) over the symbolic boot fixture (`RubyCore/Heap.lean` §Virtual filesystem).
 
 The pure machine never performs OS effects; every operation here reads or mutates
 the fixture tree that lives in the heap. An unmodeled operation is a named
@@ -25,6 +25,15 @@ def pathArg? (m : Machine) : Value → Option String
     | .str s => some s
     | _ => none
   | _ => none
+
+/-- Allocate the `Array` of String values a `Dir.entries`/`Dir.children` call
+    answers, one fresh String per name in order. Accumulates through the
+    `foldPair_frame` shape so the root-frame commutativity lemma goes through. -/
+def allocStrArr (m : Machine) (names : List String) : Value × Machine :=
+  let (vals, m') := names.foldl (fun (q : List Value × Machine) (name : String) =>
+    let (s, m') := allocStr q.2 name
+    (q.1 ++ [s], m')) ([], m)
+  allocArr m' vals.toArray
 
 /-- A `File.*` / `Dir.*` / `IO.*` singleton operation. `recv` is the class
     object; `args` are the Ruby arguments. -/
@@ -67,6 +76,29 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
       | some path => .ok (.bool (VFS.lookup h path).isSome) m
       | none => .unsupported s!"{bid}: path argument is not a String")
     | _ => .unsupported s!"{bid}: argument shape outside step 1"
+  | "Dir#entries" | "Dir#children" =>
+    -- Step 3 of issue #7: directory listing over the boot fixture. `entries`
+    -- answers `.`/`..` followed by the child basenames in the stored
+    -- (boot-sorted) order; `children` omits `.`/`..`. A missing path or a
+    -- non-directory would raise `Errno::ENOENT`/`Errno::ENOTDIR`, which are
+    -- step 7, so both gate by name (issue #7's "gate stays honest").
+    match args with
+    | [p] =>
+      match pathArg? m p with
+      | some path =>
+        match VFS.lookup h path with
+        | some o =>
+          match (h.get o).payload with
+          | .dir entries _ =>
+            let names := entries.map (·.1)
+            let names := if bid == "Dir#entries" then "." :: ".." :: names else names
+            let (arr, m) := allocStrArr m names
+            .ok arr m
+          | .file _ => .unsupported s!"{bid}: is not a directory (Errno::ENOTDIR gated at step 7)"
+          | _ => .unsupported s!"{bid}: not a directory"
+        | none => .unsupported s!"{bid}: no such file (Errno::ENOENT gated at step 7)"
+      | none => .unsupported s!"{bid}: path argument is not a String"
+    | _ => .unsupported s!"{bid}: argument shape outside step 3"
   | "File#file?" =>
     match args with
     | [p] => (match pathArg? m p with

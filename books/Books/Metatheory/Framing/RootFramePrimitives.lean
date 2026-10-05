@@ -598,6 +598,36 @@ match (they save the hypothesis proof), but this is the general tool. -/
     simp only [List.foldl_cons, hf acc m a]
     exact foldPair_frame K f hf rest _ (f (acc, m) a).2
 
+/-- `allocStrArr` (issue #7 step 3, `Dir.entries`/`children`) folds `allocStr`
+    over the names, then allocates the result Array. It is stated here (after
+    `foldPair_frame`, which its proof uses) rather than with the other `alloc*`
+    framing lemmas. -/
+@[simp, rootFrameLem] theorem allocStrArr_frame (K : List Kont) (m : Machine) (names : List String) :
+    allocStrArr (pushRootK K m) names =
+      ((allocStrArr m names).1, pushRootK K (allocStrArr m names).2) := by
+  unfold allocStrArr
+  -- The fold's step only reads `q.2`'s heap through `allocStr`, which
+  -- `allocStr_frame` shows commutes with `pushRootK` definitionally, so the
+  -- fold lemma applies and the trailing `allocArr` frames on the nose.
+  have hf : ∀ (p : List Value) (mm : Machine) a,
+      (fun (q : List Value × Machine) (a : String) =>
+        let (s, m') := allocStr q.2 a
+        (q.1 ++ [s], m')) (p, pushRootK K mm) a =
+      (((fun (q : List Value × Machine) (a : String) =>
+        let (s, m') := allocStr q.2 a
+        (q.1 ++ [s], m')) (p, mm) a).1,
+       pushRootK K ((fun (q : List Value × Machine) (a : String) =>
+        let (s, m') := allocStr q.2 a
+        (q.1 ++ [s], m')) (p, mm) a).2) := by
+    intro p mm a
+    cases allocStr mm a with
+    | mk s m' => rfl
+  rw [foldPair_frame K _ hf]
+  cases List.foldl (fun (q : List Value × Machine) (a : String) =>
+      let (s, m') := allocStr q.2 a
+      (q.1 ++ [s], m')) ([], m) names with
+  | mk vals m' => rfl
+
 /-- The machine-**first** twin: `defineAttr` accumulates `(machine, names)` rather than
 `(names, machine)`. -/
 theorem foldPairFst_frame {α β : Type} (K : List Kont) (f : Machine × β → α → Machine × β)
