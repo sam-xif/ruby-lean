@@ -725,21 +725,25 @@ guessed answer or a fake `Errno`). -/
 
 namespace VFS
 
-/-- Normalize an absolute path into its non-empty, non-`.` components. `..`
-    is kept and resolved during the walk (there is no textual collapse, so a
-    symlink-free tree resolves it exactly). -/
+/-- Normalize an absolute path into its non-empty components. `.` and `..` are
+    kept and resolved during the walk (there is no textual collapse), so a
+    symlink-free tree resolves them exactly, and a `.` after a non-directory
+    component still fails the walk the way CRuby's does. -/
 def components (s : String) : List String :=
-  (s.splitOn "/").filter (fun c => c != "" && c != ".")
+  (s.splitOn "/").filter (fun c => c != "")
 
 /-- Resolve `comps` from directory `dir`. A `dir` payload is the only thing that
-    can hold children; anything else stops the walk (`none`). `..` climbs to the
-    stored parent (staying put at the root, whose parent is `none`). -/
+    can hold children; anything else stops the walk (`none`). `.` stays put and
+    `..` climbs to the stored parent (staying put at the root, whose parent is
+    `none`) — both require the current object to be a directory, so
+    `/tmp/readme.txt/.` fails the way CRuby's `ENOTDIR` does. -/
 def walk (h : Heap) (dir : ObjId) : List String → Option ObjId
   | [] => some dir
   | c :: rest =>
     match (h.get dir).payload with
     | .dir entries parent =>
-      if c == ".." then
+      if c == "." then walk h dir rest
+      else if c == ".." then
         match parent with
         | some p => walk h p rest
         | none => walk h dir rest
@@ -748,11 +752,35 @@ def walk (h : Heap) (dir : ObjId) : List String → Option ObjId
         | none => none
     | _ => none
 
+/-- Does `path` end in a `/` component (other than the root itself)? A trailing
+    slash means the last component must name a **directory**: CRuby refuses
+    `File.read("/tmp/readme.txt/")` with `Errno::ENOTDIR` and answers `false` to
+    `File.exist?`/`file?`/`directory?` on it, while `"/tmp/"`, `"/"` and `"//"`
+    are the fixture root (or a directory) and stay valid. `components` drops the
+    empty trailing component, so this is the only thing that distinguishes
+    `/tmp/readme.txt/` from `/tmp/readme.txt`. -/
+def trailingSlash (path : String) : Bool :=
+  path.length > 1 && path.endsWith "/"
 /-- Resolve an absolute path from the fixture root. A path that is not absolute
     (`""` or not starting with `/`) resolves to `none`: relative paths are not
-    in the step-1 fragment. -/
+    in the step-1 fragment.
+
+    A path with a trailing slash resolves only when its last component is a
+    directory: `resolve h "/tmp/readme.txt/"` is `none`, matching CRuby's
+    `ENOTDIR`, while `resolve h "/tmp/vfsdata/"` is the directory. This keeps a
+    trailing slash from silently naming a regular file (a wrong answer) in
+    every predicate, `File.read`/`write` and `File.open` that shares `lookup`. -/
 def resolve (h : Heap) (path : String) : Option ObjId :=
-  if path.startsWith "/" then walk h Boot.vfsRootId (components path) else none
+  if path.startsWith "/" then
+    match walk h Boot.vfsRootId (components path) with
+    | some o =>
+      if trailingSlash path then
+        match (h.get o).payload with
+        | .dir _ _ => some o
+        | _ => none
+      else some o
+    | none => none
+  else none
 
 /-- The `ObjId` a path names, if it exists. -/
 def lookup (h : Heap) (path : String) : Option ObjId := resolve h path
