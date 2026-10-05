@@ -187,6 +187,11 @@ inductive DPrim : Ty → String → List Ty → Ty → Prop
   | strUpcase : DPrim (.cls "String") "upcase" [] (.cls "String")
   | strDowncase : DPrim (.cls "String") "downcase" [] (.cls "String")
   | strStrip : DPrim (.cls "String") "strip" [] (.cls "String")
+  | strReverse : DPrim (.cls "String") "reverse" [] (.cls "String")
+  | strEndWith : DPrim (.cls "String") "end_with?" [.cls "String"] .bool
+  | intAbs : DPrim .int "abs" [] .int
+  | intEven : DPrim .int "even?" [] .bool
+  | intOdd : DPrim .int "odd?" [] .bool
 
 /-- The decidable counterpart. A miss is `none`, never a guess. -/
 def dprim? : Ty → String → List Ty → Option Ty
@@ -230,6 +235,11 @@ def dprim? : Ty → String → List Ty → Option Ty
   | .cls "String", "upcase", [] => some (.cls "String")
   | .cls "String", "downcase", [] => some (.cls "String")
   | .cls "String", "strip", [] => some (.cls "String")
+  | .cls "String", "reverse", [] => some (.cls "String")
+  | .cls "String", "end_with?", [.cls "String"] => some .bool
+  | .int, "abs", [] => some .int
+  | .int, "even?", [] => some .bool
+  | .int, "odd?", [] => some .bool
   | _, _, _ => none
 
 theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
@@ -299,6 +309,11 @@ theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
   · rw [Option.some.injEq] at h; subst h; exact .strUpcase
   · rw [Option.some.injEq] at h; subst h; exact .strDowncase
   · rw [Option.some.injEq] at h; subst h; exact .strStrip
+  · rw [Option.some.injEq] at h; subst h; exact .strReverse
+  · rw [Option.some.injEq] at h; subst h; exact .strEndWith
+  · rw [Option.some.injEq] at h; subst h; exact .intAbs
+  · rw [Option.some.injEq] at h; subst h; exact .intEven
+  · rw [Option.some.injEq] at h; subst h; exact .intOdd
   · exact absurd h (by simp)
 
 /-! ## §1a The environment a write leaves behind

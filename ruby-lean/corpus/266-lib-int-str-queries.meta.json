@@ -1,0 +1,10 @@
+{
+  "id": "lib-int-str-queries",
+  "tier": 17,
+  "description": "`Integer#abs`/`even?`/`odd?` and `String#reverse`/`end_with?`: total rows over an Integer or String receiver, with Sorbet's result types.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

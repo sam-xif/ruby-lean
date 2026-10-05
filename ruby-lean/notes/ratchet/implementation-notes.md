@@ -13950,3 +13950,11 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   "byte-aware, not an equality, not dup/clone" reduction of `Builtins.run`.
 - 208 (`xs.first + xs.last`) stays unclimbed: it needs the literal's non-emptiness, which
   `Ty` cannot say. 264 is the guarded form Sorbet accepts.
+
+## Five more rows (138/266, adds and climbs 266)
+
+- `String#reverse`, `String#end_with?(String)`, `Integer#abs`/`even?`/`odd?`, each a
+  standalone `*_step` lemma in `Rules/Expr/StringNullary.lean`. `end_with?` pins its argument
+  to String, as `start_with?` does (any other argument is an unsupported gate in the model).
+- 266's `n.odd? && s.end_with?("c")` has a call on the left of `&&`, so it goes through the
+  plain `if'` rule on the desugared temporary; `ifAndVar` is only for a nilable local.
