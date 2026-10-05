@@ -2651,9 +2651,21 @@ field with false. Framed.fields also retains nominal observations: true has type
 false does not. ScalarWriteControls.bool_write_not_framed proves the obstruction for any
 live receiver with those facts; VM guards verify the nominal distinction at real boot.
 
-Clink 186 admits Integer/Float/Symbol/nil replacement, whose entire first-order observations
+Clink 186 admits Integer/Float/Symbol replacement, whose entire first-order observations
 survive, including nested aliases. The Boolean case needs a weaker retained-type contract
 or effect/ownership accounting; accepting it under the present universal framing is false.
+
+**Correction (2026-10-05, resolving #24): nil is *not* admitted, and this text previously
+said it was.** `scalarWriteB` (`Ratchet/Guards/ScalarWrite.lean`) admits only
+`.int | .float | .sym`; both `scalar_write_run` and `SemSafeCtxA.scalarIvarAsgn` require
+`scalarWriteB ρ = true`, so a nil-typed field replacement is rejected by the checker. The
+Boolean argument above does not extend to nil: a nil-typed field may be *absent*, so the
+frozen-receiver obligation (`StateOk_bindIvar`'s unfrozen premise) does not close and
+`scalar_write_run`'s frozen branch has no non-empty field list to read. That is a proof
+limitation, not a claim that nil replacement is unsafe — admitting it needs the absent-field
+case carried through `Denote/Sem/Heap/ScalarPres.lean` / `Denote/Rules/Instance/ScalarWrite.lean`,
+exactly as `ScalarWrite.lean`'s own docstring says. Anyone reading F45 as "nil is covered"
+was reading stale text.
 
 ## F46 — class readiness does not retain Module ancestry (2026-09-25)
 

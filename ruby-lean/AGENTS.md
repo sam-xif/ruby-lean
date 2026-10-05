@@ -827,9 +827,11 @@ with annotation-domain singleton caches and emitter integration. The same-class 
 result conversion forgets exact fields/receiver information; it never recovers it. Independent
 FactoryDerivations exercises all four rules, with the return annotation's conversion separately
 predicted because stripped syntax omits it. 074 now admits scalar field replacement through
-scalarIvarAsgn: Integer/Float/Symbol/nil observations survive across all nested aliases.
-Boolean needs a weaker framing contract (§F45); no consumer was weakened. FrozenError ancestry
-is checked by primitiveErrorsB, and the real frozen assignment path is covered. 075 generalizes
+scalarIvarAsgn: Integer/Float/Symbol observations survive across all nested aliases.
+Boolean needs a weaker framing contract and nil is a proof limitation (a nil-typed field may
+be absent, so the frozen-receiver obligation does not close) — both are recorded at §F45; no
+consumer was weakened. FrozenError ancestry is checked by primitiveErrorsB, and the real
+frozen assignment path is covered. 075 generalizes
 defDecl to declared classes separated from Object, retaining installed ordinary/singleton
 rows and full body-cache refresh. 076 registers selfRead and retains a separately proved body
 result beside the declared return annotation. Calls can select either proved result, including

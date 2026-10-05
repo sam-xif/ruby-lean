@@ -1216,11 +1216,12 @@ The existing emitter maps known initialized-class parameter annotations to inst 
 075's proof checks that entire domain, never a particular argument. Nominal-only, empty-field
 and nullable receiver controls still decline. No emitter or model change was needed.
 
-scalarIvarAsgn replaces an existing Integer/Float/Symbol/nil field while preserving its
+scalarIvarAsgn replaces an existing Integer/Float/Symbol field while preserving its
 spine. ScalarPres proves universal first-order preservation across nested aliases; ScalarState
 restores full conformance. It does not weaken Framed. Boolean replacement fails that contract
-because TrueClass observes true versus false (§F45). FrozenError ancestry is now checked
-by primitiveErrorsB; the actual frozen assignment path safely raises it. ScalarWriteDerivations
+because TrueClass observes true versus false (§F45). nil replacement is not admitted either:
+the field may be absent, so the frozen-receiver obligation does not close (§F45). FrozenError
+ancestry is now checked by primitiveErrorsB; the actual frozen assignment path safely raises it. ScalarWriteDerivations
 covers every initial Integer, and controls cover aliases, bad annotations and frozen receivers.
 
 073 remains admitted with own singleton definitions/calls, implicit new and same-class
