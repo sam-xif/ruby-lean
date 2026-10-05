@@ -32,7 +32,11 @@ def primitiveMethods : List (ObjId × String × String) :=
    (Boot.floatId, "is_a?", "Object#is_a?"), (Boot.nilClassId, "is_a?", "Object#is_a?"),
    (Boot.symbolId, "is_a?", "Object#is_a?"), (Boot.objectId, "is_a?", "Object#is_a?"),
    (Boot.floatId, "nil?", "Object#nil?"), (Boot.symbolId, "nil?", "Object#nil?"),
-   (Boot.objectId, "nil?", "Object#nil?")]
+   (Boot.objectId, "nil?", "Object#nil?"),
+   (Boot.arrayId, "first", "Array#first"), (Boot.arrayId, "last", "Array#last"),
+   (Boot.arrayId, "empty?", "Array#empty?"), (Boot.stringId, "empty?", "String#empty?"),
+   (Boot.stringId, "upcase", "String#upcase"), (Boot.stringId, "downcase", "String#downcase"),
+   (Boot.stringId, "strip", "String#strip")]
 
 /-- Native lookup facts include Proc calls, Array iterators and Symbol conversion.
 Membership is not a pure-builtin signature; primitiveMethods alone supplies those rows. -/

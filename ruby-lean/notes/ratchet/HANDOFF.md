@@ -1,6 +1,6 @@
 # Active ascent (2026-10-04)
 
-131/131 clinks, 135/263 production validateD accepts (prefix 17), 46/46 negatives
+131/131 clinks, 137/265 production validateD accepts (prefix 17), 46/46 negatives
 rejected, 256 CRuby agree/0 disagree. Climbed 2026-10-04: 165 (`ifCaseEqVar`, `dead`),
 121 (sig only), 155 (`widen`, `defDeclKwOpt`/`callSigKwOpt`), 132 (`ifAndVar`).
 Surveyed and not cheap: 166/167 need `Object#__as_string`, a prelude Ruby method entered on

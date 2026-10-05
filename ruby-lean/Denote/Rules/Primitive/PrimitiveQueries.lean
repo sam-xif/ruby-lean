@@ -43,6 +43,16 @@ theorem nil_eq_run (m : Machine) (v : Value) :
     Bool.not_true, Bool.and_false, Bool.false_and, Bool.false_eq_true, ↓reduceIte]
   rfl
 
+/-- A byte-string-aware, non-equality builtin goes straight to the String rules. -/
+theorem string_nullary_run {bid : String} (m : Machine) (v : Value)
+    (haware : Builtins.byteStrAwareBids.contains bid = true)
+    (heq : (bid.endsWith "#==" || bid.endsWith "#eql?" || bid.endsWith "#!=" ||
+      Builtins.pureEqualityBids.contains bid) = false)
+    (hdup : (Builtins.dupBids.contains bid || Builtins.cloneBids.contains bid) = false) :
+    Builtins.run bid v [] m = Builtins.runObjects bid v [] m := by
+  simp only [Builtins.run, haware, heq, hdup, Bool.not_true, Bool.and_false, Bool.false_and,
+    Bool.false_eq_true, ↓reduceIte, List.isEmpty_nil]
+
 theorem string_length_run (m : Machine) (v : Value) :
     Builtins.run "String#length" v [] m = Builtins.runStrings "String#length" v [] m := by
   simp only [Builtins.run,

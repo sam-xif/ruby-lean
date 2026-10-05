@@ -8,6 +8,8 @@ import Denote.Rules.Expr.HashKey
 import Denote.Rules.Expr.ArrayCompact
 import Denote.Rules.Expr.HashFetch
 import Denote.Rules.Expr.StringSplit
+import Denote.Rules.Expr.ArrayEnds
+import Denote.Rules.Expr.StringNullary
 import Denote.Rules.Expr.StringMatch
 
 /-! Each `DPrim` row discharges against the interpreter and preserves conformance on values. -/
@@ -288,6 +290,27 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
         nativeReal, rationalPayload?, complexPayload?, Builtins.toAryDefer?,
         Builtins.strCmpDefer?, Builtins.strCmpTwin?, hs]) (by rfl) hfree]
     exact string_match_run hm hk hs
+  | arrayFirst _ =>
+    cases ha
+    exact array_first_step hm hk hr hfree
+  | arrayLast _ =>
+    cases ha
+    exact array_last_step hm hk hr hfree
+  | arrayEmpty _ =>
+    cases ha
+    exact array_empty_step hm hk hr hfree
+  | strEmpty =>
+    cases ha
+    exact strEmpty_step hm hk hr hfree (hstring rfl)
+  | strUpcase =>
+    cases ha
+    exact strUpcase_step hm hk hr hfree (hstring rfl)
+  | strDowncase =>
+    cases ha
+    exact strDowncase_step hm hk hr hfree (hstring rfl)
+  | strStrip =>
+    cases ha
+    exact strStrip_step hm hk hr hfree (hstring rfl)
   | arrayIndex _ =>
     cases ha
     rename_i v vs hv hs

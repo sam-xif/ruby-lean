@@ -19,6 +19,9 @@ private theorem primitive_receiver {σ τ : Ty} {name : String} {tys : List Ty}
   | hashKey hfo => exact hfo
   | arrayCompact hfo => exact hfo
   | arrayUniq hfo => exact hfo
+  | arrayFirst hfo => exact hfo
+  | arrayLast hfo => exact hfo
+  | arrayEmpty hfo => exact hfo
   | hashFetch hfo => exact hfo
   | hashFetchDefault _ hfo => exact hfo
   | _ => rfl

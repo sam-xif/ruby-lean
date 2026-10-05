@@ -1,0 +1,10 @@
+{
+  "id": "lib-array-ends-guarded",
+  "tier": 17,
+  "description": "`xs.first`/`xs.last` are `nilable elem` and `xs.empty?` is Boolean; each end is used only behind a `nil?` guard, which is what Sorbet asks of the same program.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

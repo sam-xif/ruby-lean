@@ -37,6 +37,9 @@ theorem primitive_framed {σ τ : Ty} {name : String} {tys : List Ty} (hp : DPri
   | hashIndex hfo => exact hf.firstOrder (.hashOf _ _) hfo _ hv
   | arrayCompact hfo => exact hf.firstOrder (.arrayOf (.nilable _)) hfo _ hv
   | arrayUniq hfo => exact hf.firstOrder (.arrayOf _) hfo _ hv
+  | arrayFirst hfo => exact hf.firstOrder (.arrayOf _) hfo _ hv
+  | arrayLast hfo => exact hf.firstOrder (.arrayOf _) hfo _ hv
+  | arrayEmpty hfo => exact hf.firstOrder (.arrayOf _) hfo _ hv
   | hashFetch hfo => exact hf.firstOrder (.hashOf _ _) hfo _ hv
   | hashFetchDefault _ hfo => exact hf.firstOrder (.hashOf _ _) hfo _ hv
   | hashKey hfo => exact hf.firstOrder (.hashOf _ _) hfo _ hv
