@@ -30,13 +30,20 @@ else
   bad "ruby" "brew install ruby   (then put it on PATH, or set \$RUBY)"
 fi
 
-# 3. Sorbet — stage 1 of the typed pipeline. `srb_sigs.py` finds the gem's
-#    bundled binary by glob, so the gem is enough; `srb` need not be on PATH.
+# 3. Sorbet — stage 1 of the typed pipeline. `srb_sigs.py` locates the gem's
+#    bundled binary, so the gem is enough; `srb` need not be on PATH. Keep this
+#    in step with `srb_sigs.py:find_sorbet()`: ask the active Ruby where its gems
+#    are first, then fall back to the fixed Homebrew / user-gem / system globs.
 if python3 - <<'PY' 2>/dev/null
-import glob, os, sys
-# Honor an explicit $SORBET first (srb_sigs.py does the same), then the usual
-# Homebrew / user-gem / system locations, then `srb` on PATH.
+import glob, os, subprocess, sys
 if os.environ.get("SORBET") and os.path.exists(os.environ["SORBET"]):
+    sys.exit(0)
+try:
+    gemdir = subprocess.run(["gem", "env", "gemdir"], capture_output=True,
+                            text=True, check=True).stdout.strip()
+except (OSError, subprocess.CalledProcessError):
+    gemdir = ""
+if gemdir and glob.glob(f"{gemdir}/gems/sorbet-static-*/libexec/sorbet"):
     sys.exit(0)
 pats = ["/opt/homebrew/lib/ruby/gems/*/gems/sorbet-static-*/libexec/sorbet",
         os.path.expanduser("~/.gem/ruby/*/gems/sorbet-static-*/libexec/sorbet"),
