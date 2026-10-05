@@ -91,12 +91,14 @@ def prim_ret(recv, m, args)
     return INT  if %w[+ - * / <=>].include?(m) && args == [INT]
     return BOOL if %w[< <= > >=].include?(m) && args == [INT]
     return STR  if m == "to_s" && args.empty?
-    return BOOL if m == "zero?" && args.empty?
+    return BOOL if %w[zero? even? odd?].include?(m) && args.empty?
+    return INT  if m == "abs" && args.empty?
   end
 
   if t == "cls" && n == "String"
     return STR           if m == "+" && args == [STR]
-    return STR           if %w[strip downcase upcase].include?(m) && args.empty?
+    return STR           if %w[strip downcase upcase reverse].include?(m) && args.empty?
+    return BOOL          if m == "end_with?" && args == [STR]
     return INT           if m == "length" && args.empty?
     return BOOL          if m == "empty?" && args.empty?
     return BOOL          if m == "start_with?" && args == [STR]

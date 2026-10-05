@@ -817,6 +817,15 @@ private def andH (thn els : Deriv) : Deriv := .seq [
 #guard !validateD (.send (some (.str "a")) "empty?" [] none)
   (.prim (.strLit "a") "empty?" [] (.cls "String") (.cls "String"))
 
+-- Integer#abs/even?/odd? and String#reverse/end_with? rows (266).
+#guard validateD (.send (some (.int 1)) "abs" [] none) (.prim (.intLit 1) "abs" [] .int .int)
+#guard validateD (.send (some (.int 1)) "odd?" [] none) (.prim (.intLit 1) "odd?" [] .int .bool)
+#guard !validateD (.send (some (.str "a")) "abs" [] none) (.prim (.strLit "a") "abs" [] (.cls "String") .int)
+#guard validateD (.send (some (.str "a")) "end_with?" [.str "a"] none)
+  (.prim (.strLit "a") "end_with?" [.strLit "a"] (.cls "String") .bool)
+#guard !validateD (.send (some (.str "a")) "end_with?" [.int 1] none)
+  (.prim (.strLit "a") "end_with?" [.intLit 1] (.cls "String") .bool)
+
 -- Active widen (155): a value is a member of any join with its type, and of nothing else.
 #guard !validateD (.send (some (.int 1)) "+" [.str "s"] none)
   (.prim (.intLit 1) "+" [.widen (.strLit "s") .int] .int .int)

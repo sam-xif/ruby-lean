@@ -311,6 +311,26 @@ theorem primitive_builtin {κ : Ctx} {I : Ty} {site : SendSite} {Γ : Env} {m : 
   | strStrip =>
     cases ha
     exact strStrip_step hm hk hr hfree (hstring rfl)
+  | strReverse =>
+    cases ha
+    exact strReverse_step hm hk hr hfree (hstring rfl)
+  | strEndWith =>
+    cases ha
+    rename_i v vs hv hs
+    cases hs
+    exact strEndWith_step hm hk hr hv hfree (hstring rfl)
+  | intAbs =>
+    cases ha
+    obtain ⟨x, rfl⟩ := int_value hr
+    exact intAbs_step x hm hk hfree
+  | intEven =>
+    cases ha
+    obtain ⟨x, rfl⟩ := int_value hr
+    exact intEven_step x hm hk hfree
+  | intOdd =>
+    cases ha
+    obtain ⟨x, rfl⟩ := int_value hr
+    exact intOdd_step x hm hk hfree
   | arrayIndex _ =>
     cases ha
     rename_i v vs hv hs
