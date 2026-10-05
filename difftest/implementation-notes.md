@@ -2313,3 +2313,28 @@ The typed gate was rerun and remains red at HeapFacts className/lookup proof
 drift; its captured error log exactly matches L298. Proof repair stays deferred.
 The batch Metatheory audit also failed (NotDone/KontFrame); the axiom scan
 was not reached. The captured proof-audit.log is archived.
+
+## N74 — re-measure the tier-0 semantics watermark (2026-10-05)
+
+`difftest/coverage-baseline.json` still held the v0.01 numbers
+(`ran 1309 / agree 995 / sut_unsupported 308`) even though the corpus was
+re-baselined for the filesystem gating (issue #8) and many conformances landed
+afterwards. The watermark is a one-way guard — `check_semantics_watermark.sh`
+fails a *fall* but never raises a *rise* — so it had gone silently stale while
+the model improved.
+
+Fresh measurement on `main` (`ae3f871`), bootstraptest harvested with today's
+`SKIP` filter (issue #8 still gates the filesystem family):
+
+```
+ran 1296          (1309 − 13 filesystem programs; matches the harvest count)
+agree 1093        (watermark >= 995)
+sut_unsupported 197   (watermark <= 308)
+disagree 0
+harness_error 1   (the old test_syntax_115) · control_invalid 5
+```
+
+`ran` drops by 13 with the gating; `agree` rises by 98 and `sut_unsupported`
+falls by 111 since the stale baseline was written. The new baseline is exactly
+the measured run, so a future fall is detected and a future rise is not masked.
+No engine, comparator, normalizer or floor changed. Closes issue #10.
