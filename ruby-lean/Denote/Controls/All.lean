@@ -124,12 +124,21 @@ a theorem that pins an obstruction. None of them is imported by a proof, so noth
 them into a build by need — and the lakefile's `Denote.+` glob elaborates them only on a full
 `lake build`, while `scripts/run_typed_ratchet.sh` builds *named targets*.
 
-So they are named here, in one place, and the gate builds this module. That used to be
-implicit: `ClassControls.lean` imported fifty-one of its siblings, `Safety.lean` imported
+So they are named here, in one place, and **the report-only control-drift job
+(`scripts/check_controls.sh`, issue #25) builds this module** — not the active typed-ratchet
+gate, which builds only the curated named controls `run_clink_rebuild.sh` lists. That used to
+be implicit: `ClassControls.lean` imported fifty-one of its siblings, `Safety.lean` imported
 seven more, and a control's import list mixed "what I need" with "who I keep alive" —
 indistinguishable by reading. Dropping a control from the gate was a one-line deletion in a
 file that had every reason to be edited for other purposes.
 
 **Adding a control means adding a line here.** If it is missing, the control still compiles
-under `lake build`, but the commit-time gate stops checking it.
+under `lake build`, but the control-drift job stops checking it.
+
+While the semantic rebuild is in progress, some controls named here (the `Closure*`,
+`Method*`, `Constructor*`, `Iterator*`, `Capture*` families) are red *by construction* and the
+drift job is report-only. `scripts/check_controls.sh` prints exactly which ones fail, so
+"drifted control" can be told from "WIP module" instead of being buried in a whole-library
+build. Flip the job to blocking — and this docstring back to "the gate builds it" — once the
+rebuild completes and every module below builds.
 -/
