@@ -1,0 +1,10 @@
+{
+  "id": "lib-str-case-strip",
+  "tier": 17,
+  "description": "`strip`, `upcase`, `downcase` allocate Strings and `empty?` is Boolean: four total String rows.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

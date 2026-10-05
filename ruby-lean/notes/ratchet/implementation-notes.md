@@ -13938,3 +13938,15 @@ top_method_stepSpec). The block-passing call site reuses the attached-literal pr
   local-variable left operand only; a general left operand is not admitted.
 - Emitter: `narrow_and`, tried before `narrow_truthy`; requires `c` to leave other locals'
   types unchanged.
+
+## Seven primitive rows (137/265, adds and climbs 264, 265)
+
+- `Array#first`/`last : nilable elem` (Sorbet's signature, and the same reason `[]` is
+  nilable), `Array#empty?`, `String#empty?`, `String#upcase`/`downcase`/`strip`. All are
+  payload reads or one `okStrEnc`; none dispatches on an element.
+- `primitive_builtin` hit the 200000-heartbeat budget with the new cases inline, so each
+  String row is a standalone `*_step` lemma (`Rules/Expr/StringNullary.lean`) and the case
+  is one `exact`. New rows should follow that shape. `string_nullary_run` is the shared
+  "byte-aware, not an equality, not dup/clone" reduction of `Builtins.run`.
+- 208 (`xs.first + xs.last`) stays unclimbed: it needs the literal's non-emptiness, which
+  `Ty` cannot say. 264 is the guarded form Sorbet accepts.

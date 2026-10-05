@@ -802,6 +802,21 @@ private def andH (thn els : Deriv) : Deriv := .seq [
 #guard !validateDWith (fun q => clinkEnabled q && q != "ifAndVar") (andP plusP (.int 0))
   (andH plusH (.intLit 0))
 
+-- Array#first/last/empty? and String#empty?/upcase/downcase/strip rows (264, 265).
+#guard validateD (.send (some (.array [.int 1])) "first" [] none)
+  (.prim (.arrayLit [.intLit 1] .int) "first" [] (.arrayOf .int) (.nilable .int))
+#guard !validateD (.send (some (.array [.int 1])) "last" [] none)
+  (.prim (.arrayLit [.intLit 1] .int) "last" [] (.arrayOf .int) .int)
+#guard validateD (.send (some (.array [.int 1])) "empty?" [] none)
+  (.prim (.arrayLit [.intLit 1] .int) "empty?" [] (.arrayOf .int) .bool)
+#guard validateD (.send (some (.send (some (.str " a ")) "strip" [] none)) "upcase" [] none)
+  (.prim (.prim (.strLit " a ") "strip" [] (.cls "String") (.cls "String")) "upcase" []
+    (.cls "String") (.cls "String"))
+#guard !validateD (.send (some (.int 1)) "upcase" [] none)
+  (.prim (.intLit 1) "upcase" [] .int (.cls "String"))
+#guard !validateD (.send (some (.str "a")) "empty?" [] none)
+  (.prim (.strLit "a") "empty?" [] (.cls "String") (.cls "String"))
+
 -- Active widen (155): a value is a member of any join with its type, and of nothing else.
 #guard !validateD (.send (some (.int 1)) "+" [.str "s"] none)
   (.prim (.intLit 1) "+" [.widen (.strLit "s") .int] .int .int)

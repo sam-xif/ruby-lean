@@ -109,6 +109,7 @@ def prim_ret(recv, m, args)
     return INT                    if m == "length" && args.empty?
     return BOOL                   if m == "empty?" && args.empty?
     return nilable(recv["elem"])  if m == "[]" && args == [INT]
+    return nilable(recv["elem"])  if %w[first last].include?(m) && args.empty?
     return recv                   if m == "<<" && args == [recv["elem"]]
     return array_of(recv["elem"]["elem"]) if m == "compact" && args.empty? && recv["elem"]["tag"] == "nilable"
     return recv                   if m == "uniq" && args.empty?

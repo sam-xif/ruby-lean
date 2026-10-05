@@ -178,6 +178,15 @@ inductive DPrim : Ty → String → List Ty → Ty → Prop
   /-- `Hash#fetch` with a default of the value type answers a stored value or the default. -/
   | hashFetchDefault {σ τ α : Ty} : FirstOrder α = true → FirstOrder (.hashOf σ τ) = true →
       DPrim (.hashOf σ τ) "fetch" [α, τ] τ
+  /-- `Array#first`/`last` read one end of the payload: nil when empty, as `[]` is. -/
+  | arrayFirst {τ : Ty} : FirstOrder τ = true → DPrim (.arrayOf τ) "first" [] (.nilable τ)
+  | arrayLast {τ : Ty} : FirstOrder τ = true → DPrim (.arrayOf τ) "last" [] (.nilable τ)
+  | arrayEmpty {τ : Ty} : FirstOrder τ = true → DPrim (.arrayOf τ) "empty?" [] .bool
+  | strEmpty : DPrim (.cls "String") "empty?" [] .bool
+  /-- Case and whitespace maps allocate a fresh String. -/
+  | strUpcase : DPrim (.cls "String") "upcase" [] (.cls "String")
+  | strDowncase : DPrim (.cls "String") "downcase" [] (.cls "String")
+  | strStrip : DPrim (.cls "String") "strip" [] (.cls "String")
 
 /-- The decidable counterpart. A miss is `none`, never a guess. -/
 def dprim? : Ty → String → List Ty → Option Ty
@@ -214,6 +223,13 @@ def dprim? : Ty → String → List Ty → Option Ty
   | .hashOf σ τ, "fetch", [_] => if FirstOrder (.hashOf σ τ) then some τ else none
   | .hashOf σ τ, "fetch", [α, δ] =>
     if FirstOrder α && FirstOrder (.hashOf σ τ) && decide (δ = τ) then some τ else none
+  | .arrayOf τ, "first", [] => if FirstOrder τ then some (.nilable τ) else none
+  | .arrayOf τ, "last", [] => if FirstOrder τ then some (.nilable τ) else none
+  | .arrayOf τ, "empty?", [] => if FirstOrder τ then some .bool else none
+  | .cls "String", "empty?", [] => some .bool
+  | .cls "String", "upcase", [] => some (.cls "String")
+  | .cls "String", "downcase", [] => some (.cls "String")
+  | .cls "String", "strip", [] => some (.cls "String")
   | _, _, _ => none
 
 theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
@@ -270,6 +286,19 @@ theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
       obtain ⟨⟨ha, hf⟩, rfl⟩ := hc
       rw [Option.some.injEq] at h; subst h; exact .hashFetchDefault ha hf
     · cases h
+  · split at h
+    · rw [Option.some.injEq] at h; subst h; exact .arrayFirst (by assumption)
+    · cases h
+  · split at h
+    · rw [Option.some.injEq] at h; subst h; exact .arrayLast (by assumption)
+    · cases h
+  · split at h
+    · rw [Option.some.injEq] at h; subst h; exact .arrayEmpty (by assumption)
+    · cases h
+  · rw [Option.some.injEq] at h; subst h; exact .strEmpty
+  · rw [Option.some.injEq] at h; subst h; exact .strUpcase
+  · rw [Option.some.injEq] at h; subst h; exact .strDowncase
+  · rw [Option.some.injEq] at h; subst h; exact .strStrip
   · exact absurd h (by simp)
 
 /-! ## §1a The environment a write leaves behind
