@@ -124,6 +124,17 @@ jobs:
         continue-on-error: true
         run: cd ruby-lean && ./scripts/check-proofs.sh
 
+      # The aggregate negative-controls module (`Denote/Controls/All.lean`) is
+      # *not* in the active gate's curated build list, so a drifted `#guard` or
+      # broken control is invisible to a green `make gate` -- issue #25. The full
+      # `lake build` above reaches it, but its failure scrolls past in a
+      # report-only job. Run the dedicated tripwire so the *names* of the failing
+      # controls are the step's headline. Report-only until the semantic rebuild
+      # completes and every control builds; then drop `continue-on-error`.
+      - name: Control drift (`Denote.Controls.All`, report-only)
+        continue-on-error: true
+        run: cd ruby-lean && ./scripts/check_controls.sh
+
       - name: Upload reach / gate artifacts
         if: always()
         uses: actions/upload-artifact@v4
