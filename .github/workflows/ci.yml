@@ -15,6 +15,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch: # run on any branch: gh workflow run ci.yml --ref <branch>
   schedule:
     # Nightly, so that drift in something fetched from the network is noticed.
     - cron: "0 6 * * *"
