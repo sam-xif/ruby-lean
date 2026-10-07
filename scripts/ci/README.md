@@ -2,7 +2,7 @@
 
 The workflow that runs these is [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml).
 CI calls the repository's own documented commands (`scripts/reproduce.sh`,
-`scripts/run_typed_ratchet.sh`, `desugar/bin/run`, …) rather than re-implementing them, so
+`books/scripts/run_typed_ratchet.sh`, `desugar/bin/run`, …) rather than re-implementing them, so
 local and CI semantics cannot drift.
 
 ## The three ratchets
@@ -16,7 +16,7 @@ watermark — the only way it changes is a reviewed commit that edits the value.
 |---|---|---|---|---|
 | Semantics bootstraptest | `agree`, `sut_unsupported`, `disagree` = 0 | minimum / maximum / zero | `difftest/coverage-baseline.json` | `check_semantics_watermark.sh` |
 | Desugarer bootstraptest | `in_fragment`, `parseable` | minimum | `desugar/coverage-baseline.json` | `ruby desugar/bin/coverage` |
-| Typed ratchet | `fragmentFloor`, `clinkFloor`, `safeRungFloor` + reach | minimum | `ruby-lean/SemLadder.lean` | `scripts/run_typed_ratchet.sh` |
+| Typed ratchet | `fragmentFloor`, `clinkFloor`, `safeRungFloor` + reach | minimum | `books/Books/TypeSoundness/Report/Active.lean` (the full-profile floors are in `books/Unrebuilt/SemLadder.lean`) | `books/scripts/run_typed_ratchet.sh` |
 
 ## `check_semantics_watermark.sh`
 

@@ -54,6 +54,7 @@ jobs:
           filters: |
             model:
               - 'ruby-lean/**'
+              - 'books/**'
               - 'desugar/**'
               - 'difftest/**'
             playground:
@@ -62,6 +63,10 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # 1. The centerpiece: the repo's own gate. Blocks merge.
+  #
+  #    The gate lives in `books/` (it checks a proof), and builds two Lake
+  #    packages: `ruby-lean/` (the model and the checker) and `books/` (every
+  #    proof about them), which uses the first as a library.
   # ---------------------------------------------------------------------------
   lean-gate:
     name: lean-gate (build + typed ratchet)
@@ -76,6 +81,16 @@ jobs:
           auto-config: false
           lake-package-directory: ruby-lean
           use-github-cache: true
+
+      # `lean-action` caches `ruby-lean/.lake`. The proofs build in `books/.lake`,
+      # which is most of the compile time, so cache that as well.
+      - name: Cache the proof books' build (books/.lake)
+        uses: actions/cache@v4
+        with:
+          path: books/.lake
+          key: ${{ runner.os }}-books-lake-${{ hashFiles('ruby-lean/lean-toolchain', 'ruby-lean/**/*.lean', 'books/**/*.lean', 'books/lakefile.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-books-lake-
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -104,36 +119,28 @@ jobs:
       - name: Typed ratchet gate (the headline)
         run: make gate
 
-      # Full `lake build` compiles every module on disk in all four libraries,
-      # including the proof families the active `clinkProfile` has gated out
-      # (`Denote/Clink/README.md`, "active semantic rebuild"). Those gated modules
-      # are repaired rule-by-rule as rules are climbed, so a whole-library build is
-      # red by construction between climbs. It is surfaced here -- so the rot stays
-      # visible, per AGENTS.md "Proofs rot silently" -- but does not fail the gate.
-      # Flip to blocking once the profile is complete and every module builds.
-      - name: Full lake build (semantic rebuild in progress, report-only)
-        continue-on-error: true
+      # The whole `ruby-lean/` package: the model, the checker and every checker
+      # control on disk. It holds no proofs, so nothing in it is mid-rebuild, and
+      # it blocks.
+      - name: Full lake build of ruby-lean/ (model + checker)
         run: make lean
 
-      # Report-only for now: scripts/reproduce.sh documents this as KNOWN RED at
-      # 0.01 (Step 5). Issue #4 Open question 1 asks whether to make it blocking;
-      # until that is decided, a red metatheory is surfaced but does not fail the
-      # gate. Flip to blocking (drop continue-on-error) once Preservation.lean is
-      # fixed and the basline confirms it is green.
-      - name: Metatheory + axioms (off-target proofs, report-only)
+      # The metatheory's *build* blocks in the `books` job. This step adds the
+      # `#print axioms` audit and the booted-heap measurements. Report-only for
+      # now: issue #4 Open question 1 asks whether to make it blocking. Flip to
+      # blocking (drop continue-on-error) once the baseline confirms it is green
+      # on a runner.
+      - name: Metatheory axioms + heap measurements (report-only)
         continue-on-error: true
-        run: cd ruby-lean && ./scripts/check-proofs.sh
+        run: make proofs
 
-      # The aggregate negative-controls module (`Denote/Controls/All.lean`) is
-      # *not* in the active gate's curated build list, so a drifted `#guard` or
-      # broken control is invisible to a green `make gate` -- issue #25. The full
-      # `lake build` above reaches it, but its failure scrolls past in a
-      # report-only job. Run the dedicated tripwire so the *names* of the failing
-      # controls are the step's headline. Report-only until the semantic rebuild
-      # completes and every control builds; then drop `continue-on-error`.
-      - name: Control drift (`Denote.Controls.All`, report-only)
-        continue-on-error: true
-        run: cd ruby-lean && ./scripts/check_controls.sh
+      # The aggregate negative-controls module
+      # (`books/Books/TypeSoundness/Controls/All.lean`) names every control. The
+      # `books` job builds it with the rest of the book; this step is the
+      # tripwire that prints the *names* of drifted controls as its headline
+      # (issue #25). Every control builds, so it blocks.
+      - name: Control drift (`Books.TypeSoundness.Controls.All`)
+        run: cd books && ./scripts/check_controls.sh
 
       - name: Upload reach / gate artifacts
         if: always()
@@ -141,9 +148,72 @@ jobs:
         with:
           name: lean-gate-artifacts
           path: |
-            ruby-lean/build
+            books/build
             difftest/reports
           if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # 1b. The proof books. Blocks merge.
+  #
+  #     `books/` is a collection: each book is a directory under `books/Books/`
+  #     with one result at its head (books/README.md). A change to the model or
+  #     the checker can break a book while leaving `ruby-lean/` green, and the
+  #     gate only rebuilds what the soundness theorem imports -- so every book
+  #     is built here, one step per book, and each must succeed. A book's
+  #     library is its whole directory: every file under `books/Books/` is
+  #     compiled. Proof files not yet rebuilt against the current model live in
+  #     `books/Unrebuilt/`, outside the build, with a manifest.
+  #
+  #     Adding a book: add its `lean_lib` to books/lakefile.toml's
+  #     defaultTargets and a step below. The last build step (`make books`, i.e.
+  #     every default target) fails if a book was added without one.
+  # ---------------------------------------------------------------------------
+  books:
+    name: books (every proof book builds)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90 # the type-soundness book is ~30 min cold
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lean (toolchain pinned in ruby-lean/lean-toolchain)
+        uses: leanprover/lean-action@v1
+        with:
+          auto-config: false
+          lake-package-directory: ruby-lean
+          use-github-cache: true
+
+      # `lean-action` caches `ruby-lean/.lake`. The proofs build in `books/.lake`,
+      # which is most of the compile time, so cache that as well.
+      - name: Cache the proof books' build (books/.lake)
+        uses: actions/cache@v4
+        with:
+          path: books/.lake
+          key: ${{ runner.os }}-books-lake-${{ hashFiles('ruby-lean/lean-toolchain', 'ruby-lean/**/*.lean', 'books/**/*.lean', 'books/lakefile.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-books-lake-
+
+      # Lake builds `ruby-lean/` as a dependency; no separate step needed.
+      - name: "Book: Metatheory (facts about the model)"
+        run: cd books && lake build --log-level=error Metatheory
+
+      - name: "Book: TypeSoundness (accepted programs do not get type-stuck)"
+        run: cd books && lake build --log-level=error TypeSoundness
+
+      - name: "Book: FastPower (a Ruby program proved correct)"
+        run: cd books && lake build --log-level=error FastPower
+
+      - name: All books (every default target of books/)
+        run: make books
+
+      # An independent judge: `leanprover/comparator` checks that the theorems
+      # proved in Books/TypeSoundness/Soundness.lean are the ones stated in
+      # books/Comparator/Challenge.lean, that they use only Lean's three axioms,
+      # and that a fresh kernel accepts the whole dependency closure. It fetches
+      # and builds the comparator at a pinned commit, so it is report-only until
+      # it has been observed green on a runner; then drop `continue-on-error`.
+      - name: Comparator (independent check of the soundness theorem, report-only)
+        continue-on-error: true
+        run: make comparator
 
   # ---------------------------------------------------------------------------
   # 2. The front end — no Lean needed, fast feedback on its own.
@@ -251,9 +321,9 @@ jobs:
         # profile excludes and fail on the in-progress rebuild.
         run: cd ruby-lean && lake build --log-level=error rubycore
 
-      # `scripts/check_body_inference.py` is deliberately NOT run here. It is a
-      # FULL-profile control -- a stage of `scripts/run_full_typed_ratchet.sh`, which
-      # runs it after `lake build ... Denote.Controls.All` and a full-profile
+      # `books/scripts/check_body_inference.py` is deliberately NOT run here. It is a
+      # FULL-profile control -- a stage of the full audit (`books/Unrebuilt/scripts/run_full_typed_ratchet.sh`), which
+      # runs it after `lake build ... Books.TypeSoundness.Controls.All` and a full-profile
       # validate-one. It went green under the pre-rebuild complete profile (clink 244,
       # dfa51161), but `validate-one` now uses the gated `ClinkPolicy.clinkProfile`
       # (37/99 rules, 2026-09-30 "active semantic rebuild"). Its block/closure/
@@ -284,6 +354,16 @@ jobs:
           lake-package-directory: ruby-lean
           use-github-cache: true
 
+      # `lean-action` caches `ruby-lean/.lake`. The proofs build in `books/.lake`,
+      # which is most of the compile time, so cache that as well.
+      - name: Cache the proof books' build (books/.lake)
+        uses: actions/cache@v4
+        with:
+          path: books/.lake
+          key: ${{ runner.os }}-books-lake-${{ hashFiles('ruby-lean/lean-toolchain', 'ruby-lean/**/*.lean', 'books/**/*.lean', 'books/lakefile.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-books-lake-
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
@@ -303,7 +383,7 @@ jobs:
           echo "SORBET=$SORBET_BIN" >> "$GITHUB_ENV"
 
       - name: Typed ratchet floors (fragmentFloor / clinkFloor / safeRungFloor + reach)
-        run: cd ruby-lean && ./scripts/run_typed_ratchet.sh
+        run: cd books && ./scripts/run_typed_ratchet.sh
 
       - name: Cache the sparse ruby/ruby checkout and harvested corpus
         uses: actions/cache@v4

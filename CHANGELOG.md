@@ -6,6 +6,55 @@ artifact, and `0.01` is the first cut of it that a stranger can build.
 
 ## Unreleased
 
+**Every proof moved into `books/`, and the checker library is renamed `Checker`.**
+`ruby-lean/` now holds only what proofs are about: the model (`RubyCore/`) and the type
+checker (`Checker/`, formerly `Ratchet/`). `books/` uses it as a library and holds the
+proofs as books, one result at the head of each:
+
+* **`Books/TypeSoundness/`** (was `ruby-lean/Denote/` and `ruby-lean/Semantics/`) — the
+  checker's soundness theorem, `validateD_safe_run`, now in `Soundness.lean` (was
+  `Bridge.lean`). `Ty/`, `Sem/` and `Clink/` are `Denotation/`, `Conformance/` and
+  `Registry/`.
+* **`Books/Metatheory/`** (was `ruby-lean/RubyCore/Proof/`) — facts about the model, grouped
+  into `Machine/`, `Reachability/`, `Heap/`, `Builtins/`, `Framing/`, `Typing/`, `Examples/`
+  and `Controls/`.
+* **`Books/FastPower/`**, unchanged.
+
+The namespace `Ratchet` is `Checker` and `Ratchet.Denote` is `Checker.Soundness`, so the
+theorem is `Checker.Soundness.Typed.validateD_safe_run`. Module names changed; no statement
+or proof did, and the gate's numbers are identical (131/131 enabled clinks, 138/266 corpus
+rungs, 46/46 negative controls rejected, 259 agree / 0 disagree).
+
+The gate moved with the proofs: `books/scripts/run_typed_ratchet.sh` (`make gate`), the
+corpus (`books/corpus/`), `check-proofs.sh` (`make proofs`) and the
+`leanprover/comparator` run (`make comparator`). The checker's untrusted front end
+(`srb_sigs.py`, `read_sigs.rb`, `emit_deriv.rb`) stays in `ruby-lean/scripts/`, where the
+playground also uses it. The working record moved too: `books/AGENTS.md` and
+`books/notes/type-soundness/`. CI builds every book in a `books` job, one step per book.
+`books/README.md` has the full old-path → new-path map.
+
+**Every file under `books/Books/` builds, and CI requires it.** Each book is one Lake
+library over its whole directory. 150 soundness-proof files that had not been rebuilt
+against the current model (older class/subclass/module entry lemmas, the controls and
+examples that use them, and the corpus-wide audit `RuleAudit`/`RuleCoverage` with its
+`semladder` report and `--full-corpus` script) moved, unedited, to `books/Unrebuilt/`,
+whose README lists each file and what it is waiting on. The soundness theorem never
+depended on them. 37 files that had drifted were repaired instead and are back in the
+build, among them `Soundness/Full.lean` (`djudge_certified`: every raw derivation is a
+certified one) once `Registry/Certify.lean`'s tactic covered all 117 rules.
+
+`make lean` is green and blocks in CI: `Checker/Controls/ScalarWriteControls.lean` still
+expected the nil-field accept that 979ca33 withdrew.
+
+**`difftest` no longer talks to the removed model-side checker.** `rubycore --check` went
+with the pre-ratchet type-checking layers, and `difftest` still called it. Removed:
+`StaticChecker`, `checker_relation.py` and its tests, the `checker fuzz` subcommand, the
+`check_*` fields of the `sorbet check` and `siggen` reports, and the six `check_expect`
+declarations in `corpus/sorbet/p0-fragment/`. The generators and `checker
+siggen`/`sigread`/`sample` stay. The fragment-witness test names `escape-hatches/002.rb`
+as the one witness in the fragment, following D10 (a redefinition is admitted with an
+obligation left to the checker).
+
 **`desugar-dt/` is renamed `desugar/`, and the READMEs are short orientation pages.** The
 long design material moved, mostly unchanged, into a new `docs/` directory that builds as an
 MkDocs site (`mkdocs.yml` at the root): artifact 05 → `docs/testing/methodology.md`,
