@@ -1,0 +1,11 @@
+{
+    "challenge_module": "Comparator.Challenge",
+    "solution_module": "Books.TypeSoundness.Soundness",
+    "theorem_names": [
+        "Checker.Soundness.Typed.validateD_safe",
+        "Checker.Soundness.Typed.validateD_safe_boot",
+        "Checker.Soundness.Typed.validateD_safe_run"
+    ],
+    "permitted_axioms": ["propext", "Quot.sound", "Classical.choice"],
+    "enable_nanoda": false
+}
