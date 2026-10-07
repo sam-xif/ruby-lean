@@ -12,6 +12,11 @@
 # The Lean model uses these for dispatch fidelity (shadow detection and
 # genuine-NoMethodError classification), not behavior.
 
+# Constants that exist only in some builds of the same CRuby release. They are
+# left out so that this table is the same on every platform: `Integer::GMP_VERSION`
+# is defined only when CRuby was compiled against GMP.
+BUILD_DEPENDENT = %i[GMP_VERSION].freeze
+
 FOLD = {
   "BasicObject" => [BasicObject],
   "Object" => [Object, Kernel],
@@ -121,7 +126,7 @@ puts sentries.join(",\n")
 puts "]\n\n/-- Known constants in modeled namespaces; absence is a gate, not NameError. -/"
 puts "def crubyNamespaceConstants : List (String × List String) := ["
 puts FOLD.map { |name, mods|
-  names = mods.first.constants(false) - %i[FOLD NAME_LINES MAIN_SINGLETON]
+  names = mods.first.constants(false) - %i[FOLD NAME_LINES MAIN_SINGLETON BUILD_DEPENDENT] - BUILD_DEPENDENT
   "  (#{name.inspect}, [#{names.map(&:to_s).sort.map(&:inspect).join(', ')}])"
 }.join(",\n")
 
@@ -142,7 +147,7 @@ puts <<~MID
   def crubyToplevelConstants : List String := [
 MID
 puts NAME_LINES.call(
-  (Object.constants - %i[FOLD NAME_LINES MAIN_SINGLETON]).map(&:to_s).sort, "  "
+  (Object.constants - %i[FOLD NAME_LINES MAIN_SINGLETON BUILD_DEPENDENT]).map(&:to_s).sort, "  "
 )
 puts "]"
 
