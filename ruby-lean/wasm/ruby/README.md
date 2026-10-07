@@ -55,12 +55,12 @@ one program in the corpus.
 ## Deriving without Sorbet
 
 The page can re-derive for a program the user has **edited**, not only replay a
-stored rung. That needed the typed ladder's two untrusted stages in Ruby:
+stored rung. That needed the pipeline's two untrusted stages in Ruby:
 `emit_deriv.rb` (then a port of a Python original, now the emitter of record
-for the commit gate too) and `read_sigs.rb` (a Prism reader
+for `make soundness` too) and `read_sigs.rb` (a Prism reader
 standing in for `srb_sigs.py`, since Sorbet is C++ and has no wasm port).
 
-Shipping each rung's stored `sigs.json` instead would have worked only until the
+Shipping each program's stored `sigs.json` instead would have worked only until the
 first edit: rename a method and the emitter blocks with "no signature for";
 change a `sig` and it proposes the *old* declared type, so `validateD` rejects
 the program the user just fixed.
@@ -76,29 +76,29 @@ Signatures are certificate *data*. A reader weaker than Sorbet costs
 completeness -- earlier blocks, more rejects -- and cannot cost soundness.
 
 `scripts/cmp_sig_readers.py` measures it, comparing Sorbet+Python against
-Prism+Ruby over every rung and judging by what `validateD` says:
+Prism+Ruby over every corpus program and judging by what `validateD` says:
 
 ```
 validateD verdict: 252 identical, 0 differ
-  rungs accepted, Sorbet path: 63
-  rungs accepted, Prism path:  63
+  programs accepted, Sorbet path: 63
+  programs accepted, Prism path:  63
 ```
 
-63 is the typed ratchet's `fragment 63`. The emitted derivations differ on 7 of
+The emitted derivations differ on 7 of
 252, all of them block-vs-block with a different *reason* -- Sorbet prints a
 proc's parameter as `arg0` where the source says `x`; Sorbet resolves
-`attr_reader` and `alias` into methods this reader does not see. No rung changes
+`attr_reader` and `alias` into methods this reader does not see. No program changes
 acceptance.
 
 ### One case worth keeping
 
 An earlier version of the reader did not descend into method bodies, so it
-missed the nested `def` in rung 236 -- the regression test for
+missed the nested `def` in corpus program 236 -- the regression test for
 `found-issues.md` §F3, an **unsafe** program whose whole point is that a nested
 `def` silently replaces an installed method. The emitter, told only about the
 outer signature, proposed a derivation Sorbet's path never would.
 
-`validateD` returned `false`. The rung stayed correctly uncertified, one stage
+`validateD` returned `false`. The program stayed correctly unaccepted, one stage
 later than before. That is the trust argument doing its job rather than being
 quoted: a weaker reader produced a wrong proposal and the checker caught it.
 The reader now descends into method bodies, so the two paths agree again -- but
@@ -106,7 +106,7 @@ the failure mode was the one the design promises, and it is worth having seen.
 
 ### What is not faked
 
-Sorbet's **verdict** -- `srb_clean`, `srb_diagnostics`, a rung's
+Sorbet's **verdict** -- `srb_clean`, `srb_diagnostics`, a program's
 `expect_sorbet` -- cannot be reproduced without Sorbet. `read_sigs.rb` reports
 `"sorbet": null` and `"verdict": "not-checked"` rather than inventing one, and
 the page should show the stored verdict only while the buffer matches the corpus

@@ -1,66 +1,68 @@
 # difftest/ — differential testing against CRuby
 
-Generates Ruby programs, runs each one under CRuby and under a *system under test*
-(SUT), and reports where the outputs differ. The main SUT is the Lean model; others
-exist for testing the engine itself and the desugarer.
-
-## Setup
+Runs a Ruby program under CRuby and under a *system under test*, and reports
+where what they do differs. The main system under test is the Lean model.
 
 ```sh
-cd difftest
-uv sync                              # Python 3.12+
-export DIFFTEST_RUBY=/path/to/ruby   # optional; defaults to Homebrew's CRuby
-export ANTHROPIC_API_KEY=...         # only for generating tier-3 programs
+make conformance      # from the repository root; what `make check` runs
 ```
 
-For `--sut lean`, build the model first: `cd ../ruby-lean && lake build`.
+That compares the model with CRuby over CRuby's `bootstraptest` suite, over
+every past disagreement in `corpus/regressions/`, and over the adversarial
+programs in `corpus/tier3/`, and fails on any disagreement.
+[How the model is tested](../docs/testing.md) describes what is compared and how
+the recorded baseline works.
 
-## Usage
+## Running it directly
 
 ```sh
-uv run python -m difftest run --tier 0 --sut lean                 # MRI's bootstraptest vs the model
-uv run python -m difftest run --tier 1 -n 300 --sut lean --seed 1 # 300 generated programs
-uv run python -m difftest run --tier 1 -n 300 --sut desugar --inject-bug   # self-test: must find disagreements
-uv run python -m difftest replay corpus/tier3 --sut lean          # replay a saved corpus
-uv run pytest
+uv sync                                                       # Python 3.12 or newer
+uv run difftest run --tier 0 --sut lean                       # bootstraptest against the model
+uv run difftest run --tier regressions --sut lean             # every past disagreement
+uv run difftest replay corpus/tier3 --sut lean                # a saved corpus
+uv run difftest run --tier 1 -n 300 --sut lean --seed 1       # 300 generated programs
+uv run difftest run --tier 1 -n 300 --sut desugar --inject-bug  # self-test: must find disagreements
+uv run pytest                                                 # this package's own tests
 ```
 
-Tier 0 needs the bootstraptest corpus harvested first; see
-[Reproducing the results](../docs/reproducing.md#the-model-against-cruby).
+`--sut lean` needs the model built (`make run`). `DIFFTEST_RUBY` selects the
+CRuby to compare against; the default is Homebrew's `ruby` if there is one, and
+otherwise the `ruby` on your `PATH`.
 
-Each run writes `reports/<timestamp>-<label>/` (gitignored) with `cases.jsonl`
-(one record per program), `summary.json` and `report.md`. The exit code is 1 if
-anything disagreed.
+Each run writes `cases.jsonl` (one record per program), `summary.json` and
+`report.md` to its output directory (`--out`, default `reports/<timestamp>/`),
+and exits with status 1 if anything disagreed.
 
 ## Where programs come from
 
 | Tier | Source |
 |---|---|
-| 0 | MRI's `bootstraptest` suite, about 1300 small self-contained programs |
-| 1 | Random programs generated with Hypothesis. Disagreements are shrunk automatically and saved to `corpus/regressions/` |
+| 0 | CRuby's `bootstraptest` suite, about 1300 small self-contained programs |
+| 1 | Random programs generated with Hypothesis. A disagreement is shrunk and saved to `corpus/regressions/` |
 | 1.5 | Generated programs that probe evaluation order |
-| 2 | Mutating real-world Ruby (not built) |
-| 3 | Adversarial programs written by Claude, saved in `corpus/tier3/` and replayed for free |
-| 4 | Sorbet-annotated programs in `corpus/sorbet/`, for testing Sorbet's own soundness |
+| 3 | Adversarial programs written to stress one feature each, in `corpus/tier3/` |
+| 4 | Sorbet-annotated programs in `corpus/sorbet/`, for comparing Sorbet's static verdict with what the program does |
+| `regressions` | Every disagreement found so far, minimized |
 
 ## Systems under test
 
-| `--sut` | What it runs |
+| `--sut` | What runs |
 |---|---|
-| `lean` | desugar → RubyCore JSON → the `rubycore` binary |
-| `desugar` | desugar → render back to Ruby → CRuby |
-| `identity` | CRuby again; a smoke test that must always agree |
-| `sig-strip` | the program with Sorbet signatures removed (tier 4) |
+| `lean` | The desugarer, then the `rubycore` executable |
+| `desugar` | The desugarer, the result printed back as Ruby, then CRuby |
+| `identity` | CRuby again; a smoke test of the harness that must always agree |
+| `sig-strip` | The program with its Sorbet signatures removed |
 
-A SUT can answer `Unsupported(reason)` for programs outside what it handles. Those
-are reported separately, never counted as agreement or disagreement.
+A system under test can answer *unsupported*, with a reason, for a program
+outside what it handles. Those are reported separately and are never counted as
+agreement or as disagreement.
 
-## More
+## Layout
 
-- [The difftest engine](../docs/testing/engine.md): each tier in detail, what is
-  compared, the SUT interface, the Sorbet probes, and the invariants to keep when
-  changing the generators.
-- [Testing methodology](../docs/testing/methodology.md): the reasoning behind the
-  design. Code comments cite it as *"artifact 05 §N"*.
-- [`implementation-notes.md`](implementation-notes.md): numbered implementation
-  decisions (N1, N2, …) cited from the code.
+| Path | Contents |
+|---|---|
+| `difftest/` | The engine: the runner, the comparison, the generators (`tiers/`), the systems under test (`sut.py`) |
+| `ruby/` | Ruby helpers: the observation wrapper and the scripts that strip Sorbet annotations |
+| `corpus/` | The saved programs described above |
+| `coverage-baseline.json` | The recorded `bootstraptest` result that `make conformance` compares against |
+| `tests/` | This package's unit tests |

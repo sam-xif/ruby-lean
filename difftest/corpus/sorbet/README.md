@@ -1,19 +1,18 @@
 # The Sorbet corpus (tier 4)
 
 Hand-written Sorbet-annotated programs, one specific probe each. The taxonomy is by
-**which part of Sorbet's design** a program exercises (§A of
-[`../../../books/AGENTS.md`](../../../books/AGENTS.md) §Sorbet),
-not by Ruby construct — the object of study is the type system.
+**which part of Sorbet's design** a program exercises, not by Ruby construct:
+the object of study is the type system.
 
 | Category | Probes |
 |---|---|
-| `sig-basic` | plain sigs; both halves quiet, or both firing on one defect (§A.5) |
-| `narrowing` | flow-sensitive/occurrence typing and its documented limits (§A.2) |
-| `assertions` | the `T.let`/`T.cast`/`T.must`/`T.unsafe` static-vs-runtime table (§A.3) |
-| `untyped-boundary` | `T.untyped`, the no-sig boundary, and blame (§A.5, §B.5) |
-| `escape-hatches` | the unsoundness catalogue: holes Sorbet accepts by design (§A.3) |
-| `structs-enums` | `T::Struct` / `T::Enum`, incl. the checked/unchecked asymmetry (§A.1) |
-| `generics` | runtime-erased generics — statically checked, no runtime backstop (§A.6) |
+| `sig-basic` | plain sigs; both halves quiet, or both firing on one defect |
+| `narrowing` | flow-sensitive/occurrence typing and its documented limits |
+| `assertions` | the `T.let`/`T.cast`/`T.must`/`T.unsafe` static-vs-runtime table |
+| `untyped-boundary` | `T.untyped`, the no-sig boundary, and blame |
+| `escape-hatches` | the unsoundness catalogue: holes Sorbet accepts by design |
+| `structs-enums` | `T::Struct` / `T::Enum`, incl. the checked/unchecked asymmetry |
+| `generics` | runtime-erased generics — statically checked, no runtime backstop |
 
 ## The sidecar contract
 
@@ -26,8 +25,7 @@ Every `NNN.rb` has an `NNN.json` declaring what *both halves* of Sorbet do with 
   "description": "…what this program probes and why it matters…",
   "sigil": "true",
   "static_expect": "clean",          // clean | errors                  (srb tc)
-  "runtime_expect": "ruby_error",    // value | sorbet_error | ruby_error (CRuby)
-  "doc_ref": "books/AGENTS.md §Sorbet §A.5"
+  "runtime_expect": "ruby_error"     // value | sorbet_error | ruby_error (CRuby)
 }
 ```
 
@@ -42,7 +40,7 @@ invalidating the taxonomy.
 Programs where the properties under test are **expected to hold**: the corpus carries a
 0-violation ratchet for the gradual-guarantee probe, matching the discipline of the rest
 of the engine. A program known to *violate* a probed property lives in the test suite as
-a detection self-test instead (see implementation-notes N33), so that "0 violations"
+a detection self-test instead, so that "0 violations"
 keeps meaning something.
 
 Off-diagonal *findings* — Sorbet accepting a program that reaches a type-stuck outcome —
@@ -57,4 +55,4 @@ catalogue, and they are findings, not failures.
 3. Run `uv run python -m difftest sorbet check`. If the prediction was wrong, that is the
    interesting part — work out which of you is confused before editing either file.
 4. Run `uv run python -m difftest run --tier 4 --sut sig-strip`; a `disagree` means you
-   found a gradual-guarantee violation, which does not belong in this corpus (N33).
+   found a gradual-guarantee violation, which does not belong in this corpus.

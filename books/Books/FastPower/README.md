@@ -2,7 +2,8 @@
 
 A *program book* is a Ruby program together with a statement of what it computes
 and a Lean proof of that statement against the model's `stepFn`. This is the
-worked example, and this page is also the guide to writing another one.
+worked example. [Prove a program correct](../../../docs/guides/prove-a-program.md)
+is the guide to writing another one, starting from `bin/new-book`.
 
 ```bash
 make books          # from the repository root; or `lake build` in books/
@@ -137,39 +138,22 @@ machine is in context, because `omega` times out trying to read one. And prefer
 |---|---|
 | `program b n`, booted and run as `rubycore` does, prints and returns `b ^ n` | Proved, all `b`, `n` |
 | `fast_power.rb` desugars to `program 3 13` | Tested at build time (`#guard`), for the literals in the file |
-| CRuby does the same as the model | Tested by `ruby books/Books/FastPower/check.rb` on 72 inputs |
+| CRuby does the same as the model | Tested by `check.rb` on 72 inputs (`make book-checks`) |
 
 The second link is a test because the JSON decoder is a `partial` function. The
-third is the model's standing obligation and is what `difftest/` is for.
+third is the model's standing obligation to agree with CRuby, which the
+[differential tests](../../../docs/testing.md) check on every build.
 
-## What had to change in the model
-
-The first attempt at this proof could only be completed for a weakened program
-(`left.odd?` for `left % 2 == 1`, no `puts`) on the bare boot heap. Five things
-in the model stood in the way; each is now fixed there.
-
-| Was in the way | Fix |
-|---|---|
-| `Integer#==` answered with `valueEq`, a `partial def`: opaque, so not even `1 == 1` was provable. `eql?` and Hash key matching (`valueEql`) likewise | `RubyCore/Repr.lean`: both recurse on fuel (`reprFuel`) and are ordinary total functions. Out of fuel answers `true`, which is what CRuby's recursion guard answers on a comparison that re-enters itself |
-| `puts`, `p`, `to_s`, `inspect` and interpolation of a non-String went through `toS`, `inspect` and `pureOk`, all `partial`. It was not even provable that `puts answer` stays inside the model | `RubyCore/Repr.lean`, `RubyCore/Builtins/Support.lean`: the same fuel. Out of fuel is an Unsupported reason for `toS`/`inspect` and "not pure" for `pureOk`, so it gates and never guesses |
-| The prelude was *defined* as "decode this JSON string", and the decoder is `partial`, so the booted heap was opaque and every theorem had to be about the bare boot heap, which is not what `rubycore` runs | `RubyCore/Prelude.lean` is now the prelude as terms, written by `lake exe genprelude` from `RubyCore/PreludeJson.lean` using the model's own decoder. The kernel runs the boot in about seven seconds (`boot_ok`) |
-| `Boot.initHeap` built `Object`'s constant table with `String.contains`, an iterator loop the kernel cannot unfold, so the first `class` in any program stopped it | `RubyCore/Heap.lean`: `name.toList.contains ':'` |
-| `Integer#/` asked "is the receiver the literal `1`?" before looking at its argument (the `1 / Rational` case), which is undecidable for a variable receiver and forced a case split in the loop | `RubyCore/Builtins/Support.lean`, `RubyCore/Builtins/Numerics.lean`: the argument is tested first |
-
-None of these changes what a program computes, except that comparing or
-printing a cyclic structure, which used to make the model diverge, now
-terminates.
-
-## Not yet attempted
+## Limits
 
 - **A user-defined method called inside a loop.** Activation frames are never
   reclaimed, so the frame store grows each iteration and the loop state stops
-  being a closed term the kernel can evaluate. I expect this needs a framing
-  lemma for the frame store; it is untested.
+  being a closed term the kernel can evaluate. This needs a framing lemma for
+  the frame store, which has not been written.
 - **Blocks and iterators** (`each`, `times`, `map`). They live in the prelude,
-  which is now reachable, but each call pushes frames, so they meet the same
-  problem.
+  and each call pushes frames, so they meet the same problem.
 - **Strings, Arrays and Hashes as symbolic inputs.** Only integer inputs are
   symbolic so far. Building an Array from symbolic integers works.
-- **Generating `Program.lean` from the JSON.** It is written by hand; the
-  `#guard` is what makes that safe.
+- **Abstracting the inputs automatically.** `bin/new-book` generates
+  `Program.lean` for the literal program; replacing literals with variables is
+  done by hand, and the `#guard` is what makes that safe.

@@ -1,134 +1,99 @@
 # ruby-lean
 
-`ruby-lean` is an executable model of Ruby written in Lean 4. It runs Ruby
-programs after a desugaring step, and its behavior is checked against CRuby. The
-repository also contains a type validator for a subset of Sorbet-annotated Ruby.
-Lean proves that a program accepted by the validator cannot reach a
-`NoMethodError`, `ArgumentError`, or `TypeError` in the model.
+`ruby-lean` is a model of the Ruby language written in Lean 4. The model is
+executable: it runs Ruby programs, and every build checks its behavior against
+CRuby. Because it is written in Lean, you can also prove things about what a
+Ruby program does.
+
+```console
+$ bin/ruby-lean point.rb            # run a program on the model
+=> 1
+
+$ bin/ruby-lean-check point.rb      # can it raise a type error?
+ACCEPTED  point.rb
+  validateD accepted this program. By validateD_safe_run, running it on the
+  model never ends in an uncaught NoMethodError, ArgumentError or TypeError.
+```
+
+## What you can do
+
+| You want to | Start here |
+|---|---|
+| Run a Ruby program on the model and compare it with CRuby | [Run a program](docs/guides/run-a-program.md) |
+| Show that a Sorbet-annotated program never raises `NoMethodError`, `ArgumentError` or `TypeError` | [Prove a program type-safe](docs/guides/prove-type-safety.md) |
+| Prove what a program computes, for every input | [Prove a program correct](docs/guides/prove-a-program.md) |
+| Read what the model says Ruby means | [The semantics](docs/semantics/index.md) |
+| See what has been proved and what it rests on | [What is proved](docs/proofs/index.md), [What you have to trust](docs/proofs/trust.md) |
+| Try it without installing anything | [The playground](docs/playground.md) |
 
 The [project write-up](https://samx.io/blog/topics/devlog/2026-09-26-ruby-lean.html)
-explains the motivation, the proof, and the limits in more detail. You can also
-try programs in the [playground](playground/README.md).
+explains the motivation.
 
-## Prerequisites
+## Quick start
 
-You need:
-
-- [elan](https://github.com/leanprover/elan) for Lean and Lake. The Lean version
-  is pinned in [`ruby-lean/lean-toolchain`](ruby-lean/lean-toolchain).
-- CRuby 4.0.x, available as `ruby` on your `PATH`.
-- Sorbet (`sorbet` and `sorbet-runtime` gems), pinned in [`Gemfile.lock`](Gemfile.lock).
-- [uv](https://docs.astral.sh/uv/) and Python 3.12 or newer for the differential
-  tests. uv manages the test environment.
-- Git and network access for the optional MRI `bootstraptest` run, which
-  downloads test cases on its first run.
-- For the playground's WebAssembly build only: `wasmtime`. The build fetches
-  its own wasi-sdk.
-
-[`mise.toml`](mise.toml) pins the non-Lean tool versions if you use
-[mise](https://mise.jdx.dev).
-
-On macOS with Homebrew, one way to install them is:
+You need [elan](https://github.com/leanprover/elan) (Lean), CRuby 4.0.x,
+[uv](https://docs.astral.sh/uv/) and Python 3.12 or newer. On macOS:
 
 ```sh
 curl -sSf https://elan.lean-lang.org/elan-init.sh | sh
 brew install ruby python@3.12 uv
 export PATH="$(brew --prefix ruby)/bin:$PATH"
-make deps        # the pinned gems from Gemfile.lock
+make deps       # the pinned gems, Sorbet among them
+make prereqs    # reports anything missing
 ```
 
-From the repository root, check that the tools are available:
+Then:
 
 ```sh
-make prereqs
+make run                              # build the model, the checker and the desugarer
+echo 'puts 1 + 2' | bin/ruby-lean     # 3
 ```
 
-The script reports missing tools and installation hints. Also check that
-`ruby --version` reports 4.0.x and that Python 3.12 or newer is available
-before running the differential tests.
+[Getting started](docs/getting-started.md) has the details.
 
-## Build targets
+## Checking everything
 
-`make` from the repository root drives everything; `make help` lists the
-targets. The main ones:
+```sh
+make check
+```
 
-| Target | Builds or runs |
+One command builds the model and the checker, builds every proof, audits the
+axioms behind each theorem, runs the checker over its corpus of typed programs,
+and runs the model against CRuby over more than 1800 programs. It stops at the first
+failure. Continuous integration runs the same targets on every pull request and
+each one blocks the merge. `make help` lists the individual targets.
+
+A first run spends most of its time compiling proofs: several minutes on a
+many-core machine, about half an hour on a small one. Later runs take a few
+minutes.
+
+## What is here
+
+| Directory | Contents |
 |---|---|
-| `make lean` | The Lean package: the model and the validator |
-| `make run` | `rubycore` and the desugarer, for [`bin/ruby-lean`](bin/ruby-lean) (`make run FILE=prog.rb` also runs it) |
-| `make desugar` | The desugarer, `desugar/bin/export-json` (Ruby to the model's JSON) |
-| `make difftest` | The differential-test environment; then `cd difftest && uv run difftest --help` |
-| `make bootstraptest` | The model vs CRuby over MRI's `bootstraptest` |
-| `make proofs` | The metatheory (`books/Books/Metatheory/`), plus a check of every headline theorem's axioms |
-| `make books` | Every proof book (`books/`): the validator's soundness theorem, the metatheory, and Ruby programs proved correct against the model |
-| `make comparator` | An independent check of the soundness theorem with `leanprover/comparator` |
-| `make wasm`, `make playground` | The three WebAssembly modules, then the static playground in `playground/dist/` |
-| `make gate` | The typed ratchet gate, which must print `GREEN` before a commit |
-| `make check` | Generated-source freshness, the desugar and difftest suites, and the gate |
-| `make gen`, `make gen-check` | Regenerate, or check, the committed Lean files generated from Ruby |
-| `make docs` | The documentation site in `site/` |
+| [`ruby-lean/RubyCore/`](ruby-lean/RubyCore/README.md) | The model: an abstract machine for Ruby, and its step function `stepFn` |
+| [`ruby-lean/Checker/`](ruby-lean/Checker/README.md) | A type checker for a fragment of Sorbet-annotated Ruby |
+| [`books/`](books/README.md) | Every proof: the checker's soundness, facts about the model, and proofs about individual programs |
+| [`desugar/`](desugar/README.md) | Ruby source to the core language the model runs |
+| [`difftest/`](difftest/README.md) | Differential testing against CRuby |
+| [`playground/`](playground/README.md) | A browser interface: run, type-check and step through programs |
+| [`docs/`](docs/index.md) | The documentation site (`make docs-serve`) |
 
-Each part keeps its own tool (Lake, uv, Bundler); the Makefile adds the links
-between them. For example, `RubyCore/Prelude.lean` is regenerated when the
-desugarer changes, and `make wasm` relinks only after Lake does.
+## What the results mean
 
-## Reproduce the results
+The theorems are about the model. The model is tested against CRuby 4.0.5 on
+every build, and that is testing, not proof: it does not establish that the two
+agree on every program.
 
-Run these commands from the repository root. A cold Lean build can take around
-half an hour; later runs are faster.
+The model does not cover all of Ruby, and the type checker covers less than the
+model. When either meets something it does not support, it says so and stops.
+It does not guess. Type safety rules out three classes of exception; it does not
+prove termination or rule out other exceptions.
 
-1. Build the model and validator, then run the typed corpus and its checks:
+[What you have to trust](docs/proofs/trust.md) is the full list.
 
-   ```sh
-   scripts/reproduce.sh
-   ```
+## Contributing
 
-   Look for `RATCHET GREEN` in the gate output: every accepted corpus program is
-   then covered by the proof, and the model agrees with CRuby on the programs
-   checked by the gate. If a step fails, the script stops and reports where.
+`make check` must pass. See [Contributing](docs/contributing.md).
 
-2. To also compare the model with MRI's `bootstraptest` programs and check the
-   model's separate metatheory, run:
-
-   ```sh
-   scripts/reproduce.sh --with-difftest --with-proofs
-   ```
-
-   The first differential run fetches a sparse copy of `ruby/ruby` at the pinned
-   tag (`RUBY_REF`, default `v4.0.5`) into `~/.cache/ruby-lean/`; set `RUBY_SRC`
-   to put it elsewhere.
-   The script stops at the first failure.
-
-For the individual commands and an explanation of the measurements, see
-[Reproducing the results](docs/reproducing.md). To run a
-single program through the model after `make run`:
-
-```sh
-bin/ruby-lean prog.rb            # or: echo 'puts 1 + 2' | bin/ruby-lean
-```
-
-## What the result means
-
-The validator checks a proposed type derivation. Sorbet, annotation stripping,
-desugaring, and derivation generation may cause a program to be declined; only
-the final Lean validator can accept it. The proof concerns execution by this
-repository's Ruby model. Differential tests compare that model with CRuby, but
-do not establish that they agree on every Ruby program.
-
-The model and the typed fragment are both incomplete. Acceptance rules out the
-three type-error classes above; it does not prove termination or rule out other
-exceptions. The gate reports current coverage and disagreements rather than
-relying on numbers recorded in this README.
-
-## Where to read next
-
-- [`ruby-lean/`](ruby-lean/README.md): the Lean model and the validator.
-- [`books/`](books/README.md): every proof about them, the corpus and the gate.
-- [`desugar/`](desugar/README.md): Ruby source to the model's input format.
-- [`difftest/`](difftest/README.md): comparison with CRuby.
-- [`playground/`](playground/README.md): run and step through programs in a browser.
-- [`docs/`](docs/index.md): design, supported Ruby features, and testing method.
-
-For development, read [`CONTRIBUTING.md`](CONTRIBUTING.md) and
-[`AGENTS.md`](AGENTS.md). The project is licensed under Apache 2.0; see
-[`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+Licensed under Apache 2.0; see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
