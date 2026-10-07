@@ -34,7 +34,7 @@ RUBY_REF  ?= v4.0.5
 RUBY_SRC  ?= $(CACHE)/ruby-src-$(RUBY_REF)
 BOOTSTRAP := desugar/corpus/bootstraptest
 
-.PHONY: help all check prereqs deps lean lean-exes desugar difftest run \
+.PHONY: help all check prereqs ci-sync deps lean lean-exes desugar difftest run \
         books metatheory soundness comparator \
         gen gen-check desugar-test desugar-coverage difftest-test conformance feature-loading \
         book-checks \
@@ -50,7 +50,7 @@ all: lean desugar difftest run ## Build the model, the checker, the desugarer an
 # failure. CI runs exactly these targets, so a local `make check` and a CI run
 # mean the same thing. Nothing here is optional and nothing is skipped.
 
-CHECKS := prereqs gen-check lean books metatheory soundness comparator \
+CHECKS := prereqs ci-sync gen-check lean books metatheory soundness comparator \
           desugar-test desugar-coverage difftest-test conformance feature-loading \
           book-checks docs
 
@@ -60,6 +60,9 @@ check: $(CHECKS) ## Everything: build, every proof, the model against CRuby, the
 
 prereqs: ## Check the external tools (elan, ruby, sorbet, uv)
 	@scripts/check-prereqs.sh
+
+ci-sync: ## Fail if CI does not run every target of `make check`
+	@scripts/check-ci-matches-make.sh
 
 $(STAMP):
 	@mkdir -p $@
@@ -94,13 +97,17 @@ $(PRELUDE_JSON): $(PRELUDE_SRC)
 	cd $(PKG) && $(RUBY) scripts/gen_prelude.rb > RubyCore/Generated/PreludeJson.lean.tmp
 	@if cmp -s $@.tmp $@; then rm $@.tmp; touch $@; else mv $@.tmp $@; echo "  regenerated $@"; fi
 
+# Build the generator first and run the binary, so that nothing Lake prints
+# while building can end up in the generated file.
+GENPRELUDE := $(LAKE) build --log-level=error genprelude >&2 && .lake/build/bin/genprelude
+
 $(PRELUDE_LEAN): $(PRELUDE_JSON) $(PKG)/GenPrelude.lean $(PKG)/RubyCore/Syntax.lean
-	cd $(PKG) && $(LAKE) -q exe genprelude > RubyCore/Generated/Prelude.lean.tmp
+	cd $(PKG) && $(GENPRELUDE) > RubyCore/Generated/Prelude.lean.tmp
 	@if cmp -s $@.tmp $@; then rm $@.tmp; touch $@; else mv $@.tmp $@; echo "  regenerated $@"; fi
 
 gen: ## Regenerate every generated Lean source
 	cd $(PKG) && $(RUBY) scripts/gen_prelude.rb      > RubyCore/Generated/PreludeJson.lean
-	cd $(PKG) && $(LAKE) -q exe genprelude > RubyCore/Generated/Prelude.lean.tmp && mv RubyCore/Generated/Prelude.lean.tmp RubyCore/Generated/Prelude.lean
+	cd $(PKG) && $(GENPRELUDE) > RubyCore/Generated/Prelude.lean.tmp && mv RubyCore/Generated/Prelude.lean.tmp RubyCore/Generated/Prelude.lean
 	cd $(PKG) && $(RUBY) scripts/gen_cruby_names.rb  > RubyCore/Generated/CRubyNames.lean
 	cd $(PKG) && $(RUBY) scripts/gen_unicode.rb --verify > RubyCore/Generated/Unicode.lean
 	cd $(PKG) && python3 scripts/generate_audited_checker.py
@@ -111,11 +118,13 @@ gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 	  s=$${g%%:*}; f=$${g##*:}; \
 	  (cd $(PKG) && $(RUBY) scripts/gen_$$s.rb) > $(STAMP)/$$f.lean; \
 	  if cmp -s $(STAMP)/$$f.lean $(GENERATED)/$$f.lean; then echo "  fresh  RubyCore/Generated/$$f.lean"; \
-	  else echo "  STALE  RubyCore/Generated/$$f.lean  (run: make gen)"; fail=1; fi; \
+	  else echo "  STALE  RubyCore/Generated/$$f.lean  (run: make gen)"; \
+	    diff $(GENERATED)/$$f.lean $(STAMP)/$$f.lean | head -40 | cut -c1-600; fail=1; fi; \
 	done; \
-	(cd $(PKG) && $(LAKE) -q exe genprelude) > $(STAMP)/Prelude.lean; \
+	(cd $(PKG) && $(GENPRELUDE)) > $(STAMP)/Prelude.lean; \
 	if cmp -s $(STAMP)/Prelude.lean $(PRELUDE_LEAN); then echo "  fresh  RubyCore/Generated/Prelude.lean"; \
-	else echo "  STALE  RubyCore/Generated/Prelude.lean  (run: make gen)"; fail=1; fi; \
+	else echo "  STALE  RubyCore/Generated/Prelude.lean  (run: make gen)"; \
+	  diff $(PRELUDE_LEAN) $(STAMP)/Prelude.lean | head -40 | cut -c1-600; fail=1; fi; \
 	(cd $(PKG) && python3 scripts/generate_audited_checker.py --check) || fail=1; \
 	exit $$fail
 
@@ -176,8 +185,10 @@ $(STAMP)/uv: difftest/pyproject.toml difftest/uv.lock | $(STAMP)
 	cd difftest && $(UV) sync --quiet
 	@touch $@
 
-difftest-test: $(STAMP)/uv deps ## difftest's own unit tests
-	cd difftest && $(UV) run pytest -q
+# Some of these tests need Sorbet and the model's executable and are marked to
+# skip without them. Under make both are present, so a skip is a failure.
+difftest-test: $(STAMP)/uv deps lean-exes ## difftest's own unit tests
+	cd difftest && DIFFTEST_NO_SKIPS=1 $(UV) run pytest -q
 
 $(BOOTSTRAP):
 	@if [ ! -d "$(RUBY_SRC)/bootstraptest" ]; then \

@@ -6,8 +6,8 @@
 #
 #   proofs        the model and the checker build; every proof book builds; the
 #                 axiom audits; the soundness check over the corpus; the comparator
-#   conformance   the model against CRuby over MRI's bootstraptest
-#   front-end     the desugarer against CRuby, and the differential tester's own tests
+#   conformance   the model against CRuby, and the differential tester's own tests
+#   front-end     the desugarer against CRuby
 #   docs          the documentation site builds with no broken links
 name: CI
 
@@ -61,8 +61,8 @@ jobs:
 
       - run: make deps
       - run: make prereqs
-      - run: make gen-check
       - run: make lean
+      - run: make gen-check
       - run: make books
       - run: make metatheory
       - run: make soundness
@@ -96,6 +96,8 @@ jobs:
       - run: make deps
       - run: make conformance
       - run: make feature-loading
+      - run: make difftest-test
+      - run: make book-checks
 
       - name: Upload the conformance report
         if: always()
@@ -106,7 +108,7 @@ jobs:
           if-no-files-found: ignore
 
   front-end:
-    name: front-end (desugarer and difftest)
+    name: front-end (the desugarer against CRuby)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -125,7 +127,6 @@ jobs:
       - run: make deps
       - run: make desugar-test
       - run: make desugar-coverage
-      - run: make difftest-test
 
   docs:
     name: docs
@@ -134,4 +135,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      - run: make ci-sync
       - run: make docs
