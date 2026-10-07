@@ -210,7 +210,7 @@ def methodParams (m : Machine) (recv : Value) (mname : String) (md : MethodDef)
     -- (only reachable for `define_method` bodies, L64; harmless otherwise —
     -- an unbound local reads as nil either way).
     -- ...and, for the same reason, every name the *body* binds itself: a
-    -- `define_method` block's block-locals (L125/C35). Ordinary `def`s carry an
+    -- `define_method` block's block-locals. Ordinary `def`s carry an
     -- empty list here.
     let predeclared := destrNames.map (fun n => (n, Value.nil)) ++ localsB.map (fun b => (b.1, Value.nil)) ++
       (optOmitted ++ kwOmitted).map (fun d => (d.1, Value.nil)) ++
@@ -272,7 +272,7 @@ def methodArity (m : Machine) (recv : Value) (mname : String) (md : MethodDef)
         s!"unknown keyword{if names.length == 1 then "" else "s"}: {kwNameList names}")
     else
     -- positional distribution: pre from the front, post from the back, optionals
-    -- fill the leftmost middle args, a `*rest` absorbs the surplus (artifact 02 §3).
+    -- fill the leftmost middle args, a `*rest` absorbs the surplus (Semantics 02 §3).
     methodParams m recv mname md args blk kw fp leftover
 
 

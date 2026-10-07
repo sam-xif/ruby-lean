@@ -1,12 +1,12 @@
 import Books.Metatheory.Builtins.BuiltinConformance
 import Books.Metatheory.Heap.HeapFacts
 import Books.Metatheory.Heap.HeapGrow
-import RubyCore.Types.Core
+import Books.Metatheory.Typing.Lang.Infer
 
 /-!
 # P0 static soundness, part 1 — values, frames and environments
 
-Split out of `Books/Metatheory/StaticSoundness.lean` (L136), which had reached 971 lines
+Split out of `Books/Metatheory/StaticSoundness.lean`, which had reached 971 lines
 against `PLAN.md` §4 norm 3's 1,000-line ceiling with F1 about to add to it. No
 statement changed; the cut follows the file's own section numbering, and
 `StaticSoundness.lean` still holds the theorem, so nothing downstream moved.
@@ -70,7 +70,7 @@ set_option maxRecDepth 100000
     goes into the judgement instead.
 
     **`(h.get o).klass < h.objs.size` is the same move a second time, and it is
-    what the relativized `TypeAgree` needs** (L143). The `.ref` arm's type is
+    what the relativized `TypeAgree` needs**. The `.ref` arm's type is
     `className h (classOf h (.ref o))`, so the transport owes an agreement about
     the *class* id as well as about `o`, and `className` is another function that
     answers out of bounds with a default (`"Object"`). Without this clause an
@@ -89,11 +89,11 @@ set_option maxRecDepth 100000
     third time, and the third time is where the pattern is worth naming: every one of
     these clauses was found by asking what a *later* rung has to derive at the use
     site, and every one of them is cheaper in the judgement. Here the use site is
-    `EntryOk`'s class-indexed resolution clause (L147), which is instantiated at the
+    `EntryOk`'s class-indexed resolution clause, which is instantiated at the
     receiver's dispatch class and therefore needs that class to *be* a class. -/
 def plainRecv (h : Heap) (o : ObjId) : Bool :=
   o < h.objs.size && (h.classPayload? (h.get o).klass).isSome && (h.get o).eigen.isNone &&
-    -- **Not frozen** (L191), and it is `plainRecv`'s fifth clause for the fifth time
+    -- **Not frozen**, and it is `plainRecv`'s fifth clause for the fifth time
     -- the same reason: *a side condition a later rung has to derive at the use site
     -- is cheaper in the judgement.* The use site is `@x = e`, whose `applyKont` arm
     -- raises `FrozenError` — a `.jump`, which `CtlOk` refuses outright — when the
@@ -106,7 +106,7 @@ def plainRecv (h : Heap) (o : ObjId) : Bool :=
      | .hsh _ => false
      | .cls _ => false
      | _ => true) &&
-    -- **An object of class `Array` holds an array** (L230), and it is `plainRecv`'s move
+    -- **An object of class `Array` holds an array**, and it is `plainRecv`'s move
     -- for the *sixth* time: a side condition a later rung has to derive at the use site
     -- is cheaper in the judgement. The use site is the **splat**: `[a, *b]` spreads `b`
     -- with `spreadA`, which answers `.ok` for an `.arr` payload and `.error` — hence
@@ -123,7 +123,7 @@ def plainRecv (h : Heap) (o : ObjId) : Bool :=
     (if className h (h.get o).klass == "Array" then
        (match (h.get o).payload with | .arr _ => true | _ => false) else true)
 
-/-- **A class-object receiver** (L185) — the shape `Ty.clsOf` types, and the dual
+/-- **A class-object receiver** — the shape `Ty.clsOf` types, and the dual
     of `plainRecv`: the payload *is* a class, and the two receiver ids `invoke`
     special-cases are excluded.
 
@@ -133,7 +133,7 @@ def plainRecv (h : Heap) (o : ObjId) : Bool :=
     (`Interp/Send.lean:59`, `:69`): `Regexp.escape`/`.quote`/`.union` and the
     `Math.sqrt`/`exp`/`log` family are singleton methods dispatched by receiver
     **id**, because the boot heap installs builtins as *instance* methods and those
-    are not (L106). Refusing the two ids here is what lets `entry_dispatch`'s class
+    are not. Refusing the two ids here is what lets `entry_dispatch`'s class
     case be a `simp` rather than a case analysis over arms it must then refute.
 
     `eigen` is deliberately **not** constrained, unlike `plainRecv`'s `eigen.isNone`:
@@ -176,7 +176,7 @@ def valueTy? (h : Heap) : Value → Option Ty
     -- **L185's class-object arm.** Keyed on the object's *own* name, not on
     -- `classOf`'s: a class object's dispatch chain is its eigenclass, or `Class`
     -- when it has none, and neither of those names is one a declaration can hang
-    -- off (L180). `TyClass` is where `classOf` appears.
+    -- off. `TyClass` is where `classOf` appears.
     else if classRecv h o then some (.clsOf (className h o))
     else none
 
@@ -247,7 +247,7 @@ def ValueTy (h : Heap) (v : Value) (τ : Ty) : Prop :=
 theorem ValueTy.exact {h : Heap} {v : Value} {τ : Ty} (he : valueTy? h v = some τ) :
     ValueTy h v τ := Or.inr (Or.inr ⟨τ, he, by simp⟩)
 
-/-- **And `.any` needs no value at all** (L232) — the whole point of the disjunct. -/
+/-- **And `.any` needs no value at all** — the whole point of the disjunct. -/
 theorem ValueTy.any {h : Heap} {v : Value} : ValueTy h v .any := Or.inl (by simp [subTy])
 
 /-- And the weakening the join needs, which is one `subTy_trans`. -/
@@ -260,7 +260,7 @@ theorem ValueTy.weaken {h : Heap} {v : Value} {σ τ : Ty} (hv : ValueTy h v σ)
       Or.inr (Or.inl ⟨σ', o, xs, subTy_trans hup hs, hvo, hb, hex, hpay, hall⟩)
   | Or.inr (Or.inr ⟨σ', hσ, hsub⟩) => Or.inr (Or.inr ⟨σ', hσ, subTy_trans hsub hs⟩)
 
-/-- **`.any` is below only itself and the nilables above it** (L232) — the form the
+/-- **`.any` is below only itself and the nilables above it** — the form the
     inversions' new hypothesis takes when the caller has `subTy_atomic`'s two side
     conditions rather than a concrete type. -/
 theorem subTy_any_false {τ : Ty} (ha : τ ≠ .any) (hn : ∀ τ', τ ≠ .nilable τ') :
@@ -284,7 +284,7 @@ theorem ValueTy.atomic {h : Heap} {v : Value} {τ : Ty} (ha : τ ≠ .any)
   rw [(subTy_atomic ha hn).mp hs] at hσ
   exact hσ
 
-/-- **The `.ref` arm, read backwards** (L185). Two branches now, so the inversion
+/-- **The `.ref` arm, read backwards**. Two branches now, so the inversion
     is a disjunction and every consumer has to say which one it is about —
     `Locals.lean`'s own lesson from L142 applies to itself here: *an inversion
     principle is only as strong as the definition it inverts.* -/
@@ -330,7 +330,7 @@ theorem valueTy_int {hp : Heap} {v : Value} (h : ValueTy hp v .int) : ∃ a, v =
     this said *immediate*, full stop, and that was what let
     `Books/Metatheory/Typing/Infer/Decls.lean`'s `entry_dispatch` discharge `invoke`'s
     receiver-shape special cases for free — the fragment's own poverty doing the
-    work of a proof (`HANDOFF.md` §F1b).
+    work of a proof.
 
     **F1b pays that bill, and it turns out to be a case rather than an argument.**
     The `.ref` case is admitted with `plainRecv`, which is precisely the negation
@@ -373,7 +373,7 @@ theorem valueTy_ref_lt {h : Heap} {o : ObjId} {τ : Ty}
     (hnar : ∀ σ, subTy (.arrayOf σ) τ = false) (hv : ValueTy h (.ref o) τ) :
     o < h.objs.size := by
   -- Both arms of the `.ref` case carry the bound: `plainRecv` as its first clause
-  -- and `classRecv` as its first clause too (L185).
+  -- and `classRecv` as its first clause too.
   by_cases hb : o < h.objs.size
   · exact hb
   · simp [ValueTy, valueTy?, plainRecv, classRecv, hb, hna, hnar] at hv
@@ -404,7 +404,7 @@ theorem plainRecv_classOf {h : Heap} {o : ObjId} (hp : plainRecv h o = true) :
   simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hp
   simp only [classOf, hp.1.1.1.2]
 
-/-- **A plain receiver's class is a class** (L147). The clause `plainRecv` gained,
+/-- **A plain receiver's class is a class**. The clause `plainRecv` gained,
     read back out at the composite the resolution clause is indexed by. -/
 theorem valueTy_ref_klass_isSome {h : Heap} {o : ObjId}
     (hp : plainRecv h o = true) : (h.classPayload? (classOf h (.ref o))).isSome := by
@@ -427,7 +427,7 @@ theorem valueTy_ref_klass_lt {h : Heap} {o : ObjId} (hp : plainRecv h o = true) 
     classOf h (.ref o) < h.objs.size :=
   classPayload?_isSome_lt (valueTy_ref_klass_isSome hp)
 
-/-- **Membership in a chain bounds the chain's root** (L209), and it is what lets the
+/-- **Membership in a chain bounds the chain's root**, and it is what lets the
     `StackCtx` chain clause carry its own bound rather than being handed one.
 
     If `k` is a class the bound is `classPayload?_isSome_lt`. If it is not, its chain is
@@ -501,7 +501,7 @@ def localOf (f : Frame) (x : String) : Value :=
   | some (_, v) => v
   | none => .nil
 
-/-- **A local read from `f`, following one level of `captured`** (L243) — what
+/-- **A local read from `f`, following one level of `captured`** — what
     `getLocal` reads when the chain is known to be at most one hop deep.
 
     One level and not a walk, and that is a decision with a measurement behind it. The
@@ -526,7 +526,7 @@ def localOfIn (frames : Array Frame) (f : Frame) (x : String) : Value :=
     (hc : f.captured = none) : localOfIn frames f x = localOf f x := by
   simp only [localOfIn, localOf, hc]
 
-/-- **The chain is at most one hop, and it lands on a self-contained frame** (L243).
+/-- **The chain is at most one hop, and it lands on a self-contained frame**.
 
     `FrameConforms`'s first clause was `f.captured = none`, which makes a **block frame
     inexpressible** — `callClosure` builds one with `captured := some cl.captured`
@@ -537,7 +537,7 @@ def localOfIn (frames : Array Frame) (f : Frame) (x : String) : Value :=
     Note what it does *not* say: nothing about *which* frame `p` is. Tying the captured
     frame to the environment the block body was typed at is the **kont's** job — a
     `blkFrameK`/`iterK` carries the closure, so it carries the pair — for `KontOk`'s
-    standing reason (L236): a fact about how one activation relates to another has to be
+    standing reason: a fact about how one activation relates to another has to be
     recorded where the continuation is built. -/
 structure ShallowChain (frames : Array Frame) (fid : FrameId) : Prop where
   captured : ∀ p, (frames.getD fid default).captured = some p →
@@ -581,7 +581,7 @@ theorem ShallowChain.congr {a b : Array Frame} {fid : FrameId}
     by every frame on the stack. -/
 def FrameConforms (h : Heap) (frames : Array Frame) (Γ : Env) (fid : FrameId) : Prop :=
   ShallowChain frames fid ∧
-  -- **The definee is a class** (L153's `NoHook` generalization cashed, L154). It
+  -- **The definee is a class** (L153's `NoHook` generalization cashed). It
   -- used to be `f.defmod = Boot.objectId`, which is all a fragment with no `class`
   -- and no `module` can ever produce — and which makes a class-body frame
   -- *inexpressible*, since `enterClassBody` pushes a frame whose `defmod` is the
@@ -616,7 +616,7 @@ def FramesOk (h : Heap) (frames : Array Frame) : List FrameId → List Env → P
       FrameConforms h frames Γ fid ∧ FramesOk h frames fids Γs
   | _, _ => False
 
-/-- **`FramesOk`'s `cons` arm, as a constructor** (L257). The predicate is a `match`, so
+/-- **`FramesOk`'s `cons` arm, as a constructor**. The predicate is a `match`, so
     building one at a two-frame push means a four-deep anonymous constructor that
     re-associates unpredictably; naming the arm makes each obligation a *typed* hole. -/
 theorem FramesOk.cons {hp : Heap} {frames : Array Frame} {fid : FrameId}
@@ -634,7 +634,7 @@ theorem FrameConforms.mk' {h : Heap} {frames : Array Frame} {Γ : Env} {fid : Fr
     FrameConforms h frames Γ fid := ⟨hsc, hpay, hv⟩
 
 /-- **The outermost activation is the toplevel one, and its definee is `Object`**
-    (L155).
+.
 
     This is the fact that makes `infer`'s `top` flag mean something. `CtlOk` reads
     the mode off the environment stack (`Γs.isEmpty`), `FramesOk` forces the
@@ -661,7 +661,7 @@ def FrameOk (m : Machine) : Prop :=
     (curFrame m).captured = none ∧ (curFrame m).localAlias = none
 
 /-- **What `FramesOk` gives about the current frame once the chain may be non-empty**
-    (L243) — `FrameOk` with its third clause weakened from *no chain* to *a shallow
+ — `FrameOk` with its third clause weakened from *no chain* to *a shallow
     one*. Every **read** of a local is decided by this much (`getLocal_curIn`); a
     **write** is not, which is why `FrameOk` survives beside it. -/
 def FrameShallow (m : Machine) : Prop :=
@@ -775,9 +775,9 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
         ValueTy h (frames.getD fid default).self (.cls sc) ∧
         (frames.getD fid default).defmod ∈
           ancestors h (classOf h (frames.getD fid default).self)) ∧
-      -- **`Object` is on the frame's lexical constant scope** (L189), and it is the
+      -- **`Object` is on the frame's lexical constant scope**, and it is the
       -- *whole* frame-side cost of the `.const` read rule. `evalExpr`'s `.const` walks
-      -- `cref` before the ancestors (artifact 03 §4), and `ClassOk`'s sole-owner
+      -- `cref` before the ancestors (Semantics 03 §4), and `ClassOk`'s sole-owner
       -- clause says any hit is `Object`'s — so the read is decided the moment `Object`
       -- is known to be *on* the list. It is, for every frame the fragment builds:
       -- `Machine.init` sets `cref := [Object]`, `enterClassBody` prepends the class
@@ -790,7 +790,7 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
       -- draft priced — *nothing in front of `Object` owns anything* — which would have
       -- had to be re-established at every push.
       Boot.objectId ∈ (frames.getD fid default).cref ∧
-      -- **A context that declares a return type is a *method* activation** (L198),
+      -- **A context that declares a return type is a *method* activation**,
       -- and this is the whole frame-side cost of the `return` rule. `returnTarget`
       -- (`Interp/Support.lean:349`) answers the stack's head for every frame kind
       -- *except* `.block`, where it walks to the closure's home — so the rule needs to
@@ -803,7 +803,7 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
       -- apply `infer_table_ret` — that lemma needs `top = false`, and `top` is
       -- `Γs.isEmpty` at every `KontOk` constructor, so the tail has to be non-empty.
       (((frames.getD fid default).kind = .method ∧ cs ≠ []) ∨ c.ret = none) ∧
-      -- **The running method's name** (L207), when the context claims one. `super`'s
+      -- **The running method's name**, when the context claims one. `super`'s
       -- whole frame-side cost, and it is `selfCls`'s clause in shape: the fact is not
       -- new work at the push — `user_dispatch` builds the frame with exactly this
       -- `meth` — it is the *carrying* of it across the body's steps.
@@ -813,7 +813,7 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
       -- names a method has to say the activation is not a block, exactly as L198's
       -- `ret` clause does for `returnTarget` — and for the same reason, `userFrame`
       -- builds a `.method` frame so it is free at the push.
-      -- **And a third conjunct, purely about the context** (L212): a method activation
+      -- **And a third conjunct, purely about the context**: a method activation
       -- is one whose `self` is an instance of the class the body is written in. That is
       -- what `infer`'s `def` arm builds (`selfCls := some ctx.cls`) and what the push
       -- builds (`{cls := cu, selfCls := some cu}`), and it is here rather than as a
@@ -847,7 +847,7 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
         -- L249: a context that names a running method is not a block's — `super` reads
         -- clause 2 through this one, and a block body's context names no method.
         c.inBlock = false) ∧
-      -- **The activation has no captured chain** (L243), and this clause is where
+      -- **The activation has no captured chain**, and this clause is where
       -- `FrameOk` now comes from.
       --
       -- It is a **move**, not a new fact: `FrameConforms`'s first clause said exactly
@@ -897,7 +897,7 @@ def StackCtx (h : Heap) (frames : Array Frame) : List FrameId → List FrameCtx 
       StackCtx h frames fids cs
   | _, _ => False
 
-/-- **`StackCtx` does not read `inLoop`** (L222): its six clauses read `cls`, `selfCls`,
+/-- **`StackCtx` does not read `inLoop`**: its six clauses read `cls`, `selfCls`,
     `ret`, `meth` and `params` and nothing else, so switching the flag is invisible to the
     frame side. Both directions, both by `rfl`. -/
 theorem stackCtx_inLoop {h : Heap} {frames : Array Frame} {b : Option Env} :
@@ -912,7 +912,7 @@ theorem stackCtx_inLoop' {h : Heap} {frames : Array Frame} {b : Option Env} :
   | [], _, _, hs => hs.elim
   | _ :: _, _, _, hs => hs
 
-/-- **`StackCtx`'s `cons` arm, as a constructor** (L257) — eight typed holes instead of
+/-- **`StackCtx`'s `cons` arm, as a constructor** — eight typed holes instead of
     an eight-deep anonymous constructor. -/
 theorem StackCtx.cons {h : Heap} {frames : Array Frame} {fid : FrameId}
     {fids : List FrameId} {c : FrameCtx} {cs : List FrameCtx}
@@ -1013,7 +1013,7 @@ theorem getLocal_go_self {m : Machine} {p : FrameId} {x : String} {fuel : Nat}
   simp only [localOf, localFrameId_of_none ha, hp]
   rfl
 
-/-- **`getLocal` really is `localOfIn`, once the chain is known shallow** (L243).
+/-- **`getLocal` really is `localOfIn`, once the chain is known shallow**.
 
     `Machine.getLocal.go`'s fuel is `m.frames.size + 1`, and the current frame's id is
     below the size, so the fuel unfolds **twice** — exactly one hop more than
@@ -1104,7 +1104,7 @@ theorem FramesOk.frameShallow {m : Machine} {Γ : Env} {Γs : List Env}
     · simpa [curFid, hst] using hlt
     · simpa [curFrame, curFid, hst] using hc
 
-/-- **And `FrameOk` itself, once the empty chain is supplied from outside** (L243).
+/-- **And `FrameOk` itself, once the empty chain is supplied from outside**.
 
     The hypothesis is what `StackCtx`'s L243 clause answers at a context with
     `inBlock = false`, which is every context the invariant can currently build — so
@@ -1115,7 +1115,7 @@ theorem FramesOk.frameOk {m : Machine} {Γ : Env} {Γs : List Env}
     (hc : (curFrame m).captured = none) : FrameOk m :=
   ⟨h.frameShallow.1, h.frameShallow.2.1, hc, h.frameShallow.2.2.localAlias⟩
 
-/-- The empty chain, read off the context stack (L243). -/
+/-- The empty chain, read off the context stack. -/
 theorem StackCtx.captured_none {h : Heap} {frames : Array Frame} {fid : FrameId}
     {fids : List FrameId} {c : FrameCtx} {cs : List FrameCtx}
     (hs : StackCtx h frames (fid :: fids) (c :: cs)) (hb : c.inBlock = false) :
@@ -1131,7 +1131,7 @@ theorem StackCtx.curCaptured {m : Machine} {c : FrameCtx} {cs : List FrameCtx}
     rw [hst] at hs
     simpa [curFrame, curFid, hst] using hs.captured_none hb
 
-/-- **Conformance narrows with the environment** (L218). `FrameConforms`' third clause is
+/-- **Conformance narrows with the environment**. `FrameConforms`' third clause is
     a `∀` over `Γ`'s lookups, so a weaker `Γ` is a weaker claim and the lemma is one
     composition. What it is for: `begin`/`rescue`'s two exits leave different
     environments — the body may have assigned locals the handler never sees — so the
@@ -1140,7 +1140,7 @@ theorem FrameConforms.narrow {h : Heap} {frames : Array Frame} {Γ Γ' : Env} {f
     (hs : SubEnv Γ Γ') (hc : FrameConforms h frames Γ' fid) : FrameConforms h frames Γ fid :=
   ⟨hc.1, hc.2.1, fun x τ hx => hc.2.2 x τ (hs x τ hx)⟩
 
-/-- **And the stack's head narrows** (L218) — the only position a region needs, because a
+/-- **And the stack's head narrows** — the only position a region needs, because a
     `begin` is inside one activation and the callers' environments are untouched. -/
 theorem FramesOk.narrowHead {hp : Heap} {frames : Array Frame} :
     ∀ {st : List FrameId} {Γ Γ' : Env} {Γs : List Env}, SubEnv Γ Γ' →
@@ -1175,7 +1175,7 @@ theorem FramesOk.mem_lt {hp : Heap} {frames : Array Frame} :
       · exact h.1
       · exact ih h.2.2.2 g hm
 
-/-- A push does not move a shallow chain's read (L243) — the captured id is already in
+/-- A push does not move a shallow chain's read — the captured id is already in
     bounds, so `getD` at it is unmoved. -/
 theorem localOfIn_push {frames : Array Frame} {f g : Frame} {fid : FrameId}
     (hlt : fid < frames.size) (hg : g = frames.getD fid default)
@@ -1200,7 +1200,7 @@ theorem FrameConforms.push {h : Heap} {frames : Array Frame} {f : Frame} {Γ : E
     by rw [hb]; exact hc.2.1, fun x τ hx => ?_⟩
   rw [hb, localOfIn_push hlt rfl hc.1]; exact hc.2.2 x τ hx
 
-/-- **A pushed frame disturbs no frame already on the stack** (L156). `FramesOk`
+/-- **A pushed frame disturbs no frame already on the stack**. `FramesOk`
     reads frames by id and every stacked id is already in bounds
     (`FramesOk.mem_lt`), so `getD` answers the same object either side of a
     `push`. This is what `class'` and `enterUserMethod` both need, and it is the
@@ -1530,7 +1530,7 @@ def TypeAgree (h h' : Heap) : Prop :=
     (∀ k, ancestors h' k = ancestors h k) ∧
     -- **L239's eighth clause: an old array's payload is unmoved.**
     --
-    -- It is here for the *parameterised* type (`Ty.arrayOf`, L238). Every other clause is
+    -- It is here for the *parameterised* type (`Ty.arrayOf`). Every other clause is
     -- about a value's **class**, which is why they are all functions of `classOf`/`className`
     -- and why a heap write that keeps shapes keeps them; an `arrayOf` claim is about the
     -- object's *contents*, and contents are exactly what the other clauses do not pin.
@@ -1907,7 +1907,7 @@ theorem typeAgree_of_get {h h' : Heap} (hsz : h.objs.size ≤ h'.objs.size)
     simp only [Heap.classPayload?, hget o ho]
     exact hc.2
 
-/-- The four field facts, for `bindIvar` specifically (L191). `Heap.set` rewrites one
+/-- The four field facts, for `bindIvar` specifically. `Heap.set` rewrites one
     slot with an object that differs from it in `ivars` alone, and `Array.set!` leaves
     the size where it was. -/
 theorem bindIvar_fields {m : Machine} {x : String} {v : Value} :
@@ -1928,7 +1928,7 @@ theorem bindIvar_fields {m : Machine} {x : String} {v : Value} :
          rw [objs_getD_set!_ne _ _ _ _ hj])
   | _ => exact ⟨rfl, fun _ => rfl, fun _ => rfl, fun _ => rfl, fun _ => rfl⟩
 
-/-- **What `bindIvar` writes, read back** (L196). Three facts, and they are the three
+/-- **What `bindIvar` writes, read back**. Three facts, and they are the three
     cases the `@x = e` consecution splits on now that a row can claim something about
     the slot: another object is untouched, the written object's *other* names read the
     old list (the `filter` removes only `x`), and the written name reads the new value.
@@ -1954,7 +1954,7 @@ theorem bindIvar_ivars_self {m : Machine} {x : String} {v : Value} {o : ObjId}
   simp only [Heap.get, Heap.set]
   rw [objs_getD_set!_self _ _ _ hb]
 
-/-- **A write that touches only `ivars`** (L191). Every function `TypeAgree` reads —
+/-- **A write that touches only `ivars`**. Every function `TypeAgree` reads —
     `classOf`, `className`, `classPayload?`, `plainRecv`, `classRecv` — is a function
     of `{size, klass, eigen, payload, frozen}`, and an instance-variable write moves
     none of them. Stated over those four fields rather than over `get`, because
@@ -1993,7 +1993,7 @@ theorem typeAgree_of_fields {h h' : Heap} (hsz : h.objs.size = h'.objs.size)
   · intro o _; rw [hei o]
   · exact Nat.le_of_eq hsz
 
-/-- **And so does anything that only grows the heap** (L145). `PlainGrow`'s extra
+/-- **And so does anything that only grows the heap**. `PlainGrow`'s extra
     clause — `classPayload?` agrees at *every* id — is what resolution needs and the
     type transport does not, so the type half of a producer's step is discharged by
     the two weaker fields. Recorded here rather than in `Books/Metatheory/Heap/HeapGrow.lean` because
@@ -2079,7 +2079,7 @@ theorem ValueTy.congr {h h' : Heap} {v : Value} {τ : Ty} (ha : TypeAgree h h')
         exact ⟨σ'', valueTy?_congr ha hσ'', hsub⟩⟩)
   · exact Or.inr (Or.inr ⟨σ, valueTy?_congr ha hσ, hs⟩)
 
-/-- **`isTypeError` transports** (L218) — the lemma `begin`/`rescue` needs and the reason
+/-- **`isTypeError` transports** — the lemma `begin`/`rescue` needs and the reason
     `TypeAgree`'s chain clause lost its bound.
 
     `isA h exc k` is `k ∈ ancestors h (classOf h exc)`, so the transport is two rewrites:
@@ -2107,7 +2107,7 @@ theorem isTypeError_congr {h h' : Heap} {exc : Value} (ha : TypeAgree h h')
 
 /-- **Transport across a heap-writing step.** The in-bounds clause is what makes
     it available: `TypeAgree` relativizes every one of its equalities to ids the
-    old heap had (L143), so a predicate that names an `ObjId` has to say the id is
+    old heap had, so a predicate that names an `ObjId` has to say the id is
     one of them. `classPayload?`-ness supplies the bound
     (`classPayload?_isSome_lt`), which is why that clause is here rather than
     borrowed from `FrameConforms` — the two lists are different, so the borrow

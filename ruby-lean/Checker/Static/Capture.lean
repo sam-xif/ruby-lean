@@ -193,7 +193,7 @@ def bodyResult : Expr → Expr
   | e => e
 
 /-- **A `return` is local to a lambda and not to a proc**, which is what `bodyResult` above
-did not distinguish (`found-issues.md` §F19).
+did not distinguish.
 
 `lambda { return e }.call` evaluates `e` and hands it back to the caller — so rewriting the
 body to `e` is exactly right, and `lambda-explicit-return` (rung 105) is that rung.

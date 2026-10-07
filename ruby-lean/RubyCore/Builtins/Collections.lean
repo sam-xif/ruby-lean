@@ -3,9 +3,8 @@ import RubyCore.Builtins.Modules
 /-!
 Array and Hash rules.
 
-Split out of the single `Builtins.run` match (L98), one class group per file, no
-behaviour change: each rule file matches its own bids and hands anything it does
-not recognise to the next file in the chain.
+Each rule file matches its own builtin ids and hands anything it does not
+recognise to the next file in the chain.
 -/
 
 namespace RubyCore
@@ -59,7 +58,7 @@ def runCollections (bid : String) (recv : Value) (args : List Value) (m : Machin
                 let sub := ((xs.toList.drop s.toNat).take (lastI.toNat - s.toNat + 1)).toArray
                 let (v, m) := allocArr m sub; .ok v m
       | _ =>
-        -- not a Range: `rb_ary_aref1` falls through to `NUM2LONG` (L134)
+        -- not a Range: `rb_ary_aref1` falls through to `NUM2LONG`
         withIndex m (.ref ro) "Array#[] non-int index" fun i =>
           let idx := if i < 0 then i + xs.size else i
           if idx < 0 || idx ≥ xs.size then .ok .nil m else .ok xs[idx.toNat]! m
@@ -302,7 +301,7 @@ def runCollections (bid : String) (recv : Value) (args : List Value) (m : Machin
           | none =>
             -- Miss: consult the hash's default. A static `val` is returned as-is;
             -- a `prc` default_proc must call a closure (push a frame), which a pure
-            -- builtin cannot do — it is intercepted in `invoke` (L42), so reaching
+            -- builtin cannot do — it is intercepted in `invoke`, so reaching
             -- it here means the interception missed → gate rather than answer wrong.
             match (h.get o).hashDflt with
             | some (.val d) => .ok d m

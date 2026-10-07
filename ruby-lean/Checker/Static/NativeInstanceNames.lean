@@ -1,4 +1,4 @@
-/-! Instance selector projection of RubyCore/CRubyNames.lean (Ruby 4.0.5).
+/-! Instance selector projection of RubyCore/Generated/CRubyNames.lean (Ruby 4.0.5).
 books/Books/TypeSoundness/Conformance/Names/NativePrefix.lean kernel-checks coverage of every modeled native selector.
 The checker imports only this data, never the interpreter. -/
 namespace Checker

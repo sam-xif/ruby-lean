@@ -2,7 +2,7 @@ import Checker.Lang.JsonUtil
 import Checker.Lang.ClosureCode
 
 /-!
-The type language, **ported from `RubyCore/Types/Ty.lean`**: the constructors
+The type language, **ported from `RubyCore/Sorbet/Ty.lean`**: the constructors
 and the pure helper functions (`arrowOf`/`arrowParts?`/`subTy`/`joinTy`/`mkNilable`,
 `Env`/`envGet?`/`envSet`) are unchanged. **Not ported**: the metatheory around them
 (`subTy_trans`, `joinTy_sub`, `SubEnv`/`subEnvB` and their soundness proofs, the
@@ -63,9 +63,9 @@ inductive Ty where
       and the argument. -/
   | hashOf (key val : Ty)
   /-- **The bottom type: an expression that does not produce a value.** Added at tier 6
-      (`books/notes/type-soundness/implementation-notes.md` clink 5), where the recursion in `fun-recursive-factorial`
+, where the recursion in `fun-recursive-factorial`
       forced it, and it is *this* package's constructor — the ported
-      `RubyCore/Types/Ty.lean` has no equivalent (see §Isolation).
+      `RubyCore/Sorbet/Ty.lean` has no equivalent (see §Isolation).
 
       Three jobs, and it is worth being clear that they are the same job seen three ways:
 
@@ -312,7 +312,7 @@ partial def Ty.ofJson? (j : Json) : Except String Ty := do
 
 /-! ## Checker-local additions (a deliberate fork of the ported file)
 
-Everything above is `RubyCore/Types/Ty.lean` verbatim. Everything below is **new here**,
+Everything above is `RubyCore/Sorbet/Ty.lean` verbatim. Everything below is **new here**,
 added when tier 4 (`if`) forced it, and is therefore a place this package's copy and the
 real model's have deliberately diverged — see `AGENTS.md` §Isolation on what to do about
 that. The reason it could not be a use of the ported `joinTy`: that function answers

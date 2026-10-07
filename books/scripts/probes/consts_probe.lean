@@ -1,16 +1,16 @@
-import RubyCore.PreludeBoot
+import RubyCore.Boot
 import Books.Metatheory.Typing.Infer.Decls
 
 /-!
 The measurement the **constant-table** rung owes before anything is proved — the
 same move `names_probe.lean` made for the declaration rows and
 `ancestors_probe.lean` for the fuel clause, and for the same reason
-(`HANDOFF.md`: *measure the conclusion before proving the lemma*).
+.
 
 ## The question, and why it is not the one the rung looks like
 
 A constant *read* is **not** one table lookup. `evalExpr`'s `.const` arm
-(`Interp.lean:158`) is artifact 03 §4's two phases:
+(`Interp.lean:158`) is Semantics 03 §4's two phases:
 
 ```
 cref.firstM (constOwn h · n)   |>.orElse (fun _ => constLookupFrom h defmod n)
@@ -145,12 +145,12 @@ def namesMain : IO UInt32 := do
 (want 0): {hazards.size}"
     for (cn, nm) in hazards do
       IO.println s!"  {nm}::{cn}"
-    -- **The question the `.const` *read* rule turns on** (L189): for each name the
+    -- **The question the `.const` *read* rule turns on**: for each name the
     -- rule can admit, is `Object` the **only** class object owning a constant of
     -- that name? If so the two-phase lookup lands on `Object`'s table from *any*
     -- frame — the lexical phase either finds it there or misses everything, and the
     -- inheritance phase then reaches `Object` with nothing in front of it owning
-    -- anything (`NoShadowBefore`, L178). That is a **heap** clause, so it needs no
+    -- anything (`NoShadowBefore`). That is a **heap** clause, so it needs no
     -- `cref` clause on frames and no `ResolvesUser` change.
     IO.println "\nowners of each admissible constant name (want: Object only):"
     let mut ambiguous := 0
@@ -174,7 +174,7 @@ def namesMain : IO UInt32 := do
 `--assn` reports against `preludeDecls`, whose extra row is **`T`**. That row is a
 claim about the *prelude-booted* heap — `T` does not exist at the boot one — and the
 kernel cannot check it, because `Prelude.program` is `Lean.Json.parse Prelude.json`
-and that does not reduce (L135). So it is decided by running `constsOkB`, the same
+and that does not reduce. So it is decided by running `constsOkB`, the same
 way `heapOkB` decides `TableOk`/`NoHook`/`Saturated`/`ClassOk`.
 
 `constsOkB` is imported rather than re-implemented (it lives in

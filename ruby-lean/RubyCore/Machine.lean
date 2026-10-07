@@ -1,14 +1,20 @@
 /-
-The machine configuration (artifact 00 §2, `RubyCore/README.md` §Mechanization): an explicit
-control state, a continuation (kont) stack, a frame *store* addressed by
-FrameId with the activation stack as a list of ids (sketch §1.2 — Essence's
-variable store and generative-jump-tag store unified), the heap, and the
-effect accumulators the observation needs (stdout, $!).
+The machine configuration (Semantics 00 §2).
 
-Non-local control (artifact 04 §3) is a distinguished `jump` control state
-that unwinds the kont stack, honoring marker konts (frame boundaries, begin
-blocks with live rescues, while-loop markers) and running `ensure`s as it
-passes them.
+A `Machine` holds
+* the control: an expression to evaluate, a value just produced, or a jump in
+  progress;
+* the continuation stack, saying what to do with the value;
+* the activation frames. They live in a *store* addressed by `FrameId`, and
+  the activation stack is a list of ids. A closure captures ids, so a block
+  shares its defining scope's locals, and a `return` or `break` whose target
+  frame is no longer on the stack is a `LocalJumpError`;
+* the heap;
+* what the observation needs: the output so far, and `$!`.
+
+Non-local control (Semantics 04 §3) is a `jump` control that unwinds the
+continuation stack. It stops at markers (frame boundaries, `begin` blocks with
+live rescues, loops) and runs each `ensure` it passes.
 -/
 import RubyCore.Heap
 
@@ -18,7 +24,7 @@ abbrev FrameId := Nat
 
 inductive FrameKind where
   | toplevel | method | block
-  /-- A `class`/`module` body (artifact 01 §5): `self` and the `def`-target
+  /-- A `class`/`module` body (Semantics 01 §5): `self` and the `def`-target
       (`defmod`) are the class object; not a method activation. -/
   | classBody
 deriving Repr, DecidableEq, Inhabited
@@ -36,48 +42,48 @@ structure Frame where
       scope. *_eval blocks instead start a fresh definition context. -/
   definitionFrame : Option FrameId := none
   /-- Lexical constant scope (cref): the enclosing class/module bodies at this
-      point, innermost first (artifact 03 §4). Constant lookup checks each's own
+      point, innermost first (Semantics 03 §4). Constant lookup checks each's own
       consts before the ancestor phase. A method carries the cref of where it was
       *defined* (not its dispatch owner — matters for `def self.m` in a module). -/
   cref : List ObjId := []
   blk : Option Value := none
   /-- The block the *call* supplied, kept separately from `blk` because a
-      `define_method` body rebinds `blk` to its defining scope's (L66). Used only
+      `define_method` body rebinds `blk` to its defining scope's. Used only
       to answer "which active method was this proc passed to?" when a `break`
       leaves a proc invoked via `#call`. -/
   callBlk : Option Value := none
   kind : FrameKind
   /-- Name of the method this activation is running (`""` for toplevel/class
-      bodies/blocks) — the target `super`/`zsuper` re-dispatch (artifact 02 §2).
+      bodies/blocks) — the target `super`/`zsuper` re-dispatch (Semantics 02 §2).
       For an **alias** this is the *original* name, which is what CRuby's `super`
-      searches for (L108). -/
+      searches for. -/
   meth : String := ""
   superScope : Option ObjId := none
   /-- The running body's own parameter list, and whether it came from
       `define_method`. `zsuper` reconstructs its arguments from these; it used to
       re-look-up `meth` in `defmod`, which stopped working once `meth` could be an
-      alias's original name and therefore find a *different* method (L108). -/
+      alias's original name and therefore find a *different* method. -/
   runParams : List Param := []
   runFromDM : Bool := false
   /-- Block frames: the defining frame's id. Free-variable reads/writes walk
-      this chain into the enclosing scope (sketch §1.2, artifact 03 §2). -/
+      this chain into the enclosing scope (sketch §1.2, Semantics 03 §2). -/
   captured : Option FrameId := none
   /-- Block frames: the method activation a non-lambda `return` unwinds to. -/
   home : FrameId := 0
   /-- Block frames: lambda semantics (strict arity, local return/break). -/
   lam : Bool := false
   /-- Default visibility for `def`s in this class body — set by a bare `private`
-      / `public` / `protected` (artifact 02 §5, L71). -/
+      / `public` / `protected` (Semantics 02 §5). -/
   defVis : Visibility := .pub
   /-- `$~` — the last match, which CRuby keeps **per frame**, not in a global
-      (L121). A callee's match is therefore invisible to its caller, and `$1`…`$9`
+. A callee's match is therefore invisible to its caller, and `$1`…`$9`
       / `` $` `` / `$'` are views of *this* slot. -/
   lastMatch : Value := .nil
   /-- Do `$~` reads and writes in this activation resolve to the **caller's**
       slot? True for the prelude methods standing in for CRuby *C* functions,
       which write the frame of whoever called them (`String#sub`/`#gsub`/`#index`,
       `Regexp.last_match`); set by the `__match_to_caller` primitive as the first
-      statement of such a body (L121). -/
+      statement of such a body. -/
   matchXparent : Bool := false
   /-- A native Enumerator fiber started at top level shares that environment's
       match slot. This does not capture its locals or its control stack. -/
@@ -86,7 +92,7 @@ structure Frame where
   libraryOrigin : Bool := false
 deriving Inhabited
 
-/-- In-flight non-local transfer (artifact 04 §3's `C^ctl` variants).
+/-- In-flight non-local transfer (Semantics 04 §3's `C^ctl` variants).
     `retJ` carries its target frame id — a method-body return targets the
     current method frame, a non-lambda block `return` its closure's `home`,
     a lambda its own frame (sketch §1.1: generativity = frame identity). -/
@@ -97,15 +103,15 @@ inductive Jump where
   | nxtJ (v : Value)
   | retryJ
   /-- `redo` — re-run the current loop body/iteration without re-testing the
-      condition or advancing (artifact 04). -/
+      condition or advancing (Semantics 04). -/
   | redoJ
-  /-- `throw tag, v` (artifact 04, L69): unwinds to the matching `catch tag`.
+  /-- `throw tag, v` (Semantics 04): unwinds to the matching `catch tag`.
       A tag-carrying transfer, so one Jump constructor covers every use. -/
   | throwJ (tag : Value) (v : Value)
 deriving Inhabited
 
-/-- What the call site looked like — needed for visibility (artifact 02 §5) and
-    for the vcall/fcall `NameError` split (L71):
+/-- What the call site looked like — needed for visibility (Semantics 02 §5) and
+    for the vcall/fcall `NameError` split:
     - `implicit`: no receiver written (`m()`), so private methods are callable and
       a bare zero-arg miss is the vcall/fcall ambiguity;
     - `selfRecv`: a literal `self.m`, which may call private methods (Ruby 2.7+)
@@ -118,11 +124,11 @@ inductive SendSite where
   /-- A bare-identifier **vcall** (`foo`, not `foo()`). Identical to `implicit`
       for visibility and dispatch; differs only in the dispatch-*miss* error,
       which CRuby reports as `NameError: undefined local variable or method`
-      rather than `NoMethodError: undefined method` (L75). -/
+      rather than `NoMethodError: undefined method`. -/
   | vcall
 deriving Repr, DecidableEq, Inhabited
 
-/-- The already evaluated call awaiting `&operand` conversion (L275). -/
+/-- The already evaluated call awaiting `&operand` conversion. -/
 structure BlockPassCall where
   recv : Value
   site : SendSite
@@ -133,7 +139,7 @@ deriving Inhabited
 
 /-- Checked conversion's suspended user calls. A missing-method failure retains
     both response answers and the lookup owner, since redefinition during the
-    handler affects whether its NoMethodError propagates (L275). -/
+    handler affects whether its NoMethodError propagates. -/
 inductive BlockPassPhase where
   | start
   | respond
@@ -249,7 +255,7 @@ inductive Kont where
   | asgnK (k : VarKind) (name : String)
   | casgnK (name : String)
   /-- Value in flight is a `class C < S` superclass expression: with `S`
-      resolved, open (or create) the class and run its body (artifact 01 §5). -/
+      resolved, open (or create) the class and run its body (Semantics 01 §5). -/
   | classDefK (name : String) (body : Expr)
   /-- A bound namespace waits for const_added before inherited and its body. -/
   | constClassK (klass : ObjId) (superclass : Option ObjId) (libraryName : String) (body : Expr)
@@ -263,7 +269,7 @@ inductive Kont where
   | constantNameErrorK (source : Option Value)
   /-- `Class#new`: the in-flight value is `initialize`'s (discarded) result;
       yield the allocated instance instead
-      (artifact 02 §3 — `new` = allocate ∘ initialize ∘ return self). -/
+      (Semantics 02 §3 — `new` = allocate ∘ initialize ∘ return self). -/
   | newK (inst : Value)
   /-- A checked exception constructor returned; validate and raise its result. -/
   | raiseValueK
@@ -276,26 +282,26 @@ inductive Kont where
   | arrayInitK (recv : ObjId) (block : Value) (index size : Nat)
   /-- `def` fired the `Module#method_added` hook: the in-flight value is the
       hook's (discarded) result; `def` still evaluates to the method name
-      (artifact 02 §6 — a definition hook is ordinary dispatch on the defining
+      (Semantics 02 §6 — a definition hook is ordinary dispatch on the defining
       module, not a new evaluation rule). -/
   | methodAddedK (name : String)
   /-- Resume a native method-table operation after its Ruby callback. -/
   | methodEditsK (remaining : List MethodEdit) (result : Value)
   /-- A native error's initializer returned: discard its result and raise the
-      freshly allocated instance (L286). -/
+      freshly allocated instance. -/
   | raiseNewK (inst : Value)
   | uncaughtInspectK (source : Option Value)
   /-- `include M` when `M` defines `self.included`: the in-flight value is the
       hook's (discarded) result; `include` evaluates to the receiver instead. -/
   | includeK (recv : Value)
   /-- `def RECV.name … end`: the in-flight value is the evaluated `RECV`; install
-      the method on its eigenclass (artifact 01 §5, 02 §1). -/
+      the method on its eigenclass (Semantics 01 §5, 02 §1). -/
   | defsK (name : String) (params : List Param) (body : Expr)
   /-- `class << OBJ … end`: the in-flight value is `OBJ`; run the body with
-      `self`/cref = its eigenclass (artifact 01 §5). -/
+      `self`/cref = its eigenclass (Semantics 01 §5). -/
   | sclassK (body : Expr)
   /-- `A::name` read: the in-flight value is the evaluated base `A`; resolve
-      constant `name` in its namespace (artifact 03 §5). -/
+      constant `name` in its namespace (Semantics 03 §5). -/
   | cpathK (name : String)
   /-- `A::name = rhs`: the in-flight value is base `A`; evaluate `rhs` next. -/
   | cpathAsgnK (name : String) (rhs : Expr)
@@ -310,7 +316,7 @@ inductive Kont where
   /-- Value is the while body's result (discarded). Loop marker. -/
   | whileBodyK (c body : Expr)
   /-- `for` collection evaluated: the in-flight value is the collection; begin
-      iterating it (artifact 04). -/
+      iterating it (Semantics 04). -/
   | forStartK (targets : List (TargetKind × String)) (body : Expr) (multiple : Bool)
   /-- Assign the remaining for targets, then evaluate the body. -/
   | forAssignK (pending : List ((TargetKind × String) × Value)) (body : Expr)
@@ -353,7 +359,7 @@ inductive Kont where
   | yieldArgK (acc : List Value) (rest : List Expr)
   | yieldSplatK (acc : List Value) (rest : List Expr)
   /-- Evaluating explicit `super(args)` left to right; `blk` is the block super
-      forwards/passes (artifact 02 §2). -/
+      forwards/passes (Semantics 02 §2). -/
   | superArgK (acc : List Value) (rest : List Expr) (blk : Option Value)
   | superSplatK (acc : List Value) (rest : List Expr) (blk : Option Value)
   | arrK (acc : List Value) (rest : List Expr)
@@ -366,7 +372,7 @@ inductive Kont where
   /-- Value feeds `return`/`break`/`next`. -/
   | jumpValK (kind : JumpKind)
   /-- Evaluating an omitted optional param's default in the callee frame
-      (artifact 02 §3). The in-flight value is the default for `name`; bind it,
+      (Semantics 02 §3). The in-flight value is the default for `name`; bind it,
       then evaluate the next omitted default (`rest`), and once all defaults are
       bound, install the post/rest/block bindings (`post`) and run `body`.
       (Post/rest/block bind *after* defaults — a default cannot see them [V].) -/
@@ -380,15 +386,15 @@ inductive Kont where
   | dmFrameK (frame : FrameId) (body : Expr)
   | objectInspectK (recv filter : Value) (remaining : List String) (text : String)
       (stringifying : Option Value)
-  /-- Block-activation boundary (artifact 04 §2). `lam` = lambda semantics;
+  /-- Block-activation boundary (Semantics 04 §2). `lam` = lambda semantics;
       `brk` = the method activation a `break` returns from (`none` for a
       detached proc `.call`, where `break` is a LocalJumpError). Consumes
       `next` (block value) and a lambda-targeted `return`/`break`.
       `cl`/`args` retain the invocation descriptor. `redo` restarts cl.body in
-      this same frame, preserving local writes and completed conversion (L277). -/
+      this same frame, preserving local writes and completed conversion. -/
   | blkFrameK (fid : FrameId) (lam : Bool) (brk : Option FrameId)
       (cl : Closure) (args : List Value)
-  /-- `catch tag do … end` (L69): consumes a `throw` carrying an `equal?` tag,
+  /-- `catch tag do … end`: consumes a `throw` carrying an `equal?` tag,
       yielding its value. -/
   | catchK (tag : Value)
   /-- Begin body executing: rescues are live, node kept for retry/ensure. -/
@@ -405,7 +411,7 @@ inductive Kont where
   /-- Else clause executing (rescues no longer live; ensure pending). -/
   | elseK (node : BeginNode)
   /-- `defined?(recv.m)`: the in-flight value is the evaluated receiver; answer
-      `"method"` or nil (artifact 03 §6, L67). -/
+      `"method"` or nil (Semantics 03 §6). -/
   | definedRecvK (mname : String)
   /-- `defined?(A::B)`: the in-flight value is the evaluated base; answer
       `"constant"` or nil. -/
@@ -415,7 +421,7 @@ inductive Kont where
       `initialize` is nil), so this marker swallows an in-flight raise. -/
   | definedGuardK
   /-- Ensure body executing; its value is discarded and `pending` resumes —
-      unless the ensure itself jumps, which supersedes (artifact 04 §5).
+      unless the ensure itself jumps, which supersedes (Semantics 04 §5).
       When pending is an in-flight raise, `$!` is set to it for the ensure's
       duration; `restore = some old` puts the previous `$!` back after [V]. -/
   | ensureK (pending : Pending) (restore : Option (Option Value) := none)
@@ -488,7 +494,7 @@ structure Machine where
   missingReason : MissingReason := .ordinary
   /-- True only while the **prelude** (the core library written in RubyCore,
       `prelude/prelude.rb`) is being loaded: methods defined in this phase are
-      marked `fromPrelude` (L62). -/
+      marked `fromPrelude`. -/
   preludeMode : Bool := false
   featurePrograms : List (String × Expr) := []
   loadedFeatures : List String := ["pathname.so"]
@@ -585,7 +591,7 @@ def getLocal (m : Machine) (x : String) : Value :=
   go (m.stack.headD 0) (m.frames.size + 1)
 
 /-- Assign `x`. If some enclosing frame on the captured chain already binds it,
-    mutate *there* (shared locals, artifact 03 §2); otherwise it is a new local
+    mutate *there* (shared locals, Semantics 03 §2); otherwise it is a new local
     in the current frame. -/
 def setLocal (m : Machine) (x : String) (v : Value) : Machine :=
   let start := m.localFrameId (m.stack.headD 0)
@@ -629,7 +635,7 @@ def matchFrameOwner (m : Machine) : FrameId → Nat → FrameId
     | some p => matchFrameOwner m p fuel
     | none => fid
 
-/-- Which frame's `$~` slot the current control position reads and writes (L121).
+/-- Which frame's `$~` slot the current control position reads and writes.
     Three cases, one per way a frame can fail to own its own last match:
 
     * `matchXparent` (a prelude stand-in for a C function) → the **caller**, the
@@ -637,7 +643,7 @@ def matchFrameOwner (m : Machine) : FrameId → Nat → FrameId
     * a **block** → its *defining* frame, via `captured`. When that frame is still
       on the stack we continue from there, so a block inside a transparent method
       keeps resolving outward — that is how the block passed to the prelude
-      `gsub` reads the very match `gsub` is making (L120);
+      `gsub` reads the very match `gsub` is making;
     * anything else owns its slot. -/
 def matchFrameId (m : Machine) : FrameId :=
   let rec go : List FrameId → Nat → FrameId
@@ -670,7 +676,7 @@ def setLastMatchValue (m : Machine) (v : Value) : Machine :=
 
 def getGlobal (m : Machine) (x : String) : Value :=
   if x == "$!" then m.currentExc.getD .nil
-  -- `$~` is not in `globals` at all (L121); routing it here rather than at each
+  -- `$~` is not in `globals` at all; routing it here rather than at each
   -- read site keeps `Step.varGvar`'s "a gvar read is `getGlobal`" true, and picks
   -- up the views (`matchGlobal` reads `$~` through this) and `$~ = md` for free.
   else if x == "$~" then m.lastMatchValue
@@ -689,7 +695,7 @@ def emit (m : Machine) (s : String) : Machine :=
 /-- Initial machine for a program running on an already-booted heap `heap`
     (fresh frames/kont/stack; stdout and `$!` reset). Used for the two-phase
     prelude boot: phase 1 runs `prelude/prelude.rb` from H₀, phase 2 runs the
-    program on the resulting heap (L62). `init` is `initOn Boot.initHeap`. -/
+    program on the resulting heap. `init` is `initOn Boot.initHeap`. -/
 def initOn (heap : Heap) (program : Expr) : Machine :=
   let top : Frame :=
     { self := .ref Boot.mainId, defmod := Boot.objectId, kind := .toplevel,

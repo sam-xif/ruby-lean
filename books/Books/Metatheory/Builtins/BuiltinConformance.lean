@@ -5,7 +5,7 @@ import Books.Metatheory.Heap.HeapFacts
 /-!
 # RBI-conformance for the builtins the typed fragment calls
 
-Every entry of `Types/Decls.lean`'s `baseDecls` is a **claim about the model's own
+Every entry of `books/Books/Metatheory/Typing/Lang/Decls.lean`'s `baseDecls` is a **claim about the model's own
 implementation**, and this file discharges those claims: for each declared
 signature, the interpreter's dispatch really does produce a value of the
 declared type, in one step, without raising.
@@ -25,7 +25,7 @@ may reopen `Integer` and redefine `+`. The fragment forbids that
 (the static-soundness POC note §6, "no class reopening"), and discharging the
 hypothesis for the concrete booted heap is a separate, `native_decide`-shaped
 job that must stay out of this file so the metatheorems keep their axiom
-baseline — the same split `SorbetConcrete.lean` uses (L81).
+baseline — the same split `SorbetConcrete.lean` uses.
 
 Proof shape follows `T5.dispatch_progress`: `rw [invoke.eq_def]` then
 `simp [invoke.invokeDispatch, …]`. Per L73, everything on this path must stay
@@ -60,7 +60,7 @@ theorem run_int_mul (a b : Int) (m : Machine) :
   simp [Builtins.unrepresentableByteStr, Builtins.complexEqualityImpure]
   rfl
 
-/-- The first **nullary** one (L152). Still `rfl`, and note the rule's arity is
+/-- The first **nullary** one. Still `rfl`, and note the rule's arity is
     carried by the *declaration* rather than by the builtin: `Integer#zero?` matches
     on the receiver and ignores `args` entirely (`Builtins/Numerics.lean:296`), so it
     is `baseDecls`'s `params := []` and `infer`'s zero-argument arm that make
@@ -140,7 +140,7 @@ theorem int_bin_dispatch
     -- method instead of running (repr purity, and L123's coerce protocol).
     -- Arithmetic over two Integers is never such a call, but the *statement* has to
     -- say so — leaving it implicit is what broke this proof, and `Books/Metatheory/` being off
-    -- the default target is why nothing noticed (L119).
+    -- the default target is why nothing noticed.
     (hdefer : Builtins.deferTwin? m.heap bid (.int a) [.int b] = none)
     (hproc : procCallBid bid = false := by rfl)
     (hmap : arrayMapBid bid = false := by rfl)
@@ -193,7 +193,7 @@ theorem startArgs_plain {m : Machine} {arg : Expr} {recv : Value} {acc : List Va
       = .next (withKont m (.eval arg) (.argsK recv site mname acc rest .none)) := by
   cases arg <;> simp_all [startArgs]
 
-/-- The same, for `super` (L212). `startSuperArgs` has `startArgs`' three refusals —
+/-- The same, for `super`. `startSuperArgs` has `startArgs`' three refusals —
     a splat, keywords, and `...` forwarding — and no receiver or site to carry. -/
 theorem startSuperArgs_plain {m : Machine} {arg : Expr} {acc : List Value}
     {rest : List Expr} {blk : Option Value}

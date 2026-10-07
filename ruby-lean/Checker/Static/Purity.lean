@@ -11,7 +11,7 @@ and each was added because a rule without it was *unsound*: §F3 for declaration
 
 namespace Checker
 
-/-! ### A body that declares (`found-issues.md` §F3)
+/-! ### A body that declares
 
 `Ctx` describes *declarations* — `defs`, `classes`, `consts` — and every rule that types a
 **call** concludes at the same `κ` it started from. That is a promise that running the body

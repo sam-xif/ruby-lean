@@ -10,9 +10,9 @@ loop's configuration shapes and discharges init / consecution / safety.
 Program:  `while true do 1.succ end`  — diverges, dispatching `Integer#succ`
 forever. The machine is constant except `(ctl, kont)` (succ allocates nothing,
 pushes no frame), so the reachable set is seven config shapes. The one dispatch
-shape (`sF`) is handled by unfolding the (now well-founded, L52) `invoke` and
+shape (`sF`) is handled by unfolding the (now well-founded) `invoke` and
 resolving `Integer#succ` in `Boot.initHeap` — a fact that is `decide`-able and
-axiom-clean since `initHeap` was made kernel-reducible (L55). Hence NO
+axiom-clean since `initHeap` was made kernel-reducible. Hence NO
 `native_decide`: this is the object-model invariant reasoning the design doc
 calls the substantive obligation, over the real interpreter.
 
@@ -30,7 +30,7 @@ namespace DispatchLoop
 
 open Interp
 
--- Reducing `stepFn` over the concrete (now kernel-reducible, L55) `initHeap`
+-- Reducing `stepFn` over the concrete (now kernel-reducible) `initHeap`
 -- needs a deep recursion budget.
 set_option maxRecDepth 100000
 
@@ -103,7 +103,7 @@ theorem safe_I : ∀ m, I m → ¬ aboutToTypeStick m := by
     type-family `uncaught`, for unbounded fuel — proved by an inductive invariant
     over the object model (Direction B), NOT by running the program. Axiom-clean:
     the dispatch resolution (`Integer#succ` in `initHeap`) is `decide`/`rfl`-level
-    now that `initHeap` reduces (L55). -/
+    now that `initHeap` reduces. -/
 theorem loop_type_safe :
     ∀ r, ReachableResult (Machine.init prog) r → ¬ typeStuck r :=
   invariant_sound I init_I cons_I safe_I

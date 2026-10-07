@@ -1,6 +1,6 @@
 import RubyCore.Interp.Dispatch
 
-/-! L282: method-table writes commit individually, then call Ruby hooks.
+/-! Method-table writes commit individually, then call Ruby hooks.
     A callback can raise, freeze the target, or change the next method. -/
 namespace RubyCore.Interp
 

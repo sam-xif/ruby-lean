@@ -5,10 +5,9 @@ import RubyCore.Interp.Frozen
 Continuation application (`applyKont`) and jump unwinding (`unwind`) — what
 happens when a value or a jump reaches the top of the kont stack.
 
-Split out of `RubyCore/Interp.lean` (L99) with no behaviour change. The helpers
-in this machine are deliberately *not* mutually recursive — each performs one
-transition — so the file cuts along that existing order and the import chain
-records it.
+The helpers in this machine are deliberately not mutually recursive: each
+performs one transition. The files under `Interp/` follow that order, each
+importing the one before it.
 -/
 
 namespace RubyCore
@@ -100,7 +99,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
         let (e, m) := eigenclassOf m o
         if let some receiver := frozenMethodReceiver? m.heap e then raiseFrozen m receiver else
         -- `def self.m` in a module keeps that module's lexical cref for constant
-        -- lookup even though its dispatch owner is the eigenclass (artifact 03).
+        -- lookup even though its dispatch owner is the eigenclass (Semantics 03).
         let md : MethodDef :=
           { params, body, owner := e, definee := some m.currentFrame.defmod, cref := m.currentFrame.cref,
             fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
@@ -124,7 +123,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | .error sr => sr
       | .ok o =>
         -- A `private_constant` is invisible through `A::B` even though it is
-        -- still there for lexical lookup inside the module (L104), so the miss
+        -- still there for lexical lookup inside the module, so the miss
         -- path — `const_missing`, else NameError — is the right one.
         let isPrivate := isPrivateConst m.heap o name
         match (if isPrivate then none else constLookupFrom m.heap o name) with
@@ -325,7 +324,7 @@ def applyKont (m : Machine) (v : Value) : StepResult :=
       | .val v' => .next (withCtl m (.value v'))
       | .jmp j => .next (withCtl m (.jump j))
 
-/-- Propagate an in-flight jump one kont at a time (artifact 04 §3–6:
+/-- Propagate an in-flight jump one kont at a time (Semantics 04 §3–6:
     markers consume matching jumps; begin regions interpose rescues/ensures;
     everything else pops). -/
 def unwind (m : Machine) (j : Jump) : StepResult :=
@@ -408,7 +407,7 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
     | .blkFrameK fid lam brk cl args =>
       match j with
       | .nxtJ v =>
-        -- `next` ends this block invocation with value v (artifact 04 §4)
+        -- `next` ends this block invocation with value v (Semantics 04 §4)
         .next (withCtl { m with stack := m.stack.tail } (.value v))
       | .brkJ v =>
         if lam then  -- `break` in a lambda returns from the lambda
@@ -453,7 +452,7 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
       | _ => .next (finishRegion m node.ens (.jmp j))
     | .rescMatchK node _ _ _ _ _ =>
       -- a clause-class expression itself raised/jumped: it supersedes, but
-      -- the region's ensure still runs (artifact 04 §5)
+      -- the region's ensure still runs (Semantics 04 §5)
       .next (finishRegion m node.ens (.jmp j))
     | .rescueK node saved =>
       match j with
@@ -474,7 +473,7 @@ def unwind (m : Machine) (j : Jump) : StepResult :=
     | _ => .next (withCtl m (.jump j))
 
 /-- The `NameError` `undef`/`alias` raise when the target method is not defined
-    on the current definee (artifact 02). CRuby names the definee `class 'C'` /
+    on the current definee (Semantics 02). CRuby names the definee `class 'C'` /
     `module 'M'`; an eigenclass definee has an address-dependent name we cannot
     reproduce byte-exactly → gate. A method CRuby *does* define on the chain but
     the model doesn't (`Kernel#binding`, …) gates Unsupported rather than raising
@@ -493,7 +492,7 @@ def undefAliasMiss (m : Machine) (name : String) : StepResult :=
         s!"undefined method '{name}' for {kind} '{c.name}'")
   | none => .unsupported "undef/alias outside a class/module body"
 
-/-- `undef n₁, n₂, …` (artifact 02): install a tombstone per name on the current
+/-- `undef n₁, n₂, …` (Semantics 02): install a tombstone per name on the current
     definee, left to right. Each name must currently resolve (including
     inherited, excluding an existing tombstone) else `NameError` [V]. -/
 def undefNames (m : Machine) (defmod : ObjId) : List String → StepResult

@@ -1,32 +1,113 @@
-#!/usr/bin/env bash
-# Run a Ruby program on the Lean model: desugar it to RubyCore JSON, then hand
-# that to the `rubycore` executable.
-#
-#   bin/ruby-lean prog.rb                 # run a file
-#   echo 'puts 1 + 2' | bin/ruby-lean     # or stdin
-#   bin/ruby-lean --trace prog.rb         # flags other than the file go to rubycore
-#                                         #   (--trace [N], --steps, --fuel N, --fragment, --sigs, ...)
-#
-# Build the pieces first with `make run`. $RUBY picks the interpreter that runs
-# the desugarer; $RUBYCORE overrides the model binary.
-set -euo pipefail
+#!/usr/bin/env python3
+"""Run a Ruby program on the Lean model.
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RUBY="${RUBY:-ruby}"
-RUBYCORE="${RUBYCORE:-$ROOT/ruby-lean/.lake/build/bin/rubycore}"
+    bin/ruby-lean prog.rb              # print what the program prints, then its value
+    echo 'puts 1 + 2' | bin/ruby-lean  # or read the program from stdin
+    bin/ruby-lean --compare prog.rb    # also run it under CRuby and compare
+    bin/ruby-lean --json prog.rb       # the raw observation, as the tests see it
 
-[ -x "$RUBYCORE" ] || { echo "ruby-lean: no model binary at $RUBYCORE (run \`make run\`)" >&2; exit 2; }
+The program is desugared to the model's core language (desugar/bin/export-json)
+and handed to the `rubycore` executable. Any other flag is passed to rubycore:
 
-# The last argument is the program if it names a file; everything else is a
-# rubycore flag. With no file, export-json reads stdin.
-args=("$@")
-src=()
-if [ ${#args[@]} -gt 0 ] && [ -f "${args[${#args[@]}-1]}" ]; then
-  src=("${args[${#args[@]}-1]}")
-  unset 'args[${#args[@]}-1]'
-fi
+    --fuel N         stop after N machine steps (default 5,000,000)
+    --steps          print how many steps the program takes
+    --trace [N]      print the first N machine states as JSON
+    --trace-from N, --trace-at TEXT   where the trace starts
+    --fragment       say whether the program is in the typed fragment, without running it
+    --sigs           print the Sorbet signatures the program declares, without running it
+    --lean-term      print the program as a Lean term, for stating a theorem about it
 
-# Exit 3 from export-json means "outside the desugar fragment", with the reason
-# on stderr; pipefail carries it through.
-"$RUBY" "$ROOT/desugar/bin/export-json" ${src[@]+"${src[@]}"} \
-  | "$RUBYCORE" ${args[@]+"${args[@]}"}
+Exit status: 0 the program ran (an uncaught exception is still a run), 1 the
+model and CRuby differ under --compare, 2 the tools are not built (`make run`),
+3 the program uses Ruby that the desugarer or the model does not support; the
+reason is printed.
+"""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RUBY = os.environ.get("RUBY", "ruby")
+RUBYCORE = os.environ.get(
+    "RUBYCORE", os.path.join(ROOT, "ruby-lean", ".lake", "build", "bin", "rubycore"))
+EXPORT = os.path.join(ROOT, "desugar", "bin", "export-json")
+# rubycore flags that take a value, and the ones that replace the observation.
+VALUE_FLAGS = {"--fuel", "--trace-from", "--trace-at"}
+RAW_FLAGS = {"--trace", "--steps", "--fragment", "--sigs", "--lean-term"}
+
+
+def cruby(source: str) -> tuple[str, str | None]:
+    """stdout and the uncaught exception, as `Class: message`, under CRuby."""
+    wrapper = ("begin; eval(STDIN.read, TOPLEVEL_BINDING, 'prog.rb'); "
+               "rescue Exception => e; $stderr.print(\"#{e.class}: #{e.message}\"); end")
+    p = subprocess.run([RUBY, "-e", wrapper], input=source, capture_output=True, text=True)
+    return p.stdout, (p.stderr or None)
+
+
+def main(argv: list[str]) -> int:
+    if "-h" in argv or "--help" in argv:
+        print(__doc__.strip())
+        return 0
+    as_json = "--json" in argv
+    compare = "--compare" in argv
+    argv = [a for a in argv if a not in ("--json", "--compare")]
+
+    # The program is the last argument if it names a file and is not a flag's value.
+    path = None
+    if argv and os.path.isfile(argv[-1]) and not (len(argv) > 1 and argv[-2] in VALUE_FLAGS):
+        path = argv.pop()
+    source = open(path).read() if path else sys.stdin.read()
+    raw = any(a in RAW_FLAGS for a in argv)
+
+    if not os.access(RUBYCORE, os.X_OK):
+        print(f"ruby-lean: the model is not built at {RUBYCORE} (run `make run`)", file=sys.stderr)
+        return 2
+
+    d = subprocess.run([RUBY, EXPORT], input=source, capture_output=True, text=True)
+    if d.returncode != 0:
+        print("ruby-lean: the desugarer does not support this program:\n  " +
+              d.stderr.strip(), file=sys.stderr)
+        return 3 if d.returncode == 3 else 1
+
+    m = subprocess.run([RUBYCORE, *argv], input=d.stdout, capture_output=True, text=True)
+    if m.returncode != 0:
+        what = "the model does not support this program" if m.returncode == 3 else "model error"
+        print(f"ruby-lean: {what}:\n  " + m.stderr.strip(), file=sys.stderr)
+        return m.returncode
+    if raw or as_json:
+        sys.stdout.write(m.stdout)
+        if not compare:
+            return 0
+
+    obs = None if raw else json.loads(m.stdout)
+    if obs is not None and not as_json:
+        sys.stdout.write(obs["stdout"])
+        if obs["exception"]:
+            cls, msg = obs["exception"]
+            print(f"uncaught {cls}: {msg}")
+        elif obs.get("timed_out") or obs["result_repr"] is None:
+            print("(no result: the run did not finish within its step budget)")
+        else:
+            print(f"=> {obs['result_repr']}")
+
+    if compare:
+        if obs is None:
+            print("ruby-lean: --compare needs an ordinary run", file=sys.stderr)
+            return 2
+        out, exc = cruby(source)
+        model_exc = ": ".join(obs["exception"]) if obs["exception"] else None
+        if out == obs["stdout"] and exc == model_exc:
+            print("AGREE  the model and CRuby print the same and end the same way")
+            return 0
+        print("DIFFER")
+        print(f"  model: stdout {obs['stdout']!r}, exception {model_exc!r}")
+        print(f"  CRuby: stdout {out!r}, exception {exc!r}")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

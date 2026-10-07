@@ -3,9 +3,8 @@ import RubyCore.Builtins.Numerics
 /-!
 BasicObject / Object core, Kernel I/O, and the nil / boolean rules.
 
-Split out of the single `Builtins.run` match (L98), one class group per file, no
-behaviour change: each rule file matches its own bids and hands anything it does
-not recognise to the next file in the chain.
+Each rule file matches its own builtin ids and hands anything it does not
+recognise to the next file in the chain.
 -/
 
 namespace RubyCore
@@ -73,12 +72,12 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     | _ => .unsupported "!=/arity"
   | "Object#__write" =>
     -- The primitive the prelude's repr twins write through: append a String to
-    -- stdout verbatim, with no rendering of any kind (L116).
+    -- stdout verbatim, with no rendering of any kind.
     binArg m args fun a =>
       match strPayload? h a with
       | some str =>
         if isBinaryStr h a && hasHighByte str then
-          .unsupported "__write of a byte string holding a byte ≥ 0x80 (L118)"
+          .unsupported "__write of a byte string holding a byte ≥ 0x80"
         else .ok .nil { m with out := m.out ++ str }
       | none => .unsupported "__write of a non-String"
   | "Object#__addr_str" =>
@@ -90,9 +89,9 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     | _ => .unsupported "__addr_str of an immediate"
   | "Object#to_s" | "Object#__any_to_s" =>
     -- A resolved Object#to_s renders class/address even on a native payload.
-    -- Only main's ordinary to_s has the special singleton spelling (L290).
+    -- Only main's ordinary to_s has the special singleton spelling.
     if bid == "Object#to_s" && recv.identEq (.ref Boot.mainId) then okStr m "main" else
-    -- CRuby's **`rb_any_to_s`** (L129): `#<Foo:0x…>`, the form every C-level
+    -- CRuby's **`rb_any_to_s`**: `#<Foo:0x…>`, the form every C-level
     -- renderer falls back to when a user `to_s` hands it something that is not a
     -- String. A primitive rather than prelude Ruby for the reason `Heap.anyToS`
     -- gives: the C function names the class through `rb_obj_class` and
@@ -117,7 +116,7 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     -- The **default** one, which answers `false` for every name [V]. It exists so
     -- that a user override can call `super`, which is the idiomatic way to write
     -- one and which failed with `super: no superclass method
-    -- 'respond_to_missing?'` (L130). A *builtin* rather than a prelude
+    -- 'respond_to_missing?'`. A *builtin* rather than a prelude
     -- `def respond_to_missing?(name, priv = false) = false`, because
     -- `__user_defines?` cannot tell a prelude definition from a program's and the
     -- two rules that consult this name — `__check_convert` here and
@@ -130,8 +129,8 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
   | "Object#__match_to_caller" =>
     -- Declares the running activation a stand-in for a CRuby **C function** as far
     -- as `$~` goes: every later read or write in this body resolves to the
-    -- caller's frame slot (L121). `String#sub`/`#gsub`/`#index` and
-    -- `Regexp.last_match` are prelude Ruby (L110/L115) where CRuby has C, and a C
+    -- caller's frame slot. `String#sub`/`#gsub`/`#index` and
+    -- `Regexp.last_match` are prelude Ruby where CRuby has C, and a C
     -- function sets its caller's backref — so without this the caller of `gsub`
     -- would see no match where CRuby shows it the last one.
     --
@@ -144,7 +143,7 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     -- ancestor chain carry a **non-builtin** definition of `name`? Prelude Ruby
     -- needs it to reproduce CRuby's `rb_check_funcall` rule, which consults a
     -- *custom* `respond_to?` if the class has one and otherwise falls back to
-    -- "the method is defined, or `method_missing` can serve it" (L115).
+    -- "the method is defined, or `method_missing` can serve it".
     --
     -- `classOf`, not `realClassOf`: the chain that matters is the one *dispatch*
     -- would walk, which starts at the **eigenclass**. `bootstraptest/test_yjit_167`
@@ -165,12 +164,12 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     -- here. `__user_defines?` is the wrong question — it answers "is there a
     -- *non-builtin* definition", so an `Array` (whose `inspect` is a builtin of
     -- its own, not Kernel's) would come back as default and the gem says
-    -- otherwise. This asks the owner directly (L127).
+    -- otherwise. This asks the owner directly.
     match lookup h recv "inspect" with
     | some (owner, _) => .ok (.bool (owner == Boot.objectId)) m
     | none => .ok (.bool true) m
   | "Object#__coerce_failed" =>
-    -- The two messages the coerce protocol's prelude twins raise (L123). They are
+    -- The two messages the coerce protocol's prelude twins raise. They are
     -- primitives for one reason: `coerceDesc`'s rule for naming an operand (a
     -- special constant shows its `inspect`, everything else its class) is already
     -- written once, and a second copy in Ruby is a second copy to drift — the
@@ -227,7 +226,7 @@ def runObjects (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     -- is propagated onto block frames, so the current frame's blk answers) [V]
     .ok (.bool m.currentFrame.blk.isSome) m
   | "Object#__unsupported__" =>
-    -- The prelude's fragment gate (L62): RubyCore-level core-library code cannot
+    -- The prelude's fragment gate: RubyCore-level core-library code cannot
     -- return `.unsupported` on its own, so it calls this to declare a form it
     -- does not model (`Enumerator`, a `<=>`-less comparison, …). Keeps the
     -- "declare, never guess" discipline available to prelude authors.

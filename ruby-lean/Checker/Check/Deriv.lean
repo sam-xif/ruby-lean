@@ -305,7 +305,7 @@ program and checked no types at all -- is **deleted**, replaced by `Checker/Chec
 property (a certificate for the wrong program is rejected) is a consequence of `check`
 dispatching on the expression; `Checker/Controls/DerivControls.lean` keeps the controls that pin it.
 
-`validateD` keeps its name and its consumers (`Checker/Check/Rung.lean`, `MainTyped.lean`) and
+`validateD` keeps its name and its consumers (`Checker/Check/Rung.lean`, `MainValidateOne.lean`) and
 lives in `Check.lean` next to what it calls.
 -/
 

@@ -244,7 +244,7 @@ def ratchet_validate(source: str, deriv) -> dict:
 # Everything here is glue over tools that already exist and are the *same* tools
 # the ratchets run, never a second implementation:
 #
-#   file      homebrew/vendor/brew/Library/Homebrew/…      (PLAN.md §2's eight)
+#   file      homebrew/vendor/brew/Library/Homebrew/…
 #   link      linker + homebrew/slice-driver/build.py      (boot stubs + driver)
 #   strip     difftest/ruby/*_strip.rb                     (certify-file.sh's chain)
 #   desugar   desugar/bin/export-json

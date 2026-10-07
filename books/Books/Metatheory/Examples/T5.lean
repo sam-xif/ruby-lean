@@ -19,7 +19,7 @@ WHY THIS IS THE HARD PART, AND WHAT IT UNBLOCKS
   `invoke.invokeDispatch` with the resolution hypotheses.
 - The lemma is **parameterized over the heap** via resolution hypotheses
   (`hlook`/`hbtw`/`hsing`/…) rather than a concrete heap — useful when the heap
-  is abstract (mid-program loop entry). NOTE (L55): `Boot.initHeap` is now
+  is abstract (mid-program loop entry). NOTE: `Boot.initHeap` is now
   *kernel-reducible* (its `Array.qsort` + monadic build loop were replaced by a
   structural insertion sort + `List.foldl`), so concrete boot-heap resolution
   facts (`lookup Boot.initHeap … = some …`, `crubyShadow … = none`, …) are now
@@ -73,10 +73,10 @@ theorem dispatch_progress
     (hlook : lookup m.heap (.ref o) "m" = some (owner, md))
     (hb : md.builtin = none) (hu : md.undefined = false) (hp : md.params = [])
     -- the method is public: an *explicit*-receiver send to a private/protected
-    -- method raises instead of entering the activation (visibility, L71)
+    -- method raises instead of entering the activation (visibility)
     (hvis : md.visibility = .pub)
     -- not a prelude method, so the between-chain shadow check is the plain one
-    -- (a prelude method suppresses it for its own name, L62)
+    -- (a prelude method suppresses it for its own name)
     (hpre : md.fromPrelude = false)
     (hbtw : crubyShadow m.heap
               ((ancestors m.heap ((m.heap.get o).klass)).takeWhile (· != owner)) "m" = none)
@@ -105,10 +105,10 @@ theorem dispatch_not_typestick
     (hlook : lookup m.heap (.ref o) "m" = some (owner, md))
     (hb : md.builtin = none) (hu : md.undefined = false) (hp : md.params = [])
     -- the method is public: an *explicit*-receiver send to a private/protected
-    -- method raises instead of entering the activation (visibility, L71)
+    -- method raises instead of entering the activation (visibility)
     (hvis : md.visibility = .pub)
     -- not a prelude method, so the between-chain shadow check is the plain one
-    -- (a prelude method suppresses it for its own name, L62)
+    -- (a prelude method suppresses it for its own name)
     (hpre : md.fromPrelude = false)
     (hbtw : crubyShadow m.heap
               ((ancestors m.heap ((m.heap.get o).klass)).takeWhile (· != owner)) "m" = none)
@@ -121,7 +121,7 @@ theorem dispatch_not_typestick
   exact not_false
 
 /- Boot-heap resolution facts are now **`decide`-able, axiom-clean** — since
-   `initHeap` reduces (L55). The hypotheses `dispatch_progress` takes are of
+   `initHeap` reduces. The hypotheses `dispatch_progress` takes are of
    exactly this decidable shape, so a full Direction-B proof over concrete
    (reducible) reachable heaps needs no `native_decide`. Demonstration: the boot
    object model resolves `Integer#succ`. -/

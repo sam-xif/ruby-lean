@@ -6,7 +6,7 @@ stated over.
 
 Scope is set by measurement, not by ambition: these are exactly the constructs
 used by the 86 regex literals of the Homebrew version + vulnerability slice
-(`homebrew/PLAN.md` §2, W2a). Deliberately absent, because the slice contains
+. Deliberately absent, because the slice contains
 none: lookbehind, atomic groups, possessive quantifiers, `\b`, POSIX bracket
 classes, `\p{…}`, `\x…`, conditionals, `\G`. The parser gates each of those by
 name rather than mis-parsing it.

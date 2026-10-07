@@ -1,6 +1,6 @@
 import RubyCore.Interp.Send
 
-/-! Native object inspection (L289): checked selection hook, buffered field names,
+/-! Native object inspection: checked selection hook, buffered field names,
     live values/filter, ordinary nested inspect/to_s and an unwind-safe recursion
     guard. Ruby overrides of instance_variables/get are not part of this protocol. -/
 

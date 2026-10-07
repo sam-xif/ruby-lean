@@ -132,7 +132,7 @@ def denM : Ty → Machine → Value → Prop
   -- object. The spine is a lower bound — ivars the type does not mention are unconstrained,
   -- which is what makes `ivarSet`'s append-at-the-end growth monotone in the denotation.
   --
-  -- The class part is **exact**, not is-a (`found-issues.md` §F12, `isExactInst`): every rule
+  -- The class part is **exact**, not is-a: every rule
   -- that dispatches on an `.inst n` receiver types the callee's body out of `n`'s own table,
   -- and an is-a reading would admit a subclass that redefined it. `Ty.cls` keeps the is-a
   -- reading, because `rescueBind?` needs it and §F11 guards what dispatches on it.

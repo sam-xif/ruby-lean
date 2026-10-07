@@ -1,13 +1,12 @@
 import RubyCore.Builtins.Regex
-import RubyCore.CRubyNames
+import RubyCore.Generated.CRubyNames
 
 /-!
 Exception, Module and Class rules — the end of the chain, so this is
 where an unmodeled bid becomes `unsupported`.
 
-Split out of the single `Builtins.run` match (L98), one class group per file, no
-behaviour change: each rule file matches its own bids and hands anything it does
-not recognise to the next file in the chain.
+Each rule file matches its own builtin ids and hands anything it does not
+recognise to the next file in the chain.
 -/
 
 namespace RubyCore
@@ -18,7 +17,7 @@ namespace Builtins
     across bindings with the same path. Promotion selects a new cached String;
     earlier temporary-name values remain unchanged. Anonymous namespaces return
     nil. ASCII permanent names retain the existing US-ASCII/UTF-8 boundary;
-    temporary ASCII paths are native binary Strings (L297). -/
+    temporary ASCII paths are native binary Strings. -/
 def nativeModuleName (m : Machine) (c : ClassPayload) : BRes :=
   if c.name.isEmpty then .ok .nil m else
   let binary := !c.namePermanent && !hasHighByte c.name
@@ -64,7 +63,7 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
   -- one `rb_funcall`), so a user `to_s` must show through it. As a builtin sharing
   -- this arm it read the payload directly, and `E.new("boom").message` answered
   -- "boom" for a class whose `to_s` says otherwise. It is prelude Ruby now — `def
-  -- message = to_s` — which is the only spelling that dispatches (L131).
+  -- message = to_s` — which is the only spelling that dispatches.
   | "UncaughtThrowError#tag" | "UncaughtThrowError#value" =>
     if !args.isEmpty then .err Boot.argumentErrorId
       s!"wrong number of arguments (given {args.length}, expected 0)" m else
@@ -150,8 +149,8 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
   | "String#initialize" | "Array#initialize" | "Hash#initialize"
   | "Exception#initialize" =>
     -- Core initializers *mutate* the (already allocated) receiver, so a subclass's
-    -- `initialize` can `super` into them (L70). Constructors now allocate then
-    -- send initialize through ordinary lookup (L284).
+    -- `initialize` can `super` into them. Constructors now allocate then
+    -- send initialize through ordinary lookup.
     match recv with
     | .ref o =>
       if bid != "Array#initialize" && args.length > 1 then
@@ -195,7 +194,7 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
   | "Class#new" | "Module#new" => newImpl m recv args
   | "Class#__range_new_unchecked" =>
     -- Allocate a `Range` with **no endpoint check** — the primitive the prelude's
-    -- `Range.new` builds on, because the check has to dispatch `<=>` (L122).
+    -- `Range.new` builds on, because the check has to dispatch `<=>`.
     -- Third argument by *truthiness*, since `Range.new(1, 2, 3).exclude_end?` is
     -- `true` [V]; it used to be matched as a `Bool` and anything else gated.
     match recv, args with
@@ -238,7 +237,7 @@ def runModules (bid : String) (recv : Value) (args : List Value) (m : Machine) :
     -- Constant *visibility*: a `private_constant` name stays visible to lexical
     -- lookup from inside the module and disappears from `A::B` outside it, where
     -- CRuby then runs `const_missing` (or raises `NameError`). Modeled as a list
-    -- on the class payload and consulted by the `cpath` rule (L104). Nine of
+    -- on the class payload and consulted by the `cpath` rule. Nine of
     -- Homebrew `version.rb`'s constants are declared this way.
     match recv with
     | .ref o =>

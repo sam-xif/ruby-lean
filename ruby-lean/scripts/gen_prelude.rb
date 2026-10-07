@@ -2,8 +2,8 @@
 # frozen_string_literal: true
 
 # Core boot and optional features share the real desugar/export/decoder path.
-# Run with: ruby scripts/gen_prelude.rb > RubyCore/PreludeJson.lean
-# then:     lake exe genprelude > RubyCore/Prelude.lean   (or just `make gen`)
+# Run with: ruby scripts/gen_prelude.rb > RubyCore/Generated/PreludeJson.lean
+# then:     lake exe genprelude > RubyCore/Generated/Prelude.lean   (or just `make gen`)
 lib = File.expand_path("../../desugar/lib", __dir__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 require "desugar"
@@ -49,7 +49,7 @@ puts <<~LEAN
 
   The prelude as the desugarer exports it: JSON, decoded by the ordinary
   Decode.program. Nothing in the model imports this file. `lake exe genprelude`
-  reads it and writes RubyCore/Prelude.lean, the same programs as Lean terms,
+  reads it and writes RubyCore/Generated/Prelude.lean, the same programs as Lean terms,
   which is what the model boots from.
   -/
   import RubyCore.Syntax

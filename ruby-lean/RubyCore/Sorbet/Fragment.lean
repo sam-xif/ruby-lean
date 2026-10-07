@@ -160,7 +160,7 @@ def removalSend : List String := ["remove_method", "undef_method"]
 
 /-- Renaming a class changes the **key** its declarations hang off rather than
     the table, and `infer` cannot name an `ObjId`
-    (`typing-a-mutable-method-table.md` §5). Incomplete by construction — see
+. Incomplete by construction — see
     the header's note on `K = Class.new`. -/
 def keySend : List String := ["set_temporary_name", "const_set"]
 
@@ -175,7 +175,7 @@ def dynamicSend : List String :=
     or write state the declarations do not cover. `version.rb:783`'s `NULL`
     sentinel is the slice's one occurrence and is genuinely untypable until W8
     gives `@version` a nilable declaration
-    (`typing-a-mutable-method-table.md` §4.1). -/
+. -/
 def stateSend : List String := ["instance_variable_set", "instance_variable_get"]
 
 -- The classification is a partition, and `deferredSend` is the one list `scan`
@@ -334,7 +334,7 @@ def scanList : List Expr → List Violation
   | e :: rest => scan false e ++ scanList rest
 
 /-- `scanList` with the statement's `sigPrecedes` threaded into each argument —
-    used only for a visibility modifier wrapping a `def` (L138). -/
+    used only for a visibility modifier wrapping a `def`. -/
 def scanListSig (sigPrecedes : Bool) : List Expr → List Violation
   | [] => []
   | e :: rest => scan sigPrecedes e ++ scanListSig sigPrecedes rest

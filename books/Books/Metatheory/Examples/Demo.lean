@@ -54,7 +54,7 @@ example : ∃ mf, Steps (Machine.init (.seq [.int 1, .int 2])) mf
     .refl
   exact ⟨_, chain, rfl, rfl⟩
 
-/-! ## Type-safety demonstrations (`AGENTS.md` §Type safety as reachability §3–4)
+/-! ## Type-safety demonstrations
 
     The metatheory of `TypeSafety.lean` applied end-to-end. -/
 

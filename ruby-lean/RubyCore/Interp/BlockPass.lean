@@ -1,7 +1,7 @@
 import RubyCore.Interp.Inspect
 
-/-! Effectful checked conversion: block-pass to_proc (L275), String#+ to_str
-(L276), splat/binding to_a/to_ary (L277), and nested parameter binding (L287). Each suspended Ruby call takes an
+/-! Effectful checked conversion: block-pass to_proc, String#+ to_str
+, splat/binding to_a/to_ary, and nested parameter binding. Each suspended Ruby call takes an
 ordinary machine transition.
 The block VM shortcut resolves a defined to_proc before checking response hooks;
 String conversion uses rb_check_funcall, which checks respond_to? first. -/

@@ -1,0 +1,146 @@
+#!/usr/bin/env python3
+"""Check that a Sorbet-annotated Ruby program cannot raise a type error.
+
+    bin/ruby-lean-check prog.rb
+    bin/ruby-lean-check --json prog.rb        # the verdict and every stage, as JSON
+    bin/ruby-lean-check --keep out/ prog.rb   # keep the intermediate files in out/
+
+Prints ACCEPTED or NOT ACCEPTED. ACCEPTED means the Lean function `validateD`
+returned true for this program, and the theorem `validateD_safe_run` then says:
+run on the model, for any number of steps, the program never ends in an uncaught
+NoMethodError, ArgumentError or TypeError.
+
+Four stages run before the checker: Sorbet reads the signatures, the annotations
+are stripped, the program is desugared to the model's core language, and a
+typing derivation is proposed. None of them is trusted. A mistake in any of them
+can make the checker decline a program; it cannot make it accept one.
+
+Exit status: 0 accepted, 1 not accepted, 2 the tools are not built (`make run`).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tempfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TOOLS = os.path.join(ROOT, "ruby-lean", "scripts")
+EXPORT = os.path.join(ROOT, "desugar", "bin", "export-json")
+VALIDATE = os.environ.get(
+    "VALIDATE_ONE", os.path.join(ROOT, "ruby-lean", ".lake", "build", "bin", "validate-one"))
+RUBY = os.environ.get("RUBY", "ruby")
+# Sorbet's annotations and a few surface forms are removed before desugaring;
+# the checker reads the types from the signatures, not from the program text.
+STRIPS = [os.path.join(ROOT, "difftest", "ruby", s) for s in
+          ("sig_strip.rb", "visibility_strip.rb", "freeze_strip.rb",
+           "require_strip.rb", "const_inline.rb", "class_sugar_strip.rb")]
+
+
+class Declined(Exception):
+    """A stage did not let the program through. `stage` names it."""
+
+    def __init__(self, stage: str, reason: str):
+        super().__init__(reason)
+        self.stage, self.reason = stage, reason
+
+
+def run(stage: str, cmd: list[str], stdin: str | None = None) -> str:
+    p = subprocess.run(cmd, input=stdin, capture_output=True, text=True)
+    if p.returncode != 0:
+        raise Declined(stage, p.stderr.strip() or f"exit {p.returncode}")
+    return p.stdout
+
+
+def check(path: str, workdir: str) -> dict:
+    result: dict = {"file": path, "accepted": False}
+
+    sigs = json.loads(run("sorbet", [sys.executable, os.path.join(TOOLS, "srb_sigs.py"),
+                                     "--quiet", path]))
+    result["sorbet_clean"] = sigs["srb_clean"]
+    result["sorbet_diagnostics"] = sigs["srb_diagnostics"]
+    result["signatures"] = len(sigs["sigs"])
+    if not sigs["srb_clean"]:
+        raise Declined("sorbet", "Sorbet reports type errors:\n  " +
+                       "\n  ".join(sigs["srb_diagnostics"]))
+
+    with open(path) as fh:
+        source = fh.read()
+    for s in STRIPS:
+        source = run("strip", [RUBY, s], source)
+    stripped = os.path.join(workdir, "stripped.rb")
+    with open(stripped, "w") as fh:
+        fh.write(source)
+
+    program = json.loads(run("desugar", [RUBY, EXPORT, stripped]))
+    sigs_path, ast_path = os.path.join(workdir, "sigs.json"), os.path.join(workdir, "ast.json")
+    with open(sigs_path, "w") as fh:
+        json.dump(sigs, fh, indent=1)
+    with open(ast_path, "w") as fh:
+        json.dump(program, fh)
+
+    emit = json.loads(run("derivation", [RUBY, os.path.join(TOOLS, "emit_deriv.rb"),
+                                         "--ast", ast_path, "--sigs", sigs_path]))
+    if emit.get("status") != "ok":
+        raise Declined("derivation", emit.get("why", "no derivation was proposed"))
+    result["type"] = emit.get("ty")
+    with open(os.path.join(workdir, "deriv.json"), "w") as fh:
+        json.dump(emit["deriv"], fh)
+
+    verdict = json.loads(run("checker", [VALIDATE],
+                             json.dumps({"program": program, "deriv": emit["deriv"]})))
+    if not verdict.get("validateD"):
+        raise Declined("checker", "validateD returned false for the proposed derivation")
+    result["accepted"] = True
+    return result
+
+
+STAGE_HELP = {
+    "sorbet": "Sorbet has to accept the program first.",
+    "strip": "The annotations could not be stripped.",
+    "desugar": "The program uses Ruby the desugarer does not support.",
+    "derivation": "The program is outside the typed fragment: no typing rule covers it yet.",
+    "checker": "The checker did not accept the derivation it was given.",
+}
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("file")
+    ap.add_argument("--json", action="store_true", help="print the result as JSON")
+    ap.add_argument("--keep", metavar="DIR", help="keep the intermediate files in DIR")
+    args = ap.parse_args(argv)
+
+    if not os.path.isfile(args.file):
+        print(f"ruby-lean-check: no such file: {args.file}", file=sys.stderr)
+        return 2
+    if not os.access(VALIDATE, os.X_OK):
+        print(f"ruby-lean-check: the checker is not built at {VALIDATE} (run `make run`)",
+              file=sys.stderr)
+        return 2
+
+    with tempfile.TemporaryDirectory() as tmp:
+        workdir = args.keep or tmp
+        os.makedirs(workdir, exist_ok=True)
+        try:
+            result = check(args.file, workdir)
+        except Declined as d:
+            result = {"file": args.file, "accepted": False, "stage": d.stage, "reason": d.reason}
+
+    if args.json:
+        print(json.dumps(result, indent=1))
+    elif result["accepted"]:
+        print(f"ACCEPTED  {args.file}")
+        print("  validateD accepted this program. By validateD_safe_run, running it on the")
+        print("  model never ends in an uncaught NoMethodError, ArgumentError or TypeError.")
+    else:
+        print(f"NOT ACCEPTED  {args.file}")
+        print(f"  stage:  {result['stage']} -- {STAGE_HELP.get(result['stage'], '')}")
+        print("  reason: " + result["reason"].replace("\n", "\n          "))
+    return 0 if result["accepted"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

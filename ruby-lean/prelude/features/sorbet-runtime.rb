@@ -178,7 +178,7 @@ module T
   #
   # The class is named by `to_s`, not `name`: for an anonymous class the gem
   # prints `#<Class:0x…>` and `name` is nil, which made `+` raise a *different*
-  # TypeError (the L124 rule, one file over). (L127.)
+  # TypeError (the L124 rule, one file over).
   def self.__describe_obj(value)
     # `equal?`, not `==`: the gem's `case obj when nil, true, false` dispatches on
     # the *literal* (`nil === obj`), never on `obj`. Writing it as `value == true`
@@ -394,7 +394,7 @@ module T
   # `extend T::Sig` is what puts `sig` in a class body. Enforcement rides on
   # `Module#method_added`: `sig` records a pending declaration and the hook
   # wraps the method defined immediately after — the same mechanism the real
-  # gem uses, which is why the model had to grow the hook (L77).
+  # gem uses, which is why the model had to grow the hook.
   module Sig
     def sig(&blk)
       # In a class/module body `self` is the definee and `T::Sig#method_added`
@@ -494,7 +494,7 @@ module T
     nil
   end
 
-  # Positional-or-keyword matching (L107). Sorbet requires a sig to list the
+  # Positional-or-keyword matching. Sorbet requires a sig to list the
   # method's parameters in order, so the i-th *positional* declared name governs
   # the i-th argument; a declared name that appears as a **key in `kw`** is a
   # keyword parameter and is checked against that value instead. The shim has no
@@ -634,7 +634,7 @@ T::Boolean = T::Type.new(:any, [TrueClass, FalseClass], "T::Boolean")
 # understood by ignoring them. Until they are modeled they gate at first use —
 # an honest Unsupported rather than a NameError that would read as a wrong
 # answer (the difftest engine's one unforgivable verdict).
-# `T::Struct` — a typed record. Like `Struct` (L105) this is a metaprogramming
+# `T::Struct` — a typed record. Like `Struct` this is a metaprogramming
 # pattern rather than a core class: `const`/`prop` are class macros that record a
 # property and define its reader, and `initialize` is generated from the record.
 # It could not live in the prelude before L103, because a `T::Struct` needs its
@@ -649,7 +649,7 @@ T::Boolean = T::Type.new(:any, [TrueClass, FalseClass], "T::Boolean")
 class T::Struct
   # The gem installs a public inherited guard on each immediate child. Keep
   # its super call before the error: the rejected grandchild still exists and
-  # receives its own guard before unwinding (L291).
+  # receives its own guard before unwinding.
   def self.inherited(subclass)
     super(subclass)
     subclass.define_singleton_method(:inherited) do |child|
@@ -767,7 +767,7 @@ module T
     # against the gem: this path prints the plain `inspect` — no truncation, no
     # hash substitution, addresses and all (the difftest engine normalizes those)
     # — and names the class with `to_s`, so an anonymous one is `#<Class:0x…>`
-    # rather than the nil that `name` answers (L127).
+    # rather than the nil that `name` answers.
     raise TypeError, "Parameter '" + name.to_s + "': Can't set " + cls.to_s + "." +
                      name.to_s + " to " + value.inspect + " (instance of " +
                      value.class.to_s + ") - need a " + want

@@ -1,22 +1,23 @@
 /-
-Values, objects, the heap, and the pure object-model operations
-(artifacts 01–02). Per `RubyCore/README.md` §Mechanization, the step relation touches
-the heap only through the functions defined here; they get their own lemmas
-later.
+Values, objects and the heap, and the pure operations on them (Semantics 01–02).
 
-L0 representation notes (implementation-notes to be recorded harness-side):
-- ObjId is a dense index into `Heap.objs` (allocation order, never reused).
-- Ancestors = the superclass chain only: `include`/`prepend` are out of the
-  L0 fragment, so no MRO expansion yet (artifact 02 §1 covers the general
-  case; the ANCESTORS rule degenerates to the chain walk below).
-- Kernel is not modeled as a separate module yet: kernel methods live
-  directly on Object. Observable only via `.ancestors` introspection, which
-  is out of fragment.
-- Visibility is recorded but not yet checked (L0 has no explicit-receiver
-  private-call cases the desugar admits that we support; revisit at L2).
+* `Value` is an immediate (integer, float, symbol, boolean, nil) or a reference
+  to a heap object. `ObjId` is a dense index into `Heap.objs`: ids are assigned
+  in allocation order and never reused.
+* `Object` carries its class, its instance variables, a frozen flag and a
+  payload. A class is an object whose payload holds its superclass, its
+  included and prepended modules, its method table and its constant table.
+* `Boot.initHeap` is the initial heap: `BasicObject`, `Object`, `Module`,
+  `Class`, `Kernel` and the other core classes, with the builtin methods
+  registered in their method tables.
+* `classOf`, `ancestors`, method lookup and constant lookup are pure functions
+  of the heap.
+
+The step function touches the heap only through the functions defined here, so
+facts about them can be proved without mentioning the machine.
 -/
 import RubyCore.Syntax
-import RubyCore.MT
+import RubyCore.Numeric.MT
 
 namespace RubyCore
 
@@ -32,7 +33,7 @@ inductive Value where
 deriving Repr, Inhabited
 
 /-- Immediate structural equality — identity for refs, value identity for
-    immediates. This is `equal?`, not `==` (artifact 01 §6). Type-strict:
+    immediates. This is `equal?`, not `==` (Semantics 01 §6). Type-strict:
     `1` and `1.0` are NOT `eql?`. -/
 def Value.identEq : Value → Value → Bool
   | .ref a, .ref b => a == b
@@ -43,13 +44,13 @@ def Value.identEq : Value → Value → Bool
   | .nil, .nil => true
   | _, _ => false
 
-/-- Truthiness (artifact 01 §6): exactly false and nil are falsey. -/
+/-- Truthiness (Semantics 01 §6): exactly false and nil are falsey. -/
 def Value.truthy : Value → Bool
   | .bool false => false
   | .nil => false
   | _ => true
 
-/-- Method visibility (artifact 02 §5, L71). `protected` differs from `private`
+/-- Method visibility (Semantics 02 §5). `protected` differs from `private`
     only in the dispatch check: an explicit receiver is allowed when the *caller's*
     `self` is a kind of the method's owner. -/
 inductive Visibility where
@@ -71,19 +72,19 @@ structure MethodDef where
   definitionFrame : Option Nat := none
   /-- Lexical constant scope captured at definition (innermost enclosing
       class/module first), threaded to the activation frame for cref-scoped
-      constant lookup (artifact 03 §4). Empty = toplevel/`[Object]`. -/
+      constant lookup (Semantics 03 §4). Empty = toplevel/`[Object]`. -/
   cref : List ObjId := []
   /-- The name `super` searches for from inside this body. Normally the name the
       method is installed under, but an **alias** keeps the *original* name: in
       CRuby `alias_method :b, :a` then `super` inside `b` looks for `a` in the
-      superclass, not `b` [V] (L108). The sorbet-runtime shim depends on this —
+      superclass, not `b` [V]. The sorbet-runtime shim depends on this —
       it aliases a method aside as `__t_unchecked_x` and a `super` in the body
       must still reach `x`'s parent. -/
   superName : Option String := none
   /-- A class-side alias retains the lookup context of its original body,
       including a repeated module occurrence below a subclass's occurrence. -/
   superScope : Option ObjId := none
-  /-- `some bid` marks an axiomatized builtin (artifact 01 §2); `body` is
+  /-- `some bid` marks an axiomatized builtin (Semantics 01 §2); `body` is
       then ignored and Builtins.lean supplies the behavior keyed on `bid`. -/
   builtin : Option String := none
   visibility : Visibility := .pub
@@ -91,7 +92,7 @@ structure MethodDef where
   visibilityOnly : Bool := false
   /-- `define_method`: the frame this body **closes over** — free variables
       resolve up its `captured` chain, exactly as in the block it came from
-      (L64). `none` for an ordinary `def`, whose body has no enclosing scope.
+. `none` for an ordinary `def`, whose body has no enclosing scope.
       `Nat` rather than `FrameId` to avoid the Machine import cycle (as
       `Closure` does). -/
   capturedFrame : Option Nat := none
@@ -100,14 +101,14 @@ structure MethodDef where
       (`|;x|`) and parse-time-implicit (C35) alike. Empty for an ordinary `def`,
       whose frame has no enclosing scope to clobber. Pre-declared nil in the
       activation, next to the `localsB` formals that need the same treatment for
-      the same reason (L125). -/
+      the same reason. -/
   declared : List String := []
   /-- Defined by the **prelude** (the core library written in RubyCore itself,
       `prelude/prelude.rb`) rather than by the program under test. Such a method
       *is* the model of the CRuby builtin of the same name, so it suppresses the
-      "unmodeled builtin would shadow" gate for its own name (L62). -/
+      "unmodeled builtin would shadow" gate for its own name. -/
   fromPrelude : Bool := false
-  /-- `undef name` tombstone (artifact 02): the entry exists so the ancestor
+  /-- `undef name` tombstone (Semantics 02): the entry exists so the ancestor
       walk stops here (blocking any inherited definition), but dispatch treats
       it as a miss → `NoMethodError`/`method_missing`. -/
   undefined : Bool := false
@@ -122,19 +123,19 @@ structure ClassPayload where
   methods : List (String × MethodDef) := []
   consts : List (String × Value) := []
   /-- Constants declared `private_constant`: still visible to lexical lookup
-      from inside the module, invisible to `A::B` from outside (L104). -/
+      from inside the module, invisible to `A::B` from outside. -/
   privateConsts : List String := []
   name : String
   /-- A nonempty path can still contain an anonymous ancestor. Permanent paths
       survive later aliases; temporary paths are replaced when a namespace is
-      bound under a permanent parent (L295). Empty names are never permanent. -/
+      bound under a permanent parent. Empty names are never permanent. -/
   namePermanent : Bool := true
   isModule : Bool := false
   /-- Class.allocate has no superclass and has not run Class#initialize. -/
   initialized : Bool := true
   /-- CRuby caches its superclass index. A named subclass of an uninitialized
       class has a superclass link but no completed index, even after its parent
-      is later initialized (L291). -/
+      is later initialized. -/
   ancestryReady : Bool := true
   /-- Allocation is copied at class creation, independently of live ancestors. -/
   allocatorUnavailable : Bool := false
@@ -144,17 +145,17 @@ structure ClassPayload where
   /-- Modules mixed in via `include` (most-recently-included **last**); inserted
       into the ancestor chain just above this class, most-recent first (MRO). -/
   includes : List ObjId := []
-  /-- Class variables `@@x` (artifact 03 §3): stored on the class/module, looked
+  /-- Class variables `@@x` (Semantics 03 §3): stored on the class/module, looked
       up along the ancestor chain, and *assigned* in the highest ancestor that
-      already has one (L67). -/
+      already has one. -/
   cvars : List (String × Value) := []
   /-- Modules mixed in via `prepend` (most-recently-prepended **last**); inserted
       *below* this class in the chain, so their methods win over the class's own
-      and `super` from them reaches the class (artifact 02 §1, L65). -/
+      and `super` from them reaches the class (Semantics 02 §1). -/
   prepends : List ObjId := []
 deriving Inhabited
 
-/-- A block/proc/lambda closure (artifact 04 §1). Frame identity supplies
+/-- A block/proc/lambda closure (Semantics 04 §1). Frame identity supplies
     Essence's generative jump targets (sketch §1.1):
     - `captured` is the FrameId of the defining frame — free variables resolve
       up its chain and `self`/`defmod`/method-block are inherited from it.
@@ -163,7 +164,7 @@ deriving Inhabited
       *invents* for `Symbol#to_proc` (`&:sym` and the builtin), and CRuby's
       answer there is a C-level Proc with no binding at all —
       `:upcase.to_proc.binding` raises and its `source_location` is `nil`
-      (`books/notes/type-soundness/found-issues.md` §A6a). Matches `Frame.captured`, which has been
+. Matches `Frame.captured`, which has been
       an `Option` all along (`Machine.lean`); before L266 this was a bare `Nat`
       and those two sites wrote `0`, a capture edge into the toplevel that the
       reference semantics does not have and that `books/Books/TypeSoundness/Conformance/`'s frame
@@ -222,7 +223,7 @@ inductive Payload where
   | cls (c : ClassPayload)
   /-- Exception message object; nil means the default class-name message. -/
   | exc (msg : Value)
-  /-- A Proc (block/proc/lambda), artifact 04 §1. -/
+  /-- A Proc (block/proc/lambda), Semantics 04 §1. -/
   | proc (c : Closure)
   /-- A `Random` instance's MT19937 state (mutated in place by `#rand`). -/
   | rng (s : MT.State)
@@ -270,14 +271,14 @@ structure Object where
       `each_char` and the matcher all operate per byte with no other change, which
       is exactly what `Purl.encode` needs. A field on the object rather than on
       the payload, because the payload's constructor arity is matched in ~40
-      places and an encoding is a property of the object anyway (L117). -/
+      places and an encoding is a property of the object anyway. -/
   binary : Bool := false
 deriving Inhabited
 
-/-- ObjId = index; allocation appends (ids never reused, artifact 01 §2). -/
+/-- ObjId = index; allocation appends (ids never reused, Semantics 01 §2). -/
 structure Heap where
   objs : Array Object
-  /-- Frozen native namespace-name Strings, shared by equal paths (L297).
+  /-- Frozen native namespace-name Strings, shared by equal paths.
       Kept in the heap so prelude/runtime boundaries retain name identity.
       The Bool is the String's binary tag; general String interning is separate. -/
   nameStrings : List (String × Bool × ObjId) := []
@@ -305,7 +306,7 @@ def setClassPayload (h : Heap) (o : ObjId) (c : ClassPayload) : Heap :=
 
 end Heap
 
-/-! ## Bootstrap heap H₀ (artifact 01 §4)
+/-! ## Bootstrap heap H₀ (Semantics 01 §4)
 
 Fixed ids for the classes every rule needs. The metaclass knot
 (`Class.class == Class`, `Class < Module < Object < BasicObject`) lives
@@ -346,21 +347,21 @@ def procId : ObjId := 29
 def randomId : ObjId := 30
 def mathId : ObjId := 31
 def rangeId : ObjId := 32
-/-- `Kernel` — a real module in `Object`'s ancestor chain (L65). Its *methods*
+/-- `Kernel` — a real module in `Object`'s ancestor chain. Its *methods*
     still live directly on Object at L0, so the module itself is empty; what it
     buys is a faithful `ancestors` (`[Object, Kernel, BasicObject]`) and a
     reopened `Kernel` resolving through the ordinary MRO. -/
 def kernelId : ObjId := 33
 /-- `Numeric` — Integer's and Float's real superclass (and where `Comparable` is
-    mixed in), so `1.is_a?(Numeric)` and `Integer.ancestors` are faithful (L65).
+    mixed in), so `1.is_a?(Numeric)` and `Integer.ancestors` are faithful.
     Carries no methods of its own at L0. -/
 def numericId : ObjId := 34
 /-- `UncaughtThrowError < ArgumentError` — a `throw` with no matching `catch`
-    (L69). -/
+. -/
 def uncaughtThrowErrorId : ObjId := 35
-/-- `Regexp` (L101). -/
+/-- `Regexp`. -/
 def regexpId : ObjId := 36
-/-- `MatchData` (L101) — the object `Regexp#match` returns and `$~` holds. -/
+/-- `MatchData` — the object `Regexp#match` returns and `$~` holds. -/
 def matchDataId : ObjId := 37
 /-- `RegexpError < StandardError` — raised by `Regexp.new` on a bad pattern. -/
 def regexpErrorId : ObjId := 38
@@ -480,7 +481,7 @@ def builtinMethods : List (ObjId × List String) := [
             "include?", "member?", "keys", "values", "delete", "fetch",
             "inspect", "to_s", "to_a", "dup", "clone", "merge", "initialize", "initialize_copy"]),
   -- `message` is deliberately absent: it is `to_s` in CRuby, so it must dispatch,
-  -- and the prelude defines it (L131).
+  -- and the prelude defines it.
   (exceptionId, ["to_s", "inspect", "dup", "clone", "initialize", "exception"]),
   (uncaughtThrowErrorId, ["to_s", "tag", "value", "__throw_metadata"]),
   (classId, ["superclass", "initialize", "inherited"]),
@@ -490,7 +491,7 @@ def builtinMethods : List (ObjId × List String) := [
               "private_constant", "public_constant"]),
   (classId, ["new", "allocate", "__range_new_unchecked"]),
   -- Call markers resolve through ordinary lookup; the interpreter executes them
-  -- by pushing a block frame, which a pure builtin cannot (L272).
+  -- by pushing a block frame, which a pure builtin cannot.
   (procId, ["lambda?", "to_proc", "call", "[]", "yield", "==="]),
   (randomId, ["rand"]),
   (rangeId, ["first", "last", "begin", "end", "exclude_end?", "inspect", "to_s"]),
@@ -535,8 +536,7 @@ def install (h : Heap) (cls : ObjId) (names : List String) : Heap :=
 
 /-- Reducible insertion sort by id (`.1`), replacing `Array.qsort` in `initHeap`.
     `qsort` is opaque to the kernel, so any `decide`/`rfl` over `initHeap` got
-    stuck; a structural `def` reduces (metatheory needs concrete boot-heap facts,
-    L55). Ids are distinct, so this yields the same strictly-ascending order. -/
+    stuck; a structural `def` reduces (metatheory needs concrete boot-heap facts). Ids are distinct, so this yields the same strictly-ascending order. -/
 def insertById (x : ObjId × String × Option ObjId) :
     List (ObjId × String × Option ObjId) → List (ObjId × String × Option ObjId)
   | [] => [x]
@@ -560,7 +560,7 @@ def initHeap : Heap :=
   let hMain := (hClasses.alloc { klass := objectId }).2
   -- install builtins
   let hBuiltins := builtinMethods.foldl (fun h (e : ObjId × List String) => install h e.1 e.2) hMain
-  -- Kernel is a *module*, and `Object` includes it (L65): allocated as an
+  -- Kernel is a *module*, and `Object` includes it: allocated as an
   -- ordinary classTable entry (so ids stay dense and `initHeap` stays a plain
   -- fold), then patched here.
   let kernObj : Object :=
@@ -571,7 +571,7 @@ def initHeap : Heap :=
     | some c => hKern.setClassPayload objectId { c with includes := [kernelId] }
     | Option.none => hKern
   -- `Float::NAN` / `Float::INFINITY`: real constants of the class object, not
-  -- methods, so they belong in the boot heap rather than in a rule (L109).
+  -- methods, so they belong in the boot heap rather than in a rule.
   let hBuiltins := match hBuiltins.classPayload? floatId with
     | some c => hBuiltins.setClassPayload floatId
         { c with consts := c.consts ++
@@ -615,7 +615,7 @@ def initHeap : Heap :=
 
 end Boot
 
-/-! ## Pure object-model operations (artifact 01 §4, 02 §1–2) -/
+/-! ## Pure object-model operations (Semantics 01 §4, 02 §1–2) -/
 
 /-- Direct class of a value (CLASS-*). Eigenclasses: none at L0. -/
 def classOf (h : Heap) : Value → ObjId
@@ -638,9 +638,9 @@ def realClassOf (h : Heap) : Value → ObjId
 /-- A module's own ancestor list: itself, then its `include`d modules
     (most-recent first), recursively.
 
-    **Fuel-bounded rather than `partial`** (L73): a `partial def` is opaque to the
+    **Fuel-bounded rather than `partial`**: a `partial def` is opaque to the
     kernel, so once *any* class in a chain has mixins — and `Object` now includes
-    `Kernel` (L65), so every chain does — `ancestors` would no longer reduce and
+    `Kernel`, so every chain does — `ancestors` would no longer reduce and
     every `decide`/`rfl` in the metatheory over a dispatch would get stuck. -/
 def modAncestors (h : Heap) (mo : ObjId) : List ObjId :=
   go mo (h.objs.size + 1)
@@ -711,12 +711,12 @@ def isA (h : Heap) (v : Value) (k : ObjId) : Bool :=
     message that renders an object by address — the difftest observation
     normalizes `0x…` on both sides by occurrence order, so only distinctness +
     ordering matter. Lives here, below `className`'s caller set, because an
-    **anonymous** class is rendered by address in error messages too (L124). -/
+    **anonymous** class is rendered by address in error messages too. -/
 def fakeAddr (o : ObjId) : String :=
   let hex := String.ofList (Nat.toDigits 16 o)
   "0x" ++ String.ofList (List.replicate (16 - hex.length) '0') ++ hex
 
-/-- CRuby's temporary class path, distinct from singleton-class `to_s` (L291).
+/-- CRuby's temporary class path, distinct from singleton-class `to_s`.
     An unnamed Module-subclass instance uses its direct class's path, including
     an eigenclass when present. That path names the eigenclass by address or its
     assigned constant name, without recursively rendering its attached object. -/
@@ -741,8 +741,8 @@ where
     address wherever a name is wanted — `0 + Class.new.new` says
     `#<Class:0x…> can't be coerced into Integer`, not `` `` can't be coerced``.
     Every message built from `className` inherits that, so the fallback belongs
-    here and not at ~20 call sites (L124). Singleton classes render their attached
-    object from the current heap (L276). `Module#name` reads the separate constant
+    here and not at ~20 call sites. Singleton classes render their attached
+    object from the current heap. `Module#name` reads the separate constant
     name, so an unnamed singleton class still answers nil. The heap-sized fuel
     bounds the acyclic attachment/class walk of every runtime-allocated heap. -/
 def className (h : Heap) (k : ObjId) : String :=
@@ -777,7 +777,7 @@ def anyToS (h : Heap) (o : ObjId) : String :=
     everything else "an instance of C" — **except** an object that has an
     eigenclass, which CRuby renders as the object itself, by `rb_any_to_s`:
     `def o.hi; end; o.zz` says `undefined method 'zz' for #<Foo:0x…>`, not
-    `… for an instance of Foo` (L124). The test is only "does a singleton class
+    `… for an instance of Foo`. The test is only "does a singleton class
     exist" — `extend` and a bare `o.singleton_class` trigger it as much as a
     `def o.x` — and it ignores a user `inspect`/`to_s` and any ivars. A *class*
     receiver keeps "class C" even with singleton methods of its own [V]. -/
@@ -796,7 +796,7 @@ def receiverDesc (h : Heap) (v : Value) : String :=
   | _ => s!"an instance of {className h (classOf h v)}"
 
 /-- Look up a constant on Object (L0: flat toplevel namespace,
-    artifact 03's two-phase lookup degenerates to this). -/
+    Semantics 03's two-phase lookup degenerates to this). -/
 def constLookup (h : Heap) (name : String) : Option Value :=
   match h.classPayload? Boot.objectId with
   | some c => (c.consts.find? (·.1 == name)).map (·.2)
@@ -809,7 +809,7 @@ def constSet (h : Heap) (name : String) (v : Value) : Heap :=
       { c with consts := (name, v) :: c.consts.filter (·.1 != name) }
   | Option.none => h
 
-/-- Set constant `name` on class object `cls` (its own namespace, artifact 03).
+/-- Set constant `name` on class object `cls` (its own namespace, Semantics 03).
     A `casgn` inside `class C … end` writes to `C`, not the flat toplevel. -/
 def constSetIn (h : Heap) (cls : ObjId) (name : String) (v : Value) : Heap :=
   match h.classPayload? cls with
@@ -819,11 +819,11 @@ def constSetIn (h : Heap) (cls : ObjId) (name : String) (v : Value) : Heap :=
   | Option.none => h
 
 /-- A class/module's *own* constants (no ancestor walk) — the lexical phase of
-    artifact 03's two-phase constant lookup. -/
+    Semantics 03's two-phase constant lookup. -/
 def constOwn (h : Heap) (cls : ObjId) (name : String) : Option Value :=
   (h.classPayload? cls).bind fun c => (c.consts.find? (·.1 == name)).map (·.2)
 
-/-- Constant lookup from cref `cls`: the *inheritance* phase of artifact 03's
+/-- Constant lookup from cref `cls`: the *inheritance* phase of Semantics 03's
     two-phase rule — walk `cls`'s ancestors (which bottoms out at Object, the
     toplevel namespace). The lexical phase (cref nesting) is not modeled at L0;
     `cls` is the innermost enclosing class (`defmod`). -/
@@ -834,7 +834,7 @@ def constLookupFrom (h : Heap) (cls : ObjId) (name : String) : Option Value :=
     | Option.none => Option.none
 
 /-- `@@x` read from lexical scope `scope`: the first ancestor (class or included
-    module) that defines it (artifact 03 §3). -/
+    module) that defines it (Semantics 03 §3). -/
 def cvarLookupIn (h : Heap) (scope : ObjId) (name : String) : Option Value :=
   (ancestors h scope).firstM fun k =>
     (h.classPayload? k).bind fun c => (c.cvars.find? (·.1 == name)).map (·.2)
@@ -869,7 +869,7 @@ def defineMethod (h : Heap) (cls : ObjId) (name : String) (md : MethodDef) : Hea
       { c with methods := (name, md) :: c.methods.filter (·.1 != name) }
   | Option.none => h
 
-/-- `undef name` on `cls`: install an `undefined` tombstone (artifact 02) so the
+/-- `undef name` on `cls`: install an `undefined` tombstone (Semantics 02) so the
     ancestor walk stops here even if a superclass defines `name`. -/
 def undefMethod (h : Heap) (cls : ObjId) (name : String) : Heap :=
   defineMethod h cls name { params := [], body := .nil, owner := cls, undefined := true }

@@ -41,7 +41,7 @@ def closIdx? (K : ClosTable) (ps : List Param) (b : Expr) : Option Nat :=
   closIdxAux 0 K ps b
 
 /-- The closure a call rule may type against. Same guard as `defGet?` and for the same reason
-(`found-issues.md` §F3): `closCall`, `iterClosPass` and `yieldExpr` all type `c.body` and then
+: `closCall`, `iterClosPass` and `yieldExpr` all type `c.body` and then
 conclude at the caller's `κ`, so a block body containing a `def` would carry a stale table out
 of the call. A block whose body declares still gets a `Ty.clos` from `lambdaLit` — the type says
 nothing about the tables — it just cannot be *called* by this checker. -/

@@ -71,10 +71,10 @@ inductive Step : Machine → Machine → Prop where
   | varLvar {m x} :
       m.ctl = .eval (.var .lvar x) → Step m (withCtl m (.value (m.getLocal x)))
   /-- A **plain** global read. `$1`…`$9`, `$&`, `` $` `` and `$'` are views of the
-      last match, derived rather than stored (L101), so a read of one is not a
+      last match, derived rather than stored, so a read of one is not a
       `getGlobal` at all; `matchGlobal` is consulted first. The hypothesis is the
       semantic one `stepFn` actually branches on, and `Adequacy`'s fragment
-      predicate supplies it from the *syntactic* `isMatchView` (L119). -/
+      predicate supplies it from the *syntactic* `isMatchView`. -/
   | varGvar {m x} :
       m.ctl = .eval (.var .gvar x) → matchGlobal m x = none → loaderGlobal x = false →
       Step m (withCtl m (.value (m.getGlobal x)))
@@ -181,7 +181,7 @@ inductive Step : Machine → Machine → Prop where
   | unwindWhileBodyNxt {m v c body rest} :
       m.ctl = .jump (.nxtJ v) → m.kont = .whileBodyK c body :: rest →
       Step m (withKont (pop m rest) (.eval c) (.whileCondK c body))
-  /- `redo` re-runs the loop body without re-testing the condition (artifact 04);
+  /- `redo` re-runs the loop body without re-testing the condition (Semantics 04);
      both while markers route it to `eval body` under `whileBodyK` [V]. -/
   | unwindWhileCondRedo {m c body rest} :
       m.ctl = .jump .redoJ → m.kont = .whileCondK c body :: rest →

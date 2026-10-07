@@ -17,7 +17,7 @@ The equality reading excludes ordinary Ruby, and — the counterexample that for
 the change — it excludes **`sorbet-runtime` itself**, which installs a `sig` by
 replacing the method-table entry with a validating wrapper. So the
 declaration-matching fragment could not type a single annotated method
-(`Types/Fragment.lean`'s header, L139).
+(`Sorbet/Fragment.lean`'s header).
 
 The lower bound has the property the equality was reaching for anyway: a
 type-stuck outcome comes from a method being **missing** or **wrong-typed**, never
@@ -75,7 +75,7 @@ set_option maxRecDepth 100000
     predicate never reaches it. Measured by the proof of `entry_dispatch` not
     using it.
 
-    **Re-measured at F1b and still true** (L141), against a prediction that it
+    **Re-measured at F1b and still true**, against a prediction that it
     would not be: `HANDOFF.md` expected an object receiver to bring the singleton
     gate back. It does not, because the gate is a fact about which *branch* runs
     (`md.builtin = none`) and not about which *receiver* arrives, and this
@@ -104,7 +104,7 @@ theorem lookupIn_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h)
   have ho := ancestors_length_bound hchains Boot.objectId
   omega
 
-/-- **Resolution, indexed by the dispatch class instead of by a receiver** (L147).
+/-- **Resolution, indexed by the dispatch class instead of by a receiver**.
     Every clause of `ResolvesTo` is this predicate at `classOf h recv` — L145's
     `ResolvesTo_classOf` is the observation, and this is the observation taken
     seriously.
@@ -149,7 +149,7 @@ def TyClass (h : Heap) (τ : Ty) (k : ObjId) : Prop :=
   | .nilT => k = Boot.nilClassId
   | .sym => k = Boot.symbolId
   | .cls n => (h.classPayload? k).isSome ∧ className h k = n
-  -- **The top type dispatches from nowhere** (L183). `tyClassNames .any = []`, so
+  -- **The top type dispatches from nowhere**. `tyClassNames .any = []`, so
   -- `declFor` never answers at it and `DeclsOk` never obliges anything — this arm
   -- exists to make the match total, and `False` is the honest content: no value is
   -- typed `any`, so no receiver arrives with it.
@@ -159,7 +159,7 @@ def TyClass (h : Heap) (τ : Ty) (k : ObjId) : Prop :=
   -- here. `False` is the honest content — a nilable value may be `nil`, so there is
   -- no one class it dispatches from.
   | .nilable _ => False
-  -- **A class object dispatches from `classOf`, whatever `classOf` says** (L184),
+  -- **A class object dispatches from `classOf`, whatever `classOf` says**,
   -- and that phrasing is the measurement rather than a choice
   -- (`scripts/probes/classobj_probe.lean`): only 27 of the booted heap's 87 class objects
   -- have a materialized eigenclass, and the split runs through the classes the
@@ -402,7 +402,7 @@ def UserConforms (D : Decls) (c mname : String) (md : MethodDef) (d : MethodDecl
     conclusion) sat under `ValueTy h recv τr` (heap-*dependent* hypothesis). The
     asymmetry cost a transport: `ConformsAt_defineMethod` had to read its hypotheses
     in the old heap and its conclusion in the new one, which is the only reason
-    `TypeAgree` needed a backward direction at all (L143) — and the backward
+    `TypeAgree` needed a backward direction at all — and the backward
     direction **does not exist for a growing heap**, so the producer could not have
     had it.
 
@@ -424,7 +424,7 @@ def ConformsAt (τr : Ty) (mname bid : String) (d : MethodDecl) : Prop :=
   -- field), and it is the exact place the bill lands: a block-taking row is witnessed by
   -- a **third** arm of `EntryOk`, the native iterator, not by widening this one.
   d.blk = none ∧
-  -- **`new` is excluded** (L185), and it is the third of exactly this kind of
+  -- **`new` is excluded**, and it is the third of exactly this kind of
   -- clause. `invoke` intercepts a `.cls` receiver at `invokeMaybeNew` when the name
   -- is `"new"` (`Interp/Send.lean:106`) and allocates rather than dispatching, so a
   -- row named `new` would be a claim about a step `entry_dispatch` does not
@@ -444,7 +444,7 @@ def ConformsAt (τr : Ty) (mname bid : String) (d : MethodDecl) : Prop :=
     -- 15 `send-with-block` bodies are behind this clause and not only behind the
     -- three-channel judgement.
     --
-    -- The generalization is the weakest thing `inv_grow_value` (L149) will accept, and
+    -- The generalization is the weakest thing `inv_grow_value` will accept, and
     -- that is why it is this and not something more permissive: `PlainGrow` for the
     -- heap, and `frames`/`stack`/`kont` untouched. Nothing else in `Inv` reads the
     -- machine.
@@ -472,11 +472,11 @@ def ConformsAt (τr : Ty) (mname bid : String) (d : MethodDecl) : Prop :=
 def BuiltinEntryOk (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Prop :=
   ∃ bid, (∀ k, TyClass h τr k → ResolvesAt h k mname bid) ∧ ConformsAt τr mname bid d
 
-/-- **The receiver type a user row is keyed at** (L241), and it is a *relation* rather than
+/-- **The receiver type a user row is keyed at**, and it is a *relation* rather than
     the equation `τr = .cls c` it replaces.
 
     The equation was the pinning that made `mem_declAtoms_iff`'s certificate reading break
-    when `arrayOf` was given dispatch (L240): the enumeration `declTys` is finite, element
+    when `arrayOf` was given dispatch: the enumeration `declTys` is finite, element
     types are not, so `DeclsOk` at an `arrayOf` receiver has to be *derivable* from the
     `.cls "Array"` atom. For a builtin entry it already is — `TyClass` at the two types is
     the same proposition, definitionally — and for a user entry the equation is what
@@ -501,7 +501,7 @@ theorem UserKey.cls_inv {n c : String} (h : UserKey (.cls n) c) : n = c := by
 
 theorem UserKey.cls {c : String} : UserKey (.cls c) c := Or.inl rfl
 
-/-- **The user witness** (L157): resolution to a `MethodDef` with `builtin = none`,
+/-- **The user witness**: resolution to a `MethodDef` with `builtin = none`,
     with conformance discharged by the *checker* rather than by running anything.
 
     The table is the invariant's own. A witness that carried a *smaller* one,
@@ -509,14 +509,14 @@ theorem UserKey.cls {c : String} : UserKey (.cls c) c := Or.inl rfl
     — a body is checked where it is written and called later — and it is
     deliberately not here yet: nothing in this commit grows the table, so the
     clause would be a speculative one with no proof to justify its shape.
-    `SubDecls` is defined (`Types/Decls.lean`) and unused, which is the honest
+    `SubDecls` is defined (`books/Books/Metatheory/Typing/Lang/Decls.lean`) and unused, which is the honest
     place to leave it. -/
 def UserEntryOk (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) :
     Prop :=
   ∃ md c, UserKey τr c ∧ (∀ k, TyClass h τr k → ResolvesUser h k mname md) ∧
     className h md.owner = c ∧ UserConforms D c mname md d
 
-/-- **The name misses on this dispatch class** (L254), and it is the *opposite polarity*
+/-- **The name misses on this dispatch class**, and it is the *opposite polarity*
     from `ResolvesAt`/`ResolvesUser`.
 
     `tryIterator` is reached only from `dispatchMiss`, which `invokeDispatch` reaches only
@@ -532,18 +532,18 @@ def UserEntryOk (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDe
 def MissesAt (h : Heap) (k : ObjId) (mname : String) : Prop :=
   lookupIn h k mname = none
 
-/-- **A block-taking row, witnessed by a native iterator** (L254) — `EntryOk`'s third
+/-- **A block-taking row, witnessed by a native iterator** — `EntryOk`'s third
     arm, and the one L242 named as the bill for `MethodDecl.blk`.
 
     Pinned to `Array#each` and nothing else, which is the same standing `baseDecls`'
     three `Integer` rows had when they were the whole table: `tryIterator`'s `match` on
     the name is a sixteen-way split with a different `IterKind`, element list and seed
-    per arm (L244), so there is no shared statement and each row that is ever declared
+    per arm, so there is no shared statement and each row that is ever declared
     pays for its own copy.
 
     **`bs.params = [.any]` is what keeps `Ty.arrayOf` off the critical path.**
     `KontOk.iterK`'s *every remaining element has the block's parameter types* premise is
-    then `ValuesTy h a [.any]`, which holds of **every** value (`ValueTy.any`, L232) — so
+    then `ValuesTy h a [.any]`, which holds of **every** value (`ValueTy.any`) — so
     this arm needs no claim about the array's contents at all. A precise element type
     would need `ValueTy h recv (.arrayOf σ)`, which is L239's arm and the dispatch rung
     behind it. -/
@@ -561,9 +561,9 @@ def IterEntryOk (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Prop :
 def EntryOk (D : Decls) (h : Heap) (τr : Ty) (mname : String) (d : MethodDecl) : Prop :=
   BuiltinEntryOk h τr mname d ∨ UserEntryOk D h τr mname d ∨ IterEntryOk h τr mname d
 
-/-- **A row `sigOf` handed over is witnessed by one of the *two* resolving arms** (L254).
+/-- **A row `sigOf` handed over is witnessed by one of the *two* resolving arms**.
 
-    `sigOf` refuses a block-taking row (L242) and `sigOf_declFor` therefore concludes at
+    `sigOf` refuses a block-taking row and `sigOf_declFor` therefore concludes at
     `blk := none`, while the iterator arm requires `some` — so the third disjunct is
     refuted by one projection wherever a blockless rule reads the table. Stated once here
     rather than at each of the three send cases, which then keep the two-way `rcases`
@@ -578,7 +578,7 @@ theorem EntryOk.blockless {D : Decls} {h : Heap} {τr : Ty} {mname : String}
   · exact Or.inr h2
   · exact absurd hdb (by simp)
 
-/-- **And the converse reading** (L255): a row that *does* take a block is witnessed by
+/-- **And the converse reading**: a row that *does* take a block is witnessed by
     the iterator arm and nothing else, because both resolving arms pin `blk = none`
     (`ConformsAt`'s and `UserConforms`'s L242 conjuncts). This is what the block-send
     rule's consecution case reads its dispatch out of. -/
@@ -602,7 +602,7 @@ theorem EntryOk.resolves {h : Heap} {τr : Ty} {mname bid : String} {recv : Valu
     (hrv : ValueTy h recv τr) : ResolvesTo h recv mname bid :=
   resolvesTo_of_resolvesAt (hres (classOf h recv) (valueTy_tyClass ha hn hnar hrv))
 
-/-- **What one constant row obliges** (L195), and it is three conjuncts where
+/-- **What one constant row obliges**, and it is three conjuncts where
     `ClassOk`'s class-object block carried seven — because `ValueTy h v (.clsOf n)`
     *already* says "a class-object receiver named `n`" (`classRecv` plus the name),
     so `classPayload?`, `className`, `k ≠ regexpId` and `k ≠ mathId` are all inside
@@ -630,8 +630,8 @@ theorem constOk_grow {h h' : Heap} {n : String} {τ : Ty} (hg : PlainGrow h h')
     rw [hg.payload]
     exact hsole j (by rw [← hg.payload]; exact hj) hjo
 
-/-- **And across a `def`.** `consts_defineMethod` (L156) is the constant-table half
-    and `typeAgree_defineMethod` (L137) the value half; both were written for other
+/-- **And across a `def`.** `consts_defineMethod` is the constant-table half
+    and `typeAgree_defineMethod` the value half; both were written for other
     consumers, which is the evidence that the clause is stated at the right level. -/
 theorem constOk_defineMethod {h : Heap} {cls : ObjId} {name : String} {md : MethodDef}
     {n : String} {τ : Ty} (hc : ConstOk h n τ) :
@@ -642,7 +642,7 @@ theorem constOk_defineMethod {h : Heap} {cls : ObjId} {name : String} {md : Meth
   rw [constOwn_defineMethod]
   exact hsole j (by rw [← classPayload?_isSome_defineMethod]; exact hj) hjo
 
-/-- **What one instance-variable row obliges** (L196), and the quantifier is the
+/-- **What one instance-variable row obliges**, and the quantifier is the
     whole content: **every** object of the class, not one receiver.
 
     An ivar read has no receiver to constrain — `@x` reads the frame's `self`, and the
@@ -661,7 +661,7 @@ def IvarOk (h : Heap) (c x : String) (τ : Ty) : Prop :=
     ∀ v, ((h.get o).ivars.find? (·.1 == x)).map Prod.snd = some v → ValueTy h v τ
 
 /-- `defineMethod` writes one object's **payload**; `ivars` and `klass` are different
-    fields of the same structure, so both are unmoved at every id (L196). -/
+    fields of the same structure, so both are unmoved at every id. -/
 theorem get_defineMethod_fields (h : Heap) (cls : ObjId) (name : String)
     (md : MethodDef) (o : ObjId) :
     ((defineMethod h cls name md).get o).ivars = (h.get o).ivars ∧
@@ -683,7 +683,7 @@ theorem get_defineMethod_fields (h : Heap) (cls : ObjId) (name : String)
       rw [objs_getD_set!_ne _ _ _ _ ho]
       exact ⟨rfl, rfl⟩
 
-/-- **`IvarOk` across an allocation** (L196). Two things to say and they are the two
+/-- **`IvarOk` across an allocation**. Two things to say and they are the two
     halves of `PlainGrow`: at an *old* id nothing moved (`className`, the `ivars`
     list) and `ValueTy` transports; at the **fresh** id the clause is about an object
     the old heap did not have, so the hypothesis cannot supply it — `PlainGrow`'s
@@ -720,7 +720,7 @@ theorem ivarOk_defineMethod {h : Heap} {cls : ObjId} {name : String} {md : Metho
 def MethodRowsOk (D : Decls) (h : Heap) : Prop :=
   ∀ τr mname d, declFor D τr mname = some d → EntryOk D h τr mname d
 
-/-- **What one scoped-constant row obliges** (L205), and the two quantifiers are the
+/-- **What one scoped-constant row obliges**, and the two quantifiers are the
     content.
 
     `∀ o` for `IvarOk`'s reason: the rule is keyed on a **name**, and only `ClassOk`'s
@@ -728,7 +728,7 @@ def MethodRowsOk (D : Decls) (h : Heap) : Prop :=
     name a program can write. So a row on `(C, n)` claims something about every class
     object named `C` at once.
 
-    The second conjunct is the `private_constant` gate (L104), and it has to be here
+    The second conjunct is the `private_constant` gate, and it has to be here
     rather than at the delivery for `KontOk.asgnIvar`'s reason: it is a fact about the
     heap that the *rule* cannot see, so the declaration is what carries it.
 
@@ -744,7 +744,7 @@ def ScopedConstOk (h : Heap) (c n : String) (τ : Ty) : Prop :=
         | none => true) = true ∧
     ∃ v, constLookupFrom h o n = some v ∧ ValueTy h v τ
 
-/-- **`ScopedConstOk` across an allocation** (L205). Every clause is pinned by a
+/-- **`ScopedConstOk` across an allocation**. Every clause is pinned by a
     `PlainGrow` field: `classPayload?` at every id (so both the constant tables and the
     `private_constant` lists), `className`, the ancestor walk (with saturation), and
     `ValueTy` by `typeAgree_of_plainGrow`. -/
@@ -761,7 +761,7 @@ theorem scopedConstOk_grow {h h' : Heap} {c n : String} {τ : Ty} (hg : PlainGro
   · rw [constLookupFrom_congr (fun j => by rw [hg.payload]) (hg.ancestors_eq hsat o)]
     exact hv
 
-/-- **And across a `def`** (L205) — `constLookupFrom_defineMethod` and
+/-- **And across a `def`** — `constLookupFrom_defineMethod` and
     `privateConsts_defineMethod` are the two halves, both written for this clause. -/
 theorem scopedConstOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
     {md : MethodDef} {c n : String} {τ : Ty} (hs : ScopedConstOk h c n τ) :
@@ -797,7 +797,7 @@ clause has to be quantified over every class object of that name and every chain
 class is on, which is `IvarOk`'s shape at a chain instead of at an object.
 -/
 
-/-- **What one `supers` row obliges** (L211). Stated over the **pair** (a class *name*
+/-- **What one `supers` row obliges**. Stated over the **pair** (a class *name*
     and a chain) rather than over one class, which is what avoids needing `ClassOk`'s
     uniqueness clause: uniqueness covers `readableClasses`, and every `super` in the
     slice is in a *program* class, which is exactly the population it does not cover.
@@ -806,7 +806,7 @@ class is on, which is `IvarOk`'s shape at a chain instead of at an object.
     push (`ResolvesUser` plus `UserConforms`), and it is deliberately not in this
     commit: with the builtin arm alone the table's rows are unsatisfiable for a program
     method, so `preludeDecls` declares none and the rule's front end reports a **needed
-    declaration** — §5's reading of an unsatisfiable requirement (`Regexp`, L106)
+    declaration** — §5's reading of an unsatisfiable requirement (`Regexp`)
     applies verbatim. What that buys is the rule and its consecution case landing before
     the harder witness, rather than after. -/
 def SuperOk (h : Heap) (c mname : String) (d : MethodDecl) : Prop :=
@@ -831,7 +831,7 @@ theorem superFound_congr {h h' : Heap} {k dm : ObjId} {mname : String}
 
 /-- **`SuperOk` across an allocation.** Every clause is a `PlainGrow` field:
     `classPayload?` at every id, `className`, and the chain (with saturation).
-    `ConformsAt` mentions no heap (L146), so the conformance half passes straight
+    `ConformsAt` mentions no heap, so the conformance half passes straight
     through. -/
 theorem superOk_grow {h h' : Heap} {c n : String} {d : MethodDecl} (hg : PlainGrow h h')
     (hsat : Saturated h) (hnames : NamesOk h) (hchains : ChainsIn h) (hs : SuperOk h c n d) : SuperOk h' c n d := by
@@ -965,7 +965,7 @@ theorem entry_dispatch {m : Machine} {τr : Ty} {mname : String} {d : MethodDecl
     -- `plainRecv` used to refute — so it has to be walked instead. What walks it is
     -- three refusals the judgement carries: `classRecv` excludes `Boot.regexpId`
     -- and `Boot.mathId` (the two singleton families `invoke` dispatches by
-    -- receiver id, L106) and `ConformsAt` excludes `mname = "new"` (the
+    -- receiver id) and `ConformsAt` excludes `mname = "new"` (the
     -- `invokeMaybeNew` interception). With those three, `invoke` falls through to
     -- `invokeDispatch` exactly as a plain receiver does.
     rcases hplain with hplain | hclass
@@ -1005,7 +1005,7 @@ def userFrame (recv : Value) (md : MethodDef) (mname : String) : Frame :=
     superScope := md.superScope, libraryOrigin := md.fromPrelude }
 
 set_option maxHeartbeats 1000000 in
-/-- **The user-method dispatch step** (L157) — `entry_dispatch`'s sibling, and the
+/-- **The user-method dispatch step** — `entry_dispatch`'s sibling, and the
     reason the two had to split rather than generalize.
 
     `entry_dispatch` concludes `.next (withCtl m (.value w))`: one step, a value,
@@ -1017,7 +1017,7 @@ set_option maxHeartbeats 1000000 in
 theorem user_dispatch {m : Machine} {cn : String} {mname : String} {md : MethodDef}
     {recv : Value} {site : SendSite}
     (hres : ResolvesUser m.heap (classOf m.heap recv) mname md)
-    -- **The receiver's type is pinned to the class arm** (L185). `UserEntryOk`
+    -- **The receiver's type is pinned to the class arm**. `UserEntryOk`
     -- requires `τr = .cls c`, so every caller has this shape already — and pinning
     -- it is what keeps the class-*object* receiver out of this lemma, where the
     -- dispatch would go through `invokeMaybeNew` rather than `invokeDispatch`.
@@ -1135,7 +1135,7 @@ theorem declOf?_declaresName {D : Decls} {cls name : String} {d : MethodDecl}
       ⟨cd, List.mem_of_find?_eq_some hf,
         List.any_eq_true.mpr ⟨e, List.mem_of_find?_eq_some he, hp⟩⟩))
 
-/-- **The `supers` table's half of the same fact** (L211), and it is why
+/-- **The `supers` table's half of the same fact**, and it is why
     `declaresName` grew a disjunct: a `def` of a name a `supers` row is keyed on can
     displace that row's target, so the `def` rule's freshness test has to see it. -/
 theorem superDecl?_declaresName {D : Decls} {cls name : String} {d : MethodDecl}
@@ -1244,12 +1244,12 @@ theorem declFor_declaresName {D : Decls} {τ : Ty} {mname : String} {d : MethodD
       -- see the note there for what `["Array"]` costs.
       | exact absurd h (by simp [declFor, tyClassNames])
 
-/-! ~~`ResolvesTo_defineMethod`~~ is **withdrawn** (L150): L147 moved its only caller
+/-! ~~`ResolvesTo_defineMethod`~~ is **withdrawn**: L147 moved its only caller
 (`DeclsOk_defineMethod`) to `ResolvesAt_defineMethod`, and a receiver-shaped resolution
 transport has had no consumer since. The receiver-shaped *predicate* `ResolvesTo` stays
 — `entry_dispatch` reads it, via `EntryOk.resolves` — but nothing transports it. -/
 
-/-! ~~`ResolvesTo_classOf`~~ and ~~`ResolvesTo_grow`~~ (L145) are **superseded by
+/-! ~~`ResolvesTo_classOf`~~ and ~~`ResolvesTo_grow`~~ are **superseded by
 L147's class indexing** and withdrawn. `ResolvesTo_classOf` said resolution factors
 through `classOf`; `ResolvesAt` *is* that factoring, so the lemma became `rfl`.
 `ResolvesTo_grow` transported the receiver-shaped form and needed the receiver to be
@@ -1258,13 +1258,13 @@ object, i.e. the reason the indexing changed. `ResolvesAt_grow` below needs no s
 hypothesis. -/
 
 /-- **Resolution survives an allocating step, for every class, with no side
-    condition** (L147). Every clause of `ResolvesAt` is a fact about the method
+    condition**. Every clause of `ResolvesAt` is a fact about the method
     table, the ancestor walk or the shadow gate at a *class id*, and `PlainGrow` pins
     all three at every id — so unlike the receiver-shaped version this says something
     about classes the old heap had no instances of, which is the case a producer
     creates.
 
-    `Saturated` enters once, through `ancestors` (L144). Contrast
+    `Saturated` enters once, through `ancestors`. Contrast
     `ResolvesAt_defineMethod`, whose side condition is *name* disjointness: a write to
     an existing table can displace an entry, an allocation cannot. -/
 theorem ResolvesAt_grow {h h' : Heap} {k : ObjId} {mname bid : String}
@@ -1275,7 +1275,7 @@ theorem ResolvesAt_grow {h h' : Heap} {k : ObjId} {mname bid : String}
   · rw [lookupIn_grow hg hsat hchains]; exact hlook
   · rw [hg.ancestors_eq hsat, crubyShadow_grow hg hnames]; exact hbtw
 
-/-- **The user arm's growth transport** (L157). Clause for clause the same argument
+/-- **The user arm's growth transport**. Clause for clause the same argument
     as `ResolvesAt_grow`, plus one: `(classPayload? md.owner).isSome`, which
     `PlainGrow` pins at *every* id. That extra clause is the frame's definee, and it
     is the only place the user arm reads the heap somewhere `ResolvesAt` does not. -/
@@ -1331,7 +1331,7 @@ available for both steps, and for the same reason in both: `TyClass` reads only
 both answer `"Object"` and `none`.
 
 This is where the inhabitant-indexed clause failed. `ValueTy` does **not** transport
-backwards across a growing heap (L143), because a fresh object *is* a new inhabitant;
+backwards across a growing heap, because a fresh object *is* a new inhabitant;
 a fresh object is not a new class.
 -/
 
@@ -1381,7 +1381,7 @@ theorem TyClass_grow {h h' : Heap} {τr : Ty} {k : ObjId} (hg : PlainGrow h h') 
     exact ⟨by rw [← hg.payload k]; exact ht.1, by rw [← hg.className_eq k hnames]; exact ht.2⟩
   | _ => exact ht
 
-/-! ~~`ConformsAt_defineMethod`~~ is **withdrawn** (L146) rather than repaired.
+/-! ~~`ConformsAt_defineMethod`~~ is **withdrawn** rather than repaired.
 `ConformsAt` no longer mentions a heap, so a heap-writing step has nothing to
 re-establish about it and the lemma has no content. It is worth recording what it
 *was*: the only consumer of `TypeAgree`'s backward direction — the one L143 had to
@@ -1411,7 +1411,7 @@ theorem DeclsOk_defineMethod {D : Decls} {h : Heap} {cls : ObjId} {name : String
     intro heq
     rw [heq] at hdecl
     exact absurd (declFor_declaresName hdecl) (by simp [hfresh])
-  -- `hconf` passes straight through (L146): it is a fact about `bid` and `decl`, not
+  -- `hconf` passes straight through: it is a fact about `bid` and `decl`, not
   -- about this heap. What is left is resolution, and after L147 that is
   -- class-indexed — so the hypothesis read backwards is `TyClass`, not `ValueTy`.
   -- **That is what retired `TypeAgree`'s backward direction**: `TyClass` transports
@@ -1904,17 +1904,17 @@ theorem DeclsOk_of_subDecls {D D' : Decls} {h : Heap} (hd : DeclsOk D h)
     subst this
     exact EntryOk_mono hs (hd.1 τ n d0 hold)
 
-/-- **The invariant survives an allocating step, unconditionally** (L147).
+/-- **The invariant survives an allocating step, unconditionally**.
 
     L146 proved this with a side condition — *every receiver the new heap types was
     already typed by some receiver of the same dispatch class* — which was the honest
     form of an inhabitant-indexed clause and would have become real work the moment a
     user class had a declared row. L147's class indexing removes it: `TyClass`
     transports backwards (`TyClass_grow`), `ResolvesAt` forwards
-    (`ResolvesAt_grow`), and conformance mentions no heap at all (L146). There is
+    (`ResolvesAt_grow`), and conformance mentions no heap at all. There is
     nothing left to assume.
 
-    ~~`DeclsOk_grow_ground`~~ and ~~`declsOk_baseDecls_grow`~~ (L146) are withdrawn
+    ~~`DeclsOk_grow_ground`~~ and ~~`declsOk_baseDecls_grow`~~ are withdrawn
     with the side condition they discharged. Their content was *"the base table
     declares nothing at a class type, so the fresh object inhabits nothing declared"*
     — true, still true, and no longer load-bearing. That is the good kind of
@@ -2016,7 +2016,7 @@ def TableOk (h : Heap) : Prop :=
     which resumes a different frame.
 
     The clause is quantified over `hookFreeNames` (J34, defined with the fragment
-    tables in `Types/Fragment.lean`). -/
+    tables in `Sorbet/Fragment.lean`). -/
 def NoHook (h : Heap) : Prop :=
   (h.classPayload? Boot.objectId).isSome ∧
     (∀ k, (h.classPayload? k).isSome → ∀ n ∈ hookFreeNames, lookup h (.ref k) n = none) ∧
@@ -2061,7 +2061,7 @@ theorem NoHook_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturated h) (hc
   rw [lookup_grow hg hsat hchains (fun o hEq => by cases hEq; exact classPayload?_isSome_lt hk')]
   exact hh.2.1 k hk' n hn
 
-/-- **And a `def`** (L153). The receiver's dispatch class is unchanged
+/-- **And a `def`**. The receiver's dispatch class is unchanged
     (`classOf_defineMethod`) and the name differs, so `lookup_defineMethod` applies at
     every class object — the same argument L149's Object-only version made, now made
     once per definee rather than once. -/
@@ -2099,7 +2099,7 @@ theorem NoHook_defineMethod {h : Heap} {cls : ObjId} {name : String} {md : Metho
       rw [hmm]
       exact hh.2.2.2 j (by rwa [ancestors_defineMethod] at hjm) cp0 hj0 n hn
 
-/-- `noHookB` reflects `NoHook` (L153). The out-of-range ids are the only interesting
+/-- `noHookB` reflects `NoHook`. The out-of-range ids are the only interesting
     step: `classPayload?` answers `none` there, so the clause holds vacuously and the
     bounded `all` really does decide an unbounded `∀`. -/
 theorem noHookB_sound {h : Heap} (hb : noHookB h = true) : NoHook h := by
@@ -2133,7 +2133,7 @@ theorem noHookB_sound {h : Heap} (hb : noHookB h = true) : NoHook h := by
     · exact this.1
     · exact this.2
 
-/-- **The boot `String` id is a class named `"String"`** (L151), and it is the
+/-- **The boot `String` id is a class named `"String"`**, and it is the
     fourth heap conjunct for the same reason the other three are conjuncts rather
     than theorems: nothing in the `Heap` *type* forbids a heap where it is false,
     and no step a program can take makes it false.
@@ -2199,7 +2199,7 @@ theorem LitClsOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
 
 /-! ### The reopen promise
 
-`ClassOk` is `Inv`'s **fifth** heap conjunct (L156) and the first that is indexed
+`ClassOk` is `Inv`'s **fifth** heap conjunct and the first that is indexed
 by something the *program* chooses rather than by a boot id. It is the D10-shaped
 program-indexed clause `HANDOFF.md` §What is left item 4 asked for, in the only
 form that is preserved: not *absent or a class* — "absent" is falsified by the
@@ -2208,9 +2208,9 @@ step in the fragment leaves alone.
 -/
 
 /-- **Nothing strictly in front of `Object` on `k`'s ancestor chain owns a
-    constant** — and `Object` is on the chain at all (L178).
+    constant** — and `Object` is on the chain at all.
 
-    This is the clause `scripts/probes/consts_probe.lean` measured (L177), and it is
+    This is the clause `scripts/probes/consts_probe.lean` measured, and it is
     stated over the **reach** rather than over the heap because the obvious
     version is *false*: five names are owned by both `Object` and `T` at the
     prelude-booted heap (`Struct`, `Enumerable`, `Range`, `Hash`, `Array`), so
@@ -2219,7 +2219,7 @@ step in the fragment leaves alone.
     `{String, Comparable}` and it owns **0** constants.
 
     Why it is what a name-keyed constant table needs: a constant *read* is
-    artifact 03 §4's two phases — lexical over the frame's `cref`, then
+    Semantics 03 §4's two phases — lexical over the frame's `cref`, then
     inheritance over `ancestors h defmod` — so a table keyed on the name alone
     is sound only if that walk reaches the class the table is about. Both
     clauses here are one half of that: `Object` is reachable, and nothing gets
@@ -2250,7 +2250,7 @@ theorem NoShadowBefore_grow {h h' : Heap} (hg : PlainGrow h h') (hsat : Saturate
   exact hno j hj cp hcp
 
 /-- **And a `def`.** `defineMethod` writes `methods`; the walk reads `clsShape`
-    and this clause reads `consts`, and `consts_defineMethod` (L156) is exactly the
+    and this clause reads `consts`, and `consts_defineMethod` is exactly the
     lemma that says the second is untouched — including at the definee itself,
     which is the case that makes it worth having. -/
 theorem NoShadowBefore_defineMethod {h : Heap} {cls k : ObjId} {name : String}
@@ -2324,7 +2324,7 @@ theorem firstM_lookupOwn {h : Heap} {n : String} {v : Value}
         exact hno j hmm cp hcp
       simp [List.firstM, hnone, ih hrest hno']
 
-/-- **The lexical phase can only hit `Object`** (L189). Whatever the `cref` is, either
+/-- **The lexical phase can only hit `Object`**. Whatever the `cref` is, either
     it misses the name or the hit is `Object`'s value — which is what makes the read
     safe over a `cref` the invariant says nothing about, and what a frame clause would
     otherwise have had to buy. -/
@@ -2350,13 +2350,13 @@ theorem firstM_sole_owner {h : Heap} {n : String} {v : Value}
       · exact Or.inl (by simp [List.firstM, hnone, h1])
       · exact Or.inr (by simp [List.firstM, hnone, h1])
 
-/-- **The whole constant read, in one equation** (L189) — and the *inheritance*
+/-- **The whole constant read, in one equation** — and the *inheritance*
     phase is never consulted.
 
     `evalExpr`'s `.const` arm is the lexical phase over the frame's `cref` and then
     the ancestor walk, and two facts collapse it to `Object`'s own table: `Object` is
-    **on** the cref (`StackCtx`, L189) so the lexical phase cannot miss, and `Object`
-    is the **sole owner** of the name (`ClassOk`, L189) so whatever it hits is
+    **on** the cref (`StackCtx`) so the lexical phase cannot miss, and `Object`
+    is the **sole owner** of the name (`ClassOk`) so whatever it hits is
     `Object`'s. The `orElse` is therefore dead code under the invariant, which is why
     the rule needs nothing about `ancestors` — the `NoShadowBefore` an earlier draft
     reached for is not required at all.
@@ -3072,9 +3072,9 @@ def ClassOk (h : Heap) : Prop :=
   -- `ancestors` puts `prepends` first, so a module prepended to `Object` and
   -- owning a constant would shadow the toplevel table.
   NoShadowBefore h Boot.objectId ∧
-  -- **Quantified over `readableClasses`, not `reopenableClasses`** (L194), and the
+  -- **Quantified over `readableClasses`, not `reopenableClasses`**, and the
   -- three clauses only the *reopen* rule needs are behind an implication. The
-  -- `.const` read (L189) and the `class C … end` reopen (L156) are different rules
+  -- `.const` read and the `class C … end` reopen are different rules
   -- with different obligations, and until L194 they shared a table because the read
   -- was built on top of the reopen's. Splitting them is worth 7 method bodies of the
   -- slice, and it is measured rather than argued
@@ -3106,7 +3106,7 @@ def ClassOk (h : Heap) : Prop :=
     -- **L189, and these two are what the `.const` *read* rule needs.**
     --
     -- First: the class object is a **legal receiver** — `classRecv` excludes the two
-    -- ids `invoke` dispatches singleton families from (L185), so a name whose class
+    -- ids `invoke` dispatches singleton families from, so a name whose class
     -- object were `Regexp` or `Math` could be read but not sent to. Decidable, and it
     -- is the price of a `reopenableClasses` row exactly as the clauses above are.
     k ≠ Boot.regexpId ∧ k ≠ Boot.mathId ∧
@@ -3119,7 +3119,7 @@ def ClassOk (h : Heap) : Prop :=
     -- has exactly one owner, `Object`), and preserved because nothing in the fragment
     -- writes a constant anywhere else.
     (∀ j, (h.classPayload? j).isSome → j ≠ Boot.objectId → constOwn h j n = none) ∧
-    -- **And the three the *reopen* rule needs on top** (L194), behind the membership
+    -- **And the three the *reopen* rule needs on top**, behind the membership
     -- that distinguishes the two tables.
     (n ∈ reopenableClasses →
       -- Not redundant with being a class: a `ClassPayload` describes modules too, and
@@ -3390,7 +3390,7 @@ theorem ClassOk_defineMethod {h : Heap} {cls : ObjId} {name : String}
     · rw [className_defineMethod]; exact h4
     · exact h5 j (by rw [← classPayload?_isSome_defineMethod]; exact hj)
         (by rw [← className_defineMethod]; exact hjn)
-    · -- L189: `defineMethod` writes `methods`, and `consts_defineMethod` (L156) is
+    · -- L189: `defineMethod` writes `methods`, and `consts_defineMethod` is
       -- the lemma that says the constant table is untouched — including at the
       -- definee, which is why it was written.
       have hcs := consts_defineMethod h cls j name md
@@ -3483,7 +3483,7 @@ theorem entryOk_int {h : Heap} {mname bid : String} {op : Int → Int → Int}
       exact ⟨fun h' => hdefer h' a y, .int (op a y), m, hrun a y m, ValueTy.exact rfl,
         PlainGrow.rfl' _, rfl, rfl, rfl, rfl⟩
 
-/-- **The nullary sibling of `entryOk_int`** (L152). The same three-clause shape with
+/-- **The nullary sibling of `entryOk_int`**. The same three-clause shape with
     `ValuesTy` pinning the argument list to `[]` instead of to one integer — which is
     the whole difference an arity makes to the *invariant*, as against the difference
     it makes to the machine (a whole `KontOk` constructor and consecution case, because
@@ -3516,7 +3516,7 @@ theorem entryOk_int_nullary {h : Heap} {mname bid : String} {τret : Ty}
 
 /-- **The base table declares nothing at a class type.** `baseDecls`'s only key is
     `"Integer"`, and `tyClassNames` subtracts the ground names from the class arm's
-    range (L141) precisely so that `.cls "Integer"` — whose inhabitants are objects
+    range precisely so that `.cls "Integer"` — whose inhabitants are objects
     of *some* class merely named `Integer` — cannot read `Integer`'s row.
 
     Pulled out of `tableOk_declsOk`'s class arm in L146, where it discharged the
@@ -3554,7 +3554,7 @@ theorem constTy?_clsOf_inv : ∀ {ns : List String} {n : String} {τ : Ty},
       obtain ⟨h1, h2⟩ := constTy?_clsOf_inv h
       exact ⟨List.mem_cons_of_mem _ h1, h2⟩
 
-/-- **`ClassOk` read out at one `baseConsts` entry** (L195). The entry's type is
+/-- **`ClassOk` read out at one `baseConsts` entry**. The entry's type is
     `.clsOf n` by construction, and `ValueTy h (.ref k) (.clsOf n)` is `classRecv` plus
     the name — which is what `ClassOk`'s payload clause, its two id clauses and its
     `className` clause say between them. So this lemma is the L194 clause set,
@@ -3584,7 +3584,7 @@ theorem constOk_of_classOk {h : Heap} {n : String} {τ : Ty} (hcls : ClassOk h)
     cases hp : (h.get k).payload <;> simp_all
   simp [valueTy?, hnp, hcr, hnm]
 
-/-- **The constant table's obligation, decided** (L195). Lives in `Books/Metatheory/` rather
+/-- **The constant table's obligation, decided**. Lives in `Books/Metatheory/` rather
     than in `HeapCert.lean` — where `heapOkB` and `classOkB` live — for one reason:
     it has to call `valueTy?`, and that is `Books/Metatheory/Typing/Infer/Locals.lean`'s. The
     one-definition-two-readers rule then says the probe must import *this* rather
@@ -3593,7 +3593,7 @@ theorem constOk_of_classOk {h : Heap} {n : String} {τ : Ty} (hcls : ClassOk h)
     Why a certificate at all, when nothing consumes it yet: `preludeDecls` is the
     table `--assn` reports against, and its `T` row is a claim about the
     prelude-booted heap that the kernel cannot check (`Lean.Json.parse` does not
-    reduce, L135). A row asserted and not decided is exactly what `reopen_probe`
+    reduce). A row asserted and not decided is exactly what `reopen_probe`
     exists to prevent. -/
 def constsOkB (h : Heap) (cs : List (String × Ty)) : Bool :=
   cs.all fun e =>
@@ -3648,7 +3648,7 @@ theorem constsOk_of_constsOkB {h : Heap} {D : Decls} (hb : constsOkB h D.consts 
     rw [show (n, τ) = e from by rw [← hname, ← hn]]
     exact hmem
 
-/-- **The bridge, with one new hypothesis** (L195). `baseDecls.consts` is
+/-- **The bridge, with one new hypothesis**. `baseDecls.consts` is
     `readableClasses` mapped to class-object types, and `ClassOk` is exactly the
     predicate that says those names are there, at legal receivers, solely owned — so
     the constant half is `ClassOk` read out rather than anything new. The hypothesis
@@ -3829,7 +3829,7 @@ theorem constOk (hi : IvarOnly h h') {n : String} {τ : Ty} (hc : ConstOk h n τ
   rw [hi.constOwn_eq]
   exact hsole j (by rw [hi.classPayload] at hj; exact hj) hjo
 
-/-- **And the scoped-constant clause** (L205), which `IvarOnly` carries for `constOk`'s
+/-- **And the scoped-constant clause**, which `IvarOnly` carries for `constOk`'s
     reason: `consts` and `privateConsts` are fields of a *class payload*, and an ivar
     write moves no payload anywhere. -/
 theorem scopedConstOk (hi : IvarOnly h h') {c n : String} {τ : Ty}
@@ -3846,7 +3846,7 @@ theorem scopedConstOk (hi : IvarOnly h h') {c n : String} {τ : Ty}
   · rw [constLookupFrom_congr (fun j => by rw [hi.classPayload]) (hi.ancestors_eq o)]
     exact hv
 
-/-- **`SuperOk` across an ivar write** (L211). `IvarOnly` pins every `classPayload?`,
+/-- **`SuperOk` across an ivar write**. `IvarOnly` pins every `classPayload?`,
     so both the chain and the per-class method table are unmoved, and `ConformsAt`
     mentions no heap. -/
 theorem superOk (hi : IvarOnly h h') {c n : String} {d : MethodDecl}
@@ -3861,7 +3861,7 @@ theorem superOk (hi : IvarOnly h h') {c n : String} {d : MethodDecl}
        exact hf,
     hb, hu, hconf⟩
 
-/-- **Only three of the four halves** (L196, L205), and the omission is the rung:
+/-- **Only three of the four halves**, and the omission is the rung:
     `IvarOnly` says an ivar write is invisible, and `DeclsOk`'s *ivar* half is the one
     that is *about* ivars. The `@x = e` consecution case has to re-establish that half
     from the rule's own conformance check, which is why the rule has one. -/

@@ -144,7 +144,7 @@ end
 deriving instance Repr for Expr, Param, KwEntry
 deriving instance Inhabited for Expr, Param
 /-! Structural equality on syntax. Originally added for certificate-claim lookup (a
-claim was keyed on the subterm it was about); claims are gone (`AGENTS.md` §Claim-free),
+claim was keyed on the subterm it was about); claims are gone,
 but `==` is still what `Check13.lean` uses to pin each hand-written `Expr` to the
 committed corpus JSON. `BEq`, not `DecidableEq`: `flt` carries a `Float`, which has no
 `DecidableEq` — comparing two `NaN`-bit-pattern literals with `==` answers `false`, the

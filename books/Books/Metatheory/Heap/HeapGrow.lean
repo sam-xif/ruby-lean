@@ -64,7 +64,7 @@ structure PlainGrow (h h' : Heap) : Prop where
       literals, whose classes are boot ids. -/
   freshKlass : ∀ o, h.objs.size ≤ o → o < h'.objs.size →
     (h'.get o).klass < h.objs.size ∧ (h'.get o).eigen = none
-  /-- **And a fresh object has no instance variables** (L196). Not hygiene: `IvarOk`
+  /-- **And a fresh object has no instance variables**. Not hygiene: `IvarOk`
       is quantified over *every* object of a class, so an allocation could break a row
       by producing an instance with a badly-typed `@x`, and nothing else in `PlainGrow`
       bounds the fresh slots. Every allocation the fragment performs is a *literal* —
@@ -73,7 +73,7 @@ structure PlainGrow (h h' : Heap) : Prop where
       (Wall 2) is where it stops being one. -/
   freshIvars : ∀ o, h.objs.size ≤ o → (h'.get o).ivars = []
 
-/-- **Reflexivity** (L215), which is what makes an allocating `ConformsAt` a strict
+/-- **Reflexivity**, which is what makes an allocating `ConformsAt` a strict
     generalization: every witness that leaves the machine alone supplies this and reads
     exactly as it did. `freshIvars` is vacuous because `h.objs.size ≤ o` puts `o` out of
     bounds and `Heap.get` answers the default object there, whose `ivars` is `[]`. -/

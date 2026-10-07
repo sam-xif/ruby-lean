@@ -1,6 +1,6 @@
 import RubyCore.Interp.Construct
 
-/-! Native dup/clone initialization protocols (L298–L299). Allocation copies
+/-! Native dup/clone initialization protocols. Allocation copies
 ivars before the ordinary private hooks; clone freezes only after normal return. -/
 namespace RubyCore.Interp
 

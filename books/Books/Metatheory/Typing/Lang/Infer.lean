@@ -1,4 +1,4 @@
-import RubyCore.Types.Decls
+import Books.Metatheory.Typing.Lang.Decls
 
 /-!
 # P0 of the static-soundness POC — the type language and the checker
@@ -17,13 +17,13 @@ proof owed — `none` simply means `unknown`.
 Inference is **flow-sensitive** in the environment (Ruby locals are assigned,
 not declared), so every judgment threads an input and an output environment.
 
-**F1a threads a second thing: the declaration table `D`** (`Types/Decls.lean`).
+**F1a threads a second thing: the declaration table `D`** (`books/Books/Metatheory/Typing/Lang/Decls.lean`).
 Where P0 consulted a `builtinSig` *function*, every rule now consults `sigOf D`,
 and `check` supplies `declsOf p`. Today that is `baseDecls` for every program, so
 no verdict moves; what the threading buys is that the invariant has a table to be
 a refinement *of* (`books/Books/Metatheory/Typing/Infer/Decls.lean`), and that F1b's program-supplied
 declarations are a change to `declsOf` rather than to the rules. `Ty`/`Env` moved
-to `Types/Ty.lean` in the same commit, unchanged.
+to `Sorbet/Ty.lean` in the same commit, unchanged.
 -/
 
 namespace RubyCore.Types
@@ -244,7 +244,7 @@ def defFreePairs (prs : List (Expr × Expr)) : Bool :=
   | (k, v) :: rest => defFree k && defFree v && defFreePairs rest
 termination_by sizeOf prs
 
-/-- **The expression neither assigns a local nor opens a loop** (L234), and it is
+/-- **The expression neither assigns a local nor opens a loop**, and it is
     `defFree`'s shape at two different constructors.
 
     What it buys is *environment monotonicity*: `infer` threads the environment, and the
@@ -354,7 +354,7 @@ mutual
     this commit changes no verdict, which is the same argument L137 makes for
     heap-indexing a judgement whose arms do not yet read the heap.
 
-    **`top` is the toplevel-position flag** (L155), and it exists for exactly one
+    **`top` is the toplevel-position flag**, and it exists for exactly one
     future rule: `class C … end` reopens a constant looked up in the *current
     definee's* own constant table (`enterClassBody`'s `constOwn m.currentFrame.defmod`,
     `Interp/Dispatch.lean:236`), and the only definee whose table an invariant can
@@ -384,7 +384,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   | .tru => some (.bool, Γ, D)
   | .fls => some (.bool, Γ, D)
   | .nil => some (.nilT, Γ, D)
-  -- **The first producer of a class-typed value** (F1b.3, L151). A string
+  -- **The first producer of a class-typed value** (F1b.3). A string
   -- literal allocates a fresh plain `String` (`Builtins.allocStr`), so this is
   -- the one construct that inhabits `Ty.cls` in a *single* step, with no
   -- constant read, no send and no dispatch — which is why it is the producer
@@ -395,9 +395,9 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   -- because `infer` is a pure function of the program. Tying it to the object
   -- the step really allocates is `Inv`'s job, and the clause that does it is
   -- `LitClsOk` — *the boot `String` id is a class named `"String"`* — which is
-  -- the same put-the-condition-in-the-judgement move as `NoHook`'s bound (L149).
+  -- the same put-the-condition-in-the-judgement move as `NoHook`'s bound.
   | .str _ => some (.cls "String", Γ, D)
-  -- **A symbol literal** (L159). `Ty.sym` has existed since P0 — a `def`
+  -- **A symbol literal**. `Ty.sym` has existed since P0 — a `def`
   -- evaluates to one — and this is the rule for *writing* one, which nothing had
   -- needed until the slice was measured: `homebrew/fragment-gap.py` ranks `sym`
   -- third by nodes (**281**) and joint-first by files (**all 8**), against a rule
@@ -445,7 +445,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       | some ([], τret) => some (τret, Γ, D)
       | _ => none
     | none => none
-  -- **`ctx.inBlock = false`** (L252), and it is the *one* construct a block frame cannot
+  -- **`ctx.inBlock = false`**, and it is the *one* construct a block frame cannot
   -- host. `Machine.setLocal` walks the `captured` chain and mutates the frame that
   -- already binds the name — which for a block frame may be the **enclosing** activation,
   -- invalidating that frame's own entry in `FramesOk` at a type its environment still
@@ -467,7 +467,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       match infer D Γ rhs top ctx with
       | some (τ, Γ₁, D₁) => some (τ, envSet Γ₁ x τ, D₁)
       | none => none
-  -- **`@x = e`** (L191). The rule is a *guard* plus the right-hand side's own
+  -- **`@x = e`**. The rule is a *guard* plus the right-hand side's own
   -- answer, and the guard is `selfCls`.
   --
   -- Why that guard and not something about `x`: `applyKont`'s ivar arm raises
@@ -499,7 +499,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         | none => some (τ, Γ₁, D₁)
       | none => none
     | none => none
-  -- **An instance-variable read** (L196), and the two halves of the answer are both
+  -- **An instance-variable read**, and the two halves of the answer are both
   -- forced by the machine.
   --
   -- `selfCls` because `evalExpr` reads the frame's `self` (`Interp.lean:139`), and
@@ -528,12 +528,12 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
     -- one that prefix left, and `KontOk.argsK`'s signature premise has to be
     -- readable at the table the **last** argument leaves.
     --
-    -- **A literal `self` receiver is admitted** (L172). F1b.11 excluded it, and the
+    -- **A literal `self` receiver is admitted**. F1b.11 excluded it, and the
     -- reason was a fact about the machine rather than about types: `evalExpr` picks
     -- the send *site* syntactically, so `self.foo` is a `.selfRecv` send and takes a
     -- different path through `visError?` than `.explicit`.
     --
-    -- **Any positive arity** (L175). `startArgs` walks the argument list one at a
+    -- **Any positive arity**. `startArgs` walks the argument list one at a
     -- time, pushing one `argsK` per argument, so the rule's shape is `inferArgs` —
     -- the list of argument *types*, in order, matched against the whole parameter
     -- list. The zero-argument case is a separate arm because it is a different
@@ -548,7 +548,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         | none => none
       | none => none
     | none => none
-  -- **A zero-argument send** (L152). Split from the positive-arity rule rather than
+  -- **A zero-argument send**. Split from the positive-arity rule rather than
   -- folded into it, because the two are *different machine shapes*: with arguments
   -- the receiver's `recvK` pushes an `argsK` and dispatch happens a step later,
   -- while with none `applyKont` runs `startArgs … [] []`, which is `finishSend` — so
@@ -561,7 +561,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       | some ([], τret) => some (τret, Γ₁, D₁)
       | _ => none
     | none => none
-  -- **A written receiverless call** (L170/L171/L175): `foo`, `foo()`, `foo(x, y)`.
+  -- **A written receiverless call**: `foo`, `foo()`, `foo(x, y)`.
   -- The *typing* is the `vcall` rule with an argument list — same receiver (the
   -- frame's `self`), same table read — and the *machine* difference is one
   -- `SendSite` constructor: `evalExpr` answers both with
@@ -593,7 +593,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         | none => none
       | none => none
     | none => none
-  -- **A constant read** (L189), and it is the first `Expr` head to *produce* a
+  -- **A constant read**, and it is the first `Expr` head to *produce* a
   -- class-object type — the arm L184/L185 built with no producer.
   --
   -- **Keyed on the *table* since L195**, not on a global list, and that is what lets
@@ -623,7 +623,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
     match constTy? D n with
     | some τ => some (τ, Γ, D)
     | none => none
-  -- **An array literal** (L174), and it is L151's string-literal producer with a
+  -- **An array literal**, and it is L151's string-literal producer with a
   -- list in front of it: `continueArray` evaluates the elements left to right and
   -- then `Builtins.allocArr`s one fresh plain `Array` — the *same* `Heap.alloc` of
   -- a non-class object, at `Boot.arrayId` instead of `Boot.stringId`. So the value
@@ -684,7 +684,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   --   is admitted for exactly those names anyway.
   -- * **`defFree body`** — the body's typing is carried in the invariant and has to
   --   survive the program's *later* declarations, which is `infer_mono`, whose
-  --   hypothesis this is (L161). A declared method may not itself declare one.
+  --   hypothesis this is. A declared method may not itself declare one.
   --
   -- The body must also leave the table as it found it, for the same reason the
   -- class-body rule's stability condition existed: `KontOk.frameK` carries one
@@ -695,7 +695,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       -- The body is checked even though nothing can call it yet. Skipping the
       -- check would accept more programs *now* and fewer once calls arrive,
       -- which is a ratchet regression; the fragment only ever grows.
-      -- **`ret := none` explicitly** (L198), not inherited: a `def` computes its
+      -- **`ret := none` explicitly**, not inherited: a `def` computes its
       -- return type *from* the body, so it cannot name one for the body to check a
       -- `return` against. Inheriting `ctx.ret` would be worse than wrong — it would
       -- check the inner body's returns against the *enclosing* method's type.
@@ -723,14 +723,14 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
                      inBlock := false } with
       | some (τb, _, Db) =>
         if Db = D then
-          -- **`groundClassNames` is excluded** (L189). `reopenableClasses` grew to
+          -- **`groundClassNames` is excluded**. `reopenableClasses` grew to
           -- eight names, five of which are the classes the *ground* arms of `Ty`
           -- denote — and `tyClassNames` subtracts those from the class arm's range,
           -- so a row keyed on one would owe `EntryOk` over receivers the row was
-          -- never about (`Types/Decls.lean`'s note on that subtraction).
+          -- never about (`books/Books/Metatheory/Typing/Lang/Decls.lean`'s note on that subtraction).
           -- `DeclsOk_addRow` says so in its hypotheses; this is the rule keeping
           -- them true.
-          -- **`ctx.ret.isNone`** (L200), and it costs nothing while buying the last
+          -- **`ctx.ret.isNone`**, and it costs nothing while buying the last
           -- fact the `return` rule needs. A `def` is the *only* arm that grows the
           -- table at `top = false` (`class'` needs `top = true`), so refusing the row
           -- when the enclosing method declares a return type makes the table
@@ -743,7 +743,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
           -- row*, not the program: the `else` branch below still types the `def`, it
           -- just declares nothing — which `UserConforms`' `defFree` was already doing
           -- to such a body anyway.
-          -- **`ctx.inLoop.isNone`** (L226) is L200's `ctx.ret.isNone` again, for the
+          -- **`ctx.inLoop.isNone`** is L200's `ctx.ret.isNone` again, for the
           -- other jump channel. With it, `def`'s row is the only arm that grows the table
           -- at `top = false` *and* it cannot fire inside a loop — which makes the table
           -- **constant along every continuation chain inside a loop body**, which is what
@@ -753,7 +753,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
           if top = false ∧ name ≠ "initialize" ∧ reopenableClasses.contains ctx.cls ∧
               groundClassNames.contains ctx.cls = false ∧ defFree body = true ∧
               ctx.ret.isNone ∧ ctx.inLoop.isNone ∧
-              -- **`ctx.inBlock = false`** (L249), and it is `ctx.ret.isNone`'s shape at
+              -- **`ctx.inBlock = false`**, and it is `ctx.ret.isNone`'s shape at
               -- the block channel. `StackCtx`'s name clause is guarded on the same flag
               -- — a block activation copies its definee from the frame the closure
               -- captured, and nothing ties that id to this context — so the row's key,
@@ -765,18 +765,18 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         else none
       | none => none
     else none
-  -- **Reopening a class** (F1b.6, L156). Three restrictions, and each one names a
+  -- **Reopening a class** (F1b.6). Three restrictions, and each one names a
   -- branch of `enterClassBody` the invariant cannot survive rather than a matter of
   -- taste:
   --
   -- * `top` — the reopen lookup is `constOwn m.currentFrame.defmod name`, the
   --   definee's *own* constant table, and `Object`'s is the only one `Inv`
-  --   describes (`BottomObj`, L155).
+  --   describes (`BottomObj`).
   -- * `sup.isNone` — an explicit superclass evaluates first (`classDefK`) and then
   --   has to *match*, and a mismatch is `raiseErr`.
   -- * `reopenableClasses.contains name` — the promise that the constant is there
   --   and is a non-module class, so the step is neither an allocation nor a
-  --   `TypeError`. `Types/Decls.lean` says why that is a table.
+  --   `TypeError`. `books/Books/Metatheory/Typing/Lang/Decls.lean` says why that is a table.
   --
   -- The body is checked in the **empty** environment at `top := false`, because
   -- `enterClassBody` pushes a frame with no locals and a definee that is the class.
@@ -829,7 +829,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         | none => none
       else none
     | none => none
-  -- **`return e`** (L200), and it is a *guard* plus a conformance check.
+  -- **`return e`**, and it is a *guard* plus a conformance check.
   --
   -- The guard is `ctx.ret`: a `return` has a target only inside a method activation
   -- that declares a return type, and a class body or the toplevel declares none — the
@@ -856,7 +856,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       -- A bare `return` yields `nil`, so the declared type has to admit it.
       | none => if subTy .nilT σ then some (.nilT, Γ, D) else none
     | none => none
-  -- **`::n`, an absolute constant read** (L203) — and it is the *same table read* as
+  -- **`::n`, an absolute constant read** — and it is the *same table read* as
   -- `.const n`, one lookup shorter.
   --
   -- `evalExpr`'s `.cpath none` arm is `constLookup m.heap n`, which is `Object`'s own
@@ -873,7 +873,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
     match constTy? D n with
     | some τ => some (τ, Γ, D)
     | none => none
-  -- **`C::n`, a scoped constant read** (L205), and it is the *other* lookup: where
+  -- **`C::n`, a scoped constant read**, and it is the *other* lookup: where
   -- `::n` is `Object`'s own table, this is `constLookupFrom` — the ancestors walk from
   -- the class object the base evaluates to (`Interp/Kont.lean`'s `.cpathK`).
   --
@@ -889,15 +889,15 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       | some τ => some (τ, Γ₁, D₁)
       | none => none
     | _ => none
-  -- **A float literal** (L202), placed here rather than beside `.int` on purpose:
+  -- **A float literal**, placed here rather than beside `.int` on purpose:
   -- inserting an arm shifts every later case number in `infer.induct`, and the only
   -- case after this one is the catch-all. The rule itself is `.int`'s verbatim, and
   -- what it buys is measured in `implementation-notes.md`: three slice bodies stop
   -- being out of fragment and start naming a declaration they need.
-  -- **A float literal** (L202), placed here rather than beside `.int` on purpose:
+  -- **A float literal**, placed here rather than beside `.int` on purpose:
   -- inserting an arm shifts every later case number in `infer.induct`.
   | .flt _ => some (.float, Γ, D)
-  -- **`super(args)`** (L212), placed *last* for `.flt`'s reason (L202): inserting an
+  -- **`super(args)`**, placed *last* for `.flt`'s reason: inserting an
   -- arm shifts every later case number in `infer.induct`, and `books/Books/Metatheory/Typing/Infer/Mono.lean`
   -- addresses its cases by number. Measured — the arms were written beside `.send`
   -- first, and `Mono.lean` broke at nine places.
@@ -947,7 +947,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         | none => none
       else none
     | none => none
-  -- **Bare `super`** (L214), and it is `super(args)`'s rule with the argument list read
+  -- **Bare `super`**, and it is `super(args)`'s rule with the argument list read
   -- off the *context* instead of out of the expression. `zsuperArgs` forwards the
   -- enclosing method's parameter **values**, so the argument types are the parameters'
   -- declared types — `ctx.params`, L214's channel — and there is no `inferArgs` and no
@@ -967,10 +967,10 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         | none => none
       else none
     | _, _ => none
-  -- **A bare `next`** (L227), the third jump rule and the shortest — and the *only* one
+  -- **A bare `next`**, the third jump rule and the shortest — and the *only* one
   -- whose obligation is about the **environment** rather than a type.
   --
-  -- `ctx.inLoop` is the channel `.while'` opens (L220): `some Γl` is the environment the
+  -- `ctx.inLoop` is the channel `.while'` opens: `some Γl` is the environment the
   -- enclosing loop's condition was typed at, and `none` means there is no enclosing loop,
   -- where `unwind` answers `.stuck "jump escaped the program"` — so the guard is not a
   -- convenience, it is the whole soundness argument, exactly as `ctx.ret` is for `.ret`.
@@ -983,13 +983,13 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   -- condition relies on still holds with the type it relied on.
   --
   -- **`top = false`** for L200's reason at the other channel: it is what makes
-  -- `infer_table_loop` (L226) apply, and that lemma is what lets `KontOk.nxtOk` walk a
+  -- `infer_table_loop` apply, and that lemma is what lets `KontOk.nxtOk` walk a
   -- continuation chain at *one* table. Concretely it refuses a `next` inside a
   -- **toplevel** `while`, because there `class'` can still grow the table mid-loop.
   --
   -- The answer is `.nilT` and it is free for `.ret`'s reason: the machine jumps, so this
   -- continuation never sees the value.
-  -- **A global-variable read** (L228), and it is the ivar read's shape at the sixth
+  -- **A global-variable read**, and it is the ivar read's shape at the sixth
   -- table with **no context to consult**: a global is global, so there is no `selfCls`
   -- and no class key — which is what makes this the first rule that reads the machine's
   -- own association list rather than the heap, and the reason `Inv` grew a conjunct
@@ -1014,10 +1014,10 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
     match plainGlobal x, globalTy? D x with
     | true, some σ => some (mkNilable σ, Γ, D)
     | _, _ => none
-  -- **A global-variable write** (L228), the read's twin and the clause that makes the
+  -- **A global-variable write**, the read's twin and the clause that makes the
   -- read sound: `GlobalsOk` is a claim about every value in the list, so the only way to
   -- keep it is to check the value going in. An **undeclared** global is refused here
-  -- rather than admitted freely — the opposite of the ivar write's choice (L196), and for
+  -- rather than admitted freely — the opposite of the ivar write's choice, and for
   -- a reason: `Machine.setGlobal` *creates* the entry, so admitting the write of an
   -- undeclared name would leave the list holding a value no declaration describes. That
   -- is harmless for `GlobalsOk` as stated (it quantifies over declared names) but it
@@ -1046,20 +1046,20 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
       | some Γl => if subEnvB Γl Γ then some (.nilT, Γ, D) else none
       | none => none
     else none
-  -- **A send with a literal block** (L257) — Wall 1's rule, and it is placed **last** for
-  -- `.flt`'s reason (L202): the only case after it in `infer.induct` is the catch-all, so
+  -- **A send with a literal block** — Wall 1's rule, and it is placed **last** for
+  -- `.flt`'s reason: the only case after it in `infer.induct` is the catch-all, so
   -- no existing case number moves.
   --
   -- The receiver runs first (a `recvK` is pushed), then the row is read — and it is read
   -- with `declFor` rather than `sigOf`, because `sigOf` **refuses** a block-taking row
-  -- (L242) and this is the one rule that wants one. `blockSend?` is the four-way read:
+  -- and this is the one rule that wants one. `blockSend?` is the four-way read:
   -- the block's parameter name and type, what its body must answer, and the send's own
   -- answer.
   --
   -- The block body is checked at the parameter plus every enclosing local at **`.any`**.
   -- That is not an approximation of the caller's environment — it is what makes the block
   -- frame's `FrameConforms` obligation dischargeable without naming the frame the closure
-  -- captured (L247/L249), and it is free on the census because a send on `.any` is a
+  -- captured, and it is free on the census because a send on `.any` is a
   -- *missing declaration*, which is the column the ratchet does not count.
   --
   -- Three conditions on the body's answer, and each is a premise `KontOk.iterK` carries:
@@ -1074,7 +1074,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         match infer D₁ ((x, σp) :: anyEnv Γ₁) body false (blockCtx ctx) with
         | some (τb, Γb', D₂) =>
           -- **`ctx.inBlock = false`: a block inside a block is out of the fragment**, and
-          -- it is the restriction `localOfIn`'s single hop is (L243). The block frame
+          -- it is the restriction `localOfIn`'s single hop is. The block frame
           -- captures the *send site's* activation, so a nested block would capture a
           -- block frame and its free-variable read would be two hops — which
           -- `ShallowChain` refuses by construction rather than by accident.
@@ -1085,7 +1085,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         | none => none
       | none => none
     | none => none
-  -- **A send with arguments *and* a literal block** (L259). Everything above is the
+  -- **A send with arguments *and* a literal block**. Everything above is the
   -- arity-zero arm's, once; the two differences are that the arguments run between the
   -- receiver and the row read (`inferArgs`, the same traversal `recvK` uses), and that
   -- the row is read with `blockSendA?` — `blockSend?`'s sibling that does **not** pin
@@ -1103,7 +1103,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
           match infer D₂ ((x, σp) :: anyEnv Γ₂) body false (blockCtx ctx) with
           | some (τb, Γb', D₃) =>
             -- **`D₁ = D` is the conjunct the arity-zero arm does not have**, and it is
-            -- what makes the *table* the refuter of this rule (L259): `Inv`'s eval clause
+            -- what makes the *table* the refuter of this rule: `Inv`'s eval clause
             -- carries `DeclsOk` at the entry table only, so a row read at a table the
             -- subexpressions grew is a row nothing in the invariant knows. Nothing in the
             -- slice declares a method inside a block send's receiver or arguments, so the
@@ -1116,7 +1116,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
         | none => none
       | none => none
     | none => none
-  -- **A lambda literal** (L261), and the answer is `.any` — which is not a lapse of the
+  -- **A lambda literal**, and the answer is `.any` — which is not a lapse of the
   -- rule that `.any` is never *inferred* (`Ty.lean`), it is the honest content of the
   -- type language at a value it cannot name. There is no `Ty.proc`, so a `Proc` value's
   -- `valueTy?` is `none` (`plainRecv` excludes a `.proc` payload) and `.any` is the only
@@ -1155,7 +1155,7 @@ def inferSeq (D : Decls) (Γ : Env) (es : List Expr) (top : Bool := false)
     | none => none
 termination_by sizeOf es
 
-/-- **The argument list of a send** (L175), and the reason it is a *fourth*
+/-- **The argument list of a send**, and the reason it is a *fourth*
     mutual function rather than a use of `inferSeq`: a send needs the arguments'
     **types**, in order, to match against the signature's parameter list, where an
     array literal and a statement sequence each need only the threading.
@@ -1178,7 +1178,7 @@ def inferArgs (D : Decls) (Γ : Env) (es : List Expr) (top : Bool := false)
     | none => none
 termination_by sizeOf es
 
-/-- **The elements of an array literal** (L230) — the **fifth** mutual function, and the
+/-- **The elements of an array literal** — the **fifth** mutual function, and the
     reason it is one rather than a flag on `inferSeq` or an arm of `infer`:
 
     * **not an `infer` arm**, because then the *invariant* could sit at `.eval (.splat e)`
@@ -1201,7 +1201,7 @@ termination_by sizeOf es
 
     **The splat's operand must be exactly `Array`.** That is what makes the step total:
     `spreadA` answers `.ok` for an `.arr` payload and `.error` — hence `.unsupported` —
-    for anything else, and `plainRecv`'s sixth clause (L230) is the bridge from the class
+    for anything else, and `plainRecv`'s sixth clause is the bridge from the class
     to the payload. -/
 def inferElems (D : Decls) (Γ : Env) (es : List Expr) (top : Bool := false)
     (ctx : FrameCtx := { cls := "Object" }) : Option (Ty × Env × Decls) :=
@@ -1229,7 +1229,7 @@ def inferIf (D : Decls) (Γ : Env) (t : Expr) (els : Option Expr) (top : Bool :=
   | some e =>
     match infer D Γ t top ctx, infer D Γ e top ctx with
     | some (τt, Γt, Dt), some (τe, Γe, De) =>
-      -- **The types are *joined*, the environments are still compared** (L193).
+      -- **The types are *joined*, the environments are still compared**.
       -- Before this rung both were equalities, and the type one is what refused a
       -- quarter of the slice's method bodies: `raise … if c`, `x&.foo`, `a || b` all
       -- desugar to an `if` whose branches have different types. `joinTy` answers only
@@ -1247,7 +1247,7 @@ def inferIf (D : Decls) (Γ : Env) (t : Expr) (els : Option Expr) (top : Bool :=
       -- correct"). One combinator instead of one match, and the open side's
       -- `joinATy_subst` goes straight in.
       -- **The environment answer is the *entry* one, and the guard is containment**
-      -- (L236) — where this was `Γt = Γe`. Nothing is merged and `Env` stays a list: a
+      -- — where this was `Γt = Γe`. Nothing is merged and `Env` stays a list: a
       -- binding made inside a branch is not visible after the `if`, which is the honest
       -- reading (in Ruby it may be `nil`). What the two `subEnvB`s buy is that each
       -- branch runs at an environment *containing* the answer, which is the fact the
@@ -1297,11 +1297,11 @@ deriving DecidableEq, Repr, Inhabited
 
 /-- **The checker.** Total and executable, and still a pure function of the
     program: the declaration table it runs against is `declsOf p`, computed from
-    `p` (constant today — `Types/Decls.lean` says why). `infer` is consulted
+    `p` (constant today — `books/Books/Metatheory/Typing/Lang/Decls.lean` says why). `infer` is consulted
     first, so a program the type rules accept is never refuted; `illTyped` only
     ever upgrades an `unknown` to a `reject`. -/
 def check (p : Expr) : Verdict :=
-  -- `top := true`: the program body *is* the toplevel position (L155). Inert
+  -- `top := true`: the program body *is* the toplevel position. Inert
   -- until a rule reads the flag, and the verdict diff proves it.
   match infer (declsOf p) [] p true { cls := "Object" } with
   | some _ => .accept

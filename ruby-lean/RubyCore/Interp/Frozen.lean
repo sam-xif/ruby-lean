@@ -1,7 +1,7 @@
 import RubyCore.Interp.Send
 
 /-! Effectful frozen-error construction: render the class, initialize with a
-mutable message, inspect the receiver, then append to that same message (L286). -/
+mutable message, inspect the receiver, then append to that same message. -/
 
 namespace RubyCore.Interp
 

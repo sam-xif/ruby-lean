@@ -1,9 +1,9 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Regenerate RubyCore/CRubyNames.lean from the pinned CRuby oracle:
+# Regenerate RubyCore/Generated/CRubyNames.lean from the pinned CRuby oracle:
 #
-#   "$(brew --prefix ruby)/bin/ruby" scripts/gen_cruby_names.rb > RubyCore/CRubyNames.lean
+#   "$(brew --prefix ruby)/bin/ruby" scripts/gen_cruby_names.rb > RubyCore/Generated/CRubyNames.lean
 #
 # Emits, for each bootstrap class of the L0 Lean model, the method names
 # CRuby defines directly on it (instance + private instance), folding in the

@@ -1,6 +1,6 @@
 import RubyCore.Interp.Dispatch
 
-/-! L281: execute modeled feature bodies on require, at a fresh top level.
+/-! Execute modeled feature bodies on require, at a fresh top level.
     Completed features are cached; a raise preserves effects but permits retry. -/
 namespace RubyCore.Interp
 

@@ -35,7 +35,7 @@ anything the checker's answer depends on.
 namespace Checker
 
 /-! ### The positive control: without one, every `false` below proves nothing
-(`found-issues.md` §F24 vs §F25 -- run the control). -/
+. -/
 
 /-- `1 + 2`, with the derivation the emitter writes for it. -/
 def ctlProg : Expr := .send (some (.int 1)) "+" [.int 2] none

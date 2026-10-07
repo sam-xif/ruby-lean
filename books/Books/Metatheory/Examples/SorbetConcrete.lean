@@ -3,14 +3,14 @@ Concrete Sorbet-safety certificates: the machinery of `SorbetSafety.lean` applie
 to real programs from `difftest/corpus/sorbet/`, whose behavior is pinned against
 the actual `sorbet-runtime` gem by the difftest ratchet.
 
-These are **Direction A** (`AGENTS.md` §Type safety as reachability §3): the certificate
+These are **Direction A**: the certificate
 is the trace. No invariant, no SMT — run the trusted stepper and read the
 outcome. What is new here relative to `T5Concrete.lean` is the middle case: a
 run that ends in **blame** is a *pass*, because sorbet-runtime raising at a sig
 boundary is the type system working, not the program going wrong.
 
 Every run starts from the **prelude-booted** heap, because sig enforcement lives
-in the `T` shim (L80). `native_decide` carries the concrete executions, as in
+in the `T` shim. `native_decide` carries the concrete executions, as in
 `T5Concrete.lean`; the metatheorems in `SorbetSafety.lean` stay axiom-clean.
 
 JSON literals are `desugar/bin/export-json` output for the named
@@ -166,7 +166,7 @@ theorem untypedBoundary000_stuck : runsToSorbetStuckBooted untypedBoundary000 20
 
 /-- The counterexample direction: an unsigned program `srb` accepts, reaching an
     uncaught `NoMethodError` that is not blame. Excluded from the fragment for
-    exactly this reason (`Types/Fragment.lean`, criterion 2) — so this refutes
+    exactly this reason (`Sorbet/Fragment.lean`, criterion 2) — so this refutes
     Sorbet-safety without refuting anything the fragment claims. -/
 theorem untypedBoundary000_not_sorbet_safe : ∃ m₀, ¬ SorbetSafeFrom m₀ :=
   runsToSorbetStuckBooted_unsafe untypedBoundary000_stuck

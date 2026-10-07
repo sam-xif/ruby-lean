@@ -1,10 +1,14 @@
 /-
-RubyCore abstract syntax (artifact 00 §4), mirroring the harness's S-expr node
-set (`desugar/lib/rubycore.rb` HEADS) one-for-one, plus the JSON
-decoder for the versioned harness↔Lean interface (`lib/export.rb`, v1).
+The core language (Semantics 00 §4).
 
-Decoding is positional per head; a head outside the known set is a decode
-error (the harness's `is_core?` should have rejected it upstream).
+`Expr` is the abstract syntax the model runs. Surface Ruby is translated into it
+by `desugar/`, whose list of node types (`desugar/lib/rubycore.rb`, `HEADS`)
+this file mirrors one for one. There is no operator syntax here: `a + b` is a
+`send`.
+
+`Decode.program` reads the versioned JSON that `desugar/bin/export-json`
+writes. Decoding is positional per node type, and an unknown node type is a
+decode error.
 -/
 import Json
 
@@ -79,7 +83,7 @@ inductive Expr where
   /-- Only occurs as a send's `blk` child. `locals` are `|params; locals|`
       block-locals (fresh, shadowing outer names). -/
   | block (params : List Param) (locals : List String) (body : Expr)
-  /-- `yield args` — invoke the enclosing method's block (artifact 04 §2). -/
+  /-- `yield args` — invoke the enclosing method's block (Semantics 04 §2). -/
   | yield' (args : List Expr)
   /-- Block-pass `&e` — only occurs as a send/super `blk` child. `none` is an
       anonymous `&` forward of the enclosing method's block. -/
@@ -101,7 +105,7 @@ inductive Expr where
   | brk (e : Option Expr)
   | nxt (e : Option Expr)
   | retry'
-  /-- `redo` — restart the current loop iteration (artifact 04). -/
+  /-- `redo` — restart the current loop iteration (Semantics 04). -/
   | redo'
   | class' (name : String) (sup : Option Expr) (body : Expr)
   | module' (name : String) (body : Expr)
@@ -120,7 +124,7 @@ inductive Expr where
   | undef (names : List String)
   /-- `alias new old` — bind `new` to the current definition of `old`. -/
   | alias' (newName oldName : String)
-  /-- `defined?(e)` — a String naming what `e` is, or nil (artifact 03 §6). The
+  /-- `defined?(e)` — a String naming what `e` is, or nil (Semantics 03 §6). The
       operand is *not* evaluated, except a send's receiver / a cpath's base. -/
   | defined (e : Expr)
   | seq (es : List Expr)
@@ -185,7 +189,7 @@ namespace Interp
     globals: CRuby derives them from the last `MatchData` on every read. Storing
     them instead would need every failed match to clear nine slots, and would
     still get `defined?($3)` wrong. Returns `none` for any other global name, so
-    the ordinary path is untouched. (L101.) -/
+    the ordinary path is untouched. -/
 def matchViewIdx? (x : String) : Option Nat :=
   if x.length == 2 then
     let c := x.get ⟨1⟩
@@ -200,7 +204,7 @@ def matchViewIdx? (x : String) : Option Nat :=
     rule `matchGlobal` implements: `Step.varGvar` said a gvar read is a plain
     `getGlobal`, which stopped being true when L101 put `matchGlobal` in front of
     it, and nothing noticed for 24 commits because `books/Books/Metatheory/` is off the default
-    build target (L119). -/
+    build target. -/
 def isMatchView (x : String) : Bool :=
   (matchViewIdx? x).isSome || x == "$`" || x == "$'"
 
@@ -394,7 +398,7 @@ partial def expr (j : Json) : M Expr := do
   -- the explicit `|params; locals|` list because the block frame binds both the
   -- same way; the two differ only for `defined?`, and `defined?` is decided here
   -- from the *node shape* (a name the parser did not know is a vcall, not a
-  -- `var local` — L72), never from what the frame binds. The v4 four-slot shape
+  -- `var local`), never from what the frame binds. The v4 four-slot shape
   -- still decodes, so an AST exported before this change is not rejected.
   | "block", #[_, ps, ls, ds, body] =>
       return .block (← params ps) ((← strList ls) ++ (← strList ds)) (← expr body)

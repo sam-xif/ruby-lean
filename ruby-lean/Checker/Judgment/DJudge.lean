@@ -30,7 +30,7 @@ by the semantic `recursive` rule, never installed as an unchecked body.
 
 ## Authoring a rule: **let the transport lemma write the premises and the outgoing environment**
 
-A working rule, paid for twice (`found-issues.md` §F29, at `var` and again at `vasgn`). It is
+A working rule, paid for twice. It is
 a rule of thumb rather than a checked invariant, deliberately — see the end of this section.
 
 **The procedure.** Before writing a `DJudge` constructor, find the `books/Books/TypeSoundness/Conformance/` lemma that
@@ -104,7 +104,7 @@ procedure (`dprim?`) and a soundness lemma between them. Thirty rows.
 The table grows with proved builtin obligations. `Judge.lean`'s `PrimSig` has ~90 rows and `books/Books/TypeSoundness/`'s
 `Sem.Judge.prim` — the obligation that every one of them is true of CRuby — is one of the 35
 rules with no proof, priced at "~200 conformance facts, two per row"
-(`implementation-notes.md`, EMERGENCY EXIT). A table that grows a row at a time is a table
+. A table that grows a row at a time is a table
 whose semantic obligation can grow a row at a time too, which is the whole argument for
 starting again here rather than inheriting.
 

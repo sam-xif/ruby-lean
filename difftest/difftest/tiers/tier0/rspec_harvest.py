@@ -171,7 +171,7 @@ def harvest_file(spec_path: str, ruby: str, script: str) -> list[Example]:
 # The slice's files use `T::Sig`/`T::Helpers` but never require sorbet-runtime
 # themselves — Homebrew loads it once from its boot path. The emitted program
 # has no boot path, so it requires it explicitly. CRuby then loads the real gem;
-# the model's `require` is a no-op and its `T` comes from the prelude shim (L80),
+# the model's `require` is a no-op and its `T` comes from the prelude shim,
 # which is the arrangement the tier-4 Sorbet corpus already uses.
 # `class Module; include T::Sig; end` is Homebrew's own boot line
 # (`extend/module.rb:5`); without it `sig` is not a method in a class body and
@@ -207,7 +207,7 @@ SORBET_REQUIRE = (
     # `Version.detect` wraps its argument in `Pathname(...)` and `Version.parse`
     # percent-decodes with `URI`. Homebrew loads both from its boot path; the
     # control has no boot path, so the program requires them and the model
-    # recognises both (the pure halves are in its prelude, L112).
+    # recognises both (the pure halves are in its prelude).
     'require "pathname"\nrequire "uri"\n'
 )
 

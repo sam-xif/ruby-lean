@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Check the four external tools this repo needs, and say what is missing and how
-# to get it. Exit 0 iff everything needed for `scripts/reproduce.sh` is present.
+# Check the external tools this repository needs, and say what is missing and
+# how to get it. Exit 0 iff everything `make check` needs is present.
 #
 #   scripts/check-prereqs.sh
 set -uo pipefail
@@ -30,40 +30,27 @@ else
   bad "ruby" "brew install ruby   (then put it on PATH, or set \$RUBY)"
 fi
 
-# 3. Sorbet — stage 1 of the typed pipeline. `srb_sigs.py` locates the gem's
-#    bundled binary, so the gem is enough; `srb` need not be on PATH. Keep this
-#    in step with `srb_sigs.py:find_sorbet()`: ask the active Ruby where its gems
-#    are first, then fall back to the fixed Homebrew / user-gem / system globs.
-if python3 - <<'PY' 2>/dev/null
-import glob, os, subprocess, sys
-if os.environ.get("SORBET") and os.path.exists(os.environ["SORBET"]):
-    sys.exit(0)
-try:
-    gemdir = subprocess.run(["gem", "env", "gemdir"], capture_output=True,
-                            text=True, check=True).stdout.strip()
-except (OSError, subprocess.CalledProcessError):
-    gemdir = ""
-if gemdir and glob.glob(f"{gemdir}/gems/sorbet-static-*/libexec/sorbet"):
-    sys.exit(0)
-pats = ["/opt/homebrew/lib/ruby/gems/*/gems/sorbet-static-*/libexec/sorbet",
-        os.path.expanduser("~/.gem/ruby/*/gems/sorbet-static-*/libexec/sorbet"),
-        "/usr/local/lib/ruby/gems/*/gems/sorbet-static-*/libexec/sorbet"]
-sys.exit(0 if any(glob.glob(p) for p in pats) or __import__("shutil").which("srb") else 1)
-PY
-then
-  say "sorbet" "found (override with \$SORBET)"
+# 3. Sorbet — reads the signatures of a typed program. The pipeline uses the
+#    binary inside the `sorbet-static` gem, so the gem is enough; `srb` need not
+#    be on PATH. $SORBET overrides it.
+SORBET_BIN="${SORBET:-}"
+if [[ -z "$SORBET_BIN" && -n "$RUBY_BIN" ]]; then
+  SORBET_BIN="$("$RUBY_BIN" -e 'print File.join(Gem::Specification.find_by_name("sorbet-static").full_gem_path, "libexec", "sorbet")' 2>/dev/null || true)"
+fi
+if [[ -n "$SORBET_BIN" && -x "$SORBET_BIN" ]] || have srb; then
+  say "sorbet" "${SORBET_BIN:-$(command -v srb)}"
 else
-  bad "sorbet" "gem install sorbet sorbet-runtime   (supplies sorbet-static)"
+  bad "sorbet" "make deps   (installs the gems pinned in Gemfile.lock)"
 fi
 
-# 4. uv — runs the difftest engine (the agreement stage) in its own env.
+# 4. uv — runs the differential tests in their own environment.
 if have uv; then
   say "uv" "$(uv --version)"
 else
   bad "uv" "brew install uv   (or: curl -LsSf https://astral.sh/uv/install.sh | sh)"
 fi
 
-# 5. Python — the untrusted pipeline stages (strip/desugar/emit drivers).
+# 5. Python — drives the corpus pipeline.
 if have python3; then
   say "python3" "$(python3 --version)  (3.12+ required by difftest)"
 else
@@ -72,7 +59,7 @@ fi
 
 echo
 if [[ $ok == 0 ]]; then
-  echo "All prerequisites present. Next: scripts/reproduce.sh"
+  echo "All prerequisites present. Next: make check"
 else
   echo "Install what is marked MISSING above, then re-run this script."
 fi

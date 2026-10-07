@@ -39,16 +39,12 @@ import Books.TypeSoundness.Controls.SuperInitControls
 # `Books/TypeSoundness/Controls/All.lean` — the controls, aggregated on purpose
 
 Every file under `Books/TypeSoundness/Controls/` is a **negative control**: a `#guard`, a
-countermodel, or a theorem that pins an obstruction. None of them is imported by a proof, so
-nothing pulls them into a build by need, and the gate (`scripts/run_typed_ratchet.sh`) builds
-*named targets*.
+countermodel, or a theorem showing that a hypothesis cannot be dropped. None of them is
+imported by a proof, so nothing pulls them into a build by need.
 
-So they are named here, in one place, and `scripts/check_controls.sh` builds this module and
-names any control that has drifted. `lake build` builds every control as well, since the
-`TypeSoundness` library is the whole directory.
+So they are named here, in one place. `scripts/check-soundness.sh` builds this module, and
+`lake build` builds every control as well, since the `TypeSoundness` library is the whole
+directory.
 
-**Adding a control means adding a line here.** Every control in the directory is listed. The
-controls written against the earlier class-entry model, which do not build against the
-current one, are in `books/Unrebuilt/TypeSoundness/Controls/`; move one back here, and add
-its line, when it is rebuilt.
+**Adding a control means adding a line here.** Every control in the directory is listed.
 -/

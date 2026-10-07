@@ -1,10 +1,10 @@
-import RubyCore.PreludeBoot
+import RubyCore.Boot
 import Books.Metatheory.Typing.Infer.Decls
 
 /-!
 Item 5 of the declaration-row rung, measured before anything is proved — the
 same move `ancestors_probe.lean` made for the fuel clause, and for the same
-reason (`HANDOFF.md`: *measure the conclusion before proving the lemma*).
+reason.
 
 ## The question
 

@@ -1,4 +1,4 @@
-import RubyCore.PreludeBoot
+import RubyCore.Boot
 import Books.Metatheory.Typing.Infer.Decls
 
 /-!

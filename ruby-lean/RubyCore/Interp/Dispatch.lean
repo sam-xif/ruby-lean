@@ -5,10 +5,9 @@ Method lookup and entry: the ancestor walk, entering a user method or a
 class/module body, eigenclasses, visibility, `method_missing`, the
 iterating-builtin bridge, and mixin hooks.
 
-Split out of `RubyCore/Interp.lean` (L99) with no behaviour change. The helpers
-in this machine are deliberately *not* mutually recursive — each performs one
-transition — so the file cuts along that existing order and the import chain
-records it.
+The helpers in this machine are deliberately not mutually recursive: each
+performs one transition. The files under `Interp/` follow that order, each
+importing the one before it.
 -/
 
 namespace RubyCore
@@ -16,7 +15,7 @@ namespace RubyCore
 namespace Interp
 
 /-- Continue the `lookup` walk *strictly above* `owner` in `recv`'s ancestor
-    chain. Used by the block fallback (L63): a blockless builtin shadowing a
+    chain. Used by the block fallback: a blockless builtin shadowing a
     prelude definition of the same name defers to it when a block is passed. -/
 def lookupAbove (h : Heap) (recv : Value) (owner : ObjId) (mname : String)
     : Option (ObjId × MethodDef) :=
@@ -30,7 +29,7 @@ def methodOn (h : Heap) (k : ObjId) (mname : String) : Option (ObjId × MethodDe
 
 /-- Enter a RubyCore-defined method activation: bind params (required + rest +
     post; block-capture `&blk`), push the method frame, evaluate the body under
-    a `frameK` boundary (artifact 02 §3). Factored out of dispatch so `Class#new`
+    a `frameK` boundary (Semantics 02 §3). Factored out of dispatch so `Class#new`
     can reuse it for `initialize`. Arity failures raise `ArgumentError` [V]. -/
 def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDef)
     (args : List Value) (blk : Option Value) (kw : List (Value × Value) := []) : StepResult :=
@@ -79,7 +78,7 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
         s!"unknown keyword{if names.length == 1 then "" else "s"}: {kwNameList names}")
     else
     -- positional distribution: pre from the front, post from the back, optionals
-    -- fill the leftmost middle args, a `*rest` absorbs the surplus (artifact 02 §3).
+    -- fill the leftmost middle args, a `*rest` absorbs the surplus (Semantics 02 §3).
     let preVals := args.take np
     let postVals := args.drop (n - npost)
     let middle := (args.drop np).take (n - npost - np)
@@ -117,7 +116,7 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
     -- (only reachable for `define_method` bodies, L64; harmless otherwise —
     -- an unbound local reads as nil either way).
     -- ...and, for the same reason, every name the *body* binds itself: a
-    -- `define_method` block's block-locals (L125/C35). Ordinary `def`s carry an
+    -- `define_method` block's block-locals. Ordinary `def`s carry an
     -- empty list here.
     let predeclared := destrNames.map (fun n => (n, Value.nil)) ++ localsB.map (fun b => (b.1, Value.nil)) ++
       (optOmitted ++ kwOmitted).map (fun d => (d.1, Value.nil)) ++
@@ -155,7 +154,7 @@ def enterUserMethod (m : Machine) (recv : Value) (mname : String) (md : MethodDe
     | (n0, d0) :: more =>
       .next (withKont m (.eval d0) (.optDefK n0 more localsB body))
 
-/-- Permanently name a namespace and its still-temporary descendants (L295).
+/-- Permanently name a namespace and its still-temporary descendants.
     Ancestor back-edges stop after the ancestor has acquired its name. Multiple
     paths to a descendant depend on CRuby's process-local symbol-table order;
     the model does not yet carry that order and must not select an arbitrary path.
@@ -200,7 +199,7 @@ def nameConstant (h : Heap) (target : ObjId) (name : String) (v : Value) : Excep
     | none => .ok h
   | _ => .ok h
 
-/-- A constant is already bound when its ordinary callback executes (L292).
+/-- A constant is already bound when its ordinary callback executes.
     Only core boot suppresses the callback; runtime library loads do not. -/
 def callConstAdded (m : Machine) (target : ObjId) (name : String) : StepResult :=
   if m.preludeMode then .next { m with ctl := .value .nil } else
@@ -213,7 +212,7 @@ def assignConstant (m : Machine) (target : ObjId) (name : String) (value : Value
   | .error why => .unsupported why
   | .ok h => callConstAdded { m with heap := h, kont := .newK value :: m.kont } target name
 
-/-- Get (or lazily create) the eigenclass of object `o` (artifact 01 §5). Its
+/-- Get (or lazily create) the eigenclass of object `o` (Semantics 01 §5). Its
     superclass realizes the metaclass chain so dispatch through `classOf` finds
     both singleton methods and inherited ones:
     - a regular object's eigenclass superclasses its real class (so ordinary
@@ -250,7 +249,7 @@ where
 
 /-- Optional libraries generally have smaller source bodies; callbacks can
     observe omitted declarations. Forwardable matches the upstream method order
-    (L282), while its other hook protocols remain outside this fragment. -/
+, while its other hook protocols remain outside this fragment. -/
 def libraryBodyGate (m : Machine) (k : ObjId) : Option String :=
   if !m.currentFrame.libraryOrigin || m.preludeMode || m.loadingFeatures.isEmpty then none else
   let exactMethods := m.loadingFeatures.head? == some "forwardable"
@@ -313,7 +312,7 @@ def inheritClassBody (m : Machine) (k : ObjId) (superclass : Option ObjId)
     .next { m with ctl := .send (.ref parent) .reflective "inherited" [.ref k] none [], kont := .classBodyK k libraryName body :: m.kont }
 
 /-- Open (or create) a class/module named `name` and run its `body` in a fresh
-    class-body frame with `self` = `defmod` = the class object (artifact 01 §5).
+    class-body frame with `self` = `defmod` = the class object (Semantics 01 §5).
     Reopening checks class/module agreement and, for `class`, superclass match
     [V]. `sup?` is the resolved superclass (classes default to Object). -/
 def enterClassBody (m : Machine) (name : String) (isMod : Bool)
@@ -363,7 +362,7 @@ def enterClassBody (m : Machine) (name : String) (isMod : Bool)
       let (_, m) := eigenclassOf { m with heap := h } k
       callConstAdded { m with kont := .constClassK k superclass libraryName body :: m.kont } defmod name
 
-/-- `class/module A::name … end` (artifact 03 §5): open (or create) `name`
+/-- `class/module A::name … end` (Semantics 03 §5): open (or create) `name`
     inside the already-resolved namespace object `container`, then run the body.
     Like `enterClassBody` but the lookup/registration namespace is `container`
     (not the flat toplevel) and the class name is the full path `Container::name`
@@ -415,7 +414,7 @@ def cpathContainer (m : Machine) (base : Value) : Except StepResult ObjId :=
     | .ok r => .error (.next (raiseErr m Boot.typeErrorId s!"{r} is not a class/module"))
     | .error e => .error (.unsupported e)
 
-/-- Visibility enforcement at dispatch (artifact 02 §5, L71): only an `explicit`
+/-- Visibility enforcement at dispatch (Semantics 02 §5): only an `explicit`
     receiver is checked — an implicit send, a literal `self.m`, and `send`/
     `__send__` are all exempt. Protected passes when the *caller's* `self` is a
     kind of the method's owner. Messages are byte-exact [V]. -/
@@ -431,8 +430,8 @@ def visError? (m : Machine) (recv : Value) (site : SendSite) (md : MethodDef)
       s!"protected method '{mname}' called for {receiverDesc m.heap recv}"))
   | _, _ => none
 
-/-- Default `method_missing` (artifact 02 §4). A **vcall** (bare identifier, now
-    carried as its own `SendSite` — L75) misses with `NameError: undefined local
+/-- Default `method_missing` (Semantics 02 §4). A **vcall** (bare identifier, now
+    carried as its own `SendSite`) misses with `NameError: undefined local
     variable or method`; every other site misses with `NoMethodError: undefined
     method`. Both messages are byte-exact [V].
 
@@ -484,7 +483,7 @@ def iterStep (m : Machine) (cl : Closure) (brk : FrameId) (rest : List (List Val
       callClosure m cl [v] (some brk)
     else .next (withCtl m (.value retVal))
   | .arrayEach o index =>
-    -- Array#each rereads both length and element after every yield (L273).
+    -- Array#each rereads both length and element after every yield.
     -- Snapshotting skipped appends and yielded removed/replaced elements.
     match (m.heap.get o).payload with
     | .arr xs =>
@@ -495,7 +494,7 @@ def iterStep (m : Machine) (cl : Closure) (brk : FrameId) (rest : List (List Val
       else .next (withCtl m (.value retVal))
     | _ => .unsupported "Array#each receiver lost its Array payload"
   | .arrayMap o index =>
-    -- Array#map/collect use a live native cursor, independent of `each` (L274).
+    -- Array#map/collect use a live native cursor, independent of `each`.
     match (m.heap.get o).payload with
     | .arr xs =>
       if hi : index < xs.size then
@@ -549,7 +548,7 @@ def iterStep (m : Machine) (cl : Closure) (brk : FrameId) (rest : List (List Val
 def startIter (m : Machine) (recv : Value) (mname : String) (cl : Closure)
     (elemArgs : List (List Value)) (kind : IterKind) (initAcc : List Value)
     (retVal : Value) : StepResult :=
-  -- **`cref` is the caller's** (L256), and it is a *fidelity* fix with a proof
+  -- **`cref` is the caller's**, and it is a *fidelity* fix with a proof
   -- consumer. This activation is the `break` target and **no code evaluates in it** —
   -- the loop is driven by the `iterK` continuation and every expression runs in a block
   -- frame above — so the field was left at `[]` and nothing read it: every `cref` read in
@@ -557,7 +556,7 @@ def startIter (m : Machine) (recv : Value) (mname : String) (cl : Closure)
   -- `capF.cref` (the frame a closure captured, which is the caller, not this one).
   --
   -- What made it worth fixing is the static invariant: `StackCtx`'s fifth clause is
-  -- *`Object` is on the frame's lexical constant scope* (L189), it is positional, and an
+  -- *`Object` is on the frame's lexical constant scope*, it is positional, and an
   -- empty `cref` refuses it — see `implementation-notes.md` L255 for the alternative that
   -- was priced and rejected (a second `FrameCtx` channel, whose consumers would have
   -- needed the fact threaded through 18 `KontOk` constructors). CRuby's iterator
@@ -573,7 +572,7 @@ def startIter (m : Machine) (recv : Value) (mname : String) (cl : Closure)
 def arrayMapBid (bid : String) : Bool :=
   bid == "Array#map" || bid == "Array#collect"
 
-/-- Resolve Array's own map/collect through ordinary lookup (L274). Unlike
+/-- Resolve Array's own map/collect through ordinary lookup. Unlike
 Enumerable#map, these methods never dispatch `each`, `length` or `[]`. Aliases
 and super retain native behavior; arity is checked even without a block. -/
 def callArrayMapBuiltin (m : Machine) (recv : Value) (mname : String)
@@ -725,7 +724,7 @@ def moduleHook (m : Machine) (mo : ObjId) (name : String) : Option MethodDef :=
   | some e => (methodOn m.heap e name).map (·.2)
   | none => none
 
-/-- `include`/`extend` (artifact 02 §1). `include M` (single module, on a class/
+/-- `include`/`extend` (Semantics 02 §1). `include M` (single module, on a class/
     module receiver) appends `M` to the receiver's `includes` (MRO) and fires
     `M.included(recv)` if defined. `obj.extend(M)` mixes `M` into `obj`'s
     eigenclass (so `M`'s instance methods become singleton methods). Returns
@@ -757,7 +756,7 @@ def tryMixin (m : Machine) (recv : Value) (mname : String)
       | none => some (.next (withCtl m (.value recv)))
     | _, _ => none
   | "prepend", .ref o, [.ref mo] =>
-    -- `prepend M` (L65): like `include`, but M lands *below* the receiver in the
+    -- `prepend M`: like `include`, but M lands *below* the receiver in the
     -- ancestor chain, so M's methods override the class's own and `super` inside
     -- them reaches the overridden definition.
     match m.heap.classPayload? o, m.heap.classPayload? mo with

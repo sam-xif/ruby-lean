@@ -1,18 +1,18 @@
-import RubyCore.PreludeBoot
+import RubyCore.Boot
 import Books.Metatheory.Typing.Infer.Decls
 
 /-!
 The measurement **rung 3** owes (`slice-verdict.md` §4a): with the class-object arm
-built (L184/L185), the row that pays for it is `Module#===` — 123 of the slice's
+built, the row that pays for it is `Module#===` — 123 of the slice's
 337 receiver-position constant occurrences, `case x when String` and
-`when AlphaToken`, and the only large population behind neither wall (L181).
+`when AlphaToken`, and the only large population behind neither wall.
 
 This checks the row is *witnessable* before it is written. `DeclsOk` obliges two
 things of a row on `.clsOf n`, and both are heap facts about the class object's
 **dispatch chain** rather than about the type language:
 
 1. **`ResolvesAt h k "===" "Module#==="`** at `k = classOf h (.ref o)` — the
-   eigenclass when there is one, `Class` otherwise (L180). That needs
+   eigenclass when there is one, `Class` otherwise. That needs
    `lookupIn` to find the *builtin* `Module#===` with `builtin = some …`,
    `undefined = false`, `visibility = .pub` and **`fromPrelude = false`**, and it
    needs `crubyShadow` to answer `none` over the chain in front of the owner.

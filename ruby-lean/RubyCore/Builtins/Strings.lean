@@ -3,9 +3,8 @@ import RubyCore.Builtins.Collections
 /-!
 String, Symbol and Proc rules.
 
-Split out of the single `Builtins.run` match (L98), one class group per file, no
-behaviour change: each rule file matches its own bids and hands anything it does
-not recognise to the next file in the chain.
+Each rule file matches its own builtin ids and hands anything it does not
+recognise to the next file in the chain.
 -/
 
 namespace RubyCore
@@ -44,7 +43,7 @@ def parseFloatPrefix (str : String) : Float :=
     | r => (0.0, true, r)
   -- An **empty integer part is not a failure** when there is a fraction: `strtod`
   -- accepts a leading dot, so `".5".to_f` is 0.5 and `"-.5".to_f` is -0.5 [V].
-  -- Bailing on `intPart.isEmpty` alone answered 0.0 for both (L130), and made
+  -- Bailing on `intPart.isEmpty` alone answered 0.0 for both, and made
   -- `Float(".5")` — which validates the grammar itself and then defers here —
   -- answer 0.0 too. Only "no digits anywhere" is the no-match case.
   if intPart.isEmpty && noFrac then 0.0 else
@@ -90,7 +89,7 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
       | _, _ => .unsupported "String#*"
   | "String#==" | "String#eql?" =>
     -- `valueEql`, not a bare payload compare: equality consults the encoding tag
-    -- when a non-ASCII byte is in play (L118), and both `==` and `eql?` do.
+    -- when a non-ASCII byte is in play, and both `==` and `eql?` do.
     binArg m args fun b =>
       match strPayload? h recv, strPayload? h b with
       | some _, some _ => .ok (.bool (valueEql h recv b)) m
@@ -147,7 +146,7 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
       .ok v m
   | "String#b" =>
     -- String#b always creates a mutable base String, including binary receivers.
-    -- Reinterpret UTF-8 as bytes; already-binary payloads only need copying (L296).
+    -- Reinterpret UTF-8 as bytes; already-binary payloads only need copying.
     match strPayload? h recv with
     | none => .unsupported "String#b on a non-String"
     | some str =>
@@ -159,7 +158,7 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
   | "String#__as_utf8" =>
     -- Re-decode the byte characters as UTF-8. An **invalid** sequence cannot be
     -- represented — a Lean `String` holds Unicode scalars, not bytes — so it
-    -- gates rather than producing a different string (L117).
+    -- gates rather than producing a different string.
     match strPayload? h recv with
     | none => .unsupported "String#force_encoding on a non-String"
     | some str =>
@@ -169,13 +168,13 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         match String.fromUTF8? bytes with
         | some decoded => let (v, m) := allocStr m decoded; .ok v m
         | none =>
-          .unsupported "force_encoding to UTF-8 of an invalid byte sequence (L117)"
+          .unsupported "force_encoding to UTF-8 of an invalid byte sequence"
   | "String#__force_binary" | "String#__force_utf8" =>
     -- `force_encoding` **mutates and returns the receiver** [V], so it cannot be
     -- `b`/`__as_utf8` (which copy). Retagging also
     -- rewrites the payload — going to binary splits each scalar into its UTF-8
     -- bytes and coming back reassembles them — so both fields move together, on
-    -- the same object (L118).
+    -- the same object.
     match recv, strPayload? h recv with
     | .ref o, some str =>
       if (h.get o).frozen then
@@ -194,7 +193,7 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
             let o' := { h.get o with payload := Payload.str decoded, binary := false }
             .ok recv { m with heap := h.set o o' }
           | none =>
-            .unsupported "force_encoding to UTF-8 of an invalid byte sequence (L117)"
+            .unsupported "force_encoding to UTF-8 of an invalid byte sequence"
     | _, _ => .unsupported "String#force_encoding on a non-String"
   | "String#ord" =>
     match strPayload? h recv with
@@ -240,7 +239,7 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
       .ok (.int (if neg then -n else n)) m
   | "String#inspect" =>
     -- the *result* is UTF-8 whatever the receiver was [V] — escaping makes it
-    -- pure ASCII — but the escaping itself is tag-sensitive (L118)
+    -- pure ASCII — but the escaping itself is tag-sensitive
     match strPayload? h recv with
     | some s => okStr m (escapeStringEnc (isBinaryStr h recv) s)
     | none => .unsupported "inspect"
@@ -347,10 +346,10 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
   | "String#to_sym" =>
     match strPayload? h recv with
     -- a Symbol in the model carries no encoding, so a byte string only interns
-    -- while its bytes are ASCII (L118)
+    -- while its bytes are ASCII
     | some s =>
       if isBinaryStr h recv && hasHighByte s then
-        .unsupported "String#to_sym of a byte string holding a byte ≥ 0x80 (L118)"
+        .unsupported "String#to_sym of a byte string holding a byte ≥ 0x80"
       else .ok (.sym s) m
     | none => .unsupported "to_sym"
   | "String#[]" =>
@@ -398,7 +397,7 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
           let (md, m) := allocMData m str caps names (isBinaryStr h recv)
           okStrFrom (setMatchGlobals m (some md)) recv (charSlice str a b)
       -- neither a Range, a String nor a Regexp: `rb_str_aref` falls through to
-      -- `NUM2LONG` (L134), so `"abc"[nil]` is a TypeError rather than a gate
+      -- `NUM2LONG`, so `"abc"[nil]` is a TypeError rather than a gate
       | _ =>
         withIndex m (.ref ro) "String#[] non-index argument" fun i =>
           let cs := str.toList
@@ -443,8 +442,8 @@ def runStrings (bid : String) (recv : Value) (args : List Value) (m : Machine) :
         { params := [.req "__recv", .rest (some "__rest")], locals := [],
           body := .send (some (.var .lvar "__recv")) s
                     [.splat (some (.var .lvar "__rest"))] none,
-          -- No binding: only the parameters occur free (§A6a, L266).
-          -- `&:symbol` now reaches this same entry through lookup (L275).
+          -- No binding: only the parameters occur free (§A6a).
+          -- `&:symbol` now reaches this same entry through lookup.
           captured := none, home := 0, lam := true }
       let (o, h) := m.heap.alloc { klass := Boot.procId, payload := .proc cl }
       .ok (.ref o) { m with heap := h }

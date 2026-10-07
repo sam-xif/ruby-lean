@@ -1,6 +1,6 @@
 import RubyCore.Builtins.Rationals
 
-/-! Native Complex rules (L279), checked against CRuby 4.0.5. Scalar shortcuts,
+/-! Native Complex rules, checked against CRuby 4.0.5. Scalar shortcuts,
     quotient evaluation order and constructor normalization are observable;
     complex.c supplies the algorithm, executable differential probes its oracle.
     Unsupported component hooks must gate rather than silently bypass dispatch. -/

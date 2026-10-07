@@ -6,7 +6,7 @@ require "tempfile"
 
 # obs+ : run a Ruby program in a fresh CRuby subprocess and record a normalized
 # observation = (stdout, value, exc). stdout is the ordered side-effect trace
-# (implementation-choices.md C5). Value/exc are written by a wrapper to a side file so
+#. Value/exc are written by a wrapper to a side file so
 # they don't pollute the program's own stdout.
 module Observe
   # Path to the CRuby oracle. Overridable via RUBY_ORACLE.
@@ -31,7 +31,7 @@ module Observe
   #
   # It is in the *wrapper*, so **both** sides get it and neither can be advantaged by it
   # — the same reason the difftest harness owns its stub set rather than the prelude
-  # (L112). `Object.instance_method(:to_s)` is exactly `rb_any_to_s`: the default
+  #. `Object.instance_method(:to_s)` is exactly `rb_any_to_s`: the default
   # `Object#to_s` *is* that C function, and binding it skips every override.
   SUPPORT = <<~'RUBY'
     class Object
@@ -117,7 +117,7 @@ module Observe
     [out, err, status]
   end
 
-  # --- normalization (implementation-choices.md C6) ---
+  # --- normalization ---
 
   ADDR = /0x[0-9a-f]+/.freeze
 

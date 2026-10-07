@@ -1,4 +1,4 @@
-import RubyCore.Types.Ty
+import RubyCore.Sorbet.Ty
 
 /-!
 # F1a — the static declaration table
@@ -11,7 +11,7 @@ to its declared signature, computed from the program and never from the heap.
 
 `builtinSig : Ty → String → Option (List Ty × Ty)` was keyed on the receiver's
 static **type**, which is enough while `Ty` and the dispatch class are in
-bijection (`Types/Core.lean` says so in as many words) and stops being enough the
+bijection (`books/Books/Metatheory/Typing/Lang/Infer.lean` says so in as many words) and stops being enough the
 moment a user class has a type. More to the point, D10 changed what the invariant
 *says*: not "the method table matches the declarations" but "every method the
 declarations name resolves to something conforming to its declared signature".
@@ -27,7 +27,7 @@ object identities exist only in a heap. So declarations hang off the class
 **name**, and the invariant's job is to tie that name to the heap's `ancestors`
 (`books/Books/Metatheory/Typing/Infer/Decls.lean`). That is also why `Module#set_temporary_name` and
 anonymous-class renaming are outside the D10 fragment: they change the key, not
-the table (`typing-a-mutable-method-table.md` §5).
+the table.
 
 ## What is in the table today
 
@@ -40,7 +40,7 @@ does not change.
 
 namespace RubyCore.Types
 
-/-- **The signature of the block a method takes** (L242) — the parameter types the
+/-- **The signature of the block a method takes** — the parameter types the
     block is called with, and the type its body must answer.
 
     A *separate* structure from `MethodDecl` rather than a recursive occurrence of it,
@@ -66,7 +66,7 @@ deriving DecidableEq, Repr, Inhabited
 /-- A declared signature: parameter types and return type. The receiver's type is
     the key's class, not a field.
 
-    **`blk` is the block the method takes** (L242), `none` for a method that takes
+    **`blk` is the block the method takes**, `none` for a method that takes
     none — which is every row any shipped table holds, and every row `DeclsOk` can
     currently witness (`ConformsAt` and `UserConforms` each pin it, and each names the
     bill the day it is widened). A defaulted field, so all 130-odd existing literals
@@ -165,7 +165,7 @@ structure Decls where
       a list of names: `HEAD_VERSION_REGEX : Regexp` is the *same rule* at a different
       type, which is the next population after `T`. -/
   consts : List (String × Ty) := []
-  /-- **class name × instance-variable name → the type of its contents** (L196).
+  /-- **class name × instance-variable name → the type of its contents**.
 
       The third table, and it is here rather than in a new `Inv` conjunct for
       `consts`' reason: `DeclsOk` is already threaded and already transported, so a
@@ -179,13 +179,13 @@ structure Decls where
       `@x = e` freely because nothing claimed anything about ivars, and a row is
       exactly such a claim. -/
   ivars : List ((String × String) × Ty) := []
-  /-- **class name × constant name → the type of its value** (L205), for a *scoped*
+  /-- **class name × constant name → the type of its value**, for a *scoped*
       read `C::n`.
 
       The fourth table, and it is a separate one from `consts` rather than a key
       convention inside it because the two are read by different rules against
       different heap facts: `constTy?` answers `::n`, which is `Object`'s own table
-      (L203), while this answers `C::n`, which is `constLookupFrom` — the **ancestors**
+, while this answers `C::n`, which is `constLookupFrom` — the **ancestors**
       walk from the class object named `C`. Two lookups, two clauses.
 
       `ScopedConstOk` (`books/Books/Metatheory/Typing/Infer/Decls.lean`) is what a row here obliges, and it is
@@ -194,7 +194,7 @@ structure Decls where
       one id — and that clause covers the *readable* names, not every name a program
       can write. -/
   scopedConsts : List ((String × String) × Ty) := []
-  /-- **class name × method name → the signature of that method's `super`** (L211).
+  /-- **class name × method name → the signature of that method's `super`**.
 
       The fifth table, and it is keyed on the *pair* for `scopedConsts`' reason
       inverted: a `super` inside `C#m` re-dispatches `m` starting *after* `C` on the
@@ -215,7 +215,7 @@ structure Decls where
       is what would let a future row collapse that quantifier to the one object M3's
       resolver names, not something this table does today. -/
   supers : List ((String × String) × MethodDecl) := []
-  /-- **global-variable name → the type of its contents** (L228).
+  /-- **global-variable name → the type of its contents**.
 
       The sixth table, and the **first one that is not about the heap**. The five above
       it are all read against a `DeclsOk` clause — a fact about objects, classes or
@@ -282,28 +282,28 @@ def declClsFresh (D : Decls) (q nm : String) : Bool :=
 
 /-- The declared type of `@x` on instances of `cls`, or `none` for "not declared" —
     which the read rule reports as a *missing declaration* rather than as a missing
-    rule (L196). -/
+    rule. -/
 def ivarTy? (D : Decls) (cls x : String) : Option Ty :=
   (D.ivars.find? (·.1 == (cls, x))).map (·.2)
 
 /-- The declared type of `C::n`, or `none` for "not declared" — reported as a missing
-    *declaration* by the open front end (L205), exactly as `ivarTy?`'s miss is. -/
+    *declaration* by the open front end, exactly as `ivarTy?`'s miss is. -/
 def scopedConstTy? (D : Decls) (cls n : String) : Option Ty :=
   (D.scopedConsts.find? (·.1 == (cls, n))).map (·.2)
 
 /-- The declared signature of the `super` a body in `cls#name` re-dispatches to, or
     `none` for "not declared" — which the open front end reports as a *missing
-    declaration* rather than as a missing rule (L211), exactly as `ivarTy?`'s miss and
+    declaration* rather than as a missing rule, exactly as `ivarTy?`'s miss and
     `scopedConstTy?`'s are. -/
 def superDecl? (D : Decls) (cls name : String) : Option MethodDecl :=
   (D.supers.find? (·.1 == (cls, name))).map (·.2)
 
 /-- The declared type of `$x`, or `none` for "not declared" — reported as a missing
-    *declaration* by the open front end (L228), exactly as `ivarTy?`'s miss is. -/
+    *declaration* by the open front end, exactly as `ivarTy?`'s miss is. -/
 def globalTy? (D : Decls) (x : String) : Option Ty :=
   (D.globals.find? (·.1 == x)).map (·.2)
 
-/-- **A global the machine keeps in `m.globals`** (L228) — everything except the two
+/-- **A global the machine keeps in `m.globals`** — everything except the two
     machine-backed names and the match views. `Interp.getGlobal`'s three-way split *is*
     this predicate: `$!` is `currentExc`, `$~` is the frame's `lastMatch`, a view is
     computed by `matchGlobal` from the match data, and everything else is the
@@ -320,7 +320,7 @@ def declsFor (D : Decls) (cls : String) : List (String × MethodDecl) :=
 /-- The declared signature of `cls#name`, or `none` for "not declared", which the
     checker reads as `unknown` — never as "no such method". The distinction is
     load-bearing: the invariant is a *lower bound*, so silence about a name is
-    silence, not a claim (`typing-a-mutable-method-table.md` §2). -/
+    silence, not a claim. -/
 def declOf? (D : Decls) (cls name : String) : Option MethodDecl :=
   (declsFor D cls |>.find? (·.1 == name)).map (·.2)
 
@@ -348,7 +348,7 @@ def groundClassNames : List String :=
 
 /-- The classes a value of a ground type can have. A **list**, not a single name,
     because `Ty.bool` is already two classes — which is the shape `T::Boolean`
-    (`PLAN.md` W5 T4) needs, arriving here for free rather than as a union in
+ needs, arriving here for free rather than as a union in
     `Ty`. -/
 def tyClassNames : Ty → List String
   | .int => ["Integer"]
@@ -361,7 +361,7 @@ def tyClassNames : Ty → List String
   | .sym => ["Symbol"]
   -- The class type is the arm this function was written for: one name, exactly
   -- the key. Note it is *not* the ancestors walk — a declaration inherited from a
-  -- superclass is not visible here, which is `Sub`'s job (`PLAN.md` W5 T2) and is
+  -- superclass is not visible here, which is `Sub`'s job and is
   -- deliberately still absent, so today a class type sees only its own row.
   --
   -- **The ground names are subtracted, and that is not a technicality.** The two
@@ -374,18 +374,18 @@ def tyClassNames : Ty → List String
   -- the type useless instead of unsound, which is the right failure direction and
   -- is what `Sub` will fix (an `Integer` receiver should be typed `.int`).
   | .cls n => if groundClassNames.contains n then [] else [n]
-  -- **The top type names no class** (L183), which is what makes it a *parameter*
+  -- **The top type names no class**, which is what makes it a *parameter*
   -- type and nothing else: `declFor D .any mname` is `none` for every `mname`, so
   -- `DeclsOk` never obliges anything at it and no send can use it as a receiver.
   -- The imprecision is in `subTy`, at the position a declared parameter occupies.
   | .any => []
-  -- **A nilable dispatches from nowhere** (L193), for `.any`'s reason and not for a
+  -- **A nilable dispatches from nowhere**, for `.any`'s reason and not for a
   -- new one: a value typed `.nilable τ` may be `nil`, so no row can be promised at
   -- it, and `[]` is what says so — `declFor` never answers at a nilable and
   -- `DeclsOk` obliges nothing. Refining a nilable to its payload is a *narrowing*
   -- rule (`x.nil?` / `if x`), which is `PLAN.md` W5 T3 and not this commit.
   | .nilable _ => []
-  -- **A class object has no declarations yet** (L184), and `[]` is a decision
+  -- **A class object has no declarations yet**, and `[]` is a decision
   -- rather than a stub: a row on `.clsOf "String"` is a **singleton** method
   -- (`def self.m`) while a row on `.cls "String"` is an instance method, so the two
   -- need *different keys in the same table* — and picking that key is rung 3's
@@ -422,9 +422,9 @@ def tyClassNames : Ty → List String
   -- **L269: a union dispatches from nowhere** — `.nilable`'s reason verbatim: a
   -- value typed `union σ τ` may be either side, so no single row can be promised
   -- at it, `declFor` never answers, and `DeclsOk` obliges nothing. Refining a
-  -- union to a dispatchable member is a *narrowing* rule (`Judgment/Sub.lean`
+  -- union to a dispatchable member is a *narrowing* rule (`books/Books/Metatheory/Typing/Lang/Sub.lean`
   -- `dropNil`, and eventually `is_a?`), never this function's business. An
-  -- all-members-agree arm (the `sigOf` nilable-union shape, L260) is the future
+  -- all-members-agree arm (the `sigOf` nilable-union shape) is the future
   -- widening if union receivers ever want direct dispatch.
   | .union _ _ => []
   -- L270: an arrow dispatches from no method table — its one consumer is the
@@ -450,7 +450,7 @@ def declFor (D : Decls) (τ : Ty) (mname : String) : Option MethodDecl :=
     the direct replacement for P0's `builtinSig`, and the only difference visible
     to the type rules is that it takes the table.
 
-    **A block-taking row is not a signature** (L242), and the filter is the whole
+    **A block-taking row is not a signature**, and the filter is the whole
     inertness argument for `MethodDecl.blk`. Every rule in the fragment reads its
     receiver's declaration through this function and *none* of them passes a block, so
     a row that declares one would otherwise let `xs.each` — no block — type against
@@ -460,10 +460,10 @@ def declFor (D : Decls) (τ : Ty) (mname : String) : Option MethodDecl :=
     unreadable by anything that has not been taught about it. -/
 def sigOf (D : Decls) (τ : Ty) (mname : String) : Option (List Ty × Ty) :=
   match τ with
-  -- **Union dispatch at a nilable receiver** (L260), and it is the whole
+  -- **Union dispatch at a nilable receiver**, and it is the whole
   -- `nilable-receiver` rung: `x&.m` desugars to `t = x; if t.nil? then nil else t.m`, so
   -- the blocker is a plain send whose receiver type is a `.nilable σ` — a type
-  -- `declFor` answers `none` at, because `tyClassNames` is `[]` there (L193).
+  -- `declFor` answers `none` at, because `tyClassNames` is `[]` there.
   --
   -- The sound reading is the standard one: the send is admissible when **both** arms of
   -- the union declare the method, at the *same* signature. `NilClass` is a class like any
@@ -491,7 +491,7 @@ def sigOf (D : Decls) (τ : Ty) (mname : String) : Option (List Ty × Ty) :=
       | some _ => none
     | none => none
 
-/-- **The two rows a nilable signature is made of** (L260) — the inversion the dispatch
+/-- **The two rows a nilable signature is made of** — the inversion the dispatch
     case reads, and the reason the rung needs no new `EntryOk` arm: each row is at an
     *ordinary* key, so each is `MethodRowsOk` at that key and dispatches by the machinery
     that was already there. -/
@@ -518,7 +518,7 @@ theorem sigOf_nilable {D : Decls} {σ : Ty} {mname : String} {ps : List Ty} {τr
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
-/-- **The same read, without the arity-zero restriction** (L259) — what the
+/-- **The same read, without the arity-zero restriction** — what the
     positive-arity block-send rule asks. It hands back the declaration's *parameter
     list* as well, because that is what the argument types have to match.
 
@@ -563,7 +563,7 @@ theorem blockSendA?_declFor {D : Decls} {τr : Ty} {mname : String} {ps : List P
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
-/-- **The pieces a block send reads off the row and the block node** (L255):
+/-- **The pieces a block send reads off the row and the block node**:
     the block's one parameter name, its declared type, the type its body must answer, and
     the send's own answer.
 
@@ -573,7 +573,7 @@ theorem blockSendA?_declFor {D : Decls} {τr : Ty} {mname : String} {ps : List P
     restriction, and each names a different thing the block rung has not paid for yet:
 
     * `[.req x]` — one required positional, which is `callClosure_req1`'s hypothesis
-      (L244) and rules out auto-splat, optionals and destructuring;
+ and rules out auto-splat, optionals and destructuring;
     * `[]` block-locals — a name first assigned inside the block is pre-bound in the
       block frame's own `locals`, which is the widening L247 prices and this cut skips;
     * `d.params = []` — the *send* takes no positional arguments, which is `each`;
@@ -590,7 +590,7 @@ def blockSend? (D : Decls) (τr : Ty) (mname : String) (ps : List Param)
     | none => none
   | _, _ => none
 
-/-- The shape `blockSend?` refuses everything but (L255): its answer pins the block
+/-- The shape `blockSend?` refuses everything but: its answer pins the block
     node's parameter list and its (empty) block-locals, which `callClosure_req1` needs. -/
 theorem blockSend?_shape {D : Decls} {τr : Ty} {mname : String} {ps : List Param}
     {ls : List String} {x : String} {σp βret τret : Ty}
@@ -633,13 +633,13 @@ theorem blockSend?_declFor {D : Decls} {τr : Ty} {mname : String} {ps : List Pa
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
-/-- **The enclosing locals, seen from inside a block** (L255) — every name at `.any`.
+/-- **The enclosing locals, seen from inside a block** — every name at `.any`.
 
     Not an approximation of the caller's environment: `ValueTy h v .any` holds of every
-    value (L232), so the block frame's `FrameConforms` obligation at an enclosing name is
+    value, so the block frame's `FrameConforms` obligation at an enclosing name is
     discharged with no lookup at all — which is what lets `KontOk.iterK` say **nothing**
     about the frame the closure captured. A *precise* enclosing environment would need
-    the pairing `KontOk` cannot express (L249). -/
+    the pairing `KontOk` cannot express. -/
 def anyEnv (Γ : Env) : Env := Γ.map (fun e => (e.1, Ty.any))
 
 /-- A lookup in `anyEnv Γ` succeeds exactly where the same lookup in `Γ` does, at `.any`.
@@ -654,7 +654,7 @@ theorem anyEnv_get (Γ : Env) (y : String) :
     · simp only [anyEnv, envGet?, List.map_cons, List.find?, hy, Bool.false_eq_true, if_false]
       simpa [anyEnv, envGet?] using ih
 
-/-- **`anyEnv` is monotone** (L255) — the one step `infer_env_mono`'s block-send case
+/-- **`anyEnv` is monotone** — the one step `infer_env_mono`'s block-send case
     takes that the other arms do not: the block body is typed in an environment built
     *from* the send's, so widening the send's widens the body's. -/
 theorem anyEnv_subEnv {Γ Γ' : Env} (h : SubEnv Γ Γ') : SubEnv (anyEnv Γ) (anyEnv Γ') := by
@@ -673,7 +673,7 @@ theorem SubEnv.cons {Γ Γ' : Env} (e : String × Ty) (h : SubEnv Γ Γ') :
   · simp only [envGet?, List.find?, hy2, Bool.false_eq_true, if_false] at hy ⊢
     exact h y τ hy
 
-/-- **The context a block body is typed in** (L255). Four channels closed and one opened,
+/-- **The context a block body is typed in**. Four channels closed and one opened,
     and each closure is the honest reading of where the jump would go:
 
     * `ret := none` — a `return` inside a block targets the closure's **home method**,
@@ -681,12 +681,12 @@ theorem SubEnv.cons {Γ Γ' : Env} (e : String × Ty) (h : SubEnv Γ Γ') :
     * `inLoop := none` — a `next` ends the *block invocation* (`blkFrameK`'s own arm),
       not the enclosing loop;
     * `selfCls := none` — the first cut's one real cost, measured at **one body** of the
-      fifteen (`implementation-notes.md` L249): a block whose first evaluated expression
+      fifteen: a block whose first evaluated expression
       is a send on its parameter reports a *needed declaration* long before it reaches an
       implicit-self send;
     * `meth := none`/`params := none` — no `super` from inside a block;
-    * `inBlock := true` — which is what guards `StackCtx`'s name clause (L250) and
-      refuses `x = 1` (L252). -/
+    * `inBlock := true` — which is what guards `StackCtx`'s name clause and
+      refuses `x = 1`. -/
 def blockCtx (ctx : FrameCtx) : FrameCtx :=
   { cls := ctx.cls, selfCls := none, ret := none, meth := none, params := none,
     inLoop := none, inBlock := true }
@@ -719,7 +719,7 @@ def hookFreeNames : List String := ["method_added", "define_method"]
     name-global, so a new row refuses a `def` of that name). -/
 def SubDecls (F F' : Decls) : Prop :=
   (∀ τ mname d, declFor F τ mname = some d → declFor F' τ mname = some d) ∧
-  -- **The constant table is *equal*, not merely contained** (L195), and it is worth
+  -- **The constant table is *equal*, not merely contained**, and it is worth
   -- saying why the weaker relation would be wrong rather than just unnecessary: the
   -- `.const` rule reads the type *out of* the table, so a `F'` that answered a
   -- different type at the same name would make `infer_mono` false, not just
@@ -744,7 +744,7 @@ def SubDecls (F F' : Decls) : Prop :=
   -- J53: and the declared-classes table, `modules`' reason.
   F.classes = F'.classes
 
-/-- **`blockSend?` is monotone in the table** (L255), which is the half `infer_mono` needs:
+/-- **`blockSend?` is monotone in the table**, which is the half `infer_mono` needs:
     it reads `declFor` and nothing else, and `SubDecls`' first component is exactly that
     reading preserved. -/
 theorem SubDecls.blockSend_eq {F F' : Decls} (hs : SubDecls F F') {τr : Ty}
@@ -765,7 +765,7 @@ theorem SubDecls.blockSend_eq {F F' : Decls} (hs : SubDecls F F') {τr : Ty}
              rw [hs.1 τr mname d hd]
              exact h)
 
-/-- And `blockSendA?` likewise (L259) — the same one-line reading, same proof. -/
+/-- And `blockSendA?` likewise — the same one-line reading, same proof. -/
 theorem SubDecls.blockSendA_eq {F F' : Decls} (hs : SubDecls F F') {τr : Ty}
     {mname : String} {ps : List Param} {ls : List String}
     {r : String × Ty × Ty × List Ty × Ty}
@@ -801,22 +801,22 @@ theorem SubDecls.constTy_eq {F F' : Decls} (hs : SubDecls F F') (n : String) :
     constTy? F' n = constTy? F n := by
   unfold constTy?; rw [hs.2.1]
 
-/-- And the ivar table's (L196). -/
+/-- And the ivar table's. -/
 @[simp] theorem SubDecls.ivarTy_eq {F F' : Decls} (hs : SubDecls F F') (c x : String) :
     ivarTy? F' c x = ivarTy? F c x := by
   unfold ivarTy?; rw [hs.2.2.1]
 
-/-- And the scoped-constant table's (L205). -/
+/-- And the scoped-constant table's. -/
 @[simp] theorem SubDecls.scopedConstTy_eq {F F' : Decls} (hs : SubDecls F F') (c n : String) :
     scopedConstTy? F' c n = scopedConstTy? F c n := by
   unfold scopedConstTy?; rw [hs.2.2.2.1]
 
-/-- And the `super` table's (L211). -/
+/-- And the `super` table's. -/
 @[simp] theorem SubDecls.superDecl_eq {F F' : Decls} (hs : SubDecls F F') (c n : String) :
     superDecl? F' c n = superDecl? F c n := by
   unfold superDecl?; rw [hs.2.2.2.2.1]
 
-/-- And the globals table's (L228). -/
+/-- And the globals table's. -/
 @[simp] theorem SubDecls.globalTy_eq {F F' : Decls} (hs : SubDecls F F') (x : String) :
     globalTy? F' x = globalTy? F x := by
   unfold globalTy?; rw [hs.2.2.2.2.2.1]
@@ -879,7 +879,7 @@ invariant carries and `classOkB` is what the certificate decides — and widenin
 is a table row plus a `decide`.
 
 `String` is the one entry, and it is not arbitrary: it is the only ground class
-the fragment can currently *produce a value of* (`.str`, L151), so it is the only
+the fragment can currently *produce a value of* (`.str`), so it is the only
 one for which reopening buys a call site.
 
 **Since L189 the list has a second reader, and it is the one that now sets its
@@ -903,7 +903,7 @@ def reopenableClasses : List String :=
    "ZeroDivisionError", "FrozenError", "StopIteration", "RangeError",
    "LocalJumpError"]
 
-/-- **The names the `.const` *read* rule admits** (L194) — a *superset* of
+/-- **The names the `.const` *read* rule admits** — a *superset* of
     `reopenableClasses`, because the read needs strictly fewer facts than the reopen.
 
 `class C … end` must know the object is a class and not a module, that its ancestor
@@ -929,7 +929,7 @@ below are there because a measurement put them there
 nothing in the slice reads them, and a row with no call site is the speculative clause
 L191 warned about. `Array`, `Hash` and `Range` are refused — `T::Array` and friends
 own those names too, so sole ownership fails — and `Regexp` is refused because
-`classRecv` excludes its id (L106). -/
+`classRecv` excludes its id. -/
 def readableClasses : List String :=
   reopenableClasses ++ ["Float"]
 
@@ -972,7 +972,7 @@ theorem readable_of_reopenable {n : String} (h : n ∈ reopenableClasses) :
 def baseConsts : List (String × Ty) :=
   readableClasses.map (fun n => (n, Ty.clsOf n))
 
-/-- **The prelude-aware table** (L195), which is what the *tool* reports against:
+/-- **The prelude-aware table**, which is what the *tool* reports against:
     the model the difftest SUT runs, and the heap `--assn` describes, is the
     prelude-booted one.
 
@@ -1014,7 +1014,7 @@ def baseDecls : Decls := { consts := baseConsts, rows :=
     [("+", { params := [.int], ret := .int }),
      ("-", { params := [.int], ret := .int }),
      ("*", { params := [.int], ret := .int }),
-     -- **The first nullary row** (L152), and it is here to *exercise* the zero-arity
+     -- **The first nullary row**, and it is here to *exercise* the zero-arity
      -- rule rather than for its own sake: without a row whose `params` is `[]`,
      -- `sigOf` never answers `some ([], _)` and the new `infer` arm, `KontOk.recvK0`
      -- and its consecution case would all be unreachable code with a proof attached.
@@ -1029,7 +1029,7 @@ def baseDecls : Decls := { consts := baseConsts, rows :=
 
 /-- Changing `consts` leaves every method-table function alone, and the equality is
     `rfl` — stated as a `simp` lemma so the `baseDecls` refutation lemmas apply to
-    `declsOf p` without an unfold (L195). -/
+    `declsOf p` without an unfold. -/
 @[simp] theorem declFor_consts (c : List (String × Ty)) (τ : Ty) (m : String) :
     declFor { baseDecls with consts := c } τ m = declFor baseDecls τ m := rfl
 
@@ -1042,7 +1042,7 @@ def baseDecls : Decls := { consts := baseConsts, rows :=
     judgement whose arms do not yet read the heap. -/
 def declsOf (_p : Expr) : Decls := baseDecls
 
-/-- **The table `--assn` reports against** (L195). Same rows, one more constant, and
+/-- **The table `--assn` reports against**. Same rows, one more constant, and
     the difference is `T`. Placed here rather than inside `declsOf` because
     `check_sound` establishes `Inv` at the *bare boot* heap, where `T` does not exist:
     the boot-safe table and the prelude-aware one are two tables, each sound at the

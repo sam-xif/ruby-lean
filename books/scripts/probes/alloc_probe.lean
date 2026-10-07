@@ -1,5 +1,5 @@
 import Books.Metatheory.Typing.Infer.Locals
-import RubyCore.PreludeBoot
+import RubyCore.Boot
 
 /-!
 The producer rung's measurement: **what does an `alloc` actually break?**
