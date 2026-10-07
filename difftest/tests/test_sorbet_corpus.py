@@ -63,16 +63,6 @@ def test_annotation_free_categories_really_are_annotation_free():
         assert "sig " not in case.source and "sig{" not in case.source, case.id
 
 
-def test_check_expect_is_wellformed_where_declared():
-    """Optional (the 22 pre-existing programs predate the checker), but where
-    present it must name a real verdict — `difftest sorbet check` then enforces
-    it against the model."""
-    for case in load_sorbet_corpus():
-        declared = case.provenance.get("check_expect")
-        if declared is not None:
-            assert declared in ("accept", "reject", "unknown"), case.id
-
-
 def test_every_program_declares_a_sigil():
     for case in load_sorbet_corpus():
         first = case.source.splitlines()[0]

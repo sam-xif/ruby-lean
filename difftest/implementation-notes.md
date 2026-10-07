@@ -502,7 +502,7 @@ The object of study for the Sorbet work is the *type system*, not the language, 
 `corpus/sorbet/` is organized by which part of Sorbet's design a program probes —
 `sig-basic`, `narrowing`, `assertions`, `untyped-boundary`, `escape-hatches`,
 `structs-enums`, `generics` — mirroring §A of
-[`../ruby-lean/AGENTS.md`](../ruby-lean/AGENTS.md) §Sorbet.
+[`../books/AGENTS.md`](../books/AGENTS.md) §Sorbet.
 That is a different axis from tier 3's (dispatch, blocks/jumps, eval-order, …), which is
 organized by Ruby construct, and both are right for their purpose.
 
@@ -685,6 +685,14 @@ the risk of manufacturing a false AGREE is confined to text neither side can mea
 differ on. Guarded by `tests/test_observation.py`.
 
 ## N-checker — the `check` vs. `srb` relation (`checker_relation.py`)
+
+> **Removed 2026-10-07.** `rubycore --check` went with the model's own type checker
+> (5ee6b03), so this relation had no verdicts to relate. `checker_relation.py`, its tests,
+> `StaticChecker`, the `checker fuzz` subcommand, the `check_*` fields of the reports and
+> the corpus's `check_expect` declarations are gone. The generators (`fragment_fuzz.py`,
+> `sig_gen.py`) and `checker siggen`/`sigread`/`sample` remain. The checker of record,
+> `validateD`, is measured against Sorbet by the gate in `books/`. The notes below are
+> the record of what this was.
 
 Design notes for the checker difftest; the Lean-side notes are `../ruby-ruby-lean/notes/model/implementation-notes.md`
 L87. Spec: `../docs/semantics/static-soundness-poc.md` §7.

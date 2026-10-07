@@ -1,7 +1,7 @@
 """The Sorbet toolchain: static checker (`srb tc`) and runtime (`sorbet-runtime`).
 
 Sorbet has *two* halves, and the whole point of the Sorbet difftest work is
-that they are separate objects of study (`../ruby-lean/AGENTS.md` §Sorbet §A.3/§A.5):
+that they are separate objects of study (`../books/AGENTS.md` §Sorbet §A.3/§A.5):
 
 - **static** — `srb tc` accepts or rejects a program. Sorbet is unsound by
   design, so acceptance is *not* a safety claim; this module exposes it as an
@@ -320,87 +320,11 @@ class FragmentChecker:
         return FragmentResult(bool(d["in_fragment"]), tuple(d.get("violations", [])))
 
 
-# --------------------------------------------------------------------------
-# The static checker: what `check` says
-# --------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class CheckResultLean:
-    """`rubycore --check`: the static checker's answer
-    (`ruby-lean/RubyCore/Types/Core.lean`).
-
-    Two readings, and the distinction is D12's:
-
-    * `decision` — **total**, `accept` or `reject`, never `unknown`. This is what
-      `PLAN.md` §1 criterion 2 is stated over. `accept` is licensed by
-      `Proof/Static.decision_sound_withPrelude`; `reject` says *the checker did
-      not certify this program* and carries no claim about the program at all.
-    * `verdict`/`basis` — the **epistemic** reading, unchanged in meaning and in
-      value from before D12: `refuted` is *our rules refute this* (the only cell
-      the `srb` comparison's pinned zero is about) and `uncertified` is *the
-      fragment escaped*. Consumers that compare against `srb`, and the tier-4
-      corpus's declared verdicts, read this one — collapsing the two would retire
-      that comparison silently.
-    """
-
-    verdict: str  # accept | reject | unknown  — the epistemic reading
-    inferred_type: str | None
-    decision: str | None = None  # accept | reject  — D12's total reading
-    basis: str | None = None  # certified | refuted | uncertified
-
-    def to_json(self) -> dict:
-        return {"verdict": self.verdict, "type": self.inferred_type,
-                "decision": self.decision, "basis": self.basis}
-
-
-class StaticChecker:
-    """Ask the Lean model for the static checker's verdict.
-
-    Same shape and same rationale as `FragmentChecker`: a static query against
-    the binary that carries the semantics, so the checker cannot drift into a
-    separate reimplementation of itself.
-    """
-
-    def __init__(self, harness_lib: Path | None = None, lean_bin: Path | None = None,
-                 runner: CRubyRunner | None = None):
-        root = Path(__file__).resolve().parents[2]
-        self.harness_lib = Path(harness_lib) if harness_lib else root / "desugar" / "lib"
-        self.lean_bin = Path(lean_bin) if lean_bin else root / "ruby-lean" / ".lake" / "build" / "bin" / "rubycore"
-        self.runner = runner or CRubyRunner()
-
-    def check(self, source: str) -> CheckResultLean | None:
-        """None when the program cannot be desugared or decoded — "we cannot
-        say". Deliberately distinct from `unknown`, which is the checker having
-        looked and abstained; conflating them would let pipeline breakage read
-        as honest abstention and quietly flatter the ratchet."""
-        import json as _json
-
-        proc = subprocess.run(
-            [self.runner.ruby, "-e", _EXPORT_SNIPPET_FOR_FRAGMENT, str(self.harness_lib)],
-            input=source, capture_output=True, text=True, timeout=self.runner.timeout,
-        )
-        if proc.returncode != 0:
-            return None
-        lean = subprocess.run(
-            [str(self.lean_bin), "--check"],
-            input=proc.stdout, capture_output=True, text=True, timeout=self.runner.timeout,
-        )
-        if lean.returncode != 0:
-            return None
-        try:
-            d = _json.loads(lean.stdout)
-        except ValueError:
-            return None
-        return CheckResultLean(str(d["verdict"]), d.get("type"),
-                               d.get("decision"), d.get("basis"))
-
-
 class SigReader:
     """Ask the Lean model which Sorbet signatures a program *declares*
     (`rubycore --sigs`, `ruby-lean/RubyCore/Types/SigRead.lean`).
 
-    Static, like `FragmentChecker` and `StaticChecker`, and against the same
+    Static, like `FragmentChecker`, and against the same
     binary — the reader is what a later typing layer will consume, so it must not
     drift into a separate reimplementation.
     """
@@ -469,7 +393,7 @@ print Export.json(core)
 # class. It is more robust, but it *changes the program's semantics* — a program
 # under test may itself `rescue TypeError`, and the corpus deliberately contains
 # such programs (a locally-rescued sig violation is a type-safe program, exactly
-# the `raised != stuck` point of `../ruby-lean/AGENTS.md` §Type safety as reachability §2). Classifying
+# the `raised != stuck` point of `../books/AGENTS.md` §Type safety as reachability §2). Classifying
 # after the fact leaves the observed behavior untouched.
 _SIG_ERROR_PATTERNS = (
     "Parameter '",            # CallValidation: argument type check
