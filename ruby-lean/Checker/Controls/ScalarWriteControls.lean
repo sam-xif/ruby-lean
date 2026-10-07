@@ -19,7 +19,9 @@ def callHint (cn : String) (ty : Ty) (d : Deriv) : Deriv :=
 #guard validateD (.seq [cls "Tag" (.sym "new"), call "Tag" (.sym "old")])
   (.seq [hint "Tag" .sym (.symLit "new"), callHint "Tag" .sym (.symLit "old")])
 #guard validateD (cls "FloatBox" (.flt 0)) (hint "FloatBox" .float (.fltLit 0))
-#guard validateD (cls "NilBox" .nil) (hint "NilBox" .nilT .nilLit)
+-- nil is refused like Boolean: a nil-typed field may be absent, so the receiver could be
+-- frozen (`Guards/ScalarWrite.lean`).
+#guard !validateD (cls "NilBox" .nil) (hint "NilBox" .nilT .nilLit)
 #guard !validateD (cls "FlagBox" .fls) (hint "FlagBox" .bool .flsLit)
 #guard !validateD (cls "Counter" (.str "bad"))
   (.classDecl "Counter" none (.seq [initHint .int, getterHint .int .int,
