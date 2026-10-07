@@ -12,7 +12,8 @@ It builds the model and the checker, builds every proof, audits their axioms,
 runs the checker over its corpus, runs the model against CRuby, and builds these
 docs. It stops at the first failure and prints which check failed. Continuous
 integration runs the same targets on every pull request, and every one of them
-blocks the merge. Nothing is report-only.
+blocks the merge. Nothing is report-only, and `make ci-sync` fails if `make
+check` gains a target that continuous integration does not run.
 
 While working, run the part you are changing:
 
