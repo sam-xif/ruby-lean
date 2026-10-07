@@ -102,62 +102,75 @@ def symInspect (s : String) : String :=
 def strEqEnc (h : Heap) (x y : ObjId) (s t : String) : Bool :=
   s == t && ((h.get x).binary == (h.get y).binary || !hasHighByte s)
 
+/-- How deep the pure representation functions follow nested values. They used
+    to be `partial`, which made `==`, `eql?`, `inspect` and `to_s` opaque to every
+    proof: not even `1 == 1` could be shown. They now recurse on this fuel, so they
+    are ordinary total functions that unfold. No non-cyclic value a program can
+    build in practice is this deep. -/
+def reprFuel : Nat := 10000
+
 /-- Strict `eql?` (type-strict: 1 ≠ 1.0). Used for hash-key matching.
-    Fuel-bounded for (unconstructible-at-L0 but total-function-required)
-    cyclic structures. -/
-partial def valueEql (h : Heap) (a b : Value) : Bool :=
-  match a, b with
-  | .ref x, .ref y =>
-    if x == y then true
-    else
-      match (h.get x).payload, (h.get y).payload with
-      | .str s, .str t => strEqEnc h x y s t
-      | .rational n d, .rational a b => n == a && d == b
-      | .complex r i, .complex a b => valueEql h r a && valueEql h i b
-      | .arr xs, .arr ys =>
-        xs.size == ys.size && (xs.zip ys).all (fun (p, q) => valueEql h p q)
-      | .hsh xs, .hsh ys => hashEq xs ys
-      | _, _ => false
-  | _, _ => a.identEq b
-where
-  hashEq (xs ys : Array (Value × Value)) : Bool :=
-    xs.size == ys.size &&
-    xs.all (fun (k, v) =>
-      match ys.find? (fun (k', _) => valueEql h k k') with
-      | some (_, v') => valueEql h v v'
-      | none => false)
+    Out of fuel answers `true`, which is what CRuby's recursion guard answers
+    when a comparison re-enters itself (`recursive_eql`). -/
+def valueEqlFuel : Nat → Heap → Value → Value → Bool
+  | 0, _, _, _ => true
+  | fuel + 1, h, a, b =>
+    match a, b with
+    | .ref x, .ref y =>
+      if x == y then true
+      else
+        match (h.get x).payload, (h.get y).payload with
+        | .str s, .str t => strEqEnc h x y s t
+        | .rational n d, .rational a b => n == a && d == b
+        | .complex r i, .complex a b => valueEqlFuel fuel h r a && valueEqlFuel fuel h i b
+        | .arr xs, .arr ys =>
+          xs.size == ys.size && (xs.zip ys).all (fun (p, q) => valueEqlFuel fuel h p q)
+        | .hsh xs, .hsh ys =>
+          xs.size == ys.size &&
+          xs.all (fun (k, v) =>
+            match ys.find? (fun (k', _) => valueEqlFuel fuel h k k') with
+            | some (_, v') => valueEqlFuel fuel h v v'
+            | none => false)
+        | _, _ => false
+    | _, _ => a.identEq b
+
+def valueEql (h : Heap) (a b : Value) : Bool := valueEqlFuel reprFuel h a b
 
 /-- Loose `==` (numeric: 1 == 1.0). The builtin default; user overrides are
-    gated by `reprPure`. -/
-partial def valueEq (h : Heap) (a b : Value) : Bool :=
-  if let some (r, i) := complexPayload? h a then
-    match complexPayload? h b with
-    | some (x, y) => valueEq h r x && valueEq h i y
-    | none => nativeReal h b && valueEq h r b && realZero h i
-  else if let some (r, i) := complexPayload? h b then
-    nativeReal h a && valueEq h r a && realZero h i
-  else if let some (n, d) := rationalPayload? h a then rationalEq h n d b
-  else if let some (n, d) := rationalPayload? h b then rationalEq h n d a
-  else
-  match a, b with
-  | .int x, .flt y => Float.ofInt x == y
-  | .flt x, .int y => x == Float.ofInt y
-  | .flt x, .flt y => x == y
-  | .ref x, .ref y =>
-    if x == y then true
+    gated by `reprPure`. Out of fuel answers `true`, as `valueEqlFuel` does. -/
+def valueEqFuel : Nat → Heap → Value → Value → Bool
+  | 0, _, _, _ => true
+  | fuel + 1, h, a, b =>
+    if let some (r, i) := complexPayload? h a then
+      match complexPayload? h b with
+      | some (x, y) => valueEqFuel fuel h r x && valueEqFuel fuel h i y
+      | none => nativeReal h b && valueEqFuel fuel h r b && realZero h i
+    else if let some (r, i) := complexPayload? h b then
+      nativeReal h a && valueEqFuel fuel h r a && realZero h i
+    else if let some (n, d) := rationalPayload? h a then rationalEq h n d b
+    else if let some (n, d) := rationalPayload? h b then rationalEq h n d a
     else
-      match (h.get x).payload, (h.get y).payload with
-      | .str s, .str t => strEqEnc h x y s t
-      | .arr xs, .arr ys =>
-        xs.size == ys.size && (xs.zip ys).all (fun (p, q) => valueEq h p q)
-      | .hsh xs, .hsh ys =>
-        xs.size == ys.size &&
-        xs.all (fun (k, v) =>
-          match ys.find? (fun (k', _) => valueEql h k k') with
-          | some (_, v') => valueEq h v v'
-          | none => false)
-      | _, _ => false
-  | _, _ => a.identEq b
+    match a, b with
+    | .int x, .flt y => Float.ofInt x == y
+    | .flt x, .int y => x == Float.ofInt y
+    | .flt x, .flt y => x == y
+    | .ref x, .ref y =>
+      if x == y then true
+      else
+        match (h.get x).payload, (h.get y).payload with
+        | .str s, .str t => strEqEnc h x y s t
+        | .arr xs, .arr ys =>
+          xs.size == ys.size && (xs.zip ys).all (fun (p, q) => valueEqFuel fuel h p q)
+        | .hsh xs, .hsh ys =>
+          xs.size == ys.size &&
+          xs.all (fun (k, v) =>
+            match ys.find? (fun (k', _) => valueEqlFuel fuel h k k') with
+            | some (_, v') => valueEqFuel fuel h v v'
+            | none => false)
+        | _, _ => false
+    | _, _ => a.identEq b
+
+def valueEq (h : Heap) (a b : Value) : Bool := valueEqFuel reprFuel h a b
 
 /-- `Regexp#inspect` renders `/src/flags`, escaping only `/` in the source, and
     orders the flag letters `m i x n` [V] (`/a/imx.inspect` is `"/a/mix"`). -/
@@ -189,149 +202,159 @@ def spanText (subject : String) : Option (Nat × Nat) → Option String
 mutual
 
 /-- Ruby `inspect` (default builtin). Errors are Unsupported reasons. -/
-partial def inspect (h : Heap) (v : Value) : Except String String := do
-  match v with
-  | .int n => return toString n
-  | .flt x => return rubyFloatRepr x
-  | .sym s => return symInspect s
-  | .bool b => return toString b
-  | .nil => return "nil"
-  | .ref o =>
-    -- toplevel self defines inspect/to_s to return "main" (everywhere,
-    -- including nested: `p [self]` prints `[main]`) [V]
-    if o == Boot.mainId then return "main"
-    else
-    match (h.get o).payload with
-    | .str s => return escapeStringEnc (h.get o).binary s
-    | .arr xs =>
-      let parts ← xs.toList.mapM (inspect h)
-      return "[" ++ String.intercalate ", " parts ++ "]"
-    | .hsh xs =>
-      if xs.isEmpty then return "{}"
-      let parts ← xs.toList.mapM fun (k, val) => do
-        let vs ← inspect h val
-        match k with
-        | .sym s =>
-          if symbolIdentLike s then return s!"{s}: {vs}"
-          else return s!"{escapeString s}: {vs}"
-        | _ => return s!"{← inspect h k} => {vs}"
-      return "{" ++ String.intercalate ", " parts ++ "}"
-    | .cls _ =>
-      -- an anonymous class/module (`Class.new`) has no name; CRuby renders it by
-      -- address (L72), which is `className`'s own fallback since L124 — one rule,
-      -- not a copy per repr function
-      return className h o
-    | .exc msg =>
-      let cname := className h (h.get o).klass
-      let text ← if msg.identEq .nil then pure cname else toS h msg
-      if text.isEmpty then return cname else return s!"#<{cname}: {text}>"
-    | .proc _ => throw "Proc#inspect (address non-deterministic)"
-    | .range lo hi excl =>
-      -- A **nil endpoint prints as nothing** — `(1..nil).inspect` is `"1.."` and
-      -- `(nil..2)` is `"..2"` — *except* when both are nil, which prints
-      -- `"nil..nil"` [V]. `to_s` needs no such case: `nil.to_s` is already `""`,
-      -- so it falls out, and `(nil..nil).to_s` really is `".."`. Found while
-      -- validating endpoints (L122): endless ranges were the one shape whose
-      -- `inspect` the model got wrong rather than gated.
-      let dots := if excl then "..." else ".."
-      match lo, hi with
-      | .nil, .nil => return "nil" ++ dots ++ "nil"
-      | .nil, _ => return dots ++ (← inspect h hi)
-      | _, .nil => return (← inspect h lo) ++ dots
-      | _, _ => return (← inspect h lo) ++ dots ++ (← inspect h hi)
-    | .rational n d => return s!"({n}/{d})"
-    | .complex r i => complexText h true r i
-    | .enumerator none => return s!"#<{className h (h.get o).klass}: uninitialized>"
-    | .chain _ => throw "Chain inspection requires method dispatch"
-    | .enumerator (some data) =>
-      let receiver ← inspect h data.recv
-      let (args, keywords) := if !data.kw.isEmpty then (data.args, data.kw) else
-        match data.args.getLast? with
-        | some (.ref a) => match (h.get a).payload with
-          | .hsh pairs =>
-            if !pairs.isEmpty && pairs.all (fun (k, _) => match k with | .sym _ => true | _ => false)
-            then (data.args.dropLast, pairs.toList) else (data.args, [])
-          | _ => (data.args, [])
-        | _ => (data.args, [])
-      let args ← args.mapM (inspect h)
-      let kwParts ← keywords.mapM fun (key, value) => do
-        match key with
-        | .sym s =>
-          let name := if symbolIdentLike s then s else escapeString s
-          return s!"{name}: {← inspect h value}"
-        | _ => throw "Enumerator inspect with non-Symbol keyword keys"
-      let args := args ++ kwParts
-      return "#<" ++ className h (h.get o).klass ++ ": " ++ receiver ++ ":" ++ data.method ++
-        (if args.isEmpty then "" else "(" ++ String.intercalate ", " args ++ ")") ++ ">"
-    | .regexp src opts => return regexpInspect src opts
-    | .mdata subject caps names =>
-      -- `#<MatchData "1.22" 1:"1" commit:nil>` — named groups print their name
-      -- instead of their index, and an unset group prints `nil` [V].
-      let whole := (spanText subject (caps[0]?.getD none)).getD ""
-      -- the tag on a MatchData object records its *subject*'s encoding (L118),
-      -- and every span rendered here is a slice of that subject
-      let esc := escapeStringEnc (h.get o).binary
-      let byIdx : Nat → String := fun i =>
-        match names.find? (fun p => p.2 == i) with
-        | some (n, _) => n
-        | none => toString i
-      let parts := (caps.toList.drop 1).zipIdx.map fun (sp, j) =>
-        s!"{byIdx (j + 1)}:" ++
-          (match spanText subject sp with
-           | some t => esc t
-           | none => "nil")
-      return "#<MatchData " ++ esc whole ++
-        (if parts.isEmpty then "" else " " ++ String.intercalate " " parts) ++ ">"
-    | .none | .rng _ | .generator _ | .yielder .. =>
-      let cname := className h (h.get o).klass
-      let ivars := (h.get o).ivars.reverse
-      if ivars.isEmpty then
-        return s!"#<{cname}:{fakeAddr o}>"
+def inspectFuel : Nat → Heap → Value → Except String String
+  | 0, _, _ => throw "inspect: value nested deeper than the model follows"
+  | fuel + 1, h, v => do
+    match v with
+    | .int n => return toString n
+    | .flt x => return rubyFloatRepr x
+    | .sym s => return symInspect s
+    | .bool b => return toString b
+    | .nil => return "nil"
+    | .ref o =>
+      -- toplevel self defines inspect/to_s to return "main" (everywhere,
+      -- including nested: `p [self]` prints `[main]`) [V]
+      if o == Boot.mainId then return "main"
       else
-        let parts ← ivars.mapM fun (n, iv) => do return s!"{n}={← inspect h iv}"
-        return s!"#<{cname}:{fakeAddr o} " ++ String.intercalate ", " parts ++ ">"
+      match (h.get o).payload with
+      | .str s => return escapeStringEnc (h.get o).binary s
+      | .arr xs =>
+        let parts ← xs.toList.mapM (inspectFuel fuel h)
+        return "[" ++ String.intercalate ", " parts ++ "]"
+      | .hsh xs =>
+        if xs.isEmpty then return "{}"
+        let parts ← xs.toList.mapM fun (k, val) => do
+          let vs ← inspectFuel fuel h val
+          match k with
+          | .sym s =>
+            if symbolIdentLike s then return s!"{s}: {vs}"
+            else return s!"{escapeString s}: {vs}"
+          | _ => return s!"{← inspectFuel fuel h k} => {vs}"
+        return "{" ++ String.intercalate ", " parts ++ "}"
+      | .cls _ =>
+        -- an anonymous class/module (`Class.new`) has no name; CRuby renders it by
+        -- address (L72), which is `className`'s own fallback since L124 — one rule,
+        -- not a copy per repr function
+        return className h o
+      | .exc msg =>
+        let cname := className h (h.get o).klass
+        let text ← if msg.identEq .nil then pure cname else toSFuel fuel h msg
+        if text.isEmpty then return cname else return s!"#<{cname}: {text}>"
+      | .proc _ => throw "Proc#inspect (address non-deterministic)"
+      | .range lo hi excl =>
+        -- A **nil endpoint prints as nothing** — `(1..nil).inspect` is `"1.."` and
+        -- `(nil..2)` is `"..2"` — *except* when both are nil, which prints
+        -- `"nil..nil"` [V]. `to_s` needs no such case: `nil.to_s` is already `""`,
+        -- so it falls out, and `(nil..nil).to_s` really is `".."`. Found while
+        -- validating endpoints (L122): endless ranges were the one shape whose
+        -- `inspect` the model got wrong rather than gated.
+        let dots := if excl then "..." else ".."
+        match lo, hi with
+        | .nil, .nil => return "nil" ++ dots ++ "nil"
+        | .nil, _ => return dots ++ (← inspectFuel fuel h hi)
+        | _, .nil => return (← inspectFuel fuel h lo) ++ dots
+        | _, _ => return (← inspectFuel fuel h lo) ++ dots ++ (← inspectFuel fuel h hi)
+      | .rational n d => return s!"({n}/{d})"
+      | .complex r i => complexText h true r i
+      | .enumerator none => return s!"#<{className h (h.get o).klass}: uninitialized>"
+      | .chain _ => throw "Chain inspection requires method dispatch"
+      | .enumerator (some data) =>
+        let receiver ← inspectFuel fuel h data.recv
+        let (args, keywords) := if !data.kw.isEmpty then (data.args, data.kw) else
+          match data.args.getLast? with
+          | some (.ref a) => match (h.get a).payload with
+            | .hsh pairs =>
+              if !pairs.isEmpty && pairs.all (fun (k, _) => match k with | .sym _ => true | _ => false)
+              then (data.args.dropLast, pairs.toList) else (data.args, [])
+            | _ => (data.args, [])
+          | _ => (data.args, [])
+        let args ← args.mapM (inspectFuel fuel h)
+        let kwParts ← keywords.mapM fun (key, value) => do
+          match key with
+          | .sym s =>
+            let name := if symbolIdentLike s then s else escapeString s
+            return s!"{name}: {← inspectFuel fuel h value}"
+          | _ => throw "Enumerator inspect with non-Symbol keyword keys"
+        let args := args ++ kwParts
+        return "#<" ++ className h (h.get o).klass ++ ": " ++ receiver ++ ":" ++ data.method ++
+          (if args.isEmpty then "" else "(" ++ String.intercalate ", " args ++ ")") ++ ">"
+      | .regexp src opts => return regexpInspect src opts
+      | .mdata subject caps names =>
+        -- `#<MatchData "1.22" 1:"1" commit:nil>` — named groups print their name
+        -- instead of their index, and an unset group prints `nil` [V].
+        let whole := (spanText subject (caps[0]?.getD none)).getD ""
+        -- the tag on a MatchData object records its *subject*'s encoding (L118),
+        -- and every span rendered here is a slice of that subject
+        let esc := escapeStringEnc (h.get o).binary
+        let byIdx : Nat → String := fun i =>
+          match names.find? (fun p => p.2 == i) with
+          | some (n, _) => n
+          | none => toString i
+        let parts := (caps.toList.drop 1).zipIdx.map fun (sp, j) =>
+          s!"{byIdx (j + 1)}:" ++
+            (match spanText subject sp with
+             | some t => esc t
+             | none => "nil")
+        return "#<MatchData " ++ esc whole ++
+          (if parts.isEmpty then "" else " " ++ String.intercalate " " parts) ++ ">"
+      | .none | .rng _ | .generator _ | .yielder .. =>
+        let cname := className h (h.get o).klass
+        let ivars := (h.get o).ivars.reverse
+        if ivars.isEmpty then
+          return s!"#<{cname}:{fakeAddr o}>"
+        else
+          let parts ← ivars.mapM fun (n, iv) => do return s!"{n}={← inspectFuel fuel h iv}"
+          return s!"#<{cname}:{fakeAddr o} " ++ String.intercalate ", " parts ++ ">"
 
 /-- Ruby `to_s` (default builtin). -/
-partial def toS (h : Heap) (v : Value) : Except String String := do
-  match v with
-  | .int n => return toString n
-  | .flt x => return rubyFloatRepr x
-  | .sym s => return s
-  | .bool b => return toString b
-  | .nil => return ""
-  | .ref o =>
-    if o == Boot.mainId then return "main"
-    else
-    match (h.get o).payload with
-    | .str s =>
-      -- `to_s` hands back the **bytes**, and every consumer of this `String`
-      -- (interpolation, `print`, `join`, `%`, an exception message) drops the
-      -- encoding tag on the way. For a binary String that is only observable
-      -- when a byte is ≥ 0x80 — where a Lean `String` would silently re-read
-      -- the byte as a code point — so that case refuses rather than answering
-      -- (L118). ASCII bytes are the same either way.
-      if (h.get o).binary && hasHighByte s then
-        throw "to_s of a byte string holding a byte ≥ 0x80 (L118)"
-      else return s
-    | .arr _ | .hsh _ => inspect h v
-    | .cls _ => return className h o   -- as in `inspect` above (L124)
-    | .exc msg => if msg.identEq .nil then return className h (h.get o).klass else toS h msg
-    | .proc _ => throw "Proc#to_s (address non-deterministic)"
-    | .range lo hi excl =>
-      return (← toS h lo) ++ (if excl then "..." else "..") ++ (← toS h hi)
-    | .rational n d => return s!"{n}/{d}"
-    | .complex r i => complexText h false r i
-    | .enumerator _ | .chain _ | .generator _ | .yielder .. => return s!"#<{className h (h.get o).klass}:{fakeAddr o}>"
-    | .regexp src opts => return regexpToS src opts
-    | .mdata subject caps _ =>
-      let whole := (spanText subject (caps[0]?.getD none)).getD ""
-      if (h.get o).binary && hasHighByte whole then
-        throw "MatchData#to_s over a byte-string subject with a byte ≥ 0x80 (L118)"
-      else return whole
-    | .none | .rng _ =>
-      let cname := className h (h.get o).klass
-      return s!"#<{cname}:{fakeAddr o}>"
+def toSFuel : Nat → Heap → Value → Except String String
+  | 0, _, _ => throw "toS: value nested deeper than the model follows"
+  | fuel + 1, h, v => do
+    match v with
+    | .int n => return toString n
+    | .flt x => return rubyFloatRepr x
+    | .sym s => return s
+    | .bool b => return toString b
+    | .nil => return ""
+    | .ref o =>
+      if o == Boot.mainId then return "main"
+      else
+      match (h.get o).payload with
+      | .str s =>
+        -- `to_s` hands back the **bytes**, and every consumer of this `String`
+        -- (interpolation, `print`, `join`, `%`, an exception message) drops the
+        -- encoding tag on the way. For a binary String that is only observable
+        -- when a byte is ≥ 0x80 — where a Lean `String` would silently re-read
+        -- the byte as a code point — so that case refuses rather than answering
+        -- (L118). ASCII bytes are the same either way.
+        if (h.get o).binary && hasHighByte s then
+          throw "to_s of a byte string holding a byte ≥ 0x80 (L118)"
+        else return s
+      | .arr _ | .hsh _ => inspectFuel fuel h v
+      | .cls _ => return className h o   -- as in `inspect` above (L124)
+      | .exc msg => if msg.identEq .nil then return className h (h.get o).klass else toSFuel fuel h msg
+      | .proc _ => throw "Proc#to_s (address non-deterministic)"
+      | .range lo hi excl =>
+        return (← toSFuel fuel h lo) ++ (if excl then "..." else "..") ++ (← toSFuel fuel h hi)
+      | .rational n d => return s!"{n}/{d}"
+      | .complex r i => complexText h false r i
+      | .enumerator _ | .chain _ | .generator _ | .yielder .. => return s!"#<{className h (h.get o).klass}:{fakeAddr o}>"
+      | .regexp src opts => return regexpToS src opts
+      | .mdata subject caps _ =>
+        let whole := (spanText subject (caps[0]?.getD none)).getD ""
+        if (h.get o).binary && hasHighByte whole then
+          throw "MatchData#to_s over a byte-string subject with a byte ≥ 0x80 (L118)"
+        else return whole
+      | .none | .rng _ =>
+        let cname := className h (h.get o).klass
+        return s!"#<{cname}:{fakeAddr o}>"
 
 end
+
+/-- Ruby `inspect` (default builtin). Errors are Unsupported reasons. -/
+def inspect (h : Heap) (v : Value) : Except String String := inspectFuel reprFuel h v
+
+/-- Ruby `to_s` (default builtin). -/
+def toS (h : Heap) (v : Value) : Except String String := toSFuel reprFuel h v
 
 end RubyCore

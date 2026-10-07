@@ -35,10 +35,16 @@ theorem validateD_safe_boot {p : Ratchet.Expr} {d : Deriv}
 theorem validateD_safe_run {p : Ratchet.Expr} {d : Deriv}
     (h : validateD p d = true) (hb : bootOkB = true) (fuel : Nat) :
     Semantics.typeStuck (Semantics.run fuel (toRuby p)) = false := by
-  have hs := validateD_safe_boot h hb fuel
-  cases hboot : Semantics.bootedMachine with
-  | error msg => simp only [Semantics.run, hboot, Semantics.typeStuck]
-  | ok m => simpa only [Semantics.run, bootMachine, hboot, evalFrom, Machine.initOn] using hs
+  have hs : Semantics.typeStuck (Interp.run fuel (evalFrom bootMachine p)) = false :=
+    validateD_safe_boot h hb fuel
+  unfold bootMachine at hs
+  unfold Semantics.run
+  -- The boot result is abstracted before the case split. The prelude is a term now, so
+  -- the boot is something `simp` and `rfl` can *run*; left in the goal, they try to.
+  generalize Semantics.bootedMachine = booted at hs ⊢
+  cases booted with
+  | error msg => rfl
+  | ok m => exact hs
 
 #print axioms validateD_certified
 #print axioms validateD_safe

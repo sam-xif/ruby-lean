@@ -1,0 +1,15 @@
+name = "books"
+version = "0.1.0"
+defaultTargets = ["Books"]
+
+# Proofs about Ruby programs, stated against the model. The model is used as a
+# library: a path dependency builds in `../ruby-lean/.lake`, so its build is
+# shared and nothing here is on the model's own build or gate.
+[[require]]
+name = "rubylean"
+path = "../ruby-lean"
+
+[[lean_lib]]
+name = "Books"
+srcDir = "."
+globs = ["Books.+"]

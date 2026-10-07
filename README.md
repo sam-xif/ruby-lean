@@ -60,6 +60,7 @@ targets. The main ones:
 | `make difftest` | The differential-test environment; then `cd difftest && uv run difftest --help` |
 | `make bootstraptest` | The model vs CRuby over MRI's `bootstraptest` |
 | `make proofs` | The metatheory (`RubyCore/Proof/`), plus a check of every headline theorem's axioms |
+| `make books` | The proof books (`books/`): Ruby programs proved correct against the model |
 | `make wasm`, `make playground` | The three WebAssembly modules, then the static playground in `playground/dist/` |
 | `make gate` | The typed ratchet gate, which must print `GREEN` before a commit |
 | `make check` | Generated-source freshness, the desugar and difftest suites, and the gate |
@@ -121,6 +122,7 @@ relying on numbers recorded in this README.
 ## Where to read next
 
 - [`ruby-lean/`](ruby-lean/README.md): the Lean model, validator, proofs, and gate.
+- [`books/`](books/README.md): Ruby programs proved correct against the model.
 - [`desugar/`](desugar/README.md): Ruby source to the model's input format.
 - [`difftest/`](difftest/README.md): comparison with CRuby.
 - [`playground/`](playground/README.md): run and step through programs in a browser.

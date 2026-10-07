@@ -586,7 +586,10 @@ def initHeap : Heap :=
     | some c =>
       hBuiltins.setClassPayload objectId
         { c with consts := classTable.filterMap (fun (o, name, _) =>
-            if name.contains ':' then none else some (name, Value.ref o)) }
+            -- `toList.contains`, not `String.contains`: the latter is an iterator loop
+            -- the kernel cannot unfold, which stopped every proof that evaluates a
+            -- toplevel constant lookup on this heap (`books/`).
+            if name.toList.contains ':' then none else some (name, Value.ref o)) }
     | Option.none => hBuiltins
   -- **J53: the eigenclasses of `BasicObject` and `Object`, realized at boot.**
   -- `enterClassBody` eagerly realizes a fresh class's metaclass chain, and at a

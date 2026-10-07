@@ -116,14 +116,20 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
         (fun x y => .ok (.int (x * y)) m) (fun x y => .ok (.flt (x * y)) m)
   | "Integer#/" | "Float#/" =>
     binArg m args fun b =>
-      match bid, recv, rationalPayload? h b with
-      | "Integer#/", .int 1, some (n, d) => ratResult m d n
-      | _, _, _ =>
+      let general : BRes :=
         numBin (owner bid) m recv b
           (fun x y =>
             if y == 0 then .err Boot.zeroDivisionErrorId "divided by 0" m
             else .ok (.int (Int.fdiv x y)) m)  -- Ruby / is floor division [V]
           (fun x y => .ok (.flt (x / y)) m)
+      -- `1 / Rational` is the reciprocal. The argument is inspected before the
+      -- receiver so that an Integer argument never asks "is the receiver 1?".
+      match rationalPayload? h b with
+      | some (n, d) =>
+        match bid, recv with
+        | "Integer#/", .int 1 => ratResult m d n
+        | _, _ => general
+      | none => general
   | "Integer#%" | "Float#%" =>
     binArg m args fun b =>
       numBin (owner bid) m recv b
