@@ -61,7 +61,8 @@ the first failure, and continuous integration runs the same targets. It:
 6. tests the desugarer against CRuby (`make desugar-test`), runs the
    differential tester's own tests (`make difftest-test`), and compares each
    program book's theorem with what CRuby does (`make book-checks`);
-7. builds this documentation with link checking (`make docs`).
+7. builds this documentation with link checking (`make docs`), and checks that
+   continuous integration runs every one of these targets (`make ci-sync`).
 
 `make help` lists every target with a one-line description. The first
 `make conformance` or `make desugar-test` downloads CRuby's `bootstraptest`

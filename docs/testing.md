@@ -33,6 +33,7 @@ build.
 | `make soundness` | The 266 typed programs of `books/corpus/` | Any disagrees |
 | `make feature-loading` | `require`: scope, caching, re-entry and retry after a failed load | The model and CRuby differ |
 | `make book-checks` | Each program book's program, on a grid of inputs | CRuby, the model and the theorem do not all agree |
+| `make difftest-test` | The differential tester's own unit tests, including the Sorbet probes | Any test fails, or is skipped because a tool is missing |
 | `make desugar-test` | Every program in `desugar/corpus/` | The desugared program behaves differently from the original under CRuby |
 | `make desugar-coverage` | `bootstraptest` | The desugarer supports fewer programs than the recorded baseline |
 
