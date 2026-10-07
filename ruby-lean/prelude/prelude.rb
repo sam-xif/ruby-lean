@@ -908,7 +908,7 @@ class Symbol
   # `include` above was inert and worse than inert: `Comparable#<` found a `nil`
   # `<=>` and raised `ArgumentError: comparison of Symbol with :v failed` where
   # CRuby answers `true` — a **disagreement**, not a gate, and the one the W4b
-  # heads turned up first (N39).
+  # heads turned up first.
   #
   # Only Symbol compares to Symbol; `:k <=> 1` and `:k <=> "k"` are both nil [V],
   # and Comparable turns that nil into the ArgumentError for the operators.
@@ -2022,7 +2022,7 @@ end
 # here: it is Homebrew's own extension (`extend/pathname.rb:187`), not Ruby's, so
 # putting it in the prelude would make the model answer something the control —
 # running the same program without Homebrew's boot path — cannot. It belongs in
-# the difftest harness's stub set, alongside `blank?` (N36).
+# the difftest harness's stub set, alongside `blank?`.
 class Pathname
   include Comparable
 
@@ -2146,7 +2146,7 @@ class String
   # shortened `rest`, which re-anchored the pattern at every step: `\A` and `^`
   # matched at each remainder's start, so `"12".gsub(/\A\d/) { "X" }` answered
   # `"XX"` where CRuby answers `"X2"` — a **wrong answer** that no corpus reached
-  # until the W4b heads generated anchored patterns (N39). Offsets also make `$~`
+  # until the W4b heads generated anchored patterns. Offsets also make `$~`
   # come out right: `__search_at` sets it per iteration, so a block can read `$1`,
   # and the spans are relative to the whole string rather than to a remainder.
   #
@@ -2208,7 +2208,7 @@ class String
     i = 0 if i < 0
     # A **Regexp** needle searches with the engine and sets `$~`, exactly as
     # `match` does [V]. Without this branch `needle.length` raised NoMethodError
-    # where CRuby answers an offset — a wrong answer, not a gate (N39).
+    # where CRuby answers an offset — a wrong answer, not a gate.
     if needle.is_a?(Regexp)
       m = __search_at(needle, i)
       return m.nil? ? nil : m.begin(0)

@@ -383,7 +383,7 @@ print Export.json(core)
 
 # sorbet-runtime's default handlers raise a plain ::TypeError, which is
 # indistinguishable *by class* from a genuine Ruby TypeError (`1 + "a"`). The
-# gradual-guarantee relation (N29) needs to tell them apart, so we classify by
+# gradual-guarantee relation needs to tell them apart, so we classify by
 # message shape. These are the message prefixes emitted by
 # T::Private::Methods::CallValidation (parameter/return/bind) and by the
 # T.let/T.cast/T.must/T.assert_type! assertion family.

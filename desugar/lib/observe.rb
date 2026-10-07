@@ -23,7 +23,7 @@ module Observe
 
   module_function
 
-  # RubyCore's **runtime support layer** (C38). The desugaring of string interpolation
+  # RubyCore's **runtime support layer**. The desugaring of string interpolation
   # needs CRuby's `rb_obj_as_string`, whose third step — "if `to_s` did not answer a
   # String, use `rb_any_to_s`" — has no Ruby-level name. The Lean model supplies this in
   # its prelude; here it is written with the C function's own semantics so that both

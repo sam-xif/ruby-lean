@@ -138,7 +138,7 @@ class Desugar
     # gvar reads (`$1`, `$&`). `$~`/`$`'`/etc. already arrive as global_variable_read_node.
     # Ruby 3.1 hash/keyword shorthand `{x:}` / `foo(x:)`. Prism has already resolved the
     # omitted value to the node it stands for (a local read or a self-call), so the
-    # desugaring is `x: x` with that resolution — pure sugar. (C32.)
+    # desugaring is `x: x` with that resolution — pure sugar.
     when :implicit_node           then fire(:implicit); node(n.value)
     when :numbered_reference_read_node then fire(:var); [:var, :gvar, "$#{n.number}"]
     when :back_reference_read_node     then fire(:var); [:var, :gvar, n.name.to_s]
@@ -160,7 +160,7 @@ class Desugar
   # encodes floats as JSON numbers, and JSON/Lean's `JsonNumber` cannot carry a
   # negative zero (mantissa is a signless `Int 0`), so the sign would be lost and
   # `(-0.0).inspect` would wrongly print `0.0`. Emit it as `-@` of `+0.0` instead,
-  # which round-trips through the model's (correct) `Float#-@`. (desugar choice C31.)
+  # which round-trips through the model's (correct) `Float#-@`.
   def float_lit(v)
     if v == 0.0 && (1.0 / v).negative?
       [:send, [:flt, 0.0], "-@", [], nil]
@@ -229,7 +229,7 @@ class Desugar
     n.safe_navigation? ? safe_nav(recv, send) : send
   end
 
-  # `recv&.m(args)` — nil-guarded send (C34). The receiver is evaluated **once**
+  # `recv&.m(args)` — nil-guarded send. The receiver is evaluated **once**
   # and the arguments are not evaluated at all when it is nil, so the guard has
   # to bind a temp and wrap the whole send, not just test the receiver twice.
   # Not sugar for `recv && recv.m`: `false&.to_s` calls `to_s` [V], because the
@@ -319,7 +319,7 @@ class Desugar
   # the enclosing scope assigns it later. Nothing in the runtime heap can recover
   # that — the whole point is that the answer differs from what the heap shows when
   # the block is *called* after the outer assignment — so the front end has to say
-  # it. Prism has already computed the set, per scope, as `node.locals`. C35.
+  # it. Prism has already computed the set, per scope, as `node.locals`.
   #
   # Kept in its own slot rather than merged into the `|params; locals|` one: the two
   # are identical at runtime (both are names the block frame binds itself) but they
@@ -364,7 +364,7 @@ class Desugar
     # `[[1, 2]]` and `[[1,2]].map { _1 + _2 }` is `[3]`. `render.rb` still emits no
     # parameter list, because `|_1|` is a syntax error ("_1 is reserved for numbered
     # parameter") — re-parsing recovers the same synthesized list, so the round-trip
-    # stays a fixpoint. C36.
+    # stays a fixpoint.
     if bp.type == :numbered_parameters_node
       fire(:"numbered-params")
       return [(1..bp.maximum).map { |i| [:preq, "_#{i}"] }, []]
@@ -520,7 +520,7 @@ class Desugar
   # post-rest requireds, keywords, keyword-rest, block. An optional default (`a = E`) and
   # an optional-keyword default (`a: E`) are arbitrary expressions evaluated lazily in the
   # callee scope at call time — carried as a real desugared node (a flat string couldn't
-  # hold them; that is why the slot is structured, not [String], C25). Anonymous `*`/`**`/`&`
+  # hold them; that is why the slot is structured, not [String]). Anonymous `*`/`**`/`&`
   # and destructuring block params (`|(a,b)|`) — nil / deferred respectively.
   def build_params(p)
     return [] if p.nil?
@@ -574,7 +574,7 @@ class Desugar
 
   # A destructuring block param `|(a, b)|` → [:pdestr, [sub-params]]. Sub-elements are
   # required params, a nested destructure, or a rest (`|(a, *b)|`). Rendered back as
-  # `(a, b)`, so the block still auto-splats a single array argument. C29.
+  # `(a, b)`, so the block still auto-splats a single array argument.
   def destr_param(mt)
     fire(:"destructure-param")
     subs = mt.lefts.map { |t| req_param(t) }
@@ -618,7 +618,7 @@ class Desugar
   # A constant name in *definition* position (class/module name): either a simple constant
   # (a String, `class Foo`) or a constant-path node (`class A::B` — a [:cpath, base, name],
   # defining `B` inside the namespace `A`; base nil for `class ::B`). Same head as a cpath
-  # read (C27).
+  # read.
   def const_def_name(cpath)
     case cpath.type
     when :constant_read_node then cpath.name.to_s
@@ -628,7 +628,7 @@ class Desugar
   end
 
   # class Foo < Super; body; end. Keep as a core head rendered to the keyword form — do NOT
-  # desugar to `Foo = Class.new`, which changes the lexical cref/self of the body (C18).
+  # desugar to `Foo = Class.new`, which changes the lexical cref/self of the body.
   def desugar_class(n)
     name = const_def_name(n.constant_path)
     sup = n.superclass ? node(n.superclass) : nil
@@ -703,7 +703,7 @@ class Desugar
   # `begin_modifier?`) is a do-while: the body runs ONCE before the first condition test.
   # It gets its own head `[:dowhile, body, cond]` (a plain `[:while]` has no run-once flag,
   # and duplicating the body would break a `next`/`break` in the first copy). `until` is
-  # rendered by negating the condition (do-while always renders as `while`). C29.
+  # rendered by negating the condition (do-while always renders as `while`).
   def desugar_while(n, negate:)
     pred = negate ? negate(node(n.predicate)) : node(n.predicate)
     body = stmts(n.statements)
@@ -745,7 +745,7 @@ class Desugar
   # (positive for lefts, a runtime-length range for the rest, and front-to-back for
   # post-rest rights to match Ruby's underflow rule). The RHS is either an explicit value
   # list (`a, b = 1, *r`, splat-capable) or a single value (`a, b = x`) coerced via
-  # `Array.try_convert(x) || [x]` (C28). **The value of the whole massign is the RHS as
+  # `Array.try_convert(x) || [x]`. **The value of the whole massign is the RHS as
   # written** — the array *literal* for a value list, or the *raw* single RHS (`(* = 1)` is
   # `1`, not `[1]`) — NOT the distributed/coerced array; `massign_rhs_array` returns both
   # the temp-array expression and that result value.
@@ -912,7 +912,7 @@ class Desugar
   # Not hypothetical — the prelude's own sorbet shim defines `T::Range`, so every range
   # literal inside `module T` broke (found writing L127's `string_truncate_middle`). `::Range`
   # (a `cpath` with no base) skips the lexical chain and resolves on Object, which closes
-  # every shadow except a reassignment of the *toplevel* constant. C37.
+  # every shadow except a reassignment of the *toplevel* constant.
   def desugar_range(n)
     fire(:"range->send")
     lo = n.left ? node(n.left) : [:nil]
@@ -959,11 +959,11 @@ class Desugar
   # is used **verbatim** — a redefined `String#to_s` is NOT called — otherwise `to_s` is
   # called. `Kernel#String(e)` is NOT equivalent: it coerces via `to_str` first (which
   # dispatches through `method_missing` / a user `to_str`), so `String(o) != "#{o}"` for
-  # such objects [V] (found by tier-1 fuzzing; see difftest N22/N23). Model it exactly as
+  # such objects [V] (found by tier-1 fuzzing; see difftest N22). Model it exactly as
   # `t = e; String === t ? t : t.__as_string` (t bound once; `String ===` is a C-level type
   # check, no method dispatch). Uses only seq/if/vasgn/var/send/const — Lean-supported heads.
   #
-  # The cold arm is a **runtime-support call**, not `t.to_s` (C38): `rb_obj_as_string` does
+  # The cold arm is a **runtime-support call**, not `t.to_s`: `rb_obj_as_string` does
   # not stop at `to_s`, it checks the *result* and falls back to `#<C:0x…>` when it is not a
   # String. That third step needs `rb_any_to_s`, which has no Ruby-level name, so it lives
   # in `Object#__as_string` — supplied by the model's prelude and by `Observe::WRAPPER` for
@@ -1014,7 +1014,7 @@ class Desugar
     # `/u`, `/e`, `/s` fix the *encoding* of the pattern, which `Regexp.new`'s integer
     # option word cannot express (it would need a source String in that encoding), so they
     # gate rather than being silently dropped. `/n` is `Regexp::NOENCODING` (32) and does
-    # round-trip. `/o` (interpolate-once) is handled at the call site, not here. (C33.)
+    # round-trip. `/o` (interpolate-once) is handled at the call site, not here.
     if n.euc_jp? || n.windows_31j? || n.utf_8?
       raise Unsupported, "regex encoding flag (/u, /e, /s — not expressible as Regexp.new options)"
     end
@@ -1031,7 +1031,7 @@ class Desugar
   # per literal *site* and global (not per receiver, not per thread), so a gensym'd global
   # is an exact model: `$g ? $g : ($g = Regexp.new(…))`, which is the shape `logic_write`
   # already emits for `$g ||= e` — so the round-trip re-desugars to itself. A Regexp is
-  # never nil/false, so the truthiness test is a faithful "already compiled?". (C33.)
+  # never nil/false, so the truthiness test is a faithful "already compiled?".
   def once_cached(lit)
     g = "$__dt_rx#{@gensym += 1}"
     rd = [:var, :gvar, g]
@@ -1047,7 +1047,7 @@ class Desugar
   # Indexed op-assign — a[i] += v / a[i] ||= v / a[i] &&= v. The receiver and every index
   # are evaluated ONCE (cached in temps), preserving eval order and avoiding double side
   # effects. Value of the expression is the new element value (for ||=/&&=, the short-circuit
-  # result). C29.
+  # result).
   def desugar_index_write(n, mode)
     fire(:"index-opwrite")
     tr = fresh
@@ -1072,7 +1072,7 @@ class Desugar
   end
 
   # Attribute op-assign — a.b += v / a.b ||= v / a.b &&= v. Receiver evaluated once. Safe
-  # navigation (`a&.b += v`) is deferred. C29.
+  # navigation (`a&.b += v`) is deferred.
   def desugar_attr_write(n, mode)
     raise Unsupported, "safe-navigation op-assign" if n.safe_navigation?
     fire(:"attr-opwrite")

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Turn RSpec examples into plain-Ruby assertion programs (difftest W4a / N36).
+# Turn RSpec examples into plain-Ruby assertion programs (difftest W4a).
 #
 #   ruby rspec_harvest.rb <spec.rb>            # one JSON record per example, on stdout
 #

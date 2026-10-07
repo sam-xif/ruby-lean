@@ -19,7 +19,7 @@ module Export
   # head (`[:blockpass, expr_or_nil]`) may occupy a send/super block slot. The Lean
   # decoder (`ruby/ruby-lean/RubyCore/Syntax.lean`) must be updated to match before
   # `--sut lean` works again (L1 blocks + L1b block passing, model side).
-  # v4 (2026-07-14): M2 params (C25) — the `def`/`defs`/`block` param slot is no longer a
+  # v4 (2026-07-14): M2 params — the `def`/`defs`/`block` param slot is no longer a
   # flat [String]; it is a structured list of param nodes ([:preq,…], [:popt,name,default],
   # [:prest,name?], [:pkey,name,default?], [:pkwrest,name?], [:pblock,name?]). A new
   # `[:kwargs, elems]` marker may occupy the last send/super arg slot (elem = [k,v] assoc
@@ -30,7 +30,7 @@ module Export
   # forwarding); `case`/`when` and regex/interpolated-symbol desugar away (no new head).
   # v5 (2026-08-15): `block` gained a fourth slot before the body — `declared`,
   # the names Ruby makes block-local *at parse time* because their first textual
-  # assignment is inside the block (C35). `[:block, params, locals, declared, body]`.
+  # assignment is inside the block. `[:block, params, locals, declared, body]`.
   # Kept separate from `locals` because the two differ for `defined?`; the Lean
   # decoder merges them (it decides `defined?` from the node shape) and accepts the
   # v4 four-slot shape too, so an older AST still decodes.
