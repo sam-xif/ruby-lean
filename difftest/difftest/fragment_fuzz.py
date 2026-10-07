@@ -1,8 +1,15 @@
-"""Random programs inside the P0 checker fragment, and the relation over them.
+"""Random programs inside the P0 checker fragment.
 
-Part of the checker difftest (see `checker_relation.py`). Mining the
-bootstraptest corpus gave 21 accepts and **zero** rejects, so the dangerous
-verdict has no natural population and has to be generated.
+A generator only. It was written to feed the model's own static checker
+(`rubycore --check`) and compare its verdicts with `srb`; that checker was
+removed (the checker of record is `validateD`, measured by the gate in
+`books/`), and the comparison went with it. What is left is used by
+`difftest checker sample --kind fuzz` and, for `srb_batch`, by `sig_gen.py`.
+The notes below describe the fragment that checker had, which is what shaped
+the grammar.
+
+Mining the bootstraptest corpus gave 21 accepts and **zero** rejects, so the
+dangerous verdict had no natural population and had to be generated.
 
 ## Why source, not `Expr`
 
@@ -177,77 +184,3 @@ def srb_batch(samples: list[Sample], srb: str | None = None,
 # ---------------------------------------------------------------------------
 # The run
 # ---------------------------------------------------------------------------
-
-
-def run_fuzz(count: int, seed: int, out_dir: Path, timeout: float = 300.0) -> dict:
-    """Generate, check, srb, and relate. Returns the summary dict; the caller
-    exits nonzero on `violations`."""
-    import json
-
-    from .checker_relation import CHECK_CELLS, PINNED_ZERO_CELLS, relate
-    from .control import CRubyRunner
-    from .sorbet import StaticChecker
-    from .sorbet_check import TYPE_ERROR_FAMILY, runtime_kind
-
-    samples = sample(count, seed)
-    control = CRubyRunner(timeout=timeout)
-    checker = StaticChecker(runner=control)
-    errors = srb_batch(samples, timeout=timeout)
-
-    rows = []
-    for s in samples:
-        verdict = checker.check(s.source)
-        obs = control.run(s.source)
-        cell = relate(
-            verdict.verdict if verdict else None,
-            errors[s.name],
-            obs.exception[0] if obs.exception else None,
-            TYPE_ERROR_FAMILY,
-        )
-        rows.append({
-            "name": s.name,
-            "intent": s.intent,
-            "verdict": verdict.verdict if verdict else None,
-            "cell": cell,
-            "srb_errors": [e.to_json() for e in errors[s.name]],
-            "runtime": runtime_kind(obs.exception),
-            "source": s.source,
-        })
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-    with (out_dir / "cases.jsonl").open("w") as fh:
-        for r in rows:
-            fh.write(json.dumps(r) + "\n")
-
-    def by(intent, verdict):
-        return sum(1 for r in rows if r["intent"] == intent and r["verdict"] == verdict)
-
-    per_intent = {
-        i: {
-            "total": sum(1 for r in rows if r["intent"] == i),
-            "accept": by(i, "accept"),
-            "reject": by(i, "reject"),
-            "unknown": by(i, "unknown"),
-            "undecidable": by(i, None),
-        }
-        for i in INTENTS
-    }
-    inj = per_intent["injected-literal"]
-    summary = {
-        "count": count,
-        "seed": seed,
-        "cells": {c: sum(1 for r in rows if r["cell"] == c) for c in CHECK_CELLS},
-        "per_intent": per_intent,
-        # The number that says whether `reject` earns its risk.
-        "reject_recall": (inj["reject"] / inj["total"]) if inj["total"] else None,
-        "violations": [r["name"] for r in rows if r["cell"] in PINNED_ZERO_CELLS],
-        # A wellformed program that is not accepted is a checker regression, not
-        # a relation violation — tracked separately so it cannot hide in the
-        # `unknown` count.
-        "wellformed_not_accepted": [
-            r["name"] for r in rows
-            if r["intent"] == "wellformed" and r["verdict"] != "accept"
-        ],
-    }
-    (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
-    return summary

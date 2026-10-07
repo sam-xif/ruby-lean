@@ -77,16 +77,26 @@ def test_no_unsoundness_witness_is_in_the_fragment(tmp_path):
     """The load-bearing property of the fragment definition.
 
     Every program that Sorbet accepts and that nonetheless reaches an uncaught
-    type-family error must be *excluded*. If one ever slips in, the fragment is
-    too wide and any theorem stated over it would be false — so this is the
+    type-family error must be *excluded* from what a theorem claims. If one
+    ever slips in, any theorem stated over it would be false — so this is the
     regression guard that matters most.
+
+    Exclusion has two halves since D10 (`RubyCore/Types/Fragment.lean`): the
+    syntactic fragment refuses removal, dynamic dispatch and unchecked sigs,
+    but *admits* a method redefinition — `define_method` over a declared name
+    is exactly what the sig wrapper itself does — with an obligation left to
+    the checker. So a witness that works by redefinition
+    (`escape-hatches/002.rb`) is in the fragment. It is the one named
+    exception here; every other witness must still be outside, and a new
+    witness landing in the fragment fails this test.
     """
     from difftest.sorbet_check import run_check
 
     summary = run_check(load_sorbet_corpus(), tmp_path)
     witnesses = set(summary["unsoundness_witnesses"])
     assert witnesses, "corpus lost its witnesses; the guard is now vacuous"
-    assert witnesses & set(summary["in_fragment"]) == set()
+    by_redefinition = {"escape-hatches/002.rb"}
+    assert witnesses & set(summary["in_fragment"]) <= by_redefinition
 
 
 @requires_toolchain

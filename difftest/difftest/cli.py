@@ -292,12 +292,9 @@ def cmd_sorbet(args) -> int:
     out_dir = _out_dir(args.out, "sorbet-check")
     summary = run_check(cases, out_dir, timeout=args.timeout)
     _print_summary(summary, out_dir)
-    # Exit 1 on a *declaration mismatch* or a **pinned-zero violation** of the
-    # checker relation (the static-soundness POC note §7). Unsoundness witnesses stay
-    # findings, not failures — the corpus exists to collect them — but a program
-    # where `check` and `srb` genuinely disagree is a bug in one of them, and
-    # the whole point of the zeros is that they are not negotiable.
-    return 1 if (summary["mismatches"] or summary["check_violations"]) else 0
+    # Exit 1 on a *declaration mismatch* (corpus integrity). Unsoundness witnesses stay
+    # findings, not failures — the corpus exists to collect them.
+    return 1 if summary["mismatches"] else 0
 
 
 def cmd_checker_sample(args) -> int:
@@ -347,7 +344,6 @@ def cmd_checker_sample(args) -> int:
 
 
 def cmd_checker(args) -> int:
-    from .fragment_fuzz import run_fuzz
     from .sorbet import SorbetUnavailable, require_toolchain
 
     # `sample` only generates, so it must not demand the toolchain.
@@ -374,28 +370,19 @@ def cmd_checker(args) -> int:
         # there is a pipeline regression, not honest abstention.
         return 1 if (summary["mismatch"] or summary["undecidable"]) else 0
 
-    if args.subcommand == "siggen":
-        from .sig_gen import run_siggen
+    from .sig_gen import run_siggen
 
-        if args.sigil == "strict" and args.coverage < 1.0:
-            print("--sigil strict forces every method to carry a sig (srb 7017); "
-                  "use --sigil true for partial coverage", file=sys.stderr)
-            return 2
-        out_dir = _out_dir(args.out, "checker-siggen")
-        summary = run_siggen(
-            count, args.seed, out_dir, sigil=args.sigil,
-            coverage=args.coverage, loose=args.loose, timeout=args.timeout,
-        )
-        _print_summary(summary, out_dir)
-        return 1 if summary["violations"] else 0
-
-    out_dir = _out_dir(args.out, "checker-fuzz")
-    summary = run_fuzz(count, args.seed, out_dir, timeout=args.timeout)
+    if args.sigil == "strict" and args.coverage < 1.0:
+        print("--sigil strict forces every method to carry a sig (srb 7017); "
+              "use --sigil true for partial coverage", file=sys.stderr)
+        return 2
+    out_dir = _out_dir(args.out, "checker-siggen")
+    summary = run_siggen(
+        count, args.seed, out_dir, sigil=args.sigil,
+        coverage=args.coverage, loose=args.loose, timeout=args.timeout,
+    )
     _print_summary(summary, out_dir)
-    # Pinned-zero violations fail. A wellformed program that is not accepted is
-    # a *checker* regression rather than a relation violation, but it is still a
-    # failure — silently degrading to `unknown` is exactly how a ratchet rots.
-    return 1 if (summary["violations"] or summary["wellformed_not_accepted"]) else 0
+    return 1 if summary["violations"] else 0
 
 
 def cmd_replay(args) -> int:
@@ -508,11 +495,11 @@ def main(argv=None) -> int:
 
     p_checker = sub.add_parser(
         "checker",
-        help="fuzz the P0 checker fragment and relate `check` to srb "
-             "(the static-soundness POC note §7)",
+        help="generate typed programs and relate their intent to srb; "
+             "check the signature reader against what was declared",
     )
     p_checker.add_argument("subcommand",
-                           choices=["fuzz", "siggen", "sample", "sigread"])
+                           choices=["siggen", "sample", "sigread"])
     p_checker.add_argument("--count", type=int, default=None,
                            help="programs to generate (default 60; 4 for `sample`)")
     p_checker.add_argument("--seed", type=int, default=0)
