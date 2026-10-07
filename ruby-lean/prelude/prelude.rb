@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 # The **prelude**: the part of Ruby's core library modeled in RubyCore itself
-# rather than as Lean primitives (L62). Loaded from H₀ before the program under
-# test; `scripts/gen_prelude.rb` desugars this file into `RubyCore/Prelude.lean`.
-# Optional libraries live in features/*.rb and execute on require (L281).
+# rather than as Lean primitives. Loaded from H₀ before the program under
+# test; `scripts/gen_prelude.rb` desugars this file into `RubyCore/Generated/Prelude.lean`.
+# Optional libraries live in features/*.rb and execute on require.
 # Pathname stays here: the pinned CRuby 4.0.5 boots pathname.so itself.
 #
 # Rules for authoring (the ratchet depends on them):
@@ -18,17 +18,17 @@
 #    Blockless methods not yet connected to the native Enumerator descriptor
 #    remain explicit gates.
 # 3. **Repr-sensitive methods** (`to_s`, `inspect`, `==`, `eql?`, `message`,
-#    `to_str`) require dispatch at their consumers. Purity is per-class (L103),
-#    impure builtin receivers dispatch prelude twins (L116), and frozen errors
-#    and final observations dispatch too (L277). When adding an override, test
+#    `to_str`) require dispatch at their consumers. Purity is per-class,
+#    impure builtin receivers dispatch prelude twins, and frozen errors
+#    and final observations dispatch too. When adding an override, test
 #    ordinary I/O, nested container repr, errors and the final observation;
 #    other pure consumers must still defer or gate when they cannot dispatch.
 # 4. **A prelude method is the model of the CRuby builtin of that name** — it
-#    suppresses the shadow gate for its own name (L62), so fidelity is on this
+#    suppresses the shadow gate for its own name, so fidelity is on this
 #    file. Match CRuby exactly, including the empty-receiver and tie cases.
 # 5. Optional feature bodies are smaller behavioral models of the upstream
 #    source. User definition hooks during require gate unless declaration order
-#    and callback behavior match upstream (Forwardable, L282). Keep library origin
+#    and callback behavior match upstream (Forwardable). Keep library origin
 #    separate from boot-only preludeMode;
 #    the latter must never silently suppress runtime user callbacks.
 
@@ -58,7 +58,7 @@ class Object
   end
   private :loop
 
-  # Object#=== first tests identity in the native primitive (rb_equal, L272).
+  # Object#=== first tests identity in the native primitive (rb_equal).
   # Only unequal identities dispatch ==, whose result is converted to a Boolean.
   def __case_equal(other)
     if self == other
@@ -77,7 +77,7 @@ class Object
   # `rb_cmpint`: `self <=> other`, with a nil — "not comparable" — turned into the
   # `ArgumentError: comparison of X with Y failed` that every comparison operator
   # except `==` raises [V]. The message comes from the `__cmp_failed` primitive so
-  # that one rule names an operand (`coerceDesc`, L123): the hand-written copy
+  # that one rule names an operand (`coerceDesc`): the hand-written copy
   # this replaces rendered a **Float argument as "Float"** where CRuby shows
   # `1.5`, which is the kind of drift a second copy buys.
   #
@@ -112,7 +112,7 @@ module Comparable
 
   # `cmp_between`: two dispatches of `>=`/`<=` on the *receiver*, which is why a
   # numeric receiver reaches its coerce protocol here (`3.between?(coercible, 9)`
-  # answers rather than raising, L123).
+  # answers rather than raising).
   def between?(min, max)
     self >= min && self <= max
   end
@@ -161,7 +161,7 @@ end
 # Everything here is written against `each` alone, so one `each` per collection
 # (Array/Hash natively, `Range#each` below, any user class) buys the whole module.
 # Early exit uses `return` from inside the block (unwinds to this method's frame)
-# or `break` (returns from `each`) — both already modeled (artifact 04 §4).
+# or `break` (returns from `each`) — both already modeled (Semantics 04 §4).
 
 module Enumerable
   def to_a
@@ -253,7 +253,7 @@ module Enumerable
     end
   end
   # `Array#index` with a block is the same search (the blockless forms stay on
-  # the builtin; the block form falls through to here, L63).
+  # the builtin; the block form falls through to here).
   alias index find_index
 
   def all?(*pat)
@@ -684,7 +684,7 @@ class Range
   #     succeeds where `Range.new(1, D.new)` raises, for a `D` whose `<=>`
   #     answers 0. A `<=>` that raises propagates.
   #
-  # It is prelude Ruby because it *dispatches* (L115, L122); the arity error
+  # It is prelude Ruby because it *dispatches*; the arity error
   # comes out of this signature for free (`given 1, expected 2..3` [V]). Range
   # literals `a..b`/`a...b` desugar to this send, so they are checked too.
   def self.new(lo, hi, excl = false)
@@ -812,7 +812,7 @@ class Enumerator
 end
 
 # Immediate classes undefine new but retain allocate (which raises TypeError).
-# Real tombstones preserve singleton inheritance and reflection (L284).
+# Real tombstones preserve singleton inheritance and reflection.
 class << Integer
   undef_method :new
 end
@@ -1048,7 +1048,7 @@ class Array
       unless pair.is_a?(Array) && pair.length == 2
         # `.class.to_s`, not `.class.name`: CRuby names the class through
         # `rb_class_name`, which renders an *anonymous* class by address, where
-        # `Module#name` answers nil and `+` would raise (L124). Every message in
+        # `Module#name` answers nil and `+` would raise. Every message in
         # this file that names a class follows that rule.
         unless pair.is_a?(Array)
           raise TypeError, "wrong element type " + pair.class.to_s + " at " + i.to_s +
@@ -1102,7 +1102,7 @@ end
 
 module Kernel
   # `Integer(x, base)` is `rb_convert_to_integer`, and it is **two rules wearing
-  # one name** (L130). The version here used to be only the second half's
+  # one name**. The version here used to be only the second half's
   # happy path — `arg.to_s.strip`, then digits — which was wrong twice over:
   #
   #   * a non-String argument is not stringified at all. It is **converted**:
@@ -1357,7 +1357,7 @@ module Kernel
   # [V]. `vulns/vulnerability.rb` uses it three times to normalize optional OSV
   # list fields.
   #
-  # Both conversions are `rb_check_funcall`, not `respond_to?` (L133): the older
+  # Both conversions are `rb_check_funcall`, not `respond_to?`: the older
   # spelling missed a `method_missing`-supplied `to_ary` entirely and, worse,
   # *used* a non-Array answer — `Array(o)` for a `to_ary` returning `"nope"`
   # answered `"nope"` where CRuby raises. The `respond_to?` arm survives for the
@@ -1420,7 +1420,7 @@ end
 # — or whose *contents* — override `inspect`/`to_s`, because honouring that means
 # **dispatching**, and a builtin cannot push a frame.
 #
-# So each such builtin defers to a twin here under a different name (L116). The
+# So each such builtin defers to a twin here under a different name. The
 # different name is what makes this cheap: it shadows nothing, so no purity answer
 # changes, and `Repr` stays the fast path for everything it can still handle. The
 # twins then recurse through *ordinary dispatch*, which is exactly the behaviour
@@ -1430,7 +1430,7 @@ end
 # `__write` and `__addr_str` are the two primitives they need: append a String to
 # stdout with no rendering, and the `0x…` a default `inspect` carries.
 class Object
-  # `rb_obj_as_string` (L129): **the** way a C-level renderer turns a value into a
+  # `rb_obj_as_string`: **the** way a C-level renderer turns a value into a
   # String. It calls `to_s`, and if that answers something that is not a String it
   # falls back to the default `#<C:0x…>` form — CRuby never lets a non-String out.
   # A value that already *is* a String is used verbatim, so a redefined
@@ -1486,7 +1486,7 @@ class Object
   # `rb_io_puts` asks each argument for `to_ary` before rendering it, so an
   # object that answers one is *flattened* and one that answers the wrong type
   # raises — neither of which a payload test can see. Since L133 `toAryDefer?`
-  # routes such an argument here instead of gating `puts` (L66).
+  # routes such an argument here instead of gating `puts`.
   def __puts_one(a)
     return __write("\n") if a.nil?
 
@@ -1518,7 +1518,7 @@ class Array
     # The separator goes through `StringValue` (`to_str`), **not** `to_s`: a String
     # is used verbatim, so `["a"].join("-")` is unaffected by a redefined
     # `String#to_s` [V]. Calling `to_s` here made that program raise `TypeError:
-    # no implicit conversion of Integer into String` (L129). A non-String
+    # no implicit conversion of Integer into String`. A non-String
     # separator gates, exactly as the pure `joinImpl` does.
     s = if sep.nil?
           ""
@@ -1565,7 +1565,7 @@ class Range
   # A **nil endpoint prints as nothing** — `(1..nil).inspect` is `"1.."` — except
   # when both are nil, which prints `"nil..nil"` [V]. `to_s` needs no such case:
   # `nil.to_s` is `""` already, so `(nil..nil).to_s` really is `".."`. The Lean
-  # twin in `Repr.lean` carries the same rule (L122).
+  # twin in `Repr.lean` carries the same rule.
   def __inspect_slow
     dots = exclude_end? ? "..." : ".."
     lo = self.begin
@@ -1586,7 +1586,7 @@ class Exception
   # `to_s`/`inspect` [V]. As a Lean builtin sharing `to_s`'s arm it read the
   # payload directly, and `E.new("boom").message` answered "boom" for a class whose
   # `to_s` says otherwise. Prelude Ruby is the only spelling that dispatches
-  # (L131). Note it does not coerce: a `to_s` answering `1` makes `message`
+  #. Note it does not coerce: a `to_s` answering `1` makes `message`
   # answer **1** [V].
   def message = to_s
 
@@ -1615,7 +1615,7 @@ class UncaughtThrowError
 end
 
 # Native specialized exception initializers delegate their message to super.
-# Metadata arguments/keywords await their own payload model (L285).
+# Metadata arguments/keywords await their own payload model.
 class NameError
   def initialize(*args, **kw)
     if args.length > 1 || !kw.empty?
@@ -1693,14 +1693,14 @@ end
 # Both halves are observable and they disagree, which is why this is written out
 # rather than approximated by either one. `__user_defines?` is the only piece
 # that needs the machine: "does this object's class chain carry a *user*
-# definition of this name" is a fact about the method tables (L115).
+# definition of this name" is a fact about the method tables.
 class Object
   # The default `<=>`: `0` when the two are `==`, and **nil** otherwise — the nil
   # is what lets `Comparable` degrade to "incomparable" rather than raise from
   # the wrong place. CRuby calls `rb_equal`, so a **user `==` participates**;
   # here that is free, because `==` is an ordinary send. As a builtin it had to
-  # gate on a class with a user `==` (L114), which is the same lesson as
-  # `try_convert` (L115): a rule that needs to dispatch does not belong in Lean.
+  # gate on a class with a user `==`, which is the same lesson as
+  # `try_convert`: a rule that needs to dispatch does not belong in Lean.
   def <=>(other)
     self == other ? 0 : nil
   end
@@ -1731,7 +1731,7 @@ module Kernel
       # asked with `include_private = true` [V]. Missing this clause is what made
       # `Integer(obj)` on an object whose `method_missing` serves `to_int` and whose
       # `respond_to_missing?` names only `to_int` raise from the **`to_str`** probe
-      # that runs first (L130).
+      # that runs first.
       return !obj.__user_defines?(:respond_to_missing?) ||
              obj.respond_to_missing?(meth, true)
     end
@@ -1801,7 +1801,7 @@ class String
   def __str_cmp_basic(_other) = __unsupported__("String comparison with a BasicObject operand")
 end
 
-# ─── The implicit Array conversion (`rb_check_array_type`, L133) ────────────
+# ─── The implicit Array conversion (`rb_check_array_type`) ────────────
 #
 # Every implicit Array-conversion site in CRuby — `Array#+`, `#concat`,
 # `#flatten`, `Kernel#Array`, `puts`, a block's auto-splat, `a, b = obj` — is
@@ -1884,7 +1884,7 @@ end
 # A numeric operator does not decide "not a number" from the class chain: it asks
 # the **argument** to `coerce` itself and re-dispatches the operator on the pair
 # that comes back. Three halves of that are observable, and a Lean rule can
-# produce none of them (L123):
+# produce none of them:
 #
 #   * the `coerce` body **runs** — `3 + Money.new(4)` is `7`, and whatever the
 #     body printed, printed;
@@ -1995,7 +1995,7 @@ class Object
 end
 
 class Regexp
-  # `$~` lives in the **frame** (L121), and CRuby's `last_match` is a C function
+  # `$~` lives in the **frame**, and CRuby's `last_match` is a C function
   # reading its caller's — so this needs the one primitive that says so, without
   # which it would read its own (always-empty) slot.
   def self.last_match(n = nil)
@@ -2312,7 +2312,7 @@ class String
     out
   end
 
-  # ── Encodings (L117/L118) ──
+  # ── Encodings ──
   #
   # The model has exactly two: UTF-8 and ASCII-8BIT. A binary String's payload
   # holds one *character per byte*, which is what makes `Purl.encode` —
@@ -2367,13 +2367,13 @@ class String
   end
 
   # `b` is a *copy* in ASCII-8BIT, so it is the non-mutating primitive.
-  # String#b is native: it copies without dispatching Ruby conversion/copy hooks (L296).
+  # String#b is native: it copies without dispatching Ruby conversion/copy hooks.
 end
 
 # ─── Encoding ───────────────────────────────────────────────────────────────
 #
 # Two real instances and one honest placeholder are the whole class: the model's
-# Strings are either UTF-8 or ASCII-8BIT (L117), and `UNDETERMINED` stands for
+# Strings are either UTF-8 or ASCII-8BIT, and `UNDETERMINED` stands for
 # "UTF-8 or US-ASCII, and this model does not track which" — see `String#encoding`
 # above for why that is a refusal rather than a guess.
 #
@@ -2394,7 +2394,7 @@ class Encoding
   # `String#force_encoding` can act on an encoding that refuses to name itself.
   def __name_raw = @name
 
-  def __gate = __unsupported__("Encoding of an ASCII-only String (US-ASCII vs UTF-8 is not tracked — L118)")
+  def __gate = __unsupported__("Encoding of an ASCII-only String (US-ASCII vs UTF-8 is not tracked)")
 
   def name = @name.nil? ? __gate : @name
 
@@ -2430,7 +2430,7 @@ end
 #
 # `Struct.new(:a, :b)` returns a **class**, so the whole feature is a class
 # factory: `Class.new` plus `define_method`, both of which the model already has
-# (L64/L66). That is the thesis of this project made concrete — a "core class"
+#. That is the thesis of this project made concrete — a "core class"
 # that is really a metaprogramming pattern costs prelude Ruby, not Lean rules.
 #
 # It could not live here before L103: `inspect`, `to_s` and `==` are part of a
@@ -2446,7 +2446,7 @@ class Struct
     syms = names.map { |n| n.to_sym }
     kwi = keyword_init
     # `Class.new { … }` (block form) is not modeled; `Class.new` + `class_eval`
-    # is the same thing and both halves are (L64/L66).
+    # is the same thing and both halves are.
     cls = Class.new
     cls.class_eval do
       define_singleton_method(:members) { syms.dup }

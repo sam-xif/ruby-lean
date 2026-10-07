@@ -1,4 +1,4 @@
-import RubyCore.Judgment.Frag
+import Books.Metatheory.Typing.Lang.Frag
 
 /-!
 # `judge_table_ret` (J39) — table stability from the context

@@ -92,7 +92,7 @@ theorem classPayload?_oob (h : Heap) (k : ObjId) (hb : ¬ k < h.objs.size) :
 def clsShape (c : ClassPayload) : List ObjId × List ObjId × Option ObjId :=
   (c.prepends, c.includes, c.superclass)
 
-/-- **`defineMethod` leaves every class's *constant* table alone** (L156), and so
+/-- **`defineMethod` leaves every class's *constant* table alone**, and so
     does the constant lookup built on it.
 
     A separate lemma rather than a fifth component of `clsShape`: `ShapeAgree` is
@@ -125,7 +125,7 @@ theorem consts_defineMethod (h : Heap) (cls k : ObjId) (name : String)
       rw [objs_getD_set!_ne _ _ _ _ hk]
   · rfl
 
-/-- **And the `private_constant` list** (L205), by the same three-way split.
+/-- **And the `private_constant` list**, by the same three-way split.
     `ScopedConstOk`'s first conjunct reads it, so a `def` inside the very class whose
     constant is being read through `C::n` is the case that makes it non-trivial —
     `consts_defineMethod`'s reason, one field over. -/
@@ -260,7 +260,7 @@ theorem ancestors_congr {h h' : Heap} (hs : ShapeAgree h h')
   unfold ancestors
   rw [hsz, ancestors_go_congr hs hsz]
 
-/-- **A non-class id's chain is the singleton** (L209). Immediate from the `go`
+/-- **A non-class id's chain is the singleton**. Immediate from the `go`
     definition — the `classPayload? = none` arm returns `[k]`, and the dedup `foldl`
     over a one-element list is that list — but worth naming, because it is what turns
     *membership in a chain* into *the chain's root is in bounds* below. -/
@@ -349,7 +349,7 @@ theorem ancestors_defineMethod (h : Heap) (cls k : ObjId) (name : String)
   ancestors_congr (fun j => shape_defineMethod h cls j name md)
     (objs_size_defineMethod h cls name md) k
 
-/-- **`constLookupFrom` under a congruence of the own-tables** (L205), by induction on
+/-- **`constLookupFrom` under a congruence of the own-tables**, by induction on
     the walk. Stated over an arbitrary pair of heaps because both transports need it —
     `defineMethod` (below) and `PlainGrow` (`Static/Decls.lean`) — and each supplies
     the two hypotheses from a lemma it already had. -/
@@ -378,7 +378,7 @@ theorem constLookupFrom_congr {h h' : Heap} {k : ObjId} {n : String}
         simp [List.firstM, h1, h2, hca, ih]
 
 /-- `constLookupFrom` is the ancestor walk over the classes' *own* constant tables, so
-    it inherits both `ancestors_defineMethod` and `consts_defineMethod` (L205). -/
+    it inherits both `ancestors_defineMethod` and `consts_defineMethod`. -/
 theorem constLookupFrom_defineMethod (h : Heap) (cls k : ObjId) (name n : String)
     (md : MethodDef) :
     constLookupFrom (defineMethod h cls name md) k n = constLookupFrom h k n :=

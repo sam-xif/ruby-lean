@@ -95,7 +95,7 @@ def applyKontView (m : Machine) (v : Value) (k : Kont) : StepResult :=
       let (e, m) := eigenclassOf m o
       if let some receiver := frozenMethodReceiver? m.heap e then raiseFrozen m receiver else
       -- `def self.m` in a module keeps that module's lexical cref for constant
-      -- lookup even though its dispatch owner is the eigenclass (artifact 03).
+      -- lookup even though its dispatch owner is the eigenclass (Semantics 03).
       let md : MethodDef :=
         { params, body, owner := e, definee := some m.currentFrame.defmod, cref := m.currentFrame.cref,
           fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin }
@@ -119,7 +119,7 @@ def applyKontView (m : Machine) (v : Value) (k : Kont) : StepResult :=
     | .error sr => sr
     | .ok o =>
       -- A `private_constant` is invisible through `A::B` even though it is
-      -- still there for lexical lookup inside the module (L104), so the miss
+      -- still there for lexical lookup inside the module, so the miss
       -- path — `const_missing`, else NameError — is the right one.
       let isPrivate := isPrivateConst m.heap o name
       match (if isPrivate then none else constLookupFrom m.heap o name) with
@@ -420,7 +420,7 @@ def unwindView (m : Machine) (j : Jump) (k : Kont) : StepResult :=
   | .blkFrameK fid lam brk cl args =>
     match j with
     | .nxtJ v =>
-      -- `next` ends this block invocation with value v (artifact 04 §4)
+      -- `next` ends this block invocation with value v (Semantics 04 §4)
       .next (withCtl { m with stack := m.stack.tail } (.value v))
     | .brkJ v =>
       if lam then  -- `break` in a lambda returns from the lambda
@@ -465,7 +465,7 @@ def unwindView (m : Machine) (j : Jump) (k : Kont) : StepResult :=
     | _ => .next (finishRegion m node.ens (.jmp j))
   | .rescMatchK node _ _ _ _ _ =>
     -- a clause-class expression itself raised/jumped: it supersedes, but
-    -- the region's ensure still runs (artifact 04 §5)
+    -- the region's ensure still runs (Semantics 04 §5)
     .next (finishRegion m node.ens (.jmp j))
   | .rescueK node saved =>
     match j with

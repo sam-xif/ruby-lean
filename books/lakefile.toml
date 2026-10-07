@@ -1,11 +1,11 @@
 name = "books"
 version = "0.1.0"
-defaultTargets = ["FastPower", "Metatheory", "TypeSoundness", "active-ratchet"]
+defaultTargets = ["FastPower", "Metatheory", "TypeSoundness", "corpus-report"]
 
 # Every proof in this repository. `../ruby-lean` holds the two things proofs are
-# *about* — the executable model (`RubyCore/`) and the certificate checker
-# (`Checker/`) — and is used here as a library: a path dependency builds in
-# `../ruby-lean/.lake`, so its build is shared.
+# about, the executable model (`RubyCore/`) and the type checker (`Checker/`),
+# and is used here as a library. A path dependency builds in `../ruby-lean/.lake`,
+# so its build is shared.
 #
 #   Books/Lib/            machinery for proving things about one Ruby program
 #   Books/FastPower/      a Ruby program proved correct
@@ -18,10 +18,8 @@ name = "rubylean"
 path = "../ruby-lean"
 
 # One library per book, each a whole directory, and `lake build` builds all of
-# them: every file under `Books/` compiles. Proofs that have not been rebuilt
-# against the current model are kept out of the build in `Unrebuilt/` (see its
-# README), not under `Books/`. All libraries root at `Books`, so that an `import Books.…`
-# resolves whichever library asked for it.
+# them: every file under `Books/` compiles. All libraries root at `Books`, so
+# that an `import Books.…` resolves whichever library asked for it.
 
 # A Ruby program proved correct, with the machinery it is written in.
 [[lean_lib]]
@@ -30,7 +28,7 @@ srcDir = "."
 roots = ["Books"]
 globs = ["Books.Lib.+", "Books.FastPower.+"]
 
-# Facts about the model. `scripts/check-proofs.sh` adds the axiom audit.
+# Facts about the model. `scripts/check-metatheory.sh` adds the axiom audit.
 [[lean_lib]]
 name = "Metatheory"
 srcDir = "."
@@ -53,14 +51,8 @@ name = "Comparator"
 srcDir = "."
 globs = ["Comparator.+"]
 
-# The gate's report: which rules are enabled and proved, and which corpus programs
-# the production `validateD` accepts under them.
+# What `scripts/check-soundness.sh` prints: which typing rules have a soundness
+# proof, and which corpus programs the real `validateD` accepts.
 [[lean_exe]]
-name = "active-ratchet"
-root = "MainActiveRatchet"
-
-# `Books/TypeSoundness/Denotation/Examples.lean`'s report, printed. The `#guard`s
-# there are the real gate (they fail the build); this shows *what* was checked.
-[[lean_exe]]
-name = "denotereport"
-root = "DenotationReport"
+name = "corpus-report"
+root = "CorpusReport"

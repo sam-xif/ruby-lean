@@ -16,7 +16,7 @@ Every line is process-independent (N38). Two normalizations earn that:
   it a licensed outcome, so a change to it must be visible); only the path goes.
 
 `Object#hash` is never printed: a `sig` failing on a plain object makes sorbet
-print `with hash <n>`, which is per-process seeded (L127) — the model gates
+print `with hash <n>`, which is per-process seeded — the model gates
 there rather than invent a number, so such a case is reported as a gate.
 """
 

@@ -1,9 +1,9 @@
-import RubyCore.Types.Core
+import Books.Metatheory.Typing.Lang.Infer
 
 /-!
 # `SubJ` — declarative subtyping, and the narrowing operators
 
-The union arm of `Ty` (L269) is **inert on the checker path**: `subTy` compares it
+The union arm of `Ty` is **inert on the checker path**: `subTy` compares it
 by equality, so `chk`/`infer` behavior is byte-identical and `subTy` stays
 structurally recursive (norm 5). The union's *meaning* lives here, as an inductive
 relation — the declarative counterpart, with `subTy` embedded by `base` (so `SubJ`

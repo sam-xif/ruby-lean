@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-"""build_corpus.py -- every rung through the four untrusted stages, into `build/`.
+"""Run every corpus program through the stages in front of the checker.
 
-    scripts/build_corpus.py [--jobs N] [--only 001,014] [corpus-dir]
+    scripts/build_corpus.py [--jobs N] [--only 001,014] [--out DIR] [corpus-dir]
 
-For each `corpus/NNN-id.rb` (Sorbet-annotated) and its `NNN-id.meta.json`:
+For each `corpus/NNN-name.rb` (Sorbet-annotated) and its `NNN-name.meta.json`:
 
-  1. `srb` over the **annotated** source  -> the signature manifest, and srb's own verdict
-  2. the strip stack (`sig_strip` first)  -> the plain program
-  3. `export-json` over the stripped one  -> the AST the certificate is about
-  4. `emit_deriv.rb`                      -> a `Deriv`, or a named block
+  1. Sorbet over the annotated source   -> the signatures, and Sorbet's own verdict
+  2. the strippers (`sig_strip` first)  -> the plain program
+  3. `export-json` over the stripped one -> the program in the model's core language
+  4. `emit_deriv.rb`                    -> a proposed typing derivation, or the reason
+                                           there is none
 
-and writes one `build/NNN-id.rung.json` carrying all of it. Stage 5 -- the only trusted
-one -- is `lake exe ratchetd`, which reads these files and nothing else.
+and writes one `NNN-name.rung.json` carrying all of it. None of these stages is
+trusted. The checker, `validateD`, reads these files and decides.
 
-Everything in `build/` is derived and disposable; the `.rb` is the source of truth.
+Everything this writes is derived and disposable; the `.rb` is the source of truth.
 """
 from __future__ import annotations
 
@@ -35,7 +36,7 @@ EXPORT = os.path.join(RUBY, "desugar", "bin", "export-json")
 
 
 def strip(src: str) -> str:
-    """The strip stack, `certify/certify-file.sh`'s, `sig_strip` first."""
+    """Remove the annotations: each stripper in turn, `sig_strip` first."""
     cur = src
     for s in STRIPS:
         p = subprocess.run(["ruby", s], input=cur, capture_output=True, text=True)
@@ -116,7 +117,7 @@ def main(argv: list[str]) -> int:
         pfx = tuple(args.only.split(","))
         bases = [b for b in bases if b.startswith(pfx)]
     if not bases:
-        print(f"no rungs under {args.corpus}", file=sys.stderr)
+        print(f"no corpus programs under {args.corpus}", file=sys.stderr)
         return 1
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as ex:
@@ -129,7 +130,7 @@ def main(argv: list[str]) -> int:
     done = sum(1 for r in recs if r.get("stage") == "done")
     emitted = sum(1 for r in recs if r.get("emit", {}).get("status") == "ok")
     clean = sum(1 for r in recs if r.get("srb_clean"))
-    print(f"built {len(recs)} rungs -> {args.out}")
+    print(f"built {len(recs)} corpus programs -> {args.out}")
     print(f"  srb clean:        {clean}/{len(recs)}")
     print(f"  pipeline reached the emitter: {done}/{len(recs)}")
     print(f"  derivation emitted:           {emitted}/{len(recs)}")

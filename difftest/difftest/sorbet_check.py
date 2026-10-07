@@ -189,7 +189,7 @@ def render_markdown(results: list[CheckResult]) -> str:
         "## Theorem scope — what a soundness proof could be about",
         "",
         f"**{len(in_frag)}/{len(results)} in the Sorbet fragment** "
-        f"(`ruby-lean/RubyCore/Types/Fragment.lean`); intersected with what `srb` accepts, "
+        f"(`ruby-lean/RubyCore/Sorbet/Fragment.lean`); intersected with what `srb` accepts, "
         f"**{len(scope)} are in scope** for a soundness claim.",
         "",
         "In scope: " + (", ".join(f"`{r.case.id}`" for r in scope) or "_none_"),

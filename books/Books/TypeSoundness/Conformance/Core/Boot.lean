@@ -1,7 +1,7 @@
 import Books.TypeSoundness.Denotation.Root
 import Books.TypeSoundness.Conformance.Core.Frame
 import Checker.Static.All
-import RubyCore.HeapCert
+import Books.Metatheory.Heap.HeapCert
 
 /-!
 # `Books/TypeSoundness/Conformance/Core/Boot.lean` — the ladder is not vacuous
@@ -580,7 +580,7 @@ beats an `axiom`, and beats a proof nobody has finished.
 
 It cannot be a `decide`, and the reason is worth stating rather than discovering: the booted
 heap is the output of `Interp.run 200_000` over the whole prelude
-(`RubyCore/PreludeBoot.lean`), so kernel reduction of it is not on the table. The alternative
+(`RubyCore/Boot.lean`), so kernel reduction of it is not on the table. The alternative
 that *is* a proof — `native_decide` — buys a theorem at the price of `Lean.ofReduceBool`, and
 this package's rule is that every file reports only `propext`/`Classical.choice`/`Quot.sound`.
 So the witness below is stated **conditionally on this `Bool`**, and the `Bool` is a build

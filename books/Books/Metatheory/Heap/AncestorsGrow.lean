@@ -1,5 +1,5 @@
 import Books.Metatheory.Heap.HeapFacts
-import RubyCore.HeapCert
+import Books.Metatheory.Heap.HeapCert
 
 /-!
 # The ancestor walk across a **growing** heap (L144, producer's bill item 3)
@@ -54,7 +54,7 @@ i.e. one more unit of fuel changes nothing. Measured at the booted heap: **zero*
 classes whose walk changes when the heap grows by one, and zero that need even the
 last unit of the fuel they get. `Saturated` below is that property, `saturatedB` is
 it as a `Bool`, and `saturatedB_sound` is the reflection — the same shape as F0's
-certificate (L135) and the same trade D1 makes for `bound_suffices`: a hypothesis
+certificate and the same trade D1 makes for `bound_suffices`: a hypothesis
 the harness can check beats an `axiom`, and beats a proof nobody has finished.
 
 Saturation is **not** derivable from the shape agreement it sits beside: a heap with
@@ -73,7 +73,7 @@ It is **not** satisfied by allocating a *class* (`classDef`), where the fresh id
 a shape in `h'` and none in `h`. Typing `class C … end` therefore owes one more
 clause — *no in-bounds object has an edge pointing out of bounds*, which makes the
 walk from an old id stay among old ids and lets the shape agreement be relativized
-the way `TypeAgree` now is (L143). `scripts/probes/ancestors_probe.lean` measures that
+the way `TypeAgree` now is. `scripts/probes/ancestors_probe.lean` measures that
 clause too, and it holds (0 out-of-bounds edges), so this is a proof that is owed
 rather than a fact in doubt.
 -/
@@ -402,7 +402,7 @@ answer `[k]` at any positive fuel and the clause holds for free. The `Bool` chec
 the ids the heap actually has, and `saturatedB_sound` supplies the rest.
 -/
 
-/-! `saturatedB` — the clause as a `Bool` — lives in `RubyCore/HeapCert.lean`, beside
+/-! `saturatedB` — the clause as a `Bool` — lives in `books/Books/Metatheory/Heap/HeapCert.lean`, beside
 `heapOkB`, and L148 folded it *into* `heapOkB`. Both moves are for the reason F0's
 certificate is there: the probe has to compute the predicate the theorem is about
 rather than a copy of it, and there is now one heap certificate rather than two. -/
@@ -496,7 +496,7 @@ theorem ancestors_congr_grow {h h' : Heap} (hs : ShapeAgree h h')
   rw [ancestors_go_congr_grow hs hsz hsat.1 (h'.objs.size + 1) k,
     ancestors_go_ge hsat.2 (Nat.succ_le_succ hsz) k]
 
-/-! ## 4. Saturation is itself preserved (L148)
+/-! ## 4. Saturation is itself preserved
 
 `Saturated` is about to become a conjunct of the machine invariant, because
 `DeclsOk_grow` needs it at the step and only the invariant can carry it there. So it
@@ -541,7 +541,7 @@ theorem Saturated_grow {h h' : Heap} (hg : ShapeAgree h h')
   · rw [ancestors_go_congr_grow hg hsz hsat.1 _ k, ancestors_go_congr_grow hg hsz hsat.1 _ k,
       (key _ (Nat.le_trans hsz (Nat.le_succ _)) k).2, (key _ hsz k).2]
 
-/-! ~~`shapeAgree_alloc_nonClass`~~ is **withdrawn** (L150). It said a non-class
+/-! ~~`shapeAgree_alloc_nonClass`~~ is **withdrawn**. It said a non-class
 `Heap.alloc` preserves every shape; L145's `plainGrow_alloc` says strictly more (the
 whole `classPayload?` function agrees, not only its `clsShape`), and `PlainGrow.shapeAgree`
 recovers this. Two lemmas about the same step, one of them weaker, is how a reader ends up

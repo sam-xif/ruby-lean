@@ -109,7 +109,7 @@ def SemJudgeA (Γ : Env) (e : Checker.Expr) (τ : Ty) (Γ' : Env) : Prop :=
 `SemJudgeA` is a statement about runs that reach an **answer**. That is not safety, and the
 gap is real: a run can halt `.uncaught` — the one type-stuck outcome — which `runA` reports as
 `.halt`, not `.ans`. Closing that gap by *derivation* needs `UncaughtInv`
-(`AGENTS.md` §The answer-typed design §7), which does not exist. So safety is a **second obligation
+, which does not exist. So safety is a **second obligation
 carried by the same clink**.
 
 **The shape of that obligation is the whole content of this section**, because the obvious
@@ -558,7 +558,7 @@ theorem SemA.strLit {Γ : Env} {s : String} : SemSafeA Γ (.str s) (.cls "String
 
 **Before adding a rule, read `Checker/Check/Check.lean` §Authoring a rule.** Twice the obligation
 here has refused to close because the constructor was authored with a guessed outgoing
-environment and no premises (`found-issues.md` §F29, at `var` and at `vasgn`); the working
+environment and no premises; the working
 rule extracted from it — *let the transport lemma write the premises and the outgoing
 environment* — is what makes the difference between this being bookkeeping and a redesign.
 

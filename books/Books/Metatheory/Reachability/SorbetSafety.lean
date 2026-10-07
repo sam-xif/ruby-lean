@@ -26,7 +26,7 @@ NOT proved, and not claimed anywhere below: "srb accepts P ⇒ P is Sorbet-safe"
 That needs a formalization of Sorbet's *static* judgment (`Δ; Γ ⊢ e : τ`, the
 T1–T3 staging of `type-judgments.md`), which does not exist yet. The scope such
 a theorem could have is pinned separately and executably by
-`RubyCore/Types/Fragment.lean`; this file supplies the property that theorem
+`RubyCore/Sorbet/Fragment.lean`; this file supplies the property that theorem
 would conclude.
 
 ## Blame is only visible in the message
@@ -35,12 +35,12 @@ sorbet-runtime raises a plain `::TypeError` for an enforcement failure, so blame
 is **indistinguishable by class** from a genuine Ruby `TypeError` (`1 + "a"`).
 That is Sorbet's design choice, not a modeling shortcut, and it forces the
 predicate below to look at the message — exactly as the difftest classifier has
-to (difftest implementation-notes N28). The prefixes mirror the prelude shim's
+to. The prefixes mirror the prelude shim's
 `T.__check!` and the gem's `T::Private::Methods::CallValidation`, which the
 Sorbet corpus pins byte-for-byte.
 -/
 import Books.Metatheory.Reachability.TypeSafety
-import RubyCore.PreludeBoot
+import RubyCore.Boot
 
 namespace RubyCore
 namespace Proof
@@ -90,7 +90,7 @@ def SorbetSafeFrom (m₀ : Machine) : Prop :=
 
     Note the starting configuration: the **prelude-booted** heap, not
     `Machine.init program`. This is not a technicality. Sig enforcement lives in
-    the `T` shim, which is part of the prelude (`prelude/prelude.rb`, L80), so a
+    the `T` shim, which is part of the prelude (`prelude/prelude.rb`), so a
     statement over `Machine.init` would be about a program running with no core
     library and no `T` at all — under which every Sorbet program raises
     `NameError` and the theorem says nothing about Sorbet. Anything proved here
@@ -122,7 +122,7 @@ theorem typeSafe_sorbetSafe {m₀ : Machine}
     SorbetSafeFrom m₀ :=
   fun r hr hs => h r hr (sorbetStuck_typeStuck hs)
 
-/-! ## 3. Direction B — the metatheorem (`AGENTS.md` §Type safety as reachability §4)
+/-! ## 3. Direction B — the metatheorem
 
     Identical in shape to `invariant_sound`, over the weakened bad state: an
     untrusted engine supplies a concrete inductive invariant `I` per program and

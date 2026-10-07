@@ -465,7 +465,7 @@ type to hand — `Judge.bareName`, `lambdaLit`, `raiseCls`, and the narrowing gu
 which are implicit-self sends whose `self` this judgment does not always type.
 
 This is `nameFree`'s question, and the only change is *where* it is asked: over the whole
-program, so a `def` written anywhere at all answers it (`found-issues.md` §F20), rather than
+program, so a `def` written anywhere at all answers it, rather than
 over the tables `Ctx.afterStmt` reconstructed from statement syntax. -/
 def nameFreeN (κ : Ctx) (n : String) : Bool := !κ.negUnpinned && !κ.declared.contains n
 
@@ -606,7 +606,7 @@ def extendConsts (S : Env) : Expr → Ty → Env
   | _, _ => S
 
 /-- **What a constant assignment owes the tables that already describe the name**
-(`found-issues.md` §F18).
+.
 
 `Ctx.afterStmt` records a constant's type from a **top-level `casgn` statement**, and
 `extendConsts` matches only that shape — so an assignment *buried* inside a larger expression
@@ -640,7 +640,7 @@ def Ctx.afterStmt (κ : Ctx) (e : Expr) (τ : Ty) : Ctx :=
 /-- Is the method name `m` **unclaimed by the program** — no top-level `def`, and no class or
 module in the table declaring it as an instance or singleton method?
 
-Read by `Judge.lambdaLit` (`found-issues.md` §F2). `lambda { … }` is an *implicit-self send*,
+Read by `Judge.lambdaLit`. `lambda { … }` is an *implicit-self send*,
 and in CRuby a toplevel `def lambda` installs a private method **on `Object`** while `Kernel`
 is included *in* `Object` — so the user's definition shadows `Kernel#lambda` and
 `f = lambda { 1 }` binds `5`, not a Proc. The rule concluded `.clos` unconditionally, which is

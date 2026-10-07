@@ -1,15 +1,14 @@
 import RubyCore.Builtins
-import RubyCore.CRubyNames
+import RubyCore.Generated.CRubyNames
 
 /-!
 Machine-level helpers: control/kont constructors, exception-region
 bookkeeping, parameter classification and binding, splat spreading, the
 return target, and closure creation/invocation.
 
-Split out of `RubyCore/Interp.lean` (L99) with no behaviour change. The helpers
-in this machine are deliberately *not* mutually recursive — each performs one
-transition — so the file cuts along that existing order and the import chain
-records it.
+The helpers in this machine are deliberately not mutually recursive: each
+performs one transition. The files under `Interp/` follow that order, each
+importing the one before it.
 -/
 
 namespace RubyCore
@@ -102,7 +101,7 @@ def suspendEnumerator (m : Machine) (o : ObjId) (args : List Value) : StepResult
 
 /-- Native rb_raise/rb_exc_new constructs through private initialize, without
     sending new/allocate/exception. The VM's name/key errors use direct native
-    initialization instead (L286). Keep the surrounding $! while callbacks run. -/
+    initialization instead. Keep the surrounding $! while callbacks run. -/
 def raiseErr (m : Machine) (cls : ObjId) (msg : String) : Machine :=
   if [Boot.nameErrorId, Boot.noMethodErrorId, Boot.keyErrorId].contains cls then
     let (v, m) := Builtins.allocExc m cls msg
@@ -170,7 +169,7 @@ def bindIvar (m : Machine) (x : String) (v : Value) : Machine :=
   match m.currentFrame.self with
   | .ref o =>
     let obj := m.heap.get o
-    -- Updating a field retains its original insertion position (L289).
+    -- Updating a field retains its original insertion position.
     let ivars := if obj.ivars.any (·.1 == x) then
       obj.ivars.map (fun (key, old) => (key, if key == x then v else old))
       else (x, v) :: obj.ivars
@@ -196,14 +195,14 @@ def finishRegion (m : Machine) (ens : Option Expr) (pending : Pending) : Machine
     | .jmp j => withCtl m (.jump j)
 
 /-- Transfer control into a rescue handler: set `$!`, bind the `=> x`
-    target, remember the outer `$!` for restore (artifact 04 §5). -/
+    target, remember the outer `$!` for restore (Semantics 04 §5). -/
 def enterHandler (m : Machine) (node : BeginNode) (exc : Value)
     (ref : Option (TargetKind × String)) (handler : Expr) : Machine :=
   let saved := m.currentExc
   let m := { m with currentExc := some exc }
   if let some (.const, n) := ref then
     -- Constant rescue targets use the lexical namespace and the same frozen
-    -- check/callback as an assignment, before entering the handler (L292).
+    -- check/callback as an assignment, before entering the handler.
     { m with ctl := .value exc, kont := .casgnK n :: .seqK [handler] :: .rescueK node saved :: m.kont }
   else
   let m := match ref with
@@ -215,7 +214,7 @@ def enterHandler (m : Machine) (node : BeginNode) (exc : Value)
     | none => m
   withKont m (.eval handler) (.rescueK node saved)
 
-/-- Advance rescue-clause matching for in-flight `exc` (artifact 04 §5).
+/-- Advance rescue-clause matching for in-flight `exc` (Semantics 04 §5).
     Clause exprs evaluate lazily, one at a time; an empty exc list is the
     default `[StandardError]` and needs no evaluation. -/
 def nextClause (m : Machine) (node : BeginNode) (exc : Value)
@@ -285,7 +284,7 @@ structure FullParams where
   kwrest? : Option (Option String)     -- `**o` present? outer some, inner name
   block? : Option String
   -- destructuring params `(a, b)` carried as synthetic positional names paired
-  -- with their sub-params; expanded after defaults and positional binding (L287).
+  -- with their sub-params; expanded after defaults and positional binding.
   destrs : List (String × List Param) := []
 
 /-- Reserved local names for `...` argument forwarding (`def m(...)`). -/
@@ -361,7 +360,7 @@ def destructureNames (ps : List Param) : Nat → List String
     | _ => []
 
 /-- Binding advances one formal per transition, so checked conversion can call
-    arbitrary Ruby and unwind through the normal method/block boundary (L287). -/
+    arbitrary Ruby and unwind through the normal method/block boundary. -/
 def queueParamBindings (m : Machine) (pending : List (Param × Value)) (body : Expr) : Machine :=
   if pending.isEmpty then withCtl m (.eval body)
   else withKont m (.value .nil) (.paramBindK pending body)
@@ -475,7 +474,7 @@ def methodFrameOf (m : Machine) : FrameId :=
   | .block => (m.frames.getD fid default).home
   | _ => fid
 
-/-- Target frame of a `return` evaluated in the current frame (artifact 04 §4):
+/-- Target frame of a `return` evaluated in the current frame (Semantics 04 §4):
     the method itself; a lambda block returns from itself; a non-lambda block
     from its closure's `home` method. -/
 def returnTarget (m : Machine) : FrameId :=
@@ -488,7 +487,7 @@ def returnTarget (m : Machine) : FrameId :=
 /-- Perform a `return`: if the target return-scope is still on the stack, jump
     to it; otherwise the home method already exited (a detached non-lambda
     proc) — raise `LocalJumpError` *here*, at the call site, so an enclosing
-    `rescue` can catch it (artifact 04 §4) [V]. -/
+    `rescue` can catch it (Semantics 04 §4) [V]. -/
 def doReturn (m : Machine) (v : Value) : StepResult :=
   let target := returnTarget m
   if m.stack.contains target then
@@ -497,7 +496,7 @@ def doReturn (m : Machine) (v : Value) : StepResult :=
     .next (raiseErr m Boot.localJumpErrorId "unexpected return")
 
 /-- Reify a literal block into a Proc, capturing the current (caller) frame
-    (artifact 04 §1; sketch §1.1/§1.2). -/
+    (Semantics 04 §1; sketch §1.1/§1.2). -/
 def reifyBlock (m : Machine) (params : List Param) (locals : List String) (body : Expr)
     (lam : Bool) : Value × Machine :=
   let cur := m.stack.headD 0
@@ -526,7 +525,7 @@ def reifyCallBlock (m : Machine) (params : List Param) (locals : List String)
 /-- The innermost active frame whose block *is* this proc — i.e. the method the
     block was passed to. `break` inside a proc called via `#call` returns from
     that method (and is a `LocalJumpError` once it has exited) [V], so this is
-    the `brk` target for the `Proc#call` path (L66). -/
+    the `brk` target for the `Proc#call` path. -/
 def blockOwner (m : Machine) (p : Value) : Option FrameId :=
   m.stack.find? fun fid =>
     match (m.frames.getD fid default).callBlk with
@@ -588,11 +587,11 @@ def enterClosure (m : Machine) (cl : Closure) (args : List Value)
         (destructureNames subs (destrDepth subs + 1)).map (fun n => (n, Value.nil)))
     let locals := locals ++ cl.locals.map (fun n => (n, Value.nil))
     -- `getD 0` for a capture-free closure (`captured = none`, the `Symbol#to_proc`
-    -- fiction — L266): reads the toplevel frame's `self`/`defmod`/`blk`/`cref`,
+    -- fiction): reads the toplevel frame's `self`/`defmod`/`blk`/`cref`,
     -- exactly the frame this line read when the field was a bare `Nat` written `0`.
     -- What changed is the *pushed* frame's own `captured` below, which is now `none`.
     let capF := m.frames.getD (cl.captured.getD 0) default
-    -- `selfOv`/`defmodOv` are the `instance_eval`/`class_eval` rebinding (L64):
+    -- `selfOv`/`defmodOv` are the `instance_eval`/`class_eval` rebinding:
     -- everything else about the block frame (captured chain, home, cref, lam) is
     -- unchanged, so free variables, `return` and constant lookup keep the
     -- block's own semantics while `self` / the `def` target move.
@@ -654,7 +653,7 @@ def callStringPlusBuiltin (m : Machine) (recv : Value) (args : List Value)
   | _ => .next (raiseErr m Boot.argumentErrorId
       s!"wrong number of arguments (given {args.length}, expected 1)")
 
-/-- Execute a resolved Proc call marker, after normal lookup/visibility checks (L272).
+/-- Execute a resolved Proc call marker, after normal lookup/visibility checks.
 Aliases retain the marker; singleton overrides and undef never reach this helper. -/
 def callProcBuiltin (m : Machine) (recv : Value) (args : List Value)
     (kw : List (Value × Value)) : StepResult :=

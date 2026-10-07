@@ -27,7 +27,7 @@ This file authors, over the semantics itself:
      (progress-to-not-stuck) proves *no reachable outcome is type-stuck*, for
      all inputs and unbounded fuel.  Proved once; per program the (untrusted)
      search engine supplies `I` and the (trusted, tiny) validator re-checks the
-     three local conditions.  See `AGENTS.md` §Type safety as reachability §4.
+     three local conditions. 
   4. `Step.subset_smallStep` — the bridge: the control-core inductive `Step` is
      a sub-relation of `SmallStep` (this is exactly `Step.sound`), so any
      relational reasoning done via `Step`'s constructors transfers to the
@@ -45,7 +45,7 @@ This file authors, over the semantics itself:
      whole point of Direction A: "the certificate is the trace"), not by an
      in-kernel `rfl` (see `QLearningTypeSafe.lean`).
 
-Axiom audit target (see `implementation-notes.md` L13): `propext` /
+Axiom audit target: `propext` /
 `Classical.choice` / `Quot.sound` only — no `sorryAx`, no `native_decide`.
 -/
 import Books.Metatheory.Machine.Step
@@ -55,9 +55,9 @@ namespace Proof
 
 open Interp
 
-/-! ## 1. The bad-state predicate (`AGENTS.md` §Type safety as reachability §2) -/
+/-! ## 1. The bad-state predicate -/
 
-/-- The type-error exception family (`AGENTS.md` §Type safety as reachability §2):
+/-- The type-error exception family:
     NoMethodError, ArgumentError, TypeError.  Membership is tested with `isA`,
     so the family is automatically **closed under subclassing** (a user
     `class MyTypeError < TypeError` still counts). -/
@@ -116,7 +116,7 @@ theorem Reaches.head {m₁ m₂ m₃ : Machine}
 def ReachableResult (m₀ : Machine) (r : StepResult) : Prop :=
   ∃ m, Reaches m₀ m ∧ stepFn m = r
 
-/-! ## 3. The metatheorem (`AGENTS.md` §Type safety as reachability §4, Direction B) -/
+/-! ## 3. The metatheorem -/
 
 /-- An invariant holds at every config reachable from a config where it holds —
     the preservation step lifted along the RT-closure. -/
@@ -153,7 +153,7 @@ theorem invariant_sound_from {m₀ : Machine} (I : Machine → Prop)
   exact safe m hIm (by unfold aboutToTypeStick; rw [hstep]; exact hts)
 
 /-- **Every reachable result satisfies whatever the invariant forces of a single
-    step** (L271) — `invariant_sound_from` generalized from `¬ typeStuck` to an
+    step** — `invariant_sound_from` generalized from `¬ typeStuck` to an
     arbitrary result predicate `P`. A reachable result *is* `stepFn m` at some
     invariant-satisfying `m`, so `P` needs establishing only there. This is the
     composition point for conclusions beyond safety: the J29 answer-typed

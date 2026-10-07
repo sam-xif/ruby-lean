@@ -1,6 +1,6 @@
 name = "rubylean"
 version = "0.1.0"
-defaultTargets = ["Json", "rubycore", "Checker", "ratchetd"]
+defaultTargets = ["Json", "RubyCore", "rubycore", "Checker", "validate-one", "genprelude"]
 
 # One package, two source layers, and the layering is the point:
 #
@@ -53,19 +53,14 @@ name = "Checker"
 srcDir = "."
 globs = ["Checker.+"]
 
-# The typed ladder's runner: stage 5 of `../books/scripts/build_corpus.py`'s pipeline,
-# the only trusted one. See `MainTyped.lean`.
-[[lean_exe]]
-name = "ratchetd"
-root = "MainTyped"
-
-# The playground's adapter around the same `validateD` the gate runs.
+# Reads one program and one derivation as JSON and prints `validateD`'s verdict.
+# `bin/ruby-lean-check` and the playground both use it.
 [[lean_exe]]
 name = "validate-one"
 root = "MainValidateOne"
 
-# Writes `RubyCore/Prelude.lean` (the prelude as Lean terms) from
-# `RubyCore/PreludeJson.lean` (the prelude as exported JSON). Depends only on the
+# Writes `RubyCore/Generated/Prelude.lean` (the prelude as Lean terms) from
+# `RubyCore/Generated/PreludeJson.lean` (the prelude as exported JSON). Depends only on the
 # decoder, never on `RubyCore.Prelude` itself, so it can always regenerate it.
 [[lean_exe]]
 name = "genprelude"

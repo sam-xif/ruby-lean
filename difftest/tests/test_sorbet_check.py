@@ -81,7 +81,7 @@ def test_no_unsoundness_witness_is_in_the_fragment(tmp_path):
     ever slips in, any theorem stated over it would be false — so this is the
     regression guard that matters most.
 
-    Exclusion has two halves since D10 (`RubyCore/Types/Fragment.lean`): the
+    Exclusion has two halves since D10 (`RubyCore/Sorbet/Fragment.lean`): the
     syntactic fragment refuses removal, dynamic dispatch and unchecked sigs,
     but *admits* a method redefinition — `define_method` over a declared name
     is exactly what the sig wrapper itself does — with an obligation left to

@@ -1,5 +1,5 @@
 import Books.Lib.Exec
-import RubyCore.PreludeBoot
+import RubyCore.Boot
 
 /-!
 # Where a program starts

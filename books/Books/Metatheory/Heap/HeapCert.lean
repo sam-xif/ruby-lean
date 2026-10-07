@@ -1,5 +1,5 @@
 import RubyCore.Interp.Support
-import RubyCore.Types.Decls
+import Books.Metatheory.Typing.Lang.Decls
 
 /-!
 # The heap certificate — decidable facts about the booted heap
@@ -34,7 +34,7 @@ namespace RubyCore
 open Interp
 
 
-/-- Executable form of `Proof.Saturated` (L144/L148): **the ancestor walk has
+/-- Executable form of `Proof.Saturated`: **the ancestor walk has
     finished before its fuel runs out**, one more unit of fuel changing nothing.
 
     Here rather than in `books/Books/Metatheory/` for `heapOkB`'s reason — the probe must compute *the*
@@ -52,7 +52,7 @@ def saturatedB (h : Heap) : Bool :=
       (modAncestors.go h k (h.objs.size + 1) == modAncestors.go h k h.objs.size) &&
         (ancestors.go h k (h.objs.size + 1) == ancestors.go h k h.objs.size))
 
-/-- Executable form of `NoHook` (L153): no **class object** resolves `method_added`.
+/-- Executable form of `NoHook`: no **class object** resolves `method_added`.
     Quantified over `List.range h.objs.size` because `classPayload?` answers `none`
     out of bounds, so every id outside the range satisfies the clause vacuously.
 
@@ -118,7 +118,7 @@ def registeredBootB (h : Heap) : Bool :=
         !(cp.name.data.contains ':'))
     | none => true
 
-/-- Executable form of `ClassOk` (L156): every reopenable class name is bound, in
+/-- Executable form of `ClassOk`: every reopenable class name is bound, in
     `Object`'s **own** constant table, to a class object that is not a module.
 
     Those are the three tests `enterClassBody` applies before it takes the reopen

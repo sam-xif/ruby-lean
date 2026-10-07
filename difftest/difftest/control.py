@@ -28,7 +28,7 @@ SENTINEL = "\n__DIFFTEST_OBS__"
 # (`Observe::SUPPORT`, C38): the cold arm of interpolation lowers to a call to
 # `__as_string`, a name plain CRuby does not have. It lives in the *wrapper*, so
 # the control and every SUT see one definition and neither side is advantaged —
-# the same placement rule the harness uses for its stub set (N36, L112). Without
+# the same placement rule the harness uses for its stub set (N36). Without
 # it, every `desugar`-SUT case whose interpolation takes the non-String arm dies
 # with NoMethodError, which is a harness gap, not a disagreement.
 _SUPPORT = """\

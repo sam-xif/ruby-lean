@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-"""record_baseline.py -- freeze the current pipeline verdicts into each rung's meta.
+"""Record what the pipeline currently answers in each corpus program's meta.json.
 
-Two fields, and both are **ratchets**: once recorded, a rung that changes verdict is a
-regression the runner reports, not a silent drift.
+    scripts/record_baseline.py            # after scripts/build_corpus.py
 
-* `expect_sorbet` -- does `srb` typecheck the annotated source clean? This is *not*
-  always `true`, and the interesting rungs are the ones where it is not:
-  `054-fun-body-mismatch` declares `Integer` for a body that adds `true`, and Sorbet
-  rejecting it is the rung's content. `sorbet_note` records the first diagnostic so the
-  reason is in the file rather than in a build directory.
-* `known_upstream_failure` -- a stage before the emitter (the strip stack, the
-  desugarer) that declines. Recorded so `lake exe ratchetd` can exit non-zero on a *new*
-  one while staying green on the eleven `slice/` rungs whose whole-file sources
-  `difftest/ruby/sig_strip.rb` cannot strip (`T::Struct`, `T::Helpers`).
+Two fields. Once recorded, a program whose answer changes fails
+`scripts/check-soundness.sh`.
 
-Run after `scripts/build_corpus.py`, read the diff before committing it.
+* `expect_sorbet`: does Sorbet typecheck the annotated source without errors?
+  Not always true, and deliberately: `054-fun-body-mismatch` declares `Integer`
+  for a body that adds `true`, and Sorbet rejecting it is the point of that
+  program. `sorbet_note` records the first diagnostic.
+* `known_upstream_failure`: a stage before the checker (the strippers, the
+  desugarer) that declines the program. Recorded so that a new such failure is
+  reported while the known ones are not.
 """
 from __future__ import annotations
 

@@ -1,15 +1,14 @@
 import RubyCore.Interp.Mutation
-import RubyCore.Unicode
+import RubyCore.Generated.Unicode
 
 /-!
 The reflective metaprogramming core (`define_method`, `*_eval`, `prepend`,
 `alias_method`, `singleton_class`, ivar/const reflection, `Class.new`) plus
 the lookup-miss classifier.
 
-Split out of `RubyCore/Interp.lean` (L99) with no behaviour change. The helpers
-in this machine are deliberately *not* mutually recursive — each performs one
-transition — so the file cuts along that existing order and the import chain
-records it.
+The helpers in this machine are deliberately not mutually recursive: each
+performs one transition. The files under `Interp/` follow that order, each
+importing the one before it.
 -/
 
 namespace RubyCore
@@ -19,7 +18,7 @@ namespace Interp
 /-- Does this expression define a method directly (a `def`/`def self.`)? Used to
     decide whether an `instance_eval` on an *immediate* receiver is admissible:
     only a body that defines a singleton method needs the eigenclass it cannot
-    have (L72). Conservative: a `def` anywhere inside counts. -/
+    have. Conservative: a `def` anywhere inside counts. -/
 partial def definesMethod : Expr → Bool
   | .def' .. | .defs .. => true
   | .seq es => es.any definesMethod
@@ -200,7 +199,7 @@ def dmTargetM (m : Machine) (recv : Value) (singleton : Bool) : Machine :=
 
 def reflectDefineMethod (m : Machine) (recv : Value) (mname : String)
     (args : List Value) (blk : Option Value) : Option StepResult :=
-    -- A method whose body is a *closure* (artifact 02 §1 + 04 §1): the body sees
+    -- A method whose body is a *closure* (Semantics 02 §1 + 04 §1): the body sees
     -- the defining scope's locals, but `self` is the receiver at call time and
     -- `return` returns from the method. `capturedFrame` on the MethodDef is what
     -- carries the first half; the frame kind (`.method`) the second.
@@ -297,14 +296,14 @@ def reflectEval (m : Machine) (recv : Value) (mname : String)
         if isMod then none
         -- An immediate has no eigenclass, so a `def` inside is CRuby's
         -- "can't define singleton" TypeError; anything else just needs `self`
-        -- rebound, which is safe (L72).
+        -- rebound, which is safe.
         else if definesMethod cl.body then
           some (.unsupported s!"{mname} defining a method on an immediate")
         else some (callClosure m cl blkArgs none (some recv) (some (classOf m.heap recv)))
 
 def reflectCatch (m : Machine) (_recv : Value) (_mname : String)
     (args : List Value) (blk : Option Value) : Option StepResult :=
-    -- `catch(tag) { |t| … }` (artifact 04, L69): mark the stack with `catchK` and
+    -- `catch(tag) { |t| … }` (Semantics 04): mark the stack with `catchK` and
     -- run the block with the tag as its argument. A tagless `catch` generates a
     -- fresh object as the tag, exactly as CRuby does.
     match blockClosure? m blk with
@@ -336,7 +335,7 @@ def reflectThrow (m : Machine) (_recv : Value) (_mname : String)
 
 def reflectVisibility (m : Machine) (recv : Value) (mname : String)
     (args : List Value) (_blk : Option Value) : Option StepResult :=
-    -- artifact 02 §5 (L71). Bare form: set the class body's default visibility.
+    -- Semantics 02 §5. Bare form: set the class body's default visibility.
     -- With names: set those methods' visibility (and, for `module_function`, copy
     -- them to the eigenclass). Returns the names (or nil for the bare form) [V].
     let vis : Visibility := match mname with
@@ -414,7 +413,7 @@ def reflectIvarSet (m : Machine) (recv : Value) (_mname : String)
           some (raiseFrozen m recv)
         else
           let obj := m.heap.get o
-          -- Updating a field retains its original insertion position (L289).
+          -- Updating a field retains its original insertion position.
           let ivars := if obj.ivars.any (·.1 == n) then
             obj.ivars.map (fun (key, old) => (key, if key == n then val else old))
             else (n, val) :: obj.ivars
@@ -461,7 +460,7 @@ def reflectConstGet (m : Machine) (recv : Value) (mname : String)
             else
             if mname == "const_defined?" then
               -- a constant CRuby has but we don't model would answer a wrong
-              -- `false` — same fidelity split as dispatch (L5).
+              -- `false` — same fidelity split as dispatch.
               if crubyToplevelConstants.contains n && o == Boot.objectId then
                 some (.unsupported s!"const_defined? of unmodeled constant {n}")
               else some (.next (withCtl m (.value (.bool false))))
@@ -626,10 +625,10 @@ def reflectRespondTo (m : Machine) (recv : Value) (_mname : String)
       | none => none
     | _ => none
 
-/-- Class macros + reflection (artifact 02): `attr_*` (define accessors),
+/-- Class macros + reflection (Semantics 02): `attr_*` (define accessors),
     `method_defined?` (instance-method presence on a class), `respond_to?`
     (method presence on a receiver — user or modeled/CRuby builtin),
-    `define_method`/`define_singleton_method`/`alias_method` (L64). Only reached
+    `define_method`/`define_singleton_method`/`alias_method`. Only reached
     on a lookup miss, so a user override wins. -/
 def tryReflect (m : Machine) (recv : Value) (mname : String)
     (args : List Value) (blk : Option Value) : Option StepResult :=
@@ -665,7 +664,7 @@ def callMainMethod (m : Machine) (recv : Value) (bid : String)
   | some result => result
   | none => .unsupported s!"main singleton method {name}"
 
-/-- A known missing method, including an explicit undef tombstone (L272).
+/-- A known missing method, including an explicit undef tombstone.
 No native fallback may resurrect a method that lookup found to be undefined. -/
 def invokeMethodMissing (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
     (args : List Value) (blk : Option Value)
@@ -687,7 +686,7 @@ def invokeMethodMissing (m : Machine) (recv : Value) (implicit : SendSite) (mnam
 
 /-- A lookup miss with no entry: gate CRuby-shadowed
     names, else route to `method_missing` (user override) or the byte-exact
-    `NoMethodError` (artifact 02 §4). Explicit tombstones bypass these
+    `NoMethodError` (Semantics 02 §4). Explicit tombstones bypass these
     native fallbacks and use invokeMethodMissing directly. -/
 def dispatchMiss (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
     (args : List Value) (blk : Option Value) (kw : List (Value × Value) := []) : StepResult :=
@@ -715,7 +714,7 @@ def dispatchMiss (m : Machine) (recv : Value) (implicit : SendSite) (mname : Str
 
 /-- The site kind a `send`-family re-dispatch runs at: `send`/`__send__` bypass
     visibility, `public_send` does not [V]. A top-level `match` rather than an
-    inline `ite`, so `invoke` stays reducible for the metatheory (L73). -/
+    inline `ite`, so `invoke` stays reducible for the metatheory. -/
 def reflectiveSite : String → SendSite
   | "public_send" => .explicit
   | _ => .reflective

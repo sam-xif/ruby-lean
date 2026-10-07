@@ -1,6 +1,6 @@
 import RubyCore.Interp.Support
 
-/-! Enumerator's receiver/method descriptor and resumable execution (L280).
+/-! Enumerator's receiver/method descriptor and resumable execution.
     Internal each is an ordinary fresh dispatch; external iteration switches
     control stacks while retaining the shared heap and captured frame store. -/
 namespace RubyCore.Interp

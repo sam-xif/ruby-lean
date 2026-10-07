@@ -1,5 +1,5 @@
-import RubyCore.Rational
-import RubyCore.FloatFmt
+import RubyCore.Numeric.Rational
+import RubyCore.Numeric.FloatFmt
 
 namespace RubyCore
 

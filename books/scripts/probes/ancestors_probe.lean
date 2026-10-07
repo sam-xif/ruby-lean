@@ -1,8 +1,8 @@
-import RubyCore.PreludeBoot
+import RubyCore.Boot
 import Books.Metatheory.Heap.AncestorsGrow
 
 /-!
-Item 3 of the producer's bill (L144), measured before it was proved — and the
+Item 3 of the producer's bill, measured before it was proved — and the
 measurement changed which clause got proved.
 
 `ancestors` and `modAncestors` take fuel `h.objs.size + 1`, so `ancestors_congr`

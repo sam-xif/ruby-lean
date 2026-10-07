@@ -1,4 +1,4 @@
-import RubyCore.Types.Core
+import Books.Metatheory.Typing.Lang.Infer
 
 /-!
 # F1b.8 — `infer` is monotone in the declaration table, on `def`-free expressions
@@ -18,7 +18,7 @@ the table. So preservation owes exactly
     infer F' [] body = some (τ, Γ', F')
 
 and without it the invariant needs a second table with a `SubDecls` slack
-threaded through `Inv`, `CtlOk` and `KontOk`. That shape was tried first (L160)
+threaded through `Inv`, `CtlOk` and `KontOk`. That shape was tried first
 and it does not close: the `def` case needs `declaresName` freshness at the
 *invariant's* table while the rule checks the *control's*, and the slack gives
 the implication the wrong way round. One lemma here removes the need for all of
@@ -29,7 +29,7 @@ it, and leaves `Inv` with a single table.
 `infer` is genuinely non-monotone, at exactly one rule: `def`'s guard is
 `declaresName D name = false`, and a bigger table falsifies it. Every other rule
 touches the table only through `sigOf`, which `SubDecls` was defined to carry
-(`Types/Decls.lean` — stated over `declFor` rather than over the row lists,
+(`books/Books/Metatheory/Typing/Lang/Decls.lean` — stated over `declFor` rather than over the row lists,
 because the structural reading is false for a two-class ground type). So the
 side condition is `defFree`, and it is a real narrowing of the fragment: a
 declared method's body may not itself define a method or reopen a class.
@@ -53,7 +53,7 @@ set_option maxRecDepth 100000
 set_option maxHeartbeats 1000000
 set_option linter.unusedSimpArgs false
 
-/-- **Table stability from the *context* rather than from the expression** (L200).
+/-- **Table stability from the *context* rather than from the expression**.
 
     `infer_mono_all` below already proves `D₀ = D`, but only under `defFree e` — and
     `defFree` is not available where it is needed: `KontOk`'s constructors carry the
@@ -258,8 +258,8 @@ theorem inferArgs_table_ret : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top :
 /-! ### L234 — environment monotonicity, for the expressions a continuation stores
 
 `inferIf` refuses two branches whose environments differ, which is what refuses every desugared
-`||`, `&&` and `&.` (L231), and `begin`'s handler needs the same relation from the other side
-(L233). Both want to *widen* a stored `infer` equation from an environment to a larger one, and
+`||`, `&&` and `&.`, and `begin`'s handler needs the same relation from the other side
+. Both want to *widen* a stored `infer` equation from an environment to a larger one, and
 this is that lemma at the special case both of them are actually about: **an expression that
 assigns no local**.
 
@@ -270,7 +270,7 @@ pins by definition.
 -/
 
 /-- **An assign-free expression answers the environment it was given, and widening it changes
-    nothing else** (L234). -/
+    nothing else**. -/
 theorem infer_env_mono : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx : FrameCtx),
     asgnFree e = true → ∀ τ Γ' D₀, infer D Γ e top ctx = some (τ, Γ', D₀) →
       Γ' = Γ ∧ ∀ Γ₂, SubEnv Γ Γ₂ → infer D Γ₂ e top ctx = some (τ, Γ₂, D₀) := by
@@ -311,7 +311,7 @@ theorem infer_env_mono : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     refine ⟨rfl, fun Γ₂ hs => ?_⟩
     have hse2 : subEnvB Γl Γ₂ = true := subEnvB_trans_sub hse hs
     simp only [infer, hil, hse2, if_true, reduceIte]
-  -- **The block send** (L257), and it is the only arm whose *subexpression's environment
+  -- **The block send**, and it is the only arm whose *subexpression's environment
   -- is built from the send's own* — so this is the one case that spends `anyEnv_subEnv`.
   | case99 D Γ top ctx recv mname ps ls body τr Γ₁ D₁ hrecv x σp βret τret hbs
       τb Γb' D₂ hbody hif ihR ihB =>
@@ -452,7 +452,7 @@ theorem infer_env_mono : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
       -- No fallback, for the reason the other three inductions have none: a new `infer`
       -- arm has to be looked at, not absorbed.
 
-/-- **The sequence form** (L234), by list induction on top of `infer_env_mono` — the same
+/-- **The sequence form**, by list induction on top of `infer_env_mono` — the same
     composition the table lemmas use, and for the same reason: `inferSeq` is `infer`
     threaded along a list, so the theorem composes with itself. -/
 theorem inferSeq_env_mono : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : Bool}
@@ -479,7 +479,7 @@ theorem inferSeq_env_mono : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : B
         obtain ⟨rfl, hmr⟩ := inferSeq_env_mono (by simpa [asgnFreeAll] using ha.2) h
         exact ⟨rfl, fun Γ₂ hs => by simp only [inferSeq, hme Γ₂ hs]; exact hmr Γ₂ hs⟩
 
-/-- And the argument list's (L234). -/
+/-- And the argument list's. -/
 theorem inferArgs_env_mono : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : Bool}
     {ctx : FrameCtx} {τs : List Ty} {Γ' : Env} {D₀ : Decls}, asgnFreeAll es = true →
     inferArgs D Γ es top ctx = some (τs, Γ', D₀) →
@@ -508,7 +508,7 @@ theorem inferArgs_env_mono : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : 
           obtain ⟨rfl, hmr⟩ := inferArgs_env_mono (by simpa [asgnFreeAll] using ha.2) hr
           exact ⟨rfl, fun Γ₂ hs => by simp [inferArgs, hme Γ₂ hs, hmr Γ₂ hs]⟩
 
-/-- And the array-element traversal's (L234). -/
+/-- And the array-element traversal's. -/
 theorem inferElems_env_mono : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top : Bool}
     {ctx : FrameCtx} {τ : Ty} {Γ' : Env} {D₀ : Decls}, asgnFreeAll es = true →
     inferElems D Γ es top ctx = some (τ, Γ', D₀) →
@@ -555,7 +555,7 @@ theorem inferElems_env_mono : ∀ {es : List Expr} {D : Decls} {Γ : Env} {top :
                   simp only [inferElems, hme Γ₂ hs]; exact hmr Γ₂ hs⟩)
            | simp_all)
 
-/-- And the `if` join's (L234), by cases on the `else` rather than by induction. -/
+/-- And the `if` join's, by cases on the `else` rather than by induction. -/
 theorem inferIf_env_mono {D : Decls} {Γ : Env} {t : Expr} {els : Option Expr} {top : Bool}
     {ctx : FrameCtx} {τ : Ty} {Γ' : Env} {D₀ : Decls}
     (hat : asgnFree t = true) (hae : asgnFreeOpt els = true)
@@ -614,13 +614,13 @@ theorem inferIf_env_mono {D : Decls} {Γ : Env} {t : Expr} {els : Option Expr} {
 
 /-! ### L226: the same theorem at the *loop* channel, and the same proof
 
-`infer_table_ret` (L200) says *the table is constant along a continuation chain inside a body
+`infer_table_ret` says *the table is constant along a continuation chain inside a body
 that declares a return type*, and it is available because `def`'s row branch requires
 `ctx.ret.isNone`. L226 gave that branch a second such guard — `ctx.inLoop.isNone` — so the
 identical statement holds at the loop channel, which is what a `next` rule needs in order to
 walk a `KontOk` chain down to its loop kont without the table moving under it.
 
-**The two blocked rungs share this lemma.** `begin` (L218) and `next` (L225) were each stuck
+**The two blocked rungs share this lemma.** `begin` and `next` were each stuck
 on *"the relation is indexed by `Decls` and `KontOk` threads tables"*; this is the answer for
 both. The proof below is `infer_table_ret`'s **unchanged** — the guard is the only thing that
 differs, which is itself the evidence that the two channels are the same shape.
@@ -828,7 +828,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     exact ∀ F', SubDecls Da F' → defFreeAll esa = true →
       ∀ τ Γ' D₀, inferSeq Da Γa esa topa ctxa = some (τ, Γ', D₀) →
         D₀ = Da ∧ inferSeq F' Γa esa topa ctxa = some (τ, Γ', F')
-  -- **The argument list** (L175). Same statement, at the fourth motive: the send
+  -- **The argument list**. Same statement, at the fourth motive: the send
   -- rules need the arguments' *types* in order, so `inferArgs` is a separate
   -- traversal from `inferSeq` and needs its own monotonicity.
   | motive4 Da Γa esa topa ctxa =>
@@ -872,7 +872,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     simp only [infer, hib, hrhs, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [infer, hib, hm]⟩
-  -- **`@x = e`** (L191/L196). Two accepting arms since the write checks the table:
+  -- **`@x = e`**. Two accepting arms since the write checks the table:
   -- the declared case, where the widening has to preserve the *conformance* too, and
   -- the undeclared one, where there is nothing to conform to. `SubDecls`' ivar half
   -- is an equality (as its constant half is), so both are the rhs's IH plus a rewrite.
@@ -891,7 +891,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     simp only [infer, hsome, hrhs, hiv, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [infer, hsome, hm, hs.ivarTy_eq, hiv]⟩
-  -- **`@x`** (L196). The answer comes out of the table, so like `case33`'s constant
+  -- **`@x`**. The answer comes out of the table, so like `case33`'s constant
   -- read this case *uses* `SubDecls` — through its ivar half, an equality.
   | case21 D Γ top ctx x sc hsome σ hiv =>
     intro F' hs hdf τ Γ' D₀ h
@@ -920,7 +920,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
       Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [infer, hmR, SubDecls.sigOf_eq hs hsig]⟩
-  -- **The written receiverless call** (L170), `foo()`. Identical to `vcall`'s
+  -- **The written receiverless call**, `foo()`. Identical to `vcall`'s
   -- case — same receiver from the context, same `SubDecls.sigOf_eq` — which is
   -- the monotonicity half of the claim that the two rules differ only in a
   -- `SendSite`.
@@ -929,7 +929,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     simp only [infer, hsome, hsig, Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [infer, hsome, SubDecls.sigOf_eq hs hsig]⟩
-  -- **The unary written receiverless call** (L171). One subexpression and the
+  -- **The unary written receiverless call**. One subexpression and the
   -- signature read at the table it leaves — the explicit unary send's case with
   -- the receiver supplied by the context instead of by an expression.
   | case35 D Γ top ctx mname arg args c hsome τs Γ₁ D₁ hargs ps τret hsig hsub ih =>
@@ -940,7 +940,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
       if_pos] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp [infer, hsome, hmA, SubDecls.sigOf_eq hs hsig, hsub]⟩
-  -- **A constant read** (L189). The table appears only as the third component of
+  -- **A constant read**. The table appears only as the third component of
   -- the answer, exactly as a local read's does.
   -- **L195: the answer comes out of the table**, so this case now *uses* `SubDecls`
   -- — through its constant half, which is an equality. Before, the rule read a global
@@ -952,7 +952,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     simp only [Option.some.injEq, Prod.mk.injEq] at h
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by simp only [infer, hs.constTy_eq n, hre]⟩
-  -- **`super()`** (L212). The answer comes out of the `supers` table, so the case
+  -- **`super()`**. The answer comes out of the `supers` table, so the case
   -- *uses* `SubDecls` — through its fifth half, which is an equality (`superDecl_eq`).
   -- Same shape as `.const`'s (case39): no IH, one table read, two guards to recompute.
   | case72 D Γ top ctx mn hmeth hne dd hrow hemp =>
@@ -963,7 +963,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by
       simp only [infer, hmeth, hs.superDecl_eq, hrow, if_pos hne, if_pos hemp]⟩
-  -- **`super(args)`** (L212). The argument list's IH plus the same table read, and the
+  -- **`super(args)`**. The argument list's IH plus the same table read, and the
   -- read is at the table the *last* argument leaves — which is why the IH's `D₀ = D`
   -- half has to be spent before `superDecl_eq` can fire.
   | case77 D Γ top ctx arg args mn hmeth hne τs Γ₂ D₂ hargs dd hrow hsub ih =>
@@ -976,7 +976,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by
       simp only [infer, hmeth, hm, hsb.superDecl_eq, hrow, if_pos hne, if_pos hsub]⟩
-  -- **Bare `super`** (L214). `super()`'s case (case71) with the argument types read off
+  -- **Bare `super`**. `super()`'s case (case71) with the argument types read off
   -- the *context* instead of the expression, so it has no IH at all — and it uses
   -- `SubDecls` twice: `superDecl_eq` for the row and nothing for `ctx.params`, which is a
   -- parameter and not a table.
@@ -988,7 +988,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     obtain ⟨rfl, rfl, rfl⟩ := h
     exact ⟨rfl, by
       simp only [infer, hmeth, hpar, hs.superDecl_eq, hrow, if_pos hne, if_pos hsub]⟩
-  -- **An array literal** (L174). The elements' *types* are erased, so the only
+  -- **An array literal**. The elements' *types* are erased, so the only
   -- thing to transport is the threading — which makes this case the third motive
   -- applied once, with the answer type a constant.
   | case42 D Γ top ctx es τ0 Γ₁ D₁ hs ih =>
@@ -1088,10 +1088,10 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
     simp only [inferElems, he] at h
     obtain ⟨rfl, hmR⟩ := ihR F' hs (by simp_all [defFreeAll, defFree]) _ _ _ h
     exact ⟨rfl, by simp [inferElems, hmE, hmR]⟩
-  -- **`inferArgs`' three arms** (L175), mirroring `startArgs`' loop. The `[]` arm
+  -- **`inferArgs`' three arms**, mirroring `startArgs`' loop. The `[]` arm
   -- is a `rfl`; the recursive arm is the only place two IHs of *different* motives
   -- meet, and the reason it needs both is that an argument may itself be a send.
-  -- **`inferArgs`' two accepting arms** (L175), mirroring `startArgs`' loop. The
+  -- **`inferArgs`' two accepting arms**, mirroring `startArgs`' loop. The
   -- `[]` arm is a `rfl`; the recursive arm is the only place two IHs of *different*
   -- motives meet, and the reason it needs both is that an argument may itself be a
   -- send.
@@ -1154,7 +1154,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
       | (simp only [infer, Option.some.injEq, Prod.mk.injEq] at h
          obtain ⟨rfl, rfl, rfl⟩ := h
          exact ⟨rfl, by simp [infer]⟩)
-      -- **`return e`** (L200), both arms. `ctx.ret` is not the declaration table, so
+      -- **`return e`**, both arms. `ctx.ret` is not the declaration table, so
       -- the guard and the `subTy` check transport untouched and what is left is the
       -- returned expression's IH — `case13`'s shape.
       | (rename_i ih1
@@ -1263,7 +1263,7 @@ theorem infer_mono_all : ∀ (D : Decls) (Γ : Env) (e : Expr) (top : Bool) (ctx
       -- No fallback: every case is closed above or by one of the four uniform
       -- tactics, and there is deliberately no `sorry` arm to hide a case the next
       -- widening adds. A new `infer` rule breaks this proof, which is the same
-      -- discipline `step_ok` enforces (`HANDOFF.md` constraint 4) — and the case
+      -- discipline `step_ok` enforces — and the case
       -- *numbers* move when it does, including when an existing rule merely gains a
       -- guard. Recovery, three times now (L163, L164 twice): strip the explicit
       -- cases, restore a `trace "UNSOLVED-CASE"` arm here, read the list off the

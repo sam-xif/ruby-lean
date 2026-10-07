@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+"""Start a proof about a Ruby program: create a program book for it.
+
+    bin/new-book Name prog.rb
+
+Creates books/Books/Name/ and registers it in books/lakefile.toml:
+
+    prog.rb        your program
+    prog.json      the program in the model's core language (desugar/bin/export-json)
+    Program.lean   the same program as a Lean term, `program`
+    Proof.lean     a first theorem, proved by the Lean kernel running the model:
+                   the program terminates normally and prints exactly what it prints
+    Check.lean     build-time checks: Program.lean is prog.json, and the theorems
+                   depend on Lean's three standard axioms only
+    check.rb       compares the model with CRuby on prog.rb
+
+Then build it:
+
+    cd books && lake build Name
+
+From there, replace literals in Program.lean with variables and prove the
+statement for all inputs. docs/guides/prove-a-program.md walks through it.
+
+Name must be a Lean identifier in CamelCase. The program must run on the model
+to a normal finish: check with `bin/ruby-lean --compare prog.rb` first.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BOOKS = os.path.join(ROOT, "books")
+RUN = os.path.join(ROOT, "bin", "ruby-lean")
+
+
+def model(flag: str, path: str) -> str:
+    p = subprocess.run([RUN, flag, path], capture_output=True, text=True)
+    if p.returncode != 0:
+        sys.exit(p.stderr.strip() or f"bin/ruby-lean {flag} failed")
+    return p.stdout
+
+
+def lean_string(s: str) -> str:
+    """`s` as a Lean string literal."""
+    out = []
+    for ch in s:
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == '"':
+            out.append('\\"')
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\t":
+            out.append("\\t")
+        elif ord(ch) < 0x20 or ord(ch) == 0x7F:
+            out.append("\\x%02x" % ord(ch))
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 2 or argv[0].startswith("-"):
+        print(__doc__.strip())
+        return 0 if argv[:1] in (["-h"], ["--help"]) else 2
+    name, src = argv
+    if not re.fullmatch(r"[A-Z][A-Za-z0-9]*", name):
+        sys.exit(f"new-book: {name!r} is not a CamelCase Lean identifier")
+    if not os.path.isfile(src):
+        sys.exit(f"new-book: no such file: {src}")
+    book = os.path.join(BOOKS, "Books", name)
+    if os.path.exists(book):
+        sys.exit(f"new-book: {os.path.relpath(book, ROOT)} already exists")
+    base = os.path.splitext(os.path.basename(src))[0]
+
+    obs = json.loads(model("--json", src))
+    steps = json.loads(model("--steps", src))
+    if obs["exception"] or steps["status"] != "done":
+        sys.exit("new-book: the program does not finish normally on the model "
+                 f"(`bin/ruby-lean {src}` shows what happens)")
+    term = model("--lean-term", src).rstrip("\n")
+    core = subprocess.run([os.environ.get("RUBY", "ruby"),
+                           os.path.join(ROOT, "desugar", "bin", "export-json"), src],
+                          capture_output=True, text=True, check=True).stdout
+    out = lean_string(obs["stdout"])
+
+    os.makedirs(book)
+
+    def write(filename: str, text: str) -> None:
+        with open(os.path.join(book, filename), "w") as fh:
+            fh.write(text)
+
+    with open(src) as fh:
+        write(f"{base}.rb", fh.read())
+    write(f"{base}.json", core)
+
+    write("Program.lean", f"""import RubyCore.Interp
+
+/-! `{base}.rb` as a RubyCore term. `Check.lean` fails the build if this term stops
+being what the desugarer exports for `{base}.rb`.
+
+To prove a statement for all inputs, turn `program` into a function of them:
+replace a literal such as `.int 3` with `.int b` and write
+`def program (b : Int) : Expr := …`. -/
+namespace Books.{name}
+open RubyCore
+
+def program : Expr :=
+  {term}
+
+end Books.{name}
+""")
+
+    write("Proof.lean", f"""import Books.Lib.Boot
+import Books.{name}.Program
+
+/-!
+# `{base}.rb` terminates and prints what it prints
+
+Every theorem here is proved by the Lean kernel running the model on `program`.
+`#eval trace 400 (start program)` (from `Books.Lib.Trace`) prints the run one
+transition at a time.
+-/
+namespace Books.{name}
+open RubyCore RubyCore.Interp
+
+/-- The program's last transition is number `steps + 1`. -/
+def steps : Nat := {steps["steps"] - 1}
+
+/-- The machine one transition before the program finishes. -/
+def final : Machine := (stepN steps (start program)).getD default
+
+theorem reaches_final : stepN steps (start program) = some final := by kernel_rfl
+
+/-- The program's value and the machine it leaves. -/
+def outcome : Value × Machine :=
+  match stepFn final with
+  | .done v m => (v, m)
+  | _ => default
+
+theorem finish : stepFn final = .done outcome.1 outcome.2 := by kernel_rfl
+
+/-- What the program wrote to standard output. -/
+theorem output : outcome.2.out = {out} := by decide +kernel
+
+/-- **`{base}.rb`, run the way `rubycore` runs it, terminates normally and prints
+    exactly this.** It does not raise, and it uses nothing the model does not
+    support. -/
+theorem runs : ∃ v m', Runs program v m' ∧ m'.out = {out} :=
+  ⟨outcome.1, outcome.2,
+    ⟨_, boot_ok _, .of_reaches (.of_stepN reaches_final) finish⟩, output⟩
+
+end Books.{name}
+""")
+
+    write("Check.lean", f"""import Books.{name}.Proof
+
+/-! Build-time checks. Each fails the build if it stops holding. -/
+namespace Books.{name}
+open RubyCore RubyCore.Interp
+
+/-! **The term is the program.** `{base}.json` is what the desugarer exports for
+`{base}.rb`; decoding it must give `program`. -/
+
+def exported : String := include_str "{base}.json"
+
+#guard
+  match Json.parse exported with
+  | .ok j => (match Decode.program j with | .ok e => e == program | .error _ => false)
+  | .error _ => false
+
+/-- info: 'Books.{name}.runs' depends on axioms: [propext, Classical.choice, Quot.sound] -/
+#guard_msgs in
+#print axioms runs
+
+end Books.{name}
+""")
+
+    write("check.rb", f"""#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# The theorems in this book are about the model. This asks whether the model
+# and CRuby agree on this program. `make book-checks` runs it.
+exec(File.join(__dir__, "../../../bin/ruby-lean"), "--compare", File.join(__dir__, "{base}.rb"))
+""")
+
+    write("README.md", f"""# `Books/{name}/`
+
+A proof about [`{base}.rb`]({base}.rb).
+
+| File | Contents |
+|---|---|
+| `Program.lean` | The program as a Lean term |
+| `Proof.lean` | The theorems. `runs`: the program terminates normally and prints what it prints |
+| `Check.lean` | Build-time checks that `Program.lean` is the program and that the proofs use no extra axioms |
+| `check.rb` | Compares the model with CRuby on this program |
+
+```sh
+cd books && lake build {name}
+```
+""")
+
+    lakefile = os.path.join(BOOKS, "lakefile.toml")
+    with open(lakefile) as fh:
+        toml = fh.read()
+    toml, n = re.subn(r'^(defaultTargets = \[)', rf'\1"{name}", ', toml, count=1, flags=re.M)
+    if n != 1:
+        sys.exit("new-book: could not find defaultTargets in books/lakefile.toml")
+    toml = toml.rstrip("\n") + f"""
+
+# A proof about one Ruby program. Created by bin/new-book.
+[[lean_lib]]
+name = "{name}"
+srcDir = "."
+roots = ["Books"]
+globs = ["Books.{name}.+"]
+"""
+    with open(lakefile, "w") as fh:
+        fh.write(toml)
+
+    rel = os.path.relpath(book, ROOT)
+    print(f"created {rel}/ and registered it in books/lakefile.toml")
+    print(f"next:   cd books && lake build {name}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

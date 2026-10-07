@@ -452,7 +452,7 @@ set_option maxHeartbeats 2000000 in
 /-! ## The `$~` write, and the `Regex` layer
 
 `setMatchGlobals` is the one write in this layer that is **not** to the heap: `$~` is
-frame-local (L121), so it goes through `Machine.matchFrameId`, a fuel walk over the frame
+frame-local, so it goes through `Machine.matchFrameId`, a fuel walk over the frame
 stack. `pushRootK` preserves both the stack and the frame array, but the walk carries `m` as a
 captured argument, so agreement is an induction rather than a projection — the same shape
 `ratchet`'s `getLocal_go_reCtl` has. -/

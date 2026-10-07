@@ -2,16 +2,19 @@ import RubyCore.Machine
 import RubyCore.Builtins.Objects
 
 /-
-The axiomatized builtin methods (artifact 01 §2 `origin = builtin`): primitive
-rules keyed by bid = "Owner#name", registered into H₀'s method tables by
-Boot.builtinMethods so that lookup/inheritance/shadowing are uniform — a user
-`def to_s` on Object shadows the builtin through the ordinary dispatch rule.
+The builtin methods (Semantics 01 §2, `origin = builtin`).
 
-Error messages are byte-for-byte from CRuby 4.0.5 probes (2026-07-07); the
-difftest engine is the enforcement mechanism.
+A builtin is a method whose behavior is a primitive rule and not a Ruby body:
+`Integer#+`, `String#<<`, `Array#[]`. Each is keyed by an id of the form
+`"Owner#name"` and registered in the initial heap's method tables, so lookup,
+inheritance and shadowing treat it like any other method. A user `def to_s` on
+`Object` shadows the builtin through the ordinary dispatch rule.
 
-Anything not modeled answers `unsupported` (never a guessed value) — the
-fragment gate, not an error.
+The rules are in `Builtins/`, one file per group of classes. Each file matches
+its own ids and passes anything else to the next file.
+
+Error messages match CRuby 4.0.5 character for character. Anything not
+modeled answers `unsupported`, never a guessed value.
 -/
 
 namespace RubyCore
@@ -27,14 +30,14 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
      -- `dup`/`clone` are the one *class-generic* rule below, and `dupObj` copies
      -- the tag, so they are admitted by list membership rather than by name
      && !dupBids.contains bid && !cloneBids.contains bid then
-    -- The byte-string safety net (L118). A binary String holding a byte ≥ 0x80
+    -- The byte-string safety net. A binary String holding a byte ≥ 0x80
     -- is the one value a rule can silently *mis-read*: our payload keeps it as a
     -- one-byte character, so a rule that neither propagates the tag nor refuses
     -- hands back a UTF-8 String whose `inspect` renders `È` where CRuby renders
     -- `\xC8`. That is a wrong answer, not a gate, and it is unreachable by
     -- inspection of 60-odd rules — so admission is a *list*: a rule is reached
     -- with such an operand only if it is named in `byteStrAwareBids`.
-    .unsupported s!"{bid} with a byte-string operand holding a byte ≥ 0x80 (L118)"
+    .unsupported s!"{bid} with a byte-string operand holding a byte ≥ 0x80"
   else if bid != "Complex#eql?" && (bid.endsWith "#==" || bid.endsWith "#eql?" || bid.endsWith "#!=" ||
       pureEqualityBids.contains bid) && (recv :: args).any (complexEqualityImpure h 100) then
     .unsupported "Complex equality requires effectful component/collection dispatch"
@@ -42,7 +45,7 @@ def run (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes :
     .err Boot.argumentErrorId
       s!"wrong number of arguments (given {args.length}, expected 0)" m
   else if dupBids.contains bid || cloneBids.contains bid then
-    -- One rule for every class (L66): copies the payload *and* the instance
+    -- One rule for every class: copies the payload *and* the instance
     -- variables (`str.dup` keeps `@ivar` [V]); `dup` drops the frozen bit,
     -- `clone` keeps it. Gates where a copy would need more than the object:
     -- a singleton class (clone copies it) or a class/module payload (a duped

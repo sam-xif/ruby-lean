@@ -3,9 +3,8 @@ import RubyCore.Builtins.Complex
 /-!
 Integer and Float rules.
 
-Split out of the single `Builtins.run` match (L98), one class group per file, no
-behaviour change: each rule file matches its own bids and hands anything it does
-not recognise to the next file in the chain.
+Each rule file matches its own builtin ids and hands anything it does not
+recognise to the next file in the chain.
 -/
 
 namespace RubyCore
@@ -60,12 +59,12 @@ def roundToDigits (kind : String) (x : Float) (nd : Int) : Float :=
   f / s
 
 /-- One digit of a base-≤36 numeral. Computed rather than indexed out of a digit
-    string, so nothing here can panic or block kernel reduction (L73). -/
+    string, so nothing here can panic or block kernel reduction. -/
 def baseDigit (d : Nat) : Char :=
   if d < 10 then Char.ofNat ('0'.toNat + d) else Char.ofNat ('a'.toNat + d - 10)
 
 /-- `Integer#to_s(base)` for 2 ≤ base ≤ 36 [V]: `255.to_s(16)` is `"ff"` and
-    `-255.to_s(16)` is `"-ff"`. Fuel-bounded rather than `termination_by` (L73): a
+    `-255.to_s(16)` is `"-ff"`. Fuel-bounded rather than `termination_by`: a
     `WellFounded.fix` would not reduce in the kernel, and `mag + 1` is ample since
     every step at least halves the magnitude. -/
 def intToBase (n : Int) (base : Nat) : String :=
@@ -141,7 +140,7 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
           if y == 0 then .unsupported "Float modulo by zero"
           else .ok (.flt (x - y * (x / y).floor)) m)
   | "Integer#**" =>
-    -- `**` coerces like the rest (L123), so a non-numeric argument that answered
+    -- `**` coerces like the rest, so a non-numeric argument that answered
     -- nothing gets the coercion TypeError rather than a gate. Negative Integer
     -- exponents now produce exact Rational values; other exponents still gate.
     binArg m args fun b =>
@@ -192,7 +191,7 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
     -- share this arm but sit in `zeroArgBids` too, so `0.inspect(0)` answered
     -- `wrong number of arguments (given 1, expected 0)` where CRuby says
     -- `invalid radix 0` — found by a tier-1 draw of `each_with_index(&:inspect)`,
-    -- which hands the block *two* arguments (L132).
+    -- which hands the block *two* arguments.
     match recv, args with
     | .int n, [] => okStr m (toString n)
     -- the base goes through `NUM2LONG`, so a Float is **truncated** rather than
@@ -247,7 +246,7 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
         else
           let (v, m) := allocArr m #[.int (Int.fdiv a c), .int (Int.fmod a c)]
           .ok v m
-      -- coerces like the arithmetic operators (L123)
+      -- coerces like the arithmetic operators
       | _, _ =>
         if (num? b).isNone then coerceFailed (owner bid) m b
         else .unsupported "Integer#divmod of a Float"
@@ -265,7 +264,7 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
     | .int n =>
       if n < 0 || n > 255 then .err Boot.rangeErrorId s!"{n} out of char range" m
       else if n > 127 then
-        -- 128..255 is a single **byte** in an ASCII-8BIT string (L117).
+        -- 128..255 is a single **byte** in an ASCII-8BIT string.
         let (v, m) := allocStrEnc m (String.singleton (Char.ofNat n.toNat)) true
         .ok v m
       else okStr m (String.singleton (Char.ofNat n.toNat))
@@ -274,7 +273,7 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
     -- `rb_int_bit_ref`: bit `i` of the two's-complement representation, so a
     -- negative receiver sign-extends — `(-5)[1]` is `1` [V]. A negative index
     -- is `0`. `NUM2LONG` decides the index, which is what makes `5["type"]` a
-    -- `TypeError` rather than the gate R1 hit 6 times (L134). The two- and
+    -- `TypeError` rather than the gate R1 hit 6 times. The two- and
     -- range-argument bit-field forms are not modeled and gate.
     match recv, args with
     -- a **Range** argument is the bit-field form (`255[0..3]` is 15), not a
@@ -373,7 +372,7 @@ def runNumerics (bid : String) (recv : Value) (args : List Value) (m : Machine) 
       match recv, b with
       | .flt a, _ =>
         match (match b with | .flt y => some y | .int i => some (Float.ofInt i) | _ => none) with
-        | none => coerceFailed (owner bid) m b     -- coerces (L123)
+        | none => coerceFailed (owner bid) m b     -- coerces
         | some c =>
           if c == 0.0 then .err Boot.zeroDivisionErrorId "divided by 0" m
           else

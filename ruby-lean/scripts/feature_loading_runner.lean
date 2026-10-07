@@ -1,5 +1,5 @@
 /- Test-only entry point for check-feature-loading.py; not a runtime file loader. -/
-import RubyCore.PreludeBoot
+import RubyCore.Boot
 import RubyCore.Obs
 open RubyCore
 

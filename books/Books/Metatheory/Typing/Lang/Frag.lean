@@ -1,4 +1,4 @@
-import RubyCore.Judgment.Judge
+import Books.Metatheory.Typing.Lang.Judge
 
 /-!
 # `MFrag` — the machine-typed fragment gate (J20, J31)

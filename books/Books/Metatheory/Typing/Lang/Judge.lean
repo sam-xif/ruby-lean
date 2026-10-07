@@ -1,4 +1,4 @@
-import RubyCore.Judgment.Sub
+import Books.Metatheory.Typing.Lang.Sub
 import RubyCore.Regex.Parse
 
 /-!
@@ -37,7 +37,7 @@ deliberate refusals** (no constructor), each for a stated reason:
   evaluates; the send rules consume them in place (`chk` refuses them too).
 * `.undef` — removes a row from the definee, and a table with no notion of removal
   cannot state a sound rule. (`chk` covers it claim-gated, i.e. trust-carrying; the
-  spec refuses instead. See `implementation-notes.md` J11.)
+  spec refuses instead.)
 
 Two rules are **assumption rules** (marked `[ASSM]` below): their chosen type is
 checked against nothing in this file and must be discharged by a machine-typing
@@ -70,7 +70,7 @@ open RubyCore.Types
 /-! ## 1. `JCtx` — the activation context, with the two channels `chk` lacked
 
 `FrameCtx`'s six channels are reused by extension (no copy — their docstrings in
-`Types/Ty.lean` remain the reference). The judgment adds exactly two, each unlocking
+`Sorbet/Ty.lean` remain the reference). The judgment adds exactly two, each unlocking
 an arm `chk` could only cover claim-gated:
 
 * **`blk`** — the enclosing method's declared block signature, or `none` where there
@@ -88,7 +88,7 @@ structure JCtx extends FrameCtx where
 deriving DecidableEq, Repr, Inhabited
 
 /-- The context a block body is judged in: `blockCtx`'s closures (see its docstring
-    in `Types/Decls.lean`), plus the two new channels closed — no `yield`, no `retry`
+    in `books/Books/Metatheory/Typing/Lang/Decls.lean`), plus the two new channels closed — no `yield`, no `retry`
     from inside a block, for the pairing reason above. -/
 def jBlockCtx (ctx : JCtx) : JCtx :=
   { toFrameCtx := blockCtx ctx.toFrameCtx, blk := none, inRescue := false }
@@ -558,7 +558,7 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       Judge A D Γ (.var .cvar x) top ctx (mkNilable τ) Γ D
   -- ## Assignments. The local case refuses inside a block: a block body's write to
   -- an enclosing local is one the block frame's conformance obligation cannot see
-  -- (L252) — the artifact's block-capture decision, made explicit (J11).
+  -- — the artifact's block-capture decision, made explicit (J11).
   | vasgnLvar {D Γ x rhs top ctx τ Γ₁ D₁} :
       ctx.inBlock = false →
       Judge A D Γ rhs top ctx τ Γ₁ D₁ →
@@ -644,7 +644,7 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       Judge A D Γ (.cpathAsgn base nm rhs) top ctx τ Γ₂ D₂
   -- ## Sends.
   -- Block-less: receiver, arguments, then the signature read off the table
-  -- (`sigOf` handles the nilable-receiver union internally, L260). No claim
+  -- (`sigOf` handles the nilable-receiver union internally). No claim
   -- fallback — an asserted signature is a row in `D`.
   | send {D Γ recvO mname args top ctx τr Γ₁ D₁ τs Γ₂ D₂ ps τret} :
       JudgeRecv A D Γ recvO top ctx τr Γ₁ D₁ →
@@ -1048,7 +1048,7 @@ inductive Judge (A : SemAxioms) : Decls → Env → Expr → Bool → JCtx → T
       declaresName D old = false →
       Judge A D Γ (.alias' newName old) top ctx .nilT Γ D
   -- `defined?(e)`: a String naming what `e` is, or nil; the operand is not
-  -- evaluated (artifact 03 §6), so nothing about it is judged.
+  -- evaluated (Semantics 03 §6), so nothing about it is judged.
   | defined {D Γ e top ctx} :
       Judge A D Γ (.defined e) top ctx (.nilable (.cls "String")) Γ D
   -- ## Composites.

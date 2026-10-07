@@ -1,6 +1,6 @@
 import RubyCore.Builtins.Strings
 
-/-! Rational primitives (L278). Conversion hooks and operators still pass through
+/-! Rational primitives. Conversion hooks and operators still pass through
     ordinary dispatch. Strings/custom constructor conversions are explicitly gated. -/
 namespace RubyCore.Builtins
 

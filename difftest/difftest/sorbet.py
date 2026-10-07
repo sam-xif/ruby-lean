@@ -1,7 +1,7 @@
 """The Sorbet toolchain: static checker (`srb tc`) and runtime (`sorbet-runtime`).
 
 Sorbet has *two* halves, and the whole point of the Sorbet difftest work is
-that they are separate objects of study (`../books/AGENTS.md` §Sorbet §A.3/§A.5):
+that they are separate objects of study:
 
 - **static** — `srb tc` accepts or rejects a program. Sorbet is unsound by
   design, so acceptance is *not* a safety claim; this module exposes it as an
@@ -271,7 +271,7 @@ def unchecked_variant(source: str) -> str:
 @dataclass(frozen=True)
 class FragmentResult:
     """`rubycore --fragment`: is this program in the provable subset, and if
-    not, why (`ruby-lean/RubyCore/Types/Fragment.lean`)."""
+    not, why (`ruby-lean/RubyCore/Sorbet/Fragment.lean`)."""
 
     in_fragment: bool
     violations: tuple[dict, ...]
@@ -322,7 +322,7 @@ class FragmentChecker:
 
 class SigReader:
     """Ask the Lean model which Sorbet signatures a program *declares*
-    (`rubycore --sigs`, `ruby-lean/RubyCore/Types/SigRead.lean`).
+    (`rubycore --sigs`, `ruby-lean/RubyCore/Sorbet/SigRead.lean`).
 
     Static, like `FragmentChecker`, and against the same
     binary — the reader is what a later typing layer will consume, so it must not

@@ -25,7 +25,6 @@ Output: `{"version":1, "file":, "sigs":[{cls,name,params:[{name,ty}],ret,line}],
 from __future__ import annotations
 
 import argparse
-import glob
 import json
 import os
 import re
@@ -34,37 +33,21 @@ import sys
 
 
 def find_sorbet() -> str:
-    """The `sorbet-static` gem's bundled binary, wherever the active Ruby lives.
-
-    `srb` itself is not guaranteed to be on `PATH`; the gem's `libexec/sorbet` is
-    what carries Sorbet's verdict, which decides which programs reach the
-    validator. Hardcoding Homebrew / `~/.gem` / `/usr/local` paths silently missed
-    every other Ruby (mise, rbenv, asdf, a distro package, any other `GEM_HOME`)
-    and fell back to a bare `"srb"` that may not exist -- a silent wrong-answer
-    path (issue #32). So ask the active Ruby where its gems are first, then fall
-    back to the handful of fixed locations this project has historically used.
-    """
+    """The Sorbet binary: `$SORBET` if set, else the one inside the installed
+    `sorbet-static` gem (which RubyGems locates), else `srb` on PATH."""
     if os.environ.get("SORBET"):
         return os.environ["SORBET"]
+    ruby = os.environ.get("RUBY", "ruby")
     try:
-        gemdir = subprocess.run(
-            ["gem", "env", "gemdir"], capture_output=True, text=True, check=True
-        ).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        gemdir = ""
-    if gemdir:
-        hits = sorted(glob.glob(f"{gemdir}/gems/sorbet-static-*/libexec/sorbet"))
-        if hits:
-            return hits[-1]
-    pats = [
-        "/opt/homebrew/lib/ruby/gems/*/gems/sorbet-static-*/libexec/sorbet",
-        os.path.expanduser("~/.gem/ruby/*/gems/sorbet-static-*/libexec/sorbet"),
-        "/usr/local/lib/ruby/gems/*/gems/sorbet-static-*/libexec/sorbet",
-    ]
-    for pat in pats:
-        hits = sorted(glob.glob(pat))
-        if hits:
-            return hits[-1]
+        p = subprocess.run(
+            [ruby, "-e",
+             'print File.join(Gem::Specification.find_by_name("sorbet-static").full_gem_path, '
+             '"libexec", "sorbet")'],
+            capture_output=True, text=True, timeout=30)
+        if p.returncode == 0 and os.path.exists(p.stdout):
+            return p.stdout
+    except (OSError, subprocess.SubprocessError):
+        pass
     return "srb"
 
 

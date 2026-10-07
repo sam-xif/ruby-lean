@@ -6,12 +6,12 @@ require_relative "rubycore"
 require_relative "observe"
 require_relative "linearize"
 
-# The round-trip check for a single program (artifact 06 §1-§6):
+# The round-trip check for a single program (docs/front-end/method.md §1-§6):
 #
 #   obs+( P )  ≟  obs+( render_core(desugar(parse(P))) )
 #
 # plus the pure checks is_core and normal-form. Returns a Result describing the outcome
-# and, on disagreement, which triage bucket it falls into (artifact 06 §6).
+# and, on disagreement, which triage bucket it falls into (docs/front-end/method.md §6).
 module Roundtrip
   Result = Struct.new(
     :status,        # :agree | :disagree | :out_of_fragment | :parse_error | :harness_error
@@ -97,7 +97,7 @@ module Roundtrip
                reason: diff(obs_src, obs_core))
   end
 
-  # Triage bucket (artifact 06 §6). No "model bug" bucket exists yet — the point of
+  # Triage bucket (docs/front-end/method.md §6). No "model bug" bucket exists yet — the point of
   # doing desugar first.
   def bucket_for(a, b)
     return :trace if a.stdout != b.stdout

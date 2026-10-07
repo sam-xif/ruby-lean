@@ -5,7 +5,7 @@ require_relative "rubycore"
 # render_core : RubyCore -> Ruby source.
 #
 # Deliberately over-parenthesized so that the emitted text re-parses to the same
-# structure regardless of precedence (implementation-choices.md C2/C9). Output is not
+# structure regardless of precedence. Output is not
 # meant to be pretty — only to be behavior-faithful and re-parseable.
 module Render
   module_function

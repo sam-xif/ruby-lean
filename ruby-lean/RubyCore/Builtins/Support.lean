@@ -8,12 +8,8 @@ helpers, the numeric and string-ordering primitives, the bid lists that the
 dispatcher consults before matching, and the implementation helpers the rules
 call (`binArg`, `putsImpl`, `raiseImpl`, `newImpl`, `sortImpl`, …).
 
-Split out of `RubyCore/Builtins.lean` (L98) with no behaviour change: these were
-the file's leading definitions plus the `where` block of the single 1,290-line
-`run`. Promoting the `where` helpers to top level is what makes the per-class
-rule files possible, since a `where` binding is not visible outside its own
-definition; the only other change is ordering them by use (`putsGo` before
-`putsImpl`, `raiseClass` before `raiseImpl`, `flattenAll` before `joinImpl`).
+The helpers are top-level definitions, ordered by use, so that every rule file
+under `Builtins/` can call them.
 -/
 
 
@@ -51,7 +47,7 @@ namespace Builtins
     `Exception#message` is itself `to_s`, so a user `message` changes **nothing**
     about either [V]. Listing it only made the model refuse programs CRuby answers.
     The real sensitivity it was standing in for is `to_s`-on-an-Exception, and that
-    is per-value rather than per-list, so it lives in `pureOk`'s `.exc` arm (L131). -/
+    is per-value rather than per-list, so it lives in `pureOk`'s `.exc` arm. -/
 def inspectSensitive : List String := ["inspect"]
 
 /-- The same, for **`to_s`**. Splitting the two lists is what keeps the check
@@ -62,7 +58,7 @@ def toSSensitive : List String := ["to_s"]
 
 /-- Does `k`'s ancestor chain carry a **non-builtin** definition of one of
     `sens`? This is the per-class replacement for the old global `reprPure` flag
-    (L103): a `def to_s` on one class used to make pure repr refuse to speak for
+: a `def to_s` on one class used to make pure repr refuse to speak for
     *every* object in the program — including unrelated ones, and including the
     prelude's own, which is why the prelude could not define `to_s`/`inspect`/
     `==` anywhere and why `Struct`/`T::Struct` were blocked on this. -/
@@ -79,7 +75,7 @@ def reprOverridden (h : Heap) (sens : List String) (k : ObjId) : Bool :=
     would *lie* about `Pathname` and `T::Struct`, whose prelude `inspect` it knows
     nothing about (see `reprDefer?`). The observation needs the opposite question,
     and asking the wrong one cost three ratchet cases: the prelude defines
-    `Exception#message` (as `to_s`, L131), so "does anything override `message`" is
+    `Exception#message` (as `to_s`), so "does anything override `message`" is
     `true` for *every* exception, and a gate meant for a program's override fired on
     a plain `TypeError`. -/
 def programOverridden (h : Heap) (sens : List String) (k : ObjId) : Bool :=
@@ -91,7 +87,7 @@ def programOverridden (h : Heap) (sens : List String) (k : ObjId) : Bool :=
     | none => false
 
 /-- The native operation implemented by the payload renderer. A builtin alias
-    is pure only when it still resolves to this operation (L290). -/
+    is pure only when it still resolves to this operation. -/
 def nativeReprOwner (h : Heap) (name : String) : Value → String
   | .nil => "NilClass"
   | .bool true => "TrueClass"
@@ -131,14 +127,14 @@ def objectInspectPure (h : Heap) (recv : Value) : Bool :=
 
 /-- Can pure repr (Repr.lean) speak for this value? The resolved method must
     still be the native renderer for its payload, including aliases/tombstones;
-    containers also check the values they render (L290).
+    containers also check the values they render.
 
     `classOf`, not the object's `klass`: the chain starts at the **eigenclass**,
     so a `def obj.inspect` or an `o.extend(M)` makes the value impure exactly as a
     class-level definition does. Asking about `klass` was a **wrong answer** — the
     override was invisible and the pure path rendered the default `#<C:0x…>`, in
     `p`, inside an Array/Hash/Range, and as an ivar of another object. This is the
-    same one-argument miss `__user_defines?` had before L115 (L128). -/
+    same one-argument miss `__user_defines?` had before L115. -/
 private def pureOkSeen (h : Heap) (sens : List String) : Nat → List ObjId → Value → Bool
   -- Out of fuel is "not pure": the caller then dispatches or gates, never guesses.
   | 0, _, _ => false
@@ -171,7 +167,7 @@ private def pureOkSeen (h : Heap) (sens : List String) : Nat → List ObjId → 
     -- `rb_exc_inspect` is `#<Class: rb_obj_as_string(exc)>` and
     -- `Exception#message` *is* `to_s`. So `to_s` is repr-sensitive for an exception
     -- object no matter which list the caller asked about — which is why this is
-    -- here and not in `inspectSensitive` (L131). Getting it from the list instead
+    -- here and not in `inspectSensitive`. Getting it from the list instead
     -- was wrong in both directions: it refused a user `message`, which changes
     -- nothing, and admitted a user `to_s`, which changes everything.
     | .exc msg =>
@@ -190,7 +186,7 @@ def pureOk (h : Heap) (sens : List String) (value : Value) : Bool :=
   pureOkSeen h sens reprFuel [] value
 
 /-- When pure repr cannot speak for a value, the *prelude twin* to dispatch
-    instead (L116). This is L63's "defer to the prelude" pattern: the twin has a
+    instead. This is L63's "defer to the prelude" pattern: the twin has a
     **different name**, so it shadows nothing, changes no purity answer, and needs
     no new `Kont` — `invoke` simply dispatches it in place of the builtin.
 
@@ -209,7 +205,7 @@ def reprDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     -- `Array#to_s` and `Hash#to_s` **are** `inspect` (`rb_ary_to_s` is
     -- `rb_ary_inspect`), so they render their contents with `inspect` and their
     -- sensitivity is *inspect*-sensitivity, not `to_s`-sensitivity. Asking the
-    -- `to_s` list here refused `{ a: BadInspect.new }.to_s` outright (L129): the
+    -- `to_s` list here refused `{ a: BadInspect.new }.to_s` outright: the
     -- element overrides `inspect` only, so the purity test said "pure", the Lean
     -- `Repr` ran, and *it* is the thing that cannot render an impure element.
     -- `Range#to_s` is deliberately not here — it really does use its endpoints'
@@ -260,7 +256,7 @@ def coerceName (h : Heap) : Value → String
     A **Float** shows its inspect too — `rb_cmperr` and `coerce_failed` both test
     `RB_FLOAT_TYPE_P` alongside `SPECIAL_CONST_P`. Unreachable from `numBin`,
     where a Float argument always coerces, and so missing here until `Comparable`
-    started routing its own `comparison of … failed` through this rule (L123):
+    started routing its own `comparison of … failed` through this rule:
     `Tok.new < 1.5` said "comparison of Tok with Float failed" for CRuby's
     "…with 1.5 failed". -/
 def coerceDesc (h : Heap) : Value → String
@@ -269,7 +265,7 @@ def coerceDesc (h : Heap) : Value → String
   | .sym s => symInspect s
   | .int n => toString n
   | .flt x => rubyFloatRepr x
-  | v => className h (realClassOf h v)   -- as `coerceName` above (L124)
+  | v => className h (realClassOf h v)   -- as `coerceName` above
 
 def strPayload? (h : Heap) : Value → Option String
   | .ref o => match (h.get o).payload with
@@ -318,7 +314,7 @@ def hasUserEq (h : Heap) (v : Value) : Bool :=
 
 /-- Pure equality can reach Complex values through collection operations, or
     through the reverse numeric comparison. Those leaves must not hide a user
-    equality method on the Complex or either component (L279). -/
+    equality method on the Complex or either component. -/
 def complexEqualityImpure (h : Heap) : Nat → Value → Bool
   | 0, _ => true
   | fuel + 1, .ref o =>
@@ -345,7 +341,7 @@ def pureEqualityBids : List String :=
     wrong type.
 
     A builtin cannot run a dispatch, so a site that reaches this either defers to
-    a prelude twin (`toAryDefer?`, L133) or gates. Deliberately *not* excluding
+    a prelude twin (`toAryDefer?`) or gates. Deliberately *not* excluding
     `fromPrelude`, unlike `mayCoerce`: the prelude's only `method_missing`s
     (`Pathname`, `File`, `URI`) exist to refuse by name, and refusing here is
     what they already do today — routing through them changes no answer. -/
@@ -353,7 +349,7 @@ def mayDispatchToAry (h : Heap) (v : Value) : Bool :=
   (match lookup h v "to_ary" with | some (_, md) => md.builtin.isNone | none => false)
   || (match lookup h v "method_missing" with | some (_, md) => md.builtin.isNone | none => false)
 
-/-! ### `NUM2LONG` over an index operand (L134)
+/-! ### `NUM2LONG` over an index operand
 
 Every indexing builtin converts its subscript with `rb_num2long`, and the model
 gated on anything that was not already an `Int` — which is how R1's advisory
@@ -423,7 +419,7 @@ def withIndex (m : Machine) (v : Value) (why : String) (k : Int → BRes)
   | .gate w => .unsupported (w.getD why)
   | .err c msg => .err c msg m
 
-/-- Allocate a String with an explicit encoding tag (L117). -/
+/-- Allocate a String with an explicit encoding tag. -/
 def allocStrEnc (m : Machine) (s : String) (binary : Bool) : Value × Machine :=
   let (o, h) := m.heap.alloc { klass := Boot.stringId, payload := .str s, binary }
   (.ref o, { m with heap := h })
@@ -460,7 +456,7 @@ def dupObj (m : Machine) (o : ObjId) (keepFrozen : Bool) : Value × Machine :=
       hashDflt := src.hashDflt, frozen := keepFrozen && src.frozen, iterationResult := src.iterationResult,
       throwTag := src.throwTag, throwValue := src.throwValue,
       -- the encoding tag is part of the copy: `"café".b.dup.encoding` is
-      -- ASCII-8BIT [V] (L118)
+      -- ASCII-8BIT [V]
       binary := src.binary }
   (.ref o2, { m with heap := h })
 
@@ -468,12 +464,12 @@ def okStr (m : Machine) (s : String) : BRes :=
   let (v, m) := allocStr m s
   .ok v m
 
-/-- Allocate a String result with an explicit encoding tag (L118). -/
+/-- Allocate a String result with an explicit encoding tag. -/
 def okStrEnc (m : Machine) (binary : Bool) (s : String) : BRes :=
   let (v, m) := allocStrEnc m s binary
   .ok v m
 
-/-- Allocate a String result that **inherits `src`'s encoding tag** (L118).
+/-- Allocate a String result that **inherits `src`'s encoding tag**.
     `src` is normally the receiver: every byte-derived String result in CRuby
     carries the encoding of the String it was derived from, and for a MatchData
     receiver the tag on the object records its *subject*'s encoding, so the same
@@ -482,7 +478,7 @@ def okStrFrom (m : Machine) (src : Value) (s : String) : BRes :=
   okStrEnc m (isBinaryStr m.heap src) s
 
 /-- Is this a binary String holding a byte the model cannot let a tag-blind rule
-    touch — one at or above 0x80 (L118)? An *ASCII-only* binary String is
+    touch — one at or above 0x80? An *ASCII-only* binary String is
     excluded on purpose: every content answer over it is identical to the UTF-8
     one, so only its tag is at stake, and the String rules propagate that. -/
 def unrepresentableByteStr (h : Heap) (v : Value) : Bool :=
@@ -490,7 +486,7 @@ def unrepresentableByteStr (h : Heap) (v : Value) : Bool :=
   | some s => isBinaryStr h v && hasHighByte s
   | none => false
 
-/-- The rules admitted to run with such an operand (L118) — each either handles
+/-- The rules admitted to run with such an operand — each either handles
     the tag or refuses on its own with a better reason. Everything absent is
     refused by `Builtins.run` before dispatch.
 
@@ -529,16 +525,16 @@ def byteStrAwareBids : List String :=
    "Object#hash", "Object#class", "Object#nil?", "Object#itself", "Object#is_a?", "Object#kind_of?",
    "Object#instance_of?", "Object#respond_to?", "Object#freeze", "Object#frozen?",
    "Object#inspect", "Object#to_s", "Object#p", "Object#__user_defines?", "Object#instance_variables_to_inspect",
-   -- reads the method table, never the value (L127)
+   -- reads the method table, never the value
    "Object#__default_inspect?",
-   -- renders the receiver's *class name* and address, never its payload (L129)
+   -- renders the receiver's *class name* and address, never its payload
    "Object#__any_to_s",
-   -- reads and writes neither operand, only the frame's `$~` routing (L121)
+   -- reads and writes neither operand, only the frame's `$~` routing
    "Object#__match_to_caller",
-   -- render nothing of the operand but its *class name* (L123)
+   -- render nothing of the operand but its *class name*
    "Object#__coerce_failed", "Object#__cmp_failed"]
 
-/-- The encoding tag of `a ++ b` (L118), CRuby's compatibility rule [V]: the
+/-- The encoding tag of `a ++ b`, CRuby's compatibility rule [V]: the
     result takes the **receiver's** encoding, *unless* only the argument holds a
     non-ASCII byte, in which case it takes the argument's — so `"a".b + "b"` is
     ASCII-8BIT, `"a" + "b".b` is UTF-8, and `"" .b + "café"` is UTF-8. Two
@@ -551,7 +547,7 @@ def concatEnc (h : Heap) (a : Value) (s : String) (b : Value) (t : String) :
   let bb := isBinaryStr h b
   if ab == bb then .ok ab
   else if hasHighByte s && hasHighByte t then
-    .error "Encoding::CompatibilityError from concatenating a byte string with UTF-8 (L118)"
+    .error "Encoding::CompatibilityError from concatenating a byte string with UTF-8"
   else if hasHighByte t then .ok bb
   else .ok ab
 
@@ -571,7 +567,7 @@ def Num.value : Num → Value
   | .f x => .flt x
 
 /-- `coerce_failed`: what a numeric operator raises once nothing has answered
-    `coerce` — the end of the road for `coerceDefer?` (L123) and the answer
+    `coerce` — the end of the road for `coerceDefer?` and the answer
     directly for an operand whose class chain offers no `coerce` at all. Shared so
     that the operators which do *not* route through `numBin` (`**`, `divmod`)
     cannot drift from the ones that do. -/
@@ -605,7 +601,7 @@ def numCmp (recvCls : String) (m : Machine) (a b : Value)
 def ordValue : Ordering → Value
   | .lt => .int (-1) | .eq => .int 0 | .gt => .int 1
 
-/-! ### The coerce protocol (L123)
+/-! ### The coerce protocol
 
 `numBin`/`numCmp` above answer for two numbers and raise for anything else. That
 second half is wrong, and not by a message: CRuby's numeric operators run
@@ -616,7 +612,7 @@ says *why* ("coerce must return [x, y]" for a wrong shape, "X can't be coerced
 into Integer" only when nothing answered at all).
 
 A builtin cannot dispatch, so the failure path defers to a prelude twin, exactly
-as the repr builtins defer to theirs (`reprDefer?`, L116). Deferral is keyed on
+as the repr builtins defer to theirs (`reprDefer?`). Deferral is keyed on
 "could a `coerce` possibly run", so every operand that *is* a number, and every
 operand whose class chain offers nothing, keeps the Lean fast path untouched. -/
 
@@ -670,7 +666,7 @@ def coerceTwin? : String → Option String
   | _ => none
 
 /-- When a numeric builtin must dispatch rather than answer, the prelude twin to
-    dispatch instead (L123). Numeric receiver, non-numeric argument, and one of
+    dispatch instead. Numeric receiver, non-numeric argument, and one of
     the two hooks that can make the difference observable — nothing else pays
     for the check, and `Integer#+` of two Integers cannot reach it. -/
 def coerceDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
@@ -690,7 +686,7 @@ def coerceDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     else none
   | _ => none
 
-/-! ### The implicit Array conversion (L133)
+/-! ### The implicit Array conversion
 
 The same shape as the coerce protocol one section up, and for the same reason.
 Every implicit Array-conversion site in CRuby is `rb_check_array_type`, which is
@@ -722,7 +718,7 @@ def anyToAryDeep (h : Heap) : Nat → Value → Bool
     | none => mayDispatchToAry h v
 
 /-- When an Array-conversion builtin must dispatch rather than answer, the
-    prelude twin to dispatch instead (L133). -/
+    prelude twin to dispatch instead. -/
 def toAryDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     Option String :=
   if bid == "Array#+" || bid == "Array#concat" then
@@ -796,8 +792,8 @@ def strCmpDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
   | _, _ => none
 
 /-- Every reason a builtin defers to a prelude twin instead of running: repr
-    purity (L116), the coerce protocol (L123), the implicit Array conversion
-    (L133) and String ordering against a non-String. One hook, so `invoke` has
+    purity, the coerce protocol, the implicit Array conversion
+ and String ordering against a non-String. One hook, so `invoke` has
     one place to consult and the dispatch metatheorems one hypothesis to carry. -/
 def deferTwin? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
     Option String :=
@@ -844,7 +840,7 @@ def numOrd? (a b : Value) : Option Ordering :=
 
 def strCompare (a b : String) : Ordering := compare a b
 
-/-- Normalize a `(start, len)` slice against a collection of size `n` (L68):
+/-- Normalize a `(start, len)` slice against a collection of size `n`:
     `none` = the CRuby nil result (start out of range, or a negative length),
     `some (offset, count)` otherwise. `start == n` yields an empty slice, and a
     count is clamped to what remains [V]. -/
@@ -876,7 +872,7 @@ def zeroArgBids : List String :=
    "NilClass#nil?", "NilClass#to_s", "NilClass#inspect", "NilClass#to_a",
    "TrueClass#to_s", "TrueClass#inspect", "FalseClass#to_s", "FalseClass#inspect",
    -- `Integer#inspect` is deliberately absent: it is `to_s`, base argument and
-   -- all (L132).
+   -- all.
    "Integer#to_i", "Integer#to_f", "Integer#abs", "Integer#succ",
    "Integer#pred", "Integer#zero?", "Integer#positive?", "Integer#negative?",
    "Integer#even?", "Integer#odd?", "Integer#-@",
@@ -900,7 +896,7 @@ def zeroArgBids : List String :=
    "Range#end", "Range#exclude_end?"]
 
 /-- The `dup`/`clone` bids, listed rather than matched with `String.endsWith`
-    (L73): `endsWith` is **not kernel-reducible**, so having it at the top of
+: `endsWith` is **not kernel-reducible**, so having it at the top of
     `run` stopped every `rfl`/`decide` in the metatheory that steps through a
     builtin. `List.contains` over literals reduces fine. -/
 def dupBids : List String :=
@@ -917,7 +913,7 @@ def cloneBids : List String :=
     by the block, `min`/`max` compare with it, `fetch` computes the default with
     it, …). Our builtin arms are all blockless, so a block here must not be
     silently ignored: dispatch instead falls through to a prelude definition of
-    the same name if one exists (`Enumerable#sort`), else gates (L63).
+    the same name if one exists (`Enumerable#sort`), else gates.
     Builtins CRuby *also* ignores a block for (`length`, `to_s`, …) are
     deliberately absent — gating those would be over-strict. -/
 def blockSensitiveBids : List String :=
@@ -955,12 +951,12 @@ def putsGo (m : Machine) (args : List Value) : Nat → Option Machine
         | .arr xs => putsGo m xs.toList fuel
         | .str s =>
           -- this path writes the payload without going through `toS`, so it
-          -- repeats `toS`'s byte-string refusal (L118): CRuby would emit the
+          -- repeats `toS`'s byte-string refusal: CRuby would emit the
           -- raw byte and `m.out` is a Lean `String`
           if (m.heap.get o).binary && hasHighByte s then none
           else some (m.emit (if s.endsWith "\n" then s else s ++ "\n"))
         | _ =>
-          -- CRuby tries `to_ary` on a non-Array, non-String argument (L66)
+          -- CRuby tries `to_ary` on a non-Array, non-String argument
           if mayDispatchToAry m.heap a then none
           else match toSP m a with
           | .ok s => some (m.emit (if s.endsWith "\n" then s else s ++ "\n"))
@@ -1031,7 +1027,7 @@ def newImpl (m : Machine) (recv : Value) (args : List Value) : BRes :=
         | _ => .unsupported "Exception.new arity"
       else if (ancestors m.heap k).contains Boot.stringId then
         -- `String.new` / `MyString.new(str)`: klass is `k`, so a subclass keeps
-        -- its own class while carrying a String payload (L70).
+        -- its own class while carrying a String payload.
         match args with
         | [] => let (o, h) := m.heap.alloc { klass := k, payload := .str "" }
                 .ok (.ref o) { m with heap := h }
@@ -1074,7 +1070,7 @@ def newImpl (m : Machine) (recv : Value) (args : List Value) : BRes :=
         | _ => .unsupported "Hash.new arity > 1"
       else if k == Boot.randomId then
         -- `Random.new(seed)`: seed a CRuby-compatible MT19937. An *unseeded*
-        -- `Random.new` is nondeterministic (like `Kernel#rand`, L43), so it gates.
+        -- `Random.new` is nondeterministic (like `Kernel#rand`), so it gates.
         match args with
         | [.int seed] =>
           if seed < 0 then .unsupported "Random.new negative seed"
@@ -1088,7 +1084,7 @@ def newImpl (m : Machine) (recv : Value) (args : List Value) : BRes :=
         -- `Regexp.new(src[, opts])`; regex *literals* desugar to exactly this
         -- (desugar C33), so this is the only way a Regexp is built. The pattern
         -- is checked here so a bad one gates at construction rather than at
-        -- first use, matching where CRuby raises `RegexpError` (L101).
+        -- first use, matching where CRuby raises `RegexpError`.
         let mk (src : String) (opts : Nat) : BRes :=
           match Rx.parse src opts with
           | .error e => .unsupported e

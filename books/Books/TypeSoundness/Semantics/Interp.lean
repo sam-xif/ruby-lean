@@ -1,5 +1,5 @@
 import RubyCore.Interp
-import RubyCore.PreludeBoot
+import RubyCore.Boot
 
 /-!
 The real semantics — **imported**, not copied, from the model (`RubyCore`, in the
@@ -10,7 +10,7 @@ through it.
 Importing was chosen over hand-porting the way the checker's `Checker/Lang/Expr.lean`
 and `Ty.lean` were. `stepFn`'s own dependency closure (`Heap`/`Machine`/`Builtins`/
 `Builtins/*`/`CRubyNames`/`Interp/{Dispatch,Kont,Reflect,Send,Support}`) is on the
-order of 24k lines, versus the ~450/~700 lines `Syntax.lean`/`Types/Ty.lean` were.
+order of 24k lines, versus the ~450/~700 lines `Syntax.lean`/`Sorbet/Ty.lean` were.
 Hand-copying that would mean maintaining a second, silently-driftable copy of the
 model's entire runtime; importing it means the proof is always about whatever
 `RubyCore/` — the real, differentially tested model — actually does.

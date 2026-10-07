@@ -6,17 +6,16 @@ import RubyCore.Interp.Forwardable
 Dispatch proper: `invoke`, `super`/`zsuper`, and the argument/keyword/block
 evaluation entry points (`startArgs`, `startKwargs`, `finishSend`, `doYield`).
 
-Split out of `RubyCore/Interp.lean` (L99) with no behaviour change. The helpers
-in this machine are deliberately *not* mutually recursive — each performs one
-transition — so the file cuts along that existing order and the import chain
-records it.
+The helpers in this machine are deliberately not mutually recursive: each
+performs one transition. The files under `Interp/` follow that order, each
+importing the one before it.
 -/
 
 namespace RubyCore
 
 namespace Interp
 
-/-- All args evaluated → dispatch (artifact 02 §3 SEND-INVOKE). -/
+/-- All args evaluated → dispatch (Semantics 02 §3 SEND-INVOKE). -/
 def invoke (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
     (args : List Value) (blk : Option Value) (kw : List (Value × Value) := []) : StepResult :=
   -- `send`/`public_send`/`__send__`: re-dispatch the (symbol/string) first arg on
@@ -34,7 +33,7 @@ def invoke (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
   | .ref o =>
     match (m.heap.get o).payload with
     | .hsh xs =>
-      -- Hash default_proc (L42): on `h[k]` with a *missing* key, call the proc
+      -- Hash default_proc: on `h[k]` with a *missing* key, call the proc
       -- with `(h, k)` and use its result as the value of `h[k]` (the proc may also
       -- mutate `h`, e.g. `h[k] = …`). Only for a `prc` default; a present key or a
       -- `val`/absent default falls to the normal builtin dispatch.
@@ -55,7 +54,7 @@ def invoke (m : Machine) (recv : Value) (implicit : SendSite) (mname : String)
         -- `Regexp.escape`/`.union` are singleton methods of the `Regexp`
         -- constant, dispatched here for the same reason `Math.sqrt` is: the
         -- boot heap installs builtins as *instance* methods, and these are not
-        -- (L106).
+        --.
         match Builtins.run ("Regexp#" ++ mname) recv args m with
         | .ok v m => .next (withCtl m (.value v))
         | .err cls msg m => .next (raiseErr m cls msg)
@@ -105,7 +104,7 @@ where
     -- receiver's class and our resolved owner, CRuby would dispatch there —
     -- we'd be running the wrong method. Gate. (Builtins are exempt only
     -- from their own owner downward.)
-    -- Exception (L62): a **prelude**-defined method *is* our model of the CRuby
+    -- Exception: a **prelude**-defined method *is* our model of the CRuby
     -- builtin of that name, so the "between" class CRuby would dispatch to is
     -- exactly what the prelude implements (`Array#select` resolved to the
     -- prelude's `Enumerable#select`). Suppress the gate for prelude owners; the
@@ -114,7 +113,7 @@ where
     match crubyResolvedShadow m.heap between mname md with
     | some cname => .unsupported s!"unmodeled builtin would shadow: {cname}#{mname}"
     | none =>
-    -- Visibility (L71) is checked *after* the shadow gate: when CRuby would
+    -- Visibility is checked *after* the shadow gate: when CRuby would
     -- dispatch to a method we don't model, the honest answer is Unsupported, not
     -- a NoMethodError about *our* resolution (test_yjit_120 — a toplevel
     -- `def getbyte`, now private, shadowed by the real `String#getbyte`).
@@ -172,7 +171,7 @@ where
           | some (_, md2) => enterUserMethod m recv slow md2 args blk kw
           | none => .unsupported s!"prelude twin {slow} is missing from the prelude"
         | none =>
-        -- A block changes what several builtins mean (L63). Our arms are
+        -- A block changes what several builtins mean. Our arms are
         -- blockless, so defer to a prelude definition of the same name higher in
         -- the chain (`Array#sort {}` → `Enumerable#sort`) rather than dropping
         -- the block on the floor; gate if there is none.
@@ -200,14 +199,14 @@ where
     dispatchMiss m recv implicit mname args blk kw
 
 /-- The method `super` re-dispatches to: the first entry for `mname` strictly *after*
-    `dm` on `k`'s ancestor chain. Named rather than inlined into `doSuper` (L212) so
+    `dm` on `k`'s ancestor chain. Named rather than inlined into `doSuper` so
     that the static invariant's `SuperOk` clause and the dispatch lemma can refer to
     the same function instead of to a copy of it — a copy is what made `rw` fail, and
     the fix belongs here rather than in a proof that has to reproduce the shape. -/
 def superFound (h : Heap) (k dm : ObjId) (mname : String) : Option (ObjId × MethodDef) :=
   lookupInChain h (((ancestors h k).dropWhile (· != dm)).drop 1) mname
 
-/-- Super-dispatch (artifact 02 §2): re-run the current method name starting
+/-- Super-dispatch (Semantics 02 §2): re-run the current method name starting
     *after* its `defmod` in `self`'s ancestor chain, keeping the same `self` and
     forwarding/passing `blk`. A miss invokes method_missing with the super-call
     reason; the native handler raises "super: no superclass method …" [V].
@@ -287,13 +286,13 @@ def doSuper (m : Machine) (args : List Value) (blk : Option Value)
 
 /-- Args that bare `super` forwards: the *current* values of the enclosing
     method's formal parameters — read from the method frame's locals, a splat
-    param spreading its array, keyword params re-bundled as keywords (artifact 02
+    param spreading its array, keyword params re-bundled as keywords (Semantics 02
     §2) [V: `x=x+1; super` forwards the reassigned value]. `none` if the param
     shape is not reconstructible: a `define_method` body (no formals — CRuby
-    raises, see L66) or destructuring params, whose synthetic slots are dropped
-    after binding (L70). -/
+    raises) or destructuring params, whose synthetic slots are dropped
+    after binding. -/
 def zsuperArgsOf (h : Heap) (f : Frame) : Option (List Value × List (Value × Value)) :=
-  -- The running body's own params, carried on the frame (L108): looking them up
+  -- The running body's own params, carried on the frame: looking them up
   -- by `f.meth` would find whatever *currently* answers that name, which for an
   -- aliased body is a different method.
   match (if f.meth.isEmpty then none else some f) with
@@ -380,7 +379,7 @@ def finishSend (m : Machine) (recv : Value) (implicit : SendSite) (mname : Strin
     -- ordinary block argument [V]. Same shape (and the same `builtin.isNone` test) as the
     -- `X.new { … }` case below, which already had to make this distinction.
     --
-    -- Found by the semantic ladder (`books/Books/TypeSoundness/Conformance/`) (`found-issues.md` §A5): the special case ran
+    -- Found by the semantic ladder (`books/Books/TypeSoundness/Conformance/`): the special case ran
     -- *before any method lookup*, so the name was unshadowable here and the model returned
     -- a Proc where CRuby raised.
     let shadowed :=
@@ -452,7 +451,7 @@ def startArgs (m : Machine) (recv : Value) (implicit : SendSite) (mname : String
       invoke m recv implicit mname (acc ++ restVals) blk kw
     | _ => .next (withKont m (.eval e) (.argsK recv implicit mname acc rest' pblk))
 
-/-- Call the enclosing method's block with `args` (artifact 04 §2 YIELD). A
+/-- Call the enclosing method's block with `args` (Semantics 04 §2 YIELD). A
     `break` inside the yielded block returns from that method. -/
 def doYield (m : Machine) (args : List Value) : StepResult :=
   match m.currentFrame.blk with
@@ -525,7 +524,7 @@ def definedMethod? (m : Machine) (recv : Value) (mname : String)
   else
   match methodEntryInChain m.heap (ancestors m.heap (classOf m.heap recv)) mname with
   | some (_, md) =>
-    -- visibility counts: `defined?(obj.private_m)` is nil [V] (L71)
+    -- visibility counts: `defined?(obj.private_m)` is nil [V]
     if md.undefined then some false
     else some (visError? m recv site md mname).isNone
   | none =>

@@ -1,23 +1,24 @@
 /-
-The difftest SUT executable (`RubyCore/README.md` §Mechanization): RubyCore-JSON on stdin →
-Observation-JSON on stdout.
+`rubycore`: the model as an executable. Reads a program in the core language as
+JSON on stdin (what `desugar/bin/export-json` writes) and prints what running it
+is observed to do, as JSON: its output, its value and its uncaught exception.
 
-Exit codes (mirroring the desugar SUT adapter contract):
-  0 — observation printed
-  3 — out of modeled fragment; reason on stderr
-  1 — harness error (bad input, stuck machine); message on stderr
+Exit codes:
+  0  the observation was printed
+  3  the program is outside what the model supports; the reason is on stderr
+  1  bad input, or a bug in the model; the message is on stderr
 
-Besides running a program, it answers three *static* queries over the same AST —
-`--fragment`, `--sigs` and the `--trace`/`--steps` views. The static **type**
-queries it used to carry (`--check`, `--check-tl`, `--assn`, `--assn-program`,
-`--certify`, `--certify-j`, `--census-j`) were the pre-ratchet type-checking
-iterations and were removed with them; the checker of record is `validateD`
-(`Checker/Check/Check.lean`, `lake exe ratchetd`).
+Other modes, none of which runs the program to an observation:
+  --trace [N], --trace-from N, --trace-at TEXT   machine states, one per step
+  --steps        how many steps the program takes
+  --fragment     whether the program is in the typed fragment
+  --sigs         the Sorbet signatures the program declares
+  --lean-term    the program as a Lean term of type `RubyCore.Expr`
 -/
 import RubyCore.Obs
-import RubyCore.Types.Fragment
-import RubyCore.Types.SigRead
-import RubyCore.PreludeBoot
+import RubyCore.Sorbet.Fragment
+import RubyCore.Sorbet.SigRead
+import RubyCore.Boot
 import RubyCore.Trace
 
 open RubyCore
@@ -51,15 +52,14 @@ def main (args : List String) : IO UInt32 := do
   -- number a window is chosen against.
   let countOnly := args.contains "--steps"
   -- `--fragment`: report whether the program is in the **Sorbet fragment** (the
-  -- scope any soundness theorem can have — `RubyCore/Types/Fragment.lean`),
+  -- scope any soundness theorem can have — `RubyCore/Sorbet/Fragment.lean`),
   -- with a reason per exclusion. A static query: nothing is executed, so the
   -- prelude is not booted and the answer is independent of model coverage.
   let fragmentOnly := args.contains "--fragment"
   -- `--sigs`: report the Sorbet signatures the program *declares*, as read off
-  -- the AST (`RubyCore/Types/SigRead.lean`). Static, like `--fragment`: reading a
+  -- the AST (`RubyCore/Sorbet/SigRead.lean`). Static, like `--fragment`: reading a
   -- declared type runs nothing, so the answer is independent of model coverage.
-  -- It is the signature manifest the ratchet's pipeline reads (stage 1) and the
-  -- one difftest's Sorbet harness compares against `srb`.
+  -- difftest's Sorbet harness compares this against Sorbet's own reading.
   let sigsOnly := args.contains "--sigs"
   match Json.parse input with
   | .error e =>
@@ -78,6 +78,11 @@ def main (args : List String) : IO UInt32 := do
         IO.eprintln s!"undecodable RubyCore: {e}"
         return 1
     | .ok prog =>
+      -- `--lean-term`: print the program as a Lean term of type `RubyCore.Expr`,
+      -- the form a proof about the program is stated over. Nothing is executed.
+      if args.contains "--lean-term" then
+        IO.println ((Std.Format.nest 2 (repr prog)).pretty 100)
+        return 0
       if sigsOnly then
         let decls := Types.collectSigs prog
         let paramJson := fun (pn : String) (pt : Types.SigTy) =>
@@ -106,7 +111,7 @@ def main (args : List String) : IO UInt32 := do
             ("what", Json.str v.what),
             ("reason", Json.str v.reason)])).toArray)]).compress
         return 0
-      -- Phase 1: boot the prelude (the core library written in RubyCore, L62);
+      -- Phase 1: boot the prelude (the core library written in RubyCore);
       -- phase 2 runs `prog` on the resulting heap. A prelude failure is a model
       -- bug, never a program outcome → exit 1.
       -- The difftest control preloads JSON. Keep that environment explicit;

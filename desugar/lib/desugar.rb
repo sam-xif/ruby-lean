@@ -6,7 +6,7 @@ require_relative "linearize"
 
 # desugar : Prism AST -> RubyCore (tagged S-expressions).
 #
-# Each interesting rewrite records a rule name in `@coverage` (artifact 06 §5). Any Prism
+# Each interesting rewrite records a rule name in `@coverage` (docs/front-end/method.md §5). Any Prism
 # node outside the modeled fragment raises Desugar::Unsupported, which the driver turns
 # into an OUT-OF-FRAGMENT skip.
 class Desugar
@@ -28,7 +28,7 @@ class Desugar
   attr_reader :coverage
 
   # DESUGAR_BUG=1 switches &&/|| to the *naive* double-evaluating form, purely to
-  # demonstrate that the evaluation-order trace catches it (implementation-choices.md C4).
+  # demonstrate that the evaluation-order trace catches it.
   def initialize(inject_bug: ENV["DESUGAR_BUG"] == "1")
     @gensym = 0
     @coverage = []
@@ -189,17 +189,17 @@ class Desugar
   end
 
   # call families that smuggle arbitrary source past the fragment gate. `eval` of a
-  # string is explicitly out of scope (artifact 00 §6, `RubyCore/README.md` 00 §6); the block forms
+  # string is explicitly out of scope (Semantics 00 §6, `docs/semantics/` 00 §6); the block forms
   # of *_eval are fine and handled as ordinary sends with a block.
   EVAL_STRINGISH = %w[instance_eval class_eval module_eval].freeze
 
   def call(n)
     name = n.name.to_s
     if name == "eval"
-      raise Unsupported, "eval of string (out of scope, artifact 00 §6)"
+      raise Unsupported, "eval of string (out of scope, Semantics 00 §6)"
     end
     if EVAL_STRINGISH.include?(name) && n.arguments&.arguments&.first&.type == :string_node
-      raise Unsupported, "#{name} of string (out of scope, artifact 00 §6)"
+      raise Unsupported, "#{name} of string (out of scope, Semantics 00 §6)"
     end
 
     # Assignment-call (`recv[i] = v`, `recv.attr = v`): Prism emits a call_node to `[]=` /
@@ -326,7 +326,7 @@ class Desugar
   # differ for `defined?`, which CRuby answers statically — an explicit `|;x|` is
   # "local-variable" before any assignment, an implicit one is nil until the
   # assignment is passed textually. `render.rb` must therefore *not* render these,
-  # and the Lean side, which decides `defined?` from the node shape alone (L72),
+  # and the Lean side, which decides `defined?` from the node shape alone,
   # merges the two lists at decode.
   def declared_locals(scope, params, explicit)
     bound = param_names(params) + explicit
@@ -373,7 +373,7 @@ class Desugar
     [build_params(bp.parameters), bp.locals.map { |l| l.name.to_s }]
   end
 
-  # `yield args` — invoke the current method frame's block (artifact 04 §2).
+  # `yield args` — invoke the current method frame's block (Semantics 04 §2).
   def desugar_yield(n)
     args = n.arguments ? n.arguments.arguments.map { |a| arg_node(a) } : []
     fire(:yield)
@@ -382,7 +382,7 @@ class Desugar
 
   # `->(params){body}` is a lambda. It is behavior-identical to `lambda { |params|
   # body }`, so we desugar to that send-with-block — no new head, and lambda-ness
-  # stays a property the callee (`lambda`) confers on the block (artifact 04 §1).
+  # stays a property the callee (`lambda`) confers on the block (Semantics 04 §1).
   def desugar_lambda(n)
     params, locals = block_params(n.parameters)
     fire(:block)
@@ -501,7 +501,7 @@ class Desugar
 
   # A::B / ::B / expr::B — a constant path read. `parent` (the namespace) is nil for a
   # top-level `::B`, else an arbitrary expression node (usually a constant). Irreducible
-  # (lexical/relative constant lookup, artifact 03 §5) → a head.
+  # (lexical/relative constant lookup, Semantics 03 §5) → a head.
   def desugar_cpath(n)
     fire(:cpath)
     [:cpath, n.parent ? node(n.parent) : nil, n.name.to_s]
@@ -726,7 +726,7 @@ class Desugar
   end
 
   # return/break/next. Top-level `return` terminates the whole script (Ruby 2.4+), which
-  # would bypass the observation wrapper (implementation-choices.md C7), so `return` is
+  # would bypass the observation wrapper, so `return` is
   # allowed only inside a def. Splat in the argument list is deferred with splat generally.
   def desugar_jump(n, kind)
     raise Unsupported, "top-level return" if kind == :return && @fn_depth.zero?

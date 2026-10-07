@@ -29,8 +29,8 @@ elab "check_dclink_profile" : command => do
 elab "require_complete_dclink_profile" : command => do
   let gated := (← authoringDClinks).filter (!clinkEnabled ·)
   unless gated.isEmpty do
-    throwError m!"full corpus audit requires all clinks; {gated.length} are gated by \
-{clinkProfileName}. Use scripts/run_typed_ratchet.sh --clink-rebuild for the active proof subset."
+    throwError m!"this requires every typing rule to be enabled; {gated.length} are not \
+(profile {clinkProfileName}, in Checker/ClinkPolicy.lean)."
 
 check_dclink_profile
 end Checker.Soundness.Typed

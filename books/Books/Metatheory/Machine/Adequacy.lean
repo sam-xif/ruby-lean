@@ -1,10 +1,10 @@
 /-
 Adequacy, determinism, and preservation for the control-core `Step` relation
-(`Step.lean`). See `implementation-notes.md` L13 for scope and intent.
+(`Step.lean`).
 
 - `Step.sound` / `Step.deterministic` live in `Step.lean`.
 - `Step.heap_monotone` — a global invariant proved by induction over the step
-  relation: the heap only grows (ObjIds never reused, artifact 01 §2). This is
+  relation: the heap only grows (ObjIds never reused, Semantics 01 §2). This is
   the concrete shape of the fresh-allocation fact a machine↔SOS representation
   relation depends on.
 - `Step.complete` — every executable `.next` transition of a config *in the
@@ -28,7 +28,7 @@ open Interp
 @[simp] theorem setLocal_heap (m : Machine) (x : String) (v : Value) :
     (m.setLocal x v).heap = m.heap := by unfold Machine.setLocal; rfl
 
-/-- `$~` now lives in a frame slot (L121), so writing it writes `frames`. -/
+/-- `$~` now lives in a frame slot, so writing it writes `frames`. -/
 @[simp] theorem setLastMatchValue_heap (m : Machine) (v : Value) :
     (m.setLastMatchValue v).heap = m.heap := by
   unfold Machine.setLastMatchValue
@@ -88,10 +88,10 @@ def FragExpr : Expr → Prop
   | .int _ | .flt _ | .str _ | .sym _ | .tru | .fls | .nil | .self' => True
   | .var .cvar _ => False
   -- a `$~` **view** (`$1`…`$9`, `$&`, `` $` ``, `$'`) is derived from the last
-  -- match rather than stored (L101), so its read is not the plain `getGlobal`
+  -- match rather than stored, so its read is not the plain `getGlobal`
   -- that `Step.varGvar` describes. Excluded *syntactically*, which is what keeps
   -- the exclusion honest: `isMatchView` is the very predicate `matchGlobal`
-  -- branches on, so the two cannot drift apart again (L119).
+  -- branches on, so the two cannot drift apart again.
   | .var .gvar x => ¬ isMatchView x
   | .var _ _ => True
   | .vasgn .cvar _ _ => False
@@ -125,7 +125,7 @@ theorem realize {m m' m'' : Machine} (hs : stepFn m = .next m') (hstep : Step m 
 
 /-- The bridge the fragment predicate needs: a name that is not a `$~` view is
     read as a plain global. Immediate from `matchGlobal`'s own first test, which is
-    exactly `isMatchView` — that shared definition is the point (L119). -/
+    exactly `isMatchView` — that shared definition is the point. -/
 theorem matchGlobal_eq_none_of_not_view {m : Machine} {x : String}
     (h : ¬ isMatchView x) : matchGlobal m x = none := by
   simp [matchGlobal, h]

@@ -1,12 +1,12 @@
 import RubyCore.Syntax
 
 /-!
-# The type language, and the local environment
+# The type language of signatures, and the local environment
 
-Split out of `Types/Core.lean` for F1a (`PLAN.md` W5 asks for exactly this cut:
-`Ty.lean`, `Sub.lean`, `Narrow.lean`, `Infer.lean`, `Check.lean`). The immediate
-reason is that `Types/Decls.lean` needs `Ty` and `Core.lean` needs `Decls`, so
-the two cannot both live in `Core.lean`. No definition changed.
+`Ty` is the language of types that a Sorbet signature is read into, and `Env`
+maps local variable names to types. `SigRead.lean` produces these from a
+program's `sig` declarations. The typing definitions in
+`books/Books/Metatheory/Typing/Lang/` are stated over them.
 -/
 
 namespace RubyCore.Types
@@ -15,9 +15,9 @@ namespace RubyCore.Types
     separate relation. Widening this is P1/P3.
 
     **What D10 changes about the *meaning* of an arm**, without changing an arm:
-    a class type denotes its **declared method set** (`Types/Decls.lean`), and the
+    a class type denotes its **declared method set** (`books/Books/Metatheory/Typing/Lang/Decls.lean`), and the
     ancestors walk is a cheap sufficient condition for it rather than the
-    definition (`typing-a-mutable-method-table.md` §5). The four ground arms below
+    definition. The four ground arms below
     are the degenerate case, since each denotes a class nothing can reopen inside
     the fragment. -/
 inductive Ty where
@@ -36,7 +36,7 @@ inductive Ty where
 
       **Keyed on the name, not on an `ObjId`**, for the reason `Decls` is:
       `check` is a pure function of the program and object identities exist only
-      in a heap (`Types/Decls.lean`). What ties the name back to the heap is
+      in a heap (`books/Books/Metatheory/Typing/Lang/Decls.lean`). What ties the name back to the heap is
       `valueTy?`'s `.ref` arm, which is the first arm of that function to read
       its heap argument at all — the change L137 threaded the heap in for.
 
@@ -47,7 +47,7 @@ inductive Ty where
       Giving it a producer needs `alloc`, hence the fuel-monotonicity lemma
       `ancestors_congr` wants, and that is the next commit rather than this one. -/
   | cls (name : String)
-  /-- **The top type** (L183) — *some* value, of a type the checker does not pin.
+  /-- **The top type** — *some* value, of a type the checker does not pin.
 
       It exists for one reason, and the reason decides its whole shape: a
       declaration row whose parameter is *any object* cannot be written without it,
@@ -65,7 +65,7 @@ inductive Ty where
       design, it is what unions and nilable need, and it is deliberately **not**
       this one. -/
   | any
-  /-- **The class object named `name`** (L184) — *the* class, not an instance of it.
+  /-- **The class object named `name`** — *the* class, not an instance of it.
 
       `.cls C` means an instance of `C`; this is the receiver `Token.from(x)` and
       `case v when String` send to. `slice-verdict.md` §4a prices it as rung 2 of
@@ -82,7 +82,7 @@ inductive Ty where
       it, because a row on `.clsOf "String"` (a singleton method) and a row on
       `.cls "String"` (an instance method) are different declarations. -/
   | clsOf (name : String)
-  /-- **`τ` or `nil`** (L193), and the first arm that is *inhabited by values of
+  /-- **`τ` or `nil`**, and the first arm that is *inhabited by values of
       more than one shape*. That is the whole difference from `.any`, whose
       docstring above says so: `any` is a declared *parameter* position and no
       value is ever typed at it, while a `nilable` is what an expression **infers
@@ -102,7 +102,7 @@ inductive Ty where
       `Env` equality (which the `if`-merge and the loop-stability condition both
       decide) usable. -/
   | nilable (τ : Ty)
-  /-- **A Float** (L202) — the fifth ground arm, and it is `.int`'s twin in every
+  /-- **A Float** — the fifth ground arm, and it is `.int`'s twin in every
       clause that mentions it.
 
       It costs what `.int` costs and nothing more, which is the whole reason it is
@@ -114,10 +114,10 @@ inductive Ty where
       *out of fragment* to *needing a declaration*, which is the same crossing
       L195–L197 made for constants and ivars.
 
-      `--sets` is what picked it (L201): `{flt}` was a singleton blocker set for
+      `--sets` is what picked it: `{flt}` was a singleton blocker set for
       three slice bodies, the only cheap entry left on the marginal-value table. -/
   | float
-  /-- **An `Array` whose elements are all `elem`** (L238) — the first *parameterised*
+  /-- **An `Array` whose elements are all `elem`** — the first *parameterised*
       arm, and the gate for Wall 1 rather than a convenience.
 
       **Why it is not optional.** `tyClassNames .any = []`, so no send can use `.any`
@@ -154,7 +154,7 @@ inductive Ty where
       verdict are byte-identical, and `subTy` stays structurally recursive on `τ`
       (norm 5: the checked path must kernel-reduce).
 
-      **The union's meaning lives in the judgment layer** (`Judgment/Sub.lean`):
+      **The union's meaning lives in the judgment layer** (`books/Books/Metatheory/Typing/Lang/Sub.lean`):
       the declarative subtype relation `SubJ` decomposes it on both sides, the
       join rules of `Judge` may choose it as the widened bound where the branches
       disagree, and `dropNil` re-narrows it in conditionals. `ValueTy` does not
@@ -167,7 +167,7 @@ inductive Ty where
       the latter normalizes to `.nilable`, keeping the two spellings of "or nil"
       from proliferating). -/
   | union (σ τ : Ty)
-  /-- **An arrow — the type of a value-level callable** (L270), spelled as a
+  /-- **An arrow — the type of a value-level callable**, spelled as a
       **params spine**: `(A, B) → R` is `arrowCons A (arrowCons B (arrow0 R))`,
       one `arrowCons` cell per parameter (uncurried, arity-exact as Ruby lambdas
       are), terminated by `arrow0 ret`.
@@ -197,13 +197,13 @@ inductive Ty where
       a value in Ruby, and `MethodDecl` already *is* the method-arrow
       (params/ret/blk) keyed in the table — reifying one into an arrow is
       `method(:f)`'s future rule, not a representation change
-      (`Judgment/implementation-notes.md` J17). -/
+. -/
   | arrow0 (ret : Ty)
   | arrowCons (param : Ty) (rest : Ty)
 deriving DecidableEq, Repr, Inhabited
 
 /-- **`(A, B, …) → R` from its parts** (typed-lambdas L1) — the P0-checker-side
-    twin of `Judgment/Sub.lean`'s `arrowOf`, duplicated rather than imported:
+    twin of `books/Books/Metatheory/Typing/Lang/Sub.lean`'s `arrowOf`, duplicated rather than imported:
     `Types/` sits *below* `Judgment/` in the import order (the judgment layer
     imports the type language, never the reverse), and this is two lines. Every
     arrow the P0 lambda rule mints goes through this, so a malformed spine is
@@ -227,7 +227,7 @@ def arrowParts? : Ty → Option (List Ty × Ty)
   | nil => simp [arrowOf, arrowParts?]
   | cons p ps ih => simp [arrowOf, arrowParts?, ih]
 
-/-- **Subtyping, and it is exactly one rule wide** (L183): everything is below
+/-- **Subtyping, and it is exactly one rule wide**: everything is below
     `any`, and otherwise types are compared by equality as they always were.
 
     Used *only* where a declared parameter is compared against an argument's type —
@@ -240,7 +240,7 @@ def subTy (σ τ : Ty) : Bool :=
   | .nilable τ' => σ == .nilT || σ == .nilable τ' || subTy σ τ'
   | _ => σ == τ
 
-/-- **The join** (L193) — a *least* upper bound is not what this computes and the
+/-- **The join** — a *least* upper bound is not what this computes and the
     difference matters. It answers only the two cases the fragment produces, an
     `if` whose branches agree and one where exactly one side is `nil`, and `none`
     otherwise. Answering `.any` for the rest would be an upper bound but a useless
@@ -251,7 +251,7 @@ def joinTy (σ τ : Ty) : Option Ty :=
   if σ == τ then some σ
   else if σ == .nilT then some (.nilable τ)
   else if τ == .nilT then some (.nilable σ)
-  -- **The nilable is absorbed** (L204), and this is not a widening of the *type*
+  -- **The nilable is absorbed**, and this is not a widening of the *type*
   -- language — it is the fourth and last case that already has an answer in it.
   -- `nilable τ` and `τ` have a least upper bound, `nilable τ`, and it is the one
   -- `subTy` already admits both sides of (`subTy_refl` and `subTy_mkNilable`).
@@ -380,7 +380,7 @@ def mkNilable (τ : Ty) : Ty := if τ == .nilT then .nilT else .nilable τ
   · subst h; simp
   · simp [h, subTy]
 
-/-- **The absorption, packaged for `apply`** (L204). `joinATy_subst`'s two new cases
+/-- **The absorption, packaged for `apply`**. `joinATy_subst`'s two new cases
     need exactly this equation at a type the tactic cannot name (the match's binder is
     inaccessible), so stating it as a lemma is what lets unification supply it. Both
     branches of `mkNilable` are here: at `nilT` the join is `joinTy`'s *first* branch
@@ -458,7 +458,7 @@ abbrev Env := List (String × Ty)
 def envGet? (Γ : Env) (x : String) : Option Ty :=
   (Γ.find? (·.1 == x)).map (·.2)
 
-/-- **One environment is weaker than another** (L218): every binding the first records,
+/-- **One environment is weaker than another**: every binding the first records,
     the second records at the same type. A *lower bound* relation, and that direction is
     the one `FrameConforms` needs — it reads `Γ` as "these locals are at least these
     types", so dropping bindings weakens the claim.
@@ -472,7 +472,7 @@ def SubEnv (Γ Γ' : Env) : Prop :=
 
 /-- The decidable form the rule checks.
 
-    **Each entry's *lookup* rather than its payload** (L236), and the difference is
+    **Each entry's *lookup* rather than its payload**, and the difference is
     shadowing: an `Env` is an association list, so `[(x, Int), (x, String)]` is a legal
     value whose second entry is dead. Comparing payloads makes such an environment fail
     `subEnvB Γ Γ` — which is fine for a rule that checks two *different* environments,
@@ -508,7 +508,7 @@ theorem envGet?_of_mem {Γ : Env} {e : String × Ty} (he : e ∈ Γ) :
   | some p => exact ⟨p.2, by simp [hf]⟩
 
 /-- `subEnvB` composes with `SubEnv` on the right. This is the `next` rule's own
-    transitivity (L227), restated for the lookup form (L236). -/
+    transitivity, restated for the lookup form. -/
 theorem subEnvB_trans_sub {Γl Γ Γ₂ : Env} (h : subEnvB Γl Γ = true) (hs : SubEnv Γ Γ₂) :
     subEnvB Γl Γ₂ = true := by
   refine List.all_eq_true.mpr fun e he => ?_
@@ -549,7 +549,7 @@ def pinTy? (Γ : Env) (x : String) : Option Ty := envGet? Γ (pinKey x)
 
 /-- Pin every real (non-shadow) name in `Γ` not already pinned, at its current
     type — the whole-`Γ` over-approximation of a lambda's free variables
-    (`Types/Core.lean`'s `lambda` arm): sound because pinning a name the body
+    (`books/Books/Metatheory/Typing/Lang/Infer.lean`'s `lambda` arm): sound because pinning a name the body
     never reads only rejects more programs, never fewer, and it needs no walk
     of `Expr` to get right. Names already pinned keep their **first** pin —
     the type they had at the *first* lambda that captured them — which is the
@@ -581,7 +581,7 @@ is a property of the *stack* and not of a frame. -/
 structure FrameCtx where
   cls : String
   selfCls : Option String := none
-  /-- **The enclosing method's declared return type** (L198), or `none` in a class
+  /-- **The enclosing method's declared return type**, or `none` in a class
       body and at toplevel — where a `return` has no target and the desugarer gates
       one anyway.
 
@@ -595,7 +595,7 @@ structure FrameCtx where
       is what lets `RetOk` be **derived** from `KontOk` instead of carried as a
       separate invariant conjunct. -/
   ret : Option Ty := none
-  /-- **The running method's name** (L207), or `none` in a class body and at toplevel.
+  /-- **The running method's name**, or `none` in a class body and at toplevel.
 
       `super` is the only rule that needs it, and it needs it for the reason `doSuper`
       does (`Interp/Send.lean:260`): the target is *this method's name*, looked up on
@@ -603,7 +603,7 @@ structure FrameCtx where
       at the same push — `userFrame` sets `meth := md.superName.getD mname`, which is
       the aliasing-correct name and therefore the one to carry. -/
   meth : Option String := none
-  /-- **The running method's declared parameter types** (L214), in order, or `[]` in a
+  /-- **The running method's declared parameter types**, in order, or `[]` in a
       class body and at toplevel — and `[]` in every activation the invariant can
       currently describe, because `ResolvesUser` requires `md.params = []`.
 
@@ -622,7 +622,7 @@ structure FrameCtx where
       `StackCtx`'s `meth` clause pins it to `some []` in every activation the invariant
       can describe, because `ResolvesUser` requires `md.params = []`. -/
   params : Option (List Ty) := none
-  /-- **Are we lexically inside a `while` in this activation?** (L222)
+  /-- **Are we lexically inside a `while` in this activation?**
 
       `next`/`break`/`redo` need it for the reason `return` needed `ret`: the jump has a
       *target*, and the rule is only sound where the target exists. `unwind` sends a `.nxtJ`
@@ -635,24 +635,24 @@ structure FrameCtx where
       has `ctx` as an induction target; the open side carries the same channel as an explicit
       **parameter** of `inferOpen`, for the reason recorded there.
 
-      **It carries the loop's *environment*, not just a flag** (L224), and that is the one
+      **It carries the loop's *environment*, not just a flag**, and that is the one
       way `next` costs more than `return` did. A `return` pops the frame, so `RetOk` owes
       nothing about the environment; a `next` restarts the loop **in the same frame**, and
       the condition is typed at the loop's entry environment while the `next` may fire
       part-way through the body at a richer one. So the rule owes `SubEnv Γloop Γcur`, which
       it can only check if it knows `Γloop` — hence `Option Env` and not `Bool`. -/
   inLoop : Option Env := none
-  /-- **Is this activation a block?** (L249) — the sixth channel, and the one the
+  /-- **Is this activation a block?** — the sixth channel, and the one the
       *frame* side of Wall 1 turned out to need after all.
 
       L243 added it, pinned it `false`, and withdrew it in the same commit on the
       grounds that a field no rule sets is a `DecidableEq` cost and an implication with
       one instance. That was right about `FrameConforms`, whose obligation at an
       enclosing local is `ValueTy _ _ .any` and needs nothing about the captured frame
-      (L247), and **wrong about `StackCtx`**, which is positional over the same stack and
+, and **wrong about `StackCtx`**, which is positional over the same stack and
       whose second clause compares a *heap-derived name* — `className h defmod`, read off
       the frame the closure captured — against the name this context carries. Only the
-      pairing connects them, and `KontOk` cannot express a pairing (L249).
+      pairing connects them, and `KontOk` cannot express a pairing.
 
       So the clause is guarded on this flag instead: a block activation owes no name, and
       nothing reads one there — the clause's consumers are the `def` row's key and the

@@ -1,24 +1,15 @@
 /-!
 # `Books/TypeSoundness/Registry/Spec.lean` — a rule is one object with two readings, and the semantic one carries its proof
 
-**The pitfall this is built to make impossible.** Until now `Checker.Judge` was an
-independent inductive that could grow freely, and the semantic side was a *report*: 83
-derived obligations, 48 with proofs on file, the gap printed by `lake exe semladder`. Three
-things went wrong with that, and they are all the same thing:
+**The pitfall this is built to make impossible.** If the typing judgment is an ordinary
+inductive that can grow freely, and the soundness of each rule is tracked beside it as a list
+of obligations, then a rule can be written, used by the checker, and counted as supported
+with no semantic justification at all. A rule that is false as stated can sit in the judgment,
+reachable by a derivation, before anyone knows. And a single induction over every constructor
+can only close when every rule is proved, so nothing forces the pairing rule by rule.
 
-1. **A rule could be authored, used by `validate`, and counted as a climbed rung with no
-   semantic justification at all.** The ladder said so, in a number, at the bottom of a
-   report — and a number is not a gate.
-2. **Seven of the undischarged rules turned out to be false as stated** (`found-issues.md`
-   §F19/§F23/§F24, `AGENTS.md` §Semantic ratchet status). They were already in the judgment,
-   already reachable by a certificate, before anyone knew.
-3. **Adequacy was all-or-nothing** — one mutual induction over 83 constructors, so it could
-   only ever close at 83/83, which meant it never closed, which meant nothing forced the
-   pairing. The EMERGENCY EXIT (`implementation-notes.md`, clink 64) is what that dead end
-   looks like from inside.
-
-The reshape: **a rule enters the judgment only as a `Clink`, and a `Clink` cannot be
-constructed without the proof.** Not by convention — by typing.
+Here **a rule enters the judgment only as a `Clink`, and a `Clink` cannot be constructed
+without the proof.** Not by convention: by typing.
 
 ## The device
 
@@ -59,11 +50,10 @@ Three consequences, and they are the whole point:
 
 * **Soundness is unconditional and one line.** `judgeC_sem` instantiates `F := semFam` and
   discharges the closure hypothesis from the clinks' own `sem` fields. It holds for *any*
-  registry, at every size, today. There is no terminal clink, no 83/83, nothing to wait for.
+  registry, at every size. Nothing has to wait for the last rule.
 * **An unregistered rule is not in the judgment.** It is not an undischarged obligation, not
-  a rung owed: it is simply not a rule. So the failure mode of §1 above is not "reported
-  better", it is gone — and the failure mode of §2 cannot happen, because a rule that is
-  false as stated has no `sem` field and therefore no `Clink`.
+  a debt: it is simply not a rule. And a rule that is false as stated has no `sem` field
+  and therefore no `Clink`.
 * **A derivation is a term, polymorphic in `F`.** You build one by using the rules you are
   given (`hF c hmem`), so a derivation *is* a witness that only registered rules were used.
   §4's examples are one line each.

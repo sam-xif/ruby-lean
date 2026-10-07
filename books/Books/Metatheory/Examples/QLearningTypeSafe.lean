@@ -9,7 +9,7 @@ program by running the interpreter inside the proof.
 
 ⚠ TRUST NOTE — this file is DELIBERATELY NOT axiom-clean.  `run` is iterated
 `stepFn`, whose dispatch bottoms out in `invoke` — now a *well-founded* `def`
-(L52), so it is symbolically reasoning-amenable (that is what unblocks the
+, so it is symbolically reasoning-amenable (that is what unblocks the
 Direction-B/T5 proofs).  But well-founded recursion compiles to `Acc.rec`, which
 the kernel's whnf does NOT reduce, so `rfl`/`decide` still cannot *evaluate* a
 concrete dispatching run (verified: the `rfl` still fails).  The only way to

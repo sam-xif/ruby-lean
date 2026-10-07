@@ -47,7 +47,7 @@ def allocRegexp (m : Machine) (src : String) (opts : Nat) : Value × Machine :=
 
 /-- `binary` records the **subject**'s encoding: every String a MatchData hands
     back is a slice of the subject and carries its tag, so the flag lives on the
-    MatchData object and `okStrFrom md` reads it (L118). -/
+    MatchData object and `okStrFrom md` reads it. -/
 def allocMData (m : Machine) (subject : String) (caps : Array (Option (Nat × Nat)))
     (names : List (String × Nat)) (binary : Bool := false) : Value × Machine :=
   let (o, h) := m.heap.alloc
@@ -97,7 +97,7 @@ def charSlice (s : String) (a b : Nat) : String :=
   String.mk ((s.toList.drop a).take (b - a))
 
 /-- Set `$~` and the numbered globals, the way a successful (or failed) match
-    does [V]: on a miss they all become nil. The slot is **frame-local** (L121),
+    does [V]: on a miss they all become nil. The slot is **frame-local**,
     so which frame this lands in is `Machine.matchFrameId`'s answer, not a
     global — and a builtin pushes no frame, so for a rule reached from Ruby code
     that is the Ruby caller's frame, exactly as a CRuby C function behaves. -/
@@ -520,7 +520,7 @@ where
         let (out, last) := hits.foldl (fun (acc, cur) (a, b, _) =>
           (acc ++ charSlice s cur a ++ rep, b)) ("", 0)
         -- the result mixes subject and replacement bytes, so it takes the tag
-        -- their concatenation would (L118) — and refuses the incompatible mix
+        -- their concatenation would — and refuses the incompatible mix
         match concatEnc m.heap recvV s repV rep with
         | .error e => .unsupported e
         | .ok bin => okStrEnc m bin (out ++ charSlice s last s.length)

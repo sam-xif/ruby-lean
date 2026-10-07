@@ -1,23 +1,24 @@
 /-
-Pure representation functions: Ruby-faithful `inspect` / `to_s` over values,
-and pure `==` / `eql?`. These implement the *default* builtin behaviors
-(artifact 01 §6: equality is a method; these are only the builtin leaves).
+The default `inspect`, `to_s`, `==` and `eql?` (Semantics 01 §6).
 
-They are pure heap functions and are only sound while no user `def` has
-overridden a repr-sensitive method (to_s/inspect/==/eql?/message/to_str) —
-the machine tracks that with a `reprPure` flag and callers must gate on it
-(returning Unsupported, never a wrong answer).
+These are the builtin behaviors, as pure functions of the heap, exact to the
+character: `inspect` and `to_s` produce the strings CRuby prints. Equality is a
+method in Ruby, so these are what runs when no user definition overrides it;
+the interpreter decides when that is the case and dispatches otherwise.
 
-Errors (`Except String`) are Unsupported reasons, e.g. float formatting
-(Ruby requires shortest-roundtrip which Lean's Float.toString is not).
+The recursive functions take fuel so that they are total and the kernel can
+evaluate them. Running out of fuel answers as CRuby's recursion guard does for
+a structure that contains itself.
+
+An `Except String` error is a reason the model declines, never a guess.
 -/
-import RubyCore.Complex
-import RubyCore.FloatFmt
-import RubyCore.Unicode
+import RubyCore.Numeric.Complex
+import RubyCore.Numeric.FloatFmt
+import RubyCore.Generated.Unicode
 
 namespace RubyCore
 
-/-- Does `s` hold a character at or above 0x80? For a **binary** String (L118)
+/-- Does `s` hold a character at or above 0x80? For a **binary** String
     that means a byte no Lean `String` consumer can carry as a byte, which is
     what `toS` and the raw-stdout paths have to refuse on. -/
 def hasHighByte (s : String) : Bool := s.toList.any (fun c => c.val ≥ 0x80)
@@ -26,7 +27,7 @@ def hasHighByte (s : String) : Bool := s.toList.any (fun c => c.val ≥ 0x80)
     following character (for `#{`/`#$`/`#@` escaping). `binary` selects the
     ASCII-8BIT rendering, where a non-printable is a **byte** (`\xNN`, upper
     case) rather than a code point (`\uNNNN`) [V] — `(1.chr + 0xC3.chr).inspect`
-    is `"\x01\xC3"` where `"\x01".inspect` (UTF-8) is `"\u0001"` (L118). -/
+    is `"\x01\xC3"` where `"\x01".inspect` (UTF-8) is `"\u0001"`. -/
 private def escapeChar (binary : Bool) (c : Char) (next? : Option Char) : String :=
   match c with
   | '\\' => "\\\\"
@@ -94,7 +95,7 @@ where
 def symInspect (s : String) : String :=
   if simpleSymbol s then ":" ++ s else ":" ++ escapeString s
 
-/-- String equality including the encoding tag (L118). CRuby compares bytes
+/-- String equality including the encoding tag. CRuby compares bytes
     *and*, when either operand holds a non-ASCII byte, encodings: `"a".b == "a"`
     is true but `0xC8.chr == "È"` is **false** — same single byte 0xC8 in our
     payload, different encodings. Ignoring the tag here would be a silent wrong
@@ -233,7 +234,7 @@ def inspectFuel : Nat → Heap → Value → Except String String
         return "{" ++ String.intercalate ", " parts ++ "}"
       | .cls _ =>
         -- an anonymous class/module (`Class.new`) has no name; CRuby renders it by
-        -- address (L72), which is `className`'s own fallback since L124 — one rule,
+        -- address, which is `className`'s own fallback since L124 — one rule,
         -- not a copy per repr function
         return className h o
       | .exc msg =>
@@ -246,7 +247,7 @@ def inspectFuel : Nat → Heap → Value → Except String String
         -- `(nil..2)` is `"..2"` — *except* when both are nil, which prints
         -- `"nil..nil"` [V]. `to_s` needs no such case: `nil.to_s` is already `""`,
         -- so it falls out, and `(nil..nil).to_s` really is `".."`. Found while
-        -- validating endpoints (L122): endless ranges were the one shape whose
+        -- validating endpoints: endless ranges were the one shape whose
         -- `inspect` the model got wrong rather than gated.
         let dots := if excl then "..." else ".."
         match lo, hi with
@@ -283,7 +284,7 @@ def inspectFuel : Nat → Heap → Value → Except String String
         -- `#<MatchData "1.22" 1:"1" commit:nil>` — named groups print their name
         -- instead of their index, and an unset group prints `nil` [V].
         let whole := (spanText subject (caps[0]?.getD none)).getD ""
-        -- the tag on a MatchData object records its *subject*'s encoding (L118),
+        -- the tag on a MatchData object records its *subject*'s encoding,
         -- and every span rendered here is a slice of that subject
         let esc := escapeStringEnc (h.get o).binary
         let byIdx : Nat → String := fun i =>
@@ -326,12 +327,12 @@ def toSFuel : Nat → Heap → Value → Except String String
         -- encoding tag on the way. For a binary String that is only observable
         -- when a byte is ≥ 0x80 — where a Lean `String` would silently re-read
         -- the byte as a code point — so that case refuses rather than answering
-        -- (L118). ASCII bytes are the same either way.
+        --. ASCII bytes are the same either way.
         if (h.get o).binary && hasHighByte s then
-          throw "to_s of a byte string holding a byte ≥ 0x80 (L118)"
+          throw "to_s of a byte string holding a byte ≥ 0x80"
         else return s
       | .arr _ | .hsh _ => inspectFuel fuel h v
-      | .cls _ => return className h o   -- as in `inspect` above (L124)
+      | .cls _ => return className h o   -- as in `inspect` above
       | .exc msg => if msg.identEq .nil then return className h (h.get o).klass else toSFuel fuel h msg
       | .proc _ => throw "Proc#to_s (address non-deterministic)"
       | .range lo hi excl =>
@@ -343,7 +344,7 @@ def toSFuel : Nat → Heap → Value → Except String String
       | .mdata subject caps _ =>
         let whole := (spanText subject (caps[0]?.getD none)).getD ""
         if (h.get o).binary && hasHighByte whole then
-          throw "MatchData#to_s over a byte-string subject with a byte ≥ 0x80 (L118)"
+          throw "MatchData#to_s over a byte-string subject with a byte ≥ 0x80"
         else return whole
       | .none | .rng _ =>
         let cname := className h (h.get o).klass

@@ -1,16 +1,20 @@
 /-
-The executable step function (`RubyCore/README.md` §Mechanization): `stepFn` is one
-small-step transition of the machine; `run` iterates it under fuel.
+The step function.
 
-The inductive `Step : Config → Config → Prop` (the definition of record)
-will be authored against this — `stepFn` is its constructive witness; for
-now the interpreter comes first so the model can meet the difftest engine
-immediately (sketch §4). Note the helpers below are NOT mutually recursive:
-each performs exactly one transition — evidence the machine really is
-small-step.
+`stepFn : Machine → StepResult` is one transition of the machine. `run fuel`
+applies it until the program finishes, raises, is declined, or runs out of
+fuel, and reports which.
 
-Out-of-fragment RubyCore constructs surface as `.unsupported` — the SUT
-contract's clean gate, never a guessed value.
+This file is the case split on the control. The parts are in `Interp/`:
+dispatch, sends, continuations and unwinding, reflection, construction and
+copying, enumerators, `require`. The helpers are not mutually recursive: each
+performs exactly one transition.
+
+`books/Books/Metatheory/Machine/` defines an inductive relation `Step` for the
+control core and proves that it and `stepFn` agree.
+
+A construct the model does not cover yields `.unsupported` with a reason,
+never a guessed value.
 -/
 import RubyCore.Interp.Kont
 
@@ -18,7 +22,7 @@ namespace RubyCore
 
 namespace Interp
 
-/-- `defined?(e)` (artifact 03 §6, L67). The operand is **not** evaluated — the
+/-- `defined?(e)` (Semantics 03 §6). The operand is **not** evaluated — the
     answer comes from the shape of `e` plus a heap/frame lookup — except a send's
     receiver and a cpath's base, which CRuby does evaluate (under a guard that
     turns any raise into nil). Strings are CRuby's exact spellings [V]. -/
@@ -38,7 +42,7 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
     -- desugarer only emits a `var local` node for a name the parser knows to be a
     -- local in this scope (an unknown bare name becomes a vcall `send`), which is
     -- precisely CRuby's static rule. So `y = 1 if false; defined?(y)` answers
-    -- "local-variable" even though no binding exists at runtime [V] (L72).
+    -- "local-variable" even though no binding exists at runtime [V].
     str "local-variable"
   | .var .ivar x =>
     let has := match m.currentFrame.self with
@@ -50,7 +54,7 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
     let has :=
       if x == "$!" then m.currentExc.isSome
       -- `$~` is *always* "global-variable", match or not — unlike its views, where
-      -- `defined?($1)` with no match is nil [V] (L121). It used to answer from
+      -- `defined?($1)` with no match is nil [V]. It used to answer from
       -- `globals`, which happened to agree only because any match attempt put the
       -- key there; frame-local storage has no such key to consult.
       else if x == "$~" then true
@@ -95,7 +99,7 @@ def evalDefined (m : Machine) (e : Expr) : StepResult :=
     .next m
   | .yield' _ => strIf m.currentFrame.blk.isSome "yield"
   | .super' .. | .zsuper .. =>
-    -- would `super` find a method? (no call, artifact 02 §2) [V]
+    -- would `super` find a method? (no call, Semantics 02 §2) [V]
     let f := m.frames.getD (methodFrameOf m) default
     if f.meth == "" then nilR
     else
@@ -173,7 +177,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
     if kind == .gvar && loaderGlobal x then .unsupported "assignment to loader global" else
     .next (withKont m (.eval rhs) (.asgnK kind x))
   | .const n =>
-    -- artifact 03 §4: lexical phase (each cref scope's OWN consts, innermost
+    -- Semantics 03 §4: lexical phase (each cref scope's OWN consts, innermost
     -- first), then inheritance phase (ancestors of the innermost class/defmod).
     match lexicalConstant m n with
     | some v => .next (withCtl m (.value v))
@@ -254,7 +258,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
           startArgs m m.currentFrame.self .implicit mname [] args (.lit ps ls body)
       | pblk => startArgs m m.currentFrame.self .implicit mname [] args pblk
   -- A vcall is an implicit-self, zero-arg, block-less send; only the miss
-  -- message differs (L75), and that is carried by the `.vcall` site.
+  -- message differs, and that is carried by the `.vcall` site.
   | .vcall mname => startArgs m m.currentFrame.self .vcall mname [] [] .none
   | .block .. => .stuck "bare block node outside send"
   | .kwargs .. => .stuck "bare kwargs node outside call position"
@@ -277,7 +281,7 @@ def evalExpr (m : Machine) (e : Expr) : StepResult :=
       { params, body, owner := defmod, definee := some defmod, cref := m.currentFrame.cref,
         fromPrelude := m.preludeMode || m.currentFrame.libraryOrigin,
         -- `private`/`protected` with no arguments set the default for the rest of
-        -- the definition scope (artifact 02 §5). Top level starts private and
+        -- the definition scope (Semantics 02 §5). Top level starts private and
         -- honors an explicit public change; ordinary blocks share that context.
         -- Initialization names are normalized by the mutation protocol.
         visibility := m.currentDefinitionFrame.defVis }

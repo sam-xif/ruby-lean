@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# The layering check, and the reason it exists as a script at all.
-#
-# `Checker/` — the certificate checker — is deliberately isolated from `RubyCore/`:
-# its `Expr` and `Ty` are *copied text*, not imports, so the checker can be read,
-# audited and re-implemented without the 24k-line model in scope. The one place
-# the two meet is the checker's soundness proof, which is by definition a
-# statement relating them, and that lives in another package (`../books/`).
-#
-# The checker and the model share this Lake package, so the compiler does not
-# refuse the import. This script does, and the gate
-# (`../books/scripts/run_typed_ratchet.sh`) runs it as its first stage.
+# The layering check.
 #
 #   scripts/check-isolation.sh
+#
+# `Checker/`, the type checker, is isolated from `RubyCore/`, the model: its
+# `Expr` and `Ty` are copied text, not imports, so the checker can be read,
+# audited and re-implemented without the model in scope. The one place the two
+# meet is the checker's soundness proof, which relates them by definition, and
+# that lives in another package (`../books/`).
+#
+# The checker and the model share this Lake package, so the compiler does not
+# refuse the import. This script does, and `../books/scripts/check-soundness.sh`
+# runs it as its first stage.
 #
 # Exit 0 iff no module under `Checker/` imports anything under `RubyCore/`, no
 # module under `RubyCore/` imports `Checker/`, and nothing in this package
@@ -22,7 +22,7 @@ cd "$(dirname "$0")/.." || exit 1
 rc=0
 
 # 1. The checker does not see the model.
-BAD=$(grep -rnE '^import +RubyCore\b' Checker/ MainTyped.lean MainValidateOne.lean 2>/dev/null)
+BAD=$(grep -rnE '^import +RubyCore\b' Checker/ MainValidateOne.lean 2>/dev/null)
 if [[ -n "$BAD" ]]; then
   echo "FAIL: Checker/ imports the model — the checker's isolation is gone:"
   echo "$BAD" | sed 's/^/  /'

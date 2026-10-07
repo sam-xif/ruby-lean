@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-"""Exercise missing-signature proposals through Sorbet, emission and validateD."""
+"""Controls for the pipeline in front of the checker.
+
+    scripts/check_pipeline.py
+
+Small programs, built here, go through Sorbet, the derivation emitter and
+`validate-one` exactly as a corpus program does. Each case states whether the
+emitter must propose a derivation and whether the checker must then accept it:
+methods with no signature whose parameter types can be inferred from the body,
+blocks bound to a typed `&b` parameter, and near-identical programs with a
+wrong or conflicting type that must be declined.
+`scripts/check-soundness.sh` runs this; it needs `validate-one` built.
+"""
 import json
 from pathlib import Path
 import subprocess
@@ -244,7 +255,7 @@ item + 1
     # Changing the caller's value/type cannot change the method's proposed domain.
     assert emitted["alias"]["stmts"][0] == emitted["wrong_domain"]["stmts"][0]
     assert emitted["bound_direct"]["body"]["stmts"][0] == emitted["bound_different_callback"]["body"]["stmts"][0]
-    print(f"Body inference and block flow: {len(cases)} pipeline controls and caller independence passed")
+    print(f"pipeline controls: {len(cases)} cases passed")
 
 
 if __name__ == "__main__":

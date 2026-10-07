@@ -1,30 +1,20 @@
 import RubyCore.Syntax
-import RubyCore.Types.Ty
+import RubyCore.Sorbet.Ty
 
 /-!
-# P1a — reading Sorbet signatures off the AST
+# Reading Sorbet signatures off the program
 
-Sorbet adds no syntax: a `sig` is
-an ordinary send with a block, and a type is an ordinary expression, so the
-desugarer needs no special support and the declared types survive as data [V].
-This file recovers them.
-
-## What this is *not* yet wired to
-
-It does **not** feed `check`'s `accept`. Measured why: a sig'd call costs
-~256 extra steps of `T`-shim execution, and `Inv` works by *restriction*, so the
-machine leaves any small fragment the instant `sig` is evaluated. Reading a
-declared type is a static question and is unblocked; concluding safety about a
-machine that runs the shim is not. Sig-bearing programs therefore stay `unknown`
-until P1d's two-machine argument exists.
+Sorbet adds no syntax: a `sig` is an ordinary send with a block, and a type is
+an ordinary expression. So the desugarer needs no special support, and the
+declared types survive in the core program as data. This file recovers them.
+`rubycore --sigs` prints the result.
 
 ## `SigTy` is deliberately wider than `Ty`
 
-`Ty` (`Types/Core.lean`) is what the *proof* understands — three ground types.
-`SigTy` is what a *program can declare*, which is much more. Keeping them
-separate means the reader reports faithfully instead of silently lossily, and
-`toTy` is the explicit, partial bridge. Conflating them would have forced `Ty` to
-grow for reasons the proof does not need yet.
+`Ty` (`Ty.lean`) is the small type language the metatheory's typing definitions
+use. `SigTy` is what a program can declare, which is much more. Keeping them
+separate means the reader reports faithfully what was declared, and `toTy` is
+the explicit, partial bridge.
 
 `render` reproduces Sorbet's own surface syntax exactly, so a reader output can
 be compared against the string a generator declared without a translation layer
@@ -139,7 +129,7 @@ def rootsAtTProc : Expr → Bool
 
 mutual
 
-/-- **The `T.proc` arm walks its own chain via `readTy` on the receiver** (L1),
+/-- **The `T.proc` arm walks its own chain via `readTy` on the receiver**,
     never on `e` itself — `.params(...)`/`.returns(...)` peel one send layer at
     a time, each landing on `r`, a *strict* subterm, so the recursion is the
     same shape every other arm already has (structural on `sizeOf e`). A
@@ -263,7 +253,7 @@ def sigBody? : Expr → Option Expr
 
 A `sig` is a *separate statement preceding* the `def`, so association is by
 adjacency — the same shape `Fragment.lean` threads a `sigPrecedes` flag for
-(L82). Here the pending declaration is threaded instead of a flag, which is the
+. Here the pending declaration is threaded instead of a flag, which is the
 same single traversal carrying slightly more.
 -/
 

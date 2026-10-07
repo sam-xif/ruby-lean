@@ -1,8 +1,7 @@
 /-
-Playground trace mode: serialize every `stepFn` configuration to JSON so a UI
-can step through execution. This is a tooling view, NOT the Ruby-faithful
-observation (`Obs.lean`) — the renderers here are deliberately lossy and
-never gate (a partial Float or a Proc just prints a short label).
+A run, one machine state at a time, as JSON. `rubycore --trace` and the
+playground's stepper use it. The renderings are short labels for display and
+are deliberately lossy; `Obs.lean` is the exact observation.
 -/
 import RubyCore.Interp
 

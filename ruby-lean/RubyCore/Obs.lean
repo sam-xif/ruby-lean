@@ -1,7 +1,9 @@
 /-
-The observation function (artifact 00 §2 / difftest observation.py):
-obs = (stdout, result_repr = inspect(final value), exception = (class, msg)),
-heap projection deferred exactly as the engine's v1 does.
+The observation (Semantics 00 §2).
+
+What a finished run is observed as: everything written to standard output, the
+`inspect` of the final value, and the class and message of an uncaught
+exception. This is what the differential tests compare with CRuby.
 -/
 import RubyCore.Interp
 import Json

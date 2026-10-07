@@ -209,7 +209,7 @@ inductive PrimSig : Ty → String → List Ty → Ty → Prop
       so this signature is *not* "never raises" — it is the weaker, and correct,
       "never reaches the `NoMethodError`/`ArgumentError`/`TypeError` family, and when it
       returns, returns an `Integer`". That is exactly the reading of type-safety this
-      whole ladder uses (`AGENTS.md` §Design notes), and division is the cleanest place
+      whole ladder uses, and division is the cleanest place
       in the corpus where the two readings come apart. A checker built on the stronger
       reading would have to reject `10 / 2`, which would be wrong. -/
   | intDiv : PrimSig .int "/" [.int] .int

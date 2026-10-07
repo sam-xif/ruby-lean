@@ -2,7 +2,7 @@
 The actual T5 (`class_hierarchy`) Direction-B proof: a **user-defined method**
 dispatched in an **unbounded loop** is type-safe, by an inductive object-model
 invariant — axiom-clean, without running the program
-(`AGENTS.md` §Type safety as reachability §4, §9.1).
+.
 
 Program (the loop, entered with class `A` defined and `x` an `A`-instance):
 
@@ -40,7 +40,7 @@ set_option maxRecDepth 100000
     was hard-coded as `37` and the boot heap has since grown to 40 (`Kernel`,
     `Numeric`, `UncaughtThrowError` and friends), which silently aimed `clsA` at an
     existing boot object and left `dispatch_step`'s `rfl` unprovable. Deriving it
-    is the whole fix, and it cannot rot again (L119). -/
+    is the whole fix, and it cannot rot again. -/
 def clsA : ObjId := Boot.initHeap.objs.size
 /-- An instance of `A`, allocated straight after it. -/
 def inst : ObjId := Boot.initHeap.objs.size + 1

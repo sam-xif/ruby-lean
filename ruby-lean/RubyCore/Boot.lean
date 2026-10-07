@@ -1,15 +1,17 @@
 /-
-Two-phase boot (L62): phase 1 runs the **prelude** (`prelude/prelude.rb`, carried
-as the term `Prelude.program`) from H₀ with `preludeMode := true`, so the core-library methods
-it defines land in the heap marked `fromPrelude`; phase 2 runs the program under
-test on that heap.
+Booting the core library.
 
-The prelude is *model code*, so a prelude that raises, gates, or runs out of fuel
-is a build-time bug, not a program-under-test outcome: `bootHeap` reports it as an
-error string and `Main` exits 1 (harness error) rather than silently running with
-a missing core library.
+Much of Ruby's core library is written in Ruby here too: `prelude/prelude.rb`
+defines `Enumerable`, `Comparable` and many other methods. Boot has two
+phases. The first runs the prelude (the term `Prelude.program`) on the initial
+heap with `preludeMode := true`, so that the methods it defines are marked as
+the model's own. The second runs the user's program on the heap that leaves.
+
+A prelude that raises, is declined or runs out of fuel is a bug in the model,
+not an outcome of the user's program: it is reported as an error and `rubycore`
+exits with status 1.
 -/
-import RubyCore.Prelude
+import RubyCore.Generated.Prelude
 import RubyCore.Interp
 
 namespace RubyCore

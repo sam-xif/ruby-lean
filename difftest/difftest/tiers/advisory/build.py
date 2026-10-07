@@ -4,7 +4,7 @@
 
 `-n` counts (advisory × version) pairs. Unlike the domain tier this does **not**
 batch several inputs' worth of *shapes* into one program: a gate anywhere
-refuses the whole program (`homebrew/HANDOFF.md`), and §3.3 of
+refuses the whole program, and §3.3 of
 `nontrivial-target.md` predicts this corpus finds gates the harvested one never
 touches. One shape per program means a gating shape costs its own rows and no
 others, and the gate count is then a measurement rather than a loss.

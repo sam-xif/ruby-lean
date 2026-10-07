@@ -1,4 +1,4 @@
-"""Tier-1 generation heads for the Homebrew slice's feature set (`PLAN.md` W4b).
+"""Tier-1 generation heads for the Homebrew slice's feature set.
 
 The existing tier-1 grammar generates control flow, dispatch and the object
 model; it generates **nothing** the version + vulnerability slice actually leans
@@ -160,14 +160,14 @@ def regex_probe(draw, idx: int) -> tuple:
         _show(A.MethodCall(sj, "gsub", (rx, A.StrLit(rep)))),
         _show(A.MethodCall(sj, "split", split_args)),
         _show(A.MethodCall(sj, "tr", (A.StrLit(tr_from), A.StrLit(tr_to)))),
-        # the block form — the path a builtin cannot serve (L110), and the one
+        # the block form — the path a builtin cannot serve, and the one
         # `Purl.encode` actually takes
         _show(
             A.BlockCall(
                 sj, blk_meth, (rx,), A.Block(("w",), (A.MethodCall(A.LocalRead("w"), "upcase", ()),))
             )
         ),
-        # `$~` and friends are *views* of the last match, not stored globals (L101)
+        # `$~` and friends are *views* of the last match, not stored globals
         _show(A.GvarRead("$~")),
         _show(A.GvarRead("$1")),
         _show(A.GvarRead("$&")),

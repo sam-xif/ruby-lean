@@ -114,7 +114,7 @@ class RegexInterp(Node):
 
 @dataclass(frozen=True)
 class GvarRead(Node):
-    """`$~` / `$1` / `$&` — the match views (L101), which are *derived* from the
+    """`$~` / `$1` / `$&` — the match views, which are *derived* from the
     last MatchData rather than stored, so reading one is a semantic observation."""
 
     name: str

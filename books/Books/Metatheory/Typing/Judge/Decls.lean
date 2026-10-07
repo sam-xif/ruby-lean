@@ -1,5 +1,5 @@
 import Books.Metatheory.Typing.Judge.Values
-import RubyCore.Judgment.Frag
+import Books.Metatheory.Typing.Lang.Frag
 
 /-!
 # `DeclsOkJ` — the table invariant with the user arm restated over `Judge` (J20)

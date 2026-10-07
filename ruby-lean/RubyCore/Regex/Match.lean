@@ -9,7 +9,7 @@ Three things follow from that shape and are worth stating up front.
 
 * *No `partial def`, no `termination_by`.* The recursion is structural on the
   first `Nat` argument, so the definition reduces in the kernel and a per-program
-  `rfl` leaf proof stays possible (L73, L94).
+  `rfl` leaf proof stays possible.
 * *Fuel exhaustion is a third outcome, not "no match".* `MRes.oof` is distinct
   from `MRes.no` and propagates to the top, where the API turns it into the SUT
   contract's `Unsupported` gate. A matcher that reported "no match" on running

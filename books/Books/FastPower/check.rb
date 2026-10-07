@@ -30,7 +30,7 @@ cases = 0
     printed = "#{b**k}\n"
 
     cruby, = Open3.capture2(RbConfig.ruby, "-e", "p(eval(STDIN.read))", stdin_data: program)
-    out, status = Open3.capture2(model, stdin_data: program)
+    out, status = Open3.capture2(model, "--json", stdin_data: program)
     lean = status.success? ? JSON.parse(out) : {}
 
     cases += 1

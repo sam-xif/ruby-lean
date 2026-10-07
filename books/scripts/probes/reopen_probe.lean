@@ -1,8 +1,8 @@
-import RubyCore.PreludeBoot
-import RubyCore.HeapCert
+import RubyCore.Boot
+import Books.Metatheory.Heap.HeapCert
 
 /-!
-**Which class names may go in `reopenableClasses`** (L189), decided rather than
+**Which class names may go in `reopenableClasses`**, decided rather than
 argued. Every row of that table is a promise `ClassOk` keeps, and since L189 it is
 **seven** clauses per name — the three `enterClassBody` tests (present, a class, not
 a module), uniqueness at the name, head-of-chain, `NoShadowBefore`, and the two the
@@ -16,7 +16,7 @@ The refusals are the interesting output, and each names a real fact:
 * `Array`, `Hash` and `Range` lose **sole ownership**, because `T::Array`, `T::Hash`
   and `T::Range` own those names too. That is L177's `T` collision arriving as a
   refusal rather than as a hazard;
-* `Regexp` is one of the two ids `invoke` dispatches a singleton family from (L106),
+* `Regexp` is one of the two ids `invoke` dispatches a singleton family from,
   which `classRecv` excludes;
 * `Comparable`, `Kernel` and `T` are modules.
 

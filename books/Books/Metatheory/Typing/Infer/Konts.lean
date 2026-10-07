@@ -97,7 +97,7 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       KontOk D h ((c, Γ) :: Γs) τ (.seqK [] :: k)
   /-- `seqK (e :: es)` discards the in-flight value and runs the rest.
 
-      **`Γs.isEmpty` is the toplevel mode** (L155), and this is the only
+      **`Γs.isEmpty` is the toplevel mode**, and this is the only
       constructor that has to name it: `seqK` is the one kont that stores
       *unevaluated statements*, so it is the one whose contents may be a `class`.
       The mode is read off the environment stack rather than carried as an index
@@ -121,7 +121,7 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       KontOk D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk (envSet Γ x τ) := by first | exact SubEnv.refl _ | assumption) →
       KontOk D h ((c, Γ) :: Γs) τ (.asgnK .lvar x :: k)
-  /-- **`@x = e`, with the value in flight** (L191). One premise beyond the tail, and
+  /-- **`@x = e`, with the value in flight**. One premise beyond the tail, and
       it is the *frame context's* rather than the heap's: `selfCls` being inhabited is
       what the consecution case turns — through `StackCtx` and `plainRecv` — into
       "the write does not raise `FrozenError`". No binding moves, so the tail is
@@ -136,7 +136,7 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       KontOk D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk (Γ) := by first | exact SubEnv.refl _ | assumption) →
       KontOk D h ((c, Γ) :: Γs) τ (.asgnK .ivar x :: k)
-  /-- **`$x = e`, with the value in flight** (L228) — `asgnIvar`'s shape at the sixth
+  /-- **`$x = e`, with the value in flight** — `asgnIvar`'s shape at the sixth
       table, and simpler in exactly one way: a global has no receiver, so there is no
       `selfCls` premise and no quantification over the class. The declared type is carried
       here rather than re-read at the delivery for `asgnIvar`'s reason: the delivery is
@@ -175,7 +175,7 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
   /-- The in-flight value is the **receiver** of a binary builtin send; the
       argument expression runs next.
 
-      **The site is a parameter** (L172), as `argsK`'s is (L171). `evalExpr` picks
+      **The site is a parameter**, as `argsK`'s is. `evalExpr` picks
       it syntactically — `.selfRecv` for a literal `self` receiver and `.explicit`
       for everything else — and the difference is *permissive*: `visError?` raises
       only at `.explicit`, while `ResolvesAt`/`ResolvesUser` demand `.pub`
@@ -190,7 +190,7 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       KontOk D₂ h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk (Γ₂) := by first | exact SubEnv.refl _ | assumption) →
       KontOk D h ((c, Γ) :: Γs) τ (.recvK mname (arg :: args) .none site :: k)
-  /-- **A zero-argument send** (L152), and it is a separate constructor rather than
+  /-- **A zero-argument send**, and it is a separate constructor rather than
       `recvK` with an empty list because the two describe *different numbers of
       steps*. With an argument, `applyKont` pushes an `argsK` and the dispatch is a
       step away; with none, `startArgs … [] []` is `finishSend`, so the send completes
@@ -208,7 +208,7 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       carried by the kont, so its type is pinned by `ValueTy` rather than by
       `infer`.
 
-      **The site is a parameter** (L171). `startArgs` stores whatever site it was
+      **The site is a parameter**. `startArgs` stores whatever site it was
       called at, and nothing between here and the dispatch reads it: `visError?`
       matches `.explicit` alone and both dispatch lemmas have been quantified over
       the site since L164. So the *written receiverless* unary send — which pushes
@@ -226,7 +226,7 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       KontOk D' h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk (Γ') := by first | exact SubEnv.refl _ | assumption) →
       KontOk D h ((c, Γ) :: Γs) τ (.argsK recv site mname acc rest .none :: k)
-  /-- **A `super` argument in flight** (L212), and it is `argsK` with the receiver
+  /-- **A `super` argument in flight**, and it is `argsK` with the receiver
       taken out. `doSuper` re-dispatches the *frame's* method on the *frame's* `self`,
       so there is no stored receiver and no `sigOf`: the signature comes out of the
       `supers` table at the pair `(c.cls, mname)`, which is why the context's own
@@ -254,7 +254,7 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       KontOk D' h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk (Γ') := by first | exact SubEnv.refl _ | assumption) →
       KontOk D h ((c, Γ) :: Γs) τ (.superArgK acc rest blk :: k)
-  /-- **An array literal's element** (L174). The in-flight value is one element;
+  /-- **An array literal's element**. The in-flight value is one element;
       the remaining elements run next, and when they are gone `continueArray`
       allocates — so the continuation `k` is typed at `.cls "Array"` and the
       accumulated values are **not mentioned at all**.
@@ -272,14 +272,14 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       KontOk D' h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk (Γ') := by first | exact SubEnv.refl _ | assumption) →
       KontOk D h ((c, Γ) :: Γs) τ (.arrK acc rest :: k)
-  /-- **A splatted array element, with the operand in flight** (L230) — `arrK`'s twin at
+  /-- **A splatted array element, with the operand in flight** — `arrK`'s twin at
       `continueArray`'s splat arm, and it carries exactly one premise more: the in-flight
       value's type is `Array`.
 
       That premise is what makes the step **total**. `applyKont`'s `arrSplatK` arm calls
       `spreadA`, which answers `.error` — hence `.unsupported`, which `StepOk` refuses —
       for every payload but `.arr`, `.mdata` and a `Range`; and the bridge from "its class
-      is `Array`" to "its payload is an `.arr`" is `plainRecv`'s sixth clause (L230),
+      is `Array`" to "its payload is an `.arr`" is `plainRecv`'s sixth clause,
       landed as a clause of the judgement rather than as a sixth heap conjunct of `Inv`. -/
   | arrSplatK {D D' h c Γ Γs τ τ' τw acc rest Γ' k Γk} :
       subTy τ (.cls "Array") = true →
@@ -315,14 +315,14 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       -- *derived* from a `KontOk` derivation (`KontOk.retOk`) rather than carried as a
       -- separate conjunct of `Inv` and re-established at forty push sites.
       -- `subTy` rather than equality, because `CtlOk`'s eval clause already allows the
-      -- continuation to sit at a *wider* type than the expression's (L193): the
+      -- continuation to sit at a *wider* type than the expression's: the
       -- callee's declared return is below the index, not equal to it.
       (∀ σ, cΓ.1.ret = some σ → subTy σ τ = true) →
       -- **L222: the callee is not inside a loop** — free at every push, and the other half
       -- of the guarantee above.
       cΓ.1.inLoop = none →
       KontOk D h (cΓ' :: Γs) τ k → KontOk D h (cΓ :: cΓ' :: Γs) τ (.frameK fid :: k)
-  /-- **A block body's value, delivered** (L245) — the block frame pops and the value
+  /-- **A block body's value, delivered** — the block frame pops and the value
       goes on to whatever pushed the block call (an `iterK`, for a native iterator).
 
       `frameK`'s shape at a different constructor: `applyKont`'s two arms are the same
@@ -345,7 +345,7 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       cΓ.1.ret = none → cΓ.1.inLoop = none → subTy τ τ' = true →
       KontOk D h (cΓ' :: Γs) τ' k →
       KontOk D h (cΓ :: cΓ' :: Γs) τ (.blkFrameK fid lam brk cl args :: k)
-  /-- **`return e`, with the value in flight** (L200). Three premises, each spent in a
+  /-- **`return e`, with the value in flight**. Three premises, each spent in a
       different place: `c.ret = some σ` is what the target is read through, `subTy τ σ`
       is the rule's own conformance check, and the tail's `KontOk` is what
       `KontOk.retOk` turns into the `RetOk` the unwinding consumes.
@@ -358,7 +358,7 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       KontOk D h ((c, Γk) :: Γs) τ' k →
       (hsu : SubEnv Γk (Γ) := by first | exact SubEnv.refl _ | assumption) →
       KontOk D h ((c, Γ) :: Γs) τ (.jumpValK .retK :: k)
-  /-- **`C::n`, with the namespace in flight** (L205).
+  /-- **`C::n`, with the namespace in flight**.
 
       The in-flight value is the *base*, and the premise that matters is that its type
       is a **class object**: `.clsOf cname` is the only `Ty` a namespace can have, and
@@ -376,10 +376,10 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       KontOk D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk (Γ) := by first | exact SubEnv.refl _ | assumption) →
       KontOk D h ((c, Γ) :: Γs) τ (.cpathK n :: k)
-  /-- **The receiver of a *block* send, in flight** (L257) — the `recvK` a literal block
+  /-- **The receiver of a *block* send, in flight** — the `recvK` a literal block
       rides on, and the constructor `infer`'s block-send rule registers.
 
-      Its premises are `KontOk.iterK`'s (L253) read one step earlier: the block
+      Its premises are `KontOk.iterK`'s read one step earlier: the block
       environment is built from the **send site's** environment rather than from the
       iterator activation's, and the row is still a row rather than the loop's residue.
       What the delivery adds is everything `DeclsOk` supplies — the miss, the payload
@@ -400,7 +400,7 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       KontOk D h ((c, Γk) :: Γs) τw k →
       (hsu : SubEnv Γk Γ := by first | exact SubEnv.refl _ | assumption) →
       KontOk D h ((c, Γ) :: Γs) τr (.recvK mname [] (.lit ps ls body) site :: k)
-  /-- **A native iterator between two block calls** (L253) — the loop marker, and the
+  /-- **A native iterator between two block calls** — the loop marker, and the
       one constructor that has to carry *everything the next call needs*, because
       `iterStep` either calls the block again (a fresh block frame **and** a fresh
       `iterK`) or delivers the iterator's own answer.
@@ -412,15 +412,15 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       What each group of premises is for:
 
       * **the closure's shape** — `[.req x]`, no block-locals, not a lambda — is exactly
-        `callClosure_req1`'s hypothesis set (L244), and all three are syntactic, so
+        `callClosure_req1`'s hypothesis set, and all three are syntactic, so
         `infer`'s rule can check them;
       * **`Γb = (x, σp) :: outer` with every `outer` entry `.any`** is the block
         environment, and the `.any` is doing real work: `FrameConforms` at the fresh
         block frame then owes `ValueTy h _ .any` at every enclosing name, which holds for
-        every value (L232), so the constructor needs to say **nothing** about the frame
-        the closure captured. That is what `ClosuresOk` carries instead (L248/L251);
+        every value, so the constructor needs to say **nothing** about the frame
+        the closure captured. That is what `ClosuresOk` carries instead;
       * **the block context's five `none`/`true` fields** discharge four of `StackCtx`'s
-        seven clauses at the block frame outright (L250) and are what `retOk`/`nxtOk`
+        seven clauses at the block frame outright and are what `retOk`/`nxtOk`
         close their new cases with;
       * **`∀ a ∈ rest, ValuesTy h a bs.params`** is the loop's remaining work, heap-indexed
         so it rides `heap_congr'` like every other `ValueTy` premise;
@@ -429,7 +429,7 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
 
       `kind = .ignore` restricts this to the `each`-shaped iterators. `.arrayMap` accumulates
       the block's values into a fresh array and would need the element claim `Ty` cannot
-      yet write (`arrayOf`, L238); `.fold`/`.maxBy` change the block's *argument* types
+      yet write (`arrayOf`); `.fold`/`.maxBy` change the block's *argument* types
       between iterations. One `IterKind` at a time, and the census says `each` is the
       one to have (L244's table). -/
   | iterK {D : Decls} {h : Heap} {cΓ : FrameCtx × Env} {Γs : List (FrameCtx × Env)}
@@ -450,7 +450,7 @@ inductive KontOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kon
       KontOk D h (cΓ :: Γs) τ' k →
       KontOk D h (cΓ :: Γs) τ (.iterK cl brk rest .ignore acc retVal cur :: k)
 
-/-- **The labels of the `frameK`s in the continuation, in order** (L199). One frame
+/-- **The labels of the `frameK`s in the continuation, in order**. One frame
     push writes both a stack entry and a `frameK`, and one pop removes both, so the
     two lists move together — this is that fact, made checkable.
 
@@ -464,7 +464,7 @@ def frameKLabels : List Kont → List FrameId
   | .frameK fid :: k => fid :: frameKLabels k
   | _ :: k => frameKLabels k
 
-/-- **Every kont that pops a frame** (L245) — `frameK` *and* `blkFrameK` — and it is
+/-- **Every kont that pops a frame** — `frameK` *and* `blkFrameK` — and it is
     this, not `frameKLabels`, that `Inv` states the stack correspondence over.
 
     `callClosure` pushes a block activation with a **`blkFrameK`**, not a `frameK`
@@ -488,7 +488,7 @@ def framePopLabels : List Kont → List FrameId
   | .blkFrameK fid _ _ _ _ :: k => fid :: framePopLabels k
   | _ :: k => framePopLabels k
 
-/-- **The konts a `.retJ` passes straight through** (L199). Not a judgement: it is a
+/-- **The konts a `.retJ` passes straight through**. Not a judgement: it is a
     read-off of `unwind` (`Interp/Kont.lean`), whose **catch-all** propagates a jump
     unchanged and whose two loop markers propagate a `.retJ` explicitly. All nine kont
     shapes the fragment stacks are in here; `frameK` is the one that is not, and it is
@@ -527,7 +527,7 @@ def firstFrameK : List Kont → Option FrameId
   | .frameK fid :: _ => some fid
   | _ :: k => firstFrameK k
 
-/-- **A transparent kont pops nothing** (L245) — `RetTransparent`'s list and
+/-- **A transparent kont pops nothing** — `RetTransparent`'s list and
     `framePopLabels`' two arms are disjoint by inspection, which is the fact the bridge
     below runs on. -/
 @[simp] theorem framePopLabels_transparent {κ : Kont} {k : List Kont} (h : RetTransparent κ) :
@@ -555,7 +555,7 @@ theorem firstFrameK_of_labels : ∀ (k : List Kont) (fid : FrameId) (rest : List
       simp [firstFrameK, h.1]
     | _ => exact (by simpa [firstFrameK] using ih fid rest (by simpa [frameKLabels] using h))
 
-/-- **A `.retJ` in flight is well-typed for where it will land** (L200): every kont
+/-- **A `.retJ` in flight is well-typed for where it will land**: every kont
     above the innermost `frameK` is transparent to it, and that `frameK` resumes a
     caller whose continuation accepts the declared return type.
 
@@ -570,7 +570,7 @@ inductive RetOk : Decls → Heap → List (FrameCtx × Env) → Ty → List Kont
   | skip {D h Γs σ κ k} :
       RetTransparent κ → RetOk D h Γs σ k → RetOk D h Γs σ (κ :: k)
 
-/-- **`RetOk`, derived** (L200) — the lemma L198's two `KontOk` premises and L200's
+/-- **`RetOk`, derived** — the lemma L198's two `KontOk` premises and L200's
     `def`-row guard exist for.
 
     Recursion on the *kont list* rather than on the derivation, because the derivation's
@@ -645,12 +645,12 @@ theorem KontOk.retOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
     firstFrameK (κ :: k) = firstFrameK k := by
   cases κ <;> simp_all [RetTransparent, firstFrameK]
 
-/-- **The bridge, and it goes through `RetOk` rather than through the labels** (L245).
+/-- **The bridge, and it goes through `RetOk` rather than through the labels**.
 
     L199's clause used to *be* the bridge: `frameKLabels m.kont = m.stack.dropLast` and
     `firstFrameK_of_labels` together said *the innermost `frameK`'s label is the stack's
     head*, which is what `unwind` compares `returnTarget` against. With the clause moved
-    to `framePopLabels` (L245) that reading is gone — the innermost *popping* kont may be
+    to `framePopLabels` that reading is gone — the innermost *popping* kont may be
     a `blkFrameK`, whose frame `returnTarget` walks past.
 
     What replaces it is free, because `RetOk` already says the missing thing: it is built
@@ -673,7 +673,7 @@ theorem firstFrameK_of_retOk {D : Decls} {h : Heap} {Γs : List (FrameCtx × Env
     exact ih hl
 
 
-/-- **`unwind` propagates a `.retJ` through every transparent kont** (L200), which is
+/-- **`unwind` propagates a `.retJ` through every transparent kont**, which is
     a computation rather than an argument: `unwind`'s catch-all passes a jump on
     unchanged and the two loop markers pass a `.retJ` on explicitly. Nine cases, each a
     `simp` — this is the measurement `RetTransparent` records, cashed. -/
@@ -685,7 +685,7 @@ theorem unwind_ret_transparent {m : Machine} {κ : Kont} {k : List Kont} {v : Va
   rw [hkm]
   cases κ <;> simp_all [RetTransparent, Interp.withCtl]
 
-/-- **The konts a `next` passes through unchanged** (L225), and it is the *second* such
+/-- **The konts a `next` passes through unchanged**, and it is the *second* such
     list. The difference from `RetTransparent` is one fact about `unwind`: its `while` arm
     handles `.brkJ`/`.nxtJ`/`.redoJ` **specially** and passes everything else to the
     catch-all. So a loop kont is transparent to a `.retJ` and is a `next`'s **terminator**,
@@ -723,7 +723,7 @@ theorem unwind_nxt_transparent {m : Machine} {κ : Kont} {k : List Kont} {v : Va
     (h : NxtTransparent κ) : framePopLabels (κ :: k) = framePopLabels k := by
   cases κ <;> simp_all [NxtTransparent, framePopLabels]
 
-/-- **`unwind` restarts the loop at its condition** (L225) — `unwind`'s `whileCondK`/
+/-- **`unwind` restarts the loop at its condition** — `unwind`'s `whileCondK`/
     `whileBodyK` arm at `.nxtJ`, which is one line of the interpreter: pop the loop kont,
     push a fresh `whileCondK`, and evaluate the condition. -/
 theorem unwind_nxt_loopCond {m : Machine} {c body : Expr} {k : List Kont} {v : Value}
@@ -740,7 +740,7 @@ theorem unwind_nxt_loopBody {m : Machine} {c body : Expr} {k : List Kont} {v : V
   unfold Interp.unwind
   rw [hkm]
 
-/-- **And the same for a `.raiseJ`** (L217) — the *same* nine cases and the same `simp`,
+/-- **And the same for a `.raiseJ`** — the *same* nine cases and the same `simp`,
     because `unwind`'s catch-all does not look at the jump. Stated as a twin rather than
     by generalizing over the jump, because the `while` arms *do* look: `.brkJ`/`.nxtJ`/
     `.redoJ` are special there and a generalized lemma would need a side condition
@@ -753,7 +753,7 @@ theorem unwind_raise_transparent {m : Machine} {κ : Kont} {k : List Kont} {exc 
   rw [hkm]
   cases κ <;> simp_all [RetTransparent, Interp.withCtl]
 
-/-- **A raise crosses a `frameK` by popping the activation** (L217) — `unwind`'s
+/-- **A raise crosses a `frameK` by popping the activation** — `unwind`'s
     `frameK` arm at `.raiseJ`, which is one line of the interpreter and needs no
     agreement between the jump and the frame (contrast `.retJ`, whose arm compares the
     target against the label). -/
@@ -778,7 +778,7 @@ theorem unwind_raise_blkFrameK {m : Machine} {fid : FrameId} {lam : Bool}
   rw [hkm]
 
 /-- **The konts a propagating raise walks, and how the frame stack shrinks under it**
-    (L217). `RetOk`'s shape with the type removed.
+. `RetOk`'s shape with the type removed.
 
     `RetTransparent` is reused rather than duplicated, and that reuse is a fact about
     `unwind` rather than a convenience: the konts it lists are exactly the ones that hit
@@ -798,7 +798,7 @@ inductive RaiseOk : List (FrameCtx × Env) → List Kont → Prop where
   | popBlk {cΓ Γs k fid lam brk cl args} :
       RaiseOk Γs k → RaiseOk (cΓ :: Γs) (.blkFrameK fid lam brk cl args :: k)
 
-/-- **`RaiseOk`, derived from `KontOk`** — the counterpart of `KontOk.retOk` (L200), and
+/-- **`RaiseOk`, derived from `KontOk`** — the counterpart of `KontOk.retOk`, and
     cheaper for the reason `RaiseOk` is cheaper: no `top = false`, no `c.ret`, no
     `infer_table_ret` composition, because there is no type to line up. Every `KontOk`
     constructor is either a `RetTransparent` kont or `frameK`, which is why the induction
@@ -833,16 +833,16 @@ theorem KontOk.raiseOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCt
       | retValK hr hs hk' _ => exact .skip trivial (KontOk.raiseOk hk')
       | frameK hrt hil hk' => exact .pop (KontOk.raiseOk hk')
 
-/-- **The kont shape a `next` walks** (L227), `RetOk`'s third sibling — and the one that
+/-- **The kont shape a `next` walks**, `RetOk`'s third sibling — and the one that
     does **not cross a frame**: a `next` restarts the enclosing loop in the *same*
     activation. So it has no `pop` and no `nil`. Both of those positions are **refuted**
     rather than handled: `unwind` at `[]` answers `.stuck` and at a `frameK` answers
     `.unsupported`, and `KontOk.nil`'s and `KontOk.frameK`'s `inLoop = none` premises
-    (L224/L227) are what refute them.
+ are what refute them.
 
     The two `loop` constructors carry exactly `KontOk.whileCond`'s premises, which is what
     the restart needs. The *environment* obligation lives in `CtlOk`, because the rule is
-    what can check it (L224). -/
+    what can check it. -/
 inductive NxtOk (D : Decls) (h : Heap) :
     FrameCtx → List (FrameCtx × Env) → List Kont → Prop where
   | loopCond {ctx Γl Γs τw c body k Γk} :
@@ -860,11 +860,11 @@ inductive NxtOk (D : Decls) (h : Heap) :
   | skip {c Γs κ k} :
       NxtTransparent κ → NxtOk D h c Γs k → NxtOk D h c Γs (κ :: k)
 
-/-- **`NxtOk`, derived from `KontOk`** (L227) — `KontOk.retOk`'s sibling, and it needs the
+/-- **`NxtOk`, derived from `KontOk`** — `KontOk.retOk`'s sibling, and it needs the
     same two hypotheses for the same two reasons.
 
     `c.inLoop = some Γl` is what refutes the `nil` and `frameK` positions. `Γs.isEmpty =
-    false` is what makes **`infer_table_loop`** (L226) applicable: every threading
+    false` is what makes **`infer_table_loop`** applicable: every threading
     constructor hands the continuation a table the chain computed, and without that lemma the
     derived relation would sit at the chain's deepest table while `CtlOk` needs the
     invariant's. That was L225's blocker and it is now one `subst` per threading case. -/
@@ -921,14 +921,14 @@ theorem KontOk.nxtOk : ∀ {k : List Kont} {D : Decls} {h : Heap} {c : FrameCtx}
       -- **The two terminators.**
       | whileCond hl hw hsu hk' => exact .loopCond hl hw hsu hk'
       | whileBody hl hw hsu hk' => exact .loopBody hl hw hsu hk'
-      -- **The refuted position** (L224).
+      -- **The refuted position**.
       | frameK hrt hnl hk' => exact absurd hil (by rw [hnl]; simp)
 
 def CtlOk (D : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env))
     (m : Machine) : Prop :=
   match m.ctl with
   | .eval e =>
-    -- **The subsumption is here and only here** (L193). `infer` answers the
+    -- **The subsumption is here and only here**. `infer` answers the
     -- expression's *own* type, the continuation is typed at whatever the enclosing
     -- rule registered, and a join is exactly the place those two differ: an `if`
     -- whose branches are `String` and `nil` registers `.nilable (.cls "String")`,
@@ -937,7 +937,7 @@ def CtlOk (D : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env))
     -- clause below needs nothing.
     ∃ τ τ' Γ' D' Γk, infer D Γ e Γs.isEmpty c = some (τ, Γ', D') ∧ subTy τ τ' = true ∧
       SubEnv Γk Γ' ∧ KontOk D' m.heap ((c, Γk) :: Γs) τ' m.kont
-  -- **The environment slack** (L236) is the second half of the same story, and it is
+  -- **The environment slack** is the second half of the same story, and it is
   -- what an `if` whose branches *bind* needs: the continuation was registered at the
   -- join's environment, and each branch then runs at its own — which is *wider*, since
   -- a branch may add bindings the join dropped. `SubEnv Γk Γ'` says the registered one
@@ -947,7 +947,7 @@ def CtlOk (D : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env))
   -- two compose by `SubEnv.trans` at the one delivery case that needs it.
   | .value v => ∃ τ Γk, ValueTy m.heap v τ ∧ SubEnv Γk Γ ∧
       KontOk D m.heap ((c, Γk) :: Γs) τ m.kont
-  -- **A `return` in flight** (L200), and the arm has exactly the three things `unwind`
+  -- **A `return` in flight**, and the arm has exactly the three things `unwind`
   -- reads: the value's type, that every kont above the innermost `frameK` is
   -- transparent to a `.retJ` and that `frameK` accepts the type (`RetOk`), and that the
   -- jump's *target* is that `frameK`'s label — which L199's clause is what supplies.
@@ -958,7 +958,7 @@ def CtlOk (D : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env))
     -- `KontOk`'s own head changes at every transparent constructor.
     ∃ σ, ValueTy m.heap v σ ∧ RetOk D m.heap Γs σ m.kont ∧
       firstFrameK m.kont = some target
-  -- **A raise in flight** (L217), and the arm is *one conjunct* — which is the
+  -- **A raise in flight**, and the arm is *one conjunct* — which is the
   -- surprise, so read why before adding to it.
   --
   -- `typeStuck` fires only on an uncaught **type** error (`Books/Metatheory/Reachability/TypeSafety.lean`), and
@@ -986,12 +986,12 @@ def CtlOk (D : Decls) (c : FrameCtx) (Γ : Env) (Γs : List (FrameCtx × Env))
   -- (*a handler typed at τ*). Stated so the next commit does not read the absence as an
   -- oversight.
   | .jump (.raiseJ exc) => ¬ isTypeError m.heap exc ∧ RaiseOk Γs m.kont
-  -- **A `next` in flight** (L227). Three things, and the third is the one `return` did not
+  -- **A `next` in flight**. Three things, and the third is the one `return` did not
   -- need: `NxtOk` says the kont stack reaches a loop kont without crossing a frame, and
   -- `SubEnv Γl Γ` says the loop's *entry* environment — which its condition was typed at —
   -- is weaker than the one the `next` fires in. A `next` restarts the loop in the **same
   -- frame**, so the environment survives the jump and has to be reconciled; `RetOk` and
-  -- `RaiseOk` both pop a frame and owe nothing here (L224). `SubEnv` is L218's relation,
+  -- `RaiseOk` both pop a frame and owe nothing here. `SubEnv` is L218's relation,
   -- getting its first consumer.
   | .jump (.nxtJ _) =>
       ∃ Γl, c.inLoop = some Γl ∧ SubEnv Γl Γ ∧ Γs.isEmpty = false ∧
@@ -1059,7 +1059,7 @@ theorem dropLast_cons_ne {α : Type} {a : α} {l : List α} (h : l ≠ []) :
   | nil => exact absurd rfl h
   | cons b t => simp
 
-/-- **The globals conjunct** (L228), and it is the first `Inv` clause about machine
+/-- **The globals conjunct**, and it is the first `Inv` clause about machine
     state that is neither the heap nor the frames.
 
     Indexed by the *heap* and the *association list* rather than by the machine, which is
@@ -1076,7 +1076,7 @@ def GlobalsOk (D : Decls) (h : Heap) (gs : List (String × Value)) : Prop :=
   ∀ x p σ, plainGlobal x = true → gs.find? (·.1 == x) = some p →
     globalTy? D x = some σ → ValueTy h p.2 σ
 
-/-- **A plain global is not a match view** (L228), which is what makes the read step a
+/-- **A plain global is not a match view**, which is what makes the read step a
     plain `getGlobal`: `evalExpr`'s gvar arm consults `matchGlobal` first, and that answers
     `none` for every name outside `isMatchView`. The rule's guard is what supplies it —
     `Step.varGvar`'s old claim that a gvar read *is* a `getGlobal` becomes true again,
@@ -1090,7 +1090,7 @@ theorem matchGlobal_none_of_plain {m : Machine} {x : String} (h : plainGlobal x 
   unfold Interp.matchGlobal
   simp [hv]
 
-/-- **And `setGlobal` writes the association list** (L228), for the same reason: the `$~`
+/-- **And `setGlobal` writes the association list**, for the same reason: the `$~`
     branch is the only other one and `plainGlobal` excludes it. -/
 theorem setGlobal_of_plain {m : Machine} {x : String} {v : Value} (h : plainGlobal x = true) :
     m.setGlobal x v = { m with globals := (x, v) :: m.globals.filter (·.1 != x) } := by
@@ -1152,7 +1152,7 @@ theorem GlobalsOk.set {D : Decls} {h : Heap} {gs : List (String × Value)} {x : 
     rw [find?_filter_ne _ hne] at hf
     exact hg y p τ hpl hf hdy
 
-/-- **And the table is irrelevant up to `SubDecls`** (L228) — a `def` grows `rows` and
+/-- **And the table is irrelevant up to `SubDecls`** — a `def` grows `rows` and
     nothing else, so `globalTy?` is unmoved and the conjunct transports by rewriting the
     lookup. Needed because the `def` case re-establishes `Inv` at the *grown* table. -/
 theorem GlobalsOk.table {D D' : Decls} {h : Heap} {gs : List (String × Value)}
@@ -1165,7 +1165,7 @@ theorem GlobalsOk.congr {D : Decls} {h h' : Heap} {gs : List (String × Value)}
     (ha : TypeAgree h h') (hg : GlobalsOk D h gs) : GlobalsOk D h' gs :=
   fun x p σ hp hf hd => ValueTy.congr ha (hg x p σ hp hf hd)
 
-/-- **The closure a continuation carries, if it carries one** (L247). Two constructors
+/-- **The closure a continuation carries, if it carries one**. Two constructors
     do: `iterK` remembers the block a native iterator is driving, and `blkFrameK`
     remembers it so that `redo` can re-enter the same invocation. -/
 def KontClosure : Kont → Option Closure
@@ -1173,7 +1173,7 @@ def KontClosure : Kont → Option Closure
   | .blkFrameK _ _ _ cl _ => some cl
   | _ => none
 
-/-- **Every closure the continuation mentions captures a live, non-block frame** (L247).
+/-- **Every closure the continuation mentions captures a live, non-block frame**.
 
     This is the *whole* frame-side fact a block call needs, and it is small because the
     captured frame's **environment** is not among the things it has to supply: the block
@@ -1200,7 +1200,7 @@ def ClosuresOk (m : Machine) : Prop :=
     -- **L250: and the three *name-free* `StackCtx` clauses of that frame** — the ones a
     -- block activation's own entry will owe, since `callClosure` copies `defmod`, `cref`
     -- and `defVis` from here. Name-free is the whole point: `className … = c.cls` is the
-    -- clause that needs the pairing, and it is guarded on `c.inBlock` instead (L250).
+    -- clause that needs the pairing, and it is guarded on `c.inBlock` instead.
     (m.heap.classPayload? (m.frames.getD (cl.captured.getD 0) default).defmod).isSome ∧
     Boot.objectId ∈ (m.frames.getD (cl.captured.getD 0) default).cref
 
@@ -1228,12 +1228,12 @@ def FrameShape (f g : Frame) : Prop :=
 
 theorem FrameShape.rfl' (f : Frame) : FrameShape f f := ⟨rfl, rfl, rfl, rfl⟩
 
-/-- **The one shape every consecution case needs** (L247): the frames may have grown
+/-- **The one shape every consecution case needs**: the frames may have grown
     (or had a `locals` rewritten), and the continuation may have gained konts that carry
     no closure or lost some from the front. Every step in the fragment is an instance,
     which is why the sites take one lemma rather than one argument each. -/
 theorem ClosuresOk.transport {m m' : Machine} (h : ClosuresOk m)
-    -- **Every closure the new continuation mentions, the old one mentioned** (L253) —
+    -- **Every closure the new continuation mentions, the old one mentioned** —
     -- which is weaker than *every new kont was already there*, and the weakening is what
     -- the block call needs: it pushes two konts that are **new** and carry the closure
     -- the `iterK` it replaces already carried.
@@ -1325,13 +1325,13 @@ theorem ClosuresOk.konts {m m' : Machine} (h : ClosuresOk m)
     the object model builds a cyclic `include` — but nothing in the `Heap` **type**
     forbids one either, which is why it cannot be a theorem.
 
-    **`LitClsOk` is the fourth heap conjunct** (L151), and it is here for the
+    **`LitClsOk` is the fourth heap conjunct**, and it is here for the
     producer: `infer` gives a string literal the type `.cls "String"`, which is a
     claim about a name, while the step allocates an object whose class is the id
     `Boot.stringId`. See its own docstring for why the join belongs in the
     invariant rather than at the use site.
 
-    **`BottomObj` is the sixth conjunct** (L155), and it is the only one that is
+    **`BottomObj` is the sixth conjunct**, and it is the only one that is
     not about the heap: *the outermost activation's definee is `Object`.* It is
     what turns `infer`'s `top` flag from a decoration into a fact — `CtlOk` reads
     the mode as `Γs.isEmpty`, `FramesOk` makes that a singleton frame stack, and
@@ -1350,7 +1350,7 @@ theorem ClosuresOk.konts {m m' : Machine} (h : ClosuresOk m)
     `def` step moves both together — the row enters the table exactly when the
     method enters the heap. A *smaller* control table related by `SubDecls` is
     what the user-method arm will want later, and it is left out here for the
-    reason `crubySingletonShadow` was (L145): a clause that looks necessary is a
+    reason `crubySingletonShadow` was: a clause that looks necessary is a
     measurement, not a judgement. -/
 def Inv (m : Machine) : Prop :=
   NoHook m.heap ∧ Saturated m.heap ∧ LitClsOk m.heap ∧
@@ -1375,7 +1375,7 @@ def Inv (m : Machine) : Prop :=
 
 /-! ### Inversions used by the send cases -/
 
-/-- **A signature exists only at a type dispatch can start from** (L193). `sigOf`
+/-- **A signature exists only at a type dispatch can start from**. `sigOf`
     reads `declFor`, which reads `tyClassNames`, which is `[]` at `.any` and at every
     nilable — so the existence of a row *is* the side condition `entry_dispatch` and
     `valueTy_tyClass` now ask for, and no rule has to carry it. That is the whole
@@ -1396,7 +1396,7 @@ theorem sigOf_atomic {D : Decls} {τr : Ty} {mname : String} {ps : List Ty} {τr
   cases τr <;>
     simp_all [sigOf, declFor, tyClassNames]
 
-/-- **A declaration's key is atomic** (L260) — `tyClassNames` is `[]` at `.any`, at a
+/-- **A declaration's key is atomic** — `tyClassNames` is `[]` at `.any`, at a
     nilable and at an `arrayOf`, so `declFor` answering `some` refutes all three. This is
     `sigOf_atomic`'s old proof, moved one level down: `sigOf` itself is no longer atomic
     (it answers at a nilable now), but the rows it is *made of* still are. -/
@@ -1431,7 +1431,7 @@ theorem valueTy_not_nilable {h : Heap} {v : Value} {σ : Ty}
       · exact absurd hσ (by simp)
   | _ => exact absurd hσ (by simp [valueTy?])
 
-/-- **A nilable is either `nil` or the thing under it** (L260). The three disjuncts of
+/-- **A nilable is either `nil` or the thing under it**. The three disjuncts of
     `ValueTy` all reduce: `.any` is below a nilable only when it is below what is under
     it (`subTy_any_false`), an array likewise, and the exact arm's `subTy σ' (.nilable σ)`
     is `σ' = .nilT ∨ σ' = .nilable σ ∨ subTy σ' σ` — of which the middle is refuted
@@ -1463,7 +1463,7 @@ theorem valueTy_nilable_inv {h : Heap} {v : Value} {σ : Ty} (ha : σ ≠ .any)
     **Generalized from `[τp]` to any `params` in L152**, because the zero-argument
     case needs it at `[]` and the two would otherwise be the same proof twice.
 
-    **The recovered row takes no block** (L242), and that conjunct is not decoration:
+    **The recovered row takes no block**, and that conjunct is not decoration:
     `sigOf` now refuses a block-taking row, so a rule that reads a signature has
     *shown* the row is blockless, and this is where that fact is handed to `DeclsOk`.
     The day a block-send rule exists it will read `declFor` directly rather than come
@@ -1522,8 +1522,8 @@ theorem sigOf_value_atomic {D : Decls} {h : Heap} {v : Value} {τ : Ty} {mname :
 -- clause stopped being true when `KontOk.recvK`/`recvK0` took the site as a
 -- **parameter** and the `isSelf` guard came out of the rule. It was propping up
 -- those constructors' `.explicit` index and nothing else, so it is unnecessary
--- rather than false — the same shape as `TypeAgree.symm` (L147) and
--- `ResolvesTo_grow` (L147): correct when written, and made pointless by a sharper
+-- rather than false — the same shape as `TypeAgree.symm` and
+-- `ResolvesTo_grow`: correct when written, and made pointless by a sharper
 -- later statement.
 
 /-- `Machine.currentFrame` and `curFrame` agree once the stack is non-empty. -/
@@ -1533,7 +1533,7 @@ theorem currentFrame_eq {m : Machine} (hne : m.stack ≠ []) :
   | nil => exact absurd hst hne
   | cons fid _ => simp [Machine.currentFrame, curFrame, curFid, hst]
 
-/-- Inversion for the two `super` rules (L212). Split by arity for the reason the rules
+/-- Inversion for the two `super` rules. Split by arity for the reason the rules
     are: `startSuperArgs … []` is `doSuper` outright (one step, no continuation) while
     the positive-arity form pushes a `superArgK`. -/
 theorem infer_super0_inv {D D' : Decls} {Γ Γ' : Env} {τ : Ty} {top : Bool} {ctx : FrameCtx}
@@ -1583,7 +1583,7 @@ theorem infer_super_inv {D D' : Decls} {Γ Γ' : Env} {τ : Ty} {top : Bool} {ct
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
-/-- Inversion for bare `super` (L214). No argument list, so no `inferArgs` premise —
+/-- Inversion for bare `super`. No argument list, so no `inferArgs` premise —
     the types come off the context. -/
 theorem infer_zsuper_inv {D D' : Decls} {Γ Γ' : Env} {τ : Ty} {top : Bool} {ctx : FrameCtx}
     (h : infer D Γ (.zsuper none) top ctx = some (τ, Γ', D')) :
@@ -1644,7 +1644,7 @@ theorem infer_def_inv {D D' : Decls} {Γ : Env} {name : String} {params : List P
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
-/-- Inversion for the **class-reopen** rule (L156). The three side conditions come
+/-- Inversion for the **class-reopen** rule. The three side conditions come
     back out as separate facts because the consecution case spends them in three
     different places: `top` against `BottomObj`, `sup = none` against `evalExpr`'s
     own match, and membership against `ClassOk`. -/
@@ -1665,7 +1665,7 @@ theorem infer_class_inv {D D' : Decls} {Γ : Env} {name : String} {sup : Option 
     · exact absurd h (by simp)
   · exact absurd h (by simp)
 
-/-- Inversion for the **zero-argument** send rule (L152). One `split` shallower than
+/-- Inversion for the **zero-argument** send rule. One `split` shallower than
     its unary sibling, because there is no argument to infer and therefore no
     parameter-type equality to check — the output environment is the receiver's. -/
 theorem infer_send0_inv {D D' : Decls} {Γ : Env} {r : Expr} {mname : String} {τ : Ty}
@@ -1753,7 +1753,7 @@ theorem infer_sendBlkN_decl {D D' : Decls} {Γ Γ' : Env} {recv arg blk : Expr}
             · exact absurd h (by simp)
   all_goals exact absurd h (by simp [infer])
 
-/-- **Inversion for the block-send rule** (L257). Four nested splits, and the last is
+/-- **Inversion for the block-send rule**. Four nested splits, and the last is
     the three-way conjunction the rule checks. -/
 theorem infer_sendBlk_inv {D D' : Decls} {Γ Γ' : Env} {recv body : Expr}
     {mname : String} {ps : List Param} {ls : List String} {τ : Ty} {top : Bool}
@@ -1793,7 +1793,7 @@ theorem infer_sendBlk_inv {D D' : Decls} {Γ Γ' : Env} {recv body : Expr}
           exact ⟨τr, x, σp, βret, τb, Γb', rfl, hbs, hbody, hsb, hse, hib⟩
         · exact absurd h (by simp)
 
-/-- Inversion for the send rule, **at any positive arity** (L175). Factored out of
+/-- Inversion for the send rule, **at any positive arity**. Factored out of
     `step_ok` because the nested `split at` needs `next`-bound names that are
     unreadable inline. -/
 theorem infer_send_inv {D D' : Decls} {Γ : Env} {r arg : Expr} {args : List Expr}
@@ -1821,7 +1821,7 @@ theorem infer_send_inv {D D' : Decls} {Γ : Env} {r arg : Expr} {args : List Exp
   · exact absurd h (by simp)
 
 
-/-- Inversion for the **written receiverless call at positive arity** (L171/L175).
+/-- Inversion for the **written receiverless call at positive arity**.
     No receiver run: the receiver is the frame's `self`, supplied by the context, so
     the rule's three tests are the arguments, the signature at the table the last
     argument leaves, and the parameter match. -/
@@ -1888,8 +1888,8 @@ theorem continueArray_plain {m : Machine} {acc : List Value} {e : Expr}
       = .next (withKont m (.eval e) (.arrK acc rest)) := by
   cases e <;> simp_all [continueArray]
 
-/-- **An `Array`-typed value is a reference to an `.arr` payload** (L255) — `plainRecv`'s
-    sixth clause (L230) read back out, factored from `spreadA_of_array` because the block
+/-- **An `Array`-typed value is a reference to an `.arr` payload** — `plainRecv`'s
+    sixth clause read back out, factored from `spreadA_of_array` because the block
     send needs the same fact for a different consumer (`tryIterator`'s payload match). -/
 theorem arrayPayload_of_valueTy {h : Heap} {v : Value} (hv : ValueTy h v (.cls "Array")) :
     ∃ o xs, v = .ref o ∧ (h.get o).payload = .arr xs ∧ o < h.objs.size := by
@@ -1920,7 +1920,7 @@ theorem arrayPayload_of_valueTy {h : Heap} {v : Value} (hv : ValueTy h v (.cls "
   exact ⟨o, xs, rfl, hp, hlt⟩
 
 
-/-- **An `Array`-typed value spreads, and the machine does not move** (L230) — the whole
+/-- **An `Array`-typed value spreads, and the machine does not move** — the whole
     soundness content of the splat rule, and the reason `plainRecv` gained a sixth clause.
 
     `spreadA` is total on an `.arr` payload (it hands back the elements) and answers
@@ -1956,7 +1956,7 @@ theorem spreadA_of_array {m : Machine} {v : Value} (call : SplatCall)
   obtain ⟨xs, hp⟩ := harr
   exact ⟨xs.toList, by simp [Interp.startSplat, Builtins.arrPayload?, hp, Value.identEq]⟩
 
-/-- **And the splat arm** (L230), which is one line of `continueArray` and needs no
+/-- **And the splat arm**, which is one line of `continueArray` and needs no
     hypothesis: a `.splat (some o)` element evaluates `o` under an `arrSplatK`. -/
 theorem continueArray_splat {m : Machine} {acc : List Value} {o : Expr}
     {rest : List Expr} :
@@ -2002,7 +2002,7 @@ theorem inv_eval {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
   ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.ctl, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    ⟨τ, τ, Γ', F', Γk, hinf, by simp, hsuE, hk⟩⟩
 
-/-- **The same, at a *wider* continuation** (L193) — `inv_eval` with the identity
+/-- **The same, at a *wider* continuation** — `inv_eval` with the identity
     `subTy` made a parameter. The one caller is the `ifK` delivery case, where the
     branch's own type sits below the join `inferIf` registered. -/
 theorem inv_eval_sub {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
@@ -2080,7 +2080,7 @@ theorem inv_push {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
   ⟨hh, hsat, hstr, hcls, hbot, hks, hclo.cons hkc, F, c, Γ, Γs, ht, hfs, hsc, hgl,
    ⟨τ, τ, Γ', F', Γk, hinf, by simp, hsuE, hk⟩⟩
 
-/-- **`inv_push` at a wider continuation** (L193), the `inv_eval_sub` of the
+/-- **`inv_push` at a wider continuation**, the `inv_eval_sub` of the
     push form. Same one caller shape: a delivery case whose stored continuation was
     registered at a join. -/
 theorem inv_push_sub {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
@@ -2111,7 +2111,7 @@ theorem inv_push_sub {F : Decls} {m : Machine} {c : FrameCtx} {Γ : Env}
    ⟨τ, τ', Γ', F', Γk, hinf, hsub, hsuE, hk⟩⟩
 
 /-- **A freshly allocated non-class object has the class type its `klass` names**
-    (L151). This is the *value* half of a producer's obligation — the half
+. This is the *value* half of a producer's obligation — the half
     `inv_grow_value` deliberately left to the rule (`hv`, read in the **new** heap) —
     and it is stated once here because every producer owes exactly it: a string
     literal today, `.array` and `C.new` later, each differing only in which `klass`
@@ -2179,7 +2179,7 @@ theorem valueTy_alloc_fresh {h : Heap} {obj : Object} {n : String}
   simp only [valueTy?, hplain, if_true]
   rw [plainRecv_classOf hplain, hget, hg.className_eq obj.klass hnames, hn]
 
-/-- **The invariant survives a step that allocates a plain object** (L149) — which
+/-- **The invariant survives a step that allocates a plain object** — which
     is the producer's consecution case with the rule removed, and therefore the
     statement that says how much of the producer is *not* about the producer.
 
@@ -2201,7 +2201,7 @@ theorem valueTy_alloc_fresh {h : Heap} {obj : Object} {n : String}
 
     The produced value's type is read in the **new** heap (`hv`), which is the whole
     reason the transport had to be relativized rather than proved unrelativized
-    (L143): the fresh object has no type in the old one. -/
+: the fresh object has no type in the old one. -/
 theorem inv_grow_value {F : Decls} {m m' : Machine} {c : FrameCtx} {Γ : Env}
     {Γs : List (FrameCtx × Env)} {Γk : Env} {v : Value} {τ : Ty}
     (hfs : FramesOk m.heap m.frames m.stack (Γ :: Γs.map Prod.snd)) (ht : DeclsOk F m.heap)
