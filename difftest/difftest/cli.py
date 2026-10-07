@@ -61,7 +61,7 @@ def _print_summary(summary: dict, out_dir: Path) -> None:
 
 # Mix arms backed by persisted corpora. `regressions` is deliberately absent: a
 # campaign stops at its first disagreement, and an expected-to-fail corpus would
-# end every mixed run on its first known-open case (N41).
+# end every mixed run on its first known-open case.
 CORPUS_ARMS = ("tier0", "tier3", "sorbet", "slice", "domain", "advisory")
 
 
@@ -206,7 +206,7 @@ def cmd_run(args) -> int:
         extra = {"tier4": {"ran": len(cases), "corpus": "sorbet"}}
     elif args.tier == "regressions":
         # Minimized reproducers of past disagreements, each checked against the
-        # status it declares (N41). Runs whole, and *must*: the point of this tier
+        # status it declares. Runs whole, and *must*: the point of this tier
         # is that it does not sample, so a known defect cannot hide behind a draw.
         cases = load_regressions_corpus(Path(args.corpus) if args.corpus else None)
         if not cases:

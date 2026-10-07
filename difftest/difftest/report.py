@@ -57,7 +57,7 @@ class Reporter:
         if reg:
             # The verdict table above is honest but misleading on its own here: a
             # `still_open` case *is* a disagreement, and is meant to be. This
-            # section is what the exit code is computed from (N41).
+            # section is what the exit code is computed from.
             lines += [
                 "## Regressions corpus — declared status vs observed verdict",
                 "",

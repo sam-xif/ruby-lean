@@ -377,7 +377,7 @@ def range_probe(draw, idx: int) -> tuple:
             A.MethodDef("<=>", ("o",), (answer,)),
             # a fixed repr, so a range *over* these objects still prints
             # process-independently — the default `#<Rng0:0x…>` would put an
-            # address in the observation, which this module does not do (N38)
+            # address in the observation, which this module does not do
             A.MethodDef("inspect", (), (A.StrLit(f"#<{cname}>"),)),
             A.MethodDef("to_s", (), (A.StrLit(f"#<{cname}>"),)),
         ),
@@ -528,7 +528,7 @@ def coerce_probe(draw, idx: int) -> tuple:
     }[shape]
 
     # a fixed repr, so an object that *reaches* an observation (a `clamp` result,
-    # or a class name in a message) prints process-independently (N38)
+    # or a class name in a message) prints process-independently
     methods = [
         A.MethodDef("inspect", (), (A.StrLit(f"#<{cname}>"),)),
         A.MethodDef("to_s", (), (A.StrLit(f"#<{cname}>"),)),

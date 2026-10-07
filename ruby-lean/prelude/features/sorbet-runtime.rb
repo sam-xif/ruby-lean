@@ -172,7 +172,7 @@ module T
   #   * an object whose `inspect` is the **default** one prints `with hash N`
   #     rather than the `#<C:0x…>` the gem calls ugly. `N` is `Object#hash`,
   #     which is *per-process seeded* — no implementation has a stable answer
-  #     (N38), so the model refuses here rather than inventing one. It used to
+  #, so the model refuses here rather than inventing one. It used to
   #     answer the `with value` form, which was simply wrong;
   #   * everything else prints `with value <inspect, truncated>`.
   #
@@ -463,7 +463,7 @@ module T
   # evaluating the block eagerly), so the wrapper is always installed and calls
   # straight through instead. The escape hatch still skips every check; what
   # changes is only that the frame is present, which is the same reflective
-  # visibility the gradual-guarantee probe already records as a violation (N33).
+  # visibility the gradual-guarantee probe already records as a violation.
   def self.__wrap(mod, name, blk)
     # The hidden alias must be **unique per module**, not just per method name.
     # With a flat `__t_unchecked_initialize`, a subclass's alias shadows its

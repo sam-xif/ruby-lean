@@ -41,9 +41,9 @@ module Roundtrip
     rendered = Render.core(core)
 
     # 3. pure check: normal-form / idempotence through a render round-trip
-    #    (warning, not a disagreement — C9). This composes render + parse + desugar,
+    #    (warning, not a disagreement). This composes render + parse + desugar,
     #    so it also trips on render↔parse artifacts that are NOT desugar bugs (e.g.
-    #    a `name=` writer send re-parsing as an attribute assignment — see C21/C9).
+    #    a `name=` writer send re-parsing as an attribute assignment).
     normal_form =
       begin
         core2, = Desugar.program(rendered, inject_bug: inject_bug)
@@ -52,7 +52,7 @@ module Roundtrip
         false
       end
 
-    # 3b. pure check: AST-space idempotence (critical — C22). Re-apply our
+    # 3b. pure check: AST-space idempotence (critical). Re-apply our
     #     RubyCore→RubyCore pass(es) to the already-core AST, with NO render/parse
     #     in the loop. A failure here is a genuine non-idempotence of our own
     #     transformations; passing while `normal_form` fails isolates the cause as a
@@ -75,7 +75,7 @@ module Roundtrip
     # faithful, producing behavior the harness cannot distinguish from the original,
     # including identical un-observability. This covers a program that redefines a core
     # method the observation wrapper itself relies on (e.g. `String#==`), which crashes the
-    # in-process wrapper (C7) the SAME way on both sides. See C20.
+    # in-process wrapper the SAME way on both sides. See C20.
     if obs_src == obs_core
       return Result.new(status: :agree, coverage: coverage, core: core, rendered: rendered,
                         obs_src: obs_src, obs_core: obs_core, normal_form: normal_form,

@@ -26,7 +26,7 @@ module RubyCore
     cpath_asgn: "[:cpath_asgn, base_or_nil, name, expr]",  # A::B = expr
     send:  "[:send, recv_or_nil, mname, [args], block_or_nil]",
     vcall: "[:vcall, mname]",  # bare identifier, not a local (Prism variable_call): NameError on miss
-    block: "[:block, [params], [block_locals], [declared], body]",  # {|params; locals| body}; params are param-nodes. `declared` = implicit parse-time block-locals (C35)
+    block: "[:block, [params], [block_locals], [declared], body]",  # {|params; locals| body}; params are param-nodes. `declared` = implicit parse-time block-locals
     yield: "[:yield, [args]]",                               # yield to the current block
     if:    "[:if, cond, then, else_or_nil]",
     while: "[:while, cond, body]",
@@ -42,7 +42,7 @@ module RubyCore
     next:   "[:next, expr_or_nil]",
     retry:  "[:retry]",                 # re-run the enclosing begin body
     # object-model core (C12 category d): class/module bodies are evaluated with a fresh
-    # cref + self, so these are irreducible primitives, NOT sugar for Class.new (see C18).
+    # cref + self, so these are irreducible primitives, NOT sugar for Class.new.
     class:  "[:class, name, super_or_nil, body]",   # name: simple constant String
     module: "[:module, name, body]",
     sclass: "[:sclass, obj, body]",                 # class << obj; body; end

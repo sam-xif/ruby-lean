@@ -1,20 +1,20 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Fragment-coverage measurement + ratchet (docs/front-end/growing-the-fragment.md).
+# How much of a corpus the desugarer supports, and what blocks the rest.
 #
 # Runs the desugar GATE only (no CRuby subprocesses — fast) over a corpus and reports:
 #   - fragment coverage  = in-fragment / (parseable - explicitly-excluded)
 #   - blocker histogram   = per unsupported Prism node type, #programs it blocks
 #     (--full walks the AST for the complete per-program blocker set, not just the
 #      first node desugar trips on)
-#   - ratchet: compares in-fragment count against coverage-baseline.json; nonzero exit
-#     on regression. `--save` writes the current numbers as the new baseline.
+#   - a comparison with coverage-baseline.json: nonzero exit if fewer programs are
+#     supported than it records. `--save` writes the current numbers as the baseline.
 #
 # Usage:
 #   bin/coverage [PATH]        # default PATH = corpus/bootstraptest
 #   bin/coverage --full [PATH] # full per-program blocker profile
-#   bin/coverage --save [PATH] # update the ratchet baseline
+#   bin/coverage --save [PATH] # record the current numbers as the baseline
 lib = File.expand_path("../lib", __dir__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 require "desugar"
@@ -117,7 +117,7 @@ label = full ? "full per-program blocker profile" : "first-blocker histogram"
 puts "--- #{label} (top 25) ---"
 hist.sort_by { |_, v| -v }.first(25).each { |k, v| printf "%5d  %s\n", v, k }
 
-# --- ratchet ---
+# --- comparison with the recorded baseline ---
 baseline_path = File.expand_path("../coverage-baseline.json", __dir__)
 current = { "in_fragment" => in_fragment, "parseable" => parseable, "corpus" => File.basename(path) }
 
@@ -129,18 +129,18 @@ end
 
 if File.exist?(baseline_path)
   base = JSON.parse(File.read(baseline_path))
-  puts "\nratchet: baseline in-fragment=#{base['in_fragment']} (of #{base['parseable']})  " \
+  puts "\nbaseline: in-fragment=#{base['in_fragment']} (of #{base['parseable']})  " \
        "current=#{in_fragment} (of #{parseable})"
   regressed = false
-  # A smaller corpus must not mask a coverage drop: both counters are monotone.
-  # `in_fragment` can only rise, and `parseable` (the harvested set) can only
-  # rise or stay put — if either falls, the ratchet regresses.
+  # The corpus is harvested from a pinned CRuby tag, so `parseable` is fixed, and
+  # `in_fragment` may only rise.
   if in_fragment < base["in_fragment"]
     warn "REGRESSION: in-fragment dropped from #{base['in_fragment']} to #{in_fragment}"
     regressed = true
   end
-  if parseable < base["parseable"]
-    warn "REGRESSION: parseable corpus shrank from #{base['parseable']} to #{parseable}"
+  if parseable != base["parseable"]
+    warn "REGRESSION: the corpus has #{parseable} parseable programs, the baseline #{base['parseable']}: " \
+         "it is not the pinned one (remove desugar/corpus/bootstraptest and rerun `make desugar-coverage`)"
     regressed = true
   end
   exit 1 if regressed
