@@ -1,142 +1,87 @@
 # The playground
 
-Commands run from `playground/`.
-
-The user-facing front end. Pick one of 259 annotated Ruby programs, run the five
-stages over it, and see whether the Lean checker can prove it will never raise a
-type error. Edit the program, or edit the proposed proof, and check it again.
-
-The page is written for someone arriving with no context: **What is this?** in
-the header opens an overview covering what the checker proves, why CRuby runs
-beside it, what the stepper shows, and — stated plainly — that 63 of the 259
-programs are inside the certified fragment today and this is a proof of concept
-aimed at the whole language and at programs that read user input.
-
-Corpus descriptions are working notes written for whoever is building the
-ladder, so the menu does not show them raw: programs are listed by name and
-grouped by tier, and prose appears under the menu only when a clean sentence can
-be extracted from the note (48 of 259 have none, and show the name instead).
+A browser interface to the whole pipeline. Pick one of the typed corpus
+programs or write your own, run the five stages over it, and see whether the
+checker accepts it. You can edit the program, or edit the proposed typing
+derivation, and check again.
 
 ```
 annotated Ruby
   ├─ 0  signatures   read the declared types
-  ├─ 1  strip        sig · visibility · freeze · require · const_inline · class_sugar
-  ├─ 2  desugar      desugar → RubyCore JSON
-  ├─ 3  derive       the untrusted emitter → a Deriv
-  └─ 4  validateD    the trusted Bool                      ← the only claim
+  ├─ 1  strip        remove the annotations
+  ├─ 2  desugar      Ruby to the model's core language
+  ├─ 3  derive       propose a typing derivation (untrusted)
+  └─ 4  validateD    the checker's verdict (the only trusted stage)
 ```
 
-Beside it, **Lean model ▶** and **CRuby ▶** run the same program through the
-model and through real CRuby, and say whether their stdout agrees.
+Beside the stages, **Lean model ▶** and **CRuby ▶** run the same program on the
+model and under CRuby and say whether their output agrees.
 
-And **Step it ▶** opens an overlay that walks the model one `stepFn` transition
-at a time — the control state, the call/block frames with their live locals, the
-continuation stack and the accumulated stdout. `←` / `→` step while it is open,
-`Esc` or a click outside closes it. It is a *printer* over the real
-`stepFn` (`ruby-lean/RubyCore/Trace.lean` emits every configuration as JSON
-instead of one observation), not a second interpreter, so it has no fragment of
-its own: whatever the model runs, this shows.
+**Step it ▶** walks the model one `stepFn` transition at a time, showing the
+control, the frames with their locals, the continuation stack and the output so
+far. `←` and `→` step; `Esc` closes it. It prints the states of the real model
+(`ruby-lean/RubyCore/Trace.lean`); it is not a second interpreter. A whole
+program is long, so the window has controls: **count steps** says how many
+steps the program takes, **start at** begins at the first step whose control
+contains the text you give (`send .bump(`), and **or step** jumps to an index.
 
-Every result on the page remembers the input text it was computed from. Edit
-the program, the stripped box or the certificate and the results that no longer
-match are dimmed and marked **stale**, and the edited box is flagged. Stale
-results are not cleared on a keystroke. They go when something runs:
-**Lean model ▶**, **CRuby ▶** and the stepper first strip the program again (only
-if the source changed, so a direct edit to the stripped box survives) and
-desugar it. Then they clear any stage or run output that is still stale, so the
-page never shows one program's output next to another program's stages. Two
-runs of different buffers show **ran different programs** instead of comparing
-their stdout.
+Every result on the page remembers the text it was computed from. When you edit
+a box, results that no longer match are dimmed and marked **stale** until you
+run again.
 
-A whole-program trace is only viable for a toy, so the window controls matter —
-**count steps** says how long the program is, **start at** takes a substring of
-the rendered control (`send .bump(`) and stops at the first step containing it,
-and **or step** jumps to an index. On anything real those are the difference
-between a usable view and four thousand steps of prelude boot.
+## Running it
 
-## Two ways to run it
-
-Same `index.html` both times. The only difference is who executes the stages.
-
-**In the browser, no server.** Everything is wasm in a worker: `ruby.wasm` for
-the desugar harness, the strip chain, the sig reader, the emitter and the CRuby
-oracle; `rubycore.wasm` for the model; `validate-one.wasm` for `validateD`.
+**Against local binaries.** This is the only way to run the real Sorbet.
 
 ```sh
-make -C .. playground        # the three .wasm modules, then dist/ and dist.tar.gz
-make -C .. playground-serve  # ... and serve it on :8080
+make run
+cd playground && python3 server.py      # http://localhost:8077, Python standard library only
 ```
 
-`dist/` is a static site: drop it on GitHub Pages or open it from disk. Nothing
-is fetched from a third party at run time.
-
-**Against localhost, over the native binaries.** The reference implementation,
-and the only way to run the real `srb`:
+**Entirely in the browser.** Everything is compiled to WebAssembly and runs in
+a worker: CRuby with the desugarer and the pipeline scripts, the model, and the
+checker.
 
 ```sh
-(cd ../ruby-lean && lake build)
-python3 server.py             # http://localhost:8077
+make playground-serve     # builds the wasm modules and playground/dist/, serves on :8080
 ```
 
-The page chooses by looking for `config.js`, which `build.sh` writes into
-`dist/` and which does not exist in the source tree — so a checkout served by
-`server.py` uses the server, and a deployed `dist/` uses wasm. `?backend=wasm`
-and `?backend=server` override either, which is how you compare them.
+`playground/dist/` is a static site that can be hosted anywhere. Nothing is
+fetched from a third party at run time. Building it needs `wasmtime`; the build
+downloads its own wasi-sdk.
 
-## What the browser cannot do, and does not pretend to
+The page uses WebAssembly when it finds the `config.js` that the build writes
+into `dist/`, and the local server otherwise. `?backend=wasm` and
+`?backend=server` override that.
 
-**Sorbet.** It is a C++ binary with no wasm port. `read_sigs.rb` reads the
-declared types off the source with Prism instead, which is sound rather than a
-shortcut — `Checker/Check/Deriv.lean` re-derives every declared type, so a weaker
-reader costs blocks and rejects and never a wrong accept.
-(`ruby-lean/scripts/cmp_sig_readers.py` measures it: the same 63 rungs accepted
-either way.)
+## What the browser build cannot do
 
-Sorbet's *verdict* is a different thing and is not reconstructible. The page
-shows the recorded `srb_clean` only while the buffer still matches the corpus
-source, and says **"not checked"** the moment you edit. `server.py` runs the
-real thing and says so.
+Sorbet is a C++ program with no WebAssembly port. In the browser the signatures
+are read from the source with Prism instead (`ruby-lean/scripts/read_sigs.rb`).
+This cannot make the checker accept more: the checker re-derives every declared
+type, so a weaker reader can only lead to more programs being declined.
+
+Sorbet's own verdict on a program cannot be reconstructed. For an unedited
+corpus program the page shows the recorded verdict, and once you edit it shows
+"not checked".
+
+## Testing it
+
+```sh
+cd playground && ./build.sh && node --experimental-wasm-exnref check.mjs
+```
+
+This runs every backend call against the real WebAssembly modules in `dist/`.
+It does not render the page, so it checks the pipeline and not the layout.
 
 ## Files
 
-| | |
+| File | Contents |
 |---|---|
-| `index.html` | the page: five stages, two run buttons, no tabs |
-| `js/wasi.js` | a WASI preview1 shim, sized to these five jobs. No filesystem — `ruby.wasm` carries its own via wasi-vfs |
-| `js/worker.js` | runs the modules off the main thread and caches compiled ones |
-| `js/backend.js` | the seam: eleven calls, answered by wasm or by `server.py` |
-| `build.sh` | assembles `dist/` and `dist.tar.gz` |
-| `mkcorpus.py` | bakes all 259 rungs (metadata, source, recorded verdict) into one `corpus.json` |
-| `server.py` | the localhost fallback, eleven matching routes |
-| `check.mjs` | drives the built `dist/` headlessly against the real modules |
-
-## Checking it
-
-```sh
-./build.sh && node --experimental-wasm-exnref check.mjs
-```
-
-Imports the real `backend.js` / `worker.js` / `wasi.js` out of `dist/` and runs
-all eleven calls against the real wasm — including the trace window controls,
-and that a recorded Sorbet verdict is withdrawn once the buffer is edited. The node flag enables the standard wasm
-exception encoding; browsers need nothing.
-
-It stubs four browser globals, and stubs them *carefully*: `fetch` resolves
-through `new URL(u, base)` and the fake `Worker` checks each posted URL the way
-a real worker would resolve it — against its own script URL, not the document's.
-An earlier version string-munged paths instead and stayed green while the page
-was broken, because `backend.js` was handing the worker a relative wasm URL that
-resolved to `js/wasm/ruby.wasm`.
-
-It does not render anything, so `index.html`'s own script is unexercised: a
-green run means the pipeline works, not that the page looks right.
-
-## Sizes
-
-`dist/` is 57.6 MB on disk, 17.9 MB as `dist.tar.gz`; `ruby.wasm` is 44.7 MB of
-that and gzips to about 15 MB, which is roughly what a visitor transfers since
-Pages gzips on the wire. Under the 100 MB per-file limit.
-
-The first press of a Ruby stage pays a one-off wasm compile of that 44 MB — a
-few seconds. The page prewarms it on load, and the Lean modules (5.5 and 6.8 MB)
-are independent, so `validateD` is quick even while Ruby is still warming.
+| `index.html` | The page |
+| `js/backend.js` | The calls the page makes, answered by WebAssembly or by `server.py` |
+| `js/worker.js` | Runs the modules off the main thread and caches the compiled ones |
+| `js/wasi.js` | A small WASI shim |
+| `server.py` | The local server |
+| `build.sh`, `mkcorpus.py` | Assemble `dist/` and bake the corpus into one JSON file |
+| `check.mjs` | The headless test |

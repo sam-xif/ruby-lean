@@ -1,52 +1,52 @@
-# desugar/ — Ruby to RubyCore
+# desugar/ — Ruby to the model's core language
 
-Translates Ruby source into RubyCore, the smaller language the Lean model runs,
-and outputs it as JSON. The model never parses Ruby itself; everything it runs
-comes through here.
-
-This directory is also the test harness for that translation. For each program
-`P`, it renders `desugar(P)` back into Ruby and checks that CRuby produces the
-same output for both, including the order in which side effects happen. That
-means the translation is tested with CRuby alone, without depending on the model.
-
-## Usage
-
-Needs a recent CRuby with Prism (`brew install ruby`).
+Translates Ruby source into RubyCore, the small language the model runs, and
+writes it as JSON. The model never parses Ruby; everything it runs comes through
+here.
 
 ```sh
-RUBY=$(brew --prefix ruby)/bin/ruby
-
-echo 'puts 1 + 2' | $RUBY bin/export-json   # Ruby on stdin -> RubyCore JSON (what the model reads)
-$RUBY bin/desugar some_program.rb           # show the rules fired and the rendered RubyCore
-$RUBY bin/run                               # round-trip every corpus program; non-zero exit on disagreement
-$RUBY bin/run corpus/seeds --verbose        # one directory, printing the rendered RubyCore
-$RUBY bin/coverage                          # how much of bootstraptest is supported, and what blocks the rest
+echo 'puts 1 + 2' | ruby bin/export-json    # Ruby on stdin, core JSON on stdout
+ruby bin/desugar some_program.rb            # the core program, readably, and the rewrite rules that fired
 ```
+
+It needs CRuby 4.0 (for the Prism parser) and nothing else. A program that uses
+something the desugarer does not support is reported as such, with the reason,
+and `export-json` exits with status 3.
+
+## Testing the translation
+
+A wrong translation would make the model run the wrong program, so the
+translation is tested on its own, with CRuby alone. For each program `P`, the
+harness prints `desugar(P)` back as Ruby and checks that CRuby behaves the same
+on both, including the order in which side effects happen.
+
+```sh
+make desugar-test desugar-coverage    # from the repository root; what `make check` runs
+ruby bin/run corpus/seeds --verbose   # one directory, printing each rendered core program
+ruby bin/run --bug                    # inject a known-wrong rewrite and watch the tests catch it
+ruby bin/coverage --full              # what blocks each unsupported bootstraptest program
+```
+
+`coverage-baseline.json` records how many of CRuby's `bootstraptest` programs
+the desugarer supports. `bin/coverage` fails if the number falls;
+`bin/coverage --save` records an improvement.
+
+[How the model is tested](../docs/testing.md#the-desugarer) explains why the
+test observes evaluation order and not only values.
 
 ## Files
 
-| Path | What it does |
+| Path | Contents |
 |---|---|
-| `lib/desugar.rb` | Prism AST → RubyCore, recording which rewrite rules fired |
+| `lib/desugar.rb` | Prism syntax tree to RubyCore, recording which rewrite rules fired |
 | `lib/rubycore.rb` | The list of RubyCore node types (`HEADS`). `ruby-lean/RubyCore/Syntax.lean` mirrors it exactly |
-| `lib/linearize.rb` | Moves `break`/`next`/`return` out of positions where Ruby can't parse them |
-| `lib/render.rb` | RubyCore → Ruby source, for the round-trip |
-| `lib/export.rb` | The versioned JSON format the Lean side reads (`Export::VERSION`) |
-| `lib/observe.rb` | Runs a program under CRuby and captures stdout, result and exception |
-| `lib/roundtrip.rb` | The round-trip check and the triage of disagreements |
-| `bin/harvest_bootstraptest` | Extracts test programs from a checkout of MRI's `bootstraptest/` |
-| `corpus/seeds/` | Hand-written test programs, including ones that check evaluation order |
-| `implementation-choices.md` | Numbered design decisions (C1, C2, …) cited from the code |
+| `lib/linearize.rb` | Moves `break`, `next` and `return` out of positions where Ruby cannot parse them |
+| `lib/render.rb` | RubyCore back to Ruby source, for the round-trip test |
+| `lib/export.rb` | The versioned JSON format the model reads |
+| `lib/observe.rb` | Runs a program under CRuby and captures its output, result and exception |
+| `lib/roundtrip.rb` | The round-trip check and the classification of a disagreement |
+| `bin/harvest_bootstraptest` | Extracts test programs from a checkout of CRuby's `bootstraptest/` |
+| `corpus/seeds/` | Hand-written test programs, including ones that observe evaluation order |
 
-Programs that use something `desugar` doesn't support are reported as out of
-fragment with a reason, not as failures. Currently 1227 of 1299 parseable
-bootstraptest programs are supported (`coverage-baseline.json`).
-
-## More
-
-- [The round-trip method](../docs/front-end/method.md): why this testing approach
-  works and what it checks. Code comments cite it as *"artifact 06 §N"*.
-- [Growing the fragment](../docs/front-end/growing-the-fragment.md): how to add
-  support for a new Ruby feature.
-- [Linearization](../docs/front-end/linearization.md): the one rewrite that needs
-  control-flow reasoning.
+[Adding Ruby to the model](../docs/contributing.md#adding-ruby-to-the-model)
+describes how to extend it.

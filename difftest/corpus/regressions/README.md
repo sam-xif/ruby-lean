@@ -5,21 +5,15 @@ Written **automatically** by `campaign.py` whenever a generative campaign shrink
 disagreement; run by `difftest run --tier regressions`.
 
 ```sh
-uv run python -m difftest run --tier regressions --sut lean
+uv run difftest run --tier regressions --sut lean
 ```
 
 ## Why it exists
 
-For most of this project's life the directory was **write-only**: the campaign
-filed cases here and nothing ever read them. A defect could be found, minimized,
-committed, and then never executed again.
-
-That is not a hypothetical. The `coerce` defect (N40) was found on 2026-08-14 by a
-tier-1.5 campaign — on its **149th draw of a 200-draw budget** — and the very next
-tier-1.5 run, with one extra generation head shifting the draw stream, came back
-**green over the same live bug**. Both runs were honestly reported as "0
-disagreements". The tier exists so that a *known* defect cannot depend on a dice
-roll: it runs every case, every time, and never samples.
+A generated-program campaign is randomized, so a defect it finds once may not be
+found again by the next run. Every disagreement is therefore shrunk and saved
+here, and this tier runs every case, every time, without sampling.
+`make conformance` runs it on every build.
 
 ## Status, and the two ways this goes red
 
@@ -71,5 +65,4 @@ overwritten by the machine: the status is a human judgement.
 ```
 
 `diff`, `control` and `sut` are recorded at filing time so a reader does not have
-to re-derive the defect from the program — the 16 cases that predate sidecars are
-exactly that problem, and their notes say so.
+to re-derive the defect from the program.

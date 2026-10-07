@@ -1,81 +1,67 @@
-# AGENTS.md — ruby-lean
+# AGENTS.md
 
-Start at [`README.md`](README.md): what this is, how to build it, and how to
-reproduce every number. This file is the map for working *inside* it.
+Instructions for coding agents working in this repository. Human contributors:
+see [`docs/contributing.md`](docs/contributing.md), which says the same at
+greater length.
 
-## Where the working record lives
-
-Each area carries its own, and they are the real documentation — read the one
-for what you are about to touch **before** touching it. The Lean work is two
-Lake packages: `ruby-lean/` holds the model and the type checker, and `books/`
-holds every proof about them, the corpus and the gate.
-
-| Directory | Read first | Then |
-|---|---|---|
-| `ruby-lean/` (the model, `RubyCore/`) | [`ruby-lean/README.md`](ruby-lean/README.md) — layout, build; then [`docs/model/`](docs/model/fragment.md) for the fragment and metatheory | [`ruby-lean/RubyCore/README.md`](ruby-lean/RubyCore/README.md) — **the semantics itself**, and what code comments mean by *"artifact NN §M"*; then `ruby-lean/notes/model/implementation-notes.md`, `ruby-lean/notes/model/HANDOFF.md` |
-| `ruby-lean/` (the checker, `Checker/`) | [`ruby-lean/Checker/README.md`](ruby-lean/Checker/README.md) — what the checker is and how it is laid out; then [`books/AGENTS.md`](books/AGENTS.md), which is the working record for the checker *and* its proof | as for `books/Books/TypeSoundness/` below |
-| `books/` | [`books/README.md`](books/README.md) — the books, what each proves, the gate, the vocabulary, and where everything was before it moved here | each book's own README |
-| `books/Books/TypeSoundness/` (the checker's soundness proof) | [`books/AGENTS.md`](books/AGENTS.md) — current state, the proof boundary, the pipeline, the gate; then its *Design record* for the Sorbet, reachability and answer-typed background the code cites | `books/notes/type-soundness/implementation-notes.md` (the chronological record), `found-issues.md` (open findings, §F-numbers), `HANDOFF.md` (the live resume point) |
-| `books/Books/Metatheory/` (facts about the model) | [`books/Books/Metatheory/README.md`](books/Books/Metatheory/README.md); then [`docs/model/metatheory.md`](docs/model/metatheory.md) | `ruby-lean/notes/model/` |
-| `books/Books/FastPower/`, `books/Books/Lib/` (proofs about one Ruby program) | [`books/Books/FastPower/README.md`](books/Books/FastPower/README.md) — how a program book is written and what the kernel can and cannot evaluate | `Books/Lib/` (the shared machinery) |
-| `desugar/` | [`desugar/README.md`](desugar/README.md); then [`docs/front-end/`](docs/front-end/method.md) — the round-trip method (artifact 06), how the fragment grows, linearization | `implementation-choices.md` (C-numbers, cited from the code) |
-| `difftest/` | [`difftest/README.md`](difftest/README.md); then [`docs/testing/`](docs/testing/engine.md) — the engine, its invariants, and the methodology (artifact 05) | `implementation-notes.md` (N-numbers, cited from the code) |
-| `playground/` | [`playground/README.md`](playground/README.md) | [`docs/playground.md`](docs/playground.md) |
-| `paper/` | [`paper/README.md`](paper/README.md) | — |
-
-READMEs are short orientation pages. The longer design and methodology material
-lives in `docs/`, an MkDocs site (see [`docs/index.md`](docs/index.md) for how to
-build it). The written semantics (`ruby-lean/RubyCore/README.md`) and the working
-notes stay next to their code. The cross-references the sources use
-(*"artifact 02 §3"*, *"artifact 06 §4"*, *"types-and-preservation §A.5"*) resolve
-into those files — see `books/AGENTS.md` §*Superseded design notes* for the
-map, including which design documents were deleted and what they were.
-
-## The one norm that matters
-
-**The gate must be green before you commit.**
+## Before you commit
 
 ```sh
-cd books && ./scripts/run_typed_ratchet.sh
+make check
 ```
 
-Quiet mode is the default and is the right one; `--verbose` is for a failure
-whose captured error was not enough. `RATCHET_SKIP_AGREEMENT=1` skips the CRuby
-replay while iterating. In a sandbox with a protected uv cache, set
-`UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache`.
+It must end with `make check: ALL CHECKS PASSED`. It builds the model and the
+checker, builds every proof book, audits axioms, runs the checker over its
+corpus, and runs the model against CRuby. Do not commit on a failure, do not
+skip a failing target, and do not weaken a check to make it pass.
 
-GREEN does not mean finished — it means nothing is *started and incomplete*.
-Rungs nobody has climbed are green, because nothing claims them. What is red is
-the fragment claiming something the bridge cannot back. The default gate checks
-soundness for enabled clinks and counts only actual `validateD` accepts as climbed.
-`--clink-rebuild` checks proofs/controls only. The historical complete-coverage audit
-(`--full-corpus`) is in `books/Unrebuilt/` with the unrebuilt proofs it reads.
+While iterating, run the narrower target for what you changed (`make help`
+lists them), then `make check` once at the end:
 
-## Two boundaries not to blur
+| Changed | Run |
+|---|---|
+| `ruby-lean/RubyCore/`, `ruby-lean/prelude/` | `make conformance`, then `make books` |
+| `ruby-lean/Checker/` | `make soundness` |
+| `books/` | `make books` |
+| `desugar/` | `make desugar-test desugar-coverage` |
+| `difftest/` | `make difftest-test` |
+| `docs/`, any README | `make docs` |
 
-1. **`Checker/` imports nothing from `RubyCore/`.** The checker carries its own
-   copied `Expr`/`Ty`. The one place the two meet is the checker's soundness
-   proof, `books/Books/TypeSoundness/`, which imports both — a denotation relates
-   the two by definition — and it is in another package. The checker and the
-   model share a Lake package, so the compiler does not refuse the import;
-   `ruby-lean/scripts/check-isolation.sh` does, as the gate's first stage.
-2. **Only `validateD` is trusted.** Sorbet, the strip stack, the desugarer and
-   the derivation emitter are all untrusted by construction: they can cost an
-   accept, never produce an unsound one. Keep it that way — if a fix is tempting
-   to make inside the checker to rescue an emitter bug, it is the wrong fix.
+The proofs are a separate Lake package (`books/`). A change to the model or the
+checker can break a proof while `make lean` still passes, so `make books` is
+never optional.
 
-## Proofs rot silently
+## Rules
 
-No proof is on `ruby-lean/`'s build, so `lake build` there says nothing about
-them: a change to the model or the checker can break a proof and leave that
-package green. The gate rebuilds the soundness theorem and everything it
-imports, which is most of `books/Books/Metatheory/` but not all of it. Run
+1. **`ruby-lean/Checker/` imports nothing from `ruby-lean/RubyCore/`.** The two
+   meet only in `books/Books/TypeSoundness/`.
+2. **Only `validateD` is trusted.** Sorbet, the strippers, the desugarer and
+   `emit_deriv.rb` are untrusted: a bug there may cost an accepted program and
+   must never produce a wrongly accepted one. Never patch the checker to
+   compensate for a bug upstream of it.
+3. **The model declines; it does not approximate.** If a Ruby feature cannot be
+   modeled faithfully, answer `unsupported` with a reason. A disagreement with
+   CRuby is a bug.
+4. **No `sorry`, no `native_decide`, no new axiom** in a proof.
+5. **Recorded results only improve.** `difftest/coverage-baseline.json`,
+   `desugar/coverage-baseline.json` and `books/corpus/accepted.txt` are compared
+   on every run. Update one only with the command the failing check prints, in
+   the same commit as the change that moved it, and never to hide a regression.
+6. **Regenerate, do not edit, generated files** (`ruby-lean/RubyCore/Generated/`,
+   `ruby-lean/Checker/Audit/`): `make gen`.
+7. **Documentation describes the present.** Put history in commit messages. Use
+   names an outsider can read; do not introduce project-internal nicknames.
 
-```sh
-make books        # every book
-make proofs       # the metatheory's `#print axioms` and the heap measurements
-```
+## Where things are
 
-at batch boundaries. Three independent breaks once sat undetected for 24 commits
-because a green ratchet says nothing about the proofs it does not import. CI
-builds every book on each pull request.
+| Path | Contents |
+|---|---|
+| `ruby-lean/RubyCore/` | The model. Start at `RubyCore.lean` and `docs/semantics/index.md` |
+| `ruby-lean/Checker/` | The type checker. Entry point `validateD` in `Check/` |
+| `books/Books/TypeSoundness/` | The checker's soundness theorem, `Soundness.lean` |
+| `books/Books/Metatheory/` | Facts about the model |
+| `books/Books/FastPower/`, `books/Books/Lib/` | A proof about one Ruby program, and the library for writing more |
+| `books/corpus/` | Typed programs the checker is measured on |
+| `desugar/` | Ruby to the model's core language |
+| `difftest/` | Differential testing against CRuby |
+| `docs/` | The documentation site |
