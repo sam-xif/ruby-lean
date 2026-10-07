@@ -1012,9 +1012,9 @@ Existing class/module conflicts gate when their diagnostic requires
 the original source position. This does not claim full standard-library or
 Sorbet-runtime conformance.
 
-Two definitions coexist: `inductive Step` (`Proof/Step.lean`) is the definition of
+Two definitions coexist: `inductive Step` (`../books/Books/Metatheory/Machine/Step.lean`) is the definition of
 record, and `stepFn` + `run fuel` (`Interp.lean`) is what executes. The adequacy
-theorems in `Proof/Adequacy.lean` are the bridge — differential testing earns
+theorems in `../books/Books/Metatheory/Machine/Adequacy.lean` are the bridge — differential testing earns
 trust for the *interpreter*, proofs live on the *relation*, and adequacy transfers
 the empirical trust across. Deliberately, the interpreter landed **first**, so the
 model could meet the differential engine on day one rather than after coverage
@@ -1085,7 +1085,7 @@ check itself is deferred.
 |---|---|
 | Layout and build | [`../README.md`](../README.md) |
 | The current fragment, the metatheory | [`../../docs/model/fragment.md`](../../docs/model/fragment.md), [`../../docs/model/metatheory.md`](../../docs/model/metatheory.md) |
-| The checker over this model, and the gate | [`../AGENTS.md`](../AGENTS.md) |
+| The checker over this model, its soundness proof, and the gate | [`../../books/AGENTS.md`](../../books/AGENTS.md) |
 | Front end: `desugar : Surface → RubyCore` | [`../../desugar/README.md`](../../desugar/README.md); artifact 06 is [`../../docs/front-end/method.md`](../../docs/front-end/method.md) |
 | Differential-testing methodology, and artifact 05 | [`../../docs/testing/methodology.md`](../../docs/testing/methodology.md) |
 | The chronological record — what was tried and what it cost | [`../notes/`](../notes/README.md) |

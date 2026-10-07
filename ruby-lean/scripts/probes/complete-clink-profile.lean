@@ -1,2 +1,0 @@
-import Denote.Clink.GateStatus
-require_complete_dclink_profile

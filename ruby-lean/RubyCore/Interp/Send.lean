@@ -380,7 +380,7 @@ def finishSend (m : Machine) (recv : Value) (implicit : SendSite) (mname : Strin
     -- ordinary block argument [V]. Same shape (and the same `builtin.isNone` test) as the
     -- `X.new { … }` case below, which already had to make this distinction.
     --
-    -- Found by the semantic ladder (`Denote/Sem/`) (`found-issues.md` §A5): the special case ran
+    -- Found by the semantic ladder (`books/Books/TypeSoundness/Conformance/`) (`found-issues.md` §A5): the special case ran
     -- *before any method lookup*, so the name was unshadowable here and the model returned
     -- a Proc where CRuby raised.
     let shadowed :=

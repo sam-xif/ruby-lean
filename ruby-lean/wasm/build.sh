@@ -206,8 +206,8 @@ link() {
 
 # The modules an executable links: exactly the objects in Lake's own native
 # link (`.lake/build/bin/<exe>.rsp`), mapped to their wasm objects. A glob over
-# a library is not the same set: `Ratchet/` holds modules that no executable
-# imports, and two of them (`Ratchet.Check`, `Ratchet.Check.Raw`) define the
+# a library is not the same set: `Checker/` holds modules that no executable
+# imports, and two of them (`Checker.Check`, `Checker.Check.Raw`) define the
 # same symbols, so linking both fails.
 closure() {  # closure <exe>
   local rsp="$PKG/.lake/build/bin/$1.rsp"
@@ -220,7 +220,7 @@ TARGETS="${*:-}"
 want() { [ -z "$TARGETS" ] || [[ " $TARGETS " == *" $1 "* ]]; }
 
 # `validate-one` is the trusted one: `validateD`, the Bool the safety theorem is
-# stated about. Its closure is Ratchet/ and the vendored Json/ and nothing else.
+# stated about. Its closure is Checker/ and the vendored Json/ and nothing else.
 if want validate-one; then
   # shellcheck disable=SC2046
   link validate-one $(closure validate-one) "$B"/rt/wasi_stubs.o

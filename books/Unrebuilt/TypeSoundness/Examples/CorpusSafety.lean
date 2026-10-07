@@ -1,0 +1,468 @@
+import Books.TypeSoundness.Examples.BoundCallbackDerivations
+import Books.TypeSoundness.Examples.Derivations
+import Books.TypeSoundness.Examples.MethodDerivations
+import Books.TypeSoundness.Examples.RecursiveDerivations
+import Books.TypeSoundness.Examples.ClassDerivations
+import Books.TypeSoundness.Examples.RectDerivations
+import Books.TypeSoundness.Examples.InheritanceDerivations
+import Books.TypeSoundness.Examples.DefaultDerivations
+import Books.TypeSoundness.Examples.SuperDerivations
+import Books.TypeSoundness.Examples.NilFieldDerivations
+import Books.TypeSoundness.Examples.FactoryDerivations
+import Books.TypeSoundness.Examples.ScalarWriteDerivations
+import Books.TypeSoundness.Examples.TopClassDerivations
+import Books.TypeSoundness.Examples.SelfResultDerivations
+import Books.TypeSoundness.Examples.ModuleDerivations
+import Books.TypeSoundness.Examples.ModuleParamDerivations
+import Books.TypeSoundness.Examples.ModuleCompareDerivations
+import Books.TypeSoundness.Examples.SingletonImplicitDerivations
+import Books.TypeSoundness.Examples.FlowDerivations
+import Books.TypeSoundness.Examples.RequiredFlowDerivations
+import Books.TypeSoundness.Examples.ProcDerivations
+import Books.TypeSoundness.Examples.EachDerivations
+import Books.TypeSoundness.Examples.MapDerivations
+import Books.TypeSoundness.Examples.CallbackDerivations
+
+/-! Concrete corpus programs and their derivations. `SemLadder` compares each program
+against the current stripped corpus; `RuleAudit` reads the clinks from these proofs. -/
+
+set_option autoImplicit false
+namespace Checker.Soundness.Typed
+open RubyCore Checker Checker.Soundness
+
+def program_001_int_lit : Checker.Expr :=
+  .int (1)
+
+theorem safe_001_int_lit (hb : bootOkB = true) : StuckFree bootMachine program_001_int_lit :=
+  dregistry_safe (derivD_intLit) (stateOk_boot hb)
+
+def program_002_bool_true : Checker.Expr :=
+  .tru
+
+theorem safe_002_bool_true (hb : bootOkB = true) : StuckFree bootMachine program_002_bool_true :=
+  dregistry_safe (derivD_truLit) (stateOk_boot hb)
+
+def program_003_bool_false : Checker.Expr :=
+  .fls
+
+theorem safe_003_bool_false (hb : bootOkB = true) : StuckFree bootMachine program_003_bool_false :=
+  dregistry_safe (derivD_flsLit) (stateOk_boot hb)
+
+def program_004_str_lit : Checker.Expr :=
+  .str "hello"
+
+theorem safe_004_str_lit (hb : bootOkB = true) : StuckFree bootMachine program_004_str_lit :=
+  dregistry_safe (derivD_strLit) (stateOk_boot hb)
+
+def program_005_sym_lit : Checker.Expr :=
+  .sym "ok"
+
+theorem safe_005_sym_lit (hb : bootOkB = true) : StuckFree bootMachine program_005_sym_lit :=
+  dregistry_safe (derivD_symLit) (stateOk_boot hb)
+
+def program_006_nil_lit : Checker.Expr :=
+  .nil
+
+theorem safe_006_nil_lit (hb : bootOkB = true) : StuckFree bootMachine program_006_nil_lit :=
+  dregistry_safe derivD_flowNil (stateOk_boot hb)
+
+def program_007_flt_lit : Checker.Expr :=
+  .flt (1.5 : Float).toBits
+
+theorem safe_007_flt_lit (hb : bootOkB = true) : StuckFree bootMachine program_007_flt_lit :=
+  dregistry_safe (derivD_fltLit) (stateOk_boot hb)
+
+def program_008_neg_int_lit : Checker.Expr :=
+  .int (-5)
+
+theorem safe_008_neg_int_lit (hb : bootOkB = true) : StuckFree bootMachine program_008_neg_int_lit :=
+  dregistry_safe (derivD_intLit) (stateOk_boot hb)
+
+def program_009_add : Checker.Expr :=
+  .send (some (.int (1))) "+" [.int (2)] none
+
+theorem safe_009_add (hb : bootOkB = true) : StuckFree bootMachine program_009_add :=
+  dregistry_safe (derivD_prim (derivD_intLit) (derivD_allCons (derivD_intLit) (derivD_allNil) rfl) .intAdd) (stateOk_boot hb)
+
+def program_010_sub : Checker.Expr :=
+  .send (some (.int (5))) "-" [.int (3)] none
+
+theorem safe_010_sub (hb : bootOkB = true) : StuckFree bootMachine program_010_sub :=
+  dregistry_safe (derivD_prim (derivD_intLit) (derivD_allCons (derivD_intLit) (derivD_allNil) rfl) .intSub) (stateOk_boot hb)
+
+def program_011_mul : Checker.Expr :=
+  .send (some (.int (4))) "*" [.int (3)] none
+
+theorem safe_011_mul (hb : bootOkB = true) : StuckFree bootMachine program_011_mul :=
+  dregistry_safe (derivD_prim (derivD_intLit) (derivD_allCons (derivD_intLit) (derivD_allNil) rfl) .intMul) (stateOk_boot hb)
+
+def program_012_div : Checker.Expr :=
+  .send (some (.int (10))) "/" [.int (2)] none
+
+theorem safe_012_div (hb : bootOkB = true) : StuckFree bootMachine program_012_div :=
+  dregistry_safe (derivD_prim (derivD_intLit) (derivD_allCons (derivD_intLit) (derivD_allNil) rfl) .intDiv) (stateOk_boot hb)
+
+def program_013_str_concat : Checker.Expr :=
+  .send (some (.str "a")) "+" [.str "b"] none
+
+theorem safe_013_str_concat (hb : bootOkB = true) : StuckFree bootMachine program_013_str_concat :=
+  dregistry_safe (derivD_prim (derivD_strLit) (derivD_allCons (derivD_strLit) (derivD_allNil) rfl) .strAdd) (stateOk_boot hb)
+
+def program_014_cmp_lt : Checker.Expr :=
+  .send (some (.int (3))) "<" [.int (5)] none
+
+theorem safe_014_cmp_lt (hb : bootOkB = true) : StuckFree bootMachine program_014_cmp_lt :=
+  dregistry_safe (derivD_prim (derivD_intLit) (derivD_allCons (derivD_intLit) (derivD_allNil) rfl) .intLt) (stateOk_boot hb)
+
+def program_015_not_expr : Checker.Expr :=
+  .send (some (.tru)) "!" [] none
+
+theorem safe_015_not_expr (hb : bootOkB = true) : StuckFree bootMachine program_015_not_expr :=
+  dregistry_safe (derivD_prim (derivD_truLit) (derivD_allNil) .notBool) (stateOk_boot hb)
+
+def program_016_bool_and : Checker.Expr :=
+  .seq [.vasgn .lvar "__dt_t1" (.tru), .if' (.var .lvar "__dt_t1") (.fls) (some (.var .lvar "__dt_t1"))]
+
+theorem safe_016_bool_and (hb : bootOkB = true) : StuckFree bootMachine program_016_bool_and :=
+  dregistry_safe (derivD_seq (derivD_seqCons (derivD_vasgn (derivD_truLit) rfl rfl) (derivD_seqLast (derivD_if (derivD_var rfl rfl) (derivD_flsLit) (derivD_var rfl rfl))))) (stateOk_boot hb)
+
+def program_017_bool_or : Checker.Expr :=
+  .seq [.vasgn .lvar "__dt_t1" (.fls), .if' (.var .lvar "__dt_t1") (.var .lvar "__dt_t1") (some (.tru))]
+
+theorem safe_017_bool_or (hb : bootOkB = true) : StuckFree bootMachine program_017_bool_or :=
+  dregistry_safe (derivD_seq (derivD_seqCons (derivD_vasgn (derivD_flsLit) rfl rfl) (derivD_seqLast (derivD_if (derivD_var rfl rfl) (derivD_var rfl rfl) (derivD_truLit))))) (stateOk_boot hb)
+
+def program_019_to_s_call : Checker.Expr :=
+  .send (some (.int 5)) "to_s" [] none
+
+theorem safe_019_to_s_call (hb : bootOkB = true) : StuckFree bootMachine program_019_to_s_call :=
+  dregistry_safe (derivD_prim derivD_intLit derivD_allNil .intToS) (stateOk_boot hb)
+
+def program_020_eq_same_type : Checker.Expr :=
+  .send (some (.int 1)) "==" [.int 1] none
+
+theorem safe_020_eq_same_type (hb : bootOkB = true) : StuckFree bootMachine program_020_eq_same_type :=
+  dregistry_safe (derivD_prim derivD_intLit (derivD_allCons derivD_intLit derivD_allNil rfl)
+    .intEq) (stateOk_boot hb)
+
+def program_021_eq_different_type : Checker.Expr :=
+  .send (some (.int 1)) "==" [.str "a"] none
+
+theorem safe_021_eq_different_type (hb : bootOkB = true) : StuckFree bootMachine program_021_eq_different_type :=
+  dregistry_safe (derivD_prim derivD_intLit (derivD_allCons derivD_strLit derivD_allNil rfl)
+    .intEq) (stateOk_boot hb)
+
+def program_022_unmodeled_builtin_zero_p : Checker.Expr :=
+  .send (some (.int 5)) "zero?" [] none
+
+theorem safe_022_unmodeled_builtin_zero_p (hb : bootOkB = true) : StuckFree bootMachine program_022_unmodeled_builtin_zero_p :=
+  dregistry_safe (derivD_prim derivD_intLit derivD_allNil .intZero) (stateOk_boot hb)
+
+def program_024_cmp_le : Checker.Expr :=
+  .send (some (.int 1)) "<=" [.int 2] none
+
+theorem safe_024_cmp_le (hb : bootOkB = true) : StuckFree bootMachine program_024_cmp_le :=
+  dregistry_safe (derivD_prim derivD_intLit (derivD_allCons derivD_intLit derivD_allNil rfl) .intLe) (stateOk_boot hb)
+
+def program_025_cmp_ge : Checker.Expr :=
+  .send (some (.int 1)) ">=" [.int 2] none
+
+theorem safe_025_cmp_ge (hb : bootOkB = true) : StuckFree bootMachine program_025_cmp_ge :=
+  dregistry_safe (derivD_prim derivD_intLit (derivD_allCons derivD_intLit derivD_allNil rfl) .intGe) (stateOk_boot hb)
+
+def program_026_nil_eq_nil : Checker.Expr :=
+  .send (some .nil) "==" [.nil] none
+
+theorem safe_026_nil_eq_nil (hb : bootOkB = true) : StuckFree bootMachine program_026_nil_eq_nil :=
+  dregistry_safe (derivD_prim derivD_nilLit (derivD_allCons derivD_nilLit derivD_allNil rfl) .nilEq) (stateOk_boot hb)
+
+def program_027_nested_arith : Checker.Expr :=
+  .send (some (.send (some (.int (1))) "+" [.int (2)] none)) "*" [.int (3)] none
+
+theorem safe_027_nested_arith (hb : bootOkB = true) : StuckFree bootMachine program_027_nested_arith :=
+  dregistry_safe (derivD_prim (derivD_prim (derivD_intLit) (derivD_allCons (derivD_intLit) (derivD_allNil) rfl) .intAdd) (derivD_allCons (derivD_intLit) (derivD_allNil) rfl) .intMul) (stateOk_boot hb)
+
+def program_028_str_length : Checker.Expr :=
+  .send (some (.str "abc")) "length" [] none
+
+theorem safe_028_str_length (hb : bootOkB = true) : StuckFree bootMachine program_028_str_length :=
+  dregistry_safe (derivD_prim derivD_strLit derivD_allNil .strLength) (stateOk_boot hb)
+
+def program_029_simple_assign : Checker.Expr :=
+  .seq [.vasgn .lvar "x" (.int (5)), .send (some (.var .lvar "x")) "+" [.int (1)] none]
+
+theorem safe_029_simple_assign (hb : bootOkB = true) : StuckFree bootMachine program_029_simple_assign :=
+  dregistry_safe (derivD_seq (derivD_seqCons (derivD_vasgn (derivD_intLit) rfl rfl) (derivD_seqLast (derivD_prim (derivD_var rfl rfl) (derivD_allCons (derivD_intLit) (derivD_allNil) rfl) .intAdd)))) (stateOk_boot hb)
+
+def program_030_reassign_same_type : Checker.Expr :=
+  .seq [.vasgn .lvar "x" (.int (1)), .vasgn .lvar "x" (.int (2)), .send (some (.var .lvar "x")) "+" [.int (3)] none]
+
+theorem safe_030_reassign_same_type (hb : bootOkB = true) : StuckFree bootMachine program_030_reassign_same_type :=
+  dregistry_safe (derivD_seq (derivD_seqCons (derivD_vasgn (derivD_intLit) rfl rfl) (derivD_seqCons (derivD_vasgn (derivD_intLit) rfl rfl) (derivD_seqLast (derivD_prim (derivD_var rfl rfl) (derivD_allCons (derivD_intLit) (derivD_allNil) rfl) .intAdd))))) (stateOk_boot hb)
+
+def program_031_reassign_different_type : Checker.Expr :=
+  .seq [.vasgn .lvar "x" (.int (1)), .vasgn .lvar "x" (.tru), .var .lvar "x"]
+
+theorem safe_031_reassign_different_type (hb : bootOkB = true) : StuckFree bootMachine program_031_reassign_different_type :=
+  dregistry_safe derivD_flowReassign (stateOk_boot hb)
+
+def program_032_bare_undeclared_var : Checker.Expr := .vcall "x"
+
+theorem safe_032_bare_undeclared_var (hb : bootOkB = true) :
+    StuckFree bootMachine program_032_bare_undeclared_var :=
+  dregistry_safe derivD_bareName (stateOk_boot hb)
+
+def program_033_seq_multiple_stmts : Checker.Expr :=
+  .seq [.vasgn .lvar "x" (.int (1)), .vasgn .lvar "y" (.int (2)), .send (some (.var .lvar "x")) "+" [.var .lvar "y"] none]
+
+theorem safe_033_seq_multiple_stmts (hb : bootOkB = true) : StuckFree bootMachine program_033_seq_multiple_stmts :=
+  dregistry_safe (derivD_seq (derivD_seqCons (derivD_vasgn (derivD_intLit) rfl rfl) (derivD_seqCons (derivD_vasgn (derivD_intLit) rfl rfl) (derivD_seqLast (derivD_prim (derivD_var rfl rfl) (derivD_allCons (derivD_var rfl rfl) (derivD_allNil) rfl) .intAdd))))) (stateOk_boot hb)
+
+def program_034_assignment_chain : Checker.Expr :=
+  .seq [.vasgn .lvar "x" (.int (1)), .vasgn .lvar "y" (.send (some (.var .lvar "x")) "+" [.int (1)] none), .vasgn .lvar "z" (.send (some (.var .lvar "y")) "+" [.int (1)] none), .var .lvar "z"]
+
+theorem safe_034_assignment_chain (hb : bootOkB = true) : StuckFree bootMachine program_034_assignment_chain :=
+  dregistry_safe (derivD_seq (derivD_seqCons (derivD_vasgn (derivD_intLit) rfl rfl) (derivD_seqCons (derivD_vasgn (derivD_prim (derivD_var rfl rfl) (derivD_allCons (derivD_intLit) (derivD_allNil) rfl) .intAdd) rfl rfl) (derivD_seqCons (derivD_vasgn (derivD_prim (derivD_var rfl rfl) (derivD_allCons (derivD_intLit) (derivD_allNil) rfl) .intAdd) rfl rfl) (derivD_seqLast (derivD_var rfl rfl)))))) (stateOk_boot hb)
+
+def program_035_if_true_branch : Checker.Expr :=
+  .if' (.tru) (.int (1)) (some (.int (2)))
+
+theorem safe_035_if_true_branch (hb : bootOkB = true) : StuckFree bootMachine program_035_if_true_branch :=
+  dregistry_safe (derivD_if (derivD_truLit) (derivD_intLit) (derivD_intLit)) (stateOk_boot hb)
+
+def program_036_if_no_else : Checker.Expr :=
+  .if' .tru (.int 1) none
+
+theorem safe_036_if_no_else (hb : bootOkB = true) : StuckFree bootMachine program_036_if_no_else :=
+  dregistry_safe (derivD_ifNoElse derivD_truLit derivD_intLit) (stateOk_boot hb)
+
+def program_037_if_condition_not_bool : Checker.Expr :=
+  .if' (.int (5)) (.int (1)) (some (.int (2)))
+
+theorem safe_037_if_condition_not_bool (hb : bootOkB = true) : StuckFree bootMachine program_037_if_condition_not_bool :=
+  dregistry_safe (derivD_if (derivD_intLit) (derivD_intLit) (derivD_intLit)) (stateOk_boot hb)
+
+def program_038_if_branch_mismatch : Checker.Expr :=
+  .if' (.tru) (.int (1)) (some (.str "a"))
+
+theorem safe_038_if_branch_mismatch (hb : bootOkB = true) : StuckFree bootMachine program_038_if_branch_mismatch :=
+  dregistry_safe (derivD_if (derivD_truLit) (derivD_intLit) (derivD_strLit)) (stateOk_boot hb)
+
+def program_040_if_nil_condition : Checker.Expr :=
+  .if' (.nil) (.int (1)) (some (.int (2)))
+
+theorem safe_040_if_nil_condition (hb : bootOkB = true) : StuckFree bootMachine program_040_if_nil_condition :=
+  dregistry_safe (derivD_if (derivD_nilLit) (derivD_intLit) (derivD_intLit)) (stateOk_boot hb)
+
+def program_041_nested_if : Checker.Expr :=
+  .if' (.tru) (.if' (.fls) (.int (1)) (some (.int (2)))) (some (.int (3)))
+
+theorem safe_041_nested_if (hb : bootOkB = true) : StuckFree bootMachine program_041_nested_if :=
+  dregistry_safe (derivD_if (derivD_truLit) (derivD_if (derivD_flsLit) (derivD_intLit) (derivD_intLit)) (derivD_intLit)) (stateOk_boot hb)
+
+def program_043_elsif_chain : Checker.Expr :=
+  .if' (.tru) (.int (1)) (some (.if' (.fls) (.int (2)) (some (.int (3)))))
+
+theorem safe_043_elsif_chain (hb : bootOkB = true) : StuckFree bootMachine program_043_elsif_chain :=
+  dregistry_safe (derivD_if (derivD_truLit) (derivD_intLit) (derivD_if (derivD_flsLit) (derivD_intLit) (derivD_intLit))) (stateOk_boot hb)
+
+def program_189_ctl_ternary : Checker.Expr :=
+  .seq [.vasgn .lvar "x" (.int 1),
+    .if' (.send (some (.var .lvar "x")) "zero?" [] none)
+      (.str "zero") (some (.str "nonzero"))]
+
+theorem safe_189_ctl_ternary (hb : bootOkB = true) : StuckFree bootMachine program_189_ctl_ternary :=
+  dregistry_safe (derivD_seq (derivD_seqCons (derivD_vasgn derivD_intLit rfl rfl)
+    (derivD_seqLast (derivD_if (derivD_prim (derivD_var rfl rfl) derivD_allNil .intZero)
+      derivD_strLit derivD_strLit)))) (stateOk_boot hb)
+
+def program_044_array_int : Checker.Expr := .array [.int 1, .int 2, .int 3]
+
+theorem safe_044_array_int (hb : bootOkB = true) : StuckFree bootMachine program_044_array_int :=
+  dregistry_safe (derivD_arrayLit
+    (derivD_allCons derivD_intLit
+      (derivD_allCons derivD_intLit (derivD_allCons derivD_intLit derivD_allNil rfl) rfl) rfl)
+    rfl) (stateOk_boot hb)
+
+def program_048_hash_lit : Checker.Expr := .hash [(.str "a", .int 1), (.str "b", .int 2)]
+
+theorem safe_048_hash_lit (hb : bootOkB = true) : StuckFree bootMachine program_048_hash_lit :=
+  dregistry_safe (derivD_hashLit
+    (derivD_pairsCons derivD_strLit derivD_intLit
+      (derivD_pairsCons derivD_strLit derivD_intLit derivD_pairsNil))
+    rfl rfl) (stateOk_boot hb)
+
+def program_050_array_index : Checker.Expr :=
+  .send (some (.array [.int 1, .int 2, .int 3])) "[]" [.int 0] none
+
+theorem safe_050_array_index (hb : bootOkB = true) : StuckFree bootMachine program_050_array_index :=
+  dregistry_safe (derivD_prim (derivD_arrayLit
+    (derivD_allCons derivD_intLit
+      (derivD_allCons derivD_intLit (derivD_allCons derivD_intLit derivD_allNil rfl) rfl) rfl) rfl)
+    (derivD_allCons derivD_intLit derivD_allNil rfl) (.arrayIndex rfl)) (stateOk_boot hb)
+
+def program_051_hash_index : Checker.Expr :=
+  .send (some (.hash [(.str "a", .int 1)])) "[]" [.str "a"] none
+
+theorem safe_051_hash_index (hb : bootOkB = true) : StuckFree bootMachine program_051_hash_index :=
+  dregistry_safe (derivD_prim
+    (derivD_hashLit (derivD_pairsCons derivD_strLit derivD_intLit derivD_pairsNil) rfl rfl)
+    (derivD_allCons derivD_strLit derivD_allNil rfl) (.hashIndex rfl)) (stateOk_boot hb)
+
+def safeRungs : List (String × Checker.Expr) :=
+  [("001-int-lit", program_001_int_lit),
+   ("002-bool-true", program_002_bool_true),
+   ("003-bool-false", program_003_bool_false),
+   ("004-str-lit", program_004_str_lit),
+   ("005-sym-lit", program_005_sym_lit),
+   ("006-nil-lit", program_006_nil_lit),
+   ("007-flt-lit", program_007_flt_lit),
+   ("008-neg-int-lit", program_008_neg_int_lit),
+   ("009-add", program_009_add),
+   ("010-sub", program_010_sub),
+   ("011-mul", program_011_mul),
+   ("012-div", program_012_div),
+   ("013-str-concat", program_013_str_concat),
+   ("014-cmp-lt", program_014_cmp_lt),
+   ("015-not-expr", program_015_not_expr),
+   ("016-bool-and", program_016_bool_and),
+   ("017-bool-or", program_017_bool_or),
+   ("019-to-s-call", program_019_to_s_call),
+   ("020-eq-same-type", program_020_eq_same_type),
+   ("021-eq-different-type", program_021_eq_different_type),
+   ("022-unmodeled-builtin-zero-p", program_022_unmodeled_builtin_zero_p),
+   ("024-cmp-le", program_024_cmp_le),
+   ("025-cmp-ge", program_025_cmp_ge),
+   ("026-nil-eq-nil", program_026_nil_eq_nil),
+   ("027-nested-arith", program_027_nested_arith),
+   ("028-str-length", program_028_str_length),
+   ("029-simple-assign", program_029_simple_assign),
+   ("030-reassign-same-type", program_030_reassign_same_type),
+   ("031-reassign-different-type", program_031_reassign_different_type),
+   ("032-bare-undeclared-var", program_032_bare_undeclared_var),
+   ("033-seq-multiple-stmts", program_033_seq_multiple_stmts),
+   ("034-assignment-chain", program_034_assignment_chain),
+   ("035-if-true-branch", program_035_if_true_branch),
+   ("036-if-no-else", program_036_if_no_else),
+   ("037-if-condition-not-bool", program_037_if_condition_not_bool),
+   ("038-if-branch-mismatch", program_038_if_branch_mismatch),
+   ("040-if-nil-condition", program_040_if_nil_condition),
+   ("041-nested-if", program_041_nested_if),
+   ("043-elsif-chain", program_043_elsif_chain),
+   ("189-ctl-ternary", program_189_ctl_ternary),
+   ("044-array-int", program_044_array_int),
+   ("048-hash-lit", program_048_hash_lit),
+   ("050-array-index", program_050_array_index),
+   ("051-hash-index", program_051_hash_index),
+   ("052-simple-fun", program_052_simple_fun),
+   ("060-fun-recursive-factorial", program_060_fun_recursive_factorial),
+   ("061-class-basic", program_061_class_basic),
+   ("064-class-method-calls-method", program_064_class_method_calls_method),
+   ("065-class-inheritance-field", program_065_class_inheritance_field),
+   ("066-class-inheritance-override", program_066_class_inheritance_override),
+   ("067-class-super-call", program_067_class_super_call),
+   ("070-class-ivar-lazy-nil", program_070_class_ivar_lazy_nil),
+   ("073-class-factory-method", program_073_class_factory_method),
+   ("074-class-setter-method", program_074_class_setter_method),
+   ("075-class-instance-as-fun-arg", program_075_class_instance_as_fun_arg),
+   ("076-class-self-returning-method", program_076_class_self_returning_method),
+   ("077-module-basic", program_077_module_basic),
+   ("078-module-method-with-arg", program_078_module_method_with_arg),
+   ("080-module-method-calls-method", program_080_module_method_calls_method),
+   ("084-module-boolean-method", program_084_module_boolean_method),
+   ("087-lambda-zero-arity", program_087_lambda_zero_arity),
+   ("088-lambda-stabby-one-param", program_088_lambda_stabby_one_param),
+   ("098-lambda-closure-capture", program_098_lambda_closure_capture),
+   ("089-proc-basic", program_089_proc_basic),
+   ("090-proc-bracket-call", program_090_proc_bracket_call),
+   ("091-block-each-int", program_091_block_each_int),
+   ("092-block-map-to-s", program_092_block_map_to_s),
+   ("093-block-doend-with-block-local", program_093_block_doend_with_block_local),
+   ("094-yield-arith", program_094_yield_arith),
+   ("260-yield-local-and-captured-write", program_260_yield_local_and_captured_write),
+   ("095-block-param-ampersand", program_095_block_param_ampersand),
+   ("261-bound-block-alias-and-yield", program_261_bound_block_alias_and_yield)]
+
+theorem safeRungs_safe (hb : bootOkB = true) :
+    ∀ q ∈ safeRungs, StuckFree bootMachine q.2 := by
+  intro q hq
+  simp only [safeRungs, List.mem_cons, List.not_mem_nil, or_false] at hq
+  rcases hq with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    | rfl | rfl | rfl | rfl | rfl | rfl
+  · exact safe_001_int_lit hb
+  · exact safe_002_bool_true hb
+  · exact safe_003_bool_false hb
+  · exact safe_004_str_lit hb
+  · exact safe_005_sym_lit hb
+  · exact safe_006_nil_lit hb
+  · exact safe_007_flt_lit hb
+  · exact safe_008_neg_int_lit hb
+  · exact safe_009_add hb
+  · exact safe_010_sub hb
+  · exact safe_011_mul hb
+  · exact safe_012_div hb
+  · exact safe_013_str_concat hb
+  · exact safe_014_cmp_lt hb
+  · exact safe_015_not_expr hb
+  · exact safe_016_bool_and hb
+  · exact safe_017_bool_or hb
+  · exact safe_019_to_s_call hb
+  · exact safe_020_eq_same_type hb
+  · exact safe_021_eq_different_type hb
+  · exact safe_022_unmodeled_builtin_zero_p hb
+  · exact safe_024_cmp_le hb
+  · exact safe_025_cmp_ge hb
+  · exact safe_026_nil_eq_nil hb
+  · exact safe_027_nested_arith hb
+  · exact safe_028_str_length hb
+  · exact safe_029_simple_assign hb
+  · exact safe_030_reassign_same_type hb
+  · exact safe_031_reassign_different_type hb
+  · exact safe_032_bare_undeclared_var hb
+  · exact safe_033_seq_multiple_stmts hb
+  · exact safe_034_assignment_chain hb
+  · exact safe_035_if_true_branch hb
+  · exact safe_036_if_no_else hb
+  · exact safe_037_if_condition_not_bool hb
+  · exact safe_038_if_branch_mismatch hb
+  · exact safe_040_if_nil_condition hb
+  · exact safe_041_nested_if hb
+  · exact safe_043_elsif_chain hb
+  · exact safe_189_ctl_ternary hb
+  · exact safe_044_array_int hb
+  · exact safe_048_hash_lit hb
+  · exact safe_050_array_index hb
+  · exact safe_051_hash_index hb
+  · exact safe_052_simple_fun hb
+  · exact safe_060_fun_recursive_factorial hb
+  · exact safe_061_class_basic hb
+  · exact safe_064_class_method_calls_method hb
+  · exact safe_065_class_inheritance_field hb
+  · exact safe_066_class_inheritance_override hb
+  · exact safe_067_class_super_call hb
+  · exact safe_070_class_ivar_lazy_nil hb
+  · exact safe_073_class_factory_method hb
+  · exact safe_074_class_setter_method hb
+  · exact safe_075_class_instance_as_fun_arg hb
+  · exact safe_076_class_self_returning_method hb
+  · exact safe_077_module_basic hb
+  · exact safe_078_module_method_with_arg hb
+  · exact safe_080_module_method_calls_method hb
+  · exact safe_084_module_boolean_method hb
+  · exact safe_087_lambda_zero_arity hb
+  · exact safe_088_lambda_stabby_one_param hb
+  · exact safe_098_lambda_closure_capture hb
+  · exact safe_089_proc_basic hb
+  · exact safe_090_proc_bracket_call hb
+  · exact safe_091_block_each_int hb
+  · exact safe_092_block_map_to_s hb
+  · exact safe_093_block_doend_with_block_local hb
+  · exact safe_094_yield_arith hb
+  · exact safe_260_yield_local_and_captured_write hb
+  · exact safe_095_block_param_ampersand hb
+  · exact safe_261_bound_block_alias_and_yield hb
+
+#print axioms safeRungs_safe
+end Checker.Soundness.Typed

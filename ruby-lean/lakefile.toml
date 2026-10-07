@@ -1,19 +1,20 @@
 name = "rubylean"
 version = "0.1.0"
-defaultTargets = ["Json", "rubycore", "Ratchet", "Semantics", "Denote", "ratchetd", "semladder"]
+defaultTargets = ["Json", "rubycore", "Checker", "ratchetd"]
 
-# One package, four source layers, and the layering is the point:
+# One package, two source layers, and the layering is the point:
 #
-#   RubyCore/   the executable model (the SUT) and its metatheory
-#   Ratchet/    the certificate checker — `Expr`/`Ty` as *copied text*, `Cert`, `validateD`
-#   Semantics/  the one import bridge back to the real `stepFn`
-#   Denote/     the denotation joining the two, and `validateD_safe_boot`
+#   RubyCore/   the executable model (the SUT)
+#   Checker/    the certificate checker — `Expr`/`Ty` as *copied text*, `Cert`, `validateD`
 #
-# `Ratchet/` must not import anything under `RubyCore/` (see AGENTS.md for why: the
+# `Checker/` must not import anything under `RubyCore/` (see AGENTS.md for why: the
 # checker is meant to be readable and re-implementable without the model in scope).
-# That used to be enforced by the checker living in its own Lake package; now that both
-# live here it is enforced by `scripts/check-isolation.sh`, which the typed-ratchet
-# gate runs as its first stage.
+# `scripts/check-isolation.sh` enforces that, and the gate runs it as its first stage.
+#
+# Nothing here proves anything. Every proof about the model or the checker — the
+# model's metatheory, the checker's soundness theorem, the comparator run that
+# audits it, and the gate that keeps them honest — lives in `../books/`, a separate
+# Lake package that uses this one as a library.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # The vendored JSON library
@@ -40,72 +41,20 @@ name = "RubyCore"
 name = "rubycore"
 root = "Main"
 
-# The metatheory (`RubyCore/Proof/`). **Not** in defaultTargets: it is slow and
-# nothing the SUT does depends on it, which is exactly why it rotted — three
-# independent breaks (L101, L103, L116) went unnoticed for 24 commits because a
-# green ratchet says nothing about the proofs (`PLAN.md` §4 norm 5). One target
-# so that checking them is a single command:
-#
-#     lake build Metatheory        # every file under RubyCore/Proof/
-#     scripts/check-proofs.sh      # the same, plus `#print axioms`
-#
-# Note the part of it the *checker* depends on: `Denote/Sem/` imports
-# `Proof/Judgment/{ClsFresh,ModFresh}` (and through them `Proof/Static/Decls`,
-# `Proof/Static/Locals`, …), so those files are on the default target by way of
-# `Denote`, not off it. They are what survived when the pre-ratchet type-checking
-# layers were removed: class/module freshness and the declaration-table lemmas the
-# semantic denotation actually uses.
-[[lean_lib]]
-name = "Metatheory"
-srcDir = "."
-globs = ["RubyCore.Proof.+"]
-
 # ─────────────────────────────────────────────────────────────────────────────
-# The checker and its denotation (formerly the `ratchet/` package)
+# The checker
 # ─────────────────────────────────────────────────────────────────────────────
 
-# `Ratchet/` (the certificate checker: `Expr`/`Ty` ported as copied text, `Cert`,
+# `Checker/` (the certificate checker: `Expr`/`Ty` ported as copied text, `Cert`,
 # `Validate`) is deliberately isolated from `RubyCore/`: no import of anything
 # under it. See `AGENTS.md`, and `scripts/check-isolation.sh` for the check.
 [[lean_lib]]
-name = "Ratchet"
+name = "Checker"
 srcDir = "."
-globs = ["Ratchet.+"]
+globs = ["Checker.+"]
 
-# `Semantics/` is the one deliberate exception: the real semantics (`stepFn` and
-# its ~24k-line dependency closure) is *imported*, not hand-copied — see
-# `Semantics/Interp.lean`'s module docstring for why the boundary is drawn there.
-[[lean_lib]]
-name = "Semantics"
-srcDir = "."
-globs = ["Semantics.+"]
-
-# `Denote/` — the *semantic* denotation of `Ratchet.Ty` (`Ty -> Heap -> Value -> Prop`,
-# plus its computable `Bool` core). The one library that imports **both** `Ratchet/`'s
-# copied type language and `Semantics/`'s real machine, on purpose: a denotation is by
-# definition a statement relating the two. Maintained separately from the syntactic
-# judgment (`Ratchet/Static/`), which it does not import and which does not import it.
-[[lean_lib]]
-name = "Denote"
-srcDir = "."
-globs = ["Denote.+"]
-
-# `Denote/Ty/Examples.lean`'s report, printed. The `#guard`s there are the real gate (they
-# fail the build); this is so the log shows *what* was checked.
-[[lean_exe]]
-name = "denotereport"
-root = "DenoteReport"
-
-# The semantic ratchet's report. Reads the `Judge` inductive's constructor list and the
-# `Sem.*` discharges out of the environment at elaboration time, so the exe itself is a
-# `println`. Separate from `ratchetd` so each ladder's headline number stays a statement
-# about exactly one thing — reach vs. justification.
-[[lean_exe]]
-name = "semladder"
-root = "SemLadder"
-
-# The typed ladder's runner: stage 5 of `scripts/build_corpus.py`'s pipeline, the only
-# trusted one. See `MainTyped.lean`.
+# The typed ladder's runner: stage 5 of `../books/scripts/build_corpus.py`'s pipeline,
+# the only trusted one. See `MainTyped.lean`.
 [[lean_exe]]
 name = "ratchetd"
 root = "MainTyped"
@@ -114,11 +63,6 @@ root = "MainTyped"
 [[lean_exe]]
 name = "validate-one"
 root = "MainValidateOne"
-
-# Active registry soundness and corpus progress, without historical full-profile floors.
-[[lean_exe]]
-name = "active-ratchet"
-root = "MainActiveRatchet"
 
 # Writes `RubyCore/Prelude.lean` (the prelude as Lean terms) from
 # `RubyCore/PreludeJson.lean` (the prelude as exported JSON). Depends only on the

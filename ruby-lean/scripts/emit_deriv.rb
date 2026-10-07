@@ -2,16 +2,16 @@
 # frozen_string_literal: true
 
 # emit_deriv.rb -- the **untrusted** emitter: a sig-stripped AST + signatures,
-# out a `Deriv` (`Ratchet/Check/Deriv.lean`).
+# out a `Deriv` (`Checker/Check/Deriv.lean`).
 #
 #   emit_deriv.rb --ast build/NNN.ast.json --sigs build/NNN.sigs.json
 #   echo '{"ast": <ast>, "sigs": <sigs>}' | emit_deriv.rb
 #
 # The second form is the one the page uses: there is no filesystem in a wasm
 # module, so both inputs arrive as one JSON object on stdin. The first is what
-# `scripts/build_corpus.py` calls.
+# `books/scripts/build_corpus.py` calls.
 #
-# Stage 4 of `scripts/build_corpus.py`'s five, and the only one that has to think.
+# Stage 4 of `books/scripts/build_corpus.py`'s five, and the only one that has to think.
 #
 # It began as a line-for-line port of a Python original, written so the browser
 # could derive without a Python runtime, and replaced it once the two were shown
@@ -30,7 +30,7 @@
 require "json"
 
 # --------------------------------------------------------------------------
-# `Ty` constructors, in `Ratchet/Lang/Ty.lean`'s wire encoding
+# `Ty` constructors, in `Checker/Lang/Ty.lean`'s wire encoding
 # --------------------------------------------------------------------------
 
 INT   = { "tag" => "int" }.freeze
@@ -79,7 +79,7 @@ class Blocked < StandardError; end
 # The builtin signature table
 # --------------------------------------------------------------------------
 #
-# A **subset** of `Ratchet/Static/`'s `PrimSig`, here only so the emitter can
+# A **subset** of `Checker/Static/`'s `PrimSig`, here only so the emitter can
 # propose a `Deriv.prim`'s result type. It is not the authority: `check`
 # re-derives the row from `PrimSig` itself, so a row missing here costs a block
 # and a row wrong here costs a reject.

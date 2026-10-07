@@ -19,8 +19,8 @@ It stops at the first failure.
 ## The gate
 
 ```sh
-cd ruby-lean && ./scripts/run_typed_ratchet.sh            # quiet: the verdict + what's next
-cd ruby-lean && ./scripts/run_typed_ratchet.sh --verbose  # every stage's output
+cd books && ./scripts/run_typed_ratchet.sh            # quiet: the verdict + what's next
+cd books && ./scripts/run_typed_ratchet.sh --verbose  # every stage's output
 ```
 
 The last line is **GREEN** or **RED**:
@@ -36,18 +36,16 @@ The last line is **GREEN** or **RED**:
 with a protected uv cache, set `UV_CACHE_DIR=/private/tmp/ruby-ratchet-uv-cache`.
 
 ```sh
-cd ruby-lean
-./scripts/run_typed_ratchet.sh --clink-rebuild  # soundness and controls only
-./scripts/run_typed_ratchet.sh --full-corpus    # historical full audit and floors
+(cd books && ./scripts/run_typed_ratchet.sh --clink-rebuild)  # soundness and controls only
 ```
 
-The historical full audit keeps its complete-registry requirement, coverage,
-worked-theorem cross-checks and floors. It refuses a partial profile; these
-requirements do not prevent the default active-soundness gate from being GREEN.
+The historical full audit (complete-registry requirement, coverage, worked-theorem
+cross-checks and floors) is in `books/Unrebuilt/`: the worked theorems it reads have
+not been rebuilt against the current model. That does not affect the default gate.
 
 ### Reading the active gate's output
 
-With the current rebuild profile (live record: `ruby-lean/notes/ratchet/HANDOFF.md`):
+With the current rebuild profile (live record: `books/notes/type-soundness/HANDOFF.md`):
 
 ```text
 agreement: 254 agree, 0 disagree
@@ -71,8 +69,8 @@ RATCHET GREEN -- validateD_safe_run passes for the enabled clinks.
 The pending list uses the actual verified derivation's trace to name gated rules,
 including companion and body rules. The default builds fresh corpus outputs;
 `--only 001,009` reports only those selected rungs. Use `--verbose` for all stages
-and every rung. Source-controlled admission lives in `Ratchet/ClinkPolicy.lean`;
-see [the rebuild guide](https://github.com/sam-xif/ruby-lean/blob/main/ruby-lean/Denote/Clink/README.md) for climbing a rule.
+and every rung. Source-controlled admission lives in `ruby-lean/Checker/ClinkPolicy.lean`;
+see [the rebuild guide](https://github.com/sam-xif/ruby-lean/blob/main/books/Books/TypeSoundness/Registry/README.md) for climbing a rule.
 
 ## The model against CRuby
 
@@ -104,9 +102,12 @@ through both CRuby and the model and prints AGREE, DIFF or GATE.
 ## The proofs
 
 ```sh
-cd ruby-lean && ./scripts/check-proofs.sh
+cd books && ./scripts/check-proofs.sh
 ```
 
-This builds the metatheory, which is off the default build target, and re-checks
-that the headline theorems depend only on Lean's three standard axioms
-(`propext`, `Classical.choice`, `Quot.sound`).
+This builds the metatheory (`books/Books/Metatheory/`) and re-checks that the
+headline theorems depend only on Lean's three standard axioms (`propext`,
+`Classical.choice`, `Quot.sound`). `make books` builds every proof book, and
+`make comparator` checks the soundness theorem with
+[`leanprover/comparator`](https://github.com/leanprover/comparator), an
+independent judge that replays the proof in a fresh kernel.

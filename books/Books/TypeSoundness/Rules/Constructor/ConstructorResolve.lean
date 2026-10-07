@@ -1,0 +1,40 @@
+import Books.TypeSoundness.Rules.Constructor.ConstructorLookup
+import Books.TypeSoundness.Rules.Constructor.ConstructorRun
+import Books.TypeSoundness.Rules.Method.MethodArgs
+
+/-! Any published ordinary class: recover allocation and initializer code from conformance,
+then consume the body proved at its annotations. No class name, arity, or field type is fixed. -/
+set_option autoImplicit false
+namespace Checker.Soundness.Typed
+open RubyCore Checker Checker.Soundness
+
+theorem declared_constructor_run {κ : Ctx} {Γ Γb : Env} {I Ib τ : Ty} {m : Machine}
+    {c : Cls} {d : Defn} {ps : List SigParam} {args : List Value} {sendSite : SendSite}
+    (hm : StateOk κ Γ I m) (hc : c ∈ κ.classes) (hd : d ∈ c.methods)
+    (hn : d.name = "initialize") (hnew : smroGet? κ.classes c.name "new" = none)
+    (halloc : c.name ∈ κ.pos.plainAlloc)
+    (hparams : d.params = ps.map (fun p => Checker.Param.req p.1))
+    (hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
+    (hbody : SemInitA (initializerBodyCtx κ c.name) ps .ivar0 d.body τ
+      (initializerBodyCtx κ c.name) Γb Ib)
+    (ht : ReframeFO κ I) (ha : κ.asms = [])
+    (hw : CallWorld κ)
+    (hconst : ∀ x, constGet? (initializerBodyCtx κ c.name) x = constGet? κ x)
+    (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true) (hIb : FirstOrder Ib = true)
+    (hkont : m.kont = []) (hargs : DenAll (ps.map (·.2)) m args) :
+    ∃ k, classNamed? m.heap c.name = some k ∧
+      StepSpec m Γ (.inst c.name Ib) (Interp.finishSend m (.ref k) sendSite "new" args .none) κ I := by
+  obtain ⟨k, md, site, dispatch, hp, hb, code, hl, hu⟩ :=
+    declared_constructor_code hm hc hd hn hnew (hm.ordinary_decl hc halloc)
+  obtain ⟨j, hj, alloc⟩ := hm.allocators c.name halloc
+  have he : j = k := Option.some.inj (hj.symm.trans site.named)
+  subst j
+  have hparam : md.params = (ps.map (·.1)).map RubyCore.Param.req :=
+    hp.trans (by rw [hparams]; exact toRubyParams_required ps)
+  have hrun := constructor_runSpec (sendSite := sendSite) (κb := initializerBodyCtx κ c.name)
+    hm ht ha ht alloc site dispatch code hl hu hparam hb (by simpa using denAll_length hargs) hargs
+    hps hconst hw rfl hconst hΓ rfl hIb hkont hbody
+  exact ⟨k, site.named, hrun⟩
+
+#print axioms declared_constructor_run
+end Checker.Soundness.Typed

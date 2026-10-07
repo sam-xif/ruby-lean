@@ -1,0 +1,26 @@
+import Books.TypeSoundness.Rules.Init.InitRun
+import Books.TypeSoundness.Rules.Method.MethodReturn
+
+/-! Fresh initialization publishes the original caller's frame contract. The heap
+anchor precedes allocation, while frame isolation is measured at method entry. -/
+set_option autoImplicit false
+namespace Checker.Soundness.Typed
+open RubyCore Checker Checker.Soundness
+
+theorem initializer_pop_framed {m n : Machine} {f : RubyCore.Frame}
+    (hl : m.stack.headD 0 < m.frames.size) (hc : f.captured = none)
+    (hb : n.stack = (pushMethodFrame m f).stack)
+    (hf : FramePres (pushMethodFrame m f) n) (hg : InitGrow m.heap n.heap)
+    (hphase : n.preludeMode = m.preludeMode)
+    (hroot : RootClean (pushMethodFrame m f) → RootClean n) :
+    Framed m (popMethodFrame n) :=
+  Framed.of_initGrow hg (by simp [popMethodFrame, hb, pushMethodFrame])
+    (method_frame_pop hl hc hb hf) hphase hroot
+
+theorem InitFrame.publish {m n : Machine} {f : RubyCore.Frame}
+    (hl : m.stack.headD 0 < m.frames.size) (hc : f.captured = none)
+    (h : InitFrame m.heap (pushMethodFrame m f) n) : Framed m (popMethodFrame n) :=
+  initializer_pop_framed hl hc h.stack h.frames h.growth h.phase h.rootClean
+
+#print axioms initializer_pop_framed
+end Checker.Soundness.Typed

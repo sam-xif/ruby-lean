@@ -15,12 +15,12 @@ MODULES = ['CheckInit', 'MethodCertificate', 'MethodFlowCertificate', 'BodyCache
 FAMILIES = r'(?:DJudge(?:All|Seq|Pairs|RecAll|Rec)?|InitJudge(?:Seq|All)?|DFlow(?:Seq|All)?|DMethod(?:FlowSeq|Flow|Seq|All)?)'
 
 def generate(module):
-    source = ROOT / 'Ratchet/Check' / f'{module}.lean'
+    source = ROOT / 'Checker/Check' / f'{module}.lean'
     text = source.read_text()
     for item in MODULES:
-        text = text.replace(f'import Ratchet.Check.{item}\n', f'import Ratchet.Audit.{item}\n')
-    text = text.replace('namespace Ratchet\n', 'namespace Ratchet.Audit\nopen Ratchet\n')
-    text = text.replace('end Ratchet\n', 'end Ratchet.Audit\n')
+        text = text.replace(f'import Checker.Check.{item}\n', f'import Checker.Audit.{item}\n')
+    text = text.replace('namespace Checker\n', 'namespace Checker.Audit\nopen Checker\n')
+    text = text.replace('end Checker\n', 'end Checker.Audit\n')
     # Every judgment field has a computational trace constrained by its proof's
     # index. Constructor notation infers that trace from the selected rules.
     lines = text.splitlines(keepends=True)
@@ -75,9 +75,9 @@ def generate(module):
         text = text.replace('theorem CallableMemberAt.own_judged ', 'theorem CallableMemberAt.own_judged {used : List String} ')
         text = text.replace('(hb : DJudge ', '(hb : DJudge (used := used) ')
         text = text.replace('    DJudge b.body.params', '    DJudge (used := used) b.body.params')
-    return (f'-- Generated from Ratchet/Check/{module}.lean by scripts/generate_audited_checker.py.\n'
+    return (f'-- Generated from Checker/Check/{module}.lean by scripts/generate_audited_checker.py.\n'
             '-- Edit the raw source and regenerate; Lean checks the indexed proof and trace.\n'
-            'import Ratchet.Audit.Erase\n' + text)
+            'import Checker.Audit.Erase\n' + text)
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -85,7 +85,7 @@ def main():
     args = parser.parse_args()
     stale = []
     for module in MODULES:
-        path = ROOT / 'Ratchet/Audit' / f'{module}.lean'
+        path = ROOT / 'Checker/Audit' / f'{module}.lean'
         expected = generate(module)
         if args.check:
             if not path.exists() or path.read_text() != expected:

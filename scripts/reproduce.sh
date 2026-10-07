@@ -28,11 +28,12 @@ step() { echo; echo "── $* ──"; }
 step "0. prerequisites"
 make -C "$ROOT" prereqs
 
-step "1-2. build the Lean project (ruby-lean/ — the rubycore SUT, and validateD with its proofs)"
-# One Lake package (`ruby-lean/`): the model (RubyCore/), the checker (Ratchet/), the
-# bridge to the real semantics (Semantics/) and the denotation that joins them
-# (Denote/) are four libraries in it, and `lake build` builds all of them.
+step "1-2. build the Lean projects (ruby-lean/ — the rubycore SUT and validateD; books/ — the proofs)"
+# Two Lake packages. `ruby-lean/` is the model (RubyCore/) and the checker (Checker/).
+# `books/` uses it as a library and holds every proof: the checker's soundness theorem
+# (Books/TypeSoundness/), the model's metatheory (Books/Metatheory/) and the program proofs.
 make -C "$ROOT" lean
+make -C "$ROOT" books
 
 step "3. the typed ratchet gate (the headline numbers)"
 # Sorbet -> strip -> desugar -> emit -> validateD, over every corpus rung, plus
@@ -53,7 +54,7 @@ if [[ $WITH_PROOFS == 1 ]]; then
   # Off the default build target because it is slow and the SUT does not depend
   # on it — which is exactly why it needs its own command, and why it rots.
   #
-  # KNOWN RED at 0.01: RubyCore/Proof/Static/Preservation.lean has three broken
+  # KNOWN RED at 0.01: books/Books/Metatheory/Typing/Infer/Preservation.lean has three broken
   # proofs, so this step exits non-zero. It is reported, not hidden — but it is
   # also not a failure of anything above it: the ratchet's own proofs and
   # `validateD_safe_boot` are on the default target and built in step 2.

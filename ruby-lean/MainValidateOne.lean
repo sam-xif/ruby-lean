@@ -1,8 +1,8 @@
-import Ratchet.Check.Rung
+import Checker.Check.Rung
 
 /-! Small playground adapter: decode one program/Deriv pair and print validateD's Bool. -/
 
-open Ratchet
+open Checker
 -- `Json` is this project's vendored copy of Lean's (`Json.lean`), at the root
 -- namespace, so there is nothing to open.
 

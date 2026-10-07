@@ -145,7 +145,7 @@ def removeNames (m : Machine) (o : ObjId) (undef : Bool) (names : List String) :
     continuation-framing proof fail — under a push the two sides' scrutinees differ by an
     `Option.map`, so `split` pairs a `none` arm of one with a `some` arm of the other. A
     machine-free decision plus a separate machine keeps them in step
-    (`Proof/RootFrameReflect.lean`; same shape as `dmTarget?`/`dmTargetM`). -/
+    (`books/Books/Metatheory/Framing/RootFrameReflect.lean`; same shape as `dmTarget?`/`dmTargetM`). -/
 def removeOk (m : Machine) (o : ObjId) (undef : Bool) (names : List String) : Bool :=
   (removeNames m o undef names).isSome
 
@@ -166,7 +166,7 @@ def blockClosure? (m : Machine) (blk : Option Value) : Option Closure :=
     the whole continuation in the reflective layer, so it is the one place framing is
     conditional — pushing a continuation that contains a `catchK` turns an
     `UncaughtThrowError` into a jump — and a named function is what lets that conditional
-    rewrite fire under a `match` arm (`Proof/RootFrameReflect.lean`). -/
+    rewrite fire under a `match` arm (`books/Books/Metatheory/Framing/RootFrameReflect.lean`). -/
 def hasCatcher (m : Machine) (tag : Value) : Bool :=
   m.kont.any fun k => match k with
     | .catchK t => t.identEq tag
@@ -177,7 +177,7 @@ def hasCatcher (m : Machine) (tag : Value) : Bool :=
     Machine)`, and a matched value that *contains a machine* is what makes the
     continuation-framing proof fail — the pushed and unpushed copies of the scrutinee differ,
     `split` pairs a `none` arm of one with a `some` arm of the other, and the resulting
-    impossible goals cannot be closed in place (`Proof/RootFrameReflect.lean`). Split into an
+    impossible goals cannot be closed in place (`books/Books/Metatheory/Framing/RootFrameReflect.lean`). Split into an
     id lookup and the machine it grows, both scrutinee-shaped, the arms line up. -/
 def dmTarget? (m : Machine) (recv : Value) (singleton : Bool) : Option ObjId :=
   if singleton then

@@ -80,8 +80,8 @@ file's.
 
 What this file is NOT: a claim that in-fragment programs are safe. It is the
 *hypothesis* of that claim. The theorem is separate work; this is its scope —
-and note that no theorem in `Proof/` quantifies over it today, so relaxing it
-here cannot break one. `Proof/StaticSoundness.lean` plays the fragment role
+and note that no theorem in `books/Books/Metatheory/` quantifies over it today, so relaxing it
+here cannot break one. `books/Books/Metatheory/StaticSoundness.lean` plays the fragment role
 with `CtlOk`/`KontOk` instead.
 -/
 import RubyCore.Syntax

@@ -25,7 +25,7 @@ be an artifact, not a residue).
 `infer` cannot name an `ObjId` — `check` is a pure function of the program, and
 object identities exist only in a heap. So declarations hang off the class
 **name**, and the invariant's job is to tie that name to the heap's `ancestors`
-(`Proof/Static/Decls.lean`). That is also why `Module#set_temporary_name` and
+(`books/Books/Metatheory/Typing/Infer/Decls.lean`). That is also why `Module#set_temporary_name` and
 anonymous-class renaming are outside the D10 fragment: they change the key, not
 the table (`typing-a-mutable-method-table.md` §5).
 
@@ -171,7 +171,7 @@ structure Decls where
       `consts`' reason: `DeclsOk` is already threaded and already transported, so a
       *declaration* costs nothing that the two existing halves have not paid for.
 
-      Read the clause it obliges (`Proof/Static/Decls.lean`'s `IvarOk`) before adding
+      Read the clause it obliges (`books/Books/Metatheory/Typing/Infer/Decls.lean`'s `IvarOk`) before adding
       a row: it is quantified over **every object of the class**, not over one
       receiver, because an ivar read has no receiver to constrain — `@x` reads the
       frame's `self`, and the invariant does not know which object that is beyond its
@@ -188,7 +188,7 @@ structure Decls where
       (L203), while this answers `C::n`, which is `constLookupFrom` — the **ancestors**
       walk from the class object named `C`. Two lookups, two clauses.
 
-      `ScopedConstOk` (`Proof/Static/Decls.lean`) is what a row here obliges, and it is
+      `ScopedConstOk` (`books/Books/Metatheory/Typing/Infer/Decls.lean`) is what a row here obliges, and it is
       quantified over **every** class object of that name for `IvarOk`'s reason: the
       rule has a name, not an id, and only `ClassOk`'s uniqueness clause ties a name to
       one id — and that clause covers the *readable* names, not every name a program
@@ -204,11 +204,11 @@ structure Decls where
       a chain position, and `ClassOk`'s own uniqueness clause covers only
       `readableClasses` (the fixed boot names `.const` can read), not program classes.
       **M2** closes the general case:
-      `NamesUnique` (`Proof/Static/Decls.lean`) is already the unrestricted clause, and
+      `NamesUnique` (`books/Books/Metatheory/Typing/Infer/Decls.lean`) is already the unrestricted clause, and
       `className_inj_of_namesUnique` is its corollary stated over `className` — so a
       *qualified* program name (`Outer::Inner`) does pin an id, given `NamesUnique h`.
 
-      What a row obliges is `SuperOk` (`Proof/Static/Decls.lean`), and read it before
+      What a row obliges is `SuperOk` (`books/Books/Metatheory/Typing/Infer/Decls.lean`), and read it before
       adding one: it is quantified over **every** class object named `c` and every
       chain that class is on, because `doSuper` starts its walk at the frame's `defmod`
       and the invariant knows that definee only by its name — `className_inj_of_namesUnique`
@@ -221,7 +221,7 @@ structure Decls where
       it are all read against a `DeclsOk` clause — a fact about objects, classes or
       chains — and this one is read against `m.globals`, an association list on the
       machine. So it is the first table whose obligation cannot live in `DeclsOk` and
-      needs its own `Inv` conjunct (`GlobalsOk`, `Proof/Static/Konts.lean`), which is
+      needs its own `Inv` conjunct (`GlobalsOk`, `books/Books/Metatheory/Typing/Infer/Konts.lean`), which is
       what makes this rung more than a fourth copy of `ivars`.
 
       **The name includes the `$`** (`"$__dt_rx3"`), because that is what the AST
@@ -239,7 +239,7 @@ structure Decls where
       The seventh table, and the first about *definitions* rather than reads: a
       machine-typed `module'` must know which `enterClassBody` branch it takes, and
       at a conformant heap the constant it probes is arbitrary. A declared pair
-      obliges `ModuleNameOk` (`Proof/Static/Decls.lean`): the owner's constant `name`
+      obliges `ModuleNameOk` (`books/Books/Metatheory/Typing/Infer/Decls.lean`): the owner's constant `name`
       is either absent (the fresh branch) or a bona-fide module named
       `qualifyMod owner name` with its eigenclass realized and its id off every
       readable pre-`Object` chain segment (the reopen branch). The owner key is the
@@ -874,7 +874,7 @@ which `CtlOk` refuses outright.
 
 So the rule is admissible for a name the invariant can *promise* takes the reopen
 branch, and this is that list. Every entry is a proof obligation of exactly the
-same kind as a `baseDecls` row — `ClassOk` (`Proof/Static/Decls.lean`) is what the
+same kind as a `baseDecls` row — `ClassOk` (`books/Books/Metatheory/Typing/Infer/Decls.lean`) is what the
 invariant carries and `classOkB` is what the certificate decides — and widening it
 is a table row plus a `decide`.
 
@@ -891,7 +891,7 @@ and `NoMethodError`, read as `raise ArgumentError, "…"`.
 
 The rows are free, and *measured* free: `scripts/probes/reopen_probe.lean` decides all seven
 `ClassOk` clauses for every candidate, and all fourteen below pass all seven. Nothing
-in `Proof/` changes — `ClassOk` is quantified over the list — so the whole cost is
+in `books/Books/Metatheory/` changes — `ClassOk` is quantified over the list — so the whole cost is
 `classOkB` still answering `true`, which `check-proofs.sh` runs. (The probe also
 refuses `IOError`: it is not a constant of `Object` at the booted heap at all.) -/
 def reopenableClasses : List String :=
@@ -998,7 +998,7 @@ def addRow (D : Decls) (cls name : String) (d : MethodDecl) : Decls :=
 /-! ## The base table
 
 the static-soundness POC note §5's builtin signatures, as declarations. Every entry
-is a **proof obligation** — `Proof/Static/Decls.lean`'s `DeclsOk` is what the
+is a **proof obligation** — `books/Books/Metatheory/Typing/Infer/Decls.lean`'s `DeclsOk` is what the
 invariant carries, and `tableOk_declsOk` is the proof for these three. Entries
 whose conformance is not proved may not appear; the notable absences and their
 reasons are unchanged from P0 (`/` and `%` raise `ZeroDivisionError`, `**` makes

@@ -1,182 +1,142 @@
-# books/ — Ruby programs proved correct against the model
+# books/ — every proof in this repository
 
-A *book* is a Ruby program together with a statement of what it computes and a
-Lean proof of that statement against the model's `stepFn`. The name follows
-ACL2's community books: a growing collection of checked results that others can
-build on.
+[`../ruby-lean`](../ruby-lean/README.md) holds the two things that proofs are
+*about*: an executable model of Ruby (`RubyCore/`) and a type checker for
+Sorbet-annotated programs (`Checker/`). It proves nothing. This package uses it
+as a library and holds the proofs, as a collection of *books*: each is a
+directory under [`Books/`](Books/) with one result at its head. The name follows
+ACL2's community books.
 
-This is a separate Lake package that uses `../ruby-lean` as a library. It is
-not on the model's build or its gate.
+| Book | What it proves | Start at |
+|---|---|---|
+| [`Books/TypeSoundness/`](Books/TypeSoundness/README.md) | A program the checker accepts never raises a type error when the model runs it: `validateD p d = true → … → typeStuck (run fuel p) = false`, for every fuel | [`Soundness.lean`](Books/TypeSoundness/Soundness.lean) |
+| [`Books/Metatheory/`](Books/Metatheory/README.md) | Facts about the model itself: the step relation and the executable `stepFn` agree, type safety stated as reachability, and the heap and stack lemmas the soundness proof stands on | [`Machine/Step.lean`](Books/Metatheory/Machine/Step.lean) |
+| [`Books/FastPower/`](Books/FastPower/README.md) | One Ruby program, exponentiation by squaring, computes `b ** n` for every `b` and `n` | [`Proof.lean`](Books/FastPower/Proof.lean) |
+
+[`Books/Lib/`](Books/Lib/) is not a book. It is the machinery for proving things
+about a single program (running the kernel on a symbolic machine), and
+[the FastPower page](Books/FastPower/README.md) explains how to write a new
+program book with it.
+
+Every headline theorem depends on `propext`, `Classical.choice` and `Quot.sound`
+and nothing else. The build prints this and the checks below fail if it changes.
+
+## Build and check
+
+From the repository root:
 
 ```bash
-make books
+make books        # build every book
+make gate         # the gate: must be green before a commit
+make proofs       # the metatheory's axioms and the measurements it depends on
+make comparator   # an independent check of the soundness theorem
 ```
 
-The first build takes about two minutes once the model is built.
+Or here, directly:
 
-## What a book proves
-
-The worked example is [`Books/FastPower/`](Books/FastPower/). The program
-([`fast_power.rb`](Books/FastPower/fast_power.rb)) is exponentiation by
-squaring, done by a small stateful object:
-
-```ruby
-class Power
-  def initialize(base)
-    @base = base
-    @steps = 0
-  end
-
-  def steps
-    @steps
-  end
-
-  def raise_to(exponent)
-    result = 1
-    square = @base
-    left = exponent
-    while left > 0
-      if left % 2 == 1
-        result = result * square
-      end
-      square = square * square
-      left = left / 2
-      @steps = @steps + 1
-    end
-    result
-  end
-end
-
-power = Power.new(3)
-answer = power.raise_to(13)
-puts answer
-[answer, power.steps]
+```bash
+lake build                      # every book, as far as it is claimed (see below)
+./scripts/run_typed_ratchet.sh  # the gate
+./scripts/check-proofs.sh
+./scripts/run-comparator.sh
 ```
 
-With the two literals replaced by arbitrary integers `b` and `n`:
+The first build takes roughly half an hour on a cold cache, almost all of it in
+`Books/TypeSoundness/`. Rebuilds after a change take seconds.
 
-```lean
-theorem fast_power_correct (b n : Int) :
-    ∃ v m', Runs (program b n) v m' ∧
-      m'.out = toString (b ^ n.toNat) ++ "\n" ∧
-      IsArray m'.heap v [.int (b ^ n.toNat), .int (bitLength n.toNat)]
-```
+### What `lake build` covers
 
-For every base and exponent, the program, run the way `rubycore` runs it
-(prelude booted first), terminates normally, prints `b ** n` on a line of its
-own, and has the value `[b ** n, s]`, where `s` is the number of loop iterations
-and equals the bit length of `n`. A negative exponent behaves as `0`.
-`fast_power_run` restates it per fuel: the run is either unfinished or has
-returned exactly that. It never raises, never leaves the modeled fragment and
-never gets stuck.
+Every file under `Books/`. Each book is one Lake library over its whole
+directory (`FastPower`, `Metatheory`, `TypeSoundness`), and CI fails if any file
+stops building.
 
-That is the whole observation the differential tests compare (stdout, result,
-exception), proved for all inputs. The proof depends on `propext`,
-`Classical.choice` and `Quot.sound` only.
+Soundness-proof files that were written against an earlier version of the model
+and have not been rebuilt are not under `Books/`. They are in
+[`Unrebuilt/`](Unrebuilt/README.md), unedited and out of the build, with a list
+of what each one is waiting on. The soundness theorem does not depend on them.
 
-## How a proof works
+### The gate
 
-The Lean kernel can evaluate `stepFn`, method dispatch included, on a machine
-whose integer inputs are variables. A straight-line stretch of execution is
-therefore proved by asking the kernel to run it:
+[`scripts/run_typed_ratchet.sh`](scripts/run_typed_ratchet.sh) is the check that
+must pass before a commit. In order, it:
 
-```lean
-theorem setup (b n : Int) :
-    stepN 61 (start (program b n)) = some (loopHead b n 1 b n 0) := by kernel_rfl
-```
+1. checks that the checker imports nothing from the model
+   (`../ruby-lean/scripts/check-isolation.sh`);
+2. builds the soundness theorem for the enabled rules and rejects any axiom
+   beyond Lean's three;
+3. builds the negative controls: programs and derivations the checker must
+   refuse;
+4. runs every program in [`corpus/`](corpus/) through Sorbet, the desugarer and
+   the derivation emitter, and reports which ones the real `validateD` accepts;
+5. runs the same programs under CRuby and under the model and fails on any
+   disagreement.
 
-That line covers booting the prelude, defining `Power`, `Power.new(b)` running
-`initialize`, the call to `raise_to(n)` and its first three assignments, for all
-`b` and `n`.
+`--clink-rebuild` runs steps 1–3 only. `RATCHET_SKIP_AGREEMENT=1` skips step 5.
+The older full-coverage audit (`--full-corpus`) reads worked theorems that are
+in `Unrebuilt/`, and is there with them.
 
-The kernel stops where the machine branches on a value that depends on a
-variable, such as `left > 0`. Those are the only places a proof has to say
-anything. For `FastPower` that comes to:
+### The comparator
 
-| Part | What it is | Size |
-|---|---|---|
-| States | The machine at the loop test as a function of `result`, `square`, `left`, `@steps`, and the two branch points inside an iteration | 3 definitions |
-| Segments | The stretches between those states, each `by kernel_rfl` | 10 one-line proofs |
-| Arithmetic | `result * square ^ left = b ^ n` is preserved; what `>`, `%`, `==`, `/` compute | about 30 lines, no Ruby in it |
-| Loop | Strong induction on `left` joining the above | about 35 lines |
+[`scripts/run-comparator.sh`](scripts/run-comparator.sh) checks the soundness
+theorem with [`leanprover/comparator`](https://github.com/leanprover/comparator).
+[`Comparator/Challenge.lean`](Comparator/Challenge.lean) states the three
+theorems with `sorry` for a proof. The comparator checks that the statements
+proved in `Books/TypeSoundness/Soundness.lean` are identical to those, that the
+proofs use only the three permitted axioms, and that a fresh Lean kernel accepts
+the whole dependency closure. The script's header says what is not stock about
+the run.
 
-A state is not written out in full. `loopHead` takes everything the loop leaves
-alone (the booted heap, class `Power`, the four frames) from the machine the
-kernel computes, and spells out only what the loop changes.
+## Vocabulary
 
-## Writing a book
+The code and the notes use a few project-specific words.
 
-Each book is a directory under `Books/` holding the Ruby file, its exported
-JSON, and three Lean files.
-
-1. **`Program.lean`: the program as a term.** The exporter's AST with the
-   inputs abstracted and the subterms the proof mentions given names.
-   `Check.lean` has a `#guard` that decoding the JSON
-   (`ruby desugar/bin/export-json < prog.rb > prog.json`) gives exactly that
-   term.
-2. **Look at a concrete run.** `#eval trace 400 (start (program 3 2))` prints
-   every transition with the stack, frame-store size and heap size. This is
-   where the frame and object numbers come from.
-3. **Find the stop points.**
-   `#kernel_steps 400 fun (b n : Int) => start (program b n)` runs the kernel
-   on symbolic inputs and reports how far it got and what it could not decide.
-4. **`Proof.lean`: states, segments, arithmetic, induction.** Define the states
-   at the loop head and at each stop point and prove the segments between them
-   with `kernel_rfl`. A wrong state or step count is rejected by the kernel.
-   Resolve each stop with a lemma about the builtin's result.
-5. **`Check.lean`: the JSON guard and the axiom audit.**
-
-Two habits keep proofs fast. Establish arithmetic facts before any fact about a
-machine is in context, because `omega` times out trying to read one. And prefer
-`h ▸ …` or a helper lemma to `rw … at` on a hypothesis that mentions a machine.
-
-### `Books/Lib/`
-
-| File | Contents |
+| Word | Meaning |
 |---|---|
-| `Exec.lean` | `stepN`, `Reaches`, `Returns` and their algebra; `kernel_rfl`; `#kernel_steps`, `#kernel_whnf` |
-| `Boot.lean` | `start p`, the prelude-booted machine `rubycore` runs `p` on, with `boot_ok`; `Runs`; `IsArray` |
-| `Trace.lean` | `trace` and `showState`, for looking at concrete runs |
+| model | `RubyCore`: the abstract machine and its step function `stepFn`. What "Ruby" means in every theorem here |
+| checker | `Checker`: the type checker. Its entry point is `validateD`, which takes a program and a derivation and answers `true` or `false` |
+| derivation | The untrusted hint the checker is given (`Deriv`). A wrong one costs an accept; it cannot produce an unsound one |
+| rule | One constructor of the checker's typing judgment (`DJudge` and its companions) |
+| clink | A rule together with the proof that it is sound on the model. The registry of clinks is what the soundness theorem quantifies over. A rule with no clink is *gated*: the checker refuses any derivation that uses it |
+| rung | One program in `corpus/`. A rung is *climbed* when `validateD` accepts it |
+| ratchet | The gate. Its numbers (rules enabled, rungs climbed) only go up |
+| control | A negative test: something that must be rejected, or a countermodel showing why a hypothesis is needed |
+| conformance | A machine state agrees with the checker's static context (`StateOk`). Preserving it across a step is most of the soundness proof |
 
-## What is proved and what is tested
+## Layout
 
-| Link | Status |
+| Path | What it is |
 |---|---|
-| `program b n`, booted and run as `rubycore` does, prints and returns `b ^ n` | Proved, all `b`, `n` |
-| `fast_power.rb` desugars to `program 3 13` | Tested at build time (`#guard`), for the literals in the file |
-| CRuby does the same as the model | Tested by `ruby books/Books/FastPower/check.rb` on 72 inputs |
+| `Books/` | The books |
+| `Comparator/` | The comparator's challenge file, config and replay patch |
+| `corpus/` | The Sorbet-annotated Ruby programs the gate measures the checker on. The `.rb` files are the source of truth |
+| `build/` | Generated from `corpus/` by `scripts/build_corpus.py`. Not committed |
+| `scripts/` | The gate, the corpus pipeline driver, the proof audit and the comparator run |
+| `MainActiveRatchet.lean`, `DenotationReport.lean` | The gate's report executables |
+| [`Unrebuilt/`](Unrebuilt/README.md) | Proof files not yet rebuilt against the current model. Not built |
+| [`AGENTS.md`](AGENTS.md), `notes/type-soundness/` | The working record of the checker and its soundness proof: current state, then the chronological notes |
 
-The second link is a test because the JSON decoder is a `partial` function. The
-third is the model's standing obligation and is what `difftest/` is for.
+The parts of the pipeline that are also used outside the gate stay with the
+checker in `../ruby-lean/scripts/`: `srb_sigs.py` and `read_sigs.rb` (signatures
+from Sorbet), `emit_deriv.rb` (the derivation emitter), and
+`generate_audited_checker.py`.
 
-## What had to change in the model
+## Where things were before
 
-The first attempt at this proof could only be completed for a weakened program
-(`left.odd?` for `left % 2 == 1`, no `puts`) on the bare boot heap. Five things
-in the model stood in the way; each is now fixed there.
+The proofs used to live inside `ruby-lean/`. The notes and older commits use
+those paths.
 
-| Was in the way | Fix |
+| Before | Now |
 |---|---|
-| `Integer#==` answered with `valueEq`, a `partial def`: opaque, so not even `1 == 1` was provable. `eql?` and Hash key matching (`valueEql`) likewise | `RubyCore/Repr.lean`: both recurse on fuel (`reprFuel`) and are ordinary total functions. Out of fuel answers `true`, which is what CRuby's recursion guard answers on a comparison that re-enters itself |
-| `puts`, `p`, `to_s`, `inspect` and interpolation of a non-String went through `toS`, `inspect` and `pureOk`, all `partial`. It was not even provable that `puts answer` stays inside the model | `RubyCore/Repr.lean`, `RubyCore/Builtins/Support.lean`: the same fuel. Out of fuel is an Unsupported reason for `toS`/`inspect` and "not pure" for `pureOk`, so it gates and never guesses |
-| The prelude was *defined* as "decode this JSON string", and the decoder is `partial`, so the booted heap was opaque and every theorem had to be about the bare boot heap, which is not what `rubycore` runs | `RubyCore/Prelude.lean` is now the prelude as terms, written by `lake exe genprelude` from `RubyCore/PreludeJson.lean` using the model's own decoder. The kernel runs the boot in about seven seconds (`boot_ok`) |
-| `Boot.initHeap` built `Object`'s constant table with `String.contains`, an iterator loop the kernel cannot unfold, so the first `class` in any program stopped it | `RubyCore/Heap.lean`: `name.toList.contains ':'` |
-| `Integer#/` asked "is the receiver the literal `1`?" before looking at its argument (the `1 / Rational` case), which is undecidable for a variable receiver and forced a case split in the loop | `RubyCore/Builtins/Support.lean`, `RubyCore/Builtins/Numerics.lean`: the argument is tested first |
-
-None of these changes what a program computes, except that comparing or
-printing a cyclic structure, which used to make the model diverge, now
-terminates.
-
-## Not yet attempted
-
-- **A user-defined method called inside a loop.** Activation frames are never
-  reclaimed, so the frame store grows each iteration and the loop state stops
-  being a closed term the kernel can evaluate. I expect this needs a framing
-  lemma for the frame store; it is untested.
-- **Blocks and iterators** (`each`, `times`, `map`). They live in the prelude,
-  which is now reachable, but each call pushes frames, so they meet the same
-  problem.
-- **Strings, Arrays and Hashes as symbolic inputs.** Only integer inputs are
-  symbolic so far. Building an Array from symbolic integers works.
-- **Generating `Program.lean` from the JSON.** It is written by hand; the
-  `#guard` is what makes that safe.
+| `ruby-lean/Ratchet/`, namespace `Ratchet` | `ruby-lean/Checker/`, namespace `Checker` |
+| `ruby-lean/Denote/`, namespace `Ratchet.Denote` | `Books/TypeSoundness/`, namespace `Checker.Soundness` |
+| `Denote/Bridge.lean` | `Books/TypeSoundness/Soundness.lean` |
+| `Denote/Safety.lean` | `Books/TypeSoundness/RuleCoverage.lean` |
+| `Denote/Ty/` | `Books/TypeSoundness/Denotation/` |
+| `Denote/Sem/` | `Books/TypeSoundness/Conformance/` |
+| `Denote/Clink/` | `Books/TypeSoundness/Registry/` |
+| `ruby-lean/Semantics/` | `Books/TypeSoundness/Semantics/` |
+| `ruby-lean/RubyCore/Proof/` | `Books/Metatheory/` (see [its README](Books/Metatheory/README.md) for the file-by-file map) |
+| `ruby-lean/Comparator/` | `Comparator/` |
+| `ruby-lean/corpus/`, `ruby-lean/build/` | `corpus/`, `build/` |
+| `ruby-lean/scripts/run_typed_ratchet.sh` and the other gate scripts | `scripts/` |
+| `ruby-lean/AGENTS.md`, `ruby-lean/notes/ratchet/` | `AGENTS.md`, `notes/type-soundness/` |

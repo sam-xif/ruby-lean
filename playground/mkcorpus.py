@@ -23,8 +23,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 PKG = HERE.parent / "ruby-lean"
-CORPUS = PKG / "corpus"
-BUILD = PKG / "build"
+CORPUS = HERE.parent / "books" / "corpus"
+BUILD = HERE.parent / "books" / "build"
 
 
 def main(out: Path) -> int:

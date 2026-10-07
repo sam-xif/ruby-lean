@@ -19,7 +19,7 @@ The legacy static RetTransparent/NxtTransparent predicates admitted every
 iterK. Their unwind lemmas claimed that return, next and raise only pop the
 marker and change control. That claim is false after shared Hash insertion locks:
 a hashEach marker with hashIterationLocks = [0] removes 0 on unwind.
-RubyCore/Proof/Static/IteratorUnwind.lean's hash_unwind_not_transparent is a
+../books/Books/Metatheory/Typing/Infer/IteratorUnwind.lean's hash_unwind_not_transparent is a
 kernel-checked counterexample using raise; the same cleanup precedes all jumps.
 
 Restrict exact transparency to IterUnwindInert (all kinds except hashEach).
@@ -98,7 +98,7 @@ can be admitted without pretending that user phase alone establishes provenance.
 
 # Main's leading dispatch class can shadow a checked definition (2026-09-30)
 
-Denote/Controls/MethodPrefixControls.lean measures a complete bootStateB accept
+../books/Books/TypeSoundness/Controls/MethodPrefixControls.lean measures a complete bootStateB accept
 after adding bump to main's leading dispatch class with builtin
 Module#method_added. The unrestricted checker accepts the sequence def bump=1;
 bump(), but execution from this state raises ArgumentError: that native hook

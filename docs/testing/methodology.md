@@ -14,7 +14,7 @@ below is that addressing and is kept stable.
   is not involved.* This isolates front-end bugs from semantics bugs, and is what
   `desugar/` exists to run (see [the round-trip method](../front-end/method.md)).
 - **C3 — adequacy.** Interpreter ⟺ inductive relation. Not testable; discharged by
-  proof (`ruby-lean/RubyCore/Proof/Adequacy.lean`). C3 is the bridge that turns
+  proof (`books/Books/Metatheory/Machine/Adequacy.lean`). C3 is the bridge that turns
   test-grade evidence about the interpreter into proof-grade evidence about the
   definition of record. Until it holds, testing pins only the executable.
 

@@ -1,15 +1,66 @@
 name = "books"
 version = "0.1.0"
-defaultTargets = ["Books"]
+defaultTargets = ["FastPower", "Metatheory", "TypeSoundness", "active-ratchet"]
 
-# Proofs about Ruby programs, stated against the model. The model is used as a
-# library: a path dependency builds in `../ruby-lean/.lake`, so its build is
-# shared and nothing here is on the model's own build or gate.
+# Every proof in this repository. `../ruby-lean` holds the two things proofs are
+# *about* — the executable model (`RubyCore/`) and the certificate checker
+# (`Checker/`) — and is used here as a library: a path dependency builds in
+# `../ruby-lean/.lake`, so its build is shared.
+#
+#   Books/Lib/            machinery for proving things about one Ruby program
+#   Books/FastPower/      a Ruby program proved correct
+#   Books/Metatheory/     facts about the model itself
+#   Books/TypeSoundness/  the checker's soundness theorem
+#
+# See README.md for what each book proves and where to start reading.
 [[require]]
 name = "rubylean"
 path = "../ruby-lean"
 
+# One library per book, each a whole directory, and `lake build` builds all of
+# them: every file under `Books/` compiles. Proofs that have not been rebuilt
+# against the current model are kept out of the build in `Unrebuilt/` (see its
+# README), not under `Books/`. All libraries root at `Books`, so that an `import Books.…`
+# resolves whichever library asked for it.
+
+# A Ruby program proved correct, with the machinery it is written in.
 [[lean_lib]]
-name = "Books"
+name = "FastPower"
 srcDir = "."
-globs = ["Books.+"]
+roots = ["Books"]
+globs = ["Books.Lib.+", "Books.FastPower.+"]
+
+# Facts about the model. `scripts/check-proofs.sh` adds the axiom audit.
+[[lean_lib]]
+name = "Metatheory"
+srcDir = "."
+roots = ["Books"]
+globs = ["Books.Metatheory.+"]
+
+# The checker's soundness theorem, with its registry, controls and worked examples.
+[[lean_lib]]
+name = "TypeSoundness"
+srcDir = "."
+roots = ["Books"]
+globs = ["Books.TypeSoundness.+"]
+
+# The statement-only side of a `leanprover/comparator` run: `Comparator/Challenge.lean`
+# restates `Books/TypeSoundness/Soundness.lean`'s theorems with `sorry` for a proof, and
+# `scripts/run-comparator.sh` has the comparator check the real ones against it.
+# **Not** in defaultTargets — it is `sorry` on purpose, and nothing imports it.
+[[lean_lib]]
+name = "Comparator"
+srcDir = "."
+globs = ["Comparator.+"]
+
+# The gate's report: which rules are enabled and proved, and which corpus programs
+# the production `validateD` accepts under them.
+[[lean_exe]]
+name = "active-ratchet"
+root = "MainActiveRatchet"
+
+# `Books/TypeSoundness/Denotation/Examples.lean`'s report, printed. The `#guard`s
+# there are the real gate (they fail the build); this shows *what* was checked.
+[[lean_exe]]
+name = "denotereport"
+root = "DenotationReport"

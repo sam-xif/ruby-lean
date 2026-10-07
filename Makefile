@@ -1,7 +1,7 @@
 # ruby-lean — top-level build.
 #
-# Each piece keeps its own build tool: Lake for the Lean package (ruby-lean/),
-# uv for difftest/, Bundler for the Ruby gems, and the shell scripts under
+# Each piece keeps its own build tool: Lake for the two Lean packages (ruby-lean/
+# for the model and the checker, books/ for the proofs about them), uv for difftest/, Bundler for the Ruby gems, and the shell scripts under
 # ruby-lean/wasm/ and playground/ for the browser build. This file only names
 # the targets and wires the edges *between* those tools, which nothing else
 # tracks:
@@ -32,7 +32,7 @@ RUBY_REF  ?= v4.0.5
 RUBY_SRC  ?= $(CACHE)/ruby-src-$(RUBY_REF)
 BOOTSTRAP := desugar/corpus/bootstraptest
 
-.PHONY: help all prereqs deps lean lean-exes desugar difftest run proofs books gate check \
+.PHONY: help all prereqs deps lean lean-exes desugar difftest run proofs books comparator gate check \
         gen gen-check desugar-test difftest-test bootstraptest \
         wasm playground playground-serve docs docs-serve clean distclean
 
@@ -112,19 +112,26 @@ gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 lean-exes: $(PRELUDE_LEAN) ## Just the rubycore and validate-one executables
 	cd $(PKG) && $(LAKE) build --log-level=error rubycore validate-one
 
-lean: lean-exes ## Build the Lean package: the model, the checker and the checker's soundness proof
+lean: lean-exes ## Build the Lean package: the model and the checker (the proofs are `make books`)
 	cd $(PKG) && $(LAKE) build
 
 $(LEAN_BIN)/rubycore $(LEAN_BIN)/validate-one: lean-exes ;
 
-proofs: $(PRELUDE_LEAN) ## Build the metatheory (RubyCore/Proof/) and check every theorem's axioms
-	cd $(PKG) && ./scripts/check-proofs.sh
+# ── The proof books ──────────────────────────────────────────────────────────
+# books/ is a second Lake package that uses ruby-lean/ as a library, so these
+# wait for `lean-exes`: two Lakes never build ruby-lean/.lake at once.
 
-books: lean-exes ## The proof books (books/): Ruby programs proved correct against the model
+books: lean-exes ## Every proof book: every file under books/Books/ (soundness theorem, metatheory, program proofs)
 	cd books && $(LAKE) build
 
+proofs: lean-exes ## Build the metatheory (books/Books/Metatheory/) and check every theorem's axioms
+	cd books && ./scripts/check-proofs.sh
+
+comparator: lean-exes ## Check the soundness theorem with leanprover/comparator (fetches and builds it)
+	cd books && ./scripts/run-comparator.sh
+
 gate: $(PRELUDE_LEAN) ## The typed ratchet gate — must be GREEN before a commit
-	cd $(PKG) && ./scripts/run_typed_ratchet.sh
+	cd books && ./scripts/run_typed_ratchet.sh
 
 # ── Desugarer and bin/ruby-lean ──────────────────────────────────────────────
 
@@ -187,7 +194,7 @@ $(WASM_OUT)/ruby.wasm: $(WASM_RUBY_SRC) $(STAMP)/bundle
 wasm: $(WASM_OUT)/rubycore.wasm $(WASM_OUT)/validate-one.wasm $(WASM_OUT)/ruby.wasm ## The three .wasm modules (Lean model, validator, CRuby + desugarer)
 
 PLAYGROUND_SRC := playground/index.html playground/build.sh playground/mkcorpus.py \
-                  $(wildcard playground/js/*.js) $(wildcard $(PKG)/corpus/*)
+                  $(wildcard playground/js/*.js) $(wildcard books/corpus/*)
 
 playground/dist/index.html: $(WASM_OUT)/rubycore.wasm $(WASM_OUT)/validate-one.wasm \
                             $(WASM_OUT)/ruby.wasm $(PLAYGROUND_SRC)
@@ -213,8 +220,8 @@ docs-serve: ## Serve the docs with live reload on :8000
 check: gen-check desugar-test difftest-test gate ## Everything that should pass before a commit (proofs separately)
 
 clean: ## Remove build outputs in the tree (keeps .lake, venvs and caches)
-	rm -rf $(STAMP) site playground/dist playground/dist.tar.gz $(WASM_OUT)/*.wasm $(PKG)/build
+	rm -rf $(STAMP) site playground/dist playground/dist.tar.gz $(WASM_OUT)/*.wasm books/build
 
 distclean: clean ## Also remove .lake, the difftest venv, harvested corpora and download caches
-	rm -rf $(PKG)/.lake difftest/.venv $(BOOTSTRAP) $(CACHE) $(WASM_CACHE)
+	rm -rf $(PKG)/.lake books/.lake difftest/.venv $(BOOTSTRAP) $(CACHE) $(WASM_CACHE)
 
