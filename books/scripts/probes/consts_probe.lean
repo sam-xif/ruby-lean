@@ -169,7 +169,7 @@ def namesMain : IO UInt32 := do
     return if hazards.isEmpty && unreachable == 0 && ambiguous == 0 then 0 else 1
 
 /-!
-## L195 — the `preludeDecls` constant table, decided
+## The `preludeDecls` constant table, decided
 
 `--assn` reports against `preludeDecls`, whose extra row is **`T`**. That row is a
 claim about the *prelude-booted* heap — `T` does not exist at the boot one — and the
@@ -198,7 +198,7 @@ def tableMain : IO UInt32 := do
   | .error e => IO.eprintln s!"prelude boot failed: {e}"; return 1
   | .ok mp =>
     let h := mp.heap
-    IO.println "\n== L195: preludeDecls' constant table after require sorbet-runtime"
+    IO.println "\n== preludeDecls' constant table after require sorbet-runtime"
     for e in RubyCore.Types.preludeConsts do
       let own := constOwn h Boot.objectId e.1
       let ty := own.bind (fun v => Proof.Static.valueTy? h v)
