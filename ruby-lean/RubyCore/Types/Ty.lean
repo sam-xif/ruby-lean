@@ -534,7 +534,7 @@ which no Ruby identifier can ever contain, so a real program's own locals can
 never collide with one. Riding in `Γ` rather than in `Decls` is the load-bearing
 choice — `Γ` already changes on every assignment regardless of `ctx.ret`/
 `ctx.inLoop`, so a pin is one more entry of a kind `Γ` already varies by, and
-none of the table-stability theorems (`Proof/Static/Mono.lean`'s
+none of the table-stability theorems (`books/Books/Metatheory/Typing/Infer/Mono.lean`'s
 `infer_table_ret`/`infer_table_loop`, both stated over `Decls` only) have
 anything to say about it. A `Decls`-side ghost table was tried first and
 rejected for exactly that reason: the `lambda` arm fires precisely when

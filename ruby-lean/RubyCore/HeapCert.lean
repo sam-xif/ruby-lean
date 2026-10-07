@@ -15,10 +15,10 @@ was `Lean.Json.parse Prelude.json`, and `Lean.Json.parse` does not kernel-reduce
 even on the input `"1"` (measured), while L94 bans the `native_decide` escape.
 (`Prelude.program` is a term now, and the kernel can run the boot — see
 `books/Books/Lib/Boot.lean` — so that reason no longer holds.) They
-are decided by *running* them — `Denote/Sem/Core/Boot.lean`'s `#guard` for `saturatedB`,
-and `scripts/probes/` for the measurements `scripts/check-proofs.sh` reports.
+are decided by *running* them — `books/Books/TypeSoundness/Conformance/Core/Boot.lean`'s `#guard` for `saturatedB`,
+and `books/scripts/probes/` for the measurements `books/scripts/check-proofs.sh` reports.
 
-**This lives outside `Proof/` on purpose.** The alternative — defining these next
+**This lives outside `books/Books/Metatheory/` on purpose.** The alternative — defining these next
 to the lemmas — means a probe (or the checker) cannot see them, so they would end
 up re-implemented and could silently drift from the ones the theorems are about.
 One definition, several readers.
@@ -37,7 +37,7 @@ open Interp
 /-- Executable form of `Proof.Saturated` (L144/L148): **the ancestor walk has
     finished before its fuel runs out**, one more unit of fuel changing nothing.
 
-    Here rather than in `Proof/` for `heapOkB`'s reason — the probe must compute *the*
+    Here rather than in `books/Books/Metatheory/` for `heapOkB`'s reason — the probe must compute *the*
     predicate the theorem is about, not a copy — and folded into `heapOkB` below
     because it is a heap clause of the invariant exactly like `TableOk` and `NoHook`,
     and for the same reason: `DeclsOk_grow` needs it at an allocating step, and only

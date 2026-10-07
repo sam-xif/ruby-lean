@@ -1,0 +1,74 @@
+import Checker.Guards.MethodCtx
+import Books.TypeSoundness.Conformance.Instance.TopMethodInstall
+import Books.TypeSoundness.Rules.Method.MethodDispatch
+
+/-! The annotation-checked definition rule's semantic obligation. Defining a method does
+not execute its body, but the rule still requires that body at its entire declared domain.
+No checker/registry admission is made by this module alone. -/
+
+set_option autoImplicit false
+namespace Checker.Soundness.Typed
+open RubyCore Checker Checker.Soundness
+
+theorem top_definition {κ : Ctx} {Γ : Env} {I : Ty} {d : Defn}
+    (hruntime : κ.scope.runtimeMain = true) (hclasses : topDeclClassesB κ d.name = true)
+    (hself : κ.selfTy = none) (hblock : κ.blockTy = none) (hconst : κ.consts = [])
+    (hasms : κ.asms = []) (hI : FirstOrder I = true)
+    (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
+    (hfresh : ∀ old ∈ κ.defs, old.name ≠ d.name)
+    (hmiss : "method_missing" ≠ d.name) (hquiet : "method_added" ≠ d.name) :
+    SemSafeCtxA κ Γ I (.def' d.name d.params d.body) .sym (topDeclCtx κ d) Γ I := by
+  intro m hm
+  have ready := hm.runtime hruntime
+  let md := definedMethod m d.name (toRubyParams d.params) (toRuby d.body)
+  let n := installMethod m d.name (toRubyParams d.params) (toRuby d.body)
+  have hreserved : StateOk (reserveNameCtx κ d.name) Γ I m := StateOk_reserveName hm d.name
+  have hname : nameFreeN (reserveNameCtx κ d.name) d.name = false := by
+    change (!κ.negUnpinned && !(d.name :: κ.declared).contains d.name) = false
+    simp
+  have hn : StateOk (topDeclCtx κ d) Γ I n := by
+    have hh := StateOk_defineTopMethod_classes (d := d) (md := md) hreserved
+      (ReframeFO.empty hI hself hblock hconst) hΓ hasms hclasses hname hmiss hquiet
+      ready.classLive hfresh (definedMethod_params ..) (definedMethod_body ..)
+      (definedMethod_undefined ..)
+      (definedMethod_code ready.owner ready.cref ready.phase ready.origin)
+    simpa only [topDeclCtx, reserveNameCtx, Ctx.defs, n, installMethod, ready.owner, md] using hh
+  have hstep : Interp.stepFn (evalFrom m (.def' d.name d.params d.body)) =
+      .next { n with
+        ctl := .send (.ref m.currentFrame.defmod) .reflective "method_added" [.sym d.name] none [],
+        kont := [.methodEditsK [] (.sym d.name)] } := by
+    have hw : frozenMethodReceiver? m.heap m.currentFrame.defmod = none := by
+      rw [ready.owner]; exact ready.writable
+    have hd : (m.heap.classPayload? m.currentFrame.defmod).bind (·.attached) = none := by
+      rw [ready.owner]; exact ready.detached
+    have hs := step_def_install (m := evalFrom m (.def' d.name d.params d.body))
+      rfl ready.phase hw hd
+    simpa only [evalFrom, n, installMethod, definedMethod,
+      show ({ m with ctl := .eval (toRuby (.def' d.name d.params d.body)), kont := [] } : Machine).currentFrame =
+        m.currentFrame from currentFrame_reCtl ..,
+      show sourceMethod { m with ctl := .eval (toRuby (.def' d.name d.params d.body)), kont := [] }
+        (toRubyParams d.params) (toRuby d.body) =
+          sourceMethod m (toRubyParams d.params) (toRuby d.body) from sourceMethod_reCtl ..] using hs
+  apply RunSpec.step (answerPoint_evalFrom _ _) hstep
+  apply definition_hook_runSpec hn (Framed_defineMethod m m.currentFrame.defmod d.name md)
+  · change ((defineMethod m.heap m.currentFrame.defmod d.name md).classPayload?
+      m.currentFrame.defmod).isSome = true
+    rw [Proof.classPayload?_isSome_defineMethod, ready.owner]
+    exact ready.classLive
+  · exact defHookQuiet_install hquiet (mainReady_defHookQuiet ready)
+theorem SemSafeCtxA.defDecl {κ : Ctx} {Γ Γb : Env} {I τ : Ty} {d : Defn} {ps : List SigParam}
+    (_hparams : d.params = ps.map (fun p => Checker.Param.req p.1))
+    (_hps : ∀ p ∈ ps, FirstOrder p.2 = true ∧ isAliasTy p.2 = false)
+    (_hret : FirstOrder τ = true)
+    (_hbody : SemSafeCtxA (topBodyCtx κ d) ps I d.body τ (topBodyCtx κ d) Γb I)
+    (hruntime : κ.scope.runtimeMain = true) (hclasses : topDeclClassesB κ d.name = true)
+    (hself : κ.selfTy = none) (hblock : κ.blockTy = none) (hconst : κ.consts = [])
+    (hasms : κ.asms = []) (hI : FirstOrder I = true)
+    (hΓ : ∀ p ∈ Γ, FirstOrder (stripAlias p.2) = true)
+    (hfresh : ∀ old ∈ κ.defs, old.name ≠ d.name)
+    (hmiss : "method_missing" ≠ d.name) (hquiet : "method_added" ≠ d.name) :
+    SemSafeCtxA κ Γ I (.def' d.name d.params d.body) .sym (topDeclCtx κ d) Γ I :=
+  top_definition hruntime hclasses hself hblock hconst hasms hI hΓ hfresh hmiss hquiet
+
+#print axioms SemSafeCtxA.defDecl
+end Checker.Soundness.Typed

@@ -97,7 +97,7 @@ declares out-of-fragment programs instead of failing on them. Built-in SUTs:
 ## Sorbet (tier 4)
 
 Scaffolding for the Sorbet-soundness work (see *Sorbet, as an object of study* in
-`ruby-lean/AGENTS.md`). Setup:
+`books/AGENTS.md`). Setup:
 
 ```sh
 gem install sorbet sorbet-runtime      # srb lands in $(gem environment gemdir)/bin
@@ -123,7 +123,7 @@ static verdict against runtime outcome. `srb` is an oracle, not truth — Sorbet
 by design, so acceptance is not a safety claim. The informative cells are off-diagonal:
 `unsoundness-witness` (srb accepted a program that reaches an uncaught
 NoMethodError/ArgumentError/TypeError — type-stuck in the sense of
-`ruby-lean/RubyCore/Proof/TypeSafety.lean`'s `typeErrorFamily`) and `conservative-rejection`
+`books/Books/Metatheory/Reachability/TypeSafety.lean`'s `typeErrorFamily`) and `conservative-rejection`
 (srb rejected a program that runs fine — the DRuby false-positive family). Current
 standing: **4 witnesses, 2 conservative rejections, 0 declaration mismatches**. Exit 1 on
 a declaration mismatch only; witnesses are findings, not failures.
@@ -142,7 +142,7 @@ licensed weakenings (`agree_weakened`), 3 gated, 0 violations**.
 - The two-by-two sees only *errors*. Quiet holes — `.checked(:never)`, the unchecked
   `T::Struct` getter — let a wrong-typed value through with no error and land in
   `accepted-and-safe`. Catching those needs conformance against a *declared* discipline,
-  i.e. the Lean typing layer — the checker in `../ruby-lean/Ratchet/`.
+  i.e. the Lean typing layer — the checker in `../ruby-lean/Checker/`.
 - sig-strip **gates** structural constructs (`T::Struct`, `T::Enum`, `T.absurd`) rather
   than mangling them: removing those yields a different program, not a less precise one.
 - The Lean SUT false-disagrees on all of tier 4 (`NameError: uninitialized constant T`)

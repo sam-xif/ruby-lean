@@ -5,5 +5,5 @@
   "sigil": "true",
   "static_expect": "errors",
   "runtime_expect": "value",
-  "doc_ref": "ruby-lean/AGENTS.md §Sorbet §A.2"
+  "doc_ref": "books/AGENTS.md §Sorbet §A.2"
 }

@@ -9,12 +9,12 @@ Those are the `Lean.Name` / `Lean.NameMap` / `System.FilePath` instances, the
 `deriving FromJson` support, which takes `Array Lean.Name`). Nothing in this
 project decodes any of those types, and this project does not `deriving
 FromJson` -- every `ofJson?` here is hand-written, on purpose
-(`Ratchet/Lang/JsonUtil.lean`'s header says why). Each cut is marked in place.
+(`Checker/Lang/JsonUtil.lean`'s header says why). Each cut is marked in place.
 
 Upstream's `FromToJson/Extra.lean` is not vendored either: it is instances for
 `Std` containers that nothing here converts.
 
-The file is present for one declaration. `Ratchet/Lang/Ty.lean` calls
+The file is present for one declaration. `Checker/Lang/Ty.lean` calls
 `j.getObjValAs? String k`, which lives here rather than in `Basic.lean`, and its
 decode-a-missing-key-as-`null` behaviour is load-bearing for `Ty.ofJson?`.
 
@@ -39,8 +39,8 @@ public section
 
 -- [vendoring change] upstream declares `FromJson`/`ToJson` and the `Array` /
 -- `List` / `Option` / `Prod` / `Float` converters at the **root** namespace. Here
--- the whole file sits inside `namespace Json` instead, because `RubyCore/Proof/`
--- and `Denote/Clink/` do import Lean proper, and a root-level `Array.fromJson?`
+-- the whole file sits inside `namespace Json` instead, because `books/Books/Metatheory/`
+-- and `books/Books/TypeSoundness/Registry/` do import Lean proper, and a root-level `Array.fromJson?`
 -- declared twice is an import error ("environment already contains") rather than
 -- a shadowing. Nothing outside this file names these, so the move costs nothing.
 namespace Json

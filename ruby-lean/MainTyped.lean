@@ -1,17 +1,17 @@
-import Ratchet.Check.Rung
+import Checker.Check.Rung
 
 /-!
 `lake exe ratchetd` -- the typed ratchet's report.
 
-The **fifth** stage of the pipeline `scripts/build_corpus.py` runs, and the only trusted
+The **fifth** stage of the pipeline `books/scripts/build_corpus.py` runs, and the only trusted
 one: everything it reads is the output of four untrusted stages (Sorbet, the strip stack,
 the desugarer, the emitter), and the only thing it believes is the *program*. The
 derivation is checked, never trusted.
 
-    scripts/build_corpus.py      # stages 1-4, into build/
-    lake exe ratchetd build      # stage 5
+    books/scripts/build_corpus.py      # stages 1-4, into books/build/
+    lake exe ratchetd ../books/build   # stage 5, from ruby-lean/
 
-**`validateD` types.** `Ratchet/Check/Check.lean`'s `check` matches the program, derives the type
+**`validateD` types.** `Checker/Check/Check.lean`'s `check` matches the program, derives the type
 itself, compares every `Ty` the certificate claims, and **returns the `DJudge` derivation** —
 so a `true` below is "there is a derivation of this program in the certified judgment", with
 no theorem in between (the checker's *type* is the syntactic soundness statement).
@@ -25,7 +25,7 @@ their recorded target. A prefix, not a total, because that is what "we are at ru
 and because a rung that certifies out of order tells you nothing about the ones before it.
 -/
 
-open Ratchet
+open Checker
 -- `Json` is this project's vendored copy of Lean's (`Json.lean`), at the root
 -- namespace, so there is nothing to open.
 
@@ -59,7 +59,7 @@ def main (args : List String) : IO UInt32 := do
   let files := (dirEntries.map (·.path)).toList.filter (·.toString.endsWith ".rung.json")
   let sorted := files.toArray.qsort (fun a b => a.toString < b.toString) |>.toList
   if sorted.isEmpty then
-    IO.eprintln s!"no built rungs under {dir} -- run scripts/build_corpus.py first"
+    IO.eprintln s!"no built rungs under {dir} -- run books/scripts/build_corpus.py first"
     return 1
   let rungs ← sorted.mapM loadRung
   let rows := rungs.map (fun r => { rung := r, verdict := r.verdict : Row })
@@ -127,7 +127,7 @@ end-to-end safety proof against the actual stripped program."
 
 
   -- Two things are failures rather than measurements, and both are ratchets
-  -- (`scripts/record_baseline.py`): an upstream stage that errored and was not already
+  -- (`books/scripts/record_baseline.py`): an upstream stage that errored and was not already
   -- recorded as doing so, and a rung whose Sorbet verdict moved. A *block* is neither:
   -- it is the fragment reporting its own boundary.
   for x in sorbetDisagree do

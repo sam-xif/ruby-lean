@@ -31,7 +31,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PKG="$(dirname "$(dirname "$HERE")")"
 ROOT="$(dirname "$PKG")"
 RUBY_WASM="$(dirname "$HERE")/out/ruby.wasm"
-CORPUS="$PKG/corpus"
+CORPUS="$ROOT/books/corpus"
 JOBS="$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
 ONLY="${1:-all}"
 
@@ -62,7 +62,7 @@ if [ "$ONLY" = all ] || [ "$ONLY" = deriv ]; then
   a=$(ruby "$ROOT/ruby-lean/scripts/read_sigs.rb" < "$f" 2>&1)
   b=$(w /opt/deriv/read_sigs.rb < "$f" 2>&1)
   if [ "$a" = "$b" ]; then
-    ast="$ROOT/ruby-lean/build/$name.ast.json"
+    ast="$ROOT/books/build/$name.ast.json"
     if [ -f "$ast" ]; then
       payload=$(python3 -c 'import json,sys; print(json.dumps({"ast": json.load(open(sys.argv[1])), "sigs": json.loads(sys.argv[2])}))' "$ast" "$a")
       da=$(printf '%s' "$payload" | ruby "$ROOT/ruby-lean/scripts/emit_deriv.rb" 2>&1)

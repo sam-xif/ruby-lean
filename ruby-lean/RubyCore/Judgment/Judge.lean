@@ -183,7 +183,7 @@ semantically: each claimed `e` is admitted by `Judge.semantic` at the canonical
 judgment — type `.any`, environment- and table-preserving — with the claim's
 *meaning* (running `e` from any conformant state is type-safe and delivers a
 value, at any environment, leaving it intact) discharged in the proof layer
-(`Proof/Judgment/Preservation.lean`'s `SemAxiomsOk`, one `EvalOkAt` obligation
+(`books/Books/Metatheory/Typing/Judge/Preservation.lean`'s `SemAxiomsOk`, one `EvalOkAt` obligation
 per claim). The canonical indices are what make a claim *compositional*: they
 are the one judgment shape whose embedding needs no coordination with the
 surrounding derivation (see the `JudgeSeq` coupling premises below).

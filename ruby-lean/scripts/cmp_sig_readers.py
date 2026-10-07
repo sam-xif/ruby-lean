@@ -14,7 +14,7 @@ from. That is the question this is asking.
 and judges them where it matters -- by what `validateD` says about the
 derivation each produces, not by whether the two emitters printed the same
 bytes. A weaker reader is allowed to block earlier or propose something the
-checker then rejects (`Ratchet/Check/Deriv.lean`: every declared type is re-derived,
+checker then rejects (`Checker/Check/Deriv.lean`: every declared type is re-derived,
 so a wrong signature costs a failed certification, never a wrong accept). What
 it may not do is change which rungs are **accepted**.
 
@@ -32,9 +32,9 @@ def verdict(deriv_json, ast):
     return "accept" if json.loads(p.stdout)["validateD"] else "reject"
 
 same = diff = 0; rows = []; acc_ref = acc_cand = 0
-for astf in sorted(glob.glob("build/*.ast.json")):
+for astf in sorted(glob.glob("../books/build/*.ast.json")):
     stem = os.path.basename(astf)[:-len(".ast.json")]
-    sigs_f, rb = f"build/{stem}.sigs.json", f"corpus/{stem}.rb"
+    sigs_f, rb = f"../books/build/{stem}.sigs.json", f"../books/corpus/{stem}.rb"
     if not (os.path.exists(sigs_f) and os.path.exists(rb)): continue
     ast = json.load(open(astf))
     ref = subprocess.run(["ruby", "scripts/emit_deriv.rb", "--ast", astf,

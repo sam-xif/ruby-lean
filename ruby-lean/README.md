@@ -1,24 +1,24 @@
 # ruby-lean/ — the Lean project
 
-One Lake package with four libraries:
+One Lake package with two libraries:
 
 | Library | What it is |
 |---|---|
 | `RubyCore/` | The model: the machine, `stepFn`, the heap, the builtins. Also builds the `rubycore` binary, which reads RubyCore JSON and prints what the program outputs |
-| `Ratchet/` | The type checker: its own copy of `Expr`/`Ty`, derivations (`Deriv`) and `validateD`. It imports nothing from `RubyCore/` |
-| `Semantics/` | One file that imports the real `stepFn`, so the proofs can talk about it |
-| `Denote/` | The proofs connecting the two: what each type means on the real machine, a proof for each typing rule, and `validateD_safe_boot` in `Denote/Bridge.lean` |
+| `Checker/` | The type checker: its own copy of `Expr`/`Ty`, derivations (`Deriv`) and `validateD`. It imports nothing from `RubyCore/`. Builds `ratchetd` (runs the checker over the corpus) and `validate-one` (the playground's adapter) |
+
+Nothing in this package is a proof. The model's metatheory, the checker's
+soundness theorem (`validateD_safe_run`), the corpus the checker is measured on
+and the gate all live in [`../books/`](../books/README.md), a separate Lake
+package that uses this one as a library.
 
 Other directories:
 
 | Path | What it is |
 |---|---|
-| `corpus/` | The annotated Ruby programs ("rungs") the checker is measured on. This is the source of truth |
-| `build/` | Generated from `corpus/` by `scripts/build_corpus.py`. Never edit it |
 | `prelude/` | Parts of Ruby's core library (Enumerable, Comparable, …) written in Ruby and run by the model |
-| `RubyCore/Proof/` | The model's metatheory. Not on the default build target |
-| `scripts/` | The untrusted pipeline stages, the gate, and measurement scripts |
-| `notes/` | The working record: what was tried and what went wrong, for the model and the checker |
+| `scripts/` | Generators for the committed Lean sources, the checker's untrusted front end (`srb_sigs.py`, `read_sigs.rb`, `emit_deriv.rb`), and measurement scripts |
+| `notes/` | The model's working record: what was tried and what went wrong |
 | `wasm/` | Builds the modules the playground runs in the browser |
 
 ## Build and run
@@ -29,8 +29,8 @@ echo 'puts 1 + 2' | ruby ../desugar/bin/export-json | .lake/build/bin/rubycore
 scripts/cmp.sh 'p [1,2].select { |x| x > 1 }'   # CRuby vs the model: AGREE / DIFF / GATE
 ```
 
-On a cold cache, the model builds in a few minutes and the rest takes about half
-an hour, mostly for `Denote/`. Rebuilds after a change take seconds.
+On a cold cache the package builds in a few minutes. Rebuilds after a change
+take seconds.
 
 `rubycore` exits 0 on success, 3 when the program uses something the model does
 not support (the reason is on stderr), and 1 on a model bug.
@@ -45,37 +45,30 @@ failed-load retry against CRuby using identical feature bodies on both sides.
 
 ## The gate
 
-```sh
-./scripts/run_typed_ratchet.sh    # must end in RATCHET GREEN before you commit
-./scripts/check-proofs.sh         # the off-target metatheory; run it at batch boundaries
-```
-
-The default gate checks isolation, generated-checker freshness, active registry
-and validator controls, and `Bridge.lean`'s original soundness theorem. It rejects
-nonstandard theorem axioms, builds a fresh corpus through stages 1–4, compares
-the stripped programs with CRuby (skip with `RATCHET_SKIP_AGREEMENT=1`), and
-reports enabled clinks and actual `validateD` accepts as climbed. Disabled rules
-and declined positive rungs are work remaining; they do not make soundness red.
-Sorbet drift, new upstream failures and accepted negative controls still fail.
+The gate is in `../books/`, because what it checks is a proof:
 
 ```sh
-./scripts/run_typed_ratchet.sh --clink-rebuild  # proofs/controls only
-./scripts/run_typed_ratchet.sh --full-corpus    # historical complete-coverage audit and floors
+(cd ../books && ./scripts/run_typed_ratchet.sh)   # must end in RATCHET GREEN before you commit
+(cd ../books && ./scripts/check-proofs.sh)        # the metatheory; run it at batch boundaries
 ```
 
-The active profile enables 22 clinks; `validateD` accepts 49 corpus rungs.
-It checks every rule in the verified derivation's
-trace against `Ratchet/ClinkPolicy.lean`, including companion/body rules. Further
-admission requires enabling their clinks and rebuilding their semantic providers.
-The full historical audit retains its floors and requires all clinks; it remains
-separate from the default active gate. See [the clink rebuild guide](Denote/Clink/README.md).
+A change to `RubyCore/` or `Checker/` can break a proof without breaking this
+package's build, so run the gate after changing either.
+[`../books/README.md`](../books/README.md) says what each stage checks.
+
+After changing an authored checker source under `Checker/Check/`, regenerate its
+traced projection under `Checker/Audit/`:
+
+```sh
+python3 scripts/generate_audited_checker.py
+```
 
 ## Where to read next
 
 - [`RubyCore/README.md`](RubyCore/README.md): the written semantics of the model.
-- [`AGENTS.md`](AGENTS.md): the checker's current state, the pipeline and its design record.
-- [`Ratchet/README.md`](Ratchet/README.md) and [`Denote/README.md`](Denote/README.md): how
-  each side is organized.
+- [`../books/AGENTS.md`](../books/AGENTS.md): the checker's current state, the pipeline and its design record.
+- [`Checker/README.md`](Checker/README.md): how the checker is organized.
+- [`../books/README.md`](../books/README.md): the proofs.
 - [`notes/README.md`](notes/README.md): the chronological working notes.
 - In `../docs/`: [Layout and fragment](../docs/model/fragment.md) (every model file, and
   what Ruby is and isn't supported) and [Metatheory](../docs/model/metatheory.md).

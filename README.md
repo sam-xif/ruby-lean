@@ -54,13 +54,14 @@ targets. The main ones:
 
 | Target | Builds or runs |
 |---|---|
-| `make lean` | The Lean package: the model, the validator and its soundness proof |
+| `make lean` | The Lean package: the model and the validator |
 | `make run` | `rubycore` and the desugarer, for [`bin/ruby-lean`](bin/ruby-lean) (`make run FILE=prog.rb` also runs it) |
 | `make desugar` | The desugarer, `desugar/bin/export-json` (Ruby to the model's JSON) |
 | `make difftest` | The differential-test environment; then `cd difftest && uv run difftest --help` |
 | `make bootstraptest` | The model vs CRuby over MRI's `bootstraptest` |
-| `make proofs` | The metatheory (`RubyCore/Proof/`), plus a check of every headline theorem's axioms |
-| `make books` | The proof books (`books/`): Ruby programs proved correct against the model |
+| `make proofs` | The metatheory (`books/Books/Metatheory/`), plus a check of every headline theorem's axioms |
+| `make books` | Every proof book (`books/`): the validator's soundness theorem, the metatheory, and Ruby programs proved correct against the model |
+| `make comparator` | An independent check of the soundness theorem with `leanprover/comparator` |
 | `make wasm`, `make playground` | The three WebAssembly modules, then the static playground in `playground/dist/` |
 | `make gate` | The typed ratchet gate, which must print `GREEN` before a commit |
 | `make check` | Generated-source freshness, the desugar and difftest suites, and the gate |
@@ -121,8 +122,8 @@ relying on numbers recorded in this README.
 
 ## Where to read next
 
-- [`ruby-lean/`](ruby-lean/README.md): the Lean model, validator, proofs, and gate.
-- [`books/`](books/README.md): Ruby programs proved correct against the model.
+- [`ruby-lean/`](ruby-lean/README.md): the Lean model and the validator.
+- [`books/`](books/README.md): every proof about them, the corpus and the gate.
 - [`desugar/`](desugar/README.md): Ruby source to the model's input format.
 - [`difftest/`](difftest/README.md): comparison with CRuby.
 - [`playground/`](playground/README.md): run and step through programs in a browser.

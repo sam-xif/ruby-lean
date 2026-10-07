@@ -202,7 +202,7 @@ class SigStripSUT:
     the two are related by the gradual guarantee rather than by equality, so it
     carries its own comparator (the `compare` attribute `runner.run_case`
     honors). See `compare.gradual_guarantee_compare` and
-    `../ruby-lean/AGENTS.md` §Sorbet §C.3 step 1: this is the
+    `../books/AGENTS.md` §Sorbet §C.3 step 1: this is the
     cheapest real check on Sorbet's runtime semantics, and it needs no Lean.
     """
 

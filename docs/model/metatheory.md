@@ -1,20 +1,23 @@
 # Metatheory
 
-Paths are relative to `ruby-lean/`.
+Paths are relative to `ruby-lean/`, except those under `books/`, which are
+relative to the repository root. The proofs described here live in
+`books/Books/Metatheory/`; its [README](https://github.com/sam-xif/ruby-lean/blob/main/books/Books/Metatheory/README.md)
+has the directory-by-directory layout.
 
 `ruby-lean/RubyCore/README.md` §Mechanization names the **inductive `Step` relation** the
-definition of record, with `stepFn` its executable witness. `RubyCore/Proof/`
+definition of record, with `stepFn` its executable witness. `books/Books/Metatheory/`
 realizes that programme in two layers (axiom-clean; see
 `notes/model/implementation-notes.md` L13–L15, L51):
 
-1. **The inductive control-core `Step`** (`Step.lean`/`Adequacy.lean`) — an
+1. **The inductive control-core `Step`** (`Machine/Step.lean`/`Machine/Adequacy.lean`) — an
    effect-light fragment (literals, local/ivar/global var + assign, `seq`, `if`,
    `while`, `dowhile`, `break`/`next`/`redo`) with soundness, completeness,
    adequacy, determinism, and a heap-monotonicity preservation invariant. The
    idiomatic relational view; bridged to the full relation by
    `Step.subset_smallStep`.
-2. **Type safety as reachability** (`TypeSafety.lean`) — the `invariant_sound`
-   progress/preservation metatheorem of `ruby-lean/AGENTS.md`
+2. **Type safety as reachability** (`Reachability/TypeSafety.lean`) — the `invariant_sound`
+   progress/preservation metatheorem of `books/AGENTS.md`
    §Type safety as reachability §4,
    proved over the *full* transition relation `SmallStep m m' := stepFn m =
    .next m'` (so it covers dispatch/classes/blocks — real programs, not just the
@@ -53,7 +56,7 @@ proved type-safe via a hand-supplied inductive invariant. A relational dispatch
 
 ## What was removed, and what the checker of record is
 
-`RubyCore/` used to carry four successive attempts at *type-checking* on top of
+`RubyCore/` (whose `Proof/` subdirectory is now `books/Books/Metatheory/`) used to carry four successive attempts at *type-checking* on top of
 this model, each superseded by the next and none of them the checker of record:
 
 | Layer | What it was |
@@ -67,10 +70,10 @@ They were removed, together with the `rubycore` flags that drove them
 (`--check`, `--check-tl`, `--assn`, `--assn-program`, `--certify`, `--certify-j`,
 `--census-j`), the `plausible`-dependent witness search in `Search/`, and the
 concolic exe whose consumer lives in another repository. What survives of them is
-listed in the `RubyCore/Proof/` row of the [layout table](fragment.md#layout): the lemmas `Denote/Sem/` actually imports.
+`books/Books/Metatheory/Typing/`: the lemmas `books/Books/TypeSoundness/Conformance/` actually imports.
 
-**The checker of record is `validateD`** — `Ratchet/Check/Check.lean`, with
-`validateD_safe_boot` in `Denote/Bridge.lean` as its safety theorem, run by
-`lake exe ratchetd` and gated by `scripts/run_typed_ratchet.sh`. The model's own
+**The checker of record is `validateD`** — `Checker/Check/Check.lean`, with
+`validateD_safe_boot` in `books/Books/TypeSoundness/Soundness.lean` as its safety theorem, run by
+`lake exe ratchetd` and gated by `books/scripts/run_typed_ratchet.sh`. The model's own
 metatheory above is a claim about the *semantics*, and nothing downstream of it
 depends on the removed layers.

@@ -21,7 +21,7 @@ not declared), so every judgment threads an input and an output environment.
 Where P0 consulted a `builtinSig` *function*, every rule now consults `sigOf D`,
 and `check` supplies `declsOf p`. Today that is `baseDecls` for every program, so
 no verdict moves; what the threading buys is that the invariant has a table to be
-a refinement *of* (`Proof/Static/Decls.lean`), and that F1b's program-supplied
+a refinement *of* (`books/Books/Metatheory/Typing/Infer/Decls.lean`), and that F1b's program-supplied
 declarations are a change to `declsOf` rather than to the rules. `Ty`/`Env` moved
 to `Types/Ty.lean` in the same commit, unchanged.
 -/
@@ -136,7 +136,7 @@ That matters because the invariant has to survive its own program's later
 declarations. A method body is checked where the `def` appears and *called*
 later, by which time more rows are in force, and `UserConforms` — the checker's
 own verdict on the body, carried inside the soundness invariant — has to still
-hold. `infer_mono` (`Proof/Static/Mono.lean`) is that step, and this predicate
+hold. `infer_mono` (`books/Books/Metatheory/Typing/Infer/Mono.lean`) is that step, and this predicate
 is its hypothesis.
 
 `class'` is excluded along with `def`, and not because a class body is a
@@ -306,7 +306,7 @@ end
 /-! `defFree`'s own equation lemmas carry the *earlier patterns did not match*
 side conditions that a catch-all arm forces, so `simp [defFree]` cannot fire on
 any of the compound shapes. These are the unconditional forms, and they are what
-`Proof/Static/Mono.lean`'s induction rewrites with. -/
+`books/Books/Metatheory/Typing/Infer/Mono.lean`'s induction rewrites with. -/
 
 @[simp] theorem defFree_seq (es : List Expr) : defFree (.seq es) = defFreeAll es := by
   rw [defFree.eq_def]
@@ -658,7 +658,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   -- **`declaresName D name` is F1a's generalization of P0's `≠ "+"/"-"/"*"`.** A
   -- `def` of a name the declarations do not mention is an *addition*, which D10
   -- admits unconditionally, and the invariant survives it because `lookup` for
-  -- every declared name is untouched (`Proof/Static/Decls.lean`
+  -- every declared name is untouched (`books/Books/Metatheory/Typing/Infer/Decls.lean`
   -- `DeclsOk_defineMethod`). A `def` of a name they *do* mention is a
   -- **redefinition**, admissible iff the new body conforms to the displaced
   -- declaration — checkable, and F1c's job, so `unknown` until then. With
@@ -898,7 +898,7 @@ def infer (D : Decls) (Γ : Env) (e : Expr) (top : Bool := false)
   -- inserting an arm shifts every later case number in `infer.induct`.
   | .flt _ => some (.float, Γ, D)
   -- **`super(args)`** (L212), placed *last* for `.flt`'s reason (L202): inserting an
-  -- arm shifts every later case number in `infer.induct`, and `Proof/Static/Mono.lean`
+  -- arm shifts every later case number in `infer.induct`, and `books/Books/Metatheory/Typing/Infer/Mono.lean`
   -- addresses its cases by number. Measured — the arms were written beside `.send`
   -- first, and `Mono.lean` broke at nine places.
   --

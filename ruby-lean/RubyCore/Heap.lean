@@ -163,10 +163,10 @@ deriving Inhabited
       *invents* for `Symbol#to_proc` (`&:sym` and the builtin), and CRuby's
       answer there is a C-level Proc with no binding at all —
       `:upcase.to_proc.binding` raises and its `source_location` is `nil`
-      (`ruby-lean/notes/ratchet/found-issues.md` §A6a). Matches `Frame.captured`, which has been
+      (`books/notes/type-soundness/found-issues.md` §A6a). Matches `Frame.captured`, which has been
       an `Option` all along (`Machine.lean`); before L266 this was a bare `Nat`
       and those two sites wrote `0`, a capture edge into the toplevel that the
-      reference semantics does not have and that `Denote/Sem/`'s frame
+      reference semantics does not have and that `books/Books/TypeSoundness/Conformance/`'s frame
       seal read as real.
     - `home` is the method activation that a non-lambda `return` unwinds to.
     - `lam` selects lambda semantics (strict arity, local `return`/`break`).

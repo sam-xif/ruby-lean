@@ -1,53 +1,50 @@
 #!/usr/bin/env bash
 # The layering check, and the reason it exists as a script at all.
 #
-# `Ratchet/` — the certificate checker — is deliberately isolated from `RubyCore/`:
+# `Checker/` — the certificate checker — is deliberately isolated from `RubyCore/`:
 # its `Expr` and `Ty` are *copied text*, not imports, so the checker can be read,
-# audited and re-implemented without the 24k-line model in scope. `Semantics/` is
-# the one deliberate exception (it imports the real `stepFn`), and `Denote/` is the
-# one library allowed to see both, because a denotation is by definition a
-# statement relating the two.
+# audited and re-implemented without the 24k-line model in scope. The one place
+# the two meet is the checker's soundness proof, which is by definition a
+# statement relating them, and that lives in another package (`../books/`).
 #
-# That used to be enforced structurally: the checker was its own Lake package (`ratchet/`)
-# and `RubyCore` was not in its import path at all. Merging the two packages into
-# `ruby-lean/` bought one build, one toolchain and one manifest, and cost exactly
-# this: the compiler no longer refuses the import. So the refusal moved here, and
-# `scripts/run_typed_ratchet.sh` runs it as its first stage.
+# The checker and the model share this Lake package, so the compiler does not
+# refuse the import. This script does, and the gate
+# (`../books/scripts/run_typed_ratchet.sh`) runs it as its first stage.
 #
 #   scripts/check-isolation.sh
 #
-# Exit 0 iff no module under `Ratchet/` imports anything under `RubyCore/` or
-# `Semantics/`, and no module under `Ratchet/` or `RubyCore/` imports `Denote/`.
+# Exit 0 iff no module under `Checker/` imports anything under `RubyCore/`, no
+# module under `RubyCore/` imports `Checker/`, and nothing in this package
+# imports a proof from `../books/`.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
 rc=0
 
-# 1. The checker sees neither the model nor the bridge to it.
-BAD=$(grep -rnE '^import +(RubyCore|Semantics|Denote)\b' Ratchet/ Ratchet.lean 2>/dev/null)
+# 1. The checker does not see the model.
+BAD=$(grep -rnE '^import +RubyCore\b' Checker/ MainTyped.lean MainValidateOne.lean 2>/dev/null)
 if [[ -n "$BAD" ]]; then
-  echo "FAIL: Ratchet/ imports the model — the checker's isolation is gone:"
+  echo "FAIL: Checker/ imports the model — the checker's isolation is gone:"
   echo "$BAD" | sed 's/^/  /'
   rc=1
 fi
 
-# 2. The model does not depend on the checker or its denotation. (The dependency
-#    runs one way: Denote/ -> {Ratchet/, Semantics/} -> RubyCore/.)
-BAD=$(grep -rnE '^import +(Ratchet|Denote|Semantics)\b' RubyCore/ RubyCore.lean Main.lean ConcolicMain.lean 2>/dev/null)
+# 2. The model does not depend on the checker.
+BAD=$(grep -rnE '^import +Checker\b' RubyCore/ RubyCore.lean Main.lean GenPrelude.lean 2>/dev/null)
 if [[ -n "$BAD" ]]; then
-  echo "FAIL: RubyCore/ imports the checker layer — the layering is inverted:"
+  echo "FAIL: RubyCore/ imports the checker — the layering is inverted:"
   echo "$BAD" | sed 's/^/  /'
   rc=1
 fi
 
-# 3. The bridge is the *only* place the model is imported on the checker side, and
-#    it is meant to stay small: one file, named in the lakefile for that reason.
-BAD=$(grep -rlE '^import +RubyCore' Semantics/ 2>/dev/null | grep -v '^Semantics/Interp.lean$')
+# 3. Neither depends on a proof. The dependency runs one way:
+#    ../books/ -> {Checker/, RubyCore/}.
+BAD=$(grep -rnE '^import +Books\b' --include='*.lean' --exclude-dir=.lake . 2>/dev/null)
 if [[ -n "$BAD" ]]; then
-  echo "NOTE: a second file under Semantics/ imports RubyCore (the bridge was one file):"
+  echo "FAIL: this package imports a proof from ../books/:"
   echo "$BAD" | sed 's/^/  /'
-  echo "  Not a failure — but update AGENTS.md and this script if the boundary really moved."
+  rc=1
 fi
 
-[[ $rc == 0 ]] && echo "OK: Ratchet/ does not see RubyCore/; the layering runs one way."
+[[ $rc == 0 ]] && echo "OK: Checker/ does not see RubyCore/; the layering runs one way."
 exit $rc

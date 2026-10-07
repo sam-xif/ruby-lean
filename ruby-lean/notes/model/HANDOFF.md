@@ -4,7 +4,7 @@
 
 The active ascent repaired Static/Decls dispatch simplification and corrected
 iterK exact transparency for shared Hash-lock unwind. The kernel counterexample
-and the new IterUnwindInert premise are in Proof/Static/IteratorUnwind and
+and the new IterUnwindInert premise are in ../books/Books/Metatheory/Typing/Infer/IteratorUnwind and
 ../../unsoundness.md. No runtime changes; check-proofs.sh and boot/axiom probes
 pass (/private/tmp/ascent-metatheory-repair.log). The active typed gate is green
 at 22/99 clinks, 49/261 accepts and 254 CRuby agreements, zero disagreements
@@ -15,12 +15,12 @@ Earlier entries below are historical.
 
 The subsequent user request was to make run_pushK pass while leaving other
 proofs alone. The complete root-framing chain rebuilds against the dynamic-state
-model. lake build Denote.Sem.Core.Answer passes, with the unchanged run_pushK
+model. lake build Books.TypeSoundness.Conformance.Core.Answer passes, with the unchanged run_pushK
 statement and proof and only standard Lean axioms. Log:
 /private/tmp/runpushK-targeted.log. KontFrameBase separates its continuation
 interface from Frame's unrelated conformance imports; Frame re-exports it.
 No runtime change or broader proof repair was needed. The full typed gate is
-still not claimed green. See notes/ratchet/implementation-notes.md for the record.
+still not claimed green. See books/notes/type-soundness/implementation-notes.md for the record.
 
 ## Dynamic continuation state (2026-09-30)
 
@@ -141,7 +141,7 @@ The latest user request is to make **all proofs green without modifying theorem
 statements**. This adds a constraint to the earlier repair work below. No existing
 statement or runtime definition was changed in this follow-up.
 
-`Proof/StatementObstruction.lean` proves the negation of the exact existing
+`../books/Books/Metatheory/Controls/StatementObstruction.lean` proves the negation of the exact existing
 `callClosure_frame` statement (copying `pushK`/`frameR` because `KontFrame` does
 not compile). A closure with `breakScope := some 7` acquires that break target
 when `[.blockCallK 7]` is appended before entry; appending after entry leaves its
@@ -157,7 +157,7 @@ for-callback method entry. Targeted builds of T5, T5Loop, Demo and DriftControls
 pass; dispatch_progress, dispatch_not_typestick and t5_loop_type_safe have only
 standard Lean axioms. The full Metatheory build still fails in Static.Decls,
 KontFrame, RootFrameBuiltins and RootFrameComplex. The full typed gate remains
-red (including Denote.Ty.Ext's local-alias drift); no commit was made.
+red (including Books.TypeSoundness.Denotation.Ext's local-alias drift); no commit was made.
 
 ## Proof repair active against L299 (2026-09-29)
 
@@ -1485,7 +1485,7 @@ GREEN (252 agree / 0 disagree); metatheory and standard-axiom audit pass.
 > - **`--sut lean` is GREEN. Tier-0 baseline: 940/1304 agree, 0 disagree**
 >   (722 → 940 in the 2026-08-03 batch). Tier-1 fuzzing (n=400, seed 7) 371 agree /
 >   0 disagree; tier-3 and regression replays clean. Concolic suite 28/28. All ten
->   `Proof/` files build, axiom-clean.
+>   `../books/Books/Metatheory/` files build, axiom-clean.
 > - **What landed (see `implementation-notes.md` L62–L73):**
 >   - **A prelude** — the core library written *in RubyCore* (`prelude/prelude.rb`,
 >     generated into `RubyCore/Prelude.lean`, loaded by a two-phase boot). Enumerable
@@ -1514,7 +1514,7 @@ GREEN (252 agree / 0 disagree); metatheory and standard-axiom audit pass.
 >   user class with a custom `to_s`. See `../docs/model/fragment.md` §Fragment.
 > - **Two traps to know before touching the step function** (L73): a `partial def`
 >   or a `String.endsWith`/`startsWith` on the dispatch path is **not
->   kernel-reducible** and silently breaks every `Proof/` file while the difftest
+>   kernel-reducible** and silently breaks every `../books/Books/Metatheory/` file while the difftest
 >   ratchet stays green. Dispatch on literal-list membership instead, and build the
 >   proofs (`lake build RubyCore.Proof.T5Loop …`) as part of a batch.
 
@@ -1617,7 +1617,7 @@ disagreement — preserve them as the fragment grows.
    (PROJECT_PLAN §7). Author it against `stepFn` (the helpers are
    deliberately non-mutual single transitions, so rule extraction is
    mechanical), then `step_deterministic` and `stepFn` soundness/completeness.
-   **A proof-of-concept slice of this is now done** (`RubyCore/Proof/`, off the
+   **A proof-of-concept slice of this is now done** (`../books/Books/Metatheory/`, off the
    default target; `../docs/model/metatheory.md`, implementation-notes L13–L15): an
    inductive `Step` over an effect-light control-core fragment with
    `Step.sound`, `Step.complete`, `Step.adequacy` (function–relation adequacy
@@ -1627,7 +1627,7 @@ disagreement — preserve them as the fragment grows.
    interpreter-first design admits real theorems and that rule extraction is
    mechanical (soundness = one uniform `cases`+`simp`). Refreshed against the
    current stepper (control core now covers `redo`/`dowhile`; L13).
-   **Type-safety metatheory landed** (`RubyCore/Proof/TypeSafety.lean`; L51):
+   **Type-safety metatheory landed** (`../books/Books/Metatheory/Reachability/TypeSafety.lean`; L51):
    the `invariant_sound` progress/preservation theorem of
    `type-safety-by-reachability.md` §4, proved over the *full* transition
    relation `SmallStep m m' := stepFn m = .next m'` (so it applies to real
@@ -1646,7 +1646,7 @@ disagreement — preserve them as the fragment grows.
 
 Ratchet discipline carries over from the desugar: after any change, tier-0
 full + tier-1 + regression replay must stay **0 disagree**, and agreement may
-only go up (baseline now **940**). At batch boundaries also build the `Proof/`
+only go up (baseline now **940**). At batch boundaries also build the `../books/Books/Metatheory/`
 files and run `../concolic` (28 tests) — the ratchet does not notice a
 kernel-reducibility regression (L73).
 
@@ -1658,18 +1658,18 @@ kernel-reducibility regression (L73).
 > turns are still traps). Its *task* is done, by the re-scoping
 > `docs/semantics/judgment-layer.md` argued for rather than by the `chk` port it
 > describes: the invariant is stated over the inductive `Judge`
-> (`RubyCore/Proof/Judgment/`, J18–J27), `judge_sound_cert` is the composed
+> (`../books/Books/Metatheory/Typing/Judge/`, J18–J27), `judge_sound_cert` is the composed
 > theorem with `hctl`'s role filled by a derivation, and `egEven` — the
 > `_certified` corollary below parks on C-1 — is proved **unconditionally**
-> (`Proof/Judgment/Cert.lean`, and again from a data certificate in
-> `Proof/Judgment/Adequacy.lean`). The `chk_table_ret` rung was abandoned
+> (`../books/Books/Metatheory/Typing/Judge/Cert.lean`, and again from a data certificate in
+> `../books/Books/Metatheory/Typing/Judge/Adequacy.lean`). The `chk_table_ret` rung was abandoned
 > deliberately (judgment-layer.md §5); `chk` remains the coverage tier.
 
 ## C-1 (historical) — the one open premise of `validate_sound` (2026-08-26)
 
 `validate` no longer calls `infer`; `#check @infer` does not elaborate from
 `RubyCore.Cert.Validate`. The composed certificate theorem is
-`Proof/Cert/Sound.lean`'s
+`../books/Books/Metatheory/Cert/Sound.lean`'s
 
 ```lean
 validate_sound_of_ctl (h : validate c p = true) (ha : ⟦c.rowAssn⟧)
@@ -1689,8 +1689,8 @@ restate `CtlOk`/`KontOk` over `chk` and repair `Mono`/`Locals`/`Preservation`.
    block with fuel decreasing on *every* call. Do not "simplify" that back into
    the callback (`Rec`) form: a recursive call passed as a higher-order argument
    makes the induction principle underivable, and all twenty of
-   `Proof/Static/Mono.lean`'s laws are `induction … using infer.induct`.
-2. **The motive map is in `Proof/Cert/Mono.lean`** and cannot be read off the
+   `../books/Books/Metatheory/Typing/Infer/Mono.lean`'s laws are `induction … using infer.induct`.
+2. **The motive map is in `../books/Books/Metatheory/Cert/Mono.lean`** and cannot be read off the
    file. Motives 3/5/7 (`chkSeq`/`chkElems`/`chkArgs`) have identical types, so a
    swapped assignment *type-checks* and only the IH shapes reveal it — same for
    1/10 (`chkOpt`/`chkRecv`). Measured, twice.

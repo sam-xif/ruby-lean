@@ -26,7 +26,7 @@ SORBET_DIR = BASE / "corpus" / "sorbet"
 
 # The Sorbet corpus is organized by *which part of Sorbet's design* a program
 # probes, not by Ruby construct — the taxonomy is the one in
-# `../ruby-lean/AGENTS.md` §Sorbet §A, because the object of study
+# `../books/AGENTS.md` §Sorbet §A, because the object of study
 # is the type system, not the language.
 SORBET_CATEGORIES = {
     "sig-basic": "plain sigs; both halves quiet, or both firing on one defect (§A.5)",
