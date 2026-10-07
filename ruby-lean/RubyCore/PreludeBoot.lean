@@ -1,6 +1,6 @@
 /-
 Two-phase boot (L62): phase 1 runs the **prelude** (`prelude/prelude.rb`, carried
-as `Prelude.json`) from H₀ with `preludeMode := true`, so the core-library methods
+as the term `Prelude.program`) from H₀ with `preludeMode := true`, so the core-library methods
 it defines land in the heap marked `fromPrelude`; phase 2 runs the program under
 test on that heap.
 

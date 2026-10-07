@@ -20,7 +20,8 @@ regenerated. Paths are relative to `ruby-lean/`.
 | `RubyCore/Builtins.lean` | the axiomatized builtin methods, keyed `"Owner#name"`, registered in H₀'s method tables so shadowing is uniform |
 | `prelude/prelude.rb` | the **prelude**: the part of the core library modeled *in Ruby* (Enumerable, Comparable, `Range#each`, Hash's Enumerable overrides, `BasicObject#!=`, …). Authored here; read the rules at the top of the file before editing (L62/L63) |
 | `prelude/features/*.rb` | optional library bodies, executed on `require` (L281); distinct from core boot |
-| `RubyCore/Prelude.lean` | **generated** by `scripts/gen_prelude.rb` from the core prelude and feature files: export JSON decoded by ordinary `Decode.program` |
+| `RubyCore/PreludeJson.lean` | **generated** by `scripts/gen_prelude.rb` from the core prelude and feature files: the export JSON, decoded by ordinary `Decode.program`. Nothing in the model imports it |
+| `RubyCore/Prelude.lean` | **generated** by `lake exe genprelude` (`GenPrelude.lean`) from `PreludeJson.lean`: the same programs as RubyCore *terms*, which is what the model boots from. Terms, not JSON, so that the kernel can evaluate the boot and proofs can start from the booted heap (`books/`) |
 | `RubyCore/PreludeBoot.lean` | the two-phase boot: run the prelude from H₀ (`preludeMode`), then the program under test on the resulting heap (`Machine.initOn`) |
 | `RubyCore/Interp.lean` | `stepFn` (one transition; helpers deliberately non-mutual) + `run fuel` (`outOfFuel` ≠ `stuck` from day one) |
 | `RubyCore/Interp/BlockPass.lean` | Checked conversion continuations, including nested method/block parameter destructuring after defaults (L275–L287) |
@@ -248,14 +249,20 @@ Two fidelity policies worth knowing (both are what keeps the corpus at
 
 ## Regenerating the generated files
 
-`RubyCore/CRubyNames.lean` (oracle name tables) and `RubyCore/Prelude.lean` (the
-desugared prelude) are both **generated and committed**. Regenerate the prelude
-after every edit to `prelude/prelude.rb` or `prelude/features/*.rb`:
+`RubyCore/CRubyNames.lean` (oracle name tables) and the prelude files are
+**generated and committed**. The prelude takes two steps: Ruby desugars it to
+JSON (`RubyCore/PreludeJson.lean`), and a Lean program decodes that with the
+model's own decoder and prints the result as terms (`RubyCore/Prelude.lean`).
+Regenerate both after every edit to `prelude/prelude.rb` or
+`prelude/features/*.rb`:
 
 ```sh
-"$(brew --prefix ruby)/bin/ruby" scripts/gen_prelude.rb > RubyCore/Prelude.lean
+"$(brew --prefix ruby)/bin/ruby" scripts/gen_prelude.rb > RubyCore/PreludeJson.lean
+lake exe genprelude > RubyCore/Prelude.lean.tmp && mv RubyCore/Prelude.lean.tmp RubyCore/Prelude.lean
 lake build
 ```
+
+`make gen` does the same, and `make gen-check` fails if either file is stale.
 
 `scripts/cmp.sh 'p [1,2].select { |x| x > 1 }'` is the dev loop: it runs a snippet
 through both CRuby and the model and reports AGREE / DIFF / GATE.

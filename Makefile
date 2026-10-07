@@ -6,7 +6,7 @@
 # the targets and wires the edges *between* those tools, which nothing else
 # tracks:
 #
-#   desugar/ ──gen_prelude.rb──▶ RubyCore/Prelude.lean ──lake──▶ rubycore
+#   desugar/ ──gen_prelude.rb──▶ RubyCore/PreludeJson.lean ──genprelude──▶ RubyCore/Prelude.lean ──lake──▶ rubycore
 #   rubycore, validate-one ──wasm/build.sh──▶ *.wasm ──▶ playground/dist
 #   desugar/, strip chain ──wasm/ruby/build.sh──▶ ruby.wasm ──▶ playground/dist
 #
@@ -32,7 +32,7 @@ RUBY_REF  ?= v4.0.5
 RUBY_SRC  ?= $(CACHE)/ruby-src-$(RUBY_REF)
 BOOTSTRAP := desugar/corpus/bootstraptest
 
-.PHONY: help all prereqs deps lean lean-exes desugar difftest run proofs gate check \
+.PHONY: help all prereqs deps lean lean-exes desugar difftest run proofs books gate check \
         gen gen-check desugar-test difftest-test bootstraptest \
         wasm playground playground-serve docs docs-serve clean distclean
 
@@ -63,27 +63,41 @@ $(STAMP)/bundle: Gemfile Gemfile.lock | $(STAMP)
 # only on an explicit `make gen`; `make gen-check` catches all four.
 
 PRELUDE_LEAN := $(PKG)/RubyCore/Prelude.lean
+PRELUDE_JSON := $(PKG)/RubyCore/PreludeJson.lean
 PRELUDE_SRC  := $(PKG)/scripts/gen_prelude.rb $(PKG)/prelude/prelude.rb \
                 $(wildcard $(PKG)/prelude/features/*.rb) $(wildcard desugar/lib/*.rb)
 
-$(PRELUDE_LEAN): $(PRELUDE_SRC)
-	cd $(PKG) && $(RUBY) scripts/gen_prelude.rb > RubyCore/Prelude.lean.tmp
+# Two steps. Ruby desugars the prelude to JSON (PreludeJson.lean); then a Lean
+# program decodes that with the model's own decoder and prints the result as
+# terms (Prelude.lean), which is what the model boots from and what the kernel
+# can evaluate. `genprelude` does not import Prelude.lean, so it can always
+# rebuild it.
+$(PRELUDE_JSON): $(PRELUDE_SRC)
+	cd $(PKG) && $(RUBY) scripts/gen_prelude.rb > RubyCore/PreludeJson.lean.tmp
+	@if cmp -s $@.tmp $@; then rm $@.tmp; touch $@; else mv $@.tmp $@; echo "  regenerated $@"; fi
+
+$(PRELUDE_LEAN): $(PRELUDE_JSON) $(PKG)/GenPrelude.lean $(PKG)/RubyCore/Syntax.lean
+	cd $(PKG) && $(LAKE) -q exe genprelude > RubyCore/Prelude.lean.tmp
 	@if cmp -s $@.tmp $@; then rm $@.tmp; touch $@; else mv $@.tmp $@; echo "  regenerated $@"; fi
 
 gen: ## Regenerate every generated Lean source
-	cd $(PKG) && $(RUBY) scripts/gen_prelude.rb      > RubyCore/Prelude.lean
+	cd $(PKG) && $(RUBY) scripts/gen_prelude.rb      > RubyCore/PreludeJson.lean
+	cd $(PKG) && $(LAKE) -q exe genprelude > RubyCore/Prelude.lean.tmp && mv RubyCore/Prelude.lean.tmp RubyCore/Prelude.lean
 	cd $(PKG) && $(RUBY) scripts/gen_cruby_names.rb  > RubyCore/CRubyNames.lean
 	cd $(PKG) && $(RUBY) scripts/gen_unicode.rb --verify > RubyCore/Unicode.lean
 	cd $(PKG) && python3 scripts/generate_audited_checker.py
 
 gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 	@set -e; fail=0; \
-	for g in prelude:Prelude cruby_names:CRubyNames unicode:Unicode; do \
+	for g in prelude:PreludeJson cruby_names:CRubyNames unicode:Unicode; do \
 	  s=$${g%%:*}; f=$${g##*:}; \
 	  (cd $(PKG) && $(RUBY) scripts/gen_$$s.rb) > $(STAMP)/$$f.lean; \
 	  if cmp -s $(STAMP)/$$f.lean $(PKG)/RubyCore/$$f.lean; then echo "  fresh  RubyCore/$$f.lean"; \
 	  else echo "  STALE  RubyCore/$$f.lean  (run: make gen)"; fail=1; fi; \
 	done; \
+	(cd $(PKG) && $(LAKE) -q exe genprelude) > $(STAMP)/Prelude.lean; \
+	if cmp -s $(STAMP)/Prelude.lean $(PKG)/RubyCore/Prelude.lean; then echo "  fresh  RubyCore/Prelude.lean"; \
+	else echo "  STALE  RubyCore/Prelude.lean  (run: make gen)"; fail=1; fi; \
 	(cd $(PKG) && python3 scripts/generate_audited_checker.py --check) || fail=1; \
 	exit $$fail
 
@@ -105,6 +119,9 @@ $(LEAN_BIN)/rubycore $(LEAN_BIN)/validate-one: lean-exes ;
 
 proofs: $(PRELUDE_LEAN) ## Build the metatheory (RubyCore/Proof/) and check every theorem's axioms
 	cd $(PKG) && ./scripts/check-proofs.sh
+
+books: lean-exes ## The proof books (books/): Ruby programs proved correct against the model
+	cd books && $(LAKE) build
 
 gate: $(PRELUDE_LEAN) ## The typed ratchet gate — must be GREEN before a commit
 	cd $(PKG) && ./scripts/run_typed_ratchet.sh

@@ -119,3 +119,10 @@ root = "MainValidateOne"
 [[lean_exe]]
 name = "active-ratchet"
 root = "MainActiveRatchet"
+
+# Writes `RubyCore/Prelude.lean` (the prelude as Lean terms) from
+# `RubyCore/PreludeJson.lean` (the prelude as exported JSON). Depends only on the
+# decoder, never on `RubyCore.Prelude` itself, so it can always regenerate it.
+[[lean_exe]]
+name = "genprelude"
+root = "GenPrelude"

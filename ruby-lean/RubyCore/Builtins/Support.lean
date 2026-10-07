@@ -139,8 +139,10 @@ def objectInspectPure (h : Heap) (recv : Value) : Bool :=
     override was invisible and the pure path rendered the default `#<C:0x…>`, in
     `p`, inside an Array/Hash/Range, and as an ivar of another object. This is the
     same one-argument miss `__user_defines?` had before L115 (L128). -/
-private partial def pureOkSeen (h : Heap) (sens : List String) (seen : List ObjId) : Value → Bool
-  | .ref o =>
+private def pureOkSeen (h : Heap) (sens : List String) : Nat → List ObjId → Value → Bool
+  -- Out of fuel is "not pure": the caller then dispatches or gates, never guesses.
+  | 0, _, _ => false
+  | fuel + 1, seen, .ref o =>
     if seen.contains o then false else
     let seen := o :: seen
     let own := reprUnchanged h sens (.ref o)
@@ -149,22 +151,22 @@ private partial def pureOkSeen (h : Heap) (sens : List String) (seen : List ObjI
     -- recursive even when the container's own class is untouched — and it
     -- recurses with the **same** sensitivity it was asked about, since
     -- `[x].inspect` uses `x.inspect` while `[x].join` uses `x.to_s`.
-    | .arr xs => own && xs.all (pureOkSeen h sens seen)
-    | .hsh xs => own && xs.all fun (k, v) => pureOkSeen h sens seen k && pureOkSeen h sens seen v
+    | .arr xs => own && xs.all (pureOkSeen h sens fuel seen)
+    | .hsh xs => own && xs.all fun (k, v) => pureOkSeen h sens fuel seen k && pureOkSeen h sens fuel seen v
     | .none | .rng _ | .generator _ | .yielder .. =>
-      own && (!sens.contains "inspect" || objectInspectPure h (.ref o)) && (h.get o).ivars.all (fun (_, v) => pureOkSeen h sens seen v)
+      own && (!sens.contains "inspect" || objectInspectPure h (.ref o)) && (h.get o).ivars.all (fun (_, v) => pureOkSeen h sens fuel seen v)
     -- A Range is a container of two: `(a..b).inspect` calls `a.inspect`, so an
     -- endpoint with a user `inspect` makes the range impure too. Missing this was
     -- a **wrong answer** — the pure path rendered the endpoint's default
     -- `#<C:0x…>` and ignored the override — found by the L122 range head, which
     -- gives its endpoints a fixed `inspect` precisely so no address is observed.
-    | .range lo hi _ => own && pureOkSeen h sens seen lo && pureOkSeen h sens seen hi
+    | .range lo hi _ => own && pureOkSeen h sens fuel seen lo && pureOkSeen h sens fuel seen hi
     | .rational _ _ => own && reprUnchanged h sens (.int 0)
-    | .complex r i => own && pureOkSeen h sens seen r && pureOkSeen h sens seen i &&
+    | .complex r i => own && pureOkSeen h sens fuel seen r && pureOkSeen h sens fuel seen i &&
         (!sens.contains "to_s" || [r, i].all (fun v =>
           !reprOverridden h ["to_str"] (classOf h v)))
-    | .enumerator (some data) => own && pureOkSeen h ["inspect"] seen data.recv &&
-        data.args.all (pureOkSeen h ["inspect"] seen)
+    | .enumerator (some data) => own && pureOkSeen h ["inspect"] fuel seen data.recv &&
+        data.args.all (pureOkSeen h ["inspect"] fuel seen)
     -- An Exception renders **through `to_s`** whichever way it is asked:
     -- `rb_exc_inspect` is `#<Class: rb_obj_as_string(exc)>` and
     -- `Exception#message` *is* `to_s`. So `to_s` is repr-sensitive for an exception
@@ -182,10 +184,10 @@ private partial def pureOkSeen (h : Heap) (sens : List String) (seen : List ObjI
     | .proc _ => false   -- Proc repr is address-based → never pure
     | _ => own
   -- Immediates also resolve the exact native renderer, honoring class aliases.
-  | v => reprUnchanged h sens v
+  | _ + 1, _, v => reprUnchanged h sens v
 
 def pureOk (h : Heap) (sens : List String) (value : Value) : Bool :=
-  pureOkSeen h sens [] value
+  pureOkSeen h sens reprFuel [] value
 
 /-- When pure repr cannot speak for a value, the *prelude twin* to dispatch
     instead (L116). This is L63's "defer to the prelude" pattern: the twin has a
@@ -676,7 +678,9 @@ def coerceDefer? (h : Heap) (bid : String) (recv : Value) (args : List Value) :
   match args with
   | [b] =>
     if !nativeReal h recv && (complexPayload? h recv).isNone then none
-    else if bid == "Integer#/" && recv.identEq (.int 1) && (rationalPayload? h b).isSome then none
+    -- The argument is tested first: for an Integer argument the answer is then
+    -- independent of the receiver, so `x / 2` reduces for a *variable* `x`.
+    else if (rationalPayload? h b).isSome && bid == "Integer#/" && recv.identEq (.int 1) then none
     else if (num? b).isSome then none
     else if (complexPayload? h recv).isSome && (nativeReal h b || (complexPayload? h b).isSome) then none
     else if (rationalPayload? h recv).isSome && (rationalPayload? h b).isSome then none

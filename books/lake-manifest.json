@@ -1,0 +1,13 @@
+{"version": "1.2.0",
+ "packagesDir": ".lake/packages",
+ "packages":
+ [{"type": "path",
+   "scope": "",
+   "name": "rubylean",
+   "manifestFile": "lake-manifest.json",
+   "inherited": false,
+   "dir": "../ruby-lean",
+   "configFile": "lakefile.toml"}],
+ "name": "books",
+ "lakeDir": ".lake",
+ "fixedToolchain": false}

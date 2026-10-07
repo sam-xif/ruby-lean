@@ -10,9 +10,11 @@ import RubyCore.Types.Decls
 `registeredBootB` and `classOkB` (every reopenable class name is bound, in
 `Object`'s **own** constant table, to a class object that is not a module).
 
-They cannot be decided in the kernel: `Prelude.program` is
-`Lean.Json.parse Prelude.json` and `Lean.Json.parse` does not kernel-reduce even
-on the input `"1"` (measured), while L94 bans the `native_decide` escape. So they
+When this was written they could not be decided in the kernel: `Prelude.program`
+was `Lean.Json.parse Prelude.json`, and `Lean.Json.parse` does not kernel-reduce
+even on the input `"1"` (measured), while L94 bans the `native_decide` escape.
+(`Prelude.program` is a term now, and the kernel can run the boot — see
+`books/Books/Lib/Boot.lean` — so that reason no longer holds.) They
 are decided by *running* them — `Denote/Sem/Core/Boot.lean`'s `#guard` for `saturatedB`,
 and `scripts/probes/` for the measurements `scripts/check-proofs.sh` reports.
 
