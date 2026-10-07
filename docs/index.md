@@ -23,8 +23,11 @@ A Ruby program, with Sorbet signatures:
 
 ```ruby
 # typed: true
+require "sorbet-runtime"
+
 class Point
   extend T::Sig
+
   sig { params(x: Integer, y: Integer).void }
   def initialize(x, y)
     @x = x
@@ -32,12 +35,12 @@ class Point
   end
 
   sig { returns(Integer) }
-  def getX
+  def x
     @x
   end
 end
 
-Point.new(1, 2).getX
+Point.new(1, 2).x
 ```
 
 Run it on the model:

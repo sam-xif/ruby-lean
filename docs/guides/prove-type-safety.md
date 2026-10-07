@@ -11,6 +11,8 @@ The checker reads Sorbet's `sig` annotations. Start the file with
 
 ```ruby
 # typed: true
+require "sorbet-runtime"
+
 class Counter
   extend T::Sig
 
@@ -29,6 +31,10 @@ end
 c = Counter.new(10)
 c.bump(5)
 ```
+
+`require "sorbet-runtime"` is what makes `T::Sig` exist when the program runs,
+under CRuby and on the model alike (`bin/ruby-lean --compare counter.rb` prints
+`=> 15`). The checker does not need it.
 
 ## 2. Check it
 
