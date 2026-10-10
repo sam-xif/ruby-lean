@@ -38,7 +38,8 @@ def primitiveMethods : List (ObjId × String × String) :=
    (Boot.stringId, "upcase", "String#upcase"), (Boot.stringId, "downcase", "String#downcase"),
    (Boot.stringId, "strip", "String#strip"), (Boot.stringId, "reverse", "String#reverse"),
    (Boot.stringId, "end_with?", "String#end_with?"), (Boot.integerId, "abs", "Integer#abs"),
-   (Boot.integerId, "even?", "Integer#even?"), (Boot.integerId, "odd?", "Integer#odd?")]
+   (Boot.integerId, "even?", "Integer#even?"), (Boot.integerId, "odd?", "Integer#odd?"),
+   (Boot.integerId, "succ", "Integer#succ")]
 
 /-- Native lookup facts include Proc calls, Array iterators and Symbol conversion.
 Membership is not a pure-builtin signature; primitiveMethods alone supplies those rows. -/

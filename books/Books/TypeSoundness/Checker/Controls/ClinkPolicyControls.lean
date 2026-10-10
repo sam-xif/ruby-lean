@@ -821,6 +821,8 @@ private def andH (thn els : Deriv) : Deriv := .seq [
 #guard validateD (.send (some (.int 1)) "abs" [] none) (.prim (.intLit 1) "abs" [] .int .int)
 #guard validateD (.send (some (.int 1)) "odd?" [] none) (.prim (.intLit 1) "odd?" [] .int .bool)
 #guard !validateD (.send (some (.str "a")) "abs" [] none) (.prim (.strLit "a") "abs" [] (.cls "String") .int)
+#guard validateD (.send (some (.int 1)) "succ" [] none) (.prim (.intLit 1) "succ" [] .int .int)
+#guard !validateD (.send (some (.flt 0)) "succ" [] none) (.prim (.fltLit 0) "succ" [] .float .int)
 #guard validateD (.send (some (.str "a")) "end_with?" [.str "a"] none)
   (.prim (.strLit "a") "end_with?" [.strLit "a"] (.cls "String") .bool)
 #guard !validateD (.send (some (.str "a")) "end_with?" [.int 1] none)

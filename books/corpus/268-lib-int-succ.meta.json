@@ -1,0 +1,10 @@
+{
+  "id": "lib-int-succ",
+  "tier": 17,
+  "description": "`Integer#succ`: a total row over an Integer receiver, with Sorbet's result type, used as a loop step and as a summand.",
+  "expect_sorbet": true,
+  "expect_validate": true,
+  "false_reason": null,
+  "defs": 0,
+  "annotated": false
+}

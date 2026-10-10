@@ -192,6 +192,7 @@ inductive DPrim : Ty → String → List Ty → Ty → Prop
   | intAbs : DPrim .int "abs" [] .int
   | intEven : DPrim .int "even?" [] .bool
   | intOdd : DPrim .int "odd?" [] .bool
+  | intSucc : DPrim .int "succ" [] .int
 
 /-- The decidable counterpart. A miss is `none`, never a guess. -/
 def dprim? : Ty → String → List Ty → Option Ty
@@ -240,6 +241,7 @@ def dprim? : Ty → String → List Ty → Option Ty
   | .int, "abs", [] => some .int
   | .int, "even?", [] => some .bool
   | .int, "odd?", [] => some .bool
+  | .int, "succ", [] => some .int
   | _, _, _ => none
 
 theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
@@ -314,6 +316,7 @@ theorem dprim?_sound {σ : Ty} {m : String} {as : List Ty} {τ : Ty}
   · rw [Option.some.injEq] at h; subst h; exact .intAbs
   · rw [Option.some.injEq] at h; subst h; exact .intEven
   · rw [Option.some.injEq] at h; subst h; exact .intOdd
+  · rw [Option.some.injEq] at h; subst h; exact .intSucc
   · exact absurd h (by simp)
 
 /-! ## §1a The environment a write leaves behind

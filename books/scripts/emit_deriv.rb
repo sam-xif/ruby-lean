@@ -92,7 +92,7 @@ def prim_ret(recv, m, args)
     return BOOL if %w[< <= > >=].include?(m) && args == [INT]
     return STR  if m == "to_s" && args.empty?
     return BOOL if %w[zero? even? odd?].include?(m) && args.empty?
-    return INT  if m == "abs" && args.empty?
+    return INT  if %w[abs succ].include?(m) && args.empty?
   end
 
   if t == "cls" && n == "String"

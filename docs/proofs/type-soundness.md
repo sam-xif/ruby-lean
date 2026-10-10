@@ -90,14 +90,14 @@ In the source, a rule together with its proof is called a *clink*.
 
 ## The corpus
 
-`books/corpus/` holds 267 small Sorbet-annotated programs, each with a
+`books/corpus/` holds 268 small Sorbet-annotated programs, each with a
 `.meta.json` saying what Sorbet and the checker are expected to answer.
 `make soundness` runs each through the whole pipeline and reports:
 
 ```text
 model vs CRuby on the corpus: 259 agree, 0 disagree
 typing rules with a soundness proof: 131/131
-corpus programs accepted by validateD: 139/267
+corpus programs accepted by validateD: 140/268
   must be rejected, and are: 46/46
   not accepted yet: 82
     096-block-pass-symbol-to-proc: emitter: map requires one positional block parameter and no arguments
