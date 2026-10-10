@@ -9,7 +9,7 @@ it, as a collection of *books*. A book is a directory under
 |---|---|---|
 | [`Books/TypeSoundness/`](Books/TypeSoundness/README.md) | A type checker for Sorbet-annotated Ruby ([`Checker/`](Books/TypeSoundness/Checker/README.md)), and the theorem that a program it accepts never ends in an uncaught `NoMethodError`, `ArgumentError` or `TypeError` when the model runs it | [`Soundness.lean`](Books/TypeSoundness/Soundness.lean) |
 | [`Books/Metatheory/`](Books/Metatheory/README.md) | Facts about the model itself: the step relation and the executable `stepFn` agree, and a type-safety principle that needs no type system | [`Machine/Step.lean`](Books/Metatheory/Machine/Step.lean) |
-| [`Books/FastPower/`](Books/FastPower/README.md) | One Ruby program, exponentiation by squaring, computes `b ** n` for every `b` and `n` | [`Proof.lean`](Books/FastPower/Proof.lean) |
+| [`Books/FastPower/`](Books/FastPower/README.md) | Two Ruby programs, a simple loop and exponentiation by squaring, both compute `b ** n` for every `b` and `n`, and the second takes fewer steps for every `n` from 6 up | [`Faster.lean`](Books/FastPower/Faster.lean) |
 
 [`Books/Lib/`](Books/Lib/) is not a book. It is the machinery for proving things
 about a single program. To start a proof about your own program, run
@@ -30,13 +30,13 @@ make soundness    # the soundness theorem, its controls, and the checker on the 
 make comparator   # an independent re-check of the soundness theorem
 ```
 
-Or here, directly:
+Each check is a script inside its book, and can be run directly:
 
 ```sh
-lake build
-./scripts/check-metatheory.sh
-./scripts/check-soundness.sh        # --proofs-only skips the corpus
-./scripts/run-comparator.sh
+lake build                                           # here: every book
+Books/Metatheory/scripts/check-metatheory.sh
+Books/TypeSoundness/scripts/check-soundness.sh       # --proofs-only skips the corpus
+Books/TypeSoundness/scripts/run-comparator.sh
 ```
 
 The first build takes from several minutes on a many-core machine to about half
@@ -47,13 +47,10 @@ every file under `Books/`.
 
 ## Layout
 
-| Path | Contents |
-|---|---|
-| `Books/` | The books |
-| `corpus/` | 267 Sorbet-annotated Ruby programs the checker is measured on. Each `NNN-name.rb` has a `NNN-name.meta.json` saying what Sorbet and the checker are expected to answer. `accepted.txt` records which ones the checker accepts |
-| `scripts/` | The checks above; the scripts in front of the checker (`srb_sigs.py`, `read_sigs.rb`, `emit_deriv.rb`) and `build_corpus.py`, which runs each corpus program through them; `generate_audited_checker.py`; `probes/`, which decide facts about the booted heap |
-| `CorpusReport.lean` | The executable that prints the corpus report |
-| `build/` | Output of `build_corpus.py`. Not committed |
+This directory is a Lake package and nothing else: `lakefile.toml`, and
+[`Books/`](Books/). Everything a book needs is inside its own directory. The
+type-soundness book, for example, holds its checker, its corpus of typed
+programs and the scripts that run them.
 
 [What is proved](../docs/proofs/index.md) describes the results and how they
 are checked.

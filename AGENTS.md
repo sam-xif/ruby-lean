@@ -45,7 +45,7 @@ never optional.
    CRuby is a bug.
 4. **No `sorry`, no `native_decide`, no new axiom** in a proof.
 5. **Recorded results only improve.** `difftest/coverage-baseline.json`,
-   `desugar/coverage-baseline.json` and `books/corpus/accepted.txt` are compared
+   `desugar/coverage-baseline.json` and `books/Books/TypeSoundness/corpus/accepted.txt` are compared
    on every run. Update one only with the command the failing check prints, in
    the same commit as the change that moved it, and never to hide a regression.
 6. **Regenerate, do not edit, generated files** (`ruby-lean/RubyCore/Generated/`,
@@ -61,8 +61,8 @@ never optional.
 | `books/Books/TypeSoundness/` | The type-soundness book: the theorem is in `Soundness.lean` |
 | `books/Books/TypeSoundness/Checker/` | The type checker the theorem is about. Entry point `validateD` in `Check/` |
 | `books/Books/Metatheory/` | Facts about the model |
-| `books/Books/FastPower/`, `books/Books/Lib/` | A proof about one Ruby program, and the library for writing more |
-| `books/corpus/` | Typed programs the checker is measured on |
+| `books/Books/FastPower/`, `books/Books/Lib/` | Two Ruby programs proved to meet one specification and compared, and the library for writing more |
+| `books/Books/TypeSoundness/corpus/` | Typed programs the checker is measured on |
 | `desugar/` | Ruby to the model's core language |
 | `difftest/` | Differential testing against CRuby |
 | `docs/` | The documentation site |

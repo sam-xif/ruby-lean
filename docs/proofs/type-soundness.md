@@ -41,7 +41,7 @@ The checker lives inside the book, in `Checker/`, but it imports nothing from
 the model and nothing from the rest of the book. It has its own copy of the
 syntax (`Checker/Lang/`). So the checker can be read, audited and re-implemented
 without the model or the proof in scope, and the proof around it is the only
-place that sees both. `books/scripts/check-isolation.sh` enforces the separation, and
+place that sees both. `books/Books/TypeSoundness/scripts/check-isolation.sh` enforces the separation, and
 `make soundness` runs it first.
 
 | Directory in `Checker/` | Contents |
@@ -90,7 +90,7 @@ In the source, a rule together with its proof is called a *clink*.
 
 ## The corpus
 
-`books/corpus/` holds 267 small Sorbet-annotated programs, each with a
+`books/Books/TypeSoundness/corpus/` holds 267 small Sorbet-annotated programs, each with a
 `.meta.json` saying what Sorbet and the checker are expected to answer.
 `make soundness` runs each through the whole pipeline and reports:
 
@@ -113,17 +113,17 @@ SOUNDNESS CHECK PASSED
 | must be rejected | Ill-typed programs, such as `1 + true`. Accepting one is a failure |
 | not accepted yet | Well-typed programs outside the fragment, each with the reason |
 
-The set of accepted programs is recorded in `books/corpus/accepted.txt`, and the
+The set of accepted programs is recorded in `books/Books/TypeSoundness/corpus/accepted.txt`, and the
 run fails if it changes in either direction. When a change makes the checker
-accept more, `books/scripts/check-soundness.sh --record` updates the file, and
+accept more, `books/Books/TypeSoundness/scripts/check-soundness.sh --record` updates the file, and
 the diff shows exactly which programs moved.
 
 ## Running it
 
 ```sh
 make soundness                                  # everything
-cd books
-./scripts/check-soundness.sh --proofs-only      # no Ruby, Sorbet or CRuby needed
-./scripts/check-soundness.sh --only 061,070     # only these corpus programs
-./scripts/check-soundness.sh --verbose          # every stage's output, every program
+cd books/Books/TypeSoundness
+scripts/check-soundness.sh --proofs-only      # no Ruby, Sorbet or CRuby needed
+scripts/check-soundness.sh --only 061,070     # only these corpus programs
+scripts/check-soundness.sh --verbose          # every stage's output, every program
 ```

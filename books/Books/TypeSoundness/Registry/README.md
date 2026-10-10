@@ -27,7 +27,7 @@ cannot be registered without it.
    `DFlow.call`. Enable the companion and body rules its derivations use as
    well.
 2. Import the file that proves it in `ActiveProofs.lean`.
-3. From `books/`, run `./scripts/check-soundness.sh --proofs-only`. An enabled
+3. Run `scripts/check-soundness.sh --proofs-only` from the book's directory. An enabled
    rule with a missing or mistyped proof fails the build.
 
 A rule that is not enabled is refused by `validateD`, so the soundness theorem

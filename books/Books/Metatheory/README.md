@@ -24,6 +24,7 @@ probes.
 | `invariant_sound` | [`Reachability/TypeSafety.lean`](Reachability/TypeSafety.lean) | Type safety by reachability. If a predicate on machines holds initially, is preserved by a step, and excludes the states about to get type-stuck, then no run of the program ends type-stuck. No type system is involved |
 | `sorbet_invariant_sound` | [`Reachability/SorbetSafety.lean`](Reachability/SorbetSafety.lean) | The same statement narrowed to failures Sorbet's runtime would blame on the program |
 | `done_inv` | [`Machine/NotDone.lean`](Machine/NotDone.lean) | A run finishes at exactly one place in the interpreter, so a finished run can be inverted |
+| `boot_eq_booted`, `initWithPrelude_eq_initOnBooted` | [`Heap/BootedHeap.lean`](Heap/BootedHeap.lean) | The prelude boot produces exactly the heap written out in `RubyCore/Generated/BootedHeap.lean`, so starting a program after the boot is starting it on that literal. The kernel runs the boot to check it |
 | `ancestors_congr_grow` | [`Heap/AncestorsGrow.lean`](Heap/AncestorsGrow.lean) | Method lookup's ancestor walk gives the same answer after the heap allocates |
 | `t5_loop_type_safe` | [`Examples/T5Loop.lean`](Examples/T5Loop.lean) | A worked instance of `invariant_sound`: a loop that dispatches a user-defined method runs type-safe forever, proved without running it |
 
@@ -43,6 +44,7 @@ A machine is *type-stuck* when it has raised `NoMethodError`, `ArgumentError` or
 | `Typing/Lang/` | Definitions: a declaration table, an inference function and a declarative typing judgment over the model's own syntax |
 | `Typing/Infer/`, `Typing/Judge/` | Typing invariants of the machine stated over those definitions, and the two composites the soundness proof uses: what creating a fresh class (`FreshClass`) or module (`FreshModule`) does to the heap |
 | `Examples/` | Concrete programs proved safe |
+| `Probes/` | Programs that decide facts about the booted heap; see below |
 | `Controls/` | Counterexamples to earlier, false versions of lemmas in `Heap/` and `Framing/`, kept so the corrected hypotheses stay justified |
 
 ## What depends on what
@@ -57,5 +59,5 @@ semantics only.
 Some lemmas assume a fact about the heap the prelude boots, for instance that
 no two class objects share a name. Those facts are decided by running them on
 the real booted heap. `scripts/check-metatheory.sh` runs the probes in
-`scripts/probes/` and fails if one stops holding, so a change to the prelude
+[`Probes/`](Probes/) and fails if one stops holding, so a change to the prelude
 that would falsify an assumption is caught there.

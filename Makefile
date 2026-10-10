@@ -105,12 +105,30 @@ $(PRELUDE_LEAN): $(PRELUDE_JSON) $(PKG)/GenPrelude.lean $(PKG)/RubyCore/Syntax.l
 	cd $(PKG) && $(GENPRELUDE) > RubyCore/Generated/Prelude.lean.tmp
 	@if cmp -s $@.tmp $@; then rm $@.tmp; touch $@; else mv $@.tmp $@; echo "  regenerated $@"; fi
 
+# The state the prelude boot leaves behind, as terms (BootedHeap.lean). Unlike
+# the files above this is a build artifact: it is not committed, because its
+# generator is the model itself and needs nothing a Lean checkout lacks. Its
+# input is the whole model (the prelude, the builtin tables, the interpreter),
+# so it is rewritten whenever any of that is newer, and every target that
+# builds a book depends on it. `Books/Metatheory/Heap/BootedHeap.lean` proves
+# it equal to the boot.
+BOOTED_LEAN := $(GENERATED)/BootedHeap.lean
+BOOTED_SRC  := $(PKG)/GenBootedHeap.lean $(PRELUDE_LEAN) \
+               $(shell find $(PKG)/RubyCore -name '*.lean' \
+                  ! -path '*/Generated/BootedHeap.lean' ! -path '*/Generated/Prelude.lean' \
+                  ! -name Booted.lean)
+GENBOOTED   := $(LAKE) build --log-level=error genbootedheap >&2 && .lake/build/bin/genbootedheap
+
+$(BOOTED_LEAN): $(BOOTED_SRC)
+	cd $(PKG) && $(GENBOOTED) > RubyCore/Generated/BootedHeap.lean.tmp
+	@if cmp -s $@.tmp $@; then rm $@.tmp; touch $@; else mv $@.tmp $@; echo "  regenerated $@"; fi
+
 gen: ## Regenerate every generated Lean source
 	cd $(PKG) && $(RUBY) scripts/gen_prelude.rb      > RubyCore/Generated/PreludeJson.lean
 	cd $(PKG) && $(GENPRELUDE) > RubyCore/Generated/Prelude.lean.tmp && mv RubyCore/Generated/Prelude.lean.tmp RubyCore/Generated/Prelude.lean
 	cd $(PKG) && $(RUBY) scripts/gen_cruby_names.rb  > RubyCore/Generated/CRubyNames.lean
 	cd $(PKG) && $(RUBY) scripts/gen_unicode.rb --verify > RubyCore/Generated/Unicode.lean
-	python3 books/scripts/generate_audited_checker.py
+	python3 books/Books/TypeSoundness/scripts/generate_audited_checker.py
 
 gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 	@set -e; fail=0; \
@@ -125,7 +143,7 @@ gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 	if cmp -s $(STAMP)/Prelude.lean $(PRELUDE_LEAN); then echo "  fresh  RubyCore/Generated/Prelude.lean"; \
 	else echo "  STALE  RubyCore/Generated/Prelude.lean  (run: make gen)"; \
 	  diff $(PRELUDE_LEAN) $(STAMP)/Prelude.lean | head -40 | cut -c1-600; fail=1; fi; \
-	python3 books/scripts/generate_audited_checker.py --check || fail=1; \
+	python3 books/Books/TypeSoundness/scripts/generate_audited_checker.py --check || fail=1; \
 	exit $$fail
 
 # ── Lean ─────────────────────────────────────────────────────────────────────
@@ -138,7 +156,7 @@ gen-check: | $(STAMP) ## Fail if a generated Lean source is stale
 
 CHECKER_BIN := books/.lake/build/bin
 
-lean-exes: $(PRELUDE_LEAN) ## Just the rubycore and validate-one executables
+lean-exes: $(PRELUDE_LEAN) $(BOOTED_LEAN) ## Just the rubycore and validate-one executables
 	cd $(PKG) && $(LAKE) build --log-level=error rubycore
 	cd books && $(LAKE) build --log-level=error validate-one
 
@@ -155,13 +173,13 @@ books: lean-exes ## Build every proof book: every file under books/Books/
 	cd books && $(LAKE) build
 
 metatheory: lean-exes ## The model's metatheory: build it, audit its axioms, check the booted heap's assumptions
-	cd books && ./scripts/check-metatheory.sh
+	books/Books/Metatheory/scripts/check-metatheory.sh
 
-soundness: $(PRELUDE_LEAN) $(STAMP)/uv deps ## The checker's soundness theorem, its controls, and the checker on the corpus
-	cd books && ./scripts/check-soundness.sh
+soundness: $(PRELUDE_LEAN) $(BOOTED_LEAN) $(STAMP)/uv deps ## The checker's soundness theorem, its controls, and the checker on the corpus
+	books/Books/TypeSoundness/scripts/check-soundness.sh
 
 comparator: lean-exes ## Re-check the soundness theorem with leanprover/comparator (fetches and builds it)
-	cd books && ./scripts/run-comparator.sh
+	books/Books/TypeSoundness/scripts/run-comparator.sh
 
 # ── Desugarer and bin/ruby-lean ──────────────────────────────────────────────
 
@@ -242,7 +260,7 @@ WASM_LEAN_SRC := $(PKG)/wasm/build.sh $(PKG)/wasm/patch-runtime.py \
 WASM_RUBY_SRC := $(PKG)/wasm/ruby/build.sh $(PKG)/wasm/ruby/prune.py \
                  $(wildcard desugar/lib/*.rb) $(wildcard desugar/bin/*) \
                  $(wildcard difftest/ruby/*.rb) \
-                 books/scripts/emit_deriv.rb books/scripts/read_sigs.rb
+                 books/Books/TypeSoundness/scripts/emit_deriv.rb books/Books/TypeSoundness/scripts/read_sigs.rb
 
 $(STAMP)/wasm-lean: $(LEAN_BIN)/rubycore $(CHECKER_BIN)/validate-one $(WASM_LEAN_SRC) | $(STAMP)
 	cd $(PKG) && RUBYLEAN_WASM_CACHE=$(WASM_CACHE) wasm/build.sh rubycore validate-one
@@ -256,7 +274,7 @@ $(WASM_OUT)/ruby.wasm: $(WASM_RUBY_SRC) $(STAMP)/bundle
 wasm: $(WASM_OUT)/rubycore.wasm $(WASM_OUT)/validate-one.wasm $(WASM_OUT)/ruby.wasm ## The three .wasm modules (Lean model, validator, CRuby + desugarer)
 
 PLAYGROUND_SRC := playground/index.html playground/build.sh playground/mkcorpus.py \
-                  $(wildcard playground/js/*.js) $(wildcard books/corpus/*)
+                  $(wildcard playground/js/*.js) $(wildcard books/Books/TypeSoundness/corpus/*)
 
 playground/dist/index.html: $(WASM_OUT)/rubycore.wasm $(WASM_OUT)/validate-one.wasm \
                             $(WASM_OUT)/ruby.wasm $(PLAYGROUND_SRC)
@@ -280,7 +298,7 @@ docs-serve: ## Serve the docs with live reload on :8000
 # ── Cleanup ─────────────────────────────────────────────────────────────────
 
 clean: ## Remove build outputs in the tree (keeps .lake, venvs and caches)
-	rm -rf $(STAMP) site playground/dist playground/dist.tar.gz $(WASM_OUT)/*.wasm books/build
+	rm -rf $(STAMP) site playground/dist playground/dist.tar.gz $(WASM_OUT)/*.wasm books/Books/TypeSoundness/build $(BOOTED_LEAN)
 
 distclean: clean ## Also remove .lake, the difftest venv, harvested corpora and download caches
 	rm -rf $(PKG)/.lake books/.lake difftest/.venv $(BOOTSTRAP) $(CACHE) $(WASM_CACHE)

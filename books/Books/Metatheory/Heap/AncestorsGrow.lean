@@ -22,7 +22,7 @@ allocated after its superclass — so the walk from `k` takes at most `k + 1` st
 any fuel `≥ k + 1` computes the same list, and F0's `heapOkB` certificate can
 absorb the clause because it is decidable at the boot heap.
 
-It is decidable, and it is **false**. `scripts/probes/ancestors_probe.lean` measures it at
+It is decidable, and it is **false**. `Books/Metatheory/Probes/Ancestors.lean` measures it at
 the prelude-booted heap and reports **ten** non-descending edges, starting with the
 ones the object model cannot do without:
 
@@ -73,7 +73,7 @@ It is **not** satisfied by allocating a *class* (`classDef`), where the fresh id
 a shape in `h'` and none in `h`. Typing `class C … end` therefore owes one more
 clause — *no in-bounds object has an edge pointing out of bounds*, which makes the
 walk from an old id stay among old ids and lets the shape agreement be relativized
-the way `TypeAgree` now is. `scripts/probes/ancestors_probe.lean` measures that
+the way `TypeAgree` now is. `Books/Metatheory/Probes/Ancestors.lean` measures that
 clause too, and it holds (0 out-of-bounds edges), so this is a proof that is owed
 rather than a fact in doubt.
 -/
@@ -483,7 +483,7 @@ theorem ancestors_go_congr_grow {h h' : Heap} (hs : ShapeAgree h h')
 
 /-- **The payoff: the ancestor chain survives an allocating step.** `=` became `≤`,
     at the price of one clause about the heap in hand — checkable by
-    `saturatedB`, measured by `scripts/probes/ancestors_probe.lean`, and true at the
+    `saturatedB`, measured by `Books/Metatheory/Probes/Ancestors.lean`, and true at the
     prelude-booted heap.
 
     `ShapeAgree` is unrelativized, which is exactly right for allocating a **plain

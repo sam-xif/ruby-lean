@@ -20,6 +20,7 @@ this code implements. Source comments cite those pages as *Semantics NN §M*:
 | `Builtins.lean`, `Builtins/` | The methods implemented natively, one file per group of classes |
 | `Interp.lean`, `Interp/` | `stepFn` and `run`. `Interp.lean` is the case split on the control; `Interp/` holds dispatch, sends, continuations, reflection and the rest |
 | `Boot.lean` | Runs the prelude to produce the heap a program starts on |
+| `Booted.lean` | Starts a program on that heap taken as a literal (`Generated/BootedHeap.lean`), without running the prelude. `rubycore` boots; proofs start here. Not imported by `RubyCore.lean` |
 | `Obs.lean` | What a finished run is observed as: output, result, exception |
 | `Trace.lean` | Prints a run one machine state at a time |
 
@@ -29,7 +30,7 @@ Libraries the semantics uses:
 |---|---|
 | `Numeric/` | `Float#to_s`, the Mersenne Twister behind `Random`, `Rational`, `Complex` |
 | `Regex/` | A regular-expression parser and matcher |
-| `Generated/` | Files written by scripts: the prelude as Lean terms, the names of CRuby's built-in methods, Unicode character classes. Do not edit; run `make gen` |
+| `Generated/` | Files written by scripts: the prelude as Lean terms, the names of CRuby's built-in methods, Unicode character classes. Do not edit; run `make gen`. `BootedHeap.lean`, the heap the prelude boot produces, is also written here, but as a build artifact that is not committed |
 | `Sorbet/` | Reads `sig` declarations out of a program without running it |
 
 `../RubyCore.lean` imports all of it. `../Main.lean` is the `rubycore`

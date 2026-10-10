@@ -1,7 +1,7 @@
 #!/bin/bash
 # Check the model's metatheory (Books/Metatheory/).
 #
-#   scripts/check-metatheory.sh
+#   check-metatheory.sh          (from the repository root: make metatheory)
 #
 #   1. Build every file of the book.
 #   2. Print the axioms of each headline theorem and of the lemmas the soundness
@@ -14,7 +14,7 @@
 #
 # Exit 0 iff all three hold.
 set -uo pipefail
-cd "$(dirname "$0")/.." || exit 1
+cd "$(dirname "$0")/../../.." || exit 1   # books/, the Lake package
 
 echo "== building Books/Metatheory/"
 if ! lake build --log-level=error Metatheory; then
@@ -33,6 +33,7 @@ import Books.Metatheory.Reachability.SorbetSafety
 import Books.Metatheory.Typing.Infer.Mono
 import Books.Metatheory.Typing.Infer.Decls
 import Books.Metatheory.Typing.Infer.Locals
+import Books.Metatheory.Heap.BootedHeap
 import Books.Metatheory.Typing.Judge.FreshClass
 import Books.Metatheory.Typing.Judge.FreshModule
 import Books.Metatheory.Typing.Judge.TableRet
@@ -52,9 +53,13 @@ import Books.Metatheory.Typing.Judge.TableRet
 -- A worked instance: a method-dispatch loop runs type-safe from the booted heap.
 #print axioms RubyCore.Proof.T5Loop.t5_loop_type_safe
 -- The ancestor walk gives the same answer after the heap allocates, given the
--- `Saturated` hypothesis that `scripts/probes/ancestors_probe.lean` decides.
+-- `Saturated` hypothesis that `Probes/Ancestors.lean` decides.
 #print axioms RubyCore.Proof.ancestors_congr_grow
 #print axioms RubyCore.Proof.saturatedB_sound
+-- The prelude boot produces exactly the generated literal, so a program can be
+-- started on the literal without running the boot.
+#print axioms RubyCore.Proof.boot_eq_booted
+#print axioms RubyCore.Proof.initWithPrelude_eq_initOnBooted
 -- What the type-soundness book imports: what creating a fresh class or module
 -- does to the heap, and the declaration-table lemmas those rest on.
 #print axioms RubyCore.Proof.Judgment.evalExpr_class_fresh
@@ -93,22 +98,22 @@ fi
 probe() {
   local label="$1" file="$2" failure="$3"
   echo "== booted heap: $label"
-  if ! lake env lean --run "scripts/probes/$file"; then
+  if ! lake env lean --run "Books/Metatheory/Probes/$file"; then
     echo "FAIL: $failure"
     exit 1
   fi
 }
-probe "the ancestor walk is saturated" ancestors_probe.lean \
+probe "the ancestor walk is saturated" Ancestors.lean \
   "the ancestor walk is not saturated at the booted heap, or an edge points out of bounds"
-probe "no two class objects share a name" names_probe.lean \
+probe "no two class objects share a name" Names.lean \
   "two class objects share a name at the booted heap"
-probe "a name-keyed constant table is not shadowed" consts_probe.lean \
+probe "a name-keyed constant table is not shadowed" Consts.lean \
   "a class in front of Object on an admitted chain owns a constant, or Object is unreachable"
-probe "no class object is a plain receiver" classobj_probe.lean \
+probe "no class object is a plain receiver" ClassObj.lean \
   "a class object is a plain receiver, so dispatch's receiver case split is not exhaustive"
-probe "=== on a class object resolves to Module#===" classeq_probe.lean \
+probe "=== on a class object resolves to Module#===" ClassEq.lean \
   "=== on a class object no longer resolves to the Module#=== builtin"
-probe "which class names can be reopened" reopen_probe.lean \
+probe "which class names can be reopened" Reopen.lean \
   "the reopen probe did not run"
 
 echo "OK: the metatheory builds; every theorem above rests on propext, Classical.choice and Quot.sound only; the booted heap satisfies the assumptions the proofs make about it"

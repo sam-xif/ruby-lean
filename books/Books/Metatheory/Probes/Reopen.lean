@@ -20,7 +20,7 @@ The refusals are the interesting output, and each names a real fact:
   which `classRecv` excludes;
 * `Comparable`, `Kernel` and `T` are modules.
 
-    lake env lean --run scripts/probes/reopen_probe.lean     -- a report; read the table
+    lake env lean --run Books/Metatheory/Probes/Reopen.lean     -- a report; read the table
 -/
 
 open RubyCore

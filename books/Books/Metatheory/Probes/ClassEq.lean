@@ -26,10 +26,10 @@ defines `Object#===` in **Ruby**, so it is a `fromPrelude` method — and `Objec
 on every class object's dispatch chain. The row is only witnessable if `Module`
 comes *first*, and that is an ordering fact about `ancestors`, not something the
 type language can promise. This reports the whole resolution so the answer is read
-rather than assumed — the same move `names_probe` made for the declaration rows and
-`consts_probe` for the constant table, both of which changed a clause.
+rather than assumed — the same move `Probes/Names.lean` made for the declaration rows and
+`Probes/Consts.lean` for the constant table, both of which changed a clause.
 
-    lake env lean --run scripts/probes/classeq_probe.lean
+    lake env lean --run Books/Metatheory/Probes/ClassEq.lean
       -- exit 0 iff every keyable class object resolves `===` to the `Module#===`
       -- builtin with the four flags `ResolvesAt` demands and no `crubyShadow`
 -/
