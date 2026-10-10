@@ -105,15 +105,24 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
                 let h' := h.set ro { h.get ro with payload := .io inode mode bytes.length closed }
                 okStrEnc { m with heap := h' } (h.get inode).binary rest
               | some (some n) =>
-                let avail := bytes.length - pos
-                if avail == 0 then
-                  -- `read(n)` answers `nil` at end of file.
-                  .ok .nil m
+                -- CRuby's `io_read` returns an empty String for `read(0)`
+                -- *before* consulting the stream, so `read(0)` answers `""`
+                -- even at or past end of file (and does not move the
+                -- position). Only `read(n)` with `n > 0` answers `nil` at end
+                -- of file. See `io.c`, `io_read`: `if (len == 0) return str;`
+                -- precedes the `if (n == 0) return Qnil;` EOF check.
+                if n == 0 then
+                  okStrEnc m (h.get inode).binary ""
                 else
-                  let taken := (bytes.drop pos).take (min n avail) |>.toString
-                  let h' := h.set ro { h.get ro with
-                    payload := .io inode mode (pos + taken.length) closed }
-                  okStrEnc { m with heap := h' } (h.get inode).binary taken
+                  let avail := bytes.length - pos
+                  if avail == 0 then
+                    -- `read(n)` with `n > 0` answers `nil` at end of file.
+                    .ok .nil m
+                  else
+                    let taken := (bytes.drop pos).take (min n avail) |>.toString
+                    let h' := h.set ro { h.get ro with
+                      payload := .io inode mode (pos + taken.length) closed }
+                    okStrEnc { m with heap := h' } (h.get inode).binary taken
             | _ => .unsupported "IO#read: inode is not a regular file"
       | _ =>
         match args with
