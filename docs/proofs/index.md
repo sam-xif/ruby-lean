@@ -17,7 +17,9 @@ a single program.
 
 Every headline theorem depends on `propext`, `Classical.choice` and
 `Quot.sound`, the three axioms of Lean's standard library, and on nothing else.
-There is no `sorry` and no `native_decide`. The build checks this in three
+No proof uses `sorry` or `native_decide`. (The one file that contains `sorry`,
+`Comparator/Challenge.lean`, states the soundness theorems without proving
+them; see below.) The build checks this in three
 places, and each fails the build if it changes:
 
 * `#guard_msgs in #print axioms …` next to the theorems themselves;
@@ -49,7 +51,7 @@ both run it.
 
 `make comparator` runs
 [`leanprover/comparator`](https://github.com/leanprover/comparator) on the
-soundness theorem. `books/Comparator/Challenge.lean` states the three soundness
+soundness theorem. `books/Books/TypeSoundness/Comparator/Challenge.lean` states the three soundness
 theorems with `sorry` in place of a proof. The comparator checks that
 
 1. the statements proved in `books/Books/TypeSoundness/Soundness.lean` are

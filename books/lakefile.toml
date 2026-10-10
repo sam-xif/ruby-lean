@@ -36,20 +36,14 @@ roots = ["Books"]
 globs = ["Books.Metatheory.+"]
 
 # The checker's soundness theorem, with its registry, controls and worked examples.
+# `Books/TypeSoundness/Comparator/Challenge.lean` restates the theorems with `sorry`
+# for a proof; `scripts/run-comparator.sh` has `leanprover/comparator` check the
+# real ones against it.
 [[lean_lib]]
 name = "TypeSoundness"
 srcDir = "."
 roots = ["Books"]
 globs = ["Books.TypeSoundness.+"]
-
-# The statement-only side of a `leanprover/comparator` run: `Comparator/Challenge.lean`
-# restates `Books/TypeSoundness/Soundness.lean`'s theorems with `sorry` for a proof, and
-# `scripts/run-comparator.sh` has the comparator check the real ones against it.
-# **Not** in defaultTargets — it is `sorry` on purpose, and nothing imports it.
-[[lean_lib]]
-name = "Comparator"
-srcDir = "."
-globs = ["Comparator.+"]
 
 # What `scripts/check-soundness.sh` prints: which typing rules have a soundness
 # proof, and which corpus programs the real `validateD` accepts.

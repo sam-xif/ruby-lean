@@ -3,7 +3,7 @@ import Books.TypeSoundness.Conformance.Core.Boot
 
 /-! The *statements* of the validator's end-to-end safety theorems, with no proofs.
 
-This is the trusted half of a `leanprover/comparator` run (`scripts/run-comparator.sh`):
+This is the trusted half of a `leanprover/comparator` run (`books/scripts/run-comparator.sh`):
 the comparator exports these three statements and the same-named theorems of
 `Books/TypeSoundness/Soundness.lean`, checks that the statements and every constant they mention are
 identical in both environments, that the proofs in `Books.TypeSoundness.Soundness` use only the permitted
@@ -12,7 +12,12 @@ axioms, and replays the proofs' whole dependency closure through the Lean kernel
 Keep the statements here textually identical to `Books/TypeSoundness/Soundness.lean`'s. The imports are
 the ones the statements need (`validateD`; `StateOk`, `StuckFree`, `bootOkB`,
 `bootMachine`, `Semantics.run`) and deliberately not `Books.TypeSoundness.Registry.AuditBridge`, which is
-where the proof comes from. Off the default build target: it is `sorry` by design. -/
+where the proof comes from.
+
+The three `sorry`s are deliberate and are the only ones in the book: this file states,
+it does not prove. Nothing imports it, since it declares the same names as
+`Soundness.lean`. It is built with the rest of the book so that the statements always
+elaborate against the current definitions. -/
 set_option autoImplicit false
 namespace Checker.Soundness.Typed
 open RubyCore Checker Checker.Soundness
