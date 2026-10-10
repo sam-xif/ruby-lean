@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Check the type checker's soundness theorem and measure the checker on the corpus.
+# From the repository root this is `make soundness`. Paths below are relative to
+# this book, books/Books/TypeSoundness/.
 #
-#   scripts/check-soundness.sh                 # everything below
-#   scripts/check-soundness.sh --proofs-only   # stages 1-3: no Ruby, Sorbet or CRuby needed
-#   scripts/check-soundness.sh --verbose       # every stage's full output
-#   scripts/check-soundness.sh --only 001,014  # only these corpus programs
-#   scripts/check-soundness.sh --record        # write corpus/accepted.txt from this run
+#   check-soundness.sh                 # everything below
+#   check-soundness.sh --proofs-only   # stages 1-3: no Ruby, Sorbet or CRuby needed
+#   check-soundness.sh --verbose       # every stage's full output
+#   check-soundness.sh --only 001,014  # only these corpus programs
+#   check-soundness.sh --record        # write corpus/accepted.txt from this run
 #
 # Stages, in order. The first failure stops the run and prints the captured error.
 #
@@ -14,8 +16,8 @@
 #      on no axiom beyond propext, Classical.choice and Quot.sound.
 #   3. The negative controls build: programs and derivations the checker must refuse.
 #   4. Every program in corpus/ goes through Sorbet, the desugarer and the derivation
-#      emitter (scripts/build_corpus.py), and so do the pipeline's own controls
-#      (scripts/check_pipeline.py).
+#      emitter (build_corpus.py), and so do the pipeline's own controls
+#      (check_pipeline.py).
 #   5. The same programs run under CRuby and under the model; any disagreement fails.
 #   6. The report: which typing rules are proved, and which corpus programs the real
 #      `validateD` accepts. It fails if a program that must be rejected is accepted,
@@ -23,7 +25,7 @@
 #
 # The last line is `SOUNDNESS CHECK PASSED` or `SOUNDNESS CHECK FAILED -- <stage>`.
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/../../.."   # books/, the Lake package
 BOOKS="$PWD"
 
 VERBOSE=0
@@ -69,10 +71,30 @@ stage() {
   fi
 }
 
+S=Books/TypeSoundness/scripts
+CORPUS=Books/TypeSoundness/corpus
+
+# Elaborate a file of `#print axioms` commands and fail on any axiom outside
+# Lean's three, or on any error.
+audit_axioms() {
+  local out
+  out=$(lake env lean "$1" 2>&1) || { echo "$out"; return 1; }
+  echo "$out"
+  python3 -c '
+import re, sys
+allowed = {"propext", "Classical.choice", "Quot.sound"}
+extra = set()
+for axioms in re.findall(r"depends on axioms: \[(.*?)\]", sys.argv[1], re.S):
+    extra |= {a.strip() for a in axioms.split(",")} - allowed
+if extra:
+    print("unexpected axioms: " + ", ".join(sorted(extra)))
+sys.exit(1 if extra else 0)' "$out"
+}
+
 # 1.
-stage "the checker is isolated from the model" scripts/check-isolation.sh
+stage "the checker is isolated from the model" $S/check-isolation.sh
 stage "the checker's generated sources are fresh" \
-  python3 scripts/generate_audited_checker.py --check
+  python3 $S/generate_audited_checker.py --check
 
 # 2. The registry first, so a rule without a proof is reported as that and not
 #    as a failure somewhere downstream of it.
@@ -84,7 +106,7 @@ stage "the soundness theorem and its axioms" lake build Books.TypeSoundness.Regi
 stage "the checker's own controls" lake build Books.TypeSoundness.Checker.Controls.ClinkPolicyControls
 stage "the type-soundness book and its controls" lake build TypeSoundness
 stage "the checker executables" lake build validate-one
-stage "the axiom audit of the supporting lemmas" lake env lean scripts/probes/clink-rebuild.lean
+stage "the axiom audit of the supporting lemmas" audit_axioms Books/TypeSoundness/Probes/AxiomAudit.lean
 
 if [[ "$PROOFS_ONLY" == 1 ]]; then
   echo "SOUNDNESS CHECK PASSED (proofs only; the corpus was not run)"
@@ -95,9 +117,9 @@ fi
 CORPUS_OUT="${OUT:-$LOGDIR/corpus}"
 [[ "$CORPUS_OUT" == /* ]] || CORPUS_OUT="$BOOKS/$CORPUS_OUT"
 stage "the report and the model executable" lake build corpus-report rubycore
-stage "the corpus pipeline: Sorbet, strip, desugar, emit" python3 scripts/build_corpus.py \
+stage "the corpus pipeline: Sorbet, strip, desugar, emit" python3 $S/build_corpus.py \
   --out "$CORPUS_OUT" ${PIPELINE_ARGS[@]+"${PIPELINE_ARGS[@]}"}
-stage "the pipeline controls" python3 scripts/check_pipeline.py
+stage "the pipeline controls" python3 $S/check_pipeline.py
 
 # 5.
 stage "agreement: CRuby and the model on the corpus" bash -c \
@@ -115,8 +137,8 @@ fi
 # 6. The report is the result; always show it.
 REPORT_ARGS=("$CORPUS_OUT")
 [[ "$VERBOSE" == 0 ]] && REPORT_ARGS+=(--quiet)
-if [[ "$RECORD" == 1 ]]; then REPORT_ARGS+=(--record corpus/accepted.txt)
-else REPORT_ARGS+=(--accepted corpus/accepted.txt); fi
+if [[ "$RECORD" == 1 ]]; then REPORT_ARGS+=(--record $CORPUS/accepted.txt)
+else REPORT_ARGS+=(--accepted $CORPUS/accepted.txt); fi
 if ! ./.lake/build/bin/corpus-report "${REPORT_ARGS[@]}"; then
   echo "SOUNDNESS CHECK FAILED -- the corpus report" >&2; exit 1
 fi

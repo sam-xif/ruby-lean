@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Record what the pipeline currently answers in each corpus program's meta.json.
 
-    scripts/record_baseline.py            # after scripts/build_corpus.py
+    record_baseline.py            # after build_corpus.py
 
 Two fields. Once recorded, a program whose answer changes fails
-`scripts/check-soundness.sh`.
+`check-soundness.sh`.
 
 * `expect_sorbet`: does Sorbet typecheck the annotated source without errors?
   Not always true, and deliberately: `054-fun-body-mismatch` declares `Integer`

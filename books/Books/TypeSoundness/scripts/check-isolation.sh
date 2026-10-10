@@ -16,7 +16,7 @@
 # checker module or of the vendored `Json` library, and the model's package
 # imports nothing from this one.
 set -uo pipefail
-cd "$(dirname "$0")/.." || exit 1
+cd "$(dirname "$0")/../../.." || exit 1   # books/
 
 rc=0
 

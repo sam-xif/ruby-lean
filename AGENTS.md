@@ -36,7 +36,7 @@ lists them), then `make check` once at the end:
 | `books/Books/TypeSoundness/Checker/` | `make soundness` |
 | anything else under `books/` | `make books` |
 | `desugar/` | `make desugar-unit desugar-test desugar-coverage` |
-| `books/scripts/emit_deriv.rb`, `books/scripts/read_sigs.rb` | `make emitter-unit` |
+| `books/Books/TypeSoundness/scripts/emit_deriv.rb`, `books/Books/TypeSoundness/scripts/read_sigs.rb` | `make emitter-unit` |
 | `difftest/` | `make difftest-test` |
 | `docs/`, any README | `make docs` |
 | any Python, Ruby tooling, shell script or workflow | `make lint` (`make format` fixes what it can) |
@@ -59,14 +59,14 @@ never optional.
    CRuby is a bug.
 4. **No `sorry`, no `native_decide`, no new axiom** in a proof.
 5. **Recorded results only improve.** `difftest/coverage-baseline.json`,
-   `desugar/coverage-baseline.json`, `books/corpus/accepted.txt` and each unit-test
+   `desugar/coverage-baseline.json`, `books/Books/TypeSoundness/corpus/accepted.txt` and each unit-test
    suite's `coverage-baseline.json` are compared on every run. Update one only
    with the command the check prints, in the same commit as the change that
    moved it, and never to hide a regression.
 6. **Regenerate, do not edit, generated files** (`ruby-lean/RubyCore/Generated/`,
    `books/Books/TypeSoundness/Checker/Audit/`): `make gen`.
 7. **Fix a lint finding; do not suppress it.** No `noqa`, `rubocop:disable`,
-   `shellcheck disable` or test skip. New code in `desugar/`, `books/scripts/`
+   `shellcheck disable` or test skip. New code in `desugar/`, `books/Books/TypeSoundness/scripts/`
    or `difftest/` comes with unit tests, or its suite's coverage falls.
 8. **Some files need the owner's review** (`.github/CODEOWNERS`): CI, the
    Makefile, `scripts/`, the lint and coverage configuration, the toolchain
@@ -84,7 +84,7 @@ never optional.
 | `books/Books/TypeSoundness/Checker/` | The type checker the theorem is about. Entry point `validateD` in `Check/` |
 | `books/Books/Metatheory/` | Facts about the model |
 | `books/Books/FastPower/`, `books/Books/Lib/` | A proof about one Ruby program, and the library for writing more |
-| `books/corpus/` | Typed programs the checker is measured on |
+| `books/Books/TypeSoundness/corpus/` | Typed programs the checker is measured on |
 | `desugar/` | Ruby to the model's core language |
 | `difftest/` | Differential testing against CRuby |
 | `docs/` | The documentation site |
