@@ -9098,6 +9098,54 @@ def core_47 : Expr :=
            none),
        RubyCore.Expr.defs
          (RubyCore.Expr.self')
+         "open"
+         [RubyCore.Param.req "path",
+          RubyCore.Param.opt "mode" (RubyCore.Expr.nil),
+          RubyCore.Param.block (some "blk")]
+         (RubyCore.Expr.seq
+           [RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "io"
+              (RubyCore.Expr.if'
+                (RubyCore.Expr.send
+                  (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "mode"))
+                  "nil?"
+                  []
+                  none)
+                (RubyCore.Expr.send
+                  none
+                  "__open"
+                  [RubyCore.Expr.var (RubyCore.VarKind.lvar) "path"]
+                  none)
+                (some (RubyCore.Expr.send
+                   none
+                   "__open"
+                   [RubyCore.Expr.var (RubyCore.VarKind.lvar) "path",
+                    RubyCore.Expr.var (RubyCore.VarKind.lvar) "mode"]
+                   none))),
+            RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "blk"))
+                "nil?"
+                []
+                none)
+              (RubyCore.Expr.ret (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "io")))
+              none,
+            RubyCore.Expr.begin'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "blk"))
+                "call"
+                [RubyCore.Expr.var (RubyCore.VarKind.lvar) "io"]
+                none)
+              []
+              none
+              (some (RubyCore.Expr.send
+                 (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "io"))
+                 "close"
+                 []
+                 none))]),
+       RubyCore.Expr.defs
+         (RubyCore.Expr.self')
          "method_missing"
          [RubyCore.Param.req "name",
           RubyCore.Param.rest (some "args"),

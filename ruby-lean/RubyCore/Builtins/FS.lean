@@ -172,7 +172,13 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
           | _, _ => .unsupported "File.write: path or data argument is not a String"
         | _ => .unsupported s!"{bid}: argument shape outside step 1"
     | _ => .unsupported s!"{bid}: unexpected receiver"
-  | "File#open" =>
+  -- `File#__open` is the **internal** primitive behind `File.open` (issue #7
+  -- step 4). The public `File.open` is a prelude method (prelude.rb) so the
+  -- block form can `begin … ensure … close` around a real `yield`; a pure
+  -- builtin cannot push a block frame. The prelude's non-block arm delegates
+  -- here, so the descriptor semantics below are the single definition and the
+  -- `File.open` argument shape stays entirely in the prelude.
+  | "File#__open" =>
     match args with
     | [p] =>
       match pathArg? m p with
