@@ -75,8 +75,10 @@ unbooted heap: a cross-check against the wrong heap is worse than no cross-check
 def run (fuel : Nat) (p : Expr) : Interp.RunResult :=
   match bootedMachine with
   | .ok mp =>
-    -- Exactly `Prelude.initWithPrelude`, spelled out so the `boot` result is shared across
-    -- every rung in a run rather than recomputed per rung.
+    -- Mirrors `Prelude.initWithPrelude`'s heap and globals, spelled out so the `boot`
+    -- result is shared across every rung in a run rather than recomputed per rung. The
+    -- require/require_relative fixture overlay and the numeric-literal table that
+    -- `initWithPrelude` also installs are omitted here: no corpus rung reads them.
     Interp.run fuel { Machine.initOn mp.heap p with globals := mp.globals }
   | .error msg => .unsupported s!"prelude boot failed: {msg}" (Machine.init p)
 

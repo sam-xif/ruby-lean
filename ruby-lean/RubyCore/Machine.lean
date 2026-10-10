@@ -90,6 +90,10 @@ structure Frame where
   matchAlias : Option FrameId := none
   /-- Source origin, distinct from boot mode: library loading still runs hooks. -/
   libraryOrigin : Bool := false
+  /-- Absolute VFS path of the source file this activation is running, if any
+      (the program's path at top level, or a required file's path). `require_relative`
+      resolves its argument against this file's directory (issue #7 / M1). -/
+  sourcePath : Option String := none
 deriving Inhabited
 
 /-- In-flight non-local transfer (Semantics 04 §3's `C^ctl` variants).
@@ -497,6 +501,12 @@ structure Machine where
       marked `fromPrelude`. -/
   preludeMode : Bool := false
   featurePrograms : List (String × Expr) := []
+  /-- Pre-desugared bodies of the VFS library fixture (issue #7 / M1), keyed by
+      the file's heap object id with its canonical absolute path alongside. A
+      `require`/`require_relative` that resolves to one of these objects runs its
+      body; the key is object identity, so any path spelling of the same file is
+      one entry (CRuby keys `$LOADED_FEATURES` by realpath). -/
+  requireBodies : List (ObjId × String × Expr) := []
   loadedFeatures : List String := ["pathname.so"]
   loadingFeatures : List String := []
   /-- A failed load can leave declarations behind; missing dependency APIs
