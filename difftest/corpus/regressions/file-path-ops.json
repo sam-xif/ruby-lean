@@ -1,0 +1,5 @@
+{
+  "status": "fixed",
+  "fixed_in": "File path operations match CRuby (2026-10-10)",
+  "note": "File.dirname ignored that trailing/repeated separators do not name a component, File.extname scanned to index 0 without skipping a leading run of dots, and File.join inserted a bare '/'. All three returned wrong answers (silent disagreements with CRuby) rather than refusing. The pure path helpers are prelude string functions kept by issue #7; this guards their CRuby fidelity. Compared with CRuby 4.0.5."
+}

@@ -2071,13 +2071,14 @@ end
 
 # ─── File — the pure path operations only ───────────────────────────────────
 #
-# `File` is a filesystem class, and the slice reaches exactly one of its
-# methods: `File.basename(url)` in `vulns/identify.rb`, used to chop the last
-# component off a *URL*. That operation is pure string manipulation with no
-# effect at all, so it is modeled; everything else routes to `method_missing`
-# and gates by name. Defining the constant without that guard would turn
-# `File.read` from an honest Unsupported into a NoMethodError, which is a wrong
-# answer rather than a refusal.
+# `File` is a filesystem class, and the slice reaches its **pure path
+# operations**: `File.basename(url)` in `vulns/identify.rb`, and `dirname`/
+# `extname`/`join`. Each is pure string manipulation with no effect at all, so
+# they are modeled to match CRuby byte-for-byte; everything else routes to
+# `method_missing` and gates by name. Defining the constant without that guard
+# would turn `File.read` from an honest Unsupported into a NoMethodError, which
+# is a wrong answer rather than a refusal. (The symbolic filesystem that makes
+# `File.read` a real operation is issue #7.)
 module File
   SEPARATOR = "/"
 
@@ -2099,31 +2100,87 @@ module File
     end
   end
 
+  # `File.extname` reports the extension of the **last component**, skipping a
+  # leading run of dots first. So a dotfile has no extension (`".bashrc"` => `""`,
+  # and `"."`/`".."`/`"..."` likewise), while `".a.b"` is `".b"`. The old version
+  # scanned to index 0 without that skip, answering `"."` for `".."` where CRuby
+  # answers `""` — a wrong answer, not a refusal.
   def self.extname(path)
     b = basename(path)
-    i = b.length - 1
-    while i > 0
-      return b[i, b.length - i] if b[i] == "."
-      i -= 1
+    n = b.length
+    start = 0
+    start += 1 while start < n && b[start] == "."
+    e = nil
+    i = start
+    while i < n
+      e = i if b[i] == "."
+      i += 1
     end
-    ""
+    return "" if e.nil?
+    b[e, n - e]
   end
 
+  # `File.dirname` removes the last path component, and **trailing slashes do
+  # not themselves name a component** (MRI's `rb_enc_path_last_separator` skips
+  # a trailing run of `/`). So `dirname("/foo/")` is `"/"`, not `"/foo"`, and
+  # `dirname("foo//bar")` is `"foo"`. The old version returned the text before
+  # the last `/` verbatim, keeping trailing slashes, which disagreed with CRuby
+  # on every path with a repeated or trailing separator.
+  #
+  # The walk mirrors MRI's non-DOS `rb_file_dirname_n` for one level: skip the
+  # leading root (`/`, `//`, …), remember `name` (the last leading slash when
+  # there is more than one, so `"//foo"` keeps `"//"`), find the last separator
+  # that is followed by a non-separator, and answer `"."` when that separator is
+  # the start.
   def self.dirname(path)
     s = path.to_s
-    i = s.length - 1
-    while i >= 0
+    n = s.length
+    root = 0
+    root += 1 while root < n && s[root] == "/"
+    name = 0
+    name = root - 1 if root > 1
+    p = -1
+    i = root
+    while i < n
       if s[i] == "/"
-        return "/" if i.zero?
-        return s[0, i]
+        j = i + 1
+        j += 1 while j < n && s[j] == "/"
+        break if j >= n
+        p = i
+        i = j
+      else
+        i += 1
       end
-      i -= 1
     end
-    "."
+    p = root if p < 0
+    return "." if p == name
+    s[name, p - name]
   end
 
+  # `File.join` collapses the separator it inserts with any leading `/` of the
+  # next part and drops trailing `/` from the accumulated result when the next
+  # part is absolute — MRI's `rb_file_join`. So `join("a/", "/b")` is `"a/b"`
+  # (not `"a///b"`), and interior separators are preserved (`join("a//", "a")`
+  # is `"a//a"`), which the old `parts.join("/")` did not reproduce.
   def self.join(*parts)
-    parts.map { |x| x.to_s }.join("/")
+    result = ""
+    i = 0
+    while i < parts.length
+      part = parts[i].to_s
+      if i > 0
+        j = result.length - 1
+        j -= 1 while j >= 0 && result[j] == "/"
+        tail = j + 1
+        if part.length > 0 && part[0] == "/"
+          result = result[0, tail]
+        elsif tail == result.length
+          result = result + "/"
+        end
+      end
+      result = result + part
+      i += 1
+    end
+    result
   end
 
   def self.method_missing(name, *args, **kw, &blk)
