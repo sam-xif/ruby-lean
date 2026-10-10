@@ -778,6 +778,7 @@ class Emitter
     if tr["tag"] == "clsOf"
       sig = sig_for("<Class:#{tr['name']}>", m)
       check_inferred_args(sig, targs)
+      dargs = fit_params(dargs, targs, sig)
       result = as_inst(sig["ret"])
       return [{ "rule" => "callSingleton", "recv" => dr, "name" => m, "args" => dargs,
                 "ret" => result }, result]
@@ -785,6 +786,7 @@ class Emitter
     if tr["tag"] == "inst"
       sig = sig_for(tr["name"], m)
       check_inferred_args(sig, targs)
+      dargs = fit_params(dargs, targs, sig)
       result = as_inst(sig["ret"])
       return [{ "rule" => "callMethodSig", "recv" => dr, "name" => m, "args" => dargs,
                 "ret" => result }, result]
@@ -831,6 +833,10 @@ class Emitter
 
     out = ds.each_with_index.map { |d, i| fit(d, ts[i], wants[i]) }
     out.all? ? out : nil
+  end
+
+  def fit_params(ds, ts, sig)
+    fit_all(ds, ts, sig["params"].map { |p| as_inst(p["ty"]) }) || ds
   end
 
   def implicit_send(m, args)
@@ -888,6 +894,7 @@ class Emitter
     owner = @singleton ? "<Class:#{@self_cls}>" : (@self_cls || "Object")
     sig = sig_for(owner, m)
     check_inferred_args(sig, targs)
+    dargs = fit_params(dargs, targs, sig)
     result = @ret_refined[[owner, m]] || as_inst(sig["ret"])
     [{ "rule" => "callSig", "name" => m, "args" => dargs, "ret" => result }, result]
   end
@@ -895,7 +902,12 @@ class Emitter
   def new_inst(name, args)
     raise Blocked, "module #{name} has no allocator" if @modules.include?(name)
 
-    dargs, = go_all(args)
+    dargs, targs = go_all(args)
+    begin
+      dargs = fit_params(dargs, targs, sig_for(name, "initialize"))
+    rescue Blocked
+      nil
+    end
     ivars = @cls_ivars[name] || (name == @self_cls ? @ivars.to_a : nil)
     raise Blocked, "`#{name}.new` before `class #{name}` is defined" if ivars.nil?
 
