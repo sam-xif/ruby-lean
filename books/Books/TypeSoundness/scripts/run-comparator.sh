@@ -42,7 +42,7 @@
 # The comparator is fetched into `.lake/comparator` (ignored) at a pinned commit and built
 # on this package's own toolchain, which is what `lean4export` has to match.
 set -euo pipefail
-cd "$(dirname "$0")/.." || exit 1
+cd "$(dirname "$0")/../../.." || exit 1   # books/
 
 COMPARATOR_REPO=https://github.com/leanprover/comparator
 COMPARATOR_REV=07bc4ea40f2266dcb861820a2ec1fa3244ed307f   # tag v4.32.0

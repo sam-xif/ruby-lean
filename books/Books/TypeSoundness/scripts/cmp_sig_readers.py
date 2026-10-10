@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Does reading signatures off the source agree with reading them out of Sorbet?
 
-    scripts/cmp_sig_readers.py
+    cmp_sig_readers.py
 
 Compares two ways of getting to a `Deriv`, over every rung in `build/`:
 
@@ -20,7 +20,7 @@ it may not do is change which rungs are **accepted**.
 
 That is the number to watch: the two `accepted` counts must match.
 
-Run from books/, after `scripts/build_corpus.py` and `lake build validate-one`.
+Run after `build_corpus.py` and `lake build validate-one`.
 """
 
 import glob
@@ -29,7 +29,9 @@ import os
 import subprocess
 from pathlib import Path
 
-V = "./.lake/build/bin/validate-one"
+HERE = os.path.dirname(os.path.abspath(__file__))
+BOOK = os.path.dirname(HERE)
+V = os.path.join(BOOK, "..", "..", ".lake", "build", "bin", "validate-one")
 
 
 def verdict(deriv_json, ast):
@@ -51,28 +53,29 @@ def verdict(deriv_json, ast):
 same = diff = 0
 rows = []
 acc_ref = acc_cand = 0
-for astf in sorted(glob.glob("build/*.ast.json")):
+for astf in sorted(glob.glob(os.path.join(BOOK, "build", "*.ast.json"))):
     stem = os.path.basename(astf)[: -len(".ast.json")]
-    sigs_f, rb = f"build/{stem}.sigs.json", f"corpus/{stem}.rb"
+    sigs_f = os.path.join(BOOK, "build", f"{stem}.sigs.json")
+    rb = os.path.join(BOOK, "corpus", f"{stem}.rb")
     if not (os.path.exists(sigs_f) and os.path.exists(rb)):
         continue
     with open(astf) as fh:
         ast = json.load(fh)
     ref = subprocess.run(
-        ["ruby", "scripts/emit_deriv.rb", "--ast", astf, "--sigs", sigs_f],
+        ["ruby", os.path.join(HERE, "emit_deriv.rb"), "--ast", astf, "--sigs", sigs_f],
         capture_output=True,
         text=True,
         check=False,
     ).stdout
     rs = subprocess.run(
-        ["ruby", "scripts/read_sigs.rb"],
+        ["ruby", os.path.join(HERE, "read_sigs.rb")],
         input=Path(rb).read_text(),
         capture_output=True,
         text=True,
         check=False,
     ).stdout
     cand = subprocess.run(
-        ["ruby", "scripts/emit_deriv.rb"],
+        ["ruby", os.path.join(HERE, "emit_deriv.rb")],
         input=json.dumps({"ast": ast, "sigs": json.loads(rs)}),
         capture_output=True,
         text=True,

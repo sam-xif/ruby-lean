@@ -48,7 +48,7 @@ globs = ["Books.TypeSoundness.+"]
 # proof, and which corpus programs the real `validateD` accepts.
 [[lean_exe]]
 name = "corpus-report"
-root = "CorpusReport"
+root = "Books.TypeSoundness.Report.Main"
 
 # The type checker as an executable: reads one program and one derivation as
 # JSON and prints `validateD`'s verdict. `bin/ruby-lean-check` and the

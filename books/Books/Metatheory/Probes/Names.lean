@@ -3,7 +3,7 @@ import Books.Metatheory.Typing.Infer.Decls
 
 /-!
 Item 5 of the declaration-row rung, measured before anything is proved — the
-same move `ancestors_probe.lean` made for the fuel clause, and for the same
+same move `Probes/Ancestors.lean` made for the fuel clause, and for the same
 reason.
 
 ## The question
@@ -30,7 +30,7 @@ to collide: L124 fixed a family of them that were all called
 `#<Class:Object>`, and a regression there would silently make a row
 unprovable rather than wrong.
 
-    lake env lean --run scripts/probes/names_probe.lean   # exit 0 iff no class name is shared
+    lake env lean --run Books/Metatheory/Probes/Names.lean   # exit 0 iff no class name is shared
 -/
 
 open RubyCore
