@@ -20,6 +20,13 @@ position, `IO#close` marks it closed, and `IO#closed?` observes that. A
 read/write on a closed stream, or a write on a read-only descriptor, would raise
 `IOError`/`Errno` in CRuby; those classes are step 7, so those shapes return a
 named `Unsupported` rather than fabricating an error object.
+
+Step 5 adds line reads and positioning over those descriptors: `IO#gets` (all
+four CRuby forms, including the `gets(0) = ""` corner), `IO#pos`/`#pos=`, and
+`IO#rewind`. `IO#readline` and `IO#each_line` are not primitives — they are
+defined in the prelude over `gets`, so that the block form is ordinary Ruby
+evaluation; both forward their `*args` to `gets`, and the blockless `each_line`
+and the EOF `readline` gate on the unmodeled `Enumerator`/`EOFError`.
 -/
 
 namespace RubyCore
@@ -52,6 +59,63 @@ def readLen : List Value → Option (Option Nat)
   | [] => some none
   | [.int n] => if n < 0 then none else some (some n.toNat)
   | _ => none
+
+/-- Parse an `IO#gets` argument list (issue #7 step 5): an optional separator
+    (`none` for `gets(nil)`, which reads to EOF) and an optional byte limit.
+    The outer `Option` is `none` when the shape is outside the fragment and
+    gates.
+
+    CRuby's forms are `gets`, `gets(sep)`, `gets(limit)`, `gets(sep, limit)`
+    and `gets(nil)`. The first argument is the separator when it is a String
+    or `nil`; a lone Integer is a limit. A negative limit gates. Takes the heap
+    because a String separator is a `.ref` whose payload only `strPayload?` can
+    read. -/
+def getsArgsH (h : Heap) : List Value → Option (Option String × Option Nat)
+  | [] => some (some "\n", none)
+  | [.nil] => some (none, none)
+  | [.int n] => if n < 0 then none else some (some "\n", some n.toNat)
+  | [p] =>
+    match strPayload? h p with
+    | some s => some (some s, none)
+    | none => none
+  | [.nil, .int n] =>
+    -- `gets(nil, limit)`: no separator (read the rest), capped at `limit`.
+    if n < 0 then none else some (none, some n.toNat)
+  | [p, .int n] =>
+    if n < 0 then none
+    else match strPayload? h p with
+      | some s => some (some s, some n.toNat)
+      | none => none
+  | _ => none
+
+/-- One `IO#gets` result: the bytes read (`none` at end of file, which CRuby
+    answers as `nil`) and the new descriptor position. `limit = some 0` is the
+    one shape that answers `""` even at EOF, without moving the position — CRuby
+    probes confirm both. A separator `none` reads to EOF; otherwise the line
+    runs through the first occurrence of the separator (whole remainder if it is
+    absent). A limit truncates the line. Positions and lengths are counted in
+    characters, matching the rest of the model's `String` arithmetic (the
+    fixture is ASCII). -/
+def getsLine (bytes : String) (pos : Nat) (sep : Option String) (limit : Option Nat) :
+    Option (Option String × Nat) :=
+  let rest := (bytes.drop pos).toString
+  match limit with
+  | some 0 => some (some "", pos)
+  | _ =>
+    if pos >= bytes.length then none
+    else
+      let line :=
+        match sep with
+        | none => rest
+        | some s =>
+          if s.isEmpty then rest
+          else match rest.splitOn s with
+            | first :: _ :: _ => first ++ s
+            | _ => rest
+      let line := match limit with
+        | some n => (line.take n).toString
+        | none => line
+      some (some line, pos + line.length)
 
 /-- Open `path` (already resolved from a String argument) for `modeStr`,
     returning a fresh `IO` descriptor object (issue #7 step 2, non-block form).
@@ -212,6 +276,72 @@ def runFS (bid : String) (recv : Value) (args : List Value) (m : Machine) : BRes
       | .io _ _ _ true => .unsupported "IO#flush: closed stream (IOError gated at step 2)"
       | _ => .unsupported "IO#flush: not an open IO"
     | _ => .unsupported "IO#flush: unexpected receiver"
+  | "IO#gets" =>
+    -- Step 5. `gets` reads a separator-delimited line (newline by default),
+    -- answers `nil` at end of file, and leaves the position just past the line.
+    -- `readline` and `each_line` are built on this in the prelude.
+    match recv with
+    | .ref ro =>
+      match (h.get ro).payload with
+      | .io inode mode pos closed =>
+        if closed then .unsupported "IO#gets: closed stream (IOError gated at step 5)"
+        else match mode with
+          | .write | .append => .unsupported "IO#gets: not opened for reading (IOError gated at step 5)"
+          | _ =>
+            match (h.get inode).payload with
+            | .file bytes =>
+              if bytes.length < pos then
+                .unsupported "IO#gets: position past end of file"
+              else match getsArgsH h args with
+              | none => .unsupported "IO#gets: argument shape outside step 5"
+              | some (sep, limit) =>
+                match getsLine bytes pos sep limit with
+                | none => .ok .nil m
+                | some (some line, newPos) =>
+                  let h' := h.set ro { h.get ro with payload := .io inode mode newPos closed }
+                  okStrEnc { m with heap := h' } (h.get inode).binary line
+                | some (none, _) => .ok .nil m
+            | _ => .unsupported "IO#gets: inode is not a regular file"
+      | _ => .unsupported "IO#gets: not an open IO"
+    | _ => .unsupported "IO#gets: unexpected receiver"
+  | "IO#pos" =>
+    match recv with
+    | .ref ro =>
+      match (h.get ro).payload with
+      | .io _ _ pos _ => .ok (.int (Int.ofNat pos)) m
+      | _ => .unsupported "IO#pos: not an open IO"
+    | _ => .unsupported "IO#pos: unexpected receiver"
+  | "IO#pos=" =>
+    -- `pos=` seeks to an absolute byte offset. A negative offset would raise
+    -- `Errno::EINVAL`; that class is step 7, so those shapes gate.
+    match recv with
+    | .ref ro =>
+      match (h.get ro).payload with
+      | .io inode mode pos closed =>
+        if closed then .unsupported "IO#pos=: closed stream (IOError gated at step 5)"
+        else match args with
+        | [.int n] =>
+          if n < 0 then .unsupported "IO#pos=: negative offset (Errno::EINVAL gated at step 5)"
+          else
+            let h' := h.set ro { h.get ro with payload := .io inode mode n.toNat closed }
+            .ok (.int n) { m with heap := h' }
+        | _ => .unsupported "IO#pos=: argument shape outside step 5"
+      | _ => .unsupported "IO#pos=: not an open IO"
+    | _ => .unsupported "IO#pos=: unexpected receiver"
+  | "IO#rewind" =>
+    -- `rewind` resets the position to zero. CRuby also flushes writes and resets
+    -- the line number; the model's descriptor writes update the inode directly,
+    -- so the position reset is the whole observable effect.
+    match recv with
+    | .ref ro =>
+      match (h.get ro).payload with
+      | .io inode mode _ closed =>
+        if closed then .unsupported "IO#rewind: closed stream (IOError gated at step 5)"
+        else
+          let h' := h.set ro { h.get ro with payload := .io inode mode 0 closed }
+          .ok (.int 0) { m with heap := h' }
+      | _ => .unsupported "IO#rewind: not an open IO"
+    | _ => .unsupported "IO#rewind: unexpected receiver"
   | "File#exist?" | "Dir#exist?" =>
     match args with
     | [p] => (match pathArg? m p with

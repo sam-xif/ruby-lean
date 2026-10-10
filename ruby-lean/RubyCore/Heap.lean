@@ -580,7 +580,8 @@ def builtinMethods : List (ObjId × List String) := [
   (matchDataId, ["[]", "captures", "named_captures", "names", "begin", "end",
                  "pre_match", "post_match", "to_a", "size", "length", "to_s",
                  "inspect", "values_at"]),
-  (ioId, ["read", "write", "closed?", "close", "flush", "each_line", "gets"]),
+  (ioId, ["read", "write", "closed?", "close", "flush", "each_line", "gets",
+          "readline", "pos", "pos=", "rewind"]),
   (fileId, ["read", "write", "exist?", "file?", "directory?", "size", "open"]),
   (dirId, ["exist?", "entries", "children", "mkdir"])
 ]

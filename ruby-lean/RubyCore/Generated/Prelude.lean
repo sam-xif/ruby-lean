@@ -9128,6 +9128,83 @@ def core_47 : Expr :=
 
 def core_48 : Expr :=
   RubyCore.Expr.class'
+    "IO"
+    none
+    (RubyCore.Expr.seq
+      [RubyCore.Expr.def'
+         "readline"
+         [RubyCore.Param.rest (some "args")]
+         (RubyCore.Expr.seq
+           [RubyCore.Expr.vasgn
+              (RubyCore.VarKind.lvar)
+              "line"
+              (RubyCore.Expr.send
+                none
+                "gets"
+                [RubyCore.Expr.splat (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "args"))]
+                none),
+            RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "line"))
+                "nil?"
+                []
+                none)
+              (RubyCore.Expr.ret
+                (some (RubyCore.Expr.send
+                   none
+                   "__unsupported__"
+                   [RubyCore.Expr.str "IO#readline at end of file (EOFError gated at step 7)"]
+                   none)))
+              none,
+            RubyCore.Expr.var (RubyCore.VarKind.lvar) "line"]),
+       RubyCore.Expr.def'
+         "each_line"
+         [RubyCore.Param.rest (some "args"), RubyCore.Param.block (some "blk")]
+         (RubyCore.Expr.seq
+           [RubyCore.Expr.if'
+              (RubyCore.Expr.send
+                (some (RubyCore.Expr.send none "block_given?" [] none))
+                "!"
+                []
+                none)
+              (RubyCore.Expr.ret
+                (some (RubyCore.Expr.send
+                   none
+                   "__unsupported__"
+                   [RubyCore.Expr.str
+                      "IO#each_line without a block (needs an Enumerator over a descriptor)"]
+                   none)))
+              none,
+            RubyCore.Expr.send
+              none
+              "loop"
+              []
+              (some (RubyCore.Expr.block
+                 []
+                 ["line"]
+                 (RubyCore.Expr.seq
+                   [RubyCore.Expr.vasgn
+                      (RubyCore.VarKind.lvar)
+                      "line"
+                      (RubyCore.Expr.send
+                        none
+                        "gets"
+                        [RubyCore.Expr.splat
+                           (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "args"))]
+                        none),
+                    RubyCore.Expr.if'
+                      (RubyCore.Expr.send
+                        (some (RubyCore.Expr.var (RubyCore.VarKind.lvar) "line"))
+                        "nil?"
+                        []
+                        none)
+                      (RubyCore.Expr.brk none)
+                      none,
+                    RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "line"]]))),
+            RubyCore.Expr.self'])])
+
+def core_49 : Expr :=
+  RubyCore.Expr.class'
     "String"
     none
     (RubyCore.Expr.seq
@@ -10342,7 +10419,7 @@ def core_48 : Expr :=
                  (RubyCore.Expr.yield' [RubyCore.Expr.var (RubyCore.VarKind.lvar) "x"]))),
             RubyCore.Expr.self'])])
 
-def core_49 : Expr :=
+def core_50 : Expr :=
   RubyCore.Expr.class'
     "Encoding"
     none
@@ -10465,7 +10542,7 @@ def core_49 : Expr :=
          []
          (RubyCore.Expr.const "UNDETERMINED")])
 
-def core_50 : Expr :=
+def core_51 : Expr :=
   RubyCore.Expr.class'
     "Struct"
     none
@@ -11263,12 +11340,12 @@ def core_50 : Expr :=
            none,
          RubyCore.Expr.var (RubyCore.VarKind.lvar) "cls"]))
 
-def core_51 : Expr :=
+def core_52 : Expr :=
   RubyCore.Expr.sclass
     (RubyCore.Expr.const "Module")
     (RubyCore.Expr.send none "undef_method" [RubyCore.Expr.sym "allocate"] none)
 
-def core : Expr := .seq [core_0, core_1, core_2, core_3, core_4, core_5, core_6, core_7, core_8, core_9, core_10, core_11, core_12, core_13, core_14, core_15, core_16, core_17, core_18, core_19, core_20, core_21, core_22, core_23, core_24, core_25, core_26, core_27, core_28, core_29, core_30, core_31, core_32, core_33, core_34, core_35, core_36, core_37, core_38, core_39, core_40, core_41, core_42, core_43, core_44, core_45, core_46, core_47, core_48, core_49, core_50, core_51]
+def core : Expr := .seq [core_0, core_1, core_2, core_3, core_4, core_5, core_6, core_7, core_8, core_9, core_10, core_11, core_12, core_13, core_14, core_15, core_16, core_17, core_18, core_19, core_20, core_21, core_22, core_23, core_24, core_25, core_26, core_27, core_28, core_29, core_30, core_31, core_32, core_33, core_34, core_35, core_36, core_37, core_38, core_39, core_40, core_41, core_42, core_43, core_44, core_45, core_46, core_47, core_48, core_49, core_50, core_51, core_52]
 
 def feature0_0 : Expr :=
   RubyCore.Expr.module'
