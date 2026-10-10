@@ -286,6 +286,48 @@ def crubyMethodNames : List (String × List String) := [
   ]),
   ("ScriptError", [
 
+  ]),
+  ("IO", [
+    "<<", "advise", "autoclose=", "autoclose?", "binmode", "binmode?", "close", "close_on_exec=",
+    "close_on_exec?", "close_read", "close_write", "closed?", "each", "each_byte", "each_char", "each_codepoint",
+    "each_line", "eof", "eof?", "external_encoding", "fcntl", "fdatasync", "fileno", "flush",
+    "fsync", "getbyte", "getc", "gets", "initialize", "initialize_copy", "inspect", "internal_encoding",
+    "ioctl", "isatty", "lineno", "lineno=", "path", "pid", "pos", "pos=",
+    "pread", "print", "printf", "putc", "puts", "pwrite", "read", "read_nonblock",
+    "readbyte", "readchar", "readline", "readlines", "readpartial", "reopen", "rewind", "seek",
+    "set_encoding", "set_encoding_by_bom", "stat", "sync", "sync=", "sysread", "sysseek", "syswrite",
+    "tell", "timeout", "timeout=", "to_i", "to_io", "to_path", "tty?", "ungetbyte",
+    "ungetc", "wait", "wait_priority", "wait_readable", "wait_writable", "write", "write_nonblock"
+  ]),
+  ("File", [
+    "atime", "birthtime", "chmod", "chown", "ctime", "flock", "initialize", "lstat",
+    "mtime", "size", "truncate"
+  ]),
+  ("Dir", [
+    "chdir", "children", "close", "each", "each_child", "fileno", "initialize", "inspect",
+    "path", "pos", "pos=", "read", "rewind", "seek", "tell", "to_path"
+  ]),
+  ("FileTest", [
+    "blockdev?", "chardev?", "directory?", "empty?", "executable?", "executable_real?", "exist?", "file?",
+    "grpowned?", "identical?", "owned?", "pipe?", "readable?", "readable_real?", "setgid?", "setuid?",
+    "size", "size?", "socket?", "sticky?", "symlink?", "world_readable?", "world_writable?", "writable?",
+    "writable_real?", "zero?"
+  ]),
+  ("Pathname", [
+    "+", "/", "<=>", "==", "===", "absolute?", "add_trailing_separator", "ascend",
+    "atime", "basename", "binread", "binwrite", "birthtime", "blockdev?", "chardev?", "children",
+    "chmod", "chop_basename", "chown", "cleanpath", "cleanpath_aggressive", "cleanpath_conservative", "ctime", "del_trailing_separator",
+    "delete", "descend", "directory?", "dirname", "each_child", "each_entry", "each_filename", "each_line",
+    "empty?", "entries", "eql?", "executable?", "executable_real?", "exist?", "expand_path", "extname",
+    "file?", "find", "fnmatch", "fnmatch?", "freeze", "ftype", "glob", "grpowned?",
+    "has_trailing_separator?", "hash", "initialize", "inspect", "join", "lchmod", "lchown", "lstat",
+    "lutime", "make_link", "make_symlink", "mkdir", "mkpath", "mountpoint?", "mtime", "open",
+    "opendir", "owned?", "parent", "path", "pipe?", "plus", "prepend_prefix", "read",
+    "readable?", "readable_real?", "readlines", "readlink", "realdirpath", "realpath", "relative?", "relative_path_from",
+    "rename", "rmdir", "rmtree", "root?", "same_paths?", "setgid?", "setuid?", "size",
+    "size?", "socket?", "split", "split_names", "stat", "sticky?", "sub", "sub_ext",
+    "symlink?", "sysopen", "to_path", "to_s", "truncate", "unlink", "utime", "world_readable?",
+    "world_writable?", "writable?", "writable_real?", "write", "zero?"
   ])
 ]
 
@@ -413,6 +455,34 @@ def crubySingletonNames : List (String × List String) := [
   ]),
   ("ScriptError", [
 
+  ]),
+  ("IO", [
+    "binread", "binwrite", "copy_stream", "for_fd", "foreach", "new", "open", "pipe",
+    "popen", "read", "readlines", "select", "sysopen", "try_convert", "write"
+  ]),
+  ("File", [
+    "absolute_path", "absolute_path?", "atime", "basename", "birthtime", "blockdev?", "chardev?", "chmod",
+    "chown", "ctime", "delete", "directory?", "dirname", "empty?", "executable?", "executable_real?",
+    "exist?", "expand_path", "extname", "file?", "fnmatch", "fnmatch?", "ftype", "grpowned?",
+    "identical?", "join", "lchmod", "lchown", "link", "lstat", "lutime", "mkfifo",
+    "mtime", "owned?", "path", "pipe?", "readable?", "readable_real?", "readlink", "realdirpath",
+    "realpath", "rename", "setgid?", "setuid?", "size", "size?", "socket?", "split",
+    "stat", "sticky?", "symlink", "symlink?", "truncate", "umask", "unlink", "utime",
+    "world_readable?", "world_writable?", "writable?", "writable_real?", "zero?"
+  ]),
+  ("Dir", [
+    "[]", "chdir", "children", "chroot", "delete", "each_child", "empty?", "entries",
+    "exist?", "fchdir", "for_fd", "foreach", "getwd", "glob", "home", "mkdir",
+    "open", "pwd", "rmdir", "unlink"
+  ]),
+  ("FileTest", [
+    "blockdev?", "chardev?", "directory?", "empty?", "executable?", "executable_real?", "exist?", "file?",
+    "grpowned?", "identical?", "owned?", "pipe?", "readable?", "readable_real?", "setgid?", "setuid?",
+    "size", "size?", "socket?", "sticky?", "symlink?", "world_readable?", "world_writable?", "writable?",
+    "writable_real?", "zero?"
+  ]),
+  ("Pathname", [
+    "getwd", "glob", "mktmpdir", "pwd"
   ])
 ]
 
@@ -456,7 +526,12 @@ def crubyNamespaceConstants : List (String × List String) := [
   ("StopIteration", []),
   ("UncaughtThrowError", []),
   ("NotImplementedError", []),
-  ("ScriptError", [])
+  ("ScriptError", []),
+  ("IO", ["Buffer", "EAGAINWaitReadable", "EAGAINWaitWritable", "EINPROGRESSWaitReadable", "EINPROGRESSWaitWritable", "EWOULDBLOCKWaitReadable", "EWOULDBLOCKWaitWritable", "PRIORITY", "READABLE", "SEEK_CUR", "SEEK_DATA", "SEEK_END", "SEEK_HOLE", "SEEK_SET", "TimeoutError", "WRITABLE", "WaitReadable", "WaitWritable"]),
+  ("File", ["ALT_SEPARATOR", "Constants", "PATH_SEPARATOR", "SEPARATOR", "Separator", "Stat"]),
+  ("Dir", []),
+  ("FileTest", []),
+  ("Pathname", ["SEPARATOR_PAT", "VERSION"])
 ]
 
 /-- Constants a require may define, curated separately from the oracle's

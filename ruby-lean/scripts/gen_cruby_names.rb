@@ -12,6 +12,11 @@
 # The Lean model uses these for dispatch fidelity (shadow detection and
 # genuine-NoMethodError classification), not behavior.
 
+# `Pathname` is stdlib, not a core class, but CRuby 4.0 boots it (the prelude
+# says so) so it is available to a program without a `require`. Requiring it
+# here makes the constant resolvable when FOLD is built.
+require "pathname"
+
 # Constants that exist only in some builds of the same CRuby release. They are
 # left out so that this table is the same on every platform: `Integer::GMP_VERSION`
 # is defined only when CRuby was compiled against GMP.
@@ -60,6 +65,20 @@ FOLD = {
   "UncaughtThrowError" => [UncaughtThrowError],
   "NotImplementedError" => [NotImplementedError],
   "ScriptError" => [ScriptError],
+  # Filesystem classes the model recognizes but models only partially. Their
+  # *modeled* methods are `basename`/`dirname`/`extname`/`join` and the pure
+  # `Pathname` half; every other real method must gate as a named `Unsupported`
+  # rather than mis-raise `NoMethodError`. Inherited names are covered by the
+  # dispatch shadow's ancestor walk (`File < IO`), so folding is unnecessary.
+  # `FileTest` and `Dir` are the sibling surfaces a program reaches for when it
+  # asks the filesystem a question. `Pathname` is stdlib (see the `require`
+  # above). Listing a class here only adds its real method names to the
+  # dispatch-fidelity tables — it does not model any new behavior.
+  "IO" => [IO],
+  "File" => [File],
+  "Dir" => [Dir],
+  "FileTest" => [FileTest],
+  "Pathname" => [Pathname],
 }.freeze
 
 # A lambda, not a toplevel def — a def here would land on Object and leak
